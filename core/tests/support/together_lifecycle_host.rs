@@ -330,7 +330,12 @@ async fn waiting_timeout_and_empty_queue_exit_also_restore_local_settings() {
             .unwrap();
         wait(&client, |v| v.target_id.is_some() && v.pending.is_empty()).await;
         if timeout {
-            let service = TogetherService::new(session.clone()).unwrap();
+            // Hold the service lock beyond a host timer tick after room=None
+            // becomes visible. Cleanup must wait for confirming reads, not
+            // latch a permanent MutationBusy or replay the end request.
+            let service = TogetherService::new(session.clone())
+                .unwrap()
+                .with_settle_delay(Duration::from_secs(2));
             let token = session.token().unwrap();
             let at = service.state_for(&token).unwrap().waiting_until_ms.unwrap();
             assert!(service.tick_for(&token, at).await.unwrap());

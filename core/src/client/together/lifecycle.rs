@@ -134,15 +134,28 @@ impl runtime::Context {
         {
             return Ok(());
         }
-        if restore_local(
-            &self.session,
-            self.store.clone(),
-            &self.controller,
-            &self.token,
-            Some(&self.room_id),
-        )
-        .await?
-        {
+        // Another process/service can publish room=None during its first
+        // confirming read while it still owns the end-operation lock. Wait
+        // for that owner to settle; cleanup uses read reconciliation only and
+        // never resends an end request. All other errors remain explicit.
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+        let restored = loop {
+            match restore_local(
+                &self.session,
+                self.store.clone(),
+                &self.controller,
+                &self.token,
+                Some(&self.room_id),
+            )
+            .await
+            {
+                Err(Error::MutationBusy) if tokio::time::Instant::now() < deadline => {
+                    tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+                }
+                result => break result?,
+            }
+        };
+        if restored {
             self.session.with_token(&self.token, |uid| {
                 self.store.put(
                     uid,
