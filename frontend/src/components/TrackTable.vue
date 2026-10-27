@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, watch } from 'vue';
+import { useVirtualRows } from '../composables/useVirtualRows';
+import { artworkAt } from '../services/artwork';
 import type { TrackView } from '../services/contracts';
 import Icon from './Icon.vue';
 const props = defineProps<{
@@ -14,29 +16,20 @@ const emit = defineEmits<{
   play: [index: number];
   more: [track: TrackView];
 }>();
-const scroller = ref<HTMLDivElement>();
-const scroll = ref(0);
-const height = ref(500);
 const rowHeight = 56;
-const start = computed(() => Math.max(0, Math.floor(scroll.value / rowHeight) - 6));
-const end = computed(() =>
-  Math.min(props.tracks.length, Math.ceil((scroll.value + height.value) / rowHeight) + 6),
-);
+const {
+  container: scroller,
+  start,
+  end,
+  onScroll,
+  reset,
+} = useVirtualRows(() => props.tracks.length, rowHeight);
 const rows = computed(() => props.tracks.slice(start.value, end.value));
-let observer: ResizeObserver;
-onMounted(() => {
-  observer = new ResizeObserver((entries) => {
-    height.value = entries[0]?.contentRect.height ?? 500;
-  });
-  if (scroller.value) observer.observe(scroller.value);
-});
-onUnmounted(() => observer?.disconnect());
 watch(
   () => props.tracks,
   (_now, previous) => {
     if (props.tracks[0]?.id !== previous[0]?.id || props.tracks.length < previous.length) {
-      scroll.value = 0;
-      scroller.value?.scrollTo(0, 0);
+      reset();
     }
   },
 );
@@ -53,17 +46,25 @@ function duration(ms: number) {
       <span>#</span><span role="columnheader">歌曲 / 歌手</span><span role="columnheader">专辑</span
       ><span role="columnheader">喜欢</span><span role="columnheader">时长</span>
     </div>
-    <div
-      ref="scroller"
-      class="track-scroll"
-      @scroll="scroll = ($event.target as HTMLElement).scrollTop"
-    >
+    <div ref="scroller" class="track-scroll" @scroll.passive="onScroll">
       <div :style="{ height: `${start * rowHeight}px` }" aria-hidden="true" />
       <div
         v-for="(track, index) in rows"
         :key="`${start + index}:${track.id}`"
+        v-memo="[
+          track,
+          start + index,
+          currentId === track.id,
+          liked.has(track.id),
+          busy.has(track.id),
+          playable,
+        ]"
         class="track-columns track-row"
-        :class="{ unavailable: track.missing, current: track.id === currentId }"
+        :class="{
+          unavailable: track.missing,
+          current: track.id === currentId,
+          striped: (start + index) % 2 === 0,
+        }"
         @dblclick="!track.missing && playable && emit('play', start + index)"
         role="row"
         :aria-rowindex="start + index + 2"
@@ -82,9 +83,10 @@ function duration(ms: number) {
         <div class="track-title" role="cell">
           <img
             v-if="track.coverUrl"
-            :src="track.coverUrl"
+            :src="artworkAt(track.coverUrl, 120)"
             alt=""
             loading="lazy"
+            decoding="async"
             referrerpolicy="no-referrer"
           /><span v-else class="track-art"><Icon name="music" /></span>
           <div>

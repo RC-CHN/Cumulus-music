@@ -9,10 +9,12 @@ Rust core 独立于 Tauri，Vue 界面通过类型化 IPC 调用业务逻辑。
 - libmpv 实际播放、队列、歌词、音质/会员权益处理、播客及 MV。
 - 下载与断点恢复、完成文件管理、本地库/CUE/NCM、云盘和上传恢复。
 - 评论、同账号接续、已恢复的一起听控制、音效参数与本地 DSP。
+- 自定义标题栏、页面/面板/弹窗动画、长列表滚动优化和 Linux NVIDIA GPU 兼容处理。
+- 修复 GTK 非 C 数字 locale 导致 libmpv 初始化失败、界面提示无法播放的问题。
 
 安装
-- Linux：优先安装 .deb（Ubuntu 24.04 或兼容发行版），由包管理器安装 WebKitGTK 4.1、libmpv2 和 FFmpeg 等依赖。
-  tar.gz 是同一构建的文件包，需要系统先安装 libmpv2、WebKitGTK 4.1、FFmpeg 等依赖；不是无依赖 AppImage。
+- Linux：优先安装 .deb（Ubuntu 24.04 或兼容发行版），由包管理器安装 WebKitGTK 4.1（版本 >= 2.42）、libmpv2 和 FFmpeg 等依赖。
+  tar.gz 是同一构建的文件包，需要系统先安装 libmpv2、WebKitGTK 4.1（版本 >= 2.42）、FFmpeg 等依赖；不是无依赖 AppImage。
 - Windows：x64 NSIS 安装包或 zip；包含 libmpv、ffprobe 及其动态依赖，需要 Microsoft Edge WebView2。
   未配置代码签名证书，系统可能显示未知发布者。
 - 不发布 macOS 包。

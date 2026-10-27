@@ -69,6 +69,8 @@
   overflow: auto;
   flex: 1;
   min-height: 0;
+  contain: strict;
+  overscroll-behavior: contain;
 }
 .nav-label {
   font-size: 12px;
@@ -80,6 +82,8 @@
 }
 .playlist-nav {
   font-size: 13px;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 36px;
 }
 .playlist-nav .icon {
   width: 17px;

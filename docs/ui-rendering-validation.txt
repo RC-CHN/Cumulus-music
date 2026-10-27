@@ -1,0 +1,99 @@
+Desktop rendering and window controls — 2026-10-27
+
+Scope
+The main window is frameless on Linux/Windows. Search, account and native window
+controls share the existing application header. Empty header space is a native
+drag region, with double-click maximize/restore. Eight narrow edge/corner hit
+regions dispatch native resize drags. Closing still goes through Tauri's ordinary
+close event and the existing Together cleanup coordinator.
+
+Scrolling
+TrackTable and QueuePanel share a bounded, buffered visible-row window. Passive
+scroll events schedule at most one range calculation per animation frame; movement
+inside the safety buffer does not publish another Vue update. Row memoization
+retains unchanged rows. Zebra colors use absolute row indices, so scrolling no
+longer flips the color of every retained row when the buffer advances. Resize,
+queue shrink, empty lists and jump/reverse scrolling are covered. Artwork in a
+40px track row requests a 120px public CDN thumbnail (up to 3x density), decodes
+asynchronously, and retains native lazy loading. No authorized media URL enters
+this image path.
+
+The page tree depends on stable current song/local/voice identifiers. Playback
+clock changes remain in the player and lyric components, rather than re-rendering
+the library and sidebar. Playlist counts no longer use hundreds of backdrop blur
+filters. No permanent requestAnimationFrame loop runs while the application idles.
+
+Motion
+Pages use short fade/vertical transitions; queue and lyrics panels slide/fade;
+modal dialogs fade/scale; login methods fade/slide; navigation and window controls
+have short state feedback. Only transform/opacity are animated for moving content.
+The lyric panel leaves the custom window header accessible. Native dialog focus
+restoration waits until the leave animation removes the modal from the top layer.
+Switching modals retains the original page focus target. Reduced-motion preference
+removes movement and transition delays.
+
+Linux GPU behavior
+WebKitGTK requests Always acceleration and smooth scrolling. The optional public
+PreferPageRenderingUpdatesNear60FPS feature is disabled when present, without
+inventing a JavaScript timer to force refresh. WebView2 keeps its normal GPU default.
+
+On this machine: Ubuntu 26.04.1, WebKitGTK 2.52.6, KDE Wayland, NVIDIA RTX 3090,
+driver 595.99.02, physical monitor 143.999 Hz, GTK device scale 2. The distribution's
+NVIDIA DMA-BUF patch makes the acceleration policy read back as Never even after
+requesting Always. Forcing DMA-BUF alone reproduces a Wayland disconnect:
+  explicit sync is used, but no acquire point is set
+NVIDIA's __NV_DISABLE_EXPLICIT_SYNC=1 fixes that incompatibility while retaining
+GPU buffer transport. A shared-memory GPU presentation experiment also worked but
+was slower in this workload, so it is a manual fallback, not the Wayland default.
+
+Before GTK or worker startup, auto mode detects NVIDIA via DRM driver links and
+sets process-local defaults only when the user has not supplied that variable:
+- NVIDIA + Wayland: WEBKIT_FORCE_DMABUF_RENDERER=1,
+  __NV_DISABLE_EXPLICIT_SYNC=1.
+- NVIDIA + X11: GPU shared-memory transport (the Wayland setting is inapplicable).
+- Other drivers: normal hardware-acceleration initialization.
+CUMULUS_RENDERER=software explicitly selects software rendering;
+CUMULUS_RENDERER=gpu-shm selects GPU/shared-memory transport;
+CUMULUS_RENDERER=gpu requests the direct path without auto driver workarounds.
+No desktop-wide, driver, display-frequency or login-session setting is modified.
+The startup environment API is unsafe with a documented before-threads contract;
+the WebKit feature FFI is isolated to the GTK thread with a bounded list lifetime.
+The Linux package requires WebKitGTK >= 2.42 for those public feature APIs.
+
+Evidence and limits
+The standalone scroll_ui_probe renders the production frontend and IPC using
+2,000 synthetic songs and 300 synthetic playlists, without an account or music
+network traffic. It records requestAnimationFrame intervals during idle, song
+scrolling and playlist scrolling, verifies bounded song DOM, jumps/reverse/end
+positions, page navigation, native-dialog open/close and focus, and custom chrome.
+Physical-monitor frame rates are diagnostics, not CI gates on virtual runners.
+Local manual mode verifies native maximize/restore/close. A temporary KWin
+observer independently confirmed minimized=true after the custom minimize button;
+GTK/Wayland is_minimized returned false, so its ICONIFIED getter is not used as
+proof. The observer was unloaded after the test. CI uses
+embedded frontend assets; an explicitly selected dist snapshot exists only in
+this standalone probe for manual comparisons, never in the shipped application.
+
+The software baseline without cover images already reached about 62 FPS. It is
+not evidence that the user's image-heavy real library was smooth. The direct GPU
+compatibility run measured 59.7 FPS for songs and 60.0 FPS for playlists, with
+p95 intervals of 18ms; the shared-memory run measured about 51/54 FPS. These are
+short local runs on this machine, not a universal 60 FPS guarantee or proof of
+144 FPS. Different GPUs, actual covers, server latency, long sessions and desktop
+load can change results. The current acceptance target is stable approximately
+60 FPS, as requested; the physical monitor itself is not limited to 60 Hz.
+
+Primary implementation references
+https://v2.tauri.app/learn/window-customization/
+https://webkitgtk.org/reference/webkit2gtk/stable/method.Settings.set_feature_enabled.html
+https://webkit.github.io/explainers/animation-frame-rate/
+https://sources.debian.org/patches/webkit2gtk/2.52.6-1~deb13u1/disable-nvidia-dmabuf.patch/
+https://bugs.webkit.org/show_bug.cgi?id=324551
+https://github.com/NVIDIA/egl-wayland2
+
+Final local window run (.build/scroll-window-kwin/result.json)
+GPU policy Always; songs 60.0 FPS, p95 19ms, at most 24 live rows for 2,000 songs;
+playlists 60.0 FPS, p95 18ms; no song-list DOM mutations during idle; 356 mutation
+records over the measured six-second song scroll; jump/end/reverse checks passed.
+Native decorations=false; maximize/restore, dialog focus and close event passed.
+These local diagnostic files contain only synthetic content and are not shipped.

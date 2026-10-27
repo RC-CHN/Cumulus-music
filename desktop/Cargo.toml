@@ -117,6 +117,7 @@ tempfile = "3"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"
+webkit2gtk = "=2.0.2"
 
 [dev-dependencies]
 rusqlite = { version = "0.41", features = ["bundled"] }
@@ -144,4 +145,8 @@ required-features = ["custom-protocol"]
 
 [[example]]
 name = "native_audio_probe"
+required-features = ["custom-protocol"]
+
+[[example]]
+name = "scroll_ui_probe"
 required-features = ["custom-protocol"]

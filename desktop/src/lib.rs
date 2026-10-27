@@ -5,6 +5,7 @@ mod comments;
 mod downloads;
 mod effects;
 mod fm;
+mod graphics;
 mod identity;
 mod local;
 mod member;
@@ -19,11 +20,13 @@ pub mod renewal;
 mod together;
 pub mod watchman;
 pub use effects::configure_native_audio;
+pub use graphics::prepare_process as prepare_graphics;
 use tauri::Manager;
 
 /// Shared by the desktop runtime and IPC contract verification.
 pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
     captcha::protocol(builder)
+        .plugin(graphics::plugin())
         .plugin(
             tauri::plugin::Builder::<R>::new("media-locale")
                 .setup(|_, _| {
@@ -168,6 +171,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
 }
 
 pub fn run() {
+    // SAFETY: desktop entry point, before the GUI runtime and worker creation.
+    unsafe { prepare_graphics() };
     configure(tauri::Builder::default())
         .setup(|app| {
             let root = match std::env::var_os("CUMULUS_DATA_DIR") {

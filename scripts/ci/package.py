@@ -93,7 +93,7 @@ def main():
         "licenseFile": str(ROOT / "LICENSE"),
         "copyright": "Cumulus Music contributors",
         "category": "Music",
-        "linux": {"deb": {"depends": ["libmpv2", "ffmpeg"]}},
+        "linux": {"deb": {"depends": ["libmpv2", "ffmpeg", "libwebkit2gtk-4.1-0 (>= 2.42)"]}},
         "windows": {"nsis": {"installMode": "currentUser", "languages": ["SimpChinese", "English"]}}}}
     config_path = stage / "bundle-config.json"
     config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")

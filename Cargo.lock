@@ -736,6 +736,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tempfile",
  "tokio",
+ "webkit2gtk",
 ]
 
 [[package]]

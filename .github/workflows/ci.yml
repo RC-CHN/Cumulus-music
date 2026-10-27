@@ -130,6 +130,8 @@ jobs:
           cargo build -p cumulus-desktop --example login_interception_ui_probe --features custom-protocol --locked
           dbus-run-session -- xvfb-run -a /usr/bin/python3 desktop/examples/run_auth_probe.py .build/ci-login --binary .build/target/debug/examples/login_interception_ui_probe --stage-prefix interception_ --screenshots 4 --small
           python3 desktop/examples/audit_login_interception_probe.py .build/ci-login
+          cargo build -p cumulus-desktop --example scroll_ui_probe --features custom-protocol --locked
+          dbus-run-session -- xvfb-run -a python3 scripts/ci/scroll_smoke.py --binary .build/target/debug/examples/scroll_ui_probe --root .build/ci-scroll-linux
       - name: Windows WebView login lifecycle smoke
         if: runner.os == 'Windows'
         run: |
@@ -138,6 +140,8 @@ jobs:
           cargo build -p cumulus-desktop --example login_interception_ui_probe --features custom-protocol --locked
           python scripts/ci/ui_smoke.py --binary .build/target/debug/examples/login_interception_ui_probe.exe --root .build/ci-login-windows
           python scripts/ci/ui_smoke.py --binary .build/target/debug/examples/login_interception_ui_probe.exe --root .build/ci-login-windows-legacy --legacy
+          cargo build -p cumulus-desktop --example scroll_ui_probe --features custom-protocol --locked
+          python scripts/ci/scroll_smoke.py --binary .build/target/debug/examples/scroll_ui_probe.exe --root .build/ci-scroll-windows
       - name: Preserve synthetic failure diagnostics
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -148,6 +152,8 @@ jobs:
             .build/ci-login*/
             .build/ci-login*.log
             .build/ci-native-audio*.json
+            .build/ci-scroll*/
+            .build/ci-scroll*.log
           if-no-files-found: ignore
           retention-days: 7
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

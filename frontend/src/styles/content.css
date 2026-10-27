@@ -119,9 +119,8 @@
   border-radius: 10px;
   font-size: 10px;
   color: white;
-  background: #0005;
+  background: #272331b8;
   padding: 3px 8px;
-  backdrop-filter: blur(8px);
 }
 .card-title {
   font-size: 13px;
@@ -134,4 +133,13 @@
 .playlist-card > small {
   font-size: 11px;
   color: #a39da9;
+}
+
+/* Keep card layout local without estimated heights that shift during scrolling. */
+.playlist-shell {
+  contain: layout style;
+}
+.playlist-grid {
+  contain: content;
+  overscroll-behavior: contain;
 }

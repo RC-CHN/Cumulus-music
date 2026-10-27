@@ -22,13 +22,16 @@
   overflow-x: hidden;
   flex: 1;
   min-height: 0;
+  contain: strict;
+  overflow-anchor: none;
+  overscroll-behavior: contain;
 }
 .track-row {
   height: 56px;
   border-radius: 6px;
   font-size: 13px;
 }
-.track-row:nth-of-type(even) {
+.track-row.striped {
   background: #faf9fc;
 }
 .track-row:hover {

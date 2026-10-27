@@ -1,50 +1,34 @@
 <script setup lang="ts">
-import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
+import { computed, watch, onMounted, onUnmounted } from 'vue';
+import { useVirtualRows } from '../composables/useVirtualRows';
 import type { PlayerModel } from '../composables/usePlayer';
 import { time } from '../services/player';
 import Icon from './Icon.vue';
 const props = defineProps<{ player: PlayerModel }>();
 const { queue, view, busy, queueError } = props.player;
-const scroll = ref(0),
-  height = ref(400),
-  container = ref<HTMLElement>();
 const row = 62;
-const start = computed(() => Math.max(0, Math.floor(scroll.value / row) - 4));
-const end = computed(() =>
-  Math.min(queue.value?.tracks.length ?? 0, Math.ceil((scroll.value + height.value) / row) + 4),
+const { container, start, end, onScroll } = useVirtualRows(
+  () => queue.value?.tracks.length ?? 0,
+  row,
 );
 const visible = computed(() => queue.value?.tracks.slice(start.value, end.value) ?? []);
-let observer: ResizeObserver | undefined;
+const currentEntry = computed(() => view.value?.entryId);
+const queueCount = computed(() => view.value?.queueLen ?? 0);
 let focus: HTMLElement | null = null;
 onMounted(() => {
   focus = document.activeElement as HTMLElement;
   container.value?.focus();
-  observer = new ResizeObserver((e) => (height.value = e[0]?.contentRect.height ?? 400));
-  if (container.value) observer.observe(container.value);
 });
 watch(
   container,
   (element) => {
-    observer?.disconnect();
     if (element) {
-      observer?.observe(element);
       element.focus();
     }
   },
   { flush: 'post' },
 );
-watch(
-  () => queue.value?.tracks.length,
-  (count) => {
-    const maximum = Math.max(0, (count ?? 0) * row - height.value);
-    if (scroll.value > maximum) {
-      scroll.value = maximum;
-      container.value?.scrollTo(0, maximum);
-    }
-  },
-);
 onUnmounted(() => {
-  observer?.disconnect();
   focus?.focus();
 });
 function move(index: number, direction: number) {
@@ -63,7 +47,7 @@ function move(index: number, direction: number) {
     <header>
       <div>
         <h2>{{ queue?.fm ? '私人漫游队列' : '当前播放' }}</h2>
-        <small>{{ view?.queueLen ?? 0 }} 首歌曲</small>
+        <small>{{ queueCount }} 首歌曲</small>
       </div>
       <button
         class="text-button"
@@ -84,28 +68,30 @@ function move(index: number, direction: number) {
     </div>
     <div v-if="!queue" class="empty-state">正在加载队列…</div>
     <div v-else-if="!queue.tracks.length" class="empty-state">队列为空，去选一首歌吧</div>
-    <div
-      v-else
-      ref="container"
-      class="queue-scroll"
-      tabindex="-1"
-      @scroll="scroll = ($event.target as HTMLElement).scrollTop"
-    >
+    <div v-else ref="container" class="queue-scroll" tabindex="-1" @scroll.passive="onScroll">
       <div :style="{ height: `${start * row}px` }" aria-hidden="true" />
       <div
         v-for="(item, index) in visible"
         :key="item.entryId"
+        v-memo="[
+          item,
+          start + index,
+          currentEntry === item.entryId,
+          busy,
+          queue.fm,
+          queue.tracks.length,
+        ]"
         class="queue-row"
         :data-entry-id="item.entryId"
-        :class="{ current: item.entryId === view?.entryId }"
-        :aria-current="item.entryId === view?.entryId ? 'true' : undefined"
+        :class="{ current: item.entryId === currentEntry }"
+        :aria-current="item.entryId === currentEntry ? 'true' : undefined"
       >
         <button
           class="queue-song"
           :disabled="busy || item.track.missing || queue.fm"
           @click="player.action({ kind: 'select', entry_id: item.entryId })"
         >
-          <Icon :name="item.entryId === view?.entryId ? 'volume' : 'music'" /><span
+          <Icon :name="item.entryId === currentEntry ? 'volume' : 'music'" /><span
             ><strong class="ellipsis">{{ item.track.name }}</strong
             ><small class="ellipsis">{{ item.track.artists.join(' / ') }}</small></span
           >
