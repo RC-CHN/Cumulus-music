@@ -32,9 +32,10 @@ def digest(path):
 def windows_media(destination, msys):
     """Copy the PE import closure, not the whole compiler/MSYS2 installation."""
     binary = msys / "ucrt64/bin"
-    candidates = {p.name.lower(): p for p in binary.glob("*.dll")}
+    candidates = {p.name.lower(): p for pattern in ("*.dll", "ffprobe.exe") for p in binary.glob(pattern)}
     assert "libmpv-2.dll" in candidates, "MSYS2 UCRT64 libmpv is missing"
-    pending, copied = ["libmpv-2.dll"], set()
+    assert "ffprobe.exe" in candidates, "MSYS2 UCRT64 ffprobe is missing"
+    pending, copied = ["libmpv-2.dll", "ffprobe.exe"], set()
     while pending:
         name = pending.pop()
         if name in copied:
@@ -58,7 +59,7 @@ def windows_media(destination, msys):
         "Source recipes: https://github.com/msys2/MINGW-packages\n"
         "libmpv: https://github.com/mpv-player/mpv ; FFmpeg: https://ffmpeg.org/\n"
         "The included licenses retain their upstream terms.\n", encoding="utf-8")
-    return sorted(copied)
+    return sorted(name for name in copied if name.endswith(".dll"))
 
 
 def main():
@@ -92,7 +93,7 @@ def main():
         "licenseFile": str(ROOT / "LICENSE"),
         "copyright": "Cumulus Music contributors",
         "category": "Music",
-        "linux": {"deb": {"depends": ["libmpv2"]}},
+        "linux": {"deb": {"depends": ["libmpv2", "ffmpeg"]}},
         "windows": {"nsis": {"installMode": "currentUser", "languages": ["SimpChinese", "English"]}}}}
     config_path = stage / "bundle-config.json"
     config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")

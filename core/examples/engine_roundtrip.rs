@@ -1,7 +1,11 @@
 //! Real libmpv verification against a private synthetic WAV, no network/account.
 //! Default output is null (real decoder, discarded PCM); --auto uses the OS
 //! device at zero volume. No claim of audible hardware output from null tests.
-use cumulus_core::{Result, playback::engine::*};
+use cumulus_core::{
+    Result,
+    library::probe::{AudioProbe, Ffprobe},
+    playback::engine::*,
+};
 use serde_json::json;
 use std::{
     io::Write,
@@ -57,6 +61,11 @@ fn run() -> Result<serde_json::Value> {
     let dir = tempfile::tempdir()?;
     let path = dir.path().join("sine.wav");
     wav(&path)?;
+    let metadata = Ffprobe::default().inspect(&path)?;
+    assert_eq!(metadata.format.as_deref(), Some("pcm_s16le"));
+    assert_eq!(metadata.sample_rate, Some(48000));
+    assert_eq!(metadata.channels, Some(1));
+    assert!((metadata.duration - 4.0).abs() < 0.01);
     let mut engine = MpvEngine::open(MpvConfig {
         null_output: !auto,
         ..Default::default()
@@ -108,7 +117,7 @@ fn run() -> Result<serde_json::Value> {
         Err(cumulus_core::Error::Cancelled)
     ));
     Ok(
-        json!({"ok":true,"libmpv_api":version,"decoder":loaded.codec,"duration":loaded.duration,"output":playing.audio_output,"requested_output":if auto{"auto_muted"}else{"null"},"progress":true,"pause":true,"seek":true,"speed":true,"bounds_validation":true,"cue_engine_eof":!eof.events.is_empty(),"cue_end_reset":restored.entry_id!=clip.entry_id,"cancel":true,"remote_requests":0}),
+        json!({"ok":true,"metadata_probe":true,"libmpv_api":version,"decoder":loaded.codec,"duration":loaded.duration,"output":playing.audio_output,"requested_output":if auto{"auto_muted"}else{"null"},"progress":true,"pause":true,"seek":true,"speed":true,"bounds_validation":true,"cue_engine_eof":!eof.events.is_empty(),"cue_end_reset":restored.entry_id!=clip.entry_id,"cancel":true,"remote_requests":0}),
     )
 }
 fn main() {

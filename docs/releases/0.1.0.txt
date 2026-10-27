@@ -11,9 +11,9 @@ Rust core 独立于 Tauri，Vue 界面通过类型化 IPC 调用业务逻辑。
 - 评论、同账号接续、已恢复的一起听控制、音效参数与本地 DSP。
 
 安装
-- Linux：优先安装 .deb（Ubuntu 24.04 或兼容发行版），由包管理器安装 WebKitGTK 4.1 和 libmpv2 等依赖。
-  tar.gz 是同一构建的文件包，需要系统先安装 libmpv2、WebKitGTK 4.1 等依赖；不是无依赖 AppImage。
-- Windows：x64 NSIS 安装包或 zip；包含 libmpv 及其动态依赖，需要 Microsoft Edge WebView2。
+- Linux：优先安装 .deb（Ubuntu 24.04 或兼容发行版），由包管理器安装 WebKitGTK 4.1、libmpv2 和 FFmpeg 等依赖。
+  tar.gz 是同一构建的文件包，需要系统先安装 libmpv2、WebKitGTK 4.1、FFmpeg 等依赖；不是无依赖 AppImage。
+- Windows：x64 NSIS 安装包或 zip；包含 libmpv、ffprobe 及其动态依赖，需要 Microsoft Edge WebView2。
   未配置代码签名证书，系统可能显示未知发布者。
 - 不发布 macOS 包。
 

@@ -17,8 +17,8 @@ python scripts/ci/package.py --platform linux-x64 或 windows-x64，必须在对
 发行构建要求工作区干净，构建结束再次核对 HEAD/工作区，禁止把中途修改的内容归给旧提交。
 先 npm --prefix frontend ci 与 npm --prefix frontend run build。
 Windows 还需 CUMULUS_MSYS2_ROOT 指向装有 UCRT64 mpv/binutils 的 MSYS2 根目录。
-Windows 按 PE 导入表递归收集 DLL；实际解码测试清除 PATH 中的 MSYS2，避免漏装依赖被 runner 掩盖。
-Linux .deb 声明 libmpv2/WebKitGTK 等系统依赖；tar.gz 也需要这些系统依赖。
+Windows 按 libmpv/ffprobe 的 PE 导入表递归收集 DLL；实际解码和本地库元数据读取测试清除 PATH 中的 MSYS2，避免漏装依赖被 runner 掩盖。
+Linux .deb 声明 libmpv2/WebKitGTK/FFmpeg 等系统依赖；tar.gz 也需要这些系统依赖。
 Windows 提供 NSIS/zip，附原生运行时依赖、上游许可证与包版本来源。没有签名证书，不声称已签名。
 MSYS2 FFmpeg 未启用 LADSPA，因此 Windows 本地 DSP 核心可测试，但正式播放音效链不承诺可用。
 打包脚本的生成目录必须不存在；重试前仅清理 .build/package-stage/<platform>、.build/packages/<platform> 中对应的失败构建，保留需要调查的证据。

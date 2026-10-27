@@ -35,6 +35,12 @@ pub(super) fn run(executable: &Path, path: &Path, timeout: Duration) -> Result<V
         "stream=codec_name,codec_type,sample_rate,channels"
     );
     let mut command = Command::new(executable);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // A metadata scan must not open a console window for every file.
+        command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
     command.args([
         "-v",
         "error",

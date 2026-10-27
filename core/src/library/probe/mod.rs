@@ -24,8 +24,20 @@ pub struct Ffprobe {
 }
 impl Default for Ffprobe {
     fn default() -> Self {
+        // Packaged hosts may ship the tool beside their executable. Resolve
+        // that trusted installation path explicitly; never depend on the CWD.
+        let name = if cfg!(windows) {
+            "ffprobe.exe"
+        } else {
+            "ffprobe"
+        };
+        let executable = std::env::current_exe()
+            .ok()
+            .and_then(|path| path.parent().map(|parent| parent.join(name)))
+            .filter(|path| path.is_file())
+            .unwrap_or_else(|| PathBuf::from(name));
         Self {
-            executable: PathBuf::from("ffprobe"),
+            executable,
             timeout: Duration::from_secs(30),
         }
     }
