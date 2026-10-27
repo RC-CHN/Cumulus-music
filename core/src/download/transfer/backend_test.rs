@@ -26,6 +26,9 @@ async fn actual_http_has_no_cookie_replay_redirect_retry_or_transparent_decompre
                     Err(e) => panic!("listener failed: {e}"),
                 }
             };
+            // Winsock may inherit nonblocking mode from the listener. This
+            // fixture uses blocking reads with a deadline after accepting.
+            stream.set_nonblocking(false).unwrap();
             stream
                 .set_read_timeout(Some(Duration::from_secs(2)))
                 .unwrap();
@@ -69,7 +72,12 @@ async fn actual_http_has_no_cookie_replay_redirect_retry_or_transparent_decompre
         .unwrap();
     assert_eq!(reply.headers["content-encoding"], "gzip");
     let mut out = [0u8; 3];
-    assert_eq!(reply.body.read(&mut out).await.unwrap(), 3);
+    let mut used = 0;
+    while used < out.len() {
+        let count = reply.body.read(&mut out[used..]).await.unwrap();
+        assert!(count > 0, "truncated media response");
+        used += count;
+    }
     assert_eq!(&out, b"abc");
     server.join().unwrap();
     let requests = requests.lock().unwrap();

@@ -30,4 +30,9 @@ https://learn.microsoft.com/en-us/cpp/build/reference/manifestdependency-specify
 集成测试继续验证原生播放时钟、忽略账号/房间过滤、请求内容和队列不被修改；窗口测试使用显式时间验证 0/250/999ms 被抑制、1000ms 允许发送，并检查被抑制的请求不会延长窗口。
 不延长产品去重时间、不忽略失败、不依靠重复 rerun 获得通过。
 
+5. HTTP 测试连接的阻塞模式
+40499502432 的 Windows 单元测试捕获 WSAEWOULDBLOCK（10035）。测试服务器使用非阻塞 listener 轮询 accept，却没有显式设置接收连接的模式；Winsock 可以继承非阻塞模式。
+夹具现在对接收连接设置阻塞读取并保留 2 秒读取超时；响应体按实际 read 返回长度累积，不假定一次读取包含全部 body。
+仍检查不跟随重定向、不回放 Cookie/Authorization、Range/If-Range 请求头和禁用透明解压。产品下载实现不变。
+
 上述测试均使用合成账号/本地临时媒体，不代表真实双账号一起听验证完成。
