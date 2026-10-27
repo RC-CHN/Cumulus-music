@@ -39,15 +39,19 @@ onUnmounted(() => focused?.focus());
       <button :aria-pressed="mode.startsWith('phone')" @click="mode = 'phone_sms'">手机</button>
       <button :aria-pressed="mode === 'email'" @click="mode = 'email'">邮箱</button>
     </nav>
-    <QrLogin v-if="mode === 'qr'" @authorized="emit('authorized')" />
-    <CredentialLogin
-      v-else
-      :epoch="epoch"
-      :mode="mode"
-      @mode="mode = $event"
-      @authorized="emit('authorized')"
-      @qr="mode = 'qr'"
-    />
+    <Transition name="tab" mode="out-in">
+      <div :key="mode">
+        <QrLogin v-if="mode === 'qr'" @authorized="emit('authorized')" />
+        <CredentialLogin
+          v-else
+          :epoch="epoch"
+          :mode="mode"
+          @mode="mode = $event"
+          @authorized="emit('authorized')"
+          @qr="mode = 'qr'"
+        />
+      </div>
+    </Transition>
     <button class="login-accounts" @click="emit('accounts')">切换已保存账号</button>
     <p class="login-note">Cumulus · 社区客户端</p>
   </dialog>

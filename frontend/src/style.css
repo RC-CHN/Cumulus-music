@@ -12,3 +12,6 @@
 @import './styles/mv.css';
 
 @import './styles/local.css';
+
+@import './styles/window.css';
+@import './styles/motion.css';

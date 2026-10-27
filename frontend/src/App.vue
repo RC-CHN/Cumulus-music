@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, watch, ref } from 'vue';
 import Icon from './components/Icon.vue';
+import WindowControls from './components/WindowControls.vue';
+import ModalTransition from './components/ModalTransition.vue';
 import LoginDialog from './components/LoginDialog.vue';
 import AccountDialog from './components/AccountDialog.vue';
 import TrackTable from './components/TrackTable.vue';
@@ -262,18 +264,27 @@ watch(
     if (voice && !podcasts.likesKnown.value && !podcasts.loading.value) void podcasts.state(true);
   },
 );
+// Stable scalar dependencies keep playback clock ticks out of the page tree.
+const currentTrackId = computed(() => player.view.value?.track?.id);
+const currentLocalId = computed(() =>
+  player.view.value?.track?.local ? currentTrackId.value : undefined,
+);
+const currentVoiceId = computed(() => player.view.value?.track?.voiceId);
+const pageKey = computed(() => JSON.stringify(page.value));
 const playingLikes = computed(() => {
-  const track = player.view.value?.track;
-  return track?.voiceId
-    ? new Set(podcasts.liked.value.has(track.voiceId) ? [track.id] : [])
+  const voiceId = currentVoiceId.value;
+  const trackId = currentTrackId.value;
+  return voiceId && trackId
+    ? new Set(podcasts.liked.value.has(voiceId) ? [trackId] : [])
     : liked.value;
 });
 const playingLikeBusy = computed(() => {
-  const track = player.view.value?.track;
-  return track?.voiceId
+  const voiceId = currentVoiceId.value;
+  const trackId = currentTrackId.value;
+  return voiceId && trackId
     ? new Set(
-        podcasts.busy.value || !podcasts.likesKnown.value || podcasts.pending('like', track.voiceId)
-          ? [track.id]
+        podcasts.busy.value || !podcasts.likesKnown.value || podcasts.pending('like', voiceId)
+          ? [trackId]
           : [],
       )
     : busyLikes.value;
@@ -557,7 +568,7 @@ onUnmounted(() => window.removeEventListener('keydown', keyboard));
       </div>
       <div class="sidebar-caption">Cumulus 社区客户端</div>
     </aside>
-    <header class="topbar">
+    <header class="topbar" data-tauri-drag-region>
       <button
         class="back-button icon-button"
         aria-label="返回上一页"
@@ -583,7 +594,7 @@ onUnmounted(() => window.removeEventListener('keydown', keyboard));
           <Icon name="close" />
         </button>
       </form>
-      <div class="header-spacer" />
+      <div class="header-spacer" data-tauri-drag-region />
       <button
         class="account-button"
         :disabled="initializing"
@@ -597,350 +608,376 @@ onUnmounted(() => window.removeEventListener('keydown', keyboard));
         /><span v-else class="avatar"><Icon name="user" /></span
         ><span>{{ signedIn ? account.nickname : '点击登录' }}</span>
       </button>
+      <WindowControls />
     </header>
     <main class="main-content">
-      <div v-if="initializing" class="empty-state" role="status">
-        <span class="spinner" />
-        <p>正在连接你的音乐…</p>
-      </div>
-      <LocalPage
-        v-else-if="page.kind === 'local'"
-        :model="local"
-        :matching="localMatching"
-        :playable="player.ready.value"
-        :current-id="player.view.value?.track?.local ? player.view.value.track.id : undefined"
-        @play="playLocal"
-        @comments="(id, title) => openComments({ kind: 'track', id }, title)"
-      />
-      <div v-else-if="!signedIn" class="empty-state welcome">
-        <div class="welcome-note">♪</div>
-        <h1>{{ account.loginNotice?.title || '让喜欢的音乐，陪在身边' }}</h1>
-        <p aria-live="polite">
-          {{ account.loginNotice?.message || error || '登录网易云音乐，找回你的歌单与每日推荐' }}
-        </p>
-        <button class="primary" @click="loginOpen = true">
-          {{ account.loginNotice ? '重新登录' : '登录账号' }}</button
-        ><button
-          v-if="error && !account.loginNotice"
-          class="text-button"
-          @click="music.bootstrap()"
-        >
-          重新连接
-        </button>
-      </div>
-      <MvCollection v-else-if="page.kind === 'mvs'" :model="mv" @open="openMv" />
-      <MemberPage
-        v-else-if="page.kind === 'member'"
-        :model="member"
-        :nickname="account.nickname"
-        :playable="player.ready.value && !player.busy.value"
-        :liked="liked"
-        :busy-likes="busyLikes"
-        :current-id="player.view.value?.track?.id"
-        @open="openMemberTarget"
-        @play="playMember"
-        @play-playlist="playMemberPlaylist"
-        @like="music.like"
-        @comments="trackComments"
-        @download="(tracks) => (downloadDialog = { kind: 'start', tracks })"
-      />
-      <SceneFmPage
-        v-else-if="page.kind === 'scene_fm'"
-        :model="sceneFm"
-        :playable="player.ready.value && !player.busy.value"
-        @radio="openSceneRadio"
-        @comments="(id, title) => openComments({ kind: 'voice', id }, title)"
-        @download="(voice) => (downloadDialog = { kind: 'voice', tracks: [voice] })"
-      />
-      <FmPage
-        v-else-if="page.kind === 'fm'"
-        :model="fm"
-        :player="player"
-        :liked="liked"
-        :like-busy="busyLikes"
-        @like="music.like"
-        @comments="trackComments"
-        @download="(tracks) => (downloadDialog = { kind: 'start', tracks })"
-      />
-      <RankingsPage
-        v-else-if="page.kind === 'rankings'"
-        :model="rankings"
-        :playable="player.ready.value && !player.busy.value"
-        :liked="liked"
-        :busy-likes="busyLikes"
-        :current-id="player.view.value?.track?.id"
-        @navigate="openRanking"
-        @playlist="(id) => music.navigate({ kind: 'playlist', id })"
-        @play-playlist="playRankingPlaylist"
-        @play="playRankingSongs"
-        @play-album="playAlbum"
-        @like="music.like"
-        @comments="trackComments"
-        @download="(tracks) => (downloadDialog = { kind: 'start', tracks })"
-      />
-      <TogetherPage v-else-if="page.kind === 'together'" :model="together" />
-      <PodcastPage
-        v-else-if="page.kind === 'podcasts'"
-        :model="podcasts"
-        :playable="player.ready.value && !player.busy.value"
-        :current-id="player.view.value?.track?.voiceId"
-        @play="playPodcast"
-        @comments="(id, title) => openComments({ kind: 'voice', id }, title)"
-        @download="(tracks) => (downloadDialog = { kind: 'voice', tracks })"
-      />
-      <CommentsPage v-else-if="page.kind === 'comments'" :model="comments" :title="page.title" />
-      <MvPlayer
-        v-else-if="page.kind === 'mv'"
-        :model="mv"
-        :mini="false"
-        :playable="player.ready.value"
-        :song-likes="liked"
-        :song-busy="busyLikes"
-        :song-notice="music.notice.value || music.error.value"
-        @related="playMvRelated"
-        @related-like="music.like"
-        @open="openMv"
-        @expand="mv.video.value?.id && openMv(mv.video.value.id)"
-        @downloads="music.navigate({ kind: 'downloads' })"
-        @comments="
-          mv.detail.value &&
-          openComments({ kind: 'mv', id: mv.detail.value.card.id }, mv.detail.value.card.title)
-        "
-      />
-      <CloudPage
-        v-else-if="page.kind === 'cloud'"
-        :model="cloud"
-        :playable="player.ready.value"
-        :current-id="player.view.value?.track?.id"
-        @play="playCloud"
-        @dialog="cloudDialogOpen = $event"
-        @download="(tracks, revision) => (downloadDialog = { kind: 'cloud', tracks, revision })"
-      />
-      <DownloadPage
-        v-else-if="page.kind === 'downloads'"
-        :model="downloads"
-        :playable="player.ready.value"
-        :current-id="player.view.value?.track?.id"
-        @dialog="downloadDialog = $event"
-        @play="player.downloads"
-        @play-mv="(task) => openMv(task.track.id, task.id)"
-      />
-      <template v-else>
-        <div v-if="result?.playlist" class="playlist-hero">
-          <img
-            v-if="result.playlist.coverUrl"
-            :src="result.playlist.coverUrl"
-            alt="歌单封面"
-            referrerpolicy="no-referrer"
+      <Transition name="page" mode="out-in">
+        <div class="page-view" :key="pageKey">
+          <div v-if="initializing" class="empty-state" role="status">
+            <span class="spinner" />
+            <p>正在连接你的音乐…</p>
+          </div>
+          <LocalPage
+            v-else-if="page.kind === 'local'"
+            :model="local"
+            :matching="localMatching"
+            :playable="player.ready.value"
+            :current-id="currentLocalId"
+            @play="playLocal"
+            @comments="(id, title) => openComments({ kind: 'track', id }, title)"
           />
-          <div v-else class="hero-art"><Icon name="music" /></div>
-          <div class="hero-copy">
-            <span class="eyebrow">{{ result.playlist.private ? '私密歌单' : '歌单' }}</span>
-            <h1>{{ title }}</h1>
-            <p class="muted">{{ result.playlist.creator }} · {{ result.total }} 首歌曲</p>
-            <p class="playlist-description">
-              {{ result.playlist.description || '音乐，让每一天都值得收藏。' }}
-            </p>
-          </div>
-        </div>
-        <div v-else class="page-heading">
-          <div>
-            <h1>{{ title }}</h1>
-            <p class="muted">
+          <div v-else-if="!signedIn" class="empty-state welcome">
+            <div class="welcome-note">♪</div>
+            <h1>{{ account.loginNotice?.title || '让喜欢的音乐，陪在身边' }}</h1>
+            <p aria-live="polite">
               {{
-                page.kind === 'daily'
-                  ? '根据你的音乐口味，每天更新'
-                  : page.kind === 'library'
-                    ? `${playlists.length} 个歌单，收藏每一刻心情`
-                    : result
-                      ? `找到 ${result.total} 首歌曲`
-                      : '正在寻找音乐…'
+                account.loginNotice?.message || error || '登录网易云音乐，找回你的歌单与每日推荐'
               }}
             </p>
+            <button class="primary" @click="loginOpen = true">
+              {{ account.loginNotice ? '重新登录' : '登录账号' }}</button
+            ><button
+              v-if="error && !account.loginNotice"
+              class="text-button"
+              @click="music.bootstrap()"
+            >
+              重新连接
+            </button>
           </div>
-          <button
-            class="icon-button"
-            aria-label="刷新当前页面"
-            :disabled="loading"
-            @click="page.kind === 'library' ? music.resources() : music.load()"
-          >
-            <Icon name="refresh" />
-          </button>
-        </div>
-        <div v-if="notice" class="notice" role="status">
-          {{ notice }}<button class="text-button" @click="music.resources">刷新</button>
-        </div>
-        <div v-if="error" class="error-state" role="alert">
-          <span>{{ error }}</span
-          ><button class="text-button" @click="music.load()">重试</button>
-        </div>
-        <div class="playlist-toolbar">
-          <button
-            v-if="page.kind === 'library'"
-            class="primary"
-            @click="playlistDialog = { kind: 'create' }"
-          >
-            新建歌单
-          </button>
-          <button
-            v-if="page.kind === 'library'"
-            class="text-button"
-            @click="playlistDialog = { kind: 'open' }"
-          >
-            打开歌单链接
-          </button>
-          <template v-if="result?.playlist">
-            <button
-              class="text-button"
-              @click="
-                openComments({ kind: 'playlist', id: result.playlist.id }, result.playlist.name)
-              "
-            >
-              歌单评论
-            </button>
-            <button
-              v-if="result.playlist.owned && !result.playlist.favorite"
-              class="text-button"
-              @click="playlistDialog = { kind: 'edit', id: result.playlist.id }"
-            >
-              编辑歌单
-            </button>
-            <button
-              v-else-if="!result.playlist.owned"
-              class="text-button"
-              :disabled="playlistManager.busy.value"
-              @click="
-                playlistManager.mutate({
-                  kind: 'subscribe',
-                  id: result.playlist.id,
-                  subscribed: !playlists.some((p) => p.id === result?.playlist?.id),
-                })
-              "
-            >
-              {{
-                playlists.some((p) => p.id === result?.playlist?.id) ? '取消收藏歌单' : '收藏歌单'
-              }}
-            </button>
-          </template>
-          <button
-            v-if="
-              playlistManager.operations.value.length + playlistManager.coverOperations.value.length
+          <MvCollection v-else-if="page.kind === 'mvs'" :model="mv" @open="openMv" />
+          <MemberPage
+            v-else-if="page.kind === 'member'"
+            :model="member"
+            :nickname="account.nickname"
+            :playable="player.ready.value && !player.busy.value"
+            :liked="liked"
+            :busy-likes="busyLikes"
+            :current-id="currentTrackId"
+            @open="openMemberTarget"
+            @play="playMember"
+            @play-playlist="playMemberPlaylist"
+            @like="music.like"
+            @comments="trackComments"
+            @download="(tracks) => (downloadDialog = { kind: 'start', tracks })"
+          />
+          <SceneFmPage
+            v-else-if="page.kind === 'scene_fm'"
+            :model="sceneFm"
+            :playable="player.ready.value && !player.busy.value"
+            @radio="openSceneRadio"
+            @comments="(id, title) => openComments({ kind: 'voice', id }, title)"
+            @download="(voice) => (downloadDialog = { kind: 'voice', tracks: [voice] })"
+          />
+          <FmPage
+            v-else-if="page.kind === 'fm'"
+            :model="fm"
+            :player="player"
+            :liked="liked"
+            :like-busy="busyLikes"
+            @like="music.like"
+            @comments="trackComments"
+            @download="(tracks) => (downloadDialog = { kind: 'start', tracks })"
+          />
+          <RankingsPage
+            v-else-if="page.kind === 'rankings'"
+            :model="rankings"
+            :playable="player.ready.value && !player.busy.value"
+            :liked="liked"
+            :busy-likes="busyLikes"
+            :current-id="currentTrackId"
+            @navigate="openRanking"
+            @playlist="(id) => music.navigate({ kind: 'playlist', id })"
+            @play-playlist="playRankingPlaylist"
+            @play="playRankingSongs"
+            @play-album="playAlbum"
+            @like="music.like"
+            @comments="trackComments"
+            @download="(tracks) => (downloadDialog = { kind: 'start', tracks })"
+          />
+          <TogetherPage v-else-if="page.kind === 'together'" :model="together" />
+          <PodcastPage
+            v-else-if="page.kind === 'podcasts'"
+            :model="podcasts"
+            :playable="player.ready.value && !player.busy.value"
+            :current-id="currentVoiceId"
+            @play="playPodcast"
+            @comments="(id, title) => openComments({ kind: 'voice', id }, title)"
+            @download="(tracks) => (downloadDialog = { kind: 'voice', tracks })"
+          />
+          <CommentsPage
+            v-else-if="page.kind === 'comments'"
+            :model="comments"
+            :title="page.title"
+          />
+          <MvPlayer
+            v-else-if="page.kind === 'mv'"
+            :model="mv"
+            :mini="false"
+            :playable="player.ready.value"
+            :song-likes="liked"
+            :song-busy="busyLikes"
+            :song-notice="music.notice.value || music.error.value"
+            @related="playMvRelated"
+            @related-like="music.like"
+            @open="openMv"
+            @expand="mv.video.value?.id && openMv(mv.video.value.id)"
+            @downloads="music.navigate({ kind: 'downloads' })"
+            @comments="
+              mv.detail.value &&
+              openComments({ kind: 'mv', id: mv.detail.value.card.id }, mv.detail.value.card.title)
             "
-            class="text-button"
-            @click="playlistDialog = { kind: 'history' }"
-          >
-            歌单操作记录 ·
-            {{
-              playlistManager.operations.value.length + playlistManager.coverOperations.value.length
-            }}
-          </button>
-          <span
-            v-if="playlistManager.error.value && !playlistDialog"
-            class="form-warning"
-            role="alert"
-            >{{ playlistManager.error.value }}</span
-          >
-        </div>
-        <div v-if="page.kind === 'library'" class="playlist-grid">
-          <article v-for="list in playlists" :key="list.id" class="playlist-shell">
-            <button
-              class="playlist-card"
-              @click="music.navigate({ kind: 'playlist', id: list.id })"
-            >
-              <div class="card-cover">
-                <img
-                  v-if="list.coverUrl"
-                  :src="list.coverUrl"
-                  alt=""
-                  loading="lazy"
-                  referrerpolicy="no-referrer"
-                /><Icon v-else name="music" /><span class="card-count"
-                  >{{ list.trackCount }} 首</span
-                >
+          />
+          <CloudPage
+            v-else-if="page.kind === 'cloud'"
+            :model="cloud"
+            :playable="player.ready.value"
+            :current-id="currentTrackId"
+            @play="playCloud"
+            @dialog="cloudDialogOpen = $event"
+            @download="(tracks, revision) => (downloadDialog = { kind: 'cloud', tracks, revision })"
+          />
+          <DownloadPage
+            v-else-if="page.kind === 'downloads'"
+            :model="downloads"
+            :playable="player.ready.value"
+            :current-id="currentTrackId"
+            @dialog="downloadDialog = $event"
+            @play="player.downloads"
+            @play-mv="(task) => openMv(task.track.id, task.id)"
+          />
+          <template v-else>
+            <div v-if="result?.playlist" class="playlist-hero">
+              <img
+                v-if="result.playlist.coverUrl"
+                :src="result.playlist.coverUrl"
+                alt="歌单封面"
+                referrerpolicy="no-referrer"
+              />
+              <div v-else class="hero-art"><Icon name="music" /></div>
+              <div class="hero-copy">
+                <span class="eyebrow">{{ result.playlist.private ? '私密歌单' : '歌单' }}</span>
+                <h1>{{ title }}</h1>
+                <p class="muted">{{ result.playlist.creator }} · {{ result.total }} 首歌曲</p>
+                <p class="playlist-description">
+                  {{ result.playlist.description || '音乐，让每一天都值得收藏。' }}
+                </p>
               </div>
-              <span class="card-title">{{ list.name }}</span
-              ><small>{{ list.owned ? '我创建的' : '已收藏' }}</small>
-            </button>
-            <div v-if="!list.favorite" class="playlist-card-controls">
-              <button
-                v-if="list.owned"
-                class="text-button"
-                @click="playlistDialog = { kind: 'edit', id: list.id }"
-              >
-                编辑
-              </button>
-              <button
-                class="icon-button"
-                :disabled="playlistManager.busy.value"
-                aria-label="上移歌单"
-                @click="playlistManager.move(list.id, list.owned, -1, favorite?.id)"
-              >
-                <Icon name="up" />
-              </button>
+            </div>
+            <div v-else class="page-heading">
+              <div>
+                <h1>{{ title }}</h1>
+                <p class="muted">
+                  {{
+                    page.kind === 'daily'
+                      ? '根据你的音乐口味，每天更新'
+                      : page.kind === 'library'
+                        ? `${playlists.length} 个歌单，收藏每一刻心情`
+                        : result
+                          ? `找到 ${result.total} 首歌曲`
+                          : '正在寻找音乐…'
+                  }}
+                </p>
+              </div>
               <button
                 class="icon-button"
-                :disabled="playlistManager.busy.value"
-                aria-label="下移歌单"
-                @click="playlistManager.move(list.id, list.owned, 1, favorite?.id)"
+                aria-label="刷新当前页面"
+                :disabled="loading"
+                @click="page.kind === 'library' ? music.resources() : music.load()"
               >
-                <Icon name="down" />
+                <Icon name="refresh" />
               </button>
             </div>
-          </article>
-        </div>
-        <div v-else-if="loading && !result" class="empty-state" role="status">
-          <span class="spinner" />
-          <p>正在加载歌曲…</p>
-        </div>
-        <template v-else-if="result">
-          <div v-if="result.tracks.length" class="track-actions">
-            <button
-              class="primary"
-              :disabled="!player.ready.value || player.busy.value"
-              @click="play(0)"
+            <div v-if="notice" class="notice" role="status">
+              {{ notice }}<button class="text-button" @click="music.resources">刷新</button>
+            </div>
+            <div v-if="error" class="error-state" role="alert">
+              <span>{{ error }}</span
+              ><button class="text-button" @click="music.load()">重试</button>
+            </div>
+            <div class="playlist-toolbar">
+              <button
+                v-if="page.kind === 'library'"
+                class="primary"
+                @click="playlistDialog = { kind: 'create' }"
+              >
+                新建歌单
+              </button>
+              <button
+                v-if="page.kind === 'library'"
+                class="text-button"
+                @click="playlistDialog = { kind: 'open' }"
+              >
+                打开歌单链接
+              </button>
+              <template v-if="result?.playlist">
+                <button
+                  class="text-button"
+                  @click="
+                    openComments({ kind: 'playlist', id: result.playlist.id }, result.playlist.name)
+                  "
+                >
+                  歌单评论
+                </button>
+                <button
+                  v-if="result.playlist.owned && !result.playlist.favorite"
+                  class="text-button"
+                  @click="playlistDialog = { kind: 'edit', id: result.playlist.id }"
+                >
+                  编辑歌单
+                </button>
+                <button
+                  v-else-if="!result.playlist.owned"
+                  class="text-button"
+                  :disabled="playlistManager.busy.value"
+                  @click="
+                    playlistManager.mutate({
+                      kind: 'subscribe',
+                      id: result.playlist.id,
+                      subscribed: !playlists.some((p) => p.id === result?.playlist?.id),
+                    })
+                  "
+                >
+                  {{
+                    playlists.some((p) => p.id === result?.playlist?.id)
+                      ? '取消收藏歌单'
+                      : '收藏歌单'
+                  }}
+                </button>
+              </template>
+              <button
+                v-if="
+                  playlistManager.operations.value.length +
+                  playlistManager.coverOperations.value.length
+                "
+                class="text-button"
+                @click="playlistDialog = { kind: 'history' }"
+              >
+                歌单操作记录 ·
+                {{
+                  playlistManager.operations.value.length +
+                  playlistManager.coverOperations.value.length
+                }}
+              </button>
+              <span
+                v-if="playlistManager.error.value && !playlistDialog"
+                class="form-warning"
+                role="alert"
+                >{{ playlistManager.error.value }}</span
+              >
+            </div>
+            <div v-if="page.kind === 'library'" class="playlist-grid">
+              <article v-for="list in playlists" :key="list.id" class="playlist-shell">
+                <button
+                  class="playlist-card"
+                  @click="music.navigate({ kind: 'playlist', id: list.id })"
+                >
+                  <div class="card-cover">
+                    <img
+                      v-if="list.coverUrl"
+                      :src="list.coverUrl"
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                      referrerpolicy="no-referrer"
+                    /><Icon v-else name="music" /><span class="card-count"
+                      >{{ list.trackCount }} 首</span
+                    >
+                  </div>
+                  <span class="card-title">{{ list.name }}</span
+                  ><small>{{ list.owned ? '我创建的' : '已收藏' }}</small>
+                </button>
+                <div v-if="!list.favorite" class="playlist-card-controls">
+                  <button
+                    v-if="list.owned"
+                    class="text-button"
+                    @click="playlistDialog = { kind: 'edit', id: list.id }"
+                  >
+                    编辑
+                  </button>
+                  <button
+                    class="icon-button"
+                    :disabled="playlistManager.busy.value"
+                    aria-label="上移歌单"
+                    @click="playlistManager.move(list.id, list.owned, -1, favorite?.id)"
+                  >
+                    <Icon name="up" />
+                  </button>
+                  <button
+                    class="icon-button"
+                    :disabled="playlistManager.busy.value"
+                    aria-label="下移歌单"
+                    @click="playlistManager.move(list.id, list.owned, 1, favorite?.id)"
+                  >
+                    <Icon name="down" />
+                  </button>
+                </div>
+              </article>
+            </div>
+            <div v-else-if="loading && !result" class="empty-state" role="status">
+              <span class="spinner" />
+              <p>正在加载歌曲…</p>
+            </div>
+            <template v-else-if="result">
+              <div v-if="result.tracks.length" class="track-actions">
+                <button
+                  class="primary"
+                  :disabled="!player.ready.value || player.busy.value"
+                  @click="play(0)"
+                >
+                  <Icon name="play" />{{
+                    page.kind === 'search' ? '播放当前结果' : '播放全部'
+                  }}</button
+                ><span v-if="player.busy.value" class="muted">正在准备播放…</span>
+                <button
+                  class="download-button"
+                  :disabled="
+                    downloads.busy.value || result.tracks.every((t) => t.missing || t.local)
+                  "
+                  @click="
+                    downloadDialog = {
+                      kind: 'start',
+                      tracks: result.tracks.filter((t) => !t.missing && !t.local),
+                    }
+                  "
+                >
+                  下载当前歌曲列表
+                </button>
+              </div>
+              <TrackTable
+                v-if="result.tracks.length"
+                :tracks="result.tracks"
+                :liked="liked"
+                :busy="busyLikes"
+                :playable="player.ready.value"
+                :current-id="currentTrackId"
+                @play="play"
+                @like="music.like"
+                @more="
+                  (track) =>
+                    (playlistDialog = {
+                      kind: 'track',
+                      track,
+                      playlist: result?.playlist ?? undefined,
+                    })
+                "
+              />
+              <div v-else class="empty-state">这里还没有歌曲</div>
+              <button
+                v-if="result.more"
+                class="load-more"
+                :disabled="loading"
+                @click="music.load(true)"
+              >
+                {{
+                  loading
+                    ? '正在加载…'
+                    : `加载更多（已显示 ${result.tracks.length} / ${result.total}）`
+                }}
+              </button></template
             >
-              <Icon name="play" />{{ page.kind === 'search' ? '播放当前结果' : '播放全部' }}</button
-            ><span v-if="player.busy.value" class="muted">正在准备播放…</span>
-            <button
-              class="download-button"
-              :disabled="downloads.busy.value || result.tracks.every((t) => t.missing || t.local)"
-              @click="
-                downloadDialog = {
-                  kind: 'start',
-                  tracks: result.tracks.filter((t) => !t.missing && !t.local),
-                }
-              "
-            >
-              下载当前歌曲列表
-            </button>
-          </div>
-          <TrackTable
-            v-if="result.tracks.length"
-            :tracks="result.tracks"
-            :liked="liked"
-            :busy="busyLikes"
-            :playable="player.ready.value"
-            :current-id="player.view.value?.track?.id"
-            @play="play"
-            @like="music.like"
-            @more="
-              (track) =>
-                (playlistDialog = { kind: 'track', track, playlist: result?.playlist ?? undefined })
-            "
-          />
-          <div v-else class="empty-state">这里还没有歌曲</div>
-          <button
-            v-if="result.more"
-            class="load-more"
-            :disabled="loading"
-            @click="music.load(true)"
-          >
-            {{
-              loading ? '正在加载…' : `加载更多（已显示 ${result.tracks.length} / ${result.total}）`
-            }}
-          </button></template
-        >
-      </template>
+          </template>
+        </div>
+      </Transition>
     </main>
     <MvPlayer
       v-if="signedIn && page.kind !== 'mv' && mv.video.value?.id && mv.video.value.state !== 'idle'"
@@ -949,8 +986,12 @@ onUnmounted(() => window.removeEventListener('keydown', keyboard));
       @expand="openMv(mv.video.value.id)"
       @downloads="music.navigate({ kind: 'downloads' })"
     />
-    <LyricsPanel v-if="player.lyricsOpen.value && player.view.value?.track" :player="player" />
-    <QueuePanel v-if="player.queueOpen.value" :player="player" />
+    <Transition name="lyrics-panel">
+      <LyricsPanel v-if="player.lyricsOpen.value && currentTrackId" :player="player" />
+    </Transition>
+    <Transition name="queue-panel">
+      <QueuePanel v-if="player.queueOpen.value" :player="player" />
+    </Transition>
     <PlayerBar
       :player="player"
       :liked="playingLikes"
@@ -959,60 +1000,68 @@ onUnmounted(() => window.removeEventListener('keydown', keyboard));
       @retry="player.connect(account)"
       @comments="trackComments"
     />
-    <LoginDialog
-      v-if="loginOpen"
-      :epoch="account.epoch"
-      @close="loginOpen = false"
-      @authorized="authorized"
-      @accounts="
-        loginOpen = false;
-        accountsOpen = true;
-      "
-    />
-    <AccountDialog
-      v-if="accountsOpen"
-      :account="account"
-      @close="accountsOpen = false"
-      @changed="authorized"
-      @login="
-        accountsOpen = false;
-        loginOpen = true;
-      "
-    />
-    <PlaylistDialog
-      v-if="playlistDialog"
-      :key="playlistDialog.kind === 'edit' ? 'edit:' + playlistDialog.id : playlistDialog.kind"
-      :manager="playlistManager"
-      :target="playlistDialog"
-      :playlists="playlists"
-      :account="account"
-      @cover-changed="
-        async () => {
-          await music.resources();
-          if (page.kind === 'playlist') await music.load();
-        }
-      "
-      @expired="music.bootstrap(false)"
-      @recover-cover="(id) => (playlistDialog = { kind: 'edit', id, cover: true })"
-      @close="playlistDialog = undefined"
-      @open="(id) => music.navigate({ kind: 'playlist', id })"
-      @comments="(track) => openComments({ kind: 'track', id: track.id }, track.name)"
-      @download="
-        (track) => {
-          playlistDialog = undefined;
-          downloadDialog = { kind: 'start', tracks: [track] };
-        }
-      "
-    />
-    <DownloadDialog
-      v-if="downloadDialog"
-      :model="downloads"
-      :target="downloadDialog"
-      @close="downloadDialog = undefined"
-      @started="
-        downloads.filter({ tab: 'active' });
-        music.navigate({ kind: 'downloads' });
-      "
-    />
+    <ModalTransition>
+      <LoginDialog
+        v-if="loginOpen"
+        :epoch="account.epoch"
+        @close="loginOpen = false"
+        @authorized="authorized"
+        @accounts="
+          loginOpen = false;
+          accountsOpen = true;
+        "
+      />
+    </ModalTransition>
+    <ModalTransition>
+      <AccountDialog
+        v-if="accountsOpen"
+        :account="account"
+        @close="accountsOpen = false"
+        @changed="authorized"
+        @login="
+          accountsOpen = false;
+          loginOpen = true;
+        "
+      />
+    </ModalTransition>
+    <ModalTransition>
+      <PlaylistDialog
+        v-if="playlistDialog"
+        :key="playlistDialog.kind === 'edit' ? 'edit:' + playlistDialog.id : playlistDialog.kind"
+        :manager="playlistManager"
+        :target="playlistDialog"
+        :playlists="playlists"
+        :account="account"
+        @cover-changed="
+          async () => {
+            await music.resources();
+            if (page.kind === 'playlist') await music.load();
+          }
+        "
+        @expired="music.bootstrap(false)"
+        @recover-cover="(id) => (playlistDialog = { kind: 'edit', id, cover: true })"
+        @close="playlistDialog = undefined"
+        @open="(id) => music.navigate({ kind: 'playlist', id })"
+        @comments="(track) => openComments({ kind: 'track', id: track.id }, track.name)"
+        @download="
+          (track) => {
+            playlistDialog = undefined;
+            downloadDialog = { kind: 'start', tracks: [track] };
+          }
+        "
+      />
+    </ModalTransition>
+    <ModalTransition>
+      <DownloadDialog
+        v-if="downloadDialog"
+        :model="downloads"
+        :target="downloadDialog"
+        @close="downloadDialog = undefined"
+        @started="
+          downloads.filter({ tab: 'active' });
+          music.navigate({ kind: 'downloads' });
+        "
+      />
+    </ModalTransition>
   </div>
 </template>

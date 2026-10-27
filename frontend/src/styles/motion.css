@@ -1,0 +1,153 @@
+:root {
+  --motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+.page-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+.page-enter-active {
+  transition:
+    opacity 180ms ease-out,
+    transform 220ms var(--motion-ease);
+}
+.page-leave-active {
+  transition:
+    opacity 90ms ease-in,
+    transform 90ms ease-in;
+  pointer-events: none;
+}
+.page-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.page-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+.queue-panel-enter-active,
+.queue-panel-leave-active,
+.lyrics-panel-enter-active,
+.lyrics-panel-leave-active {
+  transition:
+    transform 240ms var(--motion-ease),
+    opacity 180ms ease;
+}
+.queue-panel-enter-from,
+.queue-panel-leave-to {
+  opacity: 0;
+  transform: translateX(30px);
+}
+.lyrics-panel-enter-from,
+.lyrics-panel-leave-to {
+  opacity: 0;
+  transform: translateY(28px);
+}
+.queue-panel-leave-active,
+.lyrics-panel-leave-active {
+  pointer-events: none;
+}
+.modal-enter-active {
+  transition:
+    transform 220ms var(--motion-ease),
+    opacity 160ms ease;
+}
+.modal-leave-active {
+  transition:
+    transform 140ms ease-in,
+    opacity 120ms ease;
+  pointer-events: none;
+}
+.modal-enter-from,
+.modal-leave-to {
+  opacity: 0;
+  transform: translateY(10px) scale(0.98);
+}
+.modal-enter-active::backdrop {
+  animation: backdrop-in 180ms ease both;
+}
+.modal-leave-active::backdrop {
+  animation: backdrop-in 120ms ease reverse both;
+}
+@keyframes backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.nav-item {
+  transition:
+    background-color 160ms ease,
+    color 160ms ease,
+    transform 160ms var(--motion-ease);
+}
+.nav-item:active:not(:disabled),
+.window-controls button:active {
+  transform: scale(0.96);
+}
+.playlist-card-controls,
+.track-more {
+  transition: opacity 140ms ease;
+}
+.login-methods button {
+  transition:
+    color 160ms ease,
+    border-color 160ms ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-enter-active,
+  .page-leave-active,
+  .queue-panel-enter-active,
+  .queue-panel-leave-active,
+  .lyrics-panel-enter-active,
+  .lyrics-panel-leave-active,
+  .modal-enter-active,
+  .modal-leave-active {
+    transition: none;
+  }
+  .modal-enter-active::backdrop,
+  .modal-leave-active::backdrop {
+    animation: none;
+  }
+  .page-enter-from,
+  .page-leave-to,
+  .queue-panel-enter-from,
+  .queue-panel-leave-to,
+  .lyrics-panel-enter-from,
+  .lyrics-panel-leave-to,
+  .modal-enter-from,
+  .modal-leave-to,
+  .nav-item:active:not(:disabled),
+  .window-controls button:active {
+    transform: none;
+  }
+}
+
+.tab-enter-active,
+.tab-leave-active {
+  transition:
+    opacity 120ms ease,
+    transform 160ms var(--motion-ease);
+}
+.tab-enter-from {
+  opacity: 0;
+  transform: translateX(6px);
+}
+.tab-leave-to {
+  opacity: 0;
+  transform: translateX(-4px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .tab-enter-active,
+  .tab-leave-active {
+    transition: none;
+  }
+  .tab-enter-from,
+  .tab-leave-to {
+    transform: none;
+  }
+}

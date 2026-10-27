@@ -244,6 +244,9 @@ input[type='range'] {
   font-size: 11px;
 }
 .queue-scroll {
+  contain: strict;
+  overflow-anchor: none;
+  overscroll-behavior: contain;
   flex: 1;
   min-height: 0;
   overflow: auto;
@@ -293,7 +296,7 @@ input[type='range'] {
 }
 .lyrics-panel {
   position: absolute;
-  inset: 0 0 80px;
+  inset: var(--header) 0 var(--player);
   background: linear-gradient(130deg, #f6f2ef, #f1eef4 65%, #f7f4f3);
   z-index: 10;
   display: flex;
