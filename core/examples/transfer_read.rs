@@ -16,7 +16,6 @@ use cumulus_core::{
 };
 use serde_json::{Value, json};
 use std::{
-    fs,
     path::PathBuf,
     sync::{Arc, Mutex},
     time::Duration,
@@ -89,12 +88,7 @@ async fn run() -> Result<Value> {
         return Err(Error::InvalidInput("existing profile required"));
     }
     let output = PathBuf::from(&args[1]);
-    let mut builder = fs::DirBuilder::new();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::DirBuilderExt;
-        builder.mode(0o700);
-    }
+    let builder = cumulus_core::storage::private_directory_builder();
     builder.create(&output)?;
     let store = Arc::new(StateStore::open(profile)?);
     let credentials = Arc::new(Credentials::open(store.clone(), ApiOrigin::Pc)?);

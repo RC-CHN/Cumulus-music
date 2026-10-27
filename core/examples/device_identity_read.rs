@@ -94,12 +94,7 @@ async fn run() -> Result<()> {
     if !profile.join("core.sqlite3").is_file() {
         return Err(Error::InvalidInput("existing PC profile required"));
     }
-    let mut mkdir = fs::DirBuilder::new();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::DirBuilderExt;
-        mkdir.mode(0o700);
-    }
+    let mkdir = cumulus_core::storage::private_directory_builder();
     mkdir.create(&root)?;
     let facts = collect_linux_identity(std::path::Path::new("/sys"))?;
     let windows = args.len() == 3;

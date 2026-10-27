@@ -30,13 +30,8 @@ pub struct StateRow {
 impl StateStore {
     pub fn open(directory: impl AsRef<Path>) -> Result<Self> {
         let directory = directory.as_ref().to_owned();
-        let mut builder = fs::DirBuilder::new();
+        let mut builder = super::private_directory_builder();
         builder.recursive(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::DirBuilderExt;
-            builder.mode(0o700);
-        }
         builder.create(&directory)?;
         let path = directory.join("core.sqlite3");
         let mut options = fs::OpenOptions::new();

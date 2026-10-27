@@ -54,12 +54,7 @@ async fn run() -> Result<Value> {
         return Err(Error::InvalidInput("existing private profile required"));
     }
     let directory = PathBuf::from(&args[1]);
-    let mut builder = std::fs::DirBuilder::new();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::DirBuilderExt;
-        builder.mode(0o700);
-    }
+    let builder = cumulus_core::storage::private_directory_builder();
     builder.create(&directory)?;
     let local = PathBuf::from(&args[2]).canonicalize()?;
     let store = Arc::new(StateStore::open(&directory)?);

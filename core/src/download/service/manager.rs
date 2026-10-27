@@ -212,12 +212,7 @@ impl DownloadService {
         let _lock = self.lock(&id)?;
         let work = root.join(format!(".cumulus-{id}"));
         let root_identity = files::identity(&root)?;
-        let mut builder = fs::DirBuilder::new();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::DirBuilderExt;
-            builder.mode(0o700);
-        }
+        let builder = crate::storage::private_directory_builder();
         builder.create(&work)?;
         let task = DownloadTask {
             id,

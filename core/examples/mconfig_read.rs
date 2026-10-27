@@ -94,12 +94,7 @@ async fn run() -> Result<()> {
         return Err(Error::InvalidInput("existing PC profile required"));
     }
     let root = PathBuf::from(&args[1]);
-    let mut builder = fs::DirBuilder::new();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::DirBuilderExt;
-        builder.mode(0o700);
-    }
+    let builder = cumulus_core::storage::private_directory_builder();
     builder.create(&root)?;
     let native = ClientProfile::windows_compatibility(
         cumulus_core::identity::WINDOWS_COMPATIBILITY_DESCRIPTION,

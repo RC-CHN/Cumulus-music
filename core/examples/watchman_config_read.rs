@@ -3,7 +3,7 @@
 use cumulus_core::{Error, Result, protocol::api::ApiFuture, storage::StateStore, watchman::*};
 use serde_json::{Value, json};
 use std::{
-    fs::{self, OpenOptions},
+    fs::OpenOptions,
     io::Write,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
@@ -53,12 +53,7 @@ impl Transport for Audit {
     }
 }
 async fn run(root: &Path) -> Result<()> {
-    let mut builder = fs::DirBuilder::new();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::DirBuilderExt;
-        builder.mode(0o700);
-    }
+    let builder = cumulus_core::storage::private_directory_builder();
     builder.create(root)?;
     let clock = Arc::new(SystemEntropyClock);
     let backend = Arc::new(Audit {

@@ -19,12 +19,7 @@ pub(super) fn root(store: &Path, owner: &str, record: &Record) -> Result<PathBuf
         &record.handle.key,
     ] {
         path.push(segment);
-        let mut builder = fs::DirBuilder::new();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::DirBuilderExt;
-            builder.mode(0o700);
-        }
+        let builder = crate::storage::private_directory_builder();
         match builder.create(&path) {
             Ok(()) => (),
             Err(e)

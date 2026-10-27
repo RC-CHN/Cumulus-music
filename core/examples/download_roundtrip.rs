@@ -17,7 +17,7 @@ use cumulus_core::{
 };
 use serde_json::{Value, json};
 use std::{
-    fs::{self, OpenOptions},
+    fs::OpenOptions,
     io::Write,
     path::{Path, PathBuf},
     sync::Arc,
@@ -56,12 +56,7 @@ async fn run() -> Result<Value> {
         return Err(Error::InvalidInput("existing private profile required"));
     }
     let output = PathBuf::from(&args[1]);
-    let mut builder = fs::DirBuilder::new();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::DirBuilderExt;
-        builder.mode(0o700);
-    }
+    let builder = cumulus_core::storage::private_directory_builder();
     builder.create(&output)?;
     let account = session(&profile).await?;
     let token = account.token()?;

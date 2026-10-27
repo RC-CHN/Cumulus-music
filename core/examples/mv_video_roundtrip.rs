@@ -245,12 +245,7 @@ async fn main() {
         eprintln!("Existing PC profile and new private proof required");
         std::process::exit(2);
     }
-    let mut builder = fs::DirBuilder::new();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::DirBuilderExt;
-        builder.mode(0o700);
-    }
+    let builder = cumulus_core::storage::private_directory_builder();
     builder.create(&root).expect("create proof");
     match run(&profile, &PathBuf::from(&args[1]), &root).await {
         Ok(report) => {

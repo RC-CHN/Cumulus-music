@@ -27,12 +27,7 @@ impl CompletedDownloads {
             return Err(Error::State("new work root contains a link"));
         }
         after.root_identity = identity(&after.root)?;
-        let mut builder = stdfs::DirBuilder::new();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::DirBuilderExt;
-            builder.mode(0o700);
-        }
+        let builder = crate::storage::private_directory_builder();
         match builder.create(&after.work) {
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => (),
             r => r?,

@@ -174,12 +174,7 @@ async fn run() -> Result<Value> {
             "existing profile and new proof directory required",
         ));
     }
-    let mut builder = fs::DirBuilder::new();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::DirBuilderExt;
-        builder.mode(0o700);
-    }
+    let builder = cumulus_core::storage::private_directory_builder();
     builder.create(&root)?;
     let state = root.join("state");
     let session = account(&profile, &state).await?;

@@ -13,12 +13,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.next().is_some() {
         return Err("unexpected arguments".into());
     }
-    let mut builder = fs::DirBuilder::new();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::DirBuilderExt;
-        builder.mode(0o700);
-    }
+    let builder = cumulus_core::storage::private_directory_builder();
     builder.create(&root)?;
     let client = MusicClient::open(&root.join("state"), Some(&profile))?;
     let epoch = client.restore_account().await?.epoch;

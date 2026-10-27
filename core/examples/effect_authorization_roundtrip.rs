@@ -241,12 +241,7 @@ async fn main() -> Result<()> {
             .ok_or(Error::InvalidInput("effect ID must be UTF-8"))?
     ))?;
     let root = std::path::absolute(PathBuf::from(&args[1]))?;
-    let mut builder = fs::DirBuilder::new();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::DirBuilderExt;
-        builder.mode(0o700);
-    }
+    let builder = cumulus_core::storage::private_directory_builder();
     builder.create(&root)?;
     match run(Path::new(&args[0]), &root, effect).await {
         Ok(report) => {

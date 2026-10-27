@@ -13,12 +13,12 @@ struct Instance {
     token: Box<f32>,
 }
 impl Instance {
-    fn new(id: u32, rate: u32) -> Self {
+    fn new(id: u32, rate: std::ffi::c_ulong) -> Self {
         let mut token = Box::new(id as f32);
         // SAFETY: valid descriptor; instance is uniquely owned until Drop.
         let handle = unsafe {
             let d = &*ladspa_descriptor(0);
-            let h = d.instantiate.unwrap()(d, rate.into());
+            let h = d.instantiate.unwrap()(d, rate);
             assert!(!h.is_null());
             d.connect_port.unwrap()(h, 2, &mut *token);
             d.activate.unwrap()(h);

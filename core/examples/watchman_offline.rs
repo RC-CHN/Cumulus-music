@@ -2,12 +2,7 @@
 //! collection; no account data. All outputs go into a fresh private directory.
 use cumulus_core::{Result, storage::StateStore, watchman::*};
 use serde_json::{Value, json};
-use std::{
-    fs::{self, OpenOptions},
-    io::Write,
-    path::Path,
-    sync::Arc,
-};
+use std::{fs::OpenOptions, io::Write, path::Path, sync::Arc};
 fn save(root: &Path, name: &str, value: &Value) -> Result<()> {
     let mut options = OpenOptions::new();
     options.write(true).create_new(true);
@@ -23,12 +18,7 @@ fn save(root: &Path, name: &str, value: &Value) -> Result<()> {
     Ok(())
 }
 fn run(root: &Path) -> Result<()> {
-    let mut builder = fs::DirBuilder::new();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::DirBuilderExt;
-        builder.mode(0o700);
-    }
+    let builder = cumulus_core::storage::private_directory_builder();
     builder.create(root)?;
     let conf = json!({"pn":"YD00000558929251","edc":true,"dtvp":86400000,"tto":2000,"ret":1});
     let encoded = encode_text(&conf.to_string())?;

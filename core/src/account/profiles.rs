@@ -82,12 +82,7 @@ fn real_directory(path: &Path) -> Result<()> {
 }
 
 fn private_directory(path: &Path) -> Result<()> {
-    let mut builder = fs::DirBuilder::new();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::DirBuilderExt;
-        builder.mode(0o700);
-    }
+    let builder = crate::storage::private_directory_builder();
     builder.create(path)?;
     Ok(())
 }

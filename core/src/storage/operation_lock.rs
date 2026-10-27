@@ -13,12 +13,7 @@ pub struct OperationLock {
 impl OperationLock {
     pub fn acquire(directory: &Path, namespace: &str, key: &str) -> Result<Self> {
         let root = directory.join("operation-locks");
-        let mut builder = fs::DirBuilder::new();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::DirBuilderExt;
-            builder.mode(0o700);
-        }
+        let builder = crate::storage::private_directory_builder();
         match builder.create(&root) {
             Ok(()) => (),
             Err(error)
