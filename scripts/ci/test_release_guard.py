@@ -1,6 +1,6 @@
 import os
+import json
 from pathlib import Path
-import shutil
 import subprocess
 import tempfile
 import unittest
@@ -30,10 +30,18 @@ class ReleaseCommit(unittest.TestCase):
         self.previous = Path.cwd()
         self.directory = tempfile.TemporaryDirectory()
         root = Path(self.directory.name)
-        for file in ["Cargo.toml", "Cargo.lock", "frontend/package.json", "frontend/package-lock.json", "desktop/tauri.conf.json", "docs/releases/0.1.0.txt"]:
+        fixtures = {
+            "Cargo.toml": '[workspace.package]\nversion = "0.1.0"\n',
+            "Cargo.lock": '\n'.join(f'[[package]]\nname = "{name}"\nversion = "0.1.0"\n' for name in ['cumulus-core', 'cumulus-desktop', 'cumulus-audio-filter']),
+            "frontend/package.json": json.dumps({"version": "0.1.0"}),
+            "frontend/package-lock.json": json.dumps({"version": "0.1.0", "packages": {"": {"version": "0.1.0"}}}),
+            "desktop/tauri.conf.json": json.dumps({"version": "0.1.0"}),
+            "docs/releases/0.1.0.txt": "Synthetic release notes",
+        }
+        for file, content in fixtures.items():
             destination = root / file
             destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(self.previous / file, destination)
+            destination.write_text(content, encoding="utf-8")
         os.chdir(root)
         self.git("init", "-q")
         self.git("config", "user.name", "Synthetic release test")

@@ -7,6 +7,10 @@
 #include <string.h>
 #include <math.h>
 #include <stddef.h>
+/* Older libm tanf implementations differ by one float ULP at crossover
+ * inputs. Evaluate the same float argument in double, then round once to
+ * float. This preserves all frozen native vectors on glibc 2.39 and 2.43. */
+static float filter_tangent(float value) { return (float)tan((double)value); }
 #if defined(__SSE__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 1)
 #include <xmmintrin.h>
 #endif
@@ -124,7 +128,7 @@ static int coefficients(unsigned type,float rate,float frequency,float gain,floa
     float f=fminf(rate*0.44999998807907104f,frequency);
     float b0=0,b1=0,b2=0,a0=0,a1=0,a2=0;
     if(type==3 || type==4) {
-        float t=tanf((f*3.1415927410125732f)/rate);
+        float t=filter_tangent((f*3.1415927410125732f)/rate);
         if(type==3)t=1.0f/t;
         float squared=t*t,term=t*1.4142135381698608f;
         float inv=1.0f/((squared+1.0f)+term);

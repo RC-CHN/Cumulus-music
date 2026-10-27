@@ -39,3 +39,9 @@ The Windows CI build uses float literals for exact 0/1 and 120/2000/5000 values
 to avoid MSVC C4244 without changing arithmetic. C4324 is suppressed only around
 NeteaseMultiband: padding from its explicit 16-byte SIMD alignment is intended,
 and Rust obtains native size/alignment through the FFI rather than assuming it.
+
+filter_tangent evaluates a float argument with double tan, then rounds back to
+float. A glibc 2.39 versus 2.43 comparison isolated tanf as the sole cause of
+2296 differing valid PCM samples in the 102 multiband vectors. The single
+substitution restored exact PCM and detector history on both systems; no test
+tolerance was widened. See docs/dsp-platform-validation.json.

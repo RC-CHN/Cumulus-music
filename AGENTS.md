@@ -26,7 +26,7 @@
 
 - 版本标签格式为 `vX.Y.Z`，必须直接指向标题严格等于 `chore:release X.Y.Z` 的提交。
 - 同一个版本在仓库历史中只能有一条 release commit。不得通过再次提交同版本 release commit、移动已发布标签、覆盖已发布附件来修补版本；发布后修复使用下一版本。
-- 先完成所有实现、版本文件、发行说明及打包配置，并让 CI 通过，再创建唯一的 release commit。release commit 可以为空提交；不得夹带未验证的功能修改。
+- 先完成所有实现、版本文件、发行说明及打包配置，并让 CI 通过，再创建唯一的 release commit。release commit 使用空提交标记已验证的内容树，不夹带其他修改。
 - **只有标签目标提交自身的完整 CI 成功才允许创建标签和发布版本。** 上一提交成功、局部 job 成功或本地测试通过都不够。
 - CD 必须核对 CI workflow、仓库、main 分支、精确提交 SHA、运行结果、版本文件和 release commit 唯一性，再从该 CI 运行下载产物；不能用另一次构建冒充已验证产物。
 - Linux 和 Windows 独立 runner 生成产物；统一发布 job 在全部检查成功后生成校验和并发布 GitHub Release。

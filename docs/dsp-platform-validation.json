@@ -1,0 +1,143 @@
+{
+  "scope": "102 synthetic original-DLL multiband vectors; PCM valid ranges and all ten detector-state floats",
+  "initial_ci": "https://github.com/RC-CHN/Cumulus-music/actions/runs/40478409090",
+  "ubuntu24_image": "ubuntu:24.04@sha256:24737cef17f4e22b1977df7d9a05e77c4e28b7da5b8911f8d8ccda136bf3573c",
+  "host_libc": "glibc 2.43",
+  "container_libc": "glibc 2.39-0ubuntu8.9",
+  "host": [
+    {
+      "compiler": "gcc-15",
+      "math_override": "native",
+      "vectors": 102,
+      "different_samples": 0,
+      "max_pcm_absolute": 0,
+      "max_history_absolute": 0,
+      "max_history_relative": 0
+    },
+    {
+      "compiler": "gcc-15",
+      "math_override": "tanf",
+      "vectors": 102,
+      "different_samples": 0,
+      "max_pcm_absolute": 0,
+      "max_history_absolute": 0,
+      "max_history_relative": 0
+    },
+    {
+      "compiler": "gcc-15",
+      "math_override": "expf",
+      "vectors": 102,
+      "different_samples": 0,
+      "max_pcm_absolute": 0,
+      "max_history_absolute": 0,
+      "max_history_relative": 0
+    },
+    {
+      "compiler": "gcc-15",
+      "math_override": "powf",
+      "vectors": 102,
+      "different_samples": 0,
+      "max_pcm_absolute": 0,
+      "max_history_absolute": 0,
+      "max_history_relative": 0
+    },
+    {
+      "compiler": "gcc-15",
+      "math_override": "sinf",
+      "vectors": 102,
+      "different_samples": 0,
+      "max_pcm_absolute": 0,
+      "max_history_absolute": 0,
+      "max_history_relative": 0
+    },
+    {
+      "compiler": "gcc-15",
+      "math_override": "cosf",
+      "vectors": 102,
+      "different_samples": 0,
+      "max_pcm_absolute": 0,
+      "max_history_absolute": 0,
+      "max_history_relative": 0
+    },
+    {
+      "compiler": "gcc-15",
+      "math_override": "all",
+      "vectors": 102,
+      "different_samples": 0,
+      "max_pcm_absolute": 0,
+      "max_history_absolute": 0,
+      "max_history_relative": 0
+    }
+  ],
+  "ubuntu24": [
+    {
+      "compiler": "gcc",
+      "math_override": "native",
+      "vectors": 102,
+      "different_samples": 2296,
+      "max_pcm_absolute": 9.387731552124023e-07,
+      "max_history_absolute": 1.5497207641601562e-06,
+      "max_history_relative": 4.705571912948005e-06
+    },
+    {
+      "compiler": "gcc",
+      "math_override": "tanf",
+      "vectors": 102,
+      "different_samples": 0,
+      "max_pcm_absolute": 0,
+      "max_history_absolute": 0,
+      "max_history_relative": 0
+    },
+    {
+      "compiler": "gcc",
+      "math_override": "expf",
+      "vectors": 102,
+      "different_samples": 2296,
+      "max_pcm_absolute": 9.387731552124023e-07,
+      "max_history_absolute": 1.5497207641601562e-06,
+      "max_history_relative": 4.705571912948005e-06
+    },
+    {
+      "compiler": "gcc",
+      "math_override": "powf",
+      "vectors": 102,
+      "different_samples": 2296,
+      "max_pcm_absolute": 9.387731552124023e-07,
+      "max_history_absolute": 1.5497207641601562e-06,
+      "max_history_relative": 4.705571912948005e-06
+    },
+    {
+      "compiler": "gcc",
+      "math_override": "sinf",
+      "vectors": 102,
+      "different_samples": 2296,
+      "max_pcm_absolute": 9.387731552124023e-07,
+      "max_history_absolute": 1.5497207641601562e-06,
+      "max_history_relative": 4.705571912948005e-06
+    },
+    {
+      "compiler": "gcc",
+      "math_override": "cosf",
+      "vectors": 102,
+      "different_samples": 2296,
+      "max_pcm_absolute": 9.387731552124023e-07,
+      "max_history_absolute": 1.5497207641601562e-06,
+      "max_history_relative": 4.705571912948005e-06
+    },
+    {
+      "compiler": "gcc",
+      "math_override": "all",
+      "vectors": 102,
+      "different_samples": 0,
+      "max_pcm_absolute": 0,
+      "max_history_absolute": 0,
+      "max_history_relative": 0
+    }
+  ],
+  "conclusion": "Only replacing tanf(x) with (float)tan((double)x) eliminates every observed difference; strict Rust oracle assertions retained. Windows still requires its own CI result.",
+  "hashes": {
+    "core/native/effects/netease_dsp.c": "92a29a5a5ab6d1a2ed919e96ed906f64aab51b6fe49b986f1c5f3bbcca3824ba",
+    "core/native/effects/netease_multiband.c": "e74918e5fe7fba59cc1691263d5910df1ff0fb0af602383115f7d766b72d16be",
+    "core/tests/fixtures/effects-spatial-official.json.gz": "e262e4a2484eee9d109b1426f2c1cc43ef43e2dd28fce88ab2f3d33d02c25d44"
+  }
+}

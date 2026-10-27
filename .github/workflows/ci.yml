@@ -96,7 +96,8 @@ jobs:
           install: mingw-w64-ucrt-x86_64-mpv mingw-w64-ucrt-x86_64-binutils
       - name: Install pinned toolchain
         run: rustup show
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        id: rust-cache
         with:
           path: |
             ~/.cargo/registry
@@ -130,6 +131,15 @@ jobs:
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
+      - name: Preserve compiled dependencies for the next attempt
+        if: always() && !cancelled() && steps.rust-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            .build/target
+          key: rust-${{ runner.os }}-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-${{ github.sha }}
 
   gate:
     name: CI gate

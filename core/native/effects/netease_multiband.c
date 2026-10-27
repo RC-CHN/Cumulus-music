@@ -66,10 +66,10 @@ int netease_crossover_coefficients(unsigned kind,unsigned fourth,float rate,floa
     float w=(fminf(rate*0.44999998807907104f,frequency)*3.1415927410125732f)/rate;
     if(kind==2) {
         if(!fourth) {
-            float a=-1.0f/tanf(w+0.7853981852531433f);
+            float a=-1.0f/filter_tangent(w+0.7853981852531433f);
             c[0]=a;c[1]=1;c[2]=0;c[3]=-a;c[4]=0;
         } else {
-            float t=1.0f/tanf(w),sq=t*t,term=t*1.4142135381698608f;
+            float t=1.0f/filter_tangent(w),sq=t*t,term=t*1.4142135381698608f;
             float total=sq+1.0f,inv=1.0f/(total+term);
             float a=(total-term)*inv,b=((sq-1.0f)*-2.0f)*inv;
             c[0]=a;c[1]=b;c[2]=1;c[3]=-b;c[4]=-a;
