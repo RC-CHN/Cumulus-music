@@ -1,0 +1,11 @@
+{
+  "source": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/28.js",
+  "source_sha256": "8222e4fb4a9b30ad31648b91787fad8ffe76165ecb6101abd9cb0d7b56332e65",
+  "generator": "references/recovered-client/scripts/netease_effect_authorization_vectors.cjs",
+  "generator_sha256": "40019df3b93f0cb89a6989fe7ddc5221b248569b2ff5e6f9a6d111a28a144281",
+  "fixture": "core/tests/fixtures/effects-authorization-official.json",
+  "fixture_sha256": "79a81ddb836f3e904bcffbed358f1075e4146ce62b54991f5604cf4ef500c8e9",
+  "requests": 21,
+  "synthetic_only": true,
+  "method": "Unchanged U/G/Z functions with synthetic request dependencies; source of recycle input reviewed in M/308 restoreAudioEffect"
+}

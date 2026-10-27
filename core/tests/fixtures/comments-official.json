@@ -1,0 +1,110 @@
+{
+  "sources": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/438.js",
+      "sha256": "d134ef2da6f94d6cbc0779a1cddd679497d38360f55306e3ac85a9b19dc706ae"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/21.js",
+      "sha256": "33d27af5a54c6a74641f192841637d2608d588d2d93091a9a61cb43948c93af7"
+    }
+  ],
+  "calls": [
+    {
+      "endpoint": "/api/v1/resource/comments/R_SO_4_123",
+      "payload": {
+        "limit": 60,
+        "offset": 0,
+        "beforeTime": 0,
+        "compareUserLocation": false,
+        "commentId": "0",
+        "composeConcert": false,
+        "markReplied": false,
+        "forceFlatComment": false,
+        "showInner": false
+      }
+    },
+    {
+      "endpoint": "/api/v1/resource/comments/R_MV_5_456",
+      "payload": {
+        "limit": 20,
+        "offset": 40,
+        "beforeTime": 1700000000000,
+        "compareUserLocation": false,
+        "commentId": "900719925474099312345",
+        "composeConcert": false,
+        "markReplied": false,
+        "forceFlatComment": false,
+        "showInner": true
+      }
+    },
+    {
+      "endpoint": "/api/v1/resource/hotcomments/A_PL_0_789",
+      "payload": {
+        "limit": 20,
+        "offset": 0,
+        "beforeTime": 0,
+        "compareUserLocation": false
+      }
+    },
+    {
+      "endpoint": "/api/v1/resource/hotcomments/A_DJ_1_987",
+      "payload": {
+        "limit": 20,
+        "offset": 20,
+        "beforeTime": 1700000000000,
+        "compareUserLocation": true
+      }
+    }
+  ],
+  "threads": [
+    {
+      "kind": "playlist",
+      "id": "123",
+      "owner": null,
+      "thread": "A_PL_0_123"
+    },
+    {
+      "kind": "voice",
+      "id": "123",
+      "owner": null,
+      "thread": "A_DJ_1_123"
+    },
+    {
+      "kind": "event",
+      "id": "123",
+      "owner": "456",
+      "thread": "A_EV_2_123_456"
+    },
+    {
+      "kind": "album",
+      "id": "123",
+      "owner": null,
+      "thread": "R_AL_3_123"
+    },
+    {
+      "kind": "track",
+      "id": "123",
+      "owner": null,
+      "thread": "R_SO_4_123"
+    },
+    {
+      "kind": "mv",
+      "id": "123",
+      "owner": null,
+      "thread": "R_MV_5_123"
+    },
+    {
+      "kind": "topic",
+      "id": "123",
+      "owner": null,
+      "thread": "A_TO_6_123"
+    },
+    {
+      "kind": "video",
+      "id": "123",
+      "owner": null,
+      "thread": "R_VI_62_123"
+    }
+  ]
+}

@@ -1,0 +1,155 @@
+{
+  "source": "references/recovered-client/scripts/netease_trial_oracle.cjs",
+  "sha256": "29df48c221be1437c91da978b6553a78b01c06b550dd0d405262e19d4f6a2860",
+  "cases": [
+    {
+      "input": {
+        "trial": {
+          "start": 40,
+          "end": 70
+        },
+        "position": 39,
+        "current": 5
+      },
+      "output": {
+        "dispatch": [],
+        "restored": [
+          45
+        ]
+      }
+    },
+    {
+      "input": {
+        "trial": {
+          "start": 40,
+          "end": 70
+        },
+        "position": 40,
+        "current": 5
+      },
+      "output": {
+        "dispatch": [
+          {
+            "type": "playing/setPlayingPosition",
+            "payload": {
+              "duration": 0
+            }
+          }
+        ],
+        "restored": []
+      }
+    },
+    {
+      "input": {
+        "trial": {
+          "start": 40,
+          "end": 70
+        },
+        "position": 45.5,
+        "current": 5
+      },
+      "output": {
+        "dispatch": [
+          {
+            "type": "playing/setPlayingPosition",
+            "payload": {
+              "duration": 5.5
+            }
+          }
+        ],
+        "restored": []
+      }
+    },
+    {
+      "input": {
+        "trial": {
+          "start": 40,
+          "end": 70
+        },
+        "position": 70,
+        "current": 5
+      },
+      "output": {
+        "dispatch": [
+          {
+            "type": "playing/setPlayingPosition",
+            "payload": {
+              "duration": 30
+            }
+          }
+        ],
+        "restored": []
+      }
+    },
+    {
+      "input": {
+        "trial": {
+          "start": 40,
+          "end": 70
+        },
+        "position": 71,
+        "current": 5
+      },
+      "output": {
+        "dispatch": [],
+        "restored": [
+          45
+        ]
+      }
+    },
+    {
+      "input": {
+        "trial": null,
+        "position": 0,
+        "current": 5
+      },
+      "output": {
+        "dispatch": [
+          {
+            "type": "playing/setPlayingPosition",
+            "payload": {
+              "duration": 0
+            }
+          }
+        ],
+        "restored": []
+      }
+    },
+    {
+      "input": {
+        "trial": null,
+        "position": 40,
+        "current": 5
+      },
+      "output": {
+        "dispatch": [
+          {
+            "type": "playing/setPlayingPosition",
+            "payload": {
+              "duration": 40
+            }
+          }
+        ],
+        "restored": []
+      }
+    },
+    {
+      "input": {
+        "trial": null,
+        "position": 90,
+        "current": 5
+      },
+      "output": {
+        "dispatch": [
+          {
+            "type": "playing/setPlayingPosition",
+            "payload": {
+              "duration": 90
+            }
+          }
+        ],
+        "restored": []
+      }
+    }
+  ]
+}

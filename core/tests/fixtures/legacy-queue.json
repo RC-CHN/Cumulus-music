@@ -1,0 +1,1035 @@
+{
+  "source": "references/recovered-client/cumulus_core/queue.py",
+  "sha256": "43b04c870cb19e083ce4d12d5132e84b599a1f551bf86a71ce42ff3aa0b44f86",
+  "traces": [
+    {
+      "initial": {
+        "items": [
+          {
+            "entry_id": "a",
+            "resource": {
+              "id": 1
+            },
+            "source": {
+              "type": "playlist",
+              "id": 9
+            }
+          },
+          {
+            "entry_id": "b",
+            "resource": {
+              "id": 1
+            },
+            "source": {
+              "type": "playlist",
+              "id": 9
+            }
+          },
+          {
+            "entry_id": "c",
+            "resource": {
+              "id": 2
+            },
+            "source": {
+              "type": "playlist",
+              "id": 9
+            }
+          }
+        ],
+        "order": [
+          "a",
+          "b",
+          "c"
+        ],
+        "current": "b",
+        "mode": "order_loop"
+      },
+      "steps": [
+        {
+          "method": "advance",
+          "args": [],
+          "kwargs": {
+            "ended": true
+          },
+          "state": {
+            "items": [
+              {
+                "entry_id": "a",
+                "resource": {
+                  "id": 1
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              },
+              {
+                "entry_id": "b",
+                "resource": {
+                  "id": 1
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              },
+              {
+                "entry_id": "c",
+                "resource": {
+                  "id": 2
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              }
+            ],
+            "order": [
+              "a",
+              "b",
+              "c"
+            ],
+            "current": "c",
+            "mode": "order_loop"
+          }
+        },
+        {
+          "method": "reorder",
+          "args": [
+            [
+              "c",
+              "b",
+              "a"
+            ]
+          ],
+          "kwargs": {},
+          "state": {
+            "items": [
+              {
+                "entry_id": "c",
+                "resource": {
+                  "id": 2
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              },
+              {
+                "entry_id": "b",
+                "resource": {
+                  "id": 1
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              },
+              {
+                "entry_id": "a",
+                "resource": {
+                  "id": 1
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              }
+            ],
+            "order": [
+              "c",
+              "b",
+              "a"
+            ],
+            "current": "c",
+            "mode": "order_loop"
+          }
+        },
+        {
+          "method": "select",
+          "args": [
+            "b"
+          ],
+          "kwargs": {},
+          "state": {
+            "items": [
+              {
+                "entry_id": "c",
+                "resource": {
+                  "id": 2
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              },
+              {
+                "entry_id": "b",
+                "resource": {
+                  "id": 1
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              },
+              {
+                "entry_id": "a",
+                "resource": {
+                  "id": 1
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              }
+            ],
+            "order": [
+              "c",
+              "b",
+              "a"
+            ],
+            "current": "b",
+            "mode": "order_loop"
+          }
+        },
+        {
+          "method": "remove",
+          "args": [
+            [
+              "b"
+            ]
+          ],
+          "kwargs": {},
+          "state": {
+            "items": [
+              {
+                "entry_id": "c",
+                "resource": {
+                  "id": 2
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              },
+              {
+                "entry_id": "a",
+                "resource": {
+                  "id": 1
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              }
+            ],
+            "order": [
+              "c",
+              "a"
+            ],
+            "current": "a",
+            "mode": "order_loop"
+          }
+        },
+        {
+          "method": "advance",
+          "args": [
+            -1
+          ],
+          "kwargs": {},
+          "state": {
+            "items": [
+              {
+                "entry_id": "c",
+                "resource": {
+                  "id": 2
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              },
+              {
+                "entry_id": "a",
+                "resource": {
+                  "id": 1
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              }
+            ],
+            "order": [
+              "c",
+              "a"
+            ],
+            "current": "c",
+            "mode": "order_loop"
+          }
+        },
+        {
+          "method": "set_mode",
+          "args": [
+            "single_loop"
+          ],
+          "kwargs": {},
+          "state": {
+            "items": [
+              {
+                "entry_id": "c",
+                "resource": {
+                  "id": 2
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              },
+              {
+                "entry_id": "a",
+                "resource": {
+                  "id": 1
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              }
+            ],
+            "order": [
+              "c",
+              "a"
+            ],
+            "current": "c",
+            "mode": "single_loop"
+          }
+        },
+        {
+          "method": "advance",
+          "args": [],
+          "kwargs": {
+            "ended": true
+          },
+          "state": {
+            "items": [
+              {
+                "entry_id": "c",
+                "resource": {
+                  "id": 2
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              },
+              {
+                "entry_id": "a",
+                "resource": {
+                  "id": 1
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              }
+            ],
+            "order": [
+              "c",
+              "a"
+            ],
+            "current": "c",
+            "mode": "single_loop"
+          }
+        }
+      ]
+    },
+    {
+      "initial": {
+        "items": [
+          {
+            "entry_id": "a",
+            "resource": {
+              "id": 1
+            },
+            "source": {
+              "type": "playlist",
+              "id": 9
+            }
+          },
+          {
+            "entry_id": "b",
+            "resource": {
+              "id": 1
+            },
+            "source": {
+              "type": "playlist",
+              "id": 9
+            }
+          },
+          {
+            "entry_id": "c",
+            "resource": {
+              "id": 2
+            },
+            "source": {
+              "type": "playlist",
+              "id": 9
+            }
+          }
+        ],
+        "order": [
+          "b",
+          "c",
+          "a"
+        ],
+        "current": "b",
+        "mode": "random"
+      },
+      "steps": [
+        {
+          "method": "advance",
+          "args": [],
+          "kwargs": {
+            "ended": true
+          },
+          "state": {
+            "items": [
+              {
+                "entry_id": "a",
+                "resource": {
+                  "id": 1
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              },
+              {
+                "entry_id": "b",
+                "resource": {
+                  "id": 1
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              },
+              {
+                "entry_id": "c",
+                "resource": {
+                  "id": 2
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              }
+            ],
+            "order": [
+              "b",
+              "c",
+              "a"
+            ],
+            "current": "c",
+            "mode": "random"
+          }
+        },
+        {
+          "method": "reorder",
+          "args": [
+            [
+              "c",
+              "b",
+              "a"
+            ]
+          ],
+          "kwargs": {},
+          "state": {
+            "items": [
+              {
+                "entry_id": "c",
+                "resource": {
+                  "id": 2
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              },
+              {
+                "entry_id": "b",
+                "resource": {
+                  "id": 1
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              },
+              {
+                "entry_id": "a",
+                "resource": {
+                  "id": 1
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              }
+            ],
+            "order": [
+              "b",
+              "c",
+              "a"
+            ],
+            "current": "c",
+            "mode": "random"
+          }
+        },
+        {
+          "method": "select",
+          "args": [
+            "b"
+          ],
+          "kwargs": {},
+          "state": {
+            "items": [
+              {
+                "entry_id": "c",
+                "resource": {
+                  "id": 2
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              },
+              {
+                "entry_id": "b",
+                "resource": {
+                  "id": 1
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              },
+              {
+                "entry_id": "a",
+                "resource": {
+                  "id": 1
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              }
+            ],
+            "order": [
+              "b",
+              "c",
+              "a"
+            ],
+            "current": "b",
+            "mode": "random"
+          }
+        },
+        {
+          "method": "remove",
+          "args": [
+            [
+              "b"
+            ]
+          ],
+          "kwargs": {},
+          "state": {
+            "items": [
+              {
+                "entry_id": "c",
+                "resource": {
+                  "id": 2
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              },
+              {
+                "entry_id": "a",
+                "resource": {
+                  "id": 1
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              }
+            ],
+            "order": [
+              "c",
+              "a"
+            ],
+            "current": "c",
+            "mode": "random"
+          }
+        },
+        {
+          "method": "advance",
+          "args": [
+            -1
+          ],
+          "kwargs": {},
+          "state": {
+            "items": [
+              {
+                "entry_id": "c",
+                "resource": {
+                  "id": 2
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              },
+              {
+                "entry_id": "a",
+                "resource": {
+                  "id": 1
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              }
+            ],
+            "order": [
+              "c",
+              "a"
+            ],
+            "current": "a",
+            "mode": "random"
+          }
+        },
+        {
+          "method": "set_mode",
+          "args": [
+            "single_loop"
+          ],
+          "kwargs": {},
+          "state": {
+            "items": [
+              {
+                "entry_id": "c",
+                "resource": {
+                  "id": 2
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              },
+              {
+                "entry_id": "a",
+                "resource": {
+                  "id": 1
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              }
+            ],
+            "order": [
+              "c",
+              "a"
+            ],
+            "current": "a",
+            "mode": "single_loop"
+          }
+        },
+        {
+          "method": "advance",
+          "args": [],
+          "kwargs": {
+            "ended": true
+          },
+          "state": {
+            "items": [
+              {
+                "entry_id": "c",
+                "resource": {
+                  "id": 2
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              },
+              {
+                "entry_id": "a",
+                "resource": {
+                  "id": 1
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              }
+            ],
+            "order": [
+              "c",
+              "a"
+            ],
+            "current": "a",
+            "mode": "single_loop"
+          }
+        }
+      ]
+    },
+    {
+      "initial": {
+        "items": [
+          {
+            "entry_id": "a",
+            "resource": {
+              "id": 1
+            },
+            "source": {
+              "type": "playlist",
+              "id": 9
+            }
+          },
+          {
+            "entry_id": "b",
+            "resource": {
+              "id": 1
+            },
+            "source": {
+              "type": "playlist",
+              "id": 9
+            }
+          },
+          {
+            "entry_id": "c",
+            "resource": {
+              "id": 2
+            },
+            "source": {
+              "type": "playlist",
+              "id": 9
+            }
+          }
+        ],
+        "order": [
+          "a",
+          "b",
+          "c"
+        ],
+        "current": "b",
+        "mode": "sequential"
+      },
+      "steps": [
+        {
+          "method": "advance",
+          "args": [],
+          "kwargs": {
+            "ended": true
+          },
+          "state": {
+            "items": [
+              {
+                "entry_id": "a",
+                "resource": {
+                  "id": 1
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              },
+              {
+                "entry_id": "b",
+                "resource": {
+                  "id": 1
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              },
+              {
+                "entry_id": "c",
+                "resource": {
+                  "id": 2
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              }
+            ],
+            "order": [
+              "a",
+              "b",
+              "c"
+            ],
+            "current": "c",
+            "mode": "sequential"
+          }
+        },
+        {
+          "method": "reorder",
+          "args": [
+            [
+              "c",
+              "b",
+              "a"
+            ]
+          ],
+          "kwargs": {},
+          "state": {
+            "items": [
+              {
+                "entry_id": "c",
+                "resource": {
+                  "id": 2
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              },
+              {
+                "entry_id": "b",
+                "resource": {
+                  "id": 1
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              },
+              {
+                "entry_id": "a",
+                "resource": {
+                  "id": 1
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              }
+            ],
+            "order": [
+              "c",
+              "b",
+              "a"
+            ],
+            "current": "c",
+            "mode": "sequential"
+          }
+        },
+        {
+          "method": "select",
+          "args": [
+            "b"
+          ],
+          "kwargs": {},
+          "state": {
+            "items": [
+              {
+                "entry_id": "c",
+                "resource": {
+                  "id": 2
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              },
+              {
+                "entry_id": "b",
+                "resource": {
+                  "id": 1
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              },
+              {
+                "entry_id": "a",
+                "resource": {
+                  "id": 1
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              }
+            ],
+            "order": [
+              "c",
+              "b",
+              "a"
+            ],
+            "current": "b",
+            "mode": "sequential"
+          }
+        },
+        {
+          "method": "remove",
+          "args": [
+            [
+              "b"
+            ]
+          ],
+          "kwargs": {},
+          "state": {
+            "items": [
+              {
+                "entry_id": "c",
+                "resource": {
+                  "id": 2
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              },
+              {
+                "entry_id": "a",
+                "resource": {
+                  "id": 1
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              }
+            ],
+            "order": [
+              "c",
+              "a"
+            ],
+            "current": "a",
+            "mode": "sequential"
+          }
+        },
+        {
+          "method": "advance",
+          "args": [
+            -1
+          ],
+          "kwargs": {},
+          "state": {
+            "items": [
+              {
+                "entry_id": "c",
+                "resource": {
+                  "id": 2
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              },
+              {
+                "entry_id": "a",
+                "resource": {
+                  "id": 1
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              }
+            ],
+            "order": [
+              "c",
+              "a"
+            ],
+            "current": "c",
+            "mode": "sequential"
+          }
+        },
+        {
+          "method": "set_mode",
+          "args": [
+            "single_loop"
+          ],
+          "kwargs": {},
+          "state": {
+            "items": [
+              {
+                "entry_id": "c",
+                "resource": {
+                  "id": 2
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              },
+              {
+                "entry_id": "a",
+                "resource": {
+                  "id": 1
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              }
+            ],
+            "order": [
+              "c",
+              "a"
+            ],
+            "current": "c",
+            "mode": "single_loop"
+          }
+        },
+        {
+          "method": "advance",
+          "args": [],
+          "kwargs": {
+            "ended": true
+          },
+          "state": {
+            "items": [
+              {
+                "entry_id": "c",
+                "resource": {
+                  "id": 2
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              },
+              {
+                "entry_id": "a",
+                "resource": {
+                  "id": 1
+                },
+                "source": {
+                  "type": "playlist",
+                  "id": 9
+                }
+              }
+            ],
+            "order": [
+              "c",
+              "a"
+            ],
+            "current": "c",
+            "mode": "single_loop"
+          }
+        }
+      ]
+    }
+  ]
+}

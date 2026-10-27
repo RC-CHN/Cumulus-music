@@ -1,0 +1,157 @@
+[
+  {
+    "config": {},
+    "paths": [
+      "/api/playlist/create",
+      "/api/playlist/create/",
+      "/api/playlist/detail",
+      "/api/playlist",
+      "/api/playlisting",
+      "/eapi/playlist/create",
+      "https://interfacepc.music.163.com/api/playlist/create",
+      "https://unrelated.invalid/api/playlist/create",
+      "batch",
+      "batch/test",
+      "/api/playlist/create//"
+    ],
+    "expected": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  {
+    "config": {
+      "yidun#paths": {
+        "whiteList": []
+      }
+    },
+    "paths": [
+      "/api/playlist/create",
+      "/api/playlist/create/",
+      "/api/playlist/detail",
+      "/api/playlist",
+      "/api/playlisting",
+      "/eapi/playlist/create",
+      "https://interfacepc.music.163.com/api/playlist/create",
+      "https://unrelated.invalid/api/playlist/create",
+      "batch",
+      "batch/test",
+      "/api/playlist/create//"
+    ],
+    "expected": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  {
+    "config": {
+      "yidun#paths": {
+        "whiteList": [
+          {
+            "businessId": "first",
+            "list": [
+              "/api/playlist/",
+              "batch/"
+            ]
+          },
+          {
+            "businessId": "last",
+            "list": [
+              "/api/playlist/create"
+            ]
+          }
+        ]
+      }
+    },
+    "paths": [
+      "/api/playlist/create",
+      "/api/playlist/create/",
+      "/api/playlist/detail",
+      "/api/playlist",
+      "/api/playlisting",
+      "/eapi/playlist/create",
+      "https://interfacepc.music.163.com/api/playlist/create",
+      "https://unrelated.invalid/api/playlist/create",
+      "batch",
+      "batch/test",
+      "/api/playlist/create//"
+    ],
+    "expected": [
+      "last",
+      "last",
+      "first",
+      false,
+      false,
+      false,
+      "last",
+      false,
+      false,
+      false,
+      "first"
+    ]
+  },
+  {
+    "config": {
+      "yidun#paths": {
+        "whiteList": [
+          {
+            "businessId": "first",
+            "list": [
+              "/api/playlist/"
+            ]
+          },
+          {
+            "businessId": "",
+            "list": [
+              "/api/playlist/create"
+            ]
+          }
+        ]
+      }
+    },
+    "paths": [
+      "/api/playlist/create",
+      "/api/playlist/create/",
+      "/api/playlist/detail",
+      "/api/playlist",
+      "/api/playlisting",
+      "/eapi/playlist/create",
+      "https://interfacepc.music.163.com/api/playlist/create",
+      "https://unrelated.invalid/api/playlist/create",
+      "batch",
+      "batch/test",
+      "/api/playlist/create//"
+    ],
+    "expected": [
+      false,
+      false,
+      "first",
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      "first"
+    ]
+  }
+]

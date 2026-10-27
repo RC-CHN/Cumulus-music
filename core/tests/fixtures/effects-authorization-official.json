@@ -1,0 +1,207 @@
+{
+  "cases": [
+    {
+      "id": "200",
+      "begin": {
+        "path": "/api/vipauth/app/interests/auth/set",
+        "payload": {
+          "interestsType": 116,
+          "interestsId": "200",
+          "type": 0
+        }
+      },
+      "end": {
+        "path": "/api/vipauth/app/interests/auth/stop",
+        "payload": {
+          "interestsType": 116,
+          "interestsId": "200",
+          "type": 1
+        }
+      },
+      "recycle": {
+        "path": "/api/vipauth/app/interests/recyclequery",
+        "payload": {
+          "queryInfo": {
+            "116": [
+              "200"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "201",
+      "begin": {
+        "path": "/api/vipauth/app/interests/auth/set",
+        "payload": {
+          "interestsType": 116,
+          "interestsId": "201",
+          "type": 0
+        }
+      },
+      "end": {
+        "path": "/api/vipauth/app/interests/auth/stop",
+        "payload": {
+          "interestsType": 116,
+          "interestsId": "201",
+          "type": 1
+        }
+      },
+      "recycle": {
+        "path": "/api/vipauth/app/interests/recyclequery",
+        "payload": {
+          "queryInfo": {
+            "116": [
+              "201"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "202",
+      "begin": {
+        "path": "/api/vipauth/app/interests/auth/set",
+        "payload": {
+          "interestsType": 116,
+          "interestsId": "202",
+          "type": 0
+        }
+      },
+      "end": {
+        "path": "/api/vipauth/app/interests/auth/stop",
+        "payload": {
+          "interestsType": 116,
+          "interestsId": "202",
+          "type": 1
+        }
+      },
+      "recycle": {
+        "path": "/api/vipauth/app/interests/recyclequery",
+        "payload": {
+          "queryInfo": {
+            "116": [
+              "202"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "300",
+      "begin": {
+        "path": "/api/vipauth/app/interests/auth/set",
+        "payload": {
+          "interestsType": 127,
+          "interestsId": "300",
+          "type": 0
+        }
+      },
+      "end": {
+        "path": "/api/vipauth/app/interests/auth/stop",
+        "payload": {
+          "interestsType": 127,
+          "interestsId": "300",
+          "type": 1
+        }
+      },
+      "recycle": {
+        "path": "/api/vipauth/app/interests/recyclequery",
+        "payload": {
+          "queryInfo": {
+            "127": [
+              "300"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "1001",
+      "begin": {
+        "path": "/api/vipauth/app/interests/auth/set",
+        "payload": {
+          "interestsType": 127,
+          "interestsId": "1001",
+          "type": 0
+        }
+      },
+      "end": {
+        "path": "/api/vipauth/app/interests/auth/stop",
+        "payload": {
+          "interestsType": 127,
+          "interestsId": "1001",
+          "type": 1
+        }
+      },
+      "recycle": {
+        "path": "/api/vipauth/app/interests/recyclequery",
+        "payload": {
+          "queryInfo": {
+            "127": [
+              "1001"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "3592426",
+      "begin": {
+        "path": "/api/vipauth/app/interests/auth/set",
+        "payload": {
+          "interestsType": 127,
+          "interestsId": "3592426",
+          "type": 0
+        }
+      },
+      "end": {
+        "path": "/api/vipauth/app/interests/auth/stop",
+        "payload": {
+          "interestsType": 127,
+          "interestsId": "3592426",
+          "type": 1
+        }
+      },
+      "recycle": {
+        "path": "/api/vipauth/app/interests/recyclequery",
+        "payload": {
+          "queryInfo": {
+            "127": [
+              "3592426"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "9007199254740991",
+      "begin": {
+        "path": "/api/vipauth/app/interests/auth/set",
+        "payload": {
+          "interestsType": 127,
+          "interestsId": "9007199254740991",
+          "type": 0
+        }
+      },
+      "end": {
+        "path": "/api/vipauth/app/interests/auth/stop",
+        "payload": {
+          "interestsType": 127,
+          "interestsId": "9007199254740991",
+          "type": 1
+        }
+      },
+      "recycle": {
+        "path": "/api/vipauth/app/interests/recyclequery",
+        "payload": {
+          "queryInfo": {
+            "127": [
+              "9007199254740991"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

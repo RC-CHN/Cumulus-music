@@ -1,0 +1,59 @@
+[package]
+name = "cumulus-core"
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
+rusqlite = { version = "0.41", features = ["bundled"] }
+thiserror = "2"
+aes = "0.8"
+cbc = { version = "0.1", features = ["alloc"] }
+ecb = { version = "0.1", features = ["alloc"] }
+aes-gcm = "0.10"
+base64 = "0.22"
+hex = "0.4"
+md-5 = "0.10"
+sha2 = "0.10"
+sha1 = "0.10"
+hmac = "0.12"
+hkdf = "0.12"
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+num-bigint = "0.4"
+getrandom = "0.4"
+subtle = "2"
+uuid = { version = "1", features = ["v4"] }
+rand = "0.9"
+ryu-js = "1"
+regex = "1"
+crc32fast = "1"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+tempfile = "3"
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "gzip", "http2", "form"] }
+cookie_store = "0.22"
+url = "2"
+time = { version = "0.3", features = ["parsing"] }
+tokio = { version = "1", features = ["sync", "time", "rt", "macros"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "bmp", "gif"] }
+encoding_rs = "0.8"
+unicode-casefold = "0.2"
+icu_collator = "2.3.1"
+icu_locale_core = "2"
+lofty = "0.25.4"
+file-id = "0.2.3"
+same-file = "1.0.6"
+qrcodegen = "1.8.0"
+quick-xml = "0.41"
+libloading = "0.7.4"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time", "test-util"] }
+
+[build-dependencies]
+cc = "1"

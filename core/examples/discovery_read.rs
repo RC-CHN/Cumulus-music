@@ -1,0 +1,84 @@
+//! Explicit read-only schema probe for official ranking and private-FM sources.
+//! Output is private, because FM recommendations are account-specific.
+use cumulus_core::{
+    account::{AccountSession, credentials::Credentials},
+    protocol::http::{ApiOrigin, ClientProfile, MusicHttpClient},
+    storage::StateStore,
+};
+use serde_json::json;
+use std::{fs, io::Write, path::PathBuf, sync::Arc};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut args = std::env::args_os().skip(1);
+    let profile = PathBuf::from(args.next().ok_or("existing private PC profile required")?);
+    let output = PathBuf::from(args.next().ok_or("new private output directory required")?);
+    if args.next().is_some() || !profile.join("core.sqlite3").is_file() {
+        return Err("invalid arguments".into());
+    }
+    let mut builder = fs::DirBuilder::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder.create(&output)?;
+    let store = Arc::new(StateStore::open(profile)?);
+    let credentials = Arc::new(Credentials::open(store.clone(), ApiOrigin::Pc)?);
+    let api = Arc::new(MusicHttpClient::new(credentials, ClientProfile::default())?);
+    let session = AccountSession::new(api, Some(store));
+    session.refresh().await?;
+    let mut report = json!({"implementation":"rust","explicit_remote_writes":0,"checks":{}});
+    let now = time::OffsetDateTime::now_utc();
+    let client_time = format!(
+        "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+        now.year(),
+        u8::from(now.month()),
+        now.day(),
+        now.hour(),
+        now.minute(),
+        now.second()
+    );
+    for (name, path, params) in [
+        (
+            "fm_cards",
+            "/api/pc/daily/rcmd/block",
+            json!({"clientTime":client_time}),
+        ),
+        ("zone_tabs", "/api/secondary/tab/list", json!({})),
+        ("rankings", "/api/toplist/detail/v2", json!({})),
+        (
+            "album_sales",
+            "/api/feealbum/songsaleboard/daily/type",
+            json!({"limit":3,"albumType":0}),
+        ),
+        ("song_sales", "/api/single/sales-ranking/get", json!({})),
+        ("fm", "/api/v1/radio/get", json!({"imageFm":1})),
+    ] {
+        match session
+            .run(|api, _| async move { api.call(path, params, false, &[200]).await })
+            .await
+        {
+            Ok((_, value)) => {
+                let mut options = fs::OpenOptions::new();
+                options.create_new(true).write(true);
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::OpenOptionsExt;
+                    options.mode(0o600);
+                }
+                options
+                    .open(output.join(format!("{name}.json")))?
+                    .write_all(&serde_json::to_vec_pretty(&value)?)?;
+                report["checks"][name] = json!({"ok":true,"keys":value.as_object().map(|o|o.keys().collect::<Vec<_>>())});
+            }
+            Err(_) => report["checks"][name] = json!({"ok":false}),
+        }
+    }
+    fs::write(
+        output.join("report.json"),
+        serde_json::to_vec_pretty(&report)?,
+    )?;
+    println!("{}", serde_json::to_string(&report)?);
+    Ok(())
+}

@@ -1,0 +1,1492 @@
+{
+  "sources": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/23.js",
+      "sha256": "30179de6edd7412c718747b8162774cb9d872d6c86d13e8515ecc54fa61b9d45"
+    }
+  ],
+  "cases": [
+    {
+      "name": "normal",
+      "input": {
+        "origin": {
+          "id": 123,
+          "name": "  标题 😀  ",
+          "artists": [
+            {
+              "id": 9,
+              "name": " 作者甲 "
+            },
+            null,
+            {
+              "name": "作者乙"
+            }
+          ],
+          "album": {
+            "id": 5,
+            "name": " 专辑 ",
+            "picId": "99",
+            "picUrl": "https://example.invalid/cover.jpg"
+          },
+          "duration": 1000,
+          "mvid": 0,
+          "alias": [],
+          "transNames": [],
+          "fee": 0,
+          "position": 2,
+          "cd": "1"
+        },
+        "offlineId": "track-123",
+        "realSuffix": "mp3",
+        "bitrate": 128000,
+        "md5": "abababababababababababababababab",
+        "volumeDelta": -2,
+        "finalPath": "fixture.mp3"
+      },
+      "kind": "track",
+      "special": false,
+      "expected": {
+        "id": "track-123-image",
+        "offlineId": "track-123",
+        "lyricId": "123",
+        "picUrl": "https://example.invalid/cover.jpg",
+        "tmpPicUrl": "meta\\track-123.jpg",
+        "comm": "music:{\"musicId\":\"123\",\"musicName\":\"标题 😀\",\"artist\":[[\"作者甲\",9],[\"作者乙\",0]],\"albumId\":5,\"album\":\"专辑\",\"albumPicDocId\":\"99\",\"albumPic\":\"https://example.invalid/cover.jpg\",\"bitrate\":128000,\"mp3DocId\":\"abababababababababababababababab\",\"duration\":1000,\"mvId\":0,\"alias\":[],\"transNames\":[],\"format\":\"mp3\",\"fee\":0,\"volumeDelta\":-2}",
+        "ext": {
+          "tit2": "标题 😀",
+          "tpe1": "作者甲/作者乙",
+          "talb": " 专辑 ",
+          "encrypt": false,
+          "media_rel_path": "fixture.mp3",
+          "image_rel_path": "",
+          "trck": "2",
+          "tpos": "1"
+        }
+      }
+    },
+    {
+      "name": "null",
+      "input": null,
+      "kind": "track",
+      "special": false,
+      "expected": null
+    },
+    {
+      "name": "missing-id",
+      "input": {},
+      "kind": "track",
+      "special": false,
+      "expected": null
+    },
+    {
+      "name": "zero-id",
+      "input": {
+        "origin": {
+          "id": 123,
+          "name": "  标题 😀  ",
+          "artists": [
+            {
+              "id": 9,
+              "name": " 作者甲 "
+            },
+            null,
+            {
+              "name": "作者乙"
+            }
+          ],
+          "album": {
+            "id": 5,
+            "name": " 专辑 ",
+            "picId": "99",
+            "picUrl": "https://example.invalid/cover.jpg"
+          },
+          "duration": 1000,
+          "mvid": 0,
+          "alias": [],
+          "transNames": [],
+          "fee": 0,
+          "position": 2,
+          "cd": "1"
+        },
+        "offlineId": 0,
+        "realSuffix": "mp3",
+        "bitrate": 128000,
+        "md5": "abababababababababababababababab",
+        "volumeDelta": -2,
+        "finalPath": "fixture.mp3"
+      },
+      "kind": "track",
+      "special": false,
+      "expected": null
+    },
+    {
+      "name": "suffix-wav",
+      "input": {
+        "origin": {
+          "id": 123,
+          "name": "  标题 😀  ",
+          "artists": [
+            {
+              "id": 9,
+              "name": " 作者甲 "
+            },
+            null,
+            {
+              "name": "作者乙"
+            }
+          ],
+          "album": {
+            "id": 5,
+            "name": " 专辑 ",
+            "picId": "99",
+            "picUrl": "https://example.invalid/cover.jpg"
+          },
+          "duration": 1000,
+          "mvid": 0,
+          "alias": [],
+          "transNames": [],
+          "fee": 0,
+          "position": 2,
+          "cd": "1"
+        },
+        "offlineId": "track-123",
+        "realSuffix": "wav",
+        "bitrate": 128000,
+        "md5": "abababababababababababababababab",
+        "volumeDelta": -2,
+        "finalPath": "fixture.mp3"
+      },
+      "kind": "track",
+      "special": false,
+      "expected": {
+        "id": "track-123-image",
+        "offlineId": "track-123",
+        "lyricId": 0,
+        "picUrl": "",
+        "tmpPicUrl": "",
+        "comm": "",
+        "ext": {
+          "media_rel_path": "fixture.mp3",
+          "image_rel_path": ""
+        }
+      }
+    },
+    {
+      "name": "suffix-",
+      "input": {
+        "origin": {
+          "id": 123,
+          "name": "  标题 😀  ",
+          "artists": [
+            {
+              "id": 9,
+              "name": " 作者甲 "
+            },
+            null,
+            {
+              "name": "作者乙"
+            }
+          ],
+          "album": {
+            "id": 5,
+            "name": " 专辑 ",
+            "picId": "99",
+            "picUrl": "https://example.invalid/cover.jpg"
+          },
+          "duration": 1000,
+          "mvid": 0,
+          "alias": [],
+          "transNames": [],
+          "fee": 0,
+          "position": 2,
+          "cd": "1"
+        },
+        "offlineId": "track-123",
+        "realSuffix": "",
+        "bitrate": 128000,
+        "md5": "abababababababababababababababab",
+        "volumeDelta": -2,
+        "finalPath": "fixture.mp3"
+      },
+      "kind": "track",
+      "special": false,
+      "expected": {
+        "id": "track-123-image",
+        "offlineId": "track-123",
+        "lyricId": 0,
+        "picUrl": "",
+        "tmpPicUrl": "",
+        "comm": "",
+        "ext": {
+          "media_rel_path": "fixture.mp3",
+          "image_rel_path": ""
+        }
+      }
+    },
+    {
+      "name": "suffix-FLAC",
+      "input": {
+        "origin": {
+          "id": 123,
+          "name": "  标题 😀  ",
+          "artists": [
+            {
+              "id": 9,
+              "name": " 作者甲 "
+            },
+            null,
+            {
+              "name": "作者乙"
+            }
+          ],
+          "album": {
+            "id": 5,
+            "name": " 专辑 ",
+            "picId": "99",
+            "picUrl": "https://example.invalid/cover.jpg"
+          },
+          "duration": 1000,
+          "mvid": 0,
+          "alias": [],
+          "transNames": [],
+          "fee": 0,
+          "position": 2,
+          "cd": "1"
+        },
+        "offlineId": "track-123",
+        "realSuffix": "FLAC",
+        "bitrate": 128000,
+        "md5": "abababababababababababababababab",
+        "volumeDelta": -2,
+        "finalPath": "fixture.mp3"
+      },
+      "kind": "track",
+      "special": false,
+      "expected": {
+        "id": "track-123-image",
+        "offlineId": "track-123",
+        "lyricId": "123",
+        "picUrl": "https://example.invalid/cover.jpg",
+        "tmpPicUrl": "meta\\track-123.jpg",
+        "comm": "music:{\"musicId\":\"123\",\"musicName\":\"标题 😀\",\"artist\":[[\"作者甲\",9],[\"作者乙\",0]],\"albumId\":5,\"album\":\"专辑\",\"albumPicDocId\":\"99\",\"albumPic\":\"https://example.invalid/cover.jpg\",\"bitrate\":128000,\"mp3DocId\":\"abababababababababababababababab\",\"duration\":1000,\"mvId\":0,\"alias\":[],\"transNames\":[],\"format\":\"FLAC\",\"fee\":0,\"volumeDelta\":-2}",
+        "ext": {
+          "tit2": "标题 😀",
+          "tpe1": "作者甲/作者乙",
+          "talb": " 专辑 ",
+          "encrypt": false,
+          "media_rel_path": "fixture.mp3",
+          "image_rel_path": "",
+          "trck": "2",
+          "tpos": "1"
+        }
+      }
+    },
+    {
+      "name": "suffix-aac",
+      "input": {
+        "origin": {
+          "id": 123,
+          "name": "  标题 😀  ",
+          "artists": [
+            {
+              "id": 9,
+              "name": " 作者甲 "
+            },
+            null,
+            {
+              "name": "作者乙"
+            }
+          ],
+          "album": {
+            "id": 5,
+            "name": " 专辑 ",
+            "picId": "99",
+            "picUrl": "https://example.invalid/cover.jpg"
+          },
+          "duration": 1000,
+          "mvid": 0,
+          "alias": [],
+          "transNames": [],
+          "fee": 0,
+          "position": 2,
+          "cd": "1"
+        },
+        "offlineId": "track-123",
+        "realSuffix": "aac",
+        "bitrate": 128000,
+        "md5": "abababababababababababababababab",
+        "volumeDelta": -2,
+        "finalPath": "fixture.mp3"
+      },
+      "kind": "track",
+      "special": false,
+      "expected": {
+        "id": "track-123-image",
+        "offlineId": "track-123",
+        "lyricId": "123",
+        "picUrl": "https://example.invalid/cover.jpg",
+        "tmpPicUrl": "meta\\track-123.jpg",
+        "comm": "music:{\"musicId\":\"123\",\"musicName\":\"标题 😀\",\"artist\":[[\"作者甲\",9],[\"作者乙\",0]],\"albumId\":5,\"album\":\"专辑\",\"albumPicDocId\":\"99\",\"albumPic\":\"https://example.invalid/cover.jpg\",\"bitrate\":128000,\"mp3DocId\":\"abababababababababababababababab\",\"duration\":1000,\"mvId\":0,\"alias\":[],\"transNames\":[],\"format\":\"aac\",\"fee\":0,\"volumeDelta\":-2}",
+        "ext": {
+          "tit2": "标题 😀",
+          "tpe1": "作者甲/作者乙",
+          "talb": " 专辑 ",
+          "encrypt": false,
+          "media_rel_path": "fixture.mp3",
+          "image_rel_path": "",
+          "trck": "2",
+          "tpos": "1"
+        }
+      }
+    },
+    {
+      "name": "suffix-m4a",
+      "input": {
+        "origin": {
+          "id": 123,
+          "name": "  标题 😀  ",
+          "artists": [
+            {
+              "id": 9,
+              "name": " 作者甲 "
+            },
+            null,
+            {
+              "name": "作者乙"
+            }
+          ],
+          "album": {
+            "id": 5,
+            "name": " 专辑 ",
+            "picId": "99",
+            "picUrl": "https://example.invalid/cover.jpg"
+          },
+          "duration": 1000,
+          "mvid": 0,
+          "alias": [],
+          "transNames": [],
+          "fee": 0,
+          "position": 2,
+          "cd": "1"
+        },
+        "offlineId": "track-123",
+        "realSuffix": "m4a",
+        "bitrate": 128000,
+        "md5": "abababababababababababababababab",
+        "volumeDelta": -2,
+        "finalPath": "fixture.mp3"
+      },
+      "kind": "track",
+      "special": false,
+      "expected": {
+        "id": "track-123-image",
+        "offlineId": "track-123",
+        "lyricId": "123",
+        "picUrl": "https://example.invalid/cover.jpg",
+        "tmpPicUrl": "meta\\track-123.jpg",
+        "comm": "music:{\"musicId\":\"123\",\"musicName\":\"标题 😀\",\"artist\":[[\"作者甲\",9],[\"作者乙\",0]],\"albumId\":5,\"album\":\"专辑\",\"albumPicDocId\":\"99\",\"albumPic\":\"https://example.invalid/cover.jpg\",\"bitrate\":128000,\"mp3DocId\":\"abababababababababababababababab\",\"duration\":1000,\"mvId\":0,\"alias\":[],\"transNames\":[],\"format\":\"m4a\",\"fee\":0,\"volumeDelta\":-2}",
+        "ext": {
+          "tit2": "标题 😀",
+          "tpe1": "作者甲/作者乙",
+          "talb": " 专辑 ",
+          "encrypt": false,
+          "media_rel_path": "fixture.mp3",
+          "image_rel_path": "",
+          "trck": "2",
+          "tpos": "1"
+        }
+      }
+    },
+    {
+      "name": "suffix-mp4",
+      "input": {
+        "origin": {
+          "id": 123,
+          "name": "  标题 😀  ",
+          "artists": [
+            {
+              "id": 9,
+              "name": " 作者甲 "
+            },
+            null,
+            {
+              "name": "作者乙"
+            }
+          ],
+          "album": {
+            "id": 5,
+            "name": " 专辑 ",
+            "picId": "99",
+            "picUrl": "https://example.invalid/cover.jpg"
+          },
+          "duration": 1000,
+          "mvid": 0,
+          "alias": [],
+          "transNames": [],
+          "fee": 0,
+          "position": 2,
+          "cd": "1"
+        },
+        "offlineId": "track-123",
+        "realSuffix": "mp4",
+        "bitrate": 128000,
+        "md5": "abababababababababababababababab",
+        "volumeDelta": -2,
+        "finalPath": "fixture.mp3"
+      },
+      "kind": "track",
+      "special": false,
+      "expected": {
+        "id": "track-123-image",
+        "offlineId": "track-123",
+        "lyricId": "123",
+        "picUrl": "https://example.invalid/cover.jpg",
+        "tmpPicUrl": "meta\\track-123.jpg",
+        "comm": "music:{\"musicId\":\"123\",\"musicName\":\"标题 😀\",\"artist\":[[\"作者甲\",9],[\"作者乙\",0]],\"albumId\":5,\"album\":\"专辑\",\"albumPicDocId\":\"99\",\"albumPic\":\"https://example.invalid/cover.jpg\",\"bitrate\":128000,\"mp3DocId\":\"abababababababababababababababab\",\"duration\":1000,\"mvId\":0,\"alias\":[],\"transNames\":[],\"format\":\"mp4\",\"fee\":0,\"volumeDelta\":-2}",
+        "ext": {
+          "tit2": "标题 😀",
+          "tpe1": "作者甲/作者乙",
+          "talb": " 专辑 ",
+          "encrypt": false,
+          "media_rel_path": "fixture.mp3",
+          "image_rel_path": "",
+          "trck": "2",
+          "tpos": "1"
+        }
+      }
+    },
+    {
+      "name": "songType1",
+      "input": {
+        "origin": {
+          "id": 123,
+          "name": "  标题 😀  ",
+          "artists": [
+            {
+              "id": 9,
+              "name": " 作者甲 "
+            },
+            null,
+            {
+              "name": "作者乙"
+            }
+          ],
+          "album": {
+            "id": 5,
+            "name": " 专辑 ",
+            "picId": "99",
+            "picUrl": "https://example.invalid/cover.jpg"
+          },
+          "duration": 1000,
+          "mvid": 0,
+          "alias": [],
+          "transNames": [],
+          "fee": 0,
+          "position": 2,
+          "cd": "1",
+          "songType": 1
+        },
+        "offlineId": "track-123",
+        "realSuffix": "mp3",
+        "bitrate": 128000,
+        "md5": "abababababababababababababababab",
+        "volumeDelta": -2,
+        "finalPath": "fixture.mp3"
+      },
+      "kind": "track",
+      "special": false,
+      "expected": {
+        "id": "track-123-image",
+        "offlineId": "track-123",
+        "lyricId": 0,
+        "picUrl": "",
+        "tmpPicUrl": "",
+        "comm": "",
+        "ext": {
+          "media_rel_path": "fixture.mp3",
+          "image_rel_path": ""
+        }
+      }
+    },
+    {
+      "name": "numeric-document",
+      "input": {
+        "origin": {
+          "id": 123,
+          "name": "  标题 😀  ",
+          "artists": [
+            {
+              "id": 9,
+              "name": " 作者甲 "
+            },
+            null,
+            {
+              "name": "作者乙"
+            }
+          ],
+          "album": {
+            "id": 5,
+            "name": " 专辑 ",
+            "picId": "99",
+            "picUrl": "https://example.invalid/cover.jpg"
+          },
+          "duration": 1000,
+          "mvid": 0,
+          "alias": [],
+          "transNames": [],
+          "fee": 0,
+          "position": 2,
+          "cd": "1"
+        },
+        "offlineId": "track-123",
+        "realSuffix": "mp3",
+        "bitrate": 128000,
+        "md5": "1234567890123456789012345678901234",
+        "volumeDelta": -2,
+        "finalPath": "fixture.mp3"
+      },
+      "kind": "track",
+      "special": false,
+      "expected": {
+        "id": "track-123-image",
+        "offlineId": "track-123",
+        "lyricId": "123",
+        "picUrl": "https://example.invalid/cover.jpg",
+        "tmpPicUrl": "meta\\track-123.jpg",
+        "comm": "music:{\"musicId\":\"123\",\"musicName\":\"标题 😀\",\"artist\":[[\"作者甲\",9],[\"作者乙\",0]],\"albumId\":5,\"album\":\"专辑\",\"albumPicDocId\":\"99\",\"albumPic\":\"https://example.invalid/cover.jpg\",\"bitrate\":128000,\"mp3DocId\":1234567890123456789012345678901234,\"duration\":1000,\"mvId\":0,\"alias\":[],\"transNames\":[],\"format\":\"mp3\",\"fee\":0,\"volumeDelta\":-2}",
+        "ext": {
+          "tit2": "标题 😀",
+          "tpe1": "作者甲/作者乙",
+          "talb": " 专辑 ",
+          "encrypt": false,
+          "media_rel_path": "fixture.mp3",
+          "image_rel_path": "",
+          "trck": "2",
+          "tpos": "1"
+        }
+      }
+    },
+    {
+      "name": "leading-zero-document",
+      "input": {
+        "origin": {
+          "id": 123,
+          "name": "  标题 😀  ",
+          "artists": [
+            {
+              "id": 9,
+              "name": " 作者甲 "
+            },
+            null,
+            {
+              "name": "作者乙"
+            }
+          ],
+          "album": {
+            "id": 5,
+            "name": " 专辑 ",
+            "picId": "99",
+            "picUrl": "https://example.invalid/cover.jpg"
+          },
+          "duration": 1000,
+          "mvid": 0,
+          "alias": [],
+          "transNames": [],
+          "fee": 0,
+          "position": 2,
+          "cd": "1"
+        },
+        "offlineId": "track-123",
+        "realSuffix": "mp3",
+        "bitrate": 128000,
+        "md5": "0001",
+        "volumeDelta": -2,
+        "finalPath": "fixture.mp3"
+      },
+      "kind": "track",
+      "special": false,
+      "expected": {
+        "id": "track-123-image",
+        "offlineId": "track-123",
+        "lyricId": "123",
+        "picUrl": "https://example.invalid/cover.jpg",
+        "tmpPicUrl": "meta\\track-123.jpg",
+        "comm": "music:{\"musicId\":\"123\",\"musicName\":\"标题 😀\",\"artist\":[[\"作者甲\",9],[\"作者乙\",0]],\"albumId\":5,\"album\":\"专辑\",\"albumPicDocId\":\"99\",\"albumPic\":\"https://example.invalid/cover.jpg\",\"bitrate\":128000,\"mp3DocId\":0001,\"duration\":1000,\"mvId\":0,\"alias\":[],\"transNames\":[],\"format\":\"mp3\",\"fee\":0,\"volumeDelta\":-2}",
+        "ext": {
+          "tit2": "标题 😀",
+          "tpe1": "作者甲/作者乙",
+          "talb": " 专辑 ",
+          "encrypt": false,
+          "media_rel_path": "fixture.mp3",
+          "image_rel_path": "",
+          "trck": "2",
+          "tpos": "1"
+        }
+      }
+    },
+    {
+      "name": "special",
+      "input": {
+        "origin": {
+          "id": 123,
+          "name": "  标题 😀  ",
+          "artists": [
+            {
+              "id": 9,
+              "name": " 作者甲 "
+            },
+            null,
+            {
+              "name": "作者乙"
+            }
+          ],
+          "album": {
+            "id": 5,
+            "name": " 专辑 ",
+            "picId": "99",
+            "picUrl": "https://example.invalid/cover.jpg"
+          },
+          "duration": 1000,
+          "mvid": 0,
+          "alias": [],
+          "transNames": [],
+          "fee": 0,
+          "position": 2,
+          "cd": "1"
+        },
+        "offlineId": "track-123",
+        "realSuffix": "mp3",
+        "bitrate": 128000,
+        "md5": "123456789012345678901",
+        "volumeDelta": -2,
+        "finalPath": "fixture.mp3"
+      },
+      "kind": "track",
+      "special": true,
+      "expected": {
+        "id": "123-image",
+        "offlineId": "track-123",
+        "lyricId": 0,
+        "picUrl": "",
+        "tmpPicUrl": "",
+        "comm": "music:{\"musicId\":\"123\",\"musicName\":\"标题 😀\",\"artist\":[[\"作者甲\",9],[\"作者乙\",0]],\"albumId\":5,\"album\":\"专辑\",\"albumPicDocId\":\"99\",\"albumPic\":\"https://example.invalid/cover.jpg\",\"bitrate\":128000,\"mp3DocId\":\"123456789012345678901\",\"duration\":1000,\"mvId\":0,\"alias\":[],\"transNames\":[],\"format\":\"mp3\",\"fee\":0,\"volumeDelta\":-2}",
+        "ext": {
+          "media_rel_path": "fixture.mp3",
+          "image_rel_path": ""
+        }
+      }
+    },
+    {
+      "name": "encrypted",
+      "input": {
+        "origin": {
+          "id": 123,
+          "name": "  标题 😀  ",
+          "artists": [
+            {
+              "id": 9,
+              "name": " 作者甲 "
+            },
+            null,
+            {
+              "name": "作者乙"
+            }
+          ],
+          "album": {
+            "id": 5,
+            "name": " 专辑 ",
+            "picId": "99",
+            "picUrl": "https://example.invalid/cover.jpg"
+          },
+          "duration": 1000,
+          "mvid": 0,
+          "alias": [],
+          "transNames": [],
+          "fee": 0,
+          "position": 2,
+          "cd": "1",
+          "privilege": {
+            "flag": 260,
+            "fee": 1,
+            "payed": 0
+          }
+        },
+        "offlineId": "track-123",
+        "realSuffix": "mp3",
+        "bitrate": 128000,
+        "md5": "abababababababababababababababab",
+        "volumeDelta": -2,
+        "finalPath": "fixture.mp3",
+        "encryptFile": true
+      },
+      "kind": "track",
+      "special": false,
+      "expected": {
+        "id": "track-123-image",
+        "offlineId": "track-123",
+        "lyricId": "123",
+        "picUrl": "https://example.invalid/cover.jpg",
+        "tmpPicUrl": "meta\\track-123.jpg",
+        "comm": "music:{\"musicId\":\"123\",\"musicName\":\"标题 😀\",\"artist\":[[\"作者甲\",9],[\"作者乙\",0]],\"albumId\":5,\"album\":\"专辑\",\"albumPicDocId\":\"99\",\"albumPic\":\"https://example.invalid/cover.jpg\",\"bitrate\":128000,\"mp3DocId\":\"abababababababababababababababab\",\"duration\":1000,\"mvId\":0,\"alias\":[],\"transNames\":[],\"format\":\"mp3\",\"fee\":0,\"volumeDelta\":-2,\"privilege\":{\"flag\":260}}",
+        "ext": {
+          "tit2": "标题 😀",
+          "tpe1": "作者甲/作者乙",
+          "talb": " 专辑 ",
+          "encrypt": true,
+          "media_rel_path": "fixture.mp3",
+          "image_rel_path": "",
+          "trck": "2",
+          "tpos": "1"
+        }
+      }
+    },
+    {
+      "name": "encrypted-null",
+      "input": {
+        "origin": {
+          "id": 123,
+          "name": "  标题 😀  ",
+          "artists": [
+            {
+              "id": 9,
+              "name": " 作者甲 "
+            },
+            null,
+            {
+              "name": "作者乙"
+            }
+          ],
+          "album": {
+            "id": 5,
+            "name": " 专辑 ",
+            "picId": "99",
+            "picUrl": "https://example.invalid/cover.jpg"
+          },
+          "duration": 1000,
+          "mvid": 0,
+          "alias": [],
+          "transNames": [],
+          "fee": 0,
+          "position": 2,
+          "cd": "1",
+          "privilege": {
+            "flag": null
+          }
+        },
+        "offlineId": "track-123",
+        "realSuffix": "mp3",
+        "bitrate": 128000,
+        "md5": "abababababababababababababababab",
+        "volumeDelta": -2,
+        "finalPath": "fixture.mp3",
+        "encryptFile": true
+      },
+      "kind": "track",
+      "special": false,
+      "expected": {
+        "id": "track-123-image",
+        "offlineId": "track-123",
+        "lyricId": "123",
+        "picUrl": "https://example.invalid/cover.jpg",
+        "tmpPicUrl": "meta\\track-123.jpg",
+        "comm": "music:{\"musicId\":\"123\",\"musicName\":\"标题 😀\",\"artist\":[[\"作者甲\",9],[\"作者乙\",0]],\"albumId\":5,\"album\":\"专辑\",\"albumPicDocId\":\"99\",\"albumPic\":\"https://example.invalid/cover.jpg\",\"bitrate\":128000,\"mp3DocId\":\"abababababababababababababababab\",\"duration\":1000,\"mvId\":0,\"alias\":[],\"transNames\":[],\"format\":\"mp3\",\"fee\":0,\"volumeDelta\":-2,\"privilege\":{\"flag\":null}}",
+        "ext": {
+          "tit2": "标题 😀",
+          "tpe1": "作者甲/作者乙",
+          "talb": " 专辑 ",
+          "encrypt": true,
+          "media_rel_path": "fixture.mp3",
+          "image_rel_path": "",
+          "trck": "2",
+          "tpos": "1"
+        }
+      }
+    },
+    {
+      "name": "encrypted-empty",
+      "input": {
+        "origin": {
+          "id": 123,
+          "name": "  标题 😀  ",
+          "artists": [
+            {
+              "id": 9,
+              "name": " 作者甲 "
+            },
+            null,
+            {
+              "name": "作者乙"
+            }
+          ],
+          "album": {
+            "id": 5,
+            "name": " 专辑 ",
+            "picId": "99",
+            "picUrl": "https://example.invalid/cover.jpg"
+          },
+          "duration": 1000,
+          "mvid": 0,
+          "alias": [],
+          "transNames": [],
+          "fee": 0,
+          "position": 2,
+          "cd": "1",
+          "privilege": {}
+        },
+        "offlineId": "track-123",
+        "realSuffix": "mp3",
+        "bitrate": 128000,
+        "md5": "abababababababababababababababab",
+        "volumeDelta": -2,
+        "finalPath": "fixture.mp3",
+        "encryptFile": true
+      },
+      "kind": "track",
+      "special": false,
+      "expected": {
+        "id": "track-123-image",
+        "offlineId": "track-123",
+        "lyricId": "123",
+        "picUrl": "https://example.invalid/cover.jpg",
+        "tmpPicUrl": "meta\\track-123.jpg",
+        "comm": "music:{\"musicId\":\"123\",\"musicName\":\"标题 😀\",\"artist\":[[\"作者甲\",9],[\"作者乙\",0]],\"albumId\":5,\"album\":\"专辑\",\"albumPicDocId\":\"99\",\"albumPic\":\"https://example.invalid/cover.jpg\",\"bitrate\":128000,\"mp3DocId\":\"abababababababababababababababab\",\"duration\":1000,\"mvId\":0,\"alias\":[],\"transNames\":[],\"format\":\"mp3\",\"fee\":0,\"volumeDelta\":-2,\"privilege\":{}}",
+        "ext": {
+          "tit2": "标题 😀",
+          "tpe1": "作者甲/作者乙",
+          "talb": " 专辑 ",
+          "encrypt": true,
+          "media_rel_path": "fixture.mp3",
+          "image_rel_path": "",
+          "trck": "2",
+          "tpos": "1"
+        }
+      }
+    },
+    {
+      "name": "encrypted-none",
+      "input": {
+        "origin": {
+          "id": 123,
+          "name": "  标题 😀  ",
+          "artists": [
+            {
+              "id": 9,
+              "name": " 作者甲 "
+            },
+            null,
+            {
+              "name": "作者乙"
+            }
+          ],
+          "album": {
+            "id": 5,
+            "name": " 专辑 ",
+            "picId": "99",
+            "picUrl": "https://example.invalid/cover.jpg"
+          },
+          "duration": 1000,
+          "mvid": 0,
+          "alias": [],
+          "transNames": [],
+          "fee": 0,
+          "position": 2,
+          "cd": "1"
+        },
+        "offlineId": "track-123",
+        "realSuffix": "mp3",
+        "bitrate": 128000,
+        "md5": "abababababababababababababababab",
+        "volumeDelta": -2,
+        "finalPath": "fixture.mp3",
+        "encryptFile": true
+      },
+      "kind": "track",
+      "special": false,
+      "expected": {
+        "id": "track-123-image",
+        "offlineId": "track-123",
+        "lyricId": "123",
+        "picUrl": "https://example.invalid/cover.jpg",
+        "tmpPicUrl": "meta\\track-123.jpg",
+        "comm": "music:{\"musicId\":\"123\",\"musicName\":\"标题 😀\",\"artist\":[[\"作者甲\",9],[\"作者乙\",0]],\"albumId\":5,\"album\":\"专辑\",\"albumPicDocId\":\"99\",\"albumPic\":\"https://example.invalid/cover.jpg\",\"bitrate\":128000,\"mp3DocId\":\"abababababababababababababababab\",\"duration\":1000,\"mvId\":0,\"alias\":[],\"transNames\":[],\"format\":\"mp3\",\"fee\":0,\"volumeDelta\":-2}",
+        "ext": {
+          "tit2": "标题 😀",
+          "tpe1": "作者甲/作者乙",
+          "talb": " 专辑 ",
+          "encrypt": true,
+          "media_rel_path": "fixture.mp3",
+          "image_rel_path": "",
+          "trck": "2",
+          "tpos": "1"
+        }
+      }
+    },
+    {
+      "name": "empty-artists",
+      "input": {
+        "origin": {
+          "id": 123,
+          "album": {}
+        },
+        "offlineId": "track-123",
+        "realSuffix": "mp3",
+        "bitrate": 128000,
+        "md5": "abababababababababababababababab",
+        "volumeDelta": -2,
+        "finalPath": "fixture.mp3"
+      },
+      "kind": "track",
+      "special": false,
+      "expected": {
+        "id": "track-123-image",
+        "offlineId": "track-123",
+        "lyricId": "123",
+        "tmpPicUrl": "meta\\track-123.",
+        "comm": "music:{\"musicId\":\"123\",\"musicName\":\"\",\"artist\":[],\"album\":\"\",\"bitrate\":128000,\"mp3DocId\":\"abababababababababababababababab\",\"transNames\":[],\"format\":\"mp3\",\"volumeDelta\":-2}",
+        "ext": {
+          "tit2": "",
+          "tpe1": [],
+          "encrypt": false,
+          "media_rel_path": "fixture.mp3",
+          "image_rel_path": "",
+          "trck": "",
+          "tpos": ""
+        }
+      }
+    },
+    {
+      "name": "explicit-null",
+      "input": {
+        "origin": {
+          "id": null,
+          "name": null,
+          "album": {
+            "id": null,
+            "name": null,
+            "picId": null,
+            "picUrl": null
+          },
+          "artists": null,
+          "duration": null,
+          "mvid": null,
+          "alias": null,
+          "transNames": null,
+          "fee": null
+        },
+        "offlineId": "track-123",
+        "realSuffix": "mp3",
+        "bitrate": null,
+        "md5": null,
+        "volumeDelta": null,
+        "finalPath": "fixture.mp3"
+      },
+      "kind": "track",
+      "special": false,
+      "expected": {
+        "id": "track-123-image",
+        "offlineId": "track-123",
+        "lyricId": "123",
+        "picUrl": null,
+        "tmpPicUrl": "meta\\track-123.",
+        "comm": "music:{\"musicId\":\"123\",\"musicName\":\"\",\"artist\":[],\"albumId\":null,\"album\":\"\",\"albumPicDocId\":null,\"albumPic\":null,\"bitrate\":null,\"mp3DocId\":null,\"duration\":null,\"mvId\":null,\"alias\":null,\"transNames\":[],\"format\":\"mp3\",\"fee\":null,\"volumeDelta\":0}",
+        "ext": {
+          "tit2": "",
+          "tpe1": [],
+          "talb": null,
+          "encrypt": false,
+          "media_rel_path": "fixture.mp3",
+          "image_rel_path": "",
+          "trck": "",
+          "tpos": ""
+        }
+      }
+    },
+    {
+      "name": "missing-properties",
+      "input": {
+        "origin": {
+          "id": 123,
+          "album": {}
+        },
+        "offlineId": "offline-track-123",
+        "realSuffix": "mp3",
+        "path": "fallback.mp3"
+      },
+      "kind": "track",
+      "special": false,
+      "expected": {
+        "id": "offline-track-123-image",
+        "offlineId": "offline-track-123",
+        "lyricId": "123",
+        "tmpPicUrl": "meta\\offline-track-123.",
+        "comm": "music:{\"musicId\":\"123\",\"musicName\":\"\",\"artist\":[],\"album\":\"\",\"transNames\":[],\"format\":\"mp3\",\"volumeDelta\":0}",
+        "ext": {
+          "tit2": "",
+          "tpe1": [],
+          "encrypt": false,
+          "media_rel_path": "fallback.mp3",
+          "image_rel_path": "",
+          "trck": "",
+          "tpos": ""
+        }
+      }
+    },
+    {
+      "name": "zero-values",
+      "input": {
+        "origin": {
+          "id": 123,
+          "name": "  标题 😀  ",
+          "artists": [
+            {
+              "id": 0,
+              "name": "﻿ 甲 "
+            },
+            {
+              "name": ""
+            }
+          ],
+          "album": {
+            "id": 5,
+            "name": " 专辑 ",
+            "picId": "99",
+            "picUrl": "https://example.invalid/cover.jpg"
+          },
+          "duration": 1000,
+          "mvid": 0,
+          "alias": [],
+          "transNames": [],
+          "fee": 0,
+          "position": 0,
+          "cd": 0
+        },
+        "offlineId": "track-123",
+        "realSuffix": "mp3",
+        "bitrate": 128000,
+        "md5": "abababababababababababababababab",
+        "volumeDelta": 0,
+        "finalPath": "fixture.mp3"
+      },
+      "kind": "track",
+      "special": false,
+      "expected": {
+        "id": "track-123-image",
+        "offlineId": "track-123",
+        "lyricId": "123",
+        "picUrl": "https://example.invalid/cover.jpg",
+        "tmpPicUrl": "meta\\track-123.jpg",
+        "comm": "music:{\"musicId\":\"123\",\"musicName\":\"标题 😀\",\"artist\":[[\"甲\",0],[\"\",0]],\"albumId\":5,\"album\":\"专辑\",\"albumPicDocId\":\"99\",\"albumPic\":\"https://example.invalid/cover.jpg\",\"bitrate\":128000,\"mp3DocId\":\"abababababababababababababababab\",\"duration\":1000,\"mvId\":0,\"alias\":[],\"transNames\":[],\"format\":\"mp3\",\"fee\":0,\"volumeDelta\":0}",
+        "ext": {
+          "tit2": "标题 😀",
+          "tpe1": "甲/",
+          "talb": " 专辑 ",
+          "encrypt": false,
+          "media_rel_path": "fixture.mp3",
+          "image_rel_path": "",
+          "trck": "",
+          "tpos": ""
+        }
+      }
+    },
+    {
+      "name": "positions",
+      "input": {
+        "origin": {
+          "id": 123,
+          "name": "  标题 😀  ",
+          "artists": [
+            {
+              "id": 9,
+              "name": " 作者甲 "
+            },
+            null,
+            {
+              "name": "作者乙"
+            }
+          ],
+          "album": {
+            "id": 5,
+            "name": " 专辑 ",
+            "picId": "99",
+            "picUrl": "https://example.invalid/cover.jpg"
+          },
+          "duration": 1000,
+          "mvid": 0,
+          "alias": [],
+          "transNames": [],
+          "fee": 0,
+          "position": "2/12",
+          "cd": "1/2"
+        },
+        "offlineId": "track-123",
+        "realSuffix": "mp3",
+        "bitrate": 128000,
+        "md5": "abababababababababababababababab",
+        "volumeDelta": -2,
+        "finalPath": "fixture.mp3"
+      },
+      "kind": "track",
+      "special": false,
+      "expected": {
+        "id": "track-123-image",
+        "offlineId": "track-123",
+        "lyricId": "123",
+        "picUrl": "https://example.invalid/cover.jpg",
+        "tmpPicUrl": "meta\\track-123.jpg",
+        "comm": "music:{\"musicId\":\"123\",\"musicName\":\"标题 😀\",\"artist\":[[\"作者甲\",9],[\"作者乙\",0]],\"albumId\":5,\"album\":\"专辑\",\"albumPicDocId\":\"99\",\"albumPic\":\"https://example.invalid/cover.jpg\",\"bitrate\":128000,\"mp3DocId\":\"abababababababababababababababab\",\"duration\":1000,\"mvId\":0,\"alias\":[],\"transNames\":[],\"format\":\"mp3\",\"fee\":0,\"volumeDelta\":-2}",
+        "ext": {
+          "tit2": "标题 😀",
+          "tpe1": "作者甲/作者乙",
+          "talb": " 专辑 ",
+          "encrypt": false,
+          "media_rel_path": "fixture.mp3",
+          "image_rel_path": "",
+          "trck": "2/12",
+          "tpos": "1/2"
+        }
+      }
+    },
+    {
+      "name": "missing-album",
+      "input": {
+        "origin": {
+          "id": 123,
+          "name": "oops"
+        },
+        "offlineId": "track-123",
+        "realSuffix": "mp3",
+        "bitrate": 128000,
+        "md5": "abababababababababababababababab",
+        "volumeDelta": -2,
+        "finalPath": "fixture.mp3"
+      },
+      "kind": "track",
+      "special": false,
+      "error": "TypeError"
+    },
+    {
+      "name": "bad-artist",
+      "input": {
+        "origin": {
+          "id": 123,
+          "name": "  标题 😀  ",
+          "artists": [
+            {
+              "name": 42
+            }
+          ],
+          "album": {
+            "id": 5,
+            "name": " 专辑 ",
+            "picId": "99",
+            "picUrl": "https://example.invalid/cover.jpg"
+          },
+          "duration": 1000,
+          "mvid": 0,
+          "alias": [],
+          "transNames": [],
+          "fee": 0,
+          "position": 2,
+          "cd": "1"
+        },
+        "offlineId": "track-123",
+        "realSuffix": "mp3",
+        "bitrate": 128000,
+        "md5": "abababababababababababababababab",
+        "volumeDelta": -2,
+        "finalPath": "fixture.mp3"
+      },
+      "kind": "track",
+      "special": false,
+      "error": "TypeError"
+    },
+    {
+      "name": "bad-name",
+      "input": {
+        "origin": {
+          "id": 123,
+          "name": {},
+          "artists": [
+            {
+              "id": 9,
+              "name": " 作者甲 "
+            },
+            null,
+            {
+              "name": "作者乙"
+            }
+          ],
+          "album": {
+            "id": 5,
+            "name": " 专辑 ",
+            "picId": "99",
+            "picUrl": "https://example.invalid/cover.jpg"
+          },
+          "duration": 1000,
+          "mvid": 0,
+          "alias": [],
+          "transNames": [],
+          "fee": 0,
+          "position": 2,
+          "cd": "1"
+        },
+        "offlineId": "track-123",
+        "realSuffix": "mp3",
+        "bitrate": 128000,
+        "md5": "abababababababababababababababab",
+        "volumeDelta": -2,
+        "finalPath": "fixture.mp3"
+      },
+      "kind": "track",
+      "special": false,
+      "error": "TypeError"
+    },
+    {
+      "name": "mv",
+      "input": {
+        "origin": {
+          "id": 8,
+          "title": " MV ",
+          "artists": [
+            {
+              "name": "MV artist",
+              "id": 2
+            }
+          ],
+          "artistName": "Artist",
+          "pubTime": "2020",
+          "duration": 500,
+          "briefDesc": "brief",
+          "desc": "long",
+          "privilege": {
+            "fee": 1,
+            "payed": 0
+          },
+          "coverId": 12,
+          "coverUrl": "cover.png",
+          "type": 2
+        },
+        "offlineId": "mv-8",
+        "realSuffix": "mp4",
+        "bitrate": 128000,
+        "md5": "abababababababababababababababab",
+        "volumeDelta": -2,
+        "finalPath": "fixture.mp3"
+      },
+      "kind": "mv",
+      "special": false,
+      "expected": {
+        "id": "8-image",
+        "offlineId": "mv-8",
+        "comm": "mv:{\"title\":\" MV \",\"mvId\":8,\"artist\":[[\"MV artist\",2]],\"artistName\":\"Artist\",\"pubTime\":\"2020\",\"bitrate\":128000,\"duration\":500,\"briefIntro\":\"brief\",\"detailIntro\":\"long\",\"privilege\":{\"fee\":1,\"payed\":0},\"format\":\"mp4\",\"picId\":12,\"picUrl\":\"cover.png\",\"type\":2}",
+        "ext": {
+          "tpe1": "MV artist",
+          "tit2": " MV ",
+          "media_rel_path": "fixture.mp3"
+        }
+      }
+    },
+    {
+      "name": "mv-empty",
+      "input": {
+        "offlineId": "mv-1",
+        "origin": {
+          "id": 1
+        },
+        "realSuffix": "mp4",
+        "path": "m.mp4"
+      },
+      "kind": "mv",
+      "special": false,
+      "expected": {
+        "id": "1-image",
+        "offlineId": "mv-1",
+        "comm": "mv:{\"mvId\":1,\"artist\":[],\"artistName\":\"\",\"pubTime\":\"\",\"bitrate\":0,\"duration\":0,\"briefIntro\":\"\",\"detailIntro\":\"\",\"privilege\":{},\"format\":\"mp4\",\"picId\":0,\"picUrl\":\"\"}",
+        "ext": {
+          "tpe1": [],
+          "tit2": "",
+          "media_rel_path": "m.mp4"
+        }
+      }
+    },
+    {
+      "name": "voice",
+      "input": {
+        "origin": {
+          "id": 7,
+          "name": " 节目 ",
+          "dj": {
+            "id": 4,
+            "nickname": "作者",
+            "brand": "品牌",
+            "avatarUrl": "face.jpg"
+          },
+          "serialNum": 3,
+          "createTime": 123,
+          "description": "简介",
+          "coverUrl": "cover.png",
+          "album": {
+            "name": "备用"
+          },
+          "artists": [],
+          "audio": {
+            "id": 2,
+            "name": "频道",
+            "desc": "电台",
+            "categoryId": 3,
+            "category": "类",
+            "radioFeeType": 1,
+            "feeScope": 2
+          }
+        },
+        "offlineId": "voice-7",
+        "realSuffix": "mp3",
+        "bitrate": 128000,
+        "md5": "abababababababababababababababab",
+        "volumeDelta": -2,
+        "finalPath": "fixture.mp3"
+      },
+      "kind": "voice",
+      "special": false,
+      "expected": {
+        "id": "voice-7-image",
+        "offlineId": "voice-7",
+        "lyricId": 0,
+        "picUrl": "cover.png",
+        "tmpPicUrl": "meta\\voice-7.png",
+        "comm": "dj:{\"programId\":7,\"djId\":4,\"djName\":\"作者\",\"programName\":\" 节目 \",\"brand\":\"品牌\",\"serial\":3,\"mainMusic\":{\"id\":7,\"name\":\" 节目 \",\"dj\":{\"id\":4,\"nickname\":\"作者\",\"brand\":\"品牌\",\"avatarUrl\":\"face.jpg\"},\"serialNum\":3,\"createTime\":123,\"description\":\"简介\",\"coverUrl\":\"cover.png\",\"album\":{\"name\":\"备用\"},\"artists\":[],\"audio\":{\"id\":2,\"name\":\"频道\",\"desc\":\"电台\",\"categoryId\":3,\"category\":\"类\",\"radioFeeType\":1,\"feeScope\":2}},\"djAvatarUrl\":\"face.jpg\",\"createTime\":123,\"programDesc\":\"简介\",\"radioId\":2,\"radioName\":\"频道\",\"radioDesc\":\"电台\",\"radioCategoryId\":3,\"radioCategory\":\"类\",\"radioFeeType\":1,\"radioFeeScope\":2,\"volumeDelta\":-2}",
+        "ext": {
+          "tit2": "节目",
+          "tpe1": [],
+          "talb": "频道",
+          "encrypt": false,
+          "media_rel_path": "fixture.mp3",
+          "image_rel_path": "",
+          "trck": "",
+          "tpos": ""
+        }
+      }
+    },
+    {
+      "name": "voice-fallback",
+      "input": {
+        "origin": {
+          "id": 7,
+          "name": "音频",
+          "album": {
+            "name": "备用"
+          }
+        },
+        "offlineId": "voice-7",
+        "realSuffix": "mp3",
+        "bitrate": 128000,
+        "md5": "abababababababababababababababab",
+        "volumeDelta": -2,
+        "finalPath": "fixture.mp3"
+      },
+      "kind": "voice",
+      "special": false,
+      "expected": {
+        "id": "voice-7-image",
+        "offlineId": "voice-7",
+        "lyricId": 0,
+        "tmpPicUrl": "meta\\voice-7.",
+        "comm": "dj:{\"programId\":7,\"programName\":\"音频\",\"mainMusic\":{\"id\":7,\"name\":\"音频\",\"album\":{\"name\":\"备用\"}},\"programDesc\":\"\",\"radioId\":\"\",\"radioName\":\"\",\"radioDesc\":\"\",\"radioCategoryId\":0,\"radioCategory\":\"\",\"radioFeeType\":0,\"radioFeeScope\":0,\"volumeDelta\":-2}",
+        "ext": {
+          "tit2": "音频",
+          "tpe1": [],
+          "talb": "备用",
+          "encrypt": false,
+          "media_rel_path": "fixture.mp3",
+          "image_rel_path": "",
+          "trck": "",
+          "tpos": ""
+        }
+      }
+    },
+    {
+      "name": "voice-encrypt-privilege",
+      "input": {
+        "origin": {
+          "id": 7,
+          "name": " 节目 ",
+          "dj": {
+            "id": 4,
+            "nickname": "作者",
+            "brand": "品牌",
+            "avatarUrl": "face.jpg"
+          },
+          "serialNum": 3,
+          "createTime": 123,
+          "description": "简介",
+          "coverUrl": "cover.png",
+          "album": {
+            "name": "备用"
+          },
+          "artists": [],
+          "audio": {
+            "id": 2,
+            "name": "频道",
+            "desc": "电台",
+            "categoryId": 3,
+            "category": "类",
+            "radioFeeType": 1,
+            "feeScope": 2
+          },
+          "privilege": {
+            "flag": 4
+          }
+        },
+        "offlineId": "voice-7",
+        "realSuffix": "mp3",
+        "bitrate": 128000,
+        "md5": "abababababababababababababababab",
+        "volumeDelta": -2,
+        "finalPath": "fixture.mp3",
+        "encryptFile": true
+      },
+      "kind": "voice",
+      "special": false,
+      "expected": {
+        "id": "voice-7-image",
+        "offlineId": "voice-7",
+        "lyricId": 0,
+        "picUrl": "cover.png",
+        "tmpPicUrl": "meta\\voice-7.png",
+        "comm": "music:{\"privilege\":{\"flag\":4}}",
+        "ext": {
+          "tit2": "节目",
+          "tpe1": [],
+          "talb": "频道",
+          "encrypt": true,
+          "media_rel_path": "fixture.mp3",
+          "image_rel_path": "",
+          "trck": "",
+          "tpos": ""
+        }
+      }
+    }
+  ],
+  "ciphers": [
+    {
+      "plain": "music:{}",
+      "encoded": "163 key(Don't modify):Ubm1xMPmf65B3tQYNYG0PA=="
+    },
+    {
+      "plain": "music:{\"musicName\":\"中文 😀\"}",
+      "encoded": "163 key(Don't modify):Mb+q/FJqi4QRbGGF28goe4QgUwweYpBhaGgaVmo/VzTQN/luNuQd6hmHuLrPN+IP"
+    },
+    {
+      "plain": "xxxxxxxxxxxxxxxx",
+      "encoded": "163 key(Don't modify):7uxLkGfMkI0FQmm2O13AQ+mFEQAcokR0OgiObb7cc0I="
+    },
+    {
+      "plain": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "encoded": "163 key(Don't modify):7uxLkGfMkI0FQmm2O13AQ+7sS5BnzJCNBUJptjtdwEPphREAHKJEdDoIjm2+3HNC"
+    },
+    {
+      "plain": "music:{\"musicId\":\"123\",\"musicName\":\"标题 😀\",\"artist\":[[\"作者甲\",9],[\"作者乙\",0]],\"albumId\":5,\"album\":\"专辑\",\"albumPicDocId\":\"99\",\"albumPic\":\"https://example.invalid/cover.jpg\",\"bitrate\":128000,\"mp3DocId\":1234567890123456789012345678901234,\"duration\":1000,\"mvId\":0,\"alias\":[],\"transNames\":[],\"format\":\"mp3\",\"fee\":0,\"volumeDelta\":-2}",
+      "encoded": "163 key(Don't modify):L64FU3W4YxX3ZFTmbZ+8/YkXffpUPQyUwLSaviQ77vkSVKdXroXXkScZp9zEGQZ3ycpHyaKr7MBcTjuND9ZOb2GSU8/dfh7ZWYSlcB6qpKzfCdpJDdv4UfPZD3xktKSWggMV8bDaMPJiQKM8gW/gvK46do580Et5Z2rVn5f/CnJGygOSBTF94MdntKdZscAxIIwjZZtLU6vBdG7IlDjfWUgp5Js2xRGMgBin0njcU7K6YbdTRrfI8mutB0P3QvvcYXOgq3zrnCUD3SJwvnGcCqVFBIP6r/eBHltjfD/ULL5+c+bgp184VCBQlz9Q73a5VEH10vrqVvtWRAmJdsx9qA++y1X1ofmpzwTckeWEbePvRAgZhoD6H5cgXzX0Mpir8eXhtBpQOpOE4dRDVJsqYfP/TPXh4MwcyVsik4lQG+I91w8XwewoFWiVyJn/8D4dgoKSL8xtkrkDv+qpwVOnbg=="
+    }
+  ]
+}

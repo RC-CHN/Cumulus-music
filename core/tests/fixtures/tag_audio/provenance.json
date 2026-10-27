@@ -1,0 +1,27 @@
+{
+  "source": "Generated 1 second 440Hz sine, mono 8kHz; not a commercial recording",
+  "tool": "ffmpeg version 8.0.1-3ubuntu2 Copyright (c) 2000-2025 the FFmpeg developers",
+  "files": [
+    {
+      "name": "seed.mp3",
+      "bytes": 2772,
+      "sha256": "94a0e53b12ad2248300c69626bb59da423e5d564fccb0f9b9150b46483da16cd",
+      "pcm_bytes": 16000,
+      "pcm_sha256": "4a6e5c646180c2397deb389a5603704d8ab78f9c831159b9c4c19c6c1245e3ed"
+    },
+    {
+      "name": "seed.flac",
+      "bytes": 12458,
+      "sha256": "f1c88937b548d0ff1b060db31bbe42e5f3eaec2997e5acd8f7f85caf849c8990",
+      "pcm_bytes": 16000,
+      "pcm_sha256": "2cbf7db8e5c95510ed6919491bd190b82bac4fe9be988c62473264c4651a855d"
+    },
+    {
+      "name": "seed.m4a",
+      "bytes": 6327,
+      "sha256": "d0cb4a728564e1f14f6444bb9b50b14d73bdb3c6267453f7567843ee439463ee",
+      "pcm_bytes": 16384,
+      "pcm_sha256": "c1df755dce7df47b4a0d0bc2c845839260b3eef430bca492382aab4b9029d3be"
+    }
+  ]
+}

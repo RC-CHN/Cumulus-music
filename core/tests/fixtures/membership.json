@@ -1,0 +1,6733 @@
+{
+  "provenance": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/224.js",
+      "sha256": "584d625962b22b02987ccd9a0e891a288ad27e959c1f6872ad490388997a52dd"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/23.js",
+      "sha256": "30179de6edd7412c718747b8162774cb9d872d6c86d13e8515ecc54fa61b9d45"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/35.js",
+      "sha256": "dfe4955a5747bf986ada1dcfaeefd341d2a8ed4734f1a36758ff55a1bbdbd116"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/84.js",
+      "sha256": "6eba100b7768cc873694e37a5f9f425cc84b8476fbe09c9a0df53d78376e0dcf"
+    }
+  ],
+  "membership": [
+    {
+      "data": {},
+      "now": 1700000000000,
+      "expected": {
+        "isNeverVipUser": true,
+        "isVinylVip": false,
+        "vinylVipExpireTime": 0,
+        "vinylVipLevel": 0,
+        "isPlusVip": false,
+        "plusVipExpireTime": 0,
+        "plusVipLevel": 0,
+        "isMusicPackage": false,
+        "musicPackageExpireTime": 0,
+        "isAlbumVip": false,
+        "albumVipExpireTime": 0,
+        "userId": "",
+        "deltaExpireTimeMap": {
+          "associator": -1700000000000,
+          "redplus": -1700000000000,
+          "musicPackage": -1700000000000,
+          "albumVip": -1700000000000,
+          "voiceBookVip": -1700000000000
+        },
+        "isVoiceBookVip": false,
+        "voiceBookVipExpireTime": 0
+      }
+    },
+    {
+      "data": {
+        "associator": {}
+      },
+      "now": 1700000000000,
+      "expected": {
+        "isNeverVipUser": false,
+        "isVinylVip": false,
+        "vinylVipExpireTime": 0,
+        "vinylVipLevel": 0,
+        "isPlusVip": false,
+        "plusVipExpireTime": 0,
+        "plusVipLevel": 0,
+        "isMusicPackage": false,
+        "musicPackageExpireTime": 0,
+        "isAlbumVip": false,
+        "albumVipExpireTime": 0,
+        "userId": "",
+        "deltaExpireTimeMap": {
+          "associator": -1700000000000,
+          "redplus": -1700000000000,
+          "musicPackage": -1700000000000,
+          "albumVip": -1700000000000,
+          "voiceBookVip": -1700000000000
+        },
+        "isVoiceBookVip": false,
+        "voiceBookVipExpireTime": 0
+      }
+    },
+    {
+      "data": {
+        "userId": 123,
+        "now": 1699999990001,
+        "associator": {
+          "expireTime": 1700000000000,
+          "vipLevel": 7
+        },
+        "redplus": {
+          "expireTime": 1700000005000,
+          "vipLevel": 3
+        },
+        "musicPackage": {
+          "expireTime": 1699999999999
+        },
+        "voiceBookVip": {
+          "expireTime": 1700000000010
+        },
+        "albumVip": {
+          "expireTime": 1700000001000
+        }
+      },
+      "now": 1700000000000,
+      "expected": {
+        "isNeverVipUser": false,
+        "isVinylVip": false,
+        "vinylVipExpireTime": 1700000000000,
+        "vinylVipLevel": 7,
+        "isPlusVip": true,
+        "plusVipExpireTime": 1700000005000,
+        "plusVipLevel": 3,
+        "isMusicPackage": false,
+        "musicPackageExpireTime": 1699999999999,
+        "isAlbumVip": true,
+        "albumVipExpireTime": 1700000001000,
+        "userId": "123",
+        "deltaExpireTimeMap": {
+          "associator": 0,
+          "redplus": 5000,
+          "musicPackage": -1,
+          "albumVip": 1000,
+          "voiceBookVip": 10
+        },
+        "isVoiceBookVip": true,
+        "voiceBookVipExpireTime": 1700000000010
+      }
+    },
+    {
+      "data": {
+        "userId": 0,
+        "associator": false,
+        "musicPackage": null
+      },
+      "now": 1700000000000,
+      "expected": {
+        "isNeverVipUser": true,
+        "isVinylVip": false,
+        "vinylVipExpireTime": 0,
+        "vinylVipLevel": 0,
+        "isPlusVip": false,
+        "plusVipExpireTime": 0,
+        "plusVipLevel": 0,
+        "isMusicPackage": false,
+        "musicPackageExpireTime": 0,
+        "isAlbumVip": false,
+        "albumVipExpireTime": 0,
+        "userId": "0",
+        "deltaExpireTimeMap": {
+          "associator": -1700000000000,
+          "redplus": -1700000000000,
+          "musicPackage": -1700000000000,
+          "albumVip": -1700000000000,
+          "voiceBookVip": -1700000000000
+        },
+        "isVoiceBookVip": false,
+        "voiceBookVipExpireTime": 0
+      }
+    },
+    {
+      "data": {
+        "userId": 123,
+        "associator": {
+          "expireTime": 1700000000000.5,
+          "vipLevel": 7
+        }
+      },
+      "now": 1700000000000,
+      "expected": {
+        "isNeverVipUser": false,
+        "isVinylVip": true,
+        "vinylVipExpireTime": 1700000000000.5,
+        "vinylVipLevel": 7,
+        "isPlusVip": false,
+        "plusVipExpireTime": 0,
+        "plusVipLevel": 0,
+        "isMusicPackage": false,
+        "musicPackageExpireTime": 0,
+        "isAlbumVip": false,
+        "albumVipExpireTime": 0,
+        "userId": "123",
+        "deltaExpireTimeMap": {
+          "associator": 0.5,
+          "redplus": -1700000000000,
+          "musicPackage": -1700000000000,
+          "albumVip": -1700000000000,
+          "voiceBookVip": -1700000000000
+        },
+        "isVoiceBookVip": false,
+        "voiceBookVipExpireTime": 0
+      }
+    }
+  ],
+  "offline": [
+    {
+      "privilege": null,
+      "data": {},
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {},
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {},
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {},
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {},
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {},
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {},
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {},
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": null,
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {},
+      "data": {},
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {},
+      "data": {},
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {},
+      "data": {},
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {},
+      "data": {},
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {},
+      "data": {},
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {},
+      "data": {},
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {},
+      "data": {},
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {},
+      "data": {},
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {},
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {},
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {},
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {},
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {},
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {},
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {},
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {},
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {},
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {},
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {},
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {},
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {},
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {},
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {},
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {},
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {},
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {},
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {},
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {},
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {},
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {},
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {},
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {},
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {},
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {},
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {},
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {},
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {},
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {},
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {},
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {},
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {},
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {},
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {},
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {},
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {},
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {},
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {},
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {},
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 0,
+        "payed": 0
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "flag": 8192
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": 1,
+        "payed": 2
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": null
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "redplus": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "albumVip": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "dolby",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "jymaster",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": {
+        "fee": "0"
+      },
+      "data": {
+        "associator": {
+          "expireTime": 1700000010000
+        },
+        "redplus": {
+          "expireTime": 1700000010000
+        },
+        "albumVip": {
+          "expireTime": 1700000010000
+        },
+        "musicPackage": {
+          "expireTime": 1700000010000
+        }
+      },
+      "now": 1700000000000,
+      "level": "vivid",
+      "source": "imported",
+      "encrypted": true,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": null,
+      "data": {},
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": false,
+      "complete": true,
+      "expected": true
+    },
+    {
+      "privilege": null,
+      "data": {},
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": false,
+      "complete": false,
+      "expected": false
+    },
+    {
+      "privilege": {
+        "fee": 0
+      },
+      "data": {},
+      "now": 1700000000000,
+      "level": "lossless",
+      "source": "downloaded",
+      "encrypted": true,
+      "complete": false,
+      "expected": false
+    }
+  ],
+  "qualities": [
+    [
+      "vivid",
+      6999000
+    ],
+    [
+      "sky",
+      5999000
+    ],
+    [
+      "jymaster",
+      4999000
+    ],
+    [
+      "jyeffect",
+      3999000
+    ],
+    [
+      "dolby",
+      2999000
+    ],
+    [
+      "hires",
+      1999000
+    ],
+    [
+      "lossless",
+      999000
+    ],
+    [
+      "exhigh",
+      320000
+    ],
+    [
+      "higher",
+      192000
+    ],
+    [
+      "standard",
+      128000
+    ],
+    [
+      "64aac",
+      64000
+    ]
+  ]
+}

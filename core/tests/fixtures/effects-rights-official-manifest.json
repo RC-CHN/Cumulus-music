@@ -1,0 +1,11 @@
+{
+  "source": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/342.js",
+  "source_sha256": "1f27e592a340c814a49093416a0a684ec5c407c004f4e425a1d09b23b5319c8d",
+  "generator": "references/recovered-client/scripts/netease_effect_rights_rust_vectors.cjs",
+  "generator_sha256": "48a0c5856487bb273e9ac5d2b7b7db7b1a1845c80146d9fba17ab26df370d2ba",
+  "fixture": "core/tests/fixtures/effects-rights-official.json",
+  "fixture_sha256": "f400b6fb3a69b7c020b0fb2a412c1f88d85263ccd4866faf2a208c3274876acb",
+  "cases": 512,
+  "method": "unchanged extracted getAudioEffectAuthResult generator, saga dependencies supplied",
+  "synthetic_only": true
+}

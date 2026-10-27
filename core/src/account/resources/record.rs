@@ -1,0 +1,60 @@
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ResourceKind {
+    Liked,
+    Albums,
+    Artists,
+    Mvs,
+    Settings,
+}
+impl ResourceKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Liked => "liked",
+            Self::Albums => "albums",
+            Self::Artists => "artists",
+            Self::Mvs => "mvs",
+            Self::Settings => "settings",
+        }
+    }
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MutationPhase {
+    Sending,
+    Verifying,
+    Uncertain,
+    Confirmed,
+    Rejected,
+    Unchanged,
+}
+impl MutationPhase {
+    pub fn pending(self) -> bool {
+        matches!(self, Self::Sending | Self::Verifying | Self::Uncertain)
+    }
+}
+
+/// Native persisted journal. The UI should receive a dedicated operation DTO.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct MutationRecord {
+    pub kind: ResourceKind,
+    pub key: String,
+    pub before: Value,
+    pub desired: Value,
+    pub created_at: f64,
+    pub phase: MutationPhase,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checked_at: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub service_code: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_class: Option<String>,
+}
+pub(super) fn key(kind: ResourceKind, key: &str) -> String {
+    format!("{}:{key}", kind.as_str())
+}

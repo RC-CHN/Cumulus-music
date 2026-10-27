@@ -1,0 +1,157 @@
+{
+  "sources": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_44.chunk.1482700000000.js/2131.js",
+      "sha256": "9fd3700d0e1a87ac84c2f25b6df636851e19ed12a54e90ee485be8689c8dee77"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/546.js",
+      "sha256": "b8a73b99f63f0601b6cdc09d1e0b908271f603f901694a5e2e72da7416ea979a"
+    }
+  ],
+  "centers": [
+    {
+      "width": 640,
+      "height": 480,
+      "result": {
+        "x": 80,
+        "y": 0,
+        "width": 480,
+        "height": 480
+      }
+    },
+    {
+      "width": 481,
+      "height": 640,
+      "result": {
+        "x": 0,
+        "y": 80,
+        "width": 481,
+        "height": 481
+      }
+    },
+    {
+      "width": 321,
+      "height": 320,
+      "result": {
+        "x": 1,
+        "y": 0,
+        "width": 320,
+        "height": 320
+      }
+    },
+    {
+      "width": 320,
+      "height": 321,
+      "result": {
+        "x": 0,
+        "y": 1,
+        "width": 320,
+        "height": 320
+      }
+    },
+    {
+      "width": 320,
+      "height": 320,
+      "result": {
+        "x": 0,
+        "y": 0,
+        "width": 320,
+        "height": 320
+      }
+    },
+    {
+      "width": 1920,
+      "height": 1080,
+      "result": {
+        "x": 420,
+        "y": 0,
+        "width": 1080,
+        "height": 1080
+      }
+    }
+  ],
+  "output": {
+    "width": 320,
+    "height": 320,
+    "mime": "image/jpeg",
+    "calls": [
+      [
+        30,
+        40,
+        320,
+        320,
+        0,
+        0,
+        320,
+        320
+      ]
+    ]
+  },
+  "files": [
+    {
+      "type": "image/jpeg",
+      "size": 12,
+      "width": 640,
+      "height": 480,
+      "accepted": true,
+      "error": ""
+    },
+    {
+      "type": "image/png",
+      "size": 5242880,
+      "width": 320,
+      "height": 320,
+      "accepted": true,
+      "error": ""
+    },
+    {
+      "type": "image/bmp",
+      "size": 12,
+      "width": 320,
+      "height": 400,
+      "accepted": true,
+      "error": ""
+    },
+    {
+      "type": "image/gif",
+      "size": 12,
+      "width": 400,
+      "height": 320,
+      "accepted": true,
+      "error": ""
+    },
+    {
+      "type": "image/webp",
+      "size": 12,
+      "width": 640,
+      "height": 480,
+      "accepted": false,
+      "error": "只支持jpeg、png、bmp、gif格式的图片"
+    },
+    {
+      "type": "image/jpeg",
+      "size": 5242881,
+      "width": 640,
+      "height": 480,
+      "accepted": false,
+      "error": "请选择不超过5M的图片"
+    },
+    {
+      "type": "image/png",
+      "size": 12,
+      "width": 319,
+      "height": 640,
+      "accepted": false,
+      "error": "请选择分辨率超过320*320的图片"
+    },
+    {
+      "type": "image/png",
+      "size": 12,
+      "width": 640,
+      "height": 319,
+      "accepted": false,
+      "error": "请选择分辨率超过320*320的图片"
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "source_dlls": {
+    "neaudioeffects": "c59105e1072d7d7dbd2d2844ac9c170de7e7b41eb463dc56a11c9b37bafac6be",
+    "cloudmusic": "557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493"
+  },
+  "synthetic_only": true,
+  "native_calls": 1763,
+  "vectors": 1622,
+  "vector_modes": {
+    "biquad": 9,
+    "bt": 28,
+    "coeff": 648,
+    "geq-outer": 28,
+    "peq": 117,
+    "peq-coeff": 792
+  },
+  "material_cases": 51,
+  "fixture": "core/tests/fixtures/effects-dsp-official.json.gz",
+  "fixture_sha256": "c1238bebdad46ba8d1f2452511356fe9db135aed509fa8616eacd1fda1cf859e",
+  "sources": [
+    {
+      "path": "references/recovered-client/scripts/netease_native_dsp_oracle.c",
+      "sha256": "cd7a64f3028cc8284c6316244ca86383a8ca88bdf64ac5ef67f7bc3d7630b495"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_native_peq_material_oracle.c",
+      "sha256": "79ba61f9cb95bd33fe0079478ae5944bcb92f648ccafaf53f8b1ee709c32bb24"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_dsp.c",
+      "sha256": "2054c7aa1b352f78a937f551bdb4f490b25c1299f40ef0a9e33f6b41944e0dc0"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_peq_material.py",
+      "sha256": "4d4668b289cff0009a97e30b746a410c2074cd1e7565ffca767257f100774ffc"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_spatial_material.py",
+      "sha256": "c71460241e47b007fbce3ed642262c7744887b444bd230d83e1387d7281e2c6c"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_dsp_rust_vectors.py",
+      "sha256": "2d762f4ea3211f48a8855dd1792e0fb9dc841c7636bab1d668f9454cb695555f"
+    },
+    {
+      "path": "references/recovered-client/scripts/test_netease_peq.py",
+      "sha256": "df2fa2f549337c91e1fd90a9c8f1b56e2226593910a1da4e61b87f4f9e7e0a60"
+    }
+  ]
+}

@@ -1,0 +1,941 @@
+{
+  "sources": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/23.js",
+      "sha256": "30179de6edd7412c718747b8162774cb9d872d6c86d13e8515ecc54fa61b9d45"
+    }
+  ],
+  "queries": [
+    {
+      "input": {
+        "id": "local-1",
+        "name": "",
+        "album": {
+          "name": "专辑"
+        },
+        "artists": [
+          {
+            "name": "歌手 & A"
+          }
+        ],
+        "duration": 0
+      },
+      "expected": {
+        "title": "",
+        "album": "专辑",
+        "artist": "歌手 & A",
+        "duration": 0,
+        "persistId": "local-1?-%E6%AD%8C%E6%89%8B%20%26%20A-0"
+      }
+    },
+    {
+      "input": {
+        "id": "local-1",
+        "name": "",
+        "album": {
+          "name": "专辑"
+        },
+        "artists": [
+          {
+            "name": "歌手 & A"
+          }
+        ],
+        "duration": 1
+      },
+      "expected": {
+        "title": "",
+        "album": "专辑",
+        "artist": "歌手 & A",
+        "duration": 0.001,
+        "persistId": "local-1?-%E6%AD%8C%E6%89%8B%20%26%20A-0.001"
+      }
+    },
+    {
+      "input": {
+        "id": "local-1",
+        "name": "",
+        "album": {
+          "name": "专辑"
+        },
+        "artists": [
+          {
+            "name": "歌手 & A"
+          }
+        ],
+        "duration": 12125
+      },
+      "expected": {
+        "title": "",
+        "album": "专辑",
+        "artist": "歌手 & A",
+        "duration": 12.125,
+        "persistId": "local-1?-%E6%AD%8C%E6%89%8B%20%26%20A-12.125"
+      }
+    },
+    {
+      "input": {
+        "id": "local-1",
+        "name": "",
+        "album": {
+          "name": "专辑"
+        },
+        "artists": [
+          {
+            "name": "歌手 & A"
+          }
+        ],
+        "duration": 200000
+      },
+      "expected": {
+        "title": "",
+        "album": "专辑",
+        "artist": "歌手 & A",
+        "duration": 200,
+        "persistId": "local-1?-%E6%AD%8C%E6%89%8B%20%26%20A-200"
+      }
+    },
+    {
+      "input": {
+        "id": "local-1",
+        "name": "雪 !'()*~ +%?",
+        "album": {
+          "name": "专辑"
+        },
+        "artists": [
+          {
+            "name": "歌手 & A"
+          }
+        ],
+        "duration": 0
+      },
+      "expected": {
+        "title": "雪 !'()*~ +%?",
+        "album": "专辑",
+        "artist": "歌手 & A",
+        "duration": 0,
+        "persistId": "local-1?%E9%9B%AA%20!'()*~%20%2B%25%3F-%E6%AD%8C%E6%89%8B%20%26%20A-0"
+      }
+    },
+    {
+      "input": {
+        "id": "local-1",
+        "name": "雪 !'()*~ +%?",
+        "album": {
+          "name": "专辑"
+        },
+        "artists": [
+          {
+            "name": "歌手 & A"
+          }
+        ],
+        "duration": 1
+      },
+      "expected": {
+        "title": "雪 !'()*~ +%?",
+        "album": "专辑",
+        "artist": "歌手 & A",
+        "duration": 0.001,
+        "persistId": "local-1?%E9%9B%AA%20!'()*~%20%2B%25%3F-%E6%AD%8C%E6%89%8B%20%26%20A-0.001"
+      }
+    },
+    {
+      "input": {
+        "id": "local-1",
+        "name": "雪 !'()*~ +%?",
+        "album": {
+          "name": "专辑"
+        },
+        "artists": [
+          {
+            "name": "歌手 & A"
+          }
+        ],
+        "duration": 12125
+      },
+      "expected": {
+        "title": "雪 !'()*~ +%?",
+        "album": "专辑",
+        "artist": "歌手 & A",
+        "duration": 12.125,
+        "persistId": "local-1?%E9%9B%AA%20!'()*~%20%2B%25%3F-%E6%AD%8C%E6%89%8B%20%26%20A-12.125"
+      }
+    },
+    {
+      "input": {
+        "id": "local-1",
+        "name": "雪 !'()*~ +%?",
+        "album": {
+          "name": "专辑"
+        },
+        "artists": [
+          {
+            "name": "歌手 & A"
+          }
+        ],
+        "duration": 200000
+      },
+      "expected": {
+        "title": "雪 !'()*~ +%?",
+        "album": "专辑",
+        "artist": "歌手 & A",
+        "duration": 200,
+        "persistId": "local-1?%E9%9B%AA%20!'()*~%20%2B%25%3F-%E6%AD%8C%E6%89%8B%20%26%20A-200"
+      }
+    },
+    {
+      "input": {
+        "id": "local-1",
+        "name": "普通歌名",
+        "album": {
+          "name": "专辑"
+        },
+        "artists": [
+          {
+            "name": "歌手 & A"
+          }
+        ],
+        "duration": 0
+      },
+      "expected": {
+        "title": "普通歌名",
+        "album": "专辑",
+        "artist": "歌手 & A",
+        "duration": 0,
+        "persistId": "local-1?%E6%99%AE%E9%80%9A%E6%AD%8C%E5%90%8D-%E6%AD%8C%E6%89%8B%20%26%20A-0"
+      }
+    },
+    {
+      "input": {
+        "id": "local-1",
+        "name": "普通歌名",
+        "album": {
+          "name": "专辑"
+        },
+        "artists": [
+          {
+            "name": "歌手 & A"
+          }
+        ],
+        "duration": 1
+      },
+      "expected": {
+        "title": "普通歌名",
+        "album": "专辑",
+        "artist": "歌手 & A",
+        "duration": 0.001,
+        "persistId": "local-1?%E6%99%AE%E9%80%9A%E6%AD%8C%E5%90%8D-%E6%AD%8C%E6%89%8B%20%26%20A-0.001"
+      }
+    },
+    {
+      "input": {
+        "id": "local-1",
+        "name": "普通歌名",
+        "album": {
+          "name": "专辑"
+        },
+        "artists": [
+          {
+            "name": "歌手 & A"
+          }
+        ],
+        "duration": 12125
+      },
+      "expected": {
+        "title": "普通歌名",
+        "album": "专辑",
+        "artist": "歌手 & A",
+        "duration": 12.125,
+        "persistId": "local-1?%E6%99%AE%E9%80%9A%E6%AD%8C%E5%90%8D-%E6%AD%8C%E6%89%8B%20%26%20A-12.125"
+      }
+    },
+    {
+      "input": {
+        "id": "local-1",
+        "name": "普通歌名",
+        "album": {
+          "name": "专辑"
+        },
+        "artists": [
+          {
+            "name": "歌手 & A"
+          }
+        ],
+        "duration": 200000
+      },
+      "expected": {
+        "title": "普通歌名",
+        "album": "专辑",
+        "artist": "歌手 & A",
+        "duration": 200,
+        "persistId": "local-1?%E6%99%AE%E9%80%9A%E6%AD%8C%E5%90%8D-%E6%AD%8C%E6%89%8B%20%26%20A-200"
+      }
+    },
+    {
+      "input": {
+        "id": "local-1",
+        "name": "😀\n换行",
+        "album": {
+          "name": "专辑"
+        },
+        "artists": [
+          {
+            "name": "歌手 & A"
+          }
+        ],
+        "duration": 0
+      },
+      "expected": {
+        "title": "😀\n换行",
+        "album": "专辑",
+        "artist": "歌手 & A",
+        "duration": 0,
+        "persistId": "local-1?%F0%9F%98%80%0A%E6%8D%A2%E8%A1%8C-%E6%AD%8C%E6%89%8B%20%26%20A-0"
+      }
+    },
+    {
+      "input": {
+        "id": "local-1",
+        "name": "😀\n换行",
+        "album": {
+          "name": "专辑"
+        },
+        "artists": [
+          {
+            "name": "歌手 & A"
+          }
+        ],
+        "duration": 1
+      },
+      "expected": {
+        "title": "😀\n换行",
+        "album": "专辑",
+        "artist": "歌手 & A",
+        "duration": 0.001,
+        "persistId": "local-1?%F0%9F%98%80%0A%E6%8D%A2%E8%A1%8C-%E6%AD%8C%E6%89%8B%20%26%20A-0.001"
+      }
+    },
+    {
+      "input": {
+        "id": "local-1",
+        "name": "😀\n换行",
+        "album": {
+          "name": "专辑"
+        },
+        "artists": [
+          {
+            "name": "歌手 & A"
+          }
+        ],
+        "duration": 12125
+      },
+      "expected": {
+        "title": "😀\n换行",
+        "album": "专辑",
+        "artist": "歌手 & A",
+        "duration": 12.125,
+        "persistId": "local-1?%F0%9F%98%80%0A%E6%8D%A2%E8%A1%8C-%E6%AD%8C%E6%89%8B%20%26%20A-12.125"
+      }
+    },
+    {
+      "input": {
+        "id": "local-1",
+        "name": "😀\n换行",
+        "album": {
+          "name": "专辑"
+        },
+        "artists": [
+          {
+            "name": "歌手 & A"
+          }
+        ],
+        "duration": 200000
+      },
+      "expected": {
+        "title": "😀\n换行",
+        "album": "专辑",
+        "artist": "歌手 & A",
+        "duration": 200,
+        "persistId": "local-1?%F0%9F%98%80%0A%E6%8D%A2%E8%A1%8C-%E6%AD%8C%E6%89%8B%20%26%20A-200"
+      }
+    }
+  ],
+  "results": [
+    {
+      "input": {
+        "ids": [
+          "local-1?opaque"
+        ],
+        "songs": [
+          null
+        ]
+      },
+      "expected": {}
+    },
+    {
+      "input": {
+        "ids": [
+          "local-1?opaque"
+        ],
+        "songs": [
+          {
+            "id": 1
+          }
+        ]
+      },
+      "expected": {
+        "local-1": {
+          "id": 1,
+          "duration": 0
+        }
+      }
+    },
+    {
+      "input": {
+        "ids": [
+          "local-1?opaque"
+        ],
+        "songs": [
+          {
+            "id": 2,
+            "duration": 0,
+            "playTime": 1234
+          }
+        ]
+      },
+      "expected": {
+        "local-1": {
+          "id": 2,
+          "duration": 1234,
+          "playTime": 1234
+        }
+      }
+    },
+    {
+      "input": {
+        "ids": [
+          "local-1?opaque"
+        ],
+        "songs": [
+          {
+            "id": 3,
+            "duration": 22,
+            "playTime": 88
+          }
+        ]
+      },
+      "expected": {
+        "local-1": {
+          "id": 3,
+          "duration": 22,
+          "playTime": 88
+        }
+      }
+    },
+    {
+      "input": {
+        "ids": [
+          "local-1?opaque"
+        ],
+        "songs": [
+          {
+            "id": 4,
+            "djProgramId": 1
+          }
+        ]
+      },
+      "expected": {}
+    }
+  ],
+  "metadata": [
+    {
+      "input": "music:{\"musicId\":\"123\",\"musicName\":\"歌曲\",\"artist\":[[\"作者\",7]],\"albumId\":5,\"album\":\"专辑\",\"duration\":1234,\"bitrate\":0,\"flag\":4,\"privilege\":{\"flag\":260}}",
+      "expected": {
+        "id": "123",
+        "name": "歌曲",
+        "transNames": [],
+        "artists": [
+          {
+            "name": "作者",
+            "id": "7"
+          }
+        ],
+        "album": {
+          "id": "5",
+          "name": "专辑",
+          "picId": "",
+          "picUrl": ""
+        },
+        "duration": 1234,
+        "mvId": "",
+        "realSuffix": "mp3",
+        "commentThreadId": "",
+        "bitrate": 0,
+        "privilege": {
+          "flag": 260
+        }
+      }
+    },
+    {
+      "input": "music:{\"musicId\":\"123\",\"musicName\":\"歌曲\",\"artist\":[[\"作者\",7]],\"albumId\":5,\"album\":\"专辑\",\"duration\":1234,\"bitrate\":1,\"flag\":4,\"privilege\":{\"flag\":260}}",
+      "expected": {
+        "id": "123",
+        "name": "歌曲",
+        "transNames": [],
+        "artists": [
+          {
+            "name": "作者",
+            "id": "7"
+          }
+        ],
+        "album": {
+          "id": "5",
+          "name": "专辑",
+          "picId": "",
+          "picUrl": ""
+        },
+        "duration": 1234,
+        "mvId": "",
+        "realSuffix": "mp3",
+        "commentThreadId": "",
+        "bitrate": 64000,
+        "privilege": {
+          "flag": 260
+        }
+      }
+    },
+    {
+      "input": "music:{\"musicId\":\"123\",\"musicName\":\"歌曲\",\"artist\":[[\"作者\",7]],\"albumId\":5,\"album\":\"专辑\",\"duration\":1234,\"bitrate\":100000,\"flag\":4,\"privilege\":{\"flag\":260}}",
+      "expected": {
+        "id": "123",
+        "name": "歌曲",
+        "transNames": [],
+        "artists": [
+          {
+            "name": "作者",
+            "id": "7"
+          }
+        ],
+        "album": {
+          "id": "5",
+          "name": "专辑",
+          "picId": "",
+          "picUrl": ""
+        },
+        "duration": 1234,
+        "mvId": "",
+        "realSuffix": "mp3",
+        "commentThreadId": "",
+        "bitrate": 64000,
+        "privilege": {
+          "flag": 260
+        }
+      }
+    },
+    {
+      "input": "music:{\"musicId\":\"123\",\"musicName\":\"歌曲\",\"artist\":[[\"作者\",7]],\"albumId\":5,\"album\":\"专辑\",\"duration\":1234,\"bitrate\":100001,\"flag\":4,\"privilege\":{\"flag\":260}}",
+      "expected": {
+        "id": "123",
+        "name": "歌曲",
+        "transNames": [],
+        "artists": [
+          {
+            "name": "作者",
+            "id": "7"
+          }
+        ],
+        "album": {
+          "id": "5",
+          "name": "专辑",
+          "picId": "",
+          "picUrl": ""
+        },
+        "duration": 1234,
+        "mvId": "",
+        "realSuffix": "mp3",
+        "commentThreadId": "",
+        "bitrate": 128000,
+        "privilege": {
+          "flag": 260
+        }
+      }
+    },
+    {
+      "input": "music:{\"musicId\":\"123\",\"musicName\":\"歌曲\",\"artist\":[[\"作者\",7]],\"albumId\":5,\"album\":\"专辑\",\"duration\":1234,\"bitrate\":150000,\"flag\":4,\"privilege\":{\"flag\":260}}",
+      "expected": {
+        "id": "123",
+        "name": "歌曲",
+        "transNames": [],
+        "artists": [
+          {
+            "name": "作者",
+            "id": "7"
+          }
+        ],
+        "album": {
+          "id": "5",
+          "name": "专辑",
+          "picId": "",
+          "picUrl": ""
+        },
+        "duration": 1234,
+        "mvId": "",
+        "realSuffix": "mp3",
+        "commentThreadId": "",
+        "bitrate": 128000,
+        "privilege": {
+          "flag": 260
+        }
+      }
+    },
+    {
+      "input": "music:{\"musicId\":\"123\",\"musicName\":\"歌曲\",\"artist\":[[\"作者\",7]],\"albumId\":5,\"album\":\"专辑\",\"duration\":1234,\"bitrate\":150001,\"flag\":4,\"privilege\":{\"flag\":260}}",
+      "expected": {
+        "id": "123",
+        "name": "歌曲",
+        "transNames": [],
+        "artists": [
+          {
+            "name": "作者",
+            "id": "7"
+          }
+        ],
+        "album": {
+          "id": "5",
+          "name": "专辑",
+          "picId": "",
+          "picUrl": ""
+        },
+        "duration": 1234,
+        "mvId": "",
+        "realSuffix": "mp3",
+        "commentThreadId": "",
+        "bitrate": 192000,
+        "privilege": {
+          "flag": 260
+        }
+      }
+    },
+    {
+      "input": "music:{\"musicId\":\"123\",\"musicName\":\"歌曲\",\"artist\":[[\"作者\",7]],\"albumId\":5,\"album\":\"专辑\",\"duration\":1234,\"bitrate\":300000,\"flag\":4,\"privilege\":{\"flag\":260}}",
+      "expected": {
+        "id": "123",
+        "name": "歌曲",
+        "transNames": [],
+        "artists": [
+          {
+            "name": "作者",
+            "id": "7"
+          }
+        ],
+        "album": {
+          "id": "5",
+          "name": "专辑",
+          "picId": "",
+          "picUrl": ""
+        },
+        "duration": 1234,
+        "mvId": "",
+        "realSuffix": "mp3",
+        "commentThreadId": "",
+        "bitrate": 192000,
+        "privilege": {
+          "flag": 260
+        }
+      }
+    },
+    {
+      "input": "music:{\"musicId\":\"123\",\"musicName\":\"歌曲\",\"artist\":[[\"作者\",7]],\"albumId\":5,\"album\":\"专辑\",\"duration\":1234,\"bitrate\":300001,\"flag\":4,\"privilege\":{\"flag\":260}}",
+      "expected": {
+        "id": "123",
+        "name": "歌曲",
+        "transNames": [],
+        "artists": [
+          {
+            "name": "作者",
+            "id": "7"
+          }
+        ],
+        "album": {
+          "id": "5",
+          "name": "专辑",
+          "picId": "",
+          "picUrl": ""
+        },
+        "duration": 1234,
+        "mvId": "",
+        "realSuffix": "mp3",
+        "commentThreadId": "",
+        "bitrate": 320000,
+        "privilege": {
+          "flag": 260
+        }
+      }
+    },
+    {
+      "input": "music:{\"musicId\":\"123\",\"musicName\":\"歌曲\",\"artist\":[[\"作者\",7]],\"albumId\":5,\"album\":\"专辑\",\"duration\":1234,\"bitrate\":400000,\"flag\":4,\"privilege\":{\"flag\":260}}",
+      "expected": {
+        "id": "123",
+        "name": "歌曲",
+        "transNames": [],
+        "artists": [
+          {
+            "name": "作者",
+            "id": "7"
+          }
+        ],
+        "album": {
+          "id": "5",
+          "name": "专辑",
+          "picId": "",
+          "picUrl": ""
+        },
+        "duration": 1234,
+        "mvId": "",
+        "realSuffix": "mp3",
+        "commentThreadId": "",
+        "bitrate": 320000,
+        "privilege": {
+          "flag": 260
+        }
+      }
+    },
+    {
+      "input": "music:{\"musicId\":\"123\",\"musicName\":\"歌曲\",\"artist\":[[\"作者\",7]],\"albumId\":5,\"album\":\"专辑\",\"duration\":1234,\"bitrate\":400001,\"flag\":4,\"privilege\":{\"flag\":260}}",
+      "expected": {
+        "id": "123",
+        "name": "歌曲",
+        "transNames": [],
+        "artists": [
+          {
+            "name": "作者",
+            "id": "7"
+          }
+        ],
+        "album": {
+          "id": "5",
+          "name": "专辑",
+          "picId": "",
+          "picUrl": ""
+        },
+        "duration": 1234,
+        "mvId": "",
+        "realSuffix": "mp3",
+        "commentThreadId": "",
+        "bitrate": 999000,
+        "privilege": {
+          "flag": 260
+        }
+      }
+    },
+    {
+      "input": "music:{\"musicId\":\"123\",\"musicName\":\"歌曲\",\"artist\":[[\"作者\",7]],\"albumId\":5,\"album\":\"专辑\",\"duration\":1234,\"bitrate\":1998999,\"flag\":4,\"privilege\":{\"flag\":260}}",
+      "expected": {
+        "id": "123",
+        "name": "歌曲",
+        "transNames": [],
+        "artists": [
+          {
+            "name": "作者",
+            "id": "7"
+          }
+        ],
+        "album": {
+          "id": "5",
+          "name": "专辑",
+          "picId": "",
+          "picUrl": ""
+        },
+        "duration": 1234,
+        "mvId": "",
+        "realSuffix": "mp3",
+        "commentThreadId": "",
+        "bitrate": 999000,
+        "privilege": {
+          "flag": 260
+        }
+      }
+    },
+    {
+      "input": "music:{\"musicId\":\"123\",\"musicName\":\"歌曲\",\"artist\":[[\"作者\",7]],\"albumId\":5,\"album\":\"专辑\",\"duration\":1234,\"bitrate\":1999000,\"flag\":4,\"privilege\":{\"flag\":260}}",
+      "expected": {
+        "id": "123",
+        "name": "歌曲",
+        "transNames": [],
+        "artists": [
+          {
+            "name": "作者",
+            "id": "7"
+          }
+        ],
+        "album": {
+          "id": "5",
+          "name": "专辑",
+          "picId": "",
+          "picUrl": ""
+        },
+        "duration": 1234,
+        "mvId": "",
+        "realSuffix": "mp3",
+        "commentThreadId": "",
+        "bitrate": 1999000,
+        "privilege": {
+          "flag": 260
+        }
+      }
+    },
+    {
+      "input": "music:{\"musicId\":\"123\",\"musicName\":\"歌曲\",\"artist\":[[\"作者\",7]],\"albumId\":5,\"album\":\"专辑\",\"duration\":1234,\"bitrate\":2999000,\"flag\":4,\"privilege\":{\"flag\":260}}",
+      "expected": {
+        "id": "123",
+        "name": "歌曲",
+        "transNames": [],
+        "artists": [
+          {
+            "name": "作者",
+            "id": "7"
+          }
+        ],
+        "album": {
+          "id": "5",
+          "name": "专辑",
+          "picId": "",
+          "picUrl": ""
+        },
+        "duration": 1234,
+        "mvId": "",
+        "realSuffix": "mp3",
+        "commentThreadId": "",
+        "bitrate": 2999000,
+        "privilege": {
+          "flag": 260
+        }
+      }
+    },
+    {
+      "input": "music:{\"musicId\":\"123\",\"musicName\":\"歌曲\",\"artist\":[[\"作者\",7]],\"albumId\":5,\"album\":\"专辑\",\"duration\":1234,\"bitrate\":3999000,\"flag\":4,\"privilege\":{\"flag\":260}}",
+      "expected": {
+        "id": "123",
+        "name": "歌曲",
+        "transNames": [],
+        "artists": [
+          {
+            "name": "作者",
+            "id": "7"
+          }
+        ],
+        "album": {
+          "id": "5",
+          "name": "专辑",
+          "picId": "",
+          "picUrl": ""
+        },
+        "duration": 1234,
+        "mvId": "",
+        "realSuffix": "mp3",
+        "commentThreadId": "",
+        "bitrate": 3999000,
+        "privilege": {
+          "flag": 260
+        }
+      }
+    },
+    {
+      "input": "music:{\"musicId\":\"track-123\"}",
+      "expected": {
+        "id": "123",
+        "transNames": [],
+        "artists": [],
+        "album": {
+          "id": "",
+          "name": "",
+          "picId": "",
+          "picUrl": ""
+        },
+        "mvId": "",
+        "realSuffix": "mp3",
+        "commentThreadId": "",
+        "privilege": {}
+      }
+    },
+    {
+      "input": "music:{\"musicId\":123,\"fee\":null,\"flag\":null}",
+      "expected": {
+        "id": "123",
+        "transNames": [],
+        "artists": [],
+        "album": {
+          "id": "",
+          "name": "",
+          "picId": "",
+          "picUrl": ""
+        },
+        "mvId": "",
+        "realSuffix": "mp3",
+        "commentThreadId": ""
+      }
+    },
+    {
+      "input": "music:{\"musicId\":123,\"albumId\":0,\"album\":null,\"albumPicDocId\":0,\"mvId\":0,\"transNames\":null}",
+      "expected": {
+        "id": "123",
+        "transNames": [],
+        "artists": [],
+        "album": {
+          "id": "",
+          "name": "",
+          "picId": "",
+          "picUrl": ""
+        },
+        "mvId": "",
+        "realSuffix": "mp3",
+        "commentThreadId": "",
+        "privilege": {}
+      }
+    },
+    {
+      "input": "dj:{\"programId\":\"10\",\"programName\":\"节目\",\"djId\":42,\"djName\":\"主播\",\"radioId\":7,\"radioName\":\"播客\",\"mainMusic\":{\"musicId\":123,\"musicName\":\"音频\",\"duration\":1000}}",
+      "expected": {
+        "id": "123",
+        "name": "音频",
+        "transNames": [],
+        "artists": [
+          {
+            "name": "主播",
+            "userId": "42",
+            "id": "42"
+          }
+        ],
+        "album": {
+          "id": "",
+          "name": "播客",
+          "picId": "",
+          "picUrl": ""
+        },
+        "duration": 1000,
+        "mvId": "",
+        "realSuffix": "mp3",
+        "commentThreadId": "",
+        "voice": {
+          "id": "10",
+          "name": "节目",
+          "creator": {
+            "userId": 42,
+            "nickname": "主播"
+          },
+          "mainTrackId": "123",
+          "description": "",
+          "duration": 1000,
+          "audio": {
+            "id": "7",
+            "name": "播客",
+            "desc": "",
+            "category": ""
+          }
+        },
+        "voiceId": "10",
+        "volumeDelta": 0,
+        "privilege": {}
+      }
+    }
+  ]
+}

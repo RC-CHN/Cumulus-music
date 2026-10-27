@@ -1,0 +1,40 @@
+{
+  "dll": "references/netease-3.1.42.205594-x64-unpacked/redist_packages/neaudioeffects.dll",
+  "dll_sha256": "c59105e1072d7d7dbd2d2844ac9c170de7e7b41eb463dc56a11c9b37bafac6be",
+  "synthetic_only": true,
+  "response_data_overridden": true,
+  "official_code_unchanged": true,
+  "responses_sha256": "0db5a8f5857e3d2ce7a38929f6b84a7d1cc91e06ff3d9298766db707b3bb85ce",
+  "vectors": 194,
+  "native_calls": 194,
+  "modes": {
+    "internal": 51,
+    "kernel": 82,
+    "sidechain": 51,
+    "stage": 10
+  },
+  "fixture": "core/tests/fixtures/effects-spatial-official.json.gz",
+  "fixture_sha256": "e262e4a2484eee9d109b1426f2c1cc43ef43e2dd28fce88ab2f3d33d02c25d44",
+  "sources": [
+    {
+      "path": "references/recovered-client/scripts/netease_native_rotate_oracle.c",
+      "sha256": "45eecade4ba34b3abe34b9e1cbe71d25bce6be0508da0b82b272d64e63abe2ae"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_native_multiband_oracle.c",
+      "sha256": "c3b71775ea15a9b06eb74aa15f489c4247f8f021ab9731d90d9944314a2664d5"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_rotate.c",
+      "sha256": "b4f409b05085893f0a96f4eeb98c83340e275affea7bc061a58c4f36e1753acf"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_multiband.c",
+      "sha256": "6f547666c8b99f3ec181feaff49f4356455e1facf9ed1286f11f31dad1091f79"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_spatial_rust_vectors.py",
+      "sha256": "78031df3e5e8e8918db187f7596f91cd652828fe30cece1a136bb766b7675db4"
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "description": "Synthetic parameter containers for Rust service tests, not new cipher evidence.\n\nThe archived encoder arithmetic has its independent official-machine-code\nvectors in ncae-official.json. No Python is used by the Rust service at runtime.\n",
+  "sources": [
+    {
+      "path": "references/recovered-client/scripts/netease_effect_service_fixtures.py",
+      "sha256": "371f858ef7b3e6e175fd7cb3d82dd6bbc4254a52f0d1a29924aa032d7976ea6c"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_ncae.py",
+      "sha256": "6f54a55a0d8dc8926fb967d69ef1b0571d3a8fcb5285e09f38ff205b7024db1c"
+    }
+  ],
+  "cases": [
+    {
+      "name": "first",
+      "encoded_hex": "4e4341453300000000000000010001000d101a0d17630b06170a0028061a0095cb0ed323632f904f97dca4ff0abd9d0096a3a2e9583303d9dceea82853952430e6fa7ba6f92e5da028f521fefcb116f4c9",
+      "parameters": {
+        "aev2": {
+          "peq": {
+            "on": true,
+            "f": []
+          }
+        },
+        "marker": "first"
+      },
+      "plain_sha256": "e3e0b960aae76b1d831690638625ed550265b9bf816dcec4e4dcbd5d45dd0615"
+    },
+    {
+      "name": "replacement",
+      "encoded_hex": "4e4341452e00000000000000010001000d101a0d17630b06170a0028061a0095cb0ed323632f904f97dca4ff0abd9d0096ef6e7534a0fc05acf2c010a3f9b73f152574baf9a2ee8f4bd60dbb",
+      "parameters": {
+        "aev2": {
+          "peq": {
+            "on": false
+          }
+        },
+        "marker": "second"
+      },
+      "plain_sha256": "2d68f54fc04125ff58e8e30f1ae573b94228d66f422cb9af6a880d6089914bbf"
+    },
+    {
+      "name": "array",
+      "encoded_hex": "4e4341450900000000000000010001000d101a0d17630b06170a0028061a20f555732c21bf983a",
+      "parameters": [
+        1,
+        2,
+        3
+      ],
+      "plain_sha256": "a615eeaee21de5179de080de8c3052c8da901138406ba71c38c032845f7d54f4"
+    }
+  ]
+}

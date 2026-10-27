@@ -1,0 +1,1581 @@
+{
+  "source": "references/recovered-client/cumulus_core/api.py",
+  "source_sha256": "571c2100750fd5324fcd35437ed20242d8715d74f0dd75d97cf9edcfff24efd9",
+  "cases": [
+    {
+      "method": "account",
+      "args": [],
+      "kwargs": {},
+      "responses": [
+        {
+          "code": 200,
+          "profile": {
+            "userId": 101
+          }
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/w/nuser/account/get",
+          "payload": {},
+          "cache": false
+        }
+      ],
+      "output": {
+        "userId": 101
+      }
+    },
+    {
+      "method": "membership",
+      "args": [],
+      "kwargs": {},
+      "responses": [
+        {
+          "code": 200,
+          "data": {
+            "redplus": {
+              "expireTime": 123
+            }
+          }
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/music-vip-membership/client/vip/info",
+          "payload": {},
+          "cache": false
+        }
+      ],
+      "output": {
+        "redplus": {
+          "expireTime": 123
+        }
+      }
+    },
+    {
+      "method": "membership",
+      "args": [
+        101
+      ],
+      "kwargs": {},
+      "responses": [
+        {
+          "code": 200,
+          "data": {}
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/music-vip-membership/client/vip/info",
+          "payload": {
+            "userId": "101"
+          },
+          "cache": false
+        }
+      ],
+      "output": {}
+    },
+    {
+      "method": "pages",
+      "args": [
+        "/api/test",
+        {
+          "query": "synthetic"
+        },
+        "data"
+      ],
+      "kwargs": {
+        "limit": 2
+      },
+      "responses": [
+        {
+          "code": 200,
+          "data": [
+            1,
+            2
+          ],
+          "hasMore": true
+        },
+        {
+          "code": 200,
+          "data": [
+            3
+          ],
+          "hasMore": false
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/test",
+          "payload": {
+            "query": "synthetic",
+            "limit": 2,
+            "offset": 0
+          },
+          "cache": false
+        },
+        {
+          "path": "/api/test",
+          "payload": {
+            "query": "synthetic",
+            "limit": 2,
+            "offset": 2
+          },
+          "cache": false
+        }
+      ],
+      "output": [
+        [
+          1,
+          2
+        ],
+        [
+          3
+        ]
+      ]
+    },
+    {
+      "method": "playlists",
+      "args": [
+        101
+      ],
+      "kwargs": {},
+      "responses": [
+        {
+          "code": 200,
+          "playlist": [
+            {
+              "id": 1
+            }
+          ],
+          "more": false
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/user/playlist",
+          "payload": {
+            "uid": "101",
+            "includeVideo": true,
+            "limit": 200,
+            "offset": 0
+          },
+          "cache": false
+        }
+      ],
+      "output": [
+        {
+          "id": 1
+        }
+      ]
+    },
+    {
+      "method": "playlist",
+      "args": [
+        1
+      ],
+      "kwargs": {},
+      "responses": [
+        {
+          "code": 200,
+          "playlist": {
+            "id": 1,
+            "trackIds": [
+              {
+                "id": 2
+              }
+            ]
+          }
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/v6/playlist/detail",
+          "payload": {
+            "id": "1",
+            "n": 100000,
+            "s": 0
+          },
+          "cache": false
+        }
+      ],
+      "output": {
+        "id": 1,
+        "trackIds": [
+          {
+            "id": 2
+          }
+        ]
+      }
+    },
+    {
+      "method": "songs",
+      "args": [
+        [
+          1,
+          2,
+          1,
+          3
+        ],
+        2
+      ],
+      "kwargs": {},
+      "responses": [
+        {
+          "code": 200,
+          "songs": [
+            {
+              "id": 2
+            },
+            {
+              "id": 1
+            }
+          ],
+          "privileges": [
+            {
+              "id": 1,
+              "pl": 128000
+            }
+          ]
+        },
+        {
+          "code": 200,
+          "songs": []
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/v3/song/detail",
+          "payload": {
+            "c": "[{\"id\":\"1\",\"v\":0},{\"id\":\"2\",\"v\":0}]"
+          },
+          "cache": false
+        },
+        {
+          "path": "/api/v3/song/detail",
+          "payload": {
+            "c": "[{\"id\":\"3\",\"v\":0}]"
+          },
+          "cache": false
+        }
+      ],
+      "output": {
+        "songs": [
+          {
+            "id": 1
+          },
+          {
+            "id": 2
+          },
+          {
+            "id": 1
+          },
+          null
+        ],
+        "privileges": {
+          "1": {
+            "id": 1,
+            "pl": 128000
+          }
+        },
+        "missing": [
+          "3"
+        ]
+      }
+    },
+    {
+      "method": "playlist_tracks",
+      "args": [
+        1
+      ],
+      "kwargs": {},
+      "responses": [
+        {
+          "code": 200,
+          "playlist": {
+            "id": 1,
+            "trackIds": [
+              {
+                "id": 2
+              },
+              {
+                "id": 9,
+                "v": -1
+              },
+              {
+                "id": 2
+              }
+            ]
+          }
+        },
+        {
+          "code": 200,
+          "songs": [
+            {
+              "id": 2
+            }
+          ]
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/v6/playlist/detail",
+          "payload": {
+            "id": "1",
+            "n": 100000,
+            "s": 0
+          },
+          "cache": false
+        },
+        {
+          "path": "/api/v3/song/detail",
+          "payload": {
+            "c": "[{\"id\":\"2\",\"v\":0}]"
+          },
+          "cache": false
+        }
+      ],
+      "output": {
+        "songs": [
+          {
+            "id": 2
+          },
+          {
+            "id": 2
+          }
+        ],
+        "privileges": {},
+        "missing": [],
+        "playlist": {
+          "id": 1,
+          "trackIds": [
+            {
+              "id": 2
+            },
+            {
+              "id": 9,
+              "v": -1
+            },
+            {
+              "id": 2
+            }
+          ]
+        },
+        "local_tracks": [
+          {
+            "id": 9,
+            "v": -1
+          }
+        ]
+      }
+    },
+    {
+      "method": "create_playlist",
+      "args": [
+        101,
+        " 合成测试 "
+      ],
+      "kwargs": {},
+      "responses": [
+        {
+          "code": 200,
+          "id": 7
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/playlist/create",
+          "payload": {
+            "uid": "101",
+            "name": "合成测试",
+            "privacy": 10
+          },
+          "cache": false
+        }
+      ],
+      "output": "7"
+    },
+    {
+      "method": "create_playlist",
+      "args": [
+        101,
+        "合成公开"
+      ],
+      "kwargs": {
+        "private": false
+      },
+      "responses": [
+        {
+          "code": 200,
+          "playlist": {
+            "id": 8
+          }
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/playlist/create",
+          "payload": {
+            "uid": "101",
+            "name": "合成公开",
+            "privacy": 0
+          },
+          "cache": false
+        }
+      ],
+      "output": "8"
+    },
+    {
+      "method": "rename_playlist",
+      "args": [
+        7,
+        " 测试🎵 "
+      ],
+      "kwargs": {},
+      "responses": [
+        {
+          "code": 200
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/playlist/update/name",
+          "payload": {
+            "id": "7",
+            "name": "测试🎵"
+          },
+          "cache": false
+        }
+      ],
+      "output": {
+        "code": 200
+      }
+    },
+    {
+      "method": "describe_playlist",
+      "args": [
+        7,
+        "保留换行\n描述"
+      ],
+      "kwargs": {},
+      "responses": [
+        {
+          "code": 200
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/playlist/desc/update",
+          "payload": {
+            "id": "7",
+            "desc": "保留换行\n描述"
+          },
+          "cache": false
+        }
+      ],
+      "output": {
+        "code": 200
+      }
+    },
+    {
+      "method": "update_playlist_metadata",
+      "args": [
+        7
+      ],
+      "kwargs": {
+        "name": "测试",
+        "tags": [
+          "华语",
+          "流行"
+        ],
+        "description": "描述"
+      },
+      "responses": [
+        {
+          "code": 200,
+          "/api/playlist/update/name": {
+            "code": 200
+          },
+          "/api/playlist/tags/update": {
+            "code": 200
+          },
+          "/api/playlist/desc/update": {
+            "code": 200
+          }
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/batch",
+          "payload": {
+            "/api/playlist/update/name": "{\"id\":\"7\",\"name\":\"测试\"}",
+            "/api/playlist/tags/update": "{\"id\":\"7\",\"tags\":\"华语;流行\"}",
+            "/api/playlist/desc/update": "{\"id\":\"7\",\"desc\":\"描述\"}"
+          },
+          "cache": false
+        }
+      ],
+      "output": {
+        "code": 200,
+        "/api/playlist/update/name": {
+          "code": 200
+        },
+        "/api/playlist/tags/update": {
+          "code": 200
+        },
+        "/api/playlist/desc/update": {
+          "code": 200
+        }
+      }
+    },
+    {
+      "method": "change_tracks",
+      "args": [
+        7,
+        [
+          2,
+          "3",
+          2
+        ],
+        "add"
+      ],
+      "kwargs": {},
+      "responses": [
+        {
+          "code": 200
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/v1/playlist/manipulate/tracks",
+          "payload": {
+            "pid": "7",
+            "trackIds": "[\"2\",\"3\",\"2\"]",
+            "op": "add",
+            "imme": true
+          },
+          "cache": false
+        }
+      ],
+      "output": {
+        "code": 200
+      }
+    },
+    {
+      "method": "change_tracks",
+      "args": [
+        7,
+        [
+          2,
+          "3",
+          2
+        ],
+        "del"
+      ],
+      "kwargs": {},
+      "responses": [
+        {
+          "code": 200
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/v1/playlist/manipulate/tracks",
+          "payload": {
+            "pid": "7",
+            "trackIds": "[\"2\",\"3\",\"2\"]",
+            "op": "del",
+            "imme": true
+          },
+          "cache": false
+        }
+      ],
+      "output": {
+        "code": 200
+      }
+    },
+    {
+      "method": "change_tracks",
+      "args": [
+        7,
+        [
+          2,
+          "3",
+          2
+        ],
+        "update"
+      ],
+      "kwargs": {},
+      "responses": [
+        {
+          "code": 200
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/v1/playlist/manipulate/tracks",
+          "payload": {
+            "pid": "7",
+            "trackIds": "[\"2\",\"3\",\"2\"]",
+            "op": "update"
+          },
+          "cache": false
+        }
+      ],
+      "output": {
+        "code": 200
+      }
+    },
+    {
+      "method": "delete_playlist",
+      "args": [
+        7
+      ],
+      "kwargs": {},
+      "responses": [
+        {
+          "code": 200
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/playlist/delete",
+          "payload": {
+            "pid": "7"
+          },
+          "cache": false
+        }
+      ],
+      "output": {
+        "code": 200
+      }
+    },
+    {
+      "method": "liked_ids",
+      "args": [
+        101
+      ],
+      "kwargs": {},
+      "responses": [
+        {
+          "code": 200,
+          "ids": [
+            2,
+            "003"
+          ]
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/song/like/get",
+          "payload": {
+            "uid": "101"
+          },
+          "cache": false
+        }
+      ],
+      "output": [
+        "2",
+        "003"
+      ]
+    },
+    {
+      "method": "set_like",
+      "args": [
+        101,
+        2,
+        true
+      ],
+      "kwargs": {
+        "song_rq_refer": "search",
+        "rq_refer": "fixture",
+        "alg": "x"
+      },
+      "responses": [
+        {
+          "code": 502
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/song/like",
+          "payload": {
+            "trackId": "2",
+            "userid": "101",
+            "like": true,
+            "songRqRefer": "search",
+            "rqRefer": "fixture",
+            "alg": "x"
+          },
+          "cache": false
+        }
+      ],
+      "output": {
+        "code": 502
+      }
+    },
+    {
+      "method": "set_like",
+      "args": [
+        101,
+        2,
+        false
+      ],
+      "kwargs": {},
+      "responses": [
+        {
+          "code": 200
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/song/like",
+          "payload": {
+            "trackId": "2",
+            "userid": "101",
+            "like": false
+          },
+          "cache": false
+        }
+      ],
+      "output": {
+        "code": 200
+      }
+    },
+    {
+      "method": "collected_albums",
+      "args": [],
+      "kwargs": {},
+      "responses": [
+        {
+          "code": 200,
+          "data": [
+            {
+              "id": 4
+            }
+          ],
+          "more": false
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/album/sublist",
+          "payload": {
+            "total": true,
+            "limit": 200,
+            "offset": 0
+          },
+          "cache": false
+        }
+      ],
+      "output": [
+        {
+          "id": 4
+        }
+      ]
+    },
+    {
+      "method": "collected_artists",
+      "args": [],
+      "kwargs": {},
+      "responses": [
+        {
+          "code": 200,
+          "data": [],
+          "more": false
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/artist/sublist",
+          "payload": {
+            "limit": 200,
+            "offset": 0
+          },
+          "cache": false
+        }
+      ],
+      "output": []
+    },
+    {
+      "method": "collect_album",
+      "args": [
+        4,
+        true
+      ],
+      "kwargs": {},
+      "responses": [
+        {
+          "code": 200
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/album/sub",
+          "payload": {
+            "id": "4"
+          },
+          "cache": false
+        }
+      ],
+      "output": {
+        "code": 200
+      }
+    },
+    {
+      "method": "collect_artist",
+      "args": [
+        5,
+        true
+      ],
+      "kwargs": {},
+      "responses": [
+        {
+          "code": 201
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/artist/sub",
+          "payload": {
+            "artistId": "5"
+          },
+          "cache": false
+        }
+      ],
+      "output": {
+        "code": 201
+      }
+    },
+    {
+      "method": "collect_album",
+      "args": [
+        4,
+        false
+      ],
+      "kwargs": {},
+      "responses": [
+        {
+          "code": 200
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/album/unsub",
+          "payload": {
+            "id": "4"
+          },
+          "cache": false
+        }
+      ],
+      "output": {
+        "code": 200
+      }
+    },
+    {
+      "method": "collect_artist",
+      "args": [
+        5,
+        false
+      ],
+      "kwargs": {},
+      "responses": [
+        {
+          "code": 200
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/artist/unsub",
+          "payload": {
+            "artistIds": "[5]"
+          },
+          "cache": false
+        }
+      ],
+      "output": {
+        "code": 200
+      }
+    },
+    {
+      "method": "account_settings",
+      "args": [],
+      "kwargs": {},
+      "responses": [
+        {
+          "code": 200,
+          "setting": {
+            "shareSetting": 1,
+            "allowLikedNotify": false
+          }
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/user/setting",
+          "payload": {},
+          "cache": false
+        }
+      ],
+      "output": {
+        "shareSetting": 1,
+        "allowLikedNotify": false
+      }
+    },
+    {
+      "method": "update_account_settings",
+      "args": [
+        {
+          "shareSetting": 0,
+          "allowLikedNotify": true
+        }
+      ],
+      "kwargs": {},
+      "responses": [
+        {
+          "code": 200
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/user/setting/update",
+          "payload": {
+            "shareSetting": 0,
+            "allowLikedNotify": true
+          },
+          "cache": false
+        }
+      ],
+      "output": {
+        "code": 200
+      }
+    },
+    {
+      "method": "search",
+      "args": [
+        "  音乐 "
+      ],
+      "kwargs": {
+        "kind": 100,
+        "limit": 10,
+        "offset": 20
+      },
+      "responses": [
+        {
+          "code": 200
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/cloudsearch/pc",
+          "payload": {
+            "s": "  音乐 ",
+            "type": 100,
+            "limit": 10,
+            "offset": 20,
+            "total": true
+          },
+          "cache": false
+        }
+      ],
+      "output": {
+        "code": 200
+      }
+    },
+    {
+      "method": "daily",
+      "args": [],
+      "kwargs": {},
+      "responses": [
+        {
+          "code": 200
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/v3/discovery/recommend/songs",
+          "payload": {
+            "limit": 30
+          },
+          "cache": false
+        }
+      ],
+      "output": {
+        "code": 200
+      }
+    },
+    {
+      "method": "album",
+      "args": [
+        4
+      ],
+      "kwargs": {},
+      "responses": [
+        {
+          "code": 200
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/album/v3/detail",
+          "payload": {
+            "id": "4"
+          },
+          "cache": true
+        }
+      ],
+      "output": {
+        "code": 200
+      }
+    },
+    {
+      "method": "artist",
+      "args": [
+        5
+      ],
+      "kwargs": {},
+      "responses": [
+        {
+          "code": 200,
+          "artist": {
+            "id": 5
+          },
+          "hotSongs": []
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/artist/v3/detail",
+          "payload": {
+            "id": "5",
+            "top": 50,
+            "e_r": false
+          },
+          "cache": true
+        }
+      ],
+      "output": {
+        "code": 200,
+        "artist": {
+          "id": 5
+        },
+        "hotSongs": []
+      }
+    },
+    {
+      "method": "lyric",
+      "args": [
+        2
+      ],
+      "kwargs": {},
+      "responses": [
+        {
+          "code": 200
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/song/lyric/v1",
+          "payload": {
+            "id": "2",
+            "cp": false,
+            "tv": -1,
+            "lv": -1,
+            "rv": -1,
+            "kv": -1,
+            "yv": -1,
+            "ytyv": -1,
+            "ytlv": -1,
+            "ytrv": -1
+          },
+          "cache": false
+        }
+      ],
+      "output": {
+        "code": 200
+      }
+    },
+    {
+      "method": "play_url",
+      "args": [
+        2
+      ],
+      "kwargs": {
+        "level": "lossless",
+        "encode_type": "flac",
+        "trial_mode": 42
+      },
+      "responses": [
+        {
+          "code": 200,
+          "data": [
+            {
+              "id": 3
+            },
+            {
+              "id": 2,
+              "url": "https://synthetic.invalid/audio",
+              "level": "standard"
+            }
+          ]
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/song/enhance/player/url/v1",
+          "payload": {
+            "ids": "[\"2\"]",
+            "level": "lossless",
+            "encodeType": "flac",
+            "immerseType": "c51",
+            "trialMode": 42
+          },
+          "cache": false
+        }
+      ],
+      "output": {
+        "id": 2,
+        "url": "https://synthetic.invalid/audio",
+        "level": "standard"
+      }
+    },
+    {
+      "method": "download_url",
+      "args": [
+        2
+      ],
+      "kwargs": {
+        "level": "lossless"
+      },
+      "responses": [
+        {
+          "code": 200,
+          "data": {
+            "id": 2,
+            "url": null
+          }
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/song/enhance/download/url/v1",
+          "payload": {
+            "id": "2",
+            "level": "lossless",
+            "immerseType": "c51"
+          },
+          "cache": false
+        }
+      ],
+      "output": {
+        "id": 2,
+        "url": null
+      }
+    },
+    {
+      "method": "cloud",
+      "args": [],
+      "kwargs": {},
+      "responses": [
+        {
+          "code": 200,
+          "data": [
+            {
+              "songId": 6
+            }
+          ],
+          "hasMore": false
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/v1/cloud/get",
+          "payload": {
+            "limit": 200,
+            "offset": 0
+          },
+          "cache": false
+        }
+      ],
+      "output": [
+        {
+          "songId": 6
+        }
+      ]
+    },
+    {
+      "method": "cloud_check",
+      "args": [],
+      "kwargs": {
+        "md5": "ABABABABABABABABABABABABABABABAB",
+        "length": 123,
+        "file_name": "测试.flac",
+        "check_mute": true
+      },
+      "responses": [
+        {
+          "code": 200,
+          "needUpload": true,
+          "songId": "opaque-ticket"
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/cloud/upload/check",
+          "payload": {
+            "md5": "abababababababababababababababab",
+            "length": 123,
+            "fileName": "测试.flac",
+            "checkMute": true
+          },
+          "cache": false
+        }
+      ],
+      "output": {
+        "code": 200,
+        "needUpload": true,
+        "songId": "opaque-ticket"
+      }
+    },
+    {
+      "method": "cloud_allocate",
+      "args": [
+        "测试.flac",
+        "ABABABABABABABABABABABABABABABAB"
+      ],
+      "kwargs": {},
+      "responses": [
+        {
+          "code": 200,
+          "data": {
+            "key": "object",
+            "bucket": "synthetic-bucket"
+          }
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/whale/token/alloc",
+          "payload": {
+            "filename": "测试.flac",
+            "type": "audio",
+            "bucket": "jd-musicrep-privatecloud-audio-public",
+            "bizKey": "9af6516d",
+            "md5": "abababababababababababababababab",
+            "channel": 3
+          },
+          "cache": false
+        }
+      ],
+      "output": {
+        "key": "object",
+        "bucket": "synthetic-bucket",
+        "objectKey": "object"
+      }
+    },
+    {
+      "method": "nos_refresh",
+      "args": [
+        "synthetic-bucket",
+        "object"
+      ],
+      "kwargs": {},
+      "responses": [
+        {
+          "code": 200,
+          "result": {
+            "token": "synthetic-token"
+          }
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/nos/token/refresh",
+          "payload": {
+            "object_key": "object",
+            "bucket": "synthetic-bucket"
+          },
+          "cache": false
+        }
+      ],
+      "output": "synthetic-token"
+    },
+    {
+      "method": "nos_allocate_attachment",
+      "args": [
+        "cover.PNG"
+      ],
+      "kwargs": {
+        "kind": "cover"
+      },
+      "responses": [
+        {
+          "code": 200,
+          "data": {
+            "bucket": "synthetic",
+            "objectKey": "object",
+            "token": "synthetic-token",
+            "docId": 123
+          }
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/nos/token/alloc",
+          "payload": {
+            "filename": "cover.PNG",
+            "ext": "png",
+            "type": "image"
+          },
+          "cache": false
+        }
+      ],
+      "output": {
+        "bucket": "synthetic",
+        "objectKey": "object",
+        "token": "synthetic-token",
+        "docId": 123,
+        "channel": 1,
+        "resourceId": "123"
+      }
+    },
+    {
+      "method": "nos_allocate_attachment",
+      "args": [
+        "words.lrc"
+      ],
+      "kwargs": {
+        "kind": "lyric"
+      },
+      "responses": [
+        {
+          "code": 200,
+          "data": {
+            "bucket": "synthetic",
+            "objectKey": "object",
+            "token": "synthetic-token",
+            "docId": 123
+          }
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/nos/token/alloc",
+          "payload": {
+            "filename": "words.lrc",
+            "ext": "lrc",
+            "type": "other"
+          },
+          "cache": false
+        }
+      ],
+      "output": {
+        "bucket": "synthetic",
+        "objectKey": "object",
+        "token": "synthetic-token",
+        "docId": 123,
+        "channel": 1,
+        "resourceId": "123"
+      }
+    },
+    {
+      "method": "nos_allocate_attachment",
+      "args": [
+        "album.cue"
+      ],
+      "kwargs": {
+        "kind": "cue"
+      },
+      "responses": [
+        {
+          "code": 200,
+          "data": {
+            "bucket": "synthetic",
+            "objectKey": "object",
+            "token": "synthetic-token",
+            "docId": 123
+          }
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/nos/token/alloc",
+          "payload": {
+            "filename": "album.cue",
+            "ext": "cue",
+            "type": "other"
+          },
+          "cache": false
+        }
+      ],
+      "output": {
+        "bucket": "synthetic",
+        "objectKey": "object",
+        "token": "synthetic-token",
+        "docId": 123,
+        "channel": 1,
+        "resourceId": "123"
+      }
+    },
+    {
+      "method": "cloud_metadata",
+      "args": [
+        {
+          "status": "uploaded",
+          "song_id": "opaque-ticket",
+          "md5": "abababababababababababababababab",
+          "source": "/synthetic/测试.flac",
+          "resource_id": "r",
+          "bucket": "synthetic-bucket",
+          "object_key": "object"
+        }
+      ],
+      "kwargs": {
+        "song": "歌",
+        "artist": "歌手",
+        "album": "专辑",
+        "bitrate": 123000,
+        "attachments": {
+          "cover": {
+            "status": "uploaded",
+            "resource_id": 9
+          },
+          "lyric": {
+            "status": "uploaded",
+            "resource_id": "10"
+          }
+        }
+      },
+      "responses": [
+        {
+          "code": 200
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/upload/cloud/info/v2",
+          "payload": {
+            "md5": "abababababababababababababababab",
+            "songid": "opaque-ticket",
+            "filename": "测试.flac",
+            "bitrate": 123000,
+            "resourceId": "r",
+            "objectKey": "synthetic-bucket/object",
+            "song": "歌",
+            "artist": "歌手",
+            "album": "专辑",
+            "coverid": "9",
+            "lyricid": "10",
+            "lyrictype": "lrc"
+          },
+          "cache": false
+        }
+      ],
+      "output": {
+        "code": 200
+      }
+    },
+    {
+      "method": "delete_cloud",
+      "args": [
+        [
+          6,
+          7
+        ]
+      ],
+      "kwargs": {},
+      "responses": [
+        {
+          "code": 200
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/cloud/del",
+          "payload": {
+            "songIds": "[\"6\",\"7\"]"
+          },
+          "cache": false
+        }
+      ],
+      "output": {
+        "code": 200
+      }
+    },
+    {
+      "method": "publish_cloud",
+      "args": [
+        6
+      ],
+      "kwargs": {},
+      "responses": [
+        {
+          "code": 201
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/cloud/pub/v2",
+          "payload": {
+            "songid": "6"
+          },
+          "cache": false
+        }
+      ],
+      "output": {
+        "code": 201
+      }
+    },
+    {
+      "method": "cloud_status",
+      "args": [
+        [
+          6,
+          7
+        ]
+      ],
+      "kwargs": {},
+      "responses": [
+        {
+          "code": 200
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/v1/cloud/music/status",
+          "payload": {
+            "songIds": "[\"6\",\"7\"]"
+          },
+          "cache": false
+        }
+      ],
+      "output": {
+        "code": 200
+      }
+    },
+    {
+      "method": "cloud_download",
+      "args": [
+        6
+      ],
+      "kwargs": {},
+      "responses": [
+        {
+          "code": 200
+        }
+      ],
+      "calls": [
+        {
+          "path": "/api/cloud/dowonload",
+          "payload": {
+            "songId": "6"
+          },
+          "cache": false
+        }
+      ],
+      "output": {
+        "code": 200
+      }
+    }
+  ]
+}

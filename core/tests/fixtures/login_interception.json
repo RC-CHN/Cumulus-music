@@ -1,0 +1,1068 @@
+{
+  "sources": {
+    "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_vendors_app_subApp.chunk.1482700000000.js/1368.js": "49da1d26373042091a3123f8948f1ce7e9968ec185e57369156fc1c6a6700db3",
+    "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/34.js": "be1c80adb69ead9384f76efb00b1ac3bfc87ee801e4207fb1db159d74e5e976f",
+    "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/290.js": "73e775eae2e4b1da2e97b70b9415e2e101ba876ea1f6b877bd7cc054c7a4ea9b"
+  },
+  "scenarios": [
+    {
+      "name": "no_token",
+      "steps": [
+        {
+          "input": {
+            "tokens": {
+              "music_u": false,
+              "music_a": false
+            },
+            "configError": true
+          },
+          "expected": {
+            "kind": "skipped",
+            "value": "no_token"
+          },
+          "calls": []
+        }
+      ]
+    },
+    {
+      "name": "recursive",
+      "steps": [
+        {
+          "input": {
+            "url": "https://interface.music.163.com/eapi/middle/account/token/refresh",
+            "configError": true
+          },
+          "expected": {
+            "kind": "skipped",
+            "value": "refresh_endpoint"
+          },
+          "calls": []
+        }
+      ]
+    },
+    {
+      "name": "anonymous_whitelist",
+      "steps": [
+        {
+          "input": {
+            "tokens": {
+              "music_u": false,
+              "music_a": true
+            },
+            "config": {
+              "config": [
+                "https://music.163.com/api/test"
+              ]
+            }
+          },
+          "expected": {
+            "kind": "skipped",
+            "value": "anonymous_whitelist"
+          },
+          "calls": []
+        },
+        {
+          "input": {
+            "tokens": {
+              "music_u": true,
+              "music_a": true
+            },
+            "config": {
+              "config": [
+                "/eapi/test"
+              ]
+            }
+          },
+          "expected": {
+            "kind": "skipped",
+            "value": "anonymous_whitelist"
+          },
+          "calls": []
+        },
+        {
+          "input": {
+            "tokens": {
+              "music_u": true,
+              "music_a": false
+            },
+            "config": {
+              "config": [
+                "/api/test"
+              ]
+            },
+            "response": {
+              "code": 200,
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "valid"
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {
+                "fromAPI": "/api/test"
+              },
+              "method": "POST"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "daily_not_relevant_and_clock_backward",
+      "steps": [
+        {
+          "input": {
+            "now": 100000,
+            "response": {
+              "code": 200,
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "valid"
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {
+                "fromAPI": "/api/test"
+              },
+              "method": "POST"
+            }
+          ]
+        },
+        {
+          "input": {
+            "now": 104999
+          },
+          "expected": {
+            "kind": "skipped",
+            "value": "recent_valid"
+          },
+          "calls": []
+        },
+        {
+          "input": {
+            "now": 99999
+          },
+          "expected": {
+            "kind": "skipped",
+            "value": "recent_valid"
+          },
+          "calls": []
+        },
+        {
+          "input": {
+            "now": 105000,
+            "response": {
+              "code": 200,
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "valid"
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {
+                "fromAPI": "/api/test"
+              },
+              "method": "POST"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "valid_time_is_request_start",
+      "steps": [
+        {
+          "input": {
+            "now": 100000,
+            "finish": 106000,
+            "response": {
+              "code": 200,
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "valid"
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {
+                "fromAPI": "/api/test"
+              },
+              "method": "POST"
+            }
+          ]
+        },
+        {
+          "input": {
+            "now": 106000,
+            "response": {
+              "code": 200,
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "valid"
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {
+                "fromAPI": "/api/test"
+              },
+              "method": "POST"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "business_failure_threshold",
+      "steps": [
+        {
+          "input": {
+            "response": {
+              "code": 500
+            }
+          },
+          "expected": {
+            "kind": "failed",
+            "value": {
+              "count": 1
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {
+                "fromAPI": "/api/test"
+              },
+              "method": "POST"
+            }
+          ]
+        },
+        {
+          "input": {
+            "response": {
+              "code": 500
+            }
+          },
+          "expected": {
+            "kind": "failed",
+            "value": {
+              "count": 2
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {
+                "fromAPI": "/api/test"
+              },
+              "method": "POST"
+            }
+          ]
+        },
+        {
+          "input": {
+            "response": {
+              "code": 500
+            }
+          },
+          "expected": {
+            "kind": "notice",
+            "value": {
+              "kind": "expired",
+              "title": null,
+              "message": "登录状态已失效，请重新登录"
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {
+                "fromAPI": "/api/test"
+              },
+              "method": "POST"
+            }
+          ]
+        },
+        {
+          "input": {
+            "response": {
+              "code": 500
+            }
+          },
+          "expected": {
+            "kind": "failed",
+            "value": {
+              "count": 1
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {
+                "fromAPI": "/api/test"
+              },
+              "method": "POST"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "transport_alone_does_not_logout",
+      "steps": [
+        {
+          "input": {
+            "error": true
+          },
+          "expected": {
+            "kind": "failed",
+            "value": {
+              "count": 1
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {
+                "fromAPI": "/api/test"
+              },
+              "method": "POST"
+            }
+          ]
+        },
+        {
+          "input": {
+            "error": true
+          },
+          "expected": {
+            "kind": "failed",
+            "value": {
+              "count": 2
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {
+                "fromAPI": "/api/test"
+              },
+              "method": "POST"
+            }
+          ]
+        },
+        {
+          "input": {
+            "error": true
+          },
+          "expected": {
+            "kind": "failed",
+            "value": {
+              "count": 3
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {
+                "fromAPI": "/api/test"
+              },
+              "method": "POST"
+            }
+          ]
+        },
+        {
+          "input": {
+            "response": {
+              "code": 500
+            }
+          },
+          "expected": {
+            "kind": "notice",
+            "value": {
+              "kind": "expired",
+              "title": null,
+              "message": "登录状态已失效，请重新登录"
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {
+                "fromAPI": "/api/test"
+              },
+              "method": "POST"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "config_error_counts",
+      "steps": [
+        {
+          "input": {
+            "configError": true
+          },
+          "expected": {
+            "kind": "failed",
+            "value": {
+              "count": 1
+            }
+          },
+          "calls": []
+        },
+        {
+          "input": {
+            "config": {
+              "config": "bad"
+            }
+          },
+          "expected": {
+            "kind": "failed",
+            "value": {
+              "count": 2
+            }
+          },
+          "calls": []
+        },
+        {
+          "input": {
+            "response": {
+              "code": 500
+            }
+          },
+          "expected": {
+            "kind": "notice",
+            "value": {
+              "kind": "expired",
+              "title": null,
+              "message": "登录状态已失效，请重新登录"
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {
+                "fromAPI": "/api/test"
+              },
+              "method": "POST"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "success_resets_failure_counter",
+      "steps": [
+        {
+          "input": {
+            "response": {
+              "code": 500
+            }
+          },
+          "expected": {
+            "kind": "failed",
+            "value": {
+              "count": 1
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {
+                "fromAPI": "/api/test"
+              },
+              "method": "POST"
+            }
+          ]
+        },
+        {
+          "input": {
+            "response": {
+              "code": 500
+            }
+          },
+          "expected": {
+            "kind": "failed",
+            "value": {
+              "count": 2
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {
+                "fromAPI": "/api/test"
+              },
+              "method": "POST"
+            }
+          ]
+        },
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": 3
+              }
+            }
+          },
+          "expected": {
+            "kind": "ignored_action"
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {
+                "fromAPI": "/api/test"
+              },
+              "method": "POST"
+            }
+          ]
+        },
+        {
+          "input": {
+            "response": {
+              "code": 500
+            }
+          },
+          "expected": {
+            "kind": "failed",
+            "value": {
+              "count": 1
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {
+                "fromAPI": "/api/test"
+              },
+              "method": "POST"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "strict_action_types",
+      "steps": [
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": null
+              }
+            }
+          },
+          "expected": {
+            "kind": "ignored_action"
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {
+                "fromAPI": "/api/test"
+              },
+              "method": "POST"
+            }
+          ]
+        },
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": "2"
+              }
+            }
+          },
+          "expected": {
+            "kind": "ignored_action"
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {
+                "fromAPI": "/api/test"
+              },
+              "method": "POST"
+            }
+          ]
+        },
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": 3
+              }
+            }
+          },
+          "expected": {
+            "kind": "ignored_action"
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {
+                "fromAPI": "/api/test"
+              },
+              "method": "POST"
+            }
+          ]
+        },
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {}
+            }
+          },
+          "expected": {
+            "kind": "notice",
+            "value": {
+              "kind": "expired",
+              "title": null,
+              "message": "登录状态已失效，请重新登录"
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {
+                "fromAPI": "/api/test"
+              },
+              "method": "POST"
+            }
+          ]
+        },
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": 2,
+                "title": "重新登录",
+                "message": "请确认账号"
+              }
+            }
+          },
+          "expected": {
+            "kind": "notice",
+            "value": {
+              "kind": "reauthenticate",
+              "title": "重新登录",
+              "message": "请确认账号"
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {
+                "fromAPI": "/api/test"
+              },
+              "method": "POST"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "strict_response_code",
+      "steps": [
+        {
+          "input": {
+            "response": {
+              "code": "200",
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "failed",
+            "value": {
+              "count": 1
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {
+                "fromAPI": "/api/test"
+              },
+              "method": "POST"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ordinary_config_objects_are_empty",
+      "steps": [
+        {
+          "input": {
+            "config": {
+              "config": {}
+            },
+            "response": {
+              "code": 200,
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "valid"
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {
+                "fromAPI": "/api/test"
+              },
+              "method": "POST"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "malformed_whitelist_entry",
+      "steps": [
+        {
+          "input": {
+            "config": {
+              "config": [
+                1
+              ]
+            },
+            "response": {
+              "code": 200,
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "failed",
+            "value": {
+              "count": 1
+            }
+          },
+          "calls": []
+        }
+      ]
+    },
+    {
+      "name": "truthy_object_length_throws",
+      "steps": [
+        {
+          "input": {
+            "config": {
+              "config": {
+                "length": "1"
+              }
+            }
+          },
+          "expected": {
+            "kind": "failed",
+            "value": {
+              "count": 1
+            }
+          },
+          "calls": []
+        },
+        {
+          "input": {
+            "config": {
+              "config": {
+                "length": -1
+              }
+            }
+          },
+          "expected": {
+            "kind": "failed",
+            "value": {
+              "count": 2
+            }
+          },
+          "calls": []
+        },
+        {
+          "input": {
+            "response": {
+              "code": 500
+            }
+          },
+          "expected": {
+            "kind": "notice",
+            "value": {
+              "kind": "expired",
+              "title": null,
+              "message": "登录状态已失效，请重新登录"
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {
+                "fromAPI": "/api/test"
+              },
+              "method": "POST"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "gates": [
+    {
+      "inited": false,
+      "jsk": "",
+      "benefit": "",
+      "enabled": false
+    },
+    {
+      "inited": false,
+      "jsk": "",
+      "benefit": "t1",
+      "enabled": false
+    },
+    {
+      "inited": false,
+      "jsk": "",
+      "benefit": "c",
+      "enabled": false
+    },
+    {
+      "inited": false,
+      "jsk": "t1",
+      "benefit": "",
+      "enabled": false
+    },
+    {
+      "inited": false,
+      "jsk": "t1",
+      "benefit": "t1",
+      "enabled": false
+    },
+    {
+      "inited": false,
+      "jsk": "t1",
+      "benefit": "c",
+      "enabled": false
+    },
+    {
+      "inited": false,
+      "jsk": "c",
+      "benefit": "",
+      "enabled": false
+    },
+    {
+      "inited": false,
+      "jsk": "c",
+      "benefit": "t1",
+      "enabled": false
+    },
+    {
+      "inited": false,
+      "jsk": "c",
+      "benefit": "c",
+      "enabled": false
+    },
+    {
+      "inited": true,
+      "jsk": "",
+      "benefit": "",
+      "enabled": false
+    },
+    {
+      "inited": true,
+      "jsk": "",
+      "benefit": "t1",
+      "enabled": false
+    },
+    {
+      "inited": true,
+      "jsk": "",
+      "benefit": "c",
+      "enabled": false
+    },
+    {
+      "inited": true,
+      "jsk": "t1",
+      "benefit": "",
+      "enabled": false
+    },
+    {
+      "inited": true,
+      "jsk": "t1",
+      "benefit": "t1",
+      "enabled": true
+    },
+    {
+      "inited": true,
+      "jsk": "t1",
+      "benefit": "c",
+      "enabled": false
+    },
+    {
+      "inited": true,
+      "jsk": "c",
+      "benefit": "",
+      "enabled": false
+    },
+    {
+      "inited": true,
+      "jsk": "c",
+      "benefit": "t1",
+      "enabled": false
+    },
+    {
+      "inited": true,
+      "jsk": "c",
+      "benefit": "c",
+      "enabled": false
+    }
+  ],
+  "paths": [
+    {
+      "input": "/api/test",
+      "output": "/test"
+    },
+    {
+      "input": "https://host/eapi/test",
+      "output": "/test"
+    },
+    {
+      "input": "https://host/apix/test",
+      "output": "x/test"
+    },
+    {
+      "input": "prefix\n/api/test",
+      "output": "prefix\n/api/test"
+    },
+    {
+      "input": "prefix\r/api/test",
+      "output": "prefix\r/api/test"
+    },
+    {
+      "input": "prefix /api/test",
+      "output": "prefix /api/test"
+    },
+    {
+      "input": "prefix /api/test",
+      "output": "prefix /api/test"
+    },
+    {
+      "input": "prefix\t/api/test",
+      "output": "/test"
+    }
+  ],
+  "jskRequests": [
+    {
+      "path": "/api/login/token/refresh/v1",
+      "options": {
+        "expandSetCookies": true,
+        "query": {
+          "refreshToken": "synthetic",
+          "fromPage": "JSK"
+        },
+        "method": "POST",
+        "needsGuardianToken": true,
+        "tokenKey": "checkToken",
+        "header": {
+          "x-login-chain-id": ""
+        },
+        "data": {
+          "refreshToken": "synthetic",
+          "fromPage": "JSK"
+        }
+      }
+    },
+    {
+      "path": "/api/middle/account/token/refresh",
+      "options": {
+        "expandSetCookies": true,
+        "query": {
+          "fromAPI": "/api/test",
+          "fromPage": "JSK"
+        },
+        "method": "POST",
+        "needsGuardianToken": true,
+        "tokenKey": "checkToken",
+        "header": {
+          "x-login-chain-id": ""
+        },
+        "data": {
+          "fromAPI": "/api/test",
+          "fromPage": "JSK"
+        }
+      }
+    }
+  ],
+  "bridgeCases": [
+    {
+      "error": {
+        "name": "network",
+        "message": "fixture transport failure"
+      },
+      "body": {
+        "code": -1,
+        "message": "[object Object]"
+      },
+      "status": -1
+    },
+    {
+      "error": {
+        "name": "fetchStatusError",
+        "status": 401,
+        "body": {
+          "code": 301
+        }
+      },
+      "body": {
+        "code": 301
+      },
+      "status": 401
+    },
+    {
+      "error": {
+        "name": "responseError",
+        "body": {
+          "code": 500
+        }
+      },
+      "body": {
+        "code": 500
+      },
+      "status": 200
+    }
+  ]
+}

@@ -1,0 +1,230 @@
+[
+  {
+    "key": "$b",
+    "deferred": false,
+    "callback": false,
+    "category": null
+  },
+  {
+    "key": "zb",
+    "deferred": false,
+    "callback": false,
+    "category": null
+  },
+  {
+    "key": "Ta",
+    "deferred": false,
+    "callback": false,
+    "category": null
+  },
+  {
+    "key": "bb",
+    "deferred": false,
+    "callback": false,
+    "category": null
+  },
+  {
+    "key": "Vb",
+    "deferred": false,
+    "callback": false,
+    "category": null
+  },
+  {
+    "key": "Pb",
+    "deferred": false,
+    "callback": false,
+    "category": null
+  },
+  {
+    "key": "Cb",
+    "deferred": false,
+    "callback": false,
+    "category": null
+  },
+  {
+    "key": "tb",
+    "deferred": false,
+    "callback": false,
+    "category": null
+  },
+  {
+    "key": "Ea",
+    "deferred": false,
+    "callback": false,
+    "category": null
+  },
+  {
+    "key": "Fb",
+    "deferred": false,
+    "callback": false,
+    "category": null
+  },
+  {
+    "key": "Va",
+    "deferred": false,
+    "callback": false,
+    "category": null
+  },
+  {
+    "key": "Ib",
+    "deferred": false,
+    "callback": false,
+    "category": null
+  },
+  {
+    "key": "eb",
+    "deferred": false,
+    "callback": false,
+    "category": null
+  },
+  {
+    "key": "Jb",
+    "deferred": true,
+    "callback": false,
+    "category": null
+  },
+  {
+    "key": "Qa",
+    "deferred": true,
+    "callback": false,
+    "category": "canvas"
+  },
+  {
+    "key": "dc",
+    "deferred": true,
+    "callback": false,
+    "category": "webgl"
+  },
+  {
+    "key": "Da",
+    "deferred": true,
+    "callback": false,
+    "category": null
+  },
+  {
+    "key": "pb",
+    "deferred": false,
+    "callback": false,
+    "category": null
+  },
+  {
+    "key": "ob",
+    "deferred": false,
+    "callback": false,
+    "category": null
+  },
+  {
+    "key": "Yb",
+    "deferred": false,
+    "callback": false,
+    "category": null
+  },
+  {
+    "key": "Mb",
+    "deferred": false,
+    "callback": false,
+    "category": null
+  },
+  {
+    "key": "Ua",
+    "deferred": false,
+    "callback": false,
+    "category": null
+  },
+  {
+    "key": "xb",
+    "deferred": false,
+    "callback": false,
+    "category": null
+  },
+  {
+    "key": "Fa",
+    "deferred": false,
+    "callback": false,
+    "category": null
+  },
+  {
+    "key": "Ga",
+    "deferred": false,
+    "callback": false,
+    "category": null
+  },
+  {
+    "key": "Ha",
+    "deferred": false,
+    "callback": false,
+    "category": null
+  },
+  {
+    "key": "Ia",
+    "deferred": false,
+    "callback": false,
+    "category": null
+  },
+  {
+    "key": "Ab",
+    "deferred": false,
+    "callback": false,
+    "category": null
+  },
+  {
+    "key": "Sb",
+    "deferred": false,
+    "callback": false,
+    "category": null
+  },
+  {
+    "key": "ac",
+    "deferred": false,
+    "callback": false,
+    "category": null
+  },
+  {
+    "key": "Na",
+    "deferred": false,
+    "callback": false,
+    "category": null
+  },
+  {
+    "key": "Gb",
+    "deferred": false,
+    "callback": false,
+    "category": null
+  },
+  {
+    "key": "fb",
+    "deferred": false,
+    "callback": false,
+    "category": null
+  },
+  {
+    "key": "jb",
+    "deferred": true,
+    "callback": false,
+    "category": "fonts"
+  },
+  {
+    "key": "ib",
+    "deferred": true,
+    "callback": false,
+    "category": "fonts"
+  },
+  {
+    "key": "mb",
+    "deferred": false,
+    "callback": false,
+    "category": null
+  },
+  {
+    "key": "Nb",
+    "deferred": false,
+    "callback": false,
+    "category": null
+  },
+  {
+    "key": "La",
+    "deferred": true,
+    "callback": true,
+    "category": null
+  }
+]

@@ -1,0 +1,1000 @@
+{
+  "sources": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/21.js",
+      "sha256": "33d27af5a54c6a74641f192841637d2608d588d2d93091a9a61cb43948c93af7"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_41.chunk.1482700000000.js/334.js",
+      "sha256": "5a6c94d01dbe9ee288a86cd25404085896192267161bfddfe40ef36af0b754c0"
+    }
+  ],
+  "runtime": "v24.16.0",
+  "cases": [
+    {
+      "name": "detail",
+      "input": {
+        "id": "123",
+        "isMv": true,
+        "resource": {
+          "threadId": "R_MV_5_123",
+          "likedCount": 4,
+          "commentCount": 5,
+          "shareCount": 6,
+          "liked": true,
+          "subed": false,
+          "mp": {
+            "id": 123,
+            "fee": 0,
+            "mvFee": 0,
+            "payed": 0,
+            "pl": 1080,
+            "dl": 720,
+            "cp": 1
+          },
+          "data": {
+            "id": 123,
+            "name": "Title",
+            "desc": "Description",
+            "briefDesc": "Brief",
+            "publishTime": "2026-01-02",
+            "cover": "https://p.test.music.126.net/cover",
+            "duration": 296000,
+            "artistName": "Artist",
+            "artists": [
+              {
+                "id": 7,
+                "name": "Artist"
+              }
+            ],
+            "brs": [
+              {
+                "br": 1080,
+                "size": 35929772,
+                "point": 4
+              },
+              {
+                "br": 240,
+                "size": 19837028,
+                "point": 0
+              },
+              {
+                "br": 720,
+                "size": 49300580,
+                "point": 2
+              },
+              {
+                "br": 480,
+                "size": 31592720,
+                "point": 0
+              }
+            ],
+            "playCount": 12,
+            "subCount": 9,
+            "relateSong": []
+          }
+        }
+      },
+      "expected": {
+        "id": "123",
+        "title": "Title",
+        "description": "Description",
+        "brief_description": "Brief",
+        "cover_url": "https://p.test.music.126.net/cover",
+        "thread_id": "R_MV_5_123",
+        "duration_ms": 296000,
+        "artists": [
+          {
+            "id": "7",
+            "name": "Artist"
+          }
+        ],
+        "artist_name": "Artist",
+        "subscribed": false,
+        "liked": true,
+        "play_count": 12,
+        "like_count": 4,
+        "comment_count": 5,
+        "share_count": 6,
+        "sub_count": 9,
+        "privilege": {
+          "fee": 0,
+          "paid": 0,
+          "max_play_br": 1080,
+          "max_download_br": 720,
+          "comment_permission": 1
+        }
+      },
+      "download_options": [
+        {
+          "br": 240,
+          "size": 19837028,
+          "point": 0
+        },
+        {
+          "br": 480,
+          "size": 31592720,
+          "point": 0
+        },
+        {
+          "br": 720,
+          "size": 49300580,
+          "point": 2
+        }
+      ]
+    },
+    {
+      "name": "collection",
+      "input": {
+        "id": "123",
+        "isMv": true,
+        "resource": {
+          "threadId": "R_MV_5_123",
+          "likedCount": 4,
+          "commentCount": 5,
+          "shareCount": 6,
+          "liked": true,
+          "subed": false,
+          "mlogBaseData": {
+            "type": 3,
+            "text": "Collection title",
+            "desc": "Collection desc",
+            "coverUrl": "https://p.test.music.126.net/collection",
+            "threadId": "R_MV_5_123",
+            "duration": 300000,
+            "pubTime": 1767312000000
+          },
+          "mlogExtVO": {
+            "artists": [
+              {
+                "id": 8,
+                "name": "Other"
+              }
+            ],
+            "artistName": "Other",
+            "playCount": 24,
+            "likedCount": 11,
+            "commentCount": 12,
+            "shareCount": 13,
+            "subCount": 14,
+            "liked": false,
+            "subed": true
+          }
+        }
+      },
+      "expected": {
+        "id": "123",
+        "title": "Collection title",
+        "description": "Collection desc",
+        "brief_description": "",
+        "cover_url": "https://p.test.music.126.net/collection",
+        "thread_id": "R_MV_5_123",
+        "duration_ms": 300000,
+        "artists": [
+          {
+            "id": "8",
+            "name": "Other"
+          }
+        ],
+        "artist_name": "Other",
+        "subscribed": true,
+        "liked": false,
+        "play_count": 24,
+        "like_count": 11,
+        "comment_count": 12,
+        "share_count": 13,
+        "sub_count": 14,
+        "privilege": null
+      },
+      "download_options": []
+    },
+    {
+      "name": "base_and_extra_override",
+      "input": {
+        "id": "123",
+        "isMv": true,
+        "resource": {
+          "threadId": "R_MV_5_123",
+          "likedCount": 4,
+          "commentCount": 5,
+          "shareCount": 6,
+          "liked": true,
+          "subed": false,
+          "mp": {
+            "id": 123,
+            "fee": 0,
+            "mvFee": 0,
+            "payed": 0,
+            "pl": 1080,
+            "dl": 720,
+            "cp": 1
+          },
+          "data": {
+            "id": 123,
+            "name": "Title",
+            "desc": "Description",
+            "briefDesc": "Brief",
+            "publishTime": "2026-01-02",
+            "cover": "https://p.test.music.126.net/cover",
+            "duration": 296000,
+            "artistName": "Artist",
+            "artists": [
+              {
+                "id": 7,
+                "name": "Artist"
+              }
+            ],
+            "brs": [
+              {
+                "br": 1080,
+                "size": 35929772,
+                "point": 4
+              },
+              {
+                "br": 240,
+                "size": 19837028,
+                "point": 0
+              },
+              {
+                "br": 720,
+                "size": 49300580,
+                "point": 2
+              },
+              {
+                "br": 480,
+                "size": 31592720,
+                "point": 0
+              }
+            ],
+            "playCount": 12,
+            "subCount": 9,
+            "relateSong": []
+          },
+          "mlogBaseData": {
+            "type": 3,
+            "text": "Override",
+            "duration": 555
+          },
+          "mlogExtVO": {
+            "artists": [],
+            "liked": false,
+            "playCount": 19,
+            "subed": true
+          }
+        }
+      },
+      "expected": {
+        "id": "123",
+        "title": "Override",
+        "description": "Description",
+        "brief_description": "Brief",
+        "cover_url": "https://p.test.music.126.net/cover",
+        "thread_id": "R_MV_5_123",
+        "duration_ms": 555,
+        "artists": [],
+        "artist_name": "Artist",
+        "subscribed": true,
+        "liked": false,
+        "play_count": 19,
+        "like_count": 4,
+        "comment_count": 5,
+        "share_count": 6,
+        "sub_count": 9,
+        "privilege": {
+          "fee": 0,
+          "paid": 0,
+          "max_play_br": 1080,
+          "max_download_br": 720,
+          "comment_permission": 1
+        }
+      },
+      "download_options": [
+        {
+          "br": 240,
+          "size": 19837028,
+          "point": 0
+        },
+        {
+          "br": 480,
+          "size": 31592720,
+          "point": 0
+        },
+        {
+          "br": 720,
+          "size": 49300580,
+          "point": 2
+        }
+      ]
+    },
+    {
+      "name": "zero_and_empty_fallback",
+      "input": {
+        "id": "123",
+        "isMv": true,
+        "resource": {
+          "threadId": "R_MV_5_123",
+          "likedCount": 4,
+          "commentCount": 5,
+          "shareCount": 6,
+          "liked": true,
+          "subed": false,
+          "mp": {
+            "id": 123,
+            "fee": 0,
+            "mvFee": 0,
+            "payed": 0,
+            "pl": 1080,
+            "dl": 720,
+            "cp": 1
+          },
+          "data": {
+            "id": 123,
+            "name": "Title",
+            "desc": "Description",
+            "briefDesc": "Brief",
+            "publishTime": "2026-01-02",
+            "cover": "https://p.test.music.126.net/cover",
+            "duration": 296000,
+            "artistName": "Artist",
+            "artists": [
+              {
+                "id": 7,
+                "name": "Artist"
+              }
+            ],
+            "brs": [
+              {
+                "br": 1080,
+                "size": 35929772,
+                "point": 4
+              },
+              {
+                "br": 240,
+                "size": 19837028,
+                "point": 0
+              },
+              {
+                "br": 720,
+                "size": 49300580,
+                "point": 2
+              },
+              {
+                "br": 480,
+                "size": 31592720,
+                "point": 0
+              }
+            ],
+            "playCount": 12,
+            "subCount": 9,
+            "relateSong": []
+          },
+          "mlogBaseData": {
+            "type": 3,
+            "text": "",
+            "duration": 0
+          },
+          "mlogExtVO": {
+            "likedCount": 0,
+            "commentCount": 0,
+            "shareCount": 0,
+            "playCount": 0,
+            "subCount": 0,
+            "liked": null,
+            "artists": null
+          }
+        }
+      },
+      "expected": {
+        "id": "123",
+        "title": "Title",
+        "description": "Description",
+        "brief_description": "Brief",
+        "cover_url": "https://p.test.music.126.net/cover",
+        "thread_id": "R_MV_5_123",
+        "duration_ms": 296000,
+        "artists": [
+          {
+            "id": "7",
+            "name": "Artist"
+          }
+        ],
+        "artist_name": "Artist",
+        "subscribed": false,
+        "liked": true,
+        "play_count": 12,
+        "like_count": 4,
+        "comment_count": 5,
+        "share_count": 6,
+        "sub_count": 9,
+        "privilege": {
+          "fee": 0,
+          "paid": 0,
+          "max_play_br": 1080,
+          "max_download_br": 720,
+          "comment_permission": 1
+        }
+      },
+      "download_options": [
+        {
+          "br": 240,
+          "size": 19837028,
+          "point": 0
+        },
+        {
+          "br": 480,
+          "size": 31592720,
+          "point": 0
+        },
+        {
+          "br": 720,
+          "size": 49300580,
+          "point": 2
+        }
+      ]
+    },
+    {
+      "name": "missing_download_privilege",
+      "input": {
+        "id": "123",
+        "isMv": true,
+        "resource": {
+          "threadId": "R_MV_5_123",
+          "likedCount": 4,
+          "commentCount": 5,
+          "shareCount": 6,
+          "liked": true,
+          "subed": false,
+          "mp": {
+            "id": 123,
+            "fee": 0,
+            "mvFee": 0,
+            "payed": 0,
+            "pl": 1080,
+            "cp": 1
+          },
+          "data": {
+            "id": 123,
+            "name": "Title",
+            "desc": "Description",
+            "briefDesc": "Brief",
+            "publishTime": "2026-01-02",
+            "cover": "https://p.test.music.126.net/cover",
+            "duration": 296000,
+            "artistName": "Artist",
+            "artists": [
+              {
+                "id": 7,
+                "name": "Artist"
+              }
+            ],
+            "brs": [
+              {
+                "br": 1080,
+                "size": 35929772,
+                "point": 4
+              },
+              {
+                "br": 240,
+                "size": 19837028,
+                "point": 0
+              },
+              {
+                "br": 720,
+                "size": 49300580,
+                "point": 2
+              },
+              {
+                "br": 480,
+                "size": 31592720,
+                "point": 0
+              }
+            ],
+            "playCount": 12,
+            "subCount": 9,
+            "relateSong": []
+          }
+        }
+      },
+      "expected": {
+        "id": "123",
+        "title": "Title",
+        "description": "Description",
+        "brief_description": "Brief",
+        "cover_url": "https://p.test.music.126.net/cover",
+        "thread_id": "R_MV_5_123",
+        "duration_ms": 296000,
+        "artists": [
+          {
+            "id": "7",
+            "name": "Artist"
+          }
+        ],
+        "artist_name": "Artist",
+        "subscribed": false,
+        "liked": true,
+        "play_count": 12,
+        "like_count": 4,
+        "comment_count": 5,
+        "share_count": 6,
+        "sub_count": 9,
+        "privilege": {
+          "fee": 0,
+          "paid": 0,
+          "max_play_br": 1080,
+          "max_download_br": null,
+          "comment_permission": 1
+        }
+      },
+      "download_options": []
+    },
+    {
+      "name": "no_download_choices",
+      "input": {
+        "id": "123",
+        "isMv": true,
+        "resource": {
+          "threadId": "R_MV_5_123",
+          "likedCount": 4,
+          "commentCount": 5,
+          "shareCount": 6,
+          "liked": true,
+          "subed": false,
+          "mp": {
+            "id": 123,
+            "fee": 0,
+            "mvFee": 0,
+            "payed": 0,
+            "pl": 1080,
+            "dl": 0,
+            "cp": 1
+          },
+          "data": {
+            "id": 123,
+            "name": "Title",
+            "desc": "Description",
+            "briefDesc": "Brief",
+            "publishTime": "2026-01-02",
+            "cover": "https://p.test.music.126.net/cover",
+            "duration": 296000,
+            "artistName": "Artist",
+            "artists": [
+              {
+                "id": 7,
+                "name": "Artist"
+              }
+            ],
+            "brs": [
+              {
+                "br": 1080,
+                "size": 35929772,
+                "point": 4
+              },
+              {
+                "br": 240,
+                "size": 19837028,
+                "point": 0
+              },
+              {
+                "br": 720,
+                "size": 49300580,
+                "point": 2
+              },
+              {
+                "br": 480,
+                "size": 31592720,
+                "point": 0
+              }
+            ],
+            "playCount": 12,
+            "subCount": 9,
+            "relateSong": []
+          }
+        }
+      },
+      "expected": {
+        "id": "123",
+        "title": "Title",
+        "description": "Description",
+        "brief_description": "Brief",
+        "cover_url": "https://p.test.music.126.net/cover",
+        "thread_id": "R_MV_5_123",
+        "duration_ms": 296000,
+        "artists": [
+          {
+            "id": "7",
+            "name": "Artist"
+          }
+        ],
+        "artist_name": "Artist",
+        "subscribed": false,
+        "liked": true,
+        "play_count": 12,
+        "like_count": 4,
+        "comment_count": 5,
+        "share_count": 6,
+        "sub_count": 9,
+        "privilege": {
+          "fee": 0,
+          "paid": 0,
+          "max_play_br": 1080,
+          "max_download_br": 0,
+          "comment_permission": 1
+        }
+      },
+      "download_options": []
+    },
+    {
+      "name": "all_download_choices",
+      "input": {
+        "id": "123",
+        "isMv": true,
+        "resource": {
+          "threadId": "R_MV_5_123",
+          "likedCount": 4,
+          "commentCount": 5,
+          "shareCount": 6,
+          "liked": true,
+          "subed": false,
+          "mp": {
+            "id": 123,
+            "fee": 0,
+            "mvFee": 0,
+            "payed": 0,
+            "pl": 1080,
+            "dl": 1080,
+            "cp": 1
+          },
+          "data": {
+            "id": 123,
+            "name": "Title",
+            "desc": "Description",
+            "briefDesc": "Brief",
+            "publishTime": "2026-01-02",
+            "cover": "https://p.test.music.126.net/cover",
+            "duration": 296000,
+            "artistName": "Artist",
+            "artists": [
+              {
+                "id": 7,
+                "name": "Artist"
+              }
+            ],
+            "brs": [
+              {
+                "br": 1080,
+                "size": 35929772,
+                "point": 4
+              },
+              {
+                "br": 240,
+                "size": 19837028,
+                "point": 0
+              },
+              {
+                "br": 720,
+                "size": 49300580,
+                "point": 2
+              },
+              {
+                "br": 480,
+                "size": 31592720,
+                "point": 0
+              }
+            ],
+            "playCount": 12,
+            "subCount": 9,
+            "relateSong": []
+          }
+        }
+      },
+      "expected": {
+        "id": "123",
+        "title": "Title",
+        "description": "Description",
+        "brief_description": "Brief",
+        "cover_url": "https://p.test.music.126.net/cover",
+        "thread_id": "R_MV_5_123",
+        "duration_ms": 296000,
+        "artists": [
+          {
+            "id": "7",
+            "name": "Artist"
+          }
+        ],
+        "artist_name": "Artist",
+        "subscribed": false,
+        "liked": true,
+        "play_count": 12,
+        "like_count": 4,
+        "comment_count": 5,
+        "share_count": 6,
+        "sub_count": 9,
+        "privilege": {
+          "fee": 0,
+          "paid": 0,
+          "max_play_br": 1080,
+          "max_download_br": 1080,
+          "comment_permission": 1
+        }
+      },
+      "download_options": [
+        {
+          "br": 240,
+          "size": 19837028,
+          "point": 0
+        },
+        {
+          "br": 480,
+          "size": 31592720,
+          "point": 0
+        },
+        {
+          "br": 720,
+          "size": 49300580,
+          "point": 2
+        },
+        {
+          "br": 1080,
+          "size": 35929772,
+          "point": 4
+        }
+      ]
+    },
+    {
+      "name": "paid_entitlement",
+      "input": {
+        "id": "123",
+        "isMv": true,
+        "resource": {
+          "threadId": "R_MV_5_123",
+          "likedCount": 4,
+          "commentCount": 5,
+          "shareCount": 6,
+          "liked": true,
+          "subed": false,
+          "mp": {
+            "id": 123,
+            "fee": 1,
+            "mvFee": 0,
+            "payed": 1,
+            "pl": 1080,
+            "dl": 720,
+            "cp": 1
+          },
+          "data": {
+            "id": 123,
+            "name": "Title",
+            "desc": "Description",
+            "briefDesc": "Brief",
+            "publishTime": "2026-01-02",
+            "cover": "https://p.test.music.126.net/cover",
+            "duration": 296000,
+            "artistName": "Artist",
+            "artists": [
+              {
+                "id": 7,
+                "name": "Artist"
+              }
+            ],
+            "brs": [
+              {
+                "br": 1080,
+                "size": 35929772,
+                "point": 4
+              },
+              {
+                "br": 240,
+                "size": 19837028,
+                "point": 0
+              },
+              {
+                "br": 720,
+                "size": 49300580,
+                "point": 2
+              },
+              {
+                "br": 480,
+                "size": 31592720,
+                "point": 0
+              }
+            ],
+            "playCount": 12,
+            "subCount": 9,
+            "relateSong": []
+          }
+        }
+      },
+      "expected": {
+        "id": "123",
+        "title": "Title",
+        "description": "Description",
+        "brief_description": "Brief",
+        "cover_url": "https://p.test.music.126.net/cover",
+        "thread_id": "R_MV_5_123",
+        "duration_ms": 296000,
+        "artists": [
+          {
+            "id": "7",
+            "name": "Artist"
+          }
+        ],
+        "artist_name": "Artist",
+        "subscribed": false,
+        "liked": true,
+        "play_count": 12,
+        "like_count": 4,
+        "comment_count": 5,
+        "share_count": 6,
+        "sub_count": 9,
+        "privilege": {
+          "fee": 1,
+          "paid": 1,
+          "max_play_br": 1080,
+          "max_download_br": 720,
+          "comment_permission": 1
+        }
+      },
+      "download_options": [
+        {
+          "br": 240,
+          "size": 19837028,
+          "point": 0
+        },
+        {
+          "br": 480,
+          "size": 31592720,
+          "point": 0
+        },
+        {
+          "br": 720,
+          "size": 49300580,
+          "point": 2
+        }
+      ]
+    },
+    {
+      "name": "artist_without_id",
+      "input": {
+        "id": "123",
+        "isMv": true,
+        "resource": {
+          "threadId": "R_MV_5_123",
+          "likedCount": 4,
+          "commentCount": 5,
+          "shareCount": 6,
+          "liked": true,
+          "subed": false,
+          "mp": {
+            "id": 123,
+            "fee": 0,
+            "mvFee": 0,
+            "payed": 0,
+            "pl": 1080,
+            "dl": 720,
+            "cp": 1
+          },
+          "data": {
+            "id": 123,
+            "name": "Title",
+            "desc": "Description",
+            "briefDesc": "Brief",
+            "publishTime": "2026-01-02",
+            "cover": "https://p.test.music.126.net/cover",
+            "duration": 296000,
+            "artistName": "Artist",
+            "artists": [
+              {
+                "name": "Unknown"
+              },
+              {
+                "id": 0,
+                "name": "Zero"
+              }
+            ],
+            "brs": [
+              {
+                "br": 1080,
+                "size": 35929772,
+                "point": 4
+              },
+              {
+                "br": 240,
+                "size": 19837028,
+                "point": 0
+              },
+              {
+                "br": 720,
+                "size": 49300580,
+                "point": 2
+              },
+              {
+                "br": 480,
+                "size": 31592720,
+                "point": 0
+              }
+            ],
+            "playCount": 12,
+            "subCount": 9,
+            "relateSong": []
+          }
+        }
+      },
+      "expected": {
+        "id": "123",
+        "title": "Title",
+        "description": "Description",
+        "brief_description": "Brief",
+        "cover_url": "https://p.test.music.126.net/cover",
+        "thread_id": "R_MV_5_123",
+        "duration_ms": 296000,
+        "artists": [
+          {
+            "id": null,
+            "name": "Unknown"
+          },
+          {
+            "id": null,
+            "name": "Zero"
+          }
+        ],
+        "artist_name": "Artist",
+        "subscribed": false,
+        "liked": true,
+        "play_count": 12,
+        "like_count": 4,
+        "comment_count": 5,
+        "share_count": 6,
+        "sub_count": 9,
+        "privilege": {
+          "fee": 0,
+          "paid": 0,
+          "max_play_br": 1080,
+          "max_download_br": 720,
+          "comment_permission": 1
+        }
+      },
+      "download_options": [
+        {
+          "br": 240,
+          "size": 19837028,
+          "point": 0
+        },
+        {
+          "br": 480,
+          "size": 31592720,
+          "point": 0
+        },
+        {
+          "br": 720,
+          "size": 49300580,
+          "point": 2
+        }
+      ]
+    }
+  ],
+  "calls": [
+    {
+      "kind": "detail",
+      "payload": {
+        "id": "123",
+        "videoType": "mp4",
+        "type": "2"
+      }
+    },
+    {
+      "kind": "download",
+      "payload": {
+        "id": "123",
+        "r": 240
+      }
+    },
+    {
+      "kind": "points",
+      "payload": {
+        "id": "123",
+        "brs": 720,
+        "type": "mp4"
+      }
+    }
+  ]
+}

@@ -1,0 +1,96 @@
+{
+  "sources": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/75.js",
+      "sha256": "8f0aa4cc3422daea1cb74c317c84fc27d992dd413623d3c7504f357085005476"
+    }
+  ],
+  "runtime": "v24.16.0",
+  "cases": [
+    {
+      "owner": "1",
+      "content": {},
+      "report": false
+    },
+    {
+      "owner": "1",
+      "content": {
+        "ignoreUserIds": null
+      },
+      "report": false
+    },
+    {
+      "owner": "1",
+      "content": {
+        "ignoreUserIds": []
+      },
+      "report": true
+    },
+    {
+      "owner": "1",
+      "content": {
+        "ignoreUserIds": [
+          1
+        ]
+      },
+      "report": false
+    },
+    {
+      "owner": "1",
+      "content": {
+        "ignoreUserIds": [
+          2
+        ]
+      },
+      "report": true
+    },
+    {
+      "owner": "1",
+      "content": {
+        "ignoreUserIds": [
+          "1"
+        ]
+      },
+      "report": true
+    },
+    {
+      "owner": "1",
+      "content": {
+        "ignoreUserIds": [
+          "2",
+          1
+        ]
+      },
+      "report": false
+    },
+    {
+      "owner": "1",
+      "content": {
+        "ignoreUserIds": [
+          true,
+          null,
+          {}
+        ]
+      },
+      "report": true
+    },
+    {
+      "owner": "1",
+      "content": {
+        "ignoreUserIds": [
+          1
+        ]
+      },
+      "report": false
+    },
+    {
+      "owner": "9007199254740991",
+      "content": {
+        "ignoreUserIds": [
+          9007199254740991
+        ]
+      },
+      "report": false
+    }
+  ]
+}

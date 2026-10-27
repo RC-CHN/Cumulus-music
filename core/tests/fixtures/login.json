@@ -1,0 +1,343 @@
+{
+  "provenance": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_vendors_app_subApp.chunk.1482700000000.js/1368.js",
+      "sha256": "49da1d26373042091a3123f8948f1ce7e9968ec185e57369156fc1c6a6700db3"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/363.js",
+      "sha256": "8b8122f09a875f50026599cca589ba3e1318e01e260b21f925adbdbc567206f0"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_login_refresh_oracle.cjs",
+      "sha256": "4e234810772dd36625837508fb12c2a3a3a5ee594d0843dc0b85bc78e2fa35ba"
+    }
+  ],
+  "refresh": [
+    {
+      "input": {
+        "values": {
+          "deviceId": "device0",
+          "model": "model-%200",
+          "os": "linux",
+          "refreshToken": "synthetic&refresh=token",
+          "token": "synthetic-session",
+          "userId": 12345
+        },
+        "model": ""
+      },
+      "expected": {
+        "sign": "b6c6d39e0883806f562d2c994ece041e",
+        "model": "unknown"
+      }
+    },
+    {
+      "input": {
+        "values": {
+          "deviceId": "device1",
+          "model": "model-%201",
+          "os": "linux",
+          "refreshToken": "synthetic&refresh=token",
+          "token": "synthetic-session",
+          "userId": 12345
+        },
+        "model": "   "
+      },
+      "expected": {
+        "sign": "73426fea2b1f25ebc0b607286ff6cfc2",
+        "model": "unknown"
+      }
+    },
+    {
+      "input": {
+        "values": {
+          "deviceId": "device2",
+          "model": "model-%202",
+          "os": "linux",
+          "refreshToken": "synthetic&refresh=token",
+          "token": "synthetic-session",
+          "userId": 12345
+        },
+        "model": "PC\t\r\n name"
+      },
+      "expected": {
+        "sign": "e942d5df59bd766badfbaf7031ce04fe",
+        "model": "PCname"
+      }
+    },
+    {
+      "input": {
+        "values": {
+          "deviceId": "device3",
+          "model": "model-%203",
+          "os": "linux",
+          "refreshToken": "synthetic&refresh=token",
+          "token": "synthetic-session",
+          "userId": 12345
+        },
+        "model": "我的电脑"
+      },
+      "expected": {
+        "sign": "5e5062ec92902ada31e933fa25715845",
+        "model": "%E6%88%91%E7%9A%84%E7%94%B5%E8%84%91"
+      }
+    },
+    {
+      "input": {
+        "values": {
+          "deviceId": "device4",
+          "model": "model-%204",
+          "os": "linux",
+          "refreshToken": "synthetic&refresh=token",
+          "token": "synthetic-session",
+          "userId": 12345
+        },
+        "model": "a,b,c"
+      },
+      "expected": {
+        "sign": "ae758f5948d6a3ee289f4650f4448c3e",
+        "model": "a%2Cb%2Cc"
+      }
+    },
+    {
+      "input": {
+        "values": {
+          "deviceId": "device5",
+          "model": "model-%205",
+          "os": "linux",
+          "refreshToken": "synthetic&refresh=token",
+          "token": "synthetic-session",
+          "userId": 12345
+        },
+        "model": "音🎵"
+      },
+      "expected": {
+        "sign": "8e62a88e4ff192b82d3206cba805ee58",
+        "model": "%E9%9F%B3%F0%9F%8E%B5"
+      }
+    },
+    {
+      "input": {
+        "values": {
+          "deviceId": "device6",
+          "model": "model-%206",
+          "os": "linux",
+          "refreshToken": "synthetic&refresh=token",
+          "token": "synthetic-session",
+          "userId": 12345
+        },
+        "model": " x "
+      },
+      "expected": {
+        "sign": "c5fcaccb1f80a94180d2caf1bfb56e6d",
+        "model": "%C2%A0x%E2%80%80"
+      }
+    },
+    {
+      "input": {
+        "values": {
+          "deviceId": "device7",
+          "model": "model-%207",
+          "os": "linux",
+          "refreshToken": "synthetic&refresh=token",
+          "token": "synthetic-session",
+          "userId": 12345
+        },
+        "model": "﻿"
+      },
+      "expected": {
+        "sign": "30ee7bbdc1bf3a53d6522214aed1c3ea",
+        "model": "unknown"
+      }
+    },
+    {
+      "input": {
+        "values": {
+          "deviceId": "device8",
+          "model": "model-%208",
+          "os": "linux",
+          "refreshToken": "synthetic&refresh=token",
+          "token": "synthetic-session",
+          "userId": 12345
+        },
+        "model": "a&b=c!'"
+      },
+      "expected": {
+        "sign": "cf79bf0d3786a22d699bf4cb1bbc1faa",
+        "model": "a%26b%3Dc!'"
+      }
+    },
+    {
+      "input": {
+        "values": {
+          "deviceId": "device9",
+          "model": "model-%209",
+          "os": "linux",
+          "refreshToken": "synthetic&refresh=token",
+          "token": "synthetic-session",
+          "userId": 12345
+        },
+        "model": "\u0000\u001f"
+      },
+      "expected": {
+        "sign": "79f7fe60833543679f3f808bf97bb534",
+        "model": ""
+      }
+    },
+    {
+      "input": {
+        "values": {
+          "deviceId": "device10",
+          "model": "model-%2010",
+          "os": "linux",
+          "refreshToken": "synthetic&refresh=token",
+          "token": "synthetic-session",
+          "userId": 12345
+        },
+        "model": ""
+      },
+      "expected": {
+        "sign": "ce2f224c5d630fb02adf83c1735f1450",
+        "model": "%C2%85"
+      }
+    },
+    {
+      "input": {
+        "values": {
+          "deviceId": "device11",
+          "model": "model-%2011",
+          "os": "linux",
+          "refreshToken": "synthetic&refresh=token",
+          "token": "synthetic-session",
+          "userId": 12345
+        },
+        "model": null
+      },
+      "expected": {
+        "sign": "145783576d900a9b1d79b2ac71465a5a",
+        "model": "unknown"
+      }
+    },
+    {
+      "input": {
+        "values": {},
+        "model": "x"
+      },
+      "expected": {
+        "sign": "e6842708efd08a5e652843655990b0c9",
+        "model": "x"
+      }
+    },
+    {
+      "input": {
+        "values": {
+          "a": null,
+          "n": 1e-07,
+          "arr": [
+            1,
+            null,
+            "a"
+          ],
+          "obj": {
+            "10": "ten",
+            "2": "two",
+            "z": true
+          },
+          "🎵": "music",
+          "": "private"
+        },
+        "model": "x"
+      },
+      "expected": {
+        "sign": "28dc0d47892fe1d68aabc495bb687bca",
+        "model": "x"
+      }
+    }
+  ],
+  "phone": [
+    {
+      "input": {
+        "isPasswordLogin": true,
+        "phone": "13800000000",
+        "password": "synthetic-password",
+        "remember": true,
+        "https": true,
+        "countryCode": "86"
+      },
+      "expected": {
+        "payload": {
+          "type": 1,
+          "phone": "13800000000",
+          "password": "6ee7966bfda254813a6a475e009f6780",
+          "remember": true,
+          "https": true,
+          "countrycode": "86",
+          "e_r": true
+        },
+        "options": {
+          "checkToken": {
+            "isLogin": true
+          },
+          "ignoreErrCode": true
+        }
+      }
+    },
+    {
+      "input": {
+        "isPasswordLogin": true,
+        "phone": "13800000000",
+        "password": "中文🎵",
+        "remember": false,
+        "https": true,
+        "countryCode": "86",
+        "secureCaptcha": "user-result"
+      },
+      "expected": {
+        "payload": {
+          "type": 1,
+          "phone": "13800000000",
+          "password": "12490765ca8ffbd3491b3bd70210dd5b",
+          "remember": false,
+          "https": true,
+          "countrycode": "86",
+          "secureCaptcha": "user-result",
+          "e_r": true
+        },
+        "options": {
+          "checkToken": {
+            "isLogin": true
+          },
+          "ignoreErrCode": true
+        }
+      }
+    },
+    {
+      "input": {
+        "isPasswordLogin": false,
+        "phone": "13800000000",
+        "captcha": "123456",
+        "remember": true,
+        "https": true,
+        "countryCode": "86",
+        "secureCaptcha": "ignored-in-official-sms"
+      },
+      "expected": {
+        "payload": {
+          "type": 1,
+          "phone": "13800000000",
+          "captcha": "123456",
+          "remember": true,
+          "https": true,
+          "countrycode": "86",
+          "e_r": true
+        },
+        "options": {
+          "checkToken": {
+            "isLogin": true
+          },
+          "ignoreErrCode": true
+        }
+      }
+    }
+  ]
+}

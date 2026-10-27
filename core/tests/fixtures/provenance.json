@@ -1,0 +1,13 @@
+{
+  "purpose": "Synthetic-only frozen oracle inputs; no credentials or private account resources.",
+  "sources": [
+    {
+      "path": "references/recovered-client/cumulus_core/storage.py",
+      "sha256": "631211bd8e74754b5c5d8c8723bfee45e712c437de4ef3e7ce599d1f65fca7ab"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/402.js",
+      "sha256": "c759837f6de9c3f6b108edd1b9c22da8202d8cf7bb861f58454f7f4b9a054a37"
+    }
+  ]
+}

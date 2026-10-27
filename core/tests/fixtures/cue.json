@@ -1,0 +1,285 @@
+{
+  "provenance": {
+    "path": "references/recovered-client/cumulus_core/library.py",
+    "sha256": "f3a383b5d324dd1bebfec7ca4ae4df46813653aed9a825d4b3b86f6920439adf"
+  },
+  "durations": {
+    "album.wav": 5,
+    "另一个.wav": 2,
+    "disc one/音乐.wav": 4
+  },
+  "cases": [
+    {
+      "encoding": "utf-8-sig",
+      "data": "77u/VElUTEUgIuWQiOaIkOS4k+i+kSIKUEVSRk9STUVSICLmtYvor5XoibrkuroiCkZJTEUgImFsYnVtLndhdiIgV0FWRQpUUkFDSyAwMSBBVURJTwpUSVRMRSAi5LiAIgpJTkRFWCAwMSAwMDowMDowMApUUkFDSyAwMiBBVURJTwpUSVRMRSAi5LqMIgpJTkRFWCAwMSAwMDowMTozNwo=",
+      "expected": [
+        {
+          "path": "album.wav",
+          "track": 1,
+          "title": "一",
+          "album": "合成专辑",
+          "artist": "测试艺人",
+          "offset": 0.0,
+          "duration": 1.4933333333333334,
+          "source_duration": 5
+        },
+        {
+          "path": "album.wav",
+          "track": 2,
+          "title": "二",
+          "album": "合成专辑",
+          "artist": "测试艺人",
+          "offset": 1.4933333333333334,
+          "duration": 3.506666666666667,
+          "source_duration": 5
+        }
+      ]
+    },
+    {
+      "encoding": "utf-16",
+      "data": "//5UAEkAVABMAEUAIAAiAAhUEGITTpGPIgAKAFAARQBSAEYATwBSAE0ARQBSACAAIgBLbdWLeoK6TiIACgBGAEkATABFACAAIgBhAGwAYgB1AG0ALgB3AGEAdgAiACAAVwBBAFYARQAKAFQAUgBBAEMASwAgADAAMQAgAEEAVQBEAEkATwAKAFQASQBUAEwARQAgACIAAE4iAAoASQBOAEQARQBYACAAMAAxACAAMAAwADoAMAAwADoAMAAwAAoAVABSAEEAQwBLACAAMAAyACAAQQBVAEQASQBPAAoAVABJAFQATABFACAAIgCMTiIACgBJAE4ARABFAFgAIAAwADEAIAAwADAAOgAwADEAOgAzADcACgA=",
+      "expected": [
+        {
+          "path": "album.wav",
+          "track": 1,
+          "title": "一",
+          "album": "合成专辑",
+          "artist": "测试艺人",
+          "offset": 0.0,
+          "duration": 1.4933333333333334,
+          "source_duration": 5
+        },
+        {
+          "path": "album.wav",
+          "track": 2,
+          "title": "二",
+          "album": "合成专辑",
+          "artist": "测试艺人",
+          "offset": 1.4933333333333334,
+          "duration": 3.506666666666667,
+          "source_duration": 5
+        }
+      ]
+    },
+    {
+      "encoding": "utf-16-be",
+      "data": "/v8AVABJAFQATABFACAAIlQIYhBOE4+RACIACgBQAEUAUgBGAE8AUgBNAEUAUgAgACJtS4vVgnpOugAiAAoARgBJAEwARQAgACIAYQBsAGIAdQBtAC4AdwBhAHYAIgAgAFcAQQBWAEUACgBUAFIAQQBDAEsAIAAwADEAIABBAFUARABJAE8ACgBUAEkAVABMAEUAIAAiTgAAIgAKAEkATgBEAEUAWAAgADAAMQAgADAAMAA6ADAAMAA6ADAAMAAKAFQAUgBBAEMASwAgADAAMgAgAEEAVQBEAEkATwAKAFQASQBUAEwARQAgACJOjAAiAAoASQBOAEQARQBYACAAMAAxACAAMAAwADoAMAAxADoAMwA3AAo=",
+      "expected": [
+        {
+          "path": "album.wav",
+          "track": 1,
+          "title": "一",
+          "album": "合成专辑",
+          "artist": "测试艺人",
+          "offset": 0.0,
+          "duration": 1.4933333333333334,
+          "source_duration": 5
+        },
+        {
+          "path": "album.wav",
+          "track": 2,
+          "title": "二",
+          "album": "合成专辑",
+          "artist": "测试艺人",
+          "offset": 1.4933333333333334,
+          "duration": 3.506666666666667,
+          "source_duration": 5
+        }
+      ]
+    },
+    {
+      "encoding": "gb18030",
+      "data": "VElUTEUgIrrPs8nXqLytIgpQRVJGT1JNRVIgIrLiytTS1cjLIgpGSUxFICJhbGJ1bS53YXYiIFdBVkUKVFJBQ0sgMDEgQVVESU8KVElUTEUgItK7IgpJTkRFWCAwMSAwMDowMDowMApUUkFDSyAwMiBBVURJTwpUSVRMRSAitv4iCklOREVYIDAxIDAwOjAxOjM3Cg==",
+      "expected": [
+        {
+          "path": "album.wav",
+          "track": 1,
+          "title": "一",
+          "album": "合成专辑",
+          "artist": "测试艺人",
+          "offset": 0.0,
+          "duration": 1.4933333333333334,
+          "source_duration": 5
+        },
+        {
+          "path": "album.wav",
+          "track": 2,
+          "title": "二",
+          "album": "合成专辑",
+          "artist": "测试艺人",
+          "offset": 1.4933333333333334,
+          "duration": 3.506666666666667,
+          "source_duration": 5
+        }
+      ]
+    },
+    {
+      "encoding": "utf-8-sig",
+      "data": "77u/VElUTEUgIuWQiOaIkOS4k+i+kSIKUEVSRk9STUVSICLmtYvor5XoibrkuroiCkZJTEUgImFsYnVtLndhdiIgV0FWRQpUUkFDSyAwMSBBVURJTwpUSVRMRSAi5LiAIgpJTkRFWCAwMSAwMDowMDowMApGSUxFICLlj6bkuIDkuKoud2F2IiBXQVZFClRSQUNLIDAyIEFVRElPCklOREVYIDAxIDAwOjAwOjAwCg==",
+      "expected": [
+        {
+          "path": "album.wav",
+          "track": 1,
+          "title": "一",
+          "album": "合成专辑",
+          "artist": "测试艺人",
+          "offset": 0.0,
+          "duration": 5.0,
+          "source_duration": 5
+        },
+        {
+          "path": "另一个.wav",
+          "track": 2,
+          "title": "",
+          "album": "合成专辑",
+          "artist": "测试艺人",
+          "offset": 0.0,
+          "duration": 2.0,
+          "source_duration": 2
+        }
+      ]
+    },
+    {
+      "encoding": "utf-16",
+      "data": "//5UAEkAVABMAEUAIAAiAAhUEGITTpGPIgAKAFAARQBSAEYATwBSAE0ARQBSACAAIgBLbdWLeoK6TiIACgBGAEkATABFACAAIgBhAGwAYgB1AG0ALgB3AGEAdgAiACAAVwBBAFYARQAKAFQAUgBBAEMASwAgADAAMQAgAEEAVQBEAEkATwAKAFQASQBUAEwARQAgACIAAE4iAAoASQBOAEQARQBYACAAMAAxACAAMAAwADoAMAAwADoAMAAwAAoARgBJAEwARQAgACIA5lMATipOLgB3AGEAdgAiACAAVwBBAFYARQAKAFQAUgBBAEMASwAgADAAMgAgAEEAVQBEAEkATwAKAEkATgBEAEUAWAAgADAAMQAgADAAMAA6ADAAMAA6ADAAMAAKAA==",
+      "expected": [
+        {
+          "path": "album.wav",
+          "track": 1,
+          "title": "一",
+          "album": "合成专辑",
+          "artist": "测试艺人",
+          "offset": 0.0,
+          "duration": 5.0,
+          "source_duration": 5
+        },
+        {
+          "path": "另一个.wav",
+          "track": 2,
+          "title": "",
+          "album": "合成专辑",
+          "artist": "测试艺人",
+          "offset": 0.0,
+          "duration": 2.0,
+          "source_duration": 2
+        }
+      ]
+    },
+    {
+      "encoding": "utf-16-be",
+      "data": "/v8AVABJAFQATABFACAAIlQIYhBOE4+RACIACgBQAEUAUgBGAE8AUgBNAEUAUgAgACJtS4vVgnpOugAiAAoARgBJAEwARQAgACIAYQBsAGIAdQBtAC4AdwBhAHYAIgAgAFcAQQBWAEUACgBUAFIAQQBDAEsAIAAwADEAIABBAFUARABJAE8ACgBUAEkAVABMAEUAIAAiTgAAIgAKAEkATgBEAEUAWAAgADAAMQAgADAAMAA6ADAAMAA6ADAAMAAKAEYASQBMAEUAIAAiU+ZOAE4qAC4AdwBhAHYAIgAgAFcAQQBWAEUACgBUAFIAQQBDAEsAIAAwADIAIABBAFUARABJAE8ACgBJAE4ARABFAFgAIAAwADEAIAAwADAAOgAwADAAOgAwADAACg==",
+      "expected": [
+        {
+          "path": "album.wav",
+          "track": 1,
+          "title": "一",
+          "album": "合成专辑",
+          "artist": "测试艺人",
+          "offset": 0.0,
+          "duration": 5.0,
+          "source_duration": 5
+        },
+        {
+          "path": "另一个.wav",
+          "track": 2,
+          "title": "",
+          "album": "合成专辑",
+          "artist": "测试艺人",
+          "offset": 0.0,
+          "duration": 2.0,
+          "source_duration": 2
+        }
+      ]
+    },
+    {
+      "encoding": "gb18030",
+      "data": "VElUTEUgIrrPs8nXqLytIgpQRVJGT1JNRVIgIrLiytTS1cjLIgpGSUxFICJhbGJ1bS53YXYiIFdBVkUKVFJBQ0sgMDEgQVVESU8KVElUTEUgItK7IgpJTkRFWCAwMSAwMDowMDowMApGSUxFICLB7dK7uPYud2F2IiBXQVZFClRSQUNLIDAyIEFVRElPCklOREVYIDAxIDAwOjAwOjAwCg==",
+      "expected": [
+        {
+          "path": "album.wav",
+          "track": 1,
+          "title": "一",
+          "album": "合成专辑",
+          "artist": "测试艺人",
+          "offset": 0.0,
+          "duration": 5.0,
+          "source_duration": 5
+        },
+        {
+          "path": "另一个.wav",
+          "track": 2,
+          "title": "",
+          "album": "合成专辑",
+          "artist": "测试艺人",
+          "offset": 0.0,
+          "duration": 2.0,
+          "source_duration": 2
+        }
+      ]
+    },
+    {
+      "encoding": "utf-8-sig",
+      "data": "77u/VElUTEUgIuWkmiDmlofku7YiCkZJTEUgImRpc2Mgb25lXOmfs+S5kC53YXYiIFdBVkUKVFJBQ0sgMDMgQVVESU8KVElUTEUgImEgIyBiIgpQRVJGT1JNRVIgJ3NpbmdsZSBxdW90ZWQnCklOREVYIDAwIDAwOjAwOjAwClBSRUdBUCAwMDowMDowNQpJTkRFWCAwMSAwMDowMTowMApQT1NUR0FQIDAwOjAwOjA1Cg==",
+      "expected": [
+        {
+          "path": "disc one/音乐.wav",
+          "track": 3,
+          "title": "a # b",
+          "album": "多 文件",
+          "artist": "single quoted",
+          "offset": 1.0,
+          "duration": 3.0,
+          "source_duration": 4
+        }
+      ]
+    },
+    {
+      "encoding": "utf-16",
+      "data": "//5UAEkAVABMAEUAIAAiABpZIACHZfZOIgAKAEYASQBMAEUAIAAiAGQAaQBzAGMAIABvAG4AZQBcAPOXUE4uAHcAYQB2ACIAIABXAEEAVgBFAAoAVABSAEEAQwBLACAAMAAzACAAQQBVAEQASQBPAAoAVABJAFQATABFACAAIgBhACAAIwAgAGIAIgAKAFAARQBSAEYATwBSAE0ARQBSACAAJwBzAGkAbgBnAGwAZQAgAHEAdQBvAHQAZQBkACcACgBJAE4ARABFAFgAIAAwADAAIAAwADAAOgAwADAAOgAwADAACgBQAFIARQBHAEEAUAAgADAAMAA6ADAAMAA6ADAANQAKAEkATgBEAEUAWAAgADAAMQAgADAAMAA6ADAAMQA6ADAAMAAKAFAATwBTAFQARwBBAFAAIAAwADAAOgAwADAAOgAwADUACgA=",
+      "expected": [
+        {
+          "path": "disc one/音乐.wav",
+          "track": 3,
+          "title": "a # b",
+          "album": "多 文件",
+          "artist": "single quoted",
+          "offset": 1.0,
+          "duration": 3.0,
+          "source_duration": 4
+        }
+      ]
+    },
+    {
+      "encoding": "utf-16-be",
+      "data": "/v8AVABJAFQATABFACAAIlkaACBlh072ACIACgBGAEkATABFACAAIgBkAGkAcwBjACAAbwBuAGUAXJfzTlAALgB3AGEAdgAiACAAVwBBAFYARQAKAFQAUgBBAEMASwAgADAAMwAgAEEAVQBEAEkATwAKAFQASQBUAEwARQAgACIAYQAgACMAIABiACIACgBQAEUAUgBGAE8AUgBNAEUAUgAgACcAcwBpAG4AZwBsAGUAIABxAHUAbwB0AGUAZAAnAAoASQBOAEQARQBYACAAMAAwACAAMAAwADoAMAAwADoAMAAwAAoAUABSAEUARwBBAFAAIAAwADAAOgAwADAAOgAwADUACgBJAE4ARABFAFgAIAAwADEAIAAwADAAOgAwADEAOgAwADAACgBQAE8AUwBUAEcAQQBQACAAMAAwADoAMAAwADoAMAA1AAo=",
+      "expected": [
+        {
+          "path": "disc one/音乐.wav",
+          "track": 3,
+          "title": "a # b",
+          "album": "多 文件",
+          "artist": "single quoted",
+          "offset": 1.0,
+          "duration": 3.0,
+          "source_duration": 4
+        }
+      ]
+    },
+    {
+      "encoding": "gb18030",
+      "data": "VElUTEUgIrbgIM7EvP4iCkZJTEUgImRpc2Mgb25lXNL0wNYud2F2IiBXQVZFClRSQUNLIDAzIEFVRElPClRJVExFICJhICMgYiIKUEVSRk9STUVSICdzaW5nbGUgcXVvdGVkJwpJTkRFWCAwMCAwMDowMDowMApQUkVHQVAgMDA6MDA6MDUKSU5ERVggMDEgMDA6MDE6MDAKUE9TVEdBUCAwMDowMDowNQo=",
+      "expected": [
+        {
+          "path": "disc one/音乐.wav",
+          "track": 3,
+          "title": "a # b",
+          "album": "多 文件",
+          "artist": "single quoted",
+          "offset": 1.0,
+          "duration": 3.0,
+          "source_duration": 4
+        }
+      ]
+    }
+  ]
+}

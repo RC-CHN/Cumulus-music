@@ -1,0 +1,380 @@
+{
+  "sources": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/21.js",
+      "sha256": "33d27af5a54c6a74641f192841637d2608d588d2d93091a9a61cb43948c93af7"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_55.chunk.1482700000000.js/2170.js",
+      "sha256": "db90651c9fe5e2196fdd6f6902a5ddb9b3b369d9a8cca74d3395c002fb3d6043"
+    }
+  ],
+  "runtime": "v24.16.0",
+  "cases": [
+    {
+      "kind": "radio",
+      "input": {
+        "id": 71,
+        "name": "Radio",
+        "picUrl": "https://p.test.music.126.net/radio",
+        "programCount": 9,
+        "subed": false
+      },
+      "expected": {
+        "id": "71",
+        "name": "Radio",
+        "cover_url": "https://p.test.music.126.net/radio",
+        "program_count": 9
+      }
+    },
+    {
+      "kind": "radio",
+      "input": {
+        "voiceListId": 72,
+        "voiceListName": "Collection card",
+        "voiceCount": 4
+      },
+      "expected": {
+        "id": "72",
+        "name": "Collection card",
+        "cover_url": "",
+        "program_count": 4
+      }
+    },
+    {
+      "kind": "radio",
+      "input": {
+        "id": 0,
+        "resourceId": "73",
+        "name": "",
+        "voiceListName": "Fallback",
+        "voiceCount": 0,
+        "programCount": 7
+      },
+      "expected": {
+        "id": "73",
+        "name": "Fallback",
+        "cover_url": "",
+        "program_count": 7
+      }
+    },
+    {
+      "kind": "radio",
+      "input": {
+        "productId": 74,
+        "coverUrl": "https://p.test.music.126.net/book"
+      },
+      "expected": {
+        "id": "74",
+        "name": "",
+        "cover_url": "https://p.test.music.126.net/book",
+        "program_count": 0
+      }
+    },
+    {
+      "kind": "radio",
+      "input": {
+        "id": 75,
+        "coverImgUrl": "preferred",
+        "picUrl": "other",
+        "voiceCount": 2,
+        "programCount": 9
+      },
+      "expected": {
+        "id": "75",
+        "name": "",
+        "cover_url": "preferred",
+        "program_count": 2
+      }
+    },
+    {
+      "kind": "voice",
+      "input": {
+        "id": 81,
+        "name": "Episode",
+        "duration": 1000,
+        "mainSong": {
+          "id": 91,
+          "duration": 3000
+        },
+        "radio": {
+          "id": 71,
+          "name": "Radio",
+          "picUrl": "https://p.test.music.126.net/radio",
+          "programCount": 9,
+          "subed": false
+        }
+      },
+      "expected": {
+        "id": "81",
+        "name": "Episode",
+        "song_id": "91",
+        "duration_ms": 1000
+      }
+    },
+    {
+      "kind": "voice",
+      "input": {
+        "voiceId": 82,
+        "voiceName": "Liked card"
+      },
+      "expected": {
+        "id": "82",
+        "name": "Liked card",
+        "song_id": null,
+        "duration_ms": 0
+      }
+    },
+    {
+      "kind": "voice",
+      "input": {
+        "resourceId": 83,
+        "name": "",
+        "voiceName": "Fallback",
+        "duration": 0,
+        "mainSong": {
+          "id": 93,
+          "dt": 4000
+        }
+      },
+      "expected": {
+        "id": "83",
+        "name": "Fallback",
+        "song_id": "93",
+        "duration_ms": 4000
+      }
+    },
+    {
+      "kind": "voice",
+      "input": {
+        "productId": 84,
+        "mainTrackId": 94,
+        "mainSong": {
+          "id": 94
+        },
+        "liked": false
+      },
+      "expected": {
+        "id": "84",
+        "name": "",
+        "song_id": "94",
+        "duration_ms": 0
+      }
+    },
+    {
+      "kind": "voice",
+      "input": {
+        "id": 85,
+        "trackId": 95,
+        "liked": true
+      },
+      "expected": {
+        "id": "85",
+        "name": "",
+        "song_id": "95",
+        "duration_ms": 0
+      }
+    }
+  ],
+  "pagination": {
+    "calls": [
+      {
+        "selectType": 1,
+        "sortType": 1
+      },
+      {
+        "selectType": 1,
+        "sortType": 1,
+        "radioIdStr": "[21,22]"
+      }
+    ],
+    "first": {
+      "list": [
+        {
+          "id": "1"
+        },
+        {
+          "id": "2"
+        },
+        {
+          "id": "3"
+        },
+        {
+          "id": "4"
+        },
+        {
+          "id": "5"
+        },
+        {
+          "id": "6"
+        },
+        {
+          "id": "7"
+        },
+        {
+          "id": "8"
+        },
+        {
+          "id": "9"
+        },
+        {
+          "id": "10"
+        },
+        {
+          "id": "11"
+        },
+        {
+          "id": "12"
+        },
+        {
+          "id": "13"
+        },
+        {
+          "id": "14"
+        },
+        {
+          "id": "15"
+        },
+        {
+          "id": "16"
+        },
+        {
+          "id": "17"
+        },
+        {
+          "id": "18"
+        },
+        {
+          "id": "19"
+        },
+        {
+          "id": "20"
+        }
+      ],
+      "radioIdList": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22
+      ],
+      "nextIndex": 20,
+      "hasMore": true,
+      "count": 22
+    },
+    "second": {
+      "list": [
+        {
+          "id": "1"
+        },
+        {
+          "id": "2"
+        },
+        {
+          "id": "3"
+        },
+        {
+          "id": "4"
+        },
+        {
+          "id": "5"
+        },
+        {
+          "id": "6"
+        },
+        {
+          "id": "7"
+        },
+        {
+          "id": "8"
+        },
+        {
+          "id": "9"
+        },
+        {
+          "id": "10"
+        },
+        {
+          "id": "11"
+        },
+        {
+          "id": "12"
+        },
+        {
+          "id": "13"
+        },
+        {
+          "id": "14"
+        },
+        {
+          "id": "15"
+        },
+        {
+          "id": "16"
+        },
+        {
+          "id": "17"
+        },
+        {
+          "id": "18"
+        },
+        {
+          "id": "19"
+        },
+        {
+          "id": "20"
+        },
+        {
+          "id": "21"
+        },
+        {
+          "id": "22"
+        }
+      ],
+      "radioIdList": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22
+      ],
+      "nextIndex": 22,
+      "hasMore": false,
+      "count": 22
+    }
+  }
+}

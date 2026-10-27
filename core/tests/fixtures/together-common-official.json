@@ -1,0 +1,166 @@
+{
+  "sources": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/24.js",
+      "sha256": "466ab77ab2a24c97c84157734ed33997a4a1076351de80ffe7e8e351c6c29f64"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/261.js",
+      "sha256": "e6c2f98907881d674c082bf39a2739987476fd306f5e8bec992051cf58c6174e"
+    }
+  ],
+  "runtime": "v24.16.0",
+  "cases": [
+    {
+      "row": {
+        "trackId": "91",
+        "playable": true,
+        "unplayableType": "",
+        "unplayableUserIds": [],
+        "unplayableOuterIds": [],
+        "start": 30,
+        "end": 60
+      },
+      "canPlay": true,
+      "limitedMember": "none"
+    },
+    {
+      "row": {
+        "trackId": "91",
+        "playable": false,
+        "unplayableType": "vip",
+        "unplayableUserIds": [
+          "1"
+        ],
+        "unplayableOuterIds": [],
+        "start": 30,
+        "end": 60
+      },
+      "canPlay": false,
+      "limitedMember": "me"
+    },
+    {
+      "row": {
+        "trackId": "91",
+        "playable": false,
+        "unplayableType": "vip",
+        "unplayableUserIds": [
+          "2"
+        ],
+        "unplayableOuterIds": [],
+        "start": 30,
+        "end": 60
+      },
+      "canPlay": false,
+      "limitedMember": "other"
+    },
+    {
+      "row": {
+        "trackId": "91",
+        "playable": false,
+        "unplayableType": "vip",
+        "unplayableUserIds": [
+          "1",
+          "2"
+        ],
+        "unplayableOuterIds": [],
+        "start": 30,
+        "end": 60
+      },
+      "canPlay": false,
+      "limitedMember": "both"
+    },
+    {
+      "row": {
+        "trackId": "91",
+        "playable": false,
+        "unplayableType": "trial",
+        "unplayableUserIds": [
+          "1"
+        ],
+        "unplayableOuterIds": [],
+        "start": 30,
+        "end": 60
+      },
+      "canPlay": true,
+      "limitedMember": "me"
+    },
+    {
+      "row": {
+        "trackId": "91",
+        "playable": false,
+        "unplayableType": "trial",
+        "unplayableUserIds": [
+          "2"
+        ],
+        "unplayableOuterIds": [],
+        "start": 30,
+        "end": 60
+      },
+      "canPlay": true,
+      "limitedMember": "other"
+    },
+    {
+      "row": {
+        "trackId": "91",
+        "playable": false,
+        "unplayableType": "trial",
+        "unplayableUserIds": [
+          "1",
+          "2"
+        ],
+        "unplayableOuterIds": [],
+        "start": 30,
+        "end": 60
+      },
+      "canPlay": true,
+      "limitedMember": "both"
+    },
+    {
+      "row": {
+        "trackId": "91",
+        "playable": false,
+        "unplayableType": "digital_album",
+        "unplayableUserIds": [
+          "2"
+        ],
+        "unplayableOuterIds": [],
+        "start": 30,
+        "end": 60
+      },
+      "canPlay": false,
+      "limitedMember": "other"
+    },
+    {
+      "row": {
+        "trackId": "91",
+        "playable": false,
+        "unplayableType": "charge_song",
+        "unplayableUserIds": [
+          "1"
+        ],
+        "unplayableOuterIds": [],
+        "start": 30,
+        "end": 60
+      },
+      "canPlay": false,
+      "limitedMember": "me"
+    },
+    {
+      "row": {
+        "trackId": "91",
+        "playable": false,
+        "unplayableType": "region",
+        "unplayableUserIds": [
+          "1",
+          "2"
+        ],
+        "unplayableOuterIds": [],
+        "start": 30,
+        "end": 60
+      },
+      "canPlay": false,
+      "limitedMember": "both"
+    }
+  ]
+}

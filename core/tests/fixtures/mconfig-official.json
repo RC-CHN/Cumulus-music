@@ -1,0 +1,321 @@
+{
+  "source": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/92.js",
+  "sha256": "2787f8810fc50f3f892cde86aebd1eb2259375f373b232fb978c8365b2e82e26",
+  "scenarios": [
+    {
+      "name": "web_and_missing",
+      "steps": [
+        {
+          "bucket": "bucket-a"
+        },
+        {
+          "bucket": "bucket-b",
+          "info": {
+            "version": 1,
+            "os": "web",
+            "fullUrl": "https://d5.music.126.net/obj/fixture/config1.data"
+          }
+        }
+      ],
+      "expected": [
+        {
+          "version": 0,
+          "bucket": "bucket-a",
+          "data": null,
+          "calls": [],
+          "header": {
+            "IuRPVVmc3WWul9fT": {
+              "version": 0,
+              "appver": "3.1.42.205594"
+            }
+          }
+        },
+        {
+          "version": 0,
+          "bucket": "bucket-b",
+          "data": null,
+          "calls": [],
+          "header": {
+            "IuRPVVmc3WWul9fT": {
+              "version": 0,
+              "appver": "3.1.42.205594"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "update_same_and_rollback",
+      "steps": [
+        {
+          "info": {
+            "version": 2,
+            "os": "pc",
+            "fullUrl": "https://d5.music.126.net/obj/fixture/config2.data"
+          },
+          "object": {
+            "feature": 2
+          }
+        },
+        {
+          "info": {
+            "version": 2,
+            "os": "pc",
+            "fullUrl": "https://d5.music.126.net/obj/fixture/config2.data"
+          },
+          "object": {
+            "mustNotFetch": true
+          }
+        },
+        {
+          "info": {
+            "version": 1,
+            "os": "pc",
+            "fullUrl": "https://d5.music.126.net/obj/fixture/config1.data"
+          },
+          "object": {
+            "feature": 1
+          }
+        }
+      ],
+      "expected": [
+        {
+          "version": 2,
+          "bucket": "",
+          "data": {
+            "feature": 2
+          },
+          "calls": [
+            "https://d5.music.126.net/obj/fixture/config2.data"
+          ],
+          "header": {
+            "IuRPVVmc3WWul9fT": {
+              "version": 2,
+              "appver": "3.1.42.205594"
+            }
+          }
+        },
+        {
+          "version": 2,
+          "bucket": "",
+          "data": {
+            "feature": 2
+          },
+          "calls": [
+            "https://d5.music.126.net/obj/fixture/config2.data"
+          ],
+          "header": {
+            "IuRPVVmc3WWul9fT": {
+              "version": 2,
+              "appver": "3.1.42.205594"
+            }
+          }
+        },
+        {
+          "version": 1,
+          "bucket": "",
+          "data": {
+            "feature": 1
+          },
+          "calls": [
+            "https://d5.music.126.net/obj/fixture/config2.data",
+            "https://d5.music.126.net/obj/fixture/config1.data"
+          ],
+          "header": {
+            "IuRPVVmc3WWul9fT": {
+              "version": 1,
+              "appver": "3.1.42.205594"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "failure_keeps_old_and_bucket",
+      "steps": [
+        {
+          "bucket": "a",
+          "info": {
+            "version": 1,
+            "os": "pc",
+            "fullUrl": "https://d5.music.126.net/obj/fixture/config1.data"
+          },
+          "object": {
+            "feature": 1
+          }
+        },
+        {
+          "bucket": "b",
+          "info": {
+            "version": 2,
+            "os": "pc",
+            "fullUrl": "https://d5.music.126.net/obj/fixture/config2.data"
+          },
+          "failure": true
+        }
+      ],
+      "expected": [
+        {
+          "version": 1,
+          "bucket": "a",
+          "data": {
+            "feature": 1
+          },
+          "calls": [
+            "https://d5.music.126.net/obj/fixture/config1.data"
+          ],
+          "header": {
+            "IuRPVVmc3WWul9fT": {
+              "version": 1,
+              "appver": "3.1.42.205594"
+            }
+          }
+        },
+        {
+          "version": 1,
+          "bucket": "b",
+          "data": {
+            "feature": 1
+          },
+          "calls": [
+            "https://d5.music.126.net/obj/fixture/config1.data",
+            "https://d5.music.126.net/obj/fixture/config2.data"
+          ],
+          "header": {
+            "IuRPVVmc3WWul9fT": {
+              "version": 1,
+              "appver": "3.1.42.205594"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "missing_url_zero_and_wrong_platform",
+      "steps": [
+        {
+          "info": {
+            "version": 0,
+            "os": "pc",
+            "fullUrl": "https://d5.music.126.net/obj/fixture/config0.data"
+          },
+          "object": {}
+        },
+        {
+          "info": {
+            "version": 3,
+            "os": "pc",
+            "fullUrl": ""
+          }
+        },
+        {
+          "info": {
+            "version": 4,
+            "os": "mac",
+            "fullUrl": "https://d5.music.126.net/obj/fixture/config4.data"
+          },
+          "object": {}
+        }
+      ],
+      "expected": [
+        {
+          "version": 0,
+          "bucket": "",
+          "data": null,
+          "calls": [],
+          "header": {
+            "IuRPVVmc3WWul9fT": {
+              "version": 0,
+              "appver": "3.1.42.205594"
+            }
+          }
+        },
+        {
+          "version": 0,
+          "bucket": "",
+          "data": null,
+          "calls": [],
+          "header": {
+            "IuRPVVmc3WWul9fT": {
+              "version": 0,
+              "appver": "3.1.42.205594"
+            }
+          }
+        },
+        {
+          "version": 0,
+          "bucket": "",
+          "data": null,
+          "calls": [],
+          "header": {
+            "IuRPVVmc3WWul9fT": {
+              "version": 0,
+              "appver": "3.1.42.205594"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "cached_reopen",
+      "local": {
+        "version": 9,
+        "bucket": "saved",
+        "data": {
+          "persisted": true
+        }
+      },
+      "steps": [
+        {
+          "info": {
+            "version": 9,
+            "os": "pc",
+            "fullUrl": "https://d5.music.126.net/obj/fixture/config9.data"
+          }
+        },
+        {
+          "info": {
+            "version": 10,
+            "os": "pc",
+            "fullUrl": "https://d5.music.126.net/obj/fixture/config10.data"
+          },
+          "object": {
+            "new": true
+          }
+        }
+      ],
+      "expected": [
+        {
+          "version": 9,
+          "bucket": "saved",
+          "data": {
+            "persisted": true
+          },
+          "calls": [],
+          "header": {
+            "IuRPVVmc3WWul9fT": {
+              "version": 9,
+              "appver": "3.1.42.205594"
+            }
+          }
+        },
+        {
+          "version": 10,
+          "bucket": "saved",
+          "data": {
+            "new": true
+          },
+          "calls": [
+            "https://d5.music.126.net/obj/fixture/config10.data"
+          ],
+          "header": {
+            "IuRPVVmc3WWul9fT": {
+              "version": 10,
+              "appver": "3.1.42.205594"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

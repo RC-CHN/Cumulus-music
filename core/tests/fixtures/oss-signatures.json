@@ -1,0 +1,470 @@
+{
+  "revision": "eb329ec91d24e2e52646f244863232342fa05161",
+  "source_sha256": {
+    "auth.py": "3d8851416c8a61c1f656377ddfded6c4286443ebae7164bd2f069fc83ec43ee3",
+    "utils.py": "e3a59eb304af0e486c08bae9be29ce6c21c4ff2e1ed5dfb38b5462f9a2cfc420"
+  },
+  "cases": [
+    {
+      "method": "POST",
+      "key": "simple.mp3",
+      "bucket": "oracle-bucket",
+      "secret": "oracle-secret",
+      "access": "oracle-key",
+      "headers": {
+        "content-type": "application/octet-stream",
+        "content-md5": "TPnU8AafwY+z/MClDc64Ug==",
+        "x-oss-meta-z": "last",
+        "x-oss-meta-a": "first",
+        "date": "Sun, 22 Nov 2015 08:16:38 GMT",
+        "x-oss-security-token": "oracle-sts-token"
+      },
+      "params": {
+        "uploads": ""
+      },
+      "authorization": "OSS oracle-key:wUZ2Qf1mNLNCHV92ai21XT3n4uQ="
+    },
+    {
+      "method": "POST",
+      "key": "音乐/曲目 +%.flac",
+      "bucket": "oracle-bucket",
+      "secret": "oracle-secret",
+      "access": "oracle-key",
+      "headers": {
+        "content-type": "application/octet-stream",
+        "content-md5": "TPnU8AafwY+z/MClDc64Ug==",
+        "x-oss-meta-z": "last",
+        "x-oss-meta-a": "first",
+        "date": "Sun, 22 Nov 2015 08:16:38 GMT",
+        "x-oss-security-token": "oracle-sts-token"
+      },
+      "params": {
+        "uploads": ""
+      },
+      "authorization": "OSS oracle-key:6J4u+1MvE00V6/b/hf0Tt/gxP08="
+    },
+    {
+      "method": "POST",
+      "key": "目录//emoji-😀.mp3",
+      "bucket": "oracle-bucket",
+      "secret": "oracle-secret",
+      "access": "oracle-key",
+      "headers": {
+        "content-type": "application/octet-stream",
+        "content-md5": "TPnU8AafwY+z/MClDc64Ug==",
+        "x-oss-meta-z": "last",
+        "x-oss-meta-a": "first",
+        "date": "Sun, 22 Nov 2015 08:16:38 GMT",
+        "x-oss-security-token": "oracle-sts-token"
+      },
+      "params": {
+        "uploads": ""
+      },
+      "authorization": "OSS oracle-key:9fiDB7TuZg+veUu+CHtlByQ7UZQ="
+    },
+    {
+      "method": "PUT",
+      "key": "simple.mp3",
+      "bucket": "oracle-bucket",
+      "secret": "oracle-secret",
+      "access": "oracle-key",
+      "headers": {
+        "content-type": "application/octet-stream",
+        "content-md5": "TPnU8AafwY+z/MClDc64Ug==",
+        "x-oss-meta-z": "last",
+        "x-oss-meta-a": "first",
+        "date": "Sun, 22 Nov 2015 08:16:38 GMT",
+        "x-oss-security-token": "oracle-sts-token"
+      },
+      "params": {},
+      "authorization": "OSS oracle-key:SpLjXRCgvnhbu2ckoqKcUAjqNoU="
+    },
+    {
+      "method": "PUT",
+      "key": "音乐/曲目 +%.flac",
+      "bucket": "oracle-bucket",
+      "secret": "oracle-secret",
+      "access": "oracle-key",
+      "headers": {
+        "content-type": "application/octet-stream",
+        "content-md5": "TPnU8AafwY+z/MClDc64Ug==",
+        "x-oss-meta-z": "last",
+        "x-oss-meta-a": "first",
+        "date": "Sun, 22 Nov 2015 08:16:38 GMT",
+        "x-oss-security-token": "oracle-sts-token"
+      },
+      "params": {},
+      "authorization": "OSS oracle-key:yutDFGrKgeEvvy/cVzw0hWeBTxk="
+    },
+    {
+      "method": "PUT",
+      "key": "目录//emoji-😀.mp3",
+      "bucket": "oracle-bucket",
+      "secret": "oracle-secret",
+      "access": "oracle-key",
+      "headers": {
+        "content-type": "application/octet-stream",
+        "content-md5": "TPnU8AafwY+z/MClDc64Ug==",
+        "x-oss-meta-z": "last",
+        "x-oss-meta-a": "first",
+        "date": "Sun, 22 Nov 2015 08:16:38 GMT",
+        "x-oss-security-token": "oracle-sts-token"
+      },
+      "params": {},
+      "authorization": "OSS oracle-key:yMjGpdQFPGa4hFuPUNF1R96/Hhk="
+    },
+    {
+      "method": "PUT",
+      "key": "simple.mp3",
+      "bucket": "oracle-bucket",
+      "secret": "oracle-secret",
+      "access": "oracle-key",
+      "headers": {
+        "content-type": "application/octet-stream",
+        "content-md5": "TPnU8AafwY+z/MClDc64Ug==",
+        "x-oss-meta-z": "last",
+        "x-oss-meta-a": "first",
+        "date": "Sun, 22 Nov 2015 08:16:38 GMT",
+        "x-oss-security-token": "oracle-sts-token"
+      },
+      "params": {
+        "partNumber": "2",
+        "uploadId": "id+with/=special"
+      },
+      "authorization": "OSS oracle-key:GgjT+X+bFqigHJ9RZj+G23/qzqI="
+    },
+    {
+      "method": "PUT",
+      "key": "音乐/曲目 +%.flac",
+      "bucket": "oracle-bucket",
+      "secret": "oracle-secret",
+      "access": "oracle-key",
+      "headers": {
+        "content-type": "application/octet-stream",
+        "content-md5": "TPnU8AafwY+z/MClDc64Ug==",
+        "x-oss-meta-z": "last",
+        "x-oss-meta-a": "first",
+        "date": "Sun, 22 Nov 2015 08:16:38 GMT",
+        "x-oss-security-token": "oracle-sts-token"
+      },
+      "params": {
+        "partNumber": "2",
+        "uploadId": "id+with/=special"
+      },
+      "authorization": "OSS oracle-key:aa8D6GgA0HjrQDHpRXMFB5CnZu4="
+    },
+    {
+      "method": "PUT",
+      "key": "目录//emoji-😀.mp3",
+      "bucket": "oracle-bucket",
+      "secret": "oracle-secret",
+      "access": "oracle-key",
+      "headers": {
+        "content-type": "application/octet-stream",
+        "content-md5": "TPnU8AafwY+z/MClDc64Ug==",
+        "x-oss-meta-z": "last",
+        "x-oss-meta-a": "first",
+        "date": "Sun, 22 Nov 2015 08:16:38 GMT",
+        "x-oss-security-token": "oracle-sts-token"
+      },
+      "params": {
+        "partNumber": "2",
+        "uploadId": "id+with/=special"
+      },
+      "authorization": "OSS oracle-key:LIJj0AQG6sBQtjRrZY8NIpy/Sps="
+    },
+    {
+      "method": "GET",
+      "key": "simple.mp3",
+      "bucket": "oracle-bucket",
+      "secret": "oracle-secret",
+      "access": "oracle-key",
+      "headers": {
+        "content-type": "application/octet-stream",
+        "content-md5": "TPnU8AafwY+z/MClDc64Ug==",
+        "x-oss-meta-z": "last",
+        "x-oss-meta-a": "first",
+        "date": "Sun, 22 Nov 2015 08:16:38 GMT",
+        "x-oss-security-token": "oracle-sts-token"
+      },
+      "params": {
+        "uploadId": "U",
+        "max-parts": "1000",
+        "part-number-marker": "9"
+      },
+      "authorization": "OSS oracle-key:llQ3Qyeab5jJOFzr+Vxz9nGsun8="
+    },
+    {
+      "method": "GET",
+      "key": "音乐/曲目 +%.flac",
+      "bucket": "oracle-bucket",
+      "secret": "oracle-secret",
+      "access": "oracle-key",
+      "headers": {
+        "content-type": "application/octet-stream",
+        "content-md5": "TPnU8AafwY+z/MClDc64Ug==",
+        "x-oss-meta-z": "last",
+        "x-oss-meta-a": "first",
+        "date": "Sun, 22 Nov 2015 08:16:38 GMT",
+        "x-oss-security-token": "oracle-sts-token"
+      },
+      "params": {
+        "uploadId": "U",
+        "max-parts": "1000",
+        "part-number-marker": "9"
+      },
+      "authorization": "OSS oracle-key:z2/I8nkSR+x9NmtxIql/G3KzyFk="
+    },
+    {
+      "method": "GET",
+      "key": "目录//emoji-😀.mp3",
+      "bucket": "oracle-bucket",
+      "secret": "oracle-secret",
+      "access": "oracle-key",
+      "headers": {
+        "content-type": "application/octet-stream",
+        "content-md5": "TPnU8AafwY+z/MClDc64Ug==",
+        "x-oss-meta-z": "last",
+        "x-oss-meta-a": "first",
+        "date": "Sun, 22 Nov 2015 08:16:38 GMT",
+        "x-oss-security-token": "oracle-sts-token"
+      },
+      "params": {
+        "uploadId": "U",
+        "max-parts": "1000",
+        "part-number-marker": "9"
+      },
+      "authorization": "OSS oracle-key:lg+1xdk+Ou0UX/ZwsdItCQ8stFk="
+    },
+    {
+      "method": "POST",
+      "key": "simple.mp3",
+      "bucket": "oracle-bucket",
+      "secret": "oracle-secret",
+      "access": "oracle-key",
+      "headers": {
+        "content-type": "application/octet-stream",
+        "content-md5": "TPnU8AafwY+z/MClDc64Ug==",
+        "x-oss-meta-z": "last",
+        "x-oss-meta-a": "first",
+        "date": "Sun, 22 Nov 2015 08:16:38 GMT",
+        "x-oss-security-token": "oracle-sts-token"
+      },
+      "params": {
+        "uploadId": "U"
+      },
+      "authorization": "OSS oracle-key:GIvfIGDPGvbBspVtlAEFR4FQ65c="
+    },
+    {
+      "method": "POST",
+      "key": "音乐/曲目 +%.flac",
+      "bucket": "oracle-bucket",
+      "secret": "oracle-secret",
+      "access": "oracle-key",
+      "headers": {
+        "content-type": "application/octet-stream",
+        "content-md5": "TPnU8AafwY+z/MClDc64Ug==",
+        "x-oss-meta-z": "last",
+        "x-oss-meta-a": "first",
+        "date": "Sun, 22 Nov 2015 08:16:38 GMT",
+        "x-oss-security-token": "oracle-sts-token"
+      },
+      "params": {
+        "uploadId": "U"
+      },
+      "authorization": "OSS oracle-key:vsvj1Xd2JxVCdN9Q3eD4mrKlJ/I="
+    },
+    {
+      "method": "POST",
+      "key": "目录//emoji-😀.mp3",
+      "bucket": "oracle-bucket",
+      "secret": "oracle-secret",
+      "access": "oracle-key",
+      "headers": {
+        "content-type": "application/octet-stream",
+        "content-md5": "TPnU8AafwY+z/MClDc64Ug==",
+        "x-oss-meta-z": "last",
+        "x-oss-meta-a": "first",
+        "date": "Sun, 22 Nov 2015 08:16:38 GMT",
+        "x-oss-security-token": "oracle-sts-token"
+      },
+      "params": {
+        "uploadId": "U"
+      },
+      "authorization": "OSS oracle-key:TGI0ToH5Z2nwOPyHoP1g8Hy7Y4Q="
+    },
+    {
+      "method": "HEAD",
+      "key": "simple.mp3",
+      "bucket": "oracle-bucket",
+      "secret": "oracle-secret",
+      "access": "oracle-key",
+      "headers": {
+        "content-type": "application/octet-stream",
+        "content-md5": "TPnU8AafwY+z/MClDc64Ug==",
+        "x-oss-meta-z": "last",
+        "x-oss-meta-a": "first",
+        "date": "Sun, 22 Nov 2015 08:16:38 GMT",
+        "x-oss-security-token": "oracle-sts-token"
+      },
+      "params": {},
+      "authorization": "OSS oracle-key:nIlUClzW/CbdY55wUvuGRN+soM0="
+    },
+    {
+      "method": "HEAD",
+      "key": "音乐/曲目 +%.flac",
+      "bucket": "oracle-bucket",
+      "secret": "oracle-secret",
+      "access": "oracle-key",
+      "headers": {
+        "content-type": "application/octet-stream",
+        "content-md5": "TPnU8AafwY+z/MClDc64Ug==",
+        "x-oss-meta-z": "last",
+        "x-oss-meta-a": "first",
+        "date": "Sun, 22 Nov 2015 08:16:38 GMT",
+        "x-oss-security-token": "oracle-sts-token"
+      },
+      "params": {},
+      "authorization": "OSS oracle-key:7LC3PvCJ0A5hN74uaTfZ7Fo0iqo="
+    },
+    {
+      "method": "HEAD",
+      "key": "目录//emoji-😀.mp3",
+      "bucket": "oracle-bucket",
+      "secret": "oracle-secret",
+      "access": "oracle-key",
+      "headers": {
+        "content-type": "application/octet-stream",
+        "content-md5": "TPnU8AafwY+z/MClDc64Ug==",
+        "x-oss-meta-z": "last",
+        "x-oss-meta-a": "first",
+        "date": "Sun, 22 Nov 2015 08:16:38 GMT",
+        "x-oss-security-token": "oracle-sts-token"
+      },
+      "params": {},
+      "authorization": "OSS oracle-key:fj1CdAbJA8tUAJeCvW13yswSCGo="
+    },
+    {
+      "method": "GET",
+      "key": "simple.mp3",
+      "bucket": "oracle-bucket",
+      "secret": "oracle-secret",
+      "access": "oracle-key",
+      "headers": {
+        "content-type": "application/octet-stream",
+        "content-md5": "TPnU8AafwY+z/MClDc64Ug==",
+        "x-oss-meta-z": "last",
+        "x-oss-meta-a": "first",
+        "date": "Sun, 22 Nov 2015 08:16:38 GMT",
+        "x-oss-security-token": "oracle-sts-token"
+      },
+      "params": {},
+      "authorization": "OSS oracle-key:2FJzuQJuETml6mMJhb/c438zB1Y="
+    },
+    {
+      "method": "GET",
+      "key": "音乐/曲目 +%.flac",
+      "bucket": "oracle-bucket",
+      "secret": "oracle-secret",
+      "access": "oracle-key",
+      "headers": {
+        "content-type": "application/octet-stream",
+        "content-md5": "TPnU8AafwY+z/MClDc64Ug==",
+        "x-oss-meta-z": "last",
+        "x-oss-meta-a": "first",
+        "date": "Sun, 22 Nov 2015 08:16:38 GMT",
+        "x-oss-security-token": "oracle-sts-token"
+      },
+      "params": {},
+      "authorization": "OSS oracle-key:A3F8podiL2n0LmHqrr8MConE5Ow="
+    },
+    {
+      "method": "GET",
+      "key": "目录//emoji-😀.mp3",
+      "bucket": "oracle-bucket",
+      "secret": "oracle-secret",
+      "access": "oracle-key",
+      "headers": {
+        "content-type": "application/octet-stream",
+        "content-md5": "TPnU8AafwY+z/MClDc64Ug==",
+        "x-oss-meta-z": "last",
+        "x-oss-meta-a": "first",
+        "date": "Sun, 22 Nov 2015 08:16:38 GMT",
+        "x-oss-security-token": "oracle-sts-token"
+      },
+      "params": {},
+      "authorization": "OSS oracle-key:SUSHfbwN4hZgib1DxbGQZ6fWeHQ="
+    },
+    {
+      "method": "DELETE",
+      "key": "simple.mp3",
+      "bucket": "oracle-bucket",
+      "secret": "oracle-secret",
+      "access": "oracle-key",
+      "headers": {
+        "content-type": "application/octet-stream",
+        "content-md5": "TPnU8AafwY+z/MClDc64Ug==",
+        "x-oss-meta-z": "last",
+        "x-oss-meta-a": "first",
+        "date": "Sun, 22 Nov 2015 08:16:38 GMT",
+        "x-oss-security-token": "oracle-sts-token"
+      },
+      "params": {
+        "uploadId": "U"
+      },
+      "authorization": "OSS oracle-key:yzNi9hJReYAHE6l5b8tDYE63y98="
+    },
+    {
+      "method": "DELETE",
+      "key": "音乐/曲目 +%.flac",
+      "bucket": "oracle-bucket",
+      "secret": "oracle-secret",
+      "access": "oracle-key",
+      "headers": {
+        "content-type": "application/octet-stream",
+        "content-md5": "TPnU8AafwY+z/MClDc64Ug==",
+        "x-oss-meta-z": "last",
+        "x-oss-meta-a": "first",
+        "date": "Sun, 22 Nov 2015 08:16:38 GMT",
+        "x-oss-security-token": "oracle-sts-token"
+      },
+      "params": {
+        "uploadId": "U"
+      },
+      "authorization": "OSS oracle-key:KqvcJI8adb8x5vg2QjQNoVrqxNU="
+    },
+    {
+      "method": "DELETE",
+      "key": "目录//emoji-😀.mp3",
+      "bucket": "oracle-bucket",
+      "secret": "oracle-secret",
+      "access": "oracle-key",
+      "headers": {
+        "content-type": "application/octet-stream",
+        "content-md5": "TPnU8AafwY+z/MClDc64Ug==",
+        "x-oss-meta-z": "last",
+        "x-oss-meta-a": "first",
+        "date": "Sun, 22 Nov 2015 08:16:38 GMT",
+        "x-oss-security-token": "oracle-sts-token"
+      },
+      "params": {
+        "uploadId": "U"
+      },
+      "authorization": "OSS oracle-key:YY02WwhN5g9blJeCUoBlV6YrAqk="
+    },
+    {
+      "method": "GET",
+      "key": "date-override",
+      "bucket": "oracle-bucket",
+      "secret": "oracle-secret",
+      "access": "oracle-key",
+      "headers": {
+        "date": "Sun, 22 Nov 2015 08:16:38 GMT",
+        "x-oss-date": "Wed, 28 Dec 2022 10:27:41 GMT",
+        "x-oss-security-token": "oracle-sts-token"
+      },
+      "params": {},
+      "authorization": "OSS oracle-key:fiqN0+Jp1R/NYRfVe+1to9hZc3g="
+    }
+  ]
+}

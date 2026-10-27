@@ -1,0 +1,1589 @@
+{
+  "sources": {
+    "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/1384.js": "1436e04e398744bd85857aed562bffc88513ee3b9eb49582f5519e5ebb243111",
+    "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/12.js": "da570de13fd15b094bc6898cebb51273b2ee0e2b1d9ab39398a61717db732176",
+    "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/15.js": "8ec4bf8d343f6963860eb73bc59ca09f0dd1ae50db2608a6c5abc7d69a0b521a",
+    "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/402.js": "c759837f6de9c3f6b108edd1b9c22da8202d8cf7bb861f58454f7f4b9a054a37"
+  },
+  "scenarios": [
+    {
+      "name": "valid_completion_cooldown",
+      "difference": false,
+      "steps": [
+        {
+          "input": {
+            "now": 100,
+            "response": {
+              "code": 200,
+              "data": {
+                "action": 1
+              }
+            },
+            "finish": 6100
+          },
+          "expected": {
+            "kind": "valid"
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 0,
+          "latched": true,
+          "actions": [],
+          "toast": []
+        },
+        {
+          "input": {
+            "now": 11099
+          },
+          "expected": {
+            "kind": "skipped",
+            "value": "in_progress"
+          },
+          "calls": [],
+          "errors": 0,
+          "latched": true,
+          "actions": [],
+          "toast": []
+        },
+        {
+          "input": {
+            "now": 11100,
+            "response": {
+              "code": 200,
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "valid"
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 0,
+          "latched": true,
+          "actions": [],
+          "toast": []
+        }
+      ],
+      "networkEvents": []
+    },
+    {
+      "name": "null_action_third_failure",
+      "difference": false,
+      "steps": [
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": null
+              }
+            }
+          },
+          "expected": {
+            "kind": "failed",
+            "value": {
+              "count": 1
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 1,
+          "latched": false,
+          "actions": [],
+          "toast": []
+        },
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": null
+              }
+            }
+          },
+          "expected": {
+            "kind": "failed",
+            "value": {
+              "count": 2
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 2,
+          "latched": false,
+          "actions": [],
+          "toast": []
+        },
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": null
+              }
+            }
+          },
+          "expected": {
+            "kind": "notice",
+            "value": {
+              "notice": {
+                "kind": "expired",
+                "title": null,
+                "message": "用户验证失效，请重新登录"
+              },
+              "clear_queue": false
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 3,
+          "latched": false,
+          "actions": [
+            {
+              "type": "host/logout",
+              "payload": {}
+            }
+          ],
+          "toast": [
+            {
+              "type": "error",
+              "content": "用户验证失效，请重新登录",
+              "duration": 7
+            }
+          ]
+        },
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": null
+              }
+            }
+          },
+          "expected": {
+            "kind": "failed",
+            "value": {
+              "count": 4
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 4,
+          "latched": false,
+          "actions": [],
+          "toast": []
+        }
+      ],
+      "networkEvents": []
+    },
+    {
+      "name": "missing_action_resets",
+      "difference": false,
+      "steps": [
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": null
+              }
+            }
+          },
+          "expected": {
+            "kind": "failed",
+            "value": {
+              "count": 1
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 1,
+          "latched": false,
+          "actions": [],
+          "toast": []
+        },
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": null
+              }
+            }
+          },
+          "expected": {
+            "kind": "failed",
+            "value": {
+              "count": 2
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 2,
+          "latched": false,
+          "actions": [],
+          "toast": []
+        },
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {}
+            }
+          },
+          "expected": {
+            "kind": "ignored_action"
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 0,
+          "latched": false,
+          "actions": [],
+          "toast": []
+        },
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": null
+              }
+            }
+          },
+          "expected": {
+            "kind": "failed",
+            "value": {
+              "count": 1
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 1,
+          "latched": false,
+          "actions": [],
+          "toast": []
+        }
+      ],
+      "networkEvents": []
+    },
+    {
+      "name": "strict_action",
+      "difference": false,
+      "steps": [
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": "2"
+              }
+            }
+          },
+          "expected": {
+            "kind": "ignored_action"
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 0,
+          "latched": false,
+          "actions": [],
+          "toast": []
+        },
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": 3
+              }
+            }
+          },
+          "expected": {
+            "kind": "ignored_action"
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 0,
+          "latched": false,
+          "actions": [],
+          "toast": []
+        },
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": false
+              }
+            }
+          },
+          "expected": {
+            "kind": "ignored_action"
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 0,
+          "latched": false,
+          "actions": [],
+          "toast": []
+        },
+        {
+          "input": {
+            "response": {
+              "code": 200
+            }
+          },
+          "expected": {
+            "kind": "ignored_action"
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 0,
+          "latched": false,
+          "actions": [],
+          "toast": []
+        }
+      ],
+      "networkEvents": []
+    },
+    {
+      "name": "explicit_guide_clear",
+      "difference": false,
+      "steps": [
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": 2,
+                "followAction": 1,
+                "title": "重新登录",
+                "message": "请确认当前账号"
+              }
+            }
+          },
+          "expected": {
+            "kind": "notice",
+            "value": {
+              "notice": {
+                "kind": "reauthenticate",
+                "title": "重新登录",
+                "message": "请确认当前账号"
+              },
+              "clear_queue": true
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 0,
+          "latched": false,
+          "actions": [
+            {
+              "type": "host/logout",
+              "payload": {}
+            },
+            {
+              "type": "host/onUpdate",
+              "payload": {
+                "removeGuideTitle": "重新登录",
+                "removeGuideDesc": "请确认当前账号"
+              }
+            },
+            {
+              "type": "host/login",
+              "payload": {
+                "path": "removeGuide"
+              }
+            },
+            {
+              "type": "playingList/clearCurPlayingList",
+              "payload": {
+                "triggerScene": "playingList"
+              }
+            }
+          ],
+          "toast": []
+        }
+      ],
+      "networkEvents": []
+    },
+    {
+      "name": "string_follow_action_keeps_queue",
+      "difference": false,
+      "steps": [
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": 2,
+                "followAction": "1"
+              }
+            }
+          },
+          "expected": {
+            "kind": "notice",
+            "value": {
+              "notice": {
+                "kind": "reauthenticate",
+                "title": null,
+                "message": "用户验证失效，请重新登录"
+              },
+              "clear_queue": false
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 0,
+          "latched": false,
+          "actions": [
+            {
+              "type": "host/logout",
+              "payload": {}
+            },
+            {
+              "type": "host/onUpdate",
+              "payload": {}
+            },
+            {
+              "type": "host/login",
+              "payload": {
+                "path": "removeGuide"
+              }
+            }
+          ],
+          "toast": []
+        }
+      ],
+      "networkEvents": []
+    },
+    {
+      "name": "counter_kept_after_unsupported_action",
+      "difference": false,
+      "steps": [
+        {
+          "input": {
+            "response": {
+              "code": 500
+            }
+          },
+          "expected": {
+            "kind": "failed",
+            "value": {
+              "count": 1
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 1,
+          "latched": false,
+          "actions": [],
+          "toast": []
+        },
+        {
+          "input": {
+            "response": {
+              "code": 500
+            }
+          },
+          "expected": {
+            "kind": "failed",
+            "value": {
+              "count": 2
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 2,
+          "latched": false,
+          "actions": [],
+          "toast": []
+        },
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": "1"
+              }
+            }
+          },
+          "expected": {
+            "kind": "ignored_action"
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 0,
+          "latched": false,
+          "actions": [],
+          "toast": []
+        },
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": null
+              }
+            }
+          },
+          "expected": {
+            "kind": "failed",
+            "value": {
+              "count": 1
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 1,
+          "latched": false,
+          "actions": [],
+          "toast": []
+        }
+      ],
+      "networkEvents": []
+    },
+    {
+      "name": "failure_message",
+      "difference": false,
+      "steps": [
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": null
+              }
+            }
+          },
+          "expected": {
+            "kind": "failed",
+            "value": {
+              "count": 1
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 1,
+          "latched": false,
+          "actions": [],
+          "toast": []
+        },
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": null
+              }
+            }
+          },
+          "expected": {
+            "kind": "failed",
+            "value": {
+              "count": 2
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 2,
+          "latched": false,
+          "actions": [],
+          "toast": []
+        },
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": null,
+                "message": "请再次登录"
+              }
+            }
+          },
+          "expected": {
+            "kind": "notice",
+            "value": {
+              "notice": {
+                "kind": "expired",
+                "title": null,
+                "message": "请再次登录"
+              },
+              "clear_queue": false
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 3,
+          "latched": false,
+          "actions": [
+            {
+              "type": "host/logout",
+              "payload": {}
+            }
+          ],
+          "toast": [
+            {
+              "type": "error",
+              "content": "请再次登录",
+              "duration": 7
+            }
+          ]
+        }
+      ],
+      "networkEvents": []
+    },
+    {
+      "name": "string_code_subscriber_is_strict",
+      "difference": false,
+      "steps": [
+        {
+          "input": {
+            "response": {
+              "code": "200",
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "failed",
+            "value": {
+              "count": 1
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 1,
+          "latched": false,
+          "actions": [],
+          "toast": []
+        }
+      ],
+      "networkEvents": []
+    },
+    {
+      "name": "transport_original_latch",
+      "difference": true,
+      "steps": [
+        {
+          "input": {
+            "error": true
+          },
+          "expected": {
+            "kind": "error"
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 0,
+          "latched": true,
+          "actions": [],
+          "toast": []
+        },
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "skipped",
+            "value": "in_progress"
+          },
+          "calls": [],
+          "errors": 0,
+          "latched": true,
+          "actions": [],
+          "toast": []
+        }
+      ],
+      "networkEvents": []
+    }
+  ],
+  "bridge": [
+    {
+      "name": "bridge_200",
+      "difference": false,
+      "steps": [
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "valid"
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 0,
+          "latched": true,
+          "actions": [],
+          "toast": []
+        },
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "skipped",
+            "value": "in_progress"
+          },
+          "calls": [],
+          "errors": 0,
+          "latched": true,
+          "actions": [],
+          "toast": []
+        }
+      ],
+      "networkEvents": []
+    },
+    {
+      "name": "bridge_\"200\"",
+      "difference": false,
+      "steps": [
+        {
+          "input": {
+            "response": {
+              "code": "200",
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "valid"
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 0,
+          "latched": true,
+          "actions": [],
+          "toast": []
+        },
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "skipped",
+            "value": "in_progress"
+          },
+          "calls": [],
+          "errors": 0,
+          "latched": true,
+          "actions": [],
+          "toast": []
+        }
+      ],
+      "networkEvents": []
+    },
+    {
+      "name": "bridge_\"  +200suffix\"",
+      "difference": false,
+      "steps": [
+        {
+          "input": {
+            "response": {
+              "code": "  +200suffix",
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "valid"
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 0,
+          "latched": true,
+          "actions": [],
+          "toast": []
+        },
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "skipped",
+            "value": "in_progress"
+          },
+          "calls": [],
+          "errors": 0,
+          "latched": true,
+          "actions": [],
+          "toast": []
+        }
+      ],
+      "networkEvents": []
+    },
+    {
+      "name": "bridge_500",
+      "difference": false,
+      "steps": [
+        {
+          "input": {
+            "response": {
+              "code": 500,
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "error"
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 0,
+          "latched": true,
+          "actions": [],
+          "toast": []
+        },
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "skipped",
+            "value": "in_progress"
+          },
+          "calls": [],
+          "errors": 0,
+          "latched": true,
+          "actions": [],
+          "toast": []
+        }
+      ],
+      "networkEvents": []
+    },
+    {
+      "name": "bridge_301",
+      "difference": false,
+      "steps": [
+        {
+          "input": {
+            "response": {
+              "code": 301,
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "error"
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 0,
+          "latched": true,
+          "actions": [],
+          "toast": []
+        },
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "skipped",
+            "value": "in_progress"
+          },
+          "calls": [],
+          "errors": 0,
+          "latched": true,
+          "actions": [],
+          "toast": []
+        }
+      ],
+      "networkEvents": [
+        "301"
+      ]
+    },
+    {
+      "name": "bridge_\"301\"",
+      "difference": false,
+      "steps": [
+        {
+          "input": {
+            "response": {
+              "code": "301",
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "error"
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 0,
+          "latched": true,
+          "actions": [],
+          "toast": []
+        },
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "skipped",
+            "value": "in_progress"
+          },
+          "calls": [],
+          "errors": 0,
+          "latched": true,
+          "actions": [],
+          "toast": []
+        }
+      ],
+      "networkEvents": [
+        "301"
+      ]
+    },
+    {
+      "name": "bridge_\"  +301suffix\"",
+      "difference": false,
+      "steps": [
+        {
+          "input": {
+            "response": {
+              "code": "  +301suffix",
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "error"
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 0,
+          "latched": true,
+          "actions": [],
+          "toast": []
+        },
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "skipped",
+            "value": "in_progress"
+          },
+          "calls": [],
+          "errors": 0,
+          "latched": true,
+          "actions": [],
+          "toast": []
+        }
+      ],
+      "networkEvents": [
+        "301"
+      ]
+    },
+    {
+      "name": "bridge_\"301.0\"",
+      "difference": false,
+      "steps": [
+        {
+          "input": {
+            "response": {
+              "code": "301.0",
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "error"
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 0,
+          "latched": true,
+          "actions": [],
+          "toast": []
+        },
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "skipped",
+            "value": "in_progress"
+          },
+          "calls": [],
+          "errors": 0,
+          "latched": true,
+          "actions": [],
+          "toast": []
+        }
+      ],
+      "networkEvents": [
+        "301"
+      ]
+    },
+    {
+      "name": "bridge_null",
+      "difference": false,
+      "steps": [
+        {
+          "input": {
+            "response": {
+              "code": null,
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "failed",
+            "value": {
+              "count": 1
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 1,
+          "latched": false,
+          "actions": [],
+          "toast": []
+        },
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "valid"
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 0,
+          "latched": true,
+          "actions": [],
+          "toast": []
+        }
+      ],
+      "networkEvents": []
+    },
+    {
+      "name": "bridge_false",
+      "difference": false,
+      "steps": [
+        {
+          "input": {
+            "response": {
+              "code": false,
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "failed",
+            "value": {
+              "count": 1
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 1,
+          "latched": false,
+          "actions": [],
+          "toast": []
+        },
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "valid"
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 0,
+          "latched": true,
+          "actions": [],
+          "toast": []
+        }
+      ],
+      "networkEvents": []
+    },
+    {
+      "name": "bridge_0",
+      "difference": false,
+      "steps": [
+        {
+          "input": {
+            "response": {
+              "code": 0,
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "failed",
+            "value": {
+              "count": 1
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 1,
+          "latched": false,
+          "actions": [],
+          "toast": []
+        },
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "valid"
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 0,
+          "latched": true,
+          "actions": [],
+          "toast": []
+        }
+      ],
+      "networkEvents": []
+    },
+    {
+      "name": "bridge_\"bad\"",
+      "difference": false,
+      "steps": [
+        {
+          "input": {
+            "response": {
+              "code": "bad",
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "failed",
+            "value": {
+              "count": 1
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 1,
+          "latched": false,
+          "actions": [],
+          "toast": []
+        },
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "valid"
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 0,
+          "latched": true,
+          "actions": [],
+          "toast": []
+        }
+      ],
+      "networkEvents": []
+    },
+    {
+      "name": "bridge_\"\"",
+      "difference": false,
+      "steps": [
+        {
+          "input": {
+            "response": {
+              "code": "",
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "failed",
+            "value": {
+              "count": 1
+            }
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 1,
+          "latched": false,
+          "actions": [],
+          "toast": []
+        },
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "valid"
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 0,
+          "latched": true,
+          "actions": [],
+          "toast": []
+        }
+      ],
+      "networkEvents": []
+    },
+    {
+      "name": "bridge_{}",
+      "difference": false,
+      "steps": [
+        {
+          "input": {
+            "response": {
+              "code": {},
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "error"
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 0,
+          "latched": true,
+          "actions": [],
+          "toast": []
+        },
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "skipped",
+            "value": "in_progress"
+          },
+          "calls": [],
+          "errors": 0,
+          "latched": true,
+          "actions": [],
+          "toast": []
+        }
+      ],
+      "networkEvents": []
+    },
+    {
+      "name": "bridge_true",
+      "difference": false,
+      "steps": [
+        {
+          "input": {
+            "response": {
+              "code": true,
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "error"
+          },
+          "calls": [
+            {
+              "path": "/api/middle/account/token/refresh",
+              "data": {}
+            }
+          ],
+          "errors": 0,
+          "latched": true,
+          "actions": [],
+          "toast": []
+        },
+        {
+          "input": {
+            "response": {
+              "code": 200,
+              "data": {
+                "action": 1
+              }
+            }
+          },
+          "expected": {
+            "kind": "skipped",
+            "value": "in_progress"
+          },
+          "calls": [],
+          "errors": 0,
+          "latched": true,
+          "actions": [],
+          "toast": []
+        }
+      ],
+      "networkEvents": []
+    }
+  ]
+}

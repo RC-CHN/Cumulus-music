@@ -1,0 +1,242 @@
+{
+  "source": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_204.chunk.1482700000000.js/3004.js",
+  "sha256": "f527cd6026e16774414fb71c14545b6f779835c5b4af93cc610da92684affce8",
+  "cases": [
+    {
+      "heard": [],
+      "change": false,
+      "expected": {
+        "active": "OP_76001",
+        "selected": "1",
+        "voice_ids": [
+          "1",
+          "2"
+        ],
+        "index": 0,
+        "force_clear": true,
+        "scene": "sceneFm",
+        "play_count": 1
+      },
+      "api_calls": [
+        {
+          "method": "home",
+          "params": {
+            "blockCode": "VOICE_HOMEPAGE_BLOCK_SCENE_FM"
+          }
+        }
+      ]
+    },
+    {
+      "heard": [],
+      "change": true,
+      "expected": {
+        "active": "OP_7",
+        "selected": "3",
+        "voice_ids": [
+          "3",
+          "4"
+        ],
+        "index": 0,
+        "force_clear": true,
+        "scene": "sceneFm",
+        "play_count": 1
+      },
+      "api_calls": [
+        {
+          "method": "home",
+          "params": {
+            "blockCode": "VOICE_HOMEPAGE_BLOCK_SCENE_FM"
+          }
+        },
+        {
+          "method": "programs",
+          "params": {
+            "sceneId": "OP_7"
+          }
+        }
+      ]
+    },
+    {
+      "heard": [
+        1
+      ],
+      "change": false,
+      "expected": {
+        "active": "OP_76001",
+        "selected": "2",
+        "voice_ids": [
+          "1",
+          "2"
+        ],
+        "index": 1,
+        "force_clear": true,
+        "scene": "sceneFm",
+        "play_count": 1
+      },
+      "api_calls": [
+        {
+          "method": "home",
+          "params": {
+            "blockCode": "VOICE_HOMEPAGE_BLOCK_SCENE_FM"
+          }
+        }
+      ]
+    },
+    {
+      "heard": [
+        1
+      ],
+      "change": true,
+      "expected": {
+        "active": "OP_7",
+        "selected": "3",
+        "voice_ids": [
+          "3",
+          "4"
+        ],
+        "index": 0,
+        "force_clear": true,
+        "scene": "sceneFm",
+        "play_count": 1
+      },
+      "api_calls": [
+        {
+          "method": "home",
+          "params": {
+            "blockCode": "VOICE_HOMEPAGE_BLOCK_SCENE_FM"
+          }
+        },
+        {
+          "method": "programs",
+          "params": {
+            "sceneId": "OP_7"
+          }
+        }
+      ]
+    },
+    {
+      "heard": [
+        1,
+        2
+      ],
+      "change": false,
+      "expected": {
+        "active": "OP_76001",
+        "selected": "1",
+        "voice_ids": [
+          "1",
+          "2"
+        ],
+        "index": 0,
+        "force_clear": true,
+        "scene": "sceneFm",
+        "play_count": 1
+      },
+      "api_calls": [
+        {
+          "method": "home",
+          "params": {
+            "blockCode": "VOICE_HOMEPAGE_BLOCK_SCENE_FM"
+          }
+        }
+      ]
+    },
+    {
+      "heard": [
+        1,
+        2
+      ],
+      "change": true,
+      "expected": {
+        "active": "OP_7",
+        "selected": "3",
+        "voice_ids": [
+          "3",
+          "4"
+        ],
+        "index": 0,
+        "force_clear": true,
+        "scene": "sceneFm",
+        "play_count": 1
+      },
+      "api_calls": [
+        {
+          "method": "home",
+          "params": {
+            "blockCode": "VOICE_HOMEPAGE_BLOCK_SCENE_FM"
+          }
+        },
+        {
+          "method": "programs",
+          "params": {
+            "sceneId": "OP_7"
+          }
+        }
+      ]
+    },
+    {
+      "heard": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "change": false,
+      "expected": {
+        "active": "OP_76001",
+        "selected": "1",
+        "voice_ids": [
+          "1",
+          "2"
+        ],
+        "index": 0,
+        "force_clear": true,
+        "scene": "sceneFm",
+        "play_count": 1
+      },
+      "api_calls": [
+        {
+          "method": "home",
+          "params": {
+            "blockCode": "VOICE_HOMEPAGE_BLOCK_SCENE_FM"
+          }
+        }
+      ]
+    },
+    {
+      "heard": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "change": true,
+      "expected": {
+        "active": "OP_7",
+        "selected": "3",
+        "voice_ids": [
+          "3",
+          "4"
+        ],
+        "index": 0,
+        "force_clear": true,
+        "scene": "sceneFm",
+        "play_count": 1
+      },
+      "api_calls": [
+        {
+          "method": "home",
+          "params": {
+            "blockCode": "VOICE_HOMEPAGE_BLOCK_SCENE_FM"
+          }
+        },
+        {
+          "method": "programs",
+          "params": {
+            "sceneId": "OP_7"
+          }
+        }
+      ]
+    }
+  ]
+}

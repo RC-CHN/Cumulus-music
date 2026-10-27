@@ -1,0 +1,1800 @@
+{
+  "provenance": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/370.js",
+      "sha256": "17b3019dbf150c7240042c10258e8adcfcf4dc11029e3dd7ff9b7fa5adab161a"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/21.js",
+      "sha256": "33d27af5a54c6a74641f192841637d2608d588d2d93091a9a61cb43948c93af7"
+    }
+  ],
+  "parsed": [
+    {
+      "input": {},
+      "expected": {
+        "currentUsedLyric": "none",
+        "currentUsedLyricVersion": -1,
+        "displayType": "default",
+        "lyricLines": [],
+        "romaLyricLines": [],
+        "tlyricLines": [],
+        "offset": 0,
+        "scrollable": false,
+        "yrcInfo": {}
+      }
+    },
+    {
+      "input": {
+        "canUploadLyric": true
+      },
+      "expected": {
+        "currentUsedLyric": "none",
+        "currentUsedLyricVersion": -1,
+        "displayType": "default",
+        "canUploadLyric": true,
+        "lyricLines": [],
+        "romaLyricLines": [],
+        "tlyricLines": [],
+        "offset": 0,
+        "scrollable": false,
+        "yrcInfo": {}
+      }
+    },
+    {
+      "input": {
+        "lrc": false,
+        "yrc": null
+      },
+      "expected": {
+        "currentUsedLyric": "none",
+        "currentUsedLyricVersion": -1,
+        "displayType": "default",
+        "lyricLines": [],
+        "romaLyricLines": [],
+        "tlyricLines": [],
+        "offset": 0,
+        "scrollable": false,
+        "yrcInfo": {}
+      }
+    },
+    {
+      "input": {
+        "lrc": {}
+      },
+      "expected": {
+        "currentUsedLyric": "lrc",
+        "displayType": "pure",
+        "lyricLines": [],
+        "romaLyricLines": [],
+        "tlyricLines": [],
+        "offset": 0,
+        "scrollable": false,
+        "yrcInfo": {}
+      }
+    },
+    {
+      "input": {
+        "lrc": {
+          "lyric": "",
+          "version": 1
+        }
+      },
+      "expected": {
+        "currentUsedLyric": "lrc",
+        "currentUsedLyricVersion": 1,
+        "displayType": "pure",
+        "lyricLines": [],
+        "romaLyricLines": [],
+        "tlyricLines": [],
+        "offset": 0,
+        "scrollable": false,
+        "yrcInfo": {}
+      }
+    },
+    {
+      "input": {
+        "lrc": {
+          "lyric": "[00:00.00]起点\n[00:01.5][00:02:750]重复\n[ar:ignored]",
+          "version": 1
+        }
+      },
+      "expected": {
+        "currentUsedLyric": "lrc",
+        "currentUsedLyricVersion": 1,
+        "displayType": "default",
+        "lyricLines": [
+          {
+            "time": 0,
+            "lyric": "起点"
+          },
+          {
+            "time": 1.5,
+            "lyric": "重复"
+          },
+          {
+            "time": 2.75,
+            "lyric": "重复"
+          }
+        ],
+        "romaLyricLines": [],
+        "tlyricLines": [],
+        "offset": 0,
+        "scrollable": true,
+        "yrcInfo": {}
+      }
+    },
+    {
+      "input": {
+        "lrc": {
+          "lyric": "[00:02.00]乙\n[00:01.00]甲",
+          "version": 2,
+          "offset": 0.5
+        },
+        "tlyric": {
+          "lyric": "[00:01.00]A"
+        },
+        "romalrc": {
+          "lyric": "[00:02.00]yi"
+        }
+      },
+      "expected": {
+        "currentUsedLyric": "lrc",
+        "currentUsedLyricVersion": 2,
+        "displayType": "default",
+        "lyricLines": [
+          {
+            "time": 0.5,
+            "lyric": "甲"
+          },
+          {
+            "time": 1.5,
+            "lyric": "乙"
+          }
+        ],
+        "romaLyricLines": [
+          {
+            "time": 1,
+            "lyric": ""
+          },
+          {
+            "time": 2,
+            "lyric": "yi"
+          }
+        ],
+        "tlyricLines": [
+          {
+            "time": 1,
+            "lyric": "A"
+          },
+          {
+            "time": 2,
+            "lyric": ""
+          }
+        ],
+        "offset": 0.5,
+        "scrollable": true,
+        "yrcInfo": {}
+      }
+    },
+    {
+      "input": {
+        "lrc": {
+          "lyric": "未标时歌词\n第二行"
+        }
+      },
+      "expected": {
+        "currentUsedLyric": "lrc",
+        "displayType": "default",
+        "lyricLines": [
+          {
+            "lyric": "未标时歌词"
+          },
+          {
+            "lyric": "第二行"
+          }
+        ],
+        "romaLyricLines": [],
+        "tlyricLines": [],
+        "offset": 0,
+        "scrollable": false,
+        "yrcInfo": {}
+      }
+    },
+    {
+      "input": {
+        "lrc": {
+          "lyric": "[00:00.00]纯音乐，请欣赏",
+          "version": 0
+        },
+        "canUploadLyric": false
+      },
+      "expected": {
+        "currentUsedLyric": "lrc",
+        "currentUsedLyricVersion": 0,
+        "displayType": "pure",
+        "canUploadLyric": false,
+        "lyricLines": [
+          {
+            "time": 0,
+            "lyric": "纯音乐，请欣赏"
+          }
+        ],
+        "romaLyricLines": [],
+        "tlyricLines": [],
+        "offset": 0,
+        "scrollable": true,
+        "yrcInfo": {}
+      }
+    },
+    {
+      "input": {
+        "yrc": {
+          "lyric": "[1000,2000](1000,500,0)你(1500,500,0)好\n[4000,1000](4000,400,0)hello(4400,600,0)world",
+          "version": 3
+        }
+      },
+      "expected": {
+        "currentUsedLyric": "yrc",
+        "currentUsedLyricVersion": 3,
+        "displayType": "default",
+        "lyricLines": [
+          {
+            "time": 1,
+            "lyric": "你好"
+          },
+          {
+            "time": 4,
+            "lyric": "hello world "
+          }
+        ],
+        "romaLyricLines": [],
+        "tlyricLines": [],
+        "offset": 0,
+        "scrollable": false,
+        "yrcInfo": {
+          "yrc": "[1000,2000](1000,500,0)你(1500,500,0)好\n[4000,1000](4000,400,0)hello(4400,600,0)world",
+          "yrcRoma": "",
+          "yrcTrans": ""
+        }
+      }
+    },
+    {
+      "input": {
+        "lrc": {
+          "lyric": "[00:01.00]普通",
+          "version": 1
+        },
+        "yrc": {
+          "lyric": "[1000,1000](1000,1000,0)逐字",
+          "version": 2
+        }
+      },
+      "expected": {
+        "currentUsedLyric": "lrc",
+        "currentUsedLyricVersion": 1,
+        "displayType": "default",
+        "lyricLines": [
+          {
+            "time": 1,
+            "lyric": "普通"
+          }
+        ],
+        "romaLyricLines": [],
+        "tlyricLines": [],
+        "offset": 0,
+        "scrollable": true,
+        "yrcInfo": {
+          "yrc": "[1000,1000](1000,1000,0)逐字",
+          "yrcRoma": "",
+          "yrcTrans": ""
+        }
+      }
+    },
+    {
+      "input": {
+        "lrc": {
+          "lyric": "{\"t\":0,\"c\":[{\"tx\":\"贡献：\"},{\"tx\":\"首\"},null,{\"tx\":\"\"},{\"tx\":\"测试\"}]}\n[00:01.00]正文\n{\"t\":2000,\"c\":[{\"tx\":\"贡献：\"},{\"tx\":\"尾一\"},null,{\"tx\":\"\"},{\"tx\":\"测试\"}]}\n{\"t\":3000,\"c\":[{\"tx\":\"贡献：\"},{\"tx\":\"尾二\"},null,{\"tx\":\"\"},{\"tx\":\"测试\"}]}",
+          "version": 2,
+          "offset": 1
+        },
+        "tlyric": {
+          "lyric": "[00:01.00]body"
+        },
+        "romalrc": {
+          "lyric": "[00:01.00]zhengwen"
+        }
+      },
+      "expected": {
+        "currentUsedLyric": "lrc",
+        "currentUsedLyricVersion": 2,
+        "displayType": "default",
+        "lyricLines": [
+          {
+            "time": -1,
+            "lyric": "贡献：首 测试"
+          },
+          {
+            "time": 0,
+            "lyric": "正文"
+          },
+          {
+            "time": 1,
+            "lyric": "贡献：尾一 测试"
+          },
+          {
+            "time": 2,
+            "lyric": "贡献：尾二 测试"
+          }
+        ],
+        "romaLyricLines": [
+          {
+            "time": 0,
+            "lyric": ""
+          },
+          {
+            "time": 1,
+            "lyric": "zhengwen"
+          },
+          {
+            "time": 2,
+            "lyric": ""
+          },
+          {
+            "time": 3,
+            "lyric": ""
+          }
+        ],
+        "tlyricLines": [
+          {
+            "time": 0,
+            "lyric": ""
+          },
+          {
+            "time": 1,
+            "lyric": "body"
+          },
+          {
+            "time": 2,
+            "lyric": ""
+          },
+          {
+            "time": 3,
+            "lyric": ""
+          }
+        ],
+        "offset": 1,
+        "scrollable": true,
+        "yrcInfo": {}
+      }
+    },
+    {
+      "input": {
+        "yrc": {
+          "lyric": "{\"t\":0,\"c\":[{\"tx\":\"贡献：\"},{\"tx\":\"首\"},null,{\"tx\":\"\"},{\"tx\":\"测试\"}]}\r\n[1000,2000](1000,1000,0)正文\r{\"t\":2000,\"c\":[{\"tx\":\"贡献：\"},{\"tx\":\"尾一\"},null,{\"tx\":\"\"},{\"tx\":\"测试\"}]}\n{\"t\":3000,\"c\":[{\"tx\":\"贡献：\"},{\"tx\":\"尾二\"},null,{\"tx\":\"\"},{\"tx\":\"测试\"}]}"
+        }
+      },
+      "expected": {
+        "currentUsedLyric": "yrc",
+        "displayType": "default",
+        "lyricLines": [
+          {
+            "time": 0,
+            "lyric": "贡献：首 测试"
+          },
+          {
+            "time": 1,
+            "lyric": "正文"
+          },
+          {
+            "time": 3,
+            "lyric": "贡献：尾二 测试"
+          },
+          {
+            "time": 2,
+            "lyric": "贡献：尾一 测试"
+          }
+        ],
+        "romaLyricLines": [],
+        "tlyricLines": [],
+        "offset": 0,
+        "scrollable": false,
+        "yrcInfo": {
+          "yrc": "[1000,2000](1000,1000,0)正文",
+          "yrcRoma": "",
+          "yrcTrans": ""
+        }
+      }
+    },
+    {
+      "input": {
+        "lrc": {},
+        "yrc": {
+          "lyric": "[1000,2000](1000,1000,0)保留原文"
+        },
+        "yromalrc": {
+          "lyric": "逐字罗马音"
+        },
+        "romalrc": {
+          "lyric": "普通罗马音"
+        },
+        "ytlrc": {
+          "lyric": "逐字翻译"
+        }
+      },
+      "expected": {
+        "currentUsedLyric": "lrc",
+        "displayType": "pure",
+        "lyricLines": [],
+        "romaLyricLines": [],
+        "tlyricLines": [],
+        "offset": 0,
+        "scrollable": false,
+        "yrcInfo": {
+          "yrc": "[1000,2000](1000,1000,0)保留原文",
+          "yrcRoma": "逐字罗马音",
+          "yrcTrans": "逐字翻译"
+        }
+      }
+    },
+    {
+      "input": {
+        "lrc": {
+          "lyric": "{\"c\":[{\"tx\":\"贡献：\"},{\"tx\":\"不带时间\"},null,{\"tx\":\"\"},{\"tx\":\"测试\"}]}\n[00:00]zero"
+        },
+        "tlyric": {
+          "lyric": "[00:00]translation"
+        }
+      },
+      "expected": {
+        "currentUsedLyric": "lrc",
+        "displayType": "default",
+        "lyricLines": [
+          {
+            "lyric": "贡献：不带时间 测试"
+          },
+          {
+            "time": 0,
+            "lyric": "zero"
+          }
+        ],
+        "romaLyricLines": [],
+        "tlyricLines": [
+          {
+            "lyric": ""
+          },
+          {
+            "time": 0,
+            "lyric": "translation"
+          }
+        ],
+        "offset": 0,
+        "scrollable": true,
+        "yrcInfo": {}
+      }
+    },
+    {
+      "input": {
+        "lrc": {
+          "lyric": "[00:01]原文\n[00:02]原文二"
+        },
+        "tlyric": {
+          "lyric": "无时间翻译\n[00:01]第一行"
+        }
+      },
+      "expected": {
+        "currentUsedLyric": "lrc",
+        "displayType": "default",
+        "lyricLines": [
+          {
+            "time": 1,
+            "lyric": "原文"
+          },
+          {
+            "time": 2,
+            "lyric": "原文二"
+          }
+        ],
+        "romaLyricLines": [],
+        "tlyricLines": [
+          {
+            "time": 1,
+            "lyric": ""
+          },
+          {
+            "time": 2,
+            "lyric": ""
+          }
+        ],
+        "offset": 0,
+        "scrollable": true,
+        "yrcInfo": {}
+      }
+    },
+    {
+      "input": {
+        "lrc": {
+          "lyric": "[01:2e1]指数秒\n[00:01:250]冒号毫秒\n[+1x: 3.5rest]数值前缀\n[-1:59]负数"
+        }
+      },
+      "expected": {
+        "currentUsedLyric": "lrc",
+        "displayType": "default",
+        "lyricLines": [
+          {
+            "time": -1,
+            "lyric": "负数"
+          },
+          {
+            "time": 1.25,
+            "lyric": "冒号毫秒"
+          },
+          {
+            "time": 63.5,
+            "lyric": "数值前缀"
+          },
+          {
+            "time": 80,
+            "lyric": "指数秒"
+          }
+        ],
+        "romaLyricLines": [],
+        "tlyricLines": [],
+        "offset": 0,
+        "scrollable": true,
+        "yrcInfo": {}
+      }
+    },
+    {
+      "input": {
+        "lrc": {
+          "lyric": "﻿[00:00]a\n[ar:artist]ignored\nuntimed\n[00:03]c﻿"
+        }
+      },
+      "expected": {
+        "currentUsedLyric": "lrc",
+        "displayType": "default",
+        "lyricLines": [
+          {
+            "time": 0,
+            "lyric": "a"
+          },
+          {
+            "lyric": "untimed"
+          },
+          {
+            "time": 3,
+            "lyric": "c"
+          }
+        ],
+        "romaLyricLines": [],
+        "tlyricLines": [],
+        "offset": 0,
+        "scrollable": false,
+        "yrcInfo": {}
+      }
+    },
+    {
+      "input": {
+        "lrc": {
+          "lyric": "[00:00]纯音乐，请欣赏\n{\"t\":2000,\"c\":[{\"tx\":\"贡献：\"},{\"tx\":\"后记\"},null,{\"tx\":\"\"},{\"tx\":\"测试\"}]}"
+        }
+      },
+      "expected": {
+        "currentUsedLyric": "lrc",
+        "displayType": "default",
+        "lyricLines": [
+          {
+            "time": 0,
+            "lyric": "纯音乐，请欣赏"
+          },
+          {
+            "time": 2,
+            "lyric": "贡献：后记 测试"
+          }
+        ],
+        "romaLyricLines": [],
+        "tlyricLines": [],
+        "offset": 0,
+        "scrollable": true,
+        "yrcInfo": {}
+      }
+    },
+    {
+      "input": {
+        "lrc": {
+          "lyric": "",
+          "offset": null,
+          "version": null
+        },
+        "canUploadLyric": true,
+        "askForTranslation": false,
+        "canUploadTranslation": true,
+        "lyricContributor": {
+          "uid": 101
+        },
+        "translationContributor": null,
+        "isCloudLyric": true,
+        "unexpected": "must not leak"
+      },
+      "expected": {
+        "currentUsedLyric": "lrc",
+        "currentUsedLyricVersion": null,
+        "displayType": "default",
+        "askForTranslation": false,
+        "canUploadTranslation": true,
+        "canUploadLyric": true,
+        "lyricLines": [],
+        "romaLyricLines": [],
+        "tlyricLines": [],
+        "lyricContributor": {
+          "uid": 101
+        },
+        "translationContributor": null,
+        "offset": 0,
+        "scrollable": false,
+        "yrcInfo": {},
+        "isCloudLyric": true
+      }
+    },
+    {
+      "input": {
+        "yrc": {
+          "lyric": "[2000,10](0,1,0)a! (0,1,0)你好 (0,1,0)ab\n[0,4](0,1,0)éclair\n[1000,1]中文保留",
+          "version": 4
+        }
+      },
+      "expected": {
+        "currentUsedLyric": "yrc",
+        "currentUsedLyricVersion": 4,
+        "displayType": "default",
+        "lyricLines": [
+          {
+            "time": 0,
+            "lyric": "éclair"
+          },
+          {
+            "time": 1,
+            "lyric": "中文保留"
+          },
+          {
+            "time": 2,
+            "lyric": "a!你好ab "
+          }
+        ],
+        "romaLyricLines": [],
+        "tlyricLines": [],
+        "offset": 0,
+        "scrollable": false,
+        "yrcInfo": {
+          "yrc": "[2000,10](0,1,0)a! (0,1,0)你好 (0,1,0)ab\n[0,4](0,1,0)éclair\n[1000,1]中文保留",
+          "yrcRoma": "",
+          "yrcTrans": ""
+        }
+      }
+    },
+    {
+      "input": {
+        "lrc": {
+          "lyric": "{\"t\":0,\"c\":[{\"tx\":\"贡献：\"},{\"tx\":\"头\"},null,{\"tx\":\"\"},{\"tx\":\"测试\"}]}\n\n[00:01]正文\n\n{\"t\":2000,\"c\":[{\"tx\":\"贡献：\"},{\"tx\":\"尾\"},null,{\"tx\":\"\"},{\"tx\":\"测试\"}]}"
+        }
+      },
+      "expected": {
+        "currentUsedLyric": "lrc",
+        "displayType": "default",
+        "lyricLines": [
+          {
+            "time": 0,
+            "lyric": "贡献：头 测试"
+          },
+          {
+            "time": 1,
+            "lyric": "正文"
+          },
+          {
+            "time": 2,
+            "lyric": "贡献：尾 测试"
+          }
+        ],
+        "romaLyricLines": [],
+        "tlyricLines": [],
+        "offset": 0,
+        "scrollable": true,
+        "yrcInfo": {}
+      }
+    },
+    {
+      "input": {
+        "lrc": {
+          "lyric": "[00:02]second\n[00:01]first\n[00:01]repeated",
+          "offset": 0
+        },
+        "tlyric": {
+          "lyric": "[00:01]one\n[00:02]two"
+        },
+        "romalrc": {
+          "lyric": "[00:01]one\n[00:02]two"
+        }
+      },
+      "expected": {
+        "currentUsedLyric": "lrc",
+        "displayType": "default",
+        "lyricLines": [
+          {
+            "time": 1,
+            "lyric": "first"
+          },
+          {
+            "time": 1,
+            "lyric": "repeated"
+          },
+          {
+            "time": 2,
+            "lyric": "second"
+          }
+        ],
+        "romaLyricLines": [
+          {
+            "time": 1,
+            "lyric": "one"
+          },
+          {
+            "time": 1,
+            "lyric": ""
+          },
+          {
+            "time": 2,
+            "lyric": "two"
+          }
+        ],
+        "tlyricLines": [
+          {
+            "time": 1,
+            "lyric": "one"
+          },
+          {
+            "time": 1,
+            "lyric": ""
+          },
+          {
+            "time": 2,
+            "lyric": "two"
+          }
+        ],
+        "offset": 0,
+        "scrollable": true,
+        "yrcInfo": {}
+      }
+    },
+    {
+      "input": {
+        "lrc": {
+          "lyric": "[00:02]second\n[00:01]first\n[00:01]repeated",
+          "offset": 0
+        },
+        "tlyric": {
+          "lyric": "[00:00]early\n[00:01]one\n[00:01]duplicate\n[00:04]late"
+        },
+        "romalrc": {
+          "lyric": "[00:00]early\n[00:01]one\n[00:01]duplicate\n[00:04]late"
+        }
+      },
+      "expected": {
+        "currentUsedLyric": "lrc",
+        "displayType": "default",
+        "lyricLines": [
+          {
+            "time": 1,
+            "lyric": "first"
+          },
+          {
+            "time": 1,
+            "lyric": "repeated"
+          },
+          {
+            "time": 2,
+            "lyric": "second"
+          }
+        ],
+        "romaLyricLines": [
+          {
+            "time": 1,
+            "lyric": "one"
+          },
+          {
+            "time": 1,
+            "lyric": "duplicate"
+          },
+          {
+            "time": 2,
+            "lyric": ""
+          }
+        ],
+        "tlyricLines": [
+          {
+            "time": 1,
+            "lyric": "one"
+          },
+          {
+            "time": 1,
+            "lyric": "duplicate"
+          },
+          {
+            "time": 2,
+            "lyric": ""
+          }
+        ],
+        "offset": 0,
+        "scrollable": true,
+        "yrcInfo": {}
+      }
+    },
+    {
+      "input": {
+        "lrc": {
+          "lyric": "[00:02]second\n[00:01]first\n[00:01]repeated",
+          "offset": 0
+        },
+        "tlyric": {
+          "lyric": "[00:01]one\nplain\n[00:02]two"
+        },
+        "romalrc": {
+          "lyric": "[00:01]one\nplain\n[00:02]two"
+        }
+      },
+      "expected": {
+        "currentUsedLyric": "lrc",
+        "displayType": "default",
+        "lyricLines": [
+          {
+            "time": 1,
+            "lyric": "first"
+          },
+          {
+            "time": 1,
+            "lyric": "repeated"
+          },
+          {
+            "time": 2,
+            "lyric": "second"
+          }
+        ],
+        "romaLyricLines": [
+          {
+            "time": 1,
+            "lyric": "one"
+          },
+          {
+            "time": 1,
+            "lyric": ""
+          },
+          {
+            "time": 2,
+            "lyric": ""
+          }
+        ],
+        "tlyricLines": [
+          {
+            "time": 1,
+            "lyric": "one"
+          },
+          {
+            "time": 1,
+            "lyric": ""
+          },
+          {
+            "time": 2,
+            "lyric": ""
+          }
+        ],
+        "offset": 0,
+        "scrollable": true,
+        "yrcInfo": {}
+      }
+    },
+    {
+      "input": {
+        "lrc": {
+          "lyric": "[00:02]second\n[00:01]first\n[00:01]repeated",
+          "offset": 1
+        },
+        "tlyric": {
+          "lyric": "[00:01]one\n[00:02]two"
+        },
+        "romalrc": {
+          "lyric": "[00:01]one\n[00:02]two"
+        }
+      },
+      "expected": {
+        "currentUsedLyric": "lrc",
+        "displayType": "default",
+        "lyricLines": [
+          {
+            "time": 0,
+            "lyric": "first"
+          },
+          {
+            "time": 0,
+            "lyric": "repeated"
+          },
+          {
+            "time": 1,
+            "lyric": "second"
+          }
+        ],
+        "romaLyricLines": [
+          {
+            "time": 1,
+            "lyric": "one"
+          },
+          {
+            "time": 1,
+            "lyric": ""
+          },
+          {
+            "time": 2,
+            "lyric": "two"
+          }
+        ],
+        "tlyricLines": [
+          {
+            "time": 1,
+            "lyric": "one"
+          },
+          {
+            "time": 1,
+            "lyric": ""
+          },
+          {
+            "time": 2,
+            "lyric": "two"
+          }
+        ],
+        "offset": 1,
+        "scrollable": true,
+        "yrcInfo": {}
+      }
+    },
+    {
+      "input": {
+        "lrc": {
+          "lyric": "[00:02]second\n[00:01]first\n[00:01]repeated",
+          "offset": 1
+        },
+        "tlyric": {
+          "lyric": "[00:00]early\n[00:01]one\n[00:01]duplicate\n[00:04]late"
+        },
+        "romalrc": {
+          "lyric": "[00:00]early\n[00:01]one\n[00:01]duplicate\n[00:04]late"
+        }
+      },
+      "expected": {
+        "currentUsedLyric": "lrc",
+        "displayType": "default",
+        "lyricLines": [
+          {
+            "time": 0,
+            "lyric": "first"
+          },
+          {
+            "time": 0,
+            "lyric": "repeated"
+          },
+          {
+            "time": 1,
+            "lyric": "second"
+          }
+        ],
+        "romaLyricLines": [
+          {
+            "time": 1,
+            "lyric": "one"
+          },
+          {
+            "time": 1,
+            "lyric": "duplicate"
+          },
+          {
+            "time": 2,
+            "lyric": ""
+          }
+        ],
+        "tlyricLines": [
+          {
+            "time": 1,
+            "lyric": "one"
+          },
+          {
+            "time": 1,
+            "lyric": "duplicate"
+          },
+          {
+            "time": 2,
+            "lyric": ""
+          }
+        ],
+        "offset": 1,
+        "scrollable": true,
+        "yrcInfo": {}
+      }
+    },
+    {
+      "input": {
+        "lrc": {
+          "lyric": "[00:02]second\n[00:01]first\n[00:01]repeated",
+          "offset": 1
+        },
+        "tlyric": {
+          "lyric": "[00:01]one\nplain\n[00:02]two"
+        },
+        "romalrc": {
+          "lyric": "[00:01]one\nplain\n[00:02]two"
+        }
+      },
+      "expected": {
+        "currentUsedLyric": "lrc",
+        "displayType": "default",
+        "lyricLines": [
+          {
+            "time": 0,
+            "lyric": "first"
+          },
+          {
+            "time": 0,
+            "lyric": "repeated"
+          },
+          {
+            "time": 1,
+            "lyric": "second"
+          }
+        ],
+        "romaLyricLines": [
+          {
+            "time": 1,
+            "lyric": "one"
+          },
+          {
+            "time": 1,
+            "lyric": ""
+          },
+          {
+            "time": 2,
+            "lyric": ""
+          }
+        ],
+        "tlyricLines": [
+          {
+            "time": 1,
+            "lyric": "one"
+          },
+          {
+            "time": 1,
+            "lyric": ""
+          },
+          {
+            "time": 2,
+            "lyric": ""
+          }
+        ],
+        "offset": 1,
+        "scrollable": true,
+        "yrcInfo": {}
+      }
+    },
+    {
+      "input": {
+        "lrc": {
+          "lyric": "[00:02]second\n[00:01]first\n[00:01]repeated",
+          "offset": -2
+        },
+        "tlyric": {
+          "lyric": "[00:01]one\n[00:02]two"
+        },
+        "romalrc": {
+          "lyric": "[00:01]one\n[00:02]two"
+        }
+      },
+      "expected": {
+        "currentUsedLyric": "lrc",
+        "displayType": "default",
+        "lyricLines": [
+          {
+            "time": 3,
+            "lyric": "first"
+          },
+          {
+            "time": 3,
+            "lyric": "repeated"
+          },
+          {
+            "time": 4,
+            "lyric": "second"
+          }
+        ],
+        "romaLyricLines": [
+          {
+            "time": 1,
+            "lyric": "one"
+          },
+          {
+            "time": 1,
+            "lyric": ""
+          },
+          {
+            "time": 2,
+            "lyric": "two"
+          }
+        ],
+        "tlyricLines": [
+          {
+            "time": 1,
+            "lyric": "one"
+          },
+          {
+            "time": 1,
+            "lyric": ""
+          },
+          {
+            "time": 2,
+            "lyric": "two"
+          }
+        ],
+        "offset": -2,
+        "scrollable": true,
+        "yrcInfo": {}
+      }
+    },
+    {
+      "input": {
+        "lrc": {
+          "lyric": "[00:02]second\n[00:01]first\n[00:01]repeated",
+          "offset": -2
+        },
+        "tlyric": {
+          "lyric": "[00:00]early\n[00:01]one\n[00:01]duplicate\n[00:04]late"
+        },
+        "romalrc": {
+          "lyric": "[00:00]early\n[00:01]one\n[00:01]duplicate\n[00:04]late"
+        }
+      },
+      "expected": {
+        "currentUsedLyric": "lrc",
+        "displayType": "default",
+        "lyricLines": [
+          {
+            "time": 3,
+            "lyric": "first"
+          },
+          {
+            "time": 3,
+            "lyric": "repeated"
+          },
+          {
+            "time": 4,
+            "lyric": "second"
+          }
+        ],
+        "romaLyricLines": [
+          {
+            "time": 1,
+            "lyric": "one"
+          },
+          {
+            "time": 1,
+            "lyric": "duplicate"
+          },
+          {
+            "time": 2,
+            "lyric": ""
+          }
+        ],
+        "tlyricLines": [
+          {
+            "time": 1,
+            "lyric": "one"
+          },
+          {
+            "time": 1,
+            "lyric": "duplicate"
+          },
+          {
+            "time": 2,
+            "lyric": ""
+          }
+        ],
+        "offset": -2,
+        "scrollable": true,
+        "yrcInfo": {}
+      }
+    },
+    {
+      "input": {
+        "lrc": {
+          "lyric": "[00:02]second\n[00:01]first\n[00:01]repeated",
+          "offset": -2
+        },
+        "tlyric": {
+          "lyric": "[00:01]one\nplain\n[00:02]two"
+        },
+        "romalrc": {
+          "lyric": "[00:01]one\nplain\n[00:02]two"
+        }
+      },
+      "expected": {
+        "currentUsedLyric": "lrc",
+        "displayType": "default",
+        "lyricLines": [
+          {
+            "time": 3,
+            "lyric": "first"
+          },
+          {
+            "time": 3,
+            "lyric": "repeated"
+          },
+          {
+            "time": 4,
+            "lyric": "second"
+          }
+        ],
+        "romaLyricLines": [
+          {
+            "time": 1,
+            "lyric": "one"
+          },
+          {
+            "time": 1,
+            "lyric": ""
+          },
+          {
+            "time": 2,
+            "lyric": ""
+          }
+        ],
+        "tlyricLines": [
+          {
+            "time": 1,
+            "lyric": "one"
+          },
+          {
+            "time": 1,
+            "lyric": ""
+          },
+          {
+            "time": 2,
+            "lyric": ""
+          }
+        ],
+        "offset": -2,
+        "scrollable": true,
+        "yrcInfo": {}
+      }
+    },
+    {
+      "input": {
+        "lrc": {
+          "lyric": "[00:02]second\n[00:01]first\n[00:01]repeated",
+          "offset": 0.001
+        },
+        "tlyric": {
+          "lyric": "[00:01]one\n[00:02]two"
+        },
+        "romalrc": {
+          "lyric": "[00:01]one\n[00:02]two"
+        }
+      },
+      "expected": {
+        "currentUsedLyric": "lrc",
+        "displayType": "default",
+        "lyricLines": [
+          {
+            "time": 0.999,
+            "lyric": "first"
+          },
+          {
+            "time": 0.999,
+            "lyric": "repeated"
+          },
+          {
+            "time": 1.999,
+            "lyric": "second"
+          }
+        ],
+        "romaLyricLines": [
+          {
+            "time": 1,
+            "lyric": "one"
+          },
+          {
+            "time": 1,
+            "lyric": ""
+          },
+          {
+            "time": 2,
+            "lyric": "two"
+          }
+        ],
+        "tlyricLines": [
+          {
+            "time": 1,
+            "lyric": "one"
+          },
+          {
+            "time": 1,
+            "lyric": ""
+          },
+          {
+            "time": 2,
+            "lyric": "two"
+          }
+        ],
+        "offset": 0.001,
+        "scrollable": true,
+        "yrcInfo": {}
+      }
+    },
+    {
+      "input": {
+        "lrc": {
+          "lyric": "[00:02]second\n[00:01]first\n[00:01]repeated",
+          "offset": 0.001
+        },
+        "tlyric": {
+          "lyric": "[00:00]early\n[00:01]one\n[00:01]duplicate\n[00:04]late"
+        },
+        "romalrc": {
+          "lyric": "[00:00]early\n[00:01]one\n[00:01]duplicate\n[00:04]late"
+        }
+      },
+      "expected": {
+        "currentUsedLyric": "lrc",
+        "displayType": "default",
+        "lyricLines": [
+          {
+            "time": 0.999,
+            "lyric": "first"
+          },
+          {
+            "time": 0.999,
+            "lyric": "repeated"
+          },
+          {
+            "time": 1.999,
+            "lyric": "second"
+          }
+        ],
+        "romaLyricLines": [
+          {
+            "time": 1,
+            "lyric": "one"
+          },
+          {
+            "time": 1,
+            "lyric": "duplicate"
+          },
+          {
+            "time": 2,
+            "lyric": ""
+          }
+        ],
+        "tlyricLines": [
+          {
+            "time": 1,
+            "lyric": "one"
+          },
+          {
+            "time": 1,
+            "lyric": "duplicate"
+          },
+          {
+            "time": 2,
+            "lyric": ""
+          }
+        ],
+        "offset": 0.001,
+        "scrollable": true,
+        "yrcInfo": {}
+      }
+    },
+    {
+      "input": {
+        "lrc": {
+          "lyric": "[00:02]second\n[00:01]first\n[00:01]repeated",
+          "offset": 0.001
+        },
+        "tlyric": {
+          "lyric": "[00:01]one\nplain\n[00:02]two"
+        },
+        "romalrc": {
+          "lyric": "[00:01]one\nplain\n[00:02]two"
+        }
+      },
+      "expected": {
+        "currentUsedLyric": "lrc",
+        "displayType": "default",
+        "lyricLines": [
+          {
+            "time": 0.999,
+            "lyric": "first"
+          },
+          {
+            "time": 0.999,
+            "lyric": "repeated"
+          },
+          {
+            "time": 1.999,
+            "lyric": "second"
+          }
+        ],
+        "romaLyricLines": [
+          {
+            "time": 1,
+            "lyric": "one"
+          },
+          {
+            "time": 1,
+            "lyric": ""
+          },
+          {
+            "time": 2,
+            "lyric": ""
+          }
+        ],
+        "tlyricLines": [
+          {
+            "time": 1,
+            "lyric": "one"
+          },
+          {
+            "time": 1,
+            "lyric": ""
+          },
+          {
+            "time": 2,
+            "lyric": ""
+          }
+        ],
+        "offset": 0.001,
+        "scrollable": true,
+        "yrcInfo": {}
+      }
+    }
+  ],
+  "rejected": [
+    {
+      "input": {
+        "yrc": {
+          "lyric": "[0,0]"
+        },
+        "yromalrc": {
+          "lyric": ""
+        },
+        "romalrc": {
+          "lyric": "fallback"
+        },
+        "ytlrc": {
+          "lyric": null
+        }
+      },
+      "error": "TypeError"
+    }
+  ],
+  "normalized": [
+    {
+      "input": {},
+      "kind": "song",
+      "expected": {
+        "noLyric": true,
+        "isCloudLyric": false
+      }
+    },
+    {
+      "input": {
+        "code": 200,
+        "sgc": true,
+        "sfy": false,
+        "qfy": true,
+        "lyricUser": {
+          "id": 3,
+          "userid": 4,
+          "nickname": "synthetic"
+        },
+        "transUser": {},
+        "lrc": {
+          "version": 2,
+          "lyric": "[00:01]one",
+          "offset": 500
+        },
+        "tlyric": {
+          "version": 1,
+          "lyric": "[00:01]一",
+          "offset": -500
+        }
+      },
+      "kind": "song",
+      "expected": {
+        "code": 200,
+        "canUploadLyric": true,
+        "canUploadTranslation": false,
+        "askForTranslation": true,
+        "lyricContributor": {
+          "id": "3",
+          "userid": "4",
+          "nickname": "synthetic"
+        },
+        "translationContributor": {
+          "id": "undefined",
+          "userid": "undefined"
+        },
+        "noLyric": false,
+        "lrc": {
+          "version": 2,
+          "lyric": "[00:01]one",
+          "offset": 0.5
+        },
+        "tlyric": {
+          "version": 1,
+          "lyric": "[00:01]一",
+          "offset": -0.5
+        },
+        "isCloudLyric": false
+      }
+    },
+    {
+      "input": {
+        "code": 200,
+        "lrc": {
+          "lyric": "",
+          "offset": 0
+        },
+        "yrc": {},
+        "tlyric": null,
+        "romalrc": false,
+        "yromalrc": {
+          "lyric": "",
+          "offset": 2000
+        },
+        "ytlrc": {
+          "lyric": "translation",
+          "offset": 0
+        }
+      },
+      "kind": "song",
+      "expected": {
+        "code": 200,
+        "noLyric": true,
+        "yromalrc": {
+          "lyric": "",
+          "offset": 2
+        },
+        "ytlrc": {
+          "lyric": "translation",
+          "offset": 0
+        },
+        "isCloudLyric": false
+      }
+    },
+    {
+      "input": {
+        "code": 200,
+        "lrc": {
+          "lyric": "[00:00]start",
+          "offset": null
+        },
+        "yrc": {
+          "lyric": "[0,1]zero",
+          "offset": 1000
+        },
+        "lyricUser": null
+      },
+      "kind": "song",
+      "expected": {
+        "code": 200,
+        "noLyric": false,
+        "lrc": {
+          "lyric": "[00:00]start",
+          "offset": 0
+        },
+        "yrc": {
+          "lyric": "[0,1]zero",
+          "offset": 1
+        },
+        "isCloudLyric": false
+      }
+    },
+    {
+      "input": {
+        "code": 200,
+        "lrc": {
+          "version": 9
+        },
+        "tlyric": {
+          "lyric": "[00:01]translated"
+        }
+      },
+      "kind": "song",
+      "expected": {
+        "code": 200,
+        "noLyric": false,
+        "tlyric": {
+          "lyric": "[00:01]translated",
+          "offset": 0
+        },
+        "isCloudLyric": false
+      }
+    },
+    {
+      "input": {
+        "code": 200,
+        "lrc": "[00:01]cloud"
+      },
+      "kind": "cloud",
+      "expected": {
+        "code": 200,
+        "isCloudLyric": true,
+        "canUploadLyric": false,
+        "canUploadTranslation": false,
+        "askForTranslation": false,
+        "noLyric": true,
+        "lrc": {
+          "version": -1,
+          "lyric": "[00:01]cloud",
+          "offset": 0
+        }
+      }
+    },
+    {
+      "input": {
+        "code": 200,
+        "lrc": ""
+      },
+      "kind": "cloud",
+      "expected": {
+        "code": 200,
+        "isCloudLyric": true,
+        "canUploadLyric": false,
+        "canUploadTranslation": false,
+        "askForTranslation": false,
+        "noLyric": true,
+        "lrc": {
+          "version": -1,
+          "lyric": "",
+          "offset": 0
+        }
+      }
+    },
+    {
+      "input": {},
+      "kind": "cloud",
+      "expected": {
+        "isCloudLyric": true,
+        "canUploadLyric": false,
+        "canUploadTranslation": false,
+        "askForTranslation": false,
+        "noLyric": true,
+        "lrc": {
+          "version": -1,
+          "offset": 0
+        }
+      }
+    }
+  ],
+  "protected": [
+    {
+      "input": "",
+      "expected": ""
+    },
+    {
+      "input": "\r\n",
+      "expected": "\r\n"
+    },
+    {
+      "input": "[00:01]",
+      "expected": "[00:01]​"
+    },
+    {
+      "input": " [00:01.500] \r\n[0,1234]\n[00:00]words\r[00:02]\n",
+      "expected": " [00:01.500] ​\r\n[0,1234]​\n[00:00]words\r[00:02]​\n"
+    },
+    {
+      "input": "[000:01:2][00:02.555]\t",
+      "expected": "[000:01:2][00:02.555]\t​"
+    },
+    {
+      "input": "[0000:00]\n[00:000]\n[00:00.1234]\n[１２:０１]",
+      "expected": "[0000:00]\n[00:000]\n[00:00.1234]\n[１２:０１]"
+    },
+    {
+      "input": "﻿[00:01] [00:02]﻿",
+      "expected": "﻿[00:01] [00:02]﻿​"
+    },
+    {
+      "input": "[00:01]",
+      "expected": "[00:01]"
+    },
+    {
+      "input": "[00:01]​",
+      "expected": "[00:01]​"
+    },
+    {
+      "input": "[1,2] [3,4]",
+      "expected": "[1,2] [3,4]"
+    }
+  ],
+  "times": [
+    {
+      "input": 0,
+      "expected": "00:00.0"
+    },
+    {
+      "input": 0,
+      "expected": "00:00.0"
+    },
+    {
+      "input": 1,
+      "expected": "00:01.0"
+    },
+    {
+      "input": 1.234567,
+      "expected": "00:01.234"
+    },
+    {
+      "input": 59.999999,
+      "expected": "00:59.999"
+    },
+    {
+      "input": 60,
+      "expected": "01:00.0"
+    },
+    {
+      "input": 61.02,
+      "expected": "01:01.020"
+    },
+    {
+      "input": 3600,
+      "expected": "60:00.0"
+    },
+    {
+      "input": 1e-7,
+      "expected": "00:1e-7.0"
+    },
+    {
+      "input": -0.1,
+      "expected": "-1:-0.1"
+    },
+    {
+      "input": -61.125,
+      "expected": "-2:-1.125"
+    },
+    {
+      "input": 1e+21,
+      "expected": "16666666666666666000:40.0"
+    }
+  ],
+  "rendered": [
+    {
+      "input": [],
+      "expected": ""
+    },
+    {
+      "input": [
+        {
+          "lyric": "untimed"
+        },
+        {
+          "time": 0,
+          "lyric": "zero"
+        },
+        {
+          "time": 1.23456,
+          "lyric": "one"
+        },
+        {
+          "time": -0.5,
+          "lyric": "negative"
+        }
+      ],
+      "expected": "untimed\n[00:00.0]zero\n[00:01.234]one\n[-1:-0.5]negative"
+    }
+  ]
+}

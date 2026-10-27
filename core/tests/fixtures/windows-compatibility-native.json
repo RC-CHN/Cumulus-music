@@ -1,0 +1,200 @@
+{
+  "schema": 1,
+  "binary": "references/netease-3.1.42.205594-x64-unpacked/redist_packages/cloudmusic.dll",
+  "source_sha256": "557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493",
+  "userAgentRva": "0x1dbb590",
+  "officialUserAgent": "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Safari/537.36 Chrome/91.0.4472.164 NeteaseMusicDesktop/3.1.42.205594",
+  "osverFormatterRva": "0x32d030",
+  "osverInstructionBytesVerified": true,
+  "descriptionCases": [
+    {
+      "input": "Microsoft Windows 10 Professional (build 19045),64bit",
+      "output": "Microsoft-Windows-10-Professional-build-19045-64bit"
+    },
+    {
+      "input": "Microsoft Windows 10 Professional (build 19045),32bit",
+      "output": "Microsoft-Windows-10-Professional-build-19045-32bit"
+    },
+    {
+      "input": " A (B), C ",
+      "output": "-A-B--C-"
+    },
+    {
+      "input": "Windows　Example,(64bit)",
+      "output": "Windows　Example-64bit"
+    }
+  ],
+  "hypotheses": [
+    {
+      "build": "2.7.5_af2952a4",
+      "platform": "Win32",
+      "evalTextLength": 33,
+      "platformMismatch": true,
+      "browserMismatch": false
+    },
+    {
+      "build": "2.7.5_af2952a4",
+      "platform": "Win32",
+      "evalTextLength": 37,
+      "platformMismatch": true,
+      "browserMismatch": true
+    },
+    {
+      "build": "2.7.5_af2952a4",
+      "platform": "Win32",
+      "evalTextLength": 39,
+      "platformMismatch": true,
+      "browserMismatch": true
+    },
+    {
+      "build": "2.7.5_af2952a4",
+      "platform": "win32",
+      "evalTextLength": 33,
+      "platformMismatch": false,
+      "browserMismatch": false
+    },
+    {
+      "build": "2.7.5_af2952a4",
+      "platform": "win32",
+      "evalTextLength": 37,
+      "platformMismatch": false,
+      "browserMismatch": true
+    },
+    {
+      "build": "2.7.5_af2952a4",
+      "platform": "win32",
+      "evalTextLength": 39,
+      "platformMismatch": false,
+      "browserMismatch": true
+    },
+    {
+      "build": "2.7.5_af2952a4",
+      "platform": "Linux x86_64",
+      "evalTextLength": 33,
+      "platformMismatch": true,
+      "browserMismatch": false
+    },
+    {
+      "build": "2.7.5_af2952a4",
+      "platform": "Linux x86_64",
+      "evalTextLength": 37,
+      "platformMismatch": true,
+      "browserMismatch": true
+    },
+    {
+      "build": "2.7.5_af2952a4",
+      "platform": "Linux x86_64",
+      "evalTextLength": 39,
+      "platformMismatch": true,
+      "browserMismatch": true
+    },
+    {
+      "build": "2.7.5_af2952a4",
+      "platform": "MacIntel",
+      "evalTextLength": 33,
+      "platformMismatch": true,
+      "browserMismatch": false
+    },
+    {
+      "build": "2.7.5_af2952a4",
+      "platform": "MacIntel",
+      "evalTextLength": 37,
+      "platformMismatch": true,
+      "browserMismatch": true
+    },
+    {
+      "build": "2.7.5_af2952a4",
+      "platform": "MacIntel",
+      "evalTextLength": 39,
+      "platformMismatch": true,
+      "browserMismatch": true
+    },
+    {
+      "build": "2.7.5_602a5ad7",
+      "platform": "Win32",
+      "evalTextLength": 33,
+      "platformMismatch": true,
+      "browserMismatch": false
+    },
+    {
+      "build": "2.7.5_602a5ad7",
+      "platform": "Win32",
+      "evalTextLength": 37,
+      "platformMismatch": true,
+      "browserMismatch": true
+    },
+    {
+      "build": "2.7.5_602a5ad7",
+      "platform": "Win32",
+      "evalTextLength": 39,
+      "platformMismatch": true,
+      "browserMismatch": true
+    },
+    {
+      "build": "2.7.5_602a5ad7",
+      "platform": "win32",
+      "evalTextLength": 33,
+      "platformMismatch": false,
+      "browserMismatch": false
+    },
+    {
+      "build": "2.7.5_602a5ad7",
+      "platform": "win32",
+      "evalTextLength": 37,
+      "platformMismatch": false,
+      "browserMismatch": true
+    },
+    {
+      "build": "2.7.5_602a5ad7",
+      "platform": "win32",
+      "evalTextLength": 39,
+      "platformMismatch": false,
+      "browserMismatch": true
+    },
+    {
+      "build": "2.7.5_602a5ad7",
+      "platform": "Linux x86_64",
+      "evalTextLength": 33,
+      "platformMismatch": true,
+      "browserMismatch": false
+    },
+    {
+      "build": "2.7.5_602a5ad7",
+      "platform": "Linux x86_64",
+      "evalTextLength": 37,
+      "platformMismatch": true,
+      "browserMismatch": true
+    },
+    {
+      "build": "2.7.5_602a5ad7",
+      "platform": "Linux x86_64",
+      "evalTextLength": 39,
+      "platformMismatch": true,
+      "browserMismatch": true
+    },
+    {
+      "build": "2.7.5_602a5ad7",
+      "platform": "MacIntel",
+      "evalTextLength": 33,
+      "platformMismatch": true,
+      "browserMismatch": false
+    },
+    {
+      "build": "2.7.5_602a5ad7",
+      "platform": "MacIntel",
+      "evalTextLength": 37,
+      "platformMismatch": true,
+      "browserMismatch": true
+    },
+    {
+      "build": "2.7.5_602a5ad7",
+      "platform": "MacIntel",
+      "evalTextLength": 39,
+      "platformMismatch": true,
+      "browserMismatch": true
+    }
+  ],
+  "networkRequests": 0,
+  "realWindowsMeasured": false,
+  "serviceAcceptanceProven": false
+}

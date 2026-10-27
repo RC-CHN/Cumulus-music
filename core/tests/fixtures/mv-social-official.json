@@ -1,0 +1,48 @@
+{
+  "sources": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/15.js",
+      "sha256": "8ec4bf8d343f6963860eb73bc59ca09f0dd1ae50db2608a6c5abc7d69a0b521a"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_153.chunk.1482700000000.js/3158.js",
+      "sha256": "8e88bb5d07c48c7ec485bf54784cf085824cb9515f026e9440fc1bac38bca4e4"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/91.js",
+      "sha256": "445c4330441d995999e0b20b89c9ab4171def2b9d0193395294481ed3f1e71fb"
+    }
+  ],
+  "calls": [
+    {
+      "path": "/api/resource/like",
+      "payload": {
+        "threadId": "R_MV_5_123"
+      }
+    },
+    {
+      "path": "/api/resource/unlike",
+      "payload": {
+        "threadId": "R_MV_5_123"
+      }
+    },
+    {
+      "path": "/api/song/enhance/privilege",
+      "payload": {
+        "ids": "[\"90071992547409931\"]",
+        "trialMode": -1
+      }
+    }
+  ],
+  "optimistic_updates": [
+    {
+      "liked": true,
+      "likedCount": 78
+    },
+    {
+      "liked": false,
+      "likedCount": 76
+    }
+  ],
+  "default_trial_mode": -1
+}

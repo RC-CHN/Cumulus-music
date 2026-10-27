@@ -1,0 +1,17 @@
+[package]
+name = "cumulus-audio-filter"
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+cumulus-core.workspace = true
+
+[dev-dependencies]
+libloading = "0.7.4"
+serde_json = "1"
+tempfile = "3"

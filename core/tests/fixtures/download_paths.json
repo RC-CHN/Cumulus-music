@@ -1,0 +1,1693 @@
+{
+  "sources": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/27.js",
+      "sha256": "ba4c34aa4cc49759b13356d5b720d7878c6c9e48e38537c47217a62ad551d117"
+    }
+  ],
+  "cases": [
+    {
+      "name": "track-0-0-0",
+      "input": {
+        "track": {
+          "name": "  标题/*?<>:\"|\\,😀  ",
+          "artists": [
+            {
+              "name": " 甲 "
+            },
+            {
+              "name": "乙"
+            },
+            {
+              "name": "丙"
+            },
+            {
+              "name": "丁"
+            }
+          ],
+          "album": {
+            "name": "专辑",
+            "artists": [
+              {
+                "name": "专辑歌手"
+              }
+            ]
+          }
+        },
+        "pathType": 0,
+        "fileType": 0,
+        "suffix": "flac",
+        "offlinePathLength": 20
+      },
+      "expected": "甲,乙,丙 - 标题＼,😀.flac"
+    },
+    {
+      "name": "track-0-0-1",
+      "input": {
+        "track": {
+          "name": "  标题/*?<>:\"|\\,😀  ",
+          "artists": [
+            {
+              "name": " 甲 "
+            },
+            {
+              "name": "乙"
+            },
+            {
+              "name": "丙"
+            },
+            {
+              "name": "丁"
+            }
+          ],
+          "album": {
+            "name": "专辑",
+            "artists": [
+              {
+                "name": "专辑歌手"
+              }
+            ]
+          }
+        },
+        "pathType": 0,
+        "fileType": 1,
+        "suffix": "flac",
+        "offlinePathLength": 20
+      },
+      "expected": "标题＼,😀.flac"
+    },
+    {
+      "name": "track-0-0-2",
+      "input": {
+        "track": {
+          "name": "  标题/*?<>:\"|\\,😀  ",
+          "artists": [
+            {
+              "name": " 甲 "
+            },
+            {
+              "name": "乙"
+            },
+            {
+              "name": "丙"
+            },
+            {
+              "name": "丁"
+            }
+          ],
+          "album": {
+            "name": "专辑",
+            "artists": [
+              {
+                "name": "专辑歌手"
+              }
+            ]
+          }
+        },
+        "pathType": 0,
+        "fileType": 2,
+        "suffix": "flac",
+        "offlinePathLength": 20
+      },
+      "expected": "标题＼,😀 - 甲,乙,丙.flac"
+    },
+    {
+      "name": "track-0-1-0",
+      "input": {
+        "track": {
+          "name": "  标题/*?<>:\"|\\,😀  ",
+          "artists": [
+            {
+              "name": " 甲 "
+            },
+            {
+              "name": "乙"
+            },
+            {
+              "name": "丙"
+            },
+            {
+              "name": "丁"
+            }
+          ],
+          "album": {
+            "name": "专辑",
+            "artists": [
+              {
+                "name": "专辑歌手"
+              }
+            ]
+          }
+        },
+        "pathType": 1,
+        "fileType": 0,
+        "suffix": "flac",
+        "offlinePathLength": 20
+      },
+      "expected": "甲,乙,丙\\甲,乙,丙 - 标题＼,😀.flac"
+    },
+    {
+      "name": "track-0-1-1",
+      "input": {
+        "track": {
+          "name": "  标题/*?<>:\"|\\,😀  ",
+          "artists": [
+            {
+              "name": " 甲 "
+            },
+            {
+              "name": "乙"
+            },
+            {
+              "name": "丙"
+            },
+            {
+              "name": "丁"
+            }
+          ],
+          "album": {
+            "name": "专辑",
+            "artists": [
+              {
+                "name": "专辑歌手"
+              }
+            ]
+          }
+        },
+        "pathType": 1,
+        "fileType": 1,
+        "suffix": "flac",
+        "offlinePathLength": 20
+      },
+      "expected": "甲,乙,丙\\标题＼,😀.flac"
+    },
+    {
+      "name": "track-0-1-2",
+      "input": {
+        "track": {
+          "name": "  标题/*?<>:\"|\\,😀  ",
+          "artists": [
+            {
+              "name": " 甲 "
+            },
+            {
+              "name": "乙"
+            },
+            {
+              "name": "丙"
+            },
+            {
+              "name": "丁"
+            }
+          ],
+          "album": {
+            "name": "专辑",
+            "artists": [
+              {
+                "name": "专辑歌手"
+              }
+            ]
+          }
+        },
+        "pathType": 1,
+        "fileType": 2,
+        "suffix": "flac",
+        "offlinePathLength": 20
+      },
+      "expected": "甲,乙,丙\\标题＼,😀 - 甲,乙,丙.flac"
+    },
+    {
+      "name": "track-0-2-0",
+      "input": {
+        "track": {
+          "name": "  标题/*?<>:\"|\\,😀  ",
+          "artists": [
+            {
+              "name": " 甲 "
+            },
+            {
+              "name": "乙"
+            },
+            {
+              "name": "丙"
+            },
+            {
+              "name": "丁"
+            }
+          ],
+          "album": {
+            "name": "专辑",
+            "artists": [
+              {
+                "name": "专辑歌手"
+              }
+            ]
+          }
+        },
+        "pathType": 2,
+        "fileType": 0,
+        "suffix": "flac",
+        "offlinePathLength": 20
+      },
+      "expected": "专辑歌手\\专辑\\甲,乙,丙 - 标题＼,😀.flac"
+    },
+    {
+      "name": "track-0-2-1",
+      "input": {
+        "track": {
+          "name": "  标题/*?<>:\"|\\,😀  ",
+          "artists": [
+            {
+              "name": " 甲 "
+            },
+            {
+              "name": "乙"
+            },
+            {
+              "name": "丙"
+            },
+            {
+              "name": "丁"
+            }
+          ],
+          "album": {
+            "name": "专辑",
+            "artists": [
+              {
+                "name": "专辑歌手"
+              }
+            ]
+          }
+        },
+        "pathType": 2,
+        "fileType": 1,
+        "suffix": "flac",
+        "offlinePathLength": 20
+      },
+      "expected": "专辑歌手\\专辑\\标题＼,😀.flac"
+    },
+    {
+      "name": "track-0-2-2",
+      "input": {
+        "track": {
+          "name": "  标题/*?<>:\"|\\,😀  ",
+          "artists": [
+            {
+              "name": " 甲 "
+            },
+            {
+              "name": "乙"
+            },
+            {
+              "name": "丙"
+            },
+            {
+              "name": "丁"
+            }
+          ],
+          "album": {
+            "name": "专辑",
+            "artists": [
+              {
+                "name": "专辑歌手"
+              }
+            ]
+          }
+        },
+        "pathType": 2,
+        "fileType": 2,
+        "suffix": "flac",
+        "offlinePathLength": 20
+      },
+      "expected": "专辑歌手\\专辑\\标题＼,😀 - 甲,乙,丙.flac"
+    },
+    {
+      "name": "track-1-0-0",
+      "input": {
+        "track": {
+          "name": "long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-",
+          "artists": [
+            {
+              "name": "artistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartist"
+            }
+          ],
+          "album": {
+            "name": "albumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbum"
+          }
+        },
+        "pathType": 0,
+        "fileType": 0,
+        "suffix": "flac",
+        "offlinePathLength": 20
+      },
+      "expected": "artistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartist - long-long-long-long-long-long-long-long-long-long-lon.flac"
+    },
+    {
+      "name": "track-1-0-1",
+      "input": {
+        "track": {
+          "name": "long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-",
+          "artists": [
+            {
+              "name": "artistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartist"
+            }
+          ],
+          "album": {
+            "name": "albumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbum"
+          }
+        },
+        "pathType": 0,
+        "fileType": 1,
+        "suffix": "flac",
+        "offlinePathLength": 20
+      },
+      "expected": "long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-l.flac"
+    },
+    {
+      "name": "track-1-0-2",
+      "input": {
+        "track": {
+          "name": "long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-",
+          "artists": [
+            {
+              "name": "artistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartist"
+            }
+          ],
+          "album": {
+            "name": "albumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbum"
+          }
+        },
+        "pathType": 0,
+        "fileType": 2,
+        "suffix": "flac",
+        "offlinePathLength": 20
+      },
+      "expected": "long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-l.flac"
+    },
+    {
+      "name": "track-1-1-0",
+      "input": {
+        "track": {
+          "name": "long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-",
+          "artists": [
+            {
+              "name": "artistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartist"
+            }
+          ],
+          "album": {
+            "name": "albumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbum"
+          }
+        },
+        "pathType": 1,
+        "fileType": 0,
+        "suffix": "flac",
+        "offlinePathLength": 20
+      },
+      "expected": "artistartistartistartistartistartistartistartistartistarti\\artistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistar.flac"
+    },
+    {
+      "name": "track-1-1-1",
+      "input": {
+        "track": {
+          "name": "long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-",
+          "artists": [
+            {
+              "name": "artistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartist"
+            }
+          ],
+          "album": {
+            "name": "albumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbum"
+          }
+        },
+        "pathType": 1,
+        "fileType": 1,
+        "suffix": "flac",
+        "offlinePathLength": 20
+      },
+      "expected": "artistartistartistartistartistartistartistartistartistarti\\long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-l.flac"
+    },
+    {
+      "name": "track-1-1-2",
+      "input": {
+        "track": {
+          "name": "long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-",
+          "artists": [
+            {
+              "name": "artistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartist"
+            }
+          ],
+          "album": {
+            "name": "albumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbum"
+          }
+        },
+        "pathType": 1,
+        "fileType": 2,
+        "suffix": "flac",
+        "offlinePathLength": 20
+      },
+      "expected": "artistartistartistartistartistartistartistartistartistarti\\long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-l.flac"
+    },
+    {
+      "name": "track-1-2-0",
+      "input": {
+        "track": {
+          "name": "long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-",
+          "artists": [
+            {
+              "name": "artistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartist"
+            }
+          ],
+          "album": {
+            "name": "albumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbum"
+          }
+        },
+        "pathType": 2,
+        "fileType": 0,
+        "suffix": "flac",
+        "offlinePathLength": 20
+      },
+      "expected": "artistartistartistartistartistartistartista\\albumalbumalbumalbumalbumalbumalbumalbumalb\\artistartistartistartistartistartistartistartistartistartistartistartistartistartistar.flac"
+    },
+    {
+      "name": "track-1-2-1",
+      "input": {
+        "track": {
+          "name": "long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-",
+          "artists": [
+            {
+              "name": "artistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartist"
+            }
+          ],
+          "album": {
+            "name": "albumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbum"
+          }
+        },
+        "pathType": 2,
+        "fileType": 1,
+        "suffix": "flac",
+        "offlinePathLength": 20
+      },
+      "expected": "artistartistartistartistartistartistartista\\albumalbumalbumalbumalbumalbumalbumalbumalb\\long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-l.flac"
+    },
+    {
+      "name": "track-1-2-2",
+      "input": {
+        "track": {
+          "name": "long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-",
+          "artists": [
+            {
+              "name": "artistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartistartist"
+            }
+          ],
+          "album": {
+            "name": "albumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbumalbum"
+          }
+        },
+        "pathType": 2,
+        "fileType": 2,
+        "suffix": "flac",
+        "offlinePathLength": 20
+      },
+      "expected": "artistartistartistartistartistartistartista\\albumalbumalbumalbumalbumalbumalbumalbumalb\\long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-l.flac"
+    },
+    {
+      "name": "track-2-0-0",
+      "input": {
+        "track": {
+          "name": "﻿ ,..a\u0001b.., ",
+          "artists": [],
+          "album": {}
+        },
+        "pathType": 0,
+        "fileType": 0,
+        "suffix": "flac",
+        "offlinePathLength": 20
+      },
+      "expected": "未知歌手 - ,..ab.flac"
+    },
+    {
+      "name": "track-2-0-1",
+      "input": {
+        "track": {
+          "name": "﻿ ,..a\u0001b.., ",
+          "artists": [],
+          "album": {}
+        },
+        "pathType": 0,
+        "fileType": 1,
+        "suffix": "flac",
+        "offlinePathLength": 20
+      },
+      "expected": "ab.flac"
+    },
+    {
+      "name": "track-2-0-2",
+      "input": {
+        "track": {
+          "name": "﻿ ,..a\u0001b.., ",
+          "artists": [],
+          "album": {}
+        },
+        "pathType": 0,
+        "fileType": 2,
+        "suffix": "flac",
+        "offlinePathLength": 20
+      },
+      "expected": "ab.., - 未知歌手.flac"
+    },
+    {
+      "name": "track-2-1-0",
+      "input": {
+        "track": {
+          "name": "﻿ ,..a\u0001b.., ",
+          "artists": [],
+          "album": {}
+        },
+        "pathType": 1,
+        "fileType": 0,
+        "suffix": "flac",
+        "offlinePathLength": 20
+      },
+      "expected": "未知歌手\\未知歌手 - ,..ab.flac"
+    },
+    {
+      "name": "track-2-1-1",
+      "input": {
+        "track": {
+          "name": "﻿ ,..a\u0001b.., ",
+          "artists": [],
+          "album": {}
+        },
+        "pathType": 1,
+        "fileType": 1,
+        "suffix": "flac",
+        "offlinePathLength": 20
+      },
+      "expected": "未知歌手\\ab.flac"
+    },
+    {
+      "name": "track-2-1-2",
+      "input": {
+        "track": {
+          "name": "﻿ ,..a\u0001b.., ",
+          "artists": [],
+          "album": {}
+        },
+        "pathType": 1,
+        "fileType": 2,
+        "suffix": "flac",
+        "offlinePathLength": 20
+      },
+      "expected": "未知歌手\\ab.., - 未知歌手.flac"
+    },
+    {
+      "name": "track-2-2-0",
+      "input": {
+        "track": {
+          "name": "﻿ ,..a\u0001b.., ",
+          "artists": [],
+          "album": {}
+        },
+        "pathType": 2,
+        "fileType": 0,
+        "suffix": "flac",
+        "offlinePathLength": 20
+      },
+      "expected": "未知歌手\\未知专辑\\未知歌手 - ,..ab.flac"
+    },
+    {
+      "name": "track-2-2-1",
+      "input": {
+        "track": {
+          "name": "﻿ ,..a\u0001b.., ",
+          "artists": [],
+          "album": {}
+        },
+        "pathType": 2,
+        "fileType": 1,
+        "suffix": "flac",
+        "offlinePathLength": 20
+      },
+      "expected": "未知歌手\\未知专辑\\ab.flac"
+    },
+    {
+      "name": "track-2-2-2",
+      "input": {
+        "track": {
+          "name": "﻿ ,..a\u0001b.., ",
+          "artists": [],
+          "album": {}
+        },
+        "pathType": 2,
+        "fileType": 2,
+        "suffix": "flac",
+        "offlinePathLength": 20
+      },
+      "expected": "未知歌手\\未知专辑\\ab.., - 未知歌手.flac"
+    },
+    {
+      "name": "voice-0-0",
+      "input": {
+        "voice": {
+          "id": 7,
+          "name": " 节目 ",
+          "dj": {
+            "id": 4,
+            "nickname": "作者",
+            "brand": "品牌",
+            "avatarUrl": "face.jpg"
+          },
+          "serialNum": 3,
+          "createTime": 123,
+          "description": "简介",
+          "coverUrl": "cover.png",
+          "album": {
+            "name": "备用"
+          },
+          "artists": [],
+          "audio": {
+            "id": 2,
+            "name": "频道",
+            "desc": "电台",
+            "categoryId": 3,
+            "category": "类",
+            "radioFeeType": 1,
+            "feeScope": 2
+          }
+        },
+        "pathType": 0,
+        "fileType": 0,
+        "suffix": "mp3",
+        "offlinePathLength": 20
+      },
+      "expected": "电台节目\\作者 - 节目.mp3"
+    },
+    {
+      "name": "voice-0-1",
+      "input": {
+        "voice": {
+          "id": 7,
+          "name": " 节目 ",
+          "dj": {
+            "id": 4,
+            "nickname": "作者",
+            "brand": "品牌",
+            "avatarUrl": "face.jpg"
+          },
+          "serialNum": 3,
+          "createTime": 123,
+          "description": "简介",
+          "coverUrl": "cover.png",
+          "album": {
+            "name": "备用"
+          },
+          "artists": [],
+          "audio": {
+            "id": 2,
+            "name": "频道",
+            "desc": "电台",
+            "categoryId": 3,
+            "category": "类",
+            "radioFeeType": 1,
+            "feeScope": 2
+          }
+        },
+        "pathType": 0,
+        "fileType": 1,
+        "suffix": "mp3",
+        "offlinePathLength": 20
+      },
+      "expected": "电台节目\\节目.mp3"
+    },
+    {
+      "name": "voice-0-2",
+      "input": {
+        "voice": {
+          "id": 7,
+          "name": " 节目 ",
+          "dj": {
+            "id": 4,
+            "nickname": "作者",
+            "brand": "品牌",
+            "avatarUrl": "face.jpg"
+          },
+          "serialNum": 3,
+          "createTime": 123,
+          "description": "简介",
+          "coverUrl": "cover.png",
+          "album": {
+            "name": "备用"
+          },
+          "artists": [],
+          "audio": {
+            "id": 2,
+            "name": "频道",
+            "desc": "电台",
+            "categoryId": 3,
+            "category": "类",
+            "radioFeeType": 1,
+            "feeScope": 2
+          }
+        },
+        "pathType": 0,
+        "fileType": 2,
+        "suffix": "mp3",
+        "offlinePathLength": 20
+      },
+      "expected": "电台节目\\节目 - 作者.mp3"
+    },
+    {
+      "name": "voice-1-0",
+      "input": {
+        "voice": {
+          "id": 7,
+          "name": " 节目 ",
+          "dj": {
+            "id": 4,
+            "nickname": "作者",
+            "brand": "品牌",
+            "avatarUrl": "face.jpg"
+          },
+          "serialNum": 3,
+          "createTime": 123,
+          "description": "简介",
+          "coverUrl": "cover.png",
+          "album": {
+            "name": "备用"
+          },
+          "artists": [],
+          "audio": {
+            "id": 2,
+            "name": "频道",
+            "desc": "电台",
+            "categoryId": 3,
+            "category": "类",
+            "radioFeeType": 1,
+            "feeScope": 2
+          }
+        },
+        "pathType": 1,
+        "fileType": 0,
+        "suffix": "mp3",
+        "offlinePathLength": 20
+      },
+      "expected": "电台节目\\作者\\作者 - 节目.mp3"
+    },
+    {
+      "name": "voice-1-1",
+      "input": {
+        "voice": {
+          "id": 7,
+          "name": " 节目 ",
+          "dj": {
+            "id": 4,
+            "nickname": "作者",
+            "brand": "品牌",
+            "avatarUrl": "face.jpg"
+          },
+          "serialNum": 3,
+          "createTime": 123,
+          "description": "简介",
+          "coverUrl": "cover.png",
+          "album": {
+            "name": "备用"
+          },
+          "artists": [],
+          "audio": {
+            "id": 2,
+            "name": "频道",
+            "desc": "电台",
+            "categoryId": 3,
+            "category": "类",
+            "radioFeeType": 1,
+            "feeScope": 2
+          }
+        },
+        "pathType": 1,
+        "fileType": 1,
+        "suffix": "mp3",
+        "offlinePathLength": 20
+      },
+      "expected": "电台节目\\作者\\节目.mp3"
+    },
+    {
+      "name": "voice-1-2",
+      "input": {
+        "voice": {
+          "id": 7,
+          "name": " 节目 ",
+          "dj": {
+            "id": 4,
+            "nickname": "作者",
+            "brand": "品牌",
+            "avatarUrl": "face.jpg"
+          },
+          "serialNum": 3,
+          "createTime": 123,
+          "description": "简介",
+          "coverUrl": "cover.png",
+          "album": {
+            "name": "备用"
+          },
+          "artists": [],
+          "audio": {
+            "id": 2,
+            "name": "频道",
+            "desc": "电台",
+            "categoryId": 3,
+            "category": "类",
+            "radioFeeType": 1,
+            "feeScope": 2
+          }
+        },
+        "pathType": 1,
+        "fileType": 2,
+        "suffix": "mp3",
+        "offlinePathLength": 20
+      },
+      "expected": "电台节目\\作者\\节目 - 作者.mp3"
+    },
+    {
+      "name": "voice-2-0",
+      "input": {
+        "voice": {
+          "id": 7,
+          "name": " 节目 ",
+          "dj": {
+            "id": 4,
+            "nickname": "作者",
+            "brand": "品牌",
+            "avatarUrl": "face.jpg"
+          },
+          "serialNum": 3,
+          "createTime": 123,
+          "description": "简介",
+          "coverUrl": "cover.png",
+          "album": {
+            "name": "备用"
+          },
+          "artists": [],
+          "audio": {
+            "id": 2,
+            "name": "频道",
+            "desc": "电台",
+            "categoryId": 3,
+            "category": "类",
+            "radioFeeType": 1,
+            "feeScope": 2
+          }
+        },
+        "pathType": 2,
+        "fileType": 0,
+        "suffix": "mp3",
+        "offlinePathLength": 20
+      },
+      "expected": "电台节目\\作者\\频道\\作者 - 节目.mp3"
+    },
+    {
+      "name": "voice-2-1",
+      "input": {
+        "voice": {
+          "id": 7,
+          "name": " 节目 ",
+          "dj": {
+            "id": 4,
+            "nickname": "作者",
+            "brand": "品牌",
+            "avatarUrl": "face.jpg"
+          },
+          "serialNum": 3,
+          "createTime": 123,
+          "description": "简介",
+          "coverUrl": "cover.png",
+          "album": {
+            "name": "备用"
+          },
+          "artists": [],
+          "audio": {
+            "id": 2,
+            "name": "频道",
+            "desc": "电台",
+            "categoryId": 3,
+            "category": "类",
+            "radioFeeType": 1,
+            "feeScope": 2
+          }
+        },
+        "pathType": 2,
+        "fileType": 1,
+        "suffix": "mp3",
+        "offlinePathLength": 20
+      },
+      "expected": "电台节目\\作者\\频道\\节目.mp3"
+    },
+    {
+      "name": "voice-2-2",
+      "input": {
+        "voice": {
+          "id": 7,
+          "name": " 节目 ",
+          "dj": {
+            "id": 4,
+            "nickname": "作者",
+            "brand": "品牌",
+            "avatarUrl": "face.jpg"
+          },
+          "serialNum": 3,
+          "createTime": 123,
+          "description": "简介",
+          "coverUrl": "cover.png",
+          "album": {
+            "name": "备用"
+          },
+          "artists": [],
+          "audio": {
+            "id": 2,
+            "name": "频道",
+            "desc": "电台",
+            "categoryId": 3,
+            "category": "类",
+            "radioFeeType": 1,
+            "feeScope": 2
+          }
+        },
+        "pathType": 2,
+        "fileType": 2,
+        "suffix": "mp3",
+        "offlinePathLength": 20
+      },
+      "expected": "电台节目\\作者\\频道\\节目 - 作者.mp3"
+    },
+    {
+      "name": "mv-0-0",
+      "input": {
+        "mv": {
+          "id": 8,
+          "title": " MV ",
+          "artists": [
+            {
+              "name": "MV artist",
+              "id": 2
+            }
+          ],
+          "artistName": "Artist",
+          "pubTime": "2020",
+          "duration": 500,
+          "briefDesc": "brief",
+          "desc": "long",
+          "privilege": {
+            "fee": 1,
+            "payed": 0
+          },
+          "coverId": 12,
+          "coverUrl": "cover.png",
+          "type": 2
+        },
+        "pathType": 0,
+        "fileType": 0,
+        "suffix": "mp3",
+        "offlinePathLength": 20
+      },
+      "expected": "MV\\MV artist -  MV.mp3"
+    },
+    {
+      "name": "mv-0-1",
+      "input": {
+        "mv": {
+          "id": 8,
+          "title": " MV ",
+          "artists": [
+            {
+              "name": "MV artist",
+              "id": 2
+            }
+          ],
+          "artistName": "Artist",
+          "pubTime": "2020",
+          "duration": 500,
+          "briefDesc": "brief",
+          "desc": "long",
+          "privilege": {
+            "fee": 1,
+            "payed": 0
+          },
+          "coverId": 12,
+          "coverUrl": "cover.png",
+          "type": 2
+        },
+        "pathType": 0,
+        "fileType": 1,
+        "suffix": "mp3",
+        "offlinePathLength": 20
+      },
+      "expected": "MV\\MV.mp3"
+    },
+    {
+      "name": "mv-0-2",
+      "input": {
+        "mv": {
+          "id": 8,
+          "title": " MV ",
+          "artists": [
+            {
+              "name": "MV artist",
+              "id": 2
+            }
+          ],
+          "artistName": "Artist",
+          "pubTime": "2020",
+          "duration": 500,
+          "briefDesc": "brief",
+          "desc": "long",
+          "privilege": {
+            "fee": 1,
+            "payed": 0
+          },
+          "coverId": 12,
+          "coverUrl": "cover.png",
+          "type": 2
+        },
+        "pathType": 0,
+        "fileType": 2,
+        "suffix": "mp3",
+        "offlinePathLength": 20
+      },
+      "expected": "MV\\MV  - MV artist.mp3"
+    },
+    {
+      "name": "mv-1-0",
+      "input": {
+        "mv": {
+          "id": 8,
+          "title": " MV ",
+          "artists": [
+            {
+              "name": "MV artist",
+              "id": 2
+            }
+          ],
+          "artistName": "Artist",
+          "pubTime": "2020",
+          "duration": 500,
+          "briefDesc": "brief",
+          "desc": "long",
+          "privilege": {
+            "fee": 1,
+            "payed": 0
+          },
+          "coverId": 12,
+          "coverUrl": "cover.png",
+          "type": 2
+        },
+        "pathType": 1,
+        "fileType": 0,
+        "suffix": "mp3",
+        "offlinePathLength": 20
+      },
+      "expected": "MV\\MV artist\\MV artist -  MV.mp3"
+    },
+    {
+      "name": "mv-1-1",
+      "input": {
+        "mv": {
+          "id": 8,
+          "title": " MV ",
+          "artists": [
+            {
+              "name": "MV artist",
+              "id": 2
+            }
+          ],
+          "artistName": "Artist",
+          "pubTime": "2020",
+          "duration": 500,
+          "briefDesc": "brief",
+          "desc": "long",
+          "privilege": {
+            "fee": 1,
+            "payed": 0
+          },
+          "coverId": 12,
+          "coverUrl": "cover.png",
+          "type": 2
+        },
+        "pathType": 1,
+        "fileType": 1,
+        "suffix": "mp3",
+        "offlinePathLength": 20
+      },
+      "expected": "MV\\MV artist\\MV.mp3"
+    },
+    {
+      "name": "mv-1-2",
+      "input": {
+        "mv": {
+          "id": 8,
+          "title": " MV ",
+          "artists": [
+            {
+              "name": "MV artist",
+              "id": 2
+            }
+          ],
+          "artistName": "Artist",
+          "pubTime": "2020",
+          "duration": 500,
+          "briefDesc": "brief",
+          "desc": "long",
+          "privilege": {
+            "fee": 1,
+            "payed": 0
+          },
+          "coverId": 12,
+          "coverUrl": "cover.png",
+          "type": 2
+        },
+        "pathType": 1,
+        "fileType": 2,
+        "suffix": "mp3",
+        "offlinePathLength": 20
+      },
+      "expected": "MV\\MV artist\\MV  - MV artist.mp3"
+    },
+    {
+      "name": "mv-2-0",
+      "input": {
+        "mv": {
+          "id": 8,
+          "title": " MV ",
+          "artists": [
+            {
+              "name": "MV artist",
+              "id": 2
+            }
+          ],
+          "artistName": "Artist",
+          "pubTime": "2020",
+          "duration": 500,
+          "briefDesc": "brief",
+          "desc": "long",
+          "privilege": {
+            "fee": 1,
+            "payed": 0
+          },
+          "coverId": 12,
+          "coverUrl": "cover.png",
+          "type": 2
+        },
+        "pathType": 2,
+        "fileType": 0,
+        "suffix": "mp3",
+        "offlinePathLength": 20
+      },
+      "expected": "MV\\MV artist\\MV artist -  MV.mp3"
+    },
+    {
+      "name": "mv-2-1",
+      "input": {
+        "mv": {
+          "id": 8,
+          "title": " MV ",
+          "artists": [
+            {
+              "name": "MV artist",
+              "id": 2
+            }
+          ],
+          "artistName": "Artist",
+          "pubTime": "2020",
+          "duration": 500,
+          "briefDesc": "brief",
+          "desc": "long",
+          "privilege": {
+            "fee": 1,
+            "payed": 0
+          },
+          "coverId": 12,
+          "coverUrl": "cover.png",
+          "type": 2
+        },
+        "pathType": 2,
+        "fileType": 1,
+        "suffix": "mp3",
+        "offlinePathLength": 20
+      },
+      "expected": "MV\\MV artist\\MV.mp3"
+    },
+    {
+      "name": "mv-2-2",
+      "input": {
+        "mv": {
+          "id": 8,
+          "title": " MV ",
+          "artists": [
+            {
+              "name": "MV artist",
+              "id": 2
+            }
+          ],
+          "artistName": "Artist",
+          "pubTime": "2020",
+          "duration": 500,
+          "briefDesc": "brief",
+          "desc": "long",
+          "privilege": {
+            "fee": 1,
+            "payed": 0
+          },
+          "coverId": 12,
+          "coverUrl": "cover.png",
+          "type": 2
+        },
+        "pathType": 2,
+        "fileType": 2,
+        "suffix": "mp3",
+        "offlinePathLength": 20
+      },
+      "expected": "MV\\MV artist\\MV  - MV artist.mp3"
+    },
+    {
+      "name": "cloud-0-0",
+      "input": {
+        "track": {
+          "name": "  标题/*?<>:\"|\\,😀  ",
+          "artists": [
+            {
+              "name": " 甲 "
+            },
+            {
+              "name": "乙"
+            },
+            {
+              "name": "丙"
+            },
+            {
+              "name": "丁"
+            }
+          ],
+          "album": {
+            "name": "专辑",
+            "artists": [
+              {
+                "name": "专辑歌手"
+              }
+            ]
+          }
+        },
+        "yunName": " 原云盘名.mp3 ",
+        "pathType": 0,
+        "fileType": 0,
+        "suffix": "mp3",
+        "offlinePathLength": 20
+      },
+      "expected": "原云盘名.mp3.mp3"
+    },
+    {
+      "name": "cloud-0-1",
+      "input": {
+        "track": {
+          "name": "  标题/*?<>:\"|\\,😀  ",
+          "artists": [
+            {
+              "name": " 甲 "
+            },
+            {
+              "name": "乙"
+            },
+            {
+              "name": "丙"
+            },
+            {
+              "name": "丁"
+            }
+          ],
+          "album": {
+            "name": "专辑",
+            "artists": [
+              {
+                "name": "专辑歌手"
+              }
+            ]
+          }
+        },
+        "yunName": " 原云盘名.mp3 ",
+        "pathType": 0,
+        "fileType": 1,
+        "suffix": "mp3",
+        "offlinePathLength": 20
+      },
+      "expected": "原云盘名.mp3.mp3"
+    },
+    {
+      "name": "cloud-0-2",
+      "input": {
+        "track": {
+          "name": "  标题/*?<>:\"|\\,😀  ",
+          "artists": [
+            {
+              "name": " 甲 "
+            },
+            {
+              "name": "乙"
+            },
+            {
+              "name": "丙"
+            },
+            {
+              "name": "丁"
+            }
+          ],
+          "album": {
+            "name": "专辑",
+            "artists": [
+              {
+                "name": "专辑歌手"
+              }
+            ]
+          }
+        },
+        "yunName": " 原云盘名.mp3 ",
+        "pathType": 0,
+        "fileType": 2,
+        "suffix": "mp3",
+        "offlinePathLength": 20
+      },
+      "expected": "原云盘名.mp3.mp3"
+    },
+    {
+      "name": "cloud-1-0",
+      "input": {
+        "track": {
+          "name": "  标题/*?<>:\"|\\,😀  ",
+          "artists": [
+            {
+              "name": " 甲 "
+            },
+            {
+              "name": "乙"
+            },
+            {
+              "name": "丙"
+            },
+            {
+              "name": "丁"
+            }
+          ],
+          "album": {
+            "name": "专辑",
+            "artists": [
+              {
+                "name": "专辑歌手"
+              }
+            ]
+          }
+        },
+        "yunName": " 原云盘名.mp3 ",
+        "pathType": 1,
+        "fileType": 0,
+        "suffix": "mp3",
+        "offlinePathLength": 20
+      },
+      "expected": "甲,乙,丙\\原云盘名.mp3.mp3"
+    },
+    {
+      "name": "cloud-1-1",
+      "input": {
+        "track": {
+          "name": "  标题/*?<>:\"|\\,😀  ",
+          "artists": [
+            {
+              "name": " 甲 "
+            },
+            {
+              "name": "乙"
+            },
+            {
+              "name": "丙"
+            },
+            {
+              "name": "丁"
+            }
+          ],
+          "album": {
+            "name": "专辑",
+            "artists": [
+              {
+                "name": "专辑歌手"
+              }
+            ]
+          }
+        },
+        "yunName": " 原云盘名.mp3 ",
+        "pathType": 1,
+        "fileType": 1,
+        "suffix": "mp3",
+        "offlinePathLength": 20
+      },
+      "expected": "甲,乙,丙\\原云盘名.mp3.mp3"
+    },
+    {
+      "name": "cloud-1-2",
+      "input": {
+        "track": {
+          "name": "  标题/*?<>:\"|\\,😀  ",
+          "artists": [
+            {
+              "name": " 甲 "
+            },
+            {
+              "name": "乙"
+            },
+            {
+              "name": "丙"
+            },
+            {
+              "name": "丁"
+            }
+          ],
+          "album": {
+            "name": "专辑",
+            "artists": [
+              {
+                "name": "专辑歌手"
+              }
+            ]
+          }
+        },
+        "yunName": " 原云盘名.mp3 ",
+        "pathType": 1,
+        "fileType": 2,
+        "suffix": "mp3",
+        "offlinePathLength": 20
+      },
+      "expected": "甲,乙,丙\\原云盘名.mp3.mp3"
+    },
+    {
+      "name": "cloud-2-0",
+      "input": {
+        "track": {
+          "name": "  标题/*?<>:\"|\\,😀  ",
+          "artists": [
+            {
+              "name": " 甲 "
+            },
+            {
+              "name": "乙"
+            },
+            {
+              "name": "丙"
+            },
+            {
+              "name": "丁"
+            }
+          ],
+          "album": {
+            "name": "专辑",
+            "artists": [
+              {
+                "name": "专辑歌手"
+              }
+            ]
+          }
+        },
+        "yunName": " 原云盘名.mp3 ",
+        "pathType": 2,
+        "fileType": 0,
+        "suffix": "mp3",
+        "offlinePathLength": 20
+      },
+      "expected": "专辑歌手\\专辑\\原云盘名.mp3.mp3"
+    },
+    {
+      "name": "cloud-2-1",
+      "input": {
+        "track": {
+          "name": "  标题/*?<>:\"|\\,😀  ",
+          "artists": [
+            {
+              "name": " 甲 "
+            },
+            {
+              "name": "乙"
+            },
+            {
+              "name": "丙"
+            },
+            {
+              "name": "丁"
+            }
+          ],
+          "album": {
+            "name": "专辑",
+            "artists": [
+              {
+                "name": "专辑歌手"
+              }
+            ]
+          }
+        },
+        "yunName": " 原云盘名.mp3 ",
+        "pathType": 2,
+        "fileType": 1,
+        "suffix": "mp3",
+        "offlinePathLength": 20
+      },
+      "expected": "专辑歌手\\专辑\\原云盘名.mp3.mp3"
+    },
+    {
+      "name": "cloud-2-2",
+      "input": {
+        "track": {
+          "name": "  标题/*?<>:\"|\\,😀  ",
+          "artists": [
+            {
+              "name": " 甲 "
+            },
+            {
+              "name": "乙"
+            },
+            {
+              "name": "丙"
+            },
+            {
+              "name": "丁"
+            }
+          ],
+          "album": {
+            "name": "专辑",
+            "artists": [
+              {
+                "name": "专辑歌手"
+              }
+            ]
+          }
+        },
+        "yunName": " 原云盘名.mp3 ",
+        "pathType": 2,
+        "fileType": 2,
+        "suffix": "mp3",
+        "offlinePathLength": 20
+      },
+      "expected": "专辑歌手\\专辑\\原云盘名.mp3.mp3"
+    },
+    {
+      "name": "fallback-0-0",
+      "input": {
+        "track": {},
+        "pathType": 0,
+        "fileType": 0,
+        "suffix": "mp3",
+        "offlinePathLength": 20
+      },
+      "expected": "未知歌手 - 未知.mp3"
+    },
+    {
+      "name": "fallback-0-1",
+      "input": {
+        "track": {},
+        "pathType": 0,
+        "fileType": 1,
+        "suffix": "mp3",
+        "offlinePathLength": 20
+      },
+      "expected": "未知.mp3"
+    },
+    {
+      "name": "fallback-0-2",
+      "input": {
+        "track": {},
+        "pathType": 0,
+        "fileType": 2,
+        "suffix": "mp3",
+        "offlinePathLength": 20
+      },
+      "expected": "未知 - 未知歌手.mp3"
+    },
+    {
+      "name": "fallback-1-0",
+      "input": {
+        "track": {},
+        "pathType": 1,
+        "fileType": 0,
+        "suffix": "mp3",
+        "offlinePathLength": 20
+      },
+      "expected": "未知歌手\\未知歌手 - 未知.mp3"
+    },
+    {
+      "name": "fallback-1-1",
+      "input": {
+        "track": {},
+        "pathType": 1,
+        "fileType": 1,
+        "suffix": "mp3",
+        "offlinePathLength": 20
+      },
+      "expected": "未知歌手\\未知.mp3"
+    },
+    {
+      "name": "fallback-1-2",
+      "input": {
+        "track": {},
+        "pathType": 1,
+        "fileType": 2,
+        "suffix": "mp3",
+        "offlinePathLength": 20
+      },
+      "expected": "未知歌手\\未知 - 未知歌手.mp3"
+    },
+    {
+      "name": "fallback-2-0",
+      "input": {
+        "track": {},
+        "pathType": 2,
+        "fileType": 0,
+        "suffix": "mp3",
+        "offlinePathLength": 20
+      },
+      "expected": "未知歌手\\未知专辑\\未知歌手 - 未知.mp3"
+    },
+    {
+      "name": "fallback-2-1",
+      "input": {
+        "track": {},
+        "pathType": 2,
+        "fileType": 1,
+        "suffix": "mp3",
+        "offlinePathLength": 20
+      },
+      "expected": "未知歌手\\未知专辑\\未知.mp3"
+    },
+    {
+      "name": "fallback-2-2",
+      "input": {
+        "track": {},
+        "pathType": 2,
+        "fileType": 2,
+        "suffix": "mp3",
+        "offlinePathLength": 20
+      },
+      "expected": "未知歌手\\未知专辑\\未知 - 未知歌手.mp3"
+    }
+  ]
+}

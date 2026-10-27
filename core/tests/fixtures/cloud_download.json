@@ -1,0 +1,94 @@
+{
+  "sources": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/754.js",
+      "sha256": "91886fa13eae46663c28b496ae03f4f9fa70544f24104eb4da10a08e2a2d47ba"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_41.chunk.1482700000000.js/334.js",
+      "sha256": "5a6c94d01dbe9ee288a86cd25404085896192267161bfddfe40ef36af0b754c0"
+    }
+  ],
+  "cases": [
+    {
+      "name": "original.FLAC",
+      "suffix": "FLAC"
+    },
+    {
+      "name": "\"original.aac\"",
+      "suffix": "aac"
+    },
+    {
+      "name": "\\'song.MP3'\\",
+      "suffix": "MP3"
+    },
+    {
+      "name": " original.m4a\n",
+      "suffix": "m4a"
+    },
+    {
+      "name": "﻿original.flac﻿",
+      "suffix": "flac"
+    },
+    {
+      "name": "original.flac",
+      "suffix": ""
+    },
+    {
+      "name": " original.flac ",
+      "suffix": "flac"
+    },
+    {
+      "name": " original.mp3 ",
+      "suffix": "mp3"
+    },
+    {
+      "name": " original.m4a　",
+      "suffix": "m4a"
+    },
+    {
+      "name": "no-extension",
+      "suffix": ""
+    },
+    {
+      "name": "name.",
+      "suffix": ""
+    },
+    {
+      "name": "name.中文",
+      "suffix": ""
+    },
+    {
+      "name": "name.a-b",
+      "suffix": ""
+    },
+    {
+      "name": "name.wav_1",
+      "suffix": "wav_1"
+    },
+    {
+      "name": "first.part.flac",
+      "suffix": "flac"
+    },
+    {
+      "name": ".mp3",
+      "suffix": "mp3"
+    }
+  ],
+  "wrapper": {
+    "success_preserves_response": true,
+    "denied": null,
+    "failed": null,
+    "requests": [
+      {
+        "songId": "123"
+      },
+      {
+        "songId": "123"
+      },
+      {
+        "songId": "123"
+      }
+    ]
+  }
+}

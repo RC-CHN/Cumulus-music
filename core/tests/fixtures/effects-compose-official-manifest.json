@@ -1,0 +1,20 @@
+{
+  "official": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_228.chunk.1482700000000.js/3070.js",
+  "official_sha256": "81c0abe4ecc7361df526060d79a75bb47fa2e96831a3f0825119a784bc137a23",
+  "harness": "references/recovered-client/scripts/netease_audio_compose_oracle.cjs",
+  "harness_sha256": "5d1c9bdab84894953dd7f0b16d9ac101e4556848e9c69abd502258529e518922",
+  "defaults_source": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/28.js",
+  "defaults_source_sha256": "8222e4fb4a9b30ad31648b91787fad8ffe76165ecb6101abd9cb0d7b56332e65",
+  "defaults": "core/src/effects/compose/defaults.json",
+  "defaults_sha256": "46eb1badf1f1045fa44c487ca6c63a50768d544071005647a808aa1888d5da80",
+  "generator": "references/recovered-client/scripts/netease_compose_rust_vectors.cjs",
+  "fixture": "core/tests/fixtures/effects-compose-official.json",
+  "fixture_sha256": "56e8aedf8029995490a6c8b063b3b38075940d356e68df346f02359b726554da",
+  "cases": 446,
+  "synthetic_only": true,
+  "official_code_unchanged": true,
+  "historical_harness_cases": 46,
+  "version": "0.1.5-beta.4",
+  "buildTime": "2026-01-22T10:43:31.283Z",
+  "generator_sha256": "a7263ce45b5986a9b9903441bf90df64f7a46036c43a7070f500559e7f8954e8"
+}
