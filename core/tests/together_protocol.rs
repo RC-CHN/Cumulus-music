@@ -11,6 +11,34 @@ fn room() -> Value {
 }
 
 #[test]
+fn progress_duplicate_window_expires_without_extending_on_suppressed_requests() {
+    let allowed = vec!["91".into()];
+    let progress = command(CommandKind::Progress, 23.456);
+    let mut sync = PlaybackSync::default();
+    assert!(
+        sync.outgoing(progress.clone(), &allowed, false, 1000)
+            .unwrap()
+            .is_some()
+    );
+    for now in [1000, 1250, 1999] {
+        assert!(
+            sync.outgoing(progress.clone(), &allowed, false, now)
+                .unwrap()
+                .is_none()
+        );
+    }
+    assert_eq!(sync.latest.as_ref().unwrap().at_ms, 1000);
+    // A busy host may process the next identical request after this boundary;
+    // the official policy permits reporting it instead of extending the guard.
+    assert!(
+        sync.outgoing(progress, &allowed, false, 2000)
+            .unwrap()
+            .is_some()
+    );
+    assert_eq!(sync.sent.len(), 2);
+}
+
+#[test]
 fn delayed_snapshot_cannot_rewind_received_sequence_or_refresh_duplicate_clock() {
     let allowed = vec!["91".into()];
     let mut incoming = command(CommandKind::Progress, 12.0);

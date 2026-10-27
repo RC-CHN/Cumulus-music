@@ -85,10 +85,9 @@ async fn progress_requests_use_current_native_clock_and_ignore_numeric_account_o
         client.player_queue("1").await.unwrap().revision,
         queue_before.revision
     );
-    // Identical immediate requests still pass through the official echo filter.
-    send(&im, 20008, json!({"roomId":"test-room","ignoreUserIds":[]}));
-    tokio::time::sleep(Duration::from_millis(250)).await;
-    assert_eq!(writes(&api), before + 1);
+    // Duplicate filtering has a one-second wall-clock window. Its exact
+    // boundary is tested with explicit timestamps in together_protocol;
+    // asynchronous database/SDK work here may legitimately outlast it.
     client.close_together().await.unwrap();
 }
 

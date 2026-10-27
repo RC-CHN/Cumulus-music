@@ -24,4 +24,10 @@ STATUS_ENTRYPOINT_NOT_FOUND 出现在实际测试执行之前。Tauri 对话框�
 https://github.com/tauri-apps/tauri/blob/dev/examples/api/src-tauri/build.rs
 https://learn.microsoft.com/en-us/cpp/build/reference/manifestdependency-specify-manifest-dependencies
 
+4. 进度上报测试的时间边界
+40488689024 的第二次执行中，shared_queue_ui_probe 复用的进度测试假定第二次相同请求仍处于去重窗口，实际多了一次上报。
+官方 cmdFilter 仅在 1000ms 内抑制相同 PROGRESS；异步数据库/消息操作和并发测试不能保证下一次请求仍落在此窗口。
+集成测试继续验证原生播放时钟、忽略账号/房间过滤、请求内容和队列不被修改；窗口测试使用显式时间验证 0/250/999ms 被抑制、1000ms 允许发送，并检查被抑制的请求不会延长窗口。
+不延长产品去重时间、不忽略失败、不依靠重复 rerun 获得通过。
+
 上述测试均使用合成账号/本地临时媒体，不代表真实双账号一起听验证完成。
