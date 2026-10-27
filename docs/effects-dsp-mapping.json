@@ -1,0 +1,131 @@
+{
+  "scope": "Recovered filter/GEQ/BassTreble/PEQ Rust FFI and material component parsing",
+  "goal_complete": false,
+  "official_first": true,
+  "yesplaymusic_used": false,
+  "sources": [
+    {
+      "path": "references/recovered-client/scripts/netease_native_dsp_oracle.c",
+      "sha256": "cd7a64f3028cc8284c6316244ca86383a8ca88bdf64ac5ef67f7bc3d7630b495"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_native_peq_material_oracle.c",
+      "sha256": "79ba61f9cb95bd33fe0079478ae5944bcb92f648ccafaf53f8b1ee709c32bb24"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_dsp.c",
+      "sha256": "2054c7aa1b352f78a937f551bdb4f490b25c1299f40ef0a9e33f6b41944e0dc0"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_peq_material.py",
+      "sha256": "4d4668b289cff0009a97e30b746a410c2074cd1e7565ffca767257f100774ffc"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_spatial_material.py",
+      "sha256": "c71460241e47b007fbce3ed642262c7744887b444bd230d83e1387d7281e2c6c"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_dsp_rust_vectors.py",
+      "sha256": "2d762f4ea3211f48a8855dd1792e0fb9dc841c7636bab1d668f9454cb695555f"
+    },
+    {
+      "path": "references/recovered-client/scripts/test_netease_peq.py",
+      "sha256": "df2fa2f549337c91e1fd90a9c8f1b56e2226593910a1da4e61b87f4f9e7e0a60"
+    },
+    {
+      "path": "references/core-proof/verification-peq-materials-20261025/final-comparison.json",
+      "sha256": "c1ac631022282d34b609a97a199a8cfd2682fdd707718d19da74ff6c1c2b7280"
+    },
+    {
+      "path": "references/recovered-client/docs/product/34-native-dsp-validation.txt",
+      "sha256": "38a30a929b49445f8c48ca6a8fa3e585648a16297fced06d18c52e9260aafa4b"
+    },
+    {
+      "path": "references/recovered-client/docs/product/35-bass-treble-transitions.txt",
+      "sha256": "ec65f4ce73471b1c042294f0b44c6551b1f6832d3e9f00d4b0cce8b11c1f3f80"
+    },
+    {
+      "path": "references/recovered-client/docs/product/36-peq-material-validation.txt",
+      "sha256": "3a382a2180d46e13d71d45a3e96c37ea0b42721b8714b6e721ada95eff98f365"
+    },
+    {
+      "path": "references/recovered-client/docs/product/37-rotation-spatial-validation.txt",
+      "sha256": "afd7eaf89e3d1299631bfcb1d923a6c68d0e27e454f13a9ad2e4d23f432a72b8"
+    }
+  ],
+  "implementation": [
+    "core/src/effects/dsp/mod.rs",
+    "core/src/effects/dsp/ffi.rs",
+    "core/src/effects/dsp/parametric.rs",
+    "core/src/effects/dsp/state.rs",
+    "core/src/effects/dsp/graphic.rs",
+    "core/src/effects/dsp/block.rs",
+    "core/src/effects/dsp/filter.rs",
+    "core/native/effects/netease_dsp.c",
+    "core/native/effects/README.txt",
+    "core/native/effects/bridge.c",
+    "core/src/effects/material.rs",
+    "core/src/effects/mod.rs",
+    "core/build.rs",
+    "core/Cargo.toml",
+    "Cargo.lock"
+  ],
+  "tests": [
+    "core/tests/effects_dsp.rs",
+    "core/tests/fixtures/effects-dsp-official-manifest.json",
+    "core/tests/fixtures/effects-dsp-official.json.gz"
+  ],
+  "checks": [
+    ".build/effects-dsp-oracle1.log",
+    ".build/effects-dsp-targeted1.log",
+    ".build/effects-dsp-targeted2.log",
+    ".build/effects-dsp-targeted3.log",
+    ".build/effects-dsp-sanitizer.log",
+    ".build/effects-dsp-sanitizer2.log",
+    ".build/effects-dsp-format-final.log",
+    ".build/effects-dsp-workspace-tests.log",
+    ".build/effects-dsp-clippy.log",
+    ".build/effects-dsp-desktop-build.log",
+    ".build/effects-dsp-example-final-build.log",
+    ".build/effects-dsp-functional.log"
+  ],
+  "executable": ".build/target/debug/examples/effect_dsp_render",
+  "executable_sha256": "aec5a55c1490349603417c55bb3e34ef1c6fe27c7ec941c030be5eb29c3f4244",
+  "native_vectors": 1622,
+  "native_calls": 1763,
+  "material_parser_cases": 51,
+  "real_material_component_cases": 6,
+  "real_material_pcm_samples": 101376,
+  "sanitizer_blocks": 540,
+  "functional_report": ".build/effects-dsp-functional-report.json",
+  "rust": {
+    "passed": 546,
+    "core": 543,
+    "desktop": 3,
+    "failed": 0,
+    "ignored": 0,
+    "suites": 76,
+    "nonempty_suites": 73
+  },
+  "frontend": {
+    "passed": 61,
+    "new_run": false,
+    "evidence": ".build/together-lifecycle-front-tests2.log"
+  },
+  "real_account_requests": 0,
+  "new_ui_verified": false,
+  "new_hardware_audio_verified": false,
+  "full_effect_graph_verified": false,
+  "player_dsp_connected": false,
+  "platform": "Linux x86_64; Windows/macOS/ARM not executed",
+  "previous_audit": ".build/effects-ncae-audit.json",
+  "documentation": "docs/core-effects-dsp.txt",
+  "remaining": [
+    "Rotation and multiband C DSP migration; composition, entitlements, material/model services and playback/UI integration",
+    "Original incomplete full SE/reverb graph and emotion inference retain explicit recovery limits",
+    "Same-account relay, remaining content/auth/member/special-media/comments/metadata/batch UI and workflows",
+    "Device identity/watchman, Together remaining events/statistics/RTC/outside-selection lifecycle",
+    "Tray/media integration, full official visual audit, Windows/macOS builds and full-range completion audit",
+    "Real dual-account proof remains excluded by user; other implementable work remains in scope"
+  ]
+}

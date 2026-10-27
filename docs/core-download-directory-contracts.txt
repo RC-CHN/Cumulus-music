@@ -1,0 +1,138 @@
+下载目录配置与整批迁移：Rust 契约、恢复和验证
+2026-10-26；独立 core 实现。后续桌面下载/文件管理页已接入，见desktop-download-contracts.txt。
+
+来源与差异
+官方 M/3022：references/netease-3.1.42.205594-analysis/recovered-js/modules/
+hybrid_215.chunk.1482700000000.js/3022.js，window:moveDownload。
+从启动参数读取 movesrc/movedest；按 offlineTrack 的完成条目和相对路径生成移动清单；
+同盘 move、跨盘 copy，订阅进度，成功更新数据库路径/目录设置，结束后重启。
+官方 M/3097：同 recovered-js/modules/hybrid_64.chunk.1482700000000.js/3097.js，
+约2995起：拒绝同目录、检查可写、限制磁盘根目录、检查目标可用空间和完成文件总大小。
+归档 cumulus_core/download_directory.py、download_directory_state.py、产品报告
+26-download-directory-validation.txt：社区宿主的协作暂停、工作文件/硬链接、可恢复回滚。
+上述归档位于 references/recovered-client。未参考 YesPlayMusic，未调用归档 Python。
+
+官方依赖退出后搬运；Rust 使用持久化迁移责任和协作暂停，结束后恢复可调度状态，
+不会为模仿 Windows 流程无条件重启 Tauri，也不虚构 Windows VipSongsDownload 说明文件。
+完整音频、所属 LRC、未完成任务工作文件和未开始命名任务均在范围；陌生文件不扫描搬走。
+初始验收为普通歌曲；云盘原文件及MV后续已复用并验证，见core-cloud-download-contracts.txt、
+core-mv-local-files-contracts.txt。播客专用下载及完整缓存管理仍继续迁移。
+
+实现位置
+core/src/download/directory/：mod 账号入口/设置/意图，gate 跨业务门控，paths 目录/磁盘空间，
+types 阶段/公开进度，plan 暂停后的预检/清单，run 正向迁移/逆序撤销/最终设置事务。
+completed/working/：mod 工作文件归属检查，prepare 持久化搬运意图，commit 工作任务、
+raw传输、发布身份、离线记录和本地库/队列迁移及旧工作目录清理。
+复用 completed 的文件身份/摘要、同盘链接/跨盘复制、阶段日志、回执丢失恢复和安全清理。
+service/ 与 transfer/ 配合门控。没有 core → Tauri/frontend 依赖。
+
+公开 API（阻塞文件方法应在宿主工作线程执行）
+DownloadDirectory::new(session)：绑定当前账号，每次调用固定 SessionToken，子操作共用
+同一代次；切换后停止，旧命名空间仍保存未完成责任。
+offline(store, owner)：显式本地账号命名空间，不读取凭据、不恢复服务器登录。
+configure(root,path_type,file_type)：只改变未来默认目录；布局值0..2；不搬已有任务。
+settings() -> Option<DirectorySettings>：root、path_type、file_type、revision。
+active() -> Option<迁移ID>；get(id)/list() 返回 MigrationView，包含阶段、任务清单、
+跳过/等待ID、保守空间估计和固定错误类别；不带授权URL、Cookie或资源权益原文。
+start(target,source?) -> MigrationView：保存 Quiescing 和 active；source省略时取配置。
+显式 source 必须与已有配置相符。尚未配置时可显式指定，取消后恢复“未配置”。
+resume(id)：按日志继续；尚有活跃 worker 时返回 waiting，宿主稍后重试，不忙等。
+cancel(id)：持久化 RollingBack，再逆序撤销；后续 resume 继续同一次撤销。
+完成的迁移不能直接 cancel，应明确发起新反向迁移。
+DownloadService::create_default(song_id,options)：在目录锁内读取配置并创建命名任务。
+DirectoryOptions.files 支持显式 copy_only 与文件阶段回调；observer 为批次阶段回调；
+reserve_bytes 指定迁移后保留空间，默认0。回调不持有 SQLite/账号 mutex，但操作锁仍在，
+重入相同业务会返回 MutationBusy。回调错误或进程退出都不放弃持久化责任。
+
+HTTP
+目录配置、移动、撤销本身无 HTTP；不重新请求授权或媒体，也不改变会员权益。
+迁移结束后由宿主启动下载调度，原部分下载走既有 /api/song/enhance/download/url/v1
+重授权，仅同 MD5/长度保留 HTTP Range 偏移。这不是复制过程的断点续拷。
+未完成的文件副本中断后从头复制；已下载 raw/part 字节和 ETag/Last-Modified/摘要保留。
+
+状态与持久化
+download_directory_v1/settings：默认配置；同命名空间 active：唯一迁移ID。
+download_migrations_v1：完整 Batch，包含源/目标根身份、旧配置、原任务状态和公开清单。
+Quiescing → Moving → Complete；Quiescing/Moving 可进入 RollingBack → Cancelled。
+每项预分配正向/回滚operation ID，记录任务、原/目标路径、是否工作任务和完成状态。
+固定子ID让“子操作已成功、父进度提交前退出”可以只读对账后继续，不重复搬运。
+每个文件操作仍在 download_file_operations_v1；增加 migration_id、working 元数据，
+ManagedFile 增加 alias；均有 serde 默认值，保留旧单文件操作记录兼容性。
+
+暂停与锁
+创建/入队/设置/批次生命周期共用本账号 download-directory 锁；迁移前占用全局文件锁并
+拒绝已有 file_operation，随后一次事务保存 active 和原任务状态。
+service.run、scheduler、普通完成文件写操作、托管 raw 的公开写方法均检查 active。
+已运行任务在网络读前后、阶段切换和发布检查点观察 active，协作暂停；已发布文件允许
+完成必要的记录对账，迁移规划等待其任务锁/raw锁释放，不夺取仍在使用的目录。
+计划阶段取得全部当前账号任务和raw锁；等待期间不建立不完整清单。
+账号/SQLite mutex 不跨网络 await；阻塞后处理沿用原任务锁与生命周期保护。
+用户仍可记录 Pause/Cancel 意图；迁移期间不直接修改被搬运任务或删除工作文件。
+结束事务按该意图保留 Paused 或置 Cancelling；scheduler 能处理 Cancelling，清理后终止。
+无额外用户意图时，原排队/运行而现暂停的任务回到 Queued；原本暂停/错误不会自动重试。
+门控覆盖当前账号全部托管任务，即使某项位于源目录外；该项不搬，结束后按上述规则恢复。
+独立 raw-only 传输不纳入目录清单，其公开操作仍沿用原传输锁。
+
+预检和文件归属
+源/目标必须是不同且互不嵌套的UTF-8目录，位于私有state目录外，不能为文件系统根。
+规范化根、保存身份、目标写入探测；每次恢复重验根身份，不能悄悄采用替换后的目录。
+只规划本账号 download_tasks_v1；Cancelled和源目录外任务列入 skipped。
+保留相对路径，不覆盖已有目标、不沿目标子目录符号链接逃逸；目标工作目录只能为空。
+只接纳任务登记的prepared/cover/lyric随机名、raw及本任务part；未知工作文件停止规划。
+工作文件逐一检查身份及已知摘要；已有成品必须与prepared属于同一身份，歌词只管理
+能证明归属的输出。未拥有的邻接LRC保留。
+保守累加待迁移文件长度（硬链接别名可重复计量），加 reserve_bytes 后检查实际可用空间。
+Unix使用libc::statvfs，Windows适配使用GetDiskFreeSpaceExW；两处FFI均限制在paths模块。
+未支持平台明确报错。空间只是预检，不承诺随后其他程序占满磁盘时仍成功。
+
+工作文件、发布和提交
+新工作目录0700，记录新根/工作目录身份及映射后的task/raw；所有工作文件搬运沿用
+已完成文件引擎的日志和校验，原工作/传输内容只有对应元数据事务提交后才清理。
+按原Identity建立alias组：跨盘仅首项复制，其余在目标盘硬链接到首项。
+因此 raw/part、prepared/已发布输出、lyric/已发布LRC在搬运后仍可执行原发布恢复逻辑。
+同一事务比较task before+file_operation及raw before，再提交目标/命名根/工作目录、
+artifact身份、raw父/part身份、离线路径、本地索引/队列及子操作Cleanup阶段。
+Complete但cleanup_pending的任务也走工作文件迁移，支持歌词API失败或LRC提交回执丢失。
+没有工作文件的普通Complete任务沿用单文件Move与索引事务。
+所有项完成后才一次事务更新默认根/恢复任务状态/解除active并保存Complete。
+设置事务失败保持旧配置与门控；已搬任务的绝对路径已更新，恢复从日志继续。
+不会把一系列文件操作表述为整个目录瞬间原子移动。
+
+撤销和冲突
+逆序逐项处理：Prepared先取消本项；Cleanup先完成已提交清理；Complete用预分配回滚ID
+明确迁回。撤销中断保留RollingBack，resume继续，不切回正向迁移。
+原路径被占用时停住并保留门控，不覆盖占用者；解决冲突后继续撤销。
+只用remove_dir清理所属且为空的工作目录，绝不递归删除未知内容。
+提交后源文件/目录的替代物保留；子操作视图的replacement_retained/old_work_retained
+可用于宿主展示。原inode内容被修改则停止，不能把替代物保留策略套用为容忍原文件损坏。
+目录被替换、链接逃逸、摘要变化、磁盘失败、数据库冲突均保留恢复责任。
+
+验证
+core/tests/download_directory.rs：15项，包含多个参数化场景；真实DownloadService生成任务，
+同时使用fixture API/内存媒体源和真实SQLite/文件系统，不伪造完整任务后直接标记通过。
+覆盖配置/空迁移、完成+部分+命名任务、LRC、相对路径、Range、命名默认、外部任务跳过、
+门控、7种文件检查点×完成/工作任务、批次检查点、最终事务失败、逆序取消和回滚冲突、
+运行中service和直接raw worker等待/协作暂停、用户Pause/Cancel、空间/未知文件/目标冲突（包括尚未开始的显式路径任务）、账号切换、
+根替换/符号链接、旧工作目录替代物、audio/raw发布提交失败及hard-link组、歌词恢复/离线登记。
+.build/rust-download-directory-tests.log：专项运行；.build/rust-download-directory-clippy.log：
+core all-targets Clippy -D warnings。当前工作区250项通过，0失败/忽略；总记录见rust-core-validation.txt。
+.build/rust-directory-report.json：首次真实跨盘12项全部通过，进程退出0；10次恢复、2次撤销，
+每次完成/部分/命名三个任务。WAV 3,072,044字节，原Range=123457保留，ffprobe确认为
+16秒pcm_s16le，自建媒体/LRC清理。最终代码的.build/rust-directory-final-report.json复验同样12项全部通过，进程退出0；
+对应状态目录.build/rust-directory-final-20261026，仅包含隔离fixture验证数据。
+
+可执行流程
+  cargo test -p cumulus-core --test download_directory --offline
+  cargo run -p cumulus-core --example download_directory_roundtrip --offline -- NEW_PROOF_DIRECTORY SECOND_FILESYSTEM_PARENT
+NEW_PROOF_DIRECTORY必须不存在；第二参数必须位于不同文件系统，程序实际检查，条件不符报错。
+程序自产16秒48kHz双声道PCM WAV，使用fixture下载授权；真实跨盘、12次exit(73)、重开、
+继续/撤销、123457字节Range恢复、字节/LRC校验、ffprobe探测以及自建媒体清理。
+不加载真实账号、不连接音乐服务。CLI example是可运行证明；正式桌面入口不据此计为完成。
+
+平台与剩余边界
+当前平台Linux；Windows/macOS路径/文件身份接口已保持跨平台边界，但磁盘FFI、硬链接、
+权限/大小写/长路径、文件占用及打包仍需在相应系统实际验证，不能由Linux结果外推。
+目录业务无新服务端请求；不能将本地迁移通过数加成新的网易云线上功能通过数。
+桌面下载/文件/设置页、IPC进度/错误/残留说明以及其他媒体下载分支仍在完整goal内。
+
+官方下载/设置页面源码与后续接线要求见download-ui-source-contracts.txt；该文件不计为已实现UI。

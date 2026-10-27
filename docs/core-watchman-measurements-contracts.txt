@@ -1,0 +1,79 @@
+Watchman 真实设备测量、原生指纹与 Windows 声明适配
+2026-10-27。完整目标仍进行中；本文件补充事件桥和运行时契约。
+本批没有发送/v3/d或/v3/b，也没有证明任何受保护接口的风控已经通过。
+
+来源及职责
+只使用固定的官方2.7.5_af2952a4与2.7.5_602a5ad7，完整SHA/函数/输出文件映射见
+docs/watchman-measurements-source.json。原始路径与哈希校验在生成器中固定，源变化即拒绝生成。
+references/recovered-client/scripts/recover_watchman_measurements.cjs只提取已审阅的纯测量函数；
+没有执行SDK初始化、远程脚本、上报、Cookie或持久化代码。原始业务不由Python进程实现。
+core/src/watchman/fingerprint.rs恢复原指纹哈希；fields.rs/value.rs负责官方字段转换与编码。
+desktop/src/watchman/measurement.rs选择两版本固定函数；compatibility.rs/js提供可选采集上下文。
+core/src/identity/compatibility.rs只定义显式Windows声明和本机locale正规化，独立于Tauri。
+同目录events.js仍负责真实事件采样；本批没有改写isTrusted或制造点击/键盘行为。
+
+哈希与字段编码
+旧xa/新za是64位块算法，输入是JS UTF-16码元，空字符串替换为波浪号。
+完整16码元块取每项低8位，尾块却使用完整16位码元再移位异或；不能用通用UTF-8 MurmurHash替代。
+Rust使用64位wrapping运算，两个SDK的510组输入/种子逐组核对，包括中文、emoji、块边界和空值。
+四项指纹输入以FingerprintReading表示：fingerprint有原始preimage；unsupported编码空HEX且
+failed=false；failed编码空字段并带失败标记。入口限制官方允许字段及最大长度；不实现Debug输出。
+字符串字段遇数组先取最后N项，再按JS转字符串；不会把拼接后的字符串再截成N字符。
+数值字段使用JS数值转换，null/布尔/数组/十六进制/有效十进制溢出分别处理；拒绝Rust特有inf拼写。
+两个SDK各75组字段向量独立执行原始编码函数，修正实际navigator.languages数组编码路径。
+编码值与“完整采集流程已经工作”分开验收。
+
+32项基础设备测量
+$b UA；zb语言；Ta色深；bb DPR；Vb时区；Pb/Cb会话/本地存储能力；tb indexedDB；
+Ea addBehavior；Fb openDatabase；Va cpuClass；Ib平台；eb DNT；Da adsbox尺寸检查；
+pb平台一致性；ob浏览器一致性；Yb触屏；Mb设备类别；Ua Cookie能力；xb javaEnabled；
+Fa appCodeName；Ga appMinorVersion；Ha appName；Ia appVersion；Ab languages；
+Sb/ac/Na旧语言属性；Gb oscpu；fb文档模式；mb线程数；Nb屏幕尺寸。
+设备类别与浏览器类型使用原始helper和IIFE。每个getter独立捕获异常，明确failed字段。
+宿主只读取实际对象或明确的navigator兼容投影；窗口、document、screen、Date、eval仍为真实对象。
+字段表中ua/va/yc等访问保留原始属性名，不擅自“纠正”为其他标准API。
+这份基础适配没有实现官方Ec设备缓存、异步/延迟队列和完整配置选择，也没有收集21项环境字段。
+
+插件/Canvas/WebGL/字体
+Jb：保留官方gd函数对象被直接当真值的行为，因此走ed/ActiveX检查后拼实际plugins。
+Qa：原500×200画布、Arial文字/emoji、填充与混合图形，返回完整测量串供Rust计算指纹。
+dc：原上下文/着色器/参数采集，保留代码自身细节，不用物理GPU名称替换WebGL输出。
+jb：保留原字体helper对fontList的依赖；归档两版中该全局没有定义，当前真实浏览器均明确失败。
+不把字体失败记为“未实现成功”，也不随机生成字体哈希。ib字体数量、La音频测量尚待接入。
+WebGL和字体是否启用必须遵守官方配置ews/ejcd与默认值；探针为检验测量函数显式执行所有四项，
+并非声称服务端当前要求四项都上传。不能通过本批对照推断正式采集配置已经正确接线。
+
+Windows兼容规则
+详细原生DLL来源、osver算法、24组假设和真实只读结果见windows-compatibility-research.txt。
+采集投影统一UA/appVersion、Win32及Chrome不提供的旧属性；POSIX语言转换用实际locale和显式
+应用语言。线程、屏幕、时区、存储、真实渲染和用户事件保持实际观测，不用设备ID随机派生。
+只读Proxy保持DOM getter/method的真实this，拒绝修改底层navigator；两个投影不会互相覆盖。
+不修改全局页面身份、函数源码、浏览器/自动化异常结果。这是可审计的采集转换，不是完整浏览器模拟。
+当前WebKit eval字符串长度37，Windows Chrome声明会使原始ob返回true；该差异已实际复现。
+原生HTTP的两次账号读取成功，不能代替易盾报告、token绑定或受保护业务接受验证。
+
+可执行验证
+生成：node references/recovered-client/scripts/recover_watchman_measurements.cjs
+哈希/编码：node references/recovered-client/scripts/watchman_fingerprint_oracle.cjs
+DLL/假设：node references/recovered-client/scripts/windows_compatibility_oracle.cjs
+Rust：cargo test --locked --offline -p cumulus-core --test watchman_fingerprint --test windows_compatibility --test client_identity
+桥边界：node desktop/tests/watchman_compatibility.cjs
+构建：CARGO_INCREMENTAL=0 CARGO_TARGET_DIR=.build/target cargo build --locked --offline -p cumulus-desktop --features custom-protocol --example watchman_fingerprint_probe
+实际窗口：GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 LIBGL_ALWAYS_SOFTWARE=1 dbus-run-session -- xvfb-run -a -s '-screen 0 1280x900x24' /usr/bin/python3 desktop/examples/run_watchman_fingerprint_probe.py NEW_PRIVATE_DIRECTORY
+独立审计：node desktop/examples/audit_watchman_fingerprint_probe.cjs NEW_PRIVATE_DIRECTORY
+目录必须全新。Python仅作外部GUI启动/截图驱动。Node审核器执行固定原始函数，核对Rust输出。
+探针使用正式configure、隔离状态和离线账号桩，不读取真实账号。验证32字段×2版本×2模式、
+4指纹×2版本×2模式、语言编码、全局身份未变化及关键硬件事实未被兼容声明覆盖。
+所有原始指纹仅在专用私有证据目录，正式页面不显示硬件ID、Cookie、token或原始preimage。
+
+后续Collection阶段（2026-10-27）
+音频/字体数量、21项环境getter、设备缓存/异步测量/配置选择、取消/超时/事件排空及页面重载
+已接入NativeCollection及正式桌面IPC。两版实际采集与缓存、实际窗口重载共114次设备测量通过；
+字体缺依赖、原音频空结果及环境首错终止仍保留，未将测量失败改成成功指纹。
+规则、原官方协调器对照、当前证据与运行命令见core-watchman-collection-contracts.txt。
+
+剩余生产链路
+后续已完成正式Runtime/Source激活、MConfig/RequestContext、真实设备/行为报告和本人歌单受保护读取；
+见core-pc-request-context-contracts.txt。PC登录挑战、原受阻写路径和其他平台对照仍待完成。
+没有Windows/macOS实际运行参照，不能声称跨平台指纹一致或服务端已将本机当作Windows。
+未使用YesPlayMusic；完整目标不因这次原生请求或测量对照通过而完成。

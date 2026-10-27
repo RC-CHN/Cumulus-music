@@ -1,0 +1,136 @@
+MV资源点赞、关联歌曲与相似MV
+2026-10-26；全桌面目标继续。本批不等于所有MV/非MV视频分支完成。
+
+已接通的产品流程
+MV详情提供点赞/取消，显示服务回读的本账号标记与当前计数；标记缺失时禁用写入。
+歌曲喜欢、MV收藏、评论点赞和MV资源点赞是四种不同业务，不共用或替代其远端状态。
+点赞未确认时显示核对入口；重开页面/应用后读取原生意图，先核对，不能重复发送。
+播放区域显示官方relateSong第一首的名称/歌手和歌曲喜欢按钮。
+点击关联歌曲退出本应用视频全屏、暂停MV、播放歌曲并打开播放详情/歌词。
+如果该歌曲已是音频队列当前条目，恢复原条目、位置和队列，不重新替换队列。
+关联歌曲喜欢复用已验证的歌曲喜欢用例；当前账号已有喜欢保持原样，本批线上未翻转此项。
+详情下方相似MV卡片可打开另一支MV，使用已有真实视频控制器和音频/视频互斥。
+推荐加载、空结果、错误、刷新和缓存提示独立于视频播放与点赞。
+MV评论入口显示评论数，仍调用共享comments域；按钮有稳定的无障碍名称。
+
+官方依据
+references/netease-3.1.42.205594-analysis/recovered-js/modules/
+  hybrid_153.chunk.1482700000000.js/3158.js：getDetail、refreshRelateTrackPrivilege、likeMv、unlikeMv。
+  hybrid_app.chunk.1482700000000.js/15.js：Qd详情、Mf/Nf资源点赞、Dg歌曲权限。
+  同目录86.js I：按场景/批次读取歌曲权限；91.js默认trialMode=-1。
+  同目录21.js：MV规范化和权限归一化的原始证据。
+references/ui-recovery/sources/packages/pc/src/pages/video-detail/
+  views/Info.jsx、components/Top.jsx：MV点赞按钮、threadId、liked和计数。
+  components/Song.jsx：相关歌曲、喜欢、退出全屏、当前歌曲恢复/新歌曲播放。
+  views/Mv.jsx：只显示relateSong[0]的播放覆盖层。
+原MV报告29覆盖详情/下载/收藏，但未验证本批MV资源点赞；不将其历史通过数混入Rust。
+
+相似MV补充来源与实际协议
+恢复出的M/3158、M/15、完整JS模块及API索引中未找到相似MV请求。
+因此按既定补充参考规则读取：
+  references/YesPlayMusic/src/api/mv.js：simiMv(mvid)调用其/simi/mv网关。
+  references/netease-api-reborn-4.29.7/package/module/simi_mv.js：映射到/api/discovery/simiMV。
+仅使用其接口事实；没有部署或依赖上述网关，没有把其组件当作官方UI来源。
+Rust直接请求原服务端点；本批在当前官方PC域EAPI会话验证返回5个相似MV。
+归档网关选择WEAPI；本实现预先选定PC/EAPI后请求，不在失败后自动更换协议或扩大Cookie域。
+相似卡片复用官方VideoCard风格，不声称该位置与官方3.1.42详情页逐像素一致。
+来源哈希、对应实现与证明见mv-social-mapping.json。
+
+接口和顺序
+1. /api/mlog/detail/v1 {id:字符串MV编号,type:"2"}
+   保留已恢复的resource.mlogBaseData/mlogExtVO/data优先级。
+   liked优先取非空mlogExtVO.liked，其次resource.liked；必须是布尔或空。
+   原有liked布尔保留兼容；新增liked_known区分缺失与明确false。
+   写前定点读取还要求threadId==R_MV_5_<id>；不使用缺失字段推测未点赞。
+   桌面详情同时加videoType:"mp4"以读取下载档位，复用相同版本化缓存。
+2. /api/resource/like 或 /api/resource/unlike
+   {threadId:"R_MV_5_<id>"}，只接受code200；无commentId，与评论点赞接口不同。
+   每个明确意图只发送一次，成功回包后回读步骤1确认liked。
+   最多8次，每次间隔500ms，连续两次目标标记才Confirmed。
+   全站likedCount可被别人改变，不以计数增加/减少判定本账号是否成功。
+   官方M/3158请求后本地增减计数；社区实现以服务回读为准，并严格处理非200。
+3. /api/song/enhance/privilege
+   {ids:JSON.stringify([字符串songId,...]),trialMode:-1}。
+   桌面详情只在任一relateSong缺privilege时触发，按官方逻辑为全部关联歌曲补读。
+   每批500个，校验返回ID属于请求且不重复；已有权限在缺少新值时保留。
+   普通读取失败保留关联歌曲与已有权限，relatedPrivilegeFailed提示本次补读失败。
+   会话失效/账号切换继续返回失效错误，不能把旧账号数据当作降级成功。
+   权限原始字段留在原生模型，播放仍走实际授权、试听/会员和音源检查。
+4. 关联歌曲播放
+   PlaySelection::MvRelated {mv_id,song_id,quality}进入独立核心。
+   重新读取步骤1并验证song_id确属该MV，避免用UI传来的关系作为权威。
+   获取音频焦点并取消/暂停视频；代次和选择序号防止迟到元数据抢回焦点。
+   若已是当前歌曲，用原生Play恢复；否则用既有/api/v3/song/detail与歌曲授权链路
+   创建单曲选择，队列source={kind:"mv_related",mvId,scene:"video"}。
+   前端只在选歌成功且当前歌曲匹配时打开歌词；不模拟音频或替代播放时钟。
+5. /api/discovery/simiMV {mvid:字符串MV编号}
+   读取mvs数组，最多100条，拒绝重复/非法ID与无效字段类型。
+   保留返回顺序、标题、歌手、封面、时长和播放量；不把推荐项伪装成已收藏。
+   点击卡片走原有MV打开/详情/授权/解码流程，不将返回的未知媒体URL直接交给前端。
+
+持久化、失败恢复与并发
+mv-likes-v1按owner+MV编号保存before/desired/acknowledged/phase/observed。
+同owner+MV的OperationLock覆盖预读、写入和核对；进程退出释放锁，日志不丢。
+Sending落盘后才允许HTTP；若已满足意图则保存Unchanged，不写远端。
+200后保存acknowledged=true/Verifying；两次标记一致后Confirmed。
+301/403/405/505/506/511/512保存Rejected，其他错误/丢回包保存Uncertain。
+Future中止后Sending保留；目标不可读或回读持续不符保留责任，不把缺席当作false。
+迟到回包仅向原owner记账，不能更新新账号；核对终结记录不重新发送写请求。
+mv-details-v1保留元数据；mv-detail-revisions-v1保存每资源的版本标记。
+普通详情、桌面下载档位详情和播放控制器都经同一版本检查提交元数据缓存。
+Sending及确认写入推进版本，早发晚到的详情不能覆盖确认的liked。
+Confirmed/Unchanged的日志、版本、缓存liked/known/count在同一SQLite事务提交。
+事务失败保留此前未决阶段，之后只读核对可以补完提交。
+mv-recommendations-v1按owner+id保存{id,rows}，读取校验id；失败不清除完整旧缓存。
+前端useMvSocial与播放器视图分开，账号/资源代次、写入版本和请求序号拒绝迟到响应。
+推荐失败才显式读取同账号缓存，并保留错误与缓存提示；未知写入后的恢复只读原生状态。
+
+工程与公开边界
+core/mv/likes.rs、cache.rs、recommendations.rs分别负责写恢复、版本化元数据与推荐读取。
+api.rs增加官方资源点赞与歌曲权限请求，service.rs协调详情/权限/持久化。
+client/mv/social.rs和专用DTO将资源标记、计数、未决阶段及推荐展示字段公开。
+关联歌曲转为既有TrackView；原始privilege、threadId、UID、Cookie和授权URL不进入IPC。
+desktop新增mv_like、mv_like_reconcile、mv_recommendations；共47个正式注册命令。
+mv_detail继续返回完整展示字段；play_selection新增mv_related分支，无新前端HTTP能力。
+frontend/useMvSocial负责点赞/推荐状态；MvRecommendations负责卡片；MvPlayer负责关联歌曲覆盖层。
+三个层次都不调用归档Python，测试脚本仅执行官方对照或外部采样。
+
+验证
+core/tests/mv_social.rs共10项：官方请求/安全大ID、未知liked/错线程不写、权限补读/失败保留、
+两次标记确认且计数不变、已满足不写、丢回包/重开/账号隔离、连续旧值仍未决、403、
+Future中止/锁、迟到旧账号、旧详情覆盖拒绝、持久化触发器故障/只读恢复、推荐损坏/缓存隔离。
+core/tests/client_mv.rs新增2项：MV到关联歌曲、歌词所需当前条目、同条目位置恢复、
+不相关ID和旧账号拒绝；延迟关联歌曲元数据不能抢回已切换的视频焦点。
+frontend/tests/mv-social-state.test.ts新增4项：旧详情/旧账号/旧资源、未知写不重复、
+只读核对、推荐失败缓存与点赞状态独立。正式IPC旧epoch测试覆盖三个新增命令。
+references/recovered-client/scripts/netease_mv_social_oracle.cjs执行官方M/3158两个generator、
+M/15权限helper与M/91默认场景；冻结3组真实代码产生的请求和2个官方乐观更新结果。
+Rust逐字段比较fixture mv-social-official.json；不把官方乐观计数当作新核心确认策略。
+
+真实Rust .build/mv-social-native-20261026-a/report.json：
+MV标记读取、1首关联歌曲/权限、5个相似MV；一次新增资源点赞和撤销通过。
+写前保存私有owner/id/before=false，restored.json记录原false恢复且连续两读确认。
+命令：cargo run -p cumulus-core --example mv_social_roundtrip --offline -- \
+  EXISTING_PC_PROFILE PRIVATE_INPUT_JSON NEW_PRIVATE_PROOF_DIR [--like]
+输入为{id:"明确选择的MV编号"}；已点赞资源拒绝自动取消，不自动选择或遍历账号。
+恢复：同一程序 EXISTING_PC_PROFILE --restore EXISTING_PRIVATE_PROOF_DIR。
+已完成恢复后若观察到新的点赞，拒绝再次撤销，保留外部改变。
+
+真实桌面 .build/ui-proof/mv-social-20261026-a：1120×760，6张截图。
+由正式界面完成资源点赞/撤销、关联歌曲播放并打开歌词、定位20秒后回MV再恢复同一歌曲、
+保持队列条目/版本/位置、点击相似卡片播放另一支MV。真实帧及媒体焦点通过。
+.build/ui-proof/mv-social-20261026-b-small：760×540，4张截图，重复只读媒体流程通过。
+正常窗口仅2次MV资源写入且撤销；小窗口0次。歌曲喜欢未更改，没有内容发布/消息/支付。
+两轮音视频均使用真实libmpv与null音频输出，不证明本批实际扬声器或音画延迟。
+desktop/examples/mv_social_ui_probe.rs/.js负责采样，业务使用正式命令和组件。
+截图包含本机账号界面，只作私有本地验收，不放入正式分发素材。
+全量/最终构建/独立恢复回读及审计索引见rust-core-validation.txt。
+
+继续范围与限制
+该版本官方未发现相似MV请求，补充能力与官方页面还原证据严格区分。
+MV发现/全站搜索、云贝显式消费/付费入口、普通非MV视频，以及部分高级窗口交互仍继续。
+评论的发布/回复/删评/楼层等继续由共享评论域完成，MV点赞通过不能替代它们。
+关联歌曲原始权限已补读/保存；所有官方歌曲权限展示标记与M/21.w完整呈现仍属于歌曲域后续工作。
+相关歌曲喜欢复用既有用例，本批只验证原喜欢展示，没有另做一次真实歌曲喜欢往返。
+本批没有逐像素官方截图对照，没有Windows/macOS运行证据，没有真实网络丢包复现。
+完整目标保持active，以full-desktop-goal.txt逐项审计，不以本批测试数量宣布完成。

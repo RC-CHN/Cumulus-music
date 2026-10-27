@@ -1,0 +1,113 @@
+MV 原生视频、画面与播放恢复
+2026-10-26；本文件保留原生视频批次证据，完整桌面目标仍进行中。
+后续正式MV页面/IPC与窗口证据见desktop-mv-contracts.txt，不把两批验证层次混为一项。
+
+当前结果
+已有独立 VideoController、VideoEngine 和 libmpv 软件画面适配，直接播放获准的 MV URL
+或经离线完整性校验的本地完成下载，输出真实 RGBA 视频帧。控制、清晰度切换、
+账号隔离、旧加载撤销、停止、EOF、播放位置与音量/速度恢复均在 core 内执行。
+后续已接MusicClient/媒体焦点、视频IPC、Vue页面和全屏/小窗，详见桌面契约。
+
+来源与结构
+业务依据：官方 hybrid_153.chunk.1482700000000.js/3158.js 的详情/本地完成项回退/播放授权；
+M/15 的 /api/mlog/detail/v1 与 /api/song/enhance/play/mv/url；此前 MV 原生契约见 core-mv-contracts.txt。
+界面恢复材料已核对（页面实现与验收在后续桌面批次）：
+  references/ui-recovery/sources/packages/pc/src/pages/video-detail/views/Mv.jsx
+  references/ui-recovery/sources/packages/pc/src/pages/video-detail/views/Info.jsx
+  references/ui-recovery/sources/packages/pc/src/pages/my-favorite/views/PageFavMV.tsx
+  references/ui-recovery/sources/packages/pc/src/components/VideoCard/index.tsx
+  video-detail/components/Quality.jsx、Volume.jsx、Top.jsx、Fullscreen.jsx。
+原布局包含黑底 16:9 视频区、4px圆角、40px控制条、播放/时间/音量/清晰度/全屏，
+全屏固定铺满窗口、小窗320×180、收藏MV四列瀑布流；平台卡片圆角有差异。
+这些是后续UI实现依据；实际运行证据单独保存，不能以恢复源码代替窗口验收。
+
+原生 ABI 依据为 mpv v0.40.0 官方公开头文件：
+  https://raw.githubusercontent.com/mpv-player/mpv/v0.40.0/include/mpv/render.h
+  https://raw.githubusercontent.com/mpv-player/mpv/v0.40.0/include/mpv/client.h
+归档于 references/recovered-client/vendor/mpv-0.40-{render,client}.h。
+未使用 YesPlayMusic，也不依赖 Python 作为运行时。
+
+core/src/playback/engine/
+  frames.rs：一个最新帧的有界邮箱、尺寸与生命周期检查；
+  video.rs：VideoEngine 接口及 MpvVideoEngine 适配；
+  ffi/render.rs：渲染 C ABI、对齐缓冲、专属线程和上下文释放；
+  mpv.rs/ffi.rs：既有播放器的可选视频初始化与生命周期协调，普通音频仍走原路径。
+core/src/mv/playback/
+  types.rs：命令与原生快照；mod.rs：控制器、账号与帧访问边界；
+  resolve.rs：详情/缓存、本地校验、媒体授权、可取消解码；
+  actor.rs：加载代次、引擎事件、账号失效、持久化、推送与关闭；
+  actions.rs：定位、暂停、清晰度、恢复、音量、速度及停止。
+没有Tauri/WebView类型。原生状态包含私有详情/账号，后续client/mv投影专用公开DTO。
+
+渲染与 FFI 边界
+使用 vo=libmpv、MPV_RENDER_API_TYPE_SW；普通音频仍可用原 vo=null 模式。
+渲染上下文先于媒体加载创建，随后独占于专门渲染线程；普通 mpv 控制调用在其他工作线程。
+渲染线程不调用普通 mpv 客户端API，不等待控制线程；只有短时帧邮箱锁，没有跨线程锁环。
+没有启用 advanced control，也没有从C回调调用Rust业务；按非advanced模式轮询更新。
+默认目标显示时间等待由 libmpv 处理。本批未测 WebView传输/绘制新增的音画延迟。
+RGB0 缓冲首地址与 stride 都按64字节对齐，长度包含每行和末行padding；
+Params/FrameInfo 使用 repr(C)，尺寸指针和缓冲活至同步渲染调用返回。
+先复制紧凑行，再把所有 alpha 设为255；不会把RGB0未指定的第四字节当作透明度输出。
+读取 NEXT_FRAME_INFO，初始化清屏/尚无已解码帧时不发布“成功画面”；真实帧出现后才可重绘。
+暂停时改变尺寸可重绘已解码帧，独立于播放器的暂停状态。
+画布范围为16..1920 × 16..1080，限制分配量；请求媒体清晰度与画布尺寸是不同字段。
+软件渲染尚未支持HDR/高位深色彩输出或超过该画布上限的原尺寸显示，不伪称支持。
+邮箱只保留一个最新Arc帧；慢消费者取最新状态，不积累无界队列。调用方应及时释放旧帧。
+关闭时先停止/加入渲染线程、释放render context，再销毁mpv core，最后卸载库。
+关闭后的帧源拒绝后续访问；已交给宿主的帧仍须由宿主按账号/playId丢弃。
+
+业务状态与时间事实
+Idle→Resolving→Loading→Playing/Paused→Ended/Error；FILE_LOADED 不是首帧就绪。
+网络/解码在独立任务中执行；新选择、停止、Suspend、关闭或账号失效会撤销旧加载代次。
+Loading 等待真正解码帧后才提交引擎，受剩余加载时限和取消标志约束。
+每次加载产生新的 playId；旧加载结果不能覆盖新视频，旧 playId不能取新帧。
+当前账号的 SessionToken 固定到控制器；切换账号后撤销画面、停止旧引擎，不迁入新账号。
+暂停期间收到新的清晰度请求，重新授权和加载后仍保持暂停，并恢复已测位置。
+Open优先使用本账号完整且未处于文件操作的已下载MV；多个完成项优先实际分辨率较高者。
+显式Quality只选同档本地项，否则请求远端；请求档位与服务端实际r分开报告。
+显式下载taskId要求本账号/MV/id/完成态与离线摘要一致，失效时明确报错，不悄悄换资源。
+普通Open遇损坏本地副本可尝试远端；网络失败时，只有已校验本地媒体及该账号缓存详情
+同时存在才回退。没有缓存时不凭猜测补造MV详情。
+position取引擎poll结果，定位命令的请求值不会直接充当实际到达位置。
+播放中约每2秒保存检查点；暂停/定位/停止等操作额外保存。EOF仅接受当前原生entry事件，
+完成后检查点从0重播；普通重开恢复原位置。音量/速度按账号保存并重新应用。
+即使保存检查点失败，Stop仍撤销加载、停止引擎并撤下帧，然后报告保存错误。
+画面取得前后都核对账号和playId；渲染帧不含URL、Cookie或私有授权字段。
+Suspend是原生媒体焦点接收动作；后续client/focus已接入统一仲裁和旧账号引擎释放确认。
+
+测试
+core/tests/mv_playback.rs 新增8项，含：真实状态/实际r投影、帧边界与停止后撤销、
+量/速/位置重开，快速替换和Suspend撤销待加载自动播放，错误entry的EOF忽略与从0重播，
+账号切换立即拒绝帧并停止旧引擎，错误后重试、非法控制不污染当前状态、暂停切画质，
+网络失败时本地完整副本回退/损坏显式任务拒绝，定位实际落点与请求值不同，
+以及SQL检查点写失败时仍必须停止。FakeVideoEngine只用于状态故障测试，未算作真实渲染证据。
+
+可执行真实引擎检查
+  CARGO_TARGET_DIR=.build/target cargo run -p cumulus-core --example video_render_probe --offline -- \
+    LOCAL_VIDEO PRIVATE_PROOF_DIRECTORY
+自制6秒512×288/30fps H.264+AAC验证连续变化帧、暂停定位2秒、640×360重绘、
+517×291的非整齐stride、1920×1080上限、非法尺寸、关闭后访问拒绝、5次上下文销毁。
+保留早期a/b/c证明与最终d证明；早期截图曾取到定位前的在途帧，已补等待并重新检查。
+调试构建在最大画布的实测约11.6帧/秒，不能据此称1080画布已达到30fps。
+发布构建在同一30fps源、1920×1080画布的1.208秒窗口取得35帧，约28.96帧/秒；
+该短样本接近源帧率，但不是长期30fps、掉帧率或端到端流畅度保证。
+发布构建性能单独记录于 .build/video-render-proof-release/report.json；
+性能测量仅包含原生渲染和邮箱，不包含正式桌面IPC、Canvas、显示器刷新或GPU后端。
+
+当前账号最终只读证明
+  CARGO_TARGET_DIR=.build/target cargo run -p cumulus-core --example mv_video_roundtrip --offline -- \
+    EXISTING_PC_PROFILE PRIVATE_SAMPLE_DETAIL NEW_PRIVATE_PROOF
+报告：.build/mv-video-native-20261026-b/report.json。
+直接流式240P→实际240P，暂停定位40秒，再请求480P→实际480P，保持暂停位置；
+恢复播放超过40.5秒，保存40600ms后销毁/重建控制器，从40.6秒保持暂停恢复。
+音量27、速度1.25已从引擎状态回读，并在重建后保留。
+640×360初始帧、960×540定位帧/480P帧均已取得并人工检查；音频输出为null。
+没有远端账号修改、收藏/邀请、支付或云贝消费，原始授权地址不出现在报告中。
+a版报告保留：早期480P画面可能只是清屏，其报告has_nonblack_pixels=false明确记录；
+最终b版增加真实首帧就绪门控，480P有正确图像，不把早期空白图当通过证据。
+
+仍未完成
+后续已接MusicClient焦点、类型化IPC/画面、收藏/详情/下载页面、本地任务播放，
+并取得正常/最小窗口、全屏/小窗及真实截图。其余尚未完成：
+GPU/硬解、HDR、高分辨率大画布与三平台实机表现；MV其余点赞/评论/云贝业务见前置契约。
+当前真实平台只有Linux；原生报告与后续真实窗口报告分别记录，完整目标继续。

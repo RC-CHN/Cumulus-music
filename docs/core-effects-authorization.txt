@@ -1,0 +1,107 @@
+音效授权登记、停止与回收检查
+2026-10-26。独立Rust业务域；音频处理链和音效UI仍未接入，不把Registered当作DSP运行。
+
+来源
+官方3.1.42.205594：hybrid_app.chunk.1482700000000.js/28.js的U/G/Z，
+342.js handleClickAudioEffectNew、activeAiMasterAe、activeEmotionAe、switchNew，
+308.js restoreAudioEffect，15.js接口定义，85.js授权类型。
+官方M/28 U/G捕获请求失败后只记日志；Rust按完整目标要求保留失败与未知写入，
+不复制“忽略失败继续成功”的宿主行为。本批未参考YesPlayMusic。
+
+接口和含义
+POST /api/vipauth/app/interests/auth/set
+  {interestsType:116或127,interestsId:"字符串ID",type:0}
+POST /api/vipauth/app/interests/auth/stop
+  {interestsType:116或127,interestsId:"字符串ID",type:1}
+200/201/202对应116，其余对应127。现有Api处理协议/上下文/登录态，cache=false，
+写入确认必须同时有code200和data=true；没有自动换协议、重试或购买动作。
+200但data为false/缺失/畸形保留未知结果，不制造登记或停止回执。
+
+GET语义读取仍用业务POST：
+auth/query {queryInfo:{interestsMap:{"类型":[数字ID]}}} -> canUse和会员/试用信息。
+recyclequery {queryInfo:{"类型":["字符串ID"]}} -> data[类型]中的interestsId/canRecycle。
+recyclable()严格区分缺少记录None、false、true；重复身份、非对象/数组及非bool为错误。
+query.canUse是权益；recyclequery.canRecycle是是否应回收。两者都不是“此前某个
+auth/set或auth/stop已经成功”的回执，不能用于抹去丢包后的未知结果。
+
+代码与调用顺序
+core/src/effects/authorization/：record定义持久状态，mutate负责单次登记/停止，
+observe负责新读取/恢复；mod负责账号命名空间、持久化和跨进程操作锁。
+EffectsApi的写入口是显式方法，目录/材料获取不会顺便登记、开始试用或支付。
+
+EffectAuthorizations.begin_for(token,effect,TrialConsent)：
+1. 固定当前账号并获取账号级互斥锁；另一效果仍有待释放登记时拒绝切换。
+2. 同效果已Registered时只重查权益，不重复auth/set；未知结果不自动重放。
+3. 新登记先查询服务端canUse，未授权则无写请求；50/51试用必须ExplicitStart。
+4. 先保存Registering和operation UUID，再发送一次auth/set。
+5. 收到200且data=true后保存Registered及start_acknowledged；随后新查auth/query与recyclequery。
+6. 返回LeaseObservation.can_use只表示已确认登记且当前读取允许；不表示DSP已启用。
+材料应在调用本方法前准备好。逐歌AI/设备/情绪的材料与播放器接入不在这个方法内。
+
+release_for(token,effect,ReleaseRetry)：
+只处理本账号已有记录，不能停止未被本实例记录的其他效果。先保存Releasing，
+发送一次auth/stop，收到200且data=true后为Released。Released重复调用无请求。
+StartRejected是服务器明确拒绝登记，直接保持该终态，不伪造stop成功回执。
+StartUncertain可由明确停止操作补偿；StopUncertain不得默认重发，必须调用者显式选择
+ExplicitAfterUnknownResult，将再次停止作为新动作，而不是宣称原请求失败。
+本批没有后台自动写入定时器。
+
+observe_for(token,effect)：
+获取互斥锁后，遗留Registering/Releasing转为StartUncertain/StopUncertain。
+先清除旧观察再做两个新读取；错误保留登记回执和错误，不能把旧值伪装成新查询成功。
+Registered + canUse=true + canRecycle不为true，返回can_use=true。
+canUse=false/缺失或canRecycle=true会返回can_use=false；如登记仍待释放，
+should_release=true。宿主应先停本地效果，再显式release；查询本身不隐藏发送stop。
+未知写阶段即使查到canUse=true且canRecycle=false也仍然未知，can_use=false。
+观察Released记录仍可查到canUse=true（会员权益仍有效），这不表示重新启用了效果。
+
+状态和恢复
+Registering -> Registered / StartRejected / StartUncertain。
+Registered或StartUncertain -> Releasing -> Released / StopRejected / StopUncertain。
+服务明确301/400/403/405记录Rejected；其余错误保守保留Uncertain，不假定500没有执行。
+停止被明确拒绝时，已有登记仍可能存在；StopRejected保持待释放义务。
+每次操作记录effect、operation UUID、revision、开始/停止回执、最后权益/回收观察和
+不含响应正文的错误。只有收到相应确认才允许Registered/Released，反序列化后校验。
+operation UUID仅用于本地关联，不发送给服务端，不把它当成远端幂等键。
+
+任务取消不伪造完成：发送前日志已提交，future被取消后锁释放，恢复读取识别未决。
+账号切换后收到成功确认，仍在原账号保存确认，然后向旧调用者返回StaleResponse；新账号
+不会收到或复用它。网络await不持有账号/数据库互斥锁，账号级文件锁串行化写入。
+持久状态仅在当前账号命名空间中读取；重开后必须重新观察，不能直接把历史记录当作
+新的当前权限或自动重新登记。一次新的明确登记有新的operation UUID。
+
+与完整官方恢复流程的边界
+已恢复的M/308在isOn/isVipAudio/宿主会员/实验开关条件下查询canRecycle，并在true时
+关闭设置及auth/stop。本业务域提供其中的协议、回收读取和停止能力；完整设置恢复、
+DSP关闭/启用、宿主权限变化订阅与页面交互还要接入播放器/桌面生命周期。
+未找到可据以实现本地试用倒计时的官方字段与计时流程，未凭trialStatus虚构截止时间。
+当前不执行离线降级激活；M/342会员降级判断保留在rights.rs，不能用于确认网络写入结果。
+特殊效果200/201/202只复用已恢复的权益协议，不因此宣称AI模型/情绪推理已完成。
+
+验证
+effects-authorization-official.json：直接执行未修改的M/28 U/G/Z，7个ID/21次请求。
+冻结样本覆盖三个特殊ID、普通ID及精确JS整数边界，哈希见对应manifest。
+core/tests/effects_authorization.rs：请求、异常回收响应、明确试用许可、重复点击、
+重开、丢开始/停止回包、取消开始/停止、迟到确认与账号切换、撤权/回收、读取失败、
+明确拒绝和坏日志；既有effects_service.rs材料回归一起运行。
+
+独立可执行流程
+  CARGO_INCREMENTAL=0 cargo build -p cumulus-core --example effect_authorization_roundtrip --offline --locked
+  .build/target/debug/examples/effect_authorization_roundtrip PRIVATE_PC_PROFILE NEW_PRIVATE_OUTPUT EFFECT_ID
+此程序是有两次远端写入的往返工具，不是只读探针。先确认已有非试用权益10/11/12且
+canRecycle=false，再允许一个指定效果的一次auth/set和一次auth/stop；拒绝重放、
+试用、购买和其他业务接口。结束后重开SQLite，核对Released、回执、未决数和权益未变。
+如果开始回包丢失，可明确发送停止作补偿；如果停止结果丢失，不再自动发送第二次停止。
+不能通过查询证明独立的服务端占用状态，因此报告明确occupancy_readback_available=false。
+私有目录记录请求/响应和状态，stdout仅汇总。实际验证和最终产物哈希见专项映射。
+
+本批结果
+14项专项与既有15项材料回归通过；全工作区590项（core587/desktop3），0失败/忽略。
+严格Clippy、格式、正式桌面与独立往返工具构建通过。初次Clippy的range-pattern提示
+已经等价修正，保留失败日志；未修改或重跑前端，沿用此前61项和窗口证据。
+最终工具在.build/effects-authorization-live-20261026-b完成11次API请求：9读/2写，
+一次指定普通音效的非试用登记和一次停止，均code200且data=true。重开后Released、未决0，
+规范化权益与回收标志和基线一致。未激活音频、未支付、未开始试用、未改其他用户资源。
+a批同样成功；核对真实回包后补齐data=false/缺失等不得制造回执的分支，再用最终产物跑b批。
+两批合计22次请求/4次写入，分别各一次登记和停止，均无未决；没有试用消耗。
+独立检查原始请求顺序、写入次数、响应、SQLite回执及最终工具哈希，见专项映射/审计。

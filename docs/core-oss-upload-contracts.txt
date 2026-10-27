@@ -1,0 +1,127 @@
+Rust OSS 上传：签名、分片、核对、取消与云盘父任务
+2026-10-26；本文件记录独立core实现与本地验证，不宣称真实OSS服务或云盘桌面页通过。
+
+来源与实现位置
+官方 cloudmusic_util.exe：U:0x233430 实际channel分派，0x232cb0 OSS字段，
+0x245700 Whale分配，0x242c80→0x285920 上传执行，0x2f2610/0x3164a0 OSS V1签名。
+默认有效分片配置来自0x22fb44的1MiB，经0x22fef0→0x242e54→0x285b04/0x295610覆盖
+SDK的8MiB默认值；并发上限3。没有把反编译中的SDK默认值误用为官方实际配置。
+细节见 references/recovered-client/docs/product/23-oss-upload.txt、
+cumulus_core/oss_upload.py；独立签名对照来自 references/oss-sdk-oracle 的阿里云官方SDK。
+SDK固定版本 eb329ec91d24e2e52646f244863232342fa05161；来源URL/许可见其sources.json/LICENSE。
+没有使用YesPlayMusic。运行时代码不调用Python；core/tools/oss_oracle.py仅生成独立测试样本。
+逐符号来源/行号→Rust位置→可执行证据见cloud-oss-mapping.json；已核对来源文件SHA256与
+migration-source-index.json一致。该表只覆盖OSS文件，不能代替整个桌面目标的逐项审计。
+
+core/src/cloud/oss/：
+  allocation/sign/crc   channel=3元组、端点/key校验、OSS V1与CRC64。
+  request/xml/response  请求/签名参数、有限XML解析、分配/分片/完成/读回的响应校验。
+  backend              独立reqwest对象客户端与GET流式摘要。
+  state/manager        账号绑定、固定子ID、持久日志、源文件、配置及凭证替换。
+  transfer             小文件PUT、初始化、三片批次、分片确认与合并。
+  recovery             ListParts核对、对象只读核对、已知uploadId的中止。
+core/src/cloud/upload/transfer.rs把这些传输接入校验→分配→附件→元数据→编码→发布→账号回读。
+
+分配和账号边界
+只接受Whale实际返回channel=3；channel=1继续NOS。不能因请求参数channel=3强迫使用OSS。
+需要bucket、key/objectKey、resourceId、endpoint、accessKeyId、secretAccessKey、token。
+key与objectKey同时存在时必须一致；端点限oss-<region>.aliyuncs.com及同bucket的虚拟主机形式，
+规范为HTTPS，不接受userinfo、异常端口、路径/query/fragment或别的bucket前缀。
+对象key按UTF8字节做URL编码，保留斜杠；签名资源使用原始key。百分号与加号不可二次解释，
+拒绝URL库可能消除的字面量单点/双点路径段。秘密字段限制ASCII及长度，不允许换行。
+对象请求不使用账号HTTP客户端、CookieJar、Cookie、Referer，不自动重定向/重试或解压正文。
+Authorization和x-oss-security-token标记敏感头。错误仅保留HTTP状态及有限格式的OSS Code；
+不把原始XML、服务URL、STS元组、uploadId或签名放进公开视图。
+所有服务绑定构造时SessionToken；同UID重新登录也使旧在途ACK不能写入新会话。
+私有SQLite命名空间oss_uploads_v1/oss_upload_controls_v1；按账号隔离，跨进程oss-upload锁互斥。
+
+签名与请求契约
+Authorization = "OSS " + accessKeyId + ":" + Base64(HMAC-SHA1(secretAccessKey, canonical))。
+canonical = METHOD + LF + Content-MD5 + LF + Content-Type + LF + Date + LF
+            + canonicalizedOSSHeaders + canonicalizedResource。
+Header名转小写并排序，仅x-oss-*头参与；有x-oss-date时该值覆盖Date签名行。
+同名但大小写不同的输入头拒绝。资源为/<bucket>/<原始key>，签名子资源按原始键值排序。
+本实现操作使用uploads、uploadId、partNumber参与签名；ListParts的max-parts与
+part-number-marker是URL分页参数，不加入V1签名子资源。URL参数独立百分号编码，不用+表示空格。
+Content-MD5是实际正文MD5的Base64；与NOS整文件十六进制MD5不是同一约定。
+默认Content-Type application/octet-stream；Complete XML为application/xml。
+
+小文件（<=持久part_size）：PUT对象原始字节；确认HTTP200、ETag=源文件MD5及可用CRC。
+大文件：POST ?uploads 初始化，确认响应Bucket/Key并保存UploadId；
+PUT ?partNumber=N&uploadId=... 发送原始分片；每片ETag必须匹配该片MD5；
+GET ?uploadId=...&max-parts=1000&part-number-marker=... 读取分片；
+POST ?uploadId=... 发送连续编号的CompleteMultipartUpload XML，ETag使用大写十六进制并带引号。
+合并响应必须是CompleteMultipartUploadResult并确认Bucket/Key；合并ETag不作为整文件MD5。
+HTTP200但XML根为Error仍是失败，不当作完成；XML限制1MiB、16层和50000节点，拒绝DTD、
+自定义实体、重复必须字段、非UTF8、错误根/对象/UploadId和不前进或跳过分片的分页标记。
+
+CRC64采用反射ECMA多项式0xc96c5795d7870f42、初始/结束异或全1，previous参数接受前段结束值。
+源文件CRC在流式准备阶段计算；PUT/Complete返回的x-oss-hash-crc64ecma非零时必须匹配。
+缺失或0表示未验证CRC，不能将crc64_verified置true；格式错误/不匹配阻止完成。
+小文件PUT仍有MD5证明，大文件有每片MD5；未知完成的只读核对另有整文件MD5/SHA256证明。
+
+源文件、调度和持久化
+Source复用NOS的普通文件、规范路径、长度、MD5/SHA256约束，非空且最多512MiB。
+准备时流式CRC前后复核原句柄与当前路径；阻塞文件工作在spawn_blocking运行。
+默认1MiB/3并发，适配器允许100KiB..64MiB/1..3并发；最多10000片。
+part_size/concurrency写入任务，重开后不能因宿主默认值变化更改现有分片边界。
+每批先读取/校验待发分片，保存各片字节/MD5及整批Pending::Parts，再启动最多3个请求。
+每个成功响应独立落盘；某片失败仍收集同批所有已启动结果，不把另两片成功一起丢弃。
+该批失败后不启动下一批/合并。中止Future保留已写意图；恢复先ListParts。
+合并前再次复核源文件；源文件在传输中改变时不得合并或发布。
+固定子ID可复用相同源/对象；不同源或bucket/key/endpoint/resourceId不能套用旧任务。
+
+公开API
+OssUploads::new(session) 原生HTTP、1MiB、3并发；with_backend用于明确传输/配置注入。
+create(Some(id), path, allocation, expected_md5)、get/find/list、run(id,OssRunOptions)；
+control(Pause/Cancel)、resume、cancel、reconcile、replace_credentials。
+run预算按实际待发片数计算；预算用尽保存Paused。control是持久请求，不能把请求提交等同完成。
+Pause在批次边界停止；Cancel不能被Pause覆盖。已完成对象保留，不提供DeleteObject操作。
+OssView仅含进度、状态、Pending种类、配置、确认片数、CRC/内容验证事实和稳定错误类别。
+CloudView.transfer按transport=nos/oss带各自脱敏状态；云盘附件仍使用NOS，不假装是OSS。
+
+恢复及取消规则
+明确4xx拒绝可清除对应写意图，保留同一对象重试；408以及PUT的409、合并的404/409仍未知。
+初始化/PUT/合并回包丢失、XML成功响应不完整、提交ACK失败，均不能直接重发。
+初始化未获得uploadId：没有可靠身份，停止；不能重启一次初始化，也不能猜测ID进行删除。
+已知uploadId：ListParts逐页校验对象/ID/序号/大小/MD5，与发送前日志逐一匹配。
+仅认领已记录且内容匹配的片；未知远端片或不匹配的片返回MutationUncertain，不继续合并。
+本地记录但远端缺少的片才允许重新发送，已接受但ACK丢失的片不重复传输。
+
+PUT或合并结果未知：仅HEAD→GET。初始化/PUT附加x-oss-meta-cumulus-upload=<固定任务ID>，
+PUT/初始化/合并附加x-oss-forbid-overwrite=true；这是恢复适配措施，不冒称官方原始请求字段。
+HEAD要求该标记及Content-Length精确匹配；GET再次校验标记/长度，并流式计算MD5和SHA256，
+全部匹配才标记Uploaded/content_verified=true。内存不缓存整段媒体正文。
+缺对象、缺GET/HEAD权限、标记或内容不符时保持未知；404不能授权重发PUT/合并。
+此核对不需要源文件仍存在，但云盘父任务后续元数据提交仍要满足原输入复核条件。
+
+取消已知multipart：保存Pending::Abort后DELETE ?uploadId=...；只有204或明确NoSuchUpload
+才能确认Cancelled。响应丢失可对同一uploadId再次中止，未知结果期间父任务保持非终态。
+PUT/合并未知时取消先执行上述只读内容核对；若对象已完成则保留对象，停止父任务发布。
+完成ACK迟于Cancel到达时保存实际Uploaded，父任务可以Cancelled，二者不互相伪造。
+父control现为async，等待必要的OSS中止确认；在途父任务持锁时先记控制，由工作任务处理。
+父任务reconcile_transfer只核对音频对象，不提交metadata/publish；reconcile_publication仍独立。
+
+STS续期边界
+没有恢复出自动获取“同一对象的新STS元组”的官方接口，不能用NOS refresh或新Whale分配替代。
+replace_credentials/CloudUploads::replace_oss_credentials仅供原生宿主持有合法新元组时调用，
+严格保持bucket/key/endpoint/resourceId，更新凭证也不会清除未知写事实或改变uploadId。
+前端不接收这组凭据。过期且无法提供同对象凭证时明确受阻，不能宣称自动恢复。
+
+验证与可执行流程
+PYTHONPATH=/tmp/cumulus-oss-oracle-deps python3 core/tools/oss_oracle.py
+  对固定SHA256校验后的官方SDK AuthBase/ProviderAuth/Crc64类执行样本；可选crcmod=1.7。
+  生成25组签名、11组CRC（整块、拆分、previous恢复），合成凭证，无账号/网络。
+  Rust直接读取已提交fixtures，不依赖上述Python工具或临时安装目录运行。
+cargo test -p cumulus-core --test oss_protocol --test oss_upload --test cloud_oss_upload --offline
+  协议8项、独立传输状态11项、云盘父任务8项；每项有多分支和故障/恢复断言。
+cargo test -p cumulus-core --lib cloud::oss::http_test --offline
+  2项实际回环HTTP；检查签名头、Content-MD5、Cookie/重定向/重试隔离、2MiB流式摘要和限额。
+  本地监听需环境允许；不连接真实OSS，也不使用账号Cookie。
+CloudUploads::new(session)→create→run实际依据Whale channel自动执行NOS或OSS，
+遇Encoding/Published按next_check_ms继续，Complete须真实账号列表确认。
+已有cloud_upload_roundtrip例子是限定NOS的真实隔离证明程序，不把它算作OSS线上证明。
+本轮未获得真实channel=3分配，没有对真实OSS执行上传/中止/权限核对；模型可执行通过为S/L/I，
+线上R仍缺服务返回OSS通道及对应权限。没有自动支付/邀请/发信或改动现有账号资源。
+后续云盘桌面页与实际播放已接入，见desktop-cloud-contracts.txt；云盘专用下载、OSS真实通道仍未通过，
+不能以传输测试数量宣布该领域全部完成。

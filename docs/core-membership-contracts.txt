@@ -1,0 +1,69 @@
+Rust 会员权益、离线决策与会员中心
+2026-10-25；来源优先采用恢复的M/224、M/23、M/35、M/84、M/3002、M/2250、M/3151。
+下文保留首批迁移边界；2026-10-27已接会员页/历史日推/实际播放与恢复，当前状态和余项见
+desktop-member-contracts.txt、member-desktop-mapping.json，不沿用下文“桌面待接”的旧结论。
+
+结构
+membership/api.rs：会员信息接口；state.rs：官方到期转换；clock.rs/manager.rs：时钟、缓存与刷新。
+quality.rs：官方音质码；offline.rs：映射本地/下载歌曲的离线判定。
+center/ 分 banner转换、模块加载和状态/历史协调，不依赖前端组件。
+测试中使用合成会员状态；真实运行从该账号的服务响应计算，不从请求音质推断权益。
+
+会员与时间
+/api/music-vip-membership/client/vip/info {userId}，要求data.now为有限正数，返回userId若存在须匹配账号。
+五组：associator黑胶、redplus超级会员、musicPackage音乐包、albumVip数字专辑、voiceBookVip有声书。
+严格expireTime>serverNow才有效；相等即到期。黑胶和超级会员同时保存服务返回的vipLevel。
+M/224的isNeverVipUser按JS对象真假值；空对象表示曾有该组，不能按Rust/Python空集合当假。
+服务时间+运行中单调时钟推算serverNow；最早有效权益到期后1秒给出refreshAfterMs。
+重启使用保存时wall与当前wall的差值恢复；墙上时钟回退超过5秒要求重新在线读取。
+不通过回退系统时间延长有效期。跨账号代次响应不入缓存，持久化失败不发布新权益。
+refresh_if_due每次最多执行一次在线读取；新的服务状态替换原锚点，宿主自行安排tick/失败退避。
+当前纯转换拒绝非有限/非法类型的到期值和非整数会员等级，不模拟畸形数据的所有JS隐式转换。
+
+音质
+64aac=64000；standard=128000；higher=192000；exhigh=320000；lossless=999000；
+hires=1999000；dolby=2999000；jyeffect=3999000；jymaster=4999000；sky=5999000；vivid=6999000。
+官方另有none=0不可用状态；Quality只表示可请求/实际授予的有效等级，不把none当可播放音质。
+线上必须以播放/下载URL接口实际返回等级、URL、试听范围和业务码为准。
+播放器运行中音质切换及下载管线仍待接入，不能仅凭此枚举宣告已迁移。
+
+离线歌曲
+Downloaded要求调用者确认下载记录完整，未完成直接DownloadIncomplete；明文已完成音频可读。
+Imported明文本地文件可读；加密文件需要映射得到的真实privilege与当前MembershipState。
+fee=0优先免费。按官方Number(null)处理显式fee:null=0；缺fee不是免费证据。
+flag第13位要求albumVip；dolby/sky/jymaster要求isPlusVip；其余要求黑胶。
+下载歌曲的普通会员分支还可使用已购买mask(payed&6)或musicPackage；导入文件不继承此分支。
+读取错误类型的privilege会拒绝，不能以无效解析结果放行。权限不足返回明确原因。
+M/23 K/Y、M/35购买mask和M/84码表直接运行得到387组离线样本，与Rust一致。
+这个判断是已恢复的客户端策略；不是服务端授权、新DRM签名或绕过付费的凭证。
+本地库、NCM和下载状态接入之后，才可把完整文件/来源/权益串成实际播放流程。
+下载声音/有声书还有独立audio权益规则，当前offline_access只覆盖歌曲，声音链路继续迁移。
+
+会员中心
+先取/api/vipnewcenter/app/viptab/module/get与resource/centertop/carousel/list。
+保留服务模块顺序，只加载官方M/3002映射的类型1/3/4/5/6/7/9/12；3和4共享一次结果读取。
+1顶部banner、7双banner：resource/common/list，positionType=16/18。
+  contentList可为JSON字符串；顶部过滤algFlag=1与无图片，生成SONG播放、PLAYLIST链接、ACTIVITY链接。
+  没有有效顶部banner时使用官方PC_BACKUP资源。双banner要求图片与跳转地址同时存在。
+3/4推荐歌曲：viptab/recommend/song/list {from:1}。
+5有声书：/api/podcast/common/single/block/get {blockCode:VIP_THEATER_VOICE_BOOK,pageCode:HOMEPAGE_VOICELIST_RCMD}。
+6数字专辑：resource/plus/recomend/album，注意官方recomend拼写。
+9排行：viptab/ranking/list，收集songId，调用/api/v3/song/detail后逐项补track；缺失歌曲保留null。
+12歌单：viptab/recommend/playList/list。
+未写完整路径的均前缀/api/vipnewcenter/app/。轮播data可能是{id,carousels,carouselKey}对象，原生层保留。
+刷新以完整快照提交；失败保留上次结果并标error。Future/进程中断后，读取发现loading但锁已释放，
+会标interrupted而不丢失旧内容；同目录并发刷新受标准库文件锁抑制。
+原始内容Value只用于原生业务，最终前端卡片DTO、链接打开和收藏/播放事件适配尚待桌面接入。
+
+历史推荐
+/api/discovery/recommend/songs/history/recent {}返回data.dates；
+/api/discovery/recommend/songs/history/detail {date}返回data.songs。
+日期列表和各日期结果分开存盘；非法日期类型、缺列表或旧代次结果不保存。
+这里只读取用户历史推荐，未调用播放历史写入或签到领取接口。
+
+验证
+会员策略6项测试、会员中心4项测试；5组官方会员转换、387组原函数离线判定和11档码表对照。
+新Rust真实读取 .build/rust-member-read-report.json：黑胶7级、musicPackage有效、plus无效；
+会员中心按官方PC映射加载7模块；历史推荐5日期，选定日期34首。
+当前服务器还返回类型2/8/10/13，官方3.1.42 PC映射没有它们；按官方过滤，不宣称已渲染全部服务模块。
+没有在线获取超出账号权益的资源，没有修改会员订单、权益或领取状态。

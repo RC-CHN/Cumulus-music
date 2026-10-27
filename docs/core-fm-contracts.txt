@@ -1,0 +1,123 @@
+私人 FM：原生领域状态与反馈恢复
+2026-10-27。此批完成独立 Rust 领域实现及只读线上验证；不是完整私人 FM 桌面验收。
+播放器自动续播、正式 IPC/UI 和真实反馈往返仍需继续，完整目标保持 active。
+
+来源
+官方 hybrid_app/M1384：私人 FM、FAMILIAR 的队列、预加载、切歌/结束、历史裁剪、减少推荐。
+M244/M21：歌曲转换及 algorithm <- alg；M15：实际 API 字段；M32：缓存默认有效期。
+M310：歌曲/任一歌手命中黑名单的过滤；hybrid_222/M3155：减少推荐列表分页、恢复后本地移除。
+精确路径和 SHA256 见 fm-core-mapping.json；这一批未使用 YesPlayMusic。
+references/recovered-client/tools/fm_official_fixtures.cjs 直接执行原始 De/Ve/He 及 M310.v，
+生成 core/tests/fixtures/fm-official.json：35 组补队列、4 组合并去重、144 组选曲，共183组。
+生成器只截取官方函数并提供日志等依赖；没有用新 Rust 实现生成预期值。
+
+结构与职责
+core/src/fm/api.rs：远端请求/响应和完整减少推荐列表读取。
+types.rs/model.rs：原生状态、来源、权益缓存身份、队列规则、播放器观察值。
+service.rs：账号/持久化/版本核验、预加载、切歌意图、已确认减少推荐后的队列变更。
+feedback.rs：跳过上报的 Prepared/Sending/终态；trash.rs：减少/恢复推荐及只读核对。
+没有 Tauri、WebView、Python 子进程或直接面向前端的原始响应接口。
+原始 song、algorithm 和原因响应留在 native；未来 IPC 必须投影公开白名单字段。
+
+接口与调用顺序
+1. /api/music/dislike/get {}：data.songIdList、data.artistIdList。
+   refresh_blacklist_for 写入当前账号；过滤时合并已读减少推荐列表，但不混淆两类服务状态。
+   恢复减少推荐不会擅自解除独立的歌曲/歌手黑名单。
+2. /api/v1/radio/get：预加载 imageFm=1，后续补充 imageFm=0。
+   FmSource::Personal 不添加 mode/sourceIds；Familiar 添加 mode="FAMILIAR"、sourceIds=十进制来源ID。
+   data 为歌曲数组；algorithm 保存原始 alg 字符串，每个本地队列项有独立 entry_id。
+   首次返回不足3首时只补请求一次，不能在空结果上无限请求；整个补充成功后才合并。
+3. /api/v1/radio/skip {songId,alg,time}：仅手动下一首产生意图。
+   time 是原生观察位置向下取整的秒数；观察 entry_id 不匹配则0，非有限/负数拒绝。
+   自然结束、上一首、单曲循环和减少推荐本地切换均不生成 skip。
+4. /api/personalized/dislike/reason：
+   resources=[JSON.stringify({resourceId:id,resourceType:4,targetUrl:"",encId:id})]，scene=""，page="userfm"。
+   返回原生 Value；真实样本得到3条原因，正式弹窗及“屏蔽歌手”独立写入尚未接通。
+5. /api/v3/radio/trash/get {pagesize,from,to,addTime}：
+   page 从1开始，from=page-1，to=page，使用上一页返回的 addTime；不是歌曲条目 offset。
+   对外单页允许1..100条，保存服务 count 和原始歌曲；完整读取每页100、最多1000页。
+6. /api/radio/trash/add {songId,alg,time}：减少推荐。
+   trash_current_for 根据 source+revision 从原生当前项取歌曲和算法；宿主只提供原生时钟观察。
+7. /api/radio/trash/del/batch {songIds:[...]}：恢复推荐。
+   restore_trash_for 输入1..100个不重复十进制ID，仅发送当前确实在列表中的目标项。
+   songIds 保持数组交给已有官方 wire 序列化；不会改成另一种JSON文本或另一API。
+
+ID 采用十进制字符串，避免 JS Number 丢失大整数。skip/trash 的标量经官方 wire 编码后为
+相同十进制文本；reason 内的 resourceId 保留字符串，这一形式的真实原因读取已成功。
+Familiar 的来源参数与行为已在本地验证，尚无该模式的线上及桌面证明。
+
+真实服务 count=0 的兼容
+当前账号实际 /api/v3/radio/trash/get 首次返回 count=0、data 有23首且ID不重复。
+原 M3155 会显示这些歌曲、hasMore=false；不能把 count=0 解释为没有减少推荐记录。
+完整快照在 count=0 时继续按官方页号和 addTime 读取，直到明确空页，再重读第一页确认
+ID顺序和服务计数没有改变。此次真实第二页为空、首页复核一致，才确认读到了23个ID。
+FmTrashSnapshot.total 为实际读取的唯一ID数；reported_total 保留服务原始计数。
+count>0 时仍要求页数/条数一致；跨页计数变化、重复ID、缺页或最终数量不一致均拒绝。
+多页结束后也复查第一页；失败不替换已保存完整快照，更不据此发送批量删除。
+addTime 是沿页传递的游标，不要求每页相同。服务没有提供可锁定的全列表版本，因此
+不声称客户端多次读取具有服务端事务隔离；变更确认另需两次目标状态一致。
+
+队列与缓存
+每个账号、来源独立存储；来源 JSON 的 SHA256 为key。重复歌曲保留已有项和已有算法。
+补充阈值为 index >= length-2；没有随机重排。前进/后退跳过歌曲或任一歌手黑名单。
+超过10首历史时裁掉更早项，当前索引回到10。无下一首时保留历史并置为耗尽，不能循环旧推荐。
+这是社区显式的耗尽状态，原实现无可播项时只是返回；前端仍需显示重试而不是假播放。
+自然结束且 FmRepeat::One 时重播当前；手动下一首不受单曲循环阻止。
+250ms 切歌间隔持久化；队列修改采用版本比较，过期请求返回 QueueChanged。
+FM 权益缓存身份包含黑胶/Plus布尔值，来自 MembershipSnapshot；默认2小时提前3秒失效。
+默认模式新鲜缓存直接返回；FAMILIAR不复用该新鲜规则。时钟倒退视为过期。
+过期/权益变化重新预加载会保留现有队列和当前位置，追加去重后的新推荐，与M1384一致。
+耗尽缓存即使时间新鲜也允许继续加载。账号切换/同UID重登的旧代次不能提交新队列。
+补充请求普通网络失败可继续已有尾部歌曲，同时返回 refill_failed；301/账号代次/凭据变化
+直接中止该操作。原生播放器接入后仍需把这些状态准确投影到界面。
+
+跳过上报的持久恢复
+step_for 在同一 SQLite 事务中保存新队列及 Prepared 报告；写盘失败两者一起回滚。
+返回 skip_report ID，宿主随后调用 dispatch_skip_for；领域本身不会偷偷启动网络任务。
+Prepared -> Sending 先持久化再发送；200 -> Confirmed；明确拒绝 -> Rejected；其他失败 -> Uncertain。
+301/403/405/505/506/511/512按已有业务的确定拒绝规则处理；不把HTTP异常或未知业务码当拒绝。
+进程/Future在 Sending 期间中止，重开 dispatch 只将它变为 Uncertain，不重发。
+Confirmed/Rejected/Uncertain/Abandoned 再次 dispatch 都只返回已有记录。
+只有 Prepared 可以显式放弃；没有恢复到Prepared或把Uncertain伪造为成功的入口。
+未恢复出 skip 的服务端查询接口，因此未知结果无法只读证实，也不能保证每条反馈必达。
+这是“每条意图最多发送一次”的客户端保证，不是服务端 exactly-once 保证。
+操作锁跨进程、按账号和报告ID隔离；发送期间切换账号，终态仍写到原UID但旧结果不发布。
+
+减少/恢复推荐的持久恢复
+每个账号串行修改减少推荐列表，队列变更另有来源锁；网络期间不持有账号/SQLite互斥锁。
+请求前完整读取并保存 before。目标均已符合 desired -> Unchanged，无远端写入。
+与未决操作目标重叠时返回 MutationUncertain；不可用“新操作ID”绕过旧责任。
+Sending 在请求前落盘；200进入Verifying，之后最多8轮只读核对、间隔250ms；
+连续两轮目标成员状态符合 desired 才 Confirmed，否则保留 Uncertain。
+确认记录和最近完整快照同事务提交；远端成功后写盘失败仍保留此前Sending，供重开核对。
+回包丢失、进程退出或读回失败都不会自动重发写请求；reconcile_trash_for只调用列表读取。
+账号切换后仍保留原UID的未决责任，另一账号看不到这些操作。
+apply_trash_for 只接受本账号 Confirmed/Unchanged 的减少推荐记录；确认前当前队列不移除。
+若移除当前项，先在需要时补充、移除目标、选择下一可播项；不产生额外skip。
+恢复推荐只修改服务列表及本地过滤快照，不把歌曲强行插回当前播放队列。
+
+已验证与可复现入口
+本地 fm 测试包含真实 SQLite 事务/触发器和跨实例文件锁；覆盖缓存、权益、时钟、FAMILIAR、
+短批补充、去重、250ms间隔、原生观察时间、自然结束/单曲循环、历史裁剪、耗尽、黑名单、
+队列与skip原子提交、未知写不重发、Future中止、切号、回读失败、确认写盘失败与只读恢复，
+并覆盖 count=0 有歌曲、重复/变化/缺页拒绝。具体通过数量以最终验证记录为准。
+core/examples/fm_read.rs 是独立 Rust 可执行只读流程，API白名单禁止反馈/黑名单变更。
+  CARGO_INCREMENTAL=0 cargo build -p cumulus-core --example fm_read --locked --offline
+  .build/target/debug/examples/fm_read EXISTING_PC_PROFILE NEW_PRIVATE_PROOF_DIRECTORY
+要求显式现有 PC profile；不扫描或扩大 Cookie 作用域。新目录0700，业务缓存独立于原profile。
+输出账号相关原始响应仅保存在私有证明目录；控制台只显示计数、路径和检查布尔值。
+.build/private-fm-read-20261027-c/report.json：推荐3首且3个alg非空、减少推荐23首、
+歌曲黑名单6项、歌手黑名单0项、原因3项、重开缓存完全相等且无新增网络请求；显式写入0。
+a/b因 count=0 假设失败，日志保留；c验证修正后的完整读取，不覆盖原失败历史。
+
+领域批次结束时的边界（后续播放器/桌面进展见desktop-fm-contracts.txt）
+原生播放器控制器的FM队列安装/EOF、切歌上报调度、试听模式36、普通队列保留与模式切换、
+慢请求与本机控制竞争、崩溃恢复后意图/实际音频一致性，以及与一起听/MV媒体焦点的协调。
+正式 FM 页面、原因弹窗、减少推荐列表与恢复界面、受限DTO/IPC、完整桌面交互与截图。
+屏蔽歌手独立变更、更多FM场景/专区模式、预加载配置宿主、真实反馈与恢复推荐往返。
+本批没有发送真实skip/trash/restore、没有启动FM播放器/桌面，不能把只读API成功当作完整FM通过。
+
+后续原生播放及桌面已接通并经过真实窗口/音频验证，见desktop-fm-contracts.txt和
+rust-core-validation.txt的“私人FM播放器与桌面”记录；本文件上面的领域批次证据仍保留其原范围。
+后续真实反馈往返、歌手屏蔽及原因选择已独立接通并验证，见desktop-fm-feedback-contracts.txt；
+这不改变上面只读批次的证据范围，也不表示其他FM模式或手动skip已完成真实发送验证。

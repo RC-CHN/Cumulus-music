@@ -1,0 +1,197 @@
+{
+  "scope": "Account-scoped effect catalogue, authorization decisions and ordinary PC parameter material library",
+  "goal_complete": false,
+  "official_first": true,
+  "yesplaymusic_used": false,
+  "sources": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/15.js",
+      "sha256": "8ec4bf8d343f6963860eb73bc59ca09f0dd1ae50db2608a6c5abc7d69a0b521a"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/21.js",
+      "sha256": "33d27af5a54c6a74641f192841637d2608d588d2d93091a9a61cb43948c93af7"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/28.js",
+      "sha256": "8222e4fb4a9b30ad31648b91787fad8ffe76165ecb6101abd9cb0d7b56332e65"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/85.js",
+      "sha256": "0ebc857d19e5822b8f9fc27a49f7ae1cf36d2dff1c1de71484a9cafe41a99f0f"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/168.js",
+      "sha256": "8907068f3d67b28076dc526da74498b5b0f76c9976e40550c6f1bd2ffe2d631c"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/308.js",
+      "sha256": "2cd3a0da5759370a80cfe20c7ac4e58ef192bab33c396e8eff3efdd35c254a7d"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/342.js",
+      "sha256": "1f27e592a340c814a49093416a0a684ec5c407c004f4e425a1d09b23b5319c8d"
+    },
+    {
+      "path": "references/recovered-client/docs/product/33-audio-effects-validation.txt",
+      "sha256": "daae0d51bfacabacfe6e502f715792b5da9960480980ddb73b95f49d63f8f9d0"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_effect_rights_rust_vectors.cjs",
+      "sha256": "48a0c5856487bb273e9ac5d2b7b7db7b1a1845c80146d9fba17ab26df370d2ba"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_effect_service_fixtures.py",
+      "sha256": "371f858ef7b3e6e175fd7cb3d82dd6bbc4254a52f0d1a29924aa032d7976ea6c"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_ncae.py",
+      "sha256": "6f54a55a0d8dc8926fb967d69ef1b0571d3a8fcb5285e09f38ff205b7024db1c"
+    }
+  ],
+  "implementation": [
+    "core/src/effects/api.rs",
+    "core/src/effects/catalog.rs",
+    "core/src/effects/rights.rs",
+    "core/src/effects/mod.rs",
+    "core/src/effects/service/mod.rs",
+    "core/src/effects/service/files.rs",
+    "core/src/effects/service/records.rs",
+    "core/src/effects/service/materials.rs",
+    "core/examples/effect_library_read.rs"
+  ],
+  "items": [
+    {
+      "feature": "Read APIs and response identity",
+      "source": "M/15,85,28,168",
+      "rust": "api.rs/catalog.rs",
+      "evidence": "contract tests and 57 real reads"
+    },
+    {
+      "feature": "Authorization decision branches",
+      "source": "M/342 getAudioEffectAuthResult",
+      "rust": "rights.rs",
+      "evidence": "512 direct official generator outputs"
+    },
+    {
+      "feature": "PC detail request enum and recycle payload",
+      "source": "M/342; M/308 restoreAudioEffect -> M/28 Z",
+      "rust": "api.rs pc_detail/recycle_query",
+      "evidence": "failed a/b kept; corrected c/d both 200; regression uses catalogue type3/detail type10"
+    },
+    {
+      "feature": "Atomic account catalogue cache",
+      "source": "official complete response lists; community persistence boundary",
+      "rust": "service/mod.rs",
+      "evidence": "failed refresh, duplicate identities, switch and stale-result tests"
+    },
+    {
+      "feature": "Authorized material acquisition/resume/cache",
+      "source": "M/342 first material; existing credential-free transfer and NCAE",
+      "rust": "service/materials.rs/files.rs/records.rs",
+      "evidence": "6 real files, 18 fresh material authorizations, 6 SQLite reopens, 6 HTTP206 resumes; all sizes/digests/JSON independently checked"
+    },
+    {
+      "feature": "Cancellation/account isolation/concurrent operations",
+      "source": "native account/transfer infrastructure",
+      "rust": "service/materials.rs",
+      "evidence": "blocked body switch, task abort, concurrent lock, cached cancellation/pause tests"
+    },
+    {
+      "feature": "Parent/child crash recovery and owned removal",
+      "source": "community durable safety boundary; official first-item selection preserved",
+      "rust": "service/materials.rs",
+      "evidence": "orphan before child commit, child complete before parent commit, removing intent, child deletion before parent commit, foreign replacement tests"
+    },
+    {
+      "feature": "Independent runnable proof",
+      "source": "same official requests and Rust business service",
+      "rust": "core/examples/effect_library_read.rs",
+      "evidence": ".build/effects-library-independent.json"
+    }
+  ],
+  "tests": [
+    "core/tests/effects_service.rs",
+    "core/tests/fixtures/effects-rights-official-manifest.json",
+    "core/tests/fixtures/effects-rights-official.json",
+    "core/tests/fixtures/effects-service-materials.json"
+  ],
+  "checks": [
+    ".build/effects-library-example-final-build.log",
+    ".build/effects-library-live-d.log",
+    ".build/effects-library-live-c.log",
+    ".build/effects-library-desktop-build.log",
+    ".build/effects-library-targeted6.log",
+    ".build/effects-library-targeted4.log",
+    ".build/effects-library-targeted2.log",
+    ".build/effects-library-live-a.log",
+    ".build/effects-library-targeted.log",
+    ".build/effects-library-example-build2.log",
+    ".build/effects-library-example-build3.log",
+    ".build/effects-library-format.log",
+    ".build/effects-library-example-build.log",
+    ".build/effects-library-live-b.log",
+    ".build/effects-library-check.log",
+    ".build/effects-library-clippy-final.log",
+    ".build/effects-library-targeted5.log",
+    ".build/effects-library-clippy2.log",
+    ".build/effects-library-workspace-tests2.log",
+    ".build/effects-library-clippy.log",
+    ".build/effects-library-targeted3.log",
+    ".build/effects-library-workspace-tests.log",
+    ".build/effects-library-clippy3.log"
+  ],
+  "rust": {
+    "passed": 576,
+    "core": 573,
+    "desktop": 3,
+    "failed": 0,
+    "ignored": 0,
+    "suites": 79,
+    "nonempty_suites": 76
+  },
+  "frontend": {
+    "passed": 61,
+    "new_run": false,
+    "evidence": ".build/together-lifecycle-front-tests2.log"
+  },
+  "official_cases": 512,
+  "functional_report": ".build/effects-library-independent.json",
+  "executable": {
+    "path": ".build/target/debug/examples/effect_library_read",
+    "sha256": "d3cb41542b4d04d9fc708a7c8441b5f0a154d7634d41895afabc69090765e099"
+  },
+  "actual_api_requests": 57,
+  "remote_writes": 0,
+  "actual_materials": 6,
+  "material_bytes": 2146,
+  "new_ui_verified": false,
+  "player_dsp_connected": false,
+  "new_audio_verified": false,
+  "account_rights": {
+    "smart_200": true,
+    "ai_master_201": false,
+    "emotion_202": false,
+    "denied_reason": 1005
+  },
+  "platform": "Linux x86_64; Windows/macOS not executed",
+  "boundaries": [
+    "Fresh canUse=true required even for cached return; no material grant from degraded membership decision",
+    "Material retrieval is not activation or auth occupancy; no trial/auth-set/auth-stop performed",
+    "64MiB encoded limit, 4MiB decoded parameter JSON object limit; binary models use a separate future workflow",
+    "Unknown orphan files retained; stale/replaced files fail instead of being adopted or deleted",
+    "Requests/response/material records remain native/private and are not IPC DTOs"
+  ],
+  "documentation": "docs/core-effects-library.txt",
+  "previous_audit": ".build/effects-compose-audit.json",
+  "remaining": [
+    "Effects auth/set and auth/stop occupancy, trial timing, recycle decisions and activation recovery",
+    "Device material adaptation, per-song AI cache/prefetch, smart-key cache, emotion model distribution/state",
+    "Complete DSP graph selection/routing, real player audio processing and effects UI/settings",
+    "Original unrecovered full SE/reverb and emotion inference retain their explicit limits",
+    "Same-account relay; remaining content/auth/member/special-media/comments/metadata/batch UI and workflows",
+    "Device identity/watchman, Together remaining events/statistics/RTC/outside-selection lifecycle",
+    "Tray/media integration, complete official visual audit, Windows/macOS execution and full-range completion audit",
+    "Real dual-account proof remains excluded; all other implementable goal work stays in scope"
+  ]
+}

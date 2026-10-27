@@ -1,0 +1,178 @@
+{
+  "date": "2026-10-27",
+  "full_goal_complete": false,
+  "full_membership_complete": false,
+  "official_first": true,
+  "yesplaymusic_used": false,
+  "contract": "docs/desktop-member-contracts.txt",
+  "sources": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_163.chunk.1482700000000.js/3002.js",
+      "sha256": "7dc837150057f0b621dea9c0a02d2d69286603309c7dce804ad0777fa55205fd"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_163.chunk.1482700000000.js/2250.js",
+      "sha256": "167c010853b3ee0be0cb1ec7718a32f15327d91fd0ae93bc701c0b72c24ffaaa"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_181.chunk.1482700000000.js/3151.js",
+      "sha256": "f344b46850699418df66d43e1e76211b16ed5d7b8c54dda3c4a838ad4ce65d5f"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/91.js",
+      "sha256": "445c4330441d995999e0b20b89c9ab4171def2b9d0193395294481ed3f1e71fb"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/choice/VIP/views/PageVIPEssential.tsx",
+      "sha256": "2d798652334876a4a258e3c0b8c9d8d0d77d6629778d445eb178262c8e0ac250"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/choice/VIP/components/VIPInfoCard.tsx",
+      "sha256": "ee7ca98abb4a75d21ff74da921cb13f804673e5c2850dc5922a046999c472dc9"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/choice/VIP/components/VIPRankListTop3Card.tsx",
+      "sha256": "0ca1c3c67eb1b87b03341a9aefb75352e183316efe2e2cf170bfa3c913ef2398"
+    }
+  ],
+  "items": [
+    {
+      "id": "server_derived_rights",
+      "official": "M224 + VIPInfoCard",
+      "rust": [
+        "core/src/client/member/mod.rs",
+        "core/src/membership/manager.rs"
+      ],
+      "frontend": [
+        "frontend/src/components/MemberPage.vue",
+        "frontend/src/composables/useMember.ts"
+      ],
+      "status": "native_tests_and_live_desktop_passed",
+      "evidence": [
+        "core/tests/client_member.rs",
+        "frontend/tests/member-state.test.ts",
+        ".build/ui-proof/member-20261027-b-final/independent-audit.json",
+        ".build/ui-proof/member-20261027-c-small/independent-audit.json",
+        ".build/ui-proof/member-20261027-c-small/independent-reopen-audit.json"
+      ]
+    },
+    {
+      "id": "official_member_modules",
+      "official": "M3002/2250 + PageVIPEssential",
+      "rust": [
+        "core/src/membership/center/service.rs",
+        "core/src/client/member/project.rs",
+        "core/src/client/member/dto.rs"
+      ],
+      "frontend": [
+        "frontend/src/components/MemberPage.vue",
+        "frontend/src/components/MemberCards.vue"
+      ],
+      "status": "native_tests_and_live_desktop_passed",
+      "evidence": [
+        "core/tests/client_member.rs",
+        "frontend/tests/member-state.test.ts",
+        ".build/ui-proof/member-20261027-b-final/independent-audit.json",
+        ".build/ui-proof/member-20261027-c-small/independent-audit.json",
+        ".build/ui-proof/member-20261027-c-small/independent-reopen-audit.json"
+      ]
+    },
+    {
+      "id": "history_date_selection_cache",
+      "official": "M3151 historyRecommend",
+      "rust": [
+        "core/src/membership/center/service.rs",
+        "core/src/client/member/mod.rs"
+      ],
+      "frontend": [
+        "frontend/src/composables/useMember.ts",
+        "frontend/src/components/MemberPage.vue"
+      ],
+      "status": "native_tests_and_live_desktop_passed",
+      "evidence": [
+        "core/tests/client_member.rs",
+        "frontend/tests/member-state.test.ts",
+        ".build/ui-proof/member-20261027-b-final/independent-audit.json",
+        ".build/ui-proof/member-20261027-c-small/independent-audit.json",
+        ".build/ui-proof/member-20261027-c-small/independent-reopen-audit.json"
+      ]
+    },
+    {
+      "id": "complete_native_queues_and_trial_41",
+      "official": "PageVIPEssential playAll + M91 vipDailyRecommend=41",
+      "rust": [
+        "core/src/client/member/mod.rs",
+        "core/src/client/player/selection.rs",
+        "core/src/client/player/dto.rs"
+      ],
+      "frontend": [
+        "frontend/src/App.vue"
+      ],
+      "status": "native_tests_and_live_desktop_passed",
+      "evidence": [
+        "core/tests/client_member.rs",
+        "frontend/tests/member-state.test.ts",
+        ".build/ui-proof/member-20261027-b-final/independent-audit.json",
+        ".build/ui-proof/member-20261027-c-small/independent-audit.json",
+        ".build/ui-proof/member-20261027-c-small/independent-reopen-audit.json"
+      ]
+    },
+    {
+      "id": "native_activity_link_resolution",
+      "official": "M2250 banner actions; host browser adapter is community implementation",
+      "rust": [
+        "core/src/client/member/project.rs",
+        "core/src/client/member/mod.rs",
+        "desktop/src/member.rs"
+      ],
+      "frontend": [
+        "frontend/src/composables/useMember.ts"
+      ],
+      "status": "native_revision_and_url_tests_passed_os_launch_not_exercised",
+      "evidence": [
+        "core/tests/client_member.rs",
+        "desktop/tests/ipc.rs"
+      ]
+    },
+    {
+      "id": "member_card_detail_navigation",
+      "official": "PageVIPEssential AlbumCard/PlaylistCard/AudioBookCardBlock + TrackCard actions",
+      "rust": [
+        "core/src/client/member/project.rs"
+      ],
+      "frontend": [
+        "frontend/src/App.vue",
+        "frontend/src/components/MemberCards.vue"
+      ],
+      "status": "live_desktop_read_only_navigation_passed",
+      "evidence": [
+        ".build/ui-proof/member-links-20261027-a/independent-audit.json"
+      ]
+    }
+  ],
+  "validation": {
+    "new_core_tests": 6,
+    "existing_member_center_tests": 4,
+    "frontend_total": 107,
+    "desktop_real_flow": "passed",
+    "rust_total": 717,
+    "rust_primary": 693,
+    "rust_examples": 24,
+    "final_screenshots": 20,
+    "explicit_remote_writes": 0,
+    "audits": [
+      ".build/ui-proof/member-20261027-b-final/independent-audit.json",
+      ".build/ui-proof/member-20261027-c-small/independent-audit.json",
+      ".build/ui-proof/member-20261027-c-small/independent-reopen-audit.json",
+      ".build/ui-proof/member-links-20261027-a/independent-audit.json"
+    ]
+  },
+  "limits": [
+    "Dynamic sign-in/coupons/VIP purchase services are not wired",
+    "Actual paid audiobook/NCM/OSS and account SDK limitations remain",
+    "No Windows/macOS execution proof",
+    "No pixel-identical official screenshot claim",
+    "Public activity browser opening excluded from automated test",
+    "Album cards currently reuse the existing album detail route within rankings; a dedicated full album page remains in the overall goal"
+  ]
+}

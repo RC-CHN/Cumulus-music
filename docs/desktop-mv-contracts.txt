@@ -1,0 +1,150 @@
+MV 桌面与音乐/视频协调
+2026-10-26；完整桌面目标仍进行中。本文件记录本批已接线行为及未覆盖分支。
+
+产品流程
+侧栏“收藏的MV”读取本账号完整收藏，按服务端顺序展示16:9卡片、标题、歌手、时长和播放量。
+每页24项；筛选作用于完整本地快照，分页携带revision；远端变化不混入旧分页。
+可输入MV编号或带id的链接打开详情。输入只提取编号，不访问用户输入的外部URL。
+详情包含黑底视频区、40px控制条、暂停/播放、进度、音量、速度、清晰度和窗口内全屏；
+显示实际清晰度与请求值的差异、本地文件来源、缓存信息、收藏状态与下载选项。
+切换页面后保留320×180小窗；返回MV不会重新选择正在播放的同一资源。
+收藏通过持久操作日志执行，结果不明时展示核对入口；不会把“已发送”视作成功。
+“下载MV”先展示本账号档位/估计大小/权益，显式创建DownloadOrigin::Mv任务；
+下载按钮不会自动收藏或消费云贝。需要云贝或未取得付费权限的选项说明原因并禁用。
+完成任务在统一下载列表显示MV与实际r；单行播放进入视频播放器，并指定下载taskId。
+实体删除、仅移除列表、重命名和移动沿用已有文件操作流程；MV删除提示明确为视频文件。
+
+来源
+官方M/15、21、232、334、754、3158和恢复出的Mv.jsx、Info.jsx、PageFavMV.tsx、VideoCard、
+Quality/Volume/Fullscreen/MiniLayer组件。来源文件哈希见mv-video-mapping.json及mv-desktop-mapping.json。
+本批未使用YesPlayMusic。按恢复布局实现，不声称与原Windows窗口像素一致。
+视频引擎与FFI契约：core-mv-video-contracts.txt；详情/收藏/下载协议：core-mv-contracts.txt。
+
+模块边界
+core/src/client/mv/{dto,library,view,video,mod}.rs：公开白名单DTO、收藏/详情用例、账号绑定播放器；
+core/src/client/focus.rs：共享媒体所有权、交接序号和原生引擎的最终解除暂停检查；
+core/src/mv/playback：视频状态机；playback/controller::Suspend：歌曲加载撤销/已载入暂停；
+desktop/src/mv.rs：七个正式命令、二进制帧封装；不重写业务，也不向界面传授权地址；
+frontend/src/services/mv.ts：类型、二进制解码；adapters/tauri.ts：集中invoke；
+useMv.ts：账号/页面/选择/控制代次、状态轮询、缓存错误展示；
+MvCollection/MvPlayer/VideoCanvas.vue：卡片、详情/小窗/全屏、画面消费。
+MV位图真实来自libmpv；Canvas不模拟媒体时钟或业务状态。
+
+正式IPC与字段（参数对象外层camelCase，带kind的动作字段snake_case）
+mv_page(epoch,query,refresh)
+  query={keyword,offset,limit,revision}；limit1..100、offset<=200000、keyword<=200字符。
+  返回{epoch,revision,cards,total,offset,operations}。
+  cards只含{id,title,artists,coverUrl,durationMs,playCount,subscribed}。
+  完整远端回读成功才替换账号缓存。远端失败时界面保留错误，可另读最后完整缓存与待核对日志。
+mv_detail(epoch,id)
+  使用/api/mlog/detail/v1 {id,type:"2",videoType:"mp4"}获取详情及下载选项。
+  返回AccountData<MvView>：card、description、publishedDate、playResolutions、downloads、cached。
+  downloads={resolution,estimatedBytes,points,available,reason}；最终下载授权再次检查权益。
+  网络失败且本账号有缓存时明确cached=true，不缓存媒体授权URL。
+mv_collect(epoch,id,desired)
+  完整读收藏→持久写前意图→/api/mv/sub {mvId}或/api/mv/unsub {mvIds:[id]}→完整回读。
+  返回{id,desired,observed,phase}，不包含原始响应、账号标识或Cookie。
+mv_reconcile(epoch,id)
+  绑定同一SessionToken，只读核对原持久意图，不重发收藏请求。
+video_snapshot(epoch)
+  返回{epoch,revision,playId,id,state,requestedResolution,actualResolution,local,position,duration,
+  paused,buffering,volume,speed,error}；revision序列化为字符串，前端使用BigInt比较。
+video_action(epoch,action)
+  open{id,resolution,download_task_id?}, play, pause{paused}, seek{seconds}, volume{value},
+  speed{value}, quality{resolution}, refresh, stop。
+  open/主动恢复播放取得媒体所有权；失效参数在交接前拒绝。
+  state为idle/resolving/loading/playing/paused/ended/error；actualResolution只取实际授权。
+  内部Suspend/Snapshot不作为前端可传动作；未知动作字段拒绝。
+video_frame(epoch,playId,after,width,height)
+  after为十进制u64字符串；尺寸16..1920×16..1080。过期账号拒绝，旧playId不取新视频帧。
+  无新帧返回零字节；有帧返回小端width:u32、height:u32、sequence:u64及紧凑RGBA8。
+  正式响应为tauri::ipc::Response原始字节，无JSON数字数组或Base64。
+  前端校验16字节头、尺寸、精确长度和非零序号，只在账号/playId仍匹配且非停止时绘制。
+  每个Canvas最多一个未完成请求；慢消费者取最新帧，不累积待显示队列。
+download_command(epoch,{kind:"start_mv",id,resolution})
+  进入现有账号下载服务和三路调度；公开回执accepted是任务ID，尚不等于下载完成。
+  正式列表继续提供暂停/继续/取消/文件恢复；本批窗口验收先停止视频，再执行实体删除。
+Tauri原始字节响应参考：https://v2.tauri.app/develop/calling-rust/ （并核对本地2.11.5源码）。
+
+媒体所有权和取消
+MusicClient维护Audio/Video所有权及单调交接序号。取得所有权前先禁用解除暂停，
+串行等待另一播放器Suspend确认，再允许新播放器出声。较早交接不能覆盖较新请求。
+选择歌曲的元数据/文件请求结束后再次核对交接序号；MV交接也撤销待完成的歌曲选择。
+原生Focused引擎在pause(false)处持锁核对当前所有者，最终设备调用与撤销所有权串行。
+歌曲Suspend撤销待加载/待音质切换；已加载歌曲保存位置并暂停。MV同理。
+切账号还等待旧VideoController.shutdown确认引擎停止；即使等待Future被取消，旧控制器
+仍被宿主持有，下一次交接等待同一个停止过程，不能遗失正在释放的设备责任。
+这与账号代次、视频playId、加载取消/代次校验共同工作，不由前端排列两次暂停/播放RPC。
+
+前端状态与显示事实
+原生状态约200ms读取（空闲700ms），进度和暂停均来自播放器。控制错误与状态读取错误分开；
+成功状态轮询不会清掉失败的控制提示。账号变化清除页面、画面和旧请求结果。
+暂停画面不因状态轮询清空；只在账号、playId或停止状态变化时清空。
+窗口内全屏使用固定铺满窗口的视频区和Escape退出；不是操作系统独占全屏。
+最小窗口、小窗和画布性能以实际截图/报告为准。软件渲染、null音频输出未证明扬声器
+听感、端到端音画延迟、GPU/硬解、HDR、大于上限画布或Windows/macOS实机表现。
+
+测试与可执行验收
+core/tests/client_mv.rs：公开白名单/完整分页/筛选/revision；缓存详情；收藏丢回包后的
+持久核对与过期账号拒绝；原生音乐/视频双向交接；迟到歌曲元数据与待加载MV撤销；
+切账号帧撤销；取消旧账号停止等待后仍保留设备责任。旧mv_playback的通知测试修正为
+notify_waiters，避免已取消请求留下许可而错误放行下一独立请求。
+frontend/tests/mv-state.test.ts：二进制长度/大序号、账号与选择竞态、未决写入提示、
+缓存日志回退、缩小的列表分页和控制错误持续可见。
+desktop/tests/ipc.rs对实际注册的七个命令验证旧账号拒绝；真实WebView证明正向二进制画面链路。
+
+独立窗口入口（使用显式当前PC会话；新目录，绝不复用既有下载资源）：
+  cargo build -p cumulus-desktop --example mv_ui_probe --features custom-protocol --offline
+  CUMULUS_SESSION_DIR=EXISTING_PC_PROFILE CUMULUS_PROOF_SAMPLE_DETAIL=PRIVATE_MV_DETAIL \
+    CUMULUS_PROOF_DIR=NEW_PRIVATE_DIRECTORY .build/target/debug/examples/mv_ui_probe
+另设CUMULUS_PROOF_SMALL=1测试760×540窗口。截图自动化.build/ui-proof/capture_mv.py仅用于验收。
+正常1120×760窗口：.build/ui-proof/mv-20261026-c，九张截图；真实480P→240P，暂停定位20秒、
+音量27、速度1.25、全屏、小窗、歌曲/视频双向交接通过。
+811×456画布短样本约24.99帧/秒；该数含本机IPC和Canvas调用，不是显示器扫描或长期流畅保证。
+19837027字节普通MP4由界面创建并下载，指定本地任务播放和界面实体删除通过；测试文件已清理。
+这两个播放窗口没有远端账号写入或云贝消费。
+最小760×540窗口：.build/ui-proof/mv-20261026-d-small，六张截图，528×297画布短样本约24.53fps；
+播放/控制/画质/全屏/小窗/媒体互斥均通过，不重复下载同一文件。
+隔离收藏窗口：.build/ui-proof/mv-20261026-e-collection，四张截图；先通过原生读取身份与完整
+收藏、确认测试MV原先不在其中、持久化restore-intent.json，再由界面新增并撤销收藏。
+原17项及完整顺序回读一致；独立Rust mv_roundtrip --restore再次验证，restored.json确认恢复。
+该窗口有两次可逆收藏修改、零云贝消费，没有改变原有资源。
+运行该专项另设CUMULUS_PROOF_COLLECT=1；中断时可用既有mv_roundtrip恢复器和私有意图文件。
+保留a版自动化过早点击失败和b版暂停/全屏黑画面失败；b未作为通过证据，c修复后重新运行。
+最终累计384项Rust（381 core、3 desktop）、29项前端通过，Clippy/格式/前端构建/桌面构建通过。
+全量Rust报告在最终缓存match整理之前；整理后六项client_mv再次通过，不重复线上写入。
+最终文件与证据审计.build/mv-desktop-audit.json；不使用历史Python结果充当桌面通过。
+
+本地MV文件联动补完（2026-10-26）
+download/playback与mv/playback/local通过同账号下载任务的持久化意图和文件占用锁协调。
+改名/移动/目录迁移前释放原生文件，完成后按任务的新路径重新校验，恢复实际位置、
+音量/速度及暂停意图；删除/移除记录后停止。等候中停止、切换视频或账号撤销旧恢复。
+操作中断显示file_operation状态并可前往下载管理继续/撤销，不靠前端先调用stop凑流程。
+8项新增Rust测试覆盖等待原生释放、复制中断/重开、取消、整批回滚、会话/选择竞态、
+尚在加载时取消及检查点存储失败；详细调用顺序与边界见core-mv-local-files-contracts.txt。
+真实窗口.build/ui-proof/mv-20261026-f-local：新下载19837027字节240P视频，定位42秒后
+播放中改名、暂停时移动、播放中迁移整目录、播放中删除均通过，12张可检查截图。
+自动恢复后保持本地源、原位置、音量27/速度1.25；删除后播放器Idle，测试目录内媒体0文件。
+报告complete.json和mv_renamed/mv_moved/mv_migrated/mv_cleanup.json分别记录证据。
+本次未改远端资源、未消费云贝；实际libmpv输出为null，不证明物理扬声器或端到端音画延迟。
+全量Rust392项（core389、desktop3）、前端29项；Clippy/格式/前端与桌面构建通过。
+最新审计.build/mv-local-files-audit.json；旧384项桌面批次审计保留为历史，不覆盖改写。
+
+通用评论接入（2026-10-26）
+MV详情“MV评论”打开共享评论页，离开视频时保留既有小窗与播放状态。
+最新/热门、分页/定位和评论点赞使用core/comments；本次五类真实资源包含MV，
+正常桌面窗口已验证MV入口。原生评论点赞恢复、缓存版本与剩余动作见core-comments-contracts.txt。
+评论点赞不等于MV资源点赞；发布/回复/删评/楼中楼等仍需继续。
+
+资源点赞/关联歌曲/相似MV（2026-10-26）
+资源点赞与只读恢复、版本化元数据已接；关联歌曲按官方补读权限、播放/原队列位置恢复并打开歌词。
+相似MV在官方恢复请求中未找到，参考授权的归档补充来源直接请求原服务，卡片导航和真实播放通过。
+1120×760正常窗口6截图含可逆点赞；760×540小窗口4截图为只读媒体流程。
+详细接口、官方/补充来源、操作日志、状态竞态、源代码对照及边界见core-mv-social-contracts.txt。
+
+继续范围
+评论高级动作、发现与全站MV搜索、云贝业务及普通非MV视频仍需继续迁移；
+本批下载使用统一带MV标记的列表，尚未完全还原官方声音/MV等独立分类页。
+本地MV文件/目录联动已补实测；物理跨盘MV与Windows/macOS文件句柄行为仍未在本批实测。
+一部分高级交互（拖动小窗、系统级全屏/置顶、原始画质、完整右键菜单）仍需继续。
+本批已接线且有验收的基础MV流程，不代表MV全部恢复分支或整个桌面目标完成。

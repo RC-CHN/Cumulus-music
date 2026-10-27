@@ -1,0 +1,86 @@
+本地库、媒体探测与CUE契约（Rust）
+2026-10-25
+
+当前已迁移
+core/src/library/probe/：AudioProbe接口、类型化媒体事实、FFprobe进程适配与响应校验。
+core/src/library/cue/：独立文本解码、词法与分轨解析。
+core/src/library/index/：扫描、CUE发布、查询/映射、解码缓存分别组织。
+core/src/library/monitor/：根目录登记、周期对账、后台线程与事件；不依赖Linux文件系统事件。
+本文件保留基础索引批次的验证记录；后续已接入libmpv控制器及正式本地库页面，
+当前桌面、游客播放、扫描进度、分类/分页及歌词边界见desktop-local-library-contracts.txt。
+
+索引与账号边界
+新记录按owner=local、kind=library_files_v1/library_cues_v1保存；不擅自解释旧Python记录。
+普通文件ID=SHA256(规范绝对路径)，CUE曲目ID=SHA256("cue\\0"+CUE路径+"\\0"+轨号)。
+指纹含长度、纳秒修改时间，以及Unix设备/inode或其他平台可用的创建时间身份。
+指纹用于增量变化检测，不是防篡改哈希；不保证发现刻意保持这些字段的外部修改。
+扫描排除核心状态/解码缓存目录，不递归软链，未变且可用文件不重复探测。
+目录遍历失败/取消不会把未访问部分标为删除；扫描结果暂存，完成后一次SQLite事务提交。
+坏文件标unreadable，缺文件标missing；恢复后可重新扫描。完整CUE表一次替换，不留下旧分段。
+文件锁串行化跨实例扫描/移除/映射修改；只在提交时持有SQLite锁，不跨媒体探测持锁。
+列表默认显示有效CUE曲目并隐藏其整文件容器；坏/缺CUE恢复容器可见性。
+查询对元信息做Unicode casefold，remove只移除库记录；显式重扫可以重新导入。
+账号映射在local_map_v1中按真实AccountSession UID隔离，绑定完整曲目revision。
+文件或CUE变化、失效后不返回旧歌曲ID；相同文件的不同CUE曲目可各自映射不同线上歌曲。
+映射查询和保存由会话代次保护；它们不向服务端修改歌曲或上传媒体。
+
+播放源与解码缓存
+resource导出local_id/local_revision；resolve再次检查源文件/CUE指纹及排队时revision。
+重新扫描不让旧队列自动切换到新分段，必须重新选择；返回本地路径与秒制start/duration。
+NCM按源文件SHA256命名私有decoded-ncm缓存，校验缓存音频SHA256/长度后复用。
+解码后发布但尚未保存manifest的孤立文件，可重新从NCM推导哈希后接管。
+损坏的受管理缓存可删除并重建；只有私有、生成的缓存路径会修复，用户原媒体从不覆盖。
+解码源变化时拒绝返回；临时文件与manifest边界可恢复，缓存本身不构成会员授权。
+
+目录监听
+LibraryMonitor保存根目录id/path/enabled/revision/status，默认由调用者提供50ms..3600s周期。
+run_once可手动对账；start/stop管理后台线程，重复start幂等，重开继续读取已登记目录。
+目录确实不存在才标该根下记录missing；权限/类型等错误记error，不能当删除处理。
+停止监听按root id递增revision并置disabled，不删媒体或索引；晚到完成不覆盖新revision。
+取消检查在索引提交前进行；提交是不可再取消的事务边界，停止会等待当前探测返回。
+真正的FFprobe适配器受30秒超时约束；宿主应在后台执行stop/扫描等阻塞接口。
+周期对账使用跨实例文件锁，遗漏一次唤醒/事件不影响之后收敛。
+订阅事件队列上限32，慢接收者不阻塞监视；事件仅为通知，可用roots读取持久最新状态。
+
+依据
+官方M/163：本地资源含filename/cueFile/offset/duration，原生starttime/duration使用秒。
+M/23和hybrid_199 M/2304：本地映射区分同源文件中的独立CUE曲目，不能用路径代替曲目ID。
+原生Library.getLocalCueInfo调用musiclibrary.parseCueInfo；全部原生解析细节仍未恢复。
+已验证的范围来自 references/recovered-client/cumulus_core/library.py 及产品报告18。
+没有新增参考YesPlayMusic，也不将FFprobe或自有CUE解析声称为官方Windows解码器。
+
+媒体事实
+路径必须是存在的普通本地文件。NCM走Rust容器读取，其duration元信息从毫秒转秒，
+返回真实解密头识别的格式、封面字节数、标题/专辑/艺人；不依赖FFprobe读NCM。
+其他音频使用调用者指定或PATH中的FFprobe，参数固定，不调用shell，协议白名单file,pipe。
+FFprobe需由宿主分发或配置；普通Rust库能跨平台编译不意味着各平台已打包这个外部程序。
+默认30秒超时，stdout限制1MiB、stderr128KiB；超时结束子进程并回收，错误不打印原始输出。
+duration必须有限非负；首个audio流提供codec/rate/channels，封面video流不会被误当音频。
+标签名按ASCII大小写归一，缺标题取文件名。艺人统一为字符串数组，与旧NCM原始二维列表不同。
+阻塞接口应由核心后台任务调用，不能直接在UI线程或异步执行器工作线程中做整库探测。
+
+CUE
+支持FILE、TRACK AUDIO、TITLE、PERFORMER、INDEX 01；75帧/秒。
+UTF-8/BOM、UTF-16 LE/BE BOM，UTF-8失败后按GB18030严格解码；4MiB文本上限。
+词法保留引号、空字段、Windows反斜线与#普通文字，不执行任何文本命令。
+允许相对、父目录、绝对的已存在本地音频路径；不获取URL。
+终点取后续同源音轨的INDEX 01，最后一轨取探测时长；每个源只探测一次。
+拒绝无轨、无FILE/INDEX、重复/超界轨号、重复INDEX 01、秒/帧越界、逆序/越界分段，
+以及混合数据音轨、非有限/非正源时长。返回所有源媒体事实供索引事务使用。
+INDEX 00、PREGAP、POSTGAP仍不生成虚拟静音，不能称为完整光盘间隙还原或gapless。
+
+当前验证
+local_media.rs 5项：12组旧解析器多文件/编码/引号/帧对照，非法分轨与时长，
+父目录/绝对路径，FFprobe响应类型，以及Unix子进程超时/失败/超量输出/坏JSON回收。
+常规测试不需要FFprobe或用户媒体，子进程边界测试在Unix运行合成shell辅助程序。
+core/examples/local_media_read.rs 已用真实FFprobe/Rust NCM执行4项检查：
+5秒WAV、双轨CUE（1秒与3+37/75秒起点）、4秒NCM、4秒FLAC。
+证据 .build/rust-local-media-report.json，仅输出格式/时长/分轨等统计，不包含用户标题。
+library_index.rs 6项：增量/重开/casefold、两账号映射、文件变化、CUE独立revision与容器
+可见性、取消/存储失败/探测中变化、跨实例锁、解码缓存重开/孤立文件恢复/损坏重建。
+library_monitor.rs 4项：登记事务、根消失/重现/变文件、关闭监听后迟到、跨实例互斥，
+后台新增/修改/删除、stop/start重开、32项事件队列、写盘错误后对账恢复。
+实际库集成 .build/rust-library-report.json：2个真实音频源+2份CUE产生4首虚拟曲目，
+未变扫描跳过、队列持久化/重开、CUE源解析、NCM分段与解码缓存修复、源变化前后旧revision
+均拒绝、依赖CUE重扫、后台新增/删除、停止监听/移除索引保留媒体，原NCM哈希未变。
+本次没有调用音频引擎；仅验证Linux，Windows/macOS进程分发与文件系统差异尚待验收。

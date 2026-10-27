@@ -1,0 +1,186 @@
+{
+  "schema": 1,
+  "goal_complete": false,
+  "scope": "Pure text comment publication, reply, own deletion, durable recovery and floor reads",
+  "yesplaymusic_used": false,
+  "contract": "docs/core-comment-write-contracts.txt",
+  "sources": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/438.js",
+      "sha256": "d134ef2da6f94d6cbc0779a1cddd679497d38360f55306e3ac85a9b19dc706ae",
+      "kind": "official_recovered"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/15.js",
+      "sha256": "8ec4bf8d343f6963860eb73bc59ca09f0dd1ae50db2608a6c5abc7d69a0b521a",
+      "kind": "official_recovered"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_73.chunk.1482700000000.js/3085.js",
+      "sha256": "121b1cc930b106acf5bb01d86305725ddd6abe2484120fee339a682301c7f0be",
+      "kind": "official_recovered"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/components/TextArea/index.jsx",
+      "sha256": "74d556d84770bc163160a232cc3b58f90b1485382a660d8c3187213075784827",
+      "kind": "official_recovered"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/HotComments/components/commentModal.jsx",
+      "sha256": "c15dfccb067464a0e3178e1b05da3dc6b3834ea8179fa1656002a280b953adc8",
+      "kind": "official_recovered"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/components/Comment/components/CommentCard.jsx",
+      "sha256": "dc8b5255e18d7259fed08d488f2a98c78112ffb7cd2da15770c283c867915224",
+      "kind": "official_recovered"
+    },
+    {
+      "path": "references/netease-api-reborn-4.29.7/package/module/comment_floor.js",
+      "sha256": "78593f31a824e7c0d65bcbbd29ac32be62303195792c2adc8ed9e20be697cc8a",
+      "kind": "third_party_fallback_official_and_yesplaymusic_missing"
+    },
+    {
+      "path": "references/recovered-client/docs/product/32-comments-functional-validation.txt",
+      "sha256": "490be41c67c2dac25ebdbf1126078ac2c56d715060741027e689a0f73fdc753e",
+      "kind": "historical_reference_not_new_rust_proof"
+    }
+  ],
+  "mappings": [
+    {
+      "feature": "official_payload_and_utf16",
+      "source": [
+        "M438 v/h",
+        "M3085 delete",
+        "TextArea/index.jsx",
+        "commentModal.jsx"
+      ],
+      "core": [
+        "core/src/comments/writes/api.rs",
+        "core/src/comments/writes/model.rs"
+      ],
+      "ui": [
+        "frontend/src/components/CommentWritePanel.vue"
+      ],
+      "evidence": [
+        "core/tests/fixtures/comment-writes-official.json",
+        "core/tests/comment_writes.rs",
+        ".build/ui-proof/comment-edit-20261027-e-final/independent-audit.json",
+        ".build/ui-proof/comment-edit-20261027-f-final-small/independent-audit.json"
+      ],
+      "status": "official_oracle_native_tests_and_synthetic_http_gui"
+    },
+    {
+      "feature": "persisted_single_send_and_account_isolation",
+      "source": [
+        "community Rust durability and account generation design"
+      ],
+      "core": [
+        "core/src/comments/writes/manager.rs",
+        "core/src/comments/writes/reconcile.rs",
+        "core/src/comments/cache.rs"
+      ],
+      "ui": [
+        "frontend/src/composables/useCommentWrites.ts",
+        "frontend/src/services/commentWrites.ts"
+      ],
+      "evidence": [
+        "core/tests/comment_writes.rs",
+        "frontend/tests/comment-writes-state.test.ts",
+        ".build/ui-proof/comment-edit-20261027-e-final/independent-audit.json",
+        ".build/ui-proof/comment-edit-20261027-f-final-small/independent-audit.json"
+      ],
+      "status": "native_fault_tests_and_actual_process_reopen_unknown_result_no_resend"
+    },
+    {
+      "feature": "floor_parent_pagination_and_cache",
+      "source": [
+        "API-Reborn 4.29.7 comment_floor.js fallback",
+        "new actual PC EAPI response"
+      ],
+      "core": [
+        "core/src/comments/floor.rs",
+        "core/src/comments/model.rs",
+        "core/src/client/comments/floor.rs"
+      ],
+      "ui": [
+        "frontend/src/composables/useCommentFloor.ts",
+        "frontend/src/components/CommentFloorPanel.vue"
+      ],
+      "evidence": [
+        "core/tests/comment_floor.rs",
+        ".build/private-comment-floor-20261027-b/independent-audit.json",
+        ".build/ui-proof/comment-edit-20261027-e-final/independent-audit.json",
+        ".build/ui-proof/comment-edit-20261027-f-final-small/independent-audit.json"
+      ],
+      "status": "real_read_only_two_pages_27_replies_and_cache_plus_synthetic_gui_pagination"
+    },
+    {
+      "feature": "typed_ipc_and_private_projection",
+      "source": [
+        "community CoreClient boundary"
+      ],
+      "core": [
+        "core/src/client/comments/mod.rs",
+        "core/src/client/comments/writes.rs",
+        "core/src/client/comments/floor.rs",
+        "desktop/src/comments.rs",
+        "desktop/src/lib.rs"
+      ],
+      "ui": [
+        "frontend/src/services/contracts.ts",
+        "frontend/src/adapters/tauri.ts",
+        "frontend/src/services/commentWrites.ts",
+        "frontend/src/services/commentFloor.ts"
+      ],
+      "evidence": [
+        "desktop/tests/ipc.rs",
+        "core/tests/comment_writes.rs",
+        ".build/ui-proof/comment-edit-20261027-e-final/independent-audit.json",
+        ".build/ui-proof/comment-edit-20261027-f-final-small/independent-audit.json"
+      ],
+      "status": "native_epoch_checks_and_production_ui_to_ipc_to_rust"
+    },
+    {
+      "feature": "composer_reply_delete_and_recovery_ui",
+      "source": [
+        "official commentModal/TextArea/CommentCard",
+        "community explicit unknown-result recovery"
+      ],
+      "core": [
+        "core/src/client/comments/writes.rs"
+      ],
+      "ui": [
+        "frontend/src/components/CommentsPage.vue",
+        "frontend/src/components/CommentWritePanel.vue",
+        "frontend/src/components/CommentCard.vue",
+        "frontend/src/composables/useCommentWrites.ts"
+      ],
+      "evidence": [
+        ".build/ui-proof/comment-edit-20261027-e-final/independent-audit.json",
+        ".build/ui-proof/comment-edit-20261027-f-final-small/independent-audit.json",
+        ".build/comment-edit-front-tests2.log"
+      ],
+      "status": "normal_and_small_windows_34_screenshots_no_real_public_mutation"
+    },
+    {
+      "feature": "remaining_rich_comments_and_other_resources",
+      "source": [
+        "remaining official comment UI and models"
+      ],
+      "core": [],
+      "ui": [],
+      "evidence": [
+        "docs/core-comment-write-contracts.txt"
+      ],
+      "status": "images_expression_picker_bubbles_rich_content_other_resource_gui_and_real_public_write_proof_not_complete"
+    }
+  ],
+  "limitations": [
+    "No real account public post/reply/delete was performed",
+    "No original full-window screenshot pixel equivalence",
+    "Plain text only; image attachments, expression selection, bubbles and rich content remain",
+    "Floor endpoint is a documented third-party fallback, not recovered official desktop code",
+    "Current actual window proof is Linux only"
+  ]
+}

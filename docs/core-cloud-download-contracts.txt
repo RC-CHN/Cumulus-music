@@ -1,0 +1,104 @@
+云盘原文件下载：Rust core 与桌面完整流程
+2026-10-26。本文件只覆盖云盘下载增量，不代表完整桌面目标完成。
+
+官方依据与边界
+官方3.1.42.205594的M/754 internalDownload按cloudTrack选择M/334.c；后者调用
+M/15.V，即字面拼写 /api/cloud/dowonload。顶层code=200时保留完整响应，其他响应/异常返回null。
+M/754从name去除两端反斜杠、单双引号和JavaScript空白，再匹配末尾 /\.(\w+)$/。
+缺失suffix时，suffix_type_lost分支仅借用普通下载接口的type，不替换云盘URL、size。
+M/27按歌曲元信息组织路径；云盘业务ID使用songId，不能用simpleSong.id替代。
+references/recovered-client/docs/product/29-mv-cloud-functional-validation.txt和
+scripts/netease_cloud_download_audit.py保留历史Python验证，仅作为迁移依据。
+新的Node oracle直接执行恢复的M/754表达式和M/334工厂，16组文件名含FEFF、0085、NBSP、
+2028/2029、无后缀、大小写、非法后缀；输出core/tests/fixtures/cloud_download.json。
+Rust遵守JS空白语义，格式转小写；可移植命名仍只接受1至8位ASCII字母数字。
+官方\w允许的下划线等异常扩展名会明确拒绝，属于社区文件安全边界；不声称完全复制原生路径行为。
+不使用YesPlayMusic。具体源文件SHA256与逐项实现见cloud-download-mapping.json。
+
+界面流程
+音乐云盘→选择当前页一首或多首→下载所选→云盘原文件弹窗。
+弹窗说明保留原音质与已有标签，可选另存歌词，沿用下载目录及命名布局；不显示普通歌曲音质、
+重写标签/封面或NCM选项。开始后进入下载管理，由同一个native三路调度器推进完整任务。
+云盘下载不会覆盖普通歌曲quality/tags/cover/container/lyrics偏好。
+完成页显示“云盘原文件”；没有服务端level时actualQuality为空，不把Standard默认值当实测音质。
+下载完成支持播放、暂停、定位、改名、移动、目录迁移、删除实体文件与移除列表；这些操作复用
+既有账号隔离的CompletedDownloads与DirectoryCoordinator，不修改远端云盘。
+弹窗取消不创建任务；本地删除只操作对应任务拥有且身份/摘要通过校验的音频与歌词。
+
+请求与创建
+IPC download_command / StartCloud：{kind:"start_cloud",song_ids:[字符串ID],revision,lyrics}。
+Account epoch必须匹配；1至5000个ID，全部先验证再去重。Core读取完整CloudApi.snapshot，
+核对revision与所有选择仍属本账号，再逐个create_cloud_default；不会接受前端传入原始URL或元信息。
+返回accepted/failed，部分成功明确显示。授权和媒体请求都在Rust；前端仅收到DownloadTaskView。
+独立core入口DownloadService.create_cloud(id,DownloadDestination,lyrics)，同样检查账号所有权。
+完整列表 /api/v1/cloud/get 每页200，沿用CloudLibrary严格分页与容量校验。
+持久DownloadOrigin::Cloud {file_name,file_size}，保存账号云盘文件身份和normalized song元信息；
+旧download_tasks_v1记录缺origin时默认为Song，维持兼容。源URL只存在私有任务/传输记录中。
+
+授权与传输
+首次授权重新读取完整账号云盘列表，确认songId、fileName、fileSize未变化。
+POST /api/cloud/dowonload {songId}，无缓存。顶层code必须200；name为字符串、size为正整数且
+等于账号fileSize；存在songId须匹配；非空freeTrialInfo拒绝。URL须通过原媒体CDN范围校验。
+缺后缀时POST /api/song/enhance/download/url/v1 {id,level:"standard",immerseType:"c51"}，
+仅使用成功data.type；该请求不是替换媒体或宣称会员音质的依据。无有效格式则任务失败。
+resource保留cloud标记、实际原文件size/type/URL和可选服务端MD5，不伪造level/付费标记。
+强制输出普通音频、tags=false、cover=false，原始媒体不经重编码或标签改写。
+底层传输验证HTTP状态、Content-Range、长度与可选MD5，保存本地SHA256用于后续完整性校验。
+
+暂停、重开与授权失效
+云盘通常无服务端MD5。正常继续优先复用持久原授权及TransferJob，避免每次继续清空断点。
+复用前确认任务来源、账号、资源ID/URL/长度及选项一致；仍经过暂停/取消与账号代次控制。
+底层有ETag/Last-Modified时使用Range/If-Range；无可信validator且无MD5时从零开始。
+原URL返回401/403/404/410后，每次run至多重新取一次云盘授权；重新确认所有权及文件身份。
+新授权不能凭相同长度认定媒体相同：没有相同非空MD5时清空旧断点，从零下载。
+其他协议/完整性错误不无限重试。暂停、取消、失败、账号切换和跨实例互斥沿用统一服务。
+已完成raw后直接恢复后处理/发布；无需重新授权。旧账号晚到结果不能给新账号发布文件。
+
+发布、歌词与文件管理
+原文件副本再次比较原始长度/SHA256后，通过既有hard-link独占发布和SQLite原子离线登记。
+同名已有文件不覆盖。链接后数据库失败保留publish日志，重开只核对并补提交，不重下媒体。
+歌词POST /api/cloud/lyric/get {songId,userId:当前UID,lv:-1,kv:-1}；规范化顶层lrc字符串，
+沿用UTF-8 LRC保存、空结果empty、冲突保留、失败独立重试及清理恢复流程。
+云盘原文件是plain离线记录；完整性通过即可本地播放，不请求额外会员解锁。
+旧离线表quality枚举需要默认Standard，但这只是内部占位兼容字段；对外cloud actualQuality=None。
+完成页播放资源保留cloud_song_id标记，走本地文件解码，并可继续选择云盘专用歌词端点。
+改名/移动/目录迁移同步任务、离线表、本地库和队列；删除同步移除关联记录与自有sidecar。
+移除下载列表后仍保留对应普通文件，不把它变成受会员锁定资源。
+
+验证
+core/tests/cloud_download.rs覆盖原字节/歌词/离线、无MD5断点重开、失效重授权重下、拒绝响应、
+大小/身份/试听/域校验、已删除/已变化云盘条目、已有输出保护、迟到账号切换、发布事务失败、
+改名/移动/删除、官方缺后缀回退、旧记录兼容、完整选择版本校验和native调度/安全DTO。
+官方oracle的16组文件名直接与Rust完整流程对照，异常扩展名按上述可移植边界断言拒绝。
+已有普通下载与发布恢复回归保持独立，不能用旧Python成功数替代这些Rust测试。
+
+真实core：.build/cloud-download-native-20261026-a/report.json。
+读取49首基线，最小原文件2192486字节；131071字节暂停后重开完成，授权次数1，无服务端MD5。
+本地SHA256=3ffa732e39623063fb178a5127d27cc315babd995de1929eca0b67cca189dac5，原字节不变。
+ffprobe AAC/44100Hz/双声道/178.282812秒，FFmpeg完整解码通过；原始歌词为空，未冒称歌词文本通过。
+离线完整性、改名、移动、删除通过；新建本地媒体清理，49首基线完整保留，远端修改次数0。
+
+真实桌面：.build/ui-proof/cloud-download-20261026-a，1120x760。
+原生目录选择器取消、云盘选择、原文件选项、实际暂停继续、完成来源标签、libmpv静默真实解码、
+暂停/20秒定位、改名、整目录迁移、下载搜索、删除本地文件、队列清空与49首云盘基线核对通过。
+runner.json、complete.json、media-check.json和逐阶段截图保留证据；libmpv null output不是声卡试听。
+截图发现复选框布局及GTK深色下拉框对比度问题，随后修正。
+.build/ui-proof/cloud-download-20261026-b-small，760x540，修正后完整重跑上述流程通过；
+截图确认选项/按钮可见、下拉框对比度正常、完成页无横向溢出，另一次本地媒体完整解码成功。
+两次桌面测试均观察到实际暂停后继续，普通下载偏好未改变；隔离目录媒体已清理，49首基线未变。
+
+复验（显式已有账号授权；每次使用全新私有目录）
+cargo build -p cumulus-core --example cloud_download_roundtrip --offline
+.build/target/debug/examples/cloud_download_roundtrip EXISTING_PC_PROFILE NEW_PRIVATE_PROOF
+npm --prefix frontend run build
+cargo build -p cumulus-desktop --example ui_probe --features custom-protocol --offline
+python3 desktop/examples/run_download_probe.py NEW_PRIVATE_PROOF EXISTING_PC_PROFILE --cloud
+追加--small用于760x540窗口。Python仅编排Xvfb/原生选择器/截图/独立解码，业务运行于Rust与真实UI。
+node references/recovered-client/scripts/netease_cloud_download_oracle.cjs 可重新生成官方对照JSON。
+
+保留边界
+当前仅Linux实际运行；Windows/macOS未实测。原文件扩展名异常明确拒绝，不猜测媒体格式。
+服务端不提供MD5时只能证明本地保存的字节与该次授权响应一致，不能声称与原上传文件独立比对。
+实时CDN换URL分支通过本地HTTP模拟验证，真实服务本次未触发过期；空歌词不等于LRC文本在线验证。
+云盘元信息编辑/匹配、MV/播客下载及总目标其他领域仍按迁移矩阵继续。
+官方复合排序已由后续增量完成，见core-cloud-order-contracts.txt。

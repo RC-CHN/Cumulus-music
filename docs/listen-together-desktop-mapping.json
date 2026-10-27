@@ -1,0 +1,216 @@
+{
+  "scope": "Listen-together desktop and native-player first single-account workflow batch",
+  "goal_complete": false,
+  "official_first": true,
+  "yesplaymusic_used": false,
+  "sources": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/15.js",
+      "sha256": "8ec4bf8d343f6963860eb73bc59ca09f0dd1ae50db2608a6c5abc7d69a0b521a"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/24.js",
+      "sha256": "466ab77ab2a24c97c84157734ed33997a4a1076351de80ffe7e8e351c6c29f64"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/75.js",
+      "sha256": "8f0aa4cc3422daea1cb74c317c84fc27d992dd413623d3c7504f357085005476"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/137.js",
+      "sha256": "aac132a091a03701f21deb2f1d359975d111b4c3c5d69ce575555ee47871068e"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/600.js",
+      "sha256": "ef5bd16abbd9c148c6f8546f1bf84c3d82b20e1e302f5f9e2e5b6fa46c7ca55b"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_196.chunk.1482700000000.js/3079.js",
+      "sha256": "1e750d107c091fce54a7b3d72020d498d5559bb920985ae07d5e13f4b2596173"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_197.chunk.1482700000000.js/3161.js",
+      "sha256": "9c84a8946cffccb4e2e739d220b9da86d829c2340efefd0cb91bd21d0f24a3a5"
+    },
+    {
+      "path": "references/recovered-client/docs/product/06-listen-together.txt",
+      "sha256": "2fd07a1ab6e73c89a730681973d2ba54a0ea427c4e0d1b71d4742a089652f520"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_live_audit.py",
+      "sha256": "dc8d86f75e1da3eadab173be3f66b79f7836b89548759e23fed2824de55154d4"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_together_oracle.cjs",
+      "sha256": "2bb2bfc64b187f3af2c4793845407607974233915a0292bd0030c786f702f009"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_86.chunk.1482700000000.js/3133.js",
+      "sha256": "2aa388e4638465a9d8c7ff9ff75224a8d6319f603ed4d658baf06d704c781554"
+    }
+  ],
+  "features": [
+    {
+      "id": "room_page",
+      "official": "M/75; M/3133 invitation panel examined; current room layout is reconstructed",
+      "implementation": [
+        "core/src/client/together/mod.rs",
+        "desktop/src/together.rs",
+        "frontend/src/components/TogetherPage.vue"
+      ],
+      "evidence": [
+        "S",
+        "L",
+        "I",
+        "R"
+      ],
+      "boundary": "Create/view/explicit confirmed exit verified in e. Full official invitation panel remains unfinished."
+    },
+    {
+      "id": "actual_player_binding",
+      "official": "M/75; M/3161",
+      "implementation": [
+        "core/src/client/together/runtime.rs",
+        "core/src/client/player/mod.rs"
+      ],
+      "evidence": [
+        "S",
+        "L",
+        "I",
+        "R"
+      ],
+      "boundary": "UI pause/seek/next and background queue observation on actual libmpv. Null audio output."
+    },
+    {
+      "id": "shared_queue_projection",
+      "official": "M/137; M/3079",
+      "implementation": [
+        "core/src/client/together/selection.rs",
+        "core/src/client/together/runtime.rs"
+      ],
+      "evidence": [
+        "S",
+        "L",
+        "I",
+        "R"
+      ],
+      "boundary": "e shares 34 ordinary songs, removes to 33 and switches SINGLE_LOOP. Random/large/local-mapping UI paths still need live evidence."
+    },
+    {
+      "id": "manual_zero_seek",
+      "official": "M/3161 assembleRequestParam and cmdFilter; explicit community correction",
+      "implementation": [
+        "core/src/listen_together/sync.rs",
+        "core/src/listen_together/service/commands.rs",
+        "core/src/client/together/runtime.rs"
+      ],
+      "evidence": [
+        "S",
+        "L",
+        "I",
+        "R"
+      ],
+      "boundary": "Executed official JS confirms suppression. Explicit seek keeps GOTO/0 wire while filtering seek semantics; e reports GOTO/0 exactly once."
+    },
+    {
+      "id": "uncertain_write_recovery",
+      "official": "M/75 restore plus community durable operation journal",
+      "implementation": [
+        "core/src/client/together/mod.rs",
+        "frontend/src/composables/useTogether.ts"
+      ],
+      "evidence": [
+        "L",
+        "I",
+        "R"
+      ],
+      "boundary": "e drops one successful PAUSE reply, controls local audio, reads back then explicitly republishes; no duplicate clientSeq. Local regression additionally covers selection changes while suspended: explicit resync uses GOTO. This extra branch was added after e and has no live cross-song-resume claim."
+    },
+    {
+      "id": "preference_binding",
+      "official": "M/75 lifecycle; community durable account binding",
+      "implementation": [
+        "core/src/client/together/mod.rs",
+        "core/src/client/auth.rs"
+      ],
+      "evidence": [
+        "L",
+        "I",
+        "R"
+      ],
+      "boundary": "Persist previous speed/mode before attach; native tests reopen/fence accounts; UI exit restores 1.25 speed and preserves user-selected mode."
+    },
+    {
+      "id": "native_window_close",
+      "official": "M/75 lifecycle; community Tauri host adapter",
+      "implementation": [
+        "desktop/src/together.rs",
+        "desktop/src/lib.rs",
+        "frontend/src/adapters/tauri.ts"
+      ],
+      "evidence": [
+        "L",
+        "I",
+        "R"
+      ],
+      "boundary": "d-close drops successful end reply, retains real minimum-size window, surfaces epoch-fenced event, reconciles and closes. Exactly one end request."
+    },
+    {
+      "id": "reopen_attach_restore_buttons",
+      "official": "M/75 restoration; community explicit resume",
+      "implementation": [
+        "core/src/client/together/mod.rs",
+        "frontend/src/components/TogetherPage.vue"
+      ],
+      "evidence": [
+        "L",
+        "I"
+      ],
+      "boundary": "Native reopen/attach covered; real UI reopen/attach and separate RestoreLocal button still need validation."
+    },
+    {
+      "id": "im_rtc_and_peer_sync",
+      "official": "M/75; M/3161",
+      "implementation": [
+        "core/src/listen_together/api.rs"
+      ],
+      "evidence": [
+        "S"
+      ],
+      "boundary": "This desktop batch only had credential REST evidence. Native IM followup now verifies Linux SDK login/room entry/notification/cleanup/reopen; desktop integration, business player application, common rights, RTC and full invitation UI remain unfinished. realtimeReady stays false."
+    }
+  ],
+  "local_tests": [
+    "core/tests/client_together.rs",
+    "core/tests/together_protocol.rs",
+    "core/tests/together_service.rs",
+    "desktop/tests/ipc.rs",
+    "frontend/tests/together-state.test.ts"
+  ],
+  "live_ui": [
+    ".build/ui-proof/together-20261026-c",
+    ".build/ui-proof/together-20261026-d-close",
+    ".build/ui-proof/together-20261026-e"
+  ],
+  "retained_failures": [
+    ".build/ui-proof/together-20261026-a",
+    ".build/ui-proof/together-20261026-b",
+    ".build/together-zero-seek-before.log",
+    ".build/together-resume-selection-before.log"
+  ],
+  "independent_audit": ".build/together-ui-independent.json",
+  "remaining_document": "docs/desktop-listen-together-contracts.txt",
+  "excluded": [
+    "Real-time dual-account validation only, as agreed"
+  ],
+  "native_transport_followup": {
+    "mapping": "docs/listen-together-native-im-mapping.json",
+    "contracts": "docs/core-listen-together-native-im.txt",
+    "desktop_realtime_ready": false
+  },
+  "desktop_im_followup": {
+    "mapping": "docs/desktop-listen-together-im-mapping.json",
+    "scope": "Historical batch above unchanged; later native desktop connection/reconnect/awaited cleanup verified. Business packet/player/common-rights application and RTC still pending.",
+    "goal_complete": false
+  }
+}

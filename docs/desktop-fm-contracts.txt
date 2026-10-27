@@ -1,0 +1,93 @@
+私人漫游：独立Rust播放器与正式桌面流程
+2026-10-27；完整桌面及完整FM范围仍未完成。
+
+官方来源与UI差异
+主要行为来自hybrid_app M1384：fmPlay、playNext、switchTrack、loadMore、dislikeModal；
+接口及领域来源沿用core-fm-contracts.txt和fm-core-mapping.json，没有使用YesPlayMusic。
+页面命名/封面入口参考恢复源码packages/pc/src/pages/home-page/components/FeatureRecommend/
+PrivateFmCard.tsx；音乐黑名单说明参考pages/trashCan/views/MainView.tsx。
+这些文件位于references/ui-recovery/sources/，并非当前产品依赖。
+尚缺完整官方私人FM播放页截图，本版封面/文本/控制区是依据恢复行为重建，不能称像素一致。
+播放器、喜欢、评论、下载、歌词与现有正式组件共用；FM不复制另一套HTTP或音频引擎。
+
+模块与调用边界
+core/src/fm/player/{mod,state,controls,runtime}.rs：FM与PlaybackController的协调器。
+core/src/client/fm.rs：账号epoch、公开DTO、正式用例；无Tauri依赖。
+desktop/src/fm.rs：fm_view/fm_command/fm_trash三项IPC，仅转交原生用例及安全错误。
+frontend/src/services/fm.ts：类型契约；useFm.ts：页面代次、轮询、写入及列表恢复。
+FmPage.vue：开始/继续/暂停、前后切歌、减少/恢复推荐、未决反馈、原队列返回。
+PlayerBar在FM时仅提供无限漫游/单曲循环；QueuePanel显示FM队列并禁用普通编辑。
+公开歌曲用TrackView白名单投影；algorithm、Cookie、服务原始字段、授权URL不进入Vue。
+
+调用顺序与持久化
+fm_view(epoch,source,refresh)：先校验账号与来源；refresh读取黑名单及完整减少推荐列表。
+仅缓存不存在时刷新会员并预加载推荐。已有缓存刷新页面不会擅自推进正在播放的FM队列。
+非refresh只读取本地缓存与原生队列；可见页面每1200ms轮询一次，不重复HTTP读取推荐。
+用户写入期间不启动新页面读取；旧请求代次、旧账号响应和已销毁页面响应均不发布。
+source当前UI为personal；FAMILIAR的source_id保留领域能力，尚未提供完整模式选择界面。
+
+Start：在媒体焦点/一起听保护后取得FM专用门锁，检查本机意图序号与账号代次。
+同来源、队列一致且正在播放/缓冲/暂停时沿用已有音频切换暂停，不重新获取或加载音源。
+其他情况下刷新过滤列表，准备/复用推荐，过滤新屏蔽的当前项，按官方fmPlay重置无限模式。
+进入前将完整普通队列、选中entry及原生位置原子保存到playback/fm-backup-queue、
+fm-backup-position；fm-player-v1/source保存来源，failure保存安全失败类别。
+FM投影保留领域entry_id、顺序和当前位置，资源携带trial_mode=36及请求音质。
+正式授权通过/api/song/enhance/player/url/v1，真实解码由现有libmpv完成。
+
+FM队列以UpdateQueue(expected fence, queue, transport)提交，核对原生控制代次；
+慢推荐/授权期间Stop、新选曲、切号仍可执行，旧结果不能覆盖新的本机意图。
+普通队列显式替换或安装非FM条目时，同一队列事务删除旧FM来源/备份/失败状态。
+这也涵盖清空普通队列，避免以后把空列表误认为上一轮耗尽的FM。
+空FM仍保留页面退出入口和一起听互斥；继续播放可再次取推荐，退出可恢复原队列。
+下载完成文件/本地库重命名、移动或移除同时更新FM备份，不能退出FM后恢复已失效的路径。
+
+手动Next/Previous：从原生选中entry和时钟取得观察值，交给领域step_for；
+领域按官方规则判断是否生成skip，秒数取floor，仅对匹配当前entry的观察计时。
+队列与Prepared报告在同一事务保存，宿主另起任务发送一次；不阻塞新音源解析。
+提交前已被新本机意图取代的Prepared报告放弃，队列差异显示恢复入口，不再生成第二份skip。
+已发送未知结果不重发，UI仅显示尚未确认；未发送报告允许用户显式发送或放弃。
+底层普通Next/Previous/Mode/Select/Remove/Reorder/Append不能直接修改非空FM队列。
+
+自然结束：普通播放器关闭对FM的自动advance；FM watcher订阅真正引擎Ended。
+等待250ms防抖窗口后重读账号/播放fence和状态；同一Ended事件只自动处理一次。
+无限模式继续下一可播推荐；单曲模式重新装载同一entry的0秒；两者都不提交手动skip。
+切换循环模式仅更新队列元数据，保留已有音频及位置，不触发重新加载。
+
+Resume：若意图/实际队列一致则正常播放，Restore则按持久位置暂停恢复。
+若意图已前进但旧操作中断，安装已保存的新队列，不再次提交跳过反馈。
+Leave：恢复完整备份的当前项与位置，并保持暂停；清理FM备份/来源/失败。
+若用户已改播另一普通队列，迟到Leave不替换新队列。
+一起听Create/Attach与活动FM（包括空FM）互斥；反向进入同样要求清理既有一起听状态。
+MV与FM沿用统一Audio/Video焦点，迟到音源不取得已撤销的播放权。
+
+减少/恢复推荐与UI
+Trash命令携带确认弹窗打开时的entry_id，在门锁内核对当前歌曲，防止确认期间切歌误改。
+请求沿用/api/radio/trash/add {songId,alg,time}及领域完整before/发送意图/只读核对机制。
+只有Confirmed/Unchanged才移除队列并继续，不额外发送skip。
+远端结果不明保持原曲和核对入口；确认成功但本机Stop抢先时保留可继续应用的记录。
+Reconcile只读取服务列表，确认后再协调本机队列；禁止凭“请求已发送”显示已完成。
+RestoreTrash使用/api/radio/trash/del/batch {songIds}，每次最多100首；不把恢复曲强插当前队列。
+列表/api/v3/radio/trash/get每页50，from=page-1/to=page，沿用addTime游标。
+服务count=0也可有非空歌曲，UI显示实际已加载数量，并在满页时允许继续加载。
+选择状态按source内容变化清理，不按每次轮询产生的新对象清理；切号清空旧页面。
+未知写入重开后提供核对入口，不自动重复发送，完整领域规则见core-fm-contracts.txt。
+
+验证入口与边界
+core/tests/fm_player.rs：真实SQLite和原生controller、可控音频引擎，覆盖EOF/循环/迟到响应/
+普通备份/重开/未决减少推荐/耗尽/显式普通队列替换；不等同真实CDN或声卡。
+core/tests/client_fm.rs：正式MusicClient投影/操作、旧entry拒绝、切号、一起听互斥、空FM。
+frontend/tests/fm-state.test.ts：请求代次、写入互斥、未知写入不重放及列表游标/过期。
+desktop/tests/ipc.rs：新增三个正式命令的过期epoch边界。
+实际窗口验收由desktop/examples/fm_ui_probe.rs/.js驱动，生产组件→正式IPC→Rust→真实API/CDN。
+探针使用显式PC profile、新私有数据目录及libmpv/null；API白名单禁止skip/trash/restore。
+run_auth_probe.py仅抓真实窗口截图与编排进程，audit_fm_probe.py仅独立读取原生阶段和SQLite。
+复跑（NEW_ROOT必须不存在；第二行使用同一目录）：
+  CARGO_INCREMENTAL=0 cargo build -p cumulus-desktop --example fm_ui_probe --features custom-protocol --locked --offline
+  CUMULUS_FM_PROFILE=EXISTING_PC_PROFILE GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 xvfb-run -a dbus-run-session -- python3 desktop/examples/run_auth_probe.py NEW_ROOT --binary .build/target/debug/examples/fm_ui_probe --stage-prefix fm_ --screenshots 9
+  CUMULUS_FM_PROFILE=EXISTING_PC_PROFILE GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 xvfb-run -a dbus-run-session -- python3 desktop/examples/run_auth_probe.py NEW_ROOT --reopen --small --binary .build/target/debug/examples/fm_ui_probe --stage-prefix fm_ --reopen-screenshots 3
+  python3 desktop/examples/audit_fm_probe.py NEW_ROOT --reopen
+通过目录/日志/失败历史以rust-core-validation.txt新增记录为准；脚本存在不是通过证据。
+后续真实减少/恢复推荐、歌手屏蔽/取消屏蔽、官方原因选择和人为丢回包的桌面往返已验证，
+详见desktop-fm-feedback-contracts.txt。本文件上面的只读探针仍仅证明其原范围。
+更多FM模式、手动skip的真实发送验证及完整官方视觉对照仍待完成。
+本机实际播放证据不推导Windows/macOS、扬声器听感或双账号同步通过。

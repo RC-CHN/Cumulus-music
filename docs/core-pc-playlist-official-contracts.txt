@@ -1,0 +1,99 @@
+官方PC歌单写流程与正式客户端接入
+2026-10-27。完整桌面目标保持进行中。上一阶段单次创建见core-pc-official-write-proof.txt。
+本阶段扩展到官方EAPI创建、批量元数据、歌曲增删/排序/清空、歌单排序及删除，不外推其他业务。
+
+来源和实际业务入口
+官方M/232歌单协调、M/444.h元数据批处理、M/48字段转换、M/402请求与路径匹配、M/92配置、
+M/252逐次易盾令牌。实际源码来源和哈希沿用watchman-mapping.json与migration-source-index.json。
+frontend/src/composables/usePlaylists.ts -> services/playlists.ts -> adapters/tauri.ts
+ -> desktop/src/playlists.rs mutate_playlist -> core/src/client/playlists.rs
+ -> PlaylistService持久日志/回读 -> PlaylistApi -> MusicHttpClient。
+本次没有复制另一套前端业务，没有参考YesPlayMusic，也没有调用Python实现音乐业务。
+
+接口及确认条件
+创建 /api/playlist/create：uid、name、privacy=10，200回包后按新ID/本账号/私密/唯一名称回读。
+元数据 /api/batch：三个子项/api/playlist/update/name、/api/playlist/tags/update、
+ /api/playlist/desc/update分别传id/name、id/tags（分号连接）、id/desc。
+ 原字段转换将子对象编码为JSON字符串；逐子项检查code，批处理非原子，失败不能重发已成功字段。
+ 实测同时编辑名称/标签/简介，并另一次清空标签和简介；每次子项均200，详情字段一致。
+歌曲 /api/v1/playlist/manipulate/tracks：pid、trackIds（字符串ID数组的JSON文本）、op。
+ 添加op=add且imme=true；删除op=del且imme=true；排序op=update，无imme。
+ 已实测添加3首、倒序、删1首、显式清空剩余2首。清空不是update([])，而是读取完整歌曲后del。
+ 重复添加已有歌曲、删除不存在的歌曲由正式状态机判定Unchanged，实际不发写请求。
+歌单排序 /api/playlist/order/update：ids为完整创建组顺序，本次只将新测试歌单移至末尾，
+ 原歌单相对顺序保持；回读组顺序一致。
+删除 /api/playlist/delete：pid；本次空测试歌单使用官方EAPI删除，列表回读确认不存在。
+上述写入均留独立业务日志，准备/发送/回读/未决/拒绝语义继承PlaylistService。
+
+已观测的配置边界
+PC配置1026048中创建和歌曲操作需要易盾令牌；/api/batch、歌单排序、删除未命中保护组。
+同一元数据子接口作为独立调用时可能有不同保护要求，不能将批处理成功算作独立接口成功。
+每条请求仍实时使用官方最后匹配组，不把本轮保护名单或businessId硬编码到业务。
+
+正式请求选择
+RoutingPolicy::OfficialPcPlaylists只切换已验证的创建、歌曲操作、歌单排序、删除和准确的三子项
+元数据batch。独立重命名/简介、订阅/取消订阅、设置等未新增实际证明的路由继续保持原行为。
+MusicClient::open_with_request_context在同域原生上下文、官方Windows UA和非空clientSign
+同时存在时选此策略；初始客户端、二维码/密码/保存账号候选、重开均沿用同一选项。
+对应正式Linux启动：CUMULUS_DEVICE_IDENTITY=windows-local，保持既有账号deviceId与Cookie域。
+其他宿主配置继续原先验证过的兼容策略；低层显式OfficialEapi仍供原生调查使用。
+这不是服务端拒绝后的回退机制。协议在准备前选定，后续令牌添加字段也不能改变已选协议。
+特别是配置未来保护/api/batch时，checkToken会让字段数变化；最终序列化使用已冻结EAPI选择，
+不能因三个子项变成四个字段而改走WEAPI或取错凭据路径。
+
+配置未就绪与失败恢复
+正式官方歌单路径要求PC配置已经加载；首次账号读取仍允许版本0协商，写请求不能把未加载
+的配置当成空白名单。配置/令牌准备失败返回内部RequestNotSent，音乐业务尚未交给HTTP后端。
+PlaylistService将该日志记为Rejected/not_sent并持久保存，向界面返回“请求准备未完成，修改尚未
+提交，请稍后重试”；重开后显示“请求未提交，可稍后重新操作”，不阻塞新的用户操作。
+发送后的丢包、未知结果仍遵守原有只读对账规则，不把这类失败错误归为未发送。
+令牌等待期间配置变化仍拒绝过期准备结果，候选账号的凭据和代次检查仍独立。
+
+隔离线上流程
+desktop/examples/watchman_playlist_support按guard/workflow/recovery拆分，原生显式--playlist启动。
+先保存当前账号、完整原列表、随机唯一名称及从本人喜欢歌单选出的3首测试歌曲。
+guard仅允许固定读取和当前计划中精确路径/字段的一次写入，意图和请求先持久保存；
+错误ID、错误协议、额外字段或同一步重复发送被拒绝，重开追加证据而不覆盖。
+11步中9步实际发送、2步本地无操作；所有修改限定新测试歌单，排序保持原资源相对位置。
+恢复模式--recover-playlist ORIGINAL_DIRECTORY只回读原业务日志；未决步骤不重放。
+确认归属/私密/名称/歌曲属于原测试计划，且所有原操作已有终态后，才允许独立清理意图；
+若删除结果仍未知，不换协议重试。正常成功流程的最终删除已走EAPI，无兼容清理请求。
+探针恢复是显式原生工具，不向前端暴露任意请求/文件路径/设备资料。
+
+第一轮实际结果
+.build/ui-proof/watchman-playlist-20261027-a使用调查策略OfficialEapi：
+ 11个业务步骤完成，9次音乐写入全200、两个无操作未发送；全部写请求EAPI。
+ 初始化3条音乐读取、后续45条业务请求；1配置、1设备、33行为报告均成功。
+ 原77个歌单、完整顺序和摘要恢复，测试歌单已删除，凭据deviceId不变。
+audit_watchman_live.cjs重建34个原包并核对33个新令牌；
+audit_watchman_playlist.cjs将每一步规范化状态绑定到下一次写入前的原始回读，检查各子项、
+歌曲成员/顺序、原资源保护、发送次数及两次无操作；SQLite设备revision34和配置独立核对。
+完成截图已查看，显示探针结果文字；不把探针叠层算作正式UI操作或视觉验收。
+
+正式策略、恢复与构建验证
+.build/ui-proof/watchman-playlist-20261027-b使用最终OfficialPcPlaylists策略再次执行同一完整流程：
+ 同样9次EAPI写入全部200、11步回读完成、原77歌单及摘要/顺序恢复；独立34包/33令牌审计通过。
+.build/ui-proof/watchman-playlist-recovery-20261027-a重开b目录的11个业务记录，只追加账号/列表/
+列表3条读取，新增写入0、新增业务操作0。恢复报告workflowPassed=false表示本次不重跑业务；
+原始b报告仍保存workflowPassed=true。原始证据和恢复结果分别记录。
+正式二进制另在watchman-playlist-desktop-20261027-a启动：账号恢复、PC配置1026048、设备记录
+revision1持久化，真实每日推荐页面已截图查看，无探针叠层；没有借启动检查声称点击了歌单或播放。
+core新增4项测试：限定路由范围、配置未就绪无发送、batch令牌字段不改变协议、未提交日志不阻塞
+后续意图；既有客户端身份测试扩展到邮箱登录/保存账号/重开后的实际EAPI写路由与403不重发。
+探针新增1项精确ID/协议/一次性权限及重开不能重放的测试。
+全workspace/all-targets回归183组817项通过（主测试791、示例26），无失败/忽略；严格Clippy与fmt通过。
+全量后只调整探针恢复说明文字并重建该示例，核心/正式客户端逻辑没有后续变化；前端未改，未重跑。
+测试初版unwrap_err要求业务记录Debug、Clippy多余借用两处失败已修复，失败日志保留。
+代码/证据散列与各产物版本见.build/watchman-playlist-progress.json。完整goal仍active。
+
+复跑
+ CARGO_INCREMENTAL=0 CARGO_TARGET_DIR=.build/target cargo build --locked --offline -p cumulus-desktop --features custom-protocol --bin cumulus --example watchman_live_probe
+ CUMULUS_SESSION_DIR=EXPLICIT_PC_PROFILE GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 LIBGL_ALWAYS_SOFTWARE=1 dbus-run-session -- xvfb-run -a -s '-screen 0 1280x900x24' /usr/bin/python3 desktop/examples/run_watchman_fingerprint_probe.py NEW_PRIVATE_DIRECTORY --live --playlist
+ python3 desktop/examples/audit_watchman_live_state.py NEW_PRIVATE_DIRECTORY
+ node desktop/examples/audit_watchman_live.cjs NEW_PRIVATE_DIRECTORY
+恢复将--playlist替换为--recover-playlist ORIGINAL_DIRECTORY，输出目录仍全新。
+
+边界
+当前测试仍是Linux/WebKit加Windows声明，不证明Windows实机或单个指纹字段是成功原因。
+正式UI的当前完整验收范围仍见各桌面契约；本轮核心路由变更不冒充重新点击验证了所有页面。
+其他官方写路径、挑战登录、专有实现、平台交付和完整目标其余要求继续。

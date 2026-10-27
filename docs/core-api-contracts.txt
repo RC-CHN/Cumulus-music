@@ -1,0 +1,105 @@
+已迁移的 Rust 底层业务契约
+2026-10-25；这里列出已做本地对照的API封装，HTTP及登录协调已接入，完整播放/下载等流程仍在迁移。
+原产品逻辑/详细证据位于 references/recovered-client/docs/product/；不改写旧验收结果。
+
+共同约束
+protocol::api::Api 是异步传输契约；调用返回对象且code为200或明确允许的其他码。
+标识符按正十进制字符串保存，拒绝bool/负数/零/非ASCII数字，不收窄到JavaScript安全整数。
+分页默认limit=200、max_pages=1000；按返回条数推进offset，尊重more/hasMore，
+重复非空页、非终止空页、异常flag或到达上限均报不完整，不返回貌似成功的残缺列表。
+失败写入不换协议重放、不自动重试。批量部分成功保留全部子响应交给上层对账。
+调用方应通过AccountSession捕获账号代次并验证返回；缓存写入使用save_result检查代次。
+底层Value响应只在原生域内使用，未经脱敏和DTO转换不得直接交给前端。
+
+账号与登录
+Api::account             /api/w/nuser/account/get
+  必须读到合法profile.userId；缺身份视为301。AccountSession负责认证提交/过期/切换。
+QrLogin::begin           /api/login/qrcode/unikey
+  type=3；重建携带lastUniKey。返回键存在才进入waiting_scan。
+QrLogin::poll            /api/login/qrcode/client/login
+  key/type=3，可携带用户完成的secureCaptcha。800过期，801待扫，802待确认，803授权，
+  8821挑战；挑战无输入不重复发请求，取消/替换会拒绝旧响应，不能并发轮询同一尝试。
+  QrLogin本身只负责二维码协议；login::QrAuthentication负责独立候选、account/get及原子选择。
+  密码/SMS/挑战、刷新与退出的完整契约见 docs/core-login-contracts.txt。
+
+catalog::CatalogApi
+search                   /api/cloudsearch/pc
+  s原样保留，type默认1、limit默认30且1..100、offset默认0、total=true。
+daily                    /api/v3/discovery/recommend/songs    limit=30。
+album                    /api/album/v3/detail                id，cache=true。
+artist                   /api/artist/v3/detail               id/top=50/e_r=false，cache=true。
+  M/612的artist/hotSongs位于顶层，必须都有正确类型。
+songs                    /api/v3/song/detail
+  c是[{id,v:0}]的JSON字符串，每批1..500；请求去重，返回恢复原顺序/重复条目，
+  缺失保留None并列在missing，privileges单独按ID索引。
+lyric                    /api/song/lyric/v1
+  id/cp=false，tv/lv/rv/kv/yv/ytyv/ytlv/ytrv全为-1。
+play_url                 /api/song/enhance/player/url/v1
+  ids是字符串ID数组的JSON文本，level/encodeType/immerseType=c51/trialMode。
+  trialMode只接受官方M/91已知场景；按真实来源提供，不凭音质参数制造会员权益。
+  只返回目标ID的数据项；请求level不等于实际获准level。
+download_url             /api/song/enhance/download/url/v1   id/level/immerseType=c51。
+
+playlist::PlaylistApi
+list                     /api/user/playlist                 uid/includeVideo=true，完整分页。
+detail                   /api/v6/playlist/detail             id/n=100000/s=0。
+tracks                   detail + /api/v3/song/detail
+  以trackIds为权威，v=-1分离到local_tracks，不能把本地条目冒充线上歌曲。
+create                   /api/playlist/create               uid/name/privacy=10或0。
+  私密由调用方显式选择；应在UI默认私密。响应无有效ID时结果未知，先对账再决定后续。
+rename                   /api/playlist/update/name          id/name。
+describe                 /api/playlist/desc/update          id/desc。
+update_metadata          /api/batch
+  M/444的三个子请求：update/name、tags/update、desc/update；值分别是JSON文本。
+  每个子code必须200，否则返回Batch错误及全部响应，不能视为原子成功。
+  名称trim、禁@/#、加权长度<=40；描述<=1000；标签最多3个、不重复、无分号。
+  加权长度按M/32：Latin-1为1，其他UTF-16单元为2，emoji通常4。
+change_tracks            /api/v1/playlist/manipulate/tracks
+  pid/trackIds/op；Add/Delete对应add/del并带imme=true，Replace为update且不带imme。
+delete                   /api/playlist/delete               pid。
+  排序、封面、订阅及持久化变更对账不是上述方法的隐式能力，仍需后续迁移。
+
+account::AccountApi 与 membership::MembershipApi
+liked_ids                /api/song/like/get                 uid。
+set_like                 /api/song/like                     trackId/userid/like。
+  注意userid小写；可带songRqRefer/rqRefer/alg。M/3160允许502，但还需上层回读确认成员关系。
+collected_albums         /api/album/sublist                  total=true，完整分页。
+collected_artists        /api/artist/sublist                 完整分页。
+collect_album            /api/album/sub 或 /api/album/unsub  id。
+collect_artist           /api/artist/sub                    artistId，允许200/201。
+                         /api/artist/unsub                  artistIds为不带引号的数值数组文本。
+settings                 /api/user/setting                  读取setting对象。
+update_settings          /api/user/setting/update
+  仅允许shareSetting(0/1)、playRecordSetting(0/1/2)、personalServiceSetting(0/2)，
+  allowSubscriptionNotify/allowLikedNotify/allowNewFollowerNotify/allowPeopleCanSeeMyPlayRecord(bool)。
+  本地个性化开关不发送到该接口。account::resources按账号/资源加锁，持久化sending后才发写；
+  通过完整回读后confirmed，明确拒绝rejected，未知结果uncertain。待核实记录禁止新写，
+  reconcile只读；切账号仍在原UID保留待核实责任。现已验证通知开关往返，其余设置联动待迁移。
+MembershipApi::info      /api/music-vip-membership/client/vip/info
+  可带userId，必须返回data对象；MembershipManager处理到期、时钟与账号缓存，
+  离线判定、音质枚举、会员中心与历史详见 docs/core-membership-contracts.txt；播放器/下载联动待接入。
+
+cloud::CloudApi
+list                     /api/v1/cloud/get                  完整分页。
+check                    /api/cloud/upload/check
+  md5小写/length/fileName/checkMute；needUpload必须bool，songId是上传票据，可为非数字。
+allocate                 /api/whale/token/alloc
+  filename/type=audio/bucket=jd-musicrep-privatecloud-audio-public/bizKey=9af6516d/md5/channel=3。
+  兼容原生key与当前objectKey；两者冲突必须拒绝，不能偷偷改目的对象。
+refresh_nos_token        /api/nos/token/refresh              object_key/bucket，读取result.token。
+allocate_attachment      /api/nos/token/alloc
+  filename/ext/type；封面jpg/jpeg/png为image，lrc/cue为other；不凭空补bucket。
+  bucket/objectKey/token/docId均校验，docId必须为正ID；负值不算有效附件完成。
+metadata                 /api/upload/cloud/info/v2
+  原生MetaInfo：md5/songid/filename/数值bitrate，选填resourceId、bucket/objectKey拼接值、
+  song/artist/album、coverid/lyricid/cueid；有歌词ID时lyrictype=lrc。
+  接口调用前必须有已确认上传/去重结果；未来上传协调层负责强制状态检查，当前是底层契约。
+  此请求不走前端业务字段字符串化，必须保留原生数值与对象header。
+publish                  /api/cloud/pub/v2                  songid为目录ID，允许200/201。
+status                   /api/v1/cloud/music/status         songIds JSON文本。
+delete                   /api/cloud/del                     songIds JSON文本。
+download                 /api/cloud/dowonload               songId；拼写来自官方M/334。
+
+协议选择
+HTTP已接入，真实EAPI读取通过；PC域写入在发送前按已恢复列表选择WEAPI，尚未用Rust重测线上写入。
+恢复的Aegis算法有离线对照，但历史受保护业务/XEAPI失败边界继续保留，不能自动改路规避错误。

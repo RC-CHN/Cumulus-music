@@ -1,0 +1,136 @@
+播客、有声书与节目：Rust 原生业务契约
+2026-10-26。完整桌面目标保持进行中；后续桌面/续播批次见 desktop-podcast-contracts.txt；全部付费等分支仍未完成。
+
+来源与边界
+优先官方 M/15、21、23、71、232、404、754、2170、2090；归档产品报告28和30及对应
+Python 探针作为已有行为与线上响应依据。本批不依赖 Python 进程，不参考 YesPlayMusic。
+core/podcast 分 model、api、library、discovery、rights、mutations；SourceResolver 执行节目
+播放授权，download/service/voice 串联原下载任务，tags/voice_plan 适配普通音频标签。
+API/模型/持久化记录为 native 数据，含原始详情；不得直接用作 IPC DTO。媒体 URL 留在 native。
+后续页面必须使用专门白名单 DTO、账号 epoch，并接完整队列、续播和评论；本批未新增 IPC。
+
+身份和元信息
+Radio 使用 M/21 Z 的 id || resourceId || voiceListId || productId；name/voiceListName、
+coverImgUrl/picUrl/coverUrl、voiceCount/programCount 按官方真值回退，ID 保留十进制文本。
+Episode 使用 M/21 W 的 id || resourceId || voiceId || productId。主音频来自 mainTrackId，
+否则 mainSong.id/trackId。喜欢列表的卡片允许缺主音频；缺少时不允许直接播放/下载。
+节目 ID、播客 ID、主音频 ID 分离。Episode::playback_resource 输出 id=主音频、voice_id=节目；
+download_metadata 的 id 也是主音频，voice 属性保留节目/播客元信息。节目评论和点赞仍用节目 ID。
+单集时长取 duration，否则 mainSong.duration/dt；不把毫秒当秒。原始 fee/icon/record 信息保留。
+from_official 只是已用字段的投影，不声称完整迁移 M/21 的数据库、所有用户/歌曲/音频属性。
+社区展示投影为 description 增加 desc 回退；节目 normalized 增加 album 空对象供安全标签适配。
+
+我的播客/有声书与列表
+my_page/my_library：/api/my/podcast/page/list，{selectType:1或2,sortType:1}，分别是播客/有声书。
+初次 data.radioIdList 是完整身份快照，data.myPodcastVOList 是卡片。M/2090 每批20个 ID。
+后续请求只增加 radioIdStr=JSON.stringify(初次ID列表的下一段)，保留数值/文本类型；不能使用 offset。
+后续响应 radioIdList 为空时仍保留初次快照。卡片跨页按归一 ID 保留第一次出现，顺序与官方一致。
+完整 ID 不要求都有可用卡片；next_index 按请求 ID 数前进。拒绝重复快照ID、快照外卡片。
+本地边界为50000个ID；超过返回明确失败，不把部分列表冒充完整列表。
+
+legacy_library(false)：/api/social/my/subscribed/voicelist/v1，首次 {limit:200}。
+legacy_library(true)：/api/social/my/created/voicelist/v1，首次 {limit:20}。
+下一页带末项 createTime、lastProgramCreateTime；创建列表再带 lastPodcastId。没有 offset。
+读取 data.data/hasMore，保存卡片顺序并按ID去重；游标重复/空页声称更多/超过上限均失败。
+purchased：/api/voicelist/bought/list {limit:20,offset}，读取 data.list/hasMore；只读已购列表。
+liked_voices：/api/content/my/liked/voice {limit:100,likeTime:0或末项likeTime}，读取 data.data/
+hasMore；ID归一包含 voiceId，保留顺序、排除重复，并要求游标前进。不会误用 mainSong.id。
+liked_count：/api/content/my/liked/voice/count {}，data 为计数。
+
+发现与历史
+home：/api/voice/homepage/block/page {cursor} -> data.blocks/cursor/hasMore。
+保留相同 blockId 的多个区块；其子项可以不同，不能按区块ID整体丢弃。
+categories：/api/dj/radio/category/list {} -> data.parentCategoryVoList。
+category：/api/dj/radio/category/radio/list {parentId,subId,cursor,limit} -> radioList/page。
+分类编号使用十进制文本，“全部”子分类必须保留 "000"。不能把它数值化成0。
+翻页以 page.cursor/more 为准。真实 limit=5 本次返回176条，再下一页5条；不得以 limit 限制返回数。
+按官方保留跨页重叠。分类原始卡片保留，页面未来仍需投影 creatorName/推荐标签等字段。
+HistoryKind::Album：/api/play-record/album/list {limit:100}，data.list。
+Podcast：/api/play-record/djradio/list {filterVoiceBook:true}，保留 resourceType 或 data.resourceType
+为 DJ_RADIO 的条目。Voice：/api/play-record/voice/list {}，保留 data.list 中原包装和 pubDJProgramData。
+Audiobook：/api/play-record/voice/book/timeline/list {}，保留 data.data 的各时间段和 earlierRecordsMap。
+这里只读历史；没有自动清除红点、清空历史、上传播放记录或回写其他设备进度。
+
+详情、播放和权限
+radio：/api/djradio/v3/get {id} -> data；episode：/api/dj/program/detail {id} -> program。
+返回身份必须与请求一致；不使用别的节目替换当前条目。
+programs：/api/v6/dj/program/byradio {radioId,limit,offset,asc}，读取 data.programs/count/more/asc。
+要求页内无重复、所属 radio 一致、服务返回 asc 与请求一致；空页不能声称有更多。
+play_permission：/api/dj/play/url/check {voiceId} -> canPlay/songId/cannotPlayReasonType/feeConfigs。
+可播放时 songId 必须与详情主音频相同，然后才请求 /api/song/enhance/player/url/v1。
+使用已有歌曲授权参数 ids、level、encodeType、immerseType=c51、trialMode；从未把节目 ID 传给音频API。
+SourceResolver 首次解析节目时重新读详情和权限；缓存键包含账号代次、主音频ID、节目ID、音质、
+编码和试听场景。歌曲授权缓存或另一个节目的缓存不能替代该节目权限。签名URL仍按已有有效期缓存。
+现有播放器负责解码、暂停、定位；本批原生真实样本输出 null，证明时钟与解码，不声称声卡实听。
+
+完整普通音频下载
+create_voice/create_voice_default 接节目ID；先读详情获取主音频与命名元数据，再创建持久任务。
+DownloadOrigin::Voice {voice_id} 和 task.song_id 分开保存；原始授权/离线账本的 id 仍是主音频。
+每次授权及暂停后继续都重新取详情，核对主音频未变，再检查节目下载权限。
+/api/dj/voices/download/check {voiceIdsStr:[节目ID,...]}：字段虽然带 Str，官方实际值是数组。
+读取 allowDownloadVoiceIds、forbidDownloadVoiceIds、downloadCheckResultList；要求请求身份完整覆盖，
+允许与拒绝不交叉，明细与主列表不冲突。拒绝时不调用音频下载URL接口，也不读取CDN。
+允许后请求 /api/song/enhance/download/url/v1 {id:主音频ID,level,immerseType:"c51"}。
+M/754 的 NEWUSERLIMITFREE icon 即使URL返回200也改判-144，不能下载；已迁移并有回归。
+M/754 先采用资源 br，只有已知 level 才覆盖。真实节目响应 level=null、br=128000；
+适配器以现有码率表的精确值归一为 standard，另存 official_level=null 和 level_origin=official_bitrate。
+没有按请求音质伪造实际音质。非已知码率且 level 空时明确失败，仍属未完成的响应分支。
+源授权 code、URL域、身份、size、MD5、试听片段继续通过统一下载校验。
+原任务复用暂停/重授权/相同MD5范围续传、三路调度、工作文件校验、发布事务、离线登记和文件管理。
+发生权限撤销或主音频变化时停止续传，保留任务错误及未发布文件；不会回退歌曲播放URL。
+命名走 M/754/M/23 的 voice 分支，自动进入“电台节目”目录，标题/主播/播客参与原命名设置。
+标签注释用原 M/23 Voice 构造的 dj: 信息：programId、mainMusic、radioId、主播等；封面取节目 coverUrl。
+M/23 ie([]) 返回真值空数组，可能产生空标准artist标签；普通文件适配器以主播名补标准artist，
+不改官方 build_metadata 或 dj: 注释。这一社区修补明确区别于逐行官方复刻。
+默认普通音频。当前节目NCM封装与节目文字稿/歌词下载明确拒绝，创建任务前返回不支持。
+官方确有把特定收费节目转NCM的逻辑，但已恢复的NCM reader/writer仅证明 music: 包装；
+补充检查 references/ncmdump 也只处理 music:。本批没有足够节目NCM样本，不能声称该分支完成。
+该项是仍需研究的缺口，不因为主动返回错误就算已实现。原歌曲NCM能力保持原有验证范围。
+
+收藏、声音点赞和续播开关
+PodcastService 接固定 SessionToken；目标由 PodcastAction 和资源ID构成，不能套用新切换的账号。
+Subscribe：/api/djradio/sub 或 /api/djradio/unsub {id}，详情 data.subed 为回读事实。
+Like：/api/resource/like 或 /api/resource/unlike {threadId:"A_DJ_1_"+voiceId}，完整喜欢声音列表回读。
+Resume：/api/dj/user/setting/resumeplay/get {radioId} -> resumePlayValue 0/1；
+update {radioId,resumePlayValue:0或1}。原生播放器已接本地断点和远端djPlayRecordVo；跨设备断点上传尚未接通。
+skip_enabled：/api/voice/alg/skip/switch/get {radioId:Number(id)}，data=false 是合法关闭状态。
+当前只读智能跳过开关；实际跳过区间请求、定位和开关修改还未完成。
+
+写入前落库 podcast-mutations-v1：action/id/before/desired/acknowledged/observed/phase。
+OperationLock 对同账号同目标限制并发；已有 Sending/Verifying/Uncertain 时拒绝重复写入。
+before==desired 记 Unchanged，不发送写请求。一次发送后最多8次读，每次间隔500ms；连续两读
+吻合 desired 才 Confirmed。延迟可见时不自动重发；始终不吻合保留 Uncertain。
+明确拒绝码记 Rejected；传输错误/丢包/账号切换保留原账号责任；新账号没有旧操作记录。
+reconcile_for 只读核对，进程重开不会自动重放。确认不等于排除了所有外部并发编辑。
+后续已通过Rust真实桌面三类往返及丢回包核对，见desktop-podcast-mutations-contracts.txt；
+证据独立于报告30的旧Python结果。
+
+验证和执行
+core/tests/podcast.rs：14项，含10组 M/21 官方JS直接执行结果、M/2170两页实际函数结果，
+以及分页/分类响应、权限隔离、实际码率、新用户限制、单发/延迟/丢包重开/切号。
+core/tests/podcast_download.rs：5项，真实MP3文件标签/封面、123字节暂停后SQLite重开续传、
+权限撤销/身份变化、离线/改名/移动/删除，未恢复选项在建任务前拒绝。
+官方测试执行脚本 references/recovered-client/scripts/netease_podcast_oracle.cjs；
+生成 core/tests/fixtures/podcast-official.json。只投影明确列出的字段，不把用户/歌曲stub算官方恢复。
+原生执行：cargo run -p cumulus-core --example podcast_roundtrip --offline -- EXISTING_PC_PROFILE NEW_PRIVATE_ROOT。
+必须传两个绝对路径；不扫描references。会话必须是已存在PC域profile；输出根必须尚不存在。
+探针API严格只读白名单，没有订阅/点赞/设置/播放历史/支付/发信接口。新目录权限0700。
+.build/podcast-native-20261026-c/report.json：3个播客、0有声书，喜欢声音2，分类19；
+首页8+8区块、分类176+5项；历史专辑96/播客8/声音55/有声书0。4节目两页与反序一致。
+在线及本地实际mpv解码，184.52秒MP3，播放推进、暂停定位10秒；131071字节暂停后重建
+DownloadService，重新授权2次，原音频2953343字节、写标签封面后3059745字节。
+完整FFmpeg解码、离线完整性、改名/移动/删除通过，3个播客ID及顺序不变，远端修改0。
+原生这里重建的是DownloadService；独立StateStore重开由故障测试覆盖，不冒称真实桌面重启。
+a因分类ID文本被探针当整数而中止；b因节目level=null被通用歌曲校验拒绝，均保留失败证据。
+没有覆盖 paid/VOICEBOOK_VIP/PLUS、购买和新用户试用真实账号；没有播客页面截图或完整UI流程。
+后续必须补播客/有声书页面、完整队列、续播/历史上传、智能跳过、付费权限样本、节目NCM/文字稿、
+原生收藏/点赞/设置往返及断点状态联动。全目标继续，不以本批17项测试作为整个领域或桌面完成。
+
+桌面后续：完整列表快照、代次失效、3条IPC、播客页面、节目队列、评论、下载和本地续播实现
+见 desktop-podcast-contracts.txt。上述原生探针的“无UI”描述仅对应上一批验证，不代表现工作树。
+跨播客播单成员兼容追加（2026-10-27）
+场景FM进入的实际播单80集里有4集的原始radio.id不同于当前播单ID。官方M15.Et对返回的
+programs完整规范化，无该归属过滤。Rust已取消错误的同radio断言，保留单集原始radio、
+节目/主音频ID用于授权和续播；重复ID、分页、顺序及总数约束继续生效。
+真实原始响应：.build/ui-proof/scene-fm-links-20261027-b/first/official-*.json（私有）。
+回归见core/tests/podcast.rs curated_radio_snapshot_retains_each_voices_own_resume_and_permission_identity。

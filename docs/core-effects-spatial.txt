@@ -1,0 +1,121 @@
+旋转与多频段动态处理的 Rust 迁移
+2026-10-26；接续core-effects-dsp.txt。此批交付独立组件及可执行材料处理流程，
+不代表完整SE效果图、实时播放器或音效界面完成。完整桌面目标保持进行中。
+
+来源与组织
+官方源为neaudioeffects.dll x64 3.1.42.205594，SHA256
+c59105e1072d7d7dbd2d2844ac9c170de7e7b41eb463dc56a11c9b37bafac6be。
+优先依据references/recovered-client/docs/product/37-rotation-spatial-validation.txt、
+38-stereo-multiband-validation.txt及对应反汇编、原生对照宿主和恢复C实现。
+没有使用YesPlayMusic。没有新增HTTP接口；本批所有处理均发生在本机。
+
+core/native/effects/netease_rotate.c：原恢复实现原样复制，独立FFT，不执行官方DLL。
+core/native/effects/netease_multiband.c：原恢复实现，171字节块改为显式小端读取。
+core/native/effects/bridge.c：布局查询及动态参数/分频系数预检查。
+core/src/effects/dsp/rotation.rs：响应表所有权、内核/外层状态、有效帧/结束标记。
+core/src/effects/dsp/dynamics_parameters.rs：类型化参数、171字节编解码及验证。
+core/src/effects/dsp/dynamics.rs：单声道动态组件、外部检测输入及检测历史。
+core/src/effects/material.rs：apply_rotation将恢复的材料调用顺序应用到正式Rust组件。
+私有ffi.rs声明C接口，State统一管理对齐分配和释放。业务接口不暴露原始指针。
+
+FFI内存、失败和线程边界
+状态按C实际sizeof/_Alignof分配，至少16字节对齐；Drop按原Layout释放。
+RotationResponses严格接收303696字节的小端float响应表，拒绝任何非有限值。
+数据复制到不可变Arc<[f32]>。每个旋转状态持有该Arc，覆盖C保存tables指针的整个生命周期。
+interpolated_responses返回借用当前内核的只读切片；借用期间不能处理/改写或销毁内核。
+允许Send转交音频线程，禁止Sync。状态处理通过&mut独占；无C回调、线程归属或隐藏分配。
+多段动态的main/side以互斥Rust借用传入，均需完整capacity；输入和侧链不能重叠。
+process在调用C前检查格式、帧数、全部输入有限性。错误输入不改变PCM或推进历史。
+非有限输出/检测历史触发整块静音和失败锁定，后续process必须重建状态。
+部分reset/configure不解除失败锁定，避免把残留非法内部历史继续送向声音输出。
+
+三项C安全补强必须与官方正常参数行为区分：
+1. fast_power10先计算同顺序的float编码，若非有限或不在int64转换范围则返回NAN，
+   避免畸形动态增益导致float转整数未定义行为。原有效范围内的运算次序不变。
+2. ratio虽为正有限数，也必须保证1/ratio有限；极小正数在初始化/调参前拒绝。
+3. 每次初始化/调参预先计算全部分频点的低通、高通、全通系数，检查返回码及有限性。
+   极小四阶频率可能令原系数函数失败而未写输出，原setter忽略返回码会读未初始化内存。
+   bridge在修改任何状态前拒绝。调参预检查使用实际初始化阶数，不能信任新块的阶数字段。
+这些是社区边界的定义化失败行为，不宣称畸形参数与官方未定义路径相同。
+
+旋转API和原状态机
+RotationKernel::new(responses, phase)：固定44100Hz、双声道、容量256；phase为[0,360)。
+set_period(seconds)：有限且>=1才更新；有限<1返回Ok(false)，保留原周期；NaN/Inf拒绝。
+process(&mut PlanarBlock, valid_frames)：输入最多256帧，第一块返回0但仍推进相位/历史。
+phase()读取当前角度，interpolated_responses()读取2*1026个插值float。
+reset()只清四路卷积尾部和首块标记，保留相位。
+
+RotationStage::new(format,responses)：仅44100Hz、双声道、容量256..4096；默认旁路、40秒。
+set_period记目标周期，下一次启用处理时写内核；旁路期间不立即改变内核。
+set_bypass记目标开关；process(block,frames,end)返回RotationResult{valid_frames,end,phase}。
+启用后按256帧处理，普通调用需输出攒满capacity才返回，首块/短块可能返回0。
+关闭边沿及end排空调用会处理零块提取尾部、清相位，并将剩余未处理输入接到输出。
+end为true且返回end=false时继续提供零帧/end=true，直到结束，不能丢掉尾音。
+显式reset清两个FIFO和卷积历史，保留相位及旁路标志；它与end排空不是同一操作。
+仅消费各声道valid_frames；每声道stride仍为capacity。尾部未使用区不作官方声音对照。
+有界FIFO在可能超出容量时于状态改变前拒绝。没有照搬官方动态扩容分配器。
+非44100Hz转换尚未迁移，明确报错；不能把通用重采样器宣称为官方重采样实现。
+
+材料调用
+rotation_calls保留官方EF87E0：on仅接受bool；true时先读velocity，数值缺失/错类型默认20，
+再发开关；false只发关。velocity实际含义为每圈秒数。apply_rotation先校验整份计划再应用。
+spatial_sections保留EFB760静态分支：aev2是对象时仅选其中片段；缺rotate不会回退顶层。
+本批只应用被选中的旋转组件，未根据片段枚举假定整机效果图或会员可用性。
+
+动态API和原状态机
+DynamicsSettings含5个DynamicsBand、4分频Hz、输入/输出增益dB、3标志、段数1..5。
+DynamicsBand字段依次为输入增益dB、阈值dB、ratio、attack秒、release秒、最小增益dB、输出增益dB。
+DynamicsParameters::new(settings)/from_le_bytes验证后产生不可变171字节参数；
+settings()/as_le_bytes()提供类型化副本/小端序列化，不提供未经验证的可变字节入口。
+偏移：五段0..139；四分频140..155；总输出156..159；LFE/link/fourth标志160/161/162；
+段数uint32在163..166；总输入167..170。dB转换由恢复的C执行，不预改其舍入。
+
+MultibandDynamics::new(format,params)：仅单声道，8000..384000Hz、容量1..4096。
+configure(params)保留滤波/检测及增益历史；分频阶数固定在初始化时，新块fourth字段不重建它。
+process(main,None,n)逐采样检测主信号；Some(side)原地施加侧链输入增益并作分频。
+外部检测严格保留C0650实测行为：每块/每段始终读取侧链首采样，未改成通常的逐采样检测。
+detector_history返回5组envelope/power，共10个float；用于状态审计。
+reset清分频器与检测器历史，保留上次输入/各段/输出增益；零帧直接返回且保留全部状态。
+主缓冲会清完整capacity；侧链仅改有效区。正常参数下保留FTZ、分频拓扑和增益坡度顺序。
+完整多声道联动、LFE声音及StereoEnhancer图不在此单声道组件的已验证范围内。
+
+合成官方对照与检查
+core/tests/fixtures/effects-spatial-official.json.gz及manifest保存194组新原生调用输出：
+  旋转内核82组，外层10组；内部检测51组，外部检测51组。
+旋转oracle仅在私有映射中将两表替换为合成数据，代码页字节不变；不把原始响应资产放入fixture。
+动态样本覆盖四采样率、两阶数、五段数、七容量、调参/重置/短块及多类合成信号。
+内核有效帧/相位/插值表逐字节比较；外层有效帧/结束/相位逐字节比较；PCM误差限3e-6。
+动态主/辅助有效采样及10个检测历史值均逐字节比较。数值结论限本机Linux x86_64工具链。
+core/tests/effects_spatial.rs共10项，另覆盖所有权跨线程、非法输入、原子拒绝、重置和失败锁定。
+最新全量556项（core553、desktop3）、77条suite/74条非空、无失败/忽略。
+严格Clippy、格式和正式桌面/独立工具构建结果见effects-spatial-mapping.json。
+ASan/UBSan/float-cast-overflow/泄漏检查及缓冲哨兵覆盖480块动态和220块旋转，
+并检查极小ratio/频率及极端放大；没有禁用泄漏检查或弱化异常断言。
+
+实际可执行流程
+  CARGO_INCREMENTAL=0 cargo build -p cumulus-core --offline --locked --example effect_spatial_render
+  .build/target/debug/examples/effect_spatial_render material-stage RESPONSES.bin MATERIAL.ncae \
+    < stereo-44100.f32le > rendered.f32le
+stdin/stdout均为44100Hz、双声道、交错小端float32；程序本身只调用Rust/C，无Python或DLL依赖。
+程序直接解码NCAE、按恢复分支选旋转、应用参数、处理整段PCM并排空；不截掉原生返回的尾部。
+固定外层容量1024，输入最多32MiB，拒绝非完整双声道帧/非有限PCM；失败时不写部分stdout。
+响应表由调用方显式提供。组件不会自动读取归档目录或下载/解锁会员素材。
+kernel/stage/internal/sidechain四模式另保留有界探针二进制协议，定义见examples/support/effects_spatial_wire.rs；
+这不是前端IPC契约，不将原始音频/状态指针暴露到WebView。
+
+.build/verify_effects_spatial.py是开发期验证编排，使用原始响应表、八套参数组中的16个动态块，
+对照独立Rust可执行文件与新执行的官方机器码。两份真实NCAE覆盖开启及关闭旋转，
+分别检查1/13/44113输入帧、尾部排空及旁路保持输入。源码资产均校验哈希且执行后不变。
+实测71条原生流/432290个有效主辅采样，动态采样/状态逐字节相同，旋转最大绝对误差
+1.043081283569336e-7。两份材料共6例；启用时1/13帧输入依官方返回256帧尾部，
+44113帧输入返回44113帧；关闭时三种长度都逐字节透传，没有强制截短原生尾音。
+生成.build/effects-spatial-proof/rotation.wav；FFmpeg解码字节与Rust原始输出对照。
+最终实测计数/误差/文件哈希见.build/effects-spatial-functional-report.json，
+逐项来源映射见effects-spatial-mapping.json，检查快照见.build/effects-spatial-audit.json。
+没有真实账号请求、新UI或硬件输出检查。前端未改，沿用此前61项及已有桌面证据。
+
+剩余工作
+音效API/权益/材料模型生命周期、完整参数组合与持久状态、非44100Hz适配、播放器处理链和音效页继续。
+原研究尚未恢复的完整SE环境声/混响、整机效果图及情绪推理边界保留，不能以两个组件替代。
+跨平台构建配置沿用统一cc/Rust边界；没有本批Windows/macOS/ARM实际验证。
+一起听、接续、其余业务页面与最终全范围审计仍属完整目标；不以本批验收宣告整体完成。

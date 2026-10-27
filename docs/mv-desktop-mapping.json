@@ -1,0 +1,281 @@
+{
+  "schema": 1,
+  "scope": "MV desktop and active local-file workflows; full desktop goal remains active",
+  "goal_complete": false,
+  "yesplaymusic_used": true,
+  "contract": "docs/desktop-mv-contracts.txt",
+  "official_sources": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_153.chunk.1482700000000.js/3158.js",
+      "sha256": "8e88bb5d07c48c7ec485bf54784cf085824cb9515f026e9440fc1bac38bca4e4"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/15.js",
+      "sha256": "8ec4bf8d343f6963860eb73bc59ca09f0dd1ae50db2608a6c5abc7d69a0b521a"
+    },
+    {
+      "path": "references/recovered-client/vendor/mpv-0.40-render.h",
+      "sha256": "192691941602052f00df0587f126246c48785a1cf21de68d22a92ea1908d1c55"
+    },
+    {
+      "path": "references/recovered-client/vendor/mpv-0.40-client.h",
+      "sha256": "3c073236a09cb456c6e80587d5523c8771c32fb22ca014e0f99cc3d43905b75c"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/video-detail/components/Download.jsx",
+      "sha256": "80441c2f2cd0d9aae2fc17285ef7a96b7a32fd0e1d6e7a134362449d8a672db2"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/video-detail/components/Error.jsx",
+      "sha256": "bb04e1fb46a05e9e6916854f260654d3edb17c5dffdb1af9f30a9349bd93e496"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/video-detail/components/Fullscreen.jsx",
+      "sha256": "630ea4c7ed37de1b65815995d60ace252d2a937064aff07681b7fab38a0d88c2"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/video-detail/components/Loading.jsx",
+      "sha256": "fce99c9f164bdf7a54fdc0ed7673480902259679d3bdfa40627420124f876319"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/video-detail/components/MiniLayer.jsx",
+      "sha256": "8f14905932c07771605b3bcb4280eacbdf20d413cb7ccfcaf48d7cfa3c6b48aa"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/video-detail/components/Pay.jsx",
+      "sha256": "7b6c85c27ca57c8b57cc273fe7be6016af7f5922976aee178fec77f60f1abe37"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/video-detail/components/Play.jsx",
+      "sha256": "5c4ebf381e761a8479db145577bd093ff0ac24633054a371e136c5f0ca622a12"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/video-detail/components/Progress.jsx",
+      "sha256": "5b269db977ebb04941ce68416bb25dfa81b65fdd1074e587b9bd583a868c9a78"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/video-detail/components/Quality.jsx",
+      "sha256": "af5521a3680cce667e1b0920e1953a515a7b9772f36048dba5d1b0fc7b9bfe92"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/video-detail/components/Song.jsx",
+      "sha256": "64bac0d49658077674f2b6ebecd81b6711170c2801698547172a52eb75ed6f44"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/video-detail/components/Time.jsx",
+      "sha256": "4c15efbf987dc62a3eb253b70d69db6b980c13696e4e36fa88b9b452f2df8abc"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/video-detail/components/Top.jsx",
+      "sha256": "4ac0a82e0ef0cd029026d918ece11a8788afe276ae2ae82e60b4af4b07f96b55"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/video-detail/components/Volume.jsx",
+      "sha256": "77331d28acf8f9587d069aeb204ba2f7250e49620afcafa41907af578ed79b3f"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/video-detail/views/Error.jsx",
+      "sha256": "d94642ccbbbd2a538d540f0e06cb428bf9f0fb4fbbe98b4e475d0a2b18d5e734"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/video-detail/views/Info.jsx",
+      "sha256": "c525a37972afb182854cada15b46bfa8143813a4ecef276bd07e3076818d3090"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/video-detail/views/Mv.jsx",
+      "sha256": "3b41814242de1746337860fdcc81729387e6e19f253f13eb2f8f487456b9407a"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/my-favorite/views/PageFavMV.tsx",
+      "sha256": "7cc28f93f6e05eb74c1d3501a1aefbf95cd184df7ba8367f0acebf59dbfa2d52"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/components/VideoCard/index.tsx",
+      "sha256": "a5b8f3443e9e46da2730d2f14f482ec7b6e13eff80ba19facf760baaffc041fc"
+    },
+    {
+      "path": "references/recovered-client/docs/product/models/download.txt",
+      "sha256": "98bcd8a12dbf5789667121b73b1883013cf63e278e3cdc5dee427db4f59c4d2d"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_215.chunk.1482700000000.js/3022.js",
+      "sha256": "6c481ae8c1f50596db0611e02546b6980160de2feb349d82acd2a011d8a5d681"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_64.chunk.1482700000000.js/3097.js",
+      "sha256": "efb82e731049d2faf536450c7dc66153dd888b53e84e26de01e515557c8b1b30"
+    }
+  ],
+  "mappings": [
+    {
+      "feature": "collection_page_filter_pagination",
+      "source": "M/232; PageFavMV; VideoCard",
+      "core": "core/src/client/mv/library.rs",
+      "ui": "frontend/src/components/MvCollection.vue",
+      "evidence": [
+        "core/tests/client_mv.rs",
+        ".build/ui-proof/mv-20261026-c/mv_collection.json",
+        ".build/ui-proof/mv-20261026-d-small/mv_collection.json"
+      ],
+      "status": "real_account_and_windows"
+    },
+    {
+      "feature": "detail_permissions_and_cache",
+      "source": "M/15 mlog/detail; M/334/M/754",
+      "core": "core/src/client/mv/view.rs",
+      "ui": "frontend/src/components/MvPlayer.vue",
+      "evidence": [
+        "core/tests/client_mv.rs",
+        ".build/ui-proof/mv-20261026-c/mv_controls.json"
+      ],
+      "status": "real_metadata_synthetic_cache_failure"
+    },
+    {
+      "feature": "collect_uncollect_and_uncertainty",
+      "source": "M/15 sub/unsub; native durable journal",
+      "core": "core/src/client/mv/library.rs",
+      "ui": "frontend/src/components/MvPlayer.vue",
+      "evidence": [
+        "core/tests/client_mv.rs",
+        ".build/ui-proof/mv-20261026-e-collection/complete.json",
+        ".build/ui-proof/mv-20261026-e-collection/restored.json"
+      ],
+      "status": "real_ui_reversible_roundtrip_17_original_items_preserved"
+    },
+    {
+      "feature": "binary_native_video_frames",
+      "source": "mpv software API; Tauri 2.11.5 raw Response",
+      "core": "desktop/src/mv.rs",
+      "ui": "frontend/src/components/VideoCanvas.vue",
+      "evidence": [
+        "frontend/tests/mv-state.test.ts",
+        ".build/ui-proof/mv-20261026-c/mv_playing.json"
+      ],
+      "status": "actual_webview_rgba_frames"
+    },
+    {
+      "feature": "pause_seek_volume_speed_quality",
+      "source": "M/3158; recovered Mv/Progress/Volume/Quality",
+      "core": "core/src/client/mv/video.rs",
+      "ui": "frontend/src/components/MvPlayer.vue",
+      "evidence": [
+        "core/tests/client_mv.rs",
+        ".build/ui-proof/mv-20261026-c/mv_controls.json",
+        ".build/ui-proof/mv-20261026-d-small/mv_controls.json"
+      ],
+      "status": "real_480p_240p_controls"
+    },
+    {
+      "feature": "music_video_focus_and_old_account_retirement",
+      "source": "Recovered player suspension; native actor and account lifecycle requirements",
+      "core": "core/src/client/focus.rs",
+      "ui": "frontend/src/App.vue",
+      "evidence": [
+        "core/tests/client_mv.rs",
+        ".build/ui-proof/mv-20261026-d-small/mv_focus.json"
+      ],
+      "status": "real_mutual_handoff_and_synthetic_cancellation_failure"
+    },
+    {
+      "feature": "window_fullscreen_and_mini",
+      "source": "Mv.jsx Fullscreen MiniLayer",
+      "core": "core/src/client/mv/video.rs",
+      "ui": "frontend/src/components/MvPlayer.vue",
+      "evidence": [
+        ".build/ui-proof/mv-20261026-c/mv_fullscreen.json",
+        ".build/ui-proof/mv-20261026-d-small/mv_mini.json"
+      ],
+      "status": "real_normal_small_windows_no_os_fullscreen_claim"
+    },
+    {
+      "feature": "download_entitlement_and_publish",
+      "source": "M/334 and M/754",
+      "core": "core/src/client/downloads/commands.rs",
+      "ui": "frontend/src/components/MvPlayer.vue",
+      "evidence": [
+        "core/tests/mv_download.rs",
+        ".build/ui-proof/mv-20261026-c/mv_download.json"
+      ],
+      "status": "real_free_240p_plain_mp4_no_points"
+    },
+    {
+      "feature": "completed_mv_selection_and_delete_after_stop",
+      "source": "M/3158 local source; shared download file lifecycle",
+      "core": "core/src/client/mv/video.rs",
+      "ui": "frontend/src/components/DownloadPage.vue",
+      "evidence": [
+        ".build/ui-proof/mv-20261026-c/mv_local.json",
+        ".build/ui-proof/mv-20261026-c/mv_cleanup.json"
+      ],
+      "status": "real_local_play_and_ui_file_cleanup"
+    },
+    {
+      "feature": "late_results_cached_journal_and_error_states",
+      "source": "Native account epochs and durable mutation requirements",
+      "core": "core/src/client/mv/library.rs",
+      "ui": "frontend/src/composables/useMv.ts",
+      "evidence": [
+        "core/tests/client_mv.rs",
+        "frontend/tests/mv-state.test.ts"
+      ],
+      "status": "synthetic_failures_and_races"
+    },
+    {
+      "feature": "active_local_mv_file_directory_coordination",
+      "source": "M/3158 local metadata; download model delete; M/3022 migration; native cooperative lease is community implementation",
+      "core": [
+        "core/src/download/playback.rs",
+        "core/src/download/completed/execute.rs",
+        "core/src/mv/playback/local.rs",
+        "core/src/mv/playback/resolve.rs"
+      ],
+      "ui": "frontend/src/components/MvPlayer.vue",
+      "evidence": [
+        "core/tests/mv_local_files.rs",
+        "docs/core-mv-local-files-contracts.txt",
+        ".build/mv-local-workspace-tests.log",
+        ".build/ui-proof/mv-20261026-f-local/mv_renamed.json",
+        ".build/ui-proof/mv-20261026-f-local/mv_moved.json",
+        ".build/ui-proof/mv-20261026-f-local/mv_migrated.json",
+        ".build/ui-proof/mv-20261026-f-local/mv_cleanup.json",
+        ".build/ui-proof/mv-20261026-f-local/complete.json"
+      ],
+      "status": "real_linux_webview_rename_move_migration_delete_and_synthetic_failure_recovery"
+    },
+    {
+      "feature": "shared_comments_read_like_recovery",
+      "source": "M/21,438,232,15 and recovered Comment UI",
+      "core": "core/src/comments/",
+      "ui": "frontend/src/components/CommentsPage.vue",
+      "evidence": [
+        "docs/comments-mapping.json",
+        ".build/ui-proof/comments-20261026-a/comments_mv.json",
+        ".build/ui-proof/comments-20261026-b-small/comments_mv.json"
+      ],
+      "status": "shared_native_domain_and_real_linux_mv_entry_publish_reply_floor_pending"
+    },
+    {
+      "feature": "resource_like_related_song_and_similar_mv",
+      "source": "M/3158/15/86/91 and Song.jsx; similar-MV supplemental reference explicitly separated",
+      "core": "core/src/mv/",
+      "ui": "frontend/src/components/MvPlayer.vue",
+      "evidence": [
+        "docs/mv-social-mapping.json",
+        ".build/ui-proof/mv-social-20261026-a/complete.json",
+        ".build/ui-proof/mv-social-20261026-b-small/complete.json"
+      ],
+      "status": "native_live_and_real_linux_gui_restore_resume_navigation"
+    },
+    {
+      "feature": "remaining_mv_actions_and_non_mv_video",
+      "source": "M/3158 and remaining recovered video models",
+      "core": null,
+      "ui": null,
+      "evidence": [
+        "docs/desktop-mv-contracts.txt"
+      ],
+      "status": "advanced_comments_discovery_global_search_points_paid_non_mv_video_and_advanced_window_pending"
+    }
+  ],
+  "supplemental_scope": "Only similar-MV endpoint facts; see docs/mv-social-mapping.json. Main MV logic remains official evidence."
+}

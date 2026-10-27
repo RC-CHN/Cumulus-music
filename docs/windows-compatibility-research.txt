@@ -1,0 +1,138 @@
+Windows兼容设备身份：来源、派生规则与当前验证边界
+2026-10-27。按用户新增要求研究从本机派生稳定且在Windows声明下合理的身份，统一必要的改写入口。
+本要求扩展完整桌面目标，没有替代原Rust迁移/实际UI/逐项验收目标。
+当前Rust Windows声明已通过真实PC配置协商、易盾设备/行为上报及本人歌单受保护读取；
+尚无本轮受保护写接口恢复或Windows实机一致性证明。后续完整证据见core-pc-request-context-contracts.txt。
+
+已确认的事实
+1. 原生请求UA直接来自cloudmusic.dll x64 3.1.42.205594的RVA 0x1dbb590；SHA256：
+   557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493。
+   Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Safari/537.36 Chrome/91.0.4472.164 NeteaseMusicDesktop/3.1.42.205594
+   x64原始DLL本身写WOW64，不能凭猜测换为Win64或随机浏览器版本。该证据是WinHTTP请求UA，
+   不是已在官方CEF窗口实际采集到的navigator.userAgent；两条来源不能混为实机事实。
+2. queryOsVer的RVA 0x32d030删除左右括号，把ASCII空格/逗号改成连字符，不合并、不trim。
+   windows_compatibility_oracle.cjs读取原始DLL，校验完整SHA及五个关键指令字节，冻结来源fixture。
+   Windows 10 Professional/build 19045/64bit来自归档兼容实验的声明配置；不是本机测出的Windows版本。
+3. clientSign已能由当前Linux可读硬件事实按官方组合/双MD5算法派生并持久化；安装ID和账号凭据
+   deviceId互相独立。原账号deviceId、Cookie作用域和持久ID不能随一次请求或配置切换自动轮换。
+4. 当前真实WebView已测到两版本各自的插件、Canvas和WebGL原始特征，Rust计算与官方哈希一致；
+   WebGL实际报告WebKit/Apple GPU，即使宿主在Linux。这个标签只能视为浏览器暴露值，不能直接
+   当作物理GPU厂商或拿来编造Windows驱动型号。当前Arial可由fontconfig找到；Segoe UI匹配到Noto Sans。
+   字体枚举函数引用未定义的fontList，当前两个版本实际都失败；尚无字体成功证明。
+5. 历史Python实验已试官方Windows UA/osver、Linux派生clientSign和Watchman token，EAPI歌单创建
+   仍403。后来同PC主机WEAPI通过；不能声称Windows配置已解决风控，也不能把Python记录计为Rust线上通过。
+
+逐层处理计划与现状
+字段/入口                         来源与处理规则                                          当前状态
+HTTP User-Agent                   使用固定官方DLL常量，与原生请求统一                     Rust工厂/合成登录生命周期/真实账号读取
+EAPI header与设备Cookie的osver     按已审阅Windows版本声明和官方格式化，不取Linux字符串      Rust工厂/实际EAPI封装及读取
+os/appver/channel                  保留官方PC协议常量，不每次随机                           既有Rust请求实现
+clientSign第四段                   从实际硬件窄字节按官方算法派生，已有持久ID优先             既有Rust及本机证明
+clientSign前三段                   使用本机可读MAC/磁盘/主板；设备名称不当序列号发给服务端   既有Linux事实适配
+账号deviceId、Cookie               继续原会话；新登录候选隔离；作用域不扩展                  既有Rust/新增兼容配置回归
+navigator.userAgent/appVersion     使用明确的兼容声明，保留HTTP/JS之间的字符串关系           采集上下文适配及真实WebView对照通过
+navigator.platform/oscpu/cpuClass   Win32及Chrome未定义的旧属性；不把空串注入原始getter        采集上下文适配；未改全局navigator
+语言/时区                         保留本机时区，POSIX locale规范化；C/POSIX用明确应用语言   Rust规范化/真实对照通过
+CPU线程数、屏幕尺寸/DPR、触控      读取实际能力；不由设备ID哈希随机生成硬件型号或数量        官方getter及真实对照通过
+插件、Canvas、字体、WebGL、音频    使用可验证测量；渲染器相关字段需要Windows参照或实际渲染   三类测量已本机通过；其余继续
+浏览器/平台一致性检查             运行官方检查得到结果；不能简单把所有疑似异常字段置零      24组合及实际WebView对照；浏览器不一致仍为true
+事件时间、坐标、isTrusted         真实交互；Windows兼容身份不需要制造按键/点击或伪造用户动作 已恢复原生采样与窗口验证
+页面/窗口/加载/自动化检查          逐字段确定其实际依赖，保持采集器与声明配置一致             尚未实现完整兼容层
+
+Windows合理性中的一个反直觉结果
+windows_compatibility_oracle.cjs直接执行两个SDK的pb/ob检查，输入声明的Windows/Chrome环境。
+Win32 + eval函数文本长度33时，两个版本均返回pb=true、ob=false；把platform写为小写win32才使
+pb=false。原因是官方pb对platform直接做大小写敏感的win/linux/mac子串比较。
+这只是官方函数在该组显式输入上的结果，不是Windows实机、SDK整包或服务端认可证明。
+因此不能把“pb必须false”当成合理Windows设备的硬约束，更不能为了绿灯把异常标记统一清零。
+应对照实际Windows参考环境的同版本输出，再决定哪些差异需要转换以及哪些是官方自身行为。
+
+官方平台资料与实现入口
+Chromium列出的Windows navigator.platform为Win32：
+ https://www.chromium.org/updates/ua-reduction/
+该页的UA缩减时间线面向更新Chrome，不能套用来改写本次固定91版本的官方常量。
+补充直接核对Chromium 91.0.4472.164对应源码navigator_id.cc：Windows分支返回Win32，
+appVersion取UA第一个斜杠之后的部分，appCodeName/appName分别为Mozilla/Netscape。
+三份原始源码及SHA清单已保存protocol/windows-compatibility/chromium-sources.json；
+来源是Chromium官方镜像tag，未借用其他反检测项目。旧属性在已读IDL中未出现，未声称这是
+完整Windows进程属性枚举。源：
+ https://raw.githubusercontent.com/chromium/chromium/91.0.4472.164/third_party/blink/renderer/core/frame/navigator_id.cc
+Microsoft说明WebView2可设置UserAgent，并可能清空Client Hints及navigator.userAgentData：
+ https://learn.microsoft.com/en-us/dotnet/api/microsoft.web.webview2.core.corewebview2settings.useragent
+这说明UA覆写还需核对JS和Client Hints，不能推断改UA会统一所有特征。
+本地tauri2.11.5 WebviewWindowBuilder::user_agent、tauri-utils WindowConfig.user_agent和wry0.55.1
+webkitgtk settings.set_user_agent提供宿主入口；本轮尚未修改正式窗口UA或全局navigator属性。
+当前环境没有wine/wine64命令，尚无官方Windows进程实测参照，不宣称完全复刻Windows渲染。
+
+已经落地的原生接口
+core/src/protocol/http/profile/windows.rs：ClientProfile::windows_compatibility(description)。
+IdentityService::resolve(actual_facts).profile(base_profile)可把实际派生clientSign绑定此配置；
+MusicClient::open_with_native_profile用于原生接入，初始请求、扫码/邮箱/保存账号候选均继承相同配置。
+core/tests/client_identity.rs新增Windows组合，覆盖真实EAPI封装/设备Cookie、独立候选和保存重开；
+固定UA/格式化结果来自校验DLL生成的windows-compatibility-native.json，不把工厂自己的输出当期望值。
+登录候选测试为无网络合成服务；另已执行下述两次真实账号读取，没有更换原会话。
+后续已实现原生Collection、实际采集/缓存/页面生命周期及正式音乐上下文接线，见本文末与
+core-pc-request-context-contracts.txt；受保护读取已200，写入仍须验证，真实引擎差异仍保留。
+
+2026-10-27 本轮落地与实际结果
+core/src/identity/compatibility.rs提供WindowsBrowserIdentity::from_locales及统一native_profile。
+只含五项声明，不包含MAC、磁盘序列、账号、Cookie或clientSign。locale支持明确记录的语言标签
+子集，去编码后缀、下划线转连字符并保留顺序/去重；C/POSIX、非法值和未支持语法回退调用者
+提供的应用语言，不凭时区猜语言。探针使用当前中文界面zh-CN。不是完整BCP-47解析器。
+desktop/src/watchman/compatibility.js在官方采集器输入处提供只读navigator投影；getter和方法
+仍绑定真实navigator。不会改全局原型、eval.toString、event.isTrusted、Canvas/WebGL输出或
+异常标记；只读代理拒绝赋值、定义和删除属性，不影响应用其他页面。
+这样可以审计本客户端真正准备上报的字段，不需要给整个WebView装不可见的全局补丁。
+
+recover_watchman_measurements.cjs从两版固定官方源提取32项基础getter和4项图形/插件/字体getter。
+原生哈希/编码由Rust执行。真实Tauri探针对实际/Windows声明各运行两版本，共128基础字段，
+插件、Canvas、WebGL共12次成功测量，字体4次显式失败。适配前后CPU8、1280×900屏幕、DPR1、
+时区UTC+8等相同。已有的字体缺fontList问题没有用随机哈希掩盖。GUI证据在
+.build/ui-proof/watchman-windows-compatibility-20261027-b，完整字段原始值仅存隔离测试目录。
+a的首次截图拍在窗口呈现前为空白，已保留；随后等待两次动画帧与X11呈现后重跑b，
+最终截图已实际查看，内容完整；两次数据审计都通过，不把空白截图算作UI证据。
+
+关键反证：当前实际Safari/WebKit的eval.toString长度为37；转成官方Chrome UA后，两版官方
+ob检查均从false变true。pb在实际与声明两组均为true，不能简单解释成Linux独有标志。
+这一结果说明“合理的CPU/设备ID + Windows字符串”不足以复刻Windows Chromium。
+把ob硬置false只能改报告，不能证明引擎已经一致。当前没有Chrome/Chromium或Wine可执行环境，
+也没有官方Windows进程的实际采样；Windows侧WebView2和Linux侧WebKit需要分别对照。
+Canvas涉及字体/emoji/栅格化，WebGL涉及渲染实现，音频涉及引擎计算；不能从MAC或机器ID
+推算其Windows真值。后续Collection已按实际配置开关采集，两类报告及一条受保护读取均200；
+这不能反推Windows指纹一致，也不能推广成所有写接口接受。
+
+Rust线上读取（已完成）
+可执行core/examples/device_identity_read.rs，使用原PC会话，只允许固定
+https://interfacepc.music.163.com/eapi/w/nuser/account/get（逻辑/api/w/nuser/account/get）。
+Windows UA、osver、实际派生clientSign和原credential deviceId在发送前逐项核对；进程内重开
+身份存储再读一次。两个响应均HTTP200/code200，账号相同，原deviceId未变，业务写入0。
+.build/private-windows-identity-read-20261027-a/report.json及independent-audit.json保存结果。
+独立审计用OpenSSL/SQLite及从DLL生成的fixture校验上下文，没有打印Cookie或硬件标识。
+此接口成功只证明账号读取能接受这些请求字段；未证明易盾认可、403修复或会员权限变化。
+可复跑命令（需现有已授权PC会话及全新隔离证据目录）：
+ .build/target/debug/examples/device_identity_read EXPLICIT_PC_PROFILE NEW_PRIVATE_ROOT --windows-compatible
+正式桌面原生请求可显式选CUMULUS_DEVICE_IDENTITY=windows-local；同数据目录沿用现有持久ID。
+未设置时行为保持原配置；local仍为实际平台请求配置。windows-local不是完整浏览器伪装开关，
+此处描述当时单独原生配置阶段；后续正式桌面已默认启动Watchman，windows-local也会为采集器
+提供只读Windows声明。独立core宿主仍须显式提供测量源，不能用此开关制造浏览器环境。
+
+2026-10-27 后续：完整采集协调与实际窗口重载
+两版38项设备计划、21项环境getter及原音频/字体数量函数按固定官方源恢复；
+独立Rust NativeCollection负责配置选择、异步等待、一次洗牌后的设备缓存、环境随机遍历与
+首错终止、真实分阶段计时。BrowserMeasurements通过正式主窗口IPC读取真实DOM/WebView。
+实际最终探针.build/ui-proof/watchman-collection-20261027-b完成两版采集和一次真实重载，
+共114次设备读取；缓存同内容/同顺序复用，旧等待被取消，旧回包被拒绝，重载后重新测量。
+原字体fontList依赖缺失使jb/ib失败；原音频函数将Float32Array传给字符串哈希后内部catch
+回调空字符串，真实WebView及原函数分支测试均复现。缺initWatchman/initNEWatchman使Xb
+抛错，实际环境报告按原规则在此处终止；21项单getter审查不冒充完整成功环境报告。
+事件排空等待发送队列，程序化点击保留isTrusted=false；未制造用户输入或篡改异常标记。
+这是本地采集与生命周期通过；此次网络、设备报告、行为报告及账号写入均0，正式音乐请求
+上下文尚未接入，原403仍无新增解决证明。完整规则及来源见core-watchman-collection-contracts.txt。
+
+2026-10-27 再后续：正式音乐请求及实际易盾上报
+前述Collection阶段的未接线部分已继续完成；正式桌面默认创建真实宿主并传入MusicClient。
+官方MConfig-Info协商得到明确PC配置1026048，依据实际白名单的最后匹配业务ID索取令牌。
+真实/v3/d、/v3/b均200，随后本人歌单详情受保护读取200，原始包/令牌/匹配函数及SQLite
+独立对照通过；正式二进制也已实际恢复账号并显示每日推荐。Windows声明仍暴露真实WebKit
+差异，不将服务返回码等同于完整平台伪装。原403写路径、登录挑战及其他平台继续验证。
+调用顺序、日志、私有证据目录与可复跑命令见core-pc-request-context-contracts.txt。

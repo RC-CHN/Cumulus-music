@@ -1,0 +1,108 @@
+播客／有声书桌面业务与播放器接线
+2026-10-26；本批实现，不作为完整客户端目标完成声明。
+
+来源与职责
+官方恢复 M/2090 的 /myAudio 与 /myAudio/LikedVoiceTab 分类和标签、M/2170 收藏分页、M/232 接口、
+M/21 Radio/Episode 字段、M/71/M/308 的续播判断、M/754 下载权限与节目命名是主依据。
+未使用 YesPlayMusic。Vue 使用现有社区窗口框架，标题/封面/收藏分类/声音列表重建；
+没有官方同账号同页面运行截图，不声称像素一致。Cumulus 身份保留。
+core/podcast/{snapshot,progress} 负责完整列表与播放位置；client/podcast 只投影白名单 DTO。
+desktop/podcast 传递3条类型化IPC，frontend/services/podcast 描述接口，usePodcasts 管状态，
+PodcastPage 展示；下载复用 DownloadDialog、下载调度与完成文件管理，不另造前端网络请求。
+
+用户流程与界面
+侧栏“我的播客”→我的收藏（播客/有声书）、我的创建、我的购买、点赞的单集。
+卡片打开播客详情：封面、标题、主播、简介、总节目数、收藏、续播开关；声音正序/倒序。
+列表支持本地关键词筛选、每页50项、分页、刷新、加载/空列表/失败重试；详情可返回原列表，
+保留原筛选与页码。详情区域独立滚动，小窗口保留操作入口，不把声音列表压在播放条下面。
+节目可播放、点赞、下载、打开评论。整张播客/点赞列表的播放队列由 core 取完整清单，
+不以当前50项或筛选结果冒充完整列表。选中节目使用节目ID定位原序列中的位置。
+节目评论 CommentResource.kind=voice，点赞 threadId=A_DJ_1_<节目ID>；底层音频只用于授权解码。
+播放条 TrackView.voiceId 与 track.id 分离，下载完成后的本地队列继续保留 voiceId。
+喜欢状态尚未读取或仍有未确认操作时禁用点赞，避免用“未知”冒充“不喜欢”。
+
+完整快照、并发与账号隔离
+PodcastLibrary 将全量来源ID、Radio/Episode、服务端总数和排序存入 podcast-lists-v1。
+收藏使用官方ID快照分页；Radio 的节目用 limit=200、offset=实际累计数读到底。
+任一页失败、节目重复、总数改变、返回排序不符时不发布部分快照，原完整快照保留。
+revision 对 scope、ID顺序、节目/主音频/时长与总数做SHA-256；切页可校验当前revision。
+播放前重新读全量并验证显示时revision，远端改序/改内容则报 QueueChanged，保留原队列。
+同账号/同列表 OperationLock 限制重叠刷新；锁冲突明确失败，可刷新重试。
+每次 mutation 日志转移同时增加 podcast-cache-generation-v1；取列表前后核对代次，
+不能让写入前发出的旧网络响应在操作确认后重新覆盖缓存。缓存与操作均按账号保存。
+会话代次贯穿IPC、网络、落库和UI，切换账号会清空页面、喜欢事实、操作提示与页码。
+旧请求、旧写入回包不能进入新账号；原账号责任继续保存在它自己的日志中。
+
+IPC（当前正式入口共55条，本批新增3条）
+podcast_page(epoch,query,refresh)：query={scope,keyword,offset,limit,revision}；scope.kind为
+podcasts/audiobooks/created/purchased/liked，或radio{id,ascending}。返回白名单卡片/声音、
+revision、总数、节目点赞ID、续播值与未决操作。传入非法ID/页大小/旧epoch立即失败。
+podcast_state(epoch,refresh)：false严格只读当前账号有效缓存和未决日志，不联网；
+likedIds=null表示没有有效事实，不能当空喜欢列表。true重新读取完整喜欢列表。
+podcast_command(epoch,command)：change{action:subscribe|like|resume,id,desired}或reconcile{action,id}。
+已有未决操作禁止change；reconcile只读，不重发请求。失败后先读磁盘日志，离线也能显示责任。
+详情、状态、操作投影均剔除Cookie、用户私有字段及授权URL，封面使用现有白名单处理。
+
+播放器续播
+M/308 先判断续播开关，再以 isListened、listenLocation（毫秒）和 duration 判断起点。
+本次迁移：开始新的节目选择时重新请求resumeplay/get；开关关闭从起点播；开启时优先
+本账号该节目和主音频的本地位置，缺本地位置时使用恢复字段 djPlayRecordVo。
+已经听完、负数/非有限位置、位置超过节目时长回到0；实际授权时间线/解码时长再次校验，
+旧位置不在获准区间时重置为有效起点。不会把断点缓存进授权URL缓存。
+每秒及暂停/定位/停止/切换前，把节目位置和队列位置在同一事务保存；只有完整时间线的EOF
+才标记已听完，试听片段不标记完整节目结束。账号和节目/主音频ID不匹配时不复用旧位置。
+重开应用恢复“当前队列+暂停位置”使用统一播放器Restore，与重新选一个节目的续播开关语义分开。
+目前本地下载文件保留节目身份，但没有新增离线文件的播客专用续播开关缓存；其队列暂停恢复
+继续走统一播放器。本批不声称已完成远端历史/断点上传、跨设备接续或智能片头片尾跳过。
+
+下载
+DownloadCommand.start_voice {voice_ids,options}只接受节目ID，全批先校验，再逐项建任务。
+走已有 episode detail→download permission→mainSong download URL→transfer→tags→publish链。
+界面显示节目标题，保留音质、标签、封面选择；节目暂提供普通音频，不提供已知未恢复的
+节目NCM或文字稿/LRC选项。建任务前 core 同样拒绝未恢复选项；这仍是明确的功能缺口。
+节目下载不会修改普通歌曲的全局音质/容器/歌词偏好。下载完成可在下载管理播放、定位、
+改名、移动或删除，统一恢复机制处理任务/离线/本地库/队列关联。
+
+本地验证
+core/tests/podcast.rs 新增完整快照重开/失败保留与“写入期间迟到列表不得落库”测试，总14项。
+core/tests/client_podcast.rs 3项：205节目在第4页选中仍生成205队列；节目/主音频身份及敏感字段
+白名单；远端清单改变拒绝替换；远端15秒断点→本地42.5秒→听完归零→关闭续播归零；
+丢写入回包时离线journal可读、缓存失效、重开与切号隔离。
+frontend/tests/podcast-state.test.ts 5项：迟到跨账号回包、离线未知写入只读核对不重发、
+迟到列表不能覆盖写结果、revision/分页/返回、切号取消写入回显。
+桌面ipc.rs通过真实注册命令拒绝旧epoch；所有上述本地测试不冒称线上写入已通过。
+
+实际桌面探针
+cargo build -p cumulus-desktop --features custom-protocol --example podcast_ui_probe --offline
+显式环境 CUMULUS_SESSION_DIR=既有PC会话目录、CUMULUS_PROOF_DIR=新的私有目录、
+CUMULUS_PROOF_SAMPLE=已验证节目详情JSON。只有新的隔离目录能创建首次探针。
+CUMULUS_PROOF_REOPEN=1使用同一目录重开并缩至760×540；所有音乐用真实libmpv、null音频输出。
+截图采集：GDK_BACKEND=x11 LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1120x760x24"
+dbus-run-session -- python3 desktop/examples/run_podcast_probe.py（上述环境必须已设置）。
+重新运行时只采集本次更新的阶段JSON，避免旧截图被启动画面覆盖。
+通过生产WebView DOM操作和已注册IPC执行，测试脚本不模拟业务数据，不调用归档Python业务。
+运行结果与截图保存 .build/ui-proof/podcast-20261026-d；complete.json及complete-reopened.json均通过。
+1120×760完整流：4节目队列、libmpv在线推进/暂停定位12秒、单集评论、普通MP3下载3059745字节、
+实际standard音质、全局歌曲偏好不变、下载后本地解码保留节目身份、UI删除本批文件。
+同数据目录760×540重开：暂停12秒和节目身份恢复，重新播放、评论可操作；截图无横向溢出。
+独立SQLite/文件检查：无下载任务、无离线条目、无未决播客写入、media目录无媒体文件。
+原生队列保留在线节目，正式播放器被探针停止。远端业务写入0，未真实修改原账号收藏/喜欢/设置。
+首次a记录了在线播放/评论，返回页面尚在刷新时自动化点了禁用的下载按钮，故不算下载通过。
+b同样保留失败：脚本填入目录后未等待Vue更新提交按钮；c补等待后完成全链。
+
+仍需推进
+真实账号收藏/点赞/续播开关往返（本批不写远端资源）、已购/会员有声书实际播放下载、
+节目NCM及文字稿、续播远端历史、智能跳过、发现/分类/搜索入口、断点与同账号接续联动。
+缺主音频的点赞卡片会补详情；其中任一不可取详情时目前整次选队列失败，尚需逐项不可播呈现。
+所有这些继续属于完整目标，不能用本页已接通或测试数量覆盖其缺口。
+
+布局追加修正：c的几何复核发现小窗口document.scrollHeight=665而body=540；节目行的
+隐藏辅助文字使用绝对定位，未约束到行容器，产生额外窗口滚动。给episode-row设position:relative
+后再次以“末集不被播放条遮挡、document高度不超过视口”作为桌面验收条件。
+
+d最终布局复核：1120×760和760×540均 documentHeight=bodyHeight=视口高度；
+main/page底边等于playerTop，最后一集滚入可视区后底边不越过播放条。两个窗口完整探针通过。
+
+后续真实写入验收：desktop-podcast-mutations-contracts.txt。新增打开播客编号/官方链接入口；
+收藏、单集点赞、续播设置已完成真实UI往返及服务端成功后丢客户端回包的核对场景。
+原列表ID/顺序和设置恢复。上述“本批不写远端”仅指最初的只读/下载批次。

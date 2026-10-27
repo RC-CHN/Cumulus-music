@@ -1,0 +1,100 @@
+十段均衡器接入真实播放器
+后续账号设置/actor/IPC/UI与首次激活锁竞争修复见desktop-equalizer-contracts.txt。
+下文测试数和未完成项保留为本底层阶段的历史记录，不代表后续最新状态。
+2026-10-26。完整目标仍进行中。本批把已恢复的 GraphicEq 接入 libmpv 的实际 PCM
+链路；不是整套音效目录、AI/情绪/设备模型或完整专有效果图已可播放，也未增加音效UI。
+
+官方来源与适配依据
+1. 官方 hybrid_53.chunk.1482700000000.js/3091.js：十个频段标签31/63/125/250/500/
+   1k/2k/4k/8k/16k，滑杆范围±12dB；28.js的equalizer默认十个零；342.js的
+   writeAudioEffectFile把均衡器材料写入equalizer_data，再调用AudioPlayer参数入口。
+2. 恢复的neaudioeffects.dll证据见产品报告34、35及core-effects-dsp.txt。
+   原处理图+48是GEQ，6BE40→1CEB0是开关，1CE90→A3720是十段参数入口。
+   实际端点为恢复的搁架参数，不把UI的四舍五入标签用作重新设计滤波器的频率。
+   采用core/native/effects/netease_dsp.c的既有GEQ、历史保留、开关混合与FTZ处理。
+3. 宿主适配为社区实现，不声称官方使用LADSPA：
+   https://mpv.io/manual/stable/#audio-filters
+   https://ffmpeg.org/ffmpeg-filters.html#ladspa
+   https://www.ladspa.org/ladspa_sdk/ladspa.h.txt
+   libmpv的lavfi负责连接FFmpeg LADSPA；Rust插件直接调用恢复C，未以FFmpeg的
+   通用equalizer公式替换官方DSP。本批未参考YesPlayMusic，没有新增服务端请求。
+
+代码与边界
+core/src/effects/equalizer/mod.rs：EqualizerSettings，私有字段及checked Deserialize，
+  严格10项、finite、±12dB；它是本地均衡器配置，不接受授权、文件路径或协议JSON。
+abi.rs：版本1的C ABI，配置创建/完整替换/状态/释放；EqualizerStats的固定repr(C)布局。
+host.rs：EqualizerHost加载可信原生动态库，拥有单个配置ID；动态库与函数指针同生命周期。
+core/audio-filter/：独立workspace cdylib；control/processor/ladspa分开，依赖独立core，
+  不依赖Tauri或前端。控制层保留设置，处理层独占DSP，ABI层隔离unsafe。
+core/src/playback/engine/mpv.rs：attach_equalizer/set_equalizer/equalizer_stats/
+  detach_equalizer，实际af链；native字段先析构，最后释放插件的宿主引用。
+
+配置与实际播放的区分
+attach成功仅代表配置和过滤器已提交；播放前processed_samples=0，不能当成已处理声音。
+解码后FFmpeg为每个声道创建一个mono实例，各自拥有GraphicEq历史和2048帧对齐缓冲。
+每块拷入独立planar缓冲再处理/拷出，可安全处理in-place输入输出和非2048帧的尾块。
+没有输入/输出文件预处理、临时重编码、Python进程或用音量变化伪装DSP。
+对外状态区分revision与observed_revision；后者只表示至少一个实例已看到该配置，
+不是所有声道的采样级屏障。processed_samples按声道累加，不等于立体声帧数。
+instances_created/active_instances能够区分实例重建和仍在播放；failed_blocks保留失败。
+
+热更新、定位与生命周期
+十段参数和开关在一个Mutex配置中整体替换，音频回调仅try_lock，不等待控制线程。
+回调取得完整快照后按恢复C设置参数；热调参数保留历史，开关沿用原干湿混合。
+声道间回调可能在相邻块看到新配置，当前没有声明所有声道在同一采样点切换。
+没有声称硬实时保证；未设置LADSPA HARD_RT_CAPABLE属性。
+seek/换曲/格式变化让libmpv重建实例时，实例按原配置ID重新取得最新设置；不依赖
+旧lavfi字符串里过期的十个增益，也不靠从界面重发参数修复。
+新建/定位后若配置处于关闭态，会先以空块稳定旁路边沿，确保第一块就是原声。
+这是社区宿主初始化处理；真正播放中的开关仍保留恢复的交叉混合。
+回调不读取文件/数据库/网络；常态run只使用预分配缓冲，控制引用是已有Arc。
+配置ID在float可精确表示的1..16777215内单调分配，不回收复用；耗尽明确失败。
+每个宿主拥有自己的ID，另一播放器不能通过共享全局设置覆盖当前播放器。
+释放配置后，已有实例的Arc仍有效但标为revoked并输出静音，不存在悬垂状态指针。
+插件回调与宿主均检查错误，不跨C ABI展开panic。有限输入运算异常或NaN/Inf进入DSP
+会清零当前剩余输出、隔离该实例，后续必须activate重新初始化。
+MpvEngine.poll检查累计失败并向控制器报错；控制器原有错误路径负责停止。
+取消/账号持久化和前端设置的更高层编排仍待接入，本批的实例隔离不替代账号设置隔离。
+
+装载与路径
+原生宿主提供可信库路径，前端无路径或任意插件装载能力。canonicalize后需为常规文件
+及UTF-8路径；ABI版本、函数、ID逐项校验。非UTF-8路径明确拒绝，未做隐式有损转换。
+FFmpeg选项与过滤器图分别转义；mpv再以UTF-8字节长度引用整个图，不经shell执行。
+实际验证包含中文、空格、单引号、冒号、方括号和逗号的真实库路径。
+插件扩展名由平台构建系统选择。需要所用libmpv/FFmpeg启用LADSPA；缺组件明确失败，
+不静默换成另一套EQ。当前只在Linux x86_64/libmpv 0.40环境运行，Windows/macOS未实测。
+目前插件仍须由原生调用者显式装载；桌面自动定位、打包资源及UI控制继续实现。
+
+可复现构建与运行
+  CARGO_INCREMENTAL=0 cargo build -p cumulus-audio-filter --lib --example player_probe --offline --locked
+  .build/target/debug/examples/player_probe .build/target/debug/libcumulus_audio_filter.so NEW_OUTPUT_DIR
+NEW_OUTPUT_DIR必须不存在。仅生成合成音频；实际libmpv输出PCM文件，然后用生产MpvEngine
+做null输出的控制验证，不调用官方业务接口，不读取账号，也不声称声卡听感验证。
+输出包括逐样本报告、源WAV、捕获PCM和独立直接DSP渲染的expected.pcm。
+独立检查器会再核对原始字节、样本数、SHA256、异常样本及报告，而非只检查ok字段。
+
+测试与结果
+插件8项：不规则块/大块/原地处理/越界哨兵；热调/开关/重新激活；配置隔离/释放/ID；
+持锁时回调不阻塞；非有限输入隔离与非法配置原子拒绝；无效采样率/ID/空指针；
+反序列化边界；关闭状态初建和定位重建从首样本保持原声。
+既有官方DSP对照随全量回归重新运行，包含28个官方GEQ外层向量。新适配器自身与恢复
+C直接渲染对照，不能把这层相等说成整个官方播放器效果图逐位等价。
+最终实际PCM三组：44100Hz/1声道44113样本；48000Hz/2声道96026样本；
+96000Hz/6声道576078样本，合计716217个float32；与恢复DSP直接渲染逐字节一致，
+且均与未处理输入不同。全部达到EOF，实例已清理，处理计数吻合，失败数0。
+生产MpvEngine实际验证播放中关闭、暂停定位、重新开启并调参、换曲保留配置和移除。
+异常文件测试最初错误地假定NaN一定能传到DSP；b/c批因此断言失败，日志保留。
+原始WAV及独立FFmpeg解码仍有NaN，但此mpv流程的DSP正常处理了全部样本，输出PCM有限。
+据此推断当前mpv格式处理路径在到达本插件前已规范化NaN，具体归属节点尚未定位。
+最终报告明确engine_error_exercised=false，不把该样本算作MpvEngine错误分支实测。
+直接LADSPA回调的NaN隔离/状态复位已通过本地测试；真实播放器该错误分支仍保留边界。
+
+全量主测试598项：core587、desktop3、audio-filter8，失败/忽略0；all-targets另包含
+既有shared_queue_ui_probe的24项测试，合计622次通过，不把这24项说成新增业务。
+最终日志、产物摘要、来源SHA、独立检查与具体proof目录见equalizer-playback-mapping.json。
+前端未改变，不产生新的UI验收，保留此前61项与历史窗口证据。
+
+剩余范围
+均衡器的账号设置持久化、播放器actor/IPC/UI、桌面插件装载与打包继续；会员音效登记
+生命周期与材料到DSP的整体选择、PEQ/低高音/旋转等节点接线、整图和模型仍未完成。
+也未完成独立原生声卡听感、跨平台运行或完整官方界面对照，不因此结束完整goal。

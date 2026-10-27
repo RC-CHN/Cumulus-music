@@ -1,0 +1,117 @@
+{
+  "schema": 1,
+  "scope": "Cloud original download core and desktop increment; not exhaustive goal coverage",
+  "goal_complete": false,
+  "yesplaymusic_used": false,
+  "contract": "docs/core-cloud-download-contracts.txt",
+  "official_sources": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/754.js",
+      "sha256": "91886fa13eae46663c28b496ae03f4f9fa70544f24104eb4da10a08e2a2d47ba"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/15.js",
+      "sha256": "8ec4bf8d343f6963860eb73bc59ca09f0dd1ae50db2608a6c5abc7d69a0b521a"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/27.js",
+      "sha256": "ba4c34aa4cc49759b13356d5b720d7878c6c9e48e38537c47217a62ad551d117"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_41.chunk.1482700000000.js/334.js",
+      "sha256": "5a6c94d01dbe9ee288a86cd25404085896192267161bfddfe40ef36af0b754c0"
+    }
+  ],
+  "mappings": [
+    {
+      "feature": "cloud_original_authorization",
+      "source": "M/754 cloudTrack branch; M/334.c -> M/15.V",
+      "implementation": "core/src/download/service/cloud.rs",
+      "evidence": "core/tests/cloud_download.rs"
+    },
+    {
+      "feature": "suffix_and_missing_type",
+      "source": "M/754 name.replace/match and suffix_type_lost",
+      "implementation": "core/src/download/service/cloud.rs",
+      "evidence": "core/tests/fixtures/cloud_download.json"
+    },
+    {
+      "feature": "official_javascript_oracle",
+      "source": "Executed official M/754 expression and M/334 factory",
+      "implementation": "references/recovered-client/scripts/netease_cloud_download_oracle.cjs",
+      "evidence": "core/tests/cloud_download.rs"
+    },
+    {
+      "feature": "owned_selection_and_revision",
+      "source": "Cloud songId; community full-snapshot/account guard",
+      "implementation": "core/src/client/downloads/commands.rs",
+      "evidence": "core/tests/cloud_download.rs"
+    },
+    {
+      "feature": "durable_source_and_legacy_compatibility",
+      "source": "Community engineering; download_tasks_v1",
+      "implementation": "core/src/download/service/records.rs",
+      "evidence": "core/tests/cloud_download.rs"
+    },
+    {
+      "feature": "same_authorization_resume",
+      "source": "Official cloud download semantics; community validator recovery",
+      "implementation": "core/src/download/service/run.rs",
+      "evidence": "core/tests/cloud_download.rs"
+    },
+    {
+      "feature": "cloud_lyric_sidecar",
+      "source": "CloudApi lyric/get; existing recovered lyric normalization",
+      "implementation": "core/src/download/service/lyrics.rs",
+      "evidence": "core/tests/cloud_download.rs"
+    },
+    {
+      "feature": "raw_bytes_and_atomic_publication",
+      "source": "M/754 complete flow; community ownership/SQLite recovery",
+      "implementation": "core/src/download/service/publish.rs",
+      "evidence": "core/examples/cloud_download_roundtrip.rs"
+    },
+    {
+      "feature": "naming_and_completed_management",
+      "source": "M/27 naming; community portable/file-operation journals",
+      "implementation": "core/src/download/completed/mod.rs",
+      "evidence": "core/examples/cloud_download_roundtrip.rs"
+    },
+    {
+      "feature": "cloud_selection_download_entry",
+      "source": "Official cloudTrack -> common download model",
+      "implementation": "frontend/src/components/CloudPage.vue",
+      "evidence": "desktop/examples/download_probe.js"
+    },
+    {
+      "feature": "original_dialog_and_preferences",
+      "source": "Original cloud size/format; community explicit original-mode UX",
+      "implementation": "frontend/src/components/DownloadDialog.vue",
+      "evidence": "desktop/examples/download_probe.js"
+    },
+    {
+      "feature": "safe_source_and_actual_quality",
+      "source": "No fabricated quality for cloud original response",
+      "implementation": "core/src/client/downloads/view.rs",
+      "evidence": "core/tests/cloud_download.rs"
+    },
+    {
+      "feature": "local_playback_and_cloud_lyric_identity",
+      "source": "Cloud track identity; community completed local playback",
+      "implementation": "core/src/client/downloads/mod.rs",
+      "evidence": "desktop/examples/download_probe.js"
+    },
+    {
+      "feature": "local_source_quality",
+      "source": "Cloud original lacks actual catalog quality",
+      "implementation": "core/src/playback/source/mod.rs",
+      "evidence": "desktop/examples/download_probe.js"
+    },
+    {
+      "feature": "desktop_end_to_end",
+      "source": "Real native IPC/UI/media, no archived Python runtime",
+      "implementation": "desktop/examples/run_download_probe.py",
+      "evidence": ".build/ui-proof/cloud-download-20261026-a/runner.json"
+    }
+  ]
+}

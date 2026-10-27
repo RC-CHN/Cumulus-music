@@ -1,0 +1,117 @@
+Watchman：原生配置、请求、调度与双版本兼容
+阶段说明：本文保留原阶段契约与验证记录；后续已接通正式采集/PC配置/音乐上下文，
+设备和行为上报、本人歌单受保护读取均已实际200，最新状态见core-pc-request-context-contracts.txt。
+2026-10-27。完整桌面目标仍进行中；本文件补充 core-watchman-contracts.txt 的早期纯算法阶段。
+运行库仍需要真实 Collection 和桌面宿主，不把配置 GET 或合成设备响应算作受保护音乐业务通过。
+
+来源与版本发现
+原版本 2.7.5_af2952a4 的 min.js SHA256：
+ af456401a96e7cab2fc0ad1334e1014ed58d5c694908d2d73ec1ef426463f787。
+本轮独立 Rust 配置读取首次得到 2.7.5_602a5ad7，旧版本检查拒绝并保留了该结果：
+ .build/private-watchman-config-20261027-a/response-0.json；watchman-config-live1.log。
+随后归档官方静态脚本，未初始化或整体执行SDK：
+ references/netease-3.1.42.205594-analysis/protocol/watchman-remote-602a5ad7-20261027/。
+新 min.js SHA256：343a187cb023c495a2dffee37f8265d203d97886c43fa6180951fb2de4d283b5；
+可读静态恢复 SHA256：54ddd682e2fddbeec8a86550af1224d98f3b1e305e6198b8c68e8116d00d925c。
+inspect_netease_watchman_602a5ad7.cjs 固定该源，解码文字和对象；watchman_current_oracle.cjs
+固定源与可读版本摘要，只在无网络VM调用审阅的纯函数和XHR桩，生成Rust测试fixture。
+没有使用YesPlayMusic，也没有用历史Python测试代替Rust通过。
+
+版本隔离
+SdkBuild只接受上述两个完整版本字符串。远端配置只能选本地已审阅实现，不能注入表或执行脚本。
+原 encode_packet/decode_packet/public_fields/Config::from_conf 保留旧版语义；运行时使用显式
+encode_packet_for/decode_packet_for/public_fields_for/Config::from_conf_for，不依赖“最新”全局常量。
+新版本替换secret、64字符表、256字节SBOX及补位（旧P，新3）；CRC、64字节分组与前块混合结构相同。
+块中第i字节（i=0..63）的前置变换，所有运算mod256：
+ 旧：((byte - 128) XOR (-54 + i)) + 32 + i；
+ 新：(byte XOR (91 - i)) - 70 + i。
+32字节ASCII secret分别由constants.rs/current.rs保留；双SBOX及逆表按构建选择。
+新旧包交叉解码必须失败；没有以同一加密输出只改v字段。
+86个字段定义和四组采集器key顺序经静态对比一致；这不表示浏览器采集器已迁移。
+旧公共标记为Wa/800=f5071d2c、Xa/801=0c0209f8、$a/804=1569d65e；
+新为Wa/800=e13487eb、Ya/802=20343de2、$a/804=94342c3d，旧801不发送。
+版本字段Oa/1使用当前配置构建。文本、nonce、token算法不变且另用新版官方函数对照。
+DeviceStore的DIV保存实际报告构建；ready同时按当前构建与服务luv判断已有设备兼容性。
+
+公开字段和原生随机源
+public.rs从显式CommonFields生成公共字段。系统时钟/随机数经EntropyClock注入，正式默认实现为
+SystemTime和操作系统随机源；测试才固定它们。SDK UUID使用原31字符模板、版本位与variant位。
+计数器1..255饱和；Ub按(local_ms + offset)/1000截断，nonce始终使用未修正本地时间。
+设备TID/DID、业务、nonce、track由原生持有；可选字段缺失时不替换成null或空串。
+字段先单独编码再洗牌；设备/环境组各自洗牌，事件保留Collection给定顺序及重复ID。
+公开字段在采集之前捕获；420重报重新捕获公共字段，但复用同次行为采集，避免二次清空事件。
+
+配置请求与缓存
+ConfigService：GET https://ac.dun.163.com/v2/config/js，传pn、cvk、cb、t；失败回退
+https://ac.dun.163yun.com。单次6秒。首次cvk为空；后续来自上次已接纳配置，t为本机毫秒。
+同实例配置加载有异步互斥；有效期相等仍命中缓存。成功200必须有已审阅v、有效conf和报告主机。
+ass数组或as双冒号串只允许上述两个HTTPS主机，单主机按官方loader复制为两个尝试位置。
+顶层ivp是配置缓存时长，conf内ivp是SDK内部选项，二者不混用。
+304只能延长已存在完整配置：使用旧顶层ivp和新接收时刻，不创建缺失配置，不回退旧SDK构建。
+持久记录owner=device、kind=watchman-config-v1、key=产品号，包含raw、expires_ms和revision。
+SQLite CAS冲突、畸形/未知构建或配置拒绝不会覆盖已有缓存。请求失败只做主机回退，不清缓存。
+原始配置包含远端脚本地址，作为证据存储；客户端不使用该地址下载/执行脚本。
+
+报告请求
+POST /v3/d设备，POST /v3/b行为；同配置报告主机按顺序尝试，单次5秒。
+application/x-www-form-urlencoded正文必须同时带d（该构建包）、v（8字符wire版本）和cb。
+旧研究摘要只写d/v不完整：官方XHR也附加cb，返回JSONP，已直接执行Oc/Pc的XHR桩核对。
+响应只解析匹配callback的JSON，最多1MiB，不执行JavaScript。原生另接受末尾分号/首尾空白。
+NativeBackend使用独立reqwest client：无音乐Cookie、认证头或Cookie jar；不跟随重定向，
+不做reqwest隐式重试。生产URL只由两个固定HTTPS主机与固定路径生成。
+HTTP/传输/JSONP解析失败触发下个主机；成功解析的业务500/470等不触发主机重试。
+200/420先按原恢复槽位原子更新设备状态；420的时间支持ISO3339、RFC2822、UTC日期及有限数字毫秒。
+不执行JS Date解析，不接受未经审阅的模糊本地日期字符串。其他类型差异见remote/time.rs。
+
+异步运行时与取消
+WatchmanRuntime需要StateStore、Transport、EntropyClock及Collection，没有伪环境默认实现。
+Collection返回device/environment/events三组Observation，含真实value或failed标记；原生校验
+允许key、重复环境字段、公用字段替换和设备报告含事件等错误。行为报告不能重新带设备组。
+请求次序：加载配置→确保设备→串行捕获公共字段/行为采集→编码→发送→状态更新→token结果。
+设备初始化由一个共享任务负责；多个等待者共享同一成功/失败，某个调用者取消不取消其他等待者。
+版本更新时先等待既有设备任务；若其DIV不被新配置接纳，再用新构建初始化，然后才发送新行为报告。
+共享槽在通知等待者前清空，避免新版本等待者反复加入已结束旧任务。
+本轮回归测试在修复前明确失败：旧任务完成后新调用直接发行为报告；修复后要求两个设备上报，
+且新版设备上报位于新版行为上报之前，SQLite DIV最终为新版。不是只测枚举字符串。
+另一回归故意暂停旧调用的Future，在新版更新设备后才恢复它；旧实现错误发送旧版行为包，
+修复后在报告门控内再次核对DIV兼容性，在更改公共字段或采集事件前返回StaleResponse。
+旧业务调用可以重新发起并使用最新配置；不会拿新版设备记录强行拼入旧构建报文。
+
+报告和设备更新共享异步门控，公共业务/nonce不会被另一次行为调用覆盖。close同步封闭提交边界，
+取消在途网络/等待，不允许迟到响应落库。调用者仍需在宿主退出时close，不能只Drop外层Arc。
+行为超时从完成采集/编码后起算，在420重报间不重置；超时丢弃在途Future，返回TimeoutFallback。
+设备初始化/采集不在该行为超时内，宿主采集器必须响应取消或有自己的有限期限。
+BehaviorAccepted、TimeoutFallback、FailureFallback、UncheckedRetry保持可区分；第二次420回调
+的官方未检查业务码行为保留，不把无t的token形态当作服务认可。
+start_refresh提供立即检查及随后每5分钟检查；RefreshTask stop/Drop停止后续周期，runtime.close
+另取消共享设备任务。后台失败当前不提供UI状态；显式refresh_device_if_due返回实际错误。
+TokenProvider为原生RequestContext适配接口；实际PC MConfig来源和宿主还需接入，不能由前端传票据。
+
+验证与执行入口
+core/tests/watchman.rs保留原10项；watchman_current.rs覆盖新版官方样本、包交叉拒绝、公共标记、
+表单及设备缓存升级；watchman_runtime.rs覆盖配置回退/304/重开、并发/取消、版本升级、
+420/470/超时、事件只采集一次、状态回读、无效采集拒绝和刷新任务停止。
+remote/http_test.rs通过本机HTTP服务器检查真实reqwest方法/正文/无Cookie、重定向拒绝、
+畸形响应/体积上限；这类测试需要环境允许监听回环端口，不访问官方账号接口。
+新版纯函数对照：4文本、18nonce、149包、344字段、24token、18公共字段集合、2个XHR表单。
+旧版运行时另有18公共字段、13日期、2个XHR表单，不与原622个算法样本混为测试函数数。
+可复现：
+ node references/recovered-client/scripts/watchman_current_oracle.cjs
+ cargo fmt --all
+ CARGO_INCREMENTAL=0 cargo test --locked --offline -p cumulus-core --test watchman --test watchman_current --test watchman_runtime
+ CARGO_INCREMENTAL=0 cargo build --locked --offline -p cumulus-core --example watchman_config_read
+ .build/target/debug/examples/watchman_config_read NEW_PRIVATE_DIRECTORY
+最后一个命令只允许匿名配置GET，拒绝/v3/d和/v3/b；先读配置、独立重开验证缓存、再强制重新验证。
+原始请求/响应、本机SQLite及report.json保存在新建私有目录，不能覆盖旧失败证据。
+本轮真实结果.build/private-watchman-config-20261027-b：2次GET，响应200、304；重开不发请求，
+SQLite revision=2，原始配置保留并续期。没有设备/行为报告、音乐业务调用或远端脚本执行。
+python3 core/examples/audit_watchman_config.py NEW_PRIVATE_DIRECTORY 可只读审计原始响应与SQLite；
+本轮独立审计通过，检查仅有配置记录、实际响应一致、版本和续期，审计本身网络请求0。
+
+剩余边界
+后续已实现事件采样/清空和实际WebView输入桥，见 core-watchman-events-contracts.txt；
+完整浏览器环境/图形/插件等测量与生产Collection仍未接通，不能发送合成指纹补齐。
+事件桥已有页面加载/销毁时停止的边界；完整Tauri采集生命周期、PC MConfig加载与音乐
+RequestContext正式连接尚未完成。
+没有新增真实/v3/d或/v3/b成功证明，受保护音乐写接口没有因此通过；配置GET不证明token可用。
+LoginGuardian/CAPTCHA/安全设备确认、刷新宿主仍是独立剩余分支。整体目标保持active。

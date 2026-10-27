@@ -1,0 +1,163 @@
+评论发布、回复、删除与楼层：Rust 和桌面契约
+2026-10-27；本文件仅说明列出的纯文本与楼层流程，完整客户端目标继续。
+
+来源和适用范围
+官方 hybrid_app.chunk.1482700000000.js/438.js 的 v/h 与15.js端点表提供发布/回复；
+hybrid_73.chunk.1482700000000.js/3085.js提供删除请求和确认行为。路径均位于
+references/netease-3.1.42.205594-analysis/recovered-js/modules/。
+references/ui-recovery/sources/packages/pc/src/components/TextArea/index.jsx与
+pages/HotComments/components/commentModal.jsx提供1000字符上限、trim非空与原文提交规则。
+references/recovered-client/scripts/netease_comment_writes_oracle.cjs直接执行官方M438并
+提取M3085删除表达式，冻结三类请求和八组文本样本至core/tests/fixtures/comment-writes-official.json。
+UTF-16长度与JS一致，500个补充平面emoji占1000；不采用歌单名称的加权计数。
+JS空白字符含FEFF，不含0085；检查trim非空，但发送正文保持原始空白、换行、表情文本。
+
+楼层接口未在当前恢复的官方桌面注册表/实现与YesPlayMusic中找到。补充参数来源明确为
+references/netease-api-reborn-4.29.7/package/module/comment_floor.js，不能称官方桌面恢复。
+该参考选择WEAPI；本实现保持现有PC域EAPI，并已真实只读验证，无协议回退或Cookie扩域。
+
+产品流程
+通用评论页顶部输入正文，按钮或Ctrl/Cmd+Enter显式提交；空白或超过1000 UTF-16单位禁用。
+卡片回复按钮带入目标及引用；取消回复不清正文。写入期间阻止重复提交。
+只有本账号的评论显示删除按钮，点击后确认；原生层仍在准备和发送前两次验证归属/可见性。
+服务明确拒绝时保留正文与回复身份，展示受限错误；近期记录可取回内容。
+确认发布后仅清除仍等于所提交内容及回复目标的草稿，不覆盖用户新写的内容。
+成功发布定位服务确认的评论ID；删除成功刷新页面；不按正文或时间猜测新评论ID。
+查看回复展开楼层，按服务游标下一页，上一页使用查询历史；回复/删除复用相同写入状态机。
+会话过期立即清除私人页面和草稿，停止旧账号的缓存回退与后续请求。
+未发送的普通编辑草稿目前仅在该页面生命周期内保留；持久化的是已准备的操作意图。
+
+业务请求
+1 /api/resource/comments/add
+  {threadId,content,resourceType:0,resourceId:0,expressionPicId:-1,bubbleId:-1}
+2 /api/v1/resource/comments/reply
+  {threadId,commentId,content,resourceType:0,resourceId:0}
+3 /api/resource/comments/delete {threadId,commentId}
+以上为原生语义字段；固定PC EAPI的官方序列化层仍处理数值/布尔字符串与header。
+成功码200。250内容等拒绝，480需要绑定手机号，回复404原评论不可用。
+显式拒绝码集合250/301/403/404/405/480/505/506/511/512保存Rejected；其他不确定结果保留责任。
+普通纯文本默认字段来自M438；图片附件、expressionPicId/bubbleId自选、富文本装饰仍未完成。
+资源thread映射和只读定位契约见core-comments-contracts.txt；编号全程保留字符串。
+
+状态与单次发送
+core/src/comments/writes按model/api/manager/reconcile分工；Comments不依赖Tauri或Python。
+prepare：按账号+资源取得操作锁，拒绝同资源未决写入，读取回复/删除目标并保存Prepared。
+submit：仅Prepared能发送；重新核验目标后先持久Sending/版本/缓存失效，再发一次HTTP。
+200保存acknowledged与receipt_id/receipt，转Verifying；缺有效ID或thread不符保留Uncertain。
+回包在原SessionToken闭包内部先记入原账号，即使外层发现切号，也不丢失旧账号收到的ACK。
+再次submit同ID只核对或返回终态，不重发。中止Future、进程退出、存储故障保留已落盘责任。
+reconcile只读，最多四轮、默认间隔500ms：
+  发布有receipt_id时连续两次匹配ID、作者、正文、回复目标及可见状态才Confirmed。
+  缺receipt_id绝不按同文评论认领，不自动重发，即便实际服务已创建。
+  删除必须原ACK已保存且连续两次不可见/删除墓碑才Confirmed。
+  没有ACK时不可见仍不是删除成功证明，继续Uncertain。
+  明确回复原文/归属不一致、显示延迟、读取失败不会伪造成功。
+abandon显式终止本机跟踪，保留原正文、ACK和事实；不撤回、不声称失败。
+界面放弃未知结果前确认解释，取消确认不丢责任。Prepared删除恢复时再次弹出删除确认。
+
+存储与缓存
+comment-writes-v1以随机32位十六进制操作ID存于账号命名空间；便携OperationLock按资源互斥。
+日志、comment-page-revisions-v1版本更新、同资源普通/楼层缓存失效在SQLite事务中完成。
+旧账号/旧版本在途页面不能落盘覆盖新结果；其他资源及账号独立。
+Comment增加parent_id；DTO只暴露文本、清理的作者显示字段、owned、ID、时间、计数与引用。
+原生author UID、richContent、Cookie、授权URL和原始服务错误不进入前端。
+
+楼层读取与缓存
+/api/resource/comment/floor/get {parentCommentId,threadId,time,limit}
+首time=-1、limit20；接受limit1..100，后续time必须为正JS安全整数。
+读取data.ownerComment/currentComment/comments/bestComments/totalCount/hasMore/time。
+根ID必须等于parentCommentId；子项的parentCommentId必须匹配；current只能是根或对应子项。
+重复ID、超大页、空页仍hasMore、缺分页字段、未推进游标均拒绝；next使用服务time，不猜offset。
+comment-floors-v1保存resource/query/revision/page，key为资源+查询JSON的SHA256。
+只返回同账号同查询同资源版本缓存。楼层失败时保留错误并可展示缓存，绝不切换其他资源。
+
+客户端和IPC
+core/src/client/comments/{mod,writes,floor}.rs提供MusicClient和受限DTO；原comments.rs已拆目录。
+新增四条正式IPC：
+comments_prepare_write(epoch,resource,command)
+comments_write_operations(epoch,resource)
+comments_write_command(epoch,id,command)
+comments_floor(epoch,resource,query,refresh)
+写命令kind=publish{content,replyTo}或delete{commentId}；动作kind=submit/reconcile/abandon。
+业务字段camelCase，kind小写；resource沿用kind/id/owner约束，前端不能传任意threadId或URL。
+返回AccountData<T>，入场及返回均校验epoch。View包含phase、acknowledged、receiptId、
+target/observed/observedAbsent/serviceCode；没有远端错误原文。
+前端useCommentWrites/useCommentFloor负责页面代次和迟到响应拒绝，CommentWritePanel/
+CommentFloorPanel/CommentCard提供正式交互。测试注入只存在example宿主。
+
+已验证及剩余证据
+core/tests/comment_writes.rs 13项、comment_floor.rs 3项、原comments.rs 13项定向通过。
+覆盖官方字段/UTF16、归属及二次验证、丢回包/无ID、显示延迟、跨号ACK、并发取消、
+写前/确认存储故障、真正SQLite重开、缓存失效与迟到读、客户端错误白名单。
+frontend/tests/comment-writes-state.test.ts新增8项；最新前端122项、类型检查和构建通过。
+当前定向日志.build/comment-write-tests2.log、comment-write-front-tests1.log、front-build2.log。
+
+真实楼层只读：.build/private-comment-floor-20261027-b；两页20+7，共27个独立ID。
+原生例子comment_floor_roundtrip使用明确PC profile和新私有目录，只允许account/get与floor/get。
+新SQLite连接/新session重开缓存等于首屏，缓存访问无新增HTTP。
+独立core/examples/audit_comment_floor.py比对四次原始请求、正文/ID/归属/游标及两页SQLite；
+independent-audit.json与.build/comment-floor-independent2.log通过，远端变更0。
+服务第二页未重复返回ownerComment是合法形状；首版审计错误要求每页都返回根，已修正并保留失败日志。
+
+发布/回复/删除没有用真实账号公开执行；本地成功不得写成线上公开写入通过。
+desktop/examples/comment_edit_ui_probe.rs/.js与support/comment_edit.rs使用完整生产UI/IPC/
+Rust/EAPI序列化，原生HTTP backend完全合成且无网络。最终窗口验收如下。
+图片/表情面板/气泡/富文本、其他资源完整窗口入口及全平台/像素一致性仍属完整目标未完成项。
+
+实际窗口与独立恢复审计
+.build/ui-proof/comment-edit-20261027-e-final：1120×760，首次11阶段+新进程重开6阶段。
+.build/ui-proof/comment-edit-20261027-f-final-small：760×540，同17阶段；合计34张最终截图。
+两组capture.json及independent-audit.json通过。已人工查看编辑、最小窗口删除确认、
+最终未决提示与停止核对确认的实际截图；没有文档水平溢出或弹窗超出可见区域。
+操作全部由生产WebView DOM按钮/表单触发，测试event只记录快照，未调用测试写IPC代替界面。
+HTTP backend直接解析正式EAPI包；没有真实MUSIC_U、账号导入或业务网络。
+不把这批本地合成服务成功归为网易线上公开发布成功。
+
+验证内容：空白/1001单位拒绝；原空白与换行保持；发布后精确ID定位；回复引用；
+他人无删除按钮、本人删除确认/取消；楼层20+1回复前进/返回；480与404保留正文/回复目标；
+服务创建后丢回包保存Uncertain；进程正常退出后全新进程恢复同操作ID；核对不猜ID、不重发；
+停止核对二次确认与取消；显式Abandoned后新的发布/删除可用。
+每组首次6次合成写、重开2次，8条本机操作；最终Confirmed5、Rejected2、Abandoned1。
+丢回包那条在合成服务仍存在且只写一次，Abandoned没有被冒称撤回或失败。
+原合成账号的两条基线评论保留；没有删除他人或原评论。
+audit_comment_edit_probe.py逐项核对原始EAPI字段、成功后两次读取、SQLite账号日志/阶段、
+回包丢失后的写请求计数及所有截图，不只依赖DOM成功文案。
+日志.build/comment-edit-ui-audit1.log、comment-edit-ui-audit2.log。
+
+最终错误提示修正
+丢回包时原通用Transport错误会显示“稍后重试”，与已存在的未决责任冲突。
+useCommentWrites现先读持久操作；若同ID已进入Sending/Verifying/Uncertain，优先展示
+相应核对提示，不再引导重复发评。拒绝/尚未发送错误保持可操作说明；账号过期不继续读。
+此分支有前端回归断言，并包含在e/f最终窗口与正式桌面产物中。
+
+全量与构建
+全workspace/all-targets/custom-protocol共161条suite、746次通过，0失败/忽略；
+其中722主测试（core710、desktop3、音频插件9）及既有示例24项。
+.build/comment-edit-workspace-tests2.log；锁作用域整理后的29项定向再验证为
+comment-edit-domain-final.log，不重复加入746。
+严格Clippy comment-edit-clippy3.log、Rust格式comment-edit-format-final.log通过。
+前端122项comment-edit-front-tests2.log、类型检查/构建comment-edit-front-build2.log通过。
+最终正式二进制及窗口探针comment-edit-build5.log通过；.build/target/debug/cumulus包含本批UI。
+本批来源与功能映射见comment-write-mapping.json；散列清单见.build/comment-edit-progress.json。
+
+保留的失败记录
+a的合成HTTP数值解析假设错误导致panic，180秒驱动结束；生产协议未改。
+b错误等待成功状态区域中的480文案，实际拒绝在role=alert；调整探针后c通过首轮。
+c重开探针错误等待未决时被刻意禁用的输入控件；改为接受已恢复未决状态。
+d首次最小窗口通过；后续纠正未知写入错误提示后以e/f最终两组替代，不混作最终UI截图。
+Clippy前两轮发现布尔表达式冗余及测试MutexGuard显式drop的作用域告警；已按语义等价方式修正。
+失败日志与目录保留，没有跳过测试或把未通过阶段记为通过；没有审批拒绝。
+
+复现（仓库根目录）
+npm --prefix frontend run build
+CARGO_INCREMENTAL=0 cargo build -p cumulus-desktop --example comment_edit_ui_probe \
+  --features custom-protocol --locked --offline
+xvfb-run -a -s '-screen 0 1280x900x24' dbus-run-session -- env GDK_BACKEND=x11 \
+  WEBKIT_DISABLE_COMPOSITING_MODE=1 LIBGL_ALWAYS_SOFTWARE=1 python3 desktop/examples/run_auth_probe.py \
+  NEW_PROOF_ROOT --binary .build/target/debug/examples/comment_edit_ui_probe \
+  --stage-prefix edit_ --screenshots 11 --reopen-screenshots 6 --timeout 120
+同目录再执行并加--reopen；最小窗口两次均加--small；既有first/reopen证据不覆盖。
+python3 desktop/examples/audit_comment_edit_probe.py COMPLETED_PROOF_ROOT
+楼层真实只读另用comment_floor_roundtrip，参数PC_PROFILE NEW_PRIVATE_ROOT TRACK_ID COMMENT_ID；
+必须显式传入已获授权的独立PC会话，不自动寻找references会话。
+Python仅用于离线独立审计与截图驱动，不是Rust核心业务的运行依赖。

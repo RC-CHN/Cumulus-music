@@ -1,0 +1,152 @@
+{
+  "date": "2026-10-27",
+  "goal_status": "active",
+  "full_goal_complete": false,
+  "sources": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/546.js",
+      "sha256": "b8a73b99f63f0601b6cdc09d1e0b908271f603f901694a5e2e72da7416ea979a"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_44.chunk.1482700000000.js/2131.js",
+      "sha256": "9fd3700d0e1a87ac84c2f25b6df636851e19ed12a54e90ee485be8689c8dee77"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_44.chunk.1482700000000.js/2167.js",
+      "sha256": "f1849efea1a5758a7b731168bdcca679c0b53ca7b5ae39028d7ed7fbefb9d181"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/444.js",
+      "sha256": "0ff446c6161a47812cb6eadb21921ff0619c27dfb37f575ea17cad6b66e87b5a"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/playlist/components/CoverEdit.jsx",
+      "sha256": "275c5508bf2f1344fe09b1fab2ec6951276b8a2e1c5feeb6bb1ac8b7a0cb6343"
+    },
+    {
+      "path": "references/recovered-client/docs/product/27-playlist-functional-validation.txt",
+      "sha256": "b980762c2b5456359d6f8c64adeb6cefa4616b1dbe1f42e5c4beaab064e2e58b"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/components/AvatarCliper/index.tsx",
+      "sha256": "26c10a9e020ef7ce14e36350e294d6efae964d1b90559a4caa8c3c22fe687eb2"
+    }
+  ],
+  "rows": [
+    {
+      "feature": "selection_validation",
+      "official": [
+        "M546 checkFile",
+        "CoverEdit.jsx"
+      ],
+      "rust": [
+        "core/src/playlist/cover/image.rs",
+        "core/src/playlist/cover/manager.rs"
+      ],
+      "status": "native_local_and_live",
+      "evidence": [
+        "core/tests/playlist_cover.rs",
+        ".build/private-playlist-cover-20261027-a/independent-audit.json"
+      ],
+      "notes": "JPEG/PNG/BMP/GIF, 5MiB, dimensions>=320; native 16MP decode bound; desktop native picker verified separately"
+    },
+    {
+      "feature": "crop_and_preview",
+      "official": [
+        "M2131",
+        "M2167"
+      ],
+      "rust": [
+        "core/src/playlist/cover/image.rs"
+      ],
+      "status": "native_local_and_live",
+      "evidence": [
+        "core/tests/fixtures/playlist-cover-official.json",
+        ".build/private-playlist-cover-20261027-a/independent-audit.json"
+      ],
+      "notes": "200px viewport is not output size; crop original oriented pixels; native quality92; GIF first frame"
+    },
+    {
+      "feature": "allocation_transfer_renewal",
+      "official": [
+        "M2167 IMAGE/yyimgs",
+        "archived report27",
+        "existing recovered NOS flow"
+      ],
+      "rust": [
+        "core/src/cloud/allocation.rs",
+        "core/src/cloud/nos/manager.rs",
+        "core/src/playlist/cover/run.rs"
+      ],
+      "status": "native_local_and_live",
+      "evidence": [
+        "core/tests/playlist_cover.rs",
+        ".build/private-playlist-cover-20261027-a/report.json"
+      ],
+      "notes": "Explicit yyimgs; same-account parent/child; unknown first/final chunk cannot be safely confirmed; no blind retry"
+    },
+    {
+      "feature": "binding_and_recovery",
+      "official": [
+        "M444 b / requestUpdateCover"
+      ],
+      "rust": [
+        "core/src/playlist/service.rs",
+        "core/src/playlist/cover/run.rs",
+        "core/src/cloud/nos/manager.rs"
+      ],
+      "status": "native_local_and_live",
+      "evidence": [
+        "core/tests/playlist_cover.rs",
+        ".build/private-playlist-cover-20261027-a/binding.json"
+      ],
+      "notes": "Durable stable child ID; once-only send; coverImgId_str readback; explicit rebase; account isolation"
+    },
+    {
+      "feature": "abandon_and_local_cleanup",
+      "official": [
+        "archived report27: no recovered remote image deletion"
+      ],
+      "rust": [
+        "core/src/playlist/cover/manager.rs",
+        "core/src/playlist/cover/run.rs"
+      ],
+      "status": "native_local_and_live",
+      "evidence": [
+        "core/tests/playlist_cover.rs",
+        ".build/private-playlist-cover-20261027-a/evidence/cleanup.json"
+      ],
+      "notes": "Restore original77 playlist IDs/order; retain possible unreferenced NOS object; do not claim remote image deletion"
+    },
+    {
+      "feature": "desktop_picker_crop_and_recovery",
+      "official": [
+        "CoverEdit.jsx",
+        "M2167 AvatarCliper"
+      ],
+      "rust": [
+        "core/src/client/playlist_cover.rs",
+        "desktop/src/playlist_cover.rs"
+      ],
+      "status": "desktop_live_and_state_tests",
+      "evidence": [
+        "core/tests/playlist_cover.rs",
+        "desktop/tests/ipc.rs",
+        "frontend/tests/playlist-cover-state.test.ts",
+        ".build/ui-proof/playlist-cover-20261027-b/independent-audit.json",
+        ".build/ui-proof/playlist-cover-20261027-c-small/independent-audit.json"
+      ],
+      "notes": "Normal and small real WebView/GTK picker, crop/upload/bind, metadata drafts retained, real process draft reopen. Pause/ambiguous transfer/conflict branches use state/fault tests, not exhaustive live GUI faults.",
+      "frontend": [
+        "frontend/src/components/PlaylistCoverDialog.vue",
+        "frontend/src/components/PlaylistDialog.vue",
+        "frontend/src/composables/usePlaylistCover.ts",
+        "frontend/src/composables/usePlaylists.ts",
+        "frontend/src/services/coverGeometry.ts"
+      ]
+    }
+  ],
+  "third_party_business_reference": null,
+  "contract": "docs/core-playlist-cover-contracts.txt",
+  "desktop_contract": "docs/desktop-playlist-cover-contracts.txt"
+}

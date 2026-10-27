@@ -1,0 +1,230 @@
+{
+  "scope": "Desktop native IM connection, reconnect, message heartbeat and awaited cleanup increment",
+  "goal_complete": false,
+  "official_first": true,
+  "yesplaymusic_used": false,
+  "evidence_levels": {
+    "S": "Recovered official source or SDK header",
+    "L": "New local Rust/frontend tests",
+    "R": "Current account real desktop and SDK proof; scope limited per feature"
+  },
+  "sources": [
+    {
+      "path": "references/netease-3.1.42.205594-x64-unpacked/redist_packages/cloudmusic.dll",
+      "sha256": "557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493"
+    },
+    {
+      "path": "references/yunxin-sdk-research/sdk-source.json",
+      "sha256": "a19cb1f1829ebfa18dd832e0c553961683495921aa863fa12ef8b0b7e974ce50"
+    },
+    {
+      "path": "references/yunxin-sdk-research/native/appkey-evidence.json",
+      "sha256": "43b9cbf18d72d106f1479a8546fe46f3db085cf76e30a559490d925425b7991e"
+    },
+    {
+      "path": "references/yunxin-sdk-research/native/appkey-getter.asm",
+      "sha256": "28b942a4dbdedee5052fb6f5b1a235a6354346808aba3384edf0835accf624ef"
+    },
+    {
+      "path": "references/yunxin-sdk-research/native/config-0033d450.asm",
+      "sha256": "e1832320c7fe64e6704b404cdafa1266e64f5f8737c005b21763472f5525566d"
+    },
+    {
+      "path": "references/yunxin-sdk-research/native/config-constructor.asm",
+      "sha256": "6daf644674e072129b98e9d6aee4e226b463c8d0dacdcd73faacda197e39f0c8"
+    },
+    {
+      "path": "references/yunxin-sdk-research/linux-x64-10.9.75/include/nim_client.h",
+      "sha256": "d4f2613fcd91866318be405e793da9f3bf9555461269d8f466778cfb4ecfae69"
+    },
+    {
+      "path": "references/yunxin-sdk-research/linux-x64-10.9.75/include/nim_client_def.h",
+      "sha256": "fc93fc05f1b2dcaf06641d0d9515c2de926ddb6fdfe650e4c655da10308ea7b5"
+    },
+    {
+      "path": "references/yunxin-sdk-research/linux-x64-10.9.75/include/nim_chatroom.h",
+      "sha256": "810d48db6e75744b1b36472d1819aed73bcb835cac39601a6de87726fcfcc1b2"
+    },
+    {
+      "path": "references/yunxin-sdk-research/linux-x64-10.9.75/include/nim_chatroom_def.h",
+      "sha256": "fbece7c0ae5f7311e69041844322ab2ee9d5a3923890c63bf8e1430e04f07b0a"
+    },
+    {
+      "path": "references/yunxin-sdk-research/linux-x64-10.9.75/include/nim_plugin_in.h",
+      "sha256": "39af0eaebdfad4f75edf7ab4a29dedb2f00c5c72b6085cdcd8d06d10d3eeae58"
+    },
+    {
+      "path": "references/yunxin-sdk-research/linux-x64-10.9.75/include/nim_plugin_in_def.h",
+      "sha256": "818675a41c1c25bb51d9820787835966aeb274db03eb1d0c0ba1662c3a7c3360"
+    },
+    {
+      "path": "references/yunxin-sdk-research/linux-x64-10.9.75/include/nim_global_def.h",
+      "sha256": "79f6d85e4db2e1c4b6345add7e87426edb9b2c2f06b373512e65c3efc37729bd"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/75.js",
+      "sha256": "8f0aa4cc3422daea1cb74c317c84fc27d992dd413623d3c7504f357085005476"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_197.chunk.1482700000000.js/3161.js",
+      "sha256": "9c84a8946cffccb4e2e739d220b9da86d829c2340efefd0cb91bd21d0f24a3a5"
+    },
+    {
+      "path": "references/recovered-client/docs/product/06-listen-together.txt",
+      "sha256": "2fd07a1ab6e73c89a730681973d2ba54a0ea427c4e0d1b71d4742a089652f520"
+    }
+  ],
+  "features": [
+    {
+      "id": "native_configuration",
+      "official": "Official cloudmusic.dll production application getter; SDK init encryption/cache parameters",
+      "implementation": [
+        "core/src/listen_together/transport/native.rs",
+        "core/src/listen_together/transport/native/production.rs",
+        "desktop/src/lib.rs"
+      ],
+      "evidence": [
+        "S",
+        "L",
+        "R"
+      ],
+      "boundary": "Native-only application identifier, OS-random per-account database key and cache. Explicit SDK installation needed. No frontend token/key/path exposure."
+    },
+    {
+      "id": "connection_supervision",
+      "official": "SDK login/enter/link/exit callbacks; recovered M/75 room lifecycle",
+      "implementation": [
+        "core/src/listen_together/transport/mod.rs",
+        "core/src/listen_together/transport/worker.rs",
+        "core/tests/im_transport.rs"
+      ],
+      "evidence": [
+        "S",
+        "L",
+        "R"
+      ],
+      "boundary": "Real initial connect and explicit reconnect proved. Automatic disconnect/retry, SDK self-reconnect, stale accounts, cancellation and cleanup failure tested with controlled local devices, not live fault injection."
+    },
+    {
+      "id": "host_reconnect_without_republish",
+      "official": "M/75 message transport lifecycle; account-generation and journal isolation are community engineering",
+      "implementation": [
+        "core/src/client/together/connection.rs",
+        "core/src/client/together/mod.rs",
+        "core/src/client/together/runtime.rs",
+        "core/tests/client_together.rs"
+      ],
+      "evidence": [
+        "S",
+        "L",
+        "R"
+      ],
+      "boundary": "Real b/c reconnect each made four reads and zero business writes, retained paused playback. Awaited cleanup preserves binding on failure in local regression."
+    },
+    {
+      "id": "message_heartbeat",
+      "official": "M/75 onChatRoomMsg -> heartbeatReCount",
+      "implementation": [
+        "core/src/client/together/runtime.rs",
+        "core/src/listen_together/service/timer.rs",
+        "core/tests/together_service.rs"
+      ],
+      "evidence": [
+        "S",
+        "L",
+        "R"
+      ],
+      "boundary": "Actual room entry notification received. Only same room/account resets idle heartbeat. No business packet/player application claimed."
+    },
+    {
+      "id": "desktop_connection_ui",
+      "official": "Recovered official room/message lifecycle, reconstructed current page layout",
+      "implementation": [
+        "frontend/src/components/TogetherPage.vue",
+        "frontend/src/services/together.ts",
+        "frontend/src/composables/useTogether.ts",
+        "frontend/src/styles/together.css",
+        "frontend/tests/together-state.test.ts"
+      ],
+      "evidence": [
+        "S",
+        "L",
+        "R"
+      ],
+      "boundary": "Connected status and explicit reconnect shown in normal and minimum windows. realtimeReady stays false; no pixel parity claim."
+    },
+    {
+      "id": "exit_and_window_recovery",
+      "official": "Recovered exit/pause/queue restoration sequence plus local uncertain-write journal",
+      "implementation": [
+        "core/src/client/together/mod.rs",
+        "desktop/examples/together_ui_probe.rs",
+        "desktop/examples/together_ui_probe.js",
+        "desktop/examples/support/together.rs"
+      ],
+      "evidence": [
+        "S",
+        "L",
+        "R"
+      ],
+      "boundary": "c-close loses successful end response, keeps real window, reconciles read-only and closes on second action. Exactly one end; all journals confirmed; SDK cleanup awaited. SDK cleanup timeout itself only locally injected."
+    },
+    {
+      "id": "business_messages_rtc_and_peer_playback",
+      "official": "M/75 20000/20001/20002/privilege events; M/3161 playback application; NERTC",
+      "implementation": [],
+      "evidence": [
+        "S"
+      ],
+      "boundary": "Pending business packet decoding/application, shared rights and RTC. Live dual-account verification excluded by user; implementation work remains in scope."
+    }
+  ],
+  "proofs": [
+    ".build/ui-proof/together-im-20261026-a",
+    ".build/ui-proof/together-im-20261026-b",
+    ".build/ui-proof/together-im-20261026-c-close"
+  ],
+  "proof_limits": {
+    "a": "Completed flow, but IM stage recorder allowlist omitted three new stages. Eight old-stage screenshots do not prove visual connection state. Fixed recorder and reran b/c-close.",
+    "b": "1120x760 viewport, 107 requests, 15 writes, 11 screenshots. Native SDK initial connection and explicit reconnect, entry notification only.",
+    "c-close": "760x540 viewport, 50 requests, 5 writes, 7 screenshots. Reconnect and actual window close recovery.",
+    "screenshots": "All PNGs are full 1280x900 Xvfb root captures; stage JSON independently records viewport and layout overflow.",
+    "audio": "Actual libmpv decoding with null audio output; no speaker listening claim.",
+    "final_style_change": "Only equivalent collapsible-if rewrite after live proofs; strict Clippy and six host regressions rerun; final desktop rebuilt."
+  },
+  "checks": [
+    ".build/im-ui-workspace-tests.log",
+    ".build/im-ui-client-final.log",
+    ".build/im-ui-clippy-final.log",
+    ".build/im-ui-format-final.log",
+    ".build/im-ui-desktop-build-final.log",
+    ".build/im-ui-front-tests.log",
+    ".build/im-ui-front-build.log",
+    ".build/im-ui-front-format.log",
+    ".build/im-ui-independent.json"
+  ],
+  "rust": {
+    "passed": 489,
+    "core": 486,
+    "desktop": 3,
+    "failed": 0,
+    "ignored": 0,
+    "suites": 107,
+    "nonempty": 67
+  },
+  "frontend": {
+    "passed": 61,
+    "new_run": true
+  },
+  "ipc": 57,
+  "platforms": {
+    "linux_x64": "Real desktop/native SDK connection and reconnect; normal/minimum viewport",
+    "windows": "Not built/run",
+    "macos": "Not built/run"
+  },
+  "audit": ".build/desktop-im-audit.json",
+  "business_source_followup": {
+    "mapping": "docs/listen-together-business-message-mapping.json",
+    "correction": "Official im.onChatRoomMsg consumes nim_talk msg_attach; chatroom entry notification is not business evidence. New receive callbacks/decoding/room isolation implemented; actual peer player application remains pending."
+  }
+}

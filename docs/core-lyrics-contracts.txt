@@ -1,0 +1,75 @@
+歌词解析与展示契约（Rust）
+2026-10-25
+
+来源与模块
+官方 hybrid_app M/370 的 a/b/c/d 四个导出；复核归档 cumulus_core/lyrics.py，
+以直接执行官方函数生成的 fixtures/lyrics.json 为准。另迁移 M/21.s/m 响应转换和
+hybrid_200 M/3081 的请求/缓存/偏移/选择流程。未参考 YesPlayMusic。
+core/src/lyrics/ 分 types、credits、lrc、yrc、presentation、format；不依赖网络或 UI。
+CatalogApi::lyric 负责 /api/song/lyric/v1，id、cp=false、tv/lv/rv/kv/yv/ytyv/ytlv/ytrv=-1。
+CatalogApi 返回原始响应；先 normalize_song_response 把 offset 毫秒转为秒，按
+sgc/sfy/qfy 映射权限、转换贡献者ID，并移除没有文本的 LRC/YRC/翻译/罗马音节。
+parse_lyrics 接受该规范化对象或同格式本地对象，不能直接把接口毫秒当秒传入。
+LyricsService 封装了这条链路；service/ 下按缓存、请求、输入/快照与协调分工。
+
+请求与恢复
+LyricsService 固定账号代次，账号更换后需重新创建。请求/文件读取期间不持有状态锁。
+按桌面歌词/详情页/mini/桌宠/force 判断是否需要拉取，同一首已成功展示的歌词不重复请求。
+普通歌曲调用 /api/song/lyric/v1，发送 id、lv/tv/rv/yv；版本取缓存真值，0按官方回退-1。
+云盘调用 /api/cloud/lyric/get，发送 songId、userId、lv、kv=-1，响应字符串 lrc 转规范格式。
+缓存与本次响应浅合并，重新计算 noLyric；网络失败且旧缓存有效可继续展示，并标记 networkFailed。
+缓存按账号与 song/cloud/local 来源分开，schema=1 明确已规范化，避免二次除1000。
+显式导入旧官方缓存时：只有YRC而无yromalrc/ytlrc的旧缓存拒收；旧offset>500除1000一次。
+同资源跨实例文件锁防止拉取/改偏移并发覆盖；改变选择、clear、账号代次变化会拒绝迟到结果。
+Future 中止会释放操作锁并结束 loading，可显式重新请求。持久化失败不会发布成功快照。
+同实例切歌时先清空旧显示，track-MV/没有需求时取消旧请求；这是避免串歌的工程化处理。
+translationEnable/romaEnable 默认true，按账号保存；偏移按 0.5*gain 秒调整原文并保存。
+修改前核对持久缓存仍与当前原文一致，避免其他实例修改后静默覆盖。
+
+本地文件
+LocalLyrics 是本地来源接口；当前 SidecarLyrics 在阻塞工作线程读取相邻 .lrc，支持
+UTF-8 BOM及带BOM的UTF-16，4MiB上限。不需要网络或修改原音频；源文本改变后不复用旧偏移。
+远端和缓存均无歌词时可读取显式提供的 downloaded_audio 邻近 .lrc。
+内嵌标签歌词需后续本地库适配器接入；不把 sidecar 能力说成原生 orpheus 全部实现。
+
+行为
+LRC 存在且为 JS 真值时优先，空对象也占用 LRC 来源；不能擅自用 YRC 覆盖。
+未提供 lrc/yrc 时直接返回 none/default。version 缺失与显式 null 保持区别。
+多时间标签复制行，只有所有正文行均带时间才排序并标记 scrollable；稳定排序保留重复行。
+翻译/罗马音按原始时间戳双指针精确对齐，缺行补空；不做模糊时间匹配。
+贡献者头尾插入原文，已有翻译/罗马音插入同时间空行；LRC 尾部保持顺序，YRC 尾部反序。
+offset 单位秒，只从原文时间中减去，翻译时间不变。这是官方语义，不是统一修改三列。
+YRC 保留去除贡献者后的逐字原文及翻译/罗马音；降级行按开始毫秒转换为秒。
+英文首尾字母片段追加空格；纯 YRC 的 scrollable=false，此处为官方解析事实。
+后续桌面展示另外解析绝对词时钟，具体动画、偏移边界与证据见desktop-player-contracts.txt。
+纯音乐、上传/翻译权限、贡献者、云盘标记按官方条件保留；当前通路不会强造 ask 状态。
+
+导出与本地辅助
+render_lrc 接受时间可选的行；0 是有效时间。format_timestamp 按 JS 数字字符串截取
+最多3位小数，不四舍五入、不强行补3位；保留官方对负数/科学计数的文本行为。
+protect_timestamp_only_lines 对仅含合法 LRC/YRC 时间标签的原始行追加 U+200B，
+保留 CRLF/CR/LF 及空白，重复调用幂等。用于避免无字时间行被解析时丢弃。
+active_line 是社区辅助函数：接受未排序行、重复时间选后出现的行，第一行前返回 None；
+NaN/Infinity 位置或行时间不参与选择，不将0当空值。
+
+明确的输入边界
+正常有限时钟与官方结果一致；Rust 不把非有限时间送入播放器。
+非法/非有限 LRC 时间标签和溢出的 YRC 时间行被丢弃；非法 JSON 响应、文本类型、
+非数值 offset/贡献者时间、贡献者结构返回明确错误，不复刻 JS 的 NaN 或 TypeError 崩溃。
+无时间贡献者在有 offset 时仍保持无时间，官方可能算出 NaN；这是明确的异常数据差异。
+裸的 [0,0] 若出现在贡献者提取位置会先被识别为 JSON 数组；官方抛错，Rust 返回错误。
+输入数字/文本不做 JS 任意隐式强制转换，正常接口类型按字符串/数值处理。
+
+验证
+直接执行官方 M/370：34组成功解析、1组异常、10组空时间行、12组时间格式、2组导出；
+另直接执行 M/21.s/m 的8组普通/云盘规范化。
+4项解析测试另覆盖有限时钟边界、幂等保护、未排序/重复/零时间定位。
+6项服务测试覆盖版本合并、重开、偏移/偏好、网络失败缓存、本地UTF16、下载歌词回退、
+旧请求/账号、跨实例锁、Future中止、写盘失败、301、云盘和旧缓存修正。
+fixtures 只含合成歌词；普通 cargo test 不运行 Node 或读取 references。
+core/examples/lyrics_read.rs 已用显式已有PC会话执行7项真实读取，证据
+.build/rust-lyrics-service-report.json：5首普通歌曲，缓存重开版本请求，1首云盘歌曲。
+五首包含原文、翻译、罗马音及YRC；云盘请求成功但该条目没有歌词文本，不记为云盘非空样本。
+报告只输出计数；原文缓存仅位于调用者的私有SQLite。
+解析模块不负责桌面窗口或歌词上传；后续播放详情与逐词展示由client/player和frontend接入，
+其独立验证见desktop-player-contracts.txt，不能算作上述解析测试的附带成果。

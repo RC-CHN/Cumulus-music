@@ -1,0 +1,5463 @@
+{
+  "schema": 1,
+  "scope": "Source evidence index only; see rust-core-migration.txt for status. Test/probe symbols are not business completion counts.",
+  "files": [
+    {
+      "source": "references/recovered-client/cumulus_core/__init__.py",
+      "sha256": "ef28bfd0cafa7cb3269b0979ebf1d0d55f5fcf7b7669079814c2e8703afe295f",
+      "symbols": []
+    },
+    {
+      "source": "references/recovered-client/cumulus_core/__main__.py",
+      "sha256": "0c2fa863327ab3bd2035842ec8c64971da24dc0ec043193dfb4198c1c3691824",
+      "symbols": [
+        {
+          "symbol": "run_directory_command",
+          "line": 40,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "run_file_command",
+          "line": 56,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "main",
+          "line": 80,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "run_login",
+          "line": 430,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "run_credential_login",
+          "line": 469,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "run_player",
+          "line": 524,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/cumulus_core/api.py",
+      "sha256": "571c2100750fd5324fcd35437ed20242d8715d74f0dd75d97cf9edcfff24efd9",
+      "symbols": [
+        {
+          "symbol": "ServiceError",
+          "line": 16,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "ServiceError.__init__",
+          "line": 17,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "ResponseError",
+          "line": 22,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "BatchError",
+          "line": 26,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "BatchError.__init__",
+          "line": 27,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "EapiTransport",
+          "line": 32,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "EapiTransport.__init__",
+          "line": 33,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "EapiTransport.__call__",
+          "line": 41,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "EapiTransport._save_refresh_token",
+          "line": 64,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "EapiTransport.login_credentials",
+          "line": 75,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "EapiTransport.set_login_ticket",
+          "line": 93,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "EapiTransport.clear_credentials",
+          "line": 105,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicTransport",
+          "line": 112,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "MusicTransport.__init__",
+          "line": 125,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicTransport.__call__",
+          "line": 128,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "identifier",
+          "line": 140,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "packed_ids",
+          "line": 149,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "official_text_length",
+          "line": 153,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "playlist_name",
+          "line": 158,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi",
+          "line": 167,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "MusicApi.__init__",
+          "line": 168,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.call",
+          "line": 171,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.account",
+          "line": 179,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.membership",
+          "line": 186,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.pages",
+          "line": 193,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.playlists",
+          "line": 218,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.playlist",
+          "line": 222,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.songs",
+          "line": 228,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.playlist_tracks",
+          "line": 244,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.create_playlist",
+          "line": 254,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.rename_playlist",
+          "line": 263,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.describe_playlist",
+          "line": 267,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.update_playlist_metadata",
+          "line": 270,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.change_tracks",
+          "line": 295,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.delete_playlist",
+          "line": 303,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.liked_ids",
+          "line": 306,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.set_like",
+          "line": 312,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.collected_albums",
+          "line": 323,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.collected_artists",
+          "line": 326,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.collect_album",
+          "line": 329,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.collect_artist",
+          "line": 334,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.account_settings",
+          "line": 342,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.validate_settings",
+          "line": 349,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.update_account_settings",
+          "line": 365,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.search",
+          "line": 369,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.daily",
+          "line": 375,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.album",
+          "line": 378,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.artist",
+          "line": 381,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.lyric",
+          "line": 390,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.play_url",
+          "line": 394,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.download_url",
+          "line": 407,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.cloud",
+          "line": 411,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.cloud_check",
+          "line": 414,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.cloud_allocate",
+          "line": 428,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.nos_refresh",
+          "line": 450,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.nos_allocate_attachment",
+          "line": 467,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.cloud_metadata",
+          "line": 498,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.delete_cloud",
+          "line": 530,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.publish_cloud",
+          "line": 533,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.cloud_status",
+          "line": 543,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MusicApi.cloud_download",
+          "line": 546,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/cumulus_core/auth.py",
+      "sha256": "731598e044489fb4408269720af74ceb17792607ae2b19bb8ad680e9eced1e3b",
+      "symbols": [
+        {
+          "symbol": "phone_number",
+          "line": 17,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "outcome",
+          "line": 24,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CredentialLogin",
+          "line": 33,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "CredentialLogin.__init__",
+          "line": 34,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CredentialLogin.begin",
+          "line": 41,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CredentialLogin.snapshot",
+          "line": 60,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CredentialLogin.cancel",
+          "line": 66,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CredentialLogin._check",
+          "line": 71,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CredentialLogin._operation",
+          "line": 75,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CredentialLogin._send",
+          "line": 94,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CredentialLogin._verify_identity",
+          "line": 123,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CredentialLogin._submit",
+          "line": 133,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CredentialLogin.send_sms",
+          "line": 137,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CredentialLogin.phone",
+          "line": 147,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CredentialLogin.email",
+          "line": 160,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CredentialLogin.submit_captcha",
+          "line": 168,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CredentialLogin.verification_methods",
+          "line": 177,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CredentialLogin.verification",
+          "line": 189,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CredentialLogin.reconcile",
+          "line": 235,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "logout",
+          "line": 241,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "refresh_login",
+          "line": 253,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/cumulus_core/cloud.py",
+      "sha256": "e785373bcc624194627343af271134cc44defcddcc2c21253552889b4c27ee23",
+      "symbols": [
+        {
+          "symbol": "CloudUploadManager",
+          "line": 18,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "CloudUploadManager.__init__",
+          "line": 19,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CloudUploadManager._guard",
+          "line": 32,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CloudUploadManager._call",
+          "line": 37,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CloudUploadManager._save",
+          "line": 45,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CloudUploadManager.get",
+          "line": 48,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CloudUploadManager.create",
+          "line": 54,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CloudUploadManager._renew_nos",
+          "line": 73,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CloudUploadManager.renew_token",
+          "line": 76,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CloudUploadManager.replace_oss_credentials",
+          "line": 94,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CloudUploadManager.reconcile_transfer",
+          "line": 103,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CloudUploadManager.cancel",
+          "line": 115,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CloudUploadManager._write",
+          "line": 151,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CloudUploadManager._attachments",
+          "line": 165,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CloudUploadManager.run",
+          "line": 215,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CloudUploadManager.reconcile_publication",
+          "line": 341,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/cumulus_core/cloud_attachments.py",
+      "sha256": "7a179ba47e834e0f50e8ab8e154289273db0f98c41c99e7d0e38b92727bd00f1",
+      "symbols": [
+        {
+          "symbol": "attachment_inputs",
+          "line": 17,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "verify_attachment",
+          "line": 51,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/cumulus_core/completed_downloads.py",
+      "sha256": "0ef2a23950b69fe694e5f78b7c6339c88382b7baa281731304cab2daa287b167",
+      "symbols": [
+        {
+          "symbol": "FileConflict",
+          "line": 27,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "_identity",
+          "line": 31,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "_facts",
+          "line": 35,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "_matches",
+          "line": 52,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "_path",
+          "line": 57,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "_key",
+          "line": 62,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CompletedDownloads",
+          "line": 68,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "CompletedDownloads.__init__",
+          "line": 69,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CompletedDownloads._token",
+          "line": 80,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CompletedDownloads._guard",
+          "line": 83,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CompletedDownloads._session_lock",
+          "line": 87,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CompletedDownloads._locked",
+          "line": 91,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CompletedDownloads._save",
+          "line": 104,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CompletedDownloads.get",
+          "line": 108,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CompletedDownloads.list",
+          "line": 115,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CompletedDownloads._parent",
+          "line": 119,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CompletedDownloads._current",
+          "line": 124,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CompletedDownloads.start",
+          "line": 137,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CompletedDownloads._copy",
+          "line": 200,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CompletedDownloads._prepare_destination",
+          "line": 246,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CompletedDownloads._update_local",
+          "line": 302,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CompletedDownloads._commit",
+          "line": 353,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CompletedDownloads._unlink",
+          "line": 388,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CompletedDownloads.resume",
+          "line": 408,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CompletedDownloads._cleanup_extra",
+          "line": 445,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CompletedDownloads._clear_stage",
+          "line": 448,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CompletedDownloads.cancel",
+          "line": 460,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "public_operation",
+          "line": 491,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/cumulus_core/download.py",
+      "sha256": "d95c863fcee5c8ca61dc6e9b95641ef6bd8582df5fc086aaf02c0c79289b172f",
+      "symbols": [
+        {
+          "symbol": "DownloadError",
+          "line": 22,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "media_url",
+          "line": 26,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadManager",
+          "line": 39,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "DownloadManager.__init__",
+          "line": 40,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadManager.create",
+          "line": 45,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadManager.get",
+          "line": 73,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadManager._save",
+          "line": 79,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadManager._locked",
+          "line": 83,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadManager.refresh_url",
+          "line": 96,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadManager.refresh_resource",
+          "line": 102,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadManager.restart",
+          "line": 129,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadManager.cancel",
+          "line": 143,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadManager._finish",
+          "line": 152,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadManager.run",
+          "line": 183,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/cumulus_core/download_directory.py",
+      "sha256": "4d6c77e161e08e6e44c235e060ea9f922c78345adcb6049e4460957a4386382c",
+      "symbols": [
+        {
+          "symbol": "_locks",
+          "line": 27,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "_mapped",
+          "line": 36,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "_Relocations",
+          "line": 46,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "_Relocations._locked",
+          "line": 49,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "_Relocations.start_work",
+          "line": 53,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "_Relocations._commit",
+          "line": 116,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "_Relocations._cleanup_extra",
+          "line": 142,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "_Relocations.cancel",
+          "line": 158,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadDirectory",
+          "line": 170,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "DownloadDirectory.__init__",
+          "line": 171,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadDirectory._guard",
+          "line": 177,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadDirectory._lock",
+          "line": 180,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadDirectory.settings",
+          "line": 183,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadDirectory._root",
+          "line": 186,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadDirectory.configure",
+          "line": 194,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadDirectory.get",
+          "line": 208,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadDirectory.list",
+          "line": 214,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadDirectory._save",
+          "line": 217,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadDirectory.start",
+          "line": 221,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadDirectory._roots",
+          "line": 247,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadDirectory._plan",
+          "line": 253,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadDirectory._children",
+          "line": 307,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadDirectory._forward",
+          "line": 313,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadDirectory._finish",
+          "line": 327,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadDirectory.resume",
+          "line": 352,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadDirectory._rollback",
+          "line": 372,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadDirectory.cancel",
+          "line": 391,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "public_migration",
+          "line": 408,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/cumulus_core/download_directory_state.py",
+      "sha256": "d55ad2aa967fbda7ade19440a406d9e5c61322e182db5603f739824945c738b9",
+      "symbols": [
+        {
+          "symbol": "DirectoryBusy",
+          "line": 5,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "active_migration",
+          "line": 9,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "require_directory_available",
+          "line": 13,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "directory_settings",
+          "line": 19,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/cumulus_core/download_paths.py",
+      "sha256": "a4b7f43df533a15d99583381a4241ab06120e253cf2207af0219296b9a4ae622",
+      "symbols": [
+        {
+          "symbol": "units",
+          "line": 6,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "prefix",
+          "line": 10,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "clean",
+          "line": 14,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "artists",
+          "line": 21,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "track_path",
+          "line": 26,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/cumulus_core/download_service.py",
+      "sha256": "663aa7fdc2e938cdf081178766cd703e00344df45370368f63cec6e0f5a76be3",
+      "symbols": [
+        {
+          "symbol": "DownloadAuthorizationError",
+          "line": 32,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "DownloadAuthorizationError.__init__",
+          "line": 33,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "digest",
+          "line": 38,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "sync_directory",
+          "line": 48,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadService",
+          "line": 54,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "DownloadService.__init__",
+          "line": 55,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadService._guard",
+          "line": 62,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadService.get",
+          "line": 66,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadService.list",
+          "line": 72,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadService._save",
+          "line": 75,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadService._locked",
+          "line": 80,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadService.create",
+          "line": 88,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadService.create_named",
+          "line": 119,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadService.create_default",
+          "line": 126,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadService._detail",
+          "line": 134,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadService._authorize",
+          "line": 149,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadService._control",
+          "line": 205,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadService._checkpoint",
+          "line": 208,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadService._cancel",
+          "line": 220,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadService._cleanup",
+          "line": 227,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadService.request",
+          "line": 234,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadService.enqueue",
+          "line": 252,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadService._cover",
+          "line": 262,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadService._prepare",
+          "line": 287,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadService._lyrics",
+          "line": 312,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadService._publish",
+          "line": 348,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadService.run",
+          "line": 368,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadScheduler",
+          "line": 427,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "DownloadScheduler.__init__",
+          "line": 433,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadScheduler.stop",
+          "line": 439,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DownloadScheduler.run_pending",
+          "line": 442,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/cumulus_core/identity.py",
+      "sha256": "bfedc8d398bf043adeccda7ee8dffefdd9f5a9119f26fd1674663e1670efb83a",
+      "symbols": [
+        {
+          "symbol": "IdentityUnavailable",
+          "line": 14,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "read_fact",
+          "line": 18,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "collect_linux_identity",
+          "line": 30,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "linux_device_profile",
+          "line": 72,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/cumulus_core/library.py",
+      "sha256": "f3a383b5d324dd1bebfec7ca4ae4df46813653aed9a825d4b3b86f6920439adf",
+      "symbols": [
+        {
+          "symbol": "ScanCancelled",
+          "line": 19,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "file_id",
+          "line": 23,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "file_fingerprint",
+          "line": 27,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "cue_track_id",
+          "line": 32,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "inspect_audio",
+          "line": 36,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "parse_cue",
+          "line": 64,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "LocalLibrary",
+          "line": 133,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "LocalLibrary.__init__",
+          "line": 134,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "LocalLibrary.scan",
+          "line": 137,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "LocalLibrary.import_cue",
+          "line": 210,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "LocalLibrary._cue_items",
+          "line": 249,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "LocalLibrary.item",
+          "line": 256,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "LocalLibrary.list",
+          "line": 264,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "LocalLibrary.remove",
+          "line": 273,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "LocalLibrary.map_online",
+          "line": 282,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "LocalLibrary.online_id",
+          "line": 288,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "LocalLibrary._check_current",
+          "line": 299,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "LocalLibrary.resource",
+          "line": 307,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "LocalLibrary.resolve",
+          "line": 312,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "LocalLibrary.playable_path",
+          "line": 324,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/cumulus_core/library_monitor.py",
+      "sha256": "6a80cd0e257acdd5e38b720b35a1273ac214f26ce3d293419f36fca42aa2c904",
+      "symbols": [
+        {
+          "symbol": "LibraryMonitor",
+          "line": 17,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "LibraryMonitor.__init__",
+          "line": 18,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "LibraryMonitor.roots",
+          "line": 25,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "LibraryMonitor.watch",
+          "line": 28,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "LibraryMonitor.unwatch",
+          "line": 39,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "LibraryMonitor._missing_root",
+          "line": 49,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "LibraryMonitor.run_once",
+          "line": 59,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "LibraryMonitor.start",
+          "line": 102,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "LibraryMonitor.stop",
+          "line": 114,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/cumulus_core/login_refresh.py",
+      "sha256": "41723982801e7db43ad3ad17fb8e5fddcf00cef4a88f9f3eddb8b4da4c944d9e",
+      "symbols": [
+        {
+          "symbol": "encoded_model",
+          "line": 16,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "refresh_signature",
+          "line": 24,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "refresh_payload",
+          "line": 33,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "JSKRefresh",
+          "line": 46,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "JSKRefresh.__init__",
+          "line": 47,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "JSKRefresh.refresh",
+          "line": 50,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/cumulus_core/lyrics.py",
+      "sha256": "bcfc44677f1c20f345b9c87ba70c57f4a9e3a7fc214e1dcff935f86c32581708",
+      "symbols": [
+        {
+          "symbol": "_credits",
+          "line": 13,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "_timestamp",
+          "line": 41,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "parse_lrc",
+          "line": 52,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "parse_yrc",
+          "line": 74,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "_align",
+          "line": 93,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "parse_lyrics",
+          "line": 106,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "active_line",
+          "line": 184,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/cumulus_core/member_center.py",
+      "sha256": "21cc02218fa5c114379baabfb4bfb656b6ffbee72283519ad7f0bfe3aa99d354",
+      "symbols": [
+        {
+          "symbol": "MemberCenter",
+          "line": 12,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "MemberCenter.__init__",
+          "line": 13,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MemberCenter._guard",
+          "line": 16,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MemberCenter.snapshot",
+          "line": 20,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MemberCenter.refresh",
+          "line": 24,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MemberCenter.history",
+          "line": 95,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/cumulus_core/membership.py",
+      "sha256": "0917bf43ae2e70a727ddb61aa2ae997a612755a99fa3d4c9c42c5c4f1fa02114",
+      "symbols": [
+        {
+          "symbol": "quality",
+          "line": 21,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "membership_state",
+          "line": 27,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "offline_access",
+          "line": 45,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MembershipManager",
+          "line": 65,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "MembershipManager.__init__",
+          "line": 66,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MembershipManager._guard",
+          "line": 71,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MembershipManager.refresh",
+          "line": 75,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MembershipManager.snapshot",
+          "line": 90,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MembershipManager.refresh_if_due",
+          "line": 109,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/cumulus_core/offline.py",
+      "sha256": "844f99ded1e69759de3dab4ccce2ec6492d6d61d57e6a791f1551df56e70d12d",
+      "symbols": [
+        {
+          "symbol": "write_ncm",
+          "line": 20,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "OfflineLibrary",
+          "line": 61,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "OfflineLibrary.__init__",
+          "line": 62,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "OfflineLibrary.record",
+          "line": 66,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "OfflineLibrary.register",
+          "line": 70,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "OfflineLibrary.check",
+          "line": 85,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/cumulus_core/oss_upload.py",
+      "sha256": "86ffe8db161b9eeaedcb1a213639656b8ecf75009d7fbc07ffd0fa0f362c08de",
+      "symbols": [
+        {
+          "symbol": "OssHttpError",
+          "line": 30,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "OssHttpError.__init__",
+          "line": 31,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "_crc64_table",
+          "line": 37,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "crc64",
+          "line": 49,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "_check_crc",
+          "line": 57,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "_text",
+          "line": 69,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "oss_origin",
+          "line": 77,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "allocation_fields",
+          "line": 94,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "sign_v1",
+          "line": 115,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "_xml",
+          "line": 135,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "_field",
+          "line": 147,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "_scope",
+          "line": 154,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "_etag",
+          "line": 161,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "OssTransport",
+          "line": 169,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "OssTransport.__init__",
+          "line": 170,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "OssTransport._request",
+          "line": 174,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "OssTransport._open",
+          "line": 193,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "OssTransport._send",
+          "line": 223,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "OssTransport.initiate",
+          "line": 234,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "OssTransport.part",
+          "line": 242,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "OssTransport.put",
+          "line": 247,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "OssTransport.parts",
+          "line": 255,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "OssTransport.complete",
+          "line": 288,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "OssTransport.verify_completed",
+          "line": 307,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "OssTransport.abort",
+          "line": 330,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "OssUploadManager",
+          "line": 334,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "OssUploadManager.__init__",
+          "line": 335,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "OssUploadManager._locked",
+          "line": 346,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "OssUploadManager._save",
+          "line": 349,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "OssUploadManager.get",
+          "line": 352,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "OssUploadManager.create",
+          "line": 358,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "OssUploadManager._call",
+          "line": 380,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "OssUploadManager.replace_credentials",
+          "line": 388,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "OssUploadManager._reconcile_parts",
+          "line": 399,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "OssUploadManager._reconcile_complete",
+          "line": 417,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "OssUploadManager.reconcile",
+          "line": 423,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "OssUploadManager._transfer_parts",
+          "line": 430,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "OssUploadManager.run",
+          "line": 484,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "OssUploadManager.cancel",
+          "line": 560,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/cumulus_core/player.py",
+      "sha256": "1c7429a08a8a527bb3d77513797cffffe3a7cef32359ebc86675831191e603b6",
+      "symbols": [
+        {
+          "symbol": "PlaybackError",
+          "line": 21,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "_Event",
+          "line": 25,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "_End",
+          "line": 30,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "MpvEngine",
+          "line": 34,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "MpvEngine.__init__",
+          "line": 35,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MpvEngine.__enter__",
+          "line": 75,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MpvEngine.__exit__",
+          "line": 78,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MpvEngine.close",
+          "line": 81,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MpvEngine.command",
+          "line": 87,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MpvEngine.property",
+          "line": 97,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MpvEngine.number",
+          "line": 109,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MpvEngine._event",
+          "line": 116,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MpvEngine.events",
+          "line": 126,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MpvEngine.load",
+          "line": 138,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MpvEngine.pause",
+          "line": 175,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MpvEngine.seek",
+          "line": 178,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MpvEngine.volume",
+          "line": 183,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MpvEngine.speed",
+          "line": 188,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MpvEngine.stop",
+          "line": 193,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PlaybackController",
+          "line": 198,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "PlaybackController.__init__",
+          "line": 199,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PlaybackController.play_selected",
+          "line": 210,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PlaybackController._save_position",
+          "line": 283,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PlaybackController.sync_queue",
+          "line": 293,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PlaybackController._position",
+          "line": 308,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PlaybackController.pause",
+          "line": 314,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PlaybackController.seek",
+          "line": 323,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PlaybackController.next",
+          "line": 333,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PlaybackController.refresh_url",
+          "line": 341,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PlaybackController.set_quality",
+          "line": 351,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PlaybackController.restore",
+          "line": 370,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PlaybackController.tick",
+          "line": 381,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PlaybackController.stop",
+          "line": 419,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PlaybackController.close",
+          "line": 431,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/cumulus_core/prefetch.py",
+      "sha256": "6d78f739395f666bce34bd7da1e36c508ec4259d0ad4136f9a2558aebc8ae5c0",
+      "symbols": [
+        {
+          "symbol": "QueuePrefetcher",
+          "line": 10,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "QueuePrefetcher.__init__",
+          "line": 11,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "QueuePrefetcher.schedule",
+          "line": 22,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "QueuePrefetcher._work",
+          "line": 46,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "QueuePrefetcher.snapshot",
+          "line": 72,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "QueuePrefetcher.wait",
+          "line": 76,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "QueuePrefetcher.cancel",
+          "line": 81,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "QueuePrefetcher.close",
+          "line": 87,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/cumulus_core/profiles.py",
+      "sha256": "74af4876efcf76454d7361b0c995a3b9ea0fcd645291d9700f916a470c50046d",
+      "symbols": [
+        {
+          "symbol": "normalize_windows_osver",
+          "line": 9,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "windows_compatibility_profile",
+          "line": 14,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/cumulus_core/queue.py",
+      "sha256": "43b04c870cb19e083ce4d12d5132e84b599a1f551bf86a71ce42ff3aa0b44f86",
+      "symbols": [
+        {
+          "symbol": "QueueChanged",
+          "line": 11,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "PlaybackQueue",
+          "line": 15,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "PlaybackQueue.__init__",
+          "line": 18,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PlaybackQueue._load",
+          "line": 25,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PlaybackQueue._validate",
+          "line": 34,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PlaybackQueue.snapshot",
+          "line": 43,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PlaybackQueue._save",
+          "line": 47,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PlaybackQueue.reload",
+          "line": 64,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PlaybackQueue.selected",
+          "line": 74,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PlaybackQueue.replace",
+          "line": 77,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PlaybackQueue.append",
+          "line": 89,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PlaybackQueue.select",
+          "line": 102,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PlaybackQueue.set_mode",
+          "line": 109,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PlaybackQueue.update_resource",
+          "line": 119,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PlaybackQueue.reorder",
+          "line": 126,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PlaybackQueue.remove",
+          "line": 136,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PlaybackQueue.advance",
+          "line": 149,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PlaybackQueue.peek",
+          "line": 153,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/cumulus_core/request_context.py",
+      "sha256": "e3f550019a6e0b81ad48196d45cc0e911ba4f0ecbddf410f3b529a155a9a921c",
+      "symbols": [
+        {
+          "symbol": "business_for_path",
+          "line": 10,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "RequestContext",
+          "line": 28,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "RequestContext.__init__",
+          "line": 29,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "RequestContext.__call__",
+          "line": 32,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/cumulus_core/resources.py",
+      "sha256": "a430a9d5fd9a8e3e3a98078fc86b3d775893015db0192854af9bb73afff1c032",
+      "symbols": [
+        {
+          "symbol": "MutationBusy",
+          "line": 17,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "MutationUncertain",
+          "line": 21,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "AccountResources",
+          "line": 25,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "AccountResources.__init__",
+          "line": 29,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "AccountResources._token",
+          "line": 32,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "AccountResources._run",
+          "line": 39,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "AccountResources._save",
+          "line": 46,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "AccountResources._read",
+          "line": 52,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "AccountResources._value",
+          "line": 64,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "AccountResources._key",
+          "line": 73,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "AccountResources._lock",
+          "line": 77,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "AccountResources._refresh",
+          "line": 93,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "AccountResources.refresh",
+          "line": 98,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "AccountResources.operations",
+          "line": 101,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "AccountResources.set_membership",
+          "line": 107,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "AccountResources.set_setting",
+          "line": 112,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "AccountResources._change",
+          "line": 116,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "AccountResources.reconcile",
+          "line": 158,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "AccountResources._reconcile",
+          "line": 173,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/cumulus_core/session.py",
+      "sha256": "8ab1aa2507c2e6f208ec6072b682464a7b066bcd5777fd9d3f0c2374028f6238",
+      "symbols": [
+        {
+          "symbol": "StaleResponse",
+          "line": 13,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "SessionToken",
+          "line": 18,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "AccountSession",
+          "line": 23,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "AccountSession.__init__",
+          "line": 24,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "AccountSession.token",
+          "line": 30,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "AccountSession._require",
+          "line": 34,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "AccountSession.attach",
+          "line": 38,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "AccountSession.adopt",
+          "line": 44,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "AccountSession.refresh",
+          "line": 54,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "AccountSession.run",
+          "line": 77,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "AccountSession.save_result",
+          "line": 96,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "AccountSession.detach",
+          "line": 103,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "QrLogin",
+          "line": 111,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "QrLogin.__init__",
+          "line": 112,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "QrLogin.begin",
+          "line": 120,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "QrLogin.cancel",
+          "line": 145,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "QrLogin.poll",
+          "line": 150,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/cumulus_core/session_files.py",
+      "sha256": "bc8b998696256a0654b8c2f657dc82d8fa5e13910fe21fd8b53c01e92649d6bd",
+      "symbols": [
+        {
+          "symbol": "SessionDirectory",
+          "line": 17,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "SessionDirectory.__init__",
+          "line": 18,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "SessionDirectory._candidate_path",
+          "line": 26,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "SessionDirectory.current",
+          "line": 35,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "SessionDirectory.candidate",
+          "line": 48,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "SessionDirectory.activate",
+          "line": 56,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/cumulus_core/source.py",
+      "sha256": "efd3d40afc48aa76f1553c2a94bf6bf7b47acc5f3062b4153c7de57e5b76e37a",
+      "symbols": [
+        {
+          "symbol": "UnavailableSource",
+          "line": 21,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "UnavailableSource.__init__",
+          "line": 22,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "SourceResolver",
+          "line": 27,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "SourceResolver.__init__",
+          "line": 28,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "SourceResolver._key",
+          "line": 35,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "SourceResolver.invalidate",
+          "line": 41,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "SourceResolver.__call__",
+          "line": 50,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "SourceResolver.prefetch_context",
+          "line": 53,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "SourceResolver.cached_until",
+          "line": 59,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "SourceResolver.resolve",
+          "line": 64,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "SourceResolver._fetch",
+          "line": 119,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "SourceResolver.prefetch",
+          "line": 157,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/cumulus_core/storage.py",
+      "sha256": "631211bd8e74754b5c5d8c8723bfee45e712c437de4ef3e7ce599d1f65fca7ab",
+      "symbols": [
+        {
+          "symbol": "StateStore",
+          "line": 10,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "StateStore.__init__",
+          "line": 11,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "StateStore.close",
+          "line": 27,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "StateStore.get",
+          "line": 31,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "StateStore.put",
+          "line": 37,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "StateStore.delete",
+          "line": 43,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "StateStore.values",
+          "line": 48,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "StateStore.clear_owner",
+          "line": 54,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "StateStore.transaction",
+          "line": 59,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "_Transaction",
+          "line": 75,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "_Transaction.__init__",
+          "line": 76,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "_Transaction.get",
+          "line": 79,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "_Transaction.rows",
+          "line": 84,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "_Transaction.put",
+          "line": 88,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "_Transaction.delete",
+          "line": 93,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/cumulus_core/tags.py",
+      "sha256": "d9618f764392b6a306cfd66133695cebc18a8656bd4165335e1b3b4e38c74b7a",
+      "symbols": [
+        {
+          "symbol": "requires_encryption",
+          "line": 26,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "track_plan",
+          "line": 32,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "encode_comment",
+          "line": 57,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "cover_info",
+          "line": 61,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "write_tags",
+          "line": 72,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/cumulus_core/timeline.py",
+      "sha256": "9f6bfaaaae4d07825af0b86455b46ceb9c733fda57a08f8a3e1e1396452a993c",
+      "symbols": [
+        {
+          "symbol": "TimelineError",
+          "line": 11,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "finite_number",
+          "line": 15,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "Timeline",
+          "line": 22,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "Timeline.from_source",
+          "line": 30,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "Timeline.display_end",
+          "line": 66,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "Timeline.media_end",
+          "line": 70,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "Timeline.to_media",
+          "line": 73,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "Timeline.from_media",
+          "line": 79,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "Timeline.snapshot",
+          "line": 85,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/cumulus_core/upload.py",
+      "sha256": "ec25c7ce9e401db3edb7a28dca2724069ad4f87e36429d104cb567d0ef3b1477",
+      "symbols": [
+        {
+          "symbol": "UploadError",
+          "line": 24,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "UploadAmbiguous",
+          "line": 28,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "NosHttpError",
+          "line": 32,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "NosHttpError.__init__",
+          "line": 33,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "nos_node",
+          "line": 38,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NosTransport",
+          "line": 48,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "NosTransport.__init__",
+          "line": 50,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NosTransport._json",
+          "line": 53,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NosTransport.discover",
+          "line": 74,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NosTransport.__call__",
+          "line": 96,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "fingerprint",
+          "line": 118,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "upload_lock",
+          "line": 129,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NosUploadManager",
+          "line": 141,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "NosUploadManager.__init__",
+          "line": 142,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NosUploadManager.create",
+          "line": 151,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NosUploadManager.get",
+          "line": 177,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NosUploadManager._save",
+          "line": 183,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NosUploadManager._locked",
+          "line": 187,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NosUploadManager._valid_token",
+          "line": 192,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NosUploadManager.replace_token",
+          "line": 197,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NosUploadManager._renew",
+          "line": 205,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NosUploadManager.renew_token",
+          "line": 226,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NosUploadManager._request",
+          "line": 235,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NosUploadManager.cancel",
+          "line": 265,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NosUploadManager._offset",
+          "line": 274,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NosUploadManager.run",
+          "line": 280,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/__init__.py",
+      "sha256": "0922700c1a8928972c98c301d0fc411b804aee8ca8fef4234bd15f163e6adfd2",
+      "symbols": []
+    },
+    {
+      "source": "references/recovered-client/scripts/analyze_netease_native.py",
+      "sha256": "0487275c68715e334a53de831d4d8199509d9ac865e82ccbe7f32176e5538012",
+      "symbols": [
+        {
+          "symbol": "save",
+          "line": 18,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "decode",
+          "line": 22,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "recover_pe",
+          "line": 25,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "main",
+          "line": 100,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/extract_netease_rotate.py",
+      "sha256": "6dbea2961e92c85eff9de4f56699db7b99517581875e680d1bf449241e571950",
+      "symbols": [
+        {
+          "symbol": "extract",
+          "line": 16,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/extract_netease_stereo.py",
+      "sha256": "2c2297b496070ada1b98cf2b3a6977e7796e90b134f123a80f53b13a03bfa125",
+      "symbols": [
+        {
+          "symbol": "split_bank",
+          "line": 11,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "describe",
+          "line": 22,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "extract",
+          "line": 48,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "main",
+          "line": 62,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/fetch_netease_watchman.py",
+      "sha256": "4e2aee399ac579e35cdf035a427c354977210ee9e2f1c46cc09a1edc630342b5",
+      "symbols": [
+        {
+          "symbol": "NoRedirect",
+          "line": 19,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "NoRedirect.redirect_request",
+          "line": 20,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "fetch",
+          "line": 24,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "main",
+          "line": 41,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/inspect_netease_frontend.py",
+      "sha256": "b847481a44a089a1d6402b40cc15e08e28f87f8a0b8470e1548eec5c0716eed9",
+      "symbols": [
+        {
+          "symbol": "write_json",
+          "line": 18,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "main",
+          "line": 22,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_account_probe.py",
+      "sha256": "afa8b0a45028c0e494393f531ddb9e754b348ba44090b89d81ec32d56034903b",
+      "symbols": [
+        {
+          "symbol": "private_json",
+          "line": 45,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "eapi_encrypt",
+          "line": 53,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "weapi_encrypt",
+          "line": 62,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NoRedirect",
+          "line": 77,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "NoRedirect.redirect_request",
+          "line": 78,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "Client",
+          "line": 81,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "Client.__init__",
+          "line": 82,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "Client.save",
+          "line": 97,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "Client.request",
+          "line": 103,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "Client.create_qr",
+          "line": 186,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "Client.request_weapi",
+          "line": 201,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "Client.request_xeapi",
+          "line": 224,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "Client.poll",
+          "line": 260,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "Client.snapshot",
+          "line": 278,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "Client.playlist",
+          "line": 319,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "main",
+          "line": 354,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_audio_effect_audit.py",
+      "sha256": "e5c26c827a85d62d1bf0c069bcbc8ff1419a8756ae26dbbf3a56bba71d9f1056",
+      "symbols": [
+        {
+          "symbol": "main",
+          "line": 17,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "download_materials",
+          "line": 58,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_cloud_download_audit.py",
+      "sha256": "0d102fbbff07eeabafbfced175c8b684b00150b79cdc5ccf4d2bb6b4dbd6ded7",
+      "symbols": [
+        {
+          "symbol": "main",
+          "line": 14,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_collections_functional_audit.py",
+      "sha256": "50cf2684fe0b4bc7eb4e954f1d05d2c81db80c63248a285043b4a955621d013d",
+      "symbols": [
+        {
+          "symbol": "CollectionsAudit",
+          "line": 18,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "CollectionsAudit.__init__",
+          "line": 19,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CollectionsAudit.call",
+          "line": 25,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CollectionsAudit.settle",
+          "line": 40,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CollectionsAudit.roundtrip",
+          "line": 50,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CollectionsAudit.playlists",
+          "line": 92,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CollectionsAudit.podcast_ids",
+          "line": 113,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CollectionsAudit.podcasts",
+          "line": 118,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CollectionsAudit.voices",
+          "line": 138,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CollectionsAudit.resume_setting",
+          "line": 173,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "main",
+          "line": 209,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_comments_functional_audit.py",
+      "sha256": "ab1e50e5912ab3c757d39909e8ae45152bfd52baf387de6b89761e979232123e",
+      "symbols": [
+        {
+          "symbol": "main",
+          "line": 17,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "resource_reads",
+          "line": 109,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_content_functional_audit.py",
+      "sha256": "8b8bf92c6feb979e37553974e6f8b9adba77199d29a545c95207d7f84c8a9fee",
+      "symbols": [
+        {
+          "symbol": "main",
+          "line": 8,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_core_audit.py",
+      "sha256": "976e64bafdad34e0e83f49bb9f7546f3a89c7ca40d5d241e837dbc34ca833f65",
+      "symbols": [
+        {
+          "symbol": "CoreAudit",
+          "line": 27,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "CoreAudit.__init__",
+          "line": 28,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CoreAudit.check",
+          "line": 36,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CoreAudit.playlist",
+          "line": 62,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CoreAudit._cleanup_playlist",
+          "line": 138,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CoreAudit.download",
+          "line": 147,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CoreAudit.playback",
+          "line": 191,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CoreAudit.cloud_upload",
+          "line": 257,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "main",
+          "line": 376,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_cue_audit.py",
+      "sha256": "12c8aa4a9132ff27597cd28b035b5c8fb15dda2c5d1449e4f2df2c1cabd36aa8",
+      "symbols": [
+        {
+          "symbol": "CueAudit",
+          "line": 16,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "CueAudit.__init__",
+          "line": 17,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CueAudit.check",
+          "line": 22,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CueAudit.wait_until",
+          "line": 40,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "CueAudit.run",
+          "line": 49,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_device_identity.py",
+      "sha256": "ac34729ef6cce00c75894910ffc9c4fab4d32dcf8096cf753a90ede446c51e87",
+      "symbols": [
+        {
+          "symbol": "derive_persistent_id",
+          "line": 23,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "client_sign",
+          "line": 33,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "storage_transform",
+          "line": 50,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "encode_record",
+          "line": 78,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "decode_record",
+          "line": 83,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "parse_container",
+          "line": 92,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "inspect_container",
+          "line": 124,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_directory_audit.py",
+      "sha256": "b752cb47e3688ec16e137818f349cb8b93f2c9bc918149598ebf9f3108bdeb9b",
+      "symbols": [
+        {
+          "symbol": "main",
+          "line": 19,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_download_pipeline_audit.py",
+      "sha256": "b46c581314563ce5571e1d4f8cdd055d468942fe5e6cecf290ade057af4bf543",
+      "symbols": [
+        {
+          "symbol": "pcm",
+          "line": 22,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "main",
+          "line": 28,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_extended_audit.py",
+      "sha256": "ed55dc11475a570018090f525aa3c7bc566ed0aa38df33af5cddd9e005a2a78b",
+      "symbols": [
+        {
+          "symbol": "run",
+          "line": 10,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_file_management_audit.py",
+      "sha256": "9522acac8099ce1264afa2e7fbb8d412a4bb769fe8be141f16143e723296d70d",
+      "symbols": [
+        {
+          "symbol": "FixtureApi",
+          "line": 31,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "FixtureApi.__init__",
+          "line": 32,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "FixtureApi.account",
+          "line": 33,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "FixtureApi.download_url",
+          "line": 34,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "FixtureApi.songs",
+          "line": 38,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "FixtureOrigin",
+          "line": 43,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "FixtureOrigin.__init__",
+          "line": 44,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "FixtureOrigin.open",
+          "line": 45,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "main",
+          "line": 54,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_live_audit.py",
+      "sha256": "dc8d86f75e1da3eadab173be3f66b79f7836b89548759e23fed2824de55154d4",
+      "symbols": [
+        {
+          "symbol": "structure",
+          "line": 37,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "Audit",
+          "line": 43,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "Audit.__init__",
+          "line": 44,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "Audit.persist",
+          "line": 49,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "Audit.check",
+          "line": 52,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "Audit.content",
+          "line": 72,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "Audit.sample_audio",
+          "line": 117,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "Audit.together",
+          "line": 134,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "main",
+          "line": 163,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_login_audit.py",
+      "sha256": "73c7c43fb471484461d82b108c4fe1589ab116c1aa14e93e4f6a4a4a8acaccf4",
+      "symbols": [
+        {
+          "symbol": "main",
+          "line": 15,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_member_playback_audit.py",
+      "sha256": "0c904169834dff371b1524f1799b65b4589902f011e9e7cfd3333fac82ce036d",
+      "symbols": [
+        {
+          "symbol": "main",
+          "line": 16,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_member_services_audit.py",
+      "sha256": "12e06305d7bd653e4cbb137d47f625c238ba12362f5bf3e27ab06fe933ac6205",
+      "symbols": [
+        {
+          "symbol": "main",
+          "line": 12,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_membership_audit.py",
+      "sha256": "2f1bd9913031325e3e91d6f0203cb9ac5665b5ac2715c2e786cc7cf6d13b1110",
+      "symbols": [
+        {
+          "symbol": "main",
+          "line": 28,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_membership_probe.py",
+      "sha256": "66568d8555e8ae0b5d71210967fc287980225b05aaf91c9ec5ade324767515df",
+      "symbols": [
+        {
+          "symbol": "main",
+          "line": 12,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_mv_functional_audit.py",
+      "sha256": "02312ef3df98f3bc243f53f321534c980b75e15a5b575a430d36061066c7543a",
+      "symbols": [
+        {
+          "symbol": "main",
+          "line": 19,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_ncae.py",
+      "sha256": "6f54a55a0d8dc8926fb967d69ef1b0571d3a8fcb5285e09f38ff205b7024db1c",
+      "symbols": [
+        {
+          "symbol": "NcaeError",
+          "line": 20,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "key_box",
+          "line": 24,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "crypt",
+          "line": 36,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "Ncae",
+          "line": 46,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "Ncae.summary",
+          "line": 53,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "decode",
+          "line": 61,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "read",
+          "line": 98,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "main",
+          "line": 106,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_ncm.py",
+      "sha256": "765b79510256fcb3f268727ffe1cedf76cddd53202d8f9cb9e2d1affbb6944b4",
+      "symbols": [
+        {
+          "symbol": "NcmError",
+          "line": 33,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "key_stream",
+          "line": 37,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NcmReader",
+          "line": 62,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "NcmReader.__init__",
+          "line": 63,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NcmReader.__enter__",
+          "line": 74,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NcmReader.__exit__",
+          "line": 77,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NcmReader.close",
+          "line": 80,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NcmReader._exact",
+          "line": 83,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NcmReader._uint",
+          "line": 91,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NcmReader._sized",
+          "line": 94,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NcmReader._decrypt",
+          "line": 101,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NcmReader._header",
+          "line": 109,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NcmReader.seek",
+          "line": 174,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NcmReader.tell",
+          "line": 185,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NcmReader.read",
+          "line": 188,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NcmReader.summary",
+          "line": 197,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "extract",
+          "line": 204,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_oss_signature_oracle.py",
+      "sha256": "040a118db13213e1859964cdab9c027b7f944bf01ee76453930ad15d939346e8",
+      "symbols": [
+        {
+          "symbol": "original_classes",
+          "line": 27,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "Headers",
+          "line": 39,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "Headers.__init__",
+          "line": 40,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "main",
+          "line": 44,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_peq_material.py",
+      "sha256": "4d4668b289cff0009a97e30b746a410c2074cd1e7565ffca767257f100774ffc",
+      "symbols": [
+        {
+          "symbol": "integer",
+          "line": 13,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "number",
+          "line": 17,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "f32",
+          "line": 21,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "peq_calls",
+          "line": 25,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "sections",
+          "line": 54,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "read_material",
+          "line": 64,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_playback_probe.py",
+      "sha256": "6c6df4993eecf18b759798b6b83c4d9073a9c6cef72e42ce817395826f75aa3f",
+      "symbols": [
+        {
+          "symbol": "run",
+          "line": 16,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_playlist_functional_audit.py",
+      "sha256": "f4f59f89e7e73a888818182f5776aba65e8859cade02aacd9b15f80b10880703",
+      "symbols": [
+        {
+          "symbol": "main",
+          "line": 23,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_protocol.py",
+      "sha256": "4e1510a459af18087b122c29196999398132c8c271dce9bcdecbb5354ed22bcc",
+      "symbols": [
+        {
+          "symbol": "compact_json",
+          "line": 26,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "aes_ecb",
+          "line": 29,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "serial_key",
+          "line": 41,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "js_string",
+          "line": 45,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "encode_component",
+          "line": 53,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "official_form",
+          "line": 56,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "official_data",
+          "line": 64,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "cache_envelope",
+          "line": 75,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "eapi_unwrap",
+          "line": 81,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "serial_data2",
+          "line": 90,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "eapi_response_decrypt",
+          "line": 96,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "aegis_mix",
+          "line": 104,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "aegis_unmix",
+          "line": 112,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "aegis_business",
+          "line": 120,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "aegis_business_decrypt",
+          "line": 124,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "aegis_seal_dynamic",
+          "line": 127,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "aegis_envelope",
+          "line": 138,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "aegis_key_signature",
+          "line": 144,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "aegis_verify_key_response",
+          "line": 149,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "aegis_decode_key_response",
+          "line": 153,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_protocol_probe.py",
+      "sha256": "e573f2c9cef9d5910a5a5d2ad8bb12e360a39ea4423372f7939e340c3ceb40c7",
+      "symbols": [
+        {
+          "symbol": "run",
+          "line": 9,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_relay_functional_audit.py",
+      "sha256": "1850026a999e05ed5120c070635662c8060c6a8836c901310ee5de8cb04a1448",
+      "symbols": [
+        {
+          "symbol": "calls",
+          "line": 17,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "dispatched",
+          "line": 21,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "cases",
+          "line": 25,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "offline",
+          "line": 200,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "live",
+          "line": 218,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_resource_audit.py",
+      "sha256": "c6816b776de31868d81e4a9f85d0eb5922354b32e35a88fd607c3d74c223d1fe",
+      "symbols": [
+        {
+          "symbol": "WeapiExperiment",
+          "line": 23,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "WeapiExperiment.__call__",
+          "line": 25,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "ids",
+          "line": 33,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "membership",
+          "line": 37,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "settings",
+          "line": 78,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "main",
+          "line": 108,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_rotate_audio.py",
+      "sha256": "b9a551f584f663516db14248d2a1840aa48dec420eb1d00f1882421cd7241f81",
+      "symbols": [
+        {
+          "symbol": "render",
+          "line": 22,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_settings_functional_audit.py",
+      "sha256": "d768da0de8b7f54c628ad81bfbe609a53584aff288028772a18eb60da63eae05",
+      "symbols": [
+        {
+          "symbol": "change_and_reconcile",
+          "line": 14,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "main",
+          "line": 23,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_spatial_material.py",
+      "sha256": "c71460241e47b007fbce3ed642262c7744887b444bd230d83e1387d7281e2c6c",
+      "symbols": [
+        {
+          "symbol": "rotate_calls",
+          "line": 9,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "stereo_calls",
+          "line": 20,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "spatial_sections",
+          "line": 33,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_trial_public_probe.py",
+      "sha256": "5915a5cce955736e198e775711ab7a39f3f1a053d21d1c93179e1ad1bee36599",
+      "symbols": [
+        {
+          "symbol": "main",
+          "line": 14,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_voice_functional_audit.py",
+      "sha256": "a6875b015943f459b074cb535abba799c462b46651b8db08a3dc25c1e0267cc1",
+      "symbols": [
+        {
+          "symbol": "main",
+          "line": 15,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_watchman.py",
+      "sha256": "cca0e10b8b1b8320bea1380ed6418f023e3dd26e7ef4ca9f3ee451a5583e3b77",
+      "symbols": [
+        {
+          "symbol": "text_encode",
+          "line": 18,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "text_decode",
+          "line": 23,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "request_nonce",
+          "line": 28,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PacketCodec",
+          "line": 41,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "PacketCodec.__init__",
+          "line": 42,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PacketCodec.from_file",
+          "line": 57,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PacketCodec.key",
+          "line": 60,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PacketCodec.transform",
+          "line": 66,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PacketCodec.encode",
+          "line": 78,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PacketCodec.decode",
+          "line": 94,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_watchman_browser.py",
+      "sha256": "bf39c227445cf3827254cbd7879e0e5d8edbe9d2c8087f328dfbac3b52d93e5b",
+      "symbols": [
+        {
+          "symbol": "WatchmanBrowser",
+          "line": 26,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "WatchmanBrowser.__init__",
+          "line": 27,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "WatchmanBrowser.__enter__",
+          "line": 33,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "WatchmanBrowser.token",
+          "line": 114,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "WatchmanBrowser.__exit__",
+          "line": 126,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "main",
+          "line": 142,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_xeapi_public_probe.py",
+      "sha256": "7df7f2df68d9d2ad53c46960473dc9fb92802ec6de155a173385cbfff278fad5",
+      "symbols": [
+        {
+          "symbol": "main",
+          "line": 13,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/recover_netease_data.py",
+      "sha256": "460e1468f0624563d8ed43bf27c009944d899c246b1602fad97ff3fa454310a7",
+      "symbols": [
+        {
+          "symbol": "save",
+          "line": 18,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "extension",
+          "line": 22,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "unpack_pak",
+          "line": 39,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "main",
+          "line": 74,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/recover_netease_protocol_constants.py",
+      "sha256": "dcd287136123ed830a7ce57e7fd8866eb69255489d7444bed4a8831d1537631f",
+      "symbols": [
+        {
+          "symbol": "recover",
+          "line": 12,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/recover_netease_schemas.py",
+      "sha256": "ee16e5fc467be9c84f557a1302862b5e267443df78777051c150c1ba6d324ac5",
+      "symbols": [
+        {
+          "symbol": "recover",
+          "line": 25,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "validate",
+          "line": 66,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "main",
+          "line": 94,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/render_netease_product.py",
+      "sha256": "940b0371dcc71724938b41cd673ab9fe3f238a4c49726d2f87fa74672013d3ea",
+      "symbols": [
+        {
+          "symbol": "readable",
+          "line": 14,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "main",
+          "line": 17,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/render_netease_validation.py",
+      "sha256": "c3d6892245dc1972aa424925299aa5f3c82057a0a1eb2a322100b0f054d1fb25",
+      "symbols": [
+        {
+          "symbol": "table",
+          "line": 10,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "main",
+          "line": 15,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/test_netease_device_identity.py",
+      "sha256": "af59822d6bb7db7ed36e107c1e503f8c998dd2e1e16498cebe6fdbe7d1be3d7d",
+      "symbols": [
+        {
+          "symbol": "DeviceIdentityTests",
+          "line": 17,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "DeviceIdentityTests.setUpClass",
+          "line": 19,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DeviceIdentityTests.test_id_derivation_and_separator_semantics",
+          "line": 58,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DeviceIdentityTests.test_storage_matches_independent_node",
+          "line": 66,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DeviceIdentityTests.test_independent_container",
+          "line": 74,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DeviceIdentityTests.test_malformed_container",
+          "line": 80,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DeviceIdentityTests.test_digest_and_noninvertible_tail",
+          "line": 94,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DeviceIdentityTests.test_inspector_does_not_print_identity",
+          "line": 105,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/test_netease_dsp.py",
+      "sha256": "181d17150138c1186c983dc127970b5d2fba485f6d4490877ed561da15e5ca07",
+      "symbols": [
+        {
+          "symbol": "packed",
+          "line": 26,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "floats",
+          "line": 30,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "aligned",
+          "line": 34,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DspTests",
+          "line": 42,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "DspTests.setUpClass",
+          "line": 47,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DspTests.oracle",
+          "line": 81,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DspTests.coefficients",
+          "line": 88,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DspTests.portable_process",
+          "line": 93,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DspTests.native_process",
+          "line": 98,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DspTests.test_coefficient_equations_and_exact_matrix",
+          "line": 101,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DspTests.test_exact_pcm_for_alignment_and_remainders",
+          "line": 122,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DspTests.test_streaming_reconfiguration_and_reset",
+          "line": 134,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DspTests.geq",
+          "line": 155,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DspTests.test_geq_multichannel_and_multiple_blocks",
+          "line": 176,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DspTests.test_geq_measured_frequency_response",
+          "line": 194,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DspTests.test_native_geq_layout_and_default_filters",
+          "line": 215,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "DspTests.test_invalid_inputs_leave_valid_state_unchanged",
+          "line": 229,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/test_netease_dsp_transitions.py",
+      "sha256": "f2656e86f48a58c68b6b3d518324e23c85c2e6e733ab0abe4894319acd10f5d9",
+      "symbols": [
+        {
+          "symbol": "TransitionTests",
+          "line": 15,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "TransitionTests.setUpClass",
+          "line": 20,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "TransitionTests.test_parameter_equalizer_coefficients",
+          "line": 33,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "TransitionTests.test_crossfade_ramp_and_constant_mix",
+          "line": 49,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "TransitionTests.run_stream",
+          "line": 64,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "TransitionTests.test_outer_wrappers_changing_parameters_and_bypass",
+          "line": 93,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "TransitionTests.test_bass_treble_defaults_clamp_and_unused_shelf_q",
+          "line": 111,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "TransitionTests.test_bass_treble_measured_frequency_response",
+          "line": 128,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "TransitionTests.test_subnormal_input_and_reset_after_reenable",
+          "line": 158,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "TransitionTests.test_invalid_inputs_and_missing_scratch_do_not_advance",
+          "line": 167,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/test_netease_multiband.py",
+      "sha256": "1231ce402d6ea297ba2b456b2d6eaf8690d43f3764a83c5909107130299431bd",
+      "symbols": [
+        {
+          "symbol": "MultibandTests",
+          "line": 18,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "MultibandTests.setUpClass",
+          "line": 21,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MultibandTests.oracle",
+          "line": 46,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MultibandTests.changed",
+          "line": 52,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MultibandTests.samples",
+          "line": 69,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MultibandTests.stream",
+          "line": 78,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MultibandTests.test_official_banks",
+          "line": 116,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MultibandTests.test_rates_orders_band_counts",
+          "line": 122,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MultibandTests.test_parameter_changes_short_blocks_and_reset",
+          "line": 129,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MultibandTests.test_long_noise_impulse_and_silence",
+          "line": 139,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MultibandTests.test_external_detector_uses_first_sample_of_block",
+          "line": 144,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MultibandTests.test_stereo_banks_against_original_parameters",
+          "line": 156,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MultibandTests.test_stereo_presence_after_bank_change",
+          "line": 180,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "MultibandTests.test_invalid_config_is_atomic",
+          "line": 196,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "main",
+          "line": 205,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/test_netease_ncae.py",
+      "sha256": "2245240e5b6626168ca1aa450bcd2d24f2a8665b4f3e391ce464dde6b6409596",
+      "symbols": [
+        {
+          "symbol": "NcaeTests",
+          "line": 29,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "NcaeTests.setUpClass",
+          "line": 33,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NcaeTests.native",
+          "line": 98,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NcaeTests.wrap",
+          "line": 106,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NcaeTests.make",
+          "line": 113,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NcaeTests.test_native_cipher_boundaries_and_offset",
+          "line": 117,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NcaeTests.test_seven_actual_materials",
+          "line": 127,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NcaeTests.test_empty_and_binary_plaintext",
+          "line": 147,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NcaeTests.test_header_and_key_bounds",
+          "line": 154,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NcaeTests.test_key_blob_extremes",
+          "line": 168,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NcaeTests.test_compression_errors_and_trailing_bytes",
+          "line": 173,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NcaeTests.test_limits",
+          "line": 180,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/test_netease_ncm.py",
+      "sha256": "90f1b2f955db17c31f630e4141cf1e26b8a2f587f0f70cb2117e0031051abbf3",
+      "symbols": [
+        {
+          "symbol": "synthetic",
+          "line": 30,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NcmTests",
+          "line": 44,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "NcmTests.setUpClass",
+          "line": 48,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NcmTests.write_fixture",
+          "line": 120,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NcmTests.test_reference_core_and_real_flac",
+          "line": 125,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NcmTests.test_new_writer_against_independent_cpp_and_native_crc_contract",
+          "line": 147,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NcmTests.test_streaming_and_seek",
+          "line": 168,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NcmTests.test_optional_metadata_cover_and_long_key",
+          "line": 187,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NcmTests.test_mp3_synthetic_audio",
+          "line": 199,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NcmTests.test_truncation_and_invalid_lengths",
+          "line": 211,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NcmTests.test_invalid_metadata_and_key",
+          "line": 226,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "NcmTests.test_non_destructive_export",
+          "line": 238,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/test_netease_peq.py",
+      "sha256": "df2fa2f549337c91e1fd90a9c8f1b56e2226593910a1da4e61b87f4f9e7e0a60",
+      "symbols": [
+        {
+          "symbol": "encode_value",
+          "line": 20,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "decode_calls",
+          "line": 35,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "bands",
+          "line": 50,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PeqTests",
+          "line": 54,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "PeqTests.setUpClass",
+          "line": 59,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PeqTests.material",
+          "line": 83,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PeqTests.test_native_material_interpreter_types_defaults_and_order",
+          "line": 92,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PeqTests.test_real_material_parameter_calls_and_pcm",
+          "line": 106,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PeqTests.stream",
+          "line": 128,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PeqTests.test_all_filter_types_at_each_slot",
+          "line": 158,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PeqTests.test_nine_simultaneous_filters_and_block_shapes",
+          "line": 168,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PeqTests.test_output_gain_ramp_remainder_and_clamp",
+          "line": 180,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PeqTests.test_lfe_initial_channel_count_and_runtime_gain_routing",
+          "line": 195,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "PeqTests.test_invalid_changes_are_atomic",
+          "line": 212,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/test_netease_protocol.py",
+      "sha256": "51ab761fce9d1864e9ccf2c8b577032535e9c9c3cbb9c320e7317d01b0394869",
+      "symbols": [
+        {
+          "symbol": "node",
+          "line": 10,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "ProtocolTest",
+          "line": 13,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "ProtocolTest.test_aes_known_answer",
+          "line": 14,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "ProtocolTest.test_eapi_independent_node",
+          "line": 22,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "ProtocolTest.test_eapi_detect_modified_digest",
+          "line": 34,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "ProtocolTest.test_cache_serial_key_node",
+          "line": 38,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "ProtocolTest.test_serial_data2_and_response_node",
+          "line": 43,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "ProtocolTest.test_frontend_canonicalization",
+          "line": 51,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "ProtocolTest.test_frontend_data_roundtrip",
+          "line": 55,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "ProtocolTest.test_weapi_independent_node_rsa",
+          "line": 59,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "ProtocolTest.test_hkdf_rfc5869",
+          "line": 70,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "ProtocolTest.test_aegis_mix_boundaries",
+          "line": 74,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "ProtocolTest.test_aegis_independent_node_decode",
+          "line": 80,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "ProtocolTest.test_key_response_signature",
+          "line": 101,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/test_netease_rotate.py",
+      "sha256": "9e2ec872fc26f2d9ad1fcd58f94b47a439c2a951839216faac5ad2f811c5aa5d",
+      "symbols": [
+        {
+          "symbol": "RotateTests",
+          "line": 23,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "RotateTests.setUpClass",
+          "line": 27,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "RotateTests.oracle",
+          "line": 61,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "RotateTests.samples",
+          "line": 67,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "RotateTests.kernel",
+          "line": 77,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "RotateTests.stage",
+          "line": 101,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "RotateTests.test_fft_against_original_and_direct_dft",
+          "line": 128,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "RotateTests.test_angle_table_interpolation_and_both_hemispheres",
+          "line": 148,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "RotateTests.test_period_changes_reset_warmup_and_phase_wrap",
+          "line": 152,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "RotateTests.test_fifo_short_blocks_bypass_reset_and_end",
+          "line": 160,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "RotateTests.test_long_streams_and_tail_silence",
+          "line": 170,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "RotateTests.test_invalid_changes_are_atomic",
+          "line": 175,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "RotateTests.test_local_audio_render_and_float_wave_roundtrip",
+          "line": 188,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "RotateTests.material",
+          "line": 208,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "RotateTests.test_native_material_interpreters_and_real_rotation_preset",
+          "line": 227,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/test_netease_watchman.py",
+      "sha256": "0745c1633df7abb53acad2b0e8c036e95cfcc84d0d5c5b6f0bdd895c24bad8fc",
+      "symbols": [
+        {
+          "symbol": "WatchmanTests",
+          "line": 64,
+          "kind": "ClassDef"
+        },
+        {
+          "symbol": "WatchmanTests.setUpClass",
+          "line": 66,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "WatchmanTests.test_public_config",
+          "line": 77,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "WatchmanTests.test_text_independent_node",
+          "line": 85,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "WatchmanTests.test_nonce_independent_node",
+          "line": 90,
+          "kind": "FunctionDef"
+        },
+        {
+          "symbol": "WatchmanTests.test_packet_independent_node_and_corruption",
+          "line": 94,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/trace_netease_native.py",
+      "sha256": "ca6f0e407fe30d2dbe4bf4e4e702c8f2b6cba40220111921a42ac2ca702fb7c8",
+      "symbols": [
+        {
+          "symbol": "main",
+          "line": 22,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/trace_pe_protocol.py",
+      "sha256": "70e324f64482ca60552801e5865f296bed4f695564868c2ca0d56ff6f2648893",
+      "symbols": [
+        {
+          "symbol": "main",
+          "line": 12,
+          "kind": "FunctionDef"
+        }
+      ]
+    },
+    {
+      "source": "references/recovered-client/scripts/check_netease_multiband_memory.c",
+      "sha256": "81cc6702dd7b6b60136ef98543ee832b2c42973c4fb2fdacf381d333d35d37d0"
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_dsp.c",
+      "sha256": "2054c7aa1b352f78a937f551bdb4f490b25c1299f40ef0a9e33f6b41944e0dc0"
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_multiband.c",
+      "sha256": "6f547666c8b99f3ec181feaff49f4356455e1facf9ed1286f11f31dad1091f79"
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_native_dsp_oracle.c",
+      "sha256": "cd7a64f3028cc8284c6316244ca86383a8ca88bdf64ac5ef67f7bc3d7630b495"
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_native_multiband_oracle.c",
+      "sha256": "c3b71775ea15a9b06eb74aa15f489c4247f8f021ab9731d90d9944314a2664d5"
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_native_peq_material_oracle.c",
+      "sha256": "79ba61f9cb95bd33fe0079478ae5944bcb92f648ccafaf53f8b1ee709c32bb24"
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_native_rotate_oracle.c",
+      "sha256": "45eecade4ba34b3abe34b9e1cbe71d25bce6be0508da0b82b272d64e63abe2ae"
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_native_stereo_oracle.c",
+      "sha256": "37897d9aaf7c0a25927ed3ea26d5c127cc598a489a6aac69bca57b1bf6e10b5f"
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_rotate.c",
+      "sha256": "b4f409b05085893f0a96f4eeb98c83340e275affea7bc061a58c4f36e1753acf"
+    },
+    {
+      "source": "references/recovered-client/scripts/index_netease_business.cjs",
+      "sha256": "b33084e5ab041c9f41afe26214a89f8a285286e04a674540aeed468a1af3086e"
+    },
+    {
+      "source": "references/recovered-client/scripts/index_netease_contracts.cjs",
+      "sha256": "f9232b6f1c074277966a503a8c93523c69c68759c84db8eae1065c2025cabe9c"
+    },
+    {
+      "source": "references/recovered-client/scripts/inspect_netease_wasm.cjs",
+      "sha256": "710277de741d5746743b52f40869e5dd9d7277c15c068e12b4a13986b106a63e"
+    },
+    {
+      "source": "references/recovered-client/scripts/inspect_netease_watchman.cjs",
+      "sha256": "fd024407bfe619b760c2f4d828857d0e01260f2fdd146311bb103550b9d72b33"
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_audio_compose_oracle.cjs",
+      "sha256": "5d1c9bdab84894953dd7f0b16d9ac101e4556848e9c69abd502258529e518922"
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_download_path_oracle.cjs",
+      "sha256": "47582bd27b6ec17842afd559f9a36bb7a2e0111ab77785beb4a3ee87753f94c6"
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_login_refresh_oracle.cjs",
+      "sha256": "4e234810772dd36625837508fb12c2a3a3a5ee594d0843dc0b85bc78e2fa35ba"
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_membership_oracle.cjs",
+      "sha256": "e51a4100555db4a0a98370ec31ae97b3064c6599df79a1c35dd6bf808866929a"
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_relay_oracle.cjs",
+      "sha256": "faba6e9264e9c8b32c99ad9ff5723ac20ee22130fcdc73d88122e960eda250b7"
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_tag_oracle.cjs",
+      "sha256": "a3523946f0c97de349524ffe421e21042415542d2cc61efe2c6e863590135c0b"
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_trial_oracle.cjs",
+      "sha256": "29df48c221be1437c91da978b6553a78b01c06b550dd0d405262e19d4f6a2860"
+    },
+    {
+      "source": "references/recovered-client/scripts/recover_webpack.cjs",
+      "sha256": "02fd6f9dd0a634b0daf62e04ea3b861e6acbd349637a33498df5048b097a19db"
+    },
+    {
+      "source": "references/recovered-client/docs/product/00-overview.txt",
+      "sha256": "5c2638be0220f479d141f0596be7ee5b8cf9111984447d33154ee9cd4c2c6083"
+    },
+    {
+      "source": "references/recovered-client/docs/product/01-account.txt",
+      "sha256": "02b1ad778355ed6c6bccc9c75fe18482a6c38e0004c1553e462ec610d90f1b30"
+    },
+    {
+      "source": "references/recovered-client/docs/product/02-catalog-playback.txt",
+      "sha256": "b3a70a4ac1f8123715fb8419ee467e0dafad7e4946922cea115d3b84f8737031"
+    },
+    {
+      "source": "references/recovered-client/docs/product/03-services.txt",
+      "sha256": "760bec62fbe31dc9c23334ce91090248c7014bf617e55aad5523f8cab2318e79"
+    },
+    {
+      "source": "references/recovered-client/docs/product/04-native-recovery.txt",
+      "sha256": "fa81422d27277c8de469fecffe90ae68f6f99c4f9dac16934dea79d70b268750"
+    },
+    {
+      "source": "references/recovered-client/docs/product/05-reproduce.txt",
+      "sha256": "00097cec31155c64d1616ec8cb187620843a2318c2775f9d0b7d8cf1d569df3b"
+    },
+    {
+      "source": "references/recovered-client/docs/product/06-listen-together.txt",
+      "sha256": "6bfc4096b855200a535fa5cb7b454dc90038070bab549077447255596a052110"
+    },
+    {
+      "source": "references/recovered-client/docs/product/07-live-validation.txt",
+      "sha256": "06fbd53a9da1de62c878a58f278b823d025928a05dda09eba01e12fb976bfccb"
+    },
+    {
+      "source": "references/recovered-client/docs/product/08-protocol-signatures.txt",
+      "sha256": "cd09d1f1ac19156ddce396a307dfd3caf0f89834aee875eaa38443bd0b6fbcf5"
+    },
+    {
+      "source": "references/recovered-client/docs/product/09-storage-update.txt",
+      "sha256": "df84289cc07bd1781c4dcb54dea028a1209eac10dfd8c797c2e563da82fa43f1"
+    },
+    {
+      "source": "references/recovered-client/docs/product/10-watchman.txt",
+      "sha256": "cd5d58eeb0e430c39e0a8f7d3ef85f47750fba9ca5548862cd99dc7fe67ab22b"
+    },
+    {
+      "source": "references/recovered-client/docs/product/11-device-identity.txt",
+      "sha256": "e24280565ca4b91b394b16754497813c04011dc8bfde7bc3019d40698b51dbe0"
+    },
+    {
+      "source": "references/recovered-client/docs/product/12-reference-implementations.txt",
+      "sha256": "ed84d9bb008d9cf0550471d4503687ce023d6b247cabed321a71ec39f338b7f7"
+    },
+    {
+      "source": "references/recovered-client/docs/product/13-client-core-progress.txt",
+      "sha256": "4df3fa3e3e3a3a7c527bc081d985aa1e3cdb5817048e8061a59af3daf7a79072"
+    },
+    {
+      "source": "references/recovered-client/docs/product/14-client-core.txt",
+      "sha256": "0b9d2df105035809f6cc8dded27e0dbf01e431a52479172151d7fb7e08b6c214"
+    },
+    {
+      "source": "references/recovered-client/docs/product/15-cloud-upload.txt",
+      "sha256": "89a182ccb8e42cde9ee0c8a587417fe6b3190b676b43f6b536b8817d66046ebb"
+    },
+    {
+      "source": "references/recovered-client/docs/product/16-playlist-compatibility.txt",
+      "sha256": "a56c895d48ab9abde394289045e0640aeba72db4082818ef1637c8d8f16b47b8"
+    },
+    {
+      "source": "references/recovered-client/docs/product/17-account-resources.txt",
+      "sha256": "680849b3b4c776073d7803b422427581df8fea454f68c86cdc2848895e36789f"
+    },
+    {
+      "source": "references/recovered-client/docs/product/18-cue-local-playback.txt",
+      "sha256": "a3e7d61f90c29d251787af40f495a8a6c4b36b09c1251d3fa2cf59bad9fb3b5a"
+    },
+    {
+      "source": "references/recovered-client/docs/product/19-trial-prefetch.txt",
+      "sha256": "d99b5c53925de6f541cdd355ca545e4fadb320b804ecdde71fe9e6cf86035c13"
+    },
+    {
+      "source": "references/recovered-client/docs/product/20-download-pipeline.txt",
+      "sha256": "fe5e10a0c762c55ba80137be31287f257bd8595a9708148d549e2f9e106452be"
+    },
+    {
+      "source": "references/recovered-client/docs/product/21-membership-offline.txt",
+      "sha256": "7a3327d657d129a4f729c6b660f85f4aff645e9c1ebd8903358d55c27b5a5e90"
+    },
+    {
+      "source": "references/recovered-client/docs/product/22-login-monitor.txt",
+      "sha256": "9021f6851516e8fa142eec8187346494e2f9330c3eca469409b2e17b09e45ba6"
+    },
+    {
+      "source": "references/recovered-client/docs/product/23-oss-upload.txt",
+      "sha256": "b25d6b216393ba6befa63894683b2855f516212cf963c356d60112ff5b3b49b2"
+    },
+    {
+      "source": "references/recovered-client/docs/product/24-cloud-attachments.txt",
+      "sha256": "66bf49dc7e60168867fcf565002688cfded2812ba5bab82d2fdcf9069bf4372d"
+    },
+    {
+      "source": "references/recovered-client/docs/product/25-completed-download-files.txt",
+      "sha256": "d6bf68be1fd4e02658126a858dddb7752dac9dff8bd0ca69737386679240e581"
+    },
+    {
+      "source": "references/recovered-client/docs/product/26-download-directory-validation.txt",
+      "sha256": "623e65b74e9769f4f7a7ce8f6a4a0f4ec6e1d39d274b4275148f1aadc5463de2"
+    },
+    {
+      "source": "references/recovered-client/docs/product/27-playlist-functional-validation.txt",
+      "sha256": "b980762c2b5456359d6f8c64adeb6cefa4616b1dbe1f42e5c4beaab064e2e58b"
+    },
+    {
+      "source": "references/recovered-client/docs/product/28-podcast-functional-validation.txt",
+      "sha256": "f6a96a1f4e8794e4b15b9bf53c165631cd80765d2eb683b616065a23562b90bc"
+    },
+    {
+      "source": "references/recovered-client/docs/product/29-mv-cloud-functional-validation.txt",
+      "sha256": "8a8ac23d925498a39b65e67b89b711f212eb92a5c709faa8bad26f29f29b4f74"
+    },
+    {
+      "source": "references/recovered-client/docs/product/30-collections-settings-validation.txt",
+      "sha256": "afaef9a89e83c176648cb5be2eaf0bb1cd28fed57bc9fe047da2a9be9373c20d"
+    },
+    {
+      "source": "references/recovered-client/docs/product/31-relay-functional-validation.txt",
+      "sha256": "d7c8e9b603af8094c66f2f95e9685a8afdeb488bd0b3547076d89f2d9d774a70"
+    },
+    {
+      "source": "references/recovered-client/docs/product/32-comments-functional-validation.txt",
+      "sha256": "490be41c67c2dac25ebdbf1126078ac2c56d715060741027e689a0f73fdc753e"
+    },
+    {
+      "source": "references/recovered-client/docs/product/33-audio-effects-validation.txt",
+      "sha256": "daae0d51bfacabacfe6e502f715792b5da9960480980ddb73b95f49d63f8f9d0"
+    },
+    {
+      "source": "references/recovered-client/docs/product/34-native-dsp-validation.txt",
+      "sha256": "38a30a929b49445f8c48ca6a8fa3e585648a16297fced06d18c52e9260aafa4b"
+    },
+    {
+      "source": "references/recovered-client/docs/product/35-bass-treble-transitions.txt",
+      "sha256": "ec65f4ce73471b1c042294f0b44c6551b1f6832d3e9f00d4b0cce8b11c1f3f80"
+    },
+    {
+      "source": "references/recovered-client/docs/product/36-peq-material-validation.txt",
+      "sha256": "3a382a2180d46e13d71d45a3e96c37ea0b42721b8714b6e721ada95eff98f365"
+    },
+    {
+      "source": "references/recovered-client/docs/product/37-rotation-spatial-validation.txt",
+      "sha256": "afd7eaf89e3d1299631bfcb1d923a6c68d0e27e454f13a9ad2e4d23f432a72b8"
+    },
+    {
+      "source": "references/recovered-client/docs/product/38-stereo-multiband-validation.txt",
+      "sha256": "8881fb145a64cd175bb02e8e997599c6b114defc44c16e12ff9a84ed6a6500b7"
+    },
+    {
+      "source": "references/recovered-client/docs/product/api-catalog.txt",
+      "sha256": "027b26ecea398d6417a27898dec8beb48e7aca36873234ed742c0c095c6bcd6d"
+    },
+    {
+      "source": "references/recovered-client/docs/product/model-index.txt",
+      "sha256": "a3503d83e74d8625403737e9ceaa998962c045358630c0f0a0f5ad15e0dd18f9"
+    },
+    {
+      "source": "references/recovered-client/docs/product/native-contracts.txt",
+      "sha256": "b99b5a1ad411be53c7ded75fc1fac5f3fbda2e7e56dcc3c56279af43ecedc214"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/__MainWindow.txt",
+      "sha256": "fc60cee3e14252009fb86c976ff1fb687f6658dccb392ad27a6ec34aa016c9a5"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/__SubWindow.txt",
+      "sha256": "40559d69140c5dfe3b09f2e95c44af0dfb5539d3cf1b039b6e9f50cb6c926fc2"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/__dva.txt",
+      "sha256": "536c0aa9df2d101c7568dc52d06fd8fc2771b5b9501312da037c5ded95e42f98"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/_bff_modelForNej.txt",
+      "sha256": "d95fba6c9dad16cdc36f3ce86eff151c892430a33c973e2d2aa8b9ef4fa4d457"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/abtest.txt",
+      "sha256": "3b1e597ab04dbb229dae9d3bcd7df5edd4c8d4f2fc784cc8c6f4ac764a26ee18"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/app.txt",
+      "sha256": "ff1b1c10e9ba1ddc15a006bca46c4a677e93ee91b793203cf5785911bdc29b57"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/assignedAudioEffect.txt",
+      "sha256": "59a4f61a37aacadae6fb17fde5bd6f50818de4dcd0a3fba992bdb42fafee7bdd"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/async_action.txt",
+      "sha256": "bd59f7bdec38f8a41561fe7c128beda7f1e2706e2e7716b0c695d73332e9b9f0"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/async_cloudList.txt",
+      "sha256": "d0353639bf8d08f353eeb427538bbce80cd5dc205d850a57da4356012b5bf97a"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/async_decorationDesktop.txt",
+      "sha256": "6ff7bb6c4d3b99a6fa2cb69973e7ba607b9e3b872a3321c7685827fd08d43bef"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/async_h5Page.txt",
+      "sha256": "bf9e345d8ca44402fcccd38e22d1ea929a59eba7c164f61f95f80635826c38c0"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/async_hostResource.txt",
+      "sha256": "12ef421ac881a035c2d2cd34f4aef264c5619a1997f2b025ef7cbfae2f913885"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/async_listenTogether.txt",
+      "sha256": "4d9077a4c291ee2c182189dc20131c0402bcdbd7947e9451d1fd5f3fb9ff22a7"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/async_listenTogetherPlayList.txt",
+      "sha256": "c84d8b12aa2be89fab79a4dac2d062348615c69ea2afd9136a5b75b3a880dd27"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/async_listenTogetherPlayStatus.txt",
+      "sha256": "28fa2b75b30bb01fc4bccb39c4c3bacb356dfb0249d97967c4eb1f4faf828f78"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/async_listenTogetherPlayer.txt",
+      "sha256": "89e10ecdc6386681f2a3cae83ca9a4be0bdb793ab715b9eea9fbd362ff71f598"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/async_localList.txt",
+      "sha256": "325eae5216ab25051cbe143f0081ed38f94d60deb8ed58090b98d88632407994"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/async_lyric.txt",
+      "sha256": "e9fbd22fb03dfdf3a19b02528c19868059e87f26b4952272a0cc85931ad602dc"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/async_miniProgram.txt",
+      "sha256": "ac662eba26a22f77cb413f5015f11c949df9f0b159f2cc4c9069fd0aadf8d7e8"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/async_petDesktop.txt",
+      "sha256": "33f917a9bbf3cba171aafeb8939925ad24ca9b5d394899f1b85228bb8b73b6e8"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/async_petGenerate.txt",
+      "sha256": "a6366b452463c17b37b886cdae7ff47ec1c4864637eb3fcd1395e089352f559a"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/async_playingListHandoff.txt",
+      "sha256": "ef43a250c6fd0be54cfe01f2570de9cf1d10abe902c359af6767b6a181ebac14"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/async_update.txt",
+      "sha256": "a681eeaed5b1f2c7cc95e4ad698c3b5852b549ba04660a11f5b0dbc5e7779539"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/audioEffect.txt",
+      "sha256": "778d0684fd5ca5211d35a56f1b1bec2d70788e2181063399088195532d6cf404"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/configCenter.txt",
+      "sha256": "58c8916dc949ef12ffb62f7657ed094189ab6a480ecb74d082e73483f67ec5b3"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/dbPlayingList.txt",
+      "sha256": "a39395ffcbac223ac8d8625cdb56f851b3a10536e3abb7b3dd25296515a97c7a"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/download.txt",
+      "sha256": "98bcd8a12dbf5789667121b73b1883013cf63e278e3cdc5dee427db4f59c4d2d"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/fmPlaying.txt",
+      "sha256": "dd08d6d551e6dd4be9900b973a371f7c25b19eebe3f885182214880b07c2963e"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/historyList.txt",
+      "sha256": "c69dc360cf9046a46ad870b329a3357a30b009339163030b8b99473ab6f73895"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/host.txt",
+      "sha256": "5fa592c231696ce9fc234ddbd3cf0cdd46993fba5e5dd2f2e9a5fcc25f2df20a"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_album.txt",
+      "sha256": "f40616409be970a83f1f2c7903479a46b6bf288561da9c88824a004f50c80505"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_albumlist.txt",
+      "sha256": "15287ba41073ee8e49f106a9887effff5135fbcce7400d207b773927ca44105b"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_algPlaylist.txt",
+      "sha256": "08e688fd13a275f3d817ad08388038499bf43e941b29fcf92e06b951cbb4a5bd"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_artistDetail.txt",
+      "sha256": "56d84b0c64850f54aabf62ebe788e8c39c46ad6b38b687288e53395745517be8"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_artistsGallery.txt",
+      "sha256": "ababe10699277f66371241ab52624fe38b18d1f64d69a924ace163eb6c6c37ea"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_audio.txt",
+      "sha256": "b5f90c3de1abc278add4cf41f3296c9dec15d0594d8f3b11fad4a594e737f3c7"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_audioDetail.txt",
+      "sha256": "7a1f53d20b5c28d7acf743471dacb7f8a9aea165588ff917807b8e8fa42aa39c"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_banners.txt",
+      "sha256": "f45144d481d290d1797557c061b7b5c4e8964ad6f48f2f1ea8a3c01bfd653de0"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_bind.txt",
+      "sha256": "d72fe9f21cc28bfe8bc98b750691f19d568d65226480c5400a5028e88d574b75"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_cloudDisk.txt",
+      "sha256": "1d70446c60029ad163d6b89cca6f652e128b6f079ff68f09ded88a33880d8f21"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_comments.txt",
+      "sha256": "1dc90a8200a6f535e19f631f73605443ebe0df0ac465f47d4aef327fcb6cfda9"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_community.txt",
+      "sha256": "a2f6e499533d829ef1a44523ea89cfb172eef9615c10d9e65867e7b7e28f443a"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_dailyRecommend.txt",
+      "sha256": "ad3800dae087ac0ec57ba93120a132bd2aa3b76b03b5f634627bfeb8ae351f48"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_decorationSkin.txt",
+      "sha256": "0244d7b611088b30d90903d6f76fc4641ccf9146e362961dd4b708fd4d18f09f"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_download.txt",
+      "sha256": "44f7c3ecf11ca268f5b986901aea79b51df03920bed6510c045e7978938eef15"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_essential.txt",
+      "sha256": "cad9f02bdeb0e1c13c3361fa1fd81dc7b8e2ac945042432ba130571efba621f8"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_essentialPlaylist.txt",
+      "sha256": "50b4e3f0d8c7587bb7221543abf0fea161b11619e001d18f518934b915c53603"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_event.txt",
+      "sha256": "762c3a915c895605db37d68f934deb21474b0598cc857a630566a5ecdb74423e"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_eventPublish.txt",
+      "sha256": "0703f498fad66596161dc6691c70b6b0cd334b3b1394e4a4779e9e863dfae897"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_eventPublishSearch.txt",
+      "sha256": "88ea5fe48380e84433553e8f69f4bd2a97b84cb684a5da7ca89573d6189e4e8e"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_followFanList.txt",
+      "sha256": "d0d8ef7c4f692f72f6c465f6cbf91524c24750dfb75d32030e64f13834a89e33"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_followNewSong.txt",
+      "sha256": "fd57bccea47b832f2b9f39ba1fe3dcb08b25a838666463417c2daa4a8bc3b00f"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_historyPlaylist.txt",
+      "sha256": "06a5092844b3ce9ea00485f8bc03506c35cff2b7c60e0639215dfe5d176fc3b3"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_historyRecommend.txt",
+      "sha256": "318b6189eefccbe47ffd873d887dc235259a4294aef63ad5cadf1f848274228a"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_homePage.txt",
+      "sha256": "67bc32661c87ff29a4bb8fb3b04dd2375a0069f4ed6a889221291ffa75fcab44"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_latestAlbums.txt",
+      "sha256": "2d3cebd20a9e09e28f5cb8abe339fcd6dc3b62f7f4df553a2db1da8061fe996a"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_latestSongs.txt",
+      "sha256": "446b6141c6731d53da7786cd3d3bd86ba4fd19439c2105caa5fdfb61fb7a408a"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_localMusic.txt",
+      "sha256": "7db74ce7e319700d98049a17b48c41dd86cfd92651cc97db57191157224d5a45"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_login.txt",
+      "sha256": "cde4024b892402419ad5be0899f7e23f9317cec5095c8b14ff0bc4808a2b88a1"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_loginCaptcha.txt",
+      "sha256": "2080fdefc48721d4e9b12892fd74d34bdc4a9e6122f0ad013c224c3223bcaff7"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_loginMail.txt",
+      "sha256": "9e289c8260a6b6228f5aa94dbe7c7dc8e98ec1aa37e6a52563e47083fdb1360b"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_loginNickname.txt",
+      "sha256": "677e6addc3c91f796417705e3afdfe903c28a8120d4602bc727570861f1e878b"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_loginPhone.txt",
+      "sha256": "3e20d163b15062a4fa35fd547581edb600ad24d4347e1bbe6a8e1ead7ed6dd96"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_loginQrcode.txt",
+      "sha256": "98f9b7041e75600cf912cf971a59782bb66730a4e15fd27fde36990be88ca5dc"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_loginQuick.txt",
+      "sha256": "a493211b9a65102fbe4e505b93bd0e3e911cabe9f605a8547477732db14841ab"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_messagesheet.txt",
+      "sha256": "c3db3d8ab7f8632493bf4df0bb060a5a3100fa9ada94b20b222e7242673e1d8b"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_modListenToSong.txt",
+      "sha256": "467fb9c7ebd0304ef8cbf7feacb707552a5efd66bf197bd4bc777a86122c1379"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_musicDesktop.txt",
+      "sha256": "fb8041ea087d27fc98e02bd56949220d2bb8d4556aa9378a7602c4f2c86310fd"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_myAudio.txt",
+      "sha256": "32236608380eabd5295d58df9d3a8b12d524ae9ad2e9aaf6314e945ee924ef58"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_myFavorite.txt",
+      "sha256": "f3475db980becce1180f4aa910da83bf5077111b3609489e45ce139c96dddbcb"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_myHistoryAudioOnline.txt",
+      "sha256": "a30bc7b7ff0eb780f32e8b5c2020779be9c2342a32d43660cac3d34e2c047631"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_myLikedVoice.txt",
+      "sha256": "6564154f2831e2d374030b6cb5a42929a9d5a0457a9da026916c586417b6e869"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_myRecentUpdateVoice.txt",
+      "sha256": "17acb6c93e62afd202c9db7aadaa12aa78ac9e5a3be7ed4bdfe3506c03cc3d0f"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_newUserFavor.txt",
+      "sha256": "42e833fbda8f45db8989b9fdf672d734ff4ef35d4b5134075c6edb4ed512a889"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_playlist.txt",
+      "sha256": "72d134fd885378ff5a9efda9704b2043da4666e6261d803f29aa3d9fc8ed02fe"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_playlistsquare.txt",
+      "sha256": "06fadb44f72053a395730e384b16964e85af42daf947cc367d1301c2ed8eb8a2"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_ranklist.txt",
+      "sha256": "332a359fa12d81389bc00f5f9c1c732a419a1c96e8e1d5d431a55d965b8d1d40"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_searchResults.txt",
+      "sha256": "00769840d0b248e90448a9fc12bbc5b35cc768efa3452b44d7ed0bc7984968f1"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_setting.txt",
+      "sha256": "9152a2ca999b858e175974706109a8457da4276a65ce4124762e1581ec7d70a8"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_settingAbout.txt",
+      "sha256": "ac25d497236c15899d8b30b9d6c1f692be072b5c98e3ff6558533197be661d4f"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_settingAccount.txt",
+      "sha256": "16a8fb1a740e0d882a88fe3c44528c393db3783ee70fcc5ae76bed0adaedb001"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_settingNormal.txt",
+      "sha256": "cf642b44c45add8d012e50ab075c9d17cf5cdc497ac4b995d87596b27a665896"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_settingPrivacy.txt",
+      "sha256": "e6c7576501bce5210400ae365159666360ccb4032f9082083019ac790796987b"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_singleIndexList.txt",
+      "sha256": "432255939d9d049b79771abfa7aec92cc231b7f31fe686d08d86a133f286f1b8"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_sns.txt",
+      "sha256": "fdc00f6f824f9c06a2bd563fc93871bb989460599ac1d84b1e474eac32381e06"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_styleRecommend.txt",
+      "sha256": "40edabcf6e8dd3a742ed89674a125b34cc3da08fdb6e17f236abd34ad5401fef"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_switchAccount.txt",
+      "sha256": "34d130d2f62ce6a0383614eea6f707ec013187e0b62b2a721363ebcf8b860af1"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_trashCan.txt",
+      "sha256": "f0090bf095a2ad0f9d64b24f0b064a845d920ac93f7e631ad29ae3490d4c6a8f"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_updateDownload.txt",
+      "sha256": "9252ed04aa65d45edf8a153b38377bfd2a8e84dc9cc432f76132f6ee2c03a943"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_userDetail.txt",
+      "sha256": "03e62420f6d852d9a12ffc1b703cde2837e22db4911528cdf0c928100b607023"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_verticalZone.txt",
+      "sha256": "9c929163fa82a7ba137c38d35570b4414b571db9f27d1985e96daaa9c0a7ae97"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_videoDetail.txt",
+      "sha256": "b7bc93cc37bba912bce705dfa779584d0fcb7b1ceb81d548cac5f7ade3032462"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_vinylEffect.txt",
+      "sha256": "043de8dd1ecdacae0ef128f38b0359efaf3a0951fcb98858b5f1154fe696cf29"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_vinylPage.txt",
+      "sha256": "fda44186c18111c5738629d6ad3e2df44879189e20ba2ff8d4bf6d5b5ae48622"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/page_vipEssential.txt",
+      "sha256": "330b6c292d2fa8e6a10bc15b132e9cb38dad83aa8a3747ce70d1329a22e8ddea"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/pages_loginDevice.txt",
+      "sha256": "5f5659249215e73d928e6c62b506d7a49e93b95be382f8ecbe028aa5973cd772"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/playing.txt",
+      "sha256": "977c042beb723ec1666ed311636d610bc7b57bb3646ce16c751e95c1bbca7b7b"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/playingList.txt",
+      "sha256": "6050a950a8de0e31f42579b27e6b559cb94d99530d73ce7df568a44c599feda9"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/setting.txt",
+      "sha256": "80e08be22d267a447853bf58828acfec2f55e7d5ceefd3db203eee58530423e3"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/sidebar.txt",
+      "sha256": "cb71a348f4a569361574b9a51b68a82043be051e0572977cc51bd9d1b3a7bb12"
+    },
+    {
+      "source": "references/recovered-client/docs/product/models/window_moveDownload.txt",
+      "sha256": "0c6f65f4c123ef123e820c7e863b454b78e36009ed76b7226386c1badc288d40"
+    },
+    {
+      "source": "references/recovered-client/scripts/watchman_fingerprint_oracle.cjs",
+      "sha256": "5870a74f8669f1eadc0e38ee0d3adccc36cc00d687c3ab573f89f0021fbd1317"
+    },
+    {
+      "source": "references/recovered-client/scripts/recover_watchman_measurements.cjs",
+      "sha256": "e69928e1328caa229d1d3698e7135fe447832b87696595ef0e97f4a4ccc2c1fd"
+    },
+    {
+      "source": "references/recovered-client/scripts/windows_compatibility_oracle.cjs",
+      "sha256": "c61da0949cb7803af877a1847db66674419abc17d3359acad9b6d031267c698e"
+    },
+    {
+      "source": "references/netease-3.1.42.205594-analysis/protocol/windows-compatibility/navigator.idl",
+      "sha256": "af5317d74872fdabd4a9b5f1860bb4c20f383d04589f0038c440dbd1fbd0f379"
+    },
+    {
+      "source": "references/netease-3.1.42.205594-analysis/protocol/windows-compatibility/navigator_id.cc",
+      "sha256": "b4f80663bef5c46ad6f48a010d56b6c324137561eb58b0c4c13d70af2c54c4f8"
+    },
+    {
+      "source": "references/netease-3.1.42.205594-analysis/protocol/windows-compatibility/navigator_id.idl",
+      "sha256": "1123025cc8919b1bde2a6c4dc37b18e588657f95aa2732d11fa407d54b7aa914"
+    },
+    {
+      "source": "references/netease-3.1.42.205594-analysis/protocol/watchman-remote/watchman.min.js",
+      "sha256": "af456401a96e7cab2fc0ad1334e1014ed58d5c694908d2d73ec1ef426463f787"
+    },
+    {
+      "source": "references/netease-3.1.42.205594-analysis/protocol/watchman-remote/watchman.readable.js",
+      "sha256": "8edd86c297d2aa0e28d80084482e511c990089cdd2b5ca8b158c2f88f1776359"
+    },
+    {
+      "source": "references/netease-3.1.42.205594-analysis/protocol/watchman-remote/codec-constants.json",
+      "sha256": "5f45aee251486b2dd9835d3372bcdc81e20302d1443eb8c0ff36afd0dfad19fd"
+    },
+    {
+      "source": "references/netease-3.1.42.205594-analysis/protocol/watchman-remote/field-contracts.json",
+      "sha256": "f30b37706fb297dfcbbfce41fd9665889df7f93e26854c99ca9b3962c31bb1de"
+    },
+    {
+      "source": "references/netease-3.1.42.205594-analysis/protocol/watchman-remote/config.json",
+      "sha256": "4030ce07ac75f3b188caeca66f940c7dfd2a1118697536da35901b50c81e4c8c"
+    },
+    {
+      "source": "references/recovered-client/scripts/watchman_rust_oracle.cjs",
+      "sha256": "0c7fbb3214f1fbd280c827b975e146a1a3c1fa6edd6710f20f55efa5990a0c75"
+    },
+    {
+      "source": "references/netease-3.1.42.205594-analysis/protocol/watchman-remote-602a5ad7-20261027/watchman.min.js",
+      "sha256": "343a187cb023c495a2dffee37f8265d203d97886c43fa6180951fb2de4d283b5"
+    },
+    {
+      "source": "references/netease-3.1.42.205594-analysis/protocol/watchman-remote-602a5ad7-20261027/watchman.readable.js",
+      "sha256": "54ddd682e2fddbeec8a86550af1224d98f3b1e305e6198b8c68e8116d00d925c"
+    },
+    {
+      "source": "references/netease-3.1.42.205594-analysis/protocol/watchman-remote-602a5ad7-20261027/config.json",
+      "sha256": "ba9396351a8e8506c1ecdcece2f6dc770b8c70b4a21c92fefcc30f18976912d2"
+    },
+    {
+      "source": "references/netease-3.1.42.205594-analysis/protocol/watchman-remote-602a5ad7-20261027/codec-constants.json",
+      "sha256": "6074cfc402f2aa87122cfc15b486befd685ad5f76de7104a927be840fa67f1e6"
+    },
+    {
+      "source": "references/netease-3.1.42.205594-analysis/protocol/watchman-remote-602a5ad7-20261027/field-contracts.json",
+      "sha256": "dba29abcf81a92254725243a41e48eedafeb0559d803389cd7025bfaf6fb0fbb"
+    },
+    {
+      "source": "references/recovered-client/scripts/watchman_runtime_oracle.cjs",
+      "sha256": "06bacf01ae6babbfbec470cb41adc12f728459dc8c3e042e7fa19bc83ae3f2f5"
+    },
+    {
+      "source": "references/recovered-client/scripts/watchman_current_oracle.cjs",
+      "sha256": "8dc2ae19f7f2a94b8158581580265a58fd405d359c5471f4ec1435273e00b2c9"
+    },
+    {
+      "source": "references/recovered-client/scripts/watchman_events_oracle.cjs",
+      "sha256": "88f39201bc384491756ea68861e8e32c059347fccfe8a2df72808ec96040a3de"
+    },
+    {
+      "source": "references/recovered-client/scripts/recover_watchman_environment.cjs",
+      "sha256": "6f5f6934266f67eb3f3e804afbde4f544b963c5277128321cdb89b86c13a21f6"
+    },
+    {
+      "source": "references/recovered-client/scripts/watchman_collection_oracle.cjs",
+      "sha256": "8ec52fe5d3968803a5131c92a0a1d3ff81bd062fded334c5863d1f5b49a9d720"
+    },
+    {
+      "source": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/92.js",
+      "sha256": "2787f8810fc50f3f892cde86aebd1eb2259375f373b232fb978c8365b2e82e26",
+      "symbols": []
+    },
+    {
+      "source": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/252.js",
+      "sha256": "48db61d4b56e2aa957131db14bc18055f7b1a36eeef43253c05ea4198bef5489",
+      "symbols": []
+    },
+    {
+      "source": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/402.js",
+      "sha256": "c759837f6de9c3f6b108edd1b9c22da8202d8cf7bb861f58454f7f4b9a054a37",
+      "symbols": []
+    },
+    {
+      "source": "references/recovered-client/scripts/mconfig_oracle.cjs",
+      "sha256": "5b6b3dec54b0ffe53acd17a77c3cc7c640c6bed62cf8973498878417a948237c",
+      "symbols": []
+    }
+  ]
+}

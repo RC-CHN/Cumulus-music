@@ -1,0 +1,59 @@
+NCM 容器与媒体校验（Rust）
+2026-10-25
+
+来源
+官方 x64 cloudmusic.dll 的 CE73B0/CE7580/CE62E0/495F90 提供文件头、版本、CRC32
+边界与校验依据；材料在 references/core-proof/ncm-{writer,format,header}-native。
+CEC010/CE4CB0 提供音频key字段的 AES 常量/加密依据，详见归档产品报告21。
+音频 keybox/周期异或沿用此前研究采用的用户提供 ncmdump（MIT），commit
+4ede4cee1bad35bbf28a7b5524feeca0422a4feb；该部分不冒充官方 DLL 源码恢复。
+版权声明原样保存在 docs/third-party/ncmdump-LICENSE.txt；上游占位姓名/年份未臆造修改。
+Rust 运行时/常规测试不执行 Python、ncmdump 或官方 DLL。
+
+结构
+core/src/media/ncm/ 分 cipher、reader、writer、export；media/cover 单独校验封面。
+NcmReader<R: Read+Seek> 提供标准流式 Read/Seek；文件构造器要求普通文件。
+NcmInfo 返回容器事实、元信息和校验结果；读取不会修改元信息或解码重编码媒体。
+媒体头只识别 FLAC、ID3/MPEG帧的 MP3、ftyp的M4A；不把未知数据一律猜成FLAC。
+该识别不代替完整音频解码；extract 对未知音频拒绝导出，但仍可查看容器。
+
+格式
+CTENFDAM、2字节保留/版本、little-endian长度与异或key、长度与异或metadata，
+随后CRC32、图片版本、封面帧长度/实际长度、封面与帧填充、音频负载。
+key先xor0x64，再AES-128-ECB/严格PKCS7；明文必须含neteasecloudmusic及非空key。
+metadata先xor0x63、163 key(Don't modify):前缀、严格Base64、AES-ECB/PKCS7，
+明文music:JSON必须为对象；元信息可缺省。单个key/metadata字段16MiB上限，封面读取64MiB。
+音频使用256字节周期掩码，按负载绝对偏移异或；非256倍数分块和随机seek均保持连续。
+保留上游u8 key_offset回绕语义，读取长度257的key也与C++一致；写入key限制1..256。
+CRC范围为文件开头至异或metadata末尾，不包括CRC字段自身、封面或音频。
+Compatible允许旧社区零CRC容器但报告false；Strict要求CRC、reserved[0]=1、图片版本1。
+CRC通过只证明文件头，不证明音频完整、授权有效或Windows官方客户端已接纳该文件。
+
+写入与导出
+write_stream 是调用者自有staging流，错误后必须丢弃部分输出。
+write_file 与 extract 使用目标同目录临时文件，flush+文件sync后以no-clobber发布，
+目标已存在（包括软链）会失败；正常错误清理临时文件，原文件从不覆盖或改写。
+进程崩溃可能留下临时文件链接；未宣称目录fsync后的断电持久性或恶意本地进程竞争隔离。
+新容器版本为01 69、图片版本1，封面帧无额外填充，默认生成32字节随机key。
+音频边读边异或，报告原音频字节数/MD5/SHA256；没有转码。
+封面写入前限制4MiB/1600万像素，仅PNG/JPEG；PNG逐块CRC/边界/IEND，JPEG终止标记，
+再调用Rust图像解码器检查图像可解码，设置解码分配预算。不会改写封面原字节。
+本低层编解码器不决定会员授权。默认下载直接保存授权媒体，显式兼容输出才选择NCM；
+普通歌曲管线现已接入该选择和离线账号记录，见 core-download-service-contracts.txt。
+write_plan_stream保留M/23原始注释字节，不经过Value再序列化；严格读回遇到非法JSON仍拒绝。
+
+验证
+core/tests/ncm.rs 5项测试：独立C++解码验证的10组冻结向量（含1/112/255/256/257字节key）、
+非周期分块/短读/随机seek、严格CRC、元信息/封面帧、错误长度/截断/密文、未知音频、
+新writer与旧writer确定性逐字节相等、无覆盖发布、空源错误清理、封面损坏与key约束。
+core/examples/ncm_roundtrip.rs 已读取用户提供的真实4秒NCM，在独立新目录导出、重新封装、
+再导出并核对元信息、318181字节封面及7个随机位置；原文件SHA256未变。
+音频155727字节，SHA256=973bb281e6fb3eac992618f37b8d0b819b704eec2535493cef55c672187dd56b。
+独立提取的ncmdump C++核心对新Rust容器解码完全相同；ffprobe识别FLAC/44100Hz/双声道/4秒，
+ffmpeg实际解码705600字节s16le PCM。证据 .build/rust-ncm-report.json。
+这属于Linux文件/解码集成验证；没有运行Windows官方进程打开该新容器。
+
+重现辅助
+.build/ncm-fixtures.py 从归档实现生成合成向量并运行独立C++核心核对；fixture仅含合成数据。
+.build/ncm-validate.py 驱动Rust示例、独立C++和ffprobe/ffmpeg；这些工具不属于Rust运行时。
+常规cargo test仅读取core/tests/fixtures/ncm.json，不需要references或真实媒体文件。

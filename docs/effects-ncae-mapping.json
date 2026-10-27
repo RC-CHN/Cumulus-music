@@ -1,0 +1,119 @@
+{
+  "scope": "Rust local NCAE container decode only; full desktop goal remains incomplete",
+  "goal_complete": false,
+  "official_first": true,
+  "yesplaymusic_used": false,
+  "sources": [
+    {
+      "path": "references/recovered-client/scripts/netease_ncae_rust_vectors.py",
+      "sha256": "dd7bbcd5bc61a9c827e6d3d833ba17d6a6a7f15a28bfecf73154b45df194f48e"
+    },
+    {
+      "path": "references/recovered-client/scripts/test_netease_ncae.py",
+      "sha256": "2245240e5b6626168ca1aa450bcd2d24f2a8665b4f3e391ce464dde6b6409596"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_ncae.py",
+      "sha256": "6f54a55a0d8dc8926fb967d69ef1b0571d3a8fcb5285e09f38ff205b7024db1c"
+    },
+    {
+      "path": "references/recovered-client/docs/product/33-audio-effects-validation.txt",
+      "sha256": "daae0d51bfacabacfe6e502f715792b5da9960480980ddb73b95f49d63f8f9d0"
+    },
+    {
+      "path": "references/core-proof/verification-ncae-functional-20261025/native-comparison.json",
+      "sha256": "1fd175e6bf4be17adb1dd915783ac68ba41d94bf9fac351583a6f9dacf03c2de"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/native-audio-effects/functions/00ceb3b0.asm",
+      "sha256": "ae59f1bc8cdcb63507d28f2e9c6ca326872827fd12f2c06c8c0050c0db761081"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/native-audio-effects/functions/00ceb6a0.asm",
+      "sha256": "107bc21aa14dc31f3115d0a30d3c1c085c18c23bb91a525a78e868f1ee1bf4f4"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/native-audio-effects/functions/00ceb7e0.asm",
+      "sha256": "2949eb807c060d4097616a70c2d94e43fe9fabb8a31961cabd09498f6b4c93cc"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/native-audio-effects/functions/00ceb050.asm",
+      "sha256": "1da5664b153c520af1ca03ae8bea1be08c963e110e1c7a3c6c6763b2e8e75bda"
+    }
+  ],
+  "official_machine_code": {
+    "dll": "references/netease-3.1.42.205594-x64-unpacked/redist_packages/cloudmusic.dll",
+    "sha256": "557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493",
+    "fragments": [
+      {
+        "name": "schedule",
+        "rva": "0xceb6a0",
+        "size": 309,
+        "sha256": "22845ecbce5ff326b0fc1447909e674623b424531001dbc284f0b7949e52962a"
+      },
+      {
+        "name": "cipher",
+        "rva": "0xceb7e0",
+        "size": 829,
+        "sha256": "8f593d330ce440e8676613251d713be6cfd8674a4ad739d58f8b5cbfdb4ddfd3"
+      }
+    ]
+  },
+  "implementation": [
+    "core/src/effects/mod.rs",
+    "core/src/effects/ncae/mod.rs",
+    "core/src/effects/ncae/cipher.rs",
+    "core/src/lib.rs",
+    "core/examples/effect_material_read.rs",
+    "core/Cargo.toml",
+    "Cargo.lock"
+  ],
+  "tests": [
+    "core/tests/effects_ncae.rs",
+    "core/tests/fixtures/ncae-official.json",
+    ".build/verify_effects_ncae.py"
+  ],
+  "checks": [
+    ".build/effects-ncae-oracle.log",
+    ".build/effects-ncae-targeted1.log",
+    ".build/effects-ncae-targeted2.log",
+    ".build/effects-ncae-example-build.log",
+    ".build/effects-ncae-materials.log",
+    ".build/effects-ncae-format.log",
+    ".build/effects-ncae-workspace-tests.log",
+    ".build/effects-ncae-clippy.log",
+    ".build/effects-ncae-desktop-build.log"
+  ],
+  "oracle_vectors": 378,
+  "oracle_calls_including_containers": 390,
+  "new_rust_tests": 6,
+  "rust": {
+    "passed": 535,
+    "core": 532,
+    "desktop": 3,
+    "failed": 0,
+    "ignored": 0,
+    "suites": 75,
+    "nonempty_suites": 72
+  },
+  "frontend": {
+    "passed": 61,
+    "new_run": false,
+    "evidence": ".build/together-lifecycle-front-tests2.log"
+  },
+  "real_material_report": ".build/effects-ncae-materials.json",
+  "real_materials_passed": 7,
+  "real_account_requests": 0,
+  "new_ui_verified": false,
+  "audio_dsp_verified": false,
+  "platform": "Linux x86_64; portable Rust decoder; other OS builds not verified",
+  "documentation": "docs/core-effects-ncae.txt",
+  "previous_audit": ".build/together-lifecycle-audit.json",
+  "remaining": [
+    "Effects PEQ/spatial materials, parameter composition, entitlement lifecycle, C DSP FFI, playback processing and UI",
+    "Same-account relay; remaining catalog/login/member/special-media/comment/metadata/batch workflows",
+    "Device identity/watchman providers, tray/media integration, full visual audit and Windows/macOS validation",
+    "Together remaining events, statistics/shareInfo, RTC and outside-content exit; real dual-account testing remains explicitly excluded",
+    "Original unrecovered SE/effect graph and emotion inference retain their evidence boundaries"
+  ]
+}

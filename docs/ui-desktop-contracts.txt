@@ -1,0 +1,120 @@
+官方桌面界面重建与业务桥接
+2026-10-26；完整目标仍进行中。账号/浏览首次验证为2026-10-25，播放和歌单管理后续新增。
+
+来源
+官方版本 3.1.42.205594，解包目录
+references/netease-3.1.42.205594-unpacked/resources/orpheus/pub/styles/。
+CSS 的内嵌 sourceMappingURL 包含 sourcesContent；已恢复 1221 条来源记录、830 个唯一
+原始源文件，无同路径内容冲突。references/ui-recovery/source-map-manifest.json 保存
+每条 CSS 文件、map 序号、原始路径、恢复文件和 SHA256；不把这些源文件打入客户端。
+此前 embedded-sources 只有21个文件，本次是新增来源整理，旧259项来源索引不改写。
+参考源码均在 references/ui-recovery/sources/packages/pc/src/ 下：
+  components/Header/index.jsx：72px顶栏、40px内容左距、30px右距、258×36搜索框；
+  components/left/index.jsx：204px侧栏默认、滚动歌单与账号切换处理；
+  components/left/components/nav-item.jsx：36px导航项、8px圆角、渐变选中态；
+  components/PlayBar/styleNew.ts：80px底栏、歌曲信息、居中控制、音量/音质位置；
+  TrackViewer、pages/playlist、SearchBox及其余源文件供后续页面继续对照。
+品牌使用Cumulus；图标为新写SVG，当前明亮配色按恢复样式重建，尚未恢复完整皮肤token。
+未声称像素1:1，未把YesPlayMusic用作布局或业务默认来源。
+
+模块边界
+core/client：mod装配，auth认证协调，content展示用例，dto明确字段，mapping白名单转换，
+error公开错误。没有Tauri依赖，原账号/目录服务保留各自职责，不允许通用API透传。
+client/player提供原生播放/歌词协调，client/playlists提供歌单管理与恢复DTO；正式IPC共26个。
+desktop commands只转发类型化用例。默认在app_data_dir打开ProfileRegistry；
+CUMULUS_DATA_DIR可显式指定数据目录，CUMULUS_SESSION_DIR可指定已有PC域测试profile。
+已有profile必须存在core.sqlite3，不自动扫描references或导入Cookie，不改变原域作用域。
+frontend：services/contracts描述数据；adapters/tauri统一invoke；composables/useMusic
+协调页面请求代次和显示状态；components登录/图标/虚拟列表；styles按职责拆分。
+原get_app_info协议仍兼容；新命令有真实注册IPC测试。
+
+展示契约
+AccountView为epoch/status/nickname/avatarUrl及后续新增canSignOut；不传UID、Cookie、原始profile或挑战。
+AccountData<T>所有账号资源带epoch字符串，前端拒绝旧epoch，301清除私有页面数据。
+PlaylistView为id/name/coverUrl/description/creator/trackCount/owned/favorite/private。
+favorite要求specialType=5且owner等于当前UID，防止误用别人红心歌单。
+TrackView为id/name/artists/album/coverUrl/durationMs/fee/missing/local；无播放授权URL。
+TrackPage有tracks/total/offset/more/playlist/revision。playlist total取完整trackIds长度，
+不依赖预览tracks或可能不一致的trackCount。缺歌曲和v=-1条目保留原顺序与占位。
+PageRequest限制1..100、offset<=1000000；翻页带revision。revision为歌单ID和完整
+trackIds的SHA256，列表改变时拒绝拼接不同快照并要求刷新，避免重复/错位。
+公开图片仅music.126.net/music.163.com子域、HTTP升级HTTPS、拒绝凭据/端口；
+丢弃原查询和fragment，只加param=320y320。WebView CSP只对图片增加这些域，
+connect-src仍仅IPC，图片不带原生账号Cookie，referrerpolicy=no-referrer。
+所有公开错误只包含固定code/message/retryable，不序列化原始Error或服务响应体。
+
+已接入命令与接口顺序
+restore_account：/api/w/nuser/account/get，经AccountSession确认身份后发布；
+account_snapshot：原生当前状态，无网络。
+account_playlists：/api/user/playlist，uid/includeVideo=true，完整分页。
+playlist_page：/api/v6/playlist/detail(id,n=100000,s=0)，按trackIds取页；
+  /api/v3/song/detail(c为JSON字符串，id/v=0)，缺失不挤掉行号。
+search_songs：/api/cloudsearch/pc(s,type=1,limit,offset,total=true)。
+daily_songs：/api/v3/discovery/recommend/songs(limit=30)，展示data.dailySongs。
+liked_ids：/api/song/like/get(uid)。
+set_liked：调用方必须携带epoch；原生捕获并验证SessionToken，整个写入沿用该token；
+  读取喜欢列表→持久化before/desired→/api/song/like(trackId,userid,like)→回读列表。
+  显示observed事实，未决写入不伪装成功；刷新期间旧喜欢响应不能覆盖刚确认的写入。
+  AccountResources新增set_membership_for供其他宿主绑定操作所属账号。
+begin_qr：独立同域candidate→/api/login/qrcode/unikey(type=3)；二维码原生生成，
+  内容为https://music.163.com/login?codekey=…，前端只收到模块矩阵与不透明operationId。
+  矩阵本身是可扫码登录信息，不能当成无敏感数据公开分享。
+poll_qr：/api/login/qrcode/client/login(key,type=3)，前端两秒一次且不重叠；
+  803后继续account/get并原子提交profile，不能把803直接显示成完成账号恢复。
+cancel_qr：关闭弹窗取消代次，不替换当前账号；迟到的begin/poll不能覆盖新流程。
+初次浏览验收仅显示额外挑战；2026-10-27已接密码/SMS/部分挑战及退出/账号列表，
+当前范围和未接入SDK分支见desktop-login-contracts.txt。qrcodegen 1.8.0仅负责编码，未复用Python运行时。
+库API：https://docs.rs/qrcodegen/1.8.0/qrcodegen/struct.QrCode.html
+
+界面行为与本次验证范围
+已接线：恢复账号、扫码生成/轮询/取消、每日推荐、个人歌单卡片/侧栏、红心歌单、
+歌单详情/分页、歌曲搜索、喜欢状态/写入回读、加载/失败/重试/会话过期。
+后续已接入歌单创建、名称/简介/真实分类标签、歌曲菜单增删重排、清空/删除、
+歌单组排序、收藏/取消收藏和未决操作核对；原生业务与桌面验收见core-playlist-contracts.txt。
+长列表固定56px行高，视区加缓冲渲染；当前歌曲表不是一次挂载3052个节点。
+导航、输入和按钮使用原生可聚焦元素；dialog使用showModal的焦点模态/Escape关闭。
+真实WebView探针 desktop/examples/ui_probe.rs + ui_probe.js 是单独可执行example；
+它使用同一configure/命令注册/真实core与打包前端，注入DOM点击测试。只有该example
+动态启用测试事件输出权限；正式二进制没有测试脚本、任意eval命令或测试事件入口。
+实际检查登录恢复→推荐→77歌单→红心歌单首/次页→滚动到150行→搜索→二维码→关闭。
+读取3052首红心歌单的总数，载入200行时实际渲染18行。未用静态示例数据。
+.build/ui-proof/run-1/保存1120×760窗口5幅真实截图、逐页JSON与complete.json。
+最新打包前端另在run-2-small/验证760×540最小窗口，同5步通过，无横向溢出，
+200行歌单仅渲染15行；截图由真实GDK窗口抓取，未编辑页面内容。
+这次没有资源写入，二维码取消后原账号仍authenticated；不冒称新扫码授权已真人确认。
+
+仍需继续
+底部现已接入真实libmpv控制、完整歌单队列、音质降级展示、歌词与Channel；
+该新增范围的来源/接口/真实窗口证据见desktop-player-contracts.txt。
+歌单管理已接入，新增隔离私密歌单DOM验收及全量清理证明见core-playlist-contracts.txt；
+封面上传、v=-1原生本地匹配、组合联动与完整菜单/拖拽仍待继续。
+单曲下载/设置/文件管理已接线，详见desktop-download-contracts.txt；声音/MV下载继续。
+其他发现/排行/FM/专辑歌手/收藏/本地库/播客MV/会员音效/一起听接续等页面，
+密码/SMS/部分挑战/退出切换已新增桌面接线，见desktop-login-contracts.txt；
+其余挑战、系统托盘快捷键和其余业务写入协调仍按完整goal迁移。
+当前截图不代表全页面、全窗口尺寸、Windows或macOS已验收。
+
+运行与复验（显式已授权PC会话）
+CUMULUS_DATA_DIR=/absolute/isolated/app-data \
+CUMULUS_SESSION_DIR=/absolute/existing/pc-profile \
+.build/target/debug/cumulus
+
+UI探针另设CUMULUS_PROOF_DIR=/absolute/private/proof-output，执行
+cargo run -p cumulus-desktop --example ui_probe --features custom-protocol --locked
+使用CUMULUS_PROOF_SMALL=1复验760×540。探针需要真实桌面或隔离Xvfb/DBus。
+首次浏览界面检查为183项Rust、4项前端测试；这是历史基线。最新检查与构建日志、
+当前测试总数、播放窗口验收统一见rust-core-validation.txt及desktop-player-contracts.txt。
+另设CUMULUS_PROOF_PLAYLIST=1会执行新建私密歌单的隔离写入与清理；该模式默认关闭，
+详见core-playlist-contracts.txt，不能把开启此模式的验收称为只读检查。
+
+下载探针由CUMULUS_PROOF_DOWNLOAD=1显式开启，使用新媒体/数据目录和已有PC域会话。
+desktop/examples/run_download_probe.py编排Xvfb/原生目录对话框取消/截图/ffprobe，
+业务仍由真实Vue→正式IPC→Rust→官方授权/CDN/本地文件与libmpv执行。
+正常窗口验收见.build/ui-proof/download-20261026-c，完整链路和媒体清理通过。
+另有最小窗口与最终回归结果，统一见rust-core-validation.txt。
+
+云盘入口现已接入列表/容量/查询、上传任务/目录/附件、删除确认和只读核对、完整队列及专用歌词。
+来源和字段/状态机映射见desktop-cloud-contracts.txt。
+run_cloud_probe.py默认只读取与播放账号资源，并取消上传/删除；--roundtrip才会生成新合成音频，
+通过真实原生文件选择器和页面上传、仅删除该新条目并比较完整账号基线。
+该模式保留私有恢复身份，不能称为只读，也不能据此把OSS或云盘下载记为通过。

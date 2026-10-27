@@ -1,0 +1,133 @@
+云盘列表、上传调度与桌面流程契约
+2026-10-26。本文是完整目标中的云盘增量，不是全产品完成审计。
+
+官方依据
+官方3.1.42.205594的恢复文件位于：
+references/netease-3.1.42.205594-analysis/recovered-js/modules/
+  hybrid_208.chunk.1482700000000.js/3023.js：page:cloudDisk初始页、关键词、uploadTime/reverse排序。
+  hybrid_52.chunk.1482700000000.js/3100.js：已上传/上传中、容量、表格布局、搜索/排序、200条分页、
+    播放完整筛选结果、cloudTrack资源标识、选择/删除/上传控制。
+  hybrid_193.chunk.1482700000000.js/3127.js：async:cloudList，200条递归拉全、账号保护，
+    删除每批1000条及succIds/failIds处理，selectRootFileOrDir→listFilesByEntries递归枚举，
+    重启后暂停未完成任务、恢复前检查容量、一个音频父任务活动、传输内部分片并发。
+辅证：references/recovered-client/docs/product/models/page_cloudDisk.txt、async_cloudList.txt；
+报告15云盘上传、24附件恢复、23OSS、29MV/云盘功能验证。未参考YesPlayMusic。
+上传协议/对象凭证/转码/发布/附件细节继续由core-cloud-upload-contracts.txt、
+core-nos-upload-contracts.txt、core-oss-upload-contracts.txt承接，不能把列表通过等同于所有上传通道通过。
+
+本批模块与职责
+core/src/cloud/library/：完整账号快照、版本、删除意图/分批回执/只读对账。
+core/src/cloud/upload/scheduler.rs：持久任务次序、启停、重启暂停、单父任务运行、用户控制优先。
+core/src/cloud/upload/selection.rs：目录递归、稳定顺序、路径去重及枚举边界。
+core/src/client/cloud/：账号代次、后台任务生命周期、前端投影、命令与完整播放选择。
+core/src/client/player/{selection,lyrics}.rs：云盘队列与云盘专用歌词目标。
+desktop/src/cloud.rs：类型化IPC和原生文件/文件夹/附件选择器。
+frontend/src/{services/cloud.ts,composables/useCloud.ts,components/Cloud*.vue,styles/cloud.css}：
+  云盘页面、上传与删除弹窗、加载/缓存/失败/未知结果提示，查询/选中状态及切号保护。
+core不依赖Tauri，不运行归档Python；验证脚本中的Python只启动窗口、生成合成音频、
+操作原生选择器和抓取截图，业务请求/存储/调度/播放均由Rust实现。
+
+列表、分页、元数据与版本
+GET语义通过现有PC域EAPI后端调用/api/v1/cloud/get，payload={offset,limit:200}，cache=false。
+接受code=200，读取data、hasMore（兼容more）、size和maxSize；数值大小兼容整数或十进制字符串。
+累积完整列表后才提交cloud_library_v1/snapshot，最多1000页/200000条；重复songId、
+空的非最终页、冲突hasMore/more、非布尔翻页标志、单页超200及分页容量变化均拒绝。
+读取失败保留上一个完整快照。分页结果不能覆盖为“首200条就是全部”。
+songId是云盘资源身份，不使用simpleSong.id替换它。标题优先simpleSong.name，再songName/fileName；
+歌手/专辑兼容simpleSong.ar/al与顶层artist/album，时长来自simpleSong.dt。
+上述元数据兜底是依据已恢复API结构的工程归一化；不声称逐字段复现整个官方M/21变换。
+revision计算包含记录次序、身份、文件名/大小/上传时间/码率、歌曲元数据及容量，排除封面picUrl。
+线上发现同一列表的24个封面仅在p3/p4.music.126.net间轮换，若把它算进版本，会误报列表变化并
+阻止播放。原URL继续保存在快照中；它只从版本材料中排除。旧v1完整JSON哈希仍可读，成功刷新
+后升级到稳定版本，不清空旧账号数据。文件/曲名/成员变化仍会使旧选择失效。
+筛选覆盖标题、歌手、专辑、文件名；排序支持上传时间、标题、歌手、专辑、格式和大小。
+CloudQuery={tab,keyword,sort,descending,offset,limit}；关键词最多256字符，limit=1..200。
+目录顺序和排序的同值项保持稳定。UI按200条显示；“播放全部”使用完整筛选结果，最多50000首。
+
+删除与恢复
+cloud_command.delete={ids,revision}。1..5000个唯一正数ID；先获取账号互斥锁和完整新快照，
+确认revision一致且全部ID属于当前账号，检查没有重叠的未决删除，再持久化操作。
+cloud_deletions_v1保存UUID、创建时间、前后版本、目标ID、每批状态、成功/失败及回读结果。
+每批最多1000，先保存Sending，再调用/api/cloud/del：{songIds:JSON.stringify(ids)}。
+code=200后，succIds和failIds必须互斥且完整覆盖该批。显式服务拒绝记录为Rejected；
+丢回包、错误回执或传输错误保留Sending，停止后续未发送批次，不自动重试远端删除。
+提交Verifying后完整回读/api/v1/cloud/get：确实消失才算removed；仍存在算remaining。
+最终为confirmed/partial/rejected/uncertain。不能用HTTP200或对话框关闭冒充删除成功。
+reconcile_delete只读回列表，不补发未发送批次，也不重放未知批次；未知操作跨重启继续可见。
+并发账号切换、同UID重新登录、SQLite失败均保留原账号责任，拒绝迟到更新新账号。
+UI必须明确确认；取消对话框不发删除请求。最近30条操作按created_ms排序，未知结果显示只读核对。
+
+上传调度、输入与桌面行为
+原生选择器支持多音频文件、单文件夹递归、封面jpg/jpeg/png、LRC和CUE；账号代次在选前/选后检查。
+递归音频格式：mp3/flac/wav/m4a/aac/ogg/opus/aiff/ape/wma，大小写不敏感；NCM排除。
+枚举去重并稳定排序，不跟随符号链接；最多500文件、64层、100000条目录项，超限整体报错，
+不静默截断提交。用户可分批选择；该上限与不跟随链接是本实现的明确边界。
+创建任务仍通过native AudioProbe验证实际格式并流式校验文件；空文件及大于512MiB拒绝。
+附件与音频路径只在native保存和用户文件选择范围内使用，不把对象凭证、授权URL交给WebView。
+CloudCommand.upload每个文件独立创建，返回accepted task IDs与失败项；失败项用原选择完整路径
+关联，避免不同目录的同名文件在部分成功后被错误保留并重复上传。
+缓存容量已满时，core和UI均拒绝新增/继续上传；服务端仍是最新配额的最终裁决者。
+cloud_schedule_v1={id,order,revision,enabled,running,hidden,retry_rejected,error}，按账号隔离。
+每次打开该账号云盘runtime时recover：未完成任务保存Pause、清除自动运行许可；不自动重放。
+运行一个父任务，每步最多推进3个传输块；OSS内部仍允许既有3路分片。编码等待使用持久deadline。
+暂停/取消先更新调度revision和持久控制；进行中的步骤返回时不得覆盖新的用户控制。
+未知分配/元数据/发布/对象写入不能靠“继续”盲目重试。UI按能力显示暂停、继续、取消、
+更新NOS凭证、核对发布/OSS传输结果；不可自动恢复的OSS初始化/中止边界仍按原契约保留。
+持久Pending不等于当前请求已失败：scheduler.running=true时正常显示上传/保存，不把在途请求
+显示为遗留未知写；中断/错误后running=false的未知结果仍须核对，继续/取消能力仍按安全状态限制。
+完成和取消任务可以隐藏记录；隐藏不删除审计日志。全部暂停/继续由core遍历所有任务，
+不局限于当前UI页。当前页面关闭不停止native传输；关闭应用后重开恢复为暂停。
+完成上传后后台刷新账号完整列表；刷新失败单独显示“歌曲已上传，云盘列表暂未刷新”。
+UI只在存在未完成任务且页面可见时轮询缓存，不每次轮询发云盘列表HTTP；手动刷新和重新打开页面
+才读服务。旧账号的读取、命令完成、文件选择、延迟刷新均不能覆盖新账号界面。
+
+播放与歌词
+play_selection.kind=cloud，携带CloudQuery、revision、可选start_id和quality。
+core重新取完整账号快照校验版本，用完整筛选/排序结果构造队列；每项标记cloud_song_id。
+正常播放授权仍走/api/song/enhance/player/url/v1（沿用catalog PlayOptions），真实媒体由libmpv解码。
+不对私人云盘ID再请求普通歌曲详情，也不以页面只有200条截断队列。
+歌词选择LyricTarget::Cloud，走/api/cloud/lyric/get；偏移/偏好按cloud:ID存储，继续遵守播放代次。
+后续云盘原文件下载已用官方拼写/api/cloud/dowonload接入统一下载/文件管理服务和本页“下载所选”；
+包含原字节、专用歌词、暂停重开、离线播放、改名/迁移/删除，见core-cloud-download-contracts.txt。
+
+UI复刻和明确差异
+已实现官方结构中的容量、已上传/上传任务、标题/专辑/格式/上传时间/大小表格、筛选排序、
+完整播放、上传/附件/文件夹、批量控制、删除确认与回读状态；延用当前Cumulus窗口/播放条。
+依据恢复JS布局重建，没有可运行官方窗口的同尺寸逐像素对照；不声明像素一致。
+后续已补官方标题/歌手复合五态、其他列三态、原顺序、中文数字比较和V8排序语义；
+详见core-cloud-order-contracts.txt。歌手文字仍提供独立排序入口，歌手详情导航另按完整目标推进。
+匹配/纠正元数据的独立编辑入口尚未实现，继续列为完整目标缺口；原文件下载已在后续增量通过。
+OSS线上通道、LRC/CUE服务端限制与其他平台未实测边界仍保留，不能从NOS或Linux验证推导通过。
+
+测试与实际证据
+core/tests/cloud_library.rs：完整分页、缓存、重复/坏页/容量变化、严格删除回执、未知批次停止，
+  只读核对、持久失败、同UID/跨账号、CDN轮换回归、旧缓存版本兼容。
+core/tests/cloud_scheduler.rs：单父任务/完成不重放、传输中暂停、重启保留未知、显式失败重试、
+  编码deadline、写盘失败前无请求、旧代次不能继续。
+core/tests/client_cloud.rs：前端字段白名单、205条完整播放、云盘歌词、旧版本拒绝、后台上传/重开，
+  隔离删除、迟到账号、配额检查、同名文件部分失败关联。
+core/tests/cloud_selection.rs：目录去重/格式/NCM/批量上限、Unix链接/循环边界。
+frontend/tests/cloud-state.test.ts：切号丢弃迟到结果、缓存失败恢复、查询竞争/末页回退、
+  未决删除不重试、关闭页面不取消native任务。测试使用合成账号，不发真实写请求。
+真实窗口入口：desktop/examples/ui_probe.rs + cloud_probe.js，run_cloud_probe.py编排。
+只读实测：.build/ui-proof/cloud-20261026-c，1120x760窗口、49条云盘/容量、筛选排序、
+  libmpv静默输出真实解码、暂停/定位、完整49首队列（窗口渲染13行）、空歌词、原生选择器取消、
+  删除确认取消，完整ID顺序核对未变化。空歌词只证明接口与空态，不证明存在歌词文本。
+失败证据a/b保留：封面域名轮换导致版本误判；修复后c通过。
+隔离写入实测：.build/ui-proof/cloud-20261026-f，1120x760；重开e的已暂停任务，界面继续同一
+合成FLAC、完成发布与账号回读、筛出唯一新条目、真实删除确认、完整49首基线恢复，source hash未变。
+.build/ui-proof/cloud-20261026-g-small，760x540，重新生成另一份合成FLAC；完整列表/查询/播放/
+暂停/定位/队列/空歌词/取消弹窗，加原生文件选择、页面上传、发布、页面确认删除和49首基线恢复，
+全部通过。两份新音频的云盘条目均已移除，删除既有资源数为0；静默输出是真实解码，不是声卡试听。
+d失败于验证脚本原生选择器输入时序，未发送上传；e误把正常Pending判成错误，暂停后保留基线。
+这促使修复实际UI的在途状态显示；f复用e的profile并继续该任务，不遗留一个会自动恢复的测试上传。
+私有private-cloud-recovery.json保留基线、任务和输入事实，公开complete/runner只记录汇总；
+remoteAccountMutations=2指“上传/删除”两个业务往返，不是底层HTTP写请求数。
+
+复验（显式已授权PC域账号，使用新证明目录）
+cargo build -p cumulus-desktop --example ui_probe --features custom-protocol --offline
+python3 desktop/examples/run_cloud_probe.py NEW_PRIVATE_PROOF EXISTING_PC_PROFILE
+加--small验证760x540；加--roundtrip才创建/上传/移除新的测试音频。
+--resume-proof PRIOR_PROOF仅用于核对原私有身份后继续此前唯一测试任务，不能与--roundtrip并用。
+正常客户端使用.build/target/debug/cumulus；运行目录与依赖详见README.txt。
+本批逐项来源映射：cloud-desktop-mapping.json（15条、3份官方来源SHA256）。

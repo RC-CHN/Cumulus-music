@@ -1,0 +1,122 @@
+{
+  "scope": "Incoming PLAY_COMMAND application for songs already in the native queue, durable receipt and explicit recovery; full shared queue/common rights remain unfinished",
+  "goal_complete": false,
+  "official_first": true,
+  "yesplaymusic_used": false,
+  "sources": [
+    {
+      "path": "references/recovered-client/docs/product/models/async_listenTogetherPlayStatus.txt",
+      "sha256": "28fa2b75b30bb01fc4bccb39c4c3bacb356dfb0249d97967c4eb1f4faf828f78"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_197.chunk.1482700000000.js/3161.js",
+      "sha256": "9c84a8946cffccb4e2e739d220b9da86d829c2340efefd0cb91bd21d0f24a3a5"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/75.js",
+      "sha256": "8f0aa4cc3422daea1cb74c317c84fc27d992dd413623d3c7504f357085005476"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_together_oracle.cjs",
+      "sha256": "2bb2bfc64b187f3af2c4793845407607974233915a0292bd0030c786f702f009"
+    },
+    {
+      "path": "core/tests/fixtures/together-official.json",
+      "sha256": "4c08329771efc6c98e3fc581177c7e58bf46a175ebb0fc1f8da440a88b0e01e7"
+    }
+  ],
+  "features": [
+    {
+      "id": "playback_atomic_application",
+      "implementation": [
+        "core/src/playback/controller/types.rs",
+        "core/src/playback/controller/actions.rs",
+        "core/src/playback/controller/remote.rs",
+        "core/src/playback/controller/state.rs"
+      ],
+      "tests": [
+        "remote_selection_starts_paused_and_persists_position_without_transient_play",
+        "newer_local_seek_invalidates_an_incoming_fence_without_touching_the_engine",
+        "local_pause_during_remote_decode_controls_first_presentation_and_newer_revision",
+        "remote_apply_respects_trial_coordinates_and_stops_after_partial_engine_failure"
+      ],
+      "evidence": "Native controller with deterministic AudioEngine; timeline authorization and persistence, no live peer audio claim"
+    },
+    {
+      "id": "durable_received_intent",
+      "implementation": [
+        "core/src/listen_together/service/incoming.rs",
+        "core/src/listen_together/service/mod.rs",
+        "core/src/listen_together/service/commands.rs"
+      ],
+      "tests": [
+        "incoming_intent_survives_restart_blocks_outgoing_and_has_guarded_completion",
+        "room_author_and_sequence_checks_preserve_pending_incoming_commands"
+      ],
+      "evidence": "SQLite reopen, author/room/account guards, blocked outgoing writes, monotonic completion"
+    },
+    {
+      "id": "official_reduction_and_refresh_monotonicity",
+      "implementation": [
+        "core/src/listen_together/sync.rs"
+      ],
+      "tests": [
+        "delayed_snapshot_cannot_rewind_received_sequence_or_refresh_duplicate_clock",
+        "executed_official_filters_windows_and_version_comparison"
+      ],
+      "evidence": "Existing 22 official filter fixtures plus delayed-snapshot regression"
+    },
+    {
+      "id": "native_host_receive_and_recovery",
+      "implementation": [
+        "core/src/client/together/incoming.rs",
+        "core/src/client/together/runtime.rs",
+        "core/src/client/together/mod.rs",
+        "core/src/client/together/view.rs"
+      ],
+      "tests": [
+        "incoming_tests::decoded_business_commands_drive_native_player_without_echo_or_duplicate_rewind",
+        "incoming_tests::failed_remote_apply_requires_explicit_recovery_and_local_seek_does_not_retry_it",
+        "incoming_tests::persisted_incoming_failure_can_recover_after_explicit_reattach"
+      ],
+      "evidence": "Decoded simulated SDK messages through real MusicClient into deterministic native audio adapter; restart and explicit recovery, no HTTP echo"
+    }
+  ],
+  "checks": [
+    ".build/remote-play-workspace-tests.log",
+    ".build/remote-play-focused4.log",
+    ".build/remote-play-client-final.log",
+    ".build/remote-play-clippy.log",
+    ".build/remote-play-format.log",
+    ".build/remote-play-desktop-build.log"
+  ],
+  "rust": {
+    "passed": 503,
+    "failed": 0,
+    "ignored": 0,
+    "suites": 71,
+    "nonempty": 68,
+    "core": 500,
+    "desktop": 3
+  },
+  "frontend": {
+    "passed": 61,
+    "new_run": false,
+    "unchanged_hashes_checked": true,
+    "source": ".build/im-ui-front-tests.log"
+  },
+  "ipc": 57,
+  "business_message_live_verified": false,
+  "peer_playback_verified": false,
+  "rtc_verified": false,
+  "new_ui_workflow_verified": false,
+  "real_account_mutations_this_batch": 0,
+  "platforms": {
+    "linux_x64": "Built formal Tauri binary and ran Rust fixture tests; no new desktop or audible-output proof",
+    "windows": "Not built/run",
+    "macos": "Not built/run"
+  },
+  "documentation": "docs/core-listen-together-incoming-playback.txt",
+  "audit": ".build/incoming-playback-audit.json",
+  "validation_notes": "Full workspace tests preceded only Chinese error-message refinements; strict all-target Clippy and 9 host regression tests ran on final source before formal build. Earlier failed fixture/compile runs retained as remote-play-focused1/2/3.log."
+}

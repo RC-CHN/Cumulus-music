@@ -1,0 +1,81 @@
+NCAE 音效材料容器的 Rust 迁移
+2026-10-26；仅完成材料读取层，完整音效及桌面目标仍在进行。
+
+来源和范围
+优先依据官方 x64 cloudmusic.dll 3.1.42.205594：
+RVA CEB3B0 容器解析、CEB6A0 密钥调度、CEB7E0 负载异或、CEB050 raw inflate。
+反汇编位于 references/netease-3.1.42.205594-analysis/native-audio-effects/functions/。
+归档实现 references/recovered-client/scripts/netease_ncae.py 及 test_netease_ncae.py；
+产品/接口与历史材料记录见 references/recovered-client/docs/product/33-audio-effects-validation.txt。
+本批未使用 YesPlayMusic；没有复用 NCM 模块来源来替代官方 NCAE 证据。
+
+正式实现
+core/src/effects/ncae/mod.rs：decode、read、open，Limits、Container 和 Summary。
+core/src/effects/ncae/cipher.rs：固定密钥表及带偏移的异或。无 FFI、无 Python 子进程、
+不加载官方 DLL，不依赖 Tauri、WebView、账号或特定操作系统。
+解压使用 flate2 已有锁定版本，显式选择 Rust 后端；其他工作区依赖的特性可统一选择
+另一个 Rust 后端。运行无需归档材料，只有验证程序需要本地官方样本。
+
+格式与处理顺序
+0..3 为 NCAE；4..7 为小端 u32 负载长度；8..13 六字节原样保留，不推断含义；
+14..15 为小端 u16 类型；16 为 key blob 长度 K；17 起为 K 字节，后面为负载。
+总长度须精确等于 17+K+L。K>=5 且 (K-1)%4==0；第4号 key 字节即文件偏移21为标记，
+跳过标记，其余字节与标记异或得到密钥。合法容器密钥范围4..252字节。
+S 为0..255；按 j=(j+S[i]+key[i%keylen])&255 交换 S[i]、S[j]。
+第 i 字节以 j=(i+1)&255，异或 S[(S[j]+S[(j+S[j])&255])&255]；
+负载阶段 S 不再变化。按字节位置保留周期，不能改成标准 RC4 的动态 PRGA。
+异或后执行 raw DEFLATE；保留任意二进制明文，不强制 UTF-8 或 JSON，不把类型1解释成权益。
+
+边界和失败
+默认容器/明文各上限64MiB；read 最多读取容器上限+1字节，支持任意短读。
+解压采用16KiB工作块，最多多解一字节探测超限；限制为0时允许空明文。
+错误包括错误魔数、任意截断、非法密钥长度、声明长度不符、损坏/未完成的压缩流、
+额外尾随或串联压缩流、zlib包头和超限。长度校验使用 u64 避免32位加法溢出。
+错误不返回原始材料/密钥/路径内容。open 使用既有普通文件检查；CPU和文件读取是同步的，
+将来接入桌面调度时应由阻塞工作线程调用。
+K>=5、大小上限、严格压缩流结束/无尾随是防御性加强，非官方畸形输入等价承诺。
+本层没有网络API、状态机、账号写入或授权激活；不能据解码成功放宽音效会员限制。
+
+可执行流程
+从项目根运行：
+  cargo run -p cumulus-core --offline --locked --example effect_material_read -- \
+    references/netease-3.1.42.205594-x64-unpacked/resource/3D环绕.ncae
+可选第二个参数为新输出文件；create_new 拒绝覆盖任何已有输出。默认只输出类型、长度、
+未知头部和明文SHA256，不输出完整材料。该工具不是播放器音效入口。
+
+新 Rust 验证
+references/recovered-client/scripts/netease_ncae_rust_vectors.py 导出纯合成测试样本。
+复现：PYTHONPATH=/tmp/cumulus-analysis-deps python \
+  references/recovered-client/scripts/netease_ncae_rust_vectors.py \
+  --output core/tests/fixtures/ncae-official.json
+仅验证生成器使用 Python/cc/pefile；生成后 Rust 测试不依赖这些工具和官方DLL。
+生成器沿用已审查的隔离子进程：校验整DLL和309/829字节算术函数哈希，不运行DLL入口。
+本轮390次调用：378个密钥/长度/偏移样本，另12个合成容器。
+378覆盖7种密钥长度（含252/256/260）、9种负载长度（含0/255/256/257/4097）和6种
+偏移（含u32::MAX）。Rust比较原生输出SHA256，并以137字节块反向处理检验偏移连续性。
+五项集成测试覆盖六个合法容器、六个压缩错误、逐字节截断、长度溢出、密钥边界、
+零/精确/超限解压、16KiB多块输出、短读和普通文件约束。总计新增6项Rust测试，
+不将378个样本说成378项产品功能。
+
+七份真实本地材料
+.build/verify_effects_ncae.py 调用新Rust可执行文件，逐一核对历史官方对照报告的文件SHA256、
+明文SHA256、全部头部摘要和JSON顶层字段；实际导出字节再次由独立Python标准库计算哈希。
+安装包3D环绕及已授权下载的六份材料均通过；安装包presence=6核对通过。
+每份重复指定已有输出均失败且旧文件保持原字节；源文件保持原样；临时明文清理完成。
+报告 .build/effects-ncae-materials.json；本轮真实账号请求0，没有重新下载、试用或占用授权。
+首次材料验证之后全工作区构建重新生成了工具，产物哈希审计因此拒绝了旧报告；
+保留effects-ncae-materials-before-final-build.json和对应audit-before-final-material-check日志，
+使用最终工具重新执行七份材料检查后生成正式报告，不把旧二进制证据挂到新产物上。
+历史Python通过数不计入新Rust测试；历史材料明文哈希只作为本轮实际运行的对照期望。
+
+证据入口
+docs/effects-ncae-mapping.json 记录来源、代码、验证日志、实际七份材料结果及剩余边界。
+.build/effects-ncae-audit.json 保存代码/文档/日志/产物哈希，goal_complete=false。
+全量Rust、Clippy、格式与桌面构建的实际结果见 rust-core-validation.txt 最新段。
+frontend/desktop源文件未改；没有新增UI/音频设备验证，前端测试沿用上一批61项。
+
+尚待完成
+PEQ/空间材料解释、官方参数组合、音效API/权益/授权生命周期、逐歌缓存、模型路径，
+恢复的C DSP安全FFI、PCM对照及实际播放器接入、音效选择/配置UI均继续迁移。
+完整SE/效果图和情绪模型推理在原研究中未恢复，本批未改变这些边界。
+解码材料不等于处理音频，不等于已激活音效，也不等于拥有SVIP权益。

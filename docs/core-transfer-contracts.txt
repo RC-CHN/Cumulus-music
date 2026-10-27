@@ -1,0 +1,80 @@
+Rust 原始媒体传输契约
+2026-10-25；当前是下载底层服务，完整业务下载任务仍待接入。
+
+来源与职责
+官方 M/754 internalDownload 取授权、MD5/长度、实际音质与文件格式；onDownload 在媒体
+结束时仅到 .95，completeId3 完成标签/封面后才结束任务。源码位置和接口见归档报告20。
+M/334 普通歌曲走 /api/song/enhance/download/url/v1，云盘独立走 cloud/dowonload。
+Rust 本层对应归档 cumulus_core/download.py；重新授权、标签、离线登记与调度对应
+download_service.py 的上层流程，尚未合并迁移。HTTP恢复与文件发布日志是社区实现，
+不声称已恢复官方原生CDN内部每条重试分支。
+
+代码按职责分 download/transfer/{url,backend,headers,records,control,files,manager,run}。
+TransferManager 绑定明确的原生账号命名空间；本层不持有登录Cookie，也不自行申请资源。
+CreateTransfer 接受可信原生调用者提供的授权URL、可选size/MD5和目标路径。
+TransferJob 含私有授权URL/资源ID/文件路径，仅供原生协调层和私有SQLite；不是前端DTO。
+MediaUrl 的Debug隐藏URL；序列化用于本地持久化，不能把完整job直接送到WebView。
+
+请求与续传
+URL只接受 music.126.net、music.163.com、netease.com、vod.126.net 的子域名，
+拒绝裸根域、相似域、IP、用户名密码、片段、反斜杠、控制字符及非80/443端口。
+http转换为https，保留资源路径/查询。生产后端只用HTTPS，无API凭据/Cookie容器、
+重定向、自动重试和透明解压；发送 Accept-Encoding: identity。
+默认连接/读取超时30秒；允许显式设置正值至300秒，不以总时长截断正常长下载。
+只保留Content-Length/Range/Encoding、ETag、Last-Modified；重复的关键响应头报错。
+
+续传偏移使用实际part文件长度。具备强ETag或Last-Modified时发送If-Range；
+没有验证器但具备授权MD5时可以续传，并在最终校验MD5；两者均缺失则从零开始。
+弱ETag不作为If-Range；Last-Modified仅作有长度与字符限制的不透明验证器，尚无日期解析。
+206必须有精确起点、合法终点/总长度，Content-Length如存在必须匹配该范围。
+非identity响应、资源大小超过上限或不同于授权、验证器改变均报错，不拼接已知不同表示。
+服务器返回200忽略Range时清空本任务part，从头接收；有效短206保存为paused供显式继续。
+截断响应保留已落盘字节并报错；错误长度/MD5不会发布目标，也不暗中更换资源。
+非200/206优先保留HTTP状态，供未来上层实施有限重授权策略。
+
+refresh_resource 是显式原生操作，不执行API请求。只有新旧非空MD5相同且长度相同
+才保留字节；其他情况从零开始；新URL清除旧验证器。当前没有自动401/403等授权重试。
+示例入口额外要求授权有size和MD5、data.code=200、ID匹配、无freeTrialInfo。
+默认单文件上限512MiB，可信宿主可配置；这不是完整下载目录或总配额管理。
+
+持久化、取消与发布
+任务按owner写入 media_transfers_v1。每个任务持有跨实例文件锁，网络期间不持SQLite锁。
+状态：queued/running/paused/error/publishing/complete/cancelling/cancelled。
+创建part使用独占创建，Unix权限0600；目标父目录规范化后记录身份。
+part命名 .cumulus-<32位UUID>.part，与目标处于同目录；现有文件或符号链接目标均拒绝。
+文件身份使用Unix设备/inode或Windows卷/文件ID及可用创建时间；打开句柄与路径核对。
+若part/父目录被替换，拒绝继续写或删除，不把相同内容但不同身份的文件据为本任务。
+
+在接收正文前持久化验证器；每1MiB及暂停/结束时fsync并保存进度。
+TransferControl在网络等待前后及发布前检查；迟到的账号变化不继续写入下一块。
+宿主可传Pause或错误；byte_budget用于可重复的暂停验收。
+Future中止尽力保存paused与实际长度，释放文件锁；进程突然退出后仍从实际文件恢复。
+本层尚无独立的持久化暂停命令/任务调度器，运行中的pause应由control协调。
+
+完成接收后在blocking worker中重新全文件计算MD5/SHA256/长度，检查授权及文件稳定性。
+先持久化publishing与哈希，再hard link创建最终目标，不替换已存在路径。
+若link后SQLite提交失败，保留publishing；重开只接受与已记录part同身份的目标。
+publishing不能restart/refresh_resource；已经link出的目标也不能cancel截断或删除。
+完整任务重新run只复核目标和处理临时清理，不重发媒体GET。
+cancel先保存cancelling再删本任务part，重开可完成取消；不删除complete或其他文件。
+complete后清理失败只保留cleanup_pending，不能把已发布媒体重新当作未下载。
+
+边界
+本层complete仅表示原始媒体校验并发布到调用者指定位置，不能直接等同官方下载完成。
+标签/封面/LRC、可选NCM、会员权益/离线库登记、统一3并发和目录迁移仍属上层待迁移项。
+直接接受原生owner/资源不构成账号权限验证，宿主必须经AccountSession授权并提供代次检查。
+小块文件写/fsync/SQLite检查点同步执行，宿主应在后台runtime运行，不能放UI线程。
+全文件哈希可在Future取消后继续只读到结束；取消后不会执行其后续发布。
+只在Linux实测。Windows/macOS的接口设计不等同构建/运行验收，Windows目录fsync不作保证。
+需要支持同目录hard link的文件系统；不支持时明确失败，不退化为覆盖写入。
+路径/身份检查应对普通替换与恢复，不宣称隔离恶意本地进程所有文件系统竞争。
+
+验证
+9项 download_transfer 测试与1项实际reqwest本机HTTP测试，详情见 rust-core-validation.txt。
+实际入口 core/examples/transfer_read.rs，显式传入已有PC私有profile与全新输出目录。
+两首已授权lossless FLAC：34619357/34937218字节，各65537字节暂停后重开/重新授权；
+CDN续传返回206，MD5匹配、SHA256重读匹配，临时part清理成功，无远端账号写入。
+独立FFprobe/FFmpeg完整解码两首音频，无错误。报告不保存UID、Cookie或授权URL：
+  .build/rust-transfer-read-report.json
+  .build/rust-transfer-decode-report.json
+这些新Rust结果不引用旧Python线上通过数充当迁移完成。

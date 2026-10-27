@@ -1,0 +1,122 @@
+随心听 FM：官方播客场景模型、Rust 队列及桌面
+2026-10-27；属于完整目标的一部分，不代表所有播客/FM/桌面工作完成。
+
+来源与业务边界
+官方 M3004（hybrid_204.chunk）requestSceneFm、changeSceneFmActive、playSceneFm、
+syncActiveFmFromPlaying 是主依据；M597.l/m、M15.hb/Pi 与 M21.B/C 提供接口和规范化。
+references/recovered-client/docs/product/models/page_audio.txt 保存模型解释；historyList.txt
+证明未听选择使用本机 historyVoices，不能用远端播放次数或远端历史接口代替。
+references/ui-recovery/sources/packages/pc/src/pages/audio/components/SceneFm.tsx 提供卡片、
+封面播放/暂停、播单链接和分类滑动选择来源。M116 默认 sceneFmAutoPlay=false。
+本批不使用 YesPlayMusic。下列程序使用恢复材料推导的业务，不启动归档 Python 实现。
+
+独立 Rust：podcast/scene/{api,types,service}；客户端协调：client/scene_fm/{mod,view,actions}。
+desktop/podcast.rs 转发两个正式命令，frontend/services/sceneFm.ts 是公开类型，
+useSceneFm 管账号/请求代次和缓存，SceneFmPage 提供正式“随心听 FM”入口。
+
+接口、字段与顺序
+1. /api/voice/homepage/block/content
+   {blockCode:"VOICE_HOMEPAGE_BLOCK_SCENE_FM"}；读取 data[0].creatives。
+   creativeId 是 OP_76001 等字符串，不能当数字解析；不接收任意未出现在目录中的场景。
+   uiElement.mainTitle.title 是分类名，labelTexts[0] 是服务端听众提示；alg 留在原生层。
+   creativeExtInfoVO.djPrograms 为首次节目列表，null/缺失表示尚未加载。
+2. /api/content/scene/fm/play/list
+   {sceneCode:"SCENE_FM",sceneId:<creativeId>}；切换到没有节目的分类时读取 data.list。
+   已有该分类完整列表时不重新请求。空列表可明确重试，不触发官方空数组 f.id 崩溃。
+3. 既有 PodcastApi 补缺主音频的节目：/api/dj/program/detail {id:<节目ID>}。
+   保留节目 ID 与 mainSong/mainTrackId 的区别，生成整组 voice 资源，不能只播当前可见卡片。
+4. 复用节目音源授权：/api/dj/play/url/check，之后 /api/song/enhance/player/url/v1。
+   节目续播开关使用 /api/dj/user/setting/resumeplay/get，字段及权限见播客契约。
+   仍以真实服务许可、实际音质与试听范围为准，本功能不赋予新的会员权限。
+
+选择与队列
+首次目录：第一分类为 active，每个已加载分类选择第一个不在本地已听记录的节目；
+全听过则选择第一集。切换分类时重新按这个规则选节目，并替换当前队列立即播放。
+普通点封面：若实际播放正是本卡片的场景/节目，则暂停或继续；否则按整组列表开始。
+所有项目都进入统一原生队列，source.kind=scene_fm，scene_id 与 scene_revision 绑定意图。
+这不是音乐私人 FM：不发送 radio/skip、不自动无限补充，不保留音乐 FM 的原队列备份。
+继承当前顺序/随机/循环模式；EOF 和下一首走普通 voice 队列，再同步卡片到真实播放单集。
+官方 sync 按当前分类优先查找节目，找不到再遍历其他分类；原生遵循此顺序。
+队列与原生位置由既有播放持久化恢复，重启默认暂停；再次选节目遵循播客续播开关。
+
+本地听过记录
+沿用既有 podcast-positions-v1 的历史键；新增 podcast-heard-v1，以补足试听片段也已听过
+但不应保存为完整节目续播位置的情况。记录由实际原生加载成功后的 save_position 事务写入。
+已选中但授权/加载失败不会标已听；不会把试听 EOF 标为完整节目听完。键按账号隔离。
+没有因此实现全量播放历史页、远端历史上传或跨设备接续；这些仍在完整目标中。
+
+持久化与恢复
+scene-fm-v1/current 保存目录、各组完整节目、所选节目、active_id、revision 和 pending。
+scene-fm-v1/autoplay 保存本账号开关，缺省关闭；凭据和原始节目只留原生存储。
+OperationLock 串行本账号跨进程修改，事务比较 revision 再提交，旧账号代次不可提交。
+新播放意图先落 pending，再执行懒加载和详情补齐；任务中断后不默默重复播放。
+只有实际成功加载同场景、同节目且 scene_revision 等于待应用 revision 的队列才清 pending。
+旧队列即使恰好播放同一集，也不能确认新的未完成选择。自然切歌随后更新显示选择。
+读取时若恰好有修改持锁，使用已提交缓存；不会把一次成功播放伪装成锁竞争错误。
+失败可显式重试或“取消这次选择”；取消只撤销待恢复标记，不改远端资源或自动恢复旧队列。
+仍有 pending 时不允许刷新目录覆盖恢复责任。损坏/重复/过量列表拒绝提交，原快照保留。
+接口上限：最多200分类、每组5000节目；分类ID最多128字节，仅ASCII字母数字、_和-。
+
+自动播放和并发
+进入页面且已开启本地自动播放时尝试一次；官方模块级 b 标志在本实现按账号会话代次隔离，
+手动播放也消耗本会话的自动尝试。开关本身不立即播放，重启后的新宿主允许新一次尝试。
+播放中、缓冲、准备/加载中的音频、当前视频所有者、一起听未清理状态均阻止自动切换。
+比官方单一 Playing 判断增加加载和视频门控，避免迟到自动操作抢占新选择。
+准备前记录原生控制/队列/playId fence、选择序号和媒体焦点代次；准备后再次校验。
+自动申请焦点用条件比较，新的MV所有者不会先被暂停；原生 UpdateQueue 原子校验 fence。
+准备期间新停止/选歌/换号优先，自动意图取消；手动失败保留明确重试。
+前端隐藏页面、切号、销毁和迟到回读都会阻止继续发起自动播放；原生仍独立检查上述条件。
+原生状态/entry变化触发及时回读，周期轮询每账号最多一个在途请求；慢响应不会被后续定时器
+永久废弃。显式命令、刷新和换号仍使旧读取失效；未改变单集的读操作不重复同步整组快照。
+
+播单中跨播客单集的真实服务修正
+场景入口实际返回的一个播单含80集，其中4集保留另一个原始 radio.id。官方 M15.Et 直接
+规范化 data.programs，没有“每集所属radio必须等于当前播单”的过滤。旧Rust校验错误地
+拒绝整页，本批已修正：保留服务提供的完整顺序及单集原始radio，用于权限、归属和续播。
+请求的播单身份、节目ID唯一性、页上限、总数、顺序和账号代次仍校验，不改写节目原始身份。
+
+公开 IPC
+scene_fm_view(epoch,refresh) -> AccountData<SceneFmView>。
+  false 只用本地缓存及原生播放器观察；true 显式刷新目录，不获取播放授权。
+  返回 revision 十进制字符串、activeId、scenes{id,name,label,count}、选中 EpisodeView、
+  active/playing/pending/autoplay；不返回 Cookie、算法追踪参数、完整授权 URL 或原始数据。
+scene_fm_command(epoch,command)：
+  select {revision,scene_id}；play/toggle/automatic/cancel {revision}；autoplay {enabled}。
+  命令带判别字段 kind（snake_case）；拒绝未知字段和非规范十进制 revision。
+  账号代次、展示 revision、实际来源和原生播放 fence 分别保护账号、目录和当前播放意图。
+
+界面与差异
+独立“随心听 FM”入口展示官方结构的渐变卡片、封面按钮、标题、播单、横向分类和听众提示；
+附单集评论、下载入口和自动播放设置。播单链接进入既有详情；评论/下载复用已验证流程。
+错误、首次加载、空场景、失败重试、未完成选择、取消均有实际入口；小窗口可滚动。
+目前采用固定渐变，未迁移官方 useImageColor 封面取色；横向分类替代原 Slider 组件。
+当前独立页面尚未整合官方完整播客发现首页，标题未接官方声音详情/大黑胶页。
+没有同账号同页面官方运行截图，因此不声称像素一致；这些UI差异继续属于完整目标。
+
+验证入口
+node references/recovered-client/scripts/netease_scene_fm_oracle.cjs
+  在内存依赖边界执行恢复的官方 M3004 工厂和 generator，生成8组未听/全听/分类切换样本；
+  同时确认整组 index、forceClear、sceneFm 与手动之后自动尝试只播放一次。
+  core/tests/scene_fm.rs 逐项比较，不是把另一个手写算法当官方预期。
+core/tests/client_scene_fm.rs 验证完整队列、暂停/继续、切歌同步、已听、换分类、重开、
+自动默认/一次、迟到停止、拒绝授权后的恢复、跨账号和回读锁竞争。
+client/focus.rs 内部测试确认旧代次及当前视频所有者拒绝自动音频申请，手动仍能切换。
+frontend/tests/scene-fm-state.test.ts 验证迟到回包、离开页面、切号、未决、只读恢复和revision。
+桌面IPC测试已包含旧账号 scene_fm_view/command 拒绝，未以假API证明真实播放。
+
+独立实际读取：
+  cargo run -p cumulus-core --example scene_fm_read --locked --offline -- <已授权PC目录> <新私有目录>
+  白名单仅账号/目录/节目读取，记录原始响应和准备后的完整队列；不宣称该程序实际播放。
+桌面探针：
+  cargo build -p cumulus-desktop --features custom-protocol --example scene_fm_ui_probe --locked --offline
+  GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 LIBGL_ALWAYS_SOFTWARE=1
+  CUMULUS_SCENE_PROFILE=<已授权PC目录> xvfb-run -a -s '-screen 0 1120x760x24'
+  dbus-run-session -- python3 desktop/examples/run_auth_probe.py <新私有证据目录>
+    --binary .build/target/debug/examples/scene_fm_ui_probe --stage-prefix scene_
+    --screenshots 8 --reopen-screenshots 2 --timeout 360 [--small]
+  相同目录加 --reopen 运行真实持久队列恢复。驱动仅截图与进程协调，业务由正式DOM/IPC/Rust执行。
+  audio/null 使用实际 libmpv 解码，不能证明实体扬声器听感或 Windows/macOS 通过。
+独立校验：python3 desktop/examples/audit_scene_fm_probe.py <证据目录> [--native|--reopen]。
+入口专项：设 CUMULUS_SCENE_LINKS=1，使用新目录与 --screenshots 3；以 --links 独立核对。
+它验证播单详情、节目评论、下载弹窗内容与取消，不冒称这次再次执行了完整节目文件下载。
+最终当前批次运行结果、截图与已知失败见 rust-core-validation.txt，不以接口成功替代桌面验收。

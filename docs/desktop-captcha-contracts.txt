@@ -1,0 +1,119 @@
+登录滑块验证、官方令牌来源与独立窗口
+2026-10-27。本项属于完整桌面目标的登录生命周期；完整目标仍进行中。
+
+官方来源核对
+M256：固定https://cstaticdun.126.net/load.min.js、captchaId
+73a18dc827b24b18ad0783701a75277d、320px、popup、apiVersion=2。
+onVerify(result.validate)提供secureCaptcha，取消/超时应结束当前等待；默认超时60秒。
+M17/M614：窗口打开动作实际调用captchaIns.verify()。M256原element为空，本实现使用独立页
+容器#captcha；原组件位置top=20%保留。不是本地自动解题器。
+M363及二维码恢复模型：凭据登录使用原请求加secureCaptcha；二维码使用原key/type=3续查。
+两者仍须account/get校验身份，再提交账号选择；不将挑战回包当作登录成功。
+
+不能混用的令牌路径
+1. 当前PC业务传输M402：从MConfig的当前路径匹配结果调用M252.getToken(business)，并设置
+   checkToken与X-antiCheatToken。现有正式RequestContext已经负责此链。
+2. vendor M1811旧中间件：默认business为bd5d2f973ef74cd2a61325a412ae54d9；
+   checkToken.isLogin时改用0b0cdd23ed1144a0b78de049edc09824。M421只导出此中间件；
+   NormalFizz默认只安装credentials、encrypt、query，不能因包中存在就认定每次PC登录使用它。
+3. JSK M1368：needsGuardianToken/tokenKey交给nativeRequest；ydDeviceToken走
+   nm.login.ydDeviceToken。非iOS等SEND_YD_TOKEN事件，5秒未收到则返回空字符串。
+   PC桥M290的ydDeviceToken当前实现仅回{code:200}，没有token或事件；不能臆造一个
+   普通Watchman令牌冒充设备令牌。M1368刷新会把空值原样传入，尚待单独校正Rust刷新契约。
+4. 滑块validate是secureCaptcha，不替代上述任意令牌。
+本批不接入未经证明的LoginGuardian替代物，不声称已完成JSK真实续期。
+
+core状态机
+MusicClient::solve_login_captcha(id, native_provider)只允许当前凭据Captcha或二维码Challenge。
+provider是独立Rust trait，不依赖Tauri/DOM/Python；只有宿主可以提供。
+每个候选最多一个等待；等待真人期间释放账号切换锁，普通登录命令不能并发覆盖挑战。
+取消、换登录方式、退出账号会通知并丢弃provider future；取消方不等满一分钟。
+返回后重新检查账号代次、候选ID、业务状态，再使用原请求或原QR key继续一次。
+proof仅在内存中传递；拒绝空值、控制字符和超过8192字节结果。不进入UI DTO或诊断。
+加载失败/取消/60秒超时不发音乐登录请求，保留挑战供用户显式重开。
+业务续交后的未知结果沿用原Error/只读reconcile规则，不自动重放登录或验证码。
+
+桌面与前端
+主界面密码/邮箱挑战和二维码挑战均显示“打开安全验证”。IPC仅接受operationId，结果仅返回
+Credentials(LoginView)或Qr(QrStatus)。前端不提供secureCaptcha、不持有SDK或Cookie。
+NativeCaptcha开启440x520独立隐私窗口，加载固定官方组件，由用户完成验证；成功交回原生，
+关闭窗口后继续登录。原生回调只接受当前窗口精确本地/result地址与单一受限字段。
+主窗口关闭会销毁验证窗口；窗口新开导航被禁止，外部导航被拒绝。
+独立CSP仅放行所需官方服务/CDN家族；主界面CSP保持原策略。SDK模板使用new Function，
+所以仅验证窗口允许unsafe-eval。没有给验证码窗口开放音乐API或应用命令。
+所有自定义应用IPC在调度前限制main窗口；插件权限仍限原capabilities/main.json。
+不凭“自定义协议是本地页面”认定有权限，独立窗口不能调用账号、播放器或文件管理命令。
+
+Linux宿主修正
+当前Tauri/Wry按data_directory缓存已注册自定义协议，而incognito新建WebKit上下文。
+若复用默认目录，运行时省略协议注册，实际会显示The URL can’t be shown/about:blank。
+每次验证创建独立临时上下文目录，同时保持incognito=true；RAII销毁窗口并释放目录。
+这是根据当前依赖源码定位并在Linux实际复现的集成问题，不代表Windows/macOS也已实测。
+
+当前证据
+core/tests/client_auth.rs新增凭据/QR续交、拒绝非挑战及非法proof、并发互斥、取消/替换、
+future中断、超时、原key/摘要保持与身份读取测试；均使用合成HTTP，不冒充真实账号登录。
+desktop/tests/ipc.rs核对非main窗口不能调用应用命令；page.rs测试callback格式/长度/重复字段。
+desktop/tests/captcha_page.cjs直接运行恢复M256，与实际page.js对照固定配置及结果处理；
+涵盖三个官方回调、单次完成、取消、加载/验证错误。无需执行远程SDK或访问账号。
+frontend/tests/login-state.test.ts验证新等待操作、迟到结果和取消后不自动重发。
+真实SDK窗口验证仍在补强中，见本文件后续实测记录；初始化成功不等同于题目可见或真人通过。
+
+边界
+当前账号没有新触发的真人滑块挑战，本批未用真人validate完成真实登录，未发送短信/邮件。
+702/8840网页验证、原设备扫码确认、微信、安全QR、JSK宿主刷新等分支继续单独推进。
+所有官方动态脚本保留只读研究快照和SHA；正式客户端加载官方地址，不把归档脚本当固定服务。
+未参考YesPlayMusic。外部SDK版本/题型/域名变化可能需要重新验证，不静默扩大主界面权限。
+
+2026-10-27最终窗口实测
+.build/ui-proof/captcha-20261027-e：正式Vue/IPC及NativeCaptcha，音乐接口使用进程内合成服务。
+初次挑战→官方验证码题目/图片实际加载→取消返回同一挑战→重开再次显示题目→关闭父登录。
+5张截图均保存，第二次题目及父窗口取消后截图已查看；独立audit_captcha_probe.py通过。
+两次真实验证码加载包括/api/v2/getconf、/api/v3/get及necaptcha图片；资源快照未见/check；未做真人滑块操作或登录续交。
+总音乐登录提交仍只有最初1次合成请求，未重发；结束时验证窗口0。实际账号/短信/邮件使用0。
+SDK初始化时还会由官方IR脚本发送ir-sdk.dun.163.com/v4/j/up；其环境采集在独立临时WebView内，
+不是已恢复Rust Watchman报告的另一种编码。本页不获得音乐账号Cookie或硬件clientSign。
+实际主应用命令尝试被拒绝；探针事件emit权限只在测试构建setup追加，正式能力文件没有变化。
+CSP中观察到localhost连接拒绝来自此测试IPC尝试；官方题目资源无被拦截项。
+a/b记录协议未注册失败；c仅初始化成功但截图无题目，不算题目通过；审阅SDK发现模板new Function
+依赖后，仅在验证窗口增加unsafe-eval，d首次实际题目可见，e补重开和父流程取消验证。
+
+补充范围
+captchaAvailable仅在存在待续交的原登录请求时为true；例如首次发送短信直接返回8821，尚没有
+密码/短信登录请求时，不会打开窗口让用户做完后再失败，也不会编造凭据或未经证实的重发。
+该发送验证码挑战分支的官方续交参数仍须进一步核对，界面保留改用二维码入口。
+
+正式客户端只读启动
+.build/ui-proof/captcha-desktop-20261027-a使用本轮正式二进制、既有授权PC会话和独立状态目录。
+账号恢复、PC配置1026048、Watchman设备revision1均已持久化；每日推荐真实页面截图已查看。
+没有探针叠层或音乐写入，不把启动检查算作所有页面/播放器/验证码真人通过。
+
+构建缓存清理
+按用户要求移除Cargo debug/deps与examples中旧哈希ELF产物，保留每目标最新版、具名产物
+指向的inode和运行中进程。另清理过期链接临时文件。未删除源码、会话、日志、截图或恢复材料。
+首次清理799文件，实际释放119.33GiB；计划与结果见.build/cleanup-20261027-{plan,result}.json。
+
+最终回归结果（2026-10-27）
+全workspace/all-targets含custom-protocol的184组825项Rust测试通过，失败/忽略0。
+前端124项测试、类型检查/构建/格式通过；Rust fmt及严格Clippy全workspace/all-targets通过。
+本批核心新增6项挑战测试，桌面新增callback和IPC隔离2项；其余是原有回归。
+首次全量在client_local的两秒轮询上限耗尽，初版没有输出任务状态，不能断言根因；随后
+独立复现5项通过。测试改用10秒截止时间、Failed立即失败并打印任务状态，未放宽业务结果
+断言，也未修改本地匹配业务实现。完整回归重新通过；首次失败日志保留。
+原有非主窗口Watchman IPC测试更新为更早的全局拒绝结果，主窗口成功和票据拒绝断言保留。
+Clippy首轮发现多余unit及大enum，已移除多余表达式并对Credentials视图装箱；序列化契约不变。
+详细日志、来源/产物/证据哈希见.build/captcha-progress.json。全范围goal仍active。
+
+最终交付二进制复核
+全量cargo test会重写debug/cumulus。已另用仅--bin cumulus的正式构建命令重新构建，随后
+captcha-desktop-20261027-b再次启动并核对账号/配置/设备，正式每日推荐截图已查看。
+本轮验证码探针e的可执行文件哈希保持不变；正式最终哈希独立记录，不能混用两种构建。
+回归后又清理186个旧ELF副本、释放23.08GiB；累计删除985个可重建文件，累计释放142.41GiB，
+最终可用约132.70GiB（回归期间会产生新的构建产物）。临时验证码目录剩余0。
+
+本次业务请求路径
+邮箱续交：/api/w/login，原username/password摘要/remember等字段加secureCaptcha。
+手机续交：/api/w/login/cellphone，原phone/countrycode及password摘要或captcha等字段加secureCaptcha。
+二维码续交：/api/login/qrcode/client/login，原key/type=3加secureCaptcha。
+登录授权后：/api/w/nuser/account/get核验身份并提交候选。没有新增通用任意请求IPC。
+HTTP域和账号候选仍使用原PC上下文；易盾保护要求沿用MConfig动态匹配，不因滑块结果而跳过。

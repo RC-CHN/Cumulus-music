@@ -1,0 +1,85 @@
+Watchman 原生 Collection、真实浏览器环境与窗口生命周期
+2026-10-27。完整桌面目标仍进行中。Collection已经由真实WebView驱动；
+后续已接入音乐MConfig/RequestContext，实际/v3/d、/v3/b及本人歌单受保护读取均200；
+新阶段完整接口/证据和剩余边界见core-pc-request-context-contracts.txt。
+
+源码、分层和接口
+两版固定官方源及SHA继承watchman-mapping.json。新生成器recover_watchman_environment.cjs
+提取38项设备计划、21项环境getter、字体数量和原音频函数；来源映射watchman-environment-source.json。
+watchman_collection_oracle.cjs直接执行原设备协调器（旧Dc/新Ec）和环境协调器（旧aa/新ca），
+每版6个设备场景、3个环境场景，使用明确的合成getter/定时器，对照配置、失败、缓存及扩展行为。
+core/src/watchman/collection/model.rs定义MeasurementSource、结果类型与计时槽；
+policy.rs选择类别、延迟项和环境组；mod.rs实现独立NativeCollection及原生缓存/顺序/取消语义。
+core只依赖宿主接口，不依赖Tauri、DOM、Python进程或Node。图形/音频/DOM测量属于宿主适配。
+desktop/src/watchman/collection/broker.rs负责原生命令票据、页面代次和等待者；
+mod.rs提供真实BrowserMeasurements、单窗口所有权、脚本调度、事件排空和插件生命周期。
+生成的environment.js包含原始浏览器getter及其测量helper，没有SDK初始化、Cookie、token或网络。
+客户端仍由Rust完成配置、采集状态机、指纹/字段/包编码、请求和设备存储。
+
+设备配置、顺序和缓存
+ejcd、ews仅接受明确布尔true，分别启用字体jb/ib和WebGL dc，默认关闭；Canvas默认启用。
+原配置正规化未映射内部Lc参数，因此不能把服务原始配置中的Lc:false当作关闭Canvas的指令。
+默认35字段，启用上述两类时38字段；保持普通getter先行、延迟getter后行及异步音频回调等待。
+本实现延迟getter逐个通过IPC调度并等待，测得耗时包含真实宿主开销，不伪造官方JS运行耗时。
+getter失败或设备字段编码失败产生该字段的空数据失败结果，继续其他设备字段。
+只有完整设备组完成且页面代次仍相同才发布缓存；中途取消/页面变化不发布部分结果。
+设备组首次完成后洗牌一次并缓存。随后同SDK/页面/声明实例复用同组、同顺序；
+单独改变配置开关不会重采，符合原Ec的进程内缓存；SDK切换或实际页面重载使缓存失效。
+NativeCollection声明已经安排字段顺序，运行时不再次打乱设备缓存或环境遍历顺序；
+其他注入Collection默认继续由运行时洗牌，保持既有可独立测试接口的契约。
+身份声明在BrowserMeasurements实例中固定；一个主窗口只允许一个活动测量源实例。
+
+环境协调器与计时
+设备报告初次使用6个基础环境字段；行为采集先排空事件，再测量基础6项与动态15项。
+官方ca(false)原地扩展Cb，因此之后ca(true)也会使用21项；原生状态保留这一行为。
+每次打乱环境遍历顺序。getter或编码遇到首个失败就终止整组，已完成前缀保留，失败字段和
+后面的字段不提交。不会把环境异常改成一个成功的0，也不会发出失败字段后继续整组。
+实际宿主没有initWatchman/initNEWatchman全局时，Xb原始getter抛错；当前如实保留。
+独立逐getter探针可显式检验所有21项，但不能将它的完整列表当成实际ca报告内容。
+计时槽0原生宿主初始化，1原生包编码，2原生配置解码，3设备采集/缓存回读，4事件排空，
+5原浏览器自动化检查。环境ub/lb读取当时计时快照，cc使用调用者给出的真实使用间隔。
+原生阶段用单调时钟量耗时；浏览器检查保留原Date.now差值，包括时钟回退产生的负数。
+初始化/设备/事件耗时含原生IPC成本，是本实现的实测时间，不宣称与官方JS进程耗时相同。
+配置与包编码耗时已从Config/WatchmanRuntime接回Collection；不把未发生阶段的初始0伪称测量。
+
+原音频及字体行为
+实际OfflineAudioContext参数为1声道、44100帧、44100Hz；triangle/10000Hz，经原压缩器参数
+离线渲染，读取4500..5000样本。两版原函数随后把Float32Array送入字符串哈希，触发类型错误；
+内部catch向成功回调交付空字符串。原函数还以错误参数调用reduce helper，不能擅自改成正常音频指纹。
+保留原函数与helper，Node用真实Float32Array验证完整/不支持/构造失败/超时分支；真实WebView的
+La结果也为空且未标成外层getter失败。没有把空字符串当作音频指纹成功或物理声音输出证明。
+fontList缺失时，jb与ib均明确失败；原helper在抛错前可能已插入DOM节点，未静默补造字体名单。
+这属于易盾设备测量，和音乐播放器的音效DSP不是同一功能。
+
+IPC、页面和取消边界
+watchman_measurement只接受主窗口，票据由原生分配，不允许前端发起自选采集/网络请求。
+页面开始加载或销毁时取消等待者、清事件采样并改变代次；完成加载后才接受新采集。
+生命周期使用Tauri插件钩子，普通应用/探针的on_page_load回调不会覆盖该保护。
+回包必须匹配当前epoch和未消费request；重复/迟到/未知票据拒绝，窗口重载的旧结果不能写缓存。
+最多8个待回包；每个调用5秒截止，异步future被丢弃时RAII移除票据。帧大小另受本地上限约束。
+同步/异步测量错误与IPC/宿主失效区分：前者走字段/环境组失败规则，后者终止整个收集。
+JS在传输前把数值非有限值转为官方数值编码等价的0，防止数组中的NaN被JSON变成null后漏字节；
+不成对UTF-16代理项产生明确测量失败，避免JSON解析失败悬挂整个桥。
+原生Source持有事件代次；行为采集等待JS发送队列flushed，再排空Rust采样器。
+源取消初始化后仍保留已启动观察器的所有权，后续初始化或Drop会清理；停止按代次匹配，不误停新源。
+所有权释放取消残余等待者；测量源/实例没有账号Cookie、token或原始请求密钥。
+
+实际执行与验证层级
+desktop/examples/watchman_collection_probe.rs使用正式configure/IPC/插件和离线账号桩。
+两个版本分别执行38项实际设备字段、重复缓存读取、一次程序化点击及行为排空；
+单项读取21个环境getter（该独立审查使用明确的合成计时输入，报告流程使用原生计时）。
+随后实际reload窗口，验证待票据StaleResponse、旧回包拒绝和同一Rust采集器重建38字段缓存。
+合计114次设备测量；jb/ib各版失败、La空结果、实际缺loader导致的Xb失败均保留。
+程序化点击isTrusted=false；此前真实OS输入验证见core-watchman-events-contracts.txt，不能混为本次可信输入。
+audit_watchman_collection.cjs执行固定官方字段编码函数，逐项核对Rust字节、缓存快照、来源调用次数与边界。
+Python只作外部启动/截图驱动，不参与任何客户端业务。界面文字叠层是测试说明，不是新产品页面。
+构建：CARGO_INCREMENTAL=0 CARGO_TARGET_DIR=.build/target cargo build --locked --offline -p cumulus-desktop --features custom-protocol --example watchman_collection_probe
+运行：GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 LIBGL_ALWAYS_SOFTWARE=1 dbus-run-session -- xvfb-run -a -s '-screen 0 1280x900x24' /usr/bin/python3 desktop/examples/run_watchman_fingerprint_probe.py NEW_PRIVATE_DIRECTORY --collection
+审核：node desktop/examples/audit_watchman_collection.cjs NEW_PRIVATE_DIRECTORY
+目录必须全新，不覆盖失败记录。最终日志、路径和散列见.build/watchman-collection-progress.json。
+
+仍待完成
+正式Runtime/Source生命周期、PC MConfig/RequestContext和三条真实报告/读取链路已有后续证据。
+登录挑战、原403写路径隔离往返、Windows和macOS实机对照仍待完成。
+Windows声明与当前WebKit引擎的不一致仍然存在，不能将Collection可用声称为易盾已绕过。
+LoginGuardian/CAPTCHA/刷新以及其余完整桌面目标继续；没有新增支付、邀请或真实账号写入。

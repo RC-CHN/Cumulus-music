@@ -1,0 +1,40 @@
+新工程启动与归档检查
+2026-10-25；本机 Linux x86_64。
+
+归档
+原 cumulus_core、scripts、tests、docs、pyproject.toml 移入 references/recovered-client。
+413 个原文件在移动前后逐项核对 SHA256，一致；重新执行旧测试后再次核对仍一致。
+references/recovered-client/relocation-manifest.json 保存清单。
+旧核心测试 202/202（14.626 秒）通过，日志 references/relocation-tests.log。
+这里只重跑了旧核心测试，未重跑全部 DSP 对照或线上账号动作。
+根 .gitignore 保持原 11 字节 references/，根 LICENSE 不变。
+
+新工程
+frontend: Vue 3.5.44、Vite 7.3.7、TypeScript 5.9.3、Tauri JS API/CLI 2.12.4。
+Rust: rustc 1.96.0；Tauri crate 2.11.5；具体依赖固定在 package-lock.json 和 Cargo.lock。
+前端类型检查与生产构建通过；cargo fmt --all -- --check 和 workspace check 通过。
+cargo test --workspace --locked --offline 通过：1 项真实 Tauri IPC dispatcher 测试。
+该测试验证 get_app_info 的注册、核心服务调用和 camelCase JSON 返回，不属于音乐业务验收。
+core 的依赖树仅包含 serde 及其依赖，没有 Tauri/WebView 或桌面平台库。
+
+实际桌面
+npm --prefix frontend run desktop:build -- --debug --no-bundle 成功。
+生成 .build/target/debug/cumulus；未生成安装包或进行发布。
+临时 D-Bus + Xvfb + GDK_BACKEND=x11 + LIBGL_ALWAYS_SOFTWARE=1 下窗口启动成功。
+页面截图 OCR 读到 Cumulus 0.1.0；此版本文本只在前端取得 core IPC 返回后展示。
+截图与进程记录见 .build/desktop-smoke/；软件渲染仅用于本次检查，未写入产品启动配置。
+开发入口 npm --prefix frontend run desktop:dev -- --no-watch 也已实际启动通过：
+Vite 监听 127.0.0.1:1420，桌面页面再次显示由核心返回的版本，记录在 .build/desktop-dev-smoke/。
+验证后应用与临时开发服务已关闭，确认 1420 端口没有残留监听。
+首次使用默认渲染环境观察 8 秒未见 Xvfb 窗口，保留为未通过的尝试；未据此断言具体驱动原因。
+Windows、macOS、Wayland、物理音频输出没有在本轮验收。
+
+启动中发现并修正
+Tauri 默认窗口图标需要 PNG，已补齐 SVG 原稿及 PNG/ICO/ICNS 产物。
+beforeDevCommand/beforeBuildCommand 在工作区根运行，已改为 npm --prefix frontend ...。
+依赖首次离线安装缺 npm 缓存，随后从官方 npm registry 安装成功。
+
+交付边界
+目前交付独立 core、Tauri 桥接、Vue 界面和可启动骨架。
+登录、搜索、播放、下载等旧实现仍在 references 中，尚未迁移为新 Rust 业务。
+新程序不读取旧会话，不链接官方 Windows DLL，不调用 Python 归档作为后台进程。

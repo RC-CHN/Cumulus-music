@@ -1,0 +1,79 @@
+一起听房间结束与本机恢复
+2026-10-26；本批完成已接入口的自动结束/房间消失处理，不表示一起听或完整桌面目标完成。
+
+官方依据
+hybrid_app.chunk.1482700000000.js/75.js:1097..1136：业务包先heartbeatReCount；
+waiting仅处理加入消息；together/togetherOwner收到20003调用leaveListenTogether，
+leaveReason=ROOM_EMPTY，leaveData来自当前附件。
+同模块588..734：ROOM_EMPTY直接执行退出，并显示结束提示；leaveIM/leaveRTC先于房间请求。
+同模块900..950：leaveListeningRoom调用结束接口，shareInfo中的thisListenCount默认1；
+只有成功响应才reset一起听队列/播放状态/播放器模型、清成员及邀请状态。
+420..455为心跳失败分支，735附近为十分钟等待超时。原模型转录见
+references/recovered-client/docs/product/models/async_listenTogether.txt。
+正式协议沿用core-listen-together-contracts.txt，不使用YesPlayMusic。
+
+核心状态与接口
+TogetherState新增可缺省的end_notice：room_id、received_at_ms。旧SQLite记录可正常读取。
+TogetherService.receive_end_for校验当前账号代次/音乐房间；等待房间忽略；双成员角色首次
+收到时先持久化，重复通知不重复执行退出。原始nickname/shareInfo/成员信息不送入新UI字段。
+end_notice存在时禁止播放、队列、共享权限安装与新的远端播放应用；20秒空闲定时器也不再
+发心跳。它不会因为普通刷新、重复20003或20008而被当作“已经成功退出”。
+
+自动消息路径：持久EndNotice -> 关闭原生IM并等待清理 -> resolve_end_notice_for。
+SDK清理失败仍尝试结束同一远端房间，但保留本机恢复责任和进程内清理失败标记。
+resolve先对已经发出的未决End只读核对，再/api/listen/together/status/get；
+仍是同一房间时读/api/listen/together/sync/playlist/get（现有refresh契约），
+然后end_for再次核验当前房间，调用/api/listen/together/end/v2，参数roomId；
+既有API在调用方显式提供count时才发送shareInfo JSON及thisListenCount，
+当前自动退出未提供count。这与官方默认1的统计参数有差异，完整计数/记录仍待补。
+成功后连续状态回读确认。
+已经无房间或变成其他房间时不发end；不得结束另一个设备/后续加入的新房间。
+结束请求回包丢失留Uncertain，页面要求核对；不会用重复结束消息或心跳重发。
+核对确认后，原有同房间未决播放/队列操作标记RoomClosed，不冒称原写入送达。
+
+原生宿主生命周期
+runtime::Context与Runtime共享Arc<ImTransport>。close改为共享、幂等的异步等待：
+JoinHandle保存在异步互斥内，等待期间取消调用者不会移走它；后续关闭仍须等真实SDK清理。
+完成结果缓存；第一次清理失败后再次调用仍失败。没有通过abort SDK线程伪装关闭成功。
+Drop继续只发取消，不中止SDK监督器；可信库/进程单例/回调注册等既有FFI边界不变。
+
+以下入口都进入同一结束后的宿主恢复：20003完成、refresh发现房间不再存在/变更、
+十分钟等待超时、清空共享播放列表，以及原心跳处理确认结束后的房间状态变化。
+停止报告后先等待IM关闭，再对旧绑定房间仍未决的操作只读核对，然后解除本机绑定。
+手动恢复也走相同核对，核对失败不能提前删除绑定。核对重新发现旧房间仍在时停止恢复，
+由界面显式刷新/退出。单纯观察到的未接管房间不自动结束，也不为结束它初始化音频设备。
+
+恢复保留当前歌曲、位置及暂停状态；仅移除resource.shared_room匹配旧房间的共同权限约束。
+队列安装继续使用原生控制/队列/playId围栏。仅当当前速度仍为强制的1x时恢复原速度；
+只有原模式是Sequential且当前仍为临时OrderLoop时恢复Sequential，保留已变化的其他模式。
+用户已停止、播放已结束或失败时，纯队列约束清理不重新加载音源；后续显式播放仍可启动。
+恢复失败保留Binding，界面继续提供恢复入口；SDK清理不明时提示重启，重复点击不会假报成功。
+账号变化后旧任务不能改新账号播放器或写新账号通知；旧账号的恢复记录继续保留。
+
+定时任务缺陷与修复
+新增“End回包丢失 -> 本机暂停 -> 只读核对”测试在targeted.log及targeted2.log失败：
+原biased select优先消费持续的原生快照，错误锁定时last未前进，导致房间检查饥饿。
+把定时分支放在消息/播放器分支之前后，固定的一秒检查不会被持续快照饿死；
+targeted3后同用例通过，后续又扩充为共同试听期间Stop，验证恢复后仍保持Idle。
+保留失败日志，没有以延长等待或删除断言代替修复。
+
+界面与验证
+TogetherView新增ending和lifecycleNotice。结束中禁用共享同步/选曲；未决退出保留“核对状态”；
+清理失败且已无房间时仍显示连接失败信息；成功自动恢复后显示账号内持久结束提示。
+下一次附加新房间清除此提示。页面没有增加占位按钮，正式IPC数量不变。
+官方结束弹层还包括听歌记录/分享详情，本批只呈现已验证的结束与恢复事实，不声称已复刻该弹层。
+
+新增测试：8项MusicClient生命周期（含等待超时/清空两支、无房间/新房间两支）、
+2项核心服务持久重开/中断/代次/报告门控、1项取消关闭后重新等待/失败不可洗掉。
+现有播放器、消息、共享权限和服务恢复用例一起回归；具体最终总数和日志见映射文件。
+真实WebView夹具经生产Vue/IPC/core完成：创建 -> 双成员共同试听47秒暂停 -> 自动20003 ->
+恢复1.25x/顺序播放并保持47秒；再次创建 -> 丢成功end回包 -> 按钮禁用/核对 -> 同样恢复。
+每轮界面证明两次End请求、两次SDK夹具关闭；API、SDK、音频均为合成测试适配器。
+本批不使用真实账号，没有真实好友业务包、声卡或双端同步证明。
+范围、来源哈希、构建、截图与SQLite终态见listen-together-lifecycle-mapping.json。
+
+继续项
+会员资料变化20006、礼物/提示音、结束后的听歌记录、RTC/邀请、同账号接续，
+任意外部内容选择触发离房的完整联动，以及一般未决HTTP期间的持久消息队列仍继续。
+完整真实Peer消息乱序/权限切换与双端播放仍未验收；双账号实测按用户约定暂排除。
+这批没有完成音效、其他业务页和跨平台实测，完整目标仍保持进行中。

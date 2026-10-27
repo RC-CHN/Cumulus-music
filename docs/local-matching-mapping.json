@@ -1,0 +1,87 @@
+{
+  "sources": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/23.js",
+      "sha256": "30179de6edd7412c718747b8162774cb9d872d6c86d13e8515ecc54fa61b9d45"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/15.js",
+      "sha256": "8ec4bf8d343f6963860eb73bc59ca09f0dd1ae50db2608a6c5abc7d69a0b521a"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/171.js",
+      "sha256": "bcf520d984166f1b55a2a4f4828166468ef22f0e97ac54bd7bb5ff4d87ea37cf"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_199.chunk.1482700000000.js/2304.js",
+      "sha256": "44a02da6b78a591efb59a1859a33b08d9d6ee3f03a91d0c749d2d5370b353665"
+    }
+  ],
+  "features": [
+    {
+      "feature": "metadata and request/response normalization",
+      "official": [
+        "M/23 P,I,A,N,E"
+      ],
+      "rust": [
+        "core/src/library/matching/api.rs",
+        "core/src/library/matching/hints.rs"
+      ],
+      "evidence": [
+        "core/tests/local_matching.rs",
+        "core/tests/fixtures/local-matching-official.json"
+      ]
+    },
+    {
+      "feature": "unmapped selection and batches of 50",
+      "official": [
+        "M/171 activeMatch",
+        "M/2304 match/activeMatch"
+      ],
+      "rust": [
+        "core/src/library/matching/service.rs",
+        "core/src/library/matching/state.rs"
+      ],
+      "evidence": [
+        "core/tests/local_matching.rs"
+      ]
+    },
+    {
+      "feature": "account/revision durable mappings and recovery",
+      "official": [
+        "M/2304 updateLocalMap and SQL commit"
+      ],
+      "rust": [
+        "core/src/library/index/mapping.rs",
+        "core/src/client/local/matching.rs"
+      ],
+      "difference": "Native account generations, revision checks, batch transactions and explicit retry improve failure handling.",
+      "evidence": [
+        "core/tests/client_local.rs",
+        "core/tests/local_matching.rs"
+      ]
+    },
+    {
+      "feature": "desktop/manual search and comments link",
+      "official": [
+        "M/15 Xf",
+        "existing official catalog and comment interfaces"
+      ],
+      "rust": [
+        "desktop/src/local.rs"
+      ],
+      "frontend": [
+        "frontend/src/composables/useLocalMatching.ts",
+        "frontend/src/components/LocalMatchDialog.vue",
+        "frontend/src/components/LocalPage.vue"
+      ],
+      "difference": "Explicit manual selection is a recovery extension; does not claim original activeMatch UI parity.",
+      "evidence": [
+        "frontend/tests/local-matching-state.test.ts",
+        "desktop/examples/local_matching_ui_probe.rs"
+      ]
+    }
+  ],
+  "additional_reference": null,
+  "goal_complete": false
+}

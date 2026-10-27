@@ -1,0 +1,659 @@
+{
+  "schema": 1,
+  "goal_complete": false,
+  "scope": "Native protocol, collection and formal desktop runtime; verified PC MConfig and actual device/behavior reports with protected own-resource read",
+  "yesplaymusic_used": false,
+  "contract": "docs/core-watchman-contracts.txt",
+  "sources": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/protocol/watchman-remote/watchman.min.js",
+      "sha256": "af456401a96e7cab2fc0ad1334e1014ed58d5c694908d2d73ec1ef426463f787",
+      "kind": "official_remote_sdk_or_static_extraction"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/protocol/watchman-remote/watchman.readable.js",
+      "sha256": "8edd86c297d2aa0e28d80084482e511c990089cdd2b5ca8b158c2f88f1776359",
+      "kind": "official_remote_sdk_or_static_extraction"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/protocol/watchman-remote/codec-constants.json",
+      "sha256": "5f45aee251486b2dd9835d3372bcdc81e20302d1443eb8c0ff36afd0dfad19fd",
+      "kind": "official_remote_sdk_or_static_extraction"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/protocol/watchman-remote/field-contracts.json",
+      "sha256": "f30b37706fb297dfcbbfce41fd9665889df7f93e26854c99ca9b3962c31bb1de",
+      "kind": "official_remote_sdk_or_static_extraction"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/protocol/watchman-remote/config.json",
+      "sha256": "4030ce07ac75f3b188caeca66f940c7dfd2a1118697536da35901b50c81e4c8c",
+      "kind": "official_remote_sdk_or_static_extraction"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_watchman.py",
+      "sha256": "cca0e10b8b1b8320bea1380ed6418f023e3dd26e7ef4ca9f3ee451a5583e3b77",
+      "kind": "archived_python_codec"
+    },
+    {
+      "path": "references/recovered-client/docs/product/10-watchman.txt",
+      "sha256": "cd5d58eeb0e430c39e0a8f7d3ef85f47750fba9ca5548862cd99dc7fe67ab22b",
+      "kind": "historical_analysis_not_rust_online_proof"
+    },
+    {
+      "path": "references/recovered-client/scripts/watchman_rust_oracle.cjs",
+      "sha256": "0c7fbb3214f1fbd280c827b975e146a1a3c1fa6edd6710f20f55efa5990a0c75",
+      "kind": "pinned_official_pure_function_execution"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/protocol/watchman-remote-602a5ad7-20261027/watchman.min.js",
+      "sha256": "343a187cb023c495a2dffee37f8265d203d97886c43fa6180951fb2de4d283b5",
+      "kind": "official_remote_sdk_or_static_extraction"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/protocol/watchman-remote-602a5ad7-20261027/watchman.readable.js",
+      "sha256": "54ddd682e2fddbeec8a86550af1224d98f3b1e305e6198b8c68e8116d00d925c",
+      "kind": "official_remote_sdk_or_static_extraction"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/protocol/watchman-remote-602a5ad7-20261027/config.json",
+      "sha256": "ba9396351a8e8506c1ecdcece2f6dc770b8c70b4a21c92fefcc30f18976912d2",
+      "kind": "official_remote_sdk_or_static_extraction"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/protocol/watchman-remote-602a5ad7-20261027/codec-constants.json",
+      "sha256": "6074cfc402f2aa87122cfc15b486befd685ad5f76de7104a927be840fa67f1e6",
+      "kind": "official_remote_sdk_or_static_extraction"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/protocol/watchman-remote-602a5ad7-20261027/field-contracts.json",
+      "sha256": "dba29abcf81a92254725243a41e48eedafeb0559d803389cd7025bfaf6fb0fbb",
+      "kind": "official_remote_sdk_or_static_extraction"
+    },
+    {
+      "path": "references/recovered-client/scripts/watchman_runtime_oracle.cjs",
+      "sha256": "06bacf01ae6babbfbec470cb41adc12f728459dc8c3e042e7fa19bc83ae3f2f5",
+      "kind": "pinned_official_pure_function_execution"
+    },
+    {
+      "path": "references/recovered-client/scripts/watchman_current_oracle.cjs",
+      "sha256": "8dc2ae19f7f2a94b8158581580265a58fd405d359c5471f4ec1435273e00b2c9",
+      "kind": "pinned_official_pure_function_execution"
+    },
+    {
+      "path": "references/recovered-client/scripts/watchman_events_oracle.cjs",
+      "sha256": "88f39201bc384491756ea68861e8e32c059347fccfe8a2df72808ec96040a3de",
+      "kind": "pinned_official_event_methods_execution"
+    },
+    {
+      "path": "references/recovered-client/scripts/watchman_fingerprint_oracle.cjs",
+      "sha256": "5870a74f8669f1eadc0e38ee0d3adccc36cc00d687c3ab573f89f0021fbd1317",
+      "kind": "official_function_oracle"
+    },
+    {
+      "path": "references/recovered-client/scripts/recover_watchman_measurements.cjs",
+      "sha256": "e69928e1328caa229d1d3698e7135fe447832b87696595ef0e97f4a4ccc2c1fd",
+      "kind": "official_measurement_extractor"
+    },
+    {
+      "path": "references/recovered-client/scripts/windows_compatibility_oracle.cjs",
+      "sha256": "c61da0949cb7803af877a1847db66674419abc17d3359acad9b6d031267c698e",
+      "kind": "official_binary_and_check_oracle"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/protocol/windows-compatibility/navigator.idl",
+      "sha256": "af5317d74872fdabd4a9b5f1860bb4c20f383d04589f0038c440dbd1fbd0f379",
+      "kind": "chromium_91_reference"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/protocol/windows-compatibility/navigator_id.cc",
+      "sha256": "b4f80663bef5c46ad6f48a010d56b6c324137561eb58b0c4c13d70af2c54c4f8",
+      "kind": "chromium_91_reference"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/protocol/windows-compatibility/navigator_id.idl",
+      "sha256": "1123025cc8919b1bde2a6c4dc37b18e588657f95aa2732d11fa407d54b7aa914",
+      "kind": "chromium_91_reference"
+    },
+    {
+      "path": "references/recovered-client/scripts/recover_watchman_environment.cjs",
+      "kind": "official_browser_getter_extractor",
+      "sha256": "6f5f6934266f67eb3f3e804afbde4f544b963c5277128321cdb89b86c13a21f6"
+    },
+    {
+      "path": "references/recovered-client/scripts/watchman_collection_oracle.cjs",
+      "kind": "official_collection_coordinator_oracle",
+      "sha256": "8ec52fe5d3968803a5131c92a0a1d3ff81bd062fded334c5863d1f5b49a9d720"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/92.js",
+      "kind": "official_recovered_webpack_module",
+      "sha256": "2787f8810fc50f3f892cde86aebd1eb2259375f373b232fb978c8365b2e82e26"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/252.js",
+      "kind": "official_recovered_webpack_module",
+      "sha256": "48db61d4b56e2aa957131db14bc18055f7b1a36eeef43253c05ea4198bef5489"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/402.js",
+      "kind": "official_recovered_webpack_module",
+      "sha256": "c759837f6de9c3f6b108edd1b9c22da8202d8cf7bb861f58454f7f4b9a054a37"
+    },
+    {
+      "path": "references/recovered-client/scripts/mconfig_oracle.cjs",
+      "kind": "pinned_official_configuration_center_execution",
+      "sha256": "5b6b3dec54b0ffe53acd17a77c3cc7c640c6bed62cf8973498878417a948237c"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/232.js",
+      "kind": "official_recovered_webpack_module",
+      "sha256": "5f207be427306648321a3cd8c2a5630da5ae7d8b1c2b1cadca5f1376ddda04b0"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/444.js",
+      "kind": "official_recovered_webpack_module",
+      "sha256": "0ff446c6161a47812cb6eadb21921ff0619c27dfb37f575ea17cad6b66e87b5a"
+    }
+  ],
+  "features": [
+    {
+      "feature": "text_nonce_packet",
+      "source_symbols": [
+        "La",
+        "Bc",
+        "bc",
+        "ib"
+      ],
+      "core": [
+        "core/src/watchman/codec.rs",
+        "core/src/watchman/constants.rs"
+      ],
+      "tests": [
+        "core/tests/watchman.rs"
+      ],
+      "fixture": "core/tests/fixtures/watchman-official.json",
+      "online_verified": false
+    },
+    {
+      "feature": "field_serialization",
+      "source_symbols": [
+        "va",
+        "ea",
+        "W",
+        "ba"
+      ],
+      "core": [
+        "core/src/watchman/fields.rs",
+        "core/src/watchman/fields.json"
+      ],
+      "tests": [
+        "core/tests/watchman.rs"
+      ],
+      "fixture": "core/tests/fixtures/watchman-official.json",
+      "online_verified": false
+    },
+    {
+      "feature": "token_missing_values_and_order",
+      "source_symbols": [
+        "dc",
+        "kb"
+      ],
+      "core": [
+        "core/src/watchman/token.rs"
+      ],
+      "tests": [
+        "core/tests/watchman.rs"
+      ],
+      "fixture": "core/tests/fixtures/watchman-official.json",
+      "online_verified": false
+    },
+    {
+      "feature": "configuration_defaults",
+      "source_symbols": [
+        "h"
+      ],
+      "core": [
+        "core/src/watchman/config.rs"
+      ],
+      "tests": [
+        "core/tests/watchman.rs"
+      ],
+      "fixture": "core/tests/fixtures/watchman-official.json",
+      "online_verified": false
+    },
+    {
+      "feature": "device_validity_and_version",
+      "source_symbols": [
+        "la.sc",
+        "la.m",
+        "m.P",
+        "m.Ra"
+      ],
+      "core": [
+        "core/src/watchman/state.rs"
+      ],
+      "tests": [
+        "core/tests/watchman.rs"
+      ],
+      "fixture": "core/tests/fixtures/watchman-official.json",
+      "online_verified": false
+    },
+    {
+      "feature": "response_slots_and_atomic_native_storage",
+      "source_symbols": [
+        "Z[wc]",
+        "Z[qb]",
+        "Z[xc]",
+        "Z[rb]",
+        "Z[yc]",
+        "Z[sb]",
+        "community transaction/CAS"
+      ],
+      "core": [
+        "core/src/watchman/state.rs"
+      ],
+      "tests": [
+        "core/tests/watchman.rs"
+      ],
+      "fixture": "core/tests/fixtures/watchman-official.json",
+      "online_verified": false
+    },
+    {
+      "feature": "device_and_behavior_callback_control",
+      "source_symbols": [
+        "m.I",
+        "m.ia"
+      ],
+      "core": [
+        "core/src/watchman/control.rs"
+      ],
+      "tests": [
+        "core/tests/watchman.rs"
+      ],
+      "fixture": "core/tests/fixtures/watchman-official.json",
+      "online_verified": false
+    },
+    {
+      "feature": "reviewed_build_selection",
+      "source_symbols": [
+        "af2952a4:ib",
+        "602a5ad7:kb/ad/Rb/Yc/Ac"
+      ],
+      "core": [
+        "core/src/watchman/build.rs",
+        "core/src/watchman/current.rs",
+        "core/src/watchman/codec.rs",
+        "core/src/watchman/config.rs",
+        "core/src/watchman/state.rs"
+      ],
+      "tests": [
+        "core/tests/watchman_current.rs",
+        "core/tests/watchman_runtime.rs"
+      ],
+      "fixture": "core/tests/fixtures/watchman-current-official.json",
+      "online_verified": false
+    },
+    {
+      "feature": "public_fields_and_sequence",
+      "source_symbols": [
+        "af2952a4:Ya/Za",
+        "602a5ad7:$a/ab"
+      ],
+      "core": [
+        "core/src/watchman/public.rs",
+        "core/src/watchman/runtime/report.rs"
+      ],
+      "tests": [
+        "core/tests/watchman_runtime.rs",
+        "core/tests/watchman_current.rs"
+      ],
+      "online_verified": false
+    },
+    {
+      "feature": "configuration_http_cache_304",
+      "source_symbols": [
+        "recovered watchman loader /v2/config/js"
+      ],
+      "core": [
+        "core/src/watchman/remote/config.rs",
+        "core/src/watchman/remote/request.rs"
+      ],
+      "tests": [
+        "core/tests/watchman_runtime.rs"
+      ],
+      "executable": "core/examples/watchman_config_read.rs",
+      "online_verified": true,
+      "online_scope": "Anonymous GET only: 200, SQLite reopen without network, forced 304 revalidation; no device or behavior reports.",
+      "evidence": ".build/private-watchman-config-20261027-b",
+      "independent_audit": "core/examples/audit_watchman_config.py"
+    },
+    {
+      "feature": "report_http_jsonp_host_fallback",
+      "source_symbols": [
+        "af2952a4:Oc/Z",
+        "602a5ad7:Pc/ba"
+      ],
+      "core": [
+        "core/src/watchman/remote/http.rs",
+        "core/src/watchman/remote/request.rs",
+        "core/src/watchman/remote/time.rs",
+        "core/src/watchman/runtime/report.rs"
+      ],
+      "tests": [
+        "core/src/watchman/remote/http_test.rs",
+        "core/tests/watchman_runtime.rs"
+      ],
+      "online_verified": false,
+      "local_real_http_verified": true
+    },
+    {
+      "feature": "device_flight_refresh_behavior_runtime",
+      "source_symbols": [
+        "af2952a4:m.P/I/Ra/ia",
+        "602a5ad7:l.P/I/Ra/ia"
+      ],
+      "core": [
+        "core/src/watchman/runtime/mod.rs",
+        "core/src/watchman/runtime/worker.rs",
+        "core/src/watchman/runtime/report.rs"
+      ],
+      "tests": [
+        "core/tests/watchman_runtime.rs"
+      ],
+      "online_verified": false,
+      "notes": "Real state and async coordinator with injected synthetic transport/collection; production collection and desktop wiring remain incomplete."
+    },
+    {
+      "feature": "event_configuration_and_sampling",
+      "source_symbols": [
+        "af2952a4:h/T.O/mc/jd",
+        "602a5ad7:k/V.O/nc/jd"
+      ],
+      "core": [
+        "core/src/watchman/events/policy.rs",
+        "core/src/watchman/events/mod.rs",
+        "core/src/watchman/events/model.rs",
+        "core/src/watchman/events/values.rs"
+      ],
+      "tests": [
+        "core/tests/watchman_events.rs"
+      ],
+      "fixtures": [
+        "core/tests/fixtures/watchman-events-official.json",
+        "core/tests/fixtures/watchman-events-legacy-official.json"
+      ],
+      "official_scenarios_per_build": 21,
+      "official_steps_per_build": 489,
+      "online_verified": false
+    },
+    {
+      "feature": "battery_sampling_and_clear",
+      "source_symbols": [
+        "af2952a4:p.O/J/A",
+        "602a5ad7:n.O/J/A",
+        "both:navigator.Mc() capability gate"
+      ],
+      "core": [
+        "core/src/watchman/events/battery.rs",
+        "core/src/watchman/events/mod.rs"
+      ],
+      "desktop": [
+        "desktop/src/watchman/events.js"
+      ],
+      "tests": [
+        "core/tests/watchman_events.rs",
+        "desktop/tests/watchman_event_bridge.cjs"
+      ],
+      "online_verified": false,
+      "hardware_verified": false,
+      "notes": "Official gate is navigator.Mc(), not standard getBattery availability. Explicit synthetic battery measurements exercise recovered methods; no hardware success claimed."
+    },
+    {
+      "feature": "native_event_host_and_real_webview_measurements",
+      "source_symbols": [
+        "af2952a4:T.gc/ga/ya",
+        "602a5ad7:V.gc/ga/ya",
+        "community IPC generation/sequence/overflow/lifecycle fences"
+      ],
+      "desktop": [
+        "desktop/src/watchman/mod.rs",
+        "desktop/src/watchman/events.js",
+        "desktop/src/lib.rs"
+      ],
+      "tests": [
+        "desktop/tests/watchman_events.rs",
+        "desktop/tests/watchman_event_bridge.cjs"
+      ],
+      "executable": "desktop/examples/watchman_events_probe.rs",
+      "driver": "desktop/examples/run_watchman_events_probe.py",
+      "independent_audit": "desktop/examples/audit_watchman_events.cjs",
+      "evidence": ".build/ui-proof/watchman-events-20261027-b",
+      "real_webview_verified": true,
+      "online_verified": false,
+      "notes": "Actual OS mouse/keyboard and programmatic untrusted click; isolated offline proof, production collection remains inactive and incomplete."
+    },
+    {
+      "feature": "native_utf16_fingerprint_and_js_field_coercion",
+      "source_symbols": [
+        "af2952a4:xa/va",
+        "602a5ad7:za/xa"
+      ],
+      "core": [
+        "core/src/watchman/fingerprint.rs",
+        "core/src/watchman/fields.rs",
+        "core/src/watchman/value.rs"
+      ],
+      "tests": [
+        "core/tests/watchman_fingerprint.rs"
+      ],
+      "fixture": "core/tests/fixtures/watchman-fingerprint-official.json",
+      "hash_cases_per_build": 510,
+      "encoding_cases_per_build": 75,
+      "online_verified": false
+    },
+    {
+      "feature": "actual_device_and_graphics_measurements_with_windows_projection",
+      "source_manifest": "docs/watchman-measurements-source.json",
+      "core": [
+        "core/src/identity/compatibility.rs"
+      ],
+      "desktop": [
+        "desktop/src/watchman/measurement.rs",
+        "desktop/src/watchman/compatibility.rs",
+        "desktop/src/watchman/compatibility.js"
+      ],
+      "tests": [
+        "core/tests/windows_compatibility.rs",
+        "desktop/tests/watchman_compatibility.cjs"
+      ],
+      "executable": "desktop/examples/watchman_fingerprint_probe.rs",
+      "independent_audit": "desktop/examples/audit_watchman_fingerprint_probe.cjs",
+      "evidence": ".build/ui-proof/watchman-windows-compatibility-20261027-b",
+      "device_fields": 128,
+      "measured_fingerprints": 12,
+      "explicit_font_failures": 4,
+      "real_webview_verified": true,
+      "real_windows_environment": false,
+      "online_verified": false,
+      "browser_engine_mismatch_preserved": true
+    },
+    {
+      "feature": "native_collection_and_actual_page_lifecycle",
+      "source_symbols": [
+        "af2952a4:Dc/aa/dd/Bb/Cc",
+        "602a5ad7:Ec/ca/dd/Cb/Dc"
+      ],
+      "core": [
+        "core/src/watchman/collection/mod.rs",
+        "core/src/watchman/collection/model.rs",
+        "core/src/watchman/collection/policy.rs",
+        "core/src/watchman/runtime/mod.rs",
+        "core/src/watchman/runtime/report.rs"
+      ],
+      "desktop": [
+        "desktop/src/watchman/collection/mod.rs",
+        "desktop/src/watchman/collection/broker.rs",
+        "desktop/src/lib.rs"
+      ],
+      "source_manifest": "docs/watchman-environment-source.json",
+      "tests": [
+        "core/tests/watchman_collection.rs",
+        "desktop/tests/watchman_collection.rs",
+        "desktop/tests/watchman_environment.cjs"
+      ],
+      "fixture": "core/tests/fixtures/watchman-collection-official.json",
+      "executable": "desktop/examples/watchman_collection_probe.rs",
+      "independent_audit": "desktop/examples/audit_watchman_collection.cjs",
+      "evidence": ".build/ui-proof/watchman-collection-20261027-b",
+      "native_collection_connected": true,
+      "device_reads": 114,
+      "real_page_reload": true,
+      "font_and_loader_failures_preserved": true,
+      "online_verified": false
+    },
+    {
+      "feature": "pc_configuration_context_and_formal_native_runtime",
+      "source_modules": [
+        "92",
+        "252",
+        "402"
+      ],
+      "core": [
+        "core/src/protocol/mconfig/",
+        "core/src/protocol/context.rs",
+        "core/src/protocol/http/client.rs",
+        "core/src/client/mod.rs",
+        "core/src/client/auth/mod.rs"
+      ],
+      "desktop": [
+        "desktop/src/watchman/host.rs",
+        "desktop/src/watchman/collection/mod.rs",
+        "desktop/src/lib.rs"
+      ],
+      "tests": [
+        "core/tests/mconfig.rs",
+        "core/tests/client_identity.rs",
+        "desktop/tests/watchman_host.rs"
+      ],
+      "official_fixture": "core/tests/fixtures/mconfig-official.json",
+      "live_proof": ".build/ui-proof/watchman-live-20261027-a",
+      "online_verified": true,
+      "online_scope": "SDK 602a5ad7 /v3/d 200, /v3/b 200 and PC-config-selected own playlist read 200; no music writes",
+      "auditors": [
+        "desktop/examples/audit_watchman_live_state.py",
+        "desktop/examples/audit_watchman_live.cjs"
+      ],
+      "formal_startup_proof": ".build/ui-proof/watchman-desktop-20261027-a"
+    },
+    {
+      "feature": "official_pc_private_playlist_create_and_recovery",
+      "source_modules": [
+        "92",
+        "252",
+        "402"
+      ],
+      "core": [
+        "core/src/protocol/http/origin.rs",
+        "core/src/protocol/http/request.rs",
+        "core/src/protocol/http/client.rs",
+        "core/src/playlist/service.rs"
+      ],
+      "tests": [
+        "core/tests/http.rs",
+        "desktop/examples/watchman_write_support/guard.rs"
+      ],
+      "executable": "desktop/examples/watchman_live_probe.rs",
+      "support": [
+        "desktop/examples/watchman_write_support/mod.rs",
+        "desktop/examples/watchman_write_support/recovery.rs",
+        "desktop/examples/watchman_write_support/guard.rs"
+      ],
+      "live_proof": ".build/ui-proof/watchman-write-20261027-a",
+      "recovery_proof": ".build/ui-proof/watchman-write-recovery-20261027-a",
+      "online_verified": true,
+      "online_scope": "One official EAPI private playlist create returned 200 and was read-back confirmed; separately preselected WEAPI cleanup restored 77 original playlists; journal reopen sent no new write",
+      "auditors": [
+        "desktop/examples/audit_watchman_live.cjs",
+        "desktop/examples/audit_watchman_live_state.py",
+        "desktop/examples/audit_watchman_write.cjs",
+        "desktop/examples/audit_watchman_write_recovery.py"
+      ],
+      "real_windows_environment": false,
+      "formal_default_routing_changed": false
+    },
+    {
+      "feature": "official_pc_playlist_workflow_and_formal_route_selection",
+      "source_modules": [
+        "232",
+        "444",
+        "48",
+        "92",
+        "252",
+        "402"
+      ],
+      "core": [
+        "core/src/protocol/http/origin.rs",
+        "core/src/protocol/http/client.rs",
+        "core/src/protocol/context.rs",
+        "core/src/client/mod.rs",
+        "core/src/client/auth/mod.rs",
+        "core/src/playlist/service.rs",
+        "core/src/client/playlists.rs",
+        "core/src/client/error.rs",
+        "core/src/error.rs"
+      ],
+      "frontend_entry": [
+        "frontend/src/composables/usePlaylists.ts",
+        "frontend/src/adapters/tauri.ts",
+        "desktop/src/playlists.rs"
+      ],
+      "tests": [
+        "core/tests/http.rs",
+        "core/tests/credentials.rs",
+        "core/tests/client_identity.rs",
+        "core/tests/playlist_service.rs",
+        "desktop/examples/watchman_playlist_support/guard.rs"
+      ],
+      "live_proofs": [
+        ".build/ui-proof/watchman-playlist-20261027-a",
+        ".build/ui-proof/watchman-playlist-20261027-b"
+      ],
+      "recovery_proof": ".build/ui-proof/watchman-playlist-recovery-20261027-a",
+      "formal_startup_proof": ".build/ui-proof/watchman-playlist-desktop-20261027-a",
+      "online_verified": true,
+      "online_scope": "Two isolated 9-write all-EAPI workflows; 2 no-op stages each; all replies and remote readbacks confirmed; 77 original playlists restored; reopen 11 operations without replay",
+      "auditors": [
+        "desktop/examples/audit_watchman_live.cjs",
+        "desktop/examples/audit_watchman_live_state.py",
+        "desktop/examples/audit_watchman_playlist.cjs",
+        "desktop/examples/audit_watchman_playlist_recovery.py"
+      ],
+      "real_windows_environment": false,
+      "formal_route_selection": "OfficialPcPlaylists for native context + official Windows UA + nonempty clientSign; propagated to login candidates/reopen",
+      "new_ui_mutation_click_verification": false
+    }
+  ],
+  "executable": {
+    "path": "core/examples/watchman_offline.rs",
+    "run": ".build/target/debug/examples/watchman_offline NEW_PRIVATE_DIRECTORY",
+    "proof": ".build/private-watchman-offline-20261027-a/report.json",
+    "independent_auditor": "core/examples/audit_watchman_offline.py",
+    "network_requests": 0
+  },
+  "ui_status": "Formal binary startup verified with restored account and rendered daily recommendations; PC config/device state persisted. Actual WebView live proof independently verifies reports and protected own-resource read. This is not full UI/visual/playback acceptance.",
+  "remaining": [
+    "Independent rename/description, subscribe/unsubscribe and settings official EAPI paths remain outside the proven complete playlist workflow; no automatic fallback after rejection",
+    "LoginGuardian/CAPTCHA/device verification/credential refresh flows and UI still require completion",
+    "Windows/macOS reference measurements and remaining font/loader dependencies; current WebKit mismatch retained",
+    "all broader desktop/business/visual/delivery requirements remain governed by the full active goal"
+  ],
+  "runtime_contract": "docs/core-watchman-runtime-contracts.txt",
+  "events_contract": "docs/core-watchman-events-contracts.txt",
+  "measurements_contract": "docs/core-watchman-measurements-contracts.txt",
+  "compatibility_contract": "docs/windows-compatibility-research.txt",
+  "collection_contract": "docs/core-watchman-collection-contracts.txt",
+  "request_context_contract": "docs/core-pc-request-context-contracts.txt",
+  "official_write_contract": "docs/core-pc-official-write-proof.txt",
+  "playlist_official_contract": "docs/core-pc-playlist-official-contracts.txt"
+}

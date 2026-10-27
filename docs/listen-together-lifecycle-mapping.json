@@ -1,0 +1,136 @@
+{
+  "scope": "Together automatic room termination and native recovery; full desktop goal remains incomplete",
+  "goal_complete": false,
+  "official_first": true,
+  "yesplaymusic_used": false,
+  "sources": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/75.js",
+      "sha256": "8f0aa4cc3422daea1cb74c317c84fc27d992dd413623d3c7504f357085005476"
+    },
+    {
+      "path": "references/recovered-client/docs/product/models/async_listenTogether.txt",
+      "sha256": "4d9077a4c291ee2c182189dc20131c0402bcdbd7947e9451d1fd5f3fb9ff22a7"
+    }
+  ],
+  "features": [
+    {
+      "id": "durable_end_notice",
+      "implementation": [
+        "core/src/listen_together/service/lifecycle.rs",
+        "core/src/listen_together/service/mod.rs"
+      ],
+      "tests": [
+        "core/tests/together_service.rs"
+      ],
+      "evidence": "waiting ignore, duplicate, persistent reopen/cancellation, account fencing and all report gates"
+    },
+    {
+      "id": "cancellation_safe_sdk_join",
+      "implementation": [
+        "core/src/listen_together/transport/mod.rs"
+      ],
+      "tests": [
+        "core/tests/im_transport.rs"
+      ],
+      "evidence": "aborted first closer retains join; repeated cleanup failure remains failure"
+    },
+    {
+      "id": "automatic_native_cleanup",
+      "implementation": [
+        "core/src/client/together/lifecycle.rs",
+        "core/src/client/together/runtime.rs",
+        "core/src/client/together/mod.rs",
+        "core/src/playback/controller/remote.rs"
+      ],
+      "tests": [
+        "core/tests/support/together_lifecycle_host.rs"
+      ],
+      "evidence": "8 host cases, lost ACK regression, room replacement, pending-play reconciliation, local stop, cleanup failure, account switch, waiting timeout/empty queue"
+    },
+    {
+      "id": "desktop_end_recovery",
+      "implementation": [
+        "core/src/client/together/dto.rs",
+        "core/src/client/together/view.rs",
+        "frontend/src/components/TogetherPage.vue",
+        "frontend/src/services/together.ts"
+      ],
+      "tests": [
+        "desktop/examples/shared_queue_ui_probe.rs",
+        "desktop/examples/together_lifecycle_ui_probe.js"
+      ],
+      "evidence": "actual production WebView/IPC with fixture API/IM/audio, two room lifecycles and lost-ACK reconciliation at both window sizes"
+    }
+  ],
+  "checks": [
+    ".build/together-lifecycle-workspace-tests.log",
+    ".build/together-lifecycle-targeted4.log",
+    ".build/together-lifecycle-format-final.log",
+    ".build/together-lifecycle-clippy-final.log",
+    ".build/together-lifecycle-build-final.log",
+    ".build/together-lifecycle-front-build2.log",
+    ".build/together-lifecycle-front-tests2.log",
+    ".build/together-lifecycle-front-format-check2.log"
+  ],
+  "rust": {
+    "passed": 529,
+    "core": 526,
+    "desktop": 3,
+    "failed": 0,
+    "ignored": 0,
+    "suites": 74,
+    "nonempty_suites": 71
+  },
+  "frontend": {
+    "passed": 61,
+    "new_run": true
+  },
+  "ipc": 57,
+  "ui_cases": [
+    {
+      "root": ".build/ui-proof/together-lifecycle-20261026-b",
+      "viewport": [
+        1120,
+        760
+      ],
+      "screenshots": 4,
+      "fixture_api": true,
+      "fixture_im": true,
+      "fixture_audio": true,
+      "confirmed_end": 2,
+      "lost_ack_confirmed_by_reads": 1,
+      "native_binding_removed": true,
+      "common_constraints_removed": true,
+      "preferences_restored": true
+    },
+    {
+      "root": ".build/ui-proof/together-lifecycle-20261026-c-small",
+      "viewport": [
+        760,
+        540
+      ],
+      "screenshots": 4,
+      "fixture_api": true,
+      "fixture_im": true,
+      "fixture_audio": true,
+      "confirmed_end": 2,
+      "lost_ack_confirmed_by_reads": 1,
+      "native_binding_removed": true,
+      "common_constraints_removed": true,
+      "preferences_restored": true
+    }
+  ],
+  "live_account_requests": 0,
+  "real_peer_verified": false,
+  "rtc_verified": false,
+  "remaining": [
+    "Together VIP profile updates, gifts/sounds, listening records/statistics/shareInfo fidelity, RTC/invitation and same-account relay",
+    "General durable inbound message queue during uncertain HTTP, missing-room-ID attachment attribution and outside-content room lifecycle",
+    "Effects containers/parameters/C DSP and UI; remaining catalog/login/member/special-media/comment/metadata/batch workflows",
+    "Device/watchman providers, tray/media controls, visual fidelity audit and Windows/macOS execution",
+    "Live dual-account proof remains excluded only; fixture verification does not establish real peer behavior"
+  ],
+  "documentation": "docs/core-listen-together-lifecycle.txt",
+  "notes": "targeted and targeted2 reproduce native-update starvation; fixed scheduler priority, targeted3/4 and full suite pass. UI a passed before additional pending/stop guards and final heading; final b/c use rebuilt current source. Official end shareInfo default and listening-record dialog remain explicitly incomplete."
+}

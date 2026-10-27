@@ -1,0 +1,89 @@
+官方 PC EAPI 写接口：私密歌单创建实测
+2026-10-27。完整目标继续。本阶段证明一条官方写入成功，不代表全部写入403已解决。
+后续已验证完整歌单EAPI往返并接入正式原生路由，见core-pc-playlist-official-contracts.txt；
+下文保留首次创建/兼容清理的历史证据，不将两轮验证混为一次。
+
+结论与来源
+既有授权PC会话、Linux/WebKit实际采集、显式Windows声明、本机事实派生clientSign、
+官方M/92 PC配置和M/402逐请求令牌共同接入后，/api/playlist/create返回HTTP200/code200，
+PlaylistService回读确认新私密歌单。随后通过预先选定的同PC域WEAPI删除测试歌单，
+完整回读证实原77个歌单、顺序和摘要均恢复。此处EAPI创建与WEAPI清理是不同操作。
+没有重发创建、没有被拒绝后换协议重试，也没有将WEAPI删除算作EAPI删除已验证。
+协议/配置/采集依据继承core-pc-request-context-contracts.txt及watchman-mapping.json；
+官方材料优先，本轮没有参考YesPlayMusic。当前SDK为已审阅的2.7.5_602a5ad7。
+
+这次结果不能单独归因于“声明Windows”或一个请求头。与历史失败相比补上了多个环节，
+没有执行逐项删减变量的对照实验。实际引擎仍是WebKit，字体/loader依赖等差异仍保留；
+不能推断服务端已把本机判成Windows，也不能把一次成功外推为之后必然成功。
+
+独立Rust接口与路由策略
+core/src/protocol/http/origin.rs新增RoutingPolicy，RequestOptions.routing原生选择：
+ VerifiedCompatibility：原先验证过的PC写路径在发送前选WEAPI，其余EAPI；默认保持此行为。
+ OfficialEapi：显式选择EAPI，凭据快照、令牌准备和最终加密请求使用同一路由策略。
+这不是前端参数，也不是403后的重试开关。未经逐项验证的其他正式写路由未整体切换。
+独立core仍不依赖Tauri、Python或Node；实际采集由桌面NativeWatchman提供。
+
+实际调用顺序与数据
+1. 原有三条只读初始化：/api/w/nuser/account/get、/api/user/playlist、/api/v6/playlist/detail。
+   MConfig协商得到os=pc、version=1026048，实际设备上报和本人歌单读取的行为上报均200。
+2. 单独写入测试打开独立write-state，刷新账号、读取全部歌单，生成随机唯一测试名并持久保存
+   write-plan.json。先排除同名，再由PlaylistService保存操作日志和发送前快照。
+3. /api/playlist/create：uid为当前账号，name为计划中的测试名，privacy=10；
+   businessId取当前PC名单的最后匹配项，新行为报告得到令牌，写入checkToken、
+   HTTP和加密header的X-antiCheatToken。MConfig-Info只放HTTP。
+4. 创建返回code200和新ID后，/api/user/playlist回读并将业务日志置为confirmed；
+   /api/v6/playlist/detail再次验证ID、所有者、私密属性、非“喜欢”特殊歌单和空歌曲列表。
+5. 新ID必须不在原列表，且与确认创建日志一致。单独记录删除意图，再通过
+   https://interfacepc.music.163.com/weapi/playlist/delete发送pid，回包200。
+6. /api/user/playlist完整回读，全部原ID/顺序/摘要与基线一致才算清理完成。
+
+真实执行及独立核对
+.build/ui-proof/watchman-write-20261027-a：
+ 1次SDK配置、1次设备报告、3次行为报告均200；
+ 3条初始化音乐读取及9条写入测试阶段请求均200；后9条中7条读取、1条创建、1条清理。
+ 3次受保护请求分别为初始本人歌单详情、新私密歌单创建、新歌单详情，使用各自新令牌。
+ 原77个歌单恢复，账号凭据deviceId未更换，未扩大Cookie域。
+audit_watchman_live_state.py只读SQLite，核对PC配置、服务端设备记录及revision=4。
+audit_watchman_live.cjs逆变换后执行固定官方编码函数逐包重建，4个报告包完全匹配；
+逐次执行原M/402路径选择和原token编码器，3个令牌匹配各自业务、DID、nonce且无fallback标记。
+audit_watchman_write.cjs核对原始创建回包、业务日志、独立详情回包、原列表与最终列表；
+另核对HTTP-only MConfig及新令牌无复用。审计不发网络请求。
+没有独立解开WEAPI密文；该部分证明的是原生受限删除意图、200回包和远端资源消失。
+完成截图已实际查看，文字叠层属于测试探针，不是正式新增产品页面。
+
+持久意图和恢复
+desktop/examples/watchman_write_support/guard.rs仅允许固定读取、一次指定私密创建及一次
+已确认测试资源的清理；发送前create_new写意图并sync_all，重复或重开不能重复发送。
+请求/回包证据均create_new，重开从最大序号继续，旧记录不覆盖。
+若写流程中断，先保留原错误，再依据原计划/账号/业务日志回读；自动恢复不再次创建。
+恢复时账号不符、日志含其他操作、测试资源归属/私密/名称/歌曲改变、候选不唯一均拒绝删除。
+删除已记意图但结果未知时只回读，不重发；基线暂时相同也不会把仍pending的创建当作完成。
+原始错误与恢复结果分开记录，recovery目录递增，不覆盖失败证据。
+文件同步边界用于探针进程恢复；正式业务的事务/未知写入对账仍由PlaylistService承担。
+实际重开验证.build/ui-proof/watchman-write-recovery-20261027-a：初始化3条读取后，
+原写日志追加账号/列表/列表3条读取，新增音乐写入0，原创建/删除意图各仍只有1条。
+audit_watchman_write_recovery.py独立核对远端原始回包、原账号和SQLite唯一业务日志，审计通过。
+恢复窗口截屏已查看但为黑帧，因此不计作可视界面通过；恢复结果有原始请求/回包及持久状态证据。
+
+可执行入口（沿用既有隔离可逆测试授权）
+ CARGO_INCREMENTAL=0 CARGO_TARGET_DIR=.build/target cargo build --locked --offline -p cumulus-desktop --features custom-protocol --example watchman_live_probe
+ CUMULUS_SESSION_DIR=EXPLICIT_PC_PROFILE GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 LIBGL_ALWAYS_SOFTWARE=1 dbus-run-session -- xvfb-run -a -s '-screen 0 1280x900x24' /usr/bin/python3 desktop/examples/run_watchman_fingerprint_probe.py NEW_PRIVATE_DIRECTORY --live --write
+ python3 desktop/examples/audit_watchman_live_state.py NEW_PRIVATE_DIRECTORY
+ node desktop/examples/audit_watchman_live.cjs NEW_PRIVATE_DIRECTORY
+恢复原计划时，将--write替换成--recover-write ORIGINAL_PRIVATE_DIRECTORY，输出目录仍必须全新。
+恢复审计：python3 desktop/examples/audit_watchman_write_recovery.py ORIGINAL_PRIVATE_DIRECTORY NEW_PRIVATE_DIRECTORY。
+不加--write或--recover-write时，--live仍只执行原来的三条只读音乐请求。
+
+本轮本地验证
+core定向7组52项通过：HTTP路由、凭据、wire、context、客户端身份、MConfig和歌单状态机。
+桌面探针1项持久意图/重开追加证据测试通过；全workspace/all-targets严格Clippy及fmt通过。
+全目标构建由Clippy覆盖编译检查，实际探针另cargo build通过；没有声称本轮重跑全部Rust/前端测试。
+第一次定向命令误写不存在的http_plan测试目标，失败日志保留；改为真实目标后通过。
+首次实际创建使用probe-build2二进制，随后只增加恢复写次数区分及写后设备ID核验；
+probe-build3作为最终产物实际执行上述恢复。两次执行版本分别记录，未将旧产物声称为最终源码。
+
+仍未覆盖
+官方EAPI其他歌单写操作/批处理、设置写操作、LoginGuardian/CAPTCHA/设备挑战与真实Windows/macOS。
+已验证兼容路由上的既有功能仍可用；上述“未覆盖”指本轮官方EAPI验证，不能误解为功能全未实现。
+未做真实支付、公开发布、消息/邀请或修改已有歌单内容。
+本轮最终检查、执行版本与证据散列见.build/watchman-write-progress.json。

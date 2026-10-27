@@ -1,0 +1,171 @@
+{
+  "scope": "Official NIM native Linux transport incremental verification; desktop binding and peer business sync remain unfinished",
+  "goal_complete": false,
+  "official_first": true,
+  "yesplaymusic_used": false,
+  "sources": [
+    {
+      "path": "references/netease-3.1.42.205594-x64-unpacked/redist_packages/cloudmusic.dll",
+      "sha256": "557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493"
+    },
+    {
+      "path": "references/yunxin-sdk-research/sdk-source.json",
+      "sha256": "a19cb1f1829ebfa18dd832e0c553961683495921aa863fa12ef8b0b7e974ce50"
+    },
+    {
+      "path": "references/yunxin-sdk-research/native/appkey-evidence.json",
+      "sha256": "43b9cbf18d72d106f1479a8546fe46f3db085cf76e30a559490d925425b7991e"
+    },
+    {
+      "path": "references/yunxin-sdk-research/native/appkey-getter.asm",
+      "sha256": "28b942a4dbdedee5052fb6f5b1a235a6354346808aba3384edf0835accf624ef"
+    },
+    {
+      "path": "references/yunxin-sdk-research/native/config-0033d450.asm",
+      "sha256": "e1832320c7fe64e6704b404cdafa1266e64f5f8737c005b21763472f5525566d"
+    },
+    {
+      "path": "references/yunxin-sdk-research/native/config-constructor.asm",
+      "sha256": "6daf644674e072129b98e9d6aee4e226b463c8d0dacdcd73faacda197e39f0c8"
+    },
+    {
+      "path": "references/yunxin-sdk-research/linux-x64-10.9.75/include/nim_client.h",
+      "sha256": "d4f2613fcd91866318be405e793da9f3bf9555461269d8f466778cfb4ecfae69"
+    },
+    {
+      "path": "references/yunxin-sdk-research/linux-x64-10.9.75/include/nim_client_def.h",
+      "sha256": "fc93fc05f1b2dcaf06641d0d9515c2de926ddb6fdfe650e4c655da10308ea7b5"
+    },
+    {
+      "path": "references/yunxin-sdk-research/linux-x64-10.9.75/include/nim_chatroom.h",
+      "sha256": "810d48db6e75744b1b36472d1819aed73bcb835cac39601a6de87726fcfcc1b2"
+    },
+    {
+      "path": "references/yunxin-sdk-research/linux-x64-10.9.75/include/nim_chatroom_def.h",
+      "sha256": "fbece7c0ae5f7311e69041844322ab2ee9d5a3923890c63bf8e1430e04f07b0a"
+    },
+    {
+      "path": "references/yunxin-sdk-research/linux-x64-10.9.75/include/nim_plugin_in.h",
+      "sha256": "39af0eaebdfad4f75edf7ab4a29dedb2f00c5c72b6085cdcd8d06d10d3eeae58"
+    },
+    {
+      "path": "references/yunxin-sdk-research/linux-x64-10.9.75/include/nim_plugin_in_def.h",
+      "sha256": "818675a41c1c25bb51d9820787835966aeb274db03eb1d0c0ba1662c3a7c3360"
+    },
+    {
+      "path": "references/yunxin-sdk-research/linux-x64-10.9.75/include/nim_global_def.h",
+      "sha256": "79f6d85e4db2e1c4b6345add7e87426edb9b2c2f06b373512e65c3efc37729bd"
+    }
+  ],
+  "features": [
+    {
+      "id": "official_app_config",
+      "official": "NEIMController virtual getter + host configuration constructor/setter",
+      "implementation": "references/yunxin-sdk-research/native/appkey-evidence.json",
+      "evidence": [
+        "S",
+        "R"
+      ],
+      "boundary": "Default production branch verified by code and actual account login; no alternate namespace credential attempts."
+    },
+    {
+      "id": "native_login",
+      "official": "nim_client_init/login; /api/middle/im/token/get",
+      "implementation": "core/src/listen_together/native_im/mod.rs",
+      "evidence": [
+        "S",
+        "L",
+        "R"
+      ],
+      "boundary": "Linux x64, final b login step3=200 twice; frontend never receives token."
+    },
+    {
+      "id": "native_room_entry",
+      "official": "nim_plugin_chatroom_request_enter_async -> nim_chatroom_enter",
+      "implementation": "core/src/listen_together/native_im/{ffi,mod}.rs",
+      "evidence": [
+        "S",
+        "R"
+      ],
+      "boundary": "Same new isolated one-member room, grant=200 and enter step5=200 twice."
+    },
+    {
+      "id": "message_callbacks",
+      "official": "nim_chatroom_reg_receive_msg_cb / receive_notification_cb",
+      "implementation": "core/src/listen_together/native_im/callbacks.rs",
+      "evidence": [
+        "S",
+        "L",
+        "R"
+      ],
+      "boundary": "Only actual entry notification observed. No PLAY_COMMAND/PLAYLIST or peer playback evidence."
+    },
+    {
+      "id": "lifecycle_account_fences",
+      "official": "cleanup2 plus community safe FFI/account generation boundary",
+      "implementation": "core/src/listen_together/native_im/",
+      "evidence": [
+        "S",
+        "L",
+        "R"
+      ],
+      "boundary": "Retired cookies/owned message copies/overflow/numeric bounds/stale account rejection tested locally; same-process reinitialization with encrypted cache tested online. Cleanup-timeout quarantine implemented, not live fault-injected."
+    },
+    {
+      "id": "desktop_realtime_binding",
+      "official": "M/75, M/3161",
+      "implementation": null,
+      "evidence": [
+        "S"
+      ],
+      "boundary": "Still pending; current desktop realtimeReady is false. No new UI coverage claimed."
+    },
+    {
+      "id": "rtc_and_peer_business_sync",
+      "official": "NERTC; M/75, M/137, M/3079",
+      "implementation": null,
+      "evidence": [
+        "S"
+      ],
+      "boundary": "RTC adapter and business event application remain unfinished; dual-account live validation excluded by user."
+    }
+  ],
+  "proofs": [
+    ".build/together-im-20261026-a",
+    ".build/together-im-20261026-b"
+  ],
+  "checks": [
+    ".build/nim-workspace-tests-final.log",
+    ".build/nim-clippy-final.log",
+    ".build/nim-format-final.log",
+    ".build/nim-desktop-build-final.log",
+    ".build/nim-independent.json"
+  ],
+  "rust": {
+    "passed": 480,
+    "core": 477,
+    "desktop": 3,
+    "failed": 0,
+    "ignored": 0
+  },
+  "frontend": {
+    "passed": 60,
+    "new_run": false,
+    "source": ".build/together-ui-front-tests.log"
+  },
+  "ipc": 57,
+  "platforms": {
+    "linux_x64": "live SDK login/entry/reopen",
+    "windows": "not built/run",
+    "macos": "not built/run"
+  },
+  "desktop_im_followup": {
+    "mapping": "docs/desktop-listen-together-im-mapping.json",
+    "scope": "Historical batch above unchanged; later native desktop connection/reconnect/awaited cleanup verified. Business packet/player/common-rights application and RTC still pending.",
+    "goal_complete": false
+  },
+  "business_source_followup": {
+    "mapping": "docs/listen-together-business-message-mapping.json",
+    "correction": "Official im.onChatRoomMsg consumes nim_talk msg_attach; chatroom entry notification is not business evidence. New receive callbacks/decoding/room isolation implemented; actual peer player application remains pending."
+  }
+}

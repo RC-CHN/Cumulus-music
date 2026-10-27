@@ -1,0 +1,183 @@
+{
+  "schema": 1,
+  "goal_complete": false,
+  "scope": "Native device identity, Linux host facts and explicit Windows compatibility declaration",
+  "yesplaymusic_used": false,
+  "contract": "docs/core-device-identity-contracts.txt",
+  "sources": [
+    {
+      "path": "references/netease-3.1.42.205594-x64-unpacked/redist_packages/cloudmusic.dll",
+      "sha256": "557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493",
+      "kind": "official_binary"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/protocol/core-more/regions/00cedf80.asm",
+      "sha256": "fccd5a7331da88f5c5c38eb963796841401d26c350ad489ad81d918db690c33d",
+      "kind": "official_disassembly"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/protocol/device-persistence/regions/00cf1940.asm",
+      "sha256": "c80fc97c2d93b018c413c446c328de2d74ffd92a6c8a75ec913cfdc70d5bfe69",
+      "kind": "official_disassembly"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/protocol/device-persistence/regions/00cf1350.asm",
+      "sha256": "6c7333fed1d4c8a6e7d1a868d08ea06d7837a6aa82dbe9066466661a9ecd9c6b",
+      "kind": "official_disassembly"
+    },
+    {
+      "path": "references/recovered-client/cumulus_core/identity.py",
+      "sha256": "bfedc8d398bf043adeccda7ee8dffefdd9f5a9119f26fd1674663e1670efb83a",
+      "kind": "archived_python_reference"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_device_identity.py",
+      "sha256": "ac34729ef6cce00c75894910ffc9c4fab4d32dcf8096cf753a90ede446c51e87",
+      "kind": "archived_python_reference"
+    },
+    {
+      "path": "references/recovered-client/docs/product/11-device-identity.txt",
+      "sha256": "e24280565ca4b91b394b16754497813c04011dc8bfde7bc3019d40698b51dbe0",
+      "kind": "historical_analysis"
+    },
+    {
+      "path": "references/recovered-client/scripts/device_identity_oracle.cjs",
+      "sha256": "39b68210915adef016f6434a92d928ce824b6bb8624e382f11f79f789db96b9e",
+      "kind": "independent_native_constant_oracle"
+    },
+    {
+      "path": "references/recovered-client/scripts/watchman_fingerprint_oracle.cjs",
+      "sha256": "5870a74f8669f1eadc0e38ee0d3adccc36cc00d687c3ab573f89f0021fbd1317",
+      "kind": "official_function_oracle"
+    },
+    {
+      "path": "references/recovered-client/scripts/recover_watchman_measurements.cjs",
+      "sha256": "e69928e1328caa229d1d3698e7135fe447832b87696595ef0e97f4a4ccc2c1fd",
+      "kind": "official_measurement_extractor"
+    },
+    {
+      "path": "references/recovered-client/scripts/windows_compatibility_oracle.cjs",
+      "sha256": "c61da0949cb7803af877a1847db66674419abc17d3359acad9b6d031267c698e",
+      "kind": "official_binary_and_check_oracle"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/protocol/windows-compatibility/navigator.idl",
+      "sha256": "af5317d74872fdabd4a9b5f1860bb4c20f383d04589f0038c440dbd1fbd0f379",
+      "kind": "chromium_91_reference"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/protocol/windows-compatibility/navigator_id.cc",
+      "sha256": "b4f80663bef5c46ad6f48a010d56b6c324137561eb58b0c4c13d70af2c54c4f8",
+      "kind": "chromium_91_reference"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/protocol/windows-compatibility/navigator_id.idl",
+      "sha256": "1123025cc8919b1bde2a6c4dc37b18e588657f95aa2732d11fa407d54b7aa914",
+      "kind": "chromium_91_reference"
+    }
+  ],
+  "mappings": [
+    {
+      "feature": "clientSign and persistent ID",
+      "source": [
+        "CEDF80",
+        "CF1940/CF1C80"
+      ],
+      "core": [
+        "core/src/identity/composition.rs"
+      ],
+      "evidence": [
+        "core/tests/device_identity.rs",
+        "core/tests/fixtures/device-identity-native.json"
+      ]
+    },
+    {
+      "feature": "CBC/tail transform, PFDW and explicit primary import/export",
+      "source": [
+        "D04A00/D044F0",
+        "D05890/D06270/D063E7/D06E60"
+      ],
+      "core": [
+        "core/src/identity/codec.rs",
+        "core/src/identity/container.rs",
+        "core/src/identity/service.rs"
+      ],
+      "entry": [
+        "core/examples/device_identity.rs"
+      ],
+      "evidence": [
+        "core/tests/device_identity.rs",
+        ".build/private-device-identity-read-20261027-a/independent-audit.json"
+      ]
+    },
+    {
+      "feature": "Linux hardware facts and installation transaction",
+      "source": [
+        "archived identity.py Linux adapter; not Windows enumeration"
+      ],
+      "core": [
+        "core/src/identity/facts.rs",
+        "core/src/identity/service.rs"
+      ],
+      "evidence": [
+        "core/tests/device_identity.rs",
+        ".build/identity-offline-collect1.log"
+      ]
+    },
+    {
+      "feature": "native profile across login candidates; original credential deviceId preserved",
+      "source": [
+        "official clientSign context; community native host integration"
+      ],
+      "core": [
+        "core/src/client/mod.rs",
+        "core/src/client/auth/mod.rs",
+        "core/src/protocol/http/profile.rs"
+      ],
+      "entry": [
+        "desktop/src/identity.rs",
+        "desktop/src/lib.rs",
+        "core/examples/device_identity_read.rs"
+      ],
+      "evidence": [
+        "core/tests/client_identity.rs",
+        ".build/identity-live-read1.log",
+        ".build/ui-proof/identity-startup-20261027-a/report.json"
+      ]
+    },
+    {
+      "feature": "explicit_windows_profile_with_stable_local_identity",
+      "source": [
+        "cloudmusic.dll:RVA1DBB590",
+        "queryOsVer:RVA32D030",
+        "Chromium91:NavigatorID::platform/appVersion"
+      ],
+      "core": [
+        "core/src/protocol/http/profile/windows.rs",
+        "core/src/identity/compatibility.rs"
+      ],
+      "desktop": [
+        "desktop/src/identity.rs"
+      ],
+      "tests": [
+        "core/tests/client_identity.rs",
+        "core/tests/windows_compatibility.rs"
+      ],
+      "executable": "core/examples/device_identity_read.rs",
+      "actual_read_evidence": ".build/private-windows-identity-read-20261027-a",
+      "independent_audit": "core/examples/audit_device_identity.py",
+      "account_reads": 2,
+      "business_writes": 0,
+      "real_windows_environment": false,
+      "protected_endpoint_acceptance": false
+    }
+  ],
+  "boundaries": [
+    "Windows/macOS automatic hardware collection untested/unimplemented",
+    "Unknown native secondary hardware record key; no dual-file repair implementation",
+    "No real Windows-generated isc.dat interoperability sample",
+    "Native opt-in startup configuration; no UI preference yet",
+    "Not Watchman or service permission proof"
+  ],
+  "compatibility_contract": "docs/windows-compatibility-research.txt"
+}

@@ -1,0 +1,80 @@
+{
+  "scope": "Incoming 20008 progress requests only; full desktop goal remains incomplete",
+  "goal_complete": false,
+  "official_first": true,
+  "yesplaymusic_used": false,
+  "sources": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/75.js",
+      "sha256": "8f0aa4cc3422daea1cb74c317c84fc27d992dd413623d3c7504f357085005476"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_197.chunk.1482700000000.js/3161.js",
+      "sha256": "9c84a8946cffccb4e2e739d220b9da86d829c2340efefd0cb91bd21d0f24a3a5"
+    },
+    {
+      "path": "references/recovered-client/docs/product/models/async_listenTogetherPlayStatus.txt",
+      "sha256": "28fa2b75b30bb01fc4bccb39c4c3bacb356dfb0249d97967c4eb1f4faf828f78"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_together_progress_oracle.cjs",
+      "sha256": "ba291f1a9e13d8fdd91c3db4ae52a2968d94db08d14ca330d950bcbec0e3f541"
+    },
+    {
+      "path": "core/tests/fixtures/together-progress-official.json",
+      "sha256": "648e3b4341381ee9b2fc350e2d54edcf90fcea59f004123a7a64612925c88708"
+    }
+  ],
+  "implementation": [
+    "core/src/listen_together/message.rs",
+    "core/src/client/together/progress.rs",
+    "core/src/client/together/runtime.rs",
+    "core/src/client/together/mod.rs"
+  ],
+  "tests": [
+    "core/tests/together_progress.rs",
+    "core/tests/support/together_progress.rs",
+    "core/tests/client_together.rs"
+  ],
+  "checks": [
+    ".build/progress-request-targeted3.log",
+    ".build/progress-request-workspace-tests.log",
+    ".build/progress-request-format.log",
+    ".build/progress-request-clippy.log",
+    ".build/progress-request-desktop-build.log"
+  ],
+  "rust": {
+    "passed": 518,
+    "core": 515,
+    "desktop": 3,
+    "failed": 0,
+    "ignored": 0,
+    "suites": 74,
+    "nonempty_suites": 71
+  },
+  "frontend": {
+    "passed": 61,
+    "new_run": false,
+    "evidence": ".build/shared-queue-front-tests4.log"
+  },
+  "oracle_cases": 10,
+  "new_native_tests": 4,
+  "new_ui_verified": false,
+  "fixture_api": true,
+  "fixture_im": true,
+  "fixture_audio": true,
+  "live_business_message_verified": false,
+  "peer_playback_verified": false,
+  "real_account_requests_this_batch": 0,
+  "platform": "Linux build and native fixture tests",
+  "documentation": "docs/core-listen-together-progress-request.txt",
+  "previous_audit": ".build/shared-queue-audit.json",
+  "remaining": [
+    "Automatic room-end/loss cleanup and restoration, VIP account refresh, gifts, RTC, durable pending-HTTP inbox and outside-selection room exit",
+    "Effects containers/parameters/C DSP integration and UI; same-account relay",
+    "Remaining catalog, authentication, membership, special-media, comments, local/playlist metadata and batch workflows",
+    "Device identity/watchman providers, tray/media integration, full visual audit and Windows/macOS validation",
+    "Real dual-account proof remains explicitly excluded; other implementable work is not excluded"
+  ],
+  "notes": "Initial targeted compile used the wrong QueueView field in a test; retained targeted.log. Corrected targeted3 and full suite passed. No new WebView or live SDK proof."
+}

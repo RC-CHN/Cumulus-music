@@ -1,0 +1,118 @@
+Rust 账号登录与凭据生命周期
+2026-10-25；实现已通过本地流程测试，真实账号仅重测会话恢复与资源读取。
+
+模块和依赖
+account/credentials.rs 管理固定原域的 Cookie、设备标识和刷新令牌。
+account/credential_import.rs 是显式、只读的旧 Netscape 会话导入工具；正式宿主不自动扫描 references。
+account/profiles.rs 创建独立 sessions/<随机ID>，通过 SQLite 原子提交账号资料与选中会话。
+account/login/ 分请求参数、挑战分类、冷却、操作状态、密码/SMS协调和二维码协调。
+account/refresh/ 分官方签名、持久化刷新意图和退出/续期协调。
+protocol/http/ 分原域/路由、设备配置、请求构造、实际HTTPS后端和响应提交。
+所有模块可在没有 Tauri、WebView、Python 的环境运行。
+2026-10-27已新增密码/SMS/部分挑战、保存账号/切换/退出的正式DTO与界面接线，
+来源、持久化、实际窗口模拟服务验证及未接入分支见desktop-login-contracts.txt。
+
+凭据与候选隔离
+PC与interface分别固定为 https://interfacepc.music.163.com、https://interface.music.163.com。
+保留服务器 Cookie 的 Domain/HostOnly、Path、Secure、HttpOnly、有效期；不会复制到其他主机。
+会话 Cookie 也显式存盘，避免 cookie_store 默认序列化忽略非持久 Cookie。
+同名 Cookie 按最长匹配路径优先；不通过路径外 Cookie 构造 Native 认证头。
+Cookie与刷新令牌在一次私有SQLite事务里更新。Linux新目录0700、数据库0600。
+凭据记录带revision；退出、另一个实例更改凭据后，迟到响应不能复活登录态。
+HTTP中断正文仍保存有效Set-Cookie；未确认响应的x-refresh-token不当作登录成功。
+profile选择、账号资料和保存账号索引在同一注册库事务中提交，成功后才发布内存认证状态。
+两个候选提交用旧selection和账号generation比较；旧候选不能覆盖新选择。
+失败、取消或写盘失败保留旧账号。注册库重开拒绝错误origin、非法ID和明显目录符号链接跳转。
+目录检查不宣称完全隔离恶意本地进程的文件系统竞态；Windows/macOS权限和运行尚未验收。
+
+二维码
+低层 QrLogin：/api/login/qrcode/unikey {type:3,lastUniKey?}；
+/api/login/qrcode/client/login {key,type:3,secureCaptcha?}。
+800过期、801待扫、802待确认、803授权、8821用户挑战。
+login::QrAuthentication 在独立候选中包装上述状态机；803之后仍调用account/get。
+身份读取成功且代次未变才提交当前profile；取消可以阻止正在身份回读的结果。
+丢响应后 reconcile 只读身份，不能以盲目重复轮询/登录来宣告成功。
+本轮未要求用户重新扫码；当前真实流程使用此前已授权的PC会话。
+
+密码、SMS和邮箱
+CredentialLogin 一次实例消费一个独立候选；新尝试创建新候选，不共用旧Cookie目录。
+phone：/api/w/login/cellphone，type=1、phone、countrycode、remember、https=true、e_r=true；
+  password=MD5(UTF8)或captcha二选一。手机与国家码只接受约定长度的ASCII数字。
+  M/363初始secureCaptcha仅用于密码模式；SMS模式忽略该输入。发生挑战后显式submit_captcha。
+email：/api/w/login，username、password=MD5、remember、https=true、e_r=true。
+密码明文不写数据库，待完成请求只保留摘要/OTP于本次内存；取消或成功清除待请求与挑战。
+可注入实际 LoginGuardian 产生本次checkToken；不伪造SDK token。
+发送短信必须显式调用send_sms：/api/sms/captcha/sent，cellphone、ctcode；
+  middle分支为/api/middle/captcha/sent/v1。
+ResendCooldown 在请求前预占60秒，跨新尝试共享；丢回复、取消或Future中止不自动重发。
+每次尝试只允许一个登录/验证/身份检查操作；Future中止释放槽，但保留待核实状态。
+
+挑战状态
+200授权，核验身份后才authenticated；702/8840 verification；8821 captcha；8830 two_factor；
+8860 phone_reuse；8861 security_question；8820 upgrade_required；509 rate_limited；304 account_disabled。
+8810/10004的toast.type 1/2/3分别security_qr/upgrade_required/risk_notice；未知码rejected。
+二次验证MUSIC_TU仅写到该候选的精确主机。官方M/2992使用父域；此处沿用既定最小作用域，
+不把官方父域写法解释为扩大现有用户Cookie作用域的授权。
+verification_methods：/api/user/2fa/list {bindingCellphoneEnable:true,smsCaptchaAble:true}；
+  成功后/api/user/2fa/begin {}，取消后不得继续begin。
+verification(action,params)明确动作对应：
+  MailSend/MailVerify：/api/login/2fa/mail/captcha/send、check；scene / scene,captcha。
+  SecurityMailSend/SecurityMailVerify：/api/user/2fa/securityEmail/send、verify；同上。
+  SmsSend：/api/middle/account/captcha/sent {scene}；SmsVerify：/api/middle/account/captcha/verify {captcha}。
+  OrderList/OrderVerify：/api/user/2fa/order/list、check；scene / scene,paymentMethod,paymentOrderId。
+  BindPhoneVerify：/api/user/2fa/bindcellphone {phone,countrycode,captcha}。
+  QuestionGet/QuestionVerify：/api/login/cellphone/twice/question/get、verify；scene / scene,ans。
+  PhoneReuseUser/PhoneReuseConfirm：/api/login/cellphone/twice/used/user/get、confirm；{}。
+scene默认"0"；不接受多余/缺失字段。发送邮件/SMS动作同样受冷却约束，不自动挑选验证方式。
+错误答案保留可修正状态；步骤成功先读身份，若301才允许一次原登录重放，新挑战继续等待。
+challenge_native仅是原生内部数据，不能把原始响应和票据直接序列化成前端DTO。
+
+退出和旧刷新
+AccountLifecycle只操作与当前AccountSession绑定的HTTP实例。
+logout(true)：/api/logout成功后清空该凭据对并使账号代次失效；失败保留本地状态。
+logout(false)：只清本地，remote_revoked=false；301过期后也可执行。
+缓存资源与历史候选文件不因退出被删除；已清凭据的选中profile重开后仍需重新认证。
+refresh_legacy：/api/login/token/refresh {}，之后account/get核验同一UID；不自动重放失败请求。
+reconcile_legacy只读身份。续期返回别的UID会使会话失效，防止继续以旧UID操作新凭据。
+历史Python真实旧刷新400未改成Rust成功；本轮没有再次触发远端退出或续期。
+
+JSK签名与刷新
+来源官方vendor M/1368 pn、encryptParams、refreshToken；14组原函数运行结果已冻结。
+model使用首个逗号替换后的deviceName，空则deviceDisplayName；全JS空白为unknown，
+否则删除U+0000..0020并encodeURIComponent。Rust入口接受有效Unicode，不声称覆盖孤立UTF-16代理。
+os优先实际环境client_type，空则设备os；deviceId必须与此会话一致。
+签名字段deviceId/model/os/refreshToken/token(MUSIC_U)/userId，按JS UTF-16键序排列，
+拼接key=value&，末尾_scver=1&_sckey=7ada0f7ccadbe165e6e7fbe01113f4df；UTF8 MD5小写hex。
+对象值使用JS JSON.stringify、null为空文本；不二次编码签名字段。
+/api/login/token/refresh/v1业务参数为refreshToken/clientUserId/ydDeviceToken/_scver="1"/_sign；
+PC适配器再附fromPage="JSK"及空x-login-chain-id，详见login-interception-contracts.txt。
+缺凭据返回MissingCredentials；设备不符或令牌含非法控制字符在网络前拒绝。
+官方桌面M/290不提供ydDeviceToken，M/1368超时返回空字符串；空值允许，详见desktop-session-renewal-contracts.txt。
+正式间隔86400秒；按官方代码，系统时间回退也保持NotDue，force可显式覆盖周期。
+开始前持久化轮换意图；请求前检查凭据revision，同一profile不能并发开始第二次轮换。
+收到200还须同次响应的有效MUSIC_U和x-refresh-token，且Cookie实际适用于刷新路径。
+删除/过期/错误路径/被更具体旧Cookie遮蔽的MUSIC_U不生成成功回执；普通Cookie更新也不算。
+最后回读相同身份并记录成功时间。中断留下pending，后续refresh返回RecoveryRequired。
+reconcile_jsk仅核对持久化回执并读身份；回执不足返回ReauthenticationRequired，需要新登录。
+上述持久化意图是社区客户端的恢复设计，不宣称官方使用同样的数据库结构。
+当前真实PC会话没有刷新令牌，JSK没有线上发请求；验证码/实名/外部身份服务也未线上触发。
+
+验证入口
+cargo test -p cumulus-core --test login --test qr_login --test refresh --test credentials --test http
+真实只读验证示例（必须显式指定私有目录和原域）：
+  cargo run -p cumulus-core --example account_read -- --profile <私有目录> --origin pc
+首次需要导入旧会话时另外传 --import-legacy <旧目录>，目的凭据目录必须为空。
+该示例不执行远端写入，只打印状态和计数；常规cargo test不访问账号网络。
+
+2026-10-27后续：密码/邮箱/QR滑块挑战已接入独立官方验证码窗口，详见
+desktop-captcha-contracts.txt与login-captcha-mapping.json。主界面只收登录状态，不收validate。
+历史“CAPTCHA未接入”是当时边界；真人通过真实登录仍未验证，JSK刷新等其余边界继续。
+
+2026-10-27后续：JSK前台触发/24小时间隔、原生空设备令牌、账号隔离、未决续期核对及账号窗口
+已接通，见desktop-session-renewal-contracts.txt和session-renewal-mapping.json。此前“JSK宿主未接入”
+不再是当前边界；真实成对续期、异常码token/refresh中间层与其余登录挑战边界仍须分别验证。
+
+2026-10-27后续：官方双实验分组与JSK301校验/本地失效提示已接入，见login-interception-contracts.txt。
+AB关闭的已登录账号旧301链与持久化清队列已在后续完成，见login-legacy-contracts.txt；
+匿名账号恢复、完整JSK新登录及原设备确认仍待继续。刷新凭据来源、旧探针未保存响应头的
+证据和本次真实只读实验分组见refresh-token-issuance-evidence.txt，不能把缺令牌推断成未下发或风控。

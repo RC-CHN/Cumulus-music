@@ -1,0 +1,128 @@
+Rust NOS 对象上传：来源、协议、持久恢复与验收边界
+2026-10-26；这是云盘工作流的传输层，不能据此把完整云盘上传或桌面云盘页记为完成。
+
+来源与代码映射
+官方 x64 3.1.42.205594 cloudmusic_util.exe（U）、cloudmusic.dll（C）：
+  U:0x233430 服务端实际 channel 分派；1=NOS，3=OSS。
+  U:0x22edf0 LBS 候选；U:0x281520/0x282910 NOS 响应字段。
+  C:0x174c2d0/0x174c510 分片与 uploadContext 查询 URL。
+  U:0x2407a0 续期参数；U:0x23f970 result.token 解析。
+  官方 JS M/3118 nn：分片 MIME、整文件十六进制 Content-MD5。
+证据入口 references/recovered-client/docs/product/15-cloud-upload.txt；原始反汇编位于
+references/netease-3.1.42.205594-analysis/native-cloud-*、native-upload-chunk、
+native-nos-response、native-upload-renew、native-nos-renew-response 等目录。
+归档对照 references/recovered-client/cumulus_core/upload.py；上层任务参照 cloud.py。
+没有调用这些 Python 文件执行业务，也没有参考 YesPlayMusic。
+
+当前实现分布：
+  cloud/nos/types.rs    节点、分配对象、输入验证、私有日志与公开 NosView。
+  cloud/nos/http.rs     LBS、真实 reqwest GET/POST、对象令牌与正文边界。
+  cloud/nos/manager.rs  账号绑定、持久化、锁、创建、控制、同对象令牌替换。
+  cloud/nos/request.rs  单次请求、明确鉴权拒绝后的有界续期。
+  cloud/nos/run.rs      分片、断点回读、未知写结果、源文件复核。
+  cloud/source.rs       阻塞工作线程中的流式 MD5/SHA256、读取和文件身份核对。
+  cloud/allocation.rs   既有 CloudApi::refresh_nos_token 账号接口。
+  storage/             复用 StateStore 账号命名空间和跨进程 OperationLock。
+
+传输与字段
+NosAllocation::parse 只接受响应 channel=1，校验 bucket、objectKey、token、resourceId。
+分配 API 已在 cloud/allocation.rs 将 key 规范化为 objectKey；两者冲突拒绝。
+对象身份为 bucket + objectKey + resourceId；续期不能更换对象或重新分配资源。
+NosNode 仅接受 nosup 或 nosup-<小写字母/数字分段>.127.net；统一使用 HTTPS。
+有凭据、非根路径、query/fragment、异常端口及未识别主机的地址拒绝。
+这些类型刻意没有 Debug；私有序列化仅用于本机账号存储，不是 IPC 数据契约。
+
+LBS 依次使用 wanproxy、wanproxy-hz、wanproxy-bj、wanproxy-oversea.127.net 的 /lbs，
+version=1.0、bucketname=<bucket>；各候选先 HTTPS 再 HTTP。
+这里 HTTP 回退只传公开 bucket 路由；不带账号 Cookie 或对象令牌。
+返回 upload 数组中的节点仍须通过 NosNode 校验，不能直接访问任意返回地址。
+
+POST https://<node>/<编码后的bucket>/<整个objectKey按一个路径段编码>
+  query：offset=<字节偏移>、complete=true/false、可选 context、version=1.0。
+  headers：x-nos-token、Accept-Encoding: identity、Content-Type、Content-MD5。
+  Content-MD5 是整个输入文件的小写十六进制 MD5，每个分片相同；不是 Base64 或分片摘要。
+  正文是该偏移的原始媒体字节，不转换格式；首片无 context，末片 complete=true。
+GET 同对象路径 ?uploadContext&context=<已确认context>&version=1.0 读取断点。
+  查询只带对象令牌，不带音频正文或账号 Cookie。
+NOS HTTP 客户端没有 CookieJar、不跟随重定向、不自动重试；令牌 Header 标记 sensitive。
+连接/读取超时各30秒，单请求总超时60秒；只接受200，JSON对象响应上限1MiB。
+错误不输出原始 URL、对象令牌或服务正文。HTTP状态保留为类型化错误。
+
+POST /api/nos/token/refresh 在已认证账号原有域通过 AccountSession::run_for 调用：
+  body：{"object_key":<原对象key>,"bucket":<原bucket>}。
+  成功取 result.token；不用 data.token，不迁移 Cookie 到对象域。
+NosUploads 每次 run 最多自动续期一次；仅实际收到 HTTP401/403 才作此处理。
+该拒绝证明本次分片未被接受，清除该 pending 后才允许重新发送同一个分片。
+查询断点遇到401/403也可续期，但不重置原 context/offset。
+renewal 在请求前保存 Pending，得到有效令牌保存 Ready，令牌请求接受后保存 Confirmed。
+失败保存 Failed；Pending/Ready/Failed 均阻止下一次 run 自动循环续期。
+宿主可显式 renew_token 或 replace_token 后继续。两个操作都不会发送音频或发布歌曲。
+
+账号、文件与持久状态
+NosUploads 绑定构造时 SessionToken；同 UID 再登录也使旧实例失效。
+请求前后、文件工作后、数据库读写均核对代次；迟到回复不能写入新会话状态。
+日志命名空间 nos_uploads_v1；控制请求独立保存在 nos_upload_controls_v1。
+公开视图只包含任务ID、状态、本地源路径、已确认/总字节、pending布尔值、续期状态、
+控制请求与稳定错误标签。没有 bucket/key/context/token/resourceId 或完整授权地址。
+
+输入须为非空普通文件，最多512MiB（适配器限制，不代表服务配额）。
+创建时保存规范路径、长度、整文件MD5/SHA256；实际读取用 open_regular，无网络或 shell。
+执行前验证整个输入，最后一个确认后再验证原句柄和当前路径，两者必须仍匹配原事实。
+读取期间长度或 mtime 变化拒绝；增长超过初始长度立即停止，不追读持续增长的文件。
+MD5服务契约与SHA256本地完整性检查分别保留，不以仅文件名/mtime判定同一输入。
+默认分片256KiB，可配置1字节至4MiB；创建后分片大小随任务保存，重开不会随新默认值改变。
+
+创建支持调用者预先保存的固定ID（最多128个ASCII字母数字/连字符/下划线）。
+相同ID再次 create 仅在源文件事实、目标对象与 MIME 全部一致时返回原任务；不会清零进度。
+这样上层可先保存父任务及子ID，子任务建成但父任务保存失败时可以安全重新接入。
+对象令牌变化不改变身份；重新 create 不隐式替换令牌，应使用显式续期方法。
+
+状态：Queued → Uploading → Uploaded；可暂停、失败、进入 Ambiguous 或取消。
+操作锁按账号+任务区分，跨实例/进程并发工作返回 MutationBusy，不持有SQLite事务等待网络。
+每个 POST 前保存 Pending{offset,end,complete}，失败则不发送。
+收到响应必须 offset == 本次分片末尾；非末片须有合法非空 context。
+只有确认末片并完成源文件复核，才保存 Uploaded；字节数等于文件大小本身不代表成功。
+确认记录保存失败保留先前 pending；下次启动按未知写结果处理，不能伪造已确认进度。
+
+恢复规则：
+  有 context 且不是未知首片/末片：先GET查询，远端offset不能超过本任务实际已发送末尾。
+  中间分片回包丢失：查询确认已接受字节后从真实偏移继续，不盲重发已确认数据。
+  context查询404：仅在排除未知首片/末片后，按官方分支从0重新开始。
+  首片回包丢失且没有context：Ambiguous，停止自动写入。
+  末片回包丢失：Ambiguous，停止自动写入；旧context也不能证明最终发布事实。
+  显式替换/刷新令牌不能解除上述未知写结果，后续run仍返回MutationUncertain。
+  网络中断、HTTP非鉴权错误或错误字段不能当作“肯定没有写入”。
+当前没有恢复出可可靠核对 NOS 未知首片/最终对象的通用读权限，本层不提供“强制成功”。
+上层云盘的元数据/发布结果还需要它自己的日志与账号资源对账，不能由本层推导。
+
+暂停与取消
+用户 Pause/Cancel 先持久保存控制请求，正在运行的任务不需要等其操作锁释放。
+下一次分片意图与控制请求在同一 SQLite 事务中判定；控制先提交则不发送该分片。
+已经写入意图的分片视为在途，仍需记录其响应。末片已接受时如实保留 Uploaded，
+原子清除迟到控制请求，不能把已上传对象伪装成取消成功。
+如果在途分片得到明确鉴权拒绝，而暂停/取消已请求，不继续续期或重发。
+Pause必须显式 resume 才解除；Cancel不可resume，不删除本地源文件或远端对象。
+chunk_budget/stop 仅在分片边界暂停；这种运行预算暂停可通过下一次run继续。
+远端已接受数据可能保留；取消不是 DeleteObject，也不是从用户云盘删除歌曲。
+
+验证与复现
+  cargo test -p cumulus-core --test nos_upload --offline
+  cargo test -p cumulus-core --lib cloud::nos::http::tests --offline
+本轮16项状态集成测试使用独立临时SQLite与确定性服务模型；包括账号重登录/切换、
+数据库重开、分片预算、同对象续期、首次/末次ACK丢失、中间ACK丢失、坏偏移、context404、
+源文件变化、并发锁、进程任务中止、取消、最后分片与控制竞争、SQLite意图/确认写失败。
+后者用真实SQLite触发器拒绝写入，检查意图保存失败时0次HTTP，确认保存失败时不盲重发。
+2项真实回环HTTP测试验证正文/整文件MD5/头字段、拒绝重定向和503、无Cookie保存及响应上限。
+本地回环HTTP服务器在受限环境需要允许绑定本机端口；不调用真实账号写接口。
+日志 .build/nos-state-tests.log、.build/nos-workspace-tests.log。
+
+边界与剩余
+最初NOS传输批次只作本地验证；后续Rust父任务已完成真实隔离音频/封面上传、续期与重开，
+完整编码/发布/账号回读与清理通过，见core-cloud-upload-contracts.txt和rust-core-validation.txt。
+旧15报告的11/14项真实账号结果仍属于归档实现，不混入Rust通过数。
+本层只处理实际channel=1；OSS channel=3现由cloud/oss独立处理，不能静默改用NOS。
+云盘父任务（check/allocate/metadata/encoding/publish/list回读）和附件文档ID/绑定、
+持久控制与未知写恢复现已接通NOS及OSS；OSS线上仍缺真实channel=3条件。
+后续桌面云盘页/调度/播放与删除接入、实际窗口验证见desktop-cloud-contracts.txt。
+OSS签名/分片/核对与中止契约见core-oss-upload-contracts.txt，不能以NOS线上通过替代OSS证据。
+Windows/macOS 尚未运行验证；模块不依赖Tauri或Linux专用接口，但这不等于三平台实测通过。

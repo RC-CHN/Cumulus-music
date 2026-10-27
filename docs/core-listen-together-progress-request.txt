@@ -1,0 +1,54 @@
+一起听服务端进度请求（20008）
+2026-10-26；本批只补进度消息处理，不表示一起听或完整桌面目标完成。
+
+官方来源与差异
+官方 hybrid_app/75.js:1186 的 HEARTBEAT 分支检查
+content.ignoreUserIds.includes(Number(hostUid))，未被忽略时派发
+async:listenTogetherPlayStatus/reportRequest，reason=heartbeat，command=PROGRESS。
+列表缺失/null不派发；数组中的字符串账号不等于数字账号。
+references/recovered-client/scripts/netease_together_progress_oracle.cjs 实际执行这一段
+恢复代码，10组纯合成样本冻结于core/tests/fixtures/together-progress-official.json。
+Rust的RoomMessage::requests_progress_for保持上述有效数组语义；非数组输入明确拒绝。
+官方对某些非数组输入会按JS真值跳过或调用includes，这类畸形输入不按有效协议支持。
+
+官方 hybrid_197/3161.js:382 的 reportRequest 对heartbeat仍先检查isCanReport，
+然后按force进入组装与cmdFilter；force没有绕过重复/回声过滤。
+assembleRequestParam未提供ids时，formerSongId与targetSongId都来自当前歌曲。
+同曲零毫秒PROGRESS转GOTO；此路径没有采用本机手动Seek修正的过滤例外。
+原生播放器已经给出全曲坐标，共同试听范围的起点不再叠加一次。
+
+Rust执行与接口
+core/src/client/together/runtime.rs接收当前账号、当前音乐房间的20008；
+progress.rs单独执行进度上报，不复用Publish或本机Seek，也不写队列/触发重选歌曲。
+检查当前IM为Connected、未锁定失败、共享收件已应用、无待处理远端播放和未知HTTP写入。
+读取原生PlaybackSnapshot及同一队列快照，非Playing/Paused/Buffering或无位置则不报告。
+本机共享列表/模式/随机顺序与服务端当前快照不一致时，等待原本的队列变更路径完成；
+进度请求不会代替该路径发送REPLACE。上述保护是本项目对isCanReport的显式实现，
+不声称完全复刻原版所有隐式异步状态时序。
+
+接口：/api/listen/together/play/command/report。
+roomId为当前绑定音乐房间；commandInfo为JSON字符串，含commandType、progress（毫秒）、
+playStatus、formerSongId、targetSongId、clientSeq。字段与序号由既有PlayCommand/
+TogetherService生成。按官方普通过滤通过后才写持久操作日志、单次发送并回读核对。
+这不是20秒空闲定时器使用的/api/listen/together/heartbeat，两条入口保持分离。
+请求失败/回包丢失仍保持未决状态；后续20008不能偷偷重试或执行显式恢复。
+重新连接中不报告。前端没有新增命令，也不接收成员忽略名单或原始IM附件。
+
+本地验证
+cargo test -p cumulus-core --offline --test together_progress --test client_together
+新增1项协议对照测试（含10组官方实际执行样本和畸形输入），3项正式MusicClient集成测试：
+1. 等待房间按当前原生23.456秒报告23456毫秒，缺名单/忽略本人/其他房间不写；
+   字符串名单保持官方数字比较语义，队列revision不变，重复请求仍被过滤。
+2. 双成员夹具34.567秒的服务端成功回包丢失后，后续请求不重发、不额外读取；
+   显式关闭核对后另建房，IM重连期间不报告。
+3. 40至50秒共同试听处于暂停时，原生48秒报告48000毫秒，保持暂停且不重载音源。
+正式会话、SQLite、播放器控制器、IM监督器与请求日志参与测试；API/SDK/音频均为夹具。
+本批没有真实账号请求、真实好友业务包、声卡、双端同步或新增WebView验证。
+源码/来源哈希、测试和构建日志见listen-together-progress-request-mapping.json。
+
+继续项
+20003自动结束和服务端房间消失后的完整宿主清理、20006账号会员资料联动、礼物/提示音、
+RTC、同账号接续、未知HTTP写入期间的持久消息队列及外部普通选曲离房等仍未完成。
+双账号实时验证仍暂排除；不得以这一限制代替完成上述可实现逻辑。
+后续记录：20003、房间消失/变更、超时/清空的清理和恢复已接通，详见
+core-listen-together-lifecycle.txt。此处保留本批当时边界，其余事件和完整目标仍继续。

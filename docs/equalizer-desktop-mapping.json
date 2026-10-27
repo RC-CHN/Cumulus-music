@@ -1,0 +1,78 @@
+{
+  "date": "2026-10-26",
+  "full_goal_complete": false,
+  "contract": "docs/desktop-equalizer-contracts.txt",
+  "official_sources": [
+    "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_53.chunk.1482700000000.js/3091.js",
+    "references/ui-recovery/sources/packages/pc/src/pages/audio-effect/views/Equalizer.tsx"
+  ],
+  "base_mapping": "docs/equalizer-playback-mapping.json",
+  "items": [
+    {
+      "feature": "official_presets",
+      "implementation": [
+        "frontend/src/data/equalizer-presets.ts",
+        "frontend/src/services/equalizer.ts"
+      ],
+      "evidence": [
+        "frontend/tests/equalizer-state.test.ts",
+        "docs/equalizer-presets-manifest.json"
+      ]
+    },
+    {
+      "feature": "durable_account_settings",
+      "implementation": [
+        "core/src/effects/equalizer/preferences.rs",
+        "core/src/playback/controller/equalizer.rs"
+      ],
+      "evidence": [
+        "core/tests/equalizer_controller.rs"
+      ]
+    },
+    {
+      "feature": "typed_player_actions",
+      "implementation": [
+        "core/src/client/player/dto.rs",
+        "core/src/client/player/mod.rs",
+        "desktop/tests/ipc.rs"
+      ],
+      "evidence": [
+        "frontend/tests/player-state.test.ts",
+        "core/tests/equalizer_controller.rs"
+      ]
+    },
+    {
+      "feature": "native_loading_and_audio",
+      "implementation": [
+        "desktop/src/effects.rs",
+        "core/src/playback/engine/mpv.rs",
+        "core/src/client/focus.rs",
+        "core/audio-filter/src/processor.rs"
+      ],
+      "evidence": [
+        "core/audio-filter/src/tests.rs",
+        ".build/equalizer-activation-regression.log"
+      ]
+    },
+    {
+      "feature": "desktop_controls",
+      "implementation": [
+        "frontend/src/components/EqualizerPanel.vue",
+        "frontend/src/components/PlayerBar.vue"
+      ],
+      "evidence": [
+        "desktop/examples/equalizer_ui_probe.rs",
+        "desktop/examples/equalizer_ui_probe.js",
+        ".build/ui-proof/equalizer-20261026-c/first/complete.json",
+        ".build/ui-proof/equalizer-20261026-c/reopen/complete.json",
+        ".build/ui-proof/equalizer-20261026-d-missing/first/complete.json"
+      ]
+    }
+  ],
+  "remaining": [
+    "plugin distribution",
+    "MV settings integration",
+    "full effects graph and membership lifecycle",
+    "physical audio device and Windows/macOS validation"
+  ]
+}

@@ -1,0 +1,309 @@
+{
+  "date": "2026-10-27",
+  "full_goal_complete": false,
+  "contract": "docs/desktop-login-contracts.txt",
+  "evidence_scope": "Production Rust/IPC/Vue with in-process synthetic HTTP. No real login/SMS/email/logout actions.",
+  "sources": {
+    "phone": {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/login/views/Phone.jsx",
+      "sha256": "08b48ac2f74c9e083173fa07f6d5682110c17d17d201ed6b007e83d2c22a3e17"
+    },
+    "email": {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/login/views/Mail.jsx",
+      "sha256": "4295af24d0236618f7b1b554862f64b53bbb4eb19063ba410385cd78e6c59d23"
+    },
+    "methods": {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/login/views/DoubleVerifyList.tsx",
+      "sha256": "9e278bd8b2697a6fc613233163bd148089248499aa25255aa9d39fffe253ff63"
+    },
+    "verify_sms": {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/login/views/DoubleVerifySmsCaptcha.tsx",
+      "sha256": "09673d8c9011b1bd37d18ab29bb871ace0aabd258acbe3faecc252c88c9fcc21"
+    },
+    "verify_email": {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/login/views/DoubleVerifyEmailBind.tsx",
+      "sha256": "1f1759285125d7a6e6bc27d3536a0c2436ceaf442a25e3966ef71363af15cc28"
+    },
+    "bind": {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/login/views/DoublVerifyeCellphoneBind.tsx",
+      "sha256": "5a0e0317bb6fb16a82a6806447acd043c0df1adada4f76a9f2a09011a703eda4"
+    },
+    "question": {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/login/views/QuestionVerify.tsx",
+      "sha256": "5eca2dee60b9292dbd81c23177d7aa4f8970f1328d1382d9c9a74bae4a1ec634"
+    },
+    "question_options": {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/login/components/QuestionRadio.tsx",
+      "sha256": "68b98ab4b1ad63a0b1946293b9bb341e4e83da7a2dcb9bc47adf22753675a47e"
+    },
+    "reuse": {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/login/views/AccountCheck.tsx",
+      "sha256": "f06ad805362fdc9c6b20167dae30e8284e1c010287cabb91ad9c51496ea9e626"
+    },
+    "saved": {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/switchAccount/index.tsx",
+      "sha256": "e2fab5c36116417e7f65868a2d08da60ad4c75101a231ae7b69982ab3eff7f7a"
+    },
+    "iframe": {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/login/views/Verify.jsx",
+      "sha256": "e05b3653f1d1d272b674a90e4bfd625c5ddbab8cff4d01328dd5a9bc4df809af"
+    },
+    "363": {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/363.js",
+      "sha256": "8b8122f09a875f50026599cca589ba3e1318e01e260b21f925adbdbc567206f0"
+    },
+    "2992": {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_20.chunk.1482700000000.js/2992.js",
+      "sha256": "287d4036d1d6fa12b6ac6cda4f145eea0cd4892f1e0f2d9986368a96a94d82cb"
+    },
+    "1368": {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_vendors_app_subApp.chunk.1482700000000.js/1368.js",
+      "sha256": "49da1d26373042091a3123f8948f1ce7e9968ec185e57369156fc1c6a6700db3"
+    },
+    "auth_py": {
+      "path": "references/recovered-client/cumulus_core/auth.py",
+      "sha256": "731598e044489fb4408269720af74ceb17792607ae2b19bb8ad680e9eced1e3b"
+    },
+    "refresh_py": {
+      "path": "references/recovered-client/cumulus_core/login_refresh.py",
+      "sha256": "41723982801e7db43ad3ad17fb8e5fddcf00cef4a88f9f3eddb8b4da4c944d9e"
+    },
+    "report": {
+      "path": "references/recovered-client/docs/product/22-login-monitor.txt",
+      "sha256": "9021f6851516e8fa142eec8187346494e2f9330c3eca469409b2e17b09e45ba6"
+    },
+    "session_files_py": {
+      "path": "references/recovered-client/cumulus_core/session_files.py",
+      "sha256": "bc8b998696256a0654b8c2f657dc82d8fa5e13910fe21fd8b53c01e92649d6bd"
+    }
+  },
+  "items": [
+    {
+      "feature": "credential_submission",
+      "source_ids": [
+        "363",
+        "phone",
+        "email",
+        "auth_py"
+      ],
+      "logic": "Native parameter/MD5 generation; isolated candidate; account/get then atomic adoption",
+      "implementation": [
+        "core/src/client/auth/flow.rs",
+        "core/src/account/login/flow.rs",
+        "core/src/account/login/request.rs"
+      ],
+      "ui": [
+        "frontend/src/components/login/CredentialLogin.vue",
+        "frontend/src/composables/useLogin.ts"
+      ],
+      "evidence": [
+        "core/tests/login.rs",
+        "core/tests/client_auth.rs",
+        ".build/ui-proof/auth-20261027-b/first/auth_rejected.json",
+        ".build/ui-proof/auth-20261027-b/first/auth_email.json",
+        ".build/ui-proof/auth-20261027-b/first/auth_sms_done.json"
+      ],
+      "boundary": "No new real-server login proof in this batch."
+    },
+    {
+      "feature": "offered_two_factor",
+      "source_ids": [
+        "2992",
+        "methods",
+        "verify_sms",
+        "verify_email",
+        "bind"
+      ],
+      "logic": "Server-offered whitelist; explicit sends share cooldown; identity read before at most one original-login replay",
+      "implementation": [
+        "core/src/client/auth/flow.rs",
+        "core/src/account/login/flow.rs"
+      ],
+      "ui": [
+        "frontend/src/components/login/LoginChallenge.vue"
+      ],
+      "evidence": [
+        "core/tests/client_auth.rs",
+        ".build/ui-proof/auth-20261027-b/first/auth_two_factor.json"
+      ],
+      "boundary": "Email has fixture GUI proof. Verification SMS is wired without new GUI/live proof. Bind-phone follows official App handoff. Device/WeChat verification is incomplete."
+    },
+    {
+      "feature": "security_question",
+      "source_ids": [
+        "2992",
+        "question",
+        "question_options"
+      ],
+      "logic": "Submit option title or none; empty question checks identity before one replay",
+      "implementation": [
+        "core/src/client/auth/flow.rs",
+        "core/src/account/login/flow.rs"
+      ],
+      "ui": [
+        "frontend/src/components/login/LoginChallenge.vue"
+      ],
+      "evidence": [
+        "core/tests/client_auth.rs",
+        ".build/ui-proof/auth-20261027-b/first/auth_question.json"
+      ],
+      "boundary": "No new real-server login proof in this batch."
+    },
+    {
+      "feature": "phone_reuse",
+      "source_ids": [
+        "2992",
+        "reuse"
+      ],
+      "logic": "Read prior account before confirmation; mask nickname and sanitize artwork",
+      "implementation": [
+        "core/src/client/auth/flow.rs",
+        "core/src/account/login/flow.rs"
+      ],
+      "ui": [
+        "frontend/src/components/login/LoginChallenge.vue"
+      ],
+      "evidence": [
+        "core/tests/login.rs"
+      ],
+      "boundary": "Wired and inherited core-flow proof; no new GUI/live phone-reuse proof."
+    },
+    {
+      "feature": "saved_account_switch",
+      "source_ids": [
+        "saved",
+        "session_files_py"
+      ],
+      "logic": "Reopen same credential scope; require saved UID and registry revision; verify identity before switching",
+      "implementation": [
+        "core/src/account/profiles.rs",
+        "core/src/account/profiles/saved.rs",
+        "core/src/client/auth/view.rs",
+        "core/src/client/auth/flow.rs"
+      ],
+      "ui": [
+        "frontend/src/components/AccountDialog.vue"
+      ],
+      "evidence": [
+        "core/tests/client_auth.rs",
+        ".build/ui-proof/auth-20261027-b/first/auth_accounts.json",
+        ".build/ui-proof/auth-20261027-b/first/auth_switched.json",
+        ".build/ui-proof/auth-20261027-b/first/auth_saved_expired.json"
+      ],
+      "boundary": "No new real-server login proof in this batch."
+    },
+    {
+      "feature": "remember_and_restart",
+      "source_ids": [
+        "phone",
+        "email",
+        "session_files_py"
+      ],
+      "logic": "remember controls request and durable auto_login; disabled startup uses guest; explicit switch verifies identity",
+      "implementation": [
+        "core/src/account/profiles.rs",
+        "core/src/account/profiles/saved.rs",
+        "core/src/client/mod.rs",
+        "core/src/account/login/flow.rs"
+      ],
+      "ui": [
+        "frontend/src/components/login/CredentialLogin.vue",
+        "frontend/src/composables/useLogin.ts",
+        "frontend/src/components/AccountDialog.vue"
+      ],
+      "evidence": [
+        "core/tests/client_auth.rs",
+        ".build/ui-proof/auth-20261027-b/reopen/complete.json",
+        ".build/ui-proof/auth-20261027-c-small/reopen/complete.json",
+        ".build/ui-proof/auth-20261027-b/independent-audit.json"
+      ],
+      "boundary": "No new real-server login proof in this batch."
+    },
+    {
+      "feature": "logout_bound_credentials",
+      "source_ids": [
+        "refresh_py",
+        "1368"
+      ],
+      "logic": "Remote success or explicit local logout clears bound credentials; remote failure retains session",
+      "implementation": [
+        "core/src/client/auth/lifecycle.rs",
+        "core/src/client/auth/view.rs",
+        "core/src/account/refresh/lifecycle.rs"
+      ],
+      "ui": [
+        "frontend/src/components/AccountDialog.vue"
+      ],
+      "evidence": [
+        "core/tests/client_auth.rs",
+        "core/tests/refresh.rs",
+        ".build/ui-proof/auth-20261027-b/first/auth_logout_confirm.json",
+        ".build/ui-proof/auth-20261027-b/first/auth_logged_out.json",
+        ".build/ui-proof/auth-20261027-b/independent-audit.json"
+      ],
+      "boundary": "Remote service is synthetic. Refresh host scheduling/SDK and saved-row deletion remain incomplete."
+    },
+    {
+      "feature": "cancellation_and_account_transition",
+      "source_ids": [
+        "auth_py",
+        "session_files_py"
+      ],
+      "logic": "Shared QR/credential slot; reject late replies; native account events; together-room gate; revoke media ownership",
+      "implementation": [
+        "core/src/client/auth/mod.rs",
+        "core/src/client/auth/qr.rs",
+        "core/src/client/focus.rs",
+        "core/src/client/together/mod.rs",
+        "desktop/src/auth.rs",
+        "desktop/src/commands.rs"
+      ],
+      "ui": [
+        "frontend/src/App.vue",
+        "frontend/src/composables/useLogin.ts",
+        "frontend/src/composables/useMusic.ts"
+      ],
+      "evidence": [
+        "core/tests/client_auth.rs",
+        "core/tests/qr_login.rs",
+        "desktop/tests/ipc.rs",
+        "frontend/tests/login-state.test.ts",
+        "frontend/tests/music-state.test.ts"
+      ],
+      "boundary": "Full audio/video/IM teardown fault matrix is not proved by empty-media auth GUI fixture."
+    },
+    {
+      "feature": "unavailable_challenges",
+      "source_ids": [
+        "iframe",
+        "methods",
+        "report"
+      ],
+      "logic": "Preserve challenge state and display external verification boundary with new QR option",
+      "implementation": [
+        "core/src/client/auth/dto.rs",
+        "core/src/client/auth/flow.rs"
+      ],
+      "ui": [
+        "frontend/src/components/login/LoginChallenge.vue",
+        "frontend/src/services/auth.ts"
+      ],
+      "evidence": [
+        ".build/ui-proof/auth-20261027-b/first/auth_captcha_boundary.json",
+        "frontend/tests/login-state.test.ts"
+      ],
+      "boundary": "CAPTCHA/guardian, legacy web verification, security QR, device and WeChat paths remain incomplete."
+    }
+  ],
+  "remaining": [
+    "real new-login and verification proofs",
+    "device identity/LoginGuardian/watchman",
+    "JSK refresh host lifecycle",
+    "legacy web/security-QR/device/WeChat verification UI",
+    "abandoned candidate cleanup",
+    "registration/nickname/password-recovery branches",
+    "official visual and cross-platform validation"
+  ],
+  "source_correction": "2026-10-27: profiles.py contains Windows compatibility profile constants, not session selection. Corrected selection source to session_files.py; prior batch hashes remain historical.",
+  "follow_up_mapping": "docs/saved-account-removal-mapping.json"
+}

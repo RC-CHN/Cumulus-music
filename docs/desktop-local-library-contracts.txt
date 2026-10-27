@@ -1,0 +1,111 @@
+本地音乐库桌面契约与恢复映射
+2026-10-26；完整桌面目标仍未完成。
+
+产品与来源
+官方恢复 M/461（page:localMusic）包含标题倒序初始排序、搜索、分页、getAllList 和分组状态。
+M/2304（async:localList）包含 add/del 扫描任务、扫描状态、监视变化与切换账号后的线上映射。
+恢复的 LocalMusic.tsx / LocalMusicCategory.tsx 提供“本地音乐”、总数、选择目录、播放全部、
+歌曲/歌手/专辑/文件夹四类入口；本次按这些结构接入。CUE/NCM继续复用已验证的Rust实现。
+详细索引/CUE/解码缓存契约见core-local-library-contracts.txt，普通/下载播放见core-playback-contracts.txt。
+本批没有参考YesPlayMusic，也没有移植其UI。未获得官方完整窗口截图，不宣称像素一致。
+
+页面流程
+侧栏“本地音乐”在未登录状态也可进入；账号恢复失败不阻止本地浏览和播放。
+选择目录调用原生文件夹选择器，取消无副作用；选中后以规范路径登记监视根，开始后台扫描。
+选择器从系统音乐目录开始，不存在时从用户主目录开始；不默认停在GTK最近使用列表。
+标题显示当前筛选总数；扫描显示等待、查找、已处理/总数、保存与错误状态。
+管理音乐目录列出规范路径、最近结果、不可读数量、目录缺失，并可暂停/恢复自动扫描。
+暂停扫描保留索引与原文件；已经开始的探测返回后取消提交。重新扫描唤醒原工作线程。
+扫描周期30秒；启动桌面即恢复登记根，无需等到用户打开页面。
+搜索标题、歌手、专辑、文件路径，使用Unicode casefold；不把JSON字段名误当搜索词。
+四种视图共享同一权威查询；多个歌手会分别分组，重复歌手标签每首只计一次。
+分组提供全部和具体歌手/专辑/目录；未知歌手或专辑的key为空字符串，名称显示“未知”。
+标题、歌手、专辑、时长、格式排序在完整Rust快照上执行；相等键按路径与id稳定定序。
+未恢复官方原生本地库的排序比较器，当前使用Unicode casefold字典序，不能声称等同其中文排序。
+每页200首，原生最多500；表格不将整个音乐库送入DOM。分组列表当前整批展示，极大分组数尚需性能验收。
+默认显示不可用文件，可切换隐藏。有效CUE隐藏其整文件容器，并显示独立曲目与CUE标记。
+NCM显示NCM标记及实际内层格式；坏/缺文件标识清楚，禁用播放。
+点击曲目或播放全部都在原生重新校验完整快照，队列覆盖整个当前筛选/分组/排序结果。
+分页offset/limit不截断队列；不可用条目不入队，选中不可用或已不在筛选内的id会失败。
+前端只传query、revision和start_id，不传文件事实、媒体URL或自拼的完整播放列表。
+
+原生结构
+library/catalog.rs：查询/排序/分组、全索引revision、完整队列资源生成。
+client/local/{mod,dto,view}.rs：独立MusicClient用例、后台监视生命周期、公开白名单数据。
+library/index/scan.rs：可观察ScanProgress，discovery阶段尚未知道总数，不伪造百分比。
+计数单位是扫描输入文件，CUE文件计1项；不把其内部再次探测或虚拟曲目数当作扫描文件数。
+library/monitor：保存根状态和结果；每项扫描进度只在内存中更新，重开重新对账。
+client/player/selection：Local选择与其他媒体共用焦点、选择代次和原生播放器。
+client/player/lyrics：本地文件侧车歌词、CUE媒体时钟转换和代次校验。
+desktop/local.rs：三个正式IPC；只有桌面层知道原生选择器。前端services/local.ts定义协议，
+useLocal管理迟到读取/分页变更/轮询/取消选择；LocalPage.vue负责产品展示。
+
+状态、恢复与权限
+本地媒体索引属于设备，owner=local，不以登录账号复制媒体事实。线上映射继续按原UID隔离。
+播放器与歌词偏好使用当前UID，未登录时使用独立local-guest命名空间；切换账号替换队列与流。
+新with_local_owner/check_generation只用于本地状态与播放协调，不改变with_token/run_for的认证要求。
+线上Songs/Playlist/Cloud/MvRelated选择仍需认证；游客不能借本地播放调用线上请求。
+本地资源保存local_id、完整local_revision及metadata，不保存前端指定路径；解析器在选择、
+下一首与恢复时重新核验真实源文件和CUE指纹。修改后的文件不自动替换旧排队分段。
+完整快照revision由一次索引事务的全部条目计算；UI翻页及播放携带revision，变化返回snapshot_changed。
+页面刷新遇到旧revision退回第一页并提示；不会拼接不同时刻的页。旧读取不能盖过新筛选或目录操作。
+队列最多50000首，超过明确报错，不静默截断为当前页面。新请求不能由慢旧选择抢回播放焦点。
+目录消失保留条目并标missing；访问失败不能推断为删除。扫描暂存结果，最终一次事务提交。
+停止扫描递增根revision，晚到结果不能重新启用目录；错误/取消不发布半个目录的索引。
+注册、移除监视与扫描提交继续使用已有跨实例锁/事务。进度仅用于展示，不是已提交数量。
+播放器重开保留暂停、队列选择与位置，实际加载由libmpv完成；没有浏览器音频或模拟进度条。
+本地播放不走播放器URL接口；下载任务自己的账号、文件哈希与会员离线校验保持既有专用流程。
+NCM只在私有解码缓存生成普通音频，源NCM不修改；缓存损坏与中断恢复沿用原Rust实现。
+
+歌词
+文件型本地资源只读对应音频旁的.lrc（UTF-8/UTF-16 BOM、4MiB上限）；空/缺歌词正常显示空态。
+每次本地歌词请求重新读侧车，以便外部修改生效；同内容保留持久化用户偏移，内容变化重置偏移。
+CUE整文件侧车时间转换为分段相对时间；段前最后一行在0秒延续，段末以后的行不展示。
+用户偏移保持独立，不能把CUE的30秒文件偏移存成用户调词偏好；本地歌词与偏好不发送远端请求。
+歌词结果必须匹配当前play_id/账号代次，文件revision变化拒绝读取旧选段的新文件。
+本批未实现嵌入标签歌词与逐CUE曲目独立侧车的选择策略；在线匹配后歌词联动也未在此批接入。
+
+公开IPC
+local_page({query}) -> {revision,tracks,groups,roots,total,playable,offset,more}。
+query含keyword/sort/descending/group/groupKey/includeMissing/offset/limit/revision；未知字段拒绝。
+tracks每项含track白名单、fileName/folder/format/cue/encrypted/unreadable；本地路径用于用户辨识文件。
+roots含id/path/enabled/status/progress/lastScanMs/更新未变缺失失败数量/rootMissing/通用错误。
+不暴露底层探测输出、原始异常或数据库记录。local_page无需账号，不含账号私有资源。
+local_command({command})：watch{path} / disable{id} / enable{id} / rescan，无远端API。
+pick_local_directory()：仅main窗口，返回用户选定的UTF-8本地路径或null。
+play_selection({epoch,selection:{kind:"local",query,revision,start_id}})：原生完整列表播放。
+原有watch_player/player_action/player_queue/player_lyrics/lyric_offset/lyric_preferences复用游客代次。
+本批没有任何新增HTTP接口；不会自动向服务器匹配本地歌曲、上传、收藏或发布。
+
+测试与实际运行记录
+core/tests/client_local.rs：205首/跨页完整队列、casefold/分组去重、游客与登录账号切换隔离；
+CUE真实时间线/侧车时钟/偏移/重开位置；旧snapshot拒绝、缺失可见性；扫描中暂停不发布、
+实时进度、重开恢复监视。媒体探测/引擎为确定性替身，不能据此称作真实解码通过。
+frontend/tests/local-state.test.ts：旧读取/筛选、分页revision变更、选择器取消/销毁、游客流代次。
+现有player-state测试保留旧账号清理断言，并按新功能验证切到独立游客队列。
+真实桌面验证使用desktop/examples/local_ui_probe.rs/.js，生产IPC和页面、FFprobe及libmpv/null。
+证明程序只生成自己的WAV/FLAC/CUE/LRC/NCM，认证适配器只表示未登录，禁止其他API。
+这能验证无网络本地流程，不能替代此前真实账号登录或扬声器听音验证。
+Linux编排：desktop/scripts/capture_local_proof.py；独立Xvfb与D-Bus、XTest操作原生目录选择器。
+命令：
+  npm --prefix frontend run build
+  cargo build -p cumulus-desktop --features custom-protocol --example local_ui_probe --offline
+  env CUMULUS_PROOF_DIR=/absolute/new-proof GDK_BACKEND=x11 LIBGL_ALWAYS_SOFTWARE=1 \
+    xvfb-run -a -s '-screen 0 1280x900x24' /usr/bin/python3 desktop/scripts/capture_local_proof.py
+再次运行加入CUMULUS_PROOF_REOPEN=1、同一个root；最小窗口加入CUMULUS_PROOF_SMALL=1。
+实际通过目录、截图、累计检查结果记录在rust-core-validation.txt和本批审计，不以脚本存在冒充通过。
+已通过.build/ui-proof/local-20261026-h的正常窗口5个流程截图与最小窗口重开2个流程截图。
+独立媒体核验.build/local-native-media-report.json确认解码后的60秒FLAC等于生成的原FLAC，
+重开仍为4首游客队列、暂停位置12.296秒、监视根仍启用。没有远端账号读取或写入。
+
+仍需继续的本地域及全目标分支
+本地与线上歌曲自动匹配/匹配进度/人工映射的后续实现与独立证据见desktop-local-matching-contracts.txt。
+继续的本地域包含标签编辑/封面展示、原生文件管理与批量操作、
+官方付费本地歌曲页、逐曲CUE侧车/嵌入歌词，以及超大目录/分组性能和各平台打包验收。
+本次暂停扫描明确保留索引，不能当作官方删除扫描目录后的全部条目移除行为。
+当前目录监视是可移植的周期对账，尚无原生事件加速。FFprobe仍由宿主环境提供。
+Windows/macOS未在本机实测；当前Linux验证不能推出其选择器/进程/路径/音频设备均已通过。
+此前把最小窗口截图判断为侧栏导航绘制缺失属于误判，后续原图像素与DOM复核已排除；
+正常/小窗口的5处导航文字区域逐字节相同，未修改产品CSS。复核见.build/shell-layout-audit.json
+和.build/ui-proof/shell-20261026-a；该检查只覆盖此次窗口布局，不代替完整视觉验收。
+其余播客、音效、一起听UI等全目标范围继续，不因本批页面可运行宣布完整客户端完成。

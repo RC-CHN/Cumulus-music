@@ -1,0 +1,130 @@
+MV 原生业务迁移契约
+2026-10-26；这是完整桌面目标中的一个增量，目标仍 active。
+
+已实现的范围
+core/mv 提供独立于 Tauri 的官方详情归一化、完整收藏分页、播放/下载授权和
+账号隔离的详情缓存、播放检查点。收藏修改复用 AccountResources 持久化日志。
+download/service 通过 DownloadOrigin::Mv { resolution } 扩展既有下载流程，
+复用调度、断点、重新授权、原字节发布、离线登记和完成文件管理。
+旧 Python 只作为研究依据；实际业务、真实账号验证程序均为 Rust。
+后续已完成原生视频状态机与软件画面输出，详见core-mv-video-contracts.txt。
+后续已接正式MV页面、媒体焦点与二进制画面IPC，真实窗口证据见desktop-mv-contracts.txt。
+
+依据与出处
+官方 3.1.42.205594，恢复目录：
+references/netease-3.1.42.205594-analysis/recovered-js/modules/
+  hybrid_app.chunk.1482700000000.js/15.js：接口声明及返回格式；
+  hybrid_app.chunk.1482700000000.js/21.js：V 详情、A 权益、N 歌手归一化；
+  hybrid_app.chunk.1482700000000.js/232.js：mlogType=3 的收藏递归分页；
+  hybrid_app.chunk.1482700000000.js/754.js：清晰度、权益、云贝、收藏与下载；
+  hybrid_app.chunk.1482700000000.js/27.js：MV 子目录与文件命名；
+  hybrid_41.chunk.1482700000000.js/334.js：下载授权、清晰度选择和云贝请求；
+  hybrid_153.chunk.1482700000000.js/3158.js：详情、播放授权、本地完成项回退。
+旧实测：references/recovered-client/docs/product/29-mv-cloud-functional-validation.txt；
+references/recovered-client/scripts/netease_mv_functional_audit.py。
+本批没有使用 YesPlayMusic。来源哈希及逐项映射见 mv-core-mapping.json。
+
+接口、字段与调用顺序
+请求使用现有协议/签名/账号上下文；当前实测固定已有 PC 会话及域，不扩大 Cookie 作用域。
+  /api/mlog/detail/v1
+    { id:十进制字符串, type:"2" }；读取下载选项时再带 videoType:"mp4"。
+    外层 code=200，data.id 必须与请求匹配。返回 data.resource 按 M/21 归一化。
+  /api/mlog/mycollect/bytime/get
+    首次 { time:"-1", mlogType:3, limit:200 }；下一页保留 data.time 的原始 JSON 类型。
+    data.feeds 为数组，data.more 为布尔。more=true 时要求非空页和不重复的正数游标。
+    每页至多 200 项，最多 1000 页；重复 MV ID、循环游标、错误或缺失字段都报错。
+    只有完整成功后更新账号缓存；不会把请求失败当作空列表或把首页冒充全部收藏。
+  /api/mv/sub
+    { mvId:id }；/api/mv/unsub { mvIds:[id] }。
+    完整 before 快照→sending 写前日志→单次请求→verifying→完整收藏回读→confirmed。
+    传输中断等未知结果保留 uncertain；重开后只读 reconcile，不自动重发。
+    已达到目标状态为 unchanged。账号切换后的迟到响应不能更新新账号。
+  /api/song/enhance/play/mv/url
+    { id, r:请求分辨率 }。
+  /api/song/enhance/download/mv/url
+    { id, r:请求分辨率 }。
+    两者独立，均检查外层与 data.code、data.id、真实 data.r 和媒体域名。
+    下载还要求正数 data.size；非空 MD5 必须为 32 位十六进制；空串视为未提供。
+    freeTrialInfo 非空不作为完整媒体。本批不把试听当作完整下载成功。
+    原始错误 code 保留，不按官方 UI 的 -104/-106 映射抹去服务端原因。
+  /api/mv/download/point/consume
+    官方参数 { id, brs:所选分辨率, type:"mp4" } 已由执行原始 M/334 的离线桩核对。
+    本批未提供扣除业务用例、未向服务端调用；涉及云贝的选项明确阻止自动下载。
+    待接显式消费授权与未知结果处理，不以接口形状恢复冒充完整付费流程完成。
+
+数据与权益
+详情资源可能使用 resource.data；收藏 feed 使用 resource.mlogBaseData/mlogExtVO。
+标题、描述、封面、时长、计数等遵循 M/21 的回退优先级；liked 使用空值回退，
+false 不被另一来源的 true 覆盖；收藏列表本身为 membership 的完整事实。
+artists 保留 id/name；related_songs 保留原始关联数据，关联歌曲全部业务尚未迁移。
+基础类型若显式非 MV 则拒绝，内部 id 不一致、负数/非整数计数、重复分辨率拒绝。
+选项 size 可为 JSON 整数浮点表示（历史实测如此），但不能接受小数。
+官方某些空数组输入最终为 null 时会在 I.map 处报错；Rust 对可空数组按空值处理，
+这是明确的容错差异，未声称对畸形输入逐异常一致。
+pubTime 保留毫秒值与接口日期字符串；日历日期由展示层按本地时区格式化。
+mp 的 pl/dl/fee/payed/cp 分别映射播放上限、下载上限、收费、已有权益与评论权限；
+不能套用歌曲的 lossless 等音质层级。按 br 升序筛选 <=maxDownBr 的下载选项。
+unauthorized、fee>0 且无 payed、无可选档位、选项 point>0 均不能自动启动本批下载。
+已有付费权益的模型分支有合成验证；真实账号本批只执行免费样本。
+请求分辨率与实际授权 r 分开保存，不把请求值当作真实画质。
+播放/下载授权 URL 仅留在原生内存或私有任务中；不进入前端 DTO。
+
+下载与持久化
+默认 MP4 原字节，无歌曲标签/封面重写、无 LRC/NCM 包装。使用 M/27 的 MV 子目录。
+既有 DownloadOptions/OfflineRecord 仍有歌曲 Quality 兼容字段，对 MV 不参与请求和画质判断。
+公开任务 source=mv，另有 requestedResolution、actualResolution；没有虚构 actualQuality。
+创建和首次授权前都刷新 MV 详情/权限。估算选项 size 不作为最终大小约束：
+真实 240P 选项为 19837028，授权及实际媒体为 19837027 字节，相差 1 字节。
+暂停/重开优先继续同一持久授权表示并核对 origin/id/分辨率/URL/size/MD5。
+使用已有传输层 Range、ETag/Last-Modified/MD5 检查；缺验证条件仍遵守原传输层重置规则。
+HTTP 401/403/404/410 时重新授权一次；没有相同非空 MD5 和大小就丢弃未证实的旧片段。
+停止/账号失效/恢复/发布/离线登记沿用既有任务状态机，无独立的第二套下载调度器。
+完成文件可改名、移动、删除；输出摘要、任务、离线索引等复用已有事务与文件身份边界。
+前端下载列表可正确显示 MV/实际分辨率；歌曲播放入口拒绝把 MV 当作普通歌曲播放。
+视频核心、页面与媒体焦点已有后续实现，完成项的MV按钮已接入显式本地任务播放。
+
+账号与播放位置
+MvService 方法接收 SessionToken；run_for 与持久化提交再次检查账号代次。
+mv-details-v1 仅写完整归一化详情；网络错误不静默伪装为新鲜缓存。
+mv-positions-v1 持久化 id/position_ms/duration_ms/completed/updated_ms。
+原生实际加载后才能提供测得位置；超过时长、零时长拒绝；完成后下次从 0 开始。
+检查点按账号隔离，旧播放器不能向切换后的账号保存位置。
+本批先用原生程序验证检查点；后续VideoController及MusicClient账号生命周期已接入。
+
+测试与实际证明
+core/tests/mv.rs：7 项，包含执行官方 JS 的 9 组详情/选项样本、请求形状、
+双页完整收藏、分页失败保留旧缓存、身份/权限/域名/摘要拒绝、收藏未知写重开回读、
+账号切换迟到详情与检查点隔离。oracle 仅替换数据库/API/日期适配；不依赖业务 Python。
+core/tests/mv_download.rs：5 项，生成的 H.264/AAC 0.5 秒 MP4 用于原字节、
+暂停重开、授权过期/二次失败、权限变化、禁止云贝、选项破坏、账号切换、
+已有付费权益模型、实际分辨率回读、离线登记及改名/移动/删除。
+seed 生成：ffmpeg lavfi testsrc2=128x72:12fps + 440Hz sine，libx264/AAC，0.5秒。
+本批合成测试没有把小型 seed 的传输成功冒充全量真实视频解码成功。
+
+真实 Rust 报告：.build/mv-native-20261026-a/report.json。
+当前账号：17 项原有 MV 收藏及完整顺序保留；仅新增不在 baseline 的样本再取消。
+先持久化 restore-intent，再写入；未扣云贝，未支付，未公开发布或邀请。
+请求与实际 240P；19837027 字节，H.264 320×240 + AAC 44100Hz 双声道，296.36 秒。
+131071 字节暂停后销毁重开，authorization_count=1，继续原授权；原字节与最终输出 SHA256：
+58fc05f4fd31f2f30cfbf8ffc55d266a603542081000f30a10e133a30edc76ec。
+FFmpeg 全文件音视频解码通过；libmpv null 输出实际进度 0.44 秒、暂停定位 10 秒通过。
+独立重开检查点、离线摘要/访问、改名、移动、删除通过，自建媒体和离线登记已清理。
+null 输出并非可见视频渲染；visible_video_verified=false 明确保留于报告。
+本批为 Linux 原生实测，Windows/macOS 尚无此流程实机证据。
+
+复现命令（显式指定私有材料，不自动发现或打印账号/URL）
+  node references/recovered-client/scripts/netease_mv_oracle.cjs > core/tests/fixtures/mv.json
+  CARGO_TARGET_DIR=.build/target cargo test -p cumulus-core --test mv --test mv_download --offline
+  CARGO_TARGET_DIR=.build/target cargo run -p cumulus-core --example mv_roundtrip --offline -- \
+    EXISTING_PC_PROFILE PRIVATE_SAMPLE_DETAIL NEW_PRIVATE_PROOF
+  中断且已有 restore-intent 时：上述 example 参数改为 EXISTING_PC_PROFILE --restore EXISTING_PRIVATE_PROOF。
+sample 仅用于选择此前测试的 MV id；所有业务响应、权限与媒体均重新通过 Rust 请求。
+proof 目录要求全新且 Unix 0700；原始账号/恢复意图/持久任务均为私有证据，不纳入发行物。
+
+仍须继续
+原生画面、流式控制、画质切换、本地完成项回退和正式桌面基础流程已有后续证据，
+详见core-mv-video-contracts.txt和desktop-mv-contracts.txt；继续分支包括：
+MV资源点赞/关联歌曲后续已接入，见core-mv-social-contracts.txt；评论读取/点赞见core-comments-contracts.txt。
+评论高级动作、显式云贝消费的完整状态机等剩余恢复动作；
+真实高档位与付费样本、真实多页账号、非 MV 普通视频、硬件解码及其他平台实机。
+这些未完成项没有被本批测试数或旧 Python 成绩覆盖，完整目标不得因此结束。

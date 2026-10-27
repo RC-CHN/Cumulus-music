@@ -1,0 +1,396 @@
+{
+  "schema": 1,
+  "scope": "OSS recovered Python symbol mapping only; not full desktop goal completion or exhaustive branch coverage. Evidence paths contain executable representative checks.",
+  "source": "references/recovered-client/cumulus_core/oss_upload.py",
+  "source_sha256": "86ffe8db161b9eeaedcb1a213639656b8ecf75009d7fbc07ffd0fa0f362c08de",
+  "official_evidence": [
+    "references/recovered-client/docs/product/23-oss-upload.txt",
+    "references/oss-sdk-oracle/sources.json"
+  ],
+  "runtime": "Rust only; verification oracle is not a runtime dependency",
+  "account_online": "not_verified: no actual channel=3 allocation available",
+  "automatic_sts_renewal": "unrecovered: same-object supplied credentials only",
+  "ui": "connected through generic cloud task controls; real OSS channel UI remains unverified; see desktop-cloud-contracts.txt",
+  "symbols": [
+    {
+      "symbol": "OssHttpError",
+      "line": 30,
+      "kind": "ClassDef",
+      "rust": "core/src/cloud/oss/response.rs::http_error; core/src/error.rs::Error::HttpStatus",
+      "evidence": [
+        "core/src/cloud/oss/http_test.rs",
+        "core/tests/oss_protocol.rs"
+      ]
+    },
+    {
+      "symbol": "OssHttpError.__init__",
+      "line": 31,
+      "kind": "FunctionDef",
+      "rust": "core/src/cloud/oss/response.rs::http_error; core/src/error.rs::Error::HttpStatus",
+      "evidence": [
+        "core/src/cloud/oss/http_test.rs",
+        "core/tests/oss_protocol.rs"
+      ]
+    },
+    {
+      "symbol": "_crc64_table",
+      "line": 37,
+      "kind": "FunctionDef",
+      "rust": "core/src/cloud/oss/crc.rs::table/crc64/check_crc64",
+      "evidence": [
+        "core/tests/oss_protocol.rs",
+        "core/tests/oss_upload.rs"
+      ]
+    },
+    {
+      "symbol": "crc64",
+      "line": 49,
+      "kind": "FunctionDef",
+      "rust": "core/src/cloud/oss/crc.rs::table/crc64/check_crc64",
+      "evidence": [
+        "core/tests/oss_protocol.rs",
+        "core/tests/oss_upload.rs"
+      ]
+    },
+    {
+      "symbol": "_check_crc",
+      "line": 57,
+      "kind": "FunctionDef",
+      "rust": "core/src/cloud/oss/crc.rs::table/crc64/check_crc64",
+      "evidence": [
+        "core/tests/oss_protocol.rs",
+        "core/tests/oss_upload.rs"
+      ]
+    },
+    {
+      "symbol": "_text",
+      "line": 69,
+      "kind": "FunctionDef",
+      "rust": "core/src/cloud/oss/allocation.rs::text/origin/OssAllocation::parse",
+      "evidence": [
+        "core/tests/oss_protocol.rs"
+      ]
+    },
+    {
+      "symbol": "oss_origin",
+      "line": 77,
+      "kind": "FunctionDef",
+      "rust": "core/src/cloud/oss/allocation.rs::text/origin/OssAllocation::parse",
+      "evidence": [
+        "core/tests/oss_protocol.rs"
+      ]
+    },
+    {
+      "symbol": "allocation_fields",
+      "line": 94,
+      "kind": "FunctionDef",
+      "rust": "core/src/cloud/oss/allocation.rs::text/origin/OssAllocation::parse",
+      "evidence": [
+        "core/tests/oss_protocol.rs"
+      ]
+    },
+    {
+      "symbol": "sign_v1",
+      "line": 115,
+      "kind": "FunctionDef",
+      "rust": "core/src/cloud/oss/sign.rs::sign_v1",
+      "evidence": [
+        "core/tests/oss_protocol.rs",
+        "core/src/cloud/oss/http_test.rs"
+      ]
+    },
+    {
+      "symbol": "_xml",
+      "line": 135,
+      "kind": "FunctionDef",
+      "rust": "core/src/cloud/oss/xml.rs::parse/Node::field/Node::scope",
+      "evidence": [
+        "core/tests/oss_protocol.rs"
+      ]
+    },
+    {
+      "symbol": "_field",
+      "line": 147,
+      "kind": "FunctionDef",
+      "rust": "core/src/cloud/oss/xml.rs::parse/Node::field/Node::scope",
+      "evidence": [
+        "core/tests/oss_protocol.rs"
+      ]
+    },
+    {
+      "symbol": "_scope",
+      "line": 154,
+      "kind": "FunctionDef",
+      "rust": "core/src/cloud/oss/xml.rs::parse/Node::field/Node::scope",
+      "evidence": [
+        "core/tests/oss_protocol.rs"
+      ]
+    },
+    {
+      "symbol": "_etag",
+      "line": 161,
+      "kind": "FunctionDef",
+      "rust": "core/src/cloud/oss/request.rs::etag",
+      "evidence": [
+        "core/tests/oss_protocol.rs",
+        "core/tests/oss_upload.rs"
+      ]
+    },
+    {
+      "symbol": "OssTransport",
+      "line": 169,
+      "kind": "ClassDef",
+      "rust": "core/src/cloud/oss/backend.rs::OssBackend/ReqwestOssBackend::new",
+      "evidence": [
+        "core/src/cloud/oss/http_test.rs"
+      ]
+    },
+    {
+      "symbol": "OssTransport.__init__",
+      "line": 170,
+      "kind": "FunctionDef",
+      "rust": "core/src/cloud/oss/backend.rs::OssBackend/ReqwestOssBackend::new",
+      "evidence": [
+        "core/src/cloud/oss/http_test.rs"
+      ]
+    },
+    {
+      "symbol": "OssTransport._request",
+      "line": 174,
+      "kind": "FunctionDef",
+      "rust": "core/src/cloud/oss/request.rs::OssRequest::new",
+      "evidence": [
+        "core/tests/oss_protocol.rs",
+        "core/src/cloud/oss/http_test.rs"
+      ]
+    },
+    {
+      "symbol": "OssTransport._open",
+      "line": 193,
+      "kind": "FunctionDef",
+      "rust": "core/src/cloud/oss/backend.rs::ReqwestOssBackend::request; core/src/cloud/oss/response.rs::OssReply::check",
+      "evidence": [
+        "core/src/cloud/oss/http_test.rs",
+        "core/tests/oss_protocol.rs"
+      ]
+    },
+    {
+      "symbol": "OssTransport._send",
+      "line": 223,
+      "kind": "FunctionDef",
+      "rust": "core/src/cloud/oss/backend.rs::ReqwestOssBackend::request; core/src/cloud/oss/response.rs::OssReply::check",
+      "evidence": [
+        "core/src/cloud/oss/http_test.rs",
+        "core/tests/oss_protocol.rs"
+      ]
+    },
+    {
+      "symbol": "OssTransport.initiate",
+      "line": 234,
+      "kind": "FunctionDef",
+      "rust": "core/src/cloud/oss/request.rs::OssOperation::Initiate; core/src/cloud/oss/response.rs::OssReply::initiated",
+      "evidence": [
+        "core/tests/oss_protocol.rs",
+        "core/tests/oss_upload.rs"
+      ]
+    },
+    {
+      "symbol": "OssTransport.part",
+      "line": 242,
+      "kind": "FunctionDef",
+      "rust": "core/src/cloud/oss/request.rs::OssOperation::Part; core/src/cloud/oss/response.rs::OssReply::part_etag",
+      "evidence": [
+        "core/tests/oss_protocol.rs",
+        "core/tests/oss_upload.rs"
+      ]
+    },
+    {
+      "symbol": "OssTransport.put",
+      "line": 247,
+      "kind": "FunctionDef",
+      "rust": "core/src/cloud/oss/request.rs::OssOperation::Put; core/src/cloud/oss/response.rs::OssReply::put_completed",
+      "evidence": [
+        "core/tests/oss_protocol.rs",
+        "core/tests/oss_upload.rs"
+      ]
+    },
+    {
+      "symbol": "OssTransport.parts",
+      "line": 255,
+      "kind": "FunctionDef",
+      "rust": "core/src/cloud/oss/request.rs::OssOperation::Parts; core/src/cloud/oss/response.rs::OssReply::parts",
+      "evidence": [
+        "core/tests/oss_protocol.rs",
+        "core/tests/oss_upload.rs"
+      ]
+    },
+    {
+      "symbol": "OssTransport.complete",
+      "line": 288,
+      "kind": "FunctionDef",
+      "rust": "core/src/cloud/oss/request.rs::OssOperation::Complete; core/src/cloud/oss/response.rs::OssReply::multipart_completed",
+      "evidence": [
+        "core/tests/oss_protocol.rs",
+        "core/tests/oss_upload.rs"
+      ]
+    },
+    {
+      "symbol": "OssTransport.verify_completed",
+      "line": 307,
+      "kind": "FunctionDef",
+      "rust": "core/src/cloud/oss/request.rs::OssOperation::Head/Verify; core/src/cloud/oss/response.rs::OssReply::verified_object",
+      "evidence": [
+        "core/tests/oss_protocol.rs",
+        "core/tests/oss_upload.rs"
+      ]
+    },
+    {
+      "symbol": "OssTransport.abort",
+      "line": 330,
+      "kind": "FunctionDef",
+      "rust": "core/src/cloud/oss/request.rs::OssOperation::Abort; core/src/cloud/oss/response.rs::OssReply::check",
+      "evidence": [
+        "core/tests/oss_protocol.rs",
+        "core/tests/oss_upload.rs"
+      ]
+    },
+    {
+      "symbol": "OssUploadManager",
+      "line": 334,
+      "kind": "ClassDef",
+      "rust": "core/src/cloud/oss/manager.rs::OssUploads::new/with_backend",
+      "evidence": [
+        "core/tests/oss_upload.rs"
+      ]
+    },
+    {
+      "symbol": "OssUploadManager.__init__",
+      "line": 335,
+      "kind": "FunctionDef",
+      "rust": "core/src/cloud/oss/manager.rs::OssUploads::new/with_backend",
+      "evidence": [
+        "core/tests/oss_upload.rs"
+      ]
+    },
+    {
+      "symbol": "OssUploadManager._locked",
+      "line": 346,
+      "kind": "FunctionDef",
+      "rust": "core/src/cloud/oss/manager.rs::OssUploads::lock",
+      "evidence": [
+        "core/tests/cloud_oss_upload.rs",
+        "core/tests/oss_upload.rs"
+      ]
+    },
+    {
+      "symbol": "OssUploadManager._save",
+      "line": 349,
+      "kind": "FunctionDef",
+      "rust": "core/src/cloud/oss/manager.rs::OssUploads::save/get/create/call/replace_credentials",
+      "evidence": [
+        "core/tests/oss_upload.rs",
+        "core/tests/cloud_oss_upload.rs"
+      ]
+    },
+    {
+      "symbol": "OssUploadManager.get",
+      "line": 352,
+      "kind": "FunctionDef",
+      "rust": "core/src/cloud/oss/manager.rs::OssUploads::save/get/create/call/replace_credentials",
+      "evidence": [
+        "core/tests/oss_upload.rs",
+        "core/tests/cloud_oss_upload.rs"
+      ]
+    },
+    {
+      "symbol": "OssUploadManager.create",
+      "line": 358,
+      "kind": "FunctionDef",
+      "rust": "core/src/cloud/oss/manager.rs::OssUploads::save/get/create/call/replace_credentials",
+      "evidence": [
+        "core/tests/oss_upload.rs",
+        "core/tests/cloud_oss_upload.rs"
+      ]
+    },
+    {
+      "symbol": "OssUploadManager._call",
+      "line": 380,
+      "kind": "FunctionDef",
+      "rust": "core/src/cloud/oss/manager.rs::OssUploads::save/get/create/call/replace_credentials",
+      "evidence": [
+        "core/tests/oss_upload.rs",
+        "core/tests/cloud_oss_upload.rs"
+      ]
+    },
+    {
+      "symbol": "OssUploadManager.replace_credentials",
+      "line": 388,
+      "kind": "FunctionDef",
+      "rust": "core/src/cloud/oss/manager.rs::OssUploads::save/get/create/call/replace_credentials",
+      "evidence": [
+        "core/tests/oss_upload.rs",
+        "core/tests/cloud_oss_upload.rs"
+      ]
+    },
+    {
+      "symbol": "OssUploadManager._reconcile_parts",
+      "line": 399,
+      "kind": "FunctionDef",
+      "rust": "core/src/cloud/oss/recovery.rs::OssUploads::reconcile_parts/reconcile_complete/reconcile/cancel",
+      "evidence": [
+        "core/tests/oss_upload.rs",
+        "core/tests/cloud_oss_upload.rs"
+      ]
+    },
+    {
+      "symbol": "OssUploadManager._reconcile_complete",
+      "line": 417,
+      "kind": "FunctionDef",
+      "rust": "core/src/cloud/oss/recovery.rs::OssUploads::reconcile_parts/reconcile_complete/reconcile/cancel",
+      "evidence": [
+        "core/tests/oss_upload.rs",
+        "core/tests/cloud_oss_upload.rs"
+      ]
+    },
+    {
+      "symbol": "OssUploadManager.reconcile",
+      "line": 423,
+      "kind": "FunctionDef",
+      "rust": "core/src/cloud/oss/recovery.rs::OssUploads::reconcile_parts/reconcile_complete/reconcile/cancel",
+      "evidence": [
+        "core/tests/oss_upload.rs",
+        "core/tests/cloud_oss_upload.rs"
+      ]
+    },
+    {
+      "symbol": "OssUploadManager._transfer_parts",
+      "line": 430,
+      "kind": "FunctionDef",
+      "rust": "core/src/cloud/oss/transfer.rs::OssUploads::parts/run",
+      "evidence": [
+        "core/tests/oss_upload.rs",
+        "core/tests/cloud_oss_upload.rs"
+      ]
+    },
+    {
+      "symbol": "OssUploadManager.run",
+      "line": 484,
+      "kind": "FunctionDef",
+      "rust": "core/src/cloud/oss/transfer.rs::OssUploads::parts/run",
+      "evidence": [
+        "core/tests/oss_upload.rs",
+        "core/tests/cloud_oss_upload.rs"
+      ]
+    },
+    {
+      "symbol": "OssUploadManager.cancel",
+      "line": 560,
+      "kind": "FunctionDef",
+      "rust": "core/src/cloud/oss/recovery.rs::OssUploads::reconcile_parts/reconcile_complete/reconcile/cancel",
+      "evidence": [
+        "core/tests/oss_upload.rs",
+        "core/tests/cloud_oss_upload.rs"
+      ]
+    }
+  ]
+}

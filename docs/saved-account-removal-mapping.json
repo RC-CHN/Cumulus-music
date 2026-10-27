@@ -1,0 +1,99 @@
+{
+  "date": "2026-10-27",
+  "full_goal_complete": false,
+  "contract": "docs/desktop-saved-account-removal.txt",
+  "sources": [
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/switchAccount/index.tsx",
+      "sha256": "e2fab5c36116417e7f65868a2d08da60ad4c75101a231ae7b69982ab3eff7f7a"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/198.js",
+      "sha256": "17a0c5464f32e1c83e00d7f2c1209315e4ad5f132790cb73d20f4b9e34b89874"
+    },
+    {
+      "path": "references/recovered-client/cumulus_core/session_files.py",
+      "sha256": "bc8b998696256a0654b8c2f657dc82d8fa5e13910fe21fd8b53c01e92649d6bd"
+    }
+  ],
+  "items": [
+    {
+      "feature": "confirm_noncurrent_account",
+      "official": "switchAccount/index.tsx: deleteAcount and item.userId !== uid",
+      "implementation": [
+        "frontend/src/components/AccountDialog.vue",
+        "frontend/src/styles/login.css",
+        "core/src/account/profiles/removal.rs"
+      ],
+      "evidence": [
+        "core/tests/saved_accounts.rs",
+        ".build/ui-proof/saved-accounts-20261027-a/first/saved_cancelled.json",
+        ".build/ui-proof/saved-accounts-20261027-a/first/saved_confirm.json"
+      ]
+    },
+    {
+      "feature": "local_credentials_cleanup_and_durable_retry",
+      "official": "M198 filters quick-login records; credential clearing/journal are explicit community additions",
+      "implementation": [
+        "core/src/account/profiles/removal.rs",
+        "core/src/account/profiles.rs",
+        "core/src/account/profiles/saved.rs"
+      ],
+      "evidence": [
+        "core/tests/saved_accounts.rs",
+        ".build/ui-proof/saved-accounts-20261027-a/first/saved_pending.json",
+        ".build/ui-proof/saved-accounts-20261027-a/independent-audit.json"
+      ]
+    },
+    {
+      "feature": "stale_candidate_and_bound_profile_safety",
+      "official": "archived SessionDirectory.activate expected revision; Rust strengthens durable removal checks",
+      "implementation": [
+        "core/src/account/profiles.rs",
+        "core/src/account/profiles/removal.rs",
+        "core/src/client/auth/lifecycle.rs"
+      ],
+      "evidence": [
+        "core/tests/saved_accounts.rs"
+      ]
+    },
+    {
+      "feature": "typed_ipc_and_failure_recovery_ui",
+      "official": "switch-account local model action; no new remote API",
+      "implementation": [
+        "core/src/client/auth/dto.rs",
+        "core/src/client/auth/view.rs",
+        "core/src/client/error.rs",
+        "desktop/src/auth.rs",
+        "frontend/src/services/auth.ts",
+        "frontend/src/adapters/tauri.ts",
+        "frontend/src/composables/useSavedAccounts.ts"
+      ],
+      "evidence": [
+        "desktop/tests/ipc.rs",
+        "frontend/tests/saved-accounts.test.ts",
+        ".build/ui-proof/saved-accounts-20261027-b-small/first/saved_pending.json"
+      ]
+    },
+    {
+      "feature": "restart_and_account_isolation",
+      "official": "local quick-login persistence, community credential cleanup",
+      "implementation": [
+        "core/src/account/profiles/removal.rs",
+        "frontend/src/App.vue"
+      ],
+      "evidence": [
+        "core/tests/saved_accounts.rs",
+        ".build/ui-proof/saved-accounts-20261027-a/reopen/complete.json",
+        ".build/ui-proof/saved-accounts-20261027-b-small/reopen/complete.json"
+      ]
+    }
+  ],
+  "new_official_api_requests": [],
+  "remaining": [
+    "cleanup of unregistered historical candidates",
+    "SDK and real new-login verification",
+    "remaining full-desktop goal domains",
+    "Windows/macOS runtime and distribution verification"
+  ]
+}

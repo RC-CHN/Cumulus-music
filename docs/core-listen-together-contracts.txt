@@ -1,0 +1,166 @@
+一起听 Rust 核心：房间 REST、队列、播放指令与恢复
+2026-10-26。完整目标继续；本批没有一起听桌面入口或 IM/RTC 实际连接。
+后续单账号桌面主流程已通过真实窗口验证，另修复显式归零定位；当前进展与剩余见
+desktop-listen-together-contracts.txt。下面保留原 REST 批次的证据范围，不混计后续通过项。
+
+一、来源与证据层级
+主要依据官方 3.1.42.205594 恢复材料：
+hybrid_app 的 M/15、24、75、137、600；hybrid_196 的 M/3079；hybrid_197 的 M/3161。
+报告 references/recovered-client/docs/product/06-listen-together.txt 与旧 Python
+netease_live_audit.py 只作来源；新验证由 core/examples/together_roundtrip.rs 执行。
+没有参考 YesPlayMusic。领域代码在 core/src/listen_together/，不依赖 Tauri/前端/Python。
+api.rs 管请求与原生令牌；model.rs 管房间和共享快照；queue.rs 管版本/窗口/列表命令；
+sync.rs 管播放去重与排序；service/{mod,commands,reconcile,timer}.rs 管持久生命周期。
+
+S=官方来源核对，L=当前 Rust 本地通过，R=当前 Rust 真实服务通过；不等于桌面流程通过。
+一起听双账号实时验证仍排除；IM/RTC 适配和单账号桌面流程仍在完整目标内继续推进。
+
+二、纠正历史报告与实际服务差异
+实际执行 M/137 导出 e，版本长度不同返回 false：其返回表达式有 && 短路。
+早期报告错误地把内部初始 result=true 认作最终返回值；现已修正原报告。
+Rust 的长度比较与官方一致，额外拒绝同一 userId 重复出现的无效版本向量。
+M/3161 restorePlayCommand 的 !progress 会忽略 0；Rust 按字段存在与整数校验恢复 0。
+入站 serverSeq 必须存在且严格增加，0 是有效序列；官方某些判断用 truthy。
+这两项是明确的社区健壮性差异，不能声称双端实测已经证明兼容。
+
+新建房间 sync/playlist/get 可以 data={}，代表尚无共享队列；不等于退出。
+ORDER_LOOP 初次队列的 randomList 可以 null。切换过 RANDOM 后，服务端即使切回
+ORDER_LOOP/SINGLE_LOOP 并删除歌曲，仍可能返回旧 randomList。
+Rust 保留原响应，但仅在 RANDOM 模式检查非空随机列表与显示列表的集合一致性。
+模式切换上报仍同时携带新 displayList/randomList；不把旧随机列表用于非随机播放。
+本批 native-a 的失败正是过早要求非随机旧列表一致；失败日志保留，修正后 native-b 通过。
+
+三、房间与请求契约
+所有请求使用现有账号 Api/EAPI 层，不增加 Cookie 作用域或尝试其他身份。
+所有一起听业务请求 cache=false。roomId 是不透明字符串（历史样本43字符），
+不可按歌曲 ID 转整数；成员/歌曲 ID 在核心用十进制字符串保存。
+
+/api/listen/together/status/get {}
+  data.inRoom=false -> 无房间；true -> 校验 data.roomInfo 和成员列表必须包含当前账号。
+  roomInfo: roomId、creatorId、chatRoomId、agoraChannelId、roomUsers。
+  房主且仅自己=Waiting；房主且有对方=TogetherOwner；其他成员=Together。
+/api/listen/together/room/create {refer}
+  NEW_ROOM 记录本次创建归属；ALREADY_IN_ROOM 不冒称本次新建，不自动退出原房间。
+  TogetherService.create_for 写前先读当前状态；已有房间直接拒绝重复创建。
+/api/listen/together/room/check {roomId}
+  本批真实读取 joinable=true。用于展示/接受流程，不能当作已加入 IM 的证据。
+/api/listen/together/play/invitation/accept {refer,roomId,inviterId}
+  原生适配已写，拒绝返回不同房间；服务层要求先明确离开已有房间。
+  本批没有调用，没有接受他人邀请的实测或界面验收。
+/api/listen/together/end/v2 {roomId[,shareInfo]}
+  shareInfo=JSON.stringify({thisListenCount})；不传count则省略。
+  检查 code=200,data.success=true，再连续两次状态读取确认不再处于旧房间。
+  退出预读必须仍是指定房间；不会把新观察到的另一个房间代入退出请求。
+
+四、共享队列
+/api/listen/together/sync/playlist/get {roomId}
+  data.playlist: displayList.result/changed、randomList.result（可null）、playMode、
+  version:[{userId,version}]、replace；data.playCommand 单独解析。
+/api/listen/together/sync/list/command/report
+  {roomId,playlistParam:JSON.stringify({commandType,version,playMode,
+    anchorSongId,anchorPosition,randomList,displayList})}
+  commandType=REPLACE/PLAYMODE_CHANGE/ADD/DELETE；模式=ORDER_LOOP/RANDOM/SINGLE_LOOP。
+  REPLACE/PLAYMODE_CHANGE 携带完整列表；ADD/DELETE 列表只包含增删项。
+  ADD 使用调用方当前歌曲与位置作为anchor；其他命令anchorSongId="",anchorPosition=-1。
+  版本只递增本账号项，不存在时追加1；其他成员的版本保留。wire userId 按整数精确输出，
+  不经 f64，避免 JavaScript 大整数精度损失。version必须唯一，列表ID不得是路径。
+  发送前重新读取快照，与调用方显示的版本比较；不一致返回 QueueChanged。
+  状态核对必须模式/版本一致；替换、模式与删除核对显示顺序，ADD目前核对成员集合，
+  接受服务回读顺序，不冒称并发插入及各种anchor的顺序已完整验证。
+  RANDOM 完整替换/切换还核对随机顺序；仅当前账号的短队列经过真实服务验证。
+
+M/137 共享窗口：超过1000项时围绕当前歌曲裁剪，前段/尾段保留官方分支，裁剪后去重。
+current不在队列取前1000项。本地曲目必须先有线上歌曲关联；此函数不接受文件路径。
+本批尚未把实际播放器的本地映射、普通队列和共享队列双向连接。
+
+五、播放指令
+/api/listen/together/play/command/report
+  {roomId,commandInfo:JSON.stringify({commandType,progress,playStatus,
+    formerSongId,targetSongId,clientSeq})}
+  指令 PLAY/PAUSE/PROGRESS/NEXT/PREVIOUS/GOTO；playStatus=PLAY/PAUSE。
+  progress是完整歌曲毫秒；at_seconds四舍五入 seconds*1000，同曲PROGRESS=0转GOTO。
+  试用片段偏移必须由播放器时间线转换后传入；这次没有一起听试听音频联动验证。
+  clientSeq先递增、持久保存，再发一次；新房间重置，重开保留，不因明确拒绝复用序号。
+  成功核对要求指令六个字段与userId都匹配，两次连续读取确认。
+
+PlaybackSync 迁移 M/3161 的cmdFilter：
+  只接收本队列或由调用方提供的替代歌曲ID；自己已发送5秒内回声；入站1秒内的出站回声；
+  相同状态/暂停去重、1秒内进度差小于1000ms的微调过滤。
+  入站严格递增serverSeq；除NEXT/PREVIOUS/GOTO外不能用另一个目标歌曲控制当前歌曲。
+  不单凭clientSeq或progress去重。方向、目标、指令、时间窗共同决定。
+  明确HTTP拒绝后清除乐观latest/本次sent，保留clientSeq，使后续显式重试不会被误抑制。
+  传输不确定时保留操作责任，禁止再次上报；只读核对后再允许新操作。
+  这些是可运行的核心状态归约，尚无真实 IM 入站消息/双端播放器的接入验收。
+
+六、持久化、账号隔离、时钟
+SQLite：owner为账号；listen-together-v1/current 存房间/角色/快照/播放过滤状态与截止时间；
+listen-together-operations-v1/<UUID> 存具体意图/阶段/应有状态/回包确认/观察房间。
+Sending/Verifying/Uncertain为未决；Confirmed/Rejected/RoomClosed为终态。
+RoomClosed表示退出已关闭旧责任，不等价于原队列或播放写入曾成功。
+同账号全部控制持有跨宿主OperationLock；网络await期间不持有AccountSession状态锁。
+账号代次在请求前后校验。切号时旧请求只能把未决责任写回原owner，不能公布给新账号。
+取消/崩溃保留Sending，不会在重开时自动重发；并发第二宿主得到MutationBusy。
+丢失create回包后，仅观察到一个房间不能证明是本次创建，因此保留Uncertain和归属未知。
+若连续两次状态读取确认旧房间不再存在，则记RoomClosed，解除未决阻塞，允许显式新建；
+不把RoomClosed描述成原请求成功或明确未执行。该分支同时覆盖丢失建房与播放回包。
+显式退出可以在核对同一房间后结束未决队列/播放；已经未决的退出本身必须先只读核对。
+
+核对默认最多4次，每次间隔400ms，连续两次相同目标才Confirmed；失败保持责任。
+快照/状态只读刷新不会擅自清理另一个设备留下的单人房间。
+tick_for 接收宿主统一毫秒时钟，20秒空闲心跳；无曲目时延后，传输失败保留房间重试。
+明确业务失败重新核对状态，只退出同一房间；已失效则更新为空，不操作其他房间。
+等待10分钟到期前重新检查成员，若对方已加入则取消等待截止，不误退出共同房间。
+此定时入口经本地控制时钟测试；桌面后台计时、休眠/唤醒及IM消息重置心跳仍待接入。
+
+七、心跳/令牌/其余接口
+/api/listen/together/heartbeat {roomId,songId,playStatus,progress}
+  progress使用latest.progress || 1，与官方一致；零进度心跳发送1，而播放指令仍可发0。
+/api/listen/together/sync/notice {roomId}
+  单账号依旧488，保留原边界；不能因为此接口488就认为status已证明房间消失。
+/api/middle/im/token/get {} -> data.uid/accId/token
+/api/listen/together/yunxin/token/get {roomId,channelId:agoraChannelId}
+  -> data.token/expireTime；native-b实际expireTime为毫秒时间戳。
+  原生credential结构不实现Serialize，自定义Debug隐藏令牌；证明程序不写令牌原文。
+  读取成功不等于云信IM/NERTC SDK已登录，字段名agora也不意味着用Agora。
+/api/listen/together/privilege/get {otherUserId,songIds:[...]}
+  songId转trackId，不可播用户/outerId转字符串；只查共同权限，不扩大任一账号权益。
+/api/listen/together/privilege/change/report {roomId}
+/api/listen/together/relation/statistics/get/v2 {roomId,roomUserIds:JSON.stringify([...])}
+  以上三个接口只有原生适配；双方权限/统计/权益变化链路仍未验收。
+候选好友、显式邀请/接收界面、消息路由/表情、赠送等其余恢复动作继续；没有执行支付或发信。
+
+八、真实原生验证与清理
+可复现命令（必须使用明确的当前PC域会话、全新私有目录）：
+cargo run -p cumulus-core --example together_roundtrip --offline -- /abs/PC_PROFILE /abs/NEW_PROOF
+中断后仅清理该次有NEW_ROOM回包证据的房间：
+cargo run -p cumulus-core --example together_roundtrip --offline -- /abs/PC_PROFILE /abs/PROOF --restore
+restore先比对账号/房间/单成员，不接受其他房间；不重放业务命令。
+
+.build/together-native-20261026-a：建房、两种token、REPLACE、RANDOM/SINGLE_LOOP/ORDER_LOOP
+切换、DELETE均服务200，但DELETE回读触发过严随机列表校验，首次收尾也失败。
+随后修复模型和收尾流程，--restore只读核对旧操作并end原房间；restored.json确认
+连续两读无房间、未决0。原失败result.json保留，restore-result.json记录恢复成功。
+
+.build/together-native-20261026-b：76请求，12次房间/队列/播放写入
+（create1、队列6、播放4、end1），另heartbeat1、sync/notice1。
+队列REPLACE、RANDOM、SINGLE_LOOP、ORDER_LOOP、DELETE、ADD回读通过。
+PAUSE0服务成功后证明适配器主动丢弃一次回包，核心变为Uncertain；只读核对成功，
+没有重发该clientSeq。随后PROGRESS8250、PLAY、PAUSE通过；未加入其他用户。
+sync/notice返回488；其余响应200。正常结束后连续两读无房间，未决0。
+此证明只验证原生REST控制，没有启动一起听桌面，也没有通过消息使另一端播放。
+
+九、测试、未完成项
+core/tests/together_protocol.rs：5项，内部执行21组官方cmdFilter、6个1000项窗口、
+4组版本向量对照，另覆盖0进度/顺序/目标/令牌redaction/实际wire字段。
+core/tests/together_service.rs：10项，房间完整流程、丢回包重开、建房归属未知、账号切换、
+跨宿主锁、旧版本/错误房间、取消留责、心跳失败差异、等待超时加入、拒绝后不复用序号，
+以及未决期间房间消失后的终态与显式创建新房间。
+不以15项测试代替整个一起听完成：接入IM/RTC、消息包/心跳重置、共同权益播放器联动、
+试听/变速/队列备份恢复、程序退出/切号自动离房、完整邀请流程和桌面入口仍需继续。
+已有accept/privilege/statistics适配不能算全流程通过；ADD并发顺序和实际双端不在本批证据内。
+详细映射见listen-together-mapping.json；全目标进度与其他业务缺口继续保留。
+
+后续原生 IM 传输增量：core-listen-together-native-im.txt 与 listen-together-native-im-mapping.json。
+Linux SDK 登录/入房/入房通知/清理/同进程重开已实测；本文件中历史批次的无SDK连接结论
+仅描述当时范围。随后桌面消息连接/重连/退出清理增量已完成，见 desktop-listen-together-im.txt
+及 desktop-listen-together-im-mapping.json；播放业务消息及 RTC 仍未完成，realtimeReady 保持 false。

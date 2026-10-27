@@ -1,0 +1,127 @@
+排行榜、畅销榜与专辑播放入口
+2026-10-27；完整桌面目标仍在进行。私人 FM 不计入本批完成范围。
+
+来源
+1. 官方 hybrid_app/M400：排行榜加载、OFFICIAL 分组追加两种销售榜、卡片和分组过滤。
+2. 官方 hybrid_app/M15：wf、s、og 的三个实际接口；M48 的 batch 子参数 JSON 文本化。
+3. 官方 hybrid_161/M3140：八路专辑/单曲日、周、总、年榜和两路历史年榜。
+4. 官方 hybrid_220/M3139：单曲畅销指数榜，按 songId 获取详情后恢复原榜单顺序。
+5. 官方 hybrid_app/M460 -> M32.n：首页缓存默认三小时，提前三秒失效；忽略会员变化，保留 UID 隔离。
+6. 恢复 UI 的 RankListTop3Card.tsx、RankListItemCard.tsx、RankPeriodSelector.jsx、
+   YearSelector.jsx：卡片样式、前三名缩略图、更新文案、特殊入口、日/周/年/总与专辑/单曲切换。
+7. 归档 Python CatalogApi.album 及已迁移 CatalogApi：专辑基础详情。
+本批未使用 YesPlayMusic。不是官方原始源码无损恢复，也不声称像素一致。
+精确路径和散列见 rankings-desktop-mapping.json。
+
+核心及 IPC
+core/src/catalog/rankings/ 按 types/api/normalize/service 拆分。
+RankingsApi 与 Api 抽象结合；Rankings 持有 AccountSession 与持久库；独立于 Tauri。
+MusicClient::ranking_page(epoch,query,refresh) 返回 AccountData<RankingView>。
+desktop/src/rankings.rs 只转发上述命令，不包含协议或业务判断。
+query 标签：home、album_sales{year}、album_year{year}、song_sales、album{id}。
+refresh=false 只读本地缓存；不存在时返回错误。refresh=true 执行真实服务读取并提交缓存。
+view 包括 fetchedAt、cached、fresh、page；前端先显示缓存，再按 fresh 决定刷新。
+首页 fresh 使用 10,797,000 毫秒，与官方默认三小时的阈值一致；时钟倒退视为失效。
+销售榜和专辑详情每次进入都刷新，持久缓存用于立即显示和读取失败时保留内容。
+首页服务下发的自定义缓存时长尚未接入配置宿主，当前采用官方默认值。
+
+接口与数据规则
+首页并发读取：
+  /api/toplist/detail/v2 {}
+  /api/feealbum/songsaleboard/daily/type {limit:3,albumType:0}
+  /api/single/sales-ranking/get {}
+仅接受成功码 200；任一路失败不提交新快照。
+只保留 displayType=ONLY_COVER/TOP_3 的分组，过滤空分组；卡片只保留
+nameShowStyle=singleRow/doubleRow 且 targetType=PLAYLIST。
+因此 H5 商店跳转等不会变成伪歌单。普通榜单 id 保留十进制字符串，避免 JS 大整数损失。
+OFFICIAL 分组追加 albumRank 和 songIndexRank；它们分别打开独立销售榜，不调用歌单详情。
+预览 trackId、rank、lastRank 和 tracks[first/second] 保留官方顺序与空字符串语义；
+缺 first/second 时回落 songName/artistName。预览数组长度不一致则拒绝本次刷新。
+专辑预览 lastRank=rank+rankIncr；isAlbum=true。普通歌曲 lastRank=0 显示“新”。
+销售榜卡片不显示播放整榜按钮；普通榜单 canPlay=true 时可直接建立完整歌单队列。
+图片优先级按官方区分：TOP_3 使用 coverUrl；ONLY_COVER 使用 newFirstTextCoverUrl、
+firstCoverUrl、firstCoverHdUrl。文案封面存在时不重复叠加更新时间。
+
+专辑畅销榜：
+  /api/batch，子路径 /api/feealbum/songsaleboard/{daily|week|total|year}/type
+  每种周期再加一个末尾带 / 的子路径，区分同一 batch 中 albumType=0 和 albumType=1。
+  子参数为 JSON 文本，含 limit:50、albumType；年榜额外含 year。
+  首次共 8 个子请求；历史年榜只请求 year 的两路。逐路检查 200 后原子提交整页。
+  products 映射 albumId/albumName/artistName/coverUrl/rank/rankIncr/newest/saleNum/
+  salesCertificationSystemLevelCode；保留服务顺序，不自行重排销量或排名。
+  UI 年份从 2018 到当前本地年份；核心允许当前 UTC 年加一以兼容跨年时区。
+  唯一故意的容错差异：合法空 products 展示空状态，原 M3140 会把空数组当失败。
+  首页空销售榜同样保留可打开的空卡片，避免原始 [0].coverUrl 访问崩溃。
+
+歌曲畅销指数榜：
+  /api/single/sales-ranking/get -> data.genTime、data.itemList。
+  依次收集 songId，再 /api/v3/song/detail，以 c JSON 文本批量查询 {id,v:0}。
+  详情顺序与服务榜单顺序无关；按 songId 重组，详情缺失保留原位置和不可播放行。
+  不把销售数据中的 songId 当专辑 id。UI 保留指数、排名变化、新入榜、更新时间；
+  播放、喜欢/取消、评论、下载分别复用现有原生用例与权限检查。
+
+专辑基础详情与播放：
+  /api/album/v3/detail {id}，nginxCache=true，检查 album.id 与请求一致。
+  显示名称、歌手文本、封面、描述和完整 songs；不假装数字专辑购买权限属于会员权益。
+  PlaySelection::Album{id,start_id,revision,quality} 在原生重新读取整张专辑，比较
+  SHA256([albumId,orderedSongIds])，再分批读取歌曲详情并交给现有 PlaybackController。
+  不受前端 Songs 的 500 首输入上限影响；测试专辑 501 首及末首选择通过。
+  成功前检查账号代次、当前媒体焦点与选择序号；旧请求不能覆盖新播放选择。
+  不可用资源沿用现有播放器的服务错误/试听/实际音质处理，不绕过购买或版权检查。
+  本入口不是整个官方专辑页面的完工证明：动态收藏数/权限组合、数字购买说明、歌手导航、
+  专辑收藏及评论等完整专辑页面分支还需后续统一接入。
+
+状态与失败恢复
+SQLite kind=ranking-pages-v1，owner=真实 UID，key=SHA256(序列化 query)。
+记录包括 query、fetched_at 和完整原生页面；读取复核 query。更换账号即换命名空间。
+同一 owner/query 的进程文件锁防止交错刷新；网络期间不持有账号或数据库互斥锁。
+读取完成后 run_for 与提交时 with_token 两次核对代次；过期响应不缓存、不传入当前界面。
+所有远端操作均为读取；无未知写入需要重放。读取失败保留旧缓存，前端提供显式重试。
+前端 useRankings 另以请求序号和 epoch 拒绝旧查询/旧账号结果，退出页面后的迟到数据
+不会覆盖另一查询；已销毁 composable 不再发布结果。
+前端只接收白名单字段；原始歌曲对象和授权数据留在 core；所有图片再经 artwork 清洗，
+仅允许公开图片域并移除原查询参数。业务 API 与 Cookie 不进入 WebView。
+
+已取得证据
+discovery_read：四条源接口读取成功，包括 /api/v1/radio/get 返回三首；FM 只确认结构，
+没有因此计入正式 FM 实现或行为验证。
+rankings_read：原生正式用例真实读取：首页 40 个入口、8 个销售榜、2 个 2018 年榜、
+100 首指数榜、一张 11 首专辑；逐页缓存回读一致。无显式远端资源写入。
+私有结果 .build/private-rankings-read-20261027/，概要 .build/rankings-live.log。
+core/tests/rankings.rs 覆盖过滤/特殊路由、JSON batch、原序/缺失、图片和私有字段、
+缓存故障/新连接重开/账号隔离、迟到读取拒绝、并发刷新门控。
+core/tests/client_player.rs 新增完整 501 首专辑和过期 revision 拒绝。
+frontend/tests/rankings.test.ts 覆盖缓存有效期、手动重试、保留失败前页面、查询与账号竞争、
+会话失效及排名变化规则。后续全量与窗口结果追加到 rust-core-validation.txt。
+
+可执行路径
+  CARGO_INCREMENTAL=0 cargo build -p cumulus-core --example rankings_read --offline --locked
+  .build/target/debug/examples/rankings_read EXISTING_PC_PROFILE NEW_PRIVATE_OUTPUT
+  npm --prefix frontend run build
+  CARGO_INCREMENTAL=0 cargo build -p cumulus-desktop --bin cumulus --example rankings_ui_probe --features custom-protocol --offline --locked
+  GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 CUMULUS_RANKING_PROFILE=EXISTING_PC_PROFILE \
+    xvfb-run -a -s '-screen 0 1440x1000x24' dbus-run-session -- \
+    python3 desktop/examples/run_auth_probe.py NEW_PROOF_ROOT \
+    --binary .build/target/debug/examples/rankings_ui_probe --stage-prefix rank_ --screenshots 9
+窗口探针通过 DOM 操作正式页面，读取现有授权账号，测试状态使用单独目录；音频输出为 null，
+可证明实际解码/原生时钟，不能代替实体扬声器听感。加 --small 验证 760x540 窗口。
+不要复用已有证明目录覆盖结果。此流程不点击喜欢/下载/评论写入或付款按钮。
+
+窗口及最终检查
+rankings-20261027-b 正常窗口与 c-small 最小窗口，各 7 步通过，保留 14 张截图；
+补充同页导航去重后，d-small 最终构建 9 步通过，新增前三名卡片和专辑实际播放截图。
+三份独立只读审计均通过：重算缓存键、核对销售榜/历史榜/专辑/歌曲条数与 DOM 阶段，
+检查播放器实际状态。榜单建立 100 首队列；最后一次专辑建立 3 首队列且实际解码播放。
+已人工查看正常首页/指数榜，以及最终小窗口前三名卡片和专辑播放截图。
+Rust 全工作区 632 项及 custom-protocol 桌面示例 24 项，共 656 项通过；前端 83 项。
+严格 Clippy（含 custom-protocol/all-targets）、格式、Vue 类型检查、前端/正式桌面构建通过。
+第一次窗口 a 使用未嵌入前端的开发构建，超时且 0 截图，保留为失败记录；已在 Cargo.toml
+为探针声明 required-features=custom-protocol 并修正正式构建命令，之后 b/c/d 均通过。
+最初 Clippy 指出测试 MutexGuard 的显式 drop 不能证明 await 前释放；改为词法作用域后通过。
+来源/实现/证据对应见 rankings-desktop-mapping.json；最终文件散列见 .build/rankings-progress.json。
+
+边界
+私人 FM 状态机、队列补充、跳过上报、减少推荐/恢复等仍待迁移并接界面；真实响应里的
+alg 需要保留给官方 skip/trash 请求，不能把 FM 当普通推荐歌曲列表冒充完成。
+完整内容发现、专辑/歌手全页、同账号接续、剩余音效、身份/易盾及其他原目标继续。
+本批只在 Linux 环境验证；Windows/macOS 不据此宣称运行通过。

@@ -1,0 +1,123 @@
+桌面播放、队列与歌词用例
+2026-10-26；属于完整目标中的播放界面接入，其他业务继续迁移。
+
+来源与组织
+核心来源、引擎、音源/缓存/控制器、试听/CUE与真实媒体证明见core-playback-contracts.txt。
+布局优先参考references/ui-recovery/sources/packages/pc/src/components/PlayBar/styleNew.ts
+的80px底栏、左右工具与居中控制；歌词依据pages/vinyl-page/views/TrackPage下
+LyricDefaultPage与TrackLyric/LyricDisplay/ScrollableLyricDisplay等恢复源文件。
+保留Cumulus身份；图标、配色和黑胶细节为社区重建，未声称像素一致。本批未参考YesPlayMusic。
+core/client/player/{mod,dto,selection,lyrics}.rs：独立展示用例、账号检查、完整队列、歌词。
+desktop/player.rs：Tauri Channel/窗口订阅生命周期与命令转发，无业务HTTP或播放器状态机。
+frontend/services/player.ts和adapters/tauri.ts：类型与传输；usePlayer协调消息版本和视图。
+PlayerBar、QueuePanel、LyricsPanel分组件；TrackTable提供单击播放按钮、双击行播放。
+原生音频和授权URL留在core；WebView不使用HTMLAudio、HTTP音乐接口或模拟播放时钟。
+
+初始化、状态与生命周期
+MusicClient按需初始化音频；账号浏览不依赖libmpv已可用。宿主可注入AudioEngine工厂做
+确定性边界测试。默认工厂在blocking worker打开libmpv，失败可重试并向UI给出固定错误。
+watch_player(epoch,streamId,onUpdate)建立Tauri Channel。每窗口只有一个当前订阅；
+请求先验证当前epoch，再预占订阅槽；低代次不能替换新账号槽，迟到初始化不能覆盖新槽。
+unwatch_player携带streamId，迟到解除不会停止新订阅；窗口销毁中止任务。
+PlaybackSubscription在core将快照映射到白名单，并在账号代次改变时终止。
+PlayerUpdate为{kind:"state",value:PlayerView}或{kind:"error",error:ClientError}。
+PlayerView公开epoch/revision/queueRevision、state/playId/entryId/track、position/timeline、
+requestedQuality/actualQuality、volume/speed/mode/queueLen、固定错误提示及positionReset。
+不公开SessionToken.uid、原始resource/source、引擎文件路径、Cookie或授权URL。
+revision由控制器消息循环单调递增，以字符串传输；界面用BigInt比较，迟到命令不能覆盖
+较新推送。queueRevision只用于判断队列变化，避免每200ms拉取整个大队列。
+前端账号改变即清除旧视图；迟到订阅会立即解除。首次连接已有队列时调用Restore，
+保持暂停；新账号状态独立。重试记住实际失败的用例，不误把失败选歌重试成播放旧队列。
+
+选歌与完整歌单
+play_selection(epoch,selection)：
+  {kind:"songs",ids,index,quality}：当前推荐/搜索结果，最多500个ID，保留顺序和重复项。
+  {kind:"playlist",id,start_id,revision,quality}：完整歌单，不限于已展示的100行。
+歌单先读取/api/v6/playlist/detail(id,n=100000,s=0)，核对ID+完整trackIds的SHA256 revision；
+改变时返回snapshot_changed。未知本地v=-1条目尚未对应本地库时不当作在线ID请求。
+最多50000个在线项，分100项调用/api/v3/song/detail；初选歌曲缺失则失败，其他缺失项
+保留为不可用队列项，不能挤掉顺序。metadata分批期间可被新选歌/停止等控制取代。
+只把显示所需的ID/名称/歌手/专辑/安全封面/时长/fee写入队列，丢弃歌曲响应中的其他字段。
+准备成功后调用原生Replace，经M/163授权与实际引擎加载。来源含歌曲/歌单上下文。
+metadata请求不持有播放器actor，旧曲可继续；新请求成功后才替换队列。过程中失败公开显示。
+单击行号播放按钮或双击行从该曲开始；搜索的“播放当前结果”仅指当前已载入结果；
+歌单“播放全部”读取完整在线列表，不能把分页大小冒充播放队列总数。
+
+播放控制与会员音质
+player_action(epoch,action)：play/pause/seek/volume/speed/next/previous/stop/restore/refresh、
+quality/mode/select/remove/reorder/clear；JSON变体字段保持snake_case，公开DTO使用camelCase。
+拖动进度条在提交时发送逻辑秒数；范围限制为服务授权timeline.start..end，显示total。
+进度完全来自原生推送，拖动草稿仅用于交互，提交后回到原生事实。
+播放/暂停、上下首、停止、四模式、静音/音量、0.25..4倍速、11档音质均接到实际用例。
+非输入/按钮焦点下空格播放暂停，原生表单控件保留其自身键盘行为。
+11档为64aac/standard/higher/exhigh/lossless/hires/dolby/jyeffect/jymaster/sky/vivid；
+实际音质必须取返回level，服务降级时界面另标“实际…”；会员身份不保证每首歌都有每档源。
+音质预授权失败保留当前播放；成功重新加载时尽量保留进度和暂停。缓冲/加载/错误/重试、
+音源变化导致进度重置均有界面状态；停止可取消正在准备的音源。
+
+队列
+player_queue(epoch)返回epoch/revision/current及QueueTrack(entryId,TrackView)。
+使用一次actor回复中的状态和队列，不能把两个时刻的queueRevision与列表拼在一起。
+右侧抽屉按62px行高与视区缓冲虚拟渲染；异步列表出现后观察尺寸，窗口变化重新计算。
+可选曲、上移/下移、移出和清空；排序提交完整entryId序列，重复歌曲仍有不同entryId。
+这些操作修改本地播放队列，不修改原网易云歌单。列表变化后回读，不乐观伪造提交成功。
+删除/清空、列表缩短后校正滚动位置；关闭/Escape处理焦点恢复。
+
+歌词
+player_lyrics(epoch,playId)只允许当前播放代次；底层LyricsService沿用M/3081缓存/版本请求。
+/api/song/lyric/v1(id,lv,tv,rv,yv)，其余账号/响应处理见core-lyrics-contracts.txt。
+LyricsView不带原始贡献者对象或本地路径，只含行文本、时钟、逐词/辅助行、偏好与来源状态。
+LRC偏移已由Rust应用到主行时间；前端不能再次平移。翻译/罗马音按恢复的行对齐展示。
+YRC的[绝对毫秒,行时长](绝对毫秒,词时长,标记)由Rust解析为WordLine/TimedWord；
+超出行边界的词时间不用于动画，该行回退普通文字。带未计时前缀的行也回退以保留全部文本。
+词文本复用M/370的英文片段空格规则，避免逐词模式将英文连成一串；YRC翻译/罗马音兼容YRC和LRC辅助格式。
+行高亮/逐词填色使用原生进度；只有授权区间内的歌词可点击定位。用户滚动暂停自动居中，
+“回到当前”恢复跟随。UI动画遵循prefers-reduced-motion。
+lyric_preferences(epoch,playId,preferences)保存翻译/罗马音开关；
+lyric_offset(epoch,playId,gain)每单位0.5秒，仅允许原恢复逻辑支持的scrollable源。
+两个写入均要求当前资源匹配，旧曲响应或旧偏移按钮不能修改新曲。
+网络失败与缓存回退有提示；重试清除失败的内存选择后重新读取，正常缓存不被无条件清空。
+无歌词是明确的正常空状态，不能用有歌词歌曲的验收断言误判或生成假歌词。
+
+测试与真实桌面记录
+core/tests/client_player.rs三项验证205项完整歌单（3批）、公开/持久化字段过滤、音质降级、
+歌词/逐词辅助行/偏移、旧epoch在音频初始化前拒绝、同UID换代、迟到metadata和旧歌词。
+lyrics测试新增词时钟/Unicode/非法边界/未计时前缀回退、英文分隔；原M/370对照仍通过。
+desktop注册IPC测试新增播放/队列/歌词旧账号请求拒绝；另有低代次订阅/迟到解除测试。
+IPC测试实际经过注册命令；并非直接调用Rust方法冒充IPC。
+frontend/tests/player-state.test.ts验证推送与迟到命令、旧账号、迟到歌词/队列、订阅清理、
+暂停恢复和重试原选歌用例。与原页面测试分开记录。
+
+真实探针为ui_probe.rs、ui_probe.js及显式CUMULUS_PROOF_PLAYER=1启用的player_probe.js；
+仅测试example注入脚本，正式二进制不带测试命令。使用隔离CUMULUS_DATA_DIR，
+在任何DOM播放前通过音量控件设置并核实原生volume=0。队列与偏好变更仅写隔离本地状态。
+具体成功/失败阶段以各目录JSON与实际截图为准，不能仅依赖进程退出码。
+实际运行记录（报告仅统计，不公开账号ID、Cookie或授权URL；截图保留在私有.build）：
+player-1：实际播放3052首队列通过；旧断言错误要求请求lossless一定返回lossless而失败。
+player-2：区分请求/实际音质后该步通过；歌词断言失败，服务实际明确noLyric=true。
+player-3：无歌词/纯音乐分支实际显示；将纯音乐单行当歌词不足以验收，且固定延时点击了
+  排序尚未完成时的禁用移除按钮，queue_remove失败，未计完整通过。
+player-4：1120×760完整9阶段DOM流程通过、9幅实际GDK截图、complete.json成立。
+  3052首队列完整载入；排序后等待真实回读，滚动到150附近并移除1项，3051首、17个DOM行。
+  实际静音进度/暂停/定位20秒/1.25倍速/音质/切歌/停止通过，lossless请求实际standard。
+  搜索正常人声样本：38行、294个计时词，点击歌词定位、翻译开关和offset恢复通过。
+  当前账号保留、二维码取消、remoteMutations=0；本轮noLyricsObserved=false，空歌词证据
+  为前述player-2/3，不能把所有分支写成player-4同时通过。
+player-5-small：未进入业务，普通cargo test重编译了无内置前端feature的同名example，
+  WebView连接未启动的127.0.0.1:1420失败；诊断截图保留，主动终止，不计业务通过。
+  desktop现将ui_probe声明required-features=[custom-protocol]，普通测试不会覆盖该探针。
+  复现用cargo run -p cumulus-desktop --example ui_probe --features custom-protocol --offline。
+player-6-small：最终构建在760×540重复通过9阶段、9幅实际截图及complete.json。
+  3052→3051队列、13个DOM行；38行/294个计时词。额外从歌词定位处恢复实际播放，
+  检查词填色随原生位置改变后再暂停，nativeWordProgress=true；没有模拟时钟。
+  翻译/offset恢复、实际音质降级、无横向溢出、取消二维码后原账号保留再次确认。
+  逐幅检查lyrics/queue/controls截图，最小窗口的音质/倍速/音量/歌词/队列及进度均可用。
+当前总数：Rust core202 + desktop3 =205项，frontend9项；全量测试、fmt、Clippy（含
+cumulus-desktop/custom-protocol以纳入探针）、前端format:check/typecheck/build通过。
+当前内置前端二进制为.build/target/debug/cumulus；日志见rust-core-validation.txt。
+
+边界
+本播放器基础批次当时未开放本地库/下载入口；后续已接入，分别见desktop-local-library-contracts.txt
+与desktop-download-contracts.txt，基础批次自身的截图不作为这些新增流程的通过证据。
+MV/播客/云盘专用播放源、系统媒体键/托盘、专有音效/PCM链、一起听/接续协调仍在完整目标内。
+当前验证仅Linux Tauri/WebKit/libmpv；其他平台、完整官方皮肤/像素一致不作已通过声明。

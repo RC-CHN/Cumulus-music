@@ -1,0 +1,166 @@
+{
+  "schema": 1,
+  "scope": "MV native core increment; not complete MV or desktop goal",
+  "goal_complete": false,
+  "yesplaymusic_used": false,
+  "contract": "docs/core-mv-contracts.txt",
+  "official_sources": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/15.js",
+      "sha256": "8ec4bf8d343f6963860eb73bc59ca09f0dd1ae50db2608a6c5abc7d69a0b521a"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/21.js",
+      "sha256": "33d27af5a54c6a74641f192841637d2608d588d2d93091a9a61cb43948c93af7"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/27.js",
+      "sha256": "ba4c34aa4cc49759b13356d5b720d7878c6c9e48e38537c47217a62ad551d117"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/232.js",
+      "sha256": "5f207be427306648321a3cd8c2a5630da5ae7d8b1c2b1cadca5f1376ddda04b0"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/754.js",
+      "sha256": "91886fa13eae46663c28b496ae03f4f9fa70544f24104eb4da10a08e2a2d47ba"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_41.chunk.1482700000000.js/334.js",
+      "sha256": "5a6c94d01dbe9ee288a86cd25404085896192267161bfddfe40ef36af0b754c0"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_153.chunk.1482700000000.js/3158.js",
+      "sha256": "8e88bb5d07c48c7ec485bf54784cf085824cb9515f026e9440fc1bac38bca4e4"
+    }
+  ],
+  "mappings": [
+    {
+      "feature": "detail_and_privilege",
+      "source": "M/15 Qd; M/21 V/A/N",
+      "implementation": "core/src/mv/model.rs",
+      "evidence": [
+        "core/tests/mv.rs",
+        "core/tests/fixtures/mv.json"
+      ],
+      "status": "current_account_verified"
+    },
+    {
+      "feature": "official_javascript_oracle",
+      "source": "Executed M/21 I/A/N/V and M/334.b/e/f/a with inert adapters",
+      "implementation": "references/recovered-client/scripts/netease_mv_oracle.cjs",
+      "evidence": [
+        "core/tests/fixtures/mv.json"
+      ],
+      "status": "nine_synthetic_cases"
+    },
+    {
+      "feature": "complete_collection_pagination",
+      "source": "M/232 mlogType=3 time cursor",
+      "implementation": "core/src/mv/api.rs",
+      "evidence": [
+        "core/tests/mv.rs",
+        ".build/mv-native-20261026-a/report.json"
+      ],
+      "status": "synthetic_multi_page_real_single_page"
+    },
+    {
+      "feature": "collection_mutation_recovery",
+      "source": "M/15 mv/sub and mv/unsub; native uncertainty journal",
+      "implementation": "core/src/account/resources/service.rs",
+      "evidence": [
+        "core/tests/mv.rs",
+        ".build/mv-native-20261026-a/restored.json"
+      ],
+      "status": "current_account_reversible_roundtrip"
+    },
+    {
+      "feature": "play_and_download_authorization",
+      "source": "M/15 play/mv/url and download/mv/url; M/334.f",
+      "implementation": "core/src/mv/api.rs",
+      "evidence": [
+        "core/tests/mv.rs",
+        ".build/mv-native-20261026-a/report.json"
+      ],
+      "status": "both_current_account_240p"
+    },
+    {
+      "feature": "account_cache_and_playback_checkpoint",
+      "source": "M/3158 detail/lastPlayedTime; native persistent extension",
+      "implementation": "core/src/mv/service.rs",
+      "evidence": [
+        "core/tests/mv.rs",
+        ".build/mv-native-20261026-a/report.json"
+      ],
+      "status": "native_reopen_and_isolation"
+    },
+    {
+      "feature": "download_selection_and_entitlement",
+      "source": "M/334.b/e; M/754 selection fee/payed/point",
+      "implementation": "core/src/download/service/mv.rs",
+      "evidence": [
+        "core/tests/mv_download.rs",
+        "core/tests/fixtures/mv.json"
+      ],
+      "status": "free_real_paid_synthetic_points_blocked"
+    },
+    {
+      "feature": "mp4_naming_and_original_bytes",
+      "source": "M/27 MV path; M/754 MV download branch",
+      "implementation": "core/src/download/service/authorize.rs",
+      "evidence": [
+        "core/tests/mv_download.rs",
+        ".build/mv-native-20261026-a/report.json"
+      ],
+      "status": "real_full_decode"
+    },
+    {
+      "feature": "resume_reauthorization_and_file_management",
+      "source": "Recovered download flow plus shared native state machine",
+      "implementation": "core/src/download/service/mv.rs",
+      "evidence": [
+        "core/tests/mv_download.rs",
+        ".build/mv-native-20261026-a/report.json"
+      ],
+      "status": "real_pause_reopen_rename_move_delete"
+    },
+    {
+      "feature": "public_download_projection",
+      "source": "Native boundary for M/754 download list",
+      "implementation": "core/src/client/downloads/view.rs",
+      "evidence": [
+        "frontend/src/services/downloads.ts",
+        "frontend/src/components/DownloadPage.vue"
+      ],
+      "status": "source_and_resolution_only_not_mv_ui_acceptance"
+    },
+    {
+      "feature": "point_consumption",
+      "source": "M/334.a and M/15 mv/download/point/consume",
+      "implementation": "not_implemented_business_flow",
+      "evidence": [
+        "core/tests/fixtures/mv.json"
+      ],
+      "status": "request_shape_only_no_spending"
+    },
+    {
+      "feature": "visible_video_and_desktop_mv",
+      "source": "M/3158",
+      "implementation": "core/src/client/mv; core/src/client/focus.rs; desktop/src/mv.rs; frontend/src/components/MvPlayer.vue",
+      "evidence": [
+        "docs/desktop-mv-contracts.txt",
+        "docs/mv-desktop-mapping.json",
+        ".build/ui-proof/mv-20261026-c/complete.json",
+        ".build/ui-proof/mv-20261026-d-small/complete.json"
+      ],
+      "status": "basic_desktop_verified_remaining_mv_actions_pending"
+    }
+  ],
+  "follow_up": "docs/mv-desktop-mapping.json",
+  "follow_up_mappings": [
+    "docs/mv-video-mapping.json",
+    "docs/mv-desktop-mapping.json",
+    "docs/comments-mapping.json",
+    "docs/mv-social-mapping.json"
+  ]
+}

@@ -1,0 +1,214 @@
+{
+  "schema": 1,
+  "scope": "Shared comments read, locate, like and recovery increment; full desktop goal remains active",
+  "goal_complete": false,
+  "yesplaymusic_used": false,
+  "contract": "docs/core-comments-contracts.txt",
+  "sources": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/21.js",
+      "sha256": "33d27af5a54c6a74641f192841637d2608d588d2d93091a9a61cb43948c93af7",
+      "kind": "official_recovered"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/438.js",
+      "sha256": "d134ef2da6f94d6cbc0779a1cddd679497d38360f55306e3ac85a9b19dc706ae",
+      "kind": "official_recovered"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/15.js",
+      "sha256": "8ec4bf8d343f6963860eb73bc59ca09f0dd1ae50db2608a6c5abc7d69a0b521a",
+      "kind": "official_recovered"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/232.js",
+      "sha256": "5f207be427306648321a3cd8c2a5630da5ae7d8b1c2b1cadca5f1376ddda04b0",
+      "kind": "official_recovered"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/components/Comment/components/CommentCard.jsx",
+      "sha256": "dc8b5255e18d7259fed08d488f2a98c78112ffb7cd2da15770c283c867915224",
+      "kind": "official_recovered"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/components/Comment/components/CommentLayout.tsx",
+      "sha256": "3eafc57148160f82026e4de6388913084d2f003f6b2f32c3bb4dd33a74cab12f",
+      "kind": "official_recovered"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/Comments/index.tsx",
+      "sha256": "0a7650a42e09370b0e102563813f686033b70c6f738e9ec56128a477fd5cb730",
+      "kind": "official_recovered"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/HotComments/index.tsx",
+      "sha256": "e48426524ae96d11b8c92a43c83ad5cb1b16f0b0ff993ef07d1c391fc632fd6c",
+      "kind": "official_recovered"
+    },
+    {
+      "path": "references/recovered-client/docs/product/32-comments-functional-validation.txt",
+      "sha256": "490be41c67c2dac25ebdbf1126078ac2c56d715060741027e689a0f73fdc753e",
+      "kind": "historical_reference"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_comments_functional_audit.py",
+      "sha256": "ab1e50e5912ab3c757d39909e8ae45152bfd52baf387de6b89761e979232123e",
+      "kind": "historical_reference"
+    }
+  ],
+  "mappings": [
+    {
+      "feature": "resource_threads",
+      "source": [
+        "M/21 P",
+        "historical report 32"
+      ],
+      "core": [
+        "core/src/comments/model.rs"
+      ],
+      "ui": [
+        "frontend/src/services/comments.ts"
+      ],
+      "evidence": [
+        "core/tests/fixtures/comments-official.json",
+        "core/tests/comments.rs",
+        ".build/comments-native-20261026-a/report.json"
+      ],
+      "status": "8_types_official_oracle_5_types_live_3_types_static_only"
+    },
+    {
+      "feature": "latest_hot_cursor_location_information",
+      "source": [
+        "M/438 f,p",
+        "M/15 Xh,Zh",
+        "M/232 q"
+      ],
+      "core": [
+        "core/src/comments/api.rs",
+        "core/src/comments/service.rs"
+      ],
+      "ui": [
+        "frontend/src/composables/useComments.ts",
+        "frontend/src/components/CommentsPage.vue"
+      ],
+      "evidence": [
+        "core/tests/comments.rs",
+        ".build/comments-native-20261026-a/report.json",
+        ".build/ui-proof/comments-20261026-a/complete.json",
+        ".build/ui-proof/comments-20261026-b-small/complete.json"
+      ],
+      "status": "native_live_5_resources_desktop_track_playlist_mv_information_native_only"
+    },
+    {
+      "feature": "comment_like_unlike_and_read_only_recovery",
+      "source": [
+        "M/232 F,z",
+        "historical functional audit recovery contract",
+        "community durable transaction strategy"
+      ],
+      "core": [
+        "core/src/comments/likes.rs"
+      ],
+      "ui": [
+        "frontend/src/composables/useComments.ts",
+        "frontend/src/components/CommentCard.vue"
+      ],
+      "evidence": [
+        "core/tests/comments.rs",
+        ".build/comments-native-20261026-a/report.json",
+        ".build/comments-native-20261026-a/restored.json",
+        ".build/ui-proof/comments-20261026-a/comments_liked.json",
+        ".build/ui-proof/comments-20261026-a/comments_restored.json",
+        ".build/ui-proof/comments-20261026-a/restored.json"
+      ],
+      "status": "native_and_linux_webview_reversible_live_write_restored_failure_cases_synthetic"
+    },
+    {
+      "feature": "account_scoped_cache_and_late_response_guard",
+      "source": [
+        "community recovery strategy based on recovered operation semantics"
+      ],
+      "core": [
+        "core/src/comments/service.rs",
+        "core/src/comments/cache.rs",
+        "core/src/client/comments/mod.rs"
+      ],
+      "ui": [
+        "frontend/src/composables/useComments.ts"
+      ],
+      "evidence": [
+        "core/tests/comments.rs",
+        "frontend/tests/comments-state.test.ts",
+        "desktop/tests/ipc.rs",
+        ".build/ui-proof/comments-20261026-b-small/complete.json"
+      ],
+      "status": "final_native_fault_tests_and_final_read_only_gui_no_claim_of_live_race_reproduction"
+    },
+    {
+      "feature": "official_comment_row_and_quoted_target",
+      "source": [
+        "CommentCard.jsx",
+        "CommentLayout.tsx",
+        "Comments/index.tsx",
+        "HotComments/index.tsx"
+      ],
+      "core": [
+        "core/src/client/comments/mod.rs"
+      ],
+      "ui": [
+        "frontend/src/components/CommentCard.vue",
+        "frontend/src/components/CommentsPage.vue",
+        "frontend/src/styles/comments.css"
+      ],
+      "evidence": [
+        ".build/ui-proof/comments-20261026-a/comments_target.png",
+        ".build/ui-proof/comments-20261026-b-small/comments_target.png"
+      ],
+      "status": "recovered_source_layout_and_real_linux_screenshots_no_original_pixel_comparison"
+    },
+    {
+      "feature": "song_playlist_mv_entry_points_and_typed_ipc",
+      "source": [
+        "recovered resource comments routes",
+        "community typed CoreClient boundary"
+      ],
+      "core": [
+        "core/src/client/comments/mod.rs",
+        "desktop/src/comments.rs",
+        "desktop/src/lib.rs"
+      ],
+      "ui": [
+        "frontend/src/App.vue",
+        "frontend/src/components/PlaylistDialog.vue",
+        "frontend/src/components/PlayerBar.vue",
+        "frontend/src/components/MvPlayer.vue",
+        "frontend/src/adapters/tauri.ts"
+      ],
+      "evidence": [
+        "desktop/tests/ipc.rs",
+        ".build/ui-proof/comments-20261026-a/complete.json",
+        ".build/ui-proof/comments-20261026-b-small/complete.json"
+      ],
+      "status": "song_menu_playlist_toolbar_mv_real_ui_current_song_button_implemented_not_exercised_in_this_probe"
+    },
+    {
+      "feature": "remaining_comment_actions",
+      "source": [
+        "M/15 add_reply_delete",
+        "remaining recovered Comment UI and models"
+      ],
+      "core": [],
+      "ui": [],
+      "evidence": [
+        "docs/core-comments-contracts.txt",
+        "docs/comment-write-mapping.json"
+      ],
+      "status": "plain_text_publish_reply_delete_floor_following_increment_rich_content_decoration_region_push_deep_paging_remain"
+    }
+  ],
+  "verification_order": {
+    "normal_live_write_before_final_cache_hardening": true,
+    "final_cache_hardening_covered_by": "native fault tests and final read-only small window"
+  },
+  "following_increment": "docs/comment-write-mapping.json"
+}

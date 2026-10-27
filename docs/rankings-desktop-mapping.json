@@ -1,0 +1,162 @@
+{
+  "date": "2026-10-27",
+  "full_goal_complete": false,
+  "yesplaymusic_used": false,
+  "sources": {
+    "M400": {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/400.js",
+      "sha256": "f67edd010a9087c8176401f230cf714177eaf1b3b116ae8f6b39cdc44e511366"
+    },
+    "M15": {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/15.js",
+      "sha256": "8ec4bf8d343f6963860eb73bc59ca09f0dd1ae50db2608a6c5abc7d69a0b521a"
+    },
+    "M12": {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/12.js",
+      "sha256": "da570de13fd15b094bc6898cebb51273b2ee0e2b1d9ab39398a61717db732176"
+    },
+    "M48": {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/48.js",
+      "sha256": "d8c0a8a0c03aca1339bc38e61c8c9a943cd3f4db6e214492e10c3c114acba4db"
+    },
+    "M460": {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/460.js",
+      "sha256": "b463fb020e72c3e2e5e1527feb8b18aedc2c4ef0a8f568c68cb8ed99127aa676"
+    },
+    "M32": {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/32.js",
+      "sha256": "1aa3d1f17a38717843340a7c33c87419bc7c952bc423fc58ab45d1630561ff34"
+    },
+    "M3140": {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_161.chunk.1482700000000.js/3140.js",
+      "sha256": "f655cacf570258139988362dab50bba8d6a9fb2e60cf7590f0cc0ac52ede110f"
+    },
+    "M3139": {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_220.chunk.1482700000000.js/3139.js",
+      "sha256": "0e73f3b91186a0acceb0b4b5a9b6583b03fc0a0d925b24810c13e0470a12866b"
+    },
+    "rank_cards": {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/choice/ranklist/components/RankListTop3Card.tsx",
+      "sha256": "ebed64fe7fc802fd7c16c09fb54df4097532170de2c66c3340f5f3fa36b4331a"
+    },
+    "cover_cards": {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/choice/ranklist/components/RankListItemCard.tsx",
+      "sha256": "6d971fae5094bd826ed75a4b72e5293a69b1aebc30093961c3bfeccf9c498b30"
+    },
+    "sales_period": {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/album-list/views/RankPeriodSelector.jsx",
+      "sha256": "6be66642a7d710dcea7f01716d40eaf5b04d21d923ac39a334d7393793723dbf"
+    },
+    "sales_year": {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/album-list/components/YearSelector.jsx",
+      "sha256": "4a010c5a72db8dfdb8e7e3eeb58f5429ee89c534fdcd222d4b16f951a150bf1d"
+    },
+    "python_catalog": {
+      "path": "references/recovered-client/cumulus_core/api.py",
+      "sha256": "571c2100750fd5324fcd35437ed20242d8715d74f0dd75d97cf9edcfff24efd9"
+    }
+  },
+  "entries": [
+    {
+      "id": "rank_home",
+      "sources": [
+        "M400",
+        "M15"
+      ],
+      "rust_or_ui": "core/src/catalog/rankings/normalize.rs",
+      "entry": "排行榜首页",
+      "read_report_check": "home",
+      "evidence": "真实读取40入口；官方过滤/特殊目的地测试"
+    },
+    {
+      "id": "album_sales",
+      "sources": [
+        "M3140",
+        "M12",
+        "M48"
+      ],
+      "rust_or_ui": "core/src/catalog/rankings/api.rs",
+      "entry": "数字专辑畅销榜：日/周/总/年、专辑/单曲",
+      "read_report_check": "album_sales",
+      "evidence": "真实八路200；尾斜线和JSON参数测试"
+    },
+    {
+      "id": "historical_year",
+      "sources": [
+        "M3140",
+        "sales_year"
+      ],
+      "rust_or_ui": "core/src/catalog/rankings/api.rs",
+      "entry": "2018至当前年份选择",
+      "read_report_check": "album_2018",
+      "evidence": "真实2018年两路200；窗口年榜切换"
+    },
+    {
+      "id": "song_sales",
+      "sources": [
+        "M3139",
+        "M15"
+      ],
+      "rust_or_ui": "core/src/catalog/rankings/api.rs",
+      "entry": "歌曲畅销指数榜",
+      "read_report_check": "song_sales",
+      "evidence": "真实100首；详情乱序/缺失行测试"
+    },
+    {
+      "id": "album_entry",
+      "sources": [
+        "M15",
+        "python_catalog"
+      ],
+      "rust_or_ui": "core/src/client/rankings.rs",
+      "entry": "销售榜进入专辑基础详情",
+      "read_report_check": "album",
+      "evidence": "真实11首读取；501首原生队列测试；窗口3首实际播放"
+    },
+    {
+      "id": "album_queue",
+      "sources": [
+        "M15",
+        "python_catalog"
+      ],
+      "rust_or_ui": "core/src/client/player/selection.rs",
+      "entry": "专辑播放全部/单曲选择",
+      "read_report_check": null,
+      "evidence": "501首和过期revision测试；原生实际播放"
+    },
+    {
+      "id": "account_cache",
+      "sources": [
+        "M400",
+        "M460",
+        "M32"
+      ],
+      "rust_or_ui": "core/src/catalog/rankings/service.rs",
+      "entry": "缓存、失败保留与刷新",
+      "read_report_check": null,
+      "evidence": "存储重开/账号隔离/旧响应拒绝/并发门控/前端竞争测试"
+    },
+    {
+      "id": "official_style",
+      "sources": [
+        "rank_cards",
+        "cover_cards",
+        "sales_period",
+        "sales_year"
+      ],
+      "rust_or_ui": "frontend/src/components/RankingsPage.vue",
+      "entry": "正常/最小窗口、前三名卡片",
+      "read_report_check": null,
+      "evidence": "b/c/d共23截图；无像素一致声明"
+    }
+  ],
+  "contract": "docs/desktop-rankings-contracts.txt",
+  "boundaries": [
+    "FM仅有真实读取结构探针，正式状态机和UI未完成",
+    "专辑为基础读取/完整播放入口，未计完整官方专辑模型完成",
+    "合法空销售榜采用空状态，区别于官方抛错",
+    "首页默认3小时缓存，服务配置宿主尚未接入；销售榜每次进入刷新",
+    "跨平台运行未实测",
+    "双账号一起听仍暂排除，其他完整目标继续"
+  ]
+}

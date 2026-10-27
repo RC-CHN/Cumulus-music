@@ -1,0 +1,409 @@
+{
+  "scope": "Native podcast/audiobook domain, typed desktop UI, complete queues, local checkpoint/resume and program downloads",
+  "goal_complete": false,
+  "official_first": true,
+  "yesplaymusic_used": false,
+  "supplemental_reference": {
+    "path": "references/ncmdump/src/ncmcrypt.cpp",
+    "purpose": "After official voice NCM packaging evidence was insufficient, checked its music:-only metadata parser. No logic copied."
+  },
+  "sources": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/15.js",
+      "sha256": "8ec4bf8d343f6963860eb73bc59ca09f0dd1ae50db2608a6c5abc7d69a0b521a"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/21.js",
+      "sha256": "33d27af5a54c6a74641f192841637d2608d588d2d93091a9a61cb43948c93af7"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/23.js",
+      "sha256": "30179de6edd7412c718747b8162774cb9d872d6c86d13e8515ecc54fa61b9d45"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/71.js",
+      "sha256": "f5a6dd9ea0d37f60e677d41cede55a5a52005889e4fafc7655c5aad077601c5a"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/232.js",
+      "sha256": "5f207be427306648321a3cd8c2a5630da5ae7d8b1c2b1cadca5f1376ddda04b0"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/404.js",
+      "sha256": "cb691eded78b1f0ed006108063a7baecfcda1c8b8dd3f6ab7b9fedb3b09ce96b"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/754.js",
+      "sha256": "91886fa13eae46663c28b496ae03f4f9fa70544f24104eb4da10a08e2a2d47ba"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_55.chunk.1482700000000.js/2170.js",
+      "sha256": "db90651c9fe5e2196fdd6f6902a5ddb9b3b369d9a8cca74d3395c002fb3d6043"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_55.chunk.1482700000000.js/2090.js",
+      "sha256": "18d11097988bc4658251ce9439ce10640f52b9be144596dcaf502a95df41b7fd"
+    },
+    {
+      "path": "references/recovered-client/docs/product/28-podcast-functional-validation.txt",
+      "sha256": "f6a96a1f4e8794e4b15b9bf53c165631cd80765d2eb683b616065a23562b90bc"
+    },
+    {
+      "path": "references/recovered-client/docs/product/30-collections-settings-validation.txt",
+      "sha256": "afaef9a89e83c176648cb5be2eaf0bb1cd28fed57bc9fe047da2a9be9373c20d"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_voice_functional_audit.py",
+      "sha256": "a6875b015943f459b074cb535abba799c462b46651b8db08a3dc25c1e0267cc1"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_content_functional_audit.py",
+      "sha256": "8b8bf92c6feb979e37553974e6f8b9adba77199d29a545c95207d7f84c8a9fee"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_collections_functional_audit.py",
+      "sha256": "50cf2684fe0b4bc7eb4e954f1d05d2c81db80c63248a285043b4a955621d013d"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/163.js",
+      "sha256": "b6ef3bfea1c22e26a31a7b61ccb89d29c1ee0b559b50954fb37dae4e38829aa3"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/597.js",
+      "sha256": "a71928b759ff746d2db3a1e87226328839cf3e50a4e159ff1e49b6ebd5f59642"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_140.chunk.1482700000000.js/3045.js",
+      "sha256": "7d2bfca9d364b77c4c71733a186508c87f3fffe2cf760a7915b0044b3b3f2c8f"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/308.js",
+      "sha256": "2cd3a0da5759370a80cfe20c7ac4e58ef192bab33c396e8eff3efdd35c254a7d"
+    }
+  ],
+  "features": [
+    {
+      "id": "radio_episode_identity",
+      "official": [
+        "M/21 Z,W"
+      ],
+      "rust": "core/src/podcast/model.rs",
+      "evidence": [
+        "S",
+        "L"
+      ],
+      "test": "core/tests/podcast.rs",
+      "boundary": "Partial native projection; track/user DB normalizers are not ported here."
+    },
+    {
+      "id": "my_podcasts_and_audiobooks",
+      "official": [
+        "M/2170 p,m",
+        "M/2090 c=20"
+      ],
+      "rust": "core/src/podcast/library.rs",
+      "evidence": [
+        "S",
+        "L",
+        "R"
+      ],
+      "test": "core/tests/podcast.rs",
+      "boundary": "First authoritative radioIdList; later 20-ID requests, empty subsequent ID lists, overlap handling. Real account has 3 podcasts and 0 books."
+    },
+    {
+      "id": "created_subscribed_purchased",
+      "official": [
+        "M/15 pr,hr",
+        "M/2170"
+      ],
+      "rust": "core/src/podcast/library.rs",
+      "evidence": [
+        "S",
+        "L",
+        "R"
+      ],
+      "test": "core/tests/podcast.rs",
+      "boundary": "Legacy time tuples have local multipage tests; purchased real list is empty, not proof of every paid/multipage branch."
+    },
+    {
+      "id": "liked_voice_library",
+      "official": [
+        "M/15 Kt,Xt",
+        "M/21 W"
+      ],
+      "rust": "core/src/podcast/library.rs",
+      "evidence": [
+        "S",
+        "L",
+        "R"
+      ],
+      "test": "core/tests/podcast.rs",
+      "boundary": "likeTime cursor, voiceId fallback, real two liked voices."
+    },
+    {
+      "id": "discovery_categories",
+      "official": [
+        "M/15 na,ia",
+        "M/597"
+      ],
+      "rust": "core/src/podcast/discovery.rs",
+      "evidence": [
+        "S",
+        "L",
+        "R"
+      ],
+      "test": "core/tests/podcast.rs",
+      "boundary": "Preserve block/card overlap and text 000 category sentinel; actual server page can exceed limit."
+    },
+    {
+      "id": "histories",
+      "official": [
+        "M/15",
+        "report28"
+      ],
+      "rust": "core/src/podcast/discovery.rs",
+      "evidence": [
+        "S",
+        "R"
+      ],
+      "test": "core/examples/podcast_roundtrip.rs",
+      "boundary": "Read-only raw history packaging; no clear/newcount or play-record uploads."
+    },
+    {
+      "id": "detail_program_pages",
+      "official": [
+        "M/15 At,Et,zr",
+        "M/21"
+      ],
+      "rust": "core/src/podcast/api.rs",
+      "evidence": [
+        "S",
+        "L",
+        "R"
+      ],
+      "test": "core/tests/podcast.rs",
+      "boundary": "Radio and episode identity, offset/order, actual 4-program sample in two pages and reverse order."
+    },
+    {
+      "id": "play_permission_media_id",
+      "official": [
+        "M/404",
+        "M/15 Xe"
+      ],
+      "rust": "core/src/podcast/rights.rs",
+      "evidence": [
+        "S",
+        "L",
+        "R"
+      ],
+      "test": "core/tests/podcast.rs",
+      "boundary": "Permission songId must equal detail main song; denied/mismatched requests never fetch media."
+    },
+    {
+      "id": "source_cache_and_actual_decode",
+      "official": [
+        "M/23 te",
+        "M/163"
+      ],
+      "rust": "core/src/playback/source",
+      "evidence": [
+        "S",
+        "L",
+        "I",
+        "R"
+      ],
+      "test": "core/tests/podcast.rs",
+      "boundary": "Cache separates program and song identities; actual MP3 decode/pause/seek through native resolver and libmpv. Podcast controller/UI still pending."
+    },
+    {
+      "id": "download_permission_and_newuser_limit",
+      "official": [
+        "M/404",
+        "M/754"
+      ],
+      "rust": "core/src/podcast/rights.rs",
+      "evidence": [
+        "S",
+        "L",
+        "R"
+      ],
+      "test": "core/tests/podcast.rs",
+      "boundary": "voiceIdsStr is an array; NEWUSERLIMITFREE returns -144 locally. Live sample is free, not proof of paid/new-user branches."
+    },
+    {
+      "id": "actual_quality_null_level",
+      "official": [
+        "M/754 lines407-409"
+      ],
+      "rust": "core/src/podcast/rights.rs",
+      "evidence": [
+        "S",
+        "L",
+        "R"
+      ],
+      "test": "core/tests/podcast.rs",
+      "boundary": "Exact bitrate-code fallback preserves official_level and provenance. Unknown bitrate with no level is an explicit remaining branch."
+    },
+    {
+      "id": "download_workflow",
+      "official": [
+        "M/754",
+        "report28"
+      ],
+      "rust": "core/src/download/service/voice.rs",
+      "evidence": [
+        "S",
+        "L",
+        "I",
+        "R"
+      ],
+      "test": "core/tests/podcast_download.rs",
+      "boundary": "Permission rechecked on resume, identity changes refused; plain MP3 pause/reopen, final publication, offline and file management."
+    },
+    {
+      "id": "program_tags_and_naming",
+      "official": [
+        "M/23 le",
+        "M/754"
+      ],
+      "rust": "core/src/media/tags/plan.rs",
+      "evidence": [
+        "S",
+        "L",
+        "I"
+      ],
+      "test": "core/tests/podcast_download.rs",
+      "boundary": "Exact dj comment builder reused; portable standard artist gets host fallback. NCM voice and transcripts remain unimplemented."
+    },
+    {
+      "id": "subscribe_like_resume_mutations",
+      "official": [
+        "M/232",
+        "report30"
+      ],
+      "rust": "core/src/podcast/mutations.rs",
+      "evidence": [
+        "S",
+        "L",
+        "I",
+        "R"
+      ],
+      "test": "core/tests/podcast.rs; desktop/examples/podcast_social_ui_probe.rs",
+      "boundary": "Real isolated UI roundtrips and a dropped successful like acknowledgement passed, with account lists/order/settings restored. Concurrent external changes are not ruled out."
+    },
+    {
+      "id": "resume_and_skip_read",
+      "official": [
+        "M/15 Wl,Kl,Ye",
+        "M/3045"
+      ],
+      "rust": "core/src/podcast/api.rs",
+      "evidence": [
+        "S",
+        "L",
+        "R"
+      ],
+      "test": "core/examples/podcast_roundtrip.rs",
+      "boundary": "Resume switch and native player local checkpoints implemented; skip intervals and remote history upload remain pending."
+    },
+    {
+      "id": "complete_snapshots_and_invalidation",
+      "official": [
+        "M/2170",
+        "M/232"
+      ],
+      "rust": "core/src/podcast/snapshot.rs",
+      "test": "core/tests/podcast.rs",
+      "evidence": [
+        "S",
+        "L"
+      ],
+      "boundary": "50,000 episode guard; inconsistent/failed pages never publish partial snapshots."
+    },
+    {
+      "id": "typed_podcast_desktop",
+      "official": [
+        "M/2090",
+        "M/21",
+        "M/232"
+      ],
+      "rust": "core/src/client/podcast",
+      "ui": "frontend/src/components/PodcastPage.vue",
+      "test": "frontend/tests/podcast-state.test.ts",
+      "evidence": [
+        "S",
+        "L",
+        "I",
+        "R"
+      ],
+      "boundary": "Live read/play/download/comment and subscription/like/resume flows passed. Official same-account screenshot unavailable; no pixel-perfect claim."
+    },
+    {
+      "id": "complete_program_queue",
+      "official": [
+        "M/232",
+        "M/163"
+      ],
+      "rust": "core/src/client/player/selection.rs",
+      "test": "core/tests/client_podcast.rs",
+      "evidence": [
+        "S",
+        "L",
+        "I",
+        "R"
+      ],
+      "boundary": "205-item mock complete queue; partial-page selection retains native ordering; missing-detail failures currently reject selection."
+    },
+    {
+      "id": "local_program_checkpoint",
+      "official": [
+        "M/71",
+        "M/308"
+      ],
+      "rust": "core/src/podcast/progress.rs",
+      "test": "core/tests/client_podcast.rs",
+      "evidence": [
+        "S",
+        "L",
+        "I",
+        "R"
+      ],
+      "boundary": "Real 37-second local resume controlled by official switch verified; no server history upload, offline switch cache or cross-device handoff claim."
+    },
+    {
+      "id": "curated_radio_cross_members",
+      "official": [
+        "M15.Et /api/v6/dj/program/byradio no parent filter"
+      ],
+      "rust": "core/src/podcast/api.rs",
+      "test": "core/tests/podcast.rs",
+      "evidence": [
+        "S",
+        "L",
+        "I",
+        "R"
+      ],
+      "boundary": "Real 80-program radio includes four voices whose original radio differs; identity retained for permission/resume. Details and linked comments/download-dialog proof: .build/ui-proof/scene-fm-links-20261027-c/independent-audit.json"
+    }
+  ],
+  "native_proof": ".build/podcast-native-20261026-c/report.json",
+  "oracle": "core/tests/fixtures/podcast-official.json",
+  "new_ipc_commands": 3,
+  "ui_status": "Production UI verified at 1120x760 and after reopening at 760x540, with native playback, comments, plain audio download/local decode/delete and saved paused queue.",
+  "remaining": [
+    "Paid/audiobook/PLUS and trial sample coverage",
+    "Program NCM and transcript/lyrics",
+    "Skip intervals and playback history upload",
+    "Complete official M/21 and discovery block projection",
+    "Discovery/category/search desktop entries",
+    "Missing-detail unavailable program queue handling",
+    "Offline program-specific resume setting cache"
+  ],
+  "desktop_proof": [
+    ".build/ui-proof/podcast-20261026-d/complete.json",
+    ".build/ui-proof/podcast-20261026-d/complete-reopened.json"
+  ],
+  "social_proof": ".build/ui-proof/podcast-social-20261026-b/host-final.json",
+  "social_independent": ".build/podcast-social-independent.json",
+  "scene_fm_mapping": "docs/scene-fm-mapping.json"
+}

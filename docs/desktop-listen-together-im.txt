@@ -1,0 +1,99 @@
+一起听桌面原生消息连接与生命周期
+后续来源修正和接收增量见 core-listen-together-business-messages.txt：官方业务包来自
+nim_talk 的 msg_attach，不能把此历史批次的聊天室入房通知当成播放业务消息。
+2026-10-26。此增量将已实测的 NIM 传输接入正式 MusicClient、Tauri 和 Vue。
+完整目标仍 active；播放业务包归约、共同权限/实际双向播放器应用、RTC 等继续，
+realtimeReady 保持 false。绿色“消息连接已建立”只表示聊天室鉴权成功，不表示双方播放同步。
+
+一、原生配置与账号存储
+core/src/listen_together/transport/native.rs 实现 NativeFactory，调用上一批安全 FFI，
+不调用研究目录 Python/Node。SDK 应用配置来自官方 cloudmusic.dll 正式域分支，
+已以静态应用标识纳入原生源码；来源地址和哈希见 core-listen-together-native-im.txt。
+账号 IM token 每次连接重新通过 /api/middle/im/token/get 获取，不写入页面 DTO。
+数据库密钥由操作系统随机源生成16字节、编码为32位hex，在当前账号的 StateStore 事务内
+一次性创建/复用（nim-native-secret-v1/database-key），SQLite文件权限0600。
+SDK账户缓存放在当前应用状态目录 nim/SHA256(uid)/，目录权限0700。
+同一个用户的重新连接使用原数据库密钥；不同账号不共用密钥/缓存目录。
+
+MusicClient::with_native_im(path) 是独立 Rust 宿主入口，不依赖 Tauri。
+MusicClient::with_together_im_factory 是原生依赖注入边界，测试使用明确的可控连接设备。
+Tauri 正式启动优先读原生环境 CUMULUS_NIM_DIR，否则查应用资源目录 native/nim。
+未配置/未安装时保持 unavailable，普通单账号房间控制仍可使用，不假装已实时连接。
+SDK路径、应用标识、密钥均没有前端输入接口。没有自动读取 references 研究目录。
+当前环境的实际启动命令：
+CUMULUS_NIM_DIR=/abs/references/yunxin-sdk-research/linux-x64-10.9.75/lib \
+  CUMULUS_SESSION_DIR=/abs/authorized-PC-profile \
+  CUMULUS_DATA_DIR=/abs/isolated-app-state .build/target/debug/cumulus
+默认登录/应用数据路径仍遵循正式宿主配置；上面的已有会话只在显式设置时使用。
+SDK仍需明确安装/分发，Windows/macOS 尚未实测；不把库名选择当成三平台运行通过。
+
+二、线程、状态和重连
+transport/{mod,native,worker}.rs：异步监督任务负责获取账号令牌；阻塞线程拥有 SDK。
+状态为 unavailable/idle/connecting/entering/connected/reconnecting/failed/closing/closed。
+Login(step3,200) 后申请聊天室授权，Enter(step5,200) 才设置 connected；
+不根据 HTTP 200、回调链接成功或 UI 轮询推断入房成功。
+消息事件仍在 core 内，固定白名单 DTO 只给出连接状态、受限错误、接收计数与尝试次数。
+connection.received 统计当前聊天室的普通消息回调；通知回调不重复计入。
+
+监督器只重试令牌读取/消息连接，不重放房间创建、队列或播放控制写入。
+网络中断、token302、超时408、服务连接415、授权失效10001可重新取令牌并新建连接；
+最多4次，间隔2/4/6秒；被踢/禁止等明确失败留给用户恢复，不反复争抢其他设备。
+SDK LinkCondition=1 允许SDK自身恢复，保留45秒期限，重新鉴权后发布重连事件；
+LinkCondition=2 则关闭旧连接后重新取令牌/授权。连接、鉴权超时同样受45秒限制。
+房间解散/主动退出为终态，被管理者踢出或拉黑不自动重新加入；异常链接退出可重试。
+任何新连接前先等待旧连接的完整 cleanup，不允许两个账号/实例占用NIM全局状态。
+监听任务异常、清理失败有明确失败状态，不能留下假的 connected。
+
+三、与现有房间和播放器的衔接
+创建/显式继续本机控制时启动传输；重新连接入口等待旧任务退出，保持原房间、本机队列和
+退出前偏好记录，新的播放器监听器从当前快照开始，不主动重新发布队列/播放状态。
+入房/重新入房后只读 status/get 与 sync/playlist/get；不借重连清除未决写入或自动补发。
+收到当前chatRoomId的消息/通知按官方 M/75 onChatRoomMsg 重置20秒空闲心跳。
+旧账号、其他聊天室消息在工作线程和房间上下文两层校验；事件跨房间不会改变本机状态。
+聊天室退出会触发只读房间刷新，现有等待超时/房间失效机制继续处理REST状态。
+
+本批接收处理只包含传输状态、入房/退出刷新和消息到达心跳重置。
+没有把任意 SDK body 当作播放命令，尚未解析/应用20000 PLAY_COMMAND、20001 PLAYLIST、
+20002 USER_JOIN_IN、权益变化等业务包；没有声称另一端已经播放或共同权限已经验证。
+正式房间控制仍限制已实现的 waiting 单账号角色，避免把未接线的双方状态误当作可用。
+
+四、退出、取消与故障责任
+TogetherHost持有传输句柄；房间Runtime持有取消守卫，任务自然结束或被取消都会停旧SDK。
+正常退出/窗口关闭先完成原有REST核对和房间退出，再等待传输清理，最后恢复本机偏好。
+关闭失败不会伪装成功。SDK清理结果未知时保留原房间绑定/本机恢复责任，并在当前进程
+保留cleanup_uncertain；第二次关闭/恢复也不能把它误报为已清理。
+此原生清理未知分支需重启进程，当前没有“强制退出”页面流程；仍属于完整产品待补边界。
+低层账号代次切换会使旧传输终止；正常账号切换仍要求先处理一起听绑定。
+传输句柄Drop只发取消，不abort监督器；监督器必须等待阻塞SDK线程完成退出。
+
+五、界面与可执行证明
+frontend/src/components/TogetherPage.vue 显示连接状态、失败提示和“重新连接”。
+useTogether继续沿用账号/请求代次和未决写入限制；连接失败不会自动提交任何页面写入。
+正式IPC仍是together_view/together_command，新增reconnect枚举动作，不增加任意SDK调用口。
+界面轮询只读取本机状态；消息来自真正SDK回调，不能称轮询本身是实时信道。
+
+desktop/examples/together_ui_probe 使用正式WebView、Vue按钮、IPC、libmpv和NativeFactory。
+新增IM令牌只允许在已确认的本次单成员新房间中读取；不发邀请/聊天消息，仍限制写入次数。
+libmpv验证使用null输出，仍执行真实音频解码和进度，不代表已经实听扬声器。
+.build/ui-proof/together-im-20261026-a 首轮运行完成；新连接阶段因截图白名单漏项未落盘，
+保留原记录，不以其8张旧阶段截图代替新增连接阶段证据。
+.build/ui-proof/together-im-20261026-b 补齐截图记录：1120×760，连接收到入房通知，
+暂停后点击重新连接，再次入房/收到通知；阶段请求计数36→40，写入数始终4。
+随后完成丢播放成功回包→只读核对→重新同步、播放中归零、切歌、移除队列、模式、退出恢复。
+连接截图明确保留“好友实时同步尚未开放”；没有扩大实际能力声明。
+.build/ui-proof/together-im-20261026-c-close：760×540，连接和重连后执行真实窗口关闭；
+成功 end 回包被证明程序丢弃，窗口保留、显示未决及核对入口，只读确认后第二次关闭成功。
+仅一次 end 请求，SDK连接退出、本机绑定删除，连续两读无房间、未决0。
+b有11张阶段截图，c-close有7张；已人工查看正常连接页和最小窗口关闭失败页。
+最后生产代码只作Clippy嵌套if等价改写，宿主6项回归重跑；线上语义未改变。
+最终审计见 desktop-listen-together-im-mapping.json 和 .build/im-ui-independent.json。
+
+六、本地回归与后续范围
+im_transport 六项：真实工作线程生命周期、错误房间过滤、消息拷贝、等待清理、
+断线后关闭再取新令牌且不重放业务、账号切换丢旧消息、Runtime取消、清理失败、SDK自身重连及房间解散。
+client_together 新增两项：端到端宿主重连不重复上报、DTO不泄漏账号/token/body、
+退出等待清理；清理失败保留责任且第二次关闭不谎报成功。
+together_service 新增消息到达只重置当前账号/当前房间心跳，旧代次与错房间拒绝。
+前端新增失败连接必须显式重连测试，仍保留迟到请求/事件和关闭错误恢复测试。
+仍需补业务消息格式与归约、共同权限/播放器应用和队列恢复、RTC、邀请/其他一起听流程，
+以及全目标中的其余领域。实时双账号验证依用户决定暂排除，其余可做工作继续推进。

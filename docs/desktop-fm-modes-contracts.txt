@@ -1,0 +1,118 @@
+熟悉歌曲、专区漫游与桌面模式选择（2026-10-27）
+
+范围与当前结果
+独立 Rust 已接官方首页 FM 卡片、专区目录/分类与专区推荐队列；正式桌面通过
+fm_discovery、fm_view、fm_command 使用这些用例，前端不请求官方业务接口。
+熟悉歌曲继续使用 FAMILIAR；专区使用单独推荐接口，再取歌曲详情与权限。
+本批不把播客“场景 FM”、心动模式、相似艺人或完整专区页面算作已完成。
+此前私人 FM 播放/反馈/歌手屏蔽的证明继续见 desktop-fm-contracts.txt 与
+desktop-fm-feedback-contracts.txt。本批没有远端显式写入。
+
+官方来源
+references/netease-3.1.42.205594-analysis/recovered-js/modules/
+  hybrid_app.chunk.1482700000000.js/244.js：featureRecommend 卡片、sourceIds 透传。
+  同目录 15.js：qe/ja 首页入口、hg/Al 导航、ej/El 分类、dj/Nl 默认专区、Pg/Rl 推荐。
+  同目录 1211.js：专区导航/内容规范化、j 推荐后补详情。
+  同目录 120.js：按500首分批详情、默认 trialMode=-1。
+  同目录 1384.js：fmPlay/loadMore/switchTrack、模式状态、专区不补第二次短批请求。
+  同目录 91.js：私人FM=36、zoneMGC=121、default=-1。
+  同目录 485.js：default、RecommendHorizontal 等组件名。
+  hybrid_22.chunk.1482700000000.js/2986.js：分类失败/不匹配时回退默认专区。
+references/ui-recovery/sources/packages/pc/src/
+  pages/home-page/components/FeatureRecommend/SimilarSongCard.tsx
+  pages/home-page/components/FeatureRecommend/ZoneCard.tsx
+  pages/choice/verticalZone/conmponents/ZoneFmCard.tsx
+  pages/choice/verticalZone/views/PageVerticalZone.tsx
+以上为布局、卡片标题、专区导航和播放来源依据；本批未参考 YesPlayMusic。
+
+接口顺序和字段
+1. /api/pc/daily/rcmd/block {clientTime:"YYYY-MM-DD HH:mm:ss"}
+   读取 data.items。resourceType=fm 映射 Personal；similarSong 的 resourceId
+   原样映射 Familiar.source_id。zone 卡片读取 extData.firstFm.resourceId。
+   不把不认识的相似艺人/播客/日推卡片错误映射成音乐FM。
+2. /api/secondary/tab/list {}
+   data.hints 中 position.code=music_top_tab_full，读取
+   data.extra.nowChannelItems；排除 feature/playlist/chart/singer/vip/origin，
+   从 URL 的 page 查询参数提取 pageCode，名称使用 title；不打开或执行 URL。
+3. /api/zone/tab/get {pageCode,tabKey}
+   读取 data.currentTabContent、tabMetas。内容tabKey必须与请求一致；
+   服务错误/格式错误/不匹配时调用 /api/zone/get {pageCode}，取 data[0]。
+   301、过期账号或凭据变更不作普通回退。回退保留 defaultFallback=true，UI明示。
+   仅从 RecommendHorizontal 的 children/childrens 中提取 resourceType=fm。
+4. 熟悉歌曲：/api/v1/radio/get {imageFm:1或0,mode:"FAMILIAR",sourceIds:字符串}
+   真实官方卡片的 resourceId 是 JSON数组字符串，而非单个歌曲ID。
+   Rust原有仅单ID校验已修正；接受1..100个有效ID、总长不超过4096，保持原字符串。
+   单ID格式作为原有调用兼容保留。与普通FM一样，少于3首最多补一次请求。
+5. 专区：/api/tag/tab/fm/recommends
+   {ruleType:1,limit:3,ruleId,firstSongId:"",firstSongAlg:"",tabTagId:""}
+   返回 data 的 id/v 引用，再调用 /api/v3/song/detail
+   {c:JSON.stringify([{id,v},...]),trialMode:-1或显式参数}。
+   详情按推荐ID顺序关联，合并同ID privilege；缺详情的项不成为播放项；
+   多余返回歌曲不混入队列，详情失败不保存半份队列。空引用不请求详情。
+   官方专区不执行私人FM的短批补请求；队列去重、历史、黑名单与续曲共享原生协调器。
+6. 实际音源：/api/song/enhance/player/url/v1 由现有原生音源解析器调用。
+   Personal/Familiar trialMode=36；Zone使用显式值或121。
+   注意预载详情默认-1与实际播放默认121是官方两阶段的区别，不能合并硬编码36。
+   Zone显式参数当前限定-1/121；入口默认不传。未凭客户端字段扩大账号权益。
+
+状态与模块
+core/src/fm/discovery/{mod,api,normalize}.rs：查询、官方响应、账号缓存与并发互斥。
+fm-discovery-v1 按账号及完整查询SHA256隔离，保存查询、fetchedAt与规范化页面。
+请求结束重新核验账号代次；过期响应不写入旧/新账号缓存。读取缓存不发HTTP。
+core/src/fm/types.rs、api.rs、service.rs：Familiar种子/Zone来源及独立队列。
+队列仍为 fm-queues-v1，key包含完整来源；不同种子与专区不会串用队列。
+core/src/fm/player：使用各来源试听参数；多次FM模式切换仅保留最初普通队列备份。
+core/src/client/fm_discovery.rs：公开投影只保留安全图片CDN，清理查询串/片段。
+FmView.activeSource 提供实际FM来源，重启/重新进入页面跟随实际来源。
+Resume/Leave/Trash/Feedback 在抢占媒体前核对请求来源与实际来源；旧页面不能操作新模式。
+frontend/src/composables/useFmDiscovery.ts：先读缓存，再刷新；明确展示刷新失败。
+专区切换、账号切换、卸载按序号拒绝迟到结果。目录不参与1200ms播放状态轮询。
+useFm.select 取消旧页面/原因读取并预载所选来源；显式切换不会被旧activeSource覆盖。
+FmExplore.vue：服务端卡片、专区/子分类、加载/空结果/失败重试/默认回退；
+按M1211默认显示前5专区，“更多专区”展开其余。封面预览与播放图标分别处理，
+播放图标在成功预载且账号/来源仍一致后启动；旧账号卡片不得自动播放新账号。
+FmPage.vue：切换漫游入口、当前模式与原生播放控制；正式Tauri命令已注册并测试过期账号。
+
+可执行验收
+独立 Rust：
+  CARGO_INCREMENTAL=0 cargo build -p cumulus-core --example fm_modes_read --locked --offline
+  .build/target/debug/examples/fm_modes_read EXISTING_PC_PROFILE NEW_PRIVATE_OUTPUT
+实际 .build/private-fm-modes-20261027-a：12次白名单读取、2张首页FM卡片、40专区，
+首个专区1张FM卡片；熟悉歌曲/专区各3首，两个队列及目录重开相等且无额外HTTP。
+原始请求/响应、队列和SQLite保存在私有目录；independent-audit.json通过。
+
+真实桌面：
+  CARGO_INCREMENTAL=0 cargo build -p cumulus-desktop --example fm_modes_ui_probe \
+    --features custom-protocol --locked --offline
+  GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 CUMULUS_FM_PROFILE=EXISTING_PC_PROFILE \
+    xvfb-run -a -s '-screen 0 1280x900x24' dbus-run-session -- \
+    python3 desktop/examples/run_auth_probe.py NEW_ROOT \
+      --binary .build/target/debug/examples/fm_modes_ui_probe --stage-prefix mode_ --screenshots 8
+  上一命令同ROOT添加 --reopen --small --reopen-screenshots 3 可验证重启。
+独立检查：
+  python3 desktop/examples/audit_fm_modes_probe.py NATIVE_ROOT --native
+  python3 desktop/examples/audit_fm_modes_probe.py UI_ROOT [--reopen]
+Python仅驱动/截图/检查；所有业务、持久状态与实际播放器均来自正式Rust/IPC。
+探针只允许读取接口，禁止skip/trash/artist写入；不会自动邀请、付款或发布。
+
+已确认的差异和剩余范围
+- 目录当前放在私人漫游页“切换漫游”内；未完成官方首页全部卡片/专区完整页面。
+  封面预览与播放图标分离已接；完整首页入口和视觉对照继续。
+- 官方A/B分组控制入口；当前显示服务端实际返回的受支持FM卡片，优先分类接口，
+  有明确默认页回退。未迁移A/B入口门控、搜索传展示名的tabKeyName兼容路径。
+- 目录clientTime目前按UTC格式生成；官方DateSync客户端本地时区需进一步对齐。
+- 官方熟悉歌曲状态按模式索引；本实现按种子与模式隔离，防止不同入口互相覆盖。
+- 当前不声称完整像素一致，专区其他歌单/专辑/榜单模块仍属于后续发现页面工作。
+- “场景FM”是page:audio的声音播放链路，不纳入这两个音乐FM模式冒充完成。
+- 相似艺人、心动模式、跨设备黑名单事件、手动skip真实送达等继续；本批无反馈写入。
+- 只实测Linux的libmpv/null；不推导实体扬声器听感或Windows/macOS结果。
+
+最终桌面证据与检查结果
+.build/ui-proof/fm-modes-20261027-c-final：最小窗口first8阶段+reopen3阶段；
+.build/ui-proof/fm-modes-20261027-d-final：正常窗口first8阶段。合计19张截图，
+complete/capture和独立审计通过；c的independent-reopen-audit确认持久备份已退出清理。
+最终熟悉歌曲使用卡片播放按钮直接启动；专区使用封面预览后启动；两种入口均实际验证。
+目录默认5项，展开/收起实测40项；小窗口截图已人工查看。原普通队列全部entry顺序、
+12秒位置、专区EOF自动续曲及14秒暂停重启恢复均有原生/SQLite对应证明。
+当前Rust全量698次、前端96项通过，格式/Clippy/类型检查/正式桌面构建通过；
+日志与先前失败原因详见rust-core-validation.txt。本报告不是全目标完成声明。

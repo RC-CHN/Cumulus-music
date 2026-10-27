@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "goal_complete": false,
+  "sources": {
+    "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/1384.js": "1436e04e398744bd85857aed562bffc88513ee3b9eb49582f5519e5ebb243111",
+    "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/12.js": "da570de13fd15b094bc6898cebb51273b2ee0e2b1d9ab39398a61717db732176",
+    "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/15.js": "8ec4bf8d343f6963860eb73bc59ca09f0dd1ae50db2608a6c5abc7d69a0b521a",
+    "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/402.js": "c759837f6de9c3f6b108edd1b9c22da8202d8cf7bb861f58454f7f4b9a054a37"
+  },
+  "mapping": [
+    {
+      "official": "M/1384 authenticated api301$ subscriber",
+      "rust": "core/src/account/login_policy/legacy.rs",
+      "tests": [
+        "core/tests/login_legacy.rs",
+        "core/tests/client_login_policy/legacy.rs"
+      ]
+    },
+    {
+      "official": "M/15.Hd -> M/12 factory -> M/402 response gate",
+      "rust": "core/src/account/session/legacy_api.rs",
+      "endpoint": "/api/middle/account/token/refresh",
+      "payload": {},
+      "context": "ordinary PC EAPI, no JSK fields"
+    },
+    {
+      "official": "M/1384 action2 followAction1 -> clearCurPlayingList",
+      "rust": [
+        "core/src/account/session/invalidation.rs",
+        "core/src/playback/queue/reset.rs",
+        "core/src/account/credentials.rs"
+      ],
+      "community_differences": [
+        "account-isolated queue",
+        "two-store durable plan and completion receipt",
+        "newer queues preserved"
+      ]
+    },
+    {
+      "official": "host/logout and removeGuide",
+      "ui": "frontend/src/App.vue",
+      "native": "core/src/account/session.rs",
+      "community_differences": [
+        "local credential invalidation only",
+        "immediate relogin entry",
+        "RAII releases rejected/cancelled validation lock"
+      ]
+    }
+  ],
+  "official_oracle": "desktop/tests/login_legacy_official.cjs",
+  "gui_probe": "desktop/examples/login_interception_ui_probe.rs",
+  "independent_audit": "desktop/examples/audit_login_interception_probe.py",
+  "anonymous_host_migrated": false,
+  "real_account_expiry_forced": false,
+  "yesplaymusic_used": false,
+  "response_code_normalization": "M/402 parseInt(code,10) before both 301 interceptors"
+}

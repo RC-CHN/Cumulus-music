@@ -1,0 +1,117 @@
+本地滤波、均衡器、PEQ与材料参数的 Rust 接口
+2026-10-26；接续core-effects-ncae.txt。完成已恢复组件的安全FFI与材料解释器，
+未完成完整音效图、实时播放器接入及音效UI，完整桌面goal保持进行中。
+后续旋转/多段动态迁移及C安全补强见core-effects-spatial.txt；下文对照数保留本批历史口径。
+
+来源和迁移
+归档恢复代码 references/recovered-client/scripts/netease_dsp.c，官方源为
+neaudioeffects.dll x64 3.1.42.205594。细节及原生地址见产品报告34、35、36。
+材料解释器以cloudmusic.dll EFC380（PEQ）、EF87E0（旋转）、EFF390（空间）为依据，
+配合netease_peq_material.py、netease_spatial_material.py与报告36、37。
+未使用YesPlayMusic；C函数是已恢复独立实现，不是原始C++源码或官方DLL。
+
+core/native/effects/netease_dsp.c保存正式C实现；本批初始bridge.c只提供布局查询。
+本批初始C差异为三处SSE条件扩展到MSVC的_M_X64/_M_IX86_FP，算术和状态逻辑不变。
+后续多段动态批次另补极端float转整数范围检查及系数预检，当前源码差异见native目录README.txt。
+core/build.rs通过cc编译C11/O2，GCC/Clang禁用fast-math/FMA收缩，MSVC使用/fp:strict。
+本机Linux x86_64已编译运行；Windows/macOS/ARM没有本批实际构建或数值证明。
+正式静态库不带官方DLL/参数素材，也不调用Python；运行无需references/。
+
+Rust组织
+effects/dsp/block.rs：Format和16字节对齐PlanarBlock，交错/平面缓冲转换。
+effects/dsp/state.rs：C布局查询、独立分配/释放、暂存干声、处理前检查与失败隔离。
+effects/dsp/ffi.rs：私有C声明，不向业务或前端暴露原始指针。
+effects/dsp/filter.rs：两套有区别的滤波器枚举、Coefficients、Biquad。
+effects/dsp/graphic.rs：GraphicEq、BassTreble与低高音参数。
+effects/dsp/parametric.rs：九槽ParametricEq、总增益和LFE处理。
+effects/material.rs：PEQ/旋转/空间片段解析，显式片段枚举及安全PEQ应用。
+
+内存与线程契约
+所有状态由Rust独占分配，大小/对齐由同一C编译单元返回，Drop使用同一Layout释放。
+这四类状态均只含内联数值，无堆指针、回调或线程归属；允许Send转移，禁止Sync共享，
+变更和处理都要求&mut。C不持有Rust缓冲区指针，不发生跨线程回调。
+Format范围8000..384000Hz、1..8声道、每声道容量1..4096帧。
+PlanarBlock始终包含channels*capacity个float；逐声道stride为capacity，
+不是valid_frames。干声缓冲在初始化时分配且不与输入重叠；process不再分配堆内存。
+容量/采样率/声道不匹配、valid_frames超界、输入含NaN/Infinity时，在调用C前拒绝，
+不推进DSP状态。参数更新由C先验证后提交；PEQ整份材料计划另在Rust预验证后才应用。
+有限输入运算溢出产生非有限输出时，当前整块清零并锁定该级；后续处理要求重建。
+Biquad提供显式reset清历史；其空输入直接返回，不把空切片的悬空指针交给C。
+这是社区边界的错误隔离，不能把畸形参数路径宣称为官方逐位等价。
+
+保留的官方行为
+1. GraphicKind 0..8与ParametricKind 0..10不是同一枚举。GEQ峰值的三角函数/快速幂
+   和参数EQ的成对正弦/powf不同；没有换成通用均衡器公式。
+2. Biquad按指针16字节对齐处理标量头部、四采样矩阵和尾部，修改系数保留历史，reset清历史。
+3. 十段GEQ按恢复的搁架端点和中间八段构造。全零参数不是强制位流直通。
+4. BassTreble默认低搁架120Hz、中间峰值2000Hz、高搁架5000Hz；低高音增益裁到±24dB。
+5. PEQ九槽，前三槽默认启用。类型0/1/4/5不使用Q，允许有限的0/负Q；其他类型要求正Q。
+   总增益和段增益裁到±24dB。dirty参数在有效音频处理时更新并保留历史。
+6. 开关只记录目标状态；从旁路重开清滤波历史。状态边沿按完整capacity做干湿混合，
+   valid_frames为0也可能触发整块混合。不能只给有效帧分配内存。
+7. 外层处理临时设置SSE FTZ，处理后恢复原FTZ位，再做混合；其他舍入/DAZ位不变。
+8. PEQ输出增益的四采样前缀和1..3帧尾部用不同坡度起点，按官方顺序保留。
+9. 含LFE且初始化时排除它，滤波声道数保持固定；后续processLFE只改变输出增益路由。
+
+材料解释器与应用边界
+on必须为bool；缺失/错误类型视false。关闭时仅发最终关调用。
+PEQ开启时先发可用总增益，再读f的前九个位置；非对象项占位置但不发调参。
+循环前默认band0/type1/freq80/gain0/q0/on=true；缺失或错类型字段沿用前一项的局部值。
+band/type仅接收int32再转u32，负值保留回绕；数值参数转float32，布尔不是数字。
+最终才发开关。过大数值转float32非有限时额外拒绝，不交给DSP。
+apply_peq先校验整份计划，band>=9按官方外层忽略；其他无效类型/参数拒绝且不留半份更新。
+旋转片段默认velocity20；空间片段默认presence0/stereoizer0/sshaper=false/ambience0，
+依官方数字/布尔/int32类型规则提取。这里只解释调用，不声称旋转或SE声音已接入。
+
+peq_sections枚举顶层peq和aev2.peq；不做整机引擎选择。官方旧分支没有读取顶层peq，
+因此显式选择顶层peq做组件渲染不能当作官方完整预设效果。
+spatial_sections遵循静态恢复的EFB760规则：aev2是对象时只取其se/rotate，
+即使aev2为空也不回退顶层片段。完整材料效果图及其状态仍待迁移。
+
+本轮直接官方对照
+生成器references/recovered-client/scripts/netease_dsp_rust_vectors.py校验两份DLL整文件哈希，
+用已有审查过的隔离宿主执行官方函数，不初始化DLL、不修改机器码、不读取登录态。
+1763次原生调用产出1622组DSP向量和51组材料解释器样本：
+  648组九类GEQ系数；792组十一类参数EQ系数；
+  9组滤波器连续流（地址对齐、重新设参和重置）；
+  28组GEQ外层和28组低高音流（采样率/声道/容量/空块/开关/FTZ）；
+  117组PEQ流（全部11类型×9槽、九槽连续变化、输出增益和LFE）。
+仅合成输入/输出压缩保存在core/tests/fixtures/effects-dsp-official.json.gz，
+manifest记录源文件及DLL哈希。Rust测试无需Python/官方DLL即可复核这些输出。
+Linux x86_64上除GEQ外层外要求逐字节相同；GEQ沿用原恢复证据的2e-6绝对误差上限。
+其他架构的测试代码提供2e-6数值门槛，但未在本批执行，不能由此宣称跨架构已通过。
+
+11项新增Rust测试还覆盖：整份计划失败不改既有状态、非法缓冲/PCM/参数拒绝不推进历史、
+材料现代分支与片段枚举区别、交错转换/零填充、溢出隔离和向音频线程转移所有权。
+540块C地址/未定义行为/泄漏检查覆盖三类外层、1/2/8声道、容量1/3/13/256/4096和开关。
+首次LeakSanitizer因沙箱ptrace环境自身失败；沙箱外相同程序的完整检查通过，未关闭泄漏检查。
+
+实际可执行组件流程
+core/examples/effect_dsp_render.rs为独立Rust程序，使用正式Rust接口；
+support/effects_dsp_wire.rs只是有界本地探针协议，不是生产业务实现。
+运行：cargo build -p cumulus-core --offline --locked --example effect_dsp_render
+程序从stdin读取协议数据，stdout输出小端float32平面PCM或材料调用JSON。
+模式coeff/peq-coeff/biquad/bt/geq-outer/peq供本地研究/回归；非网络接口。
+material-peq/material-rotate/material-stereo输入JSON片段并输出类型化调用。
+material-render INPUT.ncae SECTION从本地NCAE直接解码、选明确片段、解析、应用到PEQ后处理PCM，
+不通过Python，不推断整份效果图；SECTION须显式为peq或aev2.peq。
+material-render输入四个u32：采样率、声道、容量、块数；每块为valid_frames u32和完整
+channels*capacity个float32。输出保留整块容量；生成音频文件时只取有效帧。
+
+.build/verify_effects_dsp.py核验最终Rust产物，按原官方输入重建五份真实NCAE的六个PEQ片段，
+将新Rust完整链路的101376个PCM采样与归档的原生PCM SHA256逐字节核对。
+同时保留当前实际执行报告，历史Python通过数不充当本轮Rust通过数。
+导出.build/effects-dsp-proof/peq-component.wav，以FFmpeg解码再对照全部float32字节。
+这份合成音频只处理PEQ组件，不是整份预设、播放器接入、声卡或听感验收。
+最终结果及哈希见effects-dsp-mapping.json和.build/effects-dsp-audit.json。
+
+故障记录和未完成项
+首次探针链接因磁盘耗尽失败，保留effects-dsp-example-build.log；清理的仅是本项目
+54GB左右可重建incremental缓存，释放字节记录在effects-dsp-cache-cleanup.json。
+随后修复本轮探针文件的截断和重复片段，旧源码逐文件与上一批审计哈希核对；
+失败快照/编译日志保留，最终重新格式化、编译、测试和检查。后续本批构建禁用增量缓存。
+本批没有新增账号请求、UI或硬件输出检查。旋转/多频段动态C、参数合成器、API/权益生命周期、
+逐歌/模型资源、真实播放器处理链和音效界面继续。完整SE/混响和情绪推理保留原研究未恢复边界。
+
+后续增量：十段GEQ已通过core/audio-filter接入MpvEngine实际PCM链，
+详见core-equalizer-playback.txt；其他节点、完整图与音效UI仍待接入。

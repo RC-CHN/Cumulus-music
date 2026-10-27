@@ -1,0 +1,10 @@
+{
+  "source": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_53.chunk.1482700000000.js/3091.js",
+  "source_sha256": "7122e33204e0d7ff2a73fe8ea6af6fa3d12e557868d1e9bc4741b7d107dc9a55",
+  "generator": "references/recovered-client/scripts/netease_equalizer_presets.cjs",
+  "generator_sha256": "bdb1f7a31c583a4ad364f54dc0f18c639d4f28627db1165c3c2504e6af56d023",
+  "count": 24,
+  "target": "frontend/src/data/equalizer-presets.ts",
+  "target_sha256": "90427f903f7db93d6f553e46e0422e439a648a1aeb99cdc663f250c0255846a3",
+  "runtime_uses_archived_js": false
+}

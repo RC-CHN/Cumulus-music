@@ -1,0 +1,144 @@
+{
+  "date": "2026-10-27",
+  "full_goal_complete": false,
+  "full_podcast_complete": false,
+  "official_first": true,
+  "yesplaymusic_used": false,
+  "contract": "docs/desktop-scene-fm-contracts.txt",
+  "sources": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_204.chunk.1482700000000.js/3004.js",
+      "sha256": "f527cd6026e16774414fb71c14545b6f779835c5b4af93cc610da92684affce8"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/597.js",
+      "sha256": "a71928b759ff746d2db3a1e87226328839cf3e50a4e159ff1e49b6ebd5f59642"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/15.js",
+      "sha256": "8ec4bf8d343f6963860eb73bc59ca09f0dd1ae50db2608a6c5abc7d69a0b521a"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/116.js",
+      "sha256": "bbd6dc0c11593e06ed31bae9629b403d30ecfc63cf47eb68353cdc2c83edc49f"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/audio/components/SceneFm.tsx",
+      "sha256": "ab20ba799092e7f88360f76c01243b7e242dc488355ead63ab0449219c68888f"
+    },
+    {
+      "path": "references/recovered-client/docs/product/models/historyList.txt",
+      "sha256": "c69dc360cf9046a46ad870b329a3357a30b009339163030b8b99473ab6f73895"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_scene_fm_oracle.cjs",
+      "sha256": "01b9c4c08bed7cc61496b720c6e57c0f03fa82abc78f70b40394c34ae010c24c"
+    }
+  ],
+  "items": [
+    {
+      "id": "scene_directory_and_lazy_programs",
+      "official": "M597.l/m; M15.hb/Pi; M3004 requestSceneFm/changeSceneFmActive",
+      "rust": [
+        "core/src/podcast/scene/api.rs",
+        "core/src/podcast/scene/service.rs"
+      ],
+      "evidence": [
+        "core/tests/scene_fm.rs",
+        ".build/private-scene-fm-20261027-b-final/independent-audit.json"
+      ],
+      "status": "native_local_and_live_read_passed"
+    },
+    {
+      "id": "unheard_and_whole_voice_queue",
+      "official": "M3004 first locally unheard/fallback first; forceClear voice playAll; historyList local database",
+      "rust": [
+        "core/src/podcast/scene/types.rs",
+        "core/src/podcast/scene/service.rs",
+        "core/src/podcast/progress.rs",
+        "core/src/playback/controller/state.rs"
+      ],
+      "evidence": [
+        "core/tests/fixtures/scene-fm-official.json",
+        "core/tests/scene_fm.rs",
+        "core/tests/client_scene_fm.rs"
+      ],
+      "status": "official_8_cases_and_native_tests_passed"
+    },
+    {
+      "id": "playback_state_and_recovery",
+      "official": "M3004 playSceneFm/syncActiveFmFromPlaying; community durable revision and account fence",
+      "rust": [
+        "core/src/client/scene_fm/actions.rs",
+        "core/src/client/scene_fm/view.rs",
+        "core/src/client/focus.rs"
+      ],
+      "evidence": [
+        "core/tests/client_scene_fm.rs",
+        "core/src/client/focus.rs",
+        ".build/ui-proof/scene-fm-20261027-j-final/independent-audit.json",
+        ".build/ui-proof/scene-fm-20261027-k-final/independent-reopen-audit.json"
+      ],
+      "status": "native_tests_and_live_desktop_playback_reopen_passed"
+    },
+    {
+      "id": "desktop_entries_and_state",
+      "official": "SceneFm.tsx cover/voice/radio/slider; M116 default disabled",
+      "rust": [
+        "desktop/src/podcast.rs"
+      ],
+      "frontend": [
+        "frontend/src/services/sceneFm.ts",
+        "frontend/src/composables/useSceneFm.ts",
+        "frontend/src/components/SceneFmPage.vue",
+        "frontend/src/App.vue"
+      ],
+      "evidence": [
+        "frontend/tests/scene-fm-state.test.ts",
+        "desktop/tests/ipc.rs",
+        ".build/ui-proof/scene-fm-20261027-j-final/independent-audit.json",
+        ".build/ui-proof/scene-fm-20261027-k-final/independent-reopen-audit.json"
+      ],
+      "status": "native_tests_and_live_desktop_playback_reopen_passed"
+    },
+    {
+      "id": "linked_radio_comments_download_dialog",
+      "official": "SceneFm.tsx voice/radio links; M15.Et preserves cross-radio program identities",
+      "rust": [
+        "core/src/podcast/api.rs"
+      ],
+      "frontend": [
+        "frontend/src/App.vue",
+        "frontend/src/components/SceneFmPage.vue"
+      ],
+      "evidence": [
+        "core/tests/podcast.rs",
+        ".build/ui-proof/scene-fm-links-20261027-c/independent-audit.json"
+      ],
+      "status": "native_and_live_desktop_entries_passed",
+      "limits": [
+        "Download dialog opened and cancelled; no new download task in this proof"
+      ]
+    }
+  ],
+  "limits": [
+    "Fixed gradient; official cover color extraction still to migrate",
+    "Standalone page; complete audio discovery homepage and voice detail/vinyl remain",
+    "No remote history upload or cross-device relay proof",
+    "Real libmpv/null on Linux only; no Windows/macOS acceptance",
+    "Automatic start additionally protects loading/video/together and is scoped per account session"
+  ],
+  "validation": {
+    "rust_tests": 711,
+    "frontend_tests": 102,
+    "official_model_cases": 8,
+    "final_screenshots": 21,
+    "explicit_remote_writes": 0,
+    "native_proof": ".build/private-scene-fm-20261027-b-final/independent-audit.json",
+    "desktop_proofs": [
+      ".build/ui-proof/scene-fm-20261027-j-final/independent-audit.json",
+      ".build/ui-proof/scene-fm-20261027-k-final/independent-reopen-audit.json",
+      ".build/ui-proof/scene-fm-links-20261027-c/independent-audit.json"
+    ]
+  }
+}

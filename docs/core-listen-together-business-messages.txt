@@ -1,0 +1,73 @@
+一起听业务消息来源与原生接收链路
+2026-10-26；增量记录，完整目标仍 active。
+
+后续增量：20000播放应用、20002权威角色读取和持久失败恢复已继续接入，详见
+core-listen-together-incoming-playback.txt。本文件“本批”保留消息来源恢复阶段的历史边界。
+
+关键纠正
+云信聊天室登录、入房、收到 msg_type=5 入房通知，只证明聊天室传输可用。
+官方 im.onChatRoomMsg 这一前端事件名称不能反推它来自 nim_chatroom 的消息回调。
+本次沿 nim_wrapper.dll -> cloudmusic.dll -> M/75 完整追踪，确认一起听业务入口来自
+nim_talk_reg_receive_cb 和 nim_talk_reg_receive_msgs_cb，取 IMMessage.attach_（msg_attach）。
+不是 msg_body，不是聊天室通知的 msg_attach，也不是任意 JSON 递归搜索出的 type。
+旧报告的“未收到播放业务包”结论保留；不能据此断言服务端不会向单账号推送业务消息。
+
+官方二进制证据
+所有地址均为本次恢复版本的静态地址。详细地址、二进制哈希与字段关系见
+references/yunxin-sdk-research/native/business-message-evidence.json。
+nim_wrapper.dll 注册点 RVA 0x3902/0x39ce，分别将 0x63b0/0x6340 绑定到普通/批量接收；
+0x19b40/0x19d60 动态加载对应 nim_talk API。
+IMMessage 解析器 0x1b870：msg_body 写入 +0x58，msg_attach 写入 +0x80。
+单条接收 0x63b0 读取 +0x80；批量接收 0x6340 读取链表节点 +0x90（节点数据偏移+0x10），
+都调用接收者 vtable+0x60。
+cloudmusic.dll 的该槽为 0x1812ac570，复制字符串并投递到 0x1812aa140；
+后者调用监听者 vtable+0x08，对应 0x180f5a060，形成 im.onChatRoomMsg 的 msg 字符串。
+前端 M/75 原文 JSON.parse(e.msg).content，再按 type/content 分派。
+原生桥里的 roomid 来自控制器当前房间，不能代替消息本身的房间归属证明。
+这些证据只读反汇编取得；没有执行官方 Windows 包，也没有使用 YesPlayMusic。
+
+Rust 实现
+core/src/listen_together/native_im/ffi.rs 新增准确的三参数 TalkCb ABI 和两个接收注册口。
+callbacks.rs 在原有不可复用 cookie/Weak 注册表、安全复制、限长、非阻塞队列边界内接收。
+只保留已恢复的一起听附件：普通聊天正文、发送者元数据、未知类型均不会进入业务事件。
+原始输入和批量输入按 SDK 官方 ParseReceiveMessage 兼容；有 content 外层时须 rescode=200。
+无外层的原始消息对象也支持；不将正常聊天 msg_body 作为业务附件后备入口。
+解析错误/未知附件不触发播放或房间写入；输入仍受单次1MiB及serde递归限制。
+ImEvent::Business 与 RoomMessage 均无 Serialize，Debug 隐去身份及内容。
+
+message.rs 精确解码以下 type：
+20000 PLAY_COMMAND，20001 PLAYLIST，20002 USER_JOIN_IN，20003 END_LISTEN_TOGETHER，
+20004 VIP_GIVE，20005 DIGITAL_GIVE，20006 VIP_STATUS_CHANGE，20008 HEARTBEAT，
+20009 DISTANCE_CHANGE，20010 STATISTICS_CHANGE，20011 DIGITAL_STATUS_CHANGE，
+20012 PRIVILEGE_STATUS_CHANGE，20013 EMOTICON_SEND。20007没有恢复定义，不擅自填充。
+transport/worker.rs 仅将 content.roomId 与当前音乐房间相等的消息传给房间 Runtime。
+不同房间、缺少房间ID、旧账号代次被隔离；接收计数只增加实际通过过滤的业务条目。
+运行上下文再次校验房间，并按 M/75 重置20秒空闲心跳。
+目前缺 roomId 的业务消息会被正式宿主丢弃；需继续恢复其他可证实的归属方式或取得真实样本，
+不能为了“支持”而把控制器当前房间直接套到排队的旧消息上。
+
+本批实际验证
+.build/together-business-im-20261026-a 是新增接收回调后的真实SDK证明。
+同一隔离单成员新房间两次登录/入房（同进程重开），登录step3=200、授权200、入房step5=200。
+27个HTTP请求；4次业务写入：create、REPLACE、PAUSE、end各1。
+完成队列和暂停写入后观察45秒；仅收到聊天室入房通知，普通/批量一起听业务包0。
+SDK关闭/幂等关闭成功；连续两读无房间，4条持久操作均确认，未决0。
+因此本批证明接收符号加载、注册、已有传输生命周期和隔离业务控制不回归；
+没有把“已注册回调”算成线上业务消息接收或双方同步验证通过。
+
+本地验证
+新增附件解码测试：错误层级、字符串/超范围类型、不明类型、空内容、JSON错误、
+单条/批量/无外层消息、失败rescode、普通聊天正文不会冒充业务附件。
+新增真实 C ABI 回调调用测试：输入销毁后副本有效，退役 cookie 不读迟到指针，Debug不泄漏。
+新增工作线程测试：批量消息中的旧房间/缺ID条目被丢弃，仅当前房间消息送达。
+全workspace Rust493项（core490/desktop3），70条suite、67条非空，0失败/忽略；
+本次 cargo test --workspace 未运行只有零测试的 example targets，不能与之前107条suite混写。
+所有target仍经cargo check/Clippy编译检查。前端未改，沿用上一批61项与真实UI证据。
+日志与独立审计见 listen-together-business-message-mapping.json。
+
+仍需继续的业务处理
+本批只把正确的接收源、类型解码、房间过滤和心跳接线落地。
+20000播放归约与实际播放器原子应用、20001队列版本/共同权限、20002成员角色变化、
+20003退出及本机恢复、20006/20011/20012权益刷新、20008进度上报、礼物展示仍待完整接线。
+RTC、邀请/接续和其他全目标领域继续；realtimeReady仍false。
+实时双账号验证仍依用户要求暂排除，其余缺口不能据此豁免。

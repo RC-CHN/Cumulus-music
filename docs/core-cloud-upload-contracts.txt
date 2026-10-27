@@ -1,0 +1,162 @@
+Rust 云盘上传父任务、附件与发布恢复
+2026-10-26；完整桌面目标继续进行。本文件覆盖独立core用例；后续云盘UI/调度/删除证据见desktop-cloud-contracts.txt。
+
+依据与组织
+优先依据官方 cloudmusic_util.exe 的 audio_upload_task/FileMd5Check/MetaInfo、
+官方 M/78 上传参数、M/3127 async:cloudList、M/21 mst 枚举、M/15 云盘接口。
+详细原生RVA与历史线上记录见 references/recovered-client/docs/product/15-cloud-upload.txt、
+24-cloud-attachments.txt；对照实现 cumulus_core/cloud.py、cloud_attachments.py、upload.py。
+没有调用归档Python或引入YesPlayMusic逻辑。实际媒体探测使用明确的跨平台ffprobe适配器。
+
+core/src/cloud/upload/：
+  types       私有Task/Attachment日志、阶段、时钟接口、公开视图和用户参数。
+  manager     账号代次绑定、持久化、输入准备、只读视图和远端写入意图。
+  run         主阶段推进。
+  transfer    实际channel分派、NOS/OSS子任务接入、OSS同对象凭证替换与只读核对。
+  attachments 封面/文本输入验证、附件分配、可恢复子任务及docId完成前置条件。
+  publication 原生元数据、编码轮询、发布、账号列表回读和只读核对。
+  controls    持久暂停/继续/取消、在途写边界和对象令牌续期。
+底层 cloud/nos/ 的传输、断点与首片/末片未知写规则见core-nos-upload-contracts.txt。
+cloud/oss/ 的签名、CRC64、并发分片、恢复与实际线上边界见core-oss-upload-contracts.txt。
+
+公共接口
+CloudUploads::new(session) 使用原生reqwest NOS/OSS、ffprobe、系统时钟；
+NOS默认256KiB分片，OSS默认1MiB与3路并发。
+with_adapters 允许宿主提供明确的探测器、传输、时钟、分片大小；不依赖Tauri/AppHandle。
+create(path, AttachmentInputs{cover,lyric,cue}) 在本地准备并保存任务，不调用账号写接口。
+get/list 返回 CloudView；run(id, CloudRunOptions{chunk_budget,retry_rejected}) 推进任务。
+async control(Pause/Cancel)、resume、renew_token、reconcile_publication 分别为显式业务动作。
+replace_oss_credentials仅接受合法的同对象新STS元组；reconcile_transfer只读核对OSS未知完成。
+get/list中CloudView.transfer带transport=nos/oss及对应脱敏进度/Pending，凭证不传给前端。
+分片预算按当前各个音频/附件子任务计算，沿用归档适配器行为，不代表全文件字节预算。
+宿主在原生工作线程调度run，按next_check_ms安排等待，切页不应重建业务状态。
+
+账号与输入
+服务绑定构造时SessionToken；同UID再登录也使旧实例失效，迟到请求不能更新新会话。
+任务命名空间cloud_uploads_v1，控制命名空间cloud_upload_controls_v1；按账号隔离。
+每个父任务有跨进程操作锁，不能并行推进同一个任务。网络await不持有SQLite事务锁。
+源文件规范路径、长度、MD5/SHA256持久保存，最多512MiB，须非空普通文件。
+ffprobe读取格式、标题、歌手、专辑、码率；探测前后复核输入未变。
+官方上传分支排除NCM，本实现明确拒绝.ncm或探测为ncm的输入，不自动解密再上传。
+create/hash/probe在spawn_blocking中运行；run前和元数据提交前复核音频及未完成附件。
+相同路径换了内容不能继续旧任务；更换输入必须新建任务，不能套用旧MD5/上传票据。
+
+完整主状态
+Queued → Checked → AllocationPending → Allocated → AudioUploading → AudioUploaded
+→ AttachmentsUploading → MetadataPending → Encoding/ReadyToPublish
+→ PublicationPending → Published → Complete。
+音频去重分支 Checked → AudioUploaded；仍继续附件、元数据和发布，不能跳到Complete。
+另有Failed（明确服务拒绝/编码失败）与Cancelled（本地停止，不能表示已删远端对象）。
+Pause是独立持久控制事实，不覆盖正在进行的业务阶段；继续保留恢复所需的全部状态。
+
+1. 校验 POST /api/cloud/upload/check
+   md5小写十六进制、length数值、fileName文件名、checkMute=false。
+   读取needUpload布尔与songId上传票据。上传票据按不透明字符串保存，不当作数字歌曲ID。
+   官方证据U:0x833c0、0x703c0；原研究真实票据曾为128字符。
+2. 分配 POST /api/whale/token/alloc
+   filename、type=audio、bucket=jd-musicrep-privatecloud-audio-public、bizKey=9af6516d、
+   md5、channel=3。bucket/bizKey来自官方常量；md5为历史验证兼容参数，不冒称原生逐字恢复。
+   必须依据响应channel分派：1接NOS，3接OSS；保存分配结果，不重新分配。
+   不丢弃分配结果重新分配，也不因请求channel=3强制采用OSS；其余值明确停止。
+3. 对象传输
+   父任务ID在create时保存，音频子ID固定为<parent>-audio，附件为-cover/-lyric/-cue。
+   音频可为NOS/OSS；附件仍为NOS，各自进度与未知结果按实际后端处理。
+   已建子任务但父阶段提交失败时，重开重新接入同一子ID；不清零或重新分配。
+   子任务Uploaded后才推进父任务；子已完成但父提交失败时重开不再发送媒体。
+   音频使用原始字节/application/octet-stream；附件使用已验证实际MIME。
+4. 元数据 POST /api/upload/cloud/info/v2
+   md5、songid=原上传票据、filename、bitrate=本地bit/s数值；可选resourceId、
+   objectKey=<bucket>/<原key>、song、artist（首位歌手）、album。
+   这里objectKey必须带bucket前缀，与对象传输中的裸key不同；历史漏前缀曾真实返回409。
+   只有已收到完整上传确认的附件才能传coverid/lyricid/cueid；lyricid同时附带lyrictype=lrc。
+   本接口在现有HTTP层保留原生JSON类型；不把bitrate或header对象按前端接口规则转成字符串。
+   响应songId/privateCloud.songId是编码后的目录ID，须为正数标识；两个都给出时必须一致。
+5. 编码 POST /api/v1/cloud/music/status
+   元数据exists=true或privateCloud.simpleSong.mst=9可直接ReadyToPublish。
+   否则保存Encoding与next_check_ms；按songIds读取statuses[id].status/waitTime。
+   0/1继续等待，9成功；其他数值保存编码失败，不能自动重新传输/发布。
+   等待时间限制0.5至60秒，由时钟接口确定绝对毫秒时间；未到时间run不发送轮询请求。
+6. 发布 POST /api/cloud/pub/v2
+   songid为编码后的目录ID，接受200或201；必须确认privateCloud.songId为同一ID。
+   响应缺失/错ID保持PublicationPending，不能把任意200当作本曲发布完成。
+7. 回读 POST /api/v1/cloud/get
+   沿用完整分页读取；缺页、空非末页或重复页返回错误，不将部分列表当作全量结果。
+   确认账号列表中同一songId后才保存Complete及私有account_item。
+   已确认发布但列表暂缺项时保持Published并至少等待1秒，不反复调用发布接口。
+
+附件规则
+可选显式Cover、Lyric、Cue，按此固定顺序处理；每种最多一个，1字节至4MiB。
+Cover扩展名jpg/jpeg/png，按内容验证JPEG/PNG完整性及尺寸，保留原始字节和真实MIME。
+Lyric仅.lrc、Cue仅.cue；拒绝krc1容器及无UTF16 BOM的含NUL输入；保留BOM/旧编码原字节。
+官方U:0x6ef90发现附件，0x74c8a/0x74f4b提取docId，0x819c0构造绑定字段。
+注意：已恢复的该官方音频调用点虽发现CUE，实际传空cueid；显式CUE上传是已研究的社区扩展。
+
+POST /api/nos/token/alloc：filename、ext、type（封面image，文本other），不猜测指定bucket。
+响应data/result须有bucket/objectKey/token/正数docId，转换为channel=1、resourceId=docId。
+各附件独立保存 Queued → AllocationPending → Allocated → Uploading → Uploaded；明确拒绝为Rejected。
+如果文本被分配到yyimgs，只保存Allocated与image_only_bucket_for_text；不发送文本，
+不重分配、也不越过附件去提交音频元数据/发布。这保留原研究实际失败边界。
+成功响应docId缺失/0/无效时保留未知分配状态；不能伪造一个docId给后续元数据接口。
+Cover/LRC/CUE的模型流程可验证字节和绑定字段，不等于这些分支都已获真实服务支持。
+
+故障、控制与恢复
+分配、附件分配、元数据和发布在发送前保存Pending，意图提交失败则0次对应远端请求。
+明确Error::Service保存Failed/Rejected与可重试的前一阶段；默认run拒绝重试，
+仅显式retry_rejected=true恢复该阶段，不重新发送前序已成功的分配、媒体、元数据。
+编码失败没有retry_phase，显式retry也不能无依据重新发布。
+网络/HTTP异常、成功回包不完整、响应后数据库提交失败均保留Pending。
+重开不能自动重发；父任务Pending返回MutationUncertain，已知publication ID可只读核对。
+OSS子任务未知PUT/合并可由reconcile_transfer按对象归属/长度/MD5/SHA256只读核对，
+不在核对方法中提交元数据或发布；未知初始化且没有uploadId仍不能自动恢复。
+reconcile_publication读完整账号列表：有该ID则Complete，缺项继续Pending/Published。
+“列表里没有”不足以证明此前写入失败，因此不由核对方法重发发布请求。
+分配与元数据回包丢失尚无可靠通用查询身份，保留边界，不提供强制猜测成功。
+
+Pause/Cancel请求与下一次远端写意图在同一SQLite事务决定先后；控制先提交则不发送。
+Pause可以在请求在途时记录，接受响应后保留阶段并停止下一阶段。
+Cancel遇到父任务/附件Pending必须拒绝；已Published/Complete也不能通过Cancel删除条目。
+OSS已知multipart需要等待Abort的204或明确NoSuchUpload，父任务才进入Cancelled。
+Abort回包丢失保留非终态和持久Cancel，可重试同一中止请求；不能提前显示取消完成。
+PUT/合并晚到确认保留子任务Uploaded并停止父任务发布；没有DeleteObject或误删云盘行为。
+在音频/附件传输期，控制传播到已存在NOS/OSS子任务；新建子任务后再次核对父控制再运行。
+收到子任务停止结果后同步落实父任务Cancelled，避免仅子任务取消而父任务仍标运行中。
+Cancel停止本地任务并在需要时中止已知OSS分片，不删除输入文件、已有用户资源或已上传对象。
+resume先解除子任务Pause，再原子核对并解除父Pause；并发Cancel不能被Resume覆盖。
+renew_token只作用于当前未完成NOS音频或附件；不新建对象、不发布、不改变上传内容。
+
+公开与私有数据
+CloudView包含阶段、源路径/标题、实际channel、字节数、传输状态、目录song_id、等待时间、
+控制请求、稳定问题码及附件展示状态。不会返回上传票据、分配token、bucket/key、docId、
+原始metadata/publication/account_item、Cookie或完整授权URL。
+Pending公开显示write_outcome_unknown；具体分配/发布响应仅存在账号私有SQLite中。
+
+验证入口
+  cargo test -p cumulus-core --test cloud_upload --offline
+12项专项覆盖NOS和三附件字节、去重、编码等待、列表最终一致、明确拒绝后显式重试、
+所有关键未知写、错误成功回包、账号重登录/切换、取消/暂停/继续、源变化、NCM/坏附件、
+文本bucket/docId限制、不完整channel3凭证、父子提交失败复用及父写意图提交失败0次请求。
+日志.build/cloud-workflow-tests.log；这些是Rust状态/文件/服务模型证据，不替代真实服务。
+OSS后续新增cargo test -p cumulus-core --test cloud_oss_upload --offline，8项父任务专项，
+覆盖完整OSS与NOS附件、只读核对后发布、并发控制、晚到完成、源变化、STS替换及提交失败。
+日志.build/cloud-oss-parent-tests.log；完整协议/传输证据与边界见core-oss-upload-contracts.txt。
+
+实际可执行隔离流程
+  cargo run -p cumulus-core --example cloud_upload_roundtrip --offline -- EXISTING_PC_PROFILE NEW_PRIVATE_PROOF_DIRECTORY
+该example明确执行真实账号写操作，仅供已授权的隔离验证，不由单元测试或应用启动调用。
+原生生成唯一音频并由ffmpeg编码为FLAC、生成PNG；Rust默认ffprobe探测，验证首片暂停、
+同对象续期、重开恢复、封面、编码/发布/账号回读，最后按新ID+唯一文件名+长度核对清理。
+清理前保存delete_pending，只读核对结果；丢失删除回复不会自动第二次删除。
+私有SQLite保存baseline/task身份；公开report.json只报阶段、数量、检查项和清理结果。
+若账号列表不匹配或无法核对，保留cleanup_required及私有证据，不猜测删除既有条目。
+最终线上结果和全量回归数见rust-core-validation.txt；未记录实际通过前不能计为R验收。
+
+本次实际线上证明（2026-10-26）
+.build/cloud-upload-proof-20261026-a/report.json：success=true，8项检查，实际channel=1。
+新生成723011字节FLAC（10秒、44.1kHz单声道、ffprobe码率578408bit/s）和221字节PNG封面。
+8192字节首片暂停、同对象令牌续期、SQLite重开、续传、Encoding等待、Complete均实际执行。
+元数据与发布返回200，完整账号列表确认新目录ID；清理后原49项ID集合完全恢复。
+没有删除已有资源；临时FLAC/WAV/PNG剩余0，cleanup_required=false。
+facts.json独立读取私有日志，确认列表coverId等于分配docId、文件名和长度等于测试输入、
+新目录ID不在基线中、清理请求成功且回读恢复。此独立检查没有执行Python业务流程。
+本轮Cover不仅传输完成，列表中的coverId也与本次分配的docId一致；没有把另一封面算作绑定成功。
+去重、LRC/CUE、未知写恢复等其他分支仍按各自模型/故障证据标记，不能扩大这次线上覆盖。

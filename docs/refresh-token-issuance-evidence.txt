@@ -1,0 +1,58 @@
+refreshToken 的来源、客户端条件和当前不能下的结论
+2026-10-27；以恢复的官方桌面 3.1.42.205594 为依据，不推定服务端实现。
+
+可确定的取得位置
+hybrid_vendors_app_subApp M/1368 prepareAndSaveLoginInfo（约2887行）从登录成功响应 header
+读取 x-refresh-token，同时从 Set-Cookie/set-cookie 解析 MUSIC_U、MUSIC_A。
+handleLoginSuccess 调用该函数；密码/SMS/二维码等 handler 共用成功处理，二维码803先转成200。
+这证明相关成功路径会消费该响应头，不证明每种登录一定会下发它。
+M/1368 refreshToken（约2339–2368行）请求 /api/login/token/refresh/v1；200后必须同时得到
+有效 MUSIC_U 和 x-refresh-token 才保存轮换结果。缺任一项不能声明刷新成功。
+M/290 updateLoginInfo（约598行）只在非空值时保存 jsk_refresh_token；getLoginInfo 回读，
+clearLoginInfo 删除。它不是客户端根据密码、会员状态或设备指纹计算的值。
+
+两层启用条件，不能混为服务端发放规则
+M/34.p 要求应用已初始化，PH-PC-loginJsk、PH-PC-newLoginBenefit 均为 t1；
+M/1384 前台焦点事件和 M/12 的301拦截以此选择 JSK。M/147 默认组为空，约30分钟刷新。
+查询来源 M/15.Rf/fa：/api/rtrs/abt/front/expinfo/list，expNames 为逗号连接的实验名称。
+JSK 内部又调用 checkAB("login-token-jsk")；PC桥 M/290.jskConfig 的 enableTokenJsk=true。
+内部恒真不能代替外层实际实验分组，也不能推出服务器一定发放 x-refresh-token。
+没有找到一个客户端可设为true就保证发放令牌的开关；会员有无也没有出现在这些客户端条件里。
+
+请求上下文差异
+M/1368 PcPlatformAdapter.fetch（约8640行）给业务参数附加 fromPage="JSK"，设置
+needsGuardianToken=true、tokenKey="checkToken"，发送 x-login-chain-id；有当前二次验证票据时
+另带 x-music-tu。M/290 nativeRequest 将 headers 交给正式请求链，收集响应头。
+M/290 getCurrentEnv 只给 clientType，没有 loginChainId；不能为本平台凭空编造有效链ID。
+当前 Rust 定期续期/JSK301校验已经补 fromPage 和空 x-login-chain-id，易盾仍走已接通的
+MConfig/M402路径匹配。完整 JSK 新登录 handler、票据上下文和原设备确认仍需独立迁移审计；
+当前 /api/w/login 和 /api/w/login/cellphone 是已恢复的传统桌面登录路径，不能标成完整 JSK。
+fromPage 或其它差异是否影响服务端发放令牌尚无单变量实测，不将它说成已定位根因。
+
+为什么当前会话缺令牌仍不能证明“服务端未下发”
+旧 references/recovered-client/scripts/netease_account_probe.py 约168行把响应头写入
+self.last_refresh_token；其 save() 只保存 CookieJar，普通扫码探针没有持久化这个内存字段。
+Rust 旧会话导入只额外读取显式 refresh-token.json；没有这个文件时只能导入 Cookie。
+因此现有持久化记录没有 refreshToken，既可能是响应未发，也可能是早期探针未保存。
+不能用当前数据库反推当时响应头。今后新登录由 Rust HTTP 在已确认成功响应中原子保存令牌，
+正文中断/错误登录/不属于登录或刷新端点的响应头不能冒充成功轮换；见 core/tests/http.rs。
+
+本次真实只读观察
+core/examples/login_policy_read.rs 的原生传输只允许 account/get 和上述实验查询，拒绝登录、
+续期、校验中间层和全部业务写入。使用现有授权PC会话，保持原Cookie域与deviceId。
+.build/login-policy-live-read.json：authenticated，身份读取1次，实验读取1次，
+两个实验均未命中t1，MissingCredentials，续期0，业务写入0，拒绝请求0。
+这是默认PC请求配置下本次观察；没有重做包含正式WebView采集的完整登录，也不是Windows实机。
+可以据此说当前记录不具备JSK成对续期条件，不能判定账号受罚或被风控，也不能反推历史发放条件。
+
+仍需要的实测
+新登录时保留受限证据（成功码、两个凭据是否存在、来源端点、响应完整性），秘密只写私有库；
+只有取得服务端真实令牌后才能实测成对轮换。不能补造令牌或把24小时后检查当作自动获得令牌。
+当前用户无需为了本次只读检查重新扫码。正式新登录需在相应交互可用时由本人确认。
+官方材料优先，本批未使用 YesPlayMusic；来源文件散列见 login-interception-mapping.json。
+
+正式宿主补充观察
+最终正式二进制以windows-local启动并恢复真实账号，首页推荐可见；
+.build/ui-proof/login-interception-desktop-20261027-a/experiment-cache-audit.json独立只读检查
+绑定凭据库中的两个实验布尔仍为false。该结果是正式宿主的持久化缓存证据，
+不是新登录或真实续期成功，也不能代替服务器内部发放规则。

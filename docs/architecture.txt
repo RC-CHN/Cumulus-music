@@ -1,0 +1,137 @@
+Cumulus 新客户端架构
+2026-10-26
+
+技术选择
+主语言 Rust；桌面宿主 Tauri 2；界面 Vue 3 + TypeScript + Vite。
+目标平台 Linux / Windows / macOS；当前机器只能提供 Linux 验证。
+Python 旧实现保留为协议与行为参考，不作为新客户端的隐式运行时依赖。
+
+依赖方向
+  frontend 页面 -> CoreClient 接口 -> Tauri transport adapter
+                -> desktop command -> core client::MusicClient -> domain use cases
+  desktop -> core；core 不反向依赖 desktop。
+前后端通过命令/数据协议通信，不跨目录导入私有实现。
+此处“后端”是本机原生核心，不要求部署 HTTP 服务。
+
+core/
+以普通 Rust library 独立构建、测试和复用，可用于将来的 CLI 或其他界面。
+账号代次、Cookie 作用域、签名、官方 API、资源缓存、队列、下载/上传任务和持久化归核心管理。
+业务依赖的文件目录、凭据存储、播放器和系统服务通过明确接口/参数传入；不硬编码用户目录或 Linux 路径。
+按业务域组织 account、catalog、playlist、membership、cloud、playback、lyrics、media、library、download、mv、comments；
+protocol/wire 单独放纯协议算法，storage 提供事务。后续按实际实现增加其他业务域。
+域内按职责拆分，例如 account/login 的参数/挑战/状态/协调、account/refresh 的签名/日志/生命周期，
+protocol/http 的请求构造/网络后端/凭据回执，cloud 的 API/对象分配/元数据，
+playlist 的请求、类型、完整快照/revision和service/单次发送/只读对账，
+lyrics 的响应转换/时间解析/展示及 service/ 中的版本请求/缓存/选择协调，
+media/ncm 的流/编解码/发布、tags 的元信息/注释/三种容器适配与 cover/integrity 校验，
+download/naming 的官方布局/平台适配、offline 的记录/权益/校验协调，
+download/transfer 的网络后端/范围验证/持久化/运行，service 的授权/控制/后处理/最终发布/调度，
+两层通过共享file_identity判断文件归属，最终任务和离线记录在同一事务中提交；
+download/completed按意图、文件事实、执行和关联事务组织已完成文件管理；
+library/index/relocate在同一事务更新库、各账号映射、CUE失效与持久化队列。
+移动提交后才清理源文件，未知或替代文件不按原文件处理；
+download/directory分账号配置/门控、预检/清单、执行/回滚、磁盘空间适配；
+completed/working保留工作文件、raw/part与已发布输出的硬链接关系，事务更新归属身份。
+批次只在全部完成后切换默认目录，失败持久保留责任；创建/调度/传输遵守同一账号门控。
+library/probe 的进程适配与 cue/ 文本分轨，
+library/index 的扫描/发布/映射/解码缓存、monitor 的登记/对账/后台生命周期；
+library/catalog负责本地库的完整查询、分组、排序与队列快照；client/local单独管理宿主用例和白名单。
+本地索引是设备资源；播放队列与歌词偏好按账号或local-guest隔离，游客边界不能授权线上API。
+cloud/nos 分节点/分配类型、HTTP适配、账号绑定持久管理、续期请求与分片执行；
+账号Cookie和NOS对象令牌分属不同传输客户端，公开视图不暴露私有任务记录。
+分片发送意图与暂停/取消请求在同一事务确定顺序，未知首片/末片不自动重发。
+cloud/source复用流式输入事实，文件工作在阻塞工作线程；
+cloud/upload分父任务管理、输入、附件、控制、阶段推进、编码/发布/账号回读；
+父写Pending先落盘，子ID在父任务创建时可确定，父子提交失败不重建对象或重发媒体。
+cloud/oss独立实现对象签名/HTTP/XML/CRC64、三路分片、持久核对与中止，和NOS共用输入事实。
+云盘父任务按服务端channel接入两种后端；OSS的Cancel须等待已知multipart中止确认。
+NOS与封面完整用例已线上验证；OSS已通过独立对照和本地整合，真实通道仍缺条件。
+cloud/library负责完整快照、稳定资源版本、分批删除意图和只读对账；
+cloud/upload/scheduler负责单父任务、暂停优先、重启恢复；selection负责目录枚举。
+client/cloud绑定账号代次并持有后台调度器，页面关闭不停止上传；desktop只负责IPC和原生选择器。
+云盘页面、完整筛选队列与专用歌词已接入，实际云盘播放与原文件下载通过。
+具体流程、字段、官方来源、UI差异及测试边界见desktop-cloud-contracts.txt。
+避免把所有请求方法、状态机、文件操作堆进一个 core.rs 或全能服务类。
+平台差异集中在适配实现，业务模块不得直接调用 D-Bus、Windows 窗口 API 或 Tauri AppHandle。
+
+desktop/
+负责 Tauri 窗口、启动退出、单实例、系统托盘、平台媒体控制和应用数据目录解析。
+command 校验传入 DTO、调用核心并转换公开错误；不在 command 中重写登录/播放状态机。
+阻塞解码、文件工作和网络请求不得在 WebView/UI 线程中执行。
+get_app_info保留版本契约；MusicClient负责独立core装配、类型化展示DTO和公开错误。
+账号恢复/扫码、歌单/搜索/推荐/喜欢、选歌/播放/队列/歌词已通过类型化命令桥接。
+歌单管理6个、下载/文件/目录5个、云盘3个、MV10个、评论3个正式命令与账号/播放器命令共同注册；
+公开DTO与私有域记录分离。目前正式注册52个命令。
+library/matching负责官方元信息/匹配协议与持久批次，index/mapping保存账号隔离的版本关联。
+client/local/matching装配后台工作者和白名单DTO，两条local_match命令连接页面；
+useLocalMatching独立于设备级useLocal，切号只清在线关联视图，详细边界见desktop-local-matching-contracts.txt。
+comments域区分model/api/service/likes/cache；发送前持久化，结果未知只读核对。
+评论缓存按owner、resource和完整query隔离；点赞确认与缓存修补同事务提交，版本拒绝旧列表回包。
+client/comments对白名单字段和账号epoch负责；前端useComments处理页游标、缓存提示与迟到回复。
+歌曲/歌单/MV入口共享此用例，不在各页面复制HTTP与写入状态机；见core-comments-contracts.txt。
+mv/likes和cache为资源点赞提供独立日志及版本化元数据，mv/recommendations保存账号绑定推荐。
+client/mv/social投影公开状态，useMvSocial与视频控制独立；相似MV使用注明来源的补充接口。
+PlaySelection::MvRelated在核心重新验证资源关联，通过统一焦点与音频控制器播放或恢复原条目。
+client/downloads装配账号绑定上下文、三路调度和持久文件任务；页面切换不销毁原生工作。
+歌单操作在账号命名空间先持久化before与sending，远端结果不明时只读核对，不自动重发。
+播放推送使用Tauri Channel，每窗口单订阅，账号代次校验、迟到订阅/解除和窗口销毁清理。
+不自动读取references会话。
+当前只允许本地 main 窗口。目录选择注册tauri-plugin-dialog，只有原生命令使用其能力；
+未向WebView授权直接文件/目录选择/shell/HTTP插件调用。打开目录使用平台程序的直接argv。
+
+frontend/
+组件负责展示、交互与视图状态，services/contracts.ts 定义 UI 需要的 CoreClient 和公开数据。
+只有 adapters/tauri.ts 引用 @tauri-apps/api；入口 main.ts 注入具体适配器。
+组件不直接访问官方接口、数据库、音频文件，不持有 Cookie、签名密钥或完整授权媒体地址。
+播放状态通过原生Channel推送，revision防止迟到命令覆盖较新事实；queueRevision避免每帧回读大队列。
+播放位置取实际引擎时钟；下载进度读取Rust持久任务/传输事实，不能前后端各维护业务状态机。
+useDownloads负责账号/查询代次、分页和可见期间读取；操作失败与读取失败分别保存。
+CompletedDownloads的Forget为既有本地队列保留私有离线事实，继续验证账号/哈希/加密权益。
+usePlaylists负责弹窗/请求代次和错误显示；写前权限/revision、操作日志和回读在Rust核心。
+元信息batch部分成功按实际字段显示，未决操作保留记录与核对入口，不能显示统一成功。
+当前协议版本为 1；Rust 公开数据与 TypeScript 契约同步修改，并验证实际 IPC 返回值。
+WebView 渲染存在平台差异，布局、输入法、缩放和歌词动画需要三平台分别验收。
+
+音频迁移
+首选复用已验证的 libmpv 播放行为，并通过核心播放器接口隔离具体引擎。
+独立恢复的 C DSP 保留 C ABI，迁移时逐项对照；完整效果链尚未完成，不能因 FFI 能编译就记为完成。
+音频解码、PCM、NCM 与 DSP 留在原生侧；界面只传控制命令和展示所需数据。
+跨平台构建需核对 SSE/浮点行为、动态库分发与设备后端；现有 Linux 原生对照不代表 Windows/macOS 已验证。
+
+迁移顺序与验收
+先建立登录/账号资源/搜索/队列/播放的一条完整应用流程，再迁移任务、云盘、本地库及其余能力。
+每项使用 references/recovered-client 中的官方证据、已验证 Python 行为与失败样本做对照。
+目录归档、桌面账号、目录浏览、原生播放/队列/歌词与歌单管理已连通；其余业务正在逐项迁移，状态以 rust-core-migration.txt 为准。
+官方逻辑是行为依据，Python/C 是对照证据；发现差异时直接执行官方代码验证，再明确记录修正。
+基础库测试、协议对照、实际引擎/文件集成和真实服务验收分开记录，原验证报告不改写为 Rust 通过。
+不从 references 自动加载测试账号或把官方 DLL、第三方源码和私有证据加入正式安装包。
+
+参考
+https://v2.tauri.app/start/project-structure/
+https://v2.tauri.app/develop/calling-rust/
+https://v2.tauri.app/reference/webview-versions/
+
+桌面业务和UI证据详见 ui-desktop-contracts.txt；布局来源保存在references/ui-recovery。
+歌单完整请求、状态机、真实隔离写入及剩余边界见core-playlist-contracts.txt。
+完成文件管理契约与原生跨盘/恢复/播放证据见core-completed-files-contracts.txt。
+目录迁移/协作暂停/工作文件/逆序撤销与跨盘进程验证见core-download-directory-contracts.txt。
+NOS对象上传/续期/断点恢复与完整云盘工作流的边界见core-nos-upload-contracts.txt。
+云盘父任务、附件绑定、编码/发布/账号核对见core-cloud-upload-contracts.txt。
+OSS签名、分片并发、恢复、中止与STS替换边界见core-oss-upload-contracts.txt。
+云盘原文件通过DownloadOrigin扩展既有下载服务，不另建下载调度器；账号选择/授权、原字节、
+续传和完成文件管理的详细契约与桌面证据见core-cloud-download-contracts.txt。
+云盘排序保留原始字段、JS/UTF-16/中文比较与V8稳定排序步骤；因官方比较器不总传递，
+不能用普通Rust排序近似替代。模块/依赖/许可证/官方对照见core-cloud-order-contracts.txt。
+MV详情/媒体授权/账号缓存与检查点放在独立mv域，收藏复用AccountResources日志，
+MP4下载复用DownloadOrigin::Mv和现有下载状态机、离线登记与完成文件管理。
+分辨率与歌曲Quality分开，公开任务仅投影实际r，不向WebView传递授权URL。
+独立mv/playback控制器已经接入libmpv软件渲染：专属线程、安全FFI、最新RGBA帧邮箱、
+首个真实解码帧门控、账号/playId校验、清晰度与实际位置恢复均在core内完成。
+client/mv和client/focus已接公开DTO、歌曲/视频互斥与旧账号引擎释放确认；
+desktop/mv传递二进制RGBA帧，Vue只消费最新帧并按账号/playId丢弃迟到结果。
+歌曲控制器拒绝把MV任务当作普通歌曲；完成项MV按钮进入专门VideoController。
+正式页面、正常/最小窗口及下载/收藏往返见desktop-mv-contracts.txt；其余MV分支继续。
+MV本地源持有download/playback的owner/task文件租约，原生解码器先销毁再释放租约。
+完成文件操作先记录意图，再等候租约；视频观察意图释放文件，并等待目录整批提交/回滚。
+随后按任务最终路径核验/续播；停止、换视频和换账号撤销恢复，删除/忘记记录后停止。
+该协调在core完成，前端仅显示file_operation状态，详见core-mv-local-files-contracts.txt。

@@ -1,0 +1,110 @@
+一起听原生 IM 传输：官方来源、实现与验证
+2026-10-26。完整桌面目标仍 active；这是原生传输增量，不是完整一起听验收。
+后续桌面连接/重连/关闭接线已推进，见 desktop-listen-together-im.txt；
+下文“尚未绑定桌面”等描述保留为此原生验证批次当时的边界，业务播放同步仍未完成。
+桌面首批流程见 desktop-listen-together-contracts.txt；REST 协议和持久核对见
+core-listen-together-contracts.txt。三种证据不能互相代替。
+
+1. 本批解决的实际问题
+此前只有 /api/middle/im/token/get 返回成功，没有 SDK 登录、入房或接收消息证据。
+现在 core/src/listen_together/native_im/ 直接加载官方 NIM C SDK，完成真实 Linux 原生
+登录、聊天室授权、入房、接收通知、退出和 SDK 清理。没有 Node/Python 子进程业务代理。
+没有加载发送聊天消息、邀请或踢其他设备的 SDK 方法。
+正式桌面还没有绑定这个适配器，realtimeReady 仍为 false；不能据此开放未经接线的双方同步。
+
+2. 官方配置恢复
+主来源是官方 3.1.42.205594 x64 cloudmusic.dll，而不是猜测客户端字符串中的任意 32 位值。
+references/yunxin-sdk-research/native/appkey-evidence.json 记录二进制 SHA256 和地址链：
+NEIMController RTTI/vtable 0x181c8ce30，虚函数偏移 0x50 指向 0x1812a76d0。
+CreateChatRoomPlatformSDKHandle 调用前通过该函数取得应用标识，再传给原生包装器。
+getter 读取配置对象 +0x1b0：false 取指针 0x18219eb08，true 取 0x18219eb10。
+配置构造函数 0x18033bb10 把标志初始化为 false；setter 0x18033d450 将解析结果与
+ASCII music.163.com 作字符串内容/长度比较，不相等才把标志设为 true。
+因此证明程序使用默认/正式域指针，并未轮询其他应用命名空间猜测账号令牌。
+反汇编、两个静态应用配置及 vtable 提取保留在 references/yunxin-sdk-research/native/；
+文档与运行输出不重复应用配置原文。应用标识与用户 IM token 是不同对象。
+官方 NEIM 登录上下文还直接包含 /api/middle/im/token/get、accId、token 和入房日志。
+
+3. 官方 Linux SDK 来源
+官方 node-nim 仓库提供公开 SDK 发布元数据及原生 SDK 下载脚本：
+https://github.com/netease-im/node-nim
+https://raw.githubusercontent.com/netease-im/node-nim/master/script/download-sdk.js
+使用其公开 publish/list 元数据下载 Linux x64 10.9.75 原生包；没有执行安装脚本，
+没有访问下载脚本中的内部服务器。发布元数据、脚本和来源记录保存在
+references/yunxin-sdk-research/{publish-10.9.75.json,download-sdk.js,sdk-source.json}。
+归档 nim-linux-x64-10-9-75-4762-build-3410615.tar.gz，30,334,581 字节，SHA256：
+0200e3cf7110fdfa1021e859995b87648362e4d1f96253b8eca87bdedf624ef9。
+主要运行库 libnim.so / libnim_chatroom.so，依赖 libh_available.so 等来自同一官方包。
+Rust 调用其 C ABI；包里的 node-nim.node 和 C++ wrapper 不参与生产调用。
+wrapper/LICENSE 是 MIT，Node 包标注 ISC；这些标签不能自动证明闭源动态库的再分发条款。
+当前 SDK 留在研究目录，由原生宿主显式指定可信目录；正式分发配置仍需完成。
+当前实际验证平台是 Linux x64；Windows/macOS 仅有库名选择边界，尚未构建/运行验证。
+
+4. 调用顺序及输入
+TogetherApi.im_credentials -> data.uid/accId/token；先校验 uid 等于当前 SessionToken.uid。
+NimConfig 只允许原生宿主提供 SDK 目录、数据根目录、应用标识、持久数据库密钥。
+缓存使用 UID 的 SHA256 子目录，Unix 权限 0700；证明根目录同样 0700。
+数据库密钥 32 字节，必须由宿主持久保存，不能重开时任意更换。
+nim_client_init(data_dir, "", {app_key,global_config:{db_encrypt_key,...}})。
+设置加密、关闭附件预下载/会话已读同步/登录后历史错误上传，SDK 日志级别 Error。
+nim_chatroom_init -> 注册登录重连、断线、被踢、入房、离房、连接、消息/通知回调。
+nim_client_login(app_key, accId, token, "{}", callback, userdata)。
+只在 Login step=3/code=200 后允许 enter；中间步骤成功不等于登录成功。
+nim_plugin_chatroom_request_enter_async(chatRoomId) -> code=200 的授权字符串。
+授权只传给最初请求的同一聊天室：nim_chatroom_enter(chatRoomId, grant, "{}", "{}")。
+chatRoomId 校验为正 i64；它不是 REST 的不透明 roomId，也不是 RTC channelId。
+只有 Enter step=5/code=200 才证明聊天室鉴权通过。
+一个 NativeIm 实例只申请一个房间，换房或重新取得 grant 必须退出后新建实例，
+避免迟到的旧 grant 被错误应用于新房间。
+
+5. FFI、账号和失败边界
+ffi.rs 从明确目录解析固定 ABI，整个进程保留动态库，不在 SDK 回调线程仍可能执行时卸载。
+进程级 Lease 保证只有一套 NIM 全局状态；不同账号不能同时初始化同一个 SDK 单例。
+callbacks.rs 把 user_data 作为不复用的整数代次索引，绝不解引用为 Rust 对象指针；
+注册表保存 Weak 收件箱，释放后到达的旧回调直接丢弃，读取 SDK payload 之前就校验收件人。
+SDK 临时 UTF-8 字符串在回调内复制，长度上限 1 MiB；无原始指针暴露给业务层。
+回调捕获 panic，使用容量 256 的非阻塞队列；溢出明确要求重连/核对，不能静默丢命令。
+登录返回按 i32 解析，拒绝越界值伪装成成功步骤。未知/损坏 JSON 返回错误。
+主线程收取事件前后校验账号代次；实际 SDK login/grant/enter 调用也在账号锁下校验。
+ImEvent 不实现 Serialize，Debug 隐藏消息和身份；原始业务消息必须先经受限归约才能给 UI。
+当前还没有自动 token 刷新、重新取 grant、业务事件归约/播放器应用的完整宿主状态机。
+自动 relogin/断线回调已有接收边界，不等于这些恢复策略已验收。
+
+close -> chatroom_exit -> client_logout(type=3，仅当前客户端) -> room_cleanup -> cleanup2。
+等待 logout 最多 3 秒、cleanup 回调最多 8 秒；成功后允许同进程再次初始化。
+清理超时禁止进程内重新使用 SDK，并保留可能仍被 SDK 借用的输入缓冲和库直到进程退出。
+后续 close 仍返回原清理失败，不伪装成功。Drop 尽力清理，因此实例应由阻塞工作线程拥有。
+SDK 退出与 REST end/v2 分开；传输退出不擅自修改其他设备的房间。
+
+6. 可执行隔离验证
+cargo build -p cumulus-core --example together_im_probe --example together_roundtrip --offline
+.build/target/debug/examples/together_im_probe /abs/PC_PROFILE /abs/NEW_PROOF \
+  /abs/references/yunxin-sdk-research/linux-x64-10.9.75/lib \
+  /abs/references/yunxin-sdk-research/native/appkeys.json
+异常中断后，同样参数加 --restore：只清理该次有 NEW_ROOM 回包和已持久 cleanup-intent 的房间。
+守卫共享在 core/examples/support/together.rs；既有 REST 证明的丢回包行为保持原样，
+IM 证明显式关闭丢回包注入。只允许指定账号、单成员新房间和固定接口，不复用已有房间。
+写入顺序 create -> REPLACE 两首公开样本 -> PAUSE -> end；无 SDK 聊天消息发送。
+证明程序把每次请求、事件和清理结果保存到私有目录，运行输出不显示 UID/token/完整消息。
+
+.build/together-im-20261026-a 是第一次连接记录：login step3=200、grant=200、enter step5=200；
+收到一个通知和一个 msg_type=5 消息，两者是同一入房事件的不同回调，不是两条独立业务消息。
+REST 队列和暂停均成功，但观察窗内没有 20000/20001 播放/队列业务包；原因未由单账号证据确定。
+SDK close 成功，REST 连续两读无房间，持久未决 0。
+.build/together-im-20261026-b 使用本批最终 Rust 代码：两次 Login step3=200、两次
+grant=200、两次 Enter step5=200，第二次复用同一账号的加密缓存并重新获取 IM token。
+第一次连接观察到的消息仍只有上述入房通知；close 成功，第二次 close 幂等通过。
+27次REST请求（含2次IM token读取），4次写入各只发送一次；两读无房间、未决0。
+--restore 独立重开后只读确认原房间已清理，不再发送 end。
+检查结果见 listen-together-native-im-mapping.json、.build/nim-independent.json 及验证日志。
+
+7. 仍需继续的工作
+将 NativeIm 接入桌面 TogetherHost 的工作线程、连接状态、退出协调、重连与账号切换；
+将官方 {type,content} 业务包接入房间、队列、PlaybackSync、成员/权益/心跳状态机；
+完整实现共同权限和播放器应用/回声抑制，不能用 REST 轮询冒充实时消息；
+NERTC 适配、正式 SDK 分发、Windows/macOS 验证与其他桌面分支继续。
+实时双账号验证仍按用户决定暂排除；本批未发送邀请、消息、支付或改动既有用户资源。
+尚未完成的宿主接线明确保留，不因 SDK 连接成功而将全目标或完整一起听标为完成。
+后续业务消息来源纠正：官方 im.onChatRoomMsg 来自 nim_talk 普通/批量接收的 msg_attach。
+本批聊天室入房通知证据不代表业务包到达。接收注册、精确类型解码和音乐房间过滤的新增实现
+见 core-listen-together-business-messages.txt；其中也保留新单账号测试业务包0的事实。

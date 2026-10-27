@@ -1,0 +1,105 @@
+一起听桌面接入：首批单账号主流程验证
+2026-10-26。完整目标仍在进行。本批有独立的真实 WebView/IPC/libmpv 证据，
+不把先前 REST 验证当作 UI 验收，也不把本批通过扩大为完整一起听或全部桌面目标完成。
+
+入口与职责
+frontend/src/components/TogetherPage.vue：侧栏“一起听”进入房间页，显示成员、共享队列、
+同步错误与未决操作；创建、继续本机控制、重新同步、选择/移除歌曲、核对和确认退出。
+frontend/src/composables/useTogether.ts：账号代次、迟到响应丢弃、单次提交、磁盘恢复与轮询。
+desktop/src/together.rs：together_view / together_command 两个类型化 IPC 和窗口关闭协调。
+core/src/client/together/{mod,runtime,selection,view,dto}.rs：原生播放器绑定、队列投影、
+生命周期、持久偏好和受限 DTO；业务不依赖 Tauri、Vue 或 Python。
+
+调用链
+界面创建 -> TogetherService.create_for -> 确认新房间 -> 保存本机原速度/模式 -> 绑定播放器。
+runtime 订阅实际 PlaybackController；有意义的播放/队列变化才上报，普通位置跳动不逐帧请求。
+播放器暂停、定位、上一首/下一首、选曲、队列移除通过原生控制器执行，再按官方指令归约同步。
+完整歌曲位置毫秒直接来自播放器时间线，不能重复叠加试听偏移。
+共享列表只含线上歌曲或有有效文件版本映射的本地曲目，排除播客/未匹配本地文件；
+窗口裁剪、去重和随机顺序沿用核心逻辑。队列变化目前以完整 REPLACE 上报。
+普通顺序播放在房间内映射为列表循环，速度固定 1.0。退出后恢复入房前相应偏好；
+保留期间用户主动选择的其他循环模式，不回滚整个本机队列。
+HTTP 字段与核对规则见 core-listen-together-contracts.txt。
+
+故障与生命周期
+未知写入保留原账号持久责任，阻止房间同步继续发送；本机播放条仍可操作。
+用户核对只读服务端，再显式重新同步当前播放，不自动重发不确定的写入。
+如果暂停同步期间本机已切换歌曲，重新同步必须发GOTO而非跨曲PROGRESS；
+新增丢回包后本机切歌的本地失败前证据 .build/together-resume-selection-before.log，修正后走同一持久操作路径。
+该补充恢复分支有本地原生控制器验证；当前线上e只验证同曲重新定位恢复，不混称跨曲恢复已线上通过。
+重开后显示持久房间，但必须显式“继续本机控制”；账号切换不得显示旧成员、队列或错误。
+listen-together-player-v1/current 按账号保存房间绑定和原速度/模式；
+listen-together-cards-v1/current 保存原生队列卡片，页面 DTO 不含 Cookie、SDK令牌、授权音频 URL。
+窗口关闭只处理本客户端显式绑定的房间；先核对未决、刷新同一房间、退出、恢复偏好再销毁窗口。
+失败保留窗口，通过仅包含账号代次和受限说明的事件跳转房间页，提示用户核对。
+事件错误在页面自动刷新后仍显示；旧账号监听器及迟到注册均清理。
+当前扫码切号入口要求先退出绑定房间；这是显式的社区生命周期选择，不声称与官方完全相同。
+
+显式定位到零的修正
+直接执行官方 M/3161 cmdFilter，确认“前一次 PLAY，随后同曲 GOTO/0”出站会被过滤。
+官方 assembleRequestParam 又把同曲 PROGRESS/0 转为 GOTO，因而显式拖回开头也可能被抑制。
+core/tests/client_together.rs 新增真实原生控制器用例先复现失败：.build/together-zero-seek-before.log。
+保留原 outgoing/filter 的官方规则；新增 outgoing_seek/seek_for，仅对明确的定位意图按
+PROGRESS 语义检查，实际 wire 仍为 GOTO/0。队列许可、近期重复和入站回声检查保持，
+未决责任、账号隔离、clientSeq持久化及只发一次仍走同一服务流程。
+这是社区修复，不能声称官方原实现就支持此分支；新的直接执行样本共22组过滤对照。
+真实 e 的UI定位上报 GOTO/progress=0/clientSeq=5，回读成功，且整个证明无重复clientSeq。
+
+来源及界面边界
+业务来源仍是 M/75、137、3079、3161 等官方恢复模块；本批没有使用 YesPlayMusic。
+同时检查官方 hybrid_86.chunk.1482700000000.js/3133.js 邀请面板：好友列表、搜索、分享和邀请动作。
+当前只重建单账号房间和本机控制界面，尚未实现该完整邀请面板，不声称像素一致。
+realtimeReady=false，界面明确显示好友实时同步尚未开放；仅允许单成员 Waiting 房间绑定。
+IM/RTC SDK、真实入站消息、对方播放器控制、共同权益及完整邀请入口仍需实现。
+双账号实时验证仍按约定暂排除；这不等于排除其余可实现部分。
+
+验证状态
+core/tests/client_together.rs 四项：真实原生控制器配合测试音频设备和模拟服务，覆盖队列/暂停/
+定位/切歌/移除、归零定位、偏好恢复、丢失成功回包后核对恢复、重开/账号隔离。
+这些本地用例不是线上或真实声卡测试。
+frontend/tests/together-state.test.ts 覆盖迟到响应、不确定写入、磁盘恢复、会话过期及关闭失败事件。
+desktop/tests/ipc.rs 已加入一起听两个命令的旧账号拒绝检查。
+全 workspace/all-targets：475项（core472、desktop3），104条suite、65条非空，0失败/忽略。
+正式IPC57条。前端累计60项、类型检查/构建/格式检查通过；Rust严格Clippy/格式和正式桌面构建通过。
+日志 .build/together-ui-workspace-tests-final.log、together-ui-clippy-final.log、
+together-ui-desktop-build-final.log、together-ui-format-final.log及together-ui-front-*。
+
+真实窗口证据（每批仅创建一个新单账号房间，禁止原房间/邀请/其他业务写入）
+.build/ui-proof/together-20261026-a：截图使用错误显示后端而中断；11次只读请求，未建房。
+b：服务端成功回包丢弃后核对/重新同步已执行，但脚本错误要求mpv精确停在12000ms。
+实际上报11831ms，因此UI证明失败；已自动退出、恢复偏好并确认未决0，失败证据保留。
+c：修正媒体定位误差断言后，正常窗口80请求、7截图、建房/队列/暂停/定位/下一首/
+移除/单曲循环/界面退出通过；丢失一次成功PAUSE回包后只读核对，没有重复发送。
+d-close：760×540最小窗口，38请求、4截图；丢失一次成功end回包后窗口保留并显示核对入口，
+界面只读核对后再次原生关闭，恢复偏好、删除本机绑定并销毁窗口。end请求仅1次。
+e：最终归零修复后的1120×760窗口，91请求、8截图，重复主流程并新增播放中归零定位。
+34首共享队列移除为33首，单曲循环回读；普通定位容许解码器小幅误差，并与真实原生位置核对。
+写请求为create1、队列3、播放8、end1（无邀请、消费、既有资源变更）。最后连续两读无房间、未决0。
+c/e由真实播放条和房间按钮触发业务；native getter只用于断言，没有用直接IPC写入替代界面操作。
+音频引擎是libmpv、输出为null，不冒称声卡听感或其他平台实测。所有记录的页面无文档级横/纵溢出。
+d-close运行于归零修复之前；关闭逻辑和前端与最终版本一致。e覆盖归零修复及同一前端构建；
+之后仅增加跨曲恢复指令选择修正和回归，上述正常/同曲恢复/关闭路径未改变。
+.build/together-ui-independent.json独立审计请求、注入回包、操作日志、账号归属与SQLite终态。
+失败b和最终e另由独立重开进程执行 --restore，仅发只读请求，再次确认无房间。
+逐项来源/模块/入口/证据见 listen-together-desktop-mapping.json；本批文件哈希与检查清单
+见 .build/together-ui-audit.json，goal_complete=false，完整目标及下列剩余工作继续。
+旧REST证明仍在 .build/together-native-20261026-b，不混作本批 UI 证据。
+
+可执行路径
+cargo build -p cumulus-desktop --example together_ui_probe --features custom-protocol --offline
+设置CUMULUS_SESSION_DIR为明确获授权的PC会话目录、CUMULUS_PROOF_DIR为新的绝对私有目录；
+运行该例子会自动通过真实WebView执行本批限定流程。CUMULUS_PROOF_CLOSE=1切换关闭恢复流程，
+CUMULUS_PROOF_SMALL=1使用760×540窗口。截图辅助器 .build/ui-proof/capture_together.py 使用GDK/X11。
+同一证明目录加 --restore 只核对/结束它有NEW_ROOM回包归属的原房间，不重放播放或队列变更。
+
+仍需完成，不能从本批推断已通过
+IM/RTC连接、凭据刷新/重连、实时入站消息、共同权益/替代曲目、完整邀请面板仍未完成。
+真实桌面重开后“继续本机控制”、独立“恢复播放设置”按钮、共享列表选曲/上一首/随机模式、
+清空队列自动退出、长队列窗口和映射本地曲目仍需补相应真实UI证据；相关原生接口或部分本地逻辑已写。
+试听片段、共同队列备份/合并、不同设备及休眠唤醒行为不能由当前普通歌曲样本代替。
+官方页面布局还需继续对照；本批只对照恢复材料重建，不声称像素级1:1。
+
+后续原生 IM 传输增量：core-listen-together-native-im.txt 与 listen-together-native-im-mapping.json。
+Linux SDK 登录/入房/入房通知/清理/同进程重开已实测；本文件中历史批次的无SDK连接结论
+仅描述当时范围。随后桌面消息连接/重连/退出清理增量已完成，见 desktop-listen-together-im.txt
+及 desktop-listen-together-im-mapping.json；播放业务消息及 RTC 仍未完成，realtimeReady 保持 false。

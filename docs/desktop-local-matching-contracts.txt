@@ -1,0 +1,99 @@
+本地音乐线上匹配：业务、协议、恢复和桌面契约
+2026-10-26。完整桌面目标仍进行中；本记录只覆盖本地音乐匹配。
+
+来源与实现组织
+官方 M/23 的 P/I/A/N/E：元信息规范化、persistId、匹配结果及 duration 回退。
+官方 M/15 Xf：/api/search/match/new；M/2304 match/activeMatch：元信息优先、50首一批、成功计数。
+官方 M/171 activeMatch SQL：筛选 tid 为空的本地条目。恢复页面以歌曲/歌手/专辑/文件夹分类。
+core/library/matching 分 api、hints、state、service；index/mapping 保存账号关联。
+client/local/matching 管理账号绑定工作者和展示字段；desktop/local 只桥接命令。
+frontend/useLocalMatching 与设备级 useLocal 分离，账号变化不会清空本地索引。
+本批未使用 YesPlayMusic。人工搜索选择是明确的恢复入口扩展，复用已恢复的搜索和详情接口，
+不冒称为官方 activeMatch 的逐行移植；元信息及批量匹配字段有直接执行官方代码的对照。
+
+自动匹配流程
+用户点击“匹配音乐”后，核心捕获完整本地列表，而非当前200条分页。已有当前文件版本关联的
+歌曲跳过；缺失/不可读文件不入任务；单任务上限50000条。默认按钮匹配全部未关联本地音乐。
+没有自动扫描即上报远端的行为。目录搜索、分类和本地播放不要求登录。
+首先检查文件版本，读取163 key(Don't modify):注释并用已有Rust AES解码；支持MP3 COMM、
+FLAC DESCRIPTION/COMMENT、M4A注释及NCM内置元信息。读取不写标签，不上传音频。
+music:/dj:依据M/23转为歌曲，保留专辑/歌手/码率/权限/节目元信息；MV元信息保留已恢复字段，
+本批没有实现M/23中的MV封面ID在线解析，也没有将其计作已通过的MV文件流程。
+多个官方注释给出冲突歌曲ID、注释损坏或不支持的类型时，不偷偷改用模糊匹配。
+CUE容器注释不能确定各分轨歌曲，分轨使用其自身标题/作者/时长请求匹配，避免全碟映成同一曲。
+
+没有官方元信息时，每批最多50首请求 /api/search/match/new，cache=false。
+顶层payload只有songs字符串，内容是JSON数组：
+  title: 本地标题
+  album: 本地专辑名，空串兜底
+  artist: 第一位本地歌手，空串兜底
+  duration: 秒（官方输入毫秒除1000；本地核心媒体事实已为秒）
+  persistId: localId + '?' + encodeURIComponent(title + '-' + artist + '-' + duration)
+localId为本地索引摘要；不在请求中发送路径。编码复用已恢复的JS数字与encodeURIComponent规则，
+不以URL表单的加号空格规则替换；songs内数字按JSON.stringify语义序列化。
+code=200后读取result.ids与result.songs，逐项对应，duration为假值时回退playTime或0。
+djProgramId为真值的搜索结果排除。持久化前要求正十进制歌曲ID、已发送的完整persistId、
+响应数量一致且不重复；外来/重复标识不能挂到其他文件。无歌曲结果记为未匹配。
+这是对官方仅split('?')[0]取键的校验加固；严格拒绝无依据的错配，不猜测另一首歌曲。
+
+恢复、并发与账号
+local_match_jobs_v1/current保存任务ID、phase、total/processed/matched/unmatched/skipped、
+revision和脱敏错误分类。候选逐条存入local_match_candidates_v1，避免每一批重写整份大列表。
+所有任务和local_map_v1按账号UID隔离；LocalLibrary文件索引与目录监视仍为设备级。
+每批从Queued/Running读最多50条，网络期间不持有SQLite或账号互斥锁。
+提交时重新读取索引并核对完整文件/CUE版本与物理fingerprint。发生源替换或已有新映射时跳过。
+关联写入、候选删除和游标推进在同一事务；失败后不伪造进度，已确认前批不重做。
+Pause/Resume/Cancel递增任务revision，迟到结果必须匹配账号代次、任务ID和revision才能提交。
+账号切换使旧worker失效；同UID重新登录也拒绝旧代次结果。
+重开把尚未完成的Queued/Running任务改成Paused，用户显式继续。服务拒绝或坏响应变成Failed，
+保持本批游标，显式重试才再次读取远端；取消保留已确认关联，下一次新任务清理剩余旧候选。
+与官方吞掉请求错误并继续计数不同，本实现暴露失败并保留可重试批次，不把网络失败算普通未匹配。
+跨实例操作锁限制同账号一个匹配worker；人工绑定和解除也持有该锁，防止迟到人工请求覆盖新选择。
+批处理保留原始song以供native消费者，UI只得到白名单TrackView、来源和不含路径的revision摘要。
+旧版本只有song_id/revision的local_map_v1兼容读取，不需要破坏迁移。
+
+人工关联及页面
+用户打开行内“关联/已关联”，查看当前歌曲，搜索关键词后显式选择结果或解除关联。
+搜索 /api/cloudsearch/pc：s=关键词、type=1、limit=20、offset、total=true。
+绑定前核心验证本地revision，读取 /api/v3/song/detail（c为[{id,v:0}]的JSON字符串），
+取得该ID的真实详情后再次校验文件与账号，再提交本地关联。页面不能直接传一份伪造song记录。
+解除只删除当前账号当前文件关联；不删除文件、不更改物理标签、不修改远端歌单/喜欢。
+匹配过程中禁用人工选择，暂停后可处理。菜单搜索结果、任务进度和关联均拒绝旧epoch结果。
+页面展示已处理/总数、成功/未匹配/跳过，支持暂停、继续/重试、取消、人工搜索分页和解除。
+关联后的评论入口以线上歌曲ID进入已有共享评论页面；本地播放仍保持LocalResource与原文件队列。
+这里没有把线上权限当作本地文件的解码授权；也没有在匹配过程中下载线上音频。
+
+新增IPC（正式命令合计52个）
+local_match_view(epoch, ids<=500) -> AccountData<LocalMatchView>
+  job: 可空的持久状态；links: id、revision摘要、songId、可空TrackView、source。
+local_match_command(epoch, command) -> void
+  start {query}; control {id,action:pause/resume/cancel};
+  bind {id,revision,song_id}; clear {id,revision}。
+LocalTrackView新增revision摘要，仅用于乐库条目版本校验；CUE路径等native revision细节不穿IPC。
+UI不持有Cookie/签名/授权URL，不自行发官方业务HTTP。
+
+已有证据与明确边界
+local_matching有11项核心测试；client_local增加1项完整IPC用例层/后台worker/epoch/版本测试；
+library_index原CUE测试补充隐藏容器关联兼容回归；desktop IPC拒绝旧epoch覆盖新增两命令。
+前端新增5项迟到结果、账号切换、文件revision、绑定解除、会话过期和搜索分页/控制流程测试，累计48项。
+官方JS脚本直接提取执行P/I/A/N/E：16组请求、5组响应、18组元信息，共39组。
+MP3/FLAC/M4A/NCM真实容器读取与文件原字节哈希保留有独立本地集成测试。
+核心103首任务分50/50/3批次；故障测试覆盖暂停/取消/切号、源替换/重扫、错误响应、数据库回滚、
+重开恢复、已有映射、旧格式兼容以及人工操作并发。临时文件测试不借用旧Python通过数。
+
+真实账号原生证明：.build/local-matching-native-20261026-a及b，使用新生成的合成音频。
+两次均：3首处理、文件元信息关联2首，普通FLAC的/API匹配返回200但ids/songs为空，未匹配1首；
+随后明确人工绑定成功、重开保留3个关联，源哈希未改，远端资源写入0。
+b/matching-calls.json保存本次实际请求与响应（仅合成样本元信息）。该旧样本只证明真实空结果，
+不据其断言服务全面失效。随后c使用当前搜索可检索的《海阔天空》样本：三首全部自动关联，
+普通FLAC的source=search，其余两首为file_metadata；关联ID均与输入样本一致。
+c另验证明确人工解除/绑定、重开、三份源文件哈希未变，远端资源写入0。c/matching-calls.json
+保存真实200命中响应，c/report.json保存分类结果；不以c成功覆盖a/b的真实空匹配边界。
+命令：
+  cargo run -p cumulus-core --example local_matching_roundtrip --offline -- AUTHORIZED_PC_PROFILE NEW_PROOF_DIR
+正式窗口.build/ui-proof/local-matching-20261026-d正常6张、小窗口重开2张流程截图均通过；
+涵盖暂停/继续、自动命中、人工解除再关联、评论读取和保持本地队列的libmpv解码。
+独立媒体和本地映射核对见.build/local-matching-desktop-independent.json。
+累计检查与早期未完成的窗口验证记录见rust-core-validation.txt。
+专有字段未获验证的分支、播客本地节目专用入口、MV文件元信息封面解析、批量标签/文件操作、
+超大库性能、Windows/macOS运行验证等仍不在本批完成声明内。完整目标不在此处完成。

@@ -1,0 +1,101 @@
+{
+  "schema": 1,
+  "scope": "Cloud ordering increment; not exhaustive full goal",
+  "goal_complete": false,
+  "yesplaymusic_business_code_used": false,
+  "fallback_consulted": "Bounded source search for cloud edit/match; no applicable implementation found",
+  "contract": "docs/core-cloud-order-contracts.txt",
+  "official_sources": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/106.js",
+      "sha256": "8cc5c5e903bcd82d4a2a550ccdaf235e8fb9e44cda4babdc6605295458439ec4"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/177.js",
+      "sha256": "382a1f7a7e86cd5f73981a03a6e237a0f49b9f90111ad963414f77bddda7e98f"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/195.js",
+      "sha256": "7607df5988746dbca8fe51ea1e9749cdd03bdee725d1e5795c3b3a4bd001a447"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/611.js",
+      "sha256": "b7006e1d1a34f4a31119aaf486b7693707fd3faa23e7abf834d5bbec3ede4aef"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_52.chunk.1482700000000.js/3100.js",
+      "sha256": "2a5703b0917487fa4d1c707152cf75ac53ce3ded18c05e3b529c45e9cb452276"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_208.chunk.1482700000000.js/3023.js",
+      "sha256": "14abe3589317d764b556684a344c7bbe17294d8c58132f8daac52142983fe665"
+    }
+  ],
+  "runtime_reference": {
+    "path": "references/recovered-client/vendor/v8-13.6-array-sort.tq",
+    "sha256": "2ac3d8fc187e4f5096afb153d018390e2b250cde3e36badafe89da3faeebe55e",
+    "license": "core/third-party/V8-sort-NOTICE.txt"
+  },
+  "mappings": [
+    {
+      "feature": "default_order",
+      "source": "M/3023 uploadTime/reverse",
+      "implementation": "frontend/src/composables/useCloud.ts",
+      "evidence": "desktop/examples/cloud_probe.js"
+    },
+    {
+      "feature": "five_and_three_state_transitions",
+      "source": "M/106 + M/195 artist projection",
+      "implementation": "frontend/src/services/cloud.ts",
+      "evidence": "frontend/tests/cloud-state.test.ts"
+    },
+    {
+      "feature": "source_metadata_keys",
+      "source": "M/611 songName/artist/album",
+      "implementation": "core/src/cloud/library/api.rs",
+      "evidence": "core/tests/client_cloud.rs"
+    },
+    {
+      "feature": "chinese_numeric_utf16_comparison",
+      "source": "M/177",
+      "implementation": "core/src/cloud/sort/mod.rs",
+      "evidence": "core/tests/cloud_sort.rs"
+    },
+    {
+      "feature": "v8_run_stack_and_galloping",
+      "source": "V8 13.6.233 ArrayTimSortImpl; official comparator nontransitivity",
+      "implementation": "core/src/cloud/sort/timsort/mod.rs",
+      "evidence": "core/tests/cloud_sort.rs"
+    },
+    {
+      "feature": "merge_and_inconsistent_comparator_recovery",
+      "source": "V8 MergeLow/MergeHigh",
+      "implementation": "core/src/cloud/sort/timsort/merge.rs",
+      "evidence": "core/tests/cloud_sort.rs"
+    },
+    {
+      "feature": "complete_page_and_playback_order",
+      "source": "M/3100 external full-list selector; compareFn=false",
+      "implementation": "core/src/client/cloud/view.rs",
+      "evidence": "core/tests/client_cloud.rs"
+    },
+    {
+      "feature": "accessible_sort_indicators",
+      "source": "M/3100 columns; community ARIA implementation",
+      "implementation": "frontend/src/components/CloudPage.vue",
+      "evidence": "desktop/examples/cloud_probe.js"
+    },
+    {
+      "feature": "direct_official_js_oracle",
+      "source": "Execute M/106, M/195, M/177, M/611",
+      "implementation": "references/recovered-client/scripts/netease_cloud_sort_oracle.cjs",
+      "evidence": "core/tests/fixtures/cloud_sort.json"
+    },
+    {
+      "feature": "native_window_cycles",
+      "source": "Actual DOM -> IPC -> Rust -> DOM ordering",
+      "implementation": "desktop/examples/cloud_probe.js",
+      "evidence": ".build/ui-proof/cloud-sort-20261026-a/complete.json"
+    }
+  ]
+}

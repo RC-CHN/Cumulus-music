@@ -1,0 +1,85 @@
+官方旧版 301 校验与当前队列清理
+2026-10-27；属于持续中的完整桌面目标，本阶段不代表全部风控或登录完成。
+
+来源及适用分支
+官方 hybrid_app M/34.p、M/12：两个登录实验不同时为t1时，数字301转发api301$。
+M/1384约4540行订阅；M/15.Hd导出R，调用M/12工厂/api/middle/account/token/refresh。
+M/402约576行检查响应code；M/198 host/logout与M/1384 clearCurPlayingList定义退出/清队列。
+原JSK链另见login-interception-contracts.txt，不能将两个算法混用。未参考YesPlayMusic。
+
+已登录分支的准确行为
+一次只处理一个校验；校验请求为空业务对象，不带fromAPI、fromPage=JSK或x-login-chain-id。
+仍使用正式PC请求上下文、同域Cookie、配置路径匹配与加密，绝不重放原来失败的业务请求。
+M/402先将非空字符串code按parseInt(code,10)转换；正常200包括字符串200返回给订阅者。
+业务301拦截入口同样应用M/402字符串归一化，含字符串301、带符号/尾部文本的301和301.0；
+JSK/旧版都会按规范化后的数字301处理，明确失效后下游仍得到301语义。
+有值的非200码会在M/402抛异常，HTTP和网络失败也抛异常，不经过M/290的code=-1转换。
+因此不能把连续三次HTTP500/网络错误写成“官方旧版三次后退出”。
+订阅者收到code非数字200，或data.action明确为null，才增加fe；恰好fe==3显示失效并退出。
+在正常原生传输下，可达的例子包括code200/action=null、或缺失/零/false等被M/402放行的code。
+成功的code200且action非null重置fe；action缺失、字符串"2"、其他未识别值不会退出。
+数字action1保留账号并冷却5000毫秒；从回包完成时开始，而不是JSK的请求开始时间。
+数字action2失效并展示服务端有界标题/说明；只有数字followAction1要求清空当前队列。
+字符串"1"不清队列，action1带followAction1也不清队列。
+
+明确的社区差异
+原订阅在await Hd()外没有catch/finally。执行原函数已复现请求拒绝后pe一直为true，后续校验跳过。
+Rust用RAII互斥释放锁，网络异常/取消不会增加fe，后续用户请求可以重新校验；这是有意修复。
+校验本身的网络/HTTP/响应拒绝映射LoginDeferred，保留账号且不再递归触发301处理。
+本地存储、代次和锁错误仍明确返回，不伪装成服务端校验成功。保留不等于请求成功。
+fe、冷却和互斥按账号代次隔离，代次切换后不携带原应用全局计数；旧返回不能影响新账号。
+冷却使用单调时钟对应setTimeout，不受系统墙钟回拨影响。
+沿用JSK本地失效策略：清本地凭据，不自动调用远端logout；立即提供重新登录入口，
+没有等待1秒自动打开官方removeGuide模态框，也不将旧账号的removeGuide文案带给新账号。
+
+模块与持久化
+core/account/login_policy/legacy.rs：独立状态机、失败计数、完成后冷却、通知与清队列意图。
+core/account/session/legacy_api.rs：M/402响应码边界；session/policy.rs选择真实实验对应算法。
+core/account/session/invalidation.rs：校验当前代次后执行本地失效及恢复；没有网络await。
+core/playback/queue/reset.rs：限定归属队列的幂等清理，不删除歌单、音乐文件、下载或其他账号记录。
+凭据清除、提示和queue_reset计划在一个凭据事务中提交。计划只有随机ID、owner和规范化队列
+SHA256，不保存另一份歌曲内容。凭据库与宿主队列库是两个SQLite库，不能声称跨库原子事务。
+队列库在同一事务清空items/order/current、播放位置、FM备份队列/位置和FM source/failure，
+并写入owner/login-queue-reset-v1/计划ID的完成回执。保留普通播放模式，FM时恢复备份模式。
+最后确认凭据库计划已完成。重启先发现失效提示并恢复计划，不发身份请求复活账号。
+队列清理写盘失败：凭据仍已失效，计划保留，清理事务回滚，返回Storage错误。
+回执确认写盘失败：重启或显式本地退出重试，已完成回执阻止重复清理。
+崩溃后队列已被另一会话更新：摘要不符时记录superseded并保留新队列，绝不抹掉后来操作。
+当前归属为被拒绝请求的UID；未识别但有MUSIC_U的启动会话为local-guest。
+与官方全局队列相比，这是社区账号隔离规则；清理登录账号队列不会顺带清其他账号或guest队列。
+尚有计划时canSignOut为true，显式本地退出会先恢复清理；存储持续失败仍明确报错。
+若连准备计划读取都失败，失效提交不发生、内存进入Expired并报错，不能宣称已经持久化清理。
+
+官方原函数与原生测试
+node desktop/tests/login_legacy_official.cjs
+生成core/tests/fixtures/login_legacy.json：10组订阅序列（9组正常对照、1组原异常死锁），
+15组M/12工厂与M/402响应检查组合，包含字符串码、301、500和假值。
+从固定恢复源码AST提取并执行实际函数/响应检查语句，记录源SHA；没有重写JS算法作自我对照。
+脚本对正常200、非200拒绝及实际调用次数作基准断言；ReferenceError/TypeError视为工具失败。
+core/tests/login_legacy.rs验证状态、时间、严格null、取消与文案边界；
+core/tests/client_login_policy/legacy.rs验证原生协议、计数、错误恢复、队列归属、FM恢复、
+两个持久化事务的故障、完成回执、后来队列保护、迟到响应和本地退出。
+首次工具遗漏工厂常量P导致对照失败，已补齐并增加工具错误快失败；保留tests1失败日志。
+
+桌面执行入口
+复用正式登录策略UI探针，设置CUMULUS_PROOF_LEGACY=1选择合成非t1分组与followAction1；
+不设置则验证既有JSK分支。实际Vue/WebView/IPC/原生账号事件不替换，音乐HTTP是进程内合成服务。
+ CARGO_INCREMENTAL=0 CARGO_TARGET_DIR=.build/target cargo build --locked --offline -p cumulus-desktop --features custom-protocol --bin cumulus --example login_interception_ui_probe
+ CUMULUS_PROOF_LEGACY=1 GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 LIBGL_ALWAYS_SOFTWARE=1 dbus-run-session -- xvfb-run -a -s '-screen 0 1280x900x24' /usr/bin/python3 desktop/examples/run_auth_probe.py NEW_PROOF_ROOT --binary .build/target/debug/examples/login_interception_ui_probe --stage-prefix interception_ --screenshots 4 --small
+ python3 desktop/examples/audit_login_interception_probe.py NEW_PROOF_ROOT
+使用全新目录，不覆盖证据。独立审计读取UI事件、SQLite和截图数量，不执行音乐业务。
+此合成流程不证明真实账号收到了action2，也不主动制造当前账号的失效或清理其真实队列。
+最终本阶段运行日志、截图和构建哈希见.build/login-legacy-progress.json。
+
+仍有边界
+官方isAnonymous分支的createAnonimous与一分钟四次诊断上传尚未迁移。仅凭Cookie缺失无法推断
+isAnonymous；无UID且无MUSIC_U时保留既有未登录处理，不伪造匿名账号或上传诊断文件。
+完整JSK新登录、旧702/8840网页验证、原设备确认、真人CAPTCHA成功、真实新refreshToken成对轮换、
+Windows/macOS实机及完整桌面目标其余业务/视觉/平台验收继续；这些不是本批测试可替代的证据。
+
+本阶段最终结果
+最终192个suite、860项Rust通过，严格Clippy/fmt通过；没有新增前端源码改动或虚增前端测试数。
+上述两个模式的正式UI探针各4步及独立审计通过，旧版小窗口失效截图已查看。
+正式客户端恢复真实账号/每日推荐，PC配置1026048、设备revision1；自动业务动作0。
+只读审计两实验仍false、当前无refreshToken，不能据此推断历史发放或风控处罚。
+正式/探针产物SHA在GUI运行前后相同。完整日志与散列见.build/login-legacy-progress.json。

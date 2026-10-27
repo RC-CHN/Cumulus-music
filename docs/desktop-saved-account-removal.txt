@@ -1,0 +1,90 @@
+保存账号移除与中断恢复
+2026-10-27；完整目标仍进行中。此动作只处理本机指定的保存会话，不调用远端注销/删除接口。
+
+官方来源
+references/ui-recovery/sources/packages/pc/src/pages/switchAccount/index.tsx：只有非当前账号
+显示移除入口，Modal.confirm确认后dispatch host/onDeleteLoginedUserInfo；取消不执行动作。
+references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/198.js：
+按deleteUserIds筛除快捷登录记录，Se.set持久化。所见恢复逻辑未证明会同时销毁原生凭据。
+本实现遵守非当前账号/显式确认的交互，额外清除指定保存会话的本地登录凭据，作为社区设计。
+官方界面最多展示3个快捷账号；当前Cumulus保留可滚动的完整本地列表，不宣称行为逐像素一致。
+历史session_files.py证明同域独立候选和选中指针；profiles.py实际是Windows兼容参数，
+前批账号映射误将其作为选择目录来源，本批已修正为session_files.py，并保留旧批哈希的历史属性。
+未使用YesPlayMusic。
+
+用户流程与接口
+账号按钮→切换账号→非当前行“移除”→确认移除账号。提示再次使用需重新登录。
+取消返回原列表，不改变任何凭据。当前账号不显示移除按钮；core也独立拒绝移除当前UID。
+新增正式IPC remove_saved_account(epoch,id)，id为saved_accounts返回的不透明句柄。
+epoch陈旧、id非法或记录不存在时拒绝；成功返回void，前端随后只读刷新保存列表。
+SavedAccountView新增removalPending；旧客户端字段缺失时仍可按false显示。
+清理失败保留账号行，显示“凭据清理未完成”，禁止切换，提供显式“继续移除”。
+前端不自动重发删除。若IPC回包丢失，回读列表确认该行已不存在即可展示完成。
+关闭弹窗不会撤销已经确认的本地清理；迟到回包不修改关闭后的组件。
+有另一个已登录账号时移除非当前账号不会退出当前账号、暂停当前播放或改变其账号代次。
+已退出/过期的绑定会话可移除；绑定Credentials对象同步清空，避免account_snapshot引用旧revision。
+关闭自动登录后以游客启动，也可移除仍被启动指针选中的保存记录，指针在开始移除时清除。
+本动作没有新增官方API请求；与logout_account(remote=true)的/api/logout行为分开。
+
+持久化与原生流程
+core/account/profiles/removal.rs实现；注册库transport/saved-profile-removals-v1/<session_id>
+保存{uid,session_id,complete}。这是社区恢复日志，不是声称官方用了同样存储。
+1. 验证句柄，取得跨进程操作锁和当前SessionToken代次；拒绝当前账号。
+2. 注册库事务写complete=false；若active选择就是该会话，同时删除active。
+   保留保存账号行，供失败恢复；初始事务失败不清凭据，也不删除列表。
+3. 校验真实目录且拒绝符号链接跳转。若为当前已退出的绑定实例，调用该实例Credentials.clear；
+   其他会话直接删除其transport/credentials/session行，也能清理格式损坏的凭据记录。
+   真正不存在的目录视为无凭据可清理；路径被重定向/读取错误则保留未完成状态。
+4. 注册库事务仅删除仍指向同一session_id的保存账号行，再把complete置true。
+   不删除UID命名空间的偏好、资源缓存、下载任务或媒体文件，也不覆盖其他新保存会话。
+5. 完成记录保留，旧候选即使网络回包迟到也不能重新提交同一个句柄。重复完成请求幂等返回。
+两个SQLite不能假装同一原子事务；在任一步骤中断，已有intent都可从同一个命令显式继续。
+凭据已清但列表删除失败时，仍展示pending行；继续移除不会重新创建凭据记录。
+旧HTTP响应通过原有凭据revision比较失败，不能把已删记录重新写回。
+新候选提交、保存账号候选打开/核验以及选中账号元数据升级都检查移除日志。
+删除进行中不允许用同UID另一个候选覆盖该行；删除完成后新的正常登录可建立新句柄。
+账号列表展示不再要求凭据目录存在，使缺失目录的保存记录仍可见并可移除；真正登录时仍检查目录。
+
+前端协调
+useSavedAccounts分离列表/移除状态。移除开始使之前发出的列表读取过期；旧列表不能复活已删行。
+一次只执行一个移除；写入结束只读刷新，pending保留且需用户再次确认。
+读取失败保留已确认的本地移除事实与刷新提示；切号或销毁后丢弃迟到响应。
+AccountDialog保留useLogin的切号状态，删除/退出/切换互斥；App同时观察canSignOut能力变化。
+desktop/auth只转发并发布受限账号事件。前端不传本地路径、不持有Cookie/刷新令牌。
+
+本地验证
+core/tests/saved_accounts.rs新增7项：指定会话清理/其他会话及资源保留、旧候选/迟到Cookie拒绝、
+同UID重新正常登录、当前账号/陈旧/非法句柄拒绝、凭据清理失败重启恢复、注册库收尾失败、
+已退出绑定实例清理、关闭自动登录游客删除选中记录，以及符号链接拒绝/目录缺失处理。
+部分场景合并于同一用例；7不是功能数量。故障使用真实SQLite触发器，不模拟一个布尔“失败”。
+frontend/tests/saved-accounts.test.ts新增4项：旧列表回包、丢命令回包只读核对、pending显式恢复、
+当前账号保护和关闭后迟到结果。desktop/tests/ipc.rs覆盖新增真实注册命令的陈旧代次拒绝。
+窗口探针saved_accounts_ui_probe.rs/.js使用生产界面/IPC/Rust和虚构服务，准备两个合成账号；
+只有准备阶段通过原生用例登录，待测移除/取消/失败/重试全部由DOM按钮触发。
+实际SQLite清理触发器制造失败，原生读取pending后才解除故障，界面须显式继续才能完成。
+重启保持另一个账号已登录，且被移除账号不再显示。
+
+实际验收与复跑
+.build/ui-proof/saved-accounts-20261027-a/first为1120×760、5截图；b-small/first为760×540、5截图。
+两目录reopen均760×540、各2截图。四次执行全部通过，已人工查看确认弹窗、小窗口pending状态
+和重启后账号列表。audit_saved_accounts_probe.py独立只读SQLite确认被移除凭据行不存在、
+另一账号Cookie及active选择保留、完成日志持久化；两份independent-audit.json通过。
+新布局另回归完整auth-20261027-d的13步登录与3步重启，具体结果见rust-core-validation.txt。
+最终650次Rust通过（626主测试：core614/desktop3/插件9，以及既有示例24），0失败/忽略；
+前端77项通过。Rust格式/严格Clippy、前端格式/类型检查/构建、正式桌面与两种探针构建通过。
+日志前缀.build/saved-account-*；当前散列与证据索引为.build/saved-account-progress.json。
+仓库根执行（root必须是新目录；Python只做驱动/截图和独立审计）：
+  npm --prefix frontend run build
+  CARGO_INCREMENTAL=0 cargo build -p cumulus-desktop --example saved_accounts_ui_probe --features custom-protocol --locked
+  xvfb-run -a -s '-screen 0 1280x900x24' dbus-run-session -- env GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 \
+    /usr/bin/python3 desktop/examples/run_auth_probe.py /absolute/new-proof-root \
+    --binary .build/target/debug/examples/saved_accounts_ui_probe --stage-prefix saved_ --screenshots 5 --reopen-screenshots 2
+第二次使用同一命令加--reopen；首次加--small用另一个目录验证小窗口。
+  python3 desktop/examples/audit_saved_accounts_probe.py /absolute/new-proof-root
+
+边界
+仅清理用户选择的这条保存会话。无法从现有旧数据离线推断归属的历史/未登记候选目录不在
+此次删除范围，后续统一回收仍属完整目标；不会为清理一个账号扫描并删除所有未知候选。
+保留空目录/其他本地状态和完成日志；这是凭据逻辑清理，不声称磁盘取证意义的安全擦除。
+不影响该账号在官方手机/其他设备上的登录，不自动撤销远端会话，不删除云端账号或资源。
+本批仅操作虚构测试账号；当前平台为Linux，其他系统运行与分发仍需后续验证。

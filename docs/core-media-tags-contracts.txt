@@ -1,0 +1,78 @@
+Rust 标签与下载命名契约
+2026-10-25；对应 media/tags/ 与 download/naming/。
+
+来源与分层
+官方 hybrid_app M/23 ne/ie/le 负责元信息，M/27 A/N/E 负责命名；直接执行已检查的纯函数，
+冻结于 tests/fixtures/media_tags.json、download_paths.json，各自记录官方文件 SHA256。
+本次没有参考 YesPlayMusic。归档 tags.py、download_paths.py 作已有工程行为对照，未修改。
+media/tags 分字段辅助、歌曲/MV、播客、任务构建、标准标签计划、注释加密和 writer/。
+writer/mp3、flac、mp4 各自处理容器。download/naming 分清理、官方布局、可移植路径适配。
+这些接口不发请求；远端歌曲详情/授权 URL/封面获取属于后续下载协调器。
+
+官方元信息
+build_metadata 接受官方规范化的任务与 Track/Voice/Mv 类型，返回 M/23 的字段对象。
+无 offlineId 返回 None；不支持的后缀和 songType=1 返回不写标签的空元信息任务。
+特殊歌曲谓词作为调用者输入，不在这里推测。此分支的图片 ID、空封面/歌词字段和未做数字
+mp3DocId 替换均保留。普通歌曲、MV、播客及实际 encryptFile 分支分别按官方顺序构造。
+保留对象字段缺失与显式 null，使用 JS trim、truthiness、数字文本和 JSON 序列化规则。
+普通歌曲 musicId 移除 offline-/track-，作者名逐个 trim，专辑标签与注释中的 trim 不同。
+纯数字 mp3DocId 字符串替换为原样数字 token，不先转浮点；极长数字不丢精度。
+官方对 "0001" 也做这一替换，所得注释不一定是合法 JSON；因此注释作为文本保留。
+ie 在没有歌手列表时返回 []，不是空串；空数组在 JS 中是真值，不能改成播客作者回退。
+voice + encryptFile + privilege 的官方分支会生成 music:privilege 对象并覆盖 dj: 元信息；
+冻结样本保留这一原始行为，不能将其当成已验证的有声书加密播放流程。
+错误形状如数字歌手名、缺少所需 album 对象返回错误，不模拟 JavaScript TypeError 文本。
+
+track_plan 是原始 API 歌曲到官方规范化任务的适配：album/al、artists/ar、duration/dt、
+mvid/mv、position/no 仅在主字段缺失时用别名；Quality 提供 M/84 bitrate 码，未知 level 回 br。
+标准标签为 TIT2/TPE1/TALB/TRCK/TPOS 的文本计划，官方空数组作者在适配层成为空文本。
+encrypted 表示调用方实际选择的容器。official_requires_encryption 单独实现 M/754+M/35：
+(flag & 4 && !(payed & 6)) || flag & 32。该函数不授予访问权，也不强制普通授权音频走 NCM。
+
+注释
+原生 x64 329440 -> 329560 -> 62C5D0：前缀 163 key(Don't modify):，AES-128-ECB/PKCS7，
+密钥十六进制 2331346c6a6b5f215c5d2630553c2728，密文 Base64。与 NCM 共用常量。
+encode/decode 接口限制明文16MiB，严格前缀/Base64/PKCS7/UTF-8；不把它称为安全凭据存储。
+
+容器写入
+纯 Rust Lofty 0.25.4（MIT OR Apache-2.0），官方文档 https://docs.rs/lofty/0.25.4/lofty/。
+按文件内容探测，不依赖扩展名；目前写 MP3、FLAC、MP4/M4A。M/23 接受 AAC 的元信息，
+原归档也未实现裸 AAC 容器写入；此入口明确拒绝，不声称所有原生容器均已恢复。
+MP3：逐帧替换非空五个字段，COMM eng/空描述写163注释，替换前封面，保留其他评论与图片。
+FLAC：TITLE/ARTIST/ALBUM/TRACKNUMBER/DISCNUMBER，DESCRIPTION 写注释，保留其他
+Vorbis 字段和非前封面 PICTURE。只写相关块，不重写不相关的旧 ID3。
+MP4：©nam/©ART/©alb、©cmt，x 或 x/y 数字写 trkn/disk；非数字跳过，超过 u16 返回错误，
+不截断；替换 covr，保留未涉及的 atom。缺省总数明确清零，避免残留旧总数。
+封面沿用 bounded PNG/JPEG 完整性校验，保留原图片字节；不做转码。
+write_tagged_copy 创建同目录暂存副本、写标签、flush/sync_all 后 persist_noclobber。
+源文件和已有目标不修改；校验/处理失败移除暂存。目标父目录须已存在。
+复制前后检查所持源句柄长度/mtime；下载协调器仍须验证原始文件和最终输出的 SHA256。
+这不是对恶意本地进程的竞争隔离，也不承诺断电后的目录项持久性或所有未知标签字节不变。
+操作阻塞，必须放工作线程；不修改 Lofty 全局配置，不声称解析器有整文件总内存硬上限。
+
+命名
+PathRequest 显式提供 pathType/fileType 0..2、UTF-16 根目录长度（含尾分隔符）、后缀。
+track/voice/mv/yunName 对应官方任务；该入口不是原始 API 歌曲的 al/ar 转换器。
+三目录布局：根目录、歌手、专辑歌手/专辑；三文件布局：歌手 - 标题、标题、标题 - 歌手。
+前三位歌手逗号连接；播客加“电台节目”，MV 加“MV”；云盘名指定时不再拼歌手。
+官方清理将反斜杠替为全角，移除其他保留字符，清理两端点/逗号/JS空白和控制字符。
+200 UTF-16 单元预算扣后缀/根目录长度及两倍目录层数；前部组件按 floor(m/(n+1)) 截断，
+末组件用剩余长度。原公式未扣扩展名前的点；单文件最长可达根长度合计201单元。
+PathPlan 保留 official_windows_path 与实际 relative PathBuf，并标记 portable_adjustment。
+工程适配：不切断 Unicode 标量，移除空组件而不复现 splice 遍历空项缺陷；无有效名称报错。
+可移植结果限制组件255 UTF-8字节（最后组件预留后缀），Windows设备名加下划线，清理尾空格/点。
+因此少量保留名、emoji截断或长中文路径与原Windows字符串不同；目录创建、重名解决及
+发布时防目录重定向由上层负责。纯命名不保证目标目录内没有符号链接或文件冲突。
+
+验证
+31组 M/23（包括3组官方异常）、5组独立Node/OpenSSL注释向量，63组 M/27 布局。
+Rust 测试另覆盖原始字段/质量、null、长数字、Windows保留名、UTF-8/UTF-16截断和预算拒绝。
+tests/fixtures/tag_audio 为自行合成的1秒440Hz音频，MP3/FLAC/M4A均由FFmpeg编码，
+由独立Mutagen预置旧标签、内嵌歌词、自定义字段、封面/封底，provenance.json 记录哈希。
+普通 cargo test 使用冻结媒体，不启动Python/Node/FFmpeg。
+实际 Rust 入口 core/examples/tags_roundtrip.rs 写6份文件（三格式各PNG/JPEG）。
+.build/rust-tags-report.json：Mutagen独立回读标签与保留字段、Node/OpenSSL解密注释、
+FFmpeg解码PCM逐字节比较，6/6通过，原文件未变。只在Linux执行；不是官方Windows客户端
+接纳测试。后续普通歌曲完整下载联动另有真实证明，见 core-download-service-contracts.txt。
+下载准备器使用内部prepare_file写入已预留并记录身份的暂存句柄，最后统一提交文件与任务；
+该内部入口本身不发布最终路径，授权/原始完整性/取消/账号代次由下载协调器检查。

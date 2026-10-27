@@ -1,0 +1,134 @@
+音效目录、权益判断与参数材料库
+2026-10-26；完整桌面目标仍进行中。本篇只覆盖本批已接通的核心业务。
+
+一、来源与分层
+官方 3.1.42.205594 恢复 JS 优先，未参考 YesPlayMusic：
+modules/hybrid_app.chunk.1482700000000.js/15.js：服务地址/缓存策略；
+85.js：目录适配、授权枚举、特殊效果 200/201/202 使用权益类型116，其余127；
+342.js getAudioEffectAuthResult：会员、匿名、试用、查询成功与失败分支；
+342.js 普通效果选择：soundMaterialList[0]，不能寻找后续条目冒充第一个材料；
+28.js Z 与 308.js restoreAudioEffect：回收查询 queryInfo 的实际形状；
+28.js V 与 168.js：逐歌参数与情绪特征单歌请求、结果绑定到捕获的歌曲ID。
+归档产品报告33用作历史链路对照，不作为新Rust通过证据。
+
+core/src/effects/api.rs 是请求/响应边界；catalog.rs 是原生记录和材料描述；
+rights.rs 是纯授权决策；service/ 分目录缓存、父子任务、材料文件和记录。
+核心独立于 Tauri/前端，不启动 Python/Node。既有 TransferManager 负责真正的
+HTTP/Range/MD5/原子发布；已有 Rust NCAE 解码器负责参数容器。
+原始Sound、材料URL、账户命名空间和本地文件路径都属于native数据，不可直接用于IPC。
+本批尚未增加正式桌面命令、音效页面或实际播放处理链。
+
+二、接口契约
+所有调用使用现有Api认证与协议；不隐式换协议、重试写入或扩展Cookie作用域。
+下列接口都为读取，cache=false；客户端显式目录缓存与服务请求缓存是两层概念。
+
+queryAllSound /api/usertool/sound/queryAllSound
+  {exposeType:5|6|7}，data为Sound数组；分别强推荐/推荐/更多。
+旧目录 /api/usertool/sound/mobile/promote 与 /api/usertool/sound/mobile/all
+  {}，data为Sound数组。
+设备品牌 /api/usertool/home/soundeffect/devicebrand/list
+  {}，data为对象数组。
+设备音效 /api/usertool/home/soundeffect/devicesound/list
+  {deviceManagerId:整数}，data为对象数组；设备材料尚未进入普通参数材料下载流程。
+详情 /api/usertool/home/sound/info
+  {reqListStr:'[{"soundId":"ID","soundType":10}]'}。
+  普通PC详情固定请求soundType=10；目录soundType=3/4属于另一分类，不能直接传入。
+  校验data.soundList唯一行的soundId/soundType以及pcSoundDetail.id；空列表或null详情
+  返回None，不拼接错误条目。普通参数材料只取soundMaterialList第一项且要求type=1。
+授权 /api/vipauth/app/interests/auth/query
+  {queryInfo:{interestsMap:{"116或127":[数字ID]}}}。
+  按数字interestsId匹配；存在interestsType时校验一致，重复匹配为错误。
+  200但没有匹配项是确认无授权，不是网络失败；缺字段/畸形数据不会授予使用权限。
+回收查询 /api/vipauth/app/interests/recyclequery
+  {queryInfo:{"116或127":["字符串ID"]}}。
+  注意路径没有/auth/，参数也没有interestsMap。M/308传直接映射，M/28原样包queryInfo。
+  本批只返回读取结果，不自动执行auth/stop。
+智能音效 /api/usertool/smart/sound/get
+  {songId:"ID"} -> data.soundKey字符串；"0"保留为有效返回值。
+逐歌AI /api/vip-rights/svip/sound/effect/get
+情绪特征 /api/vip-rights/emotion/audio/effect/get
+  {songIds:["ID"]} -> 最多一条对象；空列表为None。AI结果id不假定等于songId。
+  effect=null/没有url是合法缺失，不伪造材料，也不据此推断已完成模型推理。
+
+三、授权判断与材料许可
+decide_access移植官方342的判断：
+1. 匿名且目录要求VIP/SVIP，先返回Login。
+2. 查询成功采用查询结果，更新会员类型；canUseType50/51为试用。
+3. 查询失败时，官方按目录所需会员、宿主会员状态或目录trialStatus降级判断。
+4. 不可用且匿名返回Login，否则Upgrade；可用返回Allow和会员/试用信息。
+Rust返回动作，不直接唤起支付。canUse只接受真正的bool true，畸形truthy字符串不授权。
+该纯函数的Unavailable由调用者显式提供，材料服务不把解析失败/会话过期混成此分支。
+
+EffectsLibrary.acquire_for对每次获取、续传和缓存复用都重新请求详情及授权，要求新返回
+canUse=true；从不靠目录VIP标记、宿主会员缓存、无匹配结果或请求失败放行材料。
+它只取得材料，不启动试用、不占用授权、不代表音效已激活。auth/set、auth/stop、
+占用/到期计时及恢复还需在激活生命周期完成；本批没有这些写请求。
+
+四、持久化、文件和恢复
+catalogue_for(token,kind,refresh)：按账号/exposeType保存完整官方数组，重新读取时验证。
+失败/重复ID/账号切换不发布部分新目录，显式refresh=false可取旧目录；旧目录不授予下载。
+
+acquire_for(token,effect,RunOptions)：
+  登录账号代次 -> 账号/效果互斥锁 -> 新详情 -> 新授权 -> 首材料校验 -> 父记录 ->
+  子传输创建/续期 -> HTTP/Range -> 完整性 -> 有界NCAE/JSON -> Ready。
+  RunOptions可用byte_budget或TransferControl暂停/取消，完整缓存也检查控制和账号代次。
+  返回MaterialOutcome：原生Sound/Authorization、receipt、传输ID、字节数及可选VerifiedMaterial。
+  material=None表示还未得到可用参数；得到Some也不表示已进入播放器DSP。
+
+材料描述要求CDN允许列表内的HTTPS URL、非空MD5和1..64MiB长度。反序列化同样验证，
+不能通过持久化null/非法字段绕过构造器。参数解压上限4MiB且JSON根必须为对象；
+此接口不用于情绪二进制模型。解码时重读并比对MD5/SHA256、长度、文件句柄/mtime。
+
+父记录位于effects-materials-v1，key=SHA256(effectID,soundType,size,md5)。
+内容指纹不含URL，URL更新且MD5/长度相同才沿用传输字节。内容变化建立独立任务/文件，
+旧文件不被覆盖。路径由私有StateStore、账号哈希、内容指纹和随机attempt生成。
+父记录先持久化attempt，再创建子任务；子任务继承既有传输的文件身份和发布日志。
+阶段Pending -> Ready；删除为Removing -> Removed。Ready是最近验证状态，不是永久
+文件有效性承诺；每次acquire会重新验证，失败不会返回可用参数。
+
+崩溃在创建.part后、子日志提交前：保留未知文件，登记abandoned并另建attempt；不收养、
+覆盖或删除无法证明属于任务的残留文件。最多保留64次该类尝试，超出需明确处理。
+崩溃在子任务完成后、父Ready前：复用并验证已完成子任务，不重新下载。
+中断/取消：子任务保留已写字节并进入Paused；显式再次acquire重新查权限后恢复。
+账号切换：API结果/网络读取后/参数返回前检查代次；旧账号文件不会返回给新账号。
+失去授权：不调用CDN、不返回缓存参数，既有文件不会因为权限变化被擅自删除。
+
+remove_for(token,receipt)只清理当前账号记录绑定的子任务文件，不发服务端请求。
+Removing先持久化，可从“文件已删、父记录尚未更新”重试；Removed幂等。
+与acquire共用效果互斥锁；文件被第三方替换则拒绝清理并保留Removing，避免删用户文件。
+无日志的孤儿文件始终保留。该保守策略不能宣称自动清理所有磁盘残留。
+Unix私有目录0700、文件0600；Windows目录fsync限制沿用传输层，不宣称其崩溃耐久已实测。
+
+五、验证与执行
+core/tests/effects_service.rs覆盖官方授权对照、接口、缓存刷新、反序列化、授权失败、
+续期/重开、指纹变化、并发互斥、取消、账号切换、校验失败、孤儿与两阶段删除恢复。
+512组授权期望值直接执行官方342原函数，替身只提供saga依赖和枚举；不是Rust自证。
+生成器及固定样本哈希见effects-rights-official-manifest.json。
+参数服务测试的三个NCAE为合成数据，生成器复用已对照的归档编码算法；不冒称新增
+官方密码学证据，也不进入Rust运行时。
+
+独立可执行流程：
+  CARGO_INCREMENTAL=0 cargo build -p cumulus-core --example effect_library_read --offline --locked
+  .build/target/debug/examples/effect_library_read PRIVATE_PC_PROFILE NEW_PRIVATE_OUTPUT SONG_ID
+要求输出目录尚不存在。程序有读取接口白名单，日志/原始响应置于私有目录。
+流程读取三目录、旧目录、设备、特殊权益、回收查询、智能/AI/情绪结果；从目录挑选
+获准参数材料，再逐次新授权、17字节暂停、重开账户/SQLite、HTTP206续传和缓存校验。
+参数JSON只留native；stdout只输出汇总，不输出账号、Cookie、URL或个人资源。
+最终本地与线上结果、失败修复、构建与产物哈希由effects-library-mapping.json记录。
+
+本批最终结果：15项专项（含512组官方判断）；全工作区576项，0失败/忽略。
+真实最终产物d批57次API读取、12次CDN读取、远端写入0；6份获准材料共2146字节。
+每份3次新授权、一次SQLite/账号重开、HTTP206续传和缓存不重复下载均通过。
+独立核对原始请求/响应、MD5/SHA256、参考解码、父子日志及不存在残留.part文件，
+见.build/effects-library-independent.json。前端未修改，61项测试及窗口证据沿用此前批次。
+失败证据仍保存：a批误将auth/query的interestsMap形状用于recyclequery，服务返回500；
+b批混用了目录soundType=3与PC详情类型10，服务返回空列表。两者均经官方调用点纠正，
+没有把错误当作服务不可用或通过条件。c/d批回收查询和全部详情均返回200。
+c批完整流程已成功；最终构建改变二进制哈希，故以最终产物重跑d批，保留两次证据。
+早期测试编译的Debug/整数类型错误与Clippy的冗余unit也保留在初次日志。
+
+六、仍未完成的音效链路
+本篇不把材料下载当作完整音效功能：设备调音材料适配、逐歌AI500项缓存/预取、智能
+key缓存、情绪模型分发/状态、授权占用/回收/到期、设置持久化、实际播放器DSP处理链
+和音效UI仍继续。原研究未恢复的完整SE/混响/情绪推理保留原边界。
+跨平台业务边界使用标准Rust；当前只实际运行Linux，Windows/macOS尚未执行。

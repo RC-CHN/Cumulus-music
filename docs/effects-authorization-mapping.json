@@ -1,0 +1,157 @@
+{
+  "scope": "Explicit non-trial/trial-consented effect interest registration, release, durable recovery and recycle observations",
+  "goal_complete": false,
+  "official_first": true,
+  "yesplaymusic_used": false,
+  "sources": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/15.js",
+      "sha256": "8ec4bf8d343f6963860eb73bc59ca09f0dd1ae50db2608a6c5abc7d69a0b521a"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/28.js",
+      "sha256": "8222e4fb4a9b30ad31648b91787fad8ffe76165ecb6101abd9cb0d7b56332e65"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/85.js",
+      "sha256": "0ebc857d19e5822b8f9fc27a49f7ae1cf36d2dff1c1de71484a9cafe41a99f0f"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/308.js",
+      "sha256": "2cd3a0da5759370a80cfe20c7ac4e58ef192bab33c396e8eff3efdd35c254a7d"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/342.js",
+      "sha256": "1f27e592a340c814a49093416a0a684ec5c407c004f4e425a1d09b23b5319c8d"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_effect_authorization_vectors.cjs",
+      "sha256": "40019df3b93f0cb89a6989fe7ddc5221b248569b2ff5e6f9a6d111a28a144281"
+    }
+  ],
+  "implementation": [
+    "core/src/effects/authorization/mutate.rs",
+    "core/src/effects/authorization/mod.rs",
+    "core/src/effects/authorization/observe.rs",
+    "core/src/effects/authorization/record.rs",
+    "core/src/effects/api.rs",
+    "core/src/effects/mod.rs",
+    "core/examples/effect_authorization_roundtrip.rs"
+  ],
+  "items": [
+    {
+      "feature": "Registration/release/recycle wire contracts",
+      "source": "M/28 U/G/Z; M/15; M/308 query shape",
+      "rust": "effects/api.rs",
+      "evidence": "21 direct official request vectors and 22 real API requests"
+    },
+    {
+      "feature": "Positive acknowledgement",
+      "source": "Current real PC responses code200/data=true; official U/G ignore failures",
+      "rust": "api.rs acknowledged, authorization/mutate.rs",
+      "evidence": "true real receipts; false/missing/null/string success-envelope rejection for both writes"
+    },
+    {
+      "feature": "Account-scoped durable registration",
+      "source": "M/342 selection and current goal persistence requirements",
+      "rust": "authorization/mod.rs/mutate.rs/record.rs",
+      "evidence": "non-trial admission, explicit trial consent, duplicate start, previous effect release, rejected/unknown distinctions"
+    },
+    {
+      "feature": "Cancellation and stale-account acknowledgements",
+      "source": "AccountSession token and native operation locks",
+      "rust": "authorization/mutate.rs",
+      "evidence": "cancelled start/stop and old-account received acknowledgement tests"
+    },
+    {
+      "feature": "Read-only recovery and server recycle signal",
+      "source": "M/308 restoreAudioEffect; M/28 Z/G",
+      "rust": "authorization/observe.rs",
+      "evidence": "rights revoked/recycled, read failure, uncertain writes not promoted by canUse/canRecycle, explicit stop retry"
+    },
+    {
+      "feature": "Actual reversible workflow",
+      "source": "same official interfaces with existing non-trial right",
+      "rust": "core/examples/effect_authorization_roundtrip.rs",
+      "evidence": "each batch 11 API, one set/one stop with data=true; SQLite reopen, normalized entitlement unchanged, no pending record"
+    }
+  ],
+  "tests": [
+    "core/tests/effects_authorization.rs",
+    "core/tests/effects_service.rs",
+    "core/tests/fixtures/effects-authorization-official-manifest.json",
+    "core/tests/fixtures/effects-authorization-official.json"
+  ],
+  "checks": [
+    ".build/effects-authorization-clippy3.log",
+    ".build/effects-authorization-workspace-tests.log",
+    ".build/effects-authorization-format.log",
+    ".build/effects-authorization-clippy2.log",
+    ".build/effects-authorization-example-build2.log",
+    ".build/effects-authorization-targeted2.log",
+    ".build/effects-authorization-live-a.log",
+    ".build/effects-authorization-targeted.log",
+    ".build/effects-authorization-check.log",
+    ".build/effects-authorization-targeted4.log",
+    ".build/effects-authorization-example-build.log",
+    ".build/effects-authorization-clippy.log",
+    ".build/effects-authorization-desktop-build.log",
+    ".build/effects-authorization-desktop-build2.log",
+    ".build/effects-authorization-targeted3.log",
+    ".build/effects-authorization-live-b.log",
+    ".build/effects-authorization-workspace-tests2.log"
+  ],
+  "rust": {
+    "passed": 590,
+    "core": 587,
+    "desktop": 3,
+    "failed": 0,
+    "ignored": 0,
+    "suites": 80,
+    "nonempty_suites": 77
+  },
+  "frontend": {
+    "passed": 61,
+    "new_run": false,
+    "evidence": ".build/together-lifecycle-front-tests2.log"
+  },
+  "official_request_vectors": 21,
+  "functional_report": ".build/effects-authorization-independent.json",
+  "final_executable": {
+    "path": ".build/target/debug/examples/effect_authorization_roundtrip",
+    "sha256": "6fb4db34526bc7f5a9e2c2dcbac3900081b1dc1f76c3aa5e072f9fa1ae2241cb"
+  },
+  "real_account_requests": 22,
+  "remote_writes": 4,
+  "final_batch": {
+    "requests": 11,
+    "registrations": 1,
+    "releases": 1,
+    "pending": 0
+  },
+  "trial_started": false,
+  "new_ui_verified": false,
+  "new_audio_verified": false,
+  "player_dsp_connected": false,
+  "platform": "Linux x86_64; Windows/macOS not executed",
+  "boundaries": [
+    "Registered is an acknowledged server operation, not running DSP",
+    "canUse/canRecycle cannot establish a lost write outcome; no occupancy readback endpoint recovered",
+    "No invented local trial deadline/timer; host restoration/rights-change scheduling still needs integration",
+    "Registration requires current canUse; 50/51 trials require explicit consent; the live probe allows only non-trial 10..12",
+    "No payment, invitation, public content or unrelated user-resource mutation",
+    "Server response boolean is now required rather than accepting a success envelope alone"
+  ],
+  "documentation": "docs/core-effects-authorization.txt",
+  "previous_audit": ".build/effects-library-audit.json",
+  "remaining": [
+    "Effect selection/settings persistence and actual player activation/disable/restore/rights-change orchestration",
+    "Device material adaptation, per-song AI cache/prefetch, smart-key cache, emotion model distribution/state",
+    "Complete DSP graph selection/routing, real player audio processing and effects UI",
+    "Original unrecovered full SE/reverb and emotion inference retain their explicit limits",
+    "Same-account relay; remaining content/auth/member/special-media/comments/metadata/batch UI and workflows",
+    "Device identity/watchman, Together remaining events/statistics/RTC/outside-selection lifecycle",
+    "Tray/media integration, complete official visual audit, Windows/macOS execution and full-range completion audit",
+    "Real dual-account proof remains excluded; all other implementable goal work remains in scope"
+  ]
+}

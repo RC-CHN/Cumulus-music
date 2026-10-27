@@ -1,0 +1,336 @@
+{
+  "date": "2026-10-27",
+  "full_goal_complete": false,
+  "full_fm_complete": false,
+  "official_first": true,
+  "yesplaymusic_used": false,
+  "contract": "docs/core-fm-contracts.txt",
+  "sources": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/1384.js",
+      "sha256": "1436e04e398744bd85857aed562bffc88513ee3b9eb49582f5519e5ebb243111"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/244.js",
+      "sha256": "68e7fe5b60d4f8c9bf3a4fec47de78c1beb626784aec292777336b65be453fde"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/21.js",
+      "sha256": "33d27af5a54c6a74641f192841637d2608d588d2d93091a9a61cb43948c93af7"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/15.js",
+      "sha256": "8ec4bf8d343f6963860eb73bc59ca09f0dd1ae50db2608a6c5abc7d69a0b521a"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/32.js",
+      "sha256": "1aa3d1f17a38717843340a7c33c87419bc7c952bc423fc58ab45d1630561ff34"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/310.js",
+      "sha256": "7b956eda21102ba42f500e36db07871500b7a7896cac753866a0fa0fa4e63e4a"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_222.chunk.1482700000000.js/3155.js",
+      "sha256": "bd466dbb5577fec6fb5bc4a778fd54e880a696b7d3ffaf0595174a4c8be35529"
+    },
+    {
+      "path": "references/recovered-client/tools/fm_official_fixtures.cjs",
+      "sha256": "4515c1cec8f327102fec80799f37143064fa16111238aa7a2ae90a163059673c"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/home-page/components/FeatureRecommend/PrivateFmCard.tsx",
+      "sha256": "55b813d7c225953b26d3ffa2226b7e08dce65f20993c1b8269f0b6ccf351cd68"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/trashCan/views/MainView.tsx",
+      "sha256": "40d37bed7f0b96ef1237248481b39bdbe293cb1a7383072faf11000884569da0"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/components/Minibar/FmDisLikeModal.tsx",
+      "sha256": "52e35f40509ed6c1449e32ab56b342dfc96bdc45a68da49f71e55beae8a31e9d"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_84.chunk.1482700000000.js/3066.js",
+      "sha256": "2704d7cd9126ba6be8ddcd4bef62fa947d3a541303e23842f3f994b28926f96d"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/1211.js",
+      "sha256": "0f82141e44b4c301513296057ab01c347c2b045f01f730a939d516e80f95afac"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/120.js",
+      "sha256": "38e37f12dfe2136305e36ccfa09ef7318d898536f23ef1193fc9d69c217c620e"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/91.js",
+      "sha256": "445c4330441d995999e0b20b89c9ab4171def2b9d0193395294481ed3f1e71fb"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/485.js",
+      "sha256": "653cad2934721fc2bbcad706e97bd152d58203b7bae016ff9ce4f93d02923de6"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_22.chunk.1482700000000.js/2986.js",
+      "sha256": "04dbb08e209525d80b390281234edac7ed58c81505bc945292e2b7ff0d4ec8bb"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/home-page/components/FeatureRecommend/SimilarSongCard.tsx",
+      "sha256": "8fab9a254e622010280da3d228730ddfee2b8ff2afbffce9729fbcb4b0df848e"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/home-page/components/FeatureRecommend/ZoneCard.tsx",
+      "sha256": "7636808a8a32ca85c45caa02678b34b9072eb002d58ad2a318d8729bb94d35b7"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/choice/verticalZone/conmponents/ZoneFmCard.tsx",
+      "sha256": "2ad7b357bc9a192303aa08940e28e0ad9c82572e7365b24f414ca7fe048fc9e9"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/choice/verticalZone/views/PageVerticalZone.tsx",
+      "sha256": "18fea1a0c80bf1730c806d26f2dd733aa964b8b9837605ccdea8ecfdc73a3b17"
+    }
+  ],
+  "entries": [
+    {
+      "id": "queue",
+      "official": "M1384 De/Ve/He, switchTrack, loadMore",
+      "rust": [
+        "core/src/fm/model.rs",
+        "core/src/fm/service.rs",
+        "core/src/fm/types.rs"
+      ],
+      "evidence": [
+        "core/tests/fixtures/fm-official.json",
+        "core/tests/fm.rs"
+      ],
+      "status": "native_local_passed"
+    },
+    {
+      "id": "recommendation",
+      "official": "M15 radio/get, M244 conversion",
+      "rust": [
+        "core/src/fm/api.rs"
+      ],
+      "evidence": [
+        ".build/private-fm-read-20261027-c/report.json"
+      ],
+      "status": "native_live_read_passed"
+    },
+    {
+      "id": "skip",
+      "official": "M1384 playNext; M15 co",
+      "rust": [
+        "core/src/fm/feedback.rs",
+        "core/src/fm/service.rs"
+      ],
+      "evidence": [
+        "core/tests/fm.rs"
+      ],
+      "status": "native_local_passed_live_write_pending"
+    },
+    {
+      "id": "trash_pagination",
+      "official": "M15 ho; M3155 o/fetchTrackList; live count=0 response",
+      "rust": [
+        "core/src/fm/api.rs",
+        "core/src/fm/types.rs"
+      ],
+      "evidence": [
+        "core/tests/fm.rs",
+        ".build/private-fm-read-20261027-c/report.json"
+      ],
+      "status": "native_live_read_passed"
+    },
+    {
+      "id": "trash_restore",
+      "official": "M15 lo/bo; M1384 dislikeModal/trash; M3155 delTracks",
+      "rust": [
+        "core/src/fm/trash.rs",
+        "core/src/fm/service.rs"
+      ],
+      "evidence": [
+        "core/tests/fm.rs",
+        "core/tests/fm_player.rs",
+        "core/tests/client_fm.rs",
+        ".build/ui-proof/fm-feedback-20261027-a/independent-audit.json",
+        ".build/ui-proof/fm-feedback-20261027-b-lost/independent-audit.json"
+      ],
+      "status": "native_and_desktop_live_roundtrip_passed"
+    },
+    {
+      "id": "blacklist_filter",
+      "official": "M310 v",
+      "rust": [
+        "core/src/fm/types.rs",
+        "core/src/fm/api.rs"
+      ],
+      "evidence": [
+        "core/tests/fixtures/fm-official.json",
+        ".build/private-fm-read-20261027-c/report.json"
+      ],
+      "status": "native_local_and_live_read_passed"
+    },
+    {
+      "id": "reasons",
+      "official": "M15 Ae; M1384 dislikeModal",
+      "rust": [
+        "core/src/fm/api.rs",
+        "core/src/fm/reasons.rs",
+        "core/src/client/fm.rs",
+        "desktop/src/fm.rs"
+      ],
+      "evidence": [
+        ".build/private-fm-read-20261027-c/report.json",
+        "core/tests/fm_feedback.rs",
+        "core/tests/client_fm.rs",
+        ".build/ui-proof/fm-feedback-20261027-a/independent-audit.json",
+        ".build/ui-proof/fm-feedback-20261027-b-lost/independent-audit.json"
+      ],
+      "status": "native_and_desktop_live_reason_selection_passed",
+      "frontend": [
+        "frontend/src/components/FmPage.vue",
+        "frontend/src/composables/useFm.ts"
+      ],
+      "official_bug_fixed": "M1384 and recovered TSX onClick shadows reason with event; implementation passes server-offered option key"
+    },
+    {
+      "id": "playback_ui",
+      "official": "M1384 fmPlay/switchTrack/playNext; trialMode36",
+      "rust": [
+        "core/src/fm/player/mod.rs",
+        "core/src/fm/player/state.rs",
+        "core/src/fm/player/controls.rs",
+        "core/src/fm/player/runtime.rs",
+        "core/src/client/fm.rs",
+        "desktop/src/fm.rs"
+      ],
+      "evidence": [
+        "core/tests/fm_player.rs",
+        "core/tests/client_fm.rs",
+        "frontend/tests/fm-state.test.ts",
+        ".build/ui-proof/fm-20261027-a/independent-reopen-audit.json",
+        ".build/ui-proof/fm-20261027-b-small/independent-audit.json"
+      ],
+      "status": "native_and_desktop_live_read_playback_passed",
+      "frontend": [
+        "frontend/src/components/FmPage.vue",
+        "frontend/src/composables/useFm.ts",
+        "frontend/src/services/fm.ts",
+        "frontend/src/components/PlayerBar.vue",
+        "frontend/src/components/QueuePanel.vue"
+      ],
+      "limits": [
+        "null audio output; no physical listening claim",
+        "live feedback writes not tested",
+        "complete original private-FM screen comparison unavailable"
+      ]
+    },
+    {
+      "id": "artist_blacklist_write",
+      "official": "M15 so/ao/oo; M1384 qe.u; M3066 current-artist filtering",
+      "rust": [
+        "core/src/fm/blacklist.rs",
+        "core/src/fm/reasons.rs",
+        "core/src/fm/trash.rs",
+        "core/src/fm/player/controls.rs",
+        "core/src/client/fm.rs"
+      ],
+      "evidence": [
+        "core/tests/fm_feedback.rs",
+        "core/tests/client_fm.rs",
+        "core/tests/fm_player.rs",
+        ".build/ui-proof/fm-feedback-20261027-a/independent-audit.json",
+        ".build/ui-proof/fm-feedback-20261027-b-lost/independent-audit.json"
+      ],
+      "status": "native_and_desktop_live_roundtrip_lost_reply_recovery_passed",
+      "frontend": [
+        "frontend/src/components/FmPage.vue",
+        "frontend/src/composables/useFm.ts"
+      ],
+      "limits": [
+        "lost reply deliberately injected after real server 200",
+        "full recommendation model statistics cannot be rolled back or independently inspected",
+        "unrecognized cached artist names display IDs"
+      ]
+    },
+    {
+      "id": "normal_queue_restore",
+      "official": "M1384 FM separate queue and switchTrack; community durable backup/fenced media integration",
+      "rust": [
+        "core/src/fm/player/state.rs",
+        "core/src/playback/queue.rs",
+        "core/src/library/index/relocate.rs"
+      ],
+      "evidence": [
+        "core/tests/fm_player.rs",
+        "core/tests/completed_downloads.rs",
+        ".build/ui-proof/fm-20261027-a/independent-reopen-audit.json"
+      ],
+      "status": "native_fault_recovery_and_live_desktop_reopen_passed"
+    },
+    {
+      "id": "fm_modes",
+      "official": "M244 FAMILIAR/sourceIds; M1211.d, M120.a, M1384 loadMore/switchTrack, M91 trial modes",
+      "rust": [
+        "core/src/fm/types.rs",
+        "core/src/fm/api.rs",
+        "core/src/fm/service.rs",
+        "core/src/fm/player/mod.rs"
+      ],
+      "frontend": [
+        "frontend/src/components/FmPage.vue",
+        "frontend/src/composables/useFm.ts"
+      ],
+      "evidence": [
+        "core/tests/fm_modes.rs",
+        "core/tests/fm_player.rs",
+        "core/tests/client_fm.rs",
+        ".build/private-fm-modes-20261027-a/independent-audit.json",
+        ".build/ui-proof/fm-modes-20261027-a/independent-reopen-audit.json",
+        ".build/ui-proof/fm-modes-20261027-b-small/independent-audit.json",
+        ".build/ui-proof/fm-modes-20261027-c-final/independent-audit.json",
+        ".build/ui-proof/fm-modes-20261027-d-final/independent-audit.json",
+        ".build/ui-proof/fm-modes-20261027-c-final/independent-reopen-audit.json"
+      ],
+      "status": "native_live_and_desktop_modes_eof_backup_reopen_passed",
+      "limits": [
+        "scene FM is separate podcast work",
+        "manual skip live delivery still pending",
+        "Linux libmpv/null only"
+      ]
+    },
+    {
+      "id": "fm_discovery",
+      "official": "M15 qe/hg/ej/dj; M1211; M2986 fallback; SimilarSongCard/ZoneFmCard",
+      "rust": [
+        "core/src/fm/discovery/mod.rs",
+        "core/src/fm/discovery/api.rs",
+        "core/src/fm/discovery/normalize.rs",
+        "core/src/client/fm_discovery.rs"
+      ],
+      "frontend": [
+        "frontend/src/components/FmExplore.vue",
+        "frontend/src/composables/useFmDiscovery.ts"
+      ],
+      "evidence": [
+        "core/tests/fm_modes.rs",
+        "frontend/tests/fm-discovery-state.test.ts",
+        ".build/private-fm-modes-20261027-a/independent-audit.json",
+        ".build/ui-proof/fm-modes-20261027-c-final/independent-audit.json",
+        ".build/ui-proof/fm-modes-20261027-d-final/independent-audit.json"
+      ],
+      "status": "native_and_desktop_live_directory_compact_navigation_passed",
+      "limits": [
+        "only supported FM cards projected; other zone modules remain",
+        "AB and personalization gates still to migrate",
+        "clientTime uses UTC pending host local context",
+        "complete official visual comparison pending"
+      ]
+    }
+  ],
+  "desktop_contract": "docs/desktop-fm-contracts.txt",
+  "feedback_contract": "docs/desktop-fm-feedback-contracts.txt",
+  "modes_contract": "docs/desktop-fm-modes-contracts.txt",
+  "scene_fm_mapping": "docs/scene-fm-mapping.json"
+}

@@ -1,0 +1,137 @@
+{
+  "scope": "M/3070 parameter composer and M/28 built-in fallback parameters",
+  "goal_complete": false,
+  "official_first": true,
+  "yesplaymusic_used": false,
+  "sources": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_228.chunk.1482700000000.js/3070.js",
+      "sha256": "81c0abe4ecc7361df526060d79a75bb47fa2e96831a3f0825119a784bc137a23"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_audio_compose_oracle.cjs",
+      "sha256": "5d1c9bdab84894953dd7f0b16d9ac101e4556848e9c69abd502258529e518922"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/28.js",
+      "sha256": "8222e4fb4a9b30ad31648b91787fad8ffe76165ecb6101abd9cb0d7b56332e65"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_compose_rust_vectors.cjs",
+      "sha256": "a7263ce45b5986a9b9903441bf90df64f7a46036c43a7070f500559e7f8954e8"
+    },
+    {
+      "path": "references/recovered-client/docs/product/33-audio-effects-validation.txt",
+      "sha256": "daae0d51bfacabacfe6e502f715792b5da9960480980ddb73b95f49d63f8f9d0"
+    }
+  ],
+  "implementation": [
+    "core/src/effects/compose/mod.rs",
+    "core/src/effects/compose/defaults.rs",
+    "core/src/effects/compose/numeric.rs",
+    "core/src/effects/compose/merge.rs",
+    "core/src/effects/compose/rules.rs",
+    "core/src/effects/compose/defaults.json",
+    "core/src/effects/mod.rs",
+    "core/examples/effect_compose.rs"
+  ],
+  "items": [
+    {
+      "feature": "Source/JSON-string validation and source preference",
+      "source": "M/3070 a()/t()",
+      "rust": "compose/mod.rs",
+      "evidence": "all official input-shape cases; bounded rejection"
+    },
+    {
+      "feature": "Bass/treble/vocal thresholds and vibe/live choice",
+      "source": "M/3070 closing rules",
+      "rust": "compose/rules.rs",
+      "evidence": "thresholds, 256 combinations, numeric coercion and key order"
+    },
+    {
+      "feature": "BT/PEQ/SE/RVB/CMP merging, pregain and stereo EQ",
+      "source": "M/3070 merge rules",
+      "rust": "compose/merge.rs",
+      "evidence": "exact numeric value and structure comparisons"
+    },
+    {
+      "feature": "Missing vs empty merged material and space flag",
+      "source": "M/3070 result assembly",
+      "rust": "Composition",
+      "evidence": "explicit None/empty/null tests and all fixture outputs"
+    },
+    {
+      "feature": "Default transparent and five enhancement materials",
+      "source": "M/28 N",
+      "rust": "compose/defaults.rs/defaults.json",
+      "evidence": "64 official built-in combinations, copied-data isolation and typed options"
+    },
+    {
+      "feature": "Independent executable",
+      "source": "same official contracts",
+      "rust": "core/examples/effect_compose.rs",
+      "evidence": "446 direct plus 64 typed runs on final binary"
+    }
+  ],
+  "tests": [
+    "core/tests/effects_compose.rs",
+    "core/tests/fixtures/effects-compose-official-manifest.json",
+    "core/tests/fixtures/effects-compose-official.json"
+  ],
+  "checks": [
+    ".build/effects-compose-build.log",
+    ".build/effects-compose-oracle.log",
+    ".build/effects-compose-oracle2.log",
+    ".build/effects-compose-oracle3.log",
+    ".build/effects-compose-targeted.log",
+    ".build/effects-compose-targeted2.log",
+    ".build/effects-compose-targeted3.log",
+    ".build/effects-compose-workspace-tests.log",
+    ".build/effects-compose-clippy.log",
+    ".build/effects-compose-desktop-build.log",
+    ".build/effects-compose-example-final-build.log",
+    ".build/effects-compose-format.log",
+    ".build/effects-compose-functional.log"
+  ],
+  "rust": {
+    "passed": 561,
+    "core": 558,
+    "desktop": 3,
+    "failed": 0,
+    "ignored": 0,
+    "suites": 78,
+    "nonempty_suites": 75
+  },
+  "frontend": {
+    "passed": 61,
+    "new_run": false,
+    "evidence": ".build/together-lifecycle-front-tests2.log"
+  },
+  "official_cases": 446,
+  "builtin_combinations": 64,
+  "functional_report": ".build/effects-compose-functional-report.json",
+  "executable": ".build/target/debug/examples/effect_compose",
+  "executable_sha256": "9ef12f960a91ae1a9cd8b3a15928016210bcca57e2407e3a6d0cf82bcbe380b4",
+  "real_account_requests": 0,
+  "new_ui_verified": false,
+  "new_audio_verified": false,
+  "player_dsp_connected": false,
+  "platform": "Linux x86_64; other platforms not executed",
+  "boundaries": [
+    "Rust structured errors replace V8 exception strings",
+    "Array/primitive root documents and JS prototype coercion are not emulated",
+    "Input <=4MiB, <=256 DIY entries, non-finite computed material values rejected",
+    "Parameter composition does not imply rights or complete DSP support"
+  ],
+  "documentation": "docs/core-effects-compose.txt",
+  "previous_audit": ".build/effects-spatial-audit.json",
+  "remaining": [
+    "Effects catalogue/rights and authorization lifecycle, materials/per-song caches and downloads, model state and account/cancellation recovery",
+    "DSP graph selection, sample-rate/latency handling, actual player routing and effects settings UI",
+    "Original unrecovered full SE/reverb and emotion inference retain their explicit boundaries",
+    "Same-account relay, remaining content/auth/member/special-media/comments/metadata/batch UI and workflows",
+    "Device identity/watchman, Together remaining events/statistics/RTC/outside-selection lifecycle",
+    "Tray/media integration, complete official visual audit, Windows/macOS execution and full-range completion audit",
+    "Real dual-account proof remains excluded; other implementable work remains in scope"
+  ]
+}

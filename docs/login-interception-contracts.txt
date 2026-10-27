@@ -1,0 +1,87 @@
+官方 JSK 301 校验、实验分组和桌面失效提示
+2026-10-27；完整目标继续。本文范围不等同所有登录或风控流程完成。
+
+来源与规则
+M/34.p、M/147、M/15.Rf：服务实验双t1启用，默认关闭，30分钟刷新。正式原生宿主启用
+该政策，界面不能修改实验分组。校验计数按账号代次隔离，查询失败保留旧组或默认组。M/147会读写abtest-cached-exps；
+Rust将两个布尔分组存入绑定凭据库，owner=UID（未识别账号为unresolved）、kind=login-policy-v1、
+key=pc。重启先恢复缓存再查询；周期时间和互斥只存内存，启动仍检查新分组。坏结构默认关闭。
+成功响应先持久化再发布；写盘失败返回错误，旧缓存保留，不能继续发起本次续期。
+官方全应用localStorage缓存改为账号隔离SQLite是社区差异，不跨账号携带分组。
+M/12 仅拦截数字301；M/402先规范化字符串响应码，后续已补齐此入口规则。
+原失败请求始终返回失败，不自动重放。未启用JSK时的旧M/1384分支
+不是同一算法；后续已迁移已登录账号旧分支及followAction清理，详见login-legacy-contracts.txt。
+
+M/1368 refreshInvalidToken：处理互斥；无U/A、来源为刷新接口、匿名白名单命中、
+上次确认有效不足5秒时跳过；有效时间取请求开始时间，系统时钟回退也跳过。
+规范化去掉首次匹配api/eapi以前部分，没有尾斜杠边界，JS四种行终止字符语义保留。
+PC M/290 customConfig 仅识别 nm#play#emotionEffect，没有证据提供登录白名单，正式传null。
+请求 /api/middle/account/token/refresh {fromAPI:原业务路径}，PC adapter 补 fromPage=JSK
+及空 x-login-chain-id，继续使用正式路径令牌/加密上下文；绝不伪造新的有效会话令牌。
+数字code200重置失败计数；数字action1记录有效时间；数字action2提示重新登录；
+action缺失为失效通知。null、字符串"2"、其他定义值在M/198消费者中不触发退出。
+非200业务回包累计>=3触发失效并清零。通用vendor catch只累计，不在catch里判断阈值。
+这里有PC特例：M/290把普通网络失败回调转换为body.code=-1，HTTP错误保留body，
+因此原生PC网络错误可走业务失败阈值；不能套用“3次transport异常必不退出”的通用判断。
+本地存储/代次错误仍保持明确错误语义，不冒充服务端批准。
+
+实现和账号隔离
+core/account/login_policy：独立实验解析、规范化、状态机和有界提示类型。
+core/account/session/policy：账号代次绑定、缓存、PC桥适配；核心不依赖Tauri或前端。
+HTTP错误新增原音乐API路径字段，301来自HTTP错误正文时仍能传正确fromAPI。
+确认有效/跳过/未到失败阈值：向调用方返回LoginDeferred，界面显示请求失败但保留登录。
+失效：同一凭据事务清Cookie/refreshToken/轮换回执并保存有界login_notice，随后递增代次。
+只投影kind/title/message；不传跳转URL、按钮脚本、Cookie、签名或原始挑战对象。
+重启发现已存失效提示直接显示Expired，不发身份请求自动复活失效会话。新登录使用独立候选。
+原用户资源、播放队列和操作记录不删除。旧请求在换账号后返回时不能清新账号或发布旧提示。
+写盘失败会让本进程进入Expired并返回Storage错误，旧数据库事务保持原样；未成功持久化时
+不能保证跨重启失效标记存在。保留本地退出入口，存储恢复后可以重试清理。
+
+与官方退出的差异
+M/198还调用host/logout，包含远端logout和界面切换。本实现此处仅本地失效/清凭据，
+不自动发送远端logout，不声称已撤销服务器会话；显式用户退出仍可选择远端撤销。
+action2立即呈现重新登录入口，未照搬官方延迟1秒自动打开模态框。提示只作文本渲染。
+播放器原有账号代次rebind停止旧播放，队列归属转为guest；没有为本批声称新的实际音频验收。
+后续legacy action2.followAction=1已接入账号隔离队列与持久化恢复，详见login-legacy-contracts.txt；
+JSK本身仍不执行legacy的followAction。
+
+宿主与UI
+AccountSession watch通知变化；desktop RenewalPump独立订阅并立即发布account-changed，
+不会等正在执行的续期/配置请求结束。30分钟计时只刷新实验缓存，不周期强制轮换token。
+SessionRenewal新增PolicyDisabled；缺凭据优先显示缺凭据。主界面显示失效原因与重新登录按钮。
+所有新数据保持有界DTO，前端无任意实验赋值、刷新凭据或任意请求接口。
+
+验证入口
+ node desktop/tests/login_interception_official.cjs core/tests/fixtures/login_interception.json
+ cargo test --locked --offline -p cumulus-core --test login_interception --test client_login_policy --test client_renewal --test refresh --test http
+原M1368函数执行14组序列，原M34开关18组，原路径正则8组；直接执行PC fetch两次和
+M290网络失败桥三次，保存来源哈希。不是用另写JavaScript算法代替原函数。
+原生HTTP集成测试覆盖保留/失效、失败阈值、HTTP301路径、双开关、切账号迟到、持久化/重启
+以及清理写盘失败；合成响应不证明真实账号能取得新令牌。
+
+desktop/examples/login_interception_ui_probe.rs/js使用正式Vue/WebView/IPC及原生事件，
+仅音乐HTTP为进程内合成服务；DOM搜索触发301，依次验证保留账号、失效提示、重新登录入口。
+.build/ui-proof/login-interception-20261027-a为缓存落盘前的普通窗口记录；
+最终缓存版本login-interception-20261027-b-small在760×540窗口四步通过，各搜索仅发一次，校验共两次；
+audit_login_interception_probe.py独立只读核对事件计数和已清凭据/存下提示的SQLite记录。
+.build/ui-proof/renewal-policy-20261027-b-final 用最终构建回归既有五步续期探针，证明双t1配置下继续轮换、
+24小时间隔及未知结果只读核对。两者均无真实音乐网络请求。
+真实只读分组观察及发放边界见refresh-token-issuance-evidence.txt。
+
+仍需继续
+legacy匿名账号恢复、完整JSK新登录、旧702/8840网页验证、原设备二维码/确认、真人CAPTCHA通过、
+真实新refreshToken及成对轮换、Windows/macOS实机都没有被本批测试替代。
+易盾设备/行为报告与已验证歌单写入见core-pc-request-context-contracts.txt和
+core-pc-playlist-official-contracts.txt；不能把这些成功推定为所有风控场景可通过。
+
+最终验证与产物
+完整workspace/all-targets/custom-protocol：191个suite、848项通过，失败/忽略0；
+前端129项、类型/生产构建、格式、Rust fmt及严格Clippy通过，最终日志索引见
+.build/login-interception-progress.json。新增原生集成共10项、controller4项。
+全量后重新构建正式cumulus和两个探针，再用最终具名产物完成上述b版本GUI与独立审计。
+正式客户端login-interception-desktop-20261027-a恢复真实账号，PC配置1026048、设备revision1；
+每日推荐截图已查看，非探针叠层；没有自动业务写入，也不计为实际播放或全部页面重测。
+正式windows-local启动后凭据库的两项实验缓存仍为false，公开审计只给布尔、不输出账号ID。
+首次全量IPC断言缺新增字段已修正；缓存追加后的全量曾出现一起听等待超时，单项及24项组
+复测和最终全量均通过，根因未确定，原失败记录保留。测试仅新增超时最后状态诊断，
+12秒上限和全部业务断言未放宽，一起听运行代码未在此批改动。

@@ -1,0 +1,174 @@
+歌单管理：Rust 核心、桌面交互与验证契约
+2026-10-26；完整目标仍在进行，本文区分本地、真实服务和桌面证据。
+2026-10-27增量：封面选图验证/原生裁剪/上传/绑定/恢复已接独立Rust并完成真实隔离往返，
+见core-playlist-cover-contracts.txt；下文“封面仅docId”的历史描述已被该增量取代，UI仍待接入。
+
+来源与实现映射
+官方M/232：创建、增删曲目、删除、列表顺序；M/444：元信息batch、封面；
+M/48：batch的子对象必须先编码为JSON字符串。恢复的模型与报告位于
+references/recovered-client/docs/product/：
+  models/async_hostResource.txt：createPlaylist/deletePlaylist/playlistTracksUpdate、
+    playlistOrder、fav/unfav、updatePlaylistPublic；
+  models/page_playlist.txt：成功移除/取消收藏后的列表处理；
+  16-playlist-compatibility.txt、17-account-resources.txt、
+  27-playlist-functional-validation.txt、30-collections-settings-validation.txt。
+api-catalog的API-0280提供实际标签分类接口。
+UI来源为references/ui-recovery/sources/packages/pc/src/：
+  components/PlaylistModal/create.jsx：名称、私密选项、创建动作；
+  pages/playlist/components/Edit.jsx、TagEdit.jsx：名称/简介、标签分类与最多3个标签。
+沿用报告16已验证的同PC域WEAPI兼容路由；该历史回退的第三方参考来源仍保留。
+本轮逻辑和界面以以上官方证据为主，没有新增YesPlayMusic参考。
+
+代码职责
+core/src/playlist/api.rs、extras.rs：官方请求参数和响应校验；
+types.rs：命令、阶段、操作记录；snapshot.rs：完整资源快照和revision；
+service.rs：账号、锁、准备、日志与恢复；service/operation.rs：单次发送/回执分类；
+service/reconcile.rs：各动作的回读判定。没有Python运行时依赖。
+core/src/client/playlists.rs：面向界面的类型化DTO和用例，不依赖Tauri。
+desktop/src/playlists.rs：6个正式IPC转发，和此前20个命令合计26个。
+frontend/src/services/playlists.ts、composables/usePlaylists.ts：契约与视图协调；
+components/PlaylistDialog.vue、styles/playlists.css：表单、歌曲菜单、操作记录与布局。
+
+接口与调用顺序
+除下列明确的兼容项外使用现有EAPI，目标域保持原PC profile域。
+不因403自动换域、扩大Cookie作用域、换协议重发；发送前已按证据选择路径。
+每次写入先读取完整before、验证账号/权限/revision、持久化sending，然后只发送一次，
+最后读取完整详情或账号歌单列表核对；读取失败/结果不明必须走只读reconcile。
+
+动作              官方路径及参数
+完整账号列表      /api/user/playlist {uid,includeVideo:true,limit,offset}，完整分页
+完整详情          /api/v6/playlist/detail {id,n:100000,s:0}，trackIds是顺序依据
+标签分类          /api/playlist/catalogue {}，读取categories/sub分组，不硬编码标签全集
+新建              /api/playlist/create {uid,name,privacy:10或0}，PC预选WEAPI
+修改名称          /api/playlist/update/name {id,name}
+修改标签          /api/playlist/tags/update {id,tags:"标签1;标签2"}
+修改简介          /api/playlist/desc/update {id,desc}
+元信息整体提交    /api/batch {上述三个路径:各自参数对象的JSON字符串}，PC预选WEAPI
+增/删/重排曲目    /api/v1/playlist/manipulate/tracks，PC预选WEAPI
+                  {pid,trackIds:ID数组的JSON字符串,op:"add"/"del"/"update"}
+                  add和del增加imme:true；update发送完整排列、不加imme
+删除歌单          /api/playlist/delete {pid}，PC预选WEAPI
+歌单列表排序      /api/playlist/order/update {ids:完整组ID数组的JSON字符串}，PC预选WEAPI
+收藏/取消收藏     /api/playlist/subscribe 或 /api/playlist/unsubscribe {id}，PC预选WEAPI
+更换封面          /api/playlist/cover/update {id,coverImgId:已上传且确认的docId}，EAPI
+私密转公开        /api/playlist/update/privacy {id,privacy:0}，EAPI
+
+底层仍有单字段rename/describe请求方法，桌面编辑提交按官方M/444统一走三子请求batch。
+batch不是事务：总code200不能覆盖name400、tags200、description200的部分成功。
+每个子code与实际字段分别保留；缺子结果/未知结果仍为未决。
+字符串ID避免JS整数精度丢失；封面回读优先coverImgId_str，再读数值字段。
+此处歌单列表排序与播放队列排序是两个业务；远端歌单修改不偷偷覆盖当前播放队列。
+
+输入、权限与冲突
+名称trim后按官方UTF-16加权规则最多40，禁@/#；简介同规则最多1000。
+标签最多3个，非空、不重复、不含分号；空标签/简介代表显式清空字段。
+ID为合法正十进制字符串，输入ID列表去重复约束、最多100000项，未知命令字段拒绝。
+详情revision涵盖元信息、封面和完整原始trackIds；列表revision涵盖完整摘要列表。
+修改、删除、封面、公开、曲目操作必须来自当前账号普通自建歌单，不能操作他人或红心歌单。
+喜欢歌曲仍通过独立喜欢用例，不用普通歌单编辑绕过红心语义。
+重排必须是完整快照的全排列；不能把屏幕上的一页当完整列表。
+列表分Created/Subscribed组；重排不能新增/遗失ID，红心歌单在组内位置固定。
+含v=-1本地条目的曲目编辑暂拒绝：官方有原生匹配分支，当前尚未迁移该联动，不能丢掉条目。
+本地revision检查只能发现发送前已经可见的变化，不提供服务端CAS或与其他官方客户端的分布式锁。
+
+状态机、持久化与账号隔离
+每账号playlist-mutations命名空间保存operation_id、command、before、observed、
+phase、创建/核对时间、固定错误类别和服务code。原始错误响应体不发给前端。
+账号级OperationLock防止本进程/多实例并发写；网络await不持有数据库或状态mutex。
+发送前写盘失败不发送。取消Future、进程中止或发送后异常会留下可恢复日志。
+Sending / Verifying / Uncertain 是未决阶段，重开后仅对账，不自动重发。
+Confirmed：回读证明目标状态；Unchanged：请求前已满足目标，不发送写请求。
+Rejected：已知拒绝且目标未达到；Partial：三项元信息有确定的部分成功。
+不同动作核对标准：
+  新建：返回ID或before不存在的新ID，且当前账号/名称/私密属性/非红心均吻合；
+    丢失新建回执时只能以唯一候选确认，多个同名候选继续未决，不能重复创建。
+  增曲：数量和集合恰为并集，原有歌曲相对顺序不变；新歌插入位置由服务决定。
+  删曲：恰为before移除指定ID，保留其余顺序；清空：完整回读为空。
+  重排：完整ID顺序一致；字段：名称/标签/简介或封面/私密状态实际一致。
+  删除/取消收藏：完整账号列表中不存在；收藏：列表出现且不是自建歌单。
+  列表排序：所选完整组顺序一致。
+同歌单存在未决操作时拒绝新写；涉及列表结构的未决操作相互排斥。
+已确认、已拒绝、部分成功可接受新的显式命令；不自动补发失败batch子项。
+已知400/403/405/406/502/505/506/511/512按证据分类；405没有虚构重试倒计时。
+回读若显示目标已达到，以实际状态为准；未知code/成功码但状态不符不能直接报成功。
+SessionToken固定操作账号；切换后迟到回执只保留原账号责任，不发布到新账号缓存。
+301仍走统一会话过期处理，不能为对账重新放宽凭据作用域。
+
+真实测试发现的契约修正
+首次Rust线上审计把op=update、trackIds=[]当作清空；服务返回200但原有2首仍在。
+原日志保留Uncertain，未声称清空通过。官方update实际是排序，不能推断为集合替换。
+现在Clear不接受调用者IDs，先取完整快照再用op=del、imme=true删除全部，并回读为空。
+TrackOperation::Replace仅为既有底层API历史名称，注释明确其排序语义。
+旧journal中的replace只供恢复，新的业务命令拒绝；针对该已记录失败，只有main200且
+回读与before曲目完全相同时标Rejected/unsupported_replace_contract，不追认为成功。
+之后才能显式正确清空/删除隔离资源。失败日志与清理报告均保留。
+
+桌面用例与产品行为
+playlist_editor(epoch,id)、playlist_tags(epoch)、playlist_order_view(epoch)负责读取。
+mutate_playlist(epoch,command)、reconcile_playlist(epoch,operationId)、
+playlist_operations(epoch)负责写入、只读恢复和未决/部分成功/失败记录。
+全部AccountData携带epoch；Editor公开id/revision/name/description/tags、owned/favorite/
+private/trackIds/hasLocal，不暴露UID、Cookie、完整协议响应或授权媒体URL。
+MutationView给出phase、固定用户提示、子服务code和实际observed字段，不乐观替换状态。
+只读编辑代次、账号代次和操作列表读取代次分别校验；迟到读取不覆盖较新操作结果。
+
+我的歌单：新建、打开官方歌单链接/ID、自建编辑、创建/收藏组内上移/下移。
+详情：自建编辑；他人歌单收藏/取消收藏。链接解析只接受官方主机/ID，不任意抓取URL。
+编辑弹窗：名称、真实分类标签、简介；清空/删除/私密转公开需要明确的二次表单确认。
+新建默认私密是社区客户端的显式差异：官方恢复表单默认private=false。
+曲目“更多”：选择自建普通歌单添加；当前自建歌单上下移动、移除；阻止双击穿透播放。
+操作记录：显示未决/部分成功/失败，只读“核对结果”，没有自动重复提交按钮。
+批量字段部分成功展示实际字段和子code；会话过期/账号切换清除旧视图与迟到结果。
+原生dialog处理模态焦点、Escape、关闭后焦点恢复；写入中禁止关闭表单。
+封面上传/裁剪尚未接入，未放一个无作用的上传按钮。公开动作虽有实现与确认，未线上自动执行。
+
+验证证据
+core/tests/playlist_service.rs：14项，覆盖路由选择、写前校验/日志失败、完整排列/清空、
+新建缺ID/歧义、batch部分成功/缺结果、账号隔离、取消后只读恢复、405与幂等无写、
+所有动作回读、DTO白名单及旧replace失败恢复。Cover/Publish只有合成用例通过。
+frontend/tests/playlist-state.test.ts：4项，覆盖205项完整重排、旧账号、迟到编辑结果、
+重复点击互斥、未知写入只读对账、部分成功和旧操作列表不能覆盖新结果。
+desktop真实注册IPC测试已扩展：6个命令的旧epoch请求在网络前被拒绝。
+当前Rust共219项（core216、desktop3），前端13项；其他历史总数保留为各阶段基线。
+
+core/examples/playlist_roundtrip.rs独立真实服务检查13项：新建私密、元信息、增曲、
+重复增曲无写、重排、删曲、删除不存在歌曲无写、歌单组排序、清空曲目、清空字段、
+收藏/取消收藏、删除隔离歌单。两次完整账号列表证明原有77个歌单及其顺序恢复。
+证据：.build/rust-playlist-final-report.json，状态目录.build/rust-playlist-roundtrip-final-20261026。
+第一次update([])失败保留于.build/rust-playlist-report.log及原私有状态目录；
+.build/rust-playlist-cleanup-report.json证明只读恢复1项、正确清空1项、删除隔离歌单1项，
+原77项与顺序恢复。清理程序为core/examples/playlist_cleanup.rs。
+
+真实Tauri/WebKit桌面：.build/ui-proof/playlist-1（1120×760）、playlist-2-small（760×540）
+各10张原始截图、逐步JSON和complete.json。先复验账号/浏览/搜索/二维码取消，
+再经DOM表单新建私密、改名/简介/真实分类标签、加入2首、反转顺序、移除、清空、删除。
+最终cleanupComplete/fullOriginalOrderRestored/accountPreserved均为true。
+歌单组排序及收藏/取消收藏的真实证据目前来自Rust example，不能冒称桌面DOM已分别验证。
+playlist-2-small截图发现头部挤压列表，后续收紧矮窗口布局；最终复验记录追加下方。
+最终产物.build/ui-proof/playlist-3-small再次通过完整DOM操作与清理，10张真实截图。
+矮窗口头部收紧后列表clientHeight=123px，至少完整显示两行；页面无横向溢出。
+complete.json证明原77项完整顺序恢复、临时资源清理、原账号保留，进程退出0。
+最终格式、前端类型/生产构建、打包桌面bin和probe、含custom-protocol的Clippy均通过。
+窗口中没有真人确认新扫码；当前会话恢复通过与本次新扫码授权是两种证据。
+
+复验入口（明确使用已授权profile与全新隔离状态）
+cargo run -p cumulus-core --example playlist_roundtrip --locked -- \
+  /absolute/existing/pc-profile /absolute/new/private-playlist-audit
+此example会执行上列隔离可逆写入，不由普通测试或应用启动自动调用。
+清理只作用于该次audit记录、确认属于当前账号且名称/私密属性/新ID均吻合的资源；
+不会为了恢复数量去删除未知资源，也不取消before已存在的收藏。
+
+桌面先构建frontend，然后：
+cargo build -p cumulus-desktop --example ui_probe --bin cumulus --features custom-protocol --locked
+显式设置CUMULUS_DATA_DIR、CUMULUS_SESSION_DIR、CUMULUS_PROOF_DIR；
+CUMULUS_PROOF_PLAYLIST=1启用隔离歌单写入验收，CUMULUS_PROOF_SMALL=1选择最小窗口。
+仅ui_probe example注入DOM脚本；正式bin无测试入口/任意eval命令。
+截图Python仅为外部验收，不参与业务或正式应用运行。
+
+仍待完成与外部边界
+封面docId绑定已有本地契约，但NOS上传、裁剪、恢复与真实换封面尚未迁移，不能计为封面完成。
+公开动作按恢复逻辑实现，本轮未执行真实公开发布；不得将合成测试冒称服务通过。
+v=-1原生本地曲目匹配及编辑、playlistOrder中的needFav先收藏再排序组合协调仍待迁移。
+歌单改变与正在播放队列的官方联动、完整上下文菜单/拖拽/多选等仍须继续对照官方模型。
+只验证Linux真实窗口；Windows/macOS、所有分辨率/主题与像素一致性未验证。
+其他上传、文件管理、其余内容、音效和系统集成按full-desktop-goal.txt继续。

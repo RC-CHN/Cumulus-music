@@ -1,0 +1,169 @@
+{
+  "scope": "Recovered rotation and mono dynamics Rust interfaces plus direct NCAE rotation rendering",
+  "goal_complete": false,
+  "official_first": true,
+  "yesplaymusic_used": false,
+  "sources": [
+    {
+      "path": "references/recovered-client/scripts/netease_native_rotate_oracle.c",
+      "sha256": "45eecade4ba34b3abe34b9e1cbe71d25bce6be0508da0b82b272d64e63abe2ae"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_native_multiband_oracle.c",
+      "sha256": "c3b71775ea15a9b06eb74aa15f489c4247f8f021ab9731d90d9944314a2664d5"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_rotate.c",
+      "sha256": "b4f409b05085893f0a96f4eeb98c83340e275affea7bc061a58c4f36e1753acf"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_multiband.c",
+      "sha256": "6f547666c8b99f3ec181feaff49f4356455e1facf9ed1286f11f31dad1091f79"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_spatial_rust_vectors.py",
+      "sha256": "78031df3e5e8e8918db187f7596f91cd652828fe30cece1a136bb766b7675db4"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_dsp.c",
+      "sha256": "2054c7aa1b352f78a937f551bdb4f490b25c1299f40ef0a9e33f6b41944e0dc0"
+    },
+    {
+      "path": "references/core-proof/verification-rotate-functional-20261025/comparison.json",
+      "sha256": "9ee0f3fdcecedb22c9cf30eba213ac437c5b9fbc02a27ef1124667f012ba64d7"
+    },
+    {
+      "path": "references/recovered-client/docs/product/37-rotation-spatial-validation.txt",
+      "sha256": "afd7eaf89e3d1299631bfcb1d923a6c68d0e27e454f13a9ad2e4d23f432a72b8"
+    },
+    {
+      "path": "references/recovered-client/docs/product/38-stereo-multiband-validation.txt",
+      "sha256": "8881fb145a64cd175bb02e8e997599c6b114defc44c16e12ff9a84ed6a6500b7"
+    }
+  ],
+  "implementation": [
+    "core/src/effects/dsp/dynamics_parameters.rs",
+    "core/src/effects/dsp/mod.rs",
+    "core/src/effects/dsp/ffi.rs",
+    "core/src/effects/dsp/parametric.rs",
+    "core/src/effects/dsp/state.rs",
+    "core/src/effects/dsp/graphic.rs",
+    "core/src/effects/dsp/dynamics.rs",
+    "core/src/effects/dsp/block.rs",
+    "core/src/effects/dsp/filter.rs",
+    "core/src/effects/dsp/rotation.rs",
+    "core/native/effects/netease_multiband.c",
+    "core/native/effects/netease_rotate.c",
+    "core/native/effects/netease_dsp.c",
+    "core/native/effects/README.txt",
+    "core/native/effects/bridge.c",
+    "core/src/effects/material.rs",
+    "core/build.rs",
+    "core/examples/effect_spatial_render.rs",
+    "core/examples/support/effects_spatial_wire.rs",
+    "core/examples/support/effects_rotation_material.rs"
+  ],
+  "items": [
+    {
+      "feature": "Owned rotation response tables",
+      "official": "neaudioeffects 1E4A00/209B30",
+      "rust": "RotationResponses",
+      "evidence": "ownership/rejection tests and original-asset executable proof"
+    },
+    {
+      "feature": "Rotation kernel, phase, interpolation and overlap",
+      "official": "23C40/23EA0/25AE0/25B80",
+      "rust": "RotationKernel",
+      "evidence": "82 frozen streams; 4 original-response executable streams"
+    },
+    {
+      "feature": "Rotation FIFO, bypass, period and end drain",
+      "official": "22EA0/23140/23990/23A10/23A20",
+      "rust": "RotationStage",
+      "evidence": "10 frozen streams; 3 original-response executable streams; 6 material cases"
+    },
+    {
+      "feature": "Selected NCAE rotation material application",
+      "official": "cloudmusic EF87E0/EFB760",
+      "rust": "rotation_calls/apply_rotation/spatial_sections/ncae",
+      "evidence": "2 original NCAE files, 3 lengths each, native PCM comparison"
+    },
+    {
+      "feature": "171-byte dynamics parameters and safe reconfiguration",
+      "official": "C1D00/C3840/C6F40",
+      "rust": "DynamicsSettings/DynamicsParameters/MultibandDynamics.configure",
+      "evidence": "codec/preflight tests, original 16 bank components at 2 rates and 2 detector modes"
+    },
+    {
+      "feature": "Mono crossovers, ordinary/external detection, gain history and reset",
+      "official": "C3450/C3020/C2B20/C37C0/C7060/C7340/BFC90/C0650",
+      "rust": "MultibandDynamics",
+      "evidence": "102 frozen streams; 64 original-bank executable streams; exact valid PCM and history"
+    },
+    {
+      "feature": "FFI ownership, buffers, coefficient preflight and failure quarantine",
+      "official": "Community safety boundary; preserves ordinary recovered equations",
+      "rust": "State/PlanarBlock/bridge.c/fast_power10 guards",
+      "evidence": "10 targeted tests, 700 sanitizer blocks and unsafe-parameter guards"
+    }
+  ],
+  "tests": [
+    "core/tests/effects_spatial.rs",
+    "core/tests/fixtures/effects-spatial-official-manifest.json",
+    "core/tests/fixtures/effects-spatial-official.json.gz"
+  ],
+  "checks": [
+    ".build/effects-spatial-oracle.log",
+    ".build/effects-spatial-existing-tests.log",
+    ".build/effects-spatial-targeted.log",
+    ".build/effects-spatial-workspace-tests.log",
+    ".build/effects-spatial-sanitizer-build.log",
+    ".build/effects-spatial-sanitizer.log",
+    ".build/effects-spatial-clippy.log",
+    ".build/effects-spatial-desktop-build.log",
+    ".build/effects-spatial-example-build.log",
+    ".build/effects-spatial-example-final-build.log",
+    ".build/effects-spatial-format.log",
+    ".build/effects-spatial-functional.log"
+  ],
+  "rust": {
+    "passed": 556,
+    "core": 553,
+    "desktop": 3,
+    "failed": 0,
+    "ignored": 0,
+    "suites": 77,
+    "nonempty_suites": 74
+  },
+  "frontend": {
+    "passed": 61,
+    "new_run": false,
+    "evidence": ".build/together-lifecycle-front-tests2.log"
+  },
+  "native_vectors": 194,
+  "original_asset_streams": 71,
+  "original_asset_samples": 432290,
+  "real_material_cases": 6,
+  "maximum_original_rotation_error": 1.043081283569336e-07,
+  "sanitizer_blocks": 700,
+  "functional_report": ".build/effects-spatial-functional-report.json",
+  "executable": ".build/target/debug/examples/effect_spatial_render",
+  "executable_sha256": "bc9d3650c1da48d31256c3be413158064c604b538c9038a5413c43ad25adc61c",
+  "original_assets_bundled": false,
+  "real_account_requests": 0,
+  "new_ui_verified": false,
+  "new_hardware_audio_verified": false,
+  "full_effect_graph_verified": false,
+  "player_dsp_connected": false,
+  "platform": "Linux x86_64; Windows/macOS/ARM not executed",
+  "documentation": "docs/core-effects-spatial.txt",
+  "previous_audit": ".build/effects-dsp-audit.json",
+  "remaining": [
+    "Effects API/entitlements/model lifecycle, complete parameter composition/persistence, non-44.1kHz adaptation, player DSP routing and effects UI",
+    "Original unrecovered full SE/reverb graph and emotion inference keep their explicit evidence limits",
+    "Same-account relay, remaining content/auth/member/special-media/comments/metadata/batch pages and workflows",
+    "Device identity/watchman, Together remaining events/statistics/RTC/outside-selection lifecycle",
+    "Tray/media integration, complete official visual audit, Windows/macOS execution and full-range completion audit",
+    "Real dual-account proof remains excluded; other implementable work remains in scope"
+  ]
+}

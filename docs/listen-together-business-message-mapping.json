@@ -1,0 +1,158 @@
+{
+  "scope": "Recovered ordinary/batch NIM attachment receive path, typed decoding and music-room isolation; business application remains unfinished",
+  "goal_complete": false,
+  "official_first": true,
+  "yesplaymusic_used": false,
+  "sources": [
+    {
+      "path": "references/yunxin-sdk-research/native/business-message-evidence.json",
+      "sha256": "cb892da97e4c589a7841f8c577b623aaef327517de801a7da023ca5bcd0df12b"
+    },
+    {
+      "path": "references/yunxin-sdk-research/native/wrapper-message-00019b40.asm",
+      "sha256": "81165fbec7991a6e7adcca5c78ffec806afa9f24121e685513630f991f871c6c"
+    },
+    {
+      "path": "references/yunxin-sdk-research/native/wrapper-message-00019d60.asm",
+      "sha256": "7181adc710fcdfea903a6b4412af1fffb541a326b9f6a91ca8d36634a648776d"
+    },
+    {
+      "path": "references/yunxin-sdk-research/native/wrapper-message-00006340.asm",
+      "sha256": "3ed62b4b9eac72e1b7c7c8cf7a1e584c48b7eb3a5d1cd69b5c3d367b5fd5eded"
+    },
+    {
+      "path": "references/yunxin-sdk-research/native/wrapper-message-000063b0.asm",
+      "sha256": "9a1e3dbe17c52d22d2fc5360450043a243778a0110cb4dd96a0ec28f53cd8967"
+    },
+    {
+      "path": "references/yunxin-sdk-research/native/wrapper-message-0001b870.asm",
+      "sha256": "556fb46e5b34ce571adc48fa9a5f27d3e24115c9d50692c70f5bdacd95e9c93c"
+    },
+    {
+      "path": "references/yunxin-sdk-research/native/neim-callback-012ac570.asm",
+      "sha256": "e22734ad371d269cf2e83b3d0c7e2d53f2c2bc620c330c79c9d9caf1f4d28c0a"
+    },
+    {
+      "path": "references/yunxin-sdk-research/native/message-chain-012aa140.asm",
+      "sha256": "df13ece2445f80a39be0d6c05240038f3f827191d37027f4321e31f8ad3e68eb"
+    },
+    {
+      "path": "references/yunxin-sdk-research/native/chatroom-message-00f5a060.asm",
+      "sha256": "f0a87c8547d6c30bbcc59360039def8740d93dca023e9c5d6bebbde54277770d"
+    },
+    {
+      "path": "references/yunxin-sdk-research/linux-x64-10.9.75/include/nim_talk.h",
+      "sha256": "194749f4882b5eed79f8c8512180d432cb0e09f3f9a594ea65c419413206923b"
+    },
+    {
+      "path": "references/yunxin-sdk-research/linux-x64-10.9.75/include/nim_talk_def.h",
+      "sha256": "a20cd00b77ba573a711c1237c9e76c1e81338989a7d6ed03daa324650e38c62b"
+    },
+    {
+      "path": "references/yunxin-sdk-research/linux-x64-10.9.75/wrapper/nim_cpp_wrapper/helper/nim_talk_helper.cpp",
+      "sha256": "fab67f75bb9141bc409ee534592d2c36f6d851f290d878348c4c9d087f5c09ec"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/75.js",
+      "sha256": "8f0aa4cc3422daea1cb74c317c84fc27d992dd413623d3c7504f357085005476"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-x64-unpacked/redist_packages/nim_wrapper.dll",
+      "sha256": "18ef80ef7d07ed88617c8043956376f3c882aeb885ebe724bb8b0482cfbe1760"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-x64-unpacked/redist_packages/cloudmusic.dll",
+      "sha256": "557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493"
+    }
+  ],
+  "features": [
+    {
+      "id": "official_transport_source",
+      "implementation": [
+        "references/yunxin-sdk-research/native/business-message-evidence.json"
+      ],
+      "evidence": [
+        "official binary control flow",
+        "official recovered M/75 and SDK headers"
+      ],
+      "limit": "Identifies nim_talk msg_attach, not msg_body or chatroom entry notification."
+    },
+    {
+      "id": "ffi_talk_single_batch",
+      "implementation": [
+        "core/src/listen_together/native_im/ffi.rs",
+        "core/src/listen_together/native_im/callbacks.rs",
+        "core/src/listen_together/native_im/mod.rs"
+      ],
+      "evidence": [
+        "local callback invocation/copy/retirement test",
+        "real SDK initialization/login/entry/reopen"
+      ],
+      "limit": "No live ordinary/batch business callback occurred in the single-account probe."
+    },
+    {
+      "id": "attachment_decoding",
+      "implementation": [
+        "core/src/listen_together/message.rs"
+      ],
+      "evidence": [
+        "official constants and envelope",
+        "local known/malformed/unknown/raw/single/batch/private-text tests"
+      ],
+      "limit": "No live message sample; parses only exact recovered content.type/content, does not infer arbitrary payload layouts."
+    },
+    {
+      "id": "room_and_account_isolation",
+      "implementation": [
+        "core/src/listen_together/transport/worker.rs",
+        "core/src/client/together/runtime.rs",
+        "core/tests/im_transport.rs"
+      ],
+      "evidence": [
+        "local actual supervisor thread test",
+        "existing stale-account guards"
+      ],
+      "limit": "Requires matching content.roomId; missing identity remains an explicit compatibility gap. Current runtime only resets heartbeat, no business dispatch yet."
+    }
+  ],
+  "checks": [
+    ".build/im-message-workspace-tests.log",
+    ".build/im-message-unit.log",
+    ".build/im-message-transport.log",
+    ".build/im-message-check.log",
+    ".build/im-message-clippy-final.log",
+    ".build/im-message-format-final.log",
+    ".build/im-message-client-final.log",
+    ".build/im-message-probe-build.log",
+    ".build/im-message-desktop-build-final.log",
+    ".build/im-business-independent.json"
+  ],
+  "rust": {
+    "passed": 493,
+    "failed": 0,
+    "ignored": 0,
+    "suites": 70,
+    "nonempty": 67,
+    "core": 490,
+    "desktop": 3
+  },
+  "frontend": {
+    "passed": 61,
+    "new_run": false,
+    "source": ".build/im-ui-front-tests.log"
+  },
+  "ipc": 57,
+  "live_probe": ".build/together-business-im-20261026-a",
+  "business_message_live_verified": false,
+  "peer_playback_verified": false,
+  "rtc_verified": false,
+  "new_ui_workflow_verified": false,
+  "platforms": {
+    "linux_x64": "Native SDK callbacks registered; two logins/entries and same-process reopen",
+    "windows": "Not built/run",
+    "macos": "Not built/run"
+  },
+  "documentation": "docs/core-listen-together-business-messages.txt",
+  "audit": ".build/im-business-audit.json",
+  "incoming_playback_followup": "docs/listen-together-incoming-playback-mapping.json"
+}

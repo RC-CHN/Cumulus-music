@@ -1,0 +1,148 @@
+原生设备身份、clientSign 与设备文件：Rust迁移契约
+2026-10-27；本批覆盖下列已恢复规则与Linux适配，完整目标仍进行中。
+
+对象区分
+clientSign不是每次请求的URL/body签名，而是MAC、磁盘、主板/BIOS序列号、持久ID的组合。
+其第四段64字符ID与账号凭据的deviceId不同；本批绝不以硬件派生ID替换登录deviceId。
+Cookie、EAPI/WEAPI密码学、Aegis与Watchman checkToken继续各自的既有职责。
+本地生成一个格式正确的设备上下文不等于服务授予权限，也不能证明能解决旧403。
+
+官方优先的依据
+cloudmusic.dll x64 3.1.42.205594，SHA256
+557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493。
+references/netease-3.1.42.205594-analysis/protocol/core-more/regions/00cedf80.asm：字段组合。
+device-persistence/regions/00cf1940.asm、00cf1c80.asm：首次派生与已有ID优先的生命周期。
+device-persistence/regions/00cf1350.asm：对象布局；0x45c硬件副记录键仍未找到初始化。
+device-storage-codec/regions/00d04a00.asm、00d044f0.asm及其后继区域：CBC与独立尾段。
+device-storage-codec区域D05890/D06270/D063E7/D06E60：PFDW索引与摘要。
+历史参考references/recovered-client/cumulus_core/identity.py、scripts/netease_device_identity.py
+及docs/product/11-device-identity.txt。未使用YesPlayMusic；Python不是新客户端运行依赖。
+
+references/recovered-client/scripts/device_identity_oracle.cjs只读取DLL字节，核对完整SHA和PE机器，
+从已审阅RVA的mov立即数分别提取加/解密密钥并比较，提取固定标记及主记录键。
+再以独立Node/OpenSSL实现生成150组加密向量、112组分隔符/位掩码向量及容器。
+core/tests/fixtures/device-identity-native.json保存结果与源哈希；没有执行官方DLL。
+这属于静态证据加独立算法对照，不是Windows官方进程实际文件输出证明。
+
+模块组织
+core/src/identity/composition.rs：摘要及组合；codec.rs：记录变换和摘要；
+container.rs：严格PFDW解析/规范导出/摘要检查及受限诊断；facts.rs：独立事实类型/Linux采集；
+service.rs：安装范围SQLite状态、原子选择/观察、显式主记录导入/导出。
+core/src/client/mod.rs和auth/mod.rs：当前HTTP客户端与未来扫码/邮箱/手机/已保存账号候选
+统一使用同一原生ClientProfile；没有将业务移入Tauri。
+desktop/src/identity.rs仅选择原生启动配置；数据不通过IPC暴露到前端。
+HardwareFacts/DeviceIdentity刻意不实现Debug或Serialize；诊断使用只包含来源和可用性布尔的summary。
+
+组合及派生
+CEDF80按mask低四位依次处理四段。只要当前累计输出非空，就先追加@，再追加本段，
+即使本段空也保留分隔符。MAC/空/空/ID得到MAC@@@ID，不能过滤空项后join。
+正常宿主mask15；纯算法同时支持其他掩码。收集器负责规范化，组合器不模拟Windows枚举。
+CF1940的hardwareBytes是窄编码MAC+磁盘，hostBytes为主机说明；不包含主板序列号。
+first=lowercase_hex(MD5(hardwareBytes||hostBytes))；
+id=first||lowercase_hex(MD5(ASCII(first)))。
+core接受已经编码的字节，不擅自用UTF-8替代CP_ACP/CP_THREAD_ACP。
+本机Linux适配使用恢复Python中选择的GBK主机说明，不能称为完整Windows采集行为。
+
+Linux事实适配
+只读取调用者指定sysroot，生产固定/sys；不执行系统命令，不提权，不联网。
+网卡MAC转大写，拒绝不规范、全FF及00:00:00:00:00前缀；排序优先物理，其次up，最后接口名。
+磁盘名称仅nvme数字n数字、sd字母、vd字母；按名称选首个可读device/serial或serial并去空白。
+主板取board_serial，缺失取product_serial，去空白；unknown/none/not specified/default string/
+to be filled by o.e.m.等占位忽略。单条文件有读取上限，拒绝多行/控制空字节和超过512字符。
+vendor/model可用才生成“主机:vendor model 机型”；chassis 8/9/10/14/30/31/32选笔记本，其余台式。
+没有MAC/磁盘/主板任何事实，或文本不能按所选GBK编码表示，返回明确不可用，不伪造设备。
+Windows/macOS宿主可向HardwareFacts::from_encoded传其已核验事实；自动本机采集目前仅Linux。
+
+安装范围持久化与失败
+StateStore命名空间与旧Python一致：owner=device、kind=identity、key=client_sign；
+保存persistent_id和creation_source。已有ID必须是64个小写hex；损坏时拒绝，绝不静默轮换。
+一个BEGIN IMMEDIATE事务读已有记录或首次派生，再写last_observed={parts,source}。
+独立进程/数据库连接竞争时只能保留一个首次ID；观察写入失败也回滚本次创建。
+硬件变化只更新当前组合的MAC/磁盘/主板和观察，不改变已持久的第四段ID。
+账号切换/退出不清owner=device；不同账号各自保有凭据deviceId和Cookie作用域。
+采集在宿主启动时进行一次；选定ClientProfile在该宿主生命周期内稳定，所有登录候选使用相同上下文。
+
+记录密码学与容器
+记录=原始16字节MD5(明文)||storage_transform(明文)。共享常量密钥为
+456789f1124577c2b1459012429035e2，IV为16零字节；AES-128-CBC完整块无PKCS7。
+末尾m字节独立处理，与CBC末块无连接：C[i]=Q[i]^Q[i+1]，末字节=Q[last]^C[0]。
+逆变换先Q[last]=C[last]^C[0]，再反向Q[i]=C[i]^Q[i+1]。
+m=1的官方逆变换退化，不包装成可逆算法；Rust和旧分析工具均拒绝空输入与这种长度。
+64字节ID得到80字节记录；68字节固定标记得到84字节记录。
+decode_record比较MD5，严格程度高于所见原生ID读取分支，差异明确保留。
+
+PFDW头：magic4、version u32LE=0x003c0000、MD5(bytes[24..])16、count u32LE，
+随后count条{key,offset,size}，三字段均u32LE，offset相对文件起点。
+key0x90001为ID加密记录，0x1001为固定标记记录；未知记录保持原字节，不能全部当AES密文。
+拒绝错误头/版本/摘要、截断索引、重复键、越界、重叠、超过16MiB或4096记录。
+读取只接受有界普通文件；失败不执行原生DeleteFileW清理副作用。
+encode_container按key排序规范重建，保留调用者提供的未知记录，但不声称复刻原生原地追加布局。
+inspect只报告键、长度、摘要和形状布尔；不输出机器ID或硬件字段。
+
+主记录迁入与导出
+IdentityService::import_primary仅接受显式提供的PFDW主ID，检查记录和形状，已有不同ID则拒绝；
+相同ID幂等，不能借导入静默更换设备。存在标记记录时检查其记录摘要，但不强制标记值完全相同。
+export_primary导出本机ID与固定标记两条记录，不写未知副文件硬件绑定键。
+CLI导出使用create_new/0600，不覆盖既有文件；没有自动写COMMON_APPDATA、安装目录或官方isc.dat。
+旧Windows双文件修复顺序已研究，但次文件绑定键/完整Windows枚举和实际样本尚未恢复/取得；
+本批不能宣称已实现官方双文件自动回填。社区正常持久化采用已验证的SQLite事务。
+
+宿主接入与实际命令
+MusicClient::open_with_native_profile(data_dir,existing_profile,profile,backend)在原生入口接入上下文；
+backend只供原生宿主/测试注入，WebView无法选择任意地址、硬件事实、Cookie或签名。
+已有open/open_with_http_backend行为保持默认ClientProfile。profile校验在持久化/网络前完成。
+客户端使用的账号deviceId继续来自对应Credentials；不能用硬件ID覆盖它。
+
+正式桌面显式设置CUMULUS_DEVICE_IDENTITY=local时启用当前Linux事实；未设置则保持既有行为。
+不认识的值或不支持的平台返回错误，不静默发送伪造Windows资料。界面设置开关尚未提供，
+这继承旧CLI的可选设备身份方式，不将启动选项当作完整设置页验收。
+例：CUMULUS_DEVICE_IDENTITY=local CUMULUS_DATA_DIR=PRIVATE_APP_DIR .build/target/debug/cumulus
+启动本身不扩大已有登录Cookie作用域。
+
+独立Rust工具：cargo run -p cumulus-core --example device_identity --locked --offline --
+  collect PRIVATE_STATE_DIR
+  inspect EXPLICIT_DEVICE_FILE
+  import PRIVATE_STATE_DIR EXPLICIT_PRIMARY_FILE
+  export PRIVATE_STATE_DIR NEW_PRIVATE_FILE
+每次选择一条子命令。collect是本机事实与落盘，不发送请求；其他命令均离线。
+只读账号证明：cargo run -p cumulus-core --example device_identity_read --locked --offline --
+  EXPLICIT_AUTHORIZED_PC_PROFILE NEW_PRIVATE_PROOF_ROOT
+该例子只允许PC域account/get，核验实际加密header中clientSign和原deviceId后才发请求。
+上下文原值只在私有目录作独立审计证据，日志仅可用性/一致性布尔；不记录Cookie或token。
+
+当前验收
+core/tests/device_identity.rs 10项：150密码学/112组合对照、容器及未知记录、损坏/不删除、
+Linux选择/规范化/GBK、并发首次选择、SQLite重开/硬件变化/旧格式、事务故障、导入冲突及凭据不变。
+core/tests/client_identity.rs 1项：正式EAPI实际包和Cookie上下文，初始/扫码/邮箱/保存候选/重开，
+不同候选独立deviceId且clientSign一致；保存账号恢复不改变凭据记录。
+连同client_auth12、HTTP9，共32项定向通过.build/identity-tests3.log。
+
+真实离线工具：.build/private-device-identity-offline-20261027-a，采集/导出/检查/新库导入/
+再导出逐条通过，最后文件逐字节相同；正式工具只打印受限摘要。
+真实账号：.build/private-device-identity-read-20261027-a，两次HTTP及业务code200，
+中间新连接/会话重开，账号不变、clientSign不变、原deviceId不变，业务写入0。
+独立audit_device_identity.py用OpenSSL解实际导出记录，比对MD5、ID后半摘要、marker、
+SQLite与两次请求上下文；independent-audit.json、.build/identity-independent1.log通过。
+该成功不扩展为受保护写接口/易盾/Windows环境通过。
+
+初轮新Node脚本少闭合循环括号已修复；随后Linux主机说明测试暴露旧手写样本的GBK多了bbee，
+解码实际是“台式活电脑”。新样本改为正确“台式电脑”再生成、重跑通过，运行时代码未为此改规则。
+旧归档Python样本保留；这些失败记录均保留在identity-oracle1/identity-tests1/2.log。
+本批未使用Windows生成的真实isc.dat，没有声称Windows/macOS实机采集或官方双文件互操作完成。
+Watchman实际采集/上报/SDK provider及其他全目标领域继续，详见既有全目标工作单。
+
+完整回归与正式宿主启动
+.build/identity-workspace-tests1.log：全workspace/all-targets/custom-protocol共165条suite，
+757次通过、0失败/忽略，其中733主测试（core721、desktop3、音频插件9）及既有示例24项。
+严格Clippy identity-clippy1.log、Rust格式identity-format-final.log、正式桌面构建
+identity-desktop-build1.log均通过。前端代码/产物未改，沿用上一批122项与类型/生产构建证据，
+不虚增本批前端测试数；本批启动真实加载同一正式前端资产。
+
+desktop/examples/run_identity_startup.py实际启动.build/target/debug/cumulus，
+设置CUMULUS_DEVICE_IDENTITY=local、获授权PC会话和全新私有数据目录；不注入JS/测试IPC。
+.build/ui-proof/identity-startup-20261027-a/report.json与startup.png通过，
+观察到原生账号档案与设备记录落盘，截图目视确认账号和每日推荐歌曲已显示。
+没有触发资源写入按钮；启动后受控终止，不称为崩溃恢复或全桌面行为重新验收。
+此启动验证额外读取正常首页资源；前述两次严格白名单证明才是精确网络请求计数证据。
+日志identity-desktop-startup1.log；公开映射device-identity-mapping.json、散列索引
+.build/device-identity-progress.json。未知次文件键、Windows/macOS采集、界面开关、易盾继续。

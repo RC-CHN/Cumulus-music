@@ -1,0 +1,167 @@
+{
+  "date": "2026-10-27",
+  "full_goal_complete": false,
+  "contract": "docs/desktop-session-renewal-contracts.txt",
+  "sources": {
+    "4": {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/4.js",
+      "sha256": "0ebd5a37bafecbb54ac25e4a59ca51c9d8c4b9ad86b76750249331e04e692bc5"
+    },
+    "290": {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/290.js",
+      "sha256": "73e775eae2e4b1da2e97b70b9415e2e101ba876ea1f6b877bd7cc054c7a4ea9b"
+    },
+    "1368": {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_vendors_app_subApp.chunk.1482700000000.js/1368.js",
+      "sha256": "49da1d26373042091a3123f8948f1ce7e9968ec185e57369156fc1c6a6700db3"
+    }
+  },
+  "rows": [
+    {
+      "requirement": "PC JSK gate and empty ydDeviceToken",
+      "official": [
+        "290:jskConfig/ydDeviceToken",
+        "1368:checkAB/getYdDeviceToken"
+      ],
+      "rust": [
+        "core/src/account/refresh/lifecycle.rs",
+        "core/src/account/refresh/signature.rs"
+      ],
+      "tests": [
+        "desktop/tests/renewal_official.cjs",
+        "core/tests/refresh.rs",
+        "core/tests/client_renewal.rs"
+      ],
+      "evidence": [
+        ".build/renewal-official-oracle.json"
+      ]
+    },
+    {
+      "requirement": "signature and production daily interval",
+      "official": [
+        "1368:encryptParams/pn/refreshToken",
+        "290:device.info",
+        "4:Os.queryOs"
+      ],
+      "rust": [
+        "core/src/account/refresh/signature.rs",
+        "core/src/account/refresh/journal.rs",
+        "desktop/src/renewal.rs"
+      ],
+      "tests": [
+        "core/tests/refresh.rs",
+        "core/tests/client_renewal.rs"
+      ]
+    },
+    {
+      "requirement": "generation isolation, request failure, pending reconciliation, restart, timeout",
+      "official": [
+        "1368:refreshToken response-pair check"
+      ],
+      "community_design": "durable journal, identity verification, 45-second host timeout, account epochs",
+      "rust": [
+        "core/src/account/refresh/lifecycle.rs",
+        "core/src/account/refresh/journal.rs",
+        "core/src/client/auth/renewal.rs",
+        "core/src/protocol/http/client.rs"
+      ],
+      "tests": [
+        "core/tests/refresh.rs",
+        "core/tests/client_renewal.rs"
+      ]
+    },
+    {
+      "requirement": "foreground and login-lifecycle integration",
+      "official": [
+        "1368:subscribeForegroundChange"
+      ],
+      "community_design": "Notify coalescing, startup/login notification, main-window destruction abort",
+      "rust": [
+        "desktop/src/renewal.rs",
+        "desktop/src/lib.rs",
+        "desktop/src/auth.rs",
+        "desktop/src/commands.rs"
+      ],
+      "ui": [
+        "frontend/src/components/SessionRenewal.vue",
+        "frontend/src/components/AccountDialog.vue"
+      ],
+      "evidence": [
+        ".build/ui-proof/renewal-20261027-a/independent-audit.json"
+      ]
+    },
+    {
+      "requirement": "bounded typed IPC and lost-reply UI recovery",
+      "community_design": "status-only IPC, main-window-only guard, no frontend credentials or force flag",
+      "rust": [
+        "core/src/client/auth/renewal.rs",
+        "desktop/src/renewal.rs"
+      ],
+      "ui": [
+        "frontend/src/services/renewal.ts",
+        "frontend/src/composables/useSessionRenewal.ts",
+        "frontend/src/adapters/tauri.ts"
+      ],
+      "tests": [
+        "frontend/tests/session-renewal.test.ts"
+      ]
+    },
+    {
+      "requirement": "authorized current account readiness",
+      "rust": [
+        "core/examples/session_renewal_read.rs"
+      ],
+      "status": "verified_read_only_missing_credentials",
+      "boundary": "only account/get allowed, no refresh or other business writes",
+      "evidence": [
+        ".build/renewal-live-read.json"
+      ],
+      "identityReads": 1,
+      "refreshRequests": 0
+    },
+    {
+      "requirement": "invalid-code middleware renewal",
+      "official": [
+        "1368:refreshInvalidToken/subscribeLoginInvalidRefresh"
+      ],
+      "status": "not_migrated_in_this_phase",
+      "endpoint": "/api/middle/account/token/refresh",
+      "boundary": "ordinary 301 invalidation is not equivalent"
+    }
+  ],
+  "yesplaymusic_used": false,
+  "real_refresh_success_proven": false,
+  "other_platforms_executed": false,
+  "checks": {
+    "rust": {
+      "passed": 834,
+      "failed": 0,
+      "ignored": 0,
+      "suites": 187,
+      "log": ".build/renewal-workspace-tests2.log"
+    },
+    "frontend": {
+      "passed": 129,
+      "log": ".build/renewal-frontend-tests2.log"
+    },
+    "clippy": ".build/renewal-clippy-final.log",
+    "format": ".build/renewal-format.log",
+    "frontend_build": ".build/renewal-frontend-build2.log",
+    "frontend_format": ".build/renewal-frontend-format.log",
+    "formal_build": ".build/renewal-formal-build.log"
+  },
+  "desktop_proofs": [
+    ".build/ui-proof/renewal-20261027-a/independent-audit.json",
+    ".build/ui-proof/renewal-20261027-b-small/independent-audit.json"
+  ],
+  "formal_startup": ".build/ui-proof/renewal-desktop-20261027-a/complete.json",
+  "laterPolicyAudit": {
+    "mapping": "docs/login-interception-mapping.json",
+    "correctedBoundaries": [
+      "M290 enableTokenJsk does not replace the M34 dual-experiment gate.",
+      "PC adapter adds fromPage=JSK and empty x-login-chain-id to refresh wire requests.",
+      "Missing saved refreshToken does not prove the historical login response omitted it."
+    ],
+    "realRefreshSuccessProven": false
+  }
+}

@@ -1,0 +1,116 @@
+歌单封面桌面：原生选图、裁剪保存、账号隔离与恢复
+2026-10-27；本阶段完成歌单封面接线及真实桌面主流程，不代表完整桌面目标完成。
+原生协议、状态机及其服务边界见 core-playlist-cover-contracts.txt。
+
+一、官方来源与产品入口
+优先使用官方 M546/M2131/M2167/M444，以及恢复 CoverEdit.jsx、AvatarCliper/index.tsx。
+编辑歌单中的封面178×178、圆角12；裁剪弹窗宽442，预览区域362×260；
+裁剪框200×200、圆角18，标题20px/28px。横向铺满、初始zoom=1，缩放步进0.01。
+原图区域的像素坐标交给Rust裁剪，不能把200px显示框当成200px导出规格。
+本批没有使用YesPlayMusic。
+
+入口：我的歌单→打开自己的普通歌单→编辑歌单→替换图片→选择图片。
+也可从歌单操作记录→处理封面恢复未完成任务。红心歌单/他人歌单不显示封面编辑；
+Rust再次检查所有权、普通歌单、版本和未决操作，不能仅靠前端隐藏按钮授权。
+选择JPEG/PNG/BMP/GIF，输入不超过5MiB、两边均至少320；不合格文件给出具体提示。
+原生读取后保存不可变图片快照。取消选择不创建任务；取消重新选取保留原图与裁剪位置。
+重新选图先完整验证，再原子替换Draft/Prepared；坏图不会破坏已有快照。
+拖动、方向键（Shift加大步幅）、滚轮、加减键、滑条都修改同一原图坐标模型。
+点击保存后准备JPEG、申请NOS、上传、绑定并独立回读；只有Confirmed才显示保存成功。
+返回编辑窗口时更新封面与revision，保留尚未保存的名称、简介、标签；不会顺便提交这些文字。
+
+二、分层与四条正式IPC
+frontend/src/services/playlistCover.ts：公开类型与状态文案。
+frontend/src/services/coverGeometry.ts：只负责显示位置和原图坐标，不接触原文件或请求签名。
+frontend/src/composables/usePlaylistCover.ts：账号代次、单次操作、原生进度回读、显式恢复。
+frontend/src/components/PlaylistCoverDialog.vue：真实裁剪窗口和加载/错误/恢复状态。
+PlaylistDialog/usePlaylists/App：歌单编辑、封面刷新、未完成记录入口、切号卸载。
+desktop/src/playlist_cover.rs：main窗口原生选择器、回调前后的账号检查和类型化IPC。
+core/src/client/playlist_cover.rs：独立宿主用例；core/playlist/cover保留所有业务与持久状态。
+
+  playlist_cover_tasks {epoch} → AccountData<CoverTaskView[]>
+  playlist_cover_image {epoch,id} → AccountData<CoverImage>
+  pick_playlist_cover {epoch,playlistId,revision,replaceId?} → AccountData<CoverTaskView|null>
+  playlist_cover_command {epoch,id,command} → AccountData<CoverOutcome>
+
+选择器没有可由WebView提供的路径/字节参数；由用户在操作系统窗口选定PathBuf后，
+原生端调用select_file/replace_file。取消返回null。图像解码/预览/准备在原生阻塞工作线程。
+公开预览最长边1024，去除元数据；前端不获得源路径、账号UID、上传令牌、docId或完整授权URL。
+任务返回裁剪区域、原图宽高、阶段、字节进度、子传输状态、清理待办与有限错误原因。
+CoverOutcome为task/editor?/warning?；editor采用已确认的原生歌单缓存，封面地址经过CDN白名单投影。
+普通mutate_playlist的Cover命令在MusicClient边界被拒绝，不能绕过已确认的本机上传直接绑定文档ID。
+独立Rust领域API仍可供其他原生宿主使用，不依赖Tauri或归档Python进程。
+
+三、命令、恢复和并发
+command.kind为save{crop}、continue、retry_allocation、reconcile、rebase{revision}、
+pause、renew、abandon、cleanup。没有后台盲目重试远端写入。
+Save整个prepare→upload→bind由账号+任务操作锁保护，另一窗口不能夹入新裁剪或替换文件。
+Pause可穿过该外层锁，继续受NOS持久控制保护；重复保存会返回busy。
+进行中每500ms沿单条轮询链只读本地任务；操作完成/卸载/失效即停止轮询。
+迟到的选图、预览、列表与保存回包不能进入另一个账号或覆盖更新的界面状态。
+登录失效清空预览并交还应用登录处理；原账号的持久任务保留，重新登录可恢复。
+
+关闭Draft/Prepared裁剪窗会显式放弃并清理；进程在选图后退出则保留快照，重开可继续。
+未保存的拖动/缩放位置属于窗口内状态；Draft重开恢复原图和默认位置。
+Prepared之后保存的crop由Rust持久化，恢复窗口按该区域重建缩放与中心。
+上传/绑定未完成可以稍后处理，操作记录保留；busy期间禁止关闭，上传阶段另有暂停。
+Binding只允许核对，不能放弃后伪装完成；不明确的分配/NOS首末块结果禁止继续写入。
+明确分配拒绝才显示重试；传输权限失败可显式续期，同一对象的续传规则沿用NOS。
+目标版本变化后保留图片，提供读取最新信息和明确确认应用；不会自动覆盖另一个设备的修改。
+终态尝试清理私有源图/输出字节及工作JPEG；失败保留cleanupPending和重试入口。
+封面读取地址单独加入PlaylistSnapshot，但不进入revision散列，CDN地址轮换不造成假冲突。
+
+四、真实桌面与独立审计
+生产DOM→正式IPC→Rust→真实PC域API/NOS，原生GTK选择器由X11按键完成选文件/取消。
+拖动/键盘/滑条事件由真实WebView中的探针派发；不是手工鼠标操作的证据。
+探针仅在独立example编译；无测试后门进入正式应用。
+
+.build/ui-proof/playlist-cover-20261027-b/：1120×760、10张截图。
+  空窗/原生取消/100×100坏图拒绝/640×480选图/缩放和移动/重新选图取消/
+  保存回读/远端封面实际加载/名称简介草稿保留/关闭编辑不提交文字。
+.build/ui-proof/playlist-cover-20261027-c-small/：760×540，首次6张、重开5张。
+  选图后正常退出进程，重开从操作记录找到同ID的Draft与原图；完成裁剪上传及清理。
+  这是实际进程重开证明，不声称进程被强杀或真实网络丢包。
+
+两轮成功流程各四次显式业务写入：新建私密空歌单、NOS分配、cover/update、删除歌单。
+Guard持久记录每条变更，只允许本轮对象且跨进程拒绝重复发送；普通文字编辑接口不在白名单。
+原77个歌单的完整ID顺序均恢复。原始API回包、SQLite父子操作、清理、原文件哈希可独立检查。
+独立audit_playlist_cover_probe.py核对选区{x:223,y:143,size:177}，上传JPEG确为177×177；
+FFmpeg独立解码，对原图区域逐通道平均误差0.5124/255。精确docId与服务回读相同，
+本地源快照/输出快照/工作JPEG清理，父子操作均Confirmed。
+各目录independent-audit.json；窗口已目视检查。NOS可能留下未引用合成图像，不声称远端对象删除。
+
+验证代码：desktop/examples/playlist_cover_ui_probe.rs、cover_probe_support/mod.rs、
+playlist_cover_ui_probe.js、run_playlist_cover_probe.py、audit_playlist_cover_probe.py。
+首次a脚本使用旧导航索引误入FM，没有发送封面上传；失败后临时歌单清理且原列表恢复。
+修正为按“我的歌单”文字定位后，b/c成功；失败证据未删除，没有改变业务以迎合测试。
+b之后统一了页脚按钮宽度及键盘提示；c及正式二进制包含该调整，未改变裁剪/上传逻辑。
+
+复跑（会执行上述隔离变更，必须使用显式获准PC profile及全新输出目录）：
+  CARGO_INCREMENTAL=0 cargo build -p cumulus-desktop --example playlist_cover_ui_probe \
+    --features custom-protocol --locked --offline
+  python3 desktop/examples/run_playlist_cover_probe.py NEW_ROOT PC_PROFILE
+  python3 desktop/examples/run_playlist_cover_probe.py OTHER_NEW_ROOT PC_PROFILE --small --hold
+  python3 desktop/examples/run_playlist_cover_probe.py OTHER_NEW_ROOT PC_PROFILE --small --reopen
+  python3 desktop/examples/audit_playlist_cover_probe.py COMPLETED_ROOT
+--hold必须接着--reopen或清理，不能把暂留的临时歌单当作清理完成。
+只清理中断后的既有计划（不再创建/上传）：
+  CUMULUS_PROOF_DIR=EXISTING_ROOT CUMULUS_COVER_PROFILE=PC_PROFILE \
+    .build/target/debug/examples/playlist_cover_ui_probe --cleanup
+清理会重新验证同账号、唯一新增私密空歌单、名称与原基线；证据冲突时保留现场。
+已在b完成后实际运行独立--cleanup入口：只读account/get及两次完整列表，新增写入0；
+cleanup/cleanup.json通过，日志playlist-cover-ui-cleanup-check.log。该复核不冒称未完成写入的真实崩溃恢复。
+
+五、测试层级及明确差异
+新增2项Rust客户端场景（playlist_cover现共13项），覆盖真实本地文件快照/替换失败、
+整次保存并发保护、通用绑定拒绝、代次失效、确认DTO地址投影与清理。4条IPC加入既有过期拒绝测试。
+新增7项前端场景：几何、取消、跨号迟到预览、未知回包只读核对、重复保存/旧号完成、
+失效停止工作、显式版本确认；旧歌单状态测试仍回归。全量结果见rust-core-validation.txt。
+暂停/未知NOS结果/版本冲突等故障分支主要由Rust和前端状态测试验证，未冒称全部在真实网络窗口触发。
+
+与官方的有意差异：先打开裁剪窗再原生选图，便于未完成任务恢复；保存后保留确认页；
+增加键盘操作和持久错误/核对入口。最小窗口正文滚动、页脚固定在可见范围。
+极宽图片需要的minZoom>10时，以minZoom作为上限保证裁剪框有图；一般图片最大zoom=10。
+原生16MP/256MiB解码界限、JPEG质量92/GIF首帧及其他图像差异沿用core契约。
+没有声称官方截图像素一致，也没有Windows/macOS窗口实测或新账号登录验证。
+完整业务、其他页面、音效、接续、桌面平台适配等继续，full goal保持active。

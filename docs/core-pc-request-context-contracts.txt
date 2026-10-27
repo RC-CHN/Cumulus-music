@@ -1,0 +1,110 @@
+PC 配置中心、易盾与正式音乐请求接线
+2026-10-27。完整桌面目标仍进行中。后续已增加官方EAPI私密歌单创建200及隔离清理验证，
+见core-pc-official-write-proof.txt；下文本阶段已有真实设备/行为上报和一条受保护读取通过，
+不把它概括为全部403已解决、全部写接口通过或完整Windows环境复刻。
+
+官方依据与关键发现
+hybrid_app.chunk.1482700000000.js/92.js：配置中心、PC检查、版本/bucket、持久化与HTTP中间件。
+同目录402.js：请求顺序、响应头提取、受保护路径匹配、checkToken与X-antiCheatToken注入。
+同目录252.js：固定产品号YD00000558929251、SDK初始化与逐次getToken调用。
+源SHA与可执行原函数对照见watchman-mapping.json、mconfig_oracle.cjs及mconfig-official.json。
+没有使用YesPlayMusic。旧Python配置读取曾收到os=web，只能作失败路径历史，不是PC配置。
+本轮补上官方MConfig-Info协商头后，真实PC账号响应给出os=pc、version=1026048及官方CDN地址；
+读取到99项配置。头缺失和Windows声明等因素不是本轮单变量控制实验，不能断言所有历史403
+仅由这个头导致。已直接证明按新流程能取得PC配置及完成下述受保护读取。
+
+独立Rust接口
+protocol/mconfig/model.rs：Snapshot、ConfigUrl、Update及应用键IuRPVVmc3WWul9fT。
+http.rs：ConfigBackend、NativeConfigBackend。mod.rs：PcConfig及更新/取消/持久化协调。
+RequestContext::from_pc(service, app_version, provider)：动态读取经过PC条件检查的配置；
+metadata_headers、prepare及原生响应观察分别负责协商头、路径令牌、后台配置更新。
+MusicClient::open_with_request_context将同一原生上下文传给初始HTTP实例、扫码、密码及保存账号候选；
+每个候选仍拥有自己的凭据/设备ID/账号代次，设备级配置和易盾状态不复制账号Cookie。
+core不依赖Tauri/WebView、Node或Python业务进程。上述工具仅用于来源提取、外部启动和离线审计。
+
+正式请求顺序
+1. 凭据限定在原PC域，读取当前凭据revision；禁止扩大Cookie范围。
+2. 当前PC配置按M/402匹配逻辑API路径，精确项匹配完整路径，末尾/项匹配前缀；
+   多组命中时最后一组覆盖前面。不存在匹配则不凭猜测索取令牌。
+3. 对匹配的EAPI请求调用WatchmanRuntime获取新令牌。配置变化发生在等待期间时拒绝旧准备结果；
+   不拿旧业务ID的token自动重试。该token写入payload.checkToken、HTTP X-antiCheatToken，
+   并依M/402的o.headers合并进入EAPI header中的同名字段。
+4. 原凭据revision再次核对后序列化/加密。M/92协商头在此后加入HTTP，不能放进已加密header：
+   MConfig-Info={"IuRPVVmc3WWul9fT":{"version":当前配置版本或0,"appver":"3.1.42.205594"}}。
+   官方s()未把保存的bucket加到请求头；本实现同样不自动发送MConfig-Bucket。
+5. 回包凭据先按既有revision机制提交。音乐结果返回与配置对象下载分开；更新失败不把已经成功
+   的业务写入变成失败，不重放音乐请求。配置处理读取响应MConfig-Info/MConfig-Bucket，头名忽略大小写。
+6. 原生配置对象GET无音乐Cookie、认证头或重定向；只接受https的*.music.126.net/obj/*.data，
+   不接受账号密码、非默认端口、查询或fragment。10秒请求截止，最多16MiB，JSON必须是对象。
+   这是已审阅源形态的本地边界；其他源形态遇到时明确拒绝并继续使用旧配置。
+
+PC配置状态与故障恢复
+仅os精确为pc、有效非零版本且fullUrl存在时更新；os=web/mac等不替代PC数据。
+支持已观测的JS安全范围无符号整数版本。版本只判断不等，不要求递增；官方也允许不同较低版本。
+bucket可在非PC响应中更新，符合原模块先更新bucket再检查os的顺序。
+每个服务同时只下载一个配置，后续响应仍可更新bucket；同版本不重复下载，下载失败保存旧数据。
+配置组发布前校验路径/businessId形态，保存version/data/source_url的事务整体提交。
+配置generation与bucket分开：下载期间bucket变化不会丢失；另一实例已更新配置则拒绝迟到结果。
+SQLite namespace=transport/pc-mconfig-v1/pc，记录来源PC域和配置URL，重开加载同一快照。
+本实现立即事务保存bucket及完整配置，代替官方dirty异步文件写入，避免部分文件和掉电丢状态。
+取消future释放下载锁；close取消等待、禁止迟到提交。坏配置/下载失败不清空旧白名单。
+fullChecksum没有被声称为已验证签名；本模块依据原M/92执行完整对象加载，没有新增虚构签名算法。
+
+正式桌面生命周期
+desktop/src/watchman/host.rs NativeWatchman以主窗口真实BrowserMeasurements、NativeCollection、
+WatchmanRuntime、PcConfig及RequestContext组装；run()把上下文传入实际MusicClient。
+页面Finished后启动一次原生设备刷新任务，使用已恢复的五分钟调度；同窗口重复Finished不启动多个任务。
+页面Started仍由正式插件改变代次、停止事件观察并取消旧测量，采集器下次按新页面重建。
+窗口销毁关闭Runtime/PcConfig并停止刷新。关闭中的token/config等待不可再完成业务发送或覆盖状态。
+此流程默认接入正式客户端，不需前端提交配置、业务ID、令牌或硬件资料。
+CUMULUS_DEVICE_IDENTITY=windows-local同时选择Windows原生请求声明和采集器只读身份投影；
+CPU/时区/图形/事件可信标记仍取实际值。LANGUAGE/locale转换使用现有规范化器和应用语言zh-CN。
+不开启该选项时使用当前默认请求配置和真实浏览器上下文，不能声称其请求UA与引擎完全一致。
+
+验证证据与分层
+官方M/92原函数直接执行5场景12步：无配置/非PC、更新/同版本/回退、下载失败保留、缺URL、重开；
+core4项新测试涵盖上述对照、并发bucket、取消/关闭、跨实例旧回包、动态token和配置变化。
+client_identity新增完整候选/保存账号/重开测试，逐请求核对新token、设备ID隔离及协商头的位置。
+桌面新增NativeWatchman单次启动、关闭取消、拒绝重启及测量源所有权释放测试。
+旧Weapi兼容路径有既有单次发送/拒绝不重放测试；没有借此声称这些接口的官方EAPI已恢复。
+
+真实MConfig只读探针core/examples/mconfig_read.rs只允许固定账号读取；
+.build/private-mconfig-20261027-a：两次HTTP200、一次CDN GET、获得PC版本1026048，账号设备ID不变。
+此早期协商发现探针在自动MConfig尚合入加密header的阶段构建；它只证明PC协商与持久化，
+不能作为最终中间件顺序证明。后续实际窗口和候选测试核对了最终HTTP-only顺序。
+
+真实完整链路desktop/examples/watchman_live_probe.rs使用正式configure、NativeWatchman和IPC；
+外壳账号为离线桩，实际音乐调用单独限定现有授权PC会话的三个读取接口：
+ /api/w/nuser/account/get -> /api/user/playlist -> /api/v6/playlist/detail。
+最后一条选择刚读到的本人歌单，业务ID由本次PC配置实际匹配；最终命中
+afb1a8e61222dcc4b7a733ca69f089cb，体现官方最后匹配组覆盖，未硬编码常见bd5...值。
+.build/ui-proof/watchman-live-20261027-a：/v2/config/js、/v3/d、/v3/b均200，三个音乐读取均200；
+设备ID不变、业务写入0、实际环境为Linux/WebKit加Windows声明，并非Windows实机。
+审计audit_watchman_live_state.py只读SQLite，核对响应DID/NI/TID、设备revision和完整PC配置。
+audit_watchman_live.cjs将真实包独立逆变换，再用固定官方编码函数逐包重建，核对CRC/填充/字节；
+再执行原M/402路径函数和原token编码器，核对业务ID、nonce、DID、非fallback形态、两个注入位置、
+HTTP-only协商头、原音乐响应的账号/歌单归属及数据库。两份审计均通过，完成截图已实际查看。
+原始包/令牌/身份仅保存在私有证据目录，正式页面没有这些字段。探针叠层不是新增产品页面。
+正式二进制另已启动验证：.build/ui-proof/watchman-desktop-20261027-a，无合成UI叠层，
+实际恢复当前账号并显示每日推荐；SQLite有PC版本1026048及服务器设备记录revision=1。
+desktop.png已实际查看。该启动检查没有点击播放/写入操作，不能代替全页面或音频验收；
+驱动run_watchman_desktop_start.py以SIGTERM收尾，正常窗口关闭取消另由正式宿主测试覆盖。
+首轮Node同步启动Python审计子进程遇到EPERM，未算通过；后改为两个独立离线审计步骤，原失败日志保留私有权限。
+
+可复跑入口
+ node references/recovered-client/scripts/mconfig_oracle.cjs
+ CARGO_INCREMENTAL=0 CARGO_TARGET_DIR=.build/target cargo test --locked --offline -p cumulus-core --test mconfig --test client_identity --test context --test http
+ CARGO_INCREMENTAL=0 CARGO_TARGET_DIR=.build/target cargo build --locked --offline -p cumulus-desktop --features custom-protocol --bin cumulus --example watchman_live_probe
+ CUMULUS_SESSION_DIR=EXPLICIT_PC_PROFILE GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 LIBGL_ALWAYS_SOFTWARE=1 dbus-run-session -- xvfb-run -a -s '-screen 0 1280x900x24' /usr/bin/python3 desktop/examples/run_watchman_fingerprint_probe.py NEW_PRIVATE_DIRECTORY --live
+ python3 desktop/examples/audit_watchman_live_state.py NEW_PRIVATE_DIRECTORY
+ node desktop/examples/audit_watchman_live.cjs NEW_PRIVATE_DIRECTORY
+正式窗口启动检查（同上Xvfb环境）：
+ /usr/bin/python3 desktop/examples/run_watchman_desktop_start.py NEW_PRIVATE_DIRECTORY EXPLICIT_PC_PROFILE
+必须使用全新证据目录；不覆盖失败记录。当前最终验证/散列见.build/watchman-context-progress.json。
+
+后续仍须验证
+当前真实证明覆盖SDK版本602a5ad7和一条受保护读取，未证明旧SDK线上上报、原403写入全部恢复，
+也不证明没有token时同一读取一定被拒绝。本轮没有额外做无token对照或实际支付/发布/邀请。
+先前为兼容实测选择的PC同域Weapi写路径继续保留，未擅自切换成未验证EAPI；需下一轮隔离往返。
+完整LoginGuardian、CAPTCHA及账号设备挑战/刷新界面和业务仍分别待完成。
+真实Windows/macOS对照、残余loader/font依赖、全部官方视觉与其余业务目标继续。

@@ -1,0 +1,105 @@
+桌面下载、完成文件与目录设置
+2026-10-26；官方来源清单见 download-ui-source-contracts.txt。
+本文件对应新增 Rust/IPC/Vue 实现，验收日志另见 rust-core-validation.txt。
+
+来源与职责
+官方 pages/download、DownloadedTrackViewer、DownloadingTrackViewer、DownloadProgressCell、
+setting/views/Download 的恢复源码决定页签/工具栏/列结构/进度条/命名语义。
+业务沿用官方 M/3022、M/3097、下载/离线模型恢复证据，复用本仓库已迁移 Rust 域服务。
+没有引用 YesPlayMusic，没有从正式客户端启动归档 Python。run_download_probe.py 仅为
+Xvfb/截图/ffprobe 测试编排器；下载、状态、文件操作和播放器均在 Rust 中执行。
+
+分层与文件映射
+core/src/client/downloads/dto.rs：公开命令、查询、任务/批次/文件结果；与原始任务类型分离。
+mod.rs：账号代次/原生上下文、最多三路调度器、页面之外的工作生命周期和本地播放选取。
+commands.rs：验证参数、批量逐项结果、默认配置、设置、长任务启动、操作恢复入口。
+jobs.rs：文件/目录/附属文件修复 worker，停止/撤销信号、失败保留进度与重新唤醒调度。
+view.rs：账号所属任务投影、分页/排序/搜索、实际进度/实际音质/完成时间和有界公开错误。
+download/service：完整下载，completed/working：文件事务，directory：目录批次和回滚。
+download/offline/detached.rs：移出列表时保留队列的账号/权益/完整性条件，不输出到前端。
+playback/source：选择、队列推进和恢复时核验下载文件，之后交给本地库与真实音频引擎。
+desktop/src/downloads.rs：五个正式命令与原生目录对话框/平台打开目录适配。
+frontend/services/downloads.ts：公开 wire 契约；useDownloads：展示、请求代次和轮询。
+DownloadPage、DownloadDialog、DownloadOptions、DownloadOperations：列表、表单和操作恢复。
+歌曲菜单和当前歌曲列表提供下载入口；App 导航接入下载管理，usePlayer 接本地下载选歌。
+
+正式 IPC（总数由26增至31）
+downloads(epoch,query)：tab=active/completed，keyword，sort=name/artist/album/size/completed，
+  descending，offset，limit=1..100。返回真实总数、两类计数、当前页任务、配置、批次/操作。
+  完整查询在阻塞 worker 执行；分页是当前快照的 offset，不宣称跨请求稳定游标。
+  账号/参数先验证；重新打开应用时可启动已有 Queued/执行中/Cancelling 任务的恢复。
+download_command(epoch,command)：带kind的类型化命令，字段按Rust枚举使用snake_case。
+  start(song_ids,options)：创建并入队；ID先全部验证；去重，最多5000项，逐项accepted/failed。
+  control(task_ids,action)：pause/resume/cancel/repair；失败按项返回，不用统一成功掩盖。
+  all(action)：所有符合状态的账号任务，独立于UI当前100项分页；repair须明确指定条目。
+  preferences(options)：默认请求音质、标签、封面、LRC、audio/ncm/official容器。
+  configure(root,path_type,file_type)：未来默认目录和命名，不表示搬运既有文件。
+  migrate(root)：以当前配置目录为来源，建立持久批次、暂停/等待、移动、切换默认目录。
+  migration(operation_id,cancel)：继续或逆序撤销；stop_operation只暂停并保留进度。
+  file(task_id,action,target)：move/delete/forget；rename(task_id,name)保留原扩展名。
+  move_to_directory(task_id,root)：由原生侧保留文件名并拼接平台路径，前端无需猜路径分隔符。
+  file_operation(operation_id,cancel)：继续或撤销Prepared；Cleanup阶段只能继续清理。
+  长任务返回operationId表示已建立意图，不表示文件已经移动/删除；进度从downloads回读。
+play_downloads(epoch,taskIds,index)：只接受当前账号已完成下载ID；原生建立本地资源队列。
+  文件完整性/离线权益失败时返回失败，不静默改播在线URL。实际音质来自离线记录。
+pick_download_directory(epoch)：main窗口的原生目录选择器，开始及返回均校验账号代次。
+  取消返回null；不赋予WebView直接调用任意文件、shell或HTTP插件的权限。
+open_download_directory(epoch,taskId|null)：只允许配置目录/账号任务所在目录，原生验证存在。
+  Linux xdg-open、macOS /usr/bin/open、Windows explorer.exe均直接argv，无shell插值。
+  macOS/Windows适配尚未实机验证；不能将Linux通过等同三平台通过。
+
+请求链路
+界面不访问业务HTTP。start只建立本地任务，调度后由既有 DownloadService 依次处理：
+  /api/song/enhance/download/url/v1(id,level)获取当前PC域授权和服务实际音质；
+  /api/v3/song/detail(c)取得元信息和privileges；拒绝无URL、非200、试听和错误资源ID；
+  以授权URL下载CDN，Range/206/416与重授权沿用transfer/service；不将账户Cookie发往CDN；
+  封面CDN、标签、普通音频或显式NCM准备；/api/song/lyric/v1按既有歌词协议保存LRC；
+  发布、完成时间和离线记录事务提交，后续附属文件清理可单独重试。
+NCM需要既有 /api/music-vip-membership/client/vip/info 权益链路；普通音频不额外刷新会员。
+本地播放、暂停/定位、重命名/搬运/删除不重新请求播放器URL；必要的歌词显示另走歌词服务。
+精确HTTP字段/缓存/错误语义见 core-download-service-contracts.txt、core-lyrics-contracts.txt。
+服务返回降级/拒绝即实际事实，不按用户选择值显示成功，也不扩大账号权益。
+
+状态、持久化与失败恢复
+DownloadService和CompletedDownloads实例绑定创建时SessionToken；同UID重新登录也使旧实例失效。
+命令、进度、目录选择和播放结果在账号代次变化后丢弃；签名URL/Cookie/privilege不进入公开DTO。
+任务状态来自Rust和原始传输字节；传输完成后仍有准备/发布，不用前端时间制造进度。
+2026-10-26云盘迁移回归中修复读取顺序：先观察后台工作/文件操作/目录迁移的完成状态，
+再读已提交的任务路径等数据，避免重命名完成瞬间返回“工作已结束+提交前旧路径”。
+工作若在读快照期间完成，允许本次仍显示处理中；下一次读取收敛，不能提前显示完成。
+completed_ms只在第一次成功发布时记录，重试/搬运不改变；旧记录显示“时间未记录”。
+cleanupPending表示音频已发布但歌词/清理待处理，有显式修复入口；不重新下载已有音频。
+前端只在相关页面/对话框显示期间周期读取，单次轮询结束后再调度；版本防止旧查询覆盖新页。
+写入错误与读取错误分别保存，成功轮询不能清除刚失败的用户操作。批量部分失败显示数量和原因。
+页面关闭不取消下载。宿主停止时结束worker；任务/批次/文件操作仍持久，重开后可恢复。
+已暂停/失败任务需要显式继续；文件/目录未决操作有继续/暂停/撤销控制，不自动忽略冲突。
+迁移时所有创建/文件变更遵守目录门控；页面显示等待、完成项数、目标、跳过项和保留物。
+文件Move/Delete/Forget继续使用事务/原文件身份校验和提交后清理，详见 completed/directory契约。
+Forget只删下载列表/传输/离线索引；在同一事务把已有队列引用改成私有的离线事实。
+该队列依然校验原账号、实际音质、文件哈希，以及加密文件的会员有效期，不变成无条件本地路径。
+Delete则同步移除本地库及对应队列；不触碰同内容但归属不符的外来文件。
+
+界面与当前差异
+已实现单曲完成/正在下载两页、默认完成时间倒序、实际音质、搜索/排序/分页、暂停续传/清空，
+单曲菜单/当前列表下载、命名与目录、原生选目录、改名/移动/实体删除/仅移除记录、迁移恢复。
+“全部下载/暂停/清空”覆盖分页之外的任务；已完成播放明确区分全部/本页/所选，避免伪装全库播放。
+批量选择当前接播放，完成文件的批量删除/移动仍待补；单条完整操作已经接线。
+声音/MV对应媒体链路与页签、按会员动态筛选音质选项、独立缓存容量/清理仍属于完整goal待做项。
+当前音质表单列出请求等级，由原生与服务决定许可/降级，不能算会员面板完整迁移。
+无原始官方窗口截图可作像素比较；依据恢复结构与CSS重建，不声明像素一致。
+
+复现
+先 npm --prefix frontend run build，再
+  cargo build -p cumulus-desktop --example ui_probe --bin cumulus --features custom-protocol --offline
+Linux真实窗口验证：
+  python3 desktop/examples/run_download_probe.py NEW_PROOF_DIR EXISTING_PC_PROFILE [--small]
+要求NEW_PROOF_DIR不存在，使用新的本地数据/媒体目录；需要Xvfb、D-Bus、XTest、Pillow、ffprobe。
+只用现有授权PC域账号读资源/授权下载，操作此次新建文件；不支付、不发布、不改已有歌单。
+真实解码使用libmpv/null，不能据此声称本轮扬声器输出已验证。图片保留真实界面，含私有账号信息，
+证据只保存在本机.build内，不作为公开素材。标准与最小窗口结果见验证日志的后续记录。
+
+当前真实窗口验收：.build/ui-proof/download-20261026-c（1120×760）和
+.build/ui-proof/download-20261026-e-small（760×540），完整单曲主流程及媒体清理通过。
+原生选择器本轮测打开/取消；目录保存通过表单输入。文件管理器启动和三平台覆盖不能据此推定。
+另有core/examples/finish_file_cleanup.rs，可对显式指定本地StateStore恢复已经提交的Cleanup；
+它不扫描目录生成删除意图，也不自动执行Prepared操作。此前失败探针的一个Cleanup已实际恢复。

@@ -1,0 +1,119 @@
+Watchman：原生事件采样与真实 WebView 测量桥
+阶段说明：本文保留原阶段契约与验证记录；后续已接通正式采集/PC配置/音乐上下文，
+设备和行为上报、本人歌单受保护读取均已实际200，最新状态见core-pc-request-context-contracts.txt。
+2026-10-27。完整目标仍进行中。本文件补充 core-watchman-runtime-contracts.txt。
+已迁移事件采样、编码前处理和宿主边界；完整环境采集、生产 Collection、音乐请求接线仍未完成。
+真实窗口验证不发送设备/行为报告，不证明服务端接受 token 或原受保护接口已通过。
+
+来源与实现分层
+只使用已归档官方 SDK，两份原始及可读文件的 SHA256 固定于生成器和 fixture：
+ 2.7.5_af2952a4：watchman-remote/watchman.min.js，
+ af456401a96e7cab2fc0ad1334e1014ed58d5c694908d2d73ec1ef426463f787。
+ 2.7.5_602a5ad7：watchman-remote-602a5ad7-20261027/watchman.min.js，
+ 343a187cb023c495a2dffee37f8265d203d97886c43fa6180951fb2de4d283b5。
+以上目录位于 references/netease-3.1.42.205594-analysis/protocol/。
+旧版 T/p/k、lc/mc、jd 与新版 V/n/h、mc/nc、jd 的采样/排空/清理方法直接执行对照；
+配置正规化直接执行旧 h、新 k；编码使用各自原始字段表和 va/xa，不手抄期望字节。
+生成器 references/recovered-client/scripts/watchman_events_oracle.cjs 不初始化完整 SDK，
+不发送网络请求，时钟/DOM/随机数使用显式测试替身。两个版本各 21 场景、489 步，
+重复事件单步另含 65,540 次输入验证 16 位计数器饱和；步骤数不等于 Rust 测试函数数。
+没有使用 YesPlayMusic 或归档 Python 业务进程。
+
+core/src/watchman/events/：
+ model.rs  固定事件类型与原始观测 DTO，不含按键值或输入内容；
+ policy.rs 官方配置转换、限额、节流间隔及替换索引；
+ values.rs 坐标/布尔/整数/传感器规范化；
+ battery.rs 电池快照、变化回退、随机替换与计数；
+ mod.rs    内存采样器、开始/停止/清空/排空，不依赖桌面、存储或网络。
+desktop/src/watchman/：
+ events.js 读取实际 DOM 事件和可用电池 API，串行送入注册的类型化 IPC；
+ mod.rs    原生激活、代次、序号、错误封闭、停止及原生排空。
+desktop/src/lib.rs 在主窗口开始加载或销毁时清除活动宿主；默认不自动激活采集。
+
+配置与缓冲策略
+XHR withCredentials 能力决定官方大/小限额，不能假定当前浏览器能力恒为 true。
+类别          支持 CORS / 回退上限      缓冲满后的默认间隔 ms
+move          100 / 3                   300
+down、up      各 20 / 3                 300
+click         20 / 1                    300
+keydown       10 / 2                    300
+focus、blur   各 20 / 1                 300
+scroll        20 / 2                    300
+orientation   50 / 2                    3000
+motion        50 / 2                    3000
+battery       100 / 3                   10
+原始配置 mem/mei、cem/cei、kem/kei、fem/fei、sem/sei、otem/otei、mtem/mtei 对应上述类别；
+cem/cei 同时用于 down/up/click，fem/fei 同时用于 focus/blur。电池无对应服务配置键。
+正数 max 只能缩小默认上限，正数 interval 只能增大默认间隔；分数上限实际保留 ceil(max) 项。
+字符串、布尔、数组和进制字符串按已恢复 JS 数值规则转换，不直接限定 JSON number；
+非正/无效值回到默认，显式 Infinity 或有效十进制字符串溢出产生的 Infinity 间隔可阻止
+缓冲满后的新样本。Rust 可解析的 inf/infinity 拼写不符合 JS Number，必须拒绝。
+DOM 缓冲未满时阈值 10ms，电池未满时 100ms；delta 必须严格大于阈值。
+DOM 满后按 jd 的隐式完全二叉树中序遍历循环选择删除索引。电池保留首项，
+其余替换索引为 Math.round(random * (length - 2)) + 1；实际宿主随机源来自操作系统。
+计数器增加在阈值通过后，最大 65535；缺测或编码失败之前已经更新计数、时钟和淘汰状态。
+
+原始值与编码契约
+鼠标/触屏/pointer/MSPointer 的 move/down/up 名称归入同组；监听目标与官方一致：
+focus/blur/scroll/orientation/motion 使用 window，其他使用 document，捕获阶段监听。
+保留官方坐标细节：x = clientX || screenX；y = clientY || clientX，不改成 screenY。
+changedTouches 非空时使用第一项。down 另含 button，click 另含 target.id。
+keydown/focus/blur 只有序号、相对时间、可信标记、元素 ID；没有键值、键码、输入框内容或密码。
+可信标记 undefined/true/false 分别为 1/2/3，保留真实 event.isTrusted，不伪造系统输入。
+数值按 JS 32 位转换再编码，字符串沿用既有 UTF-16 限长/UTF-8 编码规则；
+截断落在半个代理对时按官方抛错，不能悄悄替换字符。click 无 target 按官方错误处理。
+orientation 任一轴为 null/缺失则无样本；motion 优先 acceleration，只有对象缺失才回退
+accelerationIncludingGravity；存在但轴为 null 的对象不会被重力值替换。
+角度先 Math.round，运动轴乘 1000 再 round；motion interval 缺失时编码器跳过。
+WebView 桥只提交有限数值，非有限数值转缺失；未宣称异常 NaN/Infinity 传感器与官方完全等价。
+真实物理传感器未在当前 X11 环境验证，官方对照使用明确的合成输入。
+
+电池处理
+两个官方版本均先 try navigator.Mc()，其结果为真才启用电池分支；这是原始脚本中的属性访问，
+不是恢复工具把 getBattery 改名。不能仅因标准 getBattery 存在就扩大采集。
+桥保留 Mc 条件，并要求 getBattery 可调用；不存在或抛错时关闭电池分支。
+启用后保存最初 charging/level/chargingTime/dischargingTime 快照；不可用时不补造。
+官方 change 回调读取 Event 自身字段，缺失时回退最初快照，并非每次重新读取 BatteryManager。
+Rust 保留此行为。level 乘 100 再 round，非有限时间编码 -1。
+停止后的迟到 Promise 不再恢复监听或送样本，这是宿主的生命周期约束。
+真实电池硬件/变化未验收；合成官方对照涵盖快照回退、满缓冲随机替换、排空/清理。
+
+排空与生命周期
+drain 对 DOM 组及组内样本分别洗牌，电池维持原顺序并接到末尾。测试比较字段字节多重集合，
+不宣称与官方使用同一伪随机种子时排列一致；保留内容、保留策略和电池顺序。
+drain 清除 DOM 缓冲、计数、节流时钟、替换游标，同时重置共享电池计数；
+电池缓冲排空但最初快照和最后采样时钟保留。clear 另清初始电池快照，仍保留电池时钟。
+stop 禁止新样本并 clear；重新 begin 使用新采样器和新代次，不带入前一次会话事件。
+原生宿主 begin 必须接收已审阅 Config，前端不能自设采样规则、产品号、token 或完整请求。
+每帧包含 generation、严格连续 sequence、observed_ms 和类型化 payload；只允许主窗口 IPC。
+旧代次帧拒绝且不会破坏新会话；当前代次序号缺口、解析后采样错误或 overflow 使当前宿主
+进入 faulted，后续排空失败，必须原生重开，不能把部分丢失当作完整采样成功。
+JS 待处理帧上限 256，溢出停止监听，排队发送一个 overflow；IPC 失败也停止监听。
+事件数据只存内存，不落 SQLite，不记录 Cookie、完整 URL、输入内容或 SDK token。
+Rust target.id 另有 4096 字节入口上限，时间限定 JS Date 范围，构成明确的本地输入边界。
+
+真实窗口流程与独立审计
+desktop/examples/watchman_events_probe.rs 使用正式 configure/IPC、隔离状态和离线账号桩。
+测试窗口叠层、完成通知和证据输出仅存在于 example，不进入正式产品页面。
+run_watchman_events_probe.py 通过 X11 XTest 发送实际系统鼠标和键盘事件；Python 是外部测试
+驱动，客户端采样/状态机/编码全部由 Rust 执行。程序化 click 另验证 isTrusted=false。
+输入只用固定测试字符串；证据仅保存输入长度和采样结果，检查不存在测试输入正文。
+探针先等待 JS flushed()，再调用原生 drain，随后 stop/begin，验证旧代次拒绝和新样本。
+audit_watchman_events.cjs 使用固定新版官方 xa/da 逐个重新编码真实样本，比对 Rust 字节，
+并核对可信键盘样本、输入字段边界、零网络和代次失效结果。不会整体执行 SDK。
+desktop/tests/watchman_event_bridge.cjs 另直接执行两份官方能力判断代码，对照标准 API 单独
+存在、Mc 为真/假/抛错四分支；同时验证 256 帧上限、顺序溢出通知和停止后的迟到电池 Promise。
+单独运行 node desktop/tests/watchman_event_bridge.cjs；这是六项桥测试，不混入 Rust/前端通过数。
+执行路径：
+ CARGO_INCREMENTAL=0 CARGO_TARGET_DIR=.build/target cargo build --locked --offline -p cumulus-desktop --features custom-protocol --example watchman_events_probe
+ GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 LIBGL_ALWAYS_SOFTWARE=1 dbus-run-session -- xvfb-run -a -s '-screen 0 1280x900x24' /usr/bin/python3 desktop/examples/run_watchman_events_probe.py NEW_PRIVATE_DIRECTORY
+ node desktop/examples/audit_watchman_events.cjs NEW_PRIVATE_DIRECTORY
+目录必须全新，避免覆盖失败证据；截图与 captured/complete/independent-audit.json 保存在其中。
+
+剩余边界
+事件桥已注册但仍默认关闭，完整浏览器环境/图形/插件等采集及生产 Collection 尚未接入。
+正式行为采集需要在排空前等待 JS 队列、处理采集取消/超时并与页面加载生命周期协调；
+当前探针显式等待 flushed，不把它当作正式 Collection 已完成。
+PC MConfig、音乐 RequestContext、实际 /v3/d 与 /v3/b 和受保护业务验收仍待完成。
+LoginGuardian/CAPTCHA/设备挑战/刷新宿主是独立剩余分支。
+没有新增登录扫码验证、音乐业务网络请求或 Windows/macOS 实测。

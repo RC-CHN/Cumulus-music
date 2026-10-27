@@ -1,0 +1,104 @@
+Rust 普通歌曲完整下载流程
+2026-10-26；download/service。其他媒体类型仍按总工作单继续；目录迁移见core-download-directory-contracts.txt。
+
+依据与组织
+官方恢复模块 hybrid_app.chunk.1482700000000.js/754.js：internalDownload 获取下载授权，
+onDownload 媒体结束只到 .95，completeId3 写标签/封面后才完成；名额覆盖完整任务，默认3路。
+M/23 标签、M/27 命名、M/35 加密离线标记、M/112 封面请求、M/334 下载接口已分别对照。
+归档 cumulus_core/download_service.py、offline.py 和产品报告20/21作为状态与行为参考。
+HTTP有限重授权、任务日志与文件提交恢复是社区工程实现，不冒称官方原生内部每条重试分支。
+service/ 分 records、manager、control、authorize、prepare、publish、lyrics、run、scheduler；
+download/file_identity 供媒体传输和最终发布共同使用，避免两层文件归属判断分叉。
+
+API和资源
+普通歌曲 POST /api/song/enhance/download/url/v1：id、level、immerseType=c51。
+验证外层和data.code、URL、返回ID、size、MD5、实际level；freeTrialInfo非null拒绝整首发布。
+不以player/url代替下载授权，不改账号权益。实际资源音质优先于请求音质，保留服务降级事实。
+POST /api/v3/song/detail：c=[{"id":"歌曲ID","v":0}]，读取歌曲元信息并合并对应privilege。
+封面按M/112使用 imageView&enlarge=1&quality=100&thumbnail=640y640，HTTPS且不带Cookie。
+图片正文最多4MiB，检查响应长度/编码并完整验证PNG/JPEG；已验证封面可在后处理重试中复用。
+可选NCM刷新 /api/music-vip-membership/client/vip/info；默认输出普通授权音频。
+可选LRC读取 /api/song/lyric/v1，沿用已恢复版本参数；只取lrc.lyric，UTF-8最多1MiB。
+
+创建、命名与状态
+服务绑定明确的AccountSession和原UID，创建时检查认证，保存 download_tasks_v1。
+DownloadTask为原生持久记录，含资源URL/元信息，不能直接作为前端IPC DTO。
+支持显式路径和M/27自动命名；自动命名适配原始al/ar字段，使用实际格式，vivid mp4→m4a。
+NCM输出扩展名为.ncm；命名目录逐组件检查，拒绝符号链接重定向和根目录逃逸。
+目标已存在则拒绝。目标根下创建0700的独立.cumulus-任务ID工作目录，记录根和工作目录身份。
+阶段 authorize→transfer→prepare→publish→complete；status独立记录queued/authorizing/
+downloading/processing/paused/error/complete/cancelling/cancelled。保留授权次数与安全错误码。
+任务锁按UID+任务ID跨实例互斥；网络await不持有账号或SQLite mutex。
+
+续传、重试和控制
+开始或恢复尚未完成的媒体传输时重新取下载授权；仅同非空MD5和长度保留字节，否则从零开始。
+CDN 401/403/404/410每次run最多补取一次授权；再次失败终止，不无限重试。
+无效范围/编码、完整性失败及其他未知错误不自动反复请求，restart_transfer是显式重置。
+raw已完成时不再申请或下载媒体；只恢复后处理/发布。publishing阶段禁止重写已准备字节。
+pause/cancel写入独立 download_controls_v1，活跃worker在网络等待前后和阶段之间观察。
+明确暂停或错误的队列任务须enqueue；有限byte_budget暂停也可显式run重新授权恢复。
+Future取消会结束传输；已派出的blocking后处理/校验可能继续只读或写本任务暂存，
+但保留任务/调度锁并检查生命周期和账号代次，不能在取消后正常继续发布。
+账号变化时旧任务留在原UID，不能污染新账号；切回同UID也按代次区别。
+
+后处理与发布
+raw在后处理前后重新校验SHA256；skip tags的普通副本须与原始长度/SHA一致。
+原生后处理在blocking worker执行，支持真实MP3/FLAC/M4A标签和封面写入。
+显式NCM选项按官方加密标记/选择输出，用write_plan_stream保留M/23原始comment字节；
+不经Value重排或将数字docId先转浮点。严格NCM读回后才发布；非法元信息分支仍明确报错。
+reserve暂存文件用独占创建及身份记录，先保存日志再写正文；普通存盘失败清理刚创建文件。
+prepared写完sync并计算最终SHA/大小，再保存publish阶段，原始MD5不当作标签后文件MD5。
+最终采用hard link创建目标，不替换现有文件；恢复只认可本任务prepared同身份的目标。
+link成功而SQLite失败时保留publish；重开不重新下载/写标签，复核文件后继续提交。
+OfflineLibrary.register_with把离线记录和任务complete放在同一SQLite事务中，任一失败均回滚。
+离线记录保留歌曲privilege高位、实际音质与真实容器；专辑会员/plus不足照实拒绝加密离线播放。
+完成后只清理本任务已记录且身份吻合的中间文件；不同身份但内容相同的文件不认领或删除。
+底层raw任务的内部取消/清理不改变上层已经complete的成品和离线记录。
+cleanup_pending记录未清理完的文件；重复run验证成品与离线记录，再处理清理，绝不重下媒体。
+
+歌词附加文件
+媒体完成后写LRC，空歌词为empty，既有目标为conflict并保留，成功为complete。
+歌词API/存盘失败只标记lyrics_status=error，不撤销媒体完成和离线记录；可单独重试。
+歌词临时内容/哈希先持久化再link；link后保存失败可识别自己文件并恢复，不重复请求歌词。
+完成/空结果/冲突不反复发歌词请求。待补歌词时保留工作目录，cleanup_pending可为true。
+账号变化仍返回旧代次错误；媒体已提交的complete保持不变。
+
+调度
+DownloadScheduler显式run_pending或run_selected启动，1至3个并发任务，默认使用者选3。
+并发名额包含授权、媒体、标签、发布和歌词。按创建时间/稳定ID取任务，一轮每任务尝试一次。
+queued/authorizing/downloading/processing可恢复；paused/error不自动重跑；一个失败不阻断其他。
+按UID加调度锁，run_selected仅运行指定任务；固定开始时账号代次，切换账号停止取新任务。
+stop暂停活跃任务，未开始的仍queued；异步调用取消也触发停止和锁回收。
+名额属于调度器；宿主必须将所有启动统一接入，不能绕过调度器后仍声称全局三并发。
+
+实际验证
+11项下载流程、6项恢复测试通过；另沿用10项传输、6项离线、标签/命名/NCM独立测试。
+故障包含授权拒绝/试听/错ID、有限403重授权、封面失败、发布事务回滚、被替换文件保留、
+网络Future中止、暂停取消、账号切换、创建/授权/暂存存盘失败、LRC提交失败、队列停止和失败隔离。
+core/examples/download_roundtrip.rs 显式使用已有PC会话和全新目录，只操作新建任务。
+两首真实lossless FLAC完整下载，第一首65537字节暂停后重开；三路调度包含一个额外NCM输出。
+原始媒体34619357/34937218字节，带标签/封面后34828479/35367253字节，均有LRC。
+NCM成品34828412字节；三项离线权限/完整性通过，临时目录全部清理，无远端写入。
+.build/rust-download-report.json 保存安全统计；私有任务ID/媒体/SQLite留在.build私有目录。
+独立Mutagen回读、Node/OpenSSL解密注释、FFmpeg完整解码验证普通文件PCM不变；
+独立ncmdump C++解码新NCM与Rust及原始媒体相同，见 .build/rust-download-independent-report.json。
+
+尚未覆盖和平台边界
+普通歌曲是本报告初始范围；随后同一服务增加云盘原文件分支，见core-cloud-download-contracts.txt。
+MV/播客下载仍待迁移。已完成文件移动/删除/多索引更新已由completed模块与真实跨盘/恢复/
+播放联动验证，见core-completed-files-contracts.txt。整目录协调与桌面任务UI也已接入并实测，
+分别见core-download-directory-contracts.txt和desktop-download-contracts.txt。
+当前只实际验证Linux，Windows/macOS未运行；要求文件系统支持同目录hard link。
+Unix同步目录，Windows目录断电持久性不作保证；不是恶意本地进程的完整文件系统竞争隔离。
+新文件创建与首次身份日志之间骤然退出可能遗留未登记暂存，不自动认领或删除未知文件。
+元信息采用官方原始文本的NCM输出遇到M/23已知非法JSON极端分支时严格读回拒绝；
+不能把这类异常当成功输出。旧研究未恢复的裸AAC标签等边界仍保留。
+
+目录迁移联动（2026-10-26）
+create_default读取账号默认目录和命名规则；create/enqueue与目录配置/启动共用账号目录锁。
+run/scheduler与已有Control检查持久active门控；正在执行的任务在检查点暂停，搬运计划
+取得task/raw锁后才固定清单。用户Pause/Cancel仍可写入，文件动作延后到迁移解除门控。
+结束后显式Cancel置Cancelling，scheduler处理终止清理；原Paused/Error不自动重试。
+托管raw的公开写方法同样检查门控，独立raw-only记录不纳入迁移。
+异步传输的64KiB缓冲区改为堆分配，避免嵌套业务Future放大调试模式栈占用；不提高测试栈
+限制作为正式通过条件。目录专项及相关下载回归在默认栈配置通过。

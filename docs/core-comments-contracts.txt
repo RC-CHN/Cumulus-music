@@ -1,0 +1,153 @@
+评论：原生读取、定位、点赞与桌面恢复
+2026-10-26；本批覆盖列明的评论流程，完整桌面目标继续执行。
+
+产品流程
+歌曲行的更多菜单、底部当前歌曲按钮、歌单工具栏和MV详情可进入评论页。
+最新评论、精彩评论、置顶评论和定位结果分别展示；引用内容可定位原评论。
+界面每页20条，支持上一页、下一页、刷新、切换排序、按编号定位。
+服务返回total是该请求的计数，不假设与可见数组长度相等；空热评是正常空状态。
+失败时只尝试同账号、同资源、同查询的已有缓存，并明确显示缓存和错误信息。
+没有缓存时显示错误/重试，不用其他账号或其他资源的页面替代。
+点赞按钮以服务的liked字段为准；未知标记禁用，操作期间禁用重复发送。
+未确认的写入有独立“核对”入口，页面重开仍可恢复，不自动重新点赞/取消。
+本文件保留最初读/赞批次的验收范围。后续纯文本发布/回复/删除及楼层已实现，
+最新接口、来源与验证边界见core-comment-write-contracts.txt；富文本等仍未完成。
+
+官方与历史依据
+references/netease-3.1.42.205594-analysis/recovered-js/modules/
+  hybrid_app.chunk.1482700000000.js/21.js：P资源线程映射、评论归一化。
+  同目录438.js：f/p读取helper、请求默认值。
+  同目录15.js：普通/热评、点赞/取消等底层请求。
+  同目录232.js：F/z点赞动作、q评论信息helper。
+references/recovered-client/docs/product/32-comments-functional-validation.txt
+及scripts/netease_comments_functional_audit.py是原Python实验和恢复方案，不能算Rust通过。
+references/ui-recovery/sources/packages/pc/src/components/Comment/components/
+  CommentCard.jsx、CommentLayout.tsx：头像、内容、引用、脚注和行距/边界等布局依据。
+同源pages/Comments/index.tsx和pages/HotComments/index.tsx提供页面与定位入口依据。
+本次未参考YesPlayMusic。持久写日志、跨实例锁、缓存版本是社区Rust实现的恢复策略，
+不声称恢复了官方闭源数据库/并发锁的相同算法。
+
+资源线程与编号
+Playlist：A_PL_0_<playlistId>；Voice：A_DJ_1_<programId>；Album：R_AL_3_<albumId>；
+Track：R_SO_4_<songId>；Mv：R_MV_5_<mvId>。
+Event：A_EV_2_<eventId>_<owner>；Topic：A_TO_6_<topicId>；Video：R_VI_62_<videoId>。
+声音使用节目/声音ID，不能用mainSong.id替代。普通视频编号允许ASCII字母数字。
+所有编号保留字符串，避免JS的2^53整数精度问题；路径控制字符等在HTTP前拒绝。
+只有Event可以且必须携带owner；这三个新增静态映射未作真实服务验证。
+本批服务实际验证歌曲、专辑、公开歌单、MV和声音五类；桌面入口验证歌曲、歌单、MV。
+专辑与声音页面尚需其他业务批次接入，不能用底层支持代替UI验收。
+
+请求契约
+复用core protocol/http原PC域EAPI上下文，前端不构造HTTP或签名，不扩大Cookie作用域。
+1. /api/v1/resource/comments/<threadId>
+   {limit,offset,beforeTime,compareUserLocation,commentId,composeConcert,markReplied,
+    forceFlatComment,showInner}
+   官方默认limit60、offset0、beforeTime0、commentId字符串"0"，五个布尔默认false。
+   Rust通用查询保留这些默认；桌面显式limit20。支持limit1..100、offset<=1000000，
+   beforeTime限制在JS安全整数范围；热评不接受commentId定位。
+   响应comments/hotComments/topComments/currentComment、total、more、moreHot。
+2. /api/v1/resource/hotcomments/<threadId>
+   {limit,offset,beforeTime,compareUserLocation}。
+   官方热评helper默认limit20；Rust调用者显式选Hot与limit，桌面为20。
+   响应主列表hotComments、分页标记hasMore；不能使用普通评论的more。
+   对外CommentPage统一把本次主列表放comments，避免热评重复展示。
+3. 翻页使用offset加本页实际条数、beforeTime取末项time，并清除定位commentId。
+   more为true却无条目、页内重复ID、超出请求limit、缺少主数组或分页标记均返回错误。
+   不断言热评按时间单调，也不声称offset/beforeTime在所有深分页场景可互换。
+   上一页使用前端保存的查询游标；后退不依赖减去固定页大小。
+4. 定位用普通评论接口，commentId=目标，核心定点核对limit1。
+   currentComment返回不同ID则拒绝；没有currentComment可从返回列表找同ID，
+   都不可见时保留不可读状态，不把缺席视作liked=false。
+5. /api/resource/commentInfo/list
+   {resourceType:4或1,resourceIds:JSON.stringify([字符串ID,...])}。
+   仅Track/Voice，1..100个ID；逐项验证响应threadId和输入一致、数组完整。
+   Rust返回整批data；官方M/232上层q只取data[0]，两者刻意区分。
+6. /api/v1/comment/like、/api/v1/comment/unlike
+   {threadId,commentId}，成功码200。每个用户意图只发送一次，不自动写重试或切换协议。
+   回包成功不等于已确认：继续定点回读liked，不能用全站likedCount的变化证明本账号写入。
+
+模块与类型边界
+core/comments/model.rs：线程、查询、官方返回归一化；保留原生richContent/装饰/楼层提示。
+api.rs：端点、字段、严格分页、定点读取、评论信息、单次点赞请求。
+service.rs：账号绑定读取、显式缓存访问；cache.rs：查询身份及写入版本校验、原子缓存更新。
+likes.rs：点赞意图、互斥、发送、核对与重启恢复；不依赖Tauri/前端/Python。
+client/comments/mod.rs：MusicClient用例和白名单DTO，账号epoch在进入和返回时检查。
+后续写入与楼层用例分别拆至同目录writes.rs/floor.rs。
+desktop/comments.rs注册comments_page、comments_like、comments_reconcile三个正式命令。
+frontend/services/comments.ts定义类型；adapters/tauri.ts是IPC实现；useComments负责视图状态。
+CommentCard与CommentsPage展示数据；核心持有远端事实和恢复责任。
+IPC只包含评论文本/ID/时间/liked/计数、作者显示名与清理后的图片URL、引用、owned布尔、
+分页及操作阶段。不传Cookie、UID、原始响应、签名URL、richContent对象或服务错误原文。
+Vue插值按纯文本展示，不执行评论HTML；时间不可解析时降级，不让单条异常时间使页面崩溃。
+
+点赞状态机与账号隔离
+写前先获取owner+thread+commentId的便携OperationLock，并检查有无未决日志。
+读取目标明确liked；已满足意图则保存Unchanged，不发写请求。
+新意图保存before、desired、observed、Sending后才允许HTTP。写盘失败时不发送。
+成功回包先持久化acknowledged=true、Verifying，再最多8次定点回读，间隔500ms。
+连续两次liked==desired才进入Confirmed。计数可能因其他用户操作不变，不作成功判断。
+301/403/405/505/506/511/512保存Rejected并返回原公开错误；其他失败保存Uncertain。
+取消Future后Sending留在磁盘，进程/任务退出会释放锁；重开只能先核对，不能重复写入。
+核对是只读操作；目标消失、标记缺失、读取失败或持续与意图不符都保留未决责任。
+迟到回包按原owner记账，不修改新账号缓存；旧SessionToken不能继续读写新账号状态。
+无未决记录或已终结记录的核对不触发再次写入。
+
+缓存、并发与持久化
+StateStore按owner隔离；comment-likes-v1以线程+评论ID保存写日志。
+comment-pages-v1的key为资源与完整查询JSON的SHA256；值包含resource/query/page。
+读取校验封装中的resource和query，损坏或错配不静默返回其他页面。
+comment-page-revisions-v1每个资源保存版本标记；列表请求开始前捕获版本，落盘时事务比较。
+发送意图及Confirmed/Unchanged更新版本；更早开始的列表回包被拒绝，不覆盖确认结果。
+Confirmed/Unchanged的日志、版本与同资源全部缓存中的目标条目在一个SQLite事务更新，
+包括comments/hotComments/topComments/currentComment；其他账号与资源不改变。
+旧无资源封装缓存仍能只读访问，但确认写入时会淘汰，避免单凭commentId错误修补。
+事务失败时先前Verifying/Uncertain保留；后续只读核对可以完成缓存与日志提交。
+之后真正新发起的服务读取仍然有效，允许其他设备改变的liked成为最新事实。
+前端另用账号/页面代次、请求序号和写入版本拒绝迟到结果；已有已确认页面不回退。
+
+验证索引
+core/tests/comments.rs：13项原生测试。包括官方参数/8类线程、分页与目标身份、信息批量、
+全站计数不变时的liked确认、已满足意图不写、发送后丢包/发送前丢包、目标消失、403、
+Future中止/跨实例互斥、写前落盘失败、账号切换/迟到响应、白名单、缓存错配和隔离、
+旧列表回包覆盖拒绝、缓存事务失败后只读恢复；SQLite是真实存储，网络故障为受控夹具。
+references/recovered-client/scripts/netease_comments_oracle.cjs只用于测试：直接执行官方
+M/438与M/21，HTTP用stub截获，生成4组请求和8类线程对照；fixture包含官方来源SHA256。
+frontend/tests/comments-state.test.ts：6项视图状态测试；账号/资源切换、页游标、缓存回退、
+待核对状态、旧列表与迟到点赞回包等。desktop/tests/ipc.rs覆盖三个正式命令拒绝旧epoch。
+
+真实服务：.build/comments-native-20261026-a/report.json
+五类资源的普通/热评、可用下一页和单条定位；歌曲/声音commentInfo。
+当前样本歌曲20/1847、热评20/76；专辑6/6、热评0；公开歌单20/130、热评1/2；
+MV2/2、热评0；声音4/4、热评0。它们是当时服务返回，不是固定产品常量。
+仅对明确原liked=false的一条歌曲评论点赞并撤销，发送前有私有恢复意图，最后连续两读false。
+原生执行入口core/examples/comments_roundtrip.rs：
+  cargo run -p cumulus-core --example comments_roundtrip --offline -- \
+    EXISTING_PC_PROFILE PRIVATE_RESOURCES_JSON NEW_PRIVATE_PROOF_DIR [--like]
+  cargo run -p cumulus-core --example comments_roundtrip --offline -- \
+    EXISTING_PC_PROFILE --restore EXISTING_PRIVATE_PROOF_DIR
+资源JSON为CommentResource数组；输入由操作者明确提供，不自动遍历references私有材料。
+恢复检查owner、原基线和持久写日志，防止撤销原有或并发预检时已经存在的点赞。
+
+真实桌面：.build/ui-proof/comments-20261026-a
+1120×760真实Tauri/WebKit，8张截图；搜索歌曲→更多→评论、最新评论/下一页/上一页、
+精彩评论、编号定位、点赞/撤销、歌单与MV入口。remoteMutations=2，原liked=false恢复。
+此轮真实写入运行在缓存版本加固之前；不把后加的缓存竞态修复冒称已用同次线上写实测。
+最终代码另由原生故障测试和760×540只读桌面流程验证，证据索引见rust-core-validation.txt。
+.build/ui-proof/comments-20261026-b-small保存最终小窗口6张截图，所有采样阶段无横向溢出。
+最终Rust程序对上述原生与正常窗口两个证明目录分别独立回读，restored.json均为连续两读false。
+全量405项Rust（402 core、3 desktop）、35项前端通过；Clippy/格式/类型/构建通过。
+.build/comments-audit.json记录来源、实现、验证日志、聚合证明和截图的SHA256；完整目标为false。
+desktop/examples/comments_ui_probe.rs/.js只负责自动化与事件采样，生产命令/组件负责业务。
+截图由外部GTK脚本采集；真实媒体解码如被触发使用null音频输出，不声称本批验证音频设备。
+没有发布评论/回复/动态、发送消息或消费；私有恢复意图和评论正文只留隔离的私有证明目录。
+截图包含测试账号的界面，只用于本地验收，不作为公开分发素材。
+
+剩余与边界
+发布/回复/删除接口仍需迁移其请求、错误码、持久化和界面；公开写入不在自动线上测试授权内。
+楼中楼/折叠/音乐人装饰/富文本/地区展示/评论推送/深分页及所有拒绝码需要继续逐项恢复。
+当前按官方行布局重建，未声称拥有原客户端同一页面截图并通过逐像素对照。
+当前UI的独立排序标签、显式编号定位与待核对入口包含社区恢复设计，差异应保留说明。
+事件/话题/非MV视频只有映射及本地参数证据；没有账号样本就不算真实服务验收。
+MV资源点赞使用另一组resource/like接口，本批评论点赞不能替代MV本身点赞。
+后续MV资源点赞与关联歌曲/相似MV已单独实现并验证，详见core-mv-social-contracts.txt。
+只在Linux运行；Windows/macOS尚未实测。全目标以full-desktop-goal.txt继续，不以本批结束。

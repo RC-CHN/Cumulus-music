@@ -1,0 +1,96 @@
+官方音效参数组合与内置回退参数的 Rust 迁移
+2026-10-26；接续core-effects-spatial.txt。本批实现参数选择/过滤/组合，不处理PCM，
+不授予会员权限、不占用授权会话。音效产品链、播放器和UI及完整桌面目标仍进行中。
+
+来源
+官方M/3070：recovered-js/modules/hybrid_228.chunk.1482700000000.js/3070.js，
+version=0.1.5-beta.4，buildTime=2026-01-22T10:43:31.283Z。
+官方M/28 N常量：hybrid_app.chunk.1482700000000.js/28.js中的内置通透基础参数和五种DIY。
+以上路径根为references/netease-3.1.42.205594-analysis/。
+历史来源包括references/recovered-client/docs/product/33-audio-effects-validation.txt和
+scripts/netease_audio_compose_oracle.cjs。没有采用YesPlayMusic逻辑或运行时JS/Python桥接。
+
+结构与接口
+core/src/effects/compose/mod.rs：输入解析、验证、结果及空间音效标记。
+rules.rs：低频/高频/人声关闭与氛围/现场选择；merge.rs：有序合并、增益与结构标准化。
+numeric.rs：此算法需要的JSON数值转换/加法；defaults.rs/json：有来源的内置参数及类型化选择。
+compose(&Value)->Result<Composition>接收baseJson/songJson/diyJson/supportStereo四字段。
+source和DIY可以是对象或JSON字符串；不修改输入、不保存全局可变状态。
+Composition包含merged_json:Option<Value>、used_diy_config:Vec<String>、is_use_zone_effect:bool。
+serde字段名沿用mergedJson/usedDiyConfig/isUseZoneEffect。错误返回Rust Error，
+不复制V8异常文案；调用方不能把错误或merged_json=None当作可应用材料。
+
+builtin_base()返回官方key_transparent包装；builtin_diy(&[Enhancement])按选择顺序组装参数。
+Enhancement仅允许en_bass/en_treble/en_vocal/en_vibe/en_live；返回数据为副本，修改它不会污染默认值。
+compose_builtin(song,selected,support_stereo)提供类型化入口：逐歌参数可选，缺失时使用内置基础。
+内置参数包括尚未完成DSP恢复的rvb/se/cmp字段。提供完整参数不等于这些声音模块已实现。
+
+保留的官方规则
+1. 原始输入须有truthy的baseJson或songJson。实际组合优先truthy的歌曲对象。
+   即使歌曲优先，仍解析基础字符串；无效基础JSON不会因未选中而被忽略。
+2. source与DIY都truthy时走对象验证；这一分支跳过supportStereo的boolean验证，
+   字符串"false"仍为true。类型化入口只接bool，兼容入口保留已观察到的原行为。
+3. 没有DIY字段会失败；空字符串DIY经官方后续解析成为空对象。非空空白字符串在前置
+   JSON验证中失败。不可将缺失、null、空字符串和空对象全部归为同一状态。
+4. 基础对象只能选一个key的内容；零key使用空对象；多key返回Ok但merged_json=None，
+   仍保留关闭规则所得used_diy_config。这是官方结果，不擅自选第一项。
+5. 立体声模式关闭全部DIY，将最终选中效果的EQ各段乘0.8。
+6. 低频：仅基础模式关闭；歌曲鼓比<0.05关闭；前三EQ均值+6*(1-lowRatio)>6关闭。
+7. 高频：歌曲人声主频>600、谱质心>4000或后三段EQ逆序相加均值>5关闭。
+   基础关闭规则读取包装层effect.eq，组合阶段才取唯一key，因此包装内高EQ不一定关闭高频。
+8. 人声：仅基础模式关闭；歌曲人声能量比<0.2关闭。
+9. 氛围和现场均为对象的键时：歌曲混响on严格为true保留氛围，否则保留现场；基础保留氛围。
+   仅一个键时还要求其值truthy。选择保留的键可以是null，不能单按返回键数统计生效数量。
+10. bass/treble仅一个生效时直接取其bt；两个生效时on=true并分别取低/高三字段，falsy字段填0。
+    人声替换peq，氛围写se并加自己的pregain（歌曲原rvb.on为true时关闭它），现场替换rvb。
+    缺少子字段相当于赋undefined，最终JSON移除该字段，而非写null或保留旧值。
+11. 增强数量只计truthy的bass/treble/vocal及vibe或live合计一项；1/2/3/4项分别减0.5/1.2/2.1/3dB。
+    cmp缺失或falsy时生成完整默认字段；数字pregain为0时关，其余数字值开。字符串不强制数字化。
+12. 未知DIY键保留在used_diy_config，不参与字段合并和增益计数；按JS整数键优先及插入顺序返回。
+    现场/氛围在其他关闭规则之后插入，不能简单复用原始DIY键顺序。
+13. 歌曲输出取aev2，缺失字段序列化为空对象，显式null保留null；基础无effect则{aev2:{}}。
+    空间标记只由最终rvb.on或se.on严格等于true决定，不因rotate或字段存在而置true。
+
+Rust边界
+单次输入编码上限4MiB，DIY最多256项；拒绝数组/primitive作为根材料文档，
+不仿真JS的primitive属性装箱、原型继承或自定义valueOf/toString；不执行材料内任何代码。
+用于规则的常规JSON标量、数组数值转换以及字符串加法已对照，但不承诺任意畸形JS对象等价。
+产生非有限最终参数时拒绝整次组合，不把Infinity/NaN悄悄序列化为null交给DSP。
+源文档及已存在输出字段保持JSON类型，计数与布尔严格性按上述规则处理。
+Rust错误采用公开固定说明；测试不要求V8异常消息逐字相同。
+
+验证
+netease_compose_rust_vectors.cjs以原M/3070工厂实际执行，未修改官方文件/代码。
+仅在内存中给历史46项测试的记录语句增加input，历史断言原样执行；
+其余直接调用同一官方工厂，每个样本检查输入未被修改。
+共446组：历史46项、内置fallback的64种选择、256种基础/歌曲/立体声/混响/增强组合，
+以及数值转换、缺字段、顺序、字符串和错误形状边界。fixture/manifest记录全部输入输出与来源hash。
+defaults.json从M/28的N字面量提取并记录原模块hash，未凭经验手填参数。
+core/tests/effects_compose.rs覆盖逐项输出、并发不同歌曲、无结果/空结果区别、
+类型化内置选择、默认数据隔离、大小/项数/非有限边界。
+JSON数字仅统一等值的0/0.0拼写再精确比较，不用epsilon容差；usedDiyConfig顺序也比较。
+
+故障记录保留
+首个生成器以同步子进程大批量传stdin时超时退出；单项/32项独立复查可运行，
+改为同进程隔离VM逐项调用官方工厂，未增加超时或改动算法。oracle.log与oracle2/3.log保留。
+首轮Rust比较区分了JSON整数/浮点拼写，改为上述无误差规范化；第二轮发现空字符串DIY误当缺失，
+已按官方解析规则修正。targeted.log、targeted2.log保留失败，targeted3.log为最终5项通过。
+
+独立执行
+  CARGO_INCREMENTAL=0 cargo build -p cumulus-core --offline --locked --example effect_compose
+  .build/target/debug/examples/effect_compose < composition-request.json
+普通模式输入官方四字段，成功stdout为JSON结果；错误退出且不写部分stdout。
+  .build/target/debug/examples/effect_compose --builtin < builtin-request.json
+内置模式输入示例：{"enhancements":["en_treble","en_vibe"],"supportStereo":false}。
+可带songJson对象；enhancements为必需数组，其他未知字段拒绝。此模式支持的立体声选项仅为bool。
+程序运行不需要Node/Python/官方JS/网络/账号。生成对照fixture的Node只是开发验证工具。
+.build/verify_effects_compose.py对最终Rust二进制运行全部446个普通输入及64个内置输入，
+检查成功输出、原生失败的拒绝及类型化参数拒绝。合成JSON样本保存在effects-compose-proof/。
+本批没有PCM、UI或声卡验收。全量/Clippy/构建及具体通过数见effects-compose-mapping.json和
+rust-core-validation.txt，不把参数输出成功计作完整音效播放通过。
+
+后续仍需完成
+音效目录/权益查询与占用/回收、材料/逐歌缓存与下载、模型状态、账号隔离与取消恢复，
+以及把组合结果选择为实际支持的DSP图、处理采样率/延迟、接入播放器和设置页。
+专有SE/混响/情绪推理原恢复边界和当前会员条件仍保留；不能用该合成器扩大权益。
+其他完整目标中的业务及跨平台最终验收继续。

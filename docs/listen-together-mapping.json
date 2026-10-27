@@ -1,0 +1,292 @@
+{
+  "scope": "Listen-together native single-account HTTP control and playback reduction",
+  "goal_complete": false,
+  "official_first": true,
+  "yesplaymusic_used": false,
+  "sources": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/15.js",
+      "sha256": "8ec4bf8d343f6963860eb73bc59ca09f0dd1ae50db2608a6c5abc7d69a0b521a"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/24.js",
+      "sha256": "466ab77ab2a24c97c84157734ed33997a4a1076351de80ffe7e8e351c6c29f64"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/75.js",
+      "sha256": "8f0aa4cc3422daea1cb74c317c84fc27d992dd413623d3c7504f357085005476"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/137.js",
+      "sha256": "aac132a091a03701f21deb2f1d359975d111b4c3c5d69ce575555ee47871068e"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/600.js",
+      "sha256": "ef5bd16abbd9c148c6f8546f1bf84c3d82b20e1e302f5f9e2e5b6fa46c7ca55b"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_196.chunk.1482700000000.js/3079.js",
+      "sha256": "1e750d107c091fce54a7b3d72020d498d5559bb920985ae07d5e13f4b2596173"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_197.chunk.1482700000000.js/3161.js",
+      "sha256": "9c84a8946cffccb4e2e739d220b9da86d829c2340efefd0cb91bd21d0f24a3a5"
+    },
+    {
+      "path": "references/recovered-client/docs/product/06-listen-together.txt",
+      "sha256": "2fd07a1ab6e73c89a730681973d2ba54a0ea427c4e0d1b71d4742a089652f520"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_live_audit.py",
+      "sha256": "dc8d86f75e1da3eadab173be3f66b79f7836b89548759e23fed2824de55154d4"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_together_oracle.cjs",
+      "sha256": "7f4d7a73ab3213b7c27e2eb8868eac7547ffe2f9fdacabb5b862450904f03be4"
+    }
+  ],
+  "features": [
+    {
+      "id": "room_lifecycle",
+      "official": [
+        "M/75",
+        "M/24"
+      ],
+      "rust": [
+        "core/src/listen_together/model.rs",
+        "core/src/listen_together/service/"
+      ],
+      "evidence": [
+        "S",
+        "L",
+        "R"
+      ],
+      "boundary": "Room creation/check/status/explicit exit with original-room guard and two reads; single-account only.",
+      "desktop_entry": null
+    },
+    {
+      "id": "shared_queue_commands",
+      "official": [
+        "M/3079",
+        "M/15"
+      ],
+      "rust": [
+        "core/src/listen_together/queue.rs",
+        "core/src/listen_together/service/commands.rs",
+        "core/src/listen_together/service/reconcile.rs"
+      ],
+      "evidence": [
+        "S",
+        "L",
+        "R"
+      ],
+      "boundary": "REPLACE/ADD/DELETE/three modes, exact local version and read-back; ADD concurrent order not proven.",
+      "desktop_entry": null
+    },
+    {
+      "id": "version_vector",
+      "official": [
+        "M/137 e",
+        "M/3079 updateMsgVersion"
+      ],
+      "rust": [
+        "core/src/listen_together/queue.rs"
+      ],
+      "evidence": [
+        "S",
+        "L",
+        "R"
+      ],
+      "boundary": "Preserve peer versions; execute official factory. Correct prior report: unequal lengths return false.",
+      "desktop_entry": null
+    },
+    {
+      "id": "thousand_song_window",
+      "official": [
+        "M/137 b"
+      ],
+      "rust": [
+        "core/src/listen_together/queue.rs"
+      ],
+      "evidence": [
+        "S",
+        "L"
+      ],
+      "boundary": "Six direct JS execution cases; local mapping/player binding not connected.",
+      "desktop_entry": null
+    },
+    {
+      "id": "playback_reports",
+      "official": [
+        "M/3161"
+      ],
+      "rust": [
+        "core/src/listen_together/sync.rs",
+        "core/src/listen_together/api.rs",
+        "core/src/listen_together/service/commands.rs"
+      ],
+      "evidence": [
+        "S",
+        "L",
+        "R"
+      ],
+      "boundary": "PAUSE0/PROGRESS8250/PLAY/PAUSE live; NEXT/PREVIOUS/GOTO typed logic and local reduction only.",
+      "desktop_entry": null
+    },
+    {
+      "id": "echo_and_sequence",
+      "official": [
+        "M/3161 cmdFilter,onRoomMsg"
+      ],
+      "rust": [
+        "core/src/listen_together/sync.rs"
+      ],
+      "evidence": [
+        "S",
+        "L"
+      ],
+      "boundary": "21 official filter cases; no actual IM packet or remote-player validation.",
+      "desktop_entry": null
+    },
+    {
+      "id": "zero_progress_restore",
+      "official": [
+        "M/3161 restorePlayCommand"
+      ],
+      "rust": [
+        "core/src/listen_together/sync.rs"
+      ],
+      "evidence": [
+        "S",
+        "L"
+      ],
+      "boundary": "Intentional presence-based correction accepts 0; serverSeq missing rejected, 0 valid.",
+      "desktop_entry": null
+    },
+    {
+      "id": "heartbeat_and_wait_timeout",
+      "official": [
+        "M/75"
+      ],
+      "rust": [
+        "core/src/listen_together/service/timer.rs",
+        "core/src/listen_together/api.rs"
+      ],
+      "evidence": [
+        "S",
+        "L",
+        "R"
+      ],
+      "boundary": "Heartbeat REST live; 20s/10min timer entry and transport/business/peer-join distinctions locally tested; host scheduler pending.",
+      "desktop_entry": null
+    },
+    {
+      "id": "native_im_rtc_credentials",
+      "official": [
+        "M/75",
+        "report06 native x64 token paths"
+      ],
+      "rust": [
+        "core/src/listen_together/api.rs"
+      ],
+      "evidence": [
+        "S",
+        "L",
+        "R"
+      ],
+      "boundary": "Native-only, no Serialize, redacted Debug/proof; actual SDK auth/reconnect pending.",
+      "desktop_entry": null
+    },
+    {
+      "id": "recovery_account_fencing",
+      "official": [
+        "M/75 restore",
+        "community durable obligation design"
+      ],
+      "rust": [
+        "core/src/listen_together/service/"
+      ],
+      "evidence": [
+        "S",
+        "L",
+        "R"
+      ],
+      "boundary": "Lost successful PAUSE ack -> read-only reconcile; reopen/account switch/abort/locks locally; never auto-resend unknown writes. Two absent-room reads settle RoomClosed and permit a new explicit creation; locally tested for unknown create/play, not claimed as successful original delivery.",
+      "desktop_entry": null
+    },
+    {
+      "id": "accept_invitation",
+      "official": [
+        "M/75"
+      ],
+      "rust": [
+        "core/src/listen_together/api.rs",
+        "core/src/listen_together/service/commands.rs"
+      ],
+      "evidence": [
+        "S"
+      ],
+      "boundary": "Adapter exists; no invitation sent/accepted and no UI or complete flow validation.",
+      "desktop_entry": null
+    },
+    {
+      "id": "common_privilege_statistics",
+      "official": [
+        "M/600",
+        "M/15"
+      ],
+      "rust": [
+        "core/src/listen_together/api.rs"
+      ],
+      "evidence": [
+        "S"
+      ],
+      "boundary": "Typed request and identity normalization written; participant/rights/player business flow and live samples pending.",
+      "desktop_entry": null
+    },
+    {
+      "id": "sync_notice",
+      "official": [
+        "M/600 c"
+      ],
+      "rust": [
+        "core/src/listen_together/api.rs"
+      ],
+      "evidence": [
+        "S",
+        "L",
+        "R"
+      ],
+      "boundary": "Single-account 488 preserved; this is a verified service boundary, not synchronization success.",
+      "desktop_entry": null
+    }
+  ],
+  "tests": [
+    "core/tests/together_protocol.rs",
+    "core/tests/together_service.rs"
+  ],
+  "real_proof": ".build/together-native-20261026-b",
+  "failed_then_restored_proof": ".build/together-native-20261026-a",
+  "independent_audit": ".build/together-native-independent.json",
+  "remaining": [
+    "Actual IM/RTC adapter, message routing, credential refresh/reconnect and host lifecycle",
+    "Single-account desktop page, typed IPC and player/queue integration",
+    "Common privilege/trial/tempo rules, queue backups and local-resource mapping integration",
+    "Explicit invitation and other recovered room/message actions without automatic sending",
+    "ADD concurrent insertion/anchor ordering and broad real permission samples"
+  ],
+  "excluded": [
+    "Real-time dual-account validation as previously agreed"
+  ],
+  "desktop_followup": "docs/listen-together-desktop-mapping.json",
+  "native_im_followup": {
+    "mapping": "docs/listen-together-native-im-mapping.json",
+    "contracts": "docs/core-listen-together-native-im.txt",
+    "scope": "Actual Linux SDK transport evidence, not peer business synchronization"
+  },
+  "desktop_im_followup": {
+    "mapping": "docs/desktop-listen-together-im-mapping.json",
+    "scope": "Historical batch above unchanged; later native desktop connection/reconnect/awaited cleanup verified. Business packet/player/common-rights application and RTC still pending.",
+    "goal_complete": false
+  }
+}

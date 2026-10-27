@@ -1,0 +1,102 @@
+Watchman 2.7.5：Rust字节协议、设备状态与回调控制
+阶段说明：本文保留原阶段契约与验证记录；后续已接通正式采集/PC配置/音乐上下文，
+设备和行为上报、本人歌单受保护读取均已实际200，最新状态见core-pc-request-context-contracts.txt。
+2026-10-27；完整目标进行中。这是早期纯算法阶段记录，不是完整SDK或受保护业务验收。
+后续双版本、公共字段、配置/HTTP/调度已推进；本文阶段性“未完成”以core-watchman-runtime-contracts.txt为准。
+
+版本和来源
+本批对应官方公开远程SDK 2.7.5_af2952a4，不冒称是PC安装包3.1.42内嵌的同一版本。
+references/netease-3.1.42.205594-analysis/protocol/watchman-remote/watchman.min.js
+SHA256 af456401a96e7cab2fc0ad1334e1014ed58d5c694908d2d73ec1ef426463f787。
+该目录watchman.readable.js是既有静态恢复，包含原函数与字段对象；本轮直接审阅La/Bc、ib、bc、
+dc/kb、va/ea/W/Kc、h、la.sc、m.P/I/ia/Ra及Z设备/行为响应处理，不只引用旧报告结论。
+历史Python scripts/netease_watchman.py及docs/product/10-watchman.txt作参考；没有使用YesPlayMusic。
+公开配置快照是2026-10-25取得的旧证据，不代表当前服务版本或配置仍相同；运行库不自动下载脚本。
+
+代码和调用职责
+core/src/watchman/codec.rs：文本、nonce、报文字节正逆变换及有界校验。
+fields.rs、fields.json：86个已恢复描述符与字段序列化，输入为调用者已经采集的真实值或明确失败。
+token.rs：dc/kb有序JSON、JS缺失态/加法语义、正常与fallback字节；不判断服务权益。
+config.rs：锁定构建的配置解码与调度相关选项，不导入任意远端可执行代码。
+state.rs：安装范围、按产品隔离的设备记录，响应数组更新、有效期/版本判断及SQLite事务。
+control.rs：设备一次420重报、行为200/420/470/异常/超时/取消的单次结果状态机。
+核心独立于Tauri、WebView和Python；没有把纯编解码包装成可用的生产TokenProvider。
+RequestContext和LoginGuardian现有接口保持原职责；Watchman与登录Guardian不能仅凭字段名相同互换。
+
+算法契约
+La：UTF8字节与[31,125,244,60,32,48]循环异或，逐字节取负mod256，小写hex；Bc逆向且检查UTF8。
+bc：本地毫秒uint64大端与8字节随机材料交织偶/奇bit；MD5(hex(交织数据)+固定nonce盐)取前8字节，
+与16字节交织数据一起做标准Base64。服务时钟修正不进入bc。输入随机字节显式，未替换为伪设备特征。
+nonce纯函数允许完整uint64输入，官方对照包含0、2^32跨界、实际量级与JS最大安全整数；未声称JS能精确表示更大值。
+
+ib：payload后接CRC32的小写8字符ASCII；零补齐并接4字节大端原长度，分组64字节。
+固定32字节ASCII材料重复到64，与4字节seed重复异或得K；前块初值K。
+块内先按官方五步mod256变换，再与K异或/加前块/异或前块，固定置换执行两次；
+输出seed+块数据，以官方自定义64字符表编码，P填充。常量由已审阅SDK对象提取，非AES。
+逆向检查字母表/标准Base64补位、分组、原长度、规范补零和CRC；输入上限1MiB。
+这些逆向错误检查是社区工具增强，SDK本身无对应完整解码器；不声称错误输入行为完全相同。
+
+字段va：ID和实际字节长各u16大端。NUMBER先JS ToUint32再取末尾定义字节，定义5字节仍只有4字节。
+BOOLEAN按JS真值写1/2；STRING先按UTF16单元截断再UTF8；截断到单独surrogate会明确失败，匹配encodeURIComponent。
+HEX解码后取尾部；ARRAY逐元素按对应限长处理number/string，其他类型跳过；超出限长列表的元素保留完整值。
+collection_error只保留ID和零长度。重复事件ID合法，字段顺序由调用者提供，不能固定顺序冒充SDK随机采集顺序。
+当前encode_fields处理序列化，不执行浏览器字段采集、Ya公共字段构造、Kc函数求值或事件采样。
+原生接口要求数值字段为number、文本/hex为string，拒绝不规范hex和超出长度头的数据；这些比JS隐式强制转换严格。
+
+正常token顺序r/d/b；fallback追加t。r + 原始DID + nonce + 固定fallback盐按JS左结合加法处理，
+缺失undefined、null、空字符串分别保留；MD5原始16字节后标准Base64，再把整个JSON按La编码。
+ndInfo为r/d/i，i为undefined时省略，为null时保留null。真实设备存储访问通常得到字符串或空串；
+其他缺失态只为纯算法边界，不生成虚构服务设备ID。DeviceState/TokenResult不实现Debug；不作为IPC DTO。
+
+配置和设备状态
+Config以调用者明确选择的产品号解析conf；可选pn不匹配则拒绝。源码默认edc=true、dtvp=3600000、
+ivp=86400000、tto=2000、ret=1；服务快照可以覆盖，0不当作缺失。支持合理非负整数毫秒，
+拒绝负数/字符串时间等未经审阅配置形态；这比SDK宽松类型转换更严格。
+bl按逗号精确拆分。官方命中后不发行为请求且不调用回调；原生API改为明确“配置抑制”错误，避免永远等待。
+配置剩余采集选项和主机回退尚未迁入实际运行时，不把Config叫作完整SDK配置层。
+
+DeviceStore：owner=device、kind=watchman-device-v1、key=产品号，结构包含revision、DID、DIV、
+创建/到期时间、TID、NI和服务时差。安装范围记录不随某个音乐账号退出删除，且不含MUSIC_U/deviceId。
+状态没有迁入旧浏览器cookie/localStorage的自动扫描；社区SQLite替代浏览器存储降级链，命名空间始终产品隔离。
+
+P谓词：edc=false直接通过；否则DID创建时间必须严格小于当前时间、到期时间允许等于当前时间，且TID/NI非空。
+lastUsedVersion和已存DIV都非空时，DIV必须等于当前或lastUsedVersion；其余情形沿用官方兼容判断。
+Ra由宿主每5分钟触发；本模块refresh_due在DID剩余期限<=5分钟时为true，尚未安装后台定时器。
+
+apply_response只读既有响应槽位，不发网络：设备200/420读取TID[2]、DID[3]、NI[5]；行为200/420只读TID[2]。
+空字段保留旧记录；DID更新同时写DIV与now+floor(dtvp*5/6)。420且[1]真值时需要宿主提供已解析服务器毫秒，
+更新offset=serverTime-now；日期字符串到JS Date的完整兼容解析属于尚未连接的网络宿主，不能传未核验时钟。
+行为470是IllegalBusiness且不改状态；其他业务码、畸形类型/字段拒绝。不是只看HTTP200。
+每次提交在BEGIN IMMEDIATE中核对revision，响应更新整组原子提交。旧响应、并发连接竞争、损坏记录、
+写盘失败不能静默替换已有ID；显式invalidate递增revision以拦截迟到响应。账号凭据表没有参与这些事务。
+
+状态机与新确认的官方边界
+设备I：第一轮420再报一次；第二轮设备上报错误失败，第二轮200或420可结束。并发订阅者合并仍由未来宿主处理。
+行为ia：首轮200正常token；470错误回调；其他拒绝/传输失败fallback；超时fallback且抑制迟到结果。
+420后先用更新的公共字段重报，SDK把第二次请求直接接到g回调。g没有检查第二次error/code！
+因此第二次传输失败、420或470也可能得到无t字段的正常形态token。新Rust保留对应字节，但状态为UncheckedRetry；
+只有实际观察到业务200才标BehaviorAccepted，且这也不等于音乐业务接口通过。
+社区状态机在任何终态/取消后都禁止第二次发结果；官方g在正常成功后未将超时标志置true，其网络封装通常只回调一次。
+这项原生收紧用于防重复结果，不能据此修改对官方行为的描述。
+
+官方对照与可执行证据
+references/recovered-client/scripts/watchman_rust_oracle.cjs校验原始SDK和可读版本SHA，核对字母表/SBOX和
+86字段原对象，只提取40个已审阅纯函数及cache/回调方法，在无网络/浏览器/账号的Node VM中执行。
+不是运行整个SDK；固定随机输入、时钟和纯存储/传输回调。freeze到core/tests/fixtures/watchman-official.json。
+对照4文本、18nonce、149报文、344字段、24token、3ndInfo、6时间边界、64版本组合、10回调序列。
+10项Rust测试还覆盖1MiB上限、损坏拒绝、配置快照、真实SQLite重开、触发器失败回滚、并发CAS、失效/迟到、产品隔离。
+
+可执行命令（新目录，所有数据为合成）：
+ CARGO_INCREMENTAL=0 cargo run -p cumulus-core --example watchman_offline --locked --offline -- NEW_PRIVATE_DIRECTORY
+ python3 core/examples/audit_watchman_offline.py NEW_PRIVATE_DIRECTORY
+实际证据.build/private-watchman-offline-20261027-a：Rust编码字段/报文，保存响应状态，独立连接重开，
+分别执行正常、420后二次失败、470和超时。evidence.json与report.json留存；网络请求0，没有浏览器指纹。
+独立审计只读Rust输出与SQLite，使用归档Python编解码交叉核验报文字节，再独立检查字段、token摘要/状态和时限。
+Python仅用于审计，不由Rust客户端或可执行例子启动。审计日志.build/watchman-independent1.log通过。
+
+完整目标中仍需完成的易盾部分
+真实环境采集、公共字段随机顺序/调用计数、行为事件采样与清空、配置获取/更新/主机回退、设备并发合并与定时刷新、
+/v3/d与/v3/b实际网络层/服务器日期解析、Tauri宿主生命周期和生产TokenProvider接线仍未完成。
+也没有完成LoginGuardian/CAPTCHA/安全设备确认流程，不能用离线token或合成响应填充它们。
+本轮未对真实设备发送Watchman上报、未访问受保护写接口；旧SDK在线实验不能当新Rust线上成功证明。
+完整迁移目标保持active，详细来源映射见watchman-mapping.json。

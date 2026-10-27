@@ -1,0 +1,123 @@
+{
+  "schema": 1,
+  "scope": "Cloud desktop increment only; not exhaustive full-goal coverage",
+  "goal_complete": false,
+  "official_sources": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_208.chunk.1482700000000.js/3023.js",
+      "sha256": "14abe3589317d764b556684a344c7bbe17294d8c58132f8daac52142983fe665"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_52.chunk.1482700000000.js/3100.js",
+      "sha256": "2a5703b0917487fa4d1c707152cf75ac53ce3ded18c05e3b529c45e9cb452276"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_193.chunk.1482700000000.js/3127.js",
+      "sha256": "aeb3bae71f266c627f6d4749ed807a283672af9b1275e3d97ffc4f71703acea3"
+    }
+  ],
+  "contract": "docs/desktop-cloud-contracts.txt",
+  "yesplaymusic_used": false,
+  "mappings": [
+    {
+      "feature": "initial_page_and_sort",
+      "source": "M/3023 page:cloudDisk",
+      "implementation": "frontend/src/composables/useCloud.ts",
+      "evidence": "frontend/tests/cloud-state.test.ts"
+    },
+    {
+      "feature": "table_capacity_tabs_and_paging",
+      "source": "M/3100 cloud table + page size 200",
+      "implementation": "frontend/src/components/CloudPage.vue",
+      "evidence": "desktop/examples/cloud_probe.js"
+    },
+    {
+      "feature": "complete_cloud_list",
+      "source": "M/3127 fetchCloudList + /api/v1/cloud/get",
+      "implementation": "core/src/cloud/library/api.rs",
+      "evidence": "core/tests/cloud_library.rs"
+    },
+    {
+      "feature": "filtered_complete_play_selection",
+      "source": "M/3100 filtered/sorted records + cloudTrack identity",
+      "implementation": "core/src/client/cloud/mod.rs",
+      "evidence": "core/tests/client_cloud.rs"
+    },
+    {
+      "feature": "cloud_lyrics",
+      "source": "recovered lyric target dispatch /api/cloud/lyric/get",
+      "implementation": "core/src/client/player/lyrics.rs",
+      "evidence": "core/tests/client_cloud.rs"
+    },
+    {
+      "feature": "delete_chunks_and_readback",
+      "source": "M/3127 delete chunks 1000 + succIds/failIds",
+      "implementation": "core/src/cloud/library/delete.rs",
+      "evidence": "core/tests/cloud_library.rs"
+    },
+    {
+      "feature": "delete_confirmation_and_cancel",
+      "source": "M/3100 cloud delete action",
+      "implementation": "frontend/src/components/CloudDeleteDialog.vue",
+      "evidence": "desktop/examples/cloud_probe.js"
+    },
+    {
+      "feature": "recursive_selection",
+      "source": "M/3127 selectRootFileOrDir -> listFilesByEntries(true)",
+      "implementation": "core/src/cloud/upload/selection.rs",
+      "evidence": "core/tests/cloud_selection.rs"
+    },
+    {
+      "feature": "native_picker_and_upload_dialog",
+      "source": "M/3100 upload entry + M/3127 selection workflow",
+      "implementation": "desktop/src/cloud.rs",
+      "evidence": "desktop/examples/cloud_mutation_probe.js"
+    },
+    {
+      "feature": "reopen_pause_and_one_parent",
+      "source": "M/3127 upload states + restart pause + single parent",
+      "implementation": "core/src/cloud/upload/scheduler.rs",
+      "evidence": "core/tests/cloud_scheduler.rs"
+    },
+    {
+      "feature": "quota_before_resume",
+      "source": "M/3127 resumeUploadAll capacity guard",
+      "implementation": "core/src/client/cloud/commands.rs",
+      "evidence": "core/tests/client_cloud.rs"
+    },
+    {
+      "feature": "account_isolation_and_late_completion",
+      "source": "M/3127 current account UID guard + Rust generation strengthening",
+      "implementation": "core/src/client/cloud/mod.rs",
+      "evidence": "core/tests/client_cloud.rs"
+    },
+    {
+      "feature": "query_races_and_unknown_write_ui",
+      "source": "recovered failure boundaries + native journal recovery",
+      "implementation": "frontend/src/composables/useCloud.ts",
+      "evidence": "frontend/tests/cloud-state.test.ts"
+    },
+    {
+      "feature": "stable_catalog_revision",
+      "source": "new Rust consistency guard; real CDN host rotation evidence",
+      "implementation": "core/src/cloud/library/types.rs",
+      "evidence": "core/tests/cloud_library.rs"
+    },
+    {
+      "feature": "active_intent_vs_abandoned_write",
+      "source": "native upload pending journal + scheduler live state",
+      "implementation": "core/src/client/cloud/view.rs",
+      "evidence": "core/tests/client_cloud.rs"
+    }
+  ],
+  "pending": [
+    "metadata matching/editing UI",
+    "real channel=3 OSS allocation and live UI",
+    "LRC/CUE service restrictions",
+    "Windows/macOS actual runtime evidence"
+  ],
+  "completed_followups": [
+    "docs/cloud-download-mapping.json",
+    "docs/cloud-order-mapping.json"
+  ]
+}

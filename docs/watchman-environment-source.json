@@ -1,0 +1,110 @@
+{
+  "schema": 1,
+  "goal_complete": false,
+  "measurements": [
+    {
+      "build": "2.7.5_af2952a4",
+      "path": "desktop/src/watchman/measurements/af2952a4/environment.js",
+      "sha256": "80de74016874945282cef268da20e1d016a6640c1363d4ad513431b0b6d2fbd2",
+      "source": "references/netease-3.1.42.205594-analysis/protocol/watchman-remote/watchman.min.js",
+      "source_sha256": "af456401a96e7cab2fc0ad1334e1014ed58d5c694908d2d73ec1ef426463f787",
+      "environmentBase": [
+        "nb",
+        "hb",
+        "Eb",
+        "gb",
+        "Xb",
+        "wb"
+      ],
+      "environmentDynamic": [
+        "sb",
+        "kb",
+        "vb",
+        "Ob",
+        "qb",
+        "Wb",
+        "yb",
+        "Tb",
+        "rb",
+        "ub",
+        "lb",
+        "Hb",
+        "Sa",
+        "Qb",
+        "cc"
+      ],
+      "helpers": [
+        "ob",
+        "id",
+        "Ma",
+        "bb",
+        "ia",
+        "I",
+        "dd",
+        "xa",
+        "ca",
+        "P",
+        "qa",
+        "N",
+        "D",
+        "Gb",
+        "Va",
+        "fc"
+      ],
+      "audio": "original dd and helpers; actual Float32Array input reaches original hash type error then empty result",
+      "networkRequests": 0
+    },
+    {
+      "build": "2.7.5_602a5ad7",
+      "path": "desktop/src/watchman/measurements/602a5ad7/environment.js",
+      "sha256": "b523d1302745b74b4f66382b27d2402a63a11bea09cb6b4736ebaa138dfc85d7",
+      "source": "references/netease-3.1.42.205594-analysis/protocol/watchman-remote-602a5ad7-20261027/watchman.min.js",
+      "source_sha256": "343a187cb023c495a2dffee37f8265d203d97886c43fa6180951fb2de4d283b5",
+      "environmentBase": [
+        "nb",
+        "hb",
+        "Eb",
+        "gb",
+        "Xb",
+        "wb"
+      ],
+      "environmentDynamic": [
+        "sb",
+        "kb",
+        "vb",
+        "Ob",
+        "qb",
+        "Wb",
+        "yb",
+        "Tb",
+        "rb",
+        "ub",
+        "lb",
+        "Hb",
+        "Sa",
+        "Qb",
+        "cc"
+      ],
+      "helpers": [
+        "qb",
+        "id",
+        "Oa",
+        "db",
+        "ka",
+        "K",
+        "dd",
+        "za",
+        "ea",
+        "R",
+        "sa",
+        "P",
+        "D",
+        "Hb",
+        "Xa",
+        "gc"
+      ],
+      "audio": "original dd and helpers; actual Float32Array input reaches original hash type error then empty result",
+      "networkRequests": 0
+    }
+  ]
+}

@@ -1,0 +1,86 @@
+云盘排序：官方交互、中文比较与完整队列
+2026-10-26。属于全桌面目标中的云盘增量，不能据此宣布目标完成。
+
+恢复来源与实际调用链
+M/3023 page:cloudDisk默认sortBy={id:uploadTime,flag:reverse}，每页200条。
+M/3100标题列为quinary，其他可排序列为trinary；表格compareFn=false，使用外部完整列表排序。
+M/106的toggleSortBy维护五态/三态；M/195把artistForward/artistReverse投影为artist字段的
+forward/reverse，避免只恢复表头后错误地继续按标题倒序排列。
+M/611使用云盘原始songName、artist、album、fileName、addTime、fileSize排序；这些字段
+可能与simpleSong的显示元信息不同。排序前后始终按songId关联同一云盘资源。
+M/177比较器：JS trim；空串在前；纯ASCII字母数字与纯非ASCII类别分别走
+localeCompare(zh-Hans-CN,{numeric:true})；混合串按首个UTF-16 code unit比较，ASCII类别优先，
+首单元相等才递归比较slice(1)。不是简单lowercase比较，也不是整个字符串直接拼音排序。
+来源SHA256及逐项实现见cloud-order-mapping.json。
+
+界面与IPC
+CloudQuery保持{tab,keyword,sort,descending,offset,limit}，sort新增natural表示服务返回原顺序。
+默认uploaded/descending=true；标题列循环：title升→title降→artist升→artist降→natural。
+专辑/格式/上传时间/大小循环：当前字段升→降→natural；切换列先从新字段升序开始。
+标题在歌手阶段显示“歌手 ↑/↓”，各列提供aria-sort，关闭排序时全部none。
+改变排序重置分页；重新返回页面保留当前composable查询状态。排序只读，不写服务端。
+排序作用于完整筛选结果，之后再截取当前页；播放全部使用同一排序函数，不能只播放可见200条。
+自然顺序及相等项稳定；完整播放队列仍受既有50000首上限约束。
+列表投影与完整播放队列排序均在blocking worker运行，前后核对账号代次，避免长列表
+中文比较占用异步播放器/网络执行线程。
+
+Rust组织与持久化
+cloud/library/api在私有song._cloud_sort中保存云盘原始三种文本字段，前端DTO不暴露该对象。
+CloudSnapshot版本包含这些原始字段，因此真正的元信息变更会使旧选择版本失效。
+旧快照没有该字段时仍可读取，临时采用其显示元信息作为排序键；刷新后保存原始字段。
+旧快照的完整性验证维持原规则，不丢弃旧缓存或假造原始标签。
+client/cloud/view对每行预先编码UTF-16键，避免每次比较重新分配；自然序直接返回原集合。
+cloud/sort/实现M/177，使用纯Rust ICU4X的编译数据，锁定版本见Cargo.lock（当前2.4.0）。
+locale选择zh-Hans-CN-u-kn-true，数据随库构建，不依赖操作系统locale、Tauri或前端JS。
+依赖接口依据ICU4X官方文档：https://docs.rs/icu_collator/2.3.1/icu_collator/struct.Collator.html
+实际使用2.4.0本地源码与构建验证；不会把版本兼容假定当作运行证明。
+
+比较器的两处重要兼容
+官方M/177不是严格传递的比较关系，例如A<a2、a2<a-2，但A与a-2不满足相同关系。
+因此Rust默认稳定排序与V8可得到不同顺序；仅验证两两比较不足以证明完整列表一致。
+cloud/sort/timsort是V8 13.6的安全Rust索引排序移植，分run栈/二分插入、gallop、双向merge。
+保留比较调用顺序和minGallop变化，处理比较器不一致导致某侧提前耗尽的分支；没有unsafe，
+所有操作发生在索引数组，结果再投影原记录，禁止复制/丢失歌曲。大集合不会退化为整表插入排序。
+参考：https://github.com/v8/v8/blob/13.6.233/third_party/v8/builtins/array-sort.tq
+V8及Python原始TimSort来源与完整许可证见core/third-party/V8-sort-NOTICE.txt。
+
+另一个差异来自slice(1)：表情/扩展汉字的代理对可被拆成单独UTF-16单元。
+ICU4X默认把未配对代理单元替换为U+FFFD，官方JS/ICU4C保留其排序位置。
+本实现只在恢复算法可能产生的首个未配对单元路径补兼容，保留同类单元顺序、其与私用字符
+边界的关系及剩余有效串比较；一般有效Unicode仍使用ICU4X。不会把UTF-8字符串切到半个字节。
+
+独立对照与范围
+references/recovered-client/scripts/netease_cloud_sort_oracle.cjs直接执行M/106状态回调、
+M/195投影、M/177比较器、M/611排序；只给webpack依赖提供必要适配，不重写这些官方函数。
+46种字符串生成2116项两两比较，包含中文、数字、大小写、标点、空白、表情、扩展/兼容汉字。
+244组V8实际Array.sort结果覆盖0..200000条、32/64等边界、随机/已排序/逆序/混合runs、
+重复项及两个方向；有限输入的比较结果复用已执行的矩阵，加速生成，但排序仍由真实V8执行。
+记录原始排列的SHA256，不仅检查“看起来有序”。Rust另核验每个结果仍是完整唯一索引置换。
+新增BMP范围对照验证未配对代理单元递归；生成器执行版本记录在fixture.runtime。
+core/tests/cloud_sort.rs对应纯比较/排序；client_cloud增加官方字段优先、稳定原序、13种完整
+列表顺序与小页面到完整播放队列的集成对照；frontend cloud-state测试验证官方点击序列。
+这证明上述固定版本和测试输入的行为；没有从有限测试推导所有ICU/Chromium版本像素或排序完全一致。
+原Windows安装包内的确切V8/ICU运行版本尚未单独确认，不能把Node对照声称为官方整机黑盒验证。
+
+复验
+node references/recovered-client/scripts/netease_cloud_sort_oracle.cjs > NEW_ORACLE_JSON
+与core/tests/fixtures/cloud_sort.json比较；更新fixture前检查来源哈希和runtime版本。
+cargo test -p cumulus-core --test cloud_sort --test client_cloud --offline
+npm --prefix frontend test
+桌面只读验证入口继续使用desktop/examples/run_cloud_probe.py NEW_PROOF EXISTING_PC_PROFILE。
+cloud_probe.js实际点击标题五态及其余四列三态共17次，逐次比较DOM顺序与native完整查询，
+随后验证完整云盘播放、队列、歌词、原生文件选择取消和删除确认取消；没有发出上传/删除。
+窗口证据和完整回归结果见rust-core-validation.txt的本批记录。
+真实窗口已验证：.build/ui-proof/cloud-sort-20261026-a（1120x760）及b-small（760x540）。
+每次17个排序状态、49条完整查询/播放队列、libmpv静默真实解码及暂停定位均通过；
+截图包含歌手倒序指示，两种窗口均无页面横向溢出。表格窄屏保留内部横向滚动。
+原生选择器和删除确认均取消，完整基线未变化，远端资源写入0。
+最终后台排序版本再次通过.build/ui-proof/cloud-sort-20261026-c-final（760x540）全流程；
+13种本地排序/队列集成也在最后调整后重新通过，未以调整前证据代替最终运行。
+
+元信息编辑/歌曲匹配证据缺口
+本次检索官方恢复M/15、M/3100、M/3127、全部恢复JS以及api-catalog，没有找到可确认的
+cloud/user/song/match或独立云盘编辑调用链。报告15/29也明确将匹配/元信息变更列为未覆盖。
+按既定条件对references/YesPlayMusic做备用搜索，未找到可采用的对应实现；没有采用其业务代码。
+原上传元数据流程/upload/cloud/info/v2已经迁移，但不能将上传阶段冒称发布后独立编辑/匹配。
+这仍是待补证据的边界，并非证明服务端不存在能力，也不是完成全目标的依据。

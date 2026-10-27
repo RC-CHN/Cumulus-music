@@ -1,0 +1,161 @@
+桌面登录、保存账号与退出流程
+2026-10-27；本批完成已列出的桌面接线与本地验证，完整目标仍 active。
+真实账号的已有会话恢复证据沿用此前记录。本批没有使用真实账号、发送真实短信/邮件、
+触发真实密码登录或服务端退出；不能用模拟服务证明服务器当前允许这些登录方式。
+
+来源与界面
+官方恢复 sources/packages/pc/src/pages/login 的 Phone.jsx、Mail.jsx、DoubleVerifyList.tsx、
+DoubleVerifySmsCaptcha.tsx、DoubleVerifyEmailBind.tsx、DoublVerifyeCellphoneBind.tsx、
+QuestionVerify.tsx、AccountCheck.tsx，以及 components/QuestionRadio.tsx 和 switchAccount/index.tsx。
+实际根目录为 references/ui-recovery/；官方请求/状态辅以 M/363、M/2992、M/1368 和
+references/recovered-client/cumulus_core/{auth,session_files,login_refresh}.py。
+文件和逐项证据见 login-desktop-mapping.json。本批未使用 YesPlayMusic。
+保留社区 Cumulus 品牌；账号行高80px、头像36px、标题22px来自官方切号布局。
+当前使用独立登录弹窗、统一验证表单和可滚动账号列表，不声称与官方像素一致。
+官方绑定手机号页提示转到手机App操作，本客户端采用同样提示；没有将该页改成自行绑号表单。
+
+产品入口
+顶栏游客按钮打开登录；已登录按钮打开保存账号列表。登录可选扫码、手机、邮箱。
+手机提供短信/密码切换、可输入国家码、显式发码、60秒倒计时；邮箱提供邮箱与密码。
+密码/OTP提交后清空输入控件，原生请求DTO不实现Debug；不在日志打印请求秘密。
+“自动登录”默认开启，同时控制官方remember字段和本机下次启动策略。
+关闭自动登录仍保留经过验证的账号和凭据，重启使用游客凭据，必须显式选择账号并核验身份。
+保存账号来自本机registry；显式 CUMULUS_SESSION_DIR 外部开发会话不被偷偷复制到账号列表。
+已有账号切换时仍保留当前身份；只有新账号经过account/get并成功提交才替换。
+登录被拒可显式重试，新建独立候选；丢响应后只读本地状态，显示核对/重新开始入口。
+退出先显示确认及“同时退出服务器会话”；远端失败保留原账号，可由用户改为仅本地退出。
+游客没有可清理凭据时不展示退出入口。退出保留账号行；再次选择失效行会失败，要求重新登录。
+后续本日已接保存账号移除与凭据清理，见desktop-saved-account-removal.txt。
+历史未登记候选目录的统一回收仍待推进，不能把退出等同于删除所有本地账号资料。
+
+架构与职责
+core/account/login：既有密码/SMS/挑战/二维码状态机、冷却、候选核验；不依赖桌面。
+core/account/profiles/saved.rs：保存账号索引、绑定目标UID的候选、旧选中账号的已验证索引升级。
+core/client/auth/{mod,dto,flow,view,lifecycle,qr}.rs：共享待登录槽、输入校验、白名单投影、退出。
+core/client/focus.rs：账号变化后撤销旧媒体焦点、取消迟到加载并暂停/退役旧音视频控制器。
+desktop/auth.rs与commands.rs：正式类型化命令和账号变化事件，不重写登录协议。
+frontend/services/auth.ts、useLogin.ts：类型、显示状态、请求代次、取消、冷却和迟到结果丢弃。
+LoginDialog、login/{QrLogin,CredentialLogin,LoginChallenge}和AccountDialog：实际表单与操作入口。
+frontend/App.vue/useMusic.ts：收到账号变化后重读权威状态，废弃旧账号资源/页面请求。
+MusicClient::open_with_http_backend是原生注入边界，使用生产请求构造、Cookie与SQLite；
+正式客户端使用HTTPS backend。WebView不能传入backend、任意URL、Cookie目录或SDK令牌。
+
+正式IPC
+外层参数camelCase；LoginCommand字段与kind为snake_case，拒绝未知字段。
+begin_login(epoch,mode,savedId?) -> LoginView
+  mode=phone_password|phone_sms|email|saved_account；仅saved_account必须提供savedId。
+  只创建/打开候选，不自动发送密码、短信或保存账号的身份读取。
+login_command(operationId,command) -> LoginView
+  phone_password{phone,country_code,password,remember}
+  phone_sms{phone,country_code,code,remember}；email{address,password,remember}
+  send_sms{phone,country_code}；verification_methods
+  security_mail_send / security_mail_verify{code}
+  verification_sms_send / verification_sms_verify{code}
+  bind_phone_verify{phone,country_code,code}（仅原生已恢复动作；当前页面使用官方App提示）
+  question_read / question_answer{answer}；reuse_read / reuse_confirm；reconcile。
+login_snapshot(operationId) -> LoginView：只读本地，不重发登录或验证码。
+cancel_login(operationId)：只取消当前同ID候选；已认证结果不回滚，陈旧ID不影响新尝试。
+saved_accounts(epoch) -> AccountData<SavedAccountView[]>：本地读取，不证明登录态仍有效。
+logout_account(epoch,remote) -> {account,remoteRevoked}：绑定当前HTTP凭据实例。
+原begin_qr/poll_qr/cancel_qr保持可用，与上述流程共享待登录槽；新方式取消旧方式。
+
+返回字段
+LoginView={operationId,mode,status,code,busy,retryAfterMs,interrupted,challenge}。
+challenge仅methods/nickname/avatarUrl/phoneMask/question/answers/reuseConfirmation。
+answers含value/title/subtitle/picture；头像/图片走现有来源白名单，不返回挑战原文/票据。
+SavedAccountView={id,nickname,avatarUrl,current,autoLogin}，id为不透明候选句柄，无UID/本地路径。
+AccountView新增canSignOut，取当前绑定凭据中有效登录/刷新材料的存在性；读取后再核对账号代次。
+login_command/cancel_login/logout_account和QR轮询/取消结束后，包括错误返回，发布
+cumulus:account-changed（受限AccountView）。前端据此重读状态，不能仅依赖弹窗成功回调。
+这样关闭弹窗恰逢原生提交时，界面也会更新；旧bootstrap资源完成不能解除新账号的加载保护。
+该事件覆盖目前登录命令边界，尚未替代全局会话/刷新/过期订阅。
+
+请求与调用顺序
+接口继续使用固定PC域EAPI；完整字段/签名见core-login-contracts.txt。
+手机：/api/w/login/cellphone，type=1、phone、countrycode、remember、https=true、e_r=true，
+  password=MD5(UTF8)或captcha二选一；邮箱/api/w/login用username和password摘要。
+普通发码：/api/sms/captcha/sent {cellphone,ctcode}，只由点击触发。
+8830：显式获取/api/user/2fa/list {bindingCellphoneEnable:true,smsCaptchaAble:true}，
+  成功后/api/user/2fa/begin {}；页面只暴露服务器提供的已知验证方式。
+SECURITY_EMAIL：/api/user/2fa/securityEmail/send {scene:"0"}；verify {scene:"0",captcha}。
+UP_SMS：/api/middle/account/captcha/sent {scene:"0"}；verify {captcha}。
+8861：/api/login/cellphone/twice/question/get {scene:"0"}；verify {scene:"0",ans}。
+  官方答案为options对象的title，不是数组位置；附加none=以上都不是，禁止提交未提供选项。
+  官方成功且data为空表示该步骤结束：先读身份，301才允许原登录请求重放一次。
+8860：/api/login/cellphone/twice/used/user/get {}；确认前必须已读取关联账号，
+  页面只显示昵称首字+****和受限头像；用户确认后调用confirm {}。
+密码/短信/挑战成功均继续/api/w/nuser/account/get，核验真实UID后才提交选择和账号资料。
+保存账号切换不提交密码，reconcile仅account/get；UID与保存记录不一致时拒绝切换。
+logout(true)调用/api/logout，成功后清本地；logout(false)无远端请求。
+本批仅邮件验证码、安全问题和普通短信在GUI模拟服务中实际执行；手机密码、二次验证短信、
+手机号复用等有代码接线/核心证据，尚未新增对应真实窗口及线上验证。
+
+事务、取消与恢复
+registry的transport/saved-profiles-v1/<uid>保存session_id/uid/nickname/avatar_url/auto_login。
+active选择新增auto_login，旧记录缺字段按true读取。身份、保存行和选择在同一SQLite事务提交。
+目标保存行被删除/替换、active选择变化或会话代次变化都会拒绝旧候选提交。
+即使服务器已设Cookie，注册库写入失败也不发布新账号；可通过同候选只读核验再提交。
+退出只清当前绑定HTTP实例中的凭据，避免错误清理另一选中目录；其他账号凭据不变。
+端点未被确认为登录/刷新成功响应时，不能用其x-refresh-token生成已确认刷新凭证；
+测试中的安全邮箱/问题响应带该头但不会落为refresh_token，登录Cookie仍按响应正常保存。
+验证码冷却在发送前预占60秒，同MusicClient跨取消/新尝试共享；不自动重发中断的写请求。
+useLogin命令失败只补一次login_snapshot，取消或换方式后迟到的成功/快照均不能替换新界面。
+登录、退出和一起听建房/附加共用门控：已绑定房间、持久房间或未决房间操作阻止切号。
+取消无需等待该异步门控，能够使正在网络等待的候选失效。
+账号切换后原媒体租约失效；新的账户资源和播放操作继续使用既有generation检查。
+
+本批证据
+core/tests/client_auth.rs共12项：remember重启、冷却、取消、丢响应只读核验、UID不符、
+SQLite原子失败、验证方式白名单/单次重放、安全问题、退出隔离、陈旧/非法参数、
+未决建房阻止切号、空问题步骤结束。login/qr_login/refresh原有测试同时回归。
+frontend/tests/login-state.test.ts新增6项；music-state新增旧bootstrap不能抢占新账号的回归。
+desktop/tests/ipc.rs覆盖新增正式命令的陈旧代次与账号DTO；生产入口无测试eval或测试事件。
+最新全workspace/all-targets 643次通过：619主测试（core607/desktop3/音频插件9）和既有示例24项。
+前端73项通过，Rust格式/严格Clippy、前端格式/类型检查/构建、正式桌面及探针构建通过。
+日志为.build/login-desktop-*-final.log，具体散列见.build/login-desktop-progress.json。
+
+实际窗口使用desktop/examples/auth_ui_probe.rs/.js与support/auth.rs，生产Vue/IPC/Rust状态机，
+只在原生HttpBackend边界使用虚构服务。JS只经DOM输入/点击，不直接调用业务写IPC。
+原生探针逐步比对账号状态/保存列表并统计请求路径，不把DOM文案当作原生成功证据。
+.build/ui-proof/auth-20261027-b/first：1120×760，13张截图；c-small/first：760×540，同13步。
+两者reopen：760×540，各3张；关闭自动登录后启动为游客，保留4个账号，显式选择短信账号成功。
+包含错误密码后重试、安全邮箱验证/共用60秒冷却、安全问题、切号、CAPTCHA未接入提示、
+远端退出模拟成功、已清凭据账号拒绝恢复，以及关闭自动登录后的新账号。
+已人工查看小窗口安全验证、普通窗口账号列表和重启账号列表；表单/账号列表用内部滚动。
+正常/小窗口首次使用.build/ui-proof/capture_auth.py，重启使用入库的run_auth_probe.py。
+audit_auth_probe.py独立只读SQLite：四个保存账号、active与关闭自动登录策略、被退出账号
+凭据清空、其他账号保留、密码/摘要/OTP未落库、公开阶段输出无Cookie/挑战秘密，均通过。
+初版审计误要求验证端点也保存刷新头，按已有HTTP确认规则修正后通过；初次失败日志保留。
+这不是新的生产代码故障，不通过修改业务把未经确认的刷新头当作有效凭证。
+
+可复跑流程（仓库根，Linux示例；新建隔离目录）
+  npm --prefix frontend run build
+  CARGO_INCREMENTAL=0 cargo build -p cumulus-desktop --example auth_ui_probe --features custom-protocol --locked
+  xvfb-run -a -s '-screen 0 1280x900x24' dbus-run-session -- env GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 \
+    /usr/bin/python3 desktop/examples/run_auth_probe.py /absolute/new-proof-root
+  xvfb-run -a -s '-screen 0 1280x900x24' dbus-run-session -- env GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 \
+    /usr/bin/python3 desktop/examples/run_auth_probe.py /absolute/new-proof-root --reopen
+  python3 desktop/examples/audit_auth_probe.py /absolute/new-proof-root
+首次加--small验证小窗口，需另一个新目录。驱动要求PyGObject/GDK、Xvfb和DBus；180秒超时退出，
+不会覆盖已有证据。Python仅驱动/截图/独立审计，不参与客户端业务实现。
+
+仍在完整目标内的边界
+SDK CAPTCHA/LoginGuardian、易盾设备令牌、JSK刷新宿主调度、旧702/8840内嵌验证、原设备
+确认/扫码、微信及安全二维码尚未完整接入；UI如实提示，不能假造服务票据绕过挑战。
+保存账号删除已由后续批次接入；历史候选目录回收、注册昵称/找回密码等恢复模型、
+完整错误提示和官方视觉对照仍需继续。
+本批没有真实新登录/短信/邮件/远端退出验证，没有新扫码真人确认，没有Windows/macOS运行证明。
+账号切换时音视频/一起听的所有故障组合不由本批空媒体GUI证明；现有核心测试继续分别保留边界。
+
+2026-10-27后续：密码/邮箱/QR滑块挑战已接入独立官方验证码窗口，详见
+desktop-captcha-contracts.txt与login-captcha-mapping.json。主界面只收登录状态，不收validate。
+历史“CAPTCHA未接入”是当时边界；真人通过真实登录仍未验证，JSK刷新等其余边界继续。
+
+2026-10-27后续：JSK前台触发/24小时间隔、原生空设备令牌、账号隔离、未决续期核对及账号窗口
+已接通，见desktop-session-renewal-contracts.txt和session-renewal-mapping.json。此前“JSK宿主未接入”
+不再是当前边界；真实成对续期、异常码token/refresh中间层与其余登录挑战边界仍须分别验证。
+
+2026-10-27后续：官方双实验分组与JSK301校验/本地失效提示已接入，见login-interception-contracts.txt。
+AB关闭的已登录账号旧301链与持久化清队列已在后续完成，见login-legacy-contracts.txt；
+匿名账号恢复、完整JSK新登录及原设备确认仍待继续。刷新凭据来源、旧探针未保存响应头的
+证据和本次真实只读实验分组见refresh-token-issuance-evidence.txt，不能把缺令牌推断成未下发或风控。

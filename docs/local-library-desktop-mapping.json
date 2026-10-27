@@ -1,0 +1,136 @@
+{
+  "schema": 1,
+  "scope": "Local library desktop query, monitoring, guest playback, CUE lyrics, existing NCM integration",
+  "goal_complete": false,
+  "contract": "docs/desktop-local-library-contracts.txt",
+  "yesplaymusic_used": false,
+  "sources": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/461.js",
+      "sha256": "46ec75c89a4bd86ee858074846452f0ef7975d9db037a6e03956a574ae67e0a3",
+      "kind": "official_recovered"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_199.chunk.1482700000000.js/2304.js",
+      "sha256": "44a02da6b78a591efb59a1859a33b08d9d6ee3f03a91d0c749d2d5370b353665",
+      "kind": "official_recovered"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/163.js",
+      "sha256": "b6ef3bfea1c22e26a31a7b61ccb89d29c1ee0b559b50954fb37dae4e38829aa3",
+      "kind": "official_recovered"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/localMusic/views/LocalMusic.tsx",
+      "sha256": "6b3e82a4402badb941a900634b4c577847f3b5c81b87ae800452e44ee13d1ef2",
+      "kind": "official_recovered"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/localMusic/components/LocalMusicCategory.tsx",
+      "sha256": "aeb5382bc8a9d87f3427053ff7a1a3a995dd520b6e2f484639c83e506b15b2e5",
+      "kind": "official_recovered"
+    },
+    {
+      "path": "references/recovered-client/cumulus_core/library.py",
+      "sha256": "f3a383b5d324dd1bebfec7ca4ae4df46813653aed9a825d4b3b86f6920439adf",
+      "kind": "archived_implementation_or_research"
+    },
+    {
+      "path": "references/recovered-client/cumulus_core/library_monitor.py",
+      "sha256": "6a80cd0e257acdd5e38b720b35a1273ac214f26ce3d293419f36fca42aa2c904",
+      "kind": "archived_implementation_or_research"
+    },
+    {
+      "path": "references/recovered-client/docs/product/18-cue-local-playback.txt",
+      "sha256": "a3e7d61f90c29d251787af40f495a8a6c4b36b09c1251d3fa2cf59bad9fb3b5a",
+      "kind": "archived_implementation_or_research"
+    },
+    {
+      "path": "references/recovered-client/docs/product/22-login-monitor.txt",
+      "sha256": "9021f6851516e8fa142eec8187346494e2f9330c3eca469409b2e17b09e45ba6",
+      "kind": "archived_implementation_or_research"
+    }
+  ],
+  "features": [
+    {
+      "feature": "local list, group, search, full sorted selection",
+      "implementation": [
+        "core/src/library/catalog.rs",
+        "core/src/client/local/mod.rs",
+        "frontend/src/components/LocalPage.vue"
+      ],
+      "validation": [
+        "core/tests/client_local.rs::guest_full_queue_pagination_search_groups_and_account_isolation"
+      ]
+    },
+    {
+      "feature": "scan progress, cancel, roots and restart",
+      "implementation": [
+        "core/src/library/index/scan.rs",
+        "core/src/library/monitor/reconcile.rs",
+        "core/src/library/monitor/registry.rs"
+      ],
+      "validation": [
+        "core/tests/client_local.rs::monitor_progress_disable_cancel_no_partial_publish_and_reopen_watch",
+        "core/tests/library_monitor.rs",
+        "core/tests/library_index.rs"
+      ]
+    },
+    {
+      "feature": "local and guest playback, account generations",
+      "implementation": [
+        "core/src/client/player/selection.rs",
+        "core/src/client/player/mod.rs",
+        "core/src/client/focus.rs",
+        "core/src/account/session.rs"
+      ],
+      "validation": [
+        "core/tests/client_local.rs",
+        "core/tests/client_player.rs"
+      ]
+    },
+    {
+      "feature": "CUE sidecar clock, persistent offsets and source revision",
+      "implementation": [
+        "core/src/client/player/lyrics.rs",
+        "core/src/lyrics/service/mod.rs"
+      ],
+      "validation": [
+        "core/tests/client_local.rs::cue_selection_native_bounds_sidecar_clock_offset_and_reopen",
+        "core/tests/lyric_service.rs"
+      ]
+    },
+    {
+      "feature": "typed native commands and lifecycle",
+      "implementation": [
+        "desktop/src/local.rs",
+        "desktop/src/lib.rs",
+        "frontend/src/adapters/tauri.ts",
+        "frontend/src/services/local.ts"
+      ],
+      "validation": [
+        "desktop/examples/local_ui_probe.rs",
+        "desktop/examples/local_ui_probe.js"
+      ]
+    },
+    {
+      "feature": "page and account response races",
+      "implementation": [
+        "frontend/src/composables/useLocal.ts",
+        "frontend/src/composables/usePlayer.ts",
+        "frontend/src/App.vue"
+      ],
+      "validation": [
+        "frontend/tests/local-state.test.ts",
+        "frontend/tests/player-state.test.ts"
+      ]
+    }
+  ],
+  "remaining": [
+    "automatic online matching and manual mapping UI",
+    "tag edits, artwork and native local file/batch management",
+    "official paid-local-music page",
+    "embedded and track-specific CUE lyric selection",
+    "very large grouping performance and platform distribution"
+  ]
+}

@@ -1,0 +1,107 @@
+{
+  "date": "2026-10-27",
+  "goalComplete": false,
+  "sources": {
+    "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_vendors_app_subApp.chunk.1482700000000.js/1368.js": "49da1d26373042091a3123f8948f1ce7e9968ec185e57369156fc1c6a6700db3",
+    "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/34.js": "be1c80adb69ead9384f76efb00b1ac3bfc87ee801e4207fb1db159d74e5e976f",
+    "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/290.js": "73e775eae2e4b1da2e97b70b9415e2e101ba876ea1f6b877bd7cc054c7a4ea9b",
+    "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/12.js": "da570de13fd15b094bc6898cebb51273b2ee0e2b1d9ab39398a61717db732176",
+    "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/15.js": "8ec4bf8d343f6963860eb73bc59ca09f0dd1ae50db2608a6c5abc7d69a0b521a",
+    "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/147.js": "9c73b4456322505cad4be5e68f10ec1d8e6eac78138ac4607662b307dac8b0c5",
+    "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/168.js": "8907068f3d67b28076dc526da74498b5b0f76c9976e40550c6f1bd2ffe2d631c",
+    "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/198.js": "17a0c5464f32e1c83e00d7f2c1209315e4ad5f132790cb73d20f4b9e34b89874",
+    "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/1384.js": "1436e04e398744bd85857aed562bffc88513ee3b9eb49582f5519e5ebb243111",
+    "references/recovered-client/scripts/netease_account_probe.py": "afa8b0a45028c0e494393f531ddb9e754b348ba44090b89d81ec32d56034903b"
+  },
+  "mappings": [
+    {
+      "scope": "official_login_experiments",
+      "source": [
+        "M34.p",
+        "M147",
+        "M15.Rf/fa"
+      ],
+      "implementation": [
+        "core/src/account/login_policy/policy.rs",
+        "core/src/account/session/policy.rs",
+        "core/src/client/auth/renewal.rs",
+        "desktop/src/renewal.rs"
+      ],
+      "evidence": [
+        "core/tests/client_login_policy.rs",
+        "core/tests/login_interception.rs",
+        ".build/login-policy-live-read.json"
+      ]
+    },
+    {
+      "scope": "jsk_intercepted_301",
+      "source": [
+        "M12 intercept",
+        "M1368.refreshInvalidToken",
+        "M198 LOGIN_INVALID_EVENT",
+        "M290 nativeRequest"
+      ],
+      "implementation": [
+        "core/src/account/login_policy/invalid.rs",
+        "core/src/account/session.rs",
+        "core/src/account/credentials.rs",
+        "core/src/protocol/http/client.rs",
+        "frontend/src/App.vue"
+      ],
+      "evidence": [
+        "core/tests/client_login_policy.rs",
+        "core/tests/login_interception.rs",
+        ".build/ui-proof/login-interception-20261027-b-small/independent-audit.json"
+      ]
+    },
+    {
+      "scope": "jsk_transport_context",
+      "source": [
+        "M1368 PcPlatformAdapter.fetch",
+        "M290 nativeRequest/getCurrentEnv"
+      ],
+      "implementation": [
+        "core/src/protocol/http/client.rs",
+        "core/src/account/refresh/lifecycle.rs"
+      ],
+      "evidence": [
+        "core/tests/client_renewal.rs",
+        "core/tests/client_login_policy.rs",
+        ".build/ui-proof/renewal-policy-20261027-b-final/independent-audit.json"
+      ]
+    },
+    {
+      "scope": "refresh_token_origin",
+      "source": [
+        "M1368 prepareAndSaveLoginInfo/refreshToken",
+        "M290 updateLoginInfo/getLoginInfo",
+        "archived Python account probe request/save"
+      ],
+      "implementation": [
+        "core/src/protocol/http/client.rs",
+        "core/src/account/credentials.rs",
+        "core/examples/login_policy_read.rs"
+      ],
+      "evidence": [
+        "docs/refresh-token-issuance-evidence.txt",
+        "core/tests/http.rs",
+        ".build/login-policy-live-read.json"
+      ],
+      "boundary": "Current saved credentials absent; historical issuance unproven; no real paired refresh test."
+    }
+  ],
+  "differences": [
+    "Local invalidation does not send remote logout.",
+    "Immediate relogin entry replaces delayed automatic modal.",
+    "Persist failure preserves prior disk state and returns error."
+  ],
+  "remaining": [
+    "Legacy M1384 AB-off 301 flow",
+    "Full JSK login handlers and ticket context",
+    "Origin-device verification",
+    "Real human CAPTCHA completion",
+    "Real server-issued refresh token and paired rotation",
+    "Windows/macOS device and distribution validation"
+  ],
+  "regression": ".build/login-interception-progress.json"
+}

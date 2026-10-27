@@ -1,0 +1,73 @@
+播客收藏、单集点赞和续播：真实桌面写入及恢复验证
+2026-10-26；承接 desktop-podcast-contracts.txt。完整客户端目标仍进行中。
+
+实现入口
+“我的播客”增加“播客编号或链接”输入框，可打开尚未收藏的播客。
+支持正十进制编号、http(s)://music.163.com/djradio?id=… 和官方 #/djradio?id=…。
+前端只抽出ID，不加载所粘贴URL；拒绝其他资源路由、外域、凭据、端口和重复id参数。
+保留字符串ID，不经JavaScript Number；9007199254740993已有回归。
+核心仍使用固定官方请求域，并再次校验正十进制ID、会话代次、资源身份及完整列表。
+这是补充的直接打开入口，不代替尚待实现的播客发现、分类和搜索页面。
+
+真实调用及状态
+收藏：/api/djradio/sub {id:播客ID}；撤回新增收藏用 /api/djradio/unsub {id}。
+  UI确认详情subed变更后，返回收藏列表能看到新增卡片；撤回后卡片消失。
+  只对本次开始时不在播客/有声书收藏中的目标执行，已有收藏没有取消后重加。
+单集点赞：/api/resource/like {threadId:"A_DJ_1_"+节目ID}；撤回用 /api/resource/unlike 同体。
+  使用节目ID，与主音频ID分开；“点赞的单集”增减按完整服务端列表回读。
+续播：/api/dj/user/setting/resumeplay/update {radioId:播客ID,resumePlayValue:1或0}。
+  /api/dj/user/setting/resumeplay/get回读确认。示例原值0，测试0→1→0。
+每个变更都走既有 PodcastService：落盘意图、单次写请求、两次连续匹配回读；
+未知结果留在journal，核对入口只读，不重发。快照代次随日志变化而失效。
+
+真实验证 A：正常往返
+.build/ui-proof/podcast-social-20261026-a/complete.json记录三类往返及续播行为通过。
+本批97次受限API请求，写入6次：sub/unsub/like/unlike各1、resume update两次，均code=200。
+实际libmpv null输出：保存37秒后停止并重新选节目，开续播的首次观测36.896458秒；
+关闭后首次观测0.300433秒。音频解码及时间推进为真实执行，未宣称扬声器听感验证。
+最初测试程序把恢复核对放在Tauri run返回之后；handle.exit终止进程，该路径未执行。
+因此截图采集程序退出失败，缺baseline-verified.json；没有把它冒称全探针通过。
+随后执行同一原生探针 --restore：仅读取原意图涉及资源，没有额外写入，独立核对通过。
+原3个播客及顺序、0有声书、2个喜欢单集及顺序、原续播值都恢复，未决日志0。
+失败日志、恢复命令日志和原始证据均保留。
+
+真实验证 B：丢失点赞回包和自动退出核对
+.build/ui-proof/podcast-social-20261026-b 是修正后的完整探针，窗口退出前等待原生恢复/核对。
+仅在测试适配器中：/api/resource/like 的真实服务器响应code=200后，向业务层返回一次错误，
+模拟“服务端已成功，客户端没有收到确认”。这不是声称观测到真实网络丢包。
+生产core把它留为未决；UI出现核对入口，读取到1个未决点赞，重复写入口禁用。
+点击核对后用真实账号列表确认，显示已点赞并进入点赞列表；没有再次发送like。
+随后unlike和续播往返正常完成。整个B共112次受限请求，仍只有6次写入；like仅1次。
+核对成功不能抹去丢回包事实，result文件另存 ack_dropped=true。
+实际续播开启首次观测36.940917秒、恢复关闭后0.451715秒。8张真实WebView截图无横向溢出。
+complete.json、host-final.json和baseline-verified.json都成功：
+  收藏ID及顺序恢复；喜欢ID及顺序恢复；续播原值恢复；3条最终journal都Confirmed；未决0。
+A+B合计12次隔离写请求，恢复检查没有追加写请求。不修改已存在的收藏/喜欢条目。
+
+独立核对与工具边界
+.build/podcast-social-independent.json逐个检查实际请求/响应、丢回包记录、数据库终态和恢复报告。
+本批探针内Guard只准读取界面需要的端点及三种目标写入；任何写入必须已有fsync的restore-intent。
+写入目标固定为本批radio、voice及resume_radio，最多8次，不能把界面请求转成其他账号资源写入。
+目标和原账号ID仅在权限0700的私有证明目录保存，不出现在前端、发布包或公开报告中。
+没有发信、邀请、购买、评论发布或播放历史上传；Python程序只负责GTK截图与检查退出结果，
+全部业务调用、签名、变更日志与恢复均为Rust生产模块。
+
+执行
+cargo build -p cumulus-desktop --features custom-protocol --example podcast_social_ui_probe --offline
+设置 CUMULUS_SESSION_DIR=已授权PC profile、CUMULUS_PROOF_DIR=尚不存在的目录、
+CUMULUS_RADIO_ID=未收藏目标、CUMULUS_PROOF_SAMPLE=已验证免费节目详情JSON。
+探针在写入前检查：目标未收藏、样本节目未点赞、节目归属resume_radio、当前账号一致。
+启用 CUMULUS_PROOF_DROP_ACK=1可执行B的回包丢失用例；不启用为正常路径。
+GDK_BACKEND=x11 LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1120x760x24" \
+  dbus-run-session -- python3 desktop/examples/run_podcast_social_probe.py
+异常退出后沿用同一目录和同一PC profile：
+  .build/target/debug/examples/podcast_social_ui_probe --restore
+restore拒绝切换后的其他账号，只核对/恢复这三个记录目标；未知写入先尝试只读核对，
+无法确认时保留错误与责任，不无条件重放原写请求。
+
+当前验证与剩余范围
+Rust workspace/all-targets455项、前端54项通过；正式IPC仍55条。
+本批覆盖真实收藏/单集点赞/续播设置及其与页面、播放起点的联动；不再把它们记为仅本地测试。
+仍待：付费/有声书/PLUS/新人权限样本、节目NCM与文字稿、智能跳过与远端播放历史，
+发现/分类/搜索界面、缺详情节目逐项不可播处理等。其他会员音效、一起听、接续和平台任务
+继续按原完整目标推进；本批通过不代表整个播客领域或客户端完成。

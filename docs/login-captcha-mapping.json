@@ -1,0 +1,81 @@
+{
+  "date": "2026-10-27",
+  "full_goal_complete": false,
+  "contract": "docs/desktop-captcha-contracts.txt",
+  "sources": {
+    "17": {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/17.js",
+      "sha256": "7788584801da0e8090e83d7994e26e49722630f87175051dda3364e4969f23ad"
+    },
+    "252": {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/252.js",
+      "sha256": "48db61d4b56e2aa957131db14bc18055f7b1a36eeef43253c05ea4198bef5489"
+    },
+    "256": {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/256.js",
+      "sha256": "b9197e4f81550f330a486b0f973d8005b99eebe71187298f190b74fd91400409"
+    },
+    "290": {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/290.js",
+      "sha256": "73e775eae2e4b1da2e97b70b9415e2e101ba876ea1f6b877bd7cc054c7a4ea9b"
+    },
+    "363": {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/363.js",
+      "sha256": "8b8122f09a875f50026599cca589ba3e1318e01e260b21f925adbdbc567206f0"
+    },
+    "402": {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/402.js",
+      "sha256": "c759837f6de9c3f6b108edd1b9c22da8202d8cf7bb861f58454f7f4b9a054a37"
+    },
+    "614": {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/614.js",
+      "sha256": "8270ea4bfcc2fb2b414198a73e8b92dc02084210bd343e0b4cbc248515ff4c64"
+    },
+    "421": {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_vendors_app_subApp.chunk.1482700000000.js/421.js",
+      "sha256": "34993de16938e5da0a938cd63c7400830d53ecf6d7a836a7d84097515047469e"
+    },
+    "1368": {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_vendors_app_subApp.chunk.1482700000000.js/1368.js",
+      "sha256": "49da1d26373042091a3123f8948f1ce7e9968ec185e57369156fc1c6a6700db3"
+    },
+    "1811": {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_vendors_app_subApp.chunk.1482700000000.js/1811.js",
+      "sha256": "579a0354aba1b40e1bb68cfc3687624488a7e9865a132124459b2a8f565ce21d"
+    }
+  },
+  "runtime_script_snapshots": "references/netease-3.1.42.205594-analysis/protocol/captcha-loader-20261027",
+  "implementation": [
+    "core/src/client/auth/captcha.rs",
+    "core/src/client/auth/qr.rs",
+    "core/src/client/auth/flow.rs",
+    "desktop/src/captcha",
+    "desktop/src/lib.rs",
+    "frontend/src/composables/useLogin.ts",
+    "frontend/src/components/login/LoginChallenge.vue",
+    "frontend/src/components/login/QrLogin.vue"
+  ],
+  "proof_scope": [
+    "core state/HTTP fixtures",
+    "official M256 executed in Node oracle",
+    "actual Linux Tauri official SDK render/cancel",
+    "isolated IPC rejection"
+  ],
+  "not_proven": [
+    "human CAPTCHA success on real account",
+    "real login acceptance of validate",
+    "Windows/macOS execution",
+    "JSK device token or refresh acceptance"
+  ],
+  "yesplaymusic_used": false,
+  "evidence": [
+    ".build/captcha-workspace-tests2.log",
+    ".build/captcha-clippy-final.log",
+    ".build/captcha-frontend-tests2.log",
+    ".build/captcha-frontend-build2.log",
+    ".build/captcha-official-oracle2.json",
+    ".build/ui-proof/captcha-20261027-e/independent-audit.json",
+    ".build/ui-proof/captcha-desktop-20261027-a/complete.json",
+    ".build/ui-proof/captcha-desktop-20261027-b/complete.json"
+  ]
+}

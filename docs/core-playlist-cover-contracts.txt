@@ -1,0 +1,117 @@
+歌单封面：官方裁剪、Rust 上传与绑定恢复
+2026-10-27；完整桌面目标仍为 active。本文记录独立 core 用例与真实服务验证；
+后续正式选图/裁剪窗口已接入并完成真实桌面验收，见desktop-playlist-cover-contracts.txt。
+
+一、来源与本次纠正
+官方恢复 M3094 的 CoverEdit（源视图 packages/pc/src/pages/playlist/components/CoverEdit.jsx）
+使用 AvatarCliper/type=cover，显示 200×200 裁剪框、拖动与缩放、保存/取消。
+M546 checkFile 的实际规则为 JPEG/PNG/BMP/GIF、最多 5242880 字节，宽高均至少 320。
+M2167 使用裁剪完成回调的 croppedAreaPixels；IMAGE、bucket=yyimgs，回调 docId 为 imgid。
+M2131 把所选原图像素区域绘入同尺寸 canvas，再 toBlob(image/jpeg)。因此：
+  200×200 是显示窗口尺寸，导出图片不是固定 200×200。
+  旧报告27用合成200×200图片测试上传接口，没有验证官方选图门槛及交互。
+  不能用旧报告的上传样本推导当前官方选图允许200×200，或将输出强制缩为200×200。
+M444 b / page:playlist.requestUpdateCover 调 /api/playlist/cover/update {id,coverImgId}，
+官方使用顶层 url 更新显示。Rust 使用独立 playlist detail 回读确认 docId，不乐观报告成功。
+M2131 的默认居中 Math.round 及 canvas 尺寸实际执行结果已冻结在
+core/tests/fixtures/playlist-cover-official.json；同一 fixture 包含 M546 格式/大小/尺寸检查。
+生成脚本 references/recovered-client/scripts/netease_playlist_cover_oracle.cjs。
+所有来源路径、SHA256 和迁移映射见 playlist-cover-mapping.json。本批未参考 YesPlayMusic。
+
+二、代码边界
+core/src/playlist/cover/：
+  image.rs：输入验证、EXIF朝向、无元数据预览、裁剪、透明像素合成与JPEG输出。
+  types.rs：私有持久记录和公开 DTO；不向宿主暴露源字节、文件路径、docId或上传令牌。
+  manager.rs：账号校验、选图快照、准备、任务读取、稳定文件生成及本地清理。
+  run.rs：分配/传输/同对象续期/暂停、显式版本更新、绑定、核对与放弃。
+复用 cloud/nos 的真实传输、offset/context、MD5、续期、控制日志和未知结果保护。
+CloudApi.allocate_playlist_cover 指定 yyimgs；既有云盘附件入口仍保留原无bucket契约。
+PlaylistService.execute_identified 是领域内部父子操作接点，不是新增任意前端透传。
+父任务先保存32位子操作ID，子操作锁内查旧日志，存在则只核对，不再次发请求。
+NosUploads.confirm_object 再验证同一 bucket/key/resourceId、MD5 与 Uploaded，防止只凭
+一个“已上传”状态把其他对象绑定到歌单。
+核心不依赖 Tauri、WebView 或 Python 业务进程；image 的 BMP/GIF 解码在原生 Rust 内执行。
+
+三、可执行用例与接口顺序
+PlaylistCovers::new(session) 绑定当前账号代次；可注入 NosBackend 进行故障验证。
+1. select / select_file(token,playlist_id,revision,input)：
+   在原生端解码，读取 /api/v6/playlist/detail {id,n:100000,s:0}，检查本人普通歌单、
+   非红心歌单、版本未变、没有未决歌单操作。事务内限制同歌单仅一个活跃封面任务。
+   把输入快照存入该账号 SQLite；用户之后改动原文件不会改变已选择的图片。
+2. image(token,id)：返回正确朝向的尺寸、默认居中区域和最长边1024的JPEG预览。
+3. prepare(token,id,{x,y,size})：在原始朝向后的图中裁正方形，以原区域像素尺寸输出JPEG。
+   保存 crop、字节数、MD5/SHA256 和输出快照；到这一步没有远端写入。
+4. upload(token,id,NosRunOptions)：再次检查目标与版本，先保存 Allocating，再发：
+     /api/nos/token/alloc
+     {filename:"cover.jpg",ext:"jpg",type:"image",bucket:"yyimgs"}
+   只接受可用 docId 和正确bucket。保留PC域登录，原官方Web页面的http/music.163.com
+   不被照搬成Cookie作用域迁移。NOS使用现有HTTPS传输，账号Cookie不发给对象存储。
+   在状态目录生成不可覆盖的私有JPEG；创建稳定同ID的NOS子任务，再分块发送。
+   传输完全确认才进入 Uploaded；这个方法本身不会修改歌单封面。
+5. bind(token,id)：确认同账号的同一个已完成NOS对象，持久化 Binding + 子操作ID，再调用：
+     /api/playlist/cover/update {id:playlist_id,coverImgId:docId}
+   子操作写前还会检查普通本人歌单、revision和冲突；回读 coverImgId_str 优先，
+   再回退 coverImgId。完整确认后为 Confirmed。
+6. cleanup(token,id)：仅允许终态，校验私有工作文件哈希后移除，并清除SQLite中的源图与输出
+   base64。保留操作事实、摘要、对象身份和子操作引用。替换内容或链接不被当作自有文件删除。
+
+select_file 的路径是原生宿主提供；正式IPC必须来自原生文件选择器，不能交给WebView任意读文件。
+公开CoverTaskView不包含令牌/地址/原图/账号UID。后续正式IPC使用原生选择器，宿主边界与验收见桌面契约。
+
+四、状态、失败与恢复
+Draft → Prepared → Allocating → Uploading → Uploaded → Binding → Confirmed。
+明确的分配拒绝为 AllocationRejected；显式 retry_allocation 后才可再分配。
+分配回包丢失或成功数据无效仍为 Allocating；不能靠“继续”再申请一份对象。
+NOS首块无context或最后一块结果未知保留 Ambiguous；本批没有证据支持安全查询该完成结果，
+因此不伪装可自动恢复，也绝不据此绑定封面。中间分块可按已恢复context查询并从确认offset续传。
+renew 只更新原 bucket/object_key 的令牌；pause 沿用NOS持久控制。默认无后台自动重放。
+Binding可以 reconcile，只读已有子操作和歌单；丢回包后再次bind亦会命中同一个子日志，
+只核对，不重复 cover/update。写子日志前退出则无子操作；核对退回Uploaded，等待显式绑定。
+绑定成功但父日志提交失败，通过已有子操作恢复Confirmed，不要求再次上传或再次更新。
+上传期间歌单被其他设备修改：返回 QueueChanged，保留已上传对象，不覆盖新版本；
+只有调用者读到并明确提交新的revision后，rebase才允许继续。
+Abandon不能跳过未决Binding。Allocating/NOS未知可以放弃本次编辑，保留可能遗留对象的事实；
+仅放弃和本地清理不会声称远端对象被删除。
+账号切换后的迟到响应不写入新账号。旧账号的未决记录留在原命名空间，重登后可见。
+每个账号最多16个未完成选图任务；每个任务的操作锁同时约束同进程与其他进程。
+
+五、测试与真实证据
+core/tests/playlist_cover.rs新增11项，覆盖：官方居中函数、四种格式、最小尺寸/5MiB边界、
+JPEG EXIF朝向；实际裁剪内容/尺寸；精确大整数docId；DTO不泄漏；重复绑定；
+分配未知/明确拒绝；NOS最后回包丢失禁止绑定；分块暂停和新数据库连接/新会话恢复；
+绑定丢回包/子日志之前退出/父提交故障；版本变化显式确认；归属/冲突/越界；
+跨号迟到回包；其他文档ID不能借用已完成子任务；清理保留替换后的外来内容。
+这些中断为故障模型/存储故障注入与重新打开数据库，不冒称真实网络丢包或实际进程被强杀。
+已有playlist_service、cloud_upload、business_api、nos_upload同批回归；全量结果以
+rust-core-validation.txt末尾和 .build/playlist-cover-workspace-tests2.log 为准。
+
+真实执行：
+  .build/target/debug/examples/playlist_cover_roundtrip \
+    .build/private-rust-pc-20261025 .build/private-playlist-cover-20261027-a
+只操作新建空私密歌单与合成640×480 PNG，裁取 x=320,y=40,size=320。
+使用19次白名单业务API请求，其中四次写入为create、NOS分配、cover/update、delete各一次。
+JPEG实际8591字节，服务端docId绑定一致；工作文件和选图字节清理，原77个歌单的完整顺序恢复。
+NOS对象没有已恢复的删除接口；测试歌单已删除，合成封面可能成为未引用对象，不声称云端清理。
+证据私有目录内保存 plan.json、prepared.json、binding.json、report.json、evidence/；
+令牌只在私有原生SQLite中，导出的API响应已擦除token字段。
+
+独立检查：
+  python core/examples/audit_playlist_cover.py .build/private-playlist-cover-20261027-a --remote
+该Python程序只审计新Rust产生的证据，不实现业务。按原始请求/响应校验四次写入的范围和顺序，
+精确docId、原列表顺序、父/子日志和哈希，FFmpeg独立解码对比指定裁剪像素，
+并不带Cookie读取刚上传的公共CDN图片，独立核对其尺寸与实际像素。结果见 independent-audit.json。
+本次公共CDN返回2118字节JPEG，上传为8591字节；解码尺寸同为320×320，逐通道平均差
+为1.2178/255。不能宣称公共CDN字节保持不变，这与服务端重编码相符。首次“公共字节必须相同”
+断言失败已保留于playlist-cover-independent2.log；随后保存对象、独立解码检查，未重发上传或绑定。
+恢复清理入口（同一账号，只核对计划中的临时对象）：
+  playlist_cover_roundtrip PC_PROFILE EXISTING_PRIVATE_STATE --cleanup
+线上已完成一次清理，不需要重复写入验证。
+
+六、尚未完成与实现差异
+原生阶段不包含UI截图；后续选图/拖动/缩放/保存、任务恢复与编辑联动已有桌面证据，见桌面契约。
+原图上限沿用官方5MiB，解码另设16百万像素/256MiB资源界限，JPEG输出最多16MiB。
+输出质量92是原生编码器选择；官方toBlob依浏览器默认质量，不声称字节或色彩管理完全一致。
+GIF取解码首帧，未实现动画时间选帧；图片不保留EXIF。正方形裁剪不提供官方该窗口未暴露的
+任意旋转/翻转控制。常规大小、无元数据预览、用户原文件不变均由原生用例负责。
+远端对象删除、首次/末次NOS未知回包安全确认仍为已知边界；不得通过盲目重发掩盖。
+新二维码登录、Windows/macOS、完整官方视觉复刻及其他领域不在本批通过范围。

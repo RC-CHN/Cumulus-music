@@ -1,0 +1,94 @@
+账号会话续期：官方依据、Rust 核心、桌面触发及验证
+2026-10-27；本文件只覆盖 JSK 定期续期，不代表完整目标或全部账号分支完成。
+
+官方证据
+官方 3.1.42.205594 的 hybrid_app M/290 login.jskConfig 明确启用 enableTokenJsk；
+vendor M/1368 PcPlatformAdapter.checkAB 将 login-token-jsk 映射到这个值。
+补充外层条件：M/34.p 还要求 PH-PC-loginJsk 和 PH-PC-newLoginBenefit 均为t1；
+M/1384只在该条件成立时转发前台事件。正式宿主现已读取实际分组，不把内部恒真当作外层恒真。
+实验缓存每30分钟更新，按账号代次隔离。来源和错误码校验见login-interception-contracts.txt。
+M/1368 subscribeForegroundChange 收到 APP_BECOME_ACTIVE 后执行 refreshToken。
+生产间隔 864e5 ms，测试环境 12e4 ms。此次桌面实现只采用生产 86400 秒周期，不暴露测试开关。
+它不是固定轮询：窗口恢复焦点、身份恢复和登录结束通知触发检查。启动初次检查若身份尚未恢复
+会跳过，restore_account 完成再次通知。Notify 合并积压信号；不启动定时无条件轮换。
+M/290 login.ydDeviceToken 仅回调 {code:200}，没有 token 或 SEND_YD_TOKEN 事件。
+M/1368 非 iOS 取值等待该事件，5000ms 超时解析为 ""；refreshToken 直接转交这个值。
+此次修正旧 Rust 对空值的错误拒绝。DesktopDeviceToken 直接返回这一已知空结果，省略无事件
+生产者的五秒等待；有其他真实原生 provider 时仍传实际结果，provider 错误不伪装成功。
+该字段不是 M/402 的请求 checkToken，不用 Watchman 字符串冒充。M/402 路径保护继续独立执行。
+M/290 device.info 使用 getDeviceInfo().model，而不是主机名；deviceId 从当前登录凭据取出。
+官方 Windows M/4 Os.queryOs 返回 "pc"。Windows/显式 windows-local 使用 pc；macOS 使用 osx，
+Linux 默认使用 linux 是社区适配，不宣称官方 Linux 行为。Linux 仅有界读取 DMI product_name；
+模型不可取得的其它平台留空，经官方 pn 编码为 unknown，没有编造设备型号。
+
+核心及协议
+core/src/account/refresh/{signature,lifecycle,journal}.rs 保留签名、生命周期、持久化边界。
+model 首个逗号替换为点，空时 fallback；官方 pn 删除低位空白再 encodeURIComponent，空白为 unknown。
+签名拼接 deviceId/model/os/refreshToken/token(MUSIC_U)/userId，按 JS UTF-16 键序排序，
+末尾追加 _scver=1&_sckey=7ada0f7ccadbe165e6e7fbe01113f4df，UTF-8 MD5 小写十六进制。
+POST /api/login/token/refresh/v1 的业务字段为 refreshToken、clientUserId、ydDeviceToken、_scver="1"、_sign。
+PC adapter传输时另附fromPage="JSK"及空x-login-chain-id，现已对照原fetch补齐。
+MUSIC_U 缺失或 refreshToken 缺失：MissingCredentials，不取设备令牌，不发刷新请求。
+与上次成功不足 86400 秒（包括时钟回退）：NotDue。原生底层 force 仍为明确调用选项，桌面 IPC
+没有 force，正常触发和手动检查均不可绕过周期。该请求无 legacy 自动回退。
+200 仍需同次确认响应保存可用于此域/路径的 MUSIC_U+x-refresh-token 成对轮换回执；
+再通过 /api/w/nuser/account/get 核对同一 UID 后才能记录成功时间。普通 Cookie 更新不算轮换。
+
+失败恢复、取消和隔离
+每次轮换先在当前凭据库 UID/login_refresh/jsk 写 pending；各实例通过数据库事务排他。
+只有明确 RequestNotSent 的上下文准备失败可结束自己那条意图，保留此前成功时间。
+HTTP 发出后的错误/丢包、缺轮换头、进程中止保留 pending；未知写入不会自动重新发送。
+reconcile_jsk 只检查已保存的轮换回执和只读身份；没有新回执返回 ReauthenticationRequired。
+有回执但身份读取失败可以再次只读核对。不同 UID 使会话过期，不以旧 UID 发布新凭据的资源。
+core/src/client/auth/renewal.rs 是宿主无关用例：原生配置 DeviceInfo/provider；设备 ID 每次绑定
+当前账号；前端只接收 epoch/state/lastSuccess/busy/canCheck/canReconcile，不接收秘密或设备事实。
+一个客户端同时只有一个续期任务，45 秒截止。取消/任务丢弃释放忙状态；已写 pending 不删除。
+刷新期间不持有账号切换/一起听互斥锁；账号代次/API 绑定检查拒绝旧结果，退出可以及时完成。
+正在新登录时返回 LoginInProgress，避免后台与待确认登录竞争。新版账号可在后续通知检查。
+
+桌面与 UI
+生产 setup 明确配置 renewal::configure 并启动 RenewalPump；仅主窗口获得焦点时通知。
+auth::publish、restore_account 完成通知同一 pump。主窗口销毁中止任务；若请求已发则按持久日志恢复。
+自动检查完成发布 cumulus:session-renewal 和 account-changed；不调用会重新通知自身的发布函数。
+IPC session_renewal(epoch) 只读；renew_session(epoch,check|reconcile) 由 core 决定是否发请求。
+所有命令沿用仅主窗口限制。主前端、验证码窗口、Tauri 插件均不能注入 refreshToken/签名/deviceId。
+账号窗口显示缺凭据、间隔未到、成功、未决、需重新登录等状态。未决只显示“核对续期结果”。
+UI IPC 丢失响应后只重新读取状态，不自动重发命令；事件/读取通过代次屏障防止旧响应覆盖新事件。
+这是新增的社区账号维护入口，不声称其布局为官方像素一致。
+
+可执行验证（仓库根）
+  node desktop/tests/renewal_official.cjs
+  CARGO_INCREMENTAL=0 cargo test --locked --offline -p cumulus-core --test client_renewal --test refresh --test http --test client_auth
+  npm --prefix frontend test
+  npm --prefix frontend run build
+  CARGO_INCREMENTAL=0 cargo build --locked --offline -p cumulus-desktop --features custom-protocol --example renewal_ui_probe
+  xvfb-run -a -s '-screen 0 1280x900x24' dbus-run-session -- env GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 \
+    python3 desktop/examples/run_auth_probe.py /absolute/new-proof-root --binary .build/target/debug/examples/renewal_ui_probe --stage-prefix renewal_ --screenshots 5
+  python3 desktop/examples/audit_renewal_probe.py /absolute/new-proof-root
+桌面探针使用真实 Vue/WebView/IPC/续期 pump 与持久化，仅音乐 HTTP 为进程内合成服务。
+DOM 完成缺凭据→重新登录→自动续期→手动检查间隔→新登录后丢失刷新响应→只读核对→重新登录提示。
+生产界面截图与原生请求计数分别取证；独立 Python 只读审计 SQLite，确认一条成功、一条未决意图，
+缺凭据零轮换、24 小时重复检查零轮换、未知写入未重发、公开阶段无凭据。
+.build/ui-proof/renewal-20261027-a 保存普通窗口五张截图和 independent-audit.json；
+renewal-20261027-b-small 使用最终探针二进制在760×540再跑同五步，独立审计同样通过。
+普通成功/重新登录提示、小窗口缺凭据提示截图已查看。
+该证明没有真实会员账号刷新成功、真人新登录或 Windows/macOS 运行的含义。
+
+真实账号只读检查
+  CARGO_INCREMENTAL=0 cargo run --locked --offline -p cumulus-core --example session_renewal_read -- /absolute/authorized-pc-profile
+只允许 /api/w/nuser/account/get，传输层拒绝任何其它音乐 API；状态为 MissingCredentials 才执行检查入口，
+验证其跳过。当前保存的会话没有 refreshToken，不能反推历史响应从未下发；
+旧探针仅在内存记录该响应头，保存流程只写Cookie，详见refresh-token-issuance-evidence.txt。
+实际结果 .build/renewal-live-read.json：authenticated、MissingCredentials，身份读取1，刷新0，拒绝请求0。
+最终正式产物 .build/ui-proof/renewal-desktop-20261027-a 启动通过，真实每日推荐截图已查看；
+账号已恢复，PC配置1026048、设备revision1。这里只证明正式启动/读取，不证明实际续期或本轮音频全链路。
+测试计数、产物/源码散列以 .build/renewal-progress.json 为准。
+
+仍须继续的完整目标分支
+M/1368 refreshInvalidToken 是另一流程：NET_USER_CODE_INTERCEPT →
+/api/middle/account/token/refresh {fromAPI}，5 秒有效令牌抑制、匿名 URL 白名单、处理互斥、
+连续 3 次业务失败及 action=1/登录失效通知。原先 AccountSession 的直接301过期不等价于此流程；
+后续现已接通JSK分支并完成原函数/原生HTTP/合成服务桌面验证，见login-interception-contracts.txt。
+AB关闭时的旧M/1384处理仍是单独待迁移项。
+旧 702/8840 网页身份验证、原设备安全二维码等也仍须继续；真人 CAPTCHA、真实成对续期、
+Windows/macOS 设备采集与实际发行验证没有被合成测试替代。YesPlayMusic 本批未使用。

@@ -1,0 +1,55 @@
+Rust 账号离线音乐记录
+2026-10-25；download/offline 与 media/integrity。
+
+依据与范围
+归档 cumulus_core/offline.py 的 OfflineLibrary；权益规则已独立对照官方 M/23 K/Y、M/35，
+会员状态按 M/224。与 NCM 编解码分离：解码器不决定账户权益，登记表不修改媒体容器。
+records 定义发布输入/持久记录/检查结果，service 管登记、回读、检查、清理；流式哈希位于
+media/integrity 供下载管线复用。此域只管音乐，播客/有声书仍需各自权益与发布流程。
+
+发布登记
+PublishedDownload 必须来自受信任的后端下载发布流程，不能把前端随意传入的字段视为
+服务端授权证据。包含任务ID、歌曲ID、实际resource、song、请求音质、容器及最终文件完整性。
+接口不会发播放/下载授权请求；授权URL、原始媒体MD5与下载限制在下载协调器验证。
+目标必须已存在，canonical绝对UTF-8路径的SHA256作为记录ID；实际歌曲/资源ID须一致。
+实际resource.level优先于请求音质，显式非法/null level报错；不将服务降级响应写成高音质。
+privilege保留原歌曲字段，resource非null的fee/payed覆盖；仅缺flag时用resource.flag，
+不能用下载容器flag抹掉歌曲的专辑会员/SVIP高位。显式null与缺失分别保留。
+登记前校验完整最终文件大小/SHA256；encrypted还必须通过严格NCM头与可识别媒体检查。
+SHA使用固定64KiB缓冲，前后核对长度/mtime，Unix额外核对dev/inode及当前路径，支持取消。
+禁止空文件/非小写64位SHA；不宣称对恶意并发修改、伪造mtime作完全隔离。
+
+账号与持久化
+StateStore的owner=UID、kind=offline_music_v1；不自动接受旧Python离线行作为新Rust发布证据。
+公开操作要求调用者传任务开始时的SessionToken；切账号/退出/旧代次不能发布或返回成功。
+对UID+路径记录持有跨实例OperationLock，异步续期/哈希期间不持有账号或数据库Mutex。
+同一次发布的重复登记返回原revision；已有不同发布占据同一路径时报冲突，不静默覆盖。
+文件哈希在事务外进行，SQLite登记与内存返回在代次保护下完成；存储失败不谎报完成。
+内部register_with允许下载发布器在同一事务提交离线记录与任务complete；已有相同记录
+也执行调用者提交步骤，支持link后数据库失败的恢复，不引入第二次非原子保存。
+records可显示文件已删除的记录；record(path)需要仍可canonicalize的路径。
+forget比较完整记录revision后仅删数据库行，不删文件；过时记录不得删除后来的发布记录。
+后续下载恢复/目录移动负责有日志的重新绑定与替换，不能把两个独立调用冒充原子文件事务。
+
+检查流程
+先取当前账号记录；无记录时报错，不回退其他账号。普通已登记明文不需要刷新会员，
+但仍校验完整性。renew=true也不会让普通文件触发无关的会员请求。
+encrypted用MembershipManager缓存或显式renew，调用已迁移的offline_access；源为完成下载。
+缺缓存/时钟回退/会员接口错误如实报错，会员不足返回canPlay=false与具体reason。
+权限不满足时提前返回integrity_verified=false，不能把它误读为文件完好。
+权限满足时在blocking worker检查SHA与NCM；完成后再次读取单调时钟会员视图，
+避免大文件哈希期间会员到期却返回允许；再确认记录与账号代次未改变。
+检查结果是当时的状态，不是未来播放授权凭据；引擎联动仍需按生命周期处理文件替换和到期。
+Future中止释放服务锁；已派出的blocking哈希可能继续结束，不写数据库或影响其他账号。
+
+验证
+6项Rust集成测试：明文无会员请求、账号隔离/重开/幂等、实际音质、内容变化拒绝，
+会员到期/续期、专辑高位保留/SVIP、哈希后再次到期判断，跨实例锁、迟到账号响应，
+中止锁回收、SQLite失败、坏容器/错误SHA不得登记、清理保留文件、已删除文件记录可见。
+权益底层仍有先前387组官方对照，不重复计为新增测试数。
+core/examples/offline_roundtrip.rs 使用已有PC会话，只读账号与会员；对三份合成音频做本地记录。
+.build/rust-offline-report.json：普通FLAC与黑胶NCM通过，Sky在当前非plus权益下正确拒绝，
+三条记录重开回读成功并已清理，源文件未变。没有请求真实歌曲下载URL，没有远端写入。
+这只是会员/记录/文件联动证明，不是完整真实下载授权、传输、发布与播放流程通过。
+后续真实普通歌曲下载发布与离线登记已3/3通过，见 core-download-service-contracts.txt；
+实际播放器联动仍待完成，不能据文件和记录通过推定音频设备已经验证。

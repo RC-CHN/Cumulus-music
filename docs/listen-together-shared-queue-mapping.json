@@ -1,0 +1,193 @@
+{
+  "scope": "Shared queue/permission ingestion and authorized native playback with visible UI; incomplete full Together and desktop goal",
+  "goal_complete": false,
+  "official_first": true,
+  "yesplaymusic_used": false,
+  "sources": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/24.js",
+      "sha256": "466ab77ab2a24c97c84157734ed33997a4a1076351de80ffe7e8e351c6c29f64"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/75.js",
+      "sha256": "8f0aa4cc3422daea1cb74c317c84fc27d992dd413623d3c7504f357085005476"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/137.js",
+      "sha256": "aac132a091a03701f21deb2f1d359975d111b4c3c5d69ce575555ee47871068e"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/163.js",
+      "sha256": "b6ef3bfea1c22e26a31a7b61ccb89d29c1ee0b559b50954fb37dae4e38829aa3"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/261.js",
+      "sha256": "e6c2f98907881d674c082bf39a2739987476fd306f5e8bec992051cf58c6174e"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_196.chunk.1482700000000.js/3079.js",
+      "sha256": "1e750d107c091fce54a7b3d72020d498d5559bb920985ae07d5e13f4b2596173"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_198.chunk.1482700000000.js/3078.js",
+      "sha256": "ba04d2a9e16b402cd43ad6cd1d940a4a20250a0391ac445329db9b86ac6f9023"
+    },
+    {
+      "path": "references/recovered-client/docs/product/models/async_listenTogetherPlayList.txt",
+      "sha256": "c84d8b12aa2be89fab79a4dac2d062348615c69ea2afd9136a5b75b3a880dd27"
+    },
+    {
+      "path": "references/recovered-client/docs/product/models/async_listenTogetherPlayer.txt",
+      "sha256": "89e10ecdc6386681f2a3cae83ca9a4be0bdb793ab715b9eea9fbd362ff71f598"
+    },
+    {
+      "path": "references/recovered-client/scripts/netease_together_privilege_oracle.cjs",
+      "sha256": "6b3d0c20a7ff5d076611cebd79e3b18706f113a386837b597d66007f2fa29949"
+    },
+    {
+      "path": "core/tests/fixtures/together-common-official.json",
+      "sha256": "59acbdb16e114e7bccad41466deea45036188ed7b90ce666eaec4bc78f0e5a02"
+    }
+  ],
+  "features": [
+    {
+      "id": "common_access_and_official_oracle",
+      "implementation": [
+        "core/src/listen_together/privilege.rs"
+      ],
+      "tests": [
+        "core/tests/together_shared.rs"
+      ],
+      "evidence": "10 executed M/261 cases, exact response coverage and preview validation"
+    },
+    {
+      "id": "shared_reception_recovery",
+      "implementation": [
+        "core/src/listen_together/service/shared.rs",
+        "core/src/listen_together/service/mod.rs"
+      ],
+      "tests": [
+        "core/tests/together_shared.rs"
+      ],
+      "evidence": "Version-aware reads, interrupted read persisted/reopened, no remote replay"
+    },
+    {
+      "id": "native_queue_and_preview",
+      "implementation": [
+        "core/src/playback/constraint.rs",
+        "core/src/playback/timeline.rs",
+        "core/src/playback/queue.rs",
+        "core/src/playback/controller/remote.rs",
+        "core/src/playback/controller/load.rs"
+      ],
+      "tests": [
+        "core/tests/playback_shared.rs"
+      ],
+      "evidence": "Atomic queue install, authorized intersection, random ordering, skipping blocked and bounded single-loop preview"
+    },
+    {
+      "id": "host_control_and_recovery",
+      "implementation": [
+        "core/src/client/together/shared.rs",
+        "core/src/client/together/shared/plan.rs",
+        "core/src/client/together/runtime.rs",
+        "core/src/client/together/mod.rs"
+      ],
+      "tests": [
+        "core/tests/support/together_shared.rs"
+      ],
+      "evidence": "New songs through real host, account/fence, rights changes, all blocked, cleanup and disconnected IM report fencing"
+    },
+    {
+      "id": "permissions_ui",
+      "implementation": [
+        "core/src/client/together/dto.rs",
+        "core/src/client/together/view.rs",
+        "frontend/src/services/together.ts",
+        "frontend/src/components/TogetherPage.vue"
+      ],
+      "tests": [
+        "desktop/examples/shared_queue_ui_probe.rs",
+        "desktop/examples/shared_queue_ui_probe.js"
+      ],
+      "evidence": "Actual production WebView with controlled API/IM/audio, visible labels, disabled choices, native current highlight and exit at two sizes"
+    }
+  ],
+  "checks": [
+    ".build/shared-queue-workspace-tests4.log",
+    ".build/shared-queue-client-final.log",
+    ".build/shared-queue-clippy4.log",
+    ".build/shared-queue-format-final.log",
+    ".build/shared-queue-build5.log",
+    ".build/shared-queue-front-tests4.log",
+    ".build/shared-queue-front-build4.log",
+    ".build/shared-queue-front-format-check.log",
+    ".build/shared-queue-ui-b.log",
+    ".build/shared-queue-ui-c.log"
+  ],
+  "rust": {
+    "passed": 514,
+    "failed": 0,
+    "ignored": 0,
+    "suites": 73,
+    "nonempty": 70,
+    "core": 511,
+    "desktop": 3
+  },
+  "frontend": {
+    "passed": 61,
+    "new_run": true
+  },
+  "ipc": 57,
+  "ui_cases": [
+    {
+      "root": ".build/ui-proof/shared-queue-20261026-b",
+      "viewport": [
+        1120,
+        760
+      ],
+      "screenshots": 3,
+      "fixture_api": true,
+      "fixture_im": true,
+      "fixture_audio": true,
+      "native_binding_removed": true,
+      "queue_constraints_removed": true,
+      "confirmed_fixture_operations": {
+        "create": 1,
+        "queue": 1,
+        "end": 1
+      }
+    },
+    {
+      "root": ".build/ui-proof/shared-queue-20261026-c-small",
+      "viewport": [
+        760,
+        540
+      ],
+      "screenshots": 3,
+      "fixture_api": true,
+      "fixture_im": true,
+      "fixture_audio": true,
+      "native_binding_removed": true,
+      "queue_constraints_removed": true,
+      "confirmed_fixture_operations": {
+        "create": 1,
+        "queue": 1,
+        "end": 1
+      }
+    }
+  ],
+  "business_message_live_verified": false,
+  "peer_playback_verified": false,
+  "rtc_verified": false,
+  "new_ui_fixture_workflow_verified": true,
+  "real_account_mutations_this_batch": 0,
+  "platforms": {
+    "linux_x64": "Formal Tauri binary built; local fixture WebView/API/IM/audio verified",
+    "windows": "Not built/run",
+    "macos": "Not built/run"
+  },
+  "documentation": "docs/core-listen-together-shared-queue.txt",
+  "audit": ".build/shared-queue-audit.json",
+  "validation_notes": "Full final Rust suite and strict Clippy cover core; last frontend-only avatar fallback and screenshot scrolling were followed by type/build/format/test and rebuilt binary plus b/c UI proofs. a passed DOM assertions but clipped queue labels in screenshots and is not counted as new visual proof. Earlier compiler/manifest and Clippy failures retained."
+}

@@ -1,0 +1,145 @@
+会员中心与历史日推：Rust / 桌面契约
+2026-10-27；本批已列出的原生与桌面主流程通过，完整桌面目标仍 active。具体边界见下文。
+
+官方来源与范围
+恢复 M3002（hybrid_163）控制服务模块顺序、缓存与整页刷新；M2250 同 chunk 提供各模块
+请求/转换；M224 提供服务时间对齐的会员身份；M91 明确 vipDailyRecommend=41。
+恢复 PageVIPEssential.tsx、VIPInfoCard.tsx、VIPTopBannerView.tsx、VIPRankListTop3Card.tsx
+提供权益卡/顶部横幅/三行歌曲卡/榜单预览/专辑歌单卡的来源。M3151 提供历史日推日期与详情。
+数字专辑响应 albumId/albumName/cover/artistName 与普通 album 结构不同；歌单推荐响应
+id/title/coverUrl 也不等同账号歌单。Rust 按官方对应类型转换，保留原始对象仅供原生层使用。
+未使用 YesPlayMusic。历史 Python 与先前 membership_read 仅作为来源，本批证据单独计数。
+
+核心/桌面/前端职责
+core/src/membership/center/service.rs：原有快照、整页刷新、历史缓存；新增显式 SessionToken
+入口、提交前验证、历史请求时间的原子存储，拒绝 date="dates" 覆盖日期目录的键冲突。
+core/src/client/member/dto.rs：类型化查询、五类权益、推荐模块和卡片操作；不暴露 UID、Cookie、
+服务原始 context/algorithm、媒体授权 URL 或活动的原始 URL。
+project.rs：官方响应到公开 DTO、缺失榜单歌曲、日期合法性、活动跳转解析与独立链接表。
+mod.rs：账号校验、权益读/刷新、目录/历史缓存、版本校验及完整播放列表准备。
+PlaySelection::Member 仍走统一原生选择/焦点/账号代次/授权/播放器，不另建模拟播放器。
+desktop/src/member.rs：三个正式 IPC；只负责宿主命令与经原生验证的系统浏览器打开。
+frontend/services/member.ts、useMember.ts 和 MemberPage/MemberCards：类型化接口、互不遮挡的
+权益与内容错误、缓存优先、过期刷新、切账号/切日期时拒绝迟到结果。
+
+会员 API
+/api/music-vip-membership/client/vip/info {userId}。
+实际五组：associator/黑胶VIP、redplus/黑胶SVIP、musicPackage/音乐包、albumVip/数字专辑、
+voiceBookVip/有声书。期限严格大于服务对齐时间才生效；只显示服务证实的等级与期限。
+客户端请求 lossless/hires 等不构成权益证据。播放/下载仍以服务授权等级、范围与拒绝为准。
+页面进入先显示可用权益缓存，再在线读取；可见时按最近到期或五分钟较早者刷新，失败60秒后
+重试；隐藏或销毁清理定时器。会话过期清空权益/页面并停止后续读取。
+这不是全局身份 SDK/刷新凭证宿主生命周期的完成证明。
+
+会员首页调用顺序
+1 /api/vipnewcenter/app/viptab/module/get {}
+2 /api/vipnewcenter/app/resource/centertop/carousel/list {}
+3 按服务模块顺序读取官方 PC 支持的 1/3/4/5/6/7/9/12，3/4共用一次歌曲读取。
+1/7 resource/common/list {positionType:16/18}；字符串 contentList 解码、顶部排除 algFlag=1；
+顶部 SONG 转播放、PLAYLIST 转歌单、ACTIVITY 转链接；无有效顶部图使用官方 PC_BACKUP。
+3/4 viptab/recommend/song/list {from:1}，songInfoList 保留整组顺序。
+5 /api/podcast/common/single/block/get
+  {blockCode:"VIP_THEATER_VOICE_BOOK",pageCode:"HOMEPAGE_VOICELIST_RCMD"}；
+  data.blockVOS[].creatives[].creativeExtInfoVO.radio.id 作为有声书播单身份，卡片取 uiElement。
+6 resource/plus/recomend/album {}；官方路径拼写为 recomend。
+9 viptab/ranking/list {}，再用 /api/v3/song/detail 按 songId 补全预览；缺失曲目保留禁播占位。
+12 viptab/recommend/playList/list {}。
+未写完整路径的上述条目都以前缀 /api/vipnewcenter/app/ 开始。未知现代服务模块不映射成别的
+已知模块。服务顺序保留；顶部第一组横幅与权益卡组成首屏。
+
+历史日推
+/api/discovery/recommend/songs/history/recent {} → data.dates。
+/api/discovery/recommend/songs/history/detail {date} → data.songs。
+日期必须是实际存在的 YYYY-MM-DD，不能重复；客户端查询只能选该账号已获得的日期。
+日期目录与每天内容分开存盘，数据与 fetched 时间同一 SQLite 事务提交。
+切换日期不触发播放；只有用户选曲/播放全部才替换播放队列。没有播放历史上传。
+页面缓存采用明确的300秒本地有效期；尚未接官方 configCenter 动态缓存参数，不宣称相同。
+
+播放与导航
+PlaySelection::Member {query,revision,section,index,quality}：原生重新读取对应账号缓存，
+校验页面 revision，再准备完整列表；前端不能用任意 song ID 冒充会员推荐。
+VIP 每日推荐每个资源 trial_mode=41，授权体 trialMode=41；历史日推使用普通默认 -1。
+两者是有限正常队列，支持暂停/定位/切歌、模式、重启恢复；不复用 FM 的无限补曲状态机。
+榜单预览只展示服务 contentList，点击榜单/榜单歌曲使用其真实 rankingListId 歌单完整读取。
+专辑/歌单/有声书卡分别跳转既有专辑/歌单/播单详情；推荐歌曲的喜欢、评论、下载复用正式入口。
+顶部歌曲横幅按官方普通单曲入口，不将它伪装成会员每日推荐试听。
+
+公开活动与浏览器
+相对 /playlist/<id>、/album/<id> 及官方 music.163.com 歌曲/歌单/专辑/播单 URL 解析成内部动作。
+其余有效官方 HTTPS 活动链接只给前端不透明 key；原生链接表与页面内容一起参与 SHA256版本。
+open_member_link {epoch,revision,key} 重读当前账号快照，核对版本后才返回宿主可打开的 URL。
+拒绝脚本/file/自定义协议、带用户名/口令/端口或非 music.163.com 的地址；卡片没有可执行动作
+时不伪造目标。系统浏览器通过直接 argv（Linux xdg-open、macOS open、Windows explorer）启动。
+不附 Cookie，不使用 shell 插值。打开活动须用户点击；本批自动化不点击外部活动或支付操作。
+
+持久化、失败与隔离
+会员首页完整加载且公开投影校验成功后提交；失败保留上次整页并标 error。进程中断的 loading
+由既有文件锁检测恢复为 error。历史的非法日期/歌曲数据在落盘前拒绝，保留旧缓存。
+内容与链接内容变化都会更新 revision；旧页面选曲或打开旧活动返回 snapshot_changed。
+本批新增 _for 方法固定原发起 SessionToken，避免读请求在 await 后重新绑定到新账号。
+客户端最终返回继续检查代次；老账号响应不能写入新账号，前端也同时检查请求序号与账号。
+
+界面差异与仍在全目标内的缺口
+当前从恢复组件重建，未获取同版官方整窗截图，不宣称像素级一致。
+卡片支持横向滚动与键盘按钮；推荐歌曲按官方每列三首分组，数字专辑只展示前六张，
+空模块不渲染标题。历史日推隐藏首页权益大卡，保留列表可视空间。300秒目录缓存、
+保留旧内容的故障状态是显式工程选择。
+会员卡的官方权益推广/签到/礼券、动态开通按钮/购买承接、完整会员服务页还未接入；
+本版显示真实五类权益与已有内容模块，不把入口接通扩大为所有会员业务完成。
+有声书实际可播放/可下载权限由既有播客授权判断；付费、NCM/文字稿等旧边界不因卡片出现消失。
+全局设备身份/易盾/凭据刷新、完整效果链与会员音效到期宿主、同账号接续继续。
+系统浏览器启动的非 Linux 分支尚未实机验证；本批支付、领取、发信/邀请、公开发布执行数为0。
+
+本批验证（基础阶段）
+新增 core/tests/client_member.rs 6项，连同既有 member_center 4项已通过。
+新增前端5项，最新前端总计107通过。初次新测试误把 stale 缓存当成 fresh，预期调用数错误；
+修正断言为先缓存后在线读取，生产流程未为该失败修改。
+桌面 IPC 旧账号拒绝新增 member_page/member_rights/open_member_link 三条。
+真实窗口探针 member_ui_probe.rs/.js 与独立 audit_member_probe.py 已编写，尚待运行验收。
+当前真实播放通过数不能依据探针文件存在填写；运行结果随后追加。
+
+基础回归与第一轮窗口证据
+全workspace/all-targets/custom-protocol：153条suite结果、717次通过、0失败/忽略。
+其中693主测试（core681、desktop3、音频插件9）与既有示例24项。
+日志.build/member-desktop-workspace-tests.log；前端107项见member-desktop-front-tests2.log。
+严格Clippy member-desktop-clippy4.log已通过；前两次失败分别为新增token引用层级和
+桌面AppHandle缺少泛型Runtime，已修复，没有跳过检查。
+第一轮.build/ui-proof/member-20261027-a已有7阶段采集及independent-audit.json通过：
+真实7模块、9首VIP日推、两个日期各34首；权益与服务返回一致、41/-1参数和完整队列一致。
+该轮后按截图压缩历史日推首屏，并依据官方组件调整三首一列、专辑前六和空模块隐藏。
+因此a保留为早期通过，最终布局以之后的窗口采集与独立审计为准。
+
+最终桌面验收
+.build/ui-proof/member-20261027-b-final：1120×760，7阶段截图与独立审计通过。
+.build/ui-proof/member-20261027-c-small：760×540，7阶段及重开2阶段，两个独立审计通过。
+操作由生产 DOM→正式 IPC→独立 Rust→实际 libmpv 执行。主页7模块与服务顺序一致，
+VIP推荐9首完整队列，两个历史日期各34首；实际授权 trialMode=41/-1，五类权益与原始响应核对。
+下载全部只打开正确34首的弹窗并取消，数据库没有新下载任务；该轮不作为文件下载通过。
+暂停定位约12秒后重启，恢复同entry、完整34项顺序、暂停位置；继续播放使原生时钟推进。
+.build/ui-proof/member-links-20261027-a：最小窗口4阶段与独立--links审计通过，
+数字专辑、推荐歌单、有声书详情和当前推荐歌曲评论的资源ID/标题对应官方响应。
+有声书显示213集及含付费内容，未尝试支付或播放其受限节目；不据此扩大会员可播权益。
+最终共20张截图，显式远端写入0，使用真实libmpv解码和null输出，不声称声卡听感或其他OS通过。
+已人工查看正常/最小会员页、历史列表和有声书/专辑详情；小窗口图的黑色区域为Xvfb根窗口剩余区域。
+专辑暂复用已有榜单域的专辑详情页，侧栏仍选中排行榜；独立完整专辑页面仍在总目标内。
+未执行系统浏览器启动，只验证其原生URL选择、版本和旧账号拒绝，不能宣称外部活动/购买流程通过。
+
+最终日志/产物
+Rust回归 member-desktop-workspace-tests.log（717），前端 member-desktop-front-tests2.log（107）。
+严格Clippy member-desktop-clippy4.log；Rust格式 member-desktop-format-final2.log；
+前端格式 member-desktop-front-format-final2.log之后仅修改MemberPage并再次prettier写入，
+最终完整检查见member-desktop-front-format-final3.log。前端类型/构建member-desktop-front-build4.log。
+正式桌面/最终探针 member-desktop-build3.log；可执行文件 .build/target/debug/cumulus。
+实际运行member-ui-b.log、member-ui-c.log、member-ui-c-reopen.log、member-links-ui-a.log。
+源映射 member-desktop-mapping.json，文件散列索引 .build/member-desktop-progress.json。
+
+复现（在项目根目录；profile必须显式指向已有授权的PC目录）
+CARGO_INCREMENTAL=0 cargo test --locked --offline --workspace --all-targets --features custom-protocol
+(cd frontend && npm test && npm run build)
+CARGO_INCREMENTAL=0 cargo build --locked --offline -p cumulus-desktop --features custom-protocol --bin cumulus --example member_ui_probe
+CUMULUS_MEMBER_PROFILE=<existing-PC-profile> GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 LIBGL_ALWAYS_SOFTWARE=1 \
+  dbus-run-session -- xvfb-run -a -s '-screen 0 1120x760x24' /usr/bin/python3 desktop/examples/run_auth_probe.py \
+  <new-proof-root> --binary .build/target/debug/examples/member_ui_probe --stage-prefix member_ --screenshots 7 --reopen-screenshots 2 --timeout 360
+小窗口追加--small；同目录重开追加--reopen。链接场景另用新目录，加CUMULUS_MEMBER_LINKS=1、--small与--screenshots 4。
+python3 desktop/examples/audit_member_probe.py <proof-root> [--reopen|--links]
+独立审计输出用新文件创建，不覆盖原始证据；操作只读API白名单且不点击外部活动、支付或领取按钮。

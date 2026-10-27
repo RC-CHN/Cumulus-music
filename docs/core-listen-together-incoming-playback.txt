@@ -1,0 +1,83 @@
+一起听：已知队列歌曲的远端播放应用与恢复
+2026-10-26；增量实现。完整桌面目标仍 active，realtimeReady 保持 false。
+
+后续共享队列/共同权限、未知本机曲目构建与共同试听范围已继续迁移；
+本页保留接收播放阶段记录，最新边界与执行时序差异见core-listen-together-shared-queue.txt。
+
+本批范围与证据层级
+接续 core-listen-together-business-messages.txt 中已恢复的普通/批量 nim_talk 附件入口，
+将 20000 PLAY_COMMAND 接到独立 Rust 原生播放器，并为接收、失败、重启提供持久状态。
+20002 USER_JOIN_IN 在等待角色下触发权威房间/队列读取，使后续播放消息按成员身份处理。
+本批是本地 Rust 状态机、宿主、音频引擎适配器和故障测试；没有新增真实双账号或线上业务包证明。
+之前真实 SDK 验证仅收到入房通知，没有普通/批量播放附件；不能将本地注入等同真实好友同步。
+不使用 YesPlayMusic，不调用归档 Python 实现；检查脚本仅用于统计与审计。
+
+官方依据
+references/recovered-client/docs/product/models/async_listenTogetherPlayStatus.txt：
+M/3161 onRoomMsg（原模块553—644行）按 serverSeq、cmdFilter、目标曲目过滤，先 onUpdate，
+再选择歌曲、updateProgress，最后只有 PLAY/PAUSE 改变当前曲目的播放/暂停状态。
+同曲目 PROGRESS/NEXT/PREVIOUS/GOTO 不仅凭 playStatus 切换暂停状态；新曲目按 playStatus 加载。
+M/3161 onManualSeekEnd 和 cmdFilter、core/tests/fixtures/together-official.json 的22组官方对照继续沿用。
+M/75 onChatRoomMsg：先重置空闲心跳；Waiting 处理 USER_JOIN_IN；Together/TogetherOwner 处理 PLAY_COMMAND。
+成员进入原版还有共同权限、队列和提示音动作。本批仅迁移权威角色读取，其余不能算已完成。
+core/listen_together/service 的持久收件记录、原子音频请求与本机意图围栏为新客户端可靠性设计，
+不宣称官方拥有同样的事务机制。服务端序号0仍按有效序号处理，避免原JS真值判断丢失边界。
+
+正式调用链
+nim_talk 普通/批量回调 -> RoomMessage 精确附件解码 -> 账号代次/音乐roomId过滤 ->
+Together runtime -> PlayCommand::from_official -> TogetherService::receive_play_for ->
+PlaybackSync::incoming -> 持久 Pending -> Receiver -> PlaybackCommand::ApplyRemote ->
+原生播放器/授权源/时间线 -> finish_incoming_for。
+会话身份与操作锁沿用 TogetherService；Waiting 不应用播放消息；有 userId 时必须属于当前房间。
+成员未知、错误房间、非共享队列歌曲、过期/重复/回声以及非选曲命令指向其他歌曲，均不能触发音频。
+收到的 roomId 不可用控制器当前房间补写；缺 roomId 兼容问题仍保留。
+队列中同一在线ID有多个实例时，优先使用当前选中的实例，避免进度更新导致重载。
+
+原生播放器行为
+ApplyRemote 一次携带 entry_id、全曲时间秒数、暂停状态与 PlaybackFence。
+围栏由 control_revision、queue_revision、play_id 构成；读取、进度轮询和音量变化不使其失效。
+本机选曲、定位、暂停、停止等意图会使旧围栏失效；账号令牌另行检查。
+新曲目使用正常 SourceResolver 授权与 Timeline 验证，再以目标定位/暂停状态首次呈现。
+暂停切歌不先执行可播放的 Select；加载期间接受的本机暂停决定首次呈现状态。
+同曲目先验证授权时间，再在同一引擎操作内暂停（需要时）、定位和应用最终暂停状态。
+试听采用全曲时间转媒体时间；越权区间失败，不扩大源授权。引擎部分失败后停止，保留失败收件状态。
+播放位置继续进入既有持久化和 Restore 流程；不把界面进度模拟当作音频操作。
+普通加载中的 Seek 仍可能返回未加载错误；本批没有新增“加载中排队定位”能力。
+
+持久状态与恢复
+TogetherState.incoming 带 serde 默认值，可读取没有该字段的旧状态；内容为命令、接收时间和phase。
+Pending 在音频操作之前落库；成功且未被后续本机操作替代才写 Applied。
+本机更新/旧围栏导致 Superseded；音频或资源失败写 Failed；进程退出可留下 Pending。
+Applied/Superseded 是终态，同阶段重复完成幂等，不允许旧完成回调覆盖更高序号或改写终态。
+Pending/Failed 阻止队列和播放的远端写入；退出房间仍可执行，用于可靠清理。
+普通 Seek 与用户点“重新同步”使用不同的内部信号；Seek 不能隐式重试失败的远端播放。
+显式重新同步先捕获本机围栏，再只读刷新房间和共享快照；期间新的本机操作优先。
+只有当前服务端命令完全匹配持久命令、目标仍在共享列表且房间仍有同伴，才重试音频。
+命令已变化、曲目移出共享列表、角色回到Waiting，旧命令标记Superseded，不盲目重播。
+重启后保留本机房间绑定且存在未完成收件时，可显式“继续本机控制”重连并执行同样恢复。
+恢复不会重发 play/command/report。普通多成员房间附加仍受未完成共同权限/队列接线限制。
+只读快照不得回退已接收的 serverSeq，也不重置重复消息过滤计时；本机clientSeq取最大值。
+接收成功后更新 Runtime 已观察快照，防止播放器 watch 事件产生远端命令回声。
+
+接口与写入范围
+20000 接收正常应用本身不调用播放/队列写接口；音源缺缓存时使用既有播放器授权接口。
+成员进入/显式恢复：/api/listen/together/status/get，/api/listen/together/sync/playlist/get；
+卡片读取沿既有 /api/v3/song/detail。IM 重连沿 /api/middle/im/token/get。
+原本 /api/listen/together/play/command/report、sync/list/command/report 的日志与不确定写核对保留。
+若尚有不确定HTTP写入，本批接收会报告错误并暂停应用；尚未增加跨HTTP事务的持久排队收件箱。
+没有新增对外发送聊天、邀请、支付或用户资源写入；本批没有使用真实账号做新变更。
+
+验证入口
+cargo test -p cumulus-core --offline --test playback_remote --test together_protocol --test together_service --test client_together
+playback_remote：暂停首次呈现/位置重开、旧围栏无引擎副作用、加载期间本机暂停、试听坐标/部分引擎失败。
+together_service：收件跨重开/阻止写入/终态防回写、房间/作者/账号隔离与较新命令保护。
+together_protocol：旧快照不回退序号/不刷新重复过滤时间，原22组官方过滤继续通过。
+client_together::incoming_tests：模拟SDK消息经真实宿主到引擎；切歌暂停、同曲目进度不自动播放、
+重复消息不回退、没有HTTP回声；失败后本机定位不重试，显式恢复无写入；关闭宿主重开后显式附加恢复。
+完整日志、统计、源哈希、正式构建与边界见 listen-together-incoming-playback-mapping.json。
+前端文件和IPC协议没有变更；已有桌面截图不作为本批接收流程的新UI验收。
+
+继续项
+20001队列版本合并、共同可播权限、缺少本机目标时构建队列、其余成员/结束/权益/心跳/礼物事件；
+RTC、邀请/同账号接续以及新增流程的实际桌面交互验收仍需继续。
+仅双账号实时验证被用户暂排除；完整业务和其他目标领域并未因此完成。

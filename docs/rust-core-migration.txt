@@ -1,0 +1,478 @@
+Rust core 全业务迁移工作单
+2026-10-27；目标进行中，未宣告完成。
+
+范围与依据
+此前已研究的业务全部纳入。先对照官方 JS、原生请求构造和状态机，再以归档 Python/C
+实现及历史实测作为对照。不得把调用旧 Python 进程、通用 API 转发器、空接口或来源索引
+计为业务迁移完成。YesPlayMusic 仅在官方材料不足或链路受阻时参考，并单独注明。
+一起听实时双账号测试仍暂排除；单账号REST及桌面主流程已有真实验证。
+原生IM登录/入房/通知/清理与同进程重开已实测；桌面连接/重连/心跳重置及退出清理也已实测。
+本次从官方包装库纠正业务消息来源为nim_talk/msg_attach，已补普通/批量回调、类型解码及房间过滤。
+20000播放应用、本机意图优先、持久收件/显式重试与重启附加已通过本地Rust集成验证，
+20002已接权威角色读取；后续20001队列/共同权限及20011/20012权益重读、原生试听约束、
+退出清理已继续接通，见core-listen-together-shared-queue.txt。
+其余消息、RTC及其他领域继续；没有新增真实好友消息或双端同步证明。
+20008进度请求随后已补原生时钟报告、官方忽略名单对照和未决/重连保护；
+见core-listen-together-progress-request.txt。随后自动结束/房间失效/等待超时/清空的本机恢复、
+未决核对和SDK清理保护继续接通，见core-listen-together-lifecycle.txt；其余事件/RTC继续。
+原研究未通过、无权限或缺外部条件的分支保留原边界；不凭迁移改变会员权益或服务结果。
+
+代码组织
+core/src/account/     会话、凭据、独立候选与原子账号选择；login/ 分请求、挑战、状态和协调。
+core/src/identity/    clientSign组合/持久ID、设备记录与PFDW、Linux事实适配、安装范围事务及显式迁入/导出；显式Windows声明/locale转换与真实只读证明。
+core/src/watchman/    两版字节协议/公共字段、配置/HTTP、状态机/回调、事件采样、原生指纹哈希与字段转换；collection/负责设备缓存/配置/环境/计时/取消，真实WebView已对照；已接PC请求上下文与实际设备/行为报告及受保护读取，写路径和挑战继续。
+core/src/client/      独立桌面用例、DTO/公开错误、账号代次、扫码/目录、player及playlist管理桥接。
+core/src/catalog/     搜索、推荐、歌曲/专辑/歌手、资源地址等目录业务。
+core/src/playlist/    请求/快照/revision；service操作日志、单次发送、回读及重开恢复。
+core/src/membership/  权益时钟、离线判断、音质码表、会员中心与历史推荐。
+core/src/lyrics/      官方解析/响应规范化；service/ 请求/缓存/选择，files 本地来源边界。
+core/src/media/       ncm/ 编解码/导出；tags/ 元信息与容器适配；cover/integrity 校验。
+core/src/download/    naming/ 官方布局；offline/ 离线记录；transfer/ 范围传输；service/ 完整普通歌曲任务；completed/ 已完成文件及工作文件搬运；directory/ 配置/门控/整批迁移/回滚。
+core/src/library/     probe/ 媒体事实，cue/ 编码与分轨，index/ 索引/映射/解码缓存，monitor/ 监视，matching/ 元信息/接口/持久匹配任务。
+core/src/cloud/       云盘 API/分配/元数据；library/ 完整列表/删除/恢复；nos/、oss/ 对象传输/恢复；upload/ 父任务、调度、目录选择、附件、控制、编码/发布/回读。
+core/src/mv/          官方详情/权益、收藏/资源点赞、关联歌曲权限、独立媒体授权；service/cache账号缓存与版本、likes恢复日志、recommendations补充接口；下载复用download/service/mv。
+core/src/podcast/     播客/有声书列表、节目详情/权限、发现/历史读取；收藏/点赞/续播开关持久操作；source与download/service/voice接实际音频。
+core/src/comments/    资源/查询/官方响应；api读取/定位/信息/点赞，likes日志/核对，writes纯文本发布/回复/删除及恢复，floor楼层；service/cache账号缓存与版本。
+core/src/protocol/    传输契约、请求上下文、分页、wire/ 协议与 http/ 适配。
+core/src/storage/     SQLite 事务和账号命名空间。
+core/src/effects/     api/catalog/rights、service材料库、authorization登记/停止；ncae/material/compose/dsp；equalizer与core/audio-filter已接MpvEngine实际GEQ及账号设置/actor/IPC/桌面均衡器；整图与其他音效UI继续。
+core/src/playback/    队列/时间线；engine/安全libmpv适配、source/授权缓存、controller/持久化控制器。
+protocol/wire/       serialization、crypto、eapi、weapi、aegis 分文件组织纯协议。
+core/src/listen_together/ 房间/队列/指令过滤；service/ 持久操作、只读核对、账号隔离和定时入口。
+后续 relay/ 等
+在有实际实现时创建。每个业务域分 API 契约、状态/用例、适配及测试，避免巨型全能模块。
+Application 负责装配。业务域不依赖 Tauri、WebView 或桌面平台；desktop 只作宿主和桥接。
+网络 await 不持有状态锁；阻塞数据库/文件工作由应用调度层安排，不能放在 UI 线程。
+公开到前端的 DTO 单独设计，不能直接暴露协议 Value、Cookie、挑战原文或完整授权 URL。
+
+验收分层
+S 来源核对：标出官方模块/原生地址、归档文件与差异。
+L 本地通过：Rust 故障/状态/持久化/对照测试通过。
+I 集成通过：实际 HTTP、引擎或文件管线通过，记录所用平台及条件。
+R 服务通过：真实服务读取/隔离可逆写入通过，清理与回读完成。
+单项可能仅达到 S/L；只有明确标注的 I/R 才表示真实流程通过。
+历史 Python 202 项测试和旧线上证据只作来源，不混入 Rust 通过数。
+
+逐项迁移地图（旧文件均位于 references/recovered-client/）
+领域             旧实现/专项证据                               当前 Rust 状态与剩余
+存储             cumulus_core/storage.py                       S/L；事务、重开、隔离；更高层任务待接入
+账号会话         session.py / 产品报告01、22                     S/L；代次、过期、候选提交；恢复旧会话真实身份读取已通过；保存账号/切换/退出/移除和账号事件已接桌面，模拟服务窗口与凭据清理恢复见desktop-login-contracts.txt、desktop-saved-account-removal.txt
+二维码           session.py / page_loginQrcode                 S/L；码状态/挑战/取消及身份核验、候选提交；新扫码尚未重测
+密码/SMS/2FA     auth.py / 报告22                              S/L；候选隔离、密码/SMS参数、显式挑战、冷却和只读恢复；桌面邮件/SMS/安全邮箱/问题验证与remember重启已通过模拟服务窗口；真实线上挑战及SDK仍未通过
+凭据/刷新        login_refresh.py,profiles.py,session_files.py  凭据/独立候选/原子选择 S/L；旧 PC 会话导入 I/R；JSK/退出/重开恢复 S/L，真实续期缺刷新凭证
+协议签名         netease_protocol.py,netease_account_probe.py   S/L：协议和HTTP；真实EAPI读写/WEAPI设置写 I/R；XEAPI原未通过
+请求上下文       request_context.py / 官方M/402                 S/L；44组官方对照；SDK provider 仍待迁移
+身份/设备        identity.py,netease_device_identity.py         组合/派生/设备文件/Linux适配/事务与候选接线 S/L/I/R；真实PC只读和正式桌面启动通过。Windows/macOS采集及官方双文件未知键边界见core-device-identity-contracts.txt
+易盾             netease_watchman*.py / 报告10                  文本/nonce/报文/token、86字段、设备缓存/事务与回调 S/L；独立Rust离线工具/新SQLite重开 I。配置/HTTP、定时/并发协调与provider接口已新增，详见core-watchman-runtime-contracts.txt；事件采样/真实WebView桥已有官方对照和本机输入证明，见core-watchman-events-contracts.txt；后续完整采集、PC配置/请求上下文、实际设备/行为报告及本人歌单受保护读取通过；见core-pc-request-context-contracts.txt，原受阻写接口仍须验证
+歌单             api.py,resources.py / 报告16、17、27、30        创建/编辑/增删/重排/清空/删除/列表排序/收藏 S/L/R；桌面主流程 I/R；封面选图/裁剪/上传/绑定与恢复已完成独立Rust及正式UI真实隔离往返、最小窗口及进程重开；本地条目及组合联动继续，见core-playlist-cover-contracts.txt
+内容/搜索        api.py / 报告02、28、官方M400/3139/3140        搜索/推荐与排行榜/专辑基础读取 S/L/I/R；榜单及私人FM播放/减少恢复推荐/歌手屏蔽已接真实桌面往返；熟悉歌曲/专区FM已接真实读取、播放与恢复；场景FM已接独立Rust/桌面与真实读取播放，详见desktop-scene-fm-contracts.txt；其余发现/专辑歌手模型动作继续
+账号收藏/设置    api.py,resources.py / 报告17、30                S/L/R；喜欢/专辑/歌手/通知设置操作日志、回读、重开及往返通过；其他收藏/联动待迁移
+会员             membership.py,member_center.py / 报告21        权益时钟/离线策略/会员中心/历史 S/L/R；普通歌曲下载/播放实际音质与下载离线联动通过；会员中心/历史日推已接真实桌面及完整播放恢复；签到/动态开通等会员服务继续，见desktop-member-contracts.txt
+队列             queue.py / playing、dbPlayingList              S/L/I/R；四模式、稳定entry、冲突/持久化；桌面完整队列/虚拟列表/排序/移除
+播放器           player.py,source.py,prefetch.py,timeline.py     S/L/I/R；libmpv、账号隔离、源缓存/刷新/预取/恢复及真实CDN/NCM控制通过；桌面播放条/Channel已接入；特殊媒体源/系统媒体控制待完成
+歌词             lyrics.py / 官方M/370、21、3081                解析/规范化/缓存/切歌/偏移/sidecar S/L，7项读取 R；桌面行/词时钟和偏移已接入；内嵌标签来源仍待联动
+本地库           library.py,library_monitor.py / 报告18、22      探测/CUE/增量索引/映射/解码缓存/监视 S/L/I；独立库页、游客播放、四视图及线上匹配已接并实测；标签封面编辑/批量操作继续
+NCM/离线         netease_ncm.py,offline.py / 报告12、21          编解码/写入/CRC/导出 S/L/I；真实授权NCM/会员/完整性和下载原子登记 I/R；本地NCM实际播放器通过；下载完成页及独立本地库已接本地播放
+下载             download.py,download_service.py / 报告20、21、29 普通歌曲/云盘原文件/MV原生完整授权/续传/发布恢复 S/L/I/R；桌面下载/本地播放 I/R；MV文件/目录联动 I/R；免费播客下载/离线及桌面已验证，节目NCM/付费等分支继续
+下载组织/标签    download_paths.py,tags.py / 报告20、21         官方命名/三格式标签/封面 S/L/I；真实FLAC标签/LRC/最终发布联动 I/R；桌面设置与任务页面已接入并实测
+文件/目录管理    completed_downloads.py,download_directory*.py  单文件移动/改名/删除/忘记、跨盘/恢复/多索引/原生播放 S/L/I；目录配置/批量迁移/工作文件/逆序回滚 S/L/I；桌面改名/目录迁移/删除 I/R，完成项批量变更UI待接
+云盘列表/删除    api.py / 官方M/3023、3100、3127/报告15、29    完整分页/容量/稳定版本/分批删除/未知写只读核对 S/L；官方五态/三态与中文/V8排序 S/L/I；桌面49条读取/筛选/17次排序、完整队列实际播放 I/R；见desktop-cloud-contracts.txt与core-cloud-order-contracts.txt
+NOS 上传         upload.py / 报告15                            对象传输/续期/断点/控制/未知写持久恢复 S/L/I/R；真实隔离音频/封面上传和原对象续期/重开通过
+云盘父任务       cloud.py / 报告15、24、官方M/3127            校验/channel分派/附件/编码/发布/回读/未知写对账 S/L；NOS音频封面全流程 I/R；持久调度/暂停重开/目录/配额 S/L；已接桌面，UI上传实测见desktop-cloud-contracts.txt；OSS线上仍未获得
+OSS 上传         oss_upload.py / 报告23、官方OSS SDK          V1签名25组/CRC64 11组对照、3路分片、重开核对、已知ID中止、同对象STS替换 S/L/I；真实channel=3未获得，自动STS续期接口未恢复
+云盘附件         cloud_attachments.py / 报告24                 三类输入/分配/上传/docId绑定/恢复 S/L；封面 I/R且列表coverId匹配；文本docId/yyimgs失败边界保留，LRC/CUE没有新线上通过证据
+播客/有声书      content/voice 探针与报告28、30                 原生列表/分页/权限/实际播放下载 I/R；三类写入恢复 S/L；桌面/本地断点已实现，实测与其他分支见desktop-podcast-contracts.txt
+MV/视频          官方M/21、232、334、754、3158与报告29         详情/收藏/资源点赞/关联歌曲/授权/下载/文件管理/真实画面/恢复 S/L/I/R；正式IPC/页面/本地播放/收藏与赞往返 I/R；共享评论读/赞已接；相似MV补充接口 I/R；发现/云贝等继续，见desktop-mv-contracts.txt与core-mv-social-contracts.txt
+评论             官方M/21、438、232、15与探针/报告32             五类资源读/热评/翻页/定位/赞 S/L/I/R；歌曲/歌单/MV界面及恢复已接；纯文本发布/回复/删除有Rust与合成服务界面验证，楼层两页27条真实只读与缓存独立审计通过；窗口恢复验收与富文本边界见core-comment-write-contracts.txt
+同账号接续       relay 探针/oracle与报告31                      待迁移；M/401与M/15；原线上 enable=false
+一起听           报告06、官方async_listenTogether*模型           S/L/I/R；单账号REST/原生IM生命周期与桌面真实验证；播放消息、共享队列/共同试听及恢复已通过本地集成/窗口夹具；其余事件/RTC/接续继续，见core-listen-together-shared-queue.txt
+音效容器/材料    ncae/peq/spatial Python、compose oracle        NCAE/片段/组合S/L/I；目录/参数材料S/L/I/R，512组判断、6份材料；授权登记/停止及回收读取S/L/R，21个官方请求、一次真实非试用往返；见core-effects-library.txt与core-effects-authorization.txt；设置恢复/到期宿主接线、逐歌/设备/模型、播放器/UI继续
+DSP              netease_dsp.c,multiband.c,rotate.c / 34..38    滤波/GEQ/BT/九槽PEQ/旋转/单声道动态安全FFI已迁移；194组新对照/原始资产71流/6次NCAE渲染及全量556通过，见core-effects-spatial.txt；参数组合/播放器/UI继续，完整SE/效果图原未恢复
+其余业务模型     docs/product/models/ 与 api-catalog            待逐动作核对；社交、FM、历史、更新等，不因无Python类漏掉
+桌面整合         旧工作单 DESKTOP                              Tauri/Vue与独立core分层，主要媒体/账号业务有实际窗口证据；剩余业务页、完整官方视觉对照、托盘/系统媒体键及Windows/macOS构建实测继续
+
+NOS传输批次验收：16项状态恢复+2项实际回环HTTP测试；当时workspace共277项通过，
+格式与全workspace/all-targets/custom-protocol Clippy通过。
+完整对象上传契约和未完成的云盘上层边界见core-nos-upload-contracts.txt。
+随后云盘父任务新增12项专项及真实NOS音频/封面全流程证明；最新总数见rust-core-validation.txt。
+OSS再新增8项协议、2项实际HTTP、11项状态与8项父任务整合；归档39符号映射见
+cloud-oss-mapping.json，详细协议与边界见core-oss-upload-contracts.txt。真实OSS通道仍未获得。
+下文按时间保留的旧通过数与基线不应当作最新总数。
+
+来源索引
+docs/migration-source-index.json 包含 259 个归档实现/报告/模型文件及 SHA256，索引 825 个
+Python 符号（含探针和测试辅助符号，不当成功能数）。更新状态仍需阅读实现与对应官方材料。
+core/tests/fixtures/provenance.json 记录合成 SQLite 和官方 M/402 对照样本来源。
+
+当前证据
+基础、业务契约、队列/时间线与协议测试结果见 rust-core-validation.txt。
+直接执行官方 M/402 44 组样本揭示旧 Python startswith('batch') 过宽：官方用 substr(0,6)
+与五字符 'batch' 比较，仅精确 batch 能通过该分支。Rust 按官方修正，归档原文件未改。
+SQLite 样本由原 Python StateStore 写出，仅包含虚构账号101的测试数据；Rust 实际读回。
+另有 47 组旧 API 契约、21 个旧队列迁移步骤、8 组官方 M/110 回调、6 组官方 M/48
+序列化样本及独立 Node/OpenSSL 验证的协议向量。样本均为合成数据，不读取真实 Cookie。
+M/48 对数字和整数键按 JS 规则处理；M/402 按 UTF-16 键比较排序，空数组也是真值。
+这些边界按官方行为补齐，不继承 Python 的浮点文本、字典遍历和空列表真假值差异。
+新 Rust 已独立完成14项真实只读检查，证据 .build/rust-live-read-report.json：
+身份、会员、77歌单、3052喜欢、14收藏专辑、219收藏歌手、设置、49云盘条目、
+搜索、每日推荐、3052首歌单详情（无缺失）、LRC/YRC、无损播放与无损下载资源。
+上述14项资源 URL 检查不代表播放器/完整下载管线已迁移；后续原始媒体实测见下文。
+这14项检查没有扫码、发短信或写远端资源。
+会话由调用者显式导入到新的私有目录，原 Cookie 文件哈希未变、作用域未扩大。
+官方M/363的3组登录参数和M/1368的14组签名/模型编码已冻结对照。
+HTTP 不跟随重定向、不自动重试或失败后换协议；响应正文中断仍保存有效 Cookie，
+后续只能显式回读身份。JSK的刷新凭证仅从已确认登录/刷新响应保存。
+
+原始媒体传输补充
+core/examples/transfer_read.rs 使用现有PC会话分别取两首 download/url/v1 授权，
+暂停在65537字节，重开SQLite，重新取授权并确认同MD5/长度后从65537续传，HTTP 206。
+两首FLAC共69556575字节，MD5与授权一致，SHA256重读一致；独立FFmpeg完整解码通过。
+证据 .build/rust-transfer-read-report.json、.build/rust-transfer-decode-report.json。
+这份传输报告只证明底层；后续完整普通歌曲联动已另行验证，见下文。
+详细状态、故障恢复和平台边界见 core-transfer-contracts.txt。
+
+完整普通歌曲下载补充
+新增service与恢复测试17项，workspace合计179项；真实两首FLAC与一个NCM输出，
+完整授权、暂停/重开、三路调度、标签封面/LRC、会员离线登记及清理3/3通过。
+独立检查PCM不变、注释可解密、NCM可由参考C++解码器还原；没有远端写入。
+详见 core-download-service-contracts.txt 与 .build/rust-download-report.json、
+.build/rust-download-independent-report.json。文件管理/目录迁移及其他媒体分支仍继续迁移。
+
+扩展目标
+用户现已将官方桌面端风格UI和真实桌面业务联通纳入目标，详见 full-desktop-goal.txt。
+此工作单继续追踪core，不以其完成代替新目标的页面/IPC/实际音频与桌面交互验收。
+
+桌面账号与目录浏览（新增）
+已完成client/用例与正式Tauri命令注册、真实Vue页面；官方CSS sourcemap新增恢复830
+源文件，布局优先依据官方Header/left/TrackViewer/PlayBar。实际Tauri窗口验证账号恢复、
+推荐、77歌单、红心歌单3052总数/200行分页/虚拟滚动、搜索、生成二维码/取消保留原会话。
+喜欢写入使用账号epoch与原生Token、持久化对账；合成核心和真实IPC边界测试覆盖。
+首次浏览验收尚无播放控制；后续已接入真实播放/队列/歌词，见文末新增记录。其他大范围继续。
+来源、接口、UI差异、截图与复现说明见ui-desktop-contracts.txt。
+
+原生播放控制（2026-10-26新增）
+source新增6项、controller新增11项测试；workspace合计200项通过，Clippy无警告。
+libmpv真实4秒WAV在null和实际PipeWire输出均验证控制/CUE末尾/取消，系统输出保持静音。
+当前PC账号两首实际CDN歌曲完成lossless播放、暂停/定位/变速/切歌、standard音质切换、
+显式授权刷新；销毁重建控制器恢复15秒保持暂停，既有NCM解码后实际播放也通过。
+报告.build/rust-playback-report.json；接口、来源、故障边界及复现见core-playback-contracts.txt。
+这次核心媒体检查没有远端资源写入，当时尚未接UI；后续桌面接入与验收单独记录。
+
+
+桌面播放、队列与歌词（2026-10-26新增）
+client/player分选歌/DTO/歌词与生命周期；8项正式IPC和Channel连接Vue usePlayer与三个组件。
+完整歌单读取trackIds核对revision后分批补歌，不以页面100项冒充完整队列；账号代次、
+推送revision、队列revision、歌词playId都在对应边界校验，前端不持有授权URL。
+真实Tauri窗口1120×760及760×540完成账号恢复/浏览/搜索/二维码取消后保留账号，
+完整3052队列实际播放、暂停/定位/变速/音质/切歌/停止，排序/移除回读后3051项。
+正常人声歌词38行/294个计时词、点击定位/翻译开关/偏移恢复；最小窗口额外验证填色
+随实际原生进度改变。实际音质降级standard明确展示，没有按lossless请求值宣称无损。
+core202、desktop3共205项Rust测试，前端9项；Clippy、格式、前端生产构建和打包bin通过。
+UI证据.build/ui-proof/player-4、player-6-small；早期失败亦保留，原因和修复详见
+桌面专项desktop-player-contracts.txt。其他业务继续迁移，不将本批当作完整目标完成。
+
+歌单管理与真实桌面写入（2026-10-26新增）
+playlist新增账号隔离的持久化服务：完整before/revision、写前日志、一次发送、按动作回读。
+未知结果阻止冲突写入，重开/取消后只读核对；batch三字段部分成功保留实际值和子code。
+创建、字段编辑、增删歌曲、完整重排、清空、删除、列表排序、收藏/取消收藏完成Rust实测。
+首次发现op=update([])只排序不清空，保留失败记录并修正Clear为完整ID的del/imme请求；
+隔离资源清理报告证明原77歌单及完整顺序恢复。最终独立Rust往返13项全部通过。
+client/playlist公开类型与6项IPC已接入表单、真实分类标签、歌曲菜单、收藏、组排序、
+打开歌单链接和操作核对。新建默认私密；真实公开动作未自动执行。
+正常1120×760与最小760×540窗口完成真实表单创建/编辑/标签/加歌/重排/移除/清空/删除，
+各次临时资源均清理。最小窗口的头部挤压已修正，最终列表123px可完整显示两行。
+新增14项核心、4项前端测试；当前Rust219项（core216、desktop3），前端13项通过。
+格式、Clippy、前端类型/生产构建与打包桌面构建通过。
+证据.build/rust-playlist-final-report.json、rust-playlist-cleanup-report.json、
+.build/ui-proof/playlist-1、playlist-2-small、playlist-3-small；详细接口/状态机见core-playlist-contracts.txt。
+封面仅完成已上传docId绑定的合成契约，上传/裁剪/真实换封面仍待迁移；公开仅本地验证。
+v=-1本地匹配、needFav收藏后排序组合、官方播放联动及完整菜单交互仍继续，不遗漏这些分支。
+
+已完成下载文件管理（2026-10-26新增）
+独立completed模块迁移移动/同目录改名/实体删除/仅移除记录，公开结果不含原始任务授权。
+账号与显式离线命名空间、跨进程锁、准备/提交/清理/取消日志和同盘/EXDEV复制路径已实现。
+下载任务、离线登记、本地库、各账号映射、CUE失效、持久化队列在一次事务内联动更新。
+未知文件/已编辑原文件/父目录替换/同内容外来目标均拒绝；提交后替代物保留。
+新增16项核心测试；真实8次子进程退出恢复、自制WAV跨实际设备、libmpv暂停位置与删除
+后续条目联动通过，全部自建媒体/歌词清理，没有网络请求。当前代码仍需整目录协调与桌面接入。
+详细来源/API/阶段、失败证据和可执行入口见core-completed-files-contracts.txt。
+最终证据.build/rust-file-management-final-report.json：8个进程退出检查点、实际跨盘、
+播放位置1.808321→1.808312秒、删除后暂停与资源清理通过；本轮无网络请求。
+当前235项Rust测试（core232、desktop3）、Clippy和桌面打包前端bin构建通过。
+
+下载目录迁移补充（2026-10-26）
+官方M/3022相对路径搬运、M/3097目录/空间检查及报告26已迁移到download/directory。
+CompletedDownloads增加内部工作任务搬运与固定子操作ID，保留raw/part、prepared/输出、
+lyric/LRC身份组；创建/调度/传输遵守账号迁移门控。没有额外服务端API或线上请求。
+15项专项测试覆盖暂停、用户意图、工作文件、发布回执丢失、歌词恢复、空间/目录/账号冲突、
+正向及逆序恢复。真实跨盘12次exit(73)后恢复，10次继续/2次撤销，每次3任务；
+部分下载均保留Range=123457，3,072,044字节WAV与LRC校验、ffprobe 16秒PCM通过并清理。
+证据 .build/rust-directory-final-report.json，全部ok；可执行example为download_directory_roundtrip。
+详见core-download-directory-contracts.txt。该结果不代表下载/设置/文件桌面入口已完成。
+
+单曲下载的桌面用例迁移（2026-10-26新增）
+client/downloads按DTO/命令/任务/投影拆分，独立于Tauri；三路调度跟随原生账号生命周期。
+五个正式IPC接入Vue下载列表、设置、选曲入口、文件管理及目录迁移/恢复。
+实例绑定原SessionToken解决同UID重新登录复用旧服务问题；completed_ms记录真实发布时间。
+本地下载选歌逐次校验文件/离线权益；Forget保留私有队列事实，文件被修改时不能继续播放。
+9项新增核心用例测试含103项跨页面取消及所有临时目录清理、迟到代次、部分失败与真实文件操作。
+新增4项前端竞态测试；原有桌面IPC测试扩大覆盖五个注册命令的代次拒绝。
+正常Tauri窗口通过真实下载/暂停续传、FLAC+封面/LRC、libmpv/null播放/暂停/定位、重命名、
+目录迁移、搜索、实体删除和队列清理。源接口/行为/状态与UI差异见desktop-download-contracts.txt。
+声音/MV、批量完成文件变更、缓存设置和按权益动态筛选等仍列明待继续，不据单曲流程完成全目标。
+
+MV 原生业务（2026-10-26新增）
+独立mv API/模型/账号缓存/检查点、完整收藏分页与AccountResources未决写恢复已迁移。
+DownloadOrigin::Mv复用原任务状态机，MP4原字节、断点/重开/重授权、离线与文件管理完成。
+真实240P 19837027字节全文件音视频解码、暂停131071后单次授权续传、暂停定位10秒、
+检查点重开及改名/移动/删除通过；临时收藏撤销后原17项及顺序保留，云贝消费0。
+新增12项测试，workspace370项通过；前端23项。正式MV页面、可见视频与剩余动作未完成。
+详见core-mv-contracts.txt、mv-core-mapping.json、.build/mv-native-20261026-a/report.json。
+
+MV 原生视频与恢复（2026-10-26新增）
+VideoController、VideoEngine、libmpv软件渲染和有界RGBA帧源已迁移，无Tauri或Python依赖。
+真实账号240P→480P流式画面、暂停定位40秒、保持暂停切换清晰度、继续播放及控制器重建
+从40.6秒恢复均通过；源授权不进入前端。真实帧已查看，音频输出为null，未作为桌面验收。
+新增8项状态/竞态/离线/持久化故障测试；workspace378项通过，最终Clippy修复后专项8项再通过。
+自制视频验证首帧、奇数宽度stride、最大画布和5次销毁；发布构建1080画布短样本约28.96fps，
+该性能不包含IPC/Canvas，也不证明长期流畅。MusicClient焦点、MV页面及正式窗口验证继续。
+详细契约core-mv-video-contracts.txt；映射mv-video-mapping.json；原生报告.build/mv-video-native-20261026-b。
+
+MV 桌面（2026-10-26新增）
+独立client/mv用例、七个桌面命令和二进制RGBA帧接入Vue收藏、详情、画布、控制、全屏/小窗。
+MusicClient原生媒体所有权阻止迟到加载再次出声；跨账号设备释放有确认且保留取消后的责任。
+正常1120×760及最小760×540窗口验证真实240P/480P画面、暂停定位20秒、音量27/速度1.25、
+清晰度切换、全屏/小窗和歌曲/视频双向互斥；正常窗口完成MP4下载、本地播放及实体删除。
+独立窗口收藏新增再撤销通过，原17项及顺序恢复。测试新增6项core、6项frontend；
+workspace384项、前端29项通过。来源/接口/恢复/验收及未覆盖分支见desktop-mv-contracts.txt。
+MV点赞/评论/推荐/云贝、普通非MV视频等仍继续，不以基础MV流程替代完整目标。
+
+MV本地文件操作联动（2026-10-26新增）
+独立Rust下载任务租约与视频源关联已接入；文件工作线程等待原生解码器销毁，目录整批
+提交或回滚后才恢复最终路径。等候期间暂停、停止、换视频/账号均有明确状态及取消责任。
+新增8项故障/并发/持久化测试；真实窗口验证播放中改名、暂停时移动、播放中目录迁移、
+删除当前视频后自动停止，测试文件已全部清理。全量392项Rust、29项前端通过。
+契约core-mv-local-files-contracts.txt；实测.build/ui-proof/mv-20261026-f-local；
+来源及证据映射mv-desktop-mapping.json。仍不代表剩余MV和全桌面目标完成。
+
+通用评论读取/点赞与桌面（2026-10-26新增）
+按M/21、438、232、15迁移线程/分页/定位/信息请求；原生点赞先记日志，只发送一次，
+两次定点liked确认、未知结果只读核对；账号隔离、Future中止、跨实例锁和重开恢复已覆盖。
+缓存按资源与完整查询隔离，写入版本拒绝早发晚到的列表；确认与所有匹配缓存同事务提交。
+已接歌曲更多/当前播放歌曲、歌单和MV入口，最新/热门、上一页/下一页、引用/编号定位、
+点赞/撤销、缓存与未决状态；当前播放歌曲按钮已实现，真实探针使用歌曲更多入口。
+五类资源读取与一条原未点赞评论的新增/撤销通过；正常窗口8截图、最终小窗口6截图。
+独立重新运行最终Rust恢复程序，两次证明均连续两读liked=false，没有公开内容写入。
+累计405项Rust、35项前端，Clippy/格式/前端/正式桌面构建通过；正式IPC44个。
+详细来源/接口/状态与验证见core-comments-contracts.txt、comments-mapping.json；
+发布/回复/删除/楼层/装饰等及其他业务继续，整个full-desktop-goal未完成。
+
+MV资源点赞、关联歌曲和相似MV（2026-10-26新增）
+资源点赞与评论点赞分离，单次发送、两次标记回读确认、未知写只读核对、账号/锁/事务恢复。
+元数据版本阻止早发晚到的详情覆盖确认结果；关联歌曲按官方缺权限条件补读。
+核心重新验证MV与歌曲关联，再通过统一焦点播放；已有当前歌曲恢复原队列/位置，界面打开歌词。
+恢复材料未找到相似MV请求，按授权补充参考YesPlayMusic与归档API-Reborn，仅使用接口事实。
+真实原生读到1首关联歌曲/权限和5项推荐，资源点赞往返恢复；正常窗口6截图、小窗口4截图。
+正式GUI验证同条目/20秒位置恢复、歌词、音视频互斥、推荐卡片导航；小窗口无远端写入。
+累计417项Rust（414 core、3 desktop）、39项前端，全量Clippy/格式/前端与桌面构建通过。
+来源/接口/恢复/差异及未完成分支见core-mv-social-contracts.txt、mv-social-mapping.json。
+
+本地音乐库桌面与游客播放补完进度（2026-10-26）
+新增library/catalog、client/local与正式本地页面；本地监视随桌面启动，提供进度、暂停/恢复和持久根。
+官方M/461、M/2304与恢复LocalMusic页面优先：四类视图、排序搜索、分页和完整队列；没有新增YesPlayMusic来源。
+游客也可离线播放，队列与账号分开；本地侧车歌词与CUE时钟、偏移、源变化/重开已接入。
+真实窗口用生成媒体经过原生选择器导入，CUE/NCM/libmpv播放和约12秒暂停恢复通过。
+正常窗口5张流程截图、最小窗口重开2张；后续像素/DOM复核排除了此前误判的侧栏绘制缺失，
+未修改产品CSS，追加证据见.build/shell-layout-audit.json及rust-core-validation.txt。
+421项Rust和43项前端通过，最终定向回归、Clippy、格式、构建通过，50个正式IPC。
+详见desktop-local-library-contracts.txt、local-library-desktop-mapping.json、rust-core-validation.txt。
+本地域线上匹配、标签/封面、文件批量管理等以及其余全业务仍继续，不将此批当作完整目标完成。
+
+本地音乐线上匹配补完进度（2026-10-26）
+依据M/23、M/15、M/171、M/2304，实现文件元信息优先与50首一批的官方匹配字段，39组直接执行官方JS对照。
+账号隔离、版本关联、暂停/取消/重试、源变化、事务失败、重开恢复和人工操作互斥均落地。
+正式页面新增匹配进度与人工搜索/绑定/解除/线上评论；关联保持实际本地队列，不偷偷换线上音源。
+真实原生a/b保留不可检索原曲的空结果；c用当前搜索样本自动匹配3首，人工操作和文件哈希核验通过。
+正式窗口d正常6截图、小窗口重开2截图通过，远端资源修改0。433项Rust、48项前端，52个正式命令。
+详见desktop-local-matching-contracts.txt、local-matching-mapping.json和rust-core-validation.txt。
+本地标签/封面/批量文件与其余全目标分支仍继续，本批不代表完整客户端完成。
+
+播客/有声书原生业务（2026-10-26新增）
+新增独立podcast领域，迁移官方两套收藏分页、喜欢声音、分类/发现/历史读取、节目详情与独立权限。
+播放缓存区分节目和主音频，普通音频下载复用真实授权/重授权/断点/标签封面/离线/文件管理；
+收藏、点赞和续播开关有持久日志、双次确认、未知只读核对及账号隔离，本批仅本地故障验证。
+真实免费节目原生播放、131071字节暂停后重建服务、2953343字节原媒体、184.52秒完整解码、
+离线/改名/移动/删除通过；3播客原顺序不变、远端修改0。level=null的节目授权按实际br归一。
+450项Rust、48项前端通过；52个正式IPC不增加，本批不声称播客桌面UI已经可用。
+详细15项映射与边界见podcast-mapping.json、core-podcast-contracts.txt；原生写入往返、页面、
+完整队列/续播播放器、跳过区间、节目NCM/文字稿、付费样本等继续，完整目标保持active。
+
+播客桌面和节目断点（2026-10-26追加）
+新增3条正式IPC（累计55），PodcastPage/usePodcasts、完整快照和写入代次失效、
+单集身份贯穿队列/播放条/评论/下载、M/308续播起点和账号本地断点事务。
+全workspace Rust455项、前端53项通过；真实桌面证据与剩余边界见desktop-podcast-contracts.txt。
+原生真实写入、付费/有声书样本、节目NCM/文字稿、智能跳过和历史上传继续推进；目标未完成。
+
+播客真实变更与恢复（2026-10-26追加）
+新增播客编号/官方链接入口，生产PodcastService及界面完成真实收藏/单集点赞/续播设置往返，
+并验证服务端点赞成功后丢客户端回包时只读核对、不重复点赞。两批合计12次隔离写入，
+原收藏/喜欢ID及顺序和续播设置全部恢复，未决0。详见desktop-podcast-mutations-contracts.txt。
+该三类变更从S/L提升至I/R；其余原完整目标边界仍保留。
+
+十段均衡器真实播放增量（2026-10-26）
+新增core/audio-filter原生LADSPA插件、独立EqualizerHost及MpvEngine实际af链。
+三种采样率/声道合计716217个实际输出float32与恢复C直接渲染逐字节一致；
+热调/开关/定位/换曲/移除通过；配置隔离、错误隔离、关闭时首块原声已测。
+主测试598项（core587/desktop3/插件8），all-targets包含既有示例24项共622。
+不是完整音效已接桌面；账号设置/actor/IPC/UI、其他DSP与完整图仍继续。
+异常NaN文件在mpv进入本插件前被规范化的结论是基于输出和计数的推断，
+播放器错误上报未由该样本触发；不把此分支记为实测通过。
+来源/运行/测试/平台边界见core-equalizer-playback.txt及equalizer-playback-mapping.json。
+
+私人FM领域与反馈恢复（2026-10-27新增）
+新增core/fm按API/类型/队列/服务/skip反馈/trash恢复拆分，缺失草稿模块已补齐，源码可构建。
+官方M1384/M244/M21/M15/M32/M310/M3155优先；183组直接执行原JS的补队列/去重/选曲对照。
+实现默认/FAMILIAR来源隔离、权益/时间缓存、保留旧队列追加、十首历史、耗尽/过滤、单曲循环，
+手动skip原生时钟和原子Prepared日志、最多发送一次、未知不重放、减少/恢复推荐的完整回读，
+以及账号代次、跨实例锁、事务失败、Future中止和只读恢复。尚未接实际FM播放器与桌面。
+真实只读发现服务count=0却返回23首，改为沿页号/游标读取到空页并重读首页；原始计数独立保留。
+.build/private-fm-read-20261027-c：3首推荐/alg、23首减少推荐、6首歌曲黑名单、3个原因、
+重开缓存相等且无网络；独立只读SQLite/原始分页审计通过。a/b失败证据保留，没有远端反馈写入。
+新增15项Rust（1项官方样本测试内含183组、14项场景），全workspace/all-targets/custom-protocol
+671次通过、0失败/忽略；格式、严格Clippy、桌面构建通过。前端未改、未新增GUI证据。
+详见core-fm-contracts.txt、fm-core-mapping.json、rust-core-validation.txt；播放器/IPC/UI、
+屏蔽歌手、其他FM场景和真实反馈往返继续，完整目标保持active。
+
+私人FM播放器与桌面（2026-10-27新增）
+FM原生协调器已接正式播放器、DTO/IPC、私人漫游页及减少推荐列表。保留原普通队列/位置，
+trialMode36、手动skip调度、EOF自动续曲、单曲循环、队列恢复/切号/本机意图竞争均已接通。
+空FM仍可退出，普通选曲原子清理旧FM状态，本地文件移动同步更新备份队列。
+正常窗口9步、最小窗口9步及最小窗口重启3步真实通过，共21截图；原生阶段/SQLite独立审计通过。
+实际libmpv/null验证FM播放、循环不换歌曲、自然续曲、12秒原队列恢复及14秒FM暂停重启恢复。
+列表勾选跨轮询保持；未发送真实skip/trash/restore，真实反馈往返不能从本次通过推导。
+全workspace/all-targets/custom-protocol683项、前端89项通过，格式/Clippy/构建通过。
+完整调用顺序/失败恢复/复跑见desktop-fm-contracts.txt，来源映射见fm-core-mapping.json；
+屏蔽歌手、原因选择、更多模式及其他完整目标缺口继续，goal仍active。
+
+私人FM原因与歌手屏蔽（2026-10-27新增）
+官方原因接口/分类、歌曲减少→可选歌手屏蔽→继续播放顺序已迁入独立Rust/正式IPC/页面。
+明确修复官方点击回调把事件当作原因对象的问题；固定原因不额外发明请求字段。
+歌手独立写入日志与歌曲意图关联、部分失败/只读核对/显式拒绝重试/账号隔离已接通。
+真实正常和最小窗口各五步往返通过，后者人为吞掉真实200歌手回包验证不重发；
+两轮各四次限定写入，完整trash/歌曲黑名单/歌手黑名单均恢复到原始基线，独立审计通过。
+本批未触发手动skip，不能把这次反馈成功概括成所有反馈接口已线上验证。
+完整说明、证据和可复跑恢复入口见desktop-fm-feedback-contracts.txt；更多FM模式及其他领域继续。
+
+熟悉歌曲、专区漫游与模式目录（2026-10-27新增）
+独立fm/discovery按官方首页/专区链路恢复卡片、40专区导航与子分类，失败回退默认页。
+FAMILIAR真实入口使用JSON数组字符串，已修复单ID校验；专区推荐引用补歌曲详情/权限，
+不重复补短批，详情默认trialMode=-1，播放默认121。不同种子/专区的队列和账号缓存隔离。
+正式IPC、模式卡片/前5专区+更多、预览/播放分离与实际来源跟随已接通；旧页面控制命令
+在媒体抢占前核对来源，切号后的旧选择不能自动播放新账号。原普通队列备份跨模式保留。
+原生只读、真实桌面/libmpv播放与EOF/备份恢复均通过；详细来源、接口、验收路径与
+A/B/个性化门控、本地时区、完整专区页面等剩余差异见desktop-fm-modes-contracts.txt。
+场景FM是播客声音链路，继续单独迁移；本批不构成全FM或全目标完成。
+
+随心听 FM 与混合来源播单（2026-10-27）
+已按官方M3004/M597/M15/M116迁移场景目录、首次附带节目/分类懒加载、本地未听选择、
+整组voice队列、默认关闭和每会话一次自动尝试、手动封面暂停/继续、下一首/EOF卡片同步。
+原生pending/revision、账号与播放fence、焦点条件申请、停止优先、重开和显式恢复已接通。
+新增本地已听记录包含试听但不伪造完整续播；场景FM不套用音乐FM无限续曲/skip上报。
+正式页面、两条IPC、播单详情/评论/下载弹窗已连通；固定渐变/独立页仍与官方完整首页有差异。
+真实14场景、两组各50集完整队列；j正常窗口8阶段、k最小窗口8阶段及重开2阶段通过。
+实际libmpv/null解码、暂停/定位约16秒、分类切换、自然续播、队列和位置重开恢复均独立核对。
+额外入口c最小窗口3截图通过：80集混合来源播单、正确节目评论、单集下载弹窗与取消；未新增下载任务。
+发现并修正播单可包含其他radio节目时错误拒绝整页；保留单集自己的归属/权限/续播身份。
+修复回读锁竞争、旧同单集队列错误确认新意图、慢轮询响应饥饿及每帧冗余回读；失败记录保留。
+当前Rust711项（687主测试和24示例），前端102项，官方模型8组；格式、Clippy、前端与正式桌面构建通过。
+专项docs/desktop-scene-fm-contracts.txt、逐项docs/scene-fm-mapping.json；全量目标仍active。
+完整播客首页、封面取色、声音详情/黑胶、远端历史、付费/NCM/文字稿及其余完整目标继续。
+
+会员中心与历史日推桌面（2026-10-27）
+已接五类真实权益、官方7类内容模块、VIP日推与按日期查看历史推荐；原生DTO隐藏原始context、
+账号ID与活动URL。专辑/歌单/有声书详情、歌曲评论和下载弹窗复用正式入口并有真实窗口证据。
+VIP日推使用官方trialMode=41，历史默认-1；原生缓存版本校验后准备完整列表，不信任前端传入任意IDs。
+增加提交前投影/日期验证、失败保留上次内容、历史键防碰撞、日期缓存时间原子写入和固定账号token。
+新增6项Rust、5项前端；全量717Rust/107前端通过。正常/最小窗口、重开及四条详情入口最终20截图，
+独立审计确认7模块/9首VIP队列/两天各34首历史队列和约12秒暂停恢复，显式远端写入0。
+主流程证明不包含真实新增下载、外部浏览器启动、签到/礼券/动态开通、支付或付费有声书播放。
+完整契约docs/desktop-member-contracts.txt，映射member-desktop-mapping.json，散列.build/member-desktop-progress.json。
+完整目标继续，不以该页接通宣告全部会员业务完成。
+
+歌单封面原生与桌面（2026-10-27追加）
+官方M546校验、M2131原图像素裁剪、M2167 yyimgs上传、M444 docId绑定已迁入独立Rust；
+原生真实隔离往返及未知写入/父子日志/并发/切号/清理故障覆盖见core-playlist-cover-contracts.txt。
+正式桌面新增4条IPC、系统文件选择器、200px裁剪框、拖动/键盘/缩放/保存、明确恢复与清理入口。
+MusicClient拒绝通用Cover绕过上传验证；原生选择器回调前后核验账号，整次保存锁住同任务。
+元数据编辑保留名称/简介/标签草稿，确认的封面更新revision；未完成任务进入歌单操作记录。
+正常窗口10阶段、小窗口选图退出6阶段及重启完成5阶段通过，共21张真实截图。
+两轮各四次隔离写入，原77个歌单完整顺序均恢复；独立FFmpeg/SQLite/API审计通过，
+所选原图区域177×177与上传JPEG匹配，逐通道平均误差0.5124/255，原文件不变且本地快照清理。
+没有已恢复的NOS远端图像删除接口，保留未引用合成对象边界；不声称真实双账号、其他平台或全目标完成。
+新增2项Rust客户端场景、7项前端场景，完整Rust回归730项、前端114项通过。
+接口、来源、运行方法、官方差异、故障验证层级及证据见desktop-playlist-cover-contracts.txt、
+playlist-cover-mapping.json；其他原完整目标继续，goal保持active。
+
+
+原生设备指纹及Windows兼容研究（2026-10-27追加）
+以官方两版易盾和cloudmusic.dll为主，补原生哈希/字段转换、32项实际设备getter、插件/Canvas/
+WebGL测量与显式字体失败。Windows请求工厂/同一登录候选上下文、本机持久ID及locale适配已落地。
+采集投影按字段统一声明，CPU/屏幕/时区与渲染结果保留实测，不改全局页面或伪造可信交互。
+两次真实PC账号读取200，实际WebView128字段/12图形插件测量通过独立审核；仍测到Chrome声明
+与实际WebKit引擎不一致，不能当作易盾或受保护请求验收通过。
+此阶段当时尚缺Collection、音频/环境/缓存/异步；后续已补如下，生产RequestContext仍继续。详见
+core-watchman-measurements-contracts.txt与windows-compatibility-research.txt。
+
+原生Watchman Collection与页面生命周期（2026-10-27追加）
+按两份固定官方SDK恢复38项设备计划、21项环境getter、音频/字体数量及原协调器直接执行夹具。
+独立NativeCollection实现配置门控、异步等待、完整组缓存、一次洗牌、环境组扩展/首错终止、
+有符号浏览器计时和原生阶段计时；运行时保留采集器已安排的顺序，不二次打乱缓存。
+正式桌面新增主窗口测量IPC/单一所有者/有界票据/5秒截止/取消清理/插件加载代次，
+真实Source通过只读采集上下文读取DOM，行为采集先排空实际事件发送队列。
+两个SDK及一次实际reload共114次设备测量通过，旧等待取消、旧回包拒绝、缓存重建均实测。
+原字体缺fontList、环境缺loader及原音频空结果保留；不冒称所有字段成功或服务端接受。
+正式Runtime/Source激活、PC MConfig/RequestContext、真实/v3/d和/v3/b与受保护业务继续。
+接口、证据层级、可复跑命令与边界见core-watchman-collection-contracts.txt及watchman-mapping.json。
+
+正式PC配置中心、易盾上报与受保护读取（2026-10-27追加）
+官方M/92配置协商、PC来源判断、持久化和M/402逐请求路径/token接线已迁移。
+正式桌面默认创建真实采集宿主，页面就绪启动一次设备刷新，窗口销毁取消；登录候选继承同一
+原生处理上下文，凭据仍独立。动态协商头按官方顺序位于HTTP而非已加密header。
+真实取得PC配置1026048，/v3/d和/v3/b均200；当前PC名单最后匹配业务ID对应的本人歌单读取200。
+原包/原token/原路径函数和SQLite独立审核通过；此证据不代表全部写入403解决或Windows实机验证。
+详细接口、可复跑路径及剩余边界见core-pc-request-context-contracts.txt；完整目标继续。
+
+官方PC EAPI私密歌单创建（2026-10-27追加）
+RequestOptions.routing新增原生显式OfficialEapi，默认兼容策略保持；发送前选择，拒绝后不重放。
+实际Linux/WebKit、本机派生身份、Windows声明、MConfig与新易盾令牌完整接线后，
+/api/playlist/create返回200并经业务状态机回读确认。单独预选WEAPI清理，原77歌单及顺序恢复。
+4个报告包、3个新令牌、原M/402路径匹配及SQLite独立核对通过；重开原日志新增写入0。
+这是创建一项的官方EAPI证明，不外推其他写接口，不单独归因于Windows声明，也不当作Windows实机验证。
+接口、恢复、执行入口和验证范围见core-pc-official-write-proof.txt；完整目标继续。
+
+官方PC完整歌单路由与未发送失败（2026-10-27追加）
+两轮各9次隔离写入均EAPI/200，涵盖创建、两次元数据batch、歌曲添加/倒序/删除/清空、歌单排序和删除；
+每轮2个无操作不发请求，原77歌单完整恢复。正式带Windows身份/clientSign/原生上下文的客户端
+使用OfficialPcPlaylists策略，候选账号及重开继承；其余未验证路径继续原行为。
+配置/令牌准备失败以RequestNotSent落为Rejected/not_sent，不形成未决远端写入；已发出的未知写入
+仍只读核对，不因新增错误分类而重试。已选协议不会因batch加入checkToken而改变。
+接口、正式UI调用链、来源、限制、实测和恢复入口见core-pc-playlist-official-contracts.txt。
+这不是其他官方写路径或完整UI/平台交付验收，原完整目标继续。
+
+登录滑块续交与独立窗口（2026-10-27）
+原密码/邮箱/QR挑战通过原生LoginCaptchaProvider续交。Core不依赖Tauri；等待期间释放账号
+转换锁，取消/重开/超时与迟到结果校验已落地；验证码proof不经主界面IPC或持久化。
+正式验证码窗口使用官方M256配置，独立CSP/临时上下文/应用命令拒绝，主窗口策略未放宽。
+真实SDK题目显示、取消/重开及关闭父流程已截图和独立审计；音乐业务使用合成服务。
+真人挑战通过真实登录、验证码发送阶段额外挑战和JSK刷新等仍继续，不计作已通过。
+来源、接口和结果详见desktop-captcha-contracts.txt与login-captcha-mapping.json。
+
+2026-10-27 JSK续期宿主与界面：官方PC桥空设备令牌语义已纠正；core账号代次、原子意图、
+45秒取消/失败恢复、桌面前台/登录事件触发和账号窗口已接通。详见desktop-session-renewal-contracts.txt
+及session-renewal-mapping.json。异常码 /api/middle/account/token/refresh 仍是待迁移分支，
+现有301失效处理不算该分支完成；真实成对续期不能用合成窗口替代。全目标继续。
+
+2026-10-27后续：官方双实验分组与JSK301校验/本地失效提示已接入，见login-interception-contracts.txt。
+AB关闭的已登录账号旧301链与持久化清队列已在后续完成，见login-legacy-contracts.txt；
+匿名账号恢复、完整JSK新登录及原设备确认仍待继续。刷新凭据来源、旧探针未保存响应头的
+证据和本次真实只读实验分组见refresh-token-issuance-evidence.txt，不能把缺令牌推断成未下发或风控。

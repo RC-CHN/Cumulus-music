@@ -1,0 +1,151 @@
+{
+  "goal_complete": false,
+  "scope": "Recovered ten-band GEQ in the real libmpv PCM chain",
+  "official_sources": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_53.chunk.1482700000000.js/3091.js",
+      "sha256": "7122e33204e0d7ff2a73fe8ea6af6fa3d12e557868d1e9bc4741b7d107dc9a55"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/28.js",
+      "sha256": "8222e4fb4a9b30ad31648b91787fad8ffe76165ecb6101abd9cb0d7b56332e65"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/342.js",
+      "sha256": "1f27e592a340c814a49093416a0a684ec5c407c004f4e425a1d09b23b5319c8d"
+    },
+    {
+      "path": "references/recovered-client/docs/product/34-native-dsp-validation.txt",
+      "sha256": "38a30a929b49445f8c48ca6a8fa3e585648a16297fced06d18c52e9260aafa4b"
+    },
+    {
+      "path": "references/recovered-client/docs/product/35-bass-treble-transitions.txt",
+      "sha256": "ec65f4ce73471b1c042294f0b44c6551b1f6832d3e9f00d4b0cce8b11c1f3f80"
+    }
+  ],
+  "adapter_sources": [
+    "https://mpv.io/manual/stable/#audio-filters",
+    "https://ffmpeg.org/ffmpeg-filters.html#ladspa",
+    "https://www.ladspa.org/ladspa_sdk/ladspa.h.txt"
+  ],
+  "rows": [
+    {
+      "feature": "ten-band settings",
+      "source": "M/3091 slider +/-12, M/28 defaults",
+      "implementation": [
+        "core/src/effects/equalizer/mod.rs"
+      ],
+      "evidence": [
+        "settings_deserialization_cannot_bypass_official_slider_bounds"
+      ],
+      "status": "local"
+    },
+    {
+      "feature": "actual PCM processing",
+      "source": "Recovered GEQ +48, core/native/effects/netease_dsp.c; LADSPA ABI",
+      "implementation": [
+        "core/audio-filter/src/ladspa.rs",
+        "core/audio-filter/src/processor.rs"
+      ],
+      "evidence": [
+        "callback_matches_recovered_dsp_with_inplace_partial_and_large_blocks",
+        ".build/effects-player-live-e.json"
+      ],
+      "status": "native_runtime"
+    },
+    {
+      "feature": "hot settings, bypass, per-player isolation",
+      "source": "recovered C GEQ gains/bypass; community control adapter",
+      "implementation": [
+        "core/audio-filter/src/control.rs",
+        "core/src/effects/equalizer/host.rs"
+      ],
+      "evidence": [
+        "hot_changes_bypass_and_reactivation_preserve_recovered_transitions",
+        "configuration_isolation_revocation_and_no_id_reuse",
+        "busy_control_never_blocks_callback_and_defers_whole_settings"
+      ],
+      "status": "local_and_native_runtime"
+    },
+    {
+      "feature": "seek, reload, detach",
+      "source": "community libmpv adapter retaining recovered DSP semantics",
+      "implementation": [
+        "core/src/playback/engine/mpv.rs"
+      ],
+      "evidence": [
+        ".build/effects-player-live-e.json",
+        "disabled_start_and_seek_reset_are_dry_from_the_first_sample"
+      ],
+      "status": "native_runtime"
+    },
+    {
+      "feature": "nonfinite quarantine",
+      "source": "community FFI/host error boundary",
+      "implementation": [
+        "core/audio-filter/src/processor.rs",
+        "core/src/playback/engine/mpv.rs"
+      ],
+      "evidence": [
+        "nonfinite_input_quarantines_until_activation_and_bad_config_is_atomic"
+      ],
+      "status": "local_callback_passed",
+      "boundary": "NaN WAV normalized before adapter in this mpv path; engine error branch was not exercised"
+    },
+    {
+      "feature": "account persistence, actor/IPC/UI, desktop bundling, remaining DSP graph",
+      "implementation": [],
+      "evidence": [],
+      "status": "pending",
+      "boundary": "not claimed by this phase"
+    }
+  ],
+  "tests": {
+    "core": 587,
+    "desktop": 3,
+    "audio_filter": 8,
+    "primary_total": 598,
+    "existing_example_tests": 24,
+    "all_targets_total": 622
+  },
+  "actual": {
+    "report": ".build/effects-player-live-e.json",
+    "proof": ".build/effects-player-proof-e",
+    "independent": ".build/effects-player-independent.json",
+    "samples": 716217,
+    "max_abs_error": 0,
+    "remote_requests": 0,
+    "ui_integrated": false,
+    "device_listening": false,
+    "engine_error_exercised": false
+  },
+  "checks": [
+    ".build/effects-player-workspace-tests2.log",
+    ".build/effects-player-clippy2.log",
+    ".build/effects-player-format.log",
+    ".build/effects-player-desktop-build.log",
+    ".build/effects-player-build-final.log"
+  ],
+  "retained_failures": [
+    ".build/effects-player-live-b.log",
+    ".build/effects-player-live-c.log"
+  ],
+  "artifacts": {
+    ".build/target/debug/libcumulus_audio_filter.so": "ea37a772c29b7eff1fdff383cb086bdb12494729faaf9b8d113917763661ad1d",
+    ".build/effects-player-proof-e/滤镜 [test], quote' colon: space/libcumulus_audio_filter.so": "ea37a772c29b7eff1fdff383cb086bdb12494729faaf9b8d113917763661ad1d",
+    ".build/target/debug/examples/player_probe": "422cbb7558267c16ded67252beaa5915b6a4efe75d41d6373365705f51b4c0c2"
+  },
+  "frontend": {
+    "changed": false,
+    "new_tests": 0,
+    "inherited_tests": 61
+  },
+  "remaining": [
+    "Account-owned equalizer settings persistence and player actor commands",
+    "Desktop adapter discovery/distribution and actual UI workflow",
+    "Other recovered DSP nodes, whole graph selection and VIP activation lifecycle",
+    "Real engine failure branch not triggered by this NaN fixture",
+    "Audible hardware and Windows/macOS verification",
+    "All other outstanding requirements in docs/full-desktop-goal.txt"
+  ]
+}
