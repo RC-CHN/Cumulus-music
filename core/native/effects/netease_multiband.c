@@ -11,12 +11,21 @@ typedef struct {
 } NeteaseDynamicsConfig;
 typedef struct {NeteaseBiquad filters[22];unsigned fourth;} NeteaseCrossover;
 typedef struct {float envelope,power;} NeteaseDetector;
+#ifdef _MSC_VER
+/* The padding is intentional: SIMD data stays 16-byte aligned. The FFI queries
+ * the actual native size/alignment; never pack this struct to silence C4324. */
+#pragma warning(push)
+#pragma warning(disable: 4324)
+#endif
 typedef struct {
     float rate;unsigned capacity,initialized;
     NeteaseDynamicsConfig config;NeteaseCrossover crossover[2];NeteaseDetector detector[5];
     float input,output,band_input[5],band_output[5],rms;
     _Alignas(16) float data[2][5][4096];
 } NeteaseMultiband;
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 static uint32_t read_uint(const unsigned char *p) {
     return (uint32_t)p[0]|((uint32_t)p[1]<<8)|((uint32_t)p[2]<<16)|((uint32_t)p[3]<<24);

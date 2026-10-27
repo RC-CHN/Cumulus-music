@@ -34,3 +34,8 @@ platform/toolchain/input sets. No official DLL or material is shipped by this
 static library. Rotation responses must be supplied and owned by the caller;
 Rust retains an immutable Arc for as long as the native state can reference it.
 Multiband is the recovered mono component, not the full StereoEnhancer graph.
+
+The Windows CI build uses float literals for exact 0/1 and 120/2000/5000 values
+to avoid MSVC C4244 without changing arithmetic. C4324 is suppressed only around
+NeteaseMultiband: padding from its explicit 16-byte SIMD alignment is intended,
+and Rust obtains native size/alignment through the FFI rather than assuming it.

@@ -270,7 +270,7 @@ int netease_geq_stage_bypass(NeteaseGeqStage *s,unsigned bypass) {
 static void blend_channels(float *planar,const float *dry,unsigned channels,unsigned capacity,unsigned bypass) {
     for(unsigned ch=0;ch<channels;ch++)
         netease_mix(planar+ch*capacity,dry+ch*capacity,capacity,
-                    bypass?1:0,bypass?0:1,bypass?0:1,bypass?1:0);
+                    bypass?1.0f:0.0f,bypass?0.0f:1.0f,bypass?0.0f:1.0f,bypass?1.0f:0.0f);
 }
 /* A1BA0 enables SSE flush-to-zero only during plugin execution and restores
  * the caller's FTZ bit before blending. Other architectures retain their
@@ -413,7 +413,7 @@ int netease_peq_init(NeteasePeq *s,float rate,unsigned channels,unsigned capacit
     s->filter_channels=channels-(has_lfe && !process_lfe);s->current_gain=1;
     for(unsigned b=0;b<9;b++) {
         unsigned type=b==0?4:b==1?6:5;
-        float frequency=b==0?120:b==1?2000:5000;
+        float frequency=b==0?120.0f:b==1?2000.0f:5000.0f;
         int status=netease_peq_band(s,b,type,0,frequency,5,b<3);
         if(status)return status;
     }
