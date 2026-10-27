@@ -1,0 +1,27 @@
+Windows 首次完整 CI 的问题及修复依据
+
+失败证据：https://github.com/RC-CHN/Cumulus-music/actions/runs/40485760163
+该次 Linux 全部通过，Windows 测试失败；它不是发行验证记录。
+最终发行是否通过，以 release-provenance.json 指定的精确提交 CI 为准。
+
+1. Windows 路径
+Windows canonicalize 会生成扩展路径并展开 8.3 短名。测试夹具此前直接比较临时目录的原始路径字符串，和产品使用的规范路径不一致。
+夹具现在显式使用规范路径，不能通过取消文件身份/目录边界检查来解决。
+产品层也修复了旧队列 path 字段使用非规范别名时，移动/删除文件未同步队列的问题：仅将解析后等于被操作文件的绝对路径识别为同一来源。
+legacy_queue_path_aliases_follow_moves_and_deletes 在真实临时文件上覆盖移动和删除；不是仅比较字符串。
+歌曲元数据可含 Windows 文件名禁用字符，编码测试将这些字符放在标题里，并使用平台合法的文件名。
+
+2. 一起听自动退出后的本地恢复
+服务端状态首次回读为房间关闭时，结束操作可能仍持有跨进程锁等待第二次确认。
+后台曾在此时遇到 MutationBusy 后永久结束工作循环，留下恢复标记。
+现在仅对这一临时锁竞争进行最多 5 秒的异步等待；重做的是只读核对和本地恢复，不重放结束写请求。其他错误继续保留恢复责任和明确错误。
+waiting_timeout_and_empty_queue_exit_also_restore_local_settings 将确认间隔加长至 2 秒，确保旧行为在后台计时器触发时可被检验；断言恢复速度/模式且结束写请求只有一次。
+
+3. 桌面测试的 Windows loader
+STATUS_ENTRYPOINT_NOT_FOUND 出现在实际测试执行之前。Tauri 对话框依赖 Common Controls v6，单独的集成测试不能只依靠主程序的资源清单。
+桌面 build.rs 按目标系统为 MSVC 统一嵌入 Common Controls v6 清单，覆盖程序、测试和 WebView probes。
+依据：
+https://github.com/tauri-apps/tauri/blob/dev/examples/api/src-tauri/build.rs
+https://learn.microsoft.com/en-us/cpp/build/reference/manifestdependency-specify-manifest-dependencies
+
+上述测试均使用合成账号/本地临时媒体，不代表真实双账号一起听验证完成。
