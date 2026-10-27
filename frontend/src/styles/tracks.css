@@ -1,0 +1,113 @@
+.track-table {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+.track-columns {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1.7fr) minmax(0, 1fr) 48px 54px;
+  gap: 8px;
+  align-items: center;
+  padding: 0 10px;
+}
+.track-header {
+  height: 36px;
+  font-size: 11px;
+  color: #aaa5b1;
+  flex-shrink: 0;
+}
+.track-scroll {
+  overflow: auto;
+  overflow-x: hidden;
+  flex: 1;
+  min-height: 0;
+}
+.track-row {
+  height: 56px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.track-row:nth-of-type(even) {
+  background: #faf9fc;
+}
+.track-row:hover {
+  background: #f2f0f6;
+}
+.track-index {
+  color: #aaa4b3;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.track-title {
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+  align-items: center;
+}
+.track-title > img,
+.track-art {
+  width: 40px;
+  height: 40px;
+  border-radius: 5px;
+  flex-shrink: 0;
+  object-fit: cover;
+  background: #eeeaf3;
+}
+.track-art {
+  display: grid;
+  place-items: center;
+  color: #b3aabb;
+}
+.track-title > div {
+  min-width: 0;
+  line-height: 1.6;
+}
+.track-title small {
+  font-size: 11px;
+  color: #98929f;
+  display: block;
+}
+.track-album {
+  font-size: 12px;
+  color: #8e8797;
+}
+.track-duration {
+  font-size: 11px;
+  color: #aaa4b1;
+  font-variant-numeric: tabular-nums;
+}
+.like-button .icon {
+  width: 16px;
+  height: 16px;
+}
+.like-button.liked {
+  color: var(--accent);
+}
+.like-button.liked svg {
+  fill: var(--accent);
+  stroke: var(--accent);
+}
+.vip-tag {
+  display: inline-block;
+  vertical-align: 1px;
+  border: 1px solid #c4a476;
+  color: #b69a6d;
+  border-radius: 3px;
+  padding: 0 2px;
+  font-size: 8px;
+  line-height: 11px;
+  margin-left: 4px;
+}
+.unavailable {
+  opacity: 0.5;
+}
+.load-more {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: #a29aa9;
+  padding: 12px;
+}
+.load-more:hover {
+  color: var(--accent);
+}

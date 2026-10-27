@@ -1,0 +1,292 @@
+.playlist-dialog {
+  border: 0;
+  border-radius: 16px;
+  padding: 26px 30px;
+  width: min(560px, calc(100vw - 48px));
+  max-height: calc(100dvh - 48px);
+  color: var(--text);
+  background: #fff;
+  box-shadow: 0 24px 90px #24132833;
+  overflow: auto;
+}
+.playlist-dialog::backdrop {
+  background: #19102066;
+  backdrop-filter: blur(3px);
+}
+.playlist-dialog header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 22px;
+  gap: 16px;
+}
+.playlist-dialog h2 {
+  font-size: 20px;
+  margin: 0;
+}
+.playlist-dialog fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.playlist-dialog label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 16px 0;
+  font-size: 13px;
+}
+.playlist-dialog input:not([type='checkbox']),
+.playlist-dialog textarea,
+.playlist-dialog select {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid #e5e0e9;
+  border-radius: 8px;
+  color: inherit;
+  background: #faf9fc;
+  resize: vertical;
+  min-width: 0;
+  font: inherit;
+}
+.playlist-dialog input[type='checkbox'] {
+  accent-color: var(--accent);
+}
+.playlist-dialog select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 32px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='m1 1 5 5 5-5' fill='none' stroke='%2392919a' stroke-width='1.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+}
+.playlist-dialog label small {
+  text-align: right;
+  color: #999;
+  font-size: 11px;
+}
+.playlist-dialog .private-checkbox {
+  flex-direction: row;
+  align-items: center;
+}
+.playlist-dialog footer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  margin-top: 22px;
+}
+.playlist-dialog .primary {
+  min-width: 120px;
+  justify-content: center;
+}
+.playlist-dialog .empty-state {
+  min-height: 130px;
+  padding: 20px;
+}
+.playlist-dialog .error-state {
+  margin: 8px 0;
+  display: block;
+  line-height: 1.7;
+}
+.playlist-dialog .muted {
+  font-size: 12px;
+  line-height: 1.8;
+}
+.mutation-result {
+  padding: 12px;
+  background: #faf3e8;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.8;
+  margin: 12px 0;
+}
+.mutation-result[data-phase='confirmed'],
+.mutation-result[data-phase='unchanged'] {
+  background: #edf7f0;
+}
+.form-warning,
+.danger {
+  color: #db5269 !important;
+  font-size: 12px;
+}
+.playlist-danger-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  border-top: 1px solid #f1edf4;
+  margin-top: 20px;
+  padding-top: 10px;
+}
+.tag-selection {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.tag-selection button {
+  padding: 5px 10px;
+  background: #f5f3f7;
+  border-radius: 14px;
+  font-size: 12px;
+}
+.tag-picker {
+  max-height: 200px;
+  overflow: auto;
+  padding: 12px;
+  background: #faf9fc;
+  border: 1px solid #eee8f2;
+  border-radius: 8px;
+}
+.tag-picker section {
+  display: flex;
+  gap: 12px;
+  margin: 10px 0;
+  font-size: 12px;
+}
+.tag-picker strong {
+  flex: 0 0 35px;
+  color: #999;
+}
+.tag-picker section > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.tag-picker button {
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+.tag-picker [aria-pressed='true'] {
+  color: var(--accent);
+  background: #ffe8ed;
+}
+.track-menu h3 {
+  font-size: 16px;
+  margin: 0 0 6px;
+}
+.track-menu-actions {
+  border-top: 1px solid #f1edf4;
+  margin-top: 20px;
+  padding-top: 10px;
+}
+.track-menu-actions > button {
+  margin-right: 8px;
+}
+.operation-list {
+  max-height: 430px;
+  overflow: auto;
+}
+.operation-list article {
+  padding: 12px 0;
+  border-bottom: 1px solid #eee8f2;
+  font-size: 12px;
+  line-height: 1.8;
+}
+.operation-list article p {
+  margin: 5px 0;
+  color: #888;
+}
+.playlist-toolbar {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  margin: 0 0 16px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+.playlist-toolbar .text-button {
+  font-size: 12px;
+  padding: 7px 10px;
+}
+.playlist-toolbar .primary {
+  font-size: 12px;
+}
+.playlist-shell {
+  min-width: 0;
+}
+.playlist-shell .playlist-card {
+  width: 100%;
+}
+.playlist-card-controls {
+  display: flex;
+  gap: 3px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+.playlist-card-controls button {
+  font-size: 11px;
+  padding: 5px;
+}
+.track-more {
+  font-size: 18px;
+  line-height: 1;
+  width: 25px;
+  height: 28px;
+  flex-shrink: 0;
+}
+.track-time-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 3px;
+}
+.track-columns {
+  grid-template-columns: 32px minmax(0, 1.7fr) minmax(0, 1fr) 48px 80px;
+}
+@media (max-width: 950px) {
+  .track-columns {
+    grid-template-columns: 25px minmax(0, 1.8fr) minmax(0, 1fr) 32px 68px;
+    gap: 5px;
+  }
+  .playlist-dialog {
+    padding: 20px 24px;
+  }
+  .playlist-dialog textarea {
+    max-height: 110px;
+  }
+  .playlist-dialog label {
+    margin: 10px 0;
+  }
+  .playlist-dialog header {
+    margin-bottom: 14px;
+  }
+}
+@media (max-height: 650px) {
+  .main-content {
+    padding-top: 8px;
+  }
+  .playlist-hero {
+    min-height: 0;
+    padding: 6px 0;
+  }
+  .playlist-hero > img,
+  .hero-art {
+    width: 80px;
+    height: 80px;
+  }
+  .hero-copy {
+    padding-top: 0;
+    gap: 2px;
+  }
+  .hero-copy h1 {
+    font-size: 20px;
+    -webkit-line-clamp: 1;
+  }
+  .playlist-description {
+    -webkit-line-clamp: 1;
+  }
+  .main-content > .notice,
+  .main-content > .error-state {
+    padding: 4px 10px;
+    margin-bottom: 6px;
+  }
+  .playlist-toolbar,
+  .track-actions {
+    margin-bottom: 6px;
+  }
+  .track-header {
+    height: 30px;
+  }
+}

@@ -1,0 +1,306 @@
+.login-dialog {
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  border: 0;
+  border-radius: 16px;
+  padding: 38px 45px 24px;
+  width: 390px;
+  color: #302934;
+  box-shadow: 0 24px 90px #24132833;
+  text-align: center;
+  position: fixed;
+  background: #fff;
+}
+.login-methods {
+  display: flex;
+  justify-content: center;
+  gap: 28px;
+  margin: 20px 0;
+  font-size: 13px;
+}
+.login-methods button {
+  padding: 5px 0;
+  border-bottom: 2px solid transparent;
+}
+.login-methods button[aria-pressed='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.credential-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  text-align: left;
+  margin-top: 22px;
+}
+.credential-form label,
+.login-challenge > label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: #777;
+  font-size: 12px;
+}
+.credential-form input:not([type='checkbox']),
+.login-challenge select {
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+  padding: 8px 10px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  color: #333;
+  background: #fafafa;
+}
+.login-phone,
+.login-code {
+  display: flex;
+  gap: 10px;
+  align-items: end;
+}
+.login-phone > label {
+  flex: 1;
+  min-width: 0;
+}
+.login-phone .country {
+  flex: 0 0 60px;
+}
+.login-code input {
+  flex: 1;
+}
+.login-code button {
+  flex-shrink: 0;
+  height: 38px;
+  color: var(--accent);
+  font-size: 12px;
+}
+.login-options {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+}
+.login-options label {
+  flex-direction: row;
+  align-items: center;
+}
+.login-submit {
+  width: 100%;
+  border-radius: 24px;
+  height: 40px;
+}
+.login-accounts,
+.login-restart {
+  font-size: 12px;
+  color: #888;
+  margin-top: 12px;
+}
+.login-challenge {
+  margin: 24px 0;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.login-challenge .muted {
+  margin: 10px 0;
+  font-size: 12px;
+}
+.login-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+}
+.login-questions {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  text-align: left;
+}
+.login-questions label {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid #eee;
+}
+.login-questions img {
+  width: 42px;
+  height: 42px;
+  object-fit: cover;
+}
+.login-questions small {
+  display: block;
+  color: #999;
+  margin-top: 4px;
+}
+.account-dialog {
+  position: fixed;
+  width: 420px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  border: 0;
+  border-radius: 14px;
+  background: #fff;
+  color: #333;
+  padding: 30px;
+  box-shadow: 0 20px 70px #0003;
+}
+.account-dialog::backdrop {
+  background: #0004;
+}
+.account-dialog h2 {
+  font-size: 22px;
+  margin: 0 0 20px;
+}
+.account-dialog > p {
+  font-size: 13px;
+  margin: 14px 0;
+}
+.saved-account-list {
+  max-height: 260px;
+  overflow-y: auto;
+}
+.saved-account-row {
+  display: flex;
+  align-items: center;
+  border-radius: 12px;
+}
+.saved-account-row:hover {
+  background: #f8f6f7;
+}
+.saved-remove {
+  flex-shrink: 0;
+  padding: 12px 5px;
+  color: #888;
+  font-size: 12px;
+}
+.saved-account {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  gap: 16px;
+  min-height: 80px;
+  padding: 12px 14px;
+  text-align: left;
+  border-radius: 12px;
+}
+.saved-account:hover {
+  background: #f8f6f7;
+}
+.saved-account img,
+.saved-account > svg {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.saved-account span {
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.saved-account small {
+  display: block;
+  font-size: 11px;
+  color: #999;
+  margin-top: 6px;
+}
+.account-add {
+  display: block;
+  width: 100%;
+  padding: 20px 0;
+  font-size: 14px;
+}
+.account-logout {
+  display: block;
+  width: 100%;
+  border-top: 1px solid #eee;
+  padding-top: 18px;
+  color: #777;
+  font-size: 13px;
+}
+.logout-option {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+  margin: 25px 0;
+}
+.account-confirm {
+  display: flex;
+  justify-content: end;
+  gap: 20px;
+}
+@media (max-height: 620px) {
+  .login-dialog {
+    padding: 22px 32px 18px;
+  }
+  .login-dialog .brand-mark {
+    margin-bottom: 8px;
+  }
+  .login-methods {
+    margin: 12px 0;
+  }
+  .login-note {
+    margin-top: 10px;
+  }
+}
+.login-dialog::backdrop {
+  background: #19102066;
+  backdrop-filter: blur(3px);
+}
+.dialog-close {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+}
+.login-dialog .brand-mark {
+  margin: 0 auto 16px;
+  width: 36px;
+  height: 36px;
+  font-size: 28px;
+}
+.login-dialog h2 {
+  font-size: 24px;
+}
+.login-dialog > .muted {
+  font-size: 12px;
+  margin-top: 8px;
+}
+.qr-frame {
+  width: 220px;
+  height: 220px;
+  margin: 23px auto 15px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid #eeebf0;
+}
+.qr-frame svg {
+  width: 210px;
+  height: 210px;
+}
+.login-status {
+  font-size: 12px;
+  line-height: 1.8;
+  min-height: 44px;
+  color: #8a7f94;
+}
+.login-note {
+  font-size: 10px;
+  color: #bbb1c4;
+  margin-top: 20px;
+}
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-thumb {
+  background: #d8d4df;
+  border-radius: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}

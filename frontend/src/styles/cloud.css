@@ -1,0 +1,335 @@
+.cloud-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 22px;
+}
+.cloud-capacity {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 180px;
+  color: #888;
+  font-size: 12px;
+}
+.cloud-page progress {
+  height: 5px;
+  border: 0;
+  border-radius: 4px;
+  background: #eee;
+  accent-color: var(--accent);
+}
+.cloud-page progress::-webkit-progress-bar {
+  background: #efedf0;
+  border-radius: 4px;
+}
+.cloud-page progress::-webkit-progress-value {
+  background: var(--accent);
+  border-radius: 4px;
+}
+.cloud-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 22px 0 18px;
+}
+.cloud-search {
+  display: flex;
+  align-items: center;
+  border: 1px solid #eceaee;
+  border-radius: 18px;
+  padding: 6px 10px;
+  gap: 6px;
+  margin-left: auto;
+  max-width: 190px;
+}
+.cloud-search input {
+  width: 130px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font-size: 12px;
+}
+.cloud-search .icon {
+  width: 14px;
+  height: 14px;
+}
+.cloud-table-wrap {
+  overflow-x: auto;
+}
+.cloud-table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  min-width: 660px;
+  font-size: 12px;
+}
+.cloud-table th {
+  text-align: left;
+  color: #999;
+  height: 36px;
+  font-weight: 400;
+}
+.cloud-table th button {
+  padding: 0;
+}
+.cloud-table td {
+  padding: 10px 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cloud-table tbody tr:nth-child(2n + 1) {
+  background: #faf9fb;
+}
+.cloud-table tbody tr:hover {
+  background: #f4f2f5;
+}
+.cloud-table tr.selected {
+  background: #f1edf3;
+}
+.cloud-table tr.playing .cloud-track-title strong {
+  color: var(--accent);
+}
+.cloud-table th:nth-child(3) {
+  width: 34%;
+}
+.cloud-table th:nth-child(4) {
+  width: 22%;
+}
+.cloud-table th:nth-child(5) {
+  width: 62px;
+}
+.cloud-table th:nth-child(6) {
+  width: 100px;
+}
+.cloud-table th:nth-child(7) {
+  width: 75px;
+}
+.cloud-check {
+  width: 25px;
+}
+.cloud-index {
+  width: 34px;
+}
+.cloud-page input[type='checkbox'] {
+  accent-color: var(--accent);
+}
+.cloud-row-play {
+  width: 24px;
+  height: 28px;
+  color: #aaa;
+  padding: 0;
+}
+.cloud-row-play .icon {
+  display: none;
+  width: 16px;
+}
+.cloud-table tr:hover .cloud-row-play span,
+.cloud-table tr.playing .cloud-row-play span {
+  display: none;
+}
+.cloud-table tr:hover .cloud-row-play .icon,
+.cloud-table tr.playing .cloud-row-play .icon {
+  display: inline;
+}
+.cloud-track-title strong,
+.cloud-track-title > span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 400;
+}
+.cloud-track-title > span {
+  color: #999;
+  margin-top: 4px;
+}
+.cloud-track-title .text-button {
+  padding: 0;
+  max-width: 80%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: inherit;
+  vertical-align: middle;
+  font-size: 11px;
+}
+.cloud-track-title small {
+  color: #d7a052;
+  border: 1px solid #e6cd98;
+  border-radius: 3px;
+  font-size: 9px;
+  margin-left: 5px;
+  padding: 0 2px;
+}
+.cloud-format,
+.cloud-date,
+.cloud-size,
+.cloud-album {
+  color: #999;
+}
+.cloud-error {
+  font-size: 12px;
+  color: #b94e48;
+  margin: 8px 0;
+  line-height: 1.6;
+}
+.cloud-notice {
+  font-size: 12px;
+  color: #6d6970;
+  margin: 10px 0;
+}
+.cloud-pagination {
+  display: flex;
+  justify-content: center;
+  gap: 18px;
+  align-items: center;
+  margin-top: 24px;
+  font-size: 12px;
+  color: #888;
+}
+.cloud-upload-row,
+.cloud-upload-select {
+  display: grid;
+  grid-template-columns: 24px minmax(150px, 1fr) 170px 145px;
+  gap: 12px;
+  align-items: center;
+  padding: 15px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.cloud-upload-select {
+  color: #999;
+  font-size: 12px;
+  padding: 9px 8px;
+}
+.cloud-upload-name {
+  min-width: 0;
+}
+.cloud-upload-name strong,
+.cloud-upload-name > small {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 400;
+}
+.cloud-upload-name small {
+  font-size: 11px;
+  color: #aaa;
+  margin-top: 5px;
+}
+.cloud-upload-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+.cloud-upload-progress small {
+  color: #aaa;
+  font-size: 10px;
+}
+.cloud-upload-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+  font-size: 12px;
+}
+.cloud-upload-actions .text-button {
+  padding: 2px 4px;
+}
+.cloud-upload-dialog .muted {
+  font-size: 12px;
+  line-height: 1.7;
+}
+.cloud-choose {
+  margin: 18px 0;
+}
+.cloud-file-list {
+  max-height: 350px;
+  overflow: auto;
+}
+.cloud-file-list article {
+  padding: 13px 0;
+  border-top: 1px solid var(--line);
+}
+.cloud-file-title {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: space-between;
+}
+.cloud-file-title strong {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  font-weight: 500;
+}
+.cloud-file-title .text-button {
+  flex-shrink: 0;
+}
+.cloud-file-list summary {
+  font-size: 11px;
+  color: #aaa;
+  cursor: pointer;
+  margin-top: 9px;
+}
+.cloud-attachment {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12px;
+  margin: 9px 0;
+}
+.cloud-attachment .ellipsis {
+  flex: 1;
+  color: #888;
+}
+.cloud-delete-history {
+  font-size: 12px;
+  color: #999;
+  margin-top: 24px;
+}
+.cloud-delete-history summary {
+  cursor: pointer;
+}
+.cloud-delete-history > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+}
+.cloud-page > .empty-state > .icon {
+  width: 48px;
+  height: 48px;
+  color: #ddd;
+}
+@media (max-width: 950px) {
+  .cloud-heading {
+    align-items: flex-start;
+  }
+  .cloud-capacity {
+    min-width: 140px;
+  }
+  .cloud-toolbar .secondary,
+  .cloud-toolbar .primary {
+    font-size: 12px;
+    padding: 8px 12px;
+  }
+  .cloud-search {
+    margin-left: 0;
+  }
+  .cloud-upload-row,
+  .cloud-upload-select {
+    grid-template-columns: 20px minmax(110px, 1fr) 130px;
+    gap: 8px;
+  }
+  .cloud-upload-actions {
+    grid-column: 2/4;
+    justify-content: flex-start;
+    padding-top: 4px;
+  }
+}

@@ -1,0 +1,43 @@
+@media (max-width: 950px) {
+  :root {
+    --sidebar: 184px;
+  }
+  .main-content {
+    padding-right: 24px;
+    padding-left: 24px;
+  }
+  .topbar {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+  .brand {
+    padding-left: 18px;
+  }
+  .track-columns {
+    grid-template-columns: 25px minmax(0, 1.8fr) minmax(0, 1fr) 32px 42px;
+    gap: 5px;
+  }
+  .playlist-hero > img,
+  .hero-art {
+    width: 120px;
+    height: 120px;
+  }
+  .playlist-hero {
+    min-height: 150px;
+    gap: 18px;
+  }
+  .hero-copy h1 {
+    font-size: 21px;
+  }
+  .account-button {
+    max-width: 150px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation-duration: 2s !important;
+  }
+}
