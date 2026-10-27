@@ -84,9 +84,19 @@ pub fn verify(auto: bool) -> Result<serde_json::Value> {
     std::thread::sleep(Duration::from_millis(120));
     assert!((engine.poll()?.position.unwrap() - paused).abs() < 0.05);
     engine.seek(1.5)?;
+    // libmpv's null output can report target minus its queued output latency
+    // while paused, even after playback-restart. Verify pause is preserved,
+    // then check the actual resumed clock against elapsed time. Waiting here
+    // also prevents a transient target value from making the proof pass early.
+    std::thread::sleep(Duration::from_millis(150));
+    assert!(engine.poll()?.paused);
+    let resumed_at = Instant::now();
+    engine.pause(false)?;
     wait(&mut engine, |s| {
-        s.position.is_some_and(|n| (n - 1.5).abs() < 0.03)
+        s.position
+            .is_some_and(|n| (n - resumed_at.elapsed().as_secs_f64() - 1.5).abs() < 0.03)
     })?;
+    engine.pause(true)?;
     engine.speed(1.5)?;
     assert_eq!(engine.poll()?.speed, Some(1.5));
     assert!(engine.volume(101.0).is_err());
@@ -116,7 +126,7 @@ pub fn verify(auto: bool) -> Result<serde_json::Value> {
         Err(cumulus_core::Error::Cancelled)
     ));
     Ok(
-        json!({"ok":true,"metadata_probe":true,"libmpv_api":version,"decoder":loaded.codec,"duration":loaded.duration,"output":playing.audio_output,"requested_output":if auto{"auto_muted"}else{"null"},"progress":true,"pause":true,"seek":true,"speed":true,"bounds_validation":true,"cue_engine_eof":!eof.events.is_empty(),"cue_end_reset":restored.entry_id!=clip.entry_id,"cancel":true,"remote_requests":0}),
+        json!({"ok":true,"metadata_probe":true,"libmpv_api":version,"decoder":loaded.codec,"duration":loaded.duration,"output":playing.audio_output,"requested_output":if auto{"auto_muted"}else{"null"},"progress":true,"pause":true,"seek":true,"paused_seek_verified_on_resume":true,"speed":true,"bounds_validation":true,"cue_engine_eof":!eof.events.is_empty(),"cue_end_reset":restored.entry_id!=clip.entry_id,"cancel":true,"remote_requests":0}),
     )
 }
 fn main() {

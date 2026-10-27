@@ -33,7 +33,7 @@ def main():
     proof = json.loads(report.read_text(encoding='utf-8'))
     assert proof['ok'] and proof['productionDesktopStartup'] and proof['numericLocaleCompatible']
     assert proof['metadata_probe'] and proof['remote_requests'] == 0
-    assert all(proof[key] for key in ['progress', 'pause', 'seek', 'speed', 'cue_engine_eof', 'cue_end_reset', 'cancel'])
+    assert all(proof[key] for key in ['progress', 'pause', 'seek', 'paused_seek_verified_on_resume', 'speed', 'cue_engine_eof', 'cue_end_reset', 'cancel'])
     print(json.dumps({'ok': True, 'desktopNativeMedia': True, 'output': proof['output']}))
 
 

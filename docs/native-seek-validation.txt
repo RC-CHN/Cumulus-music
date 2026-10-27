@@ -1,0 +1,18 @@
+原生暂停 seek 的验证语义
+
+40499502432 的 Linux 打包验证在暂停后 seek(1.5) 时，time-pos 稳定回读约 1.32，5 秒后仍未达到目标。
+独立调用 libmpv 复现了此行为，未使用本项目播放器控制器或真实账号：
+- Ubuntu 24.04 / mpv 0.37：在 seek 指令后固定等待 200ms，回读 1.310457，seeking=no、pause=yes，已收到 seek 和 playback-restart。
+- 本机 mpv API 2.5：同样回读 1.309937。
+- 恢复播放 100ms 后分别回读 1.600010 / 1.600172，实际 seek 目标正确。
+
+null 输出模拟音频输出缓冲（默认 0.2 秒）。暂停时 time-pos/audio-pts 可以包含尚未恢复输出的缓冲延迟；刚确认指令的瞬间也可能先返回请求目标。
+此前立即轮询目标位置，既可能偶发失败，也可能依靠瞬时值提前通过。单纯等待更久、放宽阈值或重复运行都不能验证实际 seek。
+
+探针现在在暂停 seek 后刻意等待 150ms，确认暂停仍然有效，再恢复播放，将播放位置减去恢复后的实测 elapsed time，与 1.5 秒目标比较。精度仍为 30ms。
+报告明确标记 paused_seek_verified_on_resume；不宣称 null 后端暂停期间的裸 time-pos 精确等于请求值。生产播放器逻辑未因测试而改变。
+本机和 Ubuntu 24.04 各 8 次实际 Rust 解码/控制验证通过；中文 GTK/WebView 启动后的真实 PipeWire 静音流程也通过。
+
+null 后端实现依据
+https://github.com/mpv-player/mpv/blob/v0.37.0/audio/out/ao_null.c
+https://mpv.io/manual/stable/#command-interface-playback-restart
