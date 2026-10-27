@@ -1,6 +1,6 @@
 use base64::{Engine, engine::general_purpose::STANDARD};
 use cumulus_core::{
-    Error, Result,
+    Result,
     library::{
         AudioMetadata,
         cue::parse_cue,
@@ -178,6 +178,7 @@ fn probe_metadata_uses_audio_stream_and_strict_finite_facts() {
 #[cfg(unix)]
 #[test]
 fn real_process_boundary_handles_timeout_failure_and_output_limits() {
+    use cumulus_core::Error;
     use std::{
         os::unix::fs::PermissionsExt,
         time::{Duration, Instant},

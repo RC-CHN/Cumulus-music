@@ -109,8 +109,8 @@ jobs:
       - run: npm --prefix frontend ci
       - run: npm --prefix frontend run build
       - run: cargo fmt --all --check
-      - run: cargo clippy --workspace --all-targets --features cumulus-desktop/custom-protocol --locked -- -D warnings
-      - run: cargo test --workspace --all-targets --features cumulus-desktop/custom-protocol --locked
+      - run: cargo clippy --keep-going --workspace --all-targets --features cumulus-desktop/custom-protocol --locked -- -D warnings
+      - run: cargo test --no-fail-fast --workspace --all-targets --features cumulus-desktop/custom-protocol --locked
       - name: Build release packages and verify native media
         env:
           CUMULUS_MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}

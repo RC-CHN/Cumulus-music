@@ -104,8 +104,13 @@ impl EqualizerHost {
         }
         let value = escape(self.path.to_str().expect("checked path"), "\\': ");
         let value = escape(&value, "\\'[],; ");
+        // The recovered four-sample recurrence has distinct scalar tail
+        // rounding. Normalize decoder-dependent frame sizes before LADSPA,
+        // also keeping bypass fades at our declared adapter capacity. Do not
+        // pad EOF: preserve exact duration and the final partial block.
         format!(
-            "ladspa=file={value}:plugin=cumulus_geq:controls={}",
+            "asetnsamples=n={}:p=0,ladspa=file={value}:plugin=cumulus_geq:controls={}",
+            abi::CAPACITY,
             self.id
         )
     }
