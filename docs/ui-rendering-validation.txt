@@ -68,6 +68,8 @@ at least 12 animation frames over 400ms, and on Linux a WebKit snapshot containi
 the colored logo (an empty/black surface does not pass). There are no music API
 commands, session reads or online resources in this child. The visible splash has
 a cancel action; cancelling stops recovery rather than opening another window.
+The splash also honors reduced motion. A real GTK/WebKit check with animations
+disabled confirmed the media query matched and the logo's translation stayed zero.
 
 Auto mode tries each candidate once: normal GPU configuration, then GPU/SHM on
 Linux, then software. Windows uses WebView2's normal renderer, then --disable-gpu
