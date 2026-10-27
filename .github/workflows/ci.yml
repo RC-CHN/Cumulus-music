@@ -125,6 +125,23 @@ jobs:
           cargo build -p cumulus-desktop --example login_interception_ui_probe --features custom-protocol --locked
           dbus-run-session -- xvfb-run -a /usr/bin/python3 desktop/examples/run_auth_probe.py .build/ci-login --binary .build/target/debug/examples/login_interception_ui_probe --stage-prefix interception_ --screenshots 4 --small
           python3 desktop/examples/audit_login_interception_probe.py .build/ci-login
+      - name: Windows WebView login lifecycle smoke
+        if: runner.os == 'Windows'
+        run: |
+          cargo build -p cumulus-desktop --example login_interception_ui_probe --features custom-protocol --locked
+          python scripts/ci/ui_smoke.py --binary .build/target/debug/examples/login_interception_ui_probe.exe --root .build/ci-login-windows
+          python scripts/ci/ui_smoke.py --binary .build/target/debug/examples/login_interception_ui_probe.exe --root .build/ci-login-windows-legacy --legacy
+      - name: Preserve synthetic failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: diagnostics-${{ matrix.platform }}
+          path: |
+            .build/package-stage/*/equalizer-proof/
+            .build/ci-login*/
+            .build/ci-login*.log
+          if-no-files-found: ignore
+          retention-days: 7
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: packages-${{ matrix.platform }}

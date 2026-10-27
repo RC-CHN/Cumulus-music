@@ -366,10 +366,10 @@ fn main() {
     let declaration =
         WindowsBrowserIdentity::from_locales(&[std::env::var("LANG").unwrap_or_default()], "zh-CN")
             .unwrap();
-    let mut profile = declaration.native_profile().unwrap();
+    let profile = declaration.native_profile().unwrap();
     #[cfg(target_os = "linux")]
-    {
-        profile = cumulus_core::identity::IdentityService::new(Arc::new(
+    let profile = {
+        cumulus_core::identity::IdentityService::new(Arc::new(
             StateStore::open(root.join("identity")).unwrap(),
         ))
         .resolve(
@@ -377,8 +377,8 @@ fn main() {
         )
         .unwrap()
         .profile(profile)
-        .unwrap();
-    }
+        .unwrap()
+    };
     let reports = Arc::new(Reports {
         inner: NativeBackend::new(&profile.user_agent).unwrap(),
         root: root.clone(),

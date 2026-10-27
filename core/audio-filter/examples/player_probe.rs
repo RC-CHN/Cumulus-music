@@ -130,6 +130,13 @@ fn run() -> Result<serde_json::Value> {
             .map(|b| f32::from_le_bytes(b.try_into().unwrap()))
             .collect();
         let expected = render(&input, rate, channels, gains)?;
+        std::fs::write(
+            dir.join(format!("{name}-expected.pcm")),
+            expected
+                .iter()
+                .flat_map(|x| x.to_le_bytes())
+                .collect::<Vec<_>>(),
+        )?;
         if bytes.len() != expected.len() * 4 {
             return Err(Error::State("captured PCM length mismatch"));
         }
@@ -139,6 +146,10 @@ fn run() -> Result<serde_json::Value> {
             .map(|(a, b)| (a - b).abs())
             .fold(0.0_f32, f32::max);
         if actual.iter().any(|x| !x.is_finite()) || error > 2e-6 {
+            eprintln!(
+                "PCM case {name}: max_abs_error={error}, samples={}",
+                actual.len()
+            );
             return Err(Error::State("captured PCM differs from recovered DSP"));
         }
         let changed = actual
@@ -148,13 +159,6 @@ fn run() -> Result<serde_json::Value> {
         if !changed {
             return Err(Error::State("captured PCM did not apply EQ"));
         }
-        std::fs::write(
-            dir.join(format!("{name}-expected.pcm")),
-            expected
-                .iter()
-                .flat_map(|x| x.to_le_bytes())
-                .collect::<Vec<_>>(),
-        )?;
         let stats = host.stats()?;
         if stats.processed_samples != input.len() as u64
             || stats.failed_blocks != 0
