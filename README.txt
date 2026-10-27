@@ -1,5 +1,12 @@
 Cumulus Music
 
+发行目标：Linux x86_64 与 Windows x86_64；不支持 macOS。
+安装包：https://github.com/RC-CHN/Cumulus-music/releases
+版本边界与安装说明：docs/releases/0.1.0.txt。
+贡献/版本规则：AGENTS.md；CI/CD 与发布步骤：docs/releasing.txt。
+CI 将前端检查、Linux 原生验证/打包、Windows 原生验证/打包分配到不同 runner。
+仅在目标 release commit 的 CI 全部通过后发布同一次 CI 的构建产物。
+
 跨平台社区音乐客户端，采用 Tauri 2 + Rust + Vue 3 / TypeScript。
 新旧301校验、官方双实验开关和失效提示已接通；旧版明确清队列与恢复见
 docs/login-legacy-contracts.txt，当前凭据发放边界见

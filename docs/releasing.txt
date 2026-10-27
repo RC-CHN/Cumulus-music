@@ -1,0 +1,46 @@
+发布与 CI/CD
+
+支持矩阵：Linux x86_64（Ubuntu 24.04 基线）、Windows x86_64（MSVC）。用户明确排除 macOS。
+规则的权威入口是根目录 AGENTS.md。所有版本文件目前统一为 0.1.0。
+
+CI (.github/workflows/ci.yml)
+1. 独立前端 runner：公开源文件边界、版本与 release 历史、发布门禁的拒绝分支测试、格式、129 项前端测试、类型检查和正式构建。
+2. Linux/Windows 两个原生 runner 并行：固定 Rust/Node、锁定依赖、fmt、严格 Clippy、全工作区测试（包括 examples 编译）、发行构建与合成媒体实际解码。
+3. Linux additionally runs the real FFmpeg LADSPA chain and a real WebKitGTK login-expiry/relogin UI smoke with fixture HTTP only.
+4. CI gate 只有全部必要 job success 才通过。失败/取消/跳过均不能发布。
+5. 输出 packages-linux-x64 / packages-windows-x64 两组产物，包含包、精确提交/CI run/attempt/大小/SHA256 清单。保留 14 天。
+研究用官方 JS 对照生成脚本要求忽略的 references；公开 CI 使用已提交的合成冻结向量，不假装在 runner 上重新执行了不存在的原始材料。
+CI 不导入账号 Cookie、不调用真实账号写接口。libmpv null 输出只证明解码与控制，不能代替真机声卡测试。
+
+打包
+python scripts/ci/package.py --platform linux-x64 或 windows-x64，必须在对应系统运行。
+先 npm --prefix frontend ci 与 npm --prefix frontend run build。
+Windows 还需 CUMULUS_MSYS2_ROOT 指向装有 UCRT64 mpv/binutils 的 MSYS2 根目录。
+Windows 按 PE 导入表递归收集 DLL；实际解码测试清除 PATH 中的 MSYS2，避免漏装依赖被 runner 掩盖。
+Linux .deb 声明 libmpv2/WebKitGTK 等系统依赖；tar.gz 也需要这些系统依赖。
+Windows 提供 NSIS/zip，附原生运行时依赖、上游许可证与包版本来源。没有签名证书，不声称已签名。
+MSYS2 FFmpeg 未启用 LADSPA，因此 Windows 本地 DSP 核心可测试，但正式播放音效链不承诺可用。
+打包脚本的生成目录必须不存在；重试前仅清理 .build/package-stage/<platform>、.build/packages/<platform> 中对应的失败构建，保留需要调查的证据。
+
+发布顺序
+1. 完成所有实现/配置/发行说明，更新 Cargo.toml、Cargo.lock、frontend/package*.json、desktop/tauri.conf.json，推送普通功能/修复提交，等待 CI 全绿。
+2. 创建唯一、内容树不变的标记提交：git commit --allow-empty -m 'chore:release 0.1.0'。
+   git push origin main。不要提前打 tag。普通修改必须在该提交之前准备好。
+3. 等待该标记提交自己的 CI 全绿，取得其 run ID。
+4. gh workflow run release.yml --ref main -f version=0.1.0 -f ci_run_id=<ID>。
+5. CD 验证唯一 release commit、版本一致、main push CI、精确 SHA、四项必要 job、run attempt、产物集合与校验和。
+   只下载此 CI 的产物，不重新构建。创建指向该 commit 的 v0.1.0 标签；先草稿上传完整附件，再公开。
+6. 检查 Release URL、所有附件、SHA256SUMS、release-provenance.json 和 tag 目标。
+
+失败处理
+- CI 未过：修复后重新验证，不打 tag/不发版本。标记提交只在内容全部准备完成后创建，避免同版本多条 release commit。
+- release commit 上若出现真实代码问题，不能再追加同版本 release commit；保留失败记录并推进下一版本，禁止改写已公开历史。
+- tag/Release 已存在：CD 拒绝覆盖。上传失败留下草稿时，检查失败点并只恢复该草稿的缺失上传/发布；绝不移动 tag 或覆盖已有附件。
+- CI 正在 rerun/attempt 改变/附件过期/摘要不符：停止发布，等待完整、同一 attempt 的成功 CI 产物。
+- GitHub 的 contents:write 权限只授予 CD 发布 job；PR CI 只有读取权限，不运行来自 fork 的代码来发布。
+
+配置依据
+https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions
+https://v2.tauri.app/distribute/pipelines/github/
+https://v2.tauri.app/reference/config/
+https://www.msys2.org/docs/ci/
