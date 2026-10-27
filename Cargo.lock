@@ -727,6 +727,7 @@ name = "cumulus-desktop"
 version = "0.1.0"
 dependencies = [
  "cumulus-core",
+ "libc",
  "rusqlite",
  "serde",
  "serde_json",

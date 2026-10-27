@@ -84,6 +84,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev patchelf libmpv-dev ffmpeg xvfb dbus-x11 python3-gi gir1.2-gtk-3.0
+          sudo locale-gen en_US.UTF-8
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
@@ -105,7 +106,9 @@ jobs:
             ~/.cargo/git
             .build/target
           key: rust-${{ runner.os }}-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-${{ github.sha }}
-          restore-keys: rust-${{ runner.os }}-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-
+          restore-keys: |
+            rust-${{ runner.os }}-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-
+            rust-${{ runner.os }}-v1-
       - run: npm --prefix frontend ci
       - run: npm --prefix frontend run build
       - run: cargo fmt --all --check
@@ -122,12 +125,16 @@ jobs:
           WEBKIT_DISABLE_DMABUF_RENDERER: '1'
           LIBGL_ALWAYS_SOFTWARE: '1'
         run: |
+          cargo build -p cumulus-desktop --example native_audio_probe --features custom-protocol --locked
+          LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a python3 scripts/ci/native_smoke.py --binary .build/target/debug/examples/native_audio_probe --report .build/ci-native-audio-linux.json
           cargo build -p cumulus-desktop --example login_interception_ui_probe --features custom-protocol --locked
           dbus-run-session -- xvfb-run -a /usr/bin/python3 desktop/examples/run_auth_probe.py .build/ci-login --binary .build/target/debug/examples/login_interception_ui_probe --stage-prefix interception_ --screenshots 4 --small
           python3 desktop/examples/audit_login_interception_probe.py .build/ci-login
       - name: Windows WebView login lifecycle smoke
         if: runner.os == 'Windows'
         run: |
+          cargo build -p cumulus-desktop --example native_audio_probe --features custom-protocol --locked
+          python scripts/ci/native_smoke.py --binary .build/target/debug/examples/native_audio_probe.exe --report .build/ci-native-audio-windows.json --runtime .build/package-stage/windows-x64/native
           cargo build -p cumulus-desktop --example login_interception_ui_probe --features custom-protocol --locked
           python scripts/ci/ui_smoke.py --binary .build/target/debug/examples/login_interception_ui_probe.exe --root .build/ci-login-windows
           python scripts/ci/ui_smoke.py --binary .build/target/debug/examples/login_interception_ui_probe.exe --root .build/ci-login-windows-legacy --legacy
@@ -140,6 +147,7 @@ jobs:
             .build/package-stage/*/equalizer-proof/
             .build/ci-login*/
             .build/ci-login*.log
+            .build/ci-native-audio*.json
           if-no-files-found: ignore
           retention-days: 7
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

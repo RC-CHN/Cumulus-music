@@ -1,0 +1,33 @@
+Linux 桌面启动后无法播放：数字 locale 修复
+
+现象
+用户安装实际 .deb 后可以登录、读取每日推荐，但点击播放立即失败。
+运行进程日志反复出现 Non-C locale detected，并要求 setlocale(LC_NUMERIC, "C")。
+系统 libmpv.so.2 可加载，API 为 2.5，各播放器选项及独立初始化均正常。
+
+原因与修复
+GTK 根据系统环境初始化全局 locale；libmpv 的 mp_create 会检查全局 LC_NUMERIC 名称。
+中文/英文 UTF-8 locale 即使小数点恰好也是点号，仍可能被此检查拒绝。
+仅给媒体线程设置 uselocale 不能满足 setlocale(LC_NUMERIC, NULL) 的全局检查。
+桌面在 Tauri 插件初始化阶段（GTK runtime 已创建，应用/播放器尚未初始化）将 LC_NUMERIC 固定为 C，保留 LC_MESSAGES、编码和其他地区设置。
+这是桌面宿主的进程级前置条件；独立 Rust core 不在任意音频工作线程中修改宿主的全局 locale。
+
+依据
+https://github.com/mpv-player/mpv/blob/master/player/main.c
+https://github.com/mpv-player/mpv-examples/blob/master/libmpv/qt/qtexample.cpp
+
+本机验证
+合成独立进程：zh_CN.UTF-8 数字 locale 下 mpv_create 返回空；C 下成功。
+native_audio_probe 经过生产 configure、真实 GTK/WebView 初始化，再执行与打包探针共用的实际解码/控制流程。
+zh_CN.UTF-8 环境、系统 PipeWire 输出、音量 0：4 秒 48kHz 单声道 PCM 的元数据、解码、进度、暂停、seek、倍速、CUE 截止/清除、取消全部通过。
+同时断言数字 locale 为 C，LC_MESSAGES 保持启动时的中文值。
+不读取账号、不请求 CDN、不访问真实用户资源；WebView 数据目录隔离。静音测试不代表主观听感或所有声卡已验证。
+
+CI 回归
+scripts/ci/native_smoke.py 在 Linux/Windows 的真实桌面启动后运行同一探针，60 秒超时。
+Linux 使用已生成的 en_US.UTF-8 和 Xvfb；Windows 使用已打包的媒体依赖目录。
+CI 仍使用 null 输出；本机 PipeWire 验证是独立证据。最终发布结果以精确 release commit 的 CI 和附件 provenance 为准。
+
+旧安装包的临时启动办法（先关闭旧窗口）
+env -u LC_ALL LC_NUMERIC=C cumulus
+修复后的版本由程序处理，无需用户修改系统语言设置。

@@ -21,6 +21,7 @@
 - 前端：`npm --prefix frontend ci`，再运行 `format:check`、`test` 和 `build`。
 - Linux、Windows 的测试及发行构建分配到独立 runner 并行执行；前端检查独立执行。所有必需 job 汇总到 `CI gate`，不能通过忽略失败或 `continue-on-error` 发布。
 - 原生解码测试使用合成音频和 null 输出，不代表真实声卡听感；没有第二账号时不宣称一起听双端通过。
+- 桌面原生播放必须在真实 GUI 初始化后验证；Linux 使用非 C 系统 locale，确认仅数字 locale 调整为 C、界面语言设置保留。单独的 core 解码测试不能覆盖 GTK 初始化影响。
 
 ## 版本发布（强制）
 

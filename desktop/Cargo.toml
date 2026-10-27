@@ -115,6 +115,9 @@ tauri-plugin-dialog = "=2.7.2"
 tokio = { version = "1", features = ["sync"] }
 tempfile = "3"
 
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 rusqlite = { version = "0.41", features = ["bundled"] }
 tauri = { version = "2", features = ["test"] }
@@ -137,4 +140,8 @@ required-features = ["custom-protocol"]
 
 [[example]]
 name = "login_interception_ui_probe"
+required-features = ["custom-protocol"]
+
+[[example]]
+name = "native_audio_probe"
 required-features = ["custom-protocol"]

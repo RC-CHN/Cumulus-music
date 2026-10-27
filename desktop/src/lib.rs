@@ -9,6 +9,7 @@ mod identity;
 mod local;
 mod member;
 mod mv;
+mod platform;
 mod player;
 mod playlist_cover;
 mod playlists;
@@ -23,6 +24,14 @@ use tauri::Manager;
 /// Shared by the desktop runtime and IPC contract verification.
 pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
     captcha::protocol(builder)
+        .plugin(
+            tauri::plugin::Builder::<R>::new("media-locale")
+                .setup(|_, _| {
+                    platform::initialize_numeric_locale()?;
+                    Ok(())
+                })
+                .build(),
+        )
         .plugin(tauri_plugin_dialog::init())
         .plugin(watchman::collection::lifecycle())
         .manage(cumulus_core::Application)

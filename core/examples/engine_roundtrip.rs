@@ -56,8 +56,7 @@ fn wait(
     eprintln!("engine proof timeout: {last:?}");
     Err(cumulus_core::Error::State("engine proof timed out"))
 }
-fn run() -> Result<serde_json::Value> {
-    let auto = std::env::args().nth(1).as_deref() == Some("--auto");
+pub fn verify(auto: bool) -> Result<serde_json::Value> {
     let dir = tempfile::tempdir()?;
     let path = dir.path().join("sine.wav");
     wav(&path)?;
@@ -121,7 +120,7 @@ fn run() -> Result<serde_json::Value> {
     )
 }
 fn main() {
-    match run() {
+    match verify(std::env::args().nth(1).as_deref() == Some("--auto")) {
         Ok(report) => println!("{}", serde_json::to_string_pretty(&report).unwrap()),
         Err(error) => {
             eprintln!("{error}");
