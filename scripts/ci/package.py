@@ -70,6 +70,7 @@ def main():
     assert windows == (sys.platform == "win32"), "build on the target platform"
     version = check_versions()
     sha = git("rev-parse", "HEAD")
+    assert not git("status", "--porcelain", "--untracked-files=normal"), "commit source changes before building release packages"
     target = Path(os.environ.get("CARGO_TARGET_DIR", ".build/target")).resolve()
     stage = ROOT / ".build/package-stage" / args.platform
     output = ROOT / ".build/packages" / args.platform
@@ -80,16 +81,18 @@ def main():
     native.mkdir()
     suffix = ".exe" if windows else ""
     filter_name = "cumulus_audio_filter.dll" if windows else "libcumulus_audio_filter.so"
-    run(["cargo", "build", "--release", "--locked", "-p", "cumulus-audio-filter", "--lib", "--example", "player_probe"])
-    run(["cargo", "build", "--release", "--locked", "-p", "cumulus-core", "--example", "engine_roundtrip"])
+    run(["cargo", "build", "--release", "--locked", "-p", "cumulus-core", "-p", "cumulus-audio-filter", "--lib", "--example", "engine_roundtrip", "--example", "player_probe"])
     shutil.copy2(target / "release" / filter_name, native / filter_name)
     dlls = windows_media(native, Path(os.environ["CUMULUS_MSYS2_ROOT"])) if windows else []
     config = {"build": {"beforeBuildCommand": ""}, "bundle": {"active": True,
-        "resources": {str(native): "" if windows else "native"},
+        "resources": {str(native): "" if windows else "native", str(ROOT / "LICENSE"): "LICENSE", str(ROOT / f"docs/releases/{version}.txt"): "README.txt"},
         "shortDescription": "Community desktop music client",
+        "longDescription": "An independent Tauri and Rust community music client. See the included release notes for supported platforms and known limitations.",
+        "publisher": "Cumulus Music",
+        "licenseFile": str(ROOT / "LICENSE"),
         "copyright": "Cumulus Music contributors",
         "category": "Music",
-        "linux": {"deb": {"depends": ["libmpv2", "libwebkit2gtk-4.1-0", "libgtk-3-0"]}},
+        "linux": {"deb": {"depends": ["libmpv2"]}},
         "windows": {"nsis": {"installMode": "currentUser", "languages": ["SimpChinese", "English"]}}}}
     config_path = stage / "bundle-config.json"
     config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
@@ -136,6 +139,7 @@ def main():
     installers = list((target / "release/bundle" / ("nsis" if windows else "deb")).glob("*.exe" if windows else "*.deb"))
     assert len(installers) == 1, f"expected one installer, found {len(installers)}"
     shutil.copy2(installers[0], output / f"{archive_base}-setup.exe" if windows else output / f"{archive_base}.deb")
+    assert git("rev-parse", "HEAD") == sha and not git("status", "--porcelain", "--untracked-files=normal"), "source changed during packaging"
     manifest = {"version": version, "commit": sha, "platform": args.platform,
         "ciRun": os.environ.get("GITHUB_RUN_ID"), "ciAttempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
         "nativePlayback": media_report, "equalizerPlayback": eq_report,
