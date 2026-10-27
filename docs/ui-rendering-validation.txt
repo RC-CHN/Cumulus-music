@@ -44,7 +44,7 @@ requesting Always. Forcing DMA-BUF alone reproduces a Wayland disconnect:
   explicit sync is used, but no acquire point is set
 NVIDIA's __NV_DISABLE_EXPLICIT_SYNC=1 fixes that incompatibility while retaining
 GPU buffer transport. A shared-memory GPU presentation experiment also worked but
-was slower in this workload, so it is a manual fallback, not the Wayland default.
+was slower in this workload, so it is a fallback, not the Wayland default.
 
 Before GTK or worker startup, auto mode detects NVIDIA via DRM driver links and
 sets process-local defaults only when the user has not supplied that variable:
@@ -59,6 +59,60 @@ No desktop-wide, driver, display-frequency or login-session setting is modified.
 The startup environment API is unsafe with a documented before-threads contract;
 the WebKit feature FFI is isolated to the GTK thread with a bounded list lifetime.
 The Linux package requires WebKitGTK >= 2.42 for those public feature APIs.
+
+Automatic startup recovery
+The shipped desktop executable now validates graphics BEFORE GTK/main-client,
+account, player or background-business initialization. A separate, bounded child
+shows a small local Cumulus splash using the real WebView. It requires DOM layout,
+at least 12 animation frames over 400ms, and on Linux a WebKit snapshot containing
+the colored logo (an empty/black surface does not pass). There are no music API
+commands, session reads or online resources in this child. The visible splash has
+a cancel action; cancelling stops recovery rather than opening another window.
+
+Auto mode tries each candidate once: normal GPU configuration, then GPU/SHM on
+Linux, then software. Windows uses WebView2's normal renderer, then --disable-gpu
+as a compatibility fallback. Explicit CUMULUS_RENDERER choices remain pinned for
+advanced diagnosis. Each child has a 15-second deadline; success requires BOTH a
+successful exit and a render acknowledgement in its private temporary directory.
+A hung/failed check never causes the full music client to restart or retry writes.
+Linux timeout cleanup targets the check's own process group; Windows uses a
+kill-on-close job assigned before the child can create WebView2 workers.
+If every candidate fails, one native error dialog is shown without starting any
+account/business work. This is startup recovery, not automatic restart after an
+arbitrary crash later during playback or a user mutation.
+
+The last working auto profile is stored atomically in the local renderer cache.
+It is rechecked on each launch, with lower candidates available if it has broken.
+Known-bad higher candidates are skipped until the seven-day retry period expires
+or the environment changes. The period does not extend on every successful launch.
+Cache invalidation includes the executable, display/backend overrides and on Linux
+WebKit version, kernel/driver version and GPU model; Windows includes WebView2's
+version. Windows driver changes are caught by the mandatory check, but recovery to
+a faster profile after a driver repair may wait for the seven-day retry period.
+The stored environment key is a local hash, not a serial number or server identity.
+Missing, malformed, oversized or unwritable cache never prevents renderer checks.
+
+Validation of recovery
+On the physical NVIDIA/Wayland machine, explicitly restoring the broken sync
+behavior (__NV_DISABLE_EXPLICIT_SYNC=0) made the default check fail. The same
+launch then selected gpu-shm successfully. The next launch started at cached
+gpu-shm and succeeded in one attempt. Separate default and software checks passed.
+Local synthetic evidence: .build/graphics-recovery-first.json,
+.build/graphics-recovery-cached.json and .build/graphics-smoke-local.json.
+The startup diagnostic creates no SQLite account/business databases.
+Unit tests cover crash/timeout progression, all-candidate exhaustion, cancellation,
+manual overrides, changed environment/expiry/corruption, exit without render ack,
+and killing a hung child. CI runs the shipped binary's graphics diagnostic for
+default, cached and software paths on both supported platforms, plus Linux SHM.
+Windows does not yet perform the Linux pixel snapshot check; its acknowledgement
+covers mapped-page layout and animation frames. Virtual-runner results do not
+establish physical GPU compatibility on every driver.
+
+WebView2's browser flags are a compatibility mechanism with runtime-version risk,
+not a permanent API guarantee. The fallback is checked on every launch and the
+normal mode adds no flags. Relevant API references:
+https://webkitgtk.org/reference/webkit2gtk/stable/method.WebView.get_snapshot.html
+https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/webview-features-flags
 
 Evidence and limits
 The standalone scroll_ui_probe renders the production frontend and IPC using

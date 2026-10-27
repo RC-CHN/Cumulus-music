@@ -10,9 +10,18 @@
 /// Call only on the initial thread BEFORE GTK/Tauri or any worker starts;
 /// Linux environment mutations must not race with foreign-library getenv calls.
 pub unsafe fn prepare_process() {
+    #[cfg(target_os = "windows")]
+    if effective_mode() == "software" {
+        let mut args = std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS").unwrap_or_default();
+        if !args.split_whitespace().any(|arg| arg == "--disable-gpu") {
+            args.push_str(" --disable-gpu");
+            // SAFETY: entry-point-only, before WebView2 or other threads start.
+            unsafe { std::env::set_var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", args) };
+        }
+    }
     #[cfg(target_os = "linux")]
     {
-        let mode = std::env::var("CUMULUS_RENDERER").unwrap_or_else(|_| "auto".into());
+        let mode = effective_mode();
         let wayland = std::env::var_os("WAYLAND_DISPLAY").is_some()
             && std::env::var("GDK_BACKEND").as_deref() != Ok("x11");
         let nvidia = std::fs::read_dir("/sys/class/drm")
@@ -52,6 +61,12 @@ pub unsafe fn prepare_process() {
     }
 }
 
+pub(super) fn effective_mode() -> String {
+    std::env::var("CUMULUS_RENDERER_EFFECTIVE")
+        .or_else(|_| std::env::var("CUMULUS_RENDERER"))
+        .unwrap_or_else(|_| "auto".into())
+}
+
 pub fn plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
     tauri::plugin::Builder::new("graphics")
         .on_webview_ready(|webview| {
@@ -65,58 +80,12 @@ pub fn plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
         .build()
 }
 
+mod cache;
+#[cfg(target_os = "windows")]
+mod job;
 #[cfg(target_os = "linux")]
-mod linux {
-    use std::ffi::{CStr, c_char, c_int, c_void};
-    use webkit2gtk::{SettingsExt, WebViewExt, glib::translate::ToGlibPtr};
-
-    // These public WebKitGTK APIs are available since 2.42 but absent from the
-    // gtk-rs 0.18 bindings used by Tauri. Keep the untyped boundary here only.
-    unsafe extern "C" {
-        fn webkit_settings_get_all_features() -> *mut c_void;
-        fn webkit_feature_list_get_length(list: *mut c_void) -> usize;
-        fn webkit_feature_list_get(list: *mut c_void, index: usize) -> *mut c_void;
-        fn webkit_feature_get_identifier(feature: *mut c_void) -> *const c_char;
-        fn webkit_settings_set_feature_enabled(
-            settings: *mut webkit2gtk::ffi::WebKitSettings,
-            feature: *mut c_void,
-            enabled: c_int,
-        );
-        fn webkit_feature_list_unref(list: *mut c_void);
-    }
-    pub fn configure(view: &webkit2gtk::WebView) {
-        let Some(settings) = view.settings() else {
-            return;
-        };
-        settings.set_enable_smooth_scrolling(true);
-        if std::env::var("CUMULUS_RENDERER").as_deref() == Ok("software") {
-            settings
-                .set_hardware_acceleration_policy(webkit2gtk::HardwareAccelerationPolicy::Never);
-        } else {
-            settings
-                .set_hardware_acceleration_policy(webkit2gtk::HardwareAccelerationPolicy::Always);
-        }
-        // SAFETY: runs on the GTK main thread; settings stays owned throughout;
-        // each borrowed feature/string is only used while the owning list lives.
-        unsafe {
-            let list = webkit_settings_get_all_features();
-            if list.is_null() {
-                return;
-            }
-            for index in 0..webkit_feature_list_get_length(list) {
-                let feature = webkit_feature_list_get(list, index);
-                if feature.is_null() {
-                    continue;
-                }
-                let identifier = webkit_feature_get_identifier(feature);
-                if !identifier.is_null()
-                    && CStr::from_ptr(identifier).to_bytes()
-                        == b"PreferPageRenderingUpdatesNear60FPS"
-                {
-                    webkit_settings_set_feature_enabled(settings.to_glib_none().0, feature, 0);
-                }
-            }
-            webkit_feature_list_unref(list);
-        }
-    }
-}
+mod linux;
+mod policy;
+mod probe;
+mod startup;
+pub use startup::bootstrap;

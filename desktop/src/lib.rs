@@ -171,6 +171,9 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
 }
 
 pub fn run() {
+    if !graphics::bootstrap() {
+        return;
+    }
     // SAFETY: desktop entry point, before the GUI runtime and worker creation.
     unsafe { prepare_graphics() };
     configure(tauri::Builder::default())
