@@ -328,7 +328,7 @@ async fn rename_move_directory_and_delete_run_from_native_commands_without_reaut
             .unwrap()
             .ends_with("新名字.flac")
     );
-    let target = f.root.path().join("other");
+    let target = f.root.path().canonicalize().unwrap().join("other");
     let root = target.to_string_lossy().into_owned();
     f.client
         .download_command("1", DownloadCommand::Migrate { root: root.clone() })

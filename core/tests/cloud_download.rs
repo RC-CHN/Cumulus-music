@@ -394,7 +394,13 @@ async fn cloud_completed_rename_move_and_delete_keep_origin_and_ledger_consisten
     let renamed = f.service.get(&task.id).unwrap();
     assert!(renamed.origin.is_cloud());
     assert_eq!(fs::read(renamed.target.as_ref().unwrap()).unwrap(), AUDIO);
-    let target = f.root.path().join("elsewhere/moved.flac");
+    let target = f
+        .root
+        .path()
+        .canonicalize()
+        .unwrap()
+        .join("elsewhere")
+        .join("moved.flac");
     fs::create_dir(target.parent().unwrap()).unwrap();
     let moving = files
         .start(&task.id, FileAction::Move, Some(target.clone()))

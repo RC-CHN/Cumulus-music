@@ -236,7 +236,13 @@ async fn interrupted_move_reopens_journal_and_restores_paused_local_source() {
         .command(&token, Cmd::Pause { paused: true })
         .await
         .unwrap();
-    let target = f.root.path().join("moved/final.mp4");
+    let target = f
+        .root
+        .path()
+        .canonicalize()
+        .unwrap()
+        .join("moved")
+        .join("final.mp4");
     std::fs::create_dir(target.parent().unwrap()).unwrap();
     let op = files(&f)
         .start(&task.id, FileAction::Move, Some(target.clone()))

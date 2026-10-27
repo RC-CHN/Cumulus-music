@@ -52,7 +52,12 @@ impl Fixture {
         let root = tempfile::tempdir().unwrap();
         let (service, session, store, api, _) =
             support::download::setup(root.path(), FLAC.into(), "flac");
-        let source = root.path().join("media/input.flac");
+        let source = root
+            .path()
+            .canonicalize()
+            .unwrap()
+            .join("media")
+            .join("input.flac");
         let t = service
             .create(
                 &json!(123),
@@ -90,7 +95,12 @@ impl Fixture {
         .unwrap()
     }
     fn target(&self) -> PathBuf {
-        self.root.path().join("moved/renamed.flac")
+        self.root
+            .path()
+            .canonicalize()
+            .unwrap()
+            .join("moved")
+            .join("renamed.flac")
     }
     fn library(&self) -> LocalLibrary {
         LocalLibrary::with_probe(self.store.clone(), Arc::new(Probe)).unwrap()
@@ -111,6 +121,54 @@ fn interrupt(event: FileEvent) -> FileOptions {
                 Ok(())
             }
         })),
+    }
+}
+
+#[tokio::test]
+async fn legacy_queue_path_aliases_follow_moves_and_deletes() {
+    for action in [FileAction::Move, FileAction::Delete] {
+        let f = Fixture::new(false).await;
+        let alias = f
+            .root
+            .path()
+            .join("media")
+            .join("..")
+            .join("media")
+            .join("input.flac");
+        assert_ne!(alias, f.source);
+        assert_eq!(alias.canonicalize().unwrap(), f.source);
+        let mut queue = PlaybackQueue::new(Some(f.store.clone()), "1").unwrap();
+        queue
+            .replace(
+                vec![json!({"path":alias}), json!({"id":777})],
+                0,
+                json!(null),
+            )
+            .unwrap();
+        let files = f.files();
+        let operation = files
+            .start(
+                &f.task.id,
+                action,
+                if action == FileAction::Move {
+                    Some(f.target())
+                } else {
+                    None
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            files.resume(&operation.id).unwrap().phase,
+            FilePhase::Complete
+        );
+        queue.reload().unwrap();
+        let snapshot = queue.snapshot();
+        if action == FileAction::Move {
+            assert_eq!(snapshot.items[0].resource["path"], json!(f.target()));
+        } else {
+            assert_eq!(snapshot.items.len(), 1);
+            assert_eq!(snapshot.items[0].resource["id"], 777);
+        }
     }
 }
 

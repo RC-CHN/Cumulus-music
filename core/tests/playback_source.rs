@@ -274,7 +274,7 @@ async fn local_source_requires_library_and_rejects_stale_account_and_cue_contain
     let local = SourceResolver::new(session.clone(), Some(library));
     let source = local.resolve(&json!({"path":path}), &token).await.unwrap();
     assert!(
-        matches!(&source.input,cumulus_core::playback::engine::MediaInput::File(p) if *p==path)
+        matches!(&source.input,cumulus_core::playback::engine::MediaInput::File(p) if *p==path.canonicalize().unwrap())
     );
     let cue = dir.path().join("container.cue");
     std::fs::write(&cue, b"FILE sample.wav WAVE").unwrap();

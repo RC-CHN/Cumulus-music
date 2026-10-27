@@ -411,8 +411,10 @@ async fn manual_binding_clear_and_legacy_mapping_keep_revision_and_account_bound
 
 #[test]
 fn protocol_encoding_metadata_and_hostile_identity_boundaries() {
-    let f = Fixture::new(&["雪 !'()*~ +%?".into()]);
+    let f = Fixture::new(&["unicode fixture".into()]);
     let mut item = f.items().remove(0);
+    // Metadata may contain characters forbidden in Windows filenames.
+    item.metadata.title = "雪 !'()*~ +%?".into();
     item.id = "local-1".into();
     let q = MatchQuery::from_item(&item).unwrap();
     assert_eq!(

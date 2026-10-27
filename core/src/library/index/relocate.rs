@@ -89,7 +89,15 @@ pub(crate) fn relocate_download(
                 changed = true;
                 continue;
             }
-            let path_match = resource.get("path") == Some(&json!(old));
+            let path_match = resource
+                .get("path")
+                .and_then(Value::as_str)
+                .is_some_and(|value| {
+                    let path = Path::new(value);
+                    path == old
+                        || (path.is_absolute()
+                            && path.canonicalize().is_ok_and(|resolved| resolved == old))
+                });
             if local_id != Some(old_id.as_str()) && !path_match {
                 continue;
             }

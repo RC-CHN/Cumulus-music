@@ -32,8 +32,8 @@ impl Fixture {
         let root = tempfile::tempdir().unwrap();
         let (service, session, store, api, backend) =
             support::download::setup(root.path(), FLAC.into(), "flac");
-        let source = root.path().join("media");
-        let target = root.path().join("moved");
+        let source = root.path().canonicalize().unwrap().join("media");
+        let target = root.path().canonicalize().unwrap().join("moved");
         let f = Self {
             root,
             source,
