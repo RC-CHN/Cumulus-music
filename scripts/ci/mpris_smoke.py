@@ -63,7 +63,7 @@ def main():
         directory = root / name
         directory.mkdir(mode=0o700)
         env[key] = str(directory)
-    changes, seeks, steps = [], [], []
+    changes, seeks, steps, seek_samples = [], [], [], []
     def drain():
         while context.pending(): context.iteration(False)
     def wait(condition, message, seconds=15):
@@ -99,6 +99,20 @@ def main():
         try: operation()
         except GLib.Error: return
         raise AssertionError('invalid operation was acknowledged as successful')
+    def verify_native_seek(target, count, label):
+        # Assert exact protocol-to-engine mapping, not a paused null time-pos.
+        # The observed adapter calls the real libmpv engine before recording.
+        wait(lambda:len(state()['nativeSeeks'])>count, 'accepted native seek')
+        trace = state()['nativeSeeks']
+        assert len(trace)==count+1 and trace[-1]==target, (label, trace)
+        time.sleep(.15)
+        assert get('PlaybackStatus')=='Paused'
+        seek_samples.append({'label':label,'target':target,'nativeAccepted':trace[-1],
+                             'pausedPosition':get('Position')/1_000_000})
+        call(PLAYER, 'Play')
+        wait(lambda:get('Position')>int((target+.1)*1_000_000), 'native output advances after seek')
+        call(PLAYER, 'Pause')
+        assert get('PlaybackStatus')=='Paused'
     process = None
     subscriptions = []
     try:
@@ -132,17 +146,33 @@ def main():
             paused = get('Position')
             time.sleep(.4)
             assert abs(get('Position')-paused)<40_000
+            before_seek = len(seeks)
+            accepted_seeks = len(state()['nativeSeeks'])
             call(PLAYER,'SetPosition',GLib.Variant('(ox)',(first_id,4_000_000)))
-            assert abs(get('Position')-4_000_000)<40_000
-            wait(lambda:seeks and abs(seeks[-1]-4_000_000)<40_000,'Seeked signal')
+            wait(lambda:len(seeks)>before_seek,'Seeked signal')
+            time.sleep(.15)
+            paused = get('Position')
+            before_rejected = len(seeks)
             call(PLAYER,'SetPosition',GLib.Variant('(ox)',('/io/cumulus/stale',7_000_000)))
-            assert abs(get('Position')-4_000_000)<40_000
+            assert abs(get('Position')-paused)<40_000
             call(PLAYER,'SetPosition',GLib.Variant('(ox)',(first_id,40_000_000)))
-            assert abs(get('Position')-4_000_000)<40_000
+            assert abs(get('Position')-paused)<40_000
+            time.sleep(.3)
+            drain()
+            assert len(seeks)==before_rejected, 'rejected targets emitted Seeked'
+            verify_native_seek(4, accepted_seeks, 'MPRIS SetPosition')
+            before_seek = len(seeks)
+            call(PLAYER,'SetPosition',GLib.Variant('(ox)',(first_id,4_000_000)))
+            wait(lambda:len(seeks)>before_seek,'short-seek fixture origin')
+            time.sleep(.15)
+            before_short_seek = len(seeks)
+            accepted_seeks = len(state()['nativeSeeks'])
             control('short_seek')
-            wait(lambda:seeks and abs(seeks[-1]-4_010_000)<1_000,'short UI seek signal')
+            wait(lambda:len(seeks)>before_short_seek,'short UI seek signal')
+            verify_native_seek(4.01, accepted_seeks, 'short UI seek')
+            accepted_seeks = len(state()['nativeSeeks'])
             call(PLAYER,'Seek',GLib.Variant('(x)',(-20_000_000,)))
-            assert get('Position')<40_000
+            verify_native_seek(0, accepted_seeks, 'negative relative seek clamps to origin')
             steps.append('pause-seek-stale-bounds')
             call(PLAYER,'Next')
             second_id = get('Metadata')['mpris:trackid']
@@ -242,11 +272,11 @@ def main():
             steps.append('signal-contract-and-session-removal')
             control('exit')
             assert process.wait(timeout=10)==0
-            report={'ok':True,'steps':steps,'actualTauri':True,'actualMpris':True,'nativePcmNull':True,'propertySignals':len(changes),'seekedSignals':len(seeks),'realAccountRequests':0,'physicalDesktopPanelVerified':False,'windowsSmtcVerified':False}
+            report={'ok':True,'steps':steps,'actualTauri':True,'actualMpris':True,'nativePcmNull':True,'propertySignals':len(changes),'seekedSignals':len(seeks),'nativeSeekRequests':seek_samples,'realAccountRequests':0,'physicalDesktopPanelVerified':False,'windowsSmtcVerified':False}
             (root/'report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
             print(json.dumps(report,ensure_ascii=False))
     except Exception:
-        (root/'failed.json').write_text(json.dumps({'completedSteps':steps,'propertySignals':changes,'seekedSignals':seeks,'processExit':process.poll() if process is not None else None},ensure_ascii=False,indent=2)+'\n')
+        (root/'failed.json').write_text(json.dumps({'completedSteps':steps,'propertySignals':changes,'seekedSignals':seeks,'nativeSeekRequests':seek_samples,'processExit':process.poll() if process is not None else None},ensure_ascii=False,indent=2)+'\n')
         raise
     finally:
         for subscription in subscriptions: connection.signal_unsubscribe(subscription)
