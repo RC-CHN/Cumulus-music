@@ -1,0 +1,174 @@
+{
+  "source": "Official PC 3.1.42.205594 hybrid_app M542.b, executed with isOSX=false; synthetic vectors only",
+  "cases": [
+    {
+      "name": "equal-local-creator-and-newer-remote-progress",
+      "local": [
+        {
+          "id": "1",
+          "name": "本机一",
+          "playtime": 100,
+          "playProgress": 25
+        },
+        {
+          "id": "2",
+          "name": "本机二",
+          "playtime": 50,
+          "playProgress": 7,
+          "isListened": true
+        }
+      ],
+      "remote": [
+        {
+          "id": "1",
+          "name": "云端一",
+          "playtime": 100,
+          "creator": {
+            "name": "创作者"
+          },
+          "osIcon": "android",
+          "playProgress": 90
+        },
+        {
+          "id": "2",
+          "name": "云端二",
+          "playtime": 150,
+          "osIcon": "ios",
+          "playProgress": 80
+        }
+      ],
+      "expected": [
+        {
+          "id": "2",
+          "name": "云端二",
+          "playtime": 150,
+          "osIcon": "ios",
+          "playProgress": 7
+        },
+        {
+          "id": "1",
+          "name": "本机一",
+          "playtime": 100,
+          "playProgress": 25,
+          "osIcon": "pc",
+          "creator": {
+            "name": "创作者"
+          }
+        }
+      ]
+    },
+    {
+      "name": "stable-ties-and-string-identities",
+      "local": [
+        {
+          "id": "90071992547409931234",
+          "name": "精确标识",
+          "playtime": 10
+        },
+        {
+          "id": "3",
+          "name": "本机旧值",
+          "playtime": 10
+        },
+        {
+          "id": "3",
+          "name": "本机末值",
+          "playtime": 10
+        }
+      ],
+      "remote": [
+        {
+          "id": "4",
+          "name": "云端同时间",
+          "playtime": 10,
+          "osIcon": "android",
+          "playProgress": 100
+        },
+        {
+          "id": "5",
+          "name": "更新记录",
+          "playtime": 20
+        }
+      ],
+      "expected": [
+        {
+          "id": "5",
+          "name": "更新记录",
+          "playtime": 20
+        },
+        {
+          "id": "90071992547409931234",
+          "name": "精确标识",
+          "playtime": 10,
+          "osIcon": "pc"
+        },
+        {
+          "id": "3",
+          "name": "本机末值",
+          "playtime": 10,
+          "osIcon": "pc"
+        },
+        {
+          "id": "4",
+          "name": "云端同时间",
+          "playtime": 10,
+          "osIcon": "android"
+        }
+      ]
+    },
+    {
+      "name": "newer-local-and-creator-falsy",
+      "local": [
+        {
+          "id": "6",
+          "name": "本机",
+          "playtime": 30,
+          "creator": false
+        }
+      ],
+      "remote": [
+        {
+          "id": "6",
+          "name": "云端旧记录",
+          "playtime": 20,
+          "creator": {
+            "name": "可补充创作者"
+          }
+        },
+        {
+          "id": "7",
+          "name": "远端",
+          "playtime": 20
+        },
+        {
+          "id": "7",
+          "name": "远端更新",
+          "playtime": 25,
+          "playProgress": 80
+        }
+      ],
+      "expected": [
+        {
+          "id": "6",
+          "name": "本机",
+          "playtime": 30,
+          "creator": {
+            "name": "可补充创作者"
+          },
+          "osIcon": "pc"
+        },
+        {
+          "id": "7",
+          "name": "远端更新",
+          "playtime": 25
+        }
+      ]
+    },
+    {
+      "name": "empty",
+      "local": [],
+      "remote": [],
+      "expected": []
+    }
+  ]
+}

@@ -13,6 +13,7 @@ pub mod download;
 pub mod effects;
 pub mod error;
 pub mod fm;
+pub mod history;
 pub mod identity;
 pub mod library;
 pub mod listen_together;
