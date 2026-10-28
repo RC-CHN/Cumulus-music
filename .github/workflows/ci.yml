@@ -183,37 +183,19 @@ jobs:
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-relay-publication-windows --runtime .build/package-stage/windows-x64/native --relay-publication
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-relay-recovery-windows --runtime .build/package-stage/windows-x64/native --relay-recovery
           python scripts/ci/graphics_smoke.py --binary .build/target/release/cumulus.exe --root .build/ci-graphics-windows
+      - name: Archive synthetic failure diagnostics
+        if: failure()
+        run: python scripts/ci/diagnostics.py
       - name: Preserve synthetic failure diagnostics
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: diagnostics-${{ matrix.platform }}
-          # These paths contain only synthetic CI fixtures. The common .build
-          # parent is hidden, so upload-artifact otherwise skips every result.
+          # Archive first: path-escaping fixtures deliberately contain colons,
+          # which upload-artifact cannot accept as individual filenames.
           include-hidden-files: true
-          path: |
-            .build/package-stage/*/equalizer-proof/
-            .build/ci-login*/
-            .build/ci-login*.log
-            .build/ci-native-audio*.json
-            .build/ci-native-audio*.jsonl
-            .build/ci-native-audio*.log
-            .build/ci-engine-roundtrip*.log
-            .build/ci-scroll*/
-            .build/ci-scroll*.log
-            .build/ci-graphics*/
-            .build/ci-ux*/
-            .build/ci-motion*/
-            .build/ci-accounts*/
-            .build/ci-startup*/
-            .build/ci-output-settings*/
-            .build/ci-tray*/
-            .build/ci-catalog*/
-            .build/ci-collections*/
-            .build/ci-history*/
-            .build/ci-settings*/
-            .build/ci-relay*/
-          if-no-files-found: ignore
+          path: .build/diagnostics/synthetic-proofs.tar.gz
+          if-no-files-found: error
           retention-days: 7
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
