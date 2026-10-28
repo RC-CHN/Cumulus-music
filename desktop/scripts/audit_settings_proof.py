@@ -1,5 +1,6 @@
 """Inspect existing native/WebView evidence, without making network requests."""
 import argparse
+from collections import Counter
 import json
 from pathlib import Path
 import sqlite3
@@ -51,15 +52,23 @@ def main():
     for field in live['settings']['fields']:
         assert field['state'] == 'available' and field['value'] == snapshot['values'][field['key']]
     calls = read(args.live / 'first' / 'api-calls.json')
-    assert len(calls) == 5
-    assert {c['path'] for c in calls} == {
+    base = {
         '/api/w/nuser/account/get', '/api/user/playlist', '/api/song/like/get',
         '/api/v3/discovery/recommend/songs', '/api/user/setting',
     }
+    relay_reads = {'/api/rtrs/abt/front/expinfo/list', '/api/relay/config/get',
+                   '/api/relay/setting/show', '/api/link/position/show/resource'}
+    counts = Counter(c['path'] for c in calls)
+    assert all(counts[p] == 1 for p in base)
+    assert counts.keys() <= base | relay_reads
+    assert all(counts[p] <= 1 for p in relay_reads)
+    if counts.keys() - base:
+        assert counts['/api/rtrs/abt/front/expinfo/list'] == counts['/api/relay/setting/show'] == 1
     assert all(c['code'] == 200 for c in calls)
     print(json.dumps({'ok': True, 'syntheticStates': 21, 'syntheticWrites': 6,
                       'liveStates': 5, 'liveAccountSettingsReads': 1, 'liveWrites': 0,
-                      'checkedFields': 7, 'physicalRefreshRateVerified': False}))
+                      'checkedFields': 7, 'startupRelayReads': sum(counts[p] for p in relay_reads),
+                      'physicalRefreshRateVerified': False}))
 
 
 if __name__ == '__main__':

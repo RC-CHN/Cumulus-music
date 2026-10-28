@@ -24,6 +24,8 @@ impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, args: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             Ok(match path {
+                "/api/rtrs/abt/front/expinfo/list" => json!({"code":200,"data":[]}),
+                "/api/relay/setting/show" => json!({"code":200,"data":{"groups":[]}}),
                 "/api/w/nuser/account/get" => {
                     json!({"code":200,"profile":{"userId":2,"nickname":"界面体验验证"}})
                 }

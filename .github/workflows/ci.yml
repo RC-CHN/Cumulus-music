@@ -139,6 +139,7 @@ jobs:
           dbus-run-session -- xvfb-run -a python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-collections-linux --collections
           dbus-run-session -- xvfb-run -a python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-history-linux --history
           dbus-run-session -- xvfb-run -a python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-settings-linux --settings
+          LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-relay-linux --relay
           dbus-run-session -- xvfb-run -a python3 scripts/ci/graphics_smoke.py --binary .build/target/release/cumulus --root .build/ci-graphics-linux
       - name: Windows WebView login lifecycle smoke
         if: runner.os == 'Windows'
@@ -157,6 +158,7 @@ jobs:
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-collections-windows --runtime .build/package-stage/windows-x64/native --collections
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-history-windows --runtime .build/package-stage/windows-x64/native --history
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-settings-windows --runtime .build/package-stage/windows-x64/native --settings
+          python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-relay-windows --runtime .build/package-stage/windows-x64/native --relay
           python scripts/ci/graphics_smoke.py --binary .build/target/release/cumulus.exe --root .build/ci-graphics-windows
       - name: Preserve synthetic failure diagnostics
         if: failure()
@@ -176,6 +178,7 @@ jobs:
             .build/ci-collections*/
             .build/ci-history*/
             .build/ci-settings*/
+            .build/ci-relay*/
           if-no-files-found: ignore
           retention-days: 7
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

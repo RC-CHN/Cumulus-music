@@ -19,6 +19,8 @@ mod fixture;
 mod history_fixture;
 #[path = "support/catalog_live.rs"]
 mod live;
+#[path = "support/relay_fixture.rs"]
+mod relay_fixture;
 #[path = "support/settings_fixture.rs"]
 mod settings_fixture;
 fn main() {
@@ -42,15 +44,18 @@ fn main() {
     let collections = std::env::var("CUMULUS_COLLECTION_PROOF").as_deref() == Ok("1");
     let histories = std::env::var("CUMULUS_HISTORY_PROOF").as_deref() == Ok("1");
     let settings = std::env::var("CUMULUS_SETTINGS_PROOF").as_deref() == Ok("1");
+    let relays = std::env::var("CUMULUS_RELAY_PROOF").as_deref() == Ok("1");
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
         let registry=ProfileRegistry::open(&root.join("state"),ApiOrigin::Pc)?;
         let collection_fixture=Arc::new(collection_fixture::Library::default());
         let history_fixture=Arc::new(history_fixture::Library::default());
         let settings_fixture=Arc::new(settings_fixture::Library::default());
-        let api:Arc<dyn Api>=if let Some(profile)=profile{Arc::new(live::Reads::open(&profile,&output)?)}else if settings {settings_fixture.clone()}else if histories {history_fixture.clone()}else if collections{collection_fixture.clone()}else{Arc::new(fixture::Library::default())};
+        let relay_fixture=Arc::new(relay_fixture::Library::default());
+        let api:Arc<dyn Api>=if let Some(profile)=profile{Arc::new(live::Reads::open(&profile,&output)?)}else if relays {relay_fixture.clone()}else if settings {settings_fixture.clone()}else if histories {history_fixture.clone()}else if collections{collection_fixture.clone()}else{Arc::new(fixture::Library::default())};
         let session=Arc::new(AccountSession::new(api,Some(registry.store())));
         let client=MusicClient::with_session(session,registry);
-        app.manage(cumulus_desktop::configure_native_audio(client,&app.path().resource_dir()?,true));
+        let client=if relays && !is_live {let wave=relay_fixture::wave(&root)?;client.with_audio_factory(move||Ok(Box::new(relay_fixture::NativeAudio::open(wave.clone())?)))}else{cumulus_desktop::configure_native_audio(client,&app.path().resource_dir()?,true)};
+        app.manage(client);
         app.add_capability(r#"{"identifier":"ux-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
         let handle=app.handle().clone();
         app.listen("ux-proof",move |event| {
@@ -59,6 +64,7 @@ fn main() {
             if stage=="fixture" && collections && !is_live {collection_fixture.mode(value["mode"].as_str().unwrap_or(""));return;}
             if stage=="fixture" && histories && !is_live {history_fixture.mode(value["mode"].as_str().unwrap_or(""));return;}
             if stage=="fixture" && settings && !is_live {settings_fixture.mode(value["mode"].as_str().unwrap_or(""));return;}
+            if stage=="fixture" && relays && !is_live {relay_fixture.mode(value["mode"].as_str().unwrap_or(""));return;}
             if stage=="resize" {
                 handle.get_webview_window("main").unwrap().set_size(tauri::LogicalSize::new(value["width"].as_f64().unwrap(),value["height"].as_f64().unwrap())).unwrap();return;
             }
@@ -66,13 +72,15 @@ fn main() {
             let handle=handle.clone();let output=output.clone();let stage=stage.to_owned();
             let history_writes=history_fixture.writes.load(std::sync::atomic::Ordering::SeqCst);
             let settings_writes=settings_fixture.writes.load(std::sync::atomic::Ordering::SeqCst);
+            let relay_pulls=relay_fixture.pulls.load(std::sync::atomic::Ordering::SeqCst);
             tauri::async_runtime::spawn(async move {
                 let mut value=value;
                 if histories {value["syntheticHistoryWrites"]=serde_json::json!(history_writes);}
                 if settings {value["syntheticSettingsWrites"]=serde_json::json!(settings_writes);}
+                if relays {value["syntheticRelayPulls"]=serde_json::json!(relay_pulls);}
                 let client=handle.state::<MusicClient>();
                 let epoch=client.account().unwrap().epoch;
-                if is_live && value["playing"]==true {
+                if (is_live || relays) && value["playing"]==true {
                     let player=client.subscribe_playback(&epoch).await.unwrap().current().unwrap();
                     if player.position.is_none_or(|p|p<=0.2)||player.queue_len==0||player.error.is_some(){
                         fs::write(output.join("failed.json"),br#"{"ok":false,"error":"native playback did not advance"}"#).unwrap();handle.exit(1);return;
@@ -80,7 +88,7 @@ fn main() {
                     value["nativePlayer"]=serde_json::to_value(player).unwrap();
                     value["nativeQueue"]=serde_json::to_value(client.player_queue(&epoch).await.unwrap()).unwrap();
                 }
-                if is_live && ["complete","failed"].contains(&stage.as_str()){let _=client.player_action(&epoch,PlayerAction::Stop).await;}
+                if (is_live || relays) && ["complete","failed"].contains(&stage.as_str()){let _=client.player_action(&epoch,PlayerAction::Stop).await;}
                 fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
                 if ["complete","failed"].contains(&stage.as_str()){handle.exit(if stage=="complete" {0} else {1});}
             });
@@ -94,7 +102,9 @@ fn main() {
     }).on_page_load(move |view, payload| {
         if payload.event()==PageLoadEvent::Finished && view.label()=="main" {
             let script=std::env::var_os("CUMULUS_UX_SCRIPT").map(|p|fs::read_to_string(p).unwrap());
-            view.eval(script.as_deref().unwrap_or(if settings {
+            view.eval(script.as_deref().unwrap_or(if relays {
+                include_str!("relay_ui_probe.js")
+            } else if settings {
                 if is_live {include_str!("settings_live_probe.js")}else{include_str!("settings_ui_probe.js")}
             } else if histories {
                 if is_live {include_str!("history_live_probe.js")}else{include_str!("history_ui_probe.js")}

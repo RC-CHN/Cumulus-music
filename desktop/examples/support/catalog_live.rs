@@ -39,6 +39,10 @@ impl Api for Reads {
             if !matches!(
                 path,
                 "/api/w/nuser/account/get"
+                    | "/api/rtrs/abt/front/expinfo/list"
+                    | "/api/relay/config/get"
+                    | "/api/relay/setting/show"
+                    | "/api/link/position/show/resource"
                     | "/api/user/playlist"
                     | "/api/song/like/get"
                     | "/api/v3/discovery/recommend/songs"

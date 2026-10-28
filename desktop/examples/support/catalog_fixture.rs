@@ -28,6 +28,8 @@ impl Api for Library {
             let offset = args["offset"].as_u64().unwrap_or(0);
             let limit = args["limit"].as_u64().unwrap_or(20);
             Ok(match path {
+                "/api/rtrs/abt/front/expinfo/list" => json!({"code":200,"data":[]}),
+                "/api/relay/setting/show" => json!({"code":200,"data":{"groups":[]}}),
                 "/api/w/nuser/account/get" => {
                     json!({"code":200,"profile":{"userId":2,"nickname":"目录界面验证"}})
                 }

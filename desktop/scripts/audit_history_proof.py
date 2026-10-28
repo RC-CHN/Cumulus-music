@@ -45,6 +45,8 @@ def audit(ui, local, live=None):
                    '/api/play-record/voice/list', '/api/play-record/djradio/list',
                    '/api/play-record/voice/book/timeline/list', '/api/song/enhance/privilege',
                    '/api/v3/song/detail', '/api/song/enhance/player/url/v1', '/api/song/lyric/v1'}
+        allowed |= {'/api/rtrs/abt/front/expinfo/list', '/api/relay/config/get',
+                    '/api/relay/setting/show', '/api/link/position/show/resource'}
         calls = read(directory / 'api-calls.json')
         assert all(c['path'] in allowed and c['code'] == 200 for c in calls)
         database = (live / 'state/core.sqlite3').resolve()
