@@ -247,3 +247,31 @@ https://github.com/RC-CHN/Cumulus-music/actions/runs/40715546117
 - .build/ux-confirmation-ci：更新后的正式 CI 驱动34状态通过；全工作区221组/target共
   1017项Rust测试通过，失败/忽略均0；严格Clippy、Rust/前端格式、185项前端测试、
   15项CI规则测试和生产前端构建通过。日志前缀 .build/ux-followup-*。
+
+Windows现场与接续提示焦点复查（2026-10-29）
+- 精确提交6b163bc4ec42530ced172b12db1c3f831995b739的CI 40731209809中，Windows
+  原生播放、登录、滚动及上述34状态的编辑/主题检查通过。账号探针也生成首次8状态和
+  重开2状态的完成记录，但独立审计脚本按系统cp1252读取中文UTF-8 JSON而失败。
+  已显式指定所有读写的UTF-8编码；下载该Windows现场，用非UTF-8的C locale重现旧错误，
+  修改后原样完成SQLite/凭据/取消焦点等独立核对。没有忽略断言或改变runner系统locale。
+  该次完整CI仍是失败，不能用现场离线复核冒充新提交Windows CI已成功。
+- 更早的Windows运行40726723847、40728602101在接续提示的键盘焦点保持断言失败。
+  当时没有焦点事件轨迹，不能断言其唯一根因；现为合成探针加入最多60条无账号内容的
+  焦点/指针轨迹，记录实际DOM焦点、窗口激活、提示状态及按钮禁用状态，供新CI核对。
+- 在Linux生产WebView复现一个明确边界：焦点仍在“继续播放”按钮，但focusout没有
+  relatedTarget时，旧布尔标志将其误判为焦点已离开，8秒后移除提示并使焦点落到body。
+  .build/prompt-null-focus-baseline保留失败及事件轨迹。此项通过DOM派发FocusEvent注入，
+  不将它称为Windows真实事件来源的证明。
+- RelayPrompt现在等本次焦点移动完成后读取activeElement，并在超时回调再次检查实际
+  DOM焦点。内部按钮切换/不完整失焦事件不会误收起；真实离开后仍正常计时。卸载取消
+  计时并拦截已排队微任务，不强行抢回焦点、不增加轮询。
+- .build/prompt-focus-fixed：19状态/19张截图。上述注入边界、真实指针进出、另一原生
+  窗口获得焦点后保持超过8秒、返回原窗口、真正离开后自动收起全部通过；检查深浅色、
+  760×540、提示与播放条不重叠、模态遮挡和关闭焦点。原生辅助窗口仅用隔离目录打开
+  about:blank，不加载业务；异步创建避免WebView2同步事件处理中的建窗死锁。
+- 合成歌曲和声音均实际进入libmpv/null输出，4次合成上行已确认，真实账号请求0。
+  本批不增加播放启动设置等新业务，也不替代真实声卡、实机刷新率或整个目标验收。
+- .build/prompt-focus-publication-ci和prompt-focus-readonly-ci分别通过正式CI驱动的
+  19状态检查，后者不启用上行；两者均严格要求原生窗口焦点及null relatedTarget边界。
+  本地全工作区221组/target共1027项Rust、185项前端、15项CI规则检查通过，失败/忽略0；
+  格式、严格Clippy和生产前端构建通过。日志前缀.build/prompt-*。Windows新提交CI待验。
