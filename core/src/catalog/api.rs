@@ -49,7 +49,7 @@ pub struct SongBatch {
 
 #[derive(Clone)]
 pub struct CatalogApi {
-    api: Arc<dyn Api>,
+    pub(super) api: Arc<dyn Api>,
 }
 impl CatalogApi {
     pub fn new(api: Arc<dyn Api>) -> Self {

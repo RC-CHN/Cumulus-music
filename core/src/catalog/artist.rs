@@ -7,6 +7,14 @@ use crate::{
 use serde_json::{Value, json};
 use std::sync::Arc;
 
+pub(super) fn video_cursor(cursor: &str) -> Result<&str> {
+    if cursor.is_empty() || cursor.len() > 128 || !cursor.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(Error::InvalidInput("invalid artist video cursor"));
+    }
+    let cursor = cursor.trim_start_matches('0');
+    Ok(if cursor.is_empty() { "0" } else { cursor })
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct ArtistPageRequest {
     pub offset: usize,
@@ -21,7 +29,7 @@ impl Default for ArtistPageRequest {
     }
 }
 impl ArtistPageRequest {
-    fn validate(self) -> Result<()> {
+    pub(super) fn validate(self) -> Result<()> {
         if !(1..=100).contains(&self.limit) || self.offset > 1_000_000 {
             return Err(Error::InvalidInput("invalid artist page bounds"));
         }
@@ -40,6 +48,17 @@ impl ArtistApi {
 
     pub async fn detail(&self, id: &Value) -> Result<Value> {
         super::CatalogApi::new(self.api.clone()).artist(id).await
+    }
+
+    pub async fn dynamic(&self, id: &Value) -> Result<Value> {
+        self.api
+            .call(
+                "/api/artist/detail/dynamic",
+                json!({"id":identifier(id)?}),
+                false,
+                &[200],
+            )
+            .await
     }
 
     pub async fn albums(&self, id: &Value, page: ArtistPageRequest) -> Result<Value> {
@@ -97,11 +116,7 @@ impl ArtistApi {
             limit: size,
         }
         .validate()?;
-        if cursor.is_empty() || cursor.len() > 128 || !cursor.bytes().all(|b| b.is_ascii_digit()) {
-            return Err(Error::InvalidInput("invalid artist video cursor"));
-        }
-        let cursor = cursor.trim_start_matches('0');
-        let cursor = if cursor.is_empty() { "0" } else { cursor };
+        let cursor = video_cursor(cursor)?;
         // M/15 Pr embeds a decimal cursor in a JSON *string*. Do not convert
         // it through f64/u64 or send a nested object instead of that string.
         let page = format!(r#"{{"size":{size},"cursor":{cursor}}}"#);

@@ -2,7 +2,7 @@
 
 状态
 这是完整桌面目标的后续工作，独立于 0.1.0 发布候选 5a50ad2。
-本批补充歌曲中的目录引用及歌手读取协议，尚未交付独立歌手/专辑页面。
+本批补充歌曲中的目录引用、歌手读取协议及账号隔离的原生页面快照，尚未交付独立歌手/专辑页面。
 协议对照测试不能替代真实账号请求、账号隔离缓存、分页状态机及桌面播放验收。
 
 官方依据
@@ -27,6 +27,7 @@ ar/artists 与 al/album 两种响应字段均支持；引用只投影 ID 和名�
 
 ArtistApi 请求
 detail       /api/artist/v3/detail        id,top=50,e_r=false；nginxCache=true
+dynamic      /api/artist/detail/dynamic   id；收藏状态与演出数量独立读取
 albums       /api/artist/albums/{id}      limit,offset
 songs        /api/v2/artist/songs         id,limit,offset
 introduction /api/artist/introduction     id
@@ -42,7 +43,7 @@ concerts     /api/concert/list/byartist   artistId,limit,offset
 游标最长128位的客户端输入边界。这些上限是本实现的约束，不冒称官方服务端上限。
 所有请求只接受成功状态 200；服务错误继续走现有 Api 错误处理，不伪装空页。
 
-本阶段验证
+第一阶段验证
 catalog-references-tests.log：核心单元与 client_boundary/client_local/rankings 共31项通过。
 catalog-artist-tests.log：加入 artist_catalog 两项后共33项通过。
 向量来自上述官方请求表达式，测试错误路径、ID/游标注入、字段大小写、JSON字符串、
@@ -58,8 +59,49 @@ catalog-artist-core-tests.log：cargo test -p cumulus-core --all-targets --locke
 这仍不把编译/既有回归当作尚未接通的歌手页面验收。
 
 仍需完成
-- 类型化歌手/专辑页面投影与按账号、查询及页码隔离的缓存、失败保留与恢复。
-- 热门歌曲 M/612 的 /api/song/enhance/privilege 合并（已有 MV 域实现可复用协议）。
+- 类型化歌手/专辑前端页面投影；原生快照恢复已经加入，见第二阶段。
+- 播放/下载来源与 M/91 场景继续逐项核对，不能仅用普通歌曲 ID 列表替代来源语义。
 - 所有分栏的真实响应字段核对，区分 MV 与 mlog，不把不同资源类型强塞为 MV ID。
 - 页面路由、歌曲/专辑入口、分页、收藏对账、播放和下载接入及真实窗口验收。
 - 独立专辑页面；当前 RankingPageView.Album 仍只是既有榜单域复用。
+
+第二阶段：原生页面快照与权益合并
+core/src/catalog/details/{query,request,service}.rs 提供 CatalogQuery、CatalogDetails 和
+SavedCatalogPage。查询覆盖歌手热门、独立动态状态、分页歌曲/专辑/相似歌手/视频/演出、
+简介与专辑详情。SavedCatalogPage.response 是原生元数据，不能直接作为 IPC DTO。
+
+page_for 的顺序：
+  校验 ID/分页 -> 绑定账号代次 -> 按账号和完整查询互斥 -> 官方读取 ->
+  校验响应身份与必要字段/合并权益 -> 再次核验账号 -> 持久化 -> 返回。
+缓存键含查询种类、资源 ID、页码/游标及大小；StateStore owner 使用当前账号。
+cached_for 校验缓存的查询身份、响应结构和 revision；没有记录返回 None，不冒充空页。
+读取失败、返回另一歌手、动态状态缺少 followed、账号切换后的迟到响应均不覆盖已有快照。
+歌曲 revision 包含查询及有序 ID，权益刷新不改变队列顺序 revision。
+视频声明 more=true 却返回同一数字游标（包括前导零等价形式）时拒绝该页，保留旧快照。
+
+官方 M/15 的 g={enable:false}（1012 行）。本地快照是额外的恢复能力，page_for 每次均联网；
+没有引入“缓存三小时内直接成功”的逻辑。前端接线时仍须显式刷新，快照不能授予播放权益。
+M/612 的热门歌曲先读详情，再调用 M/15 Dg：/api/song/enhance/privilege，
+ids 是 JSON 字符串，默认省略 trialMode；M/15 对照中的 MV 路径显式传 -1。
+新 CatalogApi.privileges 保留输入/输出顺序与重复项，按500项分批、最多50000项；
+分批和数量上限是本实现约束，不宣称它们来自官方 Dg。
+
+合并按 M/21 B（21.js 683 行附近）恢复：
+- 同 ID 权益取最后一次值；未返回权益的原歌曲去除旧 privilege，保持未知。
+- 仅在权益条目数大于原歌曲数时，对原列表中没有的 ID 按权益回复顺序补入资料缺失条目。
+- 补入条目保留 id/privilege/空 artists；不捏造名称或把它视为已完整读取歌曲资料。
+- 原始 ID 集合不会随补入更新，因此重复的额外权益 ID 保持重复，未自行排序或去重。
+M/21 R 的 id || albumId 也用于专辑列表、详情校验及歌曲专辑引用，保留大整数字符串。
+
+这一阶段没有复用 MV 域已有的严格权益字典：官方歌手合并需要保留原始顺序及补入分支。
+M/21 V 同时处理 base.type=2 的视频与 type=3/isMv 的 MV；前端尚未接线，不能把每个
+返回条目或所有数字 ID 当作 MV。相关分流、播放及真实接口验收仍是后续工作。
+
+第二阶段验证
+artist_catalog + catalog_details 共9项定向检查通过，包含回复乱序/缺失/重复与补入、默认
+scene 省略、空 ID 列表、跨页快照、进程重开、跨账号隔离、同查询并发、迟到响应和失败恢复。
+最终 workspace 全 targets/custom-protocol：197个 target/suite 结果、878项通过，0失败/忽略；
+严格 Clippy 与 Rust 格式检查通过。前端未在第二阶段修改，沿用第一阶段134项与构建证据。
+日志：主工作目录 .build/catalog-details-clippy-final.log、
+.build/catalog-details-workspace-final.log。没有新增真实账号或歌手 GUI 验收，不把这些测试
+当作尚未接通的页面完成。

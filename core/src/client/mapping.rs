@@ -74,7 +74,7 @@ pub(super) fn track(value: &Value) -> Result<TrackView> {
             })
             .collect(),
         album: string(&album["name"]),
-        album_id: identifier(&album["id"]).ok(),
+        album_id: crate::catalog::album_identifier(album).ok(),
         cover_url: artwork(&album["picUrl"]),
         duration_ms: value
             .get("dt")
@@ -144,6 +144,10 @@ mod tests {
         assert_eq!(value.artist_refs[0].id.as_deref(), Some("12"));
         assert_eq!(value.album, "本地专辑");
         assert!(value.album_id.is_none());
+        let legacy =
+            track(&json!({"id":2,"album":{"id":0,"albumId":"90071992547409931234","name":"专辑"}}))
+                .unwrap();
+        assert_eq!(legacy.album_id.as_deref(), Some("90071992547409931234"));
         assert!(track(&json!({"id": 2})).unwrap().artist_refs.is_empty());
     }
 }

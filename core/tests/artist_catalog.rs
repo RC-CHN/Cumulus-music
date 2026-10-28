@@ -31,6 +31,7 @@ async fn official_artist_subpages_use_their_distinct_ids_and_pagination_contract
         limit: 20,
     };
     api.detail(&id).await.unwrap();
+    api.dynamic(&id).await.unwrap();
     api.albums(&id, page).await.unwrap();
     api.songs(&id, page).await.unwrap();
     api.introduction(&id).await.unwrap();
@@ -45,6 +46,11 @@ async fn official_artist_subpages_use_their_distinct_ids_and_pagination_contract
                 "/api/artist/v3/detail".into(),
                 json!({"id":"12","top":50,"e_r":false}),
                 true
+            ),
+            (
+                "/api/artist/detail/dynamic".into(),
+                json!({"id":"12"}),
+                false
             ),
             (
                 "/api/artist/albums/12".into(),
