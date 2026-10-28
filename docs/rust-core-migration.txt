@@ -39,8 +39,8 @@ core/src/effects/     api/catalog/rights、service材料库、authorization登�
 core/src/playback/    队列/时间线；engine/安全libmpv适配、source/授权缓存、controller/持久化控制器。
 protocol/wire/       serialization、crypto、eapi、weapi、aegis 分文件组织纯协议。
 core/src/listen_together/ 房间/队列/指令过滤；service/ 持久操作、只读核对、账号隔离和定时入口。
-后续 relay/ 等
-在有实际实现时创建。每个业务域分 API 契约、状态/用例、适配及测试，避免巨型全能模块。
+core/src/relay/ 同账号续播实验/配置/设置读取、源/命令/窗口/进度机器、原生pull计划及持久意图；42组官方冻结对照和当前账号5次只读验证。播放器上行协调、开关写恢复、实际播放和桌面提示继续，见relay-contracts.txt与relay-mapping.json，不计作完整接续可用。
+每个业务域分 API 契约、状态/用例、适配及测试，避免巨型全能模块。
 Application 负责装配。业务域不依赖 Tauri、WebView 或桌面平台；desktop 只作宿主和桥接。
 网络 await 不持有状态锁；阻塞数据库/文件工作由应用调度层安排，不能放在 UI 线程。
 公开到前端的 DTO 单独设计，不能直接暴露协议 Value、Cookie、挑战原文或完整授权 URL。

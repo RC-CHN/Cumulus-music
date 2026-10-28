@@ -1,0 +1,145 @@
+同账号跨端续播（relay）——原生契约与当前验收边界
+2026-10-28；目标仍进行中。本文不把 REST 拉取计划等同于播放器已接续。
+
+一、官方依据
+references/netease-3.1.42.205594-analysis/recovered-js/modules/
+hybrid_app.chunk.1482700000000.js/401.js：完整 playingListHandoff 模型。
+同目录 15.js：So/To/Po/Mo/Io/Ao/No 请求包装；147.js：device_connect 实验。
+references/ui-recovery/sources/packages/pc/src/_core/init/utils/
+PlaylistHandoff.tsx、PlaylistHandoffAlert.tsx：提示显示、继续和关闭。
+references/recovered-client/docs/product/31-relay-functional-validation.txt
+及 scripts/netease_relay_functional_audit.py、netease_relay_oracle.cjs。
+未使用 YesPlayMusic。上述文件不进入公开仓库或 CI。
+
+公开冻结向量 core/tests/fixtures/relay-official.json 包含 42 组纯合成输入和
+实际官方工厂输出；来源为 2026-10-25 inert-service oracle，非真实账号数据。
+M/15 SHA256：8ec4bf8d343f6963860eb73bc59ca09f0dd1ae50db2608a6c5abc7d69a0b521a
+M/401 SHA256：8d4c5b82bb30ad7d95d383e4ec49fb4c08114ebec3992fd7d094305318bc8690
+本次 Rust 测试重新对照输出：28 组上行/窗口/错误、8 组下行、6 组包装。
+历史 Python 通过数不计作 Rust 测试；冻结向量也不证明远端允许提交。
+
+二、分层及实际实现
+core/src/relay/types.rs：有界资源/配置/原生 alert；歌曲和声音分类型。
+api.rs：固定官方端点/字段，不自选替代协议、不在请求失败后改路线。
+machine.rs：播放源、12 位 session、累计命令、快照、状态和播客节流。
+pull.rs：服务端响应到原生播放计划；尚不操作音频引擎。
+service.rs：账号代次、互斥、读取缓存、提示消耗、单次 pull 持久日志。
+core/examples/relay_read.rs：可执行、白名单约束的真实账号只读验收。
+核心不依赖 Tauri/WebView，不运行 Python 子进程。账号变更后旧计划不会返回
+新账号；旧未决操作仍保存在原账号目录以供审计，不丢弃责任记录。
+
+尚未完成的生产链路（不能据此声称跨端续播完整可用）：
+- 原生播放器事件到 relay 上行的订阅/队列变更归并及后台调度。
+- 上行 session、提交意图、10001 一次快照恢复的完整持久执行协调器。
+  当前机器能产生正确请求和恢复判定，RelayApi 仅为低层原生适配。
+- 设置开关的原生设备 ID 绑定、写后回读、未决写入恢复和设置页交互。
+  update_setting 是明确的底层请求，尚未接公开 IPC，不自动调用。
+- pull 计划的歌曲/播客授权、集合展开、原生队列/播放 fence 原子安装。
+- 桌面提示、8 秒自动关闭、遮挡规则、窗口尺寸/深色模式/焦点实测。
+这些条目列入 relay-mapping.json，不使用“已接线”“桌面通过”等表述。
+
+三、请求和调用顺序
+所有端点通过既有账号绑定的 Api；均 cache=false，接受 code=200。
+1. /api/rtrs/abt/front/expinfo/list {expNames:"device_connect"}
+   只取首个 expName 匹配的 expGroupName；必须严格为 t2。
+   未返回、其他组或读取失败均不推断为允许。无账号不发起 relay 读取。
+2. /api/relay/config/get {}，仅当实验允许时请求。
+   默认 enable=false、radioProgressInterval=20 秒、snapshotSize=100。
+   官方最小值为 3 秒和 100；额外原生资源上限：86400 秒、50000 项。
+   非布尔开关、负数/非整数配置、超限值报错，不能借 malformed 配置开启。
+3. /api/relay/setting/show {all:false,settingKey:"RELAY_SWITCH"}
+   官方读取 data.groups[0].deviceSettingList[0].enable。
+   没有组/字段/布尔值返回 None，不能显示成已确认关闭。
+4. /api/link/position/show/resource
+   {positionCode:"multi_terminal_reconnect_info",extJson:{interactRecords:[],
+    preData:[],states:{relayInfo:{current:"{\"needCheck\":true}",prev:""}}}}
+   current 是 JSON 字符串，extJson 本身是对象。包装中缺少的初始 / 已规范化。
+   仅实验允许且配置 enable=true 时读取 alert；取首个 commonResourceList
+   的 generalizedObject。没有记录就是没有可接续设备，不制造默认设备。
+5. /api/relay/play/pull {...alert,targetDeviceId:alert.deviceId}
+   原生保留服务器 alert 的未知字段，覆盖 targetDeviceId 为远端设备。
+   不将原始对象/设备身份/未知字段直接交给 WebView。
+6. /api/relay/setting/update
+   {targetDeviceId:本机请求上下文设备ID,enable:bool,settingKey:"RELAY_SWITCH"}
+   本机/远端 ID 不可混淆；冻结包装测试分别使用 local/remote fixture。
+7. /api/relay/songlist/submit {songListSubmitReq:JSON.stringify(source或commands)}
+8. /api/relay/play/state/submit {playStateSubmitReq:JSON.stringify(state)}
+
+四、队列和上行语义
+新源生成 12 个随机 ASCII 字母数字 sessionId；进度归零、历史命令清空。
+源对象 {retransmit,sessionId,initResId,playMode} 加上
+{sourceType:"playlist"|"album"|"podcast",sourceId} 或 resources:[{id,type}]。
+track/song/downloadTrack/localTrack/cloudTrack 映射为 song；
+voice/downloadVoice/localVoice 映射为 voice。场景 cloud/local/download/fm/
+zoneFm/aiMode 由官方排除；这些来源不可因类型映射存在而被误上报。
+资源 ID 保留十进制字符串（不窄化 u64/JS Number），长度上限128字节。
+
+模式 order/random/single_loop/list_loop 对应顺序/随机/单曲/列表循环。
+未知模式：源上传默认 list_loop，状态上传默认 order，二者不能合并。
+playlistHandoff 触发的模式恢复不再生成回传，避免同步循环。
+状态 {resource:{id,type},progress:毫秒,sessionId,playMode}。
+切换当前资源沿用旧 progress，等待实际声音进度事件更新，遵循 M/401。
+只有声音生成进度；原生单调时钟实现 throttleTime 的领先沿和去重。
+暂停/不匹配样本也会消耗节流窗口，因为官方先节流再检查 Playing/当前声音。
+seek 可单独提交声音进度，不要误把歌曲进度当成接续断点。
+
+命令 insert/delete/move/clear，insert 的 preId 为当前资源 ID；move 只有一项，
+首项移动可没有 preId。命令上传后不清空，而是保留累计历史。
+512 条命令达到原生上限时要求新的权威队列快照；不静默截断历史。
+clear 的 wire 仅 {command:"clear"}，owner 在发送意图持久化后清除机器。
+当前只实现机器的构造/判定，生产 owner 的发送/清理接线仍待完成。
+
+快照窗口按队列 entry ID 定位，资源 ID 另行序列化。原生 entry UUID 与歌曲
+ID 不同，调用方必须传实际选中 entry；不能把同歌重复项定位为第一首。
+窗口 [max(0,index-floor(size/2)),min(len,index+ceil(size/2))) 不在边缘补齐。
+size100/len200：index0=50项、index100=100项、index199=51项；未匹配从0开始。
+新快照清命令、换 session、retransmit=true；保留既有进度并更新实际当前资源。
+只有明确服务错误10001允许改为一次新快照；403、超时、丢包不允许自动回放。
+retransmit 本身再获10001不能递归重传。尚待执行协调器落实该判定。
+
+五、下行计划与恢复
+source 模式且有 sourceId：选歌单/专辑/播客集合，由后续播放器准备阶段展开。
+没有 sourceId：使用 resources；snapshot 模式直接使用 resources。
+当前资源缺失时插入首项；未知类型/未知模式结构/空资源队列报错。
+音乐接续 position_ms=0；声音才用 currentPlayState.progress 毫秒恢复。
+playMode 未识别时保留 None，不擅自覆盖本机播放模式。
+
+社区修正（明确不声称官方原本正确）：
+- 官方 bulk remove 只取 removeIds[0] 且硬编码 song；Rust delete 保留所有项类型。
+- 官方 mixed snapshot 按首项类型查询所有 ID；Rust 逐项保留 song/voice。
+- 当前项查找使用 ID+type，歌曲与声音同数值 ID 不互相覆盖。
+后续播放器展开必须维持这些修正；当前测试仅证明原生计划没有丢类型。
+
+RelayService 缓存在账号命名空间 relay-v1/snapshot。刷新开始先写 unchecked，
+失败不会留下可供授权的旧 allow 标记。缓存只作显示，pull 前重读实验和 config。
+pull 接收 UUID 与显示 revision；同 UUID 不同 revision 拒绝，重复同意图读日志。
+先在同事务清 alert 并写 pending，再发送唯一一次 pull；成功保存 ready+plan。
+ready 只表示成功取回原生计划，绝不等于播放器已播放。301/403/404 为 rejected；
+网络错误、无法判断的结果、发送期间账号变更为 uncertain；不自动重发。
+取消未见意图会持久化 cancelled，迟到原 IPC 不再执行。已有日志只回读，不覆盖。
+Pending/uncertain 重启后仍保留；下一阶段桌面必须先回读而非自动再 pull。
+dismiss 只在本地消费同 revision alert，不请求远端或重置账号设置。
+
+六、实际证据与运行
+core/tests/relay_official.rs：42组冻结对照，包含精确JSON字符串包装。
+core/tests/relay_machine.rs：累计/序列化、窗口、混合/批量修正、节流、配置边界。
+core/tests/relay_service.rs：实验关闭/服务关闭/无设备、失败失效、重复/重开、
+未决/取消、互斥、账号切换隔离、拒绝、首个实验结果等分支。
+可执行只读流程：
+cargo run -p cumulus-core --example relay_read --locked -- EXISTING_PC_PROFILE NEW_PRIVATE_OUTPUT
+工具强制仅账号/实验/配置/设置/提示五个读取端点；pull/submit/update 全被白名单拒绝。
+证据输出仅汇总状态/参数/路径/code，不打印凭据、账号 ID 或设备标识。
+
+本机本次证明 .build/private-relay-live-a/result.json：五次读取均200，
+实验命中t2，配置enable=true、radioProgressInterval=30、snapshotSize=1000，
+setting=true、hasAlert=false，原生缓存回读一致，writes=0、pulls=0。
+这与历史研究的 enable=false 不同；采用本次真实读取，不把历史关闭视为永久限制。
+仍缺另一设备的可接续记录，没有真实 pull/播放或双设备进度验证。
+上行真实提交、设置写入、桌面和声卡/帧率证明均不包含在本批只读结果中。
+
+本批本地完整检查：cargo fmt --all --check、workspace/all-targets/custom-protocol
+严格 Clippy 均通过；同配置全量 Rust 为215个测试目标、965 passed、0 failed/ignored。
+前端 npm ci、format:check、169 tests 和 build 通过。本批没有前端修改。
+日志 .build/relay-{format,clippy,workspace-tests,front-ci,front-format,front-tests,
+front-build}.log。源代码公开资料审计通过；真实会话/研究材料不跟踪。
+这些是本地检查，Linux/Windows 精确提交的 CI 结果须另外核验；不据此发布版本。
