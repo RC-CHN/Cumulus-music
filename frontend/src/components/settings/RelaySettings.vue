@@ -1,10 +1,16 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import RelaySwitch from './RelaySwitch.vue';
+import RelayPublication from './RelayPublication.vue';
+import type { RelayPublicationModel } from '../../composables/useRelayPublication';
 import type { RelayModel } from '../../composables/useRelay';
 import { relayOutcome } from '../../services/relay';
 import '../../styles/relay.css';
-const props = defineProps<{ model: RelayModel; signedIn: boolean }>();
+const props = defineProps<{
+  model: RelayModel;
+  signedIn: boolean;
+  publication: RelayPublicationModel;
+}>();
 const status = computed(() => {
   if (!props.signedIn) return '登录同一个账号，接续另一台设备的播放。';
   if (props.model.loading.value) return '正在检查其他设备…';
@@ -78,6 +84,7 @@ const status = computed(() => {
           重新准备播放
         </button>
       </div>
+      <RelayPublication v-if="signedIn" :model="publication" />
     </div>
   </section>
 </template>

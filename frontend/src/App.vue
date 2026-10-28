@@ -15,6 +15,7 @@ import HistoryPage from './components/HistoryPage.vue';
 import SettingsPage from './components/SettingsPage.vue';
 import { useSettings } from './composables/useSettings';
 import { useRelay } from './composables/useRelay';
+import { useRelayPublication } from './composables/useRelayPublication';
 import RelayPrompt from './components/RelayPrompt.vue';
 import { useHistory } from './composables/useHistory';
 import type { HistoryKind, HistoryResource } from './services/history';
@@ -67,6 +68,9 @@ const settings = useSettings(core, () => {
   void music.bootstrap(false);
 });
 const relay = useRelay(core, () => {
+  void music.bootstrap(false);
+});
+const publication = useRelayPublication(core, () => {
   void music.bootstrap(false);
 });
 const recent = useHistory(core, () => {
@@ -461,6 +465,12 @@ onUnmounted(() => member.dispose());
 onUnmounted(() => recent.dispose());
 onUnmounted(() => settings.dispose());
 onUnmounted(() => relay.dispose());
+onUnmounted(() => publication.dispose());
+watch(
+  () => page.value.kind === 'settings',
+  (value) => publication.setVisible(value),
+  { immediate: true },
+);
 watch(
   () => [account.value.epoch, account.value.status, initializing.value],
   () => {
@@ -478,6 +488,7 @@ watch(
   () => {
     recent.connect(account.value);
     settings.connect(account.value);
+    publication.connect(account.value);
     if (page.value.kind === 'settings') void settings.open();
     if (page.value.kind === 'history') void recent.open(page.value.scope);
   },
@@ -786,6 +797,7 @@ onUnmounted(() => window.removeEventListener('keydown', keyboard));
             v-else-if="page.kind === 'settings'"
             :model="settings"
             :relay="relay"
+            :publication="publication"
             :account="account"
             @login="loginOpen = true"
             @accounts="accountsOpen = true"

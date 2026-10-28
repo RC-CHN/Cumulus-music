@@ -1,5 +1,26 @@
 use cumulus_core::client::{ClientError, MusicClient, dto::*};
 #[tauri::command]
+pub async fn relay_publication_view(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    requested: Option<String>,
+) -> Result<AccountData<RelayPublicationView>, ClientError> {
+    client
+        .relay_publication_view(&epoch, requested.as_deref())
+        .map_err(Into::into)
+}
+#[tauri::command]
+pub async fn relay_publication_command(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    command: RelayPublicationCommand,
+) -> Result<AccountData<RelayPublicationView>, ClientError> {
+    client
+        .relay_publication_command(&epoch, command)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn relay_view(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

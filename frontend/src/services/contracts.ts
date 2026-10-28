@@ -21,6 +21,7 @@ import type { CollectionClient } from './collections';
 import type { HistoryClient } from './history';
 import type { SettingsClient } from './settings';
 import type { RelayClient } from './relay';
+import type { RelayPublicationClient } from './relayPublication';
 /** Wire format returned by core::AppInfo. Keep the IPC test in sync. */
 export interface AppInfo {
   name: string;
@@ -52,7 +53,8 @@ export interface CoreClient
     CollectionClient,
     HistoryClient,
     SettingsClient,
-    RelayClient {
+    RelayClient,
+    RelayPublicationClient {
   getAppInfo(): Promise<AppInfo>;
   accountSnapshot(): Promise<AccountView>;
   restoreAccount(): Promise<AccountView>;

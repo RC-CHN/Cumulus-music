@@ -141,3 +141,16 @@
   flex-wrap: wrap;
   gap: 8px;
 }
+
+.relay-publication {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.relay-publication h3 {
+  font-size: 14px;
+  margin: 0;
+}
