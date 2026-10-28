@@ -1,35 +1,26 @@
-//! Read only the documented audio-device-list node shape. These are borrowed
-//! mpv event allocations; no pointer or borrowed string escapes this module.
+//! Decode the fixed expand-text command's raw audio-device-list JSON. The
+//! command reply avoids the bundled Windows libmpv async-property destructor
+//! crash, independently reproduced without Rust parsing (see audio-output docs).
 use crate::{Error, Result, playback::engine::OutputDevice};
+use serde::{Deserialize, de};
 use std::{
     collections::HashSet,
     ffi::{CStr, c_char, c_int, c_void},
-    slice,
+    fmt,
 };
 
 const STRING: c_int = 1;
-const NODE: c_int = 6;
-const ARRAY: c_int = 7;
-const MAP: c_int = 8;
+const MAX_JSON: usize = 32 * 1024 * 1024;
 
 #[cfg(test)]
 #[path = "devices_tests.rs"]
 mod tests;
 
 #[repr(C)]
-struct Property {
-    name: *const c_char,
-    format: c_int,
-    data: *mut c_void,
-}
-#[repr(C)]
 union Value {
-    string: *mut c_char,
-    flag: c_int,
-    int64: i64,
-    double_: f64,
-    list: *mut List,
-    bytes: *mut c_void,
+    string: *const c_char,
+    // All other union members are opaque. Preserve mpv_node's x86_64 layout.
+    opaque: u64,
 }
 #[repr(C)]
 struct Node {
@@ -37,92 +28,85 @@ struct Node {
     format: c_int,
 }
 #[repr(C)]
-struct List {
-    num: c_int,
-    values: *mut Node,
-    keys: *mut *mut c_char,
+struct Command {
+    result: Node,
 }
 fn malformed() -> Error {
     Error::Media("invalid native audio device list")
 }
 
 /// # Safety
-/// `data` must be the live MPV_EVENT_GET_PROPERTY_REPLY payload from libmpv.
-/// All tagged pointers follow the pinned mpv client ABI and remain live until
-/// the next wait call. Shape checks bound copies, not arbitrary invalid memory.
+/// `data` must be the live MPV_EVENT_COMMAND_REPLY payload for our fixed
+/// expand-text command. libmpv owns the result until the next wait call.
 pub(super) unsafe fn copy(data: *mut c_void) -> Result<Vec<OutputDevice>> {
-    // SAFETY: event payload validity is required by the caller. Check the tag
-    // before interpreting its data; unsupported formats are never dereferenced.
-    let property = unsafe { data.cast::<Property>().as_ref() }.ok_or_else(malformed)?;
-    if property.format != NODE {
+    // SAFETY: event provenance is required by the caller. Check the tag before
+    // touching the union. Copy into Rust ownership before another wait call.
+    let command = unsafe { data.cast::<Command>().as_ref() }.ok_or_else(malformed)?;
+    if command.result.format != STRING {
         return Err(malformed());
     }
-    let root = unsafe { property.data.cast::<Node>().as_ref() }.ok_or_else(malformed)?;
-    // SAFETY: root is the borrowed node belonging to this same live event.
-    unsafe { devices(root) }
-}
-
-unsafe fn list(node: &Node, format: c_int, limit: usize) -> Result<&List> {
-    if node.format != format {
-        return Err(malformed());
-    }
-    // SAFETY: the validated tag selects list; pointers come from libmpv.
-    let list = unsafe { node.value.list.as_ref() }.ok_or_else(malformed)?;
-    if list.num < 0 || list.num as usize > limit || (list.num > 0 && list.values.is_null()) {
-        return Err(malformed());
-    }
-    Ok(list)
-}
-unsafe fn string(pointer: *const c_char) -> Result<String> {
+    let pointer = unsafe { command.result.value.string };
     if pointer.is_null() {
         return Err(malformed());
     }
-    // SAFETY: libmpv strings are NUL terminated and valid for this event.
+    // SAFETY: libmpv supplies a live, NUL-terminated string for this event.
     let bytes = unsafe { CStr::from_ptr(pointer) }.to_bytes();
-    if bytes.len() > 16384 {
+    parse(bytes)
+}
+
+#[derive(Deserialize)]
+struct Device {
+    #[serde(rename = "name")]
+    id: String,
+    description: String,
+}
+struct Devices(Vec<Device>);
+impl<'de> Deserialize<'de> for Devices {
+    fn deserialize<D: de::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        struct Bounded;
+        impl<'de> de::Visitor<'de> for Bounded {
+            type Value = Devices;
+            fn expecting(&self, out: &mut fmt::Formatter) -> fmt::Result {
+                out.write_str("at most 1024 audio devices")
+            }
+            fn visit_seq<A: de::SeqAccess<'de>>(
+                self,
+                mut seq: A,
+            ) -> std::result::Result<Devices, A::Error> {
+                let mut result = Vec::new();
+                while let Some(device) = seq.next_element()? {
+                    if result.len() == 1024 {
+                        return Err(de::Error::custom("too many audio devices"));
+                    }
+                    result.push(device);
+                }
+                Ok(Devices(result))
+            }
+        }
+        deserializer.deserialize_seq(Bounded)
+    }
+}
+fn parse(bytes: &[u8]) -> Result<Vec<OutputDevice>> {
+    if bytes.len() > MAX_JSON {
         return Err(malformed());
     }
-    Ok(std::str::from_utf8(bytes).map_err(|_| malformed())?.into())
-}
-unsafe fn devices(root: &Node) -> Result<Vec<OutputDevice>> {
-    // SAFETY: each list/union is accessed only under its expected tag. libmpv
-    // supplies arrays of `num` entries; zero-length NULL arrays aren't sliced.
-    unsafe {
-        let items = list(root, ARRAY, 1024)?;
-        if items.num == 0 {
-            return Ok(vec![]);
-        }
-        let mut result = Vec::with_capacity(items.num as usize);
-        let mut ids = HashSet::new();
-        for item in slice::from_raw_parts(items.values, items.num as usize) {
-            let fields = list(item, MAP, 64)?;
-            if fields.num == 0 || fields.keys.is_null() {
+    let Devices(rows) = serde_json::from_slice(bytes).map_err(|_| malformed())?;
+    let mut ids = HashSet::new();
+    rows.into_iter()
+        .map(|row| {
+            if !super::super::output::valid_id(&row.id)
+                || !ids.insert(row.id.clone())
+                || row.description.len() > 16384
+                || row.description.contains('\0')
+            {
                 return Err(malformed());
             }
-            let values = slice::from_raw_parts(fields.values, fields.num as usize);
-            let keys = slice::from_raw_parts(fields.keys, fields.num as usize);
-            let (mut id, mut description) = (None, None);
-            for (key, value) in keys.iter().zip(values) {
-                let target = match string(*key)?.as_str() {
-                    "name" => &mut id,
-                    "description" => &mut description,
-                    // New mpv fields are ignored without touching their union.
-                    _ => continue,
-                };
-                if target.is_some() || value.format != STRING {
-                    return Err(malformed());
-                }
-                *target = Some(string(value.value.string)?);
-            }
-            let id = id.ok_or_else(malformed)?;
-            if !super::super::output::valid_id(&id) || !ids.insert(id.clone()) {
-                return Err(malformed());
-            }
-            result.push(OutputDevice {
-                id,
-                description: description.ok_or_else(malformed)?,
-            });
-        }
-        Ok(result)
-    }
+            Ok(OutputDevice {
+                id: row.id,
+                description: row.description,
+            })
+        })
+        .collect()
 }

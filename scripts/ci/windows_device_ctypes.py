@@ -1,9 +1,11 @@
 """Independent libmpv C ABI probe, only on the synthetic Windows CI runner.
 
-Compare one/two cores and synchronous/asynchronous device queries without Rust
-node parsing. Never load media, open an output, or print device names.
+Compare one/two cores and synchronous/asynchronous device queries without Rust.
+The legacy async-property modes explicitly reproduce the bundled DLL fault;
+production uses the async-command modes. Never load media or print device names.
 """
 import ctypes as c
+import json
 import os
 from pathlib import Path
 import sys
@@ -13,6 +15,18 @@ import time
 class Event(c.Structure):
     _fields_ = [('event_id', c.c_int), ('error', c.c_int),
                 ('reply_userdata', c.c_uint64), ('data', c.c_void_p)]
+
+
+class Value(c.Union):
+    _fields_ = [('string', c.c_void_p), ('opaque', c.c_uint64)]
+
+
+class Node(c.Structure):
+    _fields_ = [('value', Value), ('format', c.c_int)]
+
+
+class CommandReply(c.Structure):
+    _fields_ = [('result', Node)]
 
 
 def stage(name):
@@ -68,14 +82,27 @@ def run(runtime, mode):
             event = wait(handle, .1).contents
             if event.event_id == event_id and event.reply_userdata == sequence:
                 assert event.error >= 0
-                return
+                return event
         raise TimeoutError('libmpv did not reply')
 
     sequence = 0
     for index in range(4):
         sequence += 1
         stage(f'{mode}:query_{index}')
-        if 'async' in mode:
+        if mode.endswith('-command'):
+            args = (c.c_char_p * 3)(b'expand-text', b'${=audio-device-list}', None)
+            assert command(handle, sequence, args) >= 0
+            event = reply(5, sequence)
+            assert event.data
+            result = c.cast(event.data, c.POINTER(CommandReply)).contents.result
+            assert result.format == 1 and result.value.string
+            # Copy the event-owned result before the next wait. Never free it.
+            devices = json.loads(c.string_at(result.value.string))
+            assert isinstance(devices, list) and 0 < len(devices) <= 1024
+            assert all(isinstance(d['name'], str) and isinstance(d['description'], str)
+                       for d in devices)
+            assert any(d['name'] == 'auto' for d in devices)
+        elif 'async' in mode:
             assert query(handle, sequence, b'audio-device-list', 6) >= 0
             reply(3, sequence)
             # Leave the MPV_FORMAT_NODE allocation untouched and mpv-owned.
@@ -118,6 +145,7 @@ if __name__ == '__main__':
     assert sys.platform == 'win32'
     runtime = Path(sys.argv[1]).resolve()
     mode = sys.argv[2] if len(sys.argv) > 2 else 'single-sync'
-    assert mode in ['single-sync', 'pair-sync', 'single-async', 'pair-async', 'pair-async-drain']
+    assert mode in ['single-sync', 'pair-sync', 'single-command', 'pair-command',
+                    'single-async', 'pair-async', 'pair-async-drain']
     with os.add_dll_directory(str(runtime)):
         run(runtime, mode)

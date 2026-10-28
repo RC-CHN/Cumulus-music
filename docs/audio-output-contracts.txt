@@ -17,6 +17,9 @@
   https://raw.githubusercontent.com/mpv-player/mpv/v0.40.0/include/mpv/client.h
   https://mpv.io/manual/stable/#options-audio-device
   https://mpv.io/manual/stable/#property-list
+  https://mpv.io/manual/stable/#command-interface-expand-text
+  https://mpv.io/manual/stable/#property-expansion
+  https://raw.githubusercontent.com/mpv-player/mpv/v0.41.0/include/mpv/client.h
 
 接口与内存边界
 - AudioEngine::output_devices -> Option<OutputDevices>；None 为引擎不支持，
@@ -30,13 +33,18 @@
   当前文件或播放位置。成功返回仅表示配置命令得到确认，随后仍可能初始化失败。
 - null_output 引擎不枚举硬件并拒绝所有选择，包含 auto；不能借设置接口脱离
   静音测试隔离。音频焦点包装和 MpvVideoEngine 转发相同能力，但不会获得播放权。
-- mpv_get_property_async(audio-device-list, MPV_FORMAT_NODE) 独立序号匹配，
+- mpv_command_async("expand-text", "${=audio-device-list}") 独立序号匹配，
   5 秒等待上限；迟到回复不满足新请求。读取时保留播放事件供原播放器消费。
+  命令及原始属性展开参数固定，没有设备或用户输入插值。结果是属性 JSON，
+  不解析人类可读/本地化 OSD 文本。匹配序号的 COMMAND_REPLY 才解释为设备列表；
+  不匹配回复按普通命令处理，失败回复不解引用数据，匹配回复消费后清除查询。
   配置命令复用原有异步5秒等待；设备可能在枚举后消失，调用方仍须处理失败。
-- 唯一不安全内存读取位于 engine/ffi/devices.rs；按标记检查 ARRAY/MAP/STRING，
-  复制事件内的设备字符串后才允许下一次 wait。事件节点由 mpv 管理，不能由
-  Rust 调用 mpv_free_node_contents。最多1024设备、每设备64字段、字符串16KiB；
-  重复ID/必填字段缺失/错误格式/错误UTF-8均失败，未知附加字段不解引用其 union。
+- 设备数据的不安全内存读取位于 engine/ffi/devices.rs；检查 command result 的
+  STRING 标记和非空指针，借用事件字符串并完整解析到 Rust 所有权后才允许
+  下一次 wait。事件结果由 mpv 管理，不调用 mpv_free/mpv_free_node_contents。
+  JSON 最多32MiB、1024设备、ID最多4096字节、描述最多16KiB；重复ID/重复必填
+  字段/缺失/错误类型/UTF-8/NUL均失败。未知JSON字段兼容忽略，递归采用serde_json
+  默认上限；替代旧节点解析器的每设备64字段限制。错误不包含设备名或原始JSON。
   这些约束检查可信 native ABI 的数据形状，不能防护恶意原生库提供的任意指针。
 - 原生调用只在阻塞工作线程执行。现有同步属性字符串读取没有新增硬取消保证；
   不把异步枚举的5秒上限描述为整个 libmpv/系统驱动不可卡住的保证。
@@ -44,8 +52,8 @@
 可执行验证
 1. cargo test -p cumulus-core --lib playback::engine::ffi::devices --locked
    冻结64位ABI布局、事件生命周期之后仍有效的复制、中文描述、空数组、空指针/
-   标签/计数/必填字段/重复名/ID长度边界共6项。
-2. 原有 engine_roundtrip 与桌面 native_audio_probe 增加实际原生节点枚举，
+   标签/计数/必填字段/重复名/ID长度，以及迟到/普通/失败回复隔离共6项。
+2. 原有 engine_roundtrip 与桌面 native_audio_probe 增加实际原生设备枚举，
    未加载音频的枚举器检查 auto 与无活动后端，并拒绝非法选择；显式 null 引擎
    拒绝选择，之后照常完成PCM解码、播放/暂停/定位、CUE EOF/复位/取消。
    两平台既有CI会执行这些探针；不能用Linux通过替代精确提交Windows结果。
@@ -80,3 +88,26 @@
   其独立截图/交互证据见ui-ux-validation.txt末节。
 - 全程生成静音媒体、远端请求0；未验证物理声卡听感、用户硬件热插拔、Windows
   真实WASAPI路由或设置页交互。自动回退、持久化和UI仍须另行实现与验证。
+
+2026-10-29 Windows 异步属性回复销毁故障与命令替代路径
+- 精确提交5cac320的CI 40775618163诊断：MSYS2 UCRT64 mpv 0.41.0-10、
+  ffmpeg 9.0.2-2、libplacebo 7.387.0-1。Rust完成枚举、auto选择和再次枚举后，
+  在枚举器销毁前退出0xc0000005；独立ctypes直接C ABI复现同样销毁故障。
+- single-sync/pair-sync全部查询、选择、销毁和DLL卸载通过；single-async、
+  pair-async、pair-async-drain均在mpv_terminate_destroy读取访问异常。C对照
+  没有Rust节点解析，提前排空事件仍失败；upstream mpv --audio-device=help通过。
+  这将问题限定到该打包环境的异步属性调用链，未定位上游具体错误代码行，
+  不推广成所有Windows/libmpv版本均存在此问题。
+- 生产枚举改为上述公开异步命令，没有改成可能阻塞的同步枚举，也未缩减设备
+  列表或放宽超时。device-command-unit-tests-final的6项边界/路由测试通过；
+  device-command-linux-roundtrip实际引擎通过，device-command-native-gui.json
+  确认GUI初始化后的枚举/PCM控制/CUE及正常销毁，界面locale保留en_US.UTF-8。
+  device-command-managed-routing/report.json在GUI初始化后再次独立观察到
+  a→b→a→b→a的5次实际虚拟路由、暂停/cork、同一播放条目、拔除/重接、
+  生产ManagedOutput自动回退与显式恢复。真实音乐请求0，不代表物理声卡。
+  Windows替代路径必须另行验证。
+- scripts/ci/windows_device_diagnostic.py默认验证Rust生产探针、单/双实例同步
+  对照、单/双实例异步命令及upstream。任何所选探针失败均失败，CI gate不忽略。
+  --legacy-property-probes可额外重复已停用的上游故障链，失败同样返回非零；
+  scripts/ci/windows_device_ctypes.py也可独立运行single-async/pair-async/
+  pair-async-drain。保留原失败证据，不把删掉故障调用后的编译当成功验证。

@@ -37,7 +37,6 @@ type Initialize = unsafe extern "C" fn(Handle) -> c_int;
 type OptionString = unsafe extern "C" fn(Handle, *const c_char, *const c_char) -> c_int;
 type Command = unsafe extern "C" fn(Handle, u64, *const *const c_char) -> c_int;
 type Property = unsafe extern "C" fn(Handle, *const c_char) -> *mut c_char;
-type PropertyAsync = unsafe extern "C" fn(Handle, u64, *const c_char, c_int) -> c_int;
 type Free = unsafe extern "C" fn(*mut c_void);
 type Destroy = unsafe extern "C" fn(Handle);
 type Wait = unsafe extern "C" fn(Handle, f64) -> *const Event;
@@ -65,7 +64,7 @@ pub(super) struct Native {
     option: OptionString,
     command: Command,
     property: Property,
-    property_async: PropertyAsync,
+    device_query: Option<u64>,
     free: Free,
     destroy: Destroy,
     wait: Wait,
@@ -85,6 +84,30 @@ fn check(operation: &'static str, code: i32) -> Result<()> {
         Err(failed(operation, code))
     } else {
         Ok(())
+    }
+}
+
+/// # Safety
+/// `event` must be a live MPV_EVENT_COMMAND_REPLY. A matching query was issued
+/// only by request_devices, with the fixed expand-text arguments below.
+unsafe fn command_reply(query: &mut Option<u64>, event: &Event) -> Received {
+    if *query != Some(event.reply_userdata) {
+        // Late replies to expired/replaced queries and normal commands must
+        // not be interpreted as device JSON, regardless of their payload tag.
+        return Received::Reply {
+            sequence: event.reply_userdata,
+            error: event.error,
+        };
+    }
+    *query = None;
+    Received::Devices {
+        sequence: event.reply_userdata,
+        result: if event.error < 0 {
+            Err(failed("audio device query", event.error))
+        } else {
+            // SAFETY: matching sequence establishes the fixed command origin.
+            unsafe { devices::copy(event.data) }
+        },
     }
 }
 
@@ -120,9 +143,6 @@ impl Native {
             let property = *library
                 .get::<Property>(b"mpv_get_property_string\0")
                 .map_err(|_| failed("ABI", -1))?;
-            let property_async = *library
-                .get::<PropertyAsync>(b"mpv_get_property_async\0")
-                .map_err(|_| failed("ABI", -1))?;
             let free = *library
                 .get::<Free>(b"mpv_free\0")
                 .map_err(|_| failed("ABI", -1))?;
@@ -140,7 +160,7 @@ impl Native {
                 option,
                 command,
                 property,
-                property_async,
+                device_query: None,
                 free,
                 destroy,
                 wait,
@@ -191,17 +211,21 @@ impl Native {
         }
     }
     pub fn request_devices(&mut self, sequence: u64) -> Result<()> {
-        // SAFETY: live handle; mpv copies the static property name and replies
-        // asynchronously. MPV_FORMAT_NODE is 6 in the pinned client header.
-        check("audio device query", unsafe {
-            (self.property_async)(
-                self.handle.as_ptr(),
-                sequence,
-                c"audio-device-list".as_ptr(),
-                6,
-            )
-        })
+        // Use the public command API rather than get_property_async: the
+        // bundled Windows library crashes when destroying property replies.
+        // Raw expansion is JSON, not locale-dependent pretty/OSD text. No
+        // device/user input is interpolated into this fixed command.
+        self.command(
+            sequence,
+            &[
+                CString::new("expand-text").expect("static command"),
+                CString::new("${=audio-device-list}").expect("static property"),
+            ],
+        )?;
+        self.device_query = Some(sequence);
+        Ok(())
     }
+
     pub fn event(&mut self, timeout: f64) -> Result<Received> {
         // SAFETY: mpv owns this event until the next wait call. We copy only
         // layouts documented for its tag, retain no raw pointers and never
@@ -213,21 +237,7 @@ impl Native {
             Ok(match event.event_id {
                 0 => Received::None,
                 1 => Received::Event(EngineEvent::Shutdown),
-                3 => Received::Devices {
-                    sequence: event.reply_userdata,
-                    // The only asynchronous property request this adapter
-                    // issues is audio-device-list. Copy it before the next
-                    // wait; event-owned nodes must NOT be freed by the caller.
-                    result: if event.error < 0 {
-                        Err(failed("audio device query", event.error))
-                    } else {
-                        devices::copy(event.data)
-                    },
-                },
-                5 => Received::Reply {
-                    sequence: event.reply_userdata,
-                    error: event.error,
-                },
+                5 => command_reply(&mut self.device_query, event),
                 6 => {
                     let start = event
                         .data

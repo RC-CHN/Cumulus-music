@@ -1,4 +1,9 @@
-"""Windows-only synthetic media triage, without waiting for an NSIS build."""
+"""Windows synthetic media regression, without waiting for an NSIS build.
+
+Pass --legacy-property-probes to also reproduce the unused upstream property
+API fault. Any selected probe failure fails this command; none are ignored.
+"""
+import argparse
 import os
 from pathlib import Path
 import shutil
@@ -9,6 +14,9 @@ from package import windows_media
 
 if __name__ == '__main__':
     assert sys.platform == 'win32'
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--legacy-property-probes', action='store_true')
+    args = parser.parse_args()
     root = Path('.build/windows-device-diagnostic').resolve()
     root.mkdir(parents=True, exist_ok=False)
     native = root / 'runtime'
@@ -22,10 +30,13 @@ if __name__ == '__main__':
     system = Path(os.environ['SystemRoot'])
     env['PATH'] = os.pathsep.join(map(str, [native, system / 'System32', system]))
     failures = []
+    modes = ['single-sync', 'pair-sync', 'single-command', 'pair-command']
+    if args.legacy_property_probes:
+        modes.extend(['single-async', 'pair-async', 'pair-async-drain'])
     commands = [
         ('rust', [str(executable)]),
         *[(mode, [sys.executable, 'scripts/ci/windows_device_ctypes.py', str(native), mode])
-          for mode in ['single-sync', 'pair-sync', 'single-async', 'pair-async', 'pair-async-drain']],
+          for mode in modes],
         ('upstream', [str(msys / 'ucrt64/bin/mpv.exe'), '--no-config', '--audio-device=help']),
     ]
     for name, command in commands:
