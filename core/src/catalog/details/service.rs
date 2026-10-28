@@ -16,6 +16,8 @@ pub struct SavedCatalogPage {
     pub query: CatalogQuery,
     pub fetched_at: u64,
     pub revision: String,
+    #[serde(default)]
+    pub album_read: Option<crate::catalog::AlbumReadState>,
     /// Account-owned native metadata, never a frontend DTO.
     pub response: Value,
 }
@@ -100,7 +102,7 @@ impl CatalogDetails {
         let owner = self.session.with_token(token, |uid| Ok(uid.to_owned()))?;
         let _lock =
             OperationLock::acquire(self.store.directory(), CACHE, &format!("{owner}:{key}"))?;
-        let response = self
+        let (response, album_read) = self
             .session
             .run_for(
                 token,
@@ -113,6 +115,7 @@ impl CatalogDetails {
                 as u64,
             revision: revision(query, &response)?,
             response,
+            album_read,
         };
         self.session.with_token(token, |uid| {
             self.store

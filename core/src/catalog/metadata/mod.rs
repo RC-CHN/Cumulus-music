@@ -2,8 +2,10 @@
 //! Image strings remain native data; UI boundaries must sanitize them.
 mod album;
 mod artist;
+mod media;
 pub use album::AlbumMetadata;
 pub use artist::{ArtistCredit, ArtistMetadata};
+pub use media::{ConcertDate, ConcertMetadata, VideoCardMetadata, VideoKind};
 use serde_json::Value;
 
 fn text(value: &Value) -> String {

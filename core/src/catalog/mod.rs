@@ -1,10 +1,12 @@
 //! Search, recommendations and catalog resources (official M/15 and M/612).
+mod album;
 mod api;
 mod artist;
 pub mod details;
 pub mod metadata;
 mod privileges;
 pub mod rankings;
+pub use album::{AlbumDetailSource, AlbumDetails, AlbumReadState};
 pub use api::{CatalogApi, PlayOptions, SearchOptions, SongBatch};
 pub use artist::{ArtistApi, ArtistPageRequest};
 

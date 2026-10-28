@@ -135,3 +135,57 @@ catalog_metadata 的6项测试通过，其中1项逐条对照上述8条官方执
 最终 workspace 全 targets/custom-protocol：198个 target/suite、884项通过、0失败/忽略；
 严格 Clippy、cargo fmt --all --check 通过。日志在主目录
 .build/catalog-metadata-clippy-final.log 与 .build/catalog-metadata-workspace-final.log。
+
+第四阶段：类型化读取与完整专辑链（2026-10-28）
+core/src/client/catalog/ 将九类原生页面投影为 CatalogView/CatalogPageView，公开页面
+只有显示元数据、ID、分页与读取状态。图片通过已有 CDN 白名单与参数重写；不返回
+原始 response、Cookie、privilege、视频/演出跳转 URL、播放授权或购买密钥。
+missing=true 表示官方权益合并补入但尚缺歌曲资料的条目；不能把它当作完整歌曲。
+原始页面快照仍只存在账号所属原生数据库，账号代次在读取前和投影前分别核验。
+
+视频分类依据 M/21 V：明确 type=3/isMv 才标记 MV；type=2 保留视频类型；其他为未知。
+只有明确 MV 且具有正十进制 ID 才给出 mvId，数字 ID 本身不能证明是 MV。
+演出卡片依据恢复的 packages/pc/src/components/ShowCard/index.tsx 与 M/3088 ShowTab，
+保留 title、cover、time、simpleAddress.address、price；网址只留在原生元数据。
+此阶段没有接入普通视频播放或演出链接打开，不把卡片显示字段当作相应功能完成。
+视频/演出主 ID 在持久化之前校验，坏响应不能替换上次可用快照。
+
+专辑读取依据实际 page_album 引入的 hybrid_162.chunk.1482700000000.js/1204.js 与
+2998.js，未使用另一 chunk 的同编号模块来猜测控制流。新增 CatalogApi.album_details：
+1. /api/album/v3/detail {id}，nginxCache=true；请求失败再调用一次
+   /api/album/v4/detail {id}，nginxCache=false。成功响应身份不符会报错，不伪装成
+   版本兼容失败再读。没有其他协议降级或无限重试。
+2. /api/album/detail/dynamic {id}，为必需读取。按官方展开顺序合并 album、album.info，
+   最后以动态 commentCount/likedCount/shareCount/subCount/isSub/subTime 覆盖。
+   动态字段缺失时去掉旧字段，不能从静态 isSub 猜测当前收藏状态。
+3. /api/album/privilege {id}，使用与歌手相同的 M/21 B 权益合并。请求或数组校验失败时
+   保留原歌曲，privilegesRefreshed=false；合法空 data 则移除旧权益。不会部分更新。
+4. /api/resource-exposure/config {resourcePosition:"album",resourceId:id,rexposureRecords:[]}
+   只读取配置；data.resourceType=="common" 时 digitalAlbumTag=true，其他成功结果为 false。
+   失败时官方页面回落为不显示，本实现额外用 None 记录“未读到”，避免假装已确认 false。
+
+AlbumReadState 记录 v3/v4 来源、独立权益读取结果、数字专辑标记是否已确认；旧快照
+缺少该字段时为 None，不能伪装成完整新链路结果。辅助读取失败不替代用户的播放权限检查；
+实际播放仍必须经过播放器自己的重新授权。专辑动态读取失败保留原缓存并返回错误。
+CatalogView.revision 是目录页的查询/顺序 revision，不是现有 PlaySelection.Album 的
+rankings::album_order revision；后续播放接线必须处理这两种来源，不能混传。
+
+第四阶段验证
+- catalog_album 六项覆盖请求顺序、v3→v4、必需/辅助读取失败、动态覆盖、权益缺失、
+  错误身份和旧快照保护；client_catalog 四项覆盖九种投影、MV 分类、隐私过滤、
+  账号隔离、迟到响应、坏媒体数据不能污染缓存。未把“正常返回”当作远端写入成功。
+- core/examples/catalog_read.rs 为显式运行的只读验收程序。必须提供已有 PC profile、
+  不存在的新证据目录和歌手 ID；传输只允许列明的账号/目录读取路径。不打印凭据、
+  不创建歌单、不收藏、不上传、不下载或邀请。公开 CI 只编译，不运行真实账号流程。
+- 已获授权的当前 PC 会话运行了两轮，第二轮包含完整专辑链和实际 MusicClient 投影：
+  歌手热门50条、独立动态状态、歌曲两页各20条、专辑两页各20条、简介、相似歌手、
+  视频、演出空列表、专辑11首歌曲，共11个页面查询，全部成功且快照回读相等。
+  实际专辑走 v3，收藏状态已读取，独立权益成功，数字专辑标记为 false。
+  v4 fallback 仅有故障注入覆盖，没有制造远端失败来冒称线上 v4 验证。
+- 当前视频8条均明确为MV；演出0条。普通视频和非空演出只有来源/合成数据覆盖。
+  第二轮11个公开 DTO 的171个封面 URL 通过 HTTPS/CDN/参数检查，无禁止的原生字段。
+  私有证据位于主目录 .build/private-catalog-read-20261028-{a,b}/，摘要日志为
+  .build/catalog-read-live-{a,b}.log、catalog-gateway-live-projection-audit.json，均不提交。
+- 完整 workspace/all-targets/custom-protocol 回归：201个suite/target，894项通过，
+  0失败/忽略；fmt 与严格 Clippy 通过。日志 catalog-gateway-{clippy,workspace}-final.log。
+  这些证据只说明目录核心与读取契约，尚未增加歌手/专辑的实际 GUI 验收。

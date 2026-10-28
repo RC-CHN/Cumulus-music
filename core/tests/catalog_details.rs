@@ -84,10 +84,17 @@ impl Api for Backend {
                             json!({"code":200,"data":{"records":[],"page":{"size":20,"cursor":"0","more":true}}}),
                         );
                     }
-                    json!({"code":200,"data":{"records":[{"id":"opaque-video-id","type":1}],"page":{"size":20,"cursor":"900719925474099312345","more":false}}})
+                    json!({"code":200,"data":{"records":[{"id":"opaque-video-id","resource":{"mlogBaseData":{"type":2}}}],"page":{"size":20,"cursor":"900719925474099312345","more":false}}})
                 }
                 "/api/concert/list/byartist" => {
                     json!({"code":200,"simpleConcerts":[{"id":15,"name":"演出"}],"total":1})
+                }
+                "/api/album/detail/dynamic" => json!({"code":200,"isSub":true}),
+                "/api/album/privilege" => {
+                    json!({"code":200,"data":[{"id":2,"pl":320000},{"id":1,"pl":128000}]})
+                }
+                "/api/resource-exposure/config" => {
+                    json!({"code":200,"data":{"resourceType":"common"}})
                 }
                 "/api/album/v3/detail" => {
                     json!({"code":200,"album":{"albumId":7,"name":"专辑"},"songs":[song("2"),song("1")]})

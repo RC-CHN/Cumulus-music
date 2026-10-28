@@ -1,14 +1,13 @@
 use super::CatalogQuery;
 use crate::{
     Error, Result,
-    catalog::{ArtistApi, ArtistPageRequest, CatalogApi},
+    catalog::{
+        AlbumReadState, ArtistApi, ArtistPageRequest, CatalogApi, privileges::merge_song_privileges,
+    },
     protocol::api::{Api, identifier},
 };
 use serde_json::{Value, json};
-use std::{
-    collections::{BTreeMap, HashSet},
-    sync::Arc,
-};
+use std::sync::Arc;
 
 fn rows(value: &Value) -> Result<&Vec<Value>> {
     let rows = value
@@ -73,7 +72,9 @@ pub(super) fn validate(query: &CatalogQuery, response: &Value) -> Result<()> {
         CatalogQuery::ArtistVideos {
             cursor: previous, ..
         } => {
-            rows(&response["data"]["records"])?;
+            for row in rows(&response["data"]["records"])? {
+                crate::catalog::metadata::VideoCardMetadata::from_official(row)?;
+            }
             let page = &response["data"]["page"];
             if !page.is_object() || !page["more"].is_boolean() || page["size"].as_u64().is_none() {
                 return Err(Error::Response("missing artist video page"));
@@ -92,7 +93,9 @@ pub(super) fn validate(query: &CatalogQuery, response: &Value) -> Result<()> {
             }
         }
         CatalogQuery::ArtistConcerts { .. } => {
-            rows(&response["simpleConcerts"])?;
+            for row in rows(&response["simpleConcerts"])? {
+                crate::catalog::metadata::ConcertMetadata::from_official(row)?;
+            }
             count(&response["total"])?;
         }
         CatalogQuery::Album { id } => {
@@ -108,11 +111,15 @@ pub(super) fn validate(query: &CatalogQuery, response: &Value) -> Result<()> {
     Ok(())
 }
 
-pub(super) async fn fetch(api: Arc<dyn Api>, query: &CatalogQuery) -> Result<Value> {
+pub(super) async fn fetch(
+    api: Arc<dyn Api>,
+    query: &CatalogQuery,
+) -> Result<(Value, Option<AlbumReadState>)> {
     query.validate()?;
     let artist = ArtistApi::new(api.clone());
     let catalog = CatalogApi::new(api);
     let id = json!(query.id());
+    let mut album_read = None;
     let mut response = match query {
         CatalogQuery::Artist { .. } => artist.detail(&id).await?,
         CatalogQuery::ArtistDynamic { .. } => artist.dynamic(&id).await?,
@@ -164,7 +171,11 @@ pub(super) async fn fetch(api: Arc<dyn Api>, query: &CatalogQuery) -> Result<Val
                 )
                 .await?
         }
-        CatalogQuery::Album { .. } => catalog.album(&id).await?,
+        CatalogQuery::Album { .. } => {
+            let result = catalog.album_details(&id).await?;
+            album_read = Some(result.read);
+            result.response
+        }
     };
     validate(query, &response)?;
     if matches!(query, CatalogQuery::Artist { .. }) {
@@ -175,30 +186,10 @@ pub(super) async fn fetch(api: Arc<dyn Api>, query: &CatalogQuery) -> Result<Val
             .map(|row| identifier(&row["id"]))
             .collect::<Result<Vec<_>>>()?;
         let privileges = catalog.privileges(&ids, None).await?;
-        let by_id = privileges
-            .iter()
-            .map(|p| Ok((identifier(&p["id"])?, p)))
-            .collect::<Result<BTreeMap<_, _>>>()?;
-        let original_ids = ids.iter().collect::<HashSet<_>>();
-        let songs = response["hotSongs"].as_array_mut().unwrap();
-        // Attach by ID, never by reply order; absent privileges remain unknown.
-        for song in songs.iter_mut() {
-            if let Some(privilege) = by_id.get(&identifier(&song["id"])?) {
-                song["privilege"] = (*privilege).clone();
-            } else {
-                song.as_object_mut().unwrap().remove("privilege");
-            }
-        }
-        // M/21 B only supplements metadata when the reply is longer. The
-        // membership set is the original songs; reply duplicates stay intact.
-        if ids.len() < privileges.len() {
-            for privilege in &privileges {
-                let id = identifier(&privilege["id"])?;
-                if !original_ids.contains(&id) {
-                    songs.push(json!({"id":id,"privilege":by_id[&id],"artists":[]}));
-                }
-            }
-        }
+        response["hotSongs"] = json!(merge_song_privileges(
+            response["hotSongs"].as_array().unwrap(),
+            &privileges
+        )?);
     }
-    Ok(response)
+    Ok((response, album_read))
 }

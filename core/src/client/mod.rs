@@ -2,6 +2,7 @@
 //! this boundary; account epochs also reject delayed frontend results.
 mod auth;
 pub use auth::LoginCaptchaProvider;
+mod catalog;
 mod cloud;
 mod comments;
 mod content;

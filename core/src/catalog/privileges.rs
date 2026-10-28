@@ -1,6 +1,39 @@
 use super::CatalogApi;
 use crate::{Error, Result, protocol::api::identifier};
 use serde_json::{Value, json};
+use std::collections::{BTreeMap, HashSet};
+
+/// M/21 B: last value wins, but the original/reply order and duplicates survive.
+pub(crate) fn merge_song_privileges(songs: &[Value], privileges: &[Value]) -> Result<Vec<Value>> {
+    let by_id = privileges
+        .iter()
+        .map(|p| Ok((identifier(&p["id"])?, p)))
+        .collect::<Result<BTreeMap<_, _>>>()?;
+    let ids = songs
+        .iter()
+        .map(|s| identifier(&s["id"]))
+        .collect::<Result<Vec<_>>>()?;
+    let original_ids = ids.iter().collect::<HashSet<_>>();
+    let mut result = songs.to_vec();
+    for (song, id) in result.iter_mut().zip(&ids) {
+        if let Some(privilege) = by_id.get(id) {
+            song["privilege"] = (*privilege).clone();
+        } else {
+            song.as_object_mut()
+                .ok_or(Error::Response("invalid song"))?
+                .remove("privilege");
+        }
+    }
+    if songs.len() < privileges.len() {
+        for privilege in privileges {
+            let id = identifier(&privilege["id"])?;
+            if !original_ids.contains(&id) {
+                result.push(json!({"id":id,"privilege":by_id[&id],"artists":[]}));
+            }
+        }
+    }
+    Ok(result)
+}
 
 impl CatalogApi {
     /// Official M/15 Dg. M/612 omits the scene; MV explicitly supplies -1.

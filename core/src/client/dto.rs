@@ -144,6 +144,10 @@ pub use super::auth::{
     LoginAnswerView, LoginCaptchaView, LoginChallengeView, LoginCommand, LoginMode, LoginView,
     LogoutView, RenewalAction, RenewalState, SavedAccountView, SessionRenewalView,
 };
+pub use super::catalog::{
+    AlbumCard, ArtistCard, CatalogDate, CatalogIntroduction, CatalogPageView, CatalogVideoCard,
+    CatalogVideoKind, CatalogView, ConcertCard,
+};
 pub use super::cloud::{
     CloudCommand, CloudDeleteView, CloudFailure, CloudPageView, CloudQuery, CloudResult, CloudSort,
     CloudTab, CloudTrackView, CloudUploadInput, CloudUploadView,
@@ -153,3 +157,4 @@ pub use super::comments::{
     CommentQuery, CommentReplyView, CommentResource, CommentSort, CommentView, CommentWriteAction,
     CommentWriteCommand, CommentWritePhase, CommentWriteView,
 };
+pub use crate::catalog::details::CatalogQuery;
