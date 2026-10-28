@@ -4,6 +4,7 @@ mod auth;
 pub use auth::LoginCaptchaProvider;
 mod catalog;
 mod cloud;
+mod collections;
 mod comments;
 mod content;
 mod downloads;

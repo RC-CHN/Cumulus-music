@@ -91,6 +91,7 @@ pub struct AlbumCard {
     pub translations: Vec<String>,
     pub description: String,
     pub artists: Vec<ArtistReference>,
+    pub primary_artist: Option<ArtistReference>,
     pub cover_url: Option<String>,
     pub track_count: u64,
     pub published_at: Option<i64>,

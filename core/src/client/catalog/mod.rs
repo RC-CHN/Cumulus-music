@@ -1,4 +1,4 @@
-mod cards;
+pub(super) mod cards;
 mod dto;
 mod membership;
 mod project;

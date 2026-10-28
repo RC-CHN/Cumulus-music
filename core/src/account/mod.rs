@@ -1,5 +1,6 @@
 //! Login and identity lifecycle. A QR authorization still requires account/get.
 mod api;
+pub mod collections;
 pub mod credential_import;
 pub mod credentials;
 pub mod login;

@@ -1,3 +1,4 @@
+pub use super::collections::{CollectionPageView, CollectionView, FollowCard, FollowUser};
 pub use super::downloads::{
     DownloadCommand, DownloadFailure, DownloadJobView, DownloadQuery, DownloadResult, DownloadSort,
     DownloadTab, DownloadTaskView, DownloadsView, TaskControl,
@@ -29,6 +30,7 @@ pub use super::scene_fm::{SceneFmCategoryView, SceneFmCommand, SceneFmView};
 pub use super::together::{
     TogetherCommand, TogetherMemberView, TogetherOperationView, TogetherRoomView, TogetherView,
 };
+pub use crate::account::collections::CollectionQuery;
 use crate::account::{QrStatus, SessionStatus, resources::MutationPhase};
 pub use crate::catalog::rankings::RankingQuery;
 pub use crate::fm::discovery::{FmDiscoveryQuery, SavedFmDiscovery};

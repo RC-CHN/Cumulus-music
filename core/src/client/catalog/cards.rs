@@ -6,7 +6,7 @@ use crate::{
 };
 use serde_json::{Value, json};
 
-pub(super) fn artist(value: &Value) -> Result<ArtistCard> {
+pub(in crate::client) fn artist(value: &Value) -> Result<ArtistCard> {
     let artist = ArtistMetadata::from_official(value)?;
     let aliases = artist.display_aliases();
     Ok(ArtistCard {
@@ -21,8 +21,12 @@ pub(super) fn artist(value: &Value) -> Result<ArtistCard> {
         mv_count: artist.mv_count,
     })
 }
-pub(super) fn album(value: &Value) -> Result<AlbumCard> {
+pub(in crate::client) fn album(value: &Value) -> Result<AlbumCard> {
     let album = AlbumMetadata::from_official(value)?;
+    let primary_artist = album.primary_artist.as_ref().map(|a| ArtistReference {
+        id: a.id.clone(),
+        name: a.name.clone(),
+    });
     let credits = if album.artists.is_empty() {
         album.primary_artist.into_iter().collect()
     } else {
@@ -34,6 +38,7 @@ pub(super) fn album(value: &Value) -> Result<AlbumCard> {
         aliases: album.aliases,
         translations: album.translations,
         description: album.description,
+        primary_artist,
         artists: credits
             .into_iter()
             .map(|a| ArtistReference {
