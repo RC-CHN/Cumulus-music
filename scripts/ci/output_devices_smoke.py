@@ -25,7 +25,7 @@ def wait_for(operation, predicate, label, timeout=10):
     raise AssertionError(f'timed out: {label}')
 
 
-def run(binary, report, desktop):
+def run(binary, report, desktop, managed=False):
     report.mkdir(parents=True, exist_ok=False)
     children, logs = [], []
     reader = None
@@ -37,6 +37,8 @@ def run(binary, report, desktop):
             path = root / folder
             path.mkdir()
             env[key] = str(path)
+        if managed:
+            env['CUMULUS_MANAGED_OUTPUT_PROOF'] = '1'
         env.update(XDG_RUNTIME_DIR=str(root), PIPEWIRE_RUNTIME_DIR=str(root),
                    PIPEWIRE_REMOTE='pipewire-0', PIPEWIRE_CONFIG_DIR='/usr/share/pipewire',
                    PULSE_SERVER='unix:' + str(root / 'pulse/native'))
@@ -159,8 +161,13 @@ def run(binary, report, desktop):
             routed('b')
             pactl('unload-module', module_b)
             removed = wait_for(devices, lambda d: 'pulse/cumulus-proof-b' not in names(d), 'active device removed')
-            # Observe (not assume) the requested configuration after removal.
-            # Explicit recovery must still be possible; it is not auto policy.
+            if managed:
+                wait_for(devices, lambda d: d['configured'] == 'auto', 'automatic fallback after removal')
+                routed('a')
+                fallback = state()
+                assert fallback['preference']['selection']['id'] == 'pulse/cumulus-proof-b'
+                assert fallback['entry'] == entry and not fallback['paused']
+            # Also verify an explicit choice after removal.
             select('a')
             routed('a')
             restored = state()
@@ -180,6 +187,7 @@ def run(binary, report, desktop):
                      'sameEntryAcrossSwitches': True, 'removedDeviceRejected': True,
                      'reappearanceEnumerated': True, 'explicitRecoveryAfterRemoval': True,
                      'configuredAfterActiveRemoval': removed['configured'],
+                     'managedPolicyVerified': managed, 'automaticFallbackVerified': managed,
                      'physicalSpeakersVerified': False, 'settingsUiVerified': False, 'remoteRequests': 0}
             (report / 'report.json').write_text(json.dumps(proof, indent=2) + '\n', encoding='utf-8')
             print(json.dumps(proof))
@@ -203,5 +211,6 @@ if __name__ == '__main__':
     parser.add_argument('--binary', required=True, type=Path)
     parser.add_argument('--root', required=True, type=Path)
     parser.add_argument('--desktop', action='store_true')
+    parser.add_argument('--managed', action='store_true')
     arguments = parser.parse_args()
-    run(arguments.binary.resolve(), arguments.root.resolve(), arguments.desktop)
+    run(arguments.binary.resolve(), arguments.root.resolve(), arguments.desktop, arguments.managed)

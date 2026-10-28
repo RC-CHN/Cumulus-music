@@ -7,6 +7,7 @@ use serde_json::{Value, json};
 use std::{
     io::{BufRead, Write},
     path::Path,
+    sync::Arc,
     time::Duration,
 };
 
@@ -67,7 +68,20 @@ pub fn run() -> Result<Value> {
     let dir = tempfile::tempdir()?;
     let wave = dir.path().join("silence.wav");
     silence(&wave)?;
-    let mut engine = MpvEngine::open(MpvConfig::default())?;
+    let runtime = (std::env::var("CUMULUS_MANAGED_OUTPUT_PROOF").as_deref() == Ok("1"))
+        .then(|| cumulus_core::storage::StateStore::open(dir.path().join("state")))
+        .transpose()?
+        .map(|store| cumulus_core::playback::output::OutputRuntime::new(Arc::new(store)));
+    let native = Box::new(MpvEngine::open(MpvConfig::default())?);
+    let mut engine: Box<dyn AudioEngine> = if let Some(runtime) = &runtime {
+        Box::new(
+            runtime
+                .reserve(cumulus_core::playback::output::OutputKind::Audio)?
+                .wrap(native),
+        )
+    } else {
+        native
+    };
     engine.volume(0.0)?;
     reply(json!({"ready":true}))?;
     let mut selected = String::new();
@@ -84,7 +98,10 @@ pub fn run() -> Result<Value> {
         }
         let result = (|| -> Result<Value> {
             match command {
-                Command::Devices => Ok(serde_json::to_value(engine.output_devices()?)?),
+                Command::Devices => {
+                    engine.maintain_output()?;
+                    Ok(serde_json::to_value(engine.output_devices()?)?)
+                }
                 Command::Select { id } => {
                     // Even an accidental driver command must never enable a
                     // host backend. Invalid IDs below still exercise the real
@@ -96,7 +113,17 @@ pub fn run() -> Result<Value> {
                     {
                         return Err(Error::State("device is outside the isolated proof"));
                     }
-                    engine.set_output_device(&id)?;
+                    if let Some(runtime) = &runtime {
+                        runtime.catalog(engine.output_devices()?)?;
+                        let revision = runtime
+                            .preferences()?
+                            .ok_or(Error::State("damaged proof preferences"))?
+                            .revision;
+                        runtime.select(revision, &id)?;
+                        engine.maintain_output()?;
+                    } else {
+                        engine.set_output_device(&id)?;
+                    }
                     selected = id;
                     Ok(Value::Null)
                 }
@@ -122,7 +149,8 @@ pub fn run() -> Result<Value> {
                     let s = engine.poll()?;
                     Ok(
                         json!({"entry":s.entry_id,"paused":s.paused,"position":s.position,
-                        "volume":s.volume,"driver":s.audio_output,"events":s.events.len()}),
+                        "volume":s.volume,"driver":s.audio_output,"events":s.events.len(),
+                        "preference":runtime.as_ref().map(|r|r.preferences()).transpose()?.flatten()}),
                     )
                 }
                 Command::Quit => unreachable!(),
