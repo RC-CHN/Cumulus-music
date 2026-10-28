@@ -12,6 +12,7 @@ import {
   type PlaylistDialogTarget,
 } from '../services/playlists';
 import Icon from './Icon.vue';
+import { useConfirmationFocus } from '../composables/useConfirmationFocus';
 const props = defineProps<{
   manager: PlaylistManager;
   target: PlaylistDialogTarget;
@@ -39,20 +40,23 @@ const name = ref(''),
   destination = ref(''),
   link = ref('');
 const confirmation = ref<'delete' | 'clear' | 'publish'>();
+useConfirmationFocus(dialog, confirmation);
 const localError = ref('');
 const showTags = ref(false);
 const coverOpen = ref(false);
 let applyingCover = false;
 const title = computed(() =>
-  props.target.kind === 'create'
-    ? '新建歌单'
-    : props.target.kind === 'edit'
-      ? '编辑歌单'
-      : props.target.kind === 'history'
-        ? '歌单操作记录'
-        : props.target.kind === 'open'
-          ? '打开歌单'
-          : '歌曲操作',
+  confirmation.value
+    ? { delete: '删除歌单', clear: '清空歌曲', publish: '公开歌单' }[confirmation.value]
+    : props.target.kind === 'create'
+      ? '新建歌单'
+      : props.target.kind === 'edit'
+        ? '编辑歌单'
+        : props.target.kind === 'history'
+          ? '歌单操作记录'
+          : props.target.kind === 'open'
+            ? '打开歌单'
+            : '歌曲操作',
 );
 const own = computed(() => props.playlists.filter((p) => p.owned && !p.favorite));
 const categories = computed(() => [...new Set(tags.value.map((t) => t.category))]);
@@ -111,6 +115,11 @@ async function coverSaved(outcome: CoverOutcome) {
 }
 function close() {
   if (!busy.value) emit('close');
+}
+function cancel() {
+  if (busy.value) return;
+  if (confirmation.value) confirmation.value = undefined;
+  else close();
 }
 function toggleTag(tag: string) {
   if (selectedTags.value.includes(tag))
@@ -191,11 +200,17 @@ async function trackAction(action: 'add' | 'delete' | 'up' | 'down') {
     ref="dialog"
     class="playlist-dialog"
     aria-labelledby="playlist-dialog-title"
-    @cancel.prevent="close"
+    @cancel.prevent="cancel"
   >
     <header>
       <h2 id="playlist-dialog-title">{{ title }}</h2>
-      <button class="icon-button" aria-label="关闭歌单操作" :disabled="busy" @click="close">
+      <button
+        class="icon-button"
+        aria-label="关闭歌单操作"
+        data-confirmation-fallback
+        :disabled="busy"
+        @click="close"
+      >
         <Icon name="close" />
       </button>
     </header>
@@ -440,6 +455,7 @@ async function trackAction(action: 'add' | 'delete' | 'up' | 'down') {
             v-if="confirmation"
             type="button"
             class="text-button"
+            data-confirmation-cancel
             @click="confirmation = undefined"
           >
             返回编辑
@@ -473,6 +489,7 @@ async function trackAction(action: 'add' | 'delete' | 'up' | 'down') {
           <button
             type="button"
             class="text-button"
+            data-confirmation-entry="clear"
             :disabled="!editor.trackIds.length || editor.hasLocal"
             @click="confirmation = 'clear'"
           >
@@ -482,11 +499,17 @@ async function trackAction(action: 'add' | 'delete' | 'up' | 'down') {
             v-if="editor.private"
             type="button"
             class="text-button"
+            data-confirmation-entry="publish"
             @click="confirmation = 'publish'"
           >
             设为公开
           </button>
-          <button type="button" class="text-button danger" @click="confirmation = 'delete'">
+          <button
+            type="button"
+            class="text-button danger"
+            data-confirmation-entry="delete"
+            @click="confirmation = 'delete'"
+          >
             删除歌单
           </button>
         </div>

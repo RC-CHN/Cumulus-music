@@ -8,6 +8,7 @@ import { useLogin } from '../composables/useLogin';
 import { useSavedAccounts } from '../composables/useSavedAccounts';
 import Icon from './Icon.vue';
 import SessionRenewal from './SessionRenewal.vue';
+import { useConfirmationFocus } from '../composables/useConfirmationFocus';
 const props = defineProps<{ account: AccountView }>();
 const emit = defineEmits<{ close: []; login: []; changed: [] }>();
 const core = useCore();
@@ -24,6 +25,19 @@ const leaving = ref(false),
 let alive = true,
   focused: HTMLElement | null = null;
 const epoch = props.account.epoch;
+useConfirmationFocus(
+  dialog,
+  computed(() => removal.value?.id ?? (confirm.value ? 'logout' : undefined)),
+);
+function close() {
+  if (!leaving.value && !removing.value) emit('close');
+}
+function cancel() {
+  if (leaving.value || removing.value) return;
+  if (removal.value) removal.value = undefined;
+  else if (confirm.value) confirm.value = false;
+  else close();
+}
 watch(
   () => props.account.epoch,
   () => emit('close'),
@@ -73,16 +87,31 @@ onUnmounted(() => {
 });
 </script>
 <template>
-  <dialog ref="dialog" class="account-dialog" aria-label="切换账号" @cancel.prevent="emit('close')">
-    <button class="icon-button dialog-close" aria-label="关闭账号窗口" @click="emit('close')">
+  <dialog
+    ref="dialog"
+    class="account-dialog"
+    aria-labelledby="account-dialog-title"
+    @cancel.prevent="cancel"
+  >
+    <button
+      class="icon-button dialog-close"
+      aria-label="关闭账号窗口"
+      data-confirmation-fallback
+      :disabled="leaving || removing"
+      @click="close"
+    >
       <Icon name="close" />
     </button>
-    <h2>{{ removal ? '确认移除账号' : confirm ? '退出登录' : '切换账号' }}</h2>
+    <h2 id="account-dialog-title">
+      {{ removal ? '确认移除账号' : confirm ? '退出登录' : '切换账号' }}
+    </h2>
     <template v-if="removal">
       <p>{{ removal.nickname }}</p>
       <p class="muted">将移除本机保存的这条登录记录，再次使用需要重新登录。</p>
       <div class="account-confirm">
-        <button :disabled="removing" @click="removal = undefined">取消</button>
+        <button data-confirmation-cancel :disabled="removing" @click="removal = undefined">
+          取消
+        </button>
         <button class="primary" :disabled="removing" @click="remove">
           {{ removing ? '正在移除…' : '确认移除' }}
         </button>
@@ -94,7 +123,7 @@ onUnmounted(() => {
         ><input v-model="remote" type="checkbox" :disabled="leaving" />同时退出服务器会话</label
       >
       <div class="account-confirm">
-        <button :disabled="leaving" @click="confirm = false">取消</button
+        <button data-confirmation-cancel :disabled="leaving" @click="confirm = false">取消</button
         ><button class="primary" :disabled="leaving" @click="logout">
           {{ leaving ? '正在退出…' : '确认退出' }}
         </button>
@@ -135,6 +164,7 @@ onUnmounted(() => {
             v-if="!item.current"
             class="saved-remove"
             :aria-label="`移除账号 ${item.nickname}`"
+            :data-confirmation-entry="item.id"
             :disabled="busy || leaving || removing"
             @click="removal = item"
           >
@@ -148,6 +178,7 @@ onUnmounted(() => {
       <button
         v-if="account.canSignOut"
         class="account-logout"
+        data-confirmation-entry="logout"
         :disabled="busy || leaving || removing"
         @click="confirm = true"
       >
