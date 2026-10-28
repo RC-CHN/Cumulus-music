@@ -1,4 +1,6 @@
 mod prepare;
+mod publication;
+pub use publication::*;
 mod settings;
 pub use settings::*;
 mod view;

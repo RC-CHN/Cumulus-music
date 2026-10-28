@@ -2,6 +2,7 @@
 //! are separate: no account/device lock is held by the recorder across HTTP.
 pub mod player;
 mod record;
+mod recovery;
 mod send;
 mod types;
 use super::{RelayApi, RelayConfig, RelayService, RelaySettings, RelayUpload};
@@ -10,6 +11,7 @@ use crate::{
     account::{AccountSession, SessionToken},
     storage::{StateStore, StateTransaction},
 };
+pub use recovery::RecoveryReceipt;
 use sha2::{Digest, Sha256};
 use std::sync::{Arc, Mutex};
 pub use types::*;
@@ -245,15 +247,21 @@ impl RelayPublisher {
     fn recover(&self, owner: &str, device: &str) -> Result<()> {
         self.store.transaction(|tx| {
             let mut state = load(tx, owner, device)?;
+            let mut changed = false;
             for mut row in records(tx, owner, device)? {
                 if row.phase == PublicationPhase::Sending {
+                    changed = true;
                     row.phase = PublicationPhase::Uncertain;
                     state.blocked = Some(row.id.clone());
                     state.recovery = None;
                     put(tx, owner, &row)?;
                 }
             }
-            save(tx, owner, &state)
+            if changed {
+                save(tx, owner, &state)
+            } else {
+                Ok(())
+            }
         })
     }
 }

@@ -31,8 +31,9 @@ pub use super::podcast::{
 };
 pub use super::rankings::{RankingPageView, RankingView, SongSaleView};
 pub use super::relay::{
-    RelayAlertView, RelayCommand, RelayOperationView, RelaySettingCommand,
-    RelaySettingOperationView, RelaySettingsView, RelayView,
+    RelayAlertView, RelayCommand, RelayOperationView, RelayPublicationCommand,
+    RelayPublicationReceipt, RelayPublicationView, RelaySettingCommand, RelaySettingOperationView,
+    RelaySettingsView, RelayView,
 };
 pub use super::scene_fm::{SceneFmCategoryView, SceneFmCommand, SceneFmView};
 pub use super::settings::{

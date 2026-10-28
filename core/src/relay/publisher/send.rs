@@ -199,6 +199,14 @@ impl RelayPublisher {
                     .frame
                     .clone()
                     .ok_or(Error::State("relay queue missing"))?;
+                if let Some(raw) = tx.get(owner, "playback", "queue")? {
+                    let queue = serde_json::from_value(raw)?;
+                    let mut committed = player::project(&queue, Some(&frame), false)?;
+                    committed.queue_revision = frame.queue_revision;
+                    if committed != frame {
+                        return Err(Error::QueueChanged);
+                    }
+                }
                 // Read the LATEST committed queue here, after the failed request;
                 // commands arriving during HTTP must not restore an obsolete queue.
                 let upload = record::snapshot(&mut state, &frame, config)?;
@@ -311,6 +319,12 @@ impl RelayPublisher {
         let (owner, _lock) = relay.lock(token)?;
         let (_, device) = self.identity(token)?;
         self.recover(&owner, &device)?;
+        if matches!(
+            self.recovery_receipt_for(token, id)?,
+            Some(RecoveryReceipt::Cancelled { .. })
+        ) {
+            return Err(Error::Cancelled);
+        }
         if let Some(raw) = self.store.get(&owner, JOURNAL, id)? {
             let row: PublicationIntent = serde_json::from_value(raw)?;
             if row.id != id
