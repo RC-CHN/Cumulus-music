@@ -24,12 +24,23 @@ struct Backend {
     hold_id: AtomicU64,
     started: Notify,
     release: Notify,
+    trial: Mutex<Option<Value>>,
 }
 impl Api for Backend {
     fn request<'a>(&'a self, path: &'a str, payload: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             self.calls.lock().unwrap().push(path.into());
             Ok(match path {
+                "/api/v2/artist/songs" => {
+                    let offset = payload["offset"].as_u64().unwrap();
+                    let limit = payload["limit"].as_u64().unwrap();
+                    json!({"code":200,"total":55,"more":offset+limit<55,"songs":((offset+1)..=(offset+limit).min(55)).map(|id|json!({"id":id,"name":"曲目"})).collect::<Vec<_>>()})
+                }
+                "/api/album/detail/dynamic" => json!({"code":200,"isSub":false}),
+                "/api/album/privilege" => json!({"code":200,"data":[]}),
+                "/api/resource-exposure/config" => {
+                    json!({"code":200,"data":{"resourceType":"other"}})
+                }
                 "/api/album/v3/detail" => {
                     json!({"code":200,"album":{"id":7,"name":"长专辑"},"songs":(1..=501).map(|id|json!({"id":id,"name":"曲目","dt":120000})).collect::<Vec<_>>()})
                 }
@@ -44,9 +55,10 @@ impl Api for Backend {
                         self.started.notify_one();
                         self.release.notified().await;
                     }
-                    json!({"code":200,"songs":ids.iter().map(|v|json!({"id":v["id"],"name":"曲目","ar":[{"name":"歌手"}],"al":{"name":"专辑","picUrl":"http://p1.music.126.net/image.jpg?token=SECRET"},"dt":120000,"url":"https://private/?secret=SECRET","cookie":"SECRET"})).collect::<Vec<_>>()})
+                    json!({"code":200,"songs":ids.iter().map(|v|json!({"id":v["id"],"name":"曲目","ar":[{"id":12,"name":"歌手"}],"al":{"id":7,"name":"专辑","picUrl":"http://p1.music.126.net/image.jpg?token=SECRET"},"dt":120000,"url":"https://private/?secret=SECRET","cookie":"SECRET"})).collect::<Vec<_>>()})
                 }
                 "/api/song/enhance/player/url/v1" => {
+                    *self.trial.lock().unwrap() = Some(payload["trialMode"].clone());
                     let ids: Vec<Value> =
                         serde_json::from_str(payload["ids"].as_str().unwrap()).unwrap();
                     json!({"code":200,"data":[{"id":ids[0],"code":200,"url":"https://m1.music.126.net/a.mp3?key=SECRET","md5":"abc","expi":120,"level":"standard"}]})
@@ -260,4 +272,119 @@ async fn slow_metadata_cannot_replace_new_selection_and_old_lyrics_cannot_adjust
         client.player_queue("1").await.unwrap().tracks[0].track.id,
         "3"
     );
+}
+
+#[tokio::test]
+async fn catalog_selection_keeps_loaded_artist_order_source_and_navigation_references() {
+    let (dir, api, _session, client, _count) = fixture();
+    let mut pages = Vec::new();
+    for offset in [0, 20] {
+        let query = CatalogQuery::ArtistSongs {
+            id: "12".into(),
+            offset,
+            limit: 20,
+        };
+        let saved = client
+            .catalog_page("1", query.clone(), true)
+            .await
+            .unwrap()
+            .value
+            .unwrap();
+        pages.push(CatalogSelectionPage {
+            query,
+            revision: saved.revision,
+        });
+    }
+    let state = client
+        .play_selection(
+            "1",
+            PlaySelection::Catalog {
+                pages: pages.clone(),
+                index: 23,
+                quality: Quality::Standard,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(state.queue_len, 40);
+    let track = state.track.unwrap();
+    assert_eq!(track.id, "24");
+    assert_eq!(track.artist_refs[0].id.as_deref(), Some("12"));
+    assert_eq!(track.album_id.as_deref(), Some("7"));
+    assert_eq!(*api.trial.lock().unwrap(), Some(json!(-1)));
+    let stored = ProfileRegistry::open(dir.path(), ApiOrigin::Pc)
+        .unwrap()
+        .store()
+        .get("9", "playback", "queue")
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        stored["items"][0]["source"],
+        json!({"kind":"artist","id":"12","scene":"artist","trial_mode":-1})
+    );
+    pages[1].revision = "old".into();
+    assert!(matches!(
+        client
+            .play_selection(
+                "1",
+                PlaySelection::Catalog {
+                    pages: pages.clone(),
+                    index: 0,
+                    quality: Quality::Standard
+                }
+            )
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    pages[1].query = CatalogQuery::ArtistSongs {
+        id: "12".into(),
+        offset: 40,
+        limit: 20,
+    };
+    assert!(matches!(
+        client
+            .play_selection(
+                "1",
+                PlaySelection::Catalog {
+                    pages,
+                    index: 0,
+                    quality: Quality::Standard
+                }
+            )
+            .await,
+        Err(Error::InvalidInput(_))
+    ));
+    assert_eq!(client.player_queue("1").await.unwrap().tracks.len(), 40);
+    client.player_action("1", PlayerAction::Stop).await.unwrap();
+}
+
+#[tokio::test]
+async fn catalog_album_selection_revalidates_the_album_and_keeps_all_tracks() {
+    let (_dir, api, _session, client, _count) = fixture();
+    let query = CatalogQuery::Album { id: "7".into() };
+    let saved = client
+        .catalog_page("1", query.clone(), true)
+        .await
+        .unwrap()
+        .value
+        .unwrap();
+    api.calls.lock().unwrap().clear();
+    let state = client
+        .play_selection(
+            "1",
+            PlaySelection::Catalog {
+                pages: vec![CatalogSelectionPage {
+                    query,
+                    revision: saved.revision,
+                }],
+                index: 500,
+                quality: Quality::Standard,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(state.queue_len, 501);
+    assert_eq!(state.track.unwrap().id, "501");
+    assert_eq!(api.calls.lock().unwrap()[0], "/api/album/v3/detail");
+    client.player_action("1", PlayerAction::Stop).await.unwrap();
 }

@@ -145,8 +145,9 @@ pub use super::auth::{
     LogoutView, RenewalAction, RenewalState, SavedAccountView, SessionRenewalView,
 };
 pub use super::catalog::{
-    AlbumCard, ArtistCard, CatalogDate, CatalogIntroduction, CatalogPageView, CatalogVideoCard,
-    CatalogVideoKind, CatalogView, ConcertCard,
+    AlbumCard, ArtistCard, CatalogDate, CatalogIntroduction, CatalogMembershipAction,
+    CatalogMembershipOperation, CatalogMembershipView, CatalogPageView, CatalogResource,
+    CatalogSelectionPage, CatalogVideoCard, CatalogVideoKind, CatalogView, ConcertCard,
 };
 pub use super::cloud::{
     CloudCommand, CloudDeleteView, CloudFailure, CloudPageView, CloudQuery, CloudResult, CloudSort,

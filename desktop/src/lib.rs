@@ -114,6 +114,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 commands::daily_songs,
                 rankings::ranking_page,
                 catalog::catalog_page,
+                catalog::catalog_membership,
                 member::member_page,
                 member::member_rights,
                 member::open_member_link,

@@ -27,6 +27,36 @@ pub struct AlbumDetails {
 }
 
 impl CatalogApi {
+    /// M/404 -> M/15 da: playback re-reads v3 and requires album privileges.
+    /// This path does not request page dynamic/exposure metadata or supplement
+    /// missing tracks. The first matching privilege is used (Array.find).
+    pub async fn album_playback_tracks(&self, id: &Value) -> Result<Vec<Value>> {
+        let id = identifier(id)?;
+        let response = self.album(&json!(id)).await?;
+        validate_detail(&response, &id)?;
+        let rights = self
+            .api
+            .call("/api/album/privilege", json!({"id":id}), false, &[200])
+            .await?;
+        let rights = rights["data"]
+            .as_array()
+            .ok_or(Error::Response("missing album playback privileges"))?;
+        let mut by_id = std::collections::BTreeMap::new();
+        for right in rights {
+            by_id
+                .entry((right["id"].is_string(), identifier(&right["id"])?))
+                .or_insert(right);
+        }
+        let mut songs = response["songs"].as_array().unwrap().clone();
+        for song in &mut songs {
+            if let Some(right) = by_id.get(&(song["id"].is_string(), identifier(&song["id"])?)) {
+                song["privilege"] = (*right).clone();
+            } else {
+                song.as_object_mut().unwrap().remove("privilege");
+            }
+        }
+        Ok(songs)
+    }
     /// The page requires dynamic metadata, but retains songs if the separate
     /// privilege read fails. No collection, payment or exposure write is sent.
     pub async fn album_details(&self, id: &Value) -> Result<AlbumDetails> {

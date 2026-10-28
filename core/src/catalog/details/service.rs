@@ -22,6 +22,18 @@ pub struct SavedCatalogPage {
     pub response: Value,
 }
 impl SavedCatalogPage {
+    pub(crate) fn verify_song_order(&self, songs: &[Value]) -> Result<()> {
+        let field = match self.query {
+            CatalogQuery::Artist { .. } => "hotSongs",
+            CatalogQuery::ArtistSongs { .. } | CatalogQuery::Album { .. } => "songs",
+            _ => return Err(Error::InvalidInput("catalog page has no song order")),
+        };
+        let response = json!({field:songs});
+        if self.revision != revision(&self.query, &response)? {
+            return Err(Error::QueueChanged);
+        }
+        Ok(())
+    }
     pub fn songs(&self) -> Option<&[Value]> {
         let field = match self.query {
             CatalogQuery::Artist { .. } => "hotSongs",

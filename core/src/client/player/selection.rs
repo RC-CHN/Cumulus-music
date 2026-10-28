@@ -171,10 +171,21 @@ impl MusicClient {
             }
             other => other,
         };
+        let selection_token = token.clone();
         let (ids, index, quality, source) = self
             .session
             .run_for(&token, |api, _| async move {
                 match input {
+                    PlaySelection::Catalog {
+                        pages,
+                        index,
+                        quality,
+                    } => {
+                        let (ids, index, source) = self
+                            .catalog_song_selection(&selection_token, &pages, index)
+                            .await?;
+                        Ok((ids, index, quality, source))
+                    }
                     PlaySelection::Member {
                         query,
                         revision,
@@ -301,8 +312,8 @@ impl MusicClient {
             for (id, song) in chunk.iter().zip(songs.songs) {
                 let song= song.map(|song| {
                     let view=mapping::track(&song)?;
-                    Ok::<_,Error>(json!({"id":view.id,"name":view.name,"ar":view.artists.iter().map(|name|json!({"name":name})).collect::<Vec<_>>(),
-                        "al":{"name":view.album,"picUrl":view.cover_url},"dt":view.duration_ms,"fee":view.fee}))
+                    Ok::<_,Error>(json!({"id":view.id,"name":view.name,"ar":view.artist_refs.iter().map(|artist|json!({"id":artist.id,"name":artist.name})).collect::<Vec<_>>(),
+                        "al":{"id":view.album_id,"name":view.album,"picUrl":view.cover_url},"dt":view.duration_ms,"fee":view.fee}))
                 }).transpose()?;
                 let mut resource = json!({"id":id,"level":quality.as_str(),"dt":song.as_ref().map(|s|&s["dt"]),"missing":song.is_none(),"song":song});
                 if let Some(trial) = source.get("trial_mode") {

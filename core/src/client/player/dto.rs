@@ -55,6 +55,11 @@ pub struct QueueView {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PlaySelection {
+    Catalog {
+        pages: Vec<super::super::catalog::CatalogSelectionPage>,
+        index: usize,
+        quality: Quality,
+    },
     Member {
         query: super::super::dto::MemberQuery,
         revision: String,

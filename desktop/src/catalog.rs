@@ -1,6 +1,19 @@
 use cumulus_core::client::{ClientError, MusicClient, dto::*};
 
 #[tauri::command]
+pub async fn catalog_membership(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    resource: CatalogResource,
+    action: CatalogMembershipAction,
+) -> Result<AccountData<CatalogMembershipView>, ClientError> {
+    client
+        .catalog_membership(&epoch, resource, action)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn catalog_page(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

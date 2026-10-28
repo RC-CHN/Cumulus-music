@@ -1,12 +1,18 @@
 mod cards;
 mod dto;
+mod membership;
 mod project;
+mod selection;
 use super::{MusicClient, dto::AccountData};
 use crate::{
     Error, Result,
     catalog::details::{CatalogDetails, CatalogQuery},
 };
 pub use dto::*;
+pub use membership::{
+    CatalogMembershipAction, CatalogMembershipOperation, CatalogMembershipView, CatalogResource,
+};
+pub use selection::CatalogSelectionPage;
 
 impl MusicClient {
     pub async fn catalog_page(

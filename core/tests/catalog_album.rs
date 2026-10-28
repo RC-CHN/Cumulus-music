@@ -198,3 +198,34 @@ async fn required_dynamic_failure_preserves_the_previous_account_snapshot() {
     assert_eq!(cached.album_read, saved.album_read);
     assert_eq!(cached.fetched_at, saved.fetched_at);
 }
+
+#[tokio::test]
+async fn playback_resolver_requires_rights_uses_first_match_and_never_supplements_songs() {
+    let (api, catalog) = fixture();
+    api.responses.lock().unwrap().insert(
+        RIGHTS,
+        json!({"code":200,"data":[{"id":2,"pl":2222},{"id":2,"pl":9999},{"id":8,"pl":8000},{"id":"1","pl":1111}]}),
+    );
+    let tracks = catalog.album_playback_tracks(&json!(7)).await.unwrap();
+    assert_eq!(tracks.len(), 2);
+    assert!(tracks[0].get("privilege").is_none());
+    assert_eq!(tracks[1]["privilege"]["pl"], 2222);
+    assert_eq!(
+        api.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|v| v.0.as_str())
+            .collect::<Vec<_>>(),
+        [V3, RIGHTS]
+    );
+    api.responses.lock().unwrap().remove(RIGHTS);
+    assert!(catalog.album_playback_tracks(&json!(7)).await.is_err());
+    api.responses
+        .lock()
+        .unwrap()
+        .insert(V3, json!({"code":500}));
+    api.calls.lock().unwrap().clear();
+    assert!(catalog.album_playback_tracks(&json!(7)).await.is_err());
+    assert_eq!(api.calls.lock().unwrap().len(), 1);
+}
