@@ -24,7 +24,8 @@ if __name__ == '__main__':
     failures = []
     commands = [
         ('rust', [str(executable)]),
-        ('ctypes', [sys.executable, 'scripts/ci/windows_device_ctypes.py', str(native)]),
+        *[(mode, [sys.executable, 'scripts/ci/windows_device_ctypes.py', str(native), mode])
+          for mode in ['single-sync', 'pair-sync', 'single-async', 'pair-async', 'pair-async-drain']],
         ('upstream', [str(msys / 'ucrt64/bin/mpv.exe'), '--no-config', '--audio-device=help']),
     ]
     for name, command in commands:
