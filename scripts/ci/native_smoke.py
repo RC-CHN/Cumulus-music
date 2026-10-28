@@ -6,6 +6,26 @@ from pathlib import Path
 import subprocess
 
 
+def run_native(command, env, report, timeout=60):
+    log_path = report.with_suffix('.log')
+    try:
+        with log_path.open('x', encoding='utf-8') as log:
+            subprocess.run(command, env=env, stdout=log, stderr=subprocess.STDOUT,
+                           check=True, timeout=timeout)
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError) as error:
+        issue = {'ok': False, 'stage': 'native_process', 'timeoutSeconds': timeout}
+        if isinstance(error, subprocess.TimeoutExpired):
+            issue['kind'] = 'timeout'
+        elif isinstance(error, subprocess.CalledProcessError):
+            issue.update(kind='exit', returnCode=error.returncode)
+        else:
+            issue.update(kind='spawn', errno=error.errno)
+        report.with_suffix('.failure.json').write_text(json.dumps(issue, indent=2) + '\n', encoding='utf-8')
+        if log_path.exists():
+            print(log_path.read_text(encoding='utf-8', errors='replace')[-6000:])
+        raise
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
@@ -19,6 +39,7 @@ def main():
     env['CUMULUS_PROOF_REPORT'] = str(report)
     profile = report.with_name(report.stem + '-profile')
     profile.mkdir(exist_ok=False)
+    env['CUMULUS_PROOF_WEBVIEW_DIR'] = str(profile / 'webview')
     for variable, directory in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'),
                                 ('XDG_CACHE_HOME', 'cache'), ('APPDATA', 'roaming'),
                                 ('LOCALAPPDATA', 'local')]:
@@ -29,7 +50,7 @@ def main():
         env['CUMULUS_PROOF_AUTO'] = '1'
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
-    subprocess.run([str(args.binary.resolve())], env=env, check=True, timeout=60)
+    run_native([str(args.binary.resolve())], env, report)
     proof = json.loads(report.read_text(encoding='utf-8'))
     assert proof['ok'] and proof['productionDesktopStartup'] and proof['numericLocaleCompatible']
     assert proof['metadata_probe'] and proof['remote_requests'] == 0

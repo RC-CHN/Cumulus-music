@@ -187,6 +187,8 @@ jobs:
             .build/ci-login*/
             .build/ci-login*.log
             .build/ci-native-audio*.json
+            .build/ci-native-audio*.jsonl
+            .build/ci-native-audio*.log
             .build/ci-scroll*/
             .build/ci-scroll*.log
             .build/ci-graphics*/
