@@ -70,13 +70,23 @@ pub struct PlaylistView {
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ArtistReference {
+    /// Missing/zero IDs denote display-only credits, never a navigable artist.
+    pub id: Option<String>,
+    pub name: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TrackView {
     pub id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub voice_id: Option<String>,
     pub name: String,
     pub artists: Vec<String>,
+    pub artist_refs: Vec<ArtistReference>,
     pub album: String,
+    pub album_id: Option<String>,
     pub cover_url: Option<String>,
     pub duration_ms: u64,
     pub fee: i64,

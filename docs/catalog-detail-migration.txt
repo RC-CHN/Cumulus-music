@@ -1,0 +1,65 @@
+歌手与专辑详情迁移记录
+
+状态
+这是完整桌面目标的后续工作，独立于 0.1.0 发布候选 5a50ad2。
+本批补充歌曲中的目录引用及歌手读取协议，尚未交付独立歌手/专辑页面。
+协议对照测试不能替代真实账号请求、账号隔离缓存、分页状态机及桌面播放验收。
+
+官方依据
+- references/netease-3.1.42.205594-analysis/recovered-js/modules/
+  hybrid_app.chunk.1482700000000.js/15.js：Sr/Tr/Pr/Mr/Ir/Ar/Nr（3650–3773 行）。
+- 同目录 612.js：详情 top=50、e_r=false；热门歌曲另读取 M/15 Dg 权益后合并。
+- references/recovered-client/docs/product/models/page_artistDetail.txt：
+  M/2999 的分页、刷新、歌曲/专辑/视频/相似歌手状态变更。
+- references/ui-recovery/sources/packages/pc/src/pages/user-detail/views/artist/
+  Header.tsx、DetailTabs.tsx：头像、别名、歌曲/专辑/MV/简介/相似歌手/演出分栏。
+- references/ui-recovery/sources/packages/pc/src/pages/album/views/Common.tsx：
+  专辑标题、歌手导航、收藏/下载操作和简介。
+本批未使用 YesPlayMusic。
+
+已补充的数据边界
+TrackView 保留已有 artists/album 显示字段，新增 artistRefs[{id,name}]、albumId。
+ar/artists 与 al/album 两种响应字段均支持；引用只投影 ID 和名称。
+0、缺失或非十进制 ID 映射为空，保留署名但不虚构可导航目标；目录 ID 保持字符串。
+未知歌曲、本地媒体和缺少歌曲详情的榜单条目，不从歌手名称猜测线上 ID。
+前端类型允许旧视图缺少新增字段，后续页面必须判定非空 ID 才显示导航。
+这只建立导航数据基础，当前页面还未显示新的跳转按钮。
+
+ArtistApi 请求
+detail       /api/artist/v3/detail        id,top=50,e_r=false；nginxCache=true
+albums       /api/artist/albums/{id}      limit,offset
+songs        /api/v2/artist/songs         id,limit,offset
+introduction /api/artist/introduction     id
+similar      /api/discovery/simiArtist    artistid,limit,offset,total=true
+videos       /api/mlog/artist/video       artistId,tab=1,order=0,page
+concerts     /api/concert/list/byartist   artistId,limit,offset
+
+除 detail 外不强行启用 nginxCache；官方客户端自己的缓存策略不等同于请求头缓存选项。
+歌曲接口传给官方格式化器的 uid 是本地归一化上下文，不发送为 HTTP 字段。
+相似歌手使用小写 artistid；视频 page 为 JSON 字符串，其 cursor 是十进制数字。
+视频游标不经过 JavaScript 数值或 Rust u64/f64 缩窄，保留十进制内容。
+官方默认 limit=20、offset=0；本实现增加 limit 1..100、offset <=1,000,000、
+游标最长128位的客户端输入边界。这些上限是本实现的约束，不冒称官方服务端上限。
+所有请求只接受成功状态 200；服务错误继续走现有 Api 错误处理，不伪装空页。
+
+本阶段验证
+catalog-references-tests.log：核心单元与 client_boundary/client_local/rankings 共31项通过。
+catalog-artist-tests.log：加入 artist_catalog 两项后共33项通过。
+向量来自上述官方请求表达式，测试错误路径、ID/游标注入、字段大小写、JSON字符串、
+nginx缓存差异、缺失引用、超大字符串ID，以及正常歌曲到实际客户端 DTO 的引用保留。
+这些日志位于主工作目录 .build/，未作为源码或发行附件提交。
+catalog-artist-clippy.log：cargo clippy -p cumulus-core --all-targets --locked -- -D warnings 通过。
+catalog-artist-core-tests.log：cargo test -p cumulus-core --all-targets --locked 通过，
+156 个 target/suite 结果、821 项测试、0 失败/忽略。这是独立 core 的全量回归，
+不等同于整个 desktop workspace 验证，也没有新增线上账号或歌手桌面流程验证。
+随后整个 workspace 的 fmt、严格 Clippy、all-targets/custom-protocol 测试通过；
+前端固定 Node/锁文件安装、格式、134 项测试、类型检查与构建通过。
+日志为主工作目录 .build/catalog-workspace-* 与 .build/catalog-front-*。
+这仍不把编译/既有回归当作尚未接通的歌手页面验收。
+
+仍需完成
+- 类型化歌手/专辑页面投影与按账号、查询及页码隔离的缓存、失败保留与恢复。
+- 热门歌曲 M/612 的 /api/song/enhance/privilege 合并（已有 MV 域实现可复用协议）。
+- 所有分栏的真实响应字段核对，区分 MV 与 mlog，不把不同资源类型强塞为 MV ID。
+- 页面路由、歌曲/专辑入口、分页、收藏对账、播放和下载接入及真实窗口验收。
+- 独立专辑页面；当前 RankingPageView.Album 仍只是既有榜单域复用。

@@ -1,6 +1,6 @@
 use super::{LocalRootView, LocalTrackView};
 use crate::{
-    client::dto::TrackView,
+    client::dto::{ArtistReference, TrackView},
     library::{AudioMetadata, LibraryItem, LocalRevision, monitor::WatchRoot},
 };
 use sha2::{Digest, Sha256};
@@ -15,7 +15,16 @@ pub(crate) fn track(id: String, metadata: &AudioMetadata, missing: bool) -> Trac
         voice_id: None,
         name: metadata.title.clone(),
         artists: metadata.artists.clone(),
+        artist_refs: metadata
+            .artists
+            .iter()
+            .map(|name| ArtistReference {
+                id: None,
+                name: name.clone(),
+            })
+            .collect(),
         album: metadata.album.clone(),
+        album_id: None,
         cover_url: None,
         duration_ms: (metadata.duration * 1000.0).max(0.0) as u64,
         fee: 0,

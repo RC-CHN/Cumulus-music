@@ -1,6 +1,6 @@
 use super::{
     MusicClient,
-    dto::{AccountData, TrackView},
+    dto::{AccountData, ArtistReference, TrackView},
     mapping,
 };
 use crate::{Error, Result, catalog::rankings::*, protocol::api::identifier};
@@ -103,8 +103,13 @@ fn project(saved: SavedRanking, cached: bool) -> Result<RankingView> {
                             id: s.id,
                             voice_id: None,
                             name: s.name,
-                            artists: vec![s.artist],
+                            artists: vec![s.artist.clone()],
+                            artist_refs: vec![ArtistReference {
+                                id: None,
+                                name: s.artist,
+                            }],
                             album: String::new(),
+                            album_id: None,
                             cover_url: s
                                 .cover_url
                                 .as_ref()

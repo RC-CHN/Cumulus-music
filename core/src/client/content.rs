@@ -84,7 +84,9 @@ impl MusicClient {
                             }
                             .into(),
                             artists: vec![],
+                            artist_refs: vec![],
                             album: String::new(),
+                            album_id: None,
                             cover_url: None,
                             duration_ms: 0,
                             fee: 0,

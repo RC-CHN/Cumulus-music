@@ -1,4 +1,4 @@
-use super::dto::{PlaylistView, TrackView};
+use super::dto::{ArtistReference, PlaylistView, TrackView};
 use crate::{Error, Result, protocol::api::identifier};
 use serde_json::Value;
 
@@ -65,7 +65,16 @@ pub(super) fn track(value: &Value) -> Result<TrackView> {
             .flatten()
             .map(|v| string(&v["name"]))
             .collect(),
+        artist_refs: artists
+            .into_iter()
+            .flatten()
+            .map(|v| ArtistReference {
+                id: identifier(&v["id"]).ok(),
+                name: string(&v["name"]),
+            })
+            .collect(),
         album: string(&album["name"]),
+        album_id: identifier(&album["id"]).ok(),
         cover_url: artwork(&album["picUrl"]),
         duration_ms: value
             .get("dt")
@@ -83,5 +92,58 @@ pub(super) fn page(offset: usize, limit: usize) -> Result<()> {
         Err(Error::InvalidInput("invalid page bounds"))
     } else {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::track;
+    use serde_json::json;
+
+    #[test]
+    fn catalog_references_keep_credit_order_and_only_valid_decimal_ids() {
+        let value = track(&json!({
+            "id": 1,
+            "ar": [
+                {"id": "900719925474099312345", "name": "第一位", "cookie": "DO_NOT_EXPORT"},
+                {"id": 0, "name": "未关联歌手"},
+                {"id": "javascript:secret", "name": "第三位"},
+                {"name": "第四位"}
+            ],
+            "al": {"id": "0021", "name": "专辑", "url": "DO_NOT_EXPORT"}
+        }))
+        .unwrap();
+        assert_eq!(value.artists, ["第一位", "未关联歌手", "第三位", "第四位"]);
+        assert_eq!(
+            value
+                .artist_refs
+                .iter()
+                .map(|a| a.name.as_str())
+                .collect::<Vec<_>>(),
+            value.artists
+        );
+        assert_eq!(
+            value.artist_refs[0].id.as_deref(),
+            Some("900719925474099312345")
+        );
+        assert!(value.artist_refs[1..].iter().all(|a| a.id.is_none()));
+        assert_eq!(value.album_id.as_deref(), Some("0021"));
+        let serialized = serde_json::to_string(&value).unwrap();
+        assert!(!serialized.contains("DO_NOT_EXPORT"));
+        assert!(!serialized.contains("javascript:"));
+    }
+
+    #[test]
+    fn legacy_catalog_references_and_unlinked_albums_remain_readable() {
+        let value = track(&json!({
+            "id": 1, "name": "旧接口歌曲",
+            "artists": [{"id": 12, "name": "歌手"}],
+            "album": {"id": 0, "name": "本地专辑"}
+        }))
+        .unwrap();
+        assert_eq!(value.artist_refs[0].id.as_deref(), Some("12"));
+        assert_eq!(value.album, "本地专辑");
+        assert!(value.album_id.is_none());
+        assert!(track(&json!({"id": 2})).unwrap().artist_refs.is_empty());
     }
 }

@@ -90,12 +90,18 @@ export interface PlaylistView {
   favorite: boolean;
   private: boolean;
 }
+export interface ArtistReference {
+  id: string | null;
+  name: string;
+}
 export interface TrackView {
   voiceId?: string;
   id: string;
   name: string;
   artists: string[];
+  artistRefs?: ArtistReference[];
   album: string;
+  albumId?: string | null;
   coverUrl: string | null;
   durationMs: number;
   fee: number;

@@ -24,7 +24,7 @@ struct Backend {
     requests: Mutex<Vec<(String, Value)>>,
 }
 fn song(id: &Value) -> Value {
-    json!({"id":id,"name":"曲目","ar":[{"name":"歌手"}],"al":{"name":"专辑","picUrl":"http://p1.music.126.net/cover.jpg?token=DO_NOT_EXPORT"},"dt":240123,"fee":1,"url":"https://private/signed?MUSIC_U=DO_NOT_EXPORT","cookie":"DO_NOT_EXPORT"})
+    json!({"id":id,"name":"曲目","ar":[{"id":"9007199254740993","name":"歌手"}],"al":{"id":"56","name":"专辑","picUrl":"http://p1.music.126.net/cover.jpg?token=DO_NOT_EXPORT"},"dt":240123,"fee":1,"url":"https://private/signed?MUSIC_U=DO_NOT_EXPORT","cookie":"DO_NOT_EXPORT"})
 }
 fn playlist() -> Value {
     json!({"id":"7","userId":"9","name":"喜欢的音乐","specialType":5,"privacy":10,"creator":{"nickname":"用户"},"trackCount":999,"coverImgUrl":"http://p2.music.126.net/a.jpg","trackIds":[{"id":"1"},{"id":"2","v":-1},{"id":"3"},{"id":"4"}]})
@@ -119,6 +119,13 @@ async fn boundary_preserves_authoritative_order_and_redacts_native_fields() {
         ["1", "2", "3"]
     );
     assert!(first.value.tracks[1].local && first.value.tracks[1].missing);
+    assert_eq!(
+        first.value.tracks[0].artist_refs[0].id.as_deref(),
+        Some("9007199254740993")
+    );
+    assert_eq!(first.value.tracks[0].album_id.as_deref(), Some("56"));
+    assert!(first.value.tracks[1].artist_refs.is_empty());
+    assert!(first.value.tracks[1].album_id.is_none());
     assert!(first.value.tracks[2].missing);
     let last = client
         .playlist_page(
