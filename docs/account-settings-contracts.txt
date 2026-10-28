@@ -1,0 +1,124 @@
+账号设置与桌面设置入口（2026-10-28）
+
+范围
+本批接通官方“消息与隐私”六项设置，以及正式设置页中的主题、登录账号和下载入口。
+独立 Rust AccountSettings 还保留历史研究通过的 allowPeopleCanSeeMyPlayRecord 布尔写入。
+这不是完整官方设置页完成声明；完整清单及未完成的本机/平台设置见 settings-mapping.json。
+不使用 YesPlayMusic；没有新增依赖、代理服务或 Python 业务转发。
+
+官方依据
+references/netease-3.1.42.205594-analysis/recovered-js/modules/
+  hybrid_64.chunk.1482700000000.js/3097.js，1085–1439：消息与隐私字段、标签、枚举、点击行为。
+  hybrid_184.chunk.1482700000000.js/3136.js：getPrivacySetting/setPrivacySetting，读取 setting，发送局部补丁。
+  hybrid_app.chunk.1482700000000.js/116.js，224–288：本机设置默认值与旧设置迁入；不能当作远端字段。
+references/recovered-client/docs/product/30-collections-settings-validation.txt：历史账号回读与隐私联动证据。
+references/recovered-client/scripts/netease_settings_functional_audit.py：历史单字段修改与完整对象恢复。
+references/ui-recovery/sources/packages/pc/src/pages/setting/components/index.jsx：标题/内容分栏结构。
+本实现重建语义色和响应式间距，不宣称像素级一致；官方皮肤/字体和完整设置页面尚未逐项复刻。
+
+接口与字段
+读取：/api/user/setting，{}，要求 code=200 且 setting 为对象。
+修改：/api/user/setting/update，仅发送用户选择的一个字段；要求 code=200 后再完整回读。
+默认已验证 PC 路由：读走 EAPI，更新走同一 PC origin 的 WEAPI。沿用协议层的预先选路；
+失败后不换 origin、协议或凭据重发。业务层不持有 Cookie/签名实现。
+shareSetting：0 所有人，1 我关注的人（谁可以给我发私信）。
+playRecordSetting：0 所有人可见，1 我关注的人可见，2 仅自己可见（我的听歌排行）。
+personalServiceSetting：0 开启，2 关闭；1 不合法。
+allowSubscriptionNotify：boolean，歌单被收藏通知。
+allowLikedNotify：boolean，收到赞通知。
+allowNewFollowerNotify：boolean，新粉丝通知。
+allowPeopleCanSeeMyPlayRecord：boolean，历史兼容写入；正式界面仅显示其联动回读，
+  用官方三选一 playRecordSetting 修改可见范围，避免两个矛盾控件同时出现。
+personalizedRecommend/allowCopyrightReversionNotify 是官方本机通知设置，不加入此远端白名单。
+
+原研究的联动观察
+playRecordSetting=1 曾使 allowPeopleCanSeeMyPlayRecord=false。
+playRecordSetting=2 曾使 allowPeopleCanSeeMyPlayRecord=false、allowFollowedCanSeeMyPlayRecord=false、
+socialPlaylistSetting=2。服务端可能继续调整联动规则；Rust 不在本地猜测或补写这些值。
+更新后完整保存实际 setting，对 UI 仅投影已知类型的有限字段。
+未知枚举、错误类型、缺失值分别保留 unsupported/missing；不能用官方初始默认值覆盖真实账号。
+
+Rust 状态与失败恢复
+core/src/account/settings/{types,service,mutation,legacy}.rs：独立领域协调器。
+account-settings-v1/snapshot 保存完整原生对象、读取时间和完整对象 SHA-256 revision。
+account-settings-intents-v1 按 UUID 保存 intent、目标/原值/观察值、时间和 phase。
+所有读写绑定 SessionToken；所有设置共用一个跨进程 OperationLock，联动字段不能并发写入。
+change_for 顺序：验证 UUID/字段/类型/revision → 查相同 intent（已存在就只返回）→ 检查全部未决操作
+→ 检查本地展示版本 → 新读取服务端完整对象 → 版本不同则更新缓存并报冲突 → 持久化 Pending
+→ 仅一次 update → 完整回读，实际目标匹配才 Confirmed。
+目标原本一致保存 Unchanged，不发送 update。持久化失败不允许越过写入关口。
+确定拒绝/RequestNotSent 保存 Rejected；丢失响应/未知失败保存 Uncertain。
+收到 200 但回读失败时保留 Pending；中途取消或崩溃不会自动重放。所有联动设置继续被未决操作阻止。
+切换账号后的迟到错误仍把责任记在原 owner；新账号不收到旧结果、快照或 intent。
+reconcile_for 仅 GET 并更新完整快照和操作观察值；不匹配继续 Uncertain。
+accept_current_for 必须已核对，并再次 GET 验证用户确认的完整 revision 未变；
+  保存 AcceptedCurrentState，表示用户接受当前观察，不表示证明了原 update 的远端结果。
+cancel_unseen_for 用同一锁登记 Cancelled；迟到的原 change 同 ID 只能读到 Cancelled。
+  若 intent 已经存在则返回真实状态，绝不把 Pending 或完成请求伪装成取消。
+
+旧持久化兼容
+旧 resource-mutations/settings:<key> 记录在事务内迁入 UUID journal，再删除原行；
+未决状态继续阻止其他设置，旧的按字段观察不能替代本次完整核对。迁入不发送请求。
+AccountResources::set_setting/refresh_for(Settings)/reconcile_expected(Settings) 转到新协调器，
+不再保留另一条绕过全设置互斥的写入路径。旧接口的操作枚举不能表达取消/接受当前状态，
+这些结果由新的 SettingsPhase 明确暴露；旧 reconcile 不将其误称 Confirmed。
+升级时不支持旧进程与新进程同时写同一个 profile；旧程序的锁协议本来不同。
+
+宿主与界面
+core/src/client/settings.rs 是安全 DTO 和用例门面；desktop/src/settings.rs 仅转发类型化 IPC。
+account_settings_page(epoch,refresh) 返回 revision/fetchedAt、白名单字段、联动观察、最多20个操作。
+快照和操作在同一领域锁下读取；未决操作优先，不让较新的终态挤掉恢复入口。
+account_settings_command 支持 change/cancel_unseen/reconcile/accept_current，带 epoch、UUID、revision。
+不把原始设置对象、服务错误正文、Cookie、URL、设备数据、服务端附加字段传给前端。
+命令结果始终保留本次操作，即使它是已被较新记录挤出20条展示范围的旧 intent，避免恢复入口无法结束。
+非主窗口不能访问这些命令；过期 epoch 在网络前被拒绝。
+
+frontend/src/composables/useSettings.ts 在 App 层存活，页面切换不遗失未知 intent；账号切换清空。
+进入设置页先读取本机缓存再刷新，离线时保留缓存并禁用新修改；刷新成功才恢复编辑。
+点击时保持已确认的单选/勾选状态，完整回读后更新。未知 IPC 结果先读 journal，不生成第二个 UUID。
+已知“设置变化/字段不可用”前置失败显示新快照，不制造假未决操作。
+正式页提供“读取处理记录”“取消未开始的修改”“核对服务端状态”；接受当前状态有二次确认。
+个性化服务切换有确认；不自动重启中断播放，保存后提示重新打开应用加载新的推荐。
+官方客户端原实现会强制提示重启；本实现没有证明服务端推荐立即变化的时机。
+主题入口与顶栏共用已验证的 system/light/dark 持久化；跟随系统减少动态效果。
+外观是设备偏好，账号隐私严格按账号存储。账号管理/下载按钮打开已有实际业务界面。
+设置内容单独滚动，固定页标题/播放器，760×540 下所有设置及底部入口可达。
+
+验证与边界
+core/tests/account_settings.rs：12项，涵盖联动回读、另一设备变化、未知值、幂等/Noop、
+丢失响应/重开、200后回读失败、拒绝、接受当前状态、取消迟到 intent、跨账号/跨字段互斥、
+journal失败、旧记录迁入。core/tests/client_settings.rs：2项，原生字段白名单、缺失/未知值、旧 epoch、旧操作超出展示上限后的恢复。
+core/tests/resources.rs：旧 AccountResources 设置入口继续经过同一协调器。
+frontend/tests/settings.test.ts：6项，缓存离线、无乐观替换、未知 IPC、前置冲突、账号切换/销毁、失效释放忙状态。
+desktop/tests/ipc.rs：主窗口边界与两条 settings 命令的旧 epoch 拒绝。
+本机全工作区 211 个测试目标 / 950 项通过、0失败/忽略；前端169项通过，格式/类型/构建通过。
+
+真实 WebView 合成验证：.build/settings-ui-f/first，21状态/21截图、6次合成修改。
+涵盖三种主题、完整隐私回读、确认取消与焦点恢复、无乐观选中、未应用/已应用的丢失响应、
+离线核对、接受当前、403、未知/缺失字段、760×540深浅色及底部操作可达。
+截图已实际检查；这不等于物理显示器帧率或真实声卡播放验证。
+早期 .build/settings-ui-a/b/c/d 未通过：隔离显示没有强制 X11，Wayland窗口未在Xvfb显示。
+e 跑到16状态后测试脚本过早读取刷新前 DOM；补等待后 f 完整通过。失败目录保留，不冒充通过。
+CI 的 Linux/Windows runner 都接入同样21状态的 scripts/ci/catalog_smoke.py --settings。
+最终原生构建再通过 .build/settings-ci-final 的21状态；新顶栏加入后，
+.build/settings-ux-regression 的原有27状态+重开2状态回归也通过，包括编辑位置/菜单键盘/弹窗焦点/主题记忆。
+本机通过不能冒称当前提交的远端 CI 已通过；以精确提交对应的完整 CI 结论为准。
+
+可复现（新目录，不能覆盖旧证据）：
+  cargo build -p cumulus-desktop --example catalog_ui_probe --features custom-protocol --locked
+  GDK_BACKEND=x11 WEBKIT_DISABLE_DMABUF_RENDERER=1 LIBGL_ALWAYS_SOFTWARE=1 \
+    dbus-run-session -- xvfb-run -a python3 scripts/ci/catalog_smoke.py \
+    --binary .build/target/debug/examples/catalog_ui_probe --root .build/new-settings-proof --settings
+截图复用 desktop/scripts/capture_history_proof.py，设置 CUMULUS_SETTINGS_PROOF=1、
+CUMULUS_PROOF_DIR 和 CUMULUS_PROOF_BINARY，在同一 GDK_BACKEND=x11 的 Xvfb 显示运行。
+显式 CUMULUS_CATALOG_PROFILE 才进入真实账号只读脚本 settings_live_probe.js；
+native transport 只允许列出的 GET 类业务请求，拒绝 /api/user/setting/update 等所有修改。
+本批真实账号验证不修改隐私开关，不发送通知、私信或邀请；双账号可见性/通知投递效果未经验证。
+
+真实账号只读证据：.build/private-settings-live-b/first，5状态/5截图，7个设置字段类型可识别；
+共5次白名单读取（身份、歌单、喜欢、每日推荐、设置），其中设置读取1次，全部 code=200。
+原生持久快照与 DTO 的 revision/7项字段一致，隔离 journal 为0，真实写入0。
+使用当前桌面应用选择的既有 PC profile；不复制/扩大 Cookie origin，不把私有 profile 路径写入仓库。
+旧 references profile 的 a 尝试仅返回无账号的身份结果，未读取设置，不作为通过证据。
+desktop/scripts/audit_settings_proof.py --synthetic <合成根目录> --live <只读根目录>
+  检查21+5截图、边界、6条合成操作最终状态、原生SQLite/DTO一致、白名单与零真实写入。

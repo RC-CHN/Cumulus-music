@@ -134,3 +134,14 @@ https://github.com/RC-CHN/Cumulus-music/actions/runs/40664543341
   弹窗焦点、主题持久化、小窗口保存按钮、长时长和行尾操作区全部复验。
 - 最终Rust936项、前端163项、CI发行规则15项通过。以上属于本地实测结果，
   Windows本增量仍等待新提交的独立CI，不能将Linux虚拟显示结果说成实机高刷新率。
+
+设置入口与隐私回读追加（2026-10-28）
+- 顶栏设置入口、外观主题/账号管理/下载入口及消息与隐私表单接通；未启动完成时设置按钮禁用。
+- 次要操作补边框/间距；深浅色使用统一语义色；内容独立滚动，760×540下底部入口可达。
+- .build/settings-ui-f：21状态/21截图，6次合成修改；实际验证无乐观单选/勾选、联动回读、
+  确认取消/焦点返回、超时两种结果、只读核对、保留当前、拒绝、未知字段及最小窗口。
+- .build/private-settings-live-b：当前账号只读5状态/5截图，7字段与原生SQLite一致，真实写入0。
+- .build/settings-ci-local：正式 scripts/ci/catalog_smoke.py --settings 的21状态通过。
+- .build/settings-final-audit.json：窗口证据/原生持久状态/请求白名单审计通过。
+- .build/settings-ci-final：最后原生构建的21状态通过；.build/settings-ux-regression 原有27状态+重开2状态通过，新增顶栏入口未破坏编辑位置、菜单键盘、弹窗焦点和主题记忆。
+详见 account-settings-contracts.txt；完整设置范围的剩余项见 settings-mapping.json，不能把本批视为全目标完成。

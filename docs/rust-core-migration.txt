@@ -513,3 +513,12 @@ WebView状态与SQLite核验通过，证据见play-history-contracts.txt。
 24个Linux WebView状态、游客本地CUE重播/重开、当前账号六页读取和300首原生队列回放通过；
 来源/接口/详细证据见play-history-contracts.txt。真实删除/清空/上报没有执行，非空书仅合成验证。
 完整设置、系统媒体/托盘、跨设备接续及其他原目标仍继续，goal保持active。
+
+消息与隐私设置/正式设置入口追加（2026-10-28）
+core/account/settings 将官方六个消息/隐私控件及既有兼容布尔字段接入独立 Rust 协调器：
+完整设置版本、联动回读、账号隔离、全设置互斥、UUID持久意图、未知结果核对/接受当前、
+迟到请求取消与旧 resource-mutations 迁入；AccountResources 设置入口复用同一实现。
+core/client/settings、desktop/settings、Vue SettingsPage/useSettings 接正式页面和失败恢复。
+本地21状态合成GUI与5状态当前账号只读GUI通过，真实设置写入0；不以旧Python写入结论充当新Rust写入实测。
+详见 account-settings-contracts.txt 和 settings-mapping.json。开机启动/默认程序/关闭至托盘、
+完整播放设置、缓存/桌面歌词、系统媒体控制、同账号接续及其余原目标继续；fullGoalComplete仍为false。
