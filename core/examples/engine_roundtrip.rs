@@ -82,17 +82,23 @@ pub fn verify_with_observer(
     progress("engine_ready");
     progress("output_enumeration_start");
     let mut enumerator = MpvEngine::open(MpvConfig::default())?;
+    progress("output_enumerator_ready");
     let devices = enumerator.output_devices()?.expect("native device support");
+    progress("output_first_query_returned");
     assert!(devices.devices.iter().any(|d| d.id == "auto"));
     assert_eq!(devices.configured, "auto");
     assert!(devices.active_driver.is_none());
     enumerator.set_output_device("auto")?;
+    progress("output_auto_selected");
     for id in ["", "invalid\0device", "cumulus-missing-proof-device/absent"] {
         assert!(enumerator.set_output_device(id).is_err());
     }
+    progress("output_invalid_selections_rejected");
     assert_eq!(enumerator.output_devices()?.unwrap().configured, "auto");
+    progress("output_second_query_returned");
     // This enumerator never loads any media or activates an audio output.
     drop(enumerator);
+    progress("output_enumerator_closed");
     progress("output_enumeration_verified");
     if !auto {
         // Explicit null output must never enumerate/select a physical device,
