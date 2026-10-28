@@ -411,3 +411,31 @@ Windows现场与接续提示焦点复查（2026-10-29）
 修复按钮移除后恢复可用焦点。12个实际状态、12截图、2次进程启动通过，18状态启动
 回归及22状态原设置回归通过。设备列表为合成数据，实际路由用另一套隔离Pulse验证；
 二者均不冒充物理扬声器验收。原有编辑按钮/主题/接续退出等证据仍按前面各批记录。
+
+2026-10-29 窗口关闭、托盘恢复与弹窗布局
+- 官方116.js/387.js的closeFrame设置/提示已迁入独立core和宿主生命周期；来源、
+  平台可用性、状态机、IPC及退出时的一起听接口见window-lifecycle-contracts.txt。
+- .build/tray-lifecycle-ui-verified/report.json：正式WebView14态/14截图通过，
+  合成服务、真实Tauri托盘、隔离D-Bus面板；浅色/深色、760×540、无host提示、
+  取消焦点、记住选择、原生菜单显示、host丢失自动恢复、watcher重启、设置损坏/
+  修复、保存失败/恢复和显式退出。退出后SQLite确认保存Exit/remember=true、
+  备份恰1条且故障触发器已移除。无真实账号业务请求。
+- 隐藏期间真实libmpv/null在450ms观察间隔内前进约0.397秒，playId保持一致；
+  原生菜单恢复后可从正式播放条暂停。此项不证明物理声卡或面板图标的可见性。
+- 实际看图发现通用.playlist-dialog样式将radio撑宽/label排成列；增加限定样式
+  恢复16px按钮与同一行文字，并在WebView增加几何对齐断言。重新检查最终深浅色
+  截图；生产资源index-BDxbu_YW.js / index-B5cMpTsY.css。
+- 首次tray-lifecycle-ui-first的截图工具沿用Wayland，无法读取Xvfb根窗口；改用
+  GDK_BACKEND=x11。tray-lifecycle-ui-x11虽通过行为检查，但旧radio布局尚未修好；
+  tray-lifecycle-ui-final修好布局并增加后台播放；verified再含最终宿主新鲜度判断
+  与退出后的存储审计。旧失败/中间证据未删除，也不替代最终通过结果。
+- 本地Rust231目标/1066项、前端200项、CI规则19项全部通过；fmt、严格Clippy、
+  前端类型/生产构建、正式桌面及探针构建通过。日志前缀.build/tray-verified-*、
+  tray-final-frontend-*、tray-final-ci-tests.log。一次中间构建因Vite清理dist与Rust
+  读取资产并行而失败；最终按前端完成→Rust检查/测试/构建顺序重跑通过。
+- CI新增Linux私有面板驱动；Windows本批原生Shell和Wayland面板仍未实测。
+  托盘媒体菜单、媒体快捷键、MPRIS/SMTC等后续目标保留，不宣称整个任务完成。
+- 前批ba89adf的CI40756446672：Linux/前端通过，Windows安装包构建后
+  engine_roundtrip.exe以3221225477(0xc0000005)退出。旧探针没有逐阶段输出，
+  当前证据不足以判定具体崩溃点。新增有限阶段日志并在失败附件中保留，不忽略
+  故障或绕过CI gate；当前功能仍须自身Linux/Windows完整CI通过才能合入main。

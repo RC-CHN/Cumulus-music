@@ -1,0 +1,113 @@
+窗口关闭、托盘与恢复（2026-10-29）
+
+官方来源
+- references/netease-3.1.42.205594-analysis/recovered-js/modules/
+  hybrid_app.chunk.1482700000000.js/116.js：closeFrameType 默认 tray、
+  closeFrameRemind 默认 false；本地 closeFrame.close/remind 读写。
+- 同目录 387.js：首次关闭询问托盘/退出，只有“不再提醒”才持久化；
+  app/hide 与 app/exitApp 是不同操作。已记住选择时绕过提示。
+- hybrid_64.chunk 的3097.js：系统设置中的 closeFrameType；SMTC 是独立设置。
+- references/recovered-client/docs/product/native-contracts.txt：Tray install、
+  点击/右键回调、卸载/刷新。models/setting.txt 的窗口关闭统一入口。
+- Tauri 2 原生托盘：https://v2.tauri.app/learn/system-tray/
+- StatusNotifier 规范：
+  https://specifications.freedesktop.org/status-notifier-item/latest/status-notifier-watcher.html
+  IsStatusNotifierHostRegistered 与注册列表共同用于可用性判断。
+- 运行适配依据锁定的 tauri 2.11.5 / tray-icon 0.24.2 / gio 0.18.4 源码。
+  libappindicator 实际使用 org.kde.StatusNotifierWatcher / StatusNotifierItem；
+  Windows tray-icon 即使首次 NIM_ADD 失败仍可返回构造成功。
+没有使用 YesPlayMusic；不声称像素完全一致或跨桌面面板绘制一致。
+
+逐项映射
+官方 closeFrame 设置 -> core/preferences/window.rs -> client/window.rs ->
+  WindowBehavior.vue -> core 磁盘/CAS/隔离测试及真实 WebView 设置操作。
+官方关闭提示 -> core ClosePlan -> desktop/lifecycle/actions.rs ->
+  WindowCloseDialog.vue + WindowClosePrompt.vue -> 原生关闭/确定/取消/焦点验证。
+官方 app/hide -> 原生 window.hide + 有界可见性回读 -> 原生菜单显示 ->
+  隔离 D-Bus host 的真实 libappindicator 菜单调用。
+官方 app/exitApp -> close_together().await -> window.destroy -> 原有播放器、
+  续期、验证码、Watchman 清理 -> 显式 UI 退出与进程退出记录。
+托盘不可用/面板重启为社区客户端平台保护策略；没有伪造为官方 HTTP 接口。
+
+核心存储与接口
+owner=local-device，kind=window-behavior-preferences-v1，current 与 revision。
+WindowSettings={closeBehavior:tray|exit,rememberChoice:bool}；默认 tray/false。
+更改采用 expected_revision CAS。损坏时展示默认但 damaged=true，不能隐式覆盖；
+显式 Repair 备份到 window-behavior-recovery-v1 并增加单调修订。保存记录丢失但
+计数存在也按损坏处理；计数损坏/溢出拒绝写入，旧修订不能在修复后重新生效。
+设置是设备级，读写仍带账号 epoch；旧账号页面不能写入切换后的设备状态。
+核心没有 Tauri、GTK、WebView 或 Python 依赖。
+
+window_preferences(epoch) -> AccountData<WindowPreferencesView>
+window_preferences_command(epoch,{kind:change,expected_revision,settings}|{kind:repair})
+  -> AccountData<WindowPreferencesView>
+window_lifecycle() -> revision/installed/trayAvailable/prompt/busy/hidden/message
+window_close_command({kind:cancel,id}|{kind:confirm,id,behavior,remember}) -> 同一快照
+cumulus:window-lifecycle 事件提供同一类型。修订和提示 ID 使用十进制字符串。
+前端先订阅再读当前状态；用 BigInt 排除过时响应，不因丢失回复重复退出或隐藏。
+设置写失败只读回；错误状态要求明确刷新。关闭确认在本机保存成功后执行行为；
+原生隐藏/房间清理失败时，提示保留已提交的新修订，供用户显式重试。
+
+宿主状态机
+- production setup 在 MusicClient 安装后启用生命周期；旧独立探针没有调用
+  install 时保留原关闭钩子，不能把那些探针当成新托盘行为的验证。
+- CloseRequested 统一拦截自定义关闭按钮/系统窗口关闭。每次只处理一个请求；
+  提示 ID 防止旧弹窗或重复点击执行后来的一次关闭。取消保留窗口和焦点。
+- 未记住或设置损坏 -> 显示提示；记住 Exit -> 退出；记住 Tray 且托盘可用 ->
+  隐藏；记住 Tray 但不可用 -> 提示并禁用隐藏确认。缺少窗口设置也有显式退出路径。
+- 隐藏不调用退出房间、账号退出或播放器动作。每50ms回读原生 is_visible，
+  最多500ms，同时核对操作代次和托盘状态；失败则显示主窗口，不伪称隐藏完成。
+- 托盘“显示 Cumulus”恢复/取消最小化/聚焦；“退出 Cumulus”走统一清理流程。
+  Windows 左键抬起显示，右键菜单；Linux 点击行为由桌面面板决定，可用原生菜单显示。
+- 退出沿用 core close_together，只清理本客户端显式附着的房间。失败保留窗口和
+  错误，不绕过、重放写入或强制杀死进程。直接隐藏不会结束房间。
+  已附着房间的清理可调用 /api/listen/together/status/get（空对象）、
+  /api/listen/together/sync/playlist/get（roomId）及
+  /api/listen/together/end/v2（roomId；此入口 count=None，不附 shareInfo）。
+  先核对未决操作、刷新当前房间，仅房间仍匹配才发送 end，随后状态回读确认；
+  无本客户端附着房间时不执行上述远端流程。完整字段见 listen-together 映射。
+- 主窗口 Destroyed 停止监视器并注销托盘，释放回调持有的 AppHandle；随后执行
+  原有播放器/续期/验证码/Watchman 清理。监视器不发音乐业务请求。
+
+平台可用性与失败恢复
+Linux：先检查固定的 libayatana-appindicator3.so.1 / libappindicator3.so.1，
+避免缺动态库触发依赖的 panic。deb 添加 libayatana-appindicator3-1 运行依赖。
+监听 session bus 的 org.kde.StatusNotifierWatcher owner，owner 丢失即不可用；
+每秒顺序查询该 owner 的 GetAll，检查 host=true 且本连接注册了当前 tray ID。
+只读取本进程对象，最多4个候选，每个 D-Bus 请求500ms上限；校验 Item 的 Id、
+Active 状态和 Menu 路径。owner 代次拒绝旧响应；无信号变化也会被轮询发现。
+Windows：每秒对当前 tray 调用 rect()，由 Shell_NotifyIconGetRect 确认该项存在；
+不把构造成功或“系统有 explorer”当作可恢复的证据。具体面板交互仍需 Windows
+运行验证，当前本机只提供 Linux 证据。
+可用记录超过4秒视作不可用。已隐藏时检测到托盘失效立即显示窗口并提示。
+缺 host/库、原生构造失败不会终止整个应用；用户仍可保留窗口或显式退出。
+检查不能保证面板图标一定可见（例如用户隐藏图标）；证明的是有效注册和菜单入口。
+旧式仅 XEmbed、未提供 StatusNotifier 的面板当前按不可用保留窗口，不假装支持。
+
+验证与边界
+core/tests/window_preferences.rs、client_window_preferences.rs：默认策略、无 host、
+持久化、CAS、损坏备份、缺记录、计数溢出原子性、账号切换及旧请求拒绝，5项。
+frontend/tests/window-lifecycle.test.ts：事件超越读/命令响应的大整数修订、失联只读回、
+挂载结束后的订阅清理。正式前端已有200项测试（本批最终结果见验证日志）。
+desktop/examples/tray_native_probe + scripts/ci/tray_protocol_smoke.py：真正 native
+菜单显示/隐藏/退出、无 host 也可构造、watcher 重启重新注册；不是产品关闭验收。
+desktop/examples/tray_ui_probe + 同驱动 --lifecycle：正式 Vue/Tauri/核心设置和
+关闭流程；外部私有 D-Bus panel 模拟，仅合成音乐请求。14个 UI 状态含深浅色、
+760×540、无 host、记住选择、托盘恢复、host 丢失、重启、损坏/修复、保存失败、
+取消焦点及显式退出。背景播放另检查真实 libmpv/null 的相同播放 ID 和进度递增。
+驱动要求新建证据目录，拒绝替换已有系统 watcher，不操作用户的实际桌面托盘。
+本轮不把虚拟 X11 帧率当作物理显示器刷新率；不声称物理扬声器听感。
+真实 Windows Shell、Wayland 面板、缺库安装与一起听清理失败的此处 UI 联动仍需
+对应平台/补充故障流程验证。核心清理逻辑的既有测试不代替这些新宿主分支。
+本批原生菜单提供显示和退出；恢复证据中的前后曲/播放/喜欢按钮、全局快捷键、
+MPRIS/SMTC、开机自启仍是整个目标的后续工作，不将本批托盘流程称为全部完成。
+
+复现（Linux，固定工具链）
+npm --prefix frontend ci
+npm --prefix frontend run build
+cargo build -p cumulus-desktop --example tray_ui_probe --features custom-protocol --locked
+LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 WEBKIT_DISABLE_DMABUF_RENDERER=1 \
+  xvfb-run -a -s '-screen 0 1280x900x24' dbus-run-session -- \
+  python3 scripts/ci/tray_protocol_smoke.py --lifecycle --screenshots \
+  --binary .build/target/debug/examples/tray_ui_probe --root .build/tray-new-evidence
+Python/GI 仅驱动验证与截图，生产客户端不依赖它。CI Linux 用系统 /usr/bin/python3。
