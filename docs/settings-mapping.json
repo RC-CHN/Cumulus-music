@@ -21,7 +21,7 @@
     {"feature": "关闭窗口至托盘、托盘/系统媒体控制、全局/媒体快捷键", "officialModel": "setting", "status": "仍需完整平台实现与两平台验收"},
     {"feature": "字体、字号", "officialModel": "setting/page_setting", "status": "独立字体/字号设置未实现；主题与显式禁用动画/系统减少动态效果已接"},
     {"feature": "防休眠、淡入淡出、通知、自动取消静音、替换队列策略", "officialView": "views/Play.jsx", "status": "自动播放/恢复进度两个设置已独立接通；这些其余设置及效果仍需逐项实现"},
-    {"feature": "输出设备切换、输出后端能力、响度均衡及系统音频诊断", "officialView": "views/Play.jsx", "status": "目前原生默认音频输出与已接音效不等于此完整设置页"},
+    {"feature": "输出设备切换、输出后端能力、响度均衡及系统音频诊断", "officialView": "views/Play.jsx", "status": "原生枚举/受限选择及Linux隔离真实路由已接；持久化/控制器恢复/正式控件及其余能力仍未完成，见audio-output-mapping.json"},
     {"feature": "同账号接续", "officialView": "views/Play.jsx/playingListHandoffEnable", "status": "设备开关、下行接续、原生上行、未决恢复和body保留策略已接；真实账号上行/他端记录及当前批次Windows CI仍有边界，见relay-mapping.json"},
     {"feature": "多端最近播放显示", "officialView": "views/Play.jsx/allowMultiterminalRecord", "status": "已在最近播放页接通；设置页整合可继续"},
     {"feature": "下载目录/质量/格式/布局/歌词", "officialView": "views/Download.tsx", "status": "既有下载设置已接；本批提供实际入口"},

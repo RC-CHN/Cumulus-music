@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "fullGoalComplete": false,
+  "settingsFeatureComplete": false,
+  "official": {
+    "view": "references/ui-recovery/sources/packages/pc/src/pages/setting/views/Play.jsx",
+    "nativeBridge": "references/recovered-client/docs/product/native-contracts.txt",
+    "alternativeClientUsed": false
+  },
+  "implemented": [
+    {"feature": "原生设备异步枚举和受限选择", "code": "core/src/playback/engine/", "status": "Linux真实libmpv/隔离Pulse路由已验证；Windows精确提交CI待验"},
+    {"feature": "原生事件节点的安全复制", "code": "core/src/playback/engine/ffi/devices.rs", "tests": "core/src/playback/engine/ffi/devices_tests.rs"},
+    {"feature": "null输出选择隔离与音频/MV包装转发", "code": ["core/src/playback/engine/mpv.rs", "core/src/playback/engine/video.rs", "core/src/client/focus.rs"]},
+    {"feature": "GUI初始化后真实路由/热插拔验证工具", "code": ["desktop/examples/native_audio_probe.rs", "core/examples/output_device_roundtrip.rs", "scripts/ci/output_devices_smoke.py"], "evidence": "docs/audio-output-contracts.txt", "settingsUiVerified": false, "physicalSpeakersVerified": false}
+  ],
+  "remaining": [
+    "设备本地偏好持久化、并发修改及损坏恢复",
+    "播放器和MV控制器的串行切换、加载并发、取消、账号代次校验",
+    "区分所选偏好、应用中、缺失、失败与当前后端；不宣称已知物理端点",
+    "设备消失的自动回退策略、失败后的恢复/重试和重新接入策略",
+    "正式类型化IPC、设置页控件、焦点/动画/深浅色及缩放测试",
+    "两平台实际设备路由与声卡听感；Windows精确提交全CI",
+    "响度均衡、输出后端高级能力及完整系统音频诊断"
+  ],
+  "remoteApis": []
+}
