@@ -70,13 +70,18 @@
       "feature": "publication status and explicit desktop recovery",
       "module": "core/src/relay/publisher/recovery.rs + core/src/client/relay/publication.rs + frontend/src/components/settings/RelayPublication.vue",
       "verification": "7 public-client tests, 7 frontend tests, 14 actual WebView states/14 screenshots; 4 synthetic uploads; no real account publication; exact Windows CI pending"
+    },
+    {
+      "feature": "background request-body compaction with durable idempotency receipts",
+      "module": "core/src/relay/publisher/retention.rs + core/src/storage/state.rs",
+      "verification": "8 native compaction tests, storage keyset pagination, public-client compact receipt/no-replay verification; Windows exact CI pending"
     }
   ],
   "remaining": [
     {
-      "feature": "publication journal retention and Windows recovery validation",
+      "feature": "Windows recovery and journal compaction validation",
       "status": "not complete",
-      "details": "Local status, explicit snapshot recovery, unknown IPC cancellation and settings UI verified on Linux; full receipt/cancellation retention remains, exact Windows CI pending"
+      "details": "Full body retention implemented with 128 recent / 8 MiB limits excluding active/current work; compact receipts and cancellation fences retained indefinitely, so total database is not strictly bounded; exact Windows CI pending"
     },
     {
       "feature": "real cross-device continuation",
@@ -128,10 +133,17 @@
     "publisherLiveWrites": 0,
     "publisherDesktopRecoveryComplete": false,
     "publisherDesktopRecoveryImplemented": true,
-    "publisherRecoveryClientTests": 7,
+    "publisherRecoveryClientTests": 8,
     "publisherRecoveryFrontendTests": 7,
     "publisherRecoveryWebViewStates": 14,
     "publisherRecoverySyntheticUploads": 4,
-    "publisherRecoveryWindows": "pending exact CI"
+    "publisherRecoveryWindows": "pending exact CI",
+    "publisherJournalRetentionImplemented": true,
+    "publisherRecentBodyLimit": 128,
+    "publisherRecentBodyByteLimit": 8388608,
+    "publisherProtectedBodiesExcludedFromLimit": true,
+    "publisherMinimalReceiptsExpire": false,
+    "publisherTotalStorageBounded": false,
+    "publisherRetentionTests": 8
   }
 }

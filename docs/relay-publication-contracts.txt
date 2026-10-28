@@ -23,7 +23,7 @@ send.rs：publish_next_for(token)串行发送；resynchronize_for(token, id, blo
 
 PublicationFrame仅含队列代次、entryId、有类型的十进制资源ID、选择项、源、模式和场景标记。
 不能传Cookie、签名或媒体URL；选择项必须对应真实entryId和资源类型，拒绝重复entryId、
-超长/超量队列、过期代次及非法配置。场景/源投影必须由后续原生播放器适配负责，不能让
+超长/超量队列、过期代次及非法配置。场景/源投影由原生播放器适配负责，不能让
 WebView提供“允许发布”或本机设备ID。源默认list_loop、状态默认order沿用官方机器规则。
 
 事件规则
@@ -32,7 +32,7 @@ WebView提供“允许发布”或本机设备ID。源默认list_loop、状态�
 - Select：先记录状态；快照源选到窗口外，再记录当前队列的新快照。
 - Mode：仅此次触发来自playlistHandoff时抑制；后续用户手动改模式仍发布。
 - VoiceProgress：仅当前声音资源匹配才记录毫秒进度；歌曲不发布进度。
-  时间节流仍由已恢复VoiceProgressClock负责，正式采样尚待事件适配接线。
+  时间节流由已恢复VoiceProgressClock负责，正式采样已接原生播放器，见relay-player-publication.txt。
 - ColdStart：上传已有本机会话源；不凭空推断不存在的播放源。
 - 空/不适用场景/Clear：先持久化最后clear，再移除本机机器，失败不复活原场景。
   terminal_clear消费机器，在512条累计命令边界仍可附加最终第513条clear。
@@ -45,7 +45,8 @@ relay-publication-v1：机器、最新权威队列、序号、最新回执ID及�
 relay-publication-intents-v1：UUID标识的不可重放请求、原设备、代次、创建时间、阶段及恢复父ID。
 relay-publication-active-<device hash>：Prepared/Sending及当前阻塞回执；完成或已被明确恢复的
 历史项从工作集合移除，发送/记录不全表扫描历史。历史保留在独立回执表供UUID查询与审计。
-此阶段尚无历史磁盘保留策略；生产生命周期接线时仍需确定保留/压缩规则。
+完整body现有128条/8MiB近期保留策略，保护未决/当前项；小回执和取消记录不丢弃，
+总库并非固定上限，见relay-retention-contracts.txt。
 每次状态、意图和工作集合更改在同一SQLite事务提交。跨网络不持有SQLite或账号内存锁。
 共享relay-v1进程文件锁串行化发送、下行和设备开关；播放器记录可以在网络请求期间提交。
 
@@ -82,12 +83,11 @@ Prepared→Sending先落盘，才调用：
 还会继续运行原42组官方对照与全工作区检查；不将合成发送成功记为真实服务端允许。
 本批最终本地检查：Rust全工作区218目标/996项通过、0失败/忽略；严格Clippy和fmt通过；
 前端固定版本npm ci、format:check、178项测试、类型检查/生产构建及CI规则检查通过。
-原42组官方冻结对照包含在Rust检查中。新发送层未接正式播放器，不能以该总数改变此边界。
+原42组官方冻结对照包含在上述当批历史检查中；其后的正式播放器接线以relay-player-publication.txt为准。
 本地日志：.build/relay-publication-{tests-final,workspace-confirmed,clippy-confirmed}.log。
 
 生产接线剩余
 原生事件映射、末尾preId、重排、重复ID回退、来源排除、首播/声音节流、失败重建及可取消
 后台任务已在下一批接通并验证，详见relay-player-publication.txt。
-UI白名单状态、显式恢复与丢失IPC取消已接，见relay-recovery-contracts.txt；仍待历史磁盘
-保留策略以及获准、可隔离的真实
+UI白名单状态、显式恢复与丢失IPC取消已接，见relay-recovery-contracts.txt；body压缩与小回执保留已接，见relay-retention-contracts.txt；仍需获准、可隔离的真实
 上行/另一设备回读。上行成功只代表服务应答，不能据此宣称真正跨设备流程完成。

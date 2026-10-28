@@ -33,7 +33,7 @@ core/examples/relay_read.rs：可执行、白名单约束的真实账号只读�
 新账号；旧未决操作仍保存在原账号目录以供审计，不丢弃责任记录。
 
 尚未完成的生产链路（不能据此声称跨端续播完整可用）：
-- 历史回执及取消栅栏保留策略、真实账号上行/他端回读；新恢复界面的Windows CI待核验。
+- 完整body压缩与永久小回执保留已接（relay-retention-contracts.txt）；真实账号上行/他端回读及本批Windows CI仍待核验。
   未决上行公开IPC、设置页状态和显式恢复已接，14状态Linux窗口验收见relay-recovery-contracts.txt。
   原生播放器订阅/队列增量/声音采样及后台发送已接通，19个真实WebView状态核对了4次
   合成上行；详见relay-player-publication.txt，不能推断为真实另一设备已收到播放记录。

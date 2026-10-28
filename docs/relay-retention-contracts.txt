@@ -1,0 +1,80 @@
+同账号接续上行：请求体压缩与回执保留（2026-10-29）
+
+范围与依据
+官方 M/401 与 M/15 决定上行内容和10001恢复方式；本地保留策略是本项目的工程设计，
+不声称官方也使用相同数据库/阈值。沿用 relay-publication-contracts.txt 的调用与字段，
+没有增加远端API，不参考其他客户端，不向真实账号提交任何上行。
+
+保留规则
+按账号 owner 与原生 device ID 的SHA256隔离，维护后台发送器启动前及本地状态检查时压缩。
+不在同步音频事件记录路径扫描/压缩历史；事件记录只随原子意图增加一条大小/顺序索引。
+每次维护后，除保护项外，按原生单调 sequence 倒序保留最多128个完整请求体，合计不超过
+8 MiB（UTF-8 JSON逻辑字节）；超出任一条件，较旧请求体压缩成 PublicationReceipt。
+保护项是 Prepared、Sending、当前 blocked、当前 recovery 与 latest；它们不计入以上
+128/8MiB上限，也不因年代/体积被取消。旧库异常多的未发送记录同样保留，不把清理当取消。
+后台任务断网时也在HTTP预检前维护；旧库分批迁移未结束或两次维护之间可能暂超出近期上限。
+
+Receipt保留id、sequence、phase、recovery_of、frame_revision、service_code、created_at、
+原设备身份，移除整个upload。旧Rejected/Uncertain的结果与父子关系不改变；只要仍是当前
+阻塞/恢复责任，完整body也继续保留。显式恢复始终从最新权威队列建快照，不靠旧body重放。
+完整请求和精简回执均由 recovery_receipt_for 按UUID查找；resynchronize_for 返回不带body
+的原生PublicationReceipt，重复调用仍返回原阶段。公开IPC字段完全不变，不把设备/队列/
+会话ID/媒体地址带给WebView。已经压缩的UUID不能被put重建为新完整意图。
+旧完整body可由 intents_for 查看；它现在不是无限历史列表，旧结果需按UUID查询。
+
+防重复边界
+精简回执与 relay-publication-cancelled-v1 的小型取消记录永久保留，不使用过期时间删除。
+因此未知应答、已确认操作与尚未送达的迟到IPC在重启后仍按原ID处理，不重新提交；
+同UUID错误blocked_id/原设备/账号上下文不能重新绑定。精简表不会在播放/轮询中全表扫描。
+这意味着总数据库仍随历史UUID增长；只限制近期完整请求体，不宣称所有数据的固定总上限。
+若将来需要丢弃这些小回执，须先设计原生操作代次/过期能力凭据并验证迟到请求拒绝，
+不能直接按时间删除。此处保留准确幂等性，未把“旧记录清掉了”当成已解决未知请求。
+SQLite删除后释放页供后续复用；不在业务运行时执行全库VACUUM，不保证磁盘文件立即缩小。
+
+存储与迁移
+relay-publication-intents-v1：保留的完整请求，与活动集合保持原事务提交。
+relay-publication-order-<device hash>：sequence(20位)+UUID→{id,sequence,bytes}，仅索引完整body。
+relay-publication-receipts-v1：UUID→精简原结果，不含upload。
+relay-publication-retention-v1/<device hash>：旧库扫描cursor与complete。
+relay-publication-cancelled-v1：沿用原取消栅栏，无格式变化。
+
+新写入始终直接维护顺序索引。旧库使用StateTransaction.values_page，以owner/kind/key复合
+主键seek，每次最多32行；不使用offset，也不每次从第一行重新扫描。游标键已被删除仍可续扫。
+游标之后新插入的行可能再被索引，游标之前的新行已由写入路径直接索引，不会漏掉新请求。
+重启继续既有游标；只处理当前账号与原设备的body，不清理其他账号/设备数据。
+同一SQLite事务完成索引迁移、回执插入、旧body删除、索引删除和游标推进；任一步失败全回滚。
+迁移完成且无超限body时不重复写数据库。内容/索引身份不匹配会报错，不跳过坏数据后宣称成功。
+维护与发送阶段变化经同一StateStore事务串行化；维护不会将活跃Sending误认成进程退出。
+只有原relay-v1发送锁持有者才能执行遗留Sending→Uncertain恢复，此规则未改变。
+
+执行与验证
+ cargo test -p cumulus-core --test storage --test relay_publication --test client_relay_publication --test relay_player_runtime --locked
+core/tests/relay_publication/retention.rs：8项，实际SQLite/文件锁与原生发布器，覆盖：
+- 已确认恢复和取消记录经过155轮发送、压缩与重启，断网下重复ID仍回原结果、不发HTTP；
+- 300行旧库分32行扫描，重开续扫；已完成维护安装拒绝INSERT触发器仍可只读检查；
+- 删除旧body阶段触发SQL故障，回执、顺序索引和游标一起回滚；解除故障后完成；
+- 正在发送时清理、取消发送后的Uncertain与Prepared恢复均保留完整body；
+- 由原生RelayMachine生成的大累计命令超过8MiB时，在128条上限前就按体积压缩；
+- 同步音频记录不触发旧库扫描；其他账号/设备的历史body保持原样；
+- 已迁移游标之前新插入的显式恢复，通过新写索引参与后续压缩，旧ID仍不重发。
+新增storage分页用例覆盖空键、跨账号/命名空间隔离、游标删除后续扫和大小边界。
+新增公开MusicClient用例核验压缩后同一回执DTO不变、重复命令不触发音频或额外HTTP、
+原生设备/队列/授权信息不泄漏到公开状态。共新增10项，旧积压测试改为同时审计body+小回执。
+首次新增公开用例错误调用crate-private方法而编译失败；改用独立StateStore读取实际库，
+不扩大业务方法可见性。失败日志保留在 .build/relay-retention-targeted-final.log。
+首次旧积压断言仍要求全部历史body留存，按新策略改为核对总回执数、128上限与未决body。
+不放宽原发送次数、阶段、恢复父ID或账号/设备隔离断言。
+
+边界
+本地为Linux合成服务与SQLite验证；Windows需当前精确提交CI，不沿用旧批次成功。
+完整业务目标仍进行中；真实账号上行及另一设备回读仍没有新证据。
+
+本批本地最终证据
+Rust格式、严格全工作区Clippy通过；221个target/suite共1027项Rust测试通过，失败/忽略均0。
+前端固定版本npm ci、format:check、185项测试、类型检查/生产构建通过，15项CI规则通过。
+实际生产Tauri前端/IPC/原生核心的同步恢复14状态由 .build/relay-retention-recovery-ci 通过，
+含生成PCM的真实libmpv解码至null输出、4次合成提交、取消/核对无额外HTTP和浅深色小窗口。
+本批没有新增截图或真实账号请求；该检查验证新回执投影未破坏原恢复流程，压缩后的回执
+与不重发结论另由上述真实SQLite/公开MusicClient测试证明，不能把14状态冒充线上接续。
+日志 .build/relay-retention-{workspace-complete,clippy-complete,concurrent-migration}.log；
+最新本地桌面构建与catalog_ui_probe已成功，输出 .build/relay-retention-app-build.log。

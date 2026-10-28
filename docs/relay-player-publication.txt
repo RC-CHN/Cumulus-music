@@ -6,7 +6,7 @@
 本批证明真实WebView→生产IPC→原生播放器→持久意图→合成Api提交的完整链路。
 尚无真实账号上行/他端接收证明。未决上行公开IPC、设置页状态与恢复已在下一批接入，
 见relay-recovery-contracts.txt；运行错误与播放器错误分开保存，公开状态提供各自恢复入口。
-历史完整回执的磁盘保留策略也仍待完成；工作集合已有界限，不全表扫描历史。
+完整body后台压缩已接，不在音频事件记录路径扫描历史；小回执不丢弃，见relay-retention-contracts.txt。
 
 官方依据及有意差异
 沿用relay-contracts.txt和relay-publication-contracts.txt中的M/401、M/15及42组官方冻结向量。

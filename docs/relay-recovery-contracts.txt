@@ -21,7 +21,8 @@ relay_publication_view(epoch, requested?)返回AccountData<RelayPublicationView>
 字段：pending、blocked/recovering/latest/requested、canResynchronize、sending、recordFailed、
 preflightFailed。回执只含UUID、phase、recoveryOf、serviceCode、createdAt；不含上传body、
 队列、设备身份、relay sessionId、Cookie、媒体地址或签名。requested用于精确核对一个UUID。
-读取只读本机状态；若能取得与发送器相同的relay-v1锁，才把遗留Sending恢复为Uncertain。
+读取仅访问本机状态；可分批压缩本地历史body。若能取得与发送器相同的relay-v1锁，
+才把遗留Sending恢复为Uncertain。
 正在发送时取不到锁，就保留Sending，不凭“前端正在刷新”判断进程已退出。
 无遗留Sending时不重新写发布状态；状态读取不会启动音频引擎或发出网易云请求。
 
@@ -67,7 +68,7 @@ frontend/tests/relay-publication.test.ts：7项，重复点击、精确回读、
 状态、精确发送次数、主题和小窗口布局；Linux与Windows独立执行。
 
 剩余边界
-历史完整发布回执与取消栅栏的保留/压缩策略仍待完成，不能将有界工作集合称为磁盘保留已完成。
+近期完整body压缩已接；幂等小回执与取消栅栏永久保留、总库仍可增长，见relay-retention-contracts.txt。
 真实账号上行及另一设备回读尚无证据；无第二账号不声称一起听双端通过。
 本批Windows状态仍取决于精确提交完整CI，不能沿用之前提交的绿色结果。整个原始目标继续。
 
