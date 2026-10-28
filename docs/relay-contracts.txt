@@ -1,4 +1,4 @@
-同账号跨端续播（relay）——原生契约与当前验收边界
+同账号跨端续播（relay）——原生契约、下行播放器与桌面验收
 2026-10-28；目标仍进行中。本文不把 REST 拉取计划等同于播放器已接续。
 
 一、官方依据
@@ -22,8 +22,12 @@ M/401 SHA256：8d4c5b82bb30ad7d95d383e4ec49fb4c08114ebec3992fd7d094305318bc8690
 core/src/relay/types.rs：有界资源/配置/原生 alert；歌曲和声音分类型。
 api.rs：固定官方端点/字段，不自选替代协议、不在请求失败后改路线。
 machine.rs：播放源、12 位 session、累计命令、快照、状态和播客节流。
-pull.rs：服务端响应到原生播放计划；尚不操作音频引擎。
+pull.rs：服务端响应到原生播放计划；client/relay 负责授权与原生队列应用。
 service.rs：账号代次、互斥、读取缓存、提示消耗、单次 pull 持久日志。
+application.rs：账号隔离的本机播放意图；准备/安装/中断恢复与取消墓碑。
+client/relay/：集合展开、歌曲/声音新授权、播放器并发防护、公开字段投影。
+desktop/src/relay.rs 与 frontend/useRelay、RelayPrompt、RelaySettings：类型化 IPC、
+显式接续/重试、设置内状态和官方布局提示卡。
 core/examples/relay_read.rs：可执行、白名单约束的真实账号只读验收。
 核心不依赖 Tauri/WebView，不运行 Python 子进程。账号变更后旧计划不会返回
 新账号；旧未决操作仍保存在原账号目录以供审计，不丢弃责任记录。
@@ -34,9 +38,8 @@ core/examples/relay_read.rs：可执行、白名单约束的真实账号只读�
   当前机器能产生正确请求和恢复判定，RelayApi 仅为低层原生适配。
 - 设置开关的原生设备 ID 绑定、写后回读、未决写入恢复和设置页交互。
   update_setting 是明确的底层请求，尚未接公开 IPC，不自动调用。
-- pull 计划的歌曲/播客授权、集合展开、原生队列/播放 fence 原子安装。
-- 桌面提示、8 秒自动关闭、遮挡规则、窗口尺寸/深色模式/焦点实测。
-这些条目列入 relay-mapping.json，不使用“已接线”“桌面通过”等表述。
+已接通下行的授权、集合展开、原子安装和桌面入口，见下文第七节。
+尚缺项单独列入 relay-mapping.json；本批不能被解释为整个 relay 领域完成。
 
 三、请求和调用顺序
 所有端点通过既有账号绑定的 Api；均 cache=false，接受 code=200。
@@ -108,7 +111,7 @@ playMode 未识别时保留 None，不擅自覆盖本机播放模式。
 - 官方 bulk remove 只取 removeIds[0] 且硬编码 song；Rust delete 保留所有项类型。
 - 官方 mixed snapshot 按首项类型查询所有 ID；Rust 逐项保留 song/voice。
 - 当前项查找使用 ID+type，歌曲与声音同数值 ID 不互相覆盖。
-后续播放器展开必须维持这些修正；当前测试仅证明原生计划没有丢类型。
+播放器展开维持这些修正；混合队列、集合展开与实际选中项已由 Rust 集成验证。
 
 RelayService 缓存在账号命名空间 relay-v1/snapshot。刷新开始先写 unchecked，
 失败不会留下可供授权的旧 allow 标记。缓存只作显示，pull 前重读实验和 config。
@@ -117,7 +120,7 @@ pull 接收 UUID 与显示 revision；同 UUID 不同 revision 拒绝，重复�
 ready 只表示成功取回原生计划，绝不等于播放器已播放。301/403/404 为 rejected；
 网络错误、无法判断的结果、发送期间账号变更为 uncertain；不自动重发。
 取消未见意图会持久化 cancelled，迟到原 IPC 不再执行。已有日志只回读，不覆盖。
-Pending/uncertain 重启后仍保留；下一阶段桌面必须先回读而非自动再 pull。
+Pending/uncertain 重启后仍保留；桌面先回读并显示结果，不自动再次 pull。
 dismiss 只在本地消费同 revision alert，不请求远端或重置账号设置。
 
 六、实际证据与运行
@@ -135,11 +138,102 @@ cargo run -p cumulus-core --example relay_read --locked -- EXISTING_PC_PROFILE N
 setting=true、hasAlert=false，原生缓存回读一致，writes=0、pulls=0。
 这与历史研究的 enable=false 不同；采用本次真实读取，不把历史关闭视为永久限制。
 仍缺另一设备的可接续记录，没有真实 pull/播放或双设备进度验证。
-上行真实提交、设置写入、桌面和声卡/帧率证明均不包含在本批只读结果中。
+上行真实提交、设置写入、桌面和声卡/帧率证明均不包含在这五次只读结果中。
+下文桌面证据使用合成服务和生成音频，与本段真实账号请求分别记录。
 
-本批本地完整检查：cargo fmt --all --check、workspace/all-targets/custom-protocol
+原生契约基础批次本地完整检查：cargo fmt --all --check、workspace/all-targets/custom-protocol
 严格 Clippy 均通过；同配置全量 Rust 为215个测试目标、965 passed、0 failed/ignored。
 前端 npm ci、format:check、169 tests 和 build 通过。本批没有前端修改。
 日志 .build/relay-{format,clippy,workspace-tests,front-ci,front-format,front-tests,
 front-build}.log。源代码公开资料审计通过；真实会话/研究材料不跟踪。
 这些是本地检查，Linux/Windows 精确提交的 CI 结果须另外核验；不据此发布版本。
+
+
+七、下行播放与桌面入口（追加）
+前端仅能 relay_view(epoch,refresh) 与 relay_command(epoch,command)。主窗口的
+既有 IPC 守卫和账号代次同样覆盖这两个命令；验证码窗口无权调用。
+公开 DTO 仅包含 revision、可用性、设置 bool、四项提示文本和最多20条操作状态；
+设备ID、alert未知字段、Cookie及授权URL留在核心。指定旧操作的响应始终包含该操作，
+即使它已在最近20条以外，也不会因页面截断误认为意图不存在。
+
+continue {id:UUID,revision:64位十六进制,quality} 消耗当前提示；
+retry {id:新UUID,previous_id,quality} 只复用确认 ready 的原拉取计划；
+dismiss {revision} 只关闭本地提示；cancel_unseen {id,revision} 为未收到的调用写
+取消墓碑，已有记录只检查不重放。界面丢失 IPC 应答先回读日志，没有确认结果时阻止
+再次接续，提供“核对操作结果”。在未决状态刷新页面或重启不能自动开始播放。
+同 UUID 只能对应同一前序操作、拉取意图、revision 和音质；取消墓碑使任何迟到请求
+保持取消。旧版不含请求字段的已落盘记录也只检查，不能变成新的发送机会。
+
+本机日志 relay-playback-intents-v1：preparing→applying→installed；准备失败 failed；
+安装阶段未确认或进程中断 uncertain。一次明确重试形成新的子意图，旧操作标记已由
+后续重试处理，不在成功旁继续误导显示旧失败。每个前序操作最多一个重试子意图。
+日志锁跨准备和安装；只读页面遇到活动工作者不会把它错误恢复为中断。
+进程重开只检查持久队列当前项的 source.relay_application 标记：匹配可证明安装，
+不能证明已经发声，也不重新加载。否则把准备/安装记录转为 uncertain。
+
+准备顺序：
+- playlist：/api/v6/playlist/detail 的 trackIds，过滤 v=-1；
+- album：既有 album_playback_tracks，读取详情与专辑权益；
+- podcast：PodcastLibrary Radio 升序完整分页，保留所属电台元数据；
+- 快照：保留每项 song/voice 类型，当前项不存在时插入首位。
+歌曲去重分批100，/api/v3/song/detail 与 /api/song/enhance/privilege 新读取；
+声音批量 /api/dj/program/batch/detail {programIds:"[5,6]"}（M/15 Ur/export Ab），
+数值数组字符串，不能转成字符串数组或用JS Number窄化ID；响应按ID重新排序。
+声音缺 mainSong 时补 /api/dj/program/detail。缺当前媒体先失败而非安装错误队列。
+之后既有 SourceResolver 再执行节目详情/可播检查/播放URL授权及原生加载，不能
+把这些元数据当成绕过权益的播放地址。最终队列保持重复项顺序和独立 entry UUID。
+
+安装前校验账号代次、选择序号、音频焦点与队列 fence。并行用户 Stop/选曲优先，
+只读 Queue 查询不再推进控制 revision（本批纠正此前读操作意外取消准备的问题）。
+用 UpdateQueue 同次提交队列和定位/播放状态；歌曲从0，声音 progress毫秒÷1000。
+随机模式生成本地播放顺序，未识别模式保留原模式。一起听尚有清理责任时禁止接续。
+账号切换期间失败记录仍写回原账号，新账号看不到旧媒体或旧日志。
+
+界面：正式启动且登录后检查一次；不会自动拉取队列或自动播放。设置→跨端续播可
+手动检查，区分实验未开放、服务关闭、无记录、断网和未决；当前只有设置状态读取，
+尚无可用的远端开关修改控件。设置写生命周期仍是明确未完成项。
+提示卡位于播放器上方、宽364px；8秒自动关闭，悬停/键盘焦点时暂停计时。
+播放/队列抽屉和各类 ModalTransition 弹窗阻止提示显示，关闭后恢复。
+关闭按钮焦点返回顶栏设置入口；进入/离开只动画 opacity/transform，遵守减少动态。
+沿用语义深浅色；图标44px、按钮80×30px，相对官方52px/80×28px为明确布局调整。
+真实小窗口检查发现全局 primary padding 覆盖导致“继续播放”被裁切；提高局部选择器
+优先级并新增实际按钮 scrollWidth 断言，修复后 760×540 深浅色均显示完整文字。
+
+八、增量证据与运行
+core/tests/client_relay.rs：8项，覆盖混合歌曲/声音、三类集合、歌曲归零/声音断点、
+权限读失败后显式重试、只读队列与Stop竞态、账号切换、取消/重开、安装标记恢复、
+重复意图身份与20项截断；测试引擎不代表声卡。frontend/tests/relay.test.ts：5项，
+覆盖重复点击、丢失应答、未见意图取消、过期、账号晚到响应和读失败阻止接续。
+
+.build/relay-ui-a 曾通过19状态，但人工截图检查发现按钮裁切，因此没有作为最终外观证据。
+修复后的 .build/relay-ui-b/first 保存19项真实WebView结果和19张截图，无脚本或dist覆盖。
+包含深浅色/760×540、8秒关闭、空/未开放/关闭/断网/拒绝/丢应答/授权失败、明确重试、
+歌曲/声音实际原生播放、弹窗遮挡及关闭焦点。4次合成pull、2次队列应用，真实音乐请求0。
+解码器是GTK初始化后的真实libmpv，设置null输出。测试AudioEngine只把一个固定的合成
+CDN URL替换为生成的30秒PCM文件，其余来源拒绝；不能把这种替换写成真实CDN下载通过。
+真实播放状态和队列由Rust再次读取保存；歌曲 position>0.2且<10，声音position>=12.5。
+这不是另一台真实设备的接续验证，也不是声卡听感或显示器刷新率证明。
+
+可执行CI路径（先构建前端和native example，输出必须为新目录）：
+  cargo build -p cumulus-desktop --example catalog_ui_probe --features custom-protocol --locked
+  GDK_BACKEND=x11 WEBKIT_DISABLE_DMABUF_RENDERER=1 LIBGL_ALWAYS_SOFTWARE=1 LC_ALL=en_US.UTF-8 \
+    dbus-run-session -- xvfb-run -a python3 scripts/ci/catalog_smoke.py \
+    --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-relay-new --relay
+Windows使用同一脚本、.exe及 --runtime .build/package-stage/windows-x64/native；两平台
+独立runner均加入19状态原生验收。新提交的Windows结果必须等自身CI，不能套用基础批次。
+基础批次16359ed的完整CI40693214753已成功并合入main；没有发布或移动0.1.0标签。
+
+最终本地构建追加：.build/relay-ci-final 的正式CI脚本19状态通过；
+.build/relay-settings-regression 设置21状态及 .build/relay-ux-regression 原有27状态+
+进程重开2状态通过，包含编辑位置、菜单键盘、主题记忆和嵌套弹窗焦点。
+本批最终严格Clippy/格式通过；216个Rust测试目标共973 passed、0 failed/ignored；
+前端npm ci、格式、174 tests、类型检查与build通过；CI脚本/发行规则测试通过。
+日志 .build/relay-player-{clippy,workspace-tests,front-tests-b,ci-tests,final-gui-build}.log。
+以上是Linux本地结果，新提交自身的Windows/CI状态另行记录，不自动发布版本。
+
+当前账号桌面只读复查：.build/private-settings-relay-live-b 共5状态/5截图，
+初始账号资源5个读取加启动relay4个读取均200；7项隐私设置与原生SQLite一致，写入0。
+审计 .build/relay-settings-live-audit.json，检查新增请求仍只在只读白名单内。
+合成对照保存在 .build/private-settings-relay-live（该目录名含private，但实际是未设置
+CUMULUS_CATALOG_PROFILE的合成21状态，绝不能误计为真实账号证据）；真实模式必须
+显式 CUMULUS_CATALOG_PROFILE。旧 CUMULUS_LIVE_PROFILE 不被此探针读取。

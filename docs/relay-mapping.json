@@ -2,22 +2,97 @@
   "domain": "same-account relay",
   "fullGoalComplete": false,
   "fullDomainComplete": false,
-  "officialSources": ["M/401", "M/15 So/To/Po/Mo/Io/Ao/No", "M/147 device_connect", "PlaylistHandoff.tsx", "PlaylistHandoffAlert.tsx"],
+  "officialSources": [
+    "M/401",
+    "M/15 So/To/Po/Mo/Io/Ao/No",
+    "M/147 device_connect",
+    "PlaylistHandoff.tsx",
+    "PlaylistHandoffAlert.tsx"
+  ],
   "fallbackSources": [],
   "completedNativeContracts": [
-    {"feature": "eligibility and settings reads", "module": "core/src/relay/service.rs", "verification": "relay_service + relay_read: five current-account read endpoints returned 200"},
-    {"feature": "source/state/command serialization and recovery decision", "module": "core/src/relay/machine.rs", "verification": "frozen M/401 vectors; no production publisher yet"},
-    {"feature": "snapshot windows and voice clock", "module": "core/src/relay/machine.rs", "verification": "official windows + native deterministic clock cases"},
-    {"feature": "pull plans", "module": "core/src/relay/pull.rs", "verification": "eight official pull vectors + corrected mixed-type regression; not player application"},
-    {"feature": "pull intent persistence and account fencing", "module": "core/src/relay/service.rs", "verification": "restart, cancellation, lost acknowledgement, duplicate IPC, concurrent/account-switch tests"}
+    {
+      "feature": "eligibility and settings reads",
+      "module": "core/src/relay/service.rs",
+      "verification": "relay_service + relay_read: five current-account read endpoints returned 200"
+    },
+    {
+      "feature": "source/state/command serialization and recovery decision",
+      "module": "core/src/relay/machine.rs",
+      "verification": "frozen M/401 vectors; no production publisher yet"
+    },
+    {
+      "feature": "snapshot windows and voice clock",
+      "module": "core/src/relay/machine.rs",
+      "verification": "official windows + native deterministic clock cases"
+    },
+    {
+      "feature": "pull plans",
+      "module": "core/src/relay/pull.rs",
+      "verification": "eight official pull vectors + mixed-type regression; integrated player expansion in client_relay"
+    },
+    {
+      "feature": "pull intent persistence and account fencing",
+      "module": "core/src/relay/service.rs",
+      "verification": "restart, cancellation, lost acknowledgement, duplicate IPC, concurrent/account-switch tests"
+    },
+    {
+      "feature": "authorized queue preparation and native player application",
+      "module": "core/src/client/relay/",
+      "verification": "client_relay: mixed queues, three collection sources, song restart/voice resume, permission retry, user controls and account fences"
+    },
+    {
+      "feature": "durable local playback application",
+      "module": "core/src/relay/application.rs",
+      "verification": "client_relay: identity, bounded history, cancellation, interrupted preparation and installed-marker recovery"
+    },
+    {
+      "feature": "desktop prompt and continuation controls",
+      "module": "frontend/src/components/RelayPrompt.vue + settings/RelaySettings.vue",
+      "verification": "19 actual WebView states; two real libmpv decodes using generated PCM and null output"
+    }
   ],
   "remaining": [
-    {"feature": "native player event subscription and publishing coordinator", "status": "not implemented", "details": "Persist source/session/intent, resolve 10001 with at most one snapshot, no timeout replay"},
-    {"feature": "settings mutation lifecycle", "status": "wire contract only", "details": "Bind native local device identity, readback and unresolved-write recovery; no IPC"},
-    {"feature": "authorized queue preparation and native playback", "status": "not implemented", "details": "Expand collection/song/voice plans and apply atomically under player fence"},
-    {"feature": "desktop continuation prompt and settings UI", "status": "not implemented", "details": "Official 8-second prompt, dismiss, layout/theme/focus/keyboard and actual WebView proof"},
-    {"feature": "real cross-device continuation", "status": "external data absent", "details": "Current account eligible, no remote alert. Five reads passed, zero pulls/writes; no real continuation claim"}
+    {
+      "feature": "native player event subscription and publishing coordinator",
+      "status": "not implemented",
+      "details": "Persist source/session/intent, resolve 10001 with at most one snapshot, no timeout replay"
+    },
+    {
+      "feature": "settings mutation lifecycle",
+      "status": "wire contract only",
+      "details": "Bind native local device identity, readback and unresolved-write recovery; no IPC"
+    },
+    {
+      "feature": "real cross-device continuation",
+      "status": "external data absent",
+      "details": "Current account eligible, no remote alert. Five reads passed, zero pulls/writes; no real continuation claim"
+    }
   ],
-  "intentionalDifferences": ["Bulk delete preserves every resource and type", "Mixed pull snapshots preserve each resource type", "Current resource membership compares ID and type", "Strict native resource and configuration bounds reject malformed input"],
-  "evidence": {"frozenOfficialVectors": 42, "liveReadRequests": 5, "liveWrites": 0, "livePulls": 0, "desktopVerified": false, "nativePlaybackVerified": false}
+  "intentionalDifferences": [
+    "Bulk delete preserves every resource and type",
+    "Mixed pull snapshots preserve each resource type",
+    "Current resource membership compares ID and type",
+    "Strict native resource and configuration bounds reject malformed input"
+  ],
+  "evidence": {
+    "frozenOfficialVectors": 42,
+    "liveReadRequests": 5,
+    "liveWrites": 0,
+    "livePulls": 0,
+    "desktopVerified": true,
+    "nativePlaybackVerified": true,
+    "playbackScope": "synthetic endpoints, exact fixture URL substitution to generated PCM, actual libmpv null output after GUI initialization",
+    "syntheticWebViewStates": 19,
+    "syntheticRelayPulls": 4,
+    "syntheticQueueApplications": 2,
+    "realCrossDeviceVerified": false,
+    "physicalAudioVerified": false,
+    "physicalRefreshRateVerified": false,
+    "clientIntegrationTests": 8,
+    "frontendRelayTests": 5,
+    "currentAccountDesktopSettingsStates": 5,
+    "currentAccountStartupRelayReads": 4,
+    "currentAccountDesktopWrites": 0
+  }
 }

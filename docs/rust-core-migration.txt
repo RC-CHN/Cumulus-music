@@ -39,7 +39,7 @@ core/src/effects/     api/catalog/rights、service材料库、authorization登�
 core/src/playback/    队列/时间线；engine/安全libmpv适配、source/授权缓存、controller/持久化控制器。
 protocol/wire/       serialization、crypto、eapi、weapi、aegis 分文件组织纯协议。
 core/src/listen_together/ 房间/队列/指令过滤；service/ 持久操作、只读核对、账号隔离和定时入口。
-core/src/relay/ 同账号续播实验/配置/设置读取、源/命令/窗口/进度机器、原生pull计划及持久意图；42组官方冻结对照和当前账号5次只读验证。播放器上行协调、开关写恢复、实际播放和桌面提示继续，见relay-contracts.txt与relay-mapping.json，不计作完整接续可用。
+core/src/relay/ 同账号续播实验/配置/设置读取、源/命令/窗口/进度机器、原生pull计划及持久意图；42组官方冻结对照和当前账号5次只读验证。下行集合展开/授权/持久应用与桌面提示已接通，19个合成WebView状态和实际libmpv/null解码通过；上行协调、开关写恢复与真实他端记录仍有边界，见relay-contracts.txt与relay-mapping.json，不计作完整接续可用。
 每个业务域分 API 契约、状态/用例、适配及测试，避免巨型全能模块。
 Application 负责装配。业务域不依赖 Tauri、WebView 或桌面平台；desktop 只作宿主和桥接。
 网络 await 不持有状态锁；阻塞数据库/文件工作由应用调度层安排，不能放在 UI 线程。
@@ -84,7 +84,7 @@ OSS 上传         oss_upload.py / 报告23、官方OSS SDK          V1签名25�
 播客/有声书      content/voice 探针与报告28、30                 原生列表/分页/权限/实际播放下载 I/R；三类写入恢复 S/L；桌面/本地断点已实现，实测与其他分支见desktop-podcast-contracts.txt
 MV/视频          官方M/21、232、334、754、3158与报告29         详情/收藏/资源点赞/关联歌曲/授权/下载/文件管理/真实画面/恢复 S/L/I/R；正式IPC/页面/本地播放/收藏与赞往返 I/R；共享评论读/赞已接；相似MV补充接口 I/R；发现/云贝等继续，见desktop-mv-contracts.txt与core-mv-social-contracts.txt
 评论             官方M/21、438、232、15与探针/报告32             五类资源读/热评/翻页/定位/赞 S/L/I/R；歌曲/歌单/MV界面及恢复已接；纯文本发布/回复/删除有Rust与合成服务界面验证，楼层两页27条真实只读与缓存独立审计通过；窗口恢复验收与富文本边界见core-comment-write-contracts.txt
-同账号接续       relay 探针/oracle与报告31                      待迁移；M/401与M/15；原线上 enable=false
+同账号接续       relay 探针/oracle与报告31                      M/401与M/15的42组原生对照、持久pull/播放意图、集合/混合授权与桌面下行通过；当前账号enable=true但无他端记录，5次真实只读通过；上行协调与开关修改继续，见relay-contracts.txt
 一起听           报告06、官方async_listenTogether*模型           S/L/I/R；单账号REST/原生IM生命周期与桌面真实验证；播放消息、共享队列/共同试听及恢复已通过本地集成/窗口夹具；其余事件/RTC/接续继续，见core-listen-together-shared-queue.txt
 音效容器/材料    ncae/peq/spatial Python、compose oracle        NCAE/片段/组合S/L/I；目录/参数材料S/L/I/R，512组判断、6份材料；授权登记/停止及回收读取S/L/R，21个官方请求、一次真实非试用往返；见core-effects-library.txt与core-effects-authorization.txt；设置恢复/到期宿主接线、逐歌/设备/模型、播放器/UI继续
 DSP              netease_dsp.c,multiband.c,rotate.c / 34..38    滤波/GEQ/BT/九槽PEQ/旋转/单声道动态安全FFI已迁移；194组新对照/原始资产71流/6次NCAE渲染及全量556通过，见core-effects-spatial.txt；参数组合/播放器/UI继续，完整SE/效果图原未恢复
