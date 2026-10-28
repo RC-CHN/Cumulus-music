@@ -1,0 +1,97 @@
+Cumulus 最近播放领域迁移（2026-10-28，独立Rust核心阶段）
+
+本批范围与当前边界
+core/history 已实现六类最近播放读取、本机记录存储、合并、设置和删除/清空恢复日志；
+core/examples/history_read 可用已有PC会话执行只读流程，生产core不调用Python。
+本批尚未接播放器自动记账、正式IPC、最近播放页面及页面播放选择。不能把此处的原生读取、
+合成写操作和核心测试当作桌面历史功能已完成；这几条及完整设置页仍是原目标的后续工作。
+没有执行当前账号的历史删除、清空或历史上报；没有使用YesPlayMusic。
+
+官方来源
+- recovered-js/modules/hybrid_app.chunk.1482700000000.js/259.js：六类读取的参数及声音、
+  有声书结果展开；15.js约1562-1670行：请求与格式化；1384.js historyList约393-1170行：
+  本机Database记录、300/100上限、多端开关、单项/批量删除和清空。
+- 同chunk/542.js b：按ID合并、时间比较、creator补齐及playProgress保留。
+  core/tests/fixtures/history-merge.json 四组向量在本机实际执行此函数生成，输入完全合成，
+  isOSX=false。只保存输入/输出，没有将整份官方模块加入公开工程。
+- 同chunk/308.js约2007、4832-4947行：playing/addToHistoryList 来源、专辑/歌单和声音分类；
+  用于后续播放器接线，不因本批已读该代码就宣称宿主已迁移。
+- references/ui-recovery/sources/packages/pc/src/pages/history-playlist/ 下HistoryPlay、
+  HistoryTrack/HistoryAudiobook/HistoryDjRadio等为页面与分类依据；正式页面尚未接入。
+- references/recovered-client/docs/product/models/historyList.txt、page_historyPlaylist.txt、
+  28-podcast-functional-validation.txt提供恢复索引和历史验证。旧Python验证不计作Rust通过。
+
+接口与数据
+HistoryApi::recent 先要求code=200，再做结构校验：
+  Song       /api/play-record/song/list {limit:300}
+  Album      /api/play-record/album/list {limit:100}
+  Playlist   /api/play-record/playlist/list {limit:100}
+  Voice      /api/play-record/voice/list {}
+  Podcast    /api/play-record/djradio/list {filterVoiceBook:true}
+  Audiobook  /api/play-record/voice/book/timeline/list {}
+前五种读取data.list；声音内容在data.pubDJProgramData，缺内容的条目按官方格式化跳过。
+播客只接受外层或data.resourceType为DJ_RADIO的条目；不把书当播客。
+书的列表来自data.data.todayRecords/yesterdayRecords/theDayBeforeYesterdayRecords/earlierRecords，
+按官方顺序拼接。playTime保留为played_at；普通os与书osText分别保留，播客os缺失时取osText。
+不凭limit截断服务端结果，也不凭空增加分页：本批接口是官方有界最近记录链。
+
+歌曲列表再调用/api/song/enhance/privilege，ids为JSON字符串数组；按ID最后项合并权限，
+没有权限记录的歌曲权限置null，多余权限行不变成新的历史项。读取失败/格式损坏不替换旧快照。
+官方O是用户相关内存缓存/降级策略，不是nginxCache；HTTP请求传cache=false，恢复快照由原生
+服务管理。恢复缓存必须标注读取时间，不能被解释成服务端权限仍有效或播放已授权。
+
+独立模型和持久化
+- history/types：HistoryKind、HistoryRecord；资源元数据保留在原生，不能直接送WebView。
+  复用现有AlbumMetadata、Episode、Radio标识规则；节目ID与mainSong ID分别保留。
+  本地歌曲使用local:<local_id>身份，与十进制服务端ID隔离，不把文件ID交给远端删除。
+- history/merge：相同ID取较新的playtime；时间相同本机优先，稳定排序保留插入顺序。
+  本机缺creator且远端提供时补齐；远端较新替换条目时仍保留已有本机playProgress。
+  没有本机条目时不继承远端playProgress。桌面类别依官方非macOS分支标为pc，
+  不是设备采集或操作系统身份声明。函数不修改持久化输入数组。
+- history/service：按账号存play-history-v1，local:<kind>、remote:<kind>及sync-enabled。
+  本机记账的去重、时间倒序和裁剪在单个SQLite事务中完成；歌曲300，其余100。
+  迟到的旧时间不覆盖更新的记录。guest使用独立local-guest，不授权任何在线读取。
+  多端开关为本机账号偏好，默认开；关后保留远端恢复快照但展示仅本机记录。
+  读回包括revision、local、remote、entries；revision绑定完整本机/远端快照和开关。
+  远端刷新总会请求网络；同账号同分类有OperationLock，切号及关闭多端后的迟到结果丢弃。
+
+删除与失败恢复
+history/mutation 使用用户提供的UUID意图、显示快照revision和选中ID，而非任意原响应。
+选择必须在显示的快照中；同一UUID不得换分类/选择/版本。远端同步开启时先有读取快照。
+本机删除与Pending日志在同一事务中提交，然后才发一次远端请求；本机处理和远端结果分开记录。
+  清空：/api/play-record/clear {type}
+  批量：/api/play-record/batch/delete {type,resourceIds,lastPlayTime,lastResourceId}
+  播客单条：/api/play-record/delete {type:"DJ_RADIO",resourceId,lastPlayTime,lastResourceId}
+type分别为SONG/ALBUM/PLAYLIST/VOICE/DJ_RADIO/VOICE_BOOK。
+resourceIds是JSON字符串数组，顺序保持用户选择；边界是该分类远端快照的末条，
+不是合并后本机列表的末条。只向远端发送已读远端条目中的选择，不发送本地文件身份。
+
+200为Confirmed；明确服务拒绝或RequestNotSent为Rejected；丢失回包等为Uncertain。
+崩溃留下Pending也视为未决。同UUID重进只回读日志；同分类存在未决意图时拒绝新的删除。
+远端等待期间播放器写入的本机新记录不会在回包时再删一次。
+如果远端200后持久化失败，原Pending仍存在，恢复不能重发请求。
+账号切换后的迟到结果不能发布到任一账号，新账号看不到旧账号日志；原账号重开保留未决状态。
+reconcile_for只读取当前列表，缺席不能证明丢失的请求永远不会晚到，因此不会擅自标成功。
+显式accept_current_for要求先读取并核对当前revision，终态为AcceptedCurrentState，
+含义是用户接受当前显示状态，不是声称旧远端写成功；不重试、不撤销任何历史写入。
+
+本批证据
+- core/tests/history.rs：13项，涵盖四组实际官方合并向量、六种精确读取参数、声音ID/歌曲ID、
+  权限关联、空页与坏页、真实SQLite重开、300/100裁剪、账号隔离、并发读取、开关迟到响应、
+  精确删除边界、意图去重、回包丢失后重开/只读核对、删除期间新播放保留，以及SQLite触发器
+  注入的回包后提交失败。写请求全部合成，不代表真实服务端删除验收。
+- 实际当前账号原生读取：300首歌曲、96张专辑、92个歌单、55个声音、8个播客，书为空。
+  七次已知音乐读取（六个历史接口+歌曲权限），六个原生快照与SQLite回读完全一致。
+  独立脚本逐条核对ID、playTime、分类数量和SQL原记录；显式历史写入0。
+  私有证据 .build/private-history-read-20261028-a/，汇总 .build/history-read-a-audit.json，
+  执行日志 .build/history-read-a.log。空有声书仅证明空结果；非空书由合成数据覆盖。
+- 本地全工作区格式、严格Clippy与all-targets/custom-protocol测试通过：207个target/suite，
+  917项通过，0失败/忽略。前端固定Node/锁文件安装、格式、155项测试、类型检查、生产构建通过。
+  日志 .build/history-workspace-{clippy,tests}-b.log、history-front-{format,tests,build}.log。
+  本批新增历史逻辑的Windows验证尚未运行；此前目录/主题CI不能替代本批验收。
+
+复现
+  cargo test -p cumulus-core --test history --locked
+  cargo run -p cumulus-core --example history_read --locked -- <已有PC profile> <新私有输出目录>
+第二条有严格读取允许列表；不会新增登录、删除历史、清空历史或调用Python实现。
+UI/播放器接线、实际页面/播放验收和完整设置功能必须继续，不在此阶段完成范围内。
