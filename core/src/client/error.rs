@@ -96,6 +96,19 @@ impl From<Error> for ClientError {
                 }
                 Error::InvalidInput(_) => ("invalid_input", "输入内容不符合要求", false),
                 Error::QueueChanged => ("snapshot_changed", "列表已更新，请刷新后重试", true),
+                Error::State("account settings changed") => (
+                    "settings_changed",
+                    "账号设置已发生变化，请查看最新状态后重新选择",
+                    true,
+                ),
+                Error::State("reconcile account settings before acceptance") => {
+                    ("settings_reconcile", "请先核对这次设置修改的结果", false)
+                }
+                Error::Response("setting is absent or unsupported") => (
+                    "setting_unavailable",
+                    "服务端未返回可修改的设置值，请刷新后重试",
+                    true,
+                ),
                 Error::State("FM queue requires its coordinator") => {
                     ("fm_queue", "FM队列随推荐更新，请使用上一首或下一首", false)
                 }

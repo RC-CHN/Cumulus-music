@@ -12,6 +12,8 @@ import TrackTable from './components/TrackTable.vue';
 import CatalogPage from './components/CatalogPage.vue';
 import CollectionsPage from './components/CollectionsPage.vue';
 import HistoryPage from './components/HistoryPage.vue';
+import SettingsPage from './components/SettingsPage.vue';
+import { useSettings } from './composables/useSettings';
 import { useHistory } from './composables/useHistory';
 import type { HistoryKind, HistoryResource } from './services/history';
 import type { CatalogResource, CatalogSelectionPage } from './services/catalog';
@@ -59,6 +61,9 @@ import { useMusic } from './composables/useMusic';
 import { useCore } from './services/core';
 const core = useCore();
 const music = useMusic();
+const settings = useSettings(core, () => {
+  void music.bootstrap(false);
+});
 const recent = useHistory(core, () => {
   void music.bootstrap(false);
 });
@@ -449,10 +454,13 @@ onUnmounted(() => fm.dispose());
 onUnmounted(() => sceneFm.dispose());
 onUnmounted(() => member.dispose());
 onUnmounted(() => recent.dispose());
+onUnmounted(() => settings.dispose());
 watch(
   () => [account.value.epoch, account.value.status],
   () => {
     recent.connect(account.value);
+    settings.connect(account.value);
+    if (page.value.kind === 'settings') void settings.open();
     if (page.value.kind === 'history') void recent.open(page.value.scope);
   },
   { immediate: true },
@@ -465,6 +473,7 @@ watch(
     if (value.kind === 'comments') void comments.open(value.resource);
     if (value.kind === 'rankings') void rankings.open(value.query);
     if (value.kind === 'history') void recent.open(value.scope);
+    if (value.kind === 'settings') void settings.open();
   },
 );
 watch([() => player.view.value?.entryId, () => player.view.value?.state], () => {
@@ -717,6 +726,16 @@ onUnmounted(() => window.removeEventListener('keydown', keyboard));
         ><span>{{ signedIn ? account.nickname : '点击登录' }}</span>
       </button>
       <AppearanceMenu />
+      <button
+        class="icon-button settings-button"
+        :disabled="initializing"
+        aria-label="打开设置"
+        title="设置"
+        :aria-pressed="page.kind === 'settings'"
+        @click="music.navigate({ kind: 'settings' })"
+      >
+        <Icon name="settings" />
+      </button>
       <WindowControls />
     </header>
     <main class="main-content">
@@ -744,6 +763,14 @@ onUnmounted(() => window.removeEventListener('keydown', keyboard));
             @scope="music.replace({ kind: 'history', scope: $event })"
             @play="playHistory"
             @open="openHistory"
+          />
+          <SettingsPage
+            v-else-if="page.kind === 'settings'"
+            :model="settings"
+            :account="account"
+            @login="loginOpen = true"
+            @accounts="accountsOpen = true"
+            @downloads="music.navigate({ kind: 'downloads' })"
           />
           <div v-else-if="!signedIn" class="empty-state welcome">
             <div class="welcome-note">♪</div>

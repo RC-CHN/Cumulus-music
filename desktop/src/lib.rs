@@ -20,6 +20,7 @@ mod playlists;
 mod podcast;
 mod rankings;
 pub mod renewal;
+mod settings;
 mod together;
 pub mod watchman;
 pub use effects::configure_native_audio;
@@ -119,6 +120,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 collections::collection_page,
                 history::history_page,
                 history::history_command,
+                settings::account_settings_page,
+                settings::account_settings_command,
                 catalog::catalog_membership,
                 member::member_page,
                 member::member_rights,

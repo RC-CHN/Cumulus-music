@@ -1,6 +1,8 @@
 <script setup lang="ts">
 defineProps<{ name: string }>();
 const paths: Record<string, string> = {
+  settings:
+    'm9 3-.5 3-2 1-3-.8-2 3 2.5 2v2L1.5 15l2 3 3-.8 2 1L9 21h4l.5-2.8 2-1 3 .8 2-3-2.5-1.8v-2l2.5-2.2-2-3-3 .8-2-1L13 3zM15 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z',
   history: 'M3 4v6h6M3 10a9 9 0 1 1 1 7m8-12v7l4 2',
   more: 'M5 12h.01M12 12h.01M19 12h.01',
   edit: 'm16 3 5 5M4 20l4-1L21 6l-4-4L4 15z',

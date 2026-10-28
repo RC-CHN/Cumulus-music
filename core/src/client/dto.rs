@@ -31,6 +31,11 @@ pub use super::podcast::{
 };
 pub use super::rankings::{RankingPageView, RankingView, SongSaleView};
 pub use super::scene_fm::{SceneFmCategoryView, SceneFmCommand, SceneFmView};
+pub use super::settings::{
+    AccountSettingField, AccountSettingsCommand, AccountSettingsPage, LinkedPrivacy,
+    SettingAvailability, SettingChange, SettingKey, SettingValue, SettingsOperationView,
+    SettingsPhase,
+};
 pub use super::together::{
     TogetherCommand, TogetherMemberView, TogetherOperationView, TogetherRoomView, TogetherView,
 };

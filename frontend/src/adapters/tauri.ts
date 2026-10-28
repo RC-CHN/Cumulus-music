@@ -30,6 +30,9 @@ export function createTauriClient(): CoreClient {
     catalogPage: (epoch, query, refresh) => invoke('catalog_page', { epoch, query, refresh }),
     collectionPage: (epoch, query, refresh) => invoke('collection_page', { epoch, query, refresh }),
     historyPage: (epoch, kind, refresh) => invoke('history_page', { epoch, kind, refresh }),
+    accountSettingsPage: (epoch, refresh) => invoke('account_settings_page', { epoch, refresh }),
+    accountSettingsCommand: (epoch, command) =>
+      invoke('account_settings_command', { epoch, command }),
     historyCommand: (epoch, kind, command) => invoke('history_command', { epoch, kind, command }),
     catalogMembership: (epoch, resource, action) =>
       invoke('catalog_membership', { epoch, resource, action }),

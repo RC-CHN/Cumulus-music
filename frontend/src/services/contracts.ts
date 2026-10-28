@@ -19,6 +19,7 @@ import type { MemberClient } from './member';
 import type { CatalogClient } from './catalog';
 import type { CollectionClient } from './collections';
 import type { HistoryClient } from './history';
+import type { SettingsClient } from './settings';
 /** Wire format returned by core::AppInfo. Keep the IPC test in sync. */
 export interface AppInfo {
   name: string;
@@ -48,7 +49,8 @@ export interface CoreClient
     MemberClient,
     CatalogClient,
     CollectionClient,
-    HistoryClient {
+    HistoryClient,
+    SettingsClient {
   getAppInfo(): Promise<AppInfo>;
   accountSnapshot(): Promise<AccountView>;
   restoreAccount(): Promise<AccountView>;

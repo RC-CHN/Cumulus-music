@@ -11,6 +11,7 @@ import { failure } from '../services/contracts.ts';
 import { useCore } from '../services/core.ts';
 import type { CommentResource } from '../services/comments';
 export type Page =
+  | { kind: 'settings' }
   | { kind: 'history'; scope: import('../services/history').HistoryKind }
   | { kind: 'collections'; scope: import('../services/collections').CollectionScope }
   | { kind: 'catalog'; resource: import('../services/catalog').CatalogResource }
@@ -104,6 +105,7 @@ export function useMusic(core: CoreClient = useCore()) {
         !signedIn.value ||
         target.kind === 'library' ||
         target.kind === 'history' ||
+        target.kind === 'settings' ||
         target.kind === 'local' ||
         target.kind === 'downloads' ||
         target.kind === 'cloud' ||

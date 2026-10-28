@@ -24,6 +24,7 @@ mod playlists;
 mod podcast;
 mod rankings;
 mod scene_fm;
+mod settings;
 mod together;
 pub use player::PlaybackSubscription;
 
