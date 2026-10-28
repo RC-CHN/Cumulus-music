@@ -1,0 +1,59 @@
+歌曲喜欢的主窗口核对与本地恢复（2026-10-29）
+
+来源与实现
+官方来源：references/recovered-client/docs/product/17-account-resources.txt，
+M/232 O、M/15 Fg、hybrid_105 M/3160 setLikeTrack。喜欢ID读取/写入/回读沿用
+AccountResources及已有协议实现；502不等于最终成功，必须验证成员状态。
+本次“保留当前状态”是社区客户端的故障恢复扩展，不声称来自官方UI；未参考
+YesPlayMusic。原生喜欢入口与歌曲/播客身份规则见native-likes-contracts.txt。
+
+产品流程
+账号登录/恢复后，只读当前账号本地歌曲操作日志；主窗口显示待核对数量和入口，
+不依赖当前播放对象或托盘。每页最多20条，歌曲ID、原目标、已观察状态分开显示。
+退出/账号切换关闭弹窗并清空视图；旧请求不能污染新账号、使新账号过期或取消
+新账号的忙碌状态。每次界面喜欢操作及同账号原生喜欢事件都会重新检查日志。
+核对只读服务端喜欢ID列表；确认已达到目标后移出待核对列表并刷新红心。
+未达到目标仍保持未决，可以稍后核对，也可显式选择“保留当前状态”。
+确认弹窗默认聚焦取消，说明原请求仍可能迟到生效；本地结束等待不代表撤销了
+服务端请求，也不把原操作标成成功。不自动再次发送喜欢或取消请求。
+接受前要求已有一次成功的状态核对，并再做两次读回；状态/日志改变则拒绝旧
+确认，提示取消并重新核对。确认回包丢失时只重新检查本地日志，不重放接受操作。
+用户明确接受后，可重新发起一个新的喜欢操作。旧原目标及核对证据继续保留。
+
+分层和接口
+core/account/resources/recovery.rs：recover_like_for(token,id,revision,accept_observed)
+  None = readonly reconcile；Some(bool) = 用户显式接受这个已观察值。
+core/client/likes.rs：MusicClient::like_recovery(epoch,offset)，无网络、本地只读；
+  返回AccountData<{total,offset,operations}>，offset按20对齐且范围有界。
+  每项{id,revision,desired,observed,phase,canAccept}；不返回原始服务响应、
+  error_class、会话信息或账号凭据。只解析liked:域，不迁移/依赖其他设置日志。
+MusicClient::recover_like(epoch,{kind:reconcile|accept_current,id,revision,observed?})
+  账号代次与请求目标绑定；desktop仅用同名IPC适配，frontend使用类型化接口。
+useLikeRecovery负责代次、忙碌、分页、局部故障、只读检查与账号切换；
+LikeRecoveryNotice/Dialog负责入口、确认、键盘焦点和深浅色呈现。
+
+HTTP与持久化
+正常喜欢仍为/api/song/like/get {uid} -> /api/song/like
+{trackId,userid,like} -> /api/song/like/get {uid}。本次恢复两个分支均只调用GET
+语义的/api/song/like/get，绝不调用/api/song/like写接口。
+持久记录仍为owner=UID、kind=resource-mutations、key=liked:ID。
+revision为完整序列化MutationRecord的SHA256，绑定确切原意图和核对结果；
+不是服务端签名，不允许将一张旧确认弹窗应用到较新的意图。
+沿用每账号/资源OperationLock，拒绝与发送/核对并发的接受操作。
+原记录进入独立终态accepted_current_state，保留desired及observed；同一SQLite
+事务在resource-recovery-history-v1/revision归档{original,resolution}。
+磁盘事务失败则两者都不变；账号切换前后校验，不能写进替换账号。
+Sending/Verifying/Uncertain仍阻止新写入；Confirmed/Unchanged不需要接受。
+
+验证与限制
+core/tests/support/resources_recovery.rs：请求回包丢失、未核对不可接受、旧确认、
+远端变化、事务失败、互斥锁、核对期间账号切换、接受后显式新写入与历史保留。
+core/tests/client_boundary.rs：51记录分页/越界、原始错误不外传、不依赖损坏设置、
+不同账号和退出拒绝、检查只读且恢复不发写请求。
+frontend/tests/like-recovery.test.ts、music-state.test.ts：丢失IPC回包仅检查本地、
+迟到请求隔离、事件合并；喜欢错误独立，恢复后不误清除无关页面/歌单提示。
+生产WebView验证使用ux_ui_probe的CUMULUS_LIKE_RECOVERY_PROOF及
+scripts/ci/like_recovery_smoke.py：合成账号、14态、退出重启、深浅色和小窗口，
+故障由隔离Api注入，UI/IPC/SQLite真实。具体结果见ui-ux-validation.txt。
+本批只为歌曲增加主窗口恢复入口；播客保持已有恢复流程。双账号一起听、物理
+声卡、Windows Shell及完整目标剩余项不由此证明；不修改任何真实账号收藏。

@@ -511,3 +511,32 @@ Windows现场与接续提示焦点复查（2026-10-29）
 - 生产资源index-yijTKhd3.js/index-ODUNpLcI.css；正式桌面/三个探针构建完成后
   再启动GUI，frame-anchor-clippy、frame-scroll-frontend-tests及format检查通过。
   Rust业务没有在本轮样式修复中改变；跨平台完整CI仍须精确提交单独通过。
+
+2026-10-29 主窗口喜欢失败恢复、焦点和提示生命周期
+- 补齐独立于托盘的歌曲待核对入口及显式保留当前状态。官方来源、接口和审计
+  事务见song-like-recovery-contracts.txt；接受当前值是社区恢复扩展，不冒称官方。
+- .build/like-recovery-ui-first真实WebView复现：确认失败后按钮被禁用导致键盘
+  焦点离开dialog；远端变化还被泛化成“账号已切换”，喜欢旧网络错误留在页面。
+  修复请求结束后的焦点恢复、专用核对指引和独立喜欢提示，保留无关页面错误。
+- 实际看浅/深色截图又发现新意图沿用前一次“已确认”提示，以及核对按钮缺少
+  边框。刷新时清除旧成功提示，限定本弹窗的secondary按钮样式，避免影响其他页。
+- 中间like-recovery-ui-fixed在驱动抢先点击时失败；synchronized证明修改Tauri
+  不可写invoke并未真正注入故障。最终与既有relay探针一样在类型化客户端适配器
+  注入丢失应答，并断言注入确实发生、等待原生命令完成。没有放松产品断言，
+  也没有把未执行的故障当成通过。旧失败证据全部保留。
+- .build/like-recovery-ui-delivery/report.json：14态/14截图通过，首次11态与重启
+  3态；4次合成歌曲写入、重启0写入，恢复操作不增加写入数。实际IPC/SQLite、
+  深浅色、760×540、取消/确认焦点、状态改变拒绝、回包丢失只查本地、退出后
+  恢复待核对记录均通过。SQLite核对accepted_current_state归档和后续新意图；
+  原目标未改写为成功。真实音乐请求0，没有用户账号收藏写入。
+- .build/like-recovery-ux-regression：编辑入口、长名称、菜单/封面/未保存确认、
+  页面空/错状态、深浅色和重启34态/34截图通过；已查看760×540深色歌单和EQ。
+  .build/like-recovery-motion-regression：18态/18截图通过，歌词内部滚动、
+  系统减少动态效果、保存失败恢复及重启；使用真实libmpv/null，不证明声卡。
+  两个回归在最后仅调整喜欢弹窗样式/旧提示之前完成；最终喜欢专用14态随后通过。
+- 本地Rust231目标/1079项、前端208项、CI规则21项均通过，失败/忽略0；fmt、
+  严格Clippy、前端类型及生产构建通过。Rust全量日志like-recovery-final-workspace-tests；
+  最终前端/Clippy/探针日志like-recovery-delivery-*。资源index-sxtY4Mdv.js与
+  index-Dfv9KCik.css。先完成前端，再构建Tauri探针，再启动实测。
+- Linux虚拟显示器结果不声称达到用户物理刷新率；Windows精确提交完整CI和
+  原生Shell仍需各自成功，不能把本地截图/测试当成CI gate。未改已发布v0.1.0。
