@@ -3,7 +3,9 @@ Cumulus 新客户端架构
 
 技术选择
 主语言 Rust；桌面宿主 Tauri 2；界面 Vue 3 + TypeScript + Vite。
-目标平台 Linux / Windows / macOS；当前机器只能提供 Linux 验证。
+当前目标平台 Linux x86_64 / Windows x86_64；后续用户明确排除 macOS。
+平台构建与实际WebView检查分别见CI、windows-portability-validation.txt及UI专项证据；
+不能用一个平台或一个阶段的通过记录代替另一平台/后续代码的验证。
 Python 旧实现保留为协议与行为参考，不作为新客户端的隐式运行时依赖。
 
 依赖方向

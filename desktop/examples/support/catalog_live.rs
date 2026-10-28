@@ -59,6 +59,9 @@ impl Api for Reads {
                     | "/api/album/detail/dynamic"
                     | "/api/album/privilege"
                     | "/api/resource-exposure/config"
+                    | "/api/album/sublist"
+                    | "/api/digitalAlbum/purchased"
+                    | "/api/user/follow/users/mixed/get/v2"
             ) && !path
                 .strip_prefix("/api/artist/albums/")
                 .is_some_and(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit()))

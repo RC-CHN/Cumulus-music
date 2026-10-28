@@ -1,0 +1,49 @@
+{
+  "scope": "Saved albums, purchased albums and current account followed artists",
+  "platforms": ["linux-x64", "windows-x64"],
+  "officialEvidenceRoot": "references/netease-3.1.42.205594-analysis/recovered-js/modules/",
+  "entries": [
+    {
+      "feature": "Saved album pages",
+      "source": ["hybrid_166.chunk.1482700000000.js/3011.js fetchFavAlbumList", "hybrid_166.chunk.1482700000000.js/2252.js", "hybrid_app.chunk.1482700000000.js/15.js K/export u"],
+      "api": "/api/album/sublist",
+      "rust": ["account/collections/api.rs CollectionApi::page", "account/collections/service.rs Collections"],
+      "ui": "CollectionsPage 收藏专辑 → CatalogPage",
+      "verification": ["core/tests/collection_pages.rs", "collection_read example: 14 saved albums", "collection_ui_probe: page failures, retry, refresh and later-page filtering", "collection_live_probe: saved album detail navigation"]
+    },
+    {
+      "feature": "Existing purchased albums",
+      "source": ["hybrid_166.chunk.1482700000000.js/3011.js fetchPayedAlbumList", "hybrid_app.chunk.1482700000000.js/15.js J/export nb"],
+      "api": "/api/digitalAlbum/purchased",
+      "rust": ["CollectionQuery::PurchasedAlbums", "CollectionApi::page"],
+      "ui": "CollectionsPage 已购专辑 → CatalogPage",
+      "verification": ["collection_read example: 2 purchased albums", "synthetic WebView: empty/failure/retry", "live WebView: purchased album detail navigation"],
+      "boundary": "No purchase/payment operation; shop navigation remains separate incomplete scope"
+    },
+    {
+      "feature": "Own followed artists",
+      "source": ["hybrid_38.chunk.1482700000000.js/3088.js un/en", "hybrid_223.chunk.1482700000000.js/3000.js fetchHostFollowList", "hybrid_app.chunk.1482700000000.js/15.js be/export eh"],
+      "api": "/api/user/follow/users/mixed/get/v2",
+      "rust": ["CollectionQuery::FollowedArtists", "client/collections.rs FollowCard and FollowUser"],
+      "ui": "CollectionsPage 关注歌手 → FollowCards → CatalogPage",
+      "verification": ["opaque cursor, invalid/empty continuation, account isolation tests", "synthetic WebView: 205 records including user-only fallback", "real core and WebView: 217 records over 12 pages including terminal empty page", "independent SQLite cursor-chain audit"],
+      "boundary": "Not a complete artist/sublist snapshot for membership mutation; user-only profile navigation and messages are not implemented by this page"
+    },
+    {
+      "feature": "Safe projection and recovery",
+      "source": ["M21 artist/album normalization", "M15 cacheStrategy g", "community durable recovery extension"],
+      "rust": ["client/collections.rs MusicClient::collection_page", "desktop/src/collections.rs collection_page"],
+      "ui": "useCollections, typed CollectionClient; no raw API transport in frontend",
+      "verification": ["native cache reopened after failed refresh", "late old-account response rejected", "DTO private-field/CDN sanitization", "desktop IPC stale-account and captcha-window isolation", "frontend failed-first-page vs continuation retry tests"]
+    },
+    {
+      "feature": "Collection keyword matching",
+      "source": ["hybrid_60.chunk.1482700000000.js/3116.js d", "hybrid_app.chunk.1482700000000.js/123.js b"],
+      "frontend": ["services/keyword.ts", "services/keywordMap.json", "CollectionsPage.vue"],
+      "verification": ["9 frozen vectors obtained by executing recovered M123", "synthetic native WebView finds 臺灣 Ａ [Live] on a later page using 台湾 a [live]"],
+      "boundary": "Character-by-character official table, not general Chinese transliteration; followed-artist keyword filter is a community addition"
+    }
+  ],
+  "unverifiedOrIncomplete": ["This batch's Windows CI pending at documentation time", "User profile/message actions", "Complete official context menus", "Digital album store navigation"],
+  "alternativeClientSources": []
+}

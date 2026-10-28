@@ -1,0 +1,99 @@
+Cumulus 专辑收藏、已购专辑与关注歌手浏览
+2026-10-28；本批在0.1.0发布后开发，不属于已发布附件。
+
+官方来源与请求
+- my-favorite/views/PageAlbum.tsx、PageFavAlbum.tsx、PagePayedAlbum.tsx，位于
+  references/ui-recovery/sources/packages/pc/src/pages/；模型为 recovered-js/modules/
+  hybrid_166.chunk.1482700000000.js/3011.js，分页常量同chunk/2252.js 为50。
+- hybrid_app.chunk.1482700000000.js/15.js 导出u=K、nb=J、eh=be，分别位于
+  1225、1295、1446行附近。数据格式化引用M21的专辑h、歌手i、用户z；页面缓存g关闭。
+- 收藏专辑：/api/album/sublist {offset,limit,total:true}，默认50；data保留返回顺序，
+  count只作服务端提供的总数，hasMore决定续页。下一offset为原offset+limit。
+- 已购专辑：/api/digitalAlbum/purchased {substatus:true}，读取paidAlbums与total，
+  官方此链没有分页；没有执行购买、付款、领券或赠送。
+- 官方关注歌手视图为 hybrid_38.chunk.1482700000000.js/3088.js 4490-4615附近，
+  调用page:followFanList/fetchHostFollowList，模型 hybrid_223.../3000.js 370行附近。
+  请求 /api/user/follow/users/mixed/get/v2：
+    {page:{size:19,cursor:"0"},size:19,scene:1,sortType:0,authority:false}
+  后续保留data.page.cursor原值，data.page.more决定是否继续。请求不传前端指定userId，
+  读取的是当前会话自己的关注列表；不是读取任意用户隐私的入口。
+- records可能是artistInfo+userProfile、仅artistInfo、仅userProfile或都没有。
+  原en组件分别渲染歌手卡/用户卡/不渲染；不能把关联userId当成artistId。
+  M15格式化把已读记录followed设为true。本批列表据来源表示关注，不将这份分页结果
+  作为独立收藏写入的完整对账快照；旧AccountResources仍使用完整artist/sublist。
+
+核心与持久化
+account/collections 按query/api/service拆分，CollectionQuery只有上述三种读取。
+Collections按账号代次与完整查询保存account-collection-pages-v1恢复快照；进入页面必联机，
+本地快照不绕过当前服务端权限。请求失败、坏资料、空页却声称有后页、游标不推进时不替换旧页。
+一次页请求通过OperationLock串行化，切号或退出后的迟到响应不能写入任何账号。
+查询限制为offset<=50000、收藏页1..200、关注页1..100；游标保持字符串、限制长度且拒绝
+控制字符。前端另拒绝跨页游标环和超过500页的循环，并给出显式刷新恢复。
+这些是有界资源限制，不用请求条数推算服务端实际返回条数。
+
+展示边界
+MusicClient.collection_page → desktop collection_page → CollectionClient为唯一正式链路。
+返回白名单CollectionView，使用已有官方专辑/歌手规范化与安全CDN封面投影；原响应、
+Cookie、活动链接、logInfo、动态URL及媒体授权字段不传前端。关联用户只输出必要显示资料，
+注销状态30/40明确显示；只有artistInfo的真实ID可进入歌手详情。
+主侧栏“专辑与关注”有收藏专辑、已购专辑、关注歌手三页签，带缓存、读取失败、空状态和重试。
+页签替换当前路由而不新增返回历史；从专辑/歌手详情返回后保持原页签。
+专辑使用已有有界卡片网格；关注卡使用96px行高的两列/窄窗口单列列表，缓冲2行。
+点击详情继续复用目录的播放、评论和下载入口；本列表没有自动收藏/取消或账号写入。
+
+筛选
+官方M123 b先trim/合并空白、转小写，再转换FF00..FFFF全角字符，再按官方2359项表逐字
+繁转简；重复源字符使用首项。frontend/services/keywordMap.json只包含该必要映射数据，
+keyword.ts为本工程实现，非拷贝完整官方模块。9组冻结向量由本机执行原M123 b生成。
+专辑匹配名称、主歌手名和所有歌手名的连接，使用字面子串，不把关键词当作正则执行。
+名称不存在于已加载页且还有后页时继续读取；遇错停止并保留显式重试，不无限自动重试。
+关注列表的名称筛选是社区客户端补充交互，不冒称原关注页已有该筛选。
+
+本批已有证据
+- core/tests/collection_pages.rs 五项覆盖官方请求实参、分页界限、缓存重开/失败保留、
+  账号迟到响应、游标精度与停止、用户/歌手身份区别以及DTO隐私过滤。
+- core/examples/collection_read.rs只读验收，必须显式提供现有PC profile与新私有目录；
+  只放行account/get和上述三种端点。公开CI只编译，不执行真实账号流程。
+- 第一轮当前账号读取14张收藏专辑、2张已购专辑、12页共217条关注记录；最后一页为空且
+  more=false。关注页没有recordCount，因此总数未知，界面显示已加载数量。
+  请求size19，实际多页返回20，另有18/19条页；不得截断或根据length<size提前终止。
+  217条中125条仅歌手资料、92条同时有用户资料，无重复歌手ID；用户独立条目仅合成覆盖。
+  全部14次页面读取已核对原生快照回读与正式DTO，显式账号写入0。
+  私有证据 .build/private-collections-read-20261028-a/，日志 .build/collection-live-a.log。
+
+真实窗口与回归证据
+- catalog_ui_probe 的显式 CUMULUS_COLLECTION_PROOF=1 模式使用合成API，新增18个窗口状态：
+  50→100→123收藏分页、后页失败/重试、繁简/全角/特殊字符筛选并继续读取后页、刷新失败
+  保留123条及重试回到第一页、专辑导航、已购列表/空/失败/恢复、关注分页到205条、
+  用户独立资料不误作歌手、详情往返保留页签、深色和760×540小窗口。
+  首轮 .build/collection-ui-a/first 已通过；截图复查后将双层滚动改为固定工具栏和仅列表
+  滚动，.build/collection-ui-b/first 再次18项通过（加载生产dist覆盖，不是静态截图）。
+  最终内嵌生产前端与工具栏/加载按钮边界断言由相同CI脚本复验，目录为
+  .build/collection-ui-ci-final/run/first；不使用账号或前端/脚本环境覆盖。
+- CatalogCards改为接收纯卡片数组，目录页继续自己的分页投影；原歌手/专辑18个状态
+  使用新内嵌前端全部通过，.build/catalog-collection-regression-a/first。
+- 实际当前账号8个窗口状态读取收藏/已购/关注，打开对应专辑/歌手详情并返回，深色小窗
+  通过。首轮测试脚本曾把“正在加载”按钮误当作“无后页”，独立记录核验发现只加载40条，
+  因此保留为部分证据，不能视为完整分页。修正等待条件后的第二轮读取完217条与终止空页；
+  SQLite独立遍历12个缓存游标与UI数量相等，32次接口调用均为批准的读取路径，账号写入0。
+  证据 .build/private-collection-ui-live-20261028-{a,b}/、collection-live-ui-audit.json。
+  第二轮是内嵌生产前端和最终只读测试脚本覆盖；二进制SHA256为
+  90e78151326f382de100b1011db84132e03fd21ff723a30be9ee31f109779c78。
+  本次没有执行音频播放、下载或收藏写入，不把导航成功当成这些业务重新验收。
+- Rust格式、严格workspace/all-targets/custom-protocol Clippy通过；205个suite/target、
+  904项测试通过，0失败/忽略。前端155项通过，格式、类型检查和生产构建通过。
+  日志 .build/collection-{clippy,workspace}-final.log、collection-front-{test,format}-final.log。
+  本段记录时本批Windows CI尚未运行；上一批目录功能CI不能代替本批新增内容。
+
+复现
+  npm --prefix frontend ci
+  npm --prefix frontend run build
+  cargo build -p cumulus-desktop --example catalog_ui_probe --features custom-protocol --locked
+  dbus-run-session -- xvfb-run -a python3 scripts/ci/catalog_smoke.py \
+    --binary .build/target/debug/examples/catalog_ui_probe --root .build/new-collections-proof --collections
+Windows省略dbus/xvfb，二进制加.exe，并传 --runtime .build/package-stage/windows-x64/native。
+该脚本清理所有CUMULUS环境后选择合成模式，隔离OS配置和WebView目录；两平台必需job
+都运行此检查，失败不能绕过CI gate。真实账号测试只能显式选择已有PC profile与新私有目录。
+
+当前仍不提供用户独立主页、私信、收藏条目完整官方菜单和数字专辑商店入口；这些分支
+不是本列表已完成的功能，完整目标需继续。没有使用YesPlayMusic作为来源。

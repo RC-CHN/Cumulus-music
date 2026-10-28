@@ -11,11 +11,14 @@ def main():
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--runtime', type=Path)
+    parser.add_argument('--collections', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {k: v for k, v in os.environ.items() if not k.startswith('CUMULUS_')}
     env['CUMULUS_PROOF_DIR'] = str(root / 'run')
+    if args.collections:
+        env['CUMULUS_COLLECTION_PROOF'] = '1'
     for variable, directory in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'),
                                 ('XDG_CACHE_HOME', 'cache'), ('APPDATA', 'roaming'),
                                 ('LOCALAPPDATA', 'local')]:
@@ -33,14 +36,18 @@ def main():
     assert result.returncode == 0, f'catalog probe exited {result.returncode}'
     complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
     assert complete['ok'] and complete['stageCount'] == 18 and complete['realMusicRequests'] == 0
-    assert complete['syntheticMembershipWrites'] and not complete['playbackVerified']
+    assert not complete['playbackVerified']
+    assert complete['collectionReadOnly'] if args.collections else complete['syntheticMembershipWrites']
     stages = [json.loads(p.read_text(encoding='utf-8')) for p in output.glob('ux_*.json')]
     assert len(stages) == 18
     assert {v['theme'] for v in stages} == {'light', 'dark'}
     assert any(v['width'] == 760 and v['height'] == 540 for v in stages)
-    assert all(v['rows'] <= 30 and v['cards'] <= 30 for v in stages)
+    assert all(v['cards'] <= 30 for v in stages)
+    if not args.collections:
+        assert all(v['rows'] <= 30 for v in stages)
     print(json.dumps({'ok': True, 'actualWebView': True, 'states': 18,
-                      'realMusicRequests': 0, 'playbackVerified': False}))
+                      'realMusicRequests': 0, 'playbackVerified': False,
+                      'collections': args.collections}))
 
 
 if __name__ == '__main__':

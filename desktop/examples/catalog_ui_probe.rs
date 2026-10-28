@@ -11,6 +11,8 @@ use serde_json::Value;
 use std::{fs, path::PathBuf, sync::Arc};
 use tauri::{Listener, Manager, webview::PageLoadEvent};
 
+#[path = "support/collection_fixture.rs"]
+mod collection_fixture;
 #[path = "support/catalog_fixture.rs"]
 mod fixture;
 #[path = "support/catalog_live.rs"]
@@ -33,9 +35,11 @@ fn main() {
     context.config_mut().app.windows[0].create = false;
     let profile = std::env::var_os("CUMULUS_CATALOG_PROFILE").map(PathBuf::from);
     let is_live = profile.is_some();
+    let collections = std::env::var("CUMULUS_COLLECTION_PROOF").as_deref() == Ok("1");
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
         let registry=ProfileRegistry::open(&root.join("state"),ApiOrigin::Pc)?;
-        let api:Arc<dyn Api>=if let Some(profile)=profile{Arc::new(live::Reads::open(&profile,&output)?)}else{Arc::new(fixture::Library::default())};
+        let collection_fixture=Arc::new(collection_fixture::Library::default());
+        let api:Arc<dyn Api>=if let Some(profile)=profile{Arc::new(live::Reads::open(&profile,&output)?)}else if collections{collection_fixture.clone()}else{Arc::new(fixture::Library::default())};
         let session=Arc::new(AccountSession::new(api,Some(registry.store())));
         let client=MusicClient::with_session(session,registry);
         app.manage(cumulus_desktop::configure_native_audio(client,&app.path().resource_dir()?,true));
@@ -44,6 +48,7 @@ fn main() {
         app.listen("ux-proof",move |event| {
             let value:Value=serde_json::from_str(event.payload()).unwrap();
             let stage=value["stage"].as_str().unwrap_or("");
+            if stage=="fixture" && collections && !is_live {collection_fixture.mode(value["mode"].as_str().unwrap_or(""));return;}
             if stage=="resize" {
                 handle.get_webview_window("main").unwrap().set_size(tauri::LogicalSize::new(value["width"].as_f64().unwrap(),value["height"].as_f64().unwrap())).unwrap();return;
             }
@@ -75,7 +80,9 @@ fn main() {
     }).on_page_load(move |view, payload| {
         if payload.event()==PageLoadEvent::Finished && view.label()=="main" {
             let script=std::env::var_os("CUMULUS_UX_SCRIPT").map(|p|fs::read_to_string(p).unwrap());
-            view.eval(script.as_deref().unwrap_or(if is_live{include_str!("catalog_live_probe.js")}else{include_str!("catalog_ui_probe.js")})).unwrap();
+            view.eval(script.as_deref().unwrap_or(if collections {
+                if is_live {include_str!("collection_live_probe.js")} else {include_str!("collection_ui_probe.js")}
+            } else if is_live{include_str!("catalog_live_probe.js")}else{include_str!("catalog_ui_probe.js")})).unwrap();
         }
     }).run(context).expect("UX probe");
 }
