@@ -78,6 +78,7 @@ def main():
         assert complete['mediaSubstitution'] == 'exact synthetic CDN URL to generated PCM'
         assert complete['autoDismiss']
         assert complete['focusHoldAfterPointerLeave'] and complete['hoverHoldAfterFocusLeave']
+        assert complete['nativeWindowFocusHold'] and complete['nullRelatedFocusOutInjected']
         if args.relay_publication:
             uploads = complete['syntheticRelayPublications']
             assert len(uploads) >= 4 and len(uploads) == len(complete['publicationPhases'])

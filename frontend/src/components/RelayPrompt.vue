@@ -12,15 +12,21 @@ const visible = computed(
 let timer: ReturnType<typeof setTimeout> | undefined;
 const element = ref<HTMLElement>();
 let hovered = false;
-let focused = false;
+let disposed = false;
+const ownsFocus = () => !!element.value?.contains(document.activeElement);
 function pause() {
   if (timer) clearTimeout(timer);
   timer = undefined;
 }
 function start() {
   pause();
-  if (visible.value && !hovered && !focused)
-    timer = setTimeout(() => void props.model.dismiss(), 8000);
+  if (!disposed && visible.value && !hovered && !ownsFocus())
+    timer = setTimeout(() => {
+      timer = undefined;
+      // A window blur may omit relatedTarget and a WebView can deliver its
+      // focus events late. Never dismiss a control that still owns DOM focus.
+      if (!disposed && visible.value && !hovered && !ownsFocus()) void props.model.dismiss();
+    }, 8000);
 }
 function enter() {
   hovered = true;
@@ -31,12 +37,12 @@ function exit() {
   start();
 }
 function focus() {
-  focused = true;
   pause();
 }
-function leave(event: FocusEvent) {
-  focused = (event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null);
-  start();
+function leave() {
+  // activeElement is transient while focusout is being dispatched. Observe
+  // the completed focus move, including moves between this prompt's buttons.
+  queueMicrotask(start);
 }
 function close(event: Event) {
   if (
@@ -49,12 +55,14 @@ watch(
   visible,
   () => {
     hovered = !!element.value?.matches(':hover');
-    focused = !!element.value?.contains(document.activeElement);
     start();
   },
   { immediate: true, flush: 'post' },
 );
-onUnmounted(pause);
+onUnmounted(() => {
+  disposed = true;
+  pause();
+});
 </script>
 <template>
   <Transition name="relay-prompt">

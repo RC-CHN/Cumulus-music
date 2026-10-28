@@ -72,6 +72,7 @@ fn main() {
         app.manage(client);
         app.add_capability(r#"{"identifier":"ux-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
         let handle=app.handle().clone();
+        let focus_directory=root.join("focus-webview");
         app.listen("ux-proof",move |event| {
             let value:Value=serde_json::from_str(event.payload()).unwrap();
             let stage=value["stage"].as_str().unwrap_or("");
@@ -84,6 +85,21 @@ fn main() {
             }
             if stage=="pointer" && !is_live {
                 handle.get_webview_window("main").unwrap().set_cursor_position(tauri::LogicalPosition::new(value["x"].as_f64().unwrap(),value["y"].as_f64().unwrap())).unwrap();return;
+            }
+            if stage=="window_focus" && relays && !is_live {
+                let outside=value["outside"]==true;
+                let app=handle.clone();
+                let directory=focus_directory.clone();
+                // WebView2 creation must be outside the synchronous event handler.
+                tauri::async_runtime::spawn(async move {
+                    if outside {
+                        let other=tauri::WebviewWindowBuilder::new(&app,"focus-proof",tauri::WebviewUrl::External("about:blank".parse().unwrap())).title("Synthetic focus check").data_directory(directory).inner_size(180.0,80.0).position(8.0,8.0).build().unwrap();
+                        other.set_focus().unwrap();
+                    } else {
+                        app.get_webview_window("main").unwrap().set_focus().unwrap();
+                        if let Some(other)=app.get_webview_window("focus-proof"){other.close().unwrap();}
+                    }
+                });return;
             }
             if !(["complete","failed"].contains(&stage) || stage.starts_with("ux_") && stage.chars().all(|c|c.is_ascii_alphanumeric()||c=='_')){return;}
             let handle=handle.clone();let output=output.clone();let stage=stage.to_owned();

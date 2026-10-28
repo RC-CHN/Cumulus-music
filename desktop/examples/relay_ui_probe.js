@@ -8,6 +8,16 @@
   const ready=()=>one('.relay-settings')?.getAttribute('aria-busy')==='false';
   const state=()=>one('.playerbar')?.dataset.state;
   const position=()=>Number(one('.playerbar')?.dataset.position??0);
+  // Bounded synthetic-only event trace for cross-WebView focus failures.
+  const focusTrace=[];
+  const describe=node=>node instanceof Element?`${node.tagName}.${node.className}`:String(node);
+  const focusState=()=>({active:describe(document.activeElement),documentFocused:document.hasFocus(),prompt:!!one('.relay-prompt'),promptFocused:!!one('.relay-prompt')?.contains(document.activeElement),hovered:!!one('.relay-prompt')?.matches(':hover'),disabled:one('.relay-continue')?.disabled,settings:!!one('.settings-page'),relaySettings:!!one('.relay-settings'),relayBusy:one('.relay-settings')?.getAttribute('aria-busy'),privacyFields:all('input[name="shareSetting"]').length});
+  for(const event of ['focusin','focusout','pointerenter','pointerleave']) document.addEventListener(event,e=>{
+    if(e.target instanceof Element && (e.target.closest('.relay-prompt')||event.startsWith('focus'))){
+      focusTrace.push({at:performance.now(),event,target:describe(e.target),related:describe(e.relatedTarget),...focusState()});
+      if(focusTrace.length>60)focusTrace.shift();
+    }
+  },true);
   let stageCount=0;
   async function capture(name,playing=false){
     await sleep(300);assert(document.documentElement.scrollWidth<=innerWidth,'horizontal overflow');assert(!document.body.textContent.includes('SYNTHETIC_PRIVATE'),'native alert leaked');
@@ -29,8 +39,16 @@
     const rect=one('.relay-prompt').getBoundingClientRect();
     await emit('pointer',{x:rect.left+10,y:rect.top+10});await wait(()=>one('.relay-prompt')?.matches(':hover'),'pointer entered prompt');
     one('.relay-continue').focus({preventScroll:true});
+    assert(one('.relay-prompt').contains(document.activeElement),'continue button did not take focus');
     await emit('pointer',{x:4,y:4});await wait(()=>!one('.relay-prompt')?.matches(':hover'),'pointer left prompt');
+    // Window/document blur can omit relatedTarget while the DOM retains its
+    // focused control. Exercise that event boundary independently of the OS.
+    one('.relay-continue').dispatchEvent(new FocusEvent('focusout',{bubbles:true,relatedTarget:null}));
     await sleep(8500);assert(one('.relay-prompt')?.contains(document.activeElement),'keyboard focus must prevent auto-dismiss after pointer leaves');
+    await emit('window_focus',{outside:true});await wait(()=>!document.hasFocus(),'native window lost focus');
+    await sleep(8500);assert(one('.relay-prompt')?.contains(document.activeElement),'window blur must preserve the focused prompt');
+    await emit('window_focus',{outside:false});await wait(()=>document.hasFocus(),'native window regained focus');
+    assert(one('.relay-prompt')?.contains(document.activeElement),'window activation lost the focused prompt');
     await emit('pointer',{x:rect.left+10,y:rect.top+10});await wait(()=>one('.relay-prompt')?.matches(':hover'),'pointer reentered prompt');
     one('[aria-label="打开设置"]').focus({preventScroll:true});
     await sleep(8500);assert(one('.relay-prompt')?.matches(':hover'),'hover must prevent auto-dismiss after focus leaves');
@@ -49,6 +67,6 @@
     await capture('voice_playing',true);click(one('[aria-label="停止播放"]'));
     await refresh('song');click(one('input[name="personalServiceSetting"][value="2"]'));await wait(()=>one('dialog[open]')&&!one('.relay-prompt'),'modal suppression');await capture('modal_suppression');click(all('dialog[open] button').find(n=>n.textContent.trim()==='取消'));await wait(()=>!one('dialog[open]')&&one('.relay-prompt'),'prompt restored');await capture('modal_restored');
     click(one('[aria-label="关闭接续提示"]'));await wait(()=>!one('.relay-prompt'),'close prompt');assert(document.activeElement===one('[aria-label="打开设置"]'),'close focus did not return');await capture('closed_focus');
-    await emit('complete',{ok:true,stageCount,realMusicRequests:0,syntheticQueueApplications:2,playbackVerified:true,decoder:'libmpv',audioOutput:'null',mediaSubstitution:'exact synthetic CDN URL to generated PCM',autoDismiss:true,focusHoldAfterPointerLeave:true,hoverHoldAfterFocusLeave:true});
-  }catch(error){await emit('failed',{ok:false,error:String(error),stageCount});}
+    await emit('complete',{ok:true,stageCount,realMusicRequests:0,syntheticQueueApplications:2,playbackVerified:true,decoder:'libmpv',audioOutput:'null',mediaSubstitution:'exact synthetic CDN URL to generated PCM',autoDismiss:true,focusHoldAfterPointerLeave:true,hoverHoldAfterFocusLeave:true,nativeWindowFocusHold:true,nullRelatedFocusOutInjected:true,focusTrace});
+  }catch(error){await emit('failed',{ok:false,error:String(error),stageCount,focusState:focusState(),focusTrace});}
 })();
