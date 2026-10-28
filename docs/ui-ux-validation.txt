@@ -439,3 +439,23 @@ Windows现场与接续提示焦点复查（2026-10-29）
   engine_roundtrip.exe以3221225477(0xc0000005)退出。旧探针没有逐阶段输出，
   当前证据不足以判定具体崩溃点。新增有限阶段日志并在失败附件中保留，不忽略
   故障或绕过CI gate；当前功能仍须自身Linux/Windows完整CI通过才能合入main。
+
+2026-10-29 原生托盘播放与连续操作
+- 官方 thumbnailAction 300/301/302 已映射到同一 Rust 音乐/FM 用例；托盘新增
+  上一首、播放/暂停、下一首、停止；MV 下禁用上下首并控制当前视频。详情和
+  账号/播放目标校验见 native-media-controls-contracts.txt，未接原生喜欢/媒体键。
+- .build/native-media-ui-first 实际发现：恢复播放后立即停止时，菜单目标尚未刷新，
+  新操作被安全拒绝且恢复窗口。修复为原生点击立即禁用控件，GUI 线程同一回调
+  读新状态、更新菜单和可派发目标，最后解除忙碌；没有靠放宽过期校验掩盖问题。
+- .build/native-media-ui-verified/report.json：14态/14截图全通过；真实原生 D-Bus
+  菜单控制 paused -> playing -> idle -> playing 全程保持窗口隐藏。隐藏期间真实
+  libmpv/null进度前进0.396秒，保持同一playId。浅深色、760×540、无host/丢失/
+  重启、设置损坏/修复、保存失败/恢复及显式退出均回归通过；已看浅色、深色弹窗、
+  深色托盘恢复后的截图。真实音乐请求0；未验证物理面板图标/声卡与Windows Shell。
+- core音乐/MV/FM相关18项通过，新增4项覆盖懒读取、状态过期、媒体所有权交接、
+  账号更换、时钟与Seek区别，以及FM前后曲/暂停/恢复。首次FM测试连续步进触发
+  官方250ms冷却；测试改为遵守冷却，未修改产品限制。失败证据仍保留。
+- 最终本地Rust231目标/1070项、前端200项、CI规则19项通过；fmt和严格Clippy
+  通过。日志native-media-tests-all-final.log、native-media-clippy-final.log、
+  native-media-frontend-*、native-media-ci-tests.log。探针完成编译后才开始GUI验证。
+- Windows完整CI及Shell交互未以Linux结果替代；全目标仍未完成，不改已发布标签。

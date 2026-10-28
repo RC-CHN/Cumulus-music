@@ -1,0 +1,58 @@
+原生托盘播放控制（2026-10-29）
+
+来源与映射
+references/recovered-client/docs/product/models/async_action.txt 的
+subscriptions/thumbnailAction，来源 hybrid_73/3085.js:5632–5693：
+300 -> jump2Track(-1)，301 -> playing/switchResumeOrPause，302 -> jump2Track(1)。
+映射到 core/client/native_media 的 Previous/Toggle/Next -> 既有播放器用例；
+desktop/lifecycle/media.rs 将真实原生菜单事件传给同一用例，不经过 WebView 中转。
+Stop 是社区桌面便利入口，复用已迁移停止逻辑，不声称来源是上述三个官方动作。
+303 为喜欢切换，本批未接原生菜单；正式歌曲/播客喜欢入口仍使用既有业务。
+没有使用 YesPlayMusic。没有移植官方任务栏埋点。
+
+产品行为
+菜单显示当前音乐或 MV 标题、上一首、播放/暂停、下一首、停止。
+未选择播放对象时禁用控制；MV 期间禁用上下首，播放/暂停/停止操作当前 MV，
+不会恢复已因 MV 暂停的音乐。音乐和 FM 使用各自已迁移的队列/播放状态。
+隐藏窗口后仍可操作，不需重新显示主窗口；失败显示主窗口及可恢复提示。
+操作期间避免重复派发。状态读取/菜单刷新不启动解码器、请求歌曲或写账号资源。
+每250ms读现存播放器快照，仅在菜单内容或可用性变化时更新原生控件。
+主窗口销毁后停止后台任务。原生控件更新失败时清除可派发目标，等下次成功更新。
+
+核心契约
+MusicClient::native_media_snapshot() -> NativeMediaSnapshot
+  title, playing, can_previous, can_next, target: Option<NativeMediaTarget>
+MusicClient::native_media_action(&target, NativeMediaAction) -> Result<()>
+  Play/Pause/Toggle/Previous/Next/Stop。
+目标是 Rust 原生值，没有 Deserialize/Serialize，不增加前端 IPC 或暴露授权 URL。
+目标保存账号 token、媒体所有者及其代次、播放 ID/控制修订（音乐另有队列修订）。
+先验证目标，再在媒体所有权锁内核对代次，随后沿原有 player_action/video_action
+执行。音乐和视频 actor 在实际处理消息时再次核对目标及取消条件，拒绝排队期间
+失效的操作。时钟轮询不改变控制修订；切歌、Seek、暂停、账号切换和媒体交接会
+使旧目标失效。目标过期不重试、不将旧 Toggle 重新解释为另一首歌的动作。
+FM 使用现有 coordinator 的 step/resume、selection intent 和队列 fence；保留
+恢复的250ms切歌冷却，不绕过 FM 约束，也不把下一首改成普通队列删除。
+一起听继续使用 player_action 原有 validate/signal；不新建房间/邀请或发消息。
+
+网络与持久化
+菜单展示没有网络调用。操作不另建协议或会话；暂停/停止普通音乐为本地动作，
+需要载入音源、FM 推荐补充、MV 播放或已附着的一起听同步时，沿原有用例调用。
+音乐音源和队列字段见 core-playback-contracts.txt；FM 来源/补充/跳过上报接口及
+字段见 core-fm-contracts.txt；MV 选择和音源接口见 core-mv-video-contracts.txt；
+房间控制见 core-listen-together-contracts.txt 与 core-listen-together-shared-queue.txt。
+账号隔离、播放位置持久化、源刷新和失效对账均使用对应核心服务；不复制一套状态。
+
+验证入口
+core/tests/support/native_media_client.rs（由 client_mv.rs 装载）：懒初始化，
+音乐切换/停止、旧控制拒绝、音乐/MV交接、MV无上下首、账号更换、时钟与Seek区别。
+core/tests/client_fm.rs：真实用例层的 FM 上下首、暂停、恢复，保留冷却且不拉黑。
+desktop/examples/tray_ui_probe + scripts/ci/tray_protocol_smoke.py --lifecycle：
+生产 WebView/真实 Tauri/libappindicator，隔离 D-Bus 面板调用真实原生菜单；
+后台先验证 libmpv/null 进度，再暂停→恢复→停止→重新播放，全部保持窗口隐藏。
+仍回归14个深浅色/窄窗口/关闭/损坏恢复状态。合成账号/音频，无真实音乐请求。
+Python 仅用于外部验证，生产程序不依赖 Python。
+
+边界
+Linux 隔离面板验证不代替物理面板可见性、声卡听感或 Windows Shell 交互。
+原生喜欢切换、全局/媒体快捷键、MPRIS/SMTC、Windows/Wayland 面板验证仍需继续。
+不将本批原生菜单称为完整系统媒体控制，也不宣布整个研究迁移目标完成。

@@ -99,8 +99,8 @@ desktop/examples/tray_ui_probe + 同驱动 --lifecycle：正式 Vue/Tauri/核心
 本轮不把虚拟 X11 帧率当作物理显示器刷新率；不声称物理扬声器听感。
 真实 Windows Shell、Wayland 面板、缺库安装与一起听清理失败的此处 UI 联动仍需
 对应平台/补充故障流程验证。核心清理逻辑的既有测试不代替这些新宿主分支。
-本批原生菜单提供显示和退出；恢复证据中的前后曲/播放/喜欢按钮、全局快捷键、
-MPRIS/SMTC、开机自启仍是整个目标的后续工作，不将本批托盘流程称为全部完成。
+原生菜单后续已加入前后曲、播放/暂停及停止，见 native-media-controls-contracts.txt。
+喜欢按钮、全局快捷键、MPRIS/SMTC、开机自启仍是后续工作，不称为全部完成。
 
 复现（Linux，固定工具链）
 npm --prefix frontend ci
