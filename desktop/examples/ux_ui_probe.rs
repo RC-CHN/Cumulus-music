@@ -4,6 +4,8 @@ mod assets;
 #[allow(dead_code)]
 #[path = "support/catalog_fixture.rs"]
 mod fixture;
+#[path = "support/like_recovery_fixture.rs"]
+mod like_recovery_fixture;
 #[allow(dead_code)]
 #[path = "support/relay_fixture.rs"]
 mod relay_fixture;
@@ -80,6 +82,7 @@ fn main() {
     unsafe { cumulus_desktop::prepare_graphics() };
     let root = PathBuf::from(std::env::var_os("CUMULUS_PROOF_DIR").expect("new proof root"));
     let motion_proof = std::env::var_os("CUMULUS_MOTION_PROOF").is_some();
+    let recovery_proof = std::env::var_os("CUMULUS_LIKE_RECOVERY_PROOF").is_some();
     let output = root.join(if std::env::var_os("CUMULUS_PROOF_REOPEN").is_some() {
         "reopen"
     } else {
@@ -92,7 +95,9 @@ fn main() {
     context.config_mut().app.windows[0].create = false;
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
         let registry=ProfileRegistry::open(&root.join("state"),ApiOrigin::Pc)?;
-        let session=Arc::new(AccountSession::new(Arc::new(Library),Some(registry.store())));
+        let recovery = recovery_proof.then(||Arc::new(like_recovery_fixture::Library::new(Arc::new(Library))));
+        let api:Arc<dyn Api>=recovery.as_ref().map(|f|f.clone() as Arc<dyn Api>).unwrap_or_else(||Arc::new(Library));
+        let session=Arc::new(AccountSession::new(api,Some(registry.store())));
         let mut client=MusicClient::with_session(session,registry);
         if motion_proof {
             let wave = root.join("relay-synthetic.wav");
@@ -105,10 +110,25 @@ fn main() {
         app.listen("ux-proof",move |event| {
             let mut value:Value=serde_json::from_str(event.payload()).unwrap();
             let stage=value["stage"].as_str().unwrap_or("");
+            if let Some(fixture)=recovery.as_ref() {
+                use std::sync::atomic::Ordering;
+                if stage=="like-fixture" {
+                    if let Some(healthy)=value["healthy"].as_bool(){fixture.healthy.store(healthy,Ordering::SeqCst);}
+                    if let Some(remote)=value["remote"].as_bool(){fixture.remote(value["id"].as_str().unwrap(),remote);}
+                    if value["failRead"]==true{fixture.fail_read.store(true,Ordering::SeqCst);}
+                    return;
+                }
+            }
             if stage=="resize" {
                 handle.get_webview_window("main").unwrap().set_size(tauri::LogicalSize::new(value["width"].as_f64().unwrap(),value["height"].as_f64().unwrap())).unwrap();return;
             }
             if !(["complete","failed"].contains(&stage) || stage.starts_with("ux_") && stage.chars().all(|c|c.is_ascii_alphanumeric()||c=='_')){return;}
+            let stage=stage.to_owned();
+            if let Some(fixture)=recovery.as_ref() {
+                use std::sync::atomic::Ordering;
+                value["syntheticLikeWrites"]=json!(fixture.writes.load(Ordering::SeqCst));
+                value["syntheticLikeReads"]=json!(fixture.reads.load(Ordering::SeqCst));
+            }
             if motion_proof {
                 let stage = stage.to_owned(); let handle=handle.clone(); let output=output.clone();
                 tauri::async_runtime::spawn(async move {
@@ -123,7 +143,7 @@ fn main() {
                 return;
             }
             fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
-            if ["complete","failed"].contains(&stage) {handle.exit(if stage=="complete" {0} else {1});}
+            if ["complete","failed"].contains(&stage.as_str()) {handle.exit(if stage=="complete" {0} else {1});}
         });
         // Absolute config dataDirectory values are ignored by Tauri's safe-path
         // resolver. The builder API owns this isolated test directory explicitly.
@@ -134,7 +154,7 @@ fn main() {
     }).on_page_load(|view, payload| {
         if payload.event()==PageLoadEvent::Finished && view.label()=="main" {
             let script=std::env::var_os("CUMULUS_UX_SCRIPT").map(|p|fs::read_to_string(p).unwrap());
-            let default_script = if std::env::var_os("CUMULUS_MOTION_PROOF").is_some() { include_str!("motion_ui_probe.js") } else { include_str!("ux_ui_probe.js") };
+            let default_script = if std::env::var_os("CUMULUS_LIKE_RECOVERY_PROOF").is_some() { include_str!("like_recovery_ui_probe.js") } else if std::env::var_os("CUMULUS_MOTION_PROOF").is_some() { include_str!("motion_ui_probe.js") } else { include_str!("ux_ui_probe.js") };
             view.eval(script.as_deref().unwrap_or(default_script)).unwrap();
         }
     }).run(context).expect("UX probe");
