@@ -265,6 +265,9 @@ impl MusicHttpClient {
 }
 
 impl Api for MusicHttpClient {
+    fn local_device_id(&self) -> Result<Option<String>> {
+        self.credentials.device_id().map(Some)
+    }
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move { self.execute(path, payload, cache, None, false).await })
     }

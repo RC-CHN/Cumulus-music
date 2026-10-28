@@ -6,6 +6,7 @@ mod application;
 mod machine;
 mod pull;
 mod service;
+mod settings;
 mod types;
 
 pub use api::{
@@ -19,6 +20,7 @@ pub use machine::{
 };
 pub use pull::{PullPlan, PullSelection};
 pub use service::{PullIntent, PullPhase, RelayAvailability, RelayService, RelaySnapshot};
+pub use settings::{RelaySettingIntent, RelaySettingSnapshot, RelaySettings};
 pub use types::{
     RelayAlert, RelayCommand, RelayConfig, RelayMode, RelayResource, RelayResourceKind,
     RelaySource, RelaySourceKind,

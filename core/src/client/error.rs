@@ -101,6 +101,26 @@ impl From<Error> for ClientError {
                     "账号设置已发生变化，请查看最新状态后重新选择",
                     true,
                 ),
+                Error::State("relay setting changed") => (
+                    "relay_setting_changed",
+                    "设备开关已发生变化，请检查最新状态后重新选择",
+                    true,
+                ),
+                Error::State("read back relay setting before acceptance") => (
+                    "relay_setting_reconcile",
+                    "请先核对当前设备开关，再决定是否保留",
+                    false,
+                ),
+                Error::State(
+                    "native relay device identity unavailable"
+                    | "relay setting unavailable"
+                    | "relay setting experiment unavailable"
+                    | "read relay setting first",
+                ) => (
+                    "relay_setting_unavailable",
+                    "当前设备设置暂不可用，请重新检查跨端续播状态",
+                    true,
+                ),
                 Error::State("reconcile account settings before acceptance") => {
                     ("settings_reconcile", "请先核对这次设置修改的结果", false)
                 }

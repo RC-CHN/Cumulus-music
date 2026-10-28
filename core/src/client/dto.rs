@@ -30,7 +30,10 @@ pub use super::podcast::{
     PodcastState,
 };
 pub use super::rankings::{RankingPageView, RankingView, SongSaleView};
-pub use super::relay::{RelayAlertView, RelayCommand, RelayOperationView, RelayView};
+pub use super::relay::{
+    RelayAlertView, RelayCommand, RelayOperationView, RelaySettingCommand,
+    RelaySettingOperationView, RelaySettingsView, RelayView,
+};
 pub use super::scene_fm::{SceneFmCategoryView, SceneFmCommand, SceneFmView};
 pub use super::settings::{
     AccountSettingField, AccountSettingsCommand, AccountSettingsPage, LinkedPrivacy,

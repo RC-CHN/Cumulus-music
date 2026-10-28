@@ -9,6 +9,12 @@ pub type ApiFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>
 pub trait Api: Send + Sync + std::any::Any {
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value>;
 
+    /// Native transport identity used by device-scoped service settings. Never
+    /// accepted from IPC payloads; adapters without a bound identity are read-only.
+    fn local_device_id(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
     fn call<'a>(
         &'a self,
         path: &'a str,

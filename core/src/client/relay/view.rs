@@ -10,6 +10,7 @@ pub struct RelayView {
     pub revision: String,
     pub availability: RelayAvailability,
     pub setting: Option<bool>,
+    pub settings: Option<super::RelaySettingsView>,
     pub alert: Option<RelayAlertView>,
     pub operations: Vec<RelayOperationView>,
 }
@@ -96,6 +97,7 @@ impl MusicClient {
             revision: snapshot.revision,
             availability: snapshot.availability,
             setting: snapshot.setting,
+            settings: self.relay_setting_view(&token, snapshot.availability, None)?,
             alert: snapshot.alert.map(|a| RelayAlertView {
                 title: a
                     .text("reconnectTitle")

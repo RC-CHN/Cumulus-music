@@ -59,8 +59,8 @@ pub struct PullIntent {
 }
 
 pub struct RelayService {
-    session: Arc<AccountSession>,
-    store: Arc<StateStore>,
+    pub(super) session: Arc<AccountSession>,
+    pub(super) store: Arc<StateStore>,
 }
 impl RelayService {
     pub fn new(session: Arc<AccountSession>) -> Result<Self> {
@@ -69,7 +69,7 @@ impl RelayService {
             session,
         })
     }
-    fn lock(&self, token: &SessionToken) -> Result<(String, OperationLock)> {
+    pub(super) fn lock(&self, token: &SessionToken) -> Result<(String, OperationLock)> {
         let owner = self.session.with_token(token, |uid| Ok(uid.to_owned()))?;
         let lock = OperationLock::acquire(self.store.directory(), NAMESPACE, &owner)?;
         Ok((owner, lock))
@@ -143,6 +143,7 @@ impl RelayService {
                 |api, _| async move { RelayApi::new(api).setting().await },
             )
             .await?;
+        super::RelaySettings::new(self.session.clone())?.cache_for(token, snapshot.setting)?;
         if snapshot.availability == RelayAvailability::Available {
             snapshot.alert = self
                 .session
@@ -289,7 +290,7 @@ impl RelayService {
         self.session.check_generation(token)?;
         Ok(intent)
     }
-    fn invalidate(&self, token: &SessionToken) -> Result<()> {
+    pub(super) fn invalidate(&self, token: &SessionToken) -> Result<()> {
         self.save(token, &mut RelaySnapshot::default())
     }
     /// Resolve a lost host acknowledgement before retrying an intent. An unseen
