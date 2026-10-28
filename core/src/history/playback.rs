@@ -16,7 +16,11 @@ fn song(resource: &Value) -> Value {
             "metadata":resource["metadata"]});
     }
     if resource["song"].is_object() {
-        return resource["song"].clone();
+        let mut metadata = resource["song"].clone();
+        if resource["download_task_id"].is_string() {
+            metadata["download_task_id"] = resource["download_task_id"].clone();
+        }
+        return metadata;
     }
     json!({"id":resource["id"],"name":resource["name"],"dt":resource["dt"]})
 }

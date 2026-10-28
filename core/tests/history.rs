@@ -865,3 +865,103 @@ async fn local_only_clear_and_definite_rejection_preserve_honest_partial_outcome
         .unwrap();
     assert_eq!(writes(&api), 1);
 }
+
+#[tokio::test]
+async fn cancelling_unseen_intent_prevents_late_execution_without_hiding_started_work() {
+    let (_root, _store, api, session, service) = fixture();
+    let token = session.token().unwrap();
+    let page = service
+        .refresh_for(&token, HistoryKind::Song)
+        .await
+        .unwrap();
+    let calls = api.calls.lock().unwrap().len();
+    let id = uuid::Uuid::new_v4().to_string();
+    let op = service
+        .cancel_unseen_for(
+            &token,
+            &id,
+            HistoryKind::Song,
+            &page.revision,
+            HistoryAction::Clear,
+        )
+        .unwrap();
+    assert_eq!(op.phase, HistoryMutationPhase::Cancelled);
+    let late = service
+        .mutate_for(
+            &token,
+            &id,
+            HistoryKind::Song,
+            &page.revision,
+            HistoryAction::Clear,
+        )
+        .await
+        .unwrap();
+    assert_eq!(late.phase, HistoryMutationPhase::Cancelled);
+    assert_eq!(api.calls.lock().unwrap().len(), calls);
+    assert_eq!(
+        service
+            .snapshot_for(&token, HistoryKind::Song)
+            .unwrap()
+            .entries
+            .len(),
+        2
+    );
+    assert!(
+        service
+            .cancel_unseen_for(
+                &token,
+                &id,
+                HistoryKind::Album,
+                &page.revision,
+                HistoryAction::Clear
+            )
+            .is_err()
+    );
+    let actual_id = uuid::Uuid::new_v4().to_string();
+    api.write_error.store(1, Ordering::SeqCst);
+    let actual = service
+        .mutate_for(
+            &token,
+            &actual_id,
+            HistoryKind::Song,
+            &page.revision,
+            HistoryAction::Clear,
+        )
+        .await
+        .unwrap();
+    assert_eq!(actual.phase, HistoryMutationPhase::Uncertain);
+    let actual = service
+        .cancel_unseen_for(
+            &token,
+            &actual_id,
+            HistoryKind::Song,
+            &page.revision,
+            HistoryAction::Clear,
+        )
+        .unwrap();
+    assert_eq!(actual.phase, HistoryMutationPhase::Uncertain);
+    assert!(actual.remote_planned);
+}
+#[tokio::test]
+async fn history_revision_ignores_progress_checkpoints_but_fences_new_plays_and_metadata() {
+    let (_root, _store, _api, session, service) = fixture();
+    let token = session.token().unwrap();
+    let kind = HistoryKind::Voice;
+    let mut row =
+        HistoryRecord::local(kind, json!({"id":7,"name":"声音","mainSong":{"id":77}}), 10).unwrap();
+    service.record_for(&token, kind, row.clone()).unwrap();
+    let first = service.snapshot_for(&token, kind).unwrap().revision;
+    row.play_progress = Some(42.5);
+    row.listened = Some(true);
+    service.record_for(&token, kind, row.clone()).unwrap();
+    let progressed = service.snapshot_for(&token, kind).unwrap();
+    assert_eq!(first, progressed.revision);
+    assert_eq!(progressed.entries[0].play_progress, Some(42.5));
+    row.played_at += 1;
+    service.record_for(&token, kind, row.clone()).unwrap();
+    let replay = service.snapshot_for(&token, kind).unwrap().revision;
+    assert_ne!(first, replay);
+    row.resource["name"] = json!("更新名称");
+    service.record_for(&token, kind, row).unwrap();
+    assert_ne!(replay, service.snapshot_for(&token, kind).unwrap().revision);
+}

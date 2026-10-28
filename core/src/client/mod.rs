@@ -13,6 +13,7 @@ mod error;
 mod fm;
 mod fm_discovery;
 mod focus;
+mod history;
 mod local;
 mod mapping;
 mod member;

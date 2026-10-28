@@ -87,6 +87,15 @@ pub(super) fn track(value: &Value) -> Result<TrackView> {
     })
 }
 
+/// Queue metadata uses the same whitelist as public track cards. The raw song
+/// response may contain signed media links, which do not belong in the queue.
+pub(super) fn song_metadata(value: &Value) -> Result<Value> {
+    let view = track(value)?;
+    Ok(serde_json::json!({"id":view.id,"name":view.name,
+        "ar":view.artist_refs.iter().map(|artist|serde_json::json!({"id":artist.id,"name":artist.name})).collect::<Vec<_>>(),
+        "al":{"id":view.album_id,"name":view.album,"picUrl":view.cover_url},"dt":view.duration_ms,"fee":view.fee}))
+}
+
 pub(super) fn page(offset: usize, limit: usize) -> Result<()> {
     if !(1..=100).contains(&limit) || offset > 1_000_000 {
         Err(Error::InvalidInput("invalid page bounds"))

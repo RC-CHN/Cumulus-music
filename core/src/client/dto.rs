@@ -4,6 +4,10 @@ pub use super::downloads::{
     DownloadTab, DownloadTaskView, DownloadsView, TaskControl,
 };
 pub use super::fm::{FmArtistView, FmCommand, FmFeedbackView, FmItemView, FmTrashView, FmView};
+pub use super::history::{
+    HistoryCommand, HistoryEntry, HistoryOperationView, HistoryPage, HistoryPlaylistCard,
+    HistoryResource,
+};
 pub use super::local::{
     LocalCommand, LocalGroup, LocalGroupEntry, LocalLinkView, LocalMatchCommand, LocalMatchView,
     LocalPageView, LocalQuery, LocalRootView, LocalSort, LocalTrackView,
@@ -35,6 +39,7 @@ use crate::account::{QrStatus, SessionStatus, resources::MutationPhase};
 pub use crate::catalog::rankings::RankingQuery;
 pub use crate::fm::discovery::{FmDiscoveryQuery, SavedFmDiscovery};
 pub use crate::fm::{FmReason, FmReasons, FmSource};
+pub use crate::history::HistoryKind;
 pub use crate::playlist::cover::{CoverCrop, CoverImage, CoverTaskView};
 use serde::{Deserialize, Serialize};
 

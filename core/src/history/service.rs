@@ -96,8 +96,23 @@ pub(super) fn revision(
     local: &[HistoryRecord],
     remote: &Option<RemoteHistory>,
 ) -> Result<String> {
+    // A playback clock checkpoint must not invalidate a user's selection or
+    // deletion confirmation. Identity/order, play time, metadata and settings
+    // still fence new plays and actual page changes.
+    let rows = |records: &[HistoryRecord]| {
+        records
+            .iter()
+            .map(|r| json!([r.id, r.played_at, r.resource, r.device, r.origin]))
+            .collect::<Vec<_>>()
+    };
+    let remote = remote
+        .as_ref()
+        .map(|r| json!([r.kind, r.fetched_at, rows(&r.records)]));
     Ok(hex::encode(Sha256::digest(serde_json::to_vec(&json!([
-        kind, sync, local, remote
+        kind,
+        sync,
+        rows(local),
+        remote
     ]))?)))
 }
 impl HistoryService {

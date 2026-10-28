@@ -13,7 +13,7 @@ fn creator(v: &Value) -> String {
         .unwrap_or("")
         .into()
 }
-pub(super) fn card(r: &Radio) -> PodcastCard {
+pub(in crate::client) fn card(r: &Radio) -> PodcastCard {
     PodcastCard {
         id: r.id.clone(),
         name: r.name.clone(),

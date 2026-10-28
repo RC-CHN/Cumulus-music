@@ -511,3 +511,75 @@ async fn monitor_progress_disable_cancel_no_partial_publish_and_reopen_watch() {
     }
     panic!("saved root did not resume")
 }
+
+#[tokio::test]
+async fn guest_history_replays_current_files_and_rejects_changed_fingerprints() {
+    let root = tempfile::tempdir().unwrap();
+    let media = root.path().join("media");
+    std::fs::create_dir(&media).unwrap();
+    let path = media.join("one.wav");
+    std::fs::write(&path, "original synthetic audio").unwrap();
+    let (_, client, library) = client(&root.path().join("state"), Arc::new(Probe::default()));
+    library.scan(&media).unwrap();
+    let page = client.local_page(LocalQuery::default()).await.unwrap();
+    client
+        .play_selection(
+            "0",
+            PlaySelection::Local {
+                query: LocalQuery::default(),
+                revision: page.revision,
+                start_id: None,
+            },
+        )
+        .await
+        .unwrap();
+    let history = client
+        .history_page("0", HistoryKind::Song, true)
+        .await
+        .unwrap()
+        .value;
+    let encoded = serde_json::to_string(&history).unwrap();
+    assert!(
+        !encoded.contains(&media.to_string_lossy().to_string())
+            && !encoded.contains("local_revision")
+    );
+    assert!(!history.can_sync);
+    assert_eq!(history.entries.len(), 1);
+    let selection = || PlaySelection::History {
+        history_kind: HistoryKind::Song,
+        revision: history.revision.clone(),
+        ids: vec![history.entries[0].id.clone()],
+        index: 0,
+        quality: cumulus_core::membership::Quality::Standard,
+    };
+    let replay = client.play_selection("0", selection()).await.unwrap();
+    assert_eq!(replay.queue_len, 1);
+    assert!(replay.track.unwrap().local);
+    let current = client
+        .history_page("0", HistoryKind::Song, false)
+        .await
+        .unwrap()
+        .value;
+    std::fs::write(path, "different and longer synthetic file").unwrap();
+    let changed = client
+        .history_page("0", HistoryKind::Song, false)
+        .await
+        .unwrap()
+        .value;
+    assert!(matches!(&changed.entries[0].resource,HistoryResource::Song{track} if track.missing));
+    assert!(
+        client
+            .play_selection(
+                "0",
+                PlaySelection::History {
+                    history_kind: HistoryKind::Song,
+                    revision: current.revision,
+                    ids: vec![current.entries[0].id.clone()],
+                    index: 0,
+                    quality: cumulus_core::membership::Quality::Standard
+                }
+            )
+            .await
+            .is_err()
+    );
+}

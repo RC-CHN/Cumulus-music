@@ -40,7 +40,10 @@ impl MusicClient {
     }
     pub async fn play_selection(&self, epoch: &str, input: PlaySelection) -> Result<PlayerView> {
         let token = self.player_token(epoch)?;
-        if !matches!(input, PlaySelection::Local { .. }) {
+        if !matches!(
+            input,
+            PlaySelection::Local { .. } | PlaySelection::History { .. }
+        ) {
             self.session.with_token(&token, |_| Ok(()))?;
         }
         let lease = self
@@ -48,6 +51,44 @@ impl MusicClient {
             .await?;
         let attempt = self.player.selection.fetch_add(1, Ordering::AcqRel) + 1;
         let input = match input {
+            PlaySelection::History {
+                history_kind,
+                revision,
+                ids,
+                index,
+                quality,
+            } => {
+                let (resources, index, source) = self
+                    .history_selection(
+                        &token,
+                        super::super::history::Selection {
+                            kind: history_kind,
+                            revision: &revision,
+                            ids: &ids,
+                            index,
+                            quality,
+                        },
+                        attempt,
+                    )
+                    .await?;
+                let controller = self.player.controller().await?;
+                if self.player.selection.load(Ordering::Acquire) != attempt {
+                    return Err(Error::StaleResponse);
+                }
+                self.focus.check(lease, super::super::focus::Owner::Audio)?;
+                let state = controller
+                    .command(
+                        &token,
+                        PlaybackCommand::Replace {
+                            resources,
+                            index,
+                            source,
+                        },
+                    )
+                    .await?;
+                self.session.check_generation(&token)?;
+                return project(&state, &token);
+            }
             PlaySelection::Podcast {
                 scope,
                 start_id,
@@ -241,6 +282,7 @@ impl MusicClient {
                         json!({"kind":"mv_related","mvId":mv_id,"scene":"video"}),
                     )),
                     PlaySelection::Cloud { .. }
+                    | PlaySelection::History { .. }
                     | PlaySelection::Local { .. }
                     | PlaySelection::Podcast { .. } => {
                         unreachable!("cloud handled before song detail requests")

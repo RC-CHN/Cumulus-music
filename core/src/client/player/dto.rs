@@ -56,6 +56,13 @@ pub struct QueueView {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PlaySelection {
+    History {
+        history_kind: crate::history::HistoryKind,
+        revision: String,
+        ids: Vec<String>,
+        index: usize,
+        quality: Quality,
+    },
     Catalog {
         pages: Vec<super::super::catalog::CatalogSelectionPage>,
         index: usize,

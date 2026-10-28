@@ -566,3 +566,40 @@ async fn bulk_cancel_covers_tasks_outside_visible_page_and_removes_owned_tempora
     );
     assert!(f.backend.audio.calls().is_empty());
 }
+
+#[tokio::test]
+async fn history_reuses_completed_download_after_native_offline_verification() {
+    let f = Fixture::new();
+    let (id, _) = f.completed().await;
+    f.client.play_downloads("1", vec![id], 0).await.unwrap();
+    let history = f
+        .client
+        .history_page("1", HistoryKind::Song, false)
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(history.entries.len(), 1);
+    let requests = f.api.calls.lock().unwrap().len();
+    let state = f
+        .client
+        .play_selection(
+            "1",
+            PlaySelection::History {
+                history_kind: HistoryKind::Song,
+                revision: history.revision,
+                ids: vec![history.entries[0].id.clone()],
+                index: 0,
+                quality: cumulus_core::membership::Quality::Standard,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(state.queue_len, 1);
+    assert!(state.error.is_none());
+    assert_eq!(state.track.unwrap().id, "123");
+    assert!(
+        f.api.calls.lock().unwrap()[requests..]
+            .iter()
+            .all(|(path, _)| path == "/api/music-vip-membership/client/vip/info")
+    );
+}

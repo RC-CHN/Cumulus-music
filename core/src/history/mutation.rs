@@ -16,6 +16,7 @@ pub enum HistoryAction {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HistoryMutationPhase {
+    Cancelled,
     Pending,
     Confirmed,
     Rejected,
@@ -80,6 +81,68 @@ pub(super) fn removed_since(
     Ok(false)
 }
 impl HistoryService {
+    /// Reserve an unseen intent as cancelled before a delayed IPC call can
+    /// execute it. Existing intents retain their real outcome; no API is sent.
+    pub fn cancel_unseen_for(
+        &self,
+        token: &SessionToken,
+        id: &str,
+        kind: HistoryKind,
+        expected_revision: &str,
+        action: HistoryAction,
+    ) -> Result<HistoryMutation> {
+        id_valid(id)?;
+        if let HistoryAction::Delete { ids } = &action
+            && (ids.is_empty()
+                || ids.len() > 50_000
+                || ids.iter().any(|id| id.is_empty() || id.len() > 256)
+                || ids.iter().collect::<HashSet<_>>().len() != ids.len())
+        {
+            return Err(Error::InvalidInput("invalid cancelled history selection"));
+        }
+        if expected_revision.len() != 64
+            || !expected_revision.bytes().all(|c| c.is_ascii_hexdigit())
+        {
+            return Err(Error::InvalidInput("invalid history revision"));
+        }
+        let owner = self
+            .session
+            .with_local_owner(token, |owner| Ok(owner.to_owned()))?;
+        let _lock = OperationLock::acquire(
+            self.store.directory(),
+            NAMESPACE,
+            &format!("{owner}:{}", kind.key()),
+        )?;
+        self.session.with_local_owner(token, |owner| {
+            self.store.transaction(|tx| {
+                if let Some(value) = tx.get(owner, JOURNAL, id)? {
+                    let op: HistoryMutation = serde_json::from_value(value)?;
+                    if op.kind != kind
+                        || op.action != action
+                        || op.expected_revision != expected_revision
+                    {
+                        return Err(Error::InvalidInput("history intent ID reused"));
+                    }
+                    return Ok(op);
+                }
+                let op = HistoryMutation {
+                    id: id.into(),
+                    kind,
+                    action,
+                    expected_revision: expected_revision.into(),
+                    phase: HistoryMutationPhase::Cancelled,
+                    created_at: now(),
+                    local_removed: 0,
+                    remote_planned: false,
+                    remote_ids: vec![],
+                    boundary: None,
+                    last_read_at: None,
+                };
+                tx.put(owner, JOURNAL, id, &serde_json::to_value(&op)?)?;
+                Ok(op)
+            })
+        })
+    }
     pub fn mutations_for(&self, token: &SessionToken) -> Result<Vec<HistoryMutation>> {
         self.session.with_local_owner(token, |owner| {
             self.store
