@@ -130,14 +130,14 @@ function control(task: CloudUpload, kind: 'pause' | 'resume' | 'cancel' | 'dismi
         :class="{ selected: query.tab === 'uploaded' }"
         @click="model.filter({ tab: 'uploaded' })"
       >
-        已上传 <span>{{ view?.uploadedCount ?? 0 }}</span></button
+        已上传 <span>{{ view?.revision ? view.uploadedCount : '—' }}</span></button
       ><button
         role="tab"
         :aria-selected="query.tab === 'uploading'"
         :class="{ selected: query.tab === 'uploading' }"
         @click="model.filter({ tab: 'uploading' })"
       >
-        上传任务 <span>{{ view?.uploadingCount ?? 0 }}</span>
+        上传任务 <span>{{ view?.uploadingCount ?? '—' }}</span>
       </button>
     </div>
     <div class="cloud-toolbar">
@@ -191,13 +191,33 @@ function control(task: CloudUpload, kind: 'pause' | 'resume' | 'cancel' | 'dismi
     </div>
     <p v-if="full" class="cloud-error" role="status">云盘空间已满，请清理部分歌曲后再上传。</p>
     <p v-if="notice" class="cloud-notice" role="status">{{ notice }}</p>
-    <p v-if="error || readError || view?.workerError" class="cloud-error" role="alert">
+    <p
+      v-if="
+        error || (readError && (view?.revision || query.tab === 'uploading')) || view?.workerError
+      "
+      class="cloud-error"
+      role="alert"
+    >
       {{ error || readError || view?.workerError }}
       <button v-if="readError" class="text-button" @click="model.refresh(true)">重新加载</button>
     </p>
-    <div v-if="loading && !view" class="empty-state" role="status">
+    <div
+      v-if="loading && (!view || (query.tab === 'uploaded' && !view.revision))"
+      class="empty-state"
+      role="status"
+    >
       <span class="spinner" />
       <p>正在读取音乐云盘…</p>
+    </div>
+    <div
+      v-else-if="readError && query.tab === 'uploaded' && !view?.revision"
+      class="empty-state"
+      role="alert"
+    >
+      <Icon name="cloud" />
+      <h2>暂时无法读取音乐云盘</h2>
+      <p>{{ readError }}</p>
+      <button class="primary" :disabled="loading" @click="model.refresh(true)">重新加载</button>
     </div>
     <template v-else-if="query.tab === 'uploaded'">
       <div v-if="tracks.length" class="cloud-table-wrap">

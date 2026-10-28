@@ -184,6 +184,10 @@ const locked = computed(() => busy.value || !!view.value?.migration);
       <span class="spinner" />
       <p>正在读取下载任务…</p>
     </div>
+    <div v-else-if="readError && !view" class="empty-state" role="status">
+      <Icon name="down" />
+      <p>暂时无法读取下载记录，请刷新重试。</p>
+    </div>
     <div v-else-if="!tasks.length" class="empty-state">
       <Icon name="music" />
       <p>
