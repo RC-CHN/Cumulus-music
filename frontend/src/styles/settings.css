@@ -12,6 +12,9 @@
   padding: 7px 16px;
   min-height: 34px;
 }
+.settings-page :is(button, input, summary) {
+  scroll-margin-block: 8px;
+}
 .settings-page .secondary:hover:not(:disabled),
 .settings-confirm .secondary:hover:not(:disabled) {
   background: var(--surface-hover);

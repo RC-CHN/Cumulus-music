@@ -2,9 +2,21 @@
 import { computed, ref, watch } from 'vue';
 import type { RelayModel } from '../../composables/useRelay';
 import { relaySettingPending, type RelaySettingOperation } from '../../services/relay';
+import { useControlFocus } from '../../composables/useControlFocus';
 import ModalTransition from '../ModalTransition.vue';
 import SettingsConfirm from './SettingsConfirm.vue';
-const props = defineProps<{ model: RelayModel }>();
+const props = defineProps<{
+  model: RelayModel;
+  epoch: string;
+  fallbackFocus: () => HTMLElement | null | undefined;
+}>();
+const root = ref<HTMLElement>();
+const fallbackFocus = () =>
+  root.value?.querySelector<HTMLInputElement>('input:not(:disabled)') ??
+  root.value?.querySelector<HTMLButtonElement>('[data-setting-reconcile]:not(:disabled)') ??
+  props.fallbackFocus() ??
+  null;
+const controlFocus = useControlFocus(() => props.epoch, fallbackFocus);
 const state = computed(() => props.model.page.value?.settings);
 const pending = computed(() => state.value?.operations.filter(relaySettingPending) ?? []);
 const latest = computed(() => state.value?.operations.find((op) => !relaySettingPending(op)));
@@ -19,7 +31,7 @@ function toggle(event: Event) {
   const input = event.currentTarget as HTMLInputElement,
     next = input.checked;
   input.checked = state.value?.enabled === true;
-  void props.model.changeSetting(next);
+  void controlFocus.run(event, () => props.model.changeSetting(next));
 }
 function outcome(op: RelaySettingOperation) {
   if (op.phase === 'confirmed' || op.phase === 'unchanged')
@@ -36,7 +48,7 @@ async function confirm() {
 }
 </script>
 <template>
-  <div v-if="state" class="relay-switch">
+  <div v-if="state" ref="root" class="relay-switch">
     <label class="settings-checkbox">
       <input
         type="checkbox"
@@ -54,8 +66,9 @@ async function confirm() {
       <p>尚未收到设置修改结果，请先核对。</p>
       <button
         class="secondary"
+        data-setting-reconcile
         :disabled="model.busy.value || model.loading.value"
-        @click="model.cancelUnknownSetting()"
+        @click="controlFocus.run($event, model.cancelUnknownSetting)"
       >
         核对设置结果
       </button>
@@ -78,8 +91,9 @@ async function confirm() {
       <div class="relay-recovery-actions">
         <button
           class="secondary"
+          data-setting-reconcile
           :disabled="model.busy.value || model.loading.value"
-          @click="model.reconcileSetting(operation.id)"
+          @click="controlFocus.run($event, () => model.reconcileSetting(operation.id))"
         >
           核对设备开关
         </button>
@@ -96,7 +110,7 @@ async function confirm() {
     <p v-if="latest" class="settings-note relay-setting-result" role="status">
       {{ outcome(latest) }}
     </p>
-    <ModalTransition>
+    <ModalTransition :fallback-focus="fallbackFocus">
       <SettingsConfirm
         v-if="confirmation"
         title="保留当前设备设置"

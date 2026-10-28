@@ -1,13 +1,34 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import type { RelayPublicationModel } from '../../composables/useRelayPublication';
 import { publicationOutcome } from '../../services/relayPublication';
+import { useControlFocus } from '../../composables/useControlFocus';
 import ModalTransition from '../ModalTransition.vue';
 import SettingsConfirm from './SettingsConfirm.vue';
-const props = defineProps<{ model: RelayPublicationModel }>();
+const props = defineProps<{ model: RelayPublicationModel; epoch: string }>();
 const confirmation = ref<string>();
 const refreshButton = ref<HTMLButtonElement>();
+const unknownButton = ref<HTMLButtonElement>();
+const resynchronizeButton = ref<HTMLButtonElement>();
+const retryButton = ref<HTMLButtonElement>();
 const fallbackFocus = () => refreshButton.value ?? null;
+const controlFocus = useControlFocus(() => props.epoch, fallbackFocus);
+watch(
+  () => [
+    !!props.model.unknown.value,
+    !!props.model.page.value?.canResynchronize,
+    props.model.page.value?.recovering?.phase === 'prepared',
+  ],
+  (visible) => {
+    // A background acknowledgement can remove a control after the initiating
+    // IPC has returned. Capture before Vue removes its focused DOM element.
+    const controls = [unknownButton.value, resynchronizeButton.value, retryButton.value];
+    controls.forEach((control, index) => {
+      if (!visible[index] && control === document.activeElement)
+        void nextTick(controlFocus.capture(control));
+    });
+  },
+);
 const status = computed(() =>
   props.model.page.value ? publicationOutcome(props.model.page.value) : '尚未读取本机同步状态',
 );
@@ -32,7 +53,7 @@ async function confirm() {
         ref="refreshButton"
         class="secondary"
         :disabled="model.busy.value || model.loading.value"
-        @click="model.read()"
+        @click="controlFocus.run($event, model.read)"
       >
         刷新同步状态
       </button>
@@ -45,9 +66,10 @@ async function confirm() {
     <div v-if="model.unknown.value" class="relay-recovery">
       <p>尚未收到操作结果，请先核对；尚未开始的请求将取消。</p>
       <button
+        ref="unknownButton"
         class="secondary"
         :disabled="model.busy.value || model.loading.value"
-        @click="model.resolveUnknown()"
+        @click="controlFocus.run($event, model.resolveUnknown)"
       >
         核对同步结果
       </button>
@@ -57,6 +79,7 @@ async function confirm() {
     </p>
     <div class="relay-recovery-actions">
       <button
+        ref="resynchronizeButton"
         v-if="model.page.value?.canResynchronize"
         class="secondary"
         :disabled="!model.canResynchronize.value"
@@ -65,6 +88,7 @@ async function confirm() {
         重新同步当前队列
       </button>
       <button
+        ref="retryButton"
         v-if="model.page.value?.recovering?.phase === 'prepared'"
         class="secondary"
         :disabled="
@@ -73,7 +97,7 @@ async function confirm() {
           !!model.unknown.value ||
           model.page.value?.recordFailed
         "
-        @click="model.resumePrepared()"
+        @click="controlFocus.run($event, model.resumePrepared)"
       >
         重试连接
       </button>

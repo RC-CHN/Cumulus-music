@@ -32,8 +32,10 @@ function left(element: Element) {
   if (
     target?.isConnected &&
     (!document.querySelector('dialog[open]') || target.closest('dialog[open]'))
-  )
+  ) {
     target.focus({ preventScroll: true });
+    if (target !== original) target.scrollIntoView({ block: 'nearest' });
+  }
 }
 </script>
 <template>

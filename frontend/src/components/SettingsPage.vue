@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue';
 import type { AccountView } from '../services/contracts';
 import type { SettingsModel } from '../composables/useSettings';
 import { useAppearance } from '../composables/useAppearance';
+import { useControlFocus } from '../composables/useControlFocus';
 import type { AppearancePreference } from '../services/appearance';
 import {
   settingLabels,
@@ -90,14 +91,17 @@ type Confirmation =
   | { kind: 'personal'; change: SettingChange }
   | { kind: 'accept'; op: SettingsOperation; revision: string };
 const confirmation = ref<Confirmation>();
+const privacyRefresh = ref<HTMLButtonElement>();
+const fallbackFocus = () => privacyRefresh.value ?? null;
+const controlFocus = useControlFocus(() => props.account.epoch, fallbackFocus);
 watch(
   () => props.account.epoch,
   () => (confirmation.value = undefined),
 );
-function choose(change: SettingChange) {
+async function choose(change: SettingChange, event: Event) {
   if (disabled(change.key) || field(change.key)?.value === change.value) return;
   if (change.key === 'personalServiceSetting') confirmation.value = { kind: 'personal', change };
-  else void props.model.change(change);
+  else await controlFocus.run(event, () => props.model.change(change));
 }
 async function confirm() {
   const request = confirmation.value;
@@ -187,10 +191,11 @@ function accept(op: SettingsOperation) {
                     : '尚未读取账号设置'
               }}</span
               ><button
+                ref="privacyRefresh"
                 class="text-button"
                 aria-label="重新读取账号设置"
                 :disabled="model.loading.value || model.busy.value"
-                @click="model.refresh"
+                @click="controlFocus.run($event, model.refresh)"
               >
                 刷新
               </button>
@@ -204,13 +209,13 @@ function accept(op: SettingsOperation) {
               <button
                 class="secondary"
                 :disabled="model.busy.value || model.loading.value"
-                @click="model.localRefresh"
+                @click="controlFocus.run($event, model.localRefresh)"
               >
                 读取处理记录</button
               ><button
                 class="secondary"
                 :disabled="model.busy.value || model.loading.value"
-                @click="model.cancelUnknown"
+                @click="controlFocus.run($event, model.cancelUnknown)"
               >
                 取消未开始的修改
               </button>
@@ -226,7 +231,9 @@ function accept(op: SettingsOperation) {
               <button
                 class="secondary"
                 :disabled="model.busy.value || model.loading.value"
-                @click="model.command({ kind: 'reconcile', id: op.id })"
+                @click="
+                  controlFocus.run($event, () => model.command({ kind: 'reconcile', id: op.id }))
+                "
               >
                 核对服务端状态</button
               ><button
@@ -264,7 +271,7 @@ function accept(op: SettingsOperation) {
                       :name="group.key"
                       :value="option.value"
                       :checked="field(group.key)?.value === option.value"
-                      @click.prevent="choose({ key: group.key, value: option.value })"
+                      @click.prevent="choose({ key: group.key, value: option.value }, $event)"
                     /><span>{{ option.label }}</span></label
                   >
                 </div>
@@ -281,7 +288,7 @@ function accept(op: SettingsOperation) {
                       :name="key"
                       :checked="field(key)?.value === true"
                       :disabled="disabled(key)"
-                      @click.prevent="choose({ key, value: field(key)?.value !== true })"
+                      @click.prevent="choose({ key, value: field(key)?.value !== true }, $event)"
                     /><span>{{ settingLabels[key] }}</span
                     ><small v-if="field(key)?.state !== 'available'"
                       >（{{ field(key)?.state === 'unsupported' ? '值不支持' : '未返回' }}）</small
@@ -318,6 +325,7 @@ function accept(op: SettingsOperation) {
         </div>
       </section>
       <RelaySettings
+        :epoch="account.epoch"
         :model="relay"
         :publication="publication"
         :signed-in="account.status === 'authenticated'"
@@ -330,7 +338,7 @@ function accept(op: SettingsOperation) {
         </div>
       </section>
     </div>
-    <ModalTransition
+    <ModalTransition :fallback-focus="fallbackFocus"
       ><SettingsConfirm
         v-if="confirmation"
         :title="

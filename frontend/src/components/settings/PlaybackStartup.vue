@@ -1,32 +1,18 @@
 <script setup lang="ts">
-import { nextTick, onUnmounted, ref, watch } from 'vue';
+import { onUnmounted, ref, watch } from 'vue';
 import type { AccountView } from '../../services/contracts';
 import { useStartupPreferences } from '../../composables/useStartupPreferences';
+import { useControlFocus } from '../../composables/useControlFocus';
 import type { StartupSettings } from '../../services/startup';
 const props = defineProps<{ account: AccountView }>();
 const model = useStartupPreferences();
 const refresh = ref<HTMLButtonElement>();
-async function change(key: keyof StartupSettings, value: boolean, event: Event) {
-  const trigger = event.currentTarget as HTMLInputElement;
-  const epoch = props.account.epoch;
-  await model.change(key, value);
-  await nextTick();
-  if (
-    props.account.epoch === epoch &&
-    trigger.isConnected &&
-    document.activeElement === document.body
-  ) {
-    // Disabling a pending checkbox can drop focus. Preserve deliberate moves
-    // elsewhere; after a failed save put the read/recovery control within reach.
-    (trigger.matches(':disabled') ? refresh.value : trigger)?.focus({ preventScroll: true });
-  }
-}
-async function repair() {
-  const trigger = document.activeElement;
-  await model.repair();
-  await nextTick();
-  if (trigger && !trigger.isConnected && document.activeElement === document.body)
-    refresh.value?.focus({ preventScroll: true });
+const controlFocus = useControlFocus(
+  () => props.account.epoch,
+  () => refresh.value,
+);
+function change(key: keyof StartupSettings, value: boolean, event: Event) {
+  return controlFocus.run(event, () => model.change(key, value));
 }
 watch(
   () => props.account.epoch,
@@ -50,7 +36,7 @@ onUnmounted(model.dispose);
           class="text-button"
           aria-label="重新读取播放设置"
           :disabled="model.busy.value || model.loading.value"
-          @click="model.read"
+          @click="controlFocus.run($event, model.read)"
         >
           刷新
         </button>
@@ -95,7 +81,7 @@ onUnmounted(model.dispose);
         <button
           class="secondary"
           :disabled="model.busy.value || model.loading.value"
-          @click="repair"
+          @click="controlFocus.run($event, model.repair)"
         >
           恢复默认播放设置
         </button>

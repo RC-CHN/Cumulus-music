@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
+import { useControlFocus } from '../../composables/useControlFocus';
 import RelaySwitch from './RelaySwitch.vue';
 import RelayPublication from './RelayPublication.vue';
 import type { RelayPublicationModel } from '../../composables/useRelayPublication';
@@ -10,7 +11,13 @@ const props = defineProps<{
   model: RelayModel;
   signedIn: boolean;
   publication: RelayPublicationModel;
+  epoch: string;
 }>();
+const refreshButton = ref<HTMLButtonElement>();
+const recoveryButton = ref<HTMLButtonElement>();
+const fallbackFocus = () =>
+  refreshButton.value?.matches(':disabled') ? recoveryButton.value : refreshButton.value;
+const controlFocus = useControlFocus(() => props.epoch, fallbackFocus);
 const status = computed(() => {
   if (!props.signedIn) return '登录同一个账号，接续另一台设备的播放。';
   if (props.model.loading.value) return '正在检查其他设备…';
@@ -37,20 +44,27 @@ const status = computed(() => {
       <div class="settings-read-status">
         <span role="status">{{ status }}</span
         ><button
+          ref="refreshButton"
           v-if="signedIn"
           class="secondary"
+          aria-label="检查其他设备的播放"
           :disabled="model.busy.value || model.loading.value || !!model.unknown.value"
-          @click="model.read(true)"
+          @click="controlFocus.run($event, () => model.read(true))"
         >
           检查其他设备
         </button>
       </div>
-      <RelaySwitch :model="model" />
+      <RelaySwitch :model="model" :epoch="epoch" :fallback-focus="fallbackFocus" />
       <p class="settings-note">歌曲从头播放，播客接续上次进度。接续会替换本机当前队列。</p>
       <p v-if="model.error.value" class="relay-error" role="alert">{{ model.error.value }}</p>
       <div v-if="model.unknown.value" class="relay-recovery">
         <p>尚未收到操作结果，请先核对，避免重复接续。</p>
-        <button class="secondary" :disabled="model.busy.value" @click="model.cancelUnknown()">
+        <button
+          ref="recoveryButton"
+          class="secondary"
+          :disabled="model.busy.value"
+          @click="controlFocus.run($event, model.cancelUnknown)"
+        >
           核对操作结果
         </button>
       </div>
@@ -64,7 +78,7 @@ const status = computed(() => {
           :disabled="
             model.busy.value || model.loading.value || !!model.unknown.value || !!model.error.value
           "
-          @click="model.continueHere()"
+          @click="controlFocus.run($event, model.continueHere)"
         >
           继续播放
         </button>
@@ -79,12 +93,12 @@ const status = computed(() => {
           v-if="operation.canRetry"
           class="secondary"
           :disabled="model.busy.value || !!model.unknown.value"
-          @click="model.retry(operation.id)"
+          @click="controlFocus.run($event, () => model.retry(operation.id))"
         >
           重新准备播放
         </button>
       </div>
-      <RelayPublication v-if="signedIn" :model="publication" />
+      <RelayPublication v-if="signedIn" :model="publication" :epoch="epoch" />
     </div>
   </section>
 </template>
