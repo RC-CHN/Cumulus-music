@@ -1,6 +1,15 @@
 //! Production UI/IPC inspection with isolated synthetic account and preferences.
 #[path = "support/assets.rs"]
 mod assets;
+#[allow(dead_code)]
+#[path = "support/catalog_fixture.rs"]
+mod fixture;
+#[allow(dead_code)]
+#[path = "support/relay_fixture.rs"]
+mod relay_fixture;
+#[allow(dead_code)]
+#[path = "support/settings_fixture.rs"]
+mod settings_fixture;
 use cumulus_core::{
     account::{AccountSession, profiles::ProfileRegistry},
     client::MusicClient,
@@ -50,6 +59,13 @@ impl Api for Library {
                 "/api/cloudsearch/pc" => {
                     json!({"code":200,"result":{"songs":(1..=12).map(song).collect::<Vec<_>>(),"songCount":12}})
                 }
+                "/api/song/enhance/player/url/v1" => {
+                    let ids: Vec<Value> = serde_json::from_str(args["ids"].as_str().unwrap())?;
+                    json!({"code":200,"data":[{"id":ids[0],"url":"https://m1.music.126.net/cumulus-relay-fixture.wav","code":200,"md5":"fixture","level":"standard","expi":120}]})
+                }
+                "/api/song/lyric/v1" => {
+                    json!({"code":200,"lrc":{"lyric":(0..30).map(|i|format!("[00:{i:02}.00]合成歌词 {i}\n")).collect::<String>()}})
+                }
                 _ => {
                     return Err(cumulus_core::Error::Response(
                         "unsupported UX fixture endpoint",
@@ -63,6 +79,7 @@ fn main() {
     // SAFETY: first operation before GTK/runtime or worker creation.
     unsafe { cumulus_desktop::prepare_graphics() };
     let root = PathBuf::from(std::env::var_os("CUMULUS_PROOF_DIR").expect("new proof root"));
+    let motion_proof = std::env::var_os("CUMULUS_MOTION_PROOF").is_some();
     let output = root.join(if std::env::var_os("CUMULUS_PROOF_REOPEN").is_some() {
         "reopen"
     } else {
@@ -76,30 +93,49 @@ fn main() {
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
         let registry=ProfileRegistry::open(&root.join("state"),ApiOrigin::Pc)?;
         let session=Arc::new(AccountSession::new(Arc::new(Library),Some(registry.store())));
-        let client=MusicClient::with_session(session,registry);
-        app.manage(cumulus_desktop::configure_native_audio(client,&app.path().resource_dir()?,true));
+        let mut client=MusicClient::with_session(session,registry);
+        if motion_proof {
+            let wave = root.join("relay-synthetic.wav");
+            let wave = if wave.exists() { wave } else { relay_fixture::wave(&root)? };
+            client = client.with_audio_factory(move || Ok(Box::new(relay_fixture::NativeAudio::open(wave.clone())?)));
+        }
+        app.manage(if motion_proof { client } else { cumulus_desktop::configure_native_audio(client,&app.path().resource_dir()?,true) });
         app.add_capability(r#"{"identifier":"ux-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
         let handle=app.handle().clone();
         app.listen("ux-proof",move |event| {
-            let value:Value=serde_json::from_str(event.payload()).unwrap();
+            let mut value:Value=serde_json::from_str(event.payload()).unwrap();
             let stage=value["stage"].as_str().unwrap_or("");
             if stage=="resize" {
                 handle.get_webview_window("main").unwrap().set_size(tauri::LogicalSize::new(value["width"].as_f64().unwrap(),value["height"].as_f64().unwrap())).unwrap();return;
             }
             if !(["complete","failed"].contains(&stage) || stage.starts_with("ux_") && stage.chars().all(|c|c.is_ascii_alphanumeric()||c=='_')){return;}
+            if motion_proof {
+                let stage = stage.to_owned(); let handle=handle.clone(); let output=output.clone();
+                tauri::async_runtime::spawn(async move {
+                    let client=handle.state::<MusicClient>(); let epoch=client.account().unwrap().epoch;
+                    value["nativePlayer"]=serde_json::to_value(client.subscribe_playback(&epoch).await.unwrap().current().unwrap()).unwrap();
+                    fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+                    if ["complete","failed"].contains(&stage.as_str()) {
+                        let _=client.player_action(&epoch,cumulus_core::client::dto::PlayerAction::Stop).await;
+                        handle.exit(if stage=="complete" {0} else {1});
+                    }
+                });
+                return;
+            }
             fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
             if ["complete","failed"].contains(&stage) {handle.exit(if stage=="complete" {0} else {1});}
         });
         // Absolute config dataDirectory values are ignored by Tauri's safe-path
         // resolver. The builder API owns this isolated test directory explicitly.
-        tauri::WebviewWindowBuilder::from_config(app, &window_config)?
-            .data_directory(root.join("webview"))
-            .build()?;
+        let mut builder=tauri::WebviewWindowBuilder::from_config(app, &window_config)?.data_directory(root.join("webview"));
+        if motion_proof { builder=builder.initialization_script(include_str!("motion_environment.js")); }
+        builder.build()?;
         Ok(())
     }).on_page_load(|view, payload| {
         if payload.event()==PageLoadEvent::Finished && view.label()=="main" {
             let script=std::env::var_os("CUMULUS_UX_SCRIPT").map(|p|fs::read_to_string(p).unwrap());
-            view.eval(script.as_deref().unwrap_or(include_str!("ux_ui_probe.js"))).unwrap();
+            let default_script = if std::env::var_os("CUMULUS_MOTION_PROOF").is_some() { include_str!("motion_ui_probe.js") } else { include_str!("ux_ui_probe.js") };
+            view.eval(script.as_deref().unwrap_or(default_script)).unwrap();
         }
     }).run(context).expect("UX probe");
 }
