@@ -74,8 +74,9 @@
 - .build/audio-output-workspace-tests.log：224个测试目标，1042通过、0失败/忽略；
   前端193项与CI规则19项通过，Rust fmt/Clippy、前端格式与构建通过。
   最终探针的隔离命令约束及cork断言另由上述实际桌面运行覆盖。
-- 本批未修改前端：实际资产仍为 index-CQ3Nh1D3.js；动画/主题/焦点的既有
+- 原生设备边界验证未修改前端：当时资产为 index-CQ3Nh1D3.js；动画/主题/焦点的既有
   WebView证据见 motion-preferences-contracts.txt、ui-ux-validation.txt，
-  没有把本批音频探针当成设置页UI验收。
+  没有把本批音频探针当成设置页UI验收。后续接续提示退出修复使用新资产，
+  其独立截图/交互证据见ui-ux-validation.txt末节。
 - 全程生成静音媒体、远端请求0；未验证物理声卡听感、用户硬件热插拔、Windows
   真实WASAPI路由或设置页交互。自动回退、持久化和UI仍须另行实现与验证。
