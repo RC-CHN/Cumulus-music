@@ -19,7 +19,7 @@
     {
       "feature": "source/state/command serialization and recovery decision",
       "module": "core/src/relay/machine.rs",
-      "verification": "frozen M/401 vectors; no production publisher yet"
+      "verification": "frozen M/401 vectors; durable publisher and native player event adapter now integrated"
     },
     {
       "feature": "snapshot windows and voice clock",
@@ -59,14 +59,19 @@
     {
       "feature": "durable outbound intents and one-shot stale-session recovery",
       "module": "core/src/relay/publisher/",
-      "verification": "14 synthetic native tests with real SQLite and file locks; no player event subscription or live publication"
+      "verification": "14 isolated publisher tests with real SQLite and file locks; native player integration covered separately; no live publication"
+    },
+    {
+      "feature": "native player observation and background publication",
+      "module": "core/src/relay/publisher/player/ + core/src/playback/controller/",
+      "verification": "5 projection tests including 720 permutations and mixed edits; 8 native actor integration tests; 19 actual WebView states and 4 confirmed synthetic uploads including 18000ms voice seek"
     }
   ],
   "remaining": [
     {
-      "feature": "native player event subscription and publishing coordinator",
-      "status": "not implemented",
-      "details": "Native publisher implemented and tested independently; player event projection, automatic queue/voice sampling, background lifecycle, history retention, IPC recovery and desktop/live proofs still required"
+      "feature": "publication desktop recovery and journal retention",
+      "status": "not complete",
+      "details": "Native player projection, automatic EOF, voice clock, background lifecycle and synthetic GUI publication verified; public IPC recovery, visible blocked/local error state and history retention remain"
     },
     {
       "feature": "real cross-device continuation",
@@ -110,6 +115,12 @@
     "relaySettingSyntheticWrites": 6,
     "relaySettingLiveWrites": 0,
     "publicationNativeTests": 14,
-    "productionPublisherIntegrated": false
+    "productionPublisherIntegrated": true,
+    "publisherProjectionTests": 5,
+    "publisherPlayerTests": 8,
+    "publisherWebViewStates": 19,
+    "publisherSyntheticUploads": 4,
+    "publisherLiveWrites": 0,
+    "publisherDesktopRecoveryComplete": false
   }
 }

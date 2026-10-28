@@ -189,3 +189,22 @@ https://github.com/RC-CHN/Cumulus-music/actions/runs/40664543341
   合成歌曲/播客继续解码至null输出，真实账号请求0；Windows修正结果以新提交完整CI为准。
 - .build/relay-hover-ui 另存同一19状态/19张截图，逐项包含最小窗口深浅色和弹窗焦点；
   本地982项Rust、178项前端测试、严格Clippy、格式/生产构建及CI规则检查通过。
+
+上述设备开关及悬停/焦点修复的精确提交6952ef7514cdd07ad30d61a6319d0a3e6641f11d，
+完整CI 40712898063的Linux、Windows、前端与CI gate全部成功，已合入main。
+后续持久上行核心f8fe6e8578e477c16ae85dc6918558d52a5c5432的完整CI 40715546117也已成功并合入。
+https://github.com/RC-CHN/Cumulus-music/actions/runs/40715546117
+
+原生上行接线后的实际复验（2026-10-29）
+- .build/relay-runtime-ui第一次截图运行在第6状态后发现测试时序错误：提示已隐藏，但
+  关闭操作尚未收到核心确认，脚本点击了仍禁用的刷新按钮。改为等待关闭确认后继续，
+  保留产品的处理中禁用状态，不缩短等待、不忽略失败。
+- .build/relay-runtime-ui-b：19状态/19截图全部通过，实际检查浅深色、760×540窗口、
+  接续提示、设置页、弹窗遮挡与关闭焦点。真实libmpv解码生成PCM，使用null输出。
+- .build/relay-runtime-ci-final：正式CI脚本独立检查19状态和4条已确认合成上行；
+  播客实际定位18秒，发送记录progress=18000；真实账号请求0。
+- .build/relay-runtime-ux-final：首次27状态和进程重开2状态通过，覆盖标题旁编辑位置、
+  菜单键盘、嵌套弹窗焦点、主题记忆、小窗口保存按钮、长时长及歌曲行尾操作区。
+- 本批全工作区1009项Rust、178项前端及生产构建通过；多观察者的同一队列增量另补严格
+  去重断言并通过。完整原生上行契约与剩余UI恢复入口见relay-player-publication.txt。
+  本批新增上行链路的Windows结果仍以其精确提交CI为准，不沿用上批结果。
