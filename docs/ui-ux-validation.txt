@@ -540,3 +540,20 @@ Windows现场与接续提示焦点复查（2026-10-29）
   index-Dfv9KCik.css。先完成前端，再构建Tauri探针，再启动实测。
 - Linux虚拟显示器结果不声称达到用户物理刷新率；Windows精确提交完整CI和
   原生Shell仍需各自成功，不能把本地截图/测试当成CI gate。未改已发布v0.1.0。
+
+2026-10-29 弹窗和输入焦点下的空格播放键
+- 参考官方setting/hotkeyHandler（modules/.../116.js:559–603）对输入控件和精确
+  修饰组合的检查；本批修正主窗口Space入口，不冒称全局/媒体快捷键已实现。
+- .build/keyboard-modal-baseline/first/failed.json实际复现：均衡器已打开并聚焦
+  其标题时，空格仍穿透到主窗口，libmpv状态由paused变成playing、时钟继续前进。
+- 主窗口现在尊重defaultPrevented、输入法组合、repeat和Shift/Ctrl/Alt/Meta，
+  任何打开的dialog/aria-modal界面优先处理键盘；编辑区域采用isContentEditable，
+  覆盖plaintext-only及继承编辑性，并保留输入/选择/按钮/textbox的正常键盘行为。
+  页面本身的无修饰空格仍能播放/暂停，不把所有键盘操作一概屏蔽。
+- .build/keyboard-modal-fixed/report.json：真实生产WebView/IPC、合成PCM/libmpv
+  null输出，7态/7截图通过。弹窗、已处理/修饰/输入法事件、搜索输入、纯文本编辑
+  区域均未改变播放；普通页面空格两次切换playing/paused，所有阶段保持同一playId。
+  已查看均衡器打开且播放器暂停的实际截图。真实音乐请求0，不代表物理声卡听感。
+- 前端208项、格式/类型/生产构建、严格Clippy与21项CI规则通过；日志前缀
+  keyboard-modal-*。仅前端按键条件及外部验证驱动改变，没有新增核心业务实现。
+  新的keyboard_smoke.py纳入Linux/Windows各自GUI job及合成失败证据归档。

@@ -580,7 +580,10 @@ function play(index = 0) {
 function keyboard(event: KeyboardEvent) {
   if (
     event.code !== 'Space' ||
+    event.defaultPrevented ||
+    event.isComposing ||
     event.repeat ||
+    event.shiftKey ||
     event.ctrlKey ||
     event.altKey ||
     event.metaKey ||
@@ -588,11 +591,17 @@ function keyboard(event: KeyboardEvent) {
     accountsOpen.value ||
     playlistDialog.value ||
     downloadDialog.value ||
-    cloudDialogOpen.value
+    cloudDialogOpen.value ||
+    document.querySelector('dialog[open], [aria-modal="true"]')
   )
     return;
-  const target = event.target as HTMLElement;
-  if (target.closest('input,textarea,select,button,[contenteditable="true"]')) return;
+  const target = event.target;
+  if (
+    !(target instanceof HTMLElement) ||
+    target.isContentEditable ||
+    target.closest('input,textarea,select,button,[role="textbox"]')
+  )
+    return;
   if (mv.video.value?.id && (page.value.kind === 'mv' || mv.video.value.state === 'playing')) {
     event.preventDefault();
     void mv.action(mv.video.value.paused ? { kind: 'play' } : { kind: 'pause', paused: true });
