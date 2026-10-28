@@ -135,6 +135,22 @@ def main():
                 first = json.loads((root / 'run/hidden_first.json').read_text())
                 assert not first['visible'] and first['lifecycle']['hidden'] and first['preferences']['settings']['rememberChoice']
                 assert first['backgroundPlayback']['verified'] and first['backgroundPlayback']['advance'] > .2
+                transports = []
+                for label, evidence in [('暂停', 'media_paused'), ('播放', 'media_resumed'), ('停止', 'media_stopped'), ('播放', 'media_restarted')]:
+                    # Get fresh native label/enabled state: no frontend IPC command
+                    # performs transport on behalf of the real D-Bus menu callback.
+                    def available_transport():
+                        native_path, native_labels, _ = menu(item)
+                        if label not in native_labels: return None
+                        enabled = call(item, native_path, 'com.canonical.dbusmenu', 'GetProperty', GLib.Variant('(is)', (native_labels[label], 'enabled')))[0]
+                        return (native_path, native_labels[label]) if enabled else None
+                    native_path, native_id = wait(available_transport, 'enabled native ' + label)
+                    call(item, native_path, 'com.canonical.dbusmenu', 'Event', GLib.Variant('(isvu)', (native_id, 'clicked', GLib.Variant('i', 0), 0)))
+                    path = root / 'run' / (evidence + '.json')
+                    wait(path.exists, 'native transport ' + evidence)
+                    result = json.loads(path.read_text())
+                    assert result['ok'] and not result['visible'] and result['lifecycle']['hidden']
+                    transports.append(result['playerState'])
                 call(item, menu_path, 'com.canonical.dbusmenu', 'Event', GLib.Variant('(isvu)', (labels['显示 Cumulus'], 'clicked', GLib.Variant('i', 0), 0)))
                 wait(lambda: (root / 'run/hidden_second.json').exists(), 'remembered native close')
                 second = json.loads((root / 'run/hidden_second.json').read_text())
@@ -169,7 +185,7 @@ def main():
                 report = {'ok': True, 'actualWebView': True, 'actualTauriTray': True,
                     'syntheticPanelHost': True, 'productClosePolicyVerified': True,
                     'realMusicRequests': 0, 'states': 14, 'screenshots': len(seen),
-                    'nativeShowMenu': True, 'hostLossRestoresWindow': True, 'backgroundPlayback': first['backgroundPlayback'],
+                    'nativeShowMenu': True, 'nativeTransportStates': transports, 'hostLossRestoresWindow': True, 'backgroundPlayback': first['backgroundPlayback'],
                     'panelRestartReRegisters': True, 'explicitExit': True,
                     'physicalPanelIconVerified': False, 'windowsShellVerified': False}
                 (root / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n')

@@ -35,6 +35,11 @@
     await wait(()=>one('.playerbar')?.dataset.state==='paused','synthetic audio restored');click(one('.playerbar [aria-label="播放"]'));await wait(()=>one('.playerbar')?.dataset.state==='playing','native playing');
     await close();assert(!dialog().querySelector('[value="tray"]').disabled,'host not usable');click(dialog().querySelector('[name="close-remember"]'));await capture('dark_prompt');click(dialog().querySelector('.primary'));
     await wait(async()=>{const v=await state();return v.hidden&&!v.busy;},'native hide acknowledged');await emit('hidden_first');
+    for(const [stateName,stage] of [['paused','media_paused'],['playing','media_resumed'],['idle','media_stopped'],['playing','media_restarted']]) {
+      await wait(()=>one('.playerbar')?.dataset.state===stateName,'native tray '+stage);
+      assert((await state()).hidden,'tray transport unexpectedly revealed window');
+      await emit(stage,{ok:true,playerState:stateName});
+    }
     await wait(async()=>!(await state()).hidden,'native tray Show');click(one('.playerbar [aria-label="暂停"]'));await wait(()=>one('.playerbar')?.dataset.state==='paused','pause after native Show');await read();assert(one('[name="settings-close-remember"]').checked,'remember not persisted');await capture('shown_from_menu');
     click(one('.window-close'));await wait(async()=>{const v=await state();return v.hidden&&!v.busy&&!v.prompt;},'remembered tray close');await emit('hidden_second');
     await wait(async()=>{const v=await state();return !v.hidden&&!v.trayAvailable;},'host loss restored window');await capture('host_lost_restored');

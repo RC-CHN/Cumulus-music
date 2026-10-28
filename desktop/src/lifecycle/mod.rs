@@ -2,6 +2,7 @@
 //! hiding never performs logout, room cleanup, media changes or remote writes.
 mod actions;
 mod availability;
+mod media;
 use cumulus_core::{
     client::{MusicClient, dto::WindowPreferencesView},
     preferences::window::CloseBehavior,
@@ -161,6 +162,7 @@ pub(crate) fn stop<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     {
         monitor.take();
     }
+    media::stop(app);
     app.remove_tray_by_id(TRAY_ID);
 }
 /// Calls must originate on the native GUI thread. A missing tray library or
@@ -201,7 +203,22 @@ fn build<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
     let show_item = MenuItem::with_id(app, "cumulus-show", "显示 Cumulus", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "cumulus-quit", "退出 Cumulus", true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
-    let menu = Menu::with_items(app, &[&show_item, &separator, &quit])?;
+    let media = media::Items::new(app)?;
+    let transport_separator = PredefinedMenuItem::separator(app)?;
+    let menu = Menu::with_items(
+        app,
+        &[
+            &show_item,
+            &separator,
+            &media.title,
+            &media.previous,
+            &media.toggle,
+            &media.next,
+            &media.stop,
+            &transport_separator,
+            &quit,
+        ],
+    )?;
     let mut builder = TrayIconBuilder::with_id(TRAY_ID)
         .tooltip("Cumulus 云间音乐")
         .menu(&menu)
@@ -209,7 +226,7 @@ fn build<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
         .on_menu_event(|app, event| match event.id.as_ref() {
             "cumulus-show" => show(app),
             "cumulus-quit" => actions::request(app, true),
-            _ => {}
+            _ => media::activate(app, event.id.as_ref()),
         })
         .on_tray_icon_event(|tray, event| {
             if matches!(
@@ -227,6 +244,7 @@ fn build<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
         builder = builder.icon(icon.clone());
     }
     let tray = builder.build(app)?;
+    media::install(app, media);
     let observed = app.clone();
     #[cfg(target_os = "linux")]
     let monitor = availability::monitor(tray.id().as_ref(), move |ok| availability(&observed, ok));
