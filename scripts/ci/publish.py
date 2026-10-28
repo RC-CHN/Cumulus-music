@@ -16,6 +16,36 @@ def api(path, *args):
     return json.loads(subprocess.check_output(["gh", "api", path, *args], text=True, encoding="utf-8"))
 
 
+def find_release(repository, tag):
+    # The tags endpoint does not return an unpublished draft. Resolve its ID.
+    pages = api(f"repos/{repository}/releases?per_page=100", "--paginate", "--slurp")
+    matches = [release for page in pages for release in page if release["tag_name"] == tag]
+    assert len(matches) <= 1, "duplicate release records"
+    if not matches:
+        return None
+    release = api(f"repos/{repository}/releases/{matches[0]['id']}")
+    assert release["id"] == matches[0]["id"] and release["tag_name"] == tag, "release identity changed"
+    return release
+
+
+def validate_tag(reference, tag, sha):
+    assert reference["ref"] == f"refs/tags/{tag}", "wrong tag"
+    assert reference["object"]["type"] == "commit" and reference["object"]["sha"] == sha, "tag target changed"
+
+
+def validate_uploaded(release, tag, files):
+    assert release["tag_name"] == tag and release["draft"] is True and not release["prerelease"], "only the exact unpublished draft can be resumed"
+    assets = release["assets"]
+    expected = {path.name: path for path in files}
+    assert len(assets) == len(expected) and {asset["name"] for asset in assets} == set(expected), "uploaded asset set mismatch"
+    for asset in assets:
+        path = expected[asset["name"]]
+        assert asset["state"] == "uploaded" and asset["size"] == path.stat().st_size, "uploaded asset size/state mismatch"
+        with path.open("rb") as stream:
+            digest = hashlib.file_digest(stream, "sha256").hexdigest()
+        assert asset.get("digest") == f"sha256:{digest}", "uploaded asset digest missing or mismatch"
+
+
 def validate_run(run, repository, sha, run_id, workflow_id):
     assert str(run["id"]) == str(run_id), "wrong CI run"
     assert run["repository"]["full_name"] == repository and run["head_repository"]["full_name"] == repository, "CI repository mismatch"
@@ -50,12 +80,26 @@ def main():
     parser.add_argument("--version", required=True)
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--publish", action="store_true", help="otherwise verify/download only")
+    parser.add_argument("--resume-draft", action="store_true", help="verify an existing tag/draft without creating or replacing assets")
     args = parser.parse_args()
     assert VERSION.fullmatch(args.version) and args.run_id.isdecimal(), "invalid release input"
     repository = os.environ["GITHUB_REPOSITORY"]
     assert os.environ["GITHUB_REF"] == "refs/heads/main", "CD must run on main"
-    sha = check_release(args.version)
-    assert sha == os.environ["GITHUB_SHA"], "checkout differs from CD commit"
+    assert git("rev-parse", "HEAD") == os.environ["GITHUB_SHA"], "checkout differs from CD commit"
+    tag = f"v{args.version}"
+    if args.resume_draft:
+        reference = api(f"repos/{repository}/git/ref/tags/{tag}")
+        sha = check_release(args.version, reference["object"]["sha"])
+        validate_tag(reference, tag, sha)
+        # Recovery code may follow the marker on main, but cannot publish a
+        # release from a different lineage or substitute its own source tree.
+        subprocess.run(["git", "merge-base", "--is-ancestor", sha, "HEAD"], check=True)
+        draft = find_release(repository, tag)
+        assert draft is not None and draft["draft"] is True, "unpublished draft missing"
+    else:
+        sha = check_release(args.version)
+        assert sha == os.environ["GITHUB_SHA"], "release must target the CD commit"
+        draft = None
     workflow = api(f"repos/{repository}/actions/workflows/ci.yml")
 
     def verified_run():
@@ -67,11 +111,10 @@ def main():
         return run
 
     run = verified_run()
-    tag = f"v{args.version}"
-    existing = api(f"repos/{repository}/git/matching-refs/tags/{tag}")
-    assert not any(ref["ref"] == f"refs/tags/{tag}" for ref in existing), "release tag already exists; never move or overwrite it"
-    releases = json.loads(subprocess.check_output(["gh", "release", "list", "--repo", repository, "--limit", "1000", "--json", "tagName"], text=True))
-    assert not any(release["tagName"] == tag for release in releases), "release already exists (including draft)"
+    if not args.resume_draft:
+        existing = api(f"repos/{repository}/git/matching-refs/tags/{tag}")
+        assert not any(ref["ref"] == f"refs/tags/{tag}" for ref in existing), "release tag already exists; never move or overwrite it"
+        assert find_release(repository, tag) is None, "release already exists (including draft)"
     destination = Path(".build/cd")
     destination.mkdir(parents=True, exist_ok=False)
     files = []
@@ -92,18 +135,27 @@ def main():
         "rebuiltInCD": False}, indent=2) + "\n", encoding="utf-8")
     notes = destination / "release-notes.txt"
     notes.write_text(Path(f"docs/releases/{args.version}.txt").read_text(encoding="utf-8") + f"\nCI: {run['html_url']}\nCommit: {sha}\n", encoding="utf-8")
+    uploaded_files = [*files, sums, evidence]
+    if args.resume_draft:
+        validate_uploaded(draft, tag, uploaded_files)
     # Recheck after download; a rerun must not substitute another attempt.
     assert verified_run()["run_attempt"] == run["run_attempt"], "CI was rerun during release preparation"
     if args.publish:
-        # No force option: a racing/preexisting tag causes an API failure.
-        api(f"repos/{repository}/git/refs", "--method", "POST", "-f", f"ref=refs/tags/{tag}", "-f", f"sha={sha}")
-        # Upload into a draft; a failed upload never exposes a partial release.
-        subprocess.run(["gh", "release", "create", tag, "--repo", repository, "--verify-tag", "--draft", "--title", f"Cumulus Music {args.version}", "--notes-file", str(notes), *map(str, [*files, sums, evidence])], check=True)
-        release = api(f"repos/{repository}/releases/tags/{tag}")
-        assert {asset["name"] for asset in release["assets"]} == {p.name for p in [*files, sums, evidence]}, "uploaded asset set mismatch"
+        if not args.resume_draft:
+            # No force option: a racing/preexisting tag causes an API failure.
+            api(f"repos/{repository}/git/refs", "--method", "POST", "-f", f"ref=refs/tags/{tag}", "-f", f"sha={sha}")
+            # Upload into a draft; a failed upload never exposes a partial release.
+            subprocess.run(["gh", "release", "create", tag, "--repo", repository, "--verify-tag", "--draft", "--title", f"Cumulus Music {args.version}", "--notes-file", str(notes), *map(str, uploaded_files)], check=True)
+        release = find_release(repository, tag)
+        assert release is not None, "uploaded draft missing"
+        if draft is not None:
+            assert release["id"] == draft["id"], "draft replaced during recovery"
+        validate_uploaded(release, tag, uploaded_files)
+        validate_tag(api(f"repos/{repository}/git/ref/tags/{tag}"), tag, sha)
         assert verified_run()["run_attempt"] == run["run_attempt"], "CI was rerun before publication"
-        subprocess.run(["gh", "release", "edit", tag, "--repo", repository, "--draft=false", "--latest"], check=True)
-    print(json.dumps({"ok": True, "published": args.publish, "tag": tag, "commit": sha, "ciRun": run["id"]}))
+        published = api(f"repos/{repository}/releases/{release['id']}", "--method", "PATCH", "-F", "draft=false", "-f", "make_latest=true")
+        assert published["id"] == release["id"] and published["tag_name"] == tag and published["draft"] is False, "publication was not confirmed"
+    print(json.dumps({"ok": True, "published": args.publish, "resumedDraft": args.resume_draft, "tag": tag, "commit": sha, "ciRun": run["id"]}))
 
 
 if __name__ == "__main__":

@@ -11,6 +11,11 @@ on:
         description: 'Successful CI run on the exact release commit'
         required: true
         type: string
+      resume_draft:
+        description: 'Resume an unpublished draft after verifying all existing assets'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -41,4 +46,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ inputs.version }}
           CI_RUN_ID: ${{ inputs.ci_run_id }}
-        run: python scripts/ci/publish.py --version "$RELEASE_VERSION" --run-id "$CI_RUN_ID" --publish
+          RESUME_DRAFT: ${{ inputs.resume_draft }}
+        run: |
+          if [ "$RESUME_DRAFT" = "true" ]; then
+            python scripts/ci/publish.py --version "$RELEASE_VERSION" --run-id "$CI_RUN_ID" --publish --resume-draft
+          else
+            python scripts/ci/publish.py --version "$RELEASE_VERSION" --run-id "$CI_RUN_ID" --publish
+          fi

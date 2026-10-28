@@ -1,0 +1,36 @@
+发行草稿恢复
+
+正常发布仍要求 main 当前 HEAD 是唯一的空 chore:release X.Y.Z，且该提交自身的完整
+CI 已通过。Release workflow 从指定的 CI run/attempt 下载两个平台的原有产物，
+校验 manifest、大小和 SHA256，生成校验和与 provenance，创建标签和草稿并上传。
+
+0.1.0 的第一次 CD 已成功创建标签与8个附件，随后 releases/tags/v0.1.0 对未公开草稿
+返回404。失败发生在公开发布之前，不代表目标提交的 CI 或产物失败。
+草稿改为通过已授权的分页 release 列表找到唯一的精确 tag，再按 release ID 读取、
+核对和发布。正常路径与恢复路径均验证上传后附件的集合、大小、状态和 SHA256。
+
+恢复入口
+  gh workflow run release.yml --repo OWNER/REPO --ref main \
+    -f version=X.Y.Z -f ci_run_id=EXACT_SUCCESSFUL_CI -f resume_draft=true
+
+恢复必须满足：
+- 当前 checkout 与 workflow 的 GITHUB_SHA 一致，分支仍为 main。
+- 已有标签直接指向唯一的空 release commit，且该提交是 main 当前代码的祖先。
+  恢复脚本可以是之后的普通修复提交；不能把它当成发行二进制的来源。
+- 版本文件仍与待恢复版本一致；release commit 不能夹带修改。
+- CI workflow、仓库、main push、精确标签 SHA、attempt 和全部必需 job 再次验证。
+- 原标签与未公开草稿必须已存在；公开 release、重复/更换的草稿、缺失附件均拒绝。
+- 从该 CI 再下载产物，核对 manifest，重新计算所有文件、SHA256SUMS 和 provenance。
+  现有上传附件必须与重新验证的文件逐字节哈希一致，缺 digest 也拒绝。
+- 发布前重查标签、草稿 ID 与附件、CI 结果及 attempt。
+
+恢复只将同一草稿改为公开；没有创建/移动标签、重建二进制或上传/覆盖附件的操作。
+恢复不会绕过失败 CI，也不能修补已发布版本。普通发布没有开启恢复参数时，
+遇到已存在的标签或草稿仍直接拒绝。
+
+自动验证
+  python3 -m unittest discover -s scripts/ci -p 'test_*.py' -v
+test_release_draft.py 覆盖草稿分页和精确匹配、身份变化、附件缺失/重复/摘要变化、
+公开版本拒绝、直接标签目标，以及只下载旧 CI 产物并发布既有草稿的完整控制路径。
+测试不访问 GitHub，也不执行实际发布。真实恢复前可不传 --publish 做只读核验；
+输出在新的 .build/cd，目录已存在时拒绝混用，不复用上次下载的未检查内容。
