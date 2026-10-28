@@ -18,7 +18,8 @@ if __name__ == '__main__':
     executable = native / 'engine_roundtrip.exe'
     shutil.copy2(Path(os.environ.get('CARGO_TARGET_DIR', '.build/target')) / 'debug/examples/engine_roundtrip.exe', executable)
     env = os.environ.copy()
-    system = Path(env['SystemRoot'])
+    # os.environ is case-insensitive on Windows; its dict copy is not.
+    system = Path(os.environ['SystemRoot'])
     env['PATH'] = os.pathsep.join(map(str, [native, system / 'System32', system]))
     failures = []
     commands = [
