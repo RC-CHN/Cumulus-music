@@ -89,7 +89,7 @@
 .window-controls button:active {
   transform: scale(0.96);
 }
-.playlist-card-controls,
+.playlist-card-menu,
 .track-more {
   transition: opacity 140ms ease;
 }

@@ -1,0 +1,138 @@
+<script setup lang="ts">
+import { nextTick, onUnmounted, ref, useId, watch } from 'vue';
+import Icon from './Icon.vue';
+import type { MenuItem } from '../services/menu';
+const props = withDefaults(defineProps<{ label: string; items: MenuItem[]; icon?: string }>(), {
+  icon: 'more',
+});
+const emit = defineEmits<{ select: [key: string] }>();
+const open = ref(false);
+const trigger = ref<HTMLButtonElement>();
+const panel = ref<HTMLElement>();
+const position = ref({ left: '0px', top: '0px', visibility: 'hidden' as 'hidden' | 'visible' });
+const id = useId();
+let stop: (() => void) | undefined;
+const choices = () => [
+  ...(panel.value?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? []),
+];
+function close(restore = false) {
+  open.value = false;
+  if (restore) trigger.value?.focus({ preventScroll: true });
+}
+async function show(last = false) {
+  open.value = true;
+  position.value.visibility = 'hidden';
+  await nextTick();
+  if (!open.value || !trigger.value || !panel.value) return;
+  const anchor = trigger.value.getBoundingClientRect(),
+    box = panel.value.getBoundingClientRect();
+  const left = Math.max(8, Math.min(anchor.right - box.width, innerWidth - box.width - 8));
+  const top =
+    anchor.bottom + box.height + 8 < innerHeight
+      ? anchor.bottom + 6
+      : Math.max(8, anchor.top - box.height - 6);
+  position.value = { left: `${left}px`, top: `${top}px`, visibility: 'visible' };
+  await nextTick();
+  if (!open.value) return;
+  const items = choices();
+  (last ? items.at(-1) : items[0])?.focus({ preventScroll: true });
+}
+function select(key: string) {
+  close(true);
+  emit('select', key);
+}
+function keydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    event.stopPropagation();
+    close(true);
+    return;
+  }
+  if (event.key === 'Tab') {
+    close(true);
+    return;
+  }
+  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+  event.preventDefault();
+  const items = choices();
+  const current = items.indexOf(document.activeElement as HTMLButtonElement);
+  const target =
+    event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? items.length - 1
+        : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+  items[target]?.focus({ preventScroll: true });
+}
+watch(open, (active) => {
+  stop?.();
+  stop = undefined;
+  if (!active) return;
+  const outside = (event: PointerEvent) => {
+    if (
+      !panel.value?.contains(event.target as Node) &&
+      !trigger.value?.contains(event.target as Node)
+    )
+      close();
+  };
+  const scroll = (event: Event) => {
+    if (!panel.value?.contains(event.target as Node)) close();
+  };
+  const resize = () => close();
+  document.addEventListener('pointerdown', outside, true);
+  document.addEventListener('scroll', scroll, true);
+  window.addEventListener('resize', resize);
+  stop = () => {
+    document.removeEventListener('pointerdown', outside, true);
+    document.removeEventListener('scroll', scroll, true);
+    window.removeEventListener('resize', resize);
+  };
+});
+onUnmounted(() => stop?.());
+defineExpose({ show });
+</script>
+<template>
+  <span class="action-menu-host">
+    <button
+      ref="trigger"
+      class="icon-button menu-trigger"
+      :aria-label="label"
+      :title="label"
+      aria-haspopup="menu"
+      :aria-expanded="open"
+      :aria-controls="open ? id : undefined"
+      @click="open ? close() : show()"
+      @keydown.down.prevent="show()"
+      @keydown.up.prevent="show(true)"
+    >
+      <Icon :name="icon" />
+    </button>
+    <Teleport to="body">
+      <Transition name="menu">
+        <div
+          v-if="open"
+          :id="id"
+          ref="panel"
+          class="action-menu"
+          role="menu"
+          :aria-label="label"
+          :style="position"
+          @keydown="keydown"
+        >
+          <button
+            v-for="item in items"
+            :key="item.key"
+            :role="item.checked === undefined ? 'menuitem' : 'menuitemradio'"
+            :aria-checked="item.checked"
+            :disabled="item.disabled"
+            :class="{ danger: item.danger, checked: item.checked }"
+            @click="select(item.key)"
+          >
+            <Icon v-if="item.icon" :name="item.icon" /><span>{{ item.label }}</span
+            ><Icon v-if="item.checked" class="menu-check" name="check" />
+          </button>
+        </div>
+      </Transition>
+    </Teleport>
+  </span>
+</template>

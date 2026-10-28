@@ -176,9 +176,9 @@ defineExpose({ requestDelete, focus });
   width: 100%;
   min-height: 100px;
   resize: vertical;
-  border: 1px solid #e5e4e9;
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: var(--panel, #fff);
+  background: var(--surface-raised);
   padding: 12px;
   line-height: 22px;
   color: inherit;
@@ -191,7 +191,7 @@ defineExpose({ requestDelete, focus });
   gap: 18px;
   margin-top: 12px;
   font-size: 12px;
-  color: #888;
+  color: var(--text-secondary);
 }
 .comment-compose-footer .primary {
   min-width: 175px;
@@ -199,14 +199,14 @@ defineExpose({ requestDelete, focus });
   border-radius: 20px;
 }
 .overlength {
-  color: #d2344a;
+  color: var(--accent);
 }
 .comment-reply-draft {
   display: flex;
   justify-content: space-between;
   gap: 12px;
   align-items: center;
-  background: #f5f4f7;
+  background: var(--surface-alt);
   padding: 10px 12px;
   margin-bottom: 10px;
   border-radius: 8px;
@@ -218,7 +218,7 @@ defineExpose({ requestDelete, focus });
   white-space: nowrap;
 }
 .comment-write-pending {
-  background: #fff5f7;
+  background: var(--surface-alt);
   padding: 12px;
   border-radius: 8px;
   margin-top: 16px;
@@ -232,12 +232,12 @@ defineExpose({ requestDelete, focus });
   overflow-wrap: anywhere;
   max-height: 90px;
   overflow-y: auto;
-  color: #777;
+  color: var(--text-secondary);
 }
 .comment-write-history {
   font-size: 12px;
   margin: 12px 0;
-  color: #777;
+  color: var(--text-secondary);
 }
 .comment-write-history summary {
   cursor: pointer;
@@ -251,7 +251,7 @@ defineExpose({ requestDelete, focus });
 }
 .comment-write-message {
   font-size: 13px;
-  color: #53765c;
+  color: var(--text-secondary);
 }
 .comment-write-confirm {
   width: 440px;
@@ -261,7 +261,7 @@ defineExpose({ requestDelete, focus });
   border: 0;
   border-radius: 16px;
   color: var(--text);
-  background: var(--panel, #fff);
+  background: var(--surface-raised);
 }
 .comment-write-confirm::backdrop {
   background: #0005;
@@ -284,8 +284,8 @@ defineExpose({ requestDelete, focus });
   margin: 14px 0;
   max-height: 150px;
   overflow: auto;
-  color: #777;
-  border-left: 2px solid #ddd;
+  color: var(--text-secondary);
+  border-left: 2px solid var(--line);
   padding-left: 12px;
   white-space: pre-wrap;
 }

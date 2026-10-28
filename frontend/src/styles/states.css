@@ -6,12 +6,12 @@
   align-items: center;
   justify-content: center;
   gap: 20px;
-  color: #a39bab;
+  color: var(--muted);
   font-size: 13px;
   text-align: center;
 }
 .empty-state h1 {
-  color: #413a49;
+  color: var(--text);
   font-size: 23px;
 }
 .welcome-note {
@@ -25,7 +25,7 @@
 .spinner {
   width: 24px;
   height: 24px;
-  border: 2px solid #f5e8ef;
+  border: 2px solid var(--line);
   border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
@@ -43,10 +43,10 @@
   justify-content: space-between;
   padding: 10px 14px;
   margin-bottom: 10px;
-  background: #fff2f4;
+  background: var(--danger-bg);
   border-radius: 8px;
   font-size: 12px;
-  color: #bf5667;
+  color: var(--danger);
   flex-shrink: 0;
 }
 .playerbar {
@@ -55,8 +55,8 @@
   align-items: center;
   gap: 12px;
   padding: 0 30px;
-  background: #fff;
-  border-top: 1px solid #eeeaf0;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
   z-index: 2;
 }
 .empty-cover {
@@ -64,18 +64,18 @@
   place-items: center;
   width: 48px;
   height: 48px;
-  background: #f3f0f5;
+  background: var(--surface-alt);
   border-radius: 8px;
-  color: #c7bfce;
+  color: var(--art-color);
 }
 .playerbar > div {
   display: flex;
   flex-direction: column;
   gap: 4px;
   font-size: 13px;
-  color: #7b7285;
+  color: var(--text-secondary);
 }
 .playerbar small {
   font-size: 11px;
-  color: #b1a8b8;
+  color: var(--muted);
 }

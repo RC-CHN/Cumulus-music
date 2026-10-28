@@ -322,10 +322,10 @@ async function applyLatest() {
   max-width: calc(100vw - 24px);
   max-height: calc(100vh - 24px);
   padding: 30px 39px 28px;
-  border: 1px solid #eee;
+  border: 1px solid var(--line);
   border-radius: 16px;
-  background: var(--panel, #fff);
-  color: var(--text, #333);
+  background: var(--surface-raised);
+  color: var(--text);
   box-shadow: 0 18px 70px #0003;
   overflow: hidden;
 }
@@ -366,7 +366,7 @@ header .icon-button {
   position: relative;
   overflow: hidden;
   border-radius: 10px;
-  background: #eee;
+  background: var(--surface-hover);
   touch-action: none;
   outline-offset: -2px;
 }
@@ -405,8 +405,8 @@ header .icon-button {
   justify-content: center;
   flex-direction: column;
   gap: 12px;
-  color: #777;
-  background: #f7f7f8;
+  color: var(--text-secondary);
+  background: var(--surface-alt);
   border-radius: 10px;
 }
 .cover-empty img {
@@ -429,7 +429,7 @@ header .icon-button {
   gap: 12px;
   margin: 18px 0 10px;
   font-size: 12px;
-  color: #777;
+  color: var(--text-secondary);
 }
 .cover-zoom input {
   flex: 1;
@@ -441,16 +441,16 @@ header .icon-button {
 .muted {
   font-size: 12px;
   line-height: 20px;
-  color: #888;
+  color: var(--text-secondary);
   margin: 8px 0;
 }
 .cover-status {
-  color: #555;
+  color: var(--text-secondary);
 }
 .error-state {
   font-size: 13px;
   line-height: 20px;
-  color: #c23d49;
+  color: var(--danger);
   margin: 10px 0;
 }
 .cover-secondary {
@@ -460,7 +460,7 @@ header .icon-button {
 }
 .text-button {
   font-size: 12px;
-  color: var(--accent, #ed4053);
+  color: var(--accent);
 }
 progress {
   width: 100%;
@@ -469,7 +469,7 @@ progress {
 }
 .cover-latest {
   font-size: 13px;
-  background: #f7f7f8;
+  background: var(--surface-alt);
   padding: 10px;
   border-radius: 8px;
   overflow-wrap: anywhere;
@@ -489,11 +489,11 @@ footer button {
   font-size: 14px;
 }
 .cover-cancel {
-  border: 1px solid #ddd;
+  border: 1px solid var(--line);
 }
 .primary {
-  background: var(--accent, #ed4053);
-  color: white;
+  background: var(--accent-fill);
+  color: var(--on-accent);
 }
 button:disabled {
   opacity: 0.5;

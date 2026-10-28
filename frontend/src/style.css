@@ -1,3 +1,4 @@
+@import './styles/tokens.css';
 @import './styles/base.css';
 @import './styles/shell.css';
 @import './styles/content.css';
@@ -15,3 +16,4 @@
 
 @import './styles/window.css';
 @import './styles/motion.css';
+@import './styles/menus.css';

@@ -43,8 +43,8 @@
   flex-shrink: 0;
 }
 .download-button {
-  border: 1px solid #e6e5e9;
-  background: #fff;
+  border: 1px solid var(--line);
+  background: var(--surface);
   border-radius: 8px;
   min-height: 40px;
   padding: 8px 16px;
@@ -55,7 +55,7 @@
   min-width: 94px;
 }
 .download-button:hover:not(:disabled) {
-  background: #f8f7fa;
+  background: var(--surface-alt);
 }
 .download-toolbar .primary {
   display: flex;
@@ -78,7 +78,7 @@
   border: 0;
   font: inherit;
   padding: 6px 24px 6px 6px;
-  background: #f7f6f8
+  background: var(--surface-alt)
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 12 8'%3E%3Cpath d='m1 1 5 5 5-5' fill='none' stroke='%2392919a' stroke-width='1.5'/%3E%3C/svg%3E")
     no-repeat right 6px center;
   color: inherit;
@@ -89,7 +89,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  background: #f7f6f8;
+  background: var(--surface-alt);
   border-radius: 18px;
   padding: 4px 12px;
   height: 34px;
@@ -132,7 +132,7 @@
   grid-template-columns: 36px minmax(150px, 1.8fr) minmax(140px, 1.4fr) 76px;
 }
 .download-row:not(.download-table-header):hover {
-  background: #f5f4f7;
+  background: var(--surface-alt);
 }
 .download-row.current {
   color: var(--accent);
@@ -172,7 +172,7 @@
   color: var(--muted);
 }
 .download-quality {
-  color: #b6a079;
+  color: var(--gold);
   font-size: 10px;
 }
 .download-progress {
@@ -188,13 +188,13 @@
   border-radius: 3px;
   overflow: hidden;
   accent-color: var(--accent);
-  background: #ecebf0;
+  background: var(--surface-hover);
 }
 .download-progress progress::-webkit-progress-bar {
-  background: #ecebf0;
+  background: var(--surface-hover);
 }
 .download-progress progress::-webkit-progress-value {
-  background: var(--accent);
+  background: var(--accent-fill);
   border-radius: 3px;
 }
 .download-progress small {
@@ -231,13 +231,13 @@
 }
 .download-operation {
   border-radius: 8px;
-  background: #faf6ef;
+  background: var(--surface-alt);
   padding: 10px 14px;
   margin-bottom: 8px;
 }
 .download-operation p {
   margin-top: 5px;
-  color: #8b8274;
+  color: var(--text-secondary);
 }
 .download-operation .text-button {
   padding-left: 0;

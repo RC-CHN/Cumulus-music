@@ -1,0 +1,82 @@
+.action-menu-host,
+.appearance-menu {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.menu-trigger .icon {
+  width: 18px;
+  height: 18px;
+}
+.action-menu {
+  position: fixed;
+  z-index: 70;
+  min-width: 176px;
+  max-width: calc(100vw - 16px);
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow);
+  color: var(--text);
+}
+.action-menu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  text-align: left;
+  border-radius: 7px;
+  font-size: 13px;
+}
+.action-menu button:hover:not(:disabled),
+.action-menu button:focus-visible {
+  background: var(--surface-hover);
+}
+.action-menu button .icon {
+  width: 17px;
+  height: 17px;
+  color: var(--muted);
+}
+.action-menu button.checked {
+  color: var(--accent);
+}
+.action-menu .menu-check {
+  margin-left: auto;
+  color: var(--accent);
+}
+.appearance-warning {
+  position: absolute;
+  right: 0;
+  top: 38px;
+  z-index: 71;
+  white-space: nowrap;
+  padding: 8px 12px;
+  background: var(--warning-bg);
+  color: var(--warning);
+  border-radius: 8px;
+  font-size: 12px;
+}
+.menu-enter-active,
+.menu-leave-active {
+  transition:
+    opacity 100ms ease,
+    transform 120ms ease;
+}
+.menu-enter-from,
+.menu-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .menu-enter-active,
+  .menu-leave-active {
+    transition: none;
+  }
+  .menu-enter-from,
+  .menu-leave-to {
+    transform: none;
+  }
+}

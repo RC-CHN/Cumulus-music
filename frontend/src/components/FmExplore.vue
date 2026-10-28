@@ -118,8 +118,8 @@ function tab(key: string) {
   cursor: pointer;
 }
 .fm-zone-tabs button[aria-pressed='true'] {
-  background: #fae9ed;
-  color: #ec4141;
+  background: var(--surface-alt);
+  color: var(--accent);
 }
 .fm-card-grid {
   display: grid;
@@ -162,7 +162,7 @@ function tab(key: string) {
   position: absolute;
   inset: 0 0 auto;
   padding: 16px 12px 32px;
-  color: white;
+  color: var(--on-accent);
   font-size: 18px;
   background: linear-gradient(#0008, transparent);
 }
@@ -172,7 +172,7 @@ function tab(key: string) {
   position: absolute;
   top: 40%;
   left: 35%;
-  color: white;
+  color: var(--on-accent);
 }
 .fm-card-play {
   border: 0;
@@ -182,8 +182,8 @@ function tab(key: string) {
   right: 10px;
   border-radius: 50%;
   padding: 8px;
-  background: #fff;
-  color: #ec4141;
+  background: var(--surface);
+  color: var(--accent);
   display: flex;
 }
 .fm-card-subtitle {
@@ -196,7 +196,7 @@ function tab(key: string) {
   font-size: 13px;
 }
 .fm-source-card button:focus-visible {
-  outline: 2px solid #ec4141;
+  outline: 2px solid var(--accent);
   outline-offset: 4px;
 }
 </style>

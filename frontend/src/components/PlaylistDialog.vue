@@ -4,6 +4,7 @@ import type { PlaylistManager } from '../composables/usePlaylists';
 import type { AccountView, PlaylistView, TrackView } from '../services/contracts';
 import { coverMessage, type CoverOutcome } from '../services/playlistCover';
 import PlaylistCoverDialog from './PlaylistCoverDialog.vue';
+import ModalTransition from './ModalTransition.vue';
 import {
   playlistLength,
   playlistPending,
@@ -29,6 +30,8 @@ const emit = defineEmits<{
 const { editor, busy, loading, error, result, operations, coverOperations, tags, tagError } =
   props.manager;
 const dialog = ref<HTMLDialogElement>();
+const nameInput = ref<HTMLInputElement>();
+let focusedName = false;
 const name = ref(''),
   description = ref(''),
   selectedTags = ref<string[]>([]),
@@ -67,6 +70,7 @@ onMounted(() => {
   dialog.value?.showModal();
   props.manager.reset();
   destination.value = own.value[0]?.id ?? '';
+  if (props.target.kind === 'create') void nextTick(() => nameInput.value?.focus());
   if (props.target.kind === 'edit') {
     const target = props.target;
     void props.manager.open(target.id).then(() => {
@@ -85,6 +89,10 @@ watch(editor, (p) => {
     name.value = p.name;
     description.value = p.description;
     selectedTags.value = [...p.tags];
+    if (!focusedName) {
+      focusedName = true;
+      void nextTick(() => nameInput.value?.focus());
+    }
   }
 });
 async function coverSaved(outcome: CoverOutcome) {
@@ -347,11 +355,18 @@ async function trackAction(action: 'add' | 'delete' | 'up' | 'down') {
           </div>
           <label
             >歌单名称<input
+              ref="nameInput"
               v-model="name"
               aria-label="歌单名称"
+              aria-describedby="playlist-name-count"
+              :aria-invalid="!name.trim() || /[@#]/.test(name) || playlistLength(name.trim()) > 40"
               placeholder="输入歌单标题"
               maxlength="80"
-            /><small>{{ playlistLength(name.trim()) }} / 40</small></label
+            /><small
+              id="playlist-name-count"
+              :class="{ 'form-warning': playlistLength(name.trim()) > 40 }"
+              >{{ playlistLength(name.trim()) }} / 40 · 中文计 2 个字符</small
+            ></label
           >
           <label v-if="target.kind === 'create'" class="private-checkbox"
             ><input
@@ -405,9 +420,15 @@ async function trackAction(action: 'add' | 'delete' | 'up' | 'down') {
               >简介<textarea
                 v-model="description"
                 aria-label="歌单简介"
+                aria-describedby="playlist-description-count"
+                :aria-invalid="playlistLength(description) > 1000"
                 rows="5"
                 maxlength="2000"
-              /><small>{{ playlistLength(description) }} / 1000</small></label
+              /><small
+                id="playlist-description-count"
+                :class="{ 'form-warning': playlistLength(description) > 1000 }"
+                >{{ playlistLength(description) }} / 1000</small
+              ></label
             >
           </template>
           <p v-if="name && invalid" class="form-warning">
@@ -472,33 +493,37 @@ async function trackAction(action: 'add' | 'delete' | 'up' | 'down') {
       </fieldset>
     </form>
     <p v-if="busy" class="muted" role="status">正在提交并核对，请稍候…</p>
+    <Teleport to="body"
+      ><ModalTransition
+        ><PlaylistCoverDialog
+          v-if="coverOpen && editor"
+          :account="account"
+          :editor="editor"
+          @close="
+            coverOpen = false;
+            manager.refreshOperations();
+          "
+          @saved="coverSaved"
+          @expired="emit('expired')" /></ModalTransition
+    ></Teleport>
   </dialog>
-  <PlaylistCoverDialog
-    v-if="coverOpen && editor"
-    :account="account"
-    :editor="editor"
-    @close="
-      coverOpen = false;
-      manager.refreshOperations();
-    "
-    @saved="coverSaved"
-    @expired="emit('expired')"
-  />
 </template>
 <style scoped>
 .playlist-cover-edit {
-  display: flex;
-  justify-content: center;
-  margin: 0 0 18px;
+  float: right;
+  margin: 0 0 12px 20px;
+}
+.playlist-cover-edit + label {
+  margin-top: 0;
 }
 .playlist-cover-edit button {
   position: relative;
-  width: 178px;
-  height: 178px;
+  width: 112px;
+  height: 112px;
   display: grid;
   place-items: center;
-  background: #f4f4f6;
-  color: #aaa;
+  background: var(--surface-alt);
+  color: var(--muted);
   border-radius: 12px;
   overflow: hidden;
 }
@@ -511,8 +536,8 @@ async function trackAction(action: 'add' | 'delete' | 'up' | 'down') {
   position: absolute;
   inset: auto 0 0;
   background: #0006;
-  color: white;
-  font-size: 13px;
+  color: var(--on-accent);
+  font-size: 11px;
   padding: 8px;
   text-align: center;
 }
@@ -520,7 +545,13 @@ async function trackAction(action: 'add' | 'delete' | 'up' | 'down') {
   background: #0008;
 }
 .playlist-cover-edit .icon {
-  width: 48px;
-  height: 48px;
+  width: 36px;
+  height: 36px;
+}
+@media (max-height: 650px) {
+  .playlist-cover-edit button {
+    width: 88px;
+    height: 88px;
+  }
 }
 </style>

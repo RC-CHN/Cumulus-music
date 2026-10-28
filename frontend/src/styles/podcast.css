@@ -49,7 +49,7 @@
   color: var(--muted);
 }
 .podcast-tabs .active {
-  color: #26252b;
+  color: var(--text);
   font-weight: 700;
   border-bottom: 3px solid var(--accent);
 }
@@ -65,7 +65,7 @@
   color: var(--muted);
 }
 .podcast-subtabs .active {
-  background: #fff0f2;
+  background: var(--surface-alt);
   color: var(--accent);
   font-weight: 600;
 }
@@ -89,7 +89,7 @@
   border: 1px solid var(--line);
   border-radius: 18px;
   padding: 7px 12px;
-  background: #f8f8fa;
+  background: var(--surface-alt);
 }
 .podcast-grid {
   display: grid;
@@ -130,7 +130,7 @@
 .podcast-art {
   display: grid;
   place-items: center;
-  background: #fff0f2;
+  background: var(--surface-alt);
   color: var(--accent);
 }
 .podcast-art .icon {
@@ -198,10 +198,10 @@
   border-radius: 8px;
 }
 .episode-row:nth-child(odd) {
-  background: #f8f8fa;
+  background: var(--surface-alt);
 }
 .episode-row:hover {
-  background: #f1f0f4;
+  background: var(--surface-hover);
 }
 .episode-row.current .episode-info strong,
 .episode-row .liked {
@@ -301,7 +301,7 @@
 }
 
 .podcast-page .secondary {
-  border: 1px solid #dddce1;
+  border: 1px solid var(--line);
   border-radius: 18px;
   padding: 8px 16px;
 }

@@ -1,6 +1,14 @@
 <script setup lang="ts">
 defineProps<{ name: string }>();
 const paths: Record<string, string> = {
+  more: 'M5 12h.01M12 12h.01M19 12h.01',
+  edit: 'm16 3 5 5M4 20l4-1L21 6l-4-4L4 15z',
+  check: 'm5 12 4 4L19 6',
+  sun: 'M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z',
+  moon: 'M20 15a9 9 0 0 1-11-11A9 9 0 1 0 20 15Z',
+  monitor: 'M3 4h18v13H3zM8 21h8m-4-4v4',
+  palette:
+    'M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 0-4 2 2 0 0 1 0-4h4a4 4 0 0 0 4-4c0-4-5-6-9-6ZM7 10h.01M10 7h.01M15 7h.01',
   star: 'm12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9z',
   download: 'M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5',
   headphones: 'M4 14v-3a8 8 0 0 1 16 0v3M4 12H2v8h5v-8zM20 12h2v8h-5v-8z',

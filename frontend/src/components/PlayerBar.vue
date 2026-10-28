@@ -5,6 +5,7 @@ import { qualities, time, type PlaybackMode, type Quality } from '../services/pl
 import type { TrackView } from '../services/contracts';
 import Icon from './Icon.vue';
 import EqualizerPanel from './EqualizerPanel.vue';
+import ModalTransition from './ModalTransition.vue';
 const equalizerOpen = ref(false);
 const props = defineProps<{ player: PlayerModel; liked: Set<string>; likeBusy: Set<string> }>();
 const emit = defineEmits<{ like: [track: TrackView]; retry: []; comments: [track: TrackView] }>();
@@ -281,5 +282,7 @@ function mute() {
       ><span v-if="view?.timeline?.mode === 'trial'">试听片段</span>
     </div>
   </footer>
-  <EqualizerPanel v-if="equalizerOpen" :player="player" @close="equalizerOpen = false" />
+  <ModalTransition>
+    <EqualizerPanel v-if="equalizerOpen" :player="player" @close="equalizerOpen = false" />
+  </ModalTransition>
 </template>

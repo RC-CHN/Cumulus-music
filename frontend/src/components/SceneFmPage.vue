@@ -157,7 +157,7 @@ const category = computed(() => view.value?.scenes.find((s) => s.id === view.val
   max-width: 670px;
   border-radius: 14px;
   background: linear-gradient(125deg, #59627f, #333950 75%, #493b55);
-  color: #fff;
+  color: var(--on-accent);
   padding: 20px 24px;
   box-sizing: border-box;
 }
@@ -184,7 +184,7 @@ const category = computed(() => view.value?.scenes.find((s) => s.id === view.val
   border-radius: 10px;
   overflow: hidden;
   background: #ffffff22;
-  color: white;
+  color: var(--on-accent);
   cursor: pointer;
 }
 .scene-fm-cover > img {
@@ -265,7 +265,7 @@ const category = computed(() => view.value?.scenes.find((s) => s.id === view.val
 .scene-fm-categories button.active {
   background: #ffffff2c;
   border-color: #ffffff7a;
-  color: #fff;
+  color: var(--on-accent);
 }
 .scene-fm-actions {
   display: flex;

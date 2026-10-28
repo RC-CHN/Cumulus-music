@@ -5,15 +5,19 @@
   width: min(560px, calc(100vw - 48px));
   max-height: calc(100dvh - 48px);
   color: var(--text);
-  background: #fff;
+  background: var(--surface);
   box-shadow: 0 24px 90px #24132833;
   overflow: auto;
 }
 .playlist-dialog::backdrop {
-  background: #19102066;
+  background: var(--overlay);
   backdrop-filter: blur(3px);
 }
 .playlist-dialog header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -42,10 +46,10 @@
 .playlist-dialog select {
   width: 100%;
   padding: 9px 12px;
-  border: 1px solid #e5e0e9;
+  border: 1px solid var(--line);
   border-radius: 8px;
   color: inherit;
-  background: #faf9fc;
+  background: var(--surface);
   resize: vertical;
   min-width: 0;
   font: inherit;
@@ -63,7 +67,7 @@
 }
 .playlist-dialog label small {
   text-align: right;
-  color: #999;
+  color: var(--muted);
   font-size: 11px;
 }
 .playlist-dialog .private-checkbox {
@@ -71,6 +75,12 @@
   align-items: center;
 }
 .playlist-dialog footer {
+  clear: both;
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  background: var(--surface);
+  padding: 12px 0;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -96,7 +106,7 @@
 }
 .mutation-result {
   padding: 12px;
-  background: #faf3e8;
+  background: var(--warning-bg);
   border-radius: 8px;
   font-size: 12px;
   line-height: 1.8;
@@ -104,18 +114,18 @@
 }
 .mutation-result[data-phase='confirmed'],
 .mutation-result[data-phase='unchanged'] {
-  background: #edf7f0;
+  background: var(--success-bg);
 }
 .form-warning,
 .danger {
-  color: #db5269 !important;
+  color: var(--danger) !important;
   font-size: 12px;
 }
 .playlist-danger-actions {
   display: flex;
   justify-content: center;
   gap: 10px;
-  border-top: 1px solid #f1edf4;
+  border-top: 1px solid var(--line);
   margin-top: 20px;
   padding-top: 10px;
 }
@@ -127,7 +137,7 @@
 }
 .tag-selection button {
   padding: 5px 10px;
-  background: #f5f3f7;
+  background: var(--surface-alt);
   border-radius: 14px;
   font-size: 12px;
 }
@@ -135,8 +145,8 @@
   max-height: 200px;
   overflow: auto;
   padding: 12px;
-  background: #faf9fc;
-  border: 1px solid #eee8f2;
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: 8px;
 }
 .tag-picker section {
@@ -147,7 +157,7 @@
 }
 .tag-picker strong {
   flex: 0 0 35px;
-  color: #999;
+  color: var(--muted);
 }
 .tag-picker section > div {
   display: flex;
@@ -160,14 +170,14 @@
 }
 .tag-picker [aria-pressed='true'] {
   color: var(--accent);
-  background: #ffe8ed;
+  background: var(--surface-alt);
 }
 .track-menu h3 {
   font-size: 16px;
   margin: 0 0 6px;
 }
 .track-menu-actions {
-  border-top: 1px solid #f1edf4;
+  border-top: 1px solid var(--line);
   margin-top: 20px;
   padding-top: 10px;
 }
@@ -180,13 +190,13 @@
 }
 .operation-list article {
   padding: 12px 0;
-  border-bottom: 1px solid #eee8f2;
+  border-bottom: 1px solid var(--line);
   font-size: 12px;
   line-height: 1.8;
 }
 .operation-list article p {
   margin: 5px 0;
-  color: #888;
+  color: var(--text-secondary);
 }
 .playlist-toolbar {
   display: flex;
@@ -209,15 +219,27 @@
 .playlist-shell .playlist-card {
   width: 100%;
 }
-.playlist-card-controls {
-  display: flex;
-  gap: 3px;
-  justify-content: flex-end;
-  margin-top: 4px;
-}
-.playlist-card-controls button {
-  font-size: 11px;
-  padding: 5px;
+@media (max-height: 650px) {
+  .playlist-dialog {
+    padding: 18px 24px;
+  }
+  .playlist-dialog header {
+    margin-bottom: 16px;
+  }
+  .playlist-dialog label {
+    margin: 10px 0;
+  }
+  .playlist-dialog textarea {
+    height: 74px;
+  }
+  .playlist-dialog footer {
+    margin-top: 12px;
+    padding: 8px 0;
+  }
+  .playlist-danger-actions {
+    margin-top: 10px;
+    padding-top: 8px;
+  }
 }
 .track-more {
   font-size: 18px;

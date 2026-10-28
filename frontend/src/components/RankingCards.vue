@@ -114,7 +114,7 @@ defineEmits<{ open: [card: RankingCard]; play: [id: string] }>();
   aspect-ratio: 1;
   border-radius: 10px;
   overflow: hidden;
-  background: #f4f4f6;
+  background: var(--surface-alt);
   display: grid;
   place-items: center;
 }
@@ -127,7 +127,7 @@ defineEmits<{ open: [card: RankingCard]; play: [id: string] }>();
   position: absolute;
   top: 10px;
   left: 10px;
-  color: white;
+  color: var(--on-accent);
   text-shadow: 0 1px 4px #333;
 }
 .rank-name {
@@ -144,14 +144,14 @@ defineEmits<{ open: [card: RankingCard]; play: [id: string] }>();
   position: absolute;
   right: 10px;
   top: 10px;
-  background: #fffe;
+  background: var(--surface-raised);
   border-radius: 50%;
   width: 30px;
   height: 30px;
 }
 .with-preview .ranking-card {
   border-radius: 10px;
-  background: #f5f5f7;
+  background: var(--surface-alt);
 }
 .with-preview .rank-open {
   padding: 16px 20px 19px;
@@ -171,7 +171,7 @@ defineEmits<{ open: [card: RankingCard]; play: [id: string] }>();
 .rank-open > small {
   display: block;
   margin-top: 6px;
-  color: #888;
+  color: var(--text-secondary);
   font-size: 11px;
 }
 .rank-preview-content {
@@ -195,7 +195,7 @@ defineEmits<{ open: [card: RankingCard]; play: [id: string] }>();
   z-index: calc(3 - var(--cover-index));
   border-radius: 8px;
   object-fit: cover;
-  background: #eee;
+  background: var(--surface-hover);
 }
 .rank-preview-rows {
   flex: 1;
@@ -213,21 +213,21 @@ defineEmits<{ open: [card: RankingCard]; play: [id: string] }>();
   min-width: 0;
 }
 .rank-preview-row small {
-  color: #999;
+  color: var(--muted);
 }
 .rank-number {
-  color: #777;
+  color: var(--text-secondary);
   width: 12px;
 }
 .rank-movement {
-  color: #999;
+  color: var(--muted);
   min-width: 12px;
   font-size: 11px;
 }
 .rank-movement.rise {
-  color: #f35065;
+  color: var(--accent);
 }
 .rank-movement.fresh {
-  color: #36b285;
+  color: var(--success);
 }
 </style>

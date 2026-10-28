@@ -39,7 +39,7 @@ onUnmounted(model.dispose);
 .session-renewal {
   margin: 12px 0;
   padding: 10px 12px;
-  border: 1px solid var(--border, #e5e5e5);
+  border: 1px solid var(--line);
   border-radius: 8px;
   font-size: 12px;
 }

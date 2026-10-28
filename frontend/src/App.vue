@@ -2,6 +2,9 @@
 import { computed, onMounted, onUnmounted, watch, ref } from 'vue';
 import Icon from './components/Icon.vue';
 import WindowControls from './components/WindowControls.vue';
+import AppearanceMenu from './components/AppearanceMenu.vue';
+import PlaylistCard from './components/PlaylistCard.vue';
+import type { MenuItem } from './services/menu';
 import ModalTransition from './components/ModalTransition.vue';
 import LoginDialog from './components/LoginDialog.vue';
 import AccountDialog from './components/AccountDialog.vue';
@@ -32,7 +35,7 @@ import type { RankingQuery } from './services/rankings';
 import { useTogether } from './composables/useTogether';
 import { usePodcasts } from './composables/usePodcasts';
 import type { PodcastScope } from './services/podcast';
-import type { TrackView } from './services/contracts';
+import type { PlaylistView, TrackView } from './services/contracts';
 import { useLocal } from './composables/useLocal';
 import { useLocalMatching } from './composables/useLocalMatching';
 import type { LocalQuery } from './services/local';
@@ -258,6 +261,31 @@ const keyword = ref('');
 const favorite = computed(() => playlists.value.find((p) => p.favorite));
 const own = computed(() => playlists.value.filter((p) => p.owned && !p.favorite));
 const collected = computed(() => playlists.value.filter((p) => !p.owned));
+function playlistMenu(list: PlaylistView): MenuItem[] {
+  if (list.favorite) return [];
+  const group = list.owned ? own.value : collected.value;
+  const index = group.findIndex((p) => p.id === list.id);
+  return [
+    ...(list.owned ? [{ key: 'edit', label: '编辑歌单', icon: 'edit' }] : []),
+    {
+      key: 'up',
+      label: '上移歌单',
+      icon: 'up',
+      disabled: playlistManager.busy.value || index <= 0,
+    },
+    {
+      key: 'down',
+      label: '下移歌单',
+      icon: 'down',
+      disabled: playlistManager.busy.value || index >= group.length - 1,
+    },
+  ];
+}
+function playlistAction(list: PlaylistView, key: string) {
+  if (key === 'edit') playlistDialog.value = { kind: 'edit', id: list.id };
+  else if (key === 'up' || key === 'down')
+    void playlistManager.move(list.id, list.owned, key === 'up' ? -1 : 1, favorite.value?.id);
+}
 watch(
   () => player.view.value?.track?.voiceId,
   (voice) => {
@@ -608,6 +636,7 @@ onUnmounted(() => window.removeEventListener('keydown', keyboard));
         /><span v-else class="avatar"><Icon name="user" /></span
         ><span>{{ signedIn ? account.nickname : '点击登录' }}</span>
       </button>
+      <AppearanceMenu />
       <WindowControls />
     </header>
     <main class="main-content">
@@ -756,7 +785,18 @@ onUnmounted(() => window.removeEventListener('keydown', keyboard));
               <div v-else class="hero-art"><Icon name="music" /></div>
               <div class="hero-copy">
                 <span class="eyebrow">{{ result.playlist.private ? '私密歌单' : '歌单' }}</span>
-                <h1>{{ title }}</h1>
+                <div class="playlist-title">
+                  <h1>{{ title }}</h1>
+                  <button
+                    v-if="result.playlist.owned && !result.playlist.favorite"
+                    class="icon-button playlist-edit"
+                    title="编辑歌单"
+                    aria-label="编辑歌单"
+                    @click="playlistDialog = { kind: 'edit', id: result.playlist.id }"
+                  >
+                    <Icon name="edit" /><span class="sr-only">编辑歌单</span>
+                  </button>
+                </div>
                 <p class="muted">{{ result.playlist.creator }} · {{ result.total }} 首歌曲</p>
                 <p class="playlist-description">
                   {{ result.playlist.description || '音乐，让每一天都值得收藏。' }}
@@ -819,14 +859,7 @@ onUnmounted(() => window.removeEventListener('keydown', keyboard));
                   歌单评论
                 </button>
                 <button
-                  v-if="result.playlist.owned && !result.playlist.favorite"
-                  class="text-button"
-                  @click="playlistDialog = { kind: 'edit', id: result.playlist.id }"
-                >
-                  编辑歌单
-                </button>
-                <button
-                  v-else-if="!result.playlist.owned"
+                  v-if="!result.playlist.owned"
                   class="text-button"
                   :disabled="playlistManager.busy.value"
                   @click="
@@ -866,52 +899,14 @@ onUnmounted(() => window.removeEventListener('keydown', keyboard));
               >
             </div>
             <div v-if="page.kind === 'library'" class="playlist-grid">
-              <article v-for="list in playlists" :key="list.id" class="playlist-shell">
-                <button
-                  class="playlist-card"
-                  @click="music.navigate({ kind: 'playlist', id: list.id })"
-                >
-                  <div class="card-cover">
-                    <img
-                      v-if="list.coverUrl"
-                      :src="list.coverUrl"
-                      alt=""
-                      loading="lazy"
-                      decoding="async"
-                      referrerpolicy="no-referrer"
-                    /><Icon v-else name="music" /><span class="card-count"
-                      >{{ list.trackCount }} 首</span
-                    >
-                  </div>
-                  <span class="card-title">{{ list.name }}</span
-                  ><small>{{ list.owned ? '我创建的' : '已收藏' }}</small>
-                </button>
-                <div v-if="!list.favorite" class="playlist-card-controls">
-                  <button
-                    v-if="list.owned"
-                    class="text-button"
-                    @click="playlistDialog = { kind: 'edit', id: list.id }"
-                  >
-                    编辑
-                  </button>
-                  <button
-                    class="icon-button"
-                    :disabled="playlistManager.busy.value"
-                    aria-label="上移歌单"
-                    @click="playlistManager.move(list.id, list.owned, -1, favorite?.id)"
-                  >
-                    <Icon name="up" />
-                  </button>
-                  <button
-                    class="icon-button"
-                    :disabled="playlistManager.busy.value"
-                    aria-label="下移歌单"
-                    @click="playlistManager.move(list.id, list.owned, 1, favorite?.id)"
-                  >
-                    <Icon name="down" />
-                  </button>
-                </div>
-              </article>
+              <PlaylistCard
+                v-for="list in playlists"
+                :key="list.id"
+                :playlist="list"
+                :items="playlistMenu(list)"
+                @open="music.navigate({ kind: 'playlist', id: list.id })"
+                @action="playlistAction(list, $event)"
+              />
             </div>
             <div v-else-if="loading && !result" class="empty-state" role="status">
               <span class="spinner" />

@@ -71,10 +71,10 @@ const groups = computed(() => [
 <style scoped>
 .comment-floor-panel {
   margin: 24px 0;
-  border: 1px solid #eee;
+  border: 1px solid var(--line);
   border-radius: 12px;
   padding: 18px;
-  background: #fcfbfd;
+  background: var(--surface);
 }
 .comment-floor-panel > header {
   display: flex;
@@ -88,12 +88,12 @@ const groups = computed(() => [
 }
 .comment-floor-panel h3 {
   font-size: 14px;
-  color: #777;
+  color: var(--text-secondary);
   margin: 18px 0 0;
 }
 .comment-floor-panel small {
   font-weight: 400;
-  color: #888;
+  color: var(--text-secondary);
 }
 .comment-floor-panel footer {
   display: flex;

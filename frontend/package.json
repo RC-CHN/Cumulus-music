@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "format": "prettier --write src tests",
-    "format:check": "prettier --check src tests",
+    "format": "prettier --write src tests public index.html",
+    "format:check": "prettier --check src tests public index.html",
     "test": "node --experimental-strip-types --experimental-test-isolation=none --test tests/*.test.ts",
     "dev": "vite",
     "typecheck": "vue-tsc --noEmit",

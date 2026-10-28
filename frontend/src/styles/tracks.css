@@ -14,7 +14,7 @@
 .track-header {
   height: 36px;
   font-size: 11px;
-  color: #aaa5b1;
+  color: var(--muted);
   flex-shrink: 0;
 }
 .track-scroll {
@@ -32,13 +32,13 @@
   font-size: 13px;
 }
 .track-row.striped {
-  background: #faf9fc;
+  background: var(--surface-alt);
 }
 .track-row:hover {
-  background: #f2f0f6;
+  background: var(--surface-hover);
 }
 .track-index {
-  color: #aaa4b3;
+  color: var(--muted);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
@@ -55,12 +55,12 @@
   border-radius: 5px;
   flex-shrink: 0;
   object-fit: cover;
-  background: #eeeaf3;
+  background: var(--surface-hover);
 }
 .track-art {
   display: grid;
   place-items: center;
-  color: #b3aabb;
+  color: var(--art-color);
 }
 .track-title > div {
   min-width: 0;
@@ -68,16 +68,16 @@
 }
 .track-title small {
   font-size: 11px;
-  color: #98929f;
+  color: var(--muted);
   display: block;
 }
 .track-album {
   font-size: 12px;
-  color: #8e8797;
+  color: var(--muted);
 }
 .track-duration {
   font-size: 11px;
-  color: #aaa4b1;
+  color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 .like-button .icon {
@@ -94,8 +94,8 @@
 .vip-tag {
   display: inline-block;
   vertical-align: 1px;
-  border: 1px solid #c4a476;
-  color: #b69a6d;
+  border: 1px solid var(--gold);
+  color: var(--gold);
   border-radius: 3px;
   padding: 0 2px;
   font-size: 8px;
@@ -108,7 +108,7 @@
 .load-more {
   flex-shrink: 0;
   font-size: 12px;
-  color: #a29aa9;
+  color: var(--muted);
   padding: 12px;
 }
 .load-more:hover {

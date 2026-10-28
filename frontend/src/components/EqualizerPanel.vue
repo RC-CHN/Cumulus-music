@@ -136,11 +136,13 @@ function choose(event: Event) {
 .equalizer-dialog {
   width: 628px;
   max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
   padding: 26px 30px 24px;
-  border: 1px solid #eee;
+  border: 1px solid var(--line);
   border-radius: 14px;
-  background: var(--panel, #fff);
-  color: var(--text, #333);
+  background: var(--surface-raised);
+  color: var(--text);
   box-shadow: 0 18px 70px #0003;
 }
 .equalizer-dialog::backdrop {
@@ -169,23 +171,23 @@ select {
   margin-left: 14px;
   min-width: 140px;
   padding: 7px 10px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--line);
   border-radius: 6px;
-  background: white;
+  background: var(--surface);
   color: inherit;
 }
 .equalizer-switch {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #777;
+  color: var(--text-secondary);
   font-size: 12px;
 }
 .equalizer-switch span {
   width: 30px;
   height: 18px;
   border-radius: 12px;
-  background: #bbb;
+  background: var(--line-strong);
   position: relative;
 }
 .equalizer-switch span::after {
@@ -196,11 +198,11 @@ select {
   top: 2px;
   left: 2px;
   border-radius: 50%;
-  background: white;
+  background: var(--surface);
   transition: left 0.15s;
 }
 .equalizer-switch[aria-checked='true'] span {
-  background: var(--accent, #ed4053);
+  background: var(--accent-fill);
 }
 .equalizer-switch[aria-checked='true'] span::after {
   left: 14px;
@@ -244,7 +246,7 @@ select {
 .equalizer-band input::-webkit-slider-runnable-track {
   height: 6px;
   border-radius: 4px;
-  background: #e5e5e5;
+  background: var(--surface-hover);
 }
 .equalizer-band input::-webkit-slider-thumb {
   appearance: none;
@@ -252,36 +254,36 @@ select {
   width: 16px;
   height: 16px;
   margin-top: -5px;
-  border: 1px solid #bbb;
+  border: 1px solid var(--line-strong);
   border-radius: 50%;
-  background: #fff;
+  background: var(--surface);
 }
 .equalizer-band input::-moz-range-track {
   height: 6px;
   border-radius: 4px;
-  background: #e5e5e5;
+  background: var(--surface-hover);
 }
 .equalizer-band input::-moz-range-thumb {
   width: 14px;
   height: 14px;
-  border: 1px solid #bbb;
+  border: 1px solid var(--line-strong);
   border-radius: 50%;
-  background: #fff;
+  background: var(--surface);
 }
 .equalizer-band output {
   font-size: 10px;
-  color: #999;
+  color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 .equalizer-band span {
-  color: #888;
+  color: var(--text-secondary);
 }
 .equalizer-scale {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   font-size: 10px;
-  color: #aaa;
+  color: var(--muted);
   padding: 26px 0 27px;
 }
 .equalizer-status {
@@ -291,28 +293,28 @@ select {
   justify-content: space-between;
   gap: 12px;
   font-size: 12px;
-  color: #777;
+  color: var(--text-secondary);
 }
 .equalizer-status button {
   flex-shrink: 0;
-  color: var(--accent, #ed4053);
+  color: var(--accent);
 }
 .equalizer-error {
   font-size: 12px;
-  color: #b83b4a;
+  color: var(--danger);
 }
 .equalizer-dialog footer {
-  border-top: 1px solid #eee;
+  border-top: 1px solid var(--line);
   margin-top: 16px;
   padding-top: 18px;
   font-size: 12px;
 }
 .equalizer-dialog small {
-  color: #999;
+  color: var(--muted);
   font-size: 11px;
 }
 .equalizer-dialog footer button {
-  border: 1px solid #ddd;
+  border: 1px solid var(--line);
   border-radius: 20px;
   padding: 6px 14px;
 }
@@ -326,6 +328,17 @@ select {
   }
   .equalizer-slider {
     --slider-length: 180px;
+  }
+}
+@media (max-height: 650px) {
+  .equalizer-grid {
+    margin: 16px 0;
+  }
+  .equalizer-slider {
+    --slider-length: 140px;
+  }
+  header {
+    margin-bottom: 16px;
   }
 }
 </style>

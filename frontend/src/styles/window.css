@@ -22,7 +22,7 @@
   width: 30px;
   height: 30px;
   border-radius: 8px;
-  color: #817c8b;
+  color: var(--text-secondary);
 }
 .window-controls svg {
   width: 15px;
@@ -32,12 +32,12 @@
   stroke-width: 1.2;
 }
 .window-controls button:hover {
-  background: #efedf3;
-  color: #302b39;
+  background: var(--surface-alt);
+  color: var(--text);
 }
 .window-controls .window-close:hover {
-  color: white;
-  background: var(--accent);
+  color: var(--on-accent);
+  background: var(--accent-fill);
 }
 .window-error {
   position: absolute;
@@ -45,8 +45,8 @@
   right: 0;
   top: 36px;
   padding: 8px 12px;
-  background: #fff4f4;
-  border: 1px solid #ffd5d5;
+  background: var(--surface-alt);
+  border: 1px solid var(--line);
   border-radius: 8px;
   white-space: nowrap;
   font-size: 12px;

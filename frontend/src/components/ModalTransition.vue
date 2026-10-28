@@ -8,14 +8,19 @@ function entering(element: Element) {
   const active = document.activeElement;
   if (!(active instanceof HTMLElement)) return;
   const parentDialog = active.closest('dialog');
-  returnTargets.set(element, (parentDialog && returnTargets.get(parentDialog)) || active);
+  const replacing = parentDialog?.classList.contains('modal-leave-active');
+  returnTargets.set(element, (replacing && returnTargets.get(parentDialog!)) || active);
 }
 function left(element: Element) {
   const target = returnTargets.get(element);
   returnTargets.delete(element);
   // Native <dialog> keeps the background inert until its leave transition ends.
   // Component onUnmounted runs too early to restore focus during that interval.
-  if (!document.querySelector('dialog[open]') && target?.isConnected) target.focus();
+  if (
+    target?.isConnected &&
+    (!document.querySelector('dialog[open]') || target.closest('dialog[open]'))
+  )
+    target.focus({ preventScroll: true });
 }
 </script>
 <template>

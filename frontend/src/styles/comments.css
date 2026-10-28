@@ -18,7 +18,7 @@
 .comments-tools {
   justify-content: space-between;
   flex-wrap: wrap;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--line);
 }
 .comments-tools form {
   display: flex;
@@ -26,7 +26,7 @@
   margin: 12px 0;
 }
 .comments-tools input {
-  border: 1px solid #e6e4eb;
+  border: 1px solid var(--line);
   border-radius: 6px;
   padding: 8px;
   width: 150px;
@@ -40,8 +40,8 @@
   border-bottom: 3px solid transparent;
 }
 .comments-tabs button[aria-selected='true'] {
-  color: #ff375b;
-  border-color: #ff375b;
+  color: var(--accent);
+  border-color: var(--accent);
   font-weight: 600;
 }
 .comment-group h2 {
@@ -53,14 +53,14 @@
   display: flex;
   gap: 12px;
   padding: 19px 0 17px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--line);
 }
 .comment-avatar {
   width: 38px;
   height: 38px;
   flex-shrink: 0;
   border-radius: 50%;
-  background: #f4f3f7;
+  background: var(--surface-alt);
   display: grid;
   place-items: center;
 }
@@ -69,12 +69,12 @@
   min-width: 0;
 }
 .comment-author {
-  color: #53769a;
+  color: var(--link);
   font-size: 15px;
   line-height: 20px;
 }
 .comment-author small {
-  color: #9a98a2;
+  color: var(--muted);
   margin-left: 6px;
 }
 .comment-content {
@@ -85,10 +85,10 @@
   margin: 5px 0 12px;
 }
 .comment-quote {
-  border-left: 1px solid #ddd;
+  border-left: 1px solid var(--line);
   padding-left: 7px;
   margin: 6px 0;
-  color: #777;
+  color: var(--text-secondary);
   font-size: 14px;
   line-height: 20px;
   white-space: pre-wrap;
@@ -102,21 +102,21 @@
   flex-wrap: wrap;
 }
 .comment-delete {
-  color: #b84c60;
+  color: var(--accent);
 }
 .comment-footer time {
   font-size: 12px;
-  color: #9996a2;
+  color: var(--muted);
 }
 .comment-like {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   min-height: 30px;
-  color: #777;
+  color: var(--text-secondary);
 }
 .comment-like.liked {
-  color: #ff375b;
+  color: var(--accent);
 }
 .comment-like .icon {
   width: 20px;
@@ -127,7 +127,7 @@
 }
 .comment-pending {
   padding: 12px;
-  background: #fff3f6;
+  background: var(--surface-alt);
   border-radius: 8px;
   margin-top: 14px;
 }
@@ -135,5 +135,5 @@
   justify-content: center;
   padding: 22px 0;
   font-size: 13px;
-  color: #888;
+  color: var(--text-secondary);
 }

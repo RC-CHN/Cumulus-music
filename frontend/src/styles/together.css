@@ -25,9 +25,9 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  background: #fff6f7;
-  border: 1px solid #f6e1e4;
-  color: #925160;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--danger);
   border-radius: 10px;
   padding: 11px 14px;
   margin: 20px 0;
@@ -36,7 +36,7 @@
 .together-room {
   text-align: center;
   padding: 24px 18px 26px;
-  background: linear-gradient(135deg, #fff6f7, #f9f8fd);
+  background: linear-gradient(135deg, var(--accent-soft), var(--surface-alt));
   border-radius: 14px;
 }
 .together-connection {
@@ -50,7 +50,7 @@
   font-size: 12px;
 }
 .together-connection[data-state='connected'] {
-  color: #318362;
+  color: var(--success);
 }
 .together-members {
   display: flex;
@@ -72,22 +72,22 @@
   height: 76px;
   width: 76px;
   border-radius: 50%;
-  border: 4px solid #fff;
+  border: 4px solid var(--line);
   box-shadow: 0 4px 18px #803e5514;
 }
 .together-avatar {
   display: grid;
   place-items: center;
-  background: #f5dfe4;
-  color: #bd657b;
+  background: var(--surface-hover);
+  color: var(--accent);
 }
 .together-avatar .icon {
   width: 31px;
   height: 31px;
 }
 .together-avatar.empty {
-  background: #f1edf1;
-  border: 2px dashed #d9ccd2;
+  background: var(--surface-alt);
+  border: 2px dashed var(--line-strong);
   box-shadow: none;
 }
 .together-person strong {
@@ -136,7 +136,7 @@
   padding: 16px;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: #fffaf0;
+  background: var(--surface-alt);
 }
 .together-pending h3 {
   margin: 0 0 8px;
@@ -184,10 +184,10 @@
   box-sizing: border-box;
 }
 .together-track:nth-child(2n) {
-  background: #faf9fb;
+  background: var(--surface-alt);
 }
 .together-track.current {
-  background: #fff1f3;
+  background: var(--accent-soft);
 }
 .together-number {
   width: 24px;
@@ -204,7 +204,7 @@
 .together-cover {
   display: grid;
   place-items: center;
-  background: #f0edf2;
+  background: var(--surface-alt);
   color: var(--muted);
 }
 .together-track-title {

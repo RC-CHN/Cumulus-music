@@ -32,7 +32,7 @@
 .local-search {
   display: flex;
   margin-left: auto;
-  background: var(--surface, #f8f8fa);
+  background: var(--surface-alt);
   border-radius: 8px;
 }
 .local-search input {
@@ -52,7 +52,7 @@
   background: transparent;
 }
 .local-tabs > button[aria-pressed='true'] {
-  background: var(--surface, #f8f8fa);
+  background: var(--surface-alt);
   font-weight: 600;
   color: var(--accent);
 }
@@ -118,7 +118,7 @@
   border-radius: 6px;
 }
 .local-groups button[aria-pressed='true'] {
-  background: var(--surface, #f8f8fa);
+  background: var(--surface-alt);
   color: var(--accent);
 }
 .local-groups span {
@@ -169,7 +169,7 @@
   width: 108px;
 }
 .local-tracks tbody tr:nth-child(odd) {
-  background: var(--surface, #f8f8fa);
+  background: var(--surface-alt);
 }
 .local-tracks tr.current {
   color: var(--accent);

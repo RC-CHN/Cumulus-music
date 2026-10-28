@@ -6,5 +6,7 @@ import './style.css';
 import './styles/comments.css';
 import './styles/podcast.css';
 import './styles/together.css';
+import { initializeAppearance } from './composables/useAppearance';
 
+initializeAppearance();
 createApp(App).provide(coreClientKey, createTauriClient()).mount('#app');

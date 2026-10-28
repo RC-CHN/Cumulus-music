@@ -19,11 +19,11 @@
   height: 18px;
 }
 .mv-related-song button[aria-pressed='true'] .icon {
-  fill: #ff375b;
-  color: #ff375b;
+  fill: var(--accent);
+  color: var(--accent);
 }
 .mv-like.liked {
-  color: #ff375b;
+  color: var(--accent);
 }
 .mv-like .icon {
   width: 18px;
@@ -69,7 +69,7 @@
 }
 .mv-cover {
   aspect-ratio: 16/9;
-  background: #e9e8ed;
+  background: var(--surface-hover);
   position: relative;
   width: 100%;
   border-radius: 10px;
@@ -83,7 +83,7 @@
 .mv-count,
 .mv-duration {
   position: absolute;
-  color: #fff;
+  color: var(--on-accent);
   text-shadow: 0 1px 3px #000;
   font-size: 12px;
   right: 8px;
@@ -99,7 +99,7 @@
   inset: 0;
   display: grid;
   place-items: center;
-  color: #fff;
+  color: var(--on-accent);
   background: #0003;
   font-size: 30px;
   opacity: 0;
@@ -159,14 +159,14 @@
   justify-content: space-between;
   padding: 6px 12px;
   gap: 12px;
-  color: white;
+  color: var(--on-accent);
   background: linear-gradient(#0009, transparent);
 }
 .mv-top .video-button {
   font-size: 18px;
 }
 .video-button {
-  color: #fff;
+  color: var(--on-accent);
   border-radius: 4px;
   padding: 6px 8px;
 }
@@ -180,7 +180,7 @@
   align-items: center;
   justify-content: center;
   gap: 12px;
-  color: #fff;
+  color: var(--on-accent);
   text-align: center;
   flex-wrap: wrap;
 }
@@ -190,7 +190,7 @@
   width: 100%;
   background: #161616b8;
   backdrop-filter: blur(20px);
-  color: #fff;
+  color: var(--on-accent);
 }
 .video-progress {
   display: block;
@@ -229,7 +229,7 @@
 .video-controls select {
   appearance: none;
   background: #27272c;
-  color: #fff;
+  color: var(--on-accent);
   border: 0;
   padding: 4px;
   border-radius: 3px;
@@ -258,7 +258,7 @@
   overflow-wrap: anywhere;
 }
 .mv-download-options {
-  background: #f7f7fa;
+  background: var(--surface-alt);
   border-radius: 8px;
   padding: 16px;
   margin: 12px 0;

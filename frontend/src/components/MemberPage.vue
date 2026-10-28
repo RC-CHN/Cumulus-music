@@ -387,7 +387,7 @@ function hasContent(content: MemberContent) {
 }
 .member-history-intro {
   padding: 20px;
-  background: var(--surface, #f7f7f9);
+  background: var(--surface-alt);
   border-radius: 10px;
 }
 .member-history-intro strong {
@@ -408,7 +408,7 @@ function hasContent(content: MemberContent) {
   border-bottom: 2px solid transparent;
 }
 .member-entitlements [data-active='true'] {
-  border-color: #c2996a;
+  border-color: var(--gold);
 }
 .member-entitlements strong {
   font-size: 12px;
@@ -422,9 +422,9 @@ function hasContent(content: MemberContent) {
   margin: 12px 0;
 }
 .member-error {
-  color: #b94b45;
+  color: var(--danger);
   padding: 12px;
-  background: #fff0ee;
+  background: var(--danger-bg);
   border-radius: 8px;
 }
 .member-messages {
@@ -459,7 +459,7 @@ function hasContent(content: MemberContent) {
 }
 .member-track:hover,
 .member-track.current {
-  background: var(--surface, #f7f7f9);
+  background: var(--surface-alt);
 }
 .member-track-play {
   display: flex;
@@ -515,7 +515,7 @@ function hasContent(content: MemberContent) {
 }
 .member-rank {
   flex: 0 0 285px;
-  background: var(--surface, #f7f7f9);
+  background: var(--surface-alt);
   padding: 14px;
   border-radius: 10px;
 }

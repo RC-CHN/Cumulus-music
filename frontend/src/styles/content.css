@@ -30,13 +30,13 @@
   height: 152px;
   border-radius: 10px;
   object-fit: cover;
-  background: #f5eff3;
+  background: var(--surface-alt);
   flex-shrink: 0;
 }
 .hero-art {
   display: grid;
   place-items: center;
-  color: #c7b8c2;
+  color: var(--art-color);
 }
 .hero-art .icon {
   width: 60px;
@@ -65,7 +65,7 @@
 }
 .playlist-description {
   font-size: 12px;
-  color: #8e8995;
+  color: var(--muted);
   line-height: 1.8;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -92,7 +92,7 @@
   width: 100%;
   aspect-ratio: 1;
   border-radius: 10px;
-  background: #f4f1f6;
+  background: var(--surface-alt);
   position: relative;
   overflow: hidden;
   display: grid;
@@ -110,7 +110,7 @@
 .card-cover > .icon {
   width: 44px;
   height: 44px;
-  color: #c5bdcd;
+  color: var(--muted);
 }
 .card-count {
   position: absolute;
@@ -118,7 +118,7 @@
   right: 8px;
   border-radius: 10px;
   font-size: 10px;
-  color: white;
+  color: var(--on-accent);
   background: #272331b8;
   padding: 3px 8px;
 }
@@ -132,14 +132,51 @@
 }
 .playlist-card > small {
   font-size: 11px;
-  color: #a39da9;
+  color: var(--muted);
 }
 
 /* Keep card layout local without estimated heights that shift during scrolling. */
 .playlist-shell {
   contain: layout style;
+  position: relative;
+}
+.playlist-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+.playlist-title h1 {
+  min-width: 0;
+}
+.playlist-edit {
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+.playlist-edit .icon {
+  width: 17px;
+  height: 17px;
+}
+.playlist-card .card-title {
+  min-height: 3.2em;
+}
+.playlist-shell > .playlist-card-menu {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+}
+.playlist-card-menu .menu-trigger {
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  box-shadow: 0 2px 8px #0001;
+  border: 1px solid var(--line);
 }
 .playlist-grid {
   contain: content;
   overscroll-behavior: contain;
+}
+@media (prefers-reduced-motion: reduce) {
+  .playlist-card:hover img {
+    transform: none;
+  }
 }

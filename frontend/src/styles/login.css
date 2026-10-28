@@ -6,11 +6,11 @@
   border-radius: 16px;
   padding: 38px 45px 24px;
   width: 390px;
-  color: #302934;
+  color: var(--text);
   box-shadow: 0 24px 90px #24132833;
   text-align: center;
   position: fixed;
-  background: #fff;
+  background: var(--surface);
 }
 .login-methods {
   display: flex;
@@ -39,7 +39,7 @@
   display: flex;
   flex-direction: column;
   gap: 7px;
-  color: #777;
+  color: var(--text-secondary);
   font-size: 12px;
 }
 .credential-form input:not([type='checkbox']),
@@ -48,10 +48,10 @@
   min-width: 0;
   height: 38px;
   padding: 8px 10px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--line);
   border-radius: 6px;
-  color: #333;
-  background: #fafafa;
+  color: var(--text);
+  background: var(--surface);
 }
 .login-phone,
 .login-code {
@@ -93,7 +93,7 @@
 .login-accounts,
 .login-restart {
   font-size: 12px;
-  color: #888;
+  color: var(--text-secondary);
   margin-top: 12px;
 }
 .login-challenge {
@@ -121,7 +121,7 @@
   gap: 10px;
   align-items: center;
   padding: 10px 0;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--line);
 }
 .login-questions img {
   width: 42px;
@@ -130,7 +130,7 @@
 }
 .login-questions small {
   display: block;
-  color: #999;
+  color: var(--muted);
   margin-top: 4px;
 }
 .account-dialog {
@@ -141,8 +141,8 @@
   overflow-y: auto;
   border: 0;
   border-radius: 14px;
-  background: #fff;
-  color: #333;
+  background: var(--surface);
+  color: var(--text);
   padding: 30px;
   box-shadow: 0 20px 70px #0003;
 }
@@ -167,12 +167,12 @@
   border-radius: 12px;
 }
 .saved-account-row:hover {
-  background: #f8f6f7;
+  background: var(--surface-alt);
 }
 .saved-remove {
   flex-shrink: 0;
   padding: 12px 5px;
-  color: #888;
+  color: var(--text-secondary);
   font-size: 12px;
 }
 .saved-account {
@@ -187,7 +187,7 @@
   border-radius: 12px;
 }
 .saved-account:hover {
-  background: #f8f6f7;
+  background: var(--surface-alt);
 }
 .saved-account img,
 .saved-account > svg {
@@ -203,7 +203,7 @@
 .saved-account small {
   display: block;
   font-size: 11px;
-  color: #999;
+  color: var(--muted);
   margin-top: 6px;
 }
 .account-add {
@@ -215,9 +215,9 @@
 .account-logout {
   display: block;
   width: 100%;
-  border-top: 1px solid #eee;
+  border-top: 1px solid var(--line);
   padding-top: 18px;
-  color: #777;
+  color: var(--text-secondary);
   font-size: 13px;
 }
 .logout-option {
@@ -275,8 +275,8 @@
   display: grid;
   place-items: center;
   border-radius: 12px;
-  background: #fff;
-  border: 1px solid #eeebf0;
+  background: var(--surface);
+  border: 1px solid var(--line);
 }
 .qr-frame svg {
   width: 210px;
@@ -286,11 +286,11 @@
   font-size: 12px;
   line-height: 1.8;
   min-height: 44px;
-  color: #8a7f94;
+  color: var(--text-secondary);
 }
 .login-note {
   font-size: 10px;
-  color: #bbb1c4;
+  color: var(--muted);
   margin-top: 20px;
 }
 ::-webkit-scrollbar {
@@ -298,7 +298,7 @@
   height: 5px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #d8d4df;
+  background: var(--line-strong);
   border-radius: 8px;
 }
 ::-webkit-scrollbar-track {

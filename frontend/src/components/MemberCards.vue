@@ -60,7 +60,7 @@ const emit = defineEmits<{ open: [target: MemberTarget] }>();
 .member-cover-placeholder {
   display: grid;
   place-items: center;
-  background: var(--surface, #f7f7f9);
+  background: var(--surface-alt);
   font-size: 32px;
 }
 .member-card strong {
