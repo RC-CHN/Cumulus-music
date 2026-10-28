@@ -17,6 +17,7 @@ mod history;
 mod likes;
 mod local;
 mod mapping;
+mod media_preferences;
 mod member;
 mod mv;
 pub mod native_media;

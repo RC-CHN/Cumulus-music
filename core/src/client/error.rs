@@ -96,6 +96,11 @@ impl From<Error> for ClientError {
                 }
                 Error::InvalidInput(_) => ("invalid_input", "输入内容不符合要求", false),
                 Error::QueueChanged => ("snapshot_changed", "列表已更新，请刷新后重试", true),
+                Error::State("system media settings changed") => (
+                    "system_media_changed",
+                    "系统媒体设置已变化，请刷新后重试",
+                    true,
+                ),
                 Error::State("like recovery changed") => (
                     "like_changed",
                     "喜欢状态或待核对记录已变化，请取消本次确认并重新核对",
