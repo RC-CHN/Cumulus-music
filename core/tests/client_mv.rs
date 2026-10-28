@@ -473,3 +473,6 @@ async fn cancelled_account_retirement_keeps_old_output_owned_until_native_stop_a
     assert!(device.lock().unwrap().stopped);
     assert_eq!(f.client.video_snapshot("2").await.unwrap().epoch, "2");
 }
+
+#[path = "support/native_media_client.rs"]
+mod native_media_tests;

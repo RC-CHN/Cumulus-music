@@ -51,6 +51,7 @@ impl Actor {
         let view = VideoSnapshot {
             account: token.clone(),
             revision: 0,
+            control_revision: 0,
             play_id: String::new(),
             id: None,
             status: VideoStatus::Idle,
@@ -319,9 +320,14 @@ impl Actor {
             }
             tokio::select! {
                 message=receiver.recv()=>match message {
-                    Some(Message::Command(command,reply))=>{
+                    Some(Message::Command(command,reply,guard))=>{
                         if reply.is_closed(){continue;}
                         if !self.valid(){let _=reply.send(Err(Error::StaleResponse));break;}
+                        if guard.is_some_and(|(expected,cancel)|expected!=self.view.fence()||cancel.is_cancelled()) {let _=reply.send(Err(Error::StaleResponse));continue;}
+                        if !matches!(command, super::VideoCommand::Snapshot | super::VideoCommand::Volume {..}) {
+                            let Some(revision)=self.view.control_revision.checked_add(1) else {let _=reply.send(Err(Error::State("video control revision exhausted")));continue;};
+                            self.view.control_revision=revision;
+                        }
                         let result=self.command(command).await;self.publish(&publisher);let _=reply.send(result.map(|()|self.view.clone()));
                     },
                     Some(Message::Loaded(generation,result))=>{if let Err(error)=self.loaded(generation,*result).await{let _=self.release_engine().await;self.failure(error);}self.publish(&publisher);},

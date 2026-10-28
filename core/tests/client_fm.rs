@@ -479,3 +479,42 @@ async fn artist_readback_filters_a_current_song_that_became_blocked_after_lost_r
     assert_eq!(api.count("/api/v1/radio/skip"), 0);
     assert_eq!(api.count("/api/music-blacklist/add"), 1);
 }
+
+#[tokio::test]
+async fn native_menu_steps_and_resumes_through_fm_coordinator() {
+    use cumulus_core::client::native_media::NativeMediaAction as Action;
+    let (_dir, api, _session, client) = fixture();
+    api.batch(&[1, 2, 3, 4]);
+    client
+        .fm_command(
+            "1",
+            FmSource::Personal,
+            FmCommand::Start {
+                quality: Quality::Standard,
+            },
+        )
+        .await
+        .unwrap();
+    for (action, id) in [
+        (Action::Next, "2"),
+        (Action::Previous, "1"),
+        (Action::Pause, "1"),
+        (Action::Play, "1"),
+    ] {
+        // The recovered FM coordinator deliberately rejects steps within 250 ms.
+        if action == Action::Previous {
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        }
+        let target = client.native_media_snapshot().unwrap().target.unwrap();
+        client.native_media_action(&target, action).await.unwrap();
+        let player = client
+            .subscribe_playback("1")
+            .await
+            .unwrap()
+            .current()
+            .unwrap();
+        assert!(player.fm);
+        assert_eq!(player.track.unwrap().id, id);
+    }
+    assert_eq!(api.count("/api/radio/trash/add"), 0);
+}

@@ -9,10 +9,19 @@ use crate::{
 };
 use std::sync::{Arc, Mutex, atomic::Ordering};
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Owner {
     Audio,
     Video,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct FocusSnapshot {
+    pub generation: u64,
+    pub owner: Option<Owner>,
+}
+enum ExpectedFocus {
+    Automatic(u64),
+    Native(FocusSnapshot),
 }
 #[derive(Default)]
 struct State {
@@ -25,6 +34,19 @@ pub(super) struct MediaFocus {
     handoff: tokio::sync::Mutex<()>,
 }
 impl MediaFocus {
+    pub fn snapshot(&self) -> Result<FocusSnapshot> {
+        let state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
+        Ok(FocusSnapshot {
+            generation: state.generation,
+            owner: state.allowed,
+        })
+    }
+    pub fn check_snapshot(&self, expected: FocusSnapshot) -> Result<()> {
+        if self.snapshot()? != expected {
+            return Err(Error::StaleResponse);
+        }
+        Ok(())
+    }
     pub fn automatic_audio_generation(&self) -> Result<Option<u64>> {
         let state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
         Ok((state.allowed != Some(Owner::Video)).then_some(state.generation))
@@ -69,12 +91,35 @@ impl MusicClient {
         owner: Owner,
         expected: Option<u64>,
     ) -> Result<u64> {
+        self.claim_media_checked(token, owner, expected.map(ExpectedFocus::Automatic))
+            .await
+    }
+    pub(super) async fn claim_native_media(
+        &self,
+        token: &SessionToken,
+        owner: Owner,
+        expected: FocusSnapshot,
+    ) -> Result<u64> {
+        self.claim_media_checked(token, owner, Some(ExpectedFocus::Native(expected)))
+            .await
+    }
+    async fn claim_media_checked(
+        &self,
+        token: &SessionToken,
+        owner: Owner,
+        expected: Option<ExpectedFocus>,
+    ) -> Result<u64> {
         self.session.check_generation(token)?;
         let lease = {
             let mut state = self.focus.state.lock().map_err(|_| Error::LockPoisoned)?;
-            if expected
-                .is_some_and(|g| g != state.generation || state.allowed == Some(Owner::Video))
-            {
+            if expected.is_some_and(|expected| match expected {
+                ExpectedFocus::Automatic(g) => {
+                    g != state.generation || state.allowed == Some(Owner::Video)
+                }
+                ExpectedFocus::Native(value) => {
+                    value.generation != state.generation || value.owner != state.allowed
+                }
+            }) {
                 return Err(Error::StaleResponse);
             }
             state.generation = state

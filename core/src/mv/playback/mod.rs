@@ -15,6 +15,7 @@ use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
 };
 use tokio::sync::{mpsc, oneshot, watch};
+pub(crate) use types::VideoFence;
 pub use types::{VideoCommand, VideoSnapshot, VideoStatus};
 pub type VideoEngineFactory = Arc<dyn Fn() -> Result<Box<dyn VideoEngine>> + Send + Sync>;
 type Factory = VideoEngineFactory;
@@ -26,7 +27,11 @@ struct HeldEngine {
 type Engine = Arc<Mutex<HeldEngine>>;
 type FrameSlot = Arc<Mutex<Option<(String, Engine)>>>;
 enum Message {
-    Command(VideoCommand, oneshot::Sender<Result<VideoSnapshot>>),
+    Command(
+        VideoCommand,
+        oneshot::Sender<Result<VideoSnapshot>>,
+        Option<(VideoFence, Cancellation)>,
+    ),
     Loading(u64),
     Local(u64, local::LocalSource),
     Loaded(u64, Box<Result<resolve::Prepared>>),
@@ -100,13 +105,31 @@ impl VideoController {
         token: &SessionToken,
         command: VideoCommand,
     ) -> Result<VideoSnapshot> {
+        self.command_inner(token, command, None).await
+    }
+    pub(crate) async fn command_guarded(
+        &self,
+        token: &SessionToken,
+        command: VideoCommand,
+        expected: VideoFence,
+        cancel: Cancellation,
+    ) -> Result<VideoSnapshot> {
+        self.command_inner(token, command, Some((expected, cancel)))
+            .await
+    }
+    async fn command_inner(
+        &self,
+        token: &SessionToken,
+        command: VideoCommand,
+        guard: Option<(VideoFence, Cancellation)>,
+    ) -> Result<VideoSnapshot> {
         if token != &self.token {
             return Err(Error::StaleResponse);
         }
         self.session.with_token(token, |_| Ok(()))?;
         let (sender, receiver) = oneshot::channel();
         self.sender
-            .send(Message::Command(command, sender))
+            .send(Message::Command(command, sender, guard))
             .map_err(|_| Error::Cancelled)?;
         let result = receiver.await.map_err(|_| Error::Cancelled)??;
         self.session.with_token(token, |_| Ok(result))

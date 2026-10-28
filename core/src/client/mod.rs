@@ -18,6 +18,7 @@ mod local;
 mod mapping;
 mod member;
 mod mv;
+pub mod native_media;
 mod player;
 mod playlist_cover;
 mod playlists;

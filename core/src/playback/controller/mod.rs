@@ -38,6 +38,7 @@ struct Request {
     token: SessionToken,
     command: PlaybackCommand,
     reply: Response,
+    guard: Option<(PlaybackFence, Cancellation)>,
 }
 enum Message {
     Request(Request),
@@ -125,7 +126,12 @@ impl PlaybackController {
     pub fn subscribe(&self) -> watch::Receiver<PlaybackSnapshot> {
         self.view.clone()
     }
-    async fn request(&self, token: &SessionToken, command: PlaybackCommand) -> Result<Reply> {
+    async fn request(
+        &self,
+        token: &SessionToken,
+        command: PlaybackCommand,
+        guard: Option<(PlaybackFence, Cancellation)>,
+    ) -> Result<Reply> {
         let id = uuid::Uuid::new_v4().simple().to_string();
         let (reply, receiver) = oneshot::channel();
         self.sender
@@ -134,6 +140,7 @@ impl PlaybackController {
                 token: token.clone(),
                 command,
                 reply,
+                guard,
             }))
             .map_err(|_| Error::State("player is closed"))?;
         struct CancelOnDrop {
@@ -160,7 +167,19 @@ impl PlaybackController {
         token: &SessionToken,
         command: PlaybackCommand,
     ) -> Result<PlaybackSnapshot> {
-        Ok(self.request(token, command).await?.state)
+        Ok(self.request(token, command, None).await?.state)
+    }
+    pub(crate) async fn command_guarded(
+        &self,
+        token: &SessionToken,
+        command: PlaybackCommand,
+        expected: PlaybackFence,
+        cancel: Cancellation,
+    ) -> Result<PlaybackSnapshot> {
+        Ok(self
+            .request(token, command, Some((expected, cancel)))
+            .await?
+            .state)
     }
     pub async fn queue(&self, token: &SessionToken) -> Result<QueueSnapshot> {
         Ok(self.queue_with_state(token).await?.1)
@@ -169,7 +188,7 @@ impl PlaybackController {
         &self,
         token: &SessionToken,
     ) -> Result<(PlaybackSnapshot, QueueSnapshot)> {
-        let reply = self.request(token, PlaybackCommand::Queue).await?;
+        let reply = self.request(token, PlaybackCommand::Queue, None).await?;
         Ok((
             reply.state,
             reply.queue.ok_or(Error::State("missing queue reply"))?,

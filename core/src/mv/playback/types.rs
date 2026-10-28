@@ -17,6 +17,8 @@ pub enum VideoStatus {
 pub struct VideoSnapshot {
     pub account: SessionToken,
     pub revision: u64,
+    /// Accepted control intents, independent of engine clock updates.
+    pub control_revision: u64,
     pub play_id: String,
     pub id: Option<String>,
     pub status: VideoStatus,
@@ -62,4 +64,20 @@ pub enum VideoCommand {
     Snapshot,
     /// Native media focus handoff: revoke pending autoplay, pause a loaded MV.
     Suspend,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct VideoFence {
+    control_revision: u64,
+    play_id: String,
+    id: Option<String>,
+}
+impl VideoSnapshot {
+    pub(crate) fn fence(&self) -> VideoFence {
+        VideoFence {
+            control_revision: self.control_revision,
+            play_id: self.play_id.clone(),
+            id: self.id.clone(),
+        }
+    }
 }

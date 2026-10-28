@@ -217,6 +217,17 @@ impl MusicClient {
         })
     }
     pub async fn player_action(&self, epoch: &str, action: PlayerAction) -> Result<PlayerView> {
+        self.player_action_checked(epoch, action, None).await
+    }
+    pub(super) async fn player_action_checked(
+        &self,
+        epoch: &str,
+        action: PlayerAction,
+        native: Option<&super::native_media::NativeMediaTarget>,
+    ) -> Result<PlayerView> {
+        if let Some(target) = native {
+            target.check(self)?;
+        }
         if matches!(action, PlayerAction::Startup) {
             return self.startup_player(epoch).await;
         }
@@ -255,7 +266,12 @@ impl MusicClient {
                 | PlayerAction::Previous
                 | PlayerAction::Select { .. }
         ) {
-            Some(self.claim_media(&token, super::focus::Owner::Audio).await?)
+            Some(if let Some(target) = native {
+                self.claim_native_media(&token, super::focus::Owner::Audio, target.focus)
+                    .await?
+            } else {
+                self.claim_media(&token, super::focus::Owner::Audio).await?
+            })
         } else {
             None
         };
@@ -263,6 +279,12 @@ impl MusicClient {
         let current = controller
             .command(&token, PlaybackCommand::Snapshot)
             .await?;
+        if let Some(target) = native {
+            target.audio(&current)?;
+            target
+                .cancellation(self, lease, super::focus::Owner::Audio, control_intent)
+                .check()?;
+        }
         if current.fm {
             if matches!(
                 action,
@@ -380,7 +402,18 @@ impl MusicClient {
         if let Some(lease) = lease {
             self.focus.check(lease, super::focus::Owner::Audio)?;
         }
-        let state = controller.command(&token, command).await?;
+        let state = if let Some(target) = native {
+            controller
+                .command_guarded(
+                    &token,
+                    command,
+                    target.audio(&current)?,
+                    target.cancellation(self, lease, super::focus::Owner::Audio, control_intent),
+                )
+                .await?
+        } else {
+            controller.command(&token, command).await?
+        };
         self.session.check_generation(&token)?;
         if !local_effect {
             self.together_signal(&token, together_action);

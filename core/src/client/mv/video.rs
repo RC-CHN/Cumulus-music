@@ -10,6 +10,17 @@ impl MusicClient {
             .map(view::video)
     }
     pub async fn video_action(&self, epoch: &str, action: VideoAction) -> Result<VideoView> {
+        self.video_action_checked(epoch, action, None).await
+    }
+    pub(in crate::client) async fn video_action_checked(
+        &self,
+        epoch: &str,
+        action: VideoAction,
+        native: Option<&super::super::native_media::NativeMediaTarget>,
+    ) -> Result<VideoView> {
+        if let Some(target) = native {
+            target.check(self)?;
+        }
         let token = self.mv.token(epoch)?;
         if let VideoAction::Open {
             id,
@@ -36,7 +47,12 @@ impl MusicClient {
             action,
             VideoAction::Open { .. } | VideoAction::Play | VideoAction::Pause { paused: false }
         ) {
-            Some(self.claim_media(&token, Owner::Video).await?)
+            Some(if let Some(target) = native {
+                self.claim_native_media(&token, Owner::Video, target.focus)
+                    .await?
+            } else {
+                self.claim_media(&token, Owner::Video).await?
+            })
         } else {
             None
         };
@@ -62,12 +78,20 @@ impl MusicClient {
         if let Some(lease) = lease {
             self.focus.check(lease, Owner::Video)?;
         }
-        self.mv
-            .controller(&token)
-            .await?
-            .command(&token, command)
-            .await
-            .map(view::video)
+        let controller = self.mv.controller(&token).await?;
+        if let Some(target) = native {
+            controller
+                .command_guarded(
+                    &token,
+                    command,
+                    target.video(&controller.snapshot()?)?,
+                    target.cancellation(self, lease, Owner::Video, None),
+                )
+                .await
+                .map(view::video)
+        } else {
+            controller.command(&token, command).await.map(view::video)
+        }
     }
     pub fn video_frame(
         &self,

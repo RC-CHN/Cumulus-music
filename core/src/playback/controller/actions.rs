@@ -18,6 +18,12 @@ impl Actor {
             self.reply(request.reply, Err(error));
             return;
         }
+        if let Some((expected, cancel)) = &request.guard
+            && (*expected != self.snapshot().fence() || cancel.is_cancelled())
+        {
+            self.reply(request.reply, Err(Error::StaleResponse));
+            return;
+        }
         if matches!(request.command, PlaybackCommand::Queue) {
             let _ = request.reply.send(Ok(Reply {
                 state: self.snapshot(),
