@@ -62,6 +62,12 @@ impl Api for Reads {
                     | "/api/album/sublist"
                     | "/api/digitalAlbum/purchased"
                     | "/api/user/follow/users/mixed/get/v2"
+                    | "/api/play-record/song/list"
+                    | "/api/play-record/album/list"
+                    | "/api/play-record/playlist/list"
+                    | "/api/play-record/voice/list"
+                    | "/api/play-record/djradio/list"
+                    | "/api/play-record/voice/book/timeline/list"
             ) && !path
                 .strip_prefix("/api/artist/albums/")
                 .is_some_and(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit()))

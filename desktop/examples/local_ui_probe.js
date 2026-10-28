@@ -43,6 +43,15 @@
    step='groups';await click(button('歌手'));await wait(()=>el('.local-groups'),'artist_groups');await click(all('.local-groups button').find(n=>n.querySelector('span')?.textContent==='Cumulus'));
    await wait(()=>all('.local-tracks tbody tr').length===3,'artist_filter');await stage('local_groups',{group:'artist',tracks:3});
    await click(button('歌曲'));await wait(()=>all('.local-tracks tbody tr').length===4,'all_rows');
+   step='history_replay';await click(button('最近播放'));await wait(()=>{if(el('.history-page .catalog-error'))throw Error('history_read: '+el('.history-page .catalog-error').textContent);return el('.history-page')?.getAttribute('aria-busy')==='false'&&el('.history-actions button');},'guest_history');
+   const history=await invoke('history_page',{epoch,kind:'song',refresh:true});
+   if(history.value.canSync||history.value.entries.length!==1||!history.value.entries[0].resource.track.local)throw Error('guest_history_scope');
+   await sleep(400);await report('local_history_page',{guest:true,historyRows:all('.history-window .history-row').length,canSync:false});await sleep(900);
+   await click(el('.history-actions [aria-label^="播放"]'));await sleep(1400);
+   const replay=await invoke('player_action',{epoch,action:{kind:'pause',paused:true}});
+   if(replay.queueLen!==1||replay.timeline.mode!=='cue'||replay.timeline.media_start!==30||replay.timeline.total!==90||replay.position<0.2)throw Error('history_native_cue_replay');
+   await report('local_history_replay',{guest:true,queue:1,mediaStart:30,duration:90,position:replay.position,audioOutput:'null',historyReplayVerified:true});await sleep(900);
+   await click(button('本地音乐'));await wait(()=>all('.local-tracks tbody tr').length===4,'library_after_history');
    step='history_fault';await report('history_fault',{enabled:true});await wait(()=>window.__historyFaultReady===true,'fault_ready');
    step='ncm';await click(el('[aria-label="播放本地歌曲 归途"]'));await wait(()=>el('.playerbar [aria-label="暂停"]')&&el('.playerbar').textContent.includes('归途'),'ncm_playing');
    await wait(()=>el('.playback-message')?.textContent.includes('最近播放暂未保存'),'history_warning');

@@ -146,7 +146,7 @@ fn main() {
                 handle.get_webview_window("main").unwrap().eval(format!("window.__historyFaultReady={enabled};")).unwrap();
                 return;
             }
-            if !["local_picker","local_library","local_cue","local_ncm","local_groups","local_reopened","local_history_warning","complete","failed"].contains(&stage){return;}
+            if !["local_picker","local_library","local_cue","local_ncm","local_groups","local_reopened","local_history_warning","local_history_page","local_history_replay","complete","failed"].contains(&stage){return;}
             let suffix=if reopen{"-reopened"}else{""};
             if stage=="complete" {
                 let history=cumulus_core::history::HistoryService::new(session.clone()).unwrap();
