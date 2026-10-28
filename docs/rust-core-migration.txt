@@ -538,3 +538,14 @@ core不依赖GIO/Tauri。Linux宿主接标准MPRIS，真实总线/GTK/PCM/null�
 非C locale真实GUI初始化后的native_audio_probe进度/暂停/定位/倍速/CUE/取消通过。
 没有改前端内容树，本批不声称重新跑了前端视觉测试，也不宣称Linux物理面板或Windows
 SMTC已验证。系统媒体设置开关、全局快捷键、Windows宿主和其余原目标仍需继续。
+
+2026-10-29 本机系统媒体设置增量
+core/preferences/system_media与client/media_preferences迁移官方M116设置保存/读取意图，
+设备级存储、账号代次边界、UUID并发令牌、原文备份和原子修复；不初始化解码器或联网。
+desktop/system_media/policy与settings把确认落盘的偏好应用到Linux/Windows宿主，
+代次退休旧注册/未派发控制，显式报告实际可用性；正式设置页通过类型化IPC接入。
+Linux真实D-Bus、PCM/null12段及WebView12态/12截图、重启/失败/损坏修复通过；
+235个Rust目标1098项、前端212项、严格Linux/Windows交叉Clippy及fmt通过。
+官方来源、状态机、存储字段、接口和故障边界见system-media-settings-contracts.txt。
+Windows SMTC已有实现，但40787793046专项在原生GUI就绪前失败，尚未实际执行OS消费；
+不可用交叉编译或Linux结果代替Windows运行。全局快捷键及其余全目标继续，不宣布完成。

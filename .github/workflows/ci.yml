@@ -153,6 +153,7 @@ jobs:
           LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a python3 scripts/ci/like_recovery_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-likes-linux
           LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a python3 scripts/ci/keyboard_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-keyboard-linux
           LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a python3 scripts/ci/motion_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-motion-linux
+          LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a python3 scripts/ci/system_media_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-system-media-linux
           cargo build -p cumulus-desktop --example saved_accounts_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a python3 scripts/ci/accounts_smoke.py --binary .build/target/debug/examples/saved_accounts_ui_probe --root .build/ci-accounts-linux
           cargo build -p cumulus-desktop --example output_ui_probe --features custom-protocol --locked

@@ -4,15 +4,16 @@ Linux 系统媒体控制（MPRIS，2026-10-29）
 Linux 通过桌面会话 D-Bus 向系统面板提供 MPRIS。生产实现在
  desktop/src/system_media/linux/{mod,dispatch,commands,properties,signals}.rs。
 正常 Tauri setup 接入；不是 WebView JavaScript 模拟，也不依赖 Python。
-Windows 此模块不注册 MPRIS；Windows SMTC、全局快捷键、设置开关仍待接入。
-当前自动启用：未选曲时不占媒体会话，选曲后注册，停止时保留选择，清空队列、
+Windows 此模块不注册 MPRIS；Windows SMTC实现及运行边界见windows-smtc-contracts.txt。
+本机持久化开关及实际状态界面见system-media-settings-contracts.txt；全局快捷键仍待接入。
+默认启用且服从本机开关：未选曲时不占媒体会话，选曲后注册，停止时保留选择，清空队列、
 账号退出/切换导致旧选择消失时注销，下一账号播放后重新注册。主窗口销毁时停止。
 隐藏窗口后保持播放和系统控制，Raise 只唤回窗口。CanQuit=false，Quit 无操作。
 
 官方恢复依据：references/recovered-client/docs/product/models/playing.txt
 M308:5082–5124 onSMTCEnable 的当前歌曲/封面；M308:5292–5386 原生播放动作；
 setting.txt M116:1472–1533 的设置保存/开关。本批只恢复适用于 Linux 的媒体控制；
-不移植官方 Windows AB 分流，不宣称其设置开关已完成。未参考 YesPlayMusic。
+不移植官方 Windows AB 分流；设备设置另有独立核心和界面验证。未参考 YesPlayMusic。
 Linux 协议差异依据以下原始规范，而非推测官方 Windows 使用 D-Bus：
 https://specifications.freedesktop.org/mpris/latest/Player_Interface.html
 https://specifications.freedesktop.org/mpris/latest/Media_Player.html

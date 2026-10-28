@@ -3,6 +3,7 @@ mod commands;
 mod events;
 mod metadata;
 mod native;
+use super::policy;
 use cumulus_core::client::{MusicClient, native_media::NativeMediaDetails};
 use std::{
     sync::{
@@ -35,9 +36,13 @@ pub(super) fn install<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
         return;
     }
     let Some(window) = app.get_webview_window("main") else {
+        policy::failed_to_start(app);
         return;
     };
-    let Ok(window) = window.hwnd() else { return };
+    let Ok(window) = window.hwnd() else {
+        policy::failed_to_start(app);
+        return;
+    };
     let (wake, requests) = mpsc::sync_channel(1);
     let host = Arc::new(Host {
         stopped: AtomicBool::new(false),
@@ -49,6 +54,7 @@ pub(super) fn install<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     });
     app.manage(host.clone());
     let app = app.clone();
+    let failure_app = app.clone();
     let hwnd = window.0 as usize;
     // One dedicated MTA owns creation, metadata and revocation. WinRT callbacks
     // only enqueue fenced core work and never block the Tauri window thread.
@@ -57,6 +63,7 @@ pub(super) fn install<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
         .spawn(move || {
             let Ok(_apartment) = native::Apartment::open() else {
                 eprintln!("Windows media integration unavailable");
+                policy::failed_to_start(&app);
                 return;
             };
             run(&app, &host, hwnd, requests);
@@ -64,6 +71,7 @@ pub(super) fn install<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
         .is_err()
     {
         eprintln!("Windows media worker unavailable");
+        policy::failed_to_start(&failure_app);
     }
 }
 struct Bridge {
@@ -99,53 +107,73 @@ fn run<R: tauri::Runtime>(
 ) {
     let mut bridge: Option<Bridge> = None;
     let mut retry = Instant::now();
+    let mut active_policy = None;
     while !host.stopped.load(Ordering::Acquire) {
-        if let Ok(view) = app.state::<MusicClient>().native_media_details() {
-            if view.transport.target.is_none() {
-                if bridge.is_some() {
-                    retire(host, &mut bridge);
-                }
-            } else {
-                if bridge.is_none() && Instant::now() >= retry {
-                    let generation = host.generation.fetch_add(1, Ordering::AcqRel) + 1;
-                    bridge = native::open(hwnd)
-                        .and_then(|controls| {
-                            let mut result = Bridge {
-                                controls,
-                                subscriptions: vec![],
-                                previous: None,
-                                timeline_at: Instant::now(),
-                            };
-                            events::install(app, host, generation, &mut result)?;
-                            Ok(result)
-                        })
-                        .map_err(|error| {
-                            eprintln!("Windows media integration unavailable: {}", error.code());
-                        })
-                        .ok();
-                    retry = Instant::now() + Duration::from_secs(2);
-                }
-                if let Some(current) = bridge.as_mut() {
-                    match metadata::publish(
-                        current,
-                        &view,
-                        host.refresh_controls.swap(false, Ordering::AcqRel),
-                    ) {
-                        Ok(()) => {
-                            if let Ok(mut published) = host.published.lock() {
-                                *published = Some(view);
+        let ticket = policy::ticket(app);
+        if ticket != active_policy {
+            retire(host, &mut bridge);
+            active_policy = ticket;
+            retry = Instant::now();
+        }
+        if let Some(ticket) = ticket {
+            if let Ok(view) = app.state::<MusicClient>().native_media_details() {
+                if view.transport.target.is_none() {
+                    if bridge.is_some() {
+                        retire(host, &mut bridge);
+                    }
+                    policy::report(app, ticket, policy::Phase::Idle);
+                } else {
+                    if bridge.is_none() && Instant::now() >= retry {
+                        let generation = host.generation.fetch_add(1, Ordering::AcqRel) + 1;
+                        policy::report(app, ticket, policy::Phase::Connecting);
+                        bridge = native::open(hwnd)
+                            .and_then(|controls| {
+                                let mut result = Bridge {
+                                    controls,
+                                    subscriptions: vec![],
+                                    previous: None,
+                                    timeline_at: Instant::now(),
+                                };
+                                events::install(app, host, generation, &mut result)?;
+                                Ok(result)
+                            })
+                            .map_err(|error| {
+                                eprintln!(
+                                    "Windows media integration unavailable: {}",
+                                    error.code()
+                                );
+                                policy::report(app, ticket, policy::Phase::Unavailable);
+                            })
+                            .ok();
+                        retry = Instant::now() + Duration::from_secs(2);
+                    }
+                    if let Some(current) = bridge.as_mut() {
+                        match metadata::publish(
+                            current,
+                            &view,
+                            host.refresh_controls.swap(false, Ordering::AcqRel),
+                        ) {
+                            Ok(()) => {
+                                if let Ok(mut published) = host.published.lock() {
+                                    *published = Some(view);
+                                }
+                                policy::report(app, ticket, policy::Phase::Active);
                             }
-                        }
-                        Err(error) => {
-                            eprintln!("Windows media update failed: {}", error.code());
-                            retire(host, &mut bridge);
-                            retry = Instant::now() + Duration::from_secs(2);
+                            Err(error) => {
+                                eprintln!("Windows media update failed: {}", error.code());
+                                policy::report(app, ticket, policy::Phase::Unavailable);
+                                retire(host, &mut bridge);
+                                retry = Instant::now() + Duration::from_secs(2);
+                            }
                         }
                     }
                 }
+            } else {
+                if bridge.is_some() {
+                    retire(host, &mut bridge);
+                }
+                policy::report(app, ticket, policy::Phase::Unavailable);
             }
-        } else if bridge.is_some() {
-            retire(host, &mut bridge);
         }
         let _ = requests.recv_timeout(Duration::from_millis(250));
     }

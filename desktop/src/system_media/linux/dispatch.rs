@@ -11,6 +11,15 @@ pub(super) fn handle<R: tauri::Runtime>(
     parameters: &glib::Variant,
     invocation: gio::DBusMethodInvocation,
 ) {
+    let Some(policy_ticket) = policy::ticket(app) else {
+        return fail(
+            invocation,
+            commands::Failure(
+                "org.freedesktop.DBus.Error.Disconnected",
+                "System media controls are disabled",
+            ),
+        );
+    };
     if host.stopped.load(Ordering::Acquire) {
         return fail(
             invocation,
@@ -113,6 +122,9 @@ pub(super) fn handle<R: tauri::Runtime>(
     }
     let worker_app = app.clone();
     let worker = tauri::async_runtime::spawn(async move {
+        if !policy::valid(&worker_app, policy_ticket) {
+            return Err(cumulus_core::Error::State("system media disabled"));
+        }
         commands::execute(&worker_app.state::<MusicClient>(), &target, command).await
     });
     let app = app.clone();
@@ -121,7 +133,9 @@ pub(super) fn handle<R: tauri::Runtime>(
     // to Tokio; Properties.Set is acknowledged after persistence has completed.
     glib::MainContext::default().spawn_local(async move {
         let result = worker.await;
-        if let Ok(view) = current(&app) {
+        if policy::valid(&app, policy_ticket)
+            && let Ok(view) = current(&app)
+        {
             signals::publish(&host, &view);
         }
         host.busy.store(false, Ordering::Release);

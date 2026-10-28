@@ -589,3 +589,32 @@ Windows现场与接续提示焦点复查（2026-10-29）
   PCM/libmpv/null通过，始终同一playId；已看均衡器打开暂停态和最终页面暂停态。
   空格仍在弹窗/输入/修饰/已处理事件中不触发播放，普通页面空格仍能播放/暂停。
   本批没有改生产前端内容，不以这些合成截图证明物理声卡、Windows桌面或实机刷新率。
+
+2026-10-29 系统媒体开关、主题控件和共享焦点恢复
+- 正式设置页接入本机系统媒体开关、实际连接状态、保存/读取失败及损坏修复；
+  独立Rust持久化与原生宿主依据见system-media-settings-contracts.txt。真实音乐请求0。
+- 实际截图发现新复选框沿用蓝色系统默认样式且间距不足；设置页统一16px尺寸、
+  10px文字间距、主题accent-color。深浅色与760×540内部滚动均实际检查。
+- media-settings-ui-final/focus-diagnostic/ui-delivery保留失败焦点证据。最初将失败
+  判断为过早检查，但加有界等待后仍实际失焦；focus-trace单次通过不能证明修好。
+  WebKit延后blur时，activeElement仍是已禁用输入框。共享useControlFocus现在同时
+  处理这种属于当前操作的焦点，保持账号/动作/其他控件/弹窗的原有防抢焦点约束。
+- .build/media-settings-focus-fixed/report.json：12态/12截图、两次进程启动通过，
+  保存失败最终焦点到刷新（本次等待1ms）、修复后的按钮移除也正确恢复；播放器
+  同一playId、工厂计数保持首态基线、实际PCM继续前进。设置重启和损坏备份独立核对。
+  已查看small_dark、save_failed截图，控件/状态/错误不互相遮挡，播放条保持可见。
+- .build/media-settings-editor-regression：共享焦点修正前34态/34截图通过；
+  修正后的完整编辑页/主题/动画回归另记最终证据，不能把此前结果替代新代码验证。
+- 并发运行的media-settings-motion-regression首轮16态完成，但重开进程退出-11，
+  整轮判定失败。media-settings-motion-crash.txt的崩溃栈位于libatk-bridge的
+  spi_register_object_to_path/GTK/WebKit，前有无障碍总线连接超时；尚未定位依赖根因。
+  没有关闭无障碍支持、忽略进程退出码或将其归因为显卡错误。继续串行诊断，保留失败。
+- 最终相同前端内容树的串行回归：media-settings-motion-final为18态/18截图，
+  media-settings-editor-final为34态/34截图，均含重开且进程正常退出；与设置12态
+  合计64态/64截图。编辑入口随长标题正常布局，760×540深浅色编辑框保存入口可见，
+  菜单键盘/嵌套封面/未保存内容/确认返回焦点、主题及动态偏好重开均通过。
+  已查看最终playlist_light、editor_light、small_editor_light、small_editor_dark截图。
+  串行通过不证明此前AT-SPI崩溃根因已修复，继续保留该环境兼容性边界。
+- 最终前端212项、Rust235目标/1098项、CI规则21项均通过，失败/忽略0；fmt、
+  严格workspace Clippy、Windows GNU desktop全targets Clippy和生产构建通过。
+  Linux系统媒体设置GUI纳入独立Linux job；Windows完整CI及专项须以精确提交核验。

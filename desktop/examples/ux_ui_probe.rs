@@ -83,6 +83,7 @@ fn main() {
     let root = PathBuf::from(std::env::var_os("CUMULUS_PROOF_DIR").expect("new proof root"));
     let motion_proof = std::env::var_os("CUMULUS_MOTION_PROOF").is_some();
     let recovery_proof = std::env::var_os("CUMULUS_LIKE_RECOVERY_PROOF").is_some();
+    let media_proof = std::env::var_os("CUMULUS_SYSTEM_MEDIA_PROOF").is_some();
     let output = root.join(if std::env::var_os("CUMULUS_PROOF_REOPEN").is_some() {
         "reopen"
     } else {
@@ -95,6 +96,7 @@ fn main() {
     context.config_mut().app.windows[0].create = false;
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
         let registry=ProfileRegistry::open(&root.join("state"),ApiOrigin::Pc)?;
+        let proof_store=registry.store();
         let recovery = recovery_proof.then(||Arc::new(like_recovery_fixture::Library::new(Arc::new(Library))));
         let api:Arc<dyn Api>=recovery.as_ref().map(|f|f.clone() as Arc<dyn Api>).unwrap_or_else(||Arc::new(Library));
         let session=Arc::new(AccountSession::new(api,Some(registry.store())));
@@ -103,8 +105,10 @@ fn main() {
             .map(|value| value.parse().expect("integer fixture startup delay")).unwrap_or(0);
         assert!(startup_delay <= 5000, "bounded synthetic startup delay");
         let factory_elapsed = Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let factory_count = Arc::new(std::sync::atomic::AtomicU64::new(0));
         if motion_proof {
             let elapsed = factory_elapsed.clone();
+            let count=factory_count.clone();
             let wave = root.join("relay-synthetic.wav");
             let wave = if wave.exists() { wave } else { relay_fixture::wave(&root)? };
             client = client.with_audio_factory(move || {
@@ -112,6 +116,7 @@ fn main() {
                 std::thread::sleep(std::time::Duration::from_millis(startup_delay));
                 let audio = relay_fixture::NativeAudio::open(wave.clone())?;
                 elapsed.store(start.elapsed().as_millis() as u64, std::sync::atomic::Ordering::Release);
+                count.fetch_add(1,std::sync::atomic::Ordering::AcqRel);
                 Ok(Box::new(audio))
             });
         }
@@ -121,6 +126,19 @@ fn main() {
         app.listen("ux-proof",move |event| {
             let mut value:Value=serde_json::from_str(event.payload()).unwrap();
             let stage=value["stage"].as_str().unwrap_or("");
+            if media_proof && stage=="media-fixture" {
+                let kind=value["kind"].as_str().unwrap();
+                match kind {
+                    "reject" | "allow" => {
+                        let sql=rusqlite::Connection::open(proof_store.directory().join("core.sqlite3")).unwrap();
+                        sql.execute_batch(if kind=="reject" {"CREATE TRIGGER reject_media_ui BEFORE INSERT ON state WHEN NEW.kind='system-media-preferences-v1' BEGIN SELECT RAISE(ABORT,'synthetic setting write failure'); END;"} else {"DROP TRIGGER reject_media_ui;"}).unwrap();
+                    }
+                    "damage"=>proof_store.put("local-device","system-media-preferences-v1","current",&json!({"enabled":"invalid"})).unwrap(),
+                    _=>panic!("unknown isolated media fixture action"),
+                }
+                handle.get_webview_window("main").unwrap().eval(format!("window.__mediaFixtureAck={};",serde_json::to_string(kind).unwrap())).unwrap();
+                return;
+            }
             if let Some(fixture)=recovery.as_ref() {
                 use std::sync::atomic::Ordering;
                 if stage=="like-fixture" {
@@ -143,6 +161,11 @@ fn main() {
             if motion_proof {
                 value["audioFactoryElapsedMs"] = json!(factory_elapsed.load(std::sync::atomic::Ordering::Acquire));
                 value["audioFactoryDelayRequestedMs"] = json!(startup_delay);
+                value["audioFactoryCount"] = json!(factory_count.load(std::sync::atomic::Ordering::Acquire));
+                if media_proof {
+                    value["systemMediaStatus"]=serde_json::to_value(cumulus_desktop::system_media::settings::system_media_status(handle.clone())).unwrap();
+                    value["systemMediaPreferences"]=serde_json::to_value(handle.state::<MusicClient>().system_media_preferences_native().unwrap()).unwrap();
+                }
                 let stage = stage.to_owned(); let handle=handle.clone(); let output=output.clone();
                 tauri::async_runtime::spawn(async move {
                     let client=handle.state::<MusicClient>(); let epoch=client.account().unwrap().epoch;
@@ -163,6 +186,7 @@ fn main() {
         let mut builder=tauri::WebviewWindowBuilder::from_config(app, &window_config)?.data_directory(root.join("webview"));
         if motion_proof { builder=builder.initialization_script(include_str!("motion_environment.js")); }
         builder.build()?;
+        if media_proof {cumulus_desktop::system_media::install(app.handle());}
         Ok(())
     }).on_page_load(|view, payload| {
         if payload.event()==PageLoadEvent::Finished && view.label()=="main" {

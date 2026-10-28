@@ -27,6 +27,9 @@ pub(super) fn submit<R: tauri::Runtime>(
     generation: u64,
     command: Command,
 ) {
+    let Some(policy_ticket) = policy::ticket(app) else {
+        return;
+    };
     if host.stopped.load(Ordering::Acquire) || host.generation.load(Ordering::Acquire) != generation
     {
         return;
@@ -58,6 +61,7 @@ pub(super) fn submit<R: tauri::Runtime>(
         let _pending = pending;
         if _pending.0.stopped.load(Ordering::Acquire)
             || _pending.0.generation.load(Ordering::Acquire) != generation
+            || !policy::valid(&app, policy_ticket)
         {
             return;
         }

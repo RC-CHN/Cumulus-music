@@ -15,14 +15,14 @@
 .settings-page :is(button, input, summary) {
   scroll-margin-block: 8px;
 }
-.motion-option {
+.settings-checkbox {
   display: flex;
   align-items: center;
   gap: 10px;
   min-height: 32px;
   width: fit-content;
 }
-.motion-option input {
+.settings-checkbox input {
   accent-color: var(--accent);
   width: 16px;
   height: 16px;

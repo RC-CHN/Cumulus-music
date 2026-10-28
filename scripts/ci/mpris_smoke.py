@@ -77,7 +77,7 @@ def main():
         raise AssertionError('timed out: '+message)
     def state(): return json.loads((run/'state.json').read_text())
     sequence = 0
-    def control(kind):
+    def control(kind, expected=True):
         nonlocal sequence
         sequence += 1
         pending = run / 'command.pending'
@@ -85,7 +85,7 @@ def main():
         pending.replace(run/'command.json')
         reply = run/f'ack-{sequence}.json'
         wait(reply.exists, 'fixture '+kind)
-        assert json.loads(reply.read_text())['ok'], kind
+        assert json.loads(reply.read_text())['ok'] == expected, kind
     def call(interface, name, parameters=None):
         result = connection.call_sync(service, PATH, interface, name, parameters, None, Gio.DBusCallFlags.NONE, 10000, None)
         drain()
@@ -211,6 +211,24 @@ def main():
             assert get('Volume')==.38
             steps.append('set-awaits-persistence-and-rolls-back')
             call(PLAYER,'Play')
+            before = state()
+            control('media_reject')
+            control('media_off', expected=False)
+            assert has_owner() and get('PlaybackStatus')=='Playing'
+            control('media_allow')
+            control('media_off')
+            wait(lambda:not has_owner(),'disabled policy removes OS session')
+            wait(lambda:state()['position']>before['position']+.3,'audio continues with system controls disabled')
+            assert state()['engines']==before['engines'] and state()['id']==before['id']
+            control('media_on')
+            wait(has_owner,'system media explicitly enabled again')
+            assert get('Metadata')['mpris:trackid']==first_id
+            control('media_damage')
+            wait(lambda:not has_owner(),'damaged setting disables OS integration')
+            control('media_repair')
+            wait(has_owner,'explicit setting repair restores integration')
+            assert state()['engines']==before['engines'] and state()['id']==before['id']
+            steps.append('device-switch-save-failure-damage-repair-keeps-audio')
             before = state()
             for subscription in subscriptions: connection.signal_unsubscribe(subscription)
             subscriptions.clear()

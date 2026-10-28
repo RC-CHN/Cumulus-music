@@ -22,7 +22,10 @@ export function useControlFocus(
         !disposed &&
         current === serial &&
         captured === owner() &&
-        document.activeElement === document.body
+        (document.activeElement === document.body ||
+          // WebKit can retain a disabled input as active until its next render.
+          // Move focus now; waiting for its delayed blur strands it on body.
+          (document.activeElement === trigger && trigger.matches(':disabled')))
       ) {
         const target = trigger.isConnected && !trigger.matches(':disabled') ? trigger : fallback();
         if (

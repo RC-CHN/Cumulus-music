@@ -51,7 +51,7 @@ def main():
         raise AssertionError('timed out: ' + label)
     def state():
         return json.loads((run / 'state.json').read_text(encoding='utf-8'))
-    def fixture(kind):
+    def fixture(kind, expected=True):
         nonlocal sequence
         sequence += 1
         pending = run / 'command.pending'
@@ -59,7 +59,7 @@ def main():
         pending.replace(run / 'command.json')
         reply = run / f'ack-{sequence}.json'
         wait(reply.exists, 'fixture ' + kind)
-        assert json.loads(reply.read_text())['ok'], kind
+        assert json.loads(reply.read_text())['ok'] == expected, kind
     def consumer(command='snapshot'):
         assert time.monotonic() < deadline, 'overall SMTC proof deadline'
         result = subprocess.run([str(executable), '--consumer', prefix, command],
@@ -142,6 +142,22 @@ def main():
             before = state()
             wait(lambda: state()['position'] > before['position'] + .3, 'hidden PCM progress')
             assert not state()['visible'] and state()['engines'] == before['engines']
+            fixture('media_reject')
+            fixture('media_off', expected=False)
+            assert consumer()['found'] and state()['status']=='Playing'
+            fixture('media_allow')
+            fixture('media_off')
+            wait(lambda:not consumer()['found'],'disabled policy removes SMTC')
+            disabled=state()
+            wait(lambda:state()['position']>disabled['position']+.3,'audio continues while SMTC disabled')
+            fixture('media_on')
+            wait(lambda:os_state(status=4),'SMTC explicitly enabled again')
+            fixture('media_damage')
+            wait(lambda:not consumer()['found'],'damaged setting removes SMTC')
+            fixture('media_repair')
+            wait(lambda:os_state(status=4),'explicit setting repair restores SMTC')
+            assert state()['engines']==before['engines'] and state()['id']==before['id']
+            steps.append('device-switch-damage-repair-keeps-audio')
             action('stop')
             wait(lambda: state()['status'] == 'Stopped', 'native stop')
             wait(lambda: os_state(status=3), 'published stop')
@@ -164,6 +180,14 @@ def main():
                   'physicalAudioOutputVerified': False, 'physicalShellPanelVerified': False}
         (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
         print(json.dumps(report))
+    except Exception as error:
+        diagnostic = {'error': str(error), 'steps': steps,
+                      'hostExit': process.poll() if process is not None else None}
+        progress = run / 'progress.json'
+        if progress.exists():
+            diagnostic['hostProgress'] = json.loads(progress.read_text(encoding='utf-8'))
+        (root/'failure.json').write_text(json.dumps(diagnostic, indent=2)+'\n', encoding='utf-8')
+        raise
     finally:
         (root / 'completed-steps.json').write_text(json.dumps(steps), encoding='utf-8')
         if process is not None and process.poll() is None:

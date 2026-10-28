@@ -5,11 +5,18 @@ import type { PlayerUpdate } from '../services/player';
 import type { AccountView, AppInfo, CoreClient } from '../services/contracts';
 import { decodeVideoFrame } from '../services/mv';
 import type { WindowLifecycleView } from '../services/window';
+import type { SystemMediaStatus } from '../services/systemMedia';
 import type { SessionRenewalView } from '../services/renewal';
 
 /** The only module that knows how the desktop host transports commands. */
 export function createTauriClient(): CoreClient {
   return {
+    systemMediaPreferences: (epoch) => invoke('system_media_preferences', { epoch }),
+    systemMediaPreferencesCommand: (epoch, command) =>
+      invoke('system_media_preferences_command', { epoch, command }),
+    systemMediaStatus: () => invoke('system_media_status'),
+    onSystemMediaStatus: (handler) =>
+      listen<SystemMediaStatus>('cumulus:system-media', (event) => handler(event.payload)),
     windowPreferences: (epoch) => invoke('window_preferences', { epoch }),
     windowPreferencesCommand: (epoch, command) =>
       invoke('window_preferences_command', { epoch, command }),

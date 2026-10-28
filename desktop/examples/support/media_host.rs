@@ -46,7 +46,7 @@ use std::{
         Arc,
         atomic::{AtomicUsize, Ordering},
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tauri::Manager;
 fn write(path: &Path, value: &Value) {
@@ -55,20 +55,32 @@ fn write(path: &Path, value: &Value) {
     std::fs::rename(next, path).unwrap();
 }
 pub fn run() {
+    let started = Instant::now();
+    eprintln!("native system media proof: process_entry");
     // SAFETY: process entry before native worker or GTK initialization.
     unsafe {
         cumulus_desktop::prepare_graphics();
     }
     let root = PathBuf::from(std::env::var_os("CUMULUS_PROOF_DIR").expect("isolated proof root"));
     std::fs::create_dir(&root).unwrap();
+    let progress_root = root.clone();
+    let progress = move |stage: &str| {
+        let value = json!({"stage":stage,"elapsedMs":started.elapsed().as_millis()});
+        eprintln!("native system media proof: {value}");
+        write(&progress_root.join("progress.json"), &value);
+    };
+    progress("before_registry");
     let api = Arc::new(MediaLibrary::default());
     let registry = ProfileRegistry::open(&root.join("state"), ApiOrigin::Pc).unwrap();
     let store = registry.store();
+    progress("registry_opened");
     let session = Arc::new(AccountSession::new(api.clone(), Some(store.clone())));
     session
         .adopt(api.clone(), json!({"userId":2}), &session.token().unwrap())
         .unwrap();
+    progress("synthetic_account_ready");
     let wave = super::relay_fixture::wave(&root).unwrap();
+    progress("pcm_generated");
     let engines = Arc::new(AtomicUsize::new(0));
     let opened = engines.clone();
     let measured = observed::Probe::default();
@@ -84,13 +96,18 @@ pub fn run() {
         });
     let mut context = tauri::generate_context!();
     context.config_mut().app.windows[0].create = false;
+    progress("before_gui_run");
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
+        progress("gui_setup");
         app.manage(client);
         tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::External("about:blank".parse().unwrap()))
             .data_directory(root.join("webview")).inner_size(760.0,540.0).build()?;
+        progress("window_created");
         cumulus_desktop::system_media::install(app.handle());
+        progress("system_media_installed");
         let app = app.handle().clone();
         tauri::async_runtime::spawn(async move {
+            progress("worker_ready");
             write(&root.join("ready.json"), &json!({"pid":std::process::id(),"service":format!("org.mpris.MediaPlayer2.Cumulus.instance{}",std::process::id())}));
             loop {
                 let client = app.state::<MusicClient>();
@@ -106,6 +123,20 @@ pub fn run() {
                         "seek" => client.player_action(&epoch, PlayerAction::Seek {seconds:9.0}).await.map(|_|()),
                         "short_seek" => client.player_action(&epoch, PlayerAction::Seek {seconds:4.01}).await.map(|_|()),
                         "clear" => client.player_action(&epoch, PlayerAction::Clear).await.map(|_|()),
+                        "media_off" | "media_on" => {
+                            let value=cumulus_desktop::system_media::settings::read(&app,&epoch).unwrap().value;
+                            cumulus_desktop::system_media::settings::change(&app,&epoch,cumulus_core::client::dto::SystemMediaPreferencesCommand::Change{expected_revision:value.revision.unwrap(),enabled:kind=="media_on"}).map(|_|())
+                        }
+                        "media_damage" => {
+                            store.put("local-device","system-media-preferences-v1","current",&json!({"enabled":"invalid"})).unwrap();
+                            cumulus_desktop::system_media::settings::read(&app,&epoch).map(|_|())
+                        }
+                        "media_repair" => cumulus_desktop::system_media::settings::change(&app,&epoch,cumulus_core::client::dto::SystemMediaPreferencesCommand::Repair).map(|_|()),
+                        "media_reject" | "media_allow" => {
+                            let sql=rusqlite::Connection::open(store.directory().join("core.sqlite3")).unwrap();
+                            sql.execute_batch(if kind=="media_reject" {"CREATE TRIGGER reject_media BEFORE INSERT ON state WHEN NEW.kind='system-media-preferences-v1' BEGIN SELECT RAISE(ABORT,'synthetic media setting failure'); END;"} else {"DROP TRIGGER reject_media;"}).unwrap();
+                            Ok(())
+                        }
                         "switch" => session.adopt(api.clone(), json!({"userId":3}), &session.token().unwrap()).map(|_|()),
                         "reject" | "allow" => {
                             let sql = rusqlite::Connection::open(store.directory().join("core.sqlite3")).unwrap();

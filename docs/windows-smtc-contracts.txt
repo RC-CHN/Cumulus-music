@@ -6,7 +6,8 @@ Windows 系统媒体控制（SMTC）
   M308:5292–5386 onMiniPlayerAction 的 play/pause/stop/prev/next 复用普通播放控制。
   对应 references/recovered-client/docs/product/models/playing.txt 5467–5533、5754–5838。
 - M116:1472–1533 的 setSmtcEnable/initSmtcEnable 持久化用户设置优先于 AB 默认。
-  本批先接宿主，不把尚未提供的开关界面、AB 分组和全局快捷键称为完成。
+  本机持久化开关与原生可用状态见system-media-settings-contracts.txt；不伪造AB分组，
+  全局快捷键仍待接入，Windows原生运行证据不能用Linux界面验证代替。
 - Microsoft 手动 SMTC / GetForWindow 契约：
   https://learn.microsoft.com/en-us/windows/apps/develop/media-playback/system-media-transport-controls
   https://learn.microsoft.com/en-us/windows/win32/api/systemmediatransportcontrolsinterop/nf-systemmediatransportcontrolsinterop-isystemmediatransportcontrolsinterop-getforwindow
@@ -46,5 +47,6 @@ Windows 系统媒体控制（SMTC）
   continue-on-error 或把系统服务缺失标为通过。Server runner 若不提供 SMTC broker，
   保留真实失败、继续研究条件，不能称物理 Windows 桌面验收通过。
 - 当前本机是 Linux；Windows GNU 全 targets 严格 Clippy 已通过，Windows 实际
-  系统服务运行结果尚待专项 runner。当前仅新增诊断路径，不宣称运行验证通过。
-  物理声卡、原生系统面板视觉、设置开关及全局快捷键尚未由本批验证。
+  CI 40787793046专项在native GUI就绪前超时，未执行SMTC消费者；新增启动阶段日志，
+  仍需定位原因并实际跑通。物理声卡、原生系统面板视觉、Windows开关及全局快捷键
+  尚未由本批验证，不把交叉编译成功称为Windows运行通过。

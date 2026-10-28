@@ -1,0 +1,82 @@
+系统媒体控制设置（Linux / Windows）
+
+官方来源及差异
+- references/recovered-client/docs/product/models/setting.txt 1134–1214，官方116.js
+  1472–1533：setSmtcEnable先保存本机smtcEnable，再派发playing/onSMTCEnable；
+  初始化读取已有用户选择。playing.txt 5467–5533 / 308.js 5082–5124随后开关原生
+  SMTC，并在启用时补当前歌曲信息及封面。本设置没有网易云HTTP请求。
+- 官方还依赖PH-PC-SMTC / PH-PC-newSMTCoff分组；本社区客户端不伪造这些结果。
+  当前Linux MPRIS / Windows SMTC宿主默认启用，新增本机用户选择优先覆盖这个
+  社区默认。没有参考YesPlayMusic。系统具体控制语义分别见linux-mpris-contracts.txt
+  和windows-smtc-contracts.txt；这不是全局快捷键设置。
+
+独立核心及持久化
+- core/preferences/system_media.rs，client/media_preferences.rs；core没有Tauri、
+  WinRT、D-Bus或WebView依赖。MusicClient原生启动读取不会初始化播放器或请求网络。
+- StateStore owner=local-device，kind=system-media-preferences-v1；current保存
+  revision/enabled，saved=true标记曾保存。缺少current但仍有saved不是新安装。
+- 初始revision为initial，提交后使用新的UUID CAS令牌；每次写入、显式修复均换
+  令牌，修复损坏的标记也不会重新接受以前窗口持有的令牌。前端只把它当不透明字符串。
+- 当前记录和saved标记同一事务保存；修复将两者的原文备份到system-media-recovery-v1，
+  再原子恢复默认启用。修复失败不留下半份备份/默认值；正常状态不允许无谓修复。
+  缺字段、未知字段、错误类型、无效令牌/标记均显式显示damaged，关闭原生集成。
+- UI读写依然带账号epoch：过期窗口不能替换当前设备设置；切换账号不清除本机选择。
+  GUI退出/丢失回包不重发写入，只读回真实状态；读取不等于确认上一次写入成功。
+
+原生宿主与时序
+- desktop/system_media/policy.rs序列化启动读取、刷新、保存与缓存更新，防止较早
+  的读结果覆盖较新的保存。SQLite仅在这些操作的阻塞工作线程访问，GTK每250ms
+  的媒体轮询只读缓存，不在界面线程反复访问磁盘。
+- 成功关闭立即拒绝后续系统控制；Linux/Windows在下次至多250ms的宿主检查中
+  退休OS对象/回调并清除元数据。音乐、队列、playId、下载及账号不变。已开始执行
+  的业务操作不会因关闭集成而反向撤销或重复。
+- 再次开启按当前选择重建媒体会话，不重建解码器。策略代次变化会退休旧注册及
+  尚未完成的连接；已捕获但尚未派发的旧请求也检查策略代次。即使关开都发生在
+  同一次轮询间隔内，也能识别变化，不复活旧的注册结果。
+- 只在真实OS连接/发布成功后报告active；未选中媒体为idle，连线中connecting，
+  OS不可用unavailable。disabled/damaged/read_failed各自区分。WinRT线程/窗口句柄
+  初始化失败保留不可用状态，不把缓存设置为开启当作系统功能已可用。
+- 用户刷新遇到存储读取失败时停用集成；保存失败保持原有已确认策略，显式刷新后
+  可再次操作。OS断线仍按原有宿主恢复，不重播业务写入。其他进程直接改盘需刷新
+  或重启后读取；没有文件轮询或后台自动改写用户选择。
+
+类型化IPC和界面
+- system_media_preferences(epoch) -> AccountData<{revision,enabled,damaged}>
+- system_media_preferences_command(epoch,{kind:change,expected_revision,enabled}|{kind:repair})
+- system_media_status()及cumulus:system-media事件 -> {revision,installed,phase}
+  状态事件使用进程内递增修订，前端丢弃晚到的旧回包；不把这个数字当持久化CAS令牌。
+- SettingsPage -> settings/SystemMedia.vue；独立偏好与原生状态模型，勾选后保存，
+  显示“已保存”和系统实际状态。读取/保存/修复期间禁用控件；错误只读核对并要求
+  显式刷新。损坏时提供恢复入口，控件消失或失败后恢复到刷新按钮。
+- 深浅色、16px主题色复选框和文字间距沿用设置页，760×540时内容内部滚动，
+  不推动窗口外框/播放条。宿主未安装时明确显示不支持，不能假称已经连接。
+
+验证路径与边界
+- core/tests/system_media_preferences.rs与client_system_media_preferences.rs：
+  多窗口CAS、重开、损坏/缺失、备份、失败原子性、旧账号拒绝及不初始化播放器。
+- frontend/tests/system-media.test.ts：丢回包只读、迟到账号结果、显式修复、状态事件
+  排序及销毁后解绑。运行失败不忽略、不自动改写为成功。
+- system_media_ui_smoke.py：合成API/PCM、真实Tauri/WebView/IPC/SQLite/libmpv/null，
+  开关/后台播放、保存失败、损坏/恢复、深浅色小窗口、焦点和两次进程启动。
+  mpris_smoke.py / smtc_smoke.py另外用独立OS消费者检查实际注销/恢复，不能以UI勾选
+  或编译成功代替原生会话验证。截图与虚拟CI不代表物理面板、物理声卡或实机刷新率。
+- 7888706的Windows专项40787793046在native GUI等待超时，尚未到SMTC消费者。
+  已保留该失败并为下一次增加process_entry/registry/gui/window/install/worker阶段记录；
+  本文不将Windows交叉编译或Linux结果称为Windows运行通过。完整目标仍需继续。
+
+本地证据（2026-10-29）
+- .build/media-settings-mpris-final/report.json：12段独立D-Bus消费者流程通过，
+  同一实际引擎/播放项目下关闭、开启、拒写、损坏和显式修复均保持音频。
+  重新注册、总线停止/重启、旧账号请求及精确引擎定位参数也继续通过。
+- media-settings-full-tests.log：235个Rust目标、1098项通过，失败/忽略均0；
+  全workspace严格Clippy、fmt、Windows GNU全部desktop targets严格Clippy通过。
+  media-settings-focus-fix-*前端格式、212项测试、类型/生产构建及对应探针构建通过。
+- 初次UI驱动错误要求audioFactoryCount=1，实际游客→账号各初始化一次，共2次，
+  开关全程没有再创建引擎。外部断言改为首态实际基线，后续每个状态和完成都必须
+  完全相等；没有移除“设置不得重建解码器”的检查。
+- media-settings-ui-final / focus-diagnostic / ui-delivery保留失败：WebKit可在
+  Vue更新之后暂时保留已禁用输入框为activeElement，旧useControlFocus只恢复body，
+  结果稍后失焦落到body。focus-trace单次通过并不能排除该竞态；最终恢复逻辑也
+  处理仍属于当前操作的已禁用焦点，不抢占用户转移到其他控件/弹窗/账号的焦点。
+- 界面和其他共享焦点回归结果继续记录于ui-ux-validation.txt；所有证据使用隔离
+  合成账号/PCM，真实网易云请求0。没有执行真实账号设置写入或改动既有发行标签。

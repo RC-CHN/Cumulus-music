@@ -2,6 +2,7 @@ mod commands;
 mod dispatch;
 mod properties;
 mod signals;
+use super::policy;
 use cumulus_core::client::{
     MusicClient,
     native_media::{NativeMediaDetails, NativeMediaStatus},
@@ -96,20 +97,39 @@ pub(super) fn install<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     let app = app.clone();
     // Runs on GTK's main context; queries never initialize the audio engine.
     glib::MainContext::default().spawn_local(async move {
+        let mut active_policy = None;
         while !host.stopped.load(Ordering::Acquire) {
-            if let Ok(view) = current(&app) {
-                if view.transport.target.is_some() {
-                    ensure(&app, &host);
-                    signals::publish(&host, &view);
-                } else if host.bus.lock().is_ok_and(|bus| bus.is_some()) {
-                    remove(&host);
+            let ticket = policy::ticket(&app);
+            if ticket != active_policy {
+                remove(&host);
+                active_policy = ticket;
+                if let Ok(mut retry) = host.retry_after.lock() {
+                    *retry = None;
+                }
+            }
+            if let Some(ticket) = ticket {
+                if let Ok(view) = current(&app) {
+                    if view.transport.target.is_some() {
+                        ensure(&app, &host, ticket);
+                        signals::publish(&host, &view);
+                    } else {
+                        if host.bus.lock().is_ok_and(|bus| bus.is_some()) {
+                            remove(&host);
+                        }
+                        policy::report(&app, ticket, policy::Phase::Idle);
+                    }
+                } else {
+                    if host.bus.lock().is_ok_and(|bus| bus.is_some()) {
+                        remove(&host);
+                    }
+                    policy::report(&app, ticket, policy::Phase::Unavailable);
                 }
             }
             glib::timeout_future(Duration::from_millis(250)).await;
         }
     });
 }
-fn ensure<R: tauri::Runtime>(app: &tauri::AppHandle<R>, host: &Arc<Host>) {
+fn ensure<R: tauri::Runtime>(app: &tauri::AppHandle<R>, host: &Arc<Host>, ticket: u64) {
     if host
         .retry_after
         .lock()
@@ -126,6 +146,7 @@ fn ensure<R: tauri::Runtime>(app: &tauri::AppHandle<R>, host: &Arc<Host>) {
     let generation = host.generation.fetch_add(1, Ordering::AcqRel) + 1;
     *guard = Some(Bus::default());
     drop(guard);
+    policy::report(app, ticket, policy::Phase::Connecting);
     let host = host.clone();
     let app = app.clone();
     glib::MainContext::default().spawn_local(async move {
@@ -157,6 +178,7 @@ fn ensure<R: tauri::Runtime>(app: &tauri::AppHandle<R>, host: &Arc<Host>) {
         let Ok(Ok(Ok(address))) = address else {
             if host.generation.load(Ordering::Acquire) == generation {
                 defer_retry(&host);
+                policy::report(&app, ticket, policy::Phase::Unavailable);
             }
             return;
         };
@@ -173,12 +195,14 @@ fn ensure<R: tauri::Runtime>(app: &tauri::AppHandle<R>, host: &Arc<Host>) {
         let Ok(Ok(connection)) = result else {
             if host.generation.load(Ordering::Acquire) == generation {
                 defer_retry(&host);
+                policy::report(&app, ticket, policy::Phase::Unavailable);
             }
             return;
         };
         connection.set_exit_on_close(false);
         if host.stopped.load(Ordering::Acquire)
             || host.generation.load(Ordering::Acquire) != generation
+            || !policy::valid(&app, ticket)
         {
             connection.close(gio::Cancellable::NONE, |_| {});
             return;
@@ -186,14 +210,17 @@ fn ensure<R: tauri::Runtime>(app: &tauri::AppHandle<R>, host: &Arc<Host>) {
         if register(&app, &host, &connection).is_err() {
             connection.close(gio::Cancellable::NONE, |_| {});
             defer_retry(&host);
+            policy::report(&app, ticket, policy::Phase::Unavailable);
             return;
         }
         let lost = Arc::downgrade(&host);
+        let lost_app = app.clone();
         connection.connect_closed(move |_, _, _| {
             if let Some(host) = lost.upgrade()
                 && host.generation.load(Ordering::Acquire) == generation
             {
                 defer_retry(&host);
+                policy::report(&lost_app, ticket, policy::Phase::Unavailable);
             }
         });
         // gio 0.18's bus_own_name_on_connection unwraps a null connection in
@@ -218,8 +245,15 @@ fn ensure<R: tauri::Runtime>(app: &tauri::AppHandle<R>, host: &Arc<Host>) {
             )
             .await
             .is_ok_and(|reply| matches!(reply.get::<(u32,)>(), Some((1 | 4,))));
-        if !owned && host.generation.load(Ordering::Acquire) == generation {
-            defer_retry(&host);
+        if host.generation.load(Ordering::Acquire) == generation {
+            if owned && policy::valid(&app, ticket) {
+                policy::report(&app, ticket, policy::Phase::Active);
+            } else {
+                defer_retry(&host);
+                policy::report(&app, ticket, policy::Phase::Unavailable);
+            }
+        } else {
+            connection.close(gio::Cancellable::NONE, |_| {});
         }
     });
 }
