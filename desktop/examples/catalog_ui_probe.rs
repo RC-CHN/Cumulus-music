@@ -45,7 +45,14 @@ fn main() {
     let histories = std::env::var("CUMULUS_HISTORY_PROOF").as_deref() == Ok("1");
     let settings = std::env::var("CUMULUS_SETTINGS_PROOF").as_deref() == Ok("1");
     let relay_settings = std::env::var("CUMULUS_RELAY_SETTING_PROOF").as_deref() == Ok("1");
-    let relays = relay_settings || std::env::var("CUMULUS_RELAY_PROOF").as_deref() == Ok("1");
+    let relay_publication = std::env::var("CUMULUS_RELAY_PUBLICATION_PROOF").as_deref() == Ok("1");
+    assert!(
+        !(relay_publication && is_live),
+        "publication proof uses synthetic services only"
+    );
+    let relays = relay_publication
+        || relay_settings
+        || std::env::var("CUMULUS_RELAY_PROOF").as_deref() == Ok("1");
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
         let registry=ProfileRegistry::open(&root.join("state"),ApiOrigin::Pc)?;
         let collection_fixture=Arc::new(collection_fixture::Library::default());
@@ -55,7 +62,9 @@ fn main() {
         if relay_settings {relay_fixture.mode("setting-off");}
         let api:Arc<dyn Api>=if let Some(profile)=profile{Arc::new(live::Reads::open(&profile,&output)?)}else if relays {relay_fixture.clone()}else if settings {settings_fixture.clone()}else if histories {history_fixture.clone()}else if collections{collection_fixture.clone()}else{Arc::new(fixture::Library::default())};
         let session=Arc::new(AccountSession::new(api,Some(registry.store())));
-        let client=MusicClient::with_session(session,registry);
+        let publisher=Arc::new(cumulus_core::relay::publisher::RelayPublisher::new(session.clone())?);
+        let client=MusicClient::with_session(session.clone(),registry);
+        let client=if relay_publication {client.with_relay_publication()}else{client};
         let client=if relays && !is_live {let wave=relay_fixture::wave(&root)?;client.with_audio_factory(move||Ok(Box::new(relay_fixture::NativeAudio::open(wave.clone())?)))}else{cumulus_desktop::configure_native_audio(client,&app.path().resource_dir()?,true)};
         app.manage(client);
         app.add_capability(r#"{"identifier":"ux-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
@@ -75,6 +84,7 @@ fn main() {
             }
             if !(["complete","failed"].contains(&stage) || stage.starts_with("ux_") && stage.chars().all(|c|c.is_ascii_alphanumeric()||c=='_')){return;}
             let handle=handle.clone();let output=output.clone();let stage=stage.to_owned();
+            let publication_fixture=relay_fixture.clone();let publication=publisher.clone();let publication_session=session.clone();
             let history_writes=history_fixture.writes.load(std::sync::atomic::Ordering::SeqCst);
             let settings_writes=settings_fixture.writes.load(std::sync::atomic::Ordering::SeqCst);
             let relay_pulls=relay_fixture.pulls.load(std::sync::atomic::Ordering::SeqCst);
@@ -95,6 +105,15 @@ fn main() {
                     value["nativeQueue"]=serde_json::to_value(client.player_queue(&epoch).await.unwrap()).unwrap();
                 }
                 if (is_live || relays) && ["complete","failed"].contains(&stage.as_str()){let _=client.player_action(&epoch,PlayerAction::Stop).await;}
+                if relay_publication && stage=="complete" {
+                    let token=publication_session.token().unwrap();
+                    let settled=tokio::time::timeout(std::time::Duration::from_secs(5),async {
+                        loop {let status=publication.status_for(&token).unwrap();if status.pending==0 && status.blocked.is_none(){break;}tokio::time::sleep(std::time::Duration::from_millis(50)).await;}
+                    }).await;
+                    if settled.is_err(){fs::write(output.join("failed.json"),br#"{"ok":false,"error":"native publication did not settle"}"#).unwrap();handle.exit(1);return;}
+                    value["syntheticRelayPublications"]=serde_json::json!(publication_fixture.publications.lock().unwrap().clone());
+                    value["publicationPhases"]=serde_json::json!(publication.intents_for(&token).unwrap().into_iter().map(|r|r.phase).collect::<Vec<_>>());
+                }
                 fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
                 if ["complete","failed"].contains(&stage.as_str()){handle.exit(if stage=="complete" {0} else {1});}
             });
@@ -107,6 +126,7 @@ fn main() {
         Ok(())
     }).on_page_load(move |view, payload| {
         if payload.event()==PageLoadEvent::Finished && view.label()=="main" {
+            if relay_publication {view.eval("window.__CUMULUS_PUBLICATION_PROOF__=true;").unwrap();}
             let script=std::env::var_os("CUMULUS_UX_SCRIPT").map(|p|fs::read_to_string(p).unwrap());
             view.eval(script.as_deref().unwrap_or(if relay_settings {if is_live {include_str!("relay_setting_live_probe.js")}else{include_str!("relay_setting_ui_probe.js")}}else if relays {
                 include_str!("relay_ui_probe.js")

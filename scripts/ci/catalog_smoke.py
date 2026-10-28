@@ -18,11 +18,15 @@ def main():
     mode.add_argument('--settings', action='store_true')
     mode.add_argument('--relay', action='store_true')
     mode.add_argument('--relay-settings', action='store_true')
+    mode.add_argument('--relay-publication', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {k: v for k, v in os.environ.items() if not k.startswith('CUMULUS_')}
     env['CUMULUS_PROOF_DIR'] = str(root / 'run')
+    if args.relay_publication:
+        args.relay = True
+        env['CUMULUS_RELAY_PUBLICATION_PROOF'] = '1'
     if args.collections:
         env['CUMULUS_COLLECTION_PROOF'] = '1'
     if args.history:
@@ -58,6 +62,13 @@ def main():
         assert complete['mediaSubstitution'] == 'exact synthetic CDN URL to generated PCM'
         assert complete['autoDismiss']
         assert complete['focusHoldAfterPointerLeave'] and complete['hoverHoldAfterFocusLeave']
+        if args.relay_publication:
+            uploads = complete['syntheticRelayPublications']
+            assert len(uploads) >= 4 and len(uploads) == len(complete['publicationPhases'])
+            assert all(phase == 'confirmed' for phase in complete['publicationPhases'])
+            assert any(v.get('sourceType') or v.get('resources') for v in uploads)
+            assert any(v.get('resource') == {'id': '5', 'type': 'voice'} and v.get('progress') == 18000 for v in uploads)
+            assert not any('url' in v or 'deviceId' in v or 'cookie' in v for v in uploads)
     elif args.relay_settings:
         assert complete['syntheticRelaySettingWrites'] == 6 and complete['syntheticRelayPulls'] == 0
         assert complete['settingReadbackVerified'] and complete['noOptimisticCheckbox'] and complete['acceptCancelFocus']

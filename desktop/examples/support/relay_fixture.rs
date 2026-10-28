@@ -19,6 +19,7 @@ pub struct Library {
     mode: Mutex<String>,
     pub pulls: AtomicUsize,
     pub setting_writes: AtomicUsize,
+    pub publications: Mutex<Vec<Value>>,
     enabled: Mutex<bool>,
     fail_setting_read: std::sync::atomic::AtomicBool,
 }
@@ -29,6 +30,7 @@ impl Default for Library {
             mode: Mutex::new("song".into()),
             pulls: AtomicUsize::new(0),
             setting_writes: AtomicUsize::new(0),
+            publications: Mutex::new(vec![]),
             enabled: Mutex::new(true),
             fail_setting_read: std::sync::atomic::AtomicBool::new(false),
         }
@@ -60,6 +62,19 @@ impl Api for Library {
                 return Err(Error::Transport("synthetic offline".into()));
             }
             Ok(match path {
+                "/api/relay/songlist/submit" | "/api/relay/play/state/submit" => {
+                    let field = if path.ends_with("songlist/submit") {
+                        "songListSubmitReq"
+                    } else {
+                        "playStateSubmitReq"
+                    };
+                    self.publications.lock().unwrap().push(serde_json::from_str(
+                        p[field]
+                            .as_str()
+                            .ok_or(Error::InvalidInput("publication JSON string missing"))?,
+                    )?);
+                    json!({"code":200})
+                }
                 "/api/rtrs/abt/front/expinfo/list" => {
                     json!({"code":200,"data":[{"expName":"device_connect","expGroupName":if mode=="excluded"{"control"}else{"t2"}}]})
                 }

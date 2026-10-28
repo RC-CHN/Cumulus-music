@@ -35,7 +35,7 @@
     one('[aria-label="打开设置"]').focus({preventScroll:true});
     await sleep(8500);assert(one('.relay-prompt')?.matches(':hover'),'hover must prevent auto-dismiss after focus leaves');
     await emit('pointer',{x:4,y:4});await wait(()=>!one('.relay-prompt')?.matches(':hover'),'pointer released');
-    await wait(()=>!one('.relay-prompt'),'8 second auto-dismiss');await capture('auto_dismiss');
+    await wait(()=>!one('.relay-prompt')&&ready(),'8 second auto-dismiss acknowledgement');await capture('auto_dismiss');
     one('.relay-settings').scrollIntoView({block:'center'});await refresh('empty');assert(one('.relay-settings').textContent.includes('暂时没有'),'empty device state');await capture('empty');
     await refresh('excluded');assert(one('.relay-settings').textContent.includes('尚未向当前账号开放'),'experiment excluded');await capture('excluded');
     await refresh('disabled');assert(one('.relay-settings').textContent.includes('未开启'),'server disabled');await capture('disabled');
@@ -44,7 +44,9 @@
     await refresh('lost');click(button('继续播放'));await sleep(150);await wait(ready,'lost pull');assert(all('.relay-operation').some(n=>n.textContent.includes('未自动重试')),'lost response not explained');await capture('lost_pull');
     await refresh('permission');click(button('继续播放'));await sleep(150);await wait(()=>ready()&&button('重新准备播放'),'permission failure');await capture('permission_failure');
     await emit('fixture',{mode:'song'});click(button('重新准备播放'));await sleep(150);await wait(()=>ready()&&state()==='playing'&&position()>0.2,'music playback');assert(position()<10,'song did not restart');await capture('music_playing',true);click(one('[aria-label="停止播放"]'));
-    await refresh('voice');await capture('voice_offer');click(button('继续播放'));await sleep(150);await wait(()=>ready()&&state()==='playing'&&position()>=12.5,'voice resume');await capture('voice_playing',true);click(one('[aria-label="停止播放"]'));
+    await refresh('voice');await capture('voice_offer');click(button('继续播放'));await sleep(150);await wait(()=>ready()&&state()==='playing'&&position()>=12.5,'voice resume');
+    if(window.__CUMULUS_PUBLICATION_PROOF__){const slider=one('[aria-label="播放进度"]');slider.value='18';slider.dispatchEvent(new Event('input',{bubbles:true}));slider.dispatchEvent(new Event('change',{bubbles:true}));await wait(()=>position()>=18,'native voice seek publication');}
+    await capture('voice_playing',true);click(one('[aria-label="停止播放"]'));
     await refresh('song');click(one('input[name="personalServiceSetting"][value="2"]'));await wait(()=>one('dialog[open]')&&!one('.relay-prompt'),'modal suppression');await capture('modal_suppression');click(all('dialog[open] button').find(n=>n.textContent.trim()==='取消'));await wait(()=>!one('dialog[open]')&&one('.relay-prompt'),'prompt restored');await capture('modal_restored');
     click(one('[aria-label="关闭接续提示"]'));await wait(()=>!one('.relay-prompt'),'close prompt');assert(document.activeElement===one('[aria-label="打开设置"]'),'close focus did not return');await capture('closed_focus');
     await emit('complete',{ok:true,stageCount,realMusicRequests:0,syntheticQueueApplications:2,playbackVerified:true,decoder:'libmpv',audioOutput:'null',mediaSubstitution:'exact synthetic CDN URL to generated PCM',autoDismiss:true,focusHoldAfterPointerLeave:true,hoverHoldAfterFocusLeave:true});

@@ -141,6 +141,7 @@ jobs:
           dbus-run-session -- xvfb-run -a python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-settings-linux --settings
           LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-relay-linux --relay
           LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-relay-settings-linux --relay-settings
+          LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-relay-publication-linux --relay-publication
           dbus-run-session -- xvfb-run -a python3 scripts/ci/graphics_smoke.py --binary .build/target/release/cumulus --root .build/ci-graphics-linux
       - name: Windows WebView login lifecycle smoke
         if: runner.os == 'Windows'
@@ -161,6 +162,7 @@ jobs:
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-settings-windows --runtime .build/package-stage/windows-x64/native --settings
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-relay-windows --runtime .build/package-stage/windows-x64/native --relay
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-relay-settings-windows --runtime .build/package-stage/windows-x64/native --relay-settings
+          python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-relay-publication-windows --runtime .build/package-stage/windows-x64/native --relay-publication
           python scripts/ci/graphics_smoke.py --binary .build/target/release/cumulus.exe --root .build/ci-graphics-windows
       - name: Preserve synthetic failure diagnostics
         if: failure()
