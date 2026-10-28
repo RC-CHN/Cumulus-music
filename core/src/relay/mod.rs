@@ -2,6 +2,7 @@
 //! This is independent of listen-together rooms. Server eligibility is never
 //! inferred from a local toggle or a cached successful submission.
 mod api;
+mod application;
 mod machine;
 mod pull;
 mod service;
@@ -11,6 +12,8 @@ pub use api::{
     ALERT_PATH, CONFIG_PATH, PULL_PATH, RelayApi, SETTING_PATH, SETTING_UPDATE_PATH, SOURCE_PATH,
     STATE_PATH,
 };
+pub(crate) use application::{RelayPlayback, RelayPlaybackRequest, validate_id};
+pub use application::{RelayPlaybackIntent, RelayPlaybackPhase};
 pub use machine::{
     RelayMachine, RelayUpload, SnapshotFrame, SnapshotItem, VoiceProgressClock, snapshot_window,
 };

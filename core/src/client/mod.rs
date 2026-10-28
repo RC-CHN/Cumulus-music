@@ -23,6 +23,7 @@ mod playlist_cover;
 mod playlists;
 mod podcast;
 mod rankings;
+mod relay;
 mod scene_fm;
 mod settings;
 mod together;

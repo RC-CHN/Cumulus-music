@@ -50,6 +50,38 @@ impl PodcastApi {
         }
         Ok(item)
     }
+    /// M/15 Ur (export Ab), used by cross-device snapshot continuation. The
+    /// official programIds value is a JSON-number-array STRING, not a string
+    /// array or a conversion through machine-width/JavaScript numeric IDs.
+    pub async fn episodes(&self, ids: &[String]) -> Result<Vec<Option<Episode>>> {
+        if ids.is_empty() || ids.len() > 100 {
+            return Err(Error::InvalidInput("invalid program batch size"));
+        }
+        for id in ids {
+            identifier(&json!(id))?;
+        }
+        let result = self
+            .api
+            .call(
+                "/api/dj/program/batch/detail",
+                json!({"programIds":format!("[{}]",ids.join(","))}),
+                false,
+                &[200],
+            )
+            .await?;
+        let rows = result["data"]
+            .as_array()
+            .filter(|r| r.len() <= ids.len())
+            .ok_or(Error::Response("invalid program batch response"))?;
+        let mut found = std::collections::BTreeMap::new();
+        for row in rows {
+            let episode = Episode::from_official(row)?;
+            if !ids.contains(&episode.id) || found.insert(episode.id.clone(), episode).is_some() {
+                return Err(Error::Response("program batch identity mismatch"));
+            }
+        }
+        Ok(ids.iter().map(|id| found.get(id).cloned()).collect())
+    }
     pub async fn programs(
         &self,
         id: &Value,

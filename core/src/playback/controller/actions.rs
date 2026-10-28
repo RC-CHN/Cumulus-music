@@ -58,6 +58,7 @@ impl Actor {
         if !matches!(
             request.command,
             PlaybackCommand::Snapshot
+                | PlaybackCommand::Queue
                 | PlaybackCommand::SyncQueue
                 | PlaybackCommand::Volume(_)
                 | PlaybackCommand::Equalizer { .. }
