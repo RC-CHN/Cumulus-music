@@ -47,6 +47,7 @@ fn isolated_captcha_cannot_invoke_application_commands_even_from_local_origin() 
         "account_settings_command",
         "relay_view",
         "relay_command",
+        "relay_setting_command",
         "catalog_membership",
     ] {
         assert_ipc_response(
@@ -129,6 +130,10 @@ fn account_snapshot_and_stale_mutation_cross_registered_commands() {
     );
     for (command, body) in [
         ("relay_view", json!({"epoch":"0","refresh":true})),
+        (
+            "relay_setting_command",
+            json!({"epoch":"0","command":{"kind":"setting_change","id":"ignored","revision":"ignored","enabled":true}}),
+        ),
         (
             "relay_command",
             json!({"epoch":"0","command":{"kind":"dismiss","revision":"fixture"}}),

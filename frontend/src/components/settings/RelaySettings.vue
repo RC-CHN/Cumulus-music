@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import RelaySwitch from './RelaySwitch.vue';
 import type { RelayModel } from '../../composables/useRelay';
 import { relayOutcome } from '../../services/relay';
 import '../../styles/relay.css';
@@ -38,6 +39,7 @@ const status = computed(() => {
           检查其他设备
         </button>
       </div>
+      <RelaySwitch :model="model" />
       <p class="settings-note">歌曲从头播放，播客接续上次进度。接续会替换本机当前队列。</p>
       <p v-if="model.error.value" class="relay-error" role="alert">{{ model.error.value }}</p>
       <div v-if="model.unknown.value" class="relay-recovery">

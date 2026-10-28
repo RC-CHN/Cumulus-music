@@ -115,3 +115,29 @@
     transition: none;
   }
 }
+
+.relay-switch {
+  margin: 18px 0;
+}
+.relay-switch .settings-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+  width: fit-content;
+}
+.relay-switch input {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  flex-shrink: 0;
+}
+.relay-setting-pending {
+  margin-top: 12px;
+}
+.relay-recovery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

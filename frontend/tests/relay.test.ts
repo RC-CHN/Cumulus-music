@@ -19,6 +19,7 @@ const reply = (value = page(), epoch = '1') => ({ value: structuredClone(value),
 const backend = (extra: Partial<RelayClient> = {}): RelayClient => ({
   relayView: async (e) => reply(page(), e),
   relayCommand: async (e) => reply(page(), e),
+  relaySettingCommand: async (e) => reply(page(), e),
   ...extra,
 });
 function deferred<T>() {

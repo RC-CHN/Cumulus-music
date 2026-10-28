@@ -125,6 +125,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 settings::account_settings_command,
                 relay::relay_view,
                 relay::relay_command,
+                relay::relay_setting_command,
                 catalog::catalog_membership,
                 member::member_page,
                 member::member_rights,

@@ -18,3 +18,15 @@ pub async fn relay_command(
         .await
         .map_err(Into::into)
 }
+
+#[tauri::command]
+pub async fn relay_setting_command(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    command: RelaySettingCommand,
+) -> Result<AccountData<RelayView>, ClientError> {
+    client
+        .relay_setting_command(&epoch, command)
+        .await
+        .map_err(Into::into)
+}

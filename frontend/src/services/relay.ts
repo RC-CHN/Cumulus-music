@@ -1,5 +1,34 @@
 import type { AccountData } from './contracts';
 import type { Quality } from './player';
+import type { SettingsOperation } from './settings';
+export interface RelaySettingOperation
+  extends Omit<SettingsOperation, 'change' | 'before' | 'observed'> {
+  enabled: boolean;
+  before: boolean | null;
+  observed: boolean | null;
+}
+export interface RelaySettingState {
+  revision: string;
+  enabled: boolean | null;
+  canChange: boolean;
+  operations: RelaySettingOperation[];
+}
+export type RelaySettingCommand =
+  | {
+      kind: 'setting_change' | 'setting_cancel_unseen';
+      id: string;
+      revision: string;
+      enabled: boolean;
+    }
+  | { kind: 'setting_reconcile'; id: string }
+  | { kind: 'setting_accept'; id: string; revision: string };
+export function isRelaySettingCommand(
+  command: RelayCommand | RelaySettingCommand,
+): command is RelaySettingCommand {
+  return command.kind.startsWith('setting_');
+}
+export const relaySettingPending = (operation: RelaySettingOperation) =>
+  operation.phase === 'pending' || operation.phase === 'uncertain';
 export interface RelayOperation {
   id: string;
   phase: 'preparing' | 'applying' | 'installed' | 'failed' | 'uncertain' | 'cancelled';
@@ -12,6 +41,7 @@ export interface RelayView {
   revision: string;
   availability: 'unchecked' | 'experiment_excluded' | 'server_disabled' | 'available';
   setting: boolean | null;
+  settings?: RelaySettingState | null;
   alert: { title: string; deviceName: string; resourceName: string; buttonText: string } | null;
   operations: RelayOperation[];
 }
@@ -23,6 +53,7 @@ export type RelayCommand =
 export interface RelayClient {
   relayView(epoch: string, refresh: boolean): Promise<AccountData<RelayView>>;
   relayCommand(epoch: string, command: RelayCommand): Promise<AccountData<RelayView>>;
+  relaySettingCommand(epoch: string, command: RelaySettingCommand): Promise<AccountData<RelayView>>;
 }
 export function relayOutcome(operation: RelayOperation) {
   if (operation.superseded) return '这次准备已由后续重试处理';

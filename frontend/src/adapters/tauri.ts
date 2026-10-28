@@ -33,6 +33,7 @@ export function createTauriClient(): CoreClient {
     accountSettingsPage: (epoch, refresh) => invoke('account_settings_page', { epoch, refresh }),
     relayView: (epoch, refresh) => invoke('relay_view', { epoch, refresh }),
     relayCommand: (epoch, command) => invoke('relay_command', { epoch, command }),
+    relaySettingCommand: (epoch, command) => invoke('relay_setting_command', { epoch, command }),
     accountSettingsCommand: (epoch, command) =>
       invoke('account_settings_command', { epoch, command }),
     historyCommand: (epoch, kind, command) => invoke('history_command', { epoch, kind, command }),
