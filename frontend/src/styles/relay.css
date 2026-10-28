@@ -1,0 +1,117 @@
+.relay-prompt {
+  position: fixed;
+  right: 16px;
+  bottom: calc(var(--player, 88px) + 14px);
+  z-index: 45;
+  width: 364px;
+  max-width: calc(100vw - 32px);
+  min-height: 74px;
+  box-sizing: border-box;
+  padding: 10px 28px 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  color: var(--text);
+  box-shadow: 0 8px 28px #0002;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.relay-device {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--surface-alt);
+  display: grid;
+  place-items: center;
+  color: var(--text-secondary);
+}
+.relay-prompt-copy {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.relay-prompt-copy strong,
+.relay-prompt-copy span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.relay-prompt-copy strong {
+  font-size: 15px;
+}
+.relay-prompt-copy span {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.relay-prompt .relay-continue {
+  flex-shrink: 0;
+  width: 80px;
+  max-width: 100px;
+  min-height: 30px;
+  padding: 6px 10px;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.relay-prompt .relay-close {
+  position: absolute;
+  right: 2px;
+  top: 2px;
+  width: 24px;
+  height: 24px;
+  padding: 4px;
+}
+.relay-prompt-enter-active,
+.relay-prompt-leave-active {
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+.relay-prompt-enter-from,
+.relay-prompt-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.relay-settings-device,
+.relay-operation {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin: 12px 0;
+  min-width: 0;
+}
+.relay-settings-device > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.relay-operation {
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.relay-operation button {
+  flex-shrink: 0;
+}
+.relay-error {
+  color: var(--accent);
+  font-size: 13px;
+}
+.relay-recovery {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-alt);
+}
+@media (prefers-reduced-motion: reduce) {
+  .relay-prompt-enter-active,
+  .relay-prompt-leave-active {
+    transition: none;
+  }
+}

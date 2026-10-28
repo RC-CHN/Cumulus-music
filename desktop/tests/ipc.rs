@@ -45,6 +45,8 @@ fn isolated_captcha_cannot_invoke_application_commands_even_from_local_origin() 
         "history_command",
         "account_settings_page",
         "account_settings_command",
+        "relay_view",
+        "relay_command",
         "catalog_membership",
     ] {
         assert_ipc_response(
@@ -126,6 +128,11 @@ fn account_snapshot_and_stale_mutation_cross_registered_commands() {
         Err(json!({"code":"stale","message":"操作已取消或账号已切换","retryable":false})),
     );
     for (command, body) in [
+        ("relay_view", json!({"epoch":"0","refresh":true})),
+        (
+            "relay_command",
+            json!({"epoch":"0","command":{"kind":"dismiss","revision":"fixture"}}),
+        ),
         ("account_settings_page", json!({"epoch":"0","refresh":true})),
         (
             "account_settings_command",

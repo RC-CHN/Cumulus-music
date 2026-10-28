@@ -19,6 +19,7 @@ mod playlist_cover;
 mod playlists;
 mod podcast;
 mod rankings;
+mod relay;
 pub mod renewal;
 mod settings;
 mod together;
@@ -122,6 +123,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 history::history_command,
                 settings::account_settings_page,
                 settings::account_settings_command,
+                relay::relay_view,
+                relay::relay_command,
                 catalog::catalog_membership,
                 member::member_page,
                 member::member_rights,

@@ -14,6 +14,8 @@ import CollectionsPage from './components/CollectionsPage.vue';
 import HistoryPage from './components/HistoryPage.vue';
 import SettingsPage from './components/SettingsPage.vue';
 import { useSettings } from './composables/useSettings';
+import { useRelay } from './composables/useRelay';
+import RelayPrompt from './components/RelayPrompt.vue';
 import { useHistory } from './composables/useHistory';
 import type { HistoryKind, HistoryResource } from './services/history';
 import type { CatalogResource, CatalogSelectionPage } from './services/catalog';
@@ -62,6 +64,9 @@ import { useCore } from './services/core';
 const core = useCore();
 const music = useMusic();
 const settings = useSettings(core, () => {
+  void music.bootstrap(false);
+});
+const relay = useRelay(core, () => {
   void music.bootstrap(false);
 });
 const recent = useHistory(core, () => {
@@ -455,6 +460,19 @@ onUnmounted(() => sceneFm.dispose());
 onUnmounted(() => member.dispose());
 onUnmounted(() => recent.dispose());
 onUnmounted(() => settings.dispose());
+onUnmounted(() => relay.dispose());
+watch(
+  () => [account.value.epoch, account.value.status, initializing.value],
+  () => {
+    if (
+      !initializing.value &&
+      relay.connect(account.value) &&
+      account.value.status === 'authenticated'
+    )
+      void relay.read(true);
+  },
+  { immediate: true },
+);
 watch(
   () => [account.value.epoch, account.value.status],
   () => {
@@ -767,6 +785,7 @@ onUnmounted(() => window.removeEventListener('keydown', keyboard));
           <SettingsPage
             v-else-if="page.kind === 'settings'"
             :model="settings"
+            :relay="relay"
             :account="account"
             @login="loginOpen = true"
             @accounts="accountsOpen = true"
@@ -1134,6 +1153,21 @@ onUnmounted(() => window.removeEventListener('keydown', keyboard));
     <Transition name="queue-panel">
       <QueuePanel v-if="player.queueOpen.value" :player="player" />
     </Transition>
+    <RelayPrompt
+      :model="relay"
+      :blocked="
+        !!(
+          loginOpen ||
+          accountsOpen ||
+          playlistDialog ||
+          downloadDialog ||
+          cloudDialogOpen ||
+          player.queueOpen.value ||
+          player.lyricsOpen.value
+        )
+      "
+      :quality="player.view.value?.requestedQuality ?? 'standard'"
+    />
     <PlayerBar
       :player="player"
       :liked="playingLikes"

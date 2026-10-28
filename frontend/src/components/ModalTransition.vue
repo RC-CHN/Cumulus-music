@@ -4,7 +4,15 @@
 const returnTargets = new WeakMap<Element, HTMLElement>();
 </script>
 <script setup lang="ts">
+import { onUnmounted } from 'vue';
+import { modalEntered, modalLeft } from '../services/modal';
+const owned = new Set<Element>();
+onUnmounted(() => {
+  for (const element of owned) modalLeft(element);
+});
 function entering(element: Element) {
+  owned.add(element);
+  modalEntered(element);
   const active = document.activeElement;
   if (!(active instanceof HTMLElement)) return;
   const parentDialog = active.closest('dialog');
@@ -12,6 +20,8 @@ function entering(element: Element) {
   returnTargets.set(element, (replacing && returnTargets.get(parentDialog!)) || active);
 }
 function left(element: Element) {
+  owned.delete(element);
+  modalLeft(element);
   const target = returnTargets.get(element);
   returnTargets.delete(element);
   // Native <dialog> keeps the background inert until its leave transition ends.

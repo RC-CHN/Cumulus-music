@@ -16,8 +16,10 @@ import {
 import SettingsConfirm from './settings/SettingsConfirm.vue';
 import ModalTransition from './ModalTransition.vue';
 import Icon from './Icon.vue';
+import RelaySettings from './settings/RelaySettings.vue';
+import type { RelayModel } from '../composables/useRelay';
 import '../styles/settings.css';
-const props = defineProps<{ model: SettingsModel; account: AccountView }>();
+const props = defineProps<{ model: SettingsModel; account: AccountView; relay: RelayModel }>();
 const emit = defineEmits<{ login: []; accounts: []; downloads: [] }>();
 const appearance = useAppearance();
 const themes: { value: AppearancePreference; label: string; icon: string }[] = [
@@ -306,6 +308,7 @@ function accept(op: SettingsOperation) {
           </template>
         </div>
       </section>
+      <RelaySettings :model="relay" :signed-in="account.status === 'authenticated'" />
       <section class="settings-section" aria-labelledby="settings-download">
         <h2 id="settings-download">下载</h2>
         <div class="settings-section-content">
