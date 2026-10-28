@@ -1,4 +1,8 @@
-"""Capture synthetic or explicitly authorized history UI in a real WebView."""
+"""Capture history/settings/catalog UI; select the native probe via environment.
+
+On Linux, explicitly use GDK_BACKEND=x11 for Xvfb so both the app and screenshot
+connection use the same display rather than an inherited Wayland session.
+"""
 import json
 import os
 from pathlib import Path
@@ -20,6 +24,8 @@ with root.with_name(root.name + '-host.log').open('w') as log:
                     continue
                 window = Gdk.get_default_root_window()
                 capture = Gdk.pixbuf_get_from_window(window, 0, 0, window.get_width(), window.get_height())
+                if capture is None:
+                    raise RuntimeError('screenshot display unavailable; use GDK_BACKEND=x11 with Xvfb')
                 capture.savev(str(path.with_suffix('.png')), 'png', [], [])
                 seen.add(path.stem)
                 print(json.dumps({'captured': path.stem}), flush=True)
@@ -27,7 +33,7 @@ with root.with_name(root.name + '-host.log').open('w') as log:
         if process.poll() is None:
             process.terminate()
             process.wait(timeout=10)
-            raise RuntimeError('history proof timed out')
+            raise RuntimeError('WebView proof timed out')
         print(json.dumps({'exit': process.returncode, 'screenshots': len(seen)}), flush=True)
         if process.returncode or not (root / 'first' / 'complete.json').exists():
             raise SystemExit(1)

@@ -14,6 +14,7 @@ def main():
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--collections', action='store_true')
     mode.add_argument('--history', action='store_true')
+    mode.add_argument('--settings', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
@@ -23,6 +24,8 @@ def main():
         env['CUMULUS_COLLECTION_PROOF'] = '1'
     if args.history:
         env['CUMULUS_HISTORY_PROOF'] = '1'
+    if args.settings:
+        env['CUMULUS_SETTINGS_PROOF'] = '1'
     for variable, directory in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'),
                                 ('XDG_CACHE_HOME', 'cache'), ('APPDATA', 'roaming'),
                                 ('LOCALAPPDATA', 'local')]:
@@ -39,10 +42,12 @@ def main():
         raise AssertionError((output / 'failed.json').read_text(encoding='utf-8'))
     assert result.returncode == 0, f'catalog probe exited {result.returncode}'
     complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
-    count = 24 if args.history else 18
+    count = 21 if args.settings else 24 if args.history else 18
     assert complete['ok'] and complete['stageCount'] == count and complete['realMusicRequests'] == 0
     assert not complete['playbackVerified']
-    if args.history:
+    if args.settings:
+        assert complete['syntheticSettingsWrites'] == 6 and complete['readbackBeforeSelection']
+    elif args.history:
         assert complete['syntheticHistoryWrites'] == 2
     else:
         assert complete['collectionReadOnly'] if args.collections else complete['syntheticMembershipWrites']
@@ -50,16 +55,18 @@ def main():
     assert len(stages) == count
     assert {v['theme'] for v in stages} == {'light', 'dark'}
     assert any(v['width'] == 760 and v['height'] == 540 for v in stages)
-    if args.history:
+    if args.settings:
+        assert all(v['scrollBottom'] <= v['mainBottom'] + 1 for v in stages)
+    elif args.history:
         assert all(v['rows'] <= 35 and v['footerBottom'] <= v['mainBottom'] + 1 for v in stages)
         assert {v['scope'] for v in stages} == {'歌曲', '播客', '有声书', '声音', '歌单', '专辑'}
     else:
         assert all(v['cards'] <= 30 for v in stages)
-    if not args.collections and not args.history:
+    if not args.collections and not args.history and not args.settings:
         assert all(v['rows'] <= 30 for v in stages)
     print(json.dumps({'ok': True, 'actualWebView': True, 'states': count,
                       'realMusicRequests': 0, 'playbackVerified': False,
-                      'collections': args.collections, 'history': args.history}))
+                      'collections': args.collections, 'history': args.history, 'settings': args.settings}))
 
 
 if __name__ == '__main__':

@@ -68,6 +68,7 @@ impl Api for Reads {
                     | "/api/play-record/voice/list"
                     | "/api/play-record/djradio/list"
                     | "/api/play-record/voice/book/timeline/list"
+                    | "/api/user/setting"
             ) && !path
                 .strip_prefix("/api/artist/albums/")
                 .is_some_and(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit()))

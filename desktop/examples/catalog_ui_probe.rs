@@ -19,6 +19,8 @@ mod fixture;
 mod history_fixture;
 #[path = "support/catalog_live.rs"]
 mod live;
+#[path = "support/settings_fixture.rs"]
+mod settings_fixture;
 fn main() {
     // SAFETY: first operation before GTK/runtime or worker creation.
     unsafe { cumulus_desktop::prepare_graphics() };
@@ -39,11 +41,13 @@ fn main() {
     let is_live = profile.is_some();
     let collections = std::env::var("CUMULUS_COLLECTION_PROOF").as_deref() == Ok("1");
     let histories = std::env::var("CUMULUS_HISTORY_PROOF").as_deref() == Ok("1");
+    let settings = std::env::var("CUMULUS_SETTINGS_PROOF").as_deref() == Ok("1");
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
         let registry=ProfileRegistry::open(&root.join("state"),ApiOrigin::Pc)?;
         let collection_fixture=Arc::new(collection_fixture::Library::default());
         let history_fixture=Arc::new(history_fixture::Library::default());
-        let api:Arc<dyn Api>=if let Some(profile)=profile{Arc::new(live::Reads::open(&profile,&output)?)}else if histories {history_fixture.clone()}else if collections{collection_fixture.clone()}else{Arc::new(fixture::Library::default())};
+        let settings_fixture=Arc::new(settings_fixture::Library::default());
+        let api:Arc<dyn Api>=if let Some(profile)=profile{Arc::new(live::Reads::open(&profile,&output)?)}else if settings {settings_fixture.clone()}else if histories {history_fixture.clone()}else if collections{collection_fixture.clone()}else{Arc::new(fixture::Library::default())};
         let session=Arc::new(AccountSession::new(api,Some(registry.store())));
         let client=MusicClient::with_session(session,registry);
         app.manage(cumulus_desktop::configure_native_audio(client,&app.path().resource_dir()?,true));
@@ -54,15 +58,18 @@ fn main() {
             let stage=value["stage"].as_str().unwrap_or("");
             if stage=="fixture" && collections && !is_live {collection_fixture.mode(value["mode"].as_str().unwrap_or(""));return;}
             if stage=="fixture" && histories && !is_live {history_fixture.mode(value["mode"].as_str().unwrap_or(""));return;}
+            if stage=="fixture" && settings && !is_live {settings_fixture.mode(value["mode"].as_str().unwrap_or(""));return;}
             if stage=="resize" {
                 handle.get_webview_window("main").unwrap().set_size(tauri::LogicalSize::new(value["width"].as_f64().unwrap(),value["height"].as_f64().unwrap())).unwrap();return;
             }
             if !(["complete","failed"].contains(&stage) || stage.starts_with("ux_") && stage.chars().all(|c|c.is_ascii_alphanumeric()||c=='_')){return;}
             let handle=handle.clone();let output=output.clone();let stage=stage.to_owned();
             let history_writes=history_fixture.writes.load(std::sync::atomic::Ordering::SeqCst);
+            let settings_writes=settings_fixture.writes.load(std::sync::atomic::Ordering::SeqCst);
             tauri::async_runtime::spawn(async move {
                 let mut value=value;
                 if histories {value["syntheticHistoryWrites"]=serde_json::json!(history_writes);}
+                if settings {value["syntheticSettingsWrites"]=serde_json::json!(settings_writes);}
                 let client=handle.state::<MusicClient>();
                 let epoch=client.account().unwrap().epoch;
                 if is_live && value["playing"]==true {
@@ -87,7 +94,9 @@ fn main() {
     }).on_page_load(move |view, payload| {
         if payload.event()==PageLoadEvent::Finished && view.label()=="main" {
             let script=std::env::var_os("CUMULUS_UX_SCRIPT").map(|p|fs::read_to_string(p).unwrap());
-            view.eval(script.as_deref().unwrap_or(if histories {
+            view.eval(script.as_deref().unwrap_or(if settings {
+                if is_live {include_str!("settings_live_probe.js")}else{include_str!("settings_ui_probe.js")}
+            } else if histories {
                 if is_live {include_str!("history_live_probe.js")}else{include_str!("history_ui_probe.js")}
             } else if collections {
                 if is_live {include_str!("collection_live_probe.js")} else {include_str!("collection_ui_probe.js")}
