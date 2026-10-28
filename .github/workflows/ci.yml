@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      windows_diagnostic:
+        description: Also compare Windows device enumeration through Rust and upstream APIs
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -22,6 +27,9 @@ env:
   CARGO_BUILD_JOBS: '2'
 
 jobs:
+  media-diagnostic:
+    if: github.event_name == 'workflow_dispatch' && inputs.windows_diagnostic
+    uses: ./.github/workflows/windows-media-diagnostic.yml
   frontend:
     name: Frontend and release rules
     runs-on: ubuntu-24.04
@@ -223,7 +231,7 @@ jobs:
   gate:
     name: CI gate
     if: always()
-    needs: [frontend, native]
+    needs: [frontend, native, media-diagnostic]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -231,4 +239,12 @@ jobs:
         env:
           FRONTEND: ${{ needs.frontend.result }}
           NATIVE: ${{ needs.native.result }}
-        run: test "$FRONTEND" = success && test "$NATIVE" = success
+          DIAGNOSTIC: ${{ needs.media-diagnostic.result }}
+          DIAGNOSTIC_REQUESTED: ${{ inputs.windows_diagnostic || false }}
+        run: |
+          test "$FRONTEND" = success && test "$NATIVE" = success
+          if [ "$DIAGNOSTIC_REQUESTED" = true ]; then
+            test "$DIAGNOSTIC" = success
+          else
+            test "$DIAGNOSTIC" = skipped
+          fi
