@@ -103,6 +103,162 @@ fn songs(id: &str) -> PlaySelection {
 }
 
 #[tokio::test]
+async fn local_startup_preferences_need_no_engine_or_http_and_reject_old_account_writes() {
+    use cumulus_core::client::dto::StartupPreferencesCommand as Change;
+    use cumulus_core::playback::preferences::StartupSettings;
+    let (_dir, api, session, client, count) = fixture();
+    let initial = client.startup_preferences("1").unwrap();
+    assert_eq!(initial.value.settings, StartupSettings::default());
+    let saved = client
+        .startup_preferences_command(
+            "1",
+            Change::Change {
+                expected_revision: initial.value.revision.unwrap(),
+                settings: StartupSettings {
+                    auto_play: true,
+                    remember_position: false,
+                },
+            },
+        )
+        .unwrap();
+    assert_eq!(saved.value.revision.as_deref(), Some("1"));
+    assert!(
+        client
+            .startup_preferences_command(
+                "1",
+                Change::Change {
+                    expected_revision: "0".into(),
+                    settings: StartupSettings::default()
+                }
+            )
+            .is_err()
+    );
+    session
+        .adopt(api.clone(), json!({"userId":10}), &session.token().unwrap())
+        .unwrap();
+    assert!(matches!(
+        client.startup_preferences_command("1", Change::Repair),
+        Err(Error::StaleResponse)
+    ));
+    assert_eq!(
+        client.startup_preferences("2").unwrap().value.settings,
+        saved.value.settings
+    );
+    assert_eq!(count.load(Ordering::SeqCst), 0);
+    assert!(api.calls.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn public_startup_claims_audio_once_and_damaged_preferences_allow_manual_play_and_explicit_repair()
+ {
+    use cumulus_core::client::dto::StartupPreferencesCommand as Change;
+    use cumulus_core::{
+        playback::{PlaybackQueue, preferences::StartupSettings},
+        storage::StateStore,
+    };
+    let (dir, _api, session, client, _count) = fixture();
+    let store = Arc::new(StateStore::open(dir.path()).unwrap());
+    let mut queue = PlaybackQueue::new(Some(store.clone()), "9").unwrap();
+    queue
+        .replace(vec![json!({"id":1,"dt":120000})], 0, json!({"kind":"test"}))
+        .unwrap();
+    store.put("9", "playback", "position", &json!({"entry_id":queue.selected().unwrap().entry_id,"seconds":17.0,"state":"paused","timeline_version":1})).unwrap();
+    client
+        .startup_preferences_command(
+            "1",
+            Change::Change {
+                expected_revision: "0".into(),
+                settings: StartupSettings {
+                    auto_play: true,
+                    remember_position: true,
+                },
+            },
+        )
+        .unwrap();
+    let playing = client
+        .player_action("1", PlayerAction::Startup)
+        .await
+        .unwrap();
+    assert_eq!(
+        playing.state,
+        cumulus_core::playback::controller::PlaybackStatus::Playing
+    );
+    assert_eq!(playing.position, Some(17.0));
+    assert_eq!(
+        client
+            .player_action("1", PlayerAction::Startup)
+            .await
+            .unwrap()
+            .play_id,
+        playing.play_id
+    );
+    client.player_action("1", PlayerAction::Stop).await.unwrap();
+    assert_eq!(
+        client
+            .player_action("1", PlayerAction::Startup)
+            .await
+            .unwrap()
+            .state,
+        cumulus_core::playback::controller::PlaybackStatus::Idle
+    );
+    store
+        .put(
+            "local-device",
+            "playback-startup-preferences-v1",
+            "current",
+            &json!({"damaged":true}),
+        )
+        .unwrap();
+    let reopened = MusicClient::with_session(
+        session,
+        ProfileRegistry::open(dir.path(), ApiOrigin::Pc).unwrap(),
+    )
+    .with_audio_factory(|| Ok(support::audio_engine(Arc::new(support::Device::default()))));
+    let damaged = reopened.startup_preferences("1").unwrap().value;
+    assert!(damaged.damaged && damaged.revision.is_none());
+    assert!(matches!(
+        reopened.player_action("1", PlayerAction::Startup).await,
+        Err(Error::State("playback settings damaged"))
+    ));
+    let repaired = reopened
+        .startup_preferences_command("1", Change::Repair)
+        .unwrap()
+        .value;
+    assert!(!repaired.damaged);
+    assert_eq!(repaired.settings, StartupSettings::default());
+    reopened
+        .startup_preferences_command(
+            "1",
+            Change::Change {
+                expected_revision: repaired.revision.unwrap(),
+                settings: StartupSettings {
+                    auto_play: true,
+                    remember_position: true,
+                },
+            },
+        )
+        .unwrap();
+    // Changing preferences after a failed initial attempt still takes effect on
+    // the next process launch, not a page reload in this process.
+    assert_eq!(
+        reopened
+            .player_action("1", PlayerAction::Startup)
+            .await
+            .unwrap()
+            .state,
+        cumulus_core::playback::controller::PlaybackStatus::Idle
+    );
+    assert_eq!(
+        reopened
+            .player_action("1", PlayerAction::Restore)
+            .await
+            .unwrap()
+            .state,
+        cumulus_core::playback::controller::PlaybackStatus::Paused
+    );
+}
+
+#[tokio::test]
 async fn album_selection_uses_complete_native_order_and_rejects_changed_revision() {
     let (_dir, _api, session, client, _count) = fixture();
     let page = client

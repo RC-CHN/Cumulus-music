@@ -146,6 +146,21 @@ impl From<Error> for ClientError {
                 Error::State("equalizer settings changed") => {
                     ("equalizer_changed", "均衡器设置已更新，请重新调整", true)
                 }
+                Error::State("playback settings changed") => {
+                    ("settings_changed", "播放设置已更新，请重新读取后调整", true)
+                }
+                Error::State("playback settings damaged") => (
+                    "settings_damaged",
+                    "播放设置损坏，请在设置中恢复默认值；也可以手动播放",
+                    false,
+                ),
+                Error::State(
+                    "playback settings revision damaged" | "playback settings revision exhausted",
+                ) => (
+                    "settings_unwritable",
+                    "本机播放设置记录无法安全更新，已保留现有值；仍可手动播放",
+                    false,
+                ),
                 Error::State("finish login before entering together") => {
                     ("login_pending", "请先完成或取消登录，再进入一起听", false)
                 }

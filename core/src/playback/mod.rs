@@ -4,6 +4,7 @@ mod constraint;
 pub mod controller;
 pub use constraint::PlaybackConstraint;
 pub mod engine;
+pub mod preferences;
 mod queue;
 pub mod source;
 mod timeline;

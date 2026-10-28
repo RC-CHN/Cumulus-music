@@ -25,6 +25,37 @@ impl Actor {
             }));
             return;
         }
+        if let PlaybackCommand::SkipStartup(expected) = &request.command {
+            if expected == &self.snapshot().fence() {
+                self.startup_pending = false;
+                self.startup_autoplay = false;
+            }
+            self.reply(request.reply, Ok(()));
+            return;
+        }
+        if let PlaybackCommand::Startup(input) = &request.command {
+            if !self.startup_pending {
+                self.reply(request.reply, Ok(()));
+                return;
+            }
+            if input.expected != self.snapshot().fence() {
+                self.reply(request.reply, Err(Error::QueueChanged));
+                return;
+            }
+        } else if !matches!(
+            request.command,
+            PlaybackCommand::Snapshot
+                | PlaybackCommand::SyncQueue
+                | PlaybackCommand::Volume(_)
+                | PlaybackCommand::Speed(_)
+                | PlaybackCommand::Equalizer { .. }
+                | PlaybackCommand::RetryEqualizer
+                | PlaybackCommand::RepairEqualizer
+        ) {
+            // A user/remote transport intent wins over a delayed UI connect.
+            self.startup_pending = false;
+            self.startup_autoplay = false;
+        }
         if self.queue.is_fm()
             && matches!(
                 request.command,
@@ -93,6 +124,9 @@ impl Actor {
         }
         let relay_hint = crate::relay::publisher::player::Hint::from_command(&request.command);
         let result = match request.command {
+            PlaybackCommand::Startup(input) => {
+                self.startup_restore(input).map(|value| options = value)
+            }
             PlaybackCommand::Equalizer {
                 expected_revision,
                 settings,
@@ -194,7 +228,9 @@ impl Actor {
                 }
             }
             PlaybackCommand::Snapshot | PlaybackCommand::SyncQueue => Ok(()),
-            PlaybackCommand::Quality(_) | PlaybackCommand::Queue => unreachable!("handled above"),
+            PlaybackCommand::Quality(_)
+            | PlaybackCommand::Queue
+            | PlaybackCommand::SkipStartup(_) => unreachable!("handled above"),
         };
         if let Err(error) = result {
             self.reply(request.reply, Err(error));

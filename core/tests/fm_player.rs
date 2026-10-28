@@ -465,6 +465,92 @@ async fn restart_restores_fm_position_paused_and_keeps_normal_queue_backup() {
 }
 
 #[tokio::test]
+async fn startup_fm_policy_handles_saved_and_unapplied_queues_without_repeating_a_skip() {
+    use cumulus_core::playback::{controller::StartupRestore, preferences::StartupSettings};
+    for changed in [false, true] {
+        let f = Native::new();
+        let token = f.domain.session.token().unwrap();
+        f.enter(&[1, 2, 3]).await;
+        f.player
+            .command(&token, PlaybackCommand::Seek(14.0))
+            .await
+            .unwrap();
+        f.player
+            .command(&token, PlaybackCommand::Stop)
+            .await
+            .unwrap();
+        let Native {
+            domain,
+            player,
+            host,
+            intents,
+            ..
+        } = f;
+        let service = host.service().clone();
+        drop(host);
+        drop(player);
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        if changed {
+            let queue = service
+                .queue_for(&token, &FmSource::Personal)
+                .unwrap()
+                .unwrap();
+            service
+                .repeat_for(&token, &FmSource::Personal, queue.revision, FmRepeat::One)
+                .unwrap();
+        }
+        let player = Arc::new(
+            PlaybackController::start(
+                domain.session.clone(),
+                domain.store.clone(),
+                Arc::new(SourceResolver::new(domain.session.clone(), None)),
+                engine::audio_engine(Arc::new(engine::Device::default())),
+            )
+            .unwrap(),
+        );
+        let host = FmPlayer::new(domain.session.clone(), player.clone(), intents.clone()).unwrap();
+        let view = player
+            .command(&token, PlaybackCommand::Snapshot)
+            .await
+            .unwrap();
+        let result = host
+            .startup_for(
+                &token,
+                StartupRestore {
+                    expected: view.fence(),
+                    queue: None,
+                    settings: StartupSettings {
+                        auto_play: true,
+                        remember_position: !changed,
+                    },
+                    allow_autoplay: true,
+                },
+                intents.load(Ordering::Acquire),
+            )
+            .await
+            .unwrap();
+        assert!(result.fm);
+        assert_eq!(result.state, PlaybackStatus::Playing);
+        assert_eq!(result.position, Some(if changed { 0.0 } else { 14.0 }));
+        assert_eq!(
+            result.mode,
+            if changed {
+                cumulus_core::playback::PlaybackMode::SingleLoop
+            } else {
+                cumulus_core::playback::PlaybackMode::Sequential
+            }
+        );
+        assert!(
+            !host
+                .pending_for(&token, &player.queue(&token).await.unwrap())
+                .unwrap()
+        );
+        assert_eq!(domain.api.count("/api/v1/radio/skip"), 0);
+        player.command(&token, PlaybackCommand::Stop).await.unwrap();
+    }
+}
+
+#[tokio::test]
 async fn newly_blocked_current_is_filtered_when_reentering_and_empty_fm_keeps_original_backup() {
     let f = Native::new();
     let token = f.domain.session.token().unwrap();

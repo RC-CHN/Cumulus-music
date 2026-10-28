@@ -22,6 +22,7 @@ pub use super::mv::{
 };
 pub use super::player::{
     LyricsView, PlaySelection, PlayerAction, PlayerView, QueueTrack, QueueView,
+    StartupPreferencesCommand, StartupPreferencesView,
 };
 pub use super::playlist_cover::{CoverCommand, CoverOutcome};
 pub use super::playlists::{PlaylistEditor, PlaylistMutationView, PlaylistOrderView, PlaylistTag};

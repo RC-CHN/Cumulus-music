@@ -5,6 +5,7 @@ mod equalizer;
 mod history;
 mod load;
 mod remote;
+mod startup;
 mod state;
 mod tick;
 mod types;
@@ -27,7 +28,7 @@ use tokio::sync::{mpsc, oneshot, watch};
 use types::Reply;
 pub use types::{
     PlaybackCommand, PlaybackFence, PlaybackSnapshot, PlaybackStatus, PrefetchSnapshot,
-    QueueTransport, QueueUpdate, RemotePlayback,
+    QueueTransport, QueueUpdate, RemotePlayback, StartupRestore,
 };
 
 type Engine = Arc<Mutex<Box<dyn AudioEngine>>>;

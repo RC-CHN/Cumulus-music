@@ -40,6 +40,8 @@ pub(super) struct Pending {
     pub paused: bool,
 }
 pub(super) struct Actor {
+    pub startup_pending: bool,
+    pub startup_autoplay: bool,
     pub relay: Option<crate::relay::publisher::player::Observer>,
     pub relay_hint: crate::relay::publisher::player::Hint,
     pub equalizer: crate::effects::equalizer::EqualizerSnapshot,
@@ -89,6 +91,8 @@ impl Actor {
         let queue = PlaybackQueue::new(Some(store.clone()), owner)?;
         let prefs = Self::preferences(&store, owner)?;
         Ok(Self {
+            startup_pending: true,
+            startup_autoplay: true,
             relay: None,
             relay_hint: Default::default(),
             equalizer: Default::default(),
@@ -146,6 +150,8 @@ impl Actor {
     pub fn snapshot(&self) -> PlaybackSnapshot {
         let selected = self.queue.selected();
         PlaybackSnapshot {
+            startup_pending: self.startup_pending,
+            startup_autoplay: self.startup_autoplay,
             fm: self.queue.is_fm(),
             equalizer: self.equalizer,
             revision: self.revision,

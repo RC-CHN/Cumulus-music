@@ -37,6 +37,8 @@ impl Actor {
         self.prefs = Default::default();
         self.token = token;
         self.bound = false;
+        self.startup_pending = true;
+        self.startup_autoplay = false;
         self.history_error = None;
         self.equalizer_clear().await?;
         self.resolver.invalidate(None)?;

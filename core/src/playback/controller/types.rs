@@ -32,6 +32,9 @@ pub struct PrefetchSnapshot {
 /// Native snapshot; a host must map selected resources to its public DTO.
 #[derive(Clone)]
 pub struct PlaybackSnapshot {
+    /// Native startup policy state, excluded from the public player DTO.
+    pub startup_pending: bool,
+    pub startup_autoplay: bool,
     pub fm: bool,
     pub equalizer: crate::effects::equalizer::EqualizerSnapshot,
     pub revision: u64,
@@ -89,7 +92,18 @@ pub struct QueueUpdate {
     pub queue: QueueSnapshot,
     pub transport: Option<QueueTransport>,
 }
+/// One native initialization per account binding. The first binding alone may
+/// autoplay; the host must also hold audio media ownership before permitting it.
+pub struct StartupRestore {
+    pub expected: PlaybackFence,
+    pub queue: Option<QueueSnapshot>,
+    pub settings: crate::playback::preferences::StartupSettings,
+    pub allow_autoplay: bool,
+}
 pub enum PlaybackCommand {
+    Startup(StartupRestore),
+    /// Consume a failed startup preparation without changing newer transport.
+    SkipStartup(PlaybackFence),
     Equalizer {
         expected_revision: u64,
         settings: crate::effects::equalizer::EqualizerSettings,

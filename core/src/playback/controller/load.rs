@@ -20,6 +20,7 @@ pub(super) struct LoadOptions {
     pub position: Option<f64>,
     pub recover: bool,
     pub relative: bool,
+    pub restart_at_end: bool,
     pub source: Option<Arc<ResolvedSource>>,
 }
 pub(super) struct Prepared {
@@ -167,6 +168,12 @@ impl Actor {
                     if !recover {
                         return Err(Error::InvalidInput("position exceeds decoded duration"));
                     }
+                    position = timeline.snapshot().start;
+                    reset = true;
+                }
+                if options.restart_at_end
+                    && timeline.display_end().is_some_and(|end| position >= end)
+                {
                     position = timeline.snapshot().start;
                     reset = true;
                 }

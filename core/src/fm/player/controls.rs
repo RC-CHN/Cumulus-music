@@ -124,6 +124,38 @@ impl Inner {
         )
         .await
     }
+    pub(super) async fn startup(
+        &self,
+        token: &SessionToken,
+        mut input: crate::playback::controller::StartupRestore,
+        intent: u64,
+    ) -> Result<PlaybackSnapshot> {
+        let _gate = self.gate.try_lock().map_err(|_| Error::MutationBusy)?;
+        let (view, actual, mut desired) = self.current(token).await?;
+        self.guard(token, intent)?;
+        if !view.startup_pending {
+            return Ok(view);
+        }
+        if view.fence() != input.expected {
+            return Err(Error::QueueChanged);
+        }
+        if !matches_queue(&desired, &actual) || desired.current().is_none() {
+            if desired.current().is_none() {
+                let rights = crate::membership::MembershipManager::new(self.session.clone())?
+                    .refresh_for(token.clone())
+                    .await?;
+                desired = self
+                    .service
+                    .preload_for(token, desired.source.clone(), FmRights::from(&rights))
+                    .await?;
+            }
+            input.queue = Some(projection(&desired, quality(&view))?);
+        }
+        self.guard(token, intent)?;
+        self.controller
+            .command(token, PlaybackCommand::Startup(input))
+            .await
+    }
     pub(super) async fn repeat(
         &self,
         token: &SessionToken,

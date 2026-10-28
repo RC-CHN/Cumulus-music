@@ -371,7 +371,7 @@ async fn cue_selection_native_bounds_sidecar_clock_offset_and_reopen() {
     let queue = reopened.player_queue("0").await.unwrap();
     assert_eq!(queue.current, original);
     let restored = reopened
-        .player_action("0", PlayerAction::Restore)
+        .player_action("0", PlayerAction::Startup)
         .await
         .unwrap();
     assert_eq!(restored.timeline.unwrap().media_start, 30.0);
@@ -389,6 +389,35 @@ async fn cue_selection_native_bounds_sidecar_clock_offset_and_reopen() {
     assert_eq!(refreshed.offset, 0.0);
     assert_eq!(refreshed.lines[0].time, Some(1.0));
     assert_eq!(refreshed.lines[0].lyric, "Changed sidecar");
+    reopened
+        .startup_preferences_command(
+            "0",
+            StartupPreferencesCommand::Change {
+                expected_revision: "0".into(),
+                settings: cumulus_core::playback::preferences::StartupSettings {
+                    auto_play: true,
+                    remember_position: false,
+                },
+            },
+        )
+        .unwrap();
+    reopened
+        .player_action("0", PlayerAction::Stop)
+        .await
+        .unwrap();
+    drop(reopened);
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    let (_, reopened, _) = self::client(&state, Arc::new(Probe::default()));
+    let reset = reopened
+        .player_action("0", PlayerAction::Startup)
+        .await
+        .unwrap();
+    assert_eq!(reset.timeline.unwrap().media_start, 30.0);
+    assert_eq!(reset.position, Some(0.0));
+    assert_eq!(
+        reset.state,
+        cumulus_core::playback::controller::PlaybackStatus::Playing
+    );
     std::fs::write(media.join("album.cue"), "changed").unwrap();
     assert!(
         reopened

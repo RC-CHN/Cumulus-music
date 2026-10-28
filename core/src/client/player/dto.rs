@@ -117,6 +117,7 @@ pub enum PlaySelection {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PlayerAction {
+    Startup,
     Equalizer {
         expected_revision: String,
         settings: crate::effects::equalizer::EqualizerSettings,

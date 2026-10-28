@@ -117,6 +117,14 @@ impl FmPlayer {
     ) -> Result<PlaybackSnapshot> {
         self.inner.resume(token, restore, intent).await
     }
+    pub async fn startup_for(
+        &self,
+        token: &SessionToken,
+        input: crate::playback::controller::StartupRestore,
+        intent: u64,
+    ) -> Result<PlaybackSnapshot> {
+        self.inner.startup(token, input, intent).await
+    }
     pub async fn repeat_for(
         &self,
         token: &SessionToken,

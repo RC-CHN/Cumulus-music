@@ -1,6 +1,8 @@
 mod dto;
 mod lyrics;
+mod preferences;
 mod selection;
+mod startup;
 use super::{MusicClient, mapping};
 use crate::{
     Error, Result,
@@ -15,6 +17,7 @@ use crate::{
     storage::StateStore,
 };
 pub use dto::*;
+pub use preferences::{StartupPreferencesCommand, StartupPreferencesView};
 use std::sync::{Arc, Mutex, atomic::AtomicU64};
 use tokio::sync::{OnceCell, watch};
 
@@ -204,6 +207,9 @@ impl MusicClient {
         })
     }
     pub async fn player_action(&self, epoch: &str, action: PlayerAction) -> Result<PlayerView> {
+        if matches!(action, PlayerAction::Startup) {
+            return self.startup_player(epoch).await;
+        }
         let token = self.player_token(epoch)?;
         let local_effect = matches!(
             action,
@@ -313,6 +319,7 @@ impl MusicClient {
             }
         }
         let command = match action {
+            PlayerAction::Startup => unreachable!("handled before user transport commands"),
             PlayerAction::Equalizer {
                 expected_revision,
                 settings,
