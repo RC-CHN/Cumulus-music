@@ -14,6 +14,11 @@ pub use types::*;
 pub use video::{MpvVideoEngine, VideoEngine};
 
 pub trait AudioEngine: Send {
+    /// Device preference maintenance when no decoder load is holding the
+    /// engine. Adapters throttle read-only discovery; plain engines do nothing.
+    fn maintain_output(&mut self) -> Result<()> {
+        Ok(())
+    }
     /// None means unsupported (including an explicitly isolated null output).
     /// Hosts call this on a blocking worker, never the UI thread.
     fn output_devices(&mut self) -> Result<Option<OutputDevices>> {

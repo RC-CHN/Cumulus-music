@@ -572,3 +572,71 @@ async fn catalog_album_selection_revalidates_the_album_and_keeps_all_tracks() {
     assert_eq!(api.calls.lock().unwrap()[0], "/api/album/v3/detail");
     client.player_action("1", PlayerAction::Stop).await.unwrap();
 }
+
+#[tokio::test]
+async fn output_settings_are_local_lazy_and_reject_old_account_commands() {
+    let (_dir, api, session, client, count) = fixture();
+    let epoch = session.token().unwrap().generation.to_string();
+    let initial = client.output_settings(&epoch, false).await.unwrap();
+    assert_eq!(count.load(Ordering::SeqCst), 0);
+    assert_eq!(initial.value.supported, None);
+    let inspected = client.output_settings(&epoch, true).await.unwrap();
+    assert_eq!(inspected.value.supported, Some(false));
+    client.output_settings(&epoch, true).await.unwrap();
+    assert_eq!(
+        count.load(Ordering::SeqCst),
+        1,
+        "one never-loaded inspector"
+    );
+    let saved = client
+        .output_command(
+            &epoch,
+            OutputCommand::Select {
+                expected_revision: "0".into(),
+                id: "auto".into(),
+            },
+        )
+        .unwrap();
+    assert_eq!(saved.value.revision.as_deref(), Some("1"));
+    assert!(
+        client
+            .output_command(
+                &epoch,
+                OutputCommand::Retry {
+                    expected_revision: "0".into()
+                }
+            )
+            .is_err()
+    );
+    session
+        .adopt(api.clone(), json!({"userId":10}), &session.token().unwrap())
+        .unwrap();
+    assert!(matches!(
+        client.output_command(
+            &epoch,
+            OutputCommand::Retry {
+                expected_revision: "1".into()
+            }
+        ),
+        Err(Error::StaleResponse)
+    ));
+    assert!(matches!(
+        client.output_settings(&epoch, true).await,
+        Err(Error::StaleResponse)
+    ));
+    let next = session.token().unwrap().generation.to_string();
+    assert_eq!(
+        client
+            .output_settings(&next, false)
+            .await
+            .unwrap()
+            .value
+            .revision
+            .as_deref(),
+        Some("1")
+    );
+    assert!(
+        api.calls.lock().unwrap().is_empty(),
+        "device settings have no music API"
+    );
+}

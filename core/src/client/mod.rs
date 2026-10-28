@@ -50,6 +50,7 @@ pub struct MusicClient {
     registry: Arc<ProfileRegistry>,
     auth: auth::AuthHost,
     player: player::PlayerHost,
+    output: Arc<crate::playback::output::OutputRuntime>,
     downloads: downloads::DownloadHost,
     cloud: cloud::CloudHost,
     mv: mv::MvHost,
@@ -163,6 +164,7 @@ impl MusicClient {
     /// Native dependency injection for non-Tauri hosts and contract tests.
     pub fn with_session(session: Arc<AccountSession>, registry: Arc<ProfileRegistry>) -> Self {
         let focus = Arc::new(focus::MediaFocus::default());
+        let output = crate::playback::output::OutputRuntime::new(registry.store());
         Self {
             playlist_cover: playlist_cover::CoverHost::default(),
             together: together::TogetherHost::default(),
@@ -170,8 +172,14 @@ impl MusicClient {
             local: local::LocalHost::new(registry.store()),
             cloud: cloud::CloudHost::new(session.clone()),
             downloads: downloads::DownloadHost::new(session.clone(), registry.store()),
-            player: player::PlayerHost::new(session.clone(), registry.store(), focus.clone()),
-            mv: mv::MvHost::new(session.clone(), focus.clone()),
+            player: player::PlayerHost::new(
+                session.clone(),
+                registry.store(),
+                focus.clone(),
+                output.clone(),
+            ),
+            mv: mv::MvHost::new(session.clone(), focus.clone(), output.clone()),
+            output,
             focus,
             session,
             registry,

@@ -234,6 +234,20 @@ impl Actor {
         let snapshot = device(engine, |e| e.poll()).await?;
         self.view.position = snapshot.position.or(self.view.position);
         self.view.duration = snapshot.duration.or(self.view.duration);
+        if snapshot.events.iter().any(|event| {
+            matches!(event, EngineEvent::OutputReload { entry_id } if Some(*entry_id) == self.entry)
+        }) {
+            // Keep user transport intent, even if the failed output reports
+            // a stopped clock. The shared output policy bounds this to one
+            // recovery across replacement native engines.
+            return self.open(resolve::Load {
+                id: self.view.id.clone().ok_or(Error::State("video output missing selection"))?,
+                resolution: self.view.requested_resolution,
+                task: self.local_source.as_ref().map(|source| source.task.clone()),
+                position: self.view.position,
+                remote: false,
+            }, self.wants_play).await;
+        }
         self.view.buffering = snapshot.buffering;
         if let Some(volume) = snapshot
             .volume

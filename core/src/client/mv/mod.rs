@@ -20,14 +20,20 @@ pub(super) struct MvHost {
     session: Arc<AccountSession>,
     focus: Arc<MediaFocus>,
     factory: VideoEngineFactory,
+    output: Arc<crate::playback::output::OutputRuntime>,
     current: Mutex<Option<(SessionToken, Arc<VideoController>)>>,
     construction: tokio::sync::Mutex<()>,
 }
 impl MvHost {
-    pub fn new(session: Arc<AccountSession>, focus: Arc<MediaFocus>) -> Self {
+    pub fn new(
+        session: Arc<AccountSession>,
+        focus: Arc<MediaFocus>,
+        output: Arc<crate::playback::output::OutputRuntime>,
+    ) -> Self {
         Self {
             session,
             focus,
+            output,
             factory: Arc::new(|| {
                 Ok(Box::new(MpvVideoEngine::open(
                     MpvConfig::default(),
@@ -83,15 +89,17 @@ impl MvHost {
         }
         let factory = self.factory.clone();
         let focus = self.focus.clone();
+        let output = self.output.clone();
         let controller = Arc::new(VideoController::start(
             self.session.clone(),
             token.clone(),
             Arc::new(move || {
-                Ok(Box::new(Focused {
+                let lease = output.reserve(crate::playback::output::OutputKind::Video)?;
+                Ok(Box::new(lease.wrap(Box::new(Focused {
                     inner: factory()?,
                     focus: focus.clone(),
                     owner: Owner::Video,
-                }))
+                }))))
             }),
         )?);
         self.session.with_token(token, |_| Ok(()))?;

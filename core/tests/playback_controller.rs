@@ -320,3 +320,42 @@ async fn prefetch_refreshes_expired_source_without_changing_queue_or_audio() {
         Value::from(1)
     );
 }
+
+#[tokio::test]
+async fn output_recovery_reloads_same_source_at_current_clock_without_advancing_queue() {
+    use cumulus_core::playback::engine::EngineEvent;
+    for paused in [true, false] {
+        let f = Fixture::new();
+        f.command(replace(&[1])).await.unwrap();
+        f.command(Cmd::Seek(42.5)).await.unwrap();
+        f.command(Cmd::Pause(paused)).await.unwrap();
+        let before = f.player.snapshot();
+        let queue = f.player.queue(&f.token()).await.unwrap();
+        {
+            let mut native = f.device.state.lock().unwrap();
+            native.view.position = None;
+            native.view.paused = true; // Failed output state is not user intent.
+            native
+                .view
+                .events
+                .push(EngineEvent::OutputReload { entry_id: 1 });
+        }
+        let after = until(&f.player, |s| {
+            s.play_id != before.play_id
+                && s.state
+                    == if paused {
+                        Status::Paused
+                    } else {
+                        Status::Playing
+                    }
+        })
+        .await;
+        assert_eq!(after.position, Some(42.5));
+        assert_eq!(after.selected, before.selected);
+        assert_eq!(f.player.queue(&f.token()).await.unwrap(), queue);
+        assert_eq!(f.api.count(1), 1, "reuse existing authorized source");
+        assert_eq!(f.device.state.lock().unwrap().loads, 2);
+        assert_eq!(f.device.state.lock().unwrap().view.position, Some(42.5));
+        f.command(Cmd::Stop).await.unwrap();
+    }
+}

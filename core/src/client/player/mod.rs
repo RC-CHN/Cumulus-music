@@ -1,5 +1,6 @@
 mod dto;
 mod lyrics;
+mod output;
 mod preferences;
 mod selection;
 mod startup;
@@ -17,6 +18,7 @@ use crate::{
     storage::StateStore,
 };
 pub use dto::*;
+pub use output::{OutputCommand, OutputEngineView, OutputView};
 pub use preferences::{StartupPreferencesCommand, StartupPreferencesView};
 use std::sync::{Arc, Mutex, atomic::AtomicU64};
 use tokio::sync::{OnceCell, watch};
@@ -27,6 +29,8 @@ pub(super) struct PlayerHost {
     session: Arc<AccountSession>,
     store: Arc<StateStore>,
     factory: EngineFactory,
+    output: Arc<crate::playback::output::OutputRuntime>,
+    inspector: OnceCell<Arc<Mutex<Box<dyn AudioEngine>>>>,
     pub(super) controller: OnceCell<Arc<PlaybackController>>,
     fm: OnceCell<Arc<crate::fm::player::FmPlayer>>,
     pub(super) selection: Arc<AtomicU64>,
@@ -38,6 +42,7 @@ impl PlayerHost {
         session: Arc<AccountSession>,
         store: Arc<StateStore>,
         focus: Arc<super::focus::MediaFocus>,
+        output: Arc<crate::playback::output::OutputRuntime>,
     ) -> Self {
         Self {
             relay_enabled: false,
@@ -49,12 +54,17 @@ impl PlayerHost {
             selection: Arc::new(AtomicU64::new(0)),
             lyrics: Mutex::new(None),
             focus,
+            output,
+            inspector: OnceCell::new(),
         }
     }
     pub(super) async fn controller(&self) -> Result<&Arc<PlaybackController>> {
         self.controller
             .get_or_try_init(|| async {
                 let factory = self.factory.clone();
+                let lease = self
+                    .output
+                    .reserve(crate::playback::output::OutputKind::Audio)?;
                 let engine = tokio::task::spawn_blocking(move || factory())
                     .await
                     .map_err(|_| Error::State("audio initialization failed"))??;
@@ -69,11 +79,11 @@ impl PlayerHost {
                     self.session.clone(),
                     self.store.clone(),
                     resolver,
-                    Box::new(super::focus::Focused {
+                    Box::new(lease.wrap(Box::new(super::focus::Focused {
                         inner: engine,
                         focus: self.focus.clone(),
                         owner: super::focus::Owner::Audio,
-                    }),
+                    }))),
                 )?))
             })
             .await

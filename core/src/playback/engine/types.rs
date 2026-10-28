@@ -47,6 +47,7 @@ impl Cancellation {
     }
 }
 
+#[derive(Clone)]
 pub struct LoadRequest {
     pub source: MediaInput,
     pub start: f64,
@@ -62,7 +63,7 @@ impl LoadRequest {
             timeout: Duration::from_secs(25),
         }
     }
-    pub(super) fn validate(&self) -> Result<()> {
+    pub(crate) fn validate(&self) -> Result<()> {
         if !self.start.is_finite()
             || self.start < 0.0
             || self
@@ -106,6 +107,12 @@ impl From<i32> for EndReason {
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EngineEvent {
+    /// A known native audio-output failure was switched to default output.
+    /// The owning controller must reload its existing selection once, with
+    /// its account/generation guard and current transport position preserved.
+    OutputReload {
+        entry_id: i64,
+    },
     Started {
         entry_id: i64,
     },

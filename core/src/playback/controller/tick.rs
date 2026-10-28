@@ -93,6 +93,12 @@ impl Actor {
         self.rebind().await?;
         self.sync_queue().await?;
         if !self.state.active() {
+            if self.pending.is_none() {
+                super::engine(self.engine.clone(), self.guard(), |engine| {
+                    engine.maintain_output()
+                })
+                .await?;
+            }
             return Ok(());
         }
         self.equalizer_observe().await?;
@@ -101,6 +107,19 @@ impl Actor {
             .loaded
             .as_ref()
             .ok_or(Error::State("active playback missing media"))?;
+        if view.events.iter().any(|event| {
+            matches!(event, EngineEvent::OutputReload { entry_id } if *entry_id == loaded.media.entry_id)
+        }) {
+            let position = view.position.map(|p| loaded.timeline.from_media(p)).transpose()?.or(self.position);
+            let options = LoadOptions {
+                paused: self.state == PlaybackStatus::Paused,
+                position,
+                recover: true,
+                source: Some(loaded.source.clone()),
+                ..Default::default()
+            };
+            return self.begin(options, uuid::Uuid::new_v4().simple().to_string(), None).await;
+        }
         let mut ended = false;
         for event in view.events {
             match event {

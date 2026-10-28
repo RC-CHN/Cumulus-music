@@ -334,3 +334,41 @@ async fn verified_local_mv_survives_network_failure_and_corrupt_explicit_downloa
             .any(|p| p == "/api/song/enhance/play/mv/url")
     );
 }
+
+#[tokio::test]
+async fn output_recovery_preserves_video_selection_clock_and_paused_intent() {
+    let f = Fixture::new();
+    let token = f.session.token().unwrap();
+    f.player.command(&token, open("123")).await.unwrap();
+    let before = until(&f.player, Status::Playing).await;
+    f.player
+        .command(&token, Cmd::Seek { seconds: 31.25 })
+        .await
+        .unwrap();
+    f.player
+        .command(&token, Cmd::Pause { paused: true })
+        .await
+        .unwrap();
+    f.last()
+        .lock()
+        .unwrap()
+        .events
+        .push(EngineEvent::OutputReload { entry_id: 1 });
+    tokio::time::timeout(std::time::Duration::from_secs(4), async {
+        loop {
+            let view = f.player.snapshot().unwrap();
+            if view.play_id != before.play_id && view.status == Status::Paused {
+                assert_eq!(view.id, before.id);
+                assert_eq!(view.position, Some(31.25));
+                assert_eq!(view.requested_resolution, 480);
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(f.devices.lock().unwrap().len(), 2);
+    assert!(f.last().lock().unwrap().paused);
+    f.player.command(&token, Cmd::Stop).await.unwrap();
+}
