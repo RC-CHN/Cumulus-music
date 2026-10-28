@@ -27,6 +27,7 @@ mod relay;
 mod scene_fm;
 mod settings;
 mod together;
+mod window;
 pub use player::PlaybackSubscription;
 
 use crate::{

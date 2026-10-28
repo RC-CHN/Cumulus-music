@@ -24,6 +24,7 @@ pub mod mv;
 pub mod playback;
 pub mod playlist;
 pub mod podcast;
+pub mod preferences;
 pub mod protocol;
 pub mod relay;
 pub mod storage;

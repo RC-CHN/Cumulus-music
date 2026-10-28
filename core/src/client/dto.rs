@@ -45,6 +45,7 @@ pub use super::settings::{
 pub use super::together::{
     TogetherCommand, TogetherMemberView, TogetherOperationView, TogetherRoomView, TogetherView,
 };
+pub use super::window::{WindowPreferencesCommand, WindowPreferencesView};
 pub use crate::account::collections::CollectionQuery;
 use crate::account::{QrStatus, SessionStatus, resources::MutationPhase};
 pub use crate::catalog::rankings::RankingQuery;
