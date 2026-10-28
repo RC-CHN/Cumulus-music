@@ -9,6 +9,8 @@ import ModalTransition from './components/ModalTransition.vue';
 import LoginDialog from './components/LoginDialog.vue';
 import AccountDialog from './components/AccountDialog.vue';
 import TrackTable from './components/TrackTable.vue';
+import CatalogPage from './components/CatalogPage.vue';
+import type { CatalogResource, CatalogSelectionPage } from './services/catalog';
 import PlayerBar from './components/PlayerBar.vue';
 import QueuePanel from './components/QueuePanel.vue';
 import LyricsPanel from './components/LyricsPanel.vue';
@@ -104,7 +106,19 @@ const rankings = useRankings(undefined, () => {
   void music.bootstrap(false);
 });
 function openRanking(query: RankingQuery) {
-  music.navigate({ kind: 'rankings', query });
+  if (query.kind === 'album') openCatalog({ kind: 'album', id: query.id });
+  else music.navigate({ kind: 'rankings', query });
+}
+function openCatalog(resource: CatalogResource) {
+  music.navigate({ kind: 'catalog', resource });
+}
+function playCatalog(pages: CatalogSelectionPage[], index: number) {
+  void player.select({
+    kind: 'catalog',
+    pages,
+    index,
+    quality: player.view.value?.requestedQuality ?? 'standard',
+  });
 }
 function playRankingPlaylist(id: string) {
   void player.select({
@@ -674,6 +688,25 @@ onUnmounted(() => window.removeEventListener('keydown', keyboard));
             </button>
           </div>
           <MvCollection v-else-if="page.kind === 'mvs'" :model="mv" @open="openMv" />
+          <CatalogPage
+            v-else-if="page.kind === 'catalog'"
+            :resource="page.resource"
+            :account="account"
+            :playable="player.ready.value"
+            :play-busy="player.busy.value"
+            :download-busy="downloads.busy.value"
+            :liked="liked"
+            :busy-likes="busyLikes"
+            :current-id="currentTrackId"
+            @open="openCatalog"
+            @play="playCatalog"
+            @like="music.like"
+            @more="(track) => (playlistDialog = { kind: 'track', track })"
+            @download="(tracks) => (downloadDialog = { kind: 'start', tracks })"
+            @mv="openMv"
+            @comments="(id, title) => openComments({ kind: 'album', id }, title)"
+            @expired="music.bootstrap(false)"
+          />
           <MemberPage
             v-else-if="page.kind === 'member'"
             :model="member"
@@ -940,6 +973,9 @@ onUnmounted(() => window.removeEventListener('keydown', keyboard));
               </div>
               <TrackTable
                 v-if="result.tracks.length"
+                navigable
+                @artist="(id) => openCatalog({ kind: 'artist', id })"
+                @album="(id) => openCatalog({ kind: 'album', id })"
                 :tracks="result.tracks"
                 :liked="liked"
                 :busy="busyLikes"

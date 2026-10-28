@@ -2,9 +2,9 @@ import { computed, onUnmounted, ref, shallowRef, watch } from 'vue';
 import { rowWindow } from '../services/virtualWindow';
 
 /** Native passive scrolling; Vue only receives changes to the buffered row range. */
-export function useVirtualRows(count: () => number, rowHeight: number) {
+export function useVirtualRows(count: () => number, rowHeight: number, buffer = 8) {
   const container = ref<HTMLElement>();
-  const range = shallowRef(rowWindow(count(), rowHeight, 500, 0));
+  const range = shallowRef(rowWindow(count(), rowHeight, 500, 0, undefined, buffer));
   let height = 500;
   let frame: number | undefined;
   let observer: ResizeObserver | undefined;
@@ -16,6 +16,7 @@ export function useVirtualRows(count: () => number, rowHeight: number) {
       height,
       container.value?.scrollTop ?? 0,
       range.value,
+      buffer,
     );
   }
   function onScroll() {
@@ -23,7 +24,7 @@ export function useVirtualRows(count: () => number, rowHeight: number) {
   }
   function reset() {
     if (container.value) container.value.scrollTop = 0;
-    range.value = rowWindow(count(), rowHeight, height, 0);
+    range.value = rowWindow(count(), rowHeight, height, 0, undefined, buffer);
   }
   watch(
     container,
@@ -47,7 +48,14 @@ export function useVirtualRows(count: () => number, rowHeight: number) {
       if (element)
         element.scrollTop = Math.min(element.scrollTop, Math.max(0, count() * rowHeight - height));
       // Shrinking lists must not retain an out-of-bounds buffer.
-      range.value = rowWindow(count(), rowHeight, height, element?.scrollTop ?? 0);
+      range.value = rowWindow(
+        count(),
+        rowHeight,
+        height,
+        element?.scrollTop ?? 0,
+        undefined,
+        buffer,
+      );
     },
     { flush: 'post' },
   );

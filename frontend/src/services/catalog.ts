@@ -93,9 +93,31 @@ export interface CatalogView {
   page: CatalogPage;
 }
 export interface CatalogClient {
+  catalogMembership(
+    epoch: string,
+    resource: CatalogResource,
+    action: CatalogMembershipAction,
+  ): Promise<AccountData<CatalogMembershipView>>;
   catalogPage(
     epoch: string,
     query: CatalogQuery,
     refresh: boolean,
   ): Promise<AccountData<CatalogView | null>>;
+}
+export type CatalogResource = { kind: 'artist' | 'album'; id: string };
+export type CatalogMembershipAction =
+  | { kind: 'inspect' | 'reconcile' }
+  | { kind: 'set'; desired: boolean };
+export interface CatalogMembershipOperation {
+  phase: 'sending' | 'verifying' | 'uncertain' | 'confirmed' | 'rejected' | 'unchanged';
+  desired: boolean;
+  observed: boolean | null;
+}
+export interface CatalogMembershipView {
+  resource: CatalogResource;
+  operation: CatalogMembershipOperation | null;
+}
+export interface CatalogSelectionPage {
+  query: CatalogQuery;
+  revision: string;
 }

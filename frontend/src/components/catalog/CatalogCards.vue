@@ -1,0 +1,156 @@
+<script setup lang="ts">
+import { computed, ref, watch, onUnmounted } from 'vue';
+import { useVirtualRows } from '../../composables/useVirtualRows';
+import type { CatalogView, CatalogResource } from '../../services/catalog';
+import Icon from '../Icon.vue';
+const props = defineProps<{ pages: CatalogView[] }>();
+const emit = defineEmits<{ open: [resource: CatalogResource]; mv: [id: string] }>();
+const albums = computed(() =>
+  props.pages.flatMap((v) => (v.page.kind === 'artist_albums' ? v.page.albums : [])),
+);
+const artists = computed(() =>
+  props.pages.flatMap((v) => (v.page.kind === 'similar_artists' ? v.page.artists : [])),
+);
+const videos = computed(() =>
+  props.pages.flatMap((v) => (v.page.kind === 'artist_videos' ? v.page.videos : [])),
+);
+const concerts = computed(() =>
+  props.pages.flatMap((v) => (v.page.kind === 'artist_concerts' ? v.page.concerts : [])),
+);
+const columns = ref(3);
+const total = computed(
+  () => albums.value.length + artists.value.length + videos.value.length + concerts.value.length,
+);
+const {
+  container: scroller,
+  start,
+  end,
+  onScroll,
+} = useVirtualRows(() => Math.ceil(total.value / columns.value), 260, 2);
+let observer: ResizeObserver | undefined;
+watch(
+  scroller,
+  (element) => {
+    observer?.disconnect();
+    if (element) {
+      observer = new ResizeObserver((entries) => {
+        columns.value = Math.max(1, Math.floor((entries[0]?.contentRect.width ?? 540) / 180));
+      });
+      observer.observe(element);
+    }
+  },
+  { flush: 'post' },
+);
+onUnmounted(() => observer?.disconnect());
+const windowAlbums = computed(() =>
+  albums.value.slice(start.value * columns.value, end.value * columns.value),
+);
+const windowArtists = computed(() =>
+  artists.value.slice(start.value * columns.value, end.value * columns.value),
+);
+const windowVideos = computed(() =>
+  videos.value.slice(start.value * columns.value, end.value * columns.value),
+);
+const windowConcerts = computed(() =>
+  concerts.value.slice(start.value * columns.value, end.value * columns.value),
+);
+function date(value: string | number | null) {
+  return typeof value === 'number' ? new Date(value).toLocaleDateString() : (value ?? '');
+}
+</script>
+<template>
+  <div v-if="total" ref="scroller" class="catalog-card-scroll" @scroll.passive="onScroll">
+    <div :style="{ height: `${start * 260}px` }" aria-hidden="true" />
+    <div class="catalog-grid" :style="{ gridTemplateColumns: `repeat(${columns},minmax(0,1fr))` }">
+      <button
+        v-for="(album, i) in windowAlbums"
+        :key="`album:${i}:${album.id}`"
+        class="catalog-card"
+        @click="emit('open', { kind: 'album', id: album.id })"
+      >
+        <img
+          v-if="album.coverUrl"
+          :src="album.coverUrl"
+          alt=""
+          loading="lazy"
+          decoding="async"
+          referrerpolicy="no-referrer"
+        /><span v-else class="catalog-card-placeholder"><Icon name="music" /></span
+        ><strong>{{ album.name }}</strong
+        ><small>{{ date(album.publishedAt) }} · {{ album.trackCount }} 首</small>
+      </button>
+      <button
+        v-for="(artist, i) in windowArtists"
+        :key="`artist:${i}:${artist.id}`"
+        class="catalog-card artist"
+        @click="emit('open', { kind: 'artist', id: artist.id })"
+      >
+        <img
+          v-if="artist.coverUrl"
+          :src="artist.coverUrl"
+          alt=""
+          loading="lazy"
+          decoding="async"
+          referrerpolicy="no-referrer"
+        /><span v-else class="catalog-card-placeholder"><Icon name="user" /></span
+        ><strong>{{ artist.name }}</strong>
+      </button>
+      <article
+        v-for="(video, i) in windowVideos"
+        :key="`video:${i}:${video.id}`"
+        class="catalog-video-card"
+      >
+        <button
+          :disabled="!video.mvId"
+          :aria-label="`播放 MV ${video.title}`"
+          @click="video.mvId && emit('mv', video.mvId)"
+        >
+          <img
+            v-if="video.coverUrl"
+            :src="video.coverUrl"
+            alt=""
+            loading="lazy"
+            decoding="async"
+            referrerpolicy="no-referrer"
+          /><span v-else class="catalog-card-placeholder"><Icon name="video" /></span
+          ><span v-if="video.mvId" class="catalog-video-play"><Icon name="play" /></span></button
+        ><strong>{{ video.title }}</strong
+        ><small>{{ video.artists.map((a) => a.name).join(' / ') }}</small
+        ><small v-if="!video.mvId">{{
+          video.kind === 'video' ? '普通视频播放暂未接入' : '暂不支持此视频类型'
+        }}</small>
+      </article>
+      <article
+        v-for="(concert, i) in windowConcerts"
+        :key="`concert:${i}:${concert.id}`"
+        class="catalog-concert-card"
+      >
+        <img
+          v-if="concert.coverUrl"
+          :src="concert.coverUrl"
+          alt=""
+          loading="lazy"
+          referrerpolicy="no-referrer"
+        />
+        <div>
+          <strong>{{ concert.title }}</strong>
+          <p>
+            {{ date(concert.start)
+            }}<span v-if="concert.end && concert.end !== concert.start">
+              – {{ date(concert.end) }}</span
+            >
+          </p>
+          <p>{{ concert.address }}</p>
+          <p v-if="concert.price">¥ {{ concert.price }}</p>
+        </div>
+      </article>
+    </div>
+    <div :style="{ height: `${(Math.ceil(total / columns) - end) * 260}px` }" aria-hidden="true" />
+  </div>
+  <p
+    v-if="pages.length && !albums.length && !artists.length && !videos.length && !concerts.length"
+    class="empty-state"
+  >
+    暂无相关内容
+  </p>
+</template>

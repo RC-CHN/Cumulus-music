@@ -11,6 +11,7 @@ import { failure } from '../services/contracts.ts';
 import { useCore } from '../services/core.ts';
 import type { CommentResource } from '../services/comments';
 export type Page =
+  | { kind: 'catalog'; resource: import('../services/catalog').CatalogResource }
   | { kind: 'scene_fm' }
   | { kind: 'member' }
   | { kind: 'fm' }
@@ -110,6 +111,7 @@ export function useMusic(core: CoreClient = useCore()) {
         target.kind === 'fm' ||
         target.kind === 'scene_fm' ||
         target.kind === 'member' ||
+        target.kind === 'catalog' ||
         target.kind === 'mv' ||
         target.kind === 'comments'
       )

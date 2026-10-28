@@ -16,7 +16,10 @@ function key(query: CatalogQuery) {
 const isExpired = (code: string) => ['session_expired', 'profile_changed'].includes(code);
 
 /** One independent page slot. A header and a tab can refresh separately. */
-export function useCatalog(core: CatalogClient = useCore(), expired = () => {}) {
+export function useCatalog(
+  core: Pick<CatalogClient, 'catalogPage'> = useCore(),
+  expired = () => {},
+) {
   const view = shallowRef<CatalogView>();
   const query = shallowRef<CatalogQuery>();
   const loading = ref(false);

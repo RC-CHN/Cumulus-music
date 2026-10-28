@@ -28,6 +28,8 @@ export function createTauriClient(): CoreClient {
     fmTrash: (epoch, page, cursor) => invoke('fm_trash', { epoch, page, cursor }),
     rankingPage: (epoch, query, refresh) => invoke('ranking_page', { epoch, query, refresh }),
     catalogPage: (epoch, query, refresh) => invoke('catalog_page', { epoch, query, refresh }),
+    catalogMembership: (epoch, resource, action) =>
+      invoke('catalog_membership', { epoch, resource, action }),
     onAccountChanged: (handler) =>
       listen<AccountView>('cumulus:account-changed', (event) => handler(event.payload)),
     beginLogin: (epoch, mode, savedId) =>
