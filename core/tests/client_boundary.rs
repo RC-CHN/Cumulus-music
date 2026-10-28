@@ -245,3 +245,84 @@ async fn old_account_results_and_expired_identity_cannot_cross_boundary() {
     assert!(!output.contains("DO_NOT_EXPORT"));
     assert_eq!(failure.code, "session_expired");
 }
+
+#[tokio::test]
+async fn like_recovery_view_is_bounded_local_and_account_scoped() {
+    use cumulus_core::{account::resources::MutationPhase, client::dto::LikeRecoveryCommand};
+    let dir = tempfile::tempdir().unwrap();
+    let backend = Arc::new(Backend::default());
+    let (client, session) = client(dir.path(), backend.clone());
+    let epoch = client.restore_account().await.unwrap().epoch;
+    let store = ProfileRegistry::open(dir.path(), ApiOrigin::Pc)
+        .unwrap()
+        .store();
+    for id in 1..=51 {
+        store.put("9","resource-mutations",&format!("liked:{id}"),&json!({"kind":"liked","key":id.to_string(),"before":false,"desired":true,"created_at":1.0,"phase":"uncertain","error_class":"DO_NOT_EXPORT"})).unwrap();
+    }
+    store
+        .put(
+            "9",
+            "resource-mutations",
+            "settings:shareSetting",
+            &json!({"synthetic":"damaged unrelated settings"}),
+        )
+        .unwrap();
+    let page = client.like_recovery(&epoch, 0).unwrap();
+    assert_eq!(page.value.total, 51);
+    assert_eq!(page.value.operations.len(), 20);
+    assert!(!page.value.operations[0].can_accept);
+    assert!(
+        !serde_json::to_string(&page)
+            .unwrap()
+            .contains("DO_NOT_EXPORT")
+    );
+    let tail = client.like_recovery(&epoch, usize::MAX).unwrap();
+    assert_eq!(tail.value.offset, 40);
+    assert_eq!(tail.value.operations.len(), 11);
+    assert_eq!(backend.requests.lock().unwrap().len(), 1);
+    assert!(matches!(
+        client.like_recovery("old", 0),
+        Err(Error::StaleResponse)
+    ));
+    let target = page
+        .value
+        .operations
+        .into_iter()
+        .find(|op| op.id == "1")
+        .unwrap();
+    let checked = client
+        .recover_like(
+            &epoch,
+            LikeRecoveryCommand::Reconcile {
+                id: target.id.clone(),
+                revision: target.revision,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(checked.value.observed, Some(false));
+    assert!(checked.value.can_accept);
+    let accepted = client
+        .recover_like(
+            &epoch,
+            LikeRecoveryCommand::AcceptCurrent {
+                id: "1".into(),
+                revision: checked.value.revision,
+                observed: false,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(accepted.value.phase, MutationPhase::AcceptedCurrentState);
+    assert_eq!(client.like_recovery(&epoch, 0).unwrap().value.total, 50);
+    assert!(
+        !backend
+            .requests
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|r| r.0 == "/api/song/like")
+    );
+    session.detach().unwrap();
+    assert!(client.like_recovery(&epoch, 0).is_err());
+}

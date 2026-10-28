@@ -30,6 +30,8 @@ pub enum MutationPhase {
     Confirmed,
     Rejected,
     Unchanged,
+    #[serde(rename = "accepted_current_state")]
+    AcceptedCurrentState,
 }
 impl MutationPhase {
     pub fn pending(self) -> bool {
@@ -54,6 +56,13 @@ pub struct MutationRecord {
     pub service_code: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error_class: Option<String>,
+}
+impl MutationRecord {
+    /// A confirmation is bound to this exact durable observation, not just ID.
+    pub fn revision(&self) -> crate::Result<String> {
+        use sha2::{Digest, Sha256};
+        Ok(hex::encode(Sha256::digest(serde_json::to_vec(self)?)))
+    }
 }
 pub(super) fn key(kind: ResourceKind, key: &str) -> String {
     format!("{}:{key}", kind.as_str())

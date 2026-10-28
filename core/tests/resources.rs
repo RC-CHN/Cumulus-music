@@ -1,3 +1,5 @@
+#[path = "support/resources_recovery.rs"]
+mod recovery;
 mod support;
 use cumulus_core::{
     Error,

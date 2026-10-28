@@ -50,6 +50,9 @@ impl AccountSettings {
                             MutationPhase::Confirmed => SettingsPhase::Confirmed,
                             MutationPhase::Rejected => SettingsPhase::Rejected,
                             MutationPhase::Unchanged => SettingsPhase::Unchanged,
+                            MutationPhase::AcceptedCurrentState => {
+                                SettingsPhase::AcceptedCurrentState
+                            }
                         },
                         created_at: (record.created_at * 1000.0) as u64,
                         // A fresh full read is required before accepting an old

@@ -16,13 +16,13 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-const JOURNAL: &str = "resource-mutations";
+pub(super) const JOURNAL: &str = "resource-mutations";
 pub struct AccountResources {
-    session: Arc<AccountSession>,
-    store: Arc<StateStore>,
+    pub(super) session: Arc<AccountSession>,
+    pub(super) store: Arc<StateStore>,
 }
 
-fn now() -> Result<f64> {
+pub(super) fn now() -> Result<f64> {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs_f64())
@@ -92,6 +92,28 @@ impl AccountResources {
         let token = self.token()?;
         self.operations_for(&token)
     }
+    /// Domain-local journal inspection must not migrate or depend on account
+    /// settings. Unrelated damaged settings cannot hide a pending song write.
+    pub fn liked_operations_for(&self, token: &SessionToken) -> Result<Vec<MutationRecord>> {
+        self.session.with_token(token, |uid| {
+            self.store
+                .values(uid, JOURNAL)?
+                .into_iter()
+                .filter(|(key, _)| key.starts_with("liked:"))
+                .map(|(key, value)| {
+                    let record: MutationRecord = serde_json::from_value(value)?;
+                    if record.kind != ResourceKind::Liked
+                        || record::key(record.kind, &record.key) != key
+                        || !record.created_at.is_finite()
+                    {
+                        return Err(Error::Response("invalid like journal"));
+                    }
+                    identifier(&json!(record.key))?;
+                    Ok(record)
+                })
+                .collect()
+        })
+    }
     pub fn operations_for(&self, token: &SessionToken) -> Result<BTreeMap<String, MutationRecord>> {
         let mut records: BTreeMap<String, MutationRecord> =
             self.session.with_token(token, |uid| {
@@ -154,7 +176,7 @@ impl AccountResources {
         }
         compatibility_record(op)
     }
-    fn load(&self, uid: &str, key: &str) -> Result<Option<MutationRecord>> {
+    pub(super) fn load(&self, uid: &str, key: &str) -> Result<Option<MutationRecord>> {
         let record: Option<MutationRecord> = self
             .store
             .get(uid, JOURNAL, key)?
@@ -342,7 +364,7 @@ impl AccountResources {
         }
         self.reconcile_for(token, &journal_key, record).await
     }
-    async fn reconcile_for(
+    pub(super) async fn reconcile_for(
         &self,
         token: &SessionToken,
         key: &str,

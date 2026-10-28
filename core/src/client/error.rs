@@ -96,6 +96,14 @@ impl From<Error> for ClientError {
                 }
                 Error::InvalidInput(_) => ("invalid_input", "输入内容不符合要求", false),
                 Error::QueueChanged => ("snapshot_changed", "列表已更新，请刷新后重试", true),
+                Error::State("like recovery changed") => (
+                    "like_changed",
+                    "喜欢状态或待核对记录已变化，请取消本次确认并重新核对",
+                    true,
+                ),
+                Error::State("reconcile like state before accepting it") => {
+                    ("like_reconcile", "请先核对喜欢状态，再决定是否保留", false)
+                }
                 Error::State("account settings changed") => (
                     "settings_changed",
                     "账号设置已发生变化，请查看最新状态后重新选择",

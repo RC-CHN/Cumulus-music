@@ -14,6 +14,7 @@ mod fm;
 mod fm_discovery;
 mod focus;
 mod history;
+mod likes;
 mod local;
 mod mapping;
 mod member;

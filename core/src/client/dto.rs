@@ -177,4 +177,5 @@ pub use super::comments::{
     CommentQuery, CommentReplyView, CommentResource, CommentSort, CommentView, CommentWriteAction,
     CommentWriteCommand, CommentWritePhase, CommentWriteView,
 };
+pub use super::likes::{LikeOperationView, LikeRecoveryCommand, LikeRecoveryView};
 pub use crate::catalog::details::CatalogQuery;
