@@ -93,6 +93,18 @@ export function useMusic(core: CoreClient = useCore()) {
       handle(likes.reason);
     }
   }
+  async function refreshLikes() {
+    const revision = ++likeRevision;
+    const epoch = account.value.epoch;
+    try {
+      const response = await core.likedIds();
+      const value = accept(response);
+      if (value && revision === likeRevision && account.value.epoch === epoch)
+        liked.value = new Set(value);
+    } catch (error) {
+      if (revision === likeRevision && account.value.epoch === epoch) handle(error);
+    }
+  }
   async function load(more = false) {
     const current = ++request;
     error.value = '';
@@ -240,6 +252,7 @@ export function useMusic(core: CoreClient = useCore()) {
     historyLength,
     signedIn,
     resources,
+    refreshLikes,
     load,
     bootstrap,
     navigate,

@@ -8,10 +8,17 @@
   const section=()=>one('.window-behavior'),refresh=()=>one('[aria-label="重新读取关闭设置"]'),dialog=()=>one('.window-close-dialog[open]');
   const ready=()=>section()?.getAttribute('aria-busy')==='false';
   const state=()=>invoke('window_lifecycle');
-  let count=0;
+  let count=0,likeEvents=0;
+  await invoke('plugin:event|listen',{event:'cumulus:native-like-changed',target:{kind:'Any'},handler:window.__TAURI_INTERNALS__.transformCallback(()=>{likeEvents++;})});
   async function capture(name){
     if(!dialog())section().scrollIntoView({block:'center'});await sleep(250);
     assert(document.documentElement.scrollWidth<=innerWidth,'page overflow');
+    const notice=one('.window-lifecycle-notice');
+    if(notice) {
+      const button=notice.querySelector('button'),text=notice.querySelector('span'),range=document.createRange();range.selectNodeContents(button);
+      const b=button.getBoundingClientRect(),n=notice.getBoundingClientRect();
+      assert(range.getClientRects().length===1&&b.right<=n.right&&text.getBoundingClientRect().right<=b.left,'notice action wraps or overlaps');
+    }
     const panel=dialog()||section(),box=panel.getBoundingClientRect();
     assert(box.left>=0&&box.right<=innerWidth+1,'panel overflow');
     if(dialog())for(const n of dialog().querySelectorAll('.close-choices input')){
@@ -40,6 +47,17 @@
       assert((await state()).hidden,'tray transport unexpectedly revealed window');
       await emit(stage,{ok:true,playerState:stateName});
     }
+    const heart=()=>one('.playerbar .like-button');
+    await wait(()=>likeEvents>=1&&heart()?.getAttribute('aria-pressed')==='true','tray like reflected in player');await emit('media_liked',{ok:true});
+    await wait(()=>likeEvents>=2&&heart()?.getAttribute('aria-pressed')==='false','tray unlike reflected in player');await emit('media_unliked',{ok:true});
+    await emit('lose-like');
+    await wait(async()=>likeEvents>=3&&!(await state()).hidden&&!!(await state()).message,'lost like reply revealed window');await capture('like_uncertain');await emit('like_reconcile_ready',{ok:true});
+    await wait(async()=>likeEvents>=4&&!(await state()).message&&heart()?.getAttribute('aria-pressed')==='true','read-only like reconciliation');await emit('media_like_reconciled',{ok:true});
+    click(one('.window-close'));await wait(async()=> (await state()).hidden,'hide after like recovery');await emit('likes_complete',{ok:true});
+    await wait(()=>one('.playerbar')?.textContent.includes('合成声音'),'native next to voice');await emit('native_voice_ready',{ok:true});
+    await wait(()=>likeEvents>=5&&heart()?.getAttribute('aria-pressed')==='true','voice like reflected in player');await emit('native_voice_liked',{ok:true});
+    await wait(()=>likeEvents>=6&&heart()?.getAttribute('aria-pressed')==='false','voice unlike reflected in player');await emit('native_voice_unliked',{ok:true});
+    await wait(()=>one('.playerbar')?.textContent.includes('合成托盘播放验证'),'native previous to song');await emit('native_voice_complete',{ok:true});
     await wait(async()=>!(await state()).hidden,'native tray Show');click(one('.playerbar [aria-label="暂停"]'));await wait(()=>one('.playerbar')?.dataset.state==='paused','pause after native Show');await read();assert(one('[name="settings-close-remember"]').checked,'remember not persisted');await capture('shown_from_menu');
     click(one('.window-close'));await wait(async()=>{const v=await state();return v.hidden&&!v.busy&&!v.prompt;},'remembered tray close');await emit('hidden_second');
     await wait(async()=>{const v=await state();return !v.hidden&&!v.trayAvailable;},'host loss restored window');await capture('host_lost_restored');

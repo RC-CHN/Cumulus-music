@@ -176,3 +176,36 @@ test('301 clears private views and old-epoch results never appear', async () => 
   assert.equal(music.liked.value.size, 0);
   assert.equal(music.result.value, undefined);
 });
+
+test('native like read-back cannot overwrite a newer UI like or a replacement account', async () => {
+  const old = deferred<AccountData<string[]>>();
+  let count = 0;
+  const music = useMusic(
+    backend({ likedIds: () => (++count === 2 ? old.promise : Promise.resolve(data([]))) }),
+  );
+  await music.bootstrap();
+  const refresh = music.refreshLikes();
+  await music.like(song);
+  old.resolve(data([]));
+  await refresh;
+  assert.equal(music.liked.value.has(song.id), true);
+  const stale = deferred<AccountData<string[]>>();
+  const other = useMusic(backend({ likedIds: () => stale.promise }));
+  other.account.value = { epoch: '2', status: 'authenticated', nickname: null, avatarUrl: null };
+  const pending = other.refreshLikes();
+  stale.resolve(data(['1'], '1'));
+  await pending;
+  assert.equal(other.liked.value.size, 0);
+});
+
+test('an old native like refresh failure cannot expire the replacement account', async () => {
+  const stale = deferred<AccountData<string[]>>();
+  const music = useMusic(backend({ likedIds: () => stale.promise }));
+  music.account.value = { epoch: '1', status: 'authenticated', nickname: null, avatarUrl: null };
+  const pending = music.refreshLikes();
+  music.account.value = { epoch: '2', status: 'authenticated', nickname: null, avatarUrl: null };
+  stale.reject({ code: 'session_expired', message: 'old account expired' });
+  await pending;
+  assert.equal(music.account.value.epoch, '2');
+  assert.equal(music.account.value.status, 'authenticated');
+});

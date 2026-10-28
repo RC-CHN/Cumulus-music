@@ -1,3 +1,4 @@
+import type { NativeLikesClient } from './nativeLikes';
 import type { PlayerClient } from './player';
 import type { PlaylistClient } from './playlists';
 import type { PlaylistCoverClient } from './playlistCover';
@@ -34,7 +35,8 @@ export interface AppInfo {
 
 /** UI-facing use cases; no Tauri types or raw HTTP API in this interface. */
 export interface CoreClient
-  extends PlayerClient,
+  extends NativeLikesClient,
+    PlayerClient,
     PlaylistClient,
     PlaylistCoverClient,
     DownloadClient,

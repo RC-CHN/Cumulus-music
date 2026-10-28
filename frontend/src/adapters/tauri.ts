@@ -1,3 +1,4 @@
+import type { NativeLikeChanged } from '../services/nativeLikes';
 import { invoke, Channel } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { PlayerUpdate } from '../services/player';
@@ -56,6 +57,8 @@ export function createTauriClient(): CoreClient {
     historyCommand: (epoch, kind, command) => invoke('history_command', { epoch, kind, command }),
     catalogMembership: (epoch, resource, action) =>
       invoke('catalog_membership', { epoch, resource, action }),
+    onNativeLikeChanged: (handler) =>
+      listen<NativeLikeChanged>('cumulus:native-like-changed', (event) => handler(event.payload)),
     onAccountChanged: (handler) =>
       listen<AccountView>('cumulus:account-changed', (event) => handler(event.payload)),
     beginLogin: (epoch, mode, savedId) =>

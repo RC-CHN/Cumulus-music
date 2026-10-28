@@ -11,6 +11,12 @@ const prompt = computed(() => model.view.value?.prompt);
 const busy = computed(() => model.pending.value || !!model.view.value?.busy);
 const dismissed = ref<string>();
 watch(
+  () => model.view.value?.message,
+  () => {
+    dismissed.value = undefined;
+  },
+);
+watch(
   () => prompt.value?.id,
   () => {
     behavior.value = prompt.value?.preferences.settings.closeBehavior ?? 'tray';
@@ -65,7 +71,16 @@ onUnmounted(model.dispose);
   bottom: 110px;
   left: 50%;
   transform: translateX(-50%);
+  width: max-content;
   max-width: min(560px, calc(100vw - 40px));
   box-shadow: var(--shadow);
+}
+.window-lifecycle-notice > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.window-lifecycle-notice > button {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 </style>

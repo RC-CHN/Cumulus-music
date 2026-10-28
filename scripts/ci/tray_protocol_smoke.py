@@ -151,6 +151,29 @@ def main():
                     result = json.loads(path.read_text())
                     assert result['ok'] and not result['visible'] and result['lifecycle']['hidden']
                     transports.append(result['playerState'])
+                for label, evidence in [('喜欢', 'media_liked'), ('取消喜欢', 'media_unliked'), ('喜欢', 'like_reconcile_ready'), ('核对喜欢状态', 'media_like_reconciled')]:
+                    if evidence == 'like_reconcile_ready':
+                        wait(lambda: (root / 'run/like_fault_armed.json').exists(), 'lost-reply fixture armed')
+                    native_path, native_id = wait(available_transport, 'native like ' + label)
+                    call(item, native_path, 'com.canonical.dbusmenu', 'Event', GLib.Variant('(isvu)', (native_id, 'clicked', GLib.Variant('i', 0), 0)))
+                    path = root / 'run' / (evidence + '.json')
+                    wait(path.exists, 'native like proof ' + evidence)
+                    result = json.loads(path.read_text())
+                    assert result['ok']
+                    if evidence == 'like_reconcile_ready':
+                        assert result['nativeLike']['pending'] and result['likeWrites'] == 3
+                    if evidence == 'media_like_reconciled':
+                        assert result['nativeLike'] == {'observed': True, 'pending': False} and result['likeWrites'] == 3
+                wait(lambda: (root / 'run/likes_complete.json').exists(), 'hide after like recovery')
+                for label, evidence in [('下一首', 'native_voice_ready'), ('喜欢', 'native_voice_liked'), ('取消喜欢', 'native_voice_unliked'), ('上一首', 'native_voice_complete')]:
+                    native_path, native_id = wait(available_transport, 'native voice ' + label)
+                    call(item, native_path, 'com.canonical.dbusmenu', 'Event', GLib.Variant('(isvu)', (native_id, 'clicked', GLib.Variant('i', 0), 0)))
+                    path = root / 'run' / (evidence + '.json')
+                    wait(path.exists, 'native voice proof ' + evidence)
+                    result = json.loads(path.read_text())
+                    assert result['ok'] and not result['visible'] and result['likeWrites'] == 3
+                    if evidence == 'native_voice_complete': assert result['voiceWrites'] == 2
+
                 call(item, menu_path, 'com.canonical.dbusmenu', 'Event', GLib.Variant('(isvu)', (labels['显示 Cumulus'], 'clicked', GLib.Variant('i', 0), 0)))
                 wait(lambda: (root / 'run/hidden_second.json').exists(), 'remembered native close')
                 second = json.loads((root / 'run/hidden_second.json').read_text())
@@ -175,16 +198,20 @@ def main():
                 wait(lambda: process.poll() is not None, 'explicit UI exit')
                 assert process.returncode == 0 and (root / 'run/exited.json').exists()
                 complete = json.loads((root / 'run/complete.json').read_text())
-                assert complete['ok'] and complete['states'] == 14
-                assert not args.screenshots or len(seen) == 14
+                assert complete['ok'] and complete['states'] == 15
+                assert not args.screenshots or len(seen) == 15
                 with sqlite3.connect((root / 'run/state/core.sqlite3').as_uri() + '?mode=ro', uri=True) as db:
                     saved = json.loads(db.execute("SELECT value FROM state WHERE owner='local-device' AND kind='window-behavior-preferences-v1' AND key='current'").fetchone()[0])
                     assert saved['settings'] == {'closeBehavior': 'exit', 'rememberChoice': True}
                     assert db.execute("SELECT count(*) FROM state WHERE kind='window-behavior-recovery-v1'").fetchone()[0] == 1
                     assert db.execute("SELECT count(*) FROM sqlite_master WHERE type='trigger' AND name='reject_window'").fetchone()[0] == 0
+                    for kind, key, desired in [('resource-mutations', 'liked:2', True), ('podcast-mutations-v1', 'podcast:like:5', False)]:
+                        record = json.loads(db.execute('SELECT value FROM state WHERE owner=? AND kind=? AND key=?', ('2', kind, key)).fetchone()[0])
+                        assert record['phase'] == 'confirmed' and record['observed'] == desired and record['desired'] == desired
+
                 report = {'ok': True, 'actualWebView': True, 'actualTauriTray': True,
                     'syntheticPanelHost': True, 'productClosePolicyVerified': True,
-                    'realMusicRequests': 0, 'states': 14, 'screenshots': len(seen),
+                    'realMusicRequests': 0, 'states': 15, 'screenshots': len(seen), 'nativeLikeWrites': 3, 'nativeVoiceLikeWrites': 2, 'lostLikeReconciledWithoutReplay': True,
                     'nativeShowMenu': True, 'nativeTransportStates': transports, 'hostLossRestoresWindow': True, 'backgroundPlayback': first['backgroundPlayback'],
                     'panelRestartReRegisters': True, 'explicitExit': True,
                     'physicalPanelIconVerified': False, 'windowsShellVerified': False}

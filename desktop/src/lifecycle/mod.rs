@@ -2,6 +2,7 @@
 //! hiding never performs logout, room cleanup, media changes or remote writes.
 mod actions;
 mod availability;
+mod likes;
 mod media;
 use cumulus_core::{
     client::{MusicClient, dto::WindowPreferencesView},
@@ -162,6 +163,7 @@ pub(crate) fn stop<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     {
         monitor.take();
     }
+    likes::stop(app);
     media::stop(app);
     app.remove_tray_by_id(TRAY_ID);
 }
@@ -204,6 +206,7 @@ fn build<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
     let quit = MenuItem::with_id(app, "cumulus-quit", "退出 Cumulus", true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
     let media = media::Items::new(app)?;
+    let likes = likes::Items::new(app)?;
     let transport_separator = PredefinedMenuItem::separator(app)?;
     let menu = Menu::with_items(
         app,
@@ -215,6 +218,8 @@ fn build<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
             &media.toggle,
             &media.next,
             &media.stop,
+            &likes.toggle,
+            &likes.refresh,
             &transport_separator,
             &quit,
         ],
@@ -226,7 +231,10 @@ fn build<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
         .on_menu_event(|app, event| match event.id.as_ref() {
             "cumulus-show" => show(app),
             "cumulus-quit" => actions::request(app, true),
-            _ => media::activate(app, event.id.as_ref()),
+            _ => {
+                media::activate(app, event.id.as_ref());
+                likes::activate(app, event.id.as_ref());
+            }
         })
         .on_tray_icon_event(|tray, event| {
             if matches!(
@@ -245,6 +253,7 @@ fn build<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
     }
     let tray = builder.build(app)?;
     media::install(app, media);
+    likes::install(app, likes);
     let observed = app.clone();
     #[cfg(target_os = "linux")]
     let monitor = availability::monitor(tray.id().as_ref(), move |ok| availability(&observed, ok));

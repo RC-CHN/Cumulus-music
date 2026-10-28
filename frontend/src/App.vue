@@ -401,6 +401,7 @@ async function authorized() {
   await music.bootstrap(false);
 }
 let accountListener: (() => void) | undefined;
+let nativeLikeListener: (() => void) | undefined;
 let mounted = true;
 onMounted(async () => {
   try {
@@ -417,11 +418,28 @@ onMounted(async () => {
   } catch {
     notice.value = '账号状态订阅失败，请重新启动客户端';
   }
+  try {
+    const stop = await core.onNativeLikeChanged((value) => {
+      if (
+        !mounted ||
+        value.epoch !== account.value.epoch ||
+        account.value.status !== 'authenticated'
+      )
+        return;
+      if (value.resource.kind === 'voice') void podcasts.externalLikeChanged();
+      else void music.refreshLikes();
+    });
+    if (mounted) nativeLikeListener = stop;
+    else stop();
+  } catch {
+    notice.value = '托盘喜欢状态订阅失败，请刷新资源或重新启动客户端';
+  }
   if (mounted) await music.bootstrap();
 });
 onUnmounted(() => {
   mounted = false;
   accountListener?.();
+  nativeLikeListener?.();
 });
 watch(
   () => [account.value.epoch, account.value.status],

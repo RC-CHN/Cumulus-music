@@ -210,6 +210,13 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
       }
     }
   }
+  async function externalLikeChanged() {
+    read++;
+    stateRead++;
+    loading.value = false;
+    if (visible && !busy.value) await load(true);
+    else await state(true);
+  }
   function change(action: PodcastAction, id: string, desired: boolean) {
     return command({ kind: 'change', action, id, desired });
   }
@@ -230,6 +237,7 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     show,
     load,
     state,
+    externalLikeChanged,
     navigate,
     open,
     back,
