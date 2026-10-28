@@ -2,7 +2,7 @@
 
 状态
 这是完整桌面目标的后续工作，独立于 0.1.0 发布候选 5a50ad2。
-本批补充歌曲中的目录引用、歌手读取协议及账号隔离的原生页面快照，尚未交付独立歌手/专辑页面。
+本批补充目录引用、歌手/专辑读取、账号隔离快照及独立页面；最终接线与验收见第五阶段。
 协议对照测试不能替代真实账号请求、账号隔离缓存、分页状态机及桌面播放验收。
 
 官方依据
@@ -205,4 +205,94 @@ rankings::album_order revision；后续播放接线必须处理这两种来源�
   .build/catalog-gateway-ipc-final.log。没有将这些单元/MockRuntime 断言称为真实 GUI 交互。
 - 当前只有核心、桌面传输和前端读取状态完成；歌手/专辑可见页面、导航、分页组合、
   收藏对账、带来源的播放/下载及实际 WebView 验收仍未完成。0.1.0 已发布附件未改动，
-  本批继续保存在 feat/catalog-details 开发分支。
+  第四阶段的这些未完成项由后续第五阶段继续落实。
+
+第五阶段：独立页面、收藏恢复与目录来源播放
+
+页面入口与状态
+- 每日推荐、歌单和搜索歌曲行增加真实 artistRefs/albumId 导航；无 ID 的署名仍是文字。
+  歌手与专辑详情中的歌曲、歌手、相似歌手、专辑卡片互相导航，沿用应用返回栈。
+  会员/排行榜的专辑入口转入独立详情，不再只显示旧榜单域的简化专辑。
+- CatalogPage 显示官方恢复的头像/封面、名称、别名、数量、发行时间与专辑署名。
+  歌手页有热门 TOP 50、全部歌曲分页、专辑、视频、介绍、相似歌手和演出分栏。
+  专辑页有完整曲目、简介、收藏、评论、当前列表下载入口。歌曲更多操作复用既有歌单弹窗。
+- 头部、动态收藏和分页分别读取。分页追加保存原顺序和每页 revision；刷新成功才丢弃
+  旧续页，失败保留旧内容。账号/资源改变会丢弃迟到回复。连续页之间禁止混入不同资源。
+- TrackTable 沿用有界歌曲行；卡片按宽度计算列数，以固定行高260px和两侧2行缓冲虚拟化。
+  原歌曲表保留8行缓冲；没有为了卡片改变既有列表默认行为。专辑图、视频图懒加载。
+  页面与分栏动画仅用 transform/opacity，尊重减少动态效果。配色均取主题语义变量。
+- 实际窗口检查发现8行卡片缓冲会一次保留过多节点，改为2行；还发现外层 overflow:hidden
+  会裁掉详情页底部，给详情页加入自身滚动边界。后续检查增加容器边界断言，不能只测按钮
+  的 DOM click 成功。点击探针会先滚动目标到可达区域。
+
+收藏与失败恢复
+catalog_membership(epoch, resource, action) 仅支持 artist/album，action 为 inspect/set/reconcile。
+inspect 只读当前账号的持久化操作记录；set 复用 AccountResources：完整读取收藏列表、
+保存 Sending 意图、提交一次、读取对账；结果已有相同状态则 Unchanged，不重复写。
+收藏接口为 /api/artist/sub、/api/artist/unsub、/api/album/sub、/api/album/unsub；
+前后状态经 /api/artist/sublist、/api/album/sublist 分页读完后核验。
+UI 只有动态状态明确、操作记录可读且无未决写入时才允许点击；丢失响应后只 inspect，
+显示待确认并阻止再次提交。用户的“核对结果”仅做 reconcile。历史 Confirmed 记录不覆盖
+后来动态读取的收藏状态。当前线上验收不执行收藏变更；提交/撤销/丢失响应用隔离合成数据。
+
+播放语义与官方证据
+- AllSongsList.tsx 的 onPlayClick 明确是 trackList + from.listData=records，不能把按钮
+  误读成“自动下载/读取歌手全部未加载歌曲”。本页明确标注“播放已加载歌曲”。
+- PlaySelection::Catalog 接收原生页面查询/revision，不信任前端拼出的远端歌曲元数据。
+  热门和分页歌曲读取当前账号快照并验证顺序；页码必须从0连续、同歌手同类型。
+  专辑只有一页；缓存中的目标顺序与重新读取的歌曲顺序不同时返回 QueueChanged。
+  随后仍逐批读取完整歌曲详情并走现有实际音源授权/播放器，不拿缓存权益当播放许可。
+- 播放来源保留 artist/album、资源ID、scene及 M/91 的默认 trial_mode=-1，没有借用会员、
+  搜索或日推场景。队列歌曲继续保留歌手/专辑ID，避免入队时丢失导航引用。
+- 进一步核对 M/404 album resolver -> M/15 da（导出 v，4094行附近）发现播放链与页面链
+  不同：播放读 /api/album/v3/detail，再必需读取 /api/album/privilege；不读 dynamic 或
+  exposure，不在播放时做页面 v3→v4 回退。CatalogApi.album_playback_tracks 已单独恢复。
+  此处按原 Array.find 的首个同类型ID匹配权益，不追加缺歌曲资料条目；与页面的 M/21 B
+  最后值覆盖/补入逻辑分开。合成对照覆盖重复权益、数字与字符串ID不等、缺失权益及读取失败。
+- 下载按钮当前按明确标注的已显示歌曲列表调用已有 DownloadDialog/下载用例；没有自动
+  替用户确认下载。歌曲列表的专用下载来源/完整官方下载分派仍需与所有入口统一审计。
+
+已确认的边界
+普通 type=2 视频播放、未知视频类型和演出外部链接尚未接入；界面明确显示视频支持边界，
+演出只显示卡片，没有伪造可购票按钮。新增目录导航目前未遍布 FM/播客等所有 TrackTable
+调用处。歌手/专辑收藏总览、详情内排序/筛选、官方完整菜单/分享与缺URL图片ID生成仍待补齐。
+本阶段不能代表整个目标或全部目录功能已经完成，也没有修改已发布的0.1.0标签/附件。
+
+第五阶段验证（2026-10-28，提交前本机证据）
+- 固定 Rust 1.96.0 / Node 24.16.0，fmt、严格 workspace/all-targets/custom-protocol
+  Clippy 通过；同范围测试203个suite/target、899项通过、0失败/忽略。前端149项通过，
+  格式、类型检查和生产构建通过。日志位于主目录 .build/catalog-page-{clippy,workspace}-final.log、
+  catalog-page-front-{tests,format}-final.log 和 catalog-page-front-build.log。
+- desktop/examples/catalog_ui_probe.rs 加载生产前端，实际创建 Tauri/Wry WebView；
+  默认仅合成账号/API。18个状态覆盖热门与全部歌曲分页、专辑分页/滚动、专辑详情、
+  收藏确认、下载选项、简介、相似歌手导航、MV/普通视频边界、演出、深色和小窗口。
+  修复后截图证据 .build/catalog-ui-c/first，歌曲行最多17、卡片最多24；检查水平溢出、
+  详情滚动容器边界，按钮先滚动到可达位置再点击。该检查不宣称真实下载或音频通过。
+- scripts/ci/catalog_smoke.py 清理 CUMULUS_* 环境、隔离操作系统配置及 WebView 数据目录，
+  只运行合成模式。Linux/Windows 独立 runner 均加入该检查，必需 CI gate 不变。
+  本机用相同脚本再次通过18个状态，证据 .build/catalog-ui-ci-final/run/first；
+  本段记录时新分支 Windows CI 尚未运行，不能把旧版 Windows 通过用于新页面。
+- 显式 CUMULUS_CATALOG_PROFILE 模式只允许列明的读取/音源路径，不允许收藏/点赞等
+  账号写操作；真实 profile、调用记录和截图仅保留在私有 .build 目录。当前账号验证9个
+  实际 WebView 状态：搜索→歌手→热门播放→全部歌曲分页/播放→专辑列表→专辑详情/播放
+  →深色小窗口。对应 native 队列为50、40、11首，实际播放进度分别超过1.6、1.8、1.7秒，
+  队列顺序/当前曲目/artistRefs/albumId 与 UI 相符。最后的来源为 album/21349、
+  scene=album、trial_mode=-1。真实 API 读取25次，显式账号写入0次。
+- 本机使用 LC_ALL=en_US.UTF-8，播放器在 GUI/GTK 初始化后走原生 mpv、null 输出；
+  确认解码/进度和错误恢复，不代表真实声卡听感。全部歌曲的首曲298317在音源接口返回
+  404且无URL，首轮失败记录保留；第二轮确认错误后手动下一首，210049取得音源并播放。
+  没有将服务端缺音源说成播放器兼容失败，也没有自动更改会员权益或无限重试。
+- 真实证据 .build/private-catalog-ui-live-20261028-{a,b}/，独立核验摘要
+  .build/catalog-page-live-audit.json；最终探针二进制 SHA256
+  1c937e7805e58c8663b01a0c8754b3edfe463c3f0a30a23c5f5eb52852a3208a。
+  第二轮仅用 CUMULUS_UX_SCRIPT 载入最终只读测试步骤；前端来自二进制内嵌的生产构建。
+
+合成 WebView 检查复现（仓库根目录；新证据目录不得已存在）
+  npm --prefix frontend ci
+  npm --prefix frontend run build
+  cargo build -p cumulus-desktop --example catalog_ui_probe --features custom-protocol --locked
+  dbus-run-session -- xvfb-run -a python3 scripts/ci/catalog_smoke.py \
+    --binary .build/target/debug/examples/catalog_ui_probe --root .build/catalog-smoke-new
+Windows 使用同一 Python 检查，省略 dbus/xvfb，二进制加 .exe，并用 --runtime 指向
+打包阶段准备好的 native DLL 目录。真实账号模式不属于公开 CI，必须显式选择已有 PC
+profile 和新的私有输出目录；不得将普通开发配置或凭据放进版本库。
