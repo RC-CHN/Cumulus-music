@@ -303,3 +303,48 @@ Windows现场与接续提示焦点复查（2026-10-29）
   严格Clippy、Rust/前端格式、前端生产构建和正式桌面构建通过。日志前缀.build/startup-*。
   两平台CI已加入startup_smoke.py，Windows新提交仍须独立完成，不能沿用旧CI结果。
   所有本批GUI资源均为合成，真实账号请求0；不替代物理声卡、GPU刷新率或整个目标验收。
+
+设置页异步操作的焦点与可见性（2026-10-29）
+- 在154f933的正式前端资源中复现：异步操作禁用原控件，或核对完成后移除恢复按钮，
+  会把键盘焦点留在body。.build/settings-focus-before、settings-relay-focus-before、
+  settings-publication-focus-before分别记录5/6、15/15、3/4项焦点检查失败；这是几个
+  共性原因影响多个流程，不表示23个独立业务故障。原有合成写入/回读仍接受严格审计。
+- useControlFocus统一处理账号设置、启动选项、跨端开关/接续和本机同步入口。
+  只有动作开始时控件实际持有焦点，完成后焦点仍丢失、账号和页面仍有效，才返回原控件
+  或可用的刷新/核对入口。用户移到其他控件、打开其他弹窗、切换账号或离开页面时不抢焦点。
+  确认后入口被移除时，ModalTransition使用本区后备入口，并将其滚入可见范围。
+  设置控件增加滚动边距，避免焦点外框被滚动区域顶部裁掉。
+- 初次修复的settings-publication-focus-fixed仍有1/4项失败：重试IPC已返回，但后台
+  同步稍后完成才移除按钮。RelayPublication在DOM更新前捕获该按钮的实际焦点，更新后
+  使用同一守卫恢复；没有新增轮询、自动网络重试或业务写操作。
+- 最终正式生产资源为index-C1KJocjL.js，已核对探针二进制内实际嵌入的资源。
+  .build/settings-focus-final：22状态/22截图、7项焦点检查；包括等待读取时离开页面，
+  完成后不把焦点拉回设置页。6次合成修改与原生SQLite操作阶段继续通过。
+  .build/settings-relay-focus-final：21状态/21截图、15项焦点检查，6次合成开关修改。
+  .build/settings-publication-focus-final：14状态/14截图、4项焦点检查，4次合成发布；
+  libmpv/null实际解码继续通过。以上26项焦点检查全部通过，失败基线另行保留。
+  .build/settings-focus-startup-regression：5次进程、18状态/18截图，启动选项与恢复通过。
+  .build/settings-focus-ux-regression：34状态，包括编辑按钮/菜单/确认取消/未保存内容、
+  深浅色/系统主题及主题重开。总计109状态、75张新截图；未给最后34状态另造截图。
+  实际查看最终隐私确认、760×540深色跨端设置、后台恢复和启动设置修复截图；焦点入口
+  完整可见，小窗口内容可滚动到达。所有本批账号/媒体均为合成，真实音乐请求0。
+- 本地全工作区223个测试目标、1036项Rust测试，前端190项、CI规则19项通过；
+  严格Clippy、格式和生产构建通过。原生探针显式WebView目录的后续调整另经全工作区
+  Clippy、探针重建和真实GUI原生音频验证。日志前缀.build/settings-focus-*。
+  未据此宣称物理声卡听感、实机刷新率、Windows本批CI或整个目标完成。
+
+原生CI超时证据与测试目录隔离（2026-10-29）
+- 59cb453的CI 40738659597：Linux完整通过；Windows格式/Clippy/全量Rust测试及
+  发行打包通过，但第一个native_audio_probe.exe超过60秒，尚未运行UI焦点探针。
+  旧驱动只保存最终报告，此次没有阶段记录/堆栈，不能把它归因为接续焦点或已修复的GPU问题。
+- native_audio_probe现在逐阶段写progress.jsonl：进程入口、GUI初始化/窗口创建、
+  媒体探测、引擎创建、加载/进度/暂停/定位/CUE/关闭及报告落盘；原生进程输出另存log。
+  驱动在超时/非零退出/无法启动时保留failure.json并继续令CI失败，仍用60秒期限。
+  CI失败附件收集这些合成记录；四项进程测试验证诊断不会伪造通过、吞掉失败或自动重试。
+- 固定依赖源码显示Windows的默认WebView目录经dirs的Known Folder API解析；仅覆盖
+  LOCALAPPDATA不保证该目录隔离。探针现显式指定新data_directory，真实窗口创建后才
+  验证媒体。该测试隔离缺陷已确认，是否导致旧超时仍无证据，不作根因修复声明。
+- .build/settings-focus-native-linux.{json,progress.jsonl,log}实际通过：非C系统locale，
+  GUI初始化后仅数字locale为C、消息locale保留，合成音频解码/控制/CUE与引擎关闭通过；
+  正常退出轨迹到report_written。Tauri可直接退出进程，不要求run后语句一定执行。
+  不增加真实账号请求、放宽断言、延长超时或重发已发布版本；精确提交两平台CI仍是合并门槛。
