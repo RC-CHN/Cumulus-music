@@ -123,6 +123,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 history::history_command,
                 settings::account_settings_page,
                 settings::startup_preferences,
+                settings::output_settings,
+                settings::output_command,
                 settings::startup_preferences_command,
                 settings::account_settings_command,
                 relay::relay_view,

@@ -38,3 +38,22 @@ pub async fn account_settings_command(
         .await
         .map_err(Into::into)
 }
+#[tauri::command]
+pub async fn output_settings(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    refresh: bool,
+) -> Result<AccountData<OutputView>, ClientError> {
+    client
+        .output_settings(&epoch, refresh)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
+pub async fn output_command(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    command: OutputCommand,
+) -> Result<AccountData<OutputView>, ClientError> {
+    client.output_command(&epoch, command).map_err(Into::into)
+}

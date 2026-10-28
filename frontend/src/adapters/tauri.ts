@@ -8,6 +8,8 @@ import type { SessionRenewalView } from '../services/renewal';
 /** The only module that knows how the desktop host transports commands. */
 export function createTauriClient(): CoreClient {
   return {
+    outputSettings: (epoch, refresh) => invoke('output_settings', { epoch, refresh }),
+    outputCommand: (epoch, command) => invoke('output_command', { epoch, command }),
     startupPreferences: (epoch) => invoke('startup_preferences', { epoch }),
     startupPreferencesCommand: (epoch, command) =>
       invoke('startup_preferences_command', { epoch, command }),

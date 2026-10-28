@@ -20,6 +20,7 @@ import ModalTransition from './ModalTransition.vue';
 import Icon from './Icon.vue';
 import RelaySettings from './settings/RelaySettings.vue';
 import PlaybackStartup from './settings/PlaybackStartup.vue';
+import AudioOutput from './settings/AudioOutput.vue';
 import type { RelayModel } from '../composables/useRelay';
 import type { RelayPublicationModel } from '../composables/useRelayPublication';
 import '../styles/settings.css';
@@ -187,6 +188,7 @@ function accept(op: SettingsOperation) {
         </div>
       </section>
       <PlaybackStartup :account="account" />
+      <AudioOutput :account="account" />
       <section class="settings-section" aria-labelledby="settings-account">
         <h2 id="settings-account">账号</h2>
         <div class="settings-section-content">
