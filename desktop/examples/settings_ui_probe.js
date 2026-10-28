@@ -20,7 +20,7 @@
     await emit(`ux_${String(++stageCount).padStart(2,'0')}_${name}`,{width:innerWidth,height:innerHeight,theme:document.documentElement.dataset.theme,pageBottom:page.bottom,mainBottom:main.bottom,scrollBottom:scroll.bottom,dialog:!!one('dialog[open]'),recovery:all('.settings-recovery').length,checked:all('.privacy-options input:checked').map(n=>({name:n.name,value:n.value}))});await sleep(900);
   }
   async function theme(value){click(radio('settings-theme',value));await wait(()=>document.documentElement.dataset.theme===(value==='system'?(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'):value),'theme selection');}
-  async function refresh(){click(button('刷新'));await sleep(100);await wait(ready,'settings refreshed');}
+  async function refresh(){click(one('[aria-label="重新读取账号设置"]'));await sleep(100);await wait(ready,'settings refreshed');}
   async function change(key,value){const previous=all(`input[name="${key}"]:checked`).map(n=>n.value);click(typeof value==='boolean'?check(key):radio(key,value));await sleep(80);assert(!ready(),'mutation never entered pending state');assert(JSON.stringify(all(`input[name="${key}"]:checked`).map(n=>n.value))===JSON.stringify(previous),'option optimistically changed before readback');await wait(ready,'setting settled');}
   try{
     await wait(()=>one('.track-row')&&one('[aria-label="打开设置"]')&&!one('.account-button').disabled,'initialized');await sleep(300);click(one('[aria-label="打开设置"]'));await wait(()=>ready()&&radio('shareSetting',0),'settings loaded');
