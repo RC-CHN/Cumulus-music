@@ -154,3 +154,7 @@ required-features = ["custom-protocol"]
 [[example]]
 name = "scroll_ui_probe"
 required-features = ["custom-protocol"]
+
+[[example]]
+name = "ux_ui_probe"
+required-features = ["custom-protocol"]

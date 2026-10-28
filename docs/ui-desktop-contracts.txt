@@ -14,7 +14,8 @@ CSS 的内嵌 sourceMappingURL 包含 sourcesContent；已恢复 1221 条来源�
   components/left/components/nav-item.jsx：36px导航项、8px圆角、渐变选中态；
   components/PlayBar/styleNew.ts：80px底栏、歌曲信息、居中控制、音量/音质位置；
   TrackViewer、pages/playlist、SearchBox及其余源文件供后续页面继续对照。
-品牌使用Cumulus；图标为新写SVG，当前明亮配色按恢复样式重建，尚未恢复完整皮肤token。
+品牌使用Cumulus；图标为新写SVG，浅/深色语义配色按恢复结构重建，尚未恢复完整官方皮肤token。
+顶栏外观入口、系统主题、记忆、编辑菜单和实际窗口验收详见 docs/ui-ux-validation.txt。
 未声称像素1:1，未把YesPlayMusic用作布局或业务默认来源。
 
 模块边界

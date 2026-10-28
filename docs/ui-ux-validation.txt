@@ -1,0 +1,85 @@
+Cumulus 外观与交互验收（2026-10-28）
+
+范围
+本轮检查编辑入口、歌单卡片、主题、弹窗、键盘焦点、窄窗口、空态与读取失败状态。
+使用实际 Tauri + WebKitGTK 窗口、正式生产前端与 IPC；合成账号隔离业务数据库和 WebView 存储。
+这不是在线歌单写入/会员业务重验，也不替代其他业务验收文档。
+
+官方依据与差异
+- references/ui-recovery/sources/packages/pc/src/pages/playlist/views/Common.jsx：
+  官方歌单标题旁的 button-edit；本实现将有权限的编辑入口放在标题旁，收藏歌单不显示编辑。
+- 同目录 pages/decoration/views/SkinPage/components/Official.tsx、components/Header/index.jsx：
+  官方浅/深皮肤与顶栏外观入口。新增顶栏调色盘，提供跟随系统、浅色、深色。
+- 本轮未使用 YesPlayMusic。没有完整官方皮肤 token 的恢复证据，因此语义配色为重建，
+  不宣称像素级复刻；歌单卡片右上角菜单是本产品的布局调整，沿用已实现的编辑/排序用例。
+
+实现
+1. frontend/src/styles/tokens.css 为界面、表格、侧栏、播放器、菜单、表单及弹窗提供语义颜色。
+   保留图片、二维码黑白模块、会员卡片金色及媒体内容本身的颜色，不做整体反色。
+   原生表单 color-scheme 与有效主题一致；灰色文案、歌词逐词高亮和错误状态同步适配。
+2. 本地键 cumulus.appearance.v1 仅存 system/light/dark，不涉及账号凭据。
+   public/appearance.js 在首屏样式前应用偏好；Vue 订阅系统配色与跨窗口 storage 变化。
+   无效偏好回到系统；存储异常不阻断界面，选项仍可即时应用并显示未保存提示。
+3. 主题切换使用现有应用层的短透明度动画，减少动态效果时直接切换，不重新挂载播放器。
+   本机 WebKitGTK 2.52.6 在 startViewTransition 调用后出现 UI 进程 SIGSEGV；隔离同一窗口、
+   同一操作移除该调用后可继续。最终实现不用该 API，避免把运行中的崩溃交给启动回退处理。
+   这是一条本机复现证据，不是对所有 WebKit 版本的结论。
+4. 歌单卡片移除常驻“编辑/上移/下移”整排按钮，改为右上角菜单，支持右键打开。
+   菜单 Teleport 至 body，定位限制在窗口内，不受列表滚动裁切；滚动/缩放/点击外部关闭。
+   上下键、Home/End、Escape/Tab、禁用项跳过和焦点返回均处理；仅打开时注册全局监听。
+   面板可见性提交后再设置焦点，修复对隐藏面板 focus 无效的问题。
+5. 编辑弹窗自动聚焦名称；中文加权字数、超限/非法名称反馈与保存禁用保持核心约束。
+   封面缩至侧边，窄窗口进一步缩小，保存区保持可达。封面子弹窗与均衡器加入进出动画。
+   原生 dialog 离场后再恢复焦点，嵌套封面关闭后回到父弹窗，父弹窗关闭后回到页面入口。
+   小窗口均衡器压缩滑杆并设置最大高度，避免底部操作越界。
+6. 云盘初次读取失败显示重试页及未知计数，不显示“空云盘”的上传引导；下载读取失败
+   也不会被当作“还没有下载歌曲”。已有缓存内容仍可保留并提示刷新失败。
+
+可复现检查
+  npm --prefix frontend ci
+  npm --prefix frontend run format:check
+  npm --prefix frontend test
+  npm --prefix frontend run build
+  cargo fmt --all --check
+  cargo clippy --workspace --all-targets --features cumulus-desktop/custom-protocol --locked -- -D warnings
+  cargo test --workspace --all-targets --features cumulus-desktop/custom-protocol --locked
+  cargo build -p cumulus-desktop --example ux_ui_probe --release --features custom-protocol --locked
+
+Linux 实际窗口 + 截图（新目录，不覆盖旧证据）：
+  GDK_BACKEND=x11 WEBKIT_DISABLE_DMABUF_RENDERER=1 LIBGL_ALWAYS_SOFTWARE=1 \
+    dbus-run-session -- xvfb-run -a -s '-screen 0 1400x1000x24' \
+    /usr/bin/python3 desktop/examples/run_auth_probe.py .build/ux-proof \
+    --binary .build/target/release/examples/ux_ui_probe --stage-prefix ux_ --screenshots 27
+  同一命令再加 --reopen --reopen-screenshots 2，验证退出进程后仍恢复深色，再切回跟随系统。
+  实际生产包使用嵌入资源；可选 CUMULUS_PROOF_FRONTEND_DIST / CUMULUS_UX_SCRIPT 只存在于
+  独立研究示例中，用于快速比对，CI 会清除它们且只测嵌入资源。
+
+CI 两平台均运行 scripts/ci/ux_smoke.py：首次 27 个界面状态 + 重开 2 个状态；Windows
+传 --runtime .build/package-stage/windows-x64/native 使用发行构建的音频依赖。
+断言主题、菜单键盘、嵌套/普通弹窗焦点、编辑位置、边界禁用项、760×540 操作可见性、
+无水平溢出、云盘错误不冒充空库，以及跨进程主题保存。单纯编译不算这些断言通过。
+测试端点明确允许读取样本，其余请求直接拒绝；不执行真实账号写入，不进行支付或邀请。
+
+本轮本地证据
+- .build/ux-baseline：修改前实际窗口截图。
+- .build/ux-audit-v6：26 个状态及重开 2 个状态，捕获与断言通过；用于发现后续云盘空态问题。
+- .build/ux-final-v2：生产 dist 的 27 个界面状态 + 重开 2 个状态全部通过，包括云盘失败页、小窗口均衡器。
+  截图供本地核验，合成内容不含账号私人信息；不作为发行包内容。
+- .build/ux-final-embedded：不使用 dist/脚本覆盖，嵌入生产前端的同一 29 项检查通过。
+- Rust 全工作区全部 target 共 867 项测试通过；Clippy 零警告；前端 134 项、发布规则 10 项通过。
+- frontend/tests/appearance.test.ts：首屏与应用主题规则一致、损坏/缺失/不可访问存储回退。
+
+边界
+Xvfb 中的截图/DOM 检查覆盖真实引擎、布局和交互，不证明物理显卡帧率。
+会员/榜单/FM/云盘/播客/MV 在此专用 fixture 中主要检查明确拒绝读取后的错误状态，不能
+将这些截图当作正常在线内容或核心业务通过；已有业务验证仍以对应领域文档为准。
+没有进行真实歌单改名、排序、封面上传或其他现有账号资源修改。
+
+物理显示器滚动复验
+本次真实 KDE/Wayland 会话中，发行程序的图形诊断在 auto、gpu-shm 两条路径超时后自动
+选中 software；证据 .build/ux-graphics-physical.json。未更改系统显卡设置或重启业务。
+随后独立滚动探针采用该已选模式，在物理屏幕（DPR 2，窗口内部 1210×850）上运行生产
+前端：2,000 首合成歌曲、300 个合成歌单，歌曲 62.24 FPS、歌单 62.09 FPS，p95 均 17ms；
+最多 26 个歌曲行节点，空闲无歌曲列表 DOM 修改。证据 .build/scroll-ux-auto-fallback/result.json。
+这是短时、无远程封面负载的本机软件回退测量；不是本次 GPU 加速通过，也不保证所有机器
+或真实图片列表达到该数值。当前会话 GPU 路径未通过的原因尚未进一步定位；启动回退正常。

@@ -6,6 +6,7 @@ Cumulus Music
 贡献/版本规则：AGENTS.md；CI/CD 与发布步骤：docs/releasing.txt。
 CI 将前端检查、Linux 原生验证/打包、Windows 原生验证/打包分配到不同 runner。
 仅在目标 release commit 的 CI 全部通过后发布同一次 CI 的构建产物。
+顶栏调色盘可切换浅色/深色/跟随系统，自动记住选择；界面实测与边界见 docs/ui-ux-validation.txt。
 
 跨平台社区音乐客户端，采用 Tauri 2 + Rust + Vue 3 / TypeScript。
 新旧301校验、官方双实验开关和失效提示已接通；旧版明确清队列与恢复见
@@ -152,7 +153,7 @@ docs/rust-core-validation.txt。完整播客发现页、封面取色及其余分
 只开发界面：npm --prefix frontend run dev
 浏览器预览不提供原生业务；开发界面可通过 CoreClient 注入受控测试实现，不伪装真实登录或播放。
 核心库可独立构建：cargo check -p cumulus-core --locked。
-需要 Rust stable、Node.js 22.12 或更高版本。各操作系统还需要 Tauri 对应的系统依赖：
+开发与 CI 使用 rust-toolchain.toml、.node-version 固定的版本及仓库锁文件。各操作系统还需要 Tauri 对应的系统依赖：
   https://v2.tauri.app/start/prerequisites/
 
 旧实现入口

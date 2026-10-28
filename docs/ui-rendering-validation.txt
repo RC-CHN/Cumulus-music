@@ -153,3 +153,15 @@ playlists 60.0 FPS, p95 18ms; no song-list DOM mutations during idle; 356 mutati
 records over the measured six-second song scroll; jump/end/reverse checks passed.
 Native decorations=false; maximize/restore, dialog focus and close event passed.
 These local diagnostic files contain only synthetic content and are not shipped.
+
+Theme/menu revision, 2026-10-28
+The new UX audit is documented in docs/ui-ux-validation.txt (29 actual WebView
+states including restart, dark/light/system and nested-dialog focus). On this
+physical Wayland session the current graphics-only launcher selected software
+after GPU and SHM checks timed out. The benchmark using that selected mode still
+measured 62.24 FPS for songs and 62.09 FPS for playlists, p95 17ms, at most 26 song
+rows for 2,000 tracks, and no idle song DOM mutations. This is a software-path
+measurement with synthetic content, not a renewed GPU-compatibility claim.
+Local evidence: .build/ux-graphics-physical.json and
+.build/scroll-ux-auto-fallback/result.json. The driver/session cause of the GPU
+failure remains undetermined; no system graphics settings were changed.

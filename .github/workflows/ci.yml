@@ -132,6 +132,8 @@ jobs:
           python3 desktop/examples/audit_login_interception_probe.py .build/ci-login
           cargo build -p cumulus-desktop --example scroll_ui_probe --features custom-protocol --locked
           dbus-run-session -- xvfb-run -a python3 scripts/ci/scroll_smoke.py --binary .build/target/debug/examples/scroll_ui_probe --root .build/ci-scroll-linux
+          cargo build -p cumulus-desktop --example ux_ui_probe --features custom-protocol --locked
+          dbus-run-session -- xvfb-run -a python3 scripts/ci/ux_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-ux-linux
           dbus-run-session -- xvfb-run -a python3 scripts/ci/graphics_smoke.py --binary .build/target/release/cumulus --root .build/ci-graphics-linux
       - name: Windows WebView login lifecycle smoke
         if: runner.os == 'Windows'
@@ -143,6 +145,8 @@ jobs:
           python scripts/ci/ui_smoke.py --binary .build/target/debug/examples/login_interception_ui_probe.exe --root .build/ci-login-windows-legacy --legacy
           cargo build -p cumulus-desktop --example scroll_ui_probe --features custom-protocol --locked
           python scripts/ci/scroll_smoke.py --binary .build/target/debug/examples/scroll_ui_probe.exe --root .build/ci-scroll-windows
+          cargo build -p cumulus-desktop --example ux_ui_probe --features custom-protocol --locked
+          python scripts/ci/ux_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-ux-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/graphics_smoke.py --binary .build/target/release/cumulus.exe --root .build/ci-graphics-windows
       - name: Preserve synthetic failure diagnostics
         if: failure()
@@ -157,6 +161,7 @@ jobs:
             .build/ci-scroll*/
             .build/ci-scroll*.log
             .build/ci-graphics*/
+            .build/ci-ux*/
           if-no-files-found: ignore
           retention-days: 7
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
