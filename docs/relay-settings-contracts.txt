@@ -1,0 +1,97 @@
+跨端续播设备开关：官方来源、原生持久流程及桌面入口
+2026-10-28；属于0.1.0发布后的开发代码，完整目标仍未完成。
+
+依据与差异
+官方恢复 M/401 updateSettingPageSwitch 先更新本地 settingPageIsEnable，再调用
+M/15 Po(/api/relay/setting/update)，最后 doInit 重读配置。M/401 refreshSettingPageSwitch
+读取 groups[0].deviceSettingList[0].enable；M/15 Po 的 targetDeviceId 来自 l.a.deviceId。
+官方 pages/setting/views/Play.jsx 第414..440行显示“跨端续播”复选框。
+本实现沿用官方端点、字段和修改后配置重读；为避免丢失应答被冒充成功，复选框等待
+原生回读确认，增加持久意图与显式核对/保留当前状态。实验未开放时禁用并解释，而非
+隐藏控件。该差异有意保留，不声称像素或全部错误处理与官方相同。
+官方材料只在references供研究，不提交安装包/恢复源；本批没有参考YesPlayMusic。
+
+身份与请求
+Api::local_device_id 默认None，不能绑定身份的适配器只可读取。MusicHttpClient从
+当前Credentials获取device_id，与EAPI头部使用的值来自同一个凭据记录。核心自行
+校验代次和Api绑定，不接受前端传入设备标识；播放提示中的远端ID不得用于设备开关。
+测试适配器可提供明确的合成身份；真实只读探针转交原生身份，同时继续拒绝更新路径。
+
+读取 /api/relay/setting/show {all:false,settingKey:"RELAY_SWITCH"}；
+更新 /api/relay/setting/update
+  {targetDeviceId:本机原生设备ID,enable:bool,settingKey:"RELAY_SWITCH"}。
+请求通过既有账号Api；设置更新只发送一次，不因超时改协议、改域或重试。
+修改前重读 device_connect 实验（必须t2）与设置值，防止缓存或别的设备修改导致误写。
+开关缺失/未知、无身份、实验未开放或显示revision已变化时拒绝发送。
+修改后通过原生设置回读确认，再执行完整relay初始化（实验/配置/设置/可用时提示）。
+配置刷新失败会保留持久设置结果，界面检查原生日志；不会重复提交设置请求。
+服务端配置、设置开关和播放提示各有含义，不能用本地勾选强行打开实验或服务授权。
+
+持久化与并发
+core/src/relay/settings/mod.rs、mutation.rs：独立原生业务，不依赖Tauri或Python。
+relay-setting-v1按账号owner和设备SHA256键存快照。revision对(device_id,enabled)求摘要，
+不含读取时间；同值重读稳定，设备变化后不同。原始device_id只留在原生快照中。
+relay-setting-intents-v1保存UUID、绑定设备、期望revision、目标bool、修改前值、阶段、
+回读时间/revision、观察值和服务错误码；界面只投影允许的标量，不返回设备ID。
+
+原生relay读、pull和设备开关共用relay-v1操作锁；发送前持久pending并失效旧提示。
+每个账号/设备最多存在未解决的开关写入；另一个设备的旧日志仍保存，不能被新设备
+回读成已确认，也不阻塞新设备自己的意图。UUID不可在不同设备/目标/revision上重用。
+切换账号后，原操作失败或未决责任写回原owner，新账号不接收旧状态。
+
+阶段：pending、confirmed、rejected、uncertain、unchanged、cancelled、accepted_current_state。
+- 同UUID再次调用只读已有结果，包括重启后的pending，不重放写操作。
+- 已是目标值则unchanged，零写入；明确服务拒绝或RequestNotSent记rejected。
+- 网络丢失/无法判断或账号切换记uncertain；成功应答后回读失败保留pending。
+- reconcile只读设置；目标相符→confirmed，不相符/缺值→uncertain。
+- accept_current必须先核对且提交相同read_revision，再次读取仍相同才结束为
+  accepted_current_state；不修改远端。若值又变化则保留未决并要求重新核对。
+- cancel_unseen先写cancelled墓碑，防止迟到的原IPC再写；已有日志只检查。
+不同进程/重复按钮、读超时、用户退出不会创建自动重发路径。
+
+桌面与UI
+core/src/client/relay/settings.rs公开RelaySettingCommand，desktop relay_setting_command
+受主窗口/账号epoch守卫保护。命令为setting_change、setting_reconcile、setting_accept、
+setting_cancel_unseen；deny_unknown_fields拒绝targetDeviceId等前端额外字段。
+RelayView.settings含revision、enabled、canChange和最多20条操作状态，优先保留未决；
+指定的旧意图始终保留在命令响应内，不能因为列表截断被判断为从未执行。
+
+frontend/RelaySwitch.vue位于设置→跨端续播。16px复选框配合32px标签点击区，使用语义色。
+切换事件先恢复当前勾选状态，待核心确认后变更；处理中禁用重复操作。
+丢失IPC应答先读原生日志。若本机也没见到意图，显示“核对设置结果”并先取消未见调用；
+已持久未决时提供“核对设备开关”，回读后可经确认对话框“保留当前设置”。
+确认取消后焦点返回原入口；对话框使用现有ModalTransition并遮挡接续提示卡。
+缺失开关、实验未开放、离线、明确拒绝都有对应说明，不能被显示成已开启或正常关闭。
+
+证据与边界
+core/tests/relay_settings.rs 9项：本机身份绑定/重复意图、两类丢失应答/明确保留、
+应答后读失败/重开、取消与拒绝、缺身份/缺字段/实验/前置变化、设备更换隔离、
+共用锁/切账号责任、生产HTTP身份来源、正式MusicClient投影与配置重读。
+frontend/tests/relay-settings.test.ts 4项：等待回读/重复点击、未决核对、未见调用取消、
+账号切换后的晚到应答。不能把这些合成服务测试称为真实服务端允许修改。
+
+.build/relay-setting-ui-a/first：21个实际WebView状态/21张截图，6次合成更新、0次pull，
+真实音乐请求0。验证深浅色、760×540、等待期间未勾选、正常开/关、拒绝、未应用丢应答、
+只读核对、接受确认/取消焦点、保留当前、已应用丢应答、应答后回读失败/恢复、缺字段、
+实验未开放、断网和恢复。GTK/WebView截图经过人工检查；不代表物理显示器帧率。
+公开CI新增 scripts/ci/catalog_smoke.py --relay-settings，Linux与Windows独立runner执行；
+断言写入次数、等待状态、最终开关、未决记录、边界布局、弹窗焦点和只读恢复。
+本批没有修改真实账号的现有设备偏好，真实服务端设置更新的Rust/UI往返仍未验证。
+上行播放源/命令/声音进度的持久发布协调器仍待接入，不能把开关完成当作整个relay完成。
+
+最终本地验收
+- .build/relay-setting-ui-b：最终16px复选框和当前代码的21状态/21截图；
+  .build/relay-setting-ci-final、relay-setting-ci-final-b：正式CI脚本21状态，后者增加SQLite
+  六条意图阶段与最终关闭状态的独立检查，不只依赖页面写入计数。
+- .build/relay-setting-player-regression：已有接续19状态和两次实际libmpv/null解码复验；
+  .build/relay-setting-ux-regression：原有27状态+重开2状态，主题/编辑/菜单/焦点通过。
+- .build/private-relay-setting-live-a：显式当前账号、原生读取白名单，4状态/4截图；
+  初始资源、账号设置和relay共9个读取端点均200。UI设备开关和revision与原生SQLite相符，
+  原生设置意图0条、真实写入0。不是开关更新的真实服务端往返。
+- .build/relay-setting-final-audit.json：截图/原生状态/请求白名单独立核验与二进制SHA256。
+- 全量217个Rust测试目标：982 passed、0 failed/ignored；严格Clippy、cargo fmt通过。
+  前端npm ci、format:check、178 tests、类型检查与生产构建通过，CI脚本/发行规则测试通过。
+  日志 .build/relay-settings-{workspace-tests,clippy-final,clippy-final-b,front-tests,
+  front-format-check,front-build-final,ci-tests,gui-build-live}.log。
+Windows结果等待本批精确提交自己的CI；这些Linux窗口和合成输出不替代其他平台验收。
+没有重发0.1.0或改动其标签/附件。后续仍要完成上行发布及其错误恢复等原始范围。

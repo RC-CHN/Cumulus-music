@@ -50,6 +50,11 @@
       "feature": "desktop prompt and continuation controls",
       "module": "frontend/src/components/RelayPrompt.vue + settings/RelaySettings.vue",
       "verification": "19 actual WebView states; two real libmpv decodes using generated PCM and null output"
+    },
+    {
+      "feature": "device-bound relay setting mutation and desktop recovery",
+      "module": "core/src/relay/settings/ + frontend/src/components/settings/RelaySwitch.vue",
+      "verification": "9 native tests, 4 frontend lifecycle tests, 21 actual WebView states, six synthetic mutations"
     }
   ],
   "remaining": [
@@ -59,14 +64,14 @@
       "details": "Persist source/session/intent, resolve 10001 with at most one snapshot, no timeout replay"
     },
     {
-      "feature": "settings mutation lifecycle",
-      "status": "wire contract only",
-      "details": "Bind native local device identity, readback and unresolved-write recovery; no IPC"
-    },
-    {
       "feature": "real cross-device continuation",
       "status": "external data absent",
       "details": "Current account eligible, no remote alert. Five reads passed, zero pulls/writes; no real continuation claim"
+    },
+    {
+      "feature": "real device-setting mutation round trip",
+      "status": "not live verified",
+      "details": "Native lifecycle + actual synthetic WebView verified; this batch does not change existing real account preferences"
     }
   ],
   "intentionalDifferences": [
@@ -93,6 +98,11 @@
     "frontendRelayTests": 5,
     "currentAccountDesktopSettingsStates": 5,
     "currentAccountStartupRelayReads": 4,
-    "currentAccountDesktopWrites": 0
+    "currentAccountDesktopWrites": 0,
+    "relaySettingNativeTests": 9,
+    "relaySettingFrontendTests": 4,
+    "relaySettingWebViewStates": 21,
+    "relaySettingSyntheticWrites": 6,
+    "relaySettingLiveWrites": 0
   }
 }

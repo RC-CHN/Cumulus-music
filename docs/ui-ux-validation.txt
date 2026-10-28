@@ -166,3 +166,15 @@ https://github.com/RC-CHN/Cumulus-music/actions/runs/40664543341
 - 当前账号只读复查 .build/private-settings-relay-live-b：5状态/5截图，初始资源5次读取+
   启动接续4次读取均200；7项设置与原生持久状态相符，远端写入0。审计结果
   .build/relay-settings-live-audit.json。此读模式不允许pull/submit/update，因此没有真实接续声明。
+
+跨端续播设备开关（2026-10-28）
+- 正式设置页加入受原生设备身份约束的复选框；点击后先保持原勾选，核心回读确认后更新。
+  服务缺值/实验关闭/断网时禁用；未决操作提供核对、明确保留当前和确认取消后的焦点返回。
+- .build/relay-setting-ui-b：21状态/21截图，6次合成修改、0次pull；16px复选框配32px标签区，
+  深浅色与760×540实际检查通过。设置确认弹窗与接续提示仍遵守ModalTransition遮挡规则。
+- .build/relay-setting-ci-final-b验证同一21状态及SQLite六条持久意图/最终关闭状态；
+  .build/relay-setting-player-regression原有19状态、relay-setting-ux-regression原有29状态通过。
+- .build/private-relay-setting-live-a：当前账号设备开关只读4状态/4截图，与核心SQLite一致，
+  9个读取端点均200，真实写入0；未将服务端设置更新说成已完成真实往返。
+- 本批Rust982项、前端178项，严格Clippy/格式/生产构建通过。详见relay-settings-contracts.txt；
+  其余播放设置、托盘/媒体键及接续上行等仍在原目标中，未缩减完成标准。
