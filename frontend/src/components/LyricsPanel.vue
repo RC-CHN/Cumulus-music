@@ -2,11 +2,13 @@
 import { computed, ref, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import type { PlayerModel } from '../composables/usePlayer';
 import Icon from './Icon.vue';
+import { useMotion } from '../composables/useMotion';
 const props = defineProps<{ player: PlayerModel }>();
 const { view, lyrics, lyricLoading, lyricError, loaded } = props.player;
 const container = ref<HTMLElement>(),
   close = ref<HTMLButtonElement>();
 const wordMode = ref(true);
+const motion = useMotion();
 const manual = ref(false);
 const timedWords = computed(() => wordMode.value && (lyrics.value?.wordLines.length ?? 0) > 0);
 const lines = computed(() =>
@@ -40,9 +42,12 @@ async function scroll() {
   await nextTick();
   container.value?.querySelector('.lyric-line.current')?.scrollIntoView({
     block: 'center',
-    behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
+    behavior: motion.reduced.value ? 'instant' : 'smooth',
   });
 }
+watch(motion.reduced, (reduced) => {
+  if (reduced && !manual.value) void scroll();
+});
 watch(active, () => {
   if (!manual.value) void scroll();
 });

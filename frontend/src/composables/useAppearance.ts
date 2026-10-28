@@ -1,4 +1,5 @@
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
+import { useMotion } from './useMotion';
 import {
   appearanceKey,
   appearancePreference,
@@ -11,6 +12,14 @@ const systemDark = ref(false);
 const saved = ref(true);
 let installed = false;
 let transition: Animation | undefined;
+const motion = useMotion();
+watch(
+  motion.reduced,
+  (reduced) => {
+    if (reduced) transition?.cancel();
+  },
+  { flush: 'sync' },
+);
 const effective = computed(() => resolvedAppearance(preference.value, systemDark.value));
 function apply() {
   document.documentElement.dataset.theme = effective.value;
@@ -50,7 +59,7 @@ function select(value: AppearancePreference) {
   transition?.cancel();
   // WebKitGTK 2.52.6 crashes in its UI process during startViewTransition.
   // Fade the existing compositor layer; keep the live UI and playback mounted.
-  if (before !== effective.value && !matchMedia('(prefers-reduced-motion: reduce)').matches)
+  if (before !== effective.value && !motion.reduced.value)
     transition = document
       .querySelector('.app-shell')
       ?.animate([{ opacity: 0.65 }, { opacity: 1 }], { duration: 180, easing: 'ease-out' });

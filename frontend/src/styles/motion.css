@@ -1,6 +1,44 @@
 :root {
   --motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
+/* CSS transitions, keyframes and smooth scrolling share the same effective
+   policy. WAAPI theme changes and lyric scroll calls use useMotion as well. */
+:root[data-motion='reduced'] *,
+:root[data-motion='reduced'] *::before,
+:root[data-motion='reduced'] *::after,
+:root[data-motion='reduced'] *::backdrop {
+  transition: none !important;
+  animation: none !important;
+  scroll-behavior: auto !important;
+}
+:root[data-motion='reduced']
+  :is(
+    .page-enter-from,
+    .page-leave-to,
+    .queue-panel-enter-from,
+    .queue-panel-leave-to,
+    .lyrics-panel-enter-from,
+    .lyrics-panel-leave-to,
+    .modal-enter-from,
+    .modal-leave-to,
+    .tab-enter-from,
+    .tab-leave-to,
+    .catalog-tab-enter-from,
+    .catalog-tab-leave-to,
+    .menu-enter-from,
+    .menu-leave-to,
+    .relay-prompt-enter-from,
+    .relay-prompt-leave-to
+  ) {
+  transform: none !important;
+  opacity: 1 !important;
+}
+:root[data-motion='reduced'] :is(.nav-item:active:not(:disabled), .window-controls button:active) {
+  transform: none;
+}
+:root[data-motion='reduced'] .playlist-card:hover img {
+  transform: none;
+}
 .page-view {
   display: flex;
   flex-direction: column;

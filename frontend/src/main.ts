@@ -7,6 +7,8 @@ import './styles/comments.css';
 import './styles/podcast.css';
 import './styles/together.css';
 import { initializeAppearance } from './composables/useAppearance';
+import { initializeMotion } from './composables/useMotion';
 
+initializeMotion();
 initializeAppearance();
 createApp(App).provide(coreClientKey, createTauriClient()).mount('#app');

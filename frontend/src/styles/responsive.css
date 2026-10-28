@@ -38,6 +38,7 @@
   *::before,
   *::after {
     transition: none !important;
-    animation-duration: 2s !important;
+    animation: none !important;
+    scroll-behavior: auto !important;
   }
 }

@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue';
 import type { AccountView } from '../services/contracts';
 import type { SettingsModel } from '../composables/useSettings';
 import { useAppearance } from '../composables/useAppearance';
+import { useMotion } from '../composables/useMotion';
 import { useControlFocus } from '../composables/useControlFocus';
 import type { AppearancePreference } from '../services/appearance';
 import {
@@ -92,6 +93,7 @@ type Confirmation =
   | { kind: 'accept'; op: SettingsOperation; revision: string };
 const confirmation = ref<Confirmation>();
 const privacyRefresh = ref<HTMLButtonElement>();
+const motion = useMotion();
 const fallbackFocus = () => privacyRefresh.value ?? null;
 const controlFocus = useControlFocus(() => props.account.epoch, fallbackFocus);
 watch(
@@ -155,10 +157,32 @@ function accept(op: SettingsOperation) {
           <p class="settings-note">
             当前为{{
               appearance.effective.value === 'dark' ? '深色' : '浅色'
-            }}模式。主题保存在这台设备，界面动画跟随系统的减少动态效果设置。
+            }}模式。主题保存在这台设备。
           </p>
           <p v-if="!appearance.saved.value" role="alert" class="catalog-error">
             主题已应用，但暂时无法保存到本机。
+          </p>
+          <label class="settings-checkbox motion-option">
+            <input
+              type="checkbox"
+              name="disable-animation"
+              :checked="motion.preference.value === 'disabled'"
+              @change="motion.select(($event.target as HTMLInputElement).checked)"
+            />
+            <span>禁用动画效果</span>
+          </label>
+          <p class="settings-note" role="status">
+            {{
+              motion.preference.value === 'disabled'
+                ? '已关闭界面动画和歌词平滑滚动。'
+                : motion.systemReduced.value
+                  ? '系统已开启减少动态效果，界面动画已关闭。'
+                  : '界面动画已开启；系统开启减少动态效果时会自动关闭。'
+            }}
+            此设置保存在这台设备，不影响音乐播放。
+          </p>
+          <p v-if="!motion.saved.value" role="alert" class="catalog-error">
+            动画设置已应用，但暂时无法保存到本机。重新选择可再次保存。
           </p>
         </div>
       </section>

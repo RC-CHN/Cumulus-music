@@ -10,4 +10,12 @@
       : matchMedia('(prefers-color-scheme: dark)').matches
         ? 'dark'
         : 'light';
+  let motion = 'system';
+  try {
+    motion = localStorage.getItem('cumulus.motion.v1');
+  } catch {}
+  document.documentElement.dataset.motion =
+    motion === 'disabled' || matchMedia('(prefers-reduced-motion: reduce)').matches
+      ? 'reduced'
+      : 'full';
 })();

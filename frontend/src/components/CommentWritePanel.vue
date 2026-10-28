@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useMotion } from '../composables/useMotion';
 import { computed, nextTick, ref, watch } from 'vue';
 import type { CommentWritesModel } from '../composables/useCommentWrites';
 import type { CommentItem } from '../services/comments';
@@ -26,7 +27,10 @@ function requestDelete(item: CommentItem) {
 }
 function focus() {
   input.value?.focus();
-  input.value?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  input.value?.scrollIntoView({
+    block: 'center',
+    behavior: useMotion().reduced.value ? 'instant' : 'smooth',
+  });
 }
 async function confirm() {
   const action = confirmation.value;

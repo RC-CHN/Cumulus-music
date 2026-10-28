@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useMotion } from '../composables/useMotion';
 import { computed, ref, watch, nextTick, onUnmounted } from 'vue';
 import type { CommentsModel } from '../composables/useComments';
 import CommentCard from './CommentCard.vue';
@@ -58,7 +59,10 @@ async function openFloor(item: CommentItem) {
   await floor.open(item);
   await nextTick();
   if (floor.query.value?.parentId === (item.parentId ?? item.id))
-    floorContainer.value?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    floorContainer.value?.scrollIntoView({
+      block: 'start',
+      behavior: useMotion().reduced.value ? 'instant' : 'smooth',
+    });
 }
 async function floorLike(item: CommentItem) {
   const e = props.model.epoch.value,
