@@ -20,6 +20,9 @@ pub struct Library {
     pub pulls: AtomicUsize,
     pub setting_writes: AtomicUsize,
     pub publications: Mutex<Vec<Value>>,
+    publication_mode: Mutex<String>,
+    publication_configs: AtomicUsize,
+    pub network_calls: AtomicUsize,
     enabled: Mutex<bool>,
     fail_setting_read: std::sync::atomic::AtomicBool,
 }
@@ -31,6 +34,9 @@ impl Default for Library {
             pulls: AtomicUsize::new(0),
             setting_writes: AtomicUsize::new(0),
             publications: Mutex::new(vec![]),
+            publication_mode: Mutex::new(String::new()),
+            publication_configs: AtomicUsize::new(0),
+            network_calls: AtomicUsize::new(0),
             enabled: Mutex::new(true),
             fail_setting_read: std::sync::atomic::AtomicBool::new(false),
         }
@@ -38,6 +44,11 @@ impl Default for Library {
 }
 impl Library {
     pub fn mode(&self, mode: &str) {
+        if mode.starts_with("publication-") {
+            *self.publication_mode.lock().unwrap() = mode.into();
+            self.publication_configs.store(0, Ordering::SeqCst);
+            return;
+        }
         if mode == "setting-off" {
             *self.enabled.lock().unwrap() = false;
         }
@@ -57,6 +68,8 @@ impl Api for Library {
     }
     fn request<'a>(&'a self, path: &'a str, p: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            self.network_calls.fetch_add(1, Ordering::SeqCst);
+            let publication = self.publication_mode.lock().unwrap().clone();
             let mode = self.mode.lock().unwrap().clone();
             if mode == "offline" && (path.starts_with("/api/relay/") || path.contains("expinfo")) {
                 return Err(Error::Transport("synthetic offline".into()));
@@ -73,12 +86,27 @@ impl Api for Library {
                             .as_str()
                             .ok_or(Error::InvalidInput("publication JSON string missing"))?,
                     )?);
+                    if publication == "publication-rejected" {
+                        return Ok(json!({"code":403}));
+                    }
+                    if publication == "publication-lost" {
+                        return Err(Error::Transport(
+                            "synthetic publication response lost".into(),
+                        ));
+                    }
                     json!({"code":200})
                 }
                 "/api/rtrs/abt/front/expinfo/list" => {
                     json!({"code":200,"data":[{"expName":"device_connect","expGroupName":if mode=="excluded"{"control"}else{"t2"}}]})
                 }
                 "/api/relay/config/get" => {
+                    if publication == "publication-prepared-offline"
+                        && self.publication_configs.fetch_add(1, Ordering::SeqCst) > 0
+                    {
+                        return Err(Error::Transport(
+                            "synthetic publication preflight unavailable".into(),
+                        ));
+                    }
                     json!({"code":200,"data":{"enable":mode!="disabled" && *self.enabled.lock().unwrap(),"radioProgressInterval":30,"snapshotSize":1000}})
                 }
                 "/api/relay/setting/show" => {

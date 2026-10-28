@@ -45,7 +45,9 @@ fn main() {
     let histories = std::env::var("CUMULUS_HISTORY_PROOF").as_deref() == Ok("1");
     let settings = std::env::var("CUMULUS_SETTINGS_PROOF").as_deref() == Ok("1");
     let relay_settings = std::env::var("CUMULUS_RELAY_SETTING_PROOF").as_deref() == Ok("1");
-    let relay_publication = std::env::var("CUMULUS_RELAY_PUBLICATION_PROOF").as_deref() == Ok("1");
+    let relay_recovery = std::env::var("CUMULUS_RELAY_RECOVERY_PROOF").as_deref() == Ok("1");
+    let relay_publication =
+        relay_recovery || std::env::var("CUMULUS_RELAY_PUBLICATION_PROOF").as_deref() == Ok("1");
     assert!(
         !(relay_publication && is_live),
         "publication proof uses synthetic services only"
@@ -60,6 +62,7 @@ fn main() {
         let settings_fixture=Arc::new(settings_fixture::Library::default());
         let relay_fixture=Arc::new(relay_fixture::Library::default());
         if relay_settings {relay_fixture.mode("setting-off");}
+        if relay_recovery {relay_fixture.mode("publication-rejected");}
         let api:Arc<dyn Api>=if let Some(profile)=profile{Arc::new(live::Reads::open(&profile,&output)?)}else if relays {relay_fixture.clone()}else if settings {settings_fixture.clone()}else if histories {history_fixture.clone()}else if collections{collection_fixture.clone()}else{Arc::new(fixture::Library::default())};
         let session=Arc::new(AccountSession::new(api,Some(registry.store())));
         let publisher=Arc::new(cumulus_core::relay::publisher::RelayPublisher::new(session.clone())?);
@@ -96,6 +99,11 @@ fn main() {
                 if relays {value["syntheticRelayPulls"]=serde_json::json!(relay_pulls);value["syntheticRelaySettingWrites"]=serde_json::json!(relay_setting_writes);}
                 let client=handle.state::<MusicClient>();
                 let epoch=client.account().unwrap().epoch;
+                if relay_recovery {
+                    value["publicationView"]=serde_json::to_value(client.relay_publication_view(&epoch,None).unwrap().value).unwrap();
+                    value["publicationCalls"]=serde_json::json!(publication_fixture.publications.lock().unwrap().len());
+                    value["networkCalls"]=serde_json::json!(publication_fixture.network_calls.load(std::sync::atomic::Ordering::SeqCst));
+                }
                 if (is_live || relays) && value["playing"]==true {
                     let player=client.subscribe_playback(&epoch).await.unwrap().current().unwrap();
                     if player.position.is_none_or(|p|p<=0.2)||player.queue_len==0||player.error.is_some(){
@@ -128,7 +136,7 @@ fn main() {
         if payload.event()==PageLoadEvent::Finished && view.label()=="main" {
             if relay_publication {view.eval("window.__CUMULUS_PUBLICATION_PROOF__=true;").unwrap();}
             let script=std::env::var_os("CUMULUS_UX_SCRIPT").map(|p|fs::read_to_string(p).unwrap());
-            view.eval(script.as_deref().unwrap_or(if relay_settings {if is_live {include_str!("relay_setting_live_probe.js")}else{include_str!("relay_setting_ui_probe.js")}}else if relays {
+            view.eval(script.as_deref().unwrap_or(if relay_recovery {include_str!("relay_recovery_ui_probe.js")}else if relay_settings {if is_live {include_str!("relay_setting_live_probe.js")}else{include_str!("relay_setting_ui_probe.js")}}else if relays {
                 include_str!("relay_ui_probe.js")
             } else if settings {
                 if is_live {include_str!("settings_live_probe.js")}else{include_str!("settings_ui_probe.js")}

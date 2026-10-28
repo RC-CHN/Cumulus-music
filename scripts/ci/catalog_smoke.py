@@ -19,6 +19,7 @@ def main():
     mode.add_argument('--relay', action='store_true')
     mode.add_argument('--relay-settings', action='store_true')
     mode.add_argument('--relay-publication', action='store_true')
+    mode.add_argument('--relay-recovery', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
@@ -27,6 +28,9 @@ def main():
     if args.relay_publication:
         args.relay = True
         env['CUMULUS_RELAY_PUBLICATION_PROOF'] = '1'
+    if args.relay_recovery:
+        args.relay = True
+        env['CUMULUS_RELAY_RECOVERY_PROOF'] = '1'
     if args.collections:
         env['CUMULUS_COLLECTION_PROOF'] = '1'
     if args.history:
@@ -53,10 +57,22 @@ def main():
         raise AssertionError((output / 'failed.json').read_text(encoding='utf-8'))
     assert result.returncode == 0, f'catalog probe exited {result.returncode}'
     complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
-    count = 19 if args.relay else 21 if args.settings or args.relay_settings else 24 if args.history else 18
+    count = 14 if args.relay_recovery else 19 if args.relay else 21 if args.settings or args.relay_settings else 24 if args.history else 18
     assert complete['ok'] and complete['stageCount'] == count and complete['realMusicRequests'] == 0
     assert complete['playbackVerified'] == args.relay
-    if args.relay:
+    if args.relay_recovery:
+        assert complete['syntheticRelayPulls'] == 2 and complete['syntheticQueueApplications'] == 2
+        assert complete['decoder'] == 'libmpv' and complete['audioOutput'] == 'null'
+        assert all(complete[key] for key in ['cancelFocus', 'lateIpcFenced', 'lostAckReadback', 'recoveryDidNotRestartAudio'])
+        assert len(complete['syntheticRelayPublications']) == 4
+        assert complete['publicationPhases'].count('confirmed') == 2
+        assert complete['publicationPhases'].count('rejected') == 1
+        assert complete['publicationPhases'].count('uncertain') == 1
+        assert complete['publicationView']['blocked'] is None and complete['publicationView']['pending'] == 0
+        with sqlite3.connect((root / 'run/state/core.sqlite3').as_uri() + '?mode=ro', uri=True) as db:
+            cancelled = [json.loads(row[0]) for row in db.execute("SELECT value FROM state WHERE kind='relay-publication-cancelled-v1'")]
+        assert len(cancelled) == 1 and cancelled[0]['device'] == 'SYNTHETIC_PRIVATE-local'
+    elif args.relay:
         assert complete['syntheticRelayPulls'] == 4 and complete['syntheticQueueApplications'] == 2
         assert complete['decoder'] == 'libmpv' and complete['audioOutput'] == 'null'
         assert complete['mediaSubstitution'] == 'exact synthetic CDN URL to generated PCM'
@@ -88,7 +104,19 @@ def main():
     assert len(stages) == count
     assert {v['theme'] for v in stages} == {'light', 'dark'}
     assert any(v['width'] == 760 and v['height'] == 540 for v in stages)
-    if args.relay:
+    if args.relay_recovery:
+        by_name = {v['stage'][6:]: v for v in stages}
+        assert by_name['blocked_playing']['publicationView']['blocked']['phase'] == 'rejected'
+        assert by_name['uncertain_playing']['publicationView']['blocked']['phase'] == 'uncertain'
+        assert by_name['prepared_offline']['publicationView']['preflightFailed']
+        assert by_name['prepared_offline']['publicationView']['recovering']['phase'] == 'prepared'
+        assert all(by_name[name]['publicationCalls'] == 1 for name in ['blocked_dark', 'confirm', 'cancelled_dialog', 'unknown_ipc', 'cancelled_unseen'])
+        assert by_name['cancelled_unseen']['networkCalls'] == by_name['blocked_dark']['networkCalls']
+        for name in ['blocked_playing', 'uncertain_playing']:
+            assert by_name[name]['nativePlayer']['state'] == 'playing'
+        for name in ['recovered_lost_ack', 'recovered', 'read_recovered']:
+            assert by_name[name]['playerState'] == 'idle' and by_name[name]['publicationView']['blocked'] is None
+    elif args.relay:
         assert all(not v['prompt'] or v['promptBottom'] <= v['playerTop'] - 3 for v in stages)
         by_name = {v['stage'][6:]: v for v in stages}
         for name in ['music_playing', 'voice_playing']:
