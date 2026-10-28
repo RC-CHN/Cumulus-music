@@ -7,7 +7,7 @@ import argparse
 import json
 import os
 from pathlib import Path
-import subprocess
+from motion_smoke import launch
 
 
 def main():
@@ -15,6 +15,7 @@ def main():
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--runtime', type=Path)
+    parser.add_argument('--screenshots', action='store_true', help='optional local Linux GTK captures')
     args = parser.parse_args()
     root = args.root.resolve()
     assert not root.exists(), 'proof root must be new'
@@ -33,17 +34,18 @@ def main():
         if run == 'reopen':
             env['CUMULUS_PROOF_REOPEN'] = '1'
         log_path = root / f'{run}.log'
-        with log_path.open('x', encoding='utf-8') as log:
-            result = subprocess.run([str(args.binary.resolve())], env=env,
-                                    stdout=log, stderr=log, timeout=180)
         output = root / run
+        with log_path.open('x', encoding='utf-8') as log:
+            returncode = launch(args.binary.resolve(), env, log, output, args.screenshots)
         if (output / 'failed.json').exists():
             raise AssertionError((output / 'failed.json').read_text(encoding='utf-8'))
-        assert result.returncode == 0, f'UX probe exited {result.returncode}; inspect {log_path}'
+        assert returncode == 0, f'UX probe exited {returncode}; inspect {log_path}'
         complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
         assert complete['ok'] and complete['stageCount'] == count and complete['realMusicRequests'] == 0
         stages = list(output.glob('ux_*.json'))
         assert len(stages) == count
+        if args.screenshots:
+            assert len(list(output.glob('ux_*.png'))) == count
         for stage in stages:
             value = json.loads(stage.read_text(encoding='utf-8'))
             assert value['theme'] in ['light', 'dark'] and not value['overflow'], stage.name
@@ -54,6 +56,7 @@ def main():
         else:
             assert complete['reopened']
     print(json.dumps({'ok': True, 'actualWebView': True, 'states': 34,
+                      'screenshots': 34 if args.screenshots else 0,
                       'themeRestartVerified': True, 'realMusicRequests': 0}))
 
 

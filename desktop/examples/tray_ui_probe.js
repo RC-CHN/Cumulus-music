@@ -12,6 +12,7 @@
   await invoke('plugin:event|listen',{event:'cumulus:native-like-changed',target:{kind:'Any'},handler:window.__TAURI_INTERNALS__.transformCallback(()=>{likeEvents++;})});
   async function capture(name){
     if(!dialog())section().scrollIntoView({block:'center'});await sleep(250);
+    assert(scrollY===0&&scrollX===0,'desktop document scrolled behind fixed overlays');
     assert(document.documentElement.scrollWidth<=innerWidth,'page overflow');
     const notice=one('.window-lifecycle-notice');
     if(notice) {
@@ -70,5 +71,5 @@
     await emit('allow-write');await read();await capture('save_recovered');
     await close();click(dialog().querySelector('[value="exit"]'));click(dialog().querySelector('[name="close-remember"]'));await capture('exit_prompt');
     await emit('complete',{ok:true,states:count,realMusicRequests:0,physicalPanelVerified:false});click(dialog().querySelector('.primary'));
-  }catch(error){await emit('failed',{ok:false,error:String(error),states:count,body:document.body.innerText.slice(-1800)});}
+  }catch(error){await emit('failed',{ok:false,error:String(error),states:count,viewport:{x:scrollX,y:scrollY,width:innerWidth,height:innerHeight},body:document.body.innerText.slice(-1800)});}
 })();

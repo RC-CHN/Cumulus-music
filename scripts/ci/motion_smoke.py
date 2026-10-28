@@ -23,7 +23,7 @@ def launch(binary, env, log, output, capture):
         deadline = time.monotonic() + 180
         while process.poll() is None:
             if time.monotonic() >= deadline:
-                raise TimeoutError('motion WebView did not finish')
+                raise TimeoutError('WebView did not finish')
             for path in output.glob('ux_*.json'):
                 if path in seen:
                     continue

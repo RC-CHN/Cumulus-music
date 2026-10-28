@@ -12,7 +12,18 @@
 * {
   box-sizing: border-box;
 }
+/* Only page regions scroll. WebKit may still move the root viewport on
+   scrollIntoView with overflow:clip, so keep the body anchored to the window
+   as well. Fixed notices, the titlebar and the player share one frame. */
+html,
+body,
+#app {
+  height: 100%;
+  overflow: clip;
+}
 body {
+  position: fixed;
+  inset: 0;
   margin: 0;
 }
 button,

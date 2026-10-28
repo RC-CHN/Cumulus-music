@@ -32,14 +32,20 @@
       if(focusTrace.length>60)focusTrace.shift();
     }
   },true);
+  const geometry=()=>({
+    viewport:{width:innerWidth,height:innerHeight,x:scrollX,y:scrollY},
+    boxes:['.relay-prompt','.playerbar','.app-shell','.settings-scroll'].map(selector=>{
+      const node=one(selector);return node?{selector,rect:node.getBoundingClientRect().toJSON(),scrollTop:node.scrollTop,scrollHeight:node.scrollHeight,clientHeight:node.clientHeight,transform:getComputedStyle(node).transform}:null;
+    }),
+  });
   let stageCount=0;
   async function capture(name,playing=false){
-    await sleep(300);assert(document.documentElement.scrollWidth<=innerWidth,'horizontal overflow');assert(!document.body.textContent.includes('SYNTHETIC_PRIVATE'),'native alert leaked');
+    await sleep(300);assert(scrollY===0&&scrollX===0,'desktop document scrolled behind fixed overlays');assert(document.documentElement.scrollWidth<=innerWidth,'horizontal overflow');assert(!document.body.textContent.includes('SYNTHETIC_PRIVATE'),'native alert leaked');
     const card=one('.relay-prompt')?.getBoundingClientRect(),bar=one('.playerbar').getBoundingClientRect(),scroll=one('.settings-scroll')?.getBoundingClientRect();
     if(card)assert(card.left>=0&&card.right<=innerWidth&&card.bottom<=bar.top-3,'relay prompt overlaps player or window');
     if(card){const action=one('.relay-continue');assert(action.scrollWidth<=action.clientWidth,'default relay action text clipped');}
     if(scroll)assert(scroll.bottom<=bar.top+1,'settings content overlaps player');
-    await emit(`ux_${String(++stageCount).padStart(2,'0')}_${name}`,{width:innerWidth,height:innerHeight,theme:document.documentElement.dataset.theme,prompt:!!card,promptBottom:card?.bottom,playerTop:bar.top,position:position(),playing,dialog:!!one('dialog[open]'),status:one('.relay-settings [role="status"]')?.textContent,operations:all('.relay-operation').map(n=>n.textContent.trim())});await sleep(850);
+    await emit(`ux_${String(++stageCount).padStart(2,'0')}_${name}`,{geometry:geometry(),width:innerWidth,height:innerHeight,theme:document.documentElement.dataset.theme,prompt:!!card,promptBottom:card?.bottom,playerTop:bar.top,position:position(),playing,dialog:!!one('dialog[open]'),status:one('.relay-settings [role="status"]')?.textContent,operations:all('.relay-operation').map(n=>n.textContent.trim())});await sleep(850);
   }
   async function theme(value){click(one(`input[name="settings-theme"][value="${value}"]`));await wait(()=>document.documentElement.dataset.theme===value,'theme');}
   async function refresh(mode){await emit('fixture',{mode});click(button('检查其他设备'));await sleep(120);await wait(ready,'relay refresh');}
@@ -89,6 +95,6 @@
     click(one('[aria-label="关闭接续提示"]'));await wait(()=>!one('.relay-prompt'),'close prompt');assert(document.activeElement===one('[aria-label="打开设置"]'),'close focus did not return');await capture('closed_focus');
     assert(leavingFocusChecks.every(v=>v.inert&&v.focusBlocked),'leaving prompt later accepted focus');
     await emit('complete',{ok:true,stageCount,realMusicRequests:0,syntheticQueueApplications:2,playbackVerified:true,decoder:'libmpv',audioOutput:'null',mediaSubstitution:'exact synthetic CDN URL to generated PCM',autoDismiss:true,focusHoldAfterPointerLeave:true,hoverHoldAfterFocusLeave:true,nativeWindowFocusHold:true,nullRelatedFocusOutInjected:true,freshOfferBeforeFocusHold:true,leavingFocusChecks,focusTrace});
-  }catch(error){await emit('failed',{ok:false,error:String(error),stageCount,focusState:focusState(),focusTrace,leavingFocusChecks});}
+  }catch(error){await emit('failed',{ok:false,error:String(error),stageCount,geometry:geometry(),focusState:focusState(),focusTrace,leavingFocusChecks});}
   finally{leavingObserver.disconnect();}
 })();
