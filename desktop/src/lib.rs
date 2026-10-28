@@ -1,4 +1,5 @@
 pub mod captcha;
+mod catalog;
 mod cloud;
 mod commands;
 mod comments;
@@ -112,6 +113,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 commands::search_songs,
                 commands::daily_songs,
                 rankings::ranking_page,
+                catalog::catalog_page,
                 member::member_page,
                 member::member_rights,
                 member::open_member_link,

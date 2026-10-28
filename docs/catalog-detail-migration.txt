@@ -189,3 +189,20 @@ rankings::album_order revision；后续播放接线必须处理这两种来源�
 - 完整 workspace/all-targets/custom-protocol 回归：201个suite/target，894项通过，
   0失败/忽略；fmt 与严格 Clippy 通过。日志 catalog-gateway-{clippy,workspace}-final.log。
   这些证据只说明目录核心与读取契约，尚未增加歌手/专辑的实际 GUI 验收。
+
+桌面契约与页面读取状态
+- desktop/src/catalog.rs 注册 catalog_page(epoch, query, refresh)，返回 AccountData<Option<CatalogView>>；
+  复用主窗口 dispatcher 隔离。缺失缓存为 null，旧账号代次返回 stale；验证码子窗口不能调用。
+- frontend/src/services/catalog.ts 定义全部判别联合；adapters/tauri.ts 只传输明确类型参数。
+- useCatalog 为每个页面槽保存单独的查询、缓存视图、加载/错误状态。可供歌手头部、动态
+  收藏状态和分栏分别使用；无论缓存刚写入多久，进入页面都继续联网核验。
+  失败保留旧内容并给出错误；null 网络结果不能当作空内容；缓存损坏可重新读取。
+  相同查询加载中重复点击合并，切换账号/资源或销毁后丢弃迟到响应；会话失效不继续联网。
+  对不同资源/页签/代次的回复做额外检查，避免旧标题和新内容拼接。
+- 前端八项状态机测试新增后共142项通过，固定 Node/锁文件安装、格式、类型检查、构建通过；
+  既有 IPC 测试新增目录缓存空值、过期代次与验证码窗口边界断言，三项IPC测试通过。
+  日志为主目录 .build/catalog-gateway-front-{ci,format,tests,build}.log 和
+  .build/catalog-gateway-ipc-final.log。没有将这些单元/MockRuntime 断言称为真实 GUI 交互。
+- 当前只有核心、桌面传输和前端读取状态完成；歌手/专辑可见页面、导航、分页组合、
+  收藏对账、带来源的播放/下载及实际 WebView 验收仍未完成。0.1.0 已发布附件未改动，
+  本批继续保存在 feat/catalog-details 开发分支。

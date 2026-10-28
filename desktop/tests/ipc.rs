@@ -39,6 +39,7 @@ fn isolated_captcha_cannot_invoke_application_commands_even_from_local_origin() 
         "pick_local_directory",
         "player_action",
         "solve_login_captcha",
+        "catalog_page",
     ] {
         assert_ipc_response(
             &window,
@@ -107,10 +108,22 @@ fn account_snapshot_and_stale_mutation_cross_registered_commands() {
     );
     assert_ipc_response(
         &window,
+        request(
+            "catalog_page",
+            json!({"epoch":"1","query":{"kind":"artist","id":"12"},"refresh":false}),
+        ),
+        Ok(json!({"epoch":"1","value":null})),
+    );
+    assert_ipc_response(
+        &window,
         request("set_liked", json!({"epoch":"0","id":"1","liked":true})),
         Err(json!({"code":"stale","message":"操作已取消或账号已切换","retryable":false})),
     );
     for (command, body) in [
+        (
+            "catalog_page",
+            json!({"epoch":"0","query":{"kind":"artist","id":"12"},"refresh":true}),
+        ),
         ("playlist_cover_tasks", json!({"epoch":"0"})),
         ("playlist_cover_image", json!({"epoch":"0","id":"old"})),
         (

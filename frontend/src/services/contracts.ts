@@ -16,6 +16,7 @@ import type { RankingClient } from './rankings';
 import type { FmClient } from './fm';
 import type { SceneFmClient } from './sceneFm';
 import type { MemberClient } from './member';
+import type { CatalogClient } from './catalog';
 /** Wire format returned by core::AppInfo. Keep the IPC test in sync. */
 export interface AppInfo {
   name: string;
@@ -42,7 +43,8 @@ export interface CoreClient
     RankingClient,
     FmClient,
     SceneFmClient,
-    MemberClient {
+    MemberClient,
+    CatalogClient {
   getAppInfo(): Promise<AppInfo>;
   accountSnapshot(): Promise<AccountView>;
   restoreAccount(): Promise<AccountView>;
