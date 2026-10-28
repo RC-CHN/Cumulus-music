@@ -64,13 +64,20 @@
   background: var(--surface-hover);
   color: var(--accent);
 }
-.sidebar-lists {
-  padding: 0 12px;
-  overflow: auto;
+.sidebar-scroll {
+  overflow-y: auto;
+  overflow-x: hidden;
   flex: 1;
   min-height: 0;
-  contain: strict;
   overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.sidebar-scroll > .nav-item {
+  width: calc(100% - 24px);
+  margin-inline: 12px;
+}
+.sidebar-lists {
+  padding: 0 12px;
 }
 .nav-label {
   font-size: 12px;
@@ -91,6 +98,7 @@
   color: var(--muted);
 }
 .sidebar-caption {
+  flex-shrink: 0;
   padding: 14px 20px;
   font-size: 10px;
   color: var(--muted);

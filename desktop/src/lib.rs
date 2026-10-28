@@ -8,6 +8,7 @@ mod downloads;
 mod effects;
 mod fm;
 mod graphics;
+mod history;
 mod identity;
 mod local;
 mod member;
@@ -116,6 +117,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 rankings::ranking_page,
                 catalog::catalog_page,
                 collections::collection_page,
+                history::history_page,
+                history::history_command,
                 catalog::catalog_membership,
                 member::member_page,
                 member::member_rights,

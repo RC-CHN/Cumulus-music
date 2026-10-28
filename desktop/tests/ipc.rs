@@ -41,6 +41,8 @@ fn isolated_captcha_cannot_invoke_application_commands_even_from_local_origin() 
         "solve_login_captcha",
         "catalog_page",
         "collection_page",
+        "history_page",
+        "history_command",
         "catalog_membership",
     ] {
         assert_ipc_response(
@@ -122,6 +124,14 @@ fn account_snapshot_and_stale_mutation_cross_registered_commands() {
         Err(json!({"code":"stale","message":"操作已取消或账号已切换","retryable":false})),
     );
     for (command, body) in [
+        (
+            "history_page",
+            json!({"epoch":"0","kind":"song","refresh":true}),
+        ),
+        (
+            "history_command",
+            json!({"epoch":"0","kind":"song","command":{"kind":"set_sync","enabled":false}}),
+        ),
         (
             "collection_page",
             json!({"epoch":"0","query":{"kind":"saved_albums","offset":0,"limit":50},"refresh":true}),

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 defineProps<{ name: string }>();
 const paths: Record<string, string> = {
+  history: 'M3 4v6h6M3 10a9 9 0 1 1 1 7m8-12v7l4 2',
   more: 'M5 12h.01M12 12h.01M19 12h.01',
   edit: 'm16 3 5 5M4 20l4-1L21 6l-4-4L4 15z',
   check: 'm5 12 4 4L19 6',

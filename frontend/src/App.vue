@@ -11,6 +11,9 @@ import AccountDialog from './components/AccountDialog.vue';
 import TrackTable from './components/TrackTable.vue';
 import CatalogPage from './components/CatalogPage.vue';
 import CollectionsPage from './components/CollectionsPage.vue';
+import HistoryPage from './components/HistoryPage.vue';
+import { useHistory } from './composables/useHistory';
+import type { HistoryKind, HistoryResource } from './services/history';
 import type { CatalogResource, CatalogSelectionPage } from './services/catalog';
 import PlayerBar from './components/PlayerBar.vue';
 import QueuePanel from './components/QueuePanel.vue';
@@ -56,6 +59,39 @@ import { useMusic } from './composables/useMusic';
 import { useCore } from './services/core';
 const core = useCore();
 const music = useMusic();
+const recent = useHistory(core, () => {
+  void music.bootstrap(false);
+});
+function playHistory(kind: HistoryKind, revision: string, ids: string[], index: number) {
+  void player.select({
+    kind: 'history',
+    history_kind: kind,
+    revision,
+    ids,
+    index,
+    quality: player.view.value?.requestedQuality ?? 'standard',
+  });
+}
+function openHistory(resource: HistoryResource) {
+  switch (resource.kind) {
+    case 'song':
+      if (resource.track.local) music.navigate({ kind: 'local' });
+      else playlistDialog.value = { kind: 'track', track: resource.track };
+      break;
+    case 'album':
+      openCatalog({ kind: 'album', id: resource.album.id });
+      break;
+    case 'playlist':
+      music.navigate({ kind: 'playlist', id: resource.playlist.id });
+      break;
+    case 'voice':
+      if (resource.voice.radioId) openSceneRadio(resource.voice.radioId);
+      else openComments({ kind: 'voice', id: resource.voice.id }, resource.voice.name);
+      break;
+    default:
+      openSceneRadio(resource.radio.id);
+  }
+}
 const member = useMember(core, () => {
   void music.bootstrap(false);
 });
@@ -412,6 +448,15 @@ onUnmounted(() => rankings.dispose());
 onUnmounted(() => fm.dispose());
 onUnmounted(() => sceneFm.dispose());
 onUnmounted(() => member.dispose());
+onUnmounted(() => recent.dispose());
+watch(
+  () => [account.value.epoch, account.value.status],
+  () => {
+    recent.connect(account.value);
+    if (page.value.kind === 'history') void recent.open(page.value.scope);
+  },
+  { immediate: true },
+);
 watch(
   () => page.value,
   (value) => {
@@ -419,8 +464,12 @@ watch(
     if (value.kind === 'mv') void mv.open(value.id, value.taskId);
     if (value.kind === 'comments') void comments.open(value.resource);
     if (value.kind === 'rankings') void rankings.open(value.query);
+    if (value.kind === 'history') void recent.open(value.scope);
   },
 );
+watch([() => player.view.value?.entryId, () => player.view.value?.state], () => {
+  if (page.value.kind === 'history' && !recent.loading.value) void recent.localRefresh();
+});
 watch(
   () => page.value.kind,
   (kind) => {
@@ -487,134 +536,143 @@ onUnmounted(() => window.removeEventListener('keydown', keyboard));
       <button class="brand" @click="music.navigate({ kind: 'daily' })">
         <span class="brand-mark">C</span><span>Cumulus<small>云间音乐</small></span>
       </button>
-      <nav class="nav-main">
-        <button
-          class="nav-item"
-          :class="{ selected: page.kind === 'member' }"
-          @click="music.navigate({ kind: 'member' })"
-        >
-          <Icon name="star" />会员中心
-        </button>
-        <button
-          class="nav-item"
-          :class="{ selected: page.kind === 'fm' }"
-          @click="music.navigate({ kind: 'fm' })"
-        >
-          <Icon name="music" /><span>私人漫游</span>
-        </button>
-        <button
-          class="nav-item"
-          :class="{ selected: page.kind === 'rankings' }"
-          @click="openRanking({ kind: 'home' })"
-        >
-          <Icon name="list" />排行榜
-        </button>
-        <button
-          class="nav-item"
-          :class="{ selected: page.kind === 'together' }"
-          @click="music.navigate({ kind: 'together' })"
-        >
-          <Icon name="headphones" />一起听
-        </button>
-        <button
-          class="nav-item"
-          :class="{ selected: page.kind === 'daily' }"
-          @click="music.navigate({ kind: 'daily' })"
-        >
-          <Icon name="calendar" />每日推荐
-        </button>
-        <button
-          class="nav-item"
-          :class="{ selected: page.kind === 'library' }"
-          @click="music.navigate({ kind: 'library' })"
-        >
-          <Icon name="grid" />我的歌单
-        </button>
-        <button
-          v-if="favorite"
-          class="nav-item"
-          :class="{ selected: page.kind === 'playlist' && page.id === favorite.id }"
-          @click="music.navigate({ kind: 'playlist', id: favorite.id })"
-        >
-          <Icon name="heart" />我喜欢的音乐
-        </button>
-      </nav>
-      <button
-        class="nav-item"
-        :class="{ selected: page.kind === 'downloads' }"
-        @click="music.navigate({ kind: 'downloads' })"
-      >
-        <Icon name="down" />下载管理
-      </button>
-      <button
-        class="nav-item"
-        :class="{ selected: page.kind === 'local' }"
-        @click="music.navigate({ kind: 'local' })"
-      >
-        <Icon name="music" />本地音乐
-      </button>
-      <button
-        class="nav-item"
-        :class="{ selected: page.kind === 'cloud' }"
-        @click="music.navigate({ kind: 'cloud' })"
-      >
-        <Icon name="cloud" />音乐云盘
-      </button>
-      <div class="sidebar-lists">
-        <button
-          class="nav-item"
-          :class="{ selected: page.kind === 'scene_fm' }"
-          @click="music.navigate({ kind: 'scene_fm' })"
-        >
-          <Icon name="music" />随心听 FM
-        </button>
-        <button
-          class="nav-item"
-          :class="{ selected: page.kind === 'podcasts' }"
-          @click="music.navigate({ kind: 'podcasts' })"
-        >
-          <Icon name="music" />我的播客
-        </button>
-        <button
-          class="nav-item"
-          :class="{ selected: page.kind === 'mvs' || page.kind === 'mv' }"
-          @click="music.navigate({ kind: 'mvs' })"
-        >
-          <Icon name="video" />收藏的 MV
-        </button>
-        <button
-          class="nav-item"
-          :class="{ selected: page.kind === 'collections' }"
-          @click="music.navigate({ kind: 'collections', scope: 'saved_albums' })"
-        >
-          <Icon name="star" />专辑与关注
-        </button>
-        <template
-          v-for="group in [
-            { title: '创建的歌单', items: own },
-            { title: '收藏的歌单', items: collected },
-          ]"
-          :key="group.title"
-        >
-          <h2 class="nav-label">
-            {{ group.title }} <span>{{ group.items.length }}</span>
-          </h2>
+      <div class="sidebar-scroll">
+        <nav class="nav-main">
           <button
-            v-for="list in group.items"
-            :key="list.id"
-            class="nav-item playlist-nav"
-            :class="{ active: page.kind === 'playlist' && page.id === list.id }"
-            :title="list.name"
-            @click="music.navigate({ kind: 'playlist', id: list.id })"
+            class="nav-item"
+            :class="{ selected: page.kind === 'member' }"
+            @click="music.navigate({ kind: 'member' })"
           >
-            <Icon :name="list.private ? 'lock' : 'music'" /><span class="ellipsis">{{
-              list.name
-            }}</span>
+            <Icon name="star" />会员中心
           </button>
-        </template>
-        <button v-if="libraryError" class="text-button" @click="music.resources">
-          重新加载歌单
+          <button
+            class="nav-item"
+            :class="{ selected: page.kind === 'fm' }"
+            @click="music.navigate({ kind: 'fm' })"
+          >
+            <Icon name="music" /><span>私人漫游</span>
+          </button>
+          <button
+            class="nav-item"
+            :class="{ selected: page.kind === 'rankings' }"
+            @click="openRanking({ kind: 'home' })"
+          >
+            <Icon name="list" />排行榜
+          </button>
+          <button
+            class="nav-item"
+            :class="{ selected: page.kind === 'together' }"
+            @click="music.navigate({ kind: 'together' })"
+          >
+            <Icon name="headphones" />一起听
+          </button>
+          <button
+            class="nav-item"
+            :class="{ selected: page.kind === 'daily' }"
+            @click="music.navigate({ kind: 'daily' })"
+          >
+            <Icon name="calendar" />每日推荐
+          </button>
+          <button
+            class="nav-item"
+            :class="{ selected: page.kind === 'library' }"
+            @click="music.navigate({ kind: 'library' })"
+          >
+            <Icon name="grid" />我的歌单
+          </button>
+          <button
+            v-if="favorite"
+            class="nav-item"
+            :class="{ selected: page.kind === 'playlist' && page.id === favorite.id }"
+            @click="music.navigate({ kind: 'playlist', id: favorite.id })"
+          >
+            <Icon name="heart" />我喜欢的音乐
+          </button>
+        </nav>
+        <button
+          class="nav-item"
+          :class="{ selected: page.kind === 'downloads' }"
+          @click="music.navigate({ kind: 'downloads' })"
+        >
+          <Icon name="down" />下载管理
         </button>
+        <button
+          class="nav-item"
+          :class="{ selected: page.kind === 'history' }"
+          @click="music.navigate({ kind: 'history', scope: recent.kind.value })"
+        >
+          <Icon name="history" />最近播放
+        </button>
+        <button
+          class="nav-item"
+          :class="{ selected: page.kind === 'local' }"
+          @click="music.navigate({ kind: 'local' })"
+        >
+          <Icon name="music" />本地音乐
+        </button>
+        <button
+          class="nav-item"
+          :class="{ selected: page.kind === 'cloud' }"
+          @click="music.navigate({ kind: 'cloud' })"
+        >
+          <Icon name="cloud" />音乐云盘
+        </button>
+        <div class="sidebar-lists">
+          <button
+            class="nav-item"
+            :class="{ selected: page.kind === 'scene_fm' }"
+            @click="music.navigate({ kind: 'scene_fm' })"
+          >
+            <Icon name="music" />随心听 FM
+          </button>
+          <button
+            class="nav-item"
+            :class="{ selected: page.kind === 'podcasts' }"
+            @click="music.navigate({ kind: 'podcasts' })"
+          >
+            <Icon name="music" />我的播客
+          </button>
+          <button
+            class="nav-item"
+            :class="{ selected: page.kind === 'mvs' || page.kind === 'mv' }"
+            @click="music.navigate({ kind: 'mvs' })"
+          >
+            <Icon name="video" />收藏的 MV
+          </button>
+          <button
+            class="nav-item"
+            :class="{ selected: page.kind === 'collections' }"
+            @click="music.navigate({ kind: 'collections', scope: 'saved_albums' })"
+          >
+            <Icon name="star" />专辑与关注
+          </button>
+          <template
+            v-for="group in [
+              { title: '创建的歌单', items: own },
+              { title: '收藏的歌单', items: collected },
+            ]"
+            :key="group.title"
+          >
+            <h2 class="nav-label">
+              {{ group.title }} <span>{{ group.items.length }}</span>
+            </h2>
+            <button
+              v-for="list in group.items"
+              :key="list.id"
+              class="nav-item playlist-nav"
+              :class="{ active: page.kind === 'playlist' && page.id === list.id }"
+              :title="list.name"
+              @click="music.navigate({ kind: 'playlist', id: list.id })"
+            >
+              <Icon :name="list.private ? 'lock' : 'music'" /><span class="ellipsis">{{
+                list.name
+              }}</span>
+            </button>
+          </template>
+          <button v-if="libraryError" class="text-button" @click="music.resources">
+            重新加载歌单
+          </button>
+        </div>
       </div>
       <div class="sidebar-caption">Cumulus 社区客户端</div>
     </aside>
@@ -676,6 +734,16 @@ onUnmounted(() => window.removeEventListener('keydown', keyboard));
             :current-id="currentLocalId"
             @play="playLocal"
             @comments="(id, title) => openComments({ kind: 'track', id }, title)"
+          />
+          <HistoryPage
+            v-else-if="page.kind === 'history'"
+            :model="recent"
+            :playable="player.ready.value && !player.busy.value"
+            :current-id="currentTrackId"
+            :current-voice-id="currentVoiceId"
+            @scope="music.replace({ kind: 'history', scope: $event })"
+            @play="playHistory"
+            @open="openHistory"
           />
           <div v-else-if="!signedIn" class="empty-state welcome">
             <div class="welcome-note">♪</div>

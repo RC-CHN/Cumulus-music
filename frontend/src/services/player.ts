@@ -87,6 +87,14 @@ export interface QueueView {
 }
 export type PlaySelection =
   | {
+      kind: 'history';
+      history_kind: import('./history').HistoryKind;
+      revision: string;
+      ids: string[];
+      index: number;
+      quality: Quality;
+    }
+  | {
       kind: 'catalog';
       pages: import('./catalog').CatalogSelectionPage[];
       index: number;
