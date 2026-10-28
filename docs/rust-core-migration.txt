@@ -509,5 +509,7 @@ collection-library-contracts.txt和collection-library-mapping.json。精确3a157
 后续播放器自动记账已接入：成功开始播放才写入，歌曲与来源事务提交、声音秒级进度、
 保存失败与音频错误分开；925项Rust测试通过。实际Linux CUE/NCM首次及暂停重开8个
 WebView状态与SQLite核验通过，证据见play-history-contracts.txt。
-正式历史IPC/页面和页面播放仍未接入，不能把原生读取/记账成功当完整历史浏览流程通过。
+正式历史IPC、六分类有界表格、删除确认/核对恢复与历史原生回放现已接入。
+24个Linux WebView状态、游客本地CUE重播/重开、当前账号六页读取和300首原生队列回放通过；
+来源/接口/详细证据见play-history-contracts.txt。真实删除/清空/上报没有执行，非空书仅合成验证。
 完整设置、系统媒体/托盘、跨设备接续及其他原目标仍继续，goal保持active。

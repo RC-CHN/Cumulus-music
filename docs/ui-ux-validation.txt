@@ -113,3 +113,24 @@ Xvfb 中的截图/DOM 检查覆盖真实引擎、布局和交互，不证明物�
 https://github.com/RC-CHN/Cumulus-music/actions/runs/40664543341
 后续原生历史保存失败提示与本地音乐布局的实际8状态增量见play-history-contracts.txt；
 其Windows验证另需后续提交自身CI，不能套用本段结果。
+
+最近播放页面增量（2026-10-28）
+- 已接入正式六标签表格、68px虚拟行、筛选、播放、资源入口、多端开关及删除/清空确认。
+- 真实WebView发现并修复：760×540底部说明遮挡；异常信息挤压列表；游客301状态错误阻止
+  本机历史。浅深色沿用语义色，SVG操作按钮保持在列内，确认关闭后焦点恢复原入口。
+- .build/history-ui-d/first共24个合成WebView状态和截图，包括小窗口未决+断网组合；
+  .build/history-local-replay-c实际本地历史CUE重播与暂停重开通过；
+  .build/private-history-live-ui-c/first真实账号6页+原生播放共7状态通过。
+  独立审计.build/history-ui-final-audit.json；完整来源/接口与失败记录见play-history-contracts.txt。
+- 没有删除真实账号历史，没有再次发布0.1.0；虚拟显示/音频null输出不是实机FPS/声卡证明。
+  新24状态检查已加入Linux、Windows独立runner，本增量Windows结果以新提交CI为准。
+
+侧栏最小窗口修复与最终复验
+- 固定导航项加上资源项后，760×540下原有局部滚动区没有空间，云盘/播客等入口被播放器
+  遮住。改为品牌下方统一滚动导航，品牌与底部社区说明固定，保留原歌单文本延迟渲染。
+- .build/history-ui-d/first最终24状态包含逐项scrollIntoView并检查入口落在可见滚动区域，
+  全部通过；此轮使用二进制内嵌生产资源/脚本。真实截图与读/播证据审计已更新。
+- .build/history-ux-regression-final首次27状态+重开2状态通过，编辑按钮、菜单键盘、
+  弹窗焦点、主题持久化、小窗口保存按钮、长时长和行尾操作区全部复验。
+- 最终Rust936项、前端163项、CI发行规则15项通过。以上属于本地实测结果，
+  Windows本增量仍等待新提交的独立CI，不能将Linux虚拟显示结果说成实机高刷新率。

@@ -1,11 +1,11 @@
-Cumulus 最近播放领域迁移（2026-10-28，核心与原生播放器阶段）
+Cumulus 最近播放领域迁移（2026-10-28，核心、原生播放与正式页面）
 
 本批范围与当前边界
 core/history 已实现六类最近播放读取、本机记录存储、合并、设置和删除/清空恢复日志；
 core/examples/history_read 可用已有PC会话执行只读流程，生产core不调用Python。
-原生播放器自动记账已接入，详见下方增量；最近播放正式IPC、页面及页面播放选择仍未接入。
-不能把此处的原生读取、合成写操作和核心测试当作桌面历史功能已完成；页面链路及完整设置页
-仍是原目标的后续工作。
+原生播放器自动记账、正式history_page/history_command IPC、六分类页面和历史回放已接入。
+桌面验证与实际账号证据见文末页面增量；各层证据分开记录。完整设置、系统媒体/托盘、
+同账号接续及其他原目标仍继续，不能把历史页面完成当成完整goal完成。
 没有执行当前账号的历史删除、清空或历史上报；没有使用YesPlayMusic。
 
 官方来源
@@ -19,7 +19,8 @@ core/examples/history_read 可用已有PC会话执行只读流程，生产core�
   来源、专辑/歌单和声音分类；3670-3740行声音结束时的秒级playProgress与isListened。
   144.js.c按三个中文category或三个数值categoryId判断有声书，不按收费状态判断。
 - references/ui-recovery/sources/packages/pc/src/pages/history-playlist/ 下HistoryPlay、
-  HistoryTrack/HistoryAudiobook/HistoryDjRadio等为页面与分类依据；正式页面尚未接入。
+  HistoryTrack/HistoryAudiobook/HistoryDjRadio等为页面与分类依据；HistoryDjRadio与书均为
+  NormalAudioTable。专辑/歌单/声音子组件原始源码缺失部分按已恢复模型重建。
 - references/recovered-client/docs/product/models/historyList.txt、page_historyPlaylist.txt、
   28-podcast-functional-validation.txt提供恢复索引和历史验证。旧Python验证不计作Rust通过。
 
@@ -54,7 +55,8 @@ HistoryApi::recent 先要求code=200，再做结构校验：
   本机记账的去重、时间倒序和裁剪在单个SQLite事务中完成；歌曲300，其余100。
   迟到的旧时间不覆盖更新的记录。guest使用独立local-guest，不授权任何在线读取。
   多端开关为本机账号偏好，默认开；关后保留远端恢复快照但展示仅本机记录。
-  读回包括revision、local、remote、entries；revision绑定完整本机/远端快照和开关。
+  读回包括revision、local、remote、entries；revision绑定身份、排序、播放时间、资源元数据、设备、来源、读取时间和开关；
+  声音的秒级play_progress/listened检查点不改变revision，新一次播放或元数据改变仍会失效。
   远端刷新总会请求网络；同账号同分类有OperationLock，切号及关闭多端后的迟到结果丢弃。
 
 删除与失败恢复
@@ -90,13 +92,14 @@ reconcile_for只读取当前列表，缺席不能证明丢失的请求永远不�
 - 本地全工作区格式、严格Clippy与all-targets/custom-protocol测试通过：207个target/suite，
   917项通过，0失败/忽略。前端固定Node/锁文件安装、格式、155项测试、类型检查、生产构建通过。
   日志 .build/history-workspace-{clippy,tests}-b.log、history-front-{format,tests,build}.log。
-  本批新增历史逻辑的Windows验证尚未运行；此前目录/主题CI不能替代本批验收。
+  初始核心阶段当时Windows待验；后续原生记账baf8d70完整CI已通过，见文末。
+  新历史页面增量自己的CI另行核对，不能由此前目录/主题或记账CI替代。
 
 复现
   cargo test -p cumulus-core --test history --locked
   cargo run -p cumulus-core --example history_read --locked -- <已有PC profile> <新私有输出目录>
 第二条有严格读取允许列表；不会新增登录、删除历史、清空历史或调用Python实现。
-UI接线、最近播放页面/选择播放验收和完整设置功能必须继续，不在此阶段完成范围内。
+初始核心阶段的UI接线/选择播放已由文末增量完成；完整设置功能必须继续，不在此阶段完成范围内。
 
 原生播放器记账增量
 - core/history/playback负责队列元数据到歌曲/来源专辑/来源歌单/声音/播客/有声书的转换；
@@ -124,7 +127,7 @@ UI接线、最近播放页面/选择播放验收和完整设置功能必须继�
 - 本增量完整Rust检查：格式、严格Clippy通过，208个target/suite共925项测试通过，
   0失败/忽略；前端155项测试、类型检查和生产构建通过。
   日志 .build/history-recorder-{clippy,workspace-tests}.log、history-recorder-front-*.log。
-  新增Windows原生记账/页面提示仍需本批精确提交的CI，不能拿父提交成功代替。
+  上述原生记账的精确baf8d70完整CI已通过；本页新的历史页面增量需另核对自身CI。
 - 实际Linux桌面增量：.build/history-local-ui-c/ 首次6状态与760×540重开2状态，
   共8张截图。生产Tauri/WebKitGTK、FFprobe和libmpv/null，合成WAV/CUE/NCM。
   新增SQLite触发器故障时，页面确实显示“最近播放暂未保存”，同时原生进度继续走；
@@ -146,3 +149,99 @@ UI接线、最近播放页面/选择播放验收和完整设置功能必须继�
     xvfb-run -a -s '-screen 0 1280x900x24' /usr/bin/python3 desktop/scripts/capture_local_proof.py
   原环境和同一输出目录再加CUMULUS_PROOF_REOPEN=1、CUMULUS_PROOF_SMALL=1执行第二次。
   报告/截图属于本机验证材料，不加入发行产物；Windows不运行Linux的XTest目录选择器编排。
+
+
+2026-10-28 正式最近播放页面与原生回放增量
+
+类型化接口与安全边界
+- core/src/client/history/{dto,view,selection,mod}.rs，desktop/src/history.rs，
+  frontend/src/services/history.ts。history_page(epoch,kind,refresh)返回AccountData<HistoryPage>。
+  客户端先读本机缓存，再刷新已登录且开启多端的远端记录；错误保留缓存及其读取时间。
+  六种资源为带kind的TrackView/AlbumCard/HistoryPlaylistCard/EpisodeView/PodcastCard白名单。
+  文件路径、local_revision、完整音源URL、download_task_id、原始设备文本与授权信息不进WebView。
+  本地曲目可用性在原生重新检查文件指纹；设备文本映射为固定标签，未知文本为“其他设备”。
+- 本机历史以账号代次隔离，不将登录状态当成本地库可用性的前提。未初始化/退出/301过期
+  会话均可使用对应guest本机记录；native没有uid就不会读取远端。此前实际游客GUI发现
+  useHistory只接authenticated/signed_out，301导致整页被挡，已修复并新增前端回归测试。
+- PlaySelection::History 接收history_kind/revision/ids/index/quality，不接原始元数据。
+  原生要求ID属于显示快照、无重复、维持原顺序；允许筛选后的有序子集。
+  异步加载前后均核对账号代次、播放意图序号及快照版本；旧选择不会覆盖新队列。
+  song/voice可批量播放，album/playlist/podcast/audiobook每次展开单个资源的完整队列。
+
+播放调用顺序
+- 在线歌曲：/api/v3/song/detail（每组最多100）→/api/song/enhance/privilege→原生播放器
+  /api/song/enhance/player/url/v1。详情/权限失败不替换正在播放的队列；缓存历史不等于播放授权。
+- 专辑：/api/album/v3/detail→/api/album/privilege，再按原生歌曲链加载；歌单：
+  /api/v6/playlist/detail取trackIds、排除v=-1，再按歌曲链加载。来源scene为history，保留
+  专辑/歌单身份供实际播放后的本机记账。页面无需拿完整曲目列表拼接授权请求。
+- 声音：保留节目ID与mainSong ID；缺主歌曲时读/api/dj/program/detail补全，并保留同radio
+  的分类元数据。播客/书：PodcastLibrary完整radio分页链→声音队列。沿用已有
+  /api/dj/play/url/check和播放音源解析，未恢复的收费/权限边界不因此放宽。
+- 本地文件：LocalLibrary.resource重新核对文件/分轨指纹，CUE保留offset/duration；
+  内容变更时要求从本地库重新选择，不能用历史旧元数据放行新文件。
+- 下载曲目：本机记录保留原生任务ID，调用既有已完成下载文件/权益校验；不向前端暴露任务
+  授权元数据。下载不可用时仅通过新的在线详情、权限、音源链回退。声音下载仍保留既有
+  节目权限链，不能宣称所有历史声音都能离线播放。
+
+界面与失败恢复
+- 左侧“最近播放”；歌曲、播客、有声书、声音、歌单、专辑六标签。搜索复用官方恢复的
+  文字归一化；桌面表格68px固定行高、缓冲虚拟窗口，300首及更大合并列表不全量建DOM。
+  双击或行内播放；歌曲/声音播放全部按筛选后的顺序；资源名称打开现有详情/操作入口。
+- 多端开关、当前匹配数量、最近读取时间；勾选/全选、Delete或Backspace进入确认，
+  清空确认明确针对整类历史。名字省略保留完整提示，行尾SVG按钮不依赖字体宽度。
+  操作不删除音乐文件、收藏或歌单内容；真实账号未执行任何历史删除/清空/上报。
+- 未决写操作显示本机已移除数量与远端状态。核对仅重新读取；“保留当前状态”另有确认，
+  不声称旧请求成功，不重发。通信回包完全丢失且尚无原生日志时，UI保留原UUID并允许
+  CancelUnseen：同分类互斥锁内将未注册UUID落为Cancelled；迟到的原调用只返回Cancelled。
+  若原请求已登记，返回其真实状态，不能将Uncertain伪装为取消成功。
+  分类切换保留各自未知意图；账号切换清空旧界面状态。native日志跨重启保留。
+- 深浅色用现有语义颜色。页面/标签/确认弹窗沿用transform/opacity动画及减少动态效果规则；
+  modal退场结束后恢复原按钮焦点。760×540下压缩标题与工具栏间距；异常说明区有界滚动，
+  不挤掉列表和底部说明。不是官方像素级一致：始终展示六标签，未复刻官方播客AB隐藏开关，
+  确认/未知结果处理与离线游客浏览为明确的社区客户端增强。
+
+本增量验证（开发分支，不改变已发布0.1.0）
+- history.rs新增CancelUnseen迟到执行拦截及进度版本稳定性。client_history.rs七项覆盖六类
+  安全DTO/大ID、六条回放队列、过期/越权/重复/重排序拒绝、权限失败保留队列、切号迟到、
+  下载不可用时新权限回退；client_local/client_downloads新增指纹变更与下载复用检查。
+  frontend/tests/history.test.ts八项覆盖缓存、未决写入、跨标签未知意图、取消、游客301与
+  账号/导航迟到结果。IPC隔离窗口拒绝与账号代次测试包含两个新命令。
+- .build/history-ui-d/first：24个真实Linux WebView状态、24张截图，六类表格、300行虚拟
+  滚动、文字归一化、空结果、浅深色、760×540、删除取消焦点、合成回包丢失/核对/保留/
+  拒绝/离线。包括小窗口同时未决与读取失败，按钮不越列、底部不被播放器遮住。
+  真实音乐请求0；模拟删除请求恰好2次。首轮a暴露小窗口底部遮挡，b修复后21状态，c增加
+  小窗口异常组合后23状态通过。d进一步修复侧栏固定项遮挡，全部导航入口
+  在760×540内可滚到可点击区域，最终内嵌资源24状态通过。不能把Xvfb当实机帧率或真实GPU性能证据。
+- .build/history-local-replay-c：实际GTK初始化后libmpv/null播放合成CUE/NCM，游客历史页
+  可见，历史重播CUE队列1条、源起点30秒、区间90秒、实际位置1.48秒；原始库队列随后恢复。
+  暂停重开后历史时间与SQLite一致；原8状态审计继续通过，新增历史页/回放2张截图。
+  LC_NUMERIC=C，LC_MESSAGES=en_US.UTF-8；真实音乐请求/远端变更均0。
+  a/b保留了游客301未显示历史的失败证据，不能计为通过。
+- .build/private-history-live-ui-c/first：当前账号正式六页读取300歌曲/8播客/0有声书/
+  55声音/92歌单/96专辑；与原生SQLite记录数一致。点击歌曲历史后实际原生队列300条，
+  null输出state=playing、位置0.597秒、标准音质，7个界面状态/截图。非空有声书仍仅合成验证。
+  a/b自动脚本在页面离场/网络尚未就绪时点击，未发播放请求；已改为等待当前歌曲标签、
+  可用按钮和离场动画结束，c通过。未将历史空结果或DOM进度条当播放成功。
+- 独立审计：desktop/scripts/audit_history_proof.py，汇总.build/history-ui-final-audit.json，
+  同时核对真实DOM几何记录、截图数量、nativePlayer/队列、API读取允许列表和SQLite。
+  只读当前账号、播放器请求与null解码不代表真实声卡听感；未执行真实历史写入。
+- 上一原生记账提交baf8d70170bea1e6047c66c2795d961ecd99cce5完整CI40673822037已在
+  前端/Linux/Windows/CI gate成功并合入main。本增量新增24状态Linux/Windows检查到各自
+  runner；本增量自己的CI仍须另核对，不能借用上一提交成功。
+
+复现本增量
+  cargo test -p cumulus-core --test history --test client_history --test client_local --test client_downloads --locked
+  npm --prefix frontend ci && npm --prefix frontend run format:check && npm --prefix frontend test && npm --prefix frontend run build
+  cargo build -p cumulus-desktop --example catalog_ui_probe --features custom-protocol --locked
+  dbus-run-session -- xvfb-run -a python3 scripts/ci/catalog_smoke.py --binary <catalog_ui_probe路径> --root <新目录> --history
+Windows直接运行同一脚本，二进制.exe，--runtime指向已打包的native依赖目录；不使用Xvfb。
+截图采集使用desktop/scripts/capture_history_proof.py。live模式必须显式CUMULUS_CATALOG_PROFILE
+指向已有PC会话；严格音乐读取允许列表排除历史写接口。正式运行不依赖测试Python脚本。
+
+最终本地检查：Rust fmt、严格workspace/all-targets/custom-protocol Clippy通过；209个target/suite
+合计936项测试通过、0失败/忽略。前端锁文件安装、格式、163项测试、类型检查及生产构建通过；
+发行规则15项测试通过。日志.build/history-ui-{clippy-final,workspace-tests-final}.log及
+history-ui-front-{format,tests,build}-final.log（侧栏改动后另有format/tests-navigation日志）。
+原有编辑按钮/菜单/嵌套弹窗焦点/主题持久化/小窗口与行尾布局29状态再验通过：
+.build/history-ux-regression-final；与新24状态合计53个UIUX状态，本轮均为实际生产WebView。
+这29状态使用只读合成账号；测试脚本不是正式业务实现。

@@ -1,5 +1,5 @@
 {
-  "scope": "Official PC 3.1.42.205594 recent play history; ongoing migration",
+  "scope": "Official PC 3.1.42.205594 recent history: native domain, recorder, typed desktop browser and replay",
   "sourceRoot": "references/netease-3.1.42.205594-analysis/recovered-js/modules",
   "features": [
     {
@@ -20,7 +20,12 @@
       ],
       "executable": "core/examples/history_read.rs",
       "liveEvidence": ".build/history-read-a-audit.json: 300 songs, 96 albums, 92 playlists, 55 voices, 8 podcasts, empty audiobooks",
-      "desktop": "History browser IPC/UI and history selection pending; native playback recording implemented separately"
+      "desktop": "history_page/history_command IPC, HistoryPage six-category table, native PlaySelection::History",
+      "ui": [
+        "frontend/src/components/HistoryPage.vue",
+        "frontend/src/components/history/HistoryConfirm.vue",
+        "frontend/src/composables/useHistory.ts"
+      ]
     },
     {
       "feature": "Local and multi-device merge",
@@ -49,7 +54,7 @@
         "guest_local_files_are_distinct_and_never_authorize_remote_history",
         "account_change_and_inflight_sync_disable_drop_late_history"
       ],
-      "pending": "History page controls and multi-device preference UI"
+      "desktop": "multi-device toggle; native guest/account isolation; unknown/expired login status does not block local records"
     },
     {
       "feature": "Delete/clear intents and recovery",
@@ -67,10 +72,11 @@
         "native_replays_arriving_while_delete_waits_are_not_deleted_on_acknowledgement",
         "late_mutation_result_cannot_publish_across_account_generation",
         "local_only_clear_and_definite_rejection_preserve_honest_partial_outcomes",
-        "storage_failure_after_remote_ack_keeps_a_nonreplayable_pending_intent"
+        "storage_failure_after_remote_ack_keeps_a_nonreplayable_pending_intent",
+        "cancelling_unseen_intent_prevents_late_execution_without_hiding_started_work"
       ],
       "liveBoundary": "No real account history deletion, clear or upload was performed; writes are synthetic",
-      "desktop": "Pending explicit confirmation and recovery UI"
+      "desktop": "explicit confirmation; native journal recovery; unseen IPC intent cancellation with original UUID"
     },
     {
       "feature": "Automatic native-player local history and nonfatal persistence recovery",
@@ -95,9 +101,45 @@
         "core/tests/fixtures/history-audiobook.json"
       ],
       "executable": "desktop/examples/local_ui_probe.rs + desktop/scripts/capture_local_proof.py",
-      "boundary": "Native local recording only; does not upload listening history. History page/selection pending.",
+      "boundary": "Native local recording only; does not upload listening history. Formal history browser/replay added below.",
       "liveEvidence": ".build/history-local-ui-c-audit.json: 8 Linux WebView states/screenshots, CUE/NCM native null playback, nonfatal storage failure, paused reopen and SQLite/locale checks",
       "audit": "desktop/scripts/audit_local_history_proof.py"
+    },
+    {
+      "feature": "Typed history replay and native file/permission checks",
+      "official": [
+        "HistoryPlay handlePlayAll",
+        "HistoryTrack rows/Delete/Backspace",
+        "HistoryDjRadio/HistoryAudiobook NormalAudioTable",
+        "M1384 historyList metadata/privilege refresh"
+      ],
+      "rust": [
+        "core/src/client/history/selection.rs",
+        "core/src/client/history/view.rs",
+        "desktop/src/history.rs"
+      ],
+      "tests": [
+        "core/tests/client_history.rs",
+        "core/tests/client_local.rs guest_history_replays_current_files_and_rejects_changed_fingerprints",
+        "core/tests/client_downloads.rs history_reuses_completed_download_after_native_offline_verification",
+        "frontend/tests/history.test.ts",
+        "desktop/tests/ipc.rs"
+      ],
+      "desktopEvidence": ".build/history-ui-final-audit.json: 24 synthetic UI states + native guest replay and paused reopen + 7 real-account read/play states",
+      "executables": [
+        "desktop/examples/catalog_ui_probe.rs (CUMULUS_HISTORY_PROOF=1)",
+        "desktop/examples/history_ui_probe.js",
+        "desktop/examples/history_live_probe.js",
+        "desktop/examples/local_ui_probe.rs",
+        "scripts/ci/catalog_smoke.py --history"
+      ],
+      "boundaries": [
+        "No real history delete/clear/upload",
+        "No nonempty live audiobook proof",
+        "Null audio output; no physical display FPS/soundcard claim",
+        "Official missing subcomponents reconstructed; not pixel-exact",
+        "Current increment Windows CI requires exact new commit result"
+      ]
     }
   ],
   "alternativeClientSources": [],
