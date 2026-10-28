@@ -26,6 +26,9 @@ struct Backend {
     offline: AtomicBool,
     lose_write: AtomicBool,
     hold_song: AtomicBool,
+    likes: Mutex<Vec<String>>,
+    like_writes: Mutex<Vec<Value>>,
+    lose_like: AtomicBool,
     started: Notify,
     release: Notify,
 }
@@ -36,6 +39,22 @@ impl Api for Backend {
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             match path {
+                "/api/song/like/get" => {
+                    Ok(json!({"code":200,"ids":self.likes.lock().unwrap().clone()}))
+                }
+                "/api/song/like" => {
+                    self.like_writes.lock().unwrap().push(payload.clone());
+                    let id = payload["trackId"].as_str().unwrap().to_owned();
+                    let mut likes = self.likes.lock().unwrap();
+                    likes.retain(|value| value != &id);
+                    if payload["like"] == true {
+                        likes.push(id);
+                    }
+                    if self.lose_like.swap(false, Ordering::AcqRel) {
+                        return Err(Error::Transport("synthetic lost like reply".into()));
+                    }
+                    Ok(json!({"code":200}))
+                }
                 "/api/mlog/detail/v1" => {
                     let mut result = self.mv.request(path, payload, cache).await?;
                     result["data"]["resource"]["data"]["relateSong"] = json!([{"id":"7","name":"Related song","privilege":{"id":"7","pl":320000}}]);
@@ -109,6 +128,9 @@ impl Fixture {
             offline: AtomicBool::new(false),
             lose_write: AtomicBool::new(false),
             hold_song: AtomicBool::new(false),
+            likes: Mutex::new(vec![]),
+            like_writes: Mutex::new(vec![]),
+            lose_like: AtomicBool::new(false),
             started: Notify::new(),
             release: Notify::new(),
         });
@@ -476,3 +498,6 @@ async fn cancelled_account_retirement_keeps_old_output_owned_until_native_stop_a
 
 #[path = "support/native_media_client.rs"]
 mod native_media_tests;
+
+#[path = "support/native_likes_client.rs"]
+mod native_likes_tests;

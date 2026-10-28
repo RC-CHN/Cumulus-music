@@ -1,6 +1,7 @@
 //! Native menus/media controls share the ordinary player use cases. A captured
 //! target is deliberately neither serializable nor constructible by a WebView.
 mod actions;
+mod likes;
 mod view;
 use super::{
     MusicClient,
@@ -15,6 +16,7 @@ use crate::{
         engine::Cancellation,
     },
 };
+pub use likes::{NativeLikeResource, NativeLikeSelection, NativeLikeSnapshot};
 use std::sync::atomic::Ordering;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

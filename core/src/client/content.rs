@@ -1,10 +1,7 @@
 use super::{MusicClient, dto::*, mapping};
 use crate::{
     Error, Result,
-    account::{
-        AccountApi,
-        resources::{AccountResources, ResourceKind},
-    },
+    account::resources::{AccountResources, ResourceKind},
     catalog::{CatalogApi, SearchOptions},
     playlist::PlaylistApi,
     protocol::api::identifier,
@@ -190,10 +187,12 @@ impl MusicClient {
     }
 
     pub async fn liked_ids(&self) -> Result<AccountData<Vec<String>>> {
-        let (token, value) = self
-            .session
-            .run(|api, uid| async move { AccountApi::new(api).liked_ids(&json!(uid)).await })
+        let token = self.session.token()?;
+        let value = AccountResources::new(self.session.clone())?
+            .refresh_for(&token, ResourceKind::Liked)
             .await?;
+        let value: Vec<String> = serde_json::from_value(value)?;
+        self.session.with_token(&token, |_| Ok(()))?;
         Ok(AccountData {
             epoch: token.generation.to_string(),
             value,

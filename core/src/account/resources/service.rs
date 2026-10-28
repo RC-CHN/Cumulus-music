@@ -41,6 +41,33 @@ impl AccountResources {
         }
         Ok(snapshot.token)
     }
+    /// Local observation for native hosts. Unknown cache is not an unliked state.
+    pub fn membership_for(
+        &self,
+        token: &SessionToken,
+        kind: ResourceKind,
+        id: &str,
+    ) -> Result<(Option<bool>, Option<MutationRecord>)> {
+        if kind == ResourceKind::Settings {
+            return Err(Error::InvalidInput("settings are not memberships"));
+        }
+        let id = identifier(&json!(id))?;
+        self.session.with_token(token, |uid| {
+            let observed = self
+                .store
+                .get(uid, "resources", kind.as_str())?
+                .map(|value| {
+                    snapshot::value(kind, &id, &value).and_then(|value| {
+                        value
+                            .as_bool()
+                            .ok_or(Error::Response("invalid membership observation"))
+                    })
+                })
+                .transpose()?;
+            let operation = self.load(uid, &record::key(kind, &id))?;
+            Ok((observed, operation))
+        })
+    }
     pub async fn refresh_for(&self, token: &SessionToken, kind: ResourceKind) -> Result<Value> {
         if kind == ResourceKind::Settings {
             return Ok(AccountSettings::new(self.session.clone())?

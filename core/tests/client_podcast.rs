@@ -70,7 +70,7 @@ impl Api for Backend {
                 "/api/my/podcast/page/list" => {
                     json!({"code":200,"data":{"radioIdList":[7],"myPodcastVOList":[radio()]}})
                 }
-                "/api/resource/like" => {
+                "/api/resource/like" | "/api/resource/unlike" => {
                     let id = p["threadId"]
                         .as_str()
                         .unwrap()
@@ -78,7 +78,10 @@ impl Api for Backend {
                         .unwrap()
                         .parse()
                         .unwrap();
-                    self.liked.lock().unwrap().push(id);
+                    self.liked.lock().unwrap().retain(|v| *v != id);
+                    if path.ends_with("/like") {
+                        self.liked.lock().unwrap().push(id);
+                    }
                     if self.lost.load(Ordering::SeqCst) {
                         return Err(Error::State("lost reply"));
                     }
@@ -300,4 +303,57 @@ async fn uncertain_writes_are_visible_offline_and_isolated_from_the_next_account
             .is_empty()
     );
     assert_eq!(api.calls.lock().unwrap().len(), calls);
+}
+
+#[tokio::test]
+async fn native_voice_like_uses_voice_identity_and_recovers_lost_reply_readonly() {
+    let (_dir, api, _session, client) = fixture();
+    api.count.store(2, Ordering::SeqCst);
+    let page = client
+        .podcast_page("1", query(scope(), 0), true)
+        .await
+        .unwrap();
+    client
+        .play_selection(
+            "1",
+            PlaySelection::Podcast {
+                scope: scope(),
+                start_id: Some("2".into()),
+                revision: page.revision,
+            },
+        )
+        .await
+        .unwrap();
+    let selection = client.native_like_selection().unwrap().unwrap();
+    assert_eq!(
+        selection.resource,
+        cumulus_core::client::native_media::NativeLikeResource::Voice("2".into())
+    );
+    let view = client.native_like_snapshot(&selection).unwrap();
+    assert_eq!(view.observed, Some(false));
+    api.lost.store(true, Ordering::SeqCst);
+    assert!(client.native_like_toggle(&view).await.is_err());
+    let pending = client.native_like_snapshot(&selection).unwrap();
+    assert!(pending.pending);
+    assert!(matches!(
+        client.native_like_toggle(&pending).await,
+        Err(Error::MutationUncertain)
+    ));
+    api.lost.store(false, Ordering::SeqCst);
+    let liked = client.native_like_refresh(&selection).await.unwrap();
+    assert_eq!(liked.observed, Some(true));
+    assert!(!liked.pending);
+    client.native_like_toggle(&liked).await.unwrap();
+    assert_eq!(
+        client.native_like_snapshot(&selection).unwrap().observed,
+        Some(false)
+    );
+    let calls = api.calls.lock().unwrap();
+    let writes: Vec<_> = calls
+        .iter()
+        .filter(|(path, _)| path == "/api/resource/like" || path == "/api/resource/unlike")
+        .collect();
+    assert_eq!(writes.len(), 2);
+    assert!(writes.iter().all(|(_, p)| p["threadId"] == "A_DJ_1_2"));
+    assert!(!calls.iter().any(|(path, _)| path == "/api/song/like"));
 }
