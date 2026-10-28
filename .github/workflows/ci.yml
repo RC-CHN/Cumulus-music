@@ -134,6 +134,8 @@ jobs:
           dbus-run-session -- xvfb-run -a python3 scripts/ci/scroll_smoke.py --binary .build/target/debug/examples/scroll_ui_probe --root .build/ci-scroll-linux
           cargo build -p cumulus-desktop --example ux_ui_probe --features custom-protocol --locked
           dbus-run-session -- xvfb-run -a python3 scripts/ci/ux_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-ux-linux
+          cargo build -p cumulus-desktop --example saved_accounts_ui_probe --features custom-protocol --locked
+          LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a python3 scripts/ci/accounts_smoke.py --binary .build/target/debug/examples/saved_accounts_ui_probe --root .build/ci-accounts-linux
           cargo build -p cumulus-desktop --example catalog_ui_probe --features custom-protocol --locked
           dbus-run-session -- xvfb-run -a python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-linux
           dbus-run-session -- xvfb-run -a python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-collections-linux --collections
@@ -156,6 +158,8 @@ jobs:
           python scripts/ci/scroll_smoke.py --binary .build/target/debug/examples/scroll_ui_probe.exe --root .build/ci-scroll-windows
           cargo build -p cumulus-desktop --example ux_ui_probe --features custom-protocol --locked
           python scripts/ci/ux_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-ux-windows --runtime .build/package-stage/windows-x64/native
+          cargo build -p cumulus-desktop --example saved_accounts_ui_probe --features custom-protocol --locked
+          python scripts/ci/accounts_smoke.py --binary .build/target/debug/examples/saved_accounts_ui_probe.exe --root .build/ci-accounts-windows --runtime .build/package-stage/windows-x64/native
           cargo build -p cumulus-desktop --example catalog_ui_probe --features custom-protocol --locked
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-catalog-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-collections-windows --runtime .build/package-stage/windows-x64/native --collections
@@ -183,6 +187,7 @@ jobs:
             .build/ci-scroll*.log
             .build/ci-graphics*/
             .build/ci-ux*/
+            .build/ci-accounts*/
             .build/ci-catalog*/
             .build/ci-collections*/
             .build/ci-history*/

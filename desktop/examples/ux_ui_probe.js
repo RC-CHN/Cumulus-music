@@ -56,6 +56,17 @@
     await wait(() => one(selector), `page ${label}`);
     await sleep(500);
   }
+  async function playlistConfirmation(label, suffix) {
+    click(button(label));
+    await wait(() => button('返回编辑'), 'playlist confirmation');
+    await capture(`playlist_confirmation_${suffix}`);
+    assert(document.activeElement === button('返回编辑'), 'playlist confirmation must focus return to editing');
+    assert(one('.playlist-dialog h2').textContent !== '编辑歌单', 'playlist dialog must announce its current confirmation');
+    if (suffix === 'small_dark') one('.playlist-dialog').dispatchEvent(new Event('cancel', { cancelable: true }));
+    else click(button('返回编辑'));
+    await wait(() => one('[aria-label="歌单名称"]'), 'return to playlist editor');
+    assert(document.activeElement === button(label), 'return to editor must restore the original action');
+  }
   try {
     await wait(() => all('.track-row').length, 'daily');
     await sleep(700);
@@ -90,6 +101,11 @@
     const name = one('[aria-label="歌单名称"]'); name.value = '午后散步'; name.dispatchEvent(new Event('input', { bubbles: true }));
     await wait(() => !button('保存修改').disabled, 'valid edited name');
     await capture('editor_light');
+    for (const [label, suffix] of [['清空歌曲', 'clear'], ['设为公开', 'publish'], ['删除歌单', 'delete']]) {
+      await playlistConfirmation(label, suffix);
+      assert(one('[aria-label="歌单名称"]').value === '午后散步', 'return from confirmation must preserve unsaved edits');
+    }
+    await capture('editor_returned');
     click(one('[aria-label="替换歌单封面"]'));
     await wait(() => one('.cover-dialog[open]'), 'nested cover editor'); await capture('cover_dialog');
     click(one('[aria-label="关闭封面编辑"]')); await wait(() => !one('.cover-dialog'), 'close nested cover');
@@ -105,6 +121,7 @@
     await wait(() => !one('.action-menu'), 'Escape closes menu');
     assert(document.activeElement === one('[aria-label="外观主题"]'), 'theme menu Escape focus');
     await edit(); await capture('small_editor_dark'); await closeEditor();
+    await edit(); await playlistConfirmation('删除歌单', 'small_dark'); await closeEditor();
     await page('我的歌单', '.playlist-card');
     const grid = one('.playlist-grid'); grid.scrollTop = grid.scrollHeight; await sleep(250);
     all('.playlist-shell').at(-1).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 }));
@@ -140,6 +157,6 @@
     assert(document.activeElement === one('[aria-label="均衡器"]'), 'equalizer focus restoration');
     await theme('system'); await theme('dark');
     localStorage.setItem('cumulus.ux.finished', '1');
-    await emit('complete', { ok: true, stageCount, realMusicRequests: 0, menuKeyboard: true, modalFocusRestored: true, smallEditorSaveVisible: true, explicitThemeSaved: true, trackActionsContained: true, longDuration: true });
+    await emit('complete', { ok: true, stageCount, realMusicRequests: 0, menuKeyboard: true, modalFocusRestored: true, smallEditorSaveVisible: true, explicitThemeSaved: true, trackActionsContained: true, longDuration: true, confirmationFocus: true, unsavedEditsPreserved: true });
   } catch (error) { await emit('failed', { ok: false, error: String(error), stageCount, ...facts() }); }
 })();
