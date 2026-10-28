@@ -18,6 +18,9 @@ import { useSettings } from './composables/useSettings';
 import { useRelay } from './composables/useRelay';
 import { useRelayPublication } from './composables/useRelayPublication';
 import RelayPrompt from './components/RelayPrompt.vue';
+import LikeRecoveryDialog from './components/LikeRecoveryDialog.vue';
+import LikeRecoveryNotice from './components/LikeRecoveryNotice.vue';
+import { useLikeRecovery } from './composables/useLikeRecovery';
 import { useHistory } from './composables/useHistory';
 import type { HistoryKind, HistoryResource } from './services/history';
 import type { CatalogResource, CatalogSelectionPage } from './services/catalog';
@@ -401,6 +404,19 @@ async function authorized() {
   await music.bootstrap(false);
 }
 let accountListener: (() => void) | undefined;
+const likeRecovery = useLikeRecovery(
+  core,
+  () => {
+    void music.bootstrap(false);
+  },
+  () => {
+    void music.refreshLikes();
+  },
+);
+const likeRecoveryFocus = () => document.querySelector<HTMLButtonElement>('.settings-button');
+watch(music.likeActivity, () => {
+  void likeRecovery.refresh();
+});
 let nativeLikeListener: (() => void) | undefined;
 let mounted = true;
 onMounted(async () => {
@@ -428,6 +444,7 @@ onMounted(async () => {
         return;
       if (value.resource.kind === 'voice') void podcasts.externalLikeChanged();
       else void music.refreshLikes();
+      void likeRecovery.refresh();
     });
     if (mounted) nativeLikeListener = stop;
     else stop();
@@ -446,6 +463,7 @@ watch(
   () => {
     playlistDialog.value = undefined;
     playlistManager.connect(account.value);
+    likeRecovery.connect(account.value);
     downloadDialog.value = undefined;
     void downloads.connect(account.value);
     void cloud.connect(account.value);
@@ -470,6 +488,7 @@ watch(
   },
 );
 onUnmounted(() => local.dispose());
+onUnmounted(() => likeRecovery.dispose());
 onUnmounted(() => localMatching.dispose());
 onUnmounted(() => player.dispose());
 onUnmounted(() => downloads.dispose());
@@ -787,6 +806,7 @@ onUnmounted(() => window.removeEventListener('keydown', keyboard));
       <WindowControls />
     </header>
     <main class="main-content">
+      <LikeRecoveryNotice :model="likeRecovery" />
       <Transition name="page" mode="out-in">
         <div class="page-view" :key="pageKey">
           <div v-if="initializing" class="empty-state" role="status">
@@ -939,7 +959,7 @@ onUnmounted(() => window.removeEventListener('keydown', keyboard));
             :playable="player.ready.value"
             :song-likes="liked"
             :song-busy="busyLikes"
-            :song-notice="music.notice.value || music.error.value"
+            :song-notice="music.likeNotice.value || music.notice.value || music.error.value"
             @related="playMvRelated"
             @related-like="music.like"
             @open="openMv"
@@ -1021,8 +1041,9 @@ onUnmounted(() => window.removeEventListener('keydown', keyboard));
                 <Icon name="refresh" />
               </button>
             </div>
-            <div v-if="notice" class="notice" role="status">
-              {{ notice }}<button class="text-button" @click="music.resources">刷新</button>
+            <div v-if="notice || music.likeNotice.value" class="notice" role="status">
+              {{ music.likeNotice.value || notice
+              }}<button class="text-button" @click="music.resources">刷新</button>
             </div>
             <div v-if="error" class="error-state" role="alert">
               <span>{{ error }}</span
@@ -1200,6 +1221,13 @@ onUnmounted(() => window.removeEventListener('keydown', keyboard));
       :quality="player.view.value?.requestedQuality ?? 'standard'"
     />
     <WindowClosePrompt />
+    <ModalTransition :fallback-focus="likeRecoveryFocus">
+      <LikeRecoveryDialog
+        v-if="likeRecovery.open.value"
+        :key="account.epoch"
+        :model="likeRecovery"
+      />
+    </ModalTransition>
     <PlayerBar
       :player="player"
       :liked="playingLikes"

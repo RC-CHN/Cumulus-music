@@ -96,3 +96,22 @@ pub async fn set_liked(
         .await
         .map_err(Into::into)
 }
+#[tauri::command]
+pub fn like_recovery(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    offset: usize,
+) -> Result<AccountData<LikeRecoveryView>, ClientError> {
+    client.like_recovery(&epoch, offset).map_err(Into::into)
+}
+#[tauri::command]
+pub async fn recover_like(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    command: LikeRecoveryCommand,
+) -> Result<AccountData<LikeOperationView>, ClientError> {
+    client
+        .recover_like(&epoch, command)
+        .await
+        .map_err(Into::into)
+}

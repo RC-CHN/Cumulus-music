@@ -151,6 +151,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 fm::fm_trash,
                 commands::liked_ids,
                 commands::set_liked,
+                commands::like_recovery,
+                commands::recover_like,
                 player::watch_player,
                 player::unwatch_player,
                 player::player_action,

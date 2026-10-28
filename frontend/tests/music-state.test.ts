@@ -209,3 +209,53 @@ test('an old native like refresh failure cannot expire the replacement account',
   assert.equal(music.account.value.epoch, '2');
   assert.equal(music.account.value.status, 'authenticated');
 });
+
+test('a late failed like cannot expire a replacement account or remove its busy marker', async () => {
+  const old = deferred<AccountData<import('../src/services/contracts.ts').LikeResult>>();
+  let epoch = '1';
+  const music = useMusic(
+    backend({
+      accountSnapshot: async () => ({
+        epoch,
+        status: 'authenticated',
+        nickname: 'new',
+        avatarUrl: null,
+      }),
+      likedIds: async () => data([], epoch),
+      playlists: async () => data([], epoch),
+      dailySongs: async () => data(page, epoch),
+      setLiked: () => old.promise,
+    }),
+  );
+  await music.bootstrap();
+  const writing = music.like(song);
+  epoch = '2';
+  await music.bootstrap(false);
+  music.busyLikes.value = new Set(['1']);
+  old.reject({ code: 'session_expired', message: 'old request' });
+  await writing;
+  assert.equal(music.signedIn.value, true);
+  assert.equal(music.account.value.epoch, '2');
+  assert.equal(music.busyLikes.value.has('1'), true);
+  assert.equal(music.likeActivity.value, 0);
+});
+
+test('recovery clears only the like error while preserving unrelated page errors', async () => {
+  const music = useMusic(
+    backend({
+      setLiked: async () => {
+        throw { code: 'network', message: '喜欢请求回包丢失' };
+      },
+    }),
+  );
+  await music.bootstrap();
+  music.error.value = '页面读取失败';
+  music.notice.value = '歌单已更新';
+  await music.like(song);
+  assert.equal(music.likeNotice.value, '喜欢请求回包丢失');
+  assert.equal(music.error.value, '页面读取失败');
+  await music.refreshLikes();
+  assert.equal(music.likeNotice.value, '');
+  assert.equal(music.error.value, '页面读取失败');
+  assert.equal(music.notice.value, '歌单已更新');
+});

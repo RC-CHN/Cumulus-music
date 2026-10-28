@@ -42,12 +42,14 @@ export function useMusic(core: CoreClient = useCore()) {
   const playlists = shallowRef<PlaylistView[]>([]);
   const liked = shallowRef(new Set<string>());
   const busyLikes = shallowRef(new Set<string>());
+  const likeActivity = ref(0);
   const page = shallowRef<Page>({ kind: 'daily' });
   const result = shallowRef<TrackPage>();
   const loading = ref(false);
   const initializing = ref(true);
   const error = ref('');
   const notice = ref('');
+  const likeNotice = ref('');
   const libraryError = ref('');
   const history: Page[] = [];
   const historyLength = ref(0);
@@ -70,6 +72,11 @@ export function useMusic(core: CoreClient = useCore()) {
       result.value = undefined;
     }
   }
+  function handleLike(e: unknown) {
+    const issue = failure(e);
+    if (issue.code === 'session_expired' || issue.code === 'profile_changed') handle(e);
+    else likeNotice.value = issue.message;
+  }
   async function resources() {
     const current = ++resourceRequest;
     const likesAtStart = likeRevision;
@@ -87,7 +94,10 @@ export function useMusic(core: CoreClient = useCore()) {
     const likes = replies[1];
     if (likes.status === 'fulfilled') {
       const v = accept(likes.value);
-      if (v && likesAtStart === likeRevision) liked.value = new Set(v);
+      if (v && likesAtStart === likeRevision) {
+        liked.value = new Set(v);
+        likeNotice.value = '';
+      }
     } else {
       libraryError.value = failure(likes.reason).message;
       handle(likes.reason);
@@ -99,10 +109,12 @@ export function useMusic(core: CoreClient = useCore()) {
     try {
       const response = await core.likedIds();
       const value = accept(response);
-      if (value && revision === likeRevision && account.value.epoch === epoch)
+      if (value && revision === likeRevision && account.value.epoch === epoch) {
         liked.value = new Set(value);
+        likeNotice.value = '';
+      }
     } catch (error) {
-      if (revision === likeRevision && account.value.epoch === epoch) handle(error);
+      if (revision === likeRevision && account.value.epoch === epoch) handleLike(error);
     }
   }
   async function load(more = false) {
@@ -171,6 +183,7 @@ export function useMusic(core: CoreClient = useCore()) {
         liked.value = new Set();
         result.value = undefined;
         busyLikes.value = new Set();
+        likeNotice.value = '';
       }
       account.value = next;
       if (signedIn.value) {
@@ -205,16 +218,14 @@ export function useMusic(core: CoreClient = useCore()) {
     void load();
   }
   async function like(track: TrackView) {
-    if (busyLikes.value.has(track.id)) return;
+    if (!signedIn.value || busyLikes.value.has(track.id)) return;
+    const owner = account.value.epoch;
+    const active = () => signedIn.value && account.value.epoch === owner;
     busyLikes.value = new Set(busyLikes.value).add(track.id);
-    notice.value = '';
+    likeNotice.value = '';
     likeRevision++;
     try {
-      const response = await core.setLiked(
-        account.value.epoch,
-        track.id,
-        !liked.value.has(track.id),
-      );
+      const response = await core.setLiked(owner, track.id, !liked.value.has(track.id));
       const value = accept(response);
       if (!value) return;
       if (value.observed !== null) {
@@ -223,17 +234,20 @@ export function useMusic(core: CoreClient = useCore()) {
         liked.value = next;
       }
       if (value.phase !== 'confirmed' && value.phase !== 'unchanged')
-        notice.value =
+        likeNotice.value =
           value.phase === 'rejected'
             ? '服务未确认此次操作，请刷新后核对'
             : '操作结果尚未确认，请刷新核对后再操作';
     } catch (e) {
-      handle(e);
+      if (active()) handleLike(e);
     } finally {
-      likeRevision++;
-      const next = new Set(busyLikes.value);
-      next.delete(track.id);
-      busyLikes.value = next;
+      if (active()) {
+        likeRevision++;
+        const next = new Set(busyLikes.value);
+        next.delete(track.id);
+        busyLikes.value = next;
+        likeActivity.value++;
+      }
     }
   }
   return {
@@ -242,12 +256,14 @@ export function useMusic(core: CoreClient = useCore()) {
     playlists,
     liked,
     busyLikes,
+    likeActivity,
     page,
     result,
     loading,
     initializing,
     error,
     notice,
+    likeNotice,
     libraryError,
     historyLength,
     signedIn,
