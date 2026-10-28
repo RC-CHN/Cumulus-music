@@ -87,6 +87,21 @@
         ".build/ui-proof/saved-accounts-20261027-a/reopen/complete.json",
         ".build/ui-proof/saved-accounts-20261027-b-small/reopen/complete.json"
       ]
+    },
+    {
+      "feature": "confirmation_focus_and_theme_recovery",
+      "official": "Existing switch-account explicit confirmation; focus policy and semantic themes are community UX refinements",
+      "implementation": [
+        "frontend/src/components/AccountDialog.vue",
+        "frontend/src/composables/useConfirmationFocus.ts"
+      ],
+      "evidence": [
+        ".build/ux-accounts-before/first/failed.json",
+        ".build/ux-accounts-fixed/independent-audit.json",
+        "scripts/ci/accounts_smoke.py"
+      ],
+      "linux": "10 actual WebView states and screenshots passed",
+      "windows": "pending exact commit CI"
     }
   ],
   "new_official_api_requests": [],
@@ -94,6 +109,6 @@
     "cleanup of unregistered historical candidates",
     "SDK and real new-login verification",
     "remaining full-desktop goal domains",
-    "Windows/macOS runtime and distribution verification"
+    "Windows confirmation-focus verification on exact commit CI"
   ]
 }

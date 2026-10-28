@@ -78,7 +78,7 @@ frontend/tests/saved-accounts.test.ts新增4项：旧列表回包、丢命令回
   CARGO_INCREMENTAL=0 cargo build -p cumulus-desktop --example saved_accounts_ui_probe --features custom-protocol --locked
   xvfb-run -a -s '-screen 0 1280x900x24' dbus-run-session -- env GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 \
     /usr/bin/python3 desktop/examples/run_auth_probe.py /absolute/new-proof-root \
-    --binary .build/target/debug/examples/saved_accounts_ui_probe --stage-prefix saved_ --screenshots 5 --reopen-screenshots 2
+    --binary .build/target/debug/examples/saved_accounts_ui_probe --stage-prefix saved_ --screenshots 8 --reopen-screenshots 2
 第二次使用同一命令加--reopen；首次加--small用另一个目录验证小窗口。
   python3 desktop/examples/audit_saved_accounts_probe.py /absolute/new-proof-root
 
@@ -88,3 +88,14 @@ frontend/tests/saved-accounts.test.ts新增4项：旧列表回包、丢命令回
 保留空目录/其他本地状态和完成日志；这是凭据逻辑清理，不声称磁盘取证意义的安全擦除。
 不影响该账号在官方手机/其他设备上的登录，不自动撤销远端会话，不删除云端账号或资源。
 本批仅操作虚构测试账号；当前平台为Linux，其他系统运行与分发仍需后续验证。
+
+2026-10-29 交互补查与 CI
+账号确认页新增明确焦点：进入移除/退出确认后聚焦取消；取消回到原入口；成功移除后
+入口消失，焦点回到关闭按钮。取消事件先返回账号列表；退出/清理进行中关闭按钮禁用，
+强制关闭进程仍不会撤销原生已提交的清理意图。dialog 标题参与可访问名称。
+已有两账号原生 fixture 新增浅/深色、小窗口、取消事件和焦点检查，首次8状态+重开2状态。
+.build/ux-accounts-before 复现旧版焦点落 body；.build/ux-accounts-fixed 10截图与只读SQLite
+审计通过。WebView 存储改为显式独立目录，避免测试间主题/存储串扰。
+scripts/ci/accounts_smoke.py 在 Linux、Windows 独立 runner 跑同一10状态和凭据审计。
+当前本地 Linux 已通过，Windows 本批尚待精确提交 CI；不存在 macOS 支持承诺。
+详情与其他编辑/主题回归见 ui-ux-validation.txt 的确认页补查。

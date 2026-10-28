@@ -49,12 +49,12 @@ Linux 实际窗口 + 截图（新目录，不覆盖旧证据）：
   GDK_BACKEND=x11 WEBKIT_DISABLE_DMABUF_RENDERER=1 LIBGL_ALWAYS_SOFTWARE=1 \
     dbus-run-session -- xvfb-run -a -s '-screen 0 1400x1000x24' \
     /usr/bin/python3 desktop/examples/run_auth_probe.py .build/ux-proof \
-    --binary .build/target/release/examples/ux_ui_probe --stage-prefix ux_ --screenshots 27
+    --binary .build/target/release/examples/ux_ui_probe --stage-prefix ux_ --screenshots 32
   同一命令再加 --reopen --reopen-screenshots 2，验证退出进程后仍恢复深色，再切回跟随系统。
   实际生产包使用嵌入资源；可选 CUMULUS_PROOF_FRONTEND_DIST / CUMULUS_UX_SCRIPT 只存在于
   独立研究示例中，用于快速比对，CI 会清除它们且只测嵌入资源。
 
-CI 两平台均运行 scripts/ci/ux_smoke.py：首次 27 个界面状态 + 重开 2 个状态；Windows
+CI 两平台均运行 scripts/ci/ux_smoke.py：首次 32 个界面状态 + 重开 2 个状态；Windows
 传 --runtime .build/package-stage/windows-x64/native 使用发行构建的音频依赖。
 断言主题、菜单键盘、嵌套/普通弹窗焦点、编辑位置、边界禁用项、760×540 操作可见性、
 无水平溢出、云盘错误不冒充空库，以及跨进程主题保存。单纯编译不算这些断言通过。
@@ -221,3 +221,29 @@ https://github.com/RC-CHN/Cumulus-music/actions/runs/40715546117
   .build/relay-recovery-ux-regression：原有27状态+进程重开2状态通过，嵌套弹窗/编辑位置/
   菜单键盘/主题记忆未回归。场景边界和首次故障注入失败原因见relay-recovery-contracts.txt。
 - 只在合成账号与生成PCM/null输出中验证，不宣称真实另一设备已收到记录，不替代物理FPS。
+
+确认页焦点与取消返回补查（2026-10-29）
+- 真实 WebView 复现两个缺陷：歌单进入清空/公开/删除确认时焦点落在 body，标题仍为
+  “编辑歌单”；账号进入退出确认时也丢失焦点。前者证据 .build/ux-confirmation-before-b，
+  后者 .build/ux-accounts-before（恢复批次生产 dist + 当前测试脚本）。均保留失败结果。
+  最初尝试在只读 UX fixture 中测试退出入口因该 fixture 无 canSignOut 而停止，记录为
+  .build/ux-confirmation-before；改用已有双合成账号的真实登录/凭据 fixture，不伪造按钮能力。
+- useConfirmationFocus 仅在确认步骤变化后处理焦点，不监听播放器 tick，也不做持续 DOM 扫描。
+  进入确认默认聚焦“返回编辑/取消”，返回后聚焦对应原入口；被移除账号的入口已消失时
+  聚焦关闭按钮。歌单标题与账号 dialog 的可访问名称反映当前确认步骤。
+- dialog cancel 事件（Escape 的浏览器边界）先取消当前确认，再次取消才关闭弹窗；
+  显式关闭按钮仍关闭整个弹窗。账号退出/清理进行中禁用关闭，避免 UI 丢掉处理中提示。
+  测试通过 DOM 派发原生 dialog cancel 事件验证处理函数，未将其称为物理键盘端到端测试。
+- .build/ux-confirmation-fixed：内嵌生产前端首次32状态+重开2状态，共34截图；原有编辑位置、
+  菜单键盘、嵌套弹窗焦点、长时长操作区、深浅色/小窗口/主题持久化均通过。
+  新增清空/公开/删除三种确认、返回编辑保留未保存名称、深色小窗口 cancel 返回。
+- .build/ux-accounts-fixed：8状态+重开2状态，共10截图；浅/深色退出确认、取消焦点返回、
+  760×540、移除确认、真实SQLite清理故障、显式重试及重开后凭据状态均通过。
+  独立审计确认目标合成凭据已清理、当前账号保持、取消退出没有发出 /api/logout。
+  .build/ux-accounts-ci 为新 accounts_smoke.py 的独立执行结果；两平台 CI 均接入该脚本。
+- 截图已逐项保存，并人工查看浅色清空、深色删除及深色退出确认；没有修改真实账号资源。
+  本地实际运行平台仍是 Linux/WebKitGTK；Windows 以本批精确提交的完整 CI 为准。
+  本轮是交互补查，不代替实机 GPU/帧率、真实声卡或完整业务目标验收。
+- .build/ux-confirmation-ci：更新后的正式 CI 驱动34状态通过；全工作区221组/target共
+  1017项Rust测试通过，失败/忽略均0；严格Clippy、Rust/前端格式、185项前端测试、
+  15项CI规则测试和生产前端构建通过。日志前缀 .build/ux-followup-*。
