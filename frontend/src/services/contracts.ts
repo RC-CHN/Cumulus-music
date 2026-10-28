@@ -21,6 +21,7 @@ import type { CollectionClient } from './collections';
 import type { HistoryClient } from './history';
 import type { SettingsClient } from './settings';
 import type { StartupPreferencesClient } from './startup';
+import type { WindowPreferencesClient, WindowLifecycleClient } from './window';
 import type { OutputClient } from './output';
 import type { RelayClient } from './relay';
 import type { RelayPublicationClient } from './relayPublication';
@@ -57,6 +58,8 @@ export interface CoreClient
     SettingsClient,
     StartupPreferencesClient,
     OutputClient,
+    WindowPreferencesClient,
+    WindowLifecycleClient,
     RelayClient,
     RelayPublicationClient {
   getAppInfo(): Promise<AppInfo>;

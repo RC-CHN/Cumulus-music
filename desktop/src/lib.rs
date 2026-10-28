@@ -10,6 +10,7 @@ mod fm;
 mod graphics;
 mod history;
 mod identity;
+pub mod lifecycle;
 mod local;
 mod member;
 mod mv;
@@ -49,12 +50,15 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
         .manage(watchman::EventHost::default())
         .manage(watchman::collection::MeasurementBridge::default())
         .on_window_event(|window, event| {
-            together::closing(window, event);
+            if !lifecycle::closing(window, event) {
+                together::closing(window, event);
+            }
             if window.label() == "main" && matches!(event, tauri::WindowEvent::Focused(true)) {
                 renewal::wake(window.app_handle());
             }
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 if window.label() == "main" {
+                    lifecycle::stop(window.app_handle());
                     renewal::stop(window.app_handle());
                     for (label, child) in window.app_handle().webview_windows() {
                         if label.starts_with("captcha-") {
@@ -123,6 +127,10 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 history::history_command,
                 settings::account_settings_page,
                 settings::startup_preferences,
+                settings::window_preferences,
+                settings::window_preferences_command,
+                lifecycle::window_lifecycle,
+                lifecycle::window_close_command,
                 settings::output_settings,
                 settings::output_command,
                 settings::startup_preferences_command,
@@ -218,6 +226,7 @@ pub fn run() {
             let client = configure_native_audio(client, &app.path().resource_dir()?, false);
             tauri::async_runtime::block_on(client.start_local_library())?;
             app.manage(client);
+            lifecycle::install(app.handle())?;
             renewal::start(app.handle());
             Ok(())
         })

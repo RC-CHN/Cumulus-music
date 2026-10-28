@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, watch, ref } from 'vue';
 import Icon from './components/Icon.vue';
 import WindowControls from './components/WindowControls.vue';
+import WindowClosePrompt from './components/WindowClosePrompt.vue';
 import AppearanceMenu from './components/AppearanceMenu.vue';
 import PlaylistCard from './components/PlaylistCard.vue';
 import type { MenuItem } from './services/menu';
@@ -1180,6 +1181,7 @@ onUnmounted(() => window.removeEventListener('keydown', keyboard));
       "
       :quality="player.view.value?.requestedQuality ?? 'standard'"
     />
+    <WindowClosePrompt />
     <PlayerBar
       :player="player"
       :liked="playingLikes"

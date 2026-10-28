@@ -3,11 +3,19 @@ import { listen } from '@tauri-apps/api/event';
 import type { PlayerUpdate } from '../services/player';
 import type { AccountView, AppInfo, CoreClient } from '../services/contracts';
 import { decodeVideoFrame } from '../services/mv';
+import type { WindowLifecycleView } from '../services/window';
 import type { SessionRenewalView } from '../services/renewal';
 
 /** The only module that knows how the desktop host transports commands. */
 export function createTauriClient(): CoreClient {
   return {
+    windowPreferences: (epoch) => invoke('window_preferences', { epoch }),
+    windowPreferencesCommand: (epoch, command) =>
+      invoke('window_preferences_command', { epoch, command }),
+    windowLifecycle: () => invoke('window_lifecycle'),
+    windowCloseCommand: (command) => invoke('window_close_command', { command }),
+    onWindowLifecycle: (handler) =>
+      listen<WindowLifecycleView>('cumulus:window-lifecycle', (event) => handler(event.payload)),
     outputSettings: (epoch, refresh) => invoke('output_settings', { epoch, refresh }),
     outputCommand: (epoch, command) => invoke('output_command', { epoch, command }),
     startupPreferences: (epoch) => invoke('startup_preferences', { epoch }),

@@ -728,7 +728,9 @@ version = "0.1.0"
 dependencies = [
  "cumulus-core",
  "dirs",
+ "gio",
  "libc",
+ "libloading",
  "rusqlite",
  "serde",
  "serde_json",
