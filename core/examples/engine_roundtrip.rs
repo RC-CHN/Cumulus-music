@@ -174,7 +174,14 @@ pub fn verify_with_observer(
     )
 }
 fn main() {
-    match verify(std::env::args().nth(1).as_deref() == Some("--auto")) {
+    match verify_with_observer(
+        std::env::args().nth(1).as_deref() == Some("--auto"),
+        |stage| {
+            // A native crash cannot produce the final JSON report. Emit bounded,
+            // non-private milestones so packaging retains the last reached step.
+            eprintln!("engine proof stage: {stage}");
+        },
+    ) {
         Ok(report) => println!("{}", serde_json::to_string_pretty(&report).unwrap()),
         Err(error) => {
             eprintln!("{error}");

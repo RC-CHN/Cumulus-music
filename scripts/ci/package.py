@@ -93,7 +93,7 @@ def main():
         "licenseFile": str(ROOT / "LICENSE"),
         "copyright": "Cumulus Music contributors",
         "category": "Music",
-        "linux": {"deb": {"depends": ["libmpv2", "ffmpeg", "libwebkit2gtk-4.1-0 (>= 2.42)"]}},
+        "linux": {"deb": {"depends": ["libmpv2", "ffmpeg", "libwebkit2gtk-4.1-0 (>= 2.42)", "libayatana-appindicator3-1"]}},
         "windows": {"nsis": {"installMode": "currentUser", "languages": ["SimpChinese", "English"]}}}}
     config_path = stage / "bundle-config.json"
     config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
@@ -113,7 +113,11 @@ def main():
         env["PATH"] = os.pathsep.join(map(str, [portable, system / "System32", system]))
     probe = portable / f"engine_roundtrip{suffix}"
     shutil.copy2(target / "release/examples" / probe.name, probe)
-    media = run([probe], env=env, stdout=subprocess.PIPE, text=True, encoding="utf-8")
+    diagnostics = ROOT / ".build" / f"ci-engine-roundtrip-{args.platform}.log"
+    # Preserve partial progress even on native access violations. A failed
+    # probe still fails packaging; there is no retry or skipped media gate.
+    with diagnostics.open("x", encoding="utf-8") as log:
+        media = run([probe], env=env, stdout=subprocess.PIPE, stderr=log, text=True, encoding="utf-8")
     media_report = json.loads(media.stdout)
     assert media_report["ok"] and media_report["remote_requests"] == 0
     probe.unlink()
