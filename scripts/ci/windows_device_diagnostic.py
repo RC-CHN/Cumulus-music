@@ -1,7 +1,7 @@
 """Windows synthetic media regression, without waiting for an NSIS build.
 
-Pass --legacy-property-probes to also reproduce the unused upstream property
-API fault. Any selected probe failure fails this command; none are ignored.
+Pass --unguarded-async-probes to also reproduce native destruction without the
+Windows MTA lease. Any selected probe failure fails; none are ignored.
 """
 import argparse
 import os
@@ -15,7 +15,7 @@ from package import windows_media
 if __name__ == '__main__':
     assert sys.platform == 'win32'
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--legacy-property-probes', action='store_true')
+    parser.add_argument('--unguarded-async-probes', action='store_true')
     args = parser.parse_args()
     root = Path('.build/windows-device-diagnostic').resolve()
     root.mkdir(parents=True, exist_ok=False)
@@ -30,9 +30,11 @@ if __name__ == '__main__':
     system = Path(os.environ['SystemRoot'])
     env['PATH'] = os.pathsep.join(map(str, [native, system / 'System32', system]))
     failures = []
-    modes = ['single-sync', 'pair-sync', 'single-command', 'pair-command']
-    if args.legacy_property_probes:
-        modes.extend(['single-async', 'pair-async', 'pair-async-drain'])
+    modes = ['single-sync', 'pair-sync', 'single-async-mta', 'pair-async-mta',
+             'single-command-mta', 'pair-command-mta']
+    if args.unguarded_async_probes:
+        modes.extend(['single-async', 'pair-async', 'pair-async-drain',
+                      'single-command', 'pair-command'])
     commands = [
         ('rust', [str(executable)]),
         *[(mode, [sys.executable, 'scripts/ci/windows_device_ctypes.py', str(native), mode])

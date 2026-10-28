@@ -14,7 +14,7 @@
       "status": "Linux真实libmpv/隔离Pulse路由已验证；Windows精确提交CI待验"
     },
     {
-      "feature": "匹配异步命令回复的安全JSON复制与迟到回复隔离",
+      "feature": "原生事件节点的安全复制",
       "code": "core/src/playback/engine/ffi/devices.rs",
       "tests": "core/src/playback/engine/ffi/devices_tests.rs"
     },

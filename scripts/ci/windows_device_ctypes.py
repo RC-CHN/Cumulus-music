@@ -1,8 +1,8 @@
 """Independent libmpv C ABI probe, only on the synthetic Windows CI runner.
 
 Compare one/two cores and synchronous/asynchronous device queries without Rust.
-The legacy async-property modes explicitly reproduce the bundled DLL fault;
-production uses the async-command modes. Never load media or print device names.
+Unguarded async modes reproduce the bundled DLL fault; -mta modes hold a COM
+usage lease through native teardown. Never load media or print device names.
 """
 import ctypes as c
 import json
@@ -41,6 +41,12 @@ def bind(lib, name, args, result):
 
 
 def run(runtime, mode):
+    query_mode = mode.removesuffix('-mta')
+    use_mta = mode.endswith('-mta')
+    ole32 = c.WinDLL('ole32')
+    increment = bind(ole32, 'CoIncrementMTAUsage', [c.POINTER(c.c_void_p)], c.c_int32)
+    decrement = bind(ole32, 'CoDecrementMTAUsage', [c.c_void_p], c.c_int32)
+    leases = {}
     lib = c.CDLL(str(runtime / 'libmpv-2.dll'))
     create = bind(lib, 'mpv_create', [], c.c_void_p)
     option = bind(lib, 'mpv_set_option_string', [c.c_void_p, c.c_char_p, c.c_char_p], c.c_int)
@@ -55,8 +61,14 @@ def run(runtime, mode):
     wait = bind(lib, 'mpv_wait_event', [c.c_void_p, c.c_double], c.POINTER(Event))
 
     def open_core(null_output):
+        cookie = c.c_void_p()
+        if use_mta:
+            assert increment(c.byref(cookie)) >= 0 and cookie.value
+            stage(f'{mode}:mta_acquired')
         handle = create()
         assert handle
+        if use_mta:
+            leases[handle] = cookie
         for name, value in [
             (b'config', b'no'), (b'load-scripts', b'no'), (b'ytdl', b'no'),
             (b'terminal', b'no'), (b'msg-level', b'all=no'), (b'idle', b'yes'),
@@ -70,6 +82,12 @@ def run(runtime, mode):
             assert option(handle, b'ao', b'null') >= 0
         assert initialize(handle) >= 0
         return handle
+
+    def close_core(handle):
+        destroy(handle)
+        if use_mta:
+            assert decrement(leases.pop(handle)) >= 0
+            stage(f'{mode}:mta_released')
 
     stage(f'{mode}:create')
     primary = open_core(True) if mode.startswith('pair-') else None
@@ -89,7 +107,7 @@ def run(runtime, mode):
     for index in range(4):
         sequence += 1
         stage(f'{mode}:query_{index}')
-        if mode.endswith('-command'):
+        if query_mode.endswith('-command'):
             args = (c.c_char_p * 3)(b'expand-text', b'${=audio-device-list}', None)
             assert command(handle, sequence, args) >= 0
             event = reply(5, sequence)
@@ -128,10 +146,10 @@ def run(runtime, mode):
             raise AssertionError('event queue did not drain')
         stage(f'{mode}:events_drained')
     stage(f'{mode}:destroy_enumerator')
-    destroy(handle)
+    close_core(handle)
     stage(f'{mode}:enumerator_destroyed')
     if primary:
-        destroy(primary)
+        close_core(primary)
         stage(f'{mode}:primary_destroyed')
     # ctypes retains the DLL normally. Explicit unload checks the same boundary
     # as Rust Library::drop after every native core is already destroyed.
@@ -146,6 +164,8 @@ if __name__ == '__main__':
     runtime = Path(sys.argv[1]).resolve()
     mode = sys.argv[2] if len(sys.argv) > 2 else 'single-sync'
     assert mode in ['single-sync', 'pair-sync', 'single-command', 'pair-command',
-                    'single-async', 'pair-async', 'pair-async-drain']
+                    'single-async', 'pair-async', 'pair-async-drain',
+                    'single-command-mta', 'pair-command-mta',
+                    'single-async-mta', 'pair-async-mta']
     with os.add_dll_directory(str(runtime)):
         run(runtime, mode)
