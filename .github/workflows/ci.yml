@@ -167,6 +167,9 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: diagnostics-${{ matrix.platform }}
+          # These paths contain only synthetic CI fixtures. The common .build
+          # parent is hidden, so upload-artifact otherwise skips every result.
+          include-hidden-files: true
           path: |
             .build/package-stage/*/equalizer-proof/
             .build/ci-login*/
