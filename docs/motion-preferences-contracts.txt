@@ -1,0 +1,56 @@
+界面动画设置（2026-10-29）
+
+来源与范围
+官方恢复 hybrid_app.chunk.1482700000000.js/116.js：233行为disableAnimation默认false，
+287行从NM_SETTING_CUSTOM.animation迁入，357行保存到统一setting。
+references/ui-recovery/sources/packages/pc/src/components/TableIndex/index.tsx:136,197
+和components/left/components/PlaylistPlayingIndicator.jsx:35,40显示关闭后使用静态播放标识。
+WindowOpBar/MiniPetIcon.tsx:167记录正式设置标签“禁用动画效果”。没有使用YesPlayMusic。
+本实现接通对应的设备本地界面偏好，默认保留动画；增加与系统减少动态效果的合并策略。
+不宣称复刻官方全部皮肤动画。字体/字号、桌面歌词和平台媒体控制仍是独立未完成项目。
+
+分层与存储
+frontend/src/services/motion.ts定义system/disabled及有效策略；useMotion.ts管理当前偏好、
+系统变化、保存状态和其他窗口的storage事件。它只控制呈现，不涉及Rust业务状态、
+音乐API、签名、账号凭据或服务端设置；没有为UI偏好新增虚假的Rust业务接口。
+沿用主题设置的WebView本地持久方式，键cumulus.motion.v1。system表示跟随系统，
+disabled表示应用内禁用；缺失/未知字符串回到system，既有安装不默认关掉动画。
+有效关闭条件为应用禁用或系统减少动态效果。取消勾选不能越过系统无障碍设置。
+账号切换不清除设备偏好；profile/WebView数据目录变化仍是另一份本机界面存储。
+
+首帧、动态变化与失败
+public/appearance.js在首帧写data-motion；main.ts挂载前初始化同一有效策略。
+读取失败不阻止启动，以系统策略渲染并提示保存不可用。写入失败仍应用本次选择，
+明确显示无法保存，不把临时应用误称已经持久化；重新选择可尝试保存，不自动重写。
+系统偏好变化立即生效，不改写用户偏好；localStorage跨窗口更新/删除/清空同步生效，
+sessionStorage事件被忽略。应用只安装一次监听，不为每个页面建立重复监听。
+
+效果与生命周期
+CSS统一关闭过渡、关键帧、伪元素/背景动画和CSS平滑滚动；Vue进入/离开初始状态保持
+可见，避免零时长切换闪一下或短暂位移。歌单悬停缩放、导航/窗口按钮按下缩放停用。
+页面、选项卡、队列、歌词、菜单、确认框和接续提示共用这一策略。加载文字/状态仍保留。
+主题切换使用原有WAAPI淡入，禁用时不创建；若系统或设置在淡入中关闭动画，取消当前
+淡入并保留已应用的主题，不重载页面。重新启用后后续切换继续使用原有时长。
+歌词自动跟随、评论楼层定位和回复输入框的显式scrollIntoView均使用有效策略；
+禁用时instant，启用时smooth。歌词面板打开时关闭动画会立即停止当前自动跟随滚动；
+用户手动滚动时不强行拉回当前歌词。计时、播放时钟和业务超时不受影响。
+设置页开关使用16px主题强调色、32px标签点击区；显示当前原因和本机保存失败状态。
+
+验证方法
+frontend/tests/motion.test.ts验证首帧/挂载一致、系统优先、错误/缺失持久值、读写失败、
+保存重试/重开和跨窗口清空/系统变化不写存储；正式前端完整测试继续执行。
+scripts/ci/motion_smoke.py复用隔离ux_ui_probe，执行两个进程生命周期。
+专用motion_environment.js只在显式测试模式下安装，注入系统MediaQueryList事件和
+QuotaExceededError，记录但不替换Element.animate/scrollIntoView的实际执行。
+不把注入事件称为已经操作真实Windows/Linux桌面的系统设置。正式应用没有该测试脚本。
+页面/编辑/队列/菜单/弹窗/主题取消、歌词instant与重新启用的smooth都在真实WebView验证。
+合成歌曲经过正常Rust来源/歌词/播放器流程；仅测试引擎将指定合成CDN URL替换为生成
+PCM并交给libmpv/null。检查原生暂停位置/播放ID在修改设置期间未变化，不产生真实音乐请求。
+生产CSS和JS使用构建后的嵌入资源；CI两平台执行同一脚本，失败依旧使CI gate失败。
+截图仅在本地Linux显式--screenshots生成，不将虚拟显示器当作实机刷新率证明。
+
+本地最终证据
+.build/motion-ui-final：18状态/18截图、10项动画关闭检查和两个进程。
+.build/motion-ux-regression、motion-settings-regression：34+22状态回归。
+.build/motion-native-final.json：GUI初始化后的原生媒体验证；全量检查与限制详见
+ui-ux-validation.txt。本机通过不替代精确提交自己的Windows CI或完整目标验收。
