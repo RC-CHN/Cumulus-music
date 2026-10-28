@@ -20,6 +20,7 @@ import type { CatalogClient } from './catalog';
 import type { CollectionClient } from './collections';
 import type { HistoryClient } from './history';
 import type { SettingsClient } from './settings';
+import type { StartupPreferencesClient } from './startup';
 import type { RelayClient } from './relay';
 import type { RelayPublicationClient } from './relayPublication';
 /** Wire format returned by core::AppInfo. Keep the IPC test in sync. */
@@ -53,6 +54,7 @@ export interface CoreClient
     CollectionClient,
     HistoryClient,
     SettingsClient,
+    StartupPreferencesClient,
     RelayClient,
     RelayPublicationClient {
   getAppInfo(): Promise<AppInfo>;

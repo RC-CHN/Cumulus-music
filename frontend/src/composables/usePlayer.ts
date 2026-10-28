@@ -84,12 +84,17 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       }
       disconnect = stop;
       ready.value = true;
-      if (restorable.value) await action({ kind: 'restore' });
+      if (restorable.value)
+        await run(
+          (e) => core.playerAction(e, { kind: 'startup' }),
+          // An explicit retry prepares paused media, never repeats automatic play.
+          (e) => core.playerAction(e, { kind: 'restore' }),
+        );
     } catch (e) {
       if (version === connection) handle(e);
     }
   }
-  async function run(operation: (current: string) => Promise<PlayerView>) {
+  async function run(operation: (current: string) => Promise<PlayerView>, onRetry = operation) {
     if (!ready.value) return;
     const current = ++request;
     const captured = epoch;
@@ -101,7 +106,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       if (current === request) failedOperation = undefined;
     } catch (e) {
       if (current === request && captured === epoch) {
-        failedOperation = operation;
+        failedOperation = onRetry;
         handle(e);
       }
     } finally {

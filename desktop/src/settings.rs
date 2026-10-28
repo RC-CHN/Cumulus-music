@@ -1,5 +1,22 @@
 use cumulus_core::client::{ClientError, MusicClient, dto::*};
 #[tauri::command]
+pub async fn startup_preferences(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> Result<AccountData<StartupPreferencesView>, ClientError> {
+    client.startup_preferences(&epoch).map_err(Into::into)
+}
+#[tauri::command]
+pub async fn startup_preferences_command(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    command: StartupPreferencesCommand,
+) -> Result<AccountData<StartupPreferencesView>, ClientError> {
+    client
+        .startup_preferences_command(&epoch, command)
+        .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn account_settings_page(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

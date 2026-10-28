@@ -140,7 +140,7 @@ export type PlaySelection =
 export type PlayerAction =
   | { kind: 'equalizer'; expected_revision: string; settings: EqualizerSettings }
   | { kind: 'retry_equalizer' | 'repair_equalizer' }
-  | { kind: 'play' | 'next' | 'previous' | 'stop' | 'restore' | 'refresh' | 'clear' }
+  | { kind: 'play' | 'next' | 'previous' | 'stop' | 'restore' | 'startup' | 'refresh' | 'clear' }
   | { kind: 'pause'; paused: boolean }
   | { kind: 'seek'; seconds: number }
   | { kind: 'volume' | 'speed'; value: number }
