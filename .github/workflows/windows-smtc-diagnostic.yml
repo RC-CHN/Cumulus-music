@@ -1,0 +1,76 @@
+name: Windows SMTC diagnostic
+on:
+  workflow_dispatch:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  smtc:
+    runs-on: windows-2022
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    env:
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+      CARGO_BUILD_JOBS: '2'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+      - name: Windows media dependencies
+        id: msys2
+        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e
+        with:
+          msystem: UCRT64
+          update: true
+          install: mingw-w64-ucrt-x86_64-mpv mingw-w64-ucrt-x86_64-binutils
+      - run: rustup show
+      - uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            .build/target
+          key: smtc-Windows-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-${{ github.sha }}
+          restore-keys: |
+            smtc-Windows-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-
+            rust-Windows-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-
+            rust-Windows-v1-
+      - run: npm --prefix frontend ci
+      - run: npm --prefix frontend run build
+      - run: cargo fmt --all --check
+      - id: build
+        run: cargo build -p cumulus-desktop --example smtc_probe --features custom-protocol --locked
+      - name: Native host and independent Windows media session consumer
+        env:
+          CUMULUS_MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
+        run: python scripts/ci/smtc_smoke.py --binary .build/target/debug/examples/smtc_probe.exe --root .build/smtc-diagnostic
+      - name: Preserve synthetic diagnostic output
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: windows-smtc-diagnostic
+          include-hidden-files: true
+          path: |
+            .build/smtc-diagnostic/**/*.log
+            .build/smtc-diagnostic/**/*.json
+          if-no-files-found: warn
+      - uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25
+        if: always() && steps.build.outcome == 'success'
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            .build/target
+          key: smtc-Windows-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-${{ github.sha }}

@@ -127,6 +127,7 @@ gio = "=0.18.4"
 libloading = "=0.7.4"
 
 [target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "=0.61.3", features = ["Foundation", "Media", "Media_Control", "Storage_Streams", "Win32_Foundation", "Win32_System_WinRT"] }
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading"] }
 
 [dev-dependencies]
@@ -175,4 +176,8 @@ required-features = ["custom-protocol"]
 
 [[example]]
 name = "mpris_probe"
+required-features = ["custom-protocol"]
+
+[[example]]
+name = "smtc_probe"
 required-features = ["custom-protocol"]

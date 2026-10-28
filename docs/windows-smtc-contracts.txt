@@ -1,0 +1,50 @@
+Windows 系统媒体控制（SMTC）
+==========================
+
+来源与范围
+- 官方恢复 M308:5082–5124 onSMTCEnable 更新当前歌曲、封面并切换系统媒体功能；
+  M308:5292–5386 onMiniPlayerAction 的 play/pause/stop/prev/next 复用普通播放控制。
+  对应 references/recovered-client/docs/product/models/playing.txt 5467–5533、5754–5838。
+- M116:1472–1533 的 setSmtcEnable/initSmtcEnable 持久化用户设置优先于 AB 默认。
+  本批先接宿主，不把尚未提供的开关界面、AB 分组和全局快捷键称为完成。
+- Microsoft 手动 SMTC / GetForWindow 契约：
+  https://learn.microsoft.com/en-us/windows/apps/develop/media-playback/system-media-transport-controls
+  https://learn.microsoft.com/en-us/windows/win32/api/systemmediatransportcontrolsinterop/nf-systemmediatransportcontrolsinterop-isystemmediatransportcontrolsinterop-getforwindow
+  使用自有顶层窗口 HWND，libmpv 仍是唯一解码引擎；没有另建 MediaPlayer。
+  没有参考 YesPlayMusic。
+
+模块、生命周期及隔离
+- desktop/src/system_media/windows/native.rs 在单独 MTA 工作线程初始化 WinRT，
+  !Send apartment guard 保证同线程配对释放；HWND 来自 Tauri 主窗口，关闭竞态
+  由系统错误返回处理。core 不依赖 Windows/Tauri/WebView。
+- mod.rs 每 250ms 只读 core NativeMediaDetails；未选中媒体不创建 SMTC 或解码器。
+  元数据变化才更新，原生时钟每 5 秒或定位/状态/速率改变时更新，系统自行插值。
+  音乐/视频标题、歌手、专辑、core 白名单公开封面进入 OS，绝不传 Cookie、
+  授权播放 URL、本地路径；AppMediaId 是账号与媒体隔离的 opaque ID。
+- events.rs 保留每个注册成功的撤销令牌；部分失败也撤销已注册回调。账号资源
+  退休、状态读取失败、清队列、宿主关闭时禁用控制并清除显示，递增 generation。
+  OS 初始化/发布失败间隔 2 秒再检查；不会重播业务写入或重建播放器。
+- commands.rs 在事件入口核对系统已显示项目与当前实际项目一致，并取得最新
+  core target。旧账号/旧项目及已退休回调不能改写新会话；core 再校验实际代次。
+  一次只允许一个命令在途；忙碌时不排队。完成后再次发布实际状态，保存失败走
+  核心已有回滚，不按事件送达就乐观修改系统显示，也不自动重试业务命令。
+- Play/Pause/Stop/Next/Previous 与官方普通播放操作一致，Next 会切换并播放；
+  不套用 Linux MPRIS 的“切歌保留暂停/停止”语义。MV 禁止上一首/下一首。
+  定位/倍速/随机/循环复用 native_media_adjust，授权试听/CUE 界限仍由 core 检查。
+  Windows rate=0 不等于 Linux MPRIS Pause。系统没有账号/项目 ID 的点击参数，
+  无法声称能识别所有已经跨 OS 队列延迟、但尚未送达的旧按钮事件。
+
+可复现验证与实际边界
+- smtc_probe 先初始化真实 Tauri 窗口，使用合成 API/PCM、真实 libmpv/null。
+  另启动同一示例的 --consumer 子进程，仅用 Windows GlobalSystemMediaTransport-
+  ControlsSessionManager 读取/控制本次 PID 唯一标题前缀的会话，不操作其他媒体。
+- scripts/ci/smtc_smoke.py 有 240 秒总期限、每个消费者 20 秒上限和最终进程清理。
+  检查懒初始化、系统实际元数据、播放暂停/定位/切歌、倍速随机循环、SQLite 保存
+  失败回滚、显式恢复、后台播放/停止、账号退休及清队列。Try* 的 true 只代表
+  系统送达，必须随后核对实际 core 状态，不以回调或编译成功冒充播放控制通过。
+- Windows 专项 workflow 是独立诊断；不代替 Linux/Windows 完整 CI gate，未设置
+  continue-on-error 或把系统服务缺失标为通过。Server runner 若不提供 SMTC broker，
+  保留真实失败、继续研究条件，不能称物理 Windows 桌面验收通过。
+- 当前本机是 Linux；Windows GNU 全 targets 严格 Clippy 已通过，Windows 实际
+  系统服务运行结果尚待专项 runner。当前仅新增诊断路径，不宣称运行验证通过。
+  物理声卡、原生系统面板视觉、设置开关及全局快捷键尚未由本批验证。

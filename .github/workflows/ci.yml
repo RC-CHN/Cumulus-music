@@ -10,6 +10,10 @@ on:
         description: Also compare Windows device enumeration through Rust and upstream APIs
         type: boolean
         default: false
+      windows_smtc_diagnostic:
+        description: Also verify Windows SMTC through an independent OS session consumer
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -27,6 +31,9 @@ env:
   CARGO_BUILD_JOBS: '2'
 
 jobs:
+  smtc-diagnostic:
+    if: github.event_name == 'workflow_dispatch' && inputs.windows_smtc_diagnostic
+    uses: ./.github/workflows/windows-smtc-diagnostic.yml
   media-diagnostic:
     if: github.event_name == 'workflow_dispatch' && inputs.windows_diagnostic
     uses: ./.github/workflows/windows-media-diagnostic.yml
@@ -235,7 +242,7 @@ jobs:
   gate:
     name: CI gate
     if: always()
-    needs: [frontend, native, media-diagnostic]
+    needs: [frontend, native, media-diagnostic, smtc-diagnostic]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -245,10 +252,17 @@ jobs:
           NATIVE: ${{ needs.native.result }}
           DIAGNOSTIC: ${{ needs.media-diagnostic.result }}
           DIAGNOSTIC_REQUESTED: ${{ inputs.windows_diagnostic || false }}
+          SMTC: ${{ needs.smtc-diagnostic.result }}
+          SMTC_REQUESTED: ${{ inputs.windows_smtc_diagnostic || false }}
         run: |
           test "$FRONTEND" = success && test "$NATIVE" = success
           if [ "$DIAGNOSTIC_REQUESTED" = true ]; then
             test "$DIAGNOSTIC" = success
           else
             test "$DIAGNOSTIC" = skipped
+          fi
+          if [ "$SMTC_REQUESTED" = true ]; then
+            test "$SMTC" = success
+          else
+            test "$SMTC" = skipped
           fi

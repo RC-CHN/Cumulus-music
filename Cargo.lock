@@ -740,6 +740,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "webkit2gtk",
+ "windows",
  "windows-sys 0.61.2",
 ]
 
