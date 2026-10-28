@@ -134,6 +134,15 @@ impl RelayMachine {
     pub fn clear(&mut self) -> Result<RelayUpload> {
         self.command(RelayCommand::Clear)
     }
+    /// Consume the owner even at the cumulative-command limit. The final clear
+    /// may be the 513th command; no invalid machine is retained or reused.
+    pub fn terminal_clear(mut self) -> Result<RelayUpload> {
+        self.validate()?;
+        self.commands.push(RelayCommand::Clear);
+        Ok(RelayUpload::Commands(
+            json!({"commands":self.commands,"sessionId":self.session_id}),
+        ))
+    }
     pub fn select(
         &mut self,
         current: RelayResource,
@@ -203,7 +212,7 @@ impl RelayMachine {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SnapshotItem {
     pub entry_id: String,
     pub resource: RelayResource,

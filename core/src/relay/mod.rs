@@ -4,6 +4,7 @@
 mod api;
 mod application;
 mod machine;
+pub mod publisher;
 mod pull;
 mod service;
 mod settings;
