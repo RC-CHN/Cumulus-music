@@ -15,6 +15,12 @@ impl MpvVideoEngine {
     }
 }
 impl AudioEngine for MpvVideoEngine {
+    fn output_devices(&mut self) -> Result<Option<OutputDevices>> {
+        self.engine.output_devices()
+    }
+    fn set_output_device(&mut self, id: &str) -> Result<()> {
+        self.engine.set_output_device(id)
+    }
     fn load(&mut self, r: LoadRequest, c: &Cancellation) -> Result<LoadedMedia> {
         self.engine.load(r, c)
     }

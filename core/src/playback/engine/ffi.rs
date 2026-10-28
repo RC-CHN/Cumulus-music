@@ -2,6 +2,7 @@
 //! mpv v0.40.0 include/mpv/client.h (API 2.5), compatible with 1.108+/2.x.
 //! Every borrowed event is copied before another mpv_wait_event call.
 use super::{EndReason, EngineEvent};
+mod devices;
 mod render;
 use crate::{Error, Result};
 use libloading::Library;
@@ -36,6 +37,7 @@ type Initialize = unsafe extern "C" fn(Handle) -> c_int;
 type OptionString = unsafe extern "C" fn(Handle, *const c_char, *const c_char) -> c_int;
 type Command = unsafe extern "C" fn(Handle, u64, *const *const c_char) -> c_int;
 type Property = unsafe extern "C" fn(Handle, *const c_char) -> *mut c_char;
+type PropertyAsync = unsafe extern "C" fn(Handle, u64, *const c_char, c_int) -> c_int;
 type Free = unsafe extern "C" fn(*mut c_void);
 type Destroy = unsafe extern "C" fn(Handle);
 type Wait = unsafe extern "C" fn(Handle, f64) -> *const Event;
@@ -43,7 +45,14 @@ type Version = unsafe extern "C" fn() -> c_ulong;
 
 pub(super) enum Received {
     None,
-    Reply { sequence: u64, error: i32 },
+    Reply {
+        sequence: u64,
+        error: i32,
+    },
+    Devices {
+        sequence: u64,
+        result: Result<Vec<super::OutputDevice>>,
+    },
     Event(EngineEvent),
     Ignored,
 }
@@ -56,6 +65,7 @@ pub(super) struct Native {
     option: OptionString,
     command: Command,
     property: Property,
+    property_async: PropertyAsync,
     free: Free,
     destroy: Destroy,
     wait: Wait,
@@ -110,6 +120,9 @@ impl Native {
             let property = *library
                 .get::<Property>(b"mpv_get_property_string\0")
                 .map_err(|_| failed("ABI", -1))?;
+            let property_async = *library
+                .get::<PropertyAsync>(b"mpv_get_property_async\0")
+                .map_err(|_| failed("ABI", -1))?;
             let free = *library
                 .get::<Free>(b"mpv_free\0")
                 .map_err(|_| failed("ABI", -1))?;
@@ -127,6 +140,7 @@ impl Native {
                 option,
                 command,
                 property,
+                property_async,
                 free,
                 destroy,
                 wait,
@@ -176,6 +190,18 @@ impl Native {
             Some(value)
         }
     }
+    pub fn request_devices(&mut self, sequence: u64) -> Result<()> {
+        // SAFETY: live handle; mpv copies the static property name and replies
+        // asynchronously. MPV_FORMAT_NODE is 6 in the pinned client header.
+        check("audio device query", unsafe {
+            (self.property_async)(
+                self.handle.as_ptr(),
+                sequence,
+                c"audio-device-list".as_ptr(),
+                6,
+            )
+        })
+    }
     pub fn event(&mut self, timeout: f64) -> Result<Received> {
         // SAFETY: mpv owns this event until the next wait call. We copy only
         // layouts documented for its tag, retain no raw pointers and never
@@ -187,6 +213,17 @@ impl Native {
             Ok(match event.event_id {
                 0 => Received::None,
                 1 => Received::Event(EngineEvent::Shutdown),
+                3 => Received::Devices {
+                    sequence: event.reply_userdata,
+                    // The only asynchronous property request this adapter
+                    // issues is audio-device-list. Copy it before the next
+                    // wait; event-owned nodes must NOT be freed by the caller.
+                    result: if event.error < 0 {
+                        Err(failed("audio device query", event.error))
+                    } else {
+                        devices::copy(event.data)
+                    },
+                },
                 5 => Received::Reply {
                     sequence: event.reply_userdata,
                     error: event.error,

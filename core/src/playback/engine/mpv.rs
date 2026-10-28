@@ -1,6 +1,6 @@
 use super::{
     AudioEngine, Cancellation, EndReason, EngineEvent, EngineSnapshot, LoadRequest, LoadedMedia,
-    MediaInput,
+    MediaInput, OutputDevices,
     ffi::{Native, Received},
 };
 use crate::{Error, Result};
@@ -29,6 +29,7 @@ pub struct MpvEngine {
     sequence: u64,
     events: VecDeque<EngineEvent>,
     entry: Option<i64>,
+    null_output: bool,
 }
 fn string(value: impl AsRef<[u8]>) -> Result<CString> {
     CString::new(value.as_ref()).map_err(|_| Error::InvalidInput("NUL in audio argument"))
@@ -121,6 +122,7 @@ impl MpvEngine {
             sequence: 0,
             events: VecDeque::new(),
             entry: None,
+            null_output: config.null_output,
         };
         for (key, value) in [
             ("config", "no"),
@@ -208,6 +210,28 @@ impl MpvEngine {
             Instant::now() + Duration::from_secs(5),
             &Cancellation::default(),
         )
+    }
+    fn devices(&mut self) -> Result<Vec<super::OutputDevice>> {
+        let sequence = self.sequence()?;
+        self.native.request_devices(sequence)?;
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            match self.native.event(0.05)? {
+                Received::Devices {
+                    sequence: returned,
+                    result,
+                } if returned == sequence => {
+                    return result;
+                }
+                Received::Event(event) => self.retain(event)?,
+                // Late replies to a timed-out query cannot satisfy this one.
+                _ => (),
+            }
+        }
+        Err(Error::Playback {
+            operation: "audio device query timeout",
+            code: -1,
+        })
     }
     fn property(&mut self, name: &CStr) -> Option<String> {
         self.native.property(name)
@@ -334,6 +358,36 @@ impl MpvEngine {
 }
 
 impl AudioEngine for MpvEngine {
+    fn output_devices(&mut self) -> Result<Option<OutputDevices>> {
+        if self.null_output {
+            return Ok(None);
+        }
+        let devices = self.devices()?;
+        let configured = self
+            .property(c"audio-device")
+            .ok_or(Error::Media("audio device preference unavailable"))?;
+        Ok(Some(OutputDevices {
+            devices,
+            configured,
+            active_driver: self.property(c"current-ao"),
+        }))
+    }
+    fn set_output_device(&mut self, id: &str) -> Result<()> {
+        if self.null_output {
+            return Err(Error::State("audio output is isolated"));
+        }
+        if !super::output::valid_id(id) {
+            return Err(Error::InvalidInput("invalid audio device identifier"));
+        }
+        // Do not pass arbitrary device/driver strings to mpv. Refresh on every
+        // change so a UI's stale device list cannot select a removed endpoint.
+        if !self.devices()?.iter().any(|device| device.id == id) {
+            return Err(Error::State("audio device is no longer available"));
+        }
+        // An acknowledged property write only schedules reinitialization. It
+        // neither unpauses nor reloads a file, and is not activation evidence.
+        self.control(&["set", "audio-device", id])
+    }
     fn apply_equalizer(
         &mut self,
         settings: crate::effects::equalizer::EqualizerSettings,

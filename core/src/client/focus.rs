@@ -127,6 +127,13 @@ pub(super) struct Focused<E: ?Sized> {
     pub owner: Owner,
 }
 impl<E: AudioEngine + ?Sized> AudioEngine for Focused<E> {
+    fn output_devices(&mut self) -> Result<Option<OutputDevices>> {
+        self.inner.output_devices()
+    }
+    fn set_output_device(&mut self, id: &str) -> Result<()> {
+        // Device preference does not grant media ownership or unpause output.
+        self.inner.set_output_device(id)
+    }
     fn apply_equalizer(
         &mut self,
         value: crate::effects::equalizer::EqualizerSettings,
