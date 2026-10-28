@@ -11,9 +11,16 @@
   const key = (node, value) => node.dispatchEvent(new KeyboardEvent('keydown', { key: value, bubbles: true, cancelable: true }));
   const rect = node => { const r = node.getBoundingClientRect(); return { x: r.x, y: r.y, right: r.right, bottom: r.bottom, width: r.width, height: r.height }; };
   const visible = node => { const r = rect(node); return r.x >= 0 && r.y >= 0 && r.right <= innerWidth + 1 && r.bottom <= innerHeight + 1 && r.width > 0 && r.height > 0; };
+  const trackActions = () => all('.track-more').map(node => {
+    const range = document.createRange(); range.selectNodeContents(node);
+    const glyph = range.getBoundingClientRect();
+    return { button: rect(node), row: rect(node.closest('.track-row')),
+      duration: rect(node.parentElement.querySelector('.track-duration')),
+      glyph: { x: glyph.x, right: glyph.right } };
+  });
   const facts = () => ({ width: innerWidth, height: innerHeight, theme: document.documentElement.dataset.theme,
     overflow: document.documentElement.scrollWidth > innerWidth,
-    background: getComputedStyle(document.documentElement).backgroundColor,
+    background: getComputedStyle(document.documentElement).backgroundColor, trackActions: trackActions(),
     focused: document.activeElement?.getAttribute('aria-label'),
     dialogs: all('dialog[open]').map(node => ({ title: node.querySelector('h2')?.textContent, ...rect(node) })) });
   let stageCount = 0;
@@ -21,6 +28,7 @@
     await sleep(500);
     assert(!facts().overflow, `horizontal document overflow: ${label}`);
     assert(all('dialog[open], .action-menu, .window-controls').every(visible), `clipped dialog/menu/window controls: ${label}`);
+    assert(trackActions().every(({ button, row, duration, glyph }) => glyph.x >= button.x - 1 && glyph.right <= button.right + 1 && button.right <= row.right + 1 && duration.right <= button.x), `track action glyph clipped or overlaps duration: ${label}`);
     await emit(`ux_${String(++stageCount).padStart(2, '0')}_${label}`, facts());
     await sleep(1300);
   }
@@ -51,6 +59,8 @@
   try {
     await wait(() => all('.track-row').length, 'daily');
     await sleep(700);
+    assert(one('.track-duration')?.textContent === '100:00', 'long-duration fixture not loaded');
+    assert(all('.track-title .ellipsis').every(node => node.title), 'truncated track credits need full title hints');
     if (localStorage.getItem('cumulus.ux.finished')) {
       assert(localStorage.getItem('cumulus.appearance.v1') === 'dark' && facts().theme === 'dark', 'dark preference did not survive a process restart');
       await capture('persisted_dark');
@@ -72,6 +82,7 @@
     click(all('.playlist-card')[1]); await wait(() => one('.playlist-title'), 'playlist');
     const heading = rect(one('.playlist-title h1')), editor = rect(one('.playlist-edit'));
     assert(editor.x >= heading.right - 1 && Math.abs(editor.y - heading.y) < 8, 'edit action must sit next to title');
+    assert(one('.playlist-title h1').title === one('.playlist-title h1').textContent, 'truncated playlist heading needs a full title hint');
     await capture('playlist_light');
     await edit();
     assert(one('[aria-label="歌单名称"]').getAttribute('aria-invalid') === 'true' && button('保存修改').disabled, 'overlong fixture name must be explained and rejected');
@@ -129,6 +140,6 @@
     assert(document.activeElement === one('[aria-label="均衡器"]'), 'equalizer focus restoration');
     await theme('system'); await theme('dark');
     localStorage.setItem('cumulus.ux.finished', '1');
-    await emit('complete', { ok: true, stageCount, realMusicRequests: 0, menuKeyboard: true, modalFocusRestored: true, smallEditorSaveVisible: true, explicitThemeSaved: true });
+    await emit('complete', { ok: true, stageCount, realMusicRequests: 0, menuKeyboard: true, modalFocusRestored: true, smallEditorSaveVisible: true, explicitThemeSaved: true, trackActionsContained: true, longDuration: true });
   } catch (error) { await emit('failed', { ok: false, error: String(error), stageCount, ...facts() }); }
 })();

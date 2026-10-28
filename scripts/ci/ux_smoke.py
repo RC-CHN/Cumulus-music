@@ -49,7 +49,7 @@ def main():
             assert value['theme'] in ['light', 'dark'] and not value['overflow'], stage.name
         if run == 'first':
             assert all(complete[key] for key in ['menuKeyboard', 'modalFocusRestored',
-                       'smallEditorSaveVisible', 'explicitThemeSaved'])
+                       'smallEditorSaveVisible', 'explicitThemeSaved', 'trackActionsContained', 'longDuration'])
         else:
             assert complete['reopened']
     print(json.dumps({'ok': True, 'actualWebView': True, 'states': 29,

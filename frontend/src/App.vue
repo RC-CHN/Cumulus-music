@@ -835,7 +835,7 @@ onUnmounted(() => window.removeEventListener('keydown', keyboard));
               <div class="hero-copy">
                 <span class="eyebrow">{{ result.playlist.private ? '私密歌单' : '歌单' }}</span>
                 <div class="playlist-title">
-                  <h1>{{ title }}</h1>
+                  <h1 :title="title">{{ title }}</h1>
                   <button
                     v-if="result.playlist.owned && !result.playlist.favorite"
                     class="icon-button playlist-edit"
@@ -847,7 +847,7 @@ onUnmounted(() => window.removeEventListener('keydown', keyboard));
                   </button>
                 </div>
                 <p class="muted">{{ result.playlist.creator }} · {{ result.total }} 首歌曲</p>
-                <p class="playlist-description">
+                <p class="playlist-description" :title="result.playlist.description">
                   {{ result.playlist.description || '音乐，让每一天都值得收藏。' }}
                 </p>
               </div>

@@ -61,6 +61,7 @@ function duration(ms: number) {
           liked.has(track.id),
           busy.has(track.id),
           playable,
+          navigable,
         ]"
         class="track-columns track-row"
         :class="{
@@ -93,10 +94,13 @@ function duration(ms: number) {
             referrerpolicy="no-referrer"
           /><span v-else class="track-art"><Icon name="music" /></span>
           <div>
-            <div class="ellipsis">
+            <div class="ellipsis" :title="track.name">
               {{ track.name }} <span v-if="track.fee === 1" class="vip-tag">VIP</span>
             </div>
-            <small v-if="navigable && track.artistRefs?.length" class="ellipsis track-credit-links"
+            <small
+              v-if="navigable && track.artistRefs?.length"
+              class="ellipsis track-credit-links"
+              :title="track.artistRefs.map((artist) => artist.name).join(' / ')"
               ><template v-for="(artist, i) in track.artistRefs" :key="i"
                 ><span v-if="i"> / </span
                 ><button v-if="artist.id" @click.stop="emit('artist', artist.id)" @dblclick.stop>
@@ -104,7 +108,7 @@ function duration(ms: number) {
                 ><span v-else>{{ artist.name }}</span></template
               ></small
             >
-            <small v-else class="ellipsis">{{
+            <small v-else class="ellipsis" :title="track.artists.join(' / ')">{{
               track.artists.join(' / ') || (track.local ? '本地文件' : '未知歌手')
             }}</small>
           </div>
@@ -139,9 +143,8 @@ function duration(ms: number) {
             @click.stop="emit('more', track)"
             @dblclick.stop
           >
-            ···
-          </button></span
-        >
+            <Icon name="more" /></button
+        ></span>
       </div>
       <div :style="{ height: `${(tracks.length - end) * rowHeight}px` }" aria-hidden="true" />
     </div>

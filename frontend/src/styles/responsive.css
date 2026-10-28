@@ -14,7 +14,7 @@
     padding-left: 18px;
   }
   .track-columns {
-    grid-template-columns: 25px minmax(0, 1.8fr) minmax(0, 1fr) 32px 42px;
+    grid-template-columns: 25px minmax(0, 1.8fr) minmax(0, 1fr) 32px 78px;
     gap: 5px;
   }
   .playlist-hero > img,

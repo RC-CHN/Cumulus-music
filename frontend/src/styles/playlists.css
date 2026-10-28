@@ -241,27 +241,7 @@
     padding-top: 8px;
   }
 }
-.track-more {
-  font-size: 18px;
-  line-height: 1;
-  width: 25px;
-  height: 28px;
-  flex-shrink: 0;
-}
-.track-time-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 3px;
-}
-.track-columns {
-  grid-template-columns: 32px minmax(0, 1.7fr) minmax(0, 1fr) 48px 80px;
-}
 @media (max-width: 950px) {
-  .track-columns {
-    grid-template-columns: 25px minmax(0, 1.8fr) minmax(0, 1fr) 32px 68px;
-    gap: 5px;
-  }
   .playlist-dialog {
     padding: 20px 24px;
   }

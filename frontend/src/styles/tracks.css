@@ -6,7 +6,7 @@
 }
 .track-columns {
   display: grid;
-  grid-template-columns: 32px minmax(0, 1.7fr) minmax(0, 1fr) 48px 54px;
+  grid-template-columns: 32px minmax(0, 1.7fr) minmax(0, 1fr) 48px 84px;
   gap: 8px;
   align-items: center;
   padding: 0 10px;
@@ -79,6 +79,19 @@
   font-size: 11px;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.track-more {
+  width: 28px;
+  height: 28px;
+  padding: 4px;
+  flex-shrink: 0;
+}
+.track-time-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 3px;
 }
 .like-button .icon {
   width: 16px;
