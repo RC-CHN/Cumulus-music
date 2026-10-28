@@ -12,13 +12,14 @@
   "implementedThisBatch": [
     {"feature": "消息与隐私六项", "core": "core/src/account/settings/", "host": "core/src/client/settings.rs", "ipc": "desktop/src/settings.rs", "ui": "frontend/src/components/SettingsPage.vue", "evidence": "docs/account-settings-contracts.txt"},
     {"feature": "联动完整回读、账号隔离、未决核对、旧记录迁入", "core": "core/src/account/settings/", "tests": ["core/tests/account_settings.rs", "core/tests/client_settings.rs", "core/tests/resources.rs"]},
-    {"feature": "主题/账号/下载正式入口", "ui": "frontend/src/components/SettingsPage.vue", "status": "接入现有实际用例；不等于完整官方设置页"}
+    {"feature": "主题/账号/下载正式入口", "ui": "frontend/src/components/SettingsPage.vue", "status": "接入现有实际用例；不等于完整官方设置页"},
+    {"feature": "程序启动自动播放/进度记忆", "official": "hybrid_app/116.js NM_SETTING与308.js restoreLastPlayTrack；views/Play.jsx", "core": "core/src/playback/preferences.rs + controller/startup.rs + client/player/startup.rs", "ui": "frontend/src/components/settings/PlaybackStartup.vue", "evidence": "docs/playback-startup-contracts.txt", "status": "已接本机持久设置与真实播放器生命周期；本批Windows完整CI仍待验"}
   ],
   "remainingOfficialSettings": [
     {"feature": "开机启动、默认播放器、启动窗口形态", "officialModel": "page_settingNormal", "status": "平台适配和正式设置控件尚未完成"},
     {"feature": "关闭窗口至托盘、托盘/系统媒体控制、全局/媒体快捷键", "officialModel": "setting", "status": "仍需完整平台实现与两平台验收"},
     {"feature": "字体、字号、显式关闭动画", "officialModel": "setting/page_setting", "status": "主题与系统减少动态效果已接；这些独立设置未实现"},
-    {"feature": "自动播放、恢复进度开关、防休眠、淡入淡出、通知、自动取消静音、替换队列策略", "officialView": "views/Play.jsx", "status": "既有播放器部分行为已实现，完整设置及效果需继续逐项接通"},
+    {"feature": "防休眠、淡入淡出、通知、自动取消静音、替换队列策略", "officialView": "views/Play.jsx", "status": "自动播放/恢复进度两个设置已独立接通；这些其余设置及效果仍需逐项实现"},
     {"feature": "输出设备切换、输出后端能力、响度均衡及系统音频诊断", "officialView": "views/Play.jsx", "status": "目前原生默认音频输出与已接音效不等于此完整设置页"},
     {"feature": "同账号接续", "officialView": "views/Play.jsx/playingListHandoffEnable", "status": "设备开关、下行接续、原生上行、未决恢复和body保留策略已接；真实账号上行/他端记录及当前批次Windows CI仍有边界，见relay-mapping.json"},
     {"feature": "多端最近播放显示", "officialView": "views/Play.jsx/allowMultiterminalRecord", "status": "已在最近播放页接通；设置页整合可继续"},

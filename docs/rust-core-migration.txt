@@ -106,6 +106,10 @@ core/tests/fixtures/provenance.json 记录合成 SQLite 和官方 M/402 对照�
 
 当前证据
 基础、业务契约、队列/时间线与协议测试结果见 rust-core-validation.txt。
+启动自动播放/记住进度现已迁移到独立core偏好、账号绑定状态和正式设置界面，
+包含一次性启动资格、控制栅栏、CUE/试听/FM、设置CAS/修复版本保护及失败不误重播。
+契约与官方来源见playback-startup-contracts.txt；实际桌面回归见ui-ux-validation.txt。
+这两项不代表完整官方播放设置页，其他设置仍以settings-mapping.json逐项追踪。
 直接执行官方 M/402 44 组样本揭示旧 Python startswith('batch') 过宽：官方用 substr(0,6)
 与五字符 'batch' 比较，仅精确 batch 能通过该分支。Rust 按官方修正，归档原文件未改。
 SQLite 样本由原 Python StateStore 写出，仅包含虚构账号101的测试数据；Rust 实际读回。

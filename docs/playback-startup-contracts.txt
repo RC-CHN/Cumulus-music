@@ -1,0 +1,102 @@
+启动播放与进度记忆（2026-10-29）
+范围：两个正式设置、原生启动生命周期、持久化/失败恢复和实际窗口验证。
+完整迁移目标仍在进行；此文不代表完整官方播放设置页或实机声卡验收。
+
+官方依据
+- references/netease-3.1.42.205594-analysis/recovered-js/modules/
+  hybrid_app.chunk.1482700000000.js/116.js:236-238：NM_SETTING设备本地设置，
+  autoPlay默认false、autoProgress默认true。sceneFmAutoPlay是另一设置，本批不混用。
+- 同目录308.js的restoreLastPlayTrack（4255行起）及启动订阅（5579行附近），
+  references/recovered-client/docs/product/models/playing.txt:4430起：
+  从已有队列恢复当前资源；记忆开且保存位置未到结尾时使用该位置，否则从头；
+  按autoPlay选择Playing或Pause，先恢复元数据再启动实际播放。
+- references/ui-recovery/sources/packages/pc/src/pages/setting/views/Play.jsx:376,453：
+  “程序启动时自动播放”“程序启动时记住上一次播放进度”。
+- 本批未使用YesPlayMusic，也未调用归档Python进程执行业务。
+
+产品行为
+设置→播放→启动时，有两个独立复选框。默认自动播放关闭、进度记忆开启。
+保存在本机，对本机各账号一致；队列、媒体授权和进度仍各账号隔离。
+改设置仅影响下次启动，不暂停/播放/定位当前音频；错误时不乐观翻转复选框。
+切换账号只恢复该账号媒体为暂停，自动播放设置不把切换账号当作新启动。
+页面重载、订阅重连或重复IPC不再次自动播放。用户的停止、切歌、播放、接续等
+新的传输控制优先，迟到启动请求不能撤销用户选择。音量/音效调整不会消耗启动机会。
+
+四种组合：
+autoPlay  rememberPosition  原生状态  起点
+false     true              Paused    该账号匹配当前条目的有效保存进度
+false     false             Paused    当前歌曲/授权片段开头
+true      true              Playing   该账号匹配当前条目的有效保存进度
+true      false             Playing   当前歌曲/授权片段开头
+无有效位置、上次已经结束、保存位置达到新媒体结尾时回到合法片段开头。
+试听仍以授权start/end限制；CUE恢复为分轨时间，不跳到整个文件的零点。
+启动恢复显式携带位置（无保存值时为相对零），不偷偷采用播客单资源书签替代关闭的记忆。
+手动恢复/重试保持既有暂停恢复语义，不重放自动播放。这是降低未知应答副作用的产品决定。
+若视频已占用媒体焦点或更新的媒体意图先到，启动不能自动抢走该焦点。
+
+代码与调用顺序
+1. frontend/usePlayer.connect完成订阅、收到可恢复队列后调用player_action(kind=startup)。
+   正式启动动作失败后的“重试”调用restore；后者恢复为暂停。
+2. core/client/player/startup.rs先捕获账号token、用户选择代次和自动音频焦点代次，
+   读取控制器快照及本机设置；必要时条件式申请音频焦点，再检查代次。
+   设置读取失败时用原快照栅栏取消本次启动资格，不停止/暂停更新的用户控制；
+   修复设置后重连仍需手动播放或下次启动，不能通过页面刷新重新获得自动播放资格。
+3. controller/actions.rs校验当前账号和队列/播放控制栅栏；Startup已消费则直接回快照。
+   controller/startup.rs在SQLite读取、资源解析及解码前消费启动资格，构造LoadOptions。
+4. controller/load.rs仍走正式SourceResolver、授权/时间线、安全AudioEngine和解码流程；
+   不直接把完整媒体URL发给前端。进度到末尾的修正发生在已知实际媒体时间线之后。
+5. FM使用fm/player/controls.rs的startup协调门；缓存目标队列与实际队列不同则先投影，
+   必要时用既有会员/预加载流程取得资源；不误发skip报告，不绕过FM队列协调器。
+6. actor账号重绑恢复startup_pending，但永久取消本进程后续账号的startup_autoplay。
+   停止/取消会使正在解析的旧启动失效。启动内部标志不暴露为可由前端修改的DTO。
+
+IPC与接口
+startup_preferences(epoch) -> AccountData<StartupPreferencesView>
+startup_preferences_command(epoch, {kind:"change",expected_revision,settings})
+startup_preferences_command(epoch, {kind:"repair"})
+settings={autoPlay:boolean,rememberPosition:boolean}；revision为十进制字符串或损坏时null；
+damaged单独标识，不能把损坏数据展示为已保存的默认值。
+所有本机设置读写在账号epoch锁内完成，旧窗口/账号的请求被拒绝。
+设置读取/修改/修复不初始化音频引擎、不调用HTTP；访客也可设置。
+启动准备在线歌曲仍走现有/api/song/enhance/player/url/v1授权接口及媒体CDN，
+声音、本地文件、CUE及FM均复用已有各自来源流程；本批没有新增远端设置写接口。
+
+持久化与失败恢复
+StateStore SQLite owner=local-device，kind=playback-startup-preferences-v1。
+current保存revision与settings，revision单独保存单调计数器。
+缺记录是合法默认revision=0；严格解析结构和类型，不把损坏记录自动覆盖成默认值。
+change先比较expected_revision，再在同一事务更新计数器和current；写入故障整体回滚。
+repair只允许损坏的current；保存原值至playback-startup-recovery-v1，写默认设置和
+大于已有计数器/可读取旧revision的新revision。已健康或另一个窗口已修复则拒绝。
+这样修复后延迟到达的旧CAS不会因revision被重用而覆盖新值。
+计数器自身损坏/溢出时拒绝更新，不猜测重置；现有健康设置仍可读取，手动播放可用。
+损坏设置会阻止自动启动，界面明确给出恢复默认值；不会将设置损坏当显卡故障重启进程。
+IPC回执丢失时只回读当前状态，不自动重发、不把回读冒充原写入的成功确认。
+UI读取失败/写入失败后保留错误并需明确刷新；修复按钮消失后仅在焦点丢到body时
+将焦点交还本区刷新按钮。不会抢走用户移到其他控件的焦点。
+异步保存期间禁用复选框造成焦点丢失时，成功后返回原选项；失败后移到仍可用的
+刷新按钮。账号已切换、组件已卸载或用户已聚焦其他控件时不抢回焦点。
+
+验证入口
+- core/tests/playback_startup.rs：四组合、账号隔离/旧token、停止/重复/迟到请求、
+  结尾/试听、SQLite重开/CAS/磁盘失败/修复归档/修复版本不复用。
+- core/tests/client_player.rs：正式客户端本机设置不启动引擎/HTTP、账号代次、
+  自动播放一次、损坏状态及显式修复/手动恢复。
+- core/tests/fm_player.rs：匹配及未应用的FM队列恢复、自动播放/位置、不误报skip。
+- core/tests/client_local.rs：真实CUE索引/分轨恢复、关闭记忆后授权分轨起点。
+- frontend/tests/startup-preferences.test.ts、player-state.test.ts：无乐观写、重复点击、
+  回执丢失只回读、账号切换/卸载、损坏修复、启动失败后暂停重试。
+- desktop/examples/startup_ui_probe.{rs,js} + scripts/ci/startup_smoke.py：正式前端/
+  IPC/SQLite/libmpv，在五个进程生命周期中逐项核对18个真实WebView状态。
+  包括深浅色/760×540/写入失败/修复焦点/页面重载不重播；生成PCM/null输出，
+  不访问真实音乐账号。最终审计读取原生播放器和SQLite，不只判断复选框或DOM文案。
+  CI在Linux非C locale与Windows独立runner各自执行，必须全部成功才通过gate。
+
+边界
+本批合成桌面播放证明实际解码/定位/状态切换，不证明物理声卡、实机GPU帧率或真实账号权益。
+FM整个业务缓存丢失仍走既有明确失败/恢复路径，不能声称本批自动重建所有FM缓存。
+修复覆盖可读取JSON但结构/字段类型损坏的设置记录；数据库自身不可读、非法JSON文本或
+独立计数器损坏时保留错误，不自动清库或重建计数器。未宣称任意SQLite文件损坏可修复。
+启动Windows发行包的本批结果以精确提交CI为准；旧CI或Linux结果不能代替Windows实测。
+防休眠、淡入淡出、通知、自动取消静音、队列替换策略等其他设置仍未完整接通；
+完整剩余清单见settings-mapping.json，不能将此两项完成当作整个播放器设置页完成。
