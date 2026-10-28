@@ -65,13 +65,18 @@
       "feature": "native player observation and background publication",
       "module": "core/src/relay/publisher/player/ + core/src/playback/controller/",
       "verification": "5 projection tests including 720 permutations and mixed edits; 8 native actor integration tests; 19 actual WebView states and 4 confirmed synthetic uploads including 18000ms voice seek"
+    },
+    {
+      "feature": "publication status and explicit desktop recovery",
+      "module": "core/src/relay/publisher/recovery.rs + core/src/client/relay/publication.rs + frontend/src/components/settings/RelayPublication.vue",
+      "verification": "7 public-client tests, 7 frontend tests, 14 actual WebView states/14 screenshots; 4 synthetic uploads; no real account publication; exact Windows CI pending"
     }
   ],
   "remaining": [
     {
-      "feature": "publication desktop recovery and journal retention",
+      "feature": "publication journal retention and Windows recovery validation",
       "status": "not complete",
-      "details": "Native player projection, automatic EOF, voice clock, background lifecycle and synthetic GUI publication verified; public IPC recovery, visible blocked/local error state and history retention remain"
+      "details": "Local status, explicit snapshot recovery, unknown IPC cancellation and settings UI verified on Linux; full receipt/cancellation retention remains, exact Windows CI pending"
     },
     {
       "feature": "real cross-device continuation",
@@ -121,6 +126,12 @@
     "publisherWebViewStates": 19,
     "publisherSyntheticUploads": 4,
     "publisherLiveWrites": 0,
-    "publisherDesktopRecoveryComplete": false
+    "publisherDesktopRecoveryComplete": false,
+    "publisherDesktopRecoveryImplemented": true,
+    "publisherRecoveryClientTests": 7,
+    "publisherRecoveryFrontendTests": 7,
+    "publisherRecoveryWebViewStates": 14,
+    "publisherRecoverySyntheticUploads": 4,
+    "publisherRecoveryWindows": "pending exact CI"
   }
 }

@@ -3,7 +3,7 @@
 当前边界
 本批实现独立Rust的事件记录、持久意图、真实Api适配调用和失败恢复。
 生产PlaybackController事件与后台发送任务现已接通，参见relay-player-publication.txt；
-未决上行的公开IPC/恢复界面仍待完成，完整领域仍未完成。
+未决上行公开IPC/恢复界面已接，见relay-recovery-contracts.txt；完整领域仍未完成。
 没有向真实账号提交任何上行。测试用合成Api与真实SQLite/文件互斥，不代替线上验收。
 
 官方依据
@@ -88,5 +88,6 @@ Prepared→Sending先落盘，才调用：
 生产接线剩余
 原生事件映射、末尾preId、重排、重复ID回退、来源排除、首播/声音节流、失败重建及可取消
 后台任务已在下一批接通并验证，详见relay-player-publication.txt。
-仍待历史磁盘保留策略、UI白名单状态与显式恢复/丢失IPC取消，以及获准、可隔离的真实
+UI白名单状态、显式恢复与丢失IPC取消已接，见relay-recovery-contracts.txt；仍待历史磁盘
+保留策略以及获准、可隔离的真实
 上行/另一设备回读。上行成功只代表服务应答，不能据此宣称真正跨设备流程完成。

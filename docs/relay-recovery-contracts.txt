@@ -1,0 +1,77 @@
+同账号接续上行：桌面状态与显式恢复（2026-10-29）
+
+范围与来源
+继续使用relay-publication-contracts.txt、relay-player-publication.txt中的官方M/401上行协议，
+不增加新的网易云业务端点。恢复采用已有的当前队列快照和新session，不重放旧累计命令。
+设置页的“本机播放同步”、确认、未决核对及取消记录是本项目的恢复交互，不能宣称官方
+原界面存在相同设计。未使用YesPlayMusic；没有在本批向真实账号上传续播记录。
+
+入口和分层
+frontend/src/components/settings/RelayPublication.vue：状态、错误、确认与恢复入口。
+frontend/src/composables/useRelayPublication.ts：应用生命周期内的账号隔离/未决操作、
+仅设置页可见时的2秒本地读取、读取与命令代次、重复点击抑制。后台读取不反复禁用按钮，
+晚到的旧读取不能覆盖新操作结果；离开设置页停止轮询，账号变化清空原显示及未决引用。
+desktop/src/relay.rs：relay_publication_view、relay_publication_command类型化IPC。
+core/src/client/relay/publication.rs：原生用例与公开白名单投影。
+core/src/relay/publisher/recovery.rs：进程锁约束下的遗留Sending恢复、UUID回执和取消栅栏。
+播放器上行任务的local recording/preflight/sending健康状态只按当前SessionToken投影。
+
+公开契约
+relay_publication_view(epoch, requested?)返回AccountData<RelayPublicationView>。
+字段：pending、blocked/recovering/latest/requested、canResynchronize、sending、recordFailed、
+preflightFailed。回执只含UUID、phase、recoveryOf、serviceCode、createdAt；不含上传body、
+队列、设备身份、relay sessionId、Cookie、媒体地址或签名。requested用于精确核对一个UUID。
+读取只读本机状态；若能取得与发送器相同的relay-v1锁，才把遗留Sending恢复为Uncertain。
+正在发送时取不到锁，就保留Sending，不凭“前端正在刷新”判断进程已退出。
+无遗留Sending时不重新写发布状态；状态读取不会启动音频引擎或发出网易云请求。
+
+relay_publication_command(epoch, command)的command拒绝多余字段：
+  {kind:"resynchronize",id:<UUID>,blocked_id:<原拒绝/未决UUID>}
+  {kind:"cancel_unseen",id:<UUID>,blocked_id:<原拒绝/未决UUID>}
+第一种经fresh AB/config前置检查，从最新已记录且仍与已提交playback/queue一致的frame建快照。
+若原生队列已变化、观察者尚未补齐，拒绝用旧frame覆盖远端；记录失败时也禁止手动发布。
+已有后台发送器时只唤醒任务；没有播放器实例时由用例发送已准备的快照，不初始化音频。
+同一UUID重复调用读取已有回执；仅Prepared仍可继续发送，Sending/Confirmed/Rejected/
+Uncertain等已发出结果不被重放。“重试连接”复用Prepared快照的UUID，不创建第二个恢复。
+实际提交仍是/api/relay/songlist/submit，songListSubmitReq为嵌套JSON字符串，retransmit=true；
+只有明确确认后才解除原blocked，未收到应答仍保留未决责任。
+
+IPC应答丢失与取消
+命令失败后，界面先用相同UUID读取本地回执。有记录就显示真实状态；无记录时禁止开始
+第二次恢复，提供“核对同步结果”。此按钮执行cancel_unseen：先取得relay-v1锁，已有记录
+直接返回；尚未开始则写relay-publication-cancelled-v1的账号/设备/原blocked/UUID栅栏。
+晚到的同UUID恢复在前置网络检查前就被Cancelled拒绝。重新打开状态库后取消记录仍有效。
+栅栏不撤销已经发送的HTTP，也不会把Rejected/Uncertain伪装成取消成功；其他账号/设备
+不能复用原UUID，错误blocked_id不能覆盖原意图。原始拒绝记录仍保留。
+
+界面行为
+本地记录失败与连接失败、服务拒绝和未知应答分别显示；本机音频不因为这些状态停播。
+确认文案明确重新同步可能替换其他设备最近上传的记录；取消对话框不发请求。
+取消后返回原按钮；确认后按钮移除时，ModalTransition的可选fallbackFocus返回本区刷新键。
+此回退不改变其他对话框的嵌套焦点规则。浅深色沿用语义色，760×540仍可滚动访问操作。
+
+证据
+core/tests/client_relay_publication.rs：公开白名单/只读/账号代次、当前队列新快照与幂等、
+取消栅栏重开、真正发送时读取不误恢复、Prepared断网后续发、队列变化拒绝旧快照，
+以及本地SQL故障穿过公开状态而不停止音频；故障解除后按原观察者重建。
+frontend/tests/relay-publication.test.ts：7项，重复点击、精确回读、未知栅栏、Prepared复用、
+晚到账号结果、记录失败与读取错误、后台读取不禁用操作且不覆盖新结果。
+.build/relay-recovery-ui-a第一次窗口测试停在第6状态：Tauri把invoke定义为不可写，脚本
+的故障注入没有生效，导致实际执行了一次恢复；这是合成服务中的测试脚本错误，未忽略失败。
+修正为只在专用示例中包裹注入的CoreClient适配方法，并断言包裹生效；普通/续发请求仍经
+原生产适配→Tauri IPC→Rust核心。故障只模拟送达前丢失或原命令结果返回后丢失。
+.build/relay-recovery-ui-b：14状态/14截图通过；2次真实libmpv合成PCM/null解码，4次合成
+上行（1次403、1次未知应答、2次已确认新快照），取消/只读阶段不增加网络调用。
+恢复后原生音频保持Idle；不会把成功应答说成另一真实设备已接收或物理声卡已经出声。
+正式CI使用scripts/ci/catalog_smoke.py --relay-recovery核对原生回执、UUID取消记录、阶段
+状态、精确发送次数、主题和小窗口布局；Linux与Windows独立执行。
+
+剩余边界
+历史完整发布回执与取消栅栏的保留/压缩策略仍待完成，不能将有界工作集合称为磁盘保留已完成。
+真实账号上行及另一设备回读尚无证据；无第二账号不声称一起听双端通过。
+本批Windows状态仍取决于精确提交完整CI，不能沿用之前提交的绿色结果。整个原始目标继续。
+
+本批最终本地检查：cargo fmt、严格Clippy、全工作区221目标/1017项Rust通过，0失败/忽略；
+前端185项、format:check、类型检查与生产构建通过；公开源码审计与CI规则检查通过。
+正式恢复脚本14状态、原有UX首次27状态+重开2状态均通过；.build/relay-recovery-ci 与
+.build/relay-recovery-ux-regression 保存对应输出。Windows仍需本批精确提交CI。
