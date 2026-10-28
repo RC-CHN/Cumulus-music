@@ -99,10 +99,21 @@ fn main() {
         let api:Arc<dyn Api>=recovery.as_ref().map(|f|f.clone() as Arc<dyn Api>).unwrap_or_else(||Arc::new(Library));
         let session=Arc::new(AccountSession::new(api,Some(registry.store())));
         let mut client=MusicClient::with_session(session,registry);
+        let startup_delay: u64 = std::env::var("CUMULUS_PLAYER_START_DELAY_MS").ok()
+            .map(|value| value.parse().expect("integer fixture startup delay")).unwrap_or(0);
+        assert!(startup_delay <= 5000, "bounded synthetic startup delay");
+        let factory_elapsed = Arc::new(std::sync::atomic::AtomicU64::new(0));
         if motion_proof {
+            let elapsed = factory_elapsed.clone();
             let wave = root.join("relay-synthetic.wav");
             let wave = if wave.exists() { wave } else { relay_fixture::wave(&root)? };
-            client = client.with_audio_factory(move || Ok(Box::new(relay_fixture::NativeAudio::open(wave.clone())?)));
+            client = client.with_audio_factory(move || {
+                let start = std::time::Instant::now();
+                std::thread::sleep(std::time::Duration::from_millis(startup_delay));
+                let audio = relay_fixture::NativeAudio::open(wave.clone())?;
+                elapsed.store(start.elapsed().as_millis() as u64, std::sync::atomic::Ordering::Release);
+                Ok(Box::new(audio))
+            });
         }
         app.manage(if motion_proof { client } else { cumulus_desktop::configure_native_audio(client,&app.path().resource_dir()?,true) });
         app.add_capability(r#"{"identifier":"ux-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
@@ -130,6 +141,8 @@ fn main() {
                 value["syntheticLikeReads"]=json!(fixture.reads.load(Ordering::SeqCst));
             }
             if motion_proof {
+                value["audioFactoryElapsedMs"] = json!(factory_elapsed.load(std::sync::atomic::Ordering::Acquire));
+                value["audioFactoryDelayRequestedMs"] = json!(startup_delay);
                 let stage = stage.to_owned(); let handle=handle.clone(); let output=output.clone();
                 tauri::async_runtime::spawn(async move {
                     let client=handle.state::<MusicClient>(); let epoch=client.account().unwrap().epoch;

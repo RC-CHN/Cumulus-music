@@ -7,7 +7,7 @@
   const click = node => { assert(node && !node.disabled, 'unavailable action'); node.focus({preventScroll: true}); node.click(); };
   const state = () => one('.playerbar')?.dataset.state;
   const focus = node => { node.setAttribute('tabindex', '-1'); node.focus({preventScroll: true}); return node; };
-  let stageCount = 0;
+  let stageCount = 0, initialPlayEnabled = false;
   async function capture(name) {
     assert(scrollY === 0 && document.documentElement.scrollWidth <= innerWidth, 'desktop frame overflow');
     await emit(`ux_${String(++stageCount).padStart(2, '0')}_${name}`, {playerState: state(), realMusicRequests: 0});
@@ -27,6 +27,8 @@
   }
   try {
     await wait(() => one('.track-row'), 'daily songs');
+    await wait(() => one('.track-row .track-play') && !one('.track-row .track-play').disabled, 'native player ready');
+    initialPlayEnabled = true;
     one('.track-row').dispatchEvent(new MouseEvent('dblclick', {bubbles: true}));
     await wait(() => state() === 'playing' && Number(one('.playerbar').dataset.position) > .15, 'native audio');
     click(one('[aria-label="暂停"]')); await wait(() => state() === 'paused', 'pause');
@@ -46,6 +48,6 @@
     const target = focus(one('.page-view h1'));
     assert(space(target).defaultPrevented, 'page shortcut not consumed'); await wait(() => state() === 'playing', 'page space play'); await capture('page_space_play');
     space(target); await wait(() => state() === 'paused', 'page space pause'); await capture('page_space_pause');
-    await emit('complete', {ok: true, stageCount, realMusicRequests: 0, physicalAudioOutputVerified: false});
-  } catch (error) { await emit('failed', {ok: false, error: String(error), stageCount, playerState: state()}); }
+    await emit('complete', {ok: true, stageCount, initialPlayEnabled, realMusicRequests: 0, physicalAudioOutputVerified: false});
+  } catch (error) { await emit('failed', {ok: false, error: String(error), stageCount, initialPlayEnabled, playerState: state()}); }
 })();
