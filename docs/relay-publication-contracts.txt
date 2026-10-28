@@ -1,0 +1,92 @@
+同账号接续上行——持久发送契约（2026-10-28）
+
+当前边界
+本批实现独立Rust的事件记录、持久意图、真实Api适配调用和失败恢复。
+尚未订阅生产PlaybackController事件，也没有后台发送任务或公开IPC/恢复界面。
+因此不是“桌面端已能把当前播放发布到另一设备”的证据；完整领域仍未完成。
+没有向真实账号提交任何上行。测试用合成Api与真实SQLite/文件互斥，不代替线上验收。
+
+官方依据
+以relay-contracts.txt中的M/401、M/15和42项合成官方冻结向量为基础，未参考YesPlayMusic。
+M/401 subscribePlayModeChange/Insert/Delete/Select/Seek/Move/Clear与冷启动Playing订阅；
+doInit以已登录、device_connect严格t2和config.enable决定shouldUpload。
+RELAY_SWITCH不另加为上行允许条件，不能臆造“开关关闭就必定没有上行”的承诺。
+uploadPlayNewSource/uploadPlayState/uploadPlayCommands通过M/15对应包装；错误10001只在
+非retransmit请求时允许一次当前队列快照。所有命令在成功后仍累计，只有新源/快照重置。
+
+模块与调用
+core/src/relay/publisher/types.rs：仅原生可用的PublicationFrame/Event/Intent/Status。
+mod.rs：账号与本机设备绑定、原子状态/意图写入、活动集合和历史回执。
+record.rs：record_for(token, frame, event, config)，同步本地事务，不等待网络。
+send.rs：publish_next_for(token)串行发送；resynchronize_for(token, id, blocked)显式重建。
+已有machine.rs提供请求形状、累计命令、当前资源、声音进度、快照窗口及新12位会话。
+
+PublicationFrame仅含队列代次、entryId、有类型的十进制资源ID、选择项、源、模式和场景标记。
+不能传Cookie、签名或媒体URL；选择项必须对应真实entryId和资源类型，拒绝重复entryId、
+超长/超量队列、过期代次及非法配置。场景/源投影必须由后续原生播放器适配负责，不能让
+WebView提供“允许发布”或本机设备ID。源默认list_loop、状态默认order沿用官方机器规则。
+
+事件规则
+- Source：创建新会话并记录源；Collection使用sourceType/sourceId，其余使用resources。
+- Command：保持类型的insert/delete/move，preId由实际队列适配计算，成功也不清空累计命令。
+- Select：先记录状态；快照源选到窗口外，再记录当前队列的新快照。
+- Mode：仅此次触发来自playlistHandoff时抑制；后续用户手动改模式仍发布。
+- VoiceProgress：仅当前声音资源匹配才记录毫秒进度；歌曲不发布进度。
+  时间节流仍由已恢复VoiceProgressClock负责，正式采样尚待事件适配接线。
+- ColdStart：上传已有本机会话源；不凭空推断不存在的播放源。
+- 空/不适用场景/Clear：先持久化最后clear，再移除本机机器，失败不复活原场景。
+  terminal_clear消费机器，在512条累计命令边界仍可附加最终第513条clear。
+- 未发送积压超过256条时，将这些Prepared记录改为Superseded，并生成当前队列快照。
+  Sending/Uncertain责任不会被积压合并消除；已阻塞的记录仍阻止自动发出新快照。
+
+发送与持久化
+owner为当前账号，状态键为原生Api.local_device_id的SHA256。公开接口不接受外部设备ID。
+relay-publication-v1：机器、最新权威队列、序号、最新回执ID及阻塞责任ID。
+relay-publication-intents-v1：UUID标识的不可重放请求、原设备、代次、创建时间、阶段及恢复父ID。
+relay-publication-active-<device hash>：Prepared/Sending及当前阻塞回执；完成或已被明确恢复的
+历史项从工作集合移除，发送/记录不全表扫描历史。历史保留在独立回执表供UUID查询与审计。
+此阶段尚无历史磁盘保留策略；生产生命周期接线时仍需确定保留/压缩规则。
+每次状态、意图和工作集合更改在同一SQLite事务提交。跨网络不持有SQLite或账号内存锁。
+共享relay-v1进程文件锁串行化发送、下行和设备开关；播放器记录可以在网络请求期间提交。
+
+每次发送重新读取AB与config；已保存enable不能授权新进程。设备开关有未决写入时不发送。
+这种逐次预检比官方仅初始化时预检更保守，也多两次读取；正式调度仍需结合生命周期控制
+请求量，不能缓存一个旧allow绕过账号/配置变化。预检网络错误保留Prepared，没有业务写入。
+不允许发布时Prepared改为Skipped；之后恢复允许且出现新事件时先以最新队列重建快照，
+不发曾被跳过的旧增量。没有新事件时不会仅因磁盘有旧机器就后台自动重放。
+
+Prepared→Sending先落盘，才调用：
+ /api/relay/songlist/submit {songListSubmitReq:JSON.stringify(source或commands)}
+ /api/relay/play/state/submit {playStateSubmitReq:JSON.stringify(state)}
+均走现有账号Api、cache=false，只有code200为Confirmed。
+已确认未发出及明确301/403/404/505/506/511/512/10001为Rejected；超时、未知服务错误、
+中断应答及其它不确定错误为Uncertain。两者都阻止后续累计命令，避免间接重放被拒绝的命令。
+取消future用Flight守卫保存Uncertain；进程硬中断后的Sending在下次取得排它锁后转Uncertain。
+结果总写回原owner/设备；账号或设备已切换时不向新上下文返回旧结果。
+
+仅显式10001触发自动恢复：读取请求期间最新提交的队列，建立新的session、按官方窗口取样，
+将旧Prepared增量置Superseded并关联原回执，发送retransmit=true一次。它再次返回10001、
+403或超时都阻塞，不递归重试。队列已经空或不适用则保留原阻塞，不造有效快照。
+显式resynchronize使用用户操作UUID+当前blocked回执ID；新快照Prepared后由发送器执行。
+重复UUID读取原回执，不重造快照、不跨设备复用；原Rejected/Uncertain记录仍可审计。
+快照仅Prepared不解除原阻塞，Confirmed才解除。等待期间config关闭会保留原阻塞，需要
+以后再次明确恢复；积压压缩也不能替换已准备好的恢复意图。不会提前报告已经解决。
+若当前没有可发布队列，则需先选择合适内容；不能把“停止重试”展示成远端已被清除。
+
+验收路径
+ cargo test -p cumulus-core --test relay_publication --locked
+14项覆盖：嵌套JSON字符串与精确端点、累计增删/类型/声音进度和重开、请求途中队列变更、
+10001一次恢复和第二次拒绝、403/丢失应答阻塞、显式恢复重复ID、取消/硬中断恢复、
+账号切换、本机设备切换及UUID隔离、新鲜资格检查、clear失败不复活、积压压缩和输入边界，
+还包括恢复期间config关闭仍保留阻塞，以及积压不能覆盖待确认恢复意图。
+还会继续运行原42组官方对照与全工作区检查；不将合成发送成功记为真实服务端允许。
+本批最终本地检查：Rust全工作区218目标/996项通过、0失败/忽略；严格Clippy和fmt通过；
+前端固定版本npm ci、format:check、178项测试、类型检查/生产构建及CI规则检查通过。
+原42组官方冻结对照包含在Rust检查中。新发送层未接正式播放器，不能以该总数改变此边界。
+本地日志：.build/relay-publication-{tests-final,workspace-confirmed,clippy-confirmed}.log。
+
+生产接线剩余
+原生已提交队列/自动切歌/模式/定位/首播/声音节流事件的完整映射与持久记录失败恢复；
+队列Append实际末尾preId、重排完整序列及重复资源ID歧义处理；空/本地/云盘/FM等来源排除；
+可取消的后台发送/账号代次绑定、历史保留策略、UI白名单状态与显式恢复/丢失IPC取消；
+实际WebView和原生播放链路验收，以及获准、可隔离的真实上行/另一设备回读。
