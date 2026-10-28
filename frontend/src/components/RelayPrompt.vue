@@ -44,7 +44,22 @@ function leave() {
   // the completed focus move, including moves between this prompt's buttons.
   queueMicrotask(start);
 }
+function beforeLeave(node: Element) {
+  pause();
+  // The transition keeps this DOM alive after its offer has been dismissed.
+  // It must stop accepting focus/clicks as soon as the exit begins.
+  node.setAttribute('inert', '');
+}
+function cancelLeave(node: Element) {
+  node.removeAttribute('inert');
+  hovered = node.matches(':hover');
+  start();
+}
+function continueHere() {
+  if (visible.value && props.model.alert.value) void props.model.continueHere(props.quality);
+}
 function close(event: Event) {
+  if (!visible.value || !props.model.alert.value) return;
   if (
     (event.currentTarget as HTMLElement).closest('.relay-prompt')?.contains(document.activeElement)
   )
@@ -65,7 +80,7 @@ onUnmounted(() => {
 });
 </script>
 <template>
-  <Transition name="relay-prompt">
+  <Transition name="relay-prompt" @before-leave="beforeLeave" @leave-cancelled="cancelLeave">
     <aside
       ref="element"
       v-if="visible && model.alert.value"
@@ -86,7 +101,7 @@ onUnmounted(() => {
       <button
         class="primary relay-continue"
         :disabled="!!model.error.value || model.loading.value || !!model.unknown.value"
-        @click="model.continueHere(quality)"
+        @click="continueHere"
       >
         {{ model.alert.value.buttonText }}
       </button>

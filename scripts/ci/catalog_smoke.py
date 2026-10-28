@@ -120,6 +120,8 @@ def main():
         assert complete['autoDismiss']
         assert complete['focusHoldAfterPointerLeave'] and complete['hoverHoldAfterFocusLeave']
         assert complete['nativeWindowFocusHold'] and complete['nullRelatedFocusOutInjected']
+        assert complete['freshOfferBeforeFocusHold']
+        assert complete['leavingFocusChecks'] and all(v['inert'] and v['focusBlocked'] for v in complete['leavingFocusChecks'])
         if args.relay_publication:
             uploads = complete['syntheticRelayPublications']
             assert len(uploads) >= 4 and len(uploads) == len(complete['publicationPhases'])

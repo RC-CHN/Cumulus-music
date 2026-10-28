@@ -10,6 +10,20 @@
   const position=()=>Number(one('.playerbar')?.dataset.position??0);
   // Bounded synthetic-only event trace for cross-WebView focus failures.
   const focusTrace=[];
+  // A fading prompt is still connected, but must already reject keyboard and
+  // pointer interaction. Test the real WebView behavior during that interval.
+  const leavingFocusChecks=[],seenLeaving=new WeakSet();
+  const leavingObserver=new MutationObserver(()=>{
+    const node=one('.relay-prompt-leave-active');
+    if(!node||seenLeaving.has(node))return;
+    seenLeaving.add(node);
+    const button=node.querySelector('.relay-continue');
+    button?.focus({preventScroll:true});
+    const continueBlocked=document.activeElement!==button;
+    const close=node.querySelector('.relay-close');close?.focus({preventScroll:true});
+    leavingFocusChecks.push({inert:node.inert,focusBlocked:continueBlocked&&document.activeElement!==close});
+  });
+  leavingObserver.observe(document.documentElement,{subtree:true,attributes:true,attributeFilter:['class','inert']});
   const describe=node=>node instanceof Element?`${node.tagName}.${node.className}`:String(node);
   const focusState=()=>({active:describe(document.activeElement),documentFocused:document.hasFocus(),prompt:!!one('.relay-prompt'),promptFocused:!!one('.relay-prompt')?.contains(document.activeElement),hovered:!!one('.relay-prompt')?.matches(':hover'),disabled:one('.relay-continue')?.disabled,settings:!!one('.settings-page'),relaySettings:!!one('.relay-settings'),relayBusy:one('.relay-settings')?.getAttribute('aria-busy'),privacyFields:all('input[name="shareSetting"]').length});
   for(const event of ['focusin','focusout','pointerenter','pointerleave']) document.addEventListener(event,e=>{
@@ -34,6 +48,12 @@
     click(one('[aria-label="打开设置"]'));await wait(()=>ready()&&one('input[name="shareSetting"]'),'settings');await theme('light');await capture('settings_light');
     await theme('dark');await refresh('song');await capture('prompt_dark');
     await emit('resize',{width:760,height:540});await wait(()=>innerWidth===760,'small window');await capture('small_dark');await theme('light');await capture('small_light');
+    // Rendering/theme/resize captures may consume the original offer's whole
+    // eight-second lifetime on a slower runner. Start focus-hold checks on a
+    // newly mounted offer, never on a node that is already leaving.
+    await refresh('empty');await wait(()=>!one('.relay-prompt'),'old prompt removed');
+    assert(leavingFocusChecks.length>0&&leavingFocusChecks.every(v=>v.inert&&v.focusBlocked),'leaving prompt must be inert and reject focus');
+    await refresh('song');await wait(()=>one('.relay-prompt:not([inert]):not(.relay-prompt-leave-active)')&&!one('.relay-continue')?.disabled,'fresh interactive prompt');
     // Real pointer movement: runner cursor placement after resize is not an
     // idle state. Hover and keyboard focus must independently hold the offer.
     const rect=one('.relay-prompt').getBoundingClientRect();
@@ -67,6 +87,8 @@
     await capture('voice_playing',true);click(one('[aria-label="停止播放"]'));
     await refresh('song');click(one('input[name="personalServiceSetting"][value="2"]'));await wait(()=>one('dialog[open]')&&!one('.relay-prompt'),'modal suppression');await capture('modal_suppression');click(all('dialog[open] button').find(n=>n.textContent.trim()==='取消'));await wait(()=>!one('dialog[open]')&&one('.relay-prompt'),'prompt restored');await capture('modal_restored');
     click(one('[aria-label="关闭接续提示"]'));await wait(()=>!one('.relay-prompt'),'close prompt');assert(document.activeElement===one('[aria-label="打开设置"]'),'close focus did not return');await capture('closed_focus');
-    await emit('complete',{ok:true,stageCount,realMusicRequests:0,syntheticQueueApplications:2,playbackVerified:true,decoder:'libmpv',audioOutput:'null',mediaSubstitution:'exact synthetic CDN URL to generated PCM',autoDismiss:true,focusHoldAfterPointerLeave:true,hoverHoldAfterFocusLeave:true,nativeWindowFocusHold:true,nullRelatedFocusOutInjected:true,focusTrace});
-  }catch(error){await emit('failed',{ok:false,error:String(error),stageCount,focusState:focusState(),focusTrace});}
+    assert(leavingFocusChecks.every(v=>v.inert&&v.focusBlocked),'leaving prompt later accepted focus');
+    await emit('complete',{ok:true,stageCount,realMusicRequests:0,syntheticQueueApplications:2,playbackVerified:true,decoder:'libmpv',audioOutput:'null',mediaSubstitution:'exact synthetic CDN URL to generated PCM',autoDismiss:true,focusHoldAfterPointerLeave:true,hoverHoldAfterFocusLeave:true,nativeWindowFocusHold:true,nullRelatedFocusOutInjected:true,freshOfferBeforeFocusHold:true,leavingFocusChecks,focusTrace});
+  }catch(error){await emit('failed',{ok:false,error:String(error),stageCount,focusState:focusState(),focusTrace,leavingFocusChecks});}
+  finally{leavingObserver.disconnect();}
 })();
