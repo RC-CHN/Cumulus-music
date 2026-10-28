@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, watch } from 'vue';
+import { computed, onUnmounted, ref, watch } from 'vue';
 import type { RelayModel } from '../composables/useRelay';
 import type { Quality } from '../services/player';
 import Icon from './Icon.vue';
@@ -10,16 +10,33 @@ const visible = computed(
   () => !!props.model.alert.value && !props.blocked && !modalDepth.value && !props.model.busy.value,
 );
 let timer: ReturnType<typeof setTimeout> | undefined;
+const element = ref<HTMLElement>();
+let hovered = false;
+let focused = false;
 function pause() {
   if (timer) clearTimeout(timer);
   timer = undefined;
 }
 function start() {
   pause();
-  if (visible.value) timer = setTimeout(() => void props.model.dismiss(), 8000);
+  if (visible.value && !hovered && !focused)
+    timer = setTimeout(() => void props.model.dismiss(), 8000);
+}
+function enter() {
+  hovered = true;
+  pause();
+}
+function exit() {
+  hovered = false;
+  start();
+}
+function focus() {
+  focused = true;
+  pause();
 }
 function leave(event: FocusEvent) {
-  if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) start();
+  focused = (event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null);
+  start();
 }
 function close(event: Event) {
   if (
@@ -28,18 +45,27 @@ function close(event: Event) {
     document.querySelector<HTMLButtonElement>('.settings-button')?.focus({ preventScroll: true });
   void props.model.dismiss();
 }
-watch(visible, start, { immediate: true });
+watch(
+  visible,
+  () => {
+    hovered = !!element.value?.matches(':hover');
+    focused = !!element.value?.contains(document.activeElement);
+    start();
+  },
+  { immediate: true, flush: 'post' },
+);
 onUnmounted(pause);
 </script>
 <template>
   <Transition name="relay-prompt">
     <aside
+      ref="element"
       v-if="visible && model.alert.value"
       class="relay-prompt"
       aria-label="跨端续播"
-      @pointerenter="pause"
-      @pointerleave="start"
-      @focusin="pause"
+      @pointerenter="enter"
+      @pointerleave="exit"
+      @focusin="focus"
       @focusout="leave"
     >
       <div class="relay-device"><Icon name="monitor" /></div>

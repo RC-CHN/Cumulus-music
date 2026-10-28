@@ -24,6 +24,17 @@
     click(one('[aria-label="打开设置"]'));await wait(()=>ready()&&one('input[name="shareSetting"]'),'settings');await theme('light');await capture('settings_light');
     await theme('dark');await refresh('song');await capture('prompt_dark');
     await emit('resize',{width:760,height:540});await wait(()=>innerWidth===760,'small window');await capture('small_dark');await theme('light');await capture('small_light');
+    // Real pointer movement: runner cursor placement after resize is not an
+    // idle state. Hover and keyboard focus must independently hold the offer.
+    const rect=one('.relay-prompt').getBoundingClientRect();
+    await emit('pointer',{x:rect.left+10,y:rect.top+10});await wait(()=>one('.relay-prompt')?.matches(':hover'),'pointer entered prompt');
+    one('.relay-continue').focus({preventScroll:true});
+    await emit('pointer',{x:4,y:4});await wait(()=>!one('.relay-prompt')?.matches(':hover'),'pointer left prompt');
+    await sleep(8500);assert(one('.relay-prompt')?.contains(document.activeElement),'keyboard focus must prevent auto-dismiss after pointer leaves');
+    await emit('pointer',{x:rect.left+10,y:rect.top+10});await wait(()=>one('.relay-prompt')?.matches(':hover'),'pointer reentered prompt');
+    one('[aria-label="打开设置"]').focus({preventScroll:true});
+    await sleep(8500);assert(one('.relay-prompt')?.matches(':hover'),'hover must prevent auto-dismiss after focus leaves');
+    await emit('pointer',{x:4,y:4});await wait(()=>!one('.relay-prompt')?.matches(':hover'),'pointer released');
     await wait(()=>!one('.relay-prompt'),'8 second auto-dismiss');await capture('auto_dismiss');
     one('.relay-settings').scrollIntoView({block:'center'});await refresh('empty');assert(one('.relay-settings').textContent.includes('暂时没有'),'empty device state');await capture('empty');
     await refresh('excluded');assert(one('.relay-settings').textContent.includes('尚未向当前账号开放'),'experiment excluded');await capture('excluded');
@@ -36,6 +47,6 @@
     await refresh('voice');await capture('voice_offer');click(button('继续播放'));await sleep(150);await wait(()=>ready()&&state()==='playing'&&position()>=12.5,'voice resume');await capture('voice_playing',true);click(one('[aria-label="停止播放"]'));
     await refresh('song');click(one('input[name="personalServiceSetting"][value="2"]'));await wait(()=>one('dialog[open]')&&!one('.relay-prompt'),'modal suppression');await capture('modal_suppression');click(all('dialog[open] button').find(n=>n.textContent.trim()==='取消'));await wait(()=>!one('dialog[open]')&&one('.relay-prompt'),'prompt restored');await capture('modal_restored');
     click(one('[aria-label="关闭接续提示"]'));await wait(()=>!one('.relay-prompt'),'close prompt');assert(document.activeElement===one('[aria-label="打开设置"]'),'close focus did not return');await capture('closed_focus');
-    await emit('complete',{ok:true,stageCount,realMusicRequests:0,syntheticQueueApplications:2,playbackVerified:true,decoder:'libmpv',audioOutput:'null',mediaSubstitution:'exact synthetic CDN URL to generated PCM',autoDismiss:true});
+    await emit('complete',{ok:true,stageCount,realMusicRequests:0,syntheticQueueApplications:2,playbackVerified:true,decoder:'libmpv',audioOutput:'null',mediaSubstitution:'exact synthetic CDN URL to generated PCM',autoDismiss:true,focusHoldAfterPointerLeave:true,hoverHoldAfterFocusLeave:true});
   }catch(error){await emit('failed',{ok:false,error:String(error),stageCount});}
 })();

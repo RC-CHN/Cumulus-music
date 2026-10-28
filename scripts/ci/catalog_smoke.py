@@ -57,6 +57,7 @@ def main():
         assert complete['decoder'] == 'libmpv' and complete['audioOutput'] == 'null'
         assert complete['mediaSubstitution'] == 'exact synthetic CDN URL to generated PCM'
         assert complete['autoDismiss']
+        assert complete['focusHoldAfterPointerLeave'] and complete['hoverHoldAfterFocusLeave']
     elif args.relay_settings:
         assert complete['syntheticRelaySettingWrites'] == 6 and complete['syntheticRelayPulls'] == 0
         assert complete['settingReadbackVerified'] and complete['noOptimisticCheckbox'] and complete['acceptCancelFocus']
