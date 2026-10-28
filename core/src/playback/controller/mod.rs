@@ -2,6 +2,7 @@
 //! resolving and decoding run outside the actor. A generation cancels old loads.
 mod actions;
 mod equalizer;
+mod history;
 mod load;
 mod remote;
 mod state;

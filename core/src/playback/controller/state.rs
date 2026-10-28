@@ -26,12 +26,14 @@ use tokio::{
 };
 
 pub(super) struct Loaded {
+    pub history: crate::history::playback::Checkpoint,
     pub item: QueueEntry,
     pub source: Arc<ResolvedSource>,
     pub media: LoadedMedia,
     pub timeline: Timeline,
 }
 pub(super) struct Pending {
+    pub history: crate::history::playback::Checkpoint,
     pub id: String,
     pub item: QueueEntry,
     pub reply: Option<Response>,
@@ -57,6 +59,7 @@ pub(super) struct Actor {
     pub play_id: Option<String>,
     pub position: Option<f64>,
     pub error: Option<String>,
+    pub history_error: Option<String>,
     pub reset: bool,
     pub loaded: Option<Loaded>,
     pub pending: Option<Pending>,
@@ -103,6 +106,7 @@ impl Actor {
             play_id: None,
             position: None,
             error: None,
+            history_error: None,
             reset: false,
             loaded: None,
             pending: None,
@@ -163,6 +167,7 @@ impl Actor {
             mode: self.queue.mode(),
             queue_len: self.queue.len(),
             error: self.error.clone(),
+            history_error: self.history_error.clone(),
             prefetch: self.prefetch.clone(),
             position_reset: self.reset,
         }
@@ -242,18 +247,24 @@ impl Actor {
             {
                 return Ok(());
             }
-            crate::podcast::progress::mark_heard(tx, self.queue.owner(), &loaded.item.resource)?;
-            if matches!(
-                loaded.timeline.snapshot().mode,
-                crate::playback::TimelineMode::Full | crate::playback::TimelineMode::FullTrial
-            ) {
-                crate::podcast::progress::save(
+            if self.state == PlaybackStatus::Playing || loaded.history.played_at.is_some() {
+                crate::podcast::progress::mark_heard(
                     tx,
                     self.queue.owner(),
                     &loaded.item.resource,
-                    seconds,
-                    self.state == PlaybackStatus::Ended,
                 )?;
+                if matches!(
+                    loaded.timeline.snapshot().mode,
+                    crate::playback::TimelineMode::Full | crate::playback::TimelineMode::FullTrial
+                ) {
+                    crate::podcast::progress::save(
+                        tx,
+                        self.queue.owner(),
+                        &loaded.item.resource,
+                        seconds,
+                        self.state == PlaybackStatus::Ended,
+                    )?;
+                }
             }
             tx.put(
                 self.queue.owner(),
@@ -266,6 +277,7 @@ impl Actor {
                 }),
             )
         })?;
+        self.save_history();
         self.last_save = Instant::now();
         Ok(())
     }

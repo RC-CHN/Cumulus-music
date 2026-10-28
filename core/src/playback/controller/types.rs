@@ -51,6 +51,8 @@ pub struct PlaybackSnapshot {
     pub mode: PlaybackMode,
     pub queue_len: usize,
     pub error: Option<String>,
+    /// Local persistence diagnostic; must not be presented as an audio failure.
+    pub history_error: Option<String>,
     pub prefetch: PrefetchSnapshot,
     pub position_reset: bool,
 }

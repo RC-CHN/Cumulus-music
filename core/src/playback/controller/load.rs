@@ -79,6 +79,19 @@ impl Actor {
         if options.position.is_some_and(|p| !p.is_finite() || p < 0.0) {
             return Err(Error::InvalidInput("invalid playback position"));
         }
+        // Source refresh/quality reloads of the same selection keep the play
+        // checkpoint. Selecting again or completing a loop creates a new one.
+        let history = self
+            .loaded
+            .as_ref()
+            .filter(|l| {
+                options.recover && options.position.is_some() && l.item.entry_id == item.entry_id
+            })
+            .map(|l| l.history.clone())
+            .unwrap_or_default();
+        if history.played_at.is_none() {
+            self.history_error = None;
+        }
         self.cancel_load().await?;
         self.loaded = None;
         self.position = None;
@@ -90,6 +103,7 @@ impl Actor {
         let cancel = self.guard();
         self.cancel = cancel.clone();
         self.pending = Some(Pending {
+            history,
             id,
             item: item.clone(),
             reply: reply.take(),
@@ -253,6 +267,7 @@ impl Actor {
                     PlaybackStatus::Playing
                 };
                 self.loaded = Some(Loaded {
+                    history: pending.history,
                     item: prepared.item,
                     source: prepared.source,
                     media: prepared.media,

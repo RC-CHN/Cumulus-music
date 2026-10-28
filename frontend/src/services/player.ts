@@ -61,6 +61,7 @@ export interface PlayerView {
   mode: PlaybackMode;
   queueLen: number;
   error: string | null;
+  historyWarning: string | null;
   positionReset: boolean;
 }
 export interface EqualizerSettings {

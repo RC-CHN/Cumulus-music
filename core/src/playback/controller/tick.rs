@@ -37,6 +37,7 @@ impl Actor {
         self.prefs = Default::default();
         self.token = token;
         self.bound = false;
+        self.history_error = None;
         self.equalizer_clear().await?;
         self.resolver.invalidate(None)?;
         let owner = self.token.uid.as_deref().unwrap_or("local-guest");

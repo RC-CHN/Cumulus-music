@@ -293,7 +293,15 @@ impl MusicClient {
                         if ids.is_empty() {
                             return Err(Error::State("playlist has no online tracks"));
                         }
-                        Ok((ids, index, quality, json!({"kind":"playlist","id":id})))
+                        let history = json!({"id":id,"name":detail["name"],
+                            "coverImgUrl":detail["coverImgUrl"],"creator":detail["creator"],
+                            "description":detail["description"],"trackCount":detail["trackCount"]});
+                        Ok((
+                            ids,
+                            index,
+                            quality,
+                            json!({"kind":"playlist","id":id,"history_resource":history}),
+                        ))
                     }
                 }
             })

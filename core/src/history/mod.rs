@@ -2,6 +2,7 @@
 mod api;
 mod merge;
 mod mutation;
+pub(crate) mod playback;
 mod service;
 mod types;
 

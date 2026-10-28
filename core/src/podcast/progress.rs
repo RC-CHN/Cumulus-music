@@ -16,7 +16,11 @@ pub(crate) fn mark_heard(
     owner: &str,
     resource: &Value,
 ) -> Result<()> {
-    if let Some(voice) = resource.get("voice_id").filter(|v| !v.is_null()) {
+    if let Some(voice) = resource
+        .get("voice_id")
+        .filter(|v| !v.is_null())
+        .or_else(|| resource["song"].get("voice_id").filter(|v| !v.is_null()))
+    {
         let id = identifier(voice)?;
         if tx.get(owner, "podcast-heard-v1", &id)?.is_none() {
             tx.put(owner, "podcast-heard-v1", &id, &json!(true))?;

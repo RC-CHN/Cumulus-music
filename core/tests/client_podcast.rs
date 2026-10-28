@@ -123,7 +123,7 @@ fn scope() -> PodcastScope {
 }
 #[tokio::test]
 async fn full_radio_queue_survives_page_slicing_and_keeps_voice_identity_private_fields_out() {
-    let (_dir, api, _s, c) = fixture();
+    let (_dir, api, session, c) = fixture();
     let p = c
         .podcast_page("1", query(scope(), 150), true)
         .await
@@ -145,6 +145,32 @@ async fn full_radio_queue_survives_page_slicing_and_keeps_voice_identity_private
         .await
         .unwrap();
     assert_eq!(play.queue_len, 205);
+    assert!(play.history_warning.is_none());
+    let history = cumulus_core::history::HistoryService::new(session.clone()).unwrap();
+    let token = session.token().unwrap();
+    assert_eq!(
+        history
+            .snapshot_for(&token, cumulus_core::history::HistoryKind::Voice)
+            .unwrap()
+            .local[0]
+            .id,
+        "151"
+    );
+    assert_eq!(
+        history
+            .snapshot_for(&token, cumulus_core::history::HistoryKind::Podcast)
+            .unwrap()
+            .local[0]
+            .id,
+        "7"
+    );
+    assert!(
+        history
+            .snapshot_for(&token, cumulus_core::history::HistoryKind::Song)
+            .unwrap()
+            .local
+            .is_empty()
+    );
     let t = play.track.unwrap();
     assert_eq!(t.id, "1151");
     assert_eq!(t.voice_id.as_deref(), Some("151"));

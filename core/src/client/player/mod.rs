@@ -149,6 +149,7 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
             .as_ref()
             .map(|_| "播放失败，请刷新音源或重新选择歌曲"),
         position_reset: value.position_reset,
+        history_warning: value.history_error.as_ref().map(|_| "最近播放暂未保存"),
     })
 }
 impl MusicClient {

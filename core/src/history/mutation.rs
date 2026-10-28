@@ -57,6 +57,28 @@ fn selected(action: &HistoryAction, id: &str) -> bool {
         HistoryAction::Delete { ids } => ids.iter().any(|v| v == id),
     }
 }
+pub(super) fn removed_since(
+    tx: &crate::storage::StateTransaction<'_>,
+    owner: &str,
+    kind: HistoryKind,
+    id: &str,
+    played_at: u64,
+) -> Result<bool> {
+    for key in [
+        format!("cleared:{}", kind.key()),
+        format!("deleted:{}:{id}", kind.key()),
+    ] {
+        if let Some(value) = tx.get(owner, NAMESPACE, &key)? {
+            let at = value
+                .as_u64()
+                .ok_or(Error::State("invalid history deletion boundary"))?;
+            if at >= played_at {
+                return Ok(true);
+            }
+        }
+    }
+    Ok(false)
+}
 impl HistoryService {
     pub fn mutations_for(&self, token: &SessionToken) -> Result<Vec<HistoryMutation>> {
         self.session.with_local_owner(token, |owner| {
@@ -189,6 +211,24 @@ impl HistoryService {
                 let before = rows.len();
                 rows.retain(|r| !selected(&op.action, &r.id));
                 op.local_removed = before - rows.len();
+                match &op.action {
+                    HistoryAction::Clear => tx.put(
+                        owner,
+                        NAMESPACE,
+                        &format!("cleared:{}", kind.key()),
+                        &serde_json::json!(op.created_at),
+                    )?,
+                    HistoryAction::Delete { ids } => {
+                        for id in ids {
+                            tx.put(
+                                owner,
+                                NAMESPACE,
+                                &format!("deleted:{}:{id}", kind.key()),
+                                &serde_json::json!(op.created_at),
+                            )?;
+                        }
+                    }
+                }
                 tx.put(
                     owner,
                     NAMESPACE,

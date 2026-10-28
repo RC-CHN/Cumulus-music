@@ -95,6 +95,7 @@ pub struct Device {
     pub state: Mutex<DeviceState>,
     pub hold_load: AtomicBool,
     pub fail_seek: AtomicBool,
+    pub fail_unpause: AtomicBool,
     pub started: Notify,
 }
 impl Default for Device {
@@ -127,6 +128,7 @@ impl Default for Device {
             }),
             hold_load: AtomicBool::new(false),
             fail_seek: AtomicBool::new(false),
+            fail_unpause: AtomicBool::new(false),
             started: Notify::new(),
         }
     }
@@ -181,6 +183,9 @@ impl AudioEngine for Engine {
         })
     }
     fn pause(&mut self, paused: bool) -> Result<()> {
+        if !paused && self.0.fail_unpause.load(Ordering::SeqCst) {
+            return Err(Error::State("injected native unpause failure"));
+        }
         if !paused {
             self.0
                 .equalizer_at_unpause

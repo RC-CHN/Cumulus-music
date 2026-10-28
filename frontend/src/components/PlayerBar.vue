@@ -39,7 +39,7 @@ const message = computed(
         ? '正在缓冲…'
         : view.value?.positionReset
           ? '音源可播范围已变化，进度已重置'
-          : ''),
+          : (view.value?.historyWarning ?? '')),
 );
 function cycle() {
   const index = modes.value.findIndex((m) => m.value === view.value?.mode);

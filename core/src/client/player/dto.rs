@@ -27,6 +27,7 @@ pub struct PlayerView {
     pub mode: PlaybackMode,
     pub queue_len: usize,
     pub error: Option<&'static str>,
+    pub history_warning: Option<&'static str>,
     pub position_reset: bool,
 }
 #[derive(Clone, Serialize)]

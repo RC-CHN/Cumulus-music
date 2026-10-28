@@ -104,7 +104,7 @@ fn songs(id: &str) -> PlaySelection {
 
 #[tokio::test]
 async fn album_selection_uses_complete_native_order_and_rejects_changed_revision() {
-    let (_dir, _api, _session, client, _count) = fixture();
+    let (_dir, _api, session, client, _count) = fixture();
     let page = client
         .ranking_page("1", RankingQuery::Album { id: "7".into() }, true)
         .await
@@ -129,6 +129,25 @@ async fn album_selection_uses_complete_native_order_and_rejects_changed_revision
         .await
         .unwrap();
     assert_eq!(state.queue_len, 501);
+    assert!(state.history_warning.is_none());
+    let history = cumulus_core::history::HistoryService::new(session.clone()).unwrap();
+    let token = session.token().unwrap();
+    assert_eq!(
+        history
+            .snapshot_for(&token, cumulus_core::history::HistoryKind::Song)
+            .unwrap()
+            .local[0]
+            .id,
+        "501"
+    );
+    assert_eq!(
+        history
+            .snapshot_for(&token, cumulus_core::history::HistoryKind::Album)
+            .unwrap()
+            .local[0]
+            .id,
+        "7"
+    );
     assert_eq!(state.track.unwrap().id, "501");
     assert!(matches!(
         client
@@ -152,7 +171,7 @@ async fn album_selection_uses_complete_native_order_and_rejects_changed_revision
 
 #[tokio::test]
 async fn complete_playlist_is_native_and_public_player_queue_lyrics_are_whitelisted() {
-    let (dir, api, _session, client, count) = fixture();
+    let (dir, api, session, client, count) = fixture();
     let mut subscription = client.subscribe_playback("1").await.unwrap();
     let view = client
         .play_selection(
@@ -167,6 +186,15 @@ async fn complete_playlist_is_native_and_public_player_queue_lyrics_are_whitelis
         .await
         .unwrap();
     assert_eq!(view.queue_len, 205);
+    assert!(view.history_warning.is_none());
+    let history = cumulus_core::history::HistoryService::new(session.clone()).unwrap();
+    let playlist = history
+        .snapshot_for(
+            &session.token().unwrap(),
+            cumulus_core::history::HistoryKind::Playlist,
+        )
+        .unwrap();
+    assert_eq!(playlist.local[0].id, "7");
     assert_eq!(view.track.as_ref().unwrap().id, "151");
     assert_eq!(view.requested_quality, Some("lossless".into()));
     assert_eq!(view.actual_quality, Some("standard".into()));

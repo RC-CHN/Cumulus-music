@@ -60,6 +60,36 @@ pub(super) fn enabled(tx: &StateTransaction<'_>, owner: &str) -> Result<bool> {
         _ => Err(Error::State("invalid recent play preference")),
     }
 }
+pub(super) fn upsert(
+    tx: &mut StateTransaction<'_>,
+    owner: &str,
+    kind: HistoryKind,
+    record: HistoryRecord,
+) -> Result<()> {
+    record.validate(kind)?;
+    if record.origin != RecordOrigin::Local {
+        return Err(Error::InvalidInput(
+            "local recorder requires a local record",
+        ));
+    }
+    let mut rows = local(tx, owner, kind)?;
+    if rows
+        .iter()
+        .any(|r| r.id == record.id && r.played_at > record.played_at)
+    {
+        return Ok(());
+    }
+    rows.retain(|r| r.id != record.id);
+    rows.insert(0, record);
+    rows.sort_by_key(|r| std::cmp::Reverse(r.played_at));
+    rows.truncate(kind.local_limit());
+    tx.put(
+        owner,
+        NAMESPACE,
+        &local_key(kind),
+        &serde_json::to_value(rows)?,
+    )
+}
 pub(super) fn revision(
     kind: HistoryKind,
     sync: bool,
@@ -187,25 +217,7 @@ impl HistoryService {
             ));
         }
         self.session.with_local_owner(token, |owner| {
-            self.store.transaction(|tx| {
-                let mut rows = local(tx, owner, kind)?;
-                if rows
-                    .iter()
-                    .any(|r| r.id == record.id && r.played_at > record.played_at)
-                {
-                    return Ok(());
-                }
-                rows.retain(|r| r.id != record.id);
-                rows.insert(0, record);
-                rows.sort_by_key(|r| std::cmp::Reverse(r.played_at));
-                rows.truncate(kind.local_limit());
-                tx.put(
-                    owner,
-                    NAMESPACE,
-                    &local_key(kind),
-                    &serde_json::to_value(rows)?,
-                )
-            })
+            self.store.transaction(|tx| upsert(tx, owner, kind, record))
         })
     }
 }

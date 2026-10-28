@@ -177,10 +177,12 @@ impl MusicClient {
                 if task.origin.is_mv(){return Err(Error::State("MV downloads require the video player"));}
                 if task.status!=crate::download::service::DownloadStatus::Complete{return Err(Error::State("download is not complete"));}
                 let path=task.target.ok_or(Error::State("download target missing"))?;
-                let track=super::mapping::track(task.song.as_ref().ok_or(Error::State("download metadata missing"))?)?;
+                let metadata = task.song.as_ref().ok_or(Error::State("download metadata missing"))?;
+                let track=super::mapping::track(metadata)?;
                 resources.push(serde_json::json!({"id":task.song_id,"cloud_song_id":if task.origin.is_cloud(){Some(task.song_id.clone())}else{None},"download_task_id":task.id,"path":path,"dt":track.duration_ms,
-                    "level":task.options.quality.as_str(),"song":{"id":track.id,"name":track.name,"ar":track.artists.iter().map(|name|serde_json::json!({"name":name})).collect::<Vec<_>>(),
-                    "al":{"name":track.album,"picUrl":track.cover_url},"voice_id":track.voice_id,"dt":track.duration_ms,"fee":track.fee}}));
+                    "voice":metadata["voice"],
+                    "level":task.options.quality.as_str(),"song":{"id":track.id,"name":track.name,"ar":track.artist_refs.iter().map(|artist|serde_json::json!({"id":artist.id,"name":artist.name})).collect::<Vec<_>>(),
+                    "al":{"id":track.album_id,"name":track.album,"picUrl":track.cover_url},"voice_id":track.voice_id,"dt":track.duration_ms,"fee":track.fee}}));
             }
             context.guard()?;Ok(resources)
         }).await.map_err(|_|Error::State("local selection worker stopped"))?

@@ -40,6 +40,7 @@ function state(revision = '1', epoch = '1', playId: string | null = null): Playe
     queueLen: 0,
     error: null,
     positionReset: false,
+    historyWarning: null,
   };
 }
 function lyrics(playId: string): LyricsView {
