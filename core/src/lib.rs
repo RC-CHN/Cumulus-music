@@ -25,6 +25,7 @@ pub mod playback;
 pub mod playlist;
 pub mod podcast;
 pub mod protocol;
+pub mod relay;
 pub mod storage;
 pub mod watchman;
 
