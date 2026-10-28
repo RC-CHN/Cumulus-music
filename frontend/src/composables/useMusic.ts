@@ -11,6 +11,7 @@ import { failure } from '../services/contracts.ts';
 import { useCore } from '../services/core.ts';
 import type { CommentResource } from '../services/comments';
 export type Page =
+  | { kind: 'collections'; scope: import('../services/collections').CollectionScope }
   | { kind: 'catalog'; resource: import('../services/catalog').CatalogResource }
   | { kind: 'scene_fm' }
   | { kind: 'member' }
@@ -112,6 +113,7 @@ export function useMusic(core: CoreClient = useCore()) {
         target.kind === 'scene_fm' ||
         target.kind === 'member' ||
         target.kind === 'catalog' ||
+        target.kind === 'collections' ||
         target.kind === 'mv' ||
         target.kind === 'comments'
       )
@@ -181,6 +183,11 @@ export function useMusic(core: CoreClient = useCore()) {
       void load();
     }
   }
+  function replace(next: Page) {
+    if (initializing.value) return;
+    page.value = next;
+    void load();
+  }
   async function like(track: TrackView) {
     if (busyLikes.value.has(track.id)) return;
     busyLikes.value = new Set(busyLikes.value).add(track.id);
@@ -214,6 +221,7 @@ export function useMusic(core: CoreClient = useCore()) {
     }
   }
   return {
+    replace,
     account,
     playlists,
     liked,

@@ -10,6 +10,7 @@ import LoginDialog from './components/LoginDialog.vue';
 import AccountDialog from './components/AccountDialog.vue';
 import TrackTable from './components/TrackTable.vue';
 import CatalogPage from './components/CatalogPage.vue';
+import CollectionsPage from './components/CollectionsPage.vue';
 import type { CatalogResource, CatalogSelectionPage } from './services/catalog';
 import PlayerBar from './components/PlayerBar.vue';
 import QueuePanel from './components/QueuePanel.vue';
@@ -581,6 +582,13 @@ onUnmounted(() => window.removeEventListener('keydown', keyboard));
         >
           <Icon name="video" />收藏的 MV
         </button>
+        <button
+          class="nav-item"
+          :class="{ selected: page.kind === 'collections' }"
+          @click="music.navigate({ kind: 'collections', scope: 'saved_albums' })"
+        >
+          <Icon name="star" />专辑与关注
+        </button>
         <template
           v-for="group in [
             { title: '创建的歌单', items: own },
@@ -688,6 +696,14 @@ onUnmounted(() => window.removeEventListener('keydown', keyboard));
             </button>
           </div>
           <MvCollection v-else-if="page.kind === 'mvs'" :model="mv" @open="openMv" />
+          <CollectionsPage
+            v-else-if="page.kind === 'collections'"
+            :account="account"
+            :scope="page.scope"
+            @scope="music.replace({ kind: 'collections', scope: $event })"
+            @open="openCatalog"
+            @expired="music.bootstrap(false)"
+          />
           <CatalogPage
             v-else-if="page.kind === 'catalog'"
             :resource="page.resource"

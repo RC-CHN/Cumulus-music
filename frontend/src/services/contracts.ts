@@ -17,6 +17,7 @@ import type { FmClient } from './fm';
 import type { SceneFmClient } from './sceneFm';
 import type { MemberClient } from './member';
 import type { CatalogClient } from './catalog';
+import type { CollectionClient } from './collections';
 /** Wire format returned by core::AppInfo. Keep the IPC test in sync. */
 export interface AppInfo {
   name: string;
@@ -44,7 +45,8 @@ export interface CoreClient
     FmClient,
     SceneFmClient,
     MemberClient,
-    CatalogClient {
+    CatalogClient,
+    CollectionClient {
   getAppInfo(): Promise<AppInfo>;
   accountSnapshot(): Promise<AccountView>;
   restoreAccount(): Promise<AccountView>;

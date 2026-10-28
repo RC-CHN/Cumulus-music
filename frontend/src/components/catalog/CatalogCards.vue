@@ -1,22 +1,25 @@
 <script setup lang="ts">
 import { computed, ref, watch, onUnmounted } from 'vue';
 import { useVirtualRows } from '../../composables/useVirtualRows';
-import type { CatalogView, CatalogResource } from '../../services/catalog';
+import type {
+  AlbumCard,
+  ArtistCard,
+  CatalogVideoCard,
+  ConcertCard,
+  CatalogResource,
+} from '../../services/catalog';
 import Icon from '../Icon.vue';
-const props = defineProps<{ pages: CatalogView[] }>();
+const props = defineProps<{
+  albums?: AlbumCard[];
+  artists?: ArtistCard[];
+  videos?: CatalogVideoCard[];
+  concerts?: ConcertCard[];
+}>();
 const emit = defineEmits<{ open: [resource: CatalogResource]; mv: [id: string] }>();
-const albums = computed(() =>
-  props.pages.flatMap((v) => (v.page.kind === 'artist_albums' ? v.page.albums : [])),
-);
-const artists = computed(() =>
-  props.pages.flatMap((v) => (v.page.kind === 'similar_artists' ? v.page.artists : [])),
-);
-const videos = computed(() =>
-  props.pages.flatMap((v) => (v.page.kind === 'artist_videos' ? v.page.videos : [])),
-);
-const concerts = computed(() =>
-  props.pages.flatMap((v) => (v.page.kind === 'artist_concerts' ? v.page.concerts : [])),
-);
+const albums = computed(() => props.albums ?? []);
+const artists = computed(() => props.artists ?? []);
+const videos = computed(() => props.videos ?? []);
+const concerts = computed(() => props.concerts ?? []);
 const columns = ref(3);
 const total = computed(
   () => albums.value.length + artists.value.length + videos.value.length + concerts.value.length,
@@ -147,10 +150,5 @@ function date(value: string | number | null) {
     </div>
     <div :style="{ height: `${(Math.ceil(total / columns) - end) * 260}px` }" aria-hidden="true" />
   </div>
-  <p
-    v-if="pages.length && !albums.length && !artists.length && !videos.length && !concerts.length"
-    class="empty-state"
-  >
-    暂无相关内容
-  </p>
+  <p v-if="!total" class="empty-state">暂无相关内容</p>
 </template>

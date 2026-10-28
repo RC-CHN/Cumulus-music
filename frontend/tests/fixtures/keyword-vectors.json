@@ -1,0 +1,38 @@
+[
+  {
+    "input": "  臺灣  樂隊\n愛  ",
+    "expected": "台湾 乐队 爱"
+  },
+  {
+    "input": "ＡＢＣ１２３ (Live).?",
+    "expected": "abc123 (live).?"
+  },
+  {
+    "input": "音樂　專輯",
+    "expected": "音乐 专辑"
+  },
+  {
+    "input": "a+b [live]",
+    "expected": "a+b [live]"
+  },
+  {
+    "input": "憂鬱的臺風",
+    "expected": "忧鬱的台风"
+  },
+  {
+    "input": "裡裏乾幹發髮",
+    "expected": "裡里乾干发髮"
+  },
+  {
+    "input": "＀￯",
+    "expected": " ď"
+  },
+  {
+    "input": "  A\t\tB  C ",
+    "expected": "a b c"
+  },
+  {
+    "input": "😀 光年之外",
+    "expected": "😀 光年之外"
+  }
+]

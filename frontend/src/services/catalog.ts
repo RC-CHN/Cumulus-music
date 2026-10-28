@@ -27,6 +27,7 @@ export interface AlbumCard {
   translations: string[];
   description: string;
   artists: ArtistReference[];
+  primaryArtist?: ArtistReference | null;
   coverUrl: string | null;
   trackCount: number;
   publishedAt: number | null;

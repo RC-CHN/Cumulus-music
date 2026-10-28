@@ -88,6 +88,16 @@ const intro = computed(() =>
 const auxiliary = computed(() =>
   detail.view.value?.page.kind === 'album' ? detail.view.value.page.read : undefined,
 );
+const cards = computed(() => ({
+  albums: list.pages.value.flatMap((v) => (v.page.kind === 'artist_albums' ? v.page.albums : [])),
+  artists: list.pages.value.flatMap((v) =>
+    v.page.kind === 'similar_artists' ? v.page.artists : [],
+  ),
+  videos: list.pages.value.flatMap((v) => (v.page.kind === 'artist_videos' ? v.page.videos : [])),
+  concerts: list.pages.value.flatMap((v) =>
+    v.page.kind === 'artist_concerts' ? v.page.concerts : [],
+  ),
+}));
 function queryFor(next: Tab): CatalogQuery | undefined {
   const id = props.resource.id;
   switch (next) {
@@ -344,8 +354,8 @@ onUnmounted(() => {
             </article>
           </template>
           <CatalogCards
-            v-else
-            :pages="list.pages.value"
+            v-else-if="list.pages.value.length"
+            v-bind="cards"
             @open="emit('open', $event)"
             @mv="emit('mv', $event)"
           />
