@@ -459,3 +459,55 @@ Windows现场与接续提示焦点复查（2026-10-29）
   通过。日志native-media-tests-all-final.log、native-media-clippy-final.log、
   native-media-frontend-*、native-media-ci-tests.log。探针完成编译后才开始GUI验证。
 - Windows完整CI及Shell交互未以Linux结果替代；全目标仍未完成，不改已发布标签。
+
+
+2026-10-29 原生喜欢、只读核对及深色提示条
+- 官方thumbnailAction 303迁入歌曲/声音独立身份及现有资源日志；接口、账号隔离、
+  迟到回读和完整调用顺序见native-likes-contracts.txt。没有真实账号写入。
+- .build/native-likes-ui-delivery-atomic/report.json：生产WebView15态/15截图，
+  真实Tauri/D-Bus托盘驱动；歌曲3次写入、播客2次写入。第3次歌曲写入模拟已受理
+  但回复丢失，核对只读确认、写入数不增加，并清除旧“尚未确认”提示。播客用
+  voiceId=5，播放mainSongId=1005，未误调用歌曲喜欢接口；前端红心同步通过。
+- 回归原生播放/暂停/停止/恢复、隐藏后上下首及喜欢、窗口关闭/恢复、host丢失/
+  重启、设置损坏/修复、保存失败/恢复与显式退出。隐藏期间libmpv/null实际前进
+  0.594秒，playId相同；SQLite确认退出偏好、损坏备份及两个喜欢日志最终状态。
+  浅色、大窗口、深色760×540截图已实际查看；不证明物理扬声器/面板或Windows。
+- 实际看图发现深色提示“知道了”换行，限制文本与按钮各自尺寸、让按钮不收缩，
+  并在WebView检查单行/不重叠/不溢出。核对后旧提示清除，后续新错误仍可出现。
+- 初次声音夹具缺续播读取接口导致安全显示窗口，补齐合成接口后通过；交付回归
+  曾在JSON写完前被外部驱动读取，改为临时文件完成后rename发布证据，未增加
+  业务重试或掩盖断言。native-likes-ui-first/delivery等原失败证据保留。
+- 本地Rust231目标/1074项、前端202项、CI规则21项通过，失败/忽略0；fmt、
+  严格Clippy、生产前端/正式桌面构建通过。日志native-likes-workspace-tests-final、
+  native-likes-clippy-delivery、native-likes-frontend-*-delivery、
+  native-likes-ci-tests-delivery；GUI探针只在对应构建完成后启动。
+- 跨平台CI仍有失败：a4a78d9的Windows重复engine_roundtrip.exe 0xc0000005，
+  尚不能定位原因；29255a3的Linux在接续第15态提示与播放条位置断言失败，
+  原失败附件又被路径中冒号拒绝。新增CI合成证据tar归档及21项规则检查，保留
+  特殊路径语义并避免上传器文件名限制。根因修复/新的精确SHA完整CI另记，
+  不把这些本地通过当成CI gate成功；未合入main或变更已发布v0.1.0。
+
+
+2026-10-29 文档滚动导致固定提示重叠的真实WebView修复
+- 29255a3的Linux CI接续第15态失败已在本地生产WebView再次复现。
+  .build/relay-geometry-baseline/run/first/failed.json给出scrollY=29、外框top=-29、
+  播放条top=431，而固定接续提示bottom=446。不是延长动画等待能解决的问题。
+  旧托盘截图同样出现顶栏向上裁切。保留初次relay-native-likes-regression证据。
+- html/body/#app仅加overflow:clip仍不足：.build/native-likes-frame-fixed与
+  relay-frame-fixed被新增文档不滚动断言拦下。最终将body固定到窗口，内部页面
+  保持各自滚动容器；没有通过scrollTo轮询、禁用键盘聚焦或移除断言来掩盖问题。
+- .build/relay-frame-anchored：19态/19截图通过，原失败的voice_offer现在scrollY=0，
+  外框top=0、播放条top=460/bottom=540、提示bottom=446；settings-scroll仍实际
+  滚到1925。歌词/队列与浮层共享稳定窗口坐标，提示和播放条间隔14px。
+- .build/native-likes-frame-anchored：15态/15截图通过，含所有原生喜欢/播放及故障
+  恢复检查；深色提示按钮保持单行。后台libmpv/null进度前进0.594秒。
+- .build/ux-frame-anchored：编辑入口、菜单键盘、名称校验、封面嵌套弹窗、保存入口、
+  未保存内容、确认/取消焦点、深浅色与退出重启共34态通过。
+  .build/motion-frame-anchored：18态/18截图通过，歌词内部滚动、动态效果开关、
+  系统偏好变化、持久化失败恢复和重启仍通过；不把虚拟显示器称为实机60Hz证明。
+- UX驱动增加可选--screenshots，复用既有合成GUI截图启动器；
+  ux-frame-anchored-captures的760×540浅/深色编辑弹窗已查看，保存按钮、文本和
+  关闭按钮未被裁掉。该独立截图回归34态/34截图通过，包含退出重启。
+- 生产资源index-yijTKhd3.js/index-ODUNpLcI.css；正式桌面/三个探针构建完成后
+  再启动GUI，frame-anchor-clippy、frame-scroll-frontend-tests及format检查通过。
+  Rust业务没有在本轮样式修复中改变；跨平台完整CI仍须精确提交单独通过。

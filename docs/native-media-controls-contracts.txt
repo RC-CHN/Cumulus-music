@@ -7,7 +7,7 @@ subscriptions/thumbnailAction，来源 hybrid_73/3085.js:5632–5693：
 映射到 core/client/native_media 的 Previous/Toggle/Next -> 既有播放器用例；
 desktop/lifecycle/media.rs 将真实原生菜单事件传给同一用例，不经过 WebView 中转。
 Stop 是社区桌面便利入口，复用已迁移停止逻辑，不声称来源是上述三个官方动作。
-303 为喜欢切换，本批未接原生菜单；正式歌曲/播客喜欢入口仍使用既有业务。
+303 喜欢切换已由后续原生喜欢模块接入，详见 native-likes-contracts.txt。
 没有使用 YesPlayMusic。没有移植官方任务栏埋点。
 
 产品行为
@@ -54,5 +54,6 @@ Python 仅用于外部验证，生产程序不依赖 Python。
 
 边界
 Linux 隔离面板验证不代替物理面板可见性、声卡听感或 Windows Shell 交互。
-原生喜欢切换、全局/媒体快捷键、MPRIS/SMTC、Windows/Wayland 面板验证仍需继续。
+原生喜欢切换另见 native-likes-contracts.txt；全局/媒体快捷键、MPRIS/SMTC、
+Windows/Wayland 面板验证仍需继续。
 不将本批原生菜单称为完整系统媒体控制，也不宣布整个研究迁移目标完成。

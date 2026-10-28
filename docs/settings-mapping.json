@@ -19,7 +19,7 @@
   ],
   "remainingOfficialSettings": [
     {"feature": "开机启动、默认播放器、启动窗口形态", "officialModel": "page_settingNormal", "status": "平台适配和正式设置控件尚未完成"},
-    {"feature": "托盘/系统媒体控制、全局/媒体快捷键", "officialModel": "setting", "status": "关闭提示、显示/退出菜单与托盘可用性恢复已接；播放/暂停/上下首/停止已接同一核心用例（见native-media-controls-contracts.txt）；原生喜欢、MPRIS/SMTC、快捷键及两平台验收仍需完成"},
+    {"feature": "托盘/系统媒体控制、全局/媒体快捷键", "officialModel": "setting", "status": "关闭提示、显示/退出菜单与托盘可用性恢复已接；播放/暂停/上下首/停止已接同一核心用例（见native-media-controls-contracts.txt）；原生喜欢/取消及未决只读核对已接（native-likes-contracts.txt）；MPRIS/SMTC、快捷键及两平台验收仍需完成"},
     {"feature": "字体、字号", "officialModel": "setting/page_setting", "status": "独立字体/字号设置未实现；主题与显式禁用动画/系统减少动态效果已接"},
     {"feature": "防休眠、淡入淡出、通知、自动取消静音、替换队列策略", "officialView": "views/Play.jsx", "status": "自动播放/恢复进度两个设置已独立接通；这些其余设置及效果仍需逐项实现"},
     {"feature": "输出设备切换、输出后端能力、响度均衡及系统音频诊断", "officialView": "views/Play.jsx", "status": "原生枚举/选择、本机持久化、音乐/MV回退及正式控件已接；物理设备实测、输出高级能力、响度均衡及系统诊断边界见audio-output-mapping.json"},

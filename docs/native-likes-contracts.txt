@@ -1,0 +1,81 @@
+原生托盘喜欢、账号资源读回与未决恢复（2026-10-29）
+
+官方来源与功能映射
+references/recovered-client/docs/product/models/async_action.txt，
+subscriptions/thumbnailAction -> hybrid_73/3085.js:5632–5693。
+官方303读取当前资源、按resourceType取得喜欢状态，派发hostResource/setLike，
+isLike取显示状态的反值；voice与track是不同身份。没有照搬任务栏埋点。
+本批映射到core/client/native_media/likes/{view,actions}.rs及desktop/lifecycle/likes.rs。
+沿用已迁移的AccountResources/PodcastService，不另写HTTP协议或会话层。
+没有使用YesPlayMusic。MV的喜欢仍在MV页面，本入口不将其误作歌曲。
+
+产品行为
+原生菜单按当前资源显示“喜欢”或“取消喜欢”；没有当前在线资源、已退出账号、
+当前为MV或本地文件时禁用。未知状态不视为false，不允许盲目切换。
+未读取状态可通过“刷新喜欢状态”只读补齐；未决写入显示“喜欢状态待核对”，
+禁用再次写入并提供“核对喜欢状态”。明确点击只读核对不会重发like/unlike。
+歌曲和播客都使用声音/歌曲自身身份；播客音源mainSong ID只用于播放授权。
+操作期间禁用菜单，当前对象变化会拒绝旧操作；已经受理的意图始终绑定原资源，
+不会因后来切歌改成另一资源。暂停、进度轮询不会改变喜欢资源身份。
+失败保留核心日志，显示主窗口及提示；成功不打断隐藏状态或播放。
+原生菜单与主界面红心双向同步：主界面写入更新核心缓存/日志，托盘定期读本地；
+托盘写入（包括失去回复）发出账号/资源身份事件，主界面通过类型化core接口读回。
+事件只要求读取，不携带凭据、授权URL，也不要求前端重放写入。
+
+核心边界和持久化
+native_like_selection() -> Option<NativeLikeSelection>
+  原生不可反序列化的账号token、队列entry_id、Song/Voice资源ID。
+native_like_snapshot(&selection) -> NativeLikeSnapshot {selection, observed:Option<bool>, pending}
+  本地读取；账号/播放选择前后验证。未知、未决与明确未喜欢分开。
+native_like_refresh(&selection) -> 同一快照
+  未决记录只调用既有reconcile；否则刷新服务端列表。完成后再次验证当前选择。
+native_like_toggle(&displayed) -> Result<()>
+  验证当前观察与显示观察一致，拒绝unknown/pending；固定desired后交给已有用例。
+  账号epoch贯穿请求和回读，旧账号请求不能写进新账号。
+
+歌曲缓存仍为owner=UID、kind=resources、key=liked，保存规范化字符串ID数组。
+liked_ids用同一AccountResources刷新，避免前端读取与原生菜单各自维护一个列表。
+AccountResources::membership_for只读该缓存及目标resource-mutations日志；
+日志Sending/Verifying/Uncertain均禁止再次写入，操作锁仍按账号/资源隔离。
+播客沿用podcast-lists-v1及podcast-mutations-v1；列表失效时，仅非pending操作的
+明确observed可作当前显示依据。刷新仍获取完整喜欢声音列表，核对沿用两次一致读回。
+不添加新的登录凭据、授权URL或第三方业务存储。
+
+接口与顺序
+歌曲：
+1. /api/song/like/get {uid:String}，读取ids并规范化，200为成功。
+2. /api/song/like {trackId:String,userid:String,like:bool}，沿用LikeContext默认值；
+   可接受200/502，但响应本身不代表资源已改变。
+3. 再次/api/song/like/get，实际成员状态与desired一致才Confirmed；否则保留未决。
+   回包丢失时先保存Uncertain，之后核对只执行步骤3，绝不自动重复步骤2。
+播客：
+1. /api/content/my/liked/voice {limit:100,likeTime:0或末项likeTime}，完整分页读取。
+2. /api/resource/like 或 /api/resource/unlike {threadId:"A_DJ_1_"+voiceId}，200成功。
+3. 完整喜欢声音列表回读，沿用PodcastService两次一致确认及未决恢复。
+更多字段/分页边界见core-podcast-contracts.txt；没有向/api/song/like传播客音源ID。
+
+宿主与前端
+宿主每500ms在工作线程读取当前对象和本地状态；有缓存时不轮询音乐HTTP服务。
+新对象缺缓存时最多自动补读一次、30秒超时；失败保留显式刷新入口。主窗口销毁
+停止观察器，释放持有AppHandle的菜单项。原生控件及目标在GUI线程一起更新；
+操作代次拒绝较早观察器的迟到投影，避免新状态被旧缓存画面覆盖。
+cumulus:native-like-changed {epoch,resource:{kind:song|voice,id}}：仅主窗口接收。
+CoreClient.onNativeLikeChanged及App订阅在卸载时释放；旧账号事件直接忽略。
+歌曲refreshLikes拒绝较早读回盖过后来的界面写入，也不会用旧账号读取失败让新
+账号进入过期态。播客取消较早页面读回，按当前可见页面或后台喜欢状态刷新。
+
+验证入口与边界
+core/tests/support/native_likes_client.rs：未知状态、喜欢/取消、重复观察、暂停后
+仍可操作、MV/切歌/账号隔离、失去回复后只读恢复且写入计数不增加。
+core/tests/client_podcast.rs：voiceId与音源ID不同，喜欢/取消均使用A_DJ_1_voiceId；
+失去回复、持久未决、核对确认，无歌曲喜欢接口调用。
+frontend/tests/music-state.test.ts：原生读回不覆盖较新写入或替换账号，旧失败隔离。
+tray_ui_probe及tray_protocol_smoke.py：生产WebView/真实原生菜单、合成账号及PCM，
+歌曲与播客喜欢、红心联动、回包丢失/核对及上下首。具体结果见ui-ux-validation.txt。
+这些是隔离数据验证，不是对真实用户歌单/收藏进行修改，也不证明Windows Shell。
+整个目标仍需媒体键/全局快捷键、MPRIS/SMTC等剩余功能和跨平台完整审计。
+
+尚存入口边界：本批只为原生托盘提供歌曲未决核对入口。主窗口歌曲喜欢发生未决时，
+尚需补齐不依赖托盘的资源日志恢复界面；单纯刷新红心不能替代核对或放弃旧意图。
+服务端读回始终与desired不同的记录仍保持Uncertain；未实现由用户确认接受当前
+值的歌曲资源用例。不得因原生入口通过宣称全范围收藏失败恢复已经完成。

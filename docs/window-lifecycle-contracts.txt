@@ -100,7 +100,8 @@ desktop/examples/tray_ui_probe + 同驱动 --lifecycle：正式 Vue/Tauri/核心
 真实 Windows Shell、Wayland 面板、缺库安装与一起听清理失败的此处 UI 联动仍需
 对应平台/补充故障流程验证。核心清理逻辑的既有测试不代替这些新宿主分支。
 原生菜单后续已加入前后曲、播放/暂停及停止，见 native-media-controls-contracts.txt。
-喜欢按钮、全局快捷键、MPRIS/SMTC、开机自启仍是后续工作，不称为全部完成。
+喜欢按钮已接，详见 native-likes-contracts.txt；全局快捷键、MPRIS/SMTC、
+开机自启仍是后续工作，不称为全部完成。
 
 复现（Linux，固定工具链）
 npm --prefix frontend ci
