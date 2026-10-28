@@ -5,6 +5,41 @@ import os
 from pathlib import Path
 import subprocess
 import sqlite3
+import time
+
+
+def launch(binary, env, log, root, screenshots):
+    if not screenshots:
+        return subprocess.run([str(binary.resolve())], env=env, stdout=log,
+                              stderr=log, timeout=240).returncode, 0
+    import gi
+    gi.require_version('Gdk', '3.0')
+    from gi.repository import Gdk
+    process = subprocess.Popen([str(binary.resolve())], env=env, stdout=log, stderr=log)
+    seen = set()
+    try:
+        deadline = time.monotonic() + 240
+        while process.poll() is None:
+            if time.monotonic() >= deadline:
+                raise TimeoutError('catalog WebView did not finish')
+            for path in (root / 'run/first').glob('ux_*.json'):
+                if path in seen:
+                    continue
+                window = Gdk.get_default_root_window()
+                picture = Gdk.pixbuf_get_from_window(window, 0, 0, window.get_width(), window.get_height())
+                assert picture is not None
+                picture.savev(str(path.with_suffix('.png')), 'png', [], [])
+                seen.add(path)
+            time.sleep(.1)
+        return process.returncode, len(seen)
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
 
 
 def main():
@@ -12,6 +47,7 @@ def main():
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--runtime', type=Path)
+    parser.add_argument('--screenshots', action='store_true', help='local Linux GTK captures; not required in CI')
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--collections', action='store_true')
     mode.add_argument('--history', action='store_true')
@@ -50,15 +86,20 @@ def main():
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
     with (root / 'host.log').open('x', encoding='utf-8') as log:
-        result = subprocess.run([str(args.binary.resolve())], env=env,
-                                stdout=log, stderr=log, timeout=240)
+        returncode, captures = launch(args.binary, env, log, root, args.screenshots)
     output = root / 'run' / 'first'
     if (output / 'failed.json').exists():
         raise AssertionError((output / 'failed.json').read_text(encoding='utf-8'))
-    assert result.returncode == 0, f'catalog probe exited {result.returncode}'
+    assert returncode == 0, f'catalog probe exited {returncode}'
     complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
-    count = 14 if args.relay_recovery else 19 if args.relay else 21 if args.settings or args.relay_settings else 24 if args.history else 18
+    count = 14 if args.relay_recovery else 19 if args.relay else 22 if args.settings else 21 if args.relay_settings else 24 if args.history else 18
     assert complete['ok'] and complete['stageCount'] == count and complete['realMusicRequests'] == 0
+    if args.screenshots:
+        assert captures == count, 'missing WebView screenshots'
+    if args.settings or args.relay_settings or args.relay_recovery:
+        checks = complete['focusChecks']
+        assert len(checks) == (7 if args.settings else 15 if args.relay_settings else 4)
+        assert all(row['passed'] for row in checks), checks
     assert complete['playbackVerified'] == args.relay
     if args.relay_recovery:
         assert complete['syntheticRelayPulls'] == 2 and complete['syntheticQueueApplications'] == 2
@@ -150,10 +191,13 @@ def main():
         assert all(v['cards'] <= 30 for v in stages)
     if not args.collections and not args.history and not args.settings and not args.relay and not args.relay_settings:
         assert all(v['rows'] <= 30 for v in stages)
-    print(json.dumps({'ok': True, 'actualWebView': True, 'states': count,
+    result = {'ok': True, 'actualWebView': True, 'states': count,
                       'realMusicRequests': 0, 'playbackVerified': args.relay,
                       'collections': args.collections, 'history': args.history, 'settings': args.settings,
-                      'relay': args.relay, 'relaySettings': args.relay_settings, 'physicalAudioOutputVerified': False}))
+                      'relay': args.relay, 'relaySettings': args.relay_settings, 'physicalAudioOutputVerified': False,
+                      'screenshots': captures}
+    (root / 'audit.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
+    print(json.dumps(result))
 
 
 if __name__ == '__main__':

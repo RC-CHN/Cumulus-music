@@ -7,6 +7,8 @@
  const emit=(stage,rest={})=>original('plugin:event|emit',{event:'ux-proof',payload:{stage,...rest}});
  const wait=async(test,label)=>{for(let i=0;i<200;i++){if(test())return;await sleep(100);}throw Error(label);};
  const button=text=>all('.relay-settings button').find(n=>n.textContent.trim()===text);
+ const focusChecks=[];
+ const focus=reason=>focusChecks.push({reason,passed:document.activeElement===button('刷新同步状态'),actual:document.activeElement===document.body?'BODY':document.activeElement?.textContent?.trim()});
  const click=n=>{assert(n&&!n.disabled,'button unavailable');n.scrollIntoView({block:'nearest'});n.focus({preventScroll:true});n.click();};
  const ready=()=>one('.relay-publication')?.getAttribute('aria-busy')==='false';
  const status=()=>one('.relay-publication [role="status"]')?.textContent??'';
@@ -40,13 +42,14 @@
    await play();await wait(()=>status().includes('拒绝'),'rejected publication');await capture('blocked_playing',true);await stop();
    await theme('dark');await capture('blocked_dark');await emit('resize',{width:760,height:540});await wait(()=>innerWidth===760,'small');await capture('small_dark');
    await wait(()=>button('重新同步当前队列')&&!button('重新同步当前队列').disabled,'recovery');click(button('重新同步当前队列'));await wait(()=>one('dialog[open]'),'confirm');await capture('confirm');click(all('dialog[open] button').find(n=>n.textContent.trim()==='取消'));await wait(()=>!one('dialog[open]'),'cancel');assert(document.activeElement===button('重新同步当前队列'),'cancel focus');await capture('cancelled_dialog');
-   fault='before';await confirm();await wait(()=>button('核对同步结果'),'unknown request');await capture('unknown_ipc');click(button('核对同步结果'));await wait(()=>ready()&&!button('核对同步结果'),'unknown resolved');assert(one('.relay-publication').textContent.includes('已取消尚未开始'),'cancel receipt');await capture('cancelled_unseen');
+   fault='before';await confirm();await wait(()=>button('核对同步结果'),'unknown request');await capture('unknown_ipc');click(button('核对同步结果'));await wait(()=>ready()&&!button('核对同步结果'),'unknown resolved');assert(one('.relay-publication').textContent.includes('已取消尚未开始'),'cancel receipt');focus('removed reconciliation entry');await capture('cancelled_unseen');
    let fenced=false;try{await nativeCommand(...delayed);}catch{fenced=true;}assert(fenced,'late IPC escaped cancellation');
    await emit('fixture',{mode:'publication-ok'});fault='after';await confirm();await wait(()=>status().includes('已同步')&&!button('核对同步结果'),'lost ack readback');assert(state()==='idle','recovery restarted audio');assert(document.activeElement===button('刷新同步状态'),'recovery focus fallback');await capture('recovered_lost_ack');
    await emit('fixture',{mode:'publication-lost'});await play();await wait(()=>status().includes('未确认同步结果'),'uncertain publication');await capture('uncertain_playing',true);await stop();
    await emit('fixture',{mode:'publication-prepared-offline'});await confirm();await wait(()=>status().includes('等待连接恢复')&&button('重试连接'),'preflight offline');await capture('prepared_offline');
-   reconnect=true;await wait(()=>button('重试连接')&&!button('重试连接').disabled,'retry ready');click(button('重试连接'));await wait(()=>status().includes('已同步'),'prepared resumed');assert(state()==='idle','resume restarted audio');await capture('recovered');
-   readFailure=true;await wait(ready,'local read ready');click(button('刷新同步状态'));await wait(()=>one('.relay-publication .relay-error'),'local read failure');await capture('read_failure');readFailure=false;await wait(ready,'read retry ready');click(button('刷新同步状态'));await wait(()=>ready()&&!one('.relay-publication .relay-error'),'local read recovered');await theme('light');await capture('read_recovered');
-   await emit('complete',{ok:true,stageCount,realMusicRequests:0,playbackVerified:true,syntheticQueueApplications:2,decoder:'libmpv',audioOutput:'null',mediaSubstitution:'exact synthetic CDN URL to generated PCM',cancelFocus:true,lateIpcFenced:fenced,lostAckReadback:true,recoveryDidNotRestartAudio:state()==='idle'});
- }catch(error){await emit('failed',{ok:false,error:String(error),stageCount});}
+   reconnect=true;await wait(()=>button('重试连接')&&!button('重试连接').disabled,'retry ready');click(button('重试连接'));await wait(()=>status().includes('已同步')&&ready(),'prepared resumed');assert(state()==='idle','resume restarted audio');focus('removed retry entry');await capture('recovered');
+   readFailure=true;await wait(ready,'local read ready');click(button('刷新同步状态'));await wait(()=>ready()&&one('.relay-publication .relay-error'),'local read failure');focus('read failure');await capture('read_failure');readFailure=false;await wait(ready,'read retry ready');click(button('刷新同步状态'));await wait(()=>ready()&&!one('.relay-publication .relay-error'),'local read recovered');focus('read recovery');await theme('light');await capture('read_recovered');
+   assert(focusChecks.every(row=>row.passed),'publication recovery focus checks failed');
+   await emit('complete',{ok:true,stageCount,realMusicRequests:0,playbackVerified:true,syntheticQueueApplications:2,decoder:'libmpv',audioOutput:'null',mediaSubstitution:'exact synthetic CDN URL to generated PCM',cancelFocus:true,lateIpcFenced:fenced,lostAckReadback:true,recoveryDidNotRestartAudio:state()==='idle',focusChecks});
+ }catch(error){await emit('failed',{ok:false,error:String(error),stageCount,focusChecks});}
 })();

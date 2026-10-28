@@ -35,6 +35,7 @@ impl Library {
                 "rejected" => 3,
                 "unapplied" => 4,
                 "unknown" => 5,
+                "slow-read" => 6,
                 _ => 0,
             },
             Ordering::SeqCst,
@@ -46,6 +47,9 @@ impl Api for Library {
         Box::pin(async move {
             let mode = self.mode.load(Ordering::SeqCst);
             if path == "/api/user/setting" {
+                if mode == 6 {
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                }
                 if mode == 1 {
                     return Err(Error::Transport("synthetic offline".into()));
                 }
