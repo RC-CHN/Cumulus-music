@@ -498,12 +498,16 @@ AB关闭的已登录账号旧301链与持久化清队列已在后续完成，见
 此记录不改变0.1.0原有发行范围，也不把这些局部通过扩大为完整目标完成。
 收藏专辑、已购专辑与关注歌手浏览另增account/collections及正式collection_page IPC，
 官方关注混合游标链与旧收藏完整对账分开；来源/安全DTO/状态/真实账号与窗口验证见
-collection-library-contracts.txt和collection-library-mapping.json。本批Windows验证仍需新CI。
+collection-library-contracts.txt和collection-library-mapping.json。精确3a157d6的完整CI
+40664543341在Linux/Windows通过；该批已合入main，不改写0.1.0发行内容。
 听歌历史、完整设置、系统托盘/媒体控制、同账号接续、其他专有音效等既有未完成边界继续。
 
 2026-10-28 最近播放独立领域增量
 新增history六类读取、本机/多端合并、账号隔离持久化、300/100容量、开关以及删除/清空意图日志。
 当前账号只读路径与原始响应/SQLite独立核对通过；13项新增测试包含官方M542执行向量及回包后
 持久化失败恢复。见play-history-contracts.txt、play-history-mapping.json。
-播放器自动记账、正式历史IPC/页面和页面播放仍未接入，不能把原生只读成功当完整历史流程通过。
+后续播放器自动记账已接入：成功开始播放才写入，歌曲与来源事务提交、声音秒级进度、
+保存失败与音频错误分开；925项Rust测试通过。实际Linux CUE/NCM首次及暂停重开8个
+WebView状态与SQLite核验通过，证据见play-history-contracts.txt。
+正式历史IPC/页面和页面播放仍未接入，不能把原生读取/记账成功当完整历史浏览流程通过。
 完整设置、系统媒体/托盘、跨设备接续及其他原目标仍继续，goal保持active。

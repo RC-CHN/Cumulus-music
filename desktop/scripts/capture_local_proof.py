@@ -92,7 +92,8 @@ def select_folder(path):
 
 seen = set()
 with (root.parent / (root.name + suffix + "-host.log")).open("w") as log:
-    process = subprocess.Popen(["dbus-run-session", "--", ".build/target/debug/examples/local_ui_probe"], stdout=log, stderr=log)
+    binary = os.environ.get("CUMULUS_PROOF_BINARY", ".build/target/debug/examples/local_ui_probe")
+    process = subprocess.Popen(["dbus-run-session", "--", binary], stdout=log, stderr=log)
     deadline = time.monotonic() + 300
     try:
         while process.poll() is None and time.monotonic() < deadline:

@@ -106,3 +106,10 @@ Xvfb 中的截图/DOM 检查覆盖真实引擎、布局和交互，不证明物�
 - 本批Rust格式、严格Clippy、205个target/suite共904项测试通过；前端格式、155项测试、
   类型检查与生产构建通过；CI规则15项通过。Windows新增断言仍交由本批精确提交的CI验证，
   不能用先前主题/目录批次的Windows成功替代。
+
+上述收藏与歌曲行操作区批次的精确提交3a157d65d201c3c3e30c3dfb6bfe0aa19bec3fa5，
+完整CI 40664543341已于2026-10-28通过：前端、Linux、Windows及CI gate全部成功；
+包含两平台真实WebView断言，已合入main。运行记录：
+https://github.com/RC-CHN/Cumulus-music/actions/runs/40664543341
+后续原生历史保存失败提示与本地音乐布局的实际8状态增量见play-history-contracts.txt；
+其Windows验证另需后续提交自身CI，不能套用本段结果。

@@ -17,6 +17,45 @@ use std::{
     sync::Arc,
 };
 use tauri::{Listener, Manager, webview::PageLoadEvent};
+#[cfg(target_os = "linux")]
+fn verify_locale(root: &Path, reopened: bool) {
+    let read = |category| {
+        // SAFETY: read-only startup inspection after GTK initialization; copy
+        // each libc-owned string immediately, without changing any category.
+        unsafe {
+            let pointer = libc::setlocale(category, std::ptr::null());
+            assert!(!pointer.is_null());
+            std::ffi::CStr::from_ptr(pointer)
+                .to_string_lossy()
+                .into_owned()
+        }
+    };
+    let numeric = read(libc::LC_NUMERIC);
+    let messages = read(libc::LC_MESSAGES);
+    assert_eq!(numeric, "C");
+    assert!(!matches!(messages.as_str(), "C" | "POSIX"));
+    if let Ok(expected) = std::env::var("LC_ALL")
+        && !expected.is_empty()
+    {
+        assert_eq!(
+            messages, expected,
+            "GUI message locale must remain unchanged"
+        );
+    }
+    let name = if reopened {
+        "native-startup-reopened.json"
+    } else {
+        "native-startup.json"
+    };
+    fs::write(
+        root.join(name),
+        serde_json::to_vec_pretty(&json!({
+            "numericLocale":numeric,"messageLocale":messages,"afterGuiInitialization":true
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+}
 struct Offline;
 impl Api for Offline {
     fn request<'a>(&'a self, path: &'a str, _: Value, _: bool) -> ApiFuture<'a, Value> {
@@ -86,17 +125,41 @@ fn main() {
     }
     let setup = root.clone();
     cumulus_desktop::configure(tauri::Builder::default()).setup(move|app|{
+        #[cfg(target_os="linux")]
+        verify_locale(&setup,reopen);
         let registry=ProfileRegistry::open(&setup.join("state"),ApiOrigin::Pc)?;
         let session=Arc::new(AccountSession::new(Arc::new(Offline),Some(registry.store())));
-        let client=MusicClient::with_session(session,registry).with_audio_factory(||Ok(Box::new(MpvEngine::open(MpvConfig{null_output:true,..Default::default()})?)));
+        let client=MusicClient::with_session(session.clone(),registry).with_audio_factory(||Ok(Box::new(MpvEngine::open(MpvConfig{null_output:true,..Default::default()})?)));
         tauri::async_runtime::block_on(client.start_local_library())?;
         app.manage(client);
         if small {app.get_webview_window("main").unwrap().set_size(tauri::LogicalSize::new(760.0,540.0))?;}
         app.add_capability(r#"{"identifier":"local-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
         let output=setup.clone();let handle=app.handle().clone();app.listen("local-proof",move|event|{
             let value:Value=serde_json::from_str(event.payload()).expect("proof JSON");let stage=value["stage"].as_str().unwrap_or("");
-            if !["local_picker","local_library","local_cue","local_ncm","local_groups","local_reopened","complete","failed"].contains(&stage){return;}
+            if stage=="history_fault" {
+                let enabled=value["enabled"].as_bool().expect("fault switch");
+                let connection=rusqlite::Connection::open(output.join("state/core.sqlite3")).unwrap();
+                connection.busy_timeout(std::time::Duration::from_secs(5)).unwrap();
+                connection.execute_batch(if enabled {
+                    "CREATE TRIGGER history_fixture_fault BEFORE INSERT ON state WHEN NEW.kind='play-history-v1' AND NEW.key='local:song' BEGIN SELECT RAISE(ABORT,'synthetic history failure'); END;"
+                } else { "DROP TRIGGER history_fixture_fault;" }).unwrap();
+                handle.get_webview_window("main").unwrap().eval(format!("window.__historyFaultReady={enabled};")).unwrap();
+                return;
+            }
+            if !["local_picker","local_library","local_cue","local_ncm","local_groups","local_reopened","local_history_warning","complete","failed"].contains(&stage){return;}
             let suffix=if reopen{"-reopened"}else{""};
+            if stage=="complete" {
+                let history=cumulus_core::history::HistoryService::new(session.clone()).unwrap();
+                let token=session.token().unwrap();
+                let songs=history.snapshot_for(&token,cumulus_core::history::HistoryKind::Song).unwrap();
+                assert_eq!(songs.local.len(),2,"only successfully played CUE/NCM entries enter history");
+                assert!(songs.local.iter().all(|r|r.id.starts_with("local:")));
+                assert!(songs.remote.is_none());
+                let persisted=serde_json::to_value(&songs.local).unwrap();
+                let prior=output.join("history-local.json");
+                if reopen { assert_eq!(serde_json::from_slice::<Value>(&fs::read(prior).unwrap()).unwrap(),persisted,"paused restore must not rewrite listening history"); }
+                fs::write(output.join(format!("history-local{suffix}.json")),serde_json::to_vec_pretty(&persisted).unwrap()).unwrap();
+            }
             fs::write(output.join(format!("{stage}{suffix}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
             if stage=="complete"||stage=="failed"{handle.exit(if stage=="complete"{0}else{1});}
         });Ok(())

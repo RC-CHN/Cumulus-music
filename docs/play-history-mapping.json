@@ -4,34 +4,100 @@
   "features": [
     {
       "feature": "Song, album, playlist, voice, podcast and audiobook recent reads",
-      "official": ["hybrid_app M259", "hybrid_app M15:1562-1670", "hybrid_app M1384 fetchTrack and related effects"],
-      "rust": ["core/src/history/api.rs", "core/src/history/types.rs", "core/src/history/service.rs"],
-      "tests": ["core/tests/history.rs six_official_lists_keep_identity_order_timeline_and_privilege_semantics", "failed_and_malformed_refreshes_preserve_last_good_snapshot"],
+      "official": [
+        "hybrid_app M259",
+        "hybrid_app M15:1562-1670",
+        "hybrid_app M1384 fetchTrack and related effects"
+      ],
+      "rust": [
+        "core/src/history/api.rs",
+        "core/src/history/types.rs",
+        "core/src/history/service.rs"
+      ],
+      "tests": [
+        "core/tests/history.rs six_official_lists_keep_identity_order_timeline_and_privilege_semantics",
+        "failed_and_malformed_refreshes_preserve_last_good_snapshot"
+      ],
       "executable": "core/examples/history_read.rs",
       "liveEvidence": ".build/history-read-a-audit.json: 300 songs, 96 albums, 92 playlists, 55 voices, 8 podcasts, empty audiobooks",
-      "desktop": "Pending typed client/IPC/UI and native playback integration"
+      "desktop": "History browser IPC/UI and history selection pending; native playback recording implemented separately"
     },
     {
       "feature": "Local and multi-device merge",
-      "official": ["hybrid_app M542.b executed with synthetic vectors"],
-      "rust": ["core/src/history/merge.rs"],
-      "tests": ["core/tests/fixtures/history-merge.json", "core/tests/history.rs merges_match_executed_official_m542_vectors"],
+      "official": [
+        "hybrid_app M542.b executed with synthetic vectors"
+      ],
+      "rust": [
+        "core/src/history/merge.rs"
+      ],
+      "tests": [
+        "core/tests/fixtures/history-merge.json",
+        "core/tests/history.rs merges_match_executed_official_m542_vectors"
+      ],
       "verified": "newest timestamp, local equal-time precedence, stable ties, creator backfill, local voice progress retention"
     },
     {
       "feature": "Account-isolated local persistence and multi-device preference",
-      "official": ["hybrid_app M1384 onHistory*Update, removeToLimitNumber, getDataFromDatabase"],
-      "rust": ["core/src/history/service.rs"],
-      "tests": ["local_history_is_bounded_persistent_merged_and_account_isolated", "guest_local_files_are_distinct_and_never_authorize_remote_history", "account_change_and_inflight_sync_disable_drop_late_history"],
-      "pending": "Automatic record creation from actual native player transitions"
+      "official": [
+        "hybrid_app M1384 onHistory*Update, removeToLimitNumber, getDataFromDatabase"
+      ],
+      "rust": [
+        "core/src/history/service.rs"
+      ],
+      "tests": [
+        "local_history_is_bounded_persistent_merged_and_account_isolated",
+        "guest_local_files_are_distinct_and_never_authorize_remote_history",
+        "account_change_and_inflight_sync_disable_drop_late_history"
+      ],
+      "pending": "History page controls and multi-device preference UI"
     },
     {
       "feature": "Delete/clear intents and recovery",
-      "official": ["hybrid_app M1384 clearRecord, removeItemFromHistoryListByIds", "hybrid_app M15 clear/delete/batch-delete contracts"],
-      "rust": ["core/src/history/mutation.rs", "core/src/history/api.rs"],
-      "tests": ["persisted_deletion_binds_the_displayed_revision_and_never_replays_an_intent", "lost_write_survives_restart_and_absence_is_not_proof_of_confirmation", "native_replays_arriving_while_delete_waits_are_not_deleted_on_acknowledgement", "late_mutation_result_cannot_publish_across_account_generation", "local_only_clear_and_definite_rejection_preserve_honest_partial_outcomes", "storage_failure_after_remote_ack_keeps_a_nonreplayable_pending_intent"],
+      "official": [
+        "hybrid_app M1384 clearRecord, removeItemFromHistoryListByIds",
+        "hybrid_app M15 clear/delete/batch-delete contracts"
+      ],
+      "rust": [
+        "core/src/history/mutation.rs",
+        "core/src/history/api.rs"
+      ],
+      "tests": [
+        "persisted_deletion_binds_the_displayed_revision_and_never_replays_an_intent",
+        "lost_write_survives_restart_and_absence_is_not_proof_of_confirmation",
+        "native_replays_arriving_while_delete_waits_are_not_deleted_on_acknowledgement",
+        "late_mutation_result_cannot_publish_across_account_generation",
+        "local_only_clear_and_definite_rejection_preserve_honest_partial_outcomes",
+        "storage_failure_after_remote_ack_keeps_a_nonreplayable_pending_intent"
+      ],
       "liveBoundary": "No real account history deletion, clear or upload was performed; writes are synthetic",
       "desktop": "Pending explicit confirmation and recovery UI"
+    },
+    {
+      "feature": "Automatic native-player local history and nonfatal persistence recovery",
+      "official": [
+        "hybrid_app M308 noAddToHistory/addToHistoryList/voice progress",
+        "hybrid_app M144.c executed audiobook classification"
+      ],
+      "rust": [
+        "core/src/history/playback.rs",
+        "core/src/playback/controller/history.rs",
+        "core/src/playback/controller/state.rs",
+        "core/src/client/player/selection.rs",
+        "core/src/client/downloads/mod.rs"
+      ],
+      "ui": [
+        "frontend/src/components/PlayerBar.vue historyWarning"
+      ],
+      "tests": [
+        "core/tests/history_playback.rs",
+        "core/tests/client_player.rs",
+        "core/tests/client_podcast.rs",
+        "core/tests/fixtures/history-audiobook.json"
+      ],
+      "executable": "desktop/examples/local_ui_probe.rs + desktop/scripts/capture_local_proof.py",
+      "boundary": "Native local recording only; does not upload listening history. History page/selection pending.",
+      "liveEvidence": ".build/history-local-ui-c-audit.json: 8 Linux WebView states/screenshots, CUE/NCM native null playback, nonfatal storage failure, paused reopen and SQLite/locale checks",
+      "audit": "desktop/scripts/audit_local_history_proof.py"
     }
   ],
   "alternativeClientSources": [],

@@ -1,10 +1,11 @@
-Cumulus 最近播放领域迁移（2026-10-28，独立Rust核心阶段）
+Cumulus 最近播放领域迁移（2026-10-28，核心与原生播放器阶段）
 
 本批范围与当前边界
 core/history 已实现六类最近播放读取、本机记录存储、合并、设置和删除/清空恢复日志；
 core/examples/history_read 可用已有PC会话执行只读流程，生产core不调用Python。
-本批尚未接播放器自动记账、正式IPC、最近播放页面及页面播放选择。不能把此处的原生读取、
-合成写操作和核心测试当作桌面历史功能已完成；这几条及完整设置页仍是原目标的后续工作。
+原生播放器自动记账已接入，详见下方增量；最近播放正式IPC、页面及页面播放选择仍未接入。
+不能把此处的原生读取、合成写操作和核心测试当作桌面历史功能已完成；页面链路及完整设置页
+仍是原目标的后续工作。
 没有执行当前账号的历史删除、清空或历史上报；没有使用YesPlayMusic。
 
 官方来源
@@ -14,8 +15,9 @@ core/examples/history_read 可用已有PC会话执行只读流程，生产core�
 - 同chunk/542.js b：按ID合并、时间比较、creator补齐及playProgress保留。
   core/tests/fixtures/history-merge.json 四组向量在本机实际执行此函数生成，输入完全合成，
   isOSX=false。只保存输入/输出，没有将整份官方模块加入公开工程。
-- 同chunk/308.js约2007、4832-4947行：playing/addToHistoryList 来源、专辑/歌单和声音分类；
-  用于后续播放器接线，不因本批已读该代码就宣称宿主已迁移。
+- 同chunk/308.js约1562、2007、4832-4947行：noAddToHistory、playing/addToHistoryList
+  来源、专辑/歌单和声音分类；3670-3740行声音结束时的秒级playProgress与isListened。
+  144.js.c按三个中文category或三个数值categoryId判断有声书，不按收费状态判断。
 - references/ui-recovery/sources/packages/pc/src/pages/history-playlist/ 下HistoryPlay、
   HistoryTrack/HistoryAudiobook/HistoryDjRadio等为页面与分类依据；正式页面尚未接入。
 - references/recovered-client/docs/product/models/historyList.txt、page_historyPlaylist.txt、
@@ -94,4 +96,53 @@ reconcile_for只读取当前列表，缺席不能证明丢失的请求永远不�
   cargo test -p cumulus-core --test history --locked
   cargo run -p cumulus-core --example history_read --locked -- <已有PC profile> <新私有输出目录>
 第二条有严格读取允许列表；不会新增登录、删除历史、清空历史或调用Python实现。
-UI/播放器接线、实际页面/播放验收和完整设置功能必须继续，不在此阶段完成范围内。
+UI接线、最近播放页面/选择播放验收和完整设置功能必须继续，不在此阶段完成范围内。
+
+原生播放器记账增量
+- core/history/playback负责队列元数据到歌曲/来源专辑/来源歌单/声音/播客/有声书的转换；
+  core/playback/controller/history在引擎加载并成功解除暂停后记录。加载失败、取消、过期
+  代次、仅暂停恢复和暂停恢复后的定位不会新增“已播放”。不以选中列表行就算播放。
+  官方setPlaying有noAddToHistory门控；本实现以成功开始原生播放作为提交点，这是明确的
+  宿主行为调整，不声称等于官方每一条分支的精确调度时间。
+- 本机一次播放保存歌曲和来源元数据在同一SQLite事务；切号、队列改变均重新核对。
+  定位/暂停/继续不刷新最近播放时间；同选择的换音质/刷新音源沿用原检查点，循环或重新
+  选择是新播放。暂停重开保持历史时间不变，实际继续播放才创建本次记录。
+- 下载队列保留原生voice元数据；节目ID和mainTrackId分开，歌曲下载保留专辑/歌手ID。
+  这一补齐不增加下载播放的远端续播设置请求。正式歌单选择保留来源名称/封面等元数据，
+  不把整份歌单曲目重复放进队列来源；播放URL/本地下载路径不复制进歌曲历史。
+- 声音全节目检查点以秒保存进度；试听可记为听过但不覆盖已有完整节目的续播位置或
+  宣称整段听完。有声书按M144的严格分类记录书，不混入播客或歌曲。
+  已删除的声音不会因随后进度轮询重新插入；本地清空/删除事务保存时间边界，抑制先前
+  数据库失败的旧播放检查点在重试时重新加入。新播放仍受本机时间戳排序规则约束。
+- 保存历史失败独立于音频失败；安全DTO只给固定historyWarning文案，播放器继续运行，
+  当前播放的下一次本机检查点重试；不重载音频，不重发在线写请求。离开该播放/切号后
+  不后台复活旧工作。关闭程序前从未成功持久化的历史不能被称为已保存。
+- core/tests/history_playback.rs五项覆盖引擎失败/取消/切号、重开/音质/定位、原子数据库
+  失败和恢复、删除后旧检查点不复活；client_player/client_podcast验证正式选择后的ID与
+  分类。三个领域单元测试含实际执行M144.c生成的13组纯合成分类向量、下载声音和试听
+  进度、有声书分流。原有13项领域测试保留。
+- 本增量完整Rust检查：格式、严格Clippy通过，208个target/suite共925项测试通过，
+  0失败/忽略；前端155项测试、类型检查和生产构建通过。
+  日志 .build/history-recorder-{clippy,workspace-tests}.log、history-recorder-front-*.log。
+  新增Windows原生记账/页面提示仍需本批精确提交的CI，不能拿父提交成功代替。
+- 实际Linux桌面增量：.build/history-local-ui-c/ 首次6状态与760×540重开2状态，
+  共8张截图。生产Tauri/WebKitGTK、FFprobe和libmpv/null，合成WAV/CUE/NCM。
+  新增SQLite触发器故障时，页面确实显示“最近播放暂未保存”，同时原生进度继续走；
+  移除故障后提示消失。本机两条记录与SQLite一致，暂停重开没有改变内容/时间。
+  GUI初始化后确认LC_NUMERIC=C、LC_MESSAGES=en_US.UTF-8；大小窗口逐行测量播放按钮
+  不越出单元格、格式与时长至少间隔8px。无在线音乐API调用、无远端写入。
+  .build/history-local-ui-c-audit.json为独立只读核验；调用
+    python3 desktop/scripts/audit_local_history_proof.py <上述proof目录>
+  可重复核对完整/重开标记、截图、几何、locale及SQLite。不是扬声器听感或物理帧率测试。
+  首次a目录因探针暂停后过早查找按钮而中止，只记录到CUE；b完整通过，c补齐显式locale
+  与几何断言后完整通过。不把a目录作为完整成功，也未为该探针竞态改动产品播放逻辑。
+
+原生窗口复现（从仓库根运行，输出目录必须是新目录）
+  npm --prefix frontend run build
+  cargo build -p cumulus-desktop --features custom-protocol --example local_ui_probe --locked
+  env LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 WEBKIT_DISABLE_DMABUF_RENDERER=1 LIBGL_ALWAYS_SOFTWARE=1 \
+    CUMULUS_PROOF_DIR=<新绝对路径> CUMULUS_PROOF_BINARY=<构建的local_ui_probe绝对路径> \
+    XDG_CONFIG_HOME=<隔离配置目录> XDG_DATA_HOME=<隔离数据目录> XDG_CACHE_HOME=<隔离缓存目录> \
+    xvfb-run -a -s '-screen 0 1280x900x24' /usr/bin/python3 desktop/scripts/capture_local_proof.py
+  原环境和同一输出目录再加CUMULUS_PROOF_REOPEN=1、CUMULUS_PROOF_SMALL=1执行第二次。
+  报告/截图属于本机验证材料，不加入发行产物；Windows不运行Linux的XTest目录选择器编排。
