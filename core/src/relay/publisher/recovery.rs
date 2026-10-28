@@ -10,7 +10,7 @@ struct Cancellation {
     created_at: u64,
 }
 pub enum RecoveryReceipt {
-    Recorded(PublicationIntent),
+    Recorded(PublicationReceipt),
     Cancelled {
         id: String,
         blocked: String,
@@ -30,7 +30,19 @@ impl RelayPublisher {
             Err(Error::MutationBusy) => (),
             Err(error) => return Err(error),
         }
+        self.compact_for(token)?;
         self.status_for(token)
+    }
+    /// One local maintenance pass. Legacy body scanning is keyset-paged; newer
+    /// writes are indexed directly. Does not send, cancel or retry any work.
+    pub fn compact_for(&self, token: &SessionToken) -> Result<()> {
+        let (owner, device) = self.identity(token)?;
+        self.session.with_token(token, |_| {
+            self.store.transaction(|tx| {
+                let state = load(tx, &owner, &device)?;
+                retention::maintain(tx, &owner, &state)
+            })
+        })
     }
     pub fn recovery_receipt_for(
         &self,
@@ -41,8 +53,26 @@ impl RelayPublisher {
         let (owner, device) = self.identity(token)?;
         self.session.with_token(token, |_| {
             self.store.transaction(|tx| {
-                if let Some(raw) = tx.get(&owner, JOURNAL, id)? {
-                    let row: PublicationIntent = serde_json::from_value(raw)?;
+                let receipt = if let Some(raw) = tx.get(&owner, JOURNAL, id)? {
+                    Some(PublicationReceipt::from(serde_json::from_value::<
+                        PublicationIntent,
+                    >(raw)?))
+                } else {
+                    let receipt: Option<PublicationReceipt> = tx
+                        .get(&owner, retention::RECEIPTS, id)?
+                        .map(serde_json::from_value)
+                        .transpose()?;
+                    if receipt.as_ref().is_some_and(|r| {
+                        matches!(
+                            r.phase,
+                            PublicationPhase::Prepared | PublicationPhase::Sending
+                        )
+                    }) {
+                        return Err(Error::State("active relay intent cannot be compacted"));
+                    }
+                    receipt
+                };
+                if let Some(row) = receipt {
                     if row.id != id || row.device_id != device {
                         return Err(Error::InvalidInput("relay recovery identity mismatch"));
                     }

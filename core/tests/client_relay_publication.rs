@@ -406,3 +406,69 @@ async fn local_record_failure_is_visible_through_public_status_without_failing_a
         .await
         .unwrap();
 }
+
+#[tokio::test]
+async fn public_status_and_duplicate_command_read_compacted_outcomes_without_audio_or_network() {
+    let w = World::new();
+    let blocked = w.blocked().await;
+    w.api.code.store(0, Ordering::SeqCst);
+    let id = uuid::Uuid::new_v4().to_string();
+    w.resync(&id, &blocked).await.unwrap();
+    let expected = serde_json::to_value(w.read(Some(&id)).requested.unwrap()).unwrap();
+    let token = w.session.token().unwrap();
+    for n in 2..=135 {
+        w.publisher
+            .record_for(
+                &token,
+                frame(n),
+                PublicationEvent::Source,
+                &RelayConfig::default(),
+            )
+            .unwrap();
+        w.publisher.publish_next_for(&token).await.unwrap();
+    }
+    let store = cumulus_core::storage::StateStore::open(w._root.path()).unwrap();
+    assert!(
+        store
+            .get("9", "relay-publication-intents-v1", &id)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        store
+            .get("9", "relay-publication-receipts-v1", &id)
+            .unwrap()
+            .is_some()
+    );
+    let count = w.api.calls.lock().unwrap().len();
+    w.api.offline.store(true, Ordering::SeqCst);
+    assert_eq!(
+        serde_json::to_value(w.read(Some(&id)).requested.unwrap()).unwrap(),
+        expected
+    );
+    assert_eq!(
+        serde_json::to_value(
+            w.resync(&id, &blocked)
+                .await
+                .unwrap()
+                .value
+                .requested
+                .unwrap()
+        )
+        .unwrap(),
+        expected
+    );
+    assert_eq!(w.api.calls.lock().unwrap().len(), count);
+    let raw = serde_json::to_string(&w.read(Some(&id))).unwrap();
+    for private in [
+        "PRIVATE",
+        "device",
+        "sessionId",
+        "resources",
+        "upload",
+        "url",
+        "cookie",
+    ] {
+        assert!(!raw.contains(private));
+    }
+}

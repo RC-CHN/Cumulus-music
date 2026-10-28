@@ -121,3 +121,33 @@ fn newly_created_state_is_private() {
         0o600
     );
 }
+
+#[test]
+fn keyset_pages_are_bounded_isolated_and_resume_after_the_cursor_is_deleted() {
+    let root = tempfile::tempdir().unwrap();
+    let store = StateStore::open(root.path()).unwrap();
+    store
+        .transaction(|tx| {
+            for key in ["", "a", "b", "d"] {
+                tx.put("1", "history", key, &json!(key))?;
+            }
+            tx.put("2", "history", "c", &json!("other account"))?;
+            tx.put("1", "other", "c", &json!("other namespace"))?;
+            let first = tx.values_page("1", "history", None, 2)?;
+            assert_eq!(
+                first.keys().map(String::as_str).collect::<Vec<_>>(),
+                vec!["", "a"]
+            );
+            tx.delete("1", "history", "a")?;
+            let second = tx.values_page("1", "history", Some("a"), 2)?;
+            assert_eq!(
+                second.keys().map(String::as_str).collect::<Vec<_>>(),
+                vec!["b", "d"]
+            );
+            assert!(tx.values_page("1", "history", Some("d"), 2)?.is_empty());
+            assert!(tx.values_page("1", "history", None, 0).is_err());
+            assert!(tx.values_page("1", "history", None, 1025).is_err());
+            Ok(())
+        })
+        .unwrap();
+}

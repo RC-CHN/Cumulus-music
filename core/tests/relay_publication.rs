@@ -404,9 +404,12 @@ async fn rejection_and_timeout_block_cumulative_replay_until_explicit_idempotent
         assert_eq!(recovery.phase, PublicationPhase::Prepared);
         let status = w.publisher.status_for(&w.token()).unwrap();
         assert_eq!(status.blocked.unwrap().id, blocked);
-        assert_eq!(status.recovering.unwrap().id, id);
+        assert_eq!(status.recovering.as_ref().unwrap().id, id);
         assert!(!status.can_resynchronize);
-        assert_eq!(value(&recovery.upload)["resources"][1]["type"], "voice");
+        assert_eq!(
+            value(&status.recovering.unwrap().upload)["resources"][1]["type"],
+            "voice"
+        );
         assert_eq!(
             w.publisher
                 .resynchronize_for(&w.token(), &id, &blocked)
@@ -710,15 +713,28 @@ async fn backlog_compaction_preserves_unknown_responsibility_and_rebases_only_un
     assert_eq!(status.blocked.unwrap().id, blocked);
     assert!(status.pending <= 2);
     assert_eq!(w.wire().len(), 1);
-    assert_eq!(
-        w.rows()
-            .iter()
-            .filter(|r| r.phase == PublicationPhase::Superseded)
-            .count(),
-        257
+    w.publisher.compact_for(&w.token()).unwrap();
+    let full = w
+        .rows()
+        .iter()
+        .filter(|r| r.phase == PublicationPhase::Superseded)
+        .count();
+    let compact = w
+        .store
+        .values("9", "relay-publication-receipts-v1")
+        .unwrap();
+    assert!(full <= 128);
+    assert!(
+        compact
+            .values()
+            .all(|v| v["phase"] == "superseded" && v.get("upload").is_none())
     );
+    assert_eq!(full + compact.len(), 257);
     assert_eq!(w.send().await, PublishOutcome::Blocked(blocked));
 }
+
+#[path = "relay_publication/retention.rs"]
+mod retention;
 
 #[test]
 fn invalid_or_stale_frame_rolls_back_without_recording_and_terminal_clear_handles_full_machine() {
@@ -821,5 +837,13 @@ async fn backlog_coalescing_cannot_supersede_an_explicit_pending_recovery() {
         hex::encode(Sha256::digest(b"SYNTHETIC-native-device"))
     );
     assert!(w.store.values("9", &active).unwrap().is_empty());
-    assert!(w.rows().len() > 256); // History is retained, but not in the hot working set.
+    assert!(w.rows().len() <= 129);
+    assert!(
+        w.rows().len()
+            + w.store
+                .values("9", "relay-publication-receipts-v1")
+                .unwrap()
+                .len()
+            > 256
+    );
 }

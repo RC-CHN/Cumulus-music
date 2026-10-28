@@ -3,6 +3,7 @@
 pub mod player;
 mod record;
 mod recovery;
+mod retention;
 mod send;
 mod types;
 use super::{RelayApi, RelayConfig, RelayService, RelaySettings, RelayUpload};
@@ -98,8 +99,12 @@ fn rows_in(
     Ok(rows)
 }
 fn put(tx: &mut StateTransaction<'_>, owner: &str, row: &PublicationIntent) -> Result<()> {
+    if tx.get(owner, retention::RECEIPTS, &row.id)?.is_some() {
+        return Err(Error::State("cannot rewrite compacted relay receipt"));
+    }
     let raw = serde_json::to_value(row)?;
     tx.put(owner, JOURNAL, &row.id, &raw)?;
+    retention::index(tx, owner, row, &raw)?;
     tx.put(owner, &active(&row.device_id), &row.id, &raw)
 }
 fn append(
@@ -237,6 +242,8 @@ impl RelayPublisher {
             })
         })
     }
+    /// Full retained bodies, not an exhaustive historical audit. Old outcomes
+    /// remain individually available through recovery_receipt_for.
     pub fn intents_for(&self, token: &SessionToken) -> Result<Vec<PublicationIntent>> {
         let (owner, device) = self.identity(token)?;
         self.session.with_token(token, |_| {

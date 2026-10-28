@@ -1,7 +1,9 @@
 use super::super::{MusicClient, dto::AccountData};
 use crate::{
     Error, Result,
-    relay::publisher::{PublicationIntent, PublicationPhase, RecoveryReceipt, RelayPublisher},
+    relay::publisher::{
+        PublicationIntent, PublicationPhase, PublicationReceipt, RecoveryReceipt, RelayPublisher,
+    },
 };
 use serde::{Deserialize, Serialize};
 
@@ -29,6 +31,11 @@ pub struct RelayPublicationReceipt {
 }
 impl From<PublicationIntent> for RelayPublicationReceipt {
     fn from(row: PublicationIntent) -> Self {
+        PublicationReceipt::from(row).into()
+    }
+}
+impl From<PublicationReceipt> for RelayPublicationReceipt {
+    fn from(row: PublicationReceipt) -> Self {
         Self {
             id: row.id,
             phase: match row.phase {

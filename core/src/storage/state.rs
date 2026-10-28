@@ -113,6 +113,37 @@ impl StateStore {
 }
 
 impl StateTransaction<'_> {
+    /// Keyset pagination keeps migration work bounded even for large legacy
+    /// namespaces. Keys inserted before the cursor must be indexed by writers.
+    pub fn values_page(
+        &self,
+        owner: &str,
+        kind: &str,
+        after: Option<&str>,
+        limit: usize,
+    ) -> Result<BTreeMap<String, Value>> {
+        if !(1..=1024).contains(&limit) {
+            return Err(Error::InvalidInput("invalid state page size"));
+        }
+        // Keep the key comparison explicit so SQLite can seek the compound
+        // primary key instead of scanning earlier rows for an OR predicate.
+        let sql = if after.is_some() {
+            "SELECT key,value FROM state WHERE owner=? AND kind=? AND key>? ORDER BY key LIMIT ?"
+        } else {
+            "SELECT key,value FROM state WHERE owner=? AND kind=? AND key>=? ORDER BY key LIMIT ?"
+        };
+        let mut statement = self.connection.prepare(sql)?;
+        let records = statement.query_map(
+            params![owner, kind, after.unwrap_or(""), limit as i64],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        )?;
+        records
+            .map(|row| {
+                let (key, raw) = row?;
+                Ok((key, serde_json::from_str(&raw)?))
+            })
+            .collect()
+    }
     pub fn values(&self, owner: &str, kind: &str) -> Result<BTreeMap<String, Value>> {
         let mut statement = self
             .connection

@@ -107,6 +107,33 @@ pub struct PublicationIntent {
     pub created_at: u64,
     pub(crate) device_id: String,
 }
+/// Durable outcome without a queue/upload body. Compacting an old request does
+/// not change its phase or make its UUID available for another operation.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PublicationReceipt {
+    pub id: String,
+    pub sequence: u64,
+    pub phase: PublicationPhase,
+    pub recovery_of: Option<String>,
+    pub frame_revision: u64,
+    pub service_code: Option<i64>,
+    pub created_at: u64,
+    pub(crate) device_id: String,
+}
+impl From<PublicationIntent> for PublicationReceipt {
+    fn from(row: PublicationIntent) -> Self {
+        Self {
+            id: row.id,
+            sequence: row.sequence,
+            phase: row.phase,
+            recovery_of: row.recovery_of,
+            frame_revision: row.frame_revision,
+            service_code: row.service_code,
+            created_at: row.created_at,
+            device_id: row.device_id,
+        }
+    }
+}
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub(super) struct PublicationState {
     pub device_id: String,

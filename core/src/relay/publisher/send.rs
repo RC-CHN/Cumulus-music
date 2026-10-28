@@ -235,6 +235,9 @@ impl RelayPublisher {
         let (owner, _lock) = relay.lock(token)?;
         let (_, device) = self.identity(token)?;
         self.recover(&owner, &device)?;
+        // Run history maintenance in the sender, never in the synchronous
+        // audio-actor recorder. It also progresses while HTTP is offline.
+        self.compact_for(token)?;
         let status = self.status_for(token)?;
         if let Some(blocked) = status.blocked
             && status.recovering.is_none()
@@ -312,34 +315,37 @@ impl RelayPublisher {
         token: &SessionToken,
         id: &str,
         blocked: &str,
-    ) -> Result<PublicationIntent> {
+    ) -> Result<PublicationReceipt> {
         super::super::validate_id(id)?;
         super::super::validate_id(blocked)?;
         let relay = RelayService::new(self.session.clone())?;
         let (owner, _lock) = relay.lock(token)?;
         let (_, device) = self.identity(token)?;
         self.recover(&owner, &device)?;
-        if matches!(
-            self.recovery_receipt_for(token, id)?,
-            Some(RecoveryReceipt::Cancelled { .. })
-        ) {
-            return Err(Error::Cancelled);
-        }
-        if let Some(raw) = self.store.get(&owner, JOURNAL, id)? {
-            let row: PublicationIntent = serde_json::from_value(raw)?;
-            if row.id != id
-                || row.device_id != device
-                || row.recovery_of.as_deref() != Some(blocked)
-            {
-                return Err(Error::InvalidInput("relay recovery intent reused"));
+        if let Some(receipt) = self.recovery_receipt_for(token, id)? {
+            match receipt {
+                RecoveryReceipt::Cancelled {
+                    blocked: original, ..
+                } => {
+                    if original != blocked {
+                        return Err(Error::InvalidInput("relay recovery intent reused"));
+                    }
+                    return Err(Error::Cancelled);
+                }
+                RecoveryReceipt::Recorded(row) => {
+                    if row.recovery_of.as_deref() != Some(blocked) {
+                        return Err(Error::InvalidInput("relay recovery intent reused"));
+                    }
+                    self.session.check_generation(token)?;
+                    return Ok(row);
+                }
             }
-            self.session.check_generation(token)?;
-            return Ok(row);
         }
         let config = self
             .preflight(token, &device)
             .await?
             .ok_or(Error::State("relay publishing unavailable"))?;
         self.fresh_snapshot(token, &owner, &device, blocked, Some(id), &config)
+            .map(Into::into)
     }
 }
