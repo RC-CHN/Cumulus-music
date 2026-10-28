@@ -1,0 +1,110 @@
+音频输出偏好、恢复与设置页（2026-10-29）
+
+来源与职责
+沿用 audio-output-contracts.txt 中的官方 Play.jsx、native-contracts.txt 和固定
+mpv 0.40 客户端 ABI。官方设备枚举/设备变化/设置操作没有 HTTP 接口。
+没有使用 YesPlayMusic。core/playback/output 负责本机持久化、实例代次、回退预算；
+MusicClient 负责账号代次校验和类型化投影；desktop 仅转发 IPC；Vue 只持有
+设备名称/本机 ID/状态，不持有歌曲授权 URL 或 Cookie。
+
+持久化与并发
+- registry StateStore：owner=local-device，kind=audio-output-preferences-v1。
+  current={revision:u64,selection:{id,description}}，另存 revision 单调计数。
+  不是账号偏好；切换账号共享设备设置，但旧账号页面的读写被 epoch 拒绝。
+- 默认 auto/系统默认。ID 完整保留大小写，不拼造 WASAPI 或 Pulse 标识。
+  ID 非空、无 NUL、最多4096字节；描述无 NUL、最多16384字节。
+- Select/Retry 使用 expected_revision CAS，并在同一 SQLite 事务中更新设置和
+  计数。Retry 对相同选择生成新修订，显式解除回退锁定和一次恢复预算。
+- current 缺失但计数存在视作损坏。损坏时使用 auto，不暗中覆盖原记录。
+  Repair 将损坏原值存入 audio-output-recovery-v1 后生成更高修订的默认设置。
+  计数损坏/溢出时拒绝写入，不伪装已经修复；不支持任意数据库损坏自动重建。
+
+运行策略
+- 音乐/MV 共用 OutputRuntime，分别维护 Audio/Video 实例槽。在构造原生引擎前
+  reserve；新实例使旧实例的加载取消、状态回写失效。旧实例析构不能清除新状态。
+  原生引擎释放后才注销槽；空闲槽是 dormant，不宣称正在发声。
+- ManagedOutput 包在 Focused 外层；设备操作不会授予播放权。加载、设备维护、
+  poll 在已有阻塞工作线程/播放器串行边界内完成，不阻塞 WebView。
+  音乐准备加载时不在 actor tick 抢占同一个解码锁；无 pending 时可空闲维护。
+- 每秒最多一次常规配置检查；本进程修改以版本提示唤醒下一次检查。加载前强制
+  检查。设置页用独立、从未 load 的检查引擎刷新列表，避免等待正在加载的解码器。
+  设置页仅挂载期间每2秒读取快照；后台列表更新来自已有原生播放实例的维护。
+- 所选设备消失或设置失败时尝试 auto，保留原偏好。重新出现不突然切回；用户
+  可“重试所选输出”或重新选择。进程重启重新尝试所存偏好。
+- mpv 明确的 MPV_ERROR_AO_INIT_FAILED(-14) 才触发一次默认输出恢复/重载；
+  解码、网络、权限错误和取消不按输出故障重试。一次预算跨 MV 引擎替换保留，
+  防止无限创建。默认输出也失败时保留失败状态，配置读回不能抹掉初始化失败。
+  显式重试或新的偏好修订重置预算，成功的手动加载可解除失败状态。
+- 加载重试使用原媒体输入、start/end 和剩余原始超时预算；原生枚举/设置单次
+  有5秒等待上限，但不能声称所有驱动调用具有硬取消或总体硬截止保证。
+- 播放中当前 native entry 的已知输出故障转换为 OutputReload。音乐复用现有
+  ResolvedSource、文件租约和当前时间轴；恢复暂停意图，不推进队列、不重复解析
+  官方歌曲地址。MV 保留 id/分辨率/位置/播放意图与本地下载 task，通过原解析
+  流程重开；远端 MV 必要时仍会调用原有资源解析接口，见 core-mv-video-contracts。
+  账号和播放代次守卫覆盖恢复。实际硬件的无事件掉音不能被猜作 -14 故障。
+
+类型化接口
+- output_settings(epoch, refresh) -> AccountData<OutputView>
+  refresh=true：枚举本机列表；false：只读持久化和运行快照。
+- output_command(epoch, command) -> AccountData<OutputView>
+  command.kind=select {expected_revision:string,id:string}；
+  retry {expected_revision:string}；repair。
+  修订在 IPC 中使用十进制字符串，不丢失 u64 精度，拒绝非规范数字。
+- OutputView：revision|null、selected{id,description}、damaged、supported|null、
+  devices[]、engines[{kind,revision,phase,issue,configured,driver}]。
+  phase=dormant/pending/unsupported/configured/fallback/failed。
+  configured 是播放器配置；driver 只是后端名。都不能证明实际物理端点身份。
+  原生不支持枚举的引擎明确显示 unsupported；生产 null 引擎保持隔离。
+
+设置页交互
+音频输出位于播放启动设置之后。刷新列表、选择设备、回退/失败重试、损坏恢复
+均走正式 IPC；保存成功仅表示偏好持久化，另显示播放器应用状态。列表内已失效的
+当前选择保留为禁用选项，不显示为另一台设备。长设备名称与缺失后缀不得撑出
+小窗口；下拉框使用主题颜色并保留原生键盘选择语义、可见焦点与系统弹出菜单。
+读写有 loading/busy 状态；失去写回复后只读回当前状态，不自动重发、不宣称成功。
+账号变化/卸载/迟到响应不能写回旧界面；移除或禁用操作控件时恢复刷新按钮焦点。
+
+验证入口与边界
+- core/tests/output_preferences.rs：持久化、CAS、损坏备份、修订溢出/丢失。
+- core/tests/output_runtime.rs：设备缺失/重接、单次恢复、取消/实例替换、错误分类、
+  失败状态锁定、损坏默认值；设备/故障为合成适配器，不冒充声卡故障实测。
+- playback_controller / mv_playback / client_player 的新增测试：实际控制器恢复
+  进度与暂停意图、音乐源复用、账号隔离、无业务 HTTP 的输出设置操作。
+- frontend/tests/output-settings.test.ts：忙碌保护、丢回复对账、账号/卸载取消、
+  损坏和不支持的状态。不能单独充当 WebView 布局证据。
+- desktop/examples/output_ui_probe + scripts/ci/output_settings_smoke.py：生产
+  WebView/IPC/SQLite 和真实 libmpv null 解码，两次进程启动；设备列表/拔插故障
+  为合成注入。检查深浅色、760×540、长设备名、失败恢复、焦点、原曲目/进度保持。
+  CI 的 Linux/Windows 原生 job 分别执行，失败阻止 CI gate。
+- scripts/ci/output_devices_smoke.py --desktop --managed：GUI 初始化后在私有
+  PipeWire/Pulse 虚拟设备间观察真实 PCM 路由、cork、暂停时钟和拔除后的自动默认
+  回退；保留所选偏好，同 native entry。与上述合成设置页验证分开记账。
+- 物理声卡/蓝牙的热插拔与听感、Windows WASAPI 实际路由仍未实测；不能从虚拟
+  服务或 CI 的 null 输出推断通过。响度均衡/输出后端高级能力/完整系统音频诊断
+  仍是独立未完成项。本功能不代表完整 goal 完成。
+
+本次本地运行记录
+- .build/output-settings-ui-first 与 ui-diagnostic：真实WebView发现长设备名在增加
+  “暂不可用”后造成横向溢出，760×540可复现。不是将这两次失败计为通过。
+- .build/output-settings-ui-fixed：约束原生外观和宽度后仍有文字溢出；继续失败。
+  最终增加明确的 overflow/ellipsis 约束后再完整执行。
+- .build/output-settings-ui-final/audit.json：12个状态、12张截图、2次进程启动通过。
+  包括浅色默认、所选设备、深色小窗、设备消失自动回退、重接不自动跳回、显式
+  重试、SQLite写入失败与读回、损坏/显式恢复、保存B后重启恢复B。原曲目和暂停
+  时钟未改变。已人工查看深色缺失设备与浅色保存截图；不声称原生物理输出验证。
+- .build/output-settings-managed-routing/report.json：GUI后真实libmpv与生产
+  ManagedOutput组合，5次独立观察到的Pulse路由、暂停cork/时钟、失效ID拒绝、
+  重接、活动设备消失后自动回退到私有默认设备通过。非C消息locale保留、仅数字
+  locale调整为C；生成静音媒体，真实业务请求0。没有把合成UI列表冒充此路由。
+- 错误 -14 的预算/当前条目重载仍以注入测试为证；此虚拟热插拔回退未触发
+  设备初始化 -14，不能把两类路径合称真实硬件故障已全验。
+- .build/output-settings-managed-routing-final/report.json：失败状态锁定改进后重新
+  构建的最终 native_audio_probe，再次完整通过上述真实路由流程。
+- .build/output-settings-startup-regression/audit.json：既有启动设置18状态、5次
+  进程生命周期通过；页面重载不重启音频。
+- .build/output-settings-catalog-regression：既有正式设置22状态通过，真实业务请求0。
+- .build/output-settings-workspace-tests.log：227个测试目标，1061通过、0失败/忽略。
+  最终 fmt/Clippy、前端格式/197测试/类型检查/构建、CI规则19测试、公开源码检查
+  均通过；已构建 .build/target/debug/cumulus。Vite保留约517kB主包的体积提醒，
+  未通过修改阈值隐藏提醒；它不是本批帧率证明。
+- Windows当前提交的完整CI仍需等待，本地通过未替代精确SHA的CI gate。

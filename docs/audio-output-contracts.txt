@@ -1,8 +1,8 @@
 原生输出设备：引擎边界与验证（2026-10-29）
 
-本批完成原生引擎的设备枚举、受限选择与实际路由验证。尚未接入正式设置页、
-设备偏好持久化、播放器/MV控制器的设备切换状态机和自动恢复策略，不能称作
-“输出设备设置功能完成”。逐项边界见 audio-output-mapping.json。
+本文保留原生引擎设备枚举、受限选择与实际路由的首批验证。后续正式设置页、
+本机持久化、播放器/MV控制器回退与恢复见 audio-output-settings-contracts.txt；
+本文末尾“尚未实现”是首批证据的历史边界，当前映射见 audio-output-mapping.json。
 
 来源
 - 官方恢复 packages/pc/src/pages/setting/views/Play.jsx:138–199：初次枚举、
