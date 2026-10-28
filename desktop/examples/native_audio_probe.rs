@@ -3,6 +3,9 @@
 #[allow(dead_code)]
 #[path = "../../core/examples/engine_roundtrip.rs"]
 mod native_media;
+#[allow(dead_code)]
+#[path = "../../core/examples/output_device_roundtrip.rs"]
+mod output_devices;
 
 use std::{
     io::Write,
@@ -83,7 +86,13 @@ fn main() {
             }
             let handle = app.handle().clone();
             std::thread::spawn(move || {
-                match native_media::verify_with_observer(auto, |stage| setup_trace.record(stage)) {
+                let result = if std::env::var_os("CUMULUS_OUTPUT_DEVICE_PROOF").is_some() {
+                    setup_trace.record("output_devices_start");
+                    output_devices::run()
+                } else {
+                    native_media::verify_with_observer(auto, |stage| setup_trace.record(stage))
+                };
+                match result {
                     Ok(mut report) => {
                         report["productionDesktopStartup"] = serde_json::json!(true);
                         report["numericLocaleCompatible"] = serde_json::json!(true);

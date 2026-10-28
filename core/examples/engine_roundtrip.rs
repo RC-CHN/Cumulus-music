@@ -80,6 +80,29 @@ pub fn verify_with_observer(
     })?;
     let version = engine.api_version();
     progress("engine_ready");
+    progress("output_enumeration_start");
+    let mut enumerator = MpvEngine::open(MpvConfig::default())?;
+    let devices = enumerator.output_devices()?.expect("native device support");
+    assert!(devices.devices.iter().any(|d| d.id == "auto"));
+    assert_eq!(devices.configured, "auto");
+    assert!(devices.active_driver.is_none());
+    enumerator.set_output_device("auto")?;
+    for id in ["", "invalid\0device", "cumulus-missing-proof-device/absent"] {
+        assert!(enumerator.set_output_device(id).is_err());
+    }
+    assert_eq!(enumerator.output_devices()?.unwrap().configured, "auto");
+    // This enumerator never loads any media or activates an audio output.
+    drop(enumerator);
+    progress("output_enumeration_verified");
+    if !auto {
+        // Explicit null output must never enumerate/select a physical device,
+        // including through the native output settings boundary.
+        assert!(engine.output_devices()?.is_none());
+        for id in ["auto", "pulse/default", "wasapi/default", "null"] {
+            assert!(engine.set_output_device(id).is_err());
+        }
+        progress("output_isolation_verified");
+    }
     engine.volume(0.0)?;
     let loaded = engine.load(
         LoadRequest::new(MediaInput::File(path.clone())),
