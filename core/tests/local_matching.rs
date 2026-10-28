@@ -278,6 +278,54 @@ async fn changed_file_and_rescan_discard_late_match() {
 }
 
 #[tokio::test]
+async fn index_scan_contention_waits_to_commit_without_repeating_search_and_can_cancel() {
+    for cancel in [false, true] {
+        let f = Fixture::new(&names(1));
+        let job = f.start();
+        f.api.gate.store(true, Ordering::SeqCst);
+        let task = f.spawn();
+        f.api.wait().await;
+        let index = cumulus_core::storage::OperationLock::acquire(
+            f.store.directory(),
+            "local",
+            "library-index",
+        )
+        .unwrap();
+        f.api.release.notify_one();
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        assert!(
+            !task.is_finished(),
+            "index contention must not fail a matching job"
+        );
+        assert_eq!(
+            f.service.state().unwrap().unwrap().phase,
+            MatchPhase::Running
+        );
+        if cancel {
+            f.service.control(&job.id, MatchAction::Cancel).unwrap();
+            let result = tokio::time::timeout(std::time::Duration::from_secs(2), task)
+                .await
+                .unwrap()
+                .unwrap();
+            assert!(matches!(result, Err(Error::Cancelled)));
+            drop(index);
+            assert!(f.store.values("9", "local_map_v1").unwrap().is_empty());
+        } else {
+            drop(index);
+            let result = tokio::time::timeout(std::time::Duration::from_secs(2), task)
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap()
+                .unwrap();
+            assert_eq!(result.phase, MatchPhase::Complete);
+            assert_eq!(result.matched, 1);
+        }
+        assert_eq!(f.api.batches.lock().unwrap().len(), 1);
+    }
+}
+
+#[tokio::test]
 async fn pause_cancel_and_account_switch_fence_inflight_requests() {
     for action in [MatchAction::Pause, MatchAction::Cancel] {
         let f = Fixture::new(&names(1));

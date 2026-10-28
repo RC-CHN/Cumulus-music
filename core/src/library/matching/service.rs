@@ -253,8 +253,12 @@ impl LocalMatching {
         }
         Ok((outcomes, queries))
     }
-    fn finish(&self, batch: Batch, outcomes: Vec<Outcome>) -> Result<MatchJob> {
-        let _index = self.library.lock()?;
+    fn finish(
+        &self,
+        batch: Batch,
+        outcomes: Vec<Outcome>,
+        _index: OperationLock,
+    ) -> Result<MatchJob> {
         let current = self.current_items()?;
         self.session.with_token(&self.token, |uid| {
             self.store.transaction(|tx| {
@@ -371,10 +375,39 @@ impl LocalMatching {
                 }
             }
         }
+        let index = self.commit_lock(&batch.job).await?;
         let this = self.clone();
-        tokio::task::spawn_blocking(move || this.finish(batch, outcomes))
+        tokio::task::spawn_blocking(move || this.finish(batch, outcomes, index))
             .await
             .map_err(|_| Error::State("matching commit worker stopped"))?
+    }
+
+    /// Scanning and matching share the index. Retain the completed batch while
+    /// waiting; restarting step would repeat metadata/network work. No SQLite
+    /// or account mutex survives the wait, and pause/cancel/account changes are
+    /// checked on each attempt before the final commit checks them once more.
+    async fn commit_lock(&self, expected: &MatchJob) -> Result<OperationLock> {
+        let mut delay = std::time::Duration::from_millis(20);
+        loop {
+            let this = self.clone();
+            let expected = expected.clone();
+            let result = tokio::task::spawn_blocking(move || {
+                this.session.with_token(&this.token, |uid| {
+                    this.store
+                        .transaction(|tx| require_job(tx, uid, &expected).map(|_| ()))
+                })?;
+                this.library.lock()
+            })
+            .await
+            .map_err(|_| Error::State("matching commit lock worker stopped"))?;
+            match result {
+                Err(Error::MutationBusy) => {
+                    tokio::time::sleep(delay).await;
+                    delay = (delay * 2).min(std::time::Duration::from_millis(250));
+                }
+                result => return result,
+            }
+        }
     }
 
     /// Manual selection uses authoritative song details and a captured local
