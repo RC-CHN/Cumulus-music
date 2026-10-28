@@ -14,10 +14,10 @@ def rows(path):
 
 def audit(root, screenshots=True):
     root = root.resolve()
-    first = json.loads((root / "first/complete.json").read_text())
+    first = json.loads((root / "first/complete.json").read_text(encoding="utf-8"))
     assert first["ok"] and first["networkRequests"] == 0
     assert first["nativeAccount"]["nickname"] == "二次验证账号"
-    target = (root / "fixture-target.txt").read_text()
+    target = (root / "fixture-target.txt").read_text(encoding="utf-8")
     assert len(target) == 32 and all(c in "0123456789abcdef" for c in target)
     registry = rows(root / "state/core.sqlite3")
     saved = {key: value for (owner, kind, key), value in registry.items()
@@ -35,41 +35,41 @@ def audit(root, screenshots=True):
     stages = []
     for name, count in [("first", 8), ("reopen", 2)]:
         run = root / name
-        complete = json.loads((run / "complete.json").read_text())
+        complete = json.loads((run / "complete.json").read_text(encoding="utf-8"))
         assert complete["ok"] and complete["credentialRecordRemoved"]
         assert complete["confirmationFocus"] and complete["explicitCancel"] and complete["dialogCancel"]
         if screenshots:
-            capture = json.loads((run / "capture.json").read_text())
+            capture = json.loads((run / "capture.json").read_text(encoding="utf-8"))
             assert capture["ok"] and capture["screenshots"] == count
         paths = list(run.glob("saved_*.json"))
         assert len(paths) == count
         for path in paths:
-            data = json.loads(path.read_text())
+            data = json.loads(path.read_text(encoding="utf-8"))
             assert data["networkRequests"] == 0 and not data["overflow"]
             assert data["nativeAccount"]["nickname"] == "二次验证账号"
             assert data["nativeAccount"]["canSignOut"]
             if screenshots:
                 assert path.with_suffix(".png").is_file()
             stages.append(path.stem)
-    pending = json.loads((root / "first/saved_pending.json").read_text())
+    pending = json.loads((root / "first/saved_pending.json").read_text(encoding="utf-8"))
     pending_row = next(a for a in pending["savedAccounts"]["value"] if a["id"] == target)
     assert pending_row["removalPending"] and not pending_row["current"]
-    cancelled = json.loads((root / "first/saved_cancelled.json").read_text())
+    cancelled = json.loads((root / "first/saved_cancelled.json").read_text(encoding="utf-8"))
     assert len(cancelled["savedAccounts"]["value"]) == 2
     assert not any(a["removalPending"] for a in cancelled["savedAccounts"]["value"])
     for name, theme in [("saved_logout_light", "light"), ("saved_logout_dark", "dark")]:
-        value = json.loads((root / "first" / (name + ".json")).read_text())
+        value = json.loads((root / "first" / (name + ".json")).read_text(encoding="utf-8"))
         assert value["theme"] == theme and value["title"] == "退出登录"
         assert value["focused"] == "取消"
         assert len(value["savedAccounts"]["value"]) == 2
         assert not any("logout" in path for path in value["fixtureRequests"])
-    dark = json.loads((root / "first/saved_dark_small.json").read_text())
+    dark = json.loads((root / "first/saved_dark_small.json").read_text(encoding="utf-8"))
     assert dark["theme"] == "dark" and dark["width"] == 760
     result = {"ok": True, "synthetic_only": True, "network_requests": 0,
               "removed_credential_absent": True, "current_account_preserved": True,
               "completed_intent_durable": True, "failed_cleanup_explicitly_recovered": True,
               "reopened_without_removed_account": True, "stages": stages}
-    (root / "independent-audit.json").write_text(json.dumps(result, indent=2) + "\n")
+    (root / "independent-audit.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     return result
 
 
