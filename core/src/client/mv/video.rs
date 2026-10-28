@@ -18,6 +18,16 @@ impl MusicClient {
         action: VideoAction,
         native: Option<&super::super::native_media::NativeMediaTarget>,
     ) -> Result<VideoView> {
+        self.video_action_with_restart(epoch, action, native, false)
+            .await
+    }
+    pub(in crate::client) async fn video_action_with_restart(
+        &self,
+        epoch: &str,
+        action: VideoAction,
+        native: Option<&super::super::native_media::NativeMediaTarget>,
+        restart_stopped: bool,
+    ) -> Result<VideoView> {
         if let Some(target) = native {
             target.check(self)?;
         }
@@ -66,6 +76,7 @@ impl MusicClient {
                 resolution,
                 download_task_id,
             },
+            VideoAction::Play if restart_stopped => VideoCommand::PlayFromStart,
             VideoAction::Play => VideoCommand::Play,
             VideoAction::Pause { paused } => VideoCommand::Pause { paused },
             VideoAction::Seek { seconds } => VideoCommand::Seek { seconds },

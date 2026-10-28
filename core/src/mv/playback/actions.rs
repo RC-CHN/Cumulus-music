@@ -58,6 +58,31 @@ impl Actor {
                 .await
             }
             VideoCommand::Play => self.pause(false).await,
+            VideoCommand::PlayFromStart => {
+                if matches!(
+                    self.view.status,
+                    VideoStatus::Idle | VideoStatus::Ended | VideoStatus::Error
+                ) {
+                    let id = self
+                        .view
+                        .id
+                        .clone()
+                        .ok_or(Error::State("no video selected"))?;
+                    self.open(
+                        resolve::Load {
+                            id,
+                            resolution: self.view.requested_resolution,
+                            task: None,
+                            position: Some(0.0),
+                            remote: false,
+                        },
+                        true,
+                    )
+                    .await
+                } else {
+                    self.pause(false).await
+                }
+            }
             VideoCommand::Pause { paused } => self.pause(paused).await,
             VideoCommand::Suspend => {
                 if self.pending.is_some() {
@@ -90,6 +115,7 @@ impl Actor {
                 })
                 .await?;
                 self.view.position = observed.position.or(self.view.position);
+                self.view.seek_revision = self.view.control_revision;
                 self.checkpoint(false)
             }
             VideoCommand::Volume { value } => self.preference(value, true).await,
@@ -167,6 +193,11 @@ impl Actor {
         {
             return Err(Error::InvalidInput("video preference is out of bounds"));
         }
+        let before = if volume {
+            self.view.volume
+        } else {
+            self.view.speed
+        };
         if let Some(engine) = self.engine.clone() {
             device(engine, move |e| {
                 if volume {
@@ -177,16 +208,36 @@ impl Actor {
             })
             .await?;
         }
-        if volume {
-            self.view.volume = value;
-        } else {
-            self.view.speed = value;
-        }
-        self.session.save_result(
+        let next_volume = if volume { value } else { self.view.volume };
+        let next_speed = if volume { self.view.speed } else { value };
+        if let Err(error) = self.session.save_result(
             &self.token,
             "mv-player-v1",
             "settings",
-            &json!({"volume":self.view.volume,"speed":self.view.speed}),
-        )
+            &json!({"volume":next_volume,"speed":next_speed}),
+        ) {
+            if let Some(engine) = self.engine.clone()
+                && device(engine, move |e| {
+                    if volume {
+                        e.volume(before)
+                    } else {
+                        e.speed(before)
+                    }
+                })
+                .await
+                .is_err()
+            {
+                // Do not advertise old preferences while an unconfirmed live
+                // output remains at the rejected value.
+                self.cancel_load();
+                let _ = self.release_engine().await;
+                self.wants_play = false;
+                self.failure(Error::State("video preference rollback failed"));
+            }
+            return Err(error);
+        }
+        self.view.volume = next_volume;
+        self.view.speed = next_speed;
+        Ok(())
     }
 }

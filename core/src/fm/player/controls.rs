@@ -97,6 +97,7 @@ impl Inner {
         token: &SessionToken,
         restore: bool,
         intent: u64,
+        restart_stopped: bool,
     ) -> Result<PlaybackSnapshot> {
         let _gate = self.gate.try_lock().map_err(|_| Error::MutationBusy)?;
         let (view, actual, mut desired) = self.current(token).await?;
@@ -108,6 +109,8 @@ impl Inner {
                     token,
                     if restore {
                         PlaybackCommand::Restore
+                    } else if restart_stopped {
+                        PlaybackCommand::PlayFromStart
                     } else {
                         PlaybackCommand::Play
                     },

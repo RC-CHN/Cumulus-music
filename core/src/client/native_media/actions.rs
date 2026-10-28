@@ -1,6 +1,29 @@
 use super::super::dto::{PlayerAction, VideoAction};
+use super::super::player::NativeTransportPolicy;
 use super::*;
 impl MusicClient {
+    /// System Play resumes paused media but starts stopped media at its
+    /// authorized beginning, rather than the ordinary podcast/MV bookmark.
+    pub async fn native_media_play(&self, target: &NativeMediaTarget) -> Result<()> {
+        target.check(self)?;
+        let epoch = target.token.generation.to_string();
+        match target.media {
+            Media::Audio(_) => {
+                self.player_action_policy(
+                    &epoch,
+                    PlayerAction::Play,
+                    Some(target),
+                    NativeTransportPolicy::RestartStopped,
+                )
+                .await?;
+            }
+            Media::Video(_) => {
+                self.video_action_with_restart(&epoch, VideoAction::Play, Some(target), true)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
     /// MPRIS stepping preserves transport state; tray/manual stepping retains
     /// its existing explicit-play behavior. The actor applies this atomically.
     pub async fn native_media_step(
@@ -16,11 +39,11 @@ impl MusicClient {
             crate::playback::Step::Next => PlayerAction::Next,
             crate::playback::Step::Previous => PlayerAction::Previous,
         };
-        self.player_action_with_step_state(
+        self.player_action_policy(
             &target.token.generation.to_string(),
             action,
             Some(target),
-            true,
+            NativeTransportPolicy::PreserveStep,
         )
         .await?;
         Ok(())

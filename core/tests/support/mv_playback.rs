@@ -56,6 +56,7 @@ pub struct Device {
     pub seek_landing: Option<f64>,
     pub paused: bool,
     pub volume: f64,
+    pub reject_volume: Option<f64>,
     pub speed: f64,
     pub source_file: bool,
     pub source_path: Option<std::path::PathBuf>,
@@ -107,7 +108,11 @@ impl AudioEngine for Fake {
         Ok(())
     }
     fn volume(&mut self, v: f64) -> Result<()> {
-        self.0.lock().unwrap().volume = v;
+        let mut device = self.0.lock().unwrap();
+        if device.reject_volume == Some(v) {
+            return Err(Error::State("synthetic video volume failure"));
+        }
+        device.volume = v;
         Ok(())
     }
     fn speed(&mut self, v: f64) -> Result<()> {
@@ -198,6 +203,7 @@ impl Fixture {
                 seek_landing: None,
                 paused: true,
                 volume: 60.0,
+                reject_volume: None,
                 speed: 1.0,
                 source_file: false,
                 source_path: None,

@@ -252,6 +252,43 @@ async fn resume_uses_remote_location_then_local_checkpoint_and_honors_switch() {
     );
     c.player_action("1", PlayerAction::Stop).await.unwrap();
 }
+
+#[tokio::test]
+async fn system_play_resumes_a_paused_voice_but_restarts_a_stopped_voice() {
+    let (_dir, api, _s, c) = fixture();
+    api.count.store(1, Ordering::SeqCst);
+    api.resume.store(true, Ordering::SeqCst);
+    let p = c.podcast_page("1", query(scope(), 0), true).await.unwrap();
+    let state = c
+        .play_selection(
+            "1",
+            PlaySelection::Podcast {
+                scope: scope(),
+                revision: p.revision,
+                start_id: None,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(state.position, Some(15.0));
+    c.player_action("1", PlayerAction::Seek { seconds: 42.5 })
+        .await
+        .unwrap();
+    c.player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    let paused = c.native_media_snapshot().unwrap().target.unwrap();
+    c.native_media_play(&paused).await.unwrap();
+    assert_eq!(c.native_media_details().unwrap().position, Some(42.5));
+    c.player_action("1", PlayerAction::Stop).await.unwrap();
+    let stopped = c.native_media_snapshot().unwrap().target.unwrap();
+    c.native_media_play(&stopped).await.unwrap();
+    assert_eq!(c.native_media_details().unwrap().position, Some(0.0));
+    assert!(matches!(
+        c.native_media_play(&paused).await,
+        Err(Error::StaleResponse)
+    ));
+}
 #[tokio::test]
 async fn uncertain_writes_are_visible_offline_and_isolated_from_the_next_account() {
     let (dir, api, s, c) = fixture();

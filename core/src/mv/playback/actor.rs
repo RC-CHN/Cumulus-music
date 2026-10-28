@@ -52,6 +52,7 @@ impl Actor {
             account: token.clone(),
             revision: 0,
             control_revision: 0,
+            seek_revision: 0,
             play_id: String::new(),
             id: None,
             status: VideoStatus::Idle,
@@ -299,7 +300,7 @@ impl Actor {
         }
         self.sync_local().await
     }
-    fn failure(&mut self, error: Error) {
+    pub(super) fn failure(&mut self, error: Error) {
         self.local_source = None;
         self.waiting_local = false;
         self.view.status = VideoStatus::Error;

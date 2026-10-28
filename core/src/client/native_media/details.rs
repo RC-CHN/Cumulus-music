@@ -38,6 +38,8 @@ pub struct NativeMediaDetails {
     pub state: NativeMediaStatus,
     /// Display seconds: CUE is clip-relative, preview retains the full-song offset.
     pub position: Option<f64>,
+    /// Native discontinuity marker; not a general control or wall-clock revision.
+    pub seek_revision: u64,
     pub duration: Option<f64>,
     pub seek_start: f64,
     pub seek_end: Option<f64>,
@@ -54,6 +56,7 @@ impl Default for NativeMediaDetails {
             item: None,
             state: NativeMediaStatus::Stopped,
             position: None,
+            seek_revision: 0,
             duration: None,
             seek_start: 0.0,
             seek_end: None,
@@ -116,6 +119,7 @@ impl MusicClient {
                     _ => NativeMediaStatus::Stopped,
                 };
                 result.position = value.position;
+                result.seek_revision = value.seek_revision;
                 result.duration = value.timeline.as_ref().and_then(|t| t.total).or_else(|| {
                     (public.duration_ms > 0).then_some(public.duration_ms as f64 / 1000.0)
                 });
@@ -160,6 +164,7 @@ impl MusicClient {
                     _ => NativeMediaStatus::Stopped,
                 };
                 result.position = value.position;
+                result.seek_revision = value.seek_revision;
                 result.duration = value.duration.or_else(|| {
                     detail
                         .and_then(|d| (d.duration_ms > 0).then_some(d.duration_ms as f64 / 1000.0))

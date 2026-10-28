@@ -36,6 +36,7 @@ async fn native_details_are_lazy_sanitized_and_stable_across_clock_and_controls(
     let after = f.client.native_media_details().unwrap();
     assert_eq!(after.item.as_ref().unwrap().id, item.id);
     assert_eq!(after.position, Some(17.5));
+    assert_ne!(after.seek_revision, first.seek_revision);
     assert!(matches!(
         f.client
             .native_media_adjust(&target, Adjust::Volume { value: 10.0 })
@@ -49,6 +50,7 @@ async fn native_details_are_lazy_sanitized_and_stable_across_clock_and_controls(
         .unwrap();
     let paused = f.client.native_media_details().unwrap();
     assert_eq!(paused.state, NativeMediaStatus::Paused);
+    assert_eq!(paused.seek_revision, after.seek_revision);
     assert_eq!(paused.item.as_ref().unwrap().id, item.id);
     f.client.play_selection("1", songs()).await.unwrap();
     assert_ne!(
@@ -79,6 +81,7 @@ async fn native_adjustments_preserve_pause_and_persist_through_ordinary_use_case
             .unwrap();
     }
     let current = f.client.native_media_details().unwrap();
+    assert_eq!(current.seek_revision, 0);
     assert_eq!(current.volume, 37.0);
     assert_eq!(current.speed, 1.5);
     assert_eq!(
@@ -147,6 +150,70 @@ async fn native_preferences_report_disk_failure_and_restore_the_live_engine() {
         .await
         .unwrap();
     assert_eq!(f.client.native_media_details().unwrap().volume, 12.0);
+}
+
+#[tokio::test]
+async fn native_video_preferences_do_not_survive_a_rejected_persistent_write() {
+    let f = Fixture::new();
+    f.client.video_action("1", open()).await.unwrap();
+    f.until(VideoStatus::Playing).await;
+    let before = f.client.native_media_details().unwrap();
+    let db = rusqlite::Connection::open(f._dir.path().join("core.sqlite3")).unwrap();
+    db.execute_batch("CREATE TRIGGER reject_video_preferences BEFORE INSERT ON state WHEN NEW.kind='mv-player-v1' AND NEW.key='settings' BEGIN SELECT RAISE(ABORT,'synthetic write failure'); END;").unwrap();
+    for adjustment in [Adjust::Volume { value: 12.0 }, Adjust::Speed { value: 2.0 }] {
+        let target = f.client.native_media_snapshot().unwrap().target.unwrap();
+        assert!(
+            f.client
+                .native_media_adjust(&target, adjustment)
+                .await
+                .is_err()
+        );
+        let view = f.client.native_media_details().unwrap();
+        assert_eq!((view.volume, view.speed), (before.volume, before.speed));
+        let device = f.video.last();
+        let device = device.lock().unwrap();
+        assert_eq!((device.volume, device.speed), (before.volume, before.speed));
+    }
+    db.execute_batch("DROP TRIGGER reject_video_preferences;")
+        .unwrap();
+    let target = f.client.native_media_snapshot().unwrap().target.unwrap();
+    f.client
+        .native_media_adjust(&target, Adjust::Volume { value: 12.0 })
+        .await
+        .unwrap();
+    assert_eq!(f.client.native_media_details().unwrap().volume, 12.0);
+}
+
+#[tokio::test]
+async fn failed_video_preference_rollback_retires_output_until_explicit_recovery() {
+    let f = Fixture::new();
+    f.client.video_action("1", open()).await.unwrap();
+    f.until(VideoStatus::Playing).await;
+    let before = f.client.native_media_details().unwrap();
+    let device = f.video.last();
+    device.lock().unwrap().reject_volume = Some(before.volume);
+    let db = rusqlite::Connection::open(f._dir.path().join("core.sqlite3")).unwrap();
+    db.execute_batch("CREATE TRIGGER reject_video_preferences BEFORE INSERT ON state WHEN NEW.kind='mv-player-v1' AND NEW.key='settings' BEGIN SELECT RAISE(ABORT,'synthetic write failure'); END;").unwrap();
+    let target = f.client.native_media_snapshot().unwrap().target.unwrap();
+    assert!(
+        f.client
+            .native_media_adjust(&target, Adjust::Volume { value: 12.0 })
+            .await
+            .is_err()
+    );
+    let view = f.client.video_snapshot("1").await.unwrap();
+    assert_eq!(view.state, VideoStatus::Error);
+    assert!(device.lock().unwrap().stopped);
+    assert!(!f.client.native_media_details().unwrap().can_seek);
+    db.execute_batch("DROP TRIGGER reject_video_preferences;")
+        .unwrap();
+    f.client.video_action("1", VideoAction::Play).await.unwrap();
+    f.until(VideoStatus::Playing).await;
+    assert_eq!(f.video.last().lock().unwrap().volume, before.volume);
+    assert_eq!(
+        f.client.native_media_details().unwrap().volume,
+        before.volume
+    );
 }
 
 #[tokio::test]
@@ -228,4 +295,66 @@ async fn native_video_adjustments_use_video_only_and_reject_account_handoffs() {
         Err(Error::StaleResponse)
     ));
     assert!(f.client.native_media_details().unwrap().item.is_none());
+}
+
+#[tokio::test]
+async fn system_video_play_preserves_pause_position_and_resets_after_stop() {
+    let f = Fixture::new();
+    f.client.video_action("1", open()).await.unwrap();
+    f.until(VideoStatus::Playing).await;
+    f.client
+        .video_action("1", VideoAction::Seek { seconds: 18.0 })
+        .await
+        .unwrap();
+    f.client
+        .video_action("1", VideoAction::Pause { paused: true })
+        .await
+        .unwrap();
+    let paused = f.client.native_media_snapshot().unwrap().target.unwrap();
+    f.client.native_media_play(&paused).await.unwrap();
+    assert_eq!(
+        f.client.native_media_details().unwrap().position,
+        Some(18.0)
+    );
+    f.client.video_action("1", VideoAction::Stop).await.unwrap();
+    let stopped = f.client.native_media_snapshot().unwrap().target.unwrap();
+    f.client.native_media_play(&stopped).await.unwrap();
+    f.until(VideoStatus::Playing).await;
+    assert_eq!(f.client.native_media_details().unwrap().position, Some(0.0));
+    assert!(matches!(
+        f.client.native_media_play(&paused).await,
+        Err(Error::StaleResponse)
+    ));
+}
+
+#[tokio::test]
+async fn system_play_restarts_trial_at_the_authorized_start_and_preserves_paused_seek() {
+    let f = Fixture::new();
+    f.api.trial.store(true, Ordering::Release);
+    f.client.play_selection("1", songs()).await.unwrap();
+    f.client
+        .player_action("1", PlayerAction::Seek { seconds: 45.0 })
+        .await
+        .unwrap();
+    f.client
+        .player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    let target = f.client.native_media_snapshot().unwrap().target.unwrap();
+    f.client.native_media_play(&target).await.unwrap();
+    assert_eq!(
+        f.client.native_media_details().unwrap().position,
+        Some(45.0)
+    );
+    f.client
+        .player_action("1", PlayerAction::Stop)
+        .await
+        .unwrap();
+    let target = f.client.native_media_snapshot().unwrap().target.unwrap();
+    f.client.native_media_play(&target).await.unwrap();
+    assert_eq!(
+        f.client.native_media_details().unwrap().position,
+        Some(30.0)
+    );
+    assert_eq!(f.audio.state.lock().unwrap().view.position, Some(0.0));
 }

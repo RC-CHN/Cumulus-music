@@ -40,6 +40,8 @@ pub struct PlaybackSnapshot {
     pub revision: u64,
     /// Accepted native control intent; engine clock polls do not advance it.
     pub control_revision: u64,
+    /// Last applied seek; volume/pause/clock updates do not change this.
+    pub seek_revision: u64,
     pub queue_revision: u64,
     pub account: SessionToken,
     pub state: PlaybackStatus,
@@ -128,6 +130,8 @@ pub enum PlaybackCommand {
     Reorder(Vec<String>),
     Mode(PlaybackMode),
     Play,
+    /// Resume paused transport; a stopped selection starts at authorized zero.
+    PlayFromStart,
     Pause(bool),
     Seek(f64),
     Volume(f64),

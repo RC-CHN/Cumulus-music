@@ -24,6 +24,12 @@ use std::sync::{Arc, Mutex, atomic::AtomicU64};
 use tokio::sync::{OnceCell, watch};
 
 type EngineFactory = Arc<dyn Fn() -> Result<Box<dyn AudioEngine>> + Send + Sync>;
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum NativeTransportPolicy {
+    Ordinary,
+    PreserveStep,
+    RestartStopped,
+}
 pub(super) struct PlayerHost {
     relay_enabled: bool,
     session: Arc<AccountSession>,
@@ -225,15 +231,15 @@ impl MusicClient {
         action: PlayerAction,
         native: Option<&super::native_media::NativeMediaTarget>,
     ) -> Result<PlayerView> {
-        self.player_action_with_step_state(epoch, action, native, false)
+        self.player_action_policy(epoch, action, native, NativeTransportPolicy::Ordinary)
             .await
     }
-    pub(super) async fn player_action_with_step_state(
+    pub(super) async fn player_action_policy(
         &self,
         epoch: &str,
         action: PlayerAction,
         native: Option<&super::native_media::NativeMediaTarget>,
-        preserve_step_state: bool,
+        policy: NativeTransportPolicy,
     ) -> Result<PlayerView> {
         if let Some(target) = native {
             target.check(self)?;
@@ -329,7 +335,7 @@ impl MusicClient {
                             &token,
                             crate::fm::FmStep::ManualNext,
                             attempt,
-                            preserve_step_state,
+                            policy == NativeTransportPolicy::PreserveStep,
                         )
                         .await?
                     }
@@ -338,11 +344,19 @@ impl MusicClient {
                             &token,
                             crate::fm::FmStep::Previous,
                             attempt,
-                            preserve_step_state,
+                            policy == NativeTransportPolicy::PreserveStep,
                         )
                         .await?
                     }
-                    PlayerAction::Play => fm.resume_for(&token, false, attempt).await?,
+                    PlayerAction::Play => {
+                        fm.resume_with_start_for(
+                            &token,
+                            false,
+                            attempt,
+                            policy == NativeTransportPolicy::RestartStopped,
+                        )
+                        .await?
+                    }
                     PlayerAction::Restore => fm.resume_for(&token, true, attempt).await?,
                     PlayerAction::Mode { mode } => {
                         fm.repeat_for(
@@ -389,15 +403,18 @@ impl MusicClient {
             }
             PlayerAction::RetryEqualizer => PlaybackCommand::RetryEqualizer,
             PlayerAction::RepairEqualizer => PlaybackCommand::RepairEqualizer,
+            PlayerAction::Play if policy == NativeTransportPolicy::RestartStopped => {
+                PlaybackCommand::PlayFromStart
+            }
             PlayerAction::Play => PlaybackCommand::Play,
             PlayerAction::Pause { paused } => PlaybackCommand::Pause(paused),
             PlayerAction::Seek { seconds } => PlaybackCommand::Seek(seconds),
             PlayerAction::Volume { value } => PlaybackCommand::Volume(value),
             PlayerAction::Speed { value } => PlaybackCommand::Speed(value),
-            PlayerAction::Next if preserve_step_state => {
+            PlayerAction::Next if policy == NativeTransportPolicy::PreserveStep => {
                 PlaybackCommand::StepPreservingState(crate::playback::Step::Next)
             }
-            PlayerAction::Previous if preserve_step_state => {
+            PlayerAction::Previous if policy == NativeTransportPolicy::PreserveStep => {
                 PlaybackCommand::StepPreservingState(crate::playback::Step::Previous)
             }
             PlayerAction::Next => PlaybackCommand::Next,

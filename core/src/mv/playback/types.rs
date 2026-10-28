@@ -19,6 +19,8 @@ pub struct VideoSnapshot {
     pub revision: u64,
     /// Accepted control intents, independent of engine clock updates.
     pub control_revision: u64,
+    /// Last applied seek, independent of preferences and native clock polls.
+    pub seek_revision: u64,
     pub play_id: String,
     pub id: Option<String>,
     pub status: VideoStatus,
@@ -44,6 +46,8 @@ pub enum VideoCommand {
         download_task_id: Option<String>,
     },
     Play,
+    #[serde(skip)]
+    PlayFromStart,
     Pause {
         paused: bool,
     },

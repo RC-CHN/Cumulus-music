@@ -124,7 +124,19 @@ impl FmPlayer {
         restore: bool,
         intent: u64,
     ) -> Result<PlaybackSnapshot> {
-        self.inner.resume(token, restore, intent).await
+        self.resume_with_start_for(token, restore, intent, false)
+            .await
+    }
+    pub(crate) async fn resume_with_start_for(
+        &self,
+        token: &SessionToken,
+        restore: bool,
+        intent: u64,
+        restart_stopped: bool,
+    ) -> Result<PlaybackSnapshot> {
+        self.inner
+            .resume(token, restore, intent, restart_stopped)
+            .await
     }
     pub async fn startup_for(
         &self,

@@ -166,6 +166,20 @@ impl Actor {
             PlaybackCommand::Remove(ids) => self.queue.remove(&ids),
             PlaybackCommand::Reorder(ids) => self.queue.reorder(&ids),
             PlaybackCommand::Mode(mode) => self.queue.set_mode(mode),
+            PlaybackCommand::PlayFromStart => {
+                if self.state == PlaybackStatus::Paused || self.pending.is_some() {
+                    self.pause(false).await
+                } else if self.state.active() {
+                    Ok(())
+                } else {
+                    options = Some(LoadOptions {
+                        position: Some(0.0),
+                        relative: true,
+                        ..Default::default()
+                    });
+                    Ok(())
+                }
+            }
             PlaybackCommand::Play => {
                 if self.state == PlaybackStatus::Paused {
                     self.pause(false).await
@@ -317,6 +331,7 @@ impl Actor {
         })
         .await?;
         self.position = Some(seconds);
+        self.seek_revision = self.control_revision;
         self.persist_transport().await
     }
     pub(super) async fn persist_transport(&mut self) -> Result<()> {
