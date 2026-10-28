@@ -518,3 +518,56 @@ async fn native_menu_steps_and_resumes_through_fm_coordinator() {
     }
     assert_eq!(api.count("/api/radio/trash/add"), 0);
 }
+
+#[tokio::test]
+async fn system_fm_steps_preserve_pause_and_stop_through_the_coordinator() {
+    use cumulus_core::{client::native_media::NativeMediaStatus as Status, playback::Step};
+    let (_dir, api, _session, client) = fixture();
+    api.batch(&[1, 2, 3, 4]);
+    client
+        .fm_command(
+            "1",
+            FmSource::Personal,
+            FmCommand::Start {
+                quality: Quality::Standard,
+            },
+        )
+        .await
+        .unwrap();
+    client
+        .player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    let target = client.native_media_snapshot().unwrap().target.unwrap();
+    client.native_media_step(&target, Step::Next).await.unwrap();
+    assert_eq!(client.native_media_details().unwrap().state, Status::Paused);
+    let view = client
+        .subscribe_playback("1")
+        .await
+        .unwrap()
+        .current()
+        .unwrap();
+    assert!(view.fm);
+    assert_eq!(view.track.unwrap().id, "2");
+    client.player_action("1", PlayerAction::Stop).await.unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    let target = client.native_media_snapshot().unwrap().target.unwrap();
+    client
+        .native_media_step(&target, Step::Previous)
+        .await
+        .unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    assert_eq!(
+        client.native_media_details().unwrap().state,
+        Status::Stopped
+    );
+    let view = client
+        .subscribe_playback("1")
+        .await
+        .unwrap()
+        .current()
+        .unwrap();
+    assert!(view.fm);
+    assert_eq!(view.track.unwrap().id, "1");
+    assert_eq!(api.count("/api/radio/trash/add"), 0);
+}

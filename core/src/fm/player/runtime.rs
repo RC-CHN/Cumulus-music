@@ -28,7 +28,7 @@ pub(super) async fn watch(inner: Arc<Inner>) {
         handled = Some(key);
         let intent = inner.intents.load(Ordering::Acquire);
         if inner
-            .step(&view.account, FmStep::Ended, intent)
+            .step(&view.account, FmStep::Ended, intent, false)
             .await
             .is_err()
             && inner.session.check_generation(&view.account).is_ok()

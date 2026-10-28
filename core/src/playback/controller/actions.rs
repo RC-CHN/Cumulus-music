@@ -67,6 +67,7 @@ impl Actor {
                 request.command,
                 PlaybackCommand::Next
                     | PlaybackCommand::Previous
+                    | PlaybackCommand::StepPreservingState(_)
                     | PlaybackCommand::Select(_)
                     | PlaybackCommand::Remove(_)
                     | PlaybackCommand::Reorder(_)
@@ -122,6 +123,7 @@ impl Actor {
                 | PlaybackCommand::Select(_)
                 | PlaybackCommand::Next
                 | PlaybackCommand::Previous
+                | PlaybackCommand::StepPreservingState(_)
                 | PlaybackCommand::Remove(_)
         ) && let Err(error) = self.save_position()
         {
@@ -178,16 +180,30 @@ impl Actor {
             PlaybackCommand::Seek(seconds) => self.seek(seconds).await,
             PlaybackCommand::Volume(value) => self.preference(value, true).await,
             PlaybackCommand::Speed(value) => self.preference(value, false).await,
-            PlaybackCommand::Next | PlaybackCommand::Previous => {
-                let step = if matches!(request.command, PlaybackCommand::Next) {
-                    Step::Next
-                } else {
-                    Step::Previous
+            PlaybackCommand::Next
+            | PlaybackCommand::Previous
+            | PlaybackCommand::StepPreservingState(_) => {
+                let (step, preserve) = match request.command {
+                    PlaybackCommand::Next => (Step::Next, false),
+                    PlaybackCommand::Previous => (Step::Previous, false),
+                    PlaybackCommand::StepPreservingState(step) => (step, true),
+                    _ => unreachable!("step command matched"),
                 };
                 match self.queue.advance(step, false) {
                     Ok(Some(_)) => {
-                        options = Some(LoadOptions::default());
-                        Ok(())
+                        if preserve && !self.state.active() && self.pending.is_none() {
+                            // Clear old decoder ownership before queue synchronization,
+                            // which must not reload a stopped selection on its own.
+                            self.stop(false).await
+                        } else {
+                            options = Some(LoadOptions {
+                                paused: preserve
+                                    && (self.state == PlaybackStatus::Paused
+                                        || self.pending.as_ref().is_some_and(|p| p.paused)),
+                                ..Default::default()
+                            });
+                            Ok(())
+                        }
                     }
                     Ok(None) => self.stop(true).await,
                     Err(error) => Err(error),

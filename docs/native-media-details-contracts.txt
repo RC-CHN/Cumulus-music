@@ -1,0 +1,97 @@
+原生媒体元数据与状态保持控制（2026-10-29）
+
+范围和来源
+本批完成独立 Rust core 的原生媒体读取、调整和保持状态切歌用例。
+不是已完成的 Linux MPRIS 或 Windows SMTC 宿主；对应注册、属性通知、
+设置开关、系统快捷键与实际系统面板验收仍需继续。
+
+官方证据：references/recovered-client/docs/product/models/playing.txt，
+M308:5082–5124 onSMTCEnable：启用后设置当前歌曲信息与封面；
+M308:5292–5386 onMiniPlayerAction：播放/暂停/停止/上下首使用当前播放器。
+setting.txt M116:1472–1533 保存 SMTC 开关并更新播放器。
+实际官方开关、Windows 接口和 AB 分流不属于本批 core 实现。
+没有参考 YesPlayMusic，没有移植官方埋点。
+Linux 状态保持语义补充来源：
+https://specifications.freedesktop.org/mpris/latest/Player_Interface.html
+Next/Previous 保持暂停或停止状态；这与已有界面手动切歌开始播放的行为不同。
+Windows 元数据/时间线宿主参考（尚未接入）：
+https://learn.microsoft.com/en-us/windows/apps/develop/media-playback/system-media-transport-controls
+
+接口与映射
+core/client/native_media/details.rs：
+MusicClient::native_media_details() -> NativeMediaDetails
+  transport：原有 NativeMediaSnapshot 和不可构造/不可序列化的操作目标。
+  item：opaque id、Music/Video、标题、艺术家、专辑、可选公开封面。
+  state：Stopped/Loading/Playing/Paused；加载期的暂停意图保留在
+         transport.playing 中，不能把 Loading 无条件当作已播放。
+  position/duration：秒；CUE 使用片段相对坐标，试听保留完整歌曲坐标。
+  seek_start/seek_end/can_seek：当前授权音源的定位边界与实际可定位状态。
+  volume/speed/mode：0..100、0.25..4、普通音频队列模式。
+         MV 和 FM 不暴露可编辑的普通队列 mode。
+
+读取只访问已存在的音频/视频 actor，不初始化解码器、不请求网络、不加载封面。
+读取前后检查账号、媒体所有权代次和 actor fence；同时切换媒体时返回过期错误，
+宿主不能把上一账号的元数据继续当成新的操作目标。
+音频元数据复用播放器既有白名单，包括网络歌曲/本地/CUE/播客资源适配；
+MV 复用视频详情白名单。封面只保留既有允许的公共 CDN，去掉服务端查询数据。
+id 是长度分隔的域标识、媒体类型、账号代次/UID、选择标识的 SHA-256；
+输出不含 UID、Cookie、签名、授权音源 URL 或本地文件路径。
+同一音频队列项在暂停/定位/时钟更新时 id 稳定，重建队列或切换账号后改变；
+MV 使用播放选择 id。id 用于系统侧关联，不是业务授权或认证机制。
+原有托盘比较仍使用不含时钟的 NativeMediaSnapshot，避免每次进度更新重建菜单。
+
+core/client/native_media/adjustments.rs：
+MusicClient::native_media_adjust(&target, NativeMediaAdjustment) -> Result<()>
+  Seek {seconds}：拒绝非有限值、不可定位状态、获准区间之外的坐标。
+  Volume {value} / Speed {value}：先验证范围，再经原有用例提交。
+  Mode {mode}：音频沿既有队列/FM 用例，MV 明确拒绝。
+平台适配需自行实现 MPRIS 的参数语义，例如负 Volume 归零、Rate=0 暂停、
+Seek 越界按平台约定切歌、SetPosition 忽略不匹配 TrackId，不能称本接口已实现协议。
+
+core/client/native_media/actions.rs：
+MusicClient::native_media_step(&target, Step::Next/Previous) -> Result<()>
+  普通音频：PlaybackCommand::StepPreservingState 在 actor 内决定下一选择和
+  首次解码的暂停标记；暂停切歌不会先解除暂停再补一个 Pause。
+  停止切歌只更换选择，不解析/加载/启动音频，清除旧 decoder 所有权，避免后续
+  queue sync 恢复旧播放。已有手动/托盘 Next/Previous 仍使用原有开始播放语义。
+  FM：复用 coordinator、250ms 冷却、补充推荐和跳过记录；通过 QueueUpdate
+  一次应用选择与暂停标记。停止时不传播放 transport；旧歌曲 EOF 不触发新选择
+  的自动下一首。MV 无队列，拒绝上下首。
+
+隔离、失败、持久化与网络
+全部调整复用 player_action_checked/video_action_checked 的 token、focus lease、
+selection intent 和 actor fence，在实际执行前再次校验；失效操作不自动重试。
+音量/倍速采用已有账号偏好持久化；SQLite 写入失败时返回错误并恢复引擎原值。
+定位/队列/停止沿既有位置与队列存储；失败路径见 core-playback-contracts.txt。
+普通定位/偏好和元数据读取不增加 HTTP 接口。加载音源、FM 补充/跳过以及已附着
+一起听控制沿原有业务接口；见 native-media-controls-contracts.txt 的网络映射。
+本批测试只使用合成账号、假 API/引擎和临时 SQLite，不调用真实账号写接口。
+
+验证入口与边界
+core/tests/client_mv.rs 装载 support/native_media_details.rs 与 native_media_steps.rs：
+  懒读取、歌曲/MV白名单、稳定 id、账号/媒体交接过期、原生定位/音量/倍速、
+  试听范围、暂停状态、SQLite 保存/故障回滚/恢复、暂停切歌无瞬时播放、
+  停止切歌无 decoder load、加载期暂停意图和 MV 禁止误控旧音频。
+core/tests/client_fm.rs：系统上下首经 FM coordinator 保持暂停/停止、没有拉黑写入。
+core/tests/fm_player.rs、playback_remote.rs：既有 FM、延迟补充、状态恢复和原子
+远端队列逻辑回归。上述用例不能替代真实 libmpv、系统总线/SMTC 或物理声卡测试。
+尚未宣称 MPRIS Stop→Play 对播客恢复位置等全部协议细节、操作系统通知、
+系统面板和全局媒体键已完成；本批不是完整目标完成审计。
+
+本地执行记录
+- system-media-core-state.log：client_mv/client_fm/fm_player/playback_remote 通过；
+  新增10个用例覆盖上述元数据、故障回滚、暂停/停止及加载期控制。
+- system-media-workspace-tests.log：231目标、1089项通过，失败/忽略0；
+  system-media-clippy.log：严格 workspace/all-targets Clippy 通过，fmt通过。
+- 正式桌面和原生/托盘探针在对应编译完成后启动；前端未改动，复用相同
+  frontend Git树已验证的生产资源，不将这称为重新运行了前端测试。
+- .build/system-media-native-gui.json：真实GUI初始化后合成PCM/libmpv/null，
+  进度、暂停、定位、倍速、CUE边界/EOF、取消及非C locale兼容通过。
+- .build/system-media-tray-x11/report.json：真实生产WebView/Tauri/原生托盘
+  15态/15截图，后台播放、暂停/恢复/停止/重播、歌曲/播客喜欢、未决只读核对、
+  面板丢失恢复、重新注册和退出通过，真实音乐请求0。这是既有托盘与播放
+  回归，不是新系统协议的验收。没有物理面板或Windows Shell实测。
+- 首次 system-media-tray-regression 在外部截图驱动读到0×0根窗口时失败，
+  保留记录；单独复现后按驱动说明指定GDK_BACKEND=x11，重跑全部断言通过。
+  该设置仅用于隔离验证，不写入产品或用户桌面配置。
+- 此批使用独立特性分支；不能据这些本地证据宣称远端完整CI或整个goal通过。

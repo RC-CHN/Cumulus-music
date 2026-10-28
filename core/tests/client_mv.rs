@@ -26,6 +26,7 @@ struct Backend {
     offline: AtomicBool,
     lose_write: AtomicBool,
     hold_song: AtomicBool,
+    trial: AtomicBool,
     likes: Mutex<Vec<String>>,
     like_writes: Mutex<Vec<Value>>,
     lose_like: AtomicBool,
@@ -94,14 +95,14 @@ impl Api for Backend {
                     let ids: Vec<Value> =
                         serde_json::from_str(payload["c"].as_str().unwrap()).unwrap();
                     Ok(
-                        json!({"code":200,"songs":ids.iter().map(|id|json!({"id":id["id"],"name":"Song","dt":120000})).collect::<Vec<_>>()}),
+                        json!({"code":200,"songs":ids.iter().map(|id|json!({"id":id["id"],"name":"Song","dt":120000,"ar":[{"id":3,"name":"Artist"}],"al":{"id":4,"name":"Album","picUrl":"http://p1.music.126.net/cover.jpg?signature=SECRET"}})).collect::<Vec<_>>()}),
                     )
                 }
                 "/api/song/enhance/player/url/v1" => {
                     let ids: Vec<Value> =
                         serde_json::from_str(payload["ids"].as_str().unwrap()).unwrap();
                     Ok(
-                        json!({"code":200,"data":[{"id":ids[0],"code":200,"url":"https://m1.music.126.net/audio?key=SECRET","md5":"abcd","expi":120,"level":"standard"}]}),
+                        json!({"code":200,"data":[{"id":ids[0],"code":200,"url":"https://m1.music.126.net/audio?key=SECRET","md5":"abcd","expi":120,"level":"standard","freeTrialInfo":if self.trial.load(Ordering::Acquire) {json!({"start":30,"end":60})} else {Value::Null}}]}),
                     )
                 }
                 _ => self.mv.request(path, payload, cache).await,
@@ -128,6 +129,7 @@ impl Fixture {
             offline: AtomicBool::new(false),
             lose_write: AtomicBool::new(false),
             hold_song: AtomicBool::new(false),
+            trial: AtomicBool::new(false),
             likes: Mutex::new(vec![]),
             like_writes: Mutex::new(vec![]),
             lose_like: AtomicBool::new(false),
@@ -501,3 +503,9 @@ mod native_media_tests;
 
 #[path = "support/native_likes_client.rs"]
 mod native_likes_tests;
+
+#[path = "support/native_media_details.rs"]
+mod native_media_details_tests;
+
+#[path = "support/native_media_steps.rs"]
+mod native_media_steps_tests;

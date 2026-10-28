@@ -41,13 +41,14 @@ impl MusicClient {
                 return Ok(NativeMediaSnapshot::default());
             }
             let public = super::super::player::project(&value, &token)?;
-            let playing = matches!(
-                value.state,
-                PlaybackStatus::Playing
-                    | PlaybackStatus::Preparing
-                    | PlaybackStatus::Loading
-                    | PlaybackStatus::Buffering
-            );
+            let playing = !value.paused
+                && matches!(
+                    value.state,
+                    PlaybackStatus::Playing
+                        | PlaybackStatus::Preparing
+                        | PlaybackStatus::Loading
+                        | PlaybackStatus::Buffering
+                );
             NativeMediaSnapshot {
                 title: public.track.map(|track| track.name).unwrap_or_default(),
                 playing,

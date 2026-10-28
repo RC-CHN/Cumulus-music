@@ -159,6 +159,8 @@ impl Actor {
             queue_revision: self.queue.revision(),
             account: self.token.clone(),
             state: self.state,
+            paused: self.state == PlaybackStatus::Paused
+                || self.pending.as_ref().is_some_and(|pending| pending.paused),
             play_id: self.play_id.clone(),
             requested_quality: selected
                 .as_ref()

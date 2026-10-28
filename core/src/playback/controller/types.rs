@@ -43,6 +43,8 @@ pub struct PlaybackSnapshot {
     pub queue_revision: u64,
     pub account: SessionToken,
     pub state: PlaybackStatus,
+    /// Includes a pause accepted while the source/decoder is still loading.
+    pub paused: bool,
     pub play_id: Option<String>,
     pub selected: Option<QueueEntry>,
     pub position: Option<f64>,
@@ -132,6 +134,8 @@ pub enum PlaybackCommand {
     Speed(f64),
     Next,
     Previous,
+    /// System transports keep a paused or stopped player from starting sound.
+    StepPreservingState(crate::playback::Step),
     Stop,
     /// Native media handoff: cancel pending loads or pause a loaded song.
     Suspend,

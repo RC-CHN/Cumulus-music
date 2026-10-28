@@ -35,6 +35,7 @@ impl Inner {
         token: &SessionToken,
         step: FmStep,
         intent: u64,
+        preserve_state: bool,
     ) -> Result<PlaybackSnapshot> {
         self.guard(token, intent)?;
         let (before, actual, desired) = self.current(token).await?;
@@ -70,9 +71,19 @@ impl Inner {
                 &before,
                 &transition.queue,
                 intent,
-                transition.play.then_some(QueueTransport {
+                (transition.play
+                    && (!preserve_state
+                        || matches!(
+                            before.state,
+                            PlaybackStatus::Playing
+                                | PlaybackStatus::Buffering
+                                | PlaybackStatus::Paused
+                                | PlaybackStatus::Preparing
+                                | PlaybackStatus::Loading
+                        )))
+                .then_some(QueueTransport {
                     position: Some(0.0),
-                    paused: false,
+                    paused: preserve_state && before.paused,
                 }),
             )
             .await;

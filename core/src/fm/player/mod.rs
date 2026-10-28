@@ -102,12 +102,21 @@ impl FmPlayer {
         step: FmStep,
         intent: u64,
     ) -> Result<PlaybackSnapshot> {
+        self.step_with_state_for(token, step, intent, false).await
+    }
+    pub(crate) async fn step_with_state_for(
+        &self,
+        token: &SessionToken,
+        step: FmStep,
+        intent: u64,
+        preserve_state: bool,
+    ) -> Result<PlaybackSnapshot> {
         let _gate = self
             .inner
             .gate
             .try_lock()
             .map_err(|_| Error::MutationBusy)?;
-        self.inner.step(token, step, intent).await
+        self.inner.step(token, step, intent, preserve_state).await
     }
     pub async fn resume_for(
         &self,

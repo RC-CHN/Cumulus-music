@@ -225,6 +225,16 @@ impl MusicClient {
         action: PlayerAction,
         native: Option<&super::native_media::NativeMediaTarget>,
     ) -> Result<PlayerView> {
+        self.player_action_with_step_state(epoch, action, native, false)
+            .await
+    }
+    pub(super) async fn player_action_with_step_state(
+        &self,
+        epoch: &str,
+        action: PlayerAction,
+        native: Option<&super::native_media::NativeMediaTarget>,
+        preserve_step_state: bool,
+    ) -> Result<PlayerView> {
         if let Some(target) = native {
             target.check(self)?;
         }
@@ -315,12 +325,22 @@ impl MusicClient {
                 let fm = self.player.fm().await?;
                 let state = match action {
                     PlayerAction::Next => {
-                        fm.step_for(&token, crate::fm::FmStep::ManualNext, attempt)
-                            .await?
+                        fm.step_with_state_for(
+                            &token,
+                            crate::fm::FmStep::ManualNext,
+                            attempt,
+                            preserve_step_state,
+                        )
+                        .await?
                     }
                     PlayerAction::Previous => {
-                        fm.step_for(&token, crate::fm::FmStep::Previous, attempt)
-                            .await?
+                        fm.step_with_state_for(
+                            &token,
+                            crate::fm::FmStep::Previous,
+                            attempt,
+                            preserve_step_state,
+                        )
+                        .await?
                     }
                     PlayerAction::Play => fm.resume_for(&token, false, attempt).await?,
                     PlayerAction::Restore => fm.resume_for(&token, true, attempt).await?,
@@ -374,6 +394,12 @@ impl MusicClient {
             PlayerAction::Seek { seconds } => PlaybackCommand::Seek(seconds),
             PlayerAction::Volume { value } => PlaybackCommand::Volume(value),
             PlayerAction::Speed { value } => PlaybackCommand::Speed(value),
+            PlayerAction::Next if preserve_step_state => {
+                PlaybackCommand::StepPreservingState(crate::playback::Step::Next)
+            }
+            PlayerAction::Previous if preserve_step_state => {
+                PlaybackCommand::StepPreservingState(crate::playback::Step::Previous)
+            }
             PlayerAction::Next => PlaybackCommand::Next,
             PlayerAction::Previous => PlaybackCommand::Previous,
             PlayerAction::Stop => PlaybackCommand::Stop,

@@ -1,6 +1,8 @@
 //! Native menus/media controls share the ordinary player use cases. A captured
 //! target is deliberately neither serializable nor constructible by a WebView.
 mod actions;
+mod adjustments;
+mod details;
 mod likes;
 mod view;
 use super::{
@@ -16,6 +18,8 @@ use crate::{
         engine::Cancellation,
     },
 };
+pub use adjustments::NativeMediaAdjustment;
+pub use details::{NativeMediaDetails, NativeMediaItem, NativeMediaKind, NativeMediaStatus};
 pub use likes::{NativeLikeResource, NativeLikeSelection, NativeLikeSnapshot};
 use std::sync::atomic::Ordering;
 

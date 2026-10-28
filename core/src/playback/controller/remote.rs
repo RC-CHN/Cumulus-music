@@ -38,6 +38,17 @@ impl Actor {
         {
             // A metadata/constraint cleanup is not a new playback request.
             // Preserve an explicit local stop or failure until the user plays.
+            if before != after {
+                // The old selection's EOF must not tell the FM watcher to
+                // naturally advance the newly selected, still stopped item.
+                let state = if self.state == PlaybackStatus::Ended {
+                    PlaybackStatus::Idle
+                } else {
+                    self.state
+                };
+                self.stop(false).await?;
+                self.state = state;
+            }
             return Ok(None);
         }
         if before != after || self.loaded.is_none() || !self.state.active() {
