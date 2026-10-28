@@ -105,3 +105,33 @@ scene 省略、空 ID 列表、跨页快照、进程重开、跨账号隔离、�
 日志：主工作目录 .build/catalog-details-clippy-final.log、
 .build/catalog-details-workspace-final.log。没有新增真实账号或歌手 GUI 验收，不把这些测试
 当作尚未接通的页面完成。
+
+第三阶段：歌手和专辑的原生元数据
+catalog/metadata/{artist,album}.rs 按 M/21 N/R 提取名称、别名、译名、封面、数量、
+时间和独立收藏状态，署名允许缺少可导航 ID。无 followed/isSub 时保持 None，
+不把未读取收藏状态转换为 false。主资源 ID 仍必须是正十进制文本。
+Header.tsx 的别名显示去重与 N 的原始别名数组分开：N 只在 trans 存在时前置译名，
+其 slice 调用不删除重复项；Header 再按显示顺序去重。transName 仍可提供显示译名。
+默认头像 ID 5639395138885805 与 img1v1=-1 被识别；保留真实 picUrl 和 img1v1Url。
+专辑保留 id/albumId、name/albumName、trackCount/size、subscribedCount/subCount、
+cover/picUrl 等回退；空数组在 JS 中为真，不能因为为空而改用后一字段。
+artistName 的类型判断已核对 vendor M/274：isString，覆盖主 artist，但不覆盖 artists。
+explicit 使用 mark 第20位，兼容负的有符号位字段；没有转换负数发布时间为无符号时间。
+
+使用 Node 24.16.0 实际执行恢复的 N/R，将数据库写入替换为空实现，
+输入8条合成元数据，冻结选择字段至 core/tests/fixtures/catalog-metadata.json。
+公开测试只读冻结 JSON，不执行私有恢复代码。来源 M/21 SHA256：
+33d27af5a54c6a74641f192841637d2608d588d2d93091a9a61cb43948c93af7。
+本地来源记录 .build/catalog-metadata-official-proof.json；没有网络请求或真实账号。
+
+这一层仍是原生元数据：图片字符串尚未经过前端 CDN 白名单，不能直接发送给 WebView。
+M/112 v 的无 URL 图片路径会调用原生 EncryptData.encryptId，再交替使用 p4/p3 CDN。
+当前解析器保留 cover_id 供后续解析，不冒称已完成这条原生图像 ID 路径；冻结样本均带
+明确封面 URL，没有用猜测的算法代替该分支。该阶段也不代表歌手页面/真实业务验收。
+
+第三阶段验证
+catalog_metadata 的6项测试通过，其中1项逐条对照上述8条官方执行冻结向量；另外覆盖
+非法主 ID、不可导航署名、默认头像、别名显示去重和未知收藏状态。
+最终 workspace 全 targets/custom-protocol：198个 target/suite、884项通过、0失败/忽略；
+严格 Clippy、cargo fmt --all --check 通过。日志在主目录
+.build/catalog-metadata-clippy-final.log 与 .build/catalog-metadata-workspace-final.log。

@@ -2,6 +2,7 @@
 mod api;
 mod artist;
 pub mod details;
+pub mod metadata;
 mod privileges;
 pub mod rankings;
 pub use api::{CatalogApi, PlayOptions, SearchOptions, SongBatch};

@@ -1,0 +1,269 @@
+[
+  {
+    "kind": "artist",
+    "input": {
+      "id": "90071992547409931234",
+      "name": "Artist",
+      "accountId": 0,
+      "alias": "别名;;译名;别名",
+      "trans": " 译名 ",
+      "transName": "不应采用",
+      "fansSize": 0,
+      "fansCount": 7,
+      "followed": false
+    },
+    "expected": {
+      "id": "90071992547409931234",
+      "account_id": null,
+      "name": "Artist",
+      "aliases": [
+        "译名",
+        "别名",
+        "译名",
+        "别名"
+      ],
+      "translation": "译名",
+      "brief_description": "",
+      "picture_url": "",
+      "avatar_url": "",
+      "song_count": 0,
+      "album_count": 0,
+      "mv_count": null,
+      "fans_count": 7,
+      "followed": false
+    }
+  },
+  {
+    "kind": "artist",
+    "input": {
+      "id": 12,
+      "alias": [
+        "别名"
+      ],
+      "transName": " 译名 "
+    },
+    "expected": {
+      "id": "12",
+      "account_id": null,
+      "name": "",
+      "aliases": [
+        "别名"
+      ],
+      "translation": "译名",
+      "brief_description": "",
+      "picture_url": "",
+      "avatar_url": "",
+      "song_count": 0,
+      "album_count": 0,
+      "mv_count": null,
+      "fans_count": 0,
+      "followed": null
+    }
+  },
+  {
+    "kind": "artist",
+    "input": {
+      "id": 12,
+      "img1v1": -1,
+      "img1v1Url": "https://p1.music.126.net/real.jpg"
+    },
+    "expected": {
+      "id": "12",
+      "account_id": null,
+      "name": "",
+      "aliases": [],
+      "translation": "",
+      "brief_description": "",
+      "picture_url": "",
+      "avatar_url": "",
+      "song_count": 0,
+      "album_count": 0,
+      "mv_count": null,
+      "fans_count": 0,
+      "followed": null
+    }
+  },
+  {
+    "kind": "artist",
+    "input": {
+      "id": 12,
+      "img1v1": 7,
+      "img1v1Url": "https://p1.music.126.net/5639395138885805.jpg"
+    },
+    "expected": {
+      "id": "12",
+      "account_id": null,
+      "name": "",
+      "aliases": [],
+      "translation": "",
+      "brief_description": "",
+      "picture_url": "",
+      "avatar_url": "",
+      "song_count": 0,
+      "album_count": 0,
+      "mv_count": null,
+      "fans_count": 0,
+      "followed": null
+    }
+  },
+  {
+    "kind": "artist",
+    "input": {
+      "id": 12,
+      "img1v1Url": "https://p1.music.126.net/real.jpg",
+      "picUrl": "https://p1.music.126.net/real.jpg"
+    },
+    "expected": {
+      "id": "12",
+      "account_id": null,
+      "name": "",
+      "aliases": [],
+      "translation": "",
+      "brief_description": "",
+      "picture_url": "https://p1.music.126.net/real.jpg",
+      "avatar_url": "https://p1.music.126.net/real.jpg",
+      "song_count": 0,
+      "album_count": 0,
+      "mv_count": null,
+      "fans_count": 0,
+      "followed": null
+    }
+  },
+  {
+    "kind": "album",
+    "input": {
+      "id": 0,
+      "albumId": "90071992547409931234",
+      "name": "",
+      "albumName": "旧专辑",
+      "trackCount": 0,
+      "size": 13,
+      "subscribedCount": 0,
+      "subCount": 9,
+      "isSub": false,
+      "cover": "",
+      "picUrl": "https://p1.music.126.net/a.jpg",
+      "pic_str": "9223372036854775807",
+      "artist": {
+        "id": 12,
+        "name": "歌手"
+      },
+      "artistName": "专辑署名",
+      "artists": [
+        {
+          "id": 12,
+          "name": "第一位"
+        },
+        {
+          "id": 0,
+          "name": "未关联"
+        }
+      ],
+      "publishTime": -12345,
+      "mark": 1048576
+    },
+    "expected": {
+      "id": "90071992547409931234",
+      "name": "旧专辑",
+      "description": "",
+      "aliases": [],
+      "translations": [],
+      "primary_artist": {
+        "id": null,
+        "name": "专辑署名"
+      },
+      "artists": [
+        {
+          "id": "12",
+          "name": "第一位"
+        },
+        {
+          "id": null,
+          "name": "未关联"
+        }
+      ],
+      "cover_url": "https://p1.music.126.net/a.jpg",
+      "cover_id": "9223372036854775807",
+      "track_count": 13,
+      "subscribed_count": 9,
+      "subscribed": false,
+      "published_at": -12345,
+      "explicit": true
+    }
+  },
+  {
+    "kind": "album",
+    "input": {
+      "id": 7,
+      "alia": [],
+      "ala": [
+        "不应采用"
+      ],
+      "alias": [
+        "不应采用"
+      ],
+      "tns": [],
+      "transNames": [
+        "不应采用"
+      ],
+      "transName": "不应采用",
+      "picId": 123,
+      "picUrl": "https://p1.music.126.net/a.jpg"
+    },
+    "expected": {
+      "id": "7",
+      "name": "",
+      "description": "",
+      "aliases": [],
+      "translations": [],
+      "primary_artist": null,
+      "artists": [],
+      "cover_url": "https://p1.music.126.net/a.jpg",
+      "cover_id": null,
+      "track_count": 0,
+      "subscribed_count": 0,
+      "subscribed": null,
+      "published_at": null,
+      "explicit": false
+    }
+  },
+  {
+    "kind": "album",
+    "input": {
+      "id": 7,
+      "ala": [
+        "别名"
+      ],
+      "transName": "译名",
+      "artist": {
+        "id": 12,
+        "name": "歌手"
+      },
+      "picUrl": "https://p1.music.126.net/a.jpg",
+      "mark": -1
+    },
+    "expected": {
+      "id": "7",
+      "name": "",
+      "description": "",
+      "aliases": [
+        "别名"
+      ],
+      "translations": [
+        "译名"
+      ],
+      "primary_artist": {
+        "id": "12",
+        "name": "歌手"
+      },
+      "artists": [],
+      "cover_url": "https://p1.music.126.net/a.jpg",
+      "cover_id": null,
+      "track_count": 0,
+      "subscribed_count": 0,
+      "subscribed": null,
+      "published_at": null,
+      "explicit": true
+    }
+  }
+]
