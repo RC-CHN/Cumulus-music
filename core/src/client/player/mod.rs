@@ -20,6 +20,7 @@ use tokio::sync::{OnceCell, watch};
 
 type EngineFactory = Arc<dyn Fn() -> Result<Box<dyn AudioEngine>> + Send + Sync>;
 pub(super) struct PlayerHost {
+    relay_enabled: bool,
     session: Arc<AccountSession>,
     store: Arc<StateStore>,
     factory: EngineFactory,
@@ -36,6 +37,7 @@ impl PlayerHost {
         focus: Arc<super::focus::MediaFocus>,
     ) -> Self {
         Self {
+            relay_enabled: false,
             session,
             store,
             factory: Arc::new(|| Ok(Box::new(MpvEngine::open(MpvConfig::default())?))),
@@ -55,7 +57,12 @@ impl PlayerHost {
                     .map_err(|_| Error::State("audio initialization failed"))??;
                 let library = Arc::new(LocalLibrary::new(self.store.clone())?);
                 let resolver = Arc::new(SourceResolver::new(self.session.clone(), Some(library)));
-                Ok(Arc::new(PlaybackController::start(
+                let start = if self.relay_enabled {
+                    PlaybackController::start_with_relay_publication
+                } else {
+                    PlaybackController::start
+                };
+                Ok(Arc::new(start(
                     self.session.clone(),
                     self.store.clone(),
                     resolver,
@@ -153,6 +160,12 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
     })
 }
 impl MusicClient {
+    /// Enable official same-account publication for a native host before its
+    /// player starts. Injected read-only sessions stay isolated unless opted in.
+    pub fn with_relay_publication(mut self) -> Self {
+        self.player.relay_enabled = true;
+        self
+    }
     pub fn validate_player_epoch(&self, epoch: &str) -> Result<()> {
         self.player_token(epoch).map(|_| ())
     }

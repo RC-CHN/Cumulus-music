@@ -1,5 +1,6 @@
 //! Durable outbound M/401 contracts. Native queue recording and network sending
 //! are separate: no account/device lock is held by the recorder across HTTP.
+pub mod player;
 mod record;
 mod send;
 mod types;
@@ -10,7 +11,7 @@ use crate::{
     storage::{StateStore, StateTransaction},
 };
 use sha2::{Digest, Sha256};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 pub use types::*;
 const STATE: &str = "relay-publication-v1";
 const JOURNAL: &str = "relay-publication-intents-v1";
@@ -18,6 +19,7 @@ const MAX_PREPARED: usize = 256;
 pub struct RelayPublisher {
     session: Arc<AccountSession>,
     store: Arc<StateStore>,
+    config: Mutex<Option<(SessionToken, String, RelayConfig)>>,
 }
 fn now() -> u64 {
     (time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000).max(0) as u64
@@ -146,7 +148,18 @@ impl RelayPublisher {
         Ok(Self {
             store: session.persistent_store()?,
             session,
+            config: Mutex::new(None),
         })
+    }
+    pub(crate) fn live_config(&self, token: &SessionToken) -> Result<Option<RelayConfig>> {
+        let (_, device) = self.identity(token)?;
+        Ok(self
+            .config
+            .lock()
+            .map_err(|_| Error::LockPoisoned)?
+            .as_ref()
+            .filter(|(t, d, _)| t == token && d == &device)
+            .map(|(_, _, c)| c.clone()))
     }
     fn identity(&self, token: &SessionToken) -> Result<(String, String)> {
         let api = self.session.native_api(token)?;

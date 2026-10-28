@@ -55,6 +55,7 @@ pub struct PlaybackController {
     sender: mpsc::UnboundedSender<Message>,
     view: watch::Receiver<PlaybackSnapshot>,
     shutdown: Arc<AtomicBool>,
+    relay: Option<Arc<crate::relay::publisher::player::Runtime>>,
 }
 impl PlaybackController {
     pub fn start(
@@ -63,25 +64,59 @@ impl PlaybackController {
         resolver: Arc<SourceResolver>,
         engine: Box<dyn AudioEngine>,
     ) -> Result<Self> {
+        Self::start_inner(session, store, resolver, engine, false)
+    }
+    /// Production native observer + durable network worker. The ordinary start
+    /// constructor remains isolated for embedders and read-only test adapters.
+    pub fn start_with_relay_publication(
+        session: Arc<AccountSession>,
+        store: Arc<StateStore>,
+        resolver: Arc<SourceResolver>,
+        engine: Box<dyn AudioEngine>,
+    ) -> Result<Self> {
+        Self::start_inner(session, store, resolver, engine, true)
+    }
+    fn start_inner(
+        session: Arc<AccountSession>,
+        store: Arc<StateStore>,
+        resolver: Arc<SourceResolver>,
+        engine: Box<dyn AudioEngine>,
+        relay_enabled: bool,
+    ) -> Result<Self> {
         tokio::runtime::Handle::try_current()
             .map_err(|_| Error::State("playback requires an async runtime"))?;
         let shutdown = Arc::new(AtomicBool::new(false));
         let (sender, receiver) = mpsc::unbounded_channel();
-        let actor = Actor::new(
-            session,
+        let mut actor = Actor::new(
+            session.clone(),
             store,
             resolver,
             Arc::new(Mutex::new(engine)),
             sender.clone(),
             shutdown.clone(),
         )?;
+        let relay = if relay_enabled {
+            let runtime = crate::relay::publisher::player::Runtime::start(session)?;
+            actor.relay = Some(crate::relay::publisher::player::Observer::new(
+                runtime.clone(),
+                actor.token.clone(),
+                &actor.queue,
+            )?);
+            Some(runtime)
+        } else {
+            None
+        };
         let (publisher, view) = watch::channel(actor.snapshot());
         tokio::spawn(actor.run(receiver, publisher));
         Ok(Self {
             sender,
             view,
             shutdown,
+            relay,
         })
+    }
+    pub fn relay_runtime(&self) -> Option<&Arc<crate::relay::publisher::player::Runtime>> {
+        self.relay.as_ref()
     }
     pub fn snapshot(&self) -> PlaybackSnapshot {
         self.view.borrow().clone()

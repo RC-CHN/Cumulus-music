@@ -91,6 +91,7 @@ impl Actor {
             self.reply(request.reply, Err(error));
             return;
         }
+        let relay_hint = crate::relay::publisher::player::Hint::from_command(&request.command);
         let result = match request.command {
             PlaybackCommand::Equalizer {
                 expected_revision,
@@ -199,6 +200,7 @@ impl Actor {
             self.reply(request.reply, Err(error));
             return;
         }
+        self.relay_hint = relay_hint;
         if let Some(options) = options {
             if let Err(error) = self.begin(options, request.id, Some(request.reply)).await {
                 self.error = Some(error.to_string());

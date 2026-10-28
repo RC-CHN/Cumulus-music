@@ -63,7 +63,8 @@ impl RelayPublisher {
         {
             return Err(Error::MutationUncertain);
         }
-        self.session
+        let result = self
+            .session
             .run_for(token, |api, _| async move {
                 if api.local_device_id()?.as_deref() != Some(device) {
                     return Err(Error::StaleResponse);
@@ -78,7 +79,17 @@ impl RelayPublisher {
                 }
                 Ok(config.enable.then_some(config))
             })
-            .await
+            .await;
+        // This cache controls only native sampling, never HTTP eligibility.
+        // Clearing it during each successful preflight would restart the voice
+        // clock after its own upload and accidentally remove the throttle.
+        *self.config.lock().map_err(|_| Error::LockPoisoned)? = result
+            .as_ref()
+            .ok()
+            .and_then(|value| value.as_ref())
+            .map(|config| (token.clone(), device.into(), config.clone()));
+        let config = result?;
+        Ok(config)
     }
     fn next(
         &self,

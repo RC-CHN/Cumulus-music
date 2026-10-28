@@ -40,6 +40,8 @@ pub(super) struct Pending {
     pub paused: bool,
 }
 pub(super) struct Actor {
+    pub relay: Option<crate::relay::publisher::player::Observer>,
+    pub relay_hint: crate::relay::publisher::player::Hint,
     pub equalizer: crate::effects::equalizer::EqualizerSnapshot,
     pub equalizer_initialized: bool,
     pub session: Arc<AccountSession>,
@@ -87,6 +89,8 @@ impl Actor {
         let queue = PlaybackQueue::new(Some(store.clone()), owner)?;
         let prefs = Self::preferences(&store, owner)?;
         Ok(Self {
+            relay: None,
+            relay_hint: Default::default(),
             equalizer: Default::default(),
             equalizer_initialized: false,
             session,
@@ -321,6 +325,17 @@ impl Actor {
                         self.state = PlaybackStatus::Error;
                     }
                 },
+            }
+            if self.bound
+                && let Some(relay) = &mut self.relay
+            {
+                relay.observe(
+                    &self.token,
+                    &self.queue,
+                    self.state,
+                    self.position,
+                    std::mem::take(&mut self.relay_hint),
+                );
             }
             publisher.send_replace(self.snapshot());
             if self.shutdown.load(Ordering::Acquire) {

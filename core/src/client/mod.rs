@@ -152,7 +152,8 @@ impl MusicClient {
             Arc::new(AccountSession::new(api, Some(registry.store()))),
             registry,
         )
-        .with_login_providers(Some(backend), None);
+        .with_login_providers(Some(backend), None)
+        .with_relay_publication();
         client.auth.profile = profile;
         client.auth.context = context;
         client.auth.options = options;

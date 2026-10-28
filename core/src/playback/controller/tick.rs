@@ -46,6 +46,9 @@ impl Actor {
         self.queue = queue;
         self.prefs = prefs;
         self.bound = true;
+        if let Some(relay) = &mut self.relay {
+            relay.bind(&self.token, &self.queue);
+        }
         self.error = None;
         self.equalizer_sync().await?;
         stopped
