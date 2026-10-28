@@ -112,7 +112,8 @@ jobs:
       - run: npm --prefix frontend ci
       - run: npm --prefix frontend run build
       - run: cargo fmt --all --check
-      - run: cargo clippy --keep-going --workspace --all-targets --features cumulus-desktop/custom-protocol --locked -- -D warnings
+      - id: rust-clippy
+        run: cargo clippy --keep-going --workspace --all-targets --features cumulus-desktop/custom-protocol --locked -- -D warnings
       - run: cargo test --no-fail-fast --workspace --all-targets --features cumulus-desktop/custom-protocol --locked
       - name: Build release packages and verify native media
         env:
@@ -134,6 +135,7 @@ jobs:
           dbus-run-session -- xvfb-run -a python3 scripts/ci/scroll_smoke.py --binary .build/target/debug/examples/scroll_ui_probe --root .build/ci-scroll-linux
           cargo build -p cumulus-desktop --example ux_ui_probe --features custom-protocol --locked
           dbus-run-session -- xvfb-run -a python3 scripts/ci/ux_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-ux-linux
+          LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a python3 scripts/ci/motion_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-motion-linux
           cargo build -p cumulus-desktop --example saved_accounts_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a python3 scripts/ci/accounts_smoke.py --binary .build/target/debug/examples/saved_accounts_ui_probe --root .build/ci-accounts-linux
           cargo build -p cumulus-desktop --example startup_ui_probe --features custom-protocol --locked
@@ -160,6 +162,7 @@ jobs:
           python scripts/ci/scroll_smoke.py --binary .build/target/debug/examples/scroll_ui_probe.exe --root .build/ci-scroll-windows
           cargo build -p cumulus-desktop --example ux_ui_probe --features custom-protocol --locked
           python scripts/ci/ux_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-ux-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/motion_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-motion-windows --runtime .build/package-stage/windows-x64/native
           cargo build -p cumulus-desktop --example saved_accounts_ui_probe --features custom-protocol --locked
           python scripts/ci/accounts_smoke.py --binary .build/target/debug/examples/saved_accounts_ui_probe.exe --root .build/ci-accounts-windows --runtime .build/package-stage/windows-x64/native
           cargo build -p cumulus-desktop --example startup_ui_probe --features custom-protocol --locked
@@ -193,6 +196,7 @@ jobs:
             .build/ci-scroll*.log
             .build/ci-graphics*/
             .build/ci-ux*/
+            .build/ci-motion*/
             .build/ci-accounts*/
             .build/ci-startup*/
             .build/ci-catalog*/
@@ -210,7 +214,11 @@ jobs:
           retention-days: 14
           compression-level: 0
       - name: Preserve compiled dependencies for the next attempt
-        if: always() && !cancelled() && steps.rust-cache.outputs.cache-hit != 'true'
+        if: >-
+          always() && !cancelled() && steps.rust-cache.outcome == 'success' &&
+          steps.rust-cache.outputs.cache-hit != 'true' &&
+          (steps.rust-clippy.outcome == 'success' || steps.rust-clippy.outcome == 'failure') &&
+          hashFiles('.build/target/.rustc_info.json') != ''
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: |
