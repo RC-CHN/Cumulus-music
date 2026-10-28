@@ -4,10 +4,11 @@
 规则的权威入口是根目录 AGENTS.md。所有版本文件目前统一为 0.1.0。
 
 CI (.github/workflows/ci.yml)
-1. 独立前端 runner：公开源文件边界、版本与 release 历史、发布门禁的拒绝分支测试、格式、129 项前端测试、类型检查和正式构建。
+1. 独立前端 runner：公开源文件边界、版本与 release 历史、发布门禁的拒绝分支测试、格式、前端测试、类型检查和正式构建。
 2. Linux/Windows 两个原生 runner 并行：固定 Rust/Node、锁定依赖、fmt、严格 Clippy、全工作区测试（包括 examples 编译）、发行构建与合成媒体实际解码。
 3. 两端在真实桌面初始化后运行原生媒体测试；Linux 强制使用 en_US.UTF-8，检查 GTK 数字 locale 冲突及保留界面语言。Linux 另运行真实 FFmpeg LADSPA 音效链和 WebKitGTK 登录失效/重新登录 UI 截图测试。Windows 在真实 WebView2 中验证相同生产 UI/IPC 的 DOM 状态、凭据失效及旧策略队列清理；不声称有 Windows 截图验证。两端 UI 均只使用合成 HTTP。
 4. CI gate 只有全部必要 job success 才通过。失败/取消/跳过均不能发布。
+   两端还运行长列表/自定义窗口、启动渲染自动回退及 29 项主题/菜单/弹窗/重启记忆的实际 WebView 检查。
 5. 输出 packages-linux-x64 / packages-windows-x64 两组产物，包含包、精确提交/CI run/attempt/大小/SHA256 清单。保留 14 天。
 研究用官方 JS 对照生成脚本要求忽略的 references；公开 CI 使用已提交的合成冻结向量，不假装在 runner 上重新执行了不存在的原始材料。
 CI 不导入账号 Cookie、不调用真实账号写接口。libmpv null 输出只证明解码与控制，不能代替真机声卡测试。

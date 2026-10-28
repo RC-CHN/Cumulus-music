@@ -476,3 +476,17 @@ RequestOptions.routing新增原生显式OfficialEapi，默认兼容策略保持�
 AB关闭的已登录账号旧301链与持久化清队列已在后续完成，见login-legacy-contracts.txt；
 匿名账号恢复、完整JSK新登录及原设备确认仍待继续。刷新凭据来源、旧探针未保存响应头的
 证据和本次真实只读实验分组见refresh-token-issuance-evidence.txt，不能把缺令牌推断成未下发或风控。
+
+2026-10-28 发布前边界审计（代码基线 0ef58e9）
+本次仅核对下列明确缺口，不据此宣告其余完整目标全部通过：
+- 同账号跨设备接续：本表原标注“待迁移”仍成立；core/src/lib.rs、client/mod.rs 未提供
+  对应业务宿主，desktop IPC / frontend Page 也无接续入口。播放器内部 media-focus
+  handoff 是本机音频/MV争用协调，不得当作同账号跨设备接续。
+- 独立歌手详情、收藏专辑/歌手、听歌历史、完整设置页面：检查 useMusic.ts 的 Page、
+  App.vue 路由与 CoreClient 接口，没有这些完整页面。目录接口/账号资源研究和个别
+  下载、账号、均衡器设置入口不能替代这些桌面流程。
+- 托盘/系统媒体控制/全局媒体键：desktop 的依赖与宿主源未接入对应适配；页面内
+  keyboard 处理不是后台系统媒体控制。应在 desktop 层继续，不能污染独立 core。
+- 音效：均衡器已接播放器与UI，其他专有完整图/选择界面仍应按各 effects 专项边界继续。
+0.1.0 发行说明已删除“同账号接续已接入”及不成立的独立歌手界面暗示，并列明以上边界。
+后续用户已明确不支持 macOS，平台验收以 Linux/Windows 与 AGENTS.md 为准。
