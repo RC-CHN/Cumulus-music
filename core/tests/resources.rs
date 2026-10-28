@@ -366,6 +366,7 @@ async fn setting_patch_is_narrow_and_unknown_missing_or_wrong_type_state_cannot_
     let changed = json!({"allowLikedNotify":false,"shareSetting":1,"unrelated":"keep"});
     let world = World::new([
         json!({"code":200,"setting":baseline}).into(),
+        json!({"code":200,"setting":baseline}).into(),
         json!({"code":200}).into(),
         json!({"code":200,"setting":changed}).into(),
         json!({"code":200,"setting":{"shareSetting":1.0}}).into(),
@@ -382,7 +383,7 @@ async fn setting_patch_is_narrow_and_unknown_missing_or_wrong_type_state_cannot_
         MutationPhase::Confirmed
     );
     assert_eq!(
-        world.api.calls()[2].payload,
+        world.api.calls()[3].payload,
         json!({"allowLikedNotify":false})
     );
     assert_eq!(

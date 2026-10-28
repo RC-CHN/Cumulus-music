@@ -10,6 +10,7 @@ pub mod qr;
 pub mod refresh;
 pub mod resources;
 pub mod session;
+pub mod settings;
 pub use api::{AccountApi, LikeContext, validate_settings};
 pub use qr::{QrLogin, QrSnapshot, QrStatus};
 pub use session::{AccountSession, SessionSnapshot, SessionStatus, SessionToken};

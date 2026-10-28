@@ -2,7 +2,9 @@ use super::{MutationPhase, MutationRecord, ResourceKind, record, snapshot};
 use crate::{
     Error, Result,
     account::{
-        AccountApi, AccountSession, LikeContext, SessionStatus, SessionToken, validate_settings,
+        AccountApi, AccountSession, LikeContext, SessionStatus, SessionToken,
+        settings::{AccountSettings, SettingChange, SettingKey, compatibility_record},
+        validate_settings,
     },
     protocol::api::identifier,
     storage::{OperationLock, StateStore},
@@ -40,6 +42,12 @@ impl AccountResources {
         Ok(snapshot.token)
     }
     pub async fn refresh_for(&self, token: &SessionToken, kind: ResourceKind) -> Result<Value> {
+        if kind == ResourceKind::Settings {
+            return Ok(AccountSettings::new(self.session.clone())?
+                .refresh_for(token)
+                .await?
+                .values);
+        }
         let result = self
             .session
             .run_for(token, |api, uid| async move {
@@ -58,13 +66,18 @@ impl AccountResources {
         self.operations_for(&token)
     }
     pub fn operations_for(&self, token: &SessionToken) -> Result<BTreeMap<String, MutationRecord>> {
-        self.session.with_token(token, |uid| {
-            self.store
-                .values(uid, JOURNAL)?
-                .into_iter()
-                .map(|(key, value)| Ok((key, serde_json::from_value(value)?)))
-                .collect()
-        })
+        let mut records: BTreeMap<String, MutationRecord> =
+            self.session.with_token(token, |uid| {
+                self.store
+                    .values(uid, JOURNAL)?
+                    .into_iter()
+                    .map(|(key, value)| Ok((key, serde_json::from_value(value)?)))
+                    .collect()
+            })?;
+        for record in AccountSettings::new(self.session.clone())?.compatibility_operations(token)? {
+            records.insert(record::key(record.kind, &record.key), record);
+        }
+        Ok(records)
     }
     pub async fn set_membership(
         &self,
@@ -94,7 +107,25 @@ impl AccountResources {
     }
     pub async fn set_setting(&self, key: &str, value: Value) -> Result<MutationRecord> {
         validate_settings(&json!({key:value}))?;
-        self.change(ResourceKind::Settings, key, value).await
+        let key = SettingKey::parse(key)?;
+        let value = key
+            .value(&value)
+            .ok_or(Error::InvalidInput("invalid setting value"))?;
+        let token = self.token()?;
+        let service = AccountSettings::new(self.session.clone())?;
+        let snapshot = service.refresh_for(&token).await?;
+        let op = service
+            .change_for(
+                &token,
+                &uuid::Uuid::new_v4().to_string(),
+                &snapshot.revision,
+                SettingChange { key, value },
+            )
+            .await?;
+        if op.phase.unresolved() {
+            return Err(Error::MutationUncertain);
+        }
+        compatibility_record(op)
     }
     fn load(&self, uid: &str, key: &str) -> Result<Option<MutationRecord>> {
         let record: Option<MutationRecord> = self
@@ -109,15 +140,6 @@ impl AccountResources {
             return Err(Error::Response("invalid resource operation journal"));
         }
         Ok(record)
-    }
-    async fn change(
-        &self,
-        kind: ResourceKind,
-        key: &str,
-        desired: Value,
-    ) -> Result<MutationRecord> {
-        let token = self.token()?;
-        self.change_for(&token, kind, key, desired).await
     }
     async fn change_for(
         &self,
@@ -214,7 +236,9 @@ impl AccountResources {
                         )
                         .await
                     }
-                    ResourceKind::Settings => api.update_settings(&json!({key:desired})).await,
+                    ResourceKind::Settings => {
+                        Err(Error::State("settings require their coordinator"))
+                    }
                     ResourceKind::Mvs => unreachable!("handled before AccountApi"),
                 }
             })
@@ -269,12 +293,13 @@ impl AccountResources {
         kind: ResourceKind,
         key: &str,
     ) -> Result<MutationRecord> {
+        if kind == ResourceKind::Settings {
+            return AccountSettings::new(self.session.clone())?
+                .reconcile_compatibility(token, key)
+                .await;
+        }
         self.session.with_token(token, |_| Ok(()))?;
-        let key = if kind == ResourceKind::Settings {
-            key.to_owned()
-        } else {
-            identifier(&json!(key))?
-        };
+        let key = identifier(&json!(key))?;
         let uid = token
             .uid
             .as_deref()
