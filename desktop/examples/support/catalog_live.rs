@@ -34,6 +34,9 @@ impl Reads {
     }
 }
 impl Api for Reads {
+    fn local_device_id(&self) -> Result<Option<String>> {
+        self.api.local_device_id()
+    }
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             if !matches!(

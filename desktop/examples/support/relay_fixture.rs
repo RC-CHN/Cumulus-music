@@ -18,6 +18,9 @@ pub struct Library {
     base: super::settings_fixture::Library,
     mode: Mutex<String>,
     pub pulls: AtomicUsize,
+    pub setting_writes: AtomicUsize,
+    enabled: Mutex<bool>,
+    fail_setting_read: std::sync::atomic::AtomicBool,
 }
 impl Default for Library {
     fn default() -> Self {
@@ -25,11 +28,20 @@ impl Default for Library {
             base: Default::default(),
             mode: Mutex::new("song".into()),
             pulls: AtomicUsize::new(0),
+            setting_writes: AtomicUsize::new(0),
+            enabled: Mutex::new(true),
+            fail_setting_read: std::sync::atomic::AtomicBool::new(false),
         }
     }
 }
 impl Library {
     pub fn mode(&self, mode: &str) {
+        if mode == "setting-off" {
+            *self.enabled.lock().unwrap() = false;
+        }
+        if mode == "setting-normal" {
+            self.fail_setting_read.store(false, Ordering::SeqCst);
+        }
         *self.mode.lock().unwrap() = mode.into();
     }
 }
@@ -38,6 +50,9 @@ fn voice() -> Value {
     json!({"id":"5","name":"合成声音","mainSong":{"id":"1005","duration":30000},"duration":30000,"radio":{"id":8,"name":"合成播客"}})
 }
 impl Api for Library {
+    fn local_device_id(&self) -> Result<Option<String>> {
+        Ok(Some("SYNTHETIC_PRIVATE-local".into()))
+    }
     fn request<'a>(&'a self, path: &'a str, p: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             let mode = self.mode.lock().unwrap().clone();
@@ -49,10 +64,46 @@ impl Api for Library {
                     json!({"code":200,"data":[{"expName":"device_connect","expGroupName":if mode=="excluded"{"control"}else{"t2"}}]})
                 }
                 "/api/relay/config/get" => {
-                    json!({"code":200,"data":{"enable":mode!="disabled","radioProgressInterval":30,"snapshotSize":1000}})
+                    json!({"code":200,"data":{"enable":mode!="disabled" && *self.enabled.lock().unwrap(),"radioProgressInterval":30,"snapshotSize":1000}})
                 }
                 "/api/relay/setting/show" => {
-                    json!({"code":200,"data":{"groups":[{"deviceSettingList":[{"enable":mode!="disabled"}]}]}})
+                    if self.fail_setting_read.load(Ordering::SeqCst) {
+                        return Err(Error::Transport(
+                            "synthetic read-after-write failure".into(),
+                        ));
+                    }
+                    let enabled = if mode == "setting-missing" {
+                        Value::Null
+                    } else {
+                        json!(mode != "disabled" && *self.enabled.lock().unwrap())
+                    };
+                    json!({"code":200,"data":{"groups":[{"deviceSettingList":[{"enable":enabled}]}]}})
+                }
+                "/api/relay/setting/update" => {
+                    if p["targetDeviceId"] != "SYNTHETIC_PRIVATE-local"
+                        || p["settingKey"] != "RELAY_SWITCH"
+                    {
+                        return Err(Error::InvalidInput(
+                            "synthetic relay setting target mismatch",
+                        ));
+                    }
+                    self.setting_writes.fetch_add(1, Ordering::SeqCst);
+                    tokio::time::sleep(std::time::Duration::from_millis(900)).await;
+                    if mode == "setting-rejected" {
+                        return Ok(json!({"code":403}));
+                    }
+                    if mode != "setting-lost-unapplied" {
+                        *self.enabled.lock().unwrap() = p["enable"]
+                            .as_bool()
+                            .ok_or(Error::InvalidInput("synthetic setting bool missing"))?;
+                    }
+                    if mode == "setting-lost-applied" || mode == "setting-lost-unapplied" {
+                        return Err(Error::Transport("synthetic lost switch response".into()));
+                    }
+                    if mode == "setting-read-failed" {
+                        self.fail_setting_read.store(true, Ordering::SeqCst);
+                    }
+                    json!({"code":200})
                 }
                 "/api/link/position/show/resource" => {
                     json!({"code":200,"data":{"commonResourceList":if mode=="empty"{vec![]}else{vec![json!({"generalizedObject":{"deviceId":"SYNTHETIC_PRIVATE","deviceName":"另一台测试设备","resourceName":if mode=="voice"{"合成播客 · 第五期"}else{"合成歌曲与播客混合队列"},"reconnectTitle":"接着上次的音乐","btnDesc":"继续播放","opaque":"SYNTHETIC_PRIVATE"}})]}}})

@@ -44,13 +44,15 @@ fn main() {
     let collections = std::env::var("CUMULUS_COLLECTION_PROOF").as_deref() == Ok("1");
     let histories = std::env::var("CUMULUS_HISTORY_PROOF").as_deref() == Ok("1");
     let settings = std::env::var("CUMULUS_SETTINGS_PROOF").as_deref() == Ok("1");
-    let relays = std::env::var("CUMULUS_RELAY_PROOF").as_deref() == Ok("1");
+    let relay_settings = std::env::var("CUMULUS_RELAY_SETTING_PROOF").as_deref() == Ok("1");
+    let relays = relay_settings || std::env::var("CUMULUS_RELAY_PROOF").as_deref() == Ok("1");
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
         let registry=ProfileRegistry::open(&root.join("state"),ApiOrigin::Pc)?;
         let collection_fixture=Arc::new(collection_fixture::Library::default());
         let history_fixture=Arc::new(history_fixture::Library::default());
         let settings_fixture=Arc::new(settings_fixture::Library::default());
         let relay_fixture=Arc::new(relay_fixture::Library::default());
+        if relay_settings {relay_fixture.mode("setting-off");}
         let api:Arc<dyn Api>=if let Some(profile)=profile{Arc::new(live::Reads::open(&profile,&output)?)}else if relays {relay_fixture.clone()}else if settings {settings_fixture.clone()}else if histories {history_fixture.clone()}else if collections{collection_fixture.clone()}else{Arc::new(fixture::Library::default())};
         let session=Arc::new(AccountSession::new(api,Some(registry.store())));
         let client=MusicClient::with_session(session,registry);
@@ -73,11 +75,12 @@ fn main() {
             let history_writes=history_fixture.writes.load(std::sync::atomic::Ordering::SeqCst);
             let settings_writes=settings_fixture.writes.load(std::sync::atomic::Ordering::SeqCst);
             let relay_pulls=relay_fixture.pulls.load(std::sync::atomic::Ordering::SeqCst);
+            let relay_setting_writes=relay_fixture.setting_writes.load(std::sync::atomic::Ordering::SeqCst);
             tauri::async_runtime::spawn(async move {
                 let mut value=value;
                 if histories {value["syntheticHistoryWrites"]=serde_json::json!(history_writes);}
                 if settings {value["syntheticSettingsWrites"]=serde_json::json!(settings_writes);}
-                if relays {value["syntheticRelayPulls"]=serde_json::json!(relay_pulls);}
+                if relays {value["syntheticRelayPulls"]=serde_json::json!(relay_pulls);value["syntheticRelaySettingWrites"]=serde_json::json!(relay_setting_writes);}
                 let client=handle.state::<MusicClient>();
                 let epoch=client.account().unwrap().epoch;
                 if (is_live || relays) && value["playing"]==true {
@@ -102,7 +105,7 @@ fn main() {
     }).on_page_load(move |view, payload| {
         if payload.event()==PageLoadEvent::Finished && view.label()=="main" {
             let script=std::env::var_os("CUMULUS_UX_SCRIPT").map(|p|fs::read_to_string(p).unwrap());
-            view.eval(script.as_deref().unwrap_or(if relays {
+            view.eval(script.as_deref().unwrap_or(if relay_settings {if is_live {include_str!("relay_setting_live_probe.js")}else{include_str!("relay_setting_ui_probe.js")}}else if relays {
                 include_str!("relay_ui_probe.js")
             } else if settings {
                 if is_live {include_str!("settings_live_probe.js")}else{include_str!("settings_ui_probe.js")}
