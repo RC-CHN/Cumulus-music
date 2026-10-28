@@ -23,6 +23,7 @@ mod rankings;
 mod relay;
 pub mod renewal;
 mod settings;
+pub mod system_media;
 mod together;
 pub mod watchman;
 pub use effects::configure_native_audio;
@@ -59,6 +60,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 if window.label() == "main" {
                     lifecycle::stop(window.app_handle());
+                    system_media::stop(window.app_handle());
                     renewal::stop(window.app_handle());
                     for (label, child) in window.app_handle().webview_windows() {
                         if label.starts_with("captcha-") {
@@ -229,6 +231,7 @@ pub fn run() {
             tauri::async_runtime::block_on(client.start_local_library())?;
             app.manage(client);
             lifecycle::install(app.handle())?;
+            system_media::install(app.handle());
             renewal::start(app.handle());
             Ok(())
         })

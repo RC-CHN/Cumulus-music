@@ -172,3 +172,7 @@ required-features = ["custom-protocol"]
 [[example]]
 name = "tray_ui_probe"
 required-features = ["custom-protocol"]
+
+[[example]]
+name = "mpris_probe"
+required-features = ["custom-protocol"]

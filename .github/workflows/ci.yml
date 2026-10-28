@@ -152,6 +152,8 @@ jobs:
           LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a python3 scripts/ci/output_settings_smoke.py --binary .build/target/debug/examples/output_ui_probe --root .build/ci-output-settings-linux
           cargo build -p cumulus-desktop --example tray_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a /usr/bin/python3 scripts/ci/tray_protocol_smoke.py --lifecycle --binary .build/target/debug/examples/tray_ui_probe --root .build/ci-tray-linux
+          cargo build -p cumulus-desktop --example mpris_probe --features custom-protocol --locked
+          LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a /usr/bin/python3 scripts/ci/mpris_smoke.py --binary .build/target/debug/examples/mpris_probe --root .build/ci-mpris-linux
           cargo build -p cumulus-desktop --example startup_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a python3 scripts/ci/startup_smoke.py --binary .build/target/debug/examples/startup_ui_probe --root .build/ci-startup-linux
           cargo build -p cumulus-desktop --example catalog_ui_probe --features custom-protocol --locked

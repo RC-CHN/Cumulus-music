@@ -89,7 +89,7 @@ MV/视频          官方M/21、232、334、754、3158与报告29         详情
 音效容器/材料    ncae/peq/spatial Python、compose oracle        NCAE/片段/组合S/L/I；目录/参数材料S/L/I/R，512组判断、6份材料；授权登记/停止及回收读取S/L/R，21个官方请求、一次真实非试用往返；见core-effects-library.txt与core-effects-authorization.txt；设置恢复/到期宿主接线、逐歌/设备/模型、播放器/UI继续
 DSP              netease_dsp.c,multiband.c,rotate.c / 34..38    滤波/GEQ/BT/九槽PEQ/旋转/单声道动态安全FFI已迁移；194组新对照/原始资产71流/6次NCAE渲染及全量556通过，见core-effects-spatial.txt；参数组合/播放器/UI继续，完整SE/效果图原未恢复
 其余业务模型     docs/product/models/ 与 api-catalog            待逐动作核对；社交、FM、历史、更新等，不因无Python类漏掉
-桌面整合         旧工作单 DESKTOP                              Tauri/Vue与独立core分层，主要媒体/账号业务有实际窗口证据；剩余业务页、完整官方视觉对照、托盘/系统媒体键及Windows/macOS构建实测继续
+桌面整合         旧工作单 DESKTOP                              Tauri/Vue与独立core分层；托盘和Linux MPRIS已接入并有合成原生流程验证，见本文件后续记录；Windows SMTC/全局快捷键和完整目标审计继续，仅支持Linux/Windows
 
 NOS传输批次验收：16项状态恢复+2项实际回环HTTP测试；当时workspace共277项通过，
 格式与全workspace/all-targets/custom-protocol Clippy通过。
@@ -526,3 +526,15 @@ core/client/settings、desktop/settings、Vue SettingsPage/useSettings 接正式
 本地21状态合成GUI与5状态当前账号只读GUI通过，真实设置写入0；不以旧Python写入结论充当新Rust写入实测。
 详见 account-settings-contracts.txt 和 settings-mapping.json。开机启动/默认程序/关闭至托盘、
 完整播放设置、缓存/桌面歌词、系统媒体控制、同账号接续及其余原目标继续；fullGoalComplete仍为false。
+
+2026-10-29 系统媒体控制增量（不是完整目标验收）
+前述发布前边界按当时基线保留。托盘/关闭行为见window-lifecycle-contracts.txt，
+原生菜单/喜欢与隔离用例见native-media-controls-contracts.txt、native-likes-contracts.txt。
+本批新增安全元数据、系统暂停/停止切歌与Stop→Play规则、独立定位修订、MV偏好失败回滚，
+core不依赖GIO/Tauri。Linux宿主接标准MPRIS，真实总线/GTK/PCM/null十一段验证通过，
+包括暂停、切歌、属性持久化拒写、隐藏窗口Raise、账号退休、总线停止重启且音频不中断。
+官方证据→core用例→OS协议、通知与恢复以及CI入口见linux-mpris-contracts.txt。
+最终本地232目标/1094项Rust测试、严格workspace Clippy、fmt、21项CI规则通过；
+非C locale真实GUI初始化后的native_audio_probe进度/暂停/定位/倍速/CUE/取消通过。
+没有改前端内容树，本批不声称重新跑了前端视觉测试，也不宣称Linux物理面板或Windows
+SMTC已验证。系统媒体设置开关、全局快捷键、Windows宿主和其余原目标仍需继续。

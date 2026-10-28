@@ -61,3 +61,6 @@ Windows/Wayland 面板验证仍需继续。
 后续 core 增量：安全媒体元数据、进度/音量/倍速调整、保持暂停/停止的切歌用例
 见 native-media-details-contracts.txt。它们不替代 MPRIS/SMTC 宿主接入；既有托盘
 手动切歌行为不变，加载期已接受暂停时，托盘正确显示“播放”而不是“暂停”。
+
+Linux MPRIS后续接入与独立D-Bus消费验证见linux-mpris-contracts.txt；
+这里保留既有托盘批次的历史边界。Windows SMTC和系统快捷键仍需继续。

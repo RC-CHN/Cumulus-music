@@ -12,7 +12,7 @@ PATTERNS = (
     'package-stage/*/equalizer-proof',
     'ci-login*', 'ci-native-audio*', 'ci-engine-roundtrip*.log',
     'ci-scroll*', 'ci-graphics*', 'ci-ux*', 'ci-motion*', 'ci-accounts*',
-    'ci-startup*', 'ci-output-settings*', 'ci-tray*', 'ci-catalog*', 'ci-likes*', 'ci-keyboard*',
+    'ci-startup*', 'ci-output-settings*', 'ci-tray*', 'ci-mpris*', 'ci-catalog*', 'ci-likes*', 'ci-keyboard*',
     'ci-collections*', 'ci-history*', 'ci-settings*', 'ci-relay*',
 )
 

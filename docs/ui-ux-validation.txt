@@ -557,3 +557,17 @@ Windows现场与接续提示焦点复查（2026-10-29）
 - 前端208项、格式/类型/生产构建、严格Clippy与21项CI规则通过；日志前缀
   keyboard-modal-*。仅前端按键条件及外部验证驱动改变，没有新增核心业务实现。
   新的keyboard_smoke.py纳入Linux/Windows各自GUI job及合成失败证据归档。
+
+2026-10-29 Linux系统媒体面板协议与原生播放增量
+- 正式desktop接入MPRIS；元数据/时钟只读，所有控制复用独立core有代次校验的用例。
+  系统Next/Previous保持暂停/停止，停止后Play从授权起点开始；保存失败回滚真实引擎。
+- .build/mpris-live-seek/report.json：真实Tauri/GTK、独立D-Bus消费、合成PCM/libmpv/null，
+  11段通过。实际杀死并重启私有测试总线，播放不中断、引擎不重建且面板控制恢复；
+  窗口隐藏后Raise、旧账号TrackId拒绝、清队列注销及未选曲不初始化引擎均通过。
+- 探针窗口about:blank仅承担原生初始化；不称为正式UI截图验收。前端内容树仍与
+  f112ff5一致；此前53态UI证据不冒充本批新的视觉测试。物理面板/声卡、Windows SMTC
+  及系统媒体开关/全局快捷键仍需继续，详细来源和边界见linux-mpris-contracts.txt。
+- .build/mpris-native-gui.json：正式GUI初始化后非C locale、真实PCM/null进度、暂停、
+  恢复后的精确定位、倍速、CUE边界/EOF及取消通过；不是模拟播放时钟。
+- mpris-workspace-tests-final：232目标/1094项通过，失败/忽略0；严格全workspace
+  Clippy、fmt和21项CI规则通过。远端精确提交CI另行核验，不移动既有发行标签。

@@ -2,8 +2,8 @@
 
 范围和来源
 本批完成独立 Rust core 的原生媒体读取、调整和保持状态切歌用例。
-不是已完成的 Linux MPRIS 或 Windows SMTC 宿主；对应注册、属性通知、
-设置开关、系统快捷键与实际系统面板验收仍需继续。
+这是core基础批次记录。后续Linux MPRIS宿主见linux-mpris-contracts.txt；
+Windows SMTC、设置开关、系统快捷键和物理面板验收仍需继续。
 
 官方证据：references/recovered-client/docs/product/models/playing.txt，
 M308:5082–5124 onSMTCEnable：启用后设置当前歌曲信息与封面；
@@ -95,3 +95,12 @@ core/tests/fm_player.rs、playback_remote.rs：既有 FM、延迟补充、状态
   保留记录；单独复现后按驱动说明指定GDK_BACKEND=x11，重跑全部断言通过。
   该设置仅用于隔离验证，不写入产品或用户桌面配置。
 - 此批使用独立特性分支；不能据这些本地证据宣称远端完整CI或整个goal通过。
+
+后续协议增量
+MusicClient::native_media_play(&target) 在暂停时续播、停止时从授权起点重新开始；
+普通UI仍按原书签规则恢复。覆盖播客书签、MV位置和试听起点，FM复用coordinator。
+NativeMediaDetails.seek_revision只记录实际应用的定位，与普通控制/时钟修订分开；
+音频远端定位和MV定位均更新，用于系统面板识别短距离跳转而不误报偏好变化。
+补上MV偏好保存失败的实际引擎回滚；若回滚也失败，关闭输出并清除播放意图。
+对应core/tests/client_podcast.rs、support/native_media_details.rs有故障与状态用例。
+Linux宿主和真实协议验证详见linux-mpris-contracts.txt，不能用旧基础测试替代。

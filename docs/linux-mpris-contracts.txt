@@ -1,0 +1,105 @@
+Linux 系统媒体控制（MPRIS，2026-10-29）
+
+职责和来源
+Linux 通过桌面会话 D-Bus 向系统面板提供 MPRIS。生产实现在
+ desktop/src/system_media/linux/{mod,dispatch,commands,properties,signals}.rs。
+正常 Tauri setup 接入；不是 WebView JavaScript 模拟，也不依赖 Python。
+Windows 此模块不注册 MPRIS；Windows SMTC、全局快捷键、设置开关仍待接入。
+当前自动启用：未选曲时不占媒体会话，选曲后注册，停止时保留选择，清空队列、
+账号退出/切换导致旧选择消失时注销，下一账号播放后重新注册。主窗口销毁时停止。
+隐藏窗口后保持播放和系统控制，Raise 只唤回窗口。CanQuit=false，Quit 无操作。
+
+官方恢复依据：references/recovered-client/docs/product/models/playing.txt
+M308:5082–5124 onSMTCEnable 的当前歌曲/封面；M308:5292–5386 原生播放动作；
+setting.txt M116:1472–1533 的设置保存/开关。本批只恢复适用于 Linux 的媒体控制；
+不移植官方 Windows AB 分流，不宣称其设置开关已完成。未参考 YesPlayMusic。
+Linux 协议差异依据以下原始规范，而非推测官方 Windows 使用 D-Bus：
+https://specifications.freedesktop.org/mpris/latest/Player_Interface.html
+https://specifications.freedesktop.org/mpris/latest/Media_Player.html
+GIO 对象注册、异步 Properties.Set、连接寿命：
+https://docs.gtk.org/gio/method.DBusConnection.register_object.html
+https://dbus.freedesktop.org/doc/dbus-specification.html#bus-messages-request-name
+https://docs.gtk.org/gio/property.DBusConnection.exit-on-close.html
+
+状态和控制映射
+服务名 org.mpris.MediaPlayer2.Cumulus.instance{pid}，避免多进程互相抢名称。
+对象 /org/mpris/MediaPlayer2。无 TrackList；不接受 OpenUri，也不发布 URI scheme。
+没有曲目时不因系统查询创建播放器。已有 core NativeMediaDetails 是唯一数据源；
+每250ms在 GTK main context 取快照并比较属性，不向 WebView 发送进度中转。
+
+PlaybackStatus：Stopped/Paused/Playing；加载期按已接受的暂停意图映射。
+Metadata：mpris:trackid、length、xesam:title/artist/album、可选公开 artUrl。
+trackid 为 /io/cumulus/music/track/{opaque_hex}；不含 UID、歌曲授权 URL 或文件路径。
+标题/艺术家去控制字符且有长度/数量上限；封面沿 core 公共 CDN 白名单。
+Position 为微秒，CUE片段相对、试听歌曲绝对坐标；Stopped 报0。
+读取的实际原生时长优先于歌曲目录时长。CanSeek 取实际加载和授权范围。
+音量是0..1（core0..100），负值归零，超过1限制为1；NaN/Inf拒绝。
+Rate=0 暂停，非零只接受0.25..4。LoopStatus/Shuffle映射现有四种队列模式；
+Random对应Shuffle=true/Playlist，Track或None清除随机；FM/MV不能改普通队列模式。
+
+Play：暂停续播；已停止的歌曲/播客/MV从允许起点开始，而不是恢复阅读/播放书签。
+这一语义通过 core.native_media_play 原子执行；原有UI/托盘播放继续保留书签规则。
+Next/Previous 经 core.native_media_step 保持暂停/停止，不瞬时发声。
+Seek：相对定位，负向夹到授权起点，超过获准终点时按可用能力执行下一首。
+SetPosition：旧TrackId、负数、超出授权范围、不可定位都忽略，不能控制新账号曲目。
+Pause/Stop/PlayPause 经原有 core 用例。MV没有上下首；FM经既有coordinator。
+
+调用先捕获不可序列化的NativeMediaTarget，再经过账号/focus/selection/actor fence。
+系统操作在待执行期间如果选择或账号失效，报错且不自动重试。
+同时仅允许一个待完成的控制请求，另一个收到LimitsExceeded；普通读取不排队。
+Properties.Set 通过手动注册标准Properties接口实现异步确认：只有核心执行和
+持久化完成后回复成功。GTK invocation留在main context，业务future进入Tokio。
+不将原始core异常、授权源或数据库路径写进D-Bus错误；只使用固定诊断文本。
+
+通知和恢复
+PropertiesChanged只发变化属性，永不包含Position和CanControl。
+Seeked依据实际定位修订与时钟不连续检测；暂停、调音量/倍速和模式不制造定位事件。
+core的seek_revision独立于一般control_revision，支持小于轮询间隔的明确定位。
+暂停/倍速变化更新外推时钟基准；时钟异常漂移也重新通知。不会每个进度tick发信号。
+
+MPRIS独立拥有GIO连接，避免GTK保留的已关闭共享连接阻止重连。
+使用RequestName(DO_NOT_QUEUE)，仅接受PRIMARY_OWNER/ALREADY_OWNER，关闭连接释放名称。
+没有使用gio 0.18.4的bus_own_name_on_connection：本机断线实测在其dbus.rs:19
+name-lost闭包中解包空连接引发UnexpectedNone，再跨C回调panic导致SIGABRT。
+这里使用既有安全Gio调用API，不增加unsafe FFI，不修改或升级依赖锁文件。
+同时取消本进程GTK/GIO共享连接的exit-on-close，避免总线断开触发默认SIGTERM；
+不修改用户环境、桌面配置、系统D-Bus或其他进程。
+地址发现移到阻塞工作线程，认证异步；各最多5秒。注册失败/名称丢失后2秒再试；
+同一时间只有一次连接尝试，注销推进代次，迟到结果不能重新注册已退休的会话。
+重试只涉及OS连接与对象注册，不重新加载音频、不重启程序、不重放任何业务写请求。
+停止时注销对象、释放名称并关闭私有连接。锁外释放，避免注销回调重入死锁。
+若同一地址上的会话总线恢复可重连；登录会话地址改变需重新启动应用。
+其他GTK插件是否能恢复共享连接不属于本模块验证。
+
+网络、持久化和失败
+属性读取没有音乐服务HTTP请求。播放/切歌复用原有音源解析、FM/MV及已附着一起听；
+详见native-media-controls-contracts.txt和各业务接口文档，不另外伪造接口。
+音频/视频音量倍速均持久化到当前账号。视频保存失败现在恢复引擎原值再返回失败；
+如果恢复引擎也失败，释放输出并清除继续播放意图，显式重播才能恢复，不宣称已保存。
+没有自动支付、发信/邀请或新增账号资源写入。
+
+可执行验证
+cargo build -p cumulus-desktop --example mpris_probe --features custom-protocol --locked
+GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a /usr/bin/python3 \
+  scripts/ci/mpris_smoke.py --binary .build/target/debug/examples/mpris_probe \
+  --root .build/ci-mpris-linux
+root必须不存在。探针启动真实Tauri/GTK，合成账号/目录/30秒PCM，真实libmpv/null输出。
+独立Gio客户端经私有dbus-daemon调用生产宿主：元数据、原生时钟、暂停/切歌、定位
+及短定位、旧ID、音量/倍速/模式、SQLite拒写与回滚、后台Raise、账号隔离、清空注销。
+主动终止且重启自己创建的总线，验证PCM时钟继续、引擎计数不变、控制重新可用。
+验证Position无PropertiesChanged、偏好无多余Seeked；错误路径不自动重试业务操作。
+文件控制命令只存在example中，不是生产IPC；Python只作外部验证。
+Linux必需CI原生job运行本探针；失败诊断只归档ci-mpris合成目录。
+不把此探针的about:blank窗口称为正式前端视觉验收，也不代表物理系统面板/声卡听感、
+Windows SMTC、Wayland面板或实机刷新率已验证。完整目标仍未完成。
+
+本机验收记录
+- .build/mpris-live-seek/report.json：11段真实协议/原生PCM/null流程通过，
+  20次属性通知、7次Seeked；独立总线实际停止/恢复，零真实音乐账号请求。
+  这些次数只描述本次捕获，不作为固定事件数量断言。
+- 先前失败记录保留：mpris-recovery（共享连接不能恢复）、mpris-guarded-bus
+  （GIO回调空连接panic）、mpris-request-name（测试误把暂停null时钟当请求目标）。
+- 详情见native-seek-validation.txt：null暂停time-pos包含输出缓冲延迟，系统协议
+  测试核对播放时的原生时钟和通知；精确暂停定位另由native_audio_probe在恢复后验证。
+- 核心回归还覆盖视频偏好写入失败、回滚失败关闭输出、播客/MV/试听Stop→Play。
+  不以编译成功代替这组运行证据，也不把本机结果代替远端完整CI。
