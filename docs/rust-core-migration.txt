@@ -575,3 +575,17 @@ desktop独立管理窗口lease、注册ticket和临时录入id；设置表单通
 Linux真实WebView18态/18截图、独立X11按键21段及1120项Rust/220项前端测试通过；
 不是Windows实际验证。Wayland portal、mini/桌面歌词、Windows媒体broker及全范围
 最终审计仍继续，不将本次完成的设置/本地键用例当成整个目标完成。
+
+2026-10-29 桌面歌词独立核心增量与界面回归
+官方M81/M116/M3097的样式、单双行对齐、置顶意图与自定义配色迁入
+preferences/desktop_lyrics；SQLite事务、UUID CAS、坏数据原文备份及账号代次由独立
+core用例落实。lyrics/desktop建立可复用文档索引，只投影当前/下一行；client/desktop_lyrics
+复用实际播放器和既有歌词服务，版本只读刷新不联网，详情页偏移共享且拒绝MV/旧曲目。
+CUE现在同步裁切原文及辅助通道，具体本地LRC读取边界保持明确。
+逐项官方来源、API、Rust文件和测试映射见desktop-lyrics-mapping.json，详细契约见
+desktop-lyrics-contracts.txt。28组官方执行对照、247目标1152项Rust、220项前端及
+69个现有界面截图状态通过；不等于独立桌面歌词窗口已实现。
+此前迷你共享播放与快捷键已有实际双WebView验证，见desktop-mini-player-contracts.txt
+与shortcut-contracts.txt；本批修正新增迷你入口后过时的三按钮滚动检查。
+透明桌面歌词窗口、锁定/穿透与解锁、设置UI、原生字体和歌词快捷键仍需接入；
+Wayland全局入口、Windows实际媒体验收及其余全目标未从范围中删除。完整目标继续。

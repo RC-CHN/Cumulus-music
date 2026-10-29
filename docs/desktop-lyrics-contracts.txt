@@ -1,0 +1,97 @@
+桌面歌词迁移：显示领域、持久化与同一播放核心
+
+当前完成层级
+本批完成独立 Rust 的桌面歌词样式、设置事务、当前/下一行与逐字投影、共享歌词服务
+版本读回及账号/媒体所有权校验，并修正 CUE 多通道裁切。透明原生窗口、锁定/穿透、
+主窗口入口和快捷键 lyric 仍未接入；不能称为桌面歌词用户流程已完成。
+已有播放详情页继续使用同一 player_lyrics/lyric_offset 用例，CUE 裁切修正直接作用于它。
+完整客户端目标保持原范围；后续必须补齐原生窗口、设置界面、实际双平台运行与截图。
+
+官方证据与对应关系
+恢复材料目录：references/netease-3.1.42.205594-analysis/recovered-js/modules。
+- hybrid_app.chunk.1482700000000.js/116.js:251–269：默认隐藏、翻译、置顶、字体36、
+  普通字重、描边、单行、横排、单双行居中、网易红。锁定在366行初始化为false。
+- 81.js:147–174/209–289：八套四段颜色、两段描边、单双行对齐矩阵、lineMode、
+  topMost、translateMode、outlineShadow、horizontalLyric、lrcFont和setLock。
+- 81.js:300–338：系统支持字体/回退与普通/粗体映射。core不伪称已枚举本机字体；
+  原生字体枚举和实际缺字回退属于后续desktop适配。空字体名表示交给平台默认选择。
+- hybrid_64.chunk.1482700000000.js/3097.js:4050–4085：自定义颜色只保存当前一组，
+  并同时应用颜色/描边；本实现也保留一组customPalette，切换预设不会删除它。
+  4328–4454恢复字体、大小、字重、描边、单双行、横竖排和对齐设置动作。
+- 116.js:970–984和handleDesktopLyricAction：显示开关、详情、前后首、播放暂停、
+  设置、半秒偏移、锁定/解锁、关闭；本批只完成偏移复用和显示领域，其余窗口动作
+  尚需宿主接入。播放传输仍使用既有NativeMediaTarget，不另起播放器。
+- core/tests/fixtures/desktop_lyric_styles.json：直接执行M81导出函数得到8套配色、
+  8组对齐、12组样式原生调用输出，包含源SHA256。私有提取脚本为
+  references/recovered-client/scripts/freeze_desktop_lyric_vectors.cjs；CI只消费冻结数据。
+未使用YesPlayMusic。原生C++歌词动画未完整恢复，本批逐字/当前下一行投影是社区重建，
+不声称官方原生绘制像素一致。八位颜色按Windows ARGB解释；该通道顺序是适配推断，
+测试明确覆盖golden的ff9f8953以及带透明度输入，不冒充直接执行原生渲染器的证据。
+
+独立偏好与恢复
+core/preferences/desktop_lyrics/{mod,style,storage}.rs：
+- DesktopLyricPreferences保存在local-device/desktop-lyric-preferences-v1；包含enabled、
+  appearance、可选逻辑坐标geometry与一组customPalette。revision为UUID CAS。
+- Appearance涵盖辅助语言none/translate/roman、置顶、字体/字号/粗体/描边、单双行、
+  横竖排、两种行数各自的对齐偏好与预设/自定义配色。切换单双行不会丢失另一组对齐。
+- Edit支持Enabled、Appearance、Geometry、CustomColors、Reset；修改与saved标记同一
+  SQLite事务提交，旧窗口revision不能覆盖新值。CustomColors保存和应用是同一事务。
+- 字号12..96、字体名最多256字节且禁止控制字符；颜色只收6位RGB/8位ARGB十六进制。
+  这是明确的跨平台输入边界，非恢复到官方菜单所有可选字号的声明。
+- Geometry为逻辑坐标，允许负坐标；尺寸240..4096×80..4096，坐标±1000000以内。
+  尚不意味着窗口实际恢复或自动适配换屏；实际监视器工作区校正属于desktop后续实现。
+- 缺失saved标记、损坏JSON/类型/范围均为damaged，返回current=null，不自动启用窗口。
+  Repair保存current/saved原文与解析值到desktop-lyric-recovery-v1，再生成新revision，
+  恢复默认隐藏；修复失败回滚全部写入，不静默覆盖损坏内容。Reset也是新revision。
+- 锁定不作为跨进程持久字段，沿用官方启动时未锁定的语义；运行时输入穿透和解锁救援
+  必须由后续原生宿主验证，不能通过保存布尔值来称为已锁定窗口。
+core/client/desktop_lyric_preferences.rs提供native只读与epoch校验的读写入口；游客可
+使用设备设置，切换账号后旧窗口不能修改或修复；读取设置不初始化音频或访问网络。
+
+歌词与播放的共享关系
+core/client/desktop_lyrics.rs：
+- desktop_lyric_document(epoch,play_id)是显式加载/重试，复用player_lyrics以及原
+  LyricsService缓存、普通/云盘/本地选择、版本请求和偏移；没有新的HTTP透传入口。
+- 当前实际拥有输出的媒体必须是音频；文档保存原生SessionToken、FocusSnapshot和
+  playId，不能通过Serde从UI构造。MV占用、切歌、账号变化使旧文档失效；异步歌词
+  返回时再校验，视频接管后迟到的歌曲歌词不能覆盖当前界面。
+- desktop_lyric_frame读取真实播放器position/speed/playing/seekRevision/duration，
+  再投影当前歌词；不创建第二个解码器，不调用HTTP，不把墙钟进度当作播放器状态。
+- refresh_desktop_lyric_document只读取共享服务的新版本。详情页修改偏移后会被读回；
+  没有变化则不克隆/解析整份歌词，不发请求。desktop_lyric_offset复用半秒gain语义，
+  失败不自动重发；旧曲目文档不能调整后来播放的曲目。
+- 歌词HTTP保持/api/song/lyric/v1(id,lv,tv,rv,yv)与/api/cloud/lyric/get
+  (songId,userId,lv,kv=-1)；本地相邻.lrc读取无HTTP。来源/版本/错误规则详见
+  core-lyrics-contracts.txt。普通歌词请求按现有服务的账号状态判断，不扩大会员权益。
+- 服务新增snapshot_if_changed(target,observedRevision)。选中资源与成功内容key分开，
+  所以“已请求但无歌词/离线失败”仍有稳定版本；持续显示不会反复自动重试网络。
+  clear、载入开始/完成/取消、偏移或语言偏好成功更新均更新版本；失败写盘不发布新版本。
+  正在加载返回忙，旧资源返回stale；不在状态锁中发HTTP，Future取消仍由原Loading清理。
+
+有界显示与CUE
+core/lyrics/desktop/{mod,prepared}.rs：
+- Prepared在歌词变化时一次建立排序、重复时间消歧和辅助行索引；时钟tick二分定位，
+  仅投影一行或两行及对应字词。后出现的同时间原文行胜出，辅助词行按原始时间精确匹配。
+- YRC优先使用已经恢复的绝对词时钟；offset只减一次，零时长词在起点变为完成。
+  LRC没有逐词数据时不伪造词时间；未打时间标签的纯文本显示前一/两行且不做假高亮。
+  纯音乐/空文本保留DisplayType；首行之前显示预备行，末行之后保留当前行。
+- 非有限时钟拒绝；极端有限数值的差值计算也避免NaN。输出包含源行索引、原文、辅助
+  文本、开始/结束与逐字进度，最多两行；辅助语言切换不需要重新请求歌词。
+- core/client/player/lyrics/segment.rs把CUE的原文、翻译、罗马音和词时钟一起投影到
+  分轨坐标。跨越起点的前一行保留在0秒，后续行和字词减去media_start；段尾排除下一
+  分轨的行。保持原始行索引来裁切辅助文本，逐字辅助文本重标为对应的新行时间。
+- 此修正是代码与合成多通道用例发现的缺口；当前真实本地sidecar读取仍只提供普通LRC，
+  不宣称已完成本地多语言/YRC文件读取或嵌入歌词。实际文件适配边界沿原报告保留。
+
+验证入口与剩余工作
+- cargo test -p cumulus-core --test desktop_lyric_preferences --test desktop_lyrics
+  --test client_desktop_lyric_preferences --test client_player --test lyric_service --locked
+- cargo test -p cumulus-core --test client_mv desktop_lyric_tests --locked
+- cargo test -p cumulus-core --lib cue_ --locked
+用例覆盖官方冻结向量、跨连接CAS/重开、自定义与预设切换、坏数据修复、写入失败、
+文档零网络刷新、与详情页共享偏移、单音频实例、暂停时钟、MV抢占与迟到响应、
+空失败结果不重试、旧账号/曲目拒绝、CUE跨界/偏移/逐字辅助回退及边界数值。
+当前接口与持久化没有Tauri/WebView/Python依赖。尚未开放桌面歌词IPC或显示一个假的
+“桌面歌词”按钮；后续须实现真实透明窗口、锁定穿透和可到达的解锁入口、窗口启动恢复、
+所有样式设置、原生字体适配、Ctrl+D/Ctrl+Alt+D、详情唤回、Linux/Windows截图与故障恢复。
+本批验证日志和现有播放详情回归结果记录于ui-ux-validation.txt，完整目标仍未完成。

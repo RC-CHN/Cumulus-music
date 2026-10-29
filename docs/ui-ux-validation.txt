@@ -764,3 +764,37 @@ Windows现场与接续提示焦点复查（2026-10-29）
   它自己的精确提交运行证据。物理 pan 桌面未登录，本次不声称实机高刷、真实声卡或
   物理 DPI 通过；Windows SMTC 独立诊断的既有失败也没有由本次小窗测试解决。
   全范围迁移目标仍进行中，桌面歌词/Wayland 全局入口等剩余项没有删除。
+
+2026-10-29：桌面歌词核心与现有界面复验
+- 用户暂不方便登录物理桌面，继续使用隔离Xvfb中的真实Tauri/WebKitGTK。
+  .build/desktop-lyrics-ux-1/report.json：41态/41图，覆盖编辑入口、长名称、760×540
+  弹窗、深浅色、云盘上传、均衡器和重开进程；已人工查看歌单标题与编辑按钮、深色
+  小窗口编辑、小窗口云盘上传和均衡器截图，未见相应按钮裁切或被播放条遮挡。
+- .build/desktop-lyrics-motion-1/audit.json：18态/18图，原生播放器与歌词滚动、动画
+  开关、系统偏好事件、保存失败和重开通过。系统偏好变化由测试注入；并非物理OS设置
+  已被切换。本次查看了实际深色歌词详情截图；不是独立桌面歌词窗口的验收。
+- .build/desktop-lyrics-local-1：首次8态、重开2态，共10张对应状态图，另有文件选择器
+  定位截图。audit.json核对其中8个基础状态；另外local_history_page/replay记录历史
+  入口和实际CUE重播。真实GTK目录选择→扫描→CUE/LRC→历史→NCM→暂停重开完成，
+  真实libmpv/null、GUI初始化后LC_NUMERIC=C而消息locale保留、网络及远端写入均为0。
+  CUE多通道裁切的额外YRC/翻译边界仅用合成类型化输入验证；实际sidecar仍只读LRC。
+- .build/desktop-lyrics-ui-gallery/index.html汇总69张状态图，CSS仅隐藏虚拟桌面空白，
+  PNG原件与JSON保留。以上实测不证明物理60Hz、高DPI、真实声卡或Windows行为。
+- 上一提交a8f334d的Linux CI 40823919429在scroll_smoke失败：检查仍要求顶栏三个
+  按钮，新迷你入口实际为第四个。保留诊断归档.build/ci-mini-shortcuts-40823919429；
+  改为逐一核对四种无重复的可访问标签，并在失败输出实际标签，未忽略原失败。
+  .build/desktop-lyrics-scroll-1/result.json现已通过：2000首列表最多21个渲染行，
+  快速正反跳转/末行不空白、300歌单滚动、弹窗退出与焦点恢复及自定义顶栏通过。
+  虚拟环境帧率仅保留为诊断，不用来证明用户本机刷新率。
+- 新核心见desktop-lyrics-contracts.txt及desktop-lyrics-mapping.json：28组官方样式
+  执行向量、设备设置/CAS/损坏恢复、最多两行投影、共享歌词版本与实际播放时钟，
+  切歌/换账号/MV占用/迟到响应均拒绝旧文档。透明原生歌词窗口、锁定/穿透、完整
+  设置界面与快捷键仍未接入，不把这批core通过称为桌面歌词用户流程完成。
+- 新边界用例曾发现+0/-0被total_cmp分开排序，破坏同时间歌词按源顺序取后一行；
+  已修复并覆盖最小正数时长与极端有限时钟，保留首次失败日志。
+  .build/desktop-lyrics-workspace-tests-final.log：247个目标、1152 passed、0 failed、
+  0 ignored；严格workspace Clippy、fmt、前端npm ci/format:check/220项测试/构建通过。
+  .build/desktop-lyrics-ci-rules-final.log的21项及watchman隔离兼容8项通过。
+  16个前端产物SHA256与本轮GUI实测一致；正式可执行文件为.build/target/debug/cumulus。
+- 实现位于feat/desktop-lyrics，精确提交两平台CI须另核对；main及v0.1.0未修改。
+  Windows SMTC既有专项失败仍未解决，完整目标继续，不据本地测试数宣布完成。

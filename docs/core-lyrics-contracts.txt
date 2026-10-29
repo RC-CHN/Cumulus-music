@@ -73,3 +73,8 @@ core/examples/lyrics_read.rs 已用显式已有PC会话执行7项真实读取，
 报告只输出计数；原文缓存仅位于调用者的私有SQLite。
 解析模块不负责桌面窗口或歌词上传；后续播放详情与逐词展示由client/player和frontend接入，
 其独立验证见desktop-player-contracts.txt，不能算作上述解析测试的附带成果。
+
+桌面歌词增量见desktop-lyrics-contracts.txt：共享服务新增基于选中资源和版本的只读
+snapshot_if_changed，未改变的文档不克隆/重解析，空结果也不会因此自动重试HTTP。
+CUE现在同时裁切辅助行和逐字时间；实际本地文件适配仍是普通LRC sidecar，不能把
+合成多语言CUE投影测试称为本地YRC/嵌入歌词文件已可读取。

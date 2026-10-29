@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "fullGoalComplete": false,
+  "desktopLyricWorkflowComplete": false,
+  "platforms": ["linux-x86_64", "windows-x86_64"],
+  "alternativeClientUsed": false,
+  "sourceRoot": "references/netease-3.1.42.205594-analysis/recovered-js/modules",
+  "contracts": "docs/desktop-lyrics-contracts.txt",
+  "features": [
+    {
+      "feature": "样式、默认值、预设与自定义配色",
+      "official": ["hybrid_app.chunk.1482700000000.js/116.js:251-269", "hybrid_app.chunk.1482700000000.js/81.js:147-289", "hybrid_64.chunk.1482700000000.js/3097.js:4050-4085"],
+      "core": ["core/src/preferences/desktop_lyrics/style.rs", "core/src/preferences/desktop_lyrics/mod.rs"],
+      "tests": ["core/tests/desktop_lyric_preferences.rs", "core/tests/fixtures/desktop_lyric_styles.json"],
+      "evidence": "8套配色、8组对齐及12组样式调用直接执行官方JS冻结；8位ARGB通道解释属于适配推断",
+      "ui": null
+    },
+    {
+      "feature": "设置与几何持久化、并发写入、损坏恢复",
+      "official": ["hybrid_app.chunk.1482700000000.js/116.js:251-269", "hybrid_app.chunk.1482700000000.js/116.js:366"],
+      "core": ["core/src/preferences/desktop_lyrics/storage.rs", "core/src/client/desktop_lyric_preferences.rs"],
+      "tests": ["core/tests/desktop_lyric_preferences.rs", "core/tests/client_desktop_lyric_preferences.rs"],
+      "evidence": "设备本地UUID CAS、账号代次、原文备份、事务恢复；窗口位置应用尚未接入，锁定依官方启动语义不跨进程持久化",
+      "ui": null
+    },
+    {
+      "feature": "当前/下一行、逐词时钟与辅助语言",
+      "official": ["hybrid_app.chunk.1482700000000.js/81.js:209-289", "hybrid_app.chunk.1482700000000.js/116.js:changeLyricMode"],
+      "core": ["core/src/lyrics/desktop/mod.rs", "core/src/lyrics/desktop/prepared.rs"],
+      "tests": ["core/tests/desktop_lyrics.rs"],
+      "evidence": "社区重建原生显示投影，文档变化时建索引、每帧最多两行；未恢复C++原生动画，不声称像素相同",
+      "ui": null
+    },
+    {
+      "feature": "与详情页共用歌词、偏移与实际播放器",
+      "official": ["M3081共享歌词服务", "hybrid_app.chunk.1482700000000.js/116.js:handleDesktopLyricAction"],
+      "core": ["core/src/lyrics/service/mod.rs", "core/src/client/desktop_lyrics.rs", "core/src/client/player/lyrics.rs"],
+      "tests": ["core/tests/lyric_service.rs", "core/tests/client_player.rs", "core/tests/support/desktop_lyric_client.rs"],
+      "api": ["/api/song/lyric/v1", "/api/cloud/lyric/get"],
+      "evidence": "只在显式加载或重试时沿用既有歌词链路；文档刷新无HTTP，不创建第二播放器，拒绝旧账号/曲目/MV占用及迟到结果",
+      "ui": null
+    },
+    {
+      "feature": "CUE歌词多通道裁切",
+      "official": ["沿用既有CUE媒体区间与歌词偏移语义"],
+      "core": ["core/src/client/player/lyrics/segment.rs"],
+      "ui": "frontend/src/components/LyricsPanel.vue（既有入口）",
+      "tests": ["core/src/client/player/lyrics/segment.rs::tests", "desktop/examples/local_ui_probe.rs", "desktop/examples/local_ui_probe.js"],
+      "evidence": "多语言/逐词边界由合成类型化输入验证；实际本地文件GUI仅验证普通LRC、真实libmpv和null输出，文件适配器尚不读取本地YRC或嵌入歌词"
+    }
+  ],
+  "remaining": [
+    "原生透明窗口、换屏位置校正和启动恢复",
+    "锁定/输入穿透与可到达的解锁入口",
+    "正式主窗口入口、完整样式设置及原生字体适配",
+    "桌面歌词快捷键、详情唤回及同一播放器的窗口传输动作",
+    "Linux与Windows桌面歌词窗口的真实GUI和故障恢复验收"
+  ]
+}
