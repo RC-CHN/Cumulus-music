@@ -21,6 +21,12 @@ const artists = computed(() => props.artists ?? []);
 const videos = computed(() => props.videos ?? []);
 const concerts = computed(() => props.concerts ?? []);
 const columns = ref(3);
+const availableWidth = ref(540);
+const rowHeight = computed(() =>
+  albums.value.length
+    ? (availableWidth.value - (columns.value - 1) * 16) / columns.value + 80
+    : 260,
+);
 const total = computed(
   () => albums.value.length + artists.value.length + videos.value.length + concerts.value.length,
 );
@@ -29,7 +35,11 @@ const {
   start,
   end,
   onScroll,
-} = useVirtualRows(() => Math.ceil(total.value / columns.value), 260, 2);
+} = useVirtualRows(
+  () => Math.ceil(total.value / columns.value),
+  () => rowHeight.value,
+  2,
+);
 let observer: ResizeObserver | undefined;
 watch(
   scroller,
@@ -37,7 +47,8 @@ watch(
     observer?.disconnect();
     if (element) {
       observer = new ResizeObserver((entries) => {
-        columns.value = Math.max(1, Math.floor((entries[0]?.contentRect.width ?? 540) / 180));
+        availableWidth.value = entries[0]?.contentRect.width ?? 540;
+        columns.value = Math.max(1, Math.floor((availableWidth.value + 16) / 196));
       });
       observer.observe(element);
     }
@@ -63,8 +74,14 @@ function date(value: string | number | null) {
 </script>
 <template>
   <div v-if="total" ref="scroller" class="catalog-card-scroll" @scroll.passive="onScroll">
-    <div :style="{ height: `${start * 260}px` }" aria-hidden="true" />
-    <div class="catalog-grid" :style="{ gridTemplateColumns: `repeat(${columns},minmax(0,1fr))` }">
+    <div :style="{ height: `${start * rowHeight}px` }" aria-hidden="true" />
+    <div
+      class="catalog-grid"
+      :style="{
+        gridTemplateColumns: `repeat(${columns},minmax(0,1fr))`,
+        gridAutoRows: `${rowHeight - 16}px`,
+      }"
+    >
       <button
         v-for="(album, i) in windowAlbums"
         :key="`album:${i}:${album.id}`"
@@ -79,7 +96,7 @@ function date(value: string | number | null) {
           decoding="async"
           referrerpolicy="no-referrer"
         /><span v-else class="catalog-card-placeholder"><Icon name="music" /></span
-        ><strong>{{ album.name }}</strong
+        ><strong :title="album.name">{{ album.name }}</strong
         ><small>{{ date(album.publishedAt) }} · {{ album.trackCount }} 首</small>
       </button>
       <button
@@ -96,7 +113,7 @@ function date(value: string | number | null) {
           decoding="async"
           referrerpolicy="no-referrer"
         /><span v-else class="catalog-card-placeholder"><Icon name="user" /></span
-        ><strong>{{ artist.name }}</strong>
+        ><strong :title="artist.name">{{ artist.name }}</strong>
       </button>
       <article
         v-for="(video, i) in windowVideos"
@@ -117,8 +134,10 @@ function date(value: string | number | null) {
             referrerpolicy="no-referrer"
           /><span v-else class="catalog-card-placeholder"><Icon name="video" /></span
           ><span v-if="video.mvId" class="catalog-video-play"><Icon name="play" /></span></button
-        ><strong>{{ video.title }}</strong
-        ><small>{{ video.artists.map((a) => a.name).join(' / ') }}</small
+        ><strong :title="video.title">{{ video.title }}</strong
+        ><small :title="video.artists.map((a) => a.name).join(' / ')">{{
+          video.artists.map((a) => a.name).join(' / ')
+        }}</small
         ><small v-if="!video.mvId">{{
           video.kind === 'video' ? '普通视频播放暂未接入' : '暂不支持此视频类型'
         }}</small>
@@ -148,7 +167,10 @@ function date(value: string | number | null) {
         </div>
       </article>
     </div>
-    <div :style="{ height: `${(Math.ceil(total / columns) - end) * 260}px` }" aria-hidden="true" />
+    <div
+      :style="{ height: `${(Math.ceil(total / columns) - end) * rowHeight}px` }"
+      aria-hidden="true"
+    />
   </div>
   <p v-if="!total" class="empty-state">暂无相关内容</p>
 </template>

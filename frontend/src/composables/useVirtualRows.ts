@@ -2,9 +2,14 @@ import { computed, onUnmounted, ref, shallowRef, watch } from 'vue';
 import { rowWindow } from '../services/virtualWindow';
 
 /** Native passive scrolling; Vue only receives changes to the buffered row range. */
-export function useVirtualRows(count: () => number, rowHeight: number, buffer = 8) {
+export function useVirtualRows(
+  count: () => number,
+  rowHeight: number | (() => number),
+  buffer = 8,
+) {
+  const getRowHeight = () => (typeof rowHeight === 'number' ? rowHeight : rowHeight());
   const container = ref<HTMLElement>();
-  const range = shallowRef(rowWindow(count(), rowHeight, 500, 0, undefined, buffer));
+  const range = shallowRef(rowWindow(count(), getRowHeight(), 500, 0, undefined, buffer));
   let height = 500;
   let frame: number | undefined;
   let observer: ResizeObserver | undefined;
@@ -12,7 +17,7 @@ export function useVirtualRows(count: () => number, rowHeight: number, buffer = 
     frame = undefined;
     range.value = rowWindow(
       count(),
-      rowHeight,
+      getRowHeight(),
       height,
       container.value?.scrollTop ?? 0,
       range.value,
@@ -24,7 +29,7 @@ export function useVirtualRows(count: () => number, rowHeight: number, buffer = 
   }
   function reset() {
     if (container.value) container.value.scrollTop = 0;
-    range.value = rowWindow(count(), rowHeight, height, 0, undefined, buffer);
+    range.value = rowWindow(count(), getRowHeight(), height, 0, undefined, buffer);
   }
   watch(
     container,
@@ -42,15 +47,18 @@ export function useVirtualRows(count: () => number, rowHeight: number, buffer = 
     { flush: 'post' },
   );
   watch(
-    count,
+    [count, getRowHeight],
     () => {
       const element = container.value;
       if (element)
-        element.scrollTop = Math.min(element.scrollTop, Math.max(0, count() * rowHeight - height));
+        element.scrollTop = Math.min(
+          element.scrollTop,
+          Math.max(0, count() * getRowHeight() - height),
+        );
       // Shrinking lists must not retain an out-of-bounds buffer.
       range.value = rowWindow(
         count(),
-        rowHeight,
+        getRowHeight(),
         height,
         element?.scrollTop ?? 0,
         undefined,

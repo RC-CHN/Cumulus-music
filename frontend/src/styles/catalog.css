@@ -44,6 +44,12 @@
 .catalog-heading p {
   margin: 8px 0;
   font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.catalog-credits .text-button {
+  max-width: 100%;
+  text-align: left;
+  overflow-wrap: anywhere;
 }
 .catalog-label {
   color: var(--accent);
@@ -183,7 +189,8 @@
 .catalog-card img,
 .catalog-card-placeholder {
   width: 100%;
-  height: 180px;
+  height: auto;
+  aspect-ratio: 1;
   flex: none;
   max-width: 100%;
   object-fit: cover;
@@ -225,6 +232,9 @@
   margin-top: 5px;
   color: var(--muted);
   font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .catalog-video-card > button {
   display: block;

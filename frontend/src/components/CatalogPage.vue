@@ -196,7 +196,7 @@ onUnmounted(() => {
           referrerpolicy="no-referrer"
           decoding="async"
         />
-        <div v-else class="catalog-cover catalog-placeholder">
+        <div v-else class="catalog-cover catalog-placeholder" :class="{ artist: !!artist }">
           <Icon :name="artist ? 'user' : 'music'" />
         </div>
         <div class="catalog-heading">
