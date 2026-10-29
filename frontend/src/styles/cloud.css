@@ -1,3 +1,11 @@
+.cloud-page {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding-bottom: 24px;
+}
 .cloud-heading {
   display: flex;
   align-items: center;
@@ -243,7 +251,11 @@
   font-size: 12px;
   line-height: 1.7;
 }
-.cloud-choose {
+.cloud-source-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
   margin: 18px 0;
 }
 .cloud-file-list {
@@ -306,6 +318,24 @@
   width: 48px;
   height: 48px;
   color: var(--muted);
+}
+@media (max-height: 650px) {
+  .cloud-heading {
+    margin-bottom: 12px;
+  }
+  .cloud-toolbar {
+    margin: 14px 0;
+  }
+  .cloud-page > .empty-state {
+    gap: 12px;
+  }
+  .cloud-page > .empty-state h2 {
+    font-size: 20px;
+  }
+  .cloud-page > .empty-state > .icon {
+    width: 36px;
+    height: 36px;
+  }
 }
 @media (max-width: 950px) {
   .cloud-heading {

@@ -168,18 +168,27 @@ h2 {
   font-size: 14px;
 }
 select {
+  appearance: none;
+  -webkit-appearance: none;
   margin-left: 14px;
   min-width: 140px;
-  padding: 7px 10px;
+  padding: 9px 32px 9px 12px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--surface);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='m1 1 5 5 5-5' fill='none' stroke='%2392919a' stroke-width='1.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
   color: inherit;
+  font: inherit;
+  font-size: 13px;
 }
 .equalizer-switch {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 30px;
+  border-radius: 6px;
   color: var(--text-secondary);
   font-size: 12px;
 }
@@ -199,13 +208,13 @@ select {
   left: 2px;
   border-radius: 50%;
   background: var(--surface);
-  transition: left 0.15s;
+  transition: transform 0.15s;
 }
 .equalizer-switch[aria-checked='true'] span {
   background: var(--accent-fill);
 }
 .equalizer-switch[aria-checked='true'] span::after {
-  left: 14px;
+  transform: translateX(12px);
 }
 .equalizer-grid {
   display: grid;
@@ -254,9 +263,10 @@ select {
   width: 16px;
   height: 16px;
   margin-top: -5px;
-  border: 1px solid var(--line-strong);
+  border: 2px solid var(--surface-raised);
   border-radius: 50%;
-  background: var(--surface);
+  background: var(--text-secondary);
+  box-shadow: 0 0 0 1px var(--muted);
 }
 .equalizer-band input::-moz-range-track {
   height: 6px;
@@ -264,14 +274,15 @@ select {
   background: var(--surface-hover);
 }
 .equalizer-band input::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
-  border: 1px solid var(--line-strong);
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--surface-raised);
   border-radius: 50%;
-  background: var(--surface);
+  background: var(--text-secondary);
+  box-shadow: 0 0 0 1px var(--muted);
 }
 .equalizer-band output {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }

@@ -58,6 +58,10 @@ textarea,
 select {
   color: inherit;
 }
+input[type='checkbox'],
+input[type='radio'] {
+  accent-color: var(--accent);
+}
 textarea:focus-visible,
 select:focus-visible {
   outline: 2px solid var(--accent);
@@ -104,9 +108,17 @@ h2 {
 .text-button {
   color: var(--accent);
   padding: 6px 10px;
+  border-radius: 6px;
   font-size: 13px;
 }
+.text-button:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
 .primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   background: linear-gradient(100deg, var(--brand-start), var(--accent-fill));
   color: var(--on-accent);
   border-radius: 20px;
@@ -115,6 +127,22 @@ h2 {
 }
 .primary:hover {
   filter: brightness(1.06);
+}
+.secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 13px;
+  line-height: 20px;
+}
+.secondary:hover:not(:disabled) {
+  background: var(--surface-alt);
 }
 .icon-button {
   display: inline-flex;

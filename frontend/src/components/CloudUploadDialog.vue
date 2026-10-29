@@ -70,12 +70,12 @@ function close() {
       </button>
     </header>
     <p class="muted">选择本地音频，上传后可在登录此账号的设备上收听。每个文件最大 512 MB。</p>
-    <button class="secondary cloud-choose" :disabled="blocked" @click="pick('audio')">
-      <Icon name="up" />选择音频文件
-    </button>
-    <button class="secondary cloud-choose" :disabled="blocked" @click="pick('folder')">
-      选择文件夹
-    </button>
+    <div class="cloud-source-actions">
+      <button class="secondary" :disabled="blocked" @click="pick('audio')">
+        <Icon name="up" />选择音频文件
+      </button>
+      <button class="secondary" :disabled="blocked" @click="pick('folder')">选择文件夹</button>
+    </div>
     <div class="cloud-file-list">
       <article v-for="(file, index) in files" :key="file.path">
         <div class="cloud-file-title">

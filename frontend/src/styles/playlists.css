@@ -123,6 +123,7 @@
 }
 .playlist-danger-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
   gap: 10px;
   border-top: 1px solid var(--line);
@@ -228,16 +229,17 @@
   }
   .playlist-dialog label {
     margin: 10px 0;
+    gap: 6px;
   }
   .playlist-dialog textarea {
-    height: 74px;
+    height: 64px;
   }
   .playlist-dialog footer {
-    margin-top: 12px;
+    margin-top: 8px;
     padding: 8px 0;
   }
   .playlist-danger-actions {
-    margin-top: 10px;
+    margin-top: 8px;
     padding-top: 8px;
   }
 }

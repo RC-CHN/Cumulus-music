@@ -1,6 +1,10 @@
 .local-page {
   padding: 8px 0 32px;
+  flex: 1;
+  min-height: 0;
   min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 .local-heading,
 .local-toolbar,
