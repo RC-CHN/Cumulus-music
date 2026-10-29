@@ -77,3 +77,17 @@ Windows 系统媒体控制（SMTC）
   新提交Windows消费者实测，不能仅凭参考源码声称已找到根因或已经修复。
 - 任一步失败仍由Bridge析构禁用/注销/清空；不创建新解码器，不重放播放控制。
   本地Windows GNU全targets严格Clippy通过，不替代系统会话验证。
+
+40793512204的候选修正验证结果
+- 精确3308a01：启动已完成，独立消费者仍持续sessionCount=0并在broker等待处失败。
+  宿主Playing，进度15.358248秒，题名前缀正确，policy=active；同一session=2仍有
+  explorer、RuntimeBroker和ShellExperienceHost。保留.build/windows-smtc-40793512204。
+- 调整首次IsEnabled/Update顺序没有解决这个runner中的问题，不能再将其描述为已修复。
+  WinRT调用成功与broker可见仍需分开验证；没有跳过专项失败或合入main。下一步需要
+  能独立比较的Windows发布基线/系统会话证据，不能仅按“有Shell”推断broker必定可用。
+- 微软手动SMTC样例指出首次显示前需要应用建立音频播放会话：
+  https://learn.microsoft.com/en-us/samples/microsoft/windows-universal-samples/systemmediatransportcontrols/
+  当前probe使用libmpv/null，未证明建立了Windows音频会话，因此它的Playing进度
+  不能证明这个OS前提成立。这是新的待验证解释，不是已经证实的根因。下次专项额外
+  只读记录Audiosrv/AudioEndpointBuilder状态、AudioEndpoint总数/OK数量；不启动
+  服务、不安装虚拟驱动、不以读取失败或无设备把SMTC测试标为通过。

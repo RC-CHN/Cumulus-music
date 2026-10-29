@@ -98,7 +98,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev patchelf libmpv-dev ffmpeg xvfb dbus-x11 python3-gi gir1.2-gtk-3.0
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev patchelf libmpv-dev ffmpeg xvfb dbus-x11 python3-gi gir1.2-gtk-3.0 libxtst6
           sudo locale-gen en_US.UTF-8
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
@@ -162,6 +162,8 @@ jobs:
           LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a /usr/bin/python3 scripts/ci/tray_protocol_smoke.py --lifecycle --binary .build/target/debug/examples/tray_ui_probe --root .build/ci-tray-linux
           cargo build -p cumulus-desktop --example mpris_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a /usr/bin/python3 scripts/ci/mpris_smoke.py --binary .build/target/debug/examples/mpris_probe --root .build/ci-mpris-linux
+          cargo build -p cumulus-desktop --example shortcut_probe --features custom-protocol --locked
+          LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a /usr/bin/python3 scripts/ci/shortcut_smoke.py --binary .build/target/debug/examples/shortcut_probe --root .build/ci-shortcuts-linux
           cargo build -p cumulus-desktop --example startup_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a python3 scripts/ci/startup_smoke.py --binary .build/target/debug/examples/startup_ui_probe --root .build/ci-startup-linux
           cargo build -p cumulus-desktop --example catalog_ui_probe --features custom-protocol --locked
@@ -189,6 +191,8 @@ jobs:
           python scripts/ci/like_recovery_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-likes-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/keyboard_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-keyboard-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/motion_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-motion-windows --runtime .build/package-stage/windows-x64/native
+          cargo build -p cumulus-desktop --example shortcut_probe --features custom-protocol --locked
+          python scripts/ci/shortcut_smoke.py --binary .build/target/debug/examples/shortcut_probe.exe --root .build/ci-shortcuts-windows --runtime .build/package-stage/windows-x64/native
           cargo build -p cumulus-desktop --example saved_accounts_ui_probe --features custom-protocol --locked
           python scripts/ci/accounts_smoke.py --binary .build/target/debug/examples/saved_accounts_ui_probe.exe --root .build/ci-accounts-windows --runtime .build/package-stage/windows-x64/native
           cargo build -p cumulus-desktop --example output_ui_probe --features custom-protocol --locked

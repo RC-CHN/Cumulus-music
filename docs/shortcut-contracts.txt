@@ -147,3 +147,7 @@ Linux X11与Windows边界
   问题修复前确实失败，证据保存在.build/native-shortcuts-early-release-baseline。
   两平台严格Clippy已通过。新增Windows独立窗口/SendInput生产者和CI必需步骤仍待
   Windows实际运行；不把Python语法检查或GNU编译当作该平台按键验证通过。
+- 最终Linux全workspace为241个测试目标、1119项通过，失败/忽略0；fmt、严格
+  workspace Clippy、Windows GNU desktop全targets Clippy、21项CI规则均通过。
+  最终CI脚本再次在本机跑通18段，证据为.build/native-shortcuts-ci-script/report.json。
+  frontend内容树未改；没有在这一批把后台按键验证算成UI编辑/录入功能通过。

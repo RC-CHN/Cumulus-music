@@ -38,6 +38,17 @@ def main():
     except (OSError, subprocess.TimeoutExpired) as error:
         # Optional context must not prevent the actual broker/control test.
         context['shellQueryError'] = str(error)
+    try:
+        # Microsoft's manual SMTC sample requires an initial audio playback
+        # session. Null PCM output alone cannot establish that OS prerequisite.
+        # Read counts/status only; do not start services or install a device.
+        audio = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command',
+            "$ErrorActionPreference='Stop'; $services=@(Get-Service Audiosrv,AudioEndpointBuilder | ForEach-Object { @{name=$_.Name;status=$_.Status.ToString()} }); $endpoints=@(Get-PnpDevice -Class AudioEndpoint -ErrorAction SilentlyContinue); @{services=$services;endpointCount=$endpoints.Count;okEndpointCount=@($endpoints | Where-Object {$_.Status -eq 'OK'}).Count} | ConvertTo-Json -Compress -Depth 4"],
+            capture_output=True, text=True, timeout=15)
+        context.update(audioEnvironment=audio.stdout, audioQueryExit=audio.returncode,
+                       audioQueryError=audio.stderr)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        context['audioQueryError'] = str(error)
     (root / 'environment.json').write_text(json.dumps(context, indent=2) + '\n', encoding='utf-8')
     native = root / 'runtime'
     native.mkdir()
