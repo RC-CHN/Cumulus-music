@@ -45,6 +45,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
         )
         .plugin(tauri_plugin_dialog::init())
         .plugin(watchman::collection::lifecycle())
+        .plugin(shortcuts::lifecycle())
         .manage(cumulus_core::Application)
         .manage(player::PlayerStreams::default())
         .manage(together::CloseCoordinator::default())
@@ -138,6 +139,12 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 shortcuts::settings::shortcut_settings,
                 shortcuts::settings::shortcut_settings_command,
                 shortcuts::settings::shortcut_status,
+                shortcuts::local::shortcut_capture,
+                shortcuts::local::shortcut_attach,
+                shortcuts::local::shortcut_detach,
+                shortcuts::local::shortcut_press,
+                shortcuts::recording::shortcut_begin_recording,
+                shortcuts::recording::shortcut_end_recording,
                 settings::window_preferences_command,
                 lifecycle::window_lifecycle,
                 lifecycle::window_close_command,

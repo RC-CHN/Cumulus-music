@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, watch, ref } from 'vue';
+import { useLocalShortcuts } from './composables/useLocalShortcuts';
 import Icon from './components/Icon.vue';
 import WindowControls from './components/WindowControls.vue';
 import WindowClosePrompt from './components/WindowClosePrompt.vue';
@@ -577,7 +578,36 @@ function play(index = 0) {
     });
   else void player.select({ kind: 'songs', ids: tracks.map((t) => t.id), index, quality });
 }
+const shortcutKeys = useLocalShortcuts((error) => {
+  notice.value = error.message;
+});
+watch(
+  () => account.value.epoch,
+  (epoch) => shortcutKeys.account(epoch),
+);
 function keyboard(event: KeyboardEvent) {
+  if (
+    shortcutKeys.handle(
+      event,
+      !!(
+        loginOpen.value ||
+        accountsOpen.value ||
+        playlistDialog.value ||
+        downloadDialog.value ||
+        cloudDialogOpen.value
+      ),
+      {
+        audioPlayId: player.view.value?.playId ?? null,
+        audioEntryId: player.view.value?.entryId ?? null,
+        videoPlayId: mv.video.value?.playId ?? null,
+      },
+    )
+  )
+    return;
+  // Older synthetic hosts have no native shortcut service. Keep their existing
+  // space-key route; an installed service owns dispatch, including failures.
+  if (shortcutKeys.native.view.value && shortcutKeys.native.view.value.phase !== 'not_installed')
+    return;
   if (
     event.code !== 'Space' ||
     event.defaultPrevented ||
@@ -612,8 +642,14 @@ function keyboard(event: KeyboardEvent) {
     void player.action(player.playing.value ? { kind: 'pause', paused: true } : { kind: 'play' });
   }
 }
-onMounted(() => window.addEventListener('keydown', keyboard));
-onUnmounted(() => window.removeEventListener('keydown', keyboard));
+onMounted(() => {
+  window.addEventListener('keydown', keyboard);
+  void shortcutKeys.connect(account.value.epoch);
+});
+onUnmounted(() => {
+  window.removeEventListener('keydown', keyboard);
+  shortcutKeys.dispose();
+});
 </script>
 <template>
   <div class="app-shell">

@@ -2,15 +2,32 @@ import type { NativeLikeChanged } from '../services/nativeLikes';
 import { invoke, Channel } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { PlayerUpdate } from '../services/player';
-import type { AccountView, AppInfo, CoreClient } from '../services/contracts';
+import type { AccountView, AppInfo, CoreClient, CoreFailure } from '../services/contracts';
 import { decodeVideoFrame } from '../services/mv';
 import type { WindowLifecycleView } from '../services/window';
 import type { SystemMediaStatus } from '../services/systemMedia';
+import type { ShortcutStatus } from '../services/shortcuts';
 import type { SessionRenewalView } from '../services/renewal';
 
 /** The only module that knows how the desktop host transports commands. */
 export function createTauriClient(): CoreClient {
   return {
+    shortcutSettings: (epoch) => invoke('shortcut_settings', { epoch }),
+    shortcutSettingsCommand: (epoch, command) =>
+      invoke('shortcut_settings_command', { epoch, command }),
+    shortcutStatus: () => invoke('shortcut_status'),
+    shortcutCapture: (input, scope) => invoke('shortcut_capture', { input, scope }),
+    shortcutAttach: (epoch, ticket) => invoke('shortcut_attach', { epoch, ticket }),
+    shortcutDetach: (lease) => invoke('shortcut_detach', { lease }),
+    shortcutPress: (press) => invoke('shortcut_press', { press }),
+    shortcutBeginRecording: (epoch) => invoke('shortcut_begin_recording', { epoch }),
+    shortcutEndRecording: (id) => invoke('shortcut_end_recording', { id }),
+    onShortcuts: (handler) =>
+      listen<ShortcutStatus>('cumulus:shortcuts', (event) => handler(event.payload)),
+    onShortcutError: (handler) =>
+      listen<{ epoch: string; error: CoreFailure }>('cumulus:shortcut-error', (event) =>
+        handler(event.payload),
+      ),
     systemMediaPreferences: (epoch) => invoke('system_media_preferences', { epoch }),
     systemMediaPreferencesCommand: (epoch, command) =>
       invoke('system_media_preferences_command', { epoch, command }),

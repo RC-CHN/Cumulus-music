@@ -25,6 +25,7 @@ import type { SettingsClient } from './settings';
 import type { StartupPreferencesClient } from './startup';
 import type { WindowPreferencesClient, WindowLifecycleClient } from './window';
 import type { SystemMediaClient } from './systemMedia';
+import type { ShortcutsClient } from './shortcuts';
 import type { OutputClient } from './output';
 import type { RelayClient } from './relay';
 import type { RelayPublicationClient } from './relayPublication';
@@ -65,6 +66,7 @@ export interface CoreClient
     OutputClient,
     WindowPreferencesClient,
     SystemMediaClient,
+    ShortcutsClient,
     WindowLifecycleClient,
     RelayClient,
     RelayPublicationClient {

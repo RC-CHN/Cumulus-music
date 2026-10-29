@@ -1,0 +1,111 @@
+.shortcut-switches {
+  display: flex;
+  gap: 12px 24px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.shortcut-table {
+  width: 100%;
+  margin: 14px 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.shortcut-row {
+  display: grid;
+  grid-template-columns: minmax(84px, 0.7fr) minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: 12px;
+  align-items: start;
+  padding: 12px;
+  border-top: 1px solid var(--line);
+}
+.shortcut-row:first-child {
+  border-top: 0;
+}
+.shortcut-head {
+  color: var(--muted);
+  font-size: 12px;
+  background: var(--surface-hover);
+}
+.shortcut-row > [role='rowheader'] {
+  padding-top: 8px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.shortcut-cell {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.shortcut-binding,
+.shortcut-recorder {
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--input-bg);
+  color: var(--text);
+  padding: 7px 9px;
+  font-size: 12px;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.shortcut-binding:hover:enabled {
+  background: var(--surface-hover);
+  border-color: var(--accent);
+}
+.shortcut-binding:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.shortcut-recorder:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.shortcut-result {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.shortcut-result[data-state='conflict'] {
+  color: var(--accent);
+}
+.shortcut-edit-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.shortcut-edit-error {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.shortcut-media-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 18px;
+  font-size: 11px;
+  color: var(--muted);
+  margin: 10px 0;
+}
+.shortcut-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+@media (max-width: 1000px) {
+  .shortcut-row {
+    gap: 7px;
+    padding: 10px 8px;
+    grid-template-columns: minmax(68px, 0.7fr) minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .shortcut-binding,
+  .shortcut-recorder {
+    padding: 6px;
+  }
+}
