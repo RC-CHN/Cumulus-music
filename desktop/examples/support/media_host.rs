@@ -150,7 +150,7 @@ pub fn run() {
                     write(&root.join(format!("ack-{id}.json")), &json!({"ok":result.is_ok()}));
                 }
                 if let Ok(view) = client.native_media_details() {
-                    write(&root.join("state.json"), &json!({"status":format!("{:?}",view.state),"position":view.position,"volume":view.volume,"speed":view.speed,"id":view.item.map(|i|i.id),"mode":view.mode,"engines":engines.load(Ordering::Acquire),"nativeSeeks":measured.lock().unwrap().clone(),"visible":app.get_webview_window("main").unwrap().is_visible().unwrap()}));
+                    write(&root.join("state.json"), &json!({"status":format!("{:?}",view.state),"position":view.position,"volume":view.volume,"speed":view.speed,"id":view.item.as_ref().map(|i|&i.id),"title":view.item.as_ref().map(|i|&i.title),"systemMedia":cumulus_desktop::system_media::settings::system_media_status(app.clone()),"mode":view.mode,"engines":engines.load(Ordering::Acquire),"nativeSeeks":measured.lock().unwrap().clone(),"visible":app.get_webview_window("main").unwrap().is_visible().unwrap()}));
                 }
                 tokio::time::sleep(Duration::from_millis(50)).await;
             }

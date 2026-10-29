@@ -50,3 +50,16 @@ Windows 系统媒体控制（SMTC）
   CI 40787793046专项在native GUI就绪前超时，未执行SMTC消费者；新增启动阶段日志，
   仍需定位原因并实际跑通。物理声卡、原生系统面板视觉、Windows开关及全局快捷键
   尚未由本批验证，不把交叉编译成功称为Windows运行通过。
+
+40790355273的进一步证据
+- 精确92036ec专项已到worker_ready：进程内GUI setup耗时187ms，window_created
+  为13572ms，原生系统媒体安装为13574ms。先前“native GUI等待超时”不能证明
+  Windows宿主死锁；本次冷WebView创建本身耗时约13.4秒，接近原15秒启动上限。
+- 本次lazy-unselected通过，实际libmpv/null已经Playing、进度15.28395秒、引擎1个，
+  窗口可见。失败变为Windows broker session超时；独立消费者正常退出但持续found=false。
+  不能把本机播放器成功当作SMTC成功，也还不能判断是发布、会话识别还是runner条件。
+- 下一次诊断在合成宿主state增加实际题名、policy阶段；独立消费者只增加会话总数，
+  不采集其他应用的歌曲标题。读取runner的session id、explorer/RuntimeBroker/
+  ShellExperienceHost是否存在，不自动启动或修改系统服务。
+- 仅冷GUI初始化等待调整为30秒；broker和每个业务状态仍15秒，消费者20秒，
+  整体240秒。此变更不能使本次broker失败变成成功，也未忽略任何失败或合入main。

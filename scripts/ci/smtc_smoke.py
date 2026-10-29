@@ -4,8 +4,10 @@ No real accounts; no controls sent to unrelated sessions. Consumer delivery is
 not business success: every action is checked against the host's actual core.
 """
 import argparse
+import ctypes
 import json
 import os
+import platform
 from pathlib import Path
 import shutil
 import subprocess
@@ -22,6 +24,21 @@ def main():
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
+    # Read-only runner context. Never report unrelated sessions' media titles.
+    session_id=ctypes.c_uint()
+    session_ok=ctypes.windll.kernel32.ProcessIdToSessionId(os.getpid(),ctypes.byref(session_id))
+    context = {'platform': platform.platform(),
+               'sessionId': session_id.value if session_ok else None}
+    try:
+        shell = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command',
+            'Get-Process explorer,RuntimeBroker,ShellExperienceHost -ErrorAction SilentlyContinue | Select-Object ProcessName,Id,SessionId | ConvertTo-Json -Compress'],
+            capture_output=True, text=True, timeout=15)
+        context.update(shellProcesses=shell.stdout, shellQueryExit=shell.returncode,
+                       shellQueryError=shell.stderr)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        # Optional context must not prevent the actual broker/control test.
+        context['shellQueryError'] = str(error)
+    (root / 'environment.json').write_text(json.dumps(context, indent=2) + '\n', encoding='utf-8')
     native = root / 'runtime'
     native.mkdir()
     windows_media(native, Path(os.environ['CUMULUS_MSYS2_ROOT']))
@@ -40,8 +57,8 @@ def main():
     steps = []
     deadline = time.monotonic() + 240
     sequence = 0
-    def wait(condition, label):
-        until = min(time.monotonic() + 15, deadline)
+    def wait(condition, label, seconds=15):
+        until = min(time.monotonic() + seconds, deadline)
         while time.monotonic() < until:
             result = condition()
             if result:
@@ -80,7 +97,9 @@ def main():
         with (root / 'host.log').open('x', encoding='utf-8') as log:
             process = subprocess.Popen([str(executable)], env=env, stdout=log, stderr=log)
             prefix = f'CumulusSMTCProof-{process.pid}: '
-            wait(lambda: (run / 'ready.json').exists() and (run / 'state.json').exists(), 'native GUI')
+            # 40790355273 measured 13.4s inside cold WebView creation alone.
+            # Only startup gets 30s; broker/transport checks stay at 15s.
+            wait(lambda: (run / 'ready.json').exists() and (run / 'state.json').exists(), 'native GUI',seconds=30)
             assert state()['engines'] == 0 and not consumer()['found']
             steps.append('lazy-unselected')
             fixture('start')
@@ -186,6 +205,8 @@ def main():
         progress = run / 'progress.json'
         if progress.exists():
             diagnostic['hostProgress'] = json.loads(progress.read_text(encoding='utf-8'))
+        if (run/'state.json').exists():
+            diagnostic['hostState'] = state()
         (root/'failure.json').write_text(json.dumps(diagnostic, indent=2)+'\n', encoding='utf-8')
         raise
     finally:

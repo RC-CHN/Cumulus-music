@@ -23,8 +23,10 @@ pub fn run(prefix: &str, command: &str) -> Result<()> {
     }
     let _apartment = Apartment;
     let manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync()?.get()?;
+    let sessions = manager.GetSessions()?;
+    let session_count = sessions.Size()?;
     let mut selected = None;
-    for session in manager.GetSessions()? {
+    for session in sessions {
         let title = session
             .TryGetMediaPropertiesAsync()?
             .get()?
@@ -35,7 +37,7 @@ pub fn run(prefix: &str, command: &str) -> Result<()> {
             selected = Some(session);
         }
     }
-    let value = if let Some(session) = selected {
+    let mut value = if let Some(session) = selected {
         if command == "snapshot" {
             snapshot(&session)?
         } else {
@@ -57,6 +59,7 @@ pub fn run(prefix: &str, command: &str) -> Result<()> {
     } else {
         json!({"found":false})
     };
+    value["sessionCount"] = json!(session_count);
     println!("{value}");
     Ok(())
 }
