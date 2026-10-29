@@ -134,6 +134,10 @@ fn main() {
                         sql.execute_batch(if kind=="reject" {"CREATE TRIGGER reject_media_ui BEFORE INSERT ON state WHEN NEW.kind='system-media-preferences-v1' BEGIN SELECT RAISE(ABORT,'synthetic setting write failure'); END;"} else {"DROP TRIGGER reject_media_ui;"}).unwrap();
                     }
                     "damage"=>proof_store.put("local-device","system-media-preferences-v1","current",&json!({"enabled":"invalid"})).unwrap(),
+                    "raw_damage"=>{
+                        let sql=rusqlite::Connection::open(proof_store.directory().join("core.sqlite3")).unwrap();
+                        assert_eq!(sql.execute("UPDATE state SET value=? WHERE owner='local-device' AND kind='system-media-preferences-v1' AND key='current'",["{broken"]).unwrap(),1);
+                    }
                     _=>panic!("unknown isolated media fixture action"),
                 }
                 handle.get_webview_window("main").unwrap().eval(format!("window.__mediaFixtureAck={};",serde_json::to_string(kind).unwrap())).unwrap();

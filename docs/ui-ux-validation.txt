@@ -618,3 +618,13 @@ Windows现场与接续提示焦点复查（2026-10-29）
 - 最终前端212项、Rust235目标/1098项、CI规则21项均通过，失败/忽略0；fmt、
   严格workspace Clippy、Windows GNU desktop全targets Clippy和生产构建通过。
   Linux系统媒体设置GUI纳入独立Linux job；Windows完整CI及专项须以精确提交核验。
+
+2026-10-29 无法解析的本机设置恢复
+- 新增真实SQLite坏JSON复现：shortcut-malformed-baseline和system-media-malformed-baseline
+  都返回stored JSON is invalid，旧恢复入口无法完成；已保留失败日志。
+- 核心在同事务读原文、备份current_raw/saved_raw，再恢复默认。结构类型错误和
+  无法解析文本两类损坏都可显式修复，不增加自动恢复/自动重放业务操作。
+- .build/shortcut-raw-recovery-ui/report.json：14态/14截图、两次进程启动通过，新增
+  malformed_json/malformed_repaired两态；独立SQLite核对两个备份及“{broken”原文。
+  原生PCM始终同一playId、引擎计数不增加，修复焦点仍回刷新，关开和重启偏好仍通过。
+  真实账号请求0；这不是新快捷键设置页或Windows系统媒体通过的证据。

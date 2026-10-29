@@ -159,16 +159,22 @@ impl StateTransaction<'_> {
             .collect()
     }
     pub fn get(&self, owner: &str, kind: &str, key: &str) -> Result<Option<Value>> {
-        let raw: Option<String> = self
+        self.get_raw(owner, kind, key)?
+            .map(|value| serde_json::from_str(&value).map_err(Error::from))
+            .transpose()
+    }
+
+    /// Preserve malformed JSON during explicit recovery. Only available inside
+    /// a transaction, so backing up and replacing the record remain atomic.
+    pub fn get_raw(&self, owner: &str, kind: &str, key: &str) -> Result<Option<String>> {
+        Ok(self
             .connection
             .query_row(
                 "SELECT value FROM state WHERE owner=? AND kind=? AND key=?",
                 params![owner, kind, key],
                 |row| row.get(0),
             )
-            .optional()?;
-        raw.map(|value| serde_json::from_str(&value).map_err(Error::from))
-            .transpose()
+            .optional()?)
     }
 
     pub fn put(&mut self, owner: &str, kind: &str, key: &str, value: &Value) -> Result<()> {

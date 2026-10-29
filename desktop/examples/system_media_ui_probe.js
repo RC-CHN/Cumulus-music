@@ -80,6 +80,11 @@
     await fixture('damage');click(refresh());await wait(()=>!box()&&phase()==='damaged'&&!refresh().disabled,'damaged policy');await capture('damaged');
     click(button('恢复默认系统媒体设置'));await wait(()=>box()?.checked&&!box().disabled&&phase()==='active','explicit repair');
     await wait(()=>document.activeElement===refresh(),'repair focus');await capture('repaired');
+    await fixture('raw_damage');click(refresh());
+    await wait(()=>!box()&&phase()==='damaged'&&!refresh().disabled,'malformed JSON detected');await capture('malformed_json');
+    click(button('恢复默认系统媒体设置'));
+    await wait(()=>box()?.checked&&!box().disabled&&phase()==='active','malformed JSON repaired');
+    await wait(()=>document.activeElement===refresh(),'malformed repair focus');await capture('malformed_repaired');
     await toggle(false);await capture('saved_disabled');
     localStorage.setItem('cumulus.media-settings-finished','1');
     await emit('complete',{ok:true,stageCount:count,realMusicRequests:0,backgroundPlayback:true});

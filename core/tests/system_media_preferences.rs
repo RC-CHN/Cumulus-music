@@ -5,6 +5,24 @@ use serde_json::json;
 const OWNER: &str = "local-device";
 const KIND: &str = "system-media-preferences-v1";
 #[test]
+fn malformed_json_can_be_backed_up_and_repaired_without_losing_raw_text() {
+    let root = tempfile::tempdir().unwrap();
+    let store = StateStore::open(root.path()).unwrap();
+    Preferences::replace(&store, "initial", false).unwrap();
+    let sql = rusqlite::Connection::open(store.directory().join("core.sqlite3")).unwrap();
+    sql.execute(
+        "UPDATE state SET value=? WHERE owner=? AND kind=? AND key='current'",
+        rusqlite::params!["{broken", OWNER, KIND],
+    )
+    .unwrap();
+    assert!(Preferences::read(&store).is_err());
+    let value =
+        Preferences::repair(&store).expect("explicit recovery must handle invalid JSON text");
+    assert!(value.enabled);
+    let backup = store.values(OWNER, "system-media-recovery-v1").unwrap();
+    assert_eq!(backup.values().next().unwrap()["current_raw"], "{broken");
+}
+#[test]
 fn concurrent_windows_and_reopen_preserve_one_atomic_preference() {
     let root = tempfile::tempdir().unwrap();
     let first = StateStore::open(root.path()).unwrap();

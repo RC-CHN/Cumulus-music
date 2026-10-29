@@ -80,3 +80,13 @@
   处理仍属于当前操作的已禁用焦点，不抢占用户转移到其他控件/弹窗/账号的焦点。
 - 界面和其他共享焦点回归结果继续记录于ui-ux-validation.txt；所有证据使用隔离
   合成账号/PCM，真实网易云请求0。没有执行真实账号设置写入或改动既有发行标签。
+
+无法解析JSON的显式恢复修正
+- system-media-malformed-baseline.log及shortcut-malformed-baseline.log已用真实SQLite
+  复现：current写成“{broken”或saved写成“tru”后，读取返回损坏，但旧repair也先
+  解析坏文本，导致用户点击恢复仍失败。既有“字段类型错误”测试没有覆盖这个分支。
+- StateTransaction新增get_raw，在同一事务中保存current_raw/saved_raw精确文本后
+  修复；原有current/saved可解析备份字段保留，解析失败对应null。正常配置仍拒绝修复。
+  常规读取只在同一事务读current/saved两条相关记录，不解析同命名空间无关的内容。
+- 桌面合成探针新增无法解析JSON→损坏状态→显式恢复两态，保持原有失败、焦点、
+  同一播放项目、引擎计数和两次启动检查；外部驱动独立核对两个备份及精确坏文本。

@@ -40,8 +40,12 @@ fn current(value: Option<Value>, saved: Option<Value>) -> Result<SystemMediaPref
 }
 impl SystemMediaPreferences {
     pub fn read(store: &StateStore) -> Result<Self> {
-        let rows = store.values(OWNER, KIND)?;
-        current(rows.get("current").cloned(), rows.get("saved").cloned())
+        store.transaction(|tx| {
+            current(
+                tx.get(OWNER, KIND, "current")?,
+                tx.get(OWNER, KIND, "saved")?,
+            )
+        })
     }
     pub fn replace(store: &StateStore, expected: &str, enabled: bool) -> Result<Self> {
         store.transaction(|tx| {
@@ -63,9 +67,12 @@ impl SystemMediaPreferences {
     }
     pub fn repair(store: &StateStore) -> Result<Self> {
         store.transaction(|tx| {
-            let raw = tx.get(OWNER, KIND, "current")?;
-            let saved = tx.get(OWNER, KIND, "saved")?;
-            if current(raw.clone(), saved.clone()).is_ok() {
+            let raw = tx.get_raw(OWNER, KIND, "current")?;
+            let saved = tx.get_raw(OWNER, KIND, "saved")?;
+            let parsed = raw.as_deref().map(serde_json::from_str::<Value>).transpose();
+            let marker = saved.as_deref().map(serde_json::from_str::<Value>).transpose();
+            if let (Ok(value), Ok(marker)) = (&parsed, &marker)
+                && current(value.clone(), marker.clone()).is_ok() {
                 return Err(Error::State("system media settings changed"));
             }
             let next = Self {
@@ -76,7 +83,7 @@ impl SystemMediaPreferences {
                 OWNER,
                 "system-media-recovery-v1",
                 &next.revision,
-                &json!({"current":raw,"saved":saved}),
+                &json!({"current":parsed.ok().flatten(),"saved":marker.ok().flatten(),"current_raw":raw,"saved_raw":saved}),
             )?;
             tx.put(OWNER, KIND, "saved", &json!(true))?;
             tx.put(OWNER, KIND, "current", &serde_json::to_value(&next)?)?;

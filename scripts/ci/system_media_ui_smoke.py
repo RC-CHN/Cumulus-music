@@ -30,7 +30,7 @@ def main():
     if args.runtime:
         env['PATH']=str(args.runtime.resolve())+os.pathsep+env.get('PATH','')
     reports=[]
-    for phase,count in [('first',10),('reopen',2)]:
+    for phase,count in [('first',12),('reopen',2)]:
         if phase=='reopen':env['CUMULUS_PROOF_REOPEN']='1'
         output=root/phase
         with (root/f'{phase}.log').open('x',encoding='utf-8') as log:
@@ -65,8 +65,11 @@ def main():
             records.extend(connection.execute("SELECT kind,key,value FROM state WHERE owner='local-device' AND kind IN ('system-media-preferences-v1','system-media-recovery-v1')").fetchall())
             assert connection.execute("SELECT count(*) FROM sqlite_master WHERE type='trigger' AND name='reject_media_ui'").fetchone()[0]==0
     backups=[json.loads(value) for kind,key,value in records if kind=='system-media-recovery-v1']
-    assert len(backups)==1 and backups[0]['current']['enabled']=='invalid'
-    result={'ok':True,'actualWebView':True,'states':12,'screenshots':12 if args.screenshots else 0,
+    assert len(backups)==2
+    assert any((b.get('current') or {}).get('enabled')=='invalid' for b in backups)
+    assert any(b.get('current_raw')=='{broken' and b['current'] is None for b in backups)
+    result={'ok':True,'actualWebView':True,'states':14,'screenshots':14 if args.screenshots else 0,
+            'malformedJsonRecoveryVerified':True,
             'nativePlaybackContinues':True,'preferenceRestartVerified':True,'realMusicRequests':0,
             'physicalAudioOutputVerified':False,'physicalShellPanelVerified':False}
     (root/'report.json').write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8')
