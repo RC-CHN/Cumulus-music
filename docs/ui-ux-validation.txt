@@ -738,3 +738,29 @@ Windows现场与接续提示焦点复查（2026-10-29）
 虚拟桌面使用 zh_CN.UTF-8、真实 GTK/WebKitGTK 与 libmpv/null 输出；不证明物理桌面
 刷新率、显示缩放、真实音频设备或 Windows 窗口行为。Windows 由独立 CI runner 执行。
 本轮不发布版本、不改 v0.1.0；完整目标仍在继续，Windows SMTC 诊断失败也未宣称解决。
+
+2026-10-29：迷你模式共享快捷键与界面回归
+- 官方 M116 mini_max 与 M81 文本编辑判断继续优先；默认 Ctrl+M/Ctrl+Alt+M 和自定义
+  键位现已连接主窗口/小窗。真实 WebView 标签分别登记监听，销毁小窗不会注销主窗口。
+  捕获窗口意图、账号 epoch 和媒体观察值；旧窗口、旧账号、录入暂停期间的动作被拒绝。
+- .build/mini-shortcuts-webview-2/report.json：两张真实 WebKitGTK WebView，6 个状态/
+  6 张截图，独立 XTest 进程持有前台后发系统快捷键。完成改键/旧键释放、窗口切换、
+  录入暂停与恢复、播放/音量/喜欢、按钮/滑块/文本/模态框键盘规则和账号隔离。
+- .build/mini-shortcuts-mini-final/report.json：原小窗流程 8 态/8 图全部通过，包括
+  8 秒加载失败恢复、队列 30+10 分页、深浅色、置顶重开、托盘返回、重载、关闭提示、
+  旧 ticket/账号拒绝。小窗/主窗口始终共用一个真实音频实例。
+- .build/mini-shortcuts-settings-regression/report.json：设置页 18 态/18 图通过，
+  包括 760×540 深色布局、实际播放、冲突/取消、保存失败焦点、损坏修复和进程重开。
+  已查看小窗浅色/深色、展开队列和主窗口深色失败提示截图，未见控件横向裁切。
+- .build/mini-shortcuts-gallery/index.html 汇总本轮 32 图；仅用 CSS 隐藏虚拟桌面黑边，
+  原 PNG 和逐态 JSON 均保留。新流程前一次超时是测试在销毁窗口后等待该窗口回执；
+  .build/mini-shortcuts-webview-1 与 mini-shortcuts-mini-regression 保留失败证据。
+  修正为先回执测试调度，再验证真实原生窗口转换；没有忽略失败或放宽业务断言。
+- Rust 全 workspace 244 个目标、1136 项通过，失败/忽略为 0。前端 npm ci、
+  format:check、220 项测试、类型检查/生产构建通过；fmt、严格 workspace Clippy、
+  21 项 CI 规则通过。最终构建的 16 个前端文件 SHA256 与 GUI 验证时一致。
+  本地 executable：.build/target/debug/cumulus；新源码在 feat/mini-shortcuts 分支。
+- Linux/Windows CI 增加 --shortcuts 独立流程；Windows SendInput 和 WebView2 仍须
+  它自己的精确提交运行证据。物理 pan 桌面未登录，本次不声称实机高刷、真实声卡或
+  物理 DPI 通过；Windows SMTC 独立诊断的既有失败也没有由本次小窗测试解决。
+  全范围迁移目标仍进行中，桌面歌词/Wayland 全局入口等剩余项没有删除。

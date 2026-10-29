@@ -13,7 +13,9 @@
       overflow:document.documentElement.scrollWidth>innerWidth,buttons:[...document.querySelectorAll('button')].map(n=>({label:n.getAttribute('aria-label')||n.textContent.trim(),...r(n)})),
       rows:document.querySelectorAll('.mini-queue-rows li').length,background:getComputedStyle(document.querySelector('.mini-shell')).backgroundColor };`;
   const capture = async name => { await sleep(550); const data=await mini(facts); assert(!data.overflow, 'mini horizontal overflow'); assert(data.buttons.every(b=>b.x>=0 && b.right<=data.width+1 && b.width>0), 'mini horizontal controls'); await emit({kind:'snapshot',stage:`ux_${String(++stageCount).padStart(2,'0')}_${name}`,...data}); await sleep(1300); };
-  const clickMini = label => mini(`const b=[...document.querySelectorAll('button')].find(b=>b.getAttribute('aria-label')===${JSON.stringify(label)});if(!b||b.disabled)throw Error('mini button unavailable: '+${JSON.stringify(label)});b.click();return true;`);
+  // A return/close destroys this WebView; acknowledge the fixture before
+  // scheduling the click, then let callers verify the actual native transition.
+  const clickMini = label => mini(`const b=[...document.querySelectorAll('button')].find(b=>b.getAttribute('aria-label')===${JSON.stringify(label)});if(!b||b.disabled)throw Error('mini button unavailable: '+${JSON.stringify(label)});${['返回主窗口','关闭窗口'].includes(label) ? 'setTimeout(()=>b.click(),100)' : 'b.click()'};return true;`);
   const read = () => mini(`return await window.__TAURI_INTERNALS__.invoke('mini_read',{generation:location.hash.slice(6)});`);
   const open = async () => { await invoke('mini_enter'); await wait(async()=>!(await fixture('windows')).main,'main hidden after mini ready'); await wait(async()=>(await read()).media.item,'mini populated'); };
   try {

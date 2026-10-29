@@ -112,6 +112,25 @@ fn main() {
                     mini.eval(format!(r#"(async()=>{{try{{const value=await (async()=>{{{source}}})();await window.__TAURI_INTERNALS__.invoke('plugin:event|emit',{{event:'mini-proof',payload:{{kind:'result',id:{id},value}}}});}}catch(e){{await window.__TAURI_INTERNALS__.invoke('plugin:event|emit',{{event:'mini-proof',payload:{{kind:'result',id:{id},error:String(e?.message||e)}}}});}}}})();"#)).unwrap();
                 }
                 "result" => ack(value.clone()),
+                "key" => {
+                    let id = id.as_u64().expect("key sequence");
+                    let request = output.join(format!("key-{id}.json"));
+                    let pending = request.with_extension("pending");
+                    fs::write(&pending, serde_json::to_vec(&value).unwrap()).unwrap();
+                    fs::rename(pending, request).unwrap();
+                    let reply = output.join(format!("key-{id}.done"));
+                    let handle = handle.clone();
+                    tauri::async_runtime::spawn(async move {
+                        for _ in 0..100 {
+                            if reply.exists() {
+                                handle.get_webview_window("main").unwrap().eval(format!("window.__miniAck[{id}]={{ok:true}};")).unwrap();
+                                return;
+                            }
+                            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                        }
+                        handle.get_webview_window("main").unwrap().eval(format!("window.__miniAck[{id}]={{error:'independent keyboard did not reply'}};")).unwrap();
+                    });
+                }
                 "block" => { block.store(value["enabled"]==true,Ordering::Release); ack(json!({"ok":true})); }
                 "account" => { session.adopt(api.clone(),json!({"userId":99}),&session.token().unwrap()).unwrap(); ack(json!({"ok":true})); }
                 "show" => { cumulus_desktop::lifecycle::show(&handle); ack(json!({"ok":true})); }
@@ -137,10 +156,15 @@ fn main() {
         });
         tauri::WebviewWindowBuilder::from_config(app,&config)?.build()?;
         cumulus_desktop::lifecycle::install(app.handle())?;
+        cumulus_desktop::shortcuts::install(app.handle());
         Ok(())
     }).on_page_load(|view,payload| {
         if view.label()=="main" && payload.event()==PageLoadEvent::Finished {
-            view.eval(include_str!("mini_ui_probe.js")).unwrap();
+            view.eval(if std::env::var_os("CUMULUS_MINI_SHORTCUT_PROOF").is_some() {
+                include_str!("mini_shortcuts_ui_probe.js")
+            } else {
+                include_str!("mini_ui_probe.js")
+            }).unwrap();
         }
     }).run(context).expect("mini WebView proof");
 }
