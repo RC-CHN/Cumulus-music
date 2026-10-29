@@ -994,3 +994,21 @@ Windows现场与接续提示焦点复查（2026-10-29）
   ux_ui_probe 已重新构建，player-layout-delivery/tested-artifacts.json 记录产物摘要。
   新 20 态流程加入 Linux/Windows 独立 CI job；远端精确提交的结论仍以其完整运行为准。
   没有发布版本，本轮完成界面专项修正，完整业务迁移目标仍未完成。
+
+2026-10-29：逐页 UI/UX 验收口径与每日推荐官方布局（fix/daily-recommendation-layout）
+- 用户再次明确逐项一致性的范围是 UI/UX。新增 ui-ux-audit.txt，按页面/共用控件记录
+  已核对状态与剩余差异；接口或 DSP 进展不得计作界面验收。已有专项截图不等于完整
+  页面、完整状态或官方像素一致；本轮继续使用隔离 WebView，物理桌面仍未验证。
+- 重新阅读官方 Header、left/nav-item、PlayBar 和 dailyRecommend/views 的恢复源码。
+  每日推荐原来只有通用标题；新增日期/月份/标题各自字号，恢复描述层级和操作区间距，
+  隐藏空 playlist-toolbar 的留白。播放/下载从不同高度和圆角改为该页官方默认分支的
+  48px 高、8px 圆角，下载短文案保留完整可访问名称和提示。没有新增核心业务或请求。
+- .build/daily-layout-before 为改前 8 态，标题/间距检查失败；daily-layout-after 为中间
+  标题修复的外置 dist 8 态；daily-layout-final 为最终内嵌 production dist 的 8 态通过，
+  包括两尺寸/两主题日推、搜索和我的歌单。daily-layout-download 为 20 态下载弹窗复验，
+  实际点击短文案入口、关闭、焦点恢复，以及设置/迁移选择布局均通过；没有开始下载。
+  最终共 28 张截图与 8 组改前对照位于 .build/daily-layout-gallery/index.html。
+- 本机前端安装/格式/229 测试/类型检查/构建通过，Rust fmt、严格 Clippy 与全量
+  254 目标/1173 测试通过；最终前端重新内嵌构建 cumulus/ux_ui_probe 后运行上述界面检查。
+  来源、详细尺寸、证据与边界见 ui-ux-audit.txt。本次没有发布版本；全站 UI/UX 逐态审计
+  和完整目标仍进行中，不用这轮局部通过替代其余页面待核对项。
