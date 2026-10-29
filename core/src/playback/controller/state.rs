@@ -46,6 +46,8 @@ pub(super) struct Actor {
     pub relay_hint: crate::relay::publisher::player::Hint,
     pub equalizer: crate::effects::equalizer::EqualizerSnapshot,
     pub equalizer_initialized: bool,
+    pub loudness: crate::effects::loudness::LoudnessSnapshot,
+    pub loudness_initialized: bool,
     pub session: Arc<AccountSession>,
     pub store: Arc<StateStore>,
     pub resolver: Arc<SourceResolver>,
@@ -98,6 +100,8 @@ impl Actor {
             relay_hint: Default::default(),
             equalizer: Default::default(),
             equalizer_initialized: false,
+            loudness: Default::default(),
+            loudness_initialized: false,
             session,
             store,
             resolver,
@@ -156,6 +160,7 @@ impl Actor {
             startup_autoplay: self.startup_autoplay,
             fm: self.queue.is_fm(),
             equalizer: self.equalizer,
+            loudness: self.loudness.clone(),
             revision: self.revision,
             control_revision: self.control_revision,
             seek_revision: self.seek_revision,
@@ -236,10 +241,13 @@ impl Actor {
         self.cancel_load().await?;
         // An explicit stop must still work after a session expires.
         let result = super::engine(self.engine.clone(), Cancellation::default(), |engine| {
-            engine.stop()
+            let stopped = engine.stop();
+            let cleared = engine.clear_loudness();
+            stopped.and(cleared)
         })
         .await;
         self.loaded = None;
+        self.loudness_forget_track();
         self.play_id = None;
         self.position = None;
         self.state = PlaybackStatus::Idle;

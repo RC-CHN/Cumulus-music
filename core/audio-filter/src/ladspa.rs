@@ -9,6 +9,7 @@ pub struct PortRange {
     upper: f32,
 }
 #[repr(C)]
+#[derive(Clone, Copy)]
 pub struct Descriptor {
     unique_id: c_ulong,
     label: *const c_char,
@@ -80,13 +81,27 @@ static DESCRIPTOR: Descriptor = Descriptor {
     deactivate: None,
     cleanup: Some(cleanup),
 };
+static LOUDNESS_DESCRIPTOR: Descriptor = Descriptor {
+    unique_id: 0x43554e,
+    label: c"cumulus_loudness".as_ptr(),
+    name: c"Cumulus recovered loudness balance".as_ptr(),
+    instantiate: Some(instantiate_loudness),
+    ..DESCRIPTOR
+};
 #[unsafe(no_mangle)]
 pub extern "C" fn ladspa_descriptor(index: c_ulong) -> *const Descriptor {
-    if index == 0 {
-        &DESCRIPTOR
-    } else {
-        std::ptr::null()
+    match index {
+        0 => &DESCRIPTOR,
+        1 => &LOUDNESS_DESCRIPTOR,
+        _ => std::ptr::null(),
     }
+}
+unsafe extern "C" fn instantiate_loudness(_: *const Descriptor, rate: c_ulong) -> *mut c_void {
+    #[allow(clippy::unnecessary_cast)]
+    contain(std::ptr::null_mut(), || {
+        Processor::new_loudness(rate as u64)
+            .map_or(std::ptr::null_mut(), |p| Box::into_raw(Box::new(p)).cast())
+    })
 }
 unsafe extern "C" fn instantiate(_: *const Descriptor, rate: c_ulong) -> *mut c_void {
     #[allow(clippy::unnecessary_cast)]

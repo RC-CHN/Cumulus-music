@@ -42,6 +42,15 @@ pub trait AudioEngine: Send {
     ) -> Result<Option<crate::effects::equalizer::abi::EqualizerStats>> {
         Ok(None)
     }
+    fn apply_loudness(&mut self, _: crate::effects::loudness::LoudnessSettings) -> Result<bool> {
+        Ok(false)
+    }
+    fn clear_loudness(&mut self) -> Result<()> {
+        Ok(())
+    }
+    fn observe_loudness(&mut self) -> Result<Option<crate::effects::loudness::abi::LoudnessStats>> {
+        Ok(None)
+    }
     fn load(&mut self, request: LoadRequest, cancel: &Cancellation) -> Result<LoadedMedia>;
     fn pause(&mut self, paused: bool) -> Result<()>;
     fn seek(&mut self, seconds: f64) -> Result<()>;

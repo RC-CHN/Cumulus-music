@@ -27,7 +27,8 @@ impl Actor {
     pub async fn rebind(&mut self) -> Result<()> {
         let token = self.session.token()?;
         if token == self.token && self.bound {
-            return self.equalizer_sync().await;
+            self.equalizer_sync().await?;
+            return self.loudness_sync().await;
         }
         let stopped = self.stop(false).await;
         let owner = token.uid.as_deref().unwrap_or("local-guest");
@@ -53,6 +54,7 @@ impl Actor {
         }
         self.error = None;
         self.equalizer_sync().await?;
+        self.loudness_sync().await?;
         stopped
     }
     pub async fn sync_queue(&mut self) -> Result<()> {
@@ -102,6 +104,7 @@ impl Actor {
             return Ok(());
         }
         self.equalizer_observe().await?;
+        self.loudness_observe().await?;
         let view = super::engine(self.engine.clone(), self.guard(), |engine| engine.poll()).await?;
         let loaded = self
             .loaded

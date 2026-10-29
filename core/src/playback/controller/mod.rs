@@ -4,6 +4,7 @@ mod actions;
 mod equalizer;
 mod history;
 mod load;
+mod loudness;
 mod remote;
 mod startup;
 mod state;

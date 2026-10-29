@@ -9,6 +9,8 @@ pub mod catalog;
 pub mod compose;
 pub mod dsp;
 pub mod equalizer;
+mod filter_graph;
+pub mod loudness;
 pub mod material;
 pub mod ncae;
 pub mod rights;

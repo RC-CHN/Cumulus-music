@@ -193,6 +193,18 @@ impl<E: AudioEngine + ?Sized> AudioEngine for Focused<E> {
     ) -> Result<Option<crate::effects::equalizer::abi::EqualizerStats>> {
         self.inner.observe_equalizer()
     }
+    fn apply_loudness(
+        &mut self,
+        value: crate::effects::loudness::LoudnessSettings,
+    ) -> Result<bool> {
+        self.inner.apply_loudness(value)
+    }
+    fn clear_loudness(&mut self) -> Result<()> {
+        self.inner.clear_loudness()
+    }
+    fn observe_loudness(&mut self) -> Result<Option<crate::effects::loudness::abi::LoudnessStats>> {
+        self.inner.observe_loudness()
+    }
     fn load(&mut self, r: LoadRequest, c: &Cancellation) -> Result<LoadedMedia> {
         // AudioEngine loads paused. Only pause(false) may start presentation.
         self.inner.load(r, c)

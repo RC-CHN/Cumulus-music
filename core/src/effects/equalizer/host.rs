@@ -91,28 +91,7 @@ impl EqualizerHost {
     }
     /// FFmpeg filter graph only; mpv adds its own length-prefixed quoting layer.
     pub fn filter_graph(&self) -> String {
-        // Two tokenizers: option values first, then the outer filter graph.
-        fn escape(value: &str, special: &str) -> String {
-            let mut result = String::new();
-            for c in value.chars() {
-                if special.contains(c) {
-                    result.push('\\');
-                }
-                result.push(c);
-            }
-            result
-        }
-        let value = escape(self.path.to_str().expect("checked path"), "\\': ");
-        let value = escape(&value, "\\'[],; ");
-        // The recovered four-sample recurrence has distinct scalar tail
-        // rounding. Normalize decoder-dependent frame sizes before LADSPA,
-        // also keeping bypass fades at our declared adapter capacity. Do not
-        // pad EOF: preserve exact duration and the final partial block.
-        format!(
-            "asetnsamples=n={}:p=0,ladspa=file={value}:plugin=cumulus_geq:controls={}",
-            abi::CAPACITY,
-            self.id
-        )
+        super::super::filter_graph::graph(&self.path, "cumulus_geq", abi::CAPACITY, self.id)
     }
 }
 impl Drop for EqualizerHost {

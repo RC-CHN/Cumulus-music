@@ -95,6 +95,7 @@ impl Actor {
         }
         self.cancel_load().await?;
         self.loaded = None;
+        self.loudness_forget_track();
         self.position = None;
         self.error = None;
         self.reset = false;
@@ -116,7 +117,12 @@ impl Actor {
         let sender = self.sender.clone();
         self.load_task = Some(tokio::spawn(async move {
             let result = async {
-                super::engine(engine.clone(), cancel.clone(), |engine| engine.stop()).await?;
+                super::engine(engine.clone(), cancel.clone(), |engine| {
+                    engine.stop()?;
+                    // Discard the previous track's gain before priming a new decoder.
+                    engine.clear_loudness()
+                })
+                .await?;
                 cancel.check()?;
                 let source = match options.source {
                     Some(source) => source,
@@ -223,6 +229,13 @@ impl Actor {
         }
         let result = match result {
             Ok(prepared) => {
+                if let Err(error) = self.loudness_source(&prepared.source).await {
+                    let _ = self.stop(false).await;
+                    if let Some(reply) = pending.reply {
+                        let _ = reply.send(Err(error));
+                    }
+                    return;
+                }
                 if self.equalizer.status == crate::effects::equalizer::EqualizerStatus::Pending
                     && let Err(error) = self.equalizer_apply().await
                 {
@@ -293,12 +306,15 @@ impl Actor {
             }
             Err(error) => {
                 let _ = super::engine(self.engine.clone(), Default::default(), |engine| {
-                    engine.stop()
+                    let stopped = engine.stop();
+                    let cleared = engine.clear_loudness();
+                    stopped.and(cleared)
                 })
                 .await;
                 self.state = PlaybackStatus::Error;
                 self.error = Some(error.to_string());
                 self.loaded = None;
+                self.loudness_forget_track();
                 if let Some(reply) = pending.reply {
                     self.reply(reply, Err(error));
                 }

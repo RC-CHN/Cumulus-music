@@ -145,6 +145,17 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
     }
     Ok(PlayerView {
         fm: value.fm,
+        loudness: LoudnessView {
+            revision: (!value.loudness.damaged)
+                .then(|| value.loudness.preferences.revision.clone()),
+            enabled: value.loudness.preferences.enabled,
+            status: value.loudness.status,
+            gain_db: value
+                .loudness
+                .gain
+                .map(crate::effects::loudness::TrackGain::decibels),
+            damaged: value.loudness.damaged,
+        },
         equalizer: EqualizerView {
             revision: value.equalizer.preferences.revision.to_string(),
             settings: value.equalizer.preferences.settings,
@@ -253,6 +264,9 @@ impl MusicClient {
             PlayerAction::Equalizer { .. }
                 | PlayerAction::RetryEqualizer
                 | PlayerAction::RepairEqualizer
+                | PlayerAction::Loudness { .. }
+                | PlayerAction::RetryLoudness
+                | PlayerAction::RepairLoudness
         );
         self.together_validate_action(&token, &action)?;
         let together_action = super::together::signal(&action);
@@ -264,6 +278,9 @@ impl MusicClient {
                 | PlayerAction::Equalizer { .. }
                 | PlayerAction::RetryEqualizer
                 | PlayerAction::RepairEqualizer
+                | PlayerAction::Loudness { .. }
+                | PlayerAction::RetryLoudness
+                | PlayerAction::RepairLoudness
         ) {
             Some(
                 self.player
@@ -403,6 +420,15 @@ impl MusicClient {
             }
             PlayerAction::RetryEqualizer => PlaybackCommand::RetryEqualizer,
             PlayerAction::RepairEqualizer => PlaybackCommand::RepairEqualizer,
+            PlayerAction::Loudness {
+                expected_revision,
+                enabled,
+            } => PlaybackCommand::Loudness {
+                expected_revision,
+                enabled,
+            },
+            PlayerAction::RetryLoudness => PlaybackCommand::RetryLoudness,
+            PlayerAction::RepairLoudness => PlaybackCommand::RepairLoudness,
             PlayerAction::Play if policy == NativeTransportPolicy::RestartStopped => {
                 PlaybackCommand::PlayFromStart
             }

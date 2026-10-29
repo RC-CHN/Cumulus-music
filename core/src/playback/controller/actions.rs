@@ -57,6 +57,9 @@ impl Actor {
                 | PlaybackCommand::Equalizer { .. }
                 | PlaybackCommand::RetryEqualizer
                 | PlaybackCommand::RepairEqualizer
+                | PlaybackCommand::Loudness { .. }
+                | PlaybackCommand::RetryLoudness
+                | PlaybackCommand::RepairLoudness
         ) {
             // A user/remote transport intent wins over a delayed UI connect.
             self.startup_pending = false;
@@ -102,6 +105,9 @@ impl Actor {
                 | PlaybackCommand::Equalizer { .. }
                 | PlaybackCommand::RetryEqualizer
                 | PlaybackCommand::RepairEqualizer
+                | PlaybackCommand::Loudness { .. }
+                | PlaybackCommand::RetryLoudness
+                | PlaybackCommand::RepairLoudness
         ) {
             let Some(revision) = self.control_revision.checked_add(1) else {
                 self.reply(
@@ -141,6 +147,12 @@ impl Actor {
             } => self.equalizer_change(expected_revision, settings).await,
             PlaybackCommand::RetryEqualizer => self.equalizer_retry().await,
             PlaybackCommand::RepairEqualizer => self.equalizer_repair().await,
+            PlaybackCommand::Loudness {
+                expected_revision,
+                enabled,
+            } => self.loudness_change(&expected_revision, enabled).await,
+            PlaybackCommand::RetryLoudness => self.loudness_retry().await,
+            PlaybackCommand::RepairLoudness => self.loudness_repair().await,
             PlaybackCommand::UpdateQueue(value) => {
                 self.update_queue(value).await.map(|value| options = value)
             }

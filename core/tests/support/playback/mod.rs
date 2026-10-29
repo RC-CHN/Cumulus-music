@@ -30,6 +30,7 @@ impl ResolverClock for Clock {
 }
 #[derive(Default)]
 pub struct Backend {
+    pub gains: Mutex<std::collections::BTreeMap<u64, Value>>,
     pub calls: Mutex<Vec<(u64, String)>>,
     pub hold: AtomicU64,
     pub deny_lossless: AtomicBool,
@@ -60,6 +61,7 @@ impl Api for Backend {
             Ok(json!({"code":200,"data":[{
                 "id":id,"code":code,"url":"https://m1.music.126.net/fixture.mp3?secret=private",
                 "md5":"abcd","expi":10,"level":"standard",
+                "gain":self.gains.lock().unwrap().get(&id).cloned().unwrap_or(Value::Null),
                 "freeTrialInfo":if self.trial.load(Ordering::SeqCst) {json!({"start":30,"end":60})} else {Value::Null}
             }]}))
         })
@@ -84,6 +86,11 @@ pub struct DeviceState {
     pub pauses: Vec<bool>,
 }
 pub struct Device {
+    pub loudness_supported: AtomicBool,
+    pub loudness_fail: AtomicBool,
+    pub loudness_clear_fail: AtomicBool,
+    pub loudness: Mutex<Option<cumulus_core::effects::loudness::LoudnessSettings>>,
+    pub loudness_at_unpause: Mutex<Vec<Option<cumulus_core::effects::loudness::LoudnessSettings>>>,
     pub equalizer_supported: AtomicBool,
     pub equalizer_fail: AtomicBool,
     pub equalizer_hold: AtomicBool,
@@ -101,6 +108,11 @@ pub struct Device {
 impl Default for Device {
     fn default() -> Self {
         Self {
+            loudness_supported: AtomicBool::new(false),
+            loudness_fail: AtomicBool::new(false),
+            loudness_clear_fail: AtomicBool::new(false),
+            loudness: Mutex::new(None),
+            loudness_at_unpause: Mutex::new(Vec::new()),
             equalizer_supported: AtomicBool::new(false),
             equalizer_fail: AtomicBool::new(false),
             equalizer_hold: AtomicBool::new(false),
@@ -139,6 +151,26 @@ pub fn audio_engine(device: Arc<Device>) -> Box<dyn AudioEngine> {
     Box::new(Engine(device))
 }
 impl AudioEngine for Engine {
+    fn apply_loudness(
+        &mut self,
+        settings: cumulus_core::effects::loudness::LoudnessSettings,
+    ) -> Result<bool> {
+        if !self.0.loudness_supported.load(Ordering::SeqCst) {
+            return Ok(false);
+        }
+        if self.0.loudness_fail.load(Ordering::SeqCst) {
+            return Err(Error::State("injected loudness failure"));
+        }
+        *self.0.loudness.lock().unwrap() = Some(settings);
+        Ok(true)
+    }
+    fn clear_loudness(&mut self) -> Result<()> {
+        if self.0.loudness_clear_fail.load(Ordering::SeqCst) {
+            return Err(Error::State("injected loudness cleanup failure"));
+        }
+        *self.0.loudness.lock().unwrap() = None;
+        Ok(())
+    }
     fn apply_equalizer(
         &mut self,
         settings: cumulus_core::effects::equalizer::EqualizerSettings,
@@ -187,6 +219,11 @@ impl AudioEngine for Engine {
             return Err(Error::State("injected native unpause failure"));
         }
         if !paused {
+            self.0
+                .loudness_at_unpause
+                .lock()
+                .unwrap()
+                .push(*self.0.loudness.lock().unwrap());
             self.0
                 .equalizer_at_unpause
                 .lock()

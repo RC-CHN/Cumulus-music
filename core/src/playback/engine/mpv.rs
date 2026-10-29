@@ -10,6 +10,7 @@ use std::{
     path::PathBuf,
     time::{Duration, Instant},
 };
+mod loudness;
 
 #[derive(Default)]
 pub struct MpvConfig {
@@ -25,6 +26,7 @@ pub struct MpvEngine {
     // Native is destroyed first, so its filter callbacks finish before the
     // owning adapter handle/library are released.
     equalizer: Option<crate::effects::equalizer::EqualizerHost>,
+    loudness: Option<crate::effects::loudness::LoudnessHost>,
     equalizer_library: Option<PathBuf>,
     sequence: u64,
     events: VecDeque<EngineEvent>,
@@ -41,6 +43,10 @@ impl MpvEngine {
     pub fn with_equalizer_library(mut self, path: PathBuf) -> Self {
         self.equalizer_library = Some(path);
         self
+    }
+    /// Shared trusted filter library, with independently owned effect handles.
+    pub fn with_effects_library(self, path: PathBuf) -> Self {
+        self.with_equalizer_library(path)
     }
     /// Attach the trusted native adapter to this player's actual decoder/filter
     /// chain. Opening before a track is allowed; stats distinguish configuration
@@ -118,6 +124,7 @@ impl MpvEngine {
         let mut engine = Self {
             native,
             equalizer: None,
+            loudness: None,
             equalizer_library: None,
             sequence: 0,
             events: VecDeque::new(),
@@ -427,6 +434,18 @@ impl AudioEngine for MpvEngine {
     ) -> Result<Option<crate::effects::equalizer::abi::EqualizerStats>> {
         self.equalizer.as_ref().map(|h| h.stats()).transpose()
     }
+    fn apply_loudness(
+        &mut self,
+        settings: crate::effects::loudness::LoudnessSettings,
+    ) -> Result<bool> {
+        self.configure_loudness(settings)
+    }
+    fn clear_loudness(&mut self) -> Result<()> {
+        self.detach_loudness()
+    }
+    fn observe_loudness(&mut self) -> Result<Option<crate::effects::loudness::abi::LoudnessStats>> {
+        self.loudness.as_ref().map(|h| h.stats()).transpose()
+    }
     fn load(&mut self, request: LoadRequest, cancel: &Cancellation) -> Result<LoadedMedia> {
         let result = self.load_inner(request, cancel);
         if result.is_err() {
@@ -461,6 +480,13 @@ impl AudioEngine for MpvEngine {
         Ok(())
     }
     fn poll(&mut self) -> Result<EngineSnapshot> {
+        if let Some(loudness) = &self.loudness
+            && loudness.stats()?.failed_blocks != 0
+        {
+            return Err(Error::Media(
+                "loudness processing failed; recreate the adapter",
+            ));
+        }
         if let Some(equalizer) = &self.equalizer
             && equalizer.stats()?.failed_blocks != 0
         {

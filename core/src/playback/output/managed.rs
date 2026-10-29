@@ -315,6 +315,18 @@ impl<E: AudioEngine + ?Sized> AudioEngine for ManagedOutput<E> {
     ) -> Result<Option<crate::effects::equalizer::abi::EqualizerStats>> {
         self.inner.observe_equalizer()
     }
+    fn apply_loudness(
+        &mut self,
+        value: crate::effects::loudness::LoudnessSettings,
+    ) -> Result<bool> {
+        self.inner.apply_loudness(value)
+    }
+    fn clear_loudness(&mut self) -> Result<()> {
+        self.inner.clear_loudness()
+    }
+    fn observe_loudness(&mut self) -> Result<Option<crate::effects::loudness::abi::LoudnessStats>> {
+        self.inner.observe_loudness()
+    }
 }
 impl<E: VideoEngine + ?Sized> VideoEngine for ManagedOutput<E> {
     fn resize(&self, width: u32, height: u32) -> Result<()> {

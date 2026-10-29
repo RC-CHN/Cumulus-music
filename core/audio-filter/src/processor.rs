@@ -1,13 +1,16 @@
-use crate::control::{Control, registry};
+use crate::{
+    control::{Control, registry},
+    processor_stage::Stage,
+};
 use cumulus_core::effects::{
-    dsp::{Format, GraphicEq, PlanarBlock},
+    dsp::{Format, PlanarBlock},
     equalizer::abi,
 };
 use std::sync::{Arc, TryLockError, atomic::Ordering};
 
 pub(crate) struct Processor {
     pub ports: [*mut f32; 3],
-    stage: GraphicEq,
+    stage: Stage,
     block: PlanarBlock,
     control: Option<Arc<Control>>,
     revision: u64,
@@ -15,10 +18,16 @@ pub(crate) struct Processor {
 }
 impl Processor {
     pub fn new(rate: u64) -> Option<Self> {
+        Self::new_for(rate, false)
+    }
+    pub fn new_loudness(rate: u64) -> Option<Self> {
+        Self::new_for(rate, true)
+    }
+    fn new_for(rate: u64, loudness: bool) -> Option<Self> {
         let format = Format::new(rate as f32, 1, abi::CAPACITY).ok()?;
         Some(Self {
             ports: [std::ptr::null_mut(); 3],
-            stage: GraphicEq::new(format).ok()?,
+            stage: Stage::new(format, loudness).ok()?,
             block: PlanarBlock::new(format),
             control: None,
             revision: 0,
@@ -30,7 +39,7 @@ impl Processor {
         // The host connects the native-owned configuration ID before activation.
         // Bind and copy its initial settings here: registry/configuration lock
         // contention must not turn the first audio block into silence.
-        if let Ok(stage) = GraphicEq::new(self.block.format()) {
+        if let Ok(stage) = self.stage.recreate(self.block.format()) {
             self.stage = stage;
             self.revision = 0;
             self.faulted = false;
@@ -83,9 +92,7 @@ impl Processor {
             }
         };
         if config.revision != self.revision {
-            if self.stage.set_gains(config.settings.gains()).is_err()
-                || self.stage.set_bypass(!config.settings.enabled()).is_err()
-            {
+            if self.stage.configure(config.settings).is_err() {
                 return false;
             }
             if self.revision == 0 && !config.settings.enabled() {

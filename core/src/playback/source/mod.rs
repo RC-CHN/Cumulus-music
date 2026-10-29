@@ -2,6 +2,7 @@
 //! reads. Signed URLs live in memory only. Local resolution uses LocalLibrary.
 mod cache;
 mod fetch;
+mod loudness;
 use super::{Timeline, engine::MediaInput};
 use crate::{
     Error, Result,
@@ -166,6 +167,7 @@ impl SourceResolver {
         // Persisted downloaded resources revalidate the account ledger on every
         // selection, queue advance and restore, including encrypted membership.
         let mut quality = None;
+        let mut downloaded_gain = None;
         if let Some(id) = resource.get("download_task_id") {
             let id = id
                 .as_str()
@@ -193,6 +195,11 @@ impl SourceResolver {
             } else {
                 Some(check.record.quality.as_str().to_owned())
             };
+            downloaded_gain = task
+                .resource
+                .as_ref()
+                .and_then(|value| value.get("gain"))
+                .cloned();
         } else if let Some(ledger) = resource.get("download_ledger") {
             self.session.with_token(token, |owner| {
                 if resource["download_ledger_owner"].as_str() != Some(owner) {
@@ -221,19 +228,47 @@ impl SourceResolver {
             .library
             .clone()
             .ok_or(Error::State("local playback requires library"))?;
-        let mut source=tokio::task::spawn_blocking(move || -> Result<ResolvedSource> {
+        let mut source = tokio::task::spawn_blocking(move || -> Result<ResolvedSource> {
             if resource.get("local_id").is_some() {
-                let local:LocalResource=serde_json::from_value(resource)?;
-                let source=library.resolve(&local)?;
-                Ok(ResolvedSource {input:MediaInput::File(source.source),info:json!({"kind":"local","metadata":source.metadata,"segment":source.segment})})
+                let local: LocalResource = serde_json::from_value(resource)?;
+                let item = library.item(&local.local_id)?;
+                // A container's gain does not identify the separate CUE tracks.
+                let gain = if matches!(
+                    local.local_revision,
+                    crate::library::LocalRevision::Cue { .. }
+                ) {
+                    (Value::Null, false)
+                } else {
+                    loudness::file_gain(&item.path)
+                };
+                let source = library.resolve(&local)?;
+                Ok(ResolvedSource {
+                    input: MediaInput::File(source.source),
+                    info: loudness::with_gain(
+                        json!({"kind":"local","metadata":source.metadata,"segment":source.segment}),
+                        gain,
+                    ),
+                })
             } else {
-                let path=resource["path"].as_str().ok_or(Error::InvalidInput("invalid local audio path"))?;
-                let path=library.playable_path(path)?;
-                Ok(ResolvedSource {input:MediaInput::File(path),info:json!({"kind":"local"})})
+                let path = resource["path"]
+                    .as_str()
+                    .ok_or(Error::InvalidInput("invalid local audio path"))?;
+                let gain = loudness::file_gain(std::path::Path::new(path));
+                let path = library.playable_path(path)?;
+                Ok(ResolvedSource {
+                    input: MediaInput::File(path),
+                    info: loudness::with_gain(json!({"kind":"local"}), gain),
+                })
             }
-        }).await.map_err(|_|Error::State("local source worker failed"))??;
+        })
+        .await
+        .map_err(|_| Error::State("local source worker failed"))??;
         if let Some(quality) = quality {
             source.info["resource_info"] = json!({"level": quality});
+        }
+        if let Some(gain) = downloaded_gain {
+            source.info["volume_delta"] = gain;
+            source.info["loudness_invalid"] = json!(false);
         }
         if self.session.token()? != *token {
             return Err(Error::StaleResponse);

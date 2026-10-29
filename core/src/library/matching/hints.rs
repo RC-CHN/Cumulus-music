@@ -32,61 +32,66 @@ impl MetadataProbe for FileMetadataProbe {
         if matches!(item.revision, LocalRevision::Cue { .. }) {
             return Ok(MatchHint::Absent);
         }
-        if item.metadata.container == "ncm" {
-            let reader = NcmReader::open(&item.path, HeaderPolicy::Compatible)?;
-            return Ok(match &reader.info().metadata {
-                Some(value) => metadata_song(
-                    if value.get("programId").is_some() {
-                        "dj"
-                    } else {
-                        "music"
-                    },
-                    value,
-                )
-                .map(MatchHint::Song)
-                .unwrap_or(MatchHint::Invalid),
-                None => MatchHint::Absent,
-            });
-        }
-        let mut file = open_regular(&item.path)?;
-        let probe = Probe::new(&mut file).guess_file_type()?;
-        if probe.file_type().is_none() {
-            return Ok(MatchHint::Absent);
-        }
-        let tagged = probe
-            .options(
-                ParseOptions::new()
-                    .read_properties(false)
-                    .read_cover_art(false),
-            )
-            .read()
-            .map_err(|_| Error::Media("cannot read local matching metadata"))?;
-        let mut found = None;
-        for tag in tagged.tags() {
-            for text in tag
-                .get_strings(ItemKey::Comment)
-                .chain(tag.get_strings(ItemKey::Description))
-            {
-                if !text.starts_with(COMMENT_PREFIX) {
-                    continue;
-                }
-                let song = decode_comment(text)
-                    .ok()
-                    .and_then(|plain| decode_metadata(&plain));
-                let Some(song) = song else {
-                    return Ok(MatchHint::Invalid);
-                };
-                if found
-                    .as_ref()
-                    .is_some_and(|old: &Value| old["id"] != song["id"])
-                {
-                    return Ok(MatchHint::Invalid);
-                }
-                found = Some(song);
-            }
-        }
-        Ok(found.map(MatchHint::Song).unwrap_or(MatchHint::Absent))
+        file_metadata_hint(&item.path, item.metadata.container == "ncm")
     }
+}
+
+/// Read the existing official container metadata without a fuzzy network match.
+pub(crate) fn file_metadata_hint(path: &std::path::Path, is_ncm: bool) -> Result<MatchHint> {
+    if is_ncm {
+        let reader = NcmReader::open(path, HeaderPolicy::Compatible)?;
+        return Ok(match &reader.info().metadata {
+            Some(value) => metadata_song(
+                if value.get("programId").is_some() {
+                    "dj"
+                } else {
+                    "music"
+                },
+                value,
+            )
+            .map(MatchHint::Song)
+            .unwrap_or(MatchHint::Invalid),
+            None => MatchHint::Absent,
+        });
+    }
+    let mut file = open_regular(path)?;
+    let probe = Probe::new(&mut file).guess_file_type()?;
+    if probe.file_type().is_none() {
+        return Ok(MatchHint::Absent);
+    }
+    let tagged = probe
+        .options(
+            ParseOptions::new()
+                .read_properties(false)
+                .read_cover_art(false),
+        )
+        .read()
+        .map_err(|_| Error::Media("cannot read local matching metadata"))?;
+    let mut found = None;
+    for tag in tagged.tags() {
+        for text in tag
+            .get_strings(ItemKey::Comment)
+            .chain(tag.get_strings(ItemKey::Description))
+        {
+            if !text.starts_with(COMMENT_PREFIX) {
+                continue;
+            }
+            let song = decode_comment(text)
+                .ok()
+                .and_then(|plain| decode_metadata(&plain));
+            let Some(song) = song else {
+                return Ok(MatchHint::Invalid);
+            };
+            if found
+                .as_ref()
+                .is_some_and(|old: &Value| old["id"] != song["id"])
+            {
+                return Ok(MatchHint::Invalid);
+            }
+            found = Some(song);
+        }
+    }
+    Ok(found.map(MatchHint::Song).unwrap_or(MatchHint::Absent))
 }
 
 /// M/23 E: decoded `music:`/`dj:` metadata becomes an online track. This parser

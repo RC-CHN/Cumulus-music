@@ -1,0 +1,18 @@
+{
+  "source": "official desktop 3.1.42.205594",
+  "dllSha256": "c59105e1072d7d7dbd2d2844ac9c170de7e7b41eb463dc56a11c9b37bafac6be",
+  "oracleSha256": "928e706189a0990d89714b1d2da605299bfa2394cc3cc8ee9a03f141333dfc06",
+  "driverSha256": "989abfc90f8fd73a583b0292122eb915e58d53bd4bcd20bdf039ae2e241fcf8e",
+  "nativeCases": 159,
+  "conversionCases": 510,
+  "entrypoints": {
+    "init": "0xa6e30",
+    "process": "0xa6470",
+    "setParameters": "0xa7ae0",
+    "bypass": "0xa76e0",
+    "setReference": "0xa7b60",
+    "reset": "0xa7600",
+    "factor": "0xa5690"
+  },
+  "privateAccountData": false
+}

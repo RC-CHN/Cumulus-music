@@ -21,6 +21,18 @@ impl AudioEngine for MpvVideoEngine {
     fn set_output_device(&mut self, id: &str) -> Result<()> {
         self.engine.set_output_device(id)
     }
+    fn apply_loudness(
+        &mut self,
+        value: crate::effects::loudness::LoudnessSettings,
+    ) -> Result<bool> {
+        self.engine.apply_loudness(value)
+    }
+    fn clear_loudness(&mut self) -> Result<()> {
+        self.engine.clear_loudness()
+    }
+    fn observe_loudness(&mut self) -> Result<Option<crate::effects::loudness::abi::LoudnessStats>> {
+        self.engine.observe_loudness()
+    }
     fn load(&mut self, r: LoadRequest, c: &Cancellation) -> Result<LoadedMedia> {
         self.engine.load(r, c)
     }

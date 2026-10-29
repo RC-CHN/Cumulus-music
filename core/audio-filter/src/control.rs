@@ -2,6 +2,7 @@ use cumulus_core::effects::equalizer::{
     EqualizerSettings,
     abi::{self, EqualizerStats},
 };
+use cumulus_core::effects::loudness::LoudnessSettings;
 use std::{
     collections::HashMap,
     panic::{AssertUnwindSafe, catch_unwind},
@@ -12,8 +13,21 @@ use std::{
 };
 
 #[derive(Clone, Copy)]
+pub(crate) enum Settings {
+    Equalizer(EqualizerSettings),
+    Loudness(LoudnessSettings),
+}
+impl Settings {
+    pub fn enabled(self) -> bool {
+        match self {
+            Self::Equalizer(settings) => settings.enabled(),
+            Self::Loudness(settings) => settings.enabled(),
+        }
+    }
+}
+#[derive(Clone, Copy)]
 pub(crate) struct Configuration {
-    pub settings: EqualizerSettings,
+    pub settings: Settings,
     pub revision: u64,
 }
 pub(crate) struct Control {
@@ -65,38 +79,45 @@ pub unsafe extern "C" fn cumulus_geq_create_v1(
         let Some(settings) = settings(gains, enabled) else {
             return -2;
         };
-        if out.is_null() {
-            return -2;
-        }
-        let Ok(mut registry) = registry().lock() else {
-            return -3;
-        };
-        if registry.next == abi::MAX_ID {
-            return -4;
-        }
-        registry.next += 1;
-        let id = registry.next;
-        registry.entries.insert(
-            id,
-            Arc::new(Control {
-                config: Mutex::new(Configuration {
-                    settings,
-                    revision: 1,
-                }),
-                revoked: AtomicBool::new(false),
-                observed: AtomicU64::new(0),
-                created: AtomicU64::new(0),
-                active: AtomicU64::new(0),
-                processed: AtomicU64::new(0),
-                failed: AtomicU64::new(0),
-            }),
-        );
-        // SAFETY: validated nonnull output, ABI requires writable storage.
-        unsafe {
-            out.write(id);
-        }
-        0
+        // SAFETY: forwarded output pointer has the same ABI contract.
+        unsafe { create_configuration(Settings::Equalizer(settings), out) }
     })
+}
+
+/// # Safety
+/// `out` points to one writable u32 for the duration of this call.
+pub(crate) unsafe fn create_configuration(settings: Settings, out: *mut u32) -> i32 {
+    if out.is_null() {
+        return -2;
+    }
+    let Ok(mut registry) = registry().lock() else {
+        return -3;
+    };
+    if registry.next == abi::MAX_ID {
+        return -4;
+    }
+    registry.next += 1;
+    let id = registry.next;
+    registry.entries.insert(
+        id,
+        Arc::new(Control {
+            config: Mutex::new(Configuration {
+                settings,
+                revision: 1,
+            }),
+            revoked: AtomicBool::new(false),
+            observed: AtomicU64::new(0),
+            created: AtomicU64::new(0),
+            active: AtomicU64::new(0),
+            processed: AtomicU64::new(0),
+            failed: AtomicU64::new(0),
+        }),
+    );
+    // SAFETY: validated nonnull output, ABI requires writable storage.
+    unsafe {
+        out.write(id);
+    }
+    0
 }
 fn get(id: u32) -> Option<Arc<Control>> {
     registry().lock().ok()?.entries.get(&id).cloned()
@@ -110,21 +131,27 @@ pub unsafe extern "C" fn cumulus_geq_update_v1(id: u32, gains: *const f32, enabl
         let Some(settings) = settings(gains, enabled) else {
             return -2;
         };
-        let Some(control) = get(id) else {
-            return -4;
-        };
-        let Ok(mut config) = control.config.lock() else {
-            return -3;
-        };
-        if control.revoked.load(Ordering::Acquire) {
-            return -4;
-        }
-        let Some(revision) = config.revision.checked_add(1) else {
-            return -4;
-        };
-        *config = Configuration { settings, revision };
-        0
+        update_configuration(id, Settings::Equalizer(settings))
     })
+}
+pub(crate) fn update_configuration(id: u32, settings: Settings) -> i32 {
+    let Some(control) = get(id) else {
+        return -4;
+    };
+    let Ok(mut config) = control.config.lock() else {
+        return -3;
+    };
+    if control.revoked.load(Ordering::Acquire) {
+        return -4;
+    }
+    if std::mem::discriminant(&config.settings) != std::mem::discriminant(&settings) {
+        return -2;
+    }
+    let Some(revision) = config.revision.checked_add(1) else {
+        return -4;
+    };
+    *config = Configuration { settings, revision };
+    0
 }
 /// # Safety
 /// `out` points to a writable ABI-v1 EqualizerStats.

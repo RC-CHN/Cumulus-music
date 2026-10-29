@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 pub struct PlayerView {
     pub fm: bool,
     pub equalizer: EqualizerView,
+    pub loudness: LoudnessView,
     pub epoch: String,
     pub revision: String,
     pub queue_revision: String,
@@ -35,6 +36,15 @@ pub struct EqualizerView {
     pub revision: String,
     pub settings: crate::effects::equalizer::EqualizerSettings,
     pub status: crate::effects::equalizer::EqualizerStatus,
+    pub damaged: bool,
+}
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoudnessView {
+    pub revision: Option<String>,
+    pub enabled: bool,
+    pub status: crate::effects::loudness::LoudnessStatus,
+    pub gain_db: Option<f32>,
     pub damaged: bool,
 }
 #[derive(Serialize)]
@@ -124,6 +134,12 @@ pub enum PlayerAction {
     },
     RetryEqualizer,
     RepairEqualizer,
+    Loudness {
+        expected_revision: String,
+        enabled: bool,
+    },
+    RetryLoudness,
+    RepairLoudness,
     Play,
     Pause {
         paused: bool,

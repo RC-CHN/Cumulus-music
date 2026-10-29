@@ -37,6 +37,7 @@ pub struct PlaybackSnapshot {
     pub startup_autoplay: bool,
     pub fm: bool,
     pub equalizer: crate::effects::equalizer::EqualizerSnapshot,
+    pub loudness: crate::effects::loudness::LoudnessSnapshot,
     pub revision: u64,
     /// Accepted native control intent; engine clock polls do not advance it.
     pub control_revision: u64,
@@ -114,6 +115,12 @@ pub enum PlaybackCommand {
     },
     RetryEqualizer,
     RepairEqualizer,
+    Loudness {
+        expected_revision: String,
+        enabled: bool,
+    },
+    RetryLoudness,
+    RepairLoudness,
     UpdateQueue(QueueUpdate),
     ApplyRemote(RemotePlayback),
     Replace {

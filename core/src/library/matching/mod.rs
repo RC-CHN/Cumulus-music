@@ -2,6 +2,7 @@
 //! account isolation, revision checks and durable per-batch recovery.
 mod api;
 mod hints;
+pub(crate) use hints::file_metadata_hint;
 mod service;
 mod state;
 pub use api::{MatchQuery, MatchingApi, normalize_matches};

@@ -11,20 +11,28 @@ use std::ffi::c_void;
 struct Instance {
     handle: *mut c_void,
     token: Box<f32>,
+    descriptor: std::ffi::c_ulong,
 }
 impl Instance {
     fn new(id: u32, rate: std::ffi::c_ulong) -> Self {
+        Self::new_kind(id, rate, 0)
+    }
+    fn new_kind(id: u32, rate: std::ffi::c_ulong, descriptor: std::ffi::c_ulong) -> Self {
         let mut token = Box::new(id as f32);
         // SAFETY: valid descriptor; instance is uniquely owned until Drop.
         let handle = unsafe {
-            let d = &*ladspa_descriptor(0);
+            let d = &*ladspa_descriptor(descriptor);
             let h = d.instantiate.unwrap()(d, rate);
             assert!(!h.is_null());
             d.connect_port.unwrap()(h, 2, &mut *token);
             d.activate.unwrap()(h);
             h
         };
-        Self { handle, token }
+        Self {
+            handle,
+            token,
+            descriptor,
+        }
     }
     fn process(&mut self, input: &[f32], inplace: bool) -> Vec<f32> {
         // Canary at both ends checks bounds without making input/output aliases
@@ -35,7 +43,7 @@ impl Instance {
             output[1..input.len() + 1].copy_from_slice(input);
         }
         unsafe {
-            let d = &*ladspa_descriptor(0);
+            let d = &*ladspa_descriptor(self.descriptor);
             d.connect_port.unwrap()(
                 self.handle,
                 0,
@@ -53,14 +61,17 @@ impl Instance {
         output[1..input.len() + 1].to_vec()
     }
     fn reset(&mut self) {
-        unsafe { (&*ladspa_descriptor(0)).activate.unwrap()(self.handle) }
+        unsafe { (&*ladspa_descriptor(self.descriptor)).activate.unwrap()(self.handle) }
     }
 }
 impl Drop for Instance {
     fn drop(&mut self) {
-        unsafe { (&*ladspa_descriptor(0)).cleanup.unwrap()(self.handle) }
+        unsafe { (&*ladspa_descriptor(self.descriptor)).cleanup.unwrap()(self.handle) }
     }
 }
+
+#[path = "loudness_tests.rs"]
+mod loudness;
 struct Config(u32);
 impl Config {
     fn new(enabled: bool, gains: [f32; 10]) -> Self {
@@ -253,7 +264,8 @@ fn nonfinite_input_quarantines_until_activation_and_bad_config_is_atomic() {
 fn abi_rejects_unsupported_rate_invalid_token_and_null_arguments() {
     unsafe {
         let d = &*ladspa_descriptor(0);
-        assert!(ladspa_descriptor(1).is_null());
+        assert!(!ladspa_descriptor(1).is_null());
+        assert!(ladspa_descriptor(2).is_null());
         assert!(d.instantiate.unwrap()(d, 7999).is_null());
         assert!(d.instantiate.unwrap()(d, 384001).is_null());
         assert_ne!(
