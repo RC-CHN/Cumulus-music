@@ -798,3 +798,45 @@ Windows现场与接续提示焦点复查（2026-10-29）
   16个前端产物SHA256与本轮GUI实测一致；正式可执行文件为.build/target/debug/cumulus。
 - 实现位于feat/desktop-lyrics，精确提交两平台CI须另核对；main及v0.1.0未修改。
   Windows SMTC既有专项失败仍未解决，完整目标继续，不据本地测试数宣布完成。
+
+2026-10-29：桌面歌词真实窗口与精细排版（feat/desktop-lyric-window）
+- 新窗口与正式设置页接入同一MusicClient，入口/IPC/官方映射详见
+  desktop-lyrics-contracts.txt、desktop-lyrics-mapping.json。当前字体可填写名称并
+  回退到系统字体，尚无本机字体枚举；完整客户端目标保持未完成。
+- .build/desktop-lyric-window-verified/report.json：首次22态、重启3态，共25张截图。
+  真实Tauri/WebKitGTK，LC_ALL=zh_CN.UTF-8、Xvfb和xcompmgr -n；合成账号/API，
+  真实libmpv解码生成PCM、null输出。未向真实音乐服务请求或修改账号资源。
+  .build/desktop-lyric-window-gallery/index.html提供原始PNG图集，未修改图片像素。
+- 截图与实际操作覆盖浅/深色设置、800×650两列布局、单/双行、翻译/罗马音、交错
+  对齐、横/竖排、自定义ARGB、240px窄窗口及控制栏焦点。发现并修复长原文带走短
+  辅助歌词的问题：两个通道独立测量/滚动。提前/延后半秒的说明与详情页统一；
+  主窗口更改偏移会被悬浮窗读回，不另发HTTP。最小尺寸随字号/行数/辅助语言调整。
+- 透明背景在歌词叠于主窗口时实际观察；xcompmgr -a的服务器调试模式曾显示黑底，
+  不能把那组截图或DOM rgba(0,0,0,0)当作正确合成的证据。验证改用-n客户合成模式。
+- 两窗口维持同一播放ID；打开歌词不会增加音频工厂调用。该用例打开设置页会有一个
+  输出设备枚举对象，因此总调用数为2（1播放+1枚举），不套用迷你窗单对象断言。
+- 独立XTest按键验证Ctrl+Alt+D开/关；歌词窗DOM键验证Ctrl+P，并验证主窗口详情/
+  设置唤回、旧曲目ticket拒绝、账号切换清空、重启保留样式且解除锁定。
+  native-input.json直接读X11输入形状：锁定为左上角1×1，解锁恢复整个窗口；这是
+  tao 0.35.3的上游实现限制，不能宣称完全无输入区域。Windows驱动读原生扩展样式，
+  其实际结果仍须由Windows runner单独提供；Wayland和物理桌面未验收。
+- 故障操作覆盖12秒有界请求实现、保持失败且不轮询重发、显式重试、关闭中止挂起请求、
+  真实8秒窗口启动超时、重载撤销generation、设置保存失败保留草稿、损坏原文保留和
+  显式修复。12秒请求上限属于代码边界；本次故障实测使用立即失败和挂起后关闭，
+  不把它称为已等待12秒超时的实际测量。被动状态更新不会覆盖未保存样式草稿。
+- .build/lyric-window-mini-regression-final/report.json：8态/8图；
+  .build/lyric-window-mini-shortcuts-final/report.json：6态/6图，独立原生按键与本地DOM
+  键、重映射、捕获焦点、窗口租约和账号隔离均通过。初次回归的系统主题是深色，
+  暴露测试默认浅色的错误前提；测试现明确设置浅色基线后验证到深色的真实转换，
+  没有修改产品跟随系统的行为或跳过主题断言。
+- 前端npm ci、format:check、224项测试与生产构建通过；
+  .build/lyric-window-workspace-tests-final-2.log：248目标、1154 passed、0 failed、
+  0 ignored；fmt和严格workspace Clippy通过。21项CI规则通过。21个前端构建文件
+  的SHA256记录于.build/lyric-window-tested-dist.json。正式可运行构建更新为
+  .build/target/debug/cumulus；测试样例不读取用户真实会话。
+- CI在Linux/Windows独立runner加入desktop_lyrics_smoke，故障记录纳入归档。
+  当前分支精确提交完整CI仍须核对；未修改main/v0.1.0，也未发布版本。
+  不宣称本机物理60Hz/高刷、真实声卡、多屏DPI或Windows SMTC既有专项问题已通过。
+- 编译器退出后删除各crate较旧的增量编译会话、保留最新一份；
+  .build/lyric-window-cleanup.json记录520个目录、实际释放8673521664字节（约8.1GiB）。
+  源码、研究材料、账号数据、可执行文件和验证图片均保留。

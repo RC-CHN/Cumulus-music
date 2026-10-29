@@ -27,7 +27,7 @@
     {"feature": "多端最近播放显示", "officialView": "views/Play.jsx/allowMultiterminalRecord", "status": "已在最近播放页接通；设置页整合可继续"},
     {"feature": "下载目录/质量/格式/布局/歌词", "officialView": "views/Download.tsx", "status": "既有下载设置已接；本批提供实际入口"},
     {"feature": "缓存容量、缓存目录、清理", "officialModel": "setting/setNativeCache", "status": "仍需统一产品设置与文件清理验收"},
-    {"feature": "桌面歌词字体/颜色/布局/锁定/置顶", "officialView": "views/MusicDesk.tsx + M81/M116/M3097", "core": "core/src/preferences/desktop_lyrics/ + core/src/lyrics/desktop/ + core/src/client/desktop_lyrics.rs", "evidence": "docs/desktop-lyrics-mapping.json", "status": "已实现样式、事务恢复、有界歌词投影和共享播放文档；透明窗口、设置UI、锁定穿透及快捷键未接入，不能称为用户流程完成"},
+    {"feature": "桌面歌词字体/颜色/布局/锁定/置顶", "officialView": "views/MusicDesk.tsx + M81/M116/M3097", "core": "core/src/preferences/desktop_lyrics/ + core/src/lyrics/desktop/ + core/src/client/desktop_lyrics.rs", "evidence": "docs/desktop-lyrics-mapping.json", "status": "已接透明窗口、样式控件、共享播放器控制、主窗口入口、锁定/解锁、快捷键及恢复；原生字体列表、物理多屏/Wayland和Windows本批验收仍有边界，见desktop-lyrics-mapping.json"},
     {"feature": "本机推荐通知/版权回归通知", "officialModule": "M/3097 personalizedRecommend / allowCopyrightReversionNotify", "status": "不属于远端 user/setting；本机通知管线仍需实现"},
     {"feature": "绑定账号、个人信息、登录设备管理、反馈", "officialModel": "page_settingAccount/page_settingAbout", "status": "已有登录生命周期/保存账号；这些完整入口仍需各自迁移和授权边界处理"}
   ],

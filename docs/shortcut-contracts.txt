@@ -4,7 +4,7 @@
 本批完成core/preferences/shortcuts的解析、设置、注册计划和回执代次，及MusicClient
 账号边界下的设置读写。它是可执行的Rust领域实现，不依赖Tauri、WebView、Python或OS hook。
 后续增量已接入原生全局注册与播放动作，Linux X11完成独立进程真实按键验证（见末节）。
-设置页与本地可配置键现已接入（见末节）；桌面歌词窗口和Wayland全局入口
+设置页与本地可配置键现已接入（见末节）；桌面歌词窗口的后续接入见desktop-lyrics-contracts.txt。Wayland全局入口
 仍未完成，不能宣称整套快捷键用户流程已完成。Linux MPRIS/Windows SMTC是不同入口。
 原目标的这些界面/原生分支继续保留，不以本批测试通过缩小完整交付范围。
 
@@ -154,7 +154,7 @@ Linux X11与Windows边界
 
 设置界面与本地键路由增量
 - frontend/components/settings/Shortcuts.vue显示窗口内/全局两列、独立全局/媒体开关，
-  每行显示当前实际回执；未接入的桌面歌词保持不可用。文字/输入/弹窗拥有键盘时
+  每行显示当前实际回执；桌面歌词现由独立窗口宿主提供。文字/输入/弹窗拥有键盘时
   暂停本地控制，忽略长按、输入法组合、Meta及已被其他控件处理的事件。
 - App先安装DOM监听，再通过shortcut_attach(epoch,ticket)取得本窗口的lease；
   shortcut_detach(lease)只撤销同一个监听。替换注册、账号切换、主页面重新加载和
@@ -234,3 +234,11 @@ Linux X11与Windows边界
   录入暂停、主窗口监听存续和账号隔离。mini_shortcut_driver.py 在独立进程持有
   前台窗口后通过 XTest 或 SendInput 发系统按键；不是以 DOM 事件冒充全局键。
   Linux 和 Windows CI 分别运行此流程，尚未完成的平台运行不能称为通过。
+
+2026-10-29 桌面歌词后续接入
+- desktop/src/desktop_lyrics/shortcuts.rs捕获账号、偏好revision、窗口generation/serial，
+  校验后仅翻转enabled一次；打开失败不重放写入，显式设置页重试负责后续恢复。
+- 现支持Ctrl+D/Ctrl+Alt+D，歌词窗共享既有本地快捷键租约和窗口定向状态事件。
+  该窗销毁时撤销租约；主窗/迷你窗/歌词窗没有共享一个可任意伪造的前端target。
+- 独立XTest/SendInput驱动与真实WebView入口见scripts/ci/desktop_lyrics_smoke.py；
+  本批Linux已验证OS全局按键和歌词窗DOM本地按键，Windows仍须其精确CI结果。

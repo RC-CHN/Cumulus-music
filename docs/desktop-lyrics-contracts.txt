@@ -1,11 +1,11 @@
 桌面歌词迁移：显示领域、持久化与同一播放核心
 
 当前完成层级
-本批完成独立 Rust 的桌面歌词样式、设置事务、当前/下一行与逐字投影、共享歌词服务
-版本读回及账号/媒体所有权校验，并修正 CUE 多通道裁切。透明原生窗口、锁定/穿透、
-主窗口入口和快捷键 lyric 仍未接入；不能称为桌面歌词用户流程已完成。
-已有播放详情页继续使用同一 player_lyrics/lyric_offset 用例，CUE 裁切修正直接作用于它。
-完整客户端目标保持原范围；后续必须补齐原生窗口、设置界面、实际双平台运行与截图。
+独立 Rust 核心已接入透明歌词窗口、主窗口开关与设置、原生快捷键和同一播放器控制。
+窗口在 desktop/src/desktop_lyrics 分模块管理生命周期、内容、设置、坐标与快捷键；
+frontend/src/desktopLyrics 为独立轻量入口，设置位于 components/settings/DesktopLyrics。
+完整客户端目标保持原范围。字体当前支持填写本机名称及平台回退，尚无原生字体列表；
+Windows、物理显示器/DPI、Wayland 与原生字体枚举的验收边界不能由 Linux 虚拟桌面代替。
 
 官方证据与对应关系
 恢复材料目录：references/netease-3.1.42.205594-analysis/recovered-js/modules。
@@ -19,8 +19,8 @@
   并同时应用颜色/描边；本实现也保留一组customPalette，切换预设不会删除它。
   4328–4454恢复字体、大小、字重、描边、单双行、横竖排和对齐设置动作。
 - 116.js:970–984和handleDesktopLyricAction：显示开关、详情、前后首、播放暂停、
-  设置、半秒偏移、锁定/解锁、关闭；本批只完成偏移复用和显示领域，其余窗口动作
-  尚需宿主接入。播放传输仍使用既有NativeMediaTarget，不另起播放器。
+  设置、半秒偏移、锁定/解锁、关闭；已由宿主和类型化窗口接口接入。
+  播放传输仍使用既有NativeMediaTarget，不另起播放器。
 - core/tests/fixtures/desktop_lyric_styles.json：直接执行M81导出函数得到8套配色、
   8组对齐、12组样式原生调用输出，包含源SHA256。私有提取脚本为
   references/recovered-client/scripts/freeze_desktop_lyric_vectors.cjs；CI只消费冻结数据。
@@ -39,12 +39,14 @@ core/preferences/desktop_lyrics/{mod,style,storage}.rs：
 - 字号12..96、字体名最多256字节且禁止控制字符；颜色只收6位RGB/8位ARGB十六进制。
   这是明确的跨平台输入边界，非恢复到官方菜单所有可选字号的声明。
 - Geometry为逻辑坐标，允许负坐标；尺寸240..4096×80..4096，坐标±1000000以内。
-  尚不意味着窗口实际恢复或自动适配换屏；实际监视器工作区校正属于desktop后续实现。
+  宿主按可用显示器工作区钳制坐标与尺寸，失联显示器回到当前工作区；
+  合成工作区单测与单显示器GUI不能代替物理多屏/不同DPI切换验证。
 - 缺失saved标记、损坏JSON/类型/范围均为damaged，返回current=null，不自动启用窗口。
   Repair保存current/saved原文与解析值到desktop-lyric-recovery-v1，再生成新revision，
   恢复默认隐藏；修复失败回滚全部写入，不静默覆盖损坏内容。Reset也是新revision。
 - 锁定不作为跨进程持久字段，沿用官方启动时未锁定的语义；运行时输入穿透和解锁救援
-  必须由后续原生宿主验证，不能通过保存布尔值来称为已锁定窗口。
+  通过原生set_ignore_cursor_events实现，设置页和托盘提供解锁；
+  独立OS输入区域验证不能由保存布尔值替代，Linux上游1像素例外见下文。
 core/client/desktop_lyric_preferences.rs提供native只读与epoch校验的读写入口；游客可
 使用设备设置，切换账号后旧窗口不能修改或修复；读取设置不初始化音频或访问网络。
 
@@ -91,7 +93,41 @@ core/lyrics/desktop/{mod,prepared}.rs：
 用例覆盖官方冻结向量、跨连接CAS/重开、自定义与预设切换、坏数据修复、写入失败、
 文档零网络刷新、与详情页共享偏移、单音频实例、暂停时钟、MV抢占与迟到响应、
 空失败结果不重试、旧账号/曲目拒绝、CUE跨界/偏移/逐字辅助回退及边界数值。
-当前接口与持久化没有Tauri/WebView/Python依赖。尚未开放桌面歌词IPC或显示一个假的
-“桌面歌词”按钮；后续须实现真实透明窗口、锁定穿透和可到达的解锁入口、窗口启动恢复、
-所有样式设置、原生字体适配、Ctrl+D/Ctrl+Alt+D、详情唤回、Linux/Windows截图与故障恢复。
-本批验证日志和现有播放详情回归结果记录于ui-ux-validation.txt，完整目标仍未完成。
+核心接口与持久化没有Tauri/WebView/Python依赖。宿主/UI验证由以下独立可执行入口提供：
+  cargo build -p cumulus-desktop --example desktop_lyrics_ui_probe --features custom-protocol --locked
+  LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/desktop_lyrics_smoke.py
+    --binary .build/target/debug/examples/desktop_lyrics_ui_probe --root .build/ci-desktop-lyrics-linux
+Windows将binary换为.exe，并通过--runtime指定打包的native目录。--screenshots仅用于
+本机Linux/GDK截图。透明像素观察需合成器；纯Xvfb/DOM背景透明属性不构成像素证明。
+实际结果与截图位于ui-ux-validation.txt；全范围目标继续，不据阶段通过数宣布完成。
+
+宿主接口与窗口边界
+- 主窗口仅开放desktop_lyric_settings(epoch)、desktop_lyric_change(epoch,command)、
+  desktop_lyric_window_command(epoch,retry|unlock)。不开放任意WebView创建或任意HTTP。
+- 独立歌词窗口只开放desktop_lyric_ready/read/action(generation,ticket,action)及已有
+  窗口内快捷键租约。账号、主业务透传命令不在它的允许列表，主窗口不能直接调用歌词
+  专属命令。Cookie、完整媒体URL、文件路径和原生文档均不下发。
+- 每次打开新generation；初始化完成才显示，8秒内未ready则销毁并在设置页提示重试。
+  主窗口保持可用；打开、关闭、锁定、样式写入互斥。重载销毁旧代次，不自动创建下一窗。
+- 每次启动最多恢复一次已启用的窗口，初始锁定为false。坏设置停止恢复；显式修复保留
+  原文备份。配置保存成功但窗口应用失败时说明两者区别，重试不重复写设置。
+- 内容每个账号/playId仅启动一个12秒有界请求；换曲/关闭中止旧任务。120ms投影读取
+  共享缓存与真实音频时钟，失败不循环请求。用户明确重试或新选择才重新加载。
+- 音乐切换/账号变化/媒体抢占使旧ticket/文档失效；时钟更新不单独撤销控制票据。
+  详情页和悬浮窗的半秒偏移共用一个服务；正gain为提前、负gain为延后。
+- 控制栏提供前后首、播放暂停、偏移、详情、设置、锁定、关闭；Ctrl+D与Ctrl+Alt+D
+  走原生注册和账号/设置revision/窗口代次校验，歌词窗也接入既有窗口内媒体快捷键。
+- 设置页被动读取窗口状态保留未保存草稿；旧账号/旧读取不覆盖新结果。写入回执丢失
+  只读回，不重放写操作。读回发现外部样式变化时要求用户检查并还原草稿。
+
+排版与平台限制
+- 最多两个原文行组。原文与辅助歌词各自测量溢出，按实际歌词进度平移；短辅助文本
+  不跟随长原文被移出屏幕。字号/字体/窗口变化触发ResizeObserver，不在每次时钟读取
+  中查询布局。窄于300px时工具栏分两行，减少动态效果关闭过渡。
+- 横竖排、单/双行对齐、描边、粗体、8套预设与一组自定义ARGB颜色沿官方恢复字段。
+  字体采用输入的本机名称和系统fallback；目前没有“全部本机字体已枚举”的声明。
+- Linux tao 0.35.3 的CursorIgnoreEvents(true)使用左上角1×1输入区域；解锁恢复完整
+  输入区域。独立X11检查记录矩形面积，明确保留该角落例外，不宣称每个像素完全穿透。
+  Windows验证读取WS_EX_TRANSPARENT等原生样式，真实桌面仍须各自验收。
+- 透明窗要求平台合成器支持；Wayland可能限制位置恢复、全局快捷键与穿透。位置保存
+  失败会显示提示；不改变系统级图形设置。主窗/歌词窗关闭错误不会触发图形自动重启。
