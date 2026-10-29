@@ -1,0 +1,115 @@
+整份音效材料分派与控制参数恢复
+2026-10-29；对应 effects/material/{routing,equalization,controls}.rs。
+
+本批范围
+实现官方整份材料的分支选择、组件顺序及七类新增参数/开关调用计划。
+Rust 可以独立读取 NCAE、选择实际生效的分支、输出类型化调用；不是全效果图的
+声音渲染或桌面预设启用。已有 GEQ 和音量均衡播放器接线仍按各自专项文档验收。
+没有增加网络接口、账号权限或付费行为；不依赖 Tauri 或归档 Python 进程。
+未使用 YesPlayMusic。混响等尚未恢复的内核不能用部分 EQ 链冒充完整官方预设。
+
+官方来源
+cloudmusic.dll 3.1.42.205594 x64：
+SHA256 557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493。
+EFB760 分派；EF9ED0 EQ；EF8CA0 BT；EF9080 压缩；EFA280 限幅；
+EF99E0 延迟；EF8AC0 ALC；EFF1B0 扬声器空间开关。
+反汇编：references/netease-3.1.42.205594-analysis/native-dsp-materials/cloud-parse/regions。
+原生执行对照：references/recovered-client/scripts/freeze_material_routing.py 与
+freeze_material_controls.py。固定文件哈希后，在 Unicorn 2.1.4 执行未修改的
+上述 x64 指令，限定执行地址和指令预算；不执行 DllMain、导入、系统或网络操作。
+JSON 类型查找、字符串包装、根对象提取、CRT 检查/memset/日志等级使用受限宿主替身。
+引擎调用只捕获参数，未执行对应 DSP。未覆盖的其他组件入口仍是捕获回调。
+这些是已注明边界的参数/控制流证据，不是完整 JSON 实现或整张声音图的执行证据。
+
+分派规则
+- 根必须是对象。aev2 只有在值为对象时才整体替代旧分支；空对象也不回退。
+- 现代分支顺序固定为 eq、bt、se、rvb、rotate、peq、cmp、limiter、dly、alc、spspatial。
+  旧分支只有前五项；顶层 peq/cmp/limiter 等不会因为存在字段就被激活。
+- 只有对象形式的组件会进入对应解析器；对象的 on=false 或缺少 on 仍可能产生关闭
+  调用，因此不能在分派时按真假过滤。chorus/flanger 在官方现代分支仅记日志，
+  没有引擎 API 调用。route_sections 的顺序是配置调用顺序，不是 PCM 的处理顺序。
+
+EQ / BT
+- on 只接收布尔，缺少或错类型默认为 false；关时不读取其他参数。
+- EQ 开启且 eqs 为数组时，读取前十个元素，短数组补零，非数字元素独立归零。
+  空数组提交十个零；eqs 缺失或非数组时不提交增益，但仍提交开启开关。
+  先发增益再发开关，不直接用旧值补全短数组。
+- BT 开启时 bass 缺少/错类型默认为 +2 dB，treble 为 0 dB；只传这两个增益。
+  JSON 中的 bassFreq/bassQ/trebleFreq/trebleQ 不会被这个桥读取，不能擅自套用。
+  外层缓存显示值和实际 DSP 的初始化默认值可能不同，不能用日志缓存替代 DSP 参数。
+
+压缩 / 限幅 / 延迟 / 简单开关
+- compressor_calls：on 默认 false；开启时 threshold=-18、ratio=4、attack=0.05、
+  release=0.1、range=-5、pregain=0、postgain=0。数字字段缺少或错类型沿用对应默认。
+- limiter_calls：on 默认 false；开启时 threshold=-18、attack=0.05、release=0.1、
+  outputgain=0、ratio=4、infiniteRatio=true。infiniteRatio 仅接受布尔。
+  这组显式材料默认值与下述引擎载入默认限幅不同，不得混为一套。
+- delay_calls：必须有布尔 on；false 只关闭。true 时 delay、feedback、dry、wet
+  必须全部是数字，否则整个组件被跳过，连关闭调用也不发。四个数字字段校验通过后
+  才转 f32；缺少一个字段的对象不能被当成使用默认值的延迟或显式关闭请求。
+- alc_calls / speaker_spatial_calls：只读取必需的布尔 on；缺失/错类型时不发调用。
+- 数字转 f32，布尔不算数字。Rust 额外拒绝转成非有限值的计划，避免交给音频线程。
+  调用计划不提前夹取普通数值；内核的合法范围、限幅和状态转换属于后续 DSP 边界。
+  本批按“参数在前，开关在后”返回完整 Vec；失败不返回半份配置。
+
+载入与 PCM 顺序的新证据
+neaudioeffects.dll x64 SHA256：
+c59105e1072d7d7dbd2d2844ac9c170de7e7b41eb463dc56a11c9b37bafac6be。
+AudioEffectsImpl 实际 vtable=23F8C8，NCAudioEffectsProcessorImpl=1E42B0，
+不是导出的纯虚基类表。以下地址均为 RVA。
+- 外层 begin 68000 在处理器存在时调用处理器 reset（1BBA0）、取消总旁路（1C590），
+  重置外层效果缓存（6B0C0），再经 6C1A0 / 1D410 设置最终限幅。
+- reset 最后经真实 1D360 设置限幅开启；总旁路重设再次保留该开关。
+  传至末端节点的默认值为 threshold=0、attack=f32(0.005)、release=f32(0.1)、
+  outputgain=0、infiniteRatio=true、ratio=4，参数结构还带固定的末尾标志 true。
+  因此材料未提供 limiter 并不等于没有限幅，旧分支也不能省略这个默认节点。
+- 外层 end 65BC0 的调用主要为日志。logger 为空的原生对照中，它没有产生处理器/
+  限幅调用，外层状态字节不变；不能将它描述成“到最后才一次性提交图”的证据。
+- begin 对照确认外层缓存中的既有 loudness 开关/增益/峰值/参考值保留。
+  这不等于本批重新验证了播放中音量均衡与完整专有图的 PCM 联合效果。
+- 1AA50 的所有节点存在时，PCM 调用偏移顺序为：
+  08,18,58,48,50,70,68,60,A0,90,98,28,30,40,78,20,A8,80,88,38,B0,10。
+  18 是已恢复音量均衡，48/50 是 GEQ/BT；30/38/40 的类型分别为 Rotate3D/ALC/
+  SpeakerSpatial，70 为 ExtraPEQ，90/98 为 Vibrato/Tremolo，A0/A8 为 AudioEar/Hear，
+  B0 为 LookaheadLimiter。部分类型通过工厂与 RTTI 核对，未据偏移猜测其算法。
+  空节点跳过；输入帧数为零时两个格式转换节点不调用，内部节点仍被调用。
+- 私有 trace_effect_graph.py / analysis/effect-graph/native-control-trace.json
+  执行上述 begin/reset/master/limiter 桥及 process 指令，限幅开关/参数桥是真实函数；
+  其他参数 setter、所有 DSP 节点和锁/CRT 是捕获替身。它证明调用顺序和桥参数，
+  不证明 DSP 初始化、锁的并发语义、真实音频或声卡效果。首次研究探针缺少 Win64
+  caller home area 而失败，补齐模拟栈后才得到本次成功输出，未修改官方指令。
+
+验证与可执行流程
+公开冻结向量仅含合成输入输出：
+effects-routing-official.json：288 分派 + 106 EQ + 170 BT = 564 组。
+effects-controls-official.json：223 压缩 + 207 限幅 + 175 延迟 + 111 ALC +
+111 扬声器空间 + 4 完整分派 = 831 组。各 manifest 记录 DLL/生成器/向量哈希和替身范围。
+Rust 测试逐项比较原生调用和 f32 参数，同时验证跳过/关闭的区别、非法根、非有限
+参数拒绝以及关闭路径不读取无关参数。无需官方 DLL 或 Python 即可在公开 CI 运行。
+
+构建：cargo build -p cumulus-core --example effect_material_read --example effect_dsp_render --locked
+effect_material_read INPUT.ncae NEW.json：实际 Rust NCAE 解码，输出文件必须不存在。
+effect_dsp_render material-route < NEW.json：实际整体分支与组件顺序，明确 dspRendered=false。
+effect_dsp_render material-eq / material-bt / material-cmp / material-limiter /
+material-dly / material-alc / material-spspatial：stdin 为该组件对象，stdout 为调用计划。
+已有 material-peq / material-rotate / material-stereo 保持其原组件接口。
+
+.build/effects-material-current-proof/audit.json 使用本批 Rust 可执行文件重新解码
+先前已取得的六份真实 NCAE：全部明文摘要一致，三份旧分支、三份 aev2 的组件选择与
+官方分派一致；五份中涉及本批解析器的 20 次参数/开关调用与当前官方执行一致。
+另有一份只含 se/rvb/peq，因而本批只比较其分派，不把零参数对照写成全部组件通过。
+没有新增网络请求；测试驱动 Python 仅编排、读取证据和调用原生对照，业务解码及
+调用计划由 Rust 可执行程序完成。完整声音图/其他内核/预设 UI 接线仍继续。
+
+整合验证（2026-10-29）
+- 合入播放详情布局修正 f2246dc 后，重新构建两个 Rust CLI；
+  .build/effects-material-integrated-proof/audit.json 再次验证六份 NCAE、20 次新增
+  参数/开关调用与官方一致。没有重复请求服务端，也没有将 PCM 渲染标成已完成。
+- 前端 npm ci、format:check、229 测试、类型检查和生产构建通过；Rust fmt、
+  严格全 workspace/all-targets/custom-protocol Clippy 和全量测试通过：
+  256 测试目标、1178 passed、0 failed、0 ignored，命令正常退出 0。
+- 初次整合检查引用了共享 target 中较早的 core 元数据，报告新增导出不可见；
+  源码与 cargo metadata 均指向正确工作树。清理 cumulus-core 构建缓存后完整重编译
+  才通过，失败日志保留于 effects-routing-integrated-clippy.log，不将它记为通过。
+  cargo clean 仅清理编译缓存，未删除 references、账号、下载文件或截图证据。
+  当前完整业务目标仍在进行，整份材料的默认限幅、其他 DSP 节点和预设运行时未闭合。
