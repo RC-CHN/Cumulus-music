@@ -28,6 +28,9 @@ use tauri::{Listener, Manager, webview::PageLoadEvent};
 
 struct Library;
 fn song(id: u64) -> Value {
+    if id == 1 && std::env::var_os("CUMULUS_PLAYER_LAYOUT_PROOF").is_some() {
+        return json!({"id":id,"name":"沿着海岸走到日落之后 · 用于窄窗口排版检查的长歌名（现场特别收录版本）".repeat(2),"ar":[{"name":"SyntheticArtistWithoutWordBreaks".repeat(4)}],"al":{"name":"合成专辑 · 一个很长很长的副标题与发行版本说明".repeat(4)},"dt":6_000_000,"fee":1});
+    }
     json!({"id":id,"name":format!("合成歌曲 {id} · A quiet afternoon"),"ar":[{"name":"Cumulus"}],"al":{"name":"界面体验验证"},"dt":if id==1 {6_000_000} else {235_000},"fee":id%3})
 }
 fn playlist(id: u64) -> Value {
@@ -68,7 +71,8 @@ impl Api for Library {
                     json!({"code":200,"data":[{"id":ids[0],"url":"https://m1.music.126.net/cumulus-relay-fixture.wav","code":200,"md5":"fixture","level":"standard","expi":120}]})
                 }
                 "/api/song/lyric/v1" => {
-                    json!({"code":200,"lrc":{"lyric":(0..30).map(|i|format!("[00:{i:02}.00]合成歌词 {i}\n")).collect::<String>()}})
+                    let long = std::env::var_os("CUMULUS_PLAYER_LAYOUT_PROOF").is_some();
+                    json!({"code":200,"lrc":{"lyric":(0..30).map(|i|format!("[00:{i:02}.00]合成歌词 {i} {}\n", if long && i % 3 == 0 {"SyntheticLyricsWithoutWordBreaks".repeat(4)} else {String::new()})).collect::<String>()}})
                 }
                 _ => {
                     return Err(cumulus_core::Error::Response(

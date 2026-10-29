@@ -135,6 +135,7 @@ jobs:
           CUMULUS_MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
         run: python scripts/ci/package.py --platform '${{ matrix.platform }}'
       - name: Linux WebView login lifecycle smoke
+        # Start Xvfb before the private bus so activated GTK/AT-SPI services inherit DISPLAY.
         if: runner.os == 'Linux'
         env:
           GDK_BACKEND: x11
@@ -142,52 +143,53 @@ jobs:
           LIBGL_ALWAYS_SOFTWARE: '1'
         run: |
           cargo build -p cumulus-desktop --example native_audio_probe --features custom-protocol --locked
-          LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a python3 scripts/ci/native_smoke.py --binary .build/target/debug/examples/native_audio_probe --report .build/ci-native-audio-linux.json
-          LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a python3 scripts/ci/native_smoke.py --binary .build/target/debug/examples/native_audio_probe --report .build/ci-native-audio-loudness-linux.json --filter-library .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/native_smoke.py --binary .build/target/debug/examples/native_audio_probe --report .build/ci-native-audio-linux.json
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/native_smoke.py --binary .build/target/debug/examples/native_audio_probe --report .build/ci-native-audio-loudness-linux.json --filter-library .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
           cargo build -p cumulus-desktop --example loudness_ui_probe --features custom-protocol --locked
-          LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a python3 scripts/ci/loudness_ui_smoke.py --binary .build/target/debug/examples/loudness_ui_probe --root .build/ci-loudness-ui-linux --filter-library .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/loudness_ui_smoke.py --binary .build/target/debug/examples/loudness_ui_probe --root .build/ci-loudness-ui-linux --filter-library .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
           cargo build -p cumulus-desktop --example login_interception_ui_probe --features custom-protocol --locked
-          dbus-run-session -- xvfb-run -a /usr/bin/python3 desktop/examples/run_auth_probe.py .build/ci-login --binary .build/target/debug/examples/login_interception_ui_probe --stage-prefix interception_ --screenshots 4 --small
+          xvfb-run -a dbus-run-session -- /usr/bin/python3 desktop/examples/run_auth_probe.py .build/ci-login --binary .build/target/debug/examples/login_interception_ui_probe --stage-prefix interception_ --screenshots 4 --small
           python3 desktop/examples/audit_login_interception_probe.py .build/ci-login
           cargo build -p cumulus-desktop --example scroll_ui_probe --features custom-protocol --locked
-          dbus-run-session -- xvfb-run -a python3 scripts/ci/scroll_smoke.py --binary .build/target/debug/examples/scroll_ui_probe --root .build/ci-scroll-linux
+          xvfb-run -a dbus-run-session -- python3 scripts/ci/scroll_smoke.py --binary .build/target/debug/examples/scroll_ui_probe --root .build/ci-scroll-linux
           cargo build -p cumulus-desktop --example ux_ui_probe --features custom-protocol --locked
-          dbus-run-session -- xvfb-run -a python3 scripts/ci/ux_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-ux-linux
-          LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a python3 scripts/ci/download_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-layout-linux
-          LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a python3 scripts/ci/like_recovery_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-likes-linux
-          LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a python3 scripts/ci/keyboard_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-keyboard-linux
-          LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a python3 scripts/ci/motion_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-motion-linux
-          LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a python3 scripts/ci/system_media_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-system-media-linux
-          LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a python3 scripts/ci/shortcuts_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-shortcuts-ui-linux
+          xvfb-run -a dbus-run-session -- python3 scripts/ci/ux_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-ux-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/download_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-layout-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/player_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-player-layout-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/like_recovery_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-likes-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/keyboard_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-keyboard-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/motion_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-motion-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/system_media_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-system-media-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/shortcuts_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-shortcuts-ui-linux
           cargo build -p cumulus-desktop --example mini_ui_probe --features custom-protocol --locked
-          LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a python3 scripts/ci/mini_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-linux
-          LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a python3 scripts/ci/mini_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-shortcuts-linux --shortcuts
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-shortcuts-linux --shortcuts
           cargo build -p cumulus-desktop --example desktop_lyrics_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/desktop_lyrics_smoke.py --binary .build/target/debug/examples/desktop_lyrics_ui_probe --root .build/ci-desktop-lyrics-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/fonts_smoke.py --binary .build/target/debug/examples/desktop_lyrics_ui_probe --root .build/ci-fonts-linux
           cargo build -p cumulus-desktop --example saved_accounts_ui_probe --features custom-protocol --locked
-          LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a python3 scripts/ci/accounts_smoke.py --binary .build/target/debug/examples/saved_accounts_ui_probe --root .build/ci-accounts-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/accounts_smoke.py --binary .build/target/debug/examples/saved_accounts_ui_probe --root .build/ci-accounts-linux
           cargo build -p cumulus-desktop --example output_ui_probe --features custom-protocol --locked
-          LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a python3 scripts/ci/output_settings_smoke.py --binary .build/target/debug/examples/output_ui_probe --root .build/ci-output-settings-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/output_settings_smoke.py --binary .build/target/debug/examples/output_ui_probe --root .build/ci-output-settings-linux
           cargo build -p cumulus-desktop --example tray_ui_probe --features custom-protocol --locked
-          LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a /usr/bin/python3 scripts/ci/tray_protocol_smoke.py --lifecycle --binary .build/target/debug/examples/tray_ui_probe --root .build/ci-tray-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- /usr/bin/python3 scripts/ci/tray_protocol_smoke.py --lifecycle --binary .build/target/debug/examples/tray_ui_probe --root .build/ci-tray-linux
           cargo build -p cumulus-desktop --example mpris_probe --features custom-protocol --locked
-          LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a /usr/bin/python3 scripts/ci/mpris_smoke.py --binary .build/target/debug/examples/mpris_probe --root .build/ci-mpris-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- /usr/bin/python3 scripts/ci/mpris_smoke.py --binary .build/target/debug/examples/mpris_probe --root .build/ci-mpris-linux
           cargo build -p cumulus-desktop --example shortcut_probe --features custom-protocol --locked
-          LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a /usr/bin/python3 scripts/ci/shortcut_smoke.py --binary .build/target/debug/examples/shortcut_probe --root .build/ci-shortcuts-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- /usr/bin/python3 scripts/ci/shortcut_smoke.py --binary .build/target/debug/examples/shortcut_probe --root .build/ci-shortcuts-linux
           cargo build -p cumulus-desktop --example startup_ui_probe --features custom-protocol --locked
-          LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a python3 scripts/ci/startup_smoke.py --binary .build/target/debug/examples/startup_ui_probe --root .build/ci-startup-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/startup_smoke.py --binary .build/target/debug/examples/startup_ui_probe --root .build/ci-startup-linux
           cargo build -p cumulus-desktop --example catalog_ui_probe --features custom-protocol --locked
-          dbus-run-session -- xvfb-run -a python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-linux
-          dbus-run-session -- xvfb-run -a python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-layout-linux --layout
-          dbus-run-session -- xvfb-run -a python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-collections-linux --collections
-          dbus-run-session -- xvfb-run -a python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-history-linux --history
-          dbus-run-session -- xvfb-run -a python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-settings-linux --settings
-          LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-relay-linux --relay
-          LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-relay-settings-linux --relay-settings
-          LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-relay-publication-linux --relay-publication
-          LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-relay-recovery-linux --relay-recovery
-          dbus-run-session -- xvfb-run -a python3 scripts/ci/graphics_smoke.py --binary .build/target/release/cumulus --root .build/ci-graphics-linux
+          xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-linux
+          xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-layout-linux --layout
+          xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-collections-linux --collections
+          xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-history-linux --history
+          xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-settings-linux --settings
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-relay-linux --relay
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-relay-settings-linux --relay-settings
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-relay-publication-linux --relay-publication
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-relay-recovery-linux --relay-recovery
+          xvfb-run -a dbus-run-session -- python3 scripts/ci/graphics_smoke.py --binary .build/target/release/cumulus --root .build/ci-graphics-linux
       - name: Windows WebView login lifecycle smoke
         if: runner.os == 'Windows'
         run: |
@@ -204,6 +206,7 @@ jobs:
           cargo build -p cumulus-desktop --example ux_ui_probe --features custom-protocol --locked
           python scripts/ci/ux_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-ux-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/download_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-download-layout-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/player_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-player-layout-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/like_recovery_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-likes-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/keyboard_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-keyboard-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/motion_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-motion-windows --runtime .build/package-stage/windows-x64/native
