@@ -645,3 +645,18 @@ Windows现场与接续提示焦点复查（2026-10-29）
   本批全workspace 240目标/1116项、21项CI规则通过，失败/忽略0；fmt、严格Clippy
   和Windows GNU desktop全targets Clippy通过。前端内容树与92036ec相同（212项、
   格式/类型/生产构建先前已通过）；真实GUI使用此内容树重新嵌入验证。
+
+2026-10-29 Windows动画验证环境一致性
+- 精确f314231的40786516885：延迟初始化的键盘7态已通过；动画脚本第一步报
+  default navigation motion missing，根节点data-motion=full。不能将这轮CI称为通过。
+- 旧motion_environment无条件把JS matchMedia设成false，CSS仍读取原生系统偏好；
+  responsive.css在原生reduce下取消过渡。根据代码推断这会形成不一致的测试环境；
+  新报告记录未覆盖前的nativeReduced及实际transitionDuration供Windows确认。
+- 专用Windows测试子进程用Chromium原生--force-prefers-no-reduced-motion固定前
+  两轮CSS基线；原有合成系统偏好事件、存储失败、恢复、歌词滚动断言保持。
+  第三轮改用--force-prefers-reduced-motion，测试真实引擎媒体查询、界面解释以及
+  用户重新启用动画仍遵守系统减少动态效果。只作用于测试子进程，不改系统设置或
+  生产客户端/样式，不删除减少动态效果规则，不略过断言。
+  参数来源：https://chromium.googlesource.com/chromium/src/+/HEAD/ui/gfx/switches.cc 。
+- .build/windows-media-motion-linux/audit.json：Linux基础18态/18截图通过、原生PCM
+  和重开验证不变；原生reduce第三轮为Windows专用，尚待新精确提交CI，未标通过。

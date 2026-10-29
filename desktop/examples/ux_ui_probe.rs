@@ -84,11 +84,15 @@ fn main() {
     let motion_proof = std::env::var_os("CUMULUS_MOTION_PROOF").is_some();
     let recovery_proof = std::env::var_os("CUMULUS_LIKE_RECOVERY_PROOF").is_some();
     let media_proof = std::env::var_os("CUMULUS_SYSTEM_MEDIA_PROOF").is_some();
-    let output = root.join(if std::env::var_os("CUMULUS_PROOF_REOPEN").is_some() {
-        "reopen"
-    } else {
-        "first"
-    });
+    let output = root.join(
+        if motion_proof && std::env::var_os("CUMULUS_MOTION_NATIVE_REDUCED").is_some() {
+            "native-reduced"
+        } else if std::env::var_os("CUMULUS_PROOF_REOPEN").is_some() {
+            "reopen"
+        } else {
+            "first"
+        },
+    );
     fs::create_dir_all(&root).unwrap();
     fs::create_dir(&output).expect("new evidence directory");
     let mut context = assets::context();

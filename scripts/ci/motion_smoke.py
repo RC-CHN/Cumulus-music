@@ -6,6 +6,7 @@ standalone probe. CSS/WAAPI/scroll calls, UI/IPC and libmpv remain real.
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import time
@@ -64,7 +65,20 @@ def main():
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
     states = 0
-    for phase, count in [('first', 16), ('reopen', 2)]:
+    phases = [('first', 16), ('reopen', 2)]
+    if os.name == 'nt':
+        phases.append(('native-reduced', 2))
+    for phase, count in phases:
+        if os.name == 'nt':
+            # Match the synthetic MQL baseline with Chromium's real CSS query.
+            # This affects only the isolated WebView2 child, never OS settings
+            # or the production app. Also test a real reduced-motion query.
+            existing = re.sub(r'(?<!\S)--force-prefers-(?:no-)?reduced-motion(?=\s|$)', '',
+                              env.get('WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS', '')).strip()
+            flag = '--force-prefers-reduced-motion' if phase == 'native-reduced' else '--force-prefers-no-reduced-motion'
+            env['WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS'] = (existing + ' ' + flag).strip()
+        if phase == 'native-reduced':
+            env['CUMULUS_MOTION_NATIVE_REDUCED'] = '1'
         if phase == 'reopen':
             env['CUMULUS_PROOF_REOPEN'] = '1'
         output = root / phase
@@ -75,8 +89,8 @@ def main():
         assert status == 0, f'motion probe exit {status}'
         complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
         assert complete['ok'] and complete['stageCount'] == count and complete['realMusicRequests'] == 0
-        assert complete['systemPreferenceEventInjected']
-        assert len(complete['checks']) == (9 if phase == 'first' else 1)
+        assert complete['systemPreferenceEventInjected'] == (phase != 'native-reduced')
+        assert len(complete['checks']) == (9 if phase == 'first' else 2 if phase == 'native-reduced' else 1)
         snapshots = list(output.glob('ux_*.json'))
         assert len(snapshots) == count
         if args.screenshots:
@@ -84,18 +98,25 @@ def main():
         for path in snapshots:
             value = json.loads(path.read_text(encoding='utf-8'))
             assert not value['overflow'] and value['theme'] in ['light', 'dark']
+            assert value['nativeReduced'] == (phase == 'native-reduced')
         if phase == 'first':
             assert all(complete[k] for k in ['lyricScrollVerified', 'lyricSmoothRestored', 'themeCancellationVerified', 'persistenceFailureVerified'])
             player = complete['nativePlayer']
             assert player['state'] == 'paused' and player['position'] > 0
             lyric = json.loads((output / 'ux_08_lyrics_instant.json').read_text(encoding='utf-8'))['nativePlayer']
             assert player['playId'] == lyric['playId'] and abs(player['position'] - lyric['position']) < .05
-        else:
+        elif phase == 'reopen':
             assert complete['reopened']
+        else:
+            assert complete['nativeReduced'] and complete['nativePlayer']['state'] == 'paused'
+            native = [json.loads(path.read_text(encoding='utf-8'))['nativePlayer'] for path in snapshots]
+            assert len({player['playId'] for player in native}) == 1
+            assert all(player['state'] == 'paused' for player in native)
         states += count
     result = {'ok': True, 'actualWebView': True, 'states': states,
               'screenshots': states if args.screenshots else 0, 'realMusicRequests': 0,
               'motionRestartVerified': True, 'systemPreferenceEventInjected': True,
+              'nativeReducedMotionVerified': os.name == 'nt',
               'physicalAudioOutputVerified': False}
     (root / 'audit.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(result))

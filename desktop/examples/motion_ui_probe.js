@@ -23,7 +23,7 @@
   async function capture(label) {
     await sleep(300);
     assert(document.documentElement.scrollWidth <= innerWidth, 'horizontal overflow');
-    await emit(`ux_${String(++stageCount).padStart(2,'0')}_${label}`, {motion:document.documentElement.dataset.motion, theme:document.documentElement.dataset.theme, width:innerWidth,height:innerHeight,overflow:false,checks:[...checks]});
+    await emit(`ux_${String(++stageCount).padStart(2,'0')}_${label}`, {nativeReduced:hook.nativeReduced,motion:document.documentElement.dataset.motion, theme:document.documentElement.dataset.theme, width:innerWidth,height:innerHeight,overflow:false,checks:[...checks]});
     await sleep(600);
   }
   async function settings() {
@@ -42,6 +42,14 @@
   async function page(name, selector) { click(button(name)); await wait(()=>one(selector),name); await sleep(300); }
   try {
     await wait(()=>one('.track-row'),'initial daily songs'); await sleep(500);
+    if(hook.nativeReduced){
+      assert(localStorage.getItem('cumulus.motion.v1')==='system','native reduced run must follow the completed enable flow');
+      await wait(()=>one('.playerbar')?.dataset.state==='paused','native reduced run restored paused queue');
+      noMotion('native_system');await settings();assert(!toggle().checked,'native system preference is not the app disable checkbox');
+      assert(one('.settings-page').textContent.includes('系统已开启减少动态效果'),'native system explanation missing');await capture('native_system_reduced');
+      await setDisabled(true);await setDisabled(false);assert(reduced(),'app enable overrode native CSS preference');noMotion('native_still_reduced');await capture('native_enable_respects_system');
+      await emit('complete',{ok:true,stageCount,checks,nativeReduced:true,realMusicRequests:0,systemPreferenceEventInjected:false});return;
+    }
     if(localStorage.getItem('cumulus.motion.proof.done')) {
       assert(reduced() && localStorage.getItem('cumulus.motion.v1')==='disabled','motion preference lost across processes');
       noMotion('restart'); await settings(); assert(toggle().checked,'restart checkbox'); await capture('reopened_disabled');
@@ -82,5 +90,5 @@
     toggle().scrollIntoView({block:'center'}); await capture('small_dark'); await theme('light'); toggle().scrollIntoView({block:'center'}); await capture('small_light');
     localStorage.setItem('cumulus.motion.proof.done','1');
     await emit('complete',{ok:true,stageCount,checks,realMusicRequests:0,systemPreferenceEventInjected:true,lyricScrollVerified:true,lyricSmoothRestored:true,themeCancellationVerified:true,persistenceFailureVerified:true});
-  } catch(error) {await emit('failed',{ok:false,error:String(error),stageCount,checks,scrolls:hook?.scrolls,motion:document.documentElement.dataset.motion});}
+  } catch(error) {await emit('failed',{ok:false,error:String(error),stageCount,checks,scrolls:hook?.scrolls,nativeReduced:hook?.nativeReduced,navigationTransition:one('.nav-item')&&getComputedStyle(one('.nav-item')).transitionDuration,motion:document.documentElement.dataset.motion});}
 })();

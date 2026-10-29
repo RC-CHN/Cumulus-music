@@ -3,7 +3,8 @@
 (() => {
   const originalMedia = window.matchMedia.bind(window);
   const queries = [];
-  let reduced = false, failWrite = false;
+  const nativeReduced = originalMedia('(prefers-reduced-motion: reduce)').matches;
+  let reduced = nativeReduced, failWrite = false;
   window.matchMedia = query => {
     if (query !== '(prefers-reduced-motion: reduce)') return originalMedia(query);
     const result = new EventTarget();
@@ -19,6 +20,7 @@
   const scrollIntoView = Element.prototype.scrollIntoView;
   const animate = Element.prototype.animate;
   const proof = window.__motionProof = {
+    nativeReduced,
     scrolls: [], animations: [],
     system(value) { reduced = value; queries.forEach(q => q.dispatchEvent(new MediaQueryListEvent('change', { media: q.media, matches: value }))); },
     failWrite(value) { failWrite = value; },
