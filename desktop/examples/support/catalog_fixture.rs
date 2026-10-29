@@ -20,7 +20,17 @@ fn artist(n: u64) -> Value {
     json!({"id":n,"name":if n==12 {"测试歌手".into()}else{format!("相似歌手 {n}")},"musicSize":55,"albumSize":62,"alias":["A synthetic artist"],"briefDesc":"用于检查歌手详情的合成简介。"})
 }
 fn album(n: u64) -> Value {
-    json!({"id":n,"name":if n==7 {"测试专辑".into()}else{format!("合成专辑 {n}")},"size":11,"publishTime":1700000000000_i64,"artists":[{"id":12,"name":"测试歌手"}],"description":"这是合成的专辑介绍。\n用于检查多行文本、深色配色和长内容布局。"})
+    let mut value = json!({"id":n,"name":if n==7 {"测试专辑".into()}else{format!("合成专辑 {n}")},"size":11,"publishTime":1700000000000_i64,"artists":[{"id":12,"name":"测试歌手"}],"description":"这是合成的专辑介绍。\n用于检查多行文本、深色配色和长内容布局。"});
+    if n == 8 {
+        value["name"] = json!("漫长的午后与未完的旋律 · A quiet afternoon / Extended edition");
+        value["transNames"] = json!(["UnbrokenSyntheticAlbumTranslation".repeat(6)]);
+        value["artists"][0]["name"] =
+            json!("SyntheticArtistWithAnUnbrokenLongDisplayName".repeat(3));
+    }
+    value
+}
+fn comment(n: u64) -> Value {
+    json!({"commentId":n,"content":format!("第 {n} 条合成评论：这首歌适合慢慢听。\n用于验证长页面滚动、文字换行和底部翻页。"),"time":1700000000000_u64-n,"timeStr":"合成评论时间","liked":false,"likedCount":1234,"user":{"userId":3,"nickname":if n==1 {"LongUnbrokenSyntheticListenerName".repeat(5)}else{format!("合成听友 {n}")}},"beReplied":[],"parentCommentId":"0"})
 }
 impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, args: Value, _: bool) -> ApiFuture<'a, Value> {
@@ -77,6 +87,9 @@ impl Api for Library {
                 }
                 "/api/album/privilege" => {
                     json!({"code":200,"data":(1..=11).map(|id|json!({"id":id,"pl":320000})).collect::<Vec<_>>()})
+                }
+                "/api/v1/resource/comments/R_AL_3_8" => {
+                    json!({"code":200,"comments":((offset+1)..=(offset+limit).min(25)).map(comment).collect::<Vec<_>>(),"hotComments":[],"topComments":[],"total":25,"more":offset+limit<25})
                 }
                 "/api/resource-exposure/config" => {
                     json!({"code":200,"data":{"resourceType":"other"}})

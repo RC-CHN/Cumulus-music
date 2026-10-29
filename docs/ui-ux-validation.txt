@@ -897,3 +897,36 @@ Windows现场与接续提示焦点复查（2026-10-29）
 - 编译器退出后删除511份旧增量编译目录，每crate保留最新已完成的一份，实际释放
   6190010368字节（约5.76GiB）；见.build/settings-layout-cleanup.json。
   不将虚拟桌面结果称为物理60Hz、高DPI、声卡或Windows已验收；完整目标仍未完成。
+
+2026-10-29：目录与评论长内容排版（fix/catalog-layout-details）
+- 延续用户“先继续界面截图检查”的授权，使用真实Tauri/WebKitGTK、隔离Xvfb与
+  xcompmgr -n；所有账号、专辑、评论均为合成数据，未调用真实音乐服务或发布评论。
+  用户桌面未登录，未据此声称物理刷新率、DPI或Windows实际效果通过。
+- 复现评论页缺少内部滚动容器：20条评论将页面撑到3458px，分页在窗口外；超长昵称
+  又将页面撑宽至1100px。修复为剩余视口内滚动，标题/昵称可换行，刷新按钮不被挤走。
+  确认翻页、排序或定位变化后回到顶部；刷新、点赞和失败请求不重置阅读位置。
+- 专辑封面按实际列宽保持正方形，虚拟列表行高与占位高度同步调整；列数计算计入间距。
+  歌手占位头像使用与图片相同的圆形样式。卡片截断标题补充完整title提示；长歌手署名
+  和专辑译名可换行，不再产生详情页内部横向滚动。这是既有布局的兼容修正，不声称
+  新的官方像素一致性；未引用YesPlayMusic。
+- 新增desktop/examples/catalog_layout_ui_probe.js与catalog_smoke.py --layout：
+  1120×760/760×540 × 浅/深色；封面比例、完整标题提示、长署名/昵称边界、评论末页
+  按钮命中、刷新保持位置、翻页顶部可见，以及已滚动列表直接缩放后末项与文字可见。
+  .build/ui-detail-layout-final/audit.json：30态/30图全部通过。
+  .build/ui-detail-baseline-composited使用相同合成数据、此前前端产物执行相同30态，
+  在封面比例、头像、长文本和评论分页等检查上按预期失败，保留前后对照。
+- .build/ui-detail-catalog-final/audit.json：18态/18图，歌手/专辑切换、分页、下载
+  选项、合成收藏状态与深色窄窗口通过。ui-detail-collections-final/audit.json：
+  18态/18图，收藏专辑、已购专辑、关注歌手、搜索与列表窗口通过。
+  ui-detail-ux-final/report.json：41态/41图，歌单编辑/确认、边缘菜单、均衡器、
+  空状态/错误状态、焦点恢复及主题重启通过。图集ui-detail-gallery/index.html含
+  最终107张原始截图与修复前对照；仅通过CSS隐藏窗口以外的桌面，未修改PNG像素。
+- 前端npm ci、format:check、227测试、类型检查及构建通过；Rust fmt、严格workspace
+  Clippy通过。第一次全量测试日志虽记载全部通过，但外层命令收到SIGTERM，未将其
+  当作成功退出；隔离进程组重新运行，ui-detail-workspace-tests-status.json确认
+  cargo退出0，248目标、1157 passed、0 failed、0 ignored。CI规则21项通过。
+  ui-detail-tested-dist.json记录已验证的前端产物摘要；正式debug/cumulus重新构建。
+  Linux/Windows CI均增加30态布局检查；远端精确提交CI结果另行核对，未发布新版本。
+- 编译进程退出后清理602份旧增量缓存，各crate保留最新一份；释放16773578752字节
+  （约15.62GiB），未删除源码、账号、截图、报告或可运行产物。记录ui-detail-cleanup.json。
+  以上为界面专项进展，完整业务迁移目标仍未完成。

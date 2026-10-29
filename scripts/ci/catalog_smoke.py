@@ -49,6 +49,7 @@ def main():
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--screenshots', action='store_true', help='local Linux GTK captures; not required in CI')
     mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--layout', action='store_true', help='long content, artwork and comment scrolling')
     mode.add_argument('--collections', action='store_true')
     mode.add_argument('--history', action='store_true')
     mode.add_argument('--settings', action='store_true')
@@ -61,6 +62,8 @@ def main():
     root.mkdir(parents=True, exist_ok=False)
     env = {k: v for k, v in os.environ.items() if not k.startswith('CUMULUS_')}
     env['CUMULUS_PROOF_DIR'] = str(root / 'run')
+    if args.layout:
+        env['CUMULUS_UX_SCRIPT'] = str(Path(__file__).resolve().parents[2] / 'desktop/examples/catalog_layout_ui_probe.js')
     if args.relay_publication:
         args.relay = True
         env['CUMULUS_RELAY_PUBLICATION_PROOF'] = '1'
@@ -92,6 +95,19 @@ def main():
         raise AssertionError((output / 'failed.json').read_text(encoding='utf-8'))
     assert returncode == 0, f'catalog probe exited {returncode}'
     complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
+    if args.layout:
+        assert complete['ok'] and complete['stageCount'] == 30 and complete['layoutVerified']
+        assert complete['realMusicRequests'] == 0 and not complete['playbackVerified'] and not complete['failures']
+        stages = [json.loads(path.read_text(encoding='utf-8')) for path in output.glob('ux_*.json')]
+        assert len(stages) == 30 and all(all(stage['checks'].values()) for stage in stages)
+        assert {(stage['width'], stage['height'], stage['theme']) for stage in stages} == {
+            (1120, 760, 'light'), (1120, 760, 'dark'), (760, 540, 'light'), (760, 540, 'dark')}
+        assert not args.screenshots or captures == 30
+        result = {'ok': True, 'actualWebView': True, 'states': 30, 'screenshots': captures,
+                  'realMusicRequests': 0, 'layoutVerified': True, 'physicalDisplayVerified': False}
+        (root / 'audit.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
+        print(json.dumps(result))
+        return
     count = 14 if args.relay_recovery else 19 if args.relay else 22 if args.settings else 21 if args.relay_settings else 24 if args.history else 18
     assert complete['ok'] and complete['stageCount'] == count and complete['realMusicRequests'] == 0
     if args.screenshots:

@@ -175,6 +175,7 @@ jobs:
           LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a python3 scripts/ci/startup_smoke.py --binary .build/target/debug/examples/startup_ui_probe --root .build/ci-startup-linux
           cargo build -p cumulus-desktop --example catalog_ui_probe --features custom-protocol --locked
           dbus-run-session -- xvfb-run -a python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-linux
+          dbus-run-session -- xvfb-run -a python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-layout-linux --layout
           dbus-run-session -- xvfb-run -a python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-collections-linux --collections
           dbus-run-session -- xvfb-run -a python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-history-linux --history
           dbus-run-session -- xvfb-run -a python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-settings-linux --settings
@@ -215,6 +216,7 @@ jobs:
           python scripts/ci/startup_smoke.py --binary .build/target/debug/examples/startup_ui_probe.exe --root .build/ci-startup-windows --runtime .build/package-stage/windows-x64/native
           cargo build -p cumulus-desktop --example catalog_ui_probe --features custom-protocol --locked
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-catalog-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-catalog-layout-windows --runtime .build/package-stage/windows-x64/native --layout
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-collections-windows --runtime .build/package-stage/windows-x64/native --collections
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-history-windows --runtime .build/package-stage/windows-x64/native --history
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-settings-windows --runtime .build/package-stage/windows-x64/native --settings
