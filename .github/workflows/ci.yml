@@ -156,6 +156,7 @@ jobs:
           xvfb-run -a dbus-run-session -- python3 scripts/ci/ux_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-ux-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/download_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-layout-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/player_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-player-layout-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playlist_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playlist-layout-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/like_recovery_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-likes-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/keyboard_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-keyboard-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/motion_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-motion-linux
@@ -207,6 +208,7 @@ jobs:
           python scripts/ci/ux_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-ux-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/download_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-download-layout-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/player_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-player-layout-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/playlist_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playlist-layout-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/like_recovery_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-likes-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/keyboard_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-keyboard-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/motion_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-motion-windows --runtime .build/package-stage/windows-x64/native

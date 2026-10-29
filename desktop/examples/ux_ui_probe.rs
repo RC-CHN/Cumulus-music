@@ -8,6 +8,8 @@ mod fixture;
 mod like_recovery_fixture;
 #[path = "support/media_shortcuts.rs"]
 mod media_shortcuts;
+#[path = "support/playlist_layout_fixture.rs"]
+mod playlist_layout_fixture;
 #[allow(dead_code)]
 #[path = "support/relay_fixture.rs"]
 mod relay_fixture;
@@ -34,7 +36,10 @@ fn song(id: u64) -> Value {
     json!({"id":id,"name":format!("合成歌曲 {id} · A quiet afternoon"),"ar":[{"name":"Cumulus"}],"al":{"name":"界面体验验证"},"dt":if id==1 {6_000_000} else {235_000},"fee":id%3})
 }
 fn playlist(id: u64) -> Value {
-    json!({"id":id,"userId":if id<20 {2} else {3},"name":if id==1 {"我喜欢的音乐".into()} else if id==2 {"午后散步 · 一份用来检查较长名称与编辑入口的歌单".into()} else {format!("合成歌单 {id}")},"creator":{"userId":if id<20 {2} else {3},"nickname":"Cumulus"},"specialType":if id==1 {5} else {0},"privacy":10,"trackCount":40,"description":"沿着熟悉的小路，留一点时间给音乐。这是一段较长的合成简介，用来检查窄窗口里的文字、封面和操作入口。","tags":["轻音乐"],"trackIds":(1..=40).map(|id|json!({"id":id,"v":0})).collect::<Vec<_>>()})
+    playlist_layout_fixture::decorate(
+        json!({"id":id,"userId":if id<20 {2} else {3},"name":if id==1 {"我喜欢的音乐".into()} else if id==2 {"午后散步 · 一份用来检查较长名称与编辑入口的歌单".into()} else {format!("合成歌单 {id}")},"creator":{"userId":if id<20 {2} else {3},"nickname":"Cumulus"},"specialType":if id==1 {5} else {0},"privacy":10,"trackCount":40,"description":"沿着熟悉的小路，留一点时间给音乐。这是一段较长的合成简介，用来检查窄窗口里的文字、封面和操作入口。","tags":["轻音乐"],"trackIds":(1..=40).map(|id|json!({"id":id,"v":0})).collect::<Vec<_>>()}),
+        id,
+    )
 }
 impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, args: Value, _: bool) -> ApiFuture<'a, Value> {
@@ -46,14 +51,31 @@ impl Api for Library {
                     json!({"code":200,"profile":{"userId":2,"nickname":"界面体验验证"}})
                 }
                 "/api/user/playlist" => {
-                    json!({"code":200,"more":false,"playlist":(1..=24).map(playlist).collect::<Vec<_>>()})
+                    // One collected list exercises a menu whose reorder items
+                    // are both disabled, without changing production state.
+                    let last = if playlist_layout_fixture::enabled() {
+                        20
+                    } else {
+                        24
+                    };
+                    json!({"code":200,"more":false,"playlist":(1..=last).map(playlist).collect::<Vec<_>>()})
                 }
                 "/api/song/like/get" => json!({"code":200,"ids":[3,7,10]}),
                 "/api/v3/discovery/recommend/songs" => {
                     json!({"code":200,"data":{"dailySongs":(1..=40).map(song).collect::<Vec<_>>()}})
                 }
                 "/api/v6/playlist/detail" => {
-                    json!({"code":200,"playlist":playlist(args["id"].as_str().and_then(|s|s.parse().ok()).or_else(||args["id"].as_u64()).unwrap_or(2))})
+                    let id = args["id"]
+                        .as_str()
+                        .and_then(|s| s.parse().ok())
+                        .or_else(|| args["id"].as_u64())
+                        .unwrap_or(2);
+                    if playlist_layout_fixture::first_read_failure(id) {
+                        playlist_layout_fixture::wait_for_release().await;
+                        json!({"code":500})
+                    } else {
+                        json!({"code":200,"playlist":playlist(id)})
+                    }
                 }
                 "/api/v3/song/detail" => {
                     let rows: Vec<Value> =
@@ -137,6 +159,10 @@ fn main() {
         app.listen("ux-proof",move |event| {
             let mut value:Value=serde_json::from_str(event.payload()).unwrap();
             let stage=value["stage"].as_str().unwrap_or("");
+            if playlist_layout_fixture::enabled() && stage=="playlist-fixture-release" {
+                playlist_layout_fixture::release_failure();
+                return;
+            }
             if shortcut_proof && stage=="shortcut-fixture" {
                 let epoch=handle.state::<MusicClient>().account().unwrap().epoch;
                 media_shortcuts::command(&handle,&proof_store,&epoch,&value).unwrap();

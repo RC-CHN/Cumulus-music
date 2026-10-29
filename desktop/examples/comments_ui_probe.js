@@ -4,7 +4,7 @@
  const invoke=(name,args={})=>window.__TAURI_INTERNALS__.invoke(name,args);
  const report=(stage,detail={})=>invoke('plugin:event|emit',{event:'comments-proof',payload:{stage,...detail}});
  const wait=async(test,label,ms=65000)=>{const end=Date.now()+ms;while(Date.now()<end){const value=await test();if(value)return value;await sleep(100);}throw Error(label);};
- const button=(text,scope=document)=>[...scope.querySelectorAll('button')].find(n=>n.textContent.trim()===text);
+ const button=(text,scope=document)=>[...scope.querySelectorAll('button')].find(n=>n.getAttribute('aria-label')===text||n.textContent.trim()===text);
  const click=async n=>{await sleep(40);if(!n||n.disabled)throw Error('control_unavailable_'+(n?.getAttribute('aria-label')||n?.textContent.trim()||'missing'));n.scrollIntoView({block:'nearest'});n.click();await sleep(100);};
  const input=(label,value)=>{const n=el(`[aria-label="${label}"]`);if(!n)throw Error('input_missing_'+label);n.value=value;n.dispatchEvent(new Event('input',{bubbles:true}));};
  const stage=async(name,data={})=>{await sleep(400);await report(name,{...data,horizontalOverflow:document.documentElement.scrollWidth>innerWidth});await sleep(900);};
