@@ -6,6 +6,8 @@ mod assets;
 mod fixture;
 #[path = "support/like_recovery_fixture.rs"]
 mod like_recovery_fixture;
+#[path = "support/media_shortcuts.rs"]
+mod media_shortcuts;
 #[allow(dead_code)]
 #[path = "support/relay_fixture.rs"]
 mod relay_fixture;
@@ -84,6 +86,7 @@ fn main() {
     let motion_proof = std::env::var_os("CUMULUS_MOTION_PROOF").is_some();
     let recovery_proof = std::env::var_os("CUMULUS_LIKE_RECOVERY_PROOF").is_some();
     let media_proof = std::env::var_os("CUMULUS_SYSTEM_MEDIA_PROOF").is_some();
+    let shortcut_proof = std::env::var_os("CUMULUS_SHORTCUT_UI_PROOF").is_some();
     let output = root.join(
         if motion_proof && std::env::var_os("CUMULUS_MOTION_NATIVE_REDUCED").is_some() {
             "native-reduced"
@@ -130,6 +133,12 @@ fn main() {
         app.listen("ux-proof",move |event| {
             let mut value:Value=serde_json::from_str(event.payload()).unwrap();
             let stage=value["stage"].as_str().unwrap_or("");
+            if shortcut_proof && stage=="shortcut-fixture" {
+                let epoch=handle.state::<MusicClient>().account().unwrap().epoch;
+                media_shortcuts::command(&handle,&proof_store,&epoch,&value).unwrap();
+                handle.get_webview_window("main").unwrap().eval(format!("window.__shortcutFixtureAck={};",serde_json::to_string(&value["kind"]).unwrap())).unwrap();
+                return;
+            }
             if media_proof && stage=="media-fixture" {
                 let kind=value["kind"].as_str().unwrap();
                 match kind {
@@ -174,6 +183,7 @@ fn main() {
                     value["systemMediaStatus"]=serde_json::to_value(cumulus_desktop::system_media::settings::system_media_status(handle.clone())).unwrap();
                     value["systemMediaPreferences"]=serde_json::to_value(handle.state::<MusicClient>().system_media_preferences_native().unwrap()).unwrap();
                 }
+                if shortcut_proof {media_shortcuts::observe(&handle,&mut value);}
                 let stage = stage.to_owned(); let handle=handle.clone(); let output=output.clone();
                 tauri::async_runtime::spawn(async move {
                     let client=handle.state::<MusicClient>(); let epoch=client.account().unwrap().epoch;
@@ -195,6 +205,7 @@ fn main() {
         if motion_proof { builder=builder.initialization_script(include_str!("motion_environment.js")); }
         builder.build()?;
         if media_proof {cumulus_desktop::system_media::install(app.handle());}
+        if shortcut_proof {cumulus_desktop::shortcuts::install(app.handle());}
         Ok(())
     }).on_page_load(|view, payload| {
         if payload.event()==PageLoadEvent::Finished && view.label()=="main" {

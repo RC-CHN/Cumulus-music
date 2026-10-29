@@ -130,6 +130,8 @@ fn run_mode(shortcut_proof: bool) {
                     let kind = value["kind"].as_str().unwrap();
                     let result: cumulus_core::Result<()> = match kind {
                         "shortcut_change" | "shortcut_read" | "shortcut_damage" | "shortcut_reject" | "shortcut_allow" if shortcut_proof => shortcuts::command(&app,&store,&epoch,&value),
+                        "shortcut_record" if shortcut_proof => cumulus_desktop::shortcuts::recording::shortcut_begin_recording(app.clone(),epoch.clone()).await.map(|_|()).map_err(|_|cumulus_core::Error::State("recording rejected")),
+                        "shortcut_record_end" if shortcut_proof => cumulus_desktop::shortcuts::recording::shortcut_end_recording(app.clone(),value["recording"].as_str().unwrap().into()).await.map_err(|_|cumulus_core::Error::State("recording release failed")),
                         "start" => client.play_selection(&epoch, PlaySelection::Songs { ids:vec!["2".into(),"3".into()],index:0,quality:Quality::Standard }).await.map(|_|()),
                         "seek" => client.player_action(&epoch, PlayerAction::Seek {seconds:9.0}).await.map(|_|()),
                         "short_seek" => client.player_action(&epoch, PlayerAction::Seek {seconds:4.01}).await.map(|_|()),

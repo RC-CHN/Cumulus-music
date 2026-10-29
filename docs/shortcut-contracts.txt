@@ -4,8 +4,8 @@
 本批完成core/preferences/shortcuts的解析、设置、注册计划和回执代次，及MusicClient
 账号边界下的设置读写。它是可执行的Rust领域实现，不依赖Tauri、WebView、Python或OS hook。
 后续增量已接入原生全局注册与播放动作，Linux X11完成独立进程真实按键验证（见末节）。
-设置页、本地可配置键路由、mini窗口和桌面歌词窗口仍未接通，不能宣称整套快捷键用户流程
-已经完成。既有主窗口空格、Linux MPRIS/Windows SMTC和本批键位设置是不同的入口。
+设置页与本地可配置键现已接入（见末节）；mini窗口、桌面歌词窗口和Wayland全局入口
+仍未完成，不能宣称整套快捷键用户流程已完成。Linux MPRIS/Windows SMTC是不同入口。
 原目标的这些界面/原生分支继续保留，不以本批测试通过缩小完整交付范围。
 
 官方证据（以下模块位于references/netease-3.1.42.205594-analysis/recovered-js/modules）
@@ -50,7 +50,7 @@
   然后在同事务写默认值；失败回滚备份和新值。正常配置拒绝repair以防抹掉用户选择。
   连JSON都无法解析时，备份current_raw/saved_raw原文；可解析的current/saved继续保留。
   StateTransaction.get_raw仅用于事务内恢复，未解析内容不会通过客户端视图返回前端。
-- MusicClient.shortcut_settings_native只读本机配置，不建立账号/音频。UI层将使用
+- MusicClient.shortcut_settings_native只读本机配置，不建立账号/音频。UI层使用
   shortcut_settings(epoch)和shortcut_settings_command(epoch, Change{expected_revision,
   edit:Bind|Global|Media|Reset}|Repair)。这些调用仍检查当前账号epoch，旧窗口不能写入。
   读写结果是已保存意图，不是原生注册通过；原生可用性由RegistrationLedger另报。
@@ -99,16 +99,16 @@
   保存失败保持原计划；损坏或读取失败撤销旧计划。native::run有独立消息循环。
 - IPC shortcut_settings(epoch)、shortcut_settings_command(epoch,command)返回
   AccountData<ShortcutSettingsView>；shortcut_status和cumulus:shortcuts事件返回
-  revision、settingsRevision、phase、rows（hotkey/scope/chord/status）。本批尚无
-  前端编辑/录入调用，未把Rust IPC存在当成设置页通过。
+  revision、settingsRevision、ticket、recording、phase、rows（hotkey/scope/chord/status）。
+  前端编辑/录入调用和实际验证另见末节。
 - phase=ready仅表示这一轮注册处理结束，必须逐行读取status；不是全部成功。
   Conflict code=1是OS确认的占用；Unavailable code=1动作尚未接通、2键位不支持、
-  3平台/连接不可用、4本地WebView监听尚未接入。未完成窗口动作不注册为全局hook，
-  不拦截后什么都不做。F5/Space/Close在本计划的结果不替代既有主窗口空格验证。
+  3平台/连接不可用、4本地WebView监听未确认、5录入期间暂停。未完成窗口动作不注册
+  为全局hook。F5/Space已接入本地路由；Close仍未作为自定义快捷键动作接入。
 - 注册回执仅本进程有效。刷新设置会重新请求OS注册，可在外部应用释放占用后恢复。
   进程退出撤销注册；从不因按键业务失败重启应用、重放写入或自动核对后再喜欢。
-  单次动作进行中忽略额外按键；错误事件cumulus:shortcut-error仅包含ClientError，
-  不包含设备路径、Cookie或授权URL。其前端提示订阅尚待接入。
+  单次动作进行中忽略额外按键；错误事件cumulus:shortcut-error包含epoch和ClientError，
+  不包含设备路径、Cookie或授权URL。前端只显示当前账号的错误，旧账号事件丢弃。
 
 Linux X11与Windows边界
 - Linux使用x11rb的真实X11连接：按当前keymap把官方逻辑键码转为keysym/keycode，
@@ -151,3 +151,58 @@ Linux X11与Windows边界
   workspace Clippy、Windows GNU desktop全targets Clippy、21项CI规则均通过。
   最终CI脚本再次在本机跑通18段，证据为.build/native-shortcuts-ci-script/report.json。
   frontend内容树未改；没有在这一批把后台按键验证算成UI编辑/录入功能通过。
+
+设置界面与本地键路由增量
+- frontend/components/settings/Shortcuts.vue显示窗口内/全局两列、独立全局/媒体开关，
+  每行显示当前实际回执；未接入的mini/桌面歌词保持不可用。文字/输入/弹窗拥有键盘时
+  暂停本地控制，忽略长按、输入法组合、Meta及已被其他控件处理的事件。
+- App先安装DOM监听，再通过shortcut_attach(epoch,ticket)取得本窗口的lease；
+  shortcut_detach(lease)只撤销同一个监听。替换注册、账号切换、主页面重新加载和
+  退出使旧监听失效。原生状态事件按十进制revision用BigInt排序，旧读回不覆盖新事件。
+  主页面加载生命周期由Tauri plugin提供，example自己的加载回调不能覆盖它。
+- shortcut_press({epoch,lease,ticket,keys,selection})携带前端已观察到的
+  selection={audioPlayId,audioEntryId,videoPlayId}。core先核对当前账号/选项，再捕获
+  原生媒体目标，随后沿原有actor fence执行；迟到的UI操作不重新选择后来播放的歌。
+  这里传递的是观察值，不是可反序列化的NativeShortcutInvocation。播放控制、5%音量、
+  手动上下首和喜欢仍复用既有用例；F5按M116的play_pause_1语义与空格切换播放。
+- shortcut_capture(input,scope)直接执行Rust中已与官方8192组向量核对的录入规则，
+  返回{kind:ignore|clear|set,keys?}，前端不再复制一套保留键/全局补修饰规则。
+  表单只允许Tab导航、Escape取消，其他组合等待core结果；Ignore保留旧草稿，
+  Backspace清空草稿，只有明确保存才提交。冲突/录入错误放在编辑框旁边，读写失败
+  显示在刷新/开关附近。深浅色和窄窗口使用同一组主题变量与可换行布局。
+- shortcut_begin_recording(epoch)取得临时录入id，在本地不写开关；先退休旧Ticket，
+  OS线程确认全部抓键释放后phase=recording，前端才聚焦可录入的输入框。
+  本地/全局/媒体键在这段期间不可派发。结束操作shortcut_end_recording(id)仅关闭
+  相同id，按最新落盘值恢复；旧取消/过期任务不能结束新录入。取消、离开页面、
+  重新加载、账号切换均清理；120秒超时是失联兜底，不自动保存。
+- 保存使用开始编辑时的expected_revision；不能悄悄换成回读的新revision重发。
+  失败只回读，失去成功回执也不声称已保存；若存储已变化，则关闭旧草稿并恢复按键，
+  由用户明确刷新和重新编辑。乱序录入结果、旧账号读写和迟到的录入租约均被隔离。
+  设置不新增音乐HTTP请求；喜欢/实际切歌仍按原有用例的网络边界执行。
+
+验证入口（新增）
+- frontend/tests/shortcuts.test.ts：迟到录入租约释放、乱序成功/失败、保存结果丢失、
+  冲突时保留原revision、其他写者取代草稿、录入过期、账号变更和状态修订精度。
+- core/tests/support/native_shortcut_client.rs：旧账号/歌曲/视频观察值不能控制新目标，
+  F5能实际暂停音频和视频；与既有三项原生业务场景一起执行。
+- cargo build -p cumulus-desktop --example ux_ui_probe --features custom-protocol --locked
+- GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a /usr/bin/python3
+  scripts/ci/shortcuts_ui_smoke.py --binary <target>/debug/examples/ux_ui_probe
+  --root <new-proof-dir> --screenshots
+  此脚本运行生产前端/IPC/Tauri/原生PCM，使用DOM键事件；OS按键另由shortcut_smoke.py
+  的独立生产者验证，二者不混称。Windows命令省略X11前缀并传--runtime <native-dir>。
+- shortcut_smoke.py新增录入释放全局/媒体键、外部进程可重新取得原键、取消后恢复、
+  旧id清理不影响新录入；本机21段通过，保留.build/shortcut-recording-x11-1/report.json。
+- .build/shortcut-ui-x11-final/report.json：真实Linux WebView18态/18截图、两次进程、
+  一次页面刷新，完成Ctrl+P/F5/空格、输入框/弹窗保护、改键/旧键释放、全局补修饰、
+  碰撞/取消/清除、760×540深色、独立开关、坏JSON恢复、重启实际播放控制。三次
+  注入保存失败均恢复键盘焦点；不是只验证错误文字出现。
+  设置页音频输出枚举使用独立inspector，初次进入的factory计数为2；断言全程计数
+  不增长且原播放ID不变，不把这个既有枚举实例误判成快捷键触发的新播放器。
+- .build/shortcut-ui-x11-3保留修复前偶发焦点落到body的证据。原生注册事件曾提前
+  取消保存动作的焦点恢复；现在只有外部结束录入时才捕获那条恢复逻辑，普通状态
+  事件不抢占控件操作。已实际查看深色编辑、失败提示和窄窗口截图。
+- 当前Linux全workspace241目标1120项、前端220项、21项CI规则全部通过；fmt、
+  Linux workspace严格Clippy、Windows GNU desktop全targets严格Clippy及前端
+  格式/类型/生产构建通过。Linux合成PCM/null和虚拟显示不证明声卡听感/物理刷新率。
+  Windows原生键/界面仍待精确提交CI；Wayland portal、mini窗口、桌面歌词仍继续。

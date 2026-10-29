@@ -565,3 +565,13 @@ core/client/native_media/shortcuts按M116恢复带账号/曲目代次的播放�
 按键、外部占用、按住/松开、修改/关闭/损坏/修复及账号切换验证；具体命令和边界见
 shortcut-contracts.txt。Windows原生RegisterHotKey适配已写，运行验证仍待完成；
 Wayland portal、本地可配置键、设置UI、mini和桌面歌词仍继续，不将本批称为整体完成。
+
+2026-10-29 本地快捷键与设置UI增量
+core捕获窗口所见账号/音频选项/MV后再执行原生目标，覆盖迟到IPC不误控新媒体。
+desktop独立管理窗口lease、注册ticket和临时录入id；设置表单通过类型化接口复用
+官方录入规则和真实OS回执。取消/刷新/离开/超时不保存草稿，恢复最新落盘设置；
+失去写回执只读回、拒绝偷偷重发或更换原CAS令牌。界面提供独立开关、实际可用性、
+错误/冲突/损坏恢复并保护输入、弹窗和键盘焦点。详细说明见shortcut-contracts.txt。
+Linux真实WebView18态/18截图、独立X11按键21段及1120项Rust/220项前端测试通过；
+不是Windows实际验证。Wayland portal、mini/桌面歌词、Windows媒体broker及全范围
+最终审计仍继续，不将本次完成的设置/本地键用例当成整个目标完成。

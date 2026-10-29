@@ -91,3 +91,11 @@ Windows 系统媒体控制（SMTC）
   不能证明这个OS前提成立。这是新的待验证解释，不是已经证实的根因。下次专项额外
   只读记录Audiosrv/AudioEndpointBuilder状态、AudioEndpoint总数/OK数量；不启动
   服务、不安装虚拟驱动、不以读取失败或无设备把SMTC测试标为通过。
+
+40795918870的音频环境证据
+- 精确a4589a6专项再次失败，证据保存在.build/windows-smtc-40795918870。
+  只读查询成功：Audiosrv与AudioEndpointBuilder均Stopped，AudioEndpoint总数和
+  OK数量均0。存在交互Shell不能证明这个runner具备应用音频会话的先决条件。
+- 本次仍未验证Windows broker发布/消费成功，也没有证实缺音频会话是唯一根因。
+  应在具备正常音频服务/端点的Windows环境对照验证，或补独立发布基线；不能把null
+  输出替换为另一个假成功、跳过失败或将当前实现宣称为已通过Windows系统媒体验证。

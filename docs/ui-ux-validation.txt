@@ -660,3 +660,20 @@ Windows现场与接续提示焦点复查（2026-10-29）
   参数来源：https://chromium.googlesource.com/chromium/src/+/HEAD/ui/gfx/switches.cc 。
 - .build/windows-media-motion-linux/audit.json：Linux基础18态/18截图通过、原生PCM
   和重开验证不变；原生reduce第三轮为Windows专用，尚待新精确提交CI，未标通过。
+
+2026-10-29 快捷键设置与焦点恢复
+- 新设置页提供两列按键编辑、全局/媒体独立开关、每行实际可用性及明确的损坏恢复。
+  全局抓键先由OS确认释放才允许录入；离开、取消、页面刷新、超时清理恢复最新保存值。
+  core复用官方录入规则和账号/选曲fence；本地键不会在输入框、弹窗和IME组合时执行。
+- 真实WebView发现长表格把错误藏在底部；冲突提示现紧邻编辑框，保存错误紧邻开关。
+  又复现保存失败时异步注册事件抢掉焦点恢复：.build/shortcut-ui-x11-3/first/failed.json。
+  仅外部结束录入才触发原生状态监听的焦点恢复，避免覆盖正在等待保存结果的操作。
+- .build/shortcut-ui-x11-final为18态/18截图、浅色/深色和760×540、小窗口三次保存
+  失败焦点恢复、空格/F5/Ctrl+P真实原生播放控制、自定义键/冲突、取消、损坏修复、
+  页面重载及进程重启。已查看深色表格、编辑、失败截图；列没有水平溢出，错误可见。
+  DOM键输入与真实OS按键分开：.build/shortcut-recording-x11-1为独立X11窗口注入
+  的21段实际抓键/播放验证。两者都不代表Windows、Wayland或物理音频/刷新率。
+- 前端220项、Rust241目标1120项、21项CI规则、格式/严格Clippy/Windows GNU检查及
+  生产构建通过。详细来源、IPC、持久化和剩余边界见shortcut-contracts.txt。
+  .build/shortcut-ui-keyboard-regression另回归未安装原生shortcut宿主的7态旧空格入口，
+  包含750ms播放器初始化延迟、弹窗/输入/修饰键保护和同一播放ID，全部通过。
