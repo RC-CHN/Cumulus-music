@@ -2,6 +2,21 @@
 //! when eight digits are present; they are never interpreted as CSS RRGGBBAA.
 use crate::{Error, Result};
 use serde::{Deserialize, Serialize};
+/// M81's ordered native fallback candidates. The last Songti fallback is the
+/// recovered final choice; hosts append their platform generic fallback.
+pub const FONT_FALLBACKS: [&str; 6] = ["微软雅黑", "幼圆", "楷体", "隶书", "新宋体", "宋体"];
+pub fn font_families(requested: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    if !requested.is_empty() {
+        names.push(requested.to_owned());
+    }
+    for name in FONT_FALLBACKS {
+        if !names.iter().any(|v| v == name) {
+            names.push(name.to_owned());
+        }
+    }
+    names
+}
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Auxiliary {

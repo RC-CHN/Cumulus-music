@@ -1,11 +1,32 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import FontDialog from './FontDialog.vue';
 import type { AccountView } from '../../services/contracts';
 import type { LyricAppearance, LyricColors, LyricPreset } from '../../services/desktopLyrics';
 import { createLyricSettingsClient } from '../../adapters/desktopLyrics';
 import { useDesktopLyricSettings } from '../../composables/useDesktopLyricSettings';
 import { useControlFocus } from '../../composables/useControlFocus';
 const props = defineProps<{ account: AccountView }>();
+const choosingFont = ref(false),
+  fontButton = ref<HTMLButtonElement>();
+let fontOwner = '';
+function openFont() {
+  fontOwner = props.account.epoch;
+  choosingFont.value = true;
+}
+function closeFont(name?: string) {
+  if (name !== undefined && draft.value) draft.value.font = name;
+  choosingFont.value = false;
+}
+function restoreFontFocus() {
+  if (
+    !choosingFont.value &&
+    fontOwner === props.account.epoch &&
+    !document.querySelector('dialog[open]') &&
+    (document.activeElement === document.body || document.activeElement === fontButton.value)
+  )
+    fontButton.value?.focus({ preventScroll: true });
+}
 const model = useDesktopLyricSettings(createLyricSettingsClient());
 const refresh = ref<HTMLButtonElement>();
 const focus = useControlFocus(
@@ -40,6 +61,7 @@ watch(model.preferences, (value) => {
 watch(
   () => props.account.epoch,
   (epoch) => {
+    choosingFont.value = false;
     draft.value = undefined;
     baseline.value = undefined;
     void model.connect(epoch);
@@ -80,6 +102,8 @@ const valid = computed(
     Number.isInteger(draft.value.fontSize) &&
     draft.value.fontSize >= 12 &&
     draft.value.fontSize <= 96 &&
+    new TextEncoder().encode(draft.value.font).length <= 256 &&
+    !/[\u0000-\u001f\u007f-\u009f]/.test(draft.value.font) &&
     (!custom.value ||
       [...custom.value.text, ...custom.value.outline].every((c) =>
         /^(?:[\da-f]{6}|[\da-f]{8})$/i.test(c),
@@ -205,13 +229,18 @@ onUnmounted(() => {
               <option value="right">全部居右</option>
             </select></label
           >
-          <label class="font-family"
-            >字体<input
-              v-model="draft.font"
-              aria-label="桌面歌词字体"
-              placeholder="系统默认字体"
-              maxlength="256"
-          /></label>
+          <div class="font-family">
+            <label for="desktop-lyric-font-name">字体</label
+            ><span class="font-input"
+              ><input
+                id="desktop-lyric-font-name"
+                v-model="draft.font"
+                aria-label="桌面歌词字体"
+                placeholder="默认字体（自动选择）"
+                maxlength="256"
+              /><button ref="fontButton" class="secondary" @click="openFont">选择字体</button></span
+            >
+          </div>
           <label
             >字号<input
               v-model.number="draft.fontSize"
@@ -258,10 +287,11 @@ onUnmounted(() => {
           <p class="settings-note">颜色可填 6 位 RGB，或 8 位 ARGB（前两位控制透明度）。</p>
         </div>
         <p class="settings-note">
-          填写本机字体名称；未安装的字体使用系统回退。锁定状态不会在重启后保留。
+          可选择或填写本机字体名称；缺失的字体会自动回退。锁定状态不会在重启后保留。
         </p>
         <p v-if="!valid" class="catalog-error" role="alert">
-          字号须为 12–96 的整数，颜色须为 6 位或 8 位十六进制值。
+          字号须为 12–96 的整数；字体名最多 256 字节，不能包含控制字符；颜色须为 6 位或 8
+          位十六进制值。
         </p>
         <p v-if="conflict" class="catalog-error" role="alert">
           样式已在其他位置更改。你的草稿仍保留，请先刷新并检查。
@@ -302,6 +332,15 @@ onUnmounted(() => {
       </p>
     </div>
   </section>
+  <Transition name="modal" @after-leave="restoreFontFocus"
+    ><FontDialog
+      v-if="choosingFont && draft"
+      :key="account.epoch"
+      :epoch="account.epoch"
+      :value="draft.font"
+      @close="closeFont()"
+      @select="closeFont"
+  /></Transition>
 </template>
 <style scoped>
 .lyric-style-fields {
@@ -336,6 +375,17 @@ onUnmounted(() => {
 }
 .font-family {
   grid-column: span 2;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.font-input {
+  display: flex;
+  gap: 8px;
+}
+.font-input button {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .lyric-setting-actions {
   display: flex;

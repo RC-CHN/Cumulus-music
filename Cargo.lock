@@ -729,6 +729,7 @@ dependencies = [
  "cumulus-core",
  "dirs",
  "gio",
+ "gtk",
  "libc",
  "libloading",
  "rusqlite",

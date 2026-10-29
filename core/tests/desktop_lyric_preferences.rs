@@ -227,3 +227,28 @@ fn damage_and_missing_markers_require_explicit_repair_with_raw_backups() {
     assert!(DesktopLyricPreferences::change(&store, &repaired.revision, Edit::Reset).is_err());
     assert!(!DesktopLyricPreferences::repair(&store).unwrap().enabled);
 }
+#[test]
+fn font_fallback_order_matches_recovered_m81_with_explicit_platform_tail() {
+    use cumulus_core::preferences::desktop_lyrics::font_families;
+    // M81 function M: requested, five supported candidates, then 宋体.
+    assert_eq!(
+        font_families(""),
+        ["微软雅黑", "幼圆", "楷体", "隶书", "新宋体", "宋体"]
+    );
+    assert_eq!(
+        font_families("Missing Font"),
+        [
+            "Missing Font",
+            "微软雅黑",
+            "幼圆",
+            "楷体",
+            "隶书",
+            "新宋体",
+            "宋体"
+        ]
+    );
+    assert_eq!(
+        font_families("楷体"),
+        ["楷体", "微软雅黑", "幼圆", "隶书", "新宋体", "宋体"]
+    );
+}

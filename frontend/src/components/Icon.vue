@@ -39,6 +39,7 @@ const paths: Record<string, string> = {
   grid: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z',
   calendar: 'M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2Zm2-2v4m10-4v4M3 10h18M7 14h3m4 0h3m-10 3h3',
   back: 'm15 5-7 7 7 7',
+  forward: 'm9 5 7 7-7 7',
   close: 'm6 6 12 12M6 18 18 6',
   refresh: 'M20 7a9 9 0 1 0 1 8M20 2v5h-5',
   user: 'M20 21a8 8 0 0 0-16 0M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z',

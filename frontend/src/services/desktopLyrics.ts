@@ -83,6 +83,7 @@ export interface DesktopLyricView {
   media: MiniMedia;
   preferences: LyricPreferencesView;
   colors: [number, number, number, number][];
+  fontFamilies: string[];
   alignments: ['left' | 'center' | 'right', 'left' | 'center' | 'right'];
   locked: boolean;
   state: 'idle' | 'loading' | 'ready' | 'failed';

@@ -8,6 +8,7 @@ pub mod desktop_lyrics;
 mod downloads;
 mod effects;
 mod fm;
+mod fonts;
 mod graphics;
 mod history;
 mod identity;
@@ -51,6 +52,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
         .manage(cumulus_core::Application)
         .manage(mini::Host::default())
         .manage(desktop_lyrics::Host::default())
+        .manage(fonts::Host::default())
         .manage(player::PlayerStreams::default())
         .manage(together::CloseCoordinator::default())
         .manage(renewal::RenewalPump::default())
@@ -143,6 +145,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 desktop_lyrics::settings::desktop_lyric_settings,
                 desktop_lyrics::settings::desktop_lyric_change,
                 desktop_lyrics::settings::desktop_lyric_window_command,
+                fonts::system_font_catalog,
                 captcha::solve_login_captcha,
                 watchman::watchman_observation,
                 watchman::collection::broker::watchman_measurement,

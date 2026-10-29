@@ -4,7 +4,10 @@ mod storage;
 mod style;
 use crate::{Error, Result};
 use serde::{Deserialize, Serialize};
-pub use style::{Alignment, Appearance, Auxiliary, Colors, Composition, Palette, Preset, rgba};
+pub use style::{
+    Alignment, Appearance, Auxiliary, Colors, Composition, FONT_FALLBACKS, Palette, Preset,
+    font_families, rgba,
+};
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Geometry {

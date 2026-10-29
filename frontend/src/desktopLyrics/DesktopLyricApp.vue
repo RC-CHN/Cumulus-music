@@ -6,6 +6,7 @@ import { failure } from '../services/contracts';
 import Icon from '../components/Icon.vue';
 import LyricRow from './LyricRow.vue';
 import './desktopLyrics.css';
+import { fontStack } from '../services/fonts';
 import { useLocalShortcuts } from '../composables/useLocalShortcuts';
 import { createWindowShortcutClient } from '../adapters/windowShortcuts';
 const generation = location.hash.split('=')[1]!;
@@ -33,9 +34,7 @@ const style = computed(() => ({
   '--lyric-outline-unplayed': color(4),
   '--lyric-outline-played': color(5),
   '--lyric-stroke': appearance.value?.outline ? '1px' : '0px',
-  fontFamily: appearance.value?.font
-    ? `${JSON.stringify(appearance.value.font)}, system-ui, sans-serif`
-    : undefined,
+  fontFamily: fontStack(view.value?.fontFamilies ?? []),
   fontWeight: appearance.value?.bold ? 700 : 400,
 }));
 const empty = computed(() =>
