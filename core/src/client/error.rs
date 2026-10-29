@@ -96,6 +96,12 @@ impl From<Error> for ClientError {
                 }
                 Error::InvalidInput(_) => ("invalid_input", "输入内容不符合要求", false),
                 Error::QueueChanged => ("snapshot_changed", "列表已更新，请刷新后重试", true),
+                Error::State("shortcut settings changed") => {
+                    ("shortcuts_changed", "快捷键设置已变化，请刷新后重试", true)
+                }
+                Error::State("shortcut conflict") => {
+                    ("shortcut_conflict", "这组按键已被其他快捷键占用", false)
+                }
                 Error::State("system media settings changed") => (
                     "system_media_changed",
                     "系统媒体设置已变化，请刷新后重试",

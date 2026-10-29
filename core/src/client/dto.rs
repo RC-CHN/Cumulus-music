@@ -43,6 +43,9 @@ pub use super::settings::{
     SettingAvailability, SettingChange, SettingKey, SettingValue, SettingsOperationView,
     SettingsPhase,
 };
+pub use super::shortcut_preferences::{
+    ShortcutEdit, ShortcutSettingsCommand, ShortcutSettingsView,
+};
 pub use super::together::{
     TogetherCommand, TogetherMemberView, TogetherOperationView, TogetherRoomView, TogetherView,
 };

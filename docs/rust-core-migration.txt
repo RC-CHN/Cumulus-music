@@ -549,3 +549,11 @@ Linux真实D-Bus、PCM/null12段及WebView12态/12截图、重启/失败/损坏�
 官方来源、状态机、存储字段、接口和故障边界见system-media-settings-contracts.txt。
 Windows SMTC已有实现，但40787793046专项在原生GUI就绪前失败，尚未实际执行OS消费；
 不可用交叉编译或Linux结果代替Windows运行。全局快捷键及其余全目标继续，不宣布完成。
+
+2026-10-29 快捷键独立核心规则增量
+core/preferences/shortcuts/{keys,model,storage,registration}与client/shortcut_preferences
+迁移M116/M81/M318/M3097的8组配置、独立开关、录入/冲突、持久化和原生注册回执代次。
+冻结官方执行8192组按键输入，6882组一致，1310组为明确的Meta/Alt+F4社区差异；
+注册尚未取得本次实际回执时不得称为Active。来源、API、持久化及对照见shortcut-contracts.txt。
+原生全局注册、设置页、mini/桌面歌词窗口与全局动作投递仍未接入，完整目标继续；
+不把可执行的核心规则及SQLite恢复测试称为端到端快捷键已完成。

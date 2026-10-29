@@ -1,0 +1,82 @@
+快捷键迁移：独立核心规则与持久化（2026-10-29）
+
+完成层级与尚未完成的用户流程
+本批完成core/preferences/shortcuts的解析、设置、注册计划和回执代次，及MusicClient
+账号边界下的设置读写。它是可执行的Rust领域实现，不依赖Tauri、WebView、Python或OS hook。
+本批尚未把新计划接到原生全局注册、设置页、mini窗口和桌面歌词窗口；不能宣称系统快捷键
+功能已经可用。既有主窗口空格、Linux MPRIS/Windows SMTC和本批键位设置是不同的入口。
+原目标的这些界面/原生分支继续保留，不以本批测试通过缩小完整交付范围。
+
+官方证据（以下模块位于references/netease-3.1.42.205594-analysis/recovered-js/modules）
+- hybrid_app.chunk.1482700000000.js/116.js 91–190：原生注册/注销及8组默认键位；
+  200–227：旧快捷键数据转为数字。397–426：本地、全局及媒体键的启动注册。
+  559–768：本地精确组合匹配、编辑/冲突/注册错误及媒体键开关；797–1059：动作。
+- 同目录81.js 113–146：Ctrl/Shift/Alt、键盘事件签名及编辑输入框判断；
+  443–488：可录入的非字母数字键；318.js 42–117：保留组合及默认表。
+- hybrid_64.chunk.1482700000000.js/3097.js 2317–2417：按键录入X，Backspace清除，
+  Enter不提交、全局无修饰键补Ctrl+Alt、Clear和invalidCode不接受；2492–2600：
+  全局开关保留原组合、媒体键单独开关、恢复八个默认行及开关。
+- 147.js 2823–2859：翻译实验分组退出时删除Translate行；进入时仅新增缺失行，
+  Ctrl+T若已占用则留下空绑定。恢复后的playing/setting产品动作卡也提供上述调用顺序。
+没有参考YesPlayMusic。没有网易云业务HTTP请求或凭据参与快捷键设置。
+
+核心模型
+- keys.rs：Chord保存规范升序的逻辑虚拟键码；这是官方证据的交换格式，不能直接
+  当成Linux X11键码或Windows扫描码。禁止重复修饰键、多个主键、单独修饰键及未知码。
+  KeyInput.capture返回Ignore、Clear或Set；Ignore不得清除原配置。
+- model.rs：8个默认动作分别为play_pause/prev/next/add_volume/cut_volume/mini_max/
+  love/lyric；本地Ctrl加P/Left/Right/Up/Down/M/L/D，全局在此基础上加Alt。
+  同时保存本地和全局两列，跨两列检查碰撞，即使全局开关关闭也保留碰撞约束。
+  同一动作、同一列、相同组合允许无变化；清空多个绑定互不冲突。拒绝时原值不变。
+- global_enabled/media_enabled默认均true，关闭不丢弃用户的组合。恢复默认保留
+  已存在的翻译行；translation_gate只接受宿主实际观察到的开关，不替宿主生成AB结果。
+- registration.rs：默认23条计划=8本地+8全局+F5/Space/Alt+F4+4媒体键。
+  关闭全局后15条，关闭全局和媒体后11条，仅关媒体为19条。媒体键179/176/177/178
+  分别对应播放暂停/下一首/上一首/停止。录入自定义组合不允许把媒体键当普通文本键。
+- RegistrationLedger启动及替换均生成新的不透明Ticket；全部状态从Pending开始，
+  原生回执才能改为Active/Conflict/Unavailable。旧Ticket、已删除行的回执被拒绝。
+  替换前验证全部内容，坏新计划不能退休有效旧计划。这里不假装完成OS注销/注册；
+  后续宿主必须实际注销旧hook并按Ticket检查派发，还须复用core媒体目标的账号/项目代次。
+  注册结果每次启动重新取得，不把上次保存的配置或错误码当成这次系统注册已成功。
+
+设备持久化与客户端边界
+- StateStore owner=local-device、kind=shortcut-settings-v1；current包含UUID revision、
+  global_enabled、media_enabled、bindings，saved=true区分新安装与丢失记录。
+  全表同一事务CAS保存；并发窗口只能有一个成功。初始令牌initial不写入保存记录，
+  后续每次提交或修复换新UUID，不复用旧窗口的令牌。
+- 缺必需行、字段、错误类型、非规范键码、碰撞、坏UUID或标记返回damaged，不能
+  悄悄启用一半默认快捷键。显式repair把current/saved原文保存在shortcut-recovery-v1，
+  然后在同事务写默认值；失败回滚备份和新值。正常配置拒绝repair以防抹掉用户选择。
+  连JSON都无法解析时，备份current_raw/saved_raw原文；可解析的current/saved继续保留。
+  StateTransaction.get_raw仅用于事务内恢复，未解析内容不会通过客户端视图返回前端。
+- MusicClient.shortcut_settings_native只读本机配置，不建立账号/音频。UI层将使用
+  shortcut_settings(epoch)和shortcut_settings_command(epoch, Change{expected_revision,
+  edit:Bind|Global|Media|Reset}|Repair)。这些调用仍检查当前账号epoch，旧窗口不能写入。
+  读写结果是已保存意图，不是原生注册通过；原生可用性由RegistrationLedger另报。
+
+明确的社区差异
+- 官方录入忽略Meta修饰本身，可能把Super+键存为不带Super的全局键。本实现拒绝
+  含Meta的录入，不在Linux抢占另一含义的键；这不是macOS支持实现。
+- 官方录入允许Alt+F4，但本地处理又固定将其解释为关闭窗口。本实现不让自定义行
+  占用该组合，避免保存后显示为有效而实际仍关闭窗口。
+- 官方重设默认直接重新注册，可能留下与已修改翻译行冲突的表。本实现整体拒绝
+  这种重设并保持原设置，要求先解除冲突，不自动删掉翻译行或执行有歧义的动作。
+- 持久化不保留可误导下次启动的原生成功标记；本次真实回执单独管理。
+
+验证与复现
+- 研究脚本references/recovered-client/scripts/freeze_shortcut_vectors.cjs仅在私有
+  材料上运行；使用Node VM执行恢复的M3097 X表达式，所需键名/修饰规则/保留表/默认值
+  从M81/M116/M318读取，不重新手写一份预期算法。输出只含合成按键与结果，不含官方源码。
+- core/tests/fixtures/shortcuts-official.json含四个源文件SHA256及8192组执行输出：
+  keyCode 0..255 × 16组修饰键 × 两个作用域；6882组保持官方结果，1310组为上述明确的
+  Meta/Alt+F4差异，测试逐项核对并固定差异总数。虚拟键码顺序按集合规范化。
+- shortcuts_official还验证默认表、独立开关、禁用全局仍查冲突、翻译行保留及重设失败。
+  shortcut_persistence验证真实SQLite重开、多连接CAS、损坏/缺失/缺字段及拒写事务回滚；
+  shortcut_registration验证旧注册回执退休，client_shortcuts验证账号切换及零网络/零解码。
+- 可复现：cargo test -p cumulus-core --test shortcuts_official --test shortcut_persistence
+  --test shortcut_registration --test client_shortcuts --locked -- --nocapture。
+  这些结果仅证明核心规则，不能作为Linux/Windows真实按键投递或设置页通过的证据。
+- 本批最终全workspace验证239个测试目标、1110项通过，失败/忽略0；严格Clippy、
+  fmt、Windows GNU desktop全targets Clippy、前端212项及21项CI规则通过。
+  .build/shortcut-mpris-regression为实际Tauri/独立D-Bus消费者12段回归通过；
+  无法解析JSON的14态WebView恢复证据见ui-ux-validation.txt，不能代替快捷键OS验证。
