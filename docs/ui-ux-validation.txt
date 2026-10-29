@@ -960,3 +960,37 @@ Windows现场与接续提示焦点复查（2026-10-29）
   的 E0432 已定位到共享 mpv_capture；e1214a3 补充同版本依赖，不更改生产依赖。
   CI 40848062119 的 Windows Clippy 已通过，全量 CI 仍需独立核对。
   本轮未发布版本，完整业务迁移目标保持进行中。
+
+2026-10-29：播放详情长文本、歌词与队列排布（fix/player-detail-layout）
+- 继续用户“先继续界面截图检查”的要求；真实 Tauri/WebKitGTK、隔离 Xvfb 与
+  xcompmgr、合成账号和 libmpv/null 音频。没有真实音乐服务请求或账号写入。
+  仍无物理桌面会话，本轮不证明物理刷新率、高 DPI、真实声卡或 Windows 视觉效果。
+- 修复前 1120×760 长歌手名从左列溢出，歌词横向内容宽达 1563px；760×540 时
+  标题/专辑挤到播放条下方，歌词偏移与翻译按钮也不可命中。唱片现在按剩余高度
+  等比缩小，歌名最多两行，歌手/专辑单行省略并提供全文 title；底栏和队列也补充
+  全文提示。连续无空格歌词允许换行。队列键盘焦点改为主题色内描边，保留可见焦点。
+  属于现有官方来源界面的社区布局修正，未参考 YesPlayMusic，不声称像素级复刻。
+- 新增 player_layout_ui_probe.js / player_layout_smoke.py：通过实际列表双击开始
+  合成原生播放并暂停，再验证 1120×760 / 760×540 × 深浅色、长短标题、歌词末尾、
+  队列首尾、关闭详情焦点恢复。每态核对左右列文字边界、唱片圆形及边界、歌词无
+  横向溢出、可见控件中心命中、队列有界渲染、全文提示；最终播放状态仍是 paused。
+  最初探针未等待播放器 ready，未触发播放；修正探针等待后执行正式基线，不记为
+  产品播放失败。用例只验证合成/null 输出，封面使用既有占位图，不冒充线上/声卡验证。
+- .build/player-layout-before-2/audit.json：20 态修复前截图，layoutPassed=false；
+  .build/player-layout-after/audit.json：外置 production dist 对照 20 态通过；
+  .build/player-layout-final/audit.json：最终内嵌前端 20 态 / 20 图全部通过。
+  .build/player-layout-motion-isolated/audit.json：18 态 / 18 图，动画开关、主题切换、
+  歌词即时/平滑滚动、保存失败恢复、焦点和重开进程保持通过。已人工查看长短标题、
+  正常/窄窗口、深浅色、队列焦点和普通歌词截图。最终图集有 38 张原始截图及前后对照：
+  .build/player-layout-gallery/index.html；仅以 CSS 隐藏窗口以外的桌面，没有改 PNG。
+- 并行截图时 .build/player-layout-motion 的首进程完成 16 态，但重开退出 -11，
+  整轮判为失败。player-layout-motion-coredump.txt 显示栈顶 spi_register_object_to_path
+  / libatk-bridge，之前有无障碍总线超时；未禁用无障碍或归为显卡故障。改为串行并让
+  Xvfb 在 D-Bus 前启动后，完整两进程通过；这不证明既有 AT-SPI 依赖崩溃已彻底修复。
+  CI 的 Linux 隔离 GUI 命令同步使用该启动顺序，让激活服务继承 DISPLAY；未忽略失败。
+- 前端 npm ci、格式检查、229 测试、类型检查和生产构建通过；Rust fmt、严格 workspace
+  Clippy、全量 254 目标 / 1173 passed / 0 failed / 0 ignored 通过，退出码 0 记录于
+  .build/player-layout-workspace-tests-status.json。CI 规则 21 项通过。debug/cumulus 与
+  ux_ui_probe 已重新构建，player-layout-delivery/tested-artifacts.json 记录产物摘要。
+  新 20 态流程加入 Linux/Windows 独立 CI job；远端精确提交的结论仍以其完整运行为准。
+  没有发布版本，本轮完成界面专项修正，完整业务迁移目标仍未完成。
