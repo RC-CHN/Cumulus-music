@@ -41,7 +41,7 @@
   margin: 16px 0;
   font-size: 13px;
 }
-.playlist-dialog input:not([type='checkbox']),
+.playlist-dialog input:not([type='checkbox']):not([type='radio']),
 .playlist-dialog textarea,
 .playlist-dialog select {
   width: 100%;

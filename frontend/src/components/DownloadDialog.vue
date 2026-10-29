@@ -163,6 +163,9 @@ async function fileAction() {
   <dialog
     ref="dialog"
     class="playlist-dialog download-dialog"
+    :class="{
+      'download-settings-dialog': ['start', 'settings', 'cloud', 'voice'].includes(target.kind),
+    }"
     aria-labelledby="download-dialog-title"
     @cancel.prevent="close"
   >
@@ -188,84 +191,86 @@ async function fileAction() {
       "
       @submit.prevent="save"
     >
-      <fieldset :disabled="blocked">
-        <p
-          v-if="target.kind === 'start' || target.kind === 'cloud' || target.kind === 'voice'"
-          class="download-selection ellipsis"
-          :title="target.tracks.map((t) => t.name).join('、')"
-        >
-          {{
-            target.tracks
-              .slice(0, 3)
-              .map((t) => t.name)
-              .join('、')
-          }}{{ target.tracks.length > 3 ? '…' : '' }}
-        </p>
-        <template v-if="target.kind === 'cloud'">
-          <p class="muted">保存云盘原文件，保留原音质和已有标签。</p>
-          <label class="private-checkbox"
-            ><input type="checkbox" v-model="options.lyrics" /> 另存歌词文件</label
+      <div class="download-settings-body">
+        <fieldset :disabled="blocked">
+          <p
+            v-if="target.kind === 'start' || target.kind === 'cloud' || target.kind === 'voice'"
+            class="download-selection ellipsis"
+            :title="target.tracks.map((t) => t.name).join('、')"
           >
-        </template>
-        <DownloadOptions v-else v-model="options" :voice="target.kind === 'voice'" />
-        <label
-          >下载目录
-          <div class="download-path">
-            <input
-              v-model="root"
-              aria-label="下载目录"
-              placeholder="选择保存音乐的文件夹"
-              required
-            /><button type="button" class="text-button" @click="choose('root')">选择目录</button>
-          </div></label
-        >
-        <div class="download-naming">
-          <label
-            >文件夹组织<select v-model.number="pathType" aria-label="文件夹组织">
-              <option :value="0">全部放在下载目录</option>
-              <option :value="1">按歌手</option>
-              <option :value="2">按歌手 / 专辑</option>
-            </select></label
-          ><label
-            >文件命名<select v-model.number="fileType" aria-label="文件命名">
-              <option :value="1">歌曲名</option>
-              <option :value="0">歌手 - 歌曲名</option>
-              <option :value="2">歌曲名 - 歌手</option>
-            </select></label
-          >
-        </div>
-        <div
-          v-if="
-            target.kind === 'settings' && view?.directory && root.trim() !== view.directory.root
-          "
-          class="download-directory-choice"
-        >
-          <label class="private-checkbox"
-            ><input
-              v-model="directoryMode"
-              type="radio"
-              value="future"
-              name="directory-mode"
-            />仅新建下载使用此目录</label
-          >
-          <label class="private-checkbox"
-            ><input
-              v-model="directoryMode"
-              type="radio"
-              value="migrate"
-              name="directory-mode"
-            />同时迁移原目录中的下载任务与文件</label
-          >
-          <p class="muted">
-            迁移会暂时暂停下载，完成后恢复原任务状态。发生冲突时保留进度，可继续或撤销；已有同名文件不会被覆盖。
+            {{
+              target.tracks
+                .slice(0, 3)
+                .map((t) => t.name)
+                .join('、')
+            }}{{ target.tracks.length > 3 ? '…' : '' }}
           </p>
-        </div>
-        <p class="muted">
-          {{
-            target.kind === 'cloud' ? '命名设置对新任务生效。' : '音质和命名设置对新任务生效。'
-          }}已存在的同名文件会保留，需要在任务中处理冲突。
-        </p>
-      </fieldset>
+          <template v-if="target.kind === 'cloud'">
+            <p class="muted">保存云盘原文件，保留原音质和已有标签。</p>
+            <label class="private-checkbox"
+              ><input type="checkbox" v-model="options.lyrics" /> 另存歌词文件</label
+            >
+          </template>
+          <DownloadOptions v-else v-model="options" :voice="target.kind === 'voice'" />
+          <label
+            >下载目录
+            <div class="download-path">
+              <input
+                v-model="root"
+                aria-label="下载目录"
+                placeholder="选择保存音乐的文件夹"
+                required
+              /><button type="button" class="text-button" @click="choose('root')">选择目录</button>
+            </div></label
+          >
+          <div class="download-naming">
+            <label
+              >文件夹组织<select v-model.number="pathType" aria-label="文件夹组织">
+                <option :value="0">全部放在下载目录</option>
+                <option :value="1">按歌手</option>
+                <option :value="2">按歌手 / 专辑</option>
+              </select></label
+            ><label
+              >文件命名<select v-model.number="fileType" aria-label="文件命名">
+                <option :value="1">歌曲名</option>
+                <option :value="0">歌手 - 歌曲名</option>
+                <option :value="2">歌曲名 - 歌手</option>
+              </select></label
+            >
+          </div>
+          <div
+            v-if="
+              target.kind === 'settings' && view?.directory && root.trim() !== view.directory.root
+            "
+            class="download-directory-choice"
+          >
+            <label class="private-checkbox"
+              ><input
+                v-model="directoryMode"
+                type="radio"
+                value="future"
+                name="directory-mode"
+              />仅新建下载使用此目录</label
+            >
+            <label class="private-checkbox"
+              ><input
+                v-model="directoryMode"
+                type="radio"
+                value="migrate"
+                name="directory-mode"
+              />同时迁移原目录中的下载任务与文件</label
+            >
+            <p class="muted">
+              迁移会暂时暂停下载，完成后恢复原任务状态。发生冲突时保留进度，可继续或撤销；已有同名文件不会被覆盖。
+            </p>
+          </div>
+          <p class="muted">
+            {{
+              target.kind === 'cloud' ? '命名设置对新任务生效。' : '音质和命名设置对新任务生效。'
+            }}已存在的同名文件会保留，需要在任务中处理冲突。
+          </p>
+        </fieldset>
+      </div>
       <footer>
         <button type="button" class="text-button" :disabled="busy || choosing" @click="close">
           取消</button
