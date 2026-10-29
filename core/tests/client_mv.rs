@@ -26,6 +26,8 @@ struct Backend {
     offline: AtomicBool,
     lose_write: AtomicBool,
     hold_song: AtomicBool,
+    hold_lyric: AtomicBool,
+    lyric_offline: AtomicBool,
     trial: AtomicBool,
     likes: Mutex<Vec<String>>,
     like_writes: Mutex<Vec<Value>>,
@@ -87,6 +89,18 @@ impl Api for Backend {
                     }
                     Ok(json!({"code":200}))
                 }
+                "/api/song/lyric/v1" => {
+                    if self.hold_lyric.swap(false, Ordering::AcqRel) {
+                        self.started.notify_one();
+                        self.release.notified().await;
+                    }
+                    if self.lyric_offline.load(Ordering::Acquire) {
+                        return Err(Error::Transport("synthetic lyric offline".into()));
+                    }
+                    Ok(
+                        json!({"code":200,"lrc":{"version":1,"lyric":"[00:00]Shared song\n[00:02]Next line"}}),
+                    )
+                }
                 "/api/v3/song/detail" => {
                     if self.hold_song.swap(false, Ordering::AcqRel) {
                         self.started.notify_one();
@@ -129,6 +143,8 @@ impl Fixture {
             offline: AtomicBool::new(false),
             lose_write: AtomicBool::new(false),
             hold_song: AtomicBool::new(false),
+            hold_lyric: AtomicBool::new(false),
+            lyric_offline: AtomicBool::new(false),
             trial: AtomicBool::new(false),
             likes: Mutex::new(vec![]),
             like_writes: Mutex::new(vec![]),
@@ -515,3 +531,6 @@ mod native_shortcut_tests;
 
 #[path = "support/mini_client.rs"]
 mod mini_tests;
+
+#[path = "support/desktop_lyric_client.rs"]
+mod desktop_lyric_tests;

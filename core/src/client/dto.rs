@@ -185,3 +185,7 @@ pub use super::likes::{LikeOperationView, LikeRecoveryCommand, LikeRecoveryView}
 pub use crate::catalog::details::CatalogQuery;
 
 pub use super::mini_preferences::{MiniPreferencesCommand, MiniPreferencesView};
+
+pub use super::desktop_lyric_preferences::{
+    DesktopLyricPreferencesCommand, DesktopLyricPreferencesView,
+};

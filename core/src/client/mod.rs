@@ -194,3 +194,7 @@ impl MusicClient {
         }
     }
 }
+
+mod desktop_lyric_preferences;
+
+pub mod desktop_lyrics;

@@ -1,0 +1,1662 @@
+{
+  "source": "official desktop 3.1.42.205594 M81",
+  "sha256": "5cdd80786988a10f3151c4ebdc8309480130fade7284e904b0057d0a6d4a36ff",
+  "palettes": [
+    {
+      "label": "低调灰",
+      "preset": "gray",
+      "text": [
+        "eeeeee",
+        "eeeeee",
+        "ebe9e9",
+        "bfbfbf"
+      ],
+      "outline": [
+        "999999",
+        "8b8b8b"
+      ]
+    },
+    {
+      "label": "落日晖",
+      "preset": "sunset",
+      "text": [
+        "eeeeee",
+        "eeeeee",
+        "ffbf99",
+        "e0c3ff"
+      ],
+      "outline": [
+        "999999",
+        "8e76c2"
+      ]
+    },
+    {
+      "label": "可爱粉",
+      "preset": "pink",
+      "text": [
+        "eeeeee",
+        "eeeeee",
+        "ffeef7",
+        "fcbede"
+      ],
+      "outline": [
+        "999999",
+        "be80a0"
+      ]
+    },
+    {
+      "label": "活力紫",
+      "preset": "purple",
+      "text": [
+        "eeeeee",
+        "eeeeee",
+        "f2efff",
+        "ded8f8"
+      ],
+      "outline": [
+        "999999",
+        "998dc9"
+      ]
+    },
+    {
+      "label": "天际蓝",
+      "preset": "blue",
+      "text": [
+        "eeeeee",
+        "eeeeee",
+        "e4f6ff",
+        "acd3e5"
+      ],
+      "outline": [
+        "999999",
+        "5495b4"
+      ]
+    },
+    {
+      "label": "清新绿",
+      "preset": "green",
+      "text": [
+        "eeeeee",
+        "eeeeee",
+        "f1ffe0",
+        "dcf6c3"
+      ],
+      "outline": [
+        "999999",
+        "67905c"
+      ]
+    },
+    {
+      "label": "温柔黄",
+      "preset": "golden",
+      "text": [
+        "eeeeee",
+        "eeeeee",
+        "fff8ea",
+        "fadda7"
+      ],
+      "outline": [
+        "999999",
+        "ff9f8953"
+      ]
+    },
+    {
+      "label": "网易红",
+      "preset": "default",
+      "text": [
+        "eeeeee",
+        "eeeeee",
+        "ffdede",
+        "ffb0b0"
+      ],
+      "outline": [
+        "999999",
+        "cb7474"
+      ]
+    }
+  ],
+  "alignments": [
+    {
+      "single": true,
+      "mode": 0,
+      "calls": [
+        [
+          "style",
+          {
+            "name": "textAlign",
+            "value": [
+              "center",
+              "center"
+            ]
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "lineMode",
+            "status": true
+          }
+        ]
+      ]
+    },
+    {
+      "single": true,
+      "mode": 1,
+      "calls": [
+        [
+          "style",
+          {
+            "name": "textAlign",
+            "value": [
+              "center",
+              "center"
+            ]
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "lineMode",
+            "status": true
+          }
+        ]
+      ]
+    },
+    {
+      "single": true,
+      "mode": 2,
+      "calls": [
+        [
+          "style",
+          {
+            "name": "textAlign",
+            "value": [
+              "left",
+              "center"
+            ]
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "lineMode",
+            "status": true
+          }
+        ]
+      ]
+    },
+    {
+      "single": true,
+      "mode": 3,
+      "calls": [
+        [
+          "style",
+          {
+            "name": "textAlign",
+            "value": [
+              "right",
+              "center"
+            ]
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "lineMode",
+            "status": true
+          }
+        ]
+      ]
+    },
+    {
+      "single": false,
+      "mode": 0,
+      "calls": [
+        [
+          "style",
+          {
+            "name": "textAlign",
+            "value": [
+              "center",
+              "center"
+            ]
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "lineMode",
+            "status": false
+          }
+        ]
+      ]
+    },
+    {
+      "single": false,
+      "mode": 1,
+      "calls": [
+        [
+          "style",
+          {
+            "name": "textAlign",
+            "value": [
+              "left",
+              "right"
+            ]
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "lineMode",
+            "status": false
+          }
+        ]
+      ]
+    },
+    {
+      "single": false,
+      "mode": 2,
+      "calls": [
+        [
+          "style",
+          {
+            "name": "textAlign",
+            "value": [
+              "left",
+              "left"
+            ]
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "lineMode",
+            "status": false
+          }
+        ]
+      ]
+    },
+    {
+      "single": false,
+      "mode": 3,
+      "calls": [
+        [
+          "style",
+          {
+            "name": "textAlign",
+            "value": [
+              "right",
+              "right"
+            ]
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "lineMode",
+            "status": false
+          }
+        ]
+      ]
+    }
+  ],
+  "styles": [
+    {
+      "style": {
+        "showLyric": false,
+        "showLyricType": 1,
+        "lyricMode": "none",
+        "lyricTop": true,
+        "lyricFont": "Synthetic Font",
+        "lyricFontSize": 36,
+        "lyricFontStyle": 1,
+        "lyricFontOutlineEnabled": true,
+        "lyricLineMode": 1,
+        "lyricComposition": "horizontal",
+        "lyricOneLineAlign": 2,
+        "lyricDoubleLineAlign": 1,
+        "lyricColor": [
+          "eeeeee",
+          "eeeeee",
+          "ffdede",
+          "ffb0b0"
+        ],
+        "lyricOutLine": [
+          "999999",
+          "cb7474"
+        ],
+        "desktopLyricLockState": false
+      },
+      "calls": [
+        [
+          "style",
+          {
+            "name": "textAlign",
+            "value": [
+              "left",
+              "center"
+            ]
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "lineMode",
+            "status": true
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "topMost",
+            "status": true
+          }
+        ],
+        [
+          "mode",
+          "none"
+        ],
+        [
+          "style",
+          {
+            "name": "lrcColor",
+            "value": [
+              "eeeeee",
+              "eeeeee",
+              "ffdede",
+              "ffb0b0"
+            ]
+          }
+        ],
+        [
+          "style",
+          {
+            "name": "outlineColor",
+            "value": [
+              "999999",
+              "cb7474"
+            ]
+          }
+        ],
+        [
+          "style",
+          {
+            "name": "outlineShadow",
+            "value": [
+              true,
+              true,
+              false,
+              false
+            ]
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "horizontalLyric",
+            "status": true
+          }
+        ],
+        [
+          "style",
+          {
+            "name": "lrcFont",
+            "value": [
+              "36",
+              "1",
+              "Synthetic Font"
+            ]
+          }
+        ],
+        [
+          "lock",
+          false
+        ]
+      ]
+    },
+    {
+      "style": {
+        "showLyric": false,
+        "showLyricType": 1,
+        "lyricMode": "none",
+        "lyricTop": true,
+        "lyricFont": "Synthetic Font",
+        "lyricFontSize": 36,
+        "lyricFontStyle": 1,
+        "lyricFontOutlineEnabled": true,
+        "lyricLineMode": 1,
+        "lyricComposition": "vertical",
+        "lyricOneLineAlign": 2,
+        "lyricDoubleLineAlign": 1,
+        "lyricColor": [
+          "eeeeee",
+          "eeeeee",
+          "ffdede",
+          "ffb0b0"
+        ],
+        "lyricOutLine": [
+          "999999",
+          "cb7474"
+        ],
+        "desktopLyricLockState": false
+      },
+      "calls": [
+        [
+          "style",
+          {
+            "name": "textAlign",
+            "value": [
+              "left",
+              "center"
+            ]
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "lineMode",
+            "status": true
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "topMost",
+            "status": true
+          }
+        ],
+        [
+          "mode",
+          "none"
+        ],
+        [
+          "style",
+          {
+            "name": "lrcColor",
+            "value": [
+              "eeeeee",
+              "eeeeee",
+              "ffdede",
+              "ffb0b0"
+            ]
+          }
+        ],
+        [
+          "style",
+          {
+            "name": "outlineColor",
+            "value": [
+              "999999",
+              "cb7474"
+            ]
+          }
+        ],
+        [
+          "style",
+          {
+            "name": "outlineShadow",
+            "value": [
+              true,
+              true,
+              false,
+              false
+            ]
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "horizontalLyric",
+            "status": false
+          }
+        ],
+        [
+          "style",
+          {
+            "name": "lrcFont",
+            "value": [
+              "36",
+              "1",
+              "Synthetic Font"
+            ]
+          }
+        ],
+        [
+          "lock",
+          false
+        ]
+      ]
+    },
+    {
+      "style": {
+        "showLyric": false,
+        "showLyricType": 1,
+        "lyricMode": "translate",
+        "lyricTop": true,
+        "lyricFont": "Synthetic Font",
+        "lyricFontSize": 36,
+        "lyricFontStyle": 1,
+        "lyricFontOutlineEnabled": true,
+        "lyricLineMode": 1,
+        "lyricComposition": "horizontal",
+        "lyricOneLineAlign": 2,
+        "lyricDoubleLineAlign": 1,
+        "lyricColor": [
+          "eeeeee",
+          "eeeeee",
+          "ffdede",
+          "ffb0b0"
+        ],
+        "lyricOutLine": [
+          "999999",
+          "cb7474"
+        ],
+        "desktopLyricLockState": false
+      },
+      "calls": [
+        [
+          "style",
+          {
+            "name": "textAlign",
+            "value": [
+              "left",
+              "center"
+            ]
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "lineMode",
+            "status": true
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "topMost",
+            "status": true
+          }
+        ],
+        [
+          "mode",
+          "translate"
+        ],
+        [
+          "style",
+          {
+            "name": "lrcColor",
+            "value": [
+              "eeeeee",
+              "eeeeee",
+              "ffdede",
+              "ffb0b0"
+            ]
+          }
+        ],
+        [
+          "style",
+          {
+            "name": "outlineColor",
+            "value": [
+              "999999",
+              "cb7474"
+            ]
+          }
+        ],
+        [
+          "style",
+          {
+            "name": "outlineShadow",
+            "value": [
+              true,
+              true,
+              false,
+              false
+            ]
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "horizontalLyric",
+            "status": true
+          }
+        ],
+        [
+          "style",
+          {
+            "name": "lrcFont",
+            "value": [
+              "36",
+              "1",
+              "Synthetic Font"
+            ]
+          }
+        ],
+        [
+          "lock",
+          false
+        ]
+      ]
+    },
+    {
+      "style": {
+        "showLyric": false,
+        "showLyricType": 1,
+        "lyricMode": "translate",
+        "lyricTop": true,
+        "lyricFont": "Synthetic Font",
+        "lyricFontSize": 36,
+        "lyricFontStyle": 1,
+        "lyricFontOutlineEnabled": true,
+        "lyricLineMode": 1,
+        "lyricComposition": "vertical",
+        "lyricOneLineAlign": 2,
+        "lyricDoubleLineAlign": 1,
+        "lyricColor": [
+          "eeeeee",
+          "eeeeee",
+          "ffdede",
+          "ffb0b0"
+        ],
+        "lyricOutLine": [
+          "999999",
+          "cb7474"
+        ],
+        "desktopLyricLockState": false
+      },
+      "calls": [
+        [
+          "style",
+          {
+            "name": "textAlign",
+            "value": [
+              "left",
+              "center"
+            ]
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "lineMode",
+            "status": true
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "topMost",
+            "status": true
+          }
+        ],
+        [
+          "mode",
+          "translate"
+        ],
+        [
+          "style",
+          {
+            "name": "lrcColor",
+            "value": [
+              "eeeeee",
+              "eeeeee",
+              "ffdede",
+              "ffb0b0"
+            ]
+          }
+        ],
+        [
+          "style",
+          {
+            "name": "outlineColor",
+            "value": [
+              "999999",
+              "cb7474"
+            ]
+          }
+        ],
+        [
+          "style",
+          {
+            "name": "outlineShadow",
+            "value": [
+              true,
+              true,
+              false,
+              false
+            ]
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "horizontalLyric",
+            "status": false
+          }
+        ],
+        [
+          "style",
+          {
+            "name": "lrcFont",
+            "value": [
+              "36",
+              "1",
+              "Synthetic Font"
+            ]
+          }
+        ],
+        [
+          "lock",
+          false
+        ]
+      ]
+    },
+    {
+      "style": {
+        "showLyric": false,
+        "showLyricType": 1,
+        "lyricMode": "roman",
+        "lyricTop": true,
+        "lyricFont": "Synthetic Font",
+        "lyricFontSize": 36,
+        "lyricFontStyle": 1,
+        "lyricFontOutlineEnabled": true,
+        "lyricLineMode": 1,
+        "lyricComposition": "horizontal",
+        "lyricOneLineAlign": 2,
+        "lyricDoubleLineAlign": 1,
+        "lyricColor": [
+          "eeeeee",
+          "eeeeee",
+          "ffdede",
+          "ffb0b0"
+        ],
+        "lyricOutLine": [
+          "999999",
+          "cb7474"
+        ],
+        "desktopLyricLockState": false
+      },
+      "calls": [
+        [
+          "style",
+          {
+            "name": "textAlign",
+            "value": [
+              "left",
+              "center"
+            ]
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "lineMode",
+            "status": true
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "topMost",
+            "status": true
+          }
+        ],
+        [
+          "mode",
+          "roman"
+        ],
+        [
+          "style",
+          {
+            "name": "lrcColor",
+            "value": [
+              "eeeeee",
+              "eeeeee",
+              "ffdede",
+              "ffb0b0"
+            ]
+          }
+        ],
+        [
+          "style",
+          {
+            "name": "outlineColor",
+            "value": [
+              "999999",
+              "cb7474"
+            ]
+          }
+        ],
+        [
+          "style",
+          {
+            "name": "outlineShadow",
+            "value": [
+              true,
+              true,
+              false,
+              false
+            ]
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "horizontalLyric",
+            "status": true
+          }
+        ],
+        [
+          "style",
+          {
+            "name": "lrcFont",
+            "value": [
+              "36",
+              "1",
+              "Synthetic Font"
+            ]
+          }
+        ],
+        [
+          "lock",
+          false
+        ]
+      ]
+    },
+    {
+      "style": {
+        "showLyric": false,
+        "showLyricType": 1,
+        "lyricMode": "roman",
+        "lyricTop": true,
+        "lyricFont": "Synthetic Font",
+        "lyricFontSize": 36,
+        "lyricFontStyle": 1,
+        "lyricFontOutlineEnabled": true,
+        "lyricLineMode": 1,
+        "lyricComposition": "vertical",
+        "lyricOneLineAlign": 2,
+        "lyricDoubleLineAlign": 1,
+        "lyricColor": [
+          "eeeeee",
+          "eeeeee",
+          "ffdede",
+          "ffb0b0"
+        ],
+        "lyricOutLine": [
+          "999999",
+          "cb7474"
+        ],
+        "desktopLyricLockState": false
+      },
+      "calls": [
+        [
+          "style",
+          {
+            "name": "textAlign",
+            "value": [
+              "left",
+              "center"
+            ]
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "lineMode",
+            "status": true
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "topMost",
+            "status": true
+          }
+        ],
+        [
+          "mode",
+          "roman"
+        ],
+        [
+          "style",
+          {
+            "name": "lrcColor",
+            "value": [
+              "eeeeee",
+              "eeeeee",
+              "ffdede",
+              "ffb0b0"
+            ]
+          }
+        ],
+        [
+          "style",
+          {
+            "name": "outlineColor",
+            "value": [
+              "999999",
+              "cb7474"
+            ]
+          }
+        ],
+        [
+          "style",
+          {
+            "name": "outlineShadow",
+            "value": [
+              true,
+              true,
+              false,
+              false
+            ]
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "horizontalLyric",
+            "status": false
+          }
+        ],
+        [
+          "style",
+          {
+            "name": "lrcFont",
+            "value": [
+              "36",
+              "1",
+              "Synthetic Font"
+            ]
+          }
+        ],
+        [
+          "lock",
+          false
+        ]
+      ]
+    },
+    {
+      "style": {
+        "showLyric": false,
+        "showLyricType": 1,
+        "lyricMode": "none",
+        "lyricTop": true,
+        "lyricFont": "Synthetic Font",
+        "lyricFontSize": 36,
+        "lyricFontStyle": 1,
+        "lyricFontOutlineEnabled": true,
+        "lyricLineMode": 0,
+        "lyricComposition": "horizontal",
+        "lyricOneLineAlign": 2,
+        "lyricDoubleLineAlign": 1,
+        "lyricColor": [
+          "eeeeee",
+          "eeeeee",
+          "ffdede",
+          "ffb0b0"
+        ],
+        "lyricOutLine": [
+          "999999",
+          "cb7474"
+        ],
+        "desktopLyricLockState": false
+      },
+      "calls": [
+        [
+          "style",
+          {
+            "name": "textAlign",
+            "value": [
+              "left",
+              "right"
+            ]
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "lineMode",
+            "status": false
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "topMost",
+            "status": true
+          }
+        ],
+        [
+          "mode",
+          "none"
+        ],
+        [
+          "style",
+          {
+            "name": "lrcColor",
+            "value": [
+              "eeeeee",
+              "eeeeee",
+              "ffdede",
+              "ffb0b0"
+            ]
+          }
+        ],
+        [
+          "style",
+          {
+            "name": "outlineColor",
+            "value": [
+              "999999",
+              "cb7474"
+            ]
+          }
+        ],
+        [
+          "style",
+          {
+            "name": "outlineShadow",
+            "value": [
+              true,
+              true,
+              false,
+              false
+            ]
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "horizontalLyric",
+            "status": true
+          }
+        ],
+        [
+          "style",
+          {
+            "name": "lrcFont",
+            "value": [
+              "36",
+              "1",
+              "Synthetic Font"
+            ]
+          }
+        ],
+        [
+          "lock",
+          false
+        ]
+      ]
+    },
+    {
+      "style": {
+        "showLyric": false,
+        "showLyricType": 1,
+        "lyricMode": "none",
+        "lyricTop": true,
+        "lyricFont": "Synthetic Font",
+        "lyricFontSize": 36,
+        "lyricFontStyle": 1,
+        "lyricFontOutlineEnabled": true,
+        "lyricLineMode": 0,
+        "lyricComposition": "vertical",
+        "lyricOneLineAlign": 2,
+        "lyricDoubleLineAlign": 1,
+        "lyricColor": [
+          "eeeeee",
+          "eeeeee",
+          "ffdede",
+          "ffb0b0"
+        ],
+        "lyricOutLine": [
+          "999999",
+          "cb7474"
+        ],
+        "desktopLyricLockState": false
+      },
+      "calls": [
+        [
+          "style",
+          {
+            "name": "textAlign",
+            "value": [
+              "left",
+              "right"
+            ]
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "lineMode",
+            "status": false
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "topMost",
+            "status": true
+          }
+        ],
+        [
+          "mode",
+          "none"
+        ],
+        [
+          "style",
+          {
+            "name": "lrcColor",
+            "value": [
+              "eeeeee",
+              "eeeeee",
+              "ffdede",
+              "ffb0b0"
+            ]
+          }
+        ],
+        [
+          "style",
+          {
+            "name": "outlineColor",
+            "value": [
+              "999999",
+              "cb7474"
+            ]
+          }
+        ],
+        [
+          "style",
+          {
+            "name": "outlineShadow",
+            "value": [
+              true,
+              true,
+              false,
+              false
+            ]
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "horizontalLyric",
+            "status": false
+          }
+        ],
+        [
+          "style",
+          {
+            "name": "lrcFont",
+            "value": [
+              "36",
+              "1",
+              "Synthetic Font"
+            ]
+          }
+        ],
+        [
+          "lock",
+          false
+        ]
+      ]
+    },
+    {
+      "style": {
+        "showLyric": false,
+        "showLyricType": 1,
+        "lyricMode": "translate",
+        "lyricTop": true,
+        "lyricFont": "Synthetic Font",
+        "lyricFontSize": 36,
+        "lyricFontStyle": 1,
+        "lyricFontOutlineEnabled": true,
+        "lyricLineMode": 0,
+        "lyricComposition": "horizontal",
+        "lyricOneLineAlign": 2,
+        "lyricDoubleLineAlign": 1,
+        "lyricColor": [
+          "eeeeee",
+          "eeeeee",
+          "ffdede",
+          "ffb0b0"
+        ],
+        "lyricOutLine": [
+          "999999",
+          "cb7474"
+        ],
+        "desktopLyricLockState": false
+      },
+      "calls": [
+        [
+          "style",
+          {
+            "name": "textAlign",
+            "value": [
+              "left",
+              "right"
+            ]
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "lineMode",
+            "status": false
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "topMost",
+            "status": true
+          }
+        ],
+        [
+          "mode",
+          "translate"
+        ],
+        [
+          "style",
+          {
+            "name": "lrcColor",
+            "value": [
+              "eeeeee",
+              "eeeeee",
+              "ffdede",
+              "ffb0b0"
+            ]
+          }
+        ],
+        [
+          "style",
+          {
+            "name": "outlineColor",
+            "value": [
+              "999999",
+              "cb7474"
+            ]
+          }
+        ],
+        [
+          "style",
+          {
+            "name": "outlineShadow",
+            "value": [
+              true,
+              true,
+              false,
+              false
+            ]
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "horizontalLyric",
+            "status": true
+          }
+        ],
+        [
+          "style",
+          {
+            "name": "lrcFont",
+            "value": [
+              "36",
+              "1",
+              "Synthetic Font"
+            ]
+          }
+        ],
+        [
+          "lock",
+          false
+        ]
+      ]
+    },
+    {
+      "style": {
+        "showLyric": false,
+        "showLyricType": 1,
+        "lyricMode": "translate",
+        "lyricTop": true,
+        "lyricFont": "Synthetic Font",
+        "lyricFontSize": 36,
+        "lyricFontStyle": 1,
+        "lyricFontOutlineEnabled": true,
+        "lyricLineMode": 0,
+        "lyricComposition": "vertical",
+        "lyricOneLineAlign": 2,
+        "lyricDoubleLineAlign": 1,
+        "lyricColor": [
+          "eeeeee",
+          "eeeeee",
+          "ffdede",
+          "ffb0b0"
+        ],
+        "lyricOutLine": [
+          "999999",
+          "cb7474"
+        ],
+        "desktopLyricLockState": false
+      },
+      "calls": [
+        [
+          "style",
+          {
+            "name": "textAlign",
+            "value": [
+              "left",
+              "right"
+            ]
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "lineMode",
+            "status": false
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "topMost",
+            "status": true
+          }
+        ],
+        [
+          "mode",
+          "translate"
+        ],
+        [
+          "style",
+          {
+            "name": "lrcColor",
+            "value": [
+              "eeeeee",
+              "eeeeee",
+              "ffdede",
+              "ffb0b0"
+            ]
+          }
+        ],
+        [
+          "style",
+          {
+            "name": "outlineColor",
+            "value": [
+              "999999",
+              "cb7474"
+            ]
+          }
+        ],
+        [
+          "style",
+          {
+            "name": "outlineShadow",
+            "value": [
+              true,
+              true,
+              false,
+              false
+            ]
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "horizontalLyric",
+            "status": false
+          }
+        ],
+        [
+          "style",
+          {
+            "name": "lrcFont",
+            "value": [
+              "36",
+              "1",
+              "Synthetic Font"
+            ]
+          }
+        ],
+        [
+          "lock",
+          false
+        ]
+      ]
+    },
+    {
+      "style": {
+        "showLyric": false,
+        "showLyricType": 1,
+        "lyricMode": "roman",
+        "lyricTop": true,
+        "lyricFont": "Synthetic Font",
+        "lyricFontSize": 36,
+        "lyricFontStyle": 1,
+        "lyricFontOutlineEnabled": true,
+        "lyricLineMode": 0,
+        "lyricComposition": "horizontal",
+        "lyricOneLineAlign": 2,
+        "lyricDoubleLineAlign": 1,
+        "lyricColor": [
+          "eeeeee",
+          "eeeeee",
+          "ffdede",
+          "ffb0b0"
+        ],
+        "lyricOutLine": [
+          "999999",
+          "cb7474"
+        ],
+        "desktopLyricLockState": false
+      },
+      "calls": [
+        [
+          "style",
+          {
+            "name": "textAlign",
+            "value": [
+              "left",
+              "right"
+            ]
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "lineMode",
+            "status": false
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "topMost",
+            "status": true
+          }
+        ],
+        [
+          "mode",
+          "roman"
+        ],
+        [
+          "style",
+          {
+            "name": "lrcColor",
+            "value": [
+              "eeeeee",
+              "eeeeee",
+              "ffdede",
+              "ffb0b0"
+            ]
+          }
+        ],
+        [
+          "style",
+          {
+            "name": "outlineColor",
+            "value": [
+              "999999",
+              "cb7474"
+            ]
+          }
+        ],
+        [
+          "style",
+          {
+            "name": "outlineShadow",
+            "value": [
+              true,
+              true,
+              false,
+              false
+            ]
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "horizontalLyric",
+            "status": true
+          }
+        ],
+        [
+          "style",
+          {
+            "name": "lrcFont",
+            "value": [
+              "36",
+              "1",
+              "Synthetic Font"
+            ]
+          }
+        ],
+        [
+          "lock",
+          false
+        ]
+      ]
+    },
+    {
+      "style": {
+        "showLyric": false,
+        "showLyricType": 1,
+        "lyricMode": "roman",
+        "lyricTop": true,
+        "lyricFont": "Synthetic Font",
+        "lyricFontSize": 36,
+        "lyricFontStyle": 1,
+        "lyricFontOutlineEnabled": true,
+        "lyricLineMode": 0,
+        "lyricComposition": "vertical",
+        "lyricOneLineAlign": 2,
+        "lyricDoubleLineAlign": 1,
+        "lyricColor": [
+          "eeeeee",
+          "eeeeee",
+          "ffdede",
+          "ffb0b0"
+        ],
+        "lyricOutLine": [
+          "999999",
+          "cb7474"
+        ],
+        "desktopLyricLockState": false
+      },
+      "calls": [
+        [
+          "style",
+          {
+            "name": "textAlign",
+            "value": [
+              "left",
+              "right"
+            ]
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "lineMode",
+            "status": false
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "topMost",
+            "status": true
+          }
+        ],
+        [
+          "mode",
+          "roman"
+        ],
+        [
+          "style",
+          {
+            "name": "lrcColor",
+            "value": [
+              "eeeeee",
+              "eeeeee",
+              "ffdede",
+              "ffb0b0"
+            ]
+          }
+        ],
+        [
+          "style",
+          {
+            "name": "outlineColor",
+            "value": [
+              "999999",
+              "cb7474"
+            ]
+          }
+        ],
+        [
+          "style",
+          {
+            "name": "outlineShadow",
+            "value": [
+              true,
+              true,
+              false,
+              false
+            ]
+          }
+        ],
+        [
+          "status",
+          {
+            "name": "horizontalLyric",
+            "status": false
+          }
+        ],
+        [
+          "style",
+          {
+            "name": "lrcFont",
+            "value": [
+              "36",
+              "1",
+              "Synthetic Font"
+            ]
+          }
+        ],
+        [
+          "lock",
+          false
+        ]
+      ]
+    }
+  ]
+}

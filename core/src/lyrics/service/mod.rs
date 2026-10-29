@@ -19,6 +19,8 @@ use uuid::Uuid;
 
 struct State {
     attempt: Uuid,
+    revision: Uuid,
+    selected: Option<String>,
     view: LyricSnapshot,
     raw: Option<Value>,
 }
@@ -41,6 +43,7 @@ impl Drop for Loading<'_> {
             && state.attempt == self.attempt
             && state.view.is_loading
         {
+            state.revision = Uuid::new_v4();
             state.view.is_loading = false;
             state.view.is_lyric_fetch_failed = true;
             state.view.resource_key = None;
@@ -71,6 +74,8 @@ impl LyricsService {
             files,
             state: Mutex::new(State {
                 attempt: Uuid::new_v4(),
+                revision: Uuid::new_v4(),
+                selected: None,
                 view: LyricSnapshot {
                     preferences,
                     ..Default::default()
@@ -95,9 +100,31 @@ impl LyricsService {
     pub fn snapshot(&self) -> Result<LyricSnapshot> {
         self.with_state(|state, _| Ok(state.view.clone()))
     }
+    /// Reads a changed document without HTTP or cloning unchanged lyrics. The
+    /// selected key survives an empty/failed result, unlike resource_key (which
+    /// means successful content). It is cleared when the selection is retired.
+    pub fn snapshot_if_changed(
+        &self,
+        target: &LyricTarget,
+        observed: Option<&str>,
+    ) -> Result<Option<(String, LyricSnapshot)>> {
+        let key = request::key(target)?;
+        self.with_state(|state, _| {
+            if state.selected.as_deref() != Some(&key) {
+                return Err(Error::StaleResponse);
+            }
+            if state.view.is_loading {
+                return Err(Error::MutationBusy);
+            }
+            let revision = state.revision.to_string();
+            Ok((observed != Some(&revision)).then(|| (revision, state.view.clone())))
+        })
+    }
     pub fn clear(&self) -> Result<LyricSnapshot> {
         self.with_state(|state, _| {
             state.attempt = Uuid::new_v4();
+            state.revision = Uuid::new_v4();
+            state.selected = None;
             state.view = LyricSnapshot {
                 preferences: state.view.preferences,
                 ..Default::default()
@@ -115,6 +142,7 @@ impl LyricsService {
                 "state",
                 &serde_json::to_value(preferences)?,
             )?;
+            state.revision = Uuid::new_v4();
             state.view.preferences = preferences;
             Ok(state.view.clone())
         })
@@ -171,6 +199,7 @@ impl LyricsService {
             }
             self.store
                 .put(uid, cache::KIND, &key, &cache::record(&raw))?;
+            state.revision = Uuid::new_v4();
             state.raw = Some(raw);
             state.view.lyric = parsed;
             Ok(state.view.clone())
@@ -197,6 +226,8 @@ impl LyricsService {
         let (attempt, cached) = self.with_state(|state, uid| {
             let cached = cache::read(&self.store, uid, &key)?;
             state.attempt = Uuid::new_v4();
+            state.revision = Uuid::new_v4();
+            state.selected = Some(key.clone());
             state.view = LyricSnapshot {
                 is_loading: true,
                 preferences: state.view.preferences,
@@ -273,6 +304,7 @@ impl LyricsService {
                 self.store
                     .put(uid, cache::KIND, &key, &cache::record(&value))?;
             }
+            state.revision = Uuid::new_v4();
             state.raw = present.then_some(raw);
             state.view = LyricSnapshot {
                 resource_key: present.then_some(key),

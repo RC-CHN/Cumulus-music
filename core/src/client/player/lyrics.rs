@@ -1,3 +1,4 @@
+mod segment;
 use super::*;
 use crate::lyrics::{LyricDemand, LyricPreferences, LyricRequest, LyricSnapshot, LyricTarget};
 
@@ -75,17 +76,8 @@ impl MusicClient {
         if player.account != *token || player.play_id.as_deref() != Some(play_id) {
             return Err(Error::StaleResponse);
         }
-        let mut lyric = value.lyric;
-        if let Some(timeline) = &player.timeline
-            && timeline.mode == crate::playback::TimelineMode::Cue
-        {
-            segment_lines(
-                &mut lyric.lyric_lines,
-                timeline.media_start,
-                timeline.length,
-            );
-        }
-        Ok(LyricsView {
+        let lyric = value.lyric;
+        let mut result = LyricsView {
             word_translation: auxiliary(lyric.yrc_info.yrc_trans.as_deref()),
             word_romanization: auxiliary(lyric.yrc_info.yrc_roma.as_deref()),
             word_lines: crate::lyrics::parse_yrc_words(
@@ -103,7 +95,13 @@ impl MusicClient {
             preferences: value.preferences,
             network_failed: value.network_failed,
             from_cache: value.from_cache,
-        })
+        };
+        if let Some(timeline) = &player.timeline
+            && timeline.mode == crate::playback::TimelineMode::Cue
+        {
+            segment::apply(&mut result, timeline.media_start, timeline.length);
+        }
+        Ok(result)
     }
     pub async fn player_lyrics(&self, epoch: &str, play_id: &str) -> Result<LyricsView> {
         let (token, service, target) = self.lyric_context(epoch, play_id).await?;
@@ -122,6 +120,23 @@ impl MusicClient {
             })
             .await?;
         self.lyric_result(&token, play_id, value).await
+    }
+    pub(in crate::client) async fn cached_player_lyrics(
+        &self,
+        epoch: &str,
+        play_id: &str,
+        observed: Option<&str>,
+    ) -> Result<Option<(String, LyricsView, bool)>> {
+        let (token, service, target) = self.lyric_context(epoch, play_id).await?;
+        let Some((revision, value)) = service.snapshot_if_changed(&target, observed)? else {
+            return Ok(None);
+        };
+        let failed = value.is_lyric_fetch_failed;
+        Ok(Some((
+            revision,
+            self.lyric_result(&token, play_id, value).await?,
+            failed,
+        )))
     }
     pub async fn lyric_preferences(
         &self,
@@ -143,26 +158,5 @@ impl MusicClient {
         }
         let value = service.adjust_offset(gain)?;
         self.lyric_result(&token, play_id, value).await
-    }
-}
-
-fn segment_lines(lines: &mut Vec<crate::lyrics::LyricLine>, start: f64, length: Option<f64>) {
-    let previous = lines
-        .iter()
-        .filter(|l| l.time.is_some_and(|t| t < start))
-        .max_by(|a, b| a.time.unwrap().total_cmp(&b.time.unwrap()))
-        .cloned();
-    lines.retain_mut(|line| match &mut line.time {
-        None => true,
-        Some(time) => {
-            *time -= start;
-            *time >= 0.0 && length.is_none_or(|end| *time < end)
-        }
-    });
-    if !lines.iter().any(|l| l.time == Some(0.0))
-        && let Some(mut previous) = previous
-    {
-        previous.time = Some(0.0);
-        lines.insert(0, previous);
     }
 }

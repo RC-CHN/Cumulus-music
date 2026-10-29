@@ -261,3 +261,79 @@ async fn persistence_failure_and_auth_expiry_do_not_publish_success() {
     );
     assert!(matches!(service.snapshot(), Err(Error::StaleResponse)));
 }
+
+#[tokio::test]
+async fn versioned_views_reuse_unchanged_documents_and_report_empty_results_without_retry() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = Arc::new(StateStore::open(tmp.path()).unwrap());
+    let (session, api, service) = setup(
+        store,
+        [
+            response("[00:01]one\n[00:02]two").into(),
+            Reply::Ready(Err(Error::Transport("offline".into()))),
+        ],
+    )
+    .await;
+    let target = LyricTarget::Song("1".into());
+    assert!(service.snapshot_if_changed(&target, None).is_err());
+    service.fetch(song("1")).await.unwrap();
+    let (first, _) = service.snapshot_if_changed(&target, None).unwrap().unwrap();
+    let requests = api.calls().len();
+    for _ in 0..100 {
+        assert!(
+            service
+                .snapshot_if_changed(&target, Some(&first))
+                .unwrap()
+                .is_none()
+        );
+    }
+    assert_eq!(api.calls().len(), requests);
+    service.adjust_offset(1.0).unwrap();
+    let (offset, snapshot) = service
+        .snapshot_if_changed(&target, Some(&first))
+        .unwrap()
+        .unwrap();
+    assert_ne!(offset, first);
+    assert_eq!(snapshot.lyric.offset, 1.0);
+    service
+        .set_preferences(LyricPreferences {
+            translation_enable: false,
+            roma_enable: true,
+        })
+        .unwrap();
+    let (preferences, _) = service
+        .snapshot_if_changed(&target, Some(&offset))
+        .unwrap()
+        .unwrap();
+    assert_ne!(preferences, offset);
+    service.clear().unwrap();
+    assert!(
+        service
+            .snapshot_if_changed(&target, Some(&preferences))
+            .is_err()
+    );
+    let missing = LyricTarget::Song("2".into());
+    let empty = service.fetch(song("2")).await.unwrap();
+    assert!(empty.network_failed);
+    let (failed, value) = service
+        .snapshot_if_changed(&missing, None)
+        .unwrap()
+        .unwrap();
+    assert!(value.resource_key.is_none() && value.network_failed);
+    for _ in 0..10 {
+        assert!(
+            service
+                .snapshot_if_changed(&missing, Some(&failed))
+                .unwrap()
+                .is_none()
+        );
+    }
+    assert_eq!(api.calls().len(), requests + 1);
+    assert!(service.snapshot_if_changed(&target, None).is_err());
+    session.detach().unwrap();
+    assert!(
+        service
+            .snapshot_if_changed(&missing, Some(&failed))
+            .is_err()
+    );
+}

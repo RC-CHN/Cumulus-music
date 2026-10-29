@@ -21,3 +21,5 @@ pub use types::{DisplayType, LyricLine, LyricSource, ParsedLrc, ParsedLyrics, Pa
 pub use types::{TimedWord, WordLine};
 pub use yrc::parse_yrc;
 pub use yrc::parse_yrc_words;
+
+pub mod desktop;

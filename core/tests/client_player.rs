@@ -640,3 +640,84 @@ async fn output_settings_are_local_lazy_and_reject_old_account_commands() {
         "device settings have no music API"
     );
 }
+
+#[tokio::test]
+async fn desktop_lyric_document_shares_detail_cache_offset_and_native_clock_without_retries() {
+    use cumulus_core::preferences::desktop_lyrics::{Appearance, Auxiliary};
+    let (_dir, api, session, client, count) = fixture();
+    assert!(matches!(
+        client.desktop_lyric_document("1", "missing").await,
+        Err(Error::StaleResponse)
+    ));
+    assert_eq!(count.load(Ordering::SeqCst), 0);
+    assert!(api.calls.lock().unwrap().is_empty());
+    let current = client.play_selection("1", songs("1")).await.unwrap();
+    let id = current.play_id.unwrap();
+    let mut document = client.desktop_lyric_document("1", &id).await.unwrap();
+    let requests = api.calls.lock().unwrap().len();
+    let style = Appearance::default();
+    let initial = client.desktop_lyric_frame(&document, &style).unwrap();
+    assert_eq!(initial.play_id, id);
+    assert!(initial.frame.timed_words);
+    assert_eq!(initial.frame.lines[0].auxiliary, "hello ");
+    for _ in 0..50 {
+        assert!(
+            !client
+                .refresh_desktop_lyric_document(&mut document)
+                .await
+                .unwrap()
+        );
+        client.desktop_lyric_frame(&document, &style).unwrap();
+    }
+    assert_eq!(api.calls.lock().unwrap().len(), requests);
+    assert_eq!(count.load(Ordering::SeqCst), 1);
+    client.lyric_offset("1", &id, 1.0).await.unwrap();
+    assert!(
+        client
+            .refresh_desktop_lyric_document(&mut document)
+            .await
+            .unwrap()
+    );
+    let updated = client.desktop_lyric_frame(&document, &style).unwrap();
+    assert_ne!(updated.revision, initial.revision);
+    assert_eq!(updated.frame.offset, 0.5);
+    client
+        .desktop_lyric_offset(&mut document, -1.0)
+        .await
+        .unwrap();
+    assert_eq!(client.player_lyrics("1", &id).await.unwrap().offset, 0.0);
+    let translated = client
+        .desktop_lyric_frame(
+            &document,
+            &Appearance {
+                auxiliary: Auxiliary::Roman,
+                ..style.clone()
+            },
+        )
+        .unwrap();
+    assert_eq!(translated.frame.lines[0].auxiliary.trim(), "ni hao");
+    assert_eq!(api.calls.lock().unwrap().len(), requests);
+    client
+        .player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    let paused = client.desktop_lyric_frame(&document, &style).unwrap();
+    assert!(!paused.playing);
+    client.play_selection("1", songs("2")).await.unwrap();
+    assert!(client.desktop_lyric_frame(&document, &style).is_err());
+    assert!(
+        client
+            .desktop_lyric_offset(&mut document, 1.0)
+            .await
+            .is_err()
+    );
+    session
+        .adopt(api, json!({"userId":10}), &session.token().unwrap())
+        .unwrap();
+    assert!(
+        client
+            .refresh_desktop_lyric_document(&mut document)
+            .await
+            .is_err()
+    );
+}
