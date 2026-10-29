@@ -1,0 +1,82 @@
+歌单详情 UI/UX 来源与交互对照
+2026-10-29，fix/playlist-detail-presentation；完整逐页审计仍进行中。
+
+范围
+本轮调整歌单展示与交互，不把 API、DSP 或既有核心测试计作 UI 完成度。
+frontend/src/components/playlist/PlaylistHero.vue 承担展示与类型化事件；
+PlaylistDescription.vue 负责长简介展开/关闭/焦点；playlist-detail.css 集中该区域样式。
+移除 content/responsive/playlists 中分散的旧头部规则，避免多套尺寸互相覆盖。
+App 继续协调现有播放器、歌单、下载和评论用例。没有新增业务接口、授权数据或远端请求。
+
+官方来源（相对 references/ui-recovery/sources/packages/pc/src/）
+pages/playlist/views/Common.jsx：
+  默认信息区左距 40px；标题 24px / 32px 行高 / 600 字重，编辑入口紧随标题；
+  简介在标题下方、上距 8px、字号 13px；作者/标签/时间行 margin 10px 0 12px；
+  按钮集中在信息区底部，margin-top:auto，间距 12px；非本人歌单才显示收藏。
+  下载/收藏默认 80×40、8px 圆角；更多操作 40×40。
+components/XPlayButton/PlayAllSquarePriButton.tsx：默认播放按钮 94×40、13px 字、8px 圆角。
+pages/playlist/components/PlaylistCover.jsx：.img 恢复 CSS 给出 216×216 / 12px 圆角；
+  Image 同时收到 194×194 属性，内部如何处理这些属性没有在本轮运行官方程序验证。
+  当前采用 CSS 的 216px 盒子，不能据此声称已证明官方实际渲染尺寸就是 216px。
+components/Description/index.tsx：裁剪简介、详情入口、信息区内滚动浮层和关闭按钮。
+pages/playlist/views/index.jsx：歌曲/评论/收藏者三段导航。
+pages/playlist/components/Edit.jsx：官方编辑为页面布局，名称/标签/简介在左、封面在右；
+  当前保留既有模态编辑流程，本轮只复验入口、布局可达和返回焦点，不宣称编辑页一致。
+
+尺寸分支与边界
+Common 和日推读取 PH-PC-listPage-showMore=t1 可切换紧凑分支，标题 20px/28px、
+信息区 168px、按钮 36px。源码注释说该实验已推全，但本轮没有官方运行时/当前账号实验
+值证据；不能把注释当成当前服务端结果。本轮正常窗口采用默认分支几何，小窗口采用
+Cumulus 响应式调整：宽 <=950px 封面 120px / 间距 18px，矮窗 <=650px 封面112px、
+单行标题/简介、36px按钮。它们不是宣称官方在同一窗口尺寸下也取相同值。
+保留 Cumulus 图标与语义颜色；私密标识使用封面角标，没有复制官方整块私密遮罩。
+
+具体改动
+- 原有“歌单/私密歌单”眉题、作者、简介、评论/收藏、播放/下载多行分散；现按标题→
+  简介→作者/数量→播放/收藏/下载/更多组织。评论入口位于歌曲列表上方。
+- 长标题保持两行/小窗口一行省略与完整 title；作者长文本不挤出数量；封面保持方形。
+  空简介不再填充应用编造的歌单说明，空歌单的播放/下载保留入口但禁用。
+- 本人的普通歌单保留标题编辑；红心和他人歌单没有编辑入口。尚未进入账号歌单列表的
+  链接目标不显示“上移/下移”。忙碌时编辑与排序禁用；菜单无可用项时仍可获得焦点，
+  Escape/Tab 不会因找不到可聚焦菜单项失效。
+  菜单容器采用主题色内描边，避免焦点回退到容器时出现系统默认蓝色边框。
+- 简介截断时才显示“详情”；完整文本在标题下方的信息区内阅读，连续英文允许换行。
+  不推开歌曲列表或播放器；关闭/ Escape 回到详情入口，移焦/点击外部关闭浮层。
+  文本/尺寸变化会重新测量，组件销毁移除 ResizeObserver 和事件监听。
+  使用共用 transform/opacity 动画及既有减少动态效果规则。
+  简介阅读区的 Space/Shift+Space 保留浏览器滚动默认行为，不冒泡到应用播放快捷键；
+  本机曾实际复现按空格把 paused 的合成音频变成 playing，故补上该事件边界与原生复验。
+- 加载失败时标题下方不再继续说“正在寻找音乐”；重试仍走原始读取流程。
+- 播放按钮沿用整张歌单的队列选择，当第一个已加载条目缺失时从第一个可用条目开始。
+  下载仍为“当前已加载歌曲列表”，使用现有下载弹窗；短文案“下载”保留完整 aria-label
+  和 title。这不等于已把官方下载整张歌单/筛选集的所有分支接入该按钮。
+
+实际操作验证机制
+playlist_layout_ui_probe.js 在生产 Vue/正式 IPC 中操作；playlist_layout_smoke.py 建立
+隔离账号/设置/缓存，使用真实 Tauri/WebView。support/playlist_layout_fixture.rs 只编译
+进 example，构造长/短/空简介、空歌单、本人/红心/他人歌单与缺失首曲；API 读取失败
+由本机合成服务触发，直到 loading 帧被观察后放行，有 20 秒上限，不靠固定短延迟碰运气。
+正常业务 DOM 不被改写；不点真实收藏、发布、删除或开始下载。合成音频经 libmpv/null，
+不代表真实声卡听感。comment 读取错误也是合成服务边界，不能写作线上评论接口失败。
+
+复验命令（隔离图形环境，Linux 可加 --screenshots；Windows 可加 --runtime）
+python3 scripts/ci/playlist_layout_smoke.py \
+  --binary /absolute/path/to/ux_ui_probe --root /absolute/new/proof-root
+基线使用 --baseline --frontend-dist /absolute/baseline/dist；只检查四个默认布局状态。
+正常轮覆盖 38 态：两尺寸/两主题的长标题/简介首尾/菜单/编辑，短简介/空/红心/已收藏/
+未收藏，两种主题和窗口；全禁用菜单的 Escape/焦点、加载/失败/重试、评论失败及返回、
+缺失首曲实际播放/暂停、简介阅读空格键不会改变音频状态。
+新增流程接入 Linux/Windows 各自 CI job。CI 状态按精确提交运行单独核对。
+
+2026-10-29 本机结果：playlist-layout-final-3 的38态/38图与 playlist-layout-ux-3 的
+41态/41图全部通过；前者 final-3 是含最终菜单主题色描边的内嵌 production dist。
+playlist-layout-before-2 的4态保留改前几何失败；完整记录见 ui-ux-validation.txt，
+79张最终截图/4组前后对照见 .build/playlist-layout-gallery/index.html。
+物理键盘默认翻页距离、物理显示器帧率、Windows视觉及官方像素一致没有被本轮证明。
+
+尚未一致的部分
+缺作者头像、可点的用户主页、标签/创建时间等展示字段；未按官方三页签原地保持头部，
+评论仍进入现有评论页面后返回，收藏者页签尚未加入。详情菜单仅暴露已有编辑/排序，
+没有冒充官方完整菜单；封面公开遮罩、用户挂件和 VIP 特例、筛选/排序/批量操作、
+官方紧凑实验和完整主题皮肤仍要继续核对。真实封面图和 Windows/DPI 的视觉结果也需
+独立证据。本轮不宣称整个歌单页、编辑页或官方像素级复刻已经完成。

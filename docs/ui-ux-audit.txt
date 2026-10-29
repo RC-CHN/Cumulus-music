@@ -24,6 +24,9 @@ UI/UX 逐页一致性审计
 索引在 references/ui-recovery/source-map-manifest.json，恢复代码不随应用分发。
 已重新逐行阅读：components/Header/index.jsx、components/left/components/nav-item.jsx、
 components/PlayBar/styleNew.ts、pages/dailyRecommend/views/{index.js,Content.jsx}。
+歌单本轮新增 Common.jsx、PlaylistCover.jsx、Description/index.tsx、PlayAllSquarePriButton.tsx、
+playlist/views/index.jsx 与 components/Edit.jsx 对照；尺寸分支和已知差异见
+playlist-detail-ui-contracts.txt，不能把恢复 CSS 的值直接当成官方运行截图验证。
 其他页面的来源定位不代表已完成逐行/逐态复核；产品模型提供动作来源，不能替代视觉证据。
 
 逐页进度（“已有专项”仅指 ui-ux-validation.txt 中记载的局部修正/截图）
@@ -34,8 +37,8 @@ components/PlayBar/styleNew.ts、pages/dailyRecommend/views/{index.js,Content.js
 每日推荐 | 本轮恢复日/月/标题层级，统一播放/下载按钮，移除空工具栏留白；深浅色及两尺寸实测 | 官方背景、生日态、历史/风格入口与完整状态仍有差异
 搜索 | 本轮回看深浅色标题、操作区和无溢出 | 官方热搜/历史/建议及结果分类的视觉和交互差异
 我的歌单 | 本轮回看深浅色卡片/标题；已有卡片菜单专项 | 创建/收藏分组、排序、加载/空/失败和长标题逐态对照
-歌单详情 | 已有编辑入口位置、标题/封面/说明布局专项 | 头部信息密度、工具栏、标签/收藏及完整状态对照
-歌单编辑/封面 | 已有窄窗按钮、确认/返回、焦点/未保存内容专项 | 每种表单、封面选择/裁剪状态与官方对照
+歌单详情 | 本轮重排标题/简介/作者/操作区，统一按钮，补简介阅读浮层、空/失败/重试与键盘边界 | 作者头像/标签/时间、收藏者、原地评论页签、完整菜单及官方尺寸实验仍有差异
+歌单编辑/封面 | 本轮复验标题/更多菜单入口、窄窗长文本验证与返回焦点；既有封面专项 | 当前仍为模态编辑，与官方编辑页左右布局不同；裁剪及全状态仍需对照
 歌曲表/行菜单 | 已有时长与更多按钮重叠修正、长文本、虚拟滚动 | 选择/多选、排序、悬停、快捷操作和所有菜单项逐态对照
 专辑详情 | 已有长标题、方形封面、列表缩放专项 | 头部/曲目/介绍/收藏全部状态与官方对照
 歌手详情 | 已有头像占位、标题及列表专项 | 页签、热门曲/专辑/介绍/相似歌手完整对照
@@ -92,3 +95,19 @@ MV | 已有播放器与流程实现 | 推荐/收藏/详情/控件显隐/全屏/�
 
 下一步按表继续：先补齐共用控件与每日推荐/搜索/歌单的逐态对照，再依次处理其余页面。
 每完成一页，把官方来源、具体差异、修复、截图/操作证据及剩余项更新到本表与验证记录。
+
+2026-10-29 歌单详情专项
+- 对照 Common/PlaylistCover/Description 恢复来源调整标题、简介、作者和底部操作顺序，
+  按钮尺寸/圆角统一；评论入口移到歌曲列表上方。具体参数与实验分支见
+  playlist-detail-ui-contracts.txt，保留默认分支、紧凑分支及社区响应式的区别。
+- 长简介按实际裁剪情况显示“详情”，打开后在信息区内滚动；点击外部/移焦可关闭，
+  Escape 返回入口；Space/Shift+Space 不会触发全局播放快捷键。全禁用菜单可获得
+  键盘焦点并 Escape 退出，焦点描边跟随主题。歌单读取失败不再显示仍在加载的说明。
+- 空歌单保留禁用的播放/下载；红心歌单无编辑入口；未收藏的外部歌单不显示无效的
+  上移/下移操作。首曲不可用时，标题区播放全部会从可用歌曲开始。
+- 编辑仍是模态框；评论仍是独立页面；作者头像/标签/时间、收藏者、完整菜单与官方
+  所有状态仍待逐项对齐。当前截图使用合成内容与封面占位，不能代替真实封面/账号/
+  Windows/DPI 检查，也不能把本轮歌单头部修正写成整页 UI/UX 一致性完成。
+- 最终隔离原生 WebView：playlist-layout-final-3 的38态、playlist-layout-ux-3 的41态
+  均通过；playlist-layout-before-2 留有4态改前失败对照。79张最终截图与前后对照见
+  .build/playlist-layout-gallery/index.html，详细操作证据和环境边界见 ui-ux-validation.txt。

@@ -1012,3 +1012,41 @@ Windows现场与接续提示焦点复查（2026-10-29）
   254 目标/1173 测试通过；最终前端重新内嵌构建 cumulus/ux_ui_probe 后运行上述界面检查。
   来源、详细尺寸、证据与边界见 ui-ux-audit.txt。本次没有发布版本；全站 UI/UX 逐态审计
   和完整目标仍进行中，不用这轮局部通过替代其余页面待核对项。
+
+2026-10-29：歌单详情层级、简介阅读与键盘一致性（fix/playlist-detail-presentation）
+- 本轮限于 UI/UX。重新阅读官方 Common、PlaylistCover、Description、PlayAllSquarePriButton、
+  playlist/views/index 与 Edit 的恢复代码。标题/简介/作者/操作区按来源顺序重排，播放/
+  收藏/下载/更多统一高度和圆角，评论入口放到列表上方；具体来源及默认/紧凑实验差异
+  见 playlist-detail-ui-contracts.txt。没有调用 YesPlayMusic 或新增核心业务接口。
+- 长简介按实际裁剪显示详情入口，浮层在信息区内滚动，连续英文换行，外部点击/移焦
+  关闭、Escape 恢复焦点。全禁用菜单仍获得焦点，Escape 可退出，使用主题色内描边。
+  空歌单保留禁用操作，红心/他人歌单不出现编辑，未收藏外部歌单不出现无效的排序项。
+  歌单读取失败不再继续显示正在加载；首曲缺失时播放全部选择第一个可用条目。
+- .build/playlist-space-before/first/complete.json 实际复现简介阅读区按 Space 会将合成
+  音频从 paused 变为 playing，protected=false。修复只停止 Space/Shift+Space 冒泡，
+  不 preventDefault；最终探针确认默认事件未被取消、原生播放器仍为 paused，Escape
+  返回详情入口。本项没有发送可信物理键盘事件，不单独宣称验证了浏览器默认翻页距离。
+- .build/playlist-layout-before-2/audit.json：同一合成数据的改前 4 态，信息区操作位置、
+  简介/作者顺序、按钮一致性与去重断言失败，layoutPassed=false。
+  .build/playlist-layout-final-3/audit.json：最终内嵌 production dist 的 38 态/38 图通过。
+  包括两尺寸/两主题、长短空简介、空/红心/本人/他人歌单、禁用菜单、编辑弹窗、加载/
+  失败/重试、评论失败及返回、缺失首曲合成播放/暂停、简介键盘边界；音乐请求/账号写入为0。
+  .build/playlist-layout-ux-3/report.json：既有 41 态/41 图共用交互与主题重启回归通过。
+  曾保留两轮中间截图，final-3/ux-3 才是含最终菜单焦点配色的产物。
+- 人工查看正常浅色与窄窗深色头部、长简介首尾、编辑/空状态、失败文字、未收藏歌单
+  菜单和全禁用菜单焦点；自动断言检查几何边界、控件可达、阅读浮层与有界歌曲渲染。
+  .build/playlist-layout-gallery/index.html 汇集 79 张最终原图及 4 组改前对照；只通过
+  CSS 隐藏窗口外桌面，不编辑 PNG。没有将 79 态当作 79 个完整页面验收。
+- 隔离 Xvfb 在 D-Bus 之前启动，使用 xcompmgr、非 C locale、真实 Tauri/WebKitGTK、
+  合成账号及 libmpv/null 输出。物理桌面、DPI、Windows 视觉及真实声卡仍没有本轮证据。
+  当前编辑仍是模态框，评论仍跳转独立页，作者头像/标签/时间、收藏者及完整菜单待对照；
+  未声称整张歌单页或官方像素级一致。共享控件与其余页面继续按 ui-ux-audit.txt 审计。
+- npm ci、格式、229 前端测试、类型检查与构建通过；Rust fmt、严格全工作区 Clippy、
+  全量 254 目标/1173 passed/0 failed/0 ignored 通过，记录在 playlist-layout-verified-checks.json。
+  最后仅修改焦点配色后重新完成前端检查、内嵌构建及上述 79 态，记录在
+  playlist-layout-focus-checks.json；没有因 CSS 改动重复整套 Rust 测试。CI 规则21项通过。
+  Linux/Windows CI 各自加入38态；源文件审计通过，不提交截图/恢复材料/账号或构建产物。
+- 前一 daily 分支精确提交 8919ec2 的 CI 40857474651：前端/Linux成功，Windows 在
+  native_smoke 的 loudness 报告不存在处失败，CI gate失败；未执行到该平台后续界面检查。
+  这是已记录的 Windows 验证缺口，不把 Linux 截图代替 Windows，也未绕过 gate 发布。
+  本分支完整 CI 按其精确提交另行核对，本轮未创建标签或发行版本。
