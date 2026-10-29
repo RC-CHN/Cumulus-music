@@ -45,6 +45,7 @@ export interface Timeline {
 export interface PlayerView {
   fm: boolean;
   equalizer: EqualizerView;
+  loudness: LoudnessView;
   epoch: string;
   revision: string;
   queueRevision: string;
@@ -63,6 +64,22 @@ export interface PlayerView {
   error: string | null;
   historyWarning: string | null;
   positionReset: boolean;
+}
+export interface LoudnessView {
+  revision: string | null;
+  enabled: boolean;
+  status:
+    | 'off'
+    | 'no_track'
+    | 'no_gain'
+    | 'invalid_gain'
+    | 'pending'
+    | 'configured'
+    | 'processing'
+    | 'unavailable'
+    | 'failed';
+  gainDb: number | null;
+  damaged: boolean;
 }
 export interface EqualizerSettings {
   enabled: boolean;
@@ -138,6 +155,8 @@ export type PlaySelection =
       quality: Quality;
     };
 export type PlayerAction =
+  | { kind: 'loudness'; expected_revision: string; enabled: boolean }
+  | { kind: 'retry_loudness' | 'repair_loudness' }
   | { kind: 'equalizer'; expected_revision: string; settings: EqualizerSettings }
   | { kind: 'retry_equalizer' | 'repair_equalizer' }
   | { kind: 'play' | 'next' | 'previous' | 'stop' | 'restore' | 'startup' | 'refresh' | 'clear' }

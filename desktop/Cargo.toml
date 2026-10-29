@@ -28,6 +28,10 @@ name = "equalizer_ui_probe"
 required-features = ["custom-protocol"]
 
 [[example]]
+name = "loudness_ui_probe"
+required-features = ["custom-protocol"]
+
+[[example]]
 name = "auth_ui_probe"
 required-features = ["custom-protocol"]
 

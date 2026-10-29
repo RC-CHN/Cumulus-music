@@ -114,6 +114,21 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     }
   }
   const action = (input: PlayerAction) => run((e) => core.playerAction(e, input));
+  // Device preferences can be saved while a slow decoder is still loading.
+  // Keep their errors and pending UI separate from playback transport requests.
+  async function configureLoudness(
+    input: Extract<PlayerAction, { kind: 'loudness' | 'retry_loudness' | 'repair_loudness' }>,
+  ) {
+    const captured = epoch;
+    try {
+      const next = await core.playerAction(captured, input);
+      if (captured === epoch) accept(next);
+    } catch (e) {
+      if (captured !== epoch) return;
+      if (['session_expired', 'profile_changed'].includes(failure(e).code)) onSessionChanged();
+      throw e;
+    }
+  }
   const select = (input: PlaySelection) => run((e) => core.playSelection(e, input));
   const downloads = (ids: string[], index: number) => run((e) => core.playDownloads(e, ids, index));
   const retry = () => (failedOperation ? run(failedOperation) : action({ kind: 'refresh' }));
@@ -198,6 +213,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     loaded,
     connect,
     action,
+    configureLoudness,
     select,
     downloads,
     retry,

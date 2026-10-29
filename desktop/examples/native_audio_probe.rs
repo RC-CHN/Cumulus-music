@@ -1,6 +1,9 @@
 //! Production desktop startup + real native playback, synthetic audio only.
 //! Linux CI sets LC_ALL=en_US.UTF-8 to expose GTK/libmpv locale conflicts.
 #[allow(dead_code)]
+#[path = "../../core/audio-filter/examples/loudness_probe.rs"]
+mod loudness;
+#[allow(dead_code)]
 #[path = "../../core/examples/engine_roundtrip.rs"]
 mod native_media;
 #[allow(dead_code)]
@@ -86,7 +89,10 @@ fn main() {
             }
             let handle = app.handle().clone();
             std::thread::spawn(move || {
-                let result = if std::env::var_os("CUMULUS_OUTPUT_DEVICE_PROOF").is_some() {
+                let result = if let Some(library) = std::env::var_os("CUMULUS_LOUDNESS_LIBRARY") {
+                    setup_trace.record("loudness_start");
+                    loudness::verify(&PathBuf::from(library), &output.with_extension("pcm"))
+                } else if std::env::var_os("CUMULUS_OUTPUT_DEVICE_PROOF").is_some() {
                     setup_trace.record("output_devices_start");
                     output_devices::run()
                 } else {

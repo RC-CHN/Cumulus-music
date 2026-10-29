@@ -31,7 +31,9 @@ def main():
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--report', type=Path, required=True)
     parser.add_argument('--runtime', type=Path)
-    parser.add_argument('--auto', action='store_true', help='use the system audio output at zero volume')
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--auto', action='store_true', help='use the system audio output at zero volume')
+    mode.add_argument('--filter-library', type=Path, help='verify recovered loudness PCM after GUI initialization')
     args = parser.parse_args()
     report = args.report.resolve()
     assert not report.exists(), 'proof report must be new'
@@ -48,11 +50,28 @@ def main():
         env[variable] = str(path)
     if args.auto:
         env['CUMULUS_PROOF_AUTO'] = '1'
+    if args.filter_library:
+        env['CUMULUS_LOUDNESS_LIBRARY'] = str(args.filter_library.resolve(strict=True))
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
     run_native([str(args.binary.resolve())], env, report)
     proof = json.loads(report.read_text(encoding='utf-8'))
     assert proof['ok'] and proof['productionDesktopStartup'] and proof['numericLocaleCompatible']
+    if args.filter_library:
+        assert proof['actualDecoder'] and proof['realMusicRequests'] == 0
+        assert not proof['physicalAudioOutputVerified'] and not proof['businessPreferenceTested']
+        assert len(proof['cases']) == 12
+        assert {(c['rate'], c['channels']) for c in proof['cases']} == {(44100, 1), (48000, 2), (96000, 6)}
+        for case in proof['cases']:
+            assert case['maxAbsError'] <= 2e-6 and case['changed'] == case['enabled']
+            assert case['stats']['processed_samples'] == case['samples']
+            assert case['stats']['failed_blocks'] == 0 and case['stats']['active_instances'] == 0
+        controls = proof['controls']
+        assert controls['bypass']['observed_revision'] > controls['first']['observed_revision']
+        assert controls['seek']['revision'] == controls['seek']['observed_revision']
+        assert controls['reloaded']['processed_samples'] > 0 and controls['reloaded']['failed_blocks'] == 0
+        print(json.dumps({'ok': True, 'desktopNativeLoudness': True, 'pcmCases': len(proof['cases'])}))
+        return
     assert proof['metadata_probe'] and proof['remote_requests'] == 0
     assert all(proof[key] for key in ['progress', 'pause', 'seek', 'paused_seek_verified_on_resume', 'speed', 'cue_engine_eof', 'cue_end_reset', 'cancel'])
     print(json.dumps({'ok': True, 'desktopNativeMedia': True, 'output': proof['output']}))

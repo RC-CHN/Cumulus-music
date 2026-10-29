@@ -17,6 +17,7 @@ const account = (epoch = '1'): AccountView => ({
 });
 function state(revision = '1', epoch = '1', playId: string | null = null): PlayerView {
   return {
+    loudness: { revision: 'initial', enabled: false, status: 'off', damaged: false, gainDb: null },
     equalizer: {
       revision: '0',
       settings: { enabled: false, gains: Array(10).fill(0) },
@@ -43,6 +44,63 @@ function state(revision = '1', epoch = '1', playId: string | null = null): Playe
     historyWarning: null,
   };
 }
+test('loudness preferences can be saved without completing a pending transport request', async () => {
+  const loading = deferred<PlayerView>();
+  const f = fixture({
+    playerAction: async (_epoch, input) =>
+      input.kind === 'play'
+        ? loading.promise
+        : {
+            ...state('2'),
+            loudness: {
+              revision: 'saved',
+              enabled: true,
+              status: 'pending',
+              gainDb: null,
+              damaged: false,
+            },
+          },
+  });
+  await f.player.connect(account());
+  const playing = f.player.action({ kind: 'play' });
+  assert.equal(f.player.busy.value, true);
+  await f.player.configureLoudness({
+    kind: 'loudness',
+    expected_revision: 'initial',
+    enabled: true,
+  });
+  assert.equal(f.player.busy.value, true);
+  assert.equal(f.player.view.value?.loudness.enabled, true);
+  loading.resolve({
+    ...state('3'),
+    loudness: {
+      revision: 'saved',
+      enabled: true,
+      status: 'processing',
+      gainDb: -18,
+      damaged: false,
+    },
+  });
+  await playing;
+  assert.equal(f.player.busy.value, false);
+  assert.equal(f.player.view.value?.loudness.status, 'processing');
+  f.player.dispose();
+});
+test('a late loudness response cannot restore the previous account state', async () => {
+  const pending = deferred<PlayerView>();
+  const f = fixture({ playerAction: () => pending.promise });
+  await f.player.connect(account());
+  const saved = f.player.configureLoudness({ kind: 'retry_loudness' });
+  await f.player.connect(account('2'));
+  pending.resolve({
+    ...state('99', '1'),
+    loudness: { revision: 'old', enabled: true, status: 'processing', gainDb: -18, damaged: false },
+  });
+  await saved;
+  assert.equal(f.player.view.value?.epoch, '2');
+  assert.equal(f.player.view.value?.loudness.enabled, false);
+  f.player.dispose();
+});
 function lyrics(playId: string): LyricsView {
   return {
     epoch: '1',

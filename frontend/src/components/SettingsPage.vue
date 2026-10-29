@@ -21,6 +21,8 @@ import Icon from './Icon.vue';
 import RelaySettings from './settings/RelaySettings.vue';
 import PlaybackStartup from './settings/PlaybackStartup.vue';
 import AudioOutput from './settings/AudioOutput.vue';
+import LoudnessBalance from './settings/LoudnessBalance.vue';
+import type { PlayerModel } from '../composables/usePlayer';
 import WindowBehavior from './settings/WindowBehavior.vue';
 import DesktopLyrics from './settings/DesktopLyrics.vue';
 import SystemMedia from './settings/SystemMedia.vue';
@@ -31,6 +33,7 @@ import '../styles/settings.css';
 const props = defineProps<{
   model: SettingsModel;
   account: AccountView;
+  player: PlayerModel;
   relay: RelayModel;
   publication: RelayPublicationModel;
 }>();
@@ -193,6 +196,7 @@ function accept(op: SettingsOperation) {
       </section>
       <PlaybackStartup :account="account" />
       <AudioOutput :account="account" />
+      <LoudnessBalance :model="player" :epoch="account.epoch" />
       <WindowBehavior :account="account" />
       <DesktopLyrics :account="account" />
       <SystemMedia :account="account" />

@@ -899,6 +899,7 @@ onUnmounted(() => {
             @open="openHistory"
           />
           <SettingsPage
+            :player="player"
             v-else-if="page.kind === 'settings'"
             :model="settings"
             :relay="relay"
