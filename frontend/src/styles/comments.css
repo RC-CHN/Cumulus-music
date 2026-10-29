@@ -1,6 +1,27 @@
 .comments-page {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
   max-width: 1100px;
-  margin: auto;
+  margin: 0 auto;
+  overflow: auto;
+  scrollbar-gutter: stable;
+  padding: 0 8px 8px 0;
+}
+.comments-page .page-heading {
+  align-items: flex-start;
+  gap: 16px;
+}
+.comments-page .page-heading > div {
+  min-width: 0;
+}
+.comments-page .page-heading > button {
+  flex: none;
+}
+.comments-page .page-heading .muted {
+  overflow-wrap: anywhere;
+  line-height: 1.6;
 }
 .comments-page h1 small {
   font-size: 14px;
@@ -72,6 +93,7 @@
   color: var(--link);
   font-size: 15px;
   line-height: 20px;
+  overflow-wrap: anywhere;
 }
 .comment-author small {
   color: var(--muted);

@@ -11,6 +11,21 @@ import { resourceKey, type CommentItem } from '../services/comments';
 const props = defineProps<{ model: CommentsModel; title: string }>();
 const { page, query, loading, error, actionError, busy, history } = props.model;
 const target = ref('');
+const scroller = ref<HTMLElement>();
+watch(
+  query,
+  (value, previous) => {
+    // Only a confirmed page/sort/location change resets the reading position.
+    // Refreshes and likes retain it; failed requests retain the previous query.
+    if (
+      value.offset !== previous.offset ||
+      value.sort !== previous.sort ||
+      value.commentId !== previous.commentId
+    )
+      scroller.value?.scrollTo({ top: 0, behavior: 'instant' });
+  },
+  { flush: 'post' },
+);
 const composer = ref<InstanceType<typeof CommentWritePanel>>(),
   floorContainer = ref<HTMLDivElement>();
 const floor = useCommentFloor(undefined, () => props.model.sessionExpired());
@@ -96,7 +111,7 @@ const groups = computed(() =>
 );
 </script>
 <template>
-  <section class="comments-page" aria-label="评论页面">
+  <section ref="scroller" class="comments-page" aria-label="评论页面">
     <header class="page-heading">
       <div>
         <p class="muted">{{ title }}</p>
