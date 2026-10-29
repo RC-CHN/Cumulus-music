@@ -32,6 +32,9 @@
   };
   try {
     await wait(()=>document.querySelector('.track-row'),'main startup'); await ready();
+    localStorage.setItem('cumulus.appearance.v1','light');
+    window.dispatchEvent(new StorageEvent('storage',{key:'cumulus.appearance.v1',newValue:'light'}));
+    await wait(()=>document.documentElement.dataset.theme==='light','light baseline');
     const account=await invoke('account_snapshot'), epoch=account.epoch;
     await invoke('play_selection',{epoch,selection:{kind:'songs',ids:['1','2','3'],index:0,quality:'standard'}});
     await sleep(500); await invoke('player_action',{epoch,action:{kind:'pause',paused:true}});

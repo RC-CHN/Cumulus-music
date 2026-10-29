@@ -33,14 +33,14 @@ def main():
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
     output = root / 'first'
-    with (root / 'first.log').open('x') as log:
+    with (root / 'first.log').open('x', encoding='utf-8') as log:
         code = runner(args.binary.resolve(), env, log, output, args.screenshots)
-    assert not (output / 'failed.json').exists(), (output / 'failed.json').read_text() if (output / 'failed.json').exists() else ''
+    assert not (output / 'failed.json').exists(), (output / 'failed.json').read_text(encoding='utf-8') if (output / 'failed.json').exists() else ''
     assert code == 0, f'mini probe exit {code}'
-    complete = json.loads((output / 'complete.json').read_text())
+    complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
     assert complete['ok'] and complete['realMusicRequests'] == 0
     if args.shortcuts:
-        states = [json.loads(p.read_text()) for p in sorted(output.glob('ux_*.json'))]
+        states = [json.loads(p.read_text(encoding='utf-8')) for p in sorted(output.glob('ux_*.json'))]
         assert len(states) == complete['stageCount'] == 6
         assert len(complete['checks']) == 6
         assert complete['localDomKeys'] and complete['independentGlobalKeys']
@@ -55,12 +55,12 @@ def main():
                       screenshots=len(states) if args.screenshots else 0,
                       sharedAudioFactoryCount=1, localDomKeys=True, independentGlobalKeys=True,
                       checks=complete['checks'], realMusicRequests=0, physicalAudioOutputVerified=False)
-        (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
+        (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
         print(json.dumps(report))
         return
     assert all(complete[k] for k in ['timeoutVerified', 'staleControlRejected', 'ipcIsolation',
                                     'reloadFallback', 'sharedAudio', 'closePolicy', 'accountIsolation'])
-    states = [json.loads(p.read_text()) for p in sorted(output.glob('ux_*.json'))]
+    states = [json.loads(p.read_text(encoding='utf-8')) for p in sorted(output.glob('ux_*.json'))]
     assert len(states) == complete['stageCount'] == 8
     assert all(v['factoryCount'] == 1 and not v['mainVisible'] and len(v['miniWindows']) == 1 for v in states)
     assert all(not v['overflow'] and v['width'] == 420 and v['height'] in [206, 516] for v in states)
@@ -74,7 +74,7 @@ def main():
     report = dict(ok=True, actualWebViews=2, states=len(states),
                   screenshots=len(states) if args.screenshots else 0, sharedAudioFactoryCount=1,
                   realMusicRequests=0, physicalAudioOutputVerified=False)
-    (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
+    (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report))
 
 

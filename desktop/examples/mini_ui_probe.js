@@ -20,6 +20,11 @@
   const open = async () => { await invoke('mini_enter'); await wait(async()=>!(await fixture('windows')).main,'main hidden after mini ready'); await wait(async()=>(await read()).media.item,'mini populated'); };
   try {
     await wait(()=>document.querySelector('.track-row'),'main startup');
+    // The real system portal may report dark. Establish the tested baseline
+    // explicitly before comparing the subsequent theme transition.
+    localStorage.setItem('cumulus.appearance.v1','light');
+    window.dispatchEvent(new StorageEvent('storage',{key:'cumulus.appearance.v1',newValue:'light'}));
+    await wait(()=>document.documentElement.dataset.theme==='light','light baseline');
     let account = await invoke('account_snapshot');
     await invoke('play_selection',{epoch:account.epoch,selection:{kind:'songs',ids:Array.from({length:40},(_,i)=>String(i+1)),index:0,quality:'standard'}});
     await sleep(500);

@@ -191,3 +191,7 @@ required-features = ["custom-protocol"]
 [[example]]
 name = "mini_ui_probe"
 required-features = ["custom-protocol"]
+
+[[example]]
+name = "desktop_lyrics_ui_probe"
+required-features = ["custom-protocol"]
