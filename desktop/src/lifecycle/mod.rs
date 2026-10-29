@@ -141,6 +141,9 @@ fn availability<R: tauri::Runtime>(app: &tauri::AppHandle<R>, available: bool) {
     }
 }
 fn reveal<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    if !crate::mini::dismiss(app, None, true) {
+        return;
+    }
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
         let _ = window.unminimize();

@@ -23,52 +23,58 @@ impl Api for NoNetwork {
 }
 
 #[test]
-fn isolated_captcha_cannot_invoke_application_commands_even_from_local_origin() {
+fn foreign_and_unregistered_mini_windows_cannot_invoke_application_commands() {
     let app = cumulus_desktop::configure(mock_builder())
         .build(mock_context(noop_assets()))
         .unwrap();
-    let window = tauri::WebviewWindowBuilder::new(&app, "captcha-1", Default::default())
-        .build()
-        .unwrap();
-    // A registered custom scheme is local to Tauri. Window identity must still
-    // deny the app dispatcher; local-only capabilities alone are insufficient.
-    for cmd in [
-        "get_app_info",
-        "account_snapshot",
-        "login_command",
-        "pick_local_directory",
-        "player_action",
-        "solve_login_captcha",
-        "catalog_page",
-        "collection_page",
-        "history_page",
-        "history_command",
-        "account_settings_page",
-        "account_settings_command",
-        "relay_view",
-        "relay_command",
-        "relay_setting_command",
-        "catalog_membership",
-    ] {
-        assert_ipc_response(
-            &window,
-            tauri::webview::InvokeRequest {
-                cmd: cmd.into(),
-                callback: tauri::ipc::CallbackFn(0),
-                error: tauri::ipc::CallbackFn(1),
-                url: if cfg!(windows) {
-                    "http://tauri.localhost"
-                } else {
-                    "tauri://localhost"
-                }
-                .parse()
-                .unwrap(),
-                body: tauri::ipc::InvokeBody::default(),
-                headers: Default::default(),
-                invoke_key: INVOKE_KEY.into(),
-            },
-            Err(json!("Application commands require the main window")),
-        );
+    for label in ["captcha-1", "mini-player-1"] {
+        let window = tauri::WebviewWindowBuilder::new(&app, label, Default::default())
+            .build()
+            .unwrap();
+        // A registered custom scheme is local to Tauri. Window identity must still
+        // deny the app dispatcher; local-only capabilities alone are insufficient.
+        for cmd in [
+            "mini_enter",
+            "mini_read",
+            "mini_action",
+            "mini_preferences_command",
+            "get_app_info",
+            "account_snapshot",
+            "login_command",
+            "pick_local_directory",
+            "player_action",
+            "solve_login_captcha",
+            "catalog_page",
+            "collection_page",
+            "history_page",
+            "history_command",
+            "account_settings_page",
+            "account_settings_command",
+            "relay_view",
+            "relay_command",
+            "relay_setting_command",
+            "catalog_membership",
+        ] {
+            assert_ipc_response(
+                &window,
+                tauri::webview::InvokeRequest {
+                    cmd: cmd.into(),
+                    callback: tauri::ipc::CallbackFn(0),
+                    error: tauri::ipc::CallbackFn(1),
+                    url: if cfg!(windows) {
+                        "http://tauri.localhost"
+                    } else {
+                        "tauri://localhost"
+                    }
+                    .parse()
+                    .unwrap(),
+                    body: tauri::ipc::InvokeBody::default(),
+                    headers: Default::default(),
+                    invoke_key: INVOKE_KEY.into(),
+                },
+                Err(json!("Application commands require the main window")),
+            );
+        }
     }
 }
 

@@ -13,6 +13,7 @@ mod identity;
 pub mod lifecycle;
 mod local;
 mod member;
+pub mod mini;
 mod mv;
 mod platform;
 mod player;
@@ -47,13 +48,19 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
         .plugin(watchman::collection::lifecycle())
         .plugin(shortcuts::lifecycle())
         .manage(cumulus_core::Application)
+        .manage(mini::Host::default())
         .manage(player::PlayerStreams::default())
         .manage(together::CloseCoordinator::default())
         .manage(renewal::RenewalPump::default())
         .manage(watchman::EventHost::default())
         .manage(watchman::collection::MeasurementBridge::default())
         .on_window_event(|window, event| {
-            if !lifecycle::closing(window, event) {
+            if window.label() == "main"
+                && matches!(event, tauri::WindowEvent::CloseRequested { .. })
+            {
+                mini::dismiss(window.app_handle(), None, false);
+            }
+            if !mini::closing(window, event) && !lifecycle::closing(window, event) {
                 together::closing(window, event);
             }
             if window.label() == "main" && matches!(event, tauri::WindowEvent::Focused(true)) {
@@ -61,6 +68,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
             }
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 if window.label() == "main" {
+                    mini::dismiss(window.app_handle(), None, false);
                     lifecycle::stop(window.app_handle());
                     system_media::stop(window.app_handle());
                     shortcuts::stop(window.app_handle());
@@ -84,6 +92,21 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
             }
         })
         .invoke_handler(|invoke| {
+            if mini::owns(
+                invoke.message.webview_ref().app_handle(),
+                invoke.message.webview_ref().label(),
+            ) {
+                let handler: fn(tauri::ipc::Invoke<R>) -> bool = tauri::generate_handler![
+                    mini::commands::mini_read,
+                    mini::commands::mini_ready,
+                    mini::commands::mini_return,
+                    mini::commands::mini_action,
+                    mini::commands::mini_queue,
+                    mini::commands::mini_panel,
+                    mini::commands::mini_preferences_command,
+                ];
+                return handler(invoke);
+            }
             if invoke.message.webview_ref().label() != "main" {
                 invoke
                     .resolver
@@ -91,6 +114,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 return true;
             }
             let handler: fn(tauri::ipc::Invoke<R>) -> bool = tauri::generate_handler![
+                mini::commands::mini_enter,
                 captcha::solve_login_captcha,
                 watchman::watchman_observation,
                 watchman::collection::broker::watchman_measurement,

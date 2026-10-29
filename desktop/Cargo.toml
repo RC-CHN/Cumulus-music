@@ -187,3 +187,7 @@ required-features = ["custom-protocol"]
 [[example]]
 name = "shortcut_probe"
 required-features = ["custom-protocol"]
+
+[[example]]
+name = "mini_ui_probe"
+required-features = ["custom-protocol"]

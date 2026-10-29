@@ -1,0 +1,146 @@
+//! Two real WebViews over one production MusicClient and synthetic PCM/null AO.
+#[path = "support/assets.rs"]
+mod assets;
+#[allow(dead_code)]
+#[path = "support/catalog_fixture.rs"]
+mod fixture;
+#[path = "support/mini_fixture.rs"]
+mod mini_fixture;
+#[allow(dead_code)]
+#[path = "support/relay_fixture.rs"]
+mod relay_fixture;
+#[allow(dead_code)]
+#[path = "support/settings_fixture.rs"]
+mod settings_fixture;
+use cumulus_core::{
+    account::{AccountSession, profiles::ProfileRegistry},
+    client::MusicClient,
+    protocol::http::ApiOrigin,
+};
+use serde_json::{Value, json};
+use std::{
+    borrow::Cow,
+    collections::BTreeMap,
+    fs,
+    path::PathBuf,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+    },
+};
+use tauri::{
+    Listener, Manager,
+    utils::assets::{AssetKey, AssetsIter, CspHash},
+    webview::PageLoadEvent,
+};
+struct FaultAssets {
+    files: BTreeMap<String, Vec<u8>>,
+    block: Arc<AtomicBool>,
+}
+impl tauri::Assets<tauri::Wry> for FaultAssets {
+    fn get(&self, key: &AssetKey) -> Option<Cow<'_, [u8]>> {
+        if self.block.load(Ordering::Acquire)
+            && key.as_ref().contains("MiniApp-")
+            && key.as_ref().ends_with(".js")
+        {
+            return Some(Cow::Borrowed(b"export default {};"));
+        }
+        self.files
+            .get(key.as_ref())
+            .map(|v| Cow::Borrowed(v.as_slice()))
+    }
+    fn iter(&self) -> Box<AssetsIter<'_>> {
+        Box::new(
+            self.files
+                .iter()
+                .map(|(k, v)| (Cow::Borrowed(k.as_str()), Cow::Borrowed(v.as_slice()))),
+        )
+    }
+    fn csp_hashes(&self, _: &AssetKey) -> Box<dyn Iterator<Item = CspHash<'_>> + '_> {
+        Box::new(std::iter::empty())
+    }
+}
+fn main() {
+    // SAFETY: before creating any runtime threads or GTK widgets.
+    unsafe { cumulus_desktop::prepare_graphics() };
+    let root = PathBuf::from(std::env::var_os("CUMULUS_PROOF_DIR").expect("isolated proof root"));
+    fs::create_dir_all(&root).unwrap();
+    let output = root.join("first");
+    fs::create_dir(&output).expect("new proof directory");
+    let block = Arc::new(AtomicBool::new(false));
+    let mut context = assets::context();
+    let config = context.config().app.windows[0].clone();
+    context.config_mut().app.windows[0].create = false;
+    let files = context
+        .assets()
+        .iter()
+        .map(|(k, _)| {
+            let bytes = context
+                .assets()
+                .get(&AssetKey::from(k.as_ref()))
+                .expect("embedded asset")
+                .into_owned();
+            (k.into_owned(), bytes)
+        })
+        .collect();
+    context.set_assets(Box::new(FaultAssets {
+        files,
+        block: block.clone(),
+    }));
+    cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
+        let registry=ProfileRegistry::open(&root.join("state"),ApiOrigin::Pc)?;
+        let api=Arc::new(mini_fixture::Library::default());
+        let session=Arc::new(AccountSession::new(api.clone(),Some(registry.store())));
+        let count=Arc::new(AtomicUsize::new(0));
+        let factory_count=count.clone(); let wave=relay_fixture::wave(&root)?;
+        let client=MusicClient::with_session(session.clone(),registry).with_audio_factory(move || {
+            factory_count.fetch_add(1,Ordering::AcqRel);
+            Ok(Box::new(relay_fixture::NativeAudio::open(wave.clone())?))
+        });
+        app.manage(client);
+        app.add_capability(r#"{"identifier":"mini-proof","windows":["main","mini-player-*"],"permissions":["core:event:allow-emit"]}"#)?;
+        let handle=app.handle().clone();
+        app.listen("mini-proof", move |event| {
+            let value:Value=serde_json::from_str(event.payload()).unwrap();
+            let kind=value["kind"].as_str().unwrap_or("");
+            let id=value["id"].clone();
+            let ack=|value:Value| { handle.get_webview_window("main").unwrap().eval(format!("window.__miniAck[{}]={};",id,value)).unwrap(); };
+            match kind {
+                "eval" => {
+                    let mini=handle.webview_windows().into_iter().find(|(label,_)|label.starts_with("mini-player-")).expect("mini window").1;
+                    let source=value["source"].as_str().unwrap();
+                    mini.eval(format!(r#"(async()=>{{try{{const value=await (async()=>{{{source}}})();await window.__TAURI_INTERNALS__.invoke('plugin:event|emit',{{event:'mini-proof',payload:{{kind:'result',id:{id},value}}}});}}catch(e){{await window.__TAURI_INTERNALS__.invoke('plugin:event|emit',{{event:'mini-proof',payload:{{kind:'result',id:{id},error:String(e?.message||e)}}}});}}}})();"#)).unwrap();
+                }
+                "result" => ack(value.clone()),
+                "block" => { block.store(value["enabled"]==true,Ordering::Release); ack(json!({"ok":true})); }
+                "account" => { session.adopt(api.clone(),json!({"userId":99}),&session.token().unwrap()).unwrap(); ack(json!({"ok":true})); }
+                "show" => { cumulus_desktop::lifecycle::show(&handle); ack(json!({"ok":true})); }
+                "windows" => ack(json!({"main":handle.get_webview_window("main").unwrap().is_visible().unwrap(),"mini":handle.webview_windows().keys().filter(|l|l.starts_with("mini-player-")).collect::<Vec<_>>()})),
+                "snapshot" | "complete" | "failed" => {
+                    let mut value=value.clone(); let output=output.clone(); let handle=handle.clone();
+                    value["factoryCount"]=json!(count.load(Ordering::Acquire));
+                    value["mainVisible"]=json!(handle.get_webview_window("main").unwrap().is_visible().unwrap());
+                    value["miniWindows"]=json!(handle.webview_windows().keys().filter(|l|l.starts_with("mini-player-")).collect::<Vec<_>>());
+                    value["likeWritesObserved"]=json!(api.likes.lock().unwrap().clone());
+                    tauri::async_runtime::spawn(async move {
+                        let client=handle.state::<MusicClient>();
+                        let epoch=client.account().unwrap().epoch;
+                        value["nativePlayer"]=serde_json::to_value(client.subscribe_playback(&epoch).await.unwrap().current().unwrap()).unwrap();
+                        let stage=value["stage"].as_str().unwrap_or("failed");
+                        assert!(stage.chars().all(|c|c.is_ascii_alphanumeric()||c=='_'));
+                        fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+                        if stage=="complete" || stage=="failed" { handle.exit(if stage=="complete" {0}else{1}); }
+                    });
+                }
+                _ => panic!("unknown synthetic mini fixture command"),
+            }
+        });
+        tauri::WebviewWindowBuilder::from_config(app,&config)?.build()?;
+        cumulus_desktop::lifecycle::install(app.handle())?;
+        Ok(())
+    }).on_page_load(|view,payload| {
+        if view.label()=="main" && payload.event()==PageLoadEvent::Finished {
+            view.eval(include_str!("mini_ui_probe.js")).unwrap();
+        }
+    }).run(context).expect("mini WebView proof");
+}

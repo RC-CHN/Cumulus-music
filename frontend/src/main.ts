@@ -1,7 +1,4 @@
 import { createApp } from 'vue';
-import App from './App.vue';
-import { createTauriClient } from './adapters/tauri';
-import { coreClientKey } from './services/core';
 import './style.css';
 import './styles/comments.css';
 import './styles/podcast.css';
@@ -11,4 +8,14 @@ import { initializeMotion } from './composables/useMotion';
 
 initializeMotion();
 initializeAppearance();
-createApp(App).provide(coreClientKey, createTauriClient()).mount('#app');
+if (/^#mini=\d+$/.test(location.hash)) {
+  const { default: MiniApp } = await import('./mini/MiniApp.vue');
+  createApp(MiniApp).mount('#app');
+} else {
+  const [{ default: App }, { createTauriClient }, { coreClientKey }] = await Promise.all([
+    import('./App.vue'),
+    import('./adapters/tauri'),
+    import('./services/core'),
+  ]);
+  createApp(App).provide(coreClientKey, createTauriClient()).mount('#app');
+}

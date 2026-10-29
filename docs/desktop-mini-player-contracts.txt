@@ -1,0 +1,80 @@
+迷你播放器：同一播放核心的第二个窗口
+
+来源与重建范围
+官方 3.1.42.205594 恢复证据：
+- references/recovered-client/docs/product/models/app.txt，switchToMiniMode / exitMiniMode；
+  对应 M1384:4031–4081。主窗口、mini_player、置顶设置和 playing/miniModePlayerInit。
+- references/recovered-client/docs/product/models/playing.txt，miniModePlayerInit；
+  对应 M308:5125–5386。复用当前播放、喜欢、音量、上一首/下一首、循环模式、队列。
+- M116:365 miniModeAlwaysTop 默认 true；M116:925–945 mini_max / close_window。
+- native-contracts.txt 中 nativeMiniPlayer 状态、封面、播放列表、置顶和主窗口回调。
+未使用 YesPlayMusic。官方 C++ 小窗布局未完整恢复；本界面用 Cumulus 主题重建，
+不能称为官方小窗像素复刻。官方先隐藏主窗口，本实现等小窗就绪后才隐藏，防止空白窗口。
+
+入口与界面
+主窗口右上角“迷你模式”，独立无系统边框窗口，420×206 逻辑像素。
+显示当前歌曲/播客/MV 元数据、进度、音量、播放/暂停/停止、上一首/下一首、循环模式、
+喜欢/喜欢状态刷新。点击封面、返回主窗口按钮或 Esc 返回原窗口；空格在非输入控件
+聚焦时播放/暂停。置顶默认开启，支持取消和显式修复损坏设置。
+队列展开为 420×516，每页最多 30 行；可选择、移除、确认清空，翻页不会渲染整个长列表。
+FM 队列可读，禁止移除/选中/清空/手动模式变更，切歌经原 FM 协调器。
+MV 复用当前视频控制，不显示音频队列、音频喜欢或音频模式操作。
+主题/减少动态效果沿用设备设置；队列出现仅用 transform/opacity 动画。
+自定义快捷键 mini_max 尚未接入本窗口宿主；设置页继续如实显示不可用。
+FM 不喜欢及复杂右键资源菜单仍从主窗口进入，本次没有新增这些小窗菜单。
+
+分层与调用
+core/src/client/mini/{mod,actions,queue}.rs：
+- mini_snapshot：仅读取现有播放器与本地状态，不创建解码器，不做 HTTP，不调用 Startup。
+- MiniSnapshot 保存 SessionToken、NativeMediaTarget、NativeLikeSnapshot，只留在 Rust。
+  MiniView 仅公开白名单曲目信息、去掉服务查询参数的公开图片 URL、时间、控制能力和错误。
+- same_controls 忽略自然进度推进；账号、播放意图、队列、喜欢观察值变化会失效。
+- mini_action 把 frozen snapshot 交给原 native_media_action/adjust、player_action_checked。
+  不在过期后重新捕获目标，不自动重发远端写入。既有试听/CUE 范围和 FM/MV 所有权仍生效。
+- mini_queue 验证账号、媒体和 queue_revision，底层允许 1..100 条，桌面固定请求 30 条。
+- 喜欢状态未知/未决时 UI 只能显式读取；普通喜欢使用已有 durable mutation 和对账。
+  歌曲经 /api/song/like/get 和 /api/song/like；播客经既有 PodcastService，未增加通用 API 透传。
+  小窗播放不另开音源请求链路；选曲/重试按既有官方播放用例授权/解析音源。
+core/src/preferences/mini.rs 与 client/mini_preferences.rs：
+- local-device / mini-preferences-v1，UUID CAS + saved 标记；不与账号业务状态混存。
+- 设置持久化失败不更新当前记录；损坏默认不置顶，不能静默覆盖。
+- Repair 原文备份至 mini-recovery-v1，随后生成新 CAS，旧窗口令牌永不复用。
+- UI 修改仍带账号 epoch，旧账号窗口不能修改新会话设置。
+
+desktop/src/mini/{mod,state,commands}.rs：
+- 一个进程共用同一 MusicClient；每次打开使用单调 lifetime 和独立 mini-player-N 标签。
+- Opening → 首次安全读 + Vue nextTick + mini_ready → Active；成功后才隐藏 main。
+- WebView 在 worker 上创建，由 Tauri 调度原生操作，避免 WebView2 同步回调建窗死锁。
+- 创建及就绪合计 8 秒上限。失败取消该 lifetime、恢复主窗口并让原入口得到错误；
+  超时后迟到的创建结果销毁自身，不影响后开的窗口，不重启业务/重放动作。
+- 重载、销毁、主窗口关闭、托盘显示主窗口会撤销小窗 lifetime；小窗关闭走主窗口原关闭策略。
+- 返回主窗口成功前保留小窗；恢复失败不会主动销毁最后一个可用窗口。
+- 每次 mini_read 按 same_controls 保持/增加 ticket；动作需要当前 generation + ticket，
+  Rust 再验证真实媒体目标；并发业务动作拒绝排队后重新解释。
+- mini_enter 仅 main 可用；mini_read/ready/return/action/queue/panel/preferences_command
+  仅当前已登记 mini-player-N 可用。其他窗口（包括伪造标签）不能调用。
+- 小窗 capability 只有拖动与关闭；无文件、登录、账号资源、通用请求或脚本调用权限。
+frontend/src/services/mini.ts、adapters/mini.ts、mini/MiniApp.vue：
+- 类型化窄接口，独立动态入口；不挂载完整 App、账号恢复、主播放器订阅或启动流程。
+- 350ms 非重叠状态读；仅控件 ticket 变化时重读展开的队列。卸载撤销轮询/晚到结果。
+- 未决动作只刷新状态；失败提示保留，不把未知结果当成成功或自动重复请求。
+
+验证与边界
+新增核心测试覆盖无网络/无初始化读取、同一音频实例、旧播放/队列/账号拒绝、MV 占用、
+试听 seek、音量/模式、喜欢丢响应仅对账、FM 队列限制；设备偏好测试覆盖跨连接 CAS、
+重新打开数据库、原文损坏备份、标记丢失及事务写失败。另有窗口 lifetime 单元测试。
+mini_ui_probe 使用两张真正的生产 WebView 和同一个 MusicClient，合成 PCM 经真实 libmpv
+解码到 null 输出。仅测试夹具替换合成资源，不调用真实音乐服务、支付或公开写接口。
+可执行命令：
+  npm --prefix frontend ci
+  npm --prefix frontend run build
+  cargo build -p cumulus-desktop --example mini_ui_probe --features custom-protocol --locked
+  LC_ALL=zh_CN.UTF-8 GDK_BACKEND=x11 dbus-run-session -- xvfb-run -a /usr/bin/python3 \
+    scripts/ci/mini_smoke.py --binary .build/target/debug/examples/mini_ui_probe \
+    --root .build/mini-proof --screenshots
+Windows 用对应 .exe 和 --runtime 指定打包原生 DLL 目录；不要求 Xvfb 或 Gdk 截图。
+CI 两个平台各自执行 mini_smoke，继续经原 CI gate；没有忽略失败的发布通道。
+Linux 实测证据及最终通过数在 ui-ux-validation.txt 的迷你窗口记录中补充。
+物理桌面暂未登录：这些截图不证明实机缩放、屏幕刷新率或真实声卡听感。
+Windows 本轮代码仍须自己的 runner/实际窗口测试，不能拿 Linux 或 mock 测试代替。
+整个客户端完整目标仍未完成；本文件只描述本次小窗已接入的功能及明确剩余项。

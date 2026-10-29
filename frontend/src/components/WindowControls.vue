@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue';
+import { enterMiniPlayer } from '../adapters/mini';
 import { isTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 type ResizeDirection = Parameters<ReturnType<typeof getCurrentWindow>['startResizeDragging']>[0];
@@ -7,6 +8,7 @@ type ResizeDirection = Parameters<ReturnType<typeof getCurrentWindow>['startResi
 const available = isTauri();
 const maximized = ref(false);
 const error = ref('');
+const openingMini = ref(false);
 let disposed = false;
 let unlisten: (() => void) | undefined;
 let resizeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -20,6 +22,18 @@ const edges: ResizeDirection[] = [
   'SouthEast',
   'SouthWest',
 ];
+async function mini() {
+  if (openingMini.value) return;
+  openingMini.value = true;
+  error.value = '';
+  try {
+    await enterMiniPlayer();
+  } catch {
+    error.value = '迷你窗口暂时无法打开，请重试';
+  } finally {
+    openingMini.value = false;
+  }
+}
 async function resize(direction: ResizeDirection) {
   try {
     await getCurrentWindow().startResizeDragging(direction);
@@ -80,6 +94,12 @@ onUnmounted(() => {
         @mousedown.left.stop.prevent="resize(edge)"
       />
     </template>
+    <button aria-label="迷你模式" title="迷你模式" :disabled="openingMini" @click="mini">
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <rect x="2.5" y="3.5" width="11" height="9" rx="1" />
+        <path d="M8.5 8h5v4.5h-5z" />
+      </svg>
+    </button>
     <button aria-label="最小化" title="最小化" @click="action('minimize')">
       <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5h10" /></svg>
     </button>
