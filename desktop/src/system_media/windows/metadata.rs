@@ -41,6 +41,11 @@ pub(super) fn publish(
 ) -> Result<()> {
     let old = bridge.previous.as_ref();
     let controls = &bridge.controls;
+    // Enable before the initial metadata Update, as in the manual SMTC host
+    // lifecycle. On publication failure Bridge::drop disables and clears it.
+    if old.is_none() {
+        controls.SetIsEnabled(true)?;
+    }
     if old.is_none_or(|old| old.item != view.item) {
         let display = controls.DisplayUpdater()?;
         display.ClearAll()?;
@@ -142,9 +147,6 @@ pub(super) fn publish(
         }))?;
         controls.UpdateTimelineProperties(&timeline)?;
         bridge.timeline_at = Instant::now();
-    }
-    if old.is_none() {
-        controls.SetIsEnabled(true)?;
     }
     bridge.previous = Some(view.clone());
     Ok(())

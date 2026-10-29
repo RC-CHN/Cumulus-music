@@ -63,3 +63,17 @@ Windows 系统媒体控制（SMTC）
   ShellExperienceHost是否存在，不自动启动或修改系统服务。
 - 仅冷GUI初始化等待调整为30秒；broker和每个业务状态仍15秒，消费者20秒，
   整体240秒。此变更不能使本次broker失败变成成功，也未忽略任何失败或合入main。
+
+40792068205的进一步证据与候选修正
+- 精确f341ee2：Windows Server 2022，进程session=2；explorer、RuntimeBroker、
+  ShellExperienceHost均在同一会话。窗口冷建17.8秒，30秒启动门槛通过。
+- 宿主确实Playing，题名含正确的本进程专属前缀，policy=active；每次消费者正常
+  退出但sessionCount=0。排除了题名前缀不匹配，不能归结为不存在交互Shell。
+  active仅说明WinRT发布调用成功，本次独立broker可见性检查仍失败。
+- 原实现先在IsEnabled=false时DisplayUpdater.Update，最后才启用。本批将首次启用
+  移至元数据更新前，参考Chromium自己的手动SMTC实现：
+  https://github.com/chromium/chromium/blob/main/components/system_media_controls/win/system_media_controls_win.cc
+  该实现Initialize/UpdateDisplay先启用再Update。这是发布顺序的候选修正，仍需精确
+  新提交Windows消费者实测，不能仅凭参考源码声称已找到根因或已经修复。
+- 任一步失败仍由Bridge析构禁用/注销/清空；不创建新解码器，不重放播放控制。
+  本地Windows GNU全targets严格Clippy通过，不替代系统会话验证。
