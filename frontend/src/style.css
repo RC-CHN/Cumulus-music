@@ -9,6 +9,7 @@
 @import './styles/responsive.css';
 @import './styles/playlists.css';
 @import './styles/downloads.css';
+@import './styles/playlist-detail.css';
 @import './styles/cloud.css';
 @import './styles/mv.css';
 

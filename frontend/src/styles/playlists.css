@@ -264,26 +264,6 @@
   .main-content {
     padding-top: 8px;
   }
-  .playlist-hero {
-    min-height: 0;
-    padding: 6px 0;
-  }
-  .playlist-hero > img,
-  .hero-art {
-    width: 80px;
-    height: 80px;
-  }
-  .hero-copy {
-    padding-top: 0;
-    gap: 2px;
-  }
-  .hero-copy h1 {
-    font-size: 20px;
-    -webkit-line-clamp: 1;
-  }
-  .playlist-description {
-    -webkit-line-clamp: 1;
-  }
   .main-content > .notice,
   .main-content > .error-state {
     padding: 4px 10px;

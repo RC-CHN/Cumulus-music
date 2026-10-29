@@ -17,18 +17,6 @@
     grid-template-columns: 25px minmax(0, 1.8fr) minmax(0, 1fr) 32px 78px;
     gap: 5px;
   }
-  .playlist-hero > img,
-  .hero-art {
-    width: 120px;
-    height: 120px;
-  }
-  .playlist-hero {
-    min-height: 150px;
-    gap: 18px;
-  }
-  .hero-copy h1 {
-    font-size: 21px;
-  }
   .account-button {
     max-width: 150px;
   }

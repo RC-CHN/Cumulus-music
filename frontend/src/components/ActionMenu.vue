@@ -35,7 +35,7 @@ async function show(last = false) {
   await nextTick();
   if (!open.value) return;
   const items = choices();
-  (last ? items.at(-1) : items[0])?.focus({ preventScroll: true });
+  ((last ? items.at(-1) : items[0]) ?? panel.value)?.focus({ preventScroll: true });
 }
 function select(key: string) {
   close(true);
@@ -115,6 +115,7 @@ defineExpose({ show });
           ref="panel"
           class="action-menu"
           role="menu"
+          tabindex="-1"
           :aria-label="label"
           :style="position"
           @keydown="keydown"

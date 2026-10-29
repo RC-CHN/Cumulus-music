@@ -8,6 +8,7 @@ import WindowClosePrompt from './components/WindowClosePrompt.vue';
 import AppearanceMenu from './components/AppearanceMenu.vue';
 import PlaylistCard from './components/PlaylistCard.vue';
 import DailyHeading from './components/DailyHeading.vue';
+import PlaylistHero from './components/playlist/PlaylistHero.vue';
 import type { MenuItem } from './services/menu';
 import ModalTransition from './components/ModalTransition.vue';
 import LoginDialog from './components/LoginDialog.vue';
@@ -338,19 +339,25 @@ function playlistMenu(list: PlaylistView): MenuItem[] {
   const group = list.owned ? own.value : collected.value;
   const index = group.findIndex((p) => p.id === list.id);
   return [
-    ...(list.owned ? [{ key: 'edit', label: '编辑歌单', icon: 'edit' }] : []),
-    {
-      key: 'up',
-      label: '上移歌单',
-      icon: 'up',
-      disabled: playlistManager.busy.value || index <= 0,
-    },
-    {
-      key: 'down',
-      label: '下移歌单',
-      icon: 'down',
-      disabled: playlistManager.busy.value || index >= group.length - 1,
-    },
+    ...(list.owned
+      ? [{ key: 'edit', label: '编辑歌单', icon: 'edit', disabled: playlistManager.busy.value }]
+      : []),
+    ...(index >= 0
+      ? [
+          {
+            key: 'up',
+            label: '上移歌单',
+            icon: 'up',
+            disabled: playlistManager.busy.value || index === 0,
+          },
+          {
+            key: 'down',
+            label: '下移歌单',
+            icon: 'down',
+            disabled: playlistManager.busy.value || index === group.length - 1,
+          },
+        ]
+      : []),
   ];
 }
 function playlistAction(list: PlaylistView, key: string) {
@@ -1057,34 +1064,36 @@ onUnmounted(() => {
             @play-mv="(task) => openMv(task.track.id, task.id)"
           />
           <template v-else>
-            <div v-if="result?.playlist" class="playlist-hero">
-              <img
-                v-if="result.playlist.coverUrl"
-                :src="result.playlist.coverUrl"
-                alt="歌单封面"
-                referrerpolicy="no-referrer"
-              />
-              <div v-else class="hero-art"><Icon name="music" /></div>
-              <div class="hero-copy">
-                <span class="eyebrow">{{ result.playlist.private ? '私密歌单' : '歌单' }}</span>
-                <div class="playlist-title">
-                  <h1 :title="title">{{ title }}</h1>
-                  <button
-                    v-if="result.playlist.owned && !result.playlist.favorite"
-                    class="icon-button playlist-edit"
-                    title="编辑歌单"
-                    aria-label="编辑歌单"
-                    @click="playlistDialog = { kind: 'edit', id: result.playlist.id }"
-                  >
-                    <Icon name="edit" /><span class="sr-only">编辑歌单</span>
-                  </button>
-                </div>
-                <p class="muted">{{ result.playlist.creator }} · {{ result.total }} 首歌曲</p>
-                <p class="playlist-description" :title="result.playlist.description">
-                  {{ result.playlist.description || '音乐，让每一天都值得收藏。' }}
-                </p>
-              </div>
-            </div>
+            <PlaylistHero
+              v-if="result?.playlist"
+              :key="result.playlist.id"
+              :playlist="result.playlist"
+              :total="result.total"
+              :playable="player.ready.value && result.tracks.some((track) => !track.missing)"
+              :preparing="player.busy.value"
+              :download-disabled="
+                downloads.busy.value || result.tracks.every((track) => track.missing || track.local)
+              "
+              :subscribed="playlists.some((list) => list.id === result?.playlist?.id)"
+              :busy="playlistManager.busy.value"
+              :items="playlistMenu(result.playlist)"
+              @edit="playlistDialog = { kind: 'edit', id: result.playlist.id }"
+              @play="play(result.tracks.findIndex((track) => !track.missing))"
+              @download="
+                downloadDialog = {
+                  kind: 'start',
+                  tracks: result.tracks.filter((track) => !track.missing && !track.local),
+                }
+              "
+              @subscribe="
+                playlistManager.mutate({
+                  kind: 'subscribe',
+                  id: result.playlist.id,
+                  subscribed: !playlists.some((list) => list.id === result?.playlist?.id),
+                })
+              "
+              @action="(key) => result?.playlist && playlistAction(result.playlist, key)"
+            />
             <div v-else class="page-heading" :class="{ 'daily-heading': page.kind === 'daily' }">
               <DailyHeading v-if="page.kind === 'daily'" />
               <div v-else>
@@ -1095,7 +1104,11 @@ onUnmounted(() => {
                       ? `${playlists.length} 个歌单，收藏每一刻心情`
                       : result
                         ? `找到 ${result.total} 首歌曲`
-                        : '正在寻找音乐…'
+                        : error
+                          ? '加载失败，可以重试'
+                          : page.kind === 'playlist'
+                            ? '正在读取歌单…'
+                            : '正在寻找音乐…'
                   }}
                 </p>
               </div>
@@ -1116,7 +1129,10 @@ onUnmounted(() => {
               <span>{{ error }}</span
               ><button class="text-button" @click="music.load()">重试</button>
             </div>
-            <div class="playlist-toolbar">
+            <div class="playlist-toolbar" :class="{ 'playlist-content-nav': !!result?.playlist }">
+              <span v-if="result?.playlist" class="playlist-current-section" aria-current="page">
+                歌曲 <small>{{ result.total }}</small>
+              </span>
               <button
                 v-if="page.kind === 'library'"
                 class="primary"
@@ -1134,29 +1150,12 @@ onUnmounted(() => {
               <template v-if="result?.playlist">
                 <button
                   class="text-button"
+                  aria-label="歌单评论"
                   @click="
                     openComments({ kind: 'playlist', id: result.playlist.id }, result.playlist.name)
                   "
                 >
-                  歌单评论
-                </button>
-                <button
-                  v-if="!result.playlist.owned"
-                  class="text-button"
-                  :disabled="playlistManager.busy.value"
-                  @click="
-                    playlistManager.mutate({
-                      kind: 'subscribe',
-                      id: result.playlist.id,
-                      subscribed: !playlists.some((p) => p.id === result?.playlist?.id),
-                    })
-                  "
-                >
-                  {{
-                    playlists.some((p) => p.id === result?.playlist?.id)
-                      ? '取消收藏歌单'
-                      : '收藏歌单'
-                  }}
+                  评论
                 </button>
               </template>
               <button
@@ -1195,7 +1194,7 @@ onUnmounted(() => {
               <p>正在加载歌曲…</p>
             </div>
             <template v-else-if="result">
-              <div v-if="result.tracks.length" class="track-actions">
+              <div v-if="result.tracks.length && !result.playlist" class="track-actions">
                 <button
                   class="primary"
                   :disabled="!player.ready.value || player.busy.value"
