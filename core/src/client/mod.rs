@@ -19,6 +19,8 @@ mod local;
 mod mapping;
 mod media_preferences;
 mod member;
+pub mod mini;
+mod mini_preferences;
 mod mv;
 pub mod native_media;
 mod player;

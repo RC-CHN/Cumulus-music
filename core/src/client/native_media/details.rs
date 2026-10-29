@@ -5,14 +5,17 @@ use crate::{
     mv::playback::VideoStatus,
     playback::{PlaybackMode, controller::PlaybackStatus},
 };
+use serde::Serialize;
 use sha2::{Digest, Sha256};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum NativeMediaKind {
     Music,
     Video,
 }
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum NativeMediaStatus {
     #[default]
     Stopped,
@@ -20,7 +23,8 @@ pub enum NativeMediaStatus {
     Playing,
     Paused,
 }
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub struct NativeMediaItem {
     /// Opaque native selection identity, not an account/song ID or media URL.
     pub id: String,

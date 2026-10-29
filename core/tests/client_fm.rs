@@ -33,6 +33,51 @@ fn fixture() -> (
 }
 
 #[tokio::test]
+async fn mini_surface_keeps_fm_queue_owned_by_the_coordinator() {
+    use cumulus_core::client::mini::MiniAction;
+    let (_dir, api, _session, client) = fixture();
+    api.batch(&[1, 2, 3, 4]);
+    client
+        .fm_command(
+            "1",
+            FmSource::Personal,
+            FmCommand::Start {
+                quality: Quality::Standard,
+            },
+        )
+        .await
+        .unwrap();
+    let mini = client.mini_snapshot().unwrap();
+    assert!(mini.view.mode.is_none());
+    let queue = client.mini_queue(&mini, 0, 30).await.unwrap();
+    assert!(!queue.editable);
+    for action in [
+        MiniAction::Clear,
+        MiniAction::Select {
+            entry_id: queue.tracks[1].entry_id.clone(),
+        },
+        MiniAction::Remove {
+            entry_id: queue.tracks[1].entry_id.clone(),
+        },
+        MiniAction::Mode {
+            mode: PlaybackMode::Random,
+        },
+    ] {
+        assert!(client.mini_action(&mini, action).await.is_err());
+    }
+    client.mini_action(&mini, MiniAction::Next).await.unwrap();
+    let current = client
+        .subscribe_playback("1")
+        .await
+        .unwrap()
+        .current()
+        .unwrap();
+    assert!(current.fm);
+    assert_eq!(current.track.unwrap().id, "2");
+    assert_eq!(api.count("/api/radio/trash/add"), 0);
+}
+
+#[tokio::test]
 async fn discovery_projection_strips_private_urls_and_transport_requires_the_displayed_source() {
     let (_dir, api, _session, client) = fixture();
     api.responses.lock().unwrap().insert("/api/pc/daily/rcmd/block".into(),json!({"code":200,"data":{"items":[

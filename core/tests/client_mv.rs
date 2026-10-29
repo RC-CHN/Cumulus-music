@@ -512,3 +512,6 @@ mod native_media_steps_tests;
 
 #[path = "support/native_shortcut_client.rs"]
 mod native_shortcut_tests;
+
+#[path = "support/mini_client.rs"]
+mod mini_tests;
