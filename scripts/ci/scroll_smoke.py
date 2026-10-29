@@ -20,7 +20,9 @@ def main():
         result = subprocess.run([str(args.binary.resolve())], env=env, stdout=log, stderr=log, timeout=90)
     assert result.returncode == 0, f'UI scroll probe exited {result.returncode}; inspect {root.with_suffix(".log")}'
     proof = json.loads((root / 'result.json').read_text(encoding='utf-8'))
-    assert proof['ok'] and proof['customControls'] and proof['dialogFocusRestored']
+    assert proof['ok'] and proof['customControls'] and proof['dialogFocusRestored'], proof
+    for label in ['迷你模式', '最小化', '最大化', '关闭窗口']:
+        assert proof['windowButtons'].count(label) == 1, proof['windowButtons']
     assert proof['nativeDecorations'] is False and proof['realMusicRequests'] == 0
     assert 0 < proof['songs']['maxRows'] < 80 and proof['songs']['scrollTop'] > 8000
     # Virtual runners have no physical GPU/refresh rate. Their FPS is diagnostic,

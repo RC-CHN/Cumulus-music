@@ -45,7 +45,8 @@
       assert([...document.querySelectorAll('.track-row')].some(e=> {const r=e.getBoundingClientRect();return r.top<bounds.bottom && r.bottom>bounds.top;}), 'blank virtual viewport');
     }
     const controls = document.querySelector('.window-controls');
-    assert(controls?.querySelectorAll('button').length===3, 'custom window buttons missing');
+    const windowButtons = [...(controls?.querySelectorAll('button') ?? [])].map(button=>button.getAttribute('aria-label'));
+    assert(['迷你模式','最小化','最大化','关闭窗口'].every(name=>windowButtons.filter(label=>label===name).length===1), `custom window buttons missing or duplicated: ${JSON.stringify(windowButtons)}`);
     assert(document.querySelector('[data-tauri-drag-region]'), 'drag region missing');
     const nav = name => [...document.querySelectorAll('.nav-item')].find(e=>e.textContent.trim()===name);
     nav('我的歌单').click();
@@ -64,7 +65,7 @@
     assert(document.activeElement===create, 'dialog did not restore focus');
     nav('每日推荐').click();
     await until(()=>document.querySelector('.track-row'), 'return navigation failed');
-    const snapshot={ok:true,viewport:[innerWidth,innerHeight],dpr:devicePixelRatio,idle,songs,playlists,customControls:true,dialogFocusRestored:true,realMusicRequests:0};
+    const snapshot={ok:true,viewport:[innerWidth,innerHeight],dpr:devicePixelRatio,idle,songs,playlists,customControls:true,windowButtons,dialogFocusRestored:true,realMusicRequests:0};
     if (window.__testWindowControls) {
       document.querySelector('button[aria-label="最大化"]').click();
       await until(()=>document.querySelector('button[aria-label="还原窗口"]'), 'maximize did not update');
