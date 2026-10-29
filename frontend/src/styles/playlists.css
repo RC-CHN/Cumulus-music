@@ -207,6 +207,9 @@
   flex-wrap: wrap;
   flex-shrink: 0;
 }
+.playlist-toolbar:empty {
+  display: none;
+}
 .playlist-toolbar .text-button {
   font-size: 12px;
   padding: 7px 10px;

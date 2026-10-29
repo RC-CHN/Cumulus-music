@@ -17,6 +17,36 @@
   margin-top: 9px;
   font-size: 12px;
 }
+.daily-heading {
+  margin-bottom: 20px;
+}
+.daily-heading ~ .track-actions {
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.daily-heading ~ .track-actions > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 48px;
+  min-height: 48px;
+  padding: 0;
+  gap: 8px;
+  border-radius: 8px;
+  font-size: 16px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.daily-heading ~ .track-actions > .primary {
+  width: 114px;
+}
+.daily-heading ~ .track-actions > .download-button {
+  width: 98px;
+}
+.daily-heading ~ .track-actions .icon {
+  width: 20px;
+  height: 20px;
+}
 .playlist-hero {
   display: flex;
   gap: 24px;

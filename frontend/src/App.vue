@@ -7,6 +7,7 @@ import WindowControls from './components/WindowControls.vue';
 import WindowClosePrompt from './components/WindowClosePrompt.vue';
 import AppearanceMenu from './components/AppearanceMenu.vue';
 import PlaylistCard from './components/PlaylistCard.vue';
+import DailyHeading from './components/DailyHeading.vue';
 import type { MenuItem } from './services/menu';
 import ModalTransition from './components/ModalTransition.vue';
 import LoginDialog from './components/LoginDialog.vue';
@@ -1084,18 +1085,17 @@ onUnmounted(() => {
                 </p>
               </div>
             </div>
-            <div v-else class="page-heading">
-              <div>
+            <div v-else class="page-heading" :class="{ 'daily-heading': page.kind === 'daily' }">
+              <DailyHeading v-if="page.kind === 'daily'" />
+              <div v-else>
                 <h1>{{ title }}</h1>
                 <p class="muted">
                   {{
-                    page.kind === 'daily'
-                      ? '根据你的音乐口味，每天更新'
-                      : page.kind === 'library'
-                        ? `${playlists.length} 个歌单，收藏每一刻心情`
-                        : result
-                          ? `找到 ${result.total} 首歌曲`
-                          : '正在寻找音乐…'
+                    page.kind === 'library'
+                      ? `${playlists.length} 个歌单，收藏每一刻心情`
+                      : result
+                        ? `找到 ${result.total} 首歌曲`
+                        : '正在寻找音乐…'
                   }}
                 </p>
               </div>
@@ -1207,6 +1207,8 @@ onUnmounted(() => {
                 ><span v-if="player.busy.value" class="muted">正在准备播放…</span>
                 <button
                   class="download-button"
+                  aria-label="下载当前歌曲列表"
+                  title="下载当前歌曲列表"
                   :disabled="
                     downloads.busy.value || result.tracks.every((t) => t.missing || t.local)
                   "
@@ -1217,7 +1219,8 @@ onUnmounted(() => {
                     }
                   "
                 >
-                  下载当前歌曲列表
+                  <Icon v-if="page.kind === 'daily'" name="download" />
+                  {{ page.kind === 'daily' ? '下载' : '下载当前歌曲列表' }}
                 </button>
               </div>
               <TrackTable

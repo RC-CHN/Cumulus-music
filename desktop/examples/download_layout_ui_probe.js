@@ -6,7 +6,7 @@
   const assert = (ok, message) => { if (!ok) throw Error(message); };
   const wait = async (test, label) => { for (let i = 0; i < 150; i++) { if (test()) return; await sleep(100); } throw Error(label); };
   const emit = (stage, rest = {}) => window.__TAURI_INTERNALS__.invoke('plugin:event|emit', { event: 'ux-proof', payload: { stage, ...rest } });
-  const button = text => all('button').find(node => node.textContent.trim() === text);
+  const button = text => all('button').find(node => node.getAttribute('aria-label') === text || node.textContent.trim() === text);
   const click = node => { assert(node && !node.disabled, `unavailable: ${node?.outerHTML}`); node.focus({ preventScroll: true }); node.click(); };
   const input = (node, value) => { node.value = value; node.dispatchEvent(new Event('input', { bubbles: true })); };
   const rect = node => { const r = node.getBoundingClientRect(); return { x: r.x, y: r.y, right: r.right, bottom: r.bottom, width: r.width, height: r.height }; };
