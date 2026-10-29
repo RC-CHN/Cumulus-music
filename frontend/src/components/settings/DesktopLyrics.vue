@@ -367,11 +367,50 @@ onUnmounted(() => {
 .lyric-color-grid input {
   width: 100%;
   min-width: 0;
+  height: 36px;
   border: 1px solid var(--line-strong);
   border-radius: 7px;
   padding: 7px 9px;
   background: var(--surface);
   font: inherit;
+}
+.lyric-setting-grid select {
+  appearance: none;
+  padding-right: 30px;
+  cursor: pointer;
+}
+.lyric-setting-grid label:has(> select) {
+  position: relative;
+}
+.lyric-setting-grid label:has(> select)::after {
+  content: '';
+  position: absolute;
+  right: 13px;
+  bottom: 16px;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid var(--text-secondary);
+  border-bottom: 1.5px solid var(--text-secondary);
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+.settings-choices label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  cursor: pointer;
+}
+.settings-choices input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  flex-shrink: 0;
+}
+.settings-choices label:has(input:disabled),
+.lyric-style-fields:disabled select {
+  cursor: default;
+  color: var(--muted);
 }
 .font-family {
   grid-column: span 2;
@@ -406,7 +445,6 @@ onUnmounted(() => {
 }
 .lyric-color-grid input[type='color'] {
   width: 36px;
-  height: 34px;
   padding: 3px;
   flex-shrink: 0;
 }
