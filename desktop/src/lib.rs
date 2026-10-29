@@ -23,6 +23,7 @@ mod rankings;
 mod relay;
 pub mod renewal;
 mod settings;
+pub mod shortcuts;
 pub mod system_media;
 mod together;
 pub mod watchman;
@@ -61,6 +62,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 if window.label() == "main" {
                     lifecycle::stop(window.app_handle());
                     system_media::stop(window.app_handle());
+                    shortcuts::stop(window.app_handle());
                     renewal::stop(window.app_handle());
                     for (label, child) in window.app_handle().webview_windows() {
                         if label.starts_with("captcha-") {
@@ -133,6 +135,9 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 system_media::settings::system_media_preferences,
                 system_media::settings::system_media_preferences_command,
                 system_media::settings::system_media_status,
+                shortcuts::settings::shortcut_settings,
+                shortcuts::settings::shortcut_settings_command,
+                shortcuts::settings::shortcut_status,
                 settings::window_preferences_command,
                 lifecycle::window_lifecycle,
                 lifecycle::window_close_command,
@@ -235,6 +240,7 @@ pub fn run() {
             app.manage(client);
             lifecycle::install(app.handle())?;
             system_media::install(app.handle());
+            shortcuts::install(app.handle());
             renewal::start(app.handle());
             Ok(())
         })

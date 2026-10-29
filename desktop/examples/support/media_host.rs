@@ -2,6 +2,8 @@
 // Only these examples accept file commands. Production has no test IPC.
 #[path = "media_engine.rs"]
 mod observed;
+#[path = "media_shortcuts.rs"]
+mod shortcuts;
 use cumulus_core::protocol::api::{Api, ApiFuture};
 #[derive(Default)]
 struct MediaLibrary(super::relay_fixture::Library);
@@ -55,6 +57,13 @@ fn write(path: &Path, value: &Value) {
     std::fs::rename(next, path).unwrap();
 }
 pub fn run() {
+    run_mode(false);
+}
+#[allow(dead_code)]
+pub fn run_shortcuts() {
+    run_mode(true);
+}
+fn run_mode(shortcut_proof: bool) {
     let started = Instant::now();
     eprintln!("native system media proof: process_entry");
     // SAFETY: process entry before native worker or GTK initialization.
@@ -104,6 +113,7 @@ pub fn run() {
             .data_directory(root.join("webview")).inner_size(760.0,540.0).build()?;
         progress("window_created");
         cumulus_desktop::system_media::install(app.handle());
+        if shortcut_proof { cumulus_desktop::shortcuts::install(app.handle()); }
         progress("system_media_installed");
         let app = app.handle().clone();
         tauri::async_runtime::spawn(async move {
@@ -119,6 +129,7 @@ pub fn run() {
                     let id = value["id"].as_u64().unwrap();
                     let kind = value["kind"].as_str().unwrap();
                     let result: cumulus_core::Result<()> = match kind {
+                        "shortcut_change" | "shortcut_read" | "shortcut_damage" | "shortcut_reject" | "shortcut_allow" if shortcut_proof => shortcuts::command(&app,&store,&epoch,&value),
                         "start" => client.play_selection(&epoch, PlaySelection::Songs { ids:vec!["2".into(),"3".into()],index:0,quality:Quality::Standard }).await.map(|_|()),
                         "seek" => client.player_action(&epoch, PlayerAction::Seek {seconds:9.0}).await.map(|_|()),
                         "short_seek" => client.player_action(&epoch, PlayerAction::Seek {seconds:4.01}).await.map(|_|()),
@@ -150,7 +161,9 @@ pub fn run() {
                     write(&root.join(format!("ack-{id}.json")), &json!({"ok":result.is_ok()}));
                 }
                 if let Ok(view) = client.native_media_details() {
-                    write(&root.join("state.json"), &json!({"status":format!("{:?}",view.state),"position":view.position,"volume":view.volume,"speed":view.speed,"id":view.item.as_ref().map(|i|&i.id),"title":view.item.as_ref().map(|i|&i.title),"systemMedia":cumulus_desktop::system_media::settings::system_media_status(app.clone()),"mode":view.mode,"engines":engines.load(Ordering::Acquire),"nativeSeeks":measured.lock().unwrap().clone(),"visible":app.get_webview_window("main").unwrap().is_visible().unwrap()}));
+                    let mut state = json!({"status":format!("{:?}",view.state),"position":view.position,"volume":view.volume,"speed":view.speed,"id":view.item.as_ref().map(|i|&i.id),"title":view.item.as_ref().map(|i|&i.title),"systemMedia":cumulus_desktop::system_media::settings::system_media_status(app.clone()),"mode":view.mode,"engines":engines.load(Ordering::Acquire),"nativeSeeks":measured.lock().unwrap().clone(),"visible":app.get_webview_window("main").unwrap().is_visible().unwrap()});
+                    if shortcut_proof {shortcuts::observe(&app,&mut state);}
+                    write(&root.join("state.json"), &state);
                 }
                 tokio::time::sleep(Duration::from_millis(50)).await;
             }

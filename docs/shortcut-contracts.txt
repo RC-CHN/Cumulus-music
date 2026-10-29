@@ -1,10 +1,11 @@
-快捷键迁移：独立核心规则与持久化（2026-10-29）
+快捷键迁移：独立核心规则、持久化与原生注册（2026-10-29）
 
 完成层级与尚未完成的用户流程
 本批完成core/preferences/shortcuts的解析、设置、注册计划和回执代次，及MusicClient
 账号边界下的设置读写。它是可执行的Rust领域实现，不依赖Tauri、WebView、Python或OS hook。
-本批尚未把新计划接到原生全局注册、设置页、mini窗口和桌面歌词窗口；不能宣称系统快捷键
-功能已经可用。既有主窗口空格、Linux MPRIS/Windows SMTC和本批键位设置是不同的入口。
+后续增量已接入原生全局注册与播放动作，Linux X11完成独立进程真实按键验证（见末节）。
+设置页、本地可配置键路由、mini窗口和桌面歌词窗口仍未接通，不能宣称整套快捷键用户流程
+已经完成。既有主窗口空格、Linux MPRIS/Windows SMTC和本批键位设置是不同的入口。
 原目标的这些界面/原生分支继续保留，不以本批测试通过缩小完整交付范围。
 
 官方证据（以下模块位于references/netease-3.1.42.205594-analysis/recovered-js/modules）
@@ -35,8 +36,8 @@
   分别对应播放暂停/下一首/上一首/停止。录入自定义组合不允许把媒体键当普通文本键。
 - RegistrationLedger启动及替换均生成新的不透明Ticket；全部状态从Pending开始，
   原生回执才能改为Active/Conflict/Unavailable。旧Ticket、已删除行的回执被拒绝。
-  替换前验证全部内容，坏新计划不能退休有效旧计划。这里不假装完成OS注销/注册；
-  后续宿主必须实际注销旧hook并按Ticket检查派发，还须复用core媒体目标的账号/项目代次。
+  替换前验证全部内容，坏新计划不能退休有效旧计划。领域模型不直接执行OS注销/注册；
+  desktop/shortcuts宿主执行并按Ticket检查派发，同时复用core媒体目标的账号/项目代次。
   注册结果每次启动重新取得，不把上次保存的配置或错误码当成这次系统注册已成功。
 
 设备持久化与客户端边界
@@ -80,3 +81,69 @@
   fmt、Windows GNU desktop全targets Clippy、前端212项及21项CI规则通过。
   .build/shortcut-mpris-regression为实际Tauri/独立D-Bus消费者12段回归通过；
   无法解析JSON的14态WebView恢复证据见ui-ux-validation.txt，不能代替快捷键OS验证。
+
+原生业务动作增量
+- client/native_media/shortcuts.rs按M116的动作恢复：播放/暂停选取当前音频或MV；
+  上一首/下一首使用手动切歌并开始播放，区别于MPRIS的保持暂停语义；MV拥有播放时
+  忽略上一首、下一首和停止。音量每次加减5个百分点，限制在0..100，保持暂停状态。
+- NativeShortcutInvocation是不透明的原生能力，不可通过serde或IPC构造。收到按键时
+  捕获账号、曲目/视频及播放代次，异步执行前再检查注册Ticket；core执行时再次检查
+  原媒体目标，晚到的动作不会被解释为新曲目或新账号的命令。
+- 喜欢使用NativeLikeSnapshot与已有操作日志：未知状态不猜测；未决写入不重复提交；
+  丢失回复也通知已有喜欢回读入口。三项新增client_mv集成测试覆盖上述音视频、账号
+  切换、未知状态、丢失回复及显式核对语义，不调用网易云真实账号。
+
+桌面适配与IPC（当前实现层级）
+- desktop/shortcuts按host/settings/dispatch/native分层；一次设备设置提交与宿主更新
+  串行化，SQLite和注册都不在GUI线程执行。先退休旧Ticket，再注销和注册新计划。
+  保存失败保持原计划；损坏或读取失败撤销旧计划。native::run有独立消息循环。
+- IPC shortcut_settings(epoch)、shortcut_settings_command(epoch,command)返回
+  AccountData<ShortcutSettingsView>；shortcut_status和cumulus:shortcuts事件返回
+  revision、settingsRevision、phase、rows（hotkey/scope/chord/status）。本批尚无
+  前端编辑/录入调用，未把Rust IPC存在当成设置页通过。
+- phase=ready仅表示这一轮注册处理结束，必须逐行读取status；不是全部成功。
+  Conflict code=1是OS确认的占用；Unavailable code=1动作尚未接通、2键位不支持、
+  3平台/连接不可用、4本地WebView监听尚未接入。未完成窗口动作不注册为全局hook，
+  不拦截后什么都不做。F5/Space/Close在本计划的结果不替代既有主窗口空格验证。
+- 注册回执仅本进程有效。刷新设置会重新请求OS注册，可在外部应用释放占用后恢复。
+  进程退出撤销注册；从不因按键业务失败重启应用、重放写入或自动核对后再喜欢。
+  单次动作进行中忽略额外按键；错误事件cumulus:shortcut-error仅包含ClientError，
+  不包含设备路径、Cookie或授权URL。其前端提示订阅尚待接入。
+
+Linux X11与Windows边界
+- Linux使用x11rb的真实X11连接：按当前keymap把官方逻辑键码转为keysym/keycode，
+  动态识别CapsLock/NumLock/ScrollLock修饰，逐个检查GrabKey/UnGrabKey回复。
+  部分组合注册失败先撤销已取得的锁键变体，避免残留抓键。连接或键盘布局变化使旧
+  注册不可用，用户刷新后重建映射；不把静默失效仍报为active。
+- XKB detectable auto-repeat必须被服务器接受；按住主键只执行一次。注册时已按住
+  的键等待松开；新连接可能收不到原始按键的释放，因此只对这种初始按住状态查询
+  QueryKeymap，避免后续首次按键被吞掉。普通空闲轮询不查询全键盘状态。
+- WAYLAND_DISPLAY或XDG_SESSION_TYPE=wayland时明确不提供这些全局grab，防止
+  把仅在XWayland窗口内有效的键称为全局。Wayland GlobalShortcuts portal尚未实现；
+  不以这个边界宣称完整跨平台快捷键完成，也不关闭普通界面或系统媒体控制。
+- Windows在专属线程使用RegisterHotKey(NULL, id, MOD_NOREPEAT, VK)，直接接收
+  WM_HOTKEY，查询并返回真实冲突/失败。原始组合VK映射遵循官方格式；不创建额外
+  播放器或每个按键一个释放线程。注册时按住的键等待松开。
+  id在线程生命期不复用（达到0xbfff上限停止取得新键），防止旧消息作用于新绑定；
+  注销失败停用宿主并结束拥有注册的线程，不在残留注册上继续假装成功。
+- Win32依据：Microsoft RegisterHotKey/UnregisterHotKey API说明；X11协议与x11rb
+  实际请求/回复。曾审查tauri-plugin-global-shortcut 2.3.2/global-hotkey 0.8.0，
+  发现其Linux工作线程连接失败后register仍可能Ok；未引入这两个依赖或复制源码。
+  https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-registerhotkey
+  https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-unregisterhotkey
+
+真实按键复现
+- cargo build -p cumulus-desktop --example shortcut_probe --features custom-protocol --locked
+- GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 dbus-run-session -- xvfb-run -a /usr/bin/python3
+  scripts/ci/shortcut_smoke.py --binary <target>/debug/examples/shortcut_probe --root <new-proof-dir>
+- probe使用真实Tauri/GTK、独立Rust core、合成PCM和libmpv/null；另一个进程创建窗口
+  并取得焦点，通过XTest发送真实X11按键，同时用自己的XGrabKey模拟外部占用。
+  文件控制仅存在于example，不加入正式IPC；不会向真实账号发请求。
+- 覆盖外部冲突后刷新、隐藏主窗口后台按键、长按/释放/重新注册、下一首从暂停开始
+  播放、5%音量、修改旧键注销、保存失败不丢原键、全局/媒体独立开关、坏JSON停用、
+  显式修复、切换账号和退出后系统释放。这是原生按键业务证据，不是编辑UI、真实声卡、
+  Wayland或Windows按键投递证据。Windows GNU编译检查不能替代Windows运行。
+- 本机最终.build/native-shortcuts-x11-final/report.json为18段通过；其中快速松键
+  问题修复前确实失败，证据保存在.build/native-shortcuts-early-release-baseline。
+  两平台严格Clippy已通过。新增Windows独立窗口/SendInput生产者和CI必需步骤仍待
+  Windows实际运行；不把Python语法检查或GNU编译当作该平台按键验证通过。

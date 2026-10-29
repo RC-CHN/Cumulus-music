@@ -557,3 +557,11 @@ core/preferences/shortcuts/{keys,model,storage,registration}与client/shortcut_p
 注册尚未取得本次实际回执时不得称为Active。来源、API、持久化及对照见shortcut-contracts.txt。
 原生全局注册、设置页、mini/桌面歌词窗口与全局动作投递仍未接入，完整目标继续；
 不把可执行的核心规则及SQLite恢复测试称为端到端快捷键已完成。
+
+2026-10-29 原生快捷键动作与注册增量
+core/client/native_media/shortcuts按M116恢复带账号/曲目代次的播放、切歌、音量与喜欢，
+不透明捕获值不通过IPC构造，新增音视频和丢失喜欢回复测试。desktop/shortcuts将设备
+设置提交、注册Ticket、实际系统回复和异步业务派发分离。Linux X11通过独立窗口真实
+按键、外部占用、按住/松开、修改/关闭/损坏/修复及账号切换验证；具体命令和边界见
+shortcut-contracts.txt。Windows原生RegisterHotKey适配已写，运行验证仍待完成；
+Wayland portal、本地可配置键、设置UI、mini和桌面歌词仍继续，不将本批称为整体完成。
