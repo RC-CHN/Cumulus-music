@@ -1,7 +1,9 @@
 //! Lightweight second WebView; all media work stays in the shared MusicClient.
 pub(crate) mod commands;
+mod shortcuts;
 mod state;
 use cumulus_core::{Error, Result, client::MusicClient};
+pub(crate) use shortcuts::{ModeIntent, capture_mode, switch_mode};
 use state::{Ledger, Phase};
 use std::sync::Mutex;
 use tauri::{Manager, Runtime, webview::PageLoadEvent};
@@ -75,14 +77,21 @@ pub(crate) fn dismiss<R: Runtime>(
     let window = app
         .try_state::<Host>()
         .and_then(|h| h.lock().ok().and_then(|mut l| l.take(Some(&current))));
-    if let Some(window) = window
-        && let Some(window) = app.get_webview_window(&window.label)
-    {
-        let _ = window.destroy();
+    if let Some(window) = window {
+        crate::shortcuts::local::closed(app, &window.label);
+        if let Some(window) = app.get_webview_window(&window.label) {
+            let _ = window.destroy();
+        }
     }
     true
 }
 pub async fn enter<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<()> {
+    enter_expected(app, None).await
+}
+async fn enter_expected<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    intent: Option<ModeIntent>,
+) -> Result<()> {
     let worker = app.clone();
     let preferences = tauri::async_runtime::spawn_blocking(move || {
         worker.state::<MusicClient>().mini_preferences_native()
@@ -90,12 +99,20 @@ pub async fn enter<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<()> {
     .await
     .map_err(|_| Error::State("mini settings unavailable"))??;
     let (generation, label) = gui(app, move |app| {
+        if let Some(intent) = &intent {
+            intent.check(&app)?;
+        }
         let lifecycle = crate::lifecycle::view(&app)
             .map_err(|_| Error::State("window lifecycle unavailable"))?;
         if lifecycle.busy || lifecycle.prompt.is_some() {
             return Err(Error::MutationBusy);
         }
-        app.state::<Host>().lock()?.begin()
+        let epoch = if let Some(intent) = &intent {
+            intent.epoch()
+        } else {
+            app.state::<MusicClient>().account()?.epoch
+        };
+        app.state::<Host>().lock()?.begin(epoch)
     })
     .await?;
     let worker = app.clone();

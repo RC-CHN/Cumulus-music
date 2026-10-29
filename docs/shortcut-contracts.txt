@@ -4,7 +4,7 @@
 本批完成core/preferences/shortcuts的解析、设置、注册计划和回执代次，及MusicClient
 账号边界下的设置读写。它是可执行的Rust领域实现，不依赖Tauri、WebView、Python或OS hook。
 后续增量已接入原生全局注册与播放动作，Linux X11完成独立进程真实按键验证（见末节）。
-设置页与本地可配置键现已接入（见末节）；mini窗口、桌面歌词窗口和Wayland全局入口
+设置页与本地可配置键现已接入（见末节）；桌面歌词窗口和Wayland全局入口
 仍未完成，不能宣称整套快捷键用户流程已完成。Linux MPRIS/Windows SMTC是不同入口。
 原目标的这些界面/原生分支继续保留，不以本批测试通过缩小完整交付范围。
 
@@ -154,7 +154,7 @@ Linux X11与Windows边界
 
 设置界面与本地键路由增量
 - frontend/components/settings/Shortcuts.vue显示窗口内/全局两列、独立全局/媒体开关，
-  每行显示当前实际回执；未接入的mini/桌面歌词保持不可用。文字/输入/弹窗拥有键盘时
+  每行显示当前实际回执；未接入的桌面歌词保持不可用。文字/输入/弹窗拥有键盘时
   暂停本地控制，忽略长按、输入法组合、Meta及已被其他控件处理的事件。
 - App先安装DOM监听，再通过shortcut_attach(epoch,ticket)取得本窗口的lease；
   shortcut_detach(lease)只撤销同一个监听。替换注册、账号切换、主页面重新加载和
@@ -205,4 +205,32 @@ Linux X11与Windows边界
 - 当前Linux全workspace241目标1120项、前端220项、21项CI规则全部通过；fmt、
   Linux workspace严格Clippy、Windows GNU desktop全targets严格Clippy及前端
   格式/类型/生产构建通过。Linux合成PCM/null和虚拟显示不证明声卡听感/物理刷新率。
-  Windows原生键/界面仍待精确提交CI；Wayland portal、mini窗口、桌面歌词仍继续。
+  Windows原生键/界面仍待精确提交CI；Wayland portal、桌面歌词仍继续。
+
+迷你窗口共享快捷键增量
+- 官方 M116:925–945 的 mini_max 按当前 isMiniMode 分支进入/退出；本实现由 desktop
+  窗口宿主执行，不把 Tauri 引入 core。默认 Ctrl+M / Ctrl+Alt+M，沿用原设备设置和
+  冲突规则，修改一次立即更新主窗口、小窗与系统注册。没有新增官方业务 API。
+- 宿主用真实 WebView 标签分别保存 local lease；同一窗口的新连接取代旧连接，另一个
+  窗口的 attach/detach 不得覆盖它。关闭小窗先撤销它的监听，再销毁窗口；主窗口的
+  监听继续可用。实际调用者标签由 Tauri 注入，前端不能自报其他窗口身份。
+- 小窗只得到 shortcut_status/attach/detach/press 与其窗口事件监听权限，不能修改
+  键位、开始录入、读取账号或调用主窗口通用业务。设置重载/录入/损坏使所有旧 lease
+  失效；每张 WebView 收到新 ticket 后单独重新确认。停止录入前本地和全局均拒绝派发。
+- native_shortcut_selection 是懒读取，无 HTTP/解码器初始化；小窗发送自己观察到的
+  audioPlayId/audioEntryId/videoPlayId。旧音频/视频/账号仍由 capture_local_shortcut
+  和原 actor fence 拒绝，不能转成当前曲目的新操作。
+- 窗口切换捕获账号 epoch、窗口 lifetime 和累计建窗序号，再在 GUI 线程校验；
+  回调迟到、关窗后重开、切换账号均不能把旧意图作用于新窗口。异步建窗直到 ready
+  交接前仍校验最初账号，失败恢复沿用有界的 8 秒路径。
+- 按官方 M81:130–147 区分文本编辑和普通控件：输入文本/textarea/选择框/可编辑区
+  与模态框保留键盘；按钮、音量滑块允许带修饰键的已配置动作。按钮空格保留原生
+  点击语义，滑块无修饰方向键仍调节控件，不重复触发播放。Esc 继续返回主窗口。
+- desktop/src/shortcuts/lease_tests.rs 覆盖跨窗口冒用/误撤销、替换、录入、旧账号与
+  注册撤销；mini::state 验证迟到窗口意图。core 的 mini 测试验证 selection 懒读取、
+  音频→视频切换及账号变化后的旧控制拒绝。
+- mini_smoke.py --shortcuts 使用两张生产 WebView、生产 IPC 和同一 libmpv/null，
+  六个截图状态覆盖默认键、修改键位、文本/按钮/滑块/模态框、播放/喜欢/音量、
+  录入暂停、主窗口监听存续和账号隔离。mini_shortcut_driver.py 在独立进程持有
+  前台窗口后通过 XTest 或 SendInput 发系统按键；不是以 DOM 事件冒充全局键。
+  Linux 和 Windows CI 分别运行此流程，尚未完成的平台运行不能称为通过。

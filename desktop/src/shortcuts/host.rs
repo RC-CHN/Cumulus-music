@@ -1,15 +1,19 @@
 use super::{dispatch, local, native};
 use cumulus_core::{
-    client::{MusicClient, dto::ShortcutSettingsView, native_media::NativeShortcutInvocation},
+    client::{MusicClient, dto::ShortcutSettingsView},
     preferences::shortcuts::{Registration, RegistrationLedger, RegistrationStatus, Scope, Ticket},
 };
 use serde::Serialize;
+use std::collections::BTreeMap;
 use std::sync::{
     Mutex,
     atomic::{AtomicBool, Ordering},
     mpsc,
 };
 use tauri::{Emitter, Manager};
+#[cfg(test)]
+#[path = "lease_tests.rs"]
+mod lease_tests;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Phase {
@@ -43,7 +47,7 @@ struct Inner {
     settings_revision: Option<String>,
     phase: Phase,
     ledger: Option<RegistrationLedger>,
-    local: Option<local::Listener>,
+    local: BTreeMap<String, local::Listener>,
     local_serial: u64,
     recording: Option<String>,
 }
@@ -83,7 +87,14 @@ fn publish<R: tauri::Runtime>(app: &tauri::AppHandle<R>, inner: &mut Inner) {
     let app = app.clone();
     // Never synchronously call native listeners under state/operation locks.
     tauri::async_runtime::spawn(async move {
-        let _ = app.emit_to("main", "cumulus:shortcuts", value);
+        let _ = app.emit_to("main", "cumulus:shortcuts", value.clone());
+        for label in app
+            .webview_windows()
+            .keys()
+            .filter(|label| crate::mini::owns(&app, label))
+        {
+            let _ = app.emit_to(label, "cumulus:shortcuts", value.clone());
+        }
     });
 }
 pub fn status<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Status {
@@ -110,7 +121,7 @@ pub fn install<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
             settings_revision: None,
             phase: Phase::Starting,
             ledger: None,
-            local: None,
+            local: BTreeMap::new(),
             local_serial: 0,
             recording: None,
         }),
@@ -202,7 +213,7 @@ pub(super) fn apply<R: tauri::Runtime>(app: &tauri::AppHandle<R>, value: &Shortc
                 row.scope,
                 RegistrationStatus::Unavailable { code: 5 },
             );
-        } else if !NativeShortcutInvocation::supported(row.hotkey) {
+        } else if !dispatch::supported(row.hotkey) {
             ledger.acknowledge(
                 &ticket,
                 row.hotkey,
@@ -230,7 +241,7 @@ pub(super) fn apply<R: tauri::Runtime>(app: &tauri::AppHandle<R>, value: &Shortc
             return;
         }
         inner.ledger = Some(ledger);
-        inner.local = None;
+        inner.local.clear();
         inner.settings_revision = Some(settings.revision.clone());
         inner.phase = Phase::Starting;
         publish(app, &mut inner);
@@ -249,7 +260,7 @@ fn retire<R: tauri::Runtime>(app: &tauri::AppHandle<R>, phase: Phase) {
             return;
         }
         inner.ledger = None;
-        inner.local = None;
+        inner.local.clear();
         inner.recording = None;
         inner.settings_revision = None;
         inner.phase = phase;
@@ -270,9 +281,11 @@ pub(super) fn active(
 ) -> bool {
     !host.stopped.load(Ordering::Acquire)
         && host.inner.lock().ok().is_some_and(|i| {
-            i.ledger
-                .as_ref()
-                .is_some_and(|l| l.active(ticket, key, Scope::Global))
+            i.recording.is_none()
+                && i.phase == Phase::Ready
+                && i.ledger
+                    .as_ref()
+                    .is_some_and(|l| l.active(ticket, key, Scope::Global))
         })
 }
 pub(crate) fn stop<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
@@ -290,6 +303,7 @@ pub(crate) fn stop<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
 pub(super) fn attach<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     host: &Host,
+    label: &str,
     epoch: String,
     ticket: String,
 ) -> cumulus_core::Result<local::Lease> {
@@ -299,6 +313,7 @@ pub(super) fn attach<R: tauri::Runtime>(
         .lock()
         .map_err(|_| Error::State("shortcut host unavailable"))?;
     if inner.recording.is_some()
+        || inner.phase != Phase::Ready
         || host.stopped.load(Ordering::Acquire)
         || inner
             .ledger
@@ -312,15 +327,18 @@ pub(super) fn attach<R: tauri::Runtime>(
         .checked_add(1)
         .ok_or(Error::State("shortcut listener exhausted"))?;
     let id = inner.local_serial.to_string();
-    inner.local = Some(local::Listener {
-        id: id.clone(),
-        epoch,
-    });
+    inner.local.insert(
+        label.into(),
+        local::Listener {
+            id: id.clone(),
+            epoch,
+        },
+    );
     let ledger = inner.ledger.as_mut().expect("checked ledger");
     let token = ledger.ticket();
     let keys: Vec<_> = ledger
         .rows()
-        .filter(|(r, _)| r.scope == Scope::Local && NativeShortcutInvocation::supported(r.hotkey))
+        .filter(|(r, _)| r.scope == Scope::Local && dispatch::supported(r.hotkey))
         .map(|(r, _)| r.hotkey)
         .collect();
     for key in keys {
@@ -329,7 +347,11 @@ pub(super) fn attach<R: tauri::Runtime>(
     publish(app, &mut inner);
     Ok(local::Lease { id, ticket })
 }
-pub(super) fn detach<R: tauri::Runtime>(app: &tauri::AppHandle<R>, lease: Option<&str>) {
+pub(super) fn detach<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    label: &str,
+    lease: Option<&str>,
+) {
     let Some(host) = app.try_state::<Host>() else {
         return;
     };
@@ -338,13 +360,15 @@ pub(super) fn detach<R: tauri::Runtime>(app: &tauri::AppHandle<R>, lease: Option
     };
     if inner
         .local
-        .as_ref()
+        .get(label)
         .is_none_or(|l| lease.is_some_and(|id| id != l.id))
     {
         return;
     }
-    inner.local = None;
-    if let Some(ledger) = inner.ledger.as_mut() {
+    inner.local.remove(label);
+    if inner.local.is_empty()
+        && let Some(ledger) = inner.ledger.as_mut()
+    {
         let ticket = ledger.ticket();
         let keys: Vec<_> = ledger
             .rows()
@@ -364,6 +388,7 @@ pub(super) fn detach<R: tauri::Runtime>(app: &tauri::AppHandle<R>, lease: Option
 }
 pub(super) fn local_key(
     host: &Host,
+    label: &str,
     epoch: &str,
     lease: &str,
     ticket: &str,
@@ -375,9 +400,11 @@ pub(super) fn local_key(
         .lock()
         .map_err(|_| Error::State("shortcut host unavailable"))?;
     if host.stopped.load(Ordering::Acquire)
+        || inner.recording.is_some()
+        || inner.phase != Phase::Ready
         || inner
             .local
-            .as_ref()
+            .get(label)
             .is_none_or(|l| l.id != lease || l.epoch != epoch)
     {
         return Err(Error::StaleResponse);

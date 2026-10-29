@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 import Icon from '../components/Icon.vue';
-import { createMiniClient } from '../adapters/mini';
+import { useLocalShortcuts } from '../composables/useLocalShortcuts';
+import { createMiniClient, createMiniShortcutClient } from '../adapters/mini';
 import type { MiniAction, MiniQueuePage, MiniView } from '../services/mini';
 import type { PlaybackMode } from '../services/player';
 import './mini.css';
@@ -11,6 +12,9 @@ const view = ref<MiniView | null>(null);
 const media = computed(() => view.value?.media);
 const busy = ref(false);
 const error = ref('');
+const shortcuts = useLocalShortcuts((e) => {
+  error.value = e.message;
+}, createMiniShortcutClient());
 const expanded = ref(false);
 const queue = ref<MiniQueuePage | null>(null);
 const queueTicket = ref('');
@@ -77,6 +81,7 @@ async function refresh() {
     if (disposed) return;
     const changed = view.value?.ticket !== value.ticket;
     view.value = value;
+    shortcuts.account(value.media.epoch);
     if (changed && expanded.value) {
       if (value.media.item?.kind === 'music') void refreshQueue();
       else {
@@ -156,25 +161,29 @@ async function windowAction(kind: 'returnMain' | 'close' | 'drag') {
   }
 }
 function key(event: KeyboardEvent) {
-  if (event.repeat || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
-  if (event.key === 'Escape') {
+  if (event.repeat || event.isComposing || event.defaultPrevented) return;
+  if (
+    event.key === 'Escape' &&
+    !event.ctrlKey &&
+    !event.altKey &&
+    !event.metaKey &&
+    !event.shiftKey
+  ) {
     event.preventDefault();
     void windowAction('returnMain');
     return;
   }
-  if (event.target instanceof HTMLElement && event.target.closest('input,button,[contenteditable]'))
-    return;
-  if (event.code === 'Space') {
-    event.preventDefault();
-    void perform({ kind: 'toggle' });
-  }
+  if (media.value)
+    shortcuts.handle(event, busy.value || confirmingClear.value, media.value.selection);
 }
+
 onMounted(async () => {
   window.addEventListener('keydown', key);
   try {
     await refresh();
     await nextTick();
     await client.ready();
+    if (view.value) await shortcuts.connect(view.value.media.epoch);
     void poll();
   } catch (e) {
     error.value = message(e);
@@ -182,6 +191,7 @@ onMounted(async () => {
 });
 onUnmounted(() => {
   disposed = true;
+  shortcuts.dispose();
   ++queueRequest;
   clearTimeout(timer);
   window.removeEventListener('keydown', key);

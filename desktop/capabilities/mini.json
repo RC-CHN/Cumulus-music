@@ -3,5 +3,5 @@
   "identifier": "mini-player",
   "description": "Mini player window chrome; business commands use a separate, lifetime-fenced allowlist.",
   "windows": ["mini-player-*"],
-  "permissions": ["core:window:allow-start-dragging", "core:window:allow-close"]
+  "permissions": ["core:event:allow-listen", "core:event:allow-unlisten", "core:window:allow-start-dragging", "core:window:allow-close"]
 }

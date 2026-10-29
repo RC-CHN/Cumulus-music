@@ -6,6 +6,7 @@ pub enum Phase {
     Active,
 }
 pub struct Window {
+    pub open_epoch: String,
     pub generation: String,
     pub label: String,
     pub phase: Phase,
@@ -18,8 +19,31 @@ pub struct Ledger {
     next: u64,
     pub window: Option<Window>,
 }
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct Intent {
+    serial: u64,
+    generation: Option<String>,
+}
+impl Intent {
+    pub fn is_mini(&self) -> bool {
+        self.generation.is_some()
+    }
+}
 impl Ledger {
-    pub fn begin(&mut self) -> Result<(String, String)> {
+    pub fn intent(&self) -> Intent {
+        Intent {
+            serial: self.next,
+            generation: self.window.as_ref().map(|w| w.generation.clone()),
+        }
+    }
+    pub fn check_intent(&self, intent: &Intent) -> Result<()> {
+        if &self.intent() == intent {
+            Ok(())
+        } else {
+            Err(Error::StaleResponse)
+        }
+    }
+    pub fn begin(&mut self, epoch: String) -> Result<(String, String)> {
         if self.window.is_some() {
             return Err(Error::MutationBusy);
         }
@@ -30,6 +54,7 @@ impl Ledger {
         let generation = self.next.to_string();
         let label = format!("mini-player-{generation}");
         self.window = Some(Window {
+            open_epoch: epoch,
             generation: generation.clone(),
             label: label.clone(),
             phase: Phase::Opening,
@@ -95,17 +120,35 @@ mod tests {
     #[test]
     fn lifetime_does_not_reuse_old_ready_timeout_or_command() {
         let mut ledger = Ledger::default();
-        let (a, label_a) = ledger.begin().unwrap();
-        assert!(ledger.begin().is_err());
+        let (a, label_a) = ledger.begin("1".into()).unwrap();
+        assert!(ledger.begin("1".into()).is_err());
         assert!(ledger.ready(&a).is_err()); // no successful read/paint yet
         assert!(ledger.captured(&a, "0").is_err());
         ledger.take(Some(&a)).unwrap();
-        let (b, label_b) = ledger.begin().unwrap();
+        let (b, label_b) = ledger.begin("1".into()).unwrap();
         assert_ne!(a, b);
         assert_ne!(label_a, label_b);
         assert!(ledger.take(Some(&a)).is_none());
         assert!(ledger.ready(&a).is_err());
         assert!(ledger.captured(&a, "0").is_err());
         assert_eq!(ledger.get(&b).unwrap().phase, Phase::Opening);
+    }
+    #[test]
+    fn captured_mode_never_targets_a_later_window_or_reopens_after_return() {
+        let mut ledger = Ledger::default();
+        let empty = ledger.intent();
+        ledger.check_intent(&empty).unwrap();
+        let (first, _) = ledger.begin("1".into()).unwrap();
+        assert!(ledger.check_intent(&empty).is_err());
+        assert_eq!(ledger.get(&first).unwrap().open_epoch, "1");
+        let close_first = ledger.intent();
+        assert!(close_first.is_mini());
+        ledger.take(Some(&first));
+        assert!(ledger.check_intent(&close_first).is_err());
+        assert!(ledger.check_intent(&empty).is_err());
+        let (second, _) = ledger.begin("2".into()).unwrap();
+        assert_ne!(first, second);
+        assert!(ledger.check_intent(&close_first).is_err());
+        ledger.check_intent(&ledger.intent()).unwrap();
     }
 }

@@ -1,4 +1,5 @@
 import type { PlaybackMode, QueueTrack } from './player';
+import type { ShortcutSelection } from './shortcuts';
 export interface MiniPreferences {
   revision: string | null;
   alwaysOnTop: boolean;
@@ -9,6 +10,7 @@ export type MiniPreferencesCommand =
   | { kind: 'repair' };
 export interface MiniMedia {
   epoch: string;
+  selection: ShortcutSelection;
   item: {
     id: string;
     kind: 'music' | 'video';

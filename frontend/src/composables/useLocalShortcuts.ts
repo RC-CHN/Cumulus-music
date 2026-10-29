@@ -106,9 +106,14 @@ export function useLocalShortcuts(
     if (
       !(target instanceof HTMLElement) ||
       target.isContentEditable ||
-      target.closest(
-        'input,textarea,select,button,a,[role="textbox"],[role="button"],[contenteditable="true"]',
-      )
+      target.closest('textarea,select,[role="textbox"],[contenteditable="true"]') ||
+      (target.closest('input') && !(event.ctrlKey || event.altKey || event.shiftKey)) ||
+      target.closest('input:not([type="range"]):not([type="checkbox"]):not([type="radio"])') ||
+      (target.closest('button,a,[role="button"]') &&
+        event.code === 'Space' &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !event.shiftKey)
     )
       return false;
     const keys = eventChord(event),

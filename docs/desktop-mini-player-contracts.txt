@@ -20,14 +20,16 @@
 FM 队列可读，禁止移除/选中/清空/手动模式变更，切歌经原 FM 协调器。
 MV 复用当前视频控制，不显示音频队列、音频喜欢或音频模式操作。
 主题/减少动态效果沿用设备设置；队列出现仅用 transform/opacity 动画。
-自定义快捷键 mini_max 尚未接入本窗口宿主；设置页继续如实显示不可用。
+mini_max 已接入共享快捷键设置：默认窗口内 Ctrl+M、全局 Ctrl+Alt+M，改键同时作用于
+主窗口和小窗。播放、音量、喜欢等已支持动作也共用配置，详情见 shortcut-contracts.txt。
 FM 不喜欢及复杂右键资源菜单仍从主窗口进入，本次没有新增这些小窗菜单。
 
 分层与调用
 core/src/client/mini/{mod,actions,queue}.rs：
 - mini_snapshot：仅读取现有播放器与本地状态，不创建解码器，不做 HTTP，不调用 Startup。
 - MiniSnapshot 保存 SessionToken、NativeMediaTarget、NativeLikeSnapshot，只留在 Rust。
-  MiniView 仅公开白名单曲目信息、去掉服务查询参数的公开图片 URL、时间、控制能力和错误。
+  MiniView 仅公开白名单曲目信息、去掉服务查询参数的公开图片 URL、时间、控制能力和错误；
+  selection 公开音频播放/队列条目和视频播放 ID，不能反序列化为原生控制能力。
 - same_controls 忽略自然进度推进；账号、播放意图、队列、喜欢观察值变化会失效。
 - mini_action 把 frozen snapshot 交给原 native_media_action/adjust、player_action_checked。
   不在过期后重新捕获目标，不自动重发远端写入。既有试听/CUE 范围和 FM/MV 所有权仍生效。
@@ -53,7 +55,8 @@ desktop/src/mini/{mod,state,commands}.rs：
   Rust 再验证真实媒体目标；并发业务动作拒绝排队后重新解释。
 - mini_enter 仅 main 可用；mini_read/ready/return/action/queue/panel/preferences_command
   仅当前已登记 mini-player-N 可用。其他窗口（包括伪造标签）不能调用。
-- 小窗 capability 只有拖动与关闭；无文件、登录、账号资源、通用请求或脚本调用权限。
+- 小窗 capability 只有拖动、关闭和事件监听/取消监听；无文件、登录、账号资源、
+  通用请求或脚本调用权限。额外 IPC 仅开放快捷键状态/attach/detach/press，不能录入改键。
 frontend/src/services/mini.ts、adapters/mini.ts、mini/MiniApp.vue：
 - 类型化窄接口，独立动态入口；不挂载完整 App、账号恢复、主播放器订阅或启动流程。
 - 350ms 非重叠状态读；仅控件 ticket 变化时重读展开的队列。卸载撤销轮询/晚到结果。
@@ -72,6 +75,7 @@ mini_ui_probe 使用两张真正的生产 WebView 和同一个 MusicClient，合
   LC_ALL=zh_CN.UTF-8 GDK_BACKEND=x11 dbus-run-session -- xvfb-run -a /usr/bin/python3 \
     scripts/ci/mini_smoke.py --binary .build/target/debug/examples/mini_ui_probe \
     --root .build/mini-proof --screenshots
+同一命令加 --shortcuts 并使用新目录，验证两窗口本地键及独立进程的系统按键。
 Windows 用对应 .exe 和 --runtime 指定打包原生 DLL 目录；不要求 Xvfb 或 Gdk 截图。
 CI 两个平台各自执行 mini_smoke，继续经原 CI gate；没有忽略失败的发布通道。
 Linux 实测证据及最终通过数在 ui-ux-validation.txt 的迷你窗口记录中补充。

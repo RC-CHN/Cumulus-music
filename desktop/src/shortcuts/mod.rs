@@ -12,10 +12,10 @@ pub(crate) fn lifecycle<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
     use tauri::Manager;
     tauri::plugin::Builder::new("shortcut-lifecycle")
         .on_page_load(|view, payload| {
-            if view.label() == "main"
+            if (view.label() == "main" || crate::mini::owns(view.app_handle(), view.label()))
                 && matches!(payload.event(), tauri::webview::PageLoadEvent::Started)
             {
-                local::page_started(view.app_handle());
+                local::page_started(view.app_handle(), view.label());
             }
         })
         .build()

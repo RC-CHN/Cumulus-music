@@ -2,10 +2,17 @@ use super::host::{self, Host};
 use cumulus_core::{
     Error,
     client::{ClientError, MusicClient, native_media::NativeShortcutInvocation},
-    preferences::shortcuts::{Hotkey, Ticket},
+    preferences::shortcuts::{Action, Hotkey, Ticket},
 };
 use std::sync::atomic::Ordering;
 use tauri::{Emitter, Manager};
+pub(super) fn supported(key: Hotkey) -> bool {
+    key == Hotkey::Configured(Action::MiniMode) || NativeShortcutInvocation::supported(key)
+}
+enum Invocation {
+    Media(NativeShortcutInvocation),
+    Window(crate::mini::ModeIntent),
+}
 pub(super) struct Busy<'a>(&'a Host);
 impl<'a> Busy<'a> {
     pub fn claim(host: &'a Host) -> cumulus_core::Result<Self> {
@@ -35,7 +42,14 @@ pub(super) fn pressed<R: tauri::Runtime>(app: &tauri::AppHandle<R>, ticket: Tick
     let client = app.state::<MusicClient>();
     let epoch = client.account().ok().map(|a| a.epoch);
     // Capture immediately on the native event, before queuing an async task.
-    let invocation = match client.capture_native_shortcut(key) {
+    let captured = if key == Hotkey::Configured(Action::MiniMode) {
+        crate::mini::capture_mode(app).map(|v| Some(Invocation::Window(v)))
+    } else {
+        client
+            .capture_native_shortcut(key)
+            .map(|v| v.map(Invocation::Media))
+    };
+    let invocation = match captured {
         Ok(Some(value)) => value,
         result => {
             host.busy.store(false, Ordering::Release);
@@ -49,11 +63,17 @@ pub(super) fn pressed<R: tauri::Runtime>(app: &tauri::AppHandle<R>, ticket: Tick
     tauri::async_runtime::spawn(async move {
         let host = app.state::<Host>();
         if host::active(&host, &ticket, key) {
-            let result = app
-                .state::<MusicClient>()
-                .execute_native_shortcut(&invocation)
-                .await;
-            like_changed(&app, &invocation);
+            let result = match invocation {
+                Invocation::Media(invocation) => {
+                    let result = app
+                        .state::<MusicClient>()
+                        .execute_native_shortcut(&invocation)
+                        .await;
+                    like_changed(&app, &invocation);
+                    result
+                }
+                Invocation::Window(intent) => crate::mini::switch_mode(&app, intent).await,
+            };
             if let Err(error) = result {
                 notice(&app, epoch.as_deref(), error);
             }
@@ -79,10 +99,14 @@ fn notice<R: tauri::Runtime>(app: &tauri::AppHandle<R>, epoch: Option<&str>, err
     }
     let error = ClientError::from(error);
     if let Some(epoch) = epoch {
-        let _ = app.emit_to(
-            "main",
-            "cumulus:shortcut-error",
-            serde_json::json!({"epoch":epoch,"error":error}),
-        );
+        let payload = serde_json::json!({"epoch":epoch,"error":error});
+        let _ = app.emit_to("main", "cumulus:shortcut-error", &payload);
+        for label in app
+            .webview_windows()
+            .keys()
+            .filter(|label| crate::mini::owns(app, label))
+        {
+            let _ = app.emit_to(label, "cumulus:shortcut-error", &payload);
+        }
     }
 }

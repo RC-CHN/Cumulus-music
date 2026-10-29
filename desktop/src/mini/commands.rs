@@ -63,6 +63,9 @@ pub async fn mini_ready<R: Runtime>(
             let host = app.state::<Host>();
             let ledger = host.lock()?;
             let pending = ledger.get(&generation)?;
+            if pending.open_epoch != app.state::<MusicClient>().account()?.epoch {
+                return Err(Error::StaleResponse);
+            }
             if pending.phase != Phase::Opening || pending.snapshot.is_none() {
                 return Err(Error::StaleResponse);
             }

@@ -104,6 +104,10 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                     mini::commands::mini_queue,
                     mini::commands::mini_panel,
                     mini::commands::mini_preferences_command,
+                    shortcuts::settings::shortcut_status,
+                    shortcuts::local::shortcut_attach,
+                    shortcuts::local::shortcut_detach,
+                    shortcuts::local::shortcut_press,
                 ];
                 return handler(invoke);
             }

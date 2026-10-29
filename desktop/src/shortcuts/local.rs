@@ -1,4 +1,4 @@
-//! Acknowledged main-WebView listener. A reload or replacement invalidates its
+//! Acknowledged listeners, scoped to each actual WebView. A reload or replacement invalidates its
 //! lease before later IPC can act; media/account fencing remains in core.
 use super::{
     dispatch,
@@ -7,7 +7,7 @@ use super::{
 use cumulus_core::{
     Error, Result,
     client::{ClientError, MusicClient, native_media::ShortcutSelection},
-    preferences::shortcuts::{Capture, Chord, KeyInput, Scope},
+    preferences::shortcuts::{Action, Capture, Chord, Hotkey, KeyInput, Scope},
 };
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
@@ -38,6 +38,7 @@ pub fn shortcut_capture(input: KeyInput, scope: Scope) -> Capture {
 #[tauri::command]
 pub async fn shortcut_attach<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
+    window: tauri::WebviewWindow<R>,
     epoch: String,
     ticket: String,
 ) -> std::result::Result<Lease, ClientError> {
@@ -47,15 +48,24 @@ pub async fn shortcut_attach<R: tauri::Runtime>(
     if app.state::<MusicClient>().account()?.epoch != epoch {
         return Err(Error::StaleResponse.into());
     }
-    host::attach(&app, &host, epoch, ticket).map_err(Into::into)
+    host::attach(&app, &host, window.label(), epoch, ticket).map_err(Into::into)
 }
 #[tauri::command]
-pub fn shortcut_detach<R: tauri::Runtime>(app: tauri::AppHandle<R>, lease: String) {
-    host::detach(&app, Some(&lease));
+pub fn shortcut_detach<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    window: tauri::WebviewWindow<R>,
+    lease: String,
+) {
+    host::detach(&app, window.label(), Some(&lease));
 }
-pub(crate) fn page_started<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
-    host::detach(app, None);
-    if let Some(id) = host::status(app).recording {
+pub(crate) fn closed<R: tauri::Runtime>(app: &tauri::AppHandle<R>, label: &str) {
+    host::detach(app, label, None);
+}
+pub(crate) fn page_started<R: tauri::Runtime>(app: &tauri::AppHandle<R>, label: &str) {
+    closed(app, label);
+    if label == "main"
+        && let Some(id) = host::status(app).recording
+    {
         let app = app.clone();
         tauri::async_runtime::spawn_blocking(move || {
             let _ = super::recording::end(&app, &id);
@@ -64,22 +74,55 @@ pub(crate) fn page_started<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
 }
 pub(super) async fn execute<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
+    label: &str,
     press: LocalPress,
 ) -> Result<()> {
     let host = app
         .try_state::<Host>()
         .ok_or(Error::State("shortcut host unavailable"))?;
     let chord = Chord::new(press.keys)?;
-    let key = host::local_key(&host, &press.epoch, &press.lease, &press.ticket, &chord)?;
+    let key = host::local_key(
+        &host,
+        label,
+        &press.epoch,
+        &press.lease,
+        &press.ticket,
+        &chord,
+    )?;
     // Claim the same in-flight slot as native global presses; do not queue a
     // local command behind another operation and reinterpret it afterward.
     let _busy = dispatch::Busy::claim(&host)?;
     let client = app.state::<MusicClient>();
+    if key == Hotkey::Configured(Action::MiniMode) {
+        if client.account()?.epoch != press.epoch {
+            return Err(Error::StaleResponse);
+        }
+        let intent = crate::mini::capture_mode(app)?;
+        if intent.epoch() != press.epoch {
+            return Err(Error::StaleResponse);
+        }
+        host::local_key(
+            &host,
+            label,
+            &press.epoch,
+            &press.lease,
+            &press.ticket,
+            &chord,
+        )?;
+        return crate::mini::switch_mode(app, intent).await;
+    }
     let Some(invocation) = client.capture_local_shortcut(&press.epoch, &press.selection, key)?
     else {
         return Ok(());
     };
-    host::local_key(&host, &press.epoch, &press.lease, &press.ticket, &chord)?;
+    host::local_key(
+        &host,
+        label,
+        &press.epoch,
+        &press.lease,
+        &press.ticket,
+        &chord,
+    )?;
     let result = client.execute_native_shortcut(&invocation).await;
     dispatch::like_changed(app, &invocation);
     result
@@ -87,7 +130,10 @@ pub(super) async fn execute<R: tauri::Runtime>(
 #[tauri::command]
 pub async fn shortcut_press<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
+    window: tauri::WebviewWindow<R>,
     press: LocalPress,
 ) -> std::result::Result<(), ClientError> {
-    execute(&app, press).await.map_err(Into::into)
+    execute(&app, window.label(), press)
+        .await
+        .map_err(Into::into)
 }
