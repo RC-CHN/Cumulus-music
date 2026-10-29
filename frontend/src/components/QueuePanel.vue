@@ -92,8 +92,10 @@ function move(index: number, direction: number) {
           @click="player.action({ kind: 'select', entry_id: item.entryId })"
         >
           <Icon :name="item.entryId === currentEntry ? 'volume' : 'music'" /><span
-            ><strong class="ellipsis">{{ item.track.name }}</strong
-            ><small class="ellipsis">{{ item.track.artists.join(' / ') }}</small></span
+            ><strong class="ellipsis" :title="item.track.name">{{ item.track.name }}</strong
+            ><small class="ellipsis" :title="item.track.artists.join(' / ')">{{
+              item.track.artists.join(' / ')
+            }}</small></span
           >
         </button>
         <time>{{ time(item.track.durationMs / 1000) }}</time>

@@ -85,11 +85,18 @@ function mute() {
         /><Icon v-else name="music" />
       </button>
       <div class="now-copy">
-        <button class="ellipsis" :disabled="!view?.track" @click="player.toggleLyrics">
+        <button
+          class="ellipsis"
+          :title="view?.track?.name ?? '云间音乐'"
+          :disabled="!view?.track"
+          @click="player.toggleLyrics"
+        >
           {{ view?.track?.name ?? '云间音乐' }}</button
-        ><small class="ellipsis">{{
-          view?.track?.artists.join(' / ') || '发现每一首喜欢的歌'
-        }}</small>
+        ><small
+          class="ellipsis"
+          :title="view?.track?.artists.join(' / ') || '发现每一首喜欢的歌'"
+          >{{ view?.track?.artists.join(' / ') || '发现每一首喜欢的歌' }}</small
+        >
       </div>
       <button
         v-if="view?.track && !view.track.local"

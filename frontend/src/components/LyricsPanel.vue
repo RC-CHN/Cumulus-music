@@ -105,9 +105,9 @@ function aligned(rows: { time?: number; lyric: string }[] | undefined, index: nu
             referrerpolicy="no-referrer"
           /><Icon v-else name="music" />
         </div>
-        <h1>{{ view?.track?.name }}</h1>
-        <p>{{ view?.track?.artists.join(' / ') }}</p>
-        <small>{{ view?.track?.album }}</small
+        <h1 :title="view?.track?.name">{{ view?.track?.name }}</h1>
+        <p :title="view?.track?.artists.join(' / ')">{{ view?.track?.artists.join(' / ') }}</p>
+        <small :title="view?.track?.album">{{ view?.track?.album }}</small
         ><span v-if="view?.timeline?.mode === 'trial'" class="trial-badge">当前为试听片段</span>
       </div>
       <div class="lyrics-column">
