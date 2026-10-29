@@ -32,6 +32,12 @@ pub enum RegistrationStatus {
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Ticket(uuid::Uuid);
+impl Ticket {
+    /// Public registration generation, not an account or media capability.
+    pub fn id(&self) -> String {
+        self.0.to_string()
+    }
+}
 pub struct RegistrationLedger {
     ticket: Ticket,
     rows: BTreeMap<(Hotkey, Scope), (Registration, RegistrationStatus)>,

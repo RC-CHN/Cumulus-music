@@ -15,7 +15,8 @@ pub struct KeyInput {
     pub alt_key: bool,
     pub meta_key: bool,
 }
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", content = "keys", rename_all = "snake_case")]
 pub enum Capture {
     Ignore,
     Clear,

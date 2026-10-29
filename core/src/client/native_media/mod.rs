@@ -22,7 +22,7 @@ use crate::{
 pub use adjustments::NativeMediaAdjustment;
 pub use details::{NativeMediaDetails, NativeMediaItem, NativeMediaKind, NativeMediaStatus};
 pub use likes::{NativeLikeResource, NativeLikeSelection, NativeLikeSnapshot};
-pub use shortcuts::NativeShortcutInvocation;
+pub use shortcuts::{NativeShortcutInvocation, ShortcutSelection};
 use std::sync::atomic::Ordering;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

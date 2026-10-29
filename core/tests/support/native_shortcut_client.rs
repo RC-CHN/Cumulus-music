@@ -1,7 +1,69 @@
 use super::*;
+use cumulus_core::client::native_media::ShortcutSelection;
 use cumulus_core::preferences::shortcuts::{Action, Hotkey};
 fn key(action: Action) -> Hotkey {
     Hotkey::Configured(action)
+}
+
+#[tokio::test]
+async fn local_keys_require_the_account_and_selection_observed_before_ipc() {
+    let f = Fixture::new();
+    f.client.play_selection("1", songs()).await.unwrap();
+    let audio = f
+        .client
+        .subscribe_playback("1")
+        .await
+        .unwrap()
+        .current()
+        .unwrap();
+    let mut observed = ShortcutSelection {
+        audio_play_id: audio.play_id,
+        audio_entry_id: audio.entry_id,
+        video_play_id: None,
+    };
+    let f5 = f
+        .client
+        .capture_local_shortcut("1", &observed, Hotkey::F5)
+        .unwrap()
+        .unwrap();
+    f.client.execute_native_shortcut(&f5).await.unwrap();
+    assert!(f.audio.state.lock().unwrap().view.paused);
+    let next = f
+        .client
+        .capture_native_shortcut(key(Action::Next))
+        .unwrap()
+        .unwrap();
+    f.client.execute_native_shortcut(&next).await.unwrap();
+    assert!(matches!(
+        f.client
+            .capture_local_shortcut("1", &observed, Hotkey::Space),
+        Err(Error::StaleResponse)
+    ));
+    f.client.video_action("1", open()).await.unwrap();
+    f.until(VideoStatus::Playing).await;
+    assert!(matches!(
+        f.client.capture_local_shortcut("1", &observed, Hotkey::F5),
+        Err(Error::StaleResponse)
+    ));
+    observed.video_play_id = Some(f.client.video_snapshot("1").await.unwrap().play_id);
+    let video = f
+        .client
+        .capture_local_shortcut("1", &observed, Hotkey::F5)
+        .unwrap()
+        .unwrap();
+    f.client.execute_native_shortcut(&video).await.unwrap();
+    assert!(f.video.last().lock().unwrap().paused);
+    f.session
+        .adopt(
+            f.api.clone(),
+            json!({"userId":10}),
+            &f.session.token().unwrap(),
+        )
+        .unwrap();
+    assert!(matches!(
+        f.client.capture_local_shortcut("1", &observed, Hotkey::F5),
+        Err(Error::StaleResponse)
+    ));
 }
 
 #[tokio::test]

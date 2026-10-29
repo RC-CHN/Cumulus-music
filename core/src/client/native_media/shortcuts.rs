@@ -2,6 +2,17 @@
 //! before asynchronous dispatch; never reinterpret a queued key for new media.
 use super::*;
 use crate::preferences::shortcuts::{Action, Hotkey};
+use serde::Deserialize;
+
+/// The selections actually observed by a WebView before sending a key. This
+/// does not grant control: current native ownership and the account still win.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ShortcutSelection {
+    pub audio_play_id: Option<String>,
+    pub audio_entry_id: Option<String>,
+    pub video_play_id: Option<String>,
+}
 
 #[derive(Clone, Debug)]
 enum Command {
@@ -17,6 +28,7 @@ impl NativeShortcutInvocation {
         matches!(
             key,
             Hotkey::Space
+                | Hotkey::F5
                 | Hotkey::MediaPlayPause
                 | Hotkey::MediaPrevious
                 | Hotkey::MediaNext
@@ -41,6 +53,54 @@ impl NativeShortcutInvocation {
     }
 }
 impl MusicClient {
+    pub fn capture_local_shortcut(
+        &self,
+        epoch: &str,
+        selection: &ShortcutSelection,
+        key: Hotkey,
+    ) -> Result<Option<NativeShortcutInvocation>> {
+        let token = self.player_token(epoch)?;
+        let before = self.native_media_snapshot()?.target;
+        if let Some(target) = &before {
+            if target.token != token {
+                return Err(Error::StaleResponse);
+            }
+            match &target.media {
+                Media::Audio(_) => {
+                    let audio = self
+                        .player
+                        .controller
+                        .get()
+                        .ok_or(Error::StaleResponse)?
+                        .snapshot();
+                    target.audio(&audio)?;
+                    if audio.play_id != selection.audio_play_id
+                        || audio.selected.as_ref().map(|s| &s.entry_id)
+                            != selection.audio_entry_id.as_ref()
+                    {
+                        return Err(Error::StaleResponse);
+                    }
+                }
+                Media::Video(_) => {
+                    let video = self
+                        .mv
+                        .existing(&token)?
+                        .ok_or(Error::StaleResponse)?
+                        .snapshot()?;
+                    target.video(&video)?;
+                    if selection.video_play_id.as_ref() != Some(&video.play_id) {
+                        return Err(Error::StaleResponse);
+                    }
+                }
+            }
+        }
+        let invocation = self.capture_native_shortcut(key)?;
+        if before != self.native_media_snapshot()?.target {
+            return Err(Error::StaleResponse);
+        }
+        self.session.check_generation(&token)?;
+        Ok(invocation)
+    }
     pub fn capture_native_shortcut(&self, key: Hotkey) -> Result<Option<NativeShortcutInvocation>> {
         if !NativeShortcutInvocation::supported(key) {
             return Err(Error::InvalidInput("shortcut action unavailable"));
@@ -79,9 +139,10 @@ impl MusicClient {
             return Ok(None);
         }
         let action = match key {
-            Hotkey::Space | Hotkey::MediaPlayPause | Hotkey::Configured(Action::PlayPause) => {
-                NativeMediaAction::Toggle
-            }
+            Hotkey::Space
+            | Hotkey::F5
+            | Hotkey::MediaPlayPause
+            | Hotkey::Configured(Action::PlayPause) => NativeMediaAction::Toggle,
             Hotkey::MediaPrevious | Hotkey::Configured(Action::Previous) => {
                 NativeMediaAction::Previous
             }
