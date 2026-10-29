@@ -2,6 +2,59 @@ use super::*;
 use cumulus_core::client::mini::MiniAction as Action;
 
 #[tokio::test]
+async fn mini_shortcut_selection_is_lazy_and_cannot_control_a_new_owner() {
+    use cumulus_core::{client::native_media::ShortcutSelection, preferences::shortcuts::Hotkey};
+    let f = Fixture::new();
+    assert_eq!(
+        f.client.mini_snapshot().unwrap().view.selection,
+        ShortcutSelection::default()
+    );
+    assert_eq!(f.audio.state.lock().unwrap().loads, 0);
+    assert!(f.video.devices.lock().unwrap().is_empty());
+    assert!(f.video.api.calls.lock().unwrap().is_empty());
+    f.client.play_selection("1", songs()).await.unwrap();
+    let observed = f.client.mini_snapshot().unwrap().view.selection;
+    let invocation = f
+        .client
+        .capture_local_shortcut("1", &observed, Hotkey::Space)
+        .unwrap()
+        .unwrap();
+    f.client.execute_native_shortcut(&invocation).await.unwrap();
+    assert!(f.audio.state.lock().unwrap().view.paused);
+    f.client.video_action("1", open()).await.unwrap();
+    f.until(VideoStatus::Playing).await;
+    assert!(matches!(
+        f.client
+            .capture_local_shortcut("1", &observed, Hotkey::Space),
+        Err(Error::StaleResponse)
+    ));
+    let video = f.client.mini_snapshot().unwrap().view.selection;
+    assert!(
+        video.audio_play_id.is_none()
+            && video.audio_entry_id.is_none()
+            && video.video_play_id.is_some()
+    );
+    let invocation = f
+        .client
+        .capture_local_shortcut("1", &video, Hotkey::Space)
+        .unwrap()
+        .unwrap();
+    f.client.execute_native_shortcut(&invocation).await.unwrap();
+    assert!(f.video.last().lock().unwrap().paused);
+    f.session
+        .adopt(
+            f.api.clone(),
+            json!({"userId":10}),
+            &f.session.token().unwrap(),
+        )
+        .unwrap();
+    assert!(matches!(
+        f.client.capture_local_shortcut("1", &video, Hotkey::Space),
+        Err(Error::StaleResponse)
+    ));
+}
+
+#[tokio::test]
 async fn mini_reads_are_lazy_public_and_share_the_existing_audio_actor() {
     let f = Fixture::new();
     let empty = f.client.mini_snapshot().unwrap();

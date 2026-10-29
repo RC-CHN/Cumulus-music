@@ -17,6 +17,7 @@ pub struct MiniSnapshot {
 #[serde(rename_all = "camelCase")]
 pub struct MiniView {
     pub epoch: String,
+    pub selection: ShortcutSelection,
     pub item: Option<NativeMediaItem>,
     pub state: NativeMediaStatus,
     pub playing: bool,
@@ -93,6 +94,7 @@ impl MusicClient {
         let snapshot = MiniSnapshot {
             view: MiniView {
                 epoch: token.generation.to_string(),
+                selection: self.native_shortcut_selection()?,
                 item: details.item,
                 state: details.state,
                 playing: details.transport.playing,

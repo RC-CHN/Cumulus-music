@@ -2,11 +2,11 @@
 //! before asynchronous dispatch; never reinterpret a queued key for new media.
 use super::*;
 use crate::preferences::shortcuts::{Action, Hotkey};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// The selections actually observed by a WebView before sending a key. This
 /// does not grant control: current native ownership and the account still win.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ShortcutSelection {
     pub audio_play_id: Option<String>,
@@ -53,6 +53,39 @@ impl NativeShortcutInvocation {
     }
 }
 impl MusicClient {
+    /// Public selection IDs for lightweight surfaces. This lazy projection
+    /// conveys no native capability or media authorization URL.
+    pub fn native_shortcut_selection(&self) -> Result<ShortcutSelection> {
+        let transport = self.native_media_snapshot()?;
+        let Some(target) = transport.target else {
+            return Ok(ShortcutSelection::default());
+        };
+        let mut result = ShortcutSelection::default();
+        match target.media {
+            Media::Audio(_) => {
+                let value = self
+                    .player
+                    .controller
+                    .get()
+                    .ok_or(Error::StaleResponse)?
+                    .snapshot();
+                target.audio(&value)?;
+                result.audio_play_id = value.play_id;
+                result.audio_entry_id = value.selected.map(|v| v.entry_id);
+            }
+            Media::Video(_) => {
+                let value = self
+                    .mv
+                    .existing(&target.token)?
+                    .ok_or(Error::StaleResponse)?
+                    .snapshot()?;
+                target.video(&value)?;
+                result.video_play_id = Some(value.play_id);
+            }
+        }
+        target.check(self)?;
+        Ok(result)
+    }
     pub fn capture_local_shortcut(
         &self,
         epoch: &str,
