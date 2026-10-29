@@ -1,0 +1,32 @@
+{
+  "source": "official cloudmusic.dll 3.1.42.205594 x64",
+  "dllSha256": "557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493",
+  "generatorSha256": "416075a7892d46e3ec3c093bead7359dc4db4fdb83b1aec2fe15f458578baff8",
+  "baseOracleSha256": "99dcfb9c03a24cbe38f76150f6dfc96ea3c173ff093880c8199a90fb66f0c956",
+  "fixtureSha256": "556201bfd33d8dc61098ba0eb4106dd4b27728370c51cd8f64f1c6ab91899bfd",
+  "nativeEntryPoints": {
+    "cmp": "0xef9080",
+    "limiter": "0xefa280",
+    "dly": "0xef99e0",
+    "alc": "0xef8ac0",
+    "spspatial": "0xeff1b0"
+  },
+  "cases": {
+    "cmp": 223,
+    "limiter": 207,
+    "dly": 175,
+    "alc": 111,
+    "spspatial": 111,
+    "routing": 4
+  },
+  "execution": "reviewed unmodified x64 parser instructions in Unicorn 2.1.4; bounded host seams",
+  "hostSeams": [
+    "typed JSON lookup/string wrappers/root extraction",
+    "engine calls captured, not executed",
+    "CRT checks/memset/log-level helpers",
+    "other component bodies remain captured callbacks"
+  ],
+  "fullJsonParserExecuted": false,
+  "fullDspGraphExecuted": false,
+  "privateAccountData": false
+}

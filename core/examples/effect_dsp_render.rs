@@ -6,7 +6,7 @@ use std::io::{Read, Write};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mode = std::env::args().nth(1).ok_or(
-        "supply coeff, peq-coeff, biquad, bt, geq-outer, peq or material-{peq,rotate,stereo}",
+        "supply coeff, peq-coeff, biquad, bt, geq-outer, peq or material-{route,eq,bt,peq,rotate,stereo,cmp,limiter,dly,alc,spspatial}",
     )?;
     let mut input = Vec::new();
     std::io::stdin()
@@ -27,6 +27,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else if mode.starts_with("material-") {
         let value = serde_json::from_slice(&input)?;
         let calls = match mode.as_str() {
+            "material-route" => {
+                let routing = material::route_sections(&value)?;
+                serde_json::json!({"schema":routing.schema,"sections":routing.sections,"dspRendered":false})
+            }
+            "material-eq" => serde_json::to_value(material::graphic_calls(&value)?)?,
+            "material-bt" => serde_json::to_value(material::bass_treble_calls(&value)?)?,
+            "material-cmp" => serde_json::to_value(material::compressor_calls(&value)?)?,
+            "material-limiter" => serde_json::to_value(material::limiter_calls(&value)?)?,
+            "material-dly" => serde_json::to_value(material::delay_calls(&value)?)?,
+            "material-alc" => serde_json::to_value(material::alc_calls(&value)?)?,
+            "material-spspatial" => serde_json::to_value(material::speaker_spatial_calls(&value)?)?,
             "material-peq" => serde_json::to_value(material::peq_calls(&value)?)?,
             "material-rotate" => serde_json::to_value(material::rotation_calls(&value)?)?,
             "material-stereo" => serde_json::to_value(material::stereo_calls(&value)?)?,
