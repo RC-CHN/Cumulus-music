@@ -628,3 +628,20 @@ Windows现场与接续提示焦点复查（2026-10-29）
   malformed_json/malformed_repaired两态；独立SQLite核对两个备份及“{broken”原文。
   原生PCM始终同一playId、引擎计数不增加，修复焦点仍回刷新，关开和重启偏好仍通过。
   真实账号请求0；这不是新快捷键设置页或Windows系统媒体通过的证据。
+
+2026-10-29 启动/输出/窗口设置的损坏恢复扩展
+- local-settings-recovery-baseline实际复现三项非法JSON恢复失败及启动current丢失
+  被当作初始值；local-settings-counter-baseline另复现计数器丢失时修复重用旧令牌。
+- 三领域修复在事务内备份原始文本、写默认值并保留单调修订；写入失败整体回滚。
+  startup读取同时核对current/revision，已保存记录丢失显示损坏并拒绝初始令牌覆盖。
+  独立计数器丢失/损坏/溢出不能安全恢复数字版本，仍明确拒绝，不猜测重置为1。
+- .build/local-settings-startup-ui为22态/22截图、5次进程；local-settings-output-ui-final为14态/14截图、
+  两次进程；window-ui为17态/17截图及真实Tauri托盘/独立D-Bus消费者。三组串行通过，
+  合计53态；均使用生产前端/IPC、合成请求/PCM、真实libmpv/null，真实账号请求0。
+- 深浅色、760×540布局、损坏提示、恢复焦点、偏好重启、播放不被恢复操作打断及
+  后台播放/托盘重连均核验；已实际查看三项深色恢复截图。前端源码未改变。
+  这些结果不证明物理声卡、Windows Shell、实机刷新率或任意SQLite文件损坏修复。
+- 最终输出恢复还检查界面已应用状态及原生配置/修订匹配；不是只看保存回执。
+  本批全workspace 240目标/1116项、21项CI规则通过，失败/忽略0；fmt、严格Clippy
+  和Windows GNU desktop全targets Clippy通过。前端内容树与92036ec相同（212项、
+  格式/类型/生产构建先前已通过）；真实GUI使用此内容树重新嵌入验证。

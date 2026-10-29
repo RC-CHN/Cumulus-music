@@ -29,25 +29,22 @@ pub struct StartupPreferences {
 }
 impl StartupPreferences {
     pub fn read(store: &StateStore) -> Result<Self> {
-        store
-            .get(OWNER, KIND, "current")?
-            .map(serde_json::from_value)
-            .transpose()
-            .map(|value| value.unwrap_or_default())
-            .map_err(Into::into)
+        store.transaction(|tx| {
+            current(
+                tx.get(OWNER, KIND, "current")?,
+                tx.get(OWNER, KIND, "revision")?.is_some(),
+            )
+        })
     }
     pub fn replace(store: &StateStore, expected: u64, settings: StartupSettings) -> Result<Self> {
         store.transaction(|tx| {
-            let current: Self = tx
-                .get(OWNER, KIND, "current")?
-                .map(serde_json::from_value)
-                .transpose()?
-                .unwrap_or_default();
+            let recorded_revision = tx.get(OWNER, KIND, "revision")?;
+            let current = current(tx.get(OWNER, KIND, "current")?, recorded_revision.is_some())?;
             if current.revision != expected {
                 return Err(Error::State("playback settings changed"));
             }
             let next = Self {
-                revision: counter(tx.get(OWNER, KIND, "revision")?)?
+                revision: counter(recorded_revision)?
                     .max(current.revision)
                     .checked_add(1)
                     .ok_or(Error::State("playback settings revision exhausted"))?,
@@ -59,21 +56,30 @@ impl StartupPreferences {
         })
     }
     /// Explicit repair preserves the damaged record and refuses to overwrite
-    /// another window's successful repair. A missing record is a valid default.
+    /// another window's successful repair. Only a new installation has no records.
     pub fn repair(store: &StateStore) -> Result<Self> {
         store.transaction(|tx| {
-            let raw = tx
-                .get(OWNER, KIND, "current")?
-                .ok_or(Error::State("playback settings changed"))?;
-            if serde_json::from_value::<Self>(raw.clone()).is_ok() {
+            let recorded_revision = tx.get(OWNER, KIND, "revision")?;
+            let text = tx.get_raw(OWNER, KIND, "current")?;
+            let parsed = text.as_deref().map(serde_json::from_str).transpose();
+            if let Ok(raw) = &parsed
+                && current(raw.clone(), recorded_revision.is_some()).is_ok()
+            {
                 return Err(Error::State("playback settings changed"));
             }
+            let raw = match parsed {
+                Ok(Some(raw)) => raw,
+                Ok(None) => serde_json::json!({"missing":true}),
+                Err(_) => serde_json::json!({"current_raw":text}),
+            };
             // Repair must not reuse a revision observed by an older window.
             // Keep the counter separately so malformed settings cannot erase it.
-            let revision = counter(tx.get(OWNER, KIND, "revision")?)?
-                .max(raw["revision"].as_u64().unwrap_or(0))
-                .checked_add(1)
-                .ok_or(Error::State("playback settings revision exhausted"))?;
+            let revision = counter(Some(
+                recorded_revision.ok_or(Error::State("playback settings revision damaged"))?,
+            ))?
+            .max(raw["revision"].as_u64().unwrap_or(0))
+            .checked_add(1)
+            .ok_or(Error::State("playback settings revision exhausted"))?;
             tx.put(
                 OWNER,
                 "playback-startup-recovery-v1",
@@ -88,6 +94,18 @@ impl StartupPreferences {
             tx.put(OWNER, KIND, "current", &serde_json::to_value(next)?)?;
             Ok(next)
         })
+    }
+}
+
+fn current(value: Option<serde_json::Value>, previously_saved: bool) -> Result<StartupPreferences> {
+    match value {
+        Some(value) => Ok(serde_json::from_value(value)?),
+        None if !previously_saved => Ok(StartupPreferences::default()),
+        None => Err(Error::Json(
+            <serde_json::Error as serde::de::Error>::custom(
+                "saved playback startup preference is missing",
+            ),
+        )),
     }
 }
 

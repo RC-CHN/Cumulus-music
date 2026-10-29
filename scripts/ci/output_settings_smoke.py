@@ -7,7 +7,7 @@ import sqlite3
 import subprocess
 import time
 
-PHASES = {'initial': 11, 'reopen': 1}
+PHASES = {'initial': 13, 'reopen': 1}
 
 
 def read(path):
@@ -40,11 +40,19 @@ def audit(root):
     assert first['save_failed']['focused'] == '刷新音频输出设备'
     assert first['damaged']['outputSettings']['damaged']
     assert first['repaired']['outputSettings']['selected']['id'] == 'auto'
+    assert first['raw_json_damaged']['outputSettings']['damaged']
+    assert first['raw_json_repaired']['outputSettings']['selected']['id'] == 'auto'
+    for name in ['repaired', 'raw_json_repaired']:
+        assert '已应用' in first[name]['status']
+        engine = first[name]['outputSettings']['engines'][0]
+        assert engine['configured'] == 'auto' and engine['phase'] == 'configured'
+        assert engine['revision'] == first[name]['outputSettings']['revision']
     final = stages['reopen']['reopened_b']['outputSettings']
     assert final['selected']['id'] == 'fixture/b' and final['engines'][0]['configured'] == 'fixture/b'
     assert final['revision'] == first['saved_b']['outputSettings']['revision']
     with sqlite3.connect((root / 'run/state/core.sqlite3').as_uri() + '?mode=ro', uri=True) as db:
-        assert db.execute("SELECT count(*) FROM state WHERE kind='audio-output-recovery-v1'").fetchone()[0] == 1
+        backups = [json.loads(r[0]) for r in db.execute("SELECT value FROM state WHERE kind='audio-output-recovery-v1'")]
+        assert len(backups) == 2 and {'current_raw': '{broken'} in backups
         assert db.execute("SELECT count(*) FROM sqlite_master WHERE type='trigger' AND name='reject_output'").fetchone()[0] == 0
     return {'ok': True, 'actualWebView': True, 'states': sum(PHASES.values()), 'processLifetimes': 2,
             'realMusicRequests': 0, 'deviceCatalog': 'synthetic', 'physicalEndpointVerified': False}

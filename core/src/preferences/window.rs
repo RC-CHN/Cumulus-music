@@ -72,15 +72,26 @@ impl WindowPreferences {
     pub fn repair(store: &StateStore) -> Result<Self> {
         store.transaction(|tx| {
             let recorded_revision = tx.get(OWNER, KIND, "revision")?;
-            let raw = tx.get(OWNER, KIND, "current")?;
-            if current(raw.clone(), recorded_revision.is_some()).is_ok() {
+            let text = tx.get_raw(OWNER, KIND, "current")?;
+            let parsed = text.as_deref().map(serde_json::from_str).transpose();
+            if let Ok(raw) = &parsed
+                && current(raw.clone(), recorded_revision.is_some()).is_ok()
+            {
                 return Err(Error::State("window behavior settings changed"));
             }
-            let raw = raw.unwrap_or_else(|| serde_json::json!({"missing":true}));
-            let revision = counter(recorded_revision)?
-                .max(raw["revision"].as_u64().unwrap_or(0))
-                .checked_add(1)
-                .ok_or(Error::State("window behavior revision exhausted"))?;
+            let raw = match parsed {
+                Ok(Some(raw)) => raw,
+                Ok(None) => serde_json::json!({"missing":true}),
+                Err(_) => serde_json::json!({"current_raw":text}),
+            };
+            // Without a trustworthy independent counter, a raw-damage repair
+            // could reuse revision 1 and admit an older window's pending write.
+            let revision = counter(Some(
+                recorded_revision.ok_or(Error::State("window behavior revision damaged"))?,
+            ))?
+            .max(raw["revision"].as_u64().unwrap_or(0))
+            .checked_add(1)
+            .ok_or(Error::State("window behavior revision exhausted"))?;
             tx.put(
                 OWNER,
                 "window-behavior-recovery-v1",

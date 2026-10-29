@@ -198,12 +198,13 @@ def main():
                 wait(lambda: process.poll() is not None, 'explicit UI exit')
                 assert process.returncode == 0 and (root / 'run/exited.json').exists()
                 complete = json.loads((root / 'run/complete.json').read_text())
-                assert complete['ok'] and complete['states'] == 15
-                assert not args.screenshots or len(seen) == 15
+                assert complete['ok'] and complete['states'] == 17
+                assert not args.screenshots or len(seen) == 17
                 with sqlite3.connect((root / 'run/state/core.sqlite3').as_uri() + '?mode=ro', uri=True) as db:
                     saved = json.loads(db.execute("SELECT value FROM state WHERE owner='local-device' AND kind='window-behavior-preferences-v1' AND key='current'").fetchone()[0])
                     assert saved['settings'] == {'closeBehavior': 'exit', 'rememberChoice': True}
-                    assert db.execute("SELECT count(*) FROM state WHERE kind='window-behavior-recovery-v1'").fetchone()[0] == 1
+                    backups = [json.loads(r[0]) for r in db.execute("SELECT value FROM state WHERE kind='window-behavior-recovery-v1'")]
+                    assert len(backups) == 2 and {'current_raw': '{broken'} in backups
                     assert db.execute("SELECT count(*) FROM sqlite_master WHERE type='trigger' AND name='reject_window'").fetchone()[0] == 0
                     for kind, key, desired in [('resource-mutations', 'liked:2', True), ('podcast-mutations-v1', 'podcast:like:5', False)]:
                         record = json.loads(db.execute('SELECT value FROM state WHERE owner=? AND kind=? AND key=?', ('2', kind, key)).fetchone()[0])
@@ -211,7 +212,7 @@ def main():
 
                 report = {'ok': True, 'actualWebView': True, 'actualTauriTray': True,
                     'syntheticPanelHost': True, 'productClosePolicyVerified': True,
-                    'realMusicRequests': 0, 'states': 15, 'screenshots': len(seen), 'nativeLikeWrites': 3, 'nativeVoiceLikeWrites': 2, 'lostLikeReconciledWithoutReplay': True,
+                    'realMusicRequests': 0, 'states': 17, 'screenshots': len(seen), 'nativeLikeWrites': 3, 'nativeVoiceLikeWrites': 2, 'lostLikeReconciledWithoutReplay': True,
                     'nativeShowMenu': True, 'nativeTransportStates': transports, 'hostLossRestoresWindow': True, 'backgroundPlayback': first['backgroundPlayback'],
                     'panelRestartReRegisters': True, 'explicitExit': True,
                     'physicalPanelIconVerified': False, 'windowsShellVerified': False}

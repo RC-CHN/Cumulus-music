@@ -112,3 +112,13 @@ LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 WEBKIT_DISABLE_DMABUF_RENDERER=1 \
   python3 scripts/ci/tray_protocol_smoke.py --lifecycle --screenshots \
   --binary .build/target/debug/examples/tray_ui_probe --root .build/tray-new-evidence
 Python/GI 仅驱动验证与截图，生产客户端不依赖它。CI Linux 用系统 /usr/bin/python3。
+
+2026-10-29 原始JSON恢复补充
+无法解析的current文本也能显式恢复；同事务备份current_raw原文并恢复tray/false。
+可解析对象和missing:true备份保持兼容。原始文本不通过IPC返回界面。
+独立计数器丢失、损坏或溢出仍拒绝修复，不重置数字令牌以免旧窗口重新获得写权限。
+恢复设置不会隐藏/关闭主窗口，也不会重启播放器；关闭动作仍需用户另行触发。
+.build/local-settings-window-ui/report.json：17态/17截图及独立D-Bus托盘消费者通过。
+新增非法JSON损坏/恢复、SQLite备份原文核验；恢复后仍提示关闭方式，焦点回刷新。
+既有后台真实PCM、托盘播放/暂停/停止、面板丢失/重建、喜欢回执丢失核对和显式退出
+继续通过。已看760×540深色恢复截图；不称为真实桌面面板图标或Windows Shell验证。

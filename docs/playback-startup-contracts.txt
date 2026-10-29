@@ -64,15 +64,18 @@ damaged单独标识，不能把损坏数据展示为已保存的默认值。
 持久化与失败恢复
 StateStore SQLite owner=local-device，kind=playback-startup-preferences-v1。
 current保存revision与settings，revision单独保存单调计数器。
-缺记录是合法默认revision=0；严格解析结构和类型，不把损坏记录自动覆盖成默认值。
+current与revision均不存在才是首次安装默认revision=0；保存后current丢失视为损坏。
+读取和写入前在同一事务核对两条记录，旧的revision=0窗口不能覆盖丢失的设置。
 change先比较expected_revision，再在同一事务更新计数器和current；写入故障整体回滚。
-repair只允许损坏的current；保存原值至playback-startup-recovery-v1，写默认设置和
+repair只允许损坏或保存后丢失的current；保存原值至playback-startup-recovery-v1，写默认设置和
 大于已有计数器/可读取旧revision的新revision。已健康或另一个窗口已修复则拒绝。
 这样修复后延迟到达的旧CAS不会因revision被重用而覆盖新值。
-计数器自身损坏/溢出时拒绝更新，不猜测重置；现有健康设置仍可读取，手动播放可用。
+无法解析的JSON以current_raw原文备份，缺失记录备份missing:true，旧结构备份格式不变。
+修复时计数器自身丢失/损坏/溢出仍拒绝更新，不猜测重置；不复用旧窗口持有的修订。
+现有健康设置仍可读取，手动播放可用。
 损坏设置会阻止自动启动，界面明确给出恢复默认值；不会将设置损坏当显卡故障重启进程。
 IPC回执丢失时只回读当前状态，不自动重发、不把回读冒充原写入的成功确认。
-UI读取失败/写入失败后保留错误并需明确刷新；修复按钮消失后仅在焦点丢到body时
+UI读取失败/写入失败后保留错误并需明确刷新；修复按钮消失后在焦点丢到body或仍停留于已禁用触发控件时
 将焦点交还本区刷新按钮。不会抢走用户移到其他控件的焦点。
 异步保存期间禁用复选框造成焦点丢失时，成功后返回原选项；失败后移到仍可用的
 刷新按钮。账号已切换、组件已卸载或用户已聚焦其他控件时不抢回焦点。
@@ -87,7 +90,7 @@ UI读取失败/写入失败后保留错误并需明确刷新；修复按钮消�
 - frontend/tests/startup-preferences.test.ts、player-state.test.ts：无乐观写、重复点击、
   回执丢失只回读、账号切换/卸载、损坏修复、启动失败后暂停重试。
 - desktop/examples/startup_ui_probe.{rs,js} + scripts/ci/startup_smoke.py：正式前端/
-  IPC/SQLite/libmpv，在五个进程生命周期中逐项核对18个真实WebView状态。
+  IPC/SQLite/libmpv，在五个进程生命周期中逐项核对22个真实WebView状态。
   包括深浅色/760×540/写入失败/修复焦点/页面重载不重播；生成PCM/null输出，
   不访问真实音乐账号。最终审计读取原生播放器和SQLite，不只判断复选框或DOM文案。
   CI在Linux非C locale与Windows独立runner各自执行，必须全部成功才通过gate。
@@ -95,8 +98,14 @@ UI读取失败/写入失败后保留错误并需明确刷新；修复按钮消�
 边界
 本批合成桌面播放证明实际解码/定位/状态切换，不证明物理声卡、实机GPU帧率或真实账号权益。
 FM整个业务缓存丢失仍走既有明确失败/恢复路径，不能声称本批自动重建所有FM缓存。
-修复覆盖可读取JSON但结构/字段类型损坏的设置记录；数据库自身不可读、非法JSON文本或
-独立计数器损坏时保留错误，不自动清库或重建计数器。未宣称任意SQLite文件损坏可修复。
+修复覆盖结构/字段类型损坏、非法JSON文本及保存后current丢失；数据库自身不可读或
+独立计数器丢失/损坏时保留错误，不自动清库或重建计数器。未宣称任意SQLite文件损坏可修复。
 启动Windows发行包的本批结果以精确提交CI为准；旧CI或Linux结果不能代替Windows实测。
 防休眠、淡入淡出、通知、自动取消静音、队列替换策略等其他设置仍未完整接通；
 完整剩余清单见settings-mapping.json，不能将此两项完成当作整个播放器设置页完成。
+
+2026-10-29 新增恢复实测
+.build/local-settings-startup-ui/audit.json：22态/22截图，5次进程生命周期通过。
+新增非法JSON、current丢失及各自显式恢复；恢复回到默认false/true并保持原playId、
+暂停状态与记忆位置。SQLite独立核验3条备份（结构错误、原文、missing）及revision=7；
+重启仍暂停，页面重载没有重新自动播放。760×540深色恢复前后截图已实际检查。

@@ -72,6 +72,10 @@ fn main() {
             let stage=value["stage"].as_str().unwrap_or("").to_owned();
             if stage=="resize" {handle.get_webview_window("main").unwrap().set_size(tauri::LogicalSize::new(760.0,540.0)).unwrap();return;}
             if stage=="corrupt" {store.put("local-device","window-behavior-preferences-v1","current",&json!({"synthetic":"damaged"})).unwrap();return;}
+            if stage=="raw-damage" {
+                rusqlite::Connection::open(store.directory().join("core.sqlite3")).unwrap().execute("UPDATE state SET value='{broken' WHERE owner='local-device' AND kind='window-behavior-preferences-v1' AND key='current'", []).unwrap();
+                return;
+            }
             if ["reject-write","allow-write"].contains(&stage.as_str()) {
                 let db=rusqlite::Connection::open(store.directory().join("core.sqlite3")).unwrap();
                 db.execute_batch(if stage=="reject-write" {"CREATE TRIGGER reject_window BEFORE INSERT ON state WHEN NEW.kind='window-behavior-preferences-v1' BEGIN SELECT RAISE(ABORT,'synthetic write failure'); END;"}else{"DROP TRIGGER reject_window;"}).unwrap();return;

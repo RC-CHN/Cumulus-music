@@ -7,7 +7,7 @@ import sqlite3
 import subprocess
 import time
 
-PHASES = {'initial': 6, 'autoplay-zero': 2, 'autoplay-resume': 4, 'repair': 4, 'repaired-reopen': 2}
+PHASES = {'initial': 6, 'autoplay-zero': 2, 'autoplay-resume': 4, 'repair': 8, 'repaired-reopen': 2}
 
 
 def read(path):
@@ -45,9 +45,12 @@ def audit(root):
     repaired = stages['repair']
     assert repaired['damaged_dark']['preferences']['damaged']
     assert repaired['repaired']['focused'] == '重新读取播放设置'
-    for name in ['repaired', 'repaired_light']:
+    for name in ['repaired', 'repaired_light', 'raw_json_repaired', 'missing_record_repaired']:
         assert repaired[name]['nativePlayer']['state'] == 'paused'
         assert repaired[name]['preferences']['settings'] == {'autoPlay': False, 'rememberPosition': True}
+    for name in ['raw_json_damaged', 'missing_record_damaged']:
+        assert repaired[name]['preferences']['damaged']
+    assert len({row['nativePlayer']['playId'] for row in repaired.values()}) == 1
     final = read(root / 'run/repaired-reopen/complete.json')
     assert final['nativePlayer']['state'] == 'paused' and final['nativePlayer']['position'] >= 17
     assert final['preferences']['settings'] == {'autoPlay': False, 'rememberPosition': True}
@@ -56,9 +59,10 @@ def audit(root):
     assert any(row['width'] == 760 and row['height'] == 540 for row in flat)
     with sqlite3.connect((root / 'run/state/core.sqlite3').as_uri() + '?mode=ro', uri=True) as db:
         row = db.execute("SELECT value FROM state WHERE owner='local-device' AND kind='playback-startup-preferences-v1' AND key='current'").fetchone()
-        assert json.loads(row[0]) == {'revision': 5, 'settings': {'autoPlay': False, 'rememberPosition': True}}
-        assert json.loads(db.execute("SELECT value FROM state WHERE owner='local-device' AND kind='playback-startup-preferences-v1' AND key='revision'").fetchone()[0]) == 5
-        assert db.execute("SELECT count(*) FROM state WHERE owner='local-device' AND kind='playback-startup-recovery-v1'").fetchone()[0] == 1
+        assert json.loads(row[0]) == {'revision': 7, 'settings': {'autoPlay': False, 'rememberPosition': True}}
+        assert json.loads(db.execute("SELECT value FROM state WHERE owner='local-device' AND kind='playback-startup-preferences-v1' AND key='revision'").fetchone()[0]) == 7
+        backups = [json.loads(r[0]) for r in db.execute("SELECT value FROM state WHERE owner='local-device' AND kind='playback-startup-recovery-v1'")]
+        assert len(backups) == 3 and {'current_raw': '{broken'} in backups and {'missing': True} in backups
         assert db.execute("SELECT count(*) FROM sqlite_master WHERE type='trigger' AND name='reject_startup'").fetchone()[0] == 0
     return {'ok': True, 'actualWebView': True, 'states': len(flat), 'processLifetimes': 5,
             'pageReloadDidNotRestartAudio': True, 'realMusicRequests': 0, 'physicalAudioOutputVerified': False}

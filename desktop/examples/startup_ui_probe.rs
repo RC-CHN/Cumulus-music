@@ -80,6 +80,14 @@ fn main() {
                     store.put("local-device", "playback-startup-preferences-v1", "current", &json!({"settings":"damaged synthetic data"})).unwrap();
                     return;
                 }
+                if stage == "raw-damage" && phase == "repair" {
+                    rusqlite::Connection::open(&data).unwrap().execute("UPDATE state SET value='{broken' WHERE owner='local-device' AND kind='playback-startup-preferences-v1' AND key='current'", []).unwrap();
+                    return;
+                }
+                if stage == "lost-record" && phase == "repair" {
+                    store.delete("local-device", "playback-startup-preferences-v1", "current").unwrap();
+                    return;
+                }
                 if ["reject-write", "allow-write"].contains(&stage.as_str()) && phase == "initial" {
                     let connection = rusqlite::Connection::open(&data).unwrap();
                     connection.execute_batch(if stage == "reject-write" {

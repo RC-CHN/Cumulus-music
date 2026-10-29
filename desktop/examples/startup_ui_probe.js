@@ -49,6 +49,10 @@
       await settings();await emit('corrupt');await refresh();assert(one('.playback-startup .settings-recovery')&&!field('auto-play'),'damaged preferences exposed as valid');
       await emit('resize',{width:760,height:540});await wait(()=>innerWidth===760,'small window');await theme('dark');one('.playback-startup').scrollIntoView({block:'center'});await capture('damaged_dark');
       click(all('.playback-startup button').find(n=>n.textContent.trim()==='恢复默认播放设置'));await wait(()=>ready()&&field('auto-play'),'explicit repair');assert(!field('auto-play').checked&&field('remember-position').checked,'repair defaults');assert(document.activeElement===one('[aria-label="重新读取播放设置"]'),'repair focus lost');assert(state()==='paused','repair changed transport');await capture('repaired');
+      for(const [damage,name] of [['raw-damage','raw_json'],['lost-record','missing_record']]){
+        await emit(damage);await refresh();assert(one('.playback-startup .settings-recovery')&&!field('auto-play'),'damage exposed as defaults');await capture(name+'_damaged');
+        click(all('.playback-startup button').find(n=>n.textContent.trim()==='恢复默认播放设置'));await wait(()=>ready()&&field('auto-play'),'explicit text/missing repair');assert(!field('auto-play').checked&&field('remember-position').checked,'repair defaults');assert(document.activeElement===one('[aria-label="重新读取播放设置"]'),'repair focus lost');assert(state()==='paused','repair changed transport');await capture(name+'_repaired');
+      }
       await theme('light');one('.playback-startup').scrollIntoView({block:'center'});await capture('repaired_light');
     }else{
       await wait(()=>state()==='paused'&&position()>=17,'repaired restart');await capture('default_paused');await settings();assert(!field('auto-play').checked&&field('remember-position').checked,'repair not durable');await theme('light');one('.playback-startup').scrollIntoView({block:'center'});await capture('reopened_settings');

@@ -75,6 +75,10 @@ fn main() {
             if stage == "remove-device" { catalog.0.lock().unwrap().retain(|d|d.id!="fixture/a"); return; }
             if stage == "return-device" { *catalog.0.lock().unwrap() = output_fixture::Catalog::devices(); return; }
             if stage == "corrupt" { store.put("local-device","audio-output-preferences-v1","current",&json!({"selection":"synthetic damage"})).unwrap(); return; }
+            if stage == "raw-damage" {
+                rusqlite::Connection::open(store.directory().join("core.sqlite3")).unwrap().execute("UPDATE state SET value='{broken' WHERE owner='local-device' AND kind='audio-output-preferences-v1' AND key='current'", []).unwrap();
+                return;
+            }
             if ["reject-write", "allow-write"].contains(&stage.as_str()) {
                 let db=rusqlite::Connection::open(store.directory().join("core.sqlite3")).unwrap();
                 db.execute_batch(if stage=="reject-write" { "CREATE TRIGGER reject_output BEFORE INSERT ON state WHEN NEW.kind='audio-output-preferences-v1' BEGIN SELECT RAISE(ABORT,'synthetic write failure'); END;" } else { "DROP TRIGGER reject_output;" }).unwrap(); return;
