@@ -1,0 +1,94 @@
+音量均衡：官方转换、原生 PCM、持久化与设置页
+2026-10-29。完整目标的一项增量，不代表完整专有音效图完成。
+
+产品行为
+设置 → 音量均衡，默认关闭。本机开关保存在 local-device 下，不随登录账号变化；
+歌曲的增益只属于当前实际解析的音源。切歌、换音质、恢复播放均重新取值；账号切换、
+停止和失败会清理旧音源参数。没有增益、非数字或转换结果为零时保持原始音量。
+此开关不改变播放队列、播放位置、播放代次、一起听控制或同账号接续的远端状态。
+正在解码时可以保存开关；音源准备好后读取最新值，在解除暂停前应用。
+设置页显示关闭、等待歌曲、没有调整信息、信息异常、等待加载、已配置、实际处理、
+组件不可用和失败。只有原生回调处理过样本且观察到当前配置后才显示“正在平衡”。
+失败可重新应用，不能以重复播放来冒充重试。损坏设置按关闭处理，显式修复时保存备份。
+
+官方证据及证据强度
+版本：网易云音乐 Windows x64 3.1.42.205594。优先使用安装包恢复 JS 和 native。
+本项没有 YesPlayMusic 来源，没有新会员接口、云端音效计算或支付请求。
+私有参考目录：references/netease-3.1.42.205594-analysis/recovered-js/modules/
+hybrid_app.chunk.1482700000000.js/。以下模块编号均属于该目录。
+M81.g：数字乘 10000 后 JS parseInt；字符串先被非数字判定置零。不能直接用 Rust
+float-to-int 截断替代 JS 的科学计数法行为。极小值和极大值可能从指数记法得到首位整数。
+M116.tuningLoudnessBalance：开关 && 转换值非零；先 setLoudnessON，再 setLoudnessParams。
+M116 的本机设置及旧版升级逻辑：默认 false；官方有一次性旧版偏好迁移。本社区客户端
+不读取其他产品的配置目录，不声称迁移了官方旧安装的设置。
+M163：在线鉴权结果 gain → volumeDelta，下载/本地选择对应音源的 volumeDelta。
+M23 metadata：music:/dj: 的 volumeDelta（播客外层覆盖 mainMusic），普通标签及 NCM。
+官方 Play.jsx 的标签描述用于设置页文案；界面按本项目已有设置排布接入。
+
+neaudioeffects.dll SHA256：
+c59105e1072d7d7dbd2d2844ac9c170de7e7b41eb463dc56a11c9b37bafac6be
+RVA A5840 工厂、A6E30 初始化、A5690 系数、A7AE0 参数、A7B60 参考电平、
+A76E0 旁路、A7600 重置、A6470 平面 PCM 处理。默认参考电平 -12；计算
+10 ^ ((reference + gain - (-18)) * 0.05)，peak > 0 时再取 min(1/peak, factor)。
+没有 peak 时不额外限幅；不是响度检测器、动态压缩器或云端重新渲染。
+初始化 prev/target 为 1；设置参数/参考电平同时重置两者；旁路只更新 target；
+reset 令 prev=target。处理末尾不足四帧的标量分支从 previous 重新起算，其历史行为
+与直觉线性连续插值不同，Rust 保留该行为。只修改有效帧，不覆盖容量尾部。
+处理器 RVA 1AA50 将该节点放在效果节点之前；MpvEngine 使用 af pre 保持此顺序。
+
+cloudmusic.dll RVA EFFD20/EFF970 读取 gain/peak 的字典整数并除以 10000，
+worker EFAB20 转 float。恢复的 JS 只发送 gain。peak=0 的判断结合反汇编的 CEF
+GetInt 调用和上游 CEF 缺键返回零契约：
+https://github.com/chromiumembedded/cef/blob/4430/libcef/common/values_impl.cc
+本项未执行完整 cloudmusic 的 CEF→worker 路径，也未证明随包 CEF 等同 4430 提交。
+因此“遗漏 peak 为零”是有来源的桥接推断，不能标成全官方客户端端到端实测。
+DSP 向量本身直接调用经审阅的官方纯计算入口，分别覆盖零/正/负 peak。
+
+实现映射
+core/src/effects/dsp/loudness.rs：安全 DSP；有限值/维度检查，失败不部分修改块。
+core/src/effects/loudness/mod.rs：M81.g 转换、TrackGain、业务状态与原生配置。
+core/src/effects/loudness/preferences.rs：UUID CAS、本机持久化、损坏备份与显式修复。
+core/src/effects/loudness/{abi,host}.rs：独立句柄、版本 ABI、受信原生库路径、统计。
+core/src/effects/filter_graph.rs：可信路径的两层 FFmpeg 转义、2048 帧分块和尾块。
+core/audio-filter/src/{loudness,processor_stage,processor,control,ladspa}.rs：
+独立 LADSPA descriptor 1 / ID 0x43554e；原 GEQ descriptor 0 不变；类型校验、
+配置修订、回调失败/撤销后的静音隔离；无跨线程裸指针共享。
+core/src/playback/engine/mpv/loudness.rs：加载、热更新、观察与只移除自身命名滤镜。
+core/src/playback/controller/loudness.rs：当前来源、最新偏好、账号代次、应用/失败恢复。
+core/src/playback/source/loudness.rs、library/matching/hints.rs：现有官方标签解析复用。
+core/src/client/player/：类型化 DTO/命令，公开字段不含完整授权 URL、Cookie 或密钥。
+frontend/src/components/settings/LoudnessBalance.vue：开关、状态、恢复、键盘焦点。
+frontend/src/composables/usePlayer.ts：配置独立请求，不能吞掉并行播放请求的错误。
+desktop/src/effects.rs：沿用本机原生工厂；core 不依赖 Tauri、WebView 或 Python。
+
+音源取值顺序与边界
+在线：实际 SourceResolver 的 resource_info.gain，忽略队列对象伪造的 gain/volumeDelta。
+下载：先验证当前账号离线登记、路径、完整性及访问权，再用已完成任务的 resource.gain；
+没有任务字段/分离登记的本地文件走文件标签。此信息不代替授权检查。
+本地：读取当前文件官方格式的 music:/dj: 标签或原 NCM metadata，之后仍校验扫描修订；
+读取前后指纹变化不沿用旧值。可选标签失败不阻止有效音频解码，明确显示音量信息异常。
+CUE：当前研究没有每个分段独立音量数据的确证，不将容器音量错误套到各首。
+数值无法转为 native i32、浮点系数溢出或非法数据时旁路。低层有限输入不实现额外限幅。
+同一歌曲不同音质重新取得的 gain 可以不同；不会从旧音质或队列标题信息填补。
+独立 MV 播放器尚未接本项偏好/音源取值；不能把 AudioEngine 转发方法当成 MV 通过。
+播放器中其余 PEQ/低高音/旋转、效果材料整图的选择与组合仍见原矩阵边界。
+
+验证层次
+core/tests/fixtures/loudness-official.json.gz 是冻结的合成输入与官方输出，没有 DLL、
+机器码、音频版权内容或账号数据。manifest 记录 DLL、隔离 oracle/驱动摘要与 RVA。
+159 组原生序列、510 组 JS 转换，公开 CI 直接对照冻结向量，不加载官方安装文件。
+core/tests/loudness_dsp.rs 对照所有样本/状态，容差适配 Windows/Linux powf；
+loudness_preferences.rs 验证双窗口 CAS、重启、损坏、缺失记录、事务失败不部分写入；
+loudness_controller.rs 验证换曲、音质、解码并发、账号、持久化、重试和清理失败停止；
+loudness_sources.rs 验证普通三种标签/NCM/未标记文件、队列假值、CUE、文件修订。
+core/audio-filter 的实际 C ABI/LADSPA 回调检查处理、旁路、in-place、尾块和撤销隔离。
+core/audio-filter/examples/loudness_probe.rs：libmpv 解码→FFmpeg→LADSPA→实际 PCM 文件，
+44.1k 单声道 / 48k 双声道 / 96k 六声道，负/正增益、关闭、GEQ组合共12组；
+逐样本与恢复 DSP 对照，并验证热关闭、定位、重新开启、换曲和只移除自己。
+desktop/examples/native_audio_probe.rs + native_smoke.py --filter-library：相同 PCM 流程
+在真实 GTK/WebView 初始化、非 C locale 后执行，不能以单独 core 测试替代此项。
+desktop/examples/loudness_ui_probe.{rs,js} + scripts/ci/loudness_ui_smoke.py：
+真实页面→IPC→偏好→本地标签→actor→原生滤镜统计，合成音频、null 输出；
+包含浅深色/1120×760与760×540、热开关、缺字段、异常字段、重启、缺库和损坏修复。
+详细当次结果在 loudness-validation.json；测试定义本身不是成功证据。
+没有物理声卡听感/真实显示器刷新率证明，未做官方旧客户端整机音响 A/B。

@@ -35,7 +35,7 @@ core/src/podcast/     播客/有声书列表、节目详情/权限、发现/历�
 core/src/comments/    资源/查询/官方响应；api读取/定位/信息/点赞，likes日志/核对，writes纯文本发布/回复/删除及恢复，floor楼层；service/cache账号缓存与版本。
 core/src/protocol/    传输契约、请求上下文、分页、wire/ 协议与 http/ 适配。
 core/src/storage/     SQLite 事务和账号命名空间。
-core/src/effects/     api/catalog/rights、service材料库、authorization登记/停止；ncae/material/compose/dsp；equalizer与core/audio-filter已接MpvEngine实际GEQ及账号设置/actor/IPC/桌面均衡器；整图与其他音效UI继续。
+core/src/effects/     api/catalog/rights、service材料库、authorization登记/停止；ncae/material/compose/dsp；equalizer与core/audio-filter已接MpvEngine实际GEQ及账号设置/actor/IPC/桌面均衡器；loudness已接官方DSP、当前音源增益、本机偏好及设置页（loudness-contracts.txt）；整图与其他音效UI继续。
 core/src/playback/    队列/时间线；engine/安全libmpv适配、source/授权缓存、controller/持久化控制器。
 protocol/wire/       serialization、crypto、eapi、weapi、aegis 分文件组织纯协议。
 core/src/listen_together/ 房间/队列/指令过滤；service/ 持久操作、只读核对、账号隔离和定时入口。

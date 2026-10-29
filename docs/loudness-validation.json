@@ -1,0 +1,101 @@
+{
+  "date": "2026-10-29",
+  "scope": "Official loudness DSP, independent native filter, source lifecycle, device preference and settings UI",
+  "fullGoalComplete": false,
+  "platform": "Linux x86_64",
+  "toolchain": {
+    "rust": "1.96.0",
+    "node": "24.16.0"
+  },
+  "format": "passed",
+  "clippy": "workspace all-targets custom-protocol, -D warnings, passed",
+  "workspaceTests": {
+    "targets": 254,
+    "passed": 1173,
+    "failed": 0,
+    "ignored": 0,
+    "returncode": 0,
+    "elapsedSeconds": 136.65
+  },
+  "frontend": {
+    "cleanInstall": true,
+    "format": true,
+    "typecheck": true,
+    "build": true,
+    "tests": 229,
+    "failed": 0
+  },
+  "ciRuleTests": 21,
+  "frozenOracle": {
+    "nativeSequences": 159,
+    "jsConversions": 510,
+    "fixtureSha256": "2a728c693df0c8a6f9752ba20409f1f658b7a823a043f6934bfb820191eeb431",
+    "manifest": "core/tests/fixtures/loudness-official-manifest.json"
+  },
+  "guiInitializedPcm": {
+    "cases": 12,
+    "maximumAbsoluteError": 0.0,
+    "locale": "zh_CN.UTF-8",
+    "numericLocaleCompatible": true,
+    "onlyNumericLocaleAdjusted": true,
+    "businessPreferenceTestedByThisProbe": false,
+    "report": ".build/loudness-gui-business-3.json"
+  },
+  "equalizerRegression": {
+    "actualPcmCases": 3,
+    "maximumAbsoluteError": 0.0,
+    "report": ".build/loudness-geq-regression-1.json"
+  },
+  "settingsWebView": {
+    "ok": true,
+    "actualWebView": true,
+    "actualDecoder": true,
+    "audioOutput": "null",
+    "physicalDisplayVerified": false,
+    "physicalAudioOutputVerified": false,
+    "realMusicRequests": 0,
+    "cases": [
+      {
+        "mode": "normal",
+        "states": 10,
+        "screenshots": 10
+      },
+      {
+        "mode": "reopen",
+        "states": 2,
+        "screenshots": 2
+      },
+      {
+        "mode": "missing",
+        "states": 4,
+        "screenshots": 4
+      },
+      {
+        "mode": "damaged",
+        "states": 3,
+        "screenshots": 3
+      }
+    ],
+    "report": ".build/loudness-ui-2/audit.json",
+    "gallery": ".build/ui-detail-gallery/index.html",
+    "compositor": "Xvfb + xcompmgr",
+    "businessPreferenceTestedByThisProbe": true
+  },
+  "boundaries": [
+    "Windows execution awaits exact-commit CI; local Linux is not Windows validation.",
+    "No physical soundcard listening, screen refresh-rate or DPI claim.",
+    "Independent MV player does not yet consume this preference or source gain.",
+    "Missing peak=0 is a CEF/bridge inference; the complete official cloudmusic bridge was not executed.",
+    "Other proprietary effects graph selection and routing remain outside this increment."
+  ],
+  "earlierAttempts": [
+    {
+      "path": ".build/loudness-ui-1",
+      "result": "fixture selected newest-file row instead of intended title; revised to select explicit synthetic title, rerun passed"
+    },
+    {
+      "path": ".build/loudness-gui-business-2.log",
+      "result": "runner output log name collided with probe exclusive log creation; used separate launcher log, rerun passed"
+    }
+  ]
+}
