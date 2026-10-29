@@ -873,3 +873,27 @@ Windows现场与接续提示焦点复查（2026-10-29）
   这只验证对应平台API/类型；Linux/Windows CI已分别加入字体GUI流程，精确提交的
   Windows原生枚举/GUI仍须它自己的运行结果。物理桌面不可用，不声明物理60Hz、
   高DPI、真实声卡、Wayland或Windows SMTC既有专项问题已解决。完整目标继续。
+
+2026-10-29：继续隔离桌面截图检查与设置控件对齐（fix/settings-control-layout）
+- 用户暂不方便登录物理桌面，沿用真实Tauri/WebKitGTK和合成账号，未读取或修改真实
+  账号资源。检查旧截图发现桌面歌词的原生select比同排输入框高，深色模式沿用GTK灰底，
+  复选框过小且紧贴文字；修复统一36px表单高度、主题背景、16px复选框与8px文字间距。
+  select仍为语义化原生控件，折叠外观使用CSS箭头；没有自建下拉菜单或改变提交逻辑。
+- .build/settings-layout-lyrics/report.json：25态/25图；截图中的所有设置控件实际高度
+  一致，复选框与文字没有挤压，并检查1120×760与800×650布局和底部按钮可达性。
+  真实共享libmpv/null播放、悬浮窗口、锁定/解锁、失败恢复、保存与重启回归通过。
+- .build/settings-layout-ux/report.json：41态/41图；歌单长标题与编辑入口、深浅色、
+  760×540编辑/确认/上传弹窗、边缘菜单、均衡器、焦点恢复、主题重启保持通过。
+  .build/settings-layout-fonts/report.json：10态/10图；字体目录、搜索、缺失回退、
+  独立原生Tab/Escape与焦点恢复、故障显式重试、大目录有界渲染和进程重启通过。
+  目录故障和12005项压力输入仍是显式测试注入，不冒充本机真实目录或OS错误。
+- .build/settings-layout-gallery/index.html包含76张本轮原始截图及此前深色设置对照。
+  人工查看了设置深浅色与窄窗口底部、歌单标题/编辑按钮、窄窗口深色歌单编辑/云盘上传、
+  字体缺失提示与均衡器截图。图集仅用CSS隐藏前后对照的桌面空白，未改截图像素。
+- 前端npm ci、format:check、227项测试、类型检查和生产构建通过；Rust fmt、严格
+  workspace Clippy和全workspace测试通过：248目标、1157 passed、0 failed、0 ignored。
+  CI规则21项通过。settings-layout-tested-dist.json保存21个实际构建文件的SHA256。
+  .build/target/debug/cumulus已更新。精确提交的两平台CI须另核对，未发布新版本。
+- 编译器退出后删除511份旧增量编译目录，每crate保留最新已完成的一份，实际释放
+  6190010368字节（约5.76GiB）；见.build/settings-layout-cleanup.json。
+  不将虚拟桌面结果称为物理60Hz、高DPI、声卡或Windows已验收；完整目标仍未完成。

@@ -31,8 +31,17 @@
       lines:[...document.querySelectorAll('.desktop-lyric-row')].map(rect)};`;
   const capture = async (name, main = false) => {
     await sleep(550);
+    const bounds = n => {const r=n.getBoundingClientRect();return {x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:r.width,height:r.height};};
+    const settingControls = main ? [...document.querySelectorAll('.lyric-setting-grid input,.lyric-setting-grid select,.font-input button,.lyric-color-grid input')].map(bounds) : [];
+    const settingChoices = main ? [...document.querySelectorAll('.desktop-lyric-settings .settings-choices label')].map(n=>{
+      const input=n.querySelector('input'), range=document.createRange();range.selectNodeContents(n);
+      range.setStartAfter(input);const text=range.getBoundingClientRect();
+      return {input:bounds(input),text:{x:text.x,y:text.y,width:text.width,height:text.height}};
+    }) : [];
+    if(settingControls.length) assert(Math.max(...settingControls.map(r=>r.height))-Math.min(...settingControls.map(r=>r.height))<=1, `${name} setting controls have inconsistent heights`);
+    assert(settingChoices.every(({input,text})=>input.width>=14 && input.height>=14 && text.x-input.right>=6 && Math.abs(input.y+input.height/2-text.y-text.height/2)<4), `${name} checkbox and label spacing/alignment`);
     const data = main ? {width:innerWidth,height:innerHeight,theme:document.documentElement.dataset.theme,
-      overflow:document.documentElement.scrollWidth>innerWidth,body:document.body.textContent} : await lyric(facts);
+      overflow:document.documentElement.scrollWidth>innerWidth,body:document.body.textContent,settingControls,settingChoices} : await lyric(facts);
     assert(!data.overflow, `${name} horizontal overflow`);
     if (data.controls) assert(data.controls.every(r=>r.x>=-1 && r.right<=data.width+1 && r.bottom<=data.height+1), `${name} controls clipped: ${JSON.stringify(data.controls)}`);
     await emit({kind:'snapshot',stage:`ux_${String(++stageCount).padStart(2,'0')}_${name}`,surface:main?'main':'lyric',...data});
