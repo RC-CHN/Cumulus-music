@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, watch, ref } from 'vue';
+import { computed, onMounted, onUnmounted, watch, ref, nextTick } from 'vue';
+import { onDesktopLyricOpen } from './adapters/desktopLyrics';
 import { useLocalShortcuts } from './composables/useLocalShortcuts';
 import Icon from './components/Icon.vue';
 import WindowControls from './components/WindowControls.vue';
@@ -419,6 +420,7 @@ watch(music.likeActivity, () => {
   void likeRecovery.refresh();
 });
 let nativeLikeListener: (() => void) | undefined;
+let desktopLyricListener: (() => void) | undefined;
 let mounted = true;
 onMounted(async () => {
   try {
@@ -452,12 +454,31 @@ onMounted(async () => {
   } catch {
     notice.value = '托盘喜欢状态订阅失败，请刷新资源或重新启动客户端';
   }
+  try {
+    const stop = await onDesktopLyricOpen(async (value) => {
+      if (!mounted || value.epoch !== account.value.epoch) return;
+      if (value.settings) {
+        player.lyricsOpen.value = false;
+        music.navigate({ kind: 'settings' });
+        await nextTick();
+        document.querySelector('#settings-desktop-lyrics')?.scrollIntoView({ block: 'start' });
+      } else if (value.playId && value.playId === player.view.value?.playId) {
+        player.lyricsOpen.value = true;
+        void player.loadLyrics();
+      }
+    });
+    if (mounted) desktopLyricListener = stop;
+    else stop();
+  } catch {
+    /* The settings entry remains available if event subscription fails. */
+  }
   if (mounted) await music.bootstrap();
 });
 onUnmounted(() => {
   mounted = false;
   accountListener?.();
   nativeLikeListener?.();
+  desktopLyricListener?.();
 });
 watch(
   () => [account.value.epoch, account.value.status],

@@ -88,11 +88,9 @@ fn publish<R: tauri::Runtime>(app: &tauri::AppHandle<R>, inner: &mut Inner) {
     // Never synchronously call native listeners under state/operation locks.
     tauri::async_runtime::spawn(async move {
         let _ = app.emit_to("main", "cumulus:shortcuts", value.clone());
-        for label in app
-            .webview_windows()
-            .keys()
-            .filter(|label| crate::mini::owns(&app, label))
-        {
+        for label in app.webview_windows().keys().filter(|label| {
+            crate::mini::owns(&app, label) || crate::desktop_lyrics::owns(&app, label)
+        }) {
             let _ = app.emit_to(label, "cumulus:shortcuts", value.clone());
         }
     });

@@ -4,6 +4,7 @@ mod cloud;
 mod collections;
 mod commands;
 mod comments;
+pub mod desktop_lyrics;
 mod downloads;
 mod effects;
 mod fm;
@@ -49,6 +50,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
         .plugin(shortcuts::lifecycle())
         .manage(cumulus_core::Application)
         .manage(mini::Host::default())
+        .manage(desktop_lyrics::Host::default())
         .manage(player::PlayerStreams::default())
         .manage(together::CloseCoordinator::default())
         .manage(renewal::RenewalPump::default())
@@ -60,7 +62,10 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
             {
                 mini::dismiss(window.app_handle(), None, false);
             }
-            if !mini::closing(window, event) && !lifecycle::closing(window, event) {
+            if !desktop_lyrics::closing(window, event)
+                && !mini::closing(window, event)
+                && !lifecycle::closing(window, event)
+            {
                 together::closing(window, event);
             }
             if window.label() == "main" && matches!(event, tauri::WindowEvent::Focused(true)) {
@@ -68,6 +73,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
             }
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 if window.label() == "main" {
+                    desktop_lyrics::dismiss(window.app_handle(), None);
                     mini::dismiss(window.app_handle(), None, false);
                     lifecycle::stop(window.app_handle());
                     system_media::stop(window.app_handle());
@@ -92,6 +98,21 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
             }
         })
         .invoke_handler(|invoke| {
+            if desktop_lyrics::owns(
+                invoke.message.webview_ref().app_handle(),
+                invoke.message.webview_ref().label(),
+            ) {
+                let handler: fn(tauri::ipc::Invoke<R>) -> bool = tauri::generate_handler![
+                    desktop_lyrics::commands::desktop_lyric_read,
+                    desktop_lyrics::commands::desktop_lyric_ready,
+                    desktop_lyrics::commands::desktop_lyric_action,
+                    shortcuts::settings::shortcut_status,
+                    shortcuts::local::shortcut_attach,
+                    shortcuts::local::shortcut_detach,
+                    shortcuts::local::shortcut_press,
+                ];
+                return handler(invoke);
+            }
             if mini::owns(
                 invoke.message.webview_ref().app_handle(),
                 invoke.message.webview_ref().label(),
@@ -119,6 +140,9 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
             }
             let handler: fn(tauri::ipc::Invoke<R>) -> bool = tauri::generate_handler![
                 mini::commands::mini_enter,
+                desktop_lyrics::settings::desktop_lyric_settings,
+                desktop_lyrics::settings::desktop_lyric_change,
+                desktop_lyrics::settings::desktop_lyric_window_command,
                 captcha::solve_login_captcha,
                 watchman::watchman_observation,
                 watchman::collection::broker::watchman_measurement,
@@ -276,6 +300,7 @@ pub fn run() {
             lifecycle::install(app.handle())?;
             system_media::install(app.handle());
             shortcuts::install(app.handle());
+            desktop_lyrics::start(app.handle());
             renewal::start(app.handle());
             Ok(())
         })

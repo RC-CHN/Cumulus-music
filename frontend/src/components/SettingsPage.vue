@@ -22,6 +22,7 @@ import RelaySettings from './settings/RelaySettings.vue';
 import PlaybackStartup from './settings/PlaybackStartup.vue';
 import AudioOutput from './settings/AudioOutput.vue';
 import WindowBehavior from './settings/WindowBehavior.vue';
+import DesktopLyrics from './settings/DesktopLyrics.vue';
 import SystemMedia from './settings/SystemMedia.vue';
 import Shortcuts from './settings/Shortcuts.vue';
 import type { RelayModel } from '../composables/useRelay';
@@ -193,6 +194,7 @@ function accept(op: SettingsOperation) {
       <PlaybackStartup :account="account" />
       <AudioOutput :account="account" />
       <WindowBehavior :account="account" />
+      <DesktopLyrics :account="account" />
       <SystemMedia :account="account" />
       <Shortcuts :account="account" />
       <section class="settings-section" aria-labelledby="settings-account">

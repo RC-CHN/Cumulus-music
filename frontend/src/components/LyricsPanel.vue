@@ -2,6 +2,7 @@
 import { computed, ref, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import type { PlayerModel } from '../composables/usePlayer';
 import Icon from './Icon.vue';
+import DesktopLyricToggle from './DesktopLyricToggle.vue';
 import { useMotion } from '../composables/useMotion';
 const props = defineProps<{ player: PlayerModel }>();
 const { view, lyrics, lyricLoading, lyricError, loaded } = props.player;
@@ -85,8 +86,7 @@ function aligned(rows: { time?: number; lyric: string }[] | undefined, index: nu
     @keydown.esc.stop="player.lyricsOpen.value = false"
   >
     <header>
-      <span>正在播放</span
-      ><button
+      <span>正在播放</span><DesktopLyricToggle v-if="view" :epoch="view.epoch" /><button
         ref="close"
         class="icon-button"
         aria-label="收起播放详情"

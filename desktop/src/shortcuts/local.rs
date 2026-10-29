@@ -93,6 +93,21 @@ pub(super) async fn execute<R: tauri::Runtime>(
     // local command behind another operation and reinterpret it afterward.
     let _busy = dispatch::Busy::claim(&host)?;
     let client = app.state::<MusicClient>();
+    if key == Hotkey::Configured(Action::DesktopLyrics) {
+        let intent = crate::desktop_lyrics::shortcuts::capture(app)?;
+        if intent.epoch() != press.epoch {
+            return Err(Error::StaleResponse);
+        }
+        host::local_key(
+            &host,
+            label,
+            &press.epoch,
+            &press.lease,
+            &press.ticket,
+            &chord,
+        )?;
+        return crate::desktop_lyrics::shortcuts::toggle(app, intent).await;
+    }
     if key == Hotkey::Configured(Action::MiniMode) {
         if client.account()?.epoch != press.epoch {
             return Err(Error::StaleResponse);

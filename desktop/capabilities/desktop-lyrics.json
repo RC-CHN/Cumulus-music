@@ -1,0 +1,15 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "desktop-lyrics",
+  "description": "Transparent lyric surface chrome; business access is limited to the native lyric lifetime and captured transport.",
+  "windows": [
+    "desktop-lyrics-*"
+  ],
+  "permissions": [
+    "core:window:allow-start-dragging",
+    "core:window:allow-start-resize-dragging",
+    "core:window:allow-close",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten"
+  ]
+}

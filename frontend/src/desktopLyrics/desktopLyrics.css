@@ -1,0 +1,247 @@
+html[data-surface='desktop-lyrics'],
+html[data-surface='desktop-lyrics'] body,
+html[data-surface='desktop-lyrics'] #app {
+  background: transparent !important;
+  min-width: 0;
+}
+.desktop-lyric-surface {
+  position: relative;
+  height: 100%;
+  padding: 46px 16px 12px;
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  user-select: none;
+  color: #f4f3f7;
+  cursor: move;
+  transition: background-color 0.15s;
+}
+.desktop-lyric-surface:not(.locked):is(:hover, :focus-within) {
+  background: #202029dc;
+}
+.desktop-lyric-toolbar {
+  position: absolute;
+  inset: 6px 12px auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  font:
+    12px system-ui,
+    sans-serif;
+  opacity: 0;
+  transform: translateY(-3px);
+  transition:
+    transform 0.15s,
+    opacity 0.15s;
+}
+.desktop-lyric-surface:is(:hover, :focus-within) .desktop-lyric-toolbar {
+  opacity: 1;
+  transform: translateY(0);
+}
+.desktop-lyric-toolbar button {
+  height: 30px;
+  min-width: 28px;
+  padding: 5px;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.desktop-lyric-toolbar button:hover:not(:disabled) {
+  background: #ffffff20;
+}
+.desktop-lyric-toolbar svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  fill: none;
+}
+.desktop-lyric-toolbar .lyric-details {
+  flex: 1;
+  min-width: 0;
+  display: block;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lyric-transport,
+.lyric-offset-controls {
+  display: flex;
+  align-items: center;
+}
+.lyric-offset-controls span {
+  min-width: 34px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.desktop-lyric-lines {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  overflow: hidden;
+}
+.desktop-lyric-lines.vertical {
+  flex-direction: row-reverse;
+}
+.desktop-lyric-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.desktop-lyric-row.vertical {
+  height: 100%;
+  flex-direction: row-reverse;
+  flex: 1;
+}
+.lyric-channel {
+  width: 100%;
+  display: flex;
+  min-width: 0;
+  overflow: hidden;
+}
+.lyric-channel.vertical {
+  width: auto;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+}
+.desktop-lyric-text {
+  width: max-content;
+  flex-shrink: 0;
+  transition: transform 0.12s linear;
+  padding: 2px;
+}
+.lyric-channel.vertical .desktop-lyric-text {
+  writing-mode: vertical-rl;
+  height: max-content;
+}
+.desktop-lyric-original {
+  font-size: var(--lyric-size);
+  line-height: 1.35;
+  white-space: pre;
+}
+.desktop-lyric-auxiliary {
+  font-size: calc(var(--lyric-size) * 0.56);
+  line-height: 1.35;
+  white-space: pre;
+  text-align: inherit;
+}
+.lyric-ink {
+  display: inline-grid;
+  vertical-align: baseline;
+}
+.lyric-ink > span {
+  grid-area: 1/1;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  paint-order: stroke fill;
+}
+.lyric-unplayed {
+  background-image: var(--lyric-unplayed);
+  -webkit-text-stroke: var(--lyric-stroke) var(--lyric-outline-unplayed);
+}
+.lyric-played {
+  background-image: var(--lyric-played);
+  -webkit-text-stroke: var(--lyric-stroke) var(--lyric-outline-played);
+  transition: clip-path 0.12s linear;
+}
+.desktop-lyric-empty {
+  text-align: center;
+  font-size: min(var(--lyric-size), 30px);
+  line-height: 1.5;
+  color: #eee;
+  text-shadow: 0 1px 4px #222;
+  overflow-wrap: anywhere;
+}
+.desktop-lyric-error {
+  font:
+    12px system-ui,
+    sans-serif;
+  line-height: 1.4;
+  padding: 3px 8px;
+  margin-top: 4px;
+  align-self: center;
+  border-radius: 5px;
+  background: #202029e8;
+}
+.desktop-lyric-error button {
+  color: #ffc1ce;
+  margin-left: 8px;
+}
+.lyric-resize {
+  position: absolute;
+}
+.lyric-resize.East {
+  right: 0;
+  top: 0;
+  bottom: 8px;
+  width: 6px;
+  cursor: e-resize;
+}
+.lyric-resize.South {
+  left: 0;
+  right: 8px;
+  bottom: 0;
+  height: 6px;
+  cursor: s-resize;
+}
+.lyric-resize.SouthEast {
+  right: 0;
+  bottom: 0;
+  width: 12px;
+  height: 12px;
+  cursor: se-resize;
+}
+html[data-motion='reduced'] .desktop-lyric-surface,
+html[data-motion='reduced'] .desktop-lyric-toolbar,
+html[data-motion='reduced'] .desktop-lyric-text,
+html[data-motion='reduced'] .lyric-played {
+  transition: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .desktop-lyric-surface,
+  .desktop-lyric-toolbar,
+  .desktop-lyric-text,
+  .lyric-played {
+    transition: none;
+  }
+}
+@media (max-width: 500px) {
+  .desktop-lyric-toolbar {
+    gap: 1px;
+    inset-inline: 6px;
+  }
+  .desktop-lyric-toolbar .lyric-details {
+    display: none;
+  }
+  .lyric-offset-controls span {
+    min-width: 28px;
+  }
+}
+@media (max-width: 300px) {
+  .desktop-lyric-surface {
+    padding-top: 78px;
+  }
+  .desktop-lyric-toolbar {
+    display: grid;
+    grid-template-columns: 1fr repeat(3, 28px);
+    gap: 2px;
+  }
+  .lyric-offset-controls {
+    grid-row: 2;
+    grid-column: 1 / -1;
+    justify-content: center;
+  }
+}

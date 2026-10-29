@@ -8,7 +8,11 @@ import { initializeMotion } from './composables/useMotion';
 
 initializeMotion();
 initializeAppearance();
-if (/^#mini=\d+$/.test(location.hash)) {
+if (/^#desktop-lyrics=\d+$/.test(location.hash)) {
+  document.documentElement.dataset.surface = 'desktop-lyrics';
+  const { default: DesktopLyricApp } = await import('./desktopLyrics/DesktopLyricApp.vue');
+  createApp(DesktopLyricApp).mount('#app');
+} else if (/^#mini=\d+$/.test(location.hash)) {
   const { default: MiniApp } = await import('./mini/MiniApp.vue');
   createApp(MiniApp).mount('#app');
 } else {

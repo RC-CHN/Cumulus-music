@@ -207,6 +207,13 @@ pub fn install<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()
 fn build<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
     let show_item = MenuItem::with_id(app, "cumulus-show", "显示 Cumulus", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "cumulus-quit", "退出 Cumulus", true, None::<&str>)?;
+    let unlock_lyrics = MenuItem::with_id(
+        app,
+        "cumulus-lyric-unlock",
+        "解锁桌面歌词",
+        true,
+        None::<&str>,
+    )?;
     let separator = PredefinedMenuItem::separator(app)?;
     let media = media::Items::new(app)?;
     let likes = likes::Items::new(app)?;
@@ -224,6 +231,7 @@ fn build<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
             &likes.toggle,
             &likes.refresh,
             &transport_separator,
+            &unlock_lyrics,
             &quit,
         ],
     )?;
@@ -234,6 +242,11 @@ fn build<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
         .on_menu_event(|app, event| match event.id.as_ref() {
             "cumulus-show" => show(app),
             "cumulus-quit" => actions::request(app, true),
+            "cumulus-lyric-unlock" => {
+                if crate::desktop_lyrics::unlock(app).is_err() {
+                    show(app);
+                }
+            }
             _ => {
                 media::activate(app, event.id.as_ref());
                 likes::activate(app, event.id.as_ref());

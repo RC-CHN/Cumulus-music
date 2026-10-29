@@ -7,11 +7,15 @@ use cumulus_core::{
 use std::sync::atomic::Ordering;
 use tauri::{Emitter, Manager};
 pub(super) fn supported(key: Hotkey) -> bool {
-    key == Hotkey::Configured(Action::MiniMode) || NativeShortcutInvocation::supported(key)
+    matches!(
+        key,
+        Hotkey::Configured(Action::MiniMode | Action::DesktopLyrics)
+    ) || NativeShortcutInvocation::supported(key)
 }
 enum Invocation {
     Media(NativeShortcutInvocation),
     Window(crate::mini::ModeIntent),
+    Lyrics(crate::desktop_lyrics::shortcuts::Intent),
 }
 pub(super) struct Busy<'a>(&'a Host);
 impl<'a> Busy<'a> {
@@ -44,6 +48,8 @@ pub(super) fn pressed<R: tauri::Runtime>(app: &tauri::AppHandle<R>, ticket: Tick
     // Capture immediately on the native event, before queuing an async task.
     let captured = if key == Hotkey::Configured(Action::MiniMode) {
         crate::mini::capture_mode(app).map(|v| Some(Invocation::Window(v)))
+    } else if key == Hotkey::Configured(Action::DesktopLyrics) {
+        crate::desktop_lyrics::shortcuts::capture(app).map(|v| Some(Invocation::Lyrics(v)))
     } else {
         client
             .capture_native_shortcut(key)
@@ -73,6 +79,9 @@ pub(super) fn pressed<R: tauri::Runtime>(app: &tauri::AppHandle<R>, ticket: Tick
                     result
                 }
                 Invocation::Window(intent) => crate::mini::switch_mode(&app, intent).await,
+                Invocation::Lyrics(intent) => {
+                    crate::desktop_lyrics::shortcuts::toggle(&app, intent).await
+                }
             };
             if let Err(error) = result {
                 notice(&app, epoch.as_deref(), error);
@@ -101,11 +110,9 @@ fn notice<R: tauri::Runtime>(app: &tauri::AppHandle<R>, epoch: Option<&str>, err
     if let Some(epoch) = epoch {
         let payload = serde_json::json!({"epoch":epoch,"error":error});
         let _ = app.emit_to("main", "cumulus:shortcut-error", &payload);
-        for label in app
-            .webview_windows()
-            .keys()
-            .filter(|label| crate::mini::owns(app, label))
-        {
+        for label in app.webview_windows().keys().filter(|label| {
+            crate::mini::owns(app, label) || crate::desktop_lyrics::owns(app, label)
+        }) {
             let _ = app.emit_to(label, "cumulus:shortcut-error", &payload);
         }
     }
