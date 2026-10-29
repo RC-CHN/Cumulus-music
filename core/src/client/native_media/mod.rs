@@ -4,6 +4,7 @@ mod actions;
 mod adjustments;
 mod details;
 mod likes;
+mod shortcuts;
 mod view;
 use super::{
     MusicClient,
@@ -21,6 +22,7 @@ use crate::{
 pub use adjustments::NativeMediaAdjustment;
 pub use details::{NativeMediaDetails, NativeMediaItem, NativeMediaKind, NativeMediaStatus};
 pub use likes::{NativeLikeResource, NativeLikeSelection, NativeLikeSnapshot};
+pub use shortcuts::NativeShortcutInvocation;
 use std::sync::atomic::Ordering;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

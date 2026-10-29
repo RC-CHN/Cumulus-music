@@ -509,3 +509,6 @@ mod native_media_details_tests;
 
 #[path = "support/native_media_steps.rs"]
 mod native_media_steps_tests;
+
+#[path = "support/native_shortcut_client.rs"]
+mod native_shortcut_tests;
