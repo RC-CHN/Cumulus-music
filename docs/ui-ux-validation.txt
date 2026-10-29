@@ -715,7 +715,7 @@ Windows现场与接续提示焦点复查（2026-10-29）
 本轮在 feat/mini-player 上新增独立小窗入口。主界面保留原 App 实例；小窗按官方恢复的
 共享播放/队列/喜欢/置顶逻辑接入原 Rust 用例，细节见 desktop-mini-player-contracts.txt。
 新的小窗滑块使用 3px 轨道和 9px 手柄，保留 20px 操作高度；深浅色沿用现有主题。
-实际截图检查了标题/歌手截断、封面、运输控制排列、队列页脚和置顶/返回/关闭位置。
+实际截图检查了标题/歌手截断、封面、播放控制排列、队列页脚和置顶/返回/关闭位置。
 
 本次最终本地证据（全部合成数据，真实 WebView；未运行真实账号写操作）：
 - .build/mini-webview-verified/report.json：8 个状态 / 8 张截图、两个真实 WebView；
@@ -730,7 +730,7 @@ Windows现场与接续提示焦点复查（2026-10-29）
 - .build/mini-workspace-tests.log：244 个测试目标，1,132 passed，0 failed，0 ignored。
   相比此前增加 12 项：迷你共享状态 5、FM 限制 1、偏好/账号包装 5、窗口 lifetime 1。
 - .build/mini-frontend-tests.log：220 passed；format:check 和 build 通过。
-- .build/mini-clippy.log：workspace/all-targets 严格 Clippy 通过。
+- .build/mini-clippy-final.log：workspace/all-targets 严格 Clippy 通过。
 - .build/mini-ci-rules.log：21 项发行规则/打包辅助测试通过。
 
 前端在 npm ci 后再次构建，逐文件 SHA256 对照 GUI 实测所用产物必须完全一致；

@@ -14,7 +14,7 @@ PATTERNS = (
     'ci-scroll*', 'ci-graphics*', 'ci-ux*', 'ci-motion*', 'ci-accounts*',
     'ci-startup*', 'ci-output-settings*', 'ci-tray*', 'ci-mpris*', 'ci-catalog*', 'ci-likes*', 'ci-keyboard*',
     'ci-collections*', 'ci-history*', 'ci-settings*', 'ci-relay*',
-    'ci-shortcuts*', 'ci-system-media*',
+    'ci-shortcuts*', 'ci-system-media*', 'ci-mini*',
 )
 
 
