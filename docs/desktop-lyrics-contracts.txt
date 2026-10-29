@@ -4,8 +4,8 @@
 独立 Rust 核心已接入透明歌词窗口、主窗口开关与设置、原生快捷键和同一播放器控制。
 窗口在 desktop/src/desktop_lyrics 分模块管理生命周期、内容、设置、坐标与快捷键；
 frontend/src/desktopLyrics 为独立轻量入口，设置位于 components/settings/DesktopLyrics。
-完整客户端目标保持原范围。字体当前支持填写本机名称及平台回退，尚无原生字体列表；
-Windows、物理显示器/DPI、Wayland 与原生字体枚举的验收边界不能由 Linux 虚拟桌面代替。
+完整客户端目标保持原范围。本机字体目录、搜索与预览见 desktop-fonts-contracts.txt；
+Windows、物理显示器/DPI、Wayland 的验收边界不能由 Linux 虚拟桌面代替。
 
 官方证据与对应关系
 恢复材料目录：references/netease-3.1.42.205594-analysis/recovered-js/modules。
@@ -13,8 +13,8 @@ Windows、物理显示器/DPI、Wayland 与原生字体枚举的验收边界不�
   普通字重、描边、单行、横排、单双行居中、网易红。锁定在366行初始化为false。
 - 81.js:147–174/209–289：八套四段颜色、两段描边、单双行对齐矩阵、lineMode、
   topMost、translateMode、outlineShadow、horizontalLyric、lrcFont和setLock。
-- 81.js:300–338：系统支持字体/回退与普通/粗体映射。core不伪称已枚举本机字体；
-  原生字体枚举和实际缺字回退属于后续desktop适配。空字体名表示交给平台默认选择。
+- 81.js:300–338：系统支持字体/回退与普通/粗体映射。core提供官方候选字体顺序；
+  desktop经Pango/DirectWrite枚举本机字体；空名使用官方候选后接平台默认字体。
 - hybrid_64.chunk.1482700000000.js/3097.js:4050–4085：自定义颜色只保存当前一组，
   并同时应用颜色/描边；本实现也保留一组customPalette，切换预设不会删除它。
   4328–4454恢复字体、大小、字重、描边、单双行、横竖排和对齐设置动作。
@@ -125,7 +125,7 @@ Windows将binary换为.exe，并通过--runtime指定打包的native目录。--s
   不跟随长原文被移出屏幕。字号/字体/窗口变化触发ResizeObserver，不在每次时钟读取
   中查询布局。窄于300px时工具栏分两行，减少动态效果关闭过渡。
 - 横竖排、单/双行对齐、描边、粗体、8套预设与一组自定义ARGB颜色沿官方恢复字段。
-  字体采用输入的本机名称和系统fallback；目前没有“全部本机字体已枚举”的声明。
+  字体可从本机目录选择或手动输入；缺失字体保留原名称并按恢复出的候选顺序回退。
 - Linux tao 0.35.3 的CursorIgnoreEvents(true)使用左上角1×1输入区域；解锁恢复完整
   输入区域。独立X11检查记录矩形面积，明确保留该角落例外，不宣称每个像素完全穿透。
   Windows验证读取WS_EX_TRANSPARENT等原生样式，真实桌面仍须各自验收。

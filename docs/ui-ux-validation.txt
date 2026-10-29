@@ -840,3 +840,36 @@ Windows现场与接续提示焦点复查（2026-10-29）
 - 编译器退出后删除各crate较旧的增量编译会话、保留最新一份；
   .build/lyric-window-cleanup.json记录520个目录、实际释放8673521664字节（约8.1GiB）。
   源码、研究材料、账号数据、可执行文件和验证图片均保留。
+
+2026-10-29：桌面歌词本机字体与弹窗排版（feat/desktop-fonts）
+- 官方M81区分主界面字体筛选与桌面歌词完整支持目录；新实现沿桌面歌词语义。
+  Pango/DirectWrite、类型化IPC、官方候选顺序及社区回退差异见desktop-fonts-contracts.txt。
+  core仍不依赖GUI；没有Python运行时依赖，也未将字体目录发送给音乐服务。
+- .build/desktop-fonts-ui-delivery/report.json：首次9态、重启1态，共10张实际截图，
+  真实Tauri/WebKitGTK、LC_ALL=zh_CN.UTF-8、Xvfb和xcompmgr -n。真实目录296个家族；
+  两次进程中的枚举加IPC耗时约3ms/9ms，仅此环境测量，不作为所有机器性能承诺。
+  正常目录搜索/预览/应用、真实悬浮窗CSS候选链、缺失名字保存与重启恢复通过。
+- 独立XTest发送Tab/Escape，验证模态焦点及退出后回到触发按钮。检查打开时实际
+  transform/opacity过渡样式；减少动态效果沿现有统一策略。字体目录不会随设置轮询
+  重读。读取故障不自动重试，显式刷新恢复；失败和12005项大目录由测试IPC响应注入，
+  不冒充OS真实错误/真实安装数量。DOM始终最多20项，中文别名搜索与分页复位通过。
+- 截图发现通用dialog label/input样式将单选按钮放在名字上方，已显式修正行方向、
+  行间距与radio尺寸；另修复760×540时固定底栏压住预览说明，紧凑预览与独立底部
+  按钮不再重叠。检查浅色、深色、缺失提示、小窗口、大目录长名称与重启截图。
+- .build/font-lyric-delivery/report.json：原透明歌词窗口25态/25图通过，包括
+  样式/原生按键/锁定/取消/超时/损坏恢复/进程重开。与新字体10图合计35张原始PNG，
+  图集为.build/desktop-fonts-gallery/index.html。未编辑截图像素。
+- 初次字体用例误尝试覆盖Tauri不可写invoke属性，故障注入未生效，测试正确失败；
+  改为仅在测试WebView拦截该命令的fetch响应，并断言确实观察到原生请求。
+  第二次暴露测试快照文件未原子发布，driver偶尔读到空JSON；fixture改临时文件rename，
+  未通过捕获/忽略JSON解析失败放行。第三次在Vue更新前读取还原草稿，改等待真实DOM
+  更新后断言。失败证据保留于desktop-fonts-ui-1、-2、-verified（后者名称不代表通过）；
+  以最终desktop-fonts-ui-delivery的report.json为准；末次调整了输入标签关联后重新截图。
+- .build/font-workspace-tests-delivery.log：248目标、1157 passed、0 failed、0 ignored；
+  fmt与严格workspace Clippy通过。前端npm ci、format:check、227项测试、类型检查和
+  生产构建通过，21项CI规则通过。font-tested-dist.json保存21个实际构建文件SHA256。
+  .build/target/debug/cumulus已更新；图集只包含合成账号和曲目。
+- Windows字体模块使用实际源文件经x86_64-pc-windows-gnu隔离交叉Clippy检查通过，
+  这只验证对应平台API/类型；Linux/Windows CI已分别加入字体GUI流程，精确提交的
+  Windows原生枚举/GUI仍须它自己的运行结果。物理桌面不可用，不声明物理60Hz、
+  高DPI、真实声卡、Wayland或Windows SMTC既有专项问题已解决。完整目标继续。

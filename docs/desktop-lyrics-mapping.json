@@ -120,10 +120,33 @@
         "frontend/tests/desktop-lyrics.test.ts"
       ],
       "evidence": "真实Tauri主窗与歌词窗、同一播放ID和native音频；独立OS按键、输入区域、初始化超时、取消、重载、写入失败、修复和重启；具体通过层级见ui-ux-validation.txt"
+    },
+    {
+      "feature": "桌面歌词本机字体目录、搜索、预览与缺失字体回退",
+      "official": [
+        "hybrid_app.chunk.1482700000000.js/81.js:295-338"
+      ],
+      "core": [
+        "core/src/preferences/desktop_lyrics/style.rs"
+      ],
+      "desktop": [
+        "desktop/src/fonts/mod.rs",
+        "desktop/src/fonts/windows.rs"
+      ],
+      "ui": [
+        "frontend/src/components/settings/FontDialog.vue",
+        "frontend/src/components/settings/DesktopLyrics.vue"
+      ],
+      "tests": [
+        "core/tests/desktop_lyric_preferences.rs",
+        "frontend/tests/fonts.test.ts",
+        "desktop/examples/fonts_ui_probe.js",
+        "scripts/ci/fonts_smoke.py"
+      ],
+      "evidence": "平台适配/官方候选顺序/社区差异见desktop-fonts-contracts.txt；本机字体目录与故障、合成大目录分别标明。Windows原生运行仍需其精确提交CI，不由交叉编译替代。"
     }
   ],
   "remaining": [
-    "本机字体原生枚举与下拉选择（已有名称输入和平台fallback）",
     "Windows本批精确提交GUI/CI结果须单独核对",
     "物理多显示器/DPI、Wayland窗口与系统合成器验收",
     "Linux上游tao锁定保留左上角1×1输入区域；不宣称全像素穿透",

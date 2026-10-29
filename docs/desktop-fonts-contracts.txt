@@ -1,0 +1,64 @@
+桌面歌词：本机字体目录、选择与回退
+
+来源与差异
+- 官方恢复模块 hybrid_app.chunk.1482700000000.js/81.js:295–338，函数M/I。
+  主界面字体菜单筛选中文名称并排除部分装饰字体；桌面歌词lyricfontList采用
+  getSystemFonts→getNativeSupportFonts的完整支持目录。这里实现桌面歌词目录，
+  不照搬主界面的中文名称筛选，也不使用YesPlayMusic。
+- 官方默认候选顺序为微软雅黑、幼圆、楷体、隶书、新宋体，最终宋体。手动选择
+  的字体置于候选首位。core::preferences::desktop_lyrics::font_families保持顺序并
+  去重；WebView末尾补system-ui/sans-serif作为Linux适配，不伪装这些中文字体已安装。
+- 官方会计算当前可用候选；社区实现把候选链交给WebView，允许按缺失字形继续回退。
+  缺失的用户选择仍保存在设备偏好中，不静默改写名字，方便跨平台或重新安装字体后恢复。
+  此处是明确的兼容性差异，不宣称复原官方C++原生字形渲染器或像素一致。
+
+分层与接口
+- core只负责字体名称验证、候选顺序及既有样式持久化/CAS；不依赖GUI或平台字体库。
+- desktop/src/fonts：主窗口system_font_catalog(epoch)→{epoch,families:[{name,aliases}],
+  fallbacks}。调用前后校验账号代次；串行try_lock防止重复枚举。歌词/迷你/验证码窗口
+  不拥有这个IPC入口。只返回字体家族名称与本地化别名，不返回字体文件、路径或字节。
+- Linux：在GUI线程通过主窗口PangoContext::list_families枚举本进程字体上下文。
+  GTK对象不跨线程；通过oneshot传出字符串。目录可能含Pango逻辑家族，而非一个名字
+  对应一个物理字体文件；这里不保证枚举系统所有文件。没有新增外部命令或Python依赖。
+- Windows：spawn_blocking中的DirectWrite共享factory，GetSystemFontCollection(true)。
+  优先当前用户locale的家族名称，之后en-us、首个名称；其余名称作为搜索别名。
+  COM引用由windows crate管理；unsafe仅包围同步原生调用，有界UTF-16缓冲保持存活。
+  最多32768家族、每家族1024名称、每名称读取256个UTF-16码元；共同校验最终名称
+  非空、UTF-8不超过256字节且无控制字符，删除无效项、合并重复家族的别名。
+- 不上传目录，不调用音乐业务接口，不用字体目录构造设备指纹。目录仅在打开弹窗或
+  用户点刷新时读取；桌面歌词120ms显示轮询、设置800ms状态轮询不枚举字体。
+- Linux刷新读取Pango当前上下文，不调用仅供后端使用的FontMap.changed强行失效缓存。
+  刚安装字体但列表仍未更新时可能需要重启程序；Windows显式要求检查目录变化。
+
+界面与恢复
+- 设置→桌面歌词→选择字体。保留名称输入；弹窗搜索包含家族名称及本地化别名。
+  默认选项始终存在，最多20个目录项进入DOM；分页和查询变化重置列表滚动位置。
+  字体列表使用界面字体，只在单个预览区域应用所选字体，避免同时加载整页字体。
+- “使用此字体”只更新草稿，“应用样式”才走既有CAS保存并更新悬浮窗；取消弹窗或
+  还原草稿不会修改已保存名称。缺失字体有说明；读取失败显示错误，显式刷新才能重试。
+- 原生dialog限制焦点，打开聚焦搜索，Esc关闭；退出动画结束后按账号与当前焦点状态
+  恢复触发按钮。账号变化销毁旧弹窗；关闭后的异步目录结果不会进入新视图。
+- 复用modal的transform/opacity入场与退场，遵守全局减少动态效果。浅深色使用既有
+  主题变量；760×540保持两栏预览及独立底部按钮，长名称省略，完整名称在title可读。
+
+可执行验证
+前端fonts.test.ts：12005项分页/中文别名、缺失名称、关闭后迟到结果、旧账号拒绝、
+单次读互斥、失败无自动重试、显式恢复。core字体候选测试为官方M81的阅读对照断言；
+不把它冒充新增的官方JS执行向量。desktop模块测试目录规范化和尺寸上限。
+desktop_lyrics_ui_probe + CUMULUS_FONT_PROOF由fonts_smoke.py运行，使用隔离配置和
+合成账号、真实系统字体。正常枚举/选择/持久化/悬浮窗CSS/进程重启均走真实原生IPC。
+故障与12005目录压力用例只在测试WebView拦截该命令的fetch响应，明确不是系统真实目录。
+独立XTest/SendInput发送Tab/Esc，普通鼠标控件由DOM操作。原有桌面歌词流程另行回归。
+示例（Linux，仓库锁定工具链，先构建frontend与probe）：
+  LC_ALL=zh_CN.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/fonts_smoke.py \
+    --binary .build/target/debug/examples/desktop_lyrics_ui_probe --root .build/font-proof
+Linux/Windows CI分别执行，失败目录ci-fonts*随diagnostics归档。
+本机实际证据与截图清单见ui-ux-validation.txt。交叉编译只验证Windows适配类型/API；
+Windows原生枚举和GUI仍须精确提交的Windows runner结果。虚拟桌面不证明物理刷新率、
+真实声卡、高DPI、多显示器、Wayland或所有已安装字体的每个字形。
+
+平台API资料
+https://docs.gtk.org/Pango/class.Context.html
+https://docs.gtk.org/Pango/method.FontMap.changed.html
+https://learn.microsoft.com/en-us/windows/win32/api/dwrite/nf-dwrite-idwritefactory-getsystemfontcollection
+https://learn.microsoft.com/en-us/windows/win32/api/dwrite/nn-dwrite-idwritefontcollection
