@@ -11,6 +11,13 @@
   const key = (node, value) => node.dispatchEvent(new KeyboardEvent('keydown', { key: value, bubbles: true, cancelable: true }));
   const rect = node => { const r = node.getBoundingClientRect(); return { x: r.x, y: r.y, right: r.right, bottom: r.bottom, width: r.width, height: r.height }; };
   const visible = node => { const r = rect(node); return r.x >= 0 && r.y >= 0 && r.right <= innerWidth + 1 && r.bottom <= innerHeight + 1 && r.width > 0 && r.height > 0; };
+  const hittable = node => { const r = rect(node); return visible(node) && document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)?.closest('button') === node; };
+  const editorActions = () => all('.playlist-dialog footer button, .playlist-danger-actions button').map(node => ({ label: node.textContent.trim(), ...rect(node) }));
+  function editorActionsVisible() {
+    const dialog = rect(one('.playlist-dialog[open]'));
+    assert(editorActions().every(action => action.x >= dialog.x + 12 && action.right <= dialog.right - 12 && action.y >= dialog.y && action.bottom <= dialog.bottom - 12), 'editor actions clipped inside dialog or missing bottom inset');
+  }
+  const equalizerBands = () => all('.equalizer-band').map(node => ({ value: rect(node.querySelector('output')), slider: rect(node.querySelector('input')), label: rect(node.lastElementChild) }));
   const trackActions = () => all('.track-more').map(node => {
     const range = document.createRange(); range.selectNodeContents(node);
     const glyph = range.getBoundingClientRect();
@@ -21,7 +28,7 @@
   const facts = () => ({ width: innerWidth, height: innerHeight, theme: document.documentElement.dataset.theme,
     overflow: document.documentElement.scrollWidth > innerWidth,
     background: getComputedStyle(document.documentElement).backgroundColor, trackActions: trackActions(),
-    focused: document.activeElement?.getAttribute('aria-label'),
+    focused: document.activeElement?.getAttribute('aria-label'), editorActions: editorActions(), equalizerBands: equalizerBands(),
     dialogs: all('dialog[open]').map(node => ({ title: node.querySelector('h2')?.textContent, ...rect(node) })) });
   let stageCount = 0;
   async function capture(label) {
@@ -29,6 +36,7 @@
     assert(!facts().overflow, `horizontal document overflow: ${label}`);
     assert(all('dialog[open], .action-menu, .window-controls').every(visible), `clipped dialog/menu/window controls: ${label}`);
     assert(trackActions().every(({ button, row, duration, glyph }) => glyph.x >= button.x - 1 && glyph.right <= button.right + 1 && button.right <= row.right + 1 && duration.right <= button.x), `track action glyph clipped or overlaps duration: ${label}`);
+    assert(equalizerBands().every(({ value, slider, label }) => Math.abs((value.x + value.right - slider.x - slider.right) / 2) < 1 && value.bottom < slider.y && slider.bottom < label.y), `equalizer labels overlap or lose column alignment: ${label}`);
     await emit(`ux_${String(++stageCount).padStart(2, '0')}_${label}`, facts());
     await sleep(1300);
   }
@@ -101,6 +109,8 @@
     const name = one('[aria-label="歌单名称"]'); name.value = '午后散步'; name.dispatchEvent(new Event('input', { bubbles: true }));
     await wait(() => !button('保存修改').disabled, 'valid edited name');
     await capture('editor_light');
+    click(button('选择标签')); await wait(() => one('.tag-picker section'), 'playlist tag choices');
+    await capture('editor_tags_light'); click(button('选择标签'));
     for (const [label, suffix] of [['清空歌曲', 'clear'], ['设为公开', 'publish'], ['删除歌单', 'delete']]) {
       await playlistConfirmation(label, suffix);
       assert(one('[aria-label="歌单名称"]').value === '午后散步', 'return from confirmation must preserve unsaved edits');
@@ -115,12 +125,16 @@
     await emit('resize', { width: 760, height: 540 }); await wait(() => innerWidth === 760, 'small window');
     await edit(); await capture('small_editor_light');
     assert(visible(button('保存修改')), 'small editor save is offscreen');
+    editorActionsVisible();
+    const smallName = one('[aria-label="歌单名称"]'); smallName.value = '午后散步'; smallName.dispatchEvent(new Event('input', { bubbles: true }));
+    await wait(() => !button('保存修改').disabled, 'valid small editor');
+    await capture('small_editor_valid_light'); editorActionsVisible();
     await closeEditor(); await theme('dark'); await capture('small_playlist_dark');
     click(one('[aria-label="外观主题"]')); await wait(() => one('.action-menu'), 'small theme menu');
     await capture('small_theme_menu'); key(document.activeElement, 'Escape');
     await wait(() => !one('.action-menu'), 'Escape closes menu');
     assert(document.activeElement === one('[aria-label="外观主题"]'), 'theme menu Escape focus');
-    await edit(); await capture('small_editor_dark'); await closeEditor();
+    await edit(); await capture('small_editor_dark'); editorActionsVisible(); await closeEditor();
     await edit(); await playlistConfirmation('删除歌单', 'small_dark'); await closeEditor();
     await page('我的歌单', '.playlist-card');
     const grid = one('.playlist-grid'); grid.scrollTop = grid.scrollHeight; await sleep(250);
@@ -138,8 +152,25 @@
     await wait(() => one('.page-heading')?.textContent.includes('搜索'), 'search'); await capture('search_dark');
     await page('下载管理', '.downloads-page'); await capture('downloads_empty');
     await page('本地音乐', '.local-page'); await capture('local_empty');
+    await emit('resize', { width: 760, height: 540 }); await wait(() => innerWidth === 760, 'small local');
+    one('.local-page').scrollTop = one('.local-page').scrollHeight;
+    await capture('small_local_empty');
+    assert(hittable(button('选择音乐目录')), 'local library bottom action cannot be reached by scrolling');
+    await emit('resize', { width: 1120, height: 760 }); await wait(() => innerWidth === 1120, 'restore after local');
     await page('音乐云盘', '.cloud-page'); await capture('cloud_error');
     assert(one('.cloud-page').textContent.includes('暂时无法读取音乐云盘') && !one('.cloud-page').textContent.includes('把喜欢的音乐带在身边'), 'failed cloud load presented as empty library');
+    await emit('resize', { width: 760, height: 540 }); await wait(() => innerWidth === 760, 'small cloud');
+    await capture('small_cloud_error');
+    assert(all('.cloud-toolbar > button, .cloud-toolbar form').every(visible), 'small cloud toolbar is clipped');
+    one('.cloud-page').scrollTop = one('.cloud-page').scrollHeight; await sleep(100);
+    assert(hittable(button('重新加载')), 'cloud retry cannot be reached by scrolling');
+    one('.cloud-page').scrollTop = 0;
+    click(button('上传音乐')); await wait(() => one('.cloud-upload-dialog[open]'), 'cloud upload dialog');
+    await capture('small_cloud_upload'); editorActionsVisible();
+    const sourceButtons = all('.cloud-source-actions button').map(rect);
+    assert(sourceButtons.length === 2 && Math.abs(sourceButtons[0].y - sourceButtons[1].y) < 1 && sourceButtons[1].x - sourceButtons[0].right >= 8, 'upload source controls overlap or are misaligned');
+    click(one('[aria-label="关闭上传窗口"]')); await wait(() => !one('.cloud-upload-dialog'), 'close cloud upload dialog');
+    await emit('resize', { width: 1120, height: 760 }); await wait(() => innerWidth === 1120, 'restore after cloud');
     await page('会员中心', '.member-page'); await capture('member_error');
     await page('排行榜', '.rankings-page'); await capture('rankings_error');
     await page('私人漫游', '.fm-page'); await capture('fm_error');
@@ -149,14 +180,20 @@
     await page('一起听', '.together-page'); await capture('together_idle');
     click(one('[aria-label="播放队列"]')); await wait(() => one('.queue-panel'), 'empty queue'); await capture('queue_empty');
     click(one('[aria-label="关闭播放队列"]')); await wait(() => !one('.queue-panel'), 'close queue');
+    await theme('light');
+    click(one('[aria-label="均衡器"]')); await wait(() => one('.equalizer-dialog'), 'light equalizer'); await capture('equalizer_light');
+    click(one('[aria-label="关闭均衡器"]')); await wait(() => !one('.equalizer-dialog'), 'close light equalizer');
+    await theme('dark');
     click(one('[aria-label="均衡器"]')); await wait(() => one('.equalizer-dialog'), 'equalizer'); await capture('equalizer_dark');
     await emit('resize', { width: 760, height: 540 }); await wait(() => innerWidth === 760, 'small equalizer');
     await capture('equalizer_small');
     assert(visible(button('恢复平直')), 'small equalizer footer clipped');
     click(one('[aria-label="关闭均衡器"]')); await wait(() => !one('.equalizer-dialog'), 'close equalizer');
     assert(document.activeElement === one('[aria-label="均衡器"]'), 'equalizer focus restoration');
+    click(one('[aria-label="均衡器"]')); await wait(() => one('.equalizer-dialog'), 'reopen small equalizer'); await capture('equalizer_small_reopened');
+    click(one('[aria-label="关闭均衡器"]')); await wait(() => !one('.equalizer-dialog'), 'close reopened equalizer');
     await theme('system'); await theme('dark');
     localStorage.setItem('cumulus.ux.finished', '1');
-    await emit('complete', { ok: true, stageCount, realMusicRequests: 0, menuKeyboard: true, modalFocusRestored: true, smallEditorSaveVisible: true, explicitThemeSaved: true, trackActionsContained: true, longDuration: true, confirmationFocus: true, unsavedEditsPreserved: true });
+    await emit('complete', { ok: true, stageCount, realMusicRequests: 0, menuKeyboard: true, modalFocusRestored: true, smallEditorSaveVisible: true, smallEditorActionsVisible: true, equalizerColumnsAligned: true, explicitThemeSaved: true, trackActionsContained: true, longDuration: true, confirmationFocus: true, unsavedEditsPreserved: true });
   } catch (error) { await emit('failed', { ok: false, error: String(error), stageCount, ...facts() }); }
 })();

@@ -49,12 +49,12 @@ Linux 实际窗口 + 截图（新目录，不覆盖旧证据）：
   GDK_BACKEND=x11 WEBKIT_DISABLE_DMABUF_RENDERER=1 LIBGL_ALWAYS_SOFTWARE=1 \
     dbus-run-session -- xvfb-run -a -s '-screen 0 1400x1000x24' \
     /usr/bin/python3 desktop/examples/run_auth_probe.py .build/ux-proof \
-    --binary .build/target/release/examples/ux_ui_probe --stage-prefix ux_ --screenshots 32
+    --binary .build/target/release/examples/ux_ui_probe --stage-prefix ux_ --screenshots 39
   同一命令再加 --reopen --reopen-screenshots 2，验证退出进程后仍恢复深色，再切回跟随系统。
   实际生产包使用嵌入资源；可选 CUMULUS_PROOF_FRONTEND_DIST / CUMULUS_UX_SCRIPT 只存在于
   独立研究示例中，用于快速比对，CI 会清除它们且只测嵌入资源。
 
-CI 两平台均运行 scripts/ci/ux_smoke.py：首次 32 个界面状态 + 重开 2 个状态；Windows
+CI 两平台均运行 scripts/ci/ux_smoke.py：首次 39 个界面状态 + 重开 2 个状态；Windows
 传 --runtime .build/package-stage/windows-x64/native 使用发行构建的音频依赖。
 断言主题、菜单键盘、嵌套/普通弹窗焦点、编辑位置、边界禁用项、760×540 操作可见性、
 无水平溢出、云盘错误不冒充空库，以及跨进程主题保存。单纯编译不算这些断言通过。
@@ -677,3 +677,35 @@ Windows现场与接续提示焦点复查（2026-10-29）
   生产构建通过。详细来源、IPC、持久化和剩余边界见shortcut-contracts.txt。
   .build/shortcut-ui-keyboard-regression另回归未安装原生shortcut宿主的7态旧空格入口，
   包含750ms播放器初始化延迟、弹窗/输入/修饰键保护和同一播放ID，全部通过。
+
+2026-10-29 截图驱动的布局细节修正
+- 用户暂不方便登录物理桌面；本轮使用隔离Xvfb中的真实Tauri/WebKitGTK，检查
+  正式前端/IPC和合成数据。未使用SDDM登录界面冒充用户桌面，也没有访问真实账号。
+- .build/ui-detail-baseline保存修改前34态截图：760×540编辑框管理按钮贴底、
+  更多图标的极短线段不易辨认、均衡器原生下拉框与主题不一致、深色滑块对比不足。
+  调整短窗口表单间距和说明框高度，完整保留底部20px留白；更多图标改用实心SVG圆点。
+  文本按钮补齐圆角/悬停反馈，保留键盘focus-visible；均衡器统一下拉外观、增强
+  滑块对比度，开关动画改用transform，仍遵守系统和应用的减少动态效果设置。
+- 修复缺失的全局secondary按钮样式，主/次按钮中的图标和文字用flex居中。
+  云盘上传对话框的两个选择入口使用可换行的间距容器，避免行内基线错位和按钮紧贴。
+  本地页原生复选框原先仍为系统蓝色，统一checkbox/radio的主题accent-color。
+- .build/ui-detail-final的40态自动检查虽通过，人工看small_cloud_error仍发现
+  重新加载按钮落到播放条下方；旧云盘和本地页没有约束高度/滚动容器。
+  两页现限定在正文区域内滚动，短窗口云盘减少标题/提示间距。保留这组修正前证据，
+  不将自动检查通过当作所有样式已验收。
+- UX检查增加标签展开、有效短名称、窄窗口本地/云盘/上传、浅色EQ和小窗口EQ重开。
+  保存/管理操作除窗口边界外还核对弹窗内留白；本地选择和云盘重试用实际滚动和
+  elementFromPoint确认没有被播放条遮挡。另核对上传按钮间距/对齐与均衡器数字列。
+- 本轮仅依据现有官方恢复的页面结构及实际截图改进布局，没有引入其他客户端实现。
+  间距、对比度和图标细节为社区样式调整，不声称官方像素级一致。
+- .build/ui-detail-motion为18态/18截图，.build/ui-detail-shortcuts为18态/18截图；
+  串行通过动画开关/系统偏好事件/保存失败/重开、快捷键录入/冲突/失败焦点/重载。
+  使用合成PCM和真实libmpv/null，播放ID与引擎数量保持；已查看窄窗口浅色设置、
+  深色快捷键及保存失败截图。本轮不重申物理音频、Windows SMTC或实机刷新率通过。
+  两项回归在最后统一本地checkbox颜色之前执行，后续完整UX复验另记录精确样式。
+- 前端220项、Rust241目标1120项、CI规则21项通过，失败/忽略0；格式、严格workspace
+  Clippy、类型检查和生产前端/桌面构建通过。Rust用例执行后只继续调整了页面CSS、
+  上传按钮容器和UI检查脚本，没有改动Rust业务逻辑；精确提交的两平台CI需另核验。
+- 最终颜色调整后的.build/ui-detail-complete为41态/41截图，包含重开进程。
+  已查看小窗口编辑、库页、云盘上传、深浅EQ及列表截图；所有断言通过。
+  三组正式复验共77个状态，截图、JSON与报告仅保存在.build，不进入公开仓库。

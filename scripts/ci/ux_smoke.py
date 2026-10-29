@@ -30,7 +30,7 @@ def main():
         env[variable] = str(path)
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
-    for run, count in [('first', 32), ('reopen', 2)]:
+    for run, count in [('first', 39), ('reopen', 2)]:
         if run == 'reopen':
             env['CUMULUS_PROOF_REOPEN'] = '1'
         log_path = root / f'{run}.log'
@@ -51,13 +51,16 @@ def main():
             assert value['theme'] in ['light', 'dark'] and not value['overflow'], stage.name
         if run == 'first':
             assert all(complete[key] for key in ['menuKeyboard', 'modalFocusRestored',
-                       'smallEditorSaveVisible', 'explicitThemeSaved', 'trackActionsContained', 'longDuration',
+                       'smallEditorSaveVisible', 'smallEditorActionsVisible', 'equalizerColumnsAligned',
+                       'explicitThemeSaved', 'trackActionsContained', 'longDuration',
                        'confirmationFocus', 'unsavedEditsPreserved'])
         else:
             assert complete['reopened']
-    print(json.dumps({'ok': True, 'actualWebView': True, 'states': 34,
-                      'screenshots': 34 if args.screenshots else 0,
-                      'themeRestartVerified': True, 'realMusicRequests': 0}))
+    result = {'ok': True, 'actualWebView': True, 'states': 41,
+              'screenshots': 41 if args.screenshots else 0,
+              'themeRestartVerified': True, 'realMusicRequests': 0}
+    (root / 'report.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
+    print(json.dumps(result))
 
 
 if __name__ == '__main__':
