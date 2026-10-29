@@ -117,9 +117,15 @@ def launch(binary, env, log, output, capture):
                 if reply.exists():
                     continue
                 value = json.loads(path.read_text(encoding='utf-8'))
-                assert value['key'] == 'd', value
-                keyboard.chord('d')
-                sent.append('d')
+                assert value['key'] in ['d', 'Escape', 'Tab'], value
+                if value['key'] == 'd':
+                    keyboard.chord('d')
+                else:
+                    # Keep the real main WebView focused for local dialog keys.
+                    keyboard.event(value['key'], True)
+                    time.sleep(.06)
+                    keyboard.event(value['key'], False)
+                sent.append(value['key'])
                 reply.write_text('sent', encoding='utf-8')
             for path in output.glob('ux_*.json'):
                 if path in seen:

@@ -59,7 +59,7 @@ class Keyboard:
             self.u.DispatchMessageW(C.byref(message))
 
     def event(self, name, down):
-        keys = {'Control_L': 17, 'Alt_L': 18, 'Shift_L': 16, 'Left': 37, 'Up': 38, 'Right': 39, 'Down': 40, 'XF86AudioPlay': 179}
+        keys = {'Control_L': 17, 'Alt_L': 18, 'Shift_L': 16, 'Left': 37, 'Up': 38, 'Right': 39, 'Down': 40, 'XF86AudioPlay': 179, 'Escape': 27, 'Tab': 9}
         key = keys.get(name, ord(name.upper()) if len(name) == 1 else None)
         assert key is not None, name
         flags = (0 if down else 2) | (1 if key in [37, 38, 39, 40, 179] else 0)

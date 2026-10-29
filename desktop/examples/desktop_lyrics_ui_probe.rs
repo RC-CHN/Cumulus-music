@@ -173,7 +173,9 @@ fn main() {
                         value["nativePlayer"]=serde_json::to_value(client.subscribe_playback(&epoch).await.unwrap().current().unwrap()).unwrap();
                         let stage=value["stage"].as_str().unwrap_or("failed");
                         assert!(stage.chars().all(|c|c.is_ascii_alphanumeric()||c=='_'));
-                        fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+                        let pending=output.join(format!("{stage}.pending"));
+                        fs::write(&pending,serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+                        fs::rename(pending,output.join(format!("{stage}.json"))).unwrap();
                         if stage=="complete" || stage=="failed" { handle.exit(if stage=="complete" {0}else{1}); }
                     });
                 }
@@ -188,7 +190,9 @@ fn main() {
     }).on_page_load(|view,payload| {
         if view.label()=="main" && payload.event()==PageLoadEvent::Finished {
             view.eval(format!("window.__lyricProofReopen={};", std::env::var_os("CUMULUS_PROOF_REOPEN").is_some())).unwrap();
-            view.eval(include_str!("desktop_lyrics_ui_probe.js")).unwrap();
+            view.eval(if std::env::var_os("CUMULUS_FONT_PROOF").is_some() {
+                include_str!("fonts_ui_probe.js")
+            } else { include_str!("desktop_lyrics_ui_probe.js") }).unwrap();
         }
     }).run(context).expect("mini WebView proof");
 }
