@@ -685,3 +685,146 @@ async fn download_categories_filter_before_pagination_and_keep_cloud_audio_with_
     let epoch = f.client.account().unwrap().epoch;
     assert_eq!(f.client.downloads(&epoch, query).await.unwrap().total, 0);
 }
+
+#[tokio::test]
+async fn filtered_download_playback_uses_the_entire_order_not_the_visible_prefix() {
+    use cumulus_core::download::offline::{OfflineLibrary, PublishedDownload};
+    let f = Fixture::new();
+    let (original, view) = f.completed().await;
+    let seed = f
+        .store
+        .get("1", "download_tasks_v1", &original)
+        .unwrap()
+        .unwrap();
+    let offline = OfflineLibrary::new(f.session.clone()).unwrap();
+    let token = f.session.token().unwrap();
+    let original_path = PathBuf::from(view.tasks[0].path.as_ref().unwrap());
+    for i in 1..=140 {
+        let mut record = seed.clone();
+        let id = format!("{i:032x}");
+        let song = format!("{}", 20000 + i);
+        let path = f.root.path().join(format!("queue-{i}.flac"));
+        fs::hard_link(&original_path, &path).unwrap();
+        record["id"] = json!(id);
+        record["song_id"] = json!(song);
+        record["target"] = json!(path);
+        record["song"] = json!({"id":song,"name":format!("完整下载 {i:03}"),"ar":[{"name":"合成"}],"al":{"name":"fixture"},"dt":1000});
+        record["resource"]["id"] = json!(song);
+        let task: cumulus_core::download::service::DownloadTask =
+            serde_json::from_value(record.clone()).unwrap();
+        offline
+            .register(
+                &token,
+                &PublishedDownload {
+                    task_id: task.id.clone(),
+                    song_id: task.song_id.clone(),
+                    target: path,
+                    requested_quality: task.options.quality,
+                    song: task.song.unwrap(),
+                    resource: task.resource.unwrap(),
+                    encrypted: false,
+                    integrity: task.output_integrity.unwrap(),
+                },
+            )
+            .unwrap();
+        f.store.put("1", "download_tasks_v1", &id, &record).unwrap();
+    }
+    let query = DownloadQuery {
+        tab: DownloadTab::Completed,
+        category: DownloadCategory::Song,
+        keyword: "完整下载".into(),
+        sort: DownloadSort::Name,
+        descending: true,
+        offset: 0,
+        limit: 100,
+    };
+    assert_eq!(
+        f.client
+            .downloads("1", query.clone())
+            .await
+            .unwrap()
+            .tasks
+            .len(),
+        100
+    );
+    let mut wider = query.clone();
+    wider.limit = 200;
+    assert_eq!(
+        f.client.downloads("1", wider).await.unwrap().tasks.len(),
+        140
+    );
+    f.client
+        .play_selection(
+            "1",
+            PlaySelection::Downloads {
+                query: query.clone(),
+                start_id: Some(format!("{:032x}", 17)),
+            },
+        )
+        .await
+        .unwrap();
+    let queue = f.client.player_queue("1").await.unwrap();
+    assert_eq!(queue.tracks.len(), 140);
+    assert_eq!(queue.tracks.first().unwrap().track.id, "20140");
+    assert_eq!(queue.tracks.last().unwrap().track.id, "20001");
+    let current = queue
+        .tracks
+        .iter()
+        .find(|t| Some(&t.entry_id) == queue.current.as_ref())
+        .unwrap();
+    assert_eq!(current.track.id, "20017");
+    let before = queue.revision;
+    assert!(matches!(
+        f.client
+            .play_selection(
+                "1",
+                PlaySelection::Downloads {
+                    query: query.clone(),
+                    start_id: Some("not-present".into())
+                }
+            )
+            .await,
+        Err(Error::StaleResponse)
+    ));
+    assert_eq!(f.client.player_queue("1").await.unwrap().revision, before);
+    let mut active = query.clone();
+    active.tab = DownloadTab::Active;
+    assert!(
+        f.client
+            .play_selection(
+                "1",
+                PlaySelection::Downloads {
+                    query: active,
+                    start_id: None
+                }
+            )
+            .await
+            .is_err()
+    );
+    f.client
+        .player_action("1", PlayerAction::Stop)
+        .await
+        .unwrap();
+    let mut filtered = query;
+    filtered.keyword = "完整下载 01".into();
+    filtered.descending = false;
+    f.client
+        .play_selection(
+            "1",
+            PlaySelection::Downloads {
+                query: filtered,
+                start_id: None,
+            },
+        )
+        .await
+        .unwrap();
+    let queue = f.client.player_queue("1").await.unwrap();
+    assert_eq!(queue.tracks.len(), 10);
+    assert_eq!(queue.tracks[0].track.id, "20010");
+    assert_eq!(queue.tracks[9].track.id, "20019");
+    f.client
+        .player_action("1", PlayerAction::Stop)
+        .await
+        .unwrap();
+    assert_eq!(f.api.count("player/url"), 0);
+}

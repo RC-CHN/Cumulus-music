@@ -195,10 +195,7 @@ impl MusicClient {
         self
     }
     pub async fn downloads(&self, epoch: &str, query: DownloadQuery) -> Result<DownloadsView> {
-        super::mapping::page(query.offset, query.limit)?;
-        if query.keyword.len() > 1000 {
-            return Err(Error::InvalidInput("download keyword too long"));
-        }
+        query.validate()?;
         let context = self.downloads.inner.context(epoch)?;
         let host = self.downloads.inner.clone();
         // Restore only persisted runnable tasks. Paused/error and migrations need an explicit action.
@@ -206,6 +203,46 @@ impl MusicClient {
         tokio::task::spawn_blocking(move || host.view(&context, query))
             .await
             .map_err(|_| Error::State("download view worker stopped"))?
+    }
+    pub(super) async fn download_selection(
+        &self,
+        epoch: &str,
+        mut query: DownloadQuery,
+        start_id: Option<String>,
+    ) -> Result<(Vec<serde_json::Value>, usize)> {
+        query.validate()?;
+        if query.tab != DownloadTab::Completed || query.category == DownloadCategory::Mv {
+            return Err(Error::InvalidInput(
+                "download selection requires completed audio",
+            ));
+        }
+        // The native audio queue has a 5000-item bound. Read one extra item to
+        // reject oversized selections explicitly instead of silently truncating.
+        query.offset = 0;
+        query.limit = 5001;
+        let context = self.downloads.inner.context(epoch)?;
+        let host = self.downloads.inner.clone();
+        let view = tokio::task::spawn_blocking(move || host.view(&context, query))
+            .await
+            .map_err(|_| Error::State("download selection worker stopped"))??;
+        if view.total > 5000 {
+            return Err(Error::InvalidInput("download selection exceeds 5000 items"));
+        }
+        let ids: Vec<_> = view
+            .tasks
+            .into_iter()
+            .filter(|t| t.source != "mv")
+            .map(|t| t.id)
+            .collect();
+        let index = match start_id {
+            Some(id) => ids
+                .iter()
+                .position(|item| item == &id)
+                .ok_or(Error::StaleResponse)?,
+            None => 0,
+        };
+        let resources = self.download_resources(epoch, ids).await?;
+        Ok((resources, index))
     }
     pub fn validate_download_epoch(&self, epoch: &str) -> Result<()> {
         self.downloads.inner.context(epoch).map(|_| ())

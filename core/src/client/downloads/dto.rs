@@ -58,6 +58,20 @@ impl Default for DownloadQuery {
         }
     }
 }
+impl DownloadQuery {
+    // A growing prefix is returned atomically: refreshing or extending it cannot
+    // stitch together pages from different download orders. Other catalog APIs
+    // retain their 100-item page limit.
+    pub(super) fn validate(&self) -> crate::Result<()> {
+        if !(1..=1_000_000).contains(&self.limit) || self.offset > 1_000_000 {
+            return Err(crate::Error::InvalidInput("invalid download window bounds"));
+        }
+        if self.keyword.len() > 1000 {
+            return Err(crate::Error::InvalidInput("download keyword too long"));
+        }
+        Ok(())
+    }
+}
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DownloadTaskView {

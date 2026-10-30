@@ -76,6 +76,10 @@ pub struct QueueView {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PlaySelection {
+    Downloads {
+        query: crate::client::dto::DownloadQuery,
+        start_id: Option<String>,
+    },
     History {
         history_kind: crate::history::HistoryKind,
         revision: String,

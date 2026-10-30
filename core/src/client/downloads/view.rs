@@ -10,10 +10,7 @@ use crate::{
 use serde_json::json;
 impl Host {
     pub(super) fn view(&self, context: &Context, query: DownloadQuery) -> Result<DownloadsView> {
-        mapping::page(query.offset, query.limit)?;
-        if query.keyword.len() > 1000 {
-            return Err(Error::InvalidInput("download keyword too long"));
-        }
+        query.validate()?;
         context.guard()?;
         // Observe completion before reading the data it committed. A worker
         // can finish while this view is assembled: sampling jobs/operations

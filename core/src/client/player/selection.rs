@@ -42,7 +42,9 @@ impl MusicClient {
         let token = self.player_token(epoch)?;
         if !matches!(
             input,
-            PlaySelection::Local { .. } | PlaySelection::History { .. }
+            PlaySelection::Local { .. }
+                | PlaySelection::History { .. }
+                | PlaySelection::Downloads { .. }
         ) {
             self.session.with_token(&token, |_| Ok(()))?;
         }
@@ -51,6 +53,26 @@ impl MusicClient {
             .await?;
         let attempt = self.player.selection.fetch_add(1, Ordering::AcqRel) + 1;
         let input = match input {
+            PlaySelection::Downloads { query, start_id } => {
+                let (resources, index) = self.download_selection(epoch, query, start_id).await?;
+                let controller = self.player.controller().await?;
+                if self.player.selection.load(Ordering::Acquire) != attempt {
+                    return Err(Error::StaleResponse);
+                }
+                self.focus.check(lease, super::super::focus::Owner::Audio)?;
+                let state = controller
+                    .command(
+                        &token,
+                        PlaybackCommand::Replace {
+                            resources,
+                            index,
+                            source: json!({"kind":"downloads"}),
+                        },
+                    )
+                    .await?;
+                self.session.check_generation(&token)?;
+                return project(&state, &token);
+            }
             PlaySelection::History {
                 history_kind,
                 revision,
@@ -282,6 +304,7 @@ impl MusicClient {
                         json!({"kind":"mv_related","mvId":mv_id,"scene":"video"}),
                     )),
                     PlaySelection::Cloud { .. }
+                    | PlaySelection::Downloads { .. }
                     | PlaySelection::History { .. }
                     | PlaySelection::Local { .. }
                     | PlaySelection::Podcast { .. } => {

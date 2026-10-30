@@ -94,6 +94,11 @@ impl From<Error> for ClientError {
                 Error::StaleResponse | Error::Cancelled => {
                     ("stale", "操作已取消或账号已切换", false)
                 }
+                Error::InvalidInput("download selection exceeds 5000 items") => (
+                    "invalid_input",
+                    "当前播放列表最多容纳 5000 首，请先缩小下载搜索范围",
+                    false,
+                ),
                 Error::InvalidInput(_) => ("invalid_input", "输入内容不符合要求", false),
                 Error::QueueChanged => ("snapshot_changed", "列表已更新，请刷新后重试", true),
                 Error::State("playlist has no online tracks") => {
