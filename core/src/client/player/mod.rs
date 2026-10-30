@@ -1,5 +1,6 @@
 mod dto;
 mod lyrics;
+mod origin;
 mod output;
 mod preferences;
 mod selection;
@@ -173,6 +174,10 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
             .as_ref()
             .map(|i| track(&i.resource))
             .transpose()?,
+        origin: value
+            .selected
+            .as_ref()
+            .and_then(|i| origin::project(&i.source)),
         position: value.position,
         timeline: value.timeline.clone(),
         requested_quality: value.requested_quality.clone(),

@@ -19,6 +19,7 @@ pub struct PlayerView {
     pub play_id: Option<String>,
     pub entry_id: Option<String>,
     pub track: Option<TrackView>,
+    pub origin: Option<PlayerOrigin>,
     pub position: Option<f64>,
     pub timeline: Option<TimelineSnapshot>,
     pub requested_quality: Option<String>,
@@ -30,6 +31,15 @@ pub struct PlayerView {
     pub error: Option<&'static str>,
     pub history_warning: Option<&'static str>,
     pub position_reset: bool,
+}
+/// Public resource identity only; queue source metadata never crosses IPC.
+#[derive(Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum PlayerOrigin {
+    Playlist { id: String },
+    Album { id: String },
+    Artist { id: String },
+    Podcast { id: String },
 }
 #[derive(Clone, Serialize)]
 pub struct EqualizerView {
