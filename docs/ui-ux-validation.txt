@@ -1573,3 +1573,35 @@ Rustfmt、严格workspace全target/custom-protocol Clippy；259个测试目标�
   library-regression-collect收藏窗口28态均通过。111张本轮原图索引在
   .build/library-gallery/index.html；其中42张是本页专项，其余是相关共用交互回归。
   图集不修改原图，标注人工查看范围；不代表111个页面或所有官方分支已验收。
+
+2026-10-30 侧栏分组、歌单行与共享滚动专项
+- 官方来源、社区差异、导航和未完成菜单/拖放分支见sidebar-ui-contracts.txt。
+  以实际UI/UX状态计进度；既有核心测试、编译和截图总数不代表整页官方一致。
+- Sidebar组件承接原有导航；恢复“我的”分组、标题/封面/两行名称、独立折叠和选中反馈。
+  共享外部滚动的虚拟行替代全部歌单节点；稳定标量props避免播放器时钟驱动侧栏重绘。
+- sidebar-ui-first完成41态+重启2态。2400个合成歌单中，创建组1199个（排除红心）、
+  收藏组1200个；本轮捕获时最多挂载17行，真实账号写入0。首尾键盘跳转、焦点回收、
+  菜单、创建取消、播放指示、失败重试与重启保持通过。没有使用虚拟runner帧率作为证明。
+  人工查看02/03/29/39发现选中占位图对比度偏低、组按钮缺少圆角；补对比度和圆角。
+  另看01/30/37，发现回读成功时焦点是系统蓝框，标题边缘描边会裁切，后续统一主题内描边。
+- sidebar-ui-final完成43态；包含占位对比度、圆角、宽窗左距24px与键盘从可见行继续的
+  修正。增加指针contextmenu事件验证；悬停仍使用原生window.set_cursor_position。
+  这轮早于主题焦点框最后修正，不称为最终外观完成。所有前序原图保留。
+- 同一final内嵌前端的sidebar-regression-library42态和sidebar-regression-ux39+重启2态
+  通过，覆盖主歌单页面/返回/恢复和共用菜单/编辑/弹窗。它们早于最后仅焦点描边修改；
+  后续最终侧栏专项另行验证，不混称同一二进制下全项通过。
+- 工程防回归：Node24.16.0/Rust1.96.0，前端格式/268项测试/类型与production构建，
+  Rustfmt、严格workspace全target/custom-protocol Clippy、259目标/1186 passed/
+  0 failed/0 ignored和21项CI规则测试通过。最后CSS修正后重新构建内嵌前端与原生程序；
+  保留App大chunk提示。依赖锁文件未改变，使用此前npm ci安装的固定依赖。
+- 环境仍为Linux隔离Xvfb1440×1000/private D-Bus、真实Tauri/WebKitGTK与生产IPC；
+  LC_ALL=en_US.UTF-8，GDK_BACKEND=x11及WEBKIT_DISABLE_DMABUF_RENDERER=1仅用于探针。
+  合成账号/原生null音频；存储拒绝、读取延迟/失败/过期与系统动态效果偏好事件明确注入。
+  未执行真实音乐请求或账号写入；未验证实体显示器60Hz、Windows视觉、高DPI或真实封面。
+- sidebar-ui-final2是主题焦点/内描边修正后的最终43态/43图，再次验证列表回收后的
+  方向键从可见行继续、指针菜单与编辑实际入口：打开合成歌单1200的编辑页并取消，
+  焦点回到原侧栏条目；没有真实资源写入。最终人工查看03/30/37/39，确认选中占位
+  清晰、折叠按钮描边完整、恢复焦点跟随主题且偏好保存失败提示可见。
+- .build/sidebar-gallery/index.html收录最终侧栏43图与相关回归83图，分别注明版本；
+  图片总数126不计为页面数量。源文件/二进制散列与人工范围存于sidebar-proof-manifest.json。
+  后续Windows/Linux CI结果按对应SHA另查，不能以本机通过代替远端完整CI通过。
