@@ -26,6 +26,25 @@ def run_native(command, env, report, timeout=60):
         raise
 
 
+def read_native_report(report):
+    if not report.is_file():
+        progress = report.with_suffix('.progress.jsonl')
+        last = None
+        if progress.is_file():
+            for line in progress.read_text(encoding='utf-8', errors='replace').splitlines():
+                try:
+                    last = json.loads(line).get('stage')
+                except (json.JSONDecodeError, AttributeError):
+                    pass
+        issue = {'ok': False, 'stage': 'native_report', 'kind': 'missing_report', 'lastStage': last}
+        report.with_suffix('.failure.json').write_text(json.dumps(issue, indent=2) + '\n', encoding='utf-8')
+        log = report.with_suffix('.log')
+        if log.is_file():
+            print(log.read_text(encoding='utf-8', errors='replace')[-6000:])
+        raise AssertionError('native process returned without its required verification report')
+    return json.loads(report.read_text(encoding='utf-8'))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
@@ -55,7 +74,7 @@ def main():
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
     run_native([str(args.binary.resolve())], env, report)
-    proof = json.loads(report.read_text(encoding='utf-8'))
+    proof = read_native_report(report)
     assert proof['ok'] and proof['productionDesktopStartup'] and proof['numericLocaleCompatible']
     if args.filter_library:
         assert proof['actualDecoder'] and proof['realMusicRequests'] == 0

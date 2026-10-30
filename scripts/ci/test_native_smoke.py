@@ -9,7 +9,7 @@ import sys
 import tempfile
 import unittest
 
-from native_smoke import run_native
+from native_smoke import run_native, read_native_report
 
 
 class NativeDiagnostics(unittest.TestCase):
@@ -27,6 +27,24 @@ class NativeDiagnostics(unittest.TestCase):
         self.run_fixture("print('synthetic completion')")
         self.assertIn('synthetic completion', self.report.with_suffix('.log').read_text(encoding='utf-8'))
         self.assertFalse(self.report.exists())
+        self.assertFalse(self.report.with_suffix('.failure.json').exists())
+
+    def test_zero_exit_without_required_report_retains_actual_failure_stage(self):
+        self.run_fixture("print('synthetic PCM failure, despite zero exit')")
+        self.report.with_suffix('.progress.jsonl').write_text(
+            '{"stage":"window_created"}\n{"stage":"verification_failed"}\n', encoding='utf-8')
+        with contextlib.redirect_stdout(io.StringIO()) as output, self.assertRaises(AssertionError):
+            read_native_report(self.report)
+        self.assertIn('synthetic PCM failure', output.getvalue())
+        failure = json.loads(self.report.with_suffix('.failure.json').read_text(encoding='utf-8'))
+        self.assertEqual(failure['kind'], 'missing_report')
+        self.assertEqual(failure['lastStage'], 'verification_failed')
+        self.assertFalse(self.report.exists())
+
+    def test_completed_report_is_read_without_replacing_native_evidence(self):
+        proof = {'ok': True, 'syntheticFixture': 'complete'}
+        self.report.write_text(json.dumps(proof), encoding='utf-8')
+        self.assertEqual(read_native_report(self.report), proof)
         self.assertFalse(self.report.with_suffix('.failure.json').exists())
 
     def test_failed_process_keeps_utf8_output_and_original_exit_status(self):

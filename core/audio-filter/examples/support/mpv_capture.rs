@@ -101,7 +101,8 @@ pub fn capture(input: &Path, output: &Path, graph: &str, rate: u32, channels: us
             ("config", "no"),
             ("load-scripts", "no"),
             ("ytdl", "no"),
-            ("terminal", "no"),
+            ("terminal", "yes"),
+            ("msg-level", "all=warn"),
             ("vo", "null"),
             ("ao", "pcm"),
             ("ao-pcm-waveheader", "no"),
@@ -159,6 +160,11 @@ pub fn capture(input: &Path, output: &Path, graph: &str, rate: u32, channels: us
                     }
                     let data = (*event).data.cast::<c_int>();
                     if *data != 0 || *data.add(1) < 0 || !loaded {
+                        eprintln!(
+                            "PCM capture ended before verified EOF: reason={} error={} loaded={loaded}",
+                            *data,
+                            *data.add(1)
+                        );
                         return Err(Error::State("capture did not reach EOF"));
                     }
                     return Ok(());
