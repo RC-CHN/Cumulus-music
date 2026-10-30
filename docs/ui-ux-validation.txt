@@ -1120,3 +1120,38 @@ Windows现场与接续提示焦点复查（2026-10-29）
 - 环境为zh_CN.UTF-8、独立Xvfb/D-Bus/xcompmgr、真实Tauri/WebKitGTK；键盘由合成DOM事件
   驱动，未验证物理键盘/刷新率、Windows视觉/DPI或官方运行截图像素一致。封面裁剪窗口
   已定位官方442px/556px及操作区来源，尚未完成新一轮裁剪状态视觉验收；其余页面继续。
+
+
+2026-10-30 封面裁剪 UI/UX 对照与原生选图
+来源/适配/未完成项：playlist-cover-ui-contracts.txt；完整逐页审计仍未完成。
+
+可追溯的本机证据（全部在未提交的.build/）：
+- playlist-cover-before-dist是改前production dist快照，playlist-cover-before在同一example
+  和合成图片下采集32态。baseline明确不验新增布局/自动反馈，不能把32态作为新样式通过。
+- playlist-cover-after：首次改后32态。人工看宽窗浅色、窄窗深浅色、底部控件、申请拒绝；
+  发现深色滑块对比不足、短窗口初始手柄裁切2px和反馈可能在视口下方。没有当作最终结论。
+- playlist-cover-final-checks.json：格式、233项前端测试、类型/production build、内嵌构建、
+  cover32/editor45/ux41/motion18均0。图片手柄改白、短窗减少2px外距，处理/错误自动可见。
+- 随后增加新图片回到裁剪区的处理。playlist-cover-final2-checks.json中的格式、233项前端、
+  production/内嵌构建、cover32均0；其中native=1是原生选图脚本的时序失败，不是通过记录。
+- 原生脚本原先先发观察信号再点选择，xwininfo会看到已取消但仍保留的未映射窗口，导致按键
+  早于真正选图窗口。改为点击并观察busy后发信号，且确认Map State: IsViewable，再发按键。
+  playlist-cover-final3-native重跑48态+16原生窗口图通过；随后追加4个无效图片反馈截图，
+  playlist-cover-final4-native共52态+16原生窗口图通过。超时/线程失败会使脚本失败，不忽略。
+- final2-cover使用预置真实Rust草稿、生产组件与IPC检查32态；原图解码、裁剪、日志均走core。
+  final4-native通过GTK选择合成BMP，验证选图取消不建任务、100×100图片提示320像素下限、
+  选择640×480后初始裁剪视口、替换取消保留裁剪坐标；两尺寸×两主题实际操作。
+  保存申请只由隔离内存API返回405；NOS适配器拒绝所有上传，真实账号修改与上传均0。
+- 人工查看改前宽/窄浅色；改后及最终的宽浅/窄深正常态、滚动控件、处理中、拒绝、无效图片
+  与系统选图窗口。脚本另外检查实际控件命中、几何边界、焦点、滚轮、键盘和dialog取消事件。
+  最终图集playlist-cover-gallery/index.html：204张原图（84个裁剪/选图WebView状态、16张
+  原生窗口图、45个编辑页状态、41个共用状态、18个动画状态）及8组改前对照。正文只用CSS
+  裁去窗口外桌面，原始PNG不编辑；原生系统窗口图保留完整桌面。图集按实际构建轮次标注。
+- Rust最终工程检查playlist-cover-final2-engineering-checks.json：fmt、严格workspace Clippy、
+  全量workspace all-targets custom-protocol tests均0；254目标/1173 passed/0 failed/0 ignored。
+  Node24.16.0/Rust1.96.0及锁文件；npm ci通过。CI规则21测试、source audit与release guard通过。
+  这些是防回归证据，不计入UI一致性完成度；Linux/Windows远程CI运行结果另查，未发布版本。
+
+边界：隔离Xvfb/private D-Bus/xcompmgr的真实WebKitGTK，LC_ALL=zh_CN.UTF-8；不是pan物理
+桌面、刷新率或Windows/DPI证明。脚本指针/键盘事件与XTest原生选图分别记录，不声称物理外设
+或官方同态运行截图像素一致。官方首次入口先选图再开裁剪、其余上传/恢复窗口状态仍待完成。
