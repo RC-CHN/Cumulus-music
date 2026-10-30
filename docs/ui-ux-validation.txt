@@ -1938,3 +1938,31 @@ Rustfmt、严格workspace全target/custom-protocol Clippy；259个测试目标�
   GDK_BACKEND=x11仅作用于隔离进程，未设置WEBKIT_DISABLE_DMABUF_RENDERER。
   JS语法和git diff --check通过；本次只有检查脚本与文档改变，没有重跑无关全量业务测试。
   不将此检查修正算作新增UI功能，不宣称物理桌面、Windows/DPI或完整官方视觉一致。
+
+2026-10-31 下载批量操作、缩放与实际窗口
+- 恢复来源及产品/接口行为见 download-batch-ui-contracts.txt。Linux 实际 Tauri
+  WebView 使用隔离合成账号、下载目录、音乐文件；没有真实音乐服务请求或账号写入。
+  download-compact-batch-final 53 态通过。两主题、两尺寸逐项检查独立单曲/声音页、
+  真实文本起点、选择范围、列排序、键盘与焦点；从只显示 1 首的搜索进入可以选全
+  120 首，关闭恢复原筛选及滚动。覆盖收藏打开取消、离线入队/播放、完整读取失败/
+  重试、过期回调、记录改变后的禁用、已选文件与保留文件的实际磁盘结果。
+- download-compact-page 57 态、download-compact-playlist-table 40 态通过；
+  download-batch-playlist-queue-final 首轮在第 43 态后因菜单已关闭而失败。检查脚本
+  现在等卡片位置稳定、可命中且菜单已获得焦点再选择；保留原产品外部滚动关闭菜单
+  行为；download-compact-playlist-queue 44 态通过。这几项为改播放条列宽前的相邻回归。
+- 实机 KDE Wayland 桌面，物理输出 2560×1440、143.999Hz、系统缩放 1.25。
+  download-batch-local-layout-before 为改前；download-batch-local-layout-after 在
+  取得四张实机图后，切换分类时检查脚本的菜单等待失败，保留原记录。最终
+  download-batch-local-layout-final 在分类页转场结束、实际入口可命中后点按，
+  宽窗浅色、滚动、窄窗深色声音、删除确认和浅色单曲五态通过。仅抓合成窗口
+  自己的 XWayland 合成器 pixmap，没有屏幕或私人账户截图。对比 608 CSS px
+  宽窗：原窗口按钮在右缘之外，现在四个都在界内且命中；导航名称保留，侧栏
+  说明按品牌/客户端分两行。760 CSS px 播放后显示评论按钮时，工具区按实际宽度
+  排版；额外在 608 CSS px 核对全部控件及实际音质提示不与时长重叠。
+- 本机前台各 151 次回调，空闲/滚动分别约 30.9/30.9 次每秒（XWayland）和
+  30.9/30.1 次每秒（原生 Wayland，只测回调，见 download-batch-local-wayland）。
+  不能等同呈现帧率，也不能证明跑满 60。暂不为这一数字改变用户桌面或图形策略。
+  Windows/DPI、真实封面、其他页面以及官方同状态截图对照仍未由这批证明。
+- 图集 .build/download-batch-gallery/index.html，59 张原图和 SHA256。工程检查：
+  Rust fmt、严格 workspace Clippy 与全量测试、前端格式、290 项测试与类型/生产
+  构建通过；它们用于防回归，不计作官方 UI 一致。无版本/tag 变更。

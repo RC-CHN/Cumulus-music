@@ -83,6 +83,9 @@ client/downloads装配账号绑定上下文、三路调度和持久文件任务�
 下载与歌单批量表共用tableColumns/useTableColumns/TableColumnResize进行列宽分配、
 拖动/键盘和生命周期管理；下载页持有同分类列宽，以跨搜索/排序读取保留布局。
 声音取消排序传DownloadSort::None并保留服务稳定顺序；命令反馈附发起时动作上下文。
+下载批量内容页保存父列表状态；useDownloadBatch独立按账号和分类读取完整记录，和歌单
+批量表共用useBatchRows键盘/虚拟焦点逻辑。队列插入在Rust内区分在线歌曲和本地任务ID，
+文件批量删除复用逐文件持久操作，按已删/未完成反馈；详见download-batch-ui-contracts.txt。
 歌单操作在账号命名空间先持久化before与sending，远端结果不明时只读核对，不自动重发。
 播放推送使用Tauri Channel，每窗口单订阅，账号代次校验、迟到订阅/解除和窗口销毁清理。
 不自动读取references会话。
