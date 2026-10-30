@@ -14,7 +14,7 @@
   async function mode(value,failRead=0){window.__editorFixtureAck=false;await emit('editor-fixture',{mode:value,failRead});await wait(()=>window.__editorFixtureAck,'fixture control');}
   async function edit(id,ready=true){
     click(button('我的歌单'));await wait(()=>button(`管理歌单：合成歌单 ${id}`),'library list');
-    click(button(`管理歌单：合成歌单 ${id}`));await wait(()=>one('.action-menu'),'card menu');click(button('编辑歌单',one('.action-menu')));
+    click(button(`管理歌单：合成歌单 ${id}`));await wait(()=>one('.action-menu'),'card menu');click(button('编辑歌单信息',one('.action-menu')));
     await wait(()=>one('.playlist-editor-page'),'page opened');if(ready)await wait(()=>one('[aria-label="歌单名称"]')?.value,'editor loaded');await sleep(250);
   }
   async function close(discard=false){click(button('取消编辑歌单'));if(discard){await wait(()=>one('.playlist-editor-confirm'),'leave confirmation');click(button('放弃修改并离开'));}await new Promise(requestAnimationFrame);const previous=one('.content-page-previous');if(one('.playlist-editor-page'))assert(getComputedStyle(previous).display==='none'||getComputedStyle(previous).visibility==='hidden','retained page must not overlap editor exit animation');await wait(()=>!one('.playlist-editor-page'),'editor closed');await sleep(150);}
@@ -54,11 +54,11 @@
       const phase=one('.mutation-result').dataset.phase;assert(phase==={reject:'rejected',partial:'partial',uncertain:'uncertain'}[failure],'expected '+failure+', got '+phase);
       assert(one('[aria-label="歌单名称"]').value===`测试修改 ${id}`&&one('[aria-label="歌单简介"]').value===`合成简介 ${id}`,'failed write must preserve text draft');await capture(failure);
       await mode('success');if(failure==='uncertain'){assert(button('保存修改').disabled,'pending write cannot repeat');click(button('核对结果'));}else click(button('保存修改'));
-      await wait(()=>!one('.playlist-editor-page'),'save/reconcile confirmed');assert(all('.playlist-card').some(n=>n.title===`测试修改 ${id}`),'confirmed name must be read back in library');await capture(failure+'_recovered');
+      await wait(()=>!one('.playlist-editor-page'),'save/reconcile confirmed');assert(all('.playlist-card').some(n=>n.getAttribute('aria-label')===`测试修改 ${id}`&&n.querySelector('.card-title').textContent===`测试修改 ${id}`),'confirmed name must be read back in library');await capture(failure+'_recovered');
     }
     await mode('success');await edit(8);input('歌单名称','保存中的歌单');await sleep(100);await mode('hold_write');click(button('保存修改'));
     await wait(()=>button('保存修改')?.textContent.trim()==='正在保存…','write busy');click(button('每日推荐'));await sleep(100);assert(one('.playlist-editor-page')&&one('.playlist-editor-page .notice')?.textContent.includes('请稍候'),'busy departure must stay on editor');await capture('write_busy');
-    await mode('success');await wait(()=>!one('.playlist-editor-page'),'busy write confirmed');assert(all('.playlist-card').some(n=>n.title==='保存中的歌单'),'saved name readback');await capture('write_confirmed');
+    await mode('success');await wait(()=>!one('.playlist-editor-page'),'busy write confirmed');assert(all('.playlist-card').some(n=>n.getAttribute('aria-label')==='保存中的歌单'&&n.querySelector('.card-title').textContent==='保存中的歌单'),'saved name readback');await capture('write_confirmed');
     await edit(9);input('歌单名称','放弃的草稿');await sleep(100);click(button('每日推荐'));await wait(()=>one('.playlist-editor-confirm'),'discard navigation prompt');click(button('放弃修改并离开'));await wait(()=>!one('.playlist-editor-page')&&one('.daily-heading'),'discard navigated');await capture('navigation_discarded');
     await emit('complete',{ok:true,stageCount,checks,realMusicRequests:0,realAccountWrites:0,saveConfirmed:true,draftRetained:true,navigationGuard:true,reconciliationWithoutDuplicateWrite:true});
   }catch(e){await emit('failed',{message:String(e),stack:e?.stack,stageCount});}

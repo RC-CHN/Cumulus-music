@@ -13,7 +13,7 @@
  const dialog=()=>one('.cover-dialog');
  const close=async()=>{click(button('关闭封面编辑',dialog()));await wait(()=>!dialog(),'cover closed');assert(document.activeElement===button('替换歌单封面'),'focus returned to cover trigger');};
  async function fixture(kind){window.__coverFixtureAck=null;await emit('cover-fixture',{kind});await wait(()=>window.__coverFixtureAck,'fixture ack');assert(window.__coverFixtureAck.ok,JSON.stringify(window.__coverFixtureAck));}
- async function edit(){click(button('我的歌单'));await wait(()=>button('管理歌单：合成歌单 3'),'library');click(button('管理歌单：合成歌单 3'));await wait(()=>one('.action-menu'),'menu');click(button('编辑歌单',one('.action-menu')));await wait(()=>one('[aria-label="歌单名称"]')?.value,'editor');await sleep(250);}
+ async function edit(){click(button('我的歌单'));await wait(()=>button('管理歌单：合成歌单 3'),'library');click(button('管理歌单：合成歌单 3'));await wait(()=>one('.action-menu'),'menu');click(button('编辑歌单信息',one('.action-menu')));await wait(()=>one('[aria-label="歌单名称"]')?.value,'editor');await sleep(250);}
  async function open(hasImage){click(button('替换歌单封面'));await wait(()=>dialog()&&!button('关闭封面编辑',dialog()).disabled,'cover ready');if(hasImage)await wait(()=>one('.cover-crop-image')?.complete&&one('.cover-crop-image').naturalWidth>0,'decoded preview');await sleep(250);}
  async function theme(width,height,value){await emit('resize',{width,height});await wait(()=>innerWidth===width&&innerHeight===height,'resize');click(button('外观主题'));await wait(()=>one('.action-menu'),'theme menu');click(button(value==='dark'?'深色':'浅色'));await wait(()=>!one('.action-menu')&&document.documentElement.dataset.theme===value,'theme');}
  let stageCount=0,lastGeometry;const checks=[];

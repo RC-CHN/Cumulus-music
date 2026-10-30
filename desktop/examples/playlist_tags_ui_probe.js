@@ -11,7 +11,7 @@
  const hit=n=>{const r=rect(n),at=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);return at===n||n.contains(at);};
  const picked=()=>all('.selected-tag').map(n=>n.title);
  async function mode(value){window.__editorFixtureAck=false;await emit('editor-fixture',{mode:value});await wait(()=>window.__editorFixtureAck,'fixture control');}
- async function edit(){click(button('我的歌单'));await wait(()=>button('管理歌单：合成歌单 3'),'library');click(button('管理歌单：合成歌单 3'));await wait(()=>one('.action-menu'),'menu');click(button('编辑歌单',one('.action-menu')));await wait(()=>one('[aria-label="歌单名称"]')?.value,'editor');await sleep(250);}
+ async function edit(){click(button('我的歌单'));await wait(()=>button('管理歌单：合成歌单 3'),'library');click(button('管理歌单：合成歌单 3'));await wait(()=>one('.action-menu'),'menu');click(button('编辑歌单信息',one('.action-menu')));await wait(()=>one('[aria-label="歌单名称"]')?.value,'editor');await sleep(250);}
  async function open(){click(button('选择标签'));await wait(()=>one('.tag-picker'),'tag popup');await sleep(250);}
  async function closed(){await wait(()=>!one('.tag-picker'),'popover closed');}
  async function leave(){click(button('取消编辑歌单'));await sleep(100);if(one('.playlist-editor-confirm'))click(button('放弃修改并离开'));await wait(()=>!one('.playlist-editor-page'),'editor closed');}

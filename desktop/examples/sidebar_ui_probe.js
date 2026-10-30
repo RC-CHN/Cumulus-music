@@ -258,7 +258,7 @@
         () => one(".action-menu")?.style.visibility === "visible",
         "editor entry menu",
       );
-      await click(button("编辑歌单", one(".action-menu")));
+      await click(button("编辑歌单信息", one(".action-menu")));
       await wait(
         () => one(".playlist-editor-page input")?.value === "合成歌单 1200",
         "sidebar opens matching playlist editor",

@@ -95,13 +95,14 @@
     await theme('light'); await capture('daily_light');
     await page('我的歌单', '.playlist-card'); await capture('library_light');
     assert(!one('.playlist-card-controls'), 'old card action clutter remains');
-    const firstMenu = all('.playlist-card-menu button')[0]; click(firstMenu);
+    const firstMenu = one('[data-library-open="2"]').closest('article').querySelector('.menu-trigger'); click(firstMenu);
     await wait(() => one('.action-menu'), 'playlist menu');
     assert(button('上移歌单').disabled, 'first owned playlist cannot move up');
     key(document.activeElement, 'End'); assert(document.activeElement === button('下移歌单'), 'menu End navigation');
-    key(document.activeElement, 'ArrowUp'); assert(document.activeElement === button('编辑歌单'), 'menu skips disabled items');
+    key(document.activeElement, 'ArrowUp'); assert(document.activeElement === button('删除歌单'), 'menu skips disabled items and separator');
+    key(document.activeElement, 'ArrowUp'); assert(document.activeElement === button('编辑歌单信息'), 'previous editable action');
     await capture('card_menu');
-    click(button('编辑歌单')); await wait(() => one('[aria-label="歌单名称"]')?.value, 'card editor');
+    click(button('编辑歌单信息')); await wait(() => one('[aria-label="歌单名称"]')?.value, 'card editor');
     await closeEditor(); assert(document.activeElement === firstMenu, 'card menu modal focus restoration');
     click(all('.playlist-card')[1]); await wait(() => one('.playlist-title'), 'playlist');
     const heading = rect(one('.playlist-title h1')), editor = rect(one('.playlist-edit'));
@@ -147,7 +148,7 @@
     all('.playlist-shell').at(-1).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 }));
     await wait(() => one('.action-menu'), 'bottom card menu');
     assert(button('下移歌单').disabled, 'last collected playlist cannot move down');
-    assert(!button('编辑歌单'), 'collected playlist cannot be edited');
+    assert(!button('编辑歌单信息'), 'collected playlist cannot be edited');
     await capture('small_menu_edge');
     document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
     await wait(() => !one('.action-menu'), 'outside pointer closes menu');

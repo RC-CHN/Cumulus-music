@@ -70,9 +70,9 @@
       key(scroll,'Escape');await wait(()=>!one('.playlist-description-overlay'),'description escape');
       assert(document.activeElement===button('展开歌单简介'),'description return focus');
       click(button('更多歌单操作'));await wait(()=>one('.action-menu'),'header menu');await capture(`menu_${suffix}`);
-      click(button('编辑歌单',one('.action-menu')));await wait(()=>one('[aria-label="歌单名称"]')?.value,'editor');await capture(`editor_${suffix}`);
+      key(document.activeElement,'Escape');await wait(()=>!one('.action-menu'),'header menu closes');click(button('编辑歌单')); await wait(()=>one('[aria-label="歌单名称"]')?.value,'editor');await capture(`editor_${suffix}`);
       click(button('取消编辑歌单'));await wait(()=>!one('.playlist-editor-page'),'editor closed');await sleep(200);
-      assert(document.activeElement===button('更多歌单操作'),'menu editor return focus');
+      assert(document.activeElement===button('编辑歌单'),'title editor return focus');
       click(button('展开歌单简介'));await wait(()=>one('.playlist-description-overlay'),'description reopen');
       one('.searchbox input').focus();await wait(()=>!one('.playlist-description-overlay'),'description closes on focus outside');
     }
@@ -83,17 +83,17 @@
           await openId(id);await capture(`${label}_${width}_${value}`);
           if(id===3) assert(!button('展开歌单简介'),'short description needs no expander');
           if(id===4) assert(!one('.playlist-description')&&button('播放全部').disabled&&button('下载当前歌曲列表').disabled,'empty playlist actions');
-          if(id===1) assert(!one('.playlist-edit')&&!button('更多歌单操作'),'favorite has no editor');
+          if(id===1) assert(!one('.playlist-edit'),'favorite has no editor');
           if(id===20||id===25) {
             assert(!one('.playlist-edit'),'cannot edit another creator');
             assert(button(id===20?'取消收藏歌单':'收藏歌单')?.getAttribute('aria-pressed')===(id===20?'true':'false'),'subscription display');
           }
           if(id===25) {
-            assert(!button('更多歌单操作'),'unlisted playlist must not expose inapplicable reorder actions');
+            click(button('更多歌单操作'));await wait(()=>one('.action-menu'),'unlisted menu');assert(!button('上移歌单')&&!button('下移歌单')&&button('分享…'),'unlisted menu has sharing but no ordering');key(document.activeElement,'Escape');await wait(()=>!one('.action-menu'),'unlisted close');
           }
-          if(id===20) {
+          if(id===4) {
             click(button('更多歌单操作'));await wait(()=>one('.action-menu'),'disabled menu');
-            assert(all('.action-menu button').every(n=>n.disabled),'single collected list cannot be reordered');
+            assert(all('.action-menu button').every(n=>n.disabled),'empty playlist sharing is disabled');
             assert(document.activeElement===one('.action-menu'),'all-disabled menu must keep keyboard focus');
             const focusStyle=getComputedStyle(one('.action-menu'));
             assert(focusStyle.outlineStyle==='solid'&&focusStyle.outlineWidth==='2px'&&focusStyle.outlineOffset==='-2px','disabled menu must use an explicit inset focus ring');

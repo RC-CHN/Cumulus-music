@@ -432,7 +432,7 @@
     window.__searchFixtureAck = false;
     await emit("search-fixture", { mode: "missing_song" });
     await wait(() => window.__searchFixtureAck, "missing song fixture");
-    click(all(".playlist-card").find((n) => n.title === "合成歌单 5"));
+    click(all(".playlist-card").find((n) => n.getAttribute("aria-label") === "合成歌单 5"));
     await wait(() => one(".playlist-hero") && more(), "unavailable playlist");
     const local = await open();
     assert(

@@ -223,13 +223,13 @@ fn main() {
             let mut value:Value=serde_json::from_str(event.payload()).unwrap();
             if search_fixture::enabled() { value["syntheticSearchCalls"]=json!(search_fixture::calls()); }
             let stage=value["stage"].as_str().unwrap_or("");
-            if (search_fixture::enabled() || std::env::var_os("CUMULUS_SIDEBAR_UI_PROOF").is_some()) && ["search-pointer", "sidebar-pointer"].contains(&stage) {
+            if (search_fixture::enabled() || std::env::var_os("CUMULUS_SIDEBAR_UI_PROOF").is_some() || std::env::var_os("CUMULUS_PLAYLIST_MENU_UI_PROOF").is_some()) && ["search-pointer", "sidebar-pointer"].contains(&stage) {
                 let window=handle.get_webview_window("main").unwrap();
                 let position=tauri::LogicalPosition::new(value["x"].as_f64().unwrap(),value["y"].as_f64().unwrap());
                 window.set_cursor_position(position).unwrap();
                 window.eval("window.__searchPointerAck=true;").unwrap();return;
             }
-            if search_fixture::enabled() && stage=="search-clipboard-check" {
+            if (search_fixture::enabled() || std::env::var_os("CUMULUS_PLAYLIST_MENU_UI_PROOF").is_some()) && stage=="search-clipboard-check" {
                 use tauri_plugin_clipboard_manager::ClipboardExt;
                 let handle=handle.clone(); let expected=value["expected"].as_str().unwrap().to_owned();
                 tauri::async_runtime::spawn(async move {

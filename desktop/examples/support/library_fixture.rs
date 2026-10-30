@@ -8,6 +8,9 @@ struct State {
     order: Vec<u64>,
     reads: u64,
     writes: u64,
+    removed: Vec<u64>,
+    added: Vec<u64>,
+    detail_reads: u64,
 }
 fn state() -> &'static Mutex<State> {
     static STATE: OnceLock<Mutex<State>> = OnceLock::new();
@@ -21,7 +24,7 @@ pub fn control(value: &Value) {
 }
 pub fn report() -> Value {
     let s = state().lock().unwrap();
-    json!({"reads":s.reads,"writes":s.writes})
+    json!({"reads":s.reads,"writes":s.writes,"detailReads":s.detail_reads,"removed":s.removed,"added":s.added})
 }
 fn playlist(id: u64) -> Value {
     let mut value = super::playlist(id);
@@ -43,19 +46,36 @@ fn playlist(id: u64) -> Value {
         value["trackIds"] = json!([]);
         value["trackCount"] = json!(0);
     }
+    if std::env::var_os("CUMULUS_PLAYLIST_MENU_UI_PROOF").is_some() && id == 7 {
+        value["trackIds"] = json!(
+            (1..=240)
+                .map(|id| json!({"id":id,"v":0}))
+                .collect::<Vec<_>>()
+        );
+        value["trackCount"] = json!(240);
+    }
     value
 }
 pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
-    if !enabled()
-        || !matches!(
+    let mutation = std::env::var_os("CUMULUS_PLAYLIST_MENU_UI_PROOF").is_some()
+        && matches!(
             path,
-            "/api/user/playlist" | "/api/v6/playlist/detail" | "/api/playlist/order/update"
-        )
+            "/api/playlist/delete" | "/api/playlist/subscribe" | "/api/playlist/unsubscribe"
+        );
+    if !enabled()
+        || !(mutation
+            || matches!(
+                path,
+                "/api/user/playlist" | "/api/v6/playlist/detail" | "/api/playlist/order/update"
+            ))
     {
         return None;
     }
     for _ in 0..400 {
-        let held = state().lock().unwrap().mode == "hold" && path == "/api/user/playlist";
+        let mode = state().lock().unwrap().mode.clone();
+        let held = mode == "hold" && path == "/api/user/playlist"
+            || mode == "hold_detail" && path == "/api/v6/playlist/detail"
+            || mode == "hold_write" && mutation;
         if !held {
             break;
         }
@@ -71,7 +91,7 @@ pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
     Some(match path {
         "/api/user/playlist" => {
             s.reads += 1;
-            if s.mode == "fail" {
+            if s.mode == "fail" || s.mode == "fail_readback" {
                 return Some(Err(Error::Transport("合成歌单读取失败".into())));
             }
             if s.mode == "expired" {
@@ -92,13 +112,56 @@ pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
                 ids = s.order.clone();
                 ids.extend(rest);
             }
+            ids.retain(|id| !s.removed.contains(id));
+            for id in &s.added {
+                if !ids.contains(id) {
+                    ids.push(*id);
+                }
+            }
             let offset = args["offset"].as_u64().unwrap_or(0) as usize;
             let limit = args["limit"].as_u64().unwrap_or(1000) as usize;
             Ok(
                 json!({"code":200,"more":offset+limit<ids.len(),"playlist":ids.into_iter().skip(offset).take(limit).map(playlist).collect::<Vec<_>>()}),
             )
         }
-        "/api/v6/playlist/detail" => Ok(json!({"code":200,"playlist":playlist(id(&args["id"]))})),
+        "/api/v6/playlist/detail" => {
+            s.detail_reads += 1;
+            if s.mode == "fail_detail" {
+                return Some(Err(Error::Transport("合成歌单详情读取失败".into())));
+            }
+            Ok(json!({"code":200,"playlist":playlist(id(&args["id"]))}))
+        }
+        "/api/playlist/delete" | "/api/playlist/subscribe" | "/api/playlist/unsubscribe" => {
+            assert!(mutation);
+            s.writes += 1;
+            if s.mode == "reject" {
+                return Some(Ok(json!({"code":403})));
+            }
+            let id = id(&args[if path.ends_with("delete") {
+                "pid"
+            } else {
+                "id"
+            }]);
+            assert!(id > 1, "never mutate the favorite list");
+            if path.ends_with("/subscribe") {
+                assert!(id > 60);
+                s.removed.retain(|old| *old != id);
+                s.added.push(id);
+            } else {
+                assert!(if path.ends_with("delete") {
+                    id <= 60
+                } else {
+                    id > 60
+                });
+                s.removed.push(id);
+                s.added.retain(|old| *old != id);
+            }
+            if s.mode == "uncertain" {
+                s.mode = "fail_readback".into();
+                return Some(Err(Error::Transport("合成写入后连接中断".into())));
+            }
+            Ok(json!({"code":200}))
+        }
         _ => {
             let ids: Vec<Value> = serde_json::from_str(args["ids"].as_str().unwrap()).unwrap();
             let ids: Vec<u64> = ids.iter().map(id).collect();

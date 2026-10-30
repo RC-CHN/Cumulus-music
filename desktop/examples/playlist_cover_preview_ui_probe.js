@@ -199,7 +199,7 @@
       await wait(() => button("管理歌单：合成歌单 3"), "library");
       click(button("管理歌单：合成歌单 3"));
       await wait(() => one(".action-menu"), "playlist menu");
-      click(button("编辑歌单", one(".action-menu")));
+      click(button("编辑歌单信息", one(".action-menu")));
       await wait(() => one('[aria-label="歌单名称"]')?.value, "editor");
       originalName = one('[aria-label="歌单名称"]').value;
       write(one('[aria-label="歌单名称"]'), "预览重试期间保留的草稿");

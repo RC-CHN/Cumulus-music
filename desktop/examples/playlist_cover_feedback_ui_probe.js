@@ -23,7 +23,7 @@
  }
  function write(n,value){n.value=value;n.dispatchEvent(new Event('input',{bubbles:true}));}
  async function begin(value){
-  await mode('success');click(button('我的歌单'));await wait(()=>button('管理歌单：合成歌单 3')||button('管理歌单：其他设备更新后的歌单'),'library');click(button('管理歌单：合成歌单 3')||button('管理歌单：其他设备更新后的歌单'));await wait(()=>one('.action-menu'),'menu');click(button('编辑歌单',one('.action-menu')));await wait(()=>one('[aria-label="歌单名称"]')?.value,'editor');
+  await mode('success');click(button('我的歌单'));await wait(()=>button('管理歌单：合成歌单 3')||button('管理歌单：其他设备更新后的歌单'),'library');click(button('管理歌单：合成歌单 3')||button('管理歌单：其他设备更新后的歌单'));await wait(()=>one('.action-menu'),'menu');click(button('编辑歌单信息',one('.action-menu')));await wait(()=>one('[aria-label="歌单名称"]')?.value,'editor');
   const name=one('[aria-label="歌单名称"]'),desc=one('[aria-label="歌单简介"]');originals=[name.value,desc.value];write(name,'封面流程中的文字草稿');write(desc,'保存封面时保留这段未提交的简介。');
   await fixture('seed');await mode(value);click(button('替换歌单封面'));await wait(()=>phase()==='draft'&&one('.cover-crop-image')?.complete,'draft');
  }
