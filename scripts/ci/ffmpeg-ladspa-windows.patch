@@ -1,9 +1,6 @@
 --- a/libavfilter/af_ladspa.c
 +++ b/libavfilter/af_ladspa.c
-@@ -36,6 +36,42 @@
- #include "avfilter.h"
- #include "filters.h"
- #include "formats.h"
+@@ -38,0 +39,36 @@
 +
 +#ifdef _WIN32
 +#include "libavutil/wchar_filename.h"
@@ -40,15 +37,6 @@
 +#endif
 +        ;
 +}
- 
- typedef struct MetaItem {
-     int64_t pts;
-@@ -498,7 +534,7 @@
-         return AVERROR(EINVAL);
-     }
- 
+@@ -501 +537 @@
 -    if (s->dl_name[0] == '/' || s->dl_name[0] == '.') {
 +    if (ladspa_is_path(s->dl_name)) {
-         // argument is a path
-         s->dl_handle = dlopen(s->dl_name, RTLD_LOCAL|RTLD_NOW);
-     } else {
