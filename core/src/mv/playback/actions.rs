@@ -49,9 +49,9 @@ impl Actor {
                     resolve::Load {
                         id,
                         resolution: self.view.requested_resolution,
-                        task: None,
+                        task: self.requested_task.clone(),
                         position: self.view.position,
-                        remote: true,
+                        remote: self.requested_task.is_none(),
                     },
                     !self.view.paused,
                 )
@@ -72,7 +72,7 @@ impl Actor {
                         resolve::Load {
                             id,
                             resolution: self.view.requested_resolution,
-                            task: None,
+                            task: self.requested_task.clone(),
                             position: Some(0.0),
                             remote: false,
                         },
@@ -154,7 +154,7 @@ impl Actor {
                     resolve::Load {
                         id,
                         resolution: self.view.requested_resolution,
-                        task: None,
+                        task: self.requested_task.clone(),
                         position: if self.view.status == VideoStatus::Ended {
                             Some(0.0)
                         } else {

@@ -294,6 +294,8 @@ async fn verified_local_mv_survives_network_failure_and_corrupt_explicit_downloa
         .run(&task.id, DownloadRunOptions::default())
         .await
         .unwrap();
+    f.store.delete("1", "mv-details-v1", "123").unwrap();
+    f.api.calls.lock().unwrap().clear();
     f.api.fail_detail.store(true, Ordering::Release);
     f.player
         .command(
@@ -308,6 +310,11 @@ async fn verified_local_mv_survives_network_failure_and_corrupt_explicit_downloa
         .unwrap();
     let view = until(&f.player, Status::Playing).await;
     assert!(view.local);
+    assert!(view.detail.is_none());
+    assert!(
+        f.api.calls.lock().unwrap().is_empty(),
+        "local open must not request metadata"
+    );
     assert_eq!(view.actual_resolution, Some(240));
     assert!(f.last().lock().unwrap().source_file);
     f.player.command(&token, Cmd::Stop).await.unwrap();
@@ -324,6 +331,14 @@ async fn verified_local_mv_survives_network_failure_and_corrupt_explicit_downloa
         .await
         .unwrap();
     until(&f.player, Status::Error).await;
+    for retry in [Cmd::Refresh, Cmd::Play, Cmd::PlayFromStart] {
+        f.player.command(&token, retry).await.unwrap();
+        until(&f.player, Status::Error).await;
+    }
+    assert!(
+        f.api.calls.lock().unwrap().is_empty(),
+        "retry must keep the explicit source"
+    );
     assert_eq!(f.devices.lock().unwrap().len(), 1);
     assert!(
         !f.api

@@ -21,6 +21,7 @@ pub(super) struct Actor {
     pub(super) checkpoint_at: Instant,
     pub(super) wants_play: bool,
     pub(super) local_source: Option<local::LocalSource>,
+    pub(super) requested_task: Option<String>,
     pub(super) waiting_local: bool,
 }
 impl Actor {
@@ -83,6 +84,7 @@ impl Actor {
             checkpoint_at: Instant::now(),
             wants_play: false,
             local_source: None,
+            requested_task: None,
             waiting_local: false,
         })
     }
@@ -140,6 +142,7 @@ impl Actor {
         self.view.play_id = uuid::Uuid::new_v4().simple().to_string();
         self.view.status = VideoStatus::Resolving;
         self.view.error = None;
+        self.requested_task.clone_from(&load.task);
         self.view.detail = None;
         self.view.position = None;
         self.view.duration = None;
@@ -206,7 +209,7 @@ impl Actor {
             device(engine, |e| e.stop()).await?;
             return Err(Error::StaleResponse);
         }
-        self.view.detail = Some(prepared.detail);
+        self.view.detail = prepared.detail;
         self.view.actual_resolution = Some(prepared.actual_resolution);
         self.view.local = prepared.local;
         self.view.duration = prepared.duration.or_else(|| {

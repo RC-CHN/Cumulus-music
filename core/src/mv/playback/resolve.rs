@@ -18,7 +18,7 @@ pub(super) struct Load {
 }
 pub(super) struct Prepared {
     pub engine: Engine,
-    pub detail: crate::mv::MvDetail,
+    pub detail: Option<crate::mv::MvDetail>,
     pub actual_resolution: u32,
     pub local: bool,
     pub duration: Option<f64>,
@@ -35,7 +35,6 @@ pub(super) async fn prepare(
     selected: impl FnOnce(local::LocalSource) + Send,
 ) -> Result<Prepared> {
     let mv = MvService::new(session.clone())?;
-    let detail_result = mv.detail_for(&token, &json!(load.id)).await;
     cancel.check()?;
     let downloads = DownloadService::new(session.clone())?;
     let mut local = downloads
@@ -69,6 +68,7 @@ pub(super) async fn prepare(
     let mut lease = None;
     let mut provenance = None;
     let mut actual = load.resolution;
+    let mut local_duration_ms = 0;
     for task in local {
         let Some(path) = task.target.clone() else {
             continue;
@@ -85,6 +85,11 @@ pub(super) async fn prepare(
                 .and_then(|n| u32::try_from(n).ok())
                 .filter(|n| *n > 0 && *n <= 8640)
                 .ok_or(Error::State("completed MV resolution missing"))?;
+            local_duration_ms = task
+                .song
+                .as_ref()
+                .and_then(|song| song["dt"].as_u64())
+                .unwrap_or(0);
             provenance = Some(local::LocalSource {
                 task: task.id,
                 path: path.clone(),
@@ -98,14 +103,21 @@ pub(super) async fn prepare(
         }
     }
     let is_local = source.is_some();
-    let detail = match detail_result {
-        Ok(value) => value,
-        Err(error) if is_local => mv.cached_for(&token, &json!(load.id))?.ok_or(error)?,
-        Err(error) => return Err(error),
+    // Downloaded playback is authorized by the account's offline ledger and
+    // verified file. Social metadata is optional for this decoder path.
+    let detail = if is_local {
+        mv.cached_for(&token, &json!(load.id))?
+    } else if load.task.is_some() {
+        return Err(Error::State("completed MV download is unavailable"));
+    } else {
+        Some(mv.detail_for(&token, &json!(load.id)).await?)
     };
-    if identifier(&json!(detail.id))? != load.id {
+    if let Some(detail) = &detail
+        && identifier(&json!(detail.id))? != load.id
+    {
         return Err(Error::Response("MV playback identity mismatch"));
     }
+    cancel.check()?;
     let source = match source {
         Some(source) => source,
         None => {
@@ -134,7 +146,8 @@ pub(super) async fn prepare(
             .position_for(&token, &json!(load.id))?
             .map(|v| v.position_ms as f64 / 1000.0))
         .unwrap_or(0.0);
-    let position = if detail.duration_ms > 0 && position >= detail.duration_ms as f64 / 1000.0 {
+    let duration_ms = detail.as_ref().map_or(local_duration_ms, |d| d.duration_ms);
+    let position = if duration_ms > 0 && position >= duration_ms as f64 / 1000.0 {
         0.0
     } else {
         position
