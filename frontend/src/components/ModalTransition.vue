@@ -6,7 +6,10 @@ const returnTargets = new WeakMap<Element, HTMLElement>();
 <script setup lang="ts">
 import { onUnmounted } from 'vue';
 import { modalEntered, modalLeft } from '../services/modal';
-const props = defineProps<{ fallbackFocus?: () => HTMLElement | null }>();
+const props = withDefaults(
+  defineProps<{ fallbackFocus?: () => HTMLElement | null; restoreFocus?: boolean }>(),
+  { restoreFocus: true },
+);
 const owned = new Set<Element>();
 onUnmounted(() => {
   for (const element of owned) modalLeft(element);
@@ -30,6 +33,7 @@ function left(element: Element) {
   // Native <dialog> keeps the background inert until its leave transition ends.
   // Component onUnmounted runs too early to restore focus during that interval.
   if (
+    props.restoreFocus !== false &&
     target?.isConnected &&
     (!document.querySelector('dialog[open]') || target.closest('dialog[open]'))
   ) {

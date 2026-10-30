@@ -94,6 +94,7 @@ defineExpose({ show });
 <template>
   <span class="action-menu-host">
     <button
+      type="button"
       ref="trigger"
       class="icon-button menu-trigger"
       :aria-label="label"
@@ -121,6 +122,7 @@ defineExpose({ show });
           @keydown="keydown"
         >
           <button
+            type="button"
             v-for="item in items"
             :key="item.key"
             :role="item.checked === undefined ? 'menuitem' : 'menuitemradio'"

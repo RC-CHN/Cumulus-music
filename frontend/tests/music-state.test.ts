@@ -259,3 +259,44 @@ test('recovery clears only the like error while preserving unrelated page errors
   assert.equal(music.error.value, '页面读取失败');
   assert.equal(music.notice.value, '歌单已更新');
 });
+
+test('cancelled navigation keeps page/history and a confirmed departure runs only once', async () => {
+  let leave: (() => void) | undefined;
+  const music = useMusic(backend(), (commit) => {
+    leave = commit;
+  });
+  await music.bootstrap();
+  music.navigate({ kind: 'library' });
+  assert.equal(music.page.value.kind, 'daily');
+  assert.equal(music.historyLength.value, 0);
+  leave!();
+  leave!();
+  await turn();
+  assert.equal(music.page.value.kind, 'library');
+  assert.equal(music.historyLength.value, 1);
+  music.back();
+  assert.equal(music.historyLength.value, 1);
+  leave!();
+  await turn();
+  assert.equal(music.page.value.kind, 'daily');
+  assert.equal(music.historyLength.value, 0);
+});
+
+test('an old leave confirmation cannot navigate after an account change or another departure', async () => {
+  const leaves: (() => void)[] = [];
+  const music = useMusic(backend(), (commit) => {
+    leaves.push(commit);
+  });
+  await music.bootstrap();
+  music.navigate({ kind: 'library' });
+  music.replace({ kind: 'downloads' });
+  leaves[1]!();
+  leaves[0]!();
+  await turn();
+  assert.equal(music.page.value.kind, 'downloads');
+  assert.equal(music.historyLength.value, 0);
+  music.navigate({ kind: 'library' });
+  music.account.value = { ...music.account.value, epoch: '2' };
+  leaves[2]!();
+  assert.equal(music.page.value.kind, 'downloads');
+});

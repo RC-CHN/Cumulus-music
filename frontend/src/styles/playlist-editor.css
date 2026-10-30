@@ -1,0 +1,275 @@
+.content-page-stack {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.content-page-stack > .playlist-editor-page {
+  position: absolute;
+  inset: 0;
+}
+.content-page-stack > .playlist-editor-page + .content-page-previous {
+  /* Do not expose the retained page through the editor's exit animation. */
+  visibility: hidden;
+}
+/* Recovered playlist/views/Edit and components/Edit/CoverEdit: page form,
+   508px fields, 66px labels, 45px gap, 178px cover. Narrow sizes are adaptive. */
+.playlist-editor-page {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.playlist-editor-page > h1 {
+  font-size: 26px;
+  line-height: 32px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.playlist-editor-page > form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding-top: 30px;
+}
+.playlist-editor-body {
+  overflow: auto;
+  min-height: 0;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+  padding: 2px;
+}
+.playlist-editor-body :is(button, input, textarea):focus-visible {
+  /* Keep keyboard focus inside the scroll clip, including the first field. */
+  outline-offset: -2px;
+}
+.playlist-editor-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 508px) 178px;
+  gap: 45px;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  align-items: start;
+}
+.playlist-editor-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+.playlist-editor-row {
+  display: flex;
+  align-items: flex-start;
+  min-width: 0;
+}
+.playlist-editor-row > label,
+.playlist-editor-label {
+  flex: 0 0 66px;
+  font-size: 14px;
+  line-height: 36px;
+}
+.playlist-editor-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  flex: 1;
+}
+.playlist-editor-field input,
+.playlist-editor-field textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  padding: 8px 12px;
+}
+.playlist-editor-field input {
+  height: 36px;
+}
+.playlist-editor-field textarea {
+  height: 192px;
+  min-height: 96px;
+  resize: vertical;
+  line-height: 21px;
+}
+.playlist-editor-field small {
+  text-align: right;
+  color: var(--muted);
+  font-size: 11px;
+}
+.playlist-editor-tags {
+  flex: 1;
+  min-width: 0;
+}
+.playlist-editor-tags .tag-selection {
+  min-height: 36px;
+  gap: 8px;
+}
+.playlist-editor-tags .tag-picker {
+  margin-top: 10px;
+}
+.playlist-editor-tags small {
+  font-size: 11px;
+  color: var(--muted);
+}
+.playlist-editor-page .playlist-cover-edit button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 178px;
+  height: 178px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--art-bg);
+  color: var(--art-color);
+}
+.playlist-editor-page .playlist-cover-edit img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.playlist-editor-page .playlist-cover-edit button > .icon {
+  width: 56px;
+  height: 56px;
+}
+.playlist-editor-page .playlist-cover-edit span {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  background: rgb(0 0 0 / 70%);
+  color: #fff;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  font-size: 16px;
+  font-weight: 500;
+}
+.playlist-editor-page .playlist-cover-edit span .icon {
+  width: 24px;
+  height: 24px;
+}
+.playlist-editor-page .playlist-cover-edit button:hover span,
+.playlist-editor-page .playlist-cover-edit button:focus-visible span {
+  opacity: 1;
+}
+.playlist-editor-page .playlist-cover-edit button:focus-visible span {
+  border-radius: inherit;
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.playlist-editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 40px 2px 12px 68px;
+  flex-shrink: 0;
+}
+.playlist-editor-actions > button {
+  min-width: 94px;
+  height: 40px;
+  border-radius: 8px;
+  justify-content: center;
+  padding: 0 18px;
+  font-size: 14px;
+}
+.playlist-editor-actions .muted {
+  font-size: 12px;
+}
+.playlist-editor-confirm p {
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+.playlist-editor-confirm footer {
+  margin-top: 16px;
+}
+.playlist-editor-confirm footer > button {
+  min-height: 38px;
+  padding: 8px 14px;
+}
+@media (max-width: 1050px) {
+  .playlist-editor-grid {
+    grid-template-columns: minmax(0, 1fr) 120px;
+    gap: 20px;
+  }
+  .playlist-editor-page .playlist-cover-edit button {
+    width: 120px;
+    height: 120px;
+    border-radius: 12px;
+  }
+  .playlist-editor-row > label,
+  .playlist-editor-label {
+    flex-basis: 52px;
+  }
+  .playlist-editor-actions {
+    padding-left: 54px;
+    gap: 16px;
+  }
+}
+@media (max-height: 650px) {
+  .playlist-editor-page > h1 {
+    font-size: 22px;
+    line-height: 28px;
+  }
+  .playlist-editor-page > form {
+    padding-top: 18px;
+  }
+  .playlist-editor-field textarea {
+    height: 128px;
+  }
+  .playlist-editor-fields {
+    gap: 14px;
+  }
+  .playlist-editor-actions {
+    padding-top: 12px;
+    padding-bottom: 4px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .playlist-editor-page .playlist-cover-edit span {
+    transition: none;
+  }
+}
+
+:root[data-motion='reduced'] .playlist-editor-page .playlist-cover-edit span {
+  transition: none;
+}
+
+.content-page-previous {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.playlist-editor-tags .tag-selection button {
+  height: 26px;
+  padding: 0 10px;
+}
+.playlist-editor-tags .tag-selection [aria-expanded] {
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.playlist-editor-confirm footer > button {
+  border-radius: 8px;
+  min-height: 40px;
+}
+
+.playlist-editor-page .notice {
+  background: var(--surface-alt);
+  color: var(--text-secondary);
+}

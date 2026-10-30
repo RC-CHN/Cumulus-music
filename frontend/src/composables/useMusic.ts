@@ -32,7 +32,10 @@ export type Page =
   | { kind: 'playlist'; id: string }
   | { kind: 'search'; keyword: string };
 
-export function useMusic(core: CoreClient = useCore()) {
+export function useMusic(
+  core: CoreClient = useCore(),
+  beforeNavigate: (commit: () => void) => void = (commit) => commit(),
+) {
   const account = ref<AccountView>({
     epoch: '0',
     status: 'unknown',
@@ -199,23 +202,40 @@ export function useMusic(core: CoreClient = useCore()) {
   }
   function navigate(next: Page) {
     if (initializing.value) return;
-    history.push(page.value);
-    historyLength.value = history.length;
-    page.value = next;
-    void load();
+    navigation(() => {
+      history.push(page.value);
+      historyLength.value = history.length;
+      page.value = next;
+      void load();
+    });
   }
   function back() {
-    const previous = history.pop();
-    historyLength.value = history.length;
-    if (previous) {
-      page.value = previous;
-      void load();
-    }
+    navigation(() => {
+      const previous = history.pop();
+      historyLength.value = history.length;
+      if (previous) {
+        page.value = previous;
+        void load();
+      }
+    });
   }
   function replace(next: Page) {
     if (initializing.value) return;
-    page.value = next;
-    void load();
+    navigation(() => {
+      page.value = next;
+      void load();
+    });
+  }
+  function navigation(commit: () => void) {
+    const from = page.value,
+      owner = account.value.epoch;
+    let used = false;
+    beforeNavigate(() => {
+      if (used || initializing.value || page.value !== from || account.value.epoch !== owner)
+        return;
+      used = true;
+      commit();
+    });
   }
   async function like(track: TrackView) {
     if (!signedIn.value || busyLikes.value.has(track.id)) return;

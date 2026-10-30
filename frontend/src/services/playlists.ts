@@ -1,7 +1,6 @@
 import type { AccountData, PlaylistView, TrackView } from './contracts';
 export type PlaylistDialogTarget =
   | { kind: 'create' | 'history' | 'open' }
-  | { kind: 'edit'; id: string; cover?: boolean }
   | { kind: 'track'; track: TrackView; playlist?: PlaylistView };
 export interface PlaylistEditor {
   id: string;
