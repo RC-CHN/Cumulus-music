@@ -1,0 +1,102 @@
+歌手页：共用页头、独立分页、全部歌曲返回及实际绘制
+2026-10-31；此专项修正已有歌手界面，不代表整个目标或整页所有状态完成。
+
+官方来源
+以下路径相对 references/ui-recovery/sources/packages/pc/src/pages/user-detail/：
+- views/artist/Header.tsx：默认头像194px，密集分支168px；资料左距40px、上距-8px，
+  标题24px/40px/600，别名13px/21px、上距8px，操作区上距20px。
+- components/ArtistOperation.tsx：播放全部94×40、关注80×40，8px圆角、13px字号，
+  间距10px；关注/已关注，不沿用专辑的收藏用词。播放使用歌手来源。
+- views/artist/DetailTabs.tsx：歌曲、专辑及数量、有MV时显示MV及数量、歌手详情、
+  相似歌手、有在线演出时显示演出。字体16px/25px；全部歌曲为独立页面入口。
+  官方各标签使用history.push；热门50首受PH-PC-Singer-Top50实验影响。
+- views/artist/AllSongsList.tsx：独立“全部歌曲”标题22px/600，按钮上距20px、下距12px、
+  间距10px，默认40px高、8px圆角、13px字；播放用当前加载的records。
+- M/15、M/612、M/2999、M/3088的既有恢复映射沿用 catalog-detail-migration.txt。
+  当前恢复树缺少TrackTab/AlbumTab的完整源码，未把自行补全的布局称为官方原样。
+未参考YesPlayMusic；没有同状态官方运行截图，不宣称像素一致。
+
+结构及操作规则
+1. CatalogPage负责读取和来源快照；ArtistHeader、ArtistTabs、useArtistPages分别负责
+   页头、标签语义和独立分页。六种子内容各有一个useCatalogPages实例；返回已访问标签
+   保留完整分页前缀、原失败提示与滚动，不把第一份缓存替换已加载的后续页。
+2. 默认热门列表仍来自歌手详情。页头“播放全部”在专辑、简介、MV等标签也播放热门
+   列表，使用详情query/revision。全部歌曲页的“播放已加载歌曲”使用该页所有已加载
+   query/revision，保留实际顺序及artist/id来源；没有假装已读取服务端全部歌曲。
+   当前列表下载仍使用既有DownloadDialog，需用户继续选择目录及确认。
+3. 全部歌曲隐藏歌手头部及标签，提供独立标题和返回热门歌曲入口；全局返回键也先返回
+   当前歌手热门页。返回不发停止/重建队列命令。App通过资源key核对当前CatalogPage，
+   避免仍在退出动画的旧资源组件接管新页面返回。批量页/编辑页的离开保护仍优先。
+4. 内层列表和页面外层分别记录滚动；入场开始时恢复，快速切换使旧恢复失效。
+   面板dataset核对标签身份，防止把尚在退出的旧面板记录为新标签位置。新指针/滚轮/
+   触屏或非标签键盘操作取消尚未完成的恢复，避免覆盖用户的新操作。
+5. 刷新失败保留旧数据、分页和错误；离开再返回不自动消除错误或重发请求。重试明确
+   区分第一页刷新与后续页失败，分别替换前缀或追加同一下一页，禁止把刷新重试当加载
+   更多。错误区与详情错误共用页内吸顶容器，避免遮挡彼此或滚动后丢失失败提示。
+6. 账号代次/状态或资源变化清空所有标签状态，释放旧读取，使迟到回复不能写入新账号/
+   新歌手。同一账号同一ID的资料对象更新仍保留当前标签。关注复用既有持久化日志、
+   未知/未决禁用和明确对账，不在切换、刷新或截图中自动重试写入。
+7. 标签是tablist/tab/tabpanel，单一键盘停靠点，支持方向键/Home/End和可见焦点。
+   MV数为0时隐藏，未知数保留视频入口；演出数为0时隐藏。当前选中的入口不因动态
+   计数暂时变化而消失。社区响应式在<=900px用168px头像/24px间距，<=620px纵向140px；
+   这是社区断点。长标题/无断点别名换行；颜色沿用两主题语义变量。
+
+截图发现并修复的实际空白问题
+- 第一轮50态的DOM/分页/原生队列检查通过，实际KDE及隔离截图却发现：快速返回已
+  滚动的专辑页后卡片全部空白。延迟1.2秒仍空白；卡片DOM、opacity=1、transform=none、
+  几何、scrollTop及40条数据都正常，单靠这些断言不能证明已经绘制。
+- 在相同合成账号的独立11态实验中，去除contain或inert仍空白；去掉平移的一次
+  通过没有在完整50态重验中成立，因此没有采用该方案。正式代码保留原160ms的
+  transform/opacity及减少动态效果规则，将滚动恢复从after-enter提前到enter阶段，
+  使用钩子传入的实际新面板，并在两次动画帧后让列数/虚拟占位提交，再于渐显中
+  建立目标位置。仅提前一个帧曾在窄窗/125%下丢失滚动；最终两尺寸两主题重新验证。
+  退出内容仍立即inert。
+- 探针为实际可见的专辑占位封面记录纯色采样点。保存截图前最多3秒等待真实像素等于
+  计算背景色，再写截图确认；这是读取画面，不重试业务。改前artist-paint-before在
+  第10态明确失败，保留空白PNG及采样差异。正式轮同时比较原生截图与数据/滚动位置，
+  不能把DOM通过、编译通过或历史50态当作这个问题已修复的证据。
+- 局部颜色相等只证明对应卡片像素已绘制，不替代人工版式检查或官方像素对照。
+  采样仅适用于不透明方形专辑封面；初轮错误采到故意降透明度的禁用视频，已按真实
+  合成规则排除该不适用样本，普通视频禁用/说明断言保留；最终完整50态重新跑完。
+
+接口/字段和调用边界（本轮没有增加远端业务接口）
+CoreClient.catalogPage(epoch, query, force)经IPC进入core/client/catalog及catalog/details：
+- artist：/api/artist/v3/detail，id/top:50/e_r:false；随后现有歌曲权益合并。
+- artist_dynamic：/api/artist/detail/dynamic，id；followed与concert.onlineCount决定状态。
+- artist_songs：/api/v2/artist/songs，id/limit/offset；songs/total/more，默认每页20。
+- artist_albums：/api/artist/albums/<id>，limit/offset；hotAlbums/artist.albumSize/more。
+- artist_introduction：/api/artist/introduction，id；briefDescription/introduction。
+- similar_artists：/api/discovery/simiArtist，artistid/limit/offset/total:true。
+- artist_videos：/api/mlog/artist/video，artistId/tab:1/order:0/page；page是保留十进制
+  cursor精度的JSON字符串，不通过JS浮点转换。MV和普通video继续按恢复的真实类型区分。
+- artist_concerts：/api/concert/list/byartist，artistId/limit/offset；simpleConcerts/total。
+关注CoreClient.catalogMembership：inspect/set/reconcile，/api/artist/sub的artistId，
+/api/artist/unsub的artistIds字符串，以及/api/artist/sublist完整分页对账。
+播放沿用playSelection Catalog分支和原生来源快照，进入已有详情/权益/音源授权/实际
+音频引擎；前端无Cookie、签名密钥、完整播放授权地址，也不自行访问这些业务API。
+
+可复现与验收
+  cargo build -p cumulus-desktop --example catalog_ui_probe --features custom-protocol --locked
+  LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 xvfb-run -a dbus-run-session -- \
+    python3 scripts/ci/catalog_smoke.py --binary <target>/debug/examples/catalog_ui_probe \
+    --root <全新隔离目录> --artist
+可加--screenshots检查隔离Linux的实际像素；仅在隔离Xvfb抓根窗口，不能在真实桌面用
+这个参数截取其他应用。Windows相同--artist入口，加--runtime指向本次打包原生目录。
+CI已为Linux/Windows两个独立runner分别接入，不把配置接入称为两个平台已通过。
+
+最终artist-ui-final与artist-ui-kde-final各50态/50图通过；13个专辑阶段各有26个
+实际像素采样，17个播放阶段独立核对原生队列、来源及进度。完整记录见
+ui-ux-validation.txt；首次artist-ui-final-verified及
+artist-ui-kde-verified虽然各50态的原断言通过，返回专辑截图实际空白，已被本次修复轮
+取代，不能作为最终视觉通过样本。图集只纳入实际像素检查通过的修复轮原图。
+
+保留差异
+- 官方history.push、整个歌手页离开再返回的标签/滚动恢复、吸顶头部、排序/筛选和完整
+  更多菜单仍未对齐；本轮的返回恢复限于同一次歌手页访问内的子内容。
+- 固定热门50首没有复刻全部AB分支；全部歌曲操作文案明确“已加载”，以免误解数据范围。
+- 官方accountId个人主页/当前用户自身分支尚未接入当前ArtistCard/UI；原始元数据已
+  解析accountId，但公共桌面DTO当前没有该字段，不宣称该入口完成。
+- 普通视频播放、外部演出票务仍保留已有能力边界；MV只有合法mvId才开放已有播放入口。
+  本轮视频专项校验类型/卡片/禁用说明，未重新验证完整MV播放。
+- 头像图片ID构造、损坏图片回退、同状态官方截图和Windows实机视觉仍待核对。
+  实际原生队列使用生成PCM/libmpv/null，不代表在线真实音源或声卡听感验证。
