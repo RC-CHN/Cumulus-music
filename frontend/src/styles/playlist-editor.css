@@ -153,6 +153,7 @@
   height: 24px;
 }
 .playlist-editor-page .playlist-cover-edit button:hover span,
+.playlist-editor-page .playlist-cover-edit button[aria-busy='true'] span,
 .playlist-editor-page .playlist-cover-edit button:focus-visible span {
   opacity: 1;
 }

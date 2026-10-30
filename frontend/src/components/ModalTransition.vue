@@ -7,7 +7,11 @@ const returnTargets = new WeakMap<Element, HTMLElement>();
 import { onUnmounted } from 'vue';
 import { modalEntered, modalLeft } from '../services/modal';
 const props = withDefaults(
-  defineProps<{ fallbackFocus?: () => HTMLElement | null; restoreFocus?: boolean }>(),
+  defineProps<{
+    fallbackFocus?: () => HTMLElement | null;
+    returnFocus?: () => HTMLElement | null;
+    restoreFocus?: boolean;
+  }>(),
   { restoreFocus: true },
 );
 const owned = new Set<Element>();
@@ -17,6 +21,11 @@ onUnmounted(() => {
 function entering(element: Element) {
   owned.add(element);
   modalEntered(element);
+  const explicit = props.returnFocus?.();
+  if (explicit) {
+    returnTargets.set(element, explicit);
+    return;
+  }
   const active = document.activeElement;
   if (!(active instanceof HTMLElement)) return;
   const parentDialog = active.closest('dialog');

@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue';
 import type { AccountView } from '../../services/contracts';
 import type { PlaylistManager } from '../../composables/usePlaylists';
 import { usePlaylistEditor } from '../../composables/usePlaylistEditor';
+import { usePlaylistCoverEntry } from '../../composables/usePlaylistCoverEntry';
 import { playlistLength } from '../../services/playlists';
 import Icon from '../Icon.vue';
 import ActionMenu from '../ActionMenu.vue';
@@ -16,7 +17,7 @@ const props = defineProps<{
   target: { id: string; cover?: boolean };
 }>();
 const emit = defineEmits<{ close: []; coverChanged: []; expired: [] }>();
-const { editor, busy, loading, error, tags, tagError, tagsLoading } = props.manager;
+const { editor, busy: managerBusy, loading, error, tags, tagError, tagsLoading } = props.manager;
 const form = usePlaylistEditor(
   props.manager,
   () => props.account,
@@ -39,7 +40,25 @@ const {
   dirty,
 } = form;
 const nameInput = ref<HTMLInputElement>(),
-  coverOpen = ref(false);
+  coverTrigger = ref<HTMLButtonElement>();
+const coverFocus = () => coverTrigger.value ?? null;
+const cover = usePlaylistCoverEntry(
+  () => props.account,
+  () => editor.value,
+  form.coverSaved,
+  () => emit('expired'),
+  async () => {
+    await nextTick();
+    coverTrigger.value?.focus({ preventScroll: true });
+  },
+);
+const { open: coverOpen, starting: coverStarting, phase: coverPhase, notice: coverNotice } = cover;
+const busy = computed(() => managerBusy.value || coverStarting.value);
+onUnmounted(cover.dispose);
+function requestLeave(next?: () => void) {
+  if (coverStarting.value || coverOpen.value) return;
+  form.requestLeave(next);
+}
 const editorBody = ref<HTMLElement>(),
   tagSpace = ref(false);
 async function tagVisibility(open: boolean) {
@@ -53,7 +72,7 @@ watch(loaded, async (ready) => {
   if (ready) {
     await nextTick();
     nameInput.value?.focus();
-    if (props.target.cover && editable.value) coverOpen.value = true;
+    if (props.target.cover && editable.value) void cover.start(true);
   }
 });
 const actions = computed(() => [
@@ -72,7 +91,7 @@ const actions = computed(() => [
 function action(key: string) {
   if (key === 'clear' || key === 'publish' || key === 'delete') confirmation.value = key;
 }
-defineExpose({ requestLeave: form.requestLeave });
+defineExpose({ requestLeave });
 </script>
 <template>
   <section class="playlist-editor-page page-view" aria-labelledby="playlist-editor-heading">
@@ -84,20 +103,19 @@ defineExpose({ requestLeave: form.requestLeave });
     <div v-else-if="!editor" class="error-state" role="alert">
       <p>{{ error || '暂时无法读取歌单' }}</p>
       <button class="text-button" @click="manager.open(target.id)">重新读取歌单</button
-      ><button class="text-button" aria-label="取消编辑歌单" @click="form.requestLeave()">
-        返回
-      </button>
+      ><button class="text-button" aria-label="取消编辑歌单" @click="requestLeave()">返回</button>
     </div>
     <div v-else-if="!editable" class="empty-state">
       <p>此歌单不能编辑</p>
-      <button class="download-button" aria-label="取消编辑歌单" @click="form.requestLeave()">
+      <button class="download-button" aria-label="取消编辑歌单" @click="requestLeave()">
         返回
       </button>
     </div>
-    <form v-else @submit.prevent="form.save">
+    <form v-else @submit.prevent="!coverStarting && form.save()">
       <div ref="editorBody" class="playlist-editor-body" :class="{ 'tag-dropdown-open': tagSpace }">
         <p v-if="error" class="error-state" role="alert">{{ error }}</p>
         <p v-if="message" class="notice" role="status">{{ message }}</p>
+        <p v-if="coverNotice" class="notice" role="status">{{ coverNotice }}</p>
         <div v-if="result" class="mutation-result" :data-phase="result.phase" role="status">
           {{ result.message
           }}<span v-if="result.phase === 'partial'"
@@ -171,13 +189,21 @@ defineExpose({ requestLeave: form.requestLeave });
             </p>
           </div>
           <div class="playlist-cover-edit">
-            <button type="button" aria-label="替换歌单封面" @click="coverOpen = true">
+            <button
+              ref="coverTrigger"
+              type="button"
+              aria-label="替换歌单封面"
+              :aria-busy="coverStarting"
+              @click="cover.start()"
+            >
               <img
                 v-if="editor.coverUrl"
                 :src="editor.coverUrl"
                 alt="歌单封面"
                 referrerpolicy="no-referrer"
-              /><Icon v-else name="music" /><span><Icon name="edit" />替换图片</span>
+              /><Icon v-else name="music" /><span
+                ><Icon name="edit" />{{ coverStarting ? '正在准备…' : '替换图片' }}</span
+              >
             </button>
           </div>
         </fieldset>
@@ -196,12 +222,18 @@ defineExpose({ requestLeave: form.requestLeave });
           class="download-button"
           aria-label="取消编辑歌单"
           :disabled="busy"
-          @click="form.requestLeave()"
+          @click="requestLeave()"
         >
           取消
         </button>
         <ActionMenu label="其他歌单操作" :items="actions" @select="action" />
-        <span v-if="busy" class="muted" role="status">正在提交并核对…</span>
+        <span v-if="busy" class="muted" role="status">{{
+          managerBusy
+            ? '正在提交并核对…'
+            : coverPhase === 'reading'
+              ? '正在读取封面进度…'
+              : '正在选择图片…'
+        }}</span>
       </footer>
     </form>
     <Teleport to="body">
@@ -216,17 +248,16 @@ defineExpose({ requestLeave: form.requestLeave });
           @cancel="confirmation = undefined"
           @confirm="form.confirm"
       /></ModalTransition>
-      <ModalTransition
+      <ModalTransition :return-focus="coverFocus"
         ><PlaylistCoverDialog
           v-if="coverOpen && editor"
           :account="account"
           :editor="editor"
+          :model="cover.model"
           @close="
-            coverOpen = false;
+            cover.dismiss();
             manager.refreshOperations();
           "
-          @saved="form.coverSaved"
-          @expired="emit('expired')"
       /></ModalTransition>
     </Teleport>
   </section>

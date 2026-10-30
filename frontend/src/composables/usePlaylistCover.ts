@@ -22,6 +22,7 @@ export function usePlaylistCover(
     warning = ref('');
   const busy = ref(false),
     loading = ref(false),
+    readFailed = ref(false),
     stopping = ref(false),
     changedElsewhere = ref(false),
     latest = shallowRef<PlaylistEditor>();
@@ -60,13 +61,17 @@ export function usePlaylistCover(
     try {
       const result = await core.playlistCoverTasks(e);
       if (!live(e, n) || result.epoch !== e || turn !== read) return;
+      readFailed.value = false;
       const rows = result.value.filter((t) => t.playlistId === playlist);
       const selected = task.value ? rows.find((t) => t.id === task.value?.id) : undefined;
       task.value =
         selected ?? rows.find((t) => !coverTerminal(t)) ?? rows.find((t) => t.cleanupPending);
       if (task.value?.error === 'playlist_changed') changedElsewhere.value = true;
     } catch (value) {
-      if (live(e, n) && turn === read) problem(value);
+      if (live(e, n) && turn === read) {
+        readFailed.value = true;
+        problem(value);
+      }
     }
   }
   async function preview(e = epoch, n = serial) {
@@ -92,16 +97,19 @@ export function usePlaylistCover(
     error.value = '';
     warning.value = '';
     busy.value = false;
+    // Only a matching successful task read establishes that no task exists.
+    readFailed.value = true;
     stopping.value = false;
     changedElsewhere.value = false;
     latest.value = undefined;
     const e = epoch,
       n = serial;
     loading.value = connected;
-    if (!connected) return;
+    if (!connected) return false;
     await refresh(e, n);
     if (live(e, n)) await preview(e, n);
     if (live(e, n)) loading.value = false;
+    return live(e, n);
   }
   function schedule(e: string, n: number) {
     stopPoll();
@@ -113,7 +121,7 @@ export function usePlaylistCover(
     }, 500);
   }
   async function choose(revision: string) {
-    if (!connected || busy.value || loading.value) return;
+    if (!connected || busy.value || loading.value || readFailed.value) return;
     const previous = task.value;
     if (previous && !coverTerminal(previous) && !coverEditable(previous)) return;
     const e = epoch,
@@ -137,10 +145,12 @@ export function usePlaylistCover(
         latest.value = undefined;
         await preview(e, n);
       }
+      if (live(e, n)) return result.value ? 'selected' : 'cancelled';
     } catch (value) {
       if (live(e, n)) {
         problem(value);
         await refresh(e, n);
+        if (live(e, n)) return 'failed';
       }
     } finally {
       if (live(e, n)) busy.value = false;
@@ -227,6 +237,7 @@ export function usePlaylistCover(
     image.value = undefined;
     busy.value = false;
     loading.value = false;
+    readFailed.value = false;
   }
   return {
     task,
@@ -235,6 +246,7 @@ export function usePlaylistCover(
     warning,
     busy,
     loading,
+    readFailed,
     stopping,
     changedElsewhere,
     latest,
@@ -248,3 +260,4 @@ export function usePlaylistCover(
     dispose,
   };
 }
+export type PlaylistCoverModel = ReturnType<typeof usePlaylistCover>;

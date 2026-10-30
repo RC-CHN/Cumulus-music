@@ -1,13 +1,8 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import type { AccountView } from '../services/contracts';
 import type { PlaylistEditor } from '../services/playlists';
-import {
-  coverEditable,
-  coverMessage,
-  coverTerminal,
-  type CoverOutcome,
-} from '../services/playlistCover';
+import { coverEditable, coverMessage, coverTerminal } from '../services/playlistCover';
 import {
   coverPosition,
   coverCrop,
@@ -16,18 +11,27 @@ import {
   restoreCoverPosition,
   type CropPosition,
 } from '../services/coverGeometry';
-import { usePlaylistCover } from '../composables/usePlaylistCover';
+import type { PlaylistCoverModel } from '../composables/usePlaylistCover';
 import Icon from './Icon.vue';
-const props = defineProps<{ account: AccountView; editor: PlaylistEditor }>();
-const emit = defineEmits<{ close: []; saved: [outcome: CoverOutcome]; expired: [] }>();
-const model = usePlaylistCover(
-  undefined,
-  async (value) => {
-    emit('saved', value);
-  },
-  () => emit('expired'),
-);
-const { task, image, error, warning, busy, loading, stopping, changedElsewhere, latest } = model;
+const props = defineProps<{
+  account: AccountView;
+  editor: PlaylistEditor;
+  model: PlaylistCoverModel;
+}>();
+const emit = defineEmits<{ close: [] }>();
+const model = props.model;
+const {
+  task,
+  image,
+  error,
+  warning,
+  busy,
+  loading,
+  readFailed,
+  stopping,
+  changedElsewhere,
+  latest,
+} = model;
 const dialog = ref<HTMLDialogElement>();
 const body = ref<HTMLElement>();
 const position = ref<CropPosition>({ x: 0, y: 0, zoom: 1 });
@@ -59,32 +63,42 @@ const ambiguous = computed(
 );
 const finished = computed(() => !!task.value && coverTerminal(task.value));
 let pointer: { id: number; x: number; y: number } | undefined;
-watch(image, async (value) => {
-  if (!value) return;
-  position.value = task.value?.crop
-    ? restoreCoverPosition(value.width, value.height, task.value.crop)
-    : coverPosition(value.width, value.height);
-  if (task.value && coverEditable(task.value)) {
-    await nextTick();
-    // A newly selected image starts at its crop area; cancelling the native
-    // picker does not change image, so it keeps the previous viewport intact.
-    if (body.value) body.value.scrollTop = 0;
-  }
-});
-watch([busy, error, warning, () => task.value?.phase], async () => {
-  if (busy.value || error.value || warning.value || (task.value && !coverEditable(task.value))) {
-    await nextTick();
-    // Keep progress/errors and recovery actions visible in short windows.
-    // Scroll only this dialog body, preserving the editor and crop coordinates.
-    if (body.value) body.value.scrollTop = body.value.scrollHeight;
-  }
-});
-onMounted(async () => {
+watch(
+  image,
+  async (value) => {
+    if (!value) return;
+    position.value = task.value?.crop
+      ? restoreCoverPosition(value.width, value.height, task.value.crop)
+      : coverPosition(value.width, value.height);
+    if (task.value && coverEditable(task.value)) {
+      await nextTick();
+      // A newly selected image starts at its crop area; cancelling the native
+      // picker does not change image, so it keeps the previous viewport intact.
+      if (body.value) body.value.scrollTop = 0;
+    }
+  },
+  { immediate: true },
+);
+watch(
+  [busy, error, warning, readFailed, () => task.value?.phase],
+  async () => {
+    if (
+      busy.value ||
+      error.value ||
+      warning.value ||
+      readFailed.value ||
+      (task.value && !coverEditable(task.value))
+    ) {
+      await nextTick();
+      // Keep progress/errors and recovery actions visible in short windows.
+      // Scroll only this dialog body, preserving the editor and crop coordinates.
+      if (body.value) body.value.scrollTop = body.value.scrollHeight;
+    }
+  },
+  { immediate: true },
+);
+onMounted(() => {
   dialog.value?.showModal();
-  await model.connect(props.account, props.editor.id);
-});
-onUnmounted(() => {
-  model.dispose();
 });
 function zoom(value: number) {
   if (editable.value && image.value)
@@ -234,7 +248,9 @@ async function applyLatest() {
         :max="task.total"
         aria-label="封面上传进度"
       ></progress>
-      <p v-if="error" class="error-state" role="alert">{{ error }}</p>
+      <p v-if="error || readFailed" class="error-state" role="alert">
+        {{ error || '无法读取封面编辑进度，请重试。' }}
+      </p>
       <p v-if="warning" class="error-state" role="status">{{ warning }}</p>
       <div v-if="changedElsewhere" class="cover-latest">
         <button class="text-button" :disabled="busy || loading" @click="model.inspectLatest">
@@ -256,9 +272,17 @@ async function applyLatest() {
       </div>
       <div class="cover-secondary">
         <button
-          v-if="!task || coverEditable(task) || finished"
+          v-if="readFailed"
           class="text-button"
           :disabled="busy || loading"
+          @click="model.connect(account, editor.id)"
+        >
+          重新读取封面进度
+        </button>
+        <button
+          v-if="!task || coverEditable(task) || finished"
+          class="text-button"
+          :disabled="busy || loading || readFailed"
           @click="model.choose(editor.revision)"
         >
           {{ image ? '重新选取图片' : '选择图片' }}
