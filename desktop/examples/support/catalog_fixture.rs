@@ -53,6 +53,19 @@ impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, args: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             let mode = self.mode.lock().unwrap().clone();
+            if mode == "catalog-hold"
+                && matches!(path, "/api/artist/v3/detail" | "/api/artist/detail/dynamic")
+            {
+                let released = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                    while self.mode.lock().unwrap().as_str() == "catalog-hold" {
+                        tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+                    }
+                })
+                .await;
+                if released.is_err() {
+                    return Err(Error::Transport("synthetic header hold timed out".into()));
+                }
+            }
             if mode == "album-offline"
                 && matches!(path, "/api/album/v3/detail" | "/api/album/v4/detail")
             {

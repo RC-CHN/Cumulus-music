@@ -7,6 +7,7 @@ import subprocess
 import sqlite3
 import time
 from motion_smoke import paint_checks
+from catalog_navigation import verify as verify_navigation
 
 
 def launch(binary, env, log, root, screenshots):
@@ -67,6 +68,7 @@ def main():
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--screenshots', action='store_true', help='local Linux GTK captures; not required in CI')
     mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--navigation', action='store_true', help='cross-resource tab history, comment draft and native play identity')
     mode.add_argument('--artist', action='store_true', help='artist header, tab prefixes, viewport return and native playback')
     mode.add_argument('--album', action='store_true', help='album-local tabs, draft retention, header actions and native null playback')
     mode.add_argument('--layout', action='store_true', help='long content, artwork and comment scrolling')
@@ -82,9 +84,10 @@ def main():
     root.mkdir(parents=True, exist_ok=False)
     env = {k: v for k, v in os.environ.items() if not k.startswith('CUMULUS_')}
     env['CUMULUS_PROOF_DIR'] = str(root / 'run')
-    if args.artist:
+    if args.artist or args.navigation:
         env['CUMULUS_ARTIST_PROOF'] = '1'
-        env['CUMULUS_UX_SCRIPT'] = str(Path(__file__).resolve().parents[2] / 'desktop/examples/artist_ui_probe.js')
+        source = 'catalog_navigation_ui_probe.js' if args.navigation else 'artist_ui_probe.js'
+        env['CUMULUS_UX_SCRIPT'] = str(Path(__file__).resolve().parents[2] / 'desktop/examples' / source)
         if args.screenshots:
             env['CUMULUS_PROOF_CAPTURE_ACK'] = '1'
     if args.album:
@@ -125,6 +128,17 @@ def main():
         raise AssertionError((output / 'failed.json').read_text(encoding='utf-8'))
     assert returncode == 0, f'catalog probe exited {returncode}'
     complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
+    if args.navigation:
+        assert complete['ok'] and complete['navigation'] and complete['stageCount'] == 52
+        assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
+        assert complete['playbackVerified'] and complete['decoder'] == 'libmpv' and complete['audioOutput'] == 'null'
+        states = [json.loads(path.read_text(encoding='utf-8')) for path in sorted(output.glob('ux_*.json'))]
+        result = verify_navigation(states)
+        assert not args.screenshots or captures == 52
+        result['screenshots'] = captures
+        (root / 'audit.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
+        print(json.dumps(result))
+        return
     if args.artist:
         assert complete['ok'] and complete['stageCount'] == 50 and complete['preservedPrefixes']
         assert complete['realMusicRequests'] == 0 and complete['playbackVerified']

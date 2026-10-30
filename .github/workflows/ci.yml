@@ -208,6 +208,9 @@ jobs:
           xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-album-linux --album
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-artist-linux --artist
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-navigation-linux --navigation
+          cargo build -p cumulus-desktop --example comment_edit_ui_probe --features custom-protocol --locked
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/comment_edit_smoke.py --binary .build/target/debug/examples/comment_edit_ui_probe --root .build/ci-comment-edit-linux
           xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-layout-linux --layout
           xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-collections-linux --collections
           xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-history-linux --history
@@ -281,6 +284,9 @@ jobs:
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-catalog-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-catalog-album-windows --runtime .build/package-stage/windows-x64/native --album
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-catalog-artist-windows --runtime .build/package-stage/windows-x64/native --artist
+          python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-catalog-navigation-windows --runtime .build/package-stage/windows-x64/native --navigation
+          cargo build -p cumulus-desktop --example comment_edit_ui_probe --features custom-protocol --locked
+          python scripts/ci/comment_edit_smoke.py --binary .build/target/debug/examples/comment_edit_ui_probe.exe --root .build/ci-comment-edit-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-catalog-layout-windows --runtime .build/package-stage/windows-x64/native --layout
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-collections-windows --runtime .build/package-stage/windows-x64/native --collections
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-history-windows --runtime .build/package-stage/windows-x64/native --history
