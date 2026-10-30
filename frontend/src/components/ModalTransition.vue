@@ -46,6 +46,12 @@ function left(element: Element) {
     target?.isConnected &&
     (!document.querySelector('dialog[open]') || target.closest('dialog[open]'))
   ) {
+    // Row actions may be hidden until their focusable row gains focus. Reveal
+    // that owner first; focusing a display:none action is silently ignored.
+    if (!target.getClientRects().length) {
+      const owner = target.parentElement?.closest<HTMLElement>('[tabindex]');
+      if (owner?.getClientRects().length) owner.focus({ preventScroll: true });
+    }
     target.focus({ preventScroll: true });
     if (target !== original) target.scrollIntoView({ block: 'nearest' });
   }

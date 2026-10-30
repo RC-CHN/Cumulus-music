@@ -121,3 +121,25 @@ test('closing download page or disposing model never cancels a native transfer',
   assert.equal(model.view.value, undefined);
   assert.equal(writes, 0);
 });
+test('switching download category hides old rows until the matching native query finishes', async () => {
+  const pending = deferred<DownloadsView>();
+  const seen: string[] = [];
+  const model = useDownloads({
+    downloads: async (epoch, query) => {
+      seen.push(`${query.tab}:${query.category}`);
+      return query.category === 'voice' ? pending.promise : state(epoch, 120);
+    },
+  } as DownloadClient);
+  await model.connect(account());
+  assert.equal(model.view.value?.total, 120);
+  const reading = model.filter({ category: 'voice' });
+  assert.equal(model.view.value, undefined);
+  assert.equal(model.loading.value, true);
+  await model.filter({ tab: 'active' });
+  pending.resolve(state('1', 12));
+  await reading;
+  assert.equal(model.query.value.category, 'all');
+  assert.equal(model.view.value?.total, 120);
+  assert.deepEqual(seen, ['completed:song', 'completed:voice', 'active:all']);
+  model.dispose();
+});

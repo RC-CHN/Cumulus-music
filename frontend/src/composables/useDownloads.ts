@@ -15,6 +15,7 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
   const view = shallowRef<DownloadsView>();
   const query = ref<DownloadQuery>({
     tab: 'completed',
+    category: 'song',
     keyword: '',
     sort: 'completed',
     descending: true,
@@ -88,8 +89,15 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
     if (value) void refresh();
   }
   function filter(value: Partial<DownloadQuery>) {
-    query.value = { ...query.value, offset: 0, ...value };
-    void refresh();
+    const next = { ...query.value, offset: 0, ...value };
+    if (next.tab === 'active') next.category = 'all';
+    else if (!next.category || next.category === 'all') next.category = 'song';
+    if (JSON.stringify(next) === JSON.stringify(query.value)) return Promise.resolve();
+    query.value = next;
+    // Old rows must not acquire the new tab's actions while its read is pending.
+    view.value = undefined;
+    readError.value = '';
+    return refresh();
   }
   async function command(input: DownloadCommand): Promise<DownloadResult | undefined> {
     if (!epoch || busy.value) return;

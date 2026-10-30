@@ -1,0 +1,128 @@
+<script setup lang="ts">
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import type { DownloadModel } from '../../composables/useDownloads';
+import type { DownloadSection } from '../../services/downloadPage';
+import type { MenuItem } from '../../services/menu';
+import ActionMenu from '../ActionMenu.vue';
+import Icon from '../Icon.vue';
+const props = defineProps<{
+  model: DownloadModel;
+  section: DownloadSection;
+  batch: boolean;
+  canPlay: boolean;
+  locked: boolean;
+}>();
+const emit = defineEmits<{ play: []; batch: []; clear: []; settings: [] }>();
+const { query, view } = props.model;
+const keyword = ref(query.value.keyword),
+  field = ref<HTMLInputElement>();
+let composing = false,
+  timer: ReturnType<typeof setTimeout> | undefined;
+const menu = computed<MenuItem[]>(() => [
+  {
+    key: 'batch',
+    label: '批量操作',
+    icon: 'list',
+    disabled: !view.value?.tasks.length || props.locked,
+  },
+  { key: 'settings', label: '下载设置', icon: 'settings' },
+]);
+function search() {
+  clearTimeout(timer);
+  if (!composing) props.model.filter({ keyword: keyword.value.trim() });
+}
+function input() {
+  clearTimeout(timer);
+  if (!composing) timer = setTimeout(search, 100);
+}
+function compositionStart() {
+  composing = true;
+  clearTimeout(timer);
+}
+function clear() {
+  keyword.value = '';
+  search();
+  field.value?.focus({ preventScroll: true });
+}
+watch(
+  () => [query.value.tab, query.value.category],
+  () => {
+    clearTimeout(timer);
+    composing = false;
+    keyword.value = query.value.keyword;
+  },
+);
+watch(
+  () => query.value.keyword,
+  (value) => {
+    if (!composing) keyword.value = value;
+  },
+);
+onBeforeUnmount(() => clearTimeout(timer));
+</script>
+<template>
+  <div class="download-toolbar" :class="{ 'download-mv-toolbar': section === 'mv' }">
+    <template v-if="section === 'active'">
+      <button
+        class="download-button"
+        :disabled="locked || !view?.activeCount"
+        @click="model.command({ kind: 'all', action: 'resume' })"
+      >
+        <Icon name="download" />全部下载
+      </button>
+      <button
+        class="download-button"
+        :disabled="locked || !view?.activeCount"
+        @click="model.command({ kind: 'all', action: 'pause' })"
+      >
+        <Icon name="pause" />全部暂停
+      </button>
+      <button
+        class="download-button"
+        :disabled="locked || !view?.activeCount"
+        @click="emit('clear')"
+      >
+        <Icon name="trash" />全部清空
+      </button>
+    </template>
+    <template v-else-if="section !== 'mv'">
+      <button class="primary download-play-all" :disabled="!canPlay" @click="emit('play')">
+        <Icon name="play" />{{
+          batch ? '播放所选' : view && view.total > view.tasks.length ? '播放本页' : '播放全部'
+        }}
+      </button>
+      <button v-if="batch" class="download-button" @click="emit('batch')">完成</button>
+      <ActionMenu
+        v-else
+        label="更多下载操作"
+        :items="menu"
+        @select="$event === 'batch' ? emit('batch') : emit('settings')"
+      />
+      <form class="download-search" :class="{ filled: keyword }" @submit.prevent="search">
+        <Icon name="search" /><input
+          ref="field"
+          v-model="keyword"
+          type="search"
+          placeholder="搜索"
+          :aria-label="section === 'voice' ? '搜索下载的声音' : '搜索下载的歌曲'"
+          maxlength="256"
+          @input="input"
+          @compositionstart="compositionStart"
+          @compositionend="
+            composing = false;
+            search();
+          "
+        />
+        <button
+          v-if="keyword"
+          type="button"
+          class="icon-button"
+          aria-label="清空下载搜索"
+          @click="clear"
+        >
+          <Icon name="close" />
+        </button>
+      </form>
+    </template>
+  </div>
+</template>

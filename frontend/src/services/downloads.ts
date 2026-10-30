@@ -15,9 +15,11 @@ export const defaultDownloadOptions: DownloadOptions = {
   container: 'audio',
 };
 export type DownloadTab = 'completed' | 'active';
+export type DownloadCategory = 'all' | 'song' | 'voice' | 'mv';
 export type DownloadSort = 'name' | 'artist' | 'album' | 'size' | 'completed';
 export interface DownloadQuery {
   tab: DownloadTab;
+  category?: DownloadCategory;
   keyword: string;
   sort: DownloadSort;
   descending: boolean;
