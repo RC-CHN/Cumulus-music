@@ -8,7 +8,7 @@ import CommentFloorPanel from './CommentFloorPanel.vue';
 import { useCommentWrites } from '../composables/useCommentWrites';
 import { useCommentFloor } from '../composables/useCommentFloor';
 import { resourceKey, type CommentItem } from '../services/comments';
-const props = defineProps<{ model: CommentsModel; title: string }>();
+const props = defineProps<{ model: CommentsModel; title: string; embedded?: boolean }>();
 const { page, query, loading, error, actionError, busy, history } = props.model;
 const target = ref('');
 const scroller = ref<HTMLElement>();
@@ -21,8 +21,10 @@ watch(
       value.offset !== previous.offset ||
       value.sort !== previous.sort ||
       value.commentId !== previous.commentId
-    )
-      scroller.value?.scrollTo({ top: 0, behavior: 'instant' });
+    ) {
+      if (props.embedded) scroller.value?.scrollIntoView({ block: 'start', behavior: 'instant' });
+      else scroller.value?.scrollTo({ top: 0, behavior: 'instant' });
+    }
   },
   { flush: 'post' },
 );
@@ -111,13 +113,18 @@ const groups = computed(() =>
 );
 </script>
 <template>
-  <section ref="scroller" class="comments-page" aria-label="评论页面">
+  <section
+    ref="scroller"
+    class="comments-page"
+    :class="{ 'comments-embedded': embedded }"
+    aria-label="评论页面"
+  >
     <header class="page-heading">
       <div>
-        <p class="muted">{{ title }}</p>
-        <h1>
+        <p v-if="!embedded" class="muted">{{ title }}</p>
+        <component :is="embedded ? 'h2' : 'h1'">
           评论 <small v-if="page">{{ page.total }}</small>
-        </h1>
+        </component>
       </div>
       <button class="text-button" :disabled="loading" @click="model.load()">刷新评论</button>
     </header>

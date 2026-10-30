@@ -1199,7 +1199,6 @@ onUnmounted(() => {
                 @more="(request) => trackActions?.show(request)"
                 @download="(tracks) => (downloadDialog = { kind: 'start', tracks })"
                 @mv="openMv"
-                @comments="(id, title) => openComments({ kind: 'album', id }, title)"
                 @expired="music.bootstrap(false)"
               />
               <MemberPage

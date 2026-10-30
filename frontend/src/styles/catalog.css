@@ -331,3 +331,148 @@
     transform: none;
   }
 }
+
+/* Album Common.tsx: persistent actions, album-local tabs and plain-text detail. */
+.album-header {
+  padding-bottom: 20px;
+  margin-bottom: 0;
+}
+.album-header .catalog-cover {
+  width: 216px;
+  height: 216px;
+  border-radius: 8px;
+}
+.album-header .catalog-heading {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+}
+.album-header .catalog-heading h1 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 600;
+}
+.album-alias {
+  color: var(--text-secondary);
+}
+.album-header .album-translation {
+  margin: 6px 0 0;
+}
+.album-metadata {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 12px;
+  margin: 8px 0 12px;
+  font-size: 13px;
+}
+.album-metadata p {
+  margin: 0;
+  line-height: 20px;
+}
+.album-metadata .catalog-credits {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.album-digital,
+.album-explicit {
+  color: var(--accent);
+  font-size: 11px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  padding: 0 4px;
+}
+.album-actions {
+  margin-top: auto;
+  padding-top: 4px;
+  gap: 8px;
+}
+.album-actions > button,
+.album-actions .menu-trigger {
+  min-height: 40px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.album-actions .menu-trigger {
+  width: 40px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.album-tabs {
+  gap: 24px;
+  margin: 0 0 8px;
+}
+.album-tabs button {
+  font-size: 16px;
+  line-height: 25px;
+}
+.album-tabs small {
+  margin-left: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.album-tabs button[aria-selected='true'] {
+  color: var(--text);
+  font-weight: 600;
+}
+.album-tabs button[aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--accent);
+}
+.album-description {
+  margin-top: 0;
+  padding: 12px 0 30px;
+  font-size: 13px;
+  line-height: 24px;
+  user-select: text;
+}
+.album-description h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  line-height: 24px;
+}
+.album-description p {
+  margin: 0;
+}
+@media (max-width: 900px) {
+  .album-header .catalog-cover {
+    width: 168px;
+    height: 168px;
+  }
+}
+@media (max-width: 620px) {
+  .album-header {
+    flex-direction: column;
+    gap: 16px;
+  }
+  .album-header .catalog-cover {
+    width: 140px;
+    height: 140px;
+  }
+  .album-header .catalog-heading {
+    width: 100%;
+  }
+  .album-actions {
+    margin-top: 0;
+  }
+}
+
+.album-actions > button {
+  min-width: 80px;
+  padding: 8px 12px;
+  justify-content: center;
+}
+.album-actions > button.primary {
+  min-width: 94px;
+  padding-inline: 10px;
+}
+.album-metadata .catalog-credits .text-button {
+  padding: 0;
+  color: var(--link);
+  font: inherit;
+}

@@ -1,17 +1,29 @@
 <script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount, ref } from 'vue';
 import type { TrackView, PlaylistView } from '../services/contracts';
+import type { AlbumCard } from '../services/catalog';
 import { songLink } from '../services/trackMenu';
 import { playlistLink } from '../services/playlistMenu';
 import { useCore } from '../services/core';
 import Icon from './Icon.vue';
-const props = defineProps<{ track?: TrackView; playlist?: PlaylistView }>();
-const kind = computed(() => (props.playlist ? '歌单' : '歌曲'));
+const props = defineProps<{ track?: TrackView; playlist?: PlaylistView; album?: AlbumCard }>();
+const kind = computed(() => (props.album ? '专辑' : props.playlist ? '歌单' : '歌曲'));
 const link = computed(() =>
-  props.playlist ? playlistLink(props.playlist) : props.track ? songLink(props.track) : '',
+  props.album && /^\d+$/.test(props.album.id)
+    ? `https://music.163.com/album?id=${props.album.id}`
+    : props.playlist
+      ? playlistLink(props.playlist)
+      : props.track
+        ? songLink(props.track)
+        : '',
 );
-const name = computed(() => props.playlist?.name ?? props.track?.name ?? '');
-const subtitle = computed(() => props.playlist?.creator ?? props.track?.artists.join(' / '));
+const name = computed(() => props.album?.name ?? props.playlist?.name ?? props.track?.name ?? '');
+const subtitle = computed(
+  () =>
+    props.album?.artists.map((artist) => artist.name).join(' / ') ??
+    props.playlist?.creator ??
+    props.track?.artists.join(' / '),
+);
 const emit = defineEmits<{ close: [] }>();
 const dialog = ref<HTMLDialogElement>();
 const client = useCore(),

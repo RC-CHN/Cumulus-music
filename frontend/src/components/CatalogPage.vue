@@ -9,6 +9,8 @@ import { useCatalogPages } from '../composables/useCatalogPages';
 import { useCatalogMembership } from '../composables/useCatalogMembership';
 import TrackTable from './TrackTable.vue';
 import CatalogCards from './catalog/CatalogCards.vue';
+import AlbumHeader from './catalog/AlbumHeader.vue';
+import AlbumContent from './catalog/AlbumContent.vue';
 import Icon from './Icon.vue';
 
 const props = defineProps<{
@@ -28,7 +30,6 @@ const emit = defineEmits<{
   more: [request: TrackMenuRequest];
   download: [tracks: TrackView[]];
   mv: [id: string];
-  comments: [id: string, title: string];
   expired: [];
 }>();
 const expire = () => emit('expired');
@@ -148,11 +149,13 @@ async function collect(reconcile = false) {
 function play(index: number) {
   if (tracks.value[index] && !tracks.value[index].missing) emit('play', selections.value, index);
 }
-function date(value: number | null | undefined) {
-  return value == null ? '' : new Date(value).toLocaleDateString();
-}
 watch(
-  () => [props.account.epoch, props.account.status, props.resource.kind, props.resource.id],
+  [
+    () => props.account.epoch,
+    () => props.account.status,
+    () => props.resource.kind,
+    () => props.resource.id,
+  ],
   () => {
     tab.value = 'songs';
     observed.value = null;
@@ -187,7 +190,32 @@ onUnmounted(() => {
       }}
     </div>
     <template v-else>
-      <header class="catalog-header">
+      <AlbumHeader
+        v-if="album"
+        :album="album"
+        :digital="auxiliary?.digitalAlbumTag === true"
+        :subscribed="subscribed ?? null"
+        :collect-disabled="
+          subscribed == null ||
+          !membership.known.value ||
+          membership.busy.value ||
+          membership.pending.value
+        "
+        :play-disabled="!playable || playBusy || !tracks.some((t) => !t.missing)"
+        :download-disabled="downloadBusy || !tracks.some((t) => !t.missing)"
+        :refresh-disabled="detail.loading.value || membership.busy.value"
+        @open="emit('open', $event)"
+        @play="play(tracks.findIndex((t) => !t.missing))"
+        @collect="collect()"
+        @download="
+          emit(
+            'download',
+            tracks.filter((t) => !t.missing),
+          )
+        "
+        @refresh="refresh"
+      />
+      <header v-else class="catalog-header">
         <img
           v-if="cover"
           class="catalog-cover"
@@ -208,28 +236,6 @@ onUnmounted(() => {
             歌曲 {{ artist.songCount }} · 专辑 {{ artist.albumCount
             }}<span v-if="artist.mvCount != null"> · MV {{ artist.mvCount }}</span>
           </p>
-          <template v-if="album">
-            <p class="catalog-credits">
-              歌手：<template v-for="(credit, i) in album.artists" :key="i"
-                ><span v-if="i"> / </span
-                ><button
-                  v-if="credit.id"
-                  class="text-button"
-                  @click="emit('open', { kind: 'artist', id: credit.id })"
-                >
-                  {{ credit.name }}</button
-                ><span v-else>{{ credit.name }}</span></template
-              >
-            </p>
-            <p v-if="album.translations.length" class="muted">
-              {{ album.translations.join(' / ') }}
-            </p>
-            <p class="muted">
-              {{ album.trackCount }} 首歌曲<span v-if="album.publishedAt != null">
-                · 发行于 {{ date(album.publishedAt) }}</span
-              >
-            </p>
-          </template>
           <div class="catalog-actions">
             <button
               :disabled="
@@ -244,9 +250,6 @@ onUnmounted(() => {
               <Icon name="star" />{{
                 subscribed == null ? '收藏状态未知' : subscribed ? '已收藏' : '收藏'
               }}
-            </button>
-            <button v-if="album" @click="emit('comments', album.id, album.name)">
-              <Icon name="comment" />专辑评论
             </button>
             <button
               class="icon-button"
@@ -290,7 +293,23 @@ onUnmounted(() => {
           {{ item.label }}
         </button>
       </nav>
-      <Transition name="catalog-tab" mode="out-in">
+      <AlbumContent
+        v-if="album"
+        :key="`${account.epoch}:${album.id}`"
+        :album="album"
+        :account="account"
+        :tracks="tracks"
+        :liked="liked"
+        :busy-likes="busyLikes"
+        :playable="playable && !playBusy"
+        :current-id="currentId"
+        @play="play"
+        @like="emit('like', $event)"
+        @more="emit('more', $event)"
+        @open="emit('open', $event)"
+        @expired="expire"
+      />
+      <Transition v-else name="catalog-tab" mode="out-in">
         <div :key="tab" class="catalog-tab-panel">
           <template v-if="tab === 'songs' || tab === 'all'">
             <div class="catalog-section-heading" v-if="artist">
@@ -339,10 +358,6 @@ onUnmounted(() => {
               @album="emit('open', { kind: 'album', id: $event })"
             />
             <p v-else-if="!list.loading.value && !list.error.value" class="empty-state">暂无歌曲</p>
-            <details v-if="album?.description" class="catalog-description">
-              <summary>专辑介绍</summary>
-              <p>{{ album.description }}</p>
-            </details>
           </template>
           <template v-else-if="tab === 'intro'">
             <article v-if="intro" class="catalog-description">
