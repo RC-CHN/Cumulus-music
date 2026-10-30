@@ -8,7 +8,6 @@ import Icon from '../Icon.vue';
 const props = defineProps<{
   model: DownloadModel;
   section: DownloadSection;
-  batch: boolean;
   canPlay: boolean;
   locked: boolean;
   preparing: boolean;
@@ -24,7 +23,7 @@ const menu = computed<MenuItem[]>(() => [
     key: 'batch',
     label: '批量操作',
     icon: 'list',
-    disabled: !view.value?.tasks.length || props.locked,
+    disabled: (!view.value?.tasks.length && !query.value.keyword) || props.locked,
   },
   { key: 'settings', label: '下载设置', icon: 'settings' },
 ]);
@@ -86,12 +85,10 @@ onBeforeUnmount(() => clearTimeout(timer));
     <template v-else-if="section !== 'mv'">
       <button class="primary download-play-all" :disabled="!canPlay" @click="emit('play')">
         <span v-if="preparing" class="spinner" /><Icon v-else name="play" />{{
-          preparing ? '准备中…' : batch ? '播放所选' : '播放全部'
+          preparing ? '准备中…' : '播放全部'
         }}
       </button>
-      <button v-if="batch" class="download-button" @click="emit('batch')">完成</button>
       <ActionMenu
-        v-else
         label="更多下载操作"
         :items="menu"
         @select="$event === 'batch' ? emit('batch') : emit('settings')"

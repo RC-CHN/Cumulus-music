@@ -170,6 +170,7 @@ export type PlayerAction =
       quality: Quality;
       expected_queue_revision: string;
     }
+  | { kind: 'queue_downloads'; task_ids: string[]; expected_queue_revision: string }
   | { kind: 'queue_playlist'; id: string; quality: Quality; expected_queue_revision: string }
   | { kind: 'next_play'; id: string; quality: Quality; expected_queue_revision: string }
   | { kind: 'loudness'; expected_revision: string; enabled: boolean }

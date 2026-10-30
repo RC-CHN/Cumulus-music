@@ -19,8 +19,6 @@ const props = defineProps<{
   growth: number[];
   total: number;
   query: DownloadQuery;
-  batch: boolean;
-  selected: Set<string>;
   locked: boolean;
   playable: boolean;
   currentId?: string;
@@ -30,8 +28,6 @@ const props = defineProps<{
   moreError: string;
 }>();
 const emit = defineEmits<{
-  toggle: [id: string];
-  all: [];
   play: [task: DownloadTask];
   manage: [task: DownloadTask];
   sort: [column: DownloadSort];
@@ -108,8 +104,7 @@ async function key(event: KeyboardEvent, index: number) {
   if (!task) return;
   if (event.key === 'Enter' || event.key === ' ') {
     event.preventDefault();
-    if (props.batch) emit('toggle', task.id);
-    else if (!active.value && props.playable && event.key === 'Enter') emit('play', task);
+    if (!active.value && props.playable && event.key === 'Enter') emit('play', task);
     return;
   }
   if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
@@ -148,16 +143,7 @@ async function key(event: KeyboardEvent, index: number) {
     :aria-rowcount="total + 1"
   >
     <div class="download-row download-table-header" role="row" :style="columns.style.value">
-      <span role="columnheader"
-        ><input
-          v-if="batch"
-          type="checkbox"
-          aria-label="选择已加载的全部下载"
-          :checked="selected.size === tasks.length"
-          :indeterminate="selected.size > 0 && selected.size < tasks.length"
-          @change="emit('all')"
-        /><template v-else>#</template></span
-      >
+      <span role="columnheader">#</span>
       <span
         v-for="(header, index) in headers"
         :key="header.sort"
@@ -206,39 +192,29 @@ async function key(event: KeyboardEvent, index: number) {
         :key="task.id"
         class="download-row"
         :style="columns.style.value"
-        :class="{ current: task.track.id === currentId, selected: selected.has(task.id) }"
+        :class="{ current: task.track.id === currentId }"
         role="row"
         :aria-rowindex="query.offset + start + i + 2"
-        :aria-selected="batch ? selected.has(task.id) : undefined"
         :data-download-index="start + i"
         :data-download-task="task.id"
         :tabindex="focused === start + i ? 0 : -1"
         @focus="focused = start + i"
         @keydown.self="key($event, start + i)"
-        @click="batch && emit('toggle', task.id)"
-        @dblclick="!active && !batch && playable && emit('play', task)"
+        @dblclick="!active && playable && emit('play', task)"
       >
         <span role="cell" class="download-index"
-          ><input
-            v-if="batch"
-            type="checkbox"
-            tabindex="-1"
-            :aria-label="`选择 ${task.track.name}`"
-            :checked="selected.has(task.id)"
-            @click.stop="emit('toggle', task.id)" />
-          <template v-else
-            ><span class="download-index-number">{{
-              String(query.offset + start + i + 1).padStart(2, '0')
-            }}</span
-            ><button
-              v-if="!active"
-              class="icon-button download-index-play"
-              :disabled="!playable"
-              :aria-label="`播放下载 ${task.track.name}`"
-              @click.stop="emit('play', task)"
-              @dblclick.stop
-            >
-              <Icon name="play" /></button></template
+          ><span class="download-index-number">{{
+            String(query.offset + start + i + 1).padStart(2, '0')
+          }}</span
+          ><button
+            v-if="!active"
+            class="icon-button download-index-play"
+            :disabled="!playable"
+            :aria-label="`播放下载 ${task.track.name}`"
+            @click.stop="emit('play', task)"
+            @dblclick.stop
+          >
+            <Icon name="play" /></button
         ></span>
         <div role="cell" class="download-title-cell">
           <DownloadTrackTitle

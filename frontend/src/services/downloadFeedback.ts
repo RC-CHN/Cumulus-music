@@ -33,6 +33,8 @@ export function downloadCommandLabel(command: DownloadCommand): string {
       return '迁移下载目录';
     case 'migration':
       return command.cancel ? '取消目录迁移' : '继续目录迁移';
+    case 'delete_files':
+      return `删除下载文件（${command.task_ids.length}项）`;
     case 'file':
       return command.action === 'delete'
         ? '删除下载文件'

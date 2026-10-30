@@ -9,6 +9,7 @@ const props = defineProps<{
   active: boolean;
   locked: boolean;
   repairing: boolean;
+  selectionOnly?: boolean;
 }>();
 const emit = defineEmits<{ control: [action: DownloadControl]; manage: [] }>();
 const resume = computed(() => ['paused', 'error'].includes(props.task.status));
@@ -45,7 +46,13 @@ const quality = computed(() =>
         }}</span></small
       >
     </div>
-    <div class="download-row-actions" @click.stop @dblclick.stop @keydown.stop>
+    <div
+      v-if="!selectionOnly"
+      class="download-row-actions"
+      @click.stop
+      @dblclick.stop
+      @keydown.stop
+    >
       <template v-if="active"
         ><button
           class="icon-button"

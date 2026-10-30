@@ -156,7 +156,13 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
     try {
       const result = await core.downloadCommand(captured, input);
       if (version !== generation || result.epoch !== epoch) return;
-      if (result.failed.length)
+      if (input.kind === 'delete_files')
+        notice.value =
+          `已删除 ${result.accepted.length} 项` +
+          (result.failed.length
+            ? `，${result.failed.length} 项未完成：${result.failed[0]?.message}`
+            : '');
+      else if (result.failed.length)
         notice.value = `已受理 ${result.accepted.length} 项，${result.failed.length} 项未完成：${result.failed[0]?.message}`;
       else
         notice.value = result.operationId

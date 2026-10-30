@@ -25,13 +25,11 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
   dialog: [target: DownloadDialogTarget];
-  play: [ids: string[], index: number];
+  batch: [category: 'song' | 'voice'];
   select: [selection: PlaySelection];
   playMv: [task: DownloadTask];
 }>();
 const { view, query, busy, loading, error, readError, notice } = props.model;
-const selected = ref(new Set<string>()),
-  batch = ref(false);
 const root = ref<HTMLElement>();
 async function loadMore() {
   const origin = document.activeElement;
@@ -69,18 +67,10 @@ async function filter(value: Partial<DownloadQuery>, selector: string) {
     );
   }
 }
-async function toggleBatch() {
-  batch.value = !batch.value;
-  selected.value = new Set();
-  await nextTick();
-  root.value
-    ?.querySelector<HTMLElement>(
-      batch.value ? '.download-toolbar>.download-button' : '.download-toolbar .menu-trigger',
-    )
-    ?.focus({ preventScroll: true });
-}
 const tasks = computed(() => view.value?.tasks ?? []);
-const selectedTasks = computed(() => tasks.value.filter((t) => selected.value.has(t.id)));
+function openBatch() {
+  if (section.value === 'song' || section.value === 'voice') emit('batch', section.value);
+}
 const section = computed(() => downloadSection(query.value));
 const columnGrowth = ref<number[]>([]);
 watch(
@@ -101,51 +91,18 @@ const canPlay = computed(
     !locked.value &&
     !props.preparing &&
     props.playable &&
-    (batch.value ? selectedTasks.value : tasks.value).some((t) => t.source !== 'mv'),
+    tasks.value.some((t) => t.source !== 'mv'),
 );
-watch(
-  [
-    () => query.value.tab,
-    () => query.value.category,
-    () => query.value.offset,
-    () => query.value.keyword,
-    () => query.value.sort,
-    () => query.value.descending,
-  ],
-  () => {
-    selected.value = new Set();
-  },
-);
-watch(tasks, (rows) => {
-  const present = new Set(rows.map((t) => t.id));
-  selected.value = new Set([...selected.value].filter((id) => present.has(id)));
-});
 function changeSection(value: DownloadSection) {
   if (value === section.value) return;
-  batch.value = false;
   props.model.filter(downloadSectionQuery(value));
-}
-function toggle(id: string) {
-  const set = new Set(selected.value);
-  set.has(id) ? set.delete(id) : set.add(id);
-  selected.value = set;
 }
 function play(task?: DownloadTask) {
   if (task?.source === 'mv') {
     emit('playMv', task);
     return;
   }
-  if (!batch.value) {
-    emit('select', { kind: 'downloads', query: { ...query.value }, start_id: task?.id ?? null });
-    return;
-  }
-  const rows = (task ? tasks.value : selectedTasks.value).filter((t) => t.source !== 'mv');
-  if (rows.length)
-    emit(
-      'play',
-      rows.map((t) => t.id),
-      task ? rows.findIndex((t) => t.id === task.id) : 0,
-    );
+  emit('select', { kind: 'downloads', query: { ...query.value }, start_id: task?.id ?? null });
 }
 </script>
 <template>
@@ -169,12 +126,11 @@ function play(task?: DownloadTask) {
         <DownloadToolbar
           :model="model"
           :section="section"
-          :batch="batch"
           :can-play="canPlay"
           :locked="locked"
           :preparing="!!preparing"
           @play="play()"
-          @batch="toggleBatch"
+          @batch="openBatch"
           @clear="emit('dialog', { kind: 'clear' })"
           @settings="emit('dialog', { kind: 'settings' })"
         />
@@ -231,8 +187,6 @@ function play(task?: DownloadTask) {
           :tasks="tasks"
           :total="view?.total ?? 0"
           :query="query"
-          :batch="batch"
-          :selected="selected"
           :locked="locked"
           :playable="playable && !locked && !preparing"
           :current-id="currentId"
@@ -241,11 +195,6 @@ function play(task?: DownloadTask) {
           :loading-more="model.loadingMore.value"
           :more-error="model.moreError.value"
           @load="loadMore"
-          @toggle="toggle"
-          @all="
-            selected =
-              selectedTasks.length === tasks.length ? new Set() : new Set(tasks.map((t) => t.id))
-          "
           @play="play"
           @manage="emit('dialog', { kind: 'file', task: $event })"
           @sort="filter(nextDownloadSort(query, $event), `[data-download-sort='${$event}']`)"

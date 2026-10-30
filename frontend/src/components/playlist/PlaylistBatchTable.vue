@@ -1,13 +1,12 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch, useId } from 'vue';
+import { computed, useId } from 'vue';
 import type { TrackView } from '../../services/contracts';
-import { useVirtualRows } from '../../composables/useVirtualRows';
+import { useBatchRows } from '../../composables/useBatchRows';
 import { time } from '../../services/player';
 import { artworkAt } from '../../services/artwork';
 import Icon from '../Icon.vue';
 import PlaylistBatchResize from './PlaylistBatchResize.vue';
 import { usePlaylistBatchColumns } from '../../composables/usePlaylistBatchColumns';
-import { batchSelectionNeighbor } from '../../services/playlistBatchTable';
 const props = defineProps<{
   tracks: TrackView[];
   selected: Set<string>;
@@ -20,92 +19,21 @@ const emit = defineEmits<{
   select: [index: number];
   all: [force?: boolean];
 }>();
-const { container, start, end, onScroll } = useVirtualRows(() => props.tracks.length, 64);
+const ids = computed(() => props.tracks.map((t) => t.id));
+const { container, start, end, onScroll, active, toggle, key, focusBody, shortcut } = useBatchRows(
+  ids,
+  {
+    selected: () => props.selected,
+    disabled: () => props.disabled,
+    toggle: (i, range) => emit('toggle', i, range),
+    select: (i) => emit('select', i),
+    all: (force) => emit('all', force),
+  },
+);
 const columns = usePlaylistBatchColumns(container, () => props.disabled);
 const bodyId = useId();
 const rows = computed(() => props.tracks.slice(start.value, end.value));
-const ids = computed(() => props.tracks.map((t) => t.id));
 const count = computed(() => new Set(props.tracks.map((t) => t.id)).size);
-const active = ref(0);
-let recycling = false;
-watch(
-  [start, end],
-  ([from, to]) => {
-    const row = document.activeElement?.closest<HTMLElement>('[data-batch-index]');
-    if (!row || !container.value?.contains(row)) return;
-    const index = Number(row.dataset.batchIndex);
-    if (index < from || index >= to) {
-      active.value = Math.min(props.tracks.length - 1, Math.ceil(container.value.scrollTop / 64));
-      recycling = true;
-      container.value.focus({ preventScroll: true });
-      recycling = false;
-    }
-  },
-  { flush: 'pre' },
-);
-function toggle(event: MouseEvent, index: number) {
-  if (props.disabled) return;
-  (event.currentTarget as HTMLElement)
-    .closest<HTMLElement>('[data-batch-index]')
-    ?.focus({ preventScroll: true });
-  emit('toggle', index, event.shiftKey);
-}
-async function key(event: KeyboardEvent, index: number) {
-  if (props.disabled || event.altKey) return;
-  if (event.key === ' ' || event.key === 'Enter') {
-    event.preventDefault();
-    event.stopPropagation();
-    emit('toggle', index, event.shiftKey);
-    return;
-  }
-  let target = index;
-  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-    const direction = event.key === 'ArrowDown' ? 1 : -1;
-    if (!event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
-      const neighbor = batchSelectionNeighbor(ids.value, props.selected, direction);
-      event.preventDefault();
-      event.stopPropagation();
-      if (neighbor === undefined) return;
-      target = neighbor;
-    } else target += direction;
-  } else if (event.key === 'Home') target = 0;
-  else if (event.key === 'End') target = props.tracks.length - 1;
-  else return;
-  event.preventDefault();
-  event.stopPropagation();
-  target = Math.max(0, Math.min(props.tracks.length - 1, target));
-  if (event.shiftKey) emit('toggle', target, true);
-  else if (!event.ctrlKey && !event.metaKey) emit('select', target);
-  await focusIndex(target);
-}
-async function focusBody(event: FocusEvent) {
-  if (recycling || props.disabled || !event.relatedTarget) return;
-  const selected = ids.value.findIndex((id) => props.selected.has(id));
-  if (selected < 0) emit('select', 0);
-  await focusIndex(Math.max(0, selected));
-}
-async function focusIndex(target: number) {
-  active.value = target;
-  if (container.value) {
-    const top = target * 64;
-    if (top < container.value.scrollTop) container.value.scrollTop = top;
-    else if (top + 64 > container.value.scrollTop + container.value.clientHeight)
-      container.value.scrollTop = top + 64 - container.value.clientHeight;
-    onScroll();
-    await new Promise<void>((r) => requestAnimationFrame(() => r()));
-    await nextTick();
-    container.value
-      ?.querySelector<HTMLElement>(`[data-batch-index="${target}"]`)
-      ?.focus({ preventScroll: true });
-  }
-}
-function shortcut(event: KeyboardEvent) {
-  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
-    event.preventDefault();
-    event.stopPropagation();
-    if (!props.disabled) emit('all', true);
-  }
-}
 </script>
 <template>
   <div

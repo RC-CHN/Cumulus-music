@@ -46,6 +46,9 @@ import LyricsPanel from './components/LyricsPanel.vue';
 import PlaylistDialog from './components/PlaylistDialog.vue';
 import PlaylistCollectDialog from './components/PlaylistCollectDialog.vue';
 import DownloadPage from './components/DownloadPage.vue';
+import DownloadBatchPage from './components/download/DownloadBatchPage.vue';
+import type { BatchCategory } from './services/downloadBatch';
+import type { DownloadQuery } from './services/downloads';
 import DownloadDialog from './components/DownloadDialog.vue';
 import CloudPage from './components/CloudPage.vue';
 import MvCollection from './components/MvCollection.vue';
@@ -90,6 +93,11 @@ const music = useMusic(undefined, (commit) => {
   if (batchTarget.value && batchPage.value)
     batchPage.value.requestLeave(() => {
       void closeBatch(false);
+      commit();
+    });
+  else if (downloadBatch.value && downloadBatchPage.value)
+    downloadBatchPage.value.requestLeave(() => {
+      closeDownloadBatch(false);
       commit();
     });
   else if (playlistEditor.value && playlistEditorPage.value)
@@ -420,8 +428,31 @@ function editorLeft() {
     : document.querySelector<HTMLElement>('.playlist-edit, .playlist-card-menu button');
   target?.focus({ preventScroll: true });
 }
+const downloadBatch = ref<{ category: BatchCategory; query: DownloadQuery }>();
+const downloadBatchPage = ref<InstanceType<typeof DownloadBatchPage>>();
+let downloadBatchScroll = 0,
+  restoreDownloadFocus = false;
+function openDownloadBatch(category: BatchCategory) {
+  downloadBatchScroll = document.querySelector<HTMLElement>('.download-scroll')?.scrollTop ?? 0;
+  restoreDownloadFocus = false;
+  downloadBatch.value = { category, query: { ...downloads.query.value } };
+}
+function closeDownloadBatch(restore = true) {
+  restoreDownloadFocus = restore;
+  downloadBatch.value = undefined;
+}
+function downloadBatchLeft() {
+  if (!restoreDownloadFocus || downloadBatch.value || music.page.value.kind !== 'downloads') return;
+  restoreDownloadFocus = false;
+  const table = document.querySelector<HTMLElement>('.download-scroll');
+  if (table) table.scrollTop = downloadBatchScroll;
+  document
+    .querySelector<HTMLElement>('.download-toolbar .menu-trigger')
+    ?.focus({ preventScroll: true });
+}
 function backFromPage() {
   if (batchTarget.value) batchPage.value?.requestLeave();
+  else if (downloadBatch.value) downloadBatchPage.value?.requestLeave();
   else if (playlistEditor.value) playlistEditorPage.value?.requestLeave();
   else music.back();
 }
@@ -452,7 +483,8 @@ const playlistManager = usePlaylists(
       change.kind === 'create' &&
       change.playlistId &&
       playlistDialog.value?.kind !== 'tracks' &&
-      !batchTarget.value
+      !batchTarget.value &&
+      !downloadBatch.value
     ) {
       music.navigate({ kind: 'playlist', id: change.playlistId });
     } else if (music.page.value.kind === 'playlist' && !batchTarget.value) {
@@ -662,6 +694,8 @@ watch(
     playlistDialog.value = undefined;
     playlistEditor.value = undefined;
     batchTarget.value = undefined;
+    downloadBatch.value = undefined;
+    restoreDownloadFocus = false;
     batchClosing.value = false;
     restoreBatchFocus = false;
     batchReturnFocus = undefined;
@@ -881,7 +915,7 @@ onUnmounted(() => {
       <button
         class="back-button icon-button"
         aria-label="返回上一页"
-        :disabled="!historyLength && !playlistEditor && !batchTarget"
+        :disabled="!historyLength && !playlistEditor && !batchTarget && !downloadBatch"
         @click="backFromPage"
       >
         <Icon name="back" />
@@ -963,7 +997,26 @@ onUnmounted(() => {
             "
           />
         </Transition>
-        <div v-show="!playlistEditor && !batchTarget" class="content-page-previous">
+        <Transition name="page" @after-leave="downloadBatchLeft">
+          <DownloadBatchPage
+            v-if="downloadBatch"
+            ref="downloadBatchPage"
+            :key="account.epoch + ':download:' + downloadBatch.category"
+            :category="downloadBatch.category"
+            :query="downloadBatch.query"
+            :account="account"
+            :model="downloads"
+            :player="player"
+            :manager="playlistManager"
+            :playlists="playlists"
+            @close="closeDownloadBatch()"
+            @expired="music.bootstrap(false)"
+          />
+        </Transition>
+        <div
+          v-show="!playlistEditor && !batchTarget && !downloadBatch"
+          class="content-page-previous"
+        >
           <Transition name="page" mode="out-in">
             <div class="page-view" :key="pageKey">
               <div v-if="initializing" class="empty-state" role="status">
@@ -1200,7 +1253,7 @@ onUnmounted(() => {
                 :playable="player.ready.value"
                 :current-id="currentTrackId"
                 @dialog="downloadDialog = $event"
-                @play="player.downloads"
+                @batch="openDownloadBatch"
                 :preparing="player.busy.value"
                 @select="player.select"
                 @play-mv="(task) => openMv(task.track.id, task.id)"
@@ -1436,6 +1489,7 @@ onUnmounted(() => {
           playlistDialog ||
           playlistEditor ||
           batchTarget ||
+          downloadBatch ||
           downloadDialog ||
           cloudDialogOpen ||
           player.queueOpen.value ||

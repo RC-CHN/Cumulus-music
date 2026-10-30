@@ -185,8 +185,7 @@
 .download-row > :last-child {
   padding-right: 16px;
 }
-.download-row:hover,
-.download-row.selected {
+.download-row:hover {
   background: var(--surface-hover);
 }
 .download-row.current .download-track-name {
@@ -213,6 +212,7 @@
   align-items: center;
   gap: 4px;
   height: 40px;
+  padding-inline: 0;
   white-space: nowrap;
   color: inherit;
   font-size: 13px;
@@ -320,14 +320,6 @@
 .download-row:has(.download-index-play):hover .download-index-number,
 .download-row:has(.download-index-play):focus-within .download-index-number {
   visibility: hidden;
-}
-.download-index input,
-.download-table-header input {
-  accent-color: var(--accent);
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  vertical-align: middle;
 }
 .download-time,
 .download-size {
@@ -594,4 +586,19 @@
 :root[data-motion='reduced'] .download-section-enter-from,
 :root[data-motion='reduced'] .download-section-leave-to {
   transform: none;
+}
+
+.download-batch-table .batch-table-head > span {
+  position: relative;
+}
+.download-batch-table [role='cell'] > .download-track {
+  width: 100%;
+}
+.download-batch-confirm .track-remove-actions {
+  margin-top: 20px;
+}
+.download-batch-confirm #download-delete-body {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.6;
 }

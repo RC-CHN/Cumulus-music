@@ -120,6 +120,7 @@ export interface DownloadsView {
 }
 export type DownloadControl = 'pause' | 'resume' | 'cancel' | 'repair';
 export type DownloadCommand =
+  | { kind: 'delete_files'; task_ids: string[] }
   | { kind: 'start_voice'; voice_ids: string[]; options: DownloadOptions }
   | { kind: 'start_mv'; id: string; resolution: number }
   | { kind: 'start_cloud'; song_ids: string[]; revision: string; lyrics: boolean }

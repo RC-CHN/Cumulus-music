@@ -121,7 +121,25 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   const action = (input: PlayerAction) => run((e) => core.playerAction(e, input));
   // Resource-menu failures belong to that operation, not the audio-error bar.
   // A user retry captures the latest queue fence; no automatic write replay.
-  async function queuePlaylist(id: string, selection?: { ids: string[]; revision: string }) {
+  function queuePlaylist(id: string, selection?: { ids: string[]; revision: string }) {
+    const quality = view.value?.requestedQuality ?? 'standard';
+    return queueAction(
+      selection
+        ? { kind: 'queue_playlist_batch', id, quality, ...selection }
+        : { kind: 'queue_playlist', id, quality },
+    );
+  }
+  function queueDownloads(task_ids: string[]) {
+    return queueAction({ kind: 'queue_downloads', task_ids });
+  }
+  type QueueInput<T> = T extends { expected_queue_revision: string }
+    ? Omit<T, 'expected_queue_revision'>
+    : never;
+  async function queueAction(
+    action: QueueInput<
+      Extract<PlayerAction, { kind: 'queue_downloads' | 'queue_playlist' | 'queue_playlist_batch' }>
+    >,
+  ) {
     if (!ready.value || busy.value || queueBusy.value) return;
     const captured = epoch,
       current = ++request,
@@ -129,11 +147,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     queueBusy.value = true;
     try {
       const input: PlayerAction = {
-        ...(selection
-          ? { kind: 'queue_playlist_batch' as const, ...selection }
-          : { kind: 'queue_playlist' as const }),
-        id,
-        quality: view.value?.requestedQuality ?? 'standard',
+        ...action,
         expected_queue_revision: view.value?.queueRevision ?? '0',
       };
       const next = await core.playerAction(captured, input);
@@ -241,6 +255,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   }
   return {
     queuePlaylist,
+    queueDownloads,
     prepareSelection,
     view,
     queue,
