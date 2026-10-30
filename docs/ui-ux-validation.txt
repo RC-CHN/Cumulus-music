@@ -1655,3 +1655,50 @@ Rustfmt、严格workspace全target/custom-protocol Clippy；259个测试目标�
 
 下一步仍包含整歌单下一首/详情添加队列与批量、完整分享/特殊资源菜单、各页面剩余
 逐态对照。物理桌面、Windows视觉/DPI和实机刷新率未获本轮证明，完整目标继续进行。
+
+2026-10-30 普通歌单队列菜单与反馈专项
+基线834b055；来源、行为与社区差异见playlist-queue-ui-contracts.txt。
+只验收本项UI/UX，不把请求或核心测试数量换算成界面完成度。
+
+实际截图轮次（目录相对仓库根.build/）
+- playlist-queue-first完成34态后在“新播放操作覆盖添加”失败：添加沿用播放器busy，
+  播放键被禁用。人工看05/24/28/32，另发现两层等待提示叠加、成功提示覆盖菜单底项。
+  已将queueBusy与transport busy分开，普通动作提示层级降到菜单下；仍可显式播放/暂停。
+- playlist-queue-second执行38态，外部原生核验失败于第36态：探针在切歌元数据已更新、
+  原生仍loading时判断已暂停，后来实际进入playing。修正探针等待已可用的暂停按钮，
+  保留原生state/playId/position与完整队列的断言；没有放宽期望。人工查看24/26确认
+  菜单可操作、只剩一层等待提示与播放键可用。失败日志和原图保留。
+- playlist-queue-final通过38态；final2增侧栏入口与减少动态效果通过42态，生产二进制
+  与second相同。人工看final的32/38确认重试等待和会话失效；旧探针失败不记为通过。
+- final3加入跨页后原入口卸载场景，共44态通过。人工看31/38/43：错误/侧栏布局正常，
+  但焦点回退整个侧栏出现大框。现按优先级回到歌单页刷新或当前导航按钮，最后才选滚动区。
+- playlist-queue-final4是最终44态/44图，人工查看03/21/43，确认浅色两种尺寸的菜单
+  排布和切页重试后的具体控件焦点；其他态有实际WebView操作断言，不称全部逐像素人工检查。
+  通过四组1120×760/760×540与深浅色的菜单、空禁用、等待、成功；覆盖读取失败/重试防重、
+  关闭返回、资源已变空、迟到请求取消、明确下一首、队列抽屉、侧栏、减少动态效果、
+  原入口卸载后的重试返回与账号失效。按钮命中检查验证提示不会挡住菜单。
+- 使用240首歌单和原4首队列实际读取，核验插入后244首的全部顺序、去重、原playId与暂停
+  位置不变，显式下一首确实切换；并非只核对“已添加”文字。空队列开始native/null播放。
+  新专项真实音乐请求、真实账号写入和合成远端写入均0；原生null音频不证明真实声卡听感。
+
+回归与环境
+- playlist-queue-regression-menu-final4为同一最终内嵌前端，52态通过，包含删除/未知核对、
+  下载/分享/复制与焦点；仅内存夹具写4次，不修改真实资源。
+- playlist-queue-regression-detail 38态、playlist-queue-regression-menu-final 52态早于
+  最后仅导航焦点回退修改；playlist-queue-regression-songs 45态、regression-menu 52态
+  早于两次焦点回退修改。分别标记版本，不合称最终二进制全覆盖。
+- 图集.build/playlist-queue-gallery/index.html包含最终44、最终菜单52、详情38与歌曲45
+  共179张原图，回归组标明版本。历史失败及中间轮次另留原目录；CSS仅裁窗口外桌面。
+- Linux真实Tauri/WebKitGTK、隔离Xvfb1440×1000和private D-Bus，LC_ALL=en_US.UTF-8；
+  本轮未额外传GDK_BACKEND或WEBKIT_DISABLE_DMABUF_RENDERER，使用探针prepare_graphics
+  的本进程默认兼容策略。延迟/失败/过期和系统减少动态效果事件为明确合成注入。
+  不是物理显示器60Hz证明，未取得Windows视觉/DPI或官方同状态运行截图。
+
+工程防回归（单列，不作为UI一致性完成数）
+- Node24.16.0/npm ci、format:check、274前端测试、类型与production构建通过；App大chunk
+  既有警告保留。Rust1.96.0 fmt、严格workspace/all-targets/custom-protocol Clippy、
+  全量259目标/1190passed/0failed/0ignored、21项CI规则测试通过，最终内嵌原生构建完成。
+- 新Rust测试首次漏了测试模块path，其后两个夹具提前丢弃临时目录导致文件错误；修正测试
+  生命周期后定向/全量通过。没有把这些初始失败或历史Python执行算作通过。
+- playlist_queue_smoke已加入Linux/Windows独立CI runner；远端完整结果按精确提交核对，
+  本机通过不等于CI完成。没有新增发布标记、版本标签或发布附件。
