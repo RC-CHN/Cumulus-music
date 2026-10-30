@@ -84,7 +84,7 @@
     await wait(() => all('.track-row').length, 'daily');
     await sleep(700);
     assert(one('.track-duration')?.textContent === '100:00', 'long-duration fixture not loaded');
-    assert(all('.track-title .ellipsis').every(node => node.title), 'truncated track credits need full title hints');
+    assert(all('.track-title .ellipsis').every(node => node.dataset.tooltip && !node.hasAttribute('title')), 'truncated track credits need app-owned full text hints');
     if (localStorage.getItem('cumulus.ux.finished')) {
       assert(localStorage.getItem('cumulus.appearance.v1') === 'dark' && facts().theme === 'dark', 'dark preference did not survive a process restart');
       await capture('persisted_dark');

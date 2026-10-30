@@ -12,7 +12,18 @@ pub fn enabled() -> bool {
 }
 pub fn control(value: &Value) {
     let mode = value["mode"].as_str().unwrap();
-    assert!(["good", "home_error", "suggest_error", "empty", "expired"].contains(&mode));
+    assert!(
+        [
+            "good",
+            "home_error",
+            "suggest_error",
+            "result_error",
+            "unavailable",
+            "empty",
+            "expired"
+        ]
+        .contains(&mode)
+    );
     *MODE.lock().unwrap() = mode.into();
 }
 pub fn initialize(store: &StateStore) -> Result<()> {
@@ -34,6 +45,9 @@ pub fn calls() -> usize {
     CALLS.load(Ordering::SeqCst)
 }
 pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
+    if let Some(result) = result_response(path, args) {
+        return Some(result);
+    }
     if !enabled() || !path.starts_with("/api/search/") {
         return None;
     }
@@ -88,4 +102,86 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
         }
     };
     Some(Ok(json!({"code":200,"data":data})))
+}
+
+fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
+    let category = match path {
+        "/api/search/pc/complex/page" => "all",
+        "/api/search/song/list/page" => "songs",
+        "/api/v1/search/playlist/get" => "playlists",
+        "/api/v1/search/artist/get" => "artists",
+        "/api/v1/search/album/get" => "albums",
+        "/api/v1/search/user/get" => "users",
+        "/api/search/voice/get" => "voices",
+        "/api/search/voicelist/get" => "podcasts",
+        "/api/search/resource/lyric" => "lyrics",
+        "/api/search/mlog/get" => "mvs",
+        _ => return None,
+    };
+    CALLS.fetch_add(1, Ordering::SeqCst);
+    let mode = MODE.lock().unwrap().clone();
+    if mode == "expired" {
+        return Some(Ok(json!({"code":301})));
+    }
+    if mode == "result_error" {
+        return Some(Err(Error::Transport("合成搜索服务暂不可用".into())));
+    }
+    let fixtures: Value = serde_json::from_str(include_str!(
+        "../../../core/tests/fixtures/search-results.json"
+    ))
+    .unwrap();
+    let mut response = fixtures[category].clone();
+    let legacy = response["result"].is_object();
+    let container = if legacy {
+        &mut response["result"]
+    } else {
+        &mut response["data"]
+    };
+    let key = if category == "all" {
+        "blocks"
+    } else if legacy {
+        if category == "users" {
+            "userprofiles"
+        } else {
+            category
+        }
+    } else {
+        "resources"
+    };
+    let rows = container[key].as_array().unwrap();
+    let offset = args["offset"].as_u64().unwrap_or(0) as usize;
+    let limit = args["limit"].as_u64().unwrap_or(30) as usize;
+    container[key] = json!(if mode == "empty" {
+        vec![]
+    } else if category == "all" {
+        rows.clone()
+    } else {
+        (offset..(offset + limit).min(60))
+            .map(|i| rows[i % rows.len()].clone())
+            .collect()
+    });
+    container["hasMore"] = json!(mode != "empty" && category != "all" && offset + limit < 60);
+    if mode == "empty" {
+        for key in [
+            "totalCount",
+            "playlistCount",
+            "artistCount",
+            "albumCount",
+            "userprofileCount",
+        ] {
+            if !container[key].is_null() {
+                container[key] = json!(0);
+            }
+        }
+    }
+    if mode == "unavailable" && ["voices", "mvs"].contains(&category) {
+        for row in response["data"]["resources"].as_array_mut().unwrap() {
+            if category == "voices" {
+                row["baseInfo"]["radio"] = Value::Null;
+            } else {
+                row["baseInfo"]["id"] = json!("opaque-video");
+            }
+        }
+    }
+    Some(Ok(response))
 }
