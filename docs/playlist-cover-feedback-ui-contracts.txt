@@ -57,3 +57,6 @@ playlist/components/CoverEdit.jsx 将上传结果的 docId 交给父表单的 co
 复验
 python3 scripts/ci/playlist_cover_feedback_smoke.py --binary /absolute/ux_ui_probe --root /absolute/new-root
 Linux可加--screenshots；Windows可加--runtime。--baseline只采集旧界面对照，不证明新反馈通过。
+
+后续：预览损坏、重读、取消与焦点的界面契约见playlist-cover-preview-ui-contracts.txt。
+本文件之前的验证边界保留为历史记录，新轮实际检查结果见ui-ux-validation.txt。
