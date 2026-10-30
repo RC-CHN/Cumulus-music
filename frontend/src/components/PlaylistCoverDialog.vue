@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import type { AccountView } from '../services/contracts';
 import type { PlaylistEditor } from '../services/playlists';
 import {
@@ -29,12 +29,17 @@ const model = usePlaylistCover(
 );
 const { task, image, error, warning, busy, loading, stopping, changedElsewhere, latest } = model;
 const dialog = ref<HTMLDialogElement>();
+const body = ref<HTMLElement>();
 const position = ref<CropPosition>({ x: 0, y: 0, zoom: 1 });
 const editable = computed(
   () => !!task.value && coverEditable(task.value) && !!image.value && !busy.value && !loading.value,
 );
 const limits = computed(() =>
   image.value ? coverZoomLimits(image.value.width, image.value.height) : { min: 1, max: 10 },
+);
+const zoomProgress = computed(
+  () =>
+    `${((position.value.zoom - limits.value.min) / (limits.value.max - limits.value.min || 1)) * 100}%`,
 );
 const crop = computed(() =>
   image.value ? coverCrop(image.value.width, image.value.height, position.value) : undefined,
@@ -53,22 +58,33 @@ const ambiguous = computed(
   () => task.value?.phase === 'allocating' || task.value?.transfer === 'ambiguous',
 );
 const finished = computed(() => !!task.value && coverTerminal(task.value));
-let focus: HTMLElement | null = null;
 let pointer: { id: number; x: number; y: number } | undefined;
-watch(image, (value) => {
-  if (value)
-    position.value = task.value?.crop
-      ? restoreCoverPosition(value.width, value.height, task.value.crop)
-      : coverPosition(value.width, value.height);
+watch(image, async (value) => {
+  if (!value) return;
+  position.value = task.value?.crop
+    ? restoreCoverPosition(value.width, value.height, task.value.crop)
+    : coverPosition(value.width, value.height);
+  if (task.value && coverEditable(task.value)) {
+    await nextTick();
+    // A newly selected image starts at its crop area; cancelling the native
+    // picker does not change image, so it keeps the previous viewport intact.
+    if (body.value) body.value.scrollTop = 0;
+  }
+});
+watch([busy, error, warning, () => task.value?.phase], async () => {
+  if (busy.value || error.value || warning.value || (task.value && !coverEditable(task.value))) {
+    await nextTick();
+    // Keep progress/errors and recovery actions visible in short windows.
+    // Scroll only this dialog body, preserving the editor and crop coordinates.
+    if (body.value) body.value.scrollTop = body.value.scrollHeight;
+  }
 });
 onMounted(async () => {
-  focus = document.activeElement as HTMLElement;
   dialog.value?.showModal();
   await model.connect(props.account, props.editor.id);
 });
 onUnmounted(() => {
   model.dispose();
-  focus?.focus();
 });
 function zoom(value: number) {
   if (editable.value && image.value)
@@ -159,7 +175,7 @@ async function applyLatest() {
         <Icon name="close" />
       </button>
     </header>
-    <div class="cover-body">
+    <div ref="body" class="cover-body">
       <p v-if="loading" class="muted" role="status">正在读取封面编辑进度…</p>
       <div
         v-if="image"
@@ -167,6 +183,7 @@ async function applyLatest() {
         :class="{ editable }"
         role="group"
         tabindex="0"
+        :aria-disabled="!editable"
         aria-label="封面裁剪区域，方向键移动图片，加减键缩放"
         @pointerdown="down"
         @pointermove="drag"
@@ -190,20 +207,27 @@ async function applyLatest() {
         <Icon v-else name="music" />
         <p>{{ finished ? '本次封面编辑已结束' : '选择一张图片作为歌单封面' }}</p>
       </div>
-      <label v-if="image" class="cover-zoom"
-        >缩放<input
+      <label v-if="image" class="cover-zoom" :style="{ '--cover-zoom-progress': zoomProgress }"
+        ><span class="sr-only">封面缩放</span
+        ><input
           type="range"
           aria-label="封面缩放"
           :min="limits.min"
           :max="limits.max"
           step="0.01"
           :value="position.zoom"
+          :aria-valuetext="`${position.zoom.toFixed(2)} 倍`"
           :disabled="!editable"
           @input="zoom(Number(($event.target as HTMLInputElement).value))"
       /></label>
       <p v-if="busy" class="muted" role="status">正在处理并核对封面，请稍候…</p>
-      <p v-else-if="task" class="cover-status" role="status">{{ coverMessage(task) }}</p>
-      <p v-if="editable" class="cover-tip">方向键移动 · 加减键缩放</p>
+      <p v-else-if="task && !editable" class="cover-status" role="status">
+        {{ coverMessage(task) }}
+      </p>
+      <p v-if="editable" class="cover-tip">
+        *鼠标放置在图片上可拖拽移动图片位置
+        <span class="sr-only">方向键移动，加减键缩放</span>
+      </p>
       <progress
         v-if="task && task.total > 0 && task.phase === 'uploading'"
         :value="task.bytes"
@@ -321,8 +345,9 @@ async function applyLatest() {
   width: 442px;
   max-width: calc(100vw - 24px);
   max-height: calc(100vh - 24px);
-  padding: 30px 39px 28px;
-  border: 1px solid var(--line);
+  min-height: min(556px, calc(100vh - 24px));
+  padding: 40px;
+  border: 0;
   border-radius: 16px;
   background: var(--surface-raised);
   color: var(--text);
@@ -332,10 +357,9 @@ async function applyLatest() {
 .cover-dialog[open] {
   display: flex;
   flex-direction: column;
-  gap: 20px;
 }
 .cover-dialog::backdrop {
-  background: #0004;
+  background: transparent;
 }
 header {
   position: relative;
@@ -351,10 +375,18 @@ h2 {
 header .icon-button {
   position: absolute;
   right: -20px;
-  top: -12px;
+  top: -20px;
+  width: 24px;
+  height: 24px;
+  color: var(--text-secondary);
+}
+header .icon {
+  width: 24px;
+  height: 24px;
 }
 .cover-body {
   min-height: 0;
+  margin-top: 40px;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: thin;
@@ -375,6 +407,9 @@ header .icon-button {
 }
 .cover-crop-area.editable:active {
   cursor: grabbing;
+}
+.cover-crop-area:focus-visible {
+  outline: 2px solid var(--accent);
 }
 .cover-crop-image {
   position: absolute;
@@ -399,7 +434,7 @@ header .icon-button {
   pointer-events: none;
 }
 .cover-empty {
-  height: 228px;
+  height: 260px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -426,23 +461,50 @@ header .icon-button {
 .cover-zoom {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin: 18px 0 10px;
-  font-size: 12px;
-  color: var(--text-secondary);
+  height: 18px;
+  margin: 20px 0 0;
 }
 .cover-zoom input {
-  flex: 1;
-  min-width: 0;
-  accent-color: var(--accent, #ed4053);
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  height: 18px;
+  margin: 0;
+  background: transparent;
+  border-radius: 9px;
+  outline-offset: -2px;
+}
+.cover-zoom input::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(
+    to right,
+    var(--accent-fill) var(--cover-zoom-progress),
+    var(--surface-hover) var(--cover-zoom-progress)
+  );
+}
+.cover-zoom input::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -5px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px #0003;
+}
+.cover-zoom input:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 .cover-tip,
 .cover-status,
 .muted {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 20px;
   color: var(--text-secondary);
-  margin: 8px 0;
+  margin: 20px 0 0;
 }
 .cover-status {
   color: var(--text-secondary);
@@ -457,10 +519,18 @@ header .icon-button {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+  margin-top: 12px;
+}
+.cover-secondary:empty {
+  display: none;
 }
 .text-button {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--accent);
+  padding: 2px 0;
+  line-height: 20px;
+  outline-offset: -2px;
+  border-radius: 4px;
 }
 progress {
   width: 100%;
@@ -479,17 +549,21 @@ footer {
   justify-content: space-between;
   gap: 12px;
   flex-shrink: 0;
+  margin-top: 32px;
 }
 footer button {
   min-height: 40px;
   min-width: 0;
   padding: 0 16px;
   flex: 1;
-  border-radius: 22px;
+  border-radius: 8px;
   font-size: 14px;
 }
 .cover-cancel {
   border: 1px solid var(--line);
+}
+.cover-cancel:hover:not(:disabled) {
+  background: var(--surface-hover);
 }
 .primary {
   background: var(--accent-fill);
@@ -498,5 +572,11 @@ footer button {
 button:disabled {
   opacity: 0.5;
   cursor: default;
+}
+@media (max-height: 600px) {
+  .cover-zoom {
+    /* Keep the entire 18px thumb inside the initial 296px body viewport. */
+    margin-top: 18px;
+  }
 }
 </style>
