@@ -1,0 +1,119 @@
+专辑页：共用页头、页内评论和简介
+2026-10-31；本轮按 UI/UX 一致性及实际入口验收，不代表目录领域全部完成。
+
+来源及适配
+主要来源为官方 Windows 3.1.42.205594 恢复源码，路径相对
+references/ui-recovery/sources/packages/pc/src/pages/album/views/：
+- index.tsx：歌曲/评论/专辑详情三个标签，Common 处在标签外。官方标签用 history.replace；
+  内容上距8px，标签16px/25px行高。当前组件切换不增加历史项，但尚未将标签写入路由；
+  离开整个专辑页再返回会重新进入歌曲标签，与官方路由恢复有差异。
+- Common.tsx：默认封面216px，信息区距28px，标题24px/32px/600；别名跟标题，
+  翻译、歌手署名、发行日期显示在信息区。操作顺序为播放全部、收藏、下载/购买、更多，
+  按钮40px高、8px圆角，靠信息区底部。官方还有168px密集分支和吸顶分支。
+- Detail.tsx：独立“专辑简介”内容，普通多行文本，禁止把描述当成可执行 HTML；
+  文本13px/24px行高，内容上下距12px/30px。
+- Comments.tsx：页内评论保留 Common，评论数由实际评论读取更新。
+未参考 YesPlayMusic。没有同状态官方运行截图，恢复 CSS 不是像素一致证明。
+
+实现结构和交互
+CatalogPage 继续拥有详情读取、收藏日志和歌曲快照，AlbumHeader/AlbumContent 分工：
+1. 页头复用现有安全收藏状态机，未知/待确认/读取失败时不开放盲写。播放与下载按钮
+   直接使用专辑歌曲及原生 revision，不随评论/简介标签变成空列表，也不改成日推来源。
+   页头属于专辑页面，在标签切换时保留；它目前不吸顶，可以随页面滚动出视口。
+2. 专辑取消通用红色“专辑”徽章和列表下方简介折叠，采用独立标签。封面默认216px，
+   窗口<=900px使用168px，<=620px改纵向；这是社区自适应规则，不声称为官方断点。
+   超长标题/翻译/署名换行；歌手有ID才显示导航按钮，缺复数署名时用主歌手资料回退。
+3. 标签提供 tablist/tab/tabpanel、单一键盘停靠点、左右键/Home/End；切换采用既有
+   transform/opacity 动画并尊重减少动态效果。退场内容立即 inert，缓存评论入场解除。
+4. 评论首次选择才读取。CommentsPage 新增 embedded 模式，沿用排序、定位、翻页、
+   楼层、点赞/发言/删除的持久化流程。KeepAlive 保留本次专辑访问内的草稿/回复及页码；
+   不因标签返回重读第一页。页面/身份退出释放组件，并使旧读取失效；不自动提交草稿。
+   评论换页定位到评论内容起点；刷新/点赞沿用原位置。账号或专辑不共用一份草稿。
+   账号代次/状态和资源ID用独立监听源逐项比较；同ID资料对象更新不重置标签或草稿。
+5. 更多菜单目前提供分享专辑、刷新详情。分享仅生成公开资源地址
+   https://music.163.com/album?id=<十进制ID>，通过既有复制接口处理成功/失败反馈；
+   不带 Cookie/签名/播放授权地址，也不向他人发信或公开发布。分享弹窗使用共用
+   ModalTransition，关闭动画结束后焦点回到原“更多专辑操作”按钮。
+6. 刷新失败保留原专辑资料/原评论草稿并明确显示错误；详情错误条在本页内吸顶，
+   避免滚动到评论时把失败提示藏在页头上方。这是社区失败反馈规则。重试是明确读取，
+   不重试收藏写入。
+   无简介显示“暂无专辑简介”；评论数只在真正读取后显示，不以未知当0。
+
+接口和调用边界
+本轮未添加业务 API、Rust 产品 DTO 或平台专属业务分支，继续走已有类型化接口：
+- catalogPage(epoch, {kind:'album',id}, force)：页面资料走 /api/album/v3/detail，
+  既有允许的 v4 回退、/api/album/detail/dynamic、/api/album/privilege 与页面只读
+  exposure 链路见 catalog-detail-migration.txt。缓存不能替代当前音源/权益授权。
+- catalogMembership(epoch, resource, action)：inspect/set/reconcile，收藏提交
+  /api/album/sub 或 /api/album/unsub，/api/album/sublist 完整分页对账。
+- playSelection 的 Catalog 分支：原生 query/revision/index，校验目录快照与顺序，
+  播放专用 /api/album/v3/detail + /api/album/privilege，不借用页面 v4 回退；
+  再取歌曲详情、/api/song/enhance/player/url/v1，进入实际原生引擎。来源保持 album/id。
+- 下载沿用 DownloadDialog 的既有 start 用例和歌曲ID列表，不自动确认/创建下载任务。
+  本轮验证入口和弹窗，不声称重新验证完整媒体下载、标签或官方来源分派。
+- commentsPage(epoch, {kind:'album',id}, query, force) 复用 Comments；album thread 为
+  R_AL_3_<id>，对应 /api/v1/resource/comments/R_AL_3_<id>，沿用分页/缓存/失败策略。
+  写入接口与保护见现有评论文档。本轮只在合成服务中输入草稿，不向真实账号发布。
+- 复制调用 CoreClient.copyText；前端不直接访问远端音乐 API。
+
+可复现验证
+固定版本/锁文件，先前端生产构建，再构建 catalog_ui_probe：
+  cargo build -p cumulus-desktop --example catalog_ui_probe --features custom-protocol --locked
+  LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 xvfb-run -a dbus-run-session -- \
+    python3 scripts/ci/catalog_smoke.py --binary <target>/debug/examples/catalog_ui_probe \
+    --root <全新隔离目录> --album
+--screenshots 仅用于隔离 Linux Xvfb 的截图，不在真实桌面截整个屏幕。Windows 使用
+相同 --album，附 --runtime 指向打包原生依赖。CI 已分别接入两个独立 runner。
+
+本机构建证据（.build 不提交）
+- album-ui-verified：最终生产前端/原生探针、真实隔离 WebView 30态/30张图，退出0。
+  1120×760/760×540、两主题；播放全部/收藏/下载顺序，标签键盘选择、长文本/多行简介，
+  评论失败重试、草稿/第二页返回、进入另一专辑草稿隔离、分享公开链接、刷新失败/恢复、
+  空简介及主歌手入口。五次从简介/评论播放，独立核对原生队列11首且1..11顺序、
+  album/8或album/7来源和 position>0.2，真实 libmpv 解码到 null 输出。
+  比较实际合成评论请求计数，标签返回没有多发第一页读取。
+- album-ui-kde-final-verified：本机 KDE Wayland 的 XWayland 窗口，同样30态，两尺寸两主题，
+  devicePixelRatio=1.25；逐态 visible/document.hasFocus=true。只抓自己合成进程的
+  窗口 compositor pixmap，不截其他应用。人工查看普通/长标题页头、窄窗按钮、
+  简介空状态、评论页头/草稿/分页与下载弹窗的两主题截图。
+- album-ui-gallery/index.html：上述60张未修改原图与 manifest.json SHA256。
+- album-share-song-regression：分享样式修正后歌曲菜单/队列/剪贴板45态回归通过，
+  验证共用分享样式没有破坏原歌曲入口；之后仅调整详情错误条吸顶。音乐请求/真实写入均为0。
+- album-catalog-regression：原18态目录流程通过，包含合成收藏提交/确认、下载弹窗、
+  歌手各标签及专辑导航；不声称此项已播放。
+- album-layout-regression：长标题、封面网格和评论滚动30态/30张图通过；评论改为专辑
+  内嵌模式后仍校验刷新保留位置、分页回顶部、底部按钮可达及全局播放条不被挤走。
+- album-comments-regression-current：独立评论页面17态/17张隔离截图与进程重开审计通过。
+  8次合成写入（发布/回复/删除），未决意图跨进程保留、没有自动重发、精确请求载荷及
+  原评论保留。旧探针未模拟后来新增的搜索默认词/接续实验及设置读取，独立审计最初将
+  这些背景读取误当成预设的唯一丢失回包；补齐三个明确只读应答及审计白名单后重跑。
+  没有放宽写接口/载荷/次数限制，也没有在真实账号发言。
+- 前端304项、Rust workspace/all-targets/custom-protocol 1200项/259个结果target，
+  格式、严格 Clippy、前端类型/生产构建和22项CI工具测试通过；不以这些数量计UI覆盖率。
+
+分享截图另发现超长署名撑大网格列、链接输入框被裁切并产生横向滚动；共用分享
+弹窗改为有界网格列、子项最小宽度0、署名任意处换行。最终专辑专项校验弹窗内部
+scrollWidth/clientWidth和子项边界，并实际复查截图；原歌曲菜单45态回归也通过。
+
+逐图复核发现一次真实问题：成功重试详情后资料对象更新触发旧数组监听器，误重置为
+歌曲标签并销毁评论草稿。现按账号代次/状态与专辑ID逐项比较，并在最终两组30态中
+明确断言恢复后仍在评论、草稿/21..25评论不变且评论读取次数没有增加。
+
+验证中修正过探针：切到每日推荐后要等待页面动画/列表稳定再取得歌手按钮，不能点击旧
+元素；独立审计按 QueueView 的直接 tracks 字段及 PlayerView 的 camelCase 解析。
+一次物理捕捉包装器先创建了原生宿主要求全新的根目录，宿主正常拒绝；修为独立 run
+子目录后完整重跑。最初物理截图的两个窄窗下载态只剩遮罩，检查发现脚本可能在截图
+完成前继续关闭弹窗。最终宿主先写阶段证据，截图程序保存图片后写完成标记，宿主再
+回送阶段确认，UI脚本收到后才继续；截图等待10秒、总进程时间仍有上限。另校验弹窗
+动画已结束、opacity=1/transform=none、几何边界及关闭按钮命中。两组30态完整重跑，
+人工重新查看窄窗深浅色弹窗确认可见。旧失败/不同步图片不混入最终图集，也没有把
+DOM通过或探针自身失败说成产品显示正确。
+
+保留差异
+- 尚无吸顶页头、专辑内搜索/排序、整个页面退出返回后的标签/曲目/评论滚动恢复。
+- 完整官方更多菜单、分享的全部渠道、数字专辑购买/AB分支未复刻；数字标记如实显示，
+  不生成无后端的购买按钮、不支付。当前菜单顺序不声称是完整官方定义。
+- 无封面 URL 但有图片ID的构造、加载失败图、单艺人头像等还需继续核对。
+- 未重新验证所有评论写入在内嵌页的全部状态，也未测账号在每个动画瞬间的切换。
+- 没有 Windows 实机截图或声卡听感结论，不把本机逻辑/截图冒充两平台视觉全通过。
+- 不代表整页/所有UI/完整目标完成；后续继续按 ui-ux-audit.txt 逐项审计。
