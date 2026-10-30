@@ -930,6 +930,7 @@ onUnmounted(() => {
       <div class="header-spacer" data-tauri-drag-region />
       <button
         class="account-button"
+        :title="signedIn ? (account.nickname ?? '我的账号') : '点击登录'"
         :disabled="initializing"
         @click="signedIn ? (accountsOpen = true) : (loginOpen = true)"
       >
@@ -939,7 +940,7 @@ onUnmounted(() => {
           alt=""
           referrerpolicy="no-referrer"
         /><span v-else class="avatar"><Icon name="user" /></span
-        ><span>{{ signedIn ? account.nickname : '点击登录' }}</span>
+        ><span>{{ signedIn ? (account.nickname ?? '我的账号') : '点击登录' }}</span>
       </button>
       <AppearanceMenu />
       <button

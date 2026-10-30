@@ -1,0 +1,103 @@
+/* Fractional desktop scaling can leave less CSS width than the native window
+   minimum. Keep the sidebar labels, the drag area and all window controls. */
+@media (max-width: 700px) {
+  :root {
+    --sidebar: 88px;
+  }
+  .main-content {
+    padding-inline: 10px;
+  }
+  .sidebar .brand {
+    justify-content: center;
+    height: var(--header);
+    padding: 0;
+  }
+  .sidebar .brand > span:last-child {
+    position: absolute;
+    clip-path: inset(50%);
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+  }
+  .sidebar .sidebar-navigation,
+  .sidebar .sidebar-playlists {
+    margin-inline: 4px;
+  }
+  .sidebar-navigation .nav-item {
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    height: 44px;
+    padding: 2px;
+    font-size: 11px;
+    line-height: 15px;
+  }
+  .sidebar .sidebar-mine-heading {
+    justify-content: center;
+  }
+  .sidebar .sidebar-caption {
+    padding: 8px 3px;
+    text-align: center;
+    font-size: 10px;
+    letter-spacing: 0;
+  }
+  .sidebar-caption span {
+    display: block;
+  }
+  .sidebar-playlist-group > header {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 0;
+  }
+  .sidebar-group-toggle {
+    width: 100%;
+    justify-content: space-between;
+    text-align: left;
+  }
+  .sidebar .sidebar-playlist-background {
+    padding: 0 2px;
+  }
+  .sidebar .sidebar-playlist-cover {
+    width: 20px;
+    height: 20px;
+    margin-right: 4px;
+  }
+  .topbar {
+    padding-inline: 10px 6px;
+    gap: 4px;
+  }
+  .topbar .search-host {
+    flex: 0 1 210px;
+    min-width: 80px;
+  }
+  .topbar .searchbox {
+    min-width: 0;
+  }
+  .topbar .header-spacer {
+    min-width: 16px;
+  }
+  .topbar .account-button {
+    max-width: 80px;
+    min-width: 26px;
+    gap: 4px;
+    padding: 0;
+  }
+  .topbar .account-button > :first-child {
+    flex-shrink: 0;
+  }
+  .window-controls {
+    margin-left: 0;
+    padding-left: 4px;
+  }
+  .playerbar {
+    grid-template-columns: minmax(70px, 1fr) minmax(166px, 1.2fr) max-content;
+    gap: 5px;
+    padding-inline: 8px;
+  }
+  .playerbar .transport-controls {
+    gap: 5px;
+  }
+  .playerbar .seek-control input {
+    min-width: 0;
+  }
+}

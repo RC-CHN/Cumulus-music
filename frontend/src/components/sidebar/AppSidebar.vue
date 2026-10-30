@@ -169,6 +169,6 @@ function refresh() {
         />
       </div>
     </div>
-    <div class="sidebar-caption">Cumulus 社区客户端</div>
+    <div class="sidebar-caption"><span>Cumulus</span> <span>社区客户端</span></div>
   </aside>
 </template>
