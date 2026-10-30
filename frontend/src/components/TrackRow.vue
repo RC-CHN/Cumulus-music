@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import type { TrackMenuRequest } from '../services/trackMenu';
 import type { TrackView } from '../services/contracts';
 import { artworkAt } from '../services/artwork';
 import Icon from './Icon.vue';
-defineProps<{
+const props = defineProps<{
   track: TrackView;
   index: number;
   liked: boolean;
@@ -14,10 +15,13 @@ defineProps<{
 const emit = defineEmits<{
   like: [track: TrackView];
   play: [index: number];
-  more: [track: TrackView];
+  more: [request: TrackMenuRequest];
   artist: [id: string];
   album: [id: string];
 }>();
+function more(event: MouseEvent | KeyboardEvent) {
+  emit('more', { track: props.track, event, play: () => emit('play', props.index) });
+}
 function duration(ms: number) {
   const seconds = Math.floor(ms / 1000);
   return `${Math.floor(seconds / 60)
@@ -30,10 +34,12 @@ function duration(ms: number) {
     class="track-columns track-row"
     :class="{
       unavailable: track.missing,
-      current: track.id === currentId,
+      current: !track.missing && !track.local && track.id === currentId,
       striped: index % 2 === 0,
     }"
     @dblclick="!track.missing && playable && emit('play', index)"
+    @contextmenu.prevent.stop="more"
+    @keydown.shift.f10.prevent.stop="more"
     role="row"
     :aria-rowindex="index + 2"
     :data-track-id="track.id"
@@ -47,7 +53,9 @@ function duration(ms: number) {
         @dblclick.stop
       >
         <span>{{ (index + 1).toString().padStart(2, '0') }}</span
-        ><Icon :name="track.id === currentId ? 'volume' : 'play'" /></button
+        ><Icon
+          :name="!track.missing && !track.local && track.id === currentId ? 'volume' : 'play'"
+        /></button
     ></span>
     <div class="track-title" role="cell">
       <img
@@ -105,7 +113,8 @@ function duration(ms: number) {
       ><button
         class="icon-button track-more"
         :aria-label="`更多操作 ${track.name}`"
-        @click.stop="emit('more', track)"
+        aria-haspopup="menu"
+        @click.stop="more"
         @dblclick.stop
       >
         <Icon name="more" /></button

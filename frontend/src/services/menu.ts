@@ -5,4 +5,6 @@ export interface MenuItem {
   disabled?: boolean;
   checked?: boolean;
   danger?: boolean;
+  separator?: boolean;
+  hint?: string;
 }

@@ -24,22 +24,25 @@ const emit = defineEmits<{
 }>();
 const { busy, error, result, operations, coverOperations } = props.manager;
 const dialog = ref<HTMLDialogElement>(),
-  nameInput = ref<HTMLInputElement>();
+  nameInput = ref<HTMLInputElement>(),
+  removeCancel = ref<HTMLButtonElement>();
 const name = ref(''),
   privateList = ref(true),
   destination = ref(''),
   link = ref(''),
   localError = ref('');
 const title = computed(() =>
-  props.target.kind === 'tracks'
-    ? '收藏到歌单'
-    : props.target.kind === 'create'
-      ? '新建歌单'
-      : props.target.kind === 'history'
-        ? '歌单操作记录'
-        : props.target.kind === 'open'
-          ? '打开歌单'
-          : '歌曲操作',
+  props.target.kind === 'remove'
+    ? '从歌单中删除'
+    : props.target.kind === 'tracks'
+      ? '收藏到歌单'
+      : props.target.kind === 'create'
+        ? '新建歌单'
+        : props.target.kind === 'history'
+          ? '歌单操作记录'
+          : props.target.kind === 'open'
+            ? '打开歌单'
+            : '歌曲操作',
 );
 const own = computed(() => props.playlists.filter((p) => p.owned && !p.favorite));
 const pending = computed(() => result.value && playlistPending(result.value.phase));
@@ -50,6 +53,7 @@ onMounted(() => {
   dialog.value?.showModal();
   props.manager.reset();
   destination.value = own.value[0]?.id ?? '';
+  if (props.target.kind === 'remove') void nextTick(() => removeCancel.value?.focus());
   if (props.target.kind === 'create') void nextTick(() => nameInput.value?.focus());
   if (props.target.kind === 'history') void props.manager.refreshOperations();
 });
@@ -90,7 +94,7 @@ async function submit() {
     );
 }
 async function trackAction(action: 'add' | 'delete' | 'up' | 'down') {
-  if (props.target.kind !== 'track') return;
+  if (props.target.kind !== 'track' && props.target.kind !== 'remove') return;
   const id = action === 'add' ? destination.value : props.target.playlist?.id;
   if (id) finish(await props.manager.tracks(id, action, props.target.track.id));
 }
@@ -165,8 +169,24 @@ async function collectTracks() {
         刷新记录
       </button>
     </div>
+    <div v-else-if="target.kind === 'remove'" class="track-menu">
+      <p>将「{{ target.track.name }}」从「{{ target.playlist.name }}」中删除？</p>
+      <p class="muted">歌曲仍可在其他歌单和搜索中找到。</p>
+      <div class="track-remove-actions">
+        <button ref="removeCancel" class="secondary" :disabled="busy" @click="close">取消</button>
+        <button class="primary" :disabled="busy || !!pending" @click="trackAction('delete')">
+          {{ busy ? '正在删除…' : '删除' }}
+        </button>
+      </div>
+    </div>
     <div v-else-if="target.kind === 'tracks'" class="track-menu">
-      <p>将当前页的 {{ target.tracks.length }} 首歌曲收藏到歌单</p>
+      <p>
+        {{
+          target.tracks.length === 1
+            ? `收藏「${target.tracks[0].name}」`
+            : `将当前页的 ${target.tracks.length} 首歌曲收藏到歌单`
+        }}
+      </p>
       <label
         >选择歌单<select
           v-model="destination"

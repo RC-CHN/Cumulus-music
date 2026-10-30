@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { TrackMenuRequest } from '../services/trackMenu';
 import { computed, ref, watch } from 'vue';
 import type { useRankings } from '../composables/useRankings';
 import type { RankingCard, RankingQuery } from '../services/rankings';
@@ -20,6 +21,7 @@ const emit = defineEmits<{
   play: [tracks: TrackView[], index: number];
   playAlbum: [id: string, revision: string, startId: string | null];
   like: [track: TrackView];
+  more: [request: TrackMenuRequest];
   comments: [track: TrackView];
   download: [tracks: TrackView[]];
 }>();
@@ -282,7 +284,7 @@ function change(n: number | null, newest: boolean) {
         :current-id="currentId"
         @play="play"
         @like="(t) => emit('like', t)"
-        @more="(t) => emit('comments', t)"
+        @more="emit('more', $event)"
       />
     </template>
   </section>

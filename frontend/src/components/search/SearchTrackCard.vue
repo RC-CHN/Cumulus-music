@@ -14,7 +14,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   play: [];
   like: [];
-  more: [];
+  more: [event: MouseEvent | KeyboardEvent];
   download: [];
   artist: [id: string];
 }>();
@@ -32,8 +32,8 @@ watch(
     :class="{ current, unavailable: track.missing }"
     :data-result-key="`song:${track.id}`"
     @dblclick="playable && !track.missing && emit('play')"
-    @contextmenu.prevent="emit('more')"
-    @keydown.shift.f10.prevent.stop="emit('more')"
+    @contextmenu.prevent="emit('more', $event)"
+    @keydown.shift.f10.prevent.stop="emit('more', $event)"
   >
     <button
       class="search-track-cover"
@@ -95,7 +95,8 @@ watch(
       <button
         class="icon-button"
         :aria-label="`更多操作 ${track.name}`"
-        @click.stop="emit('more')"
+        aria-haspopup="menu"
+        @click.stop="emit('more', $event)"
         @dblclick.stop
       >
         <Icon name="more" />

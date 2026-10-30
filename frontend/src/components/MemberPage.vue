@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { TrackMenuRequest } from '../services/trackMenu';
 import { computed } from 'vue';
 import type { useMember } from '../composables/useMember';
 import type { MemberTarget, MemberContent } from '../services/member';
@@ -19,6 +20,7 @@ const emit = defineEmits<{
   play: [section: string | null, index: number];
   playPlaylist: [id: string, startId: string | null];
   like: [track: TrackView];
+  more: [request: TrackMenuRequest];
   comments: [track: TrackView];
   download: [tracks: TrackView[]];
 }>();
@@ -290,7 +292,7 @@ function hasContent(content: MemberContent) {
         :current-id="currentId"
         @play="emit('play', null, $event)"
         @like="emit('like', $event)"
-        @more="emit('comments', $event)"
+        @more="emit('more', $event)"
       />
       <p v-else class="empty-state">
         {{ page.dates.length ? '这一天没有推荐歌曲' : '暂无可查看的历史推荐' }}

@@ -3,7 +3,13 @@ import { nextTick, onUnmounted, ref, useId, watch } from 'vue';
 import Icon from './Icon.vue';
 import type { MenuItem } from '../services/menu';
 const props = withDefaults(
-  defineProps<{ label: string; items: MenuItem[]; icon?: string; contextOnly?: boolean }>(),
+  defineProps<{
+    label: string;
+    items: MenuItem[];
+    icon?: string;
+    contextOnly?: boolean;
+    variant?: 'song';
+  }>(),
   {
     icon: 'more',
   },
@@ -21,10 +27,18 @@ const choices = () => [
 ];
 function close(restore = false) {
   open.value = false;
+  returnTarget?.removeAttribute('aria-controls');
+  if (returnTarget?.hasAttribute('aria-haspopup'))
+    returnTarget.setAttribute('aria-expanded', 'false');
   if (restore) (returnTarget ?? trigger.value)?.focus({ preventScroll: true });
 }
 async function display(last = false, point?: { x: number; y: number }, target?: HTMLElement) {
+  close();
   returnTarget = target ?? trigger.value;
+  if (returnTarget?.hasAttribute('aria-haspopup')) {
+    returnTarget.setAttribute('aria-expanded', 'true');
+    returnTarget.setAttribute('aria-controls', id);
+  }
   open.value = true;
   position.value.visibility = 'hidden';
   await nextTick();
@@ -75,6 +89,7 @@ function keydown(event: KeyboardEvent) {
         ? items.length - 1
         : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
   items[target]?.focus({ preventScroll: true });
+  items[target]?.scrollIntoView({ block: 'nearest' });
 }
 watch(open, (active) => {
   stop?.();
@@ -100,8 +115,11 @@ watch(open, (active) => {
     window.removeEventListener('resize', resize);
   };
 });
-onUnmounted(() => stop?.());
-defineExpose({ show, showAt });
+onUnmounted(() => {
+  close();
+  stop?.();
+});
+defineExpose({ show, showAt, close });
 </script>
 <template>
   <span class="action-menu-host">
@@ -128,25 +146,29 @@ defineExpose({ show, showAt });
           :id="id"
           ref="panel"
           class="action-menu"
+          :class="{ 'song-action-menu': variant === 'song' }"
           role="menu"
           tabindex="-1"
           :aria-label="label"
           :style="position"
           @keydown="keydown"
         >
-          <button
-            type="button"
-            v-for="item in items"
-            :key="item.key"
-            :role="item.checked === undefined ? 'menuitem' : 'menuitemradio'"
-            :aria-checked="item.checked"
-            :disabled="item.disabled"
-            :class="{ danger: item.danger, checked: item.checked }"
-            @click="select(item.key)"
-          >
-            <Icon v-if="item.icon" :name="item.icon" /><span>{{ item.label }}</span
-            ><Icon v-if="item.checked" class="menu-check" name="check" />
-          </button>
+          <template v-for="item in items" :key="item.key">
+            <div v-if="item.separator" role="separator" class="menu-separator" />
+            <button
+              v-else
+              type="button"
+              :role="item.checked === undefined ? 'menuitem' : 'menuitemradio'"
+              :aria-checked="item.checked"
+              :disabled="item.disabled"
+              :title="item.hint"
+              :class="{ danger: item.danger, checked: item.checked }"
+              @click="select(item.key)"
+            >
+              <Icon v-if="item.icon" :name="item.icon" /><span>{{ item.label }}</span
+              ><Icon v-if="item.checked" class="menu-check" name="check" />
+            </button>
+          </template>
         </div>
       </Transition>
     </Teleport>

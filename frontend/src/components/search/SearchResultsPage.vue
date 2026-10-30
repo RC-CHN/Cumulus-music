@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { TrackMenuRequest } from '../../services/trackMenu';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import type { SearchViewportMemory } from '../../services/searchViewport';
 import SearchCardGrid from './SearchCardGrid.vue';
@@ -44,7 +45,7 @@ const emit = defineEmits<{
   togglePlayback: [];
   downloadTrack: [track: TrackView];
   collect: [tracks: TrackView[]];
-  more: [track: TrackView];
+  more: [request: TrackMenuRequest];
   like: [track: TrackView];
   artist: [id: string];
   album: [id: string];
@@ -484,7 +485,10 @@ onBeforeUnmount(() => {
                 :busy-like="busyLikes.has(track.id)"
                 @play="playPreview(section, index)"
                 @like="emit('like', track)"
-                @more="emit('more', track)"
+                @more="
+                  (event) =>
+                    emit('more', { track, event, play: () => emit('play', tracks(section), index) })
+                "
                 @download="emit('downloadTrack', track)"
                 @artist="emit('artist', $event)"
               />

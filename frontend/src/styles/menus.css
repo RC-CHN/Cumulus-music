@@ -84,3 +84,100 @@
     transform: none;
   }
 }
+
+/* Native official menu has no recovered runtime image. Dimensions follow its
+   recovered MockMenu fallback; opaque surfaces preserve our WebView performance. */
+.action-menu {
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.song-action-menu {
+  min-width: 180px;
+  padding: 4px 0;
+  border-radius: 8px;
+}
+.song-action-menu button {
+  min-height: 34px;
+  padding: 8px 16px;
+  border-radius: 0;
+  line-height: 18px;
+}
+.menu-separator {
+  height: 1px;
+  margin: 2px 0;
+  background: var(--line);
+}
+.track-action-feedback {
+  position: fixed;
+  z-index: 80;
+  bottom: 96px;
+  left: 0;
+  right: 0;
+  width: max-content;
+  margin-inline: auto;
+  max-width: calc(100vw - 32px);
+  padding: 10px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+}
+.track-action-feedback.failed,
+.track-share-status.failed {
+  color: var(--danger);
+}
+.track-action-feedback button {
+  margin-left: 12px;
+}
+.track-share-body {
+  padding: 0 0 8px;
+  display: grid;
+  gap: 12px;
+  overflow: auto;
+}
+.track-share-body strong,
+.track-menu p {
+  overflow-wrap: anywhere;
+}
+.track-share-body p {
+  margin: 0;
+}
+.track-share-body input {
+  width: 100%;
+  min-width: 0;
+}
+.track-share-body .primary {
+  justify-self: start;
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+.track-share-status {
+  min-height: 18px;
+  font-size: 12px;
+}
+.track-remove-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.song-action-menu button:focus-visible {
+  outline-offset: -2px;
+}
+
+.track-share-body :focus-visible {
+  outline-offset: -2px;
+}
+
+.track-remove-actions button {
+  width: 120px;
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+}
+.track-remove-actions .primary {
+  border-color: var(--accent);
+}

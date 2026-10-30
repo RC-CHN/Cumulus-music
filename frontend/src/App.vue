@@ -17,6 +17,7 @@ import DailyHeading from './components/DailyHeading.vue';
 import PlaylistHero from './components/playlist/PlaylistHero.vue';
 import PlaylistEditorPage from './components/playlist/PlaylistEditorPage.vue';
 import type { MenuItem } from './services/menu';
+import TrackActions from './components/TrackActions.vue';
 import ModalTransition from './components/ModalTransition.vue';
 import LoginDialog from './components/LoginDialog.vue';
 import AccountDialog from './components/AccountDialog.vue';
@@ -329,6 +330,8 @@ watch(
   ],
   () => void sceneFm.poll(),
 );
+const trackActions = ref<InstanceType<typeof TrackActions>>();
+watch(music.page, () => trackActions.value?.close());
 const playlistDialog = ref<PlaylistDialogTarget>();
 const playlistEditor = ref<{ id: string; cover?: boolean }>();
 const playlistEditorPage = ref<InstanceType<typeof PlaylistEditorPage>>();
@@ -1103,7 +1106,7 @@ onUnmounted(() => {
                     (downloadDialog = { kind: 'voice', tracks: [item.voice] })
                 "
                 @collect="(tracks) => (playlistDialog = { kind: 'tracks', tracks })"
-                @more="(track) => (playlistDialog = { kind: 'track', track })"
+                @more="(request) => trackActions?.show(request)"
                 @like="music.like"
                 @artist="(id) => openCatalog({ kind: 'artist', id })"
                 @album="(id) => openCatalog({ kind: 'album', id })"
@@ -1122,7 +1125,7 @@ onUnmounted(() => {
                 @open="openCatalog"
                 @play="playCatalog"
                 @like="music.like"
-                @more="(track) => (playlistDialog = { kind: 'track', track })"
+                @more="(request) => trackActions?.show(request)"
                 @download="(tracks) => (downloadDialog = { kind: 'start', tracks })"
                 @mv="openMv"
                 @comments="(id, title) => openComments({ kind: 'album', id }, title)"
@@ -1140,6 +1143,7 @@ onUnmounted(() => {
                 @play="playMember"
                 @play-playlist="playMemberPlaylist"
                 @like="music.like"
+                @more="(request) => trackActions?.show(request)"
                 @comments="trackComments"
                 @download="(tracks) => (downloadDialog = { kind: 'start', tracks })"
               />
@@ -1174,6 +1178,7 @@ onUnmounted(() => {
                 @play="playRankingSongs"
                 @play-album="playAlbum"
                 @like="music.like"
+                @more="(request) => trackActions?.show(request)"
                 @comments="trackComments"
                 @download="(tracks) => (downloadDialog = { kind: 'start', tracks })"
               />
@@ -1418,14 +1423,7 @@ onUnmounted(() => {
                     :current-id="currentTrackId"
                     @play="play"
                     @like="music.like"
-                    @more="
-                      (track) =>
-                        (playlistDialog = {
-                          kind: 'track',
-                          track,
-                          playlist: result?.playlist ?? undefined,
-                        })
-                    "
+                    @more="(request) => trackActions?.show(request, result?.playlist ?? undefined)"
                   />
                   <div v-else class="empty-state">这里还没有歌曲</div>
                   <button
@@ -1516,6 +1514,16 @@ onUnmounted(() => {
         "
       />
     </ModalTransition>
+    <TrackActions
+      ref="trackActions"
+      :key="account.epoch"
+      :player="player"
+      @collect="(track) => (playlistDialog = { kind: 'tracks', tracks: [track] })"
+      @download="(track) => (downloadDialog = { kind: 'start', tracks: [track] })"
+      @comments="(track) => openComments({ kind: 'track', id: track.id }, track.name)"
+      @remove="(track, playlist) => (playlistDialog = { kind: 'remove', track, playlist })"
+      @manage="(track, playlist) => (playlistDialog = { kind: 'track', track, playlist })"
+    />
     <ModalTransition :restore-focus="!playlistEditor">
       <PlaylistDialog
         v-if="playlistDialog"

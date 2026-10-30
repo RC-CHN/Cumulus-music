@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { TrackMenuRequest } from '../services/trackMenu';
 import { computed, watch } from 'vue';
 import { useVirtualRows } from '../composables/useVirtualRows';
 import type { TrackView } from '../services/contracts';
@@ -14,7 +15,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   like: [track: TrackView];
   play: [index: number];
-  more: [track: TrackView];
+  more: [request: TrackMenuRequest];
   artist: [id: string];
   album: [id: string];
 }>();

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 defineProps<{ name: string }>();
 const paths: Record<string, string> = {
+  share: 'M14 3h7v7M21 3 10 14M10 5H3v16h16v-7',
   plus: 'M12 4v16M4 12h16',
   copy: 'M9 9h12v12H9zM15 6V3H3v12h3',
   trash: 'M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7',

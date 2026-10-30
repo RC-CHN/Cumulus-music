@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { TrackMenuRequest } from '../services/trackMenu';
 import { computed, onUnmounted, ref, watch } from 'vue';
 import type { AccountView, TrackView } from '../services/contracts';
 import type { CatalogResource, CatalogQuery, CatalogSelectionPage } from '../services/catalog';
@@ -24,7 +25,7 @@ const emit = defineEmits<{
   open: [resource: CatalogResource];
   play: [pages: CatalogSelectionPage[], index: number];
   like: [track: TrackView];
-  more: [track: TrackView];
+  more: [request: TrackMenuRequest];
   download: [tracks: TrackView[]];
   mv: [id: string];
   comments: [id: string, title: string];
