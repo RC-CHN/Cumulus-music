@@ -16,7 +16,7 @@ const props = defineProps<{
   target: { id: string; cover?: boolean };
 }>();
 const emit = defineEmits<{ close: []; coverChanged: []; expired: [] }>();
-const { editor, busy, loading, error, tags, tagError } = props.manager;
+const { editor, busy, loading, error, tags, tagError, tagsLoading } = props.manager;
 const form = usePlaylistEditor(
   props.manager,
   () => props.account,
@@ -40,6 +40,15 @@ const {
 } = form;
 const nameInput = ref<HTMLInputElement>(),
   coverOpen = ref(false);
+const editorBody = ref<HTMLElement>(),
+  tagSpace = ref(false);
+async function tagVisibility(open: boolean) {
+  tagSpace.value = open;
+  if (!open) return;
+  await nextTick();
+  // Recovered Edit.jsx adds 250px padding and advances its scroll region.
+  if (tagSpace.value && editorBody.value) editorBody.value.scrollTop += 250;
+}
 watch(loaded, async (ready) => {
   if (ready) {
     await nextTick();
@@ -86,7 +95,7 @@ defineExpose({ requestLeave: form.requestLeave });
       </button>
     </div>
     <form v-else @submit.prevent="form.save">
-      <div class="playlist-editor-body">
+      <div ref="editorBody" class="playlist-editor-body" :class="{ 'tag-dropdown-open': tagSpace }">
         <p v-if="error" class="error-state" role="alert">{{ error }}</p>
         <p v-if="message" class="notice" role="status">{{ message }}</p>
         <div v-if="result" class="mutation-result" :data-phase="result.phase" role="status">
@@ -150,9 +159,11 @@ defineExpose({ requestLeave: form.requestLeave });
               ><PlaylistEditorTags
                 v-model="selectedTags"
                 :tags="tags"
+                :loading="tagsLoading"
                 :error="tagError"
                 :disabled="busy || pending"
                 @retry="manager.loadTags"
+                @visibility="tagVisibility"
               />
             </div>
             <p v-if="invalid" class="form-warning">

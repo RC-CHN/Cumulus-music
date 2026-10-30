@@ -1,0 +1,190 @@
+/* Official TagEdit/TagOptionsLayer; viewport fitting and keyboard focus are adaptive. */
+.tag-selection {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  width: fit-content;
+  min-width: 128px;
+  max-width: 100%;
+  min-height: 36px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.tag-selection .selected-tag {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 160px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface-alt);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.selected-tag span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.selected-tag .icon {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+.tag-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 26px;
+  height: 26px;
+  margin-left: auto;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.tag-select-trigger .icon {
+  width: 16px;
+  height: 16px;
+}
+.tag-select-trigger[aria-expanded='true'] .icon {
+  transform: rotate(180deg);
+}
+.tag-picker {
+  position: fixed;
+  z-index: 80;
+  width: min(574px, calc(100vw - 16px));
+  height: 374px;
+  padding: 14px 16px 24px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-raised);
+  box-shadow: 0 2px 15px rgb(0 0 0 / 10%);
+  color: var(--text);
+}
+.tag-picker:focus-visible,
+.tag-picker button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.tag-category-tabs {
+  display: flex;
+  gap: 24px;
+  min-height: 32px;
+  flex-shrink: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  border-bottom: 1px solid var(--line);
+}
+.tag-category-tabs button {
+  position: relative;
+  flex-shrink: 0;
+  max-width: 150px;
+  min-height: 32px;
+  padding: 0 2px 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+.tag-category-tabs [aria-selected='true'] {
+  color: var(--text);
+  font-weight: 600;
+}
+.tag-category-tabs [aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  height: 2px;
+  bottom: 0;
+  left: 2px;
+  right: 2px;
+  background: var(--accent);
+  border-radius: 2px;
+}
+.tag-catalogue-scroll {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-gutter: stable;
+}
+.tag-category-pane {
+  display: flex;
+  align-content: flex-start;
+  flex-wrap: wrap;
+  gap: 16px 12px;
+  padding: 25px 0 4px;
+}
+.tag-category-pane button {
+  width: 80px;
+  height: 30px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 9999px;
+  background: var(--surface-alt);
+  line-height: 16px;
+  font-size: 13px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+.tag-category-pane button[aria-pressed='true'],
+.tag-category-pane button:hover:not(:disabled) {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.tag-limit {
+  min-height: 20px;
+  flex-shrink: 0;
+  margin: 8px 0;
+  line-height: 20px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+.tag-picker footer {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  flex-shrink: 0;
+}
+.tag-picker footer button {
+  flex: 0 1 240px;
+  min-width: 0;
+  height: 36px;
+  min-height: 36px;
+  border-radius: 8px;
+  justify-content: center;
+  padding: 0 16px;
+  font-size: 14px;
+}
+.tag-catalogue-state {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  gap: 12px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.tag-catalogue-state p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.tag-catalogue-state[role='alert'] {
+  color: var(--danger);
+}

@@ -175,3 +175,47 @@ test('partial metadata is exposed honestly and an earlier operation list cannot 
   assert.deepEqual(p.operations.value, []);
   assert.equal(playlistLength('a中🎵'), 7);
 });
+
+test('tag catalogue distinguishes loading, empty and failed responses', async () => {
+  const request = deferred<AccountData<{ name: string; category: string }[]>>();
+  const model = fixture({ playlistTags: () => request.promise });
+  const pending = model.loadTags();
+  assert.equal(model.tagsLoading.value, true);
+  request.resolve(data([]));
+  await pending;
+  assert.equal(model.tagsLoading.value, false);
+  assert.equal(model.tagError.value, '');
+  assert.deepEqual(model.tags.value, []);
+  const failed = fixture({
+    playlistTags: async () => {
+      throw { code: 'network', message: '标签读取失败' };
+    },
+  });
+  await failed.loadTags();
+  assert.equal(failed.tagsLoading.value, false);
+  assert.equal(failed.tagError.value, '标签读取失败');
+});
+
+test('late catalogue requests cannot overwrite a retry or another account', async () => {
+  const old = deferred<AccountData<{ name: string; category: string }[]>>();
+  let calls = 0;
+  const tags = [{ name: '轻音乐', category: '风格' }];
+  const model = fixture({
+    playlistTags: () => (++calls === 1 ? old.promise : Promise.resolve(data(tags))),
+  });
+  const first = model.loadTags();
+  await model.loadTags();
+  old.reject({ code: 'network', message: '旧请求失败' });
+  await first;
+  assert.deepEqual(model.tags.value, tags);
+  assert.equal(model.tagError.value, '');
+  assert.equal(model.tagsLoading.value, false);
+  const previous = deferred<AccountData<{ name: string; category: string }[]>>();
+  const other = fixture({ playlistTags: () => previous.promise });
+  const pending = other.loadTags();
+  other.connect(account('2'));
+  previous.resolve(data(tags));
+  await pending;
+  assert.deepEqual(other.tags.value, []);
+  assert.equal(other.tagsLoading.value, false);
+});

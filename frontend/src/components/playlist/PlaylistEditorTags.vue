@@ -1,15 +1,24 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue';
+import { nextTick, ref, useId, watch } from 'vue';
+import Icon from '../Icon.vue';
+import PlaylistTagPopover from './PlaylistTagPopover.vue';
 const props = defineProps<{
   modelValue: string[];
   tags: { name: string; category: string }[];
+  loading: boolean;
   error: string;
   disabled: boolean;
 }>();
-const emit = defineEmits<{ 'update:modelValue': [value: string[]]; retry: [] }>();
+const emit = defineEmits<{
+  'update:modelValue': [value: string[]];
+  retry: [];
+  visibility: [open: boolean];
+}>();
 const open = ref(false),
+  host = ref<HTMLElement>(),
   trigger = ref<HTMLButtonElement>();
-const categories = computed(() => [...new Set(props.tags.map((tag) => tag.category))]);
+const id = useId();
+let original: string[] = [];
 function toggle(tag: string) {
   if (props.disabled) return;
   emit(
@@ -19,66 +28,95 @@ function toggle(tag: string) {
       : [...props.modelValue, tag].slice(0, 3),
   );
 }
-async function close() {
+async function close(restore = true, direction: -1 | 0 | 1 = 0) {
   open.value = false;
+  emit('visibility', false);
+  if (!restore) return;
   await nextTick();
-  trigger.value?.focus();
+  if (!trigger.value?.isConnected) return;
+  let target: HTMLElement = trigger.value;
+  if (direction) {
+    const nodes = [
+      ...document.querySelectorAll<HTMLElement>(
+        'button:not(:disabled),input:not(:disabled),textarea:not(:disabled),[tabindex="0"]',
+      ),
+    ].filter(
+      (node) =>
+        !node.closest('.tag-picker') &&
+        node.getClientRects().length &&
+        getComputedStyle(node).visibility !== 'hidden',
+    );
+    target = nodes[nodes.indexOf(trigger.value) + direction] ?? trigger.value;
+  }
+  target.focus({ preventScroll: true });
 }
+function show() {
+  if (props.disabled) return;
+  if (open.value) void close();
+  else {
+    original = [...props.modelValue];
+    emit('visibility', true);
+    open.value = true;
+  }
+}
+function cancel() {
+  emit('update:modelValue', original);
+  void close();
+}
+watch(
+  () => props.disabled,
+  (disabled) => {
+    if (disabled) void close(false);
+  },
+);
 </script>
 <template>
   <div class="playlist-editor-tags" @keydown.esc.stop.prevent="open && close()">
-    <div class="tag-selection">
+    <div ref="host" class="tag-selection" role="group" aria-label="已选歌单标签">
       <button
         v-for="tag in modelValue"
         :key="tag"
+        class="selected-tag"
         type="button"
         :disabled="disabled"
         :aria-label="`移除标签 ${tag}`"
+        :title="tag"
         @click="toggle(tag)"
       >
-        {{ tag }} ×
+        <span>{{ tag }}</span
+        ><Icon name="close" />
       </button>
       <button
         ref="trigger"
         type="button"
+        class="tag-select-trigger"
+        aria-label="选择标签"
+        aria-haspopup="dialog"
         :disabled="disabled"
         :aria-expanded="open"
-        aria-controls="playlist-editor-tag-choices"
-        @click="open = !open"
+        :aria-controls="open ? id : undefined"
+        @click="show"
+        @keydown.down.prevent="!open && show()"
       >
-        选择标签
+        <span v-if="!modelValue.length">选择标签</span><Icon name="down" />
       </button>
-      <small>最多 3 个</small>
     </div>
-    <div
-      v-if="open"
-      id="playlist-editor-tag-choices"
-      class="tag-picker"
-      @keydown.esc.stop.prevent="close"
-    >
-      <p v-if="error" role="alert">
-        {{ error
-        }}<button type="button" class="text-button" :disabled="disabled" @click="emit('retry')">
-          重新加载标签
-        </button>
-      </p>
-      <p v-else-if="!tags.length" role="status">正在加载标签…</p>
-      <section v-for="category in categories" :key="category">
-        <strong>{{ category }}</strong>
-        <div>
-          <button
-            v-for="tag in tags.filter((t) => t.category === category)"
-            :key="tag.name"
-            type="button"
-            :aria-pressed="modelValue.includes(tag.name)"
-            :disabled="disabled || (modelValue.length >= 3 && !modelValue.includes(tag.name))"
-            @click="toggle(tag.name)"
-          >
-            {{ tag.name }}
-          </button>
-        </div>
-      </section>
-      <button type="button" class="text-button" @click="close">完成选择</button>
-    </div>
+    <Teleport to="body"
+      ><Transition name="menu"
+        ><PlaylistTagPopover
+          v-if="open"
+          :id="id"
+          :anchor="host"
+          :selected="modelValue"
+          :tags="tags"
+          :loading="loading"
+          :error="error"
+          :disabled="disabled"
+          @toggle="toggle"
+          @cancel="cancel"
+          @confirm="close()"
+          @dismiss="close"
+          @retry="emit('retry')" /></Transition
+    ></Teleport>
   </div>
 </template>

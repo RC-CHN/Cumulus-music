@@ -20,6 +20,7 @@ export function usePlaylists(
   const coverOperations = shallowRef<CoverTask[]>([]);
   const tags = shallowRef<{ name: string; category: string }[]>([]);
   const tagError = ref('');
+  const tagsLoading = ref(false);
   const result = shallowRef<PlaylistMutationView>();
   const busy = ref(false),
     loading = ref(false),
@@ -28,6 +29,7 @@ export function usePlaylists(
     revision = 0,
     read = 0,
     operationRead = 0,
+    tagRead = 0,
     connected = false;
   function problem(e: unknown) {
     const v = failure(e);
@@ -39,6 +41,7 @@ export function usePlaylists(
     revision++;
     read++;
     operationRead++;
+    tagRead++;
     connected = account.status === 'authenticated';
     busy.value = false;
     loading.value = false;
@@ -49,6 +52,7 @@ export function usePlaylists(
     coverOperations.value = [];
     tags.value = [];
     tagError.value = '';
+    tagsLoading.value = false;
     if (connected) void refreshOperations();
   }
   async function refreshOperations() {
@@ -73,13 +77,18 @@ export function usePlaylists(
     }
   }
   async function loadTags() {
-    const e = epoch;
+    if (!connected) return;
+    const e = epoch,
+      n = ++tagRead;
     tagError.value = '';
+    tagsLoading.value = true;
     try {
       const r = await core.playlistTags(e);
-      if (e === epoch && r.epoch === epoch) tags.value = r.value;
+      if (e === epoch && n === tagRead && r.epoch === epoch) tags.value = r.value;
     } catch (x) {
-      if (e === epoch) tagError.value = failure(x).message;
+      if (e === epoch && n === tagRead) tagError.value = failure(x).message;
+    } finally {
+      if (e === epoch && n === tagRead) tagsLoading.value = false;
     }
   }
   async function open(id: string) {
@@ -210,6 +219,7 @@ export function usePlaylists(
     error,
     tags,
     tagError,
+    tagsLoading,
     loadTags,
     connect,
     open,

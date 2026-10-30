@@ -47,6 +47,9 @@
   /* Keep keyboard focus inside the scroll clip, including the first field. */
   outline-offset: -2px;
 }
+.playlist-editor-body.tag-dropdown-open {
+  padding-bottom: 252px;
+}
 .playlist-editor-grid {
   display: grid;
   grid-template-columns: minmax(0, 508px) 178px;
@@ -109,17 +112,6 @@
 .playlist-editor-tags {
   flex: 1;
   min-width: 0;
-}
-.playlist-editor-tags .tag-selection {
-  min-height: 36px;
-  gap: 8px;
-}
-.playlist-editor-tags .tag-picker {
-  margin-top: 10px;
-}
-.playlist-editor-tags small {
-  font-size: 11px;
-  color: var(--muted);
 }
 .playlist-editor-page .playlist-cover-edit button {
   position: relative;
@@ -254,16 +246,6 @@
   min-width: 0;
 }
 
-.playlist-editor-tags .tag-selection button {
-  height: 26px;
-  padding: 0 10px;
-}
-.playlist-editor-tags .tag-selection [aria-expanded] {
-  height: 36px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
-}
 .playlist-editor-confirm footer > button {
   border-radius: 8px;
   min-height: 40px;

@@ -130,49 +130,6 @@
   margin-top: 20px;
   padding-top: 10px;
 }
-.tag-selection {
-  display: flex;
-  gap: 7px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-.tag-selection button {
-  padding: 5px 10px;
-  background: var(--surface-alt);
-  border-radius: 14px;
-  font-size: 12px;
-}
-.tag-picker {
-  max-height: 200px;
-  overflow: auto;
-  padding: 12px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-}
-.tag-picker section {
-  display: flex;
-  gap: 12px;
-  margin: 10px 0;
-  font-size: 12px;
-}
-.tag-picker strong {
-  flex: 0 0 35px;
-  color: var(--muted);
-}
-.tag-picker section > div {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-}
-.tag-picker button {
-  padding: 4px 8px;
-  border-radius: 4px;
-}
-.tag-picker [aria-pressed='true'] {
-  color: var(--accent);
-  background: var(--surface-alt);
-}
 .track-menu h3 {
   font-size: 16px;
   margin: 0 0 6px;
