@@ -1,6 +1,7 @@
 //! Synthetic grouped library for the real WebView, playback and order UI.
 use cumulus_core::{Error, Result};
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
 use std::sync::{Mutex, OnceLock};
 #[derive(Default)]
 struct State {
@@ -11,6 +12,9 @@ struct State {
     removed: Vec<u64>,
     added: Vec<u64>,
     detail_reads: u64,
+    tracks: BTreeMap<u64, Vec<Value>>,
+    track_writes: Vec<Value>,
+    hidden: Option<u64>,
 }
 fn state() -> &'static Mutex<State> {
     static STATE: OnceLock<Mutex<State>> = OnceLock::new();
@@ -20,11 +24,23 @@ pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_LIBRARY_UI_PROOF").is_some()
 }
 pub fn control(value: &Value) {
-    state().lock().unwrap().mode = value["mode"].as_str().unwrap_or("success").into();
+    let mut s = state().lock().unwrap();
+    s.mode = value["mode"].as_str().unwrap_or("success").into();
+    if s.mode == "success" {
+        s.hidden = None;
+    }
 }
 pub fn report() -> Value {
     let s = state().lock().unwrap();
-    json!({"reads":s.reads,"writes":s.writes,"detailReads":s.detail_reads,"removed":s.removed,"added":s.added})
+    json!({"reads":s.reads,"writes":s.writes,"detailReads":s.detail_reads,"removed":s.removed,"added":s.added,"trackWrites":s.track_writes})
+}
+fn observed(s: &State, id: u64) -> Value {
+    let mut value = playlist(id);
+    if let Some(tracks) = s.tracks.get(&id) {
+        value["trackIds"] = json!(tracks);
+        value["trackCount"] = json!(tracks.len());
+    }
+    value
 }
 fn playlist(id: u64) -> Value {
     let mut value = super::playlist(id);
@@ -65,11 +81,13 @@ fn playlist(id: u64) -> Value {
     value
 }
 pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
-    let mutation = std::env::var_os("CUMULUS_PLAYLIST_MENU_UI_PROOF").is_some()
-        && matches!(
-            path,
-            "/api/playlist/delete" | "/api/playlist/subscribe" | "/api/playlist/unsubscribe"
-        );
+    let batch = std::env::var_os("CUMULUS_PLAYLIST_BATCH_UI_PROOF").is_some();
+    let mutation = (batch && path == "/api/v1/playlist/manipulate/tracks")
+        || (std::env::var_os("CUMULUS_PLAYLIST_MENU_UI_PROOF").is_some()
+            && matches!(
+                path,
+                "/api/playlist/delete" | "/api/playlist/subscribe" | "/api/playlist/unsubscribe"
+            ));
     if !enabled()
         || !(mutation
             || matches!(
@@ -129,21 +147,53 @@ pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
             let offset = args["offset"].as_u64().unwrap_or(0) as usize;
             let limit = args["limit"].as_u64().unwrap_or(1000) as usize;
             Ok(
-                json!({"code":200,"more":offset+limit<ids.len(),"playlist":ids.into_iter().skip(offset).take(limit).map(playlist).collect::<Vec<_>>()}),
+                json!({"code":200,"more":offset+limit<ids.len(),"playlist":ids.into_iter().skip(offset).take(limit).map(|id| observed(&s,id)).collect::<Vec<_>>()}),
             )
         }
         "/api/v6/playlist/detail" => {
             s.detail_reads += 1;
-            if s.mode == "fail_detail" {
+            if s.mode == "fail_detail" || s.hidden == Some(id(&args["id"])) {
                 return Some(Err(Error::Transport("合成歌单详情读取失败".into())));
             }
             if s.mode == "expired_detail" {
                 return Some(Ok(json!({"code":301})));
             }
             if s.mode == "empty_detail" {
-                return Some(Ok(json!({"code":200,"playlist":{"trackIds":[]}})));
+                let mut value = playlist(id(&args["id"]));
+                value["trackIds"] = json!([]);
+                value["trackCount"] = json!(0);
+                return Some(Ok(json!({"code":200,"playlist":value})));
             }
-            Ok(json!({"code":200,"playlist":playlist(id(&args["id"]))}))
+            Ok(json!({"code":200,"playlist":observed(&s,id(&args["id"]))}))
+        }
+        "/api/v1/playlist/manipulate/tracks" => {
+            assert!(batch);
+            let pid = id(&args["pid"]);
+            assert!((2..=60).contains(&pid));
+            let ids: Vec<Value> = serde_json::from_str(args["trackIds"].as_str().unwrap()).unwrap();
+            s.writes += 1;
+            s.track_writes
+                .push(json!({"pid":pid,"op":args["op"],"ids":ids}));
+            if s.mode == "reject" {
+                return Some(Ok(json!({"code":403})));
+            }
+            let initial = playlist(pid)["trackIds"].as_array().unwrap().clone();
+            let tracks = s.tracks.entry(pid).or_insert(initial);
+            if args["op"] == "del" {
+                tracks.retain(|row| !ids.iter().any(|v| id(v) == id(&row["id"])));
+            } else {
+                assert_eq!(args["op"], "add");
+                for value in ids {
+                    if !tracks.iter().any(|row| id(&row["id"]) == id(&value)) {
+                        tracks.push(json!({"id":value,"v":0}));
+                    }
+                }
+            }
+            if s.mode == "uncertain" {
+                s.hidden = Some(pid);
+                return Some(Err(Error::Transport("合成批量修改确认丢失".into())));
+            }
+            Ok(json!({"code":200}))
         }
         "/api/playlist/delete" | "/api/playlist/subscribe" | "/api/playlist/unsubscribe" => {
             assert!(mutation);

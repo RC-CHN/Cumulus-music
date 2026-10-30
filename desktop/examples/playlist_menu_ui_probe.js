@@ -93,7 +93,7 @@
       trigger = await mutation(61,'取消收藏'); assert(one('.playlist-mutation-body').textContent.includes('之后可重新收藏'), 'unfollow consequence'); await capture(`unsubscribe_${suffix}`); await closeDialog(trigger);
       trigger = await open(2); await choose('查看歌单'); await wait(() => one('.playlist-hero'), 'detail');
       click(button('更多歌单操作')); await wait(() => menu(), 'detail menu');
-      assert(all('.action-menu button').map(n=>n.textContent.trim()).join('|') === '分享…|添加全部至播放列表', 'detail avoids duplicated or unconnected actions');
+      assert(all('.action-menu button').map(n=>n.textContent.trim()).join('|') === '分享…|批量操作|添加全部至播放列表', 'detail avoids duplicated or unconnected actions');
       await capture(`detail_${suffix}`); await escape(button('更多歌单操作'));
       await library();
     }

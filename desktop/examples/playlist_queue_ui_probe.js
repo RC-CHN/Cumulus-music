@@ -63,7 +63,7 @@
       await fixture('success'); await wait(done,'playlist queued'); assert(button('播放',one('[aria-label="播放器"]')),'paused remains paused');
       await capture(`next_done_${suffix}`);
       await detail(8); trigger=button('更多歌单操作'); click(trigger); await wait(()=>menu(),'detail menu');
-      assert(all('.action-menu button').map(n=>n.textContent.trim()).join('|')==='分享…|添加全部至播放列表','detail action order');
+      assert(all('.action-menu button').map(n=>n.textContent.trim()).join('|')==='分享…|批量操作|添加全部至播放列表','detail action order');
       await capture(`detail_menu_${suffix}`); await fixture('hold_detail'); await choose('添加全部至播放列表');
       await wait(()=>feedback()?.getAttribute('aria-busy')==='true','detail pending'); await capture(`detail_wait_${suffix}`);
       await fixture('success'); await wait(done,'detail added'); assert(document.activeElement===trigger,'detail focus preserved'); await capture(`detail_done_${suffix}`);
