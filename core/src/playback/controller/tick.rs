@@ -110,10 +110,12 @@ impl Actor {
             .loaded
             .as_ref()
             .ok_or(Error::State("active playback missing media"))?;
+        let was_paused = self.state == PlaybackStatus::Paused;
         if view.events.iter().any(|event| {
             matches!(event, EngineEvent::OutputReload { entry_id } if *entry_id == loaded.media.entry_id)
         }) {
-            let position = view.position.map(|p| loaded.timeline.from_media(p)).transpose()?.or(self.position);
+            let observed = view.position.map(|p| loaded.timeline.from_media(p)).transpose()?;
+            let position = if was_paused { self.position.or(observed) } else { observed.or(self.position) };
             let options = LoadOptions {
                 paused: self.state == PlaybackStatus::Paused,
                 position,
@@ -162,7 +164,13 @@ impl Actor {
         }
         if ended {
             self.position = loaded.timeline.display_end();
-        } else if let Some(position) = view.position {
+        } else if (!was_paused || !view.paused || self.position.is_none())
+            && let Some(position) = view.position
+        {
+            // A paused libmpv clock can include queued output latency, which
+            // changes again when speed changes. An accepted paused seek is the
+            // logical position until playback resumes; polling must not rewind
+            // its UI, durable restore position, or same-account relay state.
             self.position = Some(loaded.timeline.from_media(position)?);
         }
         if ended || self.last_save.elapsed() >= Duration::from_secs(1) {

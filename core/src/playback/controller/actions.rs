@@ -309,12 +309,13 @@ impl Actor {
             return Ok(());
         }
         self.require_loaded()?;
+        let preserve_position = paused && self.state == PlaybackStatus::Paused;
         let view = super::engine(self.engine.clone(), self.guard(), move |engine| {
             engine.pause(paused)?;
             engine.poll()
         })
         .await?;
-        if let Some(position) = view.position {
+        if !preserve_position && let Some(position) = view.position {
             self.position = Some(
                 self.loaded
                     .as_ref()

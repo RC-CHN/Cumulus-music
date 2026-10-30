@@ -48,6 +48,35 @@ async fn controls_persist_and_reopen_paused_with_the_same_entry_and_position() {
 }
 
 #[tokio::test]
+async fn paused_seek_survives_latency_reports_speed_changes_and_repeated_pause() {
+    let f = Fixture::new();
+    f.command(replace(&[1, 2])).await.unwrap();
+    f.command(Cmd::Pause(true)).await.unwrap();
+    f.command(Cmd::Seek(42.5)).await.unwrap();
+    // Model libmpv's real paused/null output latency. It reports a decoder
+    // position before the accepted seek and recomputes that latency on speed.
+    f.device.state.lock().unwrap().view.position = Some(42.1);
+    tokio::time::sleep(std::time::Duration::from_millis(450)).await;
+    assert_eq!(f.command(Cmd::Snapshot).await.unwrap().position, Some(42.5));
+    f.command(Cmd::Speed(1.25)).await.unwrap();
+    f.device.state.lock().unwrap().view.position = Some(41.9);
+    tokio::time::sleep(std::time::Duration::from_millis(450)).await;
+    let paused = f.command(Cmd::Pause(true)).await.unwrap();
+    assert_eq!(paused.state, Status::Paused);
+    assert_eq!(paused.position, Some(42.5));
+    f.command(Cmd::Volume(37.0)).await.unwrap();
+    let restored = f.another_player();
+    let view = restored.command(&f.token(), Cmd::Restore).await.unwrap();
+    assert_eq!(view.position, Some(42.5));
+    assert_eq!(view.speed, 1.25);
+    restored.command(&f.token(), Cmd::Stop).await.unwrap();
+    f.command(Cmd::Pause(false)).await.unwrap();
+    f.device.state.lock().unwrap().view.position = Some(43.0);
+    until(&f.player, |s| s.position == Some(43.0)).await;
+    f.command(Cmd::Stop).await.unwrap();
+}
+
+#[tokio::test]
 async fn eof_is_bound_to_native_entry_and_single_loop_differs_from_manual_next() {
     let f = Fixture::new();
     f.command(replace(&[1, 2])).await.unwrap();
@@ -324,7 +353,12 @@ async fn prefetch_refreshes_expired_source_without_changing_queue_or_audio() {
 #[tokio::test]
 async fn output_recovery_reloads_same_source_at_current_clock_without_advancing_queue() {
     use cumulus_core::playback::engine::EngineEvent;
-    for paused in [true, false] {
+    for (paused, reported, expected) in [
+        (true, None, 42.5),
+        (true, Some(42.1), 42.5),
+        (false, None, 42.5),
+        (false, Some(43.0), 43.0),
+    ] {
         let f = Fixture::new();
         f.command(replace(&[1])).await.unwrap();
         f.command(Cmd::Seek(42.5)).await.unwrap();
@@ -333,7 +367,7 @@ async fn output_recovery_reloads_same_source_at_current_clock_without_advancing_
         let queue = f.player.queue(&f.token()).await.unwrap();
         {
             let mut native = f.device.state.lock().unwrap();
-            native.view.position = None;
+            native.view.position = reported;
             native.view.paused = true; // Failed output state is not user intent.
             native
                 .view
@@ -350,12 +384,12 @@ async fn output_recovery_reloads_same_source_at_current_clock_without_advancing_
                     }
         })
         .await;
-        assert_eq!(after.position, Some(42.5));
+        assert_eq!(after.position, Some(expected));
         assert_eq!(after.selected, before.selected);
         assert_eq!(f.player.queue(&f.token()).await.unwrap(), queue);
         assert_eq!(f.api.count(1), 1, "reuse existing authorized source");
         assert_eq!(f.device.state.lock().unwrap().loads, 2);
-        assert_eq!(f.device.state.lock().unwrap().view.position, Some(42.5));
+        assert_eq!(f.device.state.lock().unwrap().view.position, Some(expected));
         f.command(Cmd::Stop).await.unwrap();
     }
 }
