@@ -1,0 +1,105 @@
+目录详情：路由返回、阅读位置、评论交互及重新读取
+2026-10-31；按UI/UX一致性修正。本项不代表全部页面/业务目标完成。
+
+官方证据及适配
+- 官方恢复 pc/src/pages/user-detail/views/artist/DetailTabs.tsx:81 使用history.push，
+  歌手标签进入独立历史项；AllSongsList.tsx有独立全部歌曲页。
+- pc/src/pages/album/views/index.tsx:166-172 的handleTabClick使用history.replace；
+  专辑歌曲/评论/详情切换不额外增加返回步骤，共用页头保留。
+- 当前应用使用已有类型化Page历史，而非直接暴露WebView播放地址。CatalogLocation
+  新增catalogVisit、artistTab和albumTab，UI行为对应上述push/replace语义。
+  不新增远端接口；没有使用YesPlayMusic，也没有同状态官方截图，不宣称像素一致。
+
+模块与所有权
+1. useMusic为新目录访问分配独立catalogVisit；复制当前歌手路由切换标签保留访问ID。
+   专辑切换替换当前历史项。页面实例key包含账号、资源和访问ID，排除标签，因此标签
+   切换仍由原有内容过渡完成；离开到其他资源时页面确实卸载，不保留整棵隐藏DOM。
+2. useCatalogWorkspace拥有最多8次访问的LRU，只属于当前authenticated账号代次。
+   useCatalogSession拥有详情、动态状态、关注/收藏日志读取、各标签分页、评论上下文
+   和阅读位置。CatalogPage负责布局、选择、播放/下载入口和恢复DOM位置。
+   账号切换/失效及应用退出释放所有模型、观察器、草稿和位置；迟到结果由原有代次
+   及新session.valid校验丢弃。新打开同一资源的访问有独立位置和分页前缀。
+3. 评论交互抽为useCommentContext，持有writer、floor和定位输入；独立评论页仍自行
+   拥有/释放，专辑页则使用账号会话拥有的上下文。它没有DOM、窗口或Tauri依赖。
+   确认窗口随组件关闭，未提交草稿/回复、待确认意图、分页、楼层读取保留在模型中。
+   连接只监听账号代次和资源key，元数据对象更新不再重新连接并清空草稿。
+
+实际行为
+- 歌手歌曲→专辑→某专辑详情→返回：恢复歌手专辑标签、已读40条前缀、内外滚动和
+  原专辑卡片焦点。随后简介→返回专辑→返回歌曲，逐步消费原历史项。
+- 专辑歌曲→评论→详情，当前历史长度不增长；离开专辑后返回仍是原标签。
+- 全部歌曲返回歌手后再次进入，仍有当前访问已加载的55首及列表位置；明确的“返回
+  热门歌曲”和全局返回均走同一导航保护，不另建一条相反方向的历史记录。
+- 评论第二页输入未提交文字及定位编号→每日推荐→返回：仍是第二页、草稿和原阅读
+  位置；重新读取的目标是当前查询，不能跳回第一页。导航不会发布文字。
+- 每次重新进入一个目录访问都重新读取页头、动态状态和持久化操作日志，评论当前页
+  适用时也重新读取。已访问的歌手子列表保留完整前缀，不因返回而替换成第一页。
+  播放仍交给Rust核对query/revision和当前音源/权益，UI浏览记忆不授予播放权限。
+- 关注/收藏在其状态重新读取期间及读取失败时禁用，不能拿旧布尔值反向提交。
+  进入、退出、返回、重开只inspect/读操作日志，不自动set/reconcile/发布/删除。
+- App在真正提交导航前记录当前位置；既有批量编辑/歌单编辑离开保护仍优先。取消
+  离开不会先改变路由、丢掉草稿或触发新的业务操作。
+
+滚动、焦点与加载版式
+- 记录按artist:<tab>/album:<tab>分开，核对当前实际面板标识。进入钩子使用传入的新
+  DOM节点，等待网格测量和虚拟占位提交，再恢复；初次重新挂载也走相同路径。
+  旧恢复同时受会话有效性、面板key、恢复代次和节点连接状态限制。
+- 用户滚轮、触摸、指针或非标签键盘操作取消未完成的恢复，避免回写新操作。
+- 虚拟卡片的原焦点必须在滚动事件更新范围、Vue提交新卡片之后恢复；只有焦点仍在
+  原返回按钮/页面body时才转移，期间用户主动聚焦其他控件则保留用户选择。
+  首次实际导航在此处捕获真实焦点丢失，修正后再运行完整两组52态。
+- 页头重新读取使用现有刷新/更多按钮内的旋转图标、aria-busy及屏幕阅读状态，不再
+  临时插入一段会撑动页面的正文。实际合成服务在返回时受控等待，验证关注禁用、
+  正在更新状态可读，释放后卡片纵坐标变化<1px；等待有5秒上限，不是业务重试。
+- 目录标签和卡片采用与搜索页相同的内侧-2px焦点描边，圆角分别4px/8px；滚动容器
+  不再裁掉上/下或右边界。减少动态效果时旋转及过渡遵从现有统一策略。
+  这属于社区键盘反馈，不声称是官方运行截图的描边定义。
+
+接口边界
+- 沿用CoreClient.catalogPage / catalogMembership / playSelection、下载入口及原评论
+  commentsPage / commentsFloor / commentsWriteOperations等类型化接口。详情、分页、
+  权益、关注/收藏与评论的实际API/字段见artist-detail-ui-contracts.txt、
+  album-detail-ui-contracts.txt及core-comments-contracts.txt。
+- 返回读取调用正常catalogPage流程：先可显示本地只读快照，仍执行force远端读取；
+  接口既有的query匹配、revision、缓存、失败和账号校验保留。没有把历史Python输出
+  当成新桌面通过，也不在前端持有Cookie、签名密钥或完整授权音源地址。
+
+验证与复现
+  cargo build -p cumulus-desktop --example catalog_ui_probe --features custom-protocol --locked
+  LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 xvfb-run -a dbus-run-session -- \
+    python3 scripts/ci/catalog_smoke.py --binary <target>/debug/examples/catalog_ui_probe \
+    --root <全新目录> --navigation --screenshots
+隔离Xvfb才使用--screenshots抓根窗口；本机KDE只使用本进程窗口pixmap。Windows运行
+相同--navigation，附--runtime指向打包原生依赖。两平台CI分别接入，不能将配置接入
+称为Windows实机通过。
+- catalog-navigation-final：最终52态/52图；catalog-navigation-kde-final：本机KDE
+  52态/52张自有窗口图，两尺寸/两主题、125%，逐态visible/hasFocus=true。
+- 每组40个真实libmpv/null播放状态，独立核对1..50队列、artist/12来源及进度>0.2；
+  每组尺寸/主题的全部导航持续同一个真实playId。真实账号写入和音乐请求均为0。
+- 每组24个实际画面阶段、44个封面/焦点像素采样通过。catalog-focus-before第2态
+  保存描边裁切失败：目标描边像素实际仍是背景；新描边与最终截图重新检查。
+- .build/catalog-navigation-gallery/index.html保留104张最终未修改原图及1张失败图，
+  SHA256索引与状态/绘制摘要同行。人工核对返回卡片、窄窗标签、草稿/评论分页、
+  两主题及阅读位置。局部像素匹配不等于整图或官方像素一致。
+- catalog-navigation-artist-final50态、catalog-navigation-album-final30态通过，保留
+  既有热门/55首播放、评论切换、错误/重试、公开分享及其他目录入口断言。
+- 独立评论流程的可复现命令：
+    cargo build -p cumulus-desktop --example comment_edit_ui_probe --features custom-protocol --locked
+    LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 xvfb-run -a dbus-run-session -- \
+      python3 scripts/ci/comment_edit_smoke.py --binary <target>/debug/examples/comment_edit_ui_probe \
+      --root <另一个全新目录>
+- catalog-comment-edit-regression：独立生产评论页17态及进程重开通过；8次合成
+  发布/回复/删除，UTF-16边界、原文空白、失败保留、确认取消及丢回包责任恢复。
+  原两条评论保留，丢回包内容只发送一次，重开核对/停止核对均未重发。原始请求载荷
+  和原有记录由Python独立核对，真实账号写入0。本项未抓截图，不能称17张新视觉证据。
+- 新增11项前端用例，合计322项通过；格式/类型/构建、严格Clippy、Rust全量1200项/
+  259个结果target及24项CI工具测试通过。数目不是UI完成比例。
+
+保留边界
+- 浏览记忆当前是进程内8次访问的LRU；超限或进程退出会释放未提交的前端草稿及阅读
+  位置，尚无独立草稿落盘。这不同于已经持久化的发送意图/未决操作，后者仍由Rust
+  日志恢复。本项没有宣称跨进程恢复未提交草稿或无限历史保留。
+- 没有新增WebView地址栏URL/deep-link/popstate路由，也未完成官方全部吸顶、搜索/
+  排序、完整更多菜单、个人主页/自身账号与全部AB分支。其他页面沿ui-ux-audit继续。
+- 没有Windows实机截图或物理声卡结论；null与合成音源不能证明在线音源/听感。
+  完整目标保持进行中，不能以本专项或编译/测试数量宣布全范围完成。
