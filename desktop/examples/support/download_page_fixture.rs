@@ -300,6 +300,33 @@ impl Fixture {
                 .await
                 .map_err(|_| Error::State("synthetic download playback timed out"))??;
             }
+            "verify_batch_delete" => {
+                let removed = value["removed"]
+                    .as_u64()
+                    .ok_or(Error::InvalidInput("missing synthetic file id"))?;
+                let retained = value["retained"]
+                    .as_u64()
+                    .ok_or(Error::InvalidInput("missing synthetic file id"))?;
+                if !(1..=132).contains(&removed)
+                    || !(1..=132).contains(&retained)
+                    || removed == retained
+                {
+                    return Err(Error::InvalidInput("invalid synthetic file ids"));
+                }
+                if self
+                    .root
+                    .join("media")
+                    .join(format!("synthetic-{removed}.wav"))
+                    .exists()
+                    || !self
+                        .root
+                        .join("media")
+                        .join(format!("synthetic-{retained}.wav"))
+                        .is_file()
+                {
+                    return Err(Error::State("unexpected batch file deletion outcome"));
+                }
+            }
             "remove_first" => {
                 let records = self.records.lock().unwrap();
                 self.store.delete("2", "download_tasks_v1", &records[0].0)?;

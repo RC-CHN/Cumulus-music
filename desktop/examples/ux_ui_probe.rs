@@ -329,6 +329,13 @@ fn main() {
                     return;
                 }
             }
+            if stage=="compact-zoom" && download_page_fixture::enabled() {
+                let scale=match value["enabled"].as_bool(){Some(true)=>1.25,Some(false)=>1.0,None=>return};
+                handle.get_webview_window("main").unwrap().set_zoom(scale).unwrap();return;
+            }
+            if stage=="focus-sample" && download_page_fixture::enabled() {
+                handle.get_webview_window("main").unwrap().set_focus().unwrap();return;
+            }
             if stage=="resize" {
                 handle.get_webview_window("main").unwrap().set_size(tauri::LogicalSize::new(value["width"].as_f64().unwrap(),value["height"].as_f64().unwrap())).unwrap();return;
             }

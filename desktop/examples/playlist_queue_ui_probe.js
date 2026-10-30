@@ -35,9 +35,19 @@
   }
   async function open(id, context = false) {
     const card = one(`[data-library-open="${id}"]`), trigger = context ? card : card.closest('article').querySelector('.menu-trigger');
-    trigger.scrollIntoView({ block: 'center' }); await sleep(80); trigger.focus({ preventScroll: true });
-    if (context) key(trigger, 'F10', { shiftKey: true }); else click(trigger);
-    await wait(() => menu()?.style.visibility === 'visible', 'resource menu'); await sleep(140);
+    trigger.scrollIntoView({ block: 'nearest' });
+    // The library restores scroll/focus after mount. Dispatch only once the
+    // trigger is stable and hit-testable; an outside scroll dismisses menus.
+    let previous, stable = 0;
+    await wait(() => {
+      const r = trigger.getBoundingClientRect(), at = [r.x, r.y, r.width, r.height].join(':');
+      stable = previous === at ? stable + 1 : 0; previous = at;
+      const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+      return stable >= 2 && trigger.contains(hit) && !one('.page-enter-active,.page-leave-active');
+    }, 'settled card target ' + id);
+    trigger.focus({ preventScroll: true });
+    if (context) key(trigger, 'F10', { shiftKey: true }); else trigger.click();
+    await wait(() => menu()?.style.visibility === 'visible' && menu().contains(document.activeElement), 'focused resource menu');
     return trigger;
   }
   async function choose(label) { click(button(label, menu())); await wait(() => !menu(), 'menu selection'); }
