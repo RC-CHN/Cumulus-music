@@ -153,7 +153,8 @@ export type DownloadDialogTarget =
   | { kind: 'cloud'; tracks: TrackView[]; revision: string }
   | { kind: 'start'; tracks: TrackView[] }
   | { kind: 'settings' }
-  | { kind: 'file'; task: DownloadTask }
+  | { kind: 'file'; task: DownloadTask; action?: import('./downloadMenu').DownloadFileAction }
+  | { kind: 'cancel'; task: DownloadTask }
   | { kind: 'clear' };
 export function downloadStatus(task: DownloadTask): string {
   if (task.error) return task.error;

@@ -14,6 +14,8 @@ import DownloadContinuation from './DownloadContinuation.vue';
 import Icon from '../Icon.vue';
 import TableColumnResize from '../TableColumnResize.vue';
 import { useTableColumns } from '../../composables/useTableColumns';
+import DownloadRowMenu from './DownloadRowMenu.vue';
+import type { DownloadFileAction } from '../../services/downloadMenu';
 const props = defineProps<{
   tasks: DownloadTask[];
   growth: number[];
@@ -21,6 +23,7 @@ const props = defineProps<{
   query: DownloadQuery;
   locked: boolean;
   playable: boolean;
+  queueable?: boolean;
   currentId?: string;
   repairing: Set<string>;
   more: boolean;
@@ -29,7 +32,12 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
   play: [task: DownloadTask];
-  manage: [task: DownloadTask];
+  manage: [task: DownloadTask, action?: DownloadFileAction];
+  next: [task: DownloadTask];
+  collect: [task: DownloadTask];
+  comments: [task: DownloadTask];
+  open: [task: DownloadTask];
+  cancel: [task: DownloadTask];
   sort: [column: DownloadSort];
   control: [task: DownloadTask, action: DownloadControl];
   load: [];
@@ -59,6 +67,11 @@ watch(
   { flush: 'post' },
 );
 const focused = ref(0);
+const menu = ref<InstanceType<typeof DownloadRowMenu>>();
+function scroll() {
+  menu.value?.scroll();
+  onScroll();
+}
 const headers = computed<{ label: string; sort: DownloadSort }[]>(() => [
   { label: props.query.sort === 'artist' ? '标题 · 歌手' : '标题', sort: 'name' },
   ...(active.value
@@ -185,7 +198,7 @@ async function key(event: KeyboardEvent, index: number) {
       data-download-columns="1"
       data-download-pitch="64"
       tabindex="-1"
-      @scroll.passive="onScroll"
+      @scroll.passive="scroll"
       @keydown.self="key($event, focused)"
     >
       <div :style="{ height: `${start * 64}px` }" aria-hidden="true" />
@@ -202,6 +215,8 @@ async function key(event: KeyboardEvent, index: number) {
         :tabindex="focused === start + i ? 0 : -1"
         @focus="focused = start + i"
         @keydown.self="key($event, start + i)"
+        @keydown="menu?.show($event, task)"
+        @contextmenu="menu?.show($event, task)"
         @dblclick="!active && playable && emit('play', task)"
       >
         <span role="cell" class="download-index"
@@ -224,8 +239,8 @@ async function key(event: KeyboardEvent, index: number) {
             :active="active"
             :locked="locked"
             :repairing="repairing.has(task.id)"
-            @control="emit('control', task, $event)"
-            @manage="emit('manage', task)"
+            @control="$event === 'cancel' ? emit('cancel', task) : emit('control', task, $event)"
+            @manage="menu?.show($event, task)"
           />
         </div>
         <div
@@ -268,5 +283,22 @@ async function key(event: KeyboardEvent, index: number) {
         @load="emit('load')"
       />
     </div>
+    <DownloadRowMenu
+      ref="menu"
+      :tasks="tasks"
+      :locked="locked"
+      :playable="playable"
+      :queueable="!!queueable"
+      @play="emit('play', $event)"
+      @next="emit('next', $event)"
+      @collect="emit('collect', $event)"
+      @comments="emit('comments', $event)"
+      @open="emit('open', $event)"
+      @control="
+        emit('control', $event, ['paused', 'error'].includes($event.status) ? 'resume' : 'pause')
+      "
+      @cancel="emit('cancel', $event)"
+      @file="(task, action) => emit('manage', task, action)"
+    />
   </div>
 </template>

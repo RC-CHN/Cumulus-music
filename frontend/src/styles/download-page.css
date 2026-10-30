@@ -409,6 +409,9 @@
 .download-mv-scroll > .action-menu-host {
   display: contents;
 }
+.download-table > .action-menu-host {
+  display: contents;
+}
 .download-mv-artists button {
   padding: 0;
   font: inherit;

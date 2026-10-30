@@ -22,6 +22,7 @@ const props = defineProps<{
   model: DownloadModel;
   playable: boolean;
   preparing?: boolean;
+  queueable?: boolean;
   currentId?: string;
 }>();
 const emit = defineEmits<{
@@ -30,6 +31,9 @@ const emit = defineEmits<{
   select: [selection: PlaySelection];
   playMv: [task: DownloadTask];
   artist: [id: string];
+  next: [task: DownloadTask];
+  collect: [task: DownloadTask];
+  comments: [task: DownloadTask];
 }>();
 const { view, query, busy, loading, error, readError, notice } = props.model;
 const root = ref<HTMLElement>();
@@ -201,6 +205,7 @@ function play(task?: DownloadTask) {
           :query="query"
           :locked="locked"
           :playable="playable && !locked && !preparing"
+          :queueable="queueable && !locked"
           :current-id="currentId"
           :repairing="repairing"
           :more="model.hasMore.value"
@@ -208,7 +213,12 @@ function play(task?: DownloadTask) {
           :more-error="model.moreError.value"
           @load="loadMore"
           @play="play"
-          @manage="emit('dialog', { kind: 'file', task: $event })"
+          @manage="(task, action) => emit('dialog', { kind: 'file', task, action })"
+          @next="emit('next', $event)"
+          @collect="emit('collect', $event)"
+          @comments="emit('comments', $event)"
+          @open="model.open($event.id)"
+          @cancel="emit('dialog', { kind: 'cancel', task: $event })"
           @sort="filter(nextDownloadSort(query, $event), `[data-download-sort='${$event}']`)"
           @control="
             (task, action) => model.command({ kind: 'control', task_ids: [task.id], action })

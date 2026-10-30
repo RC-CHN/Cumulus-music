@@ -11,7 +11,10 @@ const props = defineProps<{
   repairing: boolean;
   selectionOnly?: boolean;
 }>();
-const emit = defineEmits<{ control: [action: DownloadControl]; manage: [] }>();
+const emit = defineEmits<{
+  control: [action: DownloadControl];
+  manage: [event: MouseEvent | KeyboardEvent];
+}>();
 const resume = computed(() => ['paused', 'error'].includes(props.task.status));
 const quality = computed(() =>
   props.task.source === 'cloud'
@@ -70,8 +73,19 @@ const quality = computed(() =>
           data-tooltip="删除下载"
           @click="emit('control', 'cancel')"
         >
-          <Icon name="trash" /></button
-      ></template>
+          <Icon name="trash" />
+        </button>
+        <button
+          class="icon-button"
+          aria-haspopup="menu"
+          :aria-label="`管理下载 ${task.track.name}`"
+          data-tooltip="更多"
+          @click="emit('manage', $event)"
+          @keydown="emit('manage', $event)"
+        >
+          <Icon name="more" />
+        </button>
+      </template>
       <template v-else
         ><button
           v-if="task.cleanupPending"
@@ -84,8 +98,11 @@ const quality = computed(() =>
         <button
           class="icon-button"
           :aria-label="`管理下载 ${task.track.name}`"
-          data-tooltip="管理下载文件"
-          @click="emit('manage')"
+          data-tooltip="更多"
+          aria-haspopup="menu"
+          data-download-action="manage"
+          @click="emit('manage', $event)"
+          @keydown="emit('manage', $event)"
         >
           <Icon name="more" /></button
       ></template>

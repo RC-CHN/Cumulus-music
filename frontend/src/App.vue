@@ -476,6 +476,20 @@ function downloadReturnFocus() {
 const downloads = useDownloads(undefined, () => {
   void music.bootstrap(false);
 });
+async function queueDownload(task: import('./services/downloads').DownloadTask) {
+  const view = player.view.value,
+    owner = account.value.epoch;
+  if (!view || view.fm || player.busy.value) return;
+  const result = await player.action({
+    kind: 'queue_downloads',
+    task_ids: [task.id],
+    expected_queue_revision: view.queueRevision,
+  });
+  if (owner === account.value.epoch) {
+    if (result) downloads.notice.value = '播放列表已更新';
+    else if (player.error.value) downloads.error.value = '下一首播放：' + player.error.value;
+  }
+}
 const cloud = useCloud(undefined, () => {
   void music.bootstrap(false);
 });
@@ -1268,10 +1282,14 @@ onUnmounted(() => {
                 v-else-if="page.kind === 'downloads'"
                 :model="downloads"
                 :playable="player.ready.value"
+                :queueable="player.ready.value && !player.busy.value && !player.view.value?.fm"
                 :current-id="currentTrackId"
                 @dialog="downloadDialog = $event"
                 @batch="openDownloadBatch"
                 @artist="(id) => openCatalog({ kind: 'artist', id })"
+                @collect="(task) => (playlistDialog = { kind: 'tracks', tracks: [task.track] })"
+                @comments="(task) => trackComments(task.track)"
+                @next="queueDownload"
                 :preparing="player.busy.value"
                 @select="player.select"
                 @play-mv="(task) => openMv(task.track.id, task.id)"
