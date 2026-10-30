@@ -5,8 +5,14 @@ import { artworkAt } from '../../services/artwork';
 import { time } from '../../services/player';
 import { useVirtualRows } from '../../composables/useVirtualRows';
 import Icon from '../Icon.vue';
-const props = defineProps<{ tasks: DownloadTask[] }>();
-const emit = defineEmits<{ play: [task: DownloadTask]; manage: [task: DownloadTask] }>();
+import DownloadContinuation from './DownloadContinuation.vue';
+const props = defineProps<{
+  tasks: DownloadTask[];
+  more: boolean;
+  loadingMore: boolean;
+  moreError: string;
+}>();
+const emit = defineEmits<{ play: [task: DownloadTask]; manage: [task: DownloadTask]; load: [] }>();
 const width = ref(836),
   columns = computed(() => (width.value < 600 ? 2 : 4));
 const rowHeight = computed(
@@ -17,6 +23,14 @@ const { container, start, end, onScroll } = useVirtualRows(
   () => total.value,
   () => rowHeight.value,
   2,
+);
+watch(
+  [end, total, () => props.more, () => props.loadingMore],
+  () => {
+    if (end.value >= total.value && props.more && !props.loadingMore && !props.moreError)
+      emit('load');
+  },
+  { flush: 'post' },
 );
 let observer: ResizeObserver | undefined;
 watch(
@@ -36,7 +50,7 @@ watch(
 onBeforeUnmount(() => observer?.disconnect());
 </script>
 <template>
-  <div ref="container" class="download-mv-scroll" @scroll.passive="onScroll">
+  <div ref="container" class="download-mv-scroll" tabindex="-1" @scroll.passive="onScroll">
     <div :style="{ height: `${start * rowHeight}px` }" aria-hidden="true" />
     <div
       v-for="index in end - start"
@@ -93,5 +107,11 @@ onBeforeUnmount(() => observer?.disconnect());
       </article>
     </div>
     <div :style="{ height: `${(total - end) * rowHeight}px` }" aria-hidden="true" />
+    <DownloadContinuation
+      :more="more"
+      :loading="loadingMore"
+      :error="moreError"
+      @load="emit('load')"
+    />
   </div>
 </template>

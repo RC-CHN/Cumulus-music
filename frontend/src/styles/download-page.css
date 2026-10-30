@@ -380,14 +380,22 @@
   height: 20px;
   flex-shrink: 0;
 }
-.download-pagination {
+.download-continuation {
+  min-height: 48px;
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+  color: var(--muted);
   font-size: 12px;
+  padding: 8px 12px;
+  overflow-wrap: anywhere;
+}
+.download-continuation .spinner,
+.download-toolbar .spinner {
+  width: 18px;
+  height: 18px;
   flex-shrink: 0;
-  padding: 6px 0;
 }
 .download-mv-toolbar {
   padding: 12px 0;

@@ -11,6 +11,7 @@ const props = defineProps<{
   batch: boolean;
   canPlay: boolean;
   locked: boolean;
+  preparing: boolean;
 }>();
 const emit = defineEmits<{ play: []; batch: []; clear: []; settings: [] }>();
 const { query, view } = props.model;
@@ -44,14 +45,11 @@ function clear() {
   search();
   field.value?.focus({ preventScroll: true });
 }
-watch(
-  () => [query.value.tab, query.value.category],
-  () => {
-    clearTimeout(timer);
-    composing = false;
-    keyword.value = query.value.keyword;
-  },
-);
+watch([() => query.value.tab, () => query.value.category], () => {
+  clearTimeout(timer);
+  composing = false;
+  keyword.value = query.value.keyword;
+});
 watch(
   () => query.value.keyword,
   (value) => {
@@ -87,8 +85,8 @@ onBeforeUnmount(() => clearTimeout(timer));
     </template>
     <template v-else-if="section !== 'mv'">
       <button class="primary download-play-all" :disabled="!canPlay" @click="emit('play')">
-        <Icon name="play" />{{
-          batch ? '播放所选' : view && view.total > view.tasks.length ? '播放本页' : '播放全部'
+        <span v-if="preparing" class="spinner" /><Icon v-else name="play" />{{
+          preparing ? '准备中…' : batch ? '播放所选' : '播放全部'
         }}
       </button>
       <button v-if="batch" class="download-button" @click="emit('batch')">完成</button>

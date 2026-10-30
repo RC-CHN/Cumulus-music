@@ -2,6 +2,7 @@
 import { computed, nextTick, ref, watch } from 'vue';
 import type { DownloadModel } from '../composables/useDownloads';
 import type { DownloadDialogTarget, DownloadTask, DownloadQuery } from '../services/downloads';
+import type { PlaySelection } from '../services/player';
 import {
   downloadSection,
   downloadSectionQuery,
@@ -15,16 +16,45 @@ import DownloadMvGrid from './download/DownloadMvGrid.vue';
 import DownloadOperations from './DownloadOperations.vue';
 import Icon from './Icon.vue';
 import '../styles/download-page.css';
-const props = defineProps<{ model: DownloadModel; playable: boolean; currentId?: string }>();
+const props = defineProps<{
+  model: DownloadModel;
+  playable: boolean;
+  preparing?: boolean;
+  currentId?: string;
+}>();
 const emit = defineEmits<{
   dialog: [target: DownloadDialogTarget];
   play: [ids: string[], index: number];
+  select: [selection: PlaySelection];
   playMv: [task: DownloadTask];
 }>();
 const { view, query, busy, loading, error, readError, notice } = props.model;
 const selected = ref(new Set<string>()),
   batch = ref(false);
 const root = ref<HTMLElement>();
+async function loadMore() {
+  const origin = document.activeElement;
+  await props.model.loadMore();
+  await nextTick();
+  if (
+    origin instanceof HTMLElement &&
+    !origin.isConnected &&
+    document.activeElement === document.body
+  ) {
+    const scroll = root.value?.querySelector<HTMLElement>('.download-scroll,.download-mv-scroll');
+    const bounds = scroll?.getBoundingClientRect();
+    const rows = [
+      ...(scroll?.querySelectorAll<HTMLElement>('[data-download-index],.download-mv-cover') ?? []),
+    ];
+    const visible =
+      bounds &&
+      rows.find((row) => {
+        const r = row.getBoundingClientRect();
+        return r.top >= bounds.top && r.bottom <= bounds.bottom;
+      });
+    (visible || scroll)?.focus({ preventScroll: true });
+  }
+}
 async function filter(value: Partial<DownloadQuery>, selector: string) {
   const origin = document.activeElement;
   await props.model.filter(value);
@@ -60,17 +90,18 @@ const repairing = computed(
 const canPlay = computed(
   () =>
     !locked.value &&
+    !props.preparing &&
     props.playable &&
     (batch.value ? selectedTasks.value : tasks.value).some((t) => t.source !== 'mv'),
 );
 watch(
-  () => [
-    query.value.tab,
-    query.value.category,
-    query.value.offset,
-    query.value.keyword,
-    query.value.sort,
-    query.value.descending,
+  [
+    () => query.value.tab,
+    () => query.value.category,
+    () => query.value.offset,
+    () => query.value.keyword,
+    () => query.value.sort,
+    () => query.value.descending,
   ],
   () => {
     selected.value = new Set();
@@ -95,9 +126,11 @@ function play(task?: DownloadTask) {
     emit('playMv', task);
     return;
   }
-  const rows = (task ? tasks.value : batch.value ? selectedTasks.value : tasks.value).filter(
-    (t) => t.source !== 'mv',
-  );
+  if (!batch.value) {
+    emit('select', { kind: 'downloads', query: { ...query.value }, start_id: task?.id ?? null });
+    return;
+  }
+  const rows = (task ? tasks.value : selectedTasks.value).filter((t) => t.source !== 'mv');
   if (rows.length)
     emit(
       'play',
@@ -130,6 +163,7 @@ function play(task?: DownloadTask) {
           :batch="batch"
           :can-play="canPlay"
           :locked="locked"
+          :preparing="!!preparing"
           @play="play()"
           @batch="toggleBatch"
           @clear="emit('dialog', { kind: 'clear' })"
@@ -174,6 +208,10 @@ function play(task?: DownloadTask) {
           v-else-if="section === 'mv'"
           :key="query.offset"
           :tasks="tasks"
+          :more="model.hasMore.value"
+          :loading-more="model.loadingMore.value"
+          :more-error="model.moreError.value"
+          @load="loadMore"
           @play="emit('playMv', $event)"
           @manage="emit('dialog', { kind: 'file', task: $event })"
         />
@@ -185,9 +223,13 @@ function play(task?: DownloadTask) {
           :batch="batch"
           :selected="selected"
           :locked="locked"
-          :playable="playable && !locked"
+          :playable="playable && !locked && !preparing"
           :current-id="currentId"
           :repairing="repairing"
+          :more="model.hasMore.value"
+          :loading-more="model.loadingMore.value"
+          :more-error="model.moreError.value"
+          @load="loadMore"
           @toggle="toggle"
           @all="
             selected =
@@ -200,34 +242,6 @@ function play(task?: DownloadTask) {
             (task, action) => model.command({ kind: 'control', task_ids: [task.id], action })
           "
         />
-        <footer v-if="view && view.total > query.limit" class="download-pagination">
-          <button
-            class="text-button"
-            :disabled="!query.offset || loading"
-            @click="
-              filter(
-                { offset: query.offset - query.limit },
-                '.download-pagination button:not(:disabled)',
-              )
-            "
-          >
-            上一页</button
-          ><span
-            >{{ Math.floor(query.offset / query.limit) + 1 }} /
-            {{ Math.ceil(view.total / query.limit) }} · {{ view.total }} 项</span
-          ><button
-            class="text-button"
-            :disabled="query.offset + query.limit >= view.total || loading"
-            @click="
-              filter(
-                { offset: query.offset + query.limit },
-                '.download-pagination button:not(:disabled)',
-              )
-            "
-          >
-            下一页
-          </button>
-        </footer>
       </div>
     </Transition>
   </section>

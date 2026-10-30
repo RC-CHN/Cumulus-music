@@ -1,4 +1,4 @@
-import { ref, shallowRef } from 'vue';
+import { computed, ref, shallowRef } from 'vue';
 import type { AccountView } from '../services/contracts.ts';
 import { failure } from '../services/contracts.ts';
 import { useCore } from '../services/core.ts';
@@ -23,6 +23,8 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
     limit: 100,
   });
   const loading = ref(false),
+    loadingMore = ref(false),
+    moreError = ref(''),
     busy = ref(false),
     error = ref(''),
     readError = ref(''),
@@ -41,31 +43,69 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
     clearTimeout(timer);
     timer = undefined;
   }
+  const hasMore = computed(() => !!view.value && view.value.tasks.length < view.value.total);
+  function poll() {
+    if (!visible) return;
+    const active =
+      query.value.tab === 'active' ||
+      view.value?.activeCount ||
+      view.value?.migration ||
+      view.value?.jobs.some((job) => job.running);
+    timer = setTimeout(() => void refresh(true), active ? 850 : 5000);
+  }
   async function refresh(quiet = false) {
     stopTimer();
     if (!epoch) return;
     const serial = ++read,
       captured = epoch,
       version = generation;
+    loadingMore.value = false;
     if (!quiet) loading.value = true;
     try {
       const result = await core.downloads(captured, { ...query.value });
       if (version !== generation || serial !== read || result.epoch !== epoch) return;
       view.value = result;
       readError.value = '';
-      if (result.offset >= result.total && result.offset > 0) {
-        query.value.offset = Math.max(
-          0,
-          Math.floor(Math.max(0, result.total - 1) / query.value.limit) * query.value.limit,
-        );
-        await refresh(quiet);
-      }
     } catch (e) {
       if (version === generation && serial === read) issue(e, true);
     } finally {
       if (version === generation && serial === read) {
         loading.value = false;
-        if (visible) timer = setTimeout(() => void refresh(true), 850);
+        poll();
+      }
+    }
+  }
+  async function loadMore() {
+    if (!epoch || !hasMore.value || loading.value || loadingMore.value || readError.value) return;
+    stopTimer();
+    const serial = ++read,
+      version = generation,
+      captured = epoch;
+    const next = {
+      ...query.value,
+      offset: 0,
+      limit: Math.min(view.value!.total, query.value.limit + 100),
+    };
+    loadingMore.value = true;
+    moreError.value = '';
+    try {
+      // Native returns a fresh whole prefix, never append pages whose contents
+      // may have shifted due to completion, deletion or a renamed file.
+      const result = await core.downloads(captured, next);
+      if (version !== generation || serial !== read || result.epoch !== epoch) return;
+      query.value = next;
+      view.value = result;
+      readError.value = '';
+    } catch (e) {
+      if (version === generation && serial === read) {
+        const problem = failure(e);
+        if (problem.code !== 'stale') moreError.value = problem.message;
+        if (['session_expired', 'profile_changed'].includes(problem.code)) sessionChanged();
+      }
+    } finally {
+      if (version === generation && serial === read) {
+        loadingMore.value = false;
+        poll();
       }
     }
   }
@@ -80,7 +120,10 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
     notice.value = '';
     busy.value = false;
     loading.value = false;
+    loadingMore.value = false;
+    moreError.value = '';
     query.value.offset = 0;
+    query.value.limit = 100;
     await refresh();
   }
   function show(value: boolean) {
@@ -89,7 +132,7 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
     if (value) void refresh();
   }
   function filter(value: Partial<DownloadQuery>) {
-    const next = { ...query.value, offset: 0, ...value };
+    const next = { ...query.value, ...value, offset: 0, limit: 100 };
     if (next.tab === 'active') next.category = 'all';
     else if (!next.category || next.category === 'all') next.category = 'song';
     if (JSON.stringify(next) === JSON.stringify(query.value)) return Promise.resolve();
@@ -97,6 +140,7 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
     // Old rows must not acquire the new tab's actions while its read is pending.
     view.value = undefined;
     readError.value = '';
+    moreError.value = '';
     return refresh();
   }
   async function command(input: DownloadCommand): Promise<DownloadResult | undefined> {
@@ -154,6 +198,10 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
     view,
     query,
     loading,
+    loadingMore,
+    moreError,
+    hasMore,
+    loadMore,
     busy,
     error,
     readError,

@@ -10,6 +10,7 @@ import { bytesLabel, downloadStatus } from '../../services/downloads';
 import { downloadDate, downloadColumnWidths } from '../../services/downloadPage';
 import { useVirtualRows } from '../../composables/useVirtualRows';
 import DownloadTrackTitle from './DownloadTrackTitle.vue';
+import DownloadContinuation from './DownloadContinuation.vue';
 import Icon from '../Icon.vue';
 const props = defineProps<{
   tasks: DownloadTask[];
@@ -21,6 +22,9 @@ const props = defineProps<{
   playable: boolean;
   currentId?: string;
   repairing: Set<string>;
+  more: boolean;
+  loadingMore: boolean;
+  moreError: string;
 }>();
 const emit = defineEmits<{
   toggle: [id: string];
@@ -29,6 +33,7 @@ const emit = defineEmits<{
   manage: [task: DownloadTask];
   sort: [column: DownloadSort];
   control: [task: DownloadTask, action: DownloadControl];
+  load: [];
 }>();
 const active = computed(() => props.query.tab === 'active'),
   voice = computed(() => props.query.category === 'voice');
@@ -58,6 +63,14 @@ const columns = computed(() => ({
     .join(' '),
 }));
 const rows = computed(() => props.tasks.slice(start.value, end.value));
+watch(
+  [end, () => props.tasks.length, () => props.more, () => props.loadingMore],
+  () => {
+    if (end.value >= props.tasks.length && props.more && !props.loadingMore && !props.moreError)
+      emit('load');
+  },
+  { flush: 'post' },
+);
 const focused = ref(0);
 const headers = computed<{ label: string; sort: DownloadSort }[]>(() => [
   { label: props.query.sort === 'artist' ? '标题 · 歌手' : '标题', sort: 'name' },
@@ -72,13 +85,13 @@ const headers = computed<{ label: string; sort: DownloadSort }[]>(() => [
 const sorting = (sort: DownloadSort) =>
   props.query.sort === sort || (sort === 'name' && props.query.sort === 'artist');
 watch(
-  () => [
-    props.query.tab,
-    props.query.category,
-    props.query.keyword,
-    props.query.sort,
-    props.query.descending,
-    props.query.offset,
+  [
+    () => props.query.tab,
+    () => props.query.category,
+    () => props.query.keyword,
+    () => props.query.sort,
+    () => props.query.descending,
+    () => props.query.offset,
   ],
   () => {
     focused.value = 0;
@@ -148,7 +161,7 @@ async function key(event: KeyboardEvent, index: number) {
         ><input
           v-if="batch"
           type="checkbox"
-          aria-label="选择本页全部下载"
+          aria-label="选择已加载的全部下载"
           :checked="selected.size === tasks.length"
           :indeterminate="selected.size > 0 && selected.size < tasks.length"
           @change="emit('all')"
@@ -269,6 +282,12 @@ async function key(event: KeyboardEvent, index: number) {
         >
       </div>
       <div :style="{ height: `${(tasks.length - end) * 64}px` }" aria-hidden="true" />
+      <DownloadContinuation
+        :more="more"
+        :loading="loadingMore"
+        :error="moreError"
+        @load="emit('load')"
+      />
     </div>
   </div>
 </template>

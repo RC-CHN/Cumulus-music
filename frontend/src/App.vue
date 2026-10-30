@@ -1201,6 +1201,8 @@ onUnmounted(() => {
                 :current-id="currentTrackId"
                 @dialog="downloadDialog = $event"
                 @play="player.downloads"
+                :preparing="player.busy.value"
+                @select="player.select"
                 @play-mv="(task) => openMv(task.track.id, task.id)"
               />
               <PlaylistLibraryPage
