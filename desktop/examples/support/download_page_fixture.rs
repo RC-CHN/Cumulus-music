@@ -121,6 +121,10 @@ impl Fixture {
                     64 * 1024 * 1024,
                 )?;
                 let wave = super::relay_fixture::wave(&self.root)?;
+                let integrity = cumulus_core::media::integrity::inspect_file(&wave)?;
+                let offline =
+                    cumulus_core::download::offline::OfflineLibrary::new(self.session.clone())?;
+                let token = self.session.token()?;
                 DATA.set(Arc::new(std::fs::read(&wave)?)).unwrap();
                 let mut saved = vec![];
                 for i in 1..=146_u64 {
@@ -170,10 +174,26 @@ impl Fixture {
                         // Independent hardlinks keep this synthetic media small. The MV
                         // branch proves card layout only, never codec/video playback.
                         std::fs::hard_link(&wave, &path)?;
-                        task.target = Some(path);
+                        task.target = Some(path.clone());
+                        task.output_integrity = Some(integrity.clone());
                         task.status = DownloadStatus::Complete;
                         task.phase = DownloadPhase::Complete;
                         task.completed_ms = Some(1700000000000 + (150 - i) * 1000);
+                        if i <= 132 {
+                            offline.register(
+                                &token,
+                                &cumulus_core::download::offline::PublishedDownload {
+                                    task_id: task.id.clone(),
+                                    song_id: task.song_id.clone(),
+                                    requested_quality: task.options.quality,
+                                    target: path,
+                                    song: task.song.clone().unwrap(),
+                                    resource: task.resource.clone().unwrap(),
+                                    encrypted: false,
+                                    integrity: integrity.clone(),
+                                },
+                            )?;
+                        }
                     } else {
                         task.phase = DownloadPhase::Authorize;
                         task.bytes = 0;
@@ -236,6 +256,64 @@ impl Fixture {
             }
             "progress" => {
                 CHUNK.store(8192, Ordering::Relaxed);
+            }
+            "verify_queue" => {
+                let expected: Vec<String> = value["ids"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|id| id.as_u64().unwrap().to_string())
+                    .collect();
+                let current_id = value["current"].as_u64().unwrap().to_string();
+                let player = client.subscribe_playback(&epoch).await?;
+                tokio::time::timeout(std::time::Duration::from_secs(10), async {
+                    loop {
+                        let queue = client.player_queue(&epoch).await?;
+                        let ids: Vec<_> = queue
+                            .tracks
+                            .iter()
+                            .map(|item| item.track.id.clone())
+                            .collect();
+                        let current = queue
+                            .tracks
+                            .iter()
+                            .find(|item| Some(&item.entry_id) == queue.current.as_ref());
+                        let state = player.current()?;
+                        if ids == expected
+                            && current.is_some_and(|item| item.track.id == current_id)
+                            && state
+                                .track
+                                .as_ref()
+                                .is_some_and(|track| track.id == current_id)
+                            && state.state
+                                == cumulus_core::playback::controller::PlaybackStatus::Playing
+                            && state.position.is_some_and(|p| p > 0.05)
+                        {
+                            return Ok::<_, Error>(());
+                        }
+                        if state.error.is_some() {
+                            return Err(Error::State("synthetic download playback failed"));
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                    }
+                })
+                .await
+                .map_err(|_| Error::State("synthetic download playback timed out"))??;
+            }
+            "remove_first" => {
+                let records = self.records.lock().unwrap();
+                self.store.delete("2", "download_tasks_v1", &records[0].0)?;
+            }
+            "mv_window" => {
+                // Reclassify existing synthetic records for a >100-card window;
+                // these PCM hardlinks remain layout fixtures, never playable MV.
+                for (id, saved) in self.records.lock().unwrap().iter().take(120) {
+                    let mut record = saved.clone();
+                    record["origin"] =
+                        serde_json::to_value(DownloadOrigin::Mv { resolution: 1080 })?;
+                    record["song"]["name"] = json!(format!("合成MV扩展 {}", record["song_id"]));
+                    self.store.put("2", "download_tasks_v1", id, &record)?;
+                }
             }
             _ => return Err(Error::InvalidInput("unknown download UI fixture mode")),
         }

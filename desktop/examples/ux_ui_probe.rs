@@ -213,10 +213,12 @@ fn main() {
             let count=factory_count.clone();
             let wave = root.join("relay-synthetic.wav");
             let wave = if wave.exists() { wave } else { relay_fixture::wave(&root)? };
+            let download_directory = download_page_fixture::enabled().then(||root.join("media"));
             client = client.with_audio_factory(move || {
                 let start = std::time::Instant::now();
                 std::thread::sleep(std::time::Duration::from_millis(startup_delay));
-                let audio = relay_fixture::NativeAudio::open(wave.clone())?;
+                let mut audio = relay_fixture::NativeAudio::open(wave.clone())?;
+                if let Some(directory)=download_directory.as_ref() { audio=audio.allow_download_directory(directory.clone()); }
                 elapsed.store(start.elapsed().as_millis() as u64, std::sync::atomic::Ordering::Release);
                 count.fetch_add(1,std::sync::atomic::Ordering::AcqRel);
                 Ok(Box::new(audio))
@@ -355,7 +357,7 @@ fn main() {
                     let client=handle.state::<MusicClient>(); let epoch=client.account().unwrap().epoch;
                     if let Ok(playback)=client.subscribe_playback(&epoch).await && let Ok(snapshot)=playback.current() {
                         value["nativePlayer"]=serde_json::to_value(snapshot).unwrap();
-                        if std::env::var_os("CUMULUS_PLAYLIST_QUEUE_UI_PROOF").is_some() {
+                        if std::env::var_os("CUMULUS_PLAYLIST_QUEUE_UI_PROOF").is_some() || download_page_fixture::enabled() {
                             value["nativeQueue"] = serde_json::to_value(client.player_queue(&epoch).await.unwrap()).unwrap();
                         }
                     } else { value["nativePlayerUnavailable"]=json!(true); }

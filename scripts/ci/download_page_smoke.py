@@ -33,9 +33,9 @@ def main():
     assert result['ok'] and result['downloadPageUi']
     assert result['realMusicRequests'] == result['realAccountWrites'] == 0
     assert result['syntheticNativeRecords'] == 146
-    assert len(list((root / 'first').glob('ux_*.json'))) == result['stageCount'] == 42
+    assert len(list((root / 'first').glob('ux_*.json'))) == result['stageCount'] == 57
     if args.screenshots:
-        assert len(list((root / 'first').glob('ux_*.png'))) == 42
+        assert len(list((root / 'first').glob('ux_*.png'))) == 57
     result.update(actualWebView=True, physicalDisplayVerified=False, windowsVisualVerified=False)
     (root / 'audit.json').write_text(json.dumps(result, indent=2) + '\n')
     print(json.dumps({k:result[k] for k in ['ok','stageCount','actualWebView','realAccountWrites']}))

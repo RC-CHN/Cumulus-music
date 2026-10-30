@@ -208,6 +208,7 @@ pub fn wave(root: &Path) -> Result<PathBuf> {
 pub struct NativeAudio {
     inner: MpvEngine,
     wave: PathBuf,
+    download_directory: Option<PathBuf>,
 }
 impl NativeAudio {
     pub fn open(wave: PathBuf) -> Result<Self> {
@@ -217,11 +218,24 @@ impl NativeAudio {
                 ..Default::default()
             })?,
             wave,
+            download_directory: None,
         })
+    }
+    // Only the download UI probe enables this in the shared fixture module.
+    #[allow(dead_code)]
+    pub fn allow_download_directory(mut self, directory: PathBuf) -> Self {
+        self.download_directory = Some(directory);
+        self
     }
 }
 impl AudioEngine for NativeAudio {
     fn load(&mut self, mut request: LoadRequest, cancel: &Cancellation) -> Result<LoadedMedia> {
+        if let MediaInput::File(path) = &request.source
+            && let Some(directory) = &self.download_directory
+            && path.canonicalize()?.starts_with(directory.canonicalize()?)
+        {
+            return self.inner.load(request, cancel);
+        }
         if !matches!(&request.source,MediaInput::Url(url)if url.as_str()==MEDIA) {
             return Err(Error::InvalidInput("relay proof refused non-fixture media"));
         }
