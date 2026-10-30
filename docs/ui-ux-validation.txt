@@ -1330,3 +1330,37 @@ Windows现场与接续提示焦点复查（2026-10-29）
   沿用应用遮罩、圆角、表面/阴影，补长名称换行和短窗口滚动；人工查看四组尺寸/主题
   的用户窗口（13、26、39、52），确认关闭入口可见、主题一致和焦点返回。其他页面的
   回归轮仍为上述final2版本，未重复执行。图集见.build/search-results-gallery/index.html。
+
+2026-10-30 搜索卡片悬停、菜单与播放反馈（feat/search-card-interactions）
+- 官方来源、控件参数、已有用例映射和剩余差异见search-card-ui-contracts.txt。保持
+  UI/UX专项；新增Rust公开资源身份只是为了正确显示当前卡片，不计入界面完成度。
+- 使用当前production前端、实际Tauri/WebKitGTK与IPC，合成账号/资源和null音频输出。
+  悬停通过Tauri移动实际系统光标，并检查:hover、透明度及elementFromPoint命中；
+  点击、双击和键盘由DOM事件驱动。不是物理鼠标/键盘或声卡听感验证。
+- first在专辑播放处停止，原因是合成对端缺album/detail/dynamic响应；补齐必需读取
+  后second完成52态，再因探针分类切换未等Vue刷新而未触发预期错误操作。third增加
+  当前页签/实际结果就绪等待与IPC追踪，56态通过。保留失败轮，没有隐藏重试。
+- 人工检查first/second截图发现常驻更多入口偏离来源、占位音乐/人像图标与播放键
+  重叠，已调整。third人工查看45/50/53/56；随后代码核查修正声音按钮双击冒泡、
+  键盘菜单返回非原始按钮的问题，并在final原生检查加入针对断言。
+- search-cards-ui-final：56态/56图、26次合成搜索调用通过，五类卡片的浅/深色与
+  1120×760/760×540悬停和菜单；播放/暂停、声音双击、下载窗口取消、读取失败/重试、
+  封面正常/解码失败。菜单包含键盘进入、Escape精确返回与声音更多双击不触发播放。
+  播放来源只标记匹配卡片；缺目标卡片由搜索结果回归覆盖。真实音乐请求和账号写入0。
+- final人工查看序号1、6、9、13、19、22、25、30、32、35、39、44、45、50、51、52、
+  53、54、55、56，共20张；其余有自动截图和断言，未称全部逐张人工验收。封面通过
+  精确合成URL标记注入本地有效/无效数据URI；覆盖真实img事件，不代表CDN请求验证。
+- 同一内嵌前端的search-cards-final-search_results 65态/65图、final-ux 41态/41图与
+  重启主题保持、final-search 49态/49图回归通过。图集search-cards-gallery/index.html
+  共211张最终/回归原图，只用CSS隐藏桌面区域，未编辑截图内容。数量不作为页面完成数。
+- Node24.16.0/Rust1.96.0：npm ci、格式、257项前端测试、类型/production/内嵌构建通过；
+  Rust fmt、严格workspace/all-targets/custom-protocol Clippy及258目标/1180 passed/
+  0 failed/0 ignored通过。登录探针后续小修后再次编译与严格Clippy；CI脚本21项通过。
+  产物仍有约521KB chunk-size提示，没有放宽阈值；这些工程检查仅用于防回归。
+- 旧分支CI41015042184的Linux登录界面探针失败已定位：用path.contains(search)把
+  启动搜索默认词也注入301，提前消耗第一次校验。现在默认词返回合成空结果，仅对
+  两次提交的综合搜索注入301，同时把fromAPI检查收紧到精确路径，保留两次计数要求。
+  search-cards-login-ui四态/四图与独立凭据审计通过。没有把本地通过称为完整远端CI通过。
+- 卡片探针已加入Linux和Windows各自CI步骤。此轮实际运行仍为Linux隔离Xvfb/private
+  D-Bus/xcompmgr、LC_ALL=zh_CN.UTF-8；没有物理显示器刷新率、Windows视觉或高DPI证据。
+  完整UI/UX逐页审计仍在进行，没有发布新版本。
