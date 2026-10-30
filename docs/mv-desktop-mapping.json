@@ -275,6 +275,17 @@
         "docs/desktop-mv-contracts.txt"
       ],
       "status": "advanced_comments_discovery_global_search_points_paid_non_mv_video_and_advanced_window_pending"
+    },
+    {
+      "source": "pc/pages/download/views/DownloadedMV.tsx and pc/components/{VideoCard,ArtistNames}/index.tsx; action menu subset and keyboard are community adaptations",
+      "core": "core/src/mv/playback/{resolve,actions,local}.rs",
+      "ui": "DownloadMvGrid, useDownloadMvFocus, useMv, MvPlayer",
+      "evidence": [
+        "docs/download-page-ui-contracts.txt",
+        "docs/core-mv-local-files-contracts.txt",
+        "docs/ui-ux-validation.txt"
+      ],
+      "status": "local_file_decode_independent_of_optional_online_metadata; unknown_full_menu_and_other_platforms_not_claimed"
     }
   ],
   "supplemental_scope": "Only similar-MV endpoint facts; see docs/mv-social-mapping.json. Main MV logic remains official evidence."
