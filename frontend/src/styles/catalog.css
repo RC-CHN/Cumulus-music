@@ -476,3 +476,13 @@
   color: var(--link);
   font: inherit;
 }
+
+.catalog-detail-error {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  padding: 8px 12px;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  background: var(--surface);
+}

@@ -102,6 +102,8 @@
     await mode('album-offline'); click(one('[aria-label="更多专辑操作"]')); await wait(() => one('.action-menu'), 'refresh menu'); click(button('刷新详情'));
     await wait(() => one('.catalog-error'), 'album refresh error');
     assert(one('.catalog-error').textContent.includes('保留上次内容'), 'failed refresh discarded metadata');
+    const failureBox = one('.catalog-detail-error').getBoundingClientRect();
+    assert(failureBox.top >= one('.main-content').getBoundingClientRect().top && failureBox.bottom <= one('.playerbar').getBoundingClientRect().top, 'refresh error is outside the visible page');
     assert(one('[aria-label="评论内容"]').value === '只保留草稿 3', 'failed refresh discarded comments draft');
     await capture('metadata_refresh_failure');
     await mode('normal'); click(button('重试', one('.catalog-error'))); await wait(() => !one('.catalog-error'), 'metadata retry');

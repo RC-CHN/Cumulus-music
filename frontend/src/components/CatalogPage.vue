@@ -180,7 +180,7 @@ onUnmounted(() => {
 </script>
 <template>
   <section class="catalog-page" :aria-label="`${resource.kind === 'artist' ? '歌手' : '专辑'}详情`">
-    <div v-if="detail.error.value" class="catalog-error" role="alert">
+    <div v-if="detail.error.value" class="catalog-error catalog-detail-error" role="alert">
       {{ detail.error.value }}<span v-if="detail.view.value"> · 保留上次内容</span
       ><button class="text-button" :disabled="detail.loading.value" @click="refresh">重试</button>
     </div>
