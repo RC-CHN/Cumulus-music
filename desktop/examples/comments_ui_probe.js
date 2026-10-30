@@ -13,7 +13,7 @@
  try {
   await wait(()=>all('.track-row').length,'daily_bootstrap');epoch=(await invoke('account_snapshot')).epoch;
   input('搜索音乐',sample.query);el('[aria-label="搜索音乐"]').closest('form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
-  await wait(()=>el('.page-heading h1')?.textContent.includes('搜索')&&all('.track-row').length,'search_results');
+  await wait(()=>el('.search-heading-copy h1')?.textContent===sample.query&&all('.track-row').length,'search_results');
   const results=(await invoke('search_songs',{keyword:sample.query,page:{offset:0,limit:100}})).value.tracks,index=results.findIndex(t=>t.id===sample.resource.id);if(index<0)throw Error('explicit_track_not_in_search');
   const scroll=el('.track-scroll');scroll.scrollTop=index*56;scroll.dispatchEvent(new Event('scroll'));
   const row=await wait(()=>el(`.track-row[aria-rowindex="${index+2}"]`),'explicit_track_visible');await click(row.querySelector('.track-more'));await wait(()=>button('查看歌曲评论'),'track_menu');await click(button('查看歌曲评论'));

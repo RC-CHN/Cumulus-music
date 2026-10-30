@@ -49,7 +49,7 @@ window.__runPlayerProof=async({wait,stage,sleep})=>{
   // than counting the server's one-line instrumental placeholder as a pass.
   const input=el('.searchbox input');input.value='十年 陈奕迅';input.dispatchEvent(new Event('input',{bubbles:true}));
   el('.searchbox').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
-  await wait(()=>el('h1')?.textContent.includes('搜索')&&el('.track-play:not(:disabled)'),'lyric_sample_search');
+  await wait(()=>el('.search-heading-copy h1')?.textContent==='十年 陈奕迅'&&el('.track-play:not(:disabled)'),'lyric_sample_search');
   el('.track-play:not(:disabled)').click();
   await wait(()=>el('.playerbar').dataset.state==='playing'&&control('暂停')&&!control('暂停').disabled,'lyric_sample_play');
   control('暂停').click();await wait(()=>el('.playerbar').dataset.state==='paused','lyric_sample_pause');

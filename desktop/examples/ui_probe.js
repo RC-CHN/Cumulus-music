@@ -36,7 +36,7 @@
     await stage('playlist',{loadedRows:200,renderedRows:document.querySelectorAll('.track-row').length,virtualized:document.querySelectorAll('.track-row').length<40});
     const input=document.querySelector('.searchbox input');input.value='音乐';input.dispatchEvent(new Event('input',{bubbles:true}));
     document.querySelector('.searchbox').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
-    await wait(()=>document.querySelector('h1')?.textContent.includes('搜索') && document.querySelectorAll('.track-row').length>0,'search_render');
+    await wait(()=>document.querySelector('.search-heading-copy h1')?.textContent==='音乐' && document.querySelectorAll('.track-row').length>0,'search_render');
     if(document.documentElement.scrollWidth>innerWidth) throw new Error('horizontal_overflow');
     await stage('search',{visibleRows:document.querySelectorAll('.track-row').length,windowWidth:innerWidth,windowHeight:innerHeight,horizontalOverflow:false});
     document.querySelector('.account-button').click();

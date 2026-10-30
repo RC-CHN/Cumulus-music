@@ -155,7 +155,7 @@
     await page('每日推荐', '.track-row'); await capture('daily_dark');
     const search = one('[aria-label="搜索音乐"]'); search.value = '合成'; search.dispatchEvent(new Event('input', { bubbles: true }));
     search.form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    await wait(() => one('.page-heading')?.textContent.includes('搜索'), 'search'); await capture('search_dark');
+    await wait(() => one('.search-heading-copy h1')?.textContent === '合成' && one('.track-row'), 'search'); await capture('search_dark');
     await page('下载管理', '.downloads-page'); await capture('downloads_empty');
     await page('本地音乐', '.local-page'); await capture('local_empty');
     await emit('resize', { width: 760, height: 540 }); await wait(() => innerWidth === 760, 'small local');

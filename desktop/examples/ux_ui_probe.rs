@@ -19,6 +19,8 @@ mod playlist_layout_fixture;
 #[allow(dead_code)]
 #[path = "support/relay_fixture.rs"]
 mod relay_fixture;
+#[path = "support/search_fixture.rs"]
+mod search_fixture;
 #[allow(dead_code)]
 #[path = "support/settings_fixture.rs"]
 mod settings_fixture;
@@ -53,6 +55,9 @@ fn playlist(id: u64) -> Value {
 impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, args: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(result) = search_fixture::response(path, &args) {
+                return result;
+            }
             Ok(match path {
                 "/api/rtrs/abt/front/expinfo/list" => json!({"code":200,"data":[]}),
                 "/api/relay/setting/show" => json!({"code":200,"data":{"groups":[]}}),
@@ -155,6 +160,7 @@ fn main() {
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
         let registry=ProfileRegistry::open(&root.join("state"),ApiOrigin::Pc)?;
         let proof_store=registry.store();
+        search_fixture::initialize(&proof_store)?;
         let recovery = recovery_proof.then(||Arc::new(like_recovery_fixture::Library::new(Arc::new(Library))));
         let api:Arc<dyn Api>=recovery.as_ref().map(|f|f.clone() as Arc<dyn Api>).unwrap_or_else(||Arc::new(Library));
         let transfer=playlist_cover_transfer_fixture::enabled().then(||Arc::new(playlist_cover_transfer_fixture::Fixture::new(api.clone(),proof_store.clone(),root.clone())));
@@ -190,7 +196,12 @@ fn main() {
         let cover_root=root.clone();
         app.listen("ux-proof",move |event| {
             let mut value:Value=serde_json::from_str(event.payload()).unwrap();
+            if search_fixture::enabled() { value["syntheticSearchCalls"]=json!(search_fixture::calls()); }
             let stage=value["stage"].as_str().unwrap_or("");
+            if search_fixture::enabled() && stage=="search-fixture" {
+                search_fixture::control(&value);
+                handle.get_webview_window("main").unwrap().eval("window.__searchFixtureAck=true;").unwrap();return;
+            }
             if let Some(fixture)=transfer.as_ref() && stage=="cover-transfer-fixture" {
                 let handle=handle.clone();let fixture=fixture.clone();
                 tauri::async_runtime::spawn(async move {
