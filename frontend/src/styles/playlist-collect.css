@@ -1,0 +1,215 @@
+/* FavouriteModal / AppModal.favourite recovered geometry; theme colors are Cumulus tokens. */
+.playlist-dialog.playlist-collect-dialog {
+  width: min(442px, calc(100vw - 48px));
+  padding: 0;
+  overflow: hidden;
+  max-height: calc(100dvh - 48px);
+}
+.playlist-collect-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+.playlist-collect-dialog header {
+  flex: 0 0 auto;
+  position: relative;
+  margin: 38px 26px 18px;
+  min-height: 28px;
+  justify-content: center;
+}
+.playlist-collect-dialog h2 {
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 600;
+}
+.playlist-collect-dialog .collect-close {
+  position: absolute;
+  top: -22px;
+  right: -10px;
+}
+.playlist-collect-dialog .collect-back {
+  position: absolute;
+  left: -10px;
+}
+.collect-body {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.collect-list {
+  min-height: 64px;
+  height: 444px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: 26px;
+  scrollbar-gutter: stable;
+}
+.collect-list:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.collect-row {
+  width: 100%;
+  height: 64px;
+  min-height: 64px;
+  padding: 0 20px 0 26px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  text-align: left;
+}
+.collect-row:hover,
+.collect-row:focus-visible,
+.collect-selected {
+  background: var(--surface-hover);
+}
+.collect-row:focus-visible {
+  outline-offset: -2px;
+}
+.collect-row[aria-disabled='true'] {
+  cursor: default;
+}
+.collect-cover {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  border-radius: 8px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: var(--surface-hover);
+  color: var(--muted);
+}
+.collect-cover::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--line);
+  border-radius: inherit;
+  pointer-events: none;
+}
+.collect-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.collect-cover .icon {
+  width: 24px;
+  height: 24px;
+}
+.collect-add {
+  color: var(--text);
+}
+.collect-text {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.collect-name {
+  font-size: 16px;
+  line-height: 22px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.collect-count {
+  font-size: 13px;
+  line-height: 13px;
+  color: var(--muted);
+}
+.collect-working {
+  width: 16px;
+  flex: 0 0 16px;
+  color: var(--accent);
+}
+.collect-empty {
+  padding: 24px 26px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.collect-load {
+  flex: 0 0 auto;
+  padding: 8px 26px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.collect-load span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.collect-load button {
+  flex-shrink: 0;
+}
+.playlist-collect-dialog .collect-feedback {
+  margin: 0 20px 8px;
+  font-size: 13px;
+  max-height: 96px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  flex-shrink: 0;
+}
+.collect-create {
+  padding: 0 26px;
+  min-height: 0;
+  overflow-y: auto;
+}
+.playlist-collect-dialog .collect-create footer {
+  margin: 20px 0 28px;
+  padding: 0;
+}
+.collect-create footer button {
+  height: 40px;
+  border-radius: 20px;
+}
+.collect-create footer button[aria-disabled='true'] {
+  opacity: 0.4;
+  cursor: default;
+}
+.collect-status {
+  flex-shrink: 0;
+  padding: 8px 26px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.collect-step-enter-active,
+.collect-step-leave-active {
+  transition:
+    opacity 150ms ease,
+    transform 150ms ease;
+}
+.collect-step-enter-from {
+  opacity: 0;
+  transform: translateX(8px);
+}
+.collect-step-leave-to {
+  opacity: 0;
+  transform: translateX(-8px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .collect-step-enter-active,
+  .collect-step-leave-active {
+    transition: none;
+  }
+}
+:root[data-motion='reduced'] .collect-step-enter-active,
+:root[data-motion='reduced'] .collect-step-leave-active {
+  transition: none;
+}
+:root[data-motion='reduced'] :is(.collect-step-enter-from, .collect-step-leave-to) {
+  opacity: 1;
+  transform: none;
+}
+@media (max-height: 580px) {
+  .playlist-collect-dialog header {
+    margin-top: 28px;
+  }
+  .playlist-collect-dialog .collect-close {
+    top: -12px;
+  }
+}

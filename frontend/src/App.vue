@@ -40,6 +40,7 @@ import PlayerBar from './components/PlayerBar.vue';
 import QueuePanel from './components/QueuePanel.vue';
 import LyricsPanel from './components/LyricsPanel.vue';
 import PlaylistDialog from './components/PlaylistDialog.vue';
+import PlaylistCollectDialog from './components/PlaylistCollectDialog.vue';
 import DownloadPage from './components/DownloadPage.vue';
 import DownloadDialog from './components/DownloadDialog.vue';
 import CloudPage from './components/CloudPage.vue';
@@ -392,7 +393,12 @@ const playlistManager = usePlaylists(
   async (change) => {
     music.notice.value = change.message;
     await music.resources();
-    if (playlistSaved(change.phase) && change.kind === 'create' && change.playlistId) {
+    if (
+      playlistSaved(change.phase) &&
+      change.kind === 'create' &&
+      change.playlistId &&
+      playlistDialog.value?.kind !== 'tracks'
+    ) {
       music.navigate({ kind: 'playlist', id: change.playlistId });
     } else if (music.page.value.kind === 'playlist') {
       if (
@@ -1525,8 +1531,18 @@ onUnmounted(() => {
       @manage="(track, playlist) => (playlistDialog = { kind: 'track', track, playlist })"
     />
     <ModalTransition :restore-focus="!playlistEditor">
+      <PlaylistCollectDialog
+        v-if="playlistDialog?.kind === 'tracks'"
+        :key="account.epoch + ':collect'"
+        :manager="playlistManager"
+        :epoch="account.epoch"
+        :tracks="playlistDialog.tracks"
+        :playlists="playlists"
+        @close="playlistDialog = undefined"
+        @expired="music.bootstrap(false)"
+      />
       <PlaylistDialog
-        v-if="playlistDialog"
+        v-else-if="playlistDialog"
         :key="playlistDialog.kind"
         :manager="playlistManager"
         :target="playlistDialog"
