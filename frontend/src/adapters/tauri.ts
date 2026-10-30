@@ -12,6 +12,8 @@ import type { SessionRenewalView } from '../services/renewal';
 /** The only module that knows how the desktop host transports commands. */
 export function createTauriClient(): CoreClient {
   return {
+    searchDiscovery: (epoch, query) => invoke('search_discovery', { epoch, query }),
+    searchHistory: (epoch, command) => invoke('search_history', { epoch, command }),
     shortcutSettings: (epoch) => invoke('shortcut_settings', { epoch }),
     shortcutSettingsCommand: (epoch, command) =>
       invoke('shortcut_settings_command', { epoch, command }),

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SearchBox from './components/search/SearchBox.vue';
+import SearchHeading from './components/search/SearchHeading.vue';
 import { computed, onMounted, onUnmounted, watch, ref, nextTick } from 'vue';
 import { onDesktopLyricOpen } from './adapters/desktopLyrics';
 import { useLocalShortcuts } from './composables/useLocalShortcuts';
@@ -376,7 +378,6 @@ const {
 } = music;
 const loginOpen = ref(false);
 const accountsOpen = ref(false);
-const keyword = ref('');
 const favorite = computed(() => playlists.value.find((p) => p.favorite));
 const own = computed(() => playlists.value.filter((p) => p.owned && !p.favorite));
 const collected = computed(() => playlists.value.filter((p) => !p.owned));
@@ -451,9 +452,6 @@ const title = computed(() =>
         ? `搜索「${page.value.keyword}」`
         : (result.value?.playlist?.name ?? '歌单'),
 );
-function search() {
-  if (keyword.value.trim()) music.navigate({ kind: 'search', keyword: keyword.value.trim() });
-}
 async function authorized() {
   loginOpen.value = false;
   accountsOpen.value = false;
@@ -883,23 +881,13 @@ onUnmounted(() => {
       >
         <Icon name="back" />
       </button>
-      <form class="searchbox" role="search" @submit.prevent="search">
-        <Icon name="search" /><input
-          v-model="keyword"
-          aria-label="搜索音乐"
-          placeholder="搜索音乐、寻找好声音"
-          maxlength="256"
-          :disabled="!signedIn"
-        /><button
-          v-if="keyword"
-          type="button"
-          class="icon-button"
-          aria-label="清空搜索"
-          @click="keyword = ''"
-        >
-          <Icon name="close" />
-        </button>
-      </form>
+      <SearchBox
+        :account="account"
+        :page-key="JSON.stringify(page)"
+        :keyword="page.kind === 'search' ? page.keyword : undefined"
+        @search="(word) => music.navigate({ kind: 'search', keyword: word })"
+        @expired="music.bootstrap(false)"
+      />
       <div class="header-spacer" data-tauri-drag-region />
       <button
         class="account-button"
@@ -1185,6 +1173,13 @@ onUnmounted(() => {
                   :class="{ 'daily-heading': page.kind === 'daily' }"
                 >
                   <DailyHeading v-if="page.kind === 'daily'" />
+                  <SearchHeading
+                    v-else-if="page.kind === 'search'"
+                    :keyword="page.keyword"
+                    :total="result?.total"
+                    :loading="loading"
+                    :failed="!!error"
+                  />
                   <div v-else>
                     <h1>{{ title }}</h1>
                     <p class="muted">
