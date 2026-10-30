@@ -1,0 +1,131 @@
+/* Recovered artist Header.tsx / ArtistOperation.tsx, with community narrow layouts. */
+.artist-header {
+  padding-top: 4px;
+  margin-bottom: 20px;
+  gap: 40px;
+}
+.artist-header .catalog-cover {
+  width: 194px;
+  height: 194px;
+}
+.artist-header .catalog-heading {
+  display: flex;
+  flex-direction: column;
+  margin-top: -8px;
+}
+.artist-header .catalog-heading h1 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 40px;
+  font-weight: 600;
+  user-select: text;
+}
+.artist-header .artist-alias {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 21px;
+  user-select: text;
+}
+.artist-actions {
+  padding-top: 20px;
+  margin-top: 0;
+  gap: 10px;
+}
+.artist-actions > button {
+  justify-content: center;
+  min-width: 80px;
+  height: 40px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.artist-actions > button.primary {
+  min-width: 94px;
+  padding-inline: 10px;
+}
+.artist-actions > button.icon-button {
+  min-width: 40px;
+  width: 40px;
+  padding: 8px;
+}
+.artist-tabs {
+  gap: 24px;
+  margin: 0 0 17px;
+}
+.artist-tabs button {
+  font-size: 16px;
+  line-height: 25px;
+}
+.artist-tabs small {
+  margin-left: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.artist-tabs [aria-selected='true'] {
+  color: var(--text);
+  font-weight: 600;
+}
+.artist-tabs [aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0;
+  height: 3px;
+  background: var(--accent);
+  border-radius: 3px;
+}
+.artist-all-title {
+  margin: 0;
+  font-size: 22px;
+  line-height: 32px;
+  font-weight: 600;
+}
+.artist-all-title small {
+  display: inline-block;
+  margin-left: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 400;
+}
+.artist-all-title + .text-button {
+  margin-left: auto;
+}
+.catalog-tab-panel[data-artist-panel='all'] .catalog-track-actions {
+  margin: 20px 0 12px;
+  gap: 10px;
+}
+.catalog-tab-panel[data-artist-panel='all'] .catalog-track-actions > button {
+  min-width: 72px;
+  height: 40px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.catalog-tab-panel[data-artist-panel='all'] .catalog-track-actions > button.primary {
+  min-width: 94px;
+}
+@media (max-width: 900px) {
+  .artist-header {
+    gap: 24px;
+  }
+  .artist-header .catalog-cover {
+    width: 168px;
+    height: 168px;
+  }
+  .artist-tabs {
+    gap: 18px;
+  }
+}
+@media (max-width: 620px) {
+  .artist-header {
+    flex-direction: column;
+    gap: 16px;
+  }
+  .artist-header .catalog-cover {
+    width: 140px;
+    height: 140px;
+  }
+  .artist-header .catalog-heading {
+    margin-top: 0;
+    width: 100%;
+  }
+}

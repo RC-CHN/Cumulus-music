@@ -73,7 +73,13 @@ function date(value: string | number | null) {
 }
 </script>
 <template>
-  <div v-if="total" ref="scroller" class="catalog-card-scroll" @scroll.passive="onScroll">
+  <div
+    v-if="total"
+    ref="scroller"
+    class="catalog-card-scroll"
+    :data-catalog-total="total"
+    @scroll.passive="onScroll"
+  >
     <div :style="{ height: `${start * rowHeight}px` }" aria-hidden="true" />
     <div
       class="catalog-grid"

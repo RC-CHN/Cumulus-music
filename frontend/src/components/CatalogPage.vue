@@ -1,17 +1,24 @@
 <script setup lang="ts">
 import type { TrackMenuRequest } from '../services/trackMenu';
-import { computed, onUnmounted, ref, watch } from 'vue';
+import { computed, onUnmounted, ref, useId, watch } from 'vue';
 import type { AccountView, TrackView } from '../services/contracts';
-import type { CatalogResource, CatalogQuery, CatalogSelectionPage } from '../services/catalog';
+import type {
+  ArtistTab,
+  CatalogResource,
+  CatalogQuery,
+  CatalogSelectionPage,
+} from '../services/catalog';
 import { nextCatalogQuery } from '../services/catalogPages';
 import { useCatalog } from '../composables/useCatalog';
-import { useCatalogPages } from '../composables/useCatalogPages';
+import { useArtistPages } from '../composables/useArtistPages';
 import { useCatalogMembership } from '../composables/useCatalogMembership';
 import TrackTable from './TrackTable.vue';
 import CatalogCards from './catalog/CatalogCards.vue';
 import AlbumHeader from './catalog/AlbumHeader.vue';
 import AlbumContent from './catalog/AlbumContent.vue';
 import Icon from './Icon.vue';
+import ArtistHeader from './catalog/ArtistHeader.vue';
+import ArtistTabs from './catalog/ArtistTabs.vue';
 
 const props = defineProps<{
   resource: CatalogResource;
@@ -35,29 +42,72 @@ const emit = defineEmits<{
 const expire = () => emit('expired');
 const detail = useCatalog(undefined, expire),
   dynamic = useCatalog(undefined, expire),
-  list = useCatalogPages(undefined, expire),
   membership = useCatalogMembership(undefined, expire);
-type Tab = 'songs' | 'all' | 'albums' | 'videos' | 'intro' | 'similar' | 'concerts';
+type Tab = ArtistTab;
 const tab = ref<Tab>('songs');
-const tabs: { key: Tab; label: string }[] = [
-  { key: 'songs', label: '歌曲' },
-  { key: 'albums', label: '专辑' },
-  { key: 'videos', label: '视频' },
-  { key: 'intro', label: '歌手介绍' },
-  { key: 'similar', label: '相似歌手' },
-  { key: 'concerts', label: '演出' },
-];
+const list = useArtistPages(tab, undefined, expire);
+const section = ref<HTMLElement>(),
+  panel = ref<HTMLElement>();
+const panelId = useId();
+const bookmarks = new Map<Tab, { inner: number; outer: number }>();
+let pendingRestore: Tab | undefined,
+  restoring = 0;
+function remember() {
+  if (panel.value?.dataset.artistPanel !== tab.value) return;
+  const inner = panel.value?.querySelector<HTMLElement>('.track-scroll,.catalog-card-scroll');
+  bookmarks.set(tab.value, { inner: inner?.scrollTop ?? 0, outer: section.value?.scrollTop ?? 0 });
+}
+function cancelRestore(event?: Event) {
+  if (event instanceof KeyboardEvent && (event.target as Element)?.closest('.catalog-tabs')) return;
+  pendingRestore = undefined;
+  restoring++;
+}
+function restore(element: Element) {
+  const owner = tab.value,
+    saved = bookmarks.get(owner),
+    ticket = ++restoring;
+  if (pendingRestore !== owner || !saved) return;
+  requestAnimationFrame(() => {
+    // Let the newly inserted grid measure its columns and commit its spacers
+    // before restoring. Use the entering node, not a transition's changing ref.
+    requestAnimationFrame(() => {
+      if (
+        ticket !== restoring ||
+        pendingRestore !== owner ||
+        tab.value !== owner ||
+        !element.isConnected ||
+        (element as HTMLElement).dataset.artistPanel !== owner
+      )
+        return;
+      const inner = element.querySelector<HTMLElement>('.track-scroll,.catalog-card-scroll');
+      if (inner) {
+        inner.scrollTop = saved.inner;
+        inner.dispatchEvent(new Event('scroll'));
+      }
+      if (section.value) section.value.scrollTop = saved.outer;
+      pendingRestore = undefined;
+    });
+  });
+}
 const artist = computed(() =>
   detail.view.value?.page.kind === 'artist' ? detail.view.value.page.artist : undefined,
 );
 const album = computed(() =>
   detail.view.value?.page.kind === 'album' ? detail.view.value.page.album : undefined,
 );
-const name = computed(
-  () =>
-    artist.value?.name ?? album.value?.name ?? (props.resource.kind === 'artist' ? '歌手' : '专辑'),
+const hotTracks = computed(() =>
+  detail.view.value?.page.kind === 'artist' ? detail.view.value.page.tracks : [],
 );
-const cover = computed(() => artist.value?.coverUrl ?? album.value?.coverUrl);
+const onlineCount = computed(() =>
+  dynamic.view.value?.page.kind === 'artist_dynamic'
+    ? dynamic.view.value.page.onlineCount
+    : undefined,
+);
+function playHot() {
+  const index = hotTracks.value.findIndex((track) => !track.missing);
+  if (index >= 0 && detail.view.value)
+    emit('play', [{ query: detail.view.value.query, revision: detail.view.value.revision }], index);
+}
 const observed = ref<boolean | null>(null);
 const subscribed = computed(
   () =>
@@ -118,10 +168,14 @@ function queryFor(next: Tab): CatalogQuery | undefined {
   }
 }
 async function choose(next: Tab, refresh = false) {
+  if (next !== tab.value) {
+    if (pendingRestore !== tab.value) remember();
+    restoring++;
+    pendingRestore = bookmarks.has(next) ? next : undefined;
+  }
   tab.value = next;
   const query = queryFor(next);
   if (query) await list.open(query, refresh);
-  else list.clear();
 }
 async function refreshState() {
   await Promise.all([
@@ -157,6 +211,8 @@ watch(
     () => props.resource.id,
   ],
   () => {
+    cancelRestore();
+    bookmarks.clear();
     tab.value = 'songs';
     observed.value = null;
     list.clear();
@@ -172,17 +228,48 @@ watch(
   { immediate: true },
 );
 onUnmounted(() => {
+  cancelRestore();
   detail.dispose();
   dynamic.dispose();
   list.dispose();
   membership.dispose();
 });
+function back() {
+  if (!artist.value || tab.value !== 'all') return false;
+  void choose('songs');
+  return true;
+}
+defineExpose({
+  back,
+  canGoBack: computed(() => !!artist.value && tab.value === 'all'),
+  resourceKey: computed(() => `${props.resource.kind}:${props.resource.id}`),
+});
 </script>
 <template>
-  <section class="catalog-page" :aria-label="`${resource.kind === 'artist' ? '歌手' : '专辑'}详情`">
-    <div v-if="detail.error.value" class="catalog-error catalog-detail-error" role="alert">
-      {{ detail.error.value }}<span v-if="detail.view.value"> · 保留上次内容</span
-      ><button class="text-button" :disabled="detail.loading.value" @click="refresh">重试</button>
+  <section
+    ref="section"
+    class="catalog-page"
+    @wheel.passive="cancelRestore"
+    @touchstart.passive="cancelRestore"
+    @pointerdown="cancelRestore"
+    @keydown="cancelRestore"
+    :aria-label="`${resource.kind === 'artist' ? '歌手' : '专辑'}详情`"
+  >
+    <div
+      v-if="detail.error.value || list.error.value"
+      class="catalog-error catalog-detail-error"
+      role="alert"
+    >
+      <div v-if="detail.error.value">
+        {{ detail.error.value }}<span v-if="detail.view.value"> · 保留上次内容</span
+        ><button class="text-button" :disabled="detail.loading.value" @click="refresh">重试</button>
+      </div>
+      <div v-if="list.error.value" class="catalog-list-error">
+        {{ list.error.value }}<span v-if="list.pages.value.length"> · 保留已加载内容</span
+        ><button class="text-button" :disabled="list.loading.value" @click="list.retry">
+          重试
+        </button>
+      </div>
     </div>
     <div v-if="!detail.view.value" class="empty-state" role="status">
       <span v-if="detail.loading.value" class="spinner" />{{
@@ -215,62 +302,31 @@ onUnmounted(() => {
         "
         @refresh="refresh"
       />
-      <header v-else class="catalog-header">
-        <img
-          v-if="cover"
-          class="catalog-cover"
-          :class="{ artist: !!artist }"
-          :src="cover"
-          alt=""
-          referrerpolicy="no-referrer"
-          decoding="async"
-        />
-        <div v-else class="catalog-cover catalog-placeholder" :class="{ artist: !!artist }">
-          <Icon :name="artist ? 'user' : 'music'" />
-        </div>
-        <div class="catalog-heading">
-          <span class="catalog-label">{{ artist ? '歌手' : '专辑' }}</span>
-          <h1>{{ name }}</h1>
-          <p v-if="artist?.aliases.length" class="muted">{{ artist.aliases.join(' / ') }}</p>
-          <p v-if="artist" class="muted">
-            歌曲 {{ artist.songCount }} · 专辑 {{ artist.albumCount
-            }}<span v-if="artist.mvCount != null"> · MV {{ artist.mvCount }}</span>
-          </p>
-          <div class="catalog-actions">
-            <button
-              :disabled="
-                subscribed == null ||
-                !membership.known.value ||
-                membership.busy.value ||
-                membership.pending.value
-              "
-              :aria-pressed="subscribed ?? undefined"
-              @click="collect()"
-            >
-              <Icon name="star" />{{
-                subscribed == null ? '收藏状态未知' : subscribed ? '已收藏' : '收藏'
-              }}
-            </button>
-            <button
-              class="icon-button"
-              aria-label="刷新详情"
-              :disabled="detail.loading.value || list.loading.value || membership.busy.value"
-              @click="refresh"
-            >
-              <Icon name="refresh" />
-            </button>
-          </div>
-        </div>
-      </header>
+      <ArtistHeader
+        v-else-if="artist && tab !== 'all'"
+        :artist="artist"
+        :followed="subscribed ?? null"
+        :follow-disabled="
+          subscribed == null ||
+          !membership.known.value ||
+          membership.busy.value ||
+          membership.pending.value
+        "
+        :play-disabled="!playable || playBusy || !hotTracks.some((track) => !track.missing)"
+        :refresh-disabled="detail.loading.value || list.loading.value || membership.busy.value"
+        @play="playHot"
+        @follow="collect()"
+        @refresh="refresh"
+      />
       <p v-if="detail.loading.value" class="muted" role="status">正在更新详情…</p>
       <div v-if="dynamic.error.value || membership.error.value" class="catalog-error" role="alert">
         {{ dynamic.error.value || membership.error.value
         }}<button class="text-button" :disabled="membership.busy.value" @click="refreshState">
-          重读收藏状态
+          重读{{ artist ? '关注' : '收藏' }}状态
         </button>
       </div>
       <div v-if="membership.pending.value" class="notice" role="status">
-        上次收藏操作结果待确认<button
+        上次{{ artist ? '关注' : '收藏' }}操作结果待确认<button
           class="text-button"
           :disabled="membership.busy.value"
           @click="collect(true)"
@@ -281,18 +337,14 @@ onUnmounted(() => {
       <p v-if="auxiliary && !auxiliary.privilegesRefreshed" class="notice">
         歌曲权益暂未更新，播放时将重新检查。
       </p>
-      <nav v-if="artist" class="catalog-tabs" aria-label="歌手内容">
-        <button
-          v-for="item in tabs"
-          :key="item.key"
-          :aria-current="
-            tab === item.key || (item.key === 'songs' && tab === 'all') ? 'page' : undefined
-          "
-          @click="choose(item.key)"
-        >
-          {{ item.label }}
-        </button>
-      </nav>
+      <ArtistTabs
+        v-if="artist && tab !== 'all'"
+        :artist="artist"
+        :selected="tab"
+        :online-count="onlineCount"
+        :id-prefix="panelId"
+        @choose="choose"
+      />
       <AlbumContent
         v-if="album"
         :key="`${account.epoch}:${album.id}`"
@@ -309,17 +361,36 @@ onUnmounted(() => {
         @open="emit('open', $event)"
         @expired="expire"
       />
-      <Transition v-else name="catalog-tab" mode="out-in">
-        <div :key="tab" class="catalog-tab-panel">
+      <Transition
+        v-else
+        name="catalog-tab"
+        mode="out-in"
+        @enter="restore"
+        @before-leave="($event as HTMLElement).inert = true"
+        @before-enter="($event as HTMLElement).inert = false"
+      >
+        <div
+          :id="`${panelId}-panel`"
+          ref="panel"
+          :data-artist-panel="tab"
+          :key="tab"
+          class="catalog-tab-panel"
+          :role="tab === 'all' ? undefined : 'tabpanel'"
+          :aria-labelledby="tab === 'all' ? undefined : `${panelId}-${tab}`"
+        >
           <template v-if="tab === 'songs' || tab === 'all'">
             <div class="catalog-section-heading" v-if="artist">
-              <h2>{{ tab === 'all' ? '全部歌曲' : '热门歌曲 TOP 50' }}</h2>
+              <h1 v-if="tab === 'all'" class="artist-all-title">
+                全部歌曲 <small>{{ artist?.name }}</small>
+              </h1>
+              <h2 v-else>热门歌曲 TOP 50</h2>
               <button v-if="tab === 'songs'" class="text-button" @click="choose('all')">
                 查看全部歌曲 →</button
               ><button v-else class="text-button" @click="choose('songs')">返回热门歌曲</button>
             </div>
             <div class="catalog-actions catalog-track-actions">
               <button
+                v-if="tab === 'all'"
                 class="primary"
                 :disabled="!playable || playBusy || !tracks.some((t) => !t.missing)"
                 @click="play(tracks.findIndex((t) => !t.missing))"
@@ -376,16 +447,6 @@ onUnmounted(() => {
             @mv="emit('mv', $event)"
           />
           <p v-if="list.loading.value" class="catalog-loading" role="status">正在加载…</p>
-          <div v-if="list.error.value" class="catalog-error" role="alert">
-            {{ list.error.value
-            }}<button
-              class="text-button"
-              :disabled="list.loading.value"
-              @click="next ? list.more() : choose(tab, true)"
-            >
-              重试
-            </button>
-          </div>
           <button v-if="next" class="load-more" :disabled="list.loading.value" @click="list.more">
             {{ list.loadingMore.value ? '正在加载…' : '加载更多' }}
           </button>

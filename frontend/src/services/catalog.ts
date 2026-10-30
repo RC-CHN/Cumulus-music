@@ -1,5 +1,7 @@
 import type { AccountData, ArtistReference, TrackView } from './contracts';
 
+export type ArtistTab = 'songs' | 'all' | 'albums' | 'videos' | 'intro' | 'similar' | 'concerts';
+
 export type CatalogQuery =
   | { kind: 'artist' | 'artist_dynamic' | 'artist_introduction' | 'album'; id: string }
   | {

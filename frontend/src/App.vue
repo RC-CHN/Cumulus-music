@@ -462,10 +462,19 @@ function downloadBatchLeft() {
     .querySelector<HTMLElement>('.download-toolbar .menu-trigger')
     ?.focus({ preventScroll: true });
 }
+const catalogDetailPage = ref<InstanceType<typeof CatalogPage>>();
+const catalogCanGoBack = computed(
+  () =>
+    page.value.kind === 'catalog' &&
+    catalogDetailPage.value?.resourceKey ===
+      `${page.value.resource.kind}:${page.value.resource.id}` &&
+    !!catalogDetailPage.value?.canGoBack,
+);
 function backFromPage() {
   if (batchTarget.value) batchPage.value?.requestLeave();
   else if (downloadBatch.value) downloadBatchPage.value?.requestLeave();
   else if (playlistEditor.value) playlistEditorPage.value?.requestLeave();
+  else if (catalogCanGoBack.value) catalogDetailPage.value?.back();
   else music.back();
 }
 const downloadDialog = ref<DownloadDialogTarget>();
@@ -970,7 +979,9 @@ onUnmounted(() => {
       <button
         class="back-button icon-button"
         aria-label="返回上一页"
-        :disabled="!historyLength && !playlistEditor && !batchTarget && !downloadBatch"
+        :disabled="
+          !historyLength && !playlistEditor && !batchTarget && !downloadBatch && !catalogCanGoBack
+        "
         @click="backFromPage"
       >
         <Icon name="back" />
@@ -1185,6 +1196,7 @@ onUnmounted(() => {
               />
               <CatalogPage
                 v-else-if="page.kind === 'catalog'"
+                ref="catalogDetailPage"
                 :resource="page.resource"
                 :account="account"
                 :playable="player.ready.value"
