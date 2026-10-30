@@ -1,6 +1,8 @@
 //! Production UI/IPC inspection with isolated synthetic account and preferences.
 #[path = "support/assets.rs"]
 mod assets;
+#[path = "support/download_page_fixture.rs"]
+mod download_page_fixture;
 #[allow(dead_code)]
 #[path = "support/catalog_fixture.rs"]
 mod fixture;
@@ -59,6 +61,9 @@ fn playlist(id: u64) -> Value {
 impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, args: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(result) = download_page_fixture::response(path, &args) {
+                return result;
+            }
             if let Some(result) = library_fixture::response(path, &args).await {
                 return result;
             }
@@ -191,7 +196,9 @@ fn main() {
         let transfer=playlist_cover_transfer_fixture::enabled().then(||Arc::new(playlist_cover_transfer_fixture::Fixture::new(api.clone(),proof_store.clone(),root.clone())));
         let api=transfer.as_ref().map(|f|f.clone() as Arc<dyn Api>).unwrap_or(api);
         let session=Arc::new(AccountSession::new(api,Some(registry.store())));
+        let download_page=download_page_fixture::enabled().then(||Arc::new(download_page_fixture::Fixture::new(session.clone(),proof_store.clone(),root.clone())));
         let mut client=MusicClient::with_session(session,registry);
+        if download_page.is_some() { client=client.with_download_backend(Arc::new(download_page_fixture::NoNetwork)); }
         if let Some(fixture)=transfer.as_ref() { client=client.with_playlist_cover_backend(fixture.clone()); }
         else if playlist_cover_layout_fixture::enabled() {
             client=client.with_playlist_cover_backend(Arc::new(playlist_cover_layout_fixture::NoNetwork));
@@ -235,6 +242,14 @@ fn main() {
                 tauri::async_runtime::spawn(async move {
                     let matches = handle.clipboard().read_text().is_ok_and(|text|text==expected);
                     handle.get_webview_window("main").unwrap().eval(format!("window.__searchClipboardAck={matches};")).unwrap();
+                });return;
+            }
+            if let Some(fixture)=download_page.as_ref() && stage=="download-page-fixture" {
+                let handle=handle.clone();let fixture=fixture.clone();
+                tauri::async_runtime::spawn(async move {
+                    let result=fixture.control(&handle.state::<MusicClient>(),&value).await;
+                    let ack=match result {Ok(())=>json!({"ok":true}),Err(error)=>json!({"ok":false,"message":error.to_string()})};
+                    handle.get_webview_window("main").unwrap().eval(format!("window.__downloadPageAck={ack};")).unwrap();
                 });return;
             }
             if search_fixture::enabled() && stage=="search-fixture" {

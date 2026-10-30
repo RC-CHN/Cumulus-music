@@ -6,7 +6,7 @@
     for(let i=0;i<200;i++) {if(predicate()) return; await wait(25);}
     throw Error(message);
   }
-  async function measure(element, scrolling) {
+  async function measure(element, scrolling, rowSelector = '.track-row') {
     element.scrollTop = 0;
     await wait(500);
     const times = [], costs = [];
@@ -19,7 +19,7 @@
         const before = performance.now();
         if (scrolling) element.scrollTop = (t - start) * 1.5;
         if (t - start > 1000) times.push(t);
-        maxRows = Math.max(maxRows, document.querySelectorAll('.track-row').length);
+        maxRows = Math.max(maxRows, document.querySelectorAll(rowSelector).length);
         costs.push(performance.now() - before);
         if (t - start < 6000) requestAnimationFrame(frame); else resolve();
       }
@@ -50,10 +50,26 @@
     assert(document.querySelector('[data-tauri-drag-region]'), 'drag region missing');
     const nav = name => [...document.querySelectorAll('.nav-item')].find(e=>e.textContent.trim()===name);
     nav('我的歌单').click();
-    await until(()=>document.querySelector('.playlist-grid'), 'library did not open');
-    const grid = document.querySelector('.playlist-grid');
-    assert(grid.children.length===300, 'fixture playlist count');
-    const playlists = await measure(grid, true);
+    await until(()=>document.querySelector('[data-group="created"] [data-library-open]'), 'library did not open');
+    const group = document.querySelector('[data-group="created"]');
+    assert(group.querySelector('h2 small').textContent.trim()==='300', 'fixture playlist total');
+    // Each official library section now has 20-item pages. Check all fixture
+    // identifiers remain reachable while the rendered page stays bounded.
+    const seen = new Set();
+    for(let page=1;page<=15;page++) {
+      await until(()=>group.querySelector(`[data-library-open="${(page-1)*20+1}"]`)&&!group.querySelector('.library-mode-enter-active,.library-mode-leave-active'), `library page ${page}`);
+      const cards=[...group.querySelectorAll('[data-library-open]')];
+      assert(cards.length===20, 'bounded playlist page');
+      cards.forEach(card=>seen.add(card.dataset.libraryOpen));
+      if(page<15) group.querySelector('[aria-label="我创建的歌单下一页"]').click();
+    }
+    assert(seen.size===300&&seen.has('1')&&seen.has('300'), 'all fixture playlists reachable');
+    group.querySelector('[aria-label="我创建的歌单第1页"]').click();
+    await until(()=>group.querySelector('[data-library-open="1"]')&&!group.querySelector('.library-mode-enter-active,.library-mode-leave-active'), 'library first page return');
+    const playlists = await measure(document.querySelector('.library-scroll'), true, '[data-library-open]');
+    playlists.total=seen.size;
+    playlists.pages=15;
+    assert(playlists.maxRows===20&&playlists.scrollTop>0, 'bounded library scroll');
     // Exercise both native-dialog top-layer transitions and focus restoration.
     const create = [...document.querySelectorAll('button')].find(e=>e.textContent.trim()==='新建歌单');
     create.focus(); create.click();

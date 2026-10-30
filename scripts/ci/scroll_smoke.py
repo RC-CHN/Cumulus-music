@@ -25,6 +25,8 @@ def main():
         assert proof['windowButtons'].count(label) == 1, proof['windowButtons']
     assert proof['nativeDecorations'] is False and proof['realMusicRequests'] == 0
     assert 0 < proof['songs']['maxRows'] < 80 and proof['songs']['scrollTop'] > 8000
+    assert proof['playlists']['total'] == 300 and proof['playlists']['pages'] == 15
+    assert proof['playlists']['maxRows'] == 20 and proof['playlists']['scrollTop'] > 0
     # Virtual runners have no physical GPU/refresh rate. Their FPS is diagnostic,
     # not a claim about real hardware; do not make a flaky timing gate out of it.
     print(json.dumps(proof))
