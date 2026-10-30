@@ -75,6 +75,9 @@ mv/likes和cache为资源点赞提供独立日志及版本化元数据，mv/reco
 client/mv/social投影公开状态，useMvSocial与视频控制独立；相似MV使用注明来源的补充接口。
 PlaySelection::MvRelated在核心重新验证资源关联，通过统一焦点与音频控制器播放或恢复原条目。
 client/downloads装配账号绑定上下文、三路调度和持久文件任务；页面切换不销毁原生工作。
+下载查询category在关键词、排序和分页前区分单曲（含云盘原文件）、声音和MV；省略时
+仍为all。frontend/components/download按页签、工具栏、歌曲表、MV网格划分界面职责，
+查询改变时撤下旧列表，防止在新分类中对旧内容执行操作。来源/差异见download-page-ui-contracts.txt。
 歌单操作在账号命名空间先持久化before与sending，远端结果不明时只读核对，不自动重发。
 播放推送使用Tauri Channel，每窗口单订阅，账号代次校验、迟到订阅/解除和窗口销毁清理。
 不自动读取references会话。

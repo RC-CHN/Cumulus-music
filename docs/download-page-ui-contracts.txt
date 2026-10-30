@@ -1,0 +1,57 @@
+下载管理页面 UI/UX 来源与边界（2026-10-30）
+
+官方来源（相对 references/ui-recovery/sources/packages/）
+- pc/src/pages/download/index.tsx：已下载单曲、已下载声音、已下载MV、正在下载四页签；
+  页签右侧打开目录；批量操作为独立路由。没有使用 YesPlayMusic。
+- desktop-ui/es/tabs/style/style.js：small页签16px、22px行高、两侧12px，首项无左距，
+  40px栏。Cumulus使用自己的颜色和图标，不称官方像素一致。
+- pc/src/pages/download/views/DownloadedTrack.tsx、DownloadedVoice.tsx：默认工具栏
+  上下20px、12px间隔，播放114×48、更多48×48、8px圆角；右侧FlexSearchInput。
+- pc/src/components/FlexSearchInput/index.tsx：空闲74px，焦点/有关键词178px；
+  输入即时过滤。本实现100ms合并输入、中文组字完成后查询，避免未提交组字误筛。
+- pc/src/components/TrackViewer/DownloadedTrackViewer.tsx：序号/标题/专辑/下载时间/
+  大小五列，基础45/180/115/90/60，grow为0/360/230/45/30；默认64px行，实验56px。
+  标题在名称升/降与歌手升/降之间循环；其他列二态排序，默认下载时间逆序。
+- pc/src/components/VoiceViewer/DownloadedVoiceViewer.tsx：无专辑列，基础45/180/90/60，
+  grow0/360/45/30；标题quinary，时间/大小trinary。本轮时间/大小仍采用二态，标题
+  第五态回到默认下载时间逆序，原始无排序态仍有差异，不能称完整排序一致。
+- pc/src/components/TrackViewer/DownloadingTrackViewer.tsx：序号/标题/进度三列，
+  基础45/180/140、grow0/18/14，不能排序；暂停/继续、删除等行内动作置于标题区。
+  Downloading.tsx：全部下载/全部暂停/全部清空，默认114×48及20px图标。
+- TrackTitleCell.tsx、TableExtra/index.tsx：48px封面、16px/500标题，下方歌手；
+  行悬停/内部焦点显示动作。DownloadProgressCell.tsx：160×6进度条与状态并排、
+  错误图标与说明。本实现使用真实传输进度；不按官方固定起始比例伪造进度。
+- pc/src/pages/download/views/DownloadedMV.tsx、components/VideoCard/index.tsx：
+  四列MV网格、56.5%封面高宽比、10px圆角、右上清晰度、右下时长、下方标题/歌手；
+  信息区10/13/13px，标题15px/21px。窄窗口改两列为社区适配。
+
+当前实现与界面状态
+- DownloadPage只负责页面状态及连接；download/下Tabs、Toolbar、Table、TrackTitle、
+  MvGrid分别负责界面。共享设置/文件/清空窗口仍由DownloadDialog管理。
+- 四页签支持鼠标和左右/Home/End键、单一Tab入口、ARIA页签/面板关联；切换为
+  opacity/transform动画，减少动态效果时禁用。打开目录与设置入口保留在页签右侧；
+  设置图标是社区补充入口。歌曲和声音搜索不影响其他分类，切换重置关键词和排序。
+- 核心DownloadQuery新增可省略category:all/song/voice/mv；旧请求默认all。分类在
+  关键词/排序/分页前完成，云盘原文件归入单曲。total为当前过滤结果，activeCount和
+  completedCount保持全账号统计；正在下载页使用all，不把当前页当成全部任务。
+- 前端查询改变先撤下旧内容，显示读取中/读取失败/空结果；迟到查询和旧账号结果不
+  覆盖当前页。命令错误不因后台轮询成功消失。分页/排序等待后恢复入口焦点。
+- 歌曲表按64px虚拟行；MV按可用宽度分行虚拟化，不因缩窄窗口渲染全部网格。
+  长文本省略，错误最多两行并可查看完整提示；窄窗进度条缩短，为状态文字留空间。
+  回收聚焦行时交给滚动容器；方向键/Home/End恢复可见行。文件窗口关闭后先激活
+  可聚焦父行，再返回只在行悬停/焦点时显示的动作按钮。普通操作提示沿用歌单
+  编辑页的中性底色/文字色，错误仍用危险色，避免暂停成功看起来像失败。
+- 本地状态、文件管理、暂停/恢复/取消均沿用现有Rust用例；本轮不是重新实现下载引擎。
+  下载列表读取不会把原始URL、Cookie或授权字段暴露给前端。
+
+仍需完成的逐项对齐
+- 官方列表为waterfall连续加载；当前仍使用100项分页，播放按钮诚实显示“播放本页”，
+  尚未接入整个筛选结果的播放。批量仍为当前页选中模式，完整官方独立批量页及
+  收藏/删除等菜单未由本轮恢复。表头拖列宽及声音三态/五态的无排序语义仍待完成。
+- 当前已下载文件管理入口为已有管理窗口，不是完整官方资源菜单；正在下载行的
+  “更多”菜单/特殊资源动作、错误引导到会员权益等UI分支还需对照。无支付自动化。
+- 全部下载、继续单项、取消、重命名、移动、删除/移出及迁移/修复的完整UI状态需
+  各自专项；本轮截图验证范围与真实下载、完整播放等历史证据分开，不互相替代。
+- MV网格的键盘导航与虚拟回收焦点尚未专项核对；不以歌曲表焦点检查代替。
+- 真实封面位图、官方同状态运行截图、Windows视觉/DPI、物理桌面60Hz仍无本轮证据。
+  合成MV只证明卡片布局，不证明MV文件完成或视频解码；null音频不代表真实声卡听感。
