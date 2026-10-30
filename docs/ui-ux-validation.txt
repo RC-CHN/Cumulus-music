@@ -1288,3 +1288,45 @@ Windows现场与接续提示焦点复查（2026-10-29）
 - 产物、失败轮、截图及源文件hash仅保存在私有.build；不提交真实会话、截图或构建产物。
   Linux使用zh_CN.UTF-8隔离Xvfb/D-Bus、xcompmgr与真实WebKitGTK。Windows视觉、DPI和
   用户实际显示器刷新率没有在这里验证。全范围目标仍在进行，未发布新版本。
+
+
+2026-10-30 搜索结果布局、分类与交互（feat/search-results-ui）
+- 官方SearchResults/index、tab、recommend、分类页和ArtistMetaCard/各卡片/XGrid来源
+  见search-results-ui-contracts.txt；本轮未使用YesPlayMusic。十分类固定官方默认顺序，
+  卡片使用当前语义主题；未把恢复CSS参数当成官方同状态截图的像素对照。
+- 原生探针使用production前端、真实Tauri IPC和Rust投影；账号/搜索对端为合成fixture，
+  音频为合成资源/null输出。本轮GUI没有真实音乐请求或账号资源写入；收藏只打开/取消
+  目标窗口，不能据此声称真实账号收藏写入通过。迟到响应测试延迟真实IPC回复交付。
+- search-results-ui-first在58态后因键盘焦点丢失失败；原因是App按完整路由重建页面。
+  改为同关键词保留页面、分类结果单独过渡。second的61态通过；人工检查发现最佳匹配
+  比例和卡片类型不准确，按官方横排/方形/圆头像/视频/声音布局继续调整。
+- search-results-ui-final的63态通过。人工查看宽浅十分类，以及宽深单曲/歌单/歌手/
+  声音/歌词/MV、窄浅单曲/歌单/歌手/声音/专辑/MV；不是逐张查看全部63张。截图发现
+  短窗口首行卡片名称被播放条挡住、焦点边框裁切，增加短窗网格与内部焦点框修正。
+- final2为最终短窗/不可用状态修正后的内嵌production前端：65态/65图、57次合成搜索
+  调用通过。全局/结果区无横向溢出；结果DOM有界，综合歌曲区随外层滚动；单曲按钮
+  94×40；首张卡片名称在播放条上方；分类键盘焦点、迟到响应和提示框清理均有断言。
+- final2人工查看状态序号1、3、14、31、32、34、35、38、40、42、43、44、45、46、50、
+  52、54、55、57、59、60、61、62、63、65：包含最佳匹配/单曲、窄窗卡片/歌词、两个
+  弹窗、空/失败/等待、焦点/提示和不可用/过期。其余状态留有自动截图，未称逐张验收。
+  复看用户信息窗口发现遮罩和圆角未沿用应用样式，另作final3定向修正与复验。
+- search-results-final2-discovery的49态和search-results-final2-ux的41态/重启主题保持
+  回归通过。此前regression-ux失败因探针仍断言TrackTable原生title；改为应用内提示
+  属性并由搜索结果探针验证真实浮层出现/清理，不移除有意义的长文本检查。
+- 真实只读Rust投影：search-results-live-typed-1/report.json记录tabs及十分类11次成功，
+  资源写入为0。综合10区块/77项；MV实际返回总数46但条目为空，UI停止继续翻页并给出
+  说明，非空MV卡片只有合成数据的视觉证据。其余结果可读不计入UI一致性完成度。
+- npm ci、格式、253项前端测试、类型/production及内嵌构建通过。Rust fmt、严格workspace/
+  all-targets/custom-protocol Clippy和全量258目标/1179 passed/0 failed/0 ignored通过。
+  最后只改用户信息窗口CSS，再次格式/类型/production/内嵌构建；未冒称其他回归重跑。
+  App产物仍有约515KB的chunk-size警告；未放宽阈值，后续需按页面拆分和实机评估。
+- 先前提交6776958的CI 41009825071中Linux失败：本地匹配状态轮询与工作线程的
+  operation lock竞争，返回MutationBusy。测试仅在既有10秒期限内重试该可恢复错误，
+  其他读取错误/持久工作失败仍立即失败；该修正不作为UI进度，也不绕过CI gate。
+- Linux隔离Xvfb/private D-Bus/xcompmgr、LC_ALL=zh_CN.UTF-8、真实WebKitGTK；操作由
+  DOM驱动。未验证物理输入/显示器刷新率、Windows视觉或高DPI。动画只检查实际完成后
+  的状态，不能据此声称所有动态效果已与官方一致。完整UI/UX逐页审计和目标仍未完成。
+- search-results-ui-final3再次完成65态/65图、57次合成搜索调用。只修改用户信息窗口CSS：
+  沿用应用遮罩、圆角、表面/阴影，补长名称换行和短窗口滚动；人工查看四组尺寸/主题
+  的用户窗口（13、26、39、52），确认关闭入口可见、主题一致和焦点返回。其他页面的
+  回归轮仍为上述final2版本，未重复执行。图集见.build/search-results-gallery/index.html。

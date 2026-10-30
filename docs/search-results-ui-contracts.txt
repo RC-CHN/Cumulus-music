@@ -1,0 +1,73 @@
+搜索结果页 UI/UX 对照与边界（2026-10-30）
+
+本项仍在逐项对齐；分类内容可读、类型检查和接口成功不代表整页与官方一致。
+继续以官方恢复来源为准，本轮未使用 YesPlayMusic。
+
+官方证据（references/ 下的私有恢复材料，不随仓库发布）
+ui-recovery/sources/packages/pc/src/pages/SearchResults/index.jsx：关键词页头、默认综合、
+  默认十分类、纠正查询和结果数量；标题22/600/32，提示13/16。
+同目录 components/tab.jsx：分类导航，单曲页“播放全部/收藏全部”，94×40，图标20，
+  操作间距10、右距21，导航上距10/下距12；分类路由保留关键词。
+components/recommend.jsx：最佳匹配、歌曲、歌单、歌手、专辑、播客、声音、视频、
+  用户等区块；旧版最佳匹配两列。当前固定旧版分支，不宣称 AB 新版一致。
+components/artist.jsx、mv.tsx：歌手/用户 WaterfallGrid span=3、请求13项；MV span=4。
+以下共用卡片路径相对 ui-recovery/sources/packages/pc/src/：
+components/ArtistMetaCard/index.jsx：最佳匹配横排84高，头像72，文字间距16，名称18/26。
+components/ArtistCard、UserCard：圆头像，20内距/23底距，名称16/26，简介12/17。
+components/PlaylistCard、AlbumCard、AudioCard：方形封面，文字位于封面下方。
+components/VoiceCard：声音紧凑84高、64封面；VideoCard：视频画幅。
+components/XGrid/PageGrid.tsx：66列单位、20间距、最大18/span列。当前网格按该共用
+  参数构造，WaterfallGrid/BaseGrid 的完整运行同态仍需对照。高度不超过620px时使用
+  148px最小卡片宽度，保证首行名称位于播放条上方；这项短窗口适配属于社区实现。
+netease-3.1.42.205594-analysis/recovered-js/modules/ 下的
+  hybrid_152.chunk.1482700000000.js/2245.js 与 hybrid_app.chunk.1482700000000.js/15.js：请求参数与资源扁平化。
+recovered-client/docs/product/models/page_searchResults.txt：页签、分类、分页与纠正流程。
+
+当前界面与交互
+- 顶栏搜索进入综合页；十分类按官方默认次序。分类保留关键词、返回历史和账号代次。
+  同一关键词内切换只更新结果区；保留页签焦点，方向键/Home/End 可选择，使用
+  transform/opacity 动画并遵守减少动态效果。初版整页重建导致焦点丢失的问题已修正。
+- 综合页按服务区块顺序展示已知资源；最佳匹配横排，分类卡片按资源区分。歌曲预览
+  与综合页一同滚动，单曲分类沿用有界虚拟列表。歌手/用户13项，其余分类30项分页。
+  当前是社区分页控件，未复刻官方 WaterfallGrid 的连续加载与所有滚动恢复细节。
+- 单曲操作为播放全部/收藏全部；收藏窗口明确显示当前页数量，选择已有自建歌单后
+  才执行。准备阶段重读歌单 revision，账号切换取消写入；未决结果沿用现有核对流程。
+- 歌单/歌手/专辑/播客/MV跳转现有页面。声音当前进入所属播客；用户卡片展示已返回
+  昵称和简介的详情窗口。缺少播客/MV目标的卡片显示“暂不可打开”并禁用，避免无反馈。
+  它们不等于官方声音直接播放与完整用户主页，均仍待补齐。用户信息窗口采用应用
+  共用的16px圆角、遮罩、关闭/返回焦点与进入退出动画，属于社区临时详情设计。
+- 读取失败提供重试；空结果提供换词/分类提示；服务有总数但没有条目时显示独立说明，
+  防止无限翻页。迟到响应不会覆盖新分类；账号失效退出结果页。纠正查询使用纯文本。
+- TrackTable和搜索长标题使用应用内提示框，切页、滚动、失焦和Escape清理；替代这些
+  位置的原生 title，解决已观察到的“合成专辑”GTK提示框跨页面/弹窗残留。
+  其他页面仍有原生 title，不把本修复写成全应用提示框验收。
+
+仅为支撑上述 UI 的调用映射
+SearchResultsClient → desktop/search.rs search_results → MusicClient::search_results
+  → catalog/search/results → 白名单展示 DTO；前端无 Cookie、签名或资源 action URL。
+综合 /api/search/pc/complex/page：keyword、scene=normal、needCorrect、channel=suggest、
+  初始cursor、bizQueryInfo空；读取data.blocks。尚未实现综合cursor续页/v3 AB方案。
+单曲 /api/search/song/list/page：keyword、scene、needCorrect、channel、limit、offset；
+  data.resources[].baseInfo.simpleSongData → TrackView。
+歌单 /api/v1/search/playlist/get：s、queryCorrect、limit、offset；result.playlists。
+歌手 /api/v1/search/artist/get：同上；result.artists。
+专辑 /api/v1/search/album/get：同上；result.albums。
+用户 /api/v1/search/user/get：同上；result.userprofiles。
+声音 /api/search/voice/get：keyword、scene、limit、offset；baseInfo → EpisodeView。
+播客 /api/search/voicelist/get：同上；baseInfo → PodcastCard。
+歌词 /api/search/resource/lyric：同上；resource.song和matchedLyric，片段按纯文本显示。
+MV /api/search/mlog/get：keyword、scene、limit、offset、channel=suggest、os=pc、tag=MV；
+  type=mv 的 baseInfo → CatalogVideoCard。实际读取出现总数46但resources为空。
+/api/search/pc/result/tab 已提供低层读取与只读验证；本次界面固定官方默认次序，
+  不声称算法排序、缓存回退和新分类动态注册已实现。
+
+必须继续的对齐项
+- 卡片悬停播放按钮、详情和完整菜单；用户主页、声音直接播放；播放场景search的完整
+  来源参数；当前复用歌曲播放入口不代表官方搜索试听分支全同态。
+- 官方连续加载、综合单行预览/轮播、每分类滚动位置恢复及综合cursor。
+- 原始关键词/纠正查询完整关系、命中词着色、歌词更多片段与官方全部排布状态。
+- 热门解释/活动/运营和AB资源卡片，算法页签、追踪上下文来源、所有可用性标记。
+- 真实封面加载与失败、全部悬停/按下态、实机输入/刷新率、高DPI、Windows视觉。
+
+验证范围与最新证据轮次见 ui-ux-validation.txt。不得把截图状态数量当成页面完成数，
+也不得把只读API成功、合成音频/null输出或隔离WebView当成物理桌面完整验收。
