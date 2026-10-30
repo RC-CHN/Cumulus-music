@@ -32,6 +32,24 @@ class ProofArchive(unittest.TestCase):
             with tarfile.open(target) as saved:
                 self.assertEqual(saved.getnames(), [])
 
+    def test_download_fixture_failure_and_neighboring_ui_logs_are_retained(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            paths = ['ci-download-page-linux/first.log', 'ci-download-menu-windows/first/failed.json',
+                     'ci-playlist-menu-linux/host.log', 'ci-song-menu-linux/audit.json',
+                     'ci-search-results-linux/first/failed.json']
+            for relative in paths:
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('synthetic', encoding='utf-8')
+            (root / 'private-download-session').write_text('excluded')
+            target = root / 'diagnostics/proofs.tar.gz'
+            self.assertEqual(archive(root, target), len(paths))
+            with tarfile.open(target) as saved:
+                for relative in paths:
+                    self.assertEqual(saved.extractfile(relative).read(), b'synthetic')
+                self.assertNotIn('private-download-session', saved.getnames())
+
 
 if __name__ == '__main__':
     unittest.main()
