@@ -1,4 +1,4 @@
-import type { SearchClient } from './search';
+import type { SearchClient, SearchResultsClient } from './search';
 import type { NativeLikesClient } from './nativeLikes';
 import type { LikeRecoveryClient } from './likeRecovery';
 import type { PlayerClient } from './player';
@@ -40,6 +40,7 @@ export interface AppInfo {
 /** UI-facing use cases; no Tauri types or raw HTTP API in this interface. */
 export interface CoreClient
   extends SearchClient,
+    SearchResultsClient,
     LikeRecoveryClient,
     NativeLikesClient,
     PlayerClient,

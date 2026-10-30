@@ -113,19 +113,19 @@ test('an old account resource read cannot unlock or load over a newer account no
   assert.equal(music.liked.value.has('old-private-like'), false);
 });
 
-test('a slow search cannot overwrite a later page', async () => {
+test('a slow playlist read cannot overwrite a later page', async () => {
   const old = deferred<AccountData<TrackPage>>();
   const music = useMusic(
     backend({
-      searchSongs: (keyword) =>
-        keyword === 'old'
+      playlistPage: (id) =>
+        id === 'old'
           ? old.promise
           : Promise.resolve(data({ ...page, tracks: [{ ...song, name: 'new' }] })),
     }),
   );
   await music.bootstrap();
-  music.navigate({ kind: 'search', keyword: 'old' });
-  music.navigate({ kind: 'search', keyword: 'new' });
+  music.navigate({ kind: 'playlist', id: 'old' });
+  music.navigate({ kind: 'playlist', id: 'new' });
   await turn();
   old.resolve(data(page));
   await turn();
@@ -158,18 +158,18 @@ test('a pending resource refresh cannot undo a confirmed like and writes carry t
 test('301 clears private views and old-epoch results never appear', async () => {
   const music = useMusic(
     backend({
-      searchSongs: async (keyword) => {
-        if (keyword === 'expired')
+      playlistPage: async (id) => {
+        if (id === 'expired')
           throw { code: 'session_expired', message: '重新登录', retryable: false };
         return data(page, '0');
       },
     }),
   );
   await music.bootstrap();
-  music.navigate({ kind: 'search', keyword: 'old-epoch' });
+  music.navigate({ kind: 'playlist', id: 'old-epoch' });
   await turn();
   assert.equal(music.result.value, undefined);
-  music.navigate({ kind: 'search', keyword: 'expired' });
+  music.navigate({ kind: 'playlist', id: 'expired' });
   await turn();
   assert.equal(music.signedIn.value, false);
   assert.equal(music.playlists.value.length, 0);

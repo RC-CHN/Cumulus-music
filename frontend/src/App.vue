@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import SearchBox from './components/search/SearchBox.vue';
-import SearchHeading from './components/search/SearchHeading.vue';
+import SearchResultsPage from './components/search/SearchResultsPage.vue';
+import ContentTooltip from './components/ContentTooltip.vue';
+import type { SearchItem } from './services/search';
 import { computed, onMounted, onUnmounted, watch, ref, nextTick } from 'vue';
 import { onDesktopLyricOpen } from './adapters/desktopLyrics';
 import { useLocalShortcuts } from './composables/useLocalShortcuts';
@@ -180,6 +182,19 @@ function openRanking(query: RankingQuery) {
 }
 function openCatalog(resource: CatalogResource) {
   music.navigate({ kind: 'catalog', resource });
+}
+function openSearchItem(item: SearchItem) {
+  if (item.kind === 'artist') openCatalog({ kind: 'artist', id: item.artist.id });
+  else if (item.kind === 'album') openCatalog({ kind: 'album', id: item.album.id });
+  else if (item.kind === 'playlist') music.navigate({ kind: 'playlist', id: item.playlist.id });
+  else if (item.kind === 'podcast') openSceneRadio(item.podcast.id);
+  else if (item.kind === 'voice') {
+    if (item.voice.radioId) openSceneRadio(item.voice.radioId);
+    else music.notice.value = '这条声音暂未提供所属播客';
+  } else if (item.kind === 'mv') {
+    if (item.mv.mvId) openMv(item.mv.mvId);
+    else music.notice.value = '此视频暂不可打开';
+  }
 }
 function playCatalog(pages: CatalogSelectionPage[], index: number) {
   void player.select({
@@ -424,7 +439,11 @@ const currentLocalId = computed(() =>
   player.view.value?.track?.local ? currentTrackId.value : undefined,
 );
 const currentVoiceId = computed(() => player.view.value?.track?.voiceId);
-const pageKey = computed(() => JSON.stringify(page.value));
+const pageKey = computed(() =>
+  JSON.stringify(
+    page.value.kind === 'search' ? { kind: 'search', keyword: page.value.keyword } : page.value,
+  ),
+);
 const playingLikes = computed(() => {
   const voiceId = currentVoiceId.value;
   const trackId = currentTrackId.value;
@@ -1011,6 +1030,31 @@ onUnmounted(() => {
                 @open="openCatalog"
                 @expired="music.bootstrap(false)"
               />
+              <SearchResultsPage
+                v-else-if="page.kind === 'search'"
+                :account="account"
+                :keyword="page.keyword"
+                :category="page.category"
+                :offset="page.offset"
+                :correct="page.correct"
+                :liked="liked"
+                :busy-likes="busyLikes"
+                :playable="player.ready.value && !player.busy.value"
+                :current-id="currentTrackId"
+                @navigate="
+                  (category, offset, correct) =>
+                    page.kind === 'search' && music.navigate({ ...page, category, offset, correct })
+                "
+                @search="(keyword) => music.navigate({ kind: 'search', keyword })"
+                @open="openSearchItem"
+                @play="playRankingSongs"
+                @collect="(tracks) => (playlistDialog = { kind: 'tracks', tracks })"
+                @more="(track) => (playlistDialog = { kind: 'track', track })"
+                @like="music.like"
+                @artist="(id) => openCatalog({ kind: 'artist', id })"
+                @album="(id) => openCatalog({ kind: 'album', id })"
+                @expired="music.bootstrap(false)"
+              />
               <CatalogPage
                 v-else-if="page.kind === 'catalog'"
                 :resource="page.resource"
@@ -1173,13 +1217,7 @@ onUnmounted(() => {
                   :class="{ 'daily-heading': page.kind === 'daily' }"
                 >
                   <DailyHeading v-if="page.kind === 'daily'" />
-                  <SearchHeading
-                    v-else-if="page.kind === 'search'"
-                    :keyword="page.keyword"
-                    :total="result?.total"
-                    :loading="loading"
-                    :failed="!!error"
-                  />
+
                   <div v-else>
                     <h1>{{ title }}</h1>
                     <p class="muted">
@@ -1294,9 +1332,7 @@ onUnmounted(() => {
                       :disabled="!player.ready.value || player.busy.value"
                       @click="play(0)"
                     >
-                      <Icon name="play" />{{
-                        page.kind === 'search' ? '播放当前结果' : '播放全部'
-                      }}</button
+                      <Icon name="play" />{{ '播放全部' }}</button
                     ><span v-if="player.busy.value" class="muted">正在准备播放…</span>
                     <button
                       class="download-button"
@@ -1458,4 +1494,5 @@ onUnmounted(() => {
       />
     </ModalTransition>
   </div>
+  <ContentTooltip :reset-key="account.epoch + JSON.stringify(page)" />
 </template>

@@ -94,13 +94,13 @@ function duration(ms: number) {
             referrerpolicy="no-referrer"
           /><span v-else class="track-art"><Icon name="music" /></span>
           <div>
-            <div class="ellipsis" :title="track.name">
+            <div class="ellipsis" :data-tooltip="track.name">
               {{ track.name }} <span v-if="track.fee === 1" class="vip-tag">VIP</span>
             </div>
             <small
               v-if="navigable && track.artistRefs?.length"
               class="ellipsis track-credit-links"
-              :title="track.artistRefs.map((artist) => artist.name).join(' / ')"
+              :data-tooltip="track.artistRefs.map((artist) => artist.name).join(' / ')"
               ><template v-for="(artist, i) in track.artistRefs" :key="i"
                 ><span v-if="i"> / </span
                 ><button v-if="artist.id" @click.stop="emit('artist', artist.id)" @dblclick.stop>
@@ -108,12 +108,12 @@ function duration(ms: number) {
                 ><span v-else>{{ artist.name }}</span></template
               ></small
             >
-            <small v-else class="ellipsis" :title="track.artists.join(' / ')">{{
+            <small v-else class="ellipsis" :data-tooltip="track.artists.join(' / ')">{{
               track.artists.join(' / ') || (track.local ? '本地文件' : '未知歌手')
             }}</small>
           </div>
         </div>
-        <span class="track-album ellipsis" role="cell" :title="track.album"
+        <span class="track-album ellipsis" role="cell" :data-tooltip="track.album"
           ><button
             v-if="navigable && track.albumId"
             class="track-album-link ellipsis"

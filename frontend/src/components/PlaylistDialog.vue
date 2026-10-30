@@ -31,13 +31,15 @@ const name = ref(''),
   link = ref(''),
   localError = ref('');
 const title = computed(() =>
-  props.target.kind === 'create'
-    ? '新建歌单'
-    : props.target.kind === 'history'
-      ? '歌单操作记录'
-      : props.target.kind === 'open'
-        ? '打开歌单'
-        : '歌曲操作',
+  props.target.kind === 'tracks'
+    ? '收藏到歌单'
+    : props.target.kind === 'create'
+      ? '新建歌单'
+      : props.target.kind === 'history'
+        ? '歌单操作记录'
+        : props.target.kind === 'open'
+          ? '打开歌单'
+          : '歌曲操作',
 );
 const own = computed(() => props.playlists.filter((p) => p.owned && !p.favorite));
 const pending = computed(() => result.value && playlistPending(result.value.phase));
@@ -91,6 +93,15 @@ async function trackAction(action: 'add' | 'delete' | 'up' | 'down') {
   if (props.target.kind !== 'track') return;
   const id = action === 'add' ? destination.value : props.target.playlist?.id;
   if (id) finish(await props.manager.tracks(id, action, props.target.track.id));
+}
+async function collectTracks() {
+  if (props.target.kind === 'tracks' && destination.value)
+    finish(
+      await props.manager.addTracks(
+        destination.value,
+        props.target.tracks.map((t) => t.id),
+      ),
+    );
 }
 </script>
 <template>
@@ -152,6 +163,22 @@ async function trackAction(action: 'add' | 'delete' | 'up' | 'down') {
       </article>
       <button class="text-button" :disabled="busy" @click="manager.refreshOperations">
         刷新记录
+      </button>
+    </div>
+    <div v-else-if="target.kind === 'tracks'" class="track-menu">
+      <p>将当前页的 {{ target.tracks.length }} 首歌曲收藏到歌单</p>
+      <label
+        >选择歌单<select
+          v-model="destination"
+          aria-label="选择目标歌单"
+          :disabled="busy || !!pending"
+        >
+          <option v-for="p in own" :key="p.id" :value="p.id">{{ p.name }}</option>
+        </select></label
+      >
+      <p v-if="!own.length" class="muted">请先创建一个歌单</p>
+      <button class="primary" :disabled="!destination || busy || !!pending" @click="collectTracks">
+        收藏
       </button>
     </div>
     <div v-else-if="target.kind === 'track'" class="track-menu">

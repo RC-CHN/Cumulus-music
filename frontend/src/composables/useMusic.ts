@@ -30,7 +30,13 @@ export type Page =
   | { kind: 'mv'; id: string; taskId?: string }
   | { kind: 'comments'; resource: CommentResource; title: string }
   | { kind: 'playlist'; id: string }
-  | { kind: 'search'; keyword: string };
+  | {
+      kind: 'search';
+      keyword: string;
+      category?: import('../services/search').SearchCategory;
+      offset?: number;
+      correct?: boolean;
+    };
 
 export function useMusic(
   core: CoreClient = useCore(),
@@ -130,6 +136,7 @@ export function useMusic(
     try {
       if (
         !signedIn.value ||
+        target.kind === 'search' ||
         target.kind === 'library' ||
         target.kind === 'history' ||
         target.kind === 'settings' ||
@@ -152,13 +159,11 @@ export function useMusic(
       const data =
         target.kind === 'daily'
           ? await core.dailySongs()
-          : target.kind === 'playlist'
-            ? await core.playlistPage(target.id, {
-                offset,
-                limit: 100,
-                revision: more ? result.value?.revision : null,
-              })
-            : await core.searchSongs(target.keyword, { offset, limit: 100 });
+          : await core.playlistPage(target.id, {
+              offset,
+              limit: 100,
+              revision: more ? result.value?.revision : null,
+            });
       if (current !== request) return;
       const value = accept(data);
       if (!value) return;

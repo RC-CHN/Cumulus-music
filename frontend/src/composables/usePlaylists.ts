@@ -166,6 +166,19 @@ export function usePlaylists(
   }
   const mutate = (command: PlaylistCommand) => run((e) => core.mutatePlaylist(e, command));
   const reconcile = (operationId: string) => run((e) => core.reconcilePlaylist(e, operationId));
+  async function addTracks(id: string, ids: string[]) {
+    return run(async (e) => {
+      const current = await core.playlistEditor(e, id);
+      if (current.epoch !== e || epoch !== e) throw { code: 'stale', message: '账号已切换' };
+      return core.mutatePlaylist(e, {
+        kind: 'tracks',
+        id,
+        revision: current.value.revision,
+        change: 'add',
+        ids: [...new Set(ids)],
+      });
+    });
+  }
   async function tracks(
     id: string,
     change: 'add' | 'delete' | 'clear' | 'up' | 'down',
@@ -229,6 +242,7 @@ export function usePlaylists(
     mutate,
     reconcile,
     tracks,
+    addTracks,
     move,
     saved: playlistSaved,
   };

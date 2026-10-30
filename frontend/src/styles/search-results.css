@@ -1,0 +1,502 @@
+.search-results-page {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding-top: 7px;
+}
+.search-results-page .search-heading-copy {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 8px;
+  flex-shrink: 0;
+}
+.search-results-page h1 {
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 32px;
+  max-width: min(660px, 100%);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: 0;
+  margin: 0;
+}
+.search-results-page .search-heading-copy p {
+  font-size: 13px;
+  line-height: 16px;
+  color: var(--muted);
+  margin: 0 0 4px;
+}
+.search-results-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 20px;
+  margin: 10px 0 12px;
+  flex-shrink: 0;
+}
+.search-result-tabs {
+  display: flex;
+  gap: 22px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  padding: 4px 2px 6px;
+}
+.search-result-tabs button {
+  position: relative;
+  flex-shrink: 0;
+  white-space: nowrap;
+  height: 32px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  padding: 0 0 3px;
+}
+.search-result-tabs button[aria-selected='true'] {
+  color: var(--text);
+  font-weight: 600;
+}
+.search-result-tabs button:focus-visible {
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+.search-result-tabs button[aria-selected='true']::after {
+  content: '';
+  height: 3px;
+  position: absolute;
+  left: 20%;
+  right: 20%;
+  bottom: 0;
+  border-radius: 2px;
+  background: var(--accent);
+}
+.search-result-actions {
+  display: flex;
+  gap: 10px;
+  margin-right: 21px;
+}
+.search-result-actions button {
+  height: 40px;
+  min-height: 40px;
+  width: 94px;
+  padding: 0;
+  gap: 4px;
+  font-size: 13px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+.search-result-actions .icon {
+  width: 20px;
+  height: 20px;
+}
+.search-result-panel {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  padding: 0 4px 20px;
+  outline-offset: -2px;
+}
+.search-result-section {
+  margin-top: 24px;
+  padding-bottom: 20px;
+  min-width: 0;
+}
+.search-result-section > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.search-result-section h2 {
+  font-size: 17px;
+  line-height: 24px;
+  margin: 0;
+  font-weight: 600;
+}
+.search-result-section > header .text-button {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 12px;
+}
+.search-result-section > header .icon {
+  height: 14px;
+  width: 14px;
+}
+.search-result-card {
+  min-width: 0;
+  text-align: left;
+  border-radius: 10px;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  grid-template-rows: 1fr 1fr;
+  gap: 4px 12px;
+  transition: background-color 120ms;
+}
+.search-result-card:hover {
+  background: var(--surface-hover);
+}
+.search-result-card:focus-visible {
+  outline-offset: -2px;
+}
+.search-result-art {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  aspect-ratio: 1;
+  border-radius: 6px;
+  background: var(--art-bg);
+  color: var(--art-color);
+  overflow: hidden;
+  grid-row: 1/3;
+}
+.search-result-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.search-result-art > .icon {
+  width: 30px;
+  height: 30px;
+}
+.search-result-name,
+.search-result-sub {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.search-result-name {
+  color: var(--text);
+  font-size: 14px;
+  line-height: 20px;
+  align-self: end;
+}
+.search-result-sub {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 17px;
+  align-self: start;
+}
+.search-person-card {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  padding: 20px 20px 23px;
+  gap: 2px;
+  text-align: center;
+}
+.search-person-card .search-result-name,
+.search-person-card .search-result-sub {
+  width: 100%;
+  align-self: center;
+}
+.search-video-card .search-result-art {
+  width: 96px;
+  aspect-ratio: 16/9;
+}
+.search-related-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.search-related-word {
+  display: block;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 5px 12px;
+  max-width: 100%;
+}
+.search-result-notice,
+.search-correction {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 20px;
+  margin: 6px 0;
+}
+.search-correction {
+  flex-shrink: 0;
+}
+.search-result-section .track-table {
+  height: min(380px, 50vh);
+  min-height: 120px;
+}
+.search-song-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.search-song-panel .search-result-tracks {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  padding-bottom: 0;
+  margin-top: 0;
+}
+.search-song-panel .track-table {
+  height: auto;
+  flex: 1;
+}
+.search-result-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 12px 0 4px;
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.search-result-pagination button {
+  padding: 8px 12px;
+}
+.search-lyric-list {
+  display: grid;
+  gap: 20px;
+}
+.search-lyric-list article {
+  padding: 0 8px 20px;
+  border-bottom: 1px solid var(--line);
+}
+.search-lyric-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  text-align: left;
+}
+.search-lyric-list .muted {
+  font-size: 12px;
+  margin: 8px 0;
+}
+.search-lyric-list blockquote {
+  margin: 12px 0;
+  padding-left: 16px;
+  border-left: 2px solid var(--line);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.search-lyric-list blockquote p {
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}
+.search-user-dialog {
+  width: min(400px, calc(100vw - 40px));
+  max-height: calc(100dvh - 48px);
+  border-radius: 16px;
+  padding: 24px;
+  background: var(--surface);
+  color: var(--text);
+  border: 0;
+  box-shadow: var(--shadow);
+  overflow: auto;
+}
+.search-user-dialog::backdrop {
+  background: var(--overlay);
+  backdrop-filter: blur(3px);
+}
+.search-user-dialog header {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+.search-user-dialog h2 {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 20px;
+  margin: 0;
+}
+.search-user-dialog .icon-button {
+  flex-shrink: 0;
+}
+.search-user-dialog p {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.search-results-enter-active,
+.search-results-leave-active {
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease;
+}
+.search-results-enter-from {
+  opacity: 0;
+  transform: translateY(5px);
+}
+.search-results-leave-to {
+  opacity: 0;
+  transform: translateY(-3px);
+}
+@media (max-width: 1000px) {
+  .search-result-tabs {
+    gap: 18px;
+  }
+}
+@media (max-width: 800px) {
+  .search-result-tabs {
+    width: 100%;
+  }
+  .search-result-actions {
+    margin-right: 0;
+  }
+  .search-result-card {
+    grid-template-columns: 48px minmax(0, 1fr);
+    gap: 4px 8px;
+    padding: 8px;
+  }
+  .search-result-art {
+    width: 48px;
+  }
+  .search-person-card {
+    padding: 14px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .search-results-enter-active,
+  .search-results-leave-active {
+    transition: none;
+  }
+}
+:root[data-motion='reduced'] .search-results-enter-active,
+:root[data-motion='reduced'] .search-results-leave-active {
+  transition: none;
+}
+
+/* Recovered ArtistMetaCard: 84px row, 72px portrait, 16px text gap. */
+.search-best-section .search-result-card {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  grid-template-rows: 1fr 1fr;
+  height: 84px;
+  padding: 6px 8px;
+  gap: 0 16px;
+  text-align: left;
+}
+@media (max-width: 800px) {
+  .search-best-section .search-result-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Recovered square PlaylistCard/AlbumCard/AudioCard and landscape VideoCard. */
+.search-result-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(max(178px, calc((100% - 100px) / 6)), 1fr));
+  gap: 20px;
+}
+.search-video-grid {
+  grid-template-columns: repeat(auto-fill, minmax(max(244px, calc((100% - 60px) / 4)), 1fr));
+}
+.search-cover-card {
+  display: flex;
+  flex-direction: column;
+  padding: 0 0 8px;
+  gap: 0;
+  align-self: start;
+}
+.search-cover-card .search-result-art {
+  width: 100%;
+  height: auto;
+  border-radius: 10px;
+  margin: 0 0 8px;
+}
+.search-cover-card .search-result-name,
+.search-cover-card .search-result-sub {
+  width: 100%;
+  padding: 0 12px;
+  box-sizing: border-box;
+  align-self: auto;
+}
+.search-cover-card .search-result-name {
+  font-size: 15px;
+  line-height: 22px;
+}
+.search-cover-card .search-result-sub {
+  margin-top: 2px;
+  font-size: 13px;
+  line-height: 20px;
+}
+.search-person-card .search-result-art {
+  width: 100%;
+  border-radius: 50%;
+  margin-bottom: 0;
+  flex-shrink: 0;
+}
+.search-person-card .search-result-name {
+  margin-top: 10px;
+  font-size: 16px;
+  line-height: 26px;
+  font-weight: 500;
+}
+.search-person-card .search-result-sub {
+  margin-top: 2px;
+}
+.search-voice-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.search-voice-card {
+  height: 84px;
+  grid-template-columns: 64px minmax(0, 1fr);
+  padding: 10px 8px;
+}
+.search-voice-card .search-result-art {
+  width: 64px;
+  height: 64px;
+  border-radius: 8px;
+}
+/* Keep the first card's caption visible above the player in short windows. */
+@media (max-height: 620px) {
+  .search-result-section:not(.search-best-section)
+    .search-result-grid:not(.search-video-grid):not(.search-voice-grid) {
+    grid-template-columns: repeat(auto-fill, minmax(max(148px, calc((100% - 100px) / 6)), 1fr));
+  }
+}
+.search-best-section .search-result-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.search-best-section .search-result-art {
+  width: 72px;
+  height: 72px;
+  margin: 0;
+}
+.search-best-section .search-result-name {
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 600;
+  align-self: end;
+  margin: 0;
+}
+.search-best-section .search-result-sub {
+  font-size: 14px;
+  line-height: 20px;
+  align-self: start;
+  margin-top: 6px;
+}
+@media (max-width: 800px) {
+  .search-best-section .search-result-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .search-voice-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

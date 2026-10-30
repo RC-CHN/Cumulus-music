@@ -123,6 +123,28 @@ test('track ordering uses all authoritative IDs and stale preparation never send
   await moving;
   assert.equal(sent.length, 1);
 });
+test('search collection reads a fresh revision, deduplicates IDs, and stops if the account changes', async () => {
+  const sent: PlaylistCommand[] = [];
+  const read = deferred<AccountData<PlaylistEditor>>();
+  let delayed = false;
+  const p = fixture({
+    playlistEditor: async () => (delayed ? read.promise : data(editor())),
+    mutatePlaylist: async (_e, command) => {
+      sent.push(command);
+      return data(receipt());
+    },
+  });
+  await p.addTracks('10', ['1', '2', '1']);
+  assert.deepEqual(sent, [
+    { kind: 'tracks', id: '10', revision: 'fresh', change: 'add', ids: ['1', '2'] },
+  ]);
+  delayed = true;
+  const pending = p.addTracks('10', ['3']);
+  p.connect(account('2'));
+  read.resolve(data(editor()));
+  await pending;
+  assert.equal(sent.length, 1);
+});
 test('unknown replies are not retried and explicit reconciliation only invokes the readback use case', async () => {
   let writes = 0,
     checks = 0;
