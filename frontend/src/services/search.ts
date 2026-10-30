@@ -24,7 +24,7 @@ export interface SearchResultQuery {
   correct: boolean;
 }
 export type SearchItem =
-  | { kind: 'song'; track: TrackView; excerpt: string[] }
+  | { kind: 'song'; track: TrackView; excerpt: string[]; excerptTruncated?: boolean }
   | { kind: 'playlist'; playlist: PlaylistView }
   | { kind: 'artist'; artist: ArtistCard }
   | { kind: 'album'; album: AlbumCard }

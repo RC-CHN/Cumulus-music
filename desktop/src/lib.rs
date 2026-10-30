@@ -1,5 +1,6 @@
 pub mod captcha;
 mod catalog;
+mod clipboard;
 mod cloud;
 mod collections;
 mod commands;
@@ -48,6 +49,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 .build(),
         )
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(watchman::collection::lifecycle())
         .plugin(shortcuts::lifecycle())
         .manage(cumulus_core::Application)
@@ -142,6 +144,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 return true;
             }
             let handler: fn(tauri::ipc::Invoke<R>) -> bool = tauri::generate_handler![
+                clipboard::copy_text,
                 mini::commands::mini_enter,
                 desktop_lyrics::settings::desktop_lyric_settings,
                 desktop_lyrics::settings::desktop_lyric_change,

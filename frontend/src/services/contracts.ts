@@ -74,6 +74,7 @@ export interface CoreClient
     RelayClient,
     RelayPublicationClient {
   getAppInfo(): Promise<AppInfo>;
+  copyText(text: string): Promise<void>;
   accountSnapshot(): Promise<AccountView>;
   restoreAccount(): Promise<AccountView>;
   beginQr(): Promise<QrView>;

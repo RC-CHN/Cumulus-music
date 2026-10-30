@@ -143,3 +143,58 @@ async fn result_from_replaced_account_is_rejected() {
     api.release.notify_one();
     assert!(request.await.is_err());
 }
+
+#[tokio::test]
+async fn lyrics_keep_full_returned_text_and_report_bounded_projection() {
+    let (_root, api, _, client) = fixture();
+    let epoch = client.account().unwrap().epoch;
+    let song = json!({"id": 1, "name": "合成歌曲", "ar": [], "al": {"name":"合成专辑"}});
+    let full =
+        "第一行\r\n夜色里的合成旋律🎵\n\n第四行\n第五行\n第六行\n<img src=x onerror=alert(1)>";
+    for field in ["lyrics", "lyric"] {
+        *api.reply.lock().unwrap() = json!({"code":200,"data":{"resources":[{"song":song,field:full,"matchedLyric":["旧兼容片段"]}],"totalCount":1}});
+        let view = serde_json::to_value(
+            client
+                .search_results(&epoch, query(C::Lyrics))
+                .await
+                .unwrap()
+                .value,
+        )
+        .unwrap();
+        let item = &view["sections"][0]["items"][0];
+        assert_eq!(
+            item["excerpt"],
+            json!([
+                "第一行",
+                "夜色里的合成旋律🎵",
+                "",
+                "第四行",
+                "第五行",
+                "第六行",
+                "<img src=x onerror=alert(1)>"
+            ])
+        );
+        assert_eq!(item["excerptTruncated"], false);
+    }
+    for long in [
+        "合成🎵".repeat(20000),
+        format!("{}\n\n", "a".repeat(65536)),
+        (0..600).map(|n| format!("合成行{n}\n")).collect(),
+    ] {
+        *api.reply.lock().unwrap() =
+            json!({"code":200,"data":{"resources":[{"song":song,"lyrics":long}],"totalCount":1}});
+        let view = serde_json::to_value(
+            client
+                .search_results(&epoch, query(C::Lyrics))
+                .await
+                .unwrap()
+                .value,
+        )
+        .unwrap();
+        let item = &view["sections"][0]["items"][0];
+        let lines: Vec<String> = serde_json::from_value(item["excerpt"].clone()).unwrap();
+        assert!(lines.len() <= 512);
+        assert!(lines.join("\n").len() <= 65536);
+        assert_eq!(item["excerptTruncated"], true);
+    }
+}

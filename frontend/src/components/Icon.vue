@@ -2,6 +2,7 @@
 defineProps<{ name: string }>();
 const paths: Record<string, string> = {
   plus: 'M12 4v16M4 12h16',
+  copy: 'M9 9h12v12H9zM15 6V3H3v12h3',
   trash: 'M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7',
   settings:
     'm9 3-.5 3-2 1-3-.8-2 3 2.5 2v2L1.5 15l2 3 3-.8 2 1L9 21h4l.5-2.8 2-1 3 .8 2-3-2.5-1.8v-2l2.5-2.2-2-3-3 .8-2-1L13 3zM15 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z',

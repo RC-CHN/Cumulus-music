@@ -13,6 +13,7 @@ import type { SessionRenewalView } from '../services/renewal';
 export function createTauriClient(): CoreClient {
   return {
     searchResults: (epoch, query) => invoke('search_results', { epoch, query }),
+    copyText: (text) => invoke('copy_text', { text }),
     searchDiscovery: (epoch, query) => invoke('search_discovery', { epoch, query }),
     searchHistory: (epoch, command) => invoke('search_history', { epoch, command }),
     shortcutSettings: (epoch) => invoke('shortcut_settings', { epoch }),

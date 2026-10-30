@@ -1,3 +1,4 @@
+mod lyrics;
 mod results;
 use super::{MusicClient, dto::AccountData};
 use crate::{

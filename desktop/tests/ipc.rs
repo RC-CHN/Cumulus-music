@@ -54,6 +54,7 @@ fn foreign_and_unregistered_mini_windows_cannot_invoke_application_commands() {
             "relay_command",
             "relay_setting_command",
             "catalog_membership",
+            "copy_text",
         ] {
             assert_ipc_response(
                 &window,

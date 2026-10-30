@@ -1,0 +1,109 @@
+.search-lyric-result {
+  margin-bottom: 10px;
+  border-radius: 6px;
+}
+.search-lyric-result:nth-child(even) {
+  background: var(--surface-alt);
+}
+.search-lyric-result .track-row.striped {
+  background: transparent;
+}
+.search-lyric-result .track-row:hover {
+  background: var(--surface-hover);
+}
+.search-lyric-extra {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 24px 0 110px;
+  padding-bottom: 10px;
+}
+.search-lyric-extra.expanded {
+  padding-bottom: 12px;
+}
+.search-lyric-text {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-secondary);
+}
+.search-lyric-text > .icon {
+  width: 16px;
+  height: 18px;
+  flex-shrink: 0;
+  color: var(--link);
+}
+.search-lyric-text > div {
+  min-width: 0;
+}
+.search-lyric-lines {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  animation: search-lyric-reveal 160ms ease-out;
+}
+@keyframes search-lyric-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.search-lyric-warning {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+.search-lyric-controls {
+  flex-shrink: 0;
+  padding-top: 22px;
+}
+.search-lyric-buttons {
+  display: flex;
+  gap: 10px;
+}
+.search-lyric-buttons .secondary {
+  height: 28px;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  white-space: nowrap;
+  gap: 4px;
+}
+.search-lyric-buttons .icon {
+  width: 12px;
+  height: 12px;
+  transition: transform 160ms ease;
+}
+.search-lyric-buttons [aria-expanded='true'] .icon {
+  transform: rotate(180deg);
+}
+.search-lyric-copy-status {
+  display: block;
+  font-size: 11px;
+  line-height: 18px;
+  text-align: right;
+  color: var(--text-secondary);
+}
+.search-lyric-copy-status.failed {
+  color: var(--danger);
+}
+@media (max-width: 950px) {
+  .search-lyric-extra {
+    margin-left: 40px;
+    margin-right: 10px;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .search-lyric-controls {
+    padding-top: 0;
+    align-self: flex-end;
+    order: -1;
+  }
+}

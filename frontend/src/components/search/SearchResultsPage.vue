@@ -13,6 +13,8 @@ import {
 import { useSearchResults } from '../../composables/useSearchResults';
 import { useCore } from '../../services/core';
 import TrackTable from '../TrackTable.vue';
+import TrackRow from '../TrackRow.vue';
+import SearchLyricExtra from './SearchLyricExtra.vue';
 import ModalTransition from '../ModalTransition.vue';
 import Icon from '../Icon.vue';
 import SearchResultCard from './SearchResultCard.vue';
@@ -85,6 +87,13 @@ function playPreview(section: SearchSection, index: number) {
 }
 const songs = computed(() => view.value?.sections.flatMap(tracks) ?? []);
 const count = computed(() => view.value?.sections.reduce((n, s) => n + s.items.length, 0) ?? 0);
+const expandedLyrics = ref(new Set<string>());
+function toggleLyric(key: string) {
+  const next = new Set(expandedLyrics.value);
+  if (!next.delete(key)) next.add(key);
+  expandedLyrics.value = next;
+  void nextTick(() => checkpoint());
+}
 const panel = ref<HTMLElement>(),
   tabs = ref<HTMLElement>();
 const moreButton = ref<HTMLButtonElement>(),
@@ -132,6 +141,11 @@ function checkpoint(focus = false) {
     top: panel.value.scrollTop,
     tracks: panel.value.querySelector('.track-scroll')?.scrollTop ?? 0,
     focus: card?.dataset.resultKey,
+    focusAction:
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement.dataset.resultAction
+        : undefined,
+    expandedLyrics: [...expandedLyrics.value],
   });
 }
 function maybeMore() {
@@ -176,6 +190,7 @@ async function restore() {
   )
     return;
   const generation = loadGeneration;
+  expandedLyrics.value = new Set(model.position.value.expandedLyrics ?? []);
   await nextTick();
   await new Promise<void>((resolve) =>
     requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
@@ -198,7 +213,14 @@ async function restore() {
     const card = [...panel.value.querySelectorAll<HTMLElement>('[data-result-key]')].find(
       (n) => n.dataset.resultKey === position.focus,
     );
-    card?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true });
+    const controls = [
+      ...(card?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? []),
+    ];
+    (
+      controls.find(
+        (n) => position.focusAction && n.dataset.resultAction === position.focusAction,
+      ) ?? controls[0]
+    )?.focus({ preventScroll: true });
   }
   restoring = false;
   maybeMore();
@@ -398,29 +420,54 @@ onBeforeUnmount(() => {
                 <Icon name="play" />
               </button>
             </header>
-            <div v-if="category === 'lyrics'" class="search-lyric-list">
-              <article
-                v-for="item in section.items"
-                :key="item.kind === 'song' ? item.track.id : ''"
+            <div
+              v-if="category === 'lyrics'"
+              class="search-lyric-list"
+              role="table"
+              aria-label="歌词搜索结果"
+            >
+              <div class="track-columns track-header" role="row">
+                <span>#</span><span role="columnheader">歌曲 / 歌手</span
+                ><span role="columnheader">专辑</span><span role="columnheader">喜欢</span
+                ><span role="columnheader">时长</span>
+              </div>
+              <template
+                v-for="(item, index) in section.items"
+                :key="`${index}:${item.kind === 'song' ? item.track.id : ''}`"
               >
-                <template v-if="item.kind === 'song'"
-                  ><button
-                    class="search-lyric-title"
-                    :disabled="!playable || item.track.missing"
-                    @click="emit('play', [item.track], 0)"
-                  >
-                    <Icon name="play" />{{ item.track.name }}
-                  </button>
-                  <p class="muted">{{ item.track.artists.join(' / ') }} · {{ item.track.album }}</p>
-                  <blockquote v-if="item.excerpt.length">
-                    <p v-for="(line, i) in item.excerpt" :key="i">{{ line }}</p>
-                  </blockquote>
-                  <p v-else class="muted">暂无匹配片段</p>
-                  <button class="text-button" @click="emit('more', item.track)">
-                    更多操作
-                  </button></template
+                <div
+                  v-if="item.kind === 'song'"
+                  class="search-lyric-result"
+                  role="rowgroup"
+                  :data-result-key="`lyric:${index}:${item.track.id}`"
                 >
-              </article>
+                  <TrackRow
+                    :track="item.track"
+                    :index="index"
+                    :liked="liked.has(item.track.id)"
+                    :busy="busyLikes.has(item.track.id)"
+                    :current-id="currentId"
+                    :playable="playable"
+                    navigable
+                    @play="emit('play', tracks(section), $event)"
+                    @like="emit('like', $event)"
+                    @more="emit('more', $event)"
+                    @artist="emit('artist', $event)"
+                    @album="emit('album', $event)"
+                  />
+                  <div role="row">
+                    <div role="cell" aria-colspan="5">
+                      <SearchLyricExtra
+                        :lines="item.excerpt"
+                        :truncated="item.excerptTruncated"
+                        :content-id="`search-lyric-${index}`"
+                        :expanded="expandedLyrics.has(`${index}:${item.track.id}`)"
+                        @toggle="toggleLyric(`${index}:${item.track.id}`)"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </template>
             </div>
             <div
               v-else-if="category === 'all' && section.items.some((i) => i.kind === 'song')"

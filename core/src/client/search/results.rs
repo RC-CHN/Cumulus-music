@@ -16,6 +16,8 @@ pub enum SearchItem {
     Song {
         track: TrackView,
         excerpt: Vec<String>,
+        #[serde(rename = "excerptTruncated")]
+        excerpt_truncated: bool,
     },
     Playlist {
         playlist: PlaylistView,
@@ -88,7 +90,7 @@ fn array<'a>(v: &'a Value, key: &str) -> Result<&'a [Value]> {
         .map(Vec::as_slice)
         .ok_or(Error::Response("missing search result list"))
 }
-fn clean(s: &str) -> String {
+pub(super) fn clean(s: &str) -> String {
     s.replace("<em>", "")
         .replace("</em>", "")
         .replace("<b>", "")
@@ -96,21 +98,14 @@ fn clean(s: &str) -> String {
 }
 fn item(kind: &str, v: &Value, uid: &str, excerpt: &Value) -> Result<Option<SearchItem>> {
     Ok(Some(match kind {
-        "song" => SearchItem::Song {
-            track: mapping::track(v)?,
-            excerpt: if let Some(s) = excerpt.as_str() {
-                s.lines().take(5).map(clean).collect()
-            } else {
-                excerpt
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .filter_map(Value::as_str)
-                    .take(5)
-                    .map(clean)
-                    .collect()
-            },
-        },
+        "song" => {
+            let (excerpt, excerpt_truncated) = super::lyrics::project(excerpt);
+            SearchItem::Song {
+                track: mapping::track(v)?,
+                excerpt,
+                excerpt_truncated,
+            }
+        }
         "playlist" => SearchItem::Playlist {
             playlist: mapping::playlist(v, uid)?,
         },
@@ -228,7 +223,7 @@ fn project(raw: Value, query: SearchResultQuery, uid: &str) -> Result<SearchResu
         }
         // The recovered comprehensive page is a block preview. Category links load the full lists.
         if raw["data"]["hasMore"] == true {
-            result.notice = Some("综合结果为分类预览，可通过各区块右侧入口查看完整分类。".into());
+            result.notice = Some("综合结果为分类预览，可通过区块标题入口查看完整分类。".into());
         }
         return Ok(result);
     }
@@ -280,7 +275,16 @@ fn project(raw: Value, query: SearchResultQuery, uid: &str) -> Result<SearchResu
             _ => resource,
         };
         let lyric = if query.category == Lyrics {
-            &resource["matchedLyric"]
+            // Official 15.Wn merges the resource with its song; 21.x keeps lyrics || lyric.
+            ["lyrics", "lyric"]
+                .iter()
+                .find_map(|key| {
+                    resource["song"]
+                        .get(key)
+                        .or_else(|| resource.get(key))
+                        .filter(|v| v.as_str().is_some_and(|s| !s.is_empty()))
+                })
+                .unwrap_or(&resource["matchedLyric"])
         } else {
             &Value::Null
         };

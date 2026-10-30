@@ -5,6 +5,8 @@ export interface SearchPosition {
   top: number;
   tracks: number;
   focus?: string;
+  focusAction?: string;
+  expandedLyrics?: string[];
 }
 interface Snapshot {
   view: SearchResultView;
