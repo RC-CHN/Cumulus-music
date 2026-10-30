@@ -1,0 +1,86 @@
+Cumulus Windows media runtime
+=============================
+
+Problem and evidence
+--------------------
+The Windows CI run 41128729255 reached an initialized GUI, then the real
+libmpv loudness capture failed with "No such filter: 'ladspa'". Ordinary
+native playback had passed. MSYS2 FFmpeg 9.0.2-2 is built without the LADSPA
+filter used by the recovered equalizer and loudness adapters. Compiling the
+Rust/C DSP or decoding without the filter does not prove that these controls
+work in the desktop player.
+
+This change prepares a complete FFmpeg runtime with the missing filter and
+removes the old packaging exception that reported Windows equalizer testing
+as skipped. Windows build, packaged PCM and GUI checks must actually pass;
+the preparation code or its synthetic Python tests are not that evidence.
+At implementation time, the new Windows native checks are still pending CI.
+
+Sources and build
+-----------------
+Primary upstream recipe (original configuration and dependency list):
+https://github.com/msys2/MINGW-packages/blob/d468dd4568d3c2e6f07deee83cfbffebe79ac033/mingw-w64-ffmpeg/PKGBUILD
+FFmpeg implementation:
+https://github.com/FFmpeg/FFmpeg/blob/master/libavfilter/af_ladspa.c
+MSYS2 build procedure:
+https://www.msys2.org/dev/new-package/
+
+scripts/ci/windows_media.lock.json pins the recipe commit, every recipe/helper
+checksum, the FFmpeg 9.0.2 archive checksum and the expected stock/custom
+package versions. Source authentication uses those reviewed SHA256 values;
+the modified recipe removes the separate .asc download instead of fetching
+keys from an external keyserver or bypassing a failed signature check.
+
+windows_media.py checks the installed stock FFmpeg version before building.
+Its small, shape-checked recipe patch adds --enable-ladspa and its SDK/dlfcn
+dependencies. All original codec, network, hardware and format configuration
+is retained. Only the shared runtime variant is built; no static development
+archive is needed by the application. The custom package release is 2.1.
+Any stock package version drift requires reviewing/updating the lock.
+
+The upstream recipe's ignored `make check || true` is replaced by a strict
+filter-availability check against the newly built shared libraries. This is
+not described as the complete upstream FFmpeg test suite. Installation also
+requires the original full configuration to remain present, a listed LADSPA
+filter, and actual loading/running of the current Cumulus plugin on synthetic
+input. That initial cross-process plugin check verifies loading only: its
+control registry has no application-owned configuration. Real DSP parameters
+and output are verified in the in-process PCM probes below.
+
+Cache and packaging boundaries
+-----------------------------
+The exact cache key covers the committed lock/build scripts and every
+installed MSYS2 package version. No fallback cache key is used. Cached package
+and source checksums, original locked recipe/archive, and the deterministic
+modified recipe are checked before pacman installation. The installed version,
+configuration and filter execution are checked again even after a cache hit.
+
+All application DLLs are copied by PE import closure, with unresolved imports
+allowed only when Windows supplies them. The seven installed FFmpeg DLL
+hashes must still match the runtime verification receipt when packaging.
+The portable and installer include third-party/cumulus-ffmpeg-source/: the
+source archive, recipe helpers, original/modified PKGBUILD, build manifest,
+installed-runtime receipt and lock. Existing dependency licenses and exact
+MSYS2 package versions remain included. Compiler/object caches are not bundled.
+
+Verification gates
+------------------
+Linux and Windows both run the release player_probe from beside the packaged
+DLLs, with Windows PATH limited to that portable directory and Windows system
+directories. No MSYS2 DLL search path can fill in missing package dependencies.
+The existing probe requires three synthetic PCM rate/channel configurations,
+max absolute error <= 2e-6, correct processed-sample/instance counters, live
+enable/disable/seek/reload controls, failure containment and recovery. Its
+Unicode, spaces, quotes, brackets and comma in the filter path are preserved.
+
+The subsequent desktop native_audio_probe still runs after actual GUI setup
+and verifies the recovered loudness path. No filter failure, missing report
+or PCM mismatch is ignored. Logs, failure stages and synthetic PCM stay in the
+CI diagnostic archive, including the runtime build log on an earlier failure.
+These synthetic/null-output checks do not establish physical speaker quality
+or Windows hardware-specific behavior.
+
+All three Windows CI workflows use the shared windows-media action. Main CI
+keeps the Linux and Windows runners separate and requires the complete gate.
+The longer build timeout accommodates a cold full-feature FFmpeg build; it
+does not alter pass/fail criteria or release rules.

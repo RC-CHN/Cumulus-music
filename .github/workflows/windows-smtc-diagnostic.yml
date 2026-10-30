@@ -7,7 +7,7 @@ permissions:
 jobs:
   smtc:
     runs-on: windows-2022
-    timeout-minutes: 40
+    timeout-minutes: 120
     defaults:
       run:
         shell: bash
@@ -34,7 +34,14 @@ jobs:
         with:
           msystem: UCRT64
           update: true
-          install: mingw-w64-ucrt-x86_64-mpv mingw-w64-ucrt-x86_64-binutils
+          install: >-
+            base-devel
+            mingw-w64-ucrt-x86_64-mpv mingw-w64-ucrt-x86_64-binutils
+            mingw-w64-ucrt-x86_64-cc mingw-w64-ucrt-x86_64-autotools
+            mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-dlfcn
+            mingw-w64-ucrt-x86_64-vulkan-headers mingw-w64-ucrt-x86_64-amf-headers
+            mingw-w64-ucrt-x86_64-ffnvcodec-headers mingw-w64-ucrt-x86_64-nasm
+            mingw-w64-ucrt-x86_64-ladspa-sdk
       - run: rustup show
       - uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
         with:
@@ -47,6 +54,10 @@ jobs:
             smtc-Windows-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-
             rust-Windows-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-
             rust-Windows-v1-
+      - name: Build and verify Windows media runtime
+        uses: ./.github/actions/windows-media
+        with:
+          msys-root: ${{ steps.msys2.outputs.msys2-location }}
       - run: npm --prefix frontend ci
       - run: npm --prefix frontend run build
       - run: cargo fmt --all --check

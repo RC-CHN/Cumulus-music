@@ -1,0 +1,16 @@
+{
+  "recipeCommit": "d468dd4568d3c2e6f07deee83cfbffebe79ac033",
+  "upstreamPackage": "9.0.2-2",
+  "customPackage": "9.0.2-2.1",
+  "source": {
+    "name": "ffmpeg-9.0.2.tar.xz",
+    "url": "https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz",
+    "sha256": "8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e"
+  },
+  "recipeFiles": {
+    "PKGBUILD": "fe8e4f34ba9b6d638d6feba79b1d1c24a7a7539ab7406f66e3b45be8c7568065",
+    "pathtools.c": "ebf471173f5ee9c4416c10a78760cea8afaf1a4a6e653977321e8547ce7bf3c0",
+    "pathtools.h": "1585ef1b61cf53a2ca27049c11d49e0834683dfda798f03547761375df482a90",
+    "0005-Win32-Add-path-relocation-to-frei0r-plugins-search.patch": "8c74e9b5800dbb41c33a60114712726ec768ad6de8f147c2eb30656fd4c899cc"
+  }
+}

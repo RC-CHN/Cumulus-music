@@ -15,6 +15,7 @@ import tarfile
 import zipfile
 
 from release_guard import check_versions, git
+from windows_media import copy_provenance
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -31,6 +32,7 @@ def digest(path):
 
 def windows_media(destination, msys):
     """Copy the PE import closure, not the whole compiler/MSYS2 installation."""
+    copy_provenance(destination, msys)
     binary = msys / "ucrt64/bin"
     candidates = {p.name.lower(): p for pattern in ("*.dll", "ffprobe.exe") for p in binary.glob(pattern)}
     assert "libmpv-2.dll" in candidates, "MSYS2 UCRT64 libmpv is missing"
@@ -55,6 +57,8 @@ def windows_media(destination, msys):
     (destination / "third-party/msys2-packages.txt").write_text(packages, encoding="utf-8")
     (destination / "third-party/SOURCES.txt").write_text(
         "Runtime DLLs are from MSYS2 UCRT64, with exact installed versions in msys2-packages.txt.\n"
+        "Cumulus rebuilds the pinned FFmpeg recipe with LADSPA enabled; corresponding source,\n"
+        "original/modified recipes, checksums and runtime provenance are in cumulus-ffmpeg-source/.\n"
         "Package metadata, source archives and recipe history: https://packages.msys2.org/\n"
         "Source recipes: https://github.com/msys2/MINGW-packages\n"
         "libmpv: https://github.com/mpv-player/mpv ; FFmpeg: https://ffmpeg.org/\n"
@@ -121,13 +125,18 @@ def main():
     media_report = json.loads(media.stdout)
     assert media_report["ok"] and media_report["remote_requests"] == 0
     probe.unlink()
-    # The Linux distribution FFmpeg includes LADSPA. MSYS2's FFmpeg currently
-    # does not; do not advertise a working Windows live DSP chain from unit tests.
-    eq_report = {"tested": False, "reason": "MSYS2 FFmpeg does not enable LADSPA"}
-    if not windows:
-        eq = run([target / "release/examples/player_probe", portable / filter_name, stage / "equalizer-proof"], stdout=subprocess.PIPE, text=True, encoding="utf-8")
-        eq_report = json.loads(eq.stdout)
-        assert eq_report["ok"] and eq_report["remote_requests"] == 0
+    # Both platforms must exercise the packaged libmpv -> LADSPA -> C DSP path,
+    # including Unicode/quoted paths and live controls. On Windows the probe is
+    # beside the exact bundled DLLs and inherits the same restricted PATH.
+    eq_probe = portable / f"player_probe{suffix}"
+    shutil.copy2(target / "release/examples" / eq_probe.name, eq_probe)
+    eq_log = ROOT / ".build" / f"ci-equalizer-roundtrip-{args.platform}.log"
+    with eq_log.open("x", encoding="utf-8") as log:
+        eq = run([eq_probe, portable / filter_name, stage / "equalizer-proof"],
+                 env=env, stdout=subprocess.PIPE, stderr=log, text=True, encoding="utf-8")
+    eq_report = json.loads(eq.stdout)
+    assert eq_report["ok"] and eq_report["remote_requests"] == 0
+    eq_probe.unlink()
     (portable / "runtime-manifest.json").write_text(json.dumps({
         "version": version, "commit": sha, "platform": args.platform, "dlls": dlls,
         "nativePlayback": media_report, "equalizerPlayback": eq_report,
