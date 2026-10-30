@@ -603,3 +603,85 @@ async fn history_reuses_completed_download_after_native_offline_verification() {
             .all(|(path, _)| path == "/api/music-vip-membership/client/vip/info")
     );
 }
+
+#[tokio::test]
+async fn download_categories_filter_before_pagination_and_keep_cloud_audio_with_songs() {
+    use cumulus_core::download::service::DownloadOrigin;
+    let f = Fixture::new();
+    let (original, _) = f.completed().await;
+    let seed = f
+        .store
+        .get("1", "download_tasks_v1", &original)
+        .unwrap()
+        .unwrap();
+    for i in 0..240_u64 {
+        let mut record = seed.clone();
+        let id = format!("{i:032x}");
+        record["id"] = json!(id);
+        record["song"] = json!({"id":10000+i,"name":format!("分类对照 {i:03}"),"ar":[{"name":"fixture"}],"al":{"name":"fixture"}});
+        record["origin"] = serde_json::to_value(match i % 4 {
+            0 => DownloadOrigin::Song,
+            1 => DownloadOrigin::Cloud {
+                file_name: "original.wav".into(),
+                file_size: 42,
+            },
+            2 => DownloadOrigin::Voice {
+                voice_id: i.to_string(),
+            },
+            _ => DownloadOrigin::Mv { resolution: 1080 },
+        })
+        .unwrap();
+        f.store.put("1", "download_tasks_v1", &id, &record).unwrap();
+    }
+    let query = DownloadQuery {
+        tab: DownloadTab::Completed,
+        category: DownloadCategory::Song,
+        keyword: "分类对照".into(),
+        sort: DownloadSort::Name,
+        descending: false,
+        offset: 37,
+        limit: 37,
+    };
+    let view = f.client.downloads("1", query.clone()).await.unwrap();
+    assert_eq!(view.total, 120);
+    assert_eq!(view.tasks.len(), 37);
+    assert_eq!(view.completed_count, 241);
+    assert_eq!(view.tasks[0].track.name, "分类对照 073");
+    assert!(
+        view.tasks
+            .iter()
+            .all(|t| matches!(t.source, "song" | "cloud"))
+    );
+    for (category, source) in [
+        (DownloadCategory::Voice, "voice"),
+        (DownloadCategory::Mv, "mv"),
+    ] {
+        let v = f
+            .client
+            .downloads(
+                "1",
+                DownloadQuery {
+                    category,
+                    ..query.clone()
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(v.total, 60);
+        assert_eq!(v.tasks.len(), 23);
+        assert!(v.tasks.iter().all(|t| t.source == source));
+    }
+    let legacy: DownloadQuery=serde_json::from_value(json!({"tab":"completed","keyword":"分类对照","sort":"name","descending":false,"offset":0,"limit":100})).unwrap();
+    assert_eq!(legacy.category, DownloadCategory::All);
+    assert_eq!(f.client.downloads("1", legacy).await.unwrap().total, 240);
+    f.session
+        .adopt(
+            f.api.clone(),
+            json!({"userId":2}),
+            &f.session.token().unwrap(),
+        )
+        .unwrap();
+    assert!(f.client.downloads("1", query.clone()).await.is_err());
+    let epoch = f.client.account().unwrap().epoch;
+    assert_eq!(f.client.downloads(&epoch, query).await.unwrap().total, 0);
+}

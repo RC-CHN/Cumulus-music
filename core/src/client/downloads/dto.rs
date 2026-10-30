@@ -14,6 +14,15 @@ pub enum DownloadTab {
     Active,
     Completed,
 }
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DownloadCategory {
+    #[default]
+    All,
+    Song,
+    Voice,
+    Mv,
+}
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DownloadSort {
@@ -28,6 +37,8 @@ pub enum DownloadSort {
 #[serde(rename_all = "camelCase")]
 pub struct DownloadQuery {
     pub tab: DownloadTab,
+    #[serde(default)]
+    pub category: DownloadCategory,
     pub keyword: String,
     pub sort: DownloadSort,
     pub descending: bool,
@@ -38,6 +49,7 @@ impl Default for DownloadQuery {
     fn default() -> Self {
         Self {
             tab: DownloadTab::Active,
+            category: DownloadCategory::All,
             keyword: String::new(),
             sort: DownloadSort::Completed,
             descending: true,

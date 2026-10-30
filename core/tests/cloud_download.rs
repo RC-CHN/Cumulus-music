@@ -587,6 +587,7 @@ async fn native_client_schedules_deduplicated_cloud_selection_and_projects_origi
                     "1",
                     DownloadQuery {
                         tab: DownloadTab::Completed,
+                        category: Default::default(),
                         keyword: String::new(),
                         sort: DownloadSort::Completed,
                         descending: true,

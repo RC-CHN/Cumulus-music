@@ -1,7 +1,7 @@
 pub use super::collections::{CollectionPageView, CollectionView, FollowCard, FollowUser};
 pub use super::downloads::{
-    DownloadCommand, DownloadFailure, DownloadJobView, DownloadQuery, DownloadResult, DownloadSort,
-    DownloadTab, DownloadTaskView, DownloadsView, TaskControl,
+    DownloadCategory, DownloadCommand, DownloadFailure, DownloadJobView, DownloadQuery,
+    DownloadResult, DownloadSort, DownloadTab, DownloadTaskView, DownloadsView, TaskControl,
 };
 pub use super::fm::{FmArtistView, FmCommand, FmFeedbackView, FmItemView, FmTrashView, FmView};
 pub use super::history::{

@@ -78,6 +78,18 @@ impl Host {
             {
                 continue;
             }
+            // Classify before searching, sorting and paging. Cloud originals
+            // belong to the audio/song tab, while active UI queries use All.
+            let category = if task.origin.is_mv() {
+                DownloadCategory::Mv
+            } else if task.origin.is_voice() {
+                DownloadCategory::Voice
+            } else {
+                DownloadCategory::Song
+            };
+            if query.category != DownloadCategory::All && category != query.category {
+                continue;
+            }
             let track = task
                 .song
                 .as_ref()
