@@ -4,11 +4,21 @@ use cumulus_core::{
     protocol::api::{Api, ApiFuture},
 };
 use serde_json::{Value, json};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{
+    Mutex,
+    atomic::{AtomicBool, AtomicUsize, Ordering},
+};
 #[derive(Default)]
 pub struct Library {
     artist_collected: AtomicBool,
     album_collected: AtomicBool,
+    mode: Mutex<String>,
+    pub comment_reads: AtomicUsize,
+}
+impl Library {
+    pub fn mode(&self, mode: &str) {
+        *self.mode.lock().unwrap() = mode.into();
+    }
 }
 fn id(v: &Value) -> u64 {
     v.as_u64().or_else(|| v.as_str()?.parse().ok()).unwrap_or(0)
@@ -27,6 +37,11 @@ fn album(n: u64) -> Value {
         value["artists"][0]["name"] =
             json!("SyntheticArtistWithAnUnbrokenLongDisplayName".repeat(3));
     }
+    if n == 9 {
+        value["description"] = json!("");
+        value["artists"] = json!([]);
+        value["artist"] = json!({"id":12,"name":"测试歌手"});
+    }
     value
 }
 fn comment(n: u64) -> Value {
@@ -35,6 +50,12 @@ fn comment(n: u64) -> Value {
 impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, args: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            let mode = self.mode.lock().unwrap().clone();
+            if mode == "album-offline"
+                && matches!(path, "/api/album/v3/detail" | "/api/album/v4/detail")
+            {
+                return Err(Error::Transport("synthetic album metadata offline".into()));
+            }
             let offset = args["offset"].as_u64().unwrap_or(0);
             let limit = args["limit"].as_u64().unwrap_or(20);
             Ok(match path {
@@ -88,7 +109,17 @@ impl Api for Library {
                 "/api/album/privilege" => {
                     json!({"code":200,"data":(1..=11).map(|id|json!({"id":id,"pl":320000})).collect::<Vec<_>>()})
                 }
-                "/api/v1/resource/comments/R_AL_3_8" => {
+                "/api/song/enhance/player/url/v1" => {
+                    let ids: Vec<Value> = serde_json::from_str(args["ids"].as_str().unwrap())?;
+                    json!({"code":200,"data":[{"id":ids[0],"url":"https://m1.music.126.net/cumulus-relay-fixture.wav","code":200,"md5":"fixture","level":"standard","expi":120}]})
+                }
+                "/api/song/lyric/v1" => json!({"code":200,"lrc":{"lyric":"[00:00.00]合成歌词"}}),
+                _ if path.starts_with("/api/v1/resource/comments/R_AL_3_") => {
+                    self.comment_reads.fetch_add(1, Ordering::SeqCst);
+                    if mode == "comments-offline" {
+                        return Err(Error::Transport("synthetic album comments offline".into()));
+                    }
+
                     json!({"code":200,"comments":((offset+1)..=(offset+limit).min(25)).map(comment).collect::<Vec<_>>(),"hotComments":[],"topComments":[],"total":25,"more":offset+limit<25})
                 }
                 "/api/resource-exposure/config" => {

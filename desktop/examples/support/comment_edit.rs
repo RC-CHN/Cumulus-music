@@ -74,6 +74,11 @@ impl Service {
             "/api/w/nuser/account/get" => {
                 Ok(json!({"code":200,"profile":{"userId":"1","nickname":"评论验证账号"}}))
             }
+            "/api/search/default/keyword/get" => {
+                Ok(json!({"code":200,"data":{"realkeyword":"合成搜索词"}}))
+            }
+            "/api/rtrs/abt/front/expinfo/list" => Ok(json!({"code":200,"data":[]})),
+            "/api/relay/setting/show" => Ok(json!({"code":200,"data":{"groups":[]}})),
             "/api/user/playlist" => Ok(json!({"code":200,"playlist":[],"more":false})),
             "/api/song/like/get" => Ok(json!({"code":200,"ids":[]})),
             "/api/v3/discovery/recommend/songs" => Ok(

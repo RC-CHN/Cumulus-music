@@ -24,7 +24,7 @@
     const grid=one('.catalog-card-scroll');grid.scrollTop=grid.scrollHeight;await sleep(350);await capture('artist_albums_scrolled');grid.scrollTop=0;await sleep(350);
     click(one('.catalog-card'));await wait(()=>one('.catalog-heading h1')?.textContent==='测试专辑','album');await capture('album');
     await collected();await capture('album_collected');
-    click(button('下载当前歌曲列表'));await wait(()=>one('dialog[open]'),'download options');await capture('album_download_options');
+    click(button('下载'));await wait(()=>one('dialog[open]'),'download options');await capture('album_download_options');
     const close=one('dialog[open] [aria-label*="关闭"]');click(close);await wait(()=>!one('dialog[open]'),'download close');
     click(one('.catalog-credits button'));await wait(()=>one('.catalog-section-heading'),'artist from album');
     await tab('歌手介绍','.catalog-description h2');await capture('artist_introduction');

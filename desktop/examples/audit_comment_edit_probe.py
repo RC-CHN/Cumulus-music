@@ -70,7 +70,9 @@ def audit(root):
         if call['path'] not in WRITE_PATHS:
             assert call['path'] in {'/api/w/nuser/account/get', '/api/user/playlist',
                                    '/api/song/like/get', '/api/v3/discovery/recommend/songs',
-                                   '/api/v1/resource/comments/R_SO_4_123', '/api/resource/comment/floor/get'}
+                                   '/api/v1/resource/comments/R_SO_4_123', '/api/resource/comment/floor/get',
+                                   '/api/search/default/keyword/get', '/api/rtrs/abt/front/expinfo/list',
+                                   '/api/relay/setting/show'}
     mutations = writes(reopened)
     assert Counter(c['path'] for c in mutations) == {
         '/api/resource/comments/add': 4, '/api/v1/resource/comments/reply': 2,

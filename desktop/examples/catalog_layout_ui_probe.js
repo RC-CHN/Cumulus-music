@@ -25,7 +25,7 @@
   const failures = [];
   async function capture(name, checks = {}) {
     await sleep(500);
-    const page = one('.comments-page, .catalog-page');
+    const page = one('.catalog-page, .comments-page');
     const cards = all('.catalog-card');
     checks.documentContained = document.documentElement.scrollWidth <= innerWidth;
     checks.pageContained = !!page && rect(page).bottom <= rect(one('.main-content')).bottom + 1;
@@ -96,10 +96,10 @@
         metadataContained: one('.catalog-heading').scrollWidth <= one('.catalog-heading').clientWidth + 1,
         actionsContained: all('.catalog-heading button').every(node => rect(node).right <= rect(one('.catalog-page')).right + 1),
       });
-      click(button('专辑评论'));
+      click(one('[role="tab"][id$="-comments"]'));
       await wait(() => all('[data-group="page"] .comment-card').length === 20, 'comment page');
-      const comments = one('.comments-page');
-      comments.scrollTop = 0; await sleep(400);
+      const comments = one('.catalog-page');
+      comments.scrollTop = 0; one('.comments-page').scrollIntoView({ block: 'start' }); await sleep(400);
       await capture(`comments_top_${width}_${color}`, {
         namesContained: all('.comment-author').every(node => node.scrollWidth <= node.clientWidth + 1),
         headerVisible: rect(one('.comments-page .page-heading')).y >= rect(one('.main-content')).y,
