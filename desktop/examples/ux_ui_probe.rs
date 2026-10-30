@@ -219,6 +219,14 @@ fn main() {
                 window.set_cursor_position(position).unwrap();
                 window.eval("window.__searchPointerAck=true;").unwrap();return;
             }
+            if search_fixture::enabled() && stage=="search-clipboard-check" {
+                use tauri_plugin_clipboard_manager::ClipboardExt;
+                let handle=handle.clone(); let expected=value["expected"].as_str().unwrap().to_owned();
+                tauri::async_runtime::spawn(async move {
+                    let matches = handle.clipboard().read_text().is_ok_and(|text|text==expected);
+                    handle.get_webview_window("main").unwrap().eval(format!("window.__searchClipboardAck={matches};")).unwrap();
+                });return;
+            }
             if search_fixture::enabled() && stage=="search-fixture" {
                 search_fixture::control(&value);
                 handle.get_webview_window("main").unwrap().eval("window.__searchFixtureAck=true;").unwrap();return;

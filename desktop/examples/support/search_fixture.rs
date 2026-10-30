@@ -26,6 +26,7 @@ pub fn control(value: &Value) {
             "scroll_error",
             "scroll_duplicates",
             "preview",
+            "lyrics",
             "empty",
             "expired"
         ]
@@ -280,6 +281,24 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
             })
             .collect()
     });
+    if mode == "lyrics" && category == "lyrics" {
+        for (i, row) in container[key]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .enumerate()
+        {
+            row["song"]["id"] = json!(i + 1 + offset);
+            row["lyrics"] = json!(match i {
+                1 => "只有两行合成歌词\n短歌词的展开按钮不可用".to_owned(),
+                2 => String::new(),
+                3 => format!("无空格长行 {}\n第二行\n第三行\n第四行", "SyntheticLyrics🎵".repeat(40)),
+                4 => (0..600).map(|n|format!("合成歌词 {n}\n")).collect(),
+                _ => "第一行合成歌词\n在夜色中听见你的声音🎵\n每段旋律都是此刻的回响\n第四行 · 展开后的文字\n\n第六行 · 空行之后\n<img src=x onerror=alert(1)>\n第八行 · 合成歌词结束".to_owned(),
+            });
+            row["matchedLyric"] = json!([]);
+        }
+    }
     container["hasMore"] = json!(mode != "empty" && category != "all" && offset + limit < total);
     if mode.starts_with("scroll") {
         for key in [
