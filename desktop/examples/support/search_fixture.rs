@@ -19,6 +19,9 @@ pub fn control(value: &Value) {
             "suggest_error",
             "result_error",
             "unavailable",
+            "card_error",
+            "cover",
+            "cover_error",
             "empty",
             "expired"
         ]
@@ -44,7 +47,15 @@ pub fn initialize(store: &StateStore) -> Result<()> {
 pub fn calls() -> usize {
     CALLS.load(Ordering::SeqCst)
 }
+pub fn card_failed() -> bool {
+    *MODE.lock().unwrap() == "card_error"
+}
 pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
+    if enabled()
+        && let Some(result) = podcast_response(path, args)
+    {
+        return Some(result);
+    }
     if let Some(result) = result_response(path, args) {
         return Some(result);
     }
@@ -104,6 +115,38 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
     Some(Ok(json!({"code":200,"data":data})))
 }
 
+fn podcast_response(path: &str, args: &Value) -> Option<Result<Value>> {
+    let number = |key: &str, fallback| {
+        args[key]
+            .as_str()
+            .and_then(|s| s.parse::<u64>().ok())
+            .or_else(|| args[key].as_u64())
+            .unwrap_or(fallback)
+    };
+    let radio = |id| json!({"id":id,"name":format!("合成播客 {id}"),"programCount":3,"dj":{"nickname":"合成主播"}});
+    let program = |id, radio_id| json!({"id":id,"name":format!("合成声音 {id}"),"mainSong":{"id":id-400,"name":format!("合成声音 {id}"),"duration":360000},"duration":360000,"radio":radio(radio_id),"dj":{"nickname":"合成主播"}});
+    let data = match path {
+        "/api/djradio/v3/get" => {
+            if card_failed() {
+                return Some(Err(Error::Transport("合成播客读取失败".into())));
+            }
+            json!({"code":200,"data":radio(number("id",301))})
+        }
+        "/api/v6/dj/program/byradio" => {
+            json!({"code":200,"data":{"programs":(401..=403).map(|id|program(id,number("radioId",301))).collect::<Vec<_>>(),"count":3,"more":false,"asc":args["asc"]}})
+        }
+        "/api/content/my/liked/voice" => json!({"code":200,"data":{"data":[],"hasMore":false}}),
+        "/api/dj/user/setting/resumeplay/get" => json!({"code":200,"data":{"resumePlayValue":0}}),
+        "/api/dj/program/detail" => json!({"code":200,"program":program(number("id",401),301)}),
+        "/api/dj/play/url/check" => {
+            let id = number("voiceId", 401);
+            json!({"code":200,"data":{"voiceId":id,"songId":id-400,"canPlay":true}})
+        }
+        _ => return None,
+    };
+    Some(Ok(data))
+}
+
 fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
     let category = match path {
         "/api/search/pc/complex/page" => "all",
@@ -157,7 +200,23 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
         rows.clone()
     } else {
         (offset..(offset + limit).min(60))
-            .map(|i| rows[i % rows.len()].clone())
+            .map(|i| {
+                let mut row = rows[i % rows.len()].clone();
+                // Additional grid rows have distinct identities, so the active
+                // resource marker cannot accidentally match repeated fixtures.
+                if category != "songs" && category != "lyrics" {
+                    let item = if legacy {
+                        &mut row
+                    } else {
+                        &mut row["baseInfo"]
+                    };
+                    let field = if category == "users" { "userId" } else { "id" };
+                    if let Some(id) = item[field].as_u64() {
+                        item[field] = json!(id + (i / rows.len()) as u64 * 1000);
+                    }
+                }
+                row
+            })
             .collect()
     });
     container["hasMore"] = json!(mode != "empty" && category != "all" && offset + limit < 60);
@@ -181,6 +240,15 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
             } else {
                 row["baseInfo"]["id"] = json!("opaque-video");
             }
+        }
+    }
+    if ["cover", "cover_error"].contains(&mode.as_str()) && category == "playlists" {
+        for row in response["result"]["playlists"].as_array_mut().unwrap() {
+            // The UI probe intercepts this exact synthetic marker before assigning
+            // img.src, using local valid/invalid bytes. It never contacts the CDN.
+            row["coverImgUrl"] = json!(format!(
+                "https://p1.music.126.net/cumulus-ui-test-{mode}.png"
+            ));
         }
     }
     Some(Ok(response))

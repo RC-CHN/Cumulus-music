@@ -37,7 +37,7 @@
           assert(button('播放全部')&&button('收藏全部'),'official actions');click(button('收藏全部'));await wait(()=>one('.playlist-dialog[open]'),'collection dialog');assert(one('dialog').textContent.includes('30 首'),'collection is explicit about current page');await capture(`collect_${w}_${t}`);click(button('关闭歌单操作'));await wait(()=>!one('.playlist-dialog'),'collect close');
         }
         if(category==='users'){
-          click(one('.search-result-card'));await wait(()=>one('.search-user-dialog[open]'),'user card details');await capture(`user_details_${w}_${t}`);click(button('关闭用户信息'));await wait(()=>!one('.search-user-dialog'),'user close');assert(document.activeElement.classList.contains('search-result-card'),'modal returns focus');
+          click(one('.search-card-open'));await wait(()=>one('.search-user-dialog[open]'),'user card details');await capture(`user_details_${w}_${t}`);click(button('关闭用户信息'));await wait(()=>!one('.search-user-dialog'),'user close');assert(document.activeElement.classList.contains('search-card-open'),'modal returns focus');
         }
       }
     }
@@ -50,7 +50,7 @@
     await choose('songs');
     const album=one('.track-album[data-tooltip]');assert(album&&!album.hasAttribute('title'),'native title replaced');album.dispatchEvent(new PointerEvent('pointerover',{bubbles:true}));await wait(()=>one('.content-tooltip')&&getComputedStyle(one('.content-tooltip')).visibility==='visible','content tooltip');await capture('content_tooltip');
     await choose('artists');assert(!one('.content-tooltip'),'route clears tooltip');await capture('tooltip_cleared');
-    await fixture('unavailable');await choose('voices');assert(one('.search-result-card').disabled&&one('.search-result-card').textContent.includes('暂不可打开'),'missing radio target disabled');await capture('voice_unavailable');await choose('mvs');assert(one('.search-result-card').disabled,'non-MV target disabled');await capture('mv_unavailable');await fixture('good');
+    await fixture('unavailable');await choose('voices');assert(!one('.search-result-card .search-card-play')&&one('.search-result-card').textContent.includes('暂不可打开'),'missing radio target disabled');await capture('voice_unavailable');await choose('mvs');assert(one('.search-card-open').disabled,'non-MV target disabled');await capture('mv_unavailable');await fixture('good');
     await choose('songs');click(button('播放全部'));await wait(()=>one('.now-playing')?.textContent.includes('界面')||button('暂停'),'play selection');await capture('play');
     await fixture('expired');click(one('[data-category="albums"]'));await wait(()=>button('重新登录')&&!one('.search-results-page'),'expired account');await capture('expired');
     await emit('complete',{ok:true,stageCount:count,responseTimingInjected:true,realMusicRequests:0,realAccountWrites:0});

@@ -58,6 +58,21 @@ impl Api for Library {
             if let Some(result) = search_fixture::response(path, &args) {
                 return result;
             }
+            if search_fixture::enabled()
+                && matches!(
+                    path,
+                    "/api/artist/v3/detail"
+                        | "/api/album/v3/detail"
+                        | "/api/album/privilege"
+                        | "/api/album/detail/dynamic"
+                        | "/api/song/enhance/privilege"
+                )
+            {
+                if search_fixture::card_failed() {
+                    return Err(cumulus_core::Error::Transport("合成卡片读取失败".into()));
+                }
+                return fixture::Library::default().request(path, args, false).await;
+            }
             Ok(match path {
                 "/api/rtrs/abt/front/expinfo/list" => json!({"code":200,"data":[]}),
                 "/api/relay/setting/show" => json!({"code":200,"data":{"groups":[]}}),
@@ -198,6 +213,12 @@ fn main() {
             let mut value:Value=serde_json::from_str(event.payload()).unwrap();
             if search_fixture::enabled() { value["syntheticSearchCalls"]=json!(search_fixture::calls()); }
             let stage=value["stage"].as_str().unwrap_or("");
+            if search_fixture::enabled() && stage=="search-pointer" {
+                let window=handle.get_webview_window("main").unwrap();
+                let position=tauri::LogicalPosition::new(value["x"].as_f64().unwrap(),value["y"].as_f64().unwrap());
+                window.set_cursor_position(position).unwrap();
+                window.eval("window.__searchPointerAck=true;").unwrap();return;
+            }
             if search_fixture::enabled() && stage=="search-fixture" {
                 search_fixture::control(&value);
                 handle.get_webview_window("main").unwrap().eval("window.__searchFixtureAck=true;").unwrap();return;
