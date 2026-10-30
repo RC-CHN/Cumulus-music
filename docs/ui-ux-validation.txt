@@ -1264,3 +1264,27 @@ Windows现场与接续提示焦点复查（2026-10-29）
 - 最终cover-preview-final2-layout的36态回归通过；上述最终64张原始截图与两组改前/改后
   对照索引位于.build/cover-preview-gallery/index.html。没有将第一轮失败或中间版纳入
   最终64态。cover-preview-final2-checks.json记录最终格式/构建/两项GUI检查均为0。
+2026-10-30 搜索发现区专项
+- 官方来源和逐项差异：search-discovery-ui-contracts.txt；整页审计仍按ui-ux-audit.txt。
+  当前完成搜索发现浮层/历史/推荐/建议及结果标题，综合结果和分类内容尚未完成。
+- search-ui-second的45态为初版证据；随后修正标签28px、历史/推荐不同间距、行末展开。
+  search-tags-first因测试滚动抢在收起布局之前而在12态后失败，保留原始记录。
+  search-tags-second的49态通过，49张原图均逐张查看。发现输入合成期间仍显示查找中，
+  已改为等待输入完成并禁用直接搜索。另观察到原生title提示可滞留在遮罩上方，仍待复核。
+- search-discovery-final使用最终内嵌production前端，49态/49张截图通过，71次合成
+  搜索API调用，真实音乐请求/账号写入均0。最终额外查看窄窗深色首页、深色清空确认、
+  输入合成、合成结束、登录失效5张；之前逐张查看的49张属于search-tags-second版本。
+- 场景覆盖两尺寸×两主题的首页、历史展开、推荐展开、榜单滚动、建议等待/内容、结果、
+  确认取消、关闭；及删除/清空、失败重试/空、过时响应、输入法合成、关闭与登录失效。
+  输入法使用DOM composition事件，不能称为物理系统输入法验证。动画等待只证明结束后
+  状态，不证明所有切换均已有动效、物理屏幕帧率或官方像素一致。
+- search-tags-regression-ux的41态/41截图通过，包含重启主题保持。下载/播放/评论/
+  基础UI旧标题定位同步更新；这些线上流程未在本轮重跑，不把语法检查当实测。
+- Node24.16.0：npm ci、format:check、249测试、类型检查及production构建通过。
+  Rust1.96.0：fmt、workspace/all-targets/custom-protocol严格Clippy通过；全量256目标，
+  1176 passed/0 failed/0 ignored。独立core检查只作防回归，不计作UI一致性通过。
+  最终文案改动后前端格式/249测试/构建及原生主程序/探针重建通过，再运行最终49态。
+- 最终49张原图索引：.build/search-discovery-gallery/index.html；manifest.json保存图片hash。
+- 产物、失败轮、截图及源文件hash仅保存在私有.build；不提交真实会话、截图或构建产物。
+  Linux使用zh_CN.UTF-8隔离Xvfb/D-Bus、xcompmgr与真实WebKitGTK。Windows视觉、DPI和
+  用户实际显示器刷新率没有在这里验证。全范围目标仍在进行，未发布新版本。
