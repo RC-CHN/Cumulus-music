@@ -1,0 +1,54 @@
+--- a/libavfilter/af_ladspa.c
++++ b/libavfilter/af_ladspa.c
+@@ -36,6 +36,42 @@
+ #include "avfilter.h"
+ #include "filters.h"
+ #include "formats.h"
++
++#ifdef _WIN32
++#include "libavutil/wchar_filename.h"
++
++/* Keep this filter's native loading independent of the ANSI dlfcn shim. */
++static void *ladspa_load_utf8(const char *filename)
++{
++    wchar_t *wide = NULL;
++    HMODULE module;
++    DWORD error;
++
++    if (get_extended_win32_path(filename, &wide) < 0)
++        return NULL;
++    module = LoadLibraryExW(wide, NULL, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR |
++                                      LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
++    error = module ? 0 : GetLastError();
++    av_free(wide);
++    if (!module)
++        av_log(NULL, AV_LOG_ERROR, "LADSPA DLL load failed (Windows %lu)\n", (unsigned long)error);
++    return module;
++}
++
++#define dlopen(path, flags) ladspa_load_utf8(path)
++#define dlsym(handle, name) ((void *)GetProcAddress((HMODULE)(handle), (name)))
++#define dlclose(handle) (FreeLibrary((HMODULE)(handle)) ? 0 : -1)
++#define dlerror() "Windows LADSPA export unavailable"
++#endif
++
++static int ladspa_is_path(const char *name)
++{
++    return name[0] == '/' || name[0] == '.'
++#ifdef _WIN32
++        || name[0] == '\\' || (((name[0] >= 'A' && name[0] <= 'Z') || (name[0] >= 'a' && name[0] <= 'z')) && name[1] == ':')
++#endif
++        ;
++}
+ 
+ typedef struct MetaItem {
+     int64_t pts;
+@@ -498,7 +534,7 @@
+         return AVERROR(EINVAL);
+     }
+ 
+-    if (s->dl_name[0] == '/' || s->dl_name[0] == '.') {
++    if (ladspa_is_path(s->dl_name)) {
+         // argument is a path
+         s->dl_handle = dlopen(s->dl_name, RTLD_LOCAL|RTLD_NOW);
+     } else {

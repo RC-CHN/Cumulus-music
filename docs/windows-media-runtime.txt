@@ -21,7 +21,10 @@ Sources and build
 Primary upstream recipe (original configuration and dependency list):
 https://github.com/msys2/MINGW-packages/blob/d468dd4568d3c2e6f07deee83cfbffebe79ac033/mingw-w64-ffmpeg/PKGBUILD
 FFmpeg implementation:
-https://github.com/FFmpeg/FFmpeg/blob/master/libavfilter/af_ladspa.c
+https://github.com/FFmpeg/FFmpeg/blob/n9.0.2/libavfilter/af_ladspa.c
+https://github.com/FFmpeg/FFmpeg/blob/n9.0.2/libavutil/wchar_filename.h
+Underlying ANSI dlfcn implementation:
+https://github.com/dlfcn-win32/dlfcn-win32/blob/master/src/dlfcn.c
 MSYS2 build procedure:
 https://www.msys2.org/dev/new-package/
 
@@ -33,9 +36,13 @@ keys from an external keyserver or bypassing a failed signature check.
 
 windows_media.py checks the installed stock FFmpeg version before building.
 Its small, shape-checked recipe patch adds --enable-ladspa and its SDK/dlfcn
-dependencies. All original codec, network, hardware and format configuration
+dependencies. ffmpeg-ladspa-windows.patch additionally recognizes Windows drive,
+UNC and extended paths. For this filter alone, it uses FFmpeg's UTF-8/extended
+path helper and LoadLibraryExW/GetProcAddress/FreeLibrary, avoiding the ANSI
+dlfcn shim. Dependency lookup uses the loaded DLL directory and Windows's
+default trusted directories. Linux filter loading is unchanged. All original codec, network, hardware and format configuration
 is retained. Only the shared runtime variant is built; no static development
-archive is needed by the application. The custom package release is 2.1.
+archive is needed by the application. The custom package release is 2.2.
 Any stock package version drift requires reviewing/updating the lock.
 
 The upstream recipe's ignored `make check || true` is replaced by a strict
@@ -45,12 +52,14 @@ requires the original full configuration to remain present, a listed LADSPA
 filter, and actual loading/running of the current Cumulus plugin on synthetic
 input. That initial cross-process plugin check verifies loading only: its
 control registry has no application-owned configuration. Real DSP parameters
-and output are verified in the in-process PCM probes below.
+and output are verified by the actual current player_probe on every runtime
+installation, including cache hits, and by the packaged PCM/GUI probes below.
+An ASCII relative loader check alone cannot pass the runtime gate.
 
 Cache and packaging boundaries
 -----------------------------
 The exact cache key covers the committed lock/build scripts and every
-installed MSYS2 package version. No fallback cache key is used. Cached package
+installed MSYS2 package version, including the committed Windows loader patch. No fallback cache key is used. Cached package
 and source checksums, original locked recipe/archive, and the deterministic
 modified recipe are checked before pacman installation. The installed version,
 configuration and filter execution are checked again even after a cache hit.
@@ -84,3 +93,13 @@ All three Windows CI workflows use the shared windows-media action. Main CI
 keeps the Linux and Windows runners separate and requires the complete gate.
 The longer build timeout accommodates a cold full-feature FFmpeg build; it
 does not alter pass/fail criteria or release rules.
+
+Validation state
+----------------
+Run 41137363548 built/installed revision 2.1 and executed its relative ASCII
+filter check. That establishes only the added filter capability, not Windows
+Unicode/absolute paths or complete desktop audio correctness. Source review
+then identified both the Unix-only path classification and ANSI dlfcn loading.
+Revision 2.2 includes the explicit Windows patch and moves the full in-process
+Unicode/PCM probe into the runtime action itself. Those Windows checks are
+pending a new CI run; no old capability-only result is reused as PCM proof.

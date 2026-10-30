@@ -20,7 +20,7 @@ runs:
         key: ${{ steps.plan.outputs.cache-key }}
     - name: Build the current native DSP for runtime verification
       shell: bash
-      run: cargo build --locked -p cumulus-audio-filter --lib
+      run: cargo build --locked -p cumulus-audio-filter --lib --example player_probe
     - name: Install and verify Windows LADSPA runtime
       shell: bash
       env:

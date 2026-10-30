@@ -35,7 +35,7 @@ def configuration(version):
 def patch_recipe(original):
     """Fail closed when the locked upstream recipe no longer has this shape."""
     replacements = [
-        ('pkgrel=2\n', 'pkgrel=2.1\n'),
+        ('pkgrel=2\n', 'pkgrel=2.2\n'),
         ('    --enable-gpl\n', '    --enable-gpl\n    --enable-ladspa\n'),
         ('depends=("${MINGW_PACKAGE_PREFIX}-aom"',
          'depends=("${MINGW_PACKAGE_PREFIX}-dlfcn"\n         "${MINGW_PACKAGE_PREFIX}-aom"'),
@@ -43,6 +43,8 @@ def patch_recipe(original):
          'makedepends=("${MINGW_PACKAGE_PREFIX}-ladspa-sdk"\n             "${MINGW_PACKAGE_PREFIX}-cc"'),
         ('${_realname}-${pkgver}.tar.xz{,.asc}', '${_realname}-${pkgver}.tar.xz'),
         ("            'SKIP'\n", ''),
+        ('  mv VERSION VERSION.txt\n',
+         '  mv VERSION VERSION.txt\n  patch -Nbp1 -i "${startdir}/ffmpeg-ladspa-windows.patch"\n'),
     ]
     result = original
     for before, after in replacements:
@@ -80,7 +82,8 @@ def prepare(msys):
     binary = msys / 'ucrt64/bin'
     baseline = output([binary / 'ffmpeg.exe', '-version'])
     identity = hashlib.sha256()
-    for path in (HERE / 'windows_media.lock.json', HERE / 'windows_media.py', HERE / 'windows_media_build.sh'):
+    for path in (HERE / 'windows_media.lock.json', HERE / 'windows_media.py',
+                 HERE / 'windows_media_build.sh', HERE / 'ffmpeg-ladspa-windows.patch'):
         identity.update(path.read_bytes())
     identity.update(installed.encode())
     key = 'windows-media-ucrt64-' + identity.hexdigest()
@@ -115,6 +118,8 @@ def verify_cache(cache, plan, lock=None):
     assert sha256(cache / source['name']) == source['sha256'], 'locked source checksum mismatch'
     expected_recipe = patch_recipe((cache / 'PKGBUILD.upstream').read_text(encoding='utf-8'))
     assert (cache / 'PKGBUILD').read_text(encoding='utf-8') == expected_recipe, 'modified recipe differs from reviewed patch'
+    patch = 'ffmpeg-ladspa-windows.patch'
+    assert patch in receipt['files'] and sha256(cache / patch) == sha256(HERE / patch), 'Windows loader patch differs from reviewed source'
     return packages[0]
 
 
@@ -129,6 +134,7 @@ def install(msys):
         for name, expected in lock['recipeFiles'].items():
             download(source_url + name, cache / name, expected)
         shutil.copy2(cache / 'PKGBUILD', cache / 'PKGBUILD.upstream')
+        shutil.copy2(HERE / 'ffmpeg-ladspa-windows.patch', cache / 'ffmpeg-ladspa-windows.patch')
         (cache / 'PKGBUILD').write_text(patch_recipe((cache / 'PKGBUILD').read_text(encoding='utf-8')), encoding='utf-8', newline='\n')
         source = lock['source']
         download(source['url'], cache / source['name'], source['sha256'])
@@ -170,11 +176,23 @@ def install(msys):
                     '-f', 'lavfi', '-i', 'sine=frequency=1000:duration=0.1',
                     '-af', 'ladspa=file=./cumulus_audio_filter.dll:plugin=cumulus_geq:controls=1',
                     '-f', 'null', '-'], cwd=BUILD, check=True, timeout=30)
+    # Check the production host's absolute, escaped Unicode path in-process:
+    # loading the relative ASCII plugin above cannot establish this capability.
+    probe = target / 'debug/examples/player_probe.exe'
+    env = {**os.environ, 'PATH': str(binary) + os.pathsep + os.environ.get('PATH', '')}
+    with (BUILD / 'player-probe.log').open('x', encoding='utf-8') as log:
+        result = subprocess.run([str(probe), str(plugin.resolve()), str(BUILD / 'equalizer-proof')],
+                                stdout=subprocess.PIPE, stderr=log, env=env, check=True,
+                                text=True, encoding='utf-8', timeout=60)
+    pcm = json.loads(result.stdout)
+    assert pcm['ok'] and pcm['remote_requests'] == 0
+    write_json(BUILD / 'player-probe.json', pcm)
     libraries = {p.name: sha256(p) for p in sorted(binary.glob('*.dll'))
                  if p.name.startswith(('avcodec-', 'avdevice-', 'avfilter-', 'avformat-', 'avutil-', 'swresample-', 'swscale-'))}
     assert len(libraries) == 7, f'FFmpeg library set changed: {sorted(libraries)}'
     receipt = {'key': plan['key'], 'package': version, 'configuration': current,
-               'libraries': libraries, 'filterLoaded': True, 'pluginSha256': sha256(plugin)}
+               'libraries': libraries, 'filterLoaded': True, 'nativePcmVerified': True,
+               'pluginSha256': sha256(plugin)}
     write_json(BUILD / 'installed.json', receipt)
     print(json.dumps(receipt), flush=True)
 
@@ -182,7 +200,7 @@ def install(msys):
 def copy_provenance(destination, msys):
     """Require the verified runtime; retain its corresponding source in bundles."""
     receipt = json.loads((BUILD / 'installed.json').read_text(encoding='utf-8'))
-    assert receipt['filterLoaded'] and '--enable-ladspa' in receipt['configuration']
+    assert receipt['filterLoaded'] and receipt['nativePcmVerified'] and '--enable-ladspa' in receipt['configuration']
     for name, expected in receipt['libraries'].items():
         assert sha256(msys / 'ucrt64/bin' / name) == expected, f'FFmpeg changed after verification: {name}'
     target = destination / 'third-party/cumulus-ffmpeg-source'

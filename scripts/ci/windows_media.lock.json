@@ -1,7 +1,7 @@
 {
   "recipeCommit": "d468dd4568d3c2e6f07deee83cfbffebe79ac033",
   "upstreamPackage": "9.0.2-2",
-  "customPackage": "9.0.2-2.1",
+  "customPackage": "9.0.2-2.2",
   "source": {
     "name": "ffmpeg-9.0.2.tar.xz",
     "url": "https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz",

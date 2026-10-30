@@ -5,7 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from windows_media import configuration, patch_recipe, sha256, verify_cache
+from windows_media import HERE, configuration, patch_recipe, sha256, verify_cache
 
 RECIPE = '''pkgrel=2
 depends=("${MINGW_PACKAGE_PREFIX}-aom")
@@ -14,6 +14,9 @@ source=(https://example.invalid/${_realname}-${pkgver}.tar.xz{,.asc})
 sha256sums=('synthetic'
             'SKIP'
 )
+prepare() {
+  mv VERSION VERSION.txt
+}
 build() {
   common_config+=(
     --enable-gpl
@@ -46,6 +49,7 @@ class WindowsRuntimeIntegrity(unittest.TestCase):
         (self.cache / 'ffmpeg-synthetic.tar.xz').write_bytes(b'source')
         self.package = self.cache / 'ffmpeg-synthetic.pkg.tar.zst'
         self.package.write_bytes(b'package')
+        (self.cache / 'ffmpeg-ladspa-windows.patch').write_bytes((HERE / 'ffmpeg-ladspa-windows.patch').read_bytes())
         self.record()
 
     def record(self):
@@ -86,6 +90,12 @@ class WindowsRuntimeIntegrity(unittest.TestCase):
     def test_upstream_recipe_drift_is_an_explicit_failure(self):
         with self.assertRaisesRegex(AssertionError, 'upstream recipe changed'):
             patch_recipe(RECIPE.replace('pkgrel=2\n', 'pkgrel=3\n'))
+
+    def test_rehashed_loader_patch_drift_is_rejected(self):
+        (self.cache / 'ffmpeg-ladspa-windows.patch').write_bytes(b'unreviewed loader')
+        self.record()
+        with self.assertRaisesRegex(AssertionError, 'loader patch differs'):
+            verify_cache(self.cache, self.plan, self.lock)
 
     def test_configuration_parser_preserves_quoted_compiler_arguments(self):
         self.assertEqual(configuration("ffmpeg synthetic\nconfiguration: --enable-shared --extra-cflags='-O2 -DTEST'\n"),
