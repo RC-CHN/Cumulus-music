@@ -1,5 +1,6 @@
 歌单封面裁剪窗口 UI/UX 来源与验收契约
-2026-10-30，fix/playlist-cover-dialog；完整逐页UI审计仍进行中。
+2026-10-30，fix/playlist-cover-dialog 阶段记录；完整逐页UI审计仍进行中。
+后续入口顺序与恢复专项见 playlist-cover-entry-ui-contracts.txt；本文件保留当时用例数。
 
 官方来源（相对 references/ui-recovery/sources/packages/）
 - pc/src/components/AvatarCliper/index.tsx：窗口宽442px、最小高度556px；标题上距40px，

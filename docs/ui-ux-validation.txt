@@ -1155,3 +1155,44 @@ Windows现场与接续提示焦点复查（2026-10-29）
 边界：隔离Xvfb/private D-Bus/xcompmgr的真实WebKitGTK，LC_ALL=zh_CN.UTF-8；不是pan物理
 桌面、刷新率或Windows/DPI证明。脚本指针/键盘事件与XTest原生选图分别记录，不声称物理外设
 或官方同态运行截图像素一致。官方首次入口先选图再开裁剪、其余上传/恢复窗口状态仍待完成。
+
+2026-10-30：封面先选图入口与操作记录恢复（fix/playlist-cover-entry）
+- 对照CoverEdit的文件检查→选中图片→打开AvatarCliper顺序；原生取消留在编辑页。
+  新增页面级入口模型，保留文字草稿、禁止等待时重复进入/提前导航，并为恢复路径
+  明确关闭后的封面焦点。任务读取失败提供重试，不能当成没有任务而开启新选图。
+  详细来源、实现职责和社区适配见playlist-cover-entry-ui-contracts.txt。
+- playlist-cover-entry-final2-checks.json：格式、240项前端测试、类型/生产构建、内嵌
+  cumulus/ux_ui_probe构建、默认36态、原生60态均0。此轮尚未包含文字草稿显式检查。
+  final-checks.json（同前缀）中的编辑45态、共用41态、动画18态均0，生产前端相同；
+  之后只扩展example故障夹具/测试断言，没有为这些回归虚报再次执行。
+- 原生最终证据为playlist-cover-entry-final5-native/audit.json：60态、60张WebView
+  截图及16张GTK窗口图，pickerFirstVerified/draftPreserved/recoveryEntryVerified/
+  readFailureBlocksSelection均true。两尺寸×两主题操作原生取消/无效图片/有效图片/
+  替换取消；保存文字草稿后检查未丢失，取消回到封面按钮，等待时导航保持原编辑页。
+- 默认36态和原生60态还覆盖真实Rust任务从操作记录恢复、旧记录已结束、任务读取失败/
+  再次失败/重读成功。读取失败由隔离example放入坏任务，成功前由fixture移除；生产
+  界面只是重试读取，未声称自动修复损坏数据。合成申请拒绝与原图解码/裁剪/日志走实际
+  用例，上传适配器拒绝网络；实际音乐请求、账号写入、上传与合成元数据提交均为0。
+- 中间失败不隐藏：first-native和final3-native均在宽窗深色无效图片布局断言失败，
+  final2和final4曾通过，不能据此忽略偶发失败。geometry-stress第14次捕获到移除Vue
+  类后WebKit动画仍running/currentTime=209ms、transform还有0.000188px偏移、窗口宽
+  441.9998474121094px、按钮高39.99993896484375px。仅等220ms/动画类移除不足以测静态值。
+  探针现等待浏览器getAnimations无运行/等待动画且transform=none，再保留原精确断言。
+  final5-checks.json的native/stress均0；geometry-stress-fixed/audit.json证明20次原生
+  无效选图循环/40态全部通过。定向诊断是私有证据，不计入下面216张最终/回归图数。
+- 人工查看宽窗浅色和窄窗深浅色的取消后文字草稿、窄窗深色无效图片、裁剪窗口、操作
+  记录恢复、过期提示、读取失败/重读成功和实际GTK选择器。原图未编辑；图集只用CSS
+  隐藏窗口外桌面，系统窗口保留完整截图。playlist-cover-entry-gallery/index.html
+  收录36+60+16+45+41+18=216张，标明轮次；不是216个页面、官方像素一致或物理刷新率。
+- 原生选择器在Linux隔离Xvfb/private D-Bus/xcompmgr运行，LC_ALL=zh_CN.UTF-8。
+  其余点击/键盘由DOM事件驱动；未验证pan物理桌面、外设、Windows视觉或DPI。
+  playlist_cover_ui_probe.js已同步真实上传测试的入口次序，本轮未运行真实上传回归。
+- npm ci、格式、240项前端测试、类型/生产构建通过。Rust工程检查见同前缀final2-
+  engineering-checks.json：fmt、严格workspace/all-targets/custom-protocol Clippy、
+  全量254目标/1173 passed/0 failed/0 ignored均通过；之后只改JS探针/文档。
+  CI规则21项、source audit及release guard通过。这些仅防回归，不计入UI一致性完成度。
+- 基础提交c24f26a的CI 40992963027最终：前端/Linux成功，Windows的login lifecycle
+  smoke仍因缺少ci-native-audio-loudness-windows.json失败，未执行后续Windows UI检查；
+  CI gate失败。新分支按精确提交另行运行，不拿Linux代替Windows，不绕过gate发版本。
+- 首次入口差异已解决；成功上传/暂停续传/绑定未知/冲突/会话过期窗口/清理失败及其他
+  页面仍需逐态视觉核对。完整目标和全应用UI/UX审计均未完成。
