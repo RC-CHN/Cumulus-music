@@ -156,6 +156,7 @@ jobs:
           xvfb-run -a dbus-run-session -- python3 scripts/ci/ux_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-ux-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/download_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-layout-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/download_page_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-page-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/download_page_smoke.py --table --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-table-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/player_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-player-layout-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playlist_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playlist-layout-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playlist_editor_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playlist-editor-linux
@@ -228,6 +229,7 @@ jobs:
           python scripts/ci/ux_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-ux-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/download_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-download-layout-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/download_page_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-download-page-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/download_page_smoke.py --table --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-download-table-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/player_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-player-layout-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/playlist_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playlist-layout-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/playlist_editor_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playlist-editor-windows --runtime .build/package-stage/windows-x64/native
