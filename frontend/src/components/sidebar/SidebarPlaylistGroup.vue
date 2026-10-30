@@ -185,6 +185,7 @@ async function context(event: MouseEvent | KeyboardEvent, list: PlaylistView) {
       </div>
     </Transition>
     <ActionMenu
+      variant="song"
       ref="menu"
       context-only
       :label="`${title}操作`"

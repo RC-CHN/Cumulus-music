@@ -81,6 +81,7 @@ defineEmits<{
             <Icon name="download" />下载
           </button>
           <ActionMenu
+            variant="song"
             v-if="items.length"
             label="更多歌单操作"
             :items="items"

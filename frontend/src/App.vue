@@ -18,7 +18,8 @@ import { libraryView } from './services/playlistLibrary';
 import DailyHeading from './components/DailyHeading.vue';
 import PlaylistHero from './components/playlist/PlaylistHero.vue';
 import PlaylistEditorPage from './components/playlist/PlaylistEditorPage.vue';
-import type { MenuItem } from './services/menu';
+import { playlistMenuItems, type PlaylistMenuScene } from './services/playlistMenu';
+import PlaylistActions from './components/playlist/PlaylistActions.vue';
 import TrackActions from './components/TrackActions.vue';
 import ModalTransition from './components/ModalTransition.vue';
 import LoginDialog from './components/LoginDialog.vue';
@@ -436,38 +437,24 @@ const {
 const loginOpen = ref(false);
 const accountsOpen = ref(false);
 const favorite = computed(() => playlists.value.find((p) => p.favorite));
-const own = computed(() => playlists.value.filter((p) => p.owned && !p.favorite));
-const collected = computed(() => playlists.value.filter((p) => !p.owned));
-function playlistMenu(list: PlaylistView): MenuItem[] {
-  if (list.favorite) return [];
-  const group = list.owned ? own.value : collected.value;
-  const index = group.findIndex((p) => p.id === list.id);
-  return [
-    ...(list.owned
-      ? [{ key: 'edit', label: '编辑歌单', icon: 'edit', disabled: playlistManager.busy.value }]
-      : []),
-    ...(index >= 0
-      ? [
-          {
-            key: 'up',
-            label: '上移歌单',
-            icon: 'up',
-            disabled: playlistManager.busy.value || index === 0,
-          },
-          {
-            key: 'down',
-            label: '下移歌单',
-            icon: 'down',
-            disabled: playlistManager.busy.value || index === group.length - 1,
-          },
-        ]
-      : []),
-  ];
+const playlistActions = ref<InstanceType<typeof PlaylistActions>>();
+function playlistMenu(list: PlaylistView, scene: PlaylistMenuScene = 'collection') {
+  return playlistMenuItems(list, scene, {
+    lists: playlists.value,
+    busy: playlistManager.busy.value || downloads.busy.value || !!playlistActions.value?.busy,
+    playable: player.ready.value,
+    preparing: player.busy.value,
+  });
 }
-function playlistAction(list: PlaylistView, key: string) {
-  if (key === 'edit') editPlaylist(list.id);
+function playlistAction(list: PlaylistView, key: string, scene: PlaylistMenuScene = 'collection') {
+  const item = playlistMenu(list, scene).find((item) => item.key === key);
+  if (!item || item.disabled) return;
+  if (key === 'view') music.navigate({ kind: 'playlist', id: list.id });
+  else if (key === 'play') playMemberPlaylist(list.id, null);
+  else if (key === 'edit') editPlaylist(list.id);
   else if (key === 'up' || key === 'down')
     void playlistManager.move(list.id, list.owned, key === 'up' ? -1 : 1, favorite.value?.id);
+  else playlistActions.value?.show(list, key);
 }
 watch(
   () => player.view.value?.track?.voiceId,
@@ -721,8 +708,13 @@ watch(
   },
 );
 watch(
-  () => [page.value.kind, !!downloadDialog.value],
-  () => downloads.show(page.value.kind === 'downloads' || !!downloadDialog.value),
+  () => [page.value.kind, !!downloadDialog.value, !!playlistActions.value?.downloadOpen],
+  () =>
+    downloads.show(
+      page.value.kind === 'downloads' ||
+        !!downloadDialog.value ||
+        !!playlistActions.value?.downloadOpen,
+    ),
 );
 function play(index = 0) {
   const tracks = result.value?.tracks;
@@ -1171,7 +1163,7 @@ onUnmounted(() => {
                   "
                   :subscribed="playlists.some((list) => list.id === result?.playlist?.id)"
                   :busy="playlistManager.busy.value"
-                  :items="playlistMenu(result.playlist)"
+                  :items="playlistMenu(result.playlist, 'detail')"
                   @edit="editPlaylist(result.playlist.id)"
                   @play="play(result.tracks.findIndex((track) => !track.missing))"
                   @download="
@@ -1181,13 +1173,16 @@ onUnmounted(() => {
                     }
                   "
                   @subscribe="
-                    playlistManager.mutate({
-                      kind: 'subscribe',
-                      id: result.playlist.id,
-                      subscribed: !playlists.some((list) => list.id === result?.playlist?.id),
-                    })
+                    playlistActions?.show(
+                      result.playlist,
+                      playlists.some((list) => list.id === result?.playlist?.id)
+                        ? 'remove'
+                        : 'subscribe',
+                    )
                   "
-                  @action="(key) => result?.playlist && playlistAction(result.playlist, key)"
+                  @action="
+                    (key) => result?.playlist && playlistAction(result.playlist, key, 'detail')
+                  "
                 />
                 <div
                   v-else
@@ -1407,6 +1402,18 @@ onUnmounted(() => {
         "
       />
     </ModalTransition>
+    <PlaylistActions
+      ref="playlistActions"
+      :key="`${account.epoch}:${account.status}:playlist-actions`"
+      :account="account"
+      :manager="playlistManager"
+      :downloads="downloads"
+      @expired="music.bootstrap(false)"
+      @started="
+        downloads.filter({ tab: 'active' });
+        music.navigate({ kind: 'downloads' });
+      "
+    />
     <TrackActions
       ref="trackActions"
       :key="account.epoch"

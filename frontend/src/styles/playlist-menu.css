@@ -1,0 +1,71 @@
+.playlist-mutation-dialog,
+.playlist-download-read {
+  width: min(442px, calc(100vw - 32px));
+}
+.playlist-mutation-dialog[open],
+.playlist-download-read[open] {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.playlist-mutation-dialog header,
+.playlist-mutation-dialog footer,
+.playlist-download-read header,
+.playlist-download-read footer {
+  flex-shrink: 0;
+}
+.playlist-mutation-body {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+.playlist-mutation-body p {
+  margin: 0 0 16px;
+}
+.playlist-mutation-dialog footer,
+.playlist-download-read footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
+  padding: 0;
+}
+.playlist-mutation-dialog footer > button,
+.playlist-download-read footer > button {
+  width: 120px;
+  min-width: 120px;
+  min-height: 40px;
+  border-radius: 20px;
+}
+.playlist-operation-error {
+  color: var(--danger);
+}
+.playlist-operation-error .text-button {
+  display: block;
+  margin-top: 8px;
+}
+.playlist-operation-message {
+  color: var(--muted);
+}
+.playlist-mutation-dialog :focus-visible,
+.playlist-download-read :focus-visible {
+  outline-offset: -2px;
+}
+.playlist-mutation-dialog button[aria-disabled='true'],
+.playlist-download-read button[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: wait;
+}
+.action-menu button.danger,
+.action-menu button.danger .icon {
+  color: var(--danger);
+}
+
+.playlist-mutation-body p:last-child {
+  margin-bottom: 0;
+}
+.song-action-menu button.danger {
+  font-size: 13px;
+}

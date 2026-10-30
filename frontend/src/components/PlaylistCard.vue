@@ -110,6 +110,7 @@ function keyboard(event: KeyboardEvent) {
       <Icon :name="current && playing ? 'pause' : 'play'" />
     </button>
     <ActionMenu
+      variant="song"
       v-if="items.length"
       ref="menu"
       class="playlist-card-menu"
