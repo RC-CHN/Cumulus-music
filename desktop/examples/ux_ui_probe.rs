@@ -8,6 +8,8 @@ mod fixture;
 mod like_recovery_fixture;
 #[path = "support/media_shortcuts.rs"]
 mod media_shortcuts;
+#[path = "support/playlist_cover_layout_fixture.rs"]
+mod playlist_cover_layout_fixture;
 #[path = "support/playlist_editor_fixture.rs"]
 mod playlist_editor_fixture;
 #[path = "support/playlist_layout_fixture.rs"]
@@ -97,6 +99,9 @@ impl Api for Library {
                     playlist_editor_fixture::wait_while("hold_write").await;
                     return playlist_editor_fixture::batch(args);
                 }
+                "/api/nos/token/alloc" if playlist_cover_layout_fixture::enabled() => {
+                    return playlist_cover_layout_fixture::allocation().await;
+                }
                 "/api/playlist/catalogue" => {
                     if playlist_editor_fixture::enabled() {
                         return playlist_editor_fixture::catalogue().await;
@@ -152,6 +157,9 @@ fn main() {
         let api:Arc<dyn Api>=recovery.as_ref().map(|f|f.clone() as Arc<dyn Api>).unwrap_or_else(||Arc::new(Library));
         let session=Arc::new(AccountSession::new(api,Some(registry.store())));
         let mut client=MusicClient::with_session(session,registry);
+        if playlist_cover_layout_fixture::enabled() {
+            client=client.with_playlist_cover_backend(Arc::new(playlist_cover_layout_fixture::NoNetwork));
+        }
         let startup_delay: u64 = std::env::var("CUMULUS_PLAYER_START_DELAY_MS").ok()
             .map(|value| value.parse().expect("integer fixture startup delay")).unwrap_or(0);
         assert!(startup_delay <= 5000, "bounded synthetic startup delay");
@@ -174,9 +182,20 @@ fn main() {
         app.manage(if motion_proof { client } else { cumulus_desktop::configure_native_audio(client,&app.path().resource_dir()?,true) });
         app.add_capability(r#"{"identifier":"ux-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
         let handle=app.handle().clone();
+        let cover_root=root.clone();
         app.listen("ux-proof",move |event| {
             let mut value:Value=serde_json::from_str(event.payload()).unwrap();
             let stage=value["stage"].as_str().unwrap_or("");
+            if playlist_cover_layout_fixture::enabled() && stage=="cover-fixture" {
+                let handle=handle.clone();let root=cover_root.clone();
+                tauri::async_runtime::spawn(async move {
+                    let client=handle.state::<MusicClient>();
+                    let result=playlist_cover_layout_fixture::control(&client,&root,&value).await;
+                    let ack=match result {Ok(())=>json!({"ok":true}),Err(error)=>json!({"ok":false,"message":error.to_string()})};
+                    handle.get_webview_window("main").unwrap().eval(format!("window.__coverFixtureAck={ack};")).unwrap();
+                });
+                return;
+            }
             if playlist_editor_fixture::enabled() && stage=="editor-fixture" {
                     playlist_editor_fixture::control(&value);
                     handle.get_webview_window("main").unwrap().eval("window.__editorFixtureAck=true;").unwrap();
