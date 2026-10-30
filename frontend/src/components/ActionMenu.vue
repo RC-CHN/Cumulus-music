@@ -30,7 +30,12 @@ function close(restore = false) {
   returnTarget?.removeAttribute('aria-controls');
   if (returnTarget?.hasAttribute('aria-haspopup'))
     returnTarget.setAttribute('aria-expanded', 'false');
-  if (restore) (returnTarget ?? trigger.value)?.focus({ preventScroll: true });
+  if (restore) {
+    const target = returnTarget ?? trigger.value;
+    if (target && !target.getClientRects().length)
+      target.parentElement?.closest<HTMLElement>('[tabindex]')?.focus({ preventScroll: true });
+    target?.focus({ preventScroll: true });
+  }
 }
 async function display(last = false, point?: { x: number; y: number }, target?: HTMLElement) {
   close();
