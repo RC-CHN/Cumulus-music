@@ -181,9 +181,14 @@ def install(msys):
     probe = target / 'debug/examples/player_probe.exe'
     env = {**os.environ, 'PATH': str(binary) + os.pathsep + os.environ.get('PATH', '')}
     with (BUILD / 'player-probe.log').open('x', encoding='utf-8') as log:
-        result = subprocess.run([str(probe), str(plugin.resolve()), str(BUILD / 'equalizer-proof')],
-                                stdout=subprocess.PIPE, stderr=log, env=env, check=True,
-                                text=True, encoding='utf-8', timeout=60)
+        try:
+            result = subprocess.run([str(probe), str(plugin.resolve()), str(BUILD / 'equalizer-proof')],
+                                    stdout=subprocess.PIPE, stderr=log, env=env, check=True,
+                                    text=True, encoding='utf-8', timeout=60)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            log.flush()
+            print((BUILD / 'player-probe.log').read_text(encoding='utf-8', errors='replace')[-16000:], flush=True)
+            raise
     pcm = json.loads(result.stdout)
     assert pcm['ok'] and pcm['remote_requests'] == 0
     write_json(BUILD / 'player-probe.json', pcm)
@@ -195,6 +200,13 @@ def install(msys):
                'pluginSha256': sha256(plugin)}
     write_json(BUILD / 'installed.json', receipt)
     print(json.dumps(receipt), flush=True)
+
+
+def check_built_cache(_msys):
+    """Authenticate build artifacts; this is not an installed-runtime proof."""
+    plan = json.loads((BUILD / 'plan.json').read_text(encoding='utf-8'))
+    package = verify_cache(BUILD / 'cache', plan)
+    print(f'Build artifact cache verified: {package.name}', flush=True)
 
 
 def copy_provenance(destination, msys):
@@ -219,7 +231,7 @@ def copy_provenance(destination, msys):
 if __name__ == '__main__':
     assert sys.platform == 'win32', 'the runtime is built and checked on Windows'
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['prepare', 'install'])
+    parser.add_argument('action', choices=['prepare', 'install', 'verify-cache'])
     parser.add_argument('--msys', type=Path, required=True)
     args = parser.parse_args()
-    (prepare if args.action == 'prepare' else install)(args.msys.resolve())
+    {'prepare': prepare, 'install': install, 'verify-cache': check_built_cache}[args.action](args.msys.resolve())

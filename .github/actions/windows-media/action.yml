@@ -26,8 +26,17 @@ runs:
       env:
         CUMULUS_MSYS2_ROOT: ${{ inputs.msys-root }}
       run: python scripts/ci/windows_media.py install --msys "$CUMULUS_MSYS2_ROOT"
+    - name: Authenticate completed dependency build for caching
+      id: package-cache
+      if: always() && steps.media-cache.outputs.cache-hit != 'true' && hashFiles('.build/windows-media/cache/build.json') != ''
+      shell: bash
+      env:
+        CUMULUS_MSYS2_ROOT: ${{ inputs.msys-root }}
+      run: python scripts/ci/windows_media.py verify-cache --msys "$CUMULUS_MSYS2_ROOT"
     - uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25
-      if: steps.media-cache.outputs.cache-hit != 'true'
+      # Cache is only a source-authenticated dependency artifact. An earlier
+      # runtime/PCM failure still fails the job and prevents packaging/release.
+      if: always() && steps.package-cache.outcome == 'success'
       with:
         path: .build/windows-media/cache
         key: ${{ steps.plan.outputs.cache-key }}

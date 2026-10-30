@@ -56,13 +56,44 @@ and output are verified by the actual current player_probe on every runtime
 installation, including cache hits, and by the packaged PCM/GUI probes below.
 An ASCII relative loader check alone cannot pass the runtime gate.
 
+Native SDK lifetime
+-------------------
+Run 41140682362 completed its first 44100 Hz mono PCM case through an absolute
+Unicode/quoted DLL path: the 44113 captured floats exactly match the recovered
+DSP output. It then aborted while opening the next runtime, with GGML's
+`prev != ggml_uncaught_exception` assertion and exit status 0xc0000409. The
+archived 48000 Hz fixture exists, but its PCM never started; this is not a
+complete Windows DSP pass.
+
+The dependency installs a process-global C++ terminate handler and does not
+restore it when its DLL unloads:
+https://github.com/ggml-org/ggml/blob/master/src/ggml.cpp
+Unloading/reloading the SDK between captures can therefore abort the process.
+The same lifetime issue also affects production after all native handles close.
+
+engine::MpvRuntime retains trusted SDK modules until process exit, carrying no
+account, decoder, device, media URL or playback state. Each actual media handle
+is still created and destroyed separately. Production audio/video and raw PCM
+verification use this same lease. Windows MTA usage continues to cover each
+owner's media-handle lifetime without changing an existing GUI STA apartment.
+SDK binary replacement requires an application restart. The engine roundtrip
+now closes all handles, then opens/plays/closes three fresh null-output decoders;
+the multi-case PCM tests still create and destroy every real filter chain.
+No GGML environment override, disabled handler or skipped native case is used.
+
 Cache and packaging boundaries
 -----------------------------
 The exact cache key covers the committed lock/build scripts and every
-installed MSYS2 package version, including the committed Windows loader patch. No fallback cache key is used. Cached package
+installed MSYS2 package version, including the committed Windows loader patch.
+No fallback cache key is used. Cached package
 and source checksums, original locked recipe/archive, and the deterministic
 modified recipe are checked before pacman installation. The installed version,
 configuration and filter execution are checked again even after a cache hit.
+An authenticated completed dependency build can be cached after a later PCM
+failure, avoiding another compiler run for the same source. This cache only
+contains build artifacts. Installation, configuration, actual plugin execution
+and PCM checks still run every time; an earlier failed step keeps the CI job
+failed and prevents packaging/release. Invalid cache contents fail validation.
 
 All application DLLs are copied by PE import closure, with unresolved imports
 allowed only when Windows supplies them. The seven installed FFmpeg DLL
