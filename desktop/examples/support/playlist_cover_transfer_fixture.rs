@@ -31,6 +31,7 @@ struct State {
     objects: BTreeMap<String, Vec<u8>>,
     task: String,
     backup: Option<(PathBuf, Vec<u8>)>,
+    preview_backup: Option<Value>,
 }
 pub struct Fixture {
     inner: Arc<dyn Api>,
@@ -92,6 +93,24 @@ impl Fixture {
                 s.mode = "success".into();
             }
             "read_ready" => self.state.lock().unwrap().unreadable = false,
+            "break_preview" => {
+                let mut s = self.state.lock().unwrap();
+                assert!(s.preview_backup.is_none());
+                let mut row = self
+                    .store
+                    .get("2", "playlist-covers-v1", &s.task)?
+                    .expect("isolated synthetic cover");
+                s.preview_backup = Some(row.clone());
+                // A structurally valid journal with an invalid source digest:
+                // the real core image read fails while task recovery still works.
+                row["source"] = json!("AA==");
+                self.store.put("2", "playlist-covers-v1", &s.task, &row)?;
+            }
+            "restore_preview" => {
+                let mut s = self.state.lock().unwrap();
+                let row = s.preview_backup.take().expect("synthetic preview backup");
+                self.store.put("2", "playlist-covers-v1", &s.task, &row)?;
+            }
             "restore_cache" => {
                 let backup = self
                     .state
