@@ -18,7 +18,9 @@ window.__runPlayerProof=async({wait,stage,sleep})=>{
   const position=Number(el('.playerbar').dataset.position);await sleep(500);
   if(Math.abs(Number(el('.playerbar').dataset.position)-position)>.15)throw new Error('paused_clock_moved');
   value('播放进度',20);await wait(()=>Math.abs(Number(el('.playerbar').dataset.position)-20)<.15,'native_seek');
-  value('播放速度',1.25);await wait(()=>el('.playerbar').dataset.speed==='1.25'&&!control('音质').disabled,'native_speed');
+  control('播放速度').click();await wait(()=>el('.speed-action-menu'),'speed_menu');
+  [...document.querySelectorAll('.speed-action-menu button')].find(n=>n.textContent.trim()==='1.25×').click();
+  await wait(()=>el('.playerbar').dataset.speed==='1.25'&&!control('音质').disabled,'native_speed');
   value('音质','lossless');await wait(()=>el('.playerbar').dataset.requestedQuality==='lossless'&&!control('音质').disabled&&el('.playerbar').dataset.state==='paused','quality_preserves_pause');
   const qualityResult={requested:el('.playerbar').dataset.requestedQuality,actual:el('.playerbar').dataset.quality};
   // Wait for the actual queue mutation and enabled controls. Fixed sleeps can

@@ -43,7 +43,9 @@
     epoch = (await invoke('account_snapshot')).epoch;
     await click(all('.track-row .track-play').find(n => !n.disabled));
     await wait(() => playing() && Number(el('.playerbar').dataset.position) > .3, 'mpv_decoded');
-    const speed = el('[aria-label="播放速度"]'); speed.value = '1.25'; speed.dispatchEvent(new Event('change', {bubbles: true}));
+    await click(el('.playerbar [aria-label="播放速度"]'));
+    await wait(()=>el('.speed-action-menu'),'speed_menu');
+    await click(all('.speed-action-menu button').find(n=>n.textContent.trim()==='1.25×'));
     await wait(() => Number(el('.playerbar').dataset.speed) === 1.25, 'speed_preference');
     for (let i = 0; i < 3; i++) {await click(el('.transport-controls button')); await sleep(200);}
     await wait(() => el('.transport-controls button').getAttribute('aria-label') === '顺序播放', 'mode_preference');

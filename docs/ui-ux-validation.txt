@@ -2257,3 +2257,11 @@ Rustfmt、严格workspace全target/custom-protocol Clippy；259个测试目标�
   lavfi创建失败，end-file reason=4/error=-16/loaded=false，进入verification_failed。
   missing_report诊断保留真实失败，CI仍失败；问题不再只是推测。运行时尚需补足，
   不删除过滤链验证、不静默禁用音效换绿色。原始日志和合成诊断归档在.build，未发布版本。
+
+2026-10-31 播放器倍速专项
+最终内嵌前端：speed-menu-verified 32态、speed-menu-kde-embedded 本机125% 32态；
+每组48个不透明底色/左右焦点采样，全64个原生快照暂停在10秒且速度与勾选一致。
+全部9档速度均实际调用原生播放器，之后恢复播放核对从该位置继续。负例保留在
+speed-menu-focus-before，未忽略左右焦点框采样失败。额外键盘32态、歌曲菜单45态、
+歌词/底栏20态回归通过；后两项未新增截图。详见 playback-speed-ui-contracts.txt。
+此处只记录该专项的本机与隔离WebView证据，Windows运行时及完整CI尚不能据此称通过。
