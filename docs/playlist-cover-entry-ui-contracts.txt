@@ -1,5 +1,6 @@
 歌单封面首次入口与恢复 UI/UX 契约
 2026-10-30，fix/playlist-cover-entry；接续 playlist-cover-ui-contracts.txt。
+后续保存反馈与恢复专项见 playlist-cover-feedback-ui-contracts.txt；下文保留本阶段边界。
 
 官方来源
 references/ui-recovery/sources/packages/pc/src/pages/playlist/components/CoverEdit.jsx：

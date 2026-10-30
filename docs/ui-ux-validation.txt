@@ -1196,3 +1196,43 @@ Windows现场与接续提示焦点复查（2026-10-29）
   CI gate失败。新分支按精确提交另行运行，不拿Linux代替Windows，不绕过gate发版本。
 - 首次入口差异已解决；成功上传/暂停续传/绑定未知/冲突/会话过期窗口/清理失败及其他
   页面仍需逐态视觉核对。完整目标和全应用UI/UX审计均未完成。
+
+2026-10-30：封面保存阶段、失败反馈与恢复（fix/playlist-cover-feedback）
+- 官方AvatarCliper的saveAvatar在上传和父级保存成功后closeModal(true)。现正常确认
+  成功后退出窗口并在编辑页显示“封面已保存”；有警告/未决结果则保留处理入口。未提交
+  的名称/简介保留，退出动画后焦点回到封面；具体社区设计见playlist-cover-feedback-ui-contracts.txt。
+- production DOM/IPC连接真实Rust裁剪/编码/分块/日志和对账，API及NOS对端为example内存
+  fixture，不给前端注入任务DTO。合成噪声BMP保证裁剪结果超过256KiB，在多块传输间实际
+  请求暂停和续传。申请/最终上传/绑定丢回复、403、外部更新、缓存变化和301由夹具制造。
+  缓存变化仅限本次隔离目录，恢复原字节后再用生产清理入口，不假称应用自动修复文件。
+- before轮停止在42态：第二次冲突未再次改变夹具数据，是夹具用一次布尔值表示外部修改
+  的缺陷。改为版本计数后，before2的旧production前端完成48态基线。基线不验证新文案/
+  自动关闭/按钮等宽要求，不能把它当成改后通过；失败及旧截图均保留。
+- 人工旧图确认上传失败仍显示“正在上传”、请求暂停后按钮过早恢复、窄窗长简介把确认
+  操作压到视口下方、清理警告与失败同色；逐项修复。first-checks.json（均带
+  playlist-cover-feedback-前缀）中的构建、feedback50/cover36/editor45/ux41/motion18
+  全部0。之后修正百分比靠滚动条过近及中断文案，final轮50态再次通过。
+- 补充响应乱序测试复现：保存已confirmed，但晚回来的pause快照将其覆盖为uploading。
+  late-pause-before.log保留失败；只接受原传输仍在运行时的暂停快照，late-pause-after.log
+  通过。final2重新完成格式、243项前端测试、类型/production及内嵌构建、50态，均0。
+- final2人工末态截图发现过期账号仍是通用欢迎页。补充expired专属说明/重新登录文案，
+  保留已有loginNotice优先级；final3的243项前端、构建及50态通过。尺寸检查再发现两按钮
+  描边占位不一致造成176/174px，按官方175px补齐；final4格式、类型/production、内嵌构建、
+  50态通过，全部两按钮状态额外断言精确175/175px，未放宽尺寸或禁用动画。
+- 最终playlist-cover-feedback-final4/audit.json：50态、19个场景分组；18次合成申请、
+  14次合成绑定、4次续期、50次分块调用、4次偏移查询。核对未知绑定不重复写入；真实
+  账号写入/网络上传/音乐请求/合成元数据提交均0。失效后离开旧编辑页，出现明确恢复入口。
+  成功/暂停覆盖两尺寸×两主题，错误/恢复覆盖窄深和宽浅；不是所有场景的四组笛卡尔积。
+- 人工查看正常保存退出与草稿、暂停等待、上传权限失败、未知绑定、长简介冲突、清理
+  警告和登录失效。图集playlist-cover-feedback-gallery/index.html包含最终50图及first
+  的36+45+41+18回归图，共190张与8组基线对照；各轮标注，不把最后CSS/过期文案修改
+  说成重跑了其他所有回归。图片未编辑，只用CSS隐藏窗口外桌面，原图链接可打开。
+- npm ci/锁文件、格式、243项前端测试、类型及production构建通过。Rust工程记录在
+  playlist-cover-feedback-engineering-checks.json：fmt、严格workspace Clippy及全量
+  workspace/all-targets/custom-protocol测试均0，254目标/1173 passed/0 failed/0 ignored。
+  此后仅修改前端、JS探针、CI与文档；CI规则21项、source audit、release guard通过。
+  Linux/Windows各自CI加入50态；新提交远端结果独立核对，不用本机检查替代CI gate。
+- Linux隔离Xvfb/private D-Bus/xcompmgr、zh_CN.UTF-8、真实Tauri/WebKitGTK；DOM驱动操作，
+  本轮未使用原生文件选择器，未验证物理外设/帧率或Windows视觉。合成服务没有外部封面
+  URL，因此未证明CDN封面刷新；真实账号探针已同步自动关闭，但没有重新执行真实上传。
+  预览损坏/重读、真实上传、Windows/DPI及其他页面继续，完整目标不标完成。
