@@ -6,8 +6,8 @@
   const assert = (value, message) => {
     if (!value) throw Error(message);
   };
-  const wait = async (fn, message) => {
-    for (let i = 0; i < 240; i++) {
+  const wait = async (fn, message, attempts = 240) => {
+    for (let i = 0; i < attempts; i++) {
       await sleep(50);
       if (fn()) return;
     }
@@ -31,7 +31,11 @@
   const fixture = async (mode) => {
     window.__downloadPageAck = null;
     await emit("download-page-fixture", { mode });
-    await wait(() => window.__downloadPageAck, "fixture");
+    await wait(
+      () => window.__downloadPageAck,
+      "fixture " + mode,
+      mode === "seed" ? 1200 : undefined,
+    );
     assert(window.__downloadPageAck.ok, window.__downloadPageAck.message);
   };
   const ready = () =>

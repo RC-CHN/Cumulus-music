@@ -16,7 +16,7 @@ window.__runDownloadProof=async({wait,stage,sleep})=>{
   const waitNative=async(test,label)=>{const until=Date.now()+100000;while(Date.now()<until){const value=await snapshot('completed');if(test(value))return value;await sleep(180);}throw Error(label);};
   const closed=()=>!el('.download-dialog');
   const submit=async()=>{await click(el('.download-dialog button.primary'));await wait(closed,'download_dialog_submit');};
-  const manage=async()=>{await wait(()=>el('.download-row-actions button[aria-label^="管理下载"]'),'download_file_action');await click(el('.download-row-actions button[aria-label^="管理下载"]'));await wait(()=>el('.download-file-actions'),'download_file_dialog');};
+  const manage=async()=>{await wait(()=>el('.download-row-actions button[aria-label^="管理下载"]'),'download_file_action');await click(el('.download-row-actions button[aria-label^="管理下载"]'));await wait(()=>el('.action-menu'),'file_actions_menu');await click(button('管理下载文件…',el('.action-menu')));await wait(()=>el('.download-file-actions'),'download_file_dialog');};
   let taskId,cleaned=false,pauseObserved=false;
   window.__downloadProofFacts=()=>({dialogTitle:el('#download-dialog-title')?.textContent,dialogError:el('.download-dialog .error-state')?.textContent,pageError:el('.downloads-page .error-state')?.textContent,cleanupComplete:cleaned});
   try {

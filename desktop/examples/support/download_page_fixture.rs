@@ -114,10 +114,23 @@ impl Fixture {
     }
     pub async fn control(&self, client: &MusicClient, value: &Value) -> Result<()> {
         assert!(enabled() && self.store.directory().starts_with(&self.root));
+        let started = std::time::Instant::now();
+        let mode = value["mode"]
+            .as_str()
+            .ok_or(Error::InvalidInput("missing synthetic mode"))?;
+        eprintln!("download UI fixture {mode}: started");
         let epoch = client.account()?.epoch;
         match value["mode"].as_str().unwrap() {
             "seed" => {
                 assert!(self.records.lock().unwrap().is_empty());
+                let delay = std::env::var("CUMULUS_DOWNLOAD_SEED_DELAY_MS")
+                    .ok()
+                    .and_then(|v| v.parse::<u64>().ok())
+                    .filter(|ms| *ms <= 30_000)
+                    .unwrap_or(0);
+                if delay > 0 {
+                    tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                }
                 let media = self.root.join("media");
                 client
                     .download_command(
@@ -184,6 +197,9 @@ impl Fixture {
                     task.song = Some(
                         json!({"id":i,"name":format!("合成{kind} {i:03} · 沿着海岸走到日落之后（特别收录版本）"),"ar":[{"name":format!("Artist {} · Cumulus", 150-i)}],"al":{"name":format!("专辑 {:03}", 150-i)},"dt":235000,"fee":0}),
                     );
+                    if (121..=132).contains(&i) {
+                        task.song.as_mut().unwrap()["voice_id"] = json!(i.to_string());
+                    }
                     if i == 133 {
                         task.song.as_mut().unwrap()["dt"] = json!(6000);
                         task.song.as_mut().unwrap()["ar"] =
@@ -238,6 +254,12 @@ impl Fixture {
                     let value = serde_json::to_value(&task)?;
                     self.store.put("2", "download_tasks_v1", &task.id, &value)?;
                     saved.push((task.id, value));
+                    if i % 25 == 0 || i == 146 {
+                        eprintln!(
+                            "download UI fixture seed: {i}/146 records in {:?}",
+                            started.elapsed()
+                        );
+                    }
                 }
                 *self.records.lock().unwrap() = saved;
             }
@@ -372,6 +394,57 @@ impl Fixture {
                 let records = self.records.lock().unwrap();
                 self.store.delete("2", "download_tasks_v1", &records[0].0)?;
             }
+            "menu_targets" => {
+                let media = self.root.join("media");
+                std::fs::create_dir_all(media.join("menu-moved"))?;
+                std::fs::hard_link(media.join("synthetic-1.wav"), media.join("ui-conflict.wav"))?;
+            }
+            "verify_menu_files" => {
+                let media = self.root.join("media");
+                assert!(media.join("menu-moved/menu-renamed.wav").is_file());
+                assert!(!media.join("synthetic-1.wav").exists());
+                assert!(!media.join("menu-renamed.wav").exists());
+                assert!(media.join("ui-conflict.wav").is_file());
+                assert!(media.join("synthetic-2.wav").is_file());
+                assert!(!media.join("synthetic-3.wav").exists());
+                assert!(media.join("synthetic-4.wav").is_file());
+                let records = self.records.lock().unwrap();
+                for (index, (id, _)) in records.iter().take(3).enumerate() {
+                    let record = self.store.get("2", "download_tasks_v1", id)?;
+                    if index == 0 {
+                        assert_eq!(
+                            std::fs::canonicalize(record.unwrap()["target"].as_str().unwrap())?,
+                            std::fs::canonicalize(media.join("menu-moved/menu-renamed.wav"))?
+                        );
+                    } else {
+                        assert!(record.is_none());
+                    }
+                }
+            }
+            "verify_menu_queue" => {
+                let queue: cumulus_core::playback::QueueSnapshot = serde_json::from_value(
+                    self.store
+                        .get("2", "playback", "queue")?
+                        .ok_or(Error::State("missing synthetic queue"))?,
+                )?;
+                let records = self.records.lock().unwrap();
+                assert_eq!(queue.items[1].resource["download_task_id"], records[1].0);
+                assert_eq!(queue.items[1].source["kind"], "downloads");
+            }
+            "verify_single_cancel" => {
+                let records = self.records.lock().unwrap();
+                for (index, (id, _)) in records.iter().enumerate().skip(141) {
+                    let record = self
+                        .store
+                        .get("2", "download_tasks_v1", id)?
+                        .ok_or(Error::State("missing synthetic task"))?;
+                    if index == 142 {
+                        assert_eq!(record["status"], "cancelled");
+                    } else {
+                        assert_ne!(record["status"], "cancelled");
+                    }
+                }
+            }
             "mv_window" => {
                 // Reclassify existing synthetic records for a >100-card window;
                 // these PCM hardlinks remain layout fixtures, never playable MV.
@@ -385,6 +458,10 @@ impl Fixture {
             }
             _ => return Err(Error::InvalidInput("unknown download UI fixture mode")),
         }
+        eprintln!(
+            "download UI fixture {mode}: completed in {:?}",
+            started.elapsed()
+        );
         Ok(())
     }
 }

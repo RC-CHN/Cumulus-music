@@ -2,7 +2,7 @@
 (async () => {
  const one=s=>document.querySelector(s), all=s=>[...document.querySelectorAll(s)];
  const sleep=ms=>new Promise(r=>setTimeout(r,ms)), assert=(ok,m)=>{if(!ok)throw Error(m);};
- const wait=async(fn,m)=>{for(let i=0;i<200;i++){await sleep(50);if(fn())return;}throw Error(m);};
+ const wait=async(fn,m,attempts=200)=>{for(let i=0;i<attempts;i++){await sleep(50);if(fn())return;}throw Error(m);};
  const emit=(stage,data={})=>window.__TAURI_INTERNALS__.invoke('plugin:event|emit',{event:'ux-proof',payload:{stage,...data}});
  const button=(label,root=document)=>[...root.querySelectorAll('button')].find(n=>n.getAttribute('aria-label')===label||n.textContent.trim()===label);
  const click=n=>{assert(n&&!n.disabled,'enabled '+n?.outerHTML);n.focus({preventScroll:true});n.click();};
@@ -12,7 +12,7 @@
  const field=()=>one('.download-search input'), selected=()=>one('.download-batch-table .batch-select-label')?.textContent;
  const done=()=>one('.download-batch-page .batch-done'), menu=()=>button('更多下载操作');
  const titleId=r=>Number(r.querySelector('.download-track-name').textContent.match(/(\d+) ·/)[1]);
- const fixture=async(mode,details={})=>{window.__downloadPageAck=null;await emit('download-page-fixture',{mode,...details});await wait(()=>window.__downloadPageAck,'fixture');assert(window.__downloadPageAck.ok,window.__downloadPageAck.message);};
+ const fixture=async(mode,details={})=>{window.__downloadPageAck=null;await emit('download-page-fixture',{mode,...details});await wait(()=>window.__downloadPageAck,'fixture '+mode,mode==='seed'?1200:undefined);assert(window.__downloadPageAck.ok,window.__downloadPageAck.message);};
  let count=0,step='initial',category='song';
  async function enter(ready=true){
   click(menu());await wait(()=>one('.action-menu')?.style.visibility==='visible','menu');click(button('批量操作',one('.action-menu')));

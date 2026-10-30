@@ -2,7 +2,7 @@
 (async () => {
   const one=s=>document.querySelector(s),all=s=>[...document.querySelectorAll(s)];
   const sleep=ms=>new Promise(r=>setTimeout(r,ms)),assert=(ok,m)=>{if(!ok)throw Error(m);};
-  const wait=async(fn,m)=>{await sleep(40);for(let i=0;i<240;i++){if(fn())return;await sleep(50);}throw Error(m);};
+  const wait=async(fn,m,attempts=240)=>{await sleep(40);for(let i=0;i<attempts;i++){if(fn())return;await sleep(50);}throw Error(m);};
   const emit=(stage,data={})=>window.__TAURI_INTERNALS__.invoke('plugin:event|emit',{event:'ux-proof',payload:{stage,...data}});
   const button=(label,root=document)=>[...root.querySelectorAll('button')].find(n=>n.getAttribute('aria-label')===label||n.textContent.trim()===label);
   const click=n=>{assert(n&&!n.disabled,`enabled ${n?.outerHTML}`);n.focus({preventScroll:true});n.click();};
@@ -13,7 +13,7 @@
   const widths=()=>head().map(n=>n.getBoundingClientRect().width),handle=i=>one(`[data-download-resize="${i}"]`);
   const ready=()=>!one('#download-content[aria-busy="true"],.download-section-enter-active,.download-section-leave-active');
   const tab=id=>one(`#download-tab-${id}`);
-  const fixture=async(mode,details={})=>{window.__downloadPageAck=null;await emit('download-page-fixture',{mode,...details});await wait(()=>window.__downloadPageAck,'fixture');assert(window.__downloadPageAck.ok,window.__downloadPageAck.message);};
+  const fixture=async(mode,details={})=>{window.__downloadPageAck=null;await emit('download-page-fixture',{mode,...details});await wait(()=>window.__downloadPageAck,'fixture '+mode,mode==='seed'?1200:undefined);assert(window.__downloadPageAck.ok,window.__downloadPageAck.message);};
   const pointer=(n,type,x,id=9)=>n.dispatchEvent(new PointerEvent(type,{pointerId:id,pointerType:'mouse',isPrimary:true,button:0,buttons:type==='pointerup'?0:1,clientX:x,clientY:240,bubbles:true,cancelable:true}));
   const bases={song:[45,180,115,90,60],voice:[45,180,90,60],active:[45,180,140]};
   let count=0,step='startup',section='song',downX=0;

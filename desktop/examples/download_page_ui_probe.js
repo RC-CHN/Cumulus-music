@@ -2,7 +2,7 @@
 (async () => {
   const one=s=>document.querySelector(s),all=s=>[...document.querySelectorAll(s)];
   const sleep=ms=>new Promise(r=>setTimeout(r,ms)),assert=(ok,m)=>{if(!ok)throw Error(m);};
-  const wait=async(fn,m)=>{await sleep(25);for(let i=0;i<240;i++){if(fn())return;await sleep(50);}throw Error(m);};
+  const wait=async(fn,m,attempts=240)=>{await sleep(25);for(let i=0;i<attempts;i++){if(fn())return;await sleep(50);}throw Error(m);};
   const emit=(stage,data={})=>window.__TAURI_INTERNALS__.invoke('plugin:event|emit',{event:'ux-proof',payload:{stage,...data}});
   const button=(label,root=document)=>[...root.querySelectorAll('button')].find(n=>n.getAttribute('aria-label')===label||n.textContent.trim()===label);
   const click=n=>{assert(n&&!n.disabled,`enabled ${n?.outerHTML}`);n.focus({preventScroll:true});n.click();};
@@ -11,7 +11,7 @@
   const scrollFrame=async()=>{await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);};
   const rect=n=>{const r=n.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,right:r.right,bottom:r.bottom};};
   const near=(a,b,m)=>assert(Math.abs(a-b)<1.2,`${m}: ${a}/${b}`);
-  const fixture=async (mode,details={})=>{window.__downloadPageAck=null;await emit('download-page-fixture',{mode,...details});await wait(()=>window.__downloadPageAck,'fixture response');assert(window.__downloadPageAck.ok,window.__downloadPageAck.message);};
+  const fixture=async (mode,details={})=>{window.__downloadPageAck=null;await emit('download-page-fixture',{mode,...details});await wait(()=>window.__downloadPageAck,'fixture response '+mode,mode==='seed'?1200:undefined);assert(window.__downloadPageAck.ok,window.__downloadPageAck.message);};
   const tab=id=>one(`#download-tab-${id}`),ready=()=>!one('#download-content[aria-busy="true"],.download-section-enter-active,.download-section-leave-active');
   const first=()=>one('[data-download-index="0"]');
   let count=0,stage='startup';
@@ -36,7 +36,7 @@
       const suffix=`${w}_${theme}`;
       await select('song');assert(all('.download-table-header>[role="columnheader"]').length===5,'song columns');assert(one('.download-table').getAttribute('aria-rowcount')==='121'&&!one('.download-pagination'),'songs include cloud and have no page controls');await capture(`songs_${suffix}`);
       const songScroll=one('.download-scroll');songScroll.scrollTop=songScroll.scrollHeight;songScroll.dispatchEvent(new Event('scroll'));await wait(()=>!one('.download-continuation')&&all('[data-download-index]').some(n=>Number(n.dataset.downloadIndex)>99),'continuous growth');songScroll.scrollTop=songScroll.scrollHeight;songScroll.dispatchEvent(new Event('scroll'));await wait(()=>one('[data-download-index="119"]'),'last download reachable');await capture(`continuous_${suffix}`);songScroll.scrollTop=0;songScroll.dispatchEvent(new Event('scroll'));await wait(()=>first(),'return after growth');
-      first().focus({preventScroll:true});const manage=first().querySelector('[aria-label^="管理下载"]');click(manage);await wait(()=>one('.download-dialog[open]'),'file dialog');await capture(`file_${suffix}`);await closeDialog();assert(document.activeElement===manage,'file menu return focus');
+      first().focus({preventScroll:true});const manage=first().querySelector('[aria-label^="管理下载"]');click(manage);await wait(()=>one('.action-menu'),'file actions menu');click(button('管理下载文件…',one('.action-menu')));await wait(()=>one('.download-dialog[open]'),'file dialog');await capture(`file_${suffix}`);await closeDialog();assert(document.activeElement===manage,'file menu return focus');
       await select('voice');assert(all('.download-table-header>[role="columnheader"]').length===4&&!one('.download-pagination'),'voice classified');assert(first().textContent.includes('合成声音'),'voice resource');await capture(`voices_${suffix}`);
       await select('mv');const grid=one('.download-mv-scroll');const ids=new Set(all('.download-mv-card').map(n=>n.dataset.downloadMv));assert(all('.download-mv-card').every(n=>n.textContent.includes('合成MV')),'MV source');grid.scrollTop=grid.scrollHeight;grid.dispatchEvent(new Event('scroll'));await sleep(180);all('.download-mv-card').forEach(n=>ids.add(n.dataset.downloadMv));assert(ids.size===9,'all MV records reachable through virtualization');grid.scrollTop=0;grid.dispatchEvent(new Event('scroll'));await sleep(180);const cover=one('.download-mv-cover'),r=rect(cover);near(r.height,r.width*.565,'MV aspect');await capture(`mvs_${suffix}`);
       await select('active');assert(all('.download-table-header>[role="columnheader"]').length===3&&all('[data-download-index]').length===5,'active all resources');for(const n of all('.download-toolbar>.download-button')){near(rect(n).width,114,'action width');near(rect(n).height,48,'action height');}assert(one('.download-progress.failed'),'failure row');const paused=all('.download-progress-status').find(n=>n.textContent==='已暂停');assert(paused&&paused.scrollWidth<=paused.clientWidth+1,'paused label fits');await capture(`active_${suffix}`);
