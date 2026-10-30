@@ -987,16 +987,25 @@ onUnmounted(() => {
               />
               <div v-else-if="!signedIn" class="empty-state welcome">
                 <div class="welcome-note">♪</div>
-                <h1>{{ account.loginNotice?.title || '让喜欢的音乐，陪在身边' }}</h1>
+                <h1>
+                  {{
+                    account.loginNotice?.title ||
+                    (account.status === 'expired' ? '登录已失效' : '让喜欢的音乐，陪在身边')
+                  }}
+                </h1>
                 <p aria-live="polite">
                   {{
                     account.loginNotice?.message ||
                     error ||
-                    '登录网易云音乐，找回你的歌单与每日推荐'
+                    (account.status === 'expired'
+                      ? '请重新登录后继续管理歌单、查看推荐和使用账号资源。'
+                      : '登录网易云音乐，找回你的歌单与每日推荐')
                   }}
                 </p>
                 <button class="primary" @click="loginOpen = true">
-                  {{ account.loginNotice ? '重新登录' : '登录账号' }}</button
+                  {{
+                    account.loginNotice || account.status === 'expired' ? '重新登录' : '登录账号'
+                  }}</button
                 ><button
                   v-if="error && !account.loginNotice"
                   class="text-button"

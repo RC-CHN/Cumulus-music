@@ -2,7 +2,12 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import type { AccountView } from '../services/contracts';
 import type { PlaylistEditor } from '../services/playlists';
-import { coverEditable, coverMessage, coverTerminal } from '../services/playlistCover';
+import {
+  coverEditable,
+  coverMessage,
+  coverTerminal,
+  coverBusyMessage,
+} from '../services/playlistCover';
 import {
   coverPosition,
   coverCrop,
@@ -80,7 +85,7 @@ watch(
   { immediate: true },
 );
 watch(
-  [busy, error, warning, readFailed, () => task.value?.phase],
+  [busy, error, warning, readFailed, () => task.value?.phase, () => task.value?.transfer, latest],
   async () => {
     if (
       busy.value ||
@@ -97,6 +102,20 @@ watch(
   },
   { immediate: true },
 );
+// Match the official successful-save exit, while keeping warnings/recovery
+// visible until they are resolved or explicitly dismissed.
+watch([busy, loading, task, warning, error, readFailed], () => {
+  if (
+    task.value?.phase === 'confirmed' &&
+    !task.value.cleanupPending &&
+    !busy.value &&
+    !loading.value &&
+    !warning.value &&
+    !error.value &&
+    !readFailed.value
+  )
+    emit('close');
+});
 onMounted(() => {
   dialog.value?.showModal();
 });
@@ -234,7 +253,7 @@ async function applyLatest() {
           :disabled="!editable"
           @input="zoom(Number(($event.target as HTMLInputElement).value))"
       /></label>
-      <p v-if="busy" class="muted" role="status">正在处理并核对封面，请稍候…</p>
+      <p v-if="busy" class="cover-status" role="status">{{ coverBusyMessage(task, stopping) }}</p>
       <p v-else-if="task && !editable" class="cover-status" role="status">
         {{ coverMessage(task) }}
       </p>
@@ -242,16 +261,17 @@ async function applyLatest() {
         *鼠标放置在图片上可拖拽移动图片位置
         <span class="sr-only">方向键移动，加减键缩放</span>
       </p>
-      <progress
-        v-if="task && task.total > 0 && task.phase === 'uploading'"
-        :value="task.bytes"
-        :max="task.total"
-        aria-label="封面上传进度"
-      ></progress>
+      <div v-if="task && task.total > 0 && task.phase === 'uploading'" class="cover-progress">
+        <div>
+          <span>上传进度</span
+          ><span>{{ Math.min(100, Math.floor((task.bytes / task.total) * 100)) }}%</span>
+        </div>
+        <progress :value="task.bytes" :max="task.total" aria-label="封面上传进度"></progress>
+      </div>
       <p v-if="error || readFailed" class="error-state" role="alert">
         {{ error || '无法读取封面编辑进度，请重试。' }}
       </p>
-      <p v-if="warning" class="error-state" role="status">{{ warning }}</p>
+      <p v-if="warning" class="cover-warning" role="status">{{ warning }}</p>
       <div v-if="changedElsewhere" class="cover-latest">
         <button class="text-button" :disabled="busy || loading" @click="model.inspectLatest">
           查看最新歌单信息
@@ -531,6 +551,7 @@ header .icon {
   margin: 20px 0 0;
 }
 .cover-status {
+  padding-right: 8px;
   color: var(--text-secondary);
 }
 .error-state {
@@ -556,7 +577,30 @@ header .icon {
   outline-offset: -2px;
   border-radius: 4px;
 }
+.cover-warning {
+  background: var(--warning-bg);
+  color: var(--warning);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 20px;
+  margin: 10px 0;
+}
+.cover-progress {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.cover-progress > div {
+  /* Keep numbers clear of overlay scrollbars in a short dialog. */
+  padding-right: 8px;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  font-variant-numeric: tabular-nums;
+}
 progress {
+  display: block;
   width: 100%;
   height: 6px;
   accent-color: var(--accent, #ed4053);
@@ -576,6 +620,8 @@ footer {
   margin-top: 32px;
 }
 footer button {
+  /* Both actions include the same border width, keeping the 175px columns equal. */
+  border: 1px solid transparent;
   min-height: 40px;
   min-width: 0;
   padding: 0 16px;

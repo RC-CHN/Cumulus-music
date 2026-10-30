@@ -190,6 +190,7 @@ export function usePlaylistCover(
     } finally {
       if (live(e, n)) {
         busy.value = false;
+        stopping.value = false;
         stopPoll();
       }
     }
@@ -202,14 +203,21 @@ export function usePlaylistCover(
     stopping.value = true;
     try {
       const result = await core.playlistCoverCommand(e, id, { kind: 'pause' });
-      if (live(e, n) && result.epoch === e && task.value?.id === id) {
+      // The original transfer may settle before this acknowledgment arrives.
+      // Its final result takes precedence over the earlier pause snapshot.
+      if (live(e, n) && busy.value && result.epoch === e && task.value?.id === id) {
         read++;
         task.value = result.value.task;
       }
     } catch (value) {
-      if (live(e, n)) problem(value);
+      if (live(e, n) && busy.value) {
+        stopping.value = false;
+        problem(value);
+      }
     } finally {
-      if (live(e, n)) stopping.value = false;
+      // A pause acknowledgment queues the request; the running transfer must
+      // still finish its current chunk before it has actually stopped.
+      if (live(e, n) && !busy.value) stopping.value = false;
     }
   }
   async function inspectLatest() {

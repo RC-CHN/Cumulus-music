@@ -146,7 +146,10 @@ export function usePlaylistEditor(
   }
   async function coverSaved(outcome: CoverOutcome) {
     await manager.refreshAfterCover(owner, id, outcome.editor);
-    if (active()) coverChanged();
+    if (active()) {
+      message.value = '封面已保存。';
+      coverChanged();
+    }
   }
   return {
     name,

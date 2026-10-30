@@ -84,6 +84,8 @@ export const coverEditable = (task: CoverTask) => ['draft', 'prepared'].includes
 export function coverMessage(task: CoverTask) {
   if (task.phase === 'uploading' && task.transfer === 'ambiguous')
     return '图片上传结果未确认，尚未修改歌单封面。可以放弃本次换图。';
+  if (task.phase === 'uploading' && task.transfer === 'error')
+    return '图片上传已中断，可以重试；若上传权限失效，可重新获取权限。';
   if (task.phase === 'uploading' && task.transfer === 'paused')
     return '图片上传已暂停，可继续完成保存。';
   if (task.error === 'playlist_changed')
@@ -100,4 +102,12 @@ export function coverMessage(task: CoverTask) {
     rejected: '此次封面更新未完成。',
     abandoned: '已放弃本次换图。',
   }[task.phase];
+}
+
+export function coverBusyMessage(task: CoverTask | undefined, stopping: boolean) {
+  if (stopping) return '正在暂停上传，等待当前数据传输结束…';
+  if (task?.phase === 'allocating') return '正在准备上传图片…';
+  if (task?.phase === 'uploading') return '正在上传图片…';
+  if (task?.phase === 'uploaded' || task?.phase === 'binding') return '正在保存封面并核对结果…';
+  return '正在处理并核对封面，请稍候…';
 }
