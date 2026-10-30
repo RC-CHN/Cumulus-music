@@ -5,7 +5,7 @@ import { artworkAt } from '../../services/artwork';
 import Icon from '../Icon.vue';
 import ActionMenu from '../ActionMenu.vue';
 import type { MenuItem } from '../../services/menu';
-import { searchCardCanPlay } from '../../services/searchCards';
+import { searchCardCanPlay, searchCardKey } from '../../services/searchCards';
 const props = defineProps<{
   item: SearchItem;
   playable: boolean;
@@ -179,6 +179,7 @@ watch(
   <article
     ref="element"
     class="search-result-card"
+    :data-result-key="searchCardKey(item)"
     :class="{
       'search-person-card': card.round,
       'search-related-word': item.kind === 'related',

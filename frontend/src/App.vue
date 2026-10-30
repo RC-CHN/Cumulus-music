@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import SearchBox from './components/search/SearchBox.vue';
 import SearchResultsPage from './components/search/SearchResultsPage.vue';
+import { createSearchViewportMemory } from './services/searchViewport';
 import ContentTooltip from './components/ContentTooltip.vue';
 import type { SearchItem } from './services/search';
 import { searchCardIsCurrent, searchCardSelection } from './services/searchCards';
@@ -77,6 +78,7 @@ import { usePlayer } from './composables/usePlayer';
 import { useMusic } from './composables/useMusic';
 import { useCore } from './services/core';
 const core = useCore();
+const searchMemory = createSearchViewportMemory();
 const music = useMusic(undefined, (commit) => {
   if (playlistEditor.value && playlistEditorPage.value)
     playlistEditorPage.value.requestLeave(() => {
@@ -88,6 +90,11 @@ const music = useMusic(undefined, (commit) => {
 const settings = useSettings(core, () => {
   void music.bootstrap(false);
 });
+watch(
+  () => [music.account.value.epoch, music.account.value.status],
+  () => searchMemory.connect(music.account.value),
+  { immediate: true },
+);
 const relay = useRelay(core, () => {
   void music.bootstrap(false);
 });
@@ -1064,6 +1071,8 @@ onUnmounted(() => {
                 @expired="music.bootstrap(false)"
               />
               <SearchResultsPage
+                :memory="searchMemory"
+                :search-id="page.kind === 'search' ? page.searchId : undefined"
                 v-else-if="page.kind === 'search'"
                 :account="account"
                 :keyword="page.keyword"

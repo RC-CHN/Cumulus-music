@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed, nextTick, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import type { SearchViewportMemory } from '../../services/searchViewport';
+import SearchCardGrid from './SearchCardGrid.vue';
 import type { AccountView, TrackView } from '../../services/contracts';
 import {
   searchCategories,
@@ -28,6 +30,8 @@ const props = defineProps<{
   playbackOrigin?: PlayerOrigin | null;
   playbackState?: PlaybackStatus;
   currentVoiceId?: string;
+  memory: SearchViewportMemory;
+  searchId?: number;
 }>();
 const emit = defineEmits<{
   navigate: [category: SearchCategory, offset: number, correct: boolean];
@@ -44,11 +48,12 @@ const emit = defineEmits<{
   cardComments: [item: SearchItem];
   cardDownload: [item: SearchItem];
 }>();
-const model = useSearchResults(useCore(), () => emit('expired'));
-const { view, loading, error } = model;
+const model = useSearchResults(useCore(), () => emit('expired'), props.memory);
+const { view, loading, error, loadingMore, moreError } = model;
 const category = computed(() => props.category ?? 'all'),
   offset = computed(() => props.offset ?? 0);
-const limit = computed(() => (['artists', 'users'].includes(category.value) ? 13 : 30));
+const waterfall = computed(() => ['artists', 'users', 'mvs'].includes(category.value));
+const limit = computed(() => (waterfall.value ? 13 : 30));
 const selected = computed(() => searchCategories.find((c) => c.key === category.value)!);
 const tracks = (section: SearchSection) =>
   section.items.flatMap((i) => (i.kind === 'song' ? [i.track] : []));
@@ -56,6 +61,8 @@ const songs = computed(() => view.value?.sections.flatMap(tracks) ?? []);
 const count = computed(() => view.value?.sections.reduce((n, s) => n + s.items.length, 0) ?? 0);
 const panel = ref<HTMLElement>(),
   tabs = ref<HTMLElement>();
+const moreButton = ref<HTMLButtonElement>(),
+  moreFooter = ref<HTMLElement>();
 const user = ref<Extract<SearchItem, { kind: 'user' }>>(),
   dialog = ref<HTMLDialogElement>();
 async function open(item: SearchItem) {
@@ -84,15 +91,127 @@ function tabKey(event: KeyboardEvent, index: number) {
   event.preventDefault();
   choose(searchCategories[next]!.key, true);
 }
-async function load() {
-  await model.open({
-    keyword: props.keyword,
-    category: category.value,
-    offset: offset.value,
-    limit: limit.value,
-    correct: props.correct ?? true,
+let restoring = false,
+  loadGeneration = 0,
+  frame = 0;
+let activeCategory = '';
+let observer: ResizeObserver | undefined;
+function checkpoint(focus = false) {
+  if (!panel.value || restoring || loading.value) return;
+  const card =
+    focus && document.activeElement instanceof Element
+      ? document.activeElement.closest<HTMLElement>('[data-result-key]')
+      : undefined;
+  model.savePosition({
+    top: panel.value.scrollTop,
+    tracks: panel.value.querySelector('.track-scroll')?.scrollTop ?? 0,
+    focus: card?.dataset.resultKey,
   });
 }
+function maybeMore() {
+  const element = panel.value;
+  if (
+    !restoring &&
+    waterfall.value &&
+    element &&
+    view.value?.more &&
+    !moreError.value &&
+    element.scrollHeight - element.scrollTop - element.clientHeight < 180
+  )
+    void model.more();
+}
+function scroll() {
+  checkpoint();
+  if (!frame)
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      maybeMore();
+    });
+}
+watch(
+  () => view.value?.more,
+  (more) => {
+    if (more || !moreButton.value || document.activeElement !== moreButton.value) return;
+    const generation = loadGeneration;
+    void nextTick(() => {
+      if (generation === loadGeneration && document.activeElement === document.body) {
+        moreFooter.value?.focus({ preventScroll: true });
+        moreFooter.value?.scrollIntoView({ block: 'nearest' });
+      }
+    });
+  },
+);
+async function restore() {
+  if (
+    !restoring ||
+    loading.value ||
+    !panel.value ||
+    panel.value.classList.contains('search-results-leave-active')
+  )
+    return;
+  const generation = loadGeneration;
+  await nextTick();
+  await new Promise<void>((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+  );
+  if (
+    generation !== loadGeneration ||
+    !panel.value ||
+    panel.value.classList.contains('search-results-leave-active')
+  )
+    return;
+  const position = model.position.value;
+  panel.value.scrollTop = position.top;
+  const inner = panel.value.querySelector('.track-scroll');
+  if (inner) inner.scrollTop = position.tracks;
+  await new Promise<void>((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+  );
+  if (generation !== loadGeneration || !panel.value) return;
+  if (position.focus) {
+    const card = [...panel.value.querySelectorAll<HTMLElement>('[data-result-key]')].find(
+      (n) => n.dataset.resultKey === position.focus,
+    );
+    card?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true });
+  }
+  restoring = false;
+  maybeMore();
+}
+async function load(reuse = false) {
+  restoring = true;
+  const generation = ++loadGeneration;
+  activeCategory = category.value;
+  await model.open(
+    {
+      keyword: props.keyword,
+      category: category.value,
+      offset: offset.value,
+      limit: limit.value,
+      correct: props.correct ?? true,
+    },
+    reuse,
+    props.searchId ?? 0,
+  );
+  if (generation === loadGeneration) void restore();
+}
+watch(
+  panel,
+  (element) => {
+    observer?.disconnect();
+    if (element) {
+      observer = new ResizeObserver(() => maybeMore());
+      observer.observe(element);
+      void restore();
+    }
+  },
+  { flush: 'post' },
+);
+watch(
+  () => view.value,
+  () => {
+    if (!restoring) void nextTick(maybeMore);
+  },
+);
 watch(
   () => [props.account.epoch, props.account.status],
   () => model.connect(props.account),
@@ -106,14 +225,22 @@ watch(
     category.value,
     offset.value,
     props.correct,
+    props.searchId,
   ],
   () => {
+    if (activeCategory) checkpoint();
     user.value = undefined;
-    void load();
+    void load(true);
   },
   { immediate: true },
 );
-onUnmounted(model.dispose);
+onBeforeUnmount(() => {
+  checkpoint(true);
+  loadGeneration++;
+  observer?.disconnect();
+  cancelAnimationFrame(frame);
+  model.dispose();
+});
 </script>
 <template>
   <section class="search-results-page">
@@ -181,9 +308,9 @@ onUnmounted(model.dispose);
         仍然搜索“{{ keyword }}”
       </button>
     </div>
-    <Transition name="search-results" mode="out-in">
+    <Transition name="search-results" mode="out-in" @after-enter="restore">
       <div
-        :key="`${keyword}:${category}:${offset}:${correct}`"
+        :key="`${searchId}:${keyword}:${category}:${offset}:${correct}`"
         id="search-result-panel"
         ref="panel"
         role="tabpanel"
@@ -192,11 +319,12 @@ onUnmounted(model.dispose);
         class="search-result-panel"
         :class="{ 'search-song-panel': category === 'songs' }"
         tabindex="0"
+        @scroll.capture.passive="scroll"
       >
         <div v-if="loading" class="empty-state" role="status">正在搜索…</div>
         <div v-else-if="error" class="empty-state">
           <p role="alert">{{ error }}</p>
-          <button class="secondary" @click="load">重新加载</button>
+          <button class="secondary" @click="load()">重新加载</button>
         </div>
         <template v-else-if="view">
           <p v-if="view.notice" class="search-result-notice" role="status">{{ view.notice }}</p>
@@ -264,21 +392,14 @@ onUnmounted(model.dispose);
               @artist="emit('artist', $event)"
               @album="emit('album', $event)"
             />
-            <div
+            <SearchCardGrid
               v-if="section.items.some((i) => i.kind !== 'song')"
-              class="search-result-grid"
-              :class="{
-                'search-person-grid': section.items.every(
-                  (i) => i.kind === 'artist' || i.kind === 'user',
-                ),
-                'search-related-grid': section.items.every((i) => i.kind === 'related'),
-                'search-video-grid': section.items.every((i) => i.kind === 'mv'),
-                'search-voice-grid': section.items.every((i) => i.kind === 'voice'),
-              }"
+              :items="section.items.filter((i) => i.kind !== 'song')"
+              :scroller="panel"
+              :virtual="waterfall"
+              v-slot="{ item }"
             >
               <SearchResultCard
-                v-for="(item, i) in section.items.filter((i) => i.kind !== 'song')"
-                :key="i"
                 :item="item"
                 :playable="playable"
                 :current="searchCardIsCurrent(item, playbackOrigin, currentVoiceId)"
@@ -288,10 +409,10 @@ onUnmounted(model.dispose);
                 @comments="emit('cardComments', $event)"
                 @download="emit('cardDownload', $event)"
               />
-            </div>
+            </SearchCardGrid>
           </section>
           <nav
-            v-if="category !== 'all' && (offset > 0 || view.more)"
+            v-if="!waterfall && category !== 'all' && (offset > 0 || view.more)"
             class="search-result-pagination"
             aria-label="搜索结果分页"
           >
@@ -310,6 +431,25 @@ onUnmounted(model.dispose);
               下一页
             </button>
           </nav>
+          <div
+            v-if="waterfall && count"
+            ref="moreFooter"
+            class="search-load-more"
+            :aria-busy="loadingMore"
+            tabindex="-1"
+          >
+            <span v-if="moreError" role="alert">{{ moreError }}</span>
+            <button
+              v-if="view.more"
+              ref="moreButton"
+              class="text-button"
+              :aria-disabled="loadingMore"
+              @click="model.more()"
+            >
+              {{ loadingMore ? '正在加载更多…' : moreError ? '重试加载更多' : '加载更多' }}
+            </button>
+            <span v-else>没有更多可显示的结果</span>
+          </div>
         </template>
       </div>
     </Transition>

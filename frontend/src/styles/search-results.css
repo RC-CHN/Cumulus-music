@@ -404,6 +404,35 @@
   grid-template-columns: repeat(auto-fill, minmax(max(178px, calc((100% - 100px) / 6)), 1fr));
   gap: 20px;
 }
+.search-grid-cell {
+  min-width: 0;
+}
+.search-grid-cell > .search-result-card {
+  width: 100%;
+}
+.search-grid-spacer {
+  grid-column: 1 / -1;
+  pointer-events: none;
+}
+.search-load-more {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.search-load-more:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+.search-load-more button[aria-disabled='true'] {
+  color: var(--muted);
+  cursor: progress;
+}
 .search-video-grid {
   grid-template-columns: repeat(auto-fill, minmax(max(244px, calc((100% - 60px) / 4)), 1fr));
 }
