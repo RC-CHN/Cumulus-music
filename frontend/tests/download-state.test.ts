@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { useDownloads } from '../src/composables/useDownloads.ts';
+import { downloadViewportKey } from '../src/services/downloadViewport.ts';
 import type { AccountView } from '../src/services/contracts.ts';
 import type {
   DownloadClient,
@@ -35,6 +36,35 @@ function state(epoch = '1', total = 0, offset = 0): DownloadsView {
   };
 }
 const turn = () => new Promise((r) => setImmediate(r));
+test('download return location survives reads but rejects another query and late account callbacks', async () => {
+  const model = useDownloads({ downloads: async (epoch) => state(epoch) } as DownloadClient);
+  await model.connect(account());
+  const saved = {
+    epoch: '1',
+    query: downloadViewportKey(model.query.value),
+    anchor: 'download-one',
+    index: 80,
+    offset: 7,
+    focus: { task: 'download-one' },
+    growth: [1, 2],
+  };
+  model.saveViewport(saved);
+  await model.refresh(true);
+  assert.equal(model.viewport.value, saved);
+  await model.filter({ keyword: 'changed' });
+  assert.equal(model.viewport.value, undefined);
+  model.saveViewport(saved);
+  assert.equal(model.viewport.value, undefined);
+  await model.filter({ keyword: '' });
+  model.saveViewport(saved);
+  await model.connect(account('2'));
+  assert.equal(model.viewport.value, undefined);
+  model.saveViewport({ ...saved, query: downloadViewportKey(model.query.value) });
+  assert.equal(model.viewport.value, undefined);
+  model.dispose();
+  model.saveViewport({ ...saved, epoch: '2' });
+  assert.equal(model.viewport.value, undefined);
+});
 test('download account switch discards late reads, writes and native picker selections', async () => {
   const first = deferred<DownloadsView>(),
     write = deferred<DownloadResult>(),

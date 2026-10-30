@@ -14,10 +14,11 @@ def main():
     parser.add_argument('--screenshots', action='store_true')
     parser.add_argument('--table', action='store_true', help='Verify column resizing, voice sort cycles and operation feedback')
     parser.add_argument('--batch', action='store_true', help='Verify full-category batch UI and real local file actions')
+    parser.add_argument('--navigation', action='store_true', help='Verify download detail return, focus and resized anchors')
     args = parser.parse_args()
-    if args.table and args.batch:
+    if sum([args.table, args.batch, args.navigation]) > 1:
         parser.error('select a single proof')
-    expected = 53 if args.batch else 72 if args.table else 69
+    expected = 14 if args.navigation else 53 if args.batch else 72 if args.table else 69
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {k: v for k, v in os.environ.items() if not k.startswith('CUMULUS_')}
@@ -28,7 +29,7 @@ def main():
         env[key] = str(directory)
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
-    script = 'download_batch_ui_probe.js' if args.batch else 'download_table_ui_probe.js' if args.table else 'download_page_ui_probe.js'
+    script = 'download_navigation_ui_probe.js' if args.navigation else 'download_batch_ui_probe.js' if args.batch else 'download_table_ui_probe.js' if args.table else 'download_page_ui_probe.js'
     env['CUMULUS_UX_SCRIPT'] = str(Path(__file__).resolve().parents[2] / 'desktop/examples' / script)
     with (root / 'first.log').open('x', encoding='utf-8') as log:
         status = launch(args.binary.resolve(), env, log, root / 'first', args.screenshots)
@@ -36,7 +37,7 @@ def main():
     assert not failed.exists(), failed.read_text() if failed.exists() else ''
     assert status == 0, f'probe exit {status}'
     result = json.loads((root / 'first/complete.json').read_text())
-    assert result['ok'] and result['downloadBatchUi' if args.batch else 'downloadTableUi' if args.table else 'downloadPageUi']
+    assert result['ok'] and result['downloadNavigationUi' if args.navigation else 'downloadBatchUi' if args.batch else 'downloadTableUi' if args.table else 'downloadPageUi']
     assert result['realMusicRequests'] == result['realAccountWrites'] == 0
     assert result['syntheticNativeRecords'] == 146
     assert len(list((root / 'first').glob('ux_*.json'))) == result['stageCount'] == expected
