@@ -21,7 +21,8 @@ pages/playlist/components/PlaylistCover.jsx：.img 恢复 CSS 给出 216×216 / 
 components/Description/index.tsx：裁剪简介、详情入口、信息区内滚动浮层和关闭按钮。
 pages/playlist/views/index.jsx：歌曲/评论/收藏者三段导航。
 pages/playlist/components/Edit.jsx：官方编辑为页面布局，名称/标签/简介在左、封面在右；
-  当前保留既有模态编辑流程，本轮只复验入口、布局可达和返回焦点，不宣称编辑页一致。
+  本记录对应的10月29日版本仍为模态编辑，只复验入口、布局可达和返回焦点。
+  10月30日已迁移内容区编辑页，后续来源及证据另见 playlist-editor-ui-contracts.txt。
 
 尺寸分支与边界
 Common 和日推读取 PH-PC-listPage-showMore=t1 可切换紧凑分支，标题 20px/28px、
