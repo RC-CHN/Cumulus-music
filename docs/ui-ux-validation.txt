@@ -1090,3 +1090,33 @@ Windows现场与接续提示焦点复查（2026-10-29）
 - 前一歌单详情提交5cbf0a5的CI 40864199440：前端/Linux成功，Windows仍在native_smoke
   缺少ci-native-audio-loudness-windows.json处失败，未执行其后的Windows界面检查，
   CI gate失败。本轮未绕过检查或发版本；全站逐页UI/UX审计与完整目标均未完成。
+
+2026-10-30：歌单标签分类浮层与选择行为（fix/playlist-tag-popover）
+- 继续UI/UX专项。阅读官方TagEdit、TagOptionsLayer、SelectionTag、Select样式和Edit
+  的dropdown-visible分支，正文展开改为574×374分类浮层，恢复已选标签、取消回滚、
+  确定保留和250px留白/滚动。具体尺寸、键盘适配与原始组件差异见playlist-tags-ui-contracts.txt。
+- 选择区与浮层职责拆分；加载/空目录/读取失败分别显示，重试不被旧响应覆盖，账号
+  切换清理旧目录。前端增加2个目录请求时序/状态测试，全部233项通过；未新增核心业务请求。
+- playlist-tags-first的标签41态、编辑45态、共用41态和动画18态均通过，但人工截图
+  发现浮层左对齐溢出后贴在侧栏、取消按钮继承40px最小高度而确定为36px。调整边界翻转、
+  统一36px按钮；进一步读取官方Edit的250px留白/滚动并补齐，移除初版探针的“不重排编辑页”
+  假设。first记录保留，不把旧假设下的通过当作最后产品行为验收。
+- playlist-tags-final2-checks.json：npm ci、格式、233项前端测试、标签41态、编辑45态、
+  共用交互41态、动画18态均成功。最后仅校准阴影透明度为官方10%，增加浮层保持打开时
+  缩小/放大的2态；final3重新完成格式、类型/生产构建、cumulus/ux_ui_probe内嵌构建和
+  标签43态/43图，全部通过。未把最后CSS微调说成重跑了全部Rust或所有其他GUI用例。
+- 43态覆盖两尺寸/两主题的分类、末项滚动、3个标签上限、长名称、取消/确定、Escape、
+  外部关闭，以及加载/失败/重试/空目录和打开时窗口缩放。检查按钮命中/几何、分类左右键/
+  Home/End、Tab/Shift+Tab离开、焦点恢复、250px留白和实际滚动。服务端只用example内
+  合成目录，无真实账号写入/音乐请求，元数据batch计数为0；没有执行真实封面上传。
+- 人工查看宽窗浅色、窄窗深色、选择上限、失败/空目录和保持浮层打开时缩小窗口的截图。
+  .build/playlist-tags-gallery/index.html汇集43张最终标签图与final2的104张回归图，
+  总147张；另外4组相同合成歌单/4标签的旧正文展开和新浮层对照。专项长目录是另一个
+  合成数据集，不伪称与前后对照使用相同数据。PNG未编辑，仅CSS隐藏窗口外桌面。
+- Rust fmt、严格workspace/all-targets/custom-protocol Clippy及全量254目标/1173 passed/
+  0 failed/0 ignored通过，记录于playlist-tags-engineering-checks.json；其后只改前端/
+  探针JS/文档。CI规则21项通过；43态新增到Linux和Windows独立job。源文件检查通过，
+  截图、恢复源码、会话、产物留在.build/references。远端CI按新分支精确提交另核对。
+- 环境为zh_CN.UTF-8、独立Xvfb/D-Bus/xcompmgr、真实Tauri/WebKitGTK；键盘由合成DOM事件
+  驱动，未验证物理键盘/刷新率、Windows视觉/DPI或官方运行截图像素一致。封面裁剪窗口
+  已定位官方442px/556px及操作区来源，尚未完成新一轮裁剪状态视觉验收；其余页面继续。

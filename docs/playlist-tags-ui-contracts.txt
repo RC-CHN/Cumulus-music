@@ -1,0 +1,46 @@
+歌单标签浮层 UI/UX 来源与验收契约
+2026-10-30，fix/playlist-tag-popover；完整UI逐页审计仍进行中。
+
+官方来源（相对 references/ui-recovery/sources/packages/pc/src/）
+- pages/playlist/components/TagEdit.jsx：多选Select、closable已选标签、36px选择区、26px
+  标签、14px标签圆角；指定bottomRight位置，弹层可关闭，最多3个。
+- pages/playlist/components/TagOptionsLayer.jsx：574×374浮层，14px 16px 24px内边距，
+  12px圆角，0 2px 15px阴影；分类Tabs、80px标签、16px行高、16px/12px间距、内容上距25px。
+  两个240px按钮居中、间距14px。选择实时更新草稿；取消恢复打开时的值，确定只关闭浮层。
+- pages/playlist/components/Edit.jsx：打开浮层增加250px底部留白，scrollTop增加250。
+- components/SelectionTag/index.tsx、desktop-ui/es/select/style/style.js：选中/悬停配色、
+  标签删除和选择容器。后者路径相对sources/packages/；不是可直接运行的官方组件依赖。
+没有参考YesPlayMusic。恢复源码和Cumulus截图不能单独证明官方运行时像素一致。
+
+实现
+- PlaylistEditorTags负责已选标签与本次打开的快照；PlaylistTagPopover负责分类/内容/按钮；
+  useTagPopover负责定位与外部关闭。样式集中于playlist-tags.css，移除旧正文展开样式。
+- 取消恢复该次打开前的选择，确定保留到编辑草稿；两者都返回选择入口。移除已选标签
+  或浮层内反选后恢复可选项；限制3个覆盖所有分类。打开菜单和选择标签不提交元数据。
+- 分类页签支持左右键/Home/End，单个tab进入Tab顺序；Tab/Shift+Tab可离开浮层回到
+  编辑页前后控件。Escape关闭并保留当前选择，返回入口；外部点击/移焦关闭并保留选择，
+  不抢回外部焦点。这些键盘/外部关闭策略属于明确的社区适配，不冒称源码覆盖所有事件。
+- 打开增加250px内容留白（叠加正文已有2px描边留白），请求向下滚动250px，由浏览器
+  限制到可滚动范围。关闭去掉留白；正文仍在独立滚动区内，顶栏/播放条保持固定。
+- 浮层优先bottomRight，空间不足时翻转/钳制；右对齐溢出左边界时改为优先靠近输入区域。
+  最低窗口760×540时高度372px，保留顶栏与播放条边界，分类内容独立滚动，按钮始终可达。
+  这些边界策略与正文独立滚动是响应式适配；没有照搬官方固定窗口之外的未知行为。
+- 使用既有menu/tab的transform/opacity动画和减少动态效果规则。深浅色使用语义配色，
+  长名称显示省略并保留完整title；焦点采用内侧主题色描边。取消/确定均36px高，避免
+  通用download-button的min-height让取消按钮额外长高。原始Select内部全部像素未复刻。
+- 目录加载、空目录、失败和重试分开显示。usePlaylists的目录请求带单独读代次，迟到
+  成功/失败不能覆盖更新的请求；账号切换清理加载/错误/目录。没有新增正式服务接口。
+
+验证机制
+- playlist_tags_ui_probe.js通过正式界面与IPC操作；example内的catalogue提供五分类、
+  长列表/长标签、等待/失败/空返回。没有真实账号写入或音乐请求，也不替换生产标签逻辑。
+- 43个状态：两尺寸/两主题的打开、滚动末项、限制、切换分类、长名称、取消/确定、
+  Escape和外部关闭；读取加载/失败/重试/空目录；保持浮层打开时缩小/放大窗口。
+  同时检查分类键盘、Tab前后离开、无越界/按钮命中和尺寸、留白与滚动、没有元数据写入。
+- 既有45态编辑页用例在标签浮层打开时检查浮层按钮，关闭后继续检查页面按钮；不能
+  把浮层遮住背景按钮视为失败，也不能跳过当前活动浮层的可达性。
+- 新2个前端状态测试覆盖加载/空/失败、重试乱序和账号切换。实际运行结果、截图版本及
+  其他回归在ui-ux-validation.txt记录；UI状态数不等于完整页面数量。
+- 合成键盘事件/实际WebView不是物理键盘、刷新率、Windows视觉或官方像素对照的证明。
+  封面裁剪窗口仍须单独核对，不能用标签浮层通过代替它或其他页面的验收。
+复验：python3 scripts/ci/playlist_tags_smoke.py --binary /absolute/ux_ui_probe --root /absolute/new-root
