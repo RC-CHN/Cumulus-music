@@ -314,6 +314,29 @@ fn execute(context: &Context, command: DownloadCommand) -> Result<DownloadResult
                     .id,
             );
         }
+        DownloadCommand::DeleteFiles { task_ids } => {
+            validate_ids(&task_ids)?;
+            // Each file owns a persistent operation journal. Run sequentially so a
+            // large selection cannot create thousands of native workers.
+            let mut seen = std::collections::HashSet::new();
+            for id in task_ids.into_iter().filter(|id| seen.insert(id.clone())) {
+                context.guard()?;
+                let operation =
+                    context
+                        .files
+                        .start(&id, crate::download::completed::FileAction::Delete, None);
+                match operation.and_then(|op| context.files.resume(&op.id)) {
+                    Ok(op) if op.phase == crate::download::completed::FilePhase::Complete => {
+                        result.accepted.push(id)
+                    }
+                    Err(Error::StaleResponse) => return Err(Error::StaleResponse),
+                    _ => result.failed.push(DownloadFailure {
+                        id,
+                        message: "未能删除，请在文件操作中核对状态",
+                    }),
+                }
+            }
+        }
         DownloadCommand::File {
             task_id,
             action,

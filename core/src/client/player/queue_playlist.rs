@@ -20,31 +20,27 @@ use std::{
 // Official module 7.g; insertions keep the nearest prefix, then the suffix.
 const QUEUE_LIMIT: usize = 10_000;
 
-impl MusicClient {
-    pub(super) async fn queue_playlist(
-        &self,
-        epoch: &str,
+pub(super) enum QueueCollection {
+    Playlist {
         id: String,
         quality: Quality,
-        expected_revision: String,
         selection: Option<(Vec<String>, String)>,
-    ) -> Result<PlayerView> {
-        let token = self.player_token(epoch)?;
-        self.session.with_token(&token, |_| Ok(()))?;
-        let id = identifier(&json!(id))?;
-        let controller = self.player.controller().await?;
-        let (before, queue) = controller.queue_with_state(&token).await?;
-        if before.queue_revision.to_string() != expected_revision {
-            return Err(Error::QueueChanged);
-        }
-        if before.fm {
-            return Err(Error::State("FM queue requires its coordinator"));
-        }
-        let focus = self.focus.snapshot()?;
-        let attempt = self.player.selection.fetch_add(1, Ordering::AcqRel) + 1;
+    },
+    Downloads(Vec<String>),
+}
+
+impl MusicClient {
+    async fn playlist_queue_resources(
+        &self,
+        token: &SessionToken,
+        id: &str,
+        quality: Quality,
+        selection: Option<(Vec<String>, String)>,
+        attempt: u64,
+    ) -> Result<Vec<Value>> {
         let detail = self
             .session
-            .run_for(&token, |api, _| async {
+            .run_for(token, |api, _| async {
                 PlaylistApi::new(api).detail(&json!(id)).await
             })
             .await?;
@@ -56,7 +52,7 @@ impl MusicClient {
         }
         let mut seen = HashSet::new();
         let ids = if let Some((ids, revision)) = selection {
-            super::playlist_batch::selected_ids(&id, &detail, &ids, &revision)?
+            super::playlist_batch::selected_ids(id, &detail, &ids, &revision)?
         } else {
             tracks
                 .iter()
@@ -70,13 +66,13 @@ impl MusicClient {
         };
         let mut resources = Vec::new();
         for chunk in ids.chunks(100) {
-            self.session.check_generation(&token)?;
+            self.session.check_generation(token)?;
             if self.player.selection.load(Ordering::Acquire) != attempt {
                 return Err(Error::StaleResponse);
             }
             let songs = self
                 .session
-                .run_for(&token, |api, _| async {
+                .run_for(token, |api, _| async {
                     CatalogApi::new(api).songs(chunk, 100).await
                 })
                 .await?;
@@ -95,8 +91,47 @@ impl MusicClient {
         if resources.is_empty() {
             return Err(Error::State("playlist has no online tracks"));
         }
+        Ok(resources)
+    }
+    pub(super) async fn queue_collection(
+        &self,
+        epoch: &str,
+        collection: QueueCollection,
+        expected_revision: String,
+    ) -> Result<PlayerView> {
+        let token = self.player_token(epoch)?;
+        self.session.check_generation(&token)?;
+        let controller = self.player.controller().await?;
+        let (before, queue) = controller.queue_with_state(&token).await?;
+        if before.queue_revision.to_string() != expected_revision {
+            return Err(Error::QueueChanged);
+        }
+        if before.fm {
+            return Err(Error::State("FM queue requires its coordinator"));
+        }
+        let focus = self.focus.snapshot()?;
+        let attempt = self.player.selection.fetch_add(1, Ordering::AcqRel) + 1;
+        let (resources, source, downloaded) = match collection {
+            QueueCollection::Playlist {
+                id,
+                quality,
+                selection,
+            } => {
+                self.session.with_token(&token, |_| Ok(()))?;
+                let id = identifier(&json!(id))?;
+                let resources = self
+                    .playlist_queue_resources(&token, &id, quality, selection, attempt)
+                    .await?;
+                (resources, json!({"kind":"playlist","id":id}), false)
+            }
+            QueueCollection::Downloads(ids) => (
+                self.download_resources(epoch, ids).await?,
+                json!({"kind":"downloads"}),
+                true,
+            ),
+        };
         let start = queue.current.is_none();
-        let queue = insert_playlist(queue, resources, json!({"kind":"playlist","id":id}));
+        let queue = insert_collection(queue, resources, source, downloaded);
         self.session.check_generation(&token)?;
         if self.player.selection.load(Ordering::Acquire) != attempt {
             return Err(Error::StaleResponse);
@@ -127,19 +162,26 @@ impl MusicClient {
     }
 }
 
-fn song_id(entry: &QueueEntry) -> Option<&str> {
-    // Local files and podcast episodes can share a numeric id with a song.
-    if entry.resource.get("local_id").is_some() || entry.resource.get("voice_id").is_some() {
+fn resource_key(resource: &Value, downloaded: bool) -> Option<&str> {
+    // A local file, an episode and an online song can share the same numeric id.
+    if downloaded {
+        return resource["download_task_id"].as_str();
+    }
+    if ["local_id", "voice_id", "download_task_id"]
+        .iter()
+        .any(|key| resource.get(key).is_some())
+    {
         None
     } else {
-        entry.resource["id"].as_str()
+        resource["id"].as_str()
     }
 }
 
-fn insert_playlist(
+fn insert_collection(
     mut queue: QueueSnapshot,
     resources: Vec<Value>,
     source: Value,
+    downloaded: bool,
 ) -> QueueSnapshot {
     let current = queue
         .items
@@ -149,15 +191,17 @@ fn insert_playlist(
     let existing: HashMap<_, _> = queue
         .items
         .iter()
-        .filter_map(|e| song_id(e).map(|id| (id, e)))
+        .filter_map(|e| resource_key(&e.resource, downloaded).map(|id| (id, e)))
         .collect();
     let mut seen = HashSet::new();
     let inserted: Vec<_> = resources
         .into_iter()
         .filter_map(|resource| {
-            let id = resource["id"].as_str()?;
+            let id = resource_key(&resource, downloaded)?;
             if !seen.insert(id.to_owned())
-                || current.as_ref().is_some_and(|e| song_id(e) == Some(id))
+                || current
+                    .as_ref()
+                    .is_some_and(|e| resource_key(&e.resource, downloaded) == Some(id))
             {
                 return None;
             }
@@ -176,13 +220,18 @@ fn insert_playlist(
         .collect();
     // Preserve the loaded entry verbatim, even if the playlist contains it.
     // This avoids restarting or changing the paused position of current audio.
-    let replaced: HashSet<_> = inserted.iter().filter_map(song_id).collect();
+    let replaced: HashSet<_> = inserted
+        .iter()
+        .filter_map(|e| resource_key(&e.resource, downloaded))
+        .collect();
     let split = queue
         .items
         .iter()
         .position(|e| Some(&e.entry_id) == queue.current.as_ref())
         .map_or(0, |i| i + 1);
-    let keep = |e: &&QueueEntry| !song_id(e).is_some_and(|id| replaced.contains(id));
+    let keep = |e: &&QueueEntry| {
+        !resource_key(&e.resource, downloaded).is_some_and(|id| replaced.contains(id))
+    };
     let space = QUEUE_LIMIT - inserted.len();
     let mut prefix: Vec<_> = queue.items[..split]
         .iter()
@@ -225,6 +274,33 @@ fn insert_playlist(
 mod tests {
     use super::*;
     #[test]
+    fn offline_insertions_keep_online_ids_and_distinct_offline_copies_separate() {
+        let current = QueueEntry {
+            entry_id: "stream".into(),
+            resource: json!({"id":"9"}),
+            source: Value::Null,
+        };
+        let before = QueueSnapshot {
+            items: vec![current],
+            order: vec!["stream".into()],
+            current: Some("stream".into()),
+            ..Default::default()
+        };
+        let files = vec![
+            json!({"id":"9","download_task_id":"a"}),
+            json!({"id":"9","download_task_id":"b"}),
+        ];
+        let queue = insert_collection(before, files.clone(), json!({"kind":"downloads"}), true);
+        let keys = queue.order.clone();
+        assert_eq!(queue.items.len(), 3);
+        assert_eq!(queue.items[1].resource["download_task_id"], "a");
+        assert_eq!(queue.items[2].resource["download_task_id"], "b");
+        let again = insert_collection(queue, files, json!({"kind":"downloads"}), true);
+        again.validate().unwrap();
+        assert_eq!(again.order, keys);
+        assert_eq!(again.current.as_deref(), Some("stream"));
+    }
+    #[test]
     fn capacity_keeps_current_and_nearest_prefix_and_does_not_merge_local_ids() {
         let items: Vec<_> = (0..10_000)
             .map(|i| QueueEntry {
@@ -240,7 +316,7 @@ mod tests {
             ..Default::default()
         };
         queue.items[9998].resource["local_id"] = json!("local-file");
-        let value = insert_playlist(
+        let value = insert_collection(
             queue,
             vec![
                 json!({"id":"9998"}),
@@ -248,6 +324,7 @@ mod tests {
                 json!({"id":"9999"}),
             ],
             Value::Null,
+            false,
         );
         value.validate().unwrap();
         assert_eq!(value.items.len(), QUEUE_LIMIT);

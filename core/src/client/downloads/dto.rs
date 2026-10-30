@@ -131,6 +131,9 @@ pub enum TaskControl {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum DownloadCommand {
+    DeleteFiles {
+        task_ids: Vec<String>,
+    },
     StartVoice {
         voice_ids: Vec<String>,
         options: DownloadOptions,

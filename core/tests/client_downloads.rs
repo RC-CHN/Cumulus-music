@@ -916,3 +916,72 @@ async fn unsorted_downloads_preserve_service_order_across_windows() {
         ["3", "2", "1"]
     );
 }
+
+#[tokio::test]
+async fn downloaded_batch_queue_keeps_the_offline_entry_current_and_rejects_old_revisions() {
+    let f = Fixture::new();
+    let (id, _) = f.completed().await;
+    let add = |revision: String, ids: Vec<String>| PlayerAction::QueueDownloads {
+        task_ids: ids,
+        expected_queue_revision: revision,
+    };
+    let initial = f.client.player_queue("1").await.unwrap().revision;
+    f.client
+        .player_action("1", add(initial.clone(), vec![id.clone(), id.clone()]))
+        .await
+        .unwrap();
+    let before = f.client.player_queue("1").await.unwrap();
+    assert_eq!(before.tracks.len(), 1);
+    let same = f
+        .client
+        .player_action("1", add(before.revision.clone(), vec![id.clone()]))
+        .await
+        .unwrap();
+    assert_eq!(same.queue_len, 1);
+    assert_eq!(
+        f.client.player_queue("1").await.unwrap().current,
+        before.current
+    );
+    assert!(matches!(
+        f.client.player_action("1", add(initial, vec![id])).await,
+        Err(Error::QueueChanged)
+    ));
+    assert_eq!(f.api.count("player/url"), 0);
+    f.client
+        .player_action("1", PlayerAction::Stop)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn batch_file_delete_reports_partial_completion_and_does_not_follow_a_changed_file() {
+    let f = Fixture::new();
+    let (id, view) = f.completed().await;
+    let path = PathBuf::from(view.tasks[0].path.as_ref().unwrap());
+    let command = |ids: Vec<String>| DownloadCommand::DeleteFiles { task_ids: ids };
+    fs::write(&path, b"replacement data").unwrap();
+    let protected = f
+        .client
+        .download_command("1", command(vec![id.clone()]))
+        .await
+        .unwrap();
+    assert!(protected.accepted.is_empty());
+    assert_eq!(protected.failed[0].id, id);
+    assert_eq!(fs::read(&path).unwrap(), b"replacement data");
+    let other = Fixture::new();
+    let (valid, v) = other.completed().await;
+    let other_path = PathBuf::from(v.tasks[0].path.as_ref().unwrap());
+    let result = other
+        .client
+        .download_command(
+            "1",
+            command(vec!["absent".into(), valid.clone(), valid.clone()]),
+        )
+        .await
+        .unwrap();
+    assert_eq!(result.accepted, vec![valid]);
+    assert_eq!(result.failed.len(), 1);
+    assert_eq!(result.failed[0].id, "absent");
+    assert!(!other_path.exists());
+    assert_eq!(fs::read(path).unwrap(), b"replacement data");
+}

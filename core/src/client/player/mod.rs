@@ -276,6 +276,19 @@ impl MusicClient {
                 .next_play(epoch, id, quality, expected_queue_revision)
                 .await;
         }
+        if let PlayerAction::QueueDownloads {
+            task_ids,
+            expected_queue_revision,
+        } = action
+        {
+            return self
+                .queue_collection(
+                    epoch,
+                    queue_playlist::QueueCollection::Downloads(task_ids),
+                    expected_queue_revision,
+                )
+                .await;
+        }
         if let PlayerAction::QueuePlaylist {
             id,
             quality,
@@ -283,7 +296,15 @@ impl MusicClient {
         } = action
         {
             return self
-                .queue_playlist(epoch, id, quality, expected_queue_revision, None)
+                .queue_collection(
+                    epoch,
+                    queue_playlist::QueueCollection::Playlist {
+                        id,
+                        quality,
+                        selection: None,
+                    },
+                    expected_queue_revision,
+                )
                 .await;
         }
         if let PlayerAction::QueuePlaylistBatch {
@@ -295,12 +316,14 @@ impl MusicClient {
         } = action
         {
             return self
-                .queue_playlist(
+                .queue_collection(
                     epoch,
-                    id,
-                    quality,
+                    queue_playlist::QueueCollection::Playlist {
+                        id,
+                        quality,
+                        selection: Some((ids, revision)),
+                    },
                     expected_queue_revision,
-                    Some((ids, revision)),
                 )
                 .await;
         }
@@ -451,6 +474,7 @@ impl MusicClient {
             PlayerAction::Startup => unreachable!("handled before user transport commands"),
             PlayerAction::NextPlay { .. }
             | PlayerAction::QueuePlaylist { .. }
+            | PlayerAction::QueueDownloads { .. }
             | PlayerAction::QueuePlaylistBatch { .. } => {
                 unreachable!("handled before user transport commands")
             }

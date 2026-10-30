@@ -147,6 +147,10 @@ pub enum PlaySelection {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PlayerAction {
+    QueueDownloads {
+        task_ids: Vec<String>,
+        expected_queue_revision: String,
+    },
     QueuePlaylistBatch {
         id: String,
         ids: Vec<String>,
