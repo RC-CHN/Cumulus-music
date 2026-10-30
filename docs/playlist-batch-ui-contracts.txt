@@ -1,0 +1,58 @@
+歌单批量操作 UI/UX 来源与边界（2026-10-30）
+
+官方证据（路径相对 references/，不随产品分发）
+- ui-recovery/sources/packages/pc/src/pages/playlist/views/BatchOperation.tsx：
+  独立内容页；requestPlaylistTracksDetailAll 完成后显示完整列表；selectedTracks 按
+  原歌单 tracks.filter(selected.includes) 生成，不能按鼠标点击顺序播放。
+  工具栏依次播放、添加到播放列表、下载、收藏、删除；空选择禁用，自己的歌单显示删除。
+- 同树 components/BatchOperationHeader/index.tsx：默认40px按钮（showMore分支36px），
+  间距12px、底距20px、最大宽1492px，完成在右侧。播放40、队列145、其余80px。
+- 同树 components/BatchOperationTableViewer/index.tsx：40px表头、8px下距、64px行、
+  14px行圆角、单元格左右8px、首尾18/16px，useLayout/useResizer/useSelect/useSortBy。
+- netease-3.1.42.205594-analysis/recovered-js/modules/
+  hybrid_app.chunk.1482700000000.js/354.js 的 Q 行组件专门覆盖通用 useSelect 行事件，
+  onMouseDown 调 doSelect() 切换该行；单元格 pointer-events:none。因此不能把106.js
+  通用表格“普通点击仅选一行”的规则误套到批量页。371/372为全选框和已选数量文字。
+  106.js 表体 Ctrl+A 始终全选，方向键选择相邻歌曲；2033.js（hybrid_13.chunk…）
+  给出8px按钮圆角与20px图标。没有参考 YesPlayMusic。
+
+当前实现
+- 歌单详情更多菜单→批量操作→完成/顶栏返回/Escape。原浏览页保留，返回恢复滚动和
+  入口焦点；切页和换账号取消读取响应，不能由迟到结果重新打开批量页。
+- services/playlistBatch.ts 分页100读取完整快照，逐页核对账号、offset与revision；
+  非推进/缺快照/超限读取明确失败。局部返回不能冒充完整歌单。上限50000，线性追加。
+  usePlaylistBatch 维护选中集合；完整回读后只保留仍存在的ID，退出即丢弃选择。
+- PlaylistBatchTable 为64px虚拟行；复选框与整行均可切换。表头全选/清空，Ctrl/Meta+A
+  始终全选；方向键选择相邻行，Home/End首尾。滚出回收区的键盘焦点转交表体，仍能
+  用键盘返回可见歌曲；行、表头、工具栏使用主题色内收焦点框。
+- 播放/队列从完整快照中按原歌单顺序取所选在线曲目。播放替换队列；加入队列复用
+  官方当前曲后插入逻辑，保留已有暂停/位置。单次最多10000首，超出明确提示。
+- 收藏复用列表式收藏窗口；下载复用下载选择窗口；删除复用写入前确认、持久化操作
+  记录与结果核对。未确认写入不自动重发。删除成功回读并保留未被删除的选择。
+  弹窗拥有自身Escape；关闭后返回入口，入口已禁用时回到完成按钮。
+- 两主题使用同一语义色；长文本省略并使用已有应用内提示。窄窗工具栏换行，完成按钮
+  保留在右侧，属于社区响应式适配。进入/退出沿用共用page动画，尊重减少动态效果。
+
+公开IPC与核心边界
+- playlistPage(id,{offset,limit,revision}) 返回无凭据 TrackPage。
+- playSelection(epoch,{kind:'playlist_batch',id,ids,revision,quality})。
+- playerAction(epoch,{kind:'queue_playlist_batch',id,ids,revision,quality,
+  expected_queue_revision})。PlaylistApi.detail核对 SHA256(JSON([id,trackIds]))，
+  再按该快照过滤ID、每100首读取歌曲元数据；本地/不存在条目拒绝。账号和播放意图的
+  代次仍由现有播放器检查。没有把所选歌单曲目退化为普通Songs的500首限制。
+- mutatePlaylist(epoch,{kind:'tracks',id,revision,change:'delete',ids}) 使用编辑快照
+  （与播放快照不是同一个revision）；confirmed/unchanged后刷新，uncertain先reconcile。
+- 收藏通过现有addTracks读取目标编辑快照后mutatePlaylist；下载由现有DownloadDialog
+  发start命令。这些连接必须与各自实际操作证据分开描述，不能仅因有入口就称全流程通过。
+
+保留差异与未完成项
+- 没有同状态官方运行截图，不能宣称像素一致。颜色/图标、各列比例、48px占位封面、
+  checkbox绘制、窄窗换行、Shift范围追加和Ctrl+方向键仅移动焦点属于社区适配。
+- 官方表格可排序/拖列宽；当前批量页未补齐。官方favorite HeartFilter、默认showMore
+  实验分支、本地歌曲批量播放/删除、专用资源动作还需逐项恢复和验证。
+- 自己的喜欢歌单和含本地条目的歌单保留删除按钮，但明确禁用并说明暂不支持；现有
+  Rust写入边界禁止这两类变更。不能用普通自建在线歌单的成功替代这些分支。
+- 目前入口为歌单详情。每日推荐、专辑、歌手、下载、云盘、声音也有官方批量页来源，
+  尚未用本专项替代其逐页工作。多种资源的完整菜单/真实封面/Windows视觉仍未验收。
+- 全部截图来自合成内容及Linux隔离WebView，不能证明用户物理桌面60Hz、真实账号写入、
+  Windows/DPI或所有页面一致。每轮实际证据和失败保留在ui-ux-validation.txt。
