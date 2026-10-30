@@ -500,3 +500,163 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Separate detail, playback and context actions: no nested interactive controls. */
+.search-result-card {
+  position: relative;
+}
+.search-card-open {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  border-radius: inherit;
+}
+.search-card-open:focus-visible {
+  outline-offset: -2px;
+}
+.search-result-card:focus-within {
+  background: var(--surface-hover);
+}
+.search-result-art {
+  position: relative;
+  pointer-events: none;
+}
+.search-result-name,
+.search-result-sub {
+  pointer-events: none;
+}
+.search-voice-card .search-result-name {
+  pointer-events: auto;
+}
+.search-card-mask {
+  position: absolute;
+  inset: 0;
+  background: #0004;
+  opacity: 0;
+  transition: opacity 180ms;
+}
+.search-card-play {
+  position: absolute;
+  z-index: 2;
+  right: 8px;
+  bottom: 8px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  background: #fff;
+  color: #29282f;
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity 180ms,
+    transform 180ms;
+}
+.search-card-play .icon {
+  width: 23px;
+  height: 23px;
+}
+.search-result-card:hover .search-card-play,
+.search-result-card:focus-within .search-card-play,
+.search-card-current .search-card-play {
+  opacity: 1;
+  transform: none;
+}
+.search-result-card:hover .search-card-mask,
+.search-result-card:focus-within .search-card-mask,
+.search-card-current .search-card-mask {
+  opacity: 1;
+}
+.search-person-card .search-card-play,
+.search-voice-card .search-card-play {
+  width: 44px;
+  height: 44px;
+  top: calc(50% - 22px);
+  left: calc(50% - 22px);
+  right: auto;
+  bottom: auto;
+  background: transparent;
+  color: #fff;
+}
+.search-person-card .search-card-play .icon {
+  width: 42px;
+  height: 42px;
+}
+.search-card-menu {
+  position: absolute;
+  z-index: 3;
+  top: 6px;
+  right: 6px;
+  opacity: 0;
+  transition: opacity 150ms;
+}
+.search-result-card:hover .search-card-menu,
+.search-result-card:focus-within .search-card-menu,
+.search-card-menu:has([aria-expanded='true']) {
+  opacity: 1;
+}
+.search-card-menu > .menu-trigger {
+  background: var(--surface-raised);
+  color: var(--text);
+  border: 1px solid var(--line);
+  width: 30px;
+  height: 30px;
+}
+.search-voice-card {
+  padding-right: 42px;
+}
+.search-voice-card .search-card-menu {
+  top: calc(50% - 15px);
+}
+.search-voice-radio {
+  z-index: 2;
+  position: relative;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 17px;
+  text-align: left;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  align-self: start;
+}
+.search-voice-radio:hover {
+  color: var(--accent);
+}
+.search-card-unavailable .search-result-art,
+.search-card-unavailable .search-result-name,
+.search-card-unavailable .search-result-sub {
+  opacity: 0.55;
+}
+@media (hover: none) {
+  .search-card-play,
+  .search-card-menu {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .search-card-play,
+  .search-card-mask,
+  .search-card-menu {
+    transition: none;
+  }
+}
+:root[data-motion='reduced'] .search-card-play,
+:root[data-motion='reduced'] .search-card-mask,
+:root[data-motion='reduced'] .search-card-menu {
+  transition: none;
+}
+.search-card-play .icon {
+  fill: currentColor;
+}
+.search-result-card:hover .search-result-art:has(.search-card-play) > .icon,
+.search-result-card:focus-within .search-result-art:has(.search-card-play) > .icon,
+.search-card-current .search-result-art:has(.search-card-play) > .icon {
+  opacity: 0;
+}

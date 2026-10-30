@@ -1,10 +1,103 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import type { SearchItem } from '../../services/search';
 import { artworkAt } from '../../services/artwork';
 import Icon from '../Icon.vue';
-const props = defineProps<{ item: SearchItem }>();
-const emit = defineEmits<{ open: [item: SearchItem] }>();
+import ActionMenu from '../ActionMenu.vue';
+import type { MenuItem } from '../../services/menu';
+import { searchCardCanPlay } from '../../services/searchCards';
+const props = defineProps<{
+  item: SearchItem;
+  playable: boolean;
+  current: boolean;
+  playing: boolean;
+}>();
+const emit = defineEmits<{
+  open: [item: SearchItem];
+  play: [item: SearchItem];
+  comments: [item: SearchItem];
+  download: [item: SearchItem];
+}>();
+const menu = ref<InstanceType<typeof ActionMenu>>();
+const element = ref<HTMLElement>();
+function contextMenu(event: MouseEvent | KeyboardEvent) {
+  const focused =
+    event instanceof KeyboardEvent && event.target instanceof Element
+      ? event.target.closest<HTMLButtonElement>('button:not(:disabled)')
+      : null;
+  const target =
+    focused ??
+    element.value?.querySelector<HTMLButtonElement>(
+      '.search-card-open:not(:disabled), .search-card-play:not(:disabled), .menu-trigger',
+    );
+  const rect = target?.getBoundingClientRect() ?? element.value?.getBoundingClientRect();
+  if (!rect) return;
+  const pointer = event instanceof MouseEvent && (event.clientX || event.clientY);
+  void menu.value?.showAt(
+    pointer ? event.clientX : rect.left + rect.width / 2,
+    pointer ? event.clientY : rect.top + rect.height / 2,
+    target ?? undefined,
+  );
+}
+const failedCover = ref(false);
+const canPlay = computed(() => searchCardCanPlay(props.item));
+const items = computed<MenuItem[]>(() => [
+  ...(canPlay.value
+    ? [
+        {
+          key: 'play',
+          label: props.current && props.playing ? '暂停' : '播放',
+          icon: props.current && props.playing ? 'pause' : 'play',
+          disabled: !props.playable,
+        },
+      ]
+    : []),
+  {
+    key: 'open',
+    label:
+      props.item.kind === 'voice'
+        ? '查看所属播客'
+        : props.item.kind === 'user'
+          ? '查看用户信息'
+          : '查看详情',
+    icon: 'forward',
+    disabled: unavailable.value,
+  },
+  ...(['playlist', 'album', 'voice', 'mv'].includes(props.item.kind)
+    ? [
+        {
+          key: 'comments',
+          label: '查看评论',
+          icon: 'comment',
+          disabled: props.item.kind === 'mv' && unavailable.value,
+        },
+      ]
+    : []),
+  ...(props.item.kind === 'voice'
+    ? [
+        {
+          key: 'download',
+          label: '下载声音',
+          icon: 'download',
+          disabled: props.item.voice.unavailable,
+        },
+      ]
+    : []),
+]);
+function action(key: string) {
+  if (key === 'play' && canPlay.value && props.playable) emit('play', props.item);
+  else if (key === 'open' && !unavailable.value) emit('open', props.item);
+  else if (key === 'comments') emit('comments', props.item);
+  else if (key === 'download') emit('download', props.item);
+}
+function doubleClick(event: MouseEvent) {
+  if (
+    props.item.kind === 'voice' &&
+    !(event.target instanceof Element && event.target.closest('button, a, [role="menu"]'))
+  )
+    action('play');
+}
+
 const unavailable = computed(() =>
   props.item.kind === 'voice'
     ? !props.item.voice.radioId
@@ -75,36 +168,85 @@ const card = computed(() => {
       };
   }
 });
+watch(
+  () => card.value.cover,
+  () => {
+    failedCover.value = false;
+  },
+);
 </script>
 <template>
-  <button
+  <article
+    ref="element"
     class="search-result-card"
-    :disabled="unavailable"
-    :class="[
-      {
-        'search-person-card': card.round,
-        'search-related-word': item.kind === 'related',
-        'search-video-card': item.kind === 'mv',
-        'search-cover-card': ['playlist', 'album', 'podcast', 'mv'].includes(item.kind),
-        'search-voice-card': item.kind === 'voice',
-      },
-    ]"
-    @click="emit('open', item)"
-    :aria-label="`${item.kind === 'voice' ? '查看所属播客' : item.kind === 'user' ? '查看用户信息' : '查看'} ${card.name}`"
+    :class="{
+      'search-person-card': card.round,
+      'search-related-word': item.kind === 'related',
+      'search-video-card': item.kind === 'mv',
+      'search-cover-card': ['playlist', 'album', 'podcast', 'mv'].includes(item.kind),
+      'search-voice-card': item.kind === 'voice',
+      'search-card-current': current,
+      'search-card-unavailable': unavailable && !canPlay,
+    }"
+    @contextmenu.prevent="contextMenu"
+    @keydown.shift.f10.prevent="contextMenu"
+    @dblclick="doubleClick"
   >
-    <span v-if="item.kind !== 'related'" class="search-result-art"
-      ><img
-        v-if="card.cover"
+    <button
+      v-if="item.kind !== 'voice'"
+      type="button"
+      class="search-card-open"
+      :disabled="unavailable"
+      :aria-label="`${item.kind === 'user' ? '查看用户信息' : '查看'} ${card.name}`"
+      :data-tooltip="[card.name, card.sub].filter(Boolean).join(' · ')"
+      @click="emit('open', item)"
+    />
+    <span v-if="item.kind !== 'related'" class="search-result-art">
+      <img
+        v-if="card.cover && !failedCover"
         :src="artworkAt(card.cover, 320)"
         alt=""
         loading="lazy"
         decoding="async"
-        referrerpolicy="no-referrer" /><Icon v-else :name="card.round ? 'user' : 'music'"
-    /></span>
+        referrerpolicy="no-referrer"
+        @error="failedCover = true"
+      />
+      <Icon v-else :name="card.round ? 'user' : 'music'" />
+      <span v-if="canPlay" class="search-card-mask" />
+      <button
+        v-if="canPlay"
+        type="button"
+        class="search-card-play"
+        :disabled="!playable"
+        :aria-label="`${current && playing ? '暂停' : '播放'} ${card.name}`"
+        @click.stop="action('play')"
+        @dblclick.stop
+      >
+        <Icon :name="current && playing ? 'pause' : 'play'" />
+      </button>
+    </span>
     <span class="search-result-name" :data-tooltip="card.name">{{ card.name }}</span>
-    <span v-if="unavailable" class="search-result-sub">暂不可打开</span>
+    <button
+      v-if="item.kind === 'voice' && item.voice.radioId"
+      class="search-voice-radio"
+      :data-tooltip="card.sub"
+      @click.stop="emit('open', item)"
+      @dblclick.stop
+    >
+      {{ card.sub }}
+    </button>
+    <span v-else-if="unavailable" class="search-result-sub">暂不可打开</span>
     <span v-else-if="card.sub" class="search-result-sub" :data-tooltip="card.sub">{{
       card.sub
     }}</span>
-  </button>
+    <ActionMenu
+      v-if="item.kind !== 'related'"
+      ref="menu"
+      :context-only="item.kind !== 'voice'"
+      class="search-card-menu"
+      :label="`更多操作：${card.name}`"
+      :items="items"
+      @select="action"
+    />
+  </article>
 </template>

@@ -2,9 +2,12 @@
 import { nextTick, onUnmounted, ref, useId, watch } from 'vue';
 import Icon from './Icon.vue';
 import type { MenuItem } from '../services/menu';
-const props = withDefaults(defineProps<{ label: string; items: MenuItem[]; icon?: string }>(), {
-  icon: 'more',
-});
+const props = withDefaults(
+  defineProps<{ label: string; items: MenuItem[]; icon?: string; contextOnly?: boolean }>(),
+  {
+    icon: 'more',
+  },
+);
 const emit = defineEmits<{ select: [key: string] }>();
 const open = ref(false);
 const trigger = ref<HTMLButtonElement>();
@@ -12,21 +15,28 @@ const panel = ref<HTMLElement>();
 const position = ref({ left: '0px', top: '0px', visibility: 'hidden' as 'hidden' | 'visible' });
 const id = useId();
 let stop: (() => void) | undefined;
+let returnTarget: HTMLElement | undefined;
 const choices = () => [
   ...(panel.value?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? []),
 ];
 function close(restore = false) {
   open.value = false;
-  if (restore) trigger.value?.focus({ preventScroll: true });
+  if (restore) (returnTarget ?? trigger.value)?.focus({ preventScroll: true });
 }
-async function show(last = false) {
+async function display(last = false, point?: { x: number; y: number }, target?: HTMLElement) {
+  returnTarget = target ?? trigger.value;
   open.value = true;
   position.value.visibility = 'hidden';
   await nextTick();
-  if (!open.value || !trigger.value || !panel.value) return;
-  const anchor = trigger.value.getBoundingClientRect(),
+  if (!open.value || (!point && !trigger.value) || !panel.value) return;
+  const anchor = point
+      ? { right: point.x, top: point.y, bottom: point.y }
+      : trigger.value!.getBoundingClientRect(),
     box = panel.value.getBoundingClientRect();
-  const left = Math.max(8, Math.min(anchor.right - box.width, innerWidth - box.width - 8));
+  const left = Math.max(
+    8,
+    Math.min(point ? point.x : anchor.right - box.width, innerWidth - box.width - 8),
+  );
   const top =
     anchor.bottom + box.height + 8 < innerHeight
       ? anchor.bottom + 6
@@ -37,6 +47,8 @@ async function show(last = false) {
   const items = choices();
   ((last ? items.at(-1) : items[0]) ?? panel.value)?.focus({ preventScroll: true });
 }
+const show = (last = false) => display(last);
+const showAt = (x: number, y: number, target?: HTMLElement) => display(false, { x, y }, target);
 function select(key: string) {
   close(true);
   emit('select', key);
@@ -89,16 +101,17 @@ watch(open, (active) => {
   };
 });
 onUnmounted(() => stop?.());
-defineExpose({ show });
+defineExpose({ show, showAt });
 </script>
 <template>
   <span class="action-menu-host">
     <button
+      v-if="!contextOnly"
       type="button"
       ref="trigger"
       class="icon-button menu-trigger"
       :aria-label="label"
-      :title="label"
+      :data-tooltip="label"
       aria-haspopup="menu"
       :aria-expanded="open"
       :aria-controls="open ? id : undefined"

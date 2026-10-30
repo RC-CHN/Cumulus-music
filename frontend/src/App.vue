@@ -3,6 +3,7 @@ import SearchBox from './components/search/SearchBox.vue';
 import SearchResultsPage from './components/search/SearchResultsPage.vue';
 import ContentTooltip from './components/ContentTooltip.vue';
 import type { SearchItem } from './services/search';
+import { searchCardIsCurrent, searchCardSelection } from './services/searchCards';
 import { computed, onMounted, onUnmounted, watch, ref, nextTick } from 'vue';
 import { onDesktopLyricOpen } from './adapters/desktopLyrics';
 import { useLocalShortcuts } from './composables/useLocalShortcuts';
@@ -195,6 +196,28 @@ function openSearchItem(item: SearchItem) {
     if (item.mv.mvId) openMv(item.mv.mvId);
     else music.notice.value = '此视频暂不可打开';
   }
+}
+function playSearchCard(item: SearchItem) {
+  const view = player.view.value;
+  if (
+    searchCardIsCurrent(item, view?.origin, view?.track?.voiceId ?? undefined) &&
+    player.loaded.value
+  ) {
+    void player.action({ kind: 'pause', paused: player.playing.value });
+  } else {
+    const quality = view?.requestedQuality ?? 'standard';
+    void player.prepareSelection((epoch) => searchCardSelection(core, epoch, item, quality));
+  }
+}
+function searchCardComments(item: SearchItem) {
+  if (item.kind === 'playlist')
+    openComments({ kind: 'playlist', id: item.playlist.id }, item.playlist.name);
+  else if (item.kind === 'album')
+    openComments({ kind: 'album', id: item.album.id }, item.album.name);
+  else if (item.kind === 'voice')
+    openComments({ kind: 'voice', id: item.voice.id }, item.voice.name);
+  else if (item.kind === 'mv' && item.mv.mvId)
+    openComments({ kind: 'mv', id: item.mv.mvId }, item.mv.title);
 }
 function playCatalog(pages: CatalogSelectionPage[], index: number) {
   void player.select({
@@ -439,6 +462,16 @@ const currentLocalId = computed(() =>
   player.view.value?.track?.local ? currentTrackId.value : undefined,
 );
 const currentVoiceId = computed(() => player.view.value?.track?.voiceId);
+// Intern scalar identity so clock updates cannot rerender all search cards.
+const currentOriginKey = computed(() => {
+  const origin = player.view.value?.origin;
+  return origin ? `${origin.kind}:${origin.id}` : '';
+});
+const currentOrigin = computed(() => {
+  const [kind, id] = currentOriginKey.value.split(':');
+  return id ? { kind: kind as import('./services/player').PlayerOrigin['kind'], id } : null;
+});
+const playbackState = computed(() => player.view.value?.state);
 const pageKey = computed(() =>
   JSON.stringify(
     page.value.kind === 'search' ? { kind: 'search', keyword: page.value.keyword } : page.value,
@@ -1041,6 +1074,9 @@ onUnmounted(() => {
                 :busy-likes="busyLikes"
                 :playable="player.ready.value && !player.busy.value"
                 :current-id="currentTrackId"
+                :playback-origin="currentOrigin"
+                :playback-state="playbackState"
+                :current-voice-id="currentVoiceId ?? undefined"
                 @navigate="
                   (category, offset, correct) =>
                     page.kind === 'search' && music.navigate({ ...page, category, offset, correct })
@@ -1048,6 +1084,13 @@ onUnmounted(() => {
                 @search="(keyword) => music.navigate({ kind: 'search', keyword })"
                 @open="openSearchItem"
                 @play="playRankingSongs"
+                @play-card="playSearchCard"
+                @card-comments="searchCardComments"
+                @card-download="
+                  (item) =>
+                    item.kind === 'voice' &&
+                    (downloadDialog = { kind: 'voice', tracks: [item.voice] })
+                "
                 @collect="(tracks) => (playlistDialog = { kind: 'tracks', tracks })"
                 @more="(track) => (playlistDialog = { kind: 'track', track })"
                 @like="music.like"

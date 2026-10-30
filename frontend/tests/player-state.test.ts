@@ -281,3 +281,52 @@ test('retry repeats the failed selection rather than playing an older queue', as
   assert.equal(f.player.view.value?.playId, 'selected');
   f.player.dispose();
 });
+
+test('prepared card playback cannot start after an account change or newer playback request', async () => {
+  let calls = 0;
+  const f = fixture({
+    playSelection: async () => {
+      calls++;
+      return state('2');
+    },
+  });
+  await f.player.connect(account());
+  const old = deferred<import('../src/services/player.ts').PlaySelection>();
+  const pending = f.player.prepareSelection(() => old.promise);
+  assert.equal(f.player.busy.value, true);
+  await f.player.connect(account('2'));
+  old.resolve({ kind: 'songs', ids: ['1'], index: 0, quality: 'standard' });
+  await pending;
+  assert.equal(calls, 0);
+  assert.equal(f.player.error.value, '');
+  const replaced = deferred<import('../src/services/player.ts').PlaySelection>();
+  const obsolete = f.player.prepareSelection(() => replaced.promise);
+  await f.player.action({ kind: 'stop' });
+  replaced.resolve({ kind: 'songs', ids: ['1'], index: 0, quality: 'standard' });
+  await obsolete;
+  assert.equal(calls, 0);
+  f.player.dispose();
+});
+
+test('retrying card preparation rereads its list before any playback command', async () => {
+  let reads = 0,
+    calls = 0;
+  const f = fixture({
+    playSelection: async () => {
+      calls++;
+      return state('2');
+    },
+  });
+  await f.player.connect(account());
+  await f.player.prepareSelection(async () => {
+    if (++reads === 1) throw { code: 'network', message: '读取失败' };
+    return { kind: 'songs', ids: ['1'], index: 0, quality: 'standard' };
+  });
+  assert.equal(calls, 0);
+  assert.equal(f.player.error.value, '读取失败');
+  await f.player.retry();
+  assert.equal(reads, 2);
+  assert.equal(calls, 1);
+  assert.equal(f.player.error.value, '');
+  f.player.dispose();
+});

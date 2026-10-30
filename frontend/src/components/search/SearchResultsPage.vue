@@ -13,6 +13,8 @@ import TrackTable from '../TrackTable.vue';
 import ModalTransition from '../ModalTransition.vue';
 import Icon from '../Icon.vue';
 import SearchResultCard from './SearchResultCard.vue';
+import { searchCardIsCurrent } from '../../services/searchCards';
+import type { PlayerOrigin, PlaybackStatus } from '../../services/player';
 const props = defineProps<{
   account: AccountView;
   keyword: string;
@@ -23,6 +25,9 @@ const props = defineProps<{
   busyLikes: Set<string>;
   playable: boolean;
   currentId?: string;
+  playbackOrigin?: PlayerOrigin | null;
+  playbackState?: PlaybackStatus;
+  currentVoiceId?: string;
 }>();
 const emit = defineEmits<{
   navigate: [category: SearchCategory, offset: number, correct: boolean];
@@ -35,6 +40,9 @@ const emit = defineEmits<{
   artist: [id: string];
   album: [id: string];
   expired: [];
+  playCard: [item: SearchItem];
+  cardComments: [item: SearchItem];
+  cardDownload: [item: SearchItem];
 }>();
 const model = useSearchResults(useCore(), () => emit('expired'));
 const { view, loading, error } = model;
@@ -272,7 +280,13 @@ onUnmounted(model.dispose);
                 v-for="(item, i) in section.items.filter((i) => i.kind !== 'song')"
                 :key="i"
                 :item="item"
+                :playable="playable"
+                :current="searchCardIsCurrent(item, playbackOrigin, currentVoiceId)"
+                :playing="playbackState === 'playing' || playbackState === 'buffering'"
                 @open="open"
+                @play="emit('playCard', $event)"
+                @comments="emit('cardComments', $event)"
+                @download="emit('cardDownload', $event)"
               />
             </div>
           </section>

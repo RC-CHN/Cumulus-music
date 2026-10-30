@@ -130,6 +130,15 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     }
   }
   const select = (input: PlaySelection) => run((e) => core.playSelection(e, input));
+  // Card playback reads its authoritative list before selecting it. A delayed
+  // read must not start audio after account replacement or a newer operation.
+  const prepareSelection = (prepare: (epoch: string) => Promise<PlaySelection>) =>
+    run(async (e) => {
+      const captured = request;
+      const input = await prepare(e);
+      if (captured !== request || e !== epoch) throw { code: 'stale', message: '播放请求已更新' };
+      return core.playSelection(e, input);
+    });
   const downloads = (ids: string[], index: number) => run((e) => core.playDownloads(e, ids, index));
   const retry = () => (failedOperation ? run(failedOperation) : action({ kind: 'refresh' }));
   async function loadQueue() {
@@ -198,6 +207,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     ready.value = false;
   }
   return {
+    prepareSelection,
     view,
     queue,
     lyrics,

@@ -43,6 +43,7 @@ export interface Timeline {
   media_start: number;
 }
 export interface PlayerView {
+  origin?: PlayerOrigin | null;
   fm: boolean;
   equalizer: EqualizerView;
   loudness: LoudnessView;
@@ -64,6 +65,10 @@ export interface PlayerView {
   error: string | null;
   historyWarning: string | null;
   positionReset: boolean;
+}
+export interface PlayerOrigin {
+  kind: 'playlist' | 'album' | 'artist' | 'podcast';
+  id: string;
 }
 export interface LoudnessView {
   revision: string | null;
