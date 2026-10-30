@@ -121,3 +121,9 @@
   /api/mlog/detail/v1 读取；重试资料不重发播放命令。点艺人使用 /api/artist/v3/detail
   的歌手详情路线。纯在线播放授权 /api/song/enhance/play/mv/url 不用于显式本地任务。
   使用详情缓存与真实离线文件的边界见 core-mv-local-files-contracts.txt。
+
+2026-10-31 离开与返回
+- 下载列表现在记录当前账号、当前查询的锚点、焦点和列宽；歌手/MV/设置页返回
+  后按有效记录恢复，两/四列变化时重新定位。分类改变或账号生命周期变化清除。
+  原记录删除、读取失败和用户中断恢复的处理，以及多层历史边界见
+  download-navigation-ui-contracts.txt；具体实机证据见 ui-ux-validation.txt。

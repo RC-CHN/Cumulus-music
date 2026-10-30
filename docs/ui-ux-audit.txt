@@ -443,3 +443,11 @@ MV | 下载卡片/艺人入口和本地 MV 在无在线详情时的播放已专�
   官方全量菜单、 Windows 实机视觉、影片评论等单独列项，不计作一致性完成。
 - 本地打开、在线资料与重读资料相互独立；实际解码和画布证据、未缓存/失败分支
   见 core-mv-local-files-contracts.txt、download-page-ui-contracts.txt、ui-ux-validation.txt。
+
+
+2026-10-31 下载列表详情返回
+- 实际复现原程序从第二批 MV 进入歌手页后返回跳顶/丢焦点。现在记录任务锚点、
+  原入口和列宽，按返回时的实际两/四列重定位；原记录删除时焦点交给列表。
+  歌曲筛选返回、读取失败/重试、用户中断待执行恢复和账号清理见
+  download-navigation-ui-contracts.txt 与 ui-ux-validation.txt。最近视图记忆不等同
+  每次历史访问的独立快照，多层返回与其他页面继续逐项审计。
