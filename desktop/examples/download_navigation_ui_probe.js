@@ -369,6 +369,199 @@
       "new category starts fresh",
     );
     await capture("new_category");
+    function historyRow(i) {
+      return one('[data-download-index="' + i + '"]');
+    }
+    const trackDownloads = client.downloads;
+    let latestQuery;
+    client.downloads = async (e, q) => {
+      const result = await trackDownloads(e, q);
+      latestQuery = { ...q };
+      return result;
+    };
+    // Distinct visits must survive intervening settings and another download category.
+    await resize(1120, 760);
+    await select("song");
+    const historySearch = one(".download-search input");
+    historySearch.value = "单曲";
+    historySearch.dispatchEvent(new Event("input", { bubbles: true }));
+    await wait(
+      () =>
+        ready() &&
+        latestQuery?.keyword === "单曲" &&
+        one(".download-table")?.getAttribute("aria-rowcount") === "121",
+      "history song query",
+    );
+    const songList = one(".download-scroll");
+    songList.scrollTop = songList.scrollHeight;
+    songList.dispatchEvent(new Event("scroll"));
+    await wait(() => !one(".download-continuation"), "history complete prefix");
+    click(one('[data-download-sort="name"]'));
+    await wait(() => ready() && historyRow(0), "history sort");
+    // Sorting deliberately resets the prefix; load it again before saving the visit.
+    const sortedList = one(".download-scroll");
+    sortedList.scrollTop = sortedList.scrollHeight;
+    sortedList.dispatchEvent(new Event("scroll"));
+    await wait(() => !one(".download-continuation"), "history sorted prefix");
+    await place(80);
+    const historyA = task(historyRow(80));
+    historyRow(80).focus({ preventScroll: true });
+    historyRow(80)
+      .querySelector('[data-download-action="manage"]')
+      .focus({ preventScroll: true });
+    await sleep(100);
+    const historyATop = one(".download-scroll").scrollTop,
+      historyAColumns = one(".download-table-header").getAttribute("style");
+    await capture("history_song");
+    await settings();
+    await capture("history_settings_first");
+    click(button("下载管理"));
+    await wait(() => ready() && one(".download-row"), "second visit");
+    await select("voice");
+    const voiceSearch = one(".download-search input");
+    voiceSearch.value = "声音";
+    voiceSearch.dispatchEvent(new Event("input", { bubbles: true }));
+    await wait(
+      () =>
+        ready() &&
+        latestQuery?.keyword === "声音" &&
+        latestQuery?.category === "voice" &&
+        historyRow(6),
+      "voice query",
+    );
+    await place(6);
+    const historyB = task(historyRow(6));
+    historyRow(6).focus({ preventScroll: true });
+    await sleep(100);
+    const historyBTop = one(".download-scroll").scrollTop;
+    await capture("history_voice");
+    await settings();
+    await capture("history_settings_second");
+    click(button("下载管理"));
+    await wait(() => ready() && one(".download-row"), "third visit");
+    await select("active");
+    await capture("history_active");
+    click(button("返回上一页"));
+    await wait(
+      () =>
+        one(".settings-page") && !one(".page-enter-active,.page-leave-active"),
+      "settings second back",
+    );
+    await back();
+    await wait(
+      () =>
+        one("#download-tab-voice")?.getAttribute("aria-selected") === "true" &&
+        one(".download-search input").value === "声音" &&
+        Math.abs(one(".download-scroll").scrollTop - historyBTop) < 1 &&
+        task(document.activeElement) === historyB,
+      "second visit restores its own state",
+    );
+    await capture("history_voice_return");
+    click(button("返回上一页"));
+    await wait(
+      () =>
+        one(".settings-page") && !one(".page-enter-active,.page-leave-active"),
+      "settings first back",
+    );
+    await back();
+    await wait(
+      () =>
+        one("#download-tab-song")?.getAttribute("aria-selected") === "true" &&
+        one(".download-search input").value === "单曲" &&
+        Math.abs(one(".download-scroll").scrollTop - historyATop) < 1 &&
+        task(
+          document.activeElement?.closest("[data-download-task]") ??
+            document.activeElement,
+        ) === historyA &&
+        document.activeElement?.dataset.downloadAction === "manage",
+      "first visit restores its own state",
+    );
+    assert(
+      !one(".download-continuation") &&
+        one(".download-table-header").getAttribute("style") === historyAColumns,
+      "first visit prefix and column widths",
+    );
+    await capture("history_song_return");
+    await settings();
+    click(button("下载管理"));
+    await wait(() => ready() && one(".download-row"), "temporary visit");
+    await select("voice");
+    click(button("返回上一页"));
+    await wait(
+      () =>
+        one(".settings-page") && !one(".page-enter-active,.page-leave-active"),
+      "settings before failed return",
+    );
+    const nativeRead = client.downloads;
+    let failReturn = true;
+    client.downloads = async (e, q) => {
+      if (failReturn && q.category === "song")
+        throw { code: "state", message: "合成旧访问读取失败", retryable: true };
+      return nativeRead(e, q);
+    };
+    await back();
+    await wait(
+      () => one(".error-state")?.textContent.includes("合成旧访问读取失败"),
+      "failed earlier visit read",
+    );
+    assert(
+      one("#download-tab-song").getAttribute("aria-selected") === "true" &&
+        !one(".download-row"),
+      "failed return cannot display another category records",
+    );
+    await capture("history_read_failed");
+    failReturn = false;
+    const retry = button("刷新状态");
+    retry.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    click(retry);
+    await wait(
+      () =>
+        ready() &&
+        !one(".error-state") &&
+        Math.abs(one(".download-scroll")?.scrollTop - historyATop) < 1 &&
+        task(
+          document.activeElement?.closest("[data-download-task]") ??
+            document.activeElement,
+        ) === historyA &&
+        document.activeElement?.dataset.downloadAction === "manage",
+      "retry resumes original anchor",
+    );
+    assert(
+      !one(".download-continuation"),
+      "retry reads original loaded prefix",
+    );
+    await capture("history_read_retried");
+    client.downloads = nativeRead;
+    // Leave before the search debounce can fire. The old timer must never filter the new visit.
+    const pendingSearch = one(".download-search input");
+    pendingSearch.value = "单曲 119";
+    pendingSearch.dispatchEvent(new Event("input", { bubbles: true }));
+    await settings();
+    click(button("下载管理"));
+    await wait(
+      () => ready() && one(".download-row"),
+      "pending search new visit",
+    );
+    await select("voice");
+    click(button("返回上一页"));
+    await wait(
+      () =>
+        one(".settings-page") && !one(".page-enter-active,.page-leave-active"),
+      "pending search settings back",
+    );
+    await back();
+    await wait(
+      () =>
+        one("#download-tab-song")?.getAttribute("aria-selected") === "true" &&
+        one(".download-search input").value === "单曲 119" &&
+        all("[data-download-index]").length === 1 &&
+        historyRow(0)?.textContent.includes("119"),
+      "pending search belongs only to source visit",
+    );
+    assert(one(".download-scroll").scrollTop === 0, "new query starts at top");
+    await capture("history_pending_search");
+    client.downloads = trackDownloads;
+
     await emit("complete", {
       ok: true,
       downloadNavigationUi: true,

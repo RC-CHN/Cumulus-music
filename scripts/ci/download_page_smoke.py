@@ -22,7 +22,7 @@ def main():
         parser.error('seed delay must be between 0 and 30000 ms')
     if sum([args.table, args.batch, args.navigation, args.menu]) > 1:
         parser.error('select a single proof')
-    expected = 33 if args.menu else 14 if args.navigation else 53 if args.batch else 72 if args.table else 69
+    expected = 33 if args.menu else 24 if args.navigation else 53 if args.batch else 72 if args.table else 69
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {k: v for k, v in os.environ.items() if not k.startswith('CUMULUS_')}

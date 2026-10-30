@@ -36,6 +36,122 @@ function state(epoch = '1', total = 0, offset = 0): DownloadsView {
   };
 }
 const turn = () => new Promise((r) => setImmediate(r));
+test('a visit guard rejects old timers and returns preserve explicit continuation failure', async () => {
+  const model = useDownloads({ downloads: async (e) => state(e) } as DownloadClient);
+  await model.connect(account());
+  const a = {},
+    b = {};
+  model.enterVisit(a);
+  const owns = model.captureVisit();
+  assert.equal(owns(), true);
+  model.moreError.value = 'explicit retry required';
+  model.leaveVisit();
+  assert.equal(owns(), false);
+  model.enterVisit(b);
+  model.leaveVisit();
+  model.enterVisit(a);
+  assert.equal(model.moreError.value, 'explicit retry required');
+  await model.connect(account('2'));
+  assert.equal(owns(), false);
+  model.dispose();
+});
+test('refreshing the same authenticated identity retains its browsing visits', async () => {
+  const model = useDownloads({ downloads: async (e) => state(e) } as DownloadClient);
+  await model.connect(account());
+  const a = {},
+    b = {};
+  model.enterVisit(a);
+  await model.filter({ category: 'voice', keyword: 'same-account' });
+  model.query.value.limit = 300;
+  model.leaveVisit();
+  model.enterVisit(b, { tab: 'active' });
+  await model.connect(account());
+  model.leaveVisit();
+  model.enterVisit(a);
+  assert.equal(model.query.value.keyword, 'same-account');
+  assert.equal(model.query.value.category, 'voice');
+  assert.equal(model.query.value.limit, 300);
+  model.dispose();
+});
+test('download visits retain independent queries, loaded prefixes and positions across nested navigation', async () => {
+  const model = useDownloads({ downloads: async (e) => state(e) } as DownloadClient);
+  await model.connect(account());
+  const a = {},
+    b = {};
+  model.enterVisit(a);
+  await model.filter({ keyword: 'song-A' });
+  model.query.value.limit = 300;
+  const saved = {
+    epoch: '1',
+    query: downloadViewportKey(model.query.value),
+    anchor: 'a',
+    index: 180,
+    offset: 9,
+    growth: [1, 2],
+  };
+  model.saveViewport(saved, a);
+  model.leaveVisit();
+  model.enterVisit(b, { tab: 'active', keyword: '' });
+  assert.equal(model.query.value.tab, 'active');
+  assert.equal(model.viewport.value, undefined);
+  await model.filter({ tab: 'completed', category: 'voice', keyword: 'voice-B' });
+  model.leaveVisit();
+  model.enterVisit(a);
+  assert.equal(model.query.value.keyword, 'song-A');
+  assert.equal(model.query.value.limit, 300);
+  assert.equal(model.viewport.value, saved);
+  model.leaveVisit();
+  model.enterVisit(b, { tab: 'active' });
+  assert.equal(model.query.value.category, 'voice');
+  assert.equal(model.query.value.keyword, 'voice-B');
+  model.dispose();
+});
+test('late callbacks from another visit cannot replace the new read or save its viewport', async () => {
+  const pending = deferred<DownloadsView>();
+  const model = useDownloads({
+    downloads: async (e, q) => (q.keyword === 'held' ? pending.promise : state(e, 17)),
+  } as DownloadClient);
+  await model.connect(account());
+  const a = {},
+    b = {};
+  model.enterVisit(a);
+  const saved = {
+    epoch: '1',
+    query: downloadViewportKey(model.query.value),
+    anchor: 'old',
+    index: 0,
+    offset: 0,
+    growth: [],
+  };
+  const held = model.filter({ keyword: 'held' });
+  model.leaveVisit();
+  model.enterVisit(b, { keyword: '' });
+  await model.refresh();
+  model.saveViewport(saved, a);
+  assert.equal(model.viewport.value, undefined);
+  pending.resolve(state('1', 999));
+  await held;
+  assert.equal(model.view.value?.total, 17);
+  model.dispose();
+});
+test('account lifecycle clears browsing memory and query without reviving another account snapshots', async () => {
+  const model = useDownloads({ downloads: async (e) => state(e) } as DownloadClient);
+  await model.connect(account());
+  const a = {},
+    b = {};
+  model.enterVisit(a);
+  await model.filter({ category: 'mv', keyword: 'old-account' });
+  model.leaveVisit();
+  model.enterVisit(b);
+  await model.connect(account('2'));
+  model.leaveVisit();
+  model.enterVisit(a);
+  assert.equal(model.query.value.keyword, '');
+  assert.equal(model.query.value.category, 'song');
+  assert.equal(model.viewport.value, undefined);
+  model.dispose();
+  assert.equal(model.visit.value, undefined);
+});
 test('download return location survives reads but rejects another query and late account callbacks', async () => {
   const model = useDownloads({ downloads: async (epoch) => state(epoch) } as DownloadClient);
   await model.connect(account());

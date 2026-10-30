@@ -76,6 +76,55 @@ function backend(overrides: Partial<CoreClient> = {}): CoreClient {
   };
 }
 const turn = () => new Promise((resolve) => setImmediate(resolve));
+test('account changes leave resource pages and search text from the prior identity behind', async () => {
+  let epoch = '1';
+  const music = useMusic(
+    backend({
+      accountSnapshot: async () => ({
+        epoch,
+        status: 'authenticated',
+        nickname: null,
+        avatarUrl: null,
+      }),
+    }),
+  );
+  await music.bootstrap(false);
+  music.navigate({ kind: 'search', keyword: 'prior-private-query' });
+  epoch = '2';
+  await music.bootstrap(false);
+  assert.equal(music.page.value.kind, 'daily');
+  music.navigate({
+    kind: 'comments',
+    resource: { kind: 'playlist', id: '9' },
+    title: 'prior-private-title',
+  });
+  epoch = '3';
+  await music.bootstrap(false);
+  assert.equal(music.page.value.kind, 'daily');
+  assert.equal(music.historyLength.value, 0);
+});
+test('switching account generation discards the previous account navigation stack', async () => {
+  let epoch = '1';
+  const music = useMusic(
+    backend({
+      accountSnapshot: async () => ({
+        epoch,
+        status: 'authenticated',
+        nickname: null,
+        avatarUrl: null,
+      }),
+    }),
+  );
+  await music.bootstrap(false);
+  music.navigate({ kind: 'downloads' });
+  music.navigate({ kind: 'settings' });
+  assert.ok(music.historyLength.value > 0);
+  epoch = '2';
+  await music.bootstrap(false);
+  assert.equal(music.historyLength.value, 0);
+  music.back();
+  assert.equal(music.page.value.kind, 'settings');
+});
 
 test('repeating a search starts a fresh visit while category navigation and back keep its identity', async () => {
   const music = useMusic(backend());
@@ -91,6 +140,25 @@ test('repeating a search starts a fresh visit while category navigation and back
   assert.notEqual(music.page.value.kind === 'search' && music.page.value.searchId, first.searchId);
   music.back();
   assert.equal(music.page.value.kind === 'search' && music.page.value.searchId, first.searchId);
+});
+test('each download navigation has an independent identity and back returns the original page object', async () => {
+  const music = useMusic(backend());
+  await music.bootstrap();
+  music.navigate({ kind: 'downloads' });
+  const first = music.page.value;
+  music.navigate({ kind: 'settings' });
+  music.navigate({ kind: 'downloads', initialTab: 'active' });
+  const second = music.page.value;
+  assert.ok(
+    first.kind === 'downloads' &&
+      second.kind === 'downloads' &&
+      first.downloadVisit !== second.downloadVisit,
+  );
+  music.back();
+  music.back();
+  assert.equal(music.page.value, first);
+  music.replace({ kind: 'downloads' });
+  assert.notEqual(music.page.value, first);
 });
 
 test('navigation during restore cannot invalidate the initial identity response', async () => {
