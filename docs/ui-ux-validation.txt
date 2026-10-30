@@ -1741,3 +1741,35 @@ Rustfmt、严格workspace全target/custom-protocol Clippy；259个测试目标�
   未再变化。21项CI工具测试、公开源码审计通过；这些仅为工程防回归，不计UI完成度。
 - .build/playlist-batch-gallery/index.html：52批量+52资源菜单+44队列回归原图，另4张
   初版问题对照，按版本分组。来源与剩余差异仍有效，其他页面继续逐项对照。
+
+2026-10-30 普通歌单批量表列与键盘 UI/UX
+- 重新核对官方352.Ze/Ge、106.useResizer/useSelect/useSortBy、354表头/专用行和
+  TrackTitleCell恢复来源，纠正独立歌手列/缺喜欢列与“普通批量页可排序”的误判。
+  具体尺寸、状态来源和社区键盘适配见playlist-batch-ui-contracts.txt。
+- 本轮仅修改前端列布局、列宽与键盘交互，没有新增核心业务。五列基础宽度分别
+  45/180/115/60/64，余量按360/230/30分配给歌曲/专辑/时长；8px拖动区，歌手置于
+  16px/500标题下方。喜欢状态仅显示，点击该区域切换选择，不发送喜欢变更。
+- .build/playlist-batch-table-first：40态/40原图通过，两尺寸1120×760/760×540、
+  浅/深色，默认列/喜欢显示、选中、拖动/最小/最大/重置、Escape取消、从不连续选择
+  边缘移动、进入表体焦点、指针取消、窗口变化、拖动中离开和重入默认值、等待禁用/
+  恢复、减少动态效果。自动核对表头/行对齐、固定列/最小宽度、控件命中、无溢出及
+  最多32个渲染行。拖动/键盘为实际WebView注入DOM事件，不冒称物理鼠标验证。
+- 同一内嵌前端的playlist-batch-table-regression：52态/52原图通过，继续覆盖
+  播放/队列、下载选择与取消、收藏、删除与未知结果核对、虚拟滚动焦点、读取失败与
+  会话失效等已有分支。下载新入口仍没有开始完成文件，不变更原专项验证边界。
+- 人工直接查看本轮01宽浅、10宽深选中、17窄浅、25窄深、28窄深极小列宽、
+  32窄深键盘滚动、38宽深等待。截图未发现表头错位、文字跨列或窄窗控件越界；
+  没有把全部92张截图都称为人工逐像素验收。图集位于
+  .build/playlist-batch-table-gallery/index.html，原PNG保持不变，CSS仅裁窗口外桌面。
+- 运行环境仍为Linux真实Tauri/WebKitGTK、隔离Xvfb1440×1000、独立D-Bus与应用目录、
+  LC_ALL=en_US.UTF-8。没有额外覆盖GDK_BACKEND/WEBKIT_DISABLE_DMABUF_RENDERER，
+  DRI3警告保留。合成账号与歌单，无真实账号写入/音乐请求；无官方运行截图、
+  物理桌面刷新率或Windows视觉/DPI的新结论。
+- 前端数值对照初次失败是浮点余量10.000000000000028与10的精确比较；保留布局
+  分配公式和期望值，改为1e-8容差；没有为截图通过改动官方宽度。随后281测试、
+  format:check、类型与production构建通过；实际WebView两轮各自首次运行均通过。
+  这些工程检查不增加页面一致性完成度，完整逐页审计仍在进行。
+- 同版Rust fmt、严格workspace/all-targets/custom-protocol Clippy及全量259测试目标
+  （1194 passed、0 failed/ignored）通过；21项CI规则测试、源码审计通过。新增
+  playlist_batch_table_smoke已接入Linux/Windows独立CI runner；本地通过不能代替
+  精确提交的远端CI结论。没有新增发布提交、版本标签或发布附件。
