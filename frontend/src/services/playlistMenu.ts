@@ -8,18 +8,31 @@ export function playlistLink(playlist: PlaylistView) {
     : '';
 }
 
-/** Official 622.js playlist menu conditions. Queue/batch branches are tracked
+/** Official 622.js playlist menu conditions. Batch branches are tracked
  * separately; reorder is a named community extension until drag/drop exists. */
 export function playlistMenuItems(
   list: PlaylistView,
   scene: PlaylistMenuScene,
-  state: { lists: PlaylistView[]; busy: boolean; playable: boolean; preparing: boolean },
+  state: {
+    lists: PlaylistView[];
+    busy: boolean;
+    playable: boolean;
+    preparing: boolean;
+    fm?: boolean;
+  },
 ): MenuItem[] {
   const nonempty = list.trackCount > 0;
   const known = state.lists.some((p) => p.id === list.id);
   const group = state.lists.filter((p) => p.owned === list.owned && !p.favorite);
   const index = group.findIndex((p) => p.id === list.id);
   const items: MenuItem[] = [];
+  const queueAction: MenuItem = {
+    key: scene === 'collection' ? 'next' : 'queue',
+    label: scene === 'collection' ? '下一首播放' : '添加全部至播放列表',
+    icon: scene === 'collection' ? 'next' : 'list',
+    disabled: !nonempty || !state.playable || state.preparing || state.busy || state.fm,
+    hint: state.fm ? '私人漫游期间请先切换到普通播放队列' : undefined,
+  };
   if (scene === 'collection') {
     items.push(
       { key: 'view', label: '查看歌单', icon: 'list' },
@@ -29,6 +42,7 @@ export function playlistMenuItems(
         icon: 'play',
         disabled: !nonempty || !state.playable || state.preparing,
       },
+      queueAction,
       { key: 'resource-divider', label: '', separator: true },
     );
     if (!known && !list.owned)
@@ -41,6 +55,7 @@ export function playlistMenuItems(
     disabled: !nonempty || !playlistLink(list),
     hint: list.private ? '私密歌单不能分享' : undefined,
   });
+  if (scene === 'detail') items.push(queueAction);
   if (scene === 'collection') {
     items.push(
       {

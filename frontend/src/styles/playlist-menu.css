@@ -69,3 +69,10 @@
 .song-action-menu button.danger {
   font-size: 13px;
 }
+.playlist-action-feedback {
+  overflow-wrap: anywhere;
+}
+.playlist-action-feedback button[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: wait;
+}

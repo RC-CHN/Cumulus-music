@@ -26,6 +26,7 @@ test('menu visibility follows resource ownership, scene, privacy and empty state
   assert.deepEqual(keys(list), [
     'view',
     'play',
+    'next',
     'share',
     'copy',
     'download',
@@ -35,7 +36,15 @@ test('menu visibility follows resource ownership, scene, privacy and empty state
     'down',
   ]);
   const foreign = { ...list, id: '3', owned: false };
-  assert.deepEqual(keys(foreign), ['view', 'play', 'subscribe', 'share', 'copy', 'download']);
+  assert.deepEqual(keys(foreign), [
+    'view',
+    'play',
+    'next',
+    'subscribe',
+    'share',
+    'copy',
+    'download',
+  ]);
   assert.ok(!keys({ ...list, favorite: true }).includes('remove'));
   assert.ok(!keys({ ...list, favorite: true }).includes('edit'));
   const privateList = { ...list, private: true };
@@ -49,11 +58,27 @@ test('menu visibility follows resource ownership, scene, privacy and empty state
   }
   assert.deepEqual(
     playlistMenuItems(list, 'detail', state).map((i) => i.key),
-    ['share'],
+    ['share', 'queue'],
   );
   const subscribed = playlistMenuItems(foreign, 'collection', { ...state, lists: [foreign] });
   assert.equal(subscribed.find((i) => i.key === 'remove')?.label, '取消收藏');
   assert.ok(!subscribed.some((i) => i.key === 'edit' || i.key === 'subscribe'));
+});
+test('playlist queue menus explain FM and disable empty, loading and unavailable playback', () => {
+  for (const scene of ['collection', 'detail'] as const) {
+    const key = scene === 'collection' ? 'next' : 'queue';
+    for (const change of [{ fm: true }, { busy: true }, { preparing: true }, { playable: false }]) {
+      const item = playlistMenuItems(list, scene, { ...state, ...change }).find(
+        (i) => i.key === key,
+      )!;
+      assert.ok(item.disabled);
+      if ('fm' in change) assert.ok(item.hint?.includes('普通播放队列'));
+    }
+    assert.ok(
+      playlistMenuItems({ ...list, trackCount: 0 }, scene, state).find((i) => i.key === key)
+        ?.disabled,
+    );
+  }
 });
 const track = (id: string, fields = {}): TrackView => ({
   id,

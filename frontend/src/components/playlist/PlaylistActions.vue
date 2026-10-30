@@ -9,6 +9,7 @@ import {
 import { playlistDownloadTracks, playlistLink } from '../../services/playlistMenu';
 import type { PlaylistManager } from '../../composables/usePlaylists';
 import type { DownloadModel } from '../../composables/useDownloads';
+import type { PlayerModel } from '../../composables/usePlayer';
 import { useCore } from '../../services/core';
 import Icon from '../Icon.vue';
 import ModalTransition from '../ModalTransition.vue';
@@ -21,6 +22,7 @@ const props = defineProps<{
   account: AccountView;
   manager: PlaylistManager;
   downloads: DownloadModel;
+  player: PlayerModel;
 }>();
 const emit = defineEmits<{ expired: []; started: [] }>();
 const client = useCore();
@@ -33,12 +35,14 @@ const reading = ref(false),
   readError = ref(''),
   progress = ref('');
 const copied = shallowRef<PlaylistView>();
+const queued = shallowRef<PlaylistView>();
+const adding = ref(false);
 const copying = ref(false),
   retrying = ref(false),
   message = ref(''),
   failed = ref(false);
 const downloadOpen = computed(() => !!download.value);
-const busy = computed(() => reading.value || copying.value);
+const busy = computed(() => reading.value || copying.value || adding.value);
 let returnFocus: HTMLElement | null = null;
 let alive = true,
   sequence = 0,
@@ -50,10 +54,13 @@ onBeforeUnmount(() => {
   clearTimeout(timer);
 });
 const fallback = () =>
-  document.querySelector<HTMLElement>(
-    '.playlist-library-page .page-heading button, .sidebar-scroll',
-  );
+  document.querySelector<HTMLElement>('.playlist-library-page .page-heading button') ??
+  document.querySelector<HTMLElement>('.sidebar-navigation [aria-current="page"]') ??
+  document.querySelector<HTMLElement>('.sidebar-scroll');
 const target = () => returnFocus;
+function restoreFocus() {
+  (returnFocus?.isConnected ? returnFocus : fallback())?.focus({ preventScroll: true });
+}
 function reset() {
   sequence++;
   clearTimeout(timer);
@@ -61,6 +68,8 @@ function reset() {
   failed.value = false;
   copying.value = false;
   retrying.value = false;
+  adding.value = false;
+  queued.value = undefined;
 }
 function show(list: PlaylistView, action: string) {
   reset();
@@ -74,11 +83,57 @@ function show(list: PlaylistView, action: string) {
   else if (action === 'download') {
     download.value = list;
     void read();
+  } else if (action === 'next' || action === 'queue') {
+    queued.value = list;
+    void addToQueue();
   }
+}
+async function addToQueue() {
+  if (
+    !queued.value ||
+    adding.value ||
+    !props.player.ready.value ||
+    props.player.busy.value ||
+    props.player.queueBusy.value
+  )
+    return;
+  const current = sequence,
+    epoch = props.account.epoch,
+    list = queued.value;
+  adding.value = true;
+  retrying.value = !!document.activeElement?.closest('.playlist-action-feedback');
+  failed.value = false;
+  message.value = '正在添加歌单歌曲…';
+  try {
+    const result = await props.player.queuePlaylist(list.id);
+    if (!alive || sequence !== current || props.account.epoch !== epoch) return;
+    message.value = result
+      ? `已添加至播放列表${list.trackCount > 10000 ? '（播放列表最多保留 10000 首）' : ''}`
+      : '播放操作已更新，本次添加已取消';
+    if (retrying.value) restoreFocus();
+    timer = setTimeout(() => {
+      message.value = '';
+    }, 3500);
+  } catch (value) {
+    if (!alive || sequence !== current || props.account.epoch !== epoch) return;
+    const issue = failure(value);
+    message.value = issue.code === 'stale' ? '播放操作已更新，本次添加已取消' : issue.message;
+    failed.value = true;
+    if (['session_expired', 'profile_changed'].includes(issue.code)) emit('expired');
+  } finally {
+    if (sequence === current) {
+      adding.value = false;
+      retrying.value = false;
+    }
+  }
+}
+function retry() {
+  if (queued.value) void addToQueue();
+  else void copy();
 }
 function dismiss() {
   reset();
-  if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
+  restoreFocus();
 }
 async function copy() {
   const link = copied.value && playlistLink(copied.value);
@@ -92,7 +147,7 @@ async function copy() {
     await client.copyText(link);
     if (!alive || current !== sequence) return;
     message.value = '链接已复制';
-    if (retrying.value && returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
+    if (retrying.value) restoreFocus();
     timer = setTimeout(() => {
       message.value = '';
     }, 3000);
@@ -203,15 +258,16 @@ defineExpose({ show, busy, downloadOpen });
       class="track-action-feedback playlist-action-feedback"
       :class="{ failed }"
       role="status"
+      :aria-busy="copying || adding"
     >
       {{ message
       }}<button
         v-if="failed || retrying"
         class="text-button"
-        :aria-disabled="copying"
-        @click="copy"
+        :aria-disabled="copying || adding || (!!queued && player.busy.value)"
+        @click="retry"
       >
-        {{ copying ? '正在复制…' : '重试' }}</button
+        {{ copying || adding ? '正在重试…' : '重试' }}</button
       ><button v-if="failed" class="text-button" @click="dismiss">关闭</button>
     </div></Transition
   >

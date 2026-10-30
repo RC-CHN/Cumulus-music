@@ -443,7 +443,8 @@ function playlistMenu(list: PlaylistView, scene: PlaylistMenuScene = 'collection
     lists: playlists.value,
     busy: playlistManager.busy.value || downloads.busy.value || !!playlistActions.value?.busy,
     playable: player.ready.value,
-    preparing: player.busy.value,
+    preparing: player.busy.value || player.queueBusy.value,
+    fm: player.view.value?.fm,
   });
 }
 function playlistAction(list: PlaylistView, key: string, scene: PlaylistMenuScene = 'collection') {
@@ -1408,6 +1409,7 @@ onUnmounted(() => {
       :account="account"
       :manager="playlistManager"
       :downloads="downloads"
+      :player="player"
       @expired="music.bootstrap(false)"
       @started="
         downloads.filter({ tab: 'active' });

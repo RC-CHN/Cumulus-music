@@ -330,3 +330,41 @@ test('retrying card preparation rereads its list before any playback command', a
   assert.equal(f.player.error.value, '');
   f.player.dispose();
 });
+
+test('playlist queue failures stay in their own UI and user retry takes the current fence', async () => {
+  let attempts = 0;
+  const f = fixture({
+    playerAction: async (_e, input) => {
+      assert.equal(input.kind, 'queue_playlist');
+      if (input.kind !== 'queue_playlist') throw Error('wrong action');
+      assert.equal(input.expected_queue_revision, attempts ? '2' : '1');
+      if (!attempts++) throw { code: 'transport', message: 'playlist read failed' };
+      return { ...state('3'), queueRevision: '3', queueLen: 240 };
+    },
+  });
+  await f.player.connect(account());
+  await assert.rejects(f.player.queuePlaylist('2'));
+  assert.equal(f.player.error.value, '');
+  assert.equal(f.player.busy.value, false);
+  f.emit({ ...state('2'), queueRevision: '2' });
+  assert.equal((await f.player.queuePlaylist('2'))?.queueLen, 240);
+  assert.equal(attempts, 2);
+  f.player.dispose();
+});
+test('playlist feedback must not report a superseded operation as success', async () => {
+  const pending = deferred<PlayerView>();
+  const f = fixture({
+    playerAction: async (_e, input) =>
+      input.kind === 'queue_playlist' ? pending.promise : state('3'),
+  });
+  await f.player.connect(account());
+  const adding = f.player.queuePlaylist('2');
+  assert.equal(f.player.busy.value, false);
+  assert.equal(f.player.queueBusy.value, true);
+  await f.player.action({ kind: 'pause', paused: true });
+  pending.resolve(state('2'));
+  assert.equal(await adding, undefined);
+  assert.equal(f.player.queueBusy.value, false);
+  assert.equal(f.player.view.value?.revision, '3');
+  f.player.dispose();
+});

@@ -110,7 +110,7 @@
 }
 .track-action-feedback {
   position: fixed;
-  z-index: 80;
+  z-index: 65;
   bottom: 96px;
   left: 0;
   right: 0;

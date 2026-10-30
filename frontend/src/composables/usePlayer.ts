@@ -16,6 +16,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   const lyrics = shallowRef<LyricsView>();
   const ready = ref(false),
     busy = ref(false),
+    queueBusy = ref(false),
     error = ref(''),
     queueError = ref(''),
     lyricError = ref('');
@@ -25,6 +26,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   let epoch = '',
     connection = 0,
     request = 0,
+    queuePreparation = 0,
     queueRequest = 0,
     lyricRequest = 0;
   let disconnect: (() => void) | undefined;
@@ -64,6 +66,8 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     lyricRequest++;
     ready.value = false;
     busy.value = false;
+    queueBusy.value = false;
+    queuePreparation++;
     view.value = undefined;
     queue.value = undefined;
     lyrics.value = undefined;
@@ -115,6 +119,29 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     }
   }
   const action = (input: PlayerAction) => run((e) => core.playerAction(e, input));
+  // Resource-menu failures belong to that operation, not the audio-error bar.
+  // A user retry captures the latest queue fence; no automatic write replay.
+  async function queuePlaylist(id: string) {
+    if (!ready.value || busy.value || queueBusy.value) return;
+    const captured = epoch,
+      current = ++request,
+      preparation = ++queuePreparation;
+    queueBusy.value = true;
+    try {
+      const next = await core.playerAction(captured, {
+        kind: 'queue_playlist',
+        id,
+        quality: view.value?.requestedQuality ?? 'standard',
+        expected_queue_revision: view.value?.queueRevision ?? '0',
+      });
+      if (captured === epoch) accept(next);
+      if (current === request && captured === epoch) return next;
+    } catch (issue) {
+      if (current === request && captured === epoch) throw issue;
+    } finally {
+      if (preparation === queuePreparation) queueBusy.value = false;
+    }
+  }
   // Device preferences can be saved while a slow decoder is still loading.
   // Keep their errors and pending UI separate from playback transport requests.
   async function configureLoudness(
@@ -204,16 +231,20 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     request++;
     lyricRequest++;
     queueRequest++;
+    queuePreparation++;
+    queueBusy.value = false;
     disconnect?.();
     ready.value = false;
   }
   return {
+    queuePlaylist,
     prepareSelection,
     view,
     queue,
     lyrics,
     ready,
     busy,
+    queueBusy,
     error,
     queueError,
     lyricError,
