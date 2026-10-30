@@ -114,10 +114,21 @@ async fn matching_commands_use_account_epochs_and_opaque_file_revisions() {
     // state, failing immediately on a durable worker error.
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
     while std::time::Instant::now() < deadline {
-        let view = client
+        let view = match client
             .local_match_view("1", vec![row.track.id.clone()])
             .await
-            .unwrap();
+        {
+            Ok(view) => view,
+            // The worker may hold the library operation lock while updating it.
+            // A status read may race that lock; only this transient response is
+            // retried within the same deadline. Durable worker failures below
+            // and every other read error still fail the test.
+            Err(Error::MutationBusy) => {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                continue;
+            }
+            Err(error) => panic!("matching status read failed: {error}"),
+        };
         assert!(
             view.value
                 .job
