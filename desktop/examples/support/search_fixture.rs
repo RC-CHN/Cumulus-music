@@ -25,6 +25,7 @@ pub fn control(value: &Value) {
             "scroll",
             "scroll_error",
             "scroll_duplicates",
+            "preview",
             "empty",
             "expired"
         ]
@@ -180,6 +181,46 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
     ))
     .unwrap();
     let mut response = fixtures[category].clone();
+    if mode == "preview" && category == "all" {
+        for block in response["data"]["blocks"].as_array_mut().unwrap() {
+            let rows = block["resources"].as_array().unwrap();
+            if rows.is_empty() || rows[0]["type"] == "related_search" {
+                continue;
+            }
+            block["resources"] = json!(
+                (0..9)
+                    .map(|i| {
+                        let mut row = rows[i % rows.len()].clone();
+                        if row["type"] == "song" {
+                            row["baseInfo"]["al"]["picUrl"] = json!(if i == 0 {
+                                "https://p1.music.126.net/cumulus-preview-good"
+                            } else {
+                                "https://p1.music.126.net/cumulus-preview-bad"
+                            });
+                        }
+                        let info = &mut row["baseInfo"];
+                        let field = if info["userId"].is_null() {
+                            "id"
+                        } else {
+                            "userId"
+                        };
+                        if let Some(id) = info[field]
+                            .as_u64()
+                            .or_else(|| info[field].as_str().and_then(|s| s.parse().ok()))
+                        {
+                            let id = id + (i / rows.len()) as u64 * 1000;
+                            info[field] = if info[field].is_string() {
+                                json!(id.to_string())
+                            } else {
+                                json!(id)
+                            };
+                        }
+                        row
+                    })
+                    .collect::<Vec<_>>()
+            );
+        }
+    }
     let legacy = response["result"].is_object();
     let container = if legacy {
         &mut response["result"]
