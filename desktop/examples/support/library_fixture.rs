@@ -25,7 +25,12 @@ pub fn report() -> Value {
 }
 fn playlist(id: u64) -> Value {
     let mut value = super::playlist(id);
-    let owner = if id <= 60 { 2 } else { 3 };
+    let own_count = if std::env::var_os("CUMULUS_SIDEBAR_UI_PROOF").is_some() {
+        1200
+    } else {
+        60
+    };
+    let owner = if id <= own_count { 2 } else { 3 };
     value["userId"] = json!(owner);
     value["creator"]["userId"] = json!(owner);
     value["creator"]["nickname"] = json!(if owner == 2 {
@@ -75,7 +80,12 @@ pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
             let mut ids: Vec<u64> = match s.mode.as_str() {
                 "empty" => vec![],
                 "shrink" => vec![1, 2, 61],
-                _ => (1..=90).collect(),
+                _ => (1..=if std::env::var_os("CUMULUS_SIDEBAR_UI_PROOF").is_some() {
+                    2400
+                } else {
+                    90
+                })
+                    .collect(),
             };
             if !s.order.is_empty() && s.mode != "shrink" && s.mode != "empty" {
                 let rest: Vec<_> = ids.into_iter().filter(|id| !s.order.contains(id)).collect();

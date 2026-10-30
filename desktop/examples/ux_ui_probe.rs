@@ -223,7 +223,7 @@ fn main() {
             let mut value:Value=serde_json::from_str(event.payload()).unwrap();
             if search_fixture::enabled() { value["syntheticSearchCalls"]=json!(search_fixture::calls()); }
             let stage=value["stage"].as_str().unwrap_or("");
-            if search_fixture::enabled() && stage=="search-pointer" {
+            if (search_fixture::enabled() || std::env::var_os("CUMULUS_SIDEBAR_UI_PROOF").is_some()) && ["search-pointer", "sidebar-pointer"].contains(&stage) {
                 let window=handle.get_webview_window("main").unwrap();
                 let position=tauri::LogicalPosition::new(value["x"].as_f64().unwrap(),value["y"].as_f64().unwrap());
                 window.set_cursor_position(position).unwrap();
