@@ -35,7 +35,16 @@ impl HttpBackend for Service {
             let form: std::collections::BTreeMap<_, _> = url_fields(&plan.body)?;
             let (path, payload) =
                 eapi::unwrap(form.get("params").ok_or(Error::Response("fixture EAPI"))?)?;
-            if path.contains("search") {
+            // The search box loads its default hint while the account is restored.
+            // Only the two submitted result requests exercise login interception;
+            // the hint must not consume the first validation before user input.
+            if path == "/api/search/default/keyword/get" {
+                return Ok(fixture::reply(
+                    json!({"code":200,"data":{"keywords":[],"refreshTime":2500}}),
+                    None,
+                ));
+            }
+            if path == "/api/search/pc/complex/page" {
                 self.searches.fetch_add(1, Ordering::SeqCst);
                 return Ok(fixture::reply(json!({"code":301}), None));
             }
@@ -58,9 +67,7 @@ impl HttpBackend for Service {
                             .any(|k| k.eq_ignore_ascii_case("x-login-chain-id"))
                 } else {
                     payload["fromPage"] == "JSK"
-                        && payload["fromAPI"]
-                            .as_str()
-                            .is_some_and(|p| p.contains("search"))
+                        && payload["fromAPI"] == "/api/search/pc/complex/page"
                 };
                 if !valid {
                     return Err(Error::Response("fixture middle parameters"));
