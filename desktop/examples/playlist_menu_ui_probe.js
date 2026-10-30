@@ -75,7 +75,7 @@
       click(button('外观主题')); await wait(() => menu(), 'theme'); click(button(t === 'dark' ? '深色' : '浅色')); await wait(() => !menu(), 'theme closes');
       const suffix = `${w}_${t}`;
       let trigger = await open(2, true);
-      assert(all('.action-menu button').map(n => n.textContent.trim()).join('|') === '查看歌单|播放|分享…|复制链接|下载全部|编辑歌单信息|删除歌单|上移歌单|下移歌单', 'owned menu order');
+      assert(all('.action-menu button').map(n => n.textContent.trim()).join('|') === '查看歌单|播放|下一首播放|分享…|复制链接|下载全部|编辑歌单信息|删除歌单|上移歌单|下移歌单', 'owned menu order');
       key(menu(),'End'); assert(document.activeElement === button('下移歌单'), 'End focus');
       key(menu(),'ArrowUp'); assert(document.activeElement === button('删除歌单'), 'skips disabled up and separator');
       await capture(`owned_${suffix}`); await escape(trigger);
@@ -93,7 +93,7 @@
       trigger = await mutation(61,'取消收藏'); assert(one('.playlist-mutation-body').textContent.includes('之后可重新收藏'), 'unfollow consequence'); await capture(`unsubscribe_${suffix}`); await closeDialog(trigger);
       trigger = await open(2); await choose('查看歌单'); await wait(() => one('.playlist-hero'), 'detail');
       click(button('更多歌单操作')); await wait(() => menu(), 'detail menu');
-      assert(all('.action-menu button').map(n=>n.textContent.trim()).join('|') === '分享…', 'detail avoids duplicated or unconnected actions');
+      assert(all('.action-menu button').map(n=>n.textContent.trim()).join('|') === '分享…|添加全部至播放列表', 'detail avoids duplicated or unconnected actions');
       await capture(`detail_${suffix}`); await escape(button('更多歌单操作'));
       await library();
     }

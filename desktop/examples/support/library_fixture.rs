@@ -54,6 +54,14 @@ fn playlist(id: u64) -> Value {
         );
         value["trackCount"] = json!(240);
     }
+    if std::env::var_os("CUMULUS_PLAYLIST_QUEUE_UI_PROOF").is_some() && id == 8 {
+        value["trackIds"] = json!(
+            (501..=504)
+                .map(|id| json!({"id":id,"v":0}))
+                .collect::<Vec<_>>()
+        );
+        value["trackCount"] = json!(4);
+    }
     value
 }
 pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
@@ -128,6 +136,12 @@ pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
             s.detail_reads += 1;
             if s.mode == "fail_detail" {
                 return Some(Err(Error::Transport("合成歌单详情读取失败".into())));
+            }
+            if s.mode == "expired_detail" {
+                return Some(Ok(json!({"code":301})));
+            }
+            if s.mode == "empty_detail" {
+                return Some(Ok(json!({"code":200,"playlist":{"trackIds":[]}})));
             }
             Ok(json!({"code":200,"playlist":playlist(id(&args["id"]))}))
         }

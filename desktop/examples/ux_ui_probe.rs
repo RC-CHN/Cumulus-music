@@ -340,6 +340,9 @@ fn main() {
                     let client=handle.state::<MusicClient>(); let epoch=client.account().unwrap().epoch;
                     if let Ok(playback)=client.subscribe_playback(&epoch).await && let Ok(snapshot)=playback.current() {
                         value["nativePlayer"]=serde_json::to_value(snapshot).unwrap();
+                        if std::env::var_os("CUMULUS_PLAYLIST_QUEUE_UI_PROOF").is_some() {
+                            value["nativeQueue"] = serde_json::to_value(client.player_queue(&epoch).await.unwrap()).unwrap();
+                        }
                     } else { value["nativePlayerUnavailable"]=json!(true); }
                     fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
                     if ["complete","failed"].contains(&stage.as_str()) {
