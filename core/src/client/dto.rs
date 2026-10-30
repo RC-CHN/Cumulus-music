@@ -38,7 +38,10 @@ pub use super::relay::{
     RelaySettingsView, RelayView,
 };
 pub use super::scene_fm::{SceneFmCategoryView, SceneFmCommand, SceneFmView};
-pub use super::search::SearchHistoryCommand;
+pub use super::search::{
+    SearchCategory, SearchHistoryCommand, SearchItem, SearchResultQuery, SearchResultView,
+    SearchSection,
+};
 pub use super::settings::{
     AccountSettingField, AccountSettingsCommand, AccountSettingsPage, LinkedPrivacy,
     SettingAvailability, SettingChange, SettingKey, SettingValue, SettingsOperationView,

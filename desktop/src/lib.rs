@@ -181,6 +181,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 commands::playlist_page,
                 commands::search_songs,
                 search::search_discovery,
+                search::search_results,
                 search::search_history,
                 commands::daily_songs,
                 rankings::ranking_page,

@@ -1,5 +1,6 @@
 //! Official PC search startup/suggestions: recovered M/623 and M/15.
 mod project;
+pub mod results;
 use crate::{Error, Result, protocol::api::Api};
 use serde::{Deserialize, Serialize};
 use serde_json::json;

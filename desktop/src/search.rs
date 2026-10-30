@@ -1,5 +1,16 @@
 use cumulus_core::client::{ClientError, MusicClient, dto::*};
 #[tauri::command]
+pub async fn search_results(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    query: SearchResultQuery,
+) -> Result<AccountData<SearchResultView>, ClientError> {
+    client
+        .search_results(&epoch, query)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn search_discovery(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

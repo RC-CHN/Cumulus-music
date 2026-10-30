@@ -1,8 +1,10 @@
+mod results;
 use super::{MusicClient, dto::AccountData};
 use crate::{
     Error, Result,
     catalog::search::{self, SearchDiscovery, SearchDiscoveryQuery},
 };
+pub use results::*;
 use serde::Deserialize;
 use serde_json::json;
 

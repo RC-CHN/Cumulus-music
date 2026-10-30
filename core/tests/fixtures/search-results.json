@@ -1,0 +1,1384 @@
+{
+  "songs": {
+    "code": 200,
+    "data": {
+      "resources": [
+        {
+          "type": "song",
+          "baseInfo": {
+            "simpleSongData": {
+              "id": 1,
+              "name": "合成单曲 1 · 长标题排布检查",
+              "ar": [
+                {
+                  "id": 100,
+                  "name": "合成歌手"
+                }
+              ],
+              "al": {
+                "id": 200,
+                "name": "合成专辑"
+              },
+              "dt": 234000,
+              "fee": 0,
+              "privateToken": "PRIVATE"
+            }
+          }
+        },
+        {
+          "type": "song",
+          "baseInfo": {
+            "simpleSongData": {
+              "id": 2,
+              "name": "合成单曲 2 · 长标题排布检查",
+              "ar": [
+                {
+                  "id": 100,
+                  "name": "合成歌手"
+                }
+              ],
+              "al": {
+                "id": 200,
+                "name": "合成专辑"
+              },
+              "dt": 234000,
+              "fee": 0,
+              "privateToken": "PRIVATE"
+            }
+          }
+        },
+        {
+          "type": "song",
+          "baseInfo": {
+            "simpleSongData": {
+              "id": 3,
+              "name": "合成单曲 3 · 长标题排布检查",
+              "ar": [
+                {
+                  "id": 100,
+                  "name": "合成歌手"
+                }
+              ],
+              "al": {
+                "id": 200,
+                "name": "合成专辑"
+              },
+              "dt": 234000,
+              "fee": 1,
+              "privateToken": "PRIVATE"
+            }
+          }
+        }
+      ],
+      "totalCount": 60,
+      "hasMore": true
+    }
+  },
+  "playlists": {
+    "code": 200,
+    "result": {
+      "playlists": [
+        {
+          "id": 3,
+          "name": "合成歌单 1 · 夜间轻音乐与长标题",
+          "userId": 2,
+          "creator": {
+            "userId": 2,
+            "nickname": "合成作者"
+          },
+          "trackCount": 40
+        },
+        {
+          "id": 4,
+          "name": "合成歌单 2 · 夜间轻音乐与长标题",
+          "userId": 2,
+          "creator": {
+            "userId": 2,
+            "nickname": "合成作者"
+          },
+          "trackCount": 40
+        },
+        {
+          "id": 5,
+          "name": "合成歌单 3 · 夜间轻音乐与长标题",
+          "userId": 2,
+          "creator": {
+            "userId": 2,
+            "nickname": "合成作者"
+          },
+          "trackCount": 40
+        }
+      ],
+      "playlistCount": 60,
+      "hasMore": true
+    }
+  },
+  "artists": {
+    "code": 200,
+    "result": {
+      "artists": [
+        {
+          "id": 101,
+          "name": "歌手 1 · SyntheticLongNameWithoutSpaces",
+          "alias": [
+            "合成别名"
+          ],
+          "musicSize": 86,
+          "albumSize": 12
+        },
+        {
+          "id": 102,
+          "name": "歌手 2 · SyntheticLongNameWithoutSpaces",
+          "alias": [
+            "合成别名"
+          ],
+          "musicSize": 86,
+          "albumSize": 12
+        },
+        {
+          "id": 103,
+          "name": "歌手 3 · SyntheticLongNameWithoutSpaces",
+          "alias": [
+            "合成别名"
+          ],
+          "musicSize": 86,
+          "albumSize": 12
+        }
+      ],
+      "artistCount": 60,
+      "hasMore": true
+    }
+  },
+  "albums": {
+    "code": 200,
+    "result": {
+      "albums": [
+        {
+          "id": 201,
+          "name": "合成专辑 1 · SyntheticLongTitle",
+          "artists": [
+            {
+              "id": 100,
+              "name": "合成歌手"
+            }
+          ],
+          "size": 12,
+          "publishTime": 0
+        },
+        {
+          "id": 202,
+          "name": "合成专辑 2 · SyntheticLongTitle",
+          "artists": [
+            {
+              "id": 100,
+              "name": "合成歌手"
+            }
+          ],
+          "size": 12,
+          "publishTime": 0
+        },
+        {
+          "id": 203,
+          "name": "合成专辑 3 · SyntheticLongTitle",
+          "artists": [
+            {
+              "id": 100,
+              "name": "合成歌手"
+            }
+          ],
+          "size": 12,
+          "publishTime": 0
+        }
+      ],
+      "albumCount": 60,
+      "hasMore": true
+    }
+  },
+  "podcasts": {
+    "code": 200,
+    "data": {
+      "resources": [
+        {
+          "type": "voicelist",
+          "baseInfo": {
+            "id": 301,
+            "name": "合成播客 1",
+            "dj": {
+              "nickname": "合成主播"
+            },
+            "programCount": 24,
+            "desc": "合成简介"
+          }
+        },
+        {
+          "type": "voicelist",
+          "baseInfo": {
+            "id": 302,
+            "name": "合成播客 2",
+            "dj": {
+              "nickname": "合成主播"
+            },
+            "programCount": 24,
+            "desc": "合成简介"
+          }
+        },
+        {
+          "type": "voicelist",
+          "baseInfo": {
+            "id": 303,
+            "name": "合成播客 3",
+            "dj": {
+              "nickname": "合成主播"
+            },
+            "programCount": 24,
+            "desc": "合成简介"
+          }
+        }
+      ],
+      "totalCount": 60,
+      "hasMore": true
+    }
+  },
+  "voices": {
+    "code": 200,
+    "data": {
+      "resources": [
+        {
+          "type": "voice",
+          "baseInfo": {
+            "id": 401,
+            "name": "合成声音 1 · 一段温柔的故事",
+            "radio": {
+              "id": 301,
+              "name": "合成播客 1",
+              "dj": {
+                "nickname": "合成主播"
+              },
+              "programCount": 24,
+              "desc": "合成简介"
+            },
+            "duration": 360000,
+            "mainSong": {
+              "id": 1,
+              "duration": 360000
+            },
+            "dj": {
+              "nickname": "合成主播"
+            }
+          }
+        },
+        {
+          "type": "voice",
+          "baseInfo": {
+            "id": 402,
+            "name": "合成声音 2 · 一段温柔的故事",
+            "radio": {
+              "id": 302,
+              "name": "合成播客 2",
+              "dj": {
+                "nickname": "合成主播"
+              },
+              "programCount": 24,
+              "desc": "合成简介"
+            },
+            "duration": 360000,
+            "mainSong": {
+              "id": 2,
+              "duration": 360000
+            },
+            "dj": {
+              "nickname": "合成主播"
+            }
+          }
+        },
+        {
+          "type": "voice",
+          "baseInfo": {
+            "id": 403,
+            "name": "合成声音 3 · 一段温柔的故事",
+            "radio": {
+              "id": 303,
+              "name": "合成播客 3",
+              "dj": {
+                "nickname": "合成主播"
+              },
+              "programCount": 24,
+              "desc": "合成简介"
+            },
+            "duration": 360000,
+            "mainSong": {
+              "id": 3,
+              "duration": 360000
+            },
+            "dj": {
+              "nickname": "合成主播"
+            }
+          }
+        }
+      ],
+      "totalCount": 60,
+      "hasMore": true
+    }
+  },
+  "users": {
+    "code": 200,
+    "result": {
+      "userprofiles": [
+        {
+          "userId": 501,
+          "nickname": "合成用户 1",
+          "signature": "愿每一首歌，都能留下属于此刻的记忆。"
+        },
+        {
+          "userId": 502,
+          "nickname": "合成用户 2",
+          "signature": "愿每一首歌，都能留下属于此刻的记忆。"
+        },
+        {
+          "userId": 503,
+          "nickname": "合成用户 3",
+          "signature": "愿每一首歌，都能留下属于此刻的记忆。"
+        }
+      ],
+      "userprofileCount": 60,
+      "hasMore": true
+    }
+  },
+  "mvs": {
+    "code": 200,
+    "data": {
+      "resources": [
+        {
+          "type": "mv",
+          "baseInfo": {
+            "id": "601",
+            "resource": {
+              "mlogBaseData": {
+                "type": 3,
+                "text": "合成 MV 1",
+                "duration": 240000
+              },
+              "mlogExtVO": {
+                "artists": [
+                  {
+                    "id": 100,
+                    "name": "合成歌手"
+                  }
+                ],
+                "playCount": 12345
+              }
+            }
+          }
+        },
+        {
+          "type": "mv",
+          "baseInfo": {
+            "id": "602",
+            "resource": {
+              "mlogBaseData": {
+                "type": 3,
+                "text": "合成 MV 2",
+                "duration": 240000
+              },
+              "mlogExtVO": {
+                "artists": [
+                  {
+                    "id": 100,
+                    "name": "合成歌手"
+                  }
+                ],
+                "playCount": 12345
+              }
+            }
+          }
+        },
+        {
+          "type": "mv",
+          "baseInfo": {
+            "id": "603",
+            "resource": {
+              "mlogBaseData": {
+                "type": 3,
+                "text": "合成 MV 3",
+                "duration": 240000
+              },
+              "mlogExtVO": {
+                "artists": [
+                  {
+                    "id": 100,
+                    "name": "合成歌手"
+                  }
+                ],
+                "playCount": 12345
+              }
+            }
+          }
+        }
+      ],
+      "totalCount": 60,
+      "hasMore": true
+    }
+  },
+  "lyrics": {
+    "code": 200,
+    "data": {
+      "resources": [
+        {
+          "song": {
+            "id": 1,
+            "name": "合成单曲 1 · 长标题排布检查",
+            "ar": [
+              {
+                "id": 100,
+                "name": "合成歌手"
+              }
+            ],
+            "al": {
+              "id": 200,
+              "name": "合成专辑"
+            },
+            "dt": 234000,
+            "fee": 0,
+            "privateToken": "PRIVATE"
+          },
+          "matchedLyric": [
+            "第一行合成歌词",
+            "在<em>夜色</em>中听见你的声音",
+            "每段旋律都是此刻的回响"
+          ]
+        },
+        {
+          "song": {
+            "id": 2,
+            "name": "合成单曲 2 · 长标题排布检查",
+            "ar": [
+              {
+                "id": 100,
+                "name": "合成歌手"
+              }
+            ],
+            "al": {
+              "id": 200,
+              "name": "合成专辑"
+            },
+            "dt": 234000,
+            "fee": 0,
+            "privateToken": "PRIVATE"
+          },
+          "matchedLyric": [
+            "第一行合成歌词",
+            "在<em>夜色</em>中听见你的声音",
+            "每段旋律都是此刻的回响"
+          ]
+        },
+        {
+          "song": {
+            "id": 3,
+            "name": "合成单曲 3 · 长标题排布检查",
+            "ar": [
+              {
+                "id": 100,
+                "name": "合成歌手"
+              }
+            ],
+            "al": {
+              "id": 200,
+              "name": "合成专辑"
+            },
+            "dt": 234000,
+            "fee": 1,
+            "privateToken": "PRIVATE"
+          },
+          "matchedLyric": [
+            "第一行合成歌词",
+            "在<em>夜色</em>中听见你的声音",
+            "每段旋律都是此刻的回响"
+          ]
+        }
+      ],
+      "totalCount": 60
+    }
+  },
+  "all": {
+    "code": 200,
+    "data": {
+      "blocks": [
+        {
+          "blockCode": "search_block_best_match",
+          "uiElement": {
+            "mainTitle": {
+              "title": "最佳匹配"
+            }
+          },
+          "resources": [
+            {
+              "type": "artist",
+              "baseInfo": {
+                "id": 101,
+                "name": "歌手 1 · SyntheticLongNameWithoutSpaces",
+                "alias": [
+                  "合成别名"
+                ],
+                "musicSize": 86,
+                "albumSize": 12
+              }
+            }
+          ]
+        },
+        {
+          "blockCode": "search_block_song",
+          "uiElement": {
+            "mainTitle": {
+              "title": "单曲"
+            }
+          },
+          "resources": [
+            {
+              "type": "song",
+              "baseInfo": {
+                "id": 1,
+                "name": "合成单曲 1 · 长标题排布检查",
+                "ar": [
+                  {
+                    "id": 100,
+                    "name": "合成歌手"
+                  }
+                ],
+                "al": {
+                  "id": 200,
+                  "name": "合成专辑"
+                },
+                "dt": 234000,
+                "fee": 0,
+                "privateToken": "PRIVATE"
+              }
+            },
+            {
+              "type": "song",
+              "baseInfo": {
+                "id": 2,
+                "name": "合成单曲 2 · 长标题排布检查",
+                "ar": [
+                  {
+                    "id": 100,
+                    "name": "合成歌手"
+                  }
+                ],
+                "al": {
+                  "id": 200,
+                  "name": "合成专辑"
+                },
+                "dt": 234000,
+                "fee": 0,
+                "privateToken": "PRIVATE"
+              }
+            },
+            {
+              "type": "song",
+              "baseInfo": {
+                "id": 3,
+                "name": "合成单曲 3 · 长标题排布检查",
+                "ar": [
+                  {
+                    "id": 100,
+                    "name": "合成歌手"
+                  }
+                ],
+                "al": {
+                  "id": 200,
+                  "name": "合成专辑"
+                },
+                "dt": 234000,
+                "fee": 1,
+                "privateToken": "PRIVATE"
+              }
+            },
+            {
+              "type": "song",
+              "baseInfo": {
+                "id": 4,
+                "name": "合成单曲 4 · 长标题排布检查",
+                "ar": [
+                  {
+                    "id": 100,
+                    "name": "合成歌手"
+                  }
+                ],
+                "al": {
+                  "id": 200,
+                  "name": "合成专辑"
+                },
+                "dt": 234000,
+                "fee": 0,
+                "privateToken": "PRIVATE"
+              }
+            },
+            {
+              "type": "song",
+              "baseInfo": {
+                "id": 5,
+                "name": "合成单曲 5 · 长标题排布检查",
+                "ar": [
+                  {
+                    "id": 100,
+                    "name": "合成歌手"
+                  }
+                ],
+                "al": {
+                  "id": 200,
+                  "name": "合成专辑"
+                },
+                "dt": 234000,
+                "fee": 0,
+                "privateToken": "PRIVATE"
+              }
+            },
+            {
+              "type": "song",
+              "baseInfo": {
+                "id": 6,
+                "name": "合成单曲 6 · 长标题排布检查",
+                "ar": [
+                  {
+                    "id": 100,
+                    "name": "合成歌手"
+                  }
+                ],
+                "al": {
+                  "id": 200,
+                  "name": "合成专辑"
+                },
+                "dt": 234000,
+                "fee": 1,
+                "privateToken": "PRIVATE"
+              }
+            }
+          ]
+        },
+        {
+          "blockCode": "search_block_playlist",
+          "uiElement": {
+            "mainTitle": {
+              "title": "歌单"
+            }
+          },
+          "resources": [
+            {
+              "type": "playlist",
+              "baseInfo": {
+                "id": 3,
+                "name": "合成歌单 1 · 夜间轻音乐与长标题",
+                "userId": 2,
+                "creator": {
+                  "userId": 2,
+                  "nickname": "合成作者"
+                },
+                "trackCount": 40
+              }
+            },
+            {
+              "type": "playlist",
+              "baseInfo": {
+                "id": 4,
+                "name": "合成歌单 2 · 夜间轻音乐与长标题",
+                "userId": 2,
+                "creator": {
+                  "userId": 2,
+                  "nickname": "合成作者"
+                },
+                "trackCount": 40
+              }
+            },
+            {
+              "type": "playlist",
+              "baseInfo": {
+                "id": 5,
+                "name": "合成歌单 3 · 夜间轻音乐与长标题",
+                "userId": 2,
+                "creator": {
+                  "userId": 2,
+                  "nickname": "合成作者"
+                },
+                "trackCount": 40
+              }
+            },
+            {
+              "type": "playlist",
+              "baseInfo": {
+                "id": 6,
+                "name": "合成歌单 4 · 夜间轻音乐与长标题",
+                "userId": 2,
+                "creator": {
+                  "userId": 2,
+                  "nickname": "合成作者"
+                },
+                "trackCount": 40
+              }
+            },
+            {
+              "type": "playlist",
+              "baseInfo": {
+                "id": 7,
+                "name": "合成歌单 5 · 夜间轻音乐与长标题",
+                "userId": 2,
+                "creator": {
+                  "userId": 2,
+                  "nickname": "合成作者"
+                },
+                "trackCount": 40
+              }
+            },
+            {
+              "type": "playlist",
+              "baseInfo": {
+                "id": 8,
+                "name": "合成歌单 6 · 夜间轻音乐与长标题",
+                "userId": 2,
+                "creator": {
+                  "userId": 2,
+                  "nickname": "合成作者"
+                },
+                "trackCount": 40
+              }
+            }
+          ]
+        },
+        {
+          "blockCode": "search_block_artist",
+          "uiElement": {
+            "mainTitle": {
+              "title": "歌手"
+            }
+          },
+          "resources": [
+            {
+              "type": "artist",
+              "baseInfo": {
+                "id": 101,
+                "name": "歌手 1 · SyntheticLongNameWithoutSpaces",
+                "alias": [
+                  "合成别名"
+                ],
+                "musicSize": 86,
+                "albumSize": 12
+              }
+            },
+            {
+              "type": "artist",
+              "baseInfo": {
+                "id": 102,
+                "name": "歌手 2 · SyntheticLongNameWithoutSpaces",
+                "alias": [
+                  "合成别名"
+                ],
+                "musicSize": 86,
+                "albumSize": 12
+              }
+            },
+            {
+              "type": "artist",
+              "baseInfo": {
+                "id": 103,
+                "name": "歌手 3 · SyntheticLongNameWithoutSpaces",
+                "alias": [
+                  "合成别名"
+                ],
+                "musicSize": 86,
+                "albumSize": 12
+              }
+            },
+            {
+              "type": "artist",
+              "baseInfo": {
+                "id": 104,
+                "name": "歌手 4 · SyntheticLongNameWithoutSpaces",
+                "alias": [
+                  "合成别名"
+                ],
+                "musicSize": 86,
+                "albumSize": 12
+              }
+            },
+            {
+              "type": "artist",
+              "baseInfo": {
+                "id": 105,
+                "name": "歌手 5 · SyntheticLongNameWithoutSpaces",
+                "alias": [
+                  "合成别名"
+                ],
+                "musicSize": 86,
+                "albumSize": 12
+              }
+            },
+            {
+              "type": "artist",
+              "baseInfo": {
+                "id": 106,
+                "name": "歌手 6 · SyntheticLongNameWithoutSpaces",
+                "alias": [
+                  "合成别名"
+                ],
+                "musicSize": 86,
+                "albumSize": 12
+              }
+            }
+          ]
+        },
+        {
+          "blockCode": "search_block_album",
+          "uiElement": {
+            "mainTitle": {
+              "title": "专辑"
+            }
+          },
+          "resources": [
+            {
+              "type": "album",
+              "baseInfo": {
+                "id": 201,
+                "name": "合成专辑 1 · SyntheticLongTitle",
+                "artists": [
+                  {
+                    "id": 100,
+                    "name": "合成歌手"
+                  }
+                ],
+                "size": 12,
+                "publishTime": 0
+              }
+            },
+            {
+              "type": "album",
+              "baseInfo": {
+                "id": 202,
+                "name": "合成专辑 2 · SyntheticLongTitle",
+                "artists": [
+                  {
+                    "id": 100,
+                    "name": "合成歌手"
+                  }
+                ],
+                "size": 12,
+                "publishTime": 0
+              }
+            },
+            {
+              "type": "album",
+              "baseInfo": {
+                "id": 203,
+                "name": "合成专辑 3 · SyntheticLongTitle",
+                "artists": [
+                  {
+                    "id": 100,
+                    "name": "合成歌手"
+                  }
+                ],
+                "size": 12,
+                "publishTime": 0
+              }
+            },
+            {
+              "type": "album",
+              "baseInfo": {
+                "id": 204,
+                "name": "合成专辑 4 · SyntheticLongTitle",
+                "artists": [
+                  {
+                    "id": 100,
+                    "name": "合成歌手"
+                  }
+                ],
+                "size": 12,
+                "publishTime": 0
+              }
+            },
+            {
+              "type": "album",
+              "baseInfo": {
+                "id": 205,
+                "name": "合成专辑 5 · SyntheticLongTitle",
+                "artists": [
+                  {
+                    "id": 100,
+                    "name": "合成歌手"
+                  }
+                ],
+                "size": 12,
+                "publishTime": 0
+              }
+            },
+            {
+              "type": "album",
+              "baseInfo": {
+                "id": 206,
+                "name": "合成专辑 6 · SyntheticLongTitle",
+                "artists": [
+                  {
+                    "id": 100,
+                    "name": "合成歌手"
+                  }
+                ],
+                "size": 12,
+                "publishTime": 0
+              }
+            }
+          ]
+        },
+        {
+          "blockCode": "search_block_voicelist",
+          "uiElement": {
+            "mainTitle": {
+              "title": "播客"
+            }
+          },
+          "resources": [
+            {
+              "type": "voicelist",
+              "baseInfo": {
+                "id": 301,
+                "name": "合成播客 1",
+                "dj": {
+                  "nickname": "合成主播"
+                },
+                "programCount": 24,
+                "desc": "合成简介"
+              }
+            },
+            {
+              "type": "voicelist",
+              "baseInfo": {
+                "id": 302,
+                "name": "合成播客 2",
+                "dj": {
+                  "nickname": "合成主播"
+                },
+                "programCount": 24,
+                "desc": "合成简介"
+              }
+            },
+            {
+              "type": "voicelist",
+              "baseInfo": {
+                "id": 303,
+                "name": "合成播客 3",
+                "dj": {
+                  "nickname": "合成主播"
+                },
+                "programCount": 24,
+                "desc": "合成简介"
+              }
+            },
+            {
+              "type": "voicelist",
+              "baseInfo": {
+                "id": 304,
+                "name": "合成播客 4",
+                "dj": {
+                  "nickname": "合成主播"
+                },
+                "programCount": 24,
+                "desc": "合成简介"
+              }
+            },
+            {
+              "type": "voicelist",
+              "baseInfo": {
+                "id": 305,
+                "name": "合成播客 5",
+                "dj": {
+                  "nickname": "合成主播"
+                },
+                "programCount": 24,
+                "desc": "合成简介"
+              }
+            },
+            {
+              "type": "voicelist",
+              "baseInfo": {
+                "id": 306,
+                "name": "合成播客 6",
+                "dj": {
+                  "nickname": "合成主播"
+                },
+                "programCount": 24,
+                "desc": "合成简介"
+              }
+            }
+          ]
+        },
+        {
+          "blockCode": "search_block_voice",
+          "uiElement": {
+            "mainTitle": {
+              "title": "声音"
+            }
+          },
+          "resources": [
+            {
+              "type": "voice",
+              "baseInfo": {
+                "id": 401,
+                "name": "合成声音 1 · 一段温柔的故事",
+                "radio": {
+                  "id": 301,
+                  "name": "合成播客 1",
+                  "dj": {
+                    "nickname": "合成主播"
+                  },
+                  "programCount": 24,
+                  "desc": "合成简介"
+                },
+                "duration": 360000,
+                "mainSong": {
+                  "id": 1,
+                  "duration": 360000
+                },
+                "dj": {
+                  "nickname": "合成主播"
+                }
+              }
+            },
+            {
+              "type": "voice",
+              "baseInfo": {
+                "id": 402,
+                "name": "合成声音 2 · 一段温柔的故事",
+                "radio": {
+                  "id": 302,
+                  "name": "合成播客 2",
+                  "dj": {
+                    "nickname": "合成主播"
+                  },
+                  "programCount": 24,
+                  "desc": "合成简介"
+                },
+                "duration": 360000,
+                "mainSong": {
+                  "id": 2,
+                  "duration": 360000
+                },
+                "dj": {
+                  "nickname": "合成主播"
+                }
+              }
+            },
+            {
+              "type": "voice",
+              "baseInfo": {
+                "id": 403,
+                "name": "合成声音 3 · 一段温柔的故事",
+                "radio": {
+                  "id": 303,
+                  "name": "合成播客 3",
+                  "dj": {
+                    "nickname": "合成主播"
+                  },
+                  "programCount": 24,
+                  "desc": "合成简介"
+                },
+                "duration": 360000,
+                "mainSong": {
+                  "id": 3,
+                  "duration": 360000
+                },
+                "dj": {
+                  "nickname": "合成主播"
+                }
+              }
+            },
+            {
+              "type": "voice",
+              "baseInfo": {
+                "id": 404,
+                "name": "合成声音 4 · 一段温柔的故事",
+                "radio": {
+                  "id": 304,
+                  "name": "合成播客 4",
+                  "dj": {
+                    "nickname": "合成主播"
+                  },
+                  "programCount": 24,
+                  "desc": "合成简介"
+                },
+                "duration": 360000,
+                "mainSong": {
+                  "id": 4,
+                  "duration": 360000
+                },
+                "dj": {
+                  "nickname": "合成主播"
+                }
+              }
+            },
+            {
+              "type": "voice",
+              "baseInfo": {
+                "id": 405,
+                "name": "合成声音 5 · 一段温柔的故事",
+                "radio": {
+                  "id": 305,
+                  "name": "合成播客 5",
+                  "dj": {
+                    "nickname": "合成主播"
+                  },
+                  "programCount": 24,
+                  "desc": "合成简介"
+                },
+                "duration": 360000,
+                "mainSong": {
+                  "id": 5,
+                  "duration": 360000
+                },
+                "dj": {
+                  "nickname": "合成主播"
+                }
+              }
+            },
+            {
+              "type": "voice",
+              "baseInfo": {
+                "id": 406,
+                "name": "合成声音 6 · 一段温柔的故事",
+                "radio": {
+                  "id": 306,
+                  "name": "合成播客 6",
+                  "dj": {
+                    "nickname": "合成主播"
+                  },
+                  "programCount": 24,
+                  "desc": "合成简介"
+                },
+                "duration": 360000,
+                "mainSong": {
+                  "id": 6,
+                  "duration": 360000
+                },
+                "dj": {
+                  "nickname": "合成主播"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "blockCode": "search_block_user",
+          "uiElement": {
+            "mainTitle": {
+              "title": "用户"
+            }
+          },
+          "resources": [
+            {
+              "type": "user",
+              "baseInfo": {
+                "userId": 501,
+                "nickname": "合成用户 1",
+                "signature": "愿每一首歌，都能留下属于此刻的记忆。"
+              }
+            },
+            {
+              "type": "user",
+              "baseInfo": {
+                "userId": 502,
+                "nickname": "合成用户 2",
+                "signature": "愿每一首歌，都能留下属于此刻的记忆。"
+              }
+            },
+            {
+              "type": "user",
+              "baseInfo": {
+                "userId": 503,
+                "nickname": "合成用户 3",
+                "signature": "愿每一首歌，都能留下属于此刻的记忆。"
+              }
+            },
+            {
+              "type": "user",
+              "baseInfo": {
+                "userId": 504,
+                "nickname": "合成用户 4",
+                "signature": "愿每一首歌，都能留下属于此刻的记忆。"
+              }
+            },
+            {
+              "type": "user",
+              "baseInfo": {
+                "userId": 505,
+                "nickname": "合成用户 5",
+                "signature": "愿每一首歌，都能留下属于此刻的记忆。"
+              }
+            },
+            {
+              "type": "user",
+              "baseInfo": {
+                "userId": 506,
+                "nickname": "合成用户 6",
+                "signature": "愿每一首歌，都能留下属于此刻的记忆。"
+              }
+            }
+          ]
+        },
+        {
+          "blockCode": "search_block_video",
+          "uiElement": {
+            "mainTitle": {
+              "title": "MV"
+            }
+          },
+          "resources": [
+            {
+              "type": "mv",
+              "baseInfo": {
+                "id": "601",
+                "resource": {
+                  "mlogBaseData": {
+                    "type": 3,
+                    "text": "合成 MV 1",
+                    "duration": 240000
+                  },
+                  "mlogExtVO": {
+                    "artists": [
+                      {
+                        "id": 100,
+                        "name": "合成歌手"
+                      }
+                    ],
+                    "playCount": 12345
+                  }
+                }
+              }
+            },
+            {
+              "type": "mv",
+              "baseInfo": {
+                "id": "602",
+                "resource": {
+                  "mlogBaseData": {
+                    "type": 3,
+                    "text": "合成 MV 2",
+                    "duration": 240000
+                  },
+                  "mlogExtVO": {
+                    "artists": [
+                      {
+                        "id": 100,
+                        "name": "合成歌手"
+                      }
+                    ],
+                    "playCount": 12345
+                  }
+                }
+              }
+            },
+            {
+              "type": "mv",
+              "baseInfo": {
+                "id": "603",
+                "resource": {
+                  "mlogBaseData": {
+                    "type": 3,
+                    "text": "合成 MV 3",
+                    "duration": 240000
+                  },
+                  "mlogExtVO": {
+                    "artists": [
+                      {
+                        "id": 100,
+                        "name": "合成歌手"
+                      }
+                    ],
+                    "playCount": 12345
+                  }
+                }
+              }
+            },
+            {
+              "type": "mv",
+              "baseInfo": {
+                "id": "604",
+                "resource": {
+                  "mlogBaseData": {
+                    "type": 3,
+                    "text": "合成 MV 4",
+                    "duration": 240000
+                  },
+                  "mlogExtVO": {
+                    "artists": [
+                      {
+                        "id": 100,
+                        "name": "合成歌手"
+                      }
+                    ],
+                    "playCount": 12345
+                  }
+                }
+              }
+            },
+            {
+              "type": "mv",
+              "baseInfo": {
+                "id": "605",
+                "resource": {
+                  "mlogBaseData": {
+                    "type": 3,
+                    "text": "合成 MV 5",
+                    "duration": 240000
+                  },
+                  "mlogExtVO": {
+                    "artists": [
+                      {
+                        "id": 100,
+                        "name": "合成歌手"
+                      }
+                    ],
+                    "playCount": 12345
+                  }
+                }
+              }
+            },
+            {
+              "type": "mv",
+              "baseInfo": {
+                "id": "606",
+                "resource": {
+                  "mlogBaseData": {
+                    "type": 3,
+                    "text": "合成 MV 6",
+                    "duration": 240000
+                  },
+                  "mlogExtVO": {
+                    "artists": [
+                      {
+                        "id": 100,
+                        "name": "合成歌手"
+                      }
+                    ],
+                    "playCount": 12345
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "blockCode": "search_block_rs",
+          "uiElement": {
+            "mainTitle": {
+              "title": "相关搜索"
+            }
+          },
+          "resources": [
+            {
+              "type": "related_search",
+              "baseInfo": {
+                "keyword": "另一首合成歌"
+              }
+            }
+          ]
+        }
+      ],
+      "hasMore": false
+    }
+  }
+}

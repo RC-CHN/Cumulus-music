@@ -53,7 +53,7 @@ pub(in crate::client) fn album(value: &Value) -> Result<AlbumCard> {
         explicit: album.explicit,
     })
 }
-pub(super) fn video(value: &Value) -> Result<CatalogVideoCard> {
+pub(in crate::client) fn video(value: &Value) -> Result<CatalogVideoCard> {
     let video = VideoCardMetadata::from_official(value)?;
     Ok(CatalogVideoCard {
         id: video.id,
