@@ -1915,3 +1915,26 @@ Rustfmt、严格workspace全target/custom-protocol Clippy；259个测试目标�
 - 本轮进一步明确官方标题/专辑拼音排序与当前Rust字符串比较仍有差异。独立下载
   批量页、完整菜单/文件操作、MV键盘虚拟回收及其他页面未完成，不称全应用一致。
   无官方同状态运行截图、物理桌面刷新率或Windows视觉/DPI的新结论，无新版本发布。
+
+2026-10-30 歌曲菜单动画期间的检查时机复验
+- 远端CI 41072569701的Linux步骤报confirmation buttons align；虽然步骤名称包含
+  login lifecycle，实际失败在song_menu_smoke.py的第40态之后，并非登录流程失败。
+- 本地download-table-song-menu-diagnostic先在7态后停止：search帮助函数接受了上一
+  搜索页aria-busy=false，200ms后仍可能点击退场页面。改为同时等待当前关键词、
+  新结果面板、综合分类选中、读取完成及页面/结果过渡结束；未修改生产搜索行为。
+- diagnostic2成功越过四组搜索场景，并复现确认窗口测量差异：取消宽119.98287963867188，
+  删除宽119.98284912109375，两者高41.993988037109375；窗口仍带modal-enter-active，
+  transform为matrix(0.999857,0,0,0.999857,0,0.071356)。因此不能用动画期间不同
+  屏幕位置的浮点边界差异判断静止布局不齐；并非通过删除尺寸断言处理。
+- 检查改为等待确认窗口入场完成且transform=none，保留宽高严格相等，并增加上下边
+  对齐、120px宽/至少40px高、取消按钮保留焦点的断言。第41态JSON保存动画中和静止
+  后两组实际尺寸。最终两按钮均120×42px，top=301.5、bottom=343.5。
+- download-table-song-menu-final完整45态/45张原图通过，包含两尺寸/两主题的普通菜单、
+  分享/收藏/下载衔接、歌词、复制失败重试、下一首队列和删除取消。人工查看最终第29
+  张窄窗深色分享及第41张删除确认；另看diagnostic2第8张歌词菜单。没有操作真实账号。
+  图集为.build/song-menu-transition-gallery/index.html，逐图记录SHA256；探针归档副本
+  与提交源码仅后续换行排版不同，运行逻辑相同。生产二进制沿用下载表格最终构建。
+- 环境为Linux真实Tauri/WebKitGTK、独立Xvfb 1440×1000和D-Bus、en_US.UTF-8；
+  GDK_BACKEND=x11仅作用于隔离进程，未设置WEBKIT_DISABLE_DMABUF_RENDERER。
+  JS语法和git diff --check通过；本次只有检查脚本与文档改变，没有重跑无关全量业务测试。
+  不将此检查修正算作新增UI功能，不宣称物理桌面、Windows/DPI或完整官方视觉一致。

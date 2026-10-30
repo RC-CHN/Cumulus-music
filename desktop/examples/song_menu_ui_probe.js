@@ -76,7 +76,7 @@
         ...extra,
       }),
     );
-  async function capture(label) {
+  async function capture(label, evidence = {}) {
     step = label;
     await sleep(200);
     assert(
@@ -95,6 +95,7 @@
       );
     }
     await emit(`ux_${String(++count).padStart(2, "0")}_${label}`, {
+      ...evidence,
       width: innerWidth,
       height: innerHeight,
       theme: document.documentElement.dataset.theme,
@@ -147,6 +148,7 @@
     window.__searchFixtureAck = false;
     await emit("search-fixture", { mode });
     await wait(() => window.__searchFixtureAck, "search fixture");
+    const previousPanel = one(".search-result-panel");
     const input = one('[aria-label="搜索音乐"]');
     input.value = keyword;
     input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -154,10 +156,16 @@
       new Event("submit", { bubbles: true, cancelable: true }),
     );
     await wait(
-      () => one(".search-result-panel")?.getAttribute("aria-busy") === "false",
-      "search ready",
+      () =>
+        one(".search-heading-copy h1")?.textContent === keyword &&
+        one(".search-result-panel") !== previousPanel &&
+        one(".search-result-panel")?.getAttribute("aria-busy") === "false" &&
+        one('[data-category="all"]')?.getAttribute("aria-selected") === "true" &&
+        !one(
+          ".page-enter-active,.page-leave-active,.search-results-enter-active,.search-results-leave-active",
+        ),
+      "current search ready after navigation",
     );
-    await sleep(200);
   }
   try {
     await wait(() => more(), "daily ready");
@@ -405,14 +413,53 @@
       document.activeElement === button("取消"),
       "remove defaults to cancellation",
     );
-    const cancelBox = button("取消").getBoundingClientRect(),
-      removeBox = button("删除").getBoundingClientRect();
+    const confirmationGeometry = () => {
+      const bounds = (label) => {
+        const { width, height, top, bottom } = button(label)
+          .getBoundingClientRect();
+        return { width, height, top, bottom };
+      };
+      return {
+        cancel: bounds("取消"),
+        remove: bounds("删除"),
+        dialog: one(".playlist-dialog").className,
+        transform: getComputedStyle(one(".playlist-dialog")).transform,
+      };
+    };
+    const entering = confirmationGeometry();
+    // Transformed rectangles at different screen positions may round differently.
+    // Inspect the actual resting layout, retaining strict equality of both buttons.
+    await wait(
+      () => {
+        const dialog = one(".playlist-dialog[open]");
+        return (
+          dialog &&
+          !dialog.classList.contains("modal-enter-active") &&
+          dialog.getAnimations().every(
+            (animation) => animation.playState === "finished",
+          ) &&
+          getComputedStyle(dialog).transform === "none"
+        );
+      },
+      "remove confirmation entrance finished",
+    );
+    const settled = confirmationGeometry(),
+      cancelBox = settled.cancel,
+      removeBox = settled.remove;
     assert(
       cancelBox.width === removeBox.width &&
-        cancelBox.height === removeBox.height,
-      "confirmation buttons align",
+        cancelBox.height === removeBox.height &&
+        cancelBox.top === removeBox.top &&
+        cancelBox.bottom === removeBox.bottom &&
+        cancelBox.width === 120 &&
+        cancelBox.height >= 40,
+      `confirmation buttons align: ${JSON.stringify({ entering, settled })}`,
     );
-    await capture("remove_confirmation");
+    assert(
+      document.activeElement === button("取消"),
+      "confirmation retains cancel focus",
+    );
+    await capture("remove_confirmation", { confirmation: { entering, settled } });
     click(button("取消"));
     await wait(() => !one(".playlist-dialog"), "remove cancelled");
     assert(document.activeElement === ownTrigger, "remove cancellation focus");
