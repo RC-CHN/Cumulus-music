@@ -1,5 +1,6 @@
 mod dto;
 mod lyrics;
+mod next_play;
 mod origin;
 mod output;
 mod preferences;
@@ -263,6 +264,16 @@ impl MusicClient {
         if matches!(action, PlayerAction::Startup) {
             return self.startup_player(epoch).await;
         }
+        if let PlayerAction::NextPlay {
+            id,
+            quality,
+            expected_queue_revision,
+        } = action
+        {
+            return self
+                .next_play(epoch, id, quality, expected_queue_revision)
+                .await;
+        }
         let token = self.player_token(epoch)?;
         let local_effect = matches!(
             action,
@@ -408,6 +419,7 @@ impl MusicClient {
         }
         let command = match action {
             PlayerAction::Startup => unreachable!("handled before user transport commands"),
+            PlayerAction::NextPlay { .. } => unreachable!("handled before user transport commands"),
             PlayerAction::Equalizer {
                 expected_revision,
                 settings,

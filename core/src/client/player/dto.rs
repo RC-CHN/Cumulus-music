@@ -137,6 +137,11 @@ pub enum PlaySelection {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PlayerAction {
+    NextPlay {
+        id: String,
+        quality: Quality,
+        expected_queue_revision: String,
+    },
     Startup,
     Equalizer {
         expected_revision: String,

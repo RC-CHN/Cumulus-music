@@ -104,6 +104,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       const next = await operation(captured);
       if (captured === epoch) accept(next);
       if (current === request) failedOperation = undefined;
+      if (captured === epoch && current === request) return next;
     } catch (e) {
       if (current === request && captured === epoch) {
         failedOperation = onRetry;
