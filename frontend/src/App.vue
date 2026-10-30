@@ -935,6 +935,7 @@ onUnmounted(() => {
             :downloads="downloads"
             :playlists="playlists"
             :leaving="batchClosing"
+            :liked="liked"
             @close="closeBatch()"
             @expired="music.bootstrap(false)"
             @changed="batchDirty = true"

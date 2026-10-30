@@ -20,6 +20,7 @@ const props = defineProps<{
   player: PlayerModel;
   downloads: DownloadModel;
   playlists: PlaylistView[];
+  liked: Set<string>;
   leaving: boolean;
 }>();
 const emit = defineEmits<{ close: []; expired: []; changed: []; downloaded: [] }>();
@@ -220,6 +221,7 @@ defineExpose({ requestLeave });
       v-if="tracks.length"
       :tracks="tracks"
       :selected="selected"
+      :liked="liked"
       :disabled="locked || !!error"
       :current-id="player.view.value?.track?.id"
       @toggle="batch.toggle"
