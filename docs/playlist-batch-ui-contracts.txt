@@ -36,7 +36,8 @@
   的已有liked集合。复选框与整行均可切换。表头全选/清空，Ctrl/Meta+A始终全选；
   无修饰方向键从整组选中边缘折叠选择，Home/End首尾。滚出回收区的焦点转交表体，仍能
   用键盘返回可见歌曲；行、表头、工具栏使用主题色内收焦点框。
-- usePlaylistBatchColumns与playlistBatchTable按官方基础宽度/grow分配列宽；表头与
+- usePlaylistBatchColumns与playlistBatchTable通过共用tableColumns/useTableColumns/
+  TableColumnResize按官方基础宽度/grow分配列宽；表头与
   虚拟行同步，8px拖动区。当前页内窗口缩放保留比例，重新进入恢复默认，不添加列宽
   持久化。Escape/指针取消/捕获丢失/失焦/窗口宽变/退出取消当前拖动，清理监听。
   无需拖动的键盘适配：左右8px，Shift左右32px，Home/End到边界，回车/空格或双击
