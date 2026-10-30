@@ -1094,6 +1094,8 @@ onUnmounted(() => {
                 @open="openSearchItem"
                 @play="playRankingSongs"
                 @play-card="playSearchCard"
+                @toggle-playback="player.action({ kind: 'pause', paused: player.playing.value })"
+                @download-track="(track) => (downloadDialog = { kind: 'start', tracks: [track] })"
                 @card-comments="searchCardComments"
                 @card-download="
                   (item) =>

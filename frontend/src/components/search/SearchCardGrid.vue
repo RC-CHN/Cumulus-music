@@ -3,7 +3,12 @@ import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue
 import type { SearchItem } from '../../services/search';
 import { searchCardKey } from '../../services/searchCards';
 import { rowWindow } from '../../services/virtualWindow';
-const props = defineProps<{ items: SearchItem[]; scroller?: HTMLElement; virtual?: boolean }>();
+const props = defineProps<{
+  items: SearchItem[];
+  scroller?: HTMLElement;
+  virtual?: boolean;
+  preview?: boolean;
+}>();
 const grid = ref<HTMLElement>();
 const columns = ref(1),
   pitch = ref(260);
@@ -16,7 +21,9 @@ const start = computed(() => (props.virtual ? range.value.start * columns.value 
 const end = computed(() =>
   props.virtual
     ? Math.min(props.items.length, range.value.end * columns.value)
-    : props.items.length,
+    : props.preview
+      ? Math.min(props.items.length, columns.value)
+      : props.items.length,
 );
 const visible = computed(() => props.items.slice(start.value, end.value));
 const top = computed(() =>
@@ -35,14 +42,36 @@ function gridOffset() {
     : 0;
 }
 function update(measure = false) {
-  if (!grid.value || !scroller || !props.virtual) return;
+  if (!grid.value || !scroller || (!props.virtual && !props.preview)) return;
   const oldColumns = columns.value,
     oldPitch = pitch.value;
+  const focused =
+    document.activeElement instanceof HTMLElement && grid.value.contains(document.activeElement)
+      ? document.activeElement.closest<HTMLElement>('[data-grid-index]')
+      : null;
+  columns.value = Math.max(1, getComputedStyle(grid.value).gridTemplateColumns.split(' ').length);
+  if (props.preview) {
+    if (focused && Number(focused.dataset.gridIndex) >= columns.value) {
+      void nextTick(() => {
+        if (document.activeElement !== document.body) return;
+        const targets = grid.value?.querySelectorAll<HTMLButtonElement>(
+          '.search-card-open:not(:disabled)',
+        );
+        const target =
+          targets?.[targets.length - 1] ??
+          grid.value
+            ?.closest('.search-result-section')
+            ?.querySelector<HTMLButtonElement>('.search-section-link');
+        target?.focus({ preventScroll: true });
+        target?.scrollIntoView({ block: 'nearest' });
+      });
+    }
+    return;
+  }
   const offset = gridOffset(),
     before = Math.max(0, scroller.scrollTop - offset);
   const anchor = Math.floor(before / oldPitch) * oldColumns;
   const card = grid.value.querySelector<HTMLElement>('.search-result-card');
-  columns.value = Math.max(1, getComputedStyle(grid.value).gridTemplateColumns.split(' ').length);
   if (card) pitch.value = card.getBoundingClientRect().height + 20;
   if (
     measure &&
@@ -68,13 +97,13 @@ function scroll() {
     });
 }
 watch(
-  () => [grid.value, props.scroller, props.virtual] as const,
+  () => [grid.value, props.scroller, props.virtual, props.preview] as const,
   () => {
     scroller?.removeEventListener('scroll', scroll);
     observer?.disconnect();
     scroller = props.scroller;
-    if (!grid.value || !scroller || !props.virtual) return;
-    scroller.addEventListener('scroll', scroll, { passive: true });
+    if (!grid.value || !scroller || (!props.virtual && !props.preview)) return;
+    if (props.virtual) scroller.addEventListener('scroll', scroll, { passive: true });
     observer = new ResizeObserver(() => update(true));
     observer.observe(grid.value);
     observer.observe(scroller);
@@ -151,6 +180,7 @@ onBeforeUnmount(() => {
       'search-voice-grid': items.every((i) => i.kind === 'voice'),
     }"
     :data-loaded-count="items.length"
+    :data-preview="preview || undefined"
     @keydown="keydown"
   >
     <div v-if="top" aria-hidden="true" class="search-grid-spacer" :style="{ height: `${top}px` }" />

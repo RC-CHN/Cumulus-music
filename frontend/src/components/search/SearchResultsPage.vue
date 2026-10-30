@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import type { SearchViewportMemory } from '../../services/searchViewport';
 import SearchCardGrid from './SearchCardGrid.vue';
+import SearchTrackCard from './SearchTrackCard.vue';
 import type { AccountView, TrackView } from '../../services/contracts';
 import {
   searchCategories,
@@ -38,6 +39,8 @@ const emit = defineEmits<{
   search: [keyword: string];
   open: [item: SearchItem];
   play: [tracks: TrackView[], index: number];
+  togglePlayback: [];
+  downloadTrack: [track: TrackView];
   collect: [tracks: TrackView[]];
   more: [track: TrackView];
   like: [track: TrackView];
@@ -57,6 +60,29 @@ const limit = computed(() => (waterfall.value ? 13 : 30));
 const selected = computed(() => searchCategories.find((c) => c.key === category.value)!);
 const tracks = (section: SearchSection) =>
   section.items.flatMap((i) => (i.kind === 'song' ? [i.track] : []));
+function previewItems(section: SearchSection) {
+  const items = section.items.filter((i) => i.kind !== 'song');
+  if (category.value !== 'all') return items;
+  if (section.id.startsWith('search_block_best_match:')) return items.slice(0, 2);
+  return section.category && !['voices', 'all'].includes(section.category)
+    ? items.slice(0, 6)
+    : items;
+}
+function oneRowPreview(section: SearchSection) {
+  return (
+    category.value === 'all' &&
+    !section.id.startsWith('search_block_best_match:') &&
+    ['playlists', 'artists', 'albums', 'podcasts', 'mvs', 'users'].includes(section.category ?? '')
+  );
+}
+function playPreview(section: SearchSection, index: number) {
+  if (
+    tracks(section)[index]?.id === props.currentId &&
+    ['playing', 'buffering', 'paused'].includes(props.playbackState ?? '')
+  )
+    emit('togglePlayback');
+  else emit('play', tracks(section), index);
+}
 const songs = computed(() => view.value?.sections.flatMap(tracks) ?? []);
 const count = computed(() => view.value?.sections.reduce((n, s) => n + s.items.length, 0) ?? 0);
 const panel = ref<HTMLElement>(),
@@ -346,9 +372,30 @@ onBeforeUnmount(() => {
             }"
           >
             <header v-if="category === 'all' && !section.id.startsWith('search_block_best_match:')">
-              <h2>{{ section.title }}</h2>
-              <button v-if="section.category" class="text-button" @click="choose(section.category)">
-                查看全部<Icon name="forward" />
+              <h2>
+                <button
+                  v-if="section.category"
+                  class="search-section-link"
+                  :aria-label="`查看全部${section.title}`"
+                  @click="choose(section.category)"
+                >
+                  {{ section.title }}<Icon name="forward" /></button
+                ><template v-else>{{ section.title }}</template>
+              </h2>
+              <button
+                v-if="section.items.some((i) => i.kind === 'song')"
+                class="icon-button search-section-play"
+                aria-label="播放全部搜索单曲"
+                :disabled="!playable || !tracks(section).some((t) => !t.missing)"
+                @click="
+                  emit(
+                    'play',
+                    tracks(section),
+                    tracks(section).findIndex((t) => !t.missing),
+                  )
+                "
+              >
+                <Icon name="play" />
               </button>
             </header>
             <div v-if="category === 'lyrics'" class="search-lyric-list">
@@ -375,12 +422,29 @@ onBeforeUnmount(() => {
                 >
               </article>
             </div>
+            <div
+              v-else-if="category === 'all' && section.items.some((i) => i.kind === 'song')"
+              class="search-track-preview"
+            >
+              <SearchTrackCard
+                v-for="(track, index) in tracks(section).slice(0, 6)"
+                :key="`${track.id}:${index}`"
+                :track="track"
+                :playable="playable"
+                :current="track.id === currentId"
+                :playing="playbackState === 'playing' || playbackState === 'buffering'"
+                :liked="liked.has(track.id)"
+                :busy-like="busyLikes.has(track.id)"
+                @play="playPreview(section, index)"
+                @like="emit('like', track)"
+                @more="emit('more', track)"
+                @download="emit('downloadTrack', track)"
+                @artist="emit('artist', $event)"
+              />
+            </div>
             <TrackTable
               v-else-if="section.items.some((i) => i.kind === 'song')"
               :tracks="tracks(section)"
-              :style="
-                category === 'all' ? { height: `${tracks(section).length * 56 + 36}px` } : undefined
-              "
               :liked="liked"
               :busy="busyLikes"
               :playable="playable"
@@ -394,9 +458,10 @@ onBeforeUnmount(() => {
             />
             <SearchCardGrid
               v-if="section.items.some((i) => i.kind !== 'song')"
-              :items="section.items.filter((i) => i.kind !== 'song')"
+              :items="previewItems(section)"
               :scroller="panel"
               :virtual="waterfall"
+              :preview="oneRowPreview(section)"
               v-slot="{ item }"
             >
               <SearchResultCard
