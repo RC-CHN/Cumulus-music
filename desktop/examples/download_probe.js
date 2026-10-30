@@ -48,7 +48,7 @@ window.__runDownloadProof=async({wait,stage,sleep})=>{
     }else{
       input('搜索音乐','十年 陈奕迅');el('.searchbox').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
       await wait(()=>el('.search-heading-copy h1')?.textContent==='十年 陈奕迅'&&el('.track-more'),'download_song_search');
-      await click(el('.track-more'));await click(button('下载歌曲',el('.playlist-dialog')));
+      await click(el('.track-more'));await click(button('下载',el('.song-action-menu')));
       await wait(()=>el('.download-dialog'),'download_start_dialog');
     }
     await submit();

@@ -17,7 +17,7 @@
   await click(el('[data-category="songs"]'));await wait(()=>el('[data-category="songs"]')?.getAttribute('aria-selected')==='true'&&all('.track-row').length,'search_song_results');
   const results=(await invoke('search_songs',{keyword:sample.query,page:{offset:0,limit:100}})).value.tracks,index=results.findIndex(t=>t.id===sample.resource.id);if(index<0)throw Error('explicit_track_not_in_search');
   const scroll=el('.track-scroll');scroll.scrollTop=index*56;scroll.dispatchEvent(new Event('scroll'));
-  const row=await wait(()=>el(`.track-row[aria-rowindex="${index+2}"]`),'explicit_track_visible');await click(row.querySelector('.track-more'));await wait(()=>button('查看歌曲评论'),'track_menu');await click(button('查看歌曲评论'));
+  const row=await wait(()=>el(`.track-row[aria-rowindex="${index+2}"]`),'explicit_track_visible');await click(row.querySelector('.track-more'));await wait(()=>button('查看评论'),'track_menu');await click(button('查看评论'));
   step='latest';await wait(()=>el('.comments-page')&&ids().length,'comment_page');const first=ids();await stage('comments_latest',{count:first.length,hotCount:all('[data-group="hot"] .comment-card').length});
   step='next';await click(button('下一页'));await wait(()=>ids().length&&ids()[0]!==first[0],'next_page');if(ids().some(id=>first.includes(id)))throw Error('page_overlap');await stage('comments_next',{count:ids().length,overlap:0});await click(button('上一页'));await wait(()=>ids()[0]===first[0],'previous_page');
   step='hot';await click(button('精彩评论',el('[role="tablist"]')));await wait(()=>button('精彩评论',el('[role="tablist"]'))?.getAttribute('aria-selected')==='true'&&ids().length,'hot_page');await stage('comments_hot',{count:ids().length});

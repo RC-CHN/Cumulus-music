@@ -19,6 +19,7 @@ pub fn control(value: &Value) {
             "suggest_error",
             "result_error",
             "unavailable",
+            "missing_song",
             "card_error",
             "cover",
             "cover_error",
@@ -51,6 +52,9 @@ pub fn initialize(store: &StateStore) -> Result<()> {
 }
 pub fn calls() -> usize {
     CALLS.load(Ordering::SeqCst)
+}
+pub fn missing_song() -> bool {
+    enabled() && *MODE.lock().unwrap() == "missing_song"
 }
 pub fn card_failed() -> bool {
     *MODE.lock().unwrap() == "card_error"

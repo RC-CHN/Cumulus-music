@@ -34,7 +34,7 @@ window.__runPlaylistProof=async({wait,stage,sleep})=>{
     await click(el('[aria-label="取消编辑歌单"]'));
     await click(document.querySelectorAll('.nav-main button')[0]);await wait(()=>el('h1')?.textContent==='每日推荐'&&document.querySelectorAll('.track-more').length>1,'daily_add_candidates');
     for(let i=0;i<2;i++){
-      await click(document.querySelectorAll('.track-more')[i]);await wait(()=>el('[aria-label="选择目标歌单"]'),'track_menu');
+      await click(document.querySelectorAll('.track-more')[i]);await click(button('收藏',el('.song-action-menu')));await wait(()=>el('[aria-label="选择目标歌单"]'),'track_menu');
       const select=el('[aria-label="选择目标歌单"]');if(![...select.options].some(o=>o.value===id))throw new Error('isolated_destination_missing');
       select.value=id;select.dispatchEvent(new Event('change',{bubbles:true}));
       await click(button('添加到歌单',el('.playlist-dialog')));await wait(closed,'add_song_confirmed');
@@ -44,13 +44,13 @@ window.__runPlaylistProof=async({wait,stage,sleep})=>{
     await click([...document.querySelectorAll('.playlist-card')].find(n=>n.querySelector('.card-title')?.textContent===renamed));
     await wait(()=>document.querySelectorAll('.track-more').length===2,'two_tracks');
     originalOrder=(await snapshot()).trackIds;
-    await click(el('.track-more'));await click(button('下移一首',el('.playlist-dialog')));await wait(closed,'move_song_confirmed');
+    await click(el('.track-more'));await click(button('调整歌曲顺序…',el('.song-action-menu')));await click(button('下移一首',el('.playlist-dialog')));await wait(closed,'move_song_confirmed');
     p=await snapshot();if(JSON.stringify(p.trackIds)!==JSON.stringify([...originalOrder].reverse()))throw new Error('reorder_not_observed');
     const viewport=el('.track-scroll');
     if(viewport.clientHeight<112)throw new Error('playlist_rows_clipped_by_header');
     if(document.documentElement.scrollWidth>innerWidth)throw new Error('playlist_horizontal_overflow');
     await stage('playlist_reorder',{tracks:2,fullOrderReversed:true,listHeight:viewport.clientHeight,horizontalOverflow:false});
-    await click(el('.track-more'));await click(button('从当前歌单移除',el('.playlist-dialog')));await wait(closed,'remove_song_confirmed');
+    await click(el('.track-more'));await click(button('从歌单中删除',el('.song-action-menu')));await click(button('删除',el('.playlist-dialog')));await wait(closed,'remove_song_confirmed');
     if((await snapshot()).trackIds.length!==1)throw new Error('remove_not_observed');
     await edit();await click(button('其他歌单操作'));await wait(()=>el('.action-menu'),'editor_action_menu');await click(button('清空歌曲',el('.action-menu')));await wait(()=>el('.playlist-editor-confirm'),'editor_confirmation');await submit();
     if((await snapshot()).trackIds.length)throw new Error('clear_not_observed');

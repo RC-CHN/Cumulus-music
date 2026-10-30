@@ -167,6 +167,7 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_cards_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-cards-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_preview_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-preview-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_lyrics_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-lyrics-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/song_menu_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-song-menu-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_scroll_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-scroll-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/like_recovery_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-likes-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/keyboard_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-keyboard-linux
@@ -230,6 +231,7 @@ jobs:
           python scripts/ci/search_cards_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-cards-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_preview_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-preview-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_lyrics_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-lyrics-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/song_menu_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-song-menu-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_scroll_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-scroll-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/like_recovery_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-likes-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/keyboard_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-keyboard-windows --runtime .build/package-stage/windows-x64/native

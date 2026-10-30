@@ -115,7 +115,7 @@ impl Api for Library {
                 "/api/v3/song/detail" => {
                     let rows: Vec<Value> =
                         serde_json::from_str(args["c"].as_str().unwrap()).unwrap();
-                    json!({"code":200,"songs":rows.iter().map(|row|song(row["id"].as_str().and_then(|s|s.parse().ok()).or_else(||row["id"].as_u64()).unwrap())).collect::<Vec<_>>()})
+                    json!({"code":200,"songs":rows.iter().map(|row|row["id"].as_str().and_then(|s|s.parse().ok()).or_else(||row["id"].as_u64()).unwrap()).filter(|id| !search_fixture::missing_song() || *id != 2).map(song).collect::<Vec<_>>()})
                 }
                 "/api/batch" if playlist_editor_fixture::enabled() => {
                     playlist_editor_fixture::wait_while("hold_write").await;

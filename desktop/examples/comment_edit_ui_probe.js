@@ -42,7 +42,7 @@
   try {
     await wait(() => el('.track-row .track-more'), 'daily_bootstrap');
     await click(el('.track-row .track-more'));
-    await click(await wait(() => button('查看歌曲评论'), 'track_menu'));
+    await click(await wait(() => button('查看评论'), 'track_menu'));
     await wait(() => card('102') && (ready() || pending()), 'comments_ready');
     if (button('删除', card('102')) || !button('删除', card('101'))) throw Error('ownership_controls');
     if (window.__editProof.reopen) {
