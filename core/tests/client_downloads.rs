@@ -828,3 +828,91 @@ async fn filtered_download_playback_uses_the_entire_order_not_the_visible_prefix
         .unwrap();
     assert_eq!(f.api.count("player/url"), 0);
 }
+
+#[tokio::test]
+async fn unsorted_downloads_preserve_service_order_across_windows() {
+    use cumulus_core::download::service::DownloadOrigin;
+    let f = Fixture::new();
+    let (original, _) = f.completed().await;
+    let seed = f
+        .store
+        .get("1", "download_tasks_v1", &original)
+        .unwrap()
+        .unwrap();
+    for (i, name, created, completed) in [(1, "A", 30, 10), (2, "Z", 10, 20), (3, "M", 20, 30)] {
+        let mut value = seed.clone();
+        let id = format!("{i:032x}");
+        value["id"] = json!(id);
+        value["song"] = json!({"id":i,"name":format!("取消排序 {name}")});
+        value["origin"] = serde_json::to_value(DownloadOrigin::Voice {
+            voice_id: i.to_string(),
+        })
+        .unwrap();
+        value["created_ms"] = json!(created);
+        value["completed_ms"] = json!(completed);
+        f.store.put("1", "download_tasks_v1", &id, &value).unwrap();
+    }
+    let query = DownloadQuery {
+        tab: DownloadTab::Completed,
+        category: DownloadCategory::Voice,
+        keyword: "取消排序".into(),
+        sort: DownloadSort::None,
+        descending: false,
+        offset: 0,
+        limit: 100,
+    };
+    for descending in [false, true] {
+        let rows = f
+            .client
+            .downloads(
+                "1",
+                DownloadQuery {
+                    descending,
+                    ..query.clone()
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            rows.tasks
+                .iter()
+                .map(|t| t.track.id.as_str())
+                .collect::<Vec<_>>(),
+            ["2", "3", "1"]
+        );
+    }
+    let page = f
+        .client
+        .downloads(
+            "1",
+            DownloadQuery {
+                offset: 1,
+                limit: 1,
+                ..query.clone()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(page.total, 3);
+    assert_eq!(page.tasks[0].track.id, "3");
+    let sorted = f
+        .client
+        .downloads(
+            "1",
+            DownloadQuery {
+                sort: DownloadSort::Completed,
+                descending: true,
+                ..query
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        sorted
+            .tasks
+            .iter()
+            .map(|t| t.track.id.as_str())
+            .collect::<Vec<_>>(),
+        ["3", "2", "1"]
+    );
+}

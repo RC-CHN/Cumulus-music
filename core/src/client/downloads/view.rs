@@ -176,6 +176,8 @@ impl Host {
         }
         values.sort_by(|a, b| {
             let order = match query.sort {
+                // Preserve the service listing order when the UI clears sorting.
+                DownloadSort::None => return std::cmp::Ordering::Equal,
                 DownloadSort::Name => a.track.name.cmp(&b.track.name),
                 DownloadSort::Artist => a.track.artists.cmp(&b.track.artists),
                 DownloadSort::Album => a.track.album.cmp(&b.track.album),

@@ -26,6 +26,7 @@ pub enum DownloadCategory {
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DownloadSort {
+    None,
     Name,
     Artist,
     Album,
