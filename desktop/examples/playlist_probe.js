@@ -9,6 +9,7 @@ window.__runPlaylistProof=async({wait,stage,sleep})=>{
   let id,cleaned=false,edited=false,originalOrder;
   const click=async node=>{if(!node||node.disabled)throw new Error('playlist_control_unavailable');node.scrollIntoView({block:'nearest'});await sleep(100);node.click();};
   const button=(text,root=document)=>[...root.querySelectorAll('button')].find(n=>n.getAttribute('aria-label')===text||n.textContent.trim()===text);
+  const songAction=async(label,node=el('.track-more'))=>{await click(node);await wait(()=>el('.song-action-menu')?.style.visibility==='visible','song_action_menu');await click(button(label,el('.song-action-menu')));await wait(()=>el('.playlist-dialog[open]'),'song_action_dialog');};
   const input=(label,value)=>{const n=el(`.playlist-dialog [aria-label="${label}"], .playlist-editor-page [aria-label="${label}"]`);if(!n)throw new Error('missing_playlist_input');n.value=value;n.dispatchEvent(new Event('input',{bubbles:true}));};
   const closed=()=>!el('.playlist-dialog')&&!el('.playlist-editor-page');
   const snapshot=async()=> (await invoke('playlist_editor',{epoch,id})).value;
@@ -16,7 +17,7 @@ window.__runPlaylistProof=async({wait,stage,sleep})=>{
   const submit=async()=>{const n=el('.playlist-editor-confirm button.primary, .playlist-dialog button[type="submit"], .playlist-editor-page button[type="submit"]');await wait(()=>n&&!n.disabled&&!el('.playlist-dialog fieldset')?.disabled,'playlist_submit_ready');await click(n);await wait(closed,'playlist_submit_confirmed');};
   window.__playlistProofFacts=()=>({dialog:!!el('.playlist-dialog'),message:el('.playlist-dialog .error-state')?.textContent?.trim().slice(0,180),result:el('.mutation-result')?.dataset.phase,isolatedCreated:!!id,cleanupComplete:cleaned});
   try{
-    await click(document.querySelectorAll('.nav-main button')[1]);await wait(()=>el('.playlist-card'),'playlist_library');
+    await click(button('我的歌单'));await wait(()=>el('.playlist-card'),'playlist_library');
     await click(button('新建歌单'));await wait(()=>el('.playlist-dialog [aria-label="歌单名称"]'),'create_dialog');
     input('歌单名称',name);
     if(!el('[aria-label="设为私密歌单"]').checked)throw new Error('create_not_private');
@@ -32,25 +33,25 @@ window.__runPlaylistProof=async({wait,stage,sleep})=>{
     let p=await snapshot();if(p.name!==renamed||p.description!=='Tauri form and Rust core verification'||!p.tags.includes('电子'))throw new Error('metadata_not_observed');
     await edit();await stage('playlist_edit',{name:true,description:true,officialTag:true,readbackConfirmed:true});
     await click(el('[aria-label="取消编辑歌单"]'));
-    await click(document.querySelectorAll('.nav-main button')[0]);await wait(()=>el('h1')?.textContent==='每日推荐'&&document.querySelectorAll('.track-more').length>1,'daily_add_candidates');
+    await click(button('每日推荐'));await wait(()=>el('.daily-heading-copy')&&document.querySelectorAll('.track-more').length>1&&!el('.page-enter-active,.page-leave-active'),'daily_add_candidates');
     for(let i=0;i<2;i++){
-      await click(document.querySelectorAll('.track-more')[i]);await click(button('收藏',el('.song-action-menu')));await wait(()=>el('[aria-label="选择目标歌单"]'),'track_menu');
+      await songAction('收藏',document.querySelectorAll('.track-more')[i]);await wait(()=>el('[aria-label="选择目标歌单"]'),'track_menu');
       const select=el('[aria-label="选择目标歌单"]');if(![...select.options].some(o=>o.value===id))throw new Error('isolated_destination_missing');
       select.value=id;select.dispatchEvent(new Event('change',{bubbles:true}));
-      await click(button('添加到歌单',el('.playlist-dialog')));await wait(closed,'add_song_confirmed');
+      await click(button('收藏',el('.playlist-dialog')));await wait(closed,'add_song_confirmed');
       p=await snapshot();if(p.trackIds.length!==i+1)throw new Error('added_count_mismatch');
     }
-    await click(document.querySelectorAll('.nav-main button')[1]);await wait(()=>[...document.querySelectorAll('.playlist-card')].some(n=>n.querySelector('.card-title')?.textContent===renamed),'library_new_card');
+    await click(button('我的歌单'));await wait(()=>[...document.querySelectorAll('.playlist-card')].some(n=>n.querySelector('.card-title')?.textContent===renamed),'library_new_card');
     await click([...document.querySelectorAll('.playlist-card')].find(n=>n.querySelector('.card-title')?.textContent===renamed));
     await wait(()=>document.querySelectorAll('.track-more').length===2,'two_tracks');
     originalOrder=(await snapshot()).trackIds;
-    await click(el('.track-more'));await click(button('调整歌曲顺序…',el('.song-action-menu')));await click(button('下移一首',el('.playlist-dialog')));await wait(closed,'move_song_confirmed');
+    await songAction('调整歌曲顺序…');await click(button('下移一首',el('.playlist-dialog')));await wait(closed,'move_song_confirmed');
     p=await snapshot();if(JSON.stringify(p.trackIds)!==JSON.stringify([...originalOrder].reverse()))throw new Error('reorder_not_observed');
     const viewport=el('.track-scroll');
     if(viewport.clientHeight<112)throw new Error('playlist_rows_clipped_by_header');
     if(document.documentElement.scrollWidth>innerWidth)throw new Error('playlist_horizontal_overflow');
     await stage('playlist_reorder',{tracks:2,fullOrderReversed:true,listHeight:viewport.clientHeight,horizontalOverflow:false});
-    await click(el('.track-more'));await click(button('从歌单中删除',el('.song-action-menu')));await click(button('删除',el('.playlist-dialog')));await wait(closed,'remove_song_confirmed');
+    await songAction('从歌单中删除');await click(button('删除',el('.playlist-dialog')));await wait(closed,'remove_song_confirmed');
     if((await snapshot()).trackIds.length!==1)throw new Error('remove_not_observed');
     await edit();await click(button('其他歌单操作'));await wait(()=>el('.action-menu'),'editor_action_menu');await click(button('清空歌曲',el('.action-menu')));await wait(()=>el('.playlist-editor-confirm'),'editor_confirmation');await submit();
     if((await snapshot()).trackIds.length)throw new Error('clear_not_observed');
