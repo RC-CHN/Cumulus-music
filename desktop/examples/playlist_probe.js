@@ -35,10 +35,14 @@ window.__runPlaylistProof=async({wait,stage,sleep})=>{
     await click(el('[aria-label="取消编辑歌单"]'));
     await click(button('每日推荐'));await wait(()=>el('.daily-heading-copy')&&document.querySelectorAll('.track-more').length>1&&!el('.page-enter-active,.page-leave-active'),'daily_add_candidates');
     for(let i=0;i<2;i++){
-      await songAction('收藏',document.querySelectorAll('.track-more')[i]);await wait(()=>el('[aria-label="选择目标歌单"]'),'track_menu');
-      const select=el('[aria-label="选择目标歌单"]');if(![...select.options].some(o=>o.value===id))throw new Error('isolated_destination_missing');
-      select.value=id;select.dispatchEvent(new Event('change',{bubbles:true}));
-      await click(button('收藏',el('.playlist-dialog')));await wait(closed,'add_song_confirmed');
+      await songAction('收藏',document.querySelectorAll('.track-more')[i]);await wait(()=>el('.collect-list'),'collection_list');
+      const list=el('.collect-list');let destination;
+      for(let attempt=0;attempt<100;attempt++){
+        destination=el(`[data-playlist-id="${id}"]`);if(destination)break;
+        list.scrollTop+=Math.max(64,list.clientHeight-64);await sleep(50);
+      }
+      if(!destination)throw new Error('isolated_destination_missing');
+      await click(destination);await wait(closed,'add_song_confirmed');
       p=await snapshot();if(p.trackIds.length!==i+1)throw new Error('added_count_mismatch');
     }
     await click(button('我的歌单'));await wait(()=>[...document.querySelectorAll('.playlist-card')].some(n=>n.querySelector('.card-title')?.textContent===renamed),'library_new_card');

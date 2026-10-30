@@ -8,6 +8,8 @@ mod fixture;
 mod like_recovery_fixture;
 #[path = "support/media_shortcuts.rs"]
 mod media_shortcuts;
+#[path = "support/playlist_collect_fixture.rs"]
+mod playlist_collect_fixture;
 #[path = "support/playlist_cover_layout_fixture.rs"]
 mod playlist_cover_layout_fixture;
 #[path = "support/playlist_cover_transfer_fixture.rs"]
@@ -55,6 +57,9 @@ fn playlist(id: u64) -> Value {
 impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, args: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(result) = playlist_collect_fixture::response(path, &args).await {
+                return result;
+            }
             if let Some(result) = search_fixture::response(path, &args) {
                 return result;
             }
@@ -254,6 +259,12 @@ fn main() {
                     handle.get_webview_window("main").unwrap().eval("window.__editorFixtureAck=true;").unwrap();
                     return;
             }
+            if playlist_collect_fixture::enabled() && stage=="collect-fixture" {
+                playlist_collect_fixture::control(&value);
+                let report = playlist_collect_fixture::report();
+                handle.get_webview_window("main").unwrap().eval(format!("window.__collectFixtureAck={report};")).unwrap();
+                return;
+            }
             if playlist_layout_fixture::enabled() && stage=="playlist-fixture-release" {
                 playlist_layout_fixture::release_failure();
                 return;
@@ -295,6 +306,7 @@ fn main() {
             }
             if !(["complete","failed"].contains(&stage) || stage.starts_with("ux_") && stage.chars().all(|c|c.is_ascii_alphanumeric()||c=='_')){return;}
             let stage=stage.to_owned();
+            if playlist_collect_fixture::enabled() { value["syntheticCollection"] = playlist_collect_fixture::report(); }
             if let Some(fixture)=transfer.as_ref() {value["syntheticCoverTransfer"]=fixture.report();}
             if playlist_editor_fixture::enabled() {value["syntheticMetadataWrites"]=json!(playlist_editor_fixture::writes());}
             if let Some(fixture)=recovery.as_ref() {

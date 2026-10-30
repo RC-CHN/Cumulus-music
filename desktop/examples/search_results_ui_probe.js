@@ -35,7 +35,7 @@
         await choose(category);await capture(`${category}_${w}_${t}`);
         if(category==='all'){const p=one('.search-result-panel');p.scrollTop=p.scrollHeight;await capture(`all_bottom_${w}_${t}`);p.scrollTop=0;}
         if(category==='songs'){
-          assert(button('播放全部')&&button('收藏全部'),'official actions');click(button('收藏全部'));await wait(()=>one('.playlist-dialog[open]'),'collection dialog');assert(one('dialog').textContent.includes('30 首'),'collection is explicit about current page');await capture(`collect_${w}_${t}`);click(button('关闭歌单操作'));await wait(()=>!one('.playlist-dialog'),'collect close');
+          assert(button('播放全部')&&button('收藏全部'),'official actions');click(button('收藏全部'));await wait(()=>one('.playlist-dialog[open]'),'collection dialog');assert(one('.playlist-collect-dialog .sr-only')?.textContent.includes('30首'),'collection is explicit about current page');await capture(`collect_${w}_${t}`);click(button('关闭歌单操作'));await wait(()=>!one('.playlist-dialog'),'collect close');
         }
         if(category==='users'){
           click(one('.search-card-open'));await wait(()=>one('.search-user-dialog[open]'),'user card details');await capture(`user_details_${w}_${t}`);click(button('关闭用户信息'));await wait(()=>!one('.search-user-dialog'),'user close');assert(document.activeElement.classList.contains('search-card-open'),'modal returns focus');
