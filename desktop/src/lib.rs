@@ -25,6 +25,7 @@ mod podcast;
 mod rankings;
 mod relay;
 pub mod renewal;
+mod search;
 mod settings;
 pub mod shortcuts;
 pub mod system_media;
@@ -179,6 +180,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 commands::account_playlists,
                 commands::playlist_page,
                 commands::search_songs,
+                search::search_discovery,
+                search::search_history,
                 commands::daily_songs,
                 rankings::ranking_page,
                 catalog::catalog_page,

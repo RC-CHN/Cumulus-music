@@ -30,6 +30,7 @@ mod podcast;
 mod rankings;
 mod relay;
 mod scene_fm;
+mod search;
 mod settings;
 mod shortcut_preferences;
 mod together;

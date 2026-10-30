@@ -6,6 +6,7 @@ pub mod details;
 pub mod metadata;
 mod privileges;
 pub mod rankings;
+pub mod search;
 pub use album::{AlbumDetailSource, AlbumDetails, AlbumReadState};
 pub use api::{CatalogApi, PlayOptions, SearchOptions, SongBatch};
 pub use artist::{ArtistApi, ArtistPageRequest};

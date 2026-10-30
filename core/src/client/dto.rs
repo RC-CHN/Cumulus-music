@@ -38,6 +38,7 @@ pub use super::relay::{
     RelaySettingsView, RelayView,
 };
 pub use super::scene_fm::{SceneFmCategoryView, SceneFmCommand, SceneFmView};
+pub use super::search::SearchHistoryCommand;
 pub use super::settings::{
     AccountSettingField, AccountSettingsCommand, AccountSettingsPage, LinkedPrivacy,
     SettingAvailability, SettingChange, SettingKey, SettingValue, SettingsOperationView,
@@ -53,6 +54,7 @@ pub use super::window::{WindowPreferencesCommand, WindowPreferencesView};
 pub use crate::account::collections::CollectionQuery;
 use crate::account::{QrStatus, SessionStatus, resources::MutationPhase};
 pub use crate::catalog::rankings::RankingQuery;
+pub use crate::catalog::search::{SearchDiscovery, SearchDiscoveryQuery};
 pub use crate::fm::discovery::{FmDiscoveryQuery, SavedFmDiscovery};
 pub use crate::fm::{FmReason, FmReasons, FmSource};
 pub use crate::history::HistoryKind;
