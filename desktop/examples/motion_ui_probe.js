@@ -65,9 +65,9 @@
     click(one('[aria-label="关闭播放队列"]')); await wait(()=>!one('.queue-panel'),'queue closed');
     const eq=one('[aria-label="均衡器"]'); click(eq); await wait(()=>one('.equalizer-dialog[open]'),'equalizer'); await frame(); noMotion('modal'); await capture('modal_no_motion');
     click(one('[aria-label="关闭均衡器"]')); await wait(()=>!one('.equalizer-dialog'),'equalizer closed'); await sleep(100); assert(document.activeElement===eq,'disabled modal lost focus');
-    await page('我的歌单','.playlist-card'); click(all('.playlist-card')[1]); await wait(()=>one('.playlist-edit'),'playlist'); click(one('.playlist-edit')); await wait(()=>one('.playlist-dialog[open]'),'editor');
+    await page('我的歌单','.playlist-card'); click(all('.playlist-card')[1]); await wait(()=>one('.playlist-edit'),'playlist'); click(one('.playlist-edit')); await wait(()=>one('.playlist-editor-page [aria-label="歌单名称"]')?.value,'editor');
     await frame(); noMotion('editor'); assert(document.activeElement===one('[aria-label="歌单名称"]'),'editor focus'); await capture('editor_no_motion');
-    click(one('[aria-label="关闭歌单操作"]')); await wait(()=>!one('.playlist-dialog'),'editor closed');
+    click(one('[aria-label="取消编辑歌单"]')); await wait(()=>!one('.playlist-editor-page'),'editor closed');
     await page('每日推荐','.track-row'); one('.track-row').dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));
     await wait(()=>one('[aria-label="暂停"]') && Number(one('.playerbar').dataset.position)>0.15,'native playing progress');
     click(one('[aria-label="暂停"]')); await wait(()=>one('[aria-label="播放"]'),'paused');

@@ -28,7 +28,8 @@
   }
   async function capture(label, sourceLayout=false) {
     await sleep(350);
-    const hero=one('.playlist-hero'),summary=one('.playlist-summary'),actions=one('.playlist-actions');
+    const editing=one('.playlist-editor-page');
+    const hero=editing?null:one('.playlist-hero'),summary=one('.playlist-summary'),actions=one('.playlist-actions');
     const overlay=one('.playlist-description-overlay'),modal=one('dialog[open]'),menu=one('.action-menu');
     const box={x:0,y:0,right:innerWidth,bottom:innerHeight};
     const sourceChecks=!sourceLayout?{}:{
@@ -44,7 +45,7 @@
         rootAnchored:rect(document.body).x===0&&rect(document.body).y===0,
         playerSeparated:!hero||rect(hero).bottom<=rect(one('.playerbar')).y,
         heroContained:!hero||inside(rect(hero),box),
-        controlsHit:!!(modal||overlay||menu)||all('.playlist-actions button:not(:disabled),.playlist-edit:not(:disabled)').every(hit),
+        controlsHit:!!(editing||modal||overlay||menu)||all('.playlist-actions button:not(:disabled),.playlist-edit:not(:disabled)').every(hit),
         overlayContained:!overlay||inside(rect(overlay),rect(summary)),
         descriptionWrap:!overlay||one('.playlist-description-scroll').scrollWidth<=one('.playlist-description-scroll').clientWidth+1,
         boundedRows:all('.track-row').length<40,
@@ -70,7 +71,7 @@
       assert(document.activeElement===button('展开歌单简介'),'description return focus');
       click(button('更多歌单操作'));await wait(()=>one('.action-menu'),'header menu');await capture(`menu_${suffix}`);
       click(button('编辑歌单',one('.action-menu')));await wait(()=>one('[aria-label="歌单名称"]')?.value,'editor');await capture(`editor_${suffix}`);
-      click(button('关闭歌单操作'));await wait(()=>!one('.playlist-dialog'),'editor closed');await sleep(200);
+      click(button('取消编辑歌单'));await wait(()=>!one('.playlist-editor-page'),'editor closed');await sleep(200);
       assert(document.activeElement===button('更多歌单操作'),'menu editor return focus');
       click(button('展开歌单简介'));await wait(()=>one('.playlist-description-overlay'),'description reopen');
       one('.searchbox input').focus();await wait(()=>!one('.playlist-description-overlay'),'description closes on focus outside');

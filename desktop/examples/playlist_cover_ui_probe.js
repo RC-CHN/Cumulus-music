@@ -31,7 +31,7 @@
       await click(button('打开歌单链接'));await wait(()=>el('[aria-label="歌单分享链接"]'),'open_dialog');
       input('歌单分享链接',window.__coverProof.id);await click(el('.playlist-dialog button[type="submit"]'));
       await wait(()=>el('.playlist-hero')&&button('编辑歌单'),'playlist_loaded');
-      await click(button('编辑歌单'));await wait(()=>el('[aria-label="替换歌单封面"]')&&!el('.playlist-dialog .spinner'),'editor_loaded');
+      await click(button('编辑歌单'));await wait(()=>el('[aria-label="替换歌单封面"]')&&!el('.playlist-editor-page .spinner'),'editor_loaded');
       input('歌单名称','UnsavedCoverDraft');input('歌单简介','Unsaved description stays local');
       await click(el('[aria-label="替换歌单封面"]'));await wait(()=>button('选择图片',el('.cover-dialog')),'cover_open');
       await stage('cover_empty');
@@ -70,7 +70,7 @@
     if(el('[aria-label="歌单名称"]').value!==expectedName||el('[aria-label="歌单简介"]').value!==expectedDescription)throw Error('metadata_draft_lost');
     await wait(()=>el('.playlist-cover-edit img')?.complete&&el('.playlist-cover-edit img')?.naturalWidth>0,'updated_cover_visible');
     await stage('cover_draft_preserved',{nameDraft:el('[aria-label="歌单名称"]').value,descriptionDraft:el('[aria-label="歌单简介"]').value,coverUrl:el('.playlist-cover-edit img').src});
-    await click(el('[aria-label="关闭歌单操作"]'));await wait(()=>!el('.playlist-dialog'),'editor_closed_without_metadata_save');
+    await click(el('[aria-label="取消编辑歌单"]'));await sleep(200);if(el('.playlist-editor-confirm'))await click(button('放弃修改并离开'));await wait(()=>!el('.playlist-editor-page'),'editor_closed_without_metadata_save');
     await report('complete',{ok:true,intended,held:false});
   } catch(e) {await report('failed',{ok:false,step,error:e instanceof Error?e.message:'unknown',...facts()});}
 })();

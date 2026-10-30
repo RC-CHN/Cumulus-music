@@ -8,6 +8,8 @@ mod fixture;
 mod like_recovery_fixture;
 #[path = "support/media_shortcuts.rs"]
 mod media_shortcuts;
+#[path = "support/playlist_editor_fixture.rs"]
+mod playlist_editor_fixture;
 #[path = "support/playlist_layout_fixture.rs"]
 mod playlist_layout_fixture;
 #[allow(dead_code)]
@@ -36,8 +38,11 @@ fn song(id: u64) -> Value {
     json!({"id":id,"name":format!("合成歌曲 {id} · A quiet afternoon"),"ar":[{"name":"Cumulus"}],"al":{"name":"界面体验验证"},"dt":if id==1 {6_000_000} else {235_000},"fee":id%3})
 }
 fn playlist(id: u64) -> Value {
-    playlist_layout_fixture::decorate(
-        json!({"id":id,"userId":if id<20 {2} else {3},"name":if id==1 {"我喜欢的音乐".into()} else if id==2 {"午后散步 · 一份用来检查较长名称与编辑入口的歌单".into()} else {format!("合成歌单 {id}")},"creator":{"userId":if id<20 {2} else {3},"nickname":"Cumulus"},"specialType":if id==1 {5} else {0},"privacy":10,"trackCount":40,"description":"沿着熟悉的小路，留一点时间给音乐。这是一段较长的合成简介，用来检查窄窗口里的文字、封面和操作入口。","tags":["轻音乐"],"trackIds":(1..=40).map(|id|json!({"id":id,"v":0})).collect::<Vec<_>>()}),
+    playlist_editor_fixture::decorate(
+        playlist_layout_fixture::decorate(
+            json!({"id":id,"userId":if id<20 {2} else {3},"name":if id==1 {"我喜欢的音乐".into()} else if id==2 {"午后散步 · 一份用来检查较长名称与编辑入口的歌单".into()} else {format!("合成歌单 {id}")},"creator":{"userId":if id<20 {2} else {3},"nickname":"Cumulus"},"specialType":if id==1 {5} else {0},"privacy":10,"trackCount":40,"description":"沿着熟悉的小路，留一点时间给音乐。这是一段较长的合成简介，用来检查窄窗口里的文字、封面和操作入口。","tags":["轻音乐"],"trackIds":(1..=40).map(|id|json!({"id":id,"v":0})).collect::<Vec<_>>()}),
+            id,
+        ),
         id,
     )
 }
@@ -70,6 +75,12 @@ impl Api for Library {
                         .and_then(|s| s.parse().ok())
                         .or_else(|| args["id"].as_u64())
                         .unwrap_or(2);
+                    playlist_editor_fixture::wait_while("hold_read").await;
+                    if playlist_editor_fixture::fails_read(id) {
+                        return Err(cumulus_core::Error::Response(
+                            "synthetic playlist editor read failure",
+                        ));
+                    }
                     if playlist_layout_fixture::first_read_failure(id) {
                         playlist_layout_fixture::wait_for_release().await;
                         json!({"code":500})
@@ -82,8 +93,19 @@ impl Api for Library {
                         serde_json::from_str(args["c"].as_str().unwrap()).unwrap();
                     json!({"code":200,"songs":rows.iter().map(|row|song(row["id"].as_str().and_then(|s|s.parse().ok()).or_else(||row["id"].as_u64()).unwrap())).collect::<Vec<_>>()})
                 }
+                "/api/batch" if playlist_editor_fixture::enabled() => {
+                    playlist_editor_fixture::wait_while("hold_write").await;
+                    return playlist_editor_fixture::batch(args);
+                }
                 "/api/playlist/catalogue" => {
-                    json!({"code":200,"categories":{"0":"风格"},"sub":[{"name":"轻音乐","category":0},{"name":"摇滚","category":0}]})
+                    let mut value = json!({"code":200,"categories":{"0":"风格"},"sub":[{"name":"轻音乐","category":0},{"name":"摇滚","category":0}]});
+                    if playlist_editor_fixture::enabled() {
+                        value["sub"].as_array_mut().unwrap().extend([
+                            json!({"name":"古典","category":0}),
+                            json!({"name":"爵士","category":0}),
+                        ]);
+                    }
+                    value
                 }
                 "/api/cloudsearch/pc" => {
                     json!({"code":200,"result":{"songs":(1..=12).map(song).collect::<Vec<_>>(),"songCount":12}})
@@ -159,6 +181,11 @@ fn main() {
         app.listen("ux-proof",move |event| {
             let mut value:Value=serde_json::from_str(event.payload()).unwrap();
             let stage=value["stage"].as_str().unwrap_or("");
+            if playlist_editor_fixture::enabled() && stage=="editor-fixture" {
+                    playlist_editor_fixture::control(&value);
+                    handle.get_webview_window("main").unwrap().eval("window.__editorFixtureAck=true;").unwrap();
+                    return;
+            }
             if playlist_layout_fixture::enabled() && stage=="playlist-fixture-release" {
                 playlist_layout_fixture::release_failure();
                 return;
@@ -200,6 +227,7 @@ fn main() {
             }
             if !(["complete","failed"].contains(&stage) || stage.starts_with("ux_") && stage.chars().all(|c|c.is_ascii_alphanumeric()||c=='_')){return;}
             let stage=stage.to_owned();
+            if playlist_editor_fixture::enabled() {value["syntheticMetadataWrites"]=json!(playlist_editor_fixture::writes());}
             if let Some(fixture)=recovery.as_ref() {
                 use std::sync::atomic::Ordering;
                 value["syntheticLikeWrites"]=json!(fixture.writes.load(Ordering::SeqCst));

@@ -6,15 +6,17 @@
   const assert = (ok, message) => { if (!ok) throw Error(message); };
   const emit = (stage, rest = {}) => window.__TAURI_INTERNALS__.invoke('plugin:event|emit', { event: 'ux-proof', payload: { stage, ...rest } });
   const wait = async (test, label) => { for (let i = 0; i < 150; i++) { if (test()) return; await sleep(100); } throw Error(label); };
-  const button = text => all('button').find(node => node.textContent.trim() === text);
+  const button = text => all('button').find(node => node.getAttribute('aria-label') === text || node.textContent.trim() === text);
   const click = node => { assert(node && !node.disabled, `unavailable control: ${node?.outerHTML}`); node.focus({ preventScroll: true }); node.click(); };
   const key = (node, value) => node.dispatchEvent(new KeyboardEvent('keydown', { key: value, bubbles: true, cancelable: true }));
   const rect = node => { const r = node.getBoundingClientRect(); return { x: r.x, y: r.y, right: r.right, bottom: r.bottom, width: r.width, height: r.height }; };
   const visible = node => { const r = rect(node); return r.x >= 0 && r.y >= 0 && r.right <= innerWidth + 1 && r.bottom <= innerHeight + 1 && r.width > 0 && r.height > 0; };
   const hittable = node => { const r = rect(node); return visible(node) && document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)?.closest('button') === node; };
-  const editorActions = () => all('.playlist-dialog footer button, .playlist-danger-actions button').map(node => ({ label: node.textContent.trim(), ...rect(node) }));
+  const editorActions = () => all('.playlist-dialog footer button, .playlist-editor-actions > button, .playlist-editor-actions .menu-trigger').map(node => ({ label: node.textContent.trim(), ...rect(node) }));
   function editorActionsVisible() {
-    const dialog = rect(one('.playlist-dialog[open]'));
+    const page=one('.playlist-editor-page');
+    const dialog = rect(page||one('.playlist-dialog[open]'));
+    if(page) { assert(all('.playlist-editor-actions > button, .playlist-editor-actions .menu-trigger').every(hittable),'editor footer controls must be visible and hittable');return; }
     assert(editorActions().every(action => action.x >= dialog.x + 12 && action.right <= dialog.right - 12 && action.y >= dialog.y && action.bottom <= dialog.bottom - 12), 'editor actions clipped inside dialog or missing bottom inset');
   }
   const equalizerBands = () => all('.equalizer-band').map(node => ({ value: rect(node.querySelector('output')), slider: rect(node.querySelector('input')), label: rect(node.lastElementChild) }));
@@ -50,12 +52,14 @@
     assert(getComputedStyle(document.documentElement).colorScheme === expected, 'native input color scheme');
   }
   async function closeEditor() {
-    click(one('[aria-label="关闭歌单操作"]'));
-    await wait(() => !one('dialog[open]'), 'editor close');
+    click(one('[aria-label="取消编辑歌单"]'));
+    await sleep(120);
+    if(one('.playlist-editor-confirm')) click(button('放弃修改并离开'));
+    await wait(() => !one('.playlist-editor-page')&&!one('dialog[open]'), 'editor close');
   }
   async function edit() {
     click(one('[aria-label="编辑歌单"]'));
-    await wait(() => one('.playlist-dialog input[aria-label="歌单名称"]')?.value, 'editor data');
+    await wait(() => one('.playlist-editor-page input[aria-label="歌单名称"]')?.value, 'editor data');
     await sleep(250);
     assert(document.activeElement === one('[aria-label="歌单名称"]'), 'editor must focus the name');
   }
@@ -65,15 +69,16 @@
     await sleep(500);
   }
   async function playlistConfirmation(label, suffix) {
+    click(button('其他歌单操作')); await wait(()=>one('.action-menu'),'editor management menu');
     click(button(label));
     await wait(() => button('返回编辑'), 'playlist confirmation');
     await capture(`playlist_confirmation_${suffix}`);
     assert(document.activeElement === button('返回编辑'), 'playlist confirmation must focus return to editing');
-    assert(one('.playlist-dialog h2').textContent !== '编辑歌单', 'playlist dialog must announce its current confirmation');
+    assert(one('.playlist-editor-confirm h2').textContent !== '编辑歌单信息', 'playlist dialog must announce its current confirmation');
     if (suffix === 'small_dark') one('.playlist-dialog').dispatchEvent(new Event('cancel', { cancelable: true }));
     else click(button('返回编辑'));
-    await wait(() => one('[aria-label="歌单名称"]'), 'return to playlist editor');
-    assert(document.activeElement === button(label), 'return to editor must restore the original action');
+    await wait(() => !one('.playlist-editor-confirm') && one('[aria-label="歌单名称"]'), 'return to playlist editor after confirmation leaves');
+    assert(document.activeElement === button('其他歌单操作'), 'return to editor must restore the menu trigger');
   }
   try {
     await wait(() => all('.track-row').length, 'daily');

@@ -8,12 +8,12 @@ window.__runPlaylistProof=async({wait,stage,sleep})=>{
   const name=`UIRust${crypto.randomUUID().replaceAll('-','').slice(0,8)}`,renamed=name.replace('UIRust','UIEdit');
   let id,cleaned=false,edited=false,originalOrder;
   const click=async node=>{if(!node||node.disabled)throw new Error('playlist_control_unavailable');node.scrollIntoView({block:'nearest'});await sleep(100);node.click();};
-  const button=(text,root=document)=>[...root.querySelectorAll('button')].find(n=>n.textContent.trim()===text);
-  const input=(label,value)=>{const n=el(`.playlist-dialog [aria-label="${label}"]`);if(!n)throw new Error('missing_playlist_input');n.value=value;n.dispatchEvent(new Event('input',{bubbles:true}));};
-  const closed=()=>!el('.playlist-dialog');
+  const button=(text,root=document)=>[...root.querySelectorAll('button')].find(n=>n.getAttribute('aria-label')===text||n.textContent.trim()===text);
+  const input=(label,value)=>{const n=el(`.playlist-dialog [aria-label="${label}"], .playlist-editor-page [aria-label="${label}"]`);if(!n)throw new Error('missing_playlist_input');n.value=value;n.dispatchEvent(new Event('input',{bubbles:true}));};
+  const closed=()=>!el('.playlist-dialog')&&!el('.playlist-editor-page');
   const snapshot=async()=> (await invoke('playlist_editor',{epoch,id})).value;
-  const edit=async()=>{await click(button('编辑歌单'));await wait(()=>el('.playlist-dialog [aria-label="歌单名称"]'),'editor_loaded');};
-  const submit=async()=>{const n=el('.playlist-dialog button[type="submit"]');await wait(()=>n&&!n.disabled&&!el('.playlist-dialog fieldset')?.disabled,'playlist_submit_ready');await click(n);await wait(closed,'playlist_submit_confirmed');};
+  const edit=async()=>{await click(button('编辑歌单'));await wait(()=>el('.playlist-editor-page [aria-label="歌单名称"]'),'editor_loaded');};
+  const submit=async()=>{const n=el('.playlist-editor-confirm button.primary, .playlist-dialog button[type="submit"], .playlist-editor-page button[type="submit"]');await wait(()=>n&&!n.disabled&&!el('.playlist-dialog fieldset')?.disabled,'playlist_submit_ready');await click(n);await wait(closed,'playlist_submit_confirmed');};
   window.__playlistProofFacts=()=>({dialog:!!el('.playlist-dialog'),message:el('.playlist-dialog .error-state')?.textContent?.trim().slice(0,180),result:el('.mutation-result')?.dataset.phase,isolatedCreated:!!id,cleanupComplete:cleaned});
   try{
     await click(document.querySelectorAll('.nav-main button')[1]);await wait(()=>el('.playlist-card'),'playlist_library');
@@ -27,11 +27,11 @@ window.__runPlaylistProof=async({wait,stage,sleep})=>{
     await wait(()=>el('.playlist-hero h1')?.textContent===name,'created_page');
     await stage('playlist_create',{private:true,newPlaylistOnly:true,baselineCount:baseline.length});
     await edit();input('歌单名称',renamed);input('歌单简介','Tauri form and Rust core verification');
-    await click(button('选择标签',el('.playlist-dialog')));await wait(()=>button('电子',el('.tag-picker')),'official_tags');
+    await click(button('选择标签',el('.playlist-editor-page')));await wait(()=>button('电子',el('.tag-picker')),'official_tags');
     await click(button('电子',el('.tag-picker')));await submit();edited=true;
     let p=await snapshot();if(p.name!==renamed||p.description!=='Tauri form and Rust core verification'||!p.tags.includes('电子'))throw new Error('metadata_not_observed');
     await edit();await stage('playlist_edit',{name:true,description:true,officialTag:true,readbackConfirmed:true});
-    await click(el('[aria-label="关闭歌单操作"]'));
+    await click(el('[aria-label="取消编辑歌单"]'));
     await click(document.querySelectorAll('.nav-main button')[0]);await wait(()=>el('h1')?.textContent==='每日推荐'&&document.querySelectorAll('.track-more').length>1,'daily_add_candidates');
     for(let i=0;i<2;i++){
       await click(document.querySelectorAll('.track-more')[i]);await wait(()=>el('[aria-label="选择目标歌单"]'),'track_menu');
@@ -52,10 +52,10 @@ window.__runPlaylistProof=async({wait,stage,sleep})=>{
     await stage('playlist_reorder',{tracks:2,fullOrderReversed:true,listHeight:viewport.clientHeight,horizontalOverflow:false});
     await click(el('.track-more'));await click(button('从当前歌单移除',el('.playlist-dialog')));await wait(closed,'remove_song_confirmed');
     if((await snapshot()).trackIds.length!==1)throw new Error('remove_not_observed');
-    await edit();await click(button('清空歌曲',el('.playlist-dialog')));await submit();
+    await edit();await click(button('其他歌单操作'));await wait(()=>el('.action-menu'),'editor_action_menu');await click(button('清空歌曲',el('.action-menu')));await wait(()=>el('.playlist-editor-confirm'),'editor_confirmation');await submit();
     if((await snapshot()).trackIds.length)throw new Error('clear_not_observed');
     await stage('playlist_clear',{remaining:0,clearUsesDeletion:true});
-    await edit();await click(button('删除歌单',el('.playlist-dialog')));await submit();
+    await edit();await click(button('其他歌单操作'));await wait(()=>el('.action-menu'),'editor_action_menu');await click(button('删除歌单',el('.action-menu')));await wait(()=>el('.playlist-editor-confirm'),'editor_confirmation');await submit();
     await wait(()=>el('h1')?.textContent==='我的歌单','delete_returns_library');
   }finally{
     // Cleanup is a typed native command after UI assertions, never an unsafe
