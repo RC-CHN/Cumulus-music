@@ -1,5 +1,6 @@
 import { ref, shallowRef } from 'vue';
-import type { AccountView, CoreClient } from '../services/contracts.ts';
+import type { AccountView, CoreClient, TrackView } from '../services/contracts.ts';
+import type { DownloadTask } from '../services/downloads.ts';
 import { failure } from '../services/contracts.ts';
 import { useCore } from '../services/core.ts';
 import { useMvSocial } from './useMvSocial.ts';
@@ -10,7 +11,8 @@ export function useMv(core: CoreClient = useCore(), expired: () => void = () => 
   const epoch = ref(''),
     page = shallowRef<MvPage>(),
     detail = shallowRef<MvDetail>(),
-    video = shallowRef<VideoView>();
+    video = shallowRef<VideoView>(),
+    localCard = shallowRef<Pick<TrackView, 'id' | 'name' | 'artists'>>();
   const query = ref<MvQuery>({ keyword: '', offset: 0, limit: 24, revision: null });
   const loading = ref(false),
     detailLoading = ref(false),
@@ -65,6 +67,7 @@ export function useMv(core: CoreClient = useCore(), expired: () => void = () => 
     page.value = undefined;
     detail.value = undefined;
     video.value = undefined;
+    localCard.value = undefined;
     loading.value = false;
     detailLoading.value = false;
     busy.value = false;
@@ -153,21 +156,35 @@ export function useMv(core: CoreClient = useCore(), expired: () => void = () => 
       if (valid(g, e) && request === commanding) problem(value, videoError);
     }
   }
-  async function open(id: string, taskId?: string) {
+  async function open(id: string, taskId?: string, task?: DownloadTask) {
+    if (!epoch.value) return;
+    target = id;
+    const track = task?.track;
+    localCard.value =
+      taskId && track?.id === id
+        ? { id, name: track.name, artists: [...track.artists] }
+        : undefined;
+    detail.value = undefined;
+    notice.value = '';
+    // The decoder and the optional online detail have independent outcomes.
+    if (video.value?.id !== id || video.value.state === 'idle' || taskId)
+      void action({
+        kind: 'open',
+        id,
+        resolution: task?.requestedResolution ?? task?.actualResolution ?? 480,
+        download_task_id: taskId,
+      });
+    await readDetail();
+  }
+  async function readDetail() {
     const g = generation,
       e = epoch.value,
+      id = target,
       attempt = ++selecting;
-    if (!e) return;
-    target = id;
+    if (!id || !e) return;
     const socialTicket = social.activate(id);
-    detail.value = undefined;
     detailLoading.value = true;
     error.value = '';
-    notice.value = '';
-    // Start the native load immediately. A slow metadata response cannot later
-    // start an older selection after the user has chosen another MV.
-    if (video.value?.id !== id || video.value.state === 'idle' || taskId)
-      void action({ kind: 'open', id, resolution: 480, download_task_id: taskId });
     try {
       const value = await core.mvDetail(e, id);
       if (valid(g, e) && selecting === attempt && value.epoch === e && target === id) {
@@ -237,6 +254,8 @@ export function useMv(core: CoreClient = useCore(), expired: () => void = () => 
     epoch,
     page,
     detail,
+    localCard,
+    readDetail,
     video,
     query,
     loading,

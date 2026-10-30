@@ -325,6 +325,16 @@ function openComments(resource: CommentResource, title: string) {
 const mv = useMv(undefined, () => {
   void music.bootstrap(false);
 });
+function loadMv(id: string, taskId?: string) {
+  const view = downloads.view.value;
+  const task =
+    taskId && view?.epoch === account.value.epoch
+      ? view.tasks.find(
+          (item) => item.id === taskId && item.source === 'mv' && item.track.id === id,
+        )
+      : undefined;
+  return mv.open(id, taskId, task);
+}
 function openMv(id: string, taskId?: string) {
   music.navigate({ kind: 'mv', id, taskId });
 }
@@ -457,6 +467,12 @@ function backFromPage() {
   else music.back();
 }
 const downloadDialog = ref<DownloadDialogTarget>();
+function downloadReturnFocus() {
+  return (
+    document.querySelector<HTMLElement>('.download-mv-cover[tabindex="0"]') ??
+    document.querySelector<HTMLElement>('.download-tabs [aria-selected="true"]')
+  );
+}
 const downloads = useDownloads(undefined, () => {
   void music.bootstrap(false);
 });
@@ -716,7 +732,7 @@ watch(
     if (page.value.kind === 'rankings') void rankings.open(page.value.query);
     comments.connect(account.value);
     localMatching.connect(account.value);
-    if (page.value.kind === 'mv') void mv.open(page.value.id, page.value.taskId);
+    if (page.value.kind === 'mv') void loadMv(page.value.id, page.value.taskId);
     if (page.value.kind === 'comments') void comments.open(page.value.resource);
   },
 );
@@ -775,7 +791,7 @@ watch(
   () => page.value,
   (value) => {
     mv.show(value.kind === 'mvs');
-    if (value.kind === 'mv') void mv.open(value.id, value.taskId);
+    if (value.kind === 'mv') void loadMv(value.id, value.taskId);
     if (value.kind === 'comments') void comments.open(value.resource);
     if (value.kind === 'rankings') void rankings.open(value.query);
     if (value.kind === 'history') void recent.open(value.scope);
@@ -1255,6 +1271,7 @@ onUnmounted(() => {
                 :current-id="currentTrackId"
                 @dialog="downloadDialog = $event"
                 @batch="openDownloadBatch"
+                @artist="(id) => openCatalog({ kind: 'artist', id })"
                 :preparing="player.busy.value"
                 @select="player.select"
                 @play-mv="(task) => openMv(task.track.id, task.id)"
@@ -1591,7 +1608,7 @@ onUnmounted(() => {
         "
       />
     </ModalTransition>
-    <ModalTransition>
+    <ModalTransition :fallback-focus="downloadReturnFocus">
       <DownloadDialog
         v-if="downloadDialog"
         :model="downloads"

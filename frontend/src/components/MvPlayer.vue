@@ -35,6 +35,7 @@ const { video, detail, detailLoading, error, videoError, videoReadError, notice,
   props.model;
 const fullscreen = ref(false),
   downloadOpen = ref(false);
+const displayTitle = computed(() => detail.value?.card.title ?? props.model.localCard.value?.name);
 const related = computed(() => detail.value?.relatedSongs[0]);
 function playRelated() {
   if (!related.value || !detail.value) return;
@@ -80,7 +81,7 @@ onUnmounted(() => window.removeEventListener('keydown', key, true));
       <VideoCanvas :model="model" />
       <div class="mv-top">
         <button v-if="mini" class="video-button" @click="emit('expand')">返回 MV</button
-        ><span v-else class="ellipsis">{{ detail?.card.title ?? 'MV' }}</span
+        ><span v-else class="ellipsis">{{ displayTitle ?? 'MV' }}</span
         ><button class="video-button" aria-label="关闭视频" @click="model.action({ kind: 'stop' })">
           ×
         </button>
@@ -208,9 +209,9 @@ onUnmounted(() => window.removeEventListener('keydown', key, true));
       </div>
     </div>
     <div v-if="!mini" class="mv-info">
-      <h1>{{ detail?.card.title ?? (detailLoading ? '正在读取 MV…' : 'MV') }}</h1>
+      <h1>{{ displayTitle ?? (detailLoading ? '正在读取 MV…' : 'MV') }}</h1>
       <p class="muted">
-        {{ detail?.card.artists.join(' / ')
+        {{ (detail?.card.artists ?? model.localCard.value?.artists)?.join(' / ')
         }}<span v-if="detail?.publishedDate"> · {{ detail.publishedDate }}</span>
       </p>
       <p class="mv-play-facts">
@@ -298,7 +299,17 @@ onUnmounted(() => window.removeEventListener('keydown', key, true));
           }}<span v-if="choice.reason"> · {{ choice.reason }}</span>
         </button>
       </div>
-      <p v-if="error" class="form-warning" role="alert">{{ error }}</p>
+      <p v-if="error" class="form-warning" role="alert">
+        {{ error
+        }}<button
+          v-if="!detail"
+          class="text-button"
+          :disabled="detailLoading"
+          @click="model.readDetail"
+        >
+          重新读取MV资料
+        </button>
+      </p>
       <p v-if="notice" class="notice" role="status">{{ notice }}</p>
       <div v-for="op in model.page.value?.operations" :key="op.id">
         <p v-if="op.id === detail?.card.id" class="notice">

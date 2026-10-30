@@ -406,6 +406,17 @@
   contain: strict;
   overscroll-behavior: contain;
 }
+.download-mv-scroll > .action-menu-host {
+  display: contents;
+}
+.download-mv-artists button {
+  padding: 0;
+  font: inherit;
+  color: inherit;
+}
+.download-mv-artists button:hover {
+  color: var(--text);
+}
 .download-mv-row {
   display: grid;
   gap: 24px;
@@ -487,6 +498,7 @@
 }
 .download-mv-title {
   display: block;
+  padding: 0;
   text-align: left;
   font-size: 15px;
   line-height: 21px;

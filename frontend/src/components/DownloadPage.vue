@@ -28,6 +28,7 @@ const emit = defineEmits<{
   batch: [category: 'song' | 'voice'];
   select: [selection: PlaySelection];
   playMv: [task: DownloadTask];
+  artist: [id: string];
 }>();
 const { view, query, busy, loading, error, readError, notice } = props.model;
 const root = ref<HTMLElement>();
@@ -178,6 +179,7 @@ function play(task?: DownloadTask) {
           :more-error="model.moreError.value"
           @load="loadMore"
           @play="emit('playMv', $event)"
+          @artist="emit('artist', $event)"
           @manage="emit('dialog', { kind: 'file', task: $event })"
         />
         <DownloadTable
