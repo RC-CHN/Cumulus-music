@@ -1,6 +1,8 @@
 //! Production UI/IPC inspection with isolated synthetic account and preferences.
 #[path = "support/assets.rs"]
 mod assets;
+#[path = "support/capture_ack.rs"]
+mod capture_ack;
 #[path = "support/download_page_fixture.rs"]
 mod download_page_fixture;
 #[allow(dead_code)]
@@ -380,6 +382,7 @@ fn main() {
                         }
                     } else { value["nativePlayerUnavailable"]=json!(true); }
                     fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+                    if !capture_ack::acknowledge(&handle,&output,&stage,value["captureHandshake"]==true).await {return;}
                     if ["complete","failed"].contains(&stage.as_str()) {
                         let _=client.player_action(&epoch,cumulus_core::client::dto::PlayerAction::Stop).await;
                         handle.exit(if stage=="complete" {0} else {1});
@@ -388,6 +391,11 @@ fn main() {
                 return;
             }
             fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+            if std::env::var("CUMULUS_PROOF_CAPTURE_ACK").as_deref()==Ok("1") && stage.starts_with("ux_") {
+                let handle=handle.clone();let output=output.clone();
+                tauri::async_runtime::spawn(async move {capture_ack::acknowledge(&handle,&output,&stage,value["captureHandshake"]==true).await;});
+                return;
+            }
             if ["complete","failed"].contains(&stage.as_str()) {handle.exit(if stage=="complete" {0} else {1});}
         });
         // Absolute config dataDirectory values are ignored by Tauri's safe-path
@@ -402,7 +410,9 @@ fn main() {
         if payload.event()==PageLoadEvent::Finished && view.label()=="main" {
             let script=std::env::var_os("CUMULUS_UX_SCRIPT").map(|p|fs::read_to_string(p).unwrap());
             let default_script = if std::env::var_os("CUMULUS_LIKE_RECOVERY_PROOF").is_some() { include_str!("like_recovery_ui_probe.js") } else if std::env::var_os("CUMULUS_MOTION_PROOF").is_some() { include_str!("motion_ui_probe.js") } else { include_str!("ux_ui_probe.js") };
-            view.eval(script.as_deref().unwrap_or(default_script)).unwrap();
+            let source=script.as_deref().unwrap_or(default_script);
+            if std::env::var("CUMULUS_PROOF_CAPTURE_ACK").as_deref()==Ok("1") {view.eval(capture_ack::script(source)).unwrap();}
+            else {view.eval(source).unwrap();}
         }
     }).run(context).expect("UX probe");
 }

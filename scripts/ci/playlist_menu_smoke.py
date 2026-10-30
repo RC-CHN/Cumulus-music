@@ -37,6 +37,8 @@ def main():
     assert code == 0, f'probe exited {code}'
     result = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
     assert result['ok'] and result['playlistMenuUi'] and result['stageCount'] == 52
+    assert result['scrollStabilityVerified'] and result['focusedDuringLeave']
+    assert result['leavingChecks'] and all(row['inert'] for row in result['leavingChecks'])
     assert result['clipboardVerified'] and result['mutationRecoveryVerified'] and result['fullDownloadVerified']
     assert result['realMusicRequests'] == result['realAccountWrites'] == 0
     assert result['syntheticLibrary']['writes'] == 4

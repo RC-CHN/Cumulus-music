@@ -23,10 +23,23 @@ const position = ref({ left: '0px', top: '0px', visibility: 'hidden' as 'hidden'
 const id = useId();
 let stop: (() => void) | undefined;
 let returnTarget: HTMLElement | undefined;
+let displayRevision = 0;
+let anchorBounds: { left: number; top: number; width: number; height: number } | undefined;
+function rememberAnchor() {
+  const node = returnTarget ?? trigger.value;
+  if (!node?.isConnected) {
+    anchorBounds = undefined;
+    return;
+  }
+  const { left, top, width, height } = node.getBoundingClientRect();
+  anchorBounds = { left, top, width, height };
+}
 const choices = () => [
   ...(panel.value?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? []),
 ];
 function close(restore = false) {
+  displayRevision++;
+  anchorBounds = undefined;
   open.value = false;
   returnTarget?.removeAttribute('aria-controls');
   if (returnTarget?.hasAttribute('aria-haspopup'))
@@ -40,7 +53,9 @@ function close(restore = false) {
 }
 async function display(last = false, point?: { x: number; y: number }, target?: HTMLElement) {
   close();
+  const revision = displayRevision;
   returnTarget = target ?? trigger.value;
+  rememberAnchor();
   if (returnTarget?.hasAttribute('aria-haspopup')) {
     returnTarget.setAttribute('aria-expanded', 'true');
     returnTarget.setAttribute('aria-controls', id);
@@ -48,7 +63,8 @@ async function display(last = false, point?: { x: number; y: number }, target?: 
   open.value = true;
   position.value.visibility = 'hidden';
   await nextTick();
-  if (!open.value || (!point && !trigger.value) || !panel.value) return;
+  if (revision !== displayRevision || !open.value || (!point && !trigger.value) || !panel.value)
+    return;
   const anchor = point
       ? { right: point.x, top: point.y, bottom: point.y }
       : trigger.value!.getBoundingClientRect(),
@@ -63,7 +79,8 @@ async function display(last = false, point?: { x: number; y: number }, target?: 
       : Math.max(8, anchor.top - box.height - 6);
   position.value = { left: `${left}px`, top: `${top}px`, visibility: 'visible' };
   await nextTick();
-  if (!open.value) return;
+  if (revision !== displayRevision || !open.value) return;
+  rememberAnchor();
   const items = choices();
   ((last ? items.at(-1) : items[0]) ?? panel.value)?.focus({ preventScroll: true });
 }
@@ -109,7 +126,19 @@ watch(open, (active) => {
       close();
   };
   const scroll = (event: Event) => {
-    if (!panel.value?.contains(event.target as Node)) close();
+    if (panel.value?.contains(event.target as Node)) return;
+    const node = returnTarget ?? trigger.value;
+    if (node?.isConnected && anchorBounds) {
+      const current = node.getBoundingClientRect();
+      if (
+        Math.abs(current.left - anchorBounds.left) < 0.5 &&
+        Math.abs(current.top - anchorBounds.top) < 0.5 &&
+        Math.abs(current.width - anchorBounds.width) < 0.5 &&
+        Math.abs(current.height - anchorBounds.height) < 0.5
+      )
+        return;
+    }
+    close();
   };
   const resize = () => close();
   document.addEventListener('pointerdown', outside, true);

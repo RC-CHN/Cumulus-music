@@ -10,6 +10,13 @@
   const click = (node) => { assert(node && !node.disabled, 'enabled control'); node.scrollIntoView({ block: 'nearest' }); node.focus({ preventScroll: true }); node.click(); };
   const key = (node, value, extra = {}) => node.dispatchEvent(new KeyboardEvent('keydown', { key: value, bubbles: true, cancelable: true, ...extra }));
   const menu = () => one('.action-menu');
+  let lastResize = performance.now();
+  const resizeTrace = [];
+  window.addEventListener('resize', () => {
+    lastResize = performance.now();
+    resizeTrace.push({ width: innerWidth, height: innerHeight, at: lastResize });
+    if (resizeTrace.length > 20) resizeTrace.shift();
+  });
   const leavingChecks = [], seenLeaving = new WeakSet();
   const observer = new MutationObserver(() => {
     for (const node of all('.modal-leave-active, .menu-leave-active')) {
@@ -54,7 +61,7 @@
       const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
       assert(hit && (n.contains(hit) || n === hit), 'dialog controls reachable');
     }
-    await emit(`ux_${String(++count).padStart(2,'0')}_${label}`, { width: innerWidth, height: innerHeight, theme: document.documentElement.dataset.theme, items: menu() ? [...menu().querySelectorAll('button')].map(n => ({ text: n.textContent.trim(), disabled: n.disabled })) : [] });
+    await emit(`ux_${String(++count).padStart(2,'0')}_${label}`, { width: innerWidth, height: innerHeight, ratio: devicePixelRatio, screenX, screenY, theme: document.documentElement.dataset.theme, dialogs:all('dialog').map(n=>({className:n.className,inert:n.inert,open:n.open,modal:n.matches(':modal'),opacity:getComputedStyle(n).opacity,background:getComputedStyle(n).backgroundColor,rect:n.getBoundingClientRect().toJSON(),ancestors:[n.parentElement,n.parentElement?.parentElement].filter(Boolean).map(a=>({className:a.className,opacity:getComputedStyle(a).opacity,inert:a.inert}))})), items: menu() ? [...menu().querySelectorAll('button')].map(n => ({ text: n.textContent.trim(), disabled: n.disabled })) : [] });
     await sleep(420);
   }
   async function library() {
@@ -83,10 +90,14 @@
     await wait(() => one('.track-more'), 'daily'); await library();
     for (const [w,h,t] of [[1120,760,'light'],[1120,760,'dark'],[760,540,'light'],[760,540,'dark']]) {
       step = `setup_${w}_${t}`;
-      await emit('resize', { width:w, height:h }); await wait(() => innerWidth === w && innerHeight === h, 'resize');
+      await emit('resize', { width:w, height:h }); await wait(() => innerWidth === w && innerHeight === h && performance.now() - lastResize >= 500, 'window resize settled');
       click(button('外观主题')); await wait(() => menu(), 'theme'); click(button(t === 'dark' ? '深色' : '浅色')); await wait(() => !menu(), 'theme closes');
       const suffix = `${w}_${t}`;
       let trigger = await open(2, true);
+      const retained = menu();
+      one('.library-scroll').dispatchEvent(new Event('scroll'));
+      await sleep(40);
+      assert(retained.isConnected && !retained.inert && menu() === retained, 'queued scroll without anchor movement closed the menu');
       assert(all('.action-menu button').map(n => n.textContent.trim()).join('|') === '查看歌单|播放|下一首播放|分享…|复制链接|下载全部|编辑歌单信息|删除歌单|上移歌单|下移歌单', 'owned menu order');
       key(menu(),'End'); assert(document.activeElement === button('下移歌单'), 'End focus');
       key(menu(),'ArrowUp'); assert(document.activeElement === button('删除歌单'), 'skips disabled up and separator');
@@ -164,6 +175,14 @@
       assert(document.activeElement !== leavingControl && document.activeElement === trigger, 'outgoing menu accepted keyboard focus');
     }
     await wait(() => !leaving.isConnected, 'outgoing menu removed');
-    await emit('complete',{ ok:true, playlistMenuUi:true, focusedDuringLeave, leavingChecks, stageCount:count, realMusicRequests:0, realAccountWrites:0, clipboardVerified:true, mutationRecoveryVerified:true, fullDownloadVerified:true });
-  } catch(error) { await emit('failed',{ step,leavingChecks,message:String(error),stack:error.stack,stageCount:count }); }
+    trigger = await open(2);
+    const scrollingMenu = menu(), scrollRoot = one('.library-scroll');
+    const oldTop = scrollRoot.scrollTop, maxTop = scrollRoot.scrollHeight - scrollRoot.clientHeight;
+    assert(maxTop > 0, 'scrolling library fixture');
+    scrollRoot.scrollTop = oldTop + 80 <= maxTop ? oldTop + 80 : Math.max(0, oldTop - 80);
+    assert(Math.abs(scrollRoot.scrollTop - oldTop) > 1, 'actual anchor scroll');
+    scrollRoot.dispatchEvent(new Event('scroll'));
+    await wait(() => !scrollingMenu.isConnected, 'moving anchor closes menu');
+    await emit('complete',{ ok:true, playlistMenuUi:true, scrollStabilityVerified:true, focusedDuringLeave, leavingChecks, stageCount:count, realMusicRequests:0, realAccountWrites:0, clipboardVerified:true, mutationRecoveryVerified:true, fullDownloadVerified:true });
+  } catch(error) { await emit('failed',{ step,leavingChecks,resizeTrace,visibility:document.visibilityState,focused:document.hasFocus(),overlays:all('.action-menu,.menu-enter-active,.menu-leave-active').map(n=>({className:n.className,inert:n.inert,visibility:n.style.visibility,opacity:getComputedStyle(n).opacity,items:[...n.querySelectorAll('button')].map(b=>b.textContent.trim())})),message:String(error),stack:error.stack,stageCount:count }); }
 })();
