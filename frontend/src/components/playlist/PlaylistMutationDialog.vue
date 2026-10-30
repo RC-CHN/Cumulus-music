@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
-import type { PlaylistView } from '../../services/contracts';
+import type { PlaylistView, TrackView } from '../../services/contracts';
 import type { PlaylistManager } from '../../composables/usePlaylists';
 import { playlistPending, type PlaylistMutationView } from '../../services/playlists';
 import Icon from '../Icon.vue';
@@ -8,22 +8,32 @@ const props = defineProps<{
   playlist: PlaylistView;
   manager: PlaylistManager;
   subscribe?: boolean;
+  tracks?: TrackView[];
 }>();
-const emit = defineEmits<{ close: [] }>();
+const emit = defineEmits<{ close: []; changed: [] }>();
 const dialog = ref<HTMLDialogElement>();
 const checking = ref(true);
 const readError = ref('');
 const interrupted = shallowRef<PlaylistMutationView>();
 const { busy, error, loading, editor, result } = props.manager;
 const deleting = props.playlist.owned;
-const kind = deleting ? 'delete' : 'subscribe';
-const title = deleting ? '删除歌单' : props.subscribe ? '收藏歌单' : '取消收藏';
+const kind = props.tracks ? 'tracks' : deleting ? 'delete' : 'subscribe';
+const title = props.tracks
+  ? '删除所选歌曲'
+  : deleting
+    ? '删除歌单'
+    : props.subscribe
+      ? '收藏歌单'
+      : '取消收藏';
 const receipt = computed(() => result.value ?? interrupted.value);
 const pending = computed(() => !!receipt.value && playlistPending(receipt.value.phase));
 const ready = computed(
   () =>
     !deleting ||
-    (editor.value?.id === props.playlist.id && editor.value.owned && !editor.value.favorite),
+    (editor.value?.id === props.playlist.id &&
+      editor.value.owned &&
+      !editor.value.favorite &&
+      (!props.tracks || !editor.value.hasLocal)),
 );
 let alive = true;
 watch(pending, async (value) => {
@@ -63,13 +73,23 @@ async function submit() {
     return;
   const before = new Set(props.manager.operations.value.map((op) => op.operationId));
   const value = await props.manager.mutate(
-    deleting
-      ? { kind: 'delete', id: props.playlist.id, revision: editor.value!.revision }
-      : { kind: 'subscribe', id: props.playlist.id, subscribed: !!props.subscribe },
+    props.tracks
+      ? {
+          kind: 'tracks',
+          id: props.playlist.id,
+          revision: editor.value!.revision,
+          change: 'delete',
+          ids: props.tracks.map((t) => t.id),
+        }
+      : deleting
+        ? { kind: 'delete', id: props.playlist.id, revision: editor.value!.revision }
+        : { kind: 'subscribe', id: props.playlist.id, subscribed: !!props.subscribe },
   );
   if (!alive) return;
-  if (value && props.manager.saved(value.phase)) emit('close');
-  else if (!value)
+  if (value && props.manager.saved(value.phase)) {
+    emit('changed');
+    emit('close');
+  } else if (!value)
     interrupted.value = props.manager.operations.value.find(
       (op) =>
         !before.has(op.operationId) &&
@@ -81,7 +101,10 @@ async function submit() {
 async function reconcile() {
   if (!receipt.value || busy.value) return;
   const value = await props.manager.reconcile(receipt.value.operationId);
-  if (alive && value && props.manager.saved(value.phase)) emit('close');
+  if (alive && value && props.manager.saved(value.phase)) {
+    emit('changed');
+    emit('close');
+  }
 }
 </script>
 <template>
@@ -99,7 +122,11 @@ async function reconcile() {
       </button>
     </header>
     <div class="playlist-mutation-body">
-      <p v-if="deleting">确定删除「{{ playlist.name }}」？该歌单将从你的账号中移除。</p>
+      <p v-if="tracks">
+        从「{{ playlist.name }}」中删除选中的
+        {{ tracks.length }} 首歌曲？歌曲仍可在其他歌单和搜索中找到。
+      </p>
+      <p v-else-if="deleting">确定删除「{{ playlist.name }}」？该歌单将从你的账号中移除。</p>
       <p v-else-if="subscribe">收藏「{{ playlist.name }}」到我的歌单？</p>
       <p v-else>取消收藏「{{ playlist.name }}」？之后可重新收藏。</p>
       <p v-if="checking || loading" class="muted" role="status">正在读取歌单…</p>
@@ -142,7 +169,7 @@ async function reconcile() {
         :aria-disabled="busy || checking || loading || !ready"
         @click="submit"
       >
-        {{ busy ? '正在处理…' : title }}
+        {{ busy ? '正在处理…' : tracks ? '删除' : title }}
       </button>
     </footer>
   </dialog>

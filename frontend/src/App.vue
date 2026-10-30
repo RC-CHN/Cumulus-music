@@ -20,6 +20,7 @@ import PlaylistHero from './components/playlist/PlaylistHero.vue';
 import PlaylistEditorPage from './components/playlist/PlaylistEditorPage.vue';
 import { playlistMenuItems, type PlaylistMenuScene } from './services/playlistMenu';
 import PlaylistActions from './components/playlist/PlaylistActions.vue';
+import PlaylistBatchPage from './components/playlist/PlaylistBatchPage.vue';
 import TrackActions from './components/TrackActions.vue';
 import ModalTransition from './components/ModalTransition.vue';
 import LoginDialog from './components/LoginDialog.vue';
@@ -86,7 +87,12 @@ const core = useCore();
 const searchMemory = createSearchViewportMemory();
 const playlistLibraryState = ref(libraryView());
 const music = useMusic(undefined, (commit) => {
-  if (playlistEditor.value && playlistEditorPage.value)
+  if (batchTarget.value && batchPage.value)
+    batchPage.value.requestLeave(() => {
+      void closeBatch(false);
+      commit();
+    });
+  else if (playlistEditor.value && playlistEditorPage.value)
     playlistEditorPage.value.requestLeave(() => {
       closePlaylistEditor(false);
       commit();
@@ -340,6 +346,44 @@ watch(music.page, () => trackActions.value?.close());
 const playlistDialog = ref<PlaylistDialogTarget>();
 const playlistEditor = ref<{ id: string; cover?: boolean }>();
 const playlistEditorPage = ref<InstanceType<typeof PlaylistEditorPage>>();
+const batchTarget = ref<PlaylistView>();
+const batchPage = ref<InstanceType<typeof PlaylistBatchPage>>();
+const batchClosing = ref(false);
+let batchReturnFocus: HTMLElement | undefined,
+  batchDirty = false,
+  restoreBatchFocus = false;
+let batchScroll = 0;
+function openBatch(list: PlaylistView) {
+  batchReturnFocus =
+    document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
+  batchScroll =
+    document.querySelector<HTMLElement>('.content-page-previous .track-scroll')?.scrollTop ?? 0;
+  batchDirty = false;
+  batchTarget.value = list;
+}
+async function closeBatch(restore = true) {
+  if (batchClosing.value) return;
+  batchClosing.value = true;
+  const id = batchTarget.value?.id;
+  const epoch = music.account.value.epoch;
+  if (restore && batchDirty && music.page.value.kind === 'playlist' && music.page.value.id === id)
+    await music.load();
+  if (music.account.value.epoch !== epoch || batchTarget.value?.id !== id) return;
+  restoreBatchFocus = restore;
+  batchTarget.value = undefined;
+  batchClosing.value = false;
+}
+function batchLeft() {
+  if (!restoreBatchFocus || batchTarget.value) return;
+  restoreBatchFocus = false;
+  const scroller = document.querySelector<HTMLElement>('.content-page-previous .track-scroll');
+  if (scroller) scroller.scrollTop = batchScroll;
+  const target = batchReturnFocus?.isConnected
+    ? batchReturnFocus
+    : (document.querySelector<HTMLElement>('.playlist-hero .menu-trigger') ??
+      document.querySelector<HTMLElement>('.sidebar-navigation [aria-current="page"]'));
+  target?.focus({ preventScroll: true });
+}
 let editorReturnFocus: HTMLElement | undefined;
 let editorDeleted = false;
 function editPlaylist(id: string, cover = false) {
@@ -350,7 +394,12 @@ function editPlaylist(id: string, cover = false) {
     playlistDialog.value = undefined;
     playlistEditor.value = { id, cover };
   };
-  if (playlistEditor.value && playlistEditorPage.value)
+  if (batchTarget.value && batchPage.value)
+    batchPage.value.requestLeave(() => {
+      void closeBatch(false);
+      enter();
+    });
+  else if (playlistEditor.value && playlistEditorPage.value)
     playlistEditorPage.value.requestLeave(enter);
   else enter();
 }
@@ -372,7 +421,8 @@ function editorLeft() {
   target?.focus({ preventScroll: true });
 }
 function backFromPage() {
-  if (playlistEditor.value) playlistEditorPage.value?.requestLeave();
+  if (batchTarget.value) batchPage.value?.requestLeave();
+  else if (playlistEditor.value) playlistEditorPage.value?.requestLeave();
   else music.back();
 }
 const downloadDialog = ref<DownloadDialogTarget>();
@@ -401,10 +451,11 @@ const playlistManager = usePlaylists(
       playlistSaved(change.phase) &&
       change.kind === 'create' &&
       change.playlistId &&
-      playlistDialog.value?.kind !== 'tracks'
+      playlistDialog.value?.kind !== 'tracks' &&
+      !batchTarget.value
     ) {
       music.navigate({ kind: 'playlist', id: change.playlistId });
-    } else if (music.page.value.kind === 'playlist') {
+    } else if (music.page.value.kind === 'playlist' && !batchTarget.value) {
       if (
         playlistSaved(change.phase) &&
         change.kind === 'delete' &&
@@ -451,6 +502,7 @@ function playlistAction(list: PlaylistView, key: string, scene: PlaylistMenuScen
   const item = playlistMenu(list, scene).find((item) => item.key === key);
   if (!item || item.disabled) return;
   if (key === 'view') music.navigate({ kind: 'playlist', id: list.id });
+  else if (key === 'batch') openBatch(list);
   else if (key === 'play') playMemberPlaylist(list.id, null);
   else if (key === 'edit') editPlaylist(list.id);
   else if (key === 'up' || key === 'down')
@@ -609,6 +661,10 @@ watch(
   () => {
     playlistDialog.value = undefined;
     playlistEditor.value = undefined;
+    batchTarget.value = undefined;
+    batchClosing.value = false;
+    restoreBatchFocus = false;
+    batchReturnFocus = undefined;
     playlistLibraryState.value = libraryView();
     editorDeleted = false;
     playlistManager.connect(account.value);
@@ -825,7 +881,7 @@ onUnmounted(() => {
       <button
         class="back-button icon-button"
         aria-label="返回上一页"
-        :disabled="!historyLength && !playlistEditor"
+        :disabled="!historyLength && !playlistEditor && !batchTarget"
         @click="backFromPage"
       >
         <Icon name="back" />
@@ -867,6 +923,27 @@ onUnmounted(() => {
     <main class="main-content">
       <LikeRecoveryNotice :model="likeRecovery" />
       <div class="content-page-stack">
+        <Transition name="page" @after-leave="batchLeft">
+          <PlaylistBatchPage
+            v-if="batchTarget"
+            ref="batchPage"
+            :key="account.epoch + ':' + batchTarget.id"
+            :playlist="batchTarget"
+            :account="account"
+            :manager="playlistManager"
+            :player="player"
+            :downloads="downloads"
+            :playlists="playlists"
+            :leaving="batchClosing"
+            @close="closeBatch()"
+            @expired="music.bootstrap(false)"
+            @changed="batchDirty = true"
+            @downloaded="
+              downloads.filter({ tab: 'active' });
+              music.navigate({ kind: 'downloads' });
+            "
+          />
+        </Transition>
         <Transition name="page" @after-leave="editorLeft">
           <PlaylistEditorPage
             v-if="playlistEditor"
@@ -885,7 +962,7 @@ onUnmounted(() => {
             "
           />
         </Transition>
-        <div v-show="!playlistEditor" class="content-page-previous">
+        <div v-show="!playlistEditor && !batchTarget" class="content-page-previous">
           <Transition name="page" mode="out-in">
             <div class="page-view" :key="pageKey">
               <div v-if="initializing" class="empty-state" role="status">
@@ -1355,6 +1432,7 @@ onUnmounted(() => {
           accountsOpen ||
           playlistDialog ||
           playlistEditor ||
+          batchTarget ||
           downloadDialog ||
           cloudDialogOpen ||
           player.queueOpen.value ||

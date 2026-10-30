@@ -121,19 +121,22 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   const action = (input: PlayerAction) => run((e) => core.playerAction(e, input));
   // Resource-menu failures belong to that operation, not the audio-error bar.
   // A user retry captures the latest queue fence; no automatic write replay.
-  async function queuePlaylist(id: string) {
+  async function queuePlaylist(id: string, selection?: { ids: string[]; revision: string }) {
     if (!ready.value || busy.value || queueBusy.value) return;
     const captured = epoch,
       current = ++request,
       preparation = ++queuePreparation;
     queueBusy.value = true;
     try {
-      const next = await core.playerAction(captured, {
-        kind: 'queue_playlist',
+      const input: PlayerAction = {
+        ...(selection
+          ? { kind: 'queue_playlist_batch' as const, ...selection }
+          : { kind: 'queue_playlist' as const }),
         id,
         quality: view.value?.requestedQuality ?? 'standard',
         expected_queue_revision: view.value?.queueRevision ?? '0',
-      });
+      };
+      const next = await core.playerAction(captured, input);
       if (captured === epoch) accept(next);
       if (current === request && captured === epoch) return next;
     } catch (issue) {

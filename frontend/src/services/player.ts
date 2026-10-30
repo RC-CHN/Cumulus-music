@@ -108,6 +108,7 @@ export interface QueueView {
   tracks: QueueTrack[];
 }
 export type PlaySelection =
+  | { kind: 'playlist_batch'; id: string; ids: string[]; revision: string; quality: Quality }
   | {
       kind: 'history';
       history_kind: import('./history').HistoryKind;
@@ -160,6 +161,14 @@ export type PlaySelection =
       quality: Quality;
     };
 export type PlayerAction =
+  | {
+      kind: 'queue_playlist_batch';
+      id: string;
+      ids: string[];
+      revision: string;
+      quality: Quality;
+      expected_queue_revision: string;
+    }
   | { kind: 'queue_playlist'; id: string; quality: Quality; expected_queue_revision: string }
   | { kind: 'next_play'; id: string; quality: Quality; expected_queue_revision: string }
   | { kind: 'loudness'; expected_revision: string; enabled: boolean }

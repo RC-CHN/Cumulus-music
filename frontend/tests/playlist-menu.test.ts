@@ -58,7 +58,7 @@ test('menu visibility follows resource ownership, scene, privacy and empty state
   }
   assert.deepEqual(
     playlistMenuItems(list, 'detail', state).map((i) => i.key),
-    ['share', 'queue'],
+    ['share', 'batch', 'queue'],
   );
   const subscribed = playlistMenuItems(foreign, 'collection', { ...state, lists: [foreign] });
   assert.equal(subscribed.find((i) => i.key === 'remove')?.label, '取消收藏');

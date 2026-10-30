@@ -55,7 +55,11 @@ export function playlistMenuItems(
     disabled: !nonempty || !playlistLink(list),
     hint: list.private ? '私密歌单不能分享' : undefined,
   });
-  if (scene === 'detail') items.push(queueAction);
+  if (scene === 'detail')
+    items.push(
+      { key: 'batch', label: '批量操作', icon: 'list', disabled: !nonempty || state.busy },
+      queueAction,
+    );
   if (scene === 'collection') {
     items.push(
       {

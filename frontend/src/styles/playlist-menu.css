@@ -37,6 +37,8 @@
   width: 120px;
   min-width: 120px;
   min-height: 40px;
+  padding-inline: 16px;
+  white-space: nowrap;
   border-radius: 20px;
 }
 .playlist-operation-error {
