@@ -25,6 +25,7 @@ struct Backend {
     started: Notify,
     release: Notify,
     trial: Mutex<Option<Value>>,
+    playlist_tracks: Mutex<Option<Vec<Value>>>,
 }
 impl Api for Backend {
     fn request<'a>(&'a self, path: &'a str, payload: Value, _: bool) -> ApiFuture<'a, Value> {
@@ -45,7 +46,7 @@ impl Api for Backend {
                     json!({"code":200,"album":{"id":7,"name":"长专辑"},"songs":(1..=501).map(|id|json!({"id":id,"name":"曲目","dt":120000})).collect::<Vec<_>>()})
                 }
                 "/api/v6/playlist/detail" => {
-                    json!({"code":200,"playlist":{"trackIds":(1..=205).map(|id|json!({"id":id})).collect::<Vec<_>>()}})
+                    json!({"code":200,"playlist":{"trackIds":self.playlist_tracks.lock().unwrap().clone().unwrap_or_else(|| (1..=205).map(|id|json!({"id":id})).collect::<Vec<_>>())}})
                 }
                 "/api/v3/song/detail" => {
                     let ids: Vec<Value> =
@@ -724,3 +725,5 @@ async fn desktop_lyric_document_shares_detail_cache_offset_and_native_clock_with
 
 #[path = "client_player/next_play.rs"]
 mod next_play;
+#[path = "client_player/queue_playlist.rs"]
+mod queue_playlist;

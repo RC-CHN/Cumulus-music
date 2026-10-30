@@ -4,6 +4,7 @@ mod next_play;
 mod origin;
 mod output;
 mod preferences;
+mod queue_playlist;
 mod selection;
 mod startup;
 use super::{MusicClient, mapping};
@@ -274,6 +275,16 @@ impl MusicClient {
                 .next_play(epoch, id, quality, expected_queue_revision)
                 .await;
         }
+        if let PlayerAction::QueuePlaylist {
+            id,
+            quality,
+            expected_queue_revision,
+        } = action
+        {
+            return self
+                .queue_playlist(epoch, id, quality, expected_queue_revision)
+                .await;
+        }
         let token = self.player_token(epoch)?;
         let local_effect = matches!(
             action,
@@ -419,7 +430,9 @@ impl MusicClient {
         }
         let command = match action {
             PlayerAction::Startup => unreachable!("handled before user transport commands"),
-            PlayerAction::NextPlay { .. } => unreachable!("handled before user transport commands"),
+            PlayerAction::NextPlay { .. } | PlayerAction::QueuePlaylist { .. } => {
+                unreachable!("handled before user transport commands")
+            }
             PlayerAction::Equalizer {
                 expected_revision,
                 settings,

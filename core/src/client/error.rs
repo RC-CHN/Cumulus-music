@@ -96,6 +96,9 @@ impl From<Error> for ClientError {
                 }
                 Error::InvalidInput(_) => ("invalid_input", "输入内容不符合要求", false),
                 Error::QueueChanged => ("snapshot_changed", "列表已更新，请刷新后重试", true),
+                Error::State("playlist has no online tracks") => {
+                    ("playlist_empty", "歌单中没有可添加的在线歌曲", false)
+                }
                 Error::State("shortcut settings changed") => {
                     ("shortcuts_changed", "快捷键设置已变化，请刷新后重试", true)
                 }
