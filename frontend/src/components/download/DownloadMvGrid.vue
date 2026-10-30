@@ -130,6 +130,8 @@ onBeforeUnmount(() => observer?.disconnect());
   <div
     ref="container"
     class="download-mv-scroll"
+    :data-download-columns="columns"
+    :data-download-pitch="rowHeight"
     tabindex="-1"
     role="region"
     aria-label="已下载MV"
@@ -163,6 +165,7 @@ onBeforeUnmount(() => observer?.disconnect());
       >
         <button
           class="download-mv-cover"
+          data-download-action="cover"
           :tabindex="focus.roving.value === task.id ? 0 : -1"
           aria-haspopup="menu"
           :aria-label="`播放下载MV ${task.track.name}`"
@@ -188,6 +191,7 @@ onBeforeUnmount(() => observer?.disconnect());
         <div class="download-mv-info" @click.self="emit('play', task)">
           <button
             class="download-mv-title ellipsis"
+            data-download-action="title"
             tabindex="-1"
             :data-tooltip="task.track.name"
             @click="emit('play', task)"
@@ -202,6 +206,7 @@ onBeforeUnmount(() => observer?.disconnect());
                 <span v-if="i"> / </span>
                 <button
                   v-if="artist.id"
+                  :data-download-action="`artist:${artist.id}`"
                   :tabindex="focus.roving.value === task.id ? 0 : -1"
                   @click.stop="emit('artist', artist.id)"
                 >
@@ -211,6 +216,7 @@ onBeforeUnmount(() => observer?.disconnect());
             ><template v-else>{{ task.track.artists.join(' / ') }}</template> </span
           ><button
             class="icon-button download-mv-manage"
+            data-download-action="manage"
             aria-haspopup="menu"
             :tabindex="focus.roving.value === task.id ? 0 : -1"
             :aria-label="`管理下载 ${task.track.name}`"

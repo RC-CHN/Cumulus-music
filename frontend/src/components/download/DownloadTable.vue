@@ -182,6 +182,8 @@ async function key(event: KeyboardEvent, index: number) {
       ref="container"
       :id="bodyId"
       class="download-scroll"
+      data-download-columns="1"
+      data-download-pitch="64"
       tabindex="-1"
       @scroll.passive="onScroll"
       @keydown.self="key($event, focused)"

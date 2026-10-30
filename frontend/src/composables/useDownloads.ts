@@ -3,6 +3,7 @@ import type { AccountView } from '../services/contracts.ts';
 import { failure } from '../services/contracts.ts';
 import { useCore } from '../services/core.ts';
 import { downloadCommandLabel } from '../services/downloadFeedback.ts';
+import { downloadViewportKey, type DownloadViewport } from '../services/downloadViewport.ts';
 import type {
   DownloadClient,
   DownloadCommand,
@@ -14,6 +15,7 @@ import type {
 /** Polling projects native state. Transfers and recovery workers live in core. */
 export function useDownloads(core: DownloadClient = useCore(), sessionChanged = () => {}) {
   const view = shallowRef<DownloadsView>();
+  const viewport = shallowRef<DownloadViewport>();
   const query = ref<DownloadQuery>({
     tab: 'completed',
     category: 'song',
@@ -117,6 +119,7 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
     stopTimer();
     epoch = account.status === 'authenticated' ? account.epoch : '';
     view.value = undefined;
+    viewport.value = undefined;
     error.value = '';
     readError.value = '';
     notice.value = '';
@@ -139,6 +142,7 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
     else if (!next.category || next.category === 'all') next.category = 'song';
     if (JSON.stringify(next) === JSON.stringify(query.value)) return Promise.resolve();
     query.value = next;
+    viewport.value = undefined;
     // Old rows must not acquire the new tab's actions while its read is pending.
     view.value = undefined;
     readError.value = '';
@@ -203,9 +207,16 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
     read++;
     stopTimer();
     epoch = '';
+    viewport.value = undefined;
+  }
+  function saveViewport(value: DownloadViewport) {
+    if (epoch && value.epoch === epoch && value.query === downloadViewportKey(query.value))
+      viewport.value = value;
   }
   return {
     view,
+    viewport,
+    saveViewport,
     query,
     loading,
     loadingMore,

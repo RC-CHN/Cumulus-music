@@ -15,6 +15,7 @@ import DownloadToolbar from './download/DownloadToolbar.vue';
 import DownloadTable from './download/DownloadTable.vue';
 import DownloadMvGrid from './download/DownloadMvGrid.vue';
 import DownloadOperations from './DownloadOperations.vue';
+import { useDownloadViewport } from '../composables/useDownloadViewport';
 import Icon from './Icon.vue';
 import '../styles/download-page.css';
 const props = defineProps<{
@@ -74,6 +75,7 @@ function openBatch() {
 }
 const section = computed(() => downloadSection(query.value));
 const columnGrowth = ref<number[]>([]);
+const viewport = useDownloadViewport(root, props.model, columnGrowth);
 watch(
   section,
   (value) => {
@@ -107,7 +109,15 @@ function play(task?: DownloadTask) {
 }
 </script>
 <template>
-  <section ref="root" class="downloads-page" aria-label="下载管理">
+  <section
+    ref="root"
+    class="downloads-page"
+    aria-label="下载管理"
+    @focusin="viewport.focus"
+    @pointerdown.capture="viewport.cancel"
+    @keydown.capture="viewport.cancel"
+    @wheel.passive="viewport.cancel"
+  >
     <DownloadTabs
       :section="section"
       :directory="!!view?.directory"
