@@ -168,15 +168,35 @@ pub fn verify_with_observer(
     let cancel = Cancellation::default();
     cancel.cancel();
     assert!(matches!(
-        engine.load(LoadRequest::new(MediaInput::File(path)), &cancel),
+        engine.load(LoadRequest::new(MediaInput::File(path.clone())), &cancel),
         Err(cumulus_core::Error::Cancelled)
     ));
     progress("cancel_verified");
     progress("engine_closing");
     drop(engine);
     progress("engine_closed");
+    // Releasing every handle must not unload dependencies whose process-global
+    // handlers outlive their DLL. Each iteration creates a fresh decoder/output;
+    // only the trusted SDK modules are retained, without playback/account state.
+    progress("reopen_start");
+    for _ in 0..3 {
+        let mut reopened = MpvEngine::open(MpvConfig {
+            null_output: true,
+            ..Default::default()
+        })?;
+        reopened.load(
+            LoadRequest::new(MediaInput::File(path.clone())),
+            &Cancellation::default(),
+        )?;
+        reopened.pause(false)?;
+        wait(&mut reopened, |s| s.position.is_some_and(|p| p > 0.1))?;
+        reopened.stop()?;
+        assert!(reopened.poll()?.entry_id.is_none());
+        drop(reopened);
+    }
+    progress("reopen_verified");
     Ok(
-        json!({"ok":true,"metadata_probe":true,"libmpv_api":version,"decoder":loaded.codec,"duration":loaded.duration,"output":playing.audio_output,"requested_output":if auto{"auto_muted"}else{"null"},"progress":true,"pause":true,"seek":true,"paused_seek_verified_on_resume":true,"speed":true,"bounds_validation":true,"cue_engine_eof":!eof.events.is_empty(),"cue_end_reset":restored.entry_id!=clip.entry_id,"cancel":true,"remote_requests":0}),
+        json!({"ok":true,"metadata_probe":true,"libmpv_api":version,"decoder":loaded.codec,"duration":loaded.duration,"output":playing.audio_output,"requested_output":if auto{"auto_muted"}else{"null"},"progress":true,"pause":true,"seek":true,"paused_seek_verified_on_resume":true,"speed":true,"bounds_validation":true,"cue_engine_eof":!eof.events.is_empty(),"cue_end_reset":restored.entry_id!=clip.entry_id,"cancel":true,"reopened_fresh_decoders":3,"remote_requests":0}),
     )
 }
 fn main() {

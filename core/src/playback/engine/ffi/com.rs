@@ -2,7 +2,7 @@
 //! A libmpv worker can create WASAPI COM objects and exit before mp_destroy
 //! releases them on the caller's thread. A process MTA usage lease bridges that
 //! lifetime without changing a GUI thread's existing STA apartment.
-use crate::Result;
+use crate::{Error, Result};
 use std::{ffi::c_void, ptr::NonNull};
 
 #[link(name = "ole32")]
@@ -22,10 +22,16 @@ impl Mta {
         let mut cookie = std::ptr::null_mut();
         // SAFETY: writable out-pointer; no caller COM interface is accessed.
         let status = unsafe { CoIncrementMTAUsage(&mut cookie) };
-        super::check("COM MTA initialization", status)?;
-        NonNull::new(cookie)
-            .map(Self)
-            .ok_or(super::failed("COM MTA initialization", -1))
+        if status < 0 {
+            return Err(Error::Playback {
+                operation: "COM MTA initialization",
+                code: status,
+            });
+        }
+        NonNull::new(cookie).map(Self).ok_or(Error::Playback {
+            operation: "COM MTA initialization",
+            code: -1,
+        })
     }
 }
 

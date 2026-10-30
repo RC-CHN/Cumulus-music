@@ -1,13 +1,10 @@
 //! The only unsafe libmpv boundary. Signatures/layouts checked against
 //! mpv v0.40.0 include/mpv/client.h (API 2.5), compatible with 1.108+/2.x.
 //! Every borrowed event is copied before another mpv_wait_event call.
-use super::{EndReason, EngineEvent};
-#[cfg(windows)]
-mod com;
+use super::{EndReason, EngineEvent, MpvRuntime};
 mod devices;
 mod render;
 use crate::{Error, Result};
-use libloading::Library;
 use std::{
     ffi::{CStr, CString, OsStr, c_char, c_int, c_ulong, c_void},
     ptr::NonNull,
@@ -60,12 +57,8 @@ pub(super) enum Received {
 }
 
 pub(super) struct Native {
-    // Fields drop after Native::drop in declaration order: media handles first,
-    // then the MTA lease while libmpv is still loaded, then the library itself.
-    #[cfg(windows)]
-    _mta: com::Mta,
-    // Library outlives both the copied function pointers and the handle.
-    _library: Library,
+    // Native::drop destroys media handles before the runtime/MTA lease ends.
+    _runtime: MpvRuntime,
     handle: NonNull<c_void>,
     initialize: Initialize,
     option: OptionString,
@@ -99,7 +92,7 @@ impl Native {
         // SAFETY: native host selects a trusted system/bundled libmpv. The
         // resolved symbols use documented C signatures and stay library-owned.
         unsafe {
-            let library = Library::new(path).map_err(|_| failed("library", -1))?;
+            let library = MpvRuntime::open(path)?;
             let version = *library
                 .get::<Version>(b"mpv_client_api_version\0")
                 .map_err(|_| failed("ABI", -1))?;
@@ -138,13 +131,9 @@ impl Native {
             let wait = *library
                 .get::<Wait>(b"mpv_wait_event\0")
                 .map_err(|_| failed("ABI", -1))?;
-            #[cfg(windows)]
-            let mta = com::Mta::acquire()?;
             let handle = NonNull::new(create()).ok_or(failed("allocation", -1))?;
             Ok(Self {
-                #[cfg(windows)]
-                _mta: mta,
-                _library: library,
+                _runtime: library,
                 handle,
                 initialize,
                 option,

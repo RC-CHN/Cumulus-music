@@ -1,7 +1,6 @@
 //! Verification-only raw PCM output through the real libmpv filter chain.
 //! Production playback uses core::MpvEngine; no application IPC exposes these options.
-use cumulus_core::{Error, Result};
-use libloading::Library;
+use cumulus_core::{Error, Result, playback::engine::MpvRuntime};
 use std::{
     ffi::{CStr, CString, c_char, c_int, c_void},
     path::Path,
@@ -24,13 +23,15 @@ type Destroy = unsafe extern "C" fn(Handle);
 type Property = unsafe extern "C" fn(Handle, *const c_char) -> *mut c_char;
 type Free = unsafe extern "C" fn(*mut c_void);
 struct Player {
-    _library: Library,
+    _runtime: MpvRuntime,
     handle: Handle,
     destroy: Destroy,
 }
 impl Drop for Player {
     fn drop(&mut self) {
+        eprintln!("PCM proof: handle_closing");
         unsafe { (self.destroy)(self.handle) }
+        eprintln!("PCM proof: handle_closed");
     }
 }
 fn c(value: impl AsRef<str>) -> Result<CString> {
@@ -47,6 +48,7 @@ fn check(code: i32) -> Result<()> {
     }
 }
 pub fn capture(input: &Path, output: &Path, graph: &str, rate: u32, channels: usize) -> Result<()> {
+    eprintln!("PCM proof: runtime_open rate={rate} channels={channels}");
     if output.exists() {
         return Err(Error::InvalidInput("PCM proof output already exists"));
     }
@@ -62,7 +64,7 @@ pub fn capture(input: &Path, output: &Path, graph: &str, rate: u32, channels: us
     unsafe {
         let library = names
             .iter()
-            .find_map(|n| Library::new(n).ok())
+            .find_map(|n| MpvRuntime::open(n.as_ref()).ok())
             .ok_or(Error::State("libmpv unavailable"))?;
         let create = *library
             .get::<Create>(b"mpv_create\0")
@@ -93,10 +95,11 @@ pub fn capture(input: &Path, output: &Path, graph: &str, rate: u32, channels: us
             return Err(Error::State("mpv allocation"));
         }
         let _player = Player {
-            _library: library,
+            _runtime: library,
             handle,
             destroy,
         };
+        eprintln!("PCM proof: handle_created");
         for (key, value) in [
             ("config", "no"),
             ("load-scripts", "no"),
@@ -138,6 +141,7 @@ pub fn capture(input: &Path, output: &Path, graph: &str, rate: u32, channels: us
         let filter = format!("@cumulus-geq:lavfi=graph=%{}%{}", graph.len(), graph);
         check(option(handle, c"af".as_ptr(), c(filter)?.as_ptr()))?;
         check(initialize(handle))?;
+        eprintln!("PCM proof: initialized");
         let args = [
             c"loadfile".to_owned(),
             c(input.to_str().ok_or(Error::InvalidInput("proof path"))?)?,
@@ -167,6 +171,7 @@ pub fn capture(input: &Path, output: &Path, graph: &str, rate: u32, channels: us
                         );
                         return Err(Error::State("capture did not reach EOF"));
                     }
+                    eprintln!("PCM proof: eof_verified");
                     return Ok(());
                 }
                 1 => return Err(Error::State("unexpected mpv shutdown")),

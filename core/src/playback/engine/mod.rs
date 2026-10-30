@@ -4,12 +4,14 @@ mod ffi;
 mod frames;
 mod mpv;
 mod output;
+mod runtime;
 mod types;
 mod video;
 use crate::Result;
 pub use frames::{VideoFrame, VideoFrames};
 pub use mpv::{MpvConfig, MpvEngine};
 pub use output::{OutputDevice, OutputDevices};
+pub use runtime::MpvRuntime;
 pub use types::*;
 pub use video::{MpvVideoEngine, VideoEngine};
 

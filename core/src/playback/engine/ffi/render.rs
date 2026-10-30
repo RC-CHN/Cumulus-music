@@ -56,23 +56,23 @@ impl Context {
         // stays owned by Native until the worker and context have been dropped.
         unsafe {
             let create = *native
-                ._library
+                ._runtime
                 .get::<Create>(b"mpv_render_context_create\0")
                 .map_err(|_| failed("video ABI", -1))?;
             let update = *native
-                ._library
+                ._runtime
                 .get::<Update>(b"mpv_render_context_update\0")
                 .map_err(|_| failed("video ABI", -1))?;
             let render = *native
-                ._library
+                ._runtime
                 .get::<Render>(b"mpv_render_context_render\0")
                 .map_err(|_| failed("video ABI", -1))?;
             let free = *native
-                ._library
+                ._runtime
                 .get::<Free>(b"mpv_render_context_free\0")
                 .map_err(|_| failed("video ABI", -1))?;
             let info = *native
-                ._library
+                ._runtime
                 .get::<Info>(b"mpv_render_context_get_info\0")
                 .map_err(|_| failed("video ABI", -1))?;
             let mut params = [
