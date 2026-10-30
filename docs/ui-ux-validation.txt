@@ -1508,3 +1508,34 @@ Rustfmt、严格workspace全target/custom-protocol Clippy；259个测试目标�
 21个CI规则测试。
 详细终端日志在 .build/song-menu-*.log。旧线上脚本选择器已随菜单更新，未在本轮重跑账号写入。
 普通菜单之外的热键/评论计数、多选/专用资源菜单、完整分享、FM协调器和顺序调整UI继续待办。
+
+2026-10-30 收藏到歌单逐态对照
+- 官方尺寸/交互和明确差异见playlist-collect-ui-contracts.txt。本轮只计UI/UX局部修正，
+  不将已存在的Rust歌单功能、编译或测试数量算作全应用界面一致性进度。
+- collector-ui-first在20态后停止：探针点击重试后立即按新文字寻找按钮，未等待Vue更新。
+  修正探针为对同一个按钮连续点击，核对实际只发出一次读取；保留失败证据。
+  人工查看first的01/09列表和07创建页，核对宽/窄浅色及深色创建布局。
+- collector-ui-second在26态后发现真实UI问题：发送已持久化但回读失败，manager只有
+  error，界面没有核对入口。现在只从本次新增的操作记录恢复pending，避免重复发送。
+  人工查看second的20读取失败、25创建成功但收藏失败窗口。
+- collector-ui-third的28态通过。随后改为创建提交按钮等待时保留焦点，并补减少动态效果
+  时的初始帧、加载中不显示空状态；collector-ui-final的28态再次通过。
+  人工查看final的18长列表顶部、25继续收藏焦点、27未确认结果；发现27同时显示
+  “网络失败请重试”和“请先核对”两种提示，最终合并为核对提示，避免相互冲突。
+- collector-ui-final2是最后两项提示条件修正后的最终收藏专项证据。覆盖1120×760和
+  760×540、深浅色、默认/底部列表、创建表单与草稿返回、259个可选目标的虚拟列表、
+  空列表、读取失败/重试等待、收藏等待、创建后添加失败/恢复、未知结果/只读核对。
+  验证走实际生产IPC/核心状态机，服务端是内存合成账号；不执行真实账号写入。
+- collector-regression-menus的45态、collector-regression-search的65态通过；二者使用
+  final版本，早于final2只修改pending提示和读取失败时空提示条件。回归不是各页
+  全部官方视觉分支的完成证明。旧真实账号playlist_probe改用虚拟目标列表，未在本轮
+  重跑真实创建/收藏；search_results探针改为核对可访问的批量收藏歌曲数。
+- 本轮运行npm ci、前端格式/264测试/类型与production build，Rust格式、严格Clippy和
+  workspace全量259目标/1186 passed/0 failed/0 ignored；CI规则21测试通过。
+  前端build仍有既有大chunk提醒，不是滚动帧率验证。输出日志前缀collector-*。
+- 最终截图/版本索引置于.build/collector-gallery/index.html和collector-proof-manifest.json，
+  均为本机忽略产物，未提交合成截图或账号数据。Linux/Windows CI新增隔离收藏流程，
+  是否通过以各SHA实际运行结果为准。物理桌面、Windows视觉/DPI及真实刷新率未验证。
+- final2最终28态/28图通过，最多同时渲染13行；人工复核03浅色创建、13窄窗深色列表、
+  27窄窗未确认提示。最终提示只保留“核对结果”，输入/按钮焦点圈和关闭区域未裁切。
+  回归45+65态是流程防回归，未把138张状态截图算作138个已完成页面。
