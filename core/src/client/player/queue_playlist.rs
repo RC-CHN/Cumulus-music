@@ -27,6 +27,7 @@ impl MusicClient {
         id: String,
         quality: Quality,
         expected_revision: String,
+        selection: Option<(Vec<String>, String)>,
     ) -> Result<PlayerView> {
         let token = self.player_token(epoch)?;
         self.session.with_token(&token, |_| Ok(()))?;
@@ -54,15 +55,19 @@ impl MusicClient {
             return Err(Error::InvalidInput("playlist too large"));
         }
         let mut seen = HashSet::new();
-        let ids = tracks
-            .iter()
-            .filter(|v| v["v"].as_i64() != Some(-1))
-            .map(|v| identifier(&v["id"]))
-            .collect::<Result<Vec<_>>>()?
-            .into_iter()
-            .filter(|id| seen.insert(id.clone()))
-            .map(Value::from)
-            .collect::<Vec<_>>();
+        let ids = if let Some((ids, revision)) = selection {
+            super::playlist_batch::selected_ids(&id, &detail, &ids, &revision)?
+        } else {
+            tracks
+                .iter()
+                .filter(|v| v["v"].as_i64() != Some(-1))
+                .map(|v| identifier(&v["id"]))
+                .collect::<Result<Vec<_>>>()?
+                .into_iter()
+                .filter(|id| seen.insert(id.clone()))
+                .map(Value::from)
+                .collect::<Vec<_>>()
+        };
         let mut resources = Vec::new();
         for chunk in ids.chunks(100) {
             self.session.check_generation(&token)?;

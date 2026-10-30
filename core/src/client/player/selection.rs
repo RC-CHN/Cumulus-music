@@ -301,6 +301,18 @@ impl MusicClient {
                             .collect::<Result<Vec<_>>>()?;
                         Ok((ids, index, quality, json!({"kind":"songs"})))
                     }
+                    PlaySelection::PlaylistBatch {
+                        id,
+                        ids,
+                        revision,
+                        quality,
+                    } => {
+                        let id = identifier(&json!(id))?;
+                        let detail = PlaylistApi::new(api).detail(&json!(id)).await?;
+                        let ids =
+                            super::playlist_batch::selected_ids(&id, &detail, &ids, &revision)?;
+                        Ok((ids, 0, quality, json!({"kind":"playlist","id":id})))
+                    }
                     PlaySelection::Playlist {
                         id,
                         start_id,

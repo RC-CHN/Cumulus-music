@@ -133,10 +133,23 @@ pub enum PlaySelection {
         revision: Option<String>,
         quality: Quality,
     },
+    PlaylistBatch {
+        id: String,
+        ids: Vec<String>,
+        revision: String,
+        quality: Quality,
+    },
 }
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PlayerAction {
+    QueuePlaylistBatch {
+        id: String,
+        ids: Vec<String>,
+        revision: String,
+        quality: Quality,
+        expected_queue_revision: String,
+    },
     QueuePlaylist {
         id: String,
         quality: Quality,

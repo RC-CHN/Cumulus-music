@@ -725,5 +725,7 @@ async fn desktop_lyric_document_shares_detail_cache_offset_and_native_clock_with
 
 #[path = "client_player/next_play.rs"]
 mod next_play;
+#[path = "client_player/playlist_batch.rs"]
+mod playlist_batch;
 #[path = "client_player/queue_playlist.rs"]
 mod queue_playlist;

@@ -3,6 +3,7 @@ mod lyrics;
 mod next_play;
 mod origin;
 mod output;
+mod playlist_batch;
 mod preferences;
 mod queue_playlist;
 mod selection;
@@ -282,7 +283,25 @@ impl MusicClient {
         } = action
         {
             return self
-                .queue_playlist(epoch, id, quality, expected_queue_revision)
+                .queue_playlist(epoch, id, quality, expected_queue_revision, None)
+                .await;
+        }
+        if let PlayerAction::QueuePlaylistBatch {
+            id,
+            ids,
+            revision,
+            quality,
+            expected_queue_revision,
+        } = action
+        {
+            return self
+                .queue_playlist(
+                    epoch,
+                    id,
+                    quality,
+                    expected_queue_revision,
+                    Some((ids, revision)),
+                )
                 .await;
         }
         let token = self.player_token(epoch)?;
@@ -430,7 +449,9 @@ impl MusicClient {
         }
         let command = match action {
             PlayerAction::Startup => unreachable!("handled before user transport commands"),
-            PlayerAction::NextPlay { .. } | PlayerAction::QueuePlaylist { .. } => {
+            PlayerAction::NextPlay { .. }
+            | PlayerAction::QueuePlaylist { .. }
+            | PlayerAction::QueuePlaylistBatch { .. } => {
                 unreachable!("handled before user transport commands")
             }
             PlayerAction::Equalizer {
