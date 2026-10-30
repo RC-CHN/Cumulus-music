@@ -77,6 +77,22 @@ function backend(overrides: Partial<CoreClient> = {}): CoreClient {
 }
 const turn = () => new Promise((resolve) => setImmediate(resolve));
 
+test('repeating a search starts a fresh visit while category navigation and back keep its identity', async () => {
+  const music = useMusic(backend());
+  await music.bootstrap();
+  music.navigate({ kind: 'search', keyword: 'same' });
+  const first = music.page.value;
+  assert.equal(first.kind, 'search');
+  if (first.kind !== 'search') return;
+  assert.ok(first.searchId);
+  music.navigate({ ...first, category: 'artists' });
+  assert.equal(music.page.value.kind === 'search' && music.page.value.searchId, first.searchId);
+  music.navigate({ kind: 'search', keyword: 'same' });
+  assert.notEqual(music.page.value.kind === 'search' && music.page.value.searchId, first.searchId);
+  music.back();
+  assert.equal(music.page.value.kind === 'search' && music.page.value.searchId, first.searchId);
+});
+
 test('navigation during restore cannot invalidate the initial identity response', async () => {
   const identity = deferred<Awaited<ReturnType<CoreClient['restoreAccount']>>>();
   const music = useMusic(backend({ restoreAccount: () => identity.promise }));

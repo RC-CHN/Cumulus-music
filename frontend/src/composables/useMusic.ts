@@ -36,6 +36,7 @@ export type Page =
       category?: import('../services/search').SearchCategory;
       offset?: number;
       correct?: boolean;
+      searchId?: number;
     };
 
 export function useMusic(
@@ -63,6 +64,7 @@ export function useMusic(
   const history: Page[] = [];
   const historyLength = ref(0);
   let request = 0;
+  let searchId = 0;
   let accountRequest = 0;
   let resourceRequest = 0;
   let likeRevision = 0;
@@ -210,7 +212,10 @@ export function useMusic(
     navigation(() => {
       history.push(page.value);
       historyLength.value = history.length;
-      page.value = next;
+      page.value =
+        next.kind === 'search' && next.searchId === undefined
+          ? { ...next, searchId: ++searchId }
+          : next;
       void load();
     });
   }
