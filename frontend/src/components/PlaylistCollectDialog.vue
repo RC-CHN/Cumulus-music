@@ -184,7 +184,9 @@ async function reconcile() {
     <p class="sr-only">
       {{ tracks.length === 1 ? `收藏${tracks[0]?.name}` : `收藏${tracks.length}首歌曲` }}
     </p>
-    <div v-if="error && !pending" class="collect-feedback error-state" role="alert">{{ error }}</div>
+    <div v-if="error && !pending" class="collect-feedback error-state" role="alert">
+      {{ error }}
+    </div>
     <div
       v-if="receipt && !manager.saved(receipt.phase)"
       class="collect-feedback mutation-result"
