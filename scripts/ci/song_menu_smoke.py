@@ -40,6 +40,7 @@ def main():
 def verify(root, capture):
     complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
     assert complete['ok'] and complete['songMenu'] and complete['clipboardVerified'] and complete['queueVerified']
+    assert complete['scrollGeometryVerified']
     assert complete['stageCount'] == 45 and complete['syntheticSearchCalls'] >= 12
     assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
     assert len(list((root / 'first').glob('ux_*.json'))) == complete['stageCount']

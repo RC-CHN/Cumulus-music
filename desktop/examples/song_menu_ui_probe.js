@@ -279,10 +279,18 @@
       const before = playerCalls;
       trigger.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
       assert(playerCalls === before, "more double click never plays");
-      one(".track-scroll").dispatchEvent(
-        new Event("scroll", { bubbles: false }),
-      );
-      await wait(() => !menu(), "scroll dismisses menu");
+      const scroller = one(".track-scroll"), retained = menu();
+      scroller.dispatchEvent(new Event("scroll", { bubbles: false }));
+      await sleep(80);
+      assert(retained.isConnected && !retained.inert && menu() === retained,
+        "queued scroll without anchor movement keeps menu");
+      const oldTop = scroller.scrollTop, anchorTop = trigger.getBoundingClientRect().top;
+      scroller.scrollTop = oldTop + 56;
+      assert(scroller.scrollTop > oldTop && Math.abs(trigger.getBoundingClientRect().top - anchorTop) > 1,
+        "scroll actually moves menu anchor");
+      scroller.dispatchEvent(new Event("scroll", { bubbles: false }));
+      await wait(() => !menu(), "moved anchor dismisses menu");
+      scroller.scrollTop = oldTop;
       await capture(`scroll_dismissed_${w}_${theme}`);
       await search(`菜单预览${w}${theme}`);
       const card = one(".search-track-card"),
@@ -529,6 +537,7 @@
       songMenu: true,
       clipboardVerified: true,
       queueVerified: true,
+      scrollGeometryVerified: true,
       realMusicRequests: 0,
       realAccountWrites: 0,
     });

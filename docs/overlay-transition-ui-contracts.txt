@@ -53,5 +53,11 @@
 - Windows默认运行时的过滤能力须继续验证：scripts/ci/package.py原有注释明确记录
   MSYS2 FFmpeg未开启LADSPA；当前上游MSYS2 FFmpeg构建配方亦没有该开关。来源：
   https://github.com/msys2/MINGW-packages/blob/master/mingw-w64-ffmpeg/PKGBUILD
-  仅有这一点还不能替代新CI中的具体mpv错误日志。尚未修复/验证Windows实际PCM链，
-  不把诊断增强称为Windows音效支持通过，不删掉原生验证要求来换取绿色CI。
+  新CI 41128729255（aedcb3b）已给出具体日志：GUI/window_created之后进入loudness_start，
+  FFmpeg报“No such filter: ladspa”（日志原文以单引号包围滤镜名），随后解析lavfi失败；
+  end-file reason=4/error=-16/loaded=false，仍按verification_failed和缺成功报告令CI失败。
+  这已确认是Windows运行时缺少滤镜能力。尚未修复/验证其实际PCM链，不删掉验证要求
+  或静默关闭音效来换绿色CI，后续需补足正确运行时。
+- 同次Linux在歌曲菜单第5态失败：旧探针只发坐标不变的scroll却期待关闭。现补齐
+  两条实际语义：不移动锚点保留菜单；修改真实scrollTop并检查锚点矩形发生位移后
+  才断言关闭，双击不播放、剪贴板和原生队列断言保留。完整45态结果见新验证记录。
