@@ -17,7 +17,7 @@ def main():
     args = parser.parse_args()
     if args.table and args.batch:
         parser.error('select a single proof')
-    expected = 53 if args.batch else 72 if args.table else 57
+    expected = 53 if args.batch else 72 if args.table else 69
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {k: v for k, v in os.environ.items() if not k.startswith('CUMULUS_')}

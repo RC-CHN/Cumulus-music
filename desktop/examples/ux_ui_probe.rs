@@ -73,6 +73,16 @@ impl Api for Library {
             if let Some(result) = search_fixture::response(path, &args) {
                 return result;
             }
+            if download_page_fixture::enabled()
+                && matches!(
+                    path,
+                    "/api/artist/v3/detail"
+                        | "/api/artist/detail/dynamic"
+                        | "/api/song/enhance/privilege"
+                )
+            {
+                return fixture::Library::default().request(path, args, false).await;
+            }
             if search_fixture::enabled()
                 && matches!(
                     path,
@@ -198,7 +208,8 @@ fn main() {
         let session=Arc::new(AccountSession::new(api,Some(registry.store())));
         let download_page=download_page_fixture::enabled().then(||Arc::new(download_page_fixture::Fixture::new(session.clone(),proof_store.clone(),root.clone())));
         let mut client=MusicClient::with_session(session,registry);
-        if download_page.is_some() { client=client.with_download_backend(Arc::new(download_page_fixture::NoNetwork)); }
+        if download_page.is_some() { client=client.with_download_backend(Arc::new(download_page_fixture::NoNetwork))
+            .with_video_factory(Arc::new(|| Ok(Box::new(cumulus_core::playback::engine::MpvVideoEngine::open(cumulus_core::playback::engine::MpvConfig {null_output:true,..Default::default()},640,360)?)))); }
         if let Some(fixture)=transfer.as_ref() { client=client.with_playlist_cover_backend(fixture.clone()); }
         else if playlist_cover_layout_fixture::enabled() {
             client=client.with_playlist_cover_backend(Arc::new(playlist_cover_layout_fixture::NoNetwork));

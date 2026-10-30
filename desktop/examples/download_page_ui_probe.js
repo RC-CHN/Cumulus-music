@@ -16,16 +16,17 @@
   const first=()=>one('[data-download-index="0"]');
   let count=0,stage='startup';
   async function select(id){click(tab(id));await wait(()=>tab(id).getAttribute('aria-selected')==='true'&&ready()&& (id==='mv'?one('.download-mv-card'):first()),`tab ${id}`);await sleep(100);}
-  async function capture(label){stage=label;await sleep(250);assert(document.documentElement.scrollWidth<=innerWidth,'document overflow');
+  async function capture(label,extra={}){stage=label;await sleep(250);assert(document.documentElement.scrollWidth<=innerWidth,'document overflow');
     for(const n of all('.download-navigation,.download-toolbar,.download-table-header').filter(n=>n.getClientRects().length)) {const r=rect(n);assert(r.x>=0&&r.right<=innerWidth+1,'page bounds');}
     assert(all('[data-download-index]').length<=32,'bounded table');assert(all('.download-mv-card').length<=32,'bounded grid');
+    const card=one('.download-mv-card');if(card){const title=card.querySelector('.download-mv-title'),credit=card.querySelector('.download-mv-artists'),range=document.createRange();range.selectNodeContents(title);near(range.getBoundingClientRect().left,rect(credit).x,'MV title text aligns with artist');}
     if(first()&&!one('dialog,.download-batch-page')) {
       near(rect(first()).height,64,'default row height');near(parseFloat(getComputedStyle(one('.download-track-name')).fontSize),16,'title size');
       const cells=[...first().children];all('.download-table-header>[role="columnheader"]').forEach((n,i)=>{near(rect(n).x,rect(cells[i]).x,'column alignment');near(rect(n).width,rect(cells[i]).width,'column widths');});
       const scroller=one('.download-scroll');assert(scroller.scrollWidth<=scroller.clientWidth+1,'table overflow');
     }
     if(!one('dialog,.download-batch-page')) for(const n of all('.download-tabs button,.download-navigation-actions button,.download-toolbar>button')) {const r=rect(n);const hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);assert(n.contains(hit),'header action hit');}
-    await emit(`ux_${String(++count).padStart(2,'0')}_${label}`,{width:innerWidth,height:innerHeight,theme:document.documentElement.dataset.theme,section:one('.download-tabs [aria-selected="true"]')?.textContent,rows:all('[data-download-index]').length,cards:all('.download-mv-card').length,focused:document.activeElement?.outerHTML.slice(0,200)});await sleep(400);
+    await emit(`ux_${String(++count).padStart(2,'0')}_${label}`,{width:innerWidth,height:innerHeight,theme:document.documentElement.dataset.theme,section:one('.download-tabs [aria-selected="true"]')?.textContent,rows:all('[data-download-index]').length,cards:all('.download-mv-card').length,focused:document.activeElement?.outerHTML.slice(0,200),...extra});await sleep(400);
   }
   async function closeDialog(){click(button('关闭下载对话框'));await wait(()=>!one('dialog'),'dialog closes');}
   try {
@@ -69,7 +70,52 @@
     await select('song');mode='hold';readStarted=false;let scroll=one('.download-scroll');scroll.scrollTop=scroll.scrollHeight;scroll.dispatchEvent(new Event('scroll'));await wait(()=>readStarted&&one('.download-continuation .spinner'),'growing wait');assert(all('[data-download-index]').every(n=>Number(n.dataset.downloadIndex)<100),'old prefix preserved while loading');await capture('growth_wait');mode='fail';releaseGrowth();await wait(()=>button('重试加载'),'growth failure');assert(!one('.error-state'),'growth failure does not replace page');await capture('growth_failed');mode='';click(button('重试加载'));await wait(()=>!one('.download-continuation'),'growth retry');assert(document.activeElement?.matches('[data-download-index]'),'growth retry returns to visible row');await capture('growth_retried');
     await select('voice');await select('song');await fixture('remove_first');scroll=one('.download-scroll');scroll.scrollTop=scroll.scrollHeight;scroll.dispatchEvent(new Event('scroll'));await wait(()=>!one('.download-continuation')&&one('.download-table').getAttribute('aria-rowcount')==='120','changed prefix');const freshIds=new Set();for(let top=0;top<=scroll.scrollHeight;top+=scroll.clientHeight){scroll.scrollTop=top;scroll.dispatchEvent(new Event('scroll'));await sleep(70);all('[data-download-index]').forEach(n=>freshIds.add(n.dataset.downloadTask));}assert(freshIds.size===119,'changed prefix has no skipped or duplicate records');await capture('growth_changed_inventory');await fixture('restore');
     await select('voice');await select('song');mode='hold';readStarted=false;scroll=one('.download-scroll');scroll.scrollTop=scroll.scrollHeight;scroll.dispatchEvent(new Event('scroll'));await wait(()=>readStarted,'held second window');await select('voice');mode='';releaseGrowth();await sleep(250);assert(tab('voice').getAttribute('aria-selected')==='true'&&first().textContent.includes('合成声音'),'late window cannot restore previous category');await capture('growth_late_category');client.downloads=originalDownloads;
-    await fixture('mv_window');for(const [w,h] of [[1120,760],[760,540]]){await emit('resize',{width:w,height:h});await wait(()=>innerWidth===w,'MV continuation resize');await select('voice');await select('mv');const grid=one('.download-mv-scroll');assert(one('.download-continuation'),'MV first window has more');grid.scrollTop=grid.scrollHeight;grid.dispatchEvent(new Event('scroll'));await wait(()=>!one('.download-continuation'),'MV continuation completed');assert(grid.scrollTop>0,'MV growth preserves scroll');const ids=new Set();for(let top=0;top<=grid.scrollHeight;top+=grid.clientHeight){grid.scrollTop=top;grid.dispatchEvent(new Event('scroll'));await scrollFrame();const rendered=all('.download-mv-row');assert(rendered.length&&rect(rendered[0]).y<=rect(grid).y+1&&rect(rendered.at(-1)).bottom>=rect(grid).bottom-1,'rendered MV range covers current viewport');all('.download-mv-card').forEach(n=>ids.add(n.dataset.downloadMv));}assert(ids.size===129,`all MV windows reachable: ${ids.size}/129`);await capture(`mv_continuous_${w}`);}
+    await fixture('mv_window');
+    for(const [w,h] of [[1120,760],[760,540]]){
+      await emit('resize',{width:w,height:h});await wait(()=>innerWidth===w,'MV continuation resize');
+      await select('voice');await select('mv');const grid=one('.download-mv-scroll');
+      assert(one('.download-continuation'),'MV first window has more');
+      grid.scrollTop=grid.scrollHeight;grid.dispatchEvent(new Event('scroll'));
+      await wait(()=>!one('.download-continuation'),'MV continuation completed');assert(grid.scrollTop>0,'MV growth preserves scroll');
+      const ids=new Set(),trace=[];
+      for(let top=0;top<=grid.scrollHeight;top+=grid.clientHeight){
+        const y=Math.min(top,grid.scrollHeight-grid.clientHeight);
+        grid.scrollTop=y;grid.dispatchEvent(new Event('scroll'));
+        // A refresh, scroll event and the virtual row patch can cross a frame.
+        // Check the actual requested viewport and the rows covering it.
+        await wait(()=>{
+          const rendered=all('.download-mv-row');
+          return Math.abs(grid.scrollTop-y)<=1 && rendered.length && rect(rendered[0]).y<=rect(grid).y+1 && rect(rendered.at(-1)).bottom>=rect(grid).bottom-1;
+        },'MV viewport '+w+' target '+y);
+        const cards=all('.download-mv-card');cards.forEach(n=>ids.add(n.dataset.downloadMv));
+        trace.push([y,grid.scrollTop,grid.scrollHeight,grid.clientHeight,cards[0].dataset.mvIndex,cards.at(-1).dataset.mvIndex]);
+      }
+      assert(ids.size===129,'all 129 distinct MV records reachable '+JSON.stringify({w,count:ids.size,trace}));
+      await capture('mv_continuous_'+w,{viewportSteps:trace});
+    }
+    // Full-size and narrow grids use four and two columns, respectively.
+    for(const [w,h,n] of [[1120,760,4],[760,540,2]]){
+      await emit('resize',{width:w,height:h});await wait(()=>innerWidth===w,'keyboard grid size');await select('voice');await select('mv');
+      const grid=one('.download-mv-scroll'), by=i=>one('[data-mv-index="'+i+'"]'), cover=i=>by(i)?.querySelector('.download-mv-cover');
+      await wait(()=>one('.download-mv-row').children.length===n,'columns settled');
+      cover(0).focus({preventScroll:true});key(cover(0),'ArrowDown');await wait(()=>document.activeElement===cover(n),'vertical card navigation');key(cover(n),'ArrowRight');await wait(()=>document.activeElement===cover(n+1),'horizontal card navigation');
+      const current=cover(n+1);current.dispatchEvent(new KeyboardEvent('keydown',{key:'F10',shiftKey:true,bubbles:true,cancelable:true}));await wait(()=>one('.action-menu')?.style.visibility==='visible','keyboard MV actions');
+      await capture('mv_menu_'+w);key(one('.action-menu'),'Escape');await wait(()=>!one('.action-menu')&&document.activeElement===current,'MV menu returns exact origin');
+      key(current,'End');await wait(()=>document.activeElement?.closest('[data-mv-index="99"]'),'end of first window');await wait(()=>!one('.download-continuation'),'MV next window');key(document.activeElement,'End');await wait(()=>document.activeElement?.closest('[data-mv-index="128"]'),'last loaded MV');
+      const manage=by(128).querySelector('.download-mv-manage');click(manage);await wait(()=>one('.action-menu'),'more button');click(button('管理下载文件…',one('.action-menu')));await wait(()=>one('.download-dialog[open]'),'MV file controls');await capture('mv_manage_'+w);await closeDialog();await wait(()=>document.activeElement===manage,'MV management returns exact origin');
+      grid.scrollTop=0;grid.dispatchEvent(new Event('scroll'));await wait(()=>!by(128)&&document.activeElement===grid,'recycled action yields to grid');key(grid,'Home');await wait(()=>document.activeElement===cover(0),'keyboard recovery');await capture('mv_keyboard_'+w);
+      cover(0).dispatchEvent(new KeyboardEvent('keydown',{key:'F10',shiftKey:true,bubbles:true,cancelable:true}));await wait(()=>one('.action-menu')?.contains(document.activeElement),'scroll starts with focus in menu');grid.scrollTop=grid.scrollHeight;grid.dispatchEvent(new Event('scroll'));await wait(()=>!one('.action-menu')&&document.activeElement===grid&&!by(0),'scrolled menu returns focus to grid');await capture('mv_menu_scroll_'+w);key(grid,'Home');await wait(()=>document.activeElement===cover(0),'return from dismissed menu');
+      const firstManage=by(0).querySelector('.download-mv-manage');click(firstManage);await wait(()=>one('.action-menu'),'reopen first');click(button('管理下载文件…',one('.action-menu')));await wait(()=>one('.download-dialog[open]'),'second file dialog');
+      grid.scrollTop=grid.scrollHeight;grid.dispatchEvent(new Event('scroll'));await wait(()=>!by(0),'dialog origin recycled');await closeDialog();
+      await wait(()=>document.activeElement?.matches('.download-mv-cover[tabindex="0"]'),'removed dialog origin returns to available card');await capture('mv_recycled_dialog_'+w);
+    }
+    await fixture('restore');await select('voice');await select('mv');
+    const credit=button('Artist 17',one('.download-mv-scroll'));assert(credit&&!button('无标识艺人',one('.download-mv-scroll')),'only identified artist is interactive');click(credit);await wait(()=>one('.catalog-page[aria-label="歌手详情"] h1')?.textContent.includes('17'),'artist detail for this credit');assert(!one('.mv-detail:not(.mv-mini)'),'artist click does not open MV');await capture('mv_artist');click(button('返回上一页'));await wait(()=>one('.download-mv-card')&&ready(),'artist back to MV downloads');
+    const movie=all('.download-mv-cover').find(el=>el.getAttribute('aria-label').includes('合成MV 133'));assert(movie,'real MP4 fixture card');movie.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,button:2,clientX:150,clientY:180}));await wait(()=>one('.action-menu'),'pointer context menu');click(button('播放 MV',one('.action-menu')));
+    await wait(()=>one('.mv-info h1')?.textContent.includes('合成MV 133')&&one('.mv-play-facts')?.textContent.includes('本地文件')&&Number(one('.video-canvas')?.dataset.renderedFrames)>0&&button('重新读取MV资料'),'offline MP4 playback independent of detail');
+    const canvas=one('.video-canvas');let nonBlack=0;
+    await wait(()=>{const px=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;nonBlack=0;for(let i=0;i<px.length;i+=4)if(px[i]+px[i+1]+px[i+2]>20)nonBlack++;return nonBlack>=100;},'nonblank decoded video frame');
+    await fixture('verify_local_mv');const videoBefore=await client.videoSnapshot((await client.accountSnapshot()).epoch);click(button('重新读取MV资料'));await wait(()=>button('重新读取MV资料')&&!button('重新读取MV资料').disabled,'detail retry');const videoAfter=await client.videoSnapshot(videoBefore.epoch);assert(videoAfter.playId===videoBefore.playId,'detail retry does not restart local video');await capture('mv_offline_playback',{nonBlackPixels:nonBlack,frames:Number(canvas.dataset.renderedFrames),local:videoAfter.local,id:videoAfter.id,retryKeptPlayId:videoAfter.playId===videoBefore.playId});
     await emit('complete',{ok:true,downloadPageUi:true,stageCount:count,realMusicRequests:0,realAccountWrites:0,syntheticNativeRecords:146,physicalPointerVerified:false});
   }catch(error){const failedAt=stage;await capture('failure_state').catch(()=>{});await emit('failed',{stageCount:count,step:failedAt,message:String(error),stack:error.stack});}
 })();

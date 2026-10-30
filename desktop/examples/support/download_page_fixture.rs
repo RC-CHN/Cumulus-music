@@ -27,8 +27,22 @@ pub fn enabled() -> bool {
 }
 static DATA: OnceLock<Arc<Vec<u8>>> = OnceLock::new();
 static CHUNK: AtomicUsize = AtomicUsize::new(512);
+static MV_DETAIL: AtomicUsize = AtomicUsize::new(0);
+static MV_STREAM: AtomicUsize = AtomicUsize::new(0);
 const MEDIA: &str = "https://m1.music.126.net/cumulus-download-fixture.wav";
 pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
+    if enabled() && path == "/api/mlog/detail/v1" {
+        MV_DETAIL.fetch_add(1, Ordering::SeqCst);
+        return Some(Err(Error::Transport(
+            "synthetic offline MV metadata".into(),
+        )));
+    }
+    if enabled() && path == "/api/song/enhance/play/mv/url" {
+        MV_STREAM.fetch_add(1, Ordering::SeqCst);
+        return Some(Err(Error::State(
+            "offline MV must not request a streaming URL",
+        )));
+    }
     if !enabled() || path != "/api/song/enhance/download/url/v1" {
         return None;
     }
@@ -128,7 +142,10 @@ impl Fixture {
                 DATA.set(Arc::new(std::fs::read(&wave)?)).unwrap();
                 let mut saved = vec![];
                 for i in 1..=146_u64 {
-                    let path = media.join(format!("synthetic-{i}.wav"));
+                    let path = media.join(format!(
+                        "synthetic-{i}.{}",
+                        if i == 133 { "mp4" } else { "wav" }
+                    ));
                     let mut task = service.create(
                         &json!(i),
                         DownloadDestination::Path { path: path.clone() },
@@ -167,19 +184,29 @@ impl Fixture {
                     task.song = Some(
                         json!({"id":i,"name":format!("合成{kind} {i:03} · 沿着海岸走到日落之后（特别收录版本）"),"ar":[{"name":format!("Artist {} · Cumulus", 150-i)}],"al":{"name":format!("专辑 {:03}", 150-i)},"dt":235000,"fee":0}),
                     );
+                    if i == 133 {
+                        task.song.as_mut().unwrap()["dt"] = json!(6000);
+                        task.song.as_mut().unwrap()["ar"] =
+                            json!([{"id":17,"name":"Artist 17"},{"name":"无标识艺人"}]);
+                    }
                     task.created_ms = 1700000000000 + i * 1000;
                     task.resource = Some(json!({"size":18_000_000,"level":"lossless","r":1080}));
                     task.bytes = 9_000_000;
                     if i <= 141 {
-                        // Independent hardlinks keep this synthetic media small. The MV
-                        // branch proves card layout only, never codec/video playback.
-                        std::fs::hard_link(&wave, &path)?;
+                        // Only 133 is a real video; other MV cards are layout fixtures.
+                        let integrity = if i == 133 {
+                            std::fs::write(&path, include_bytes!("fixtures/offline-mv.mp4"))?;
+                            cumulus_core::media::integrity::inspect_file(&path)?
+                        } else {
+                            std::fs::hard_link(&wave, &path)?;
+                            integrity.clone()
+                        };
                         task.target = Some(path.clone());
                         task.output_integrity = Some(integrity.clone());
                         task.status = DownloadStatus::Complete;
                         task.phase = DownloadPhase::Complete;
                         task.completed_ms = Some(1700000000000 + (150 - i) * 1000);
-                        if i <= 132 {
+                        if i <= 133 {
                             offline.register(
                                 &token,
                                 &cumulus_core::download::offline::PublishedDownload {
@@ -299,6 +326,20 @@ impl Fixture {
                 })
                 .await
                 .map_err(|_| Error::State("synthetic download playback timed out"))??;
+            }
+            "verify_local_mv" => {
+                let current = client.video_snapshot(&epoch).await?;
+                if current.id.as_deref() != Some("133")
+                    || !current.local
+                    || current.requested_resolution != 1080
+                    || current.actual_resolution != Some(1080)
+                    || MV_STREAM.load(Ordering::SeqCst) != 0
+                    || MV_DETAIL.load(Ordering::SeqCst) == 0
+                {
+                    return Err(Error::State(
+                        "real local video did not load independently of online metadata",
+                    ));
+                }
             }
             "verify_batch_delete" => {
                 let removed = value["removed"]
