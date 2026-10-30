@@ -98,14 +98,10 @@ impl Api for Library {
                     return playlist_editor_fixture::batch(args);
                 }
                 "/api/playlist/catalogue" => {
-                    let mut value = json!({"code":200,"categories":{"0":"风格"},"sub":[{"name":"轻音乐","category":0},{"name":"摇滚","category":0}]});
                     if playlist_editor_fixture::enabled() {
-                        value["sub"].as_array_mut().unwrap().extend([
-                            json!({"name":"古典","category":0}),
-                            json!({"name":"爵士","category":0}),
-                        ]);
+                        return playlist_editor_fixture::catalogue().await;
                     }
-                    value
+                    json!({"code":200,"categories":{"0":"风格"},"sub":[{"name":"轻音乐","category":0},{"name":"摇滚","category":0}]})
                 }
                 "/api/cloudsearch/pc" => {
                     json!({"code":200,"result":{"songs":(1..=12).map(song).collect::<Vec<_>>(),"songCount":12}})

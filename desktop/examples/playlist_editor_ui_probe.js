@@ -21,7 +21,7 @@
   let stageCount=0;const checks=[];
   async function capture(label){
     await sleep(250);const page=one('.playlist-editor-page'),modal=one('dialog[open]');
-    const buttons=modal?[...modal.querySelectorAll('footer button')]:all('.playlist-editor-actions > button,.playlist-editor-actions .menu-trigger');
+    const popup=modal||one('.tag-picker');const buttons=popup?[...popup.querySelectorAll('footer button')]:all('.playlist-editor-actions > button,.playlist-editor-actions .menu-trigger');
     const row={label,noOverflow:document.documentElement.scrollWidth<=innerWidth,controlsHit:buttons.every(hit),pageWithinContent:!page||rect(page).bottom<=rect(one('.playerbar')).y+1,modalVisible:!modal||visible(modal)};
     assert(Object.entries(row).every(([k,v])=>k==='label'||v),JSON.stringify(row));checks.push(row);
     await emit(`ux_${String(++stageCount).padStart(2,'0')}_${label}`,{width:innerWidth,height:innerHeight,theme:document.documentElement.dataset.theme,checks:row,editor:page&&rect(page),fields:one('.playlist-editor-fields')&&rect(one('.playlist-editor-fields')),cover:one('.playlist-cover-edit button')&&rect(one('.playlist-cover-edit button')),footer:one('.playlist-editor-actions')&&rect(one('.playlist-editor-actions'))});await sleep(850);

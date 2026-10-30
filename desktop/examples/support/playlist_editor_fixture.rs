@@ -51,6 +51,34 @@ pub fn fails_read(id: u64) -> bool {
 pub fn writes() -> u64 {
     state().lock().unwrap().writes
 }
+pub async fn catalogue() -> Result<Value> {
+    wait_while("hold_tags").await;
+    let mode = state().lock().unwrap().mode.clone();
+    if mode == "fail_tags" {
+        return Err(Error::Response("synthetic tag catalogue unavailable"));
+    }
+    if mode == "empty_tags" {
+        return Ok(json!({"code":200,"categories":{},"sub":[]}));
+    }
+    let mut rows = vec![
+        json!({"name":"轻音乐","category":0}),
+        json!({"name":"摇滚","category":0}),
+        json!({"name":"古典","category":0}),
+        json!({"name":"爵士","category":0}),
+    ];
+    let mut categories = json!({"0":"风格"});
+    if mode == "rich_tags" {
+        categories = json!({"0":"风格","1":"语种","2":"场景","3":"情感","4":"主题"});
+        for (index, category) in ["风格", "语种", "场景", "情感", "主题"].iter().enumerate()
+        {
+            for number in 1..=if index == 0 { 40 } else { 12 } {
+                rows.push(json!({"name":format!("{category}标签 {number:02}"),"category":index}));
+            }
+        }
+        rows.push(json!({"name":"一段用来检查完整名称提示的很长标签","category":4}));
+    }
+    Ok(json!({"code":200,"categories":categories,"sub":rows}))
+}
 pub fn batch(args: Value) -> Result<Value> {
     let mut s = state().lock().unwrap();
     let name: Value = serde_json::from_str(args["/api/playlist/update/name"].as_str().unwrap())?;
