@@ -16,7 +16,7 @@ import type {
 export function useDownloads(core: DownloadClient = useCore(), sessionChanged = () => {}) {
   const view = shallowRef<DownloadsView>();
   const viewport = shallowRef<DownloadViewport>();
-  const query = ref<DownloadQuery>({
+  const initialQuery = (): DownloadQuery => ({
     tab: 'completed',
     category: 'song',
     keyword: '',
@@ -25,6 +25,12 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
     offset: 0,
     limit: 100,
   });
+  const query = ref(initialQuery());
+  const visit = shallowRef<object>();
+  let visits = new WeakMap<
+    object,
+    { query: DownloadQuery; viewport?: DownloadViewport; moreError: string }
+  >();
   const loading = ref(false),
     loadingMore = ref(false),
     moreError = ref(''),
@@ -114,12 +120,18 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
     }
   }
   async function connect(account: AccountView) {
+    const next = account.status === 'authenticated' ? account.epoch : '';
+    if (next && epoch === next) {
+      await refresh();
+      return;
+    }
     generation++;
     read++;
     stopTimer();
-    epoch = account.status === 'authenticated' ? account.epoch : '';
+    epoch = next;
     view.value = undefined;
     viewport.value = undefined;
+    visits = new WeakMap();
     error.value = '';
     readError.value = '';
     notice.value = '';
@@ -127,8 +139,7 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
     loading.value = false;
     loadingMore.value = false;
     moreError.value = '';
-    query.value.offset = 0;
-    query.value.limit = 100;
+    query.value = initialQuery();
     await refresh();
   }
   function show(value: boolean) {
@@ -208,15 +219,65 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
     stopTimer();
     epoch = '';
     viewport.value = undefined;
+    visits = new WeakMap();
+    visit.value = undefined;
   }
-  function saveViewport(value: DownloadViewport) {
-    if (epoch && value.epoch === epoch && value.query === downloadViewportKey(query.value))
+  function saveViewport(value: DownloadViewport, owner: object | undefined = visit.value) {
+    if (
+      epoch &&
+      owner === visit.value &&
+      value.epoch === epoch &&
+      value.query === downloadViewportKey(query.value)
+    )
       viewport.value = value;
+  }
+  function leaveVisit() {
+    if (visit.value && epoch)
+      visits.set(visit.value, {
+        query: { ...query.value },
+        viewport: viewport.value,
+        moreError: moreError.value,
+      });
+    visit.value = undefined;
+  }
+  function enterVisit(target: object, initial?: Partial<DownloadQuery>) {
+    if (visit.value === target) return;
+    leaveVisit();
+    const saved = visits.get(target),
+      previous = downloadViewportKey(query.value);
+    visit.value = target;
+    if (saved) {
+      query.value = { ...saved.query };
+      viewport.value = saved.viewport;
+    } else if (initial) {
+      query.value = { ...query.value, ...initial, offset: 0, limit: 100 };
+      if (query.value.tab === 'active') query.value.category = 'all';
+      viewport.value = undefined;
+    }
+    // Superseded reads may finish, but cannot update the newly selected visit.
+    read++;
+    stopTimer();
+    loading.value = false;
+    loadingMore.value = false;
+    moreError.value = saved?.moreError ?? '';
+    if (previous !== downloadViewportKey(query.value)) {
+      view.value = undefined;
+      readError.value = '';
+    }
+  }
+  function captureVisit() {
+    const captured = generation,
+      owner = visit.value;
+    return () => !!epoch && captured === generation && owner === visit.value;
   }
   return {
     view,
     viewport,
     saveViewport,
+    visit,
+    enterVisit,
+    leaveVisit,
+    captureVisit,
     query,
     loading,
     loadingMore,

@@ -14,6 +14,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ play: []; batch: []; clear: []; settings: [] }>();
 const { query, view } = props.model;
+const owns = props.model.captureVisit();
 const keyword = ref(query.value.keyword),
   field = ref<HTMLInputElement>();
 let composing = false,
@@ -29,8 +30,13 @@ const menu = computed<MenuItem[]>(() => [
 ]);
 function search() {
   clearTimeout(timer);
-  if (!composing) props.model.filter({ keyword: keyword.value.trim() });
+  timer = undefined;
+  if (!composing && owns()) props.model.filter({ keyword: keyword.value.trim() });
 }
+function flushSearch() {
+  if (timer !== undefined) search();
+}
+defineExpose({ flushSearch });
 function input() {
   clearTimeout(timer);
   if (!composing) timer = setTimeout(search, 100);

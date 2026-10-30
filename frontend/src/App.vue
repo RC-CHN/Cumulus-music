@@ -85,6 +85,7 @@ import { usePlaylists } from './composables/usePlaylists';
 import { playlistSaved, type PlaylistDialogTarget } from './services/playlists';
 import { usePlayer } from './composables/usePlayer';
 import { useMusic } from './composables/useMusic';
+import { downloadSectionQuery } from './services/downloadPage';
 import { useCore } from './services/core';
 const core = useCore();
 const searchMemory = createSearchViewportMemory();
@@ -443,6 +444,7 @@ const downloadBatchPage = ref<InstanceType<typeof DownloadBatchPage>>();
 let downloadBatchScroll = 0,
   restoreDownloadFocus = false;
 function openDownloadBatch(category: BatchCategory) {
+  downloadPageRef.value?.checkpoint();
   downloadBatchScroll = document.querySelector<HTMLElement>('.download-scroll')?.scrollTop ?? 0;
   restoreDownloadFocus = false;
   downloadBatch.value = { category, query: { ...downloads.query.value } };
@@ -476,6 +478,22 @@ function downloadReturnFocus() {
 const downloads = useDownloads(undefined, () => {
   void music.bootstrap(false);
 });
+const downloadPageRef = ref<InstanceType<typeof DownloadPage>>();
+watch(
+  music.page,
+  (next, previous) => {
+    if (previous.kind === 'downloads') {
+      downloadPageRef.value?.checkpoint();
+      downloads.leaveVisit();
+    }
+    if (next.kind === 'downloads')
+      downloads.enterVisit(
+        next,
+        next.initialTab === 'active' ? downloadSectionQuery('active') : undefined,
+      );
+  },
+  { flush: 'sync' },
+);
 async function queueDownload(task: import('./services/downloads').DownloadTask) {
   const view = player.view.value,
     owner = account.value.epoch;
@@ -607,9 +625,11 @@ const currentOrigin = computed(() => {
 });
 const playbackState = computed(() => player.view.value?.state);
 const pageKey = computed(() =>
-  JSON.stringify(
-    page.value.kind === 'search' ? { kind: 'search', keyword: page.value.keyword } : page.value,
-  ),
+  JSON.stringify({
+    account: [account.value.epoch, account.value.status],
+    page:
+      page.value.kind === 'search' ? { kind: 'search', keyword: page.value.keyword } : page.value,
+  }),
 );
 const playingLikes = computed(() => {
   const voiceId = currentVoiceId.value;
@@ -829,7 +849,12 @@ watch(
   },
 );
 watch(
-  () => [page.value.kind, !!downloadDialog.value, !!playlistActions.value?.downloadOpen],
+  () => [
+    page.value.kind,
+    page.value.kind === 'downloads' ? page.value.downloadVisit : undefined,
+    !!downloadDialog.value,
+    !!playlistActions.value?.downloadOpen,
+  ],
   () =>
     downloads.show(
       page.value.kind === 'downloads' ||
@@ -1004,10 +1029,7 @@ onUnmounted(() => {
             @close="closeBatch()"
             @expired="music.bootstrap(false)"
             @changed="batchDirty = true"
-            @downloaded="
-              downloads.filter({ tab: 'active' });
-              music.navigate({ kind: 'downloads' });
-            "
+            @downloaded="music.navigate({ kind: 'downloads', initialTab: 'active' })"
           />
         </Transition>
         <Transition name="page" @after-leave="editorLeft">
@@ -1279,6 +1301,7 @@ onUnmounted(() => {
                 "
               />
               <DownloadPage
+                ref="downloadPageRef"
                 v-else-if="page.kind === 'downloads'"
                 :model="downloads"
                 :playable="player.ready.value"
@@ -1582,10 +1605,7 @@ onUnmounted(() => {
       :downloads="downloads"
       :player="player"
       @expired="music.bootstrap(false)"
-      @started="
-        downloads.filter({ tab: 'active' });
-        music.navigate({ kind: 'downloads' });
-      "
+      @started="music.navigate({ kind: 'downloads', initialTab: 'active' })"
     />
     <TrackActions
       ref="trackActions"
@@ -1632,10 +1652,7 @@ onUnmounted(() => {
         :model="downloads"
         :target="downloadDialog"
         @close="downloadDialog = undefined"
-        @started="
-          downloads.filter({ tab: 'active' });
-          music.navigate({ kind: 'downloads' });
-        "
+        @started="music.navigate({ kind: 'downloads', initialTab: 'active' })"
       />
     </ModalTransition>
   </div>

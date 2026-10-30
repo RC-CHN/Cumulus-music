@@ -24,7 +24,7 @@ export type Page =
   | { kind: 'local' }
   | { kind: 'daily' }
   | { kind: 'library' }
-  | { kind: 'downloads' }
+  | { kind: 'downloads'; downloadVisit?: number; initialTab?: 'active' }
   | { kind: 'cloud' }
   | { kind: 'mvs' }
   | { kind: 'mv'; id: string; taskId?: string }
@@ -67,6 +67,7 @@ export function useMusic(
   const historyLength = ref(0);
   let request = 0;
   let searchId = 0;
+  let downloadVisit = 0;
   let accountRequest = 0;
   let resourceRequest = 0;
   let likeRevision = 0;
@@ -201,6 +202,10 @@ export function useMusic(
       const next = restoring ? await core.restoreAccount() : await core.accountSnapshot();
       if (current !== accountRequest) return;
       if (next.epoch !== account.value.epoch) {
+        history.length = 0;
+        historyLength.value = 0;
+        if (['playlist', 'comments', 'catalog', 'search', 'mv'].includes(page.value.kind))
+          page.value = { kind: 'daily' };
         playlistError.value = '';
         libraryError.value = '';
         playlists.value = [];
@@ -229,7 +234,9 @@ export function useMusic(
       page.value =
         next.kind === 'search' && next.searchId === undefined
           ? { ...next, searchId: ++searchId }
-          : next;
+          : next.kind === 'downloads'
+            ? { ...next, downloadVisit: ++downloadVisit }
+            : next;
       void load();
     });
   }
@@ -246,7 +253,7 @@ export function useMusic(
   function replace(next: Page) {
     if (initializing.value) return;
     navigation(() => {
-      page.value = next;
+      page.value = next.kind === 'downloads' ? { ...next, downloadVisit: ++downloadVisit } : next;
       void load();
     });
   }

@@ -79,7 +79,14 @@ function openBatch() {
 }
 const section = computed(() => downloadSection(query.value));
 const columnGrowth = ref<number[]>([]);
+const toolbar = ref<InstanceType<typeof DownloadToolbar>>();
 const viewport = useDownloadViewport(root, props.model, columnGrowth);
+defineExpose({
+  checkpoint: () => {
+    viewport.checkpoint();
+    toolbar.value?.flushSearch();
+  },
+});
 watch(
   section,
   (value) => {
@@ -139,6 +146,7 @@ function play(task?: DownloadTask) {
         :aria-busy="loading"
       >
         <DownloadToolbar
+          ref="toolbar"
           :model="model"
           :section="section"
           :can-play="canPlay"
@@ -151,7 +159,12 @@ function play(task?: DownloadTask) {
         />
         <div v-if="error || readError" class="error-state" role="alert">
           {{ error || readError
-          }}<button class="text-button" :disabled="loading" @click="model.refresh()">
+          }}<button
+            class="text-button"
+            data-download-retry
+            :disabled="loading"
+            @click="model.refresh()"
+          >
             {{ loading ? '正在刷新…' : '刷新状态' }}</button
           ><button v-if="error" class="text-button" @click="error = ''">关闭提示</button>
         </div>

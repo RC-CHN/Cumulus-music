@@ -12,6 +12,7 @@ export function useDownloadViewport(
   growth: Ref<number[]>,
 ) {
   let pending = model.viewport.value;
+  const ownerVisit = model.visit.value;
   let ownerEpoch = model.view.value?.epoch;
   let lastFocus: DownloadViewport['focus'];
   let mounted = true,
@@ -24,7 +25,16 @@ export function useDownloadViewport(
     lastFocus =
       row && taskId(row) ? { task: taskId(row)!, action: owner.dataset.downloadAction } : undefined;
   }
-  function cancel() {
+  function cancel(event?: Event) {
+    // Retrying a failed read resumes the original return, rather than starting
+    // a new browsing action. Scrolling or choosing anything else cancels it.
+    if (
+      event?.target instanceof Element &&
+      event.target.closest('[data-download-retry]') &&
+      (event.type === 'pointerdown' ||
+        (event instanceof KeyboardEvent && ['Enter', ' '].includes(event.key)))
+    )
+      return;
     cancelled = true;
     pending = undefined;
   }
@@ -56,6 +66,7 @@ export function useDownloadViewport(
         mounted &&
         !cancelled &&
         pending === saved &&
+        model.visit.value === ownerVisit &&
         saved.epoch === model.view.value?.epoch &&
         saved.query === key();
       // ResizeObserver establishes the actual column count before applying an anchor.
@@ -92,8 +103,17 @@ export function useDownloadViewport(
         saved.focus &&
         (document.activeElement === owner || document.activeElement === document.body)
       ) {
-        const r = target?.getBoundingClientRect(),
-          bounds = el.getBoundingClientRect();
+        const bounds = el.getBoundingClientRect(),
+          rowBounds = selected?.getBoundingClientRect();
+        if (
+          target &&
+          !target.getClientRects().length &&
+          rowBounds &&
+          rowBounds.bottom > bounds.top &&
+          rowBounds.top < bounds.bottom
+        )
+          selected?.focus({ preventScroll: true });
+        const r = target?.getBoundingClientRect();
         if (
           r &&
           r.bottom > bounds.top &&
@@ -118,11 +138,18 @@ export function useDownloadViewport(
     }
   }
   watch([root, model.view, model.loading], () => void restore(), { flush: 'post' });
-  onBeforeUnmount(() => {
-    mounted = false;
+  function checkpoint() {
     const el = scroller(),
       view = model.view.value;
-    if (!el || !view || view.epoch !== ownerEpoch || restoring || !el.clientHeight) return;
+    if (
+      !el ||
+      !view ||
+      model.visit.value !== ownerVisit ||
+      view.epoch !== ownerEpoch ||
+      restoring ||
+      !el.clientHeight
+    )
+      return;
     const bounds = el.getBoundingClientRect();
     const anchor = [...el.querySelectorAll<HTMLElement>(rows)].find(
       (row) => row.getBoundingClientRect().bottom > bounds.top,
@@ -131,15 +158,22 @@ export function useDownloadViewport(
     const pitch = Number(el.dataset.downloadPitch ?? 64);
     const columns = Number(el.dataset.downloadColumns ?? 1);
     const index = Number(anchor.dataset.downloadIndex ?? anchor.dataset.mvIndex);
-    model.saveViewport({
-      epoch: view.epoch,
-      query: key(),
-      anchor: taskId(anchor)!,
-      index,
-      offset: el.scrollTop - Math.floor(index / columns) * pitch,
-      focus: lastFocus,
-      growth: [...growth.value],
-    });
+    model.saveViewport(
+      {
+        epoch: view.epoch,
+        query: key(),
+        anchor: taskId(anchor)!,
+        index,
+        offset: el.scrollTop - Math.floor(index / columns) * pitch,
+        focus: lastFocus,
+        growth: [...growth.value],
+      },
+      ownerVisit,
+    );
+  }
+  onBeforeUnmount(() => {
+    checkpoint();
+    mounted = false;
   });
-  return { focus, cancel };
+  return { focus, cancel, checkpoint };
 }
