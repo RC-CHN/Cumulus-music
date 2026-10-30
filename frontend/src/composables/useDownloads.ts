@@ -2,6 +2,7 @@ import { computed, ref, shallowRef } from 'vue';
 import type { AccountView } from '../services/contracts.ts';
 import { failure } from '../services/contracts.ts';
 import { useCore } from '../services/core.ts';
+import { downloadCommandLabel } from '../services/downloadFeedback.ts';
 import type {
   DownloadClient,
   DownloadCommand,
@@ -34,9 +35,10 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
     read = 0,
     visible = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  function issue(e: unknown, reading = false) {
+  function issue(e: unknown, reading = false, context = '') {
     const v = failure(e);
-    if (v.code !== 'stale') (reading ? readError : error).value = v.message;
+    if (v.code !== 'stale')
+      (reading ? readError : error).value = context ? `${context}：${v.message}` : v.message;
     if (['session_expired', 'profile_changed'].includes(v.code)) sessionChanged();
   }
   function stopTimer() {
@@ -147,6 +149,7 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
     if (!epoch || busy.value) return;
     const version = generation,
       captured = epoch;
+    const label = downloadCommandLabel(input);
     busy.value = true;
     error.value = '';
     notice.value = '';
@@ -161,10 +164,11 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
           : result.accepted.length
             ? `已受理 ${result.accepted.length} 项`
             : '已保存';
+      notice.value = `${label}：${notice.value}`;
       await refresh(true);
       return result;
     } catch (e) {
-      if (version === generation) issue(e);
+      if (version === generation) issue(e, false, label);
     } finally {
       if (version === generation) busy.value = false;
     }

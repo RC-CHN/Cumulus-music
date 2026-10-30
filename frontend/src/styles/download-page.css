@@ -202,6 +202,12 @@
 .download-table-header:hover {
   background: transparent;
 }
+.download-table-header > [role='columnheader'] {
+  position: relative;
+  height: 40px;
+  display: flex;
+  align-items: center;
+}
 .download-sort-heading {
   display: flex;
   align-items: center;

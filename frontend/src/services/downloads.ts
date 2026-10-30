@@ -16,7 +16,7 @@ export const defaultDownloadOptions: DownloadOptions = {
 };
 export type DownloadTab = 'completed' | 'active';
 export type DownloadCategory = 'all' | 'song' | 'voice' | 'mv';
-export type DownloadSort = 'name' | 'artist' | 'album' | 'size' | 'completed';
+export type DownloadSort = 'name' | 'artist' | 'album' | 'size' | 'completed' | 'none';
 export interface DownloadQuery {
   tab: DownloadTab;
   category?: DownloadCategory;

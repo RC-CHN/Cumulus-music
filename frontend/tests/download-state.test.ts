@@ -101,7 +101,7 @@ test('download write error survives successful polling and batch partial success
   await model.connect(account());
   await model.command({ kind: 'all', action: 'pause' });
   await model.refresh(true);
-  assert.equal(model.error.value, '目录冲突');
+  assert.equal(model.error.value, '暂停全部下载：目录冲突');
   failing = false;
   const result = await model.command({ kind: 'all', action: 'pause' });
   assert.equal(result?.failed.length, 1);
@@ -220,5 +220,23 @@ test('category and account changes discard a pending growth read and concurrent 
   assert.equal(model.view.value?.epoch, '2');
   assert.equal(model.view.value?.tasks[0]?.id, '0');
   assert.equal(model.query.value.limit, 100);
+  model.dispose();
+});
+
+test('download feedback retains operation context across category switches and late completion', async () => {
+  const pending = deferred<DownloadResult>();
+  const model = useDownloads({
+    downloads: async (epoch) => state(epoch),
+    downloadCommand: () => pending.promise,
+  } as DownloadClient);
+  await model.connect(account());
+  const writing = model.command({ kind: 'all', action: 'pause' });
+  await model.filter({ category: 'voice' });
+  pending.resolve({ epoch: '1', accepted: ['one'], failed: [], operationId: null });
+  await writing;
+  assert.equal(model.notice.value, '暂停全部下载：已受理 1 项');
+  await model.filter({ category: 'mv' });
+  await model.refresh(true);
+  assert.equal(model.notice.value, '暂停全部下载：已受理 1 项');
   model.dispose();
 });

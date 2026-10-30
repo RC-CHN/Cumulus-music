@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch, useId } from 'vue';
 import type {
   DownloadTask,
   DownloadQuery,
@@ -7,13 +7,16 @@ import type {
   DownloadControl,
 } from '../../services/downloads';
 import { bytesLabel, downloadStatus } from '../../services/downloads';
-import { downloadDate, downloadColumnWidths } from '../../services/downloadPage';
+import { downloadDate, downloadSection, downloadTableColumns } from '../../services/downloadPage';
 import { useVirtualRows } from '../../composables/useVirtualRows';
 import DownloadTrackTitle from './DownloadTrackTitle.vue';
 import DownloadContinuation from './DownloadContinuation.vue';
 import Icon from '../Icon.vue';
+import TableColumnResize from '../TableColumnResize.vue';
+import { useTableColumns } from '../../composables/useTableColumns';
 const props = defineProps<{
   tasks: DownloadTask[];
+  growth: number[];
   total: number;
   query: DownloadQuery;
   batch: boolean;
@@ -34,34 +37,22 @@ const emit = defineEmits<{
   sort: [column: DownloadSort];
   control: [task: DownloadTask, action: DownloadControl];
   load: [];
+  columns: [growth: number[]];
 }>();
 const active = computed(() => props.query.tab === 'active'),
   voice = computed(() => props.query.category === 'voice');
 const { container, start, end, onScroll, reset } = useVirtualRows(() => props.tasks.length, 64);
-const width = ref(490);
-let observer: ResizeObserver | undefined;
-watch(
+const growth = computed({
+  get: () => props.growth,
+  set: (value: number[]) => emit('columns', value),
+});
+const columns = useTableColumns(
   container,
-  (element) => {
-    observer?.disconnect();
-    if (!element) return;
-    width.value = element.clientWidth;
-    observer = new ResizeObserver(() => {
-      width.value = element.clientWidth;
-    });
-    observer.observe(element);
-  },
-  { flush: 'post' },
+  () => downloadTableColumns(downloadSection(props.query)),
+  () => props.locked,
+  growth,
 );
-onBeforeUnmount(() => observer?.disconnect());
-const columns = computed(() => ({
-  gridTemplateColumns: downloadColumnWidths(
-    width.value,
-    active.value ? 'active' : voice.value ? 'voice' : 'song',
-  )
-    .map((n) => `${n}px`)
-    .join(' '),
-}));
+const bodyId = useId();
 const rows = computed(() => props.tasks.slice(start.value, end.value));
 watch(
   [end, () => props.tasks.length, () => props.more, () => props.loadingMore],
@@ -156,7 +147,7 @@ async function key(event: KeyboardEvent, index: number) {
     role="table"
     :aria-rowcount="total + 1"
   >
-    <div class="download-row download-table-header" role="row" :style="columns">
+    <div class="download-row download-table-header" role="row" :style="columns.style.value">
       <span role="columnheader"
         ><input
           v-if="batch"
@@ -168,7 +159,7 @@ async function key(event: KeyboardEvent, index: number) {
         /><template v-else>#</template></span
       >
       <span
-        v-for="header in headers"
+        v-for="(header, index) in headers"
         :key="header.sort"
         role="columnheader"
         :aria-sort="
@@ -176,7 +167,9 @@ async function key(event: KeyboardEvent, index: number) {
             ? query.descending
               ? 'descending'
               : 'ascending'
-            : undefined
+            : active
+              ? undefined
+              : 'none'
         "
       >
         <template v-if="active">{{ header.label }}</template
@@ -188,12 +181,20 @@ async function key(event: KeyboardEvent, index: number) {
           @click="emit('sort', header.sort)"
         >
           {{ header.label
-          }}<Icon v-if="sorting(header.sort)" :name="query.descending ? 'down' : 'up'" />
-        </button> </span
+          }}<Icon v-if="sorting(header.sort)" :name="query.descending ? 'down' : 'up'" /></button
+        ><TableColumnResize
+          v-if="columns.resizable(index + 1)"
+          :model="columns"
+          :column="index + 1"
+          :label="header.label"
+          :controls="bodyId"
+          :data-download-resize="index + 1"
+        /> </span
       ><span v-if="active" role="columnheader">进度</span>
     </div>
     <div
       ref="container"
+      :id="bodyId"
       class="download-scroll"
       tabindex="-1"
       @scroll.passive="onScroll"
@@ -204,7 +205,7 @@ async function key(event: KeyboardEvent, index: number) {
         v-for="(task, i) in rows"
         :key="task.id"
         class="download-row"
-        :style="columns"
+        :style="columns.style.value"
         :class="{ current: task.track.id === currentId, selected: selected.has(task.id) }"
         role="row"
         :aria-rowindex="query.offset + start + i + 2"

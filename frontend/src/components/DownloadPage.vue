@@ -5,6 +5,7 @@ import type { DownloadDialogTarget, DownloadTask, DownloadQuery } from '../servi
 import type { PlaySelection } from '../services/player';
 import {
   downloadSection,
+  downloadTableColumns,
   downloadSectionQuery,
   nextDownloadSort,
   type DownloadSection,
@@ -81,6 +82,14 @@ async function toggleBatch() {
 const tasks = computed(() => view.value?.tasks ?? []);
 const selectedTasks = computed(() => tasks.value.filter((t) => selected.value.has(t.id)));
 const section = computed(() => downloadSection(query.value));
+const columnGrowth = ref<number[]>([]);
+watch(
+  section,
+  (value) => {
+    columnGrowth.value = downloadTableColumns(value).map((c) => c.grow);
+  },
+  { immediate: true },
+);
 const locked = computed(
   () => busy.value || loading.value || !!readError.value || !!view.value?.migration,
 );
@@ -217,6 +226,8 @@ function play(task?: DownloadTask) {
         />
         <DownloadTable
           v-else
+          :growth="columnGrowth"
+          @columns="columnGrowth = $event"
           :tasks="tasks"
           :total="view?.total ?? 0"
           :query="query"

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { usePlaylistBatchColumns } from '../../composables/usePlaylistBatchColumns';
 import type { BatchResizeColumn } from '../../services/playlistBatchTable';
+import TableColumnResize from '../TableColumnResize.vue';
 defineProps<{
   model: ReturnType<typeof usePlaylistBatchColumns>;
   column: BatchResizeColumn;
@@ -9,24 +10,5 @@ defineProps<{
 }>();
 </script>
 <template>
-  <span
-    class="batch-column-resizer"
-    :class="{ dragging: model.dragging.value === column }"
-    role="separator"
-    aria-orientation="vertical"
-    :aria-label="`调整${label}列宽`"
-    :aria-controls="controls"
-    :aria-valuemin="model.minimum(column)"
-    :aria-valuemax="Math.round(model.maximum(column))"
-    :aria-valuenow="Math.round(model.value(column))"
-    :aria-valuetext="`${Math.round(model.value(column))} 像素`"
-    :aria-disabled="!model.available.value"
-    :tabindex="model.available.value ? 0 : -1"
-    :data-batch-resize="column"
-    :data-tooltip="`拖动调整${label}列宽；方向键微调，回车或双击重置`"
-    @pointerdown="model.start($event, column)"
-    @keydown="model.key($event, column)"
-    @click.stop
-    @dblclick.stop.prevent="model.reset"
-  />
+  <TableColumnResize v-bind="$props" class="batch-column-resizer" :data-batch-resize="column" />
 </template>
