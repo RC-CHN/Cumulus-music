@@ -4,6 +4,8 @@ mod assets;
 #[allow(dead_code)]
 #[path = "support/catalog_fixture.rs"]
 mod fixture;
+#[path = "support/library_fixture.rs"]
+mod library_fixture;
 #[path = "support/like_recovery_fixture.rs"]
 mod like_recovery_fixture;
 #[path = "support/media_shortcuts.rs"]
@@ -57,6 +59,9 @@ fn playlist(id: u64) -> Value {
 impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, args: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(result) = library_fixture::response(path, &args).await {
+                return result;
+            }
             if let Some(result) = playlist_collect_fixture::response(path, &args).await {
                 return result;
             }
@@ -265,6 +270,12 @@ fn main() {
                 handle.get_webview_window("main").unwrap().eval(format!("window.__collectFixtureAck={report};")).unwrap();
                 return;
             }
+            if library_fixture::enabled() && stage=="library-fixture" {
+                library_fixture::control(&value);
+                let report = library_fixture::report();
+                handle.get_webview_window("main").unwrap().eval(format!("window.__libraryFixtureAck={report};")).unwrap();
+                return;
+            }
             if playlist_layout_fixture::enabled() && stage=="playlist-fixture-release" {
                 playlist_layout_fixture::release_failure();
                 return;
@@ -306,6 +317,7 @@ fn main() {
             }
             if !(["complete","failed"].contains(&stage) || stage.starts_with("ux_") && stage.chars().all(|c|c.is_ascii_alphanumeric()||c=='_')){return;}
             let stage=stage.to_owned();
+            if library_fixture::enabled() { value["syntheticLibrary"] = library_fixture::report(); }
             if playlist_collect_fixture::enabled() { value["syntheticCollection"] = playlist_collect_fixture::report(); }
             if let Some(fixture)=transfer.as_ref() {value["syntheticCoverTransfer"]=fixture.report();}
             if playlist_editor_fixture::enabled() {value["syntheticMetadataWrites"]=json!(playlist_editor_fixture::writes());}
@@ -326,7 +338,9 @@ fn main() {
                 let stage = stage.to_owned(); let handle=handle.clone(); let output=output.clone();
                 tauri::async_runtime::spawn(async move {
                     let client=handle.state::<MusicClient>(); let epoch=client.account().unwrap().epoch;
-                    value["nativePlayer"]=serde_json::to_value(client.subscribe_playback(&epoch).await.unwrap().current().unwrap()).unwrap();
+                    if let Ok(playback)=client.subscribe_playback(&epoch).await && let Ok(snapshot)=playback.current() {
+                        value["nativePlayer"]=serde_json::to_value(snapshot).unwrap();
+                    } else { value["nativePlayerUnavailable"]=json!(true); }
                     fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
                     if ["complete","failed"].contains(&stage.as_str()) {
                         let _=client.player_action(&epoch,cumulus_core::client::dto::PlayerAction::Stop).await;
