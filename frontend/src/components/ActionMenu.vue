@@ -8,8 +8,11 @@ const props = withDefaults(
     label: string;
     items: MenuItem[];
     icon?: string;
+    triggerText?: string;
+    disabled?: boolean;
+    focusChecked?: boolean;
     contextOnly?: boolean;
-    variant?: 'song';
+    variant?: 'song' | 'speed';
   }>(),
   {
     icon: 'more',
@@ -52,6 +55,7 @@ function close(restore = false) {
   }
 }
 async function display(last = false, point?: { x: number; y: number }, target?: HTMLElement) {
+  if (props.disabled) return;
   close();
   const revision = displayRevision;
   returnTarget = target ?? trigger.value;
@@ -82,7 +86,10 @@ async function display(last = false, point?: { x: number; y: number }, target?: 
   if (revision !== displayRevision || !open.value) return;
   rememberAnchor();
   const items = choices();
-  ((last ? items.at(-1) : items[0]) ?? panel.value)?.focus({ preventScroll: true });
+  const checked = props.focusChecked
+    ? items.find((item) => item.getAttribute('aria-checked') === 'true')
+    : undefined;
+  ((last ? items.at(-1) : (checked ?? items[0])) ?? panel.value)?.focus({ preventScroll: true });
 }
 const show = (last = false) => display(last);
 const showAt = (x: number, y: number, target?: HTMLElement) => display(false, { x, y }, target);
@@ -114,6 +121,12 @@ function keydown(event: KeyboardEvent) {
   items[target]?.focus({ preventScroll: true });
   items[target]?.scrollIntoView({ block: 'nearest' });
 }
+watch(
+  () => props.disabled,
+  (disabled) => {
+    if (disabled) close();
+  },
+);
 watch(open, (active) => {
   stop?.();
   stop = undefined;
@@ -168,11 +181,13 @@ defineExpose({ show, showAt, close });
       aria-haspopup="menu"
       :aria-expanded="open"
       :aria-controls="open ? id : undefined"
+      :disabled="disabled"
       @click="open ? close() : show()"
       @keydown.down.prevent="show()"
       @keydown.up.prevent="show(true)"
     >
-      <Icon :name="icon" />
+      <span v-if="triggerText">{{ triggerText }}</span>
+      <Icon v-else :name="icon" />
     </button>
     <Teleport to="body">
       <MenuTransition>
@@ -181,7 +196,10 @@ defineExpose({ show, showAt, close });
           :id="id"
           ref="panel"
           class="action-menu"
-          :class="{ 'song-action-menu': variant === 'song' }"
+          :class="{
+            'song-action-menu': variant === 'song',
+            'speed-action-menu': variant === 'speed',
+          }"
           role="menu"
           tabindex="-1"
           :aria-label="label"

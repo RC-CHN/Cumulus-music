@@ -6,6 +6,7 @@ import type { TrackView } from '../services/contracts';
 import Icon from './Icon.vue';
 import EqualizerPanel from './EqualizerPanel.vue';
 import ModalTransition from './ModalTransition.vue';
+import PlaybackSpeed from './PlaybackSpeed.vue';
 const equalizerOpen = ref(false);
 const props = defineProps<{ player: PlayerModel; liked: Set<string>; likeBusy: Set<string> }>();
 const emit = defineEmits<{ like: [track: TrackView]; retry: []; comments: [track: TrackView] }>();
@@ -197,28 +198,7 @@ function mute() {
           }}</small
         ></label
       >
-      <label class="speed-control"
-        ><span class="sr-only">播放速度</span
-        ><select
-          aria-label="播放速度"
-          :value="view?.speed ?? 1"
-          :disabled="!ready"
-          @change="
-            player.action({
-              kind: 'speed',
-              value: Number(($event.target as HTMLSelectElement).value),
-            })
-          "
-        >
-          <option
-            v-for="speed in [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4]"
-            :value="speed"
-            :key="speed"
-          >
-            {{ speed }}×
-          </option>
-        </select></label
-      >
+      <PlaybackSpeed :player="player" />
       <div class="volume-control">
         <button
           class="icon-button"

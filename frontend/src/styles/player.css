@@ -125,8 +125,15 @@ input[type='range'] {
   cursor: pointer;
   padding: 4px 7px;
 }
-.speed-control select {
-  max-width: 47px;
+.player-tools .speed-control .menu-trigger {
+  width: 47px;
+  height: 26px;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  white-space: nowrap;
 }
 .volume-control {
   display: flex;

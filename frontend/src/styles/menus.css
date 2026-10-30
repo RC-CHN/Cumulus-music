@@ -106,6 +106,36 @@
   border-radius: 0;
   line-height: 18px;
 }
+.speed-action-menu {
+  width: 178px;
+  min-width: 178px;
+  padding: 12px 0 10px;
+  border-radius: 8px;
+}
+.speed-action-menu button {
+  position: relative;
+  min-height: 30px;
+  height: 30px;
+  padding: 0 12px 0 50px;
+  border-radius: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 12px;
+}
+.speed-action-menu button.checked {
+  color: var(--text-secondary);
+}
+.speed-action-menu button:focus-visible {
+  outline-offset: -2px;
+}
+.speed-action-menu button .menu-check {
+  position: absolute;
+  left: 24px;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  color: var(--accent);
+}
 .menu-separator {
   height: 1px;
   margin: 2px 0;
