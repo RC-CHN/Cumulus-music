@@ -315,14 +315,16 @@ impl Actor {
             engine.poll()
         })
         .await?;
-        if !preserve_position && let Some(position) = view.position {
-            self.position = Some(
-                self.loaded
-                    .as_ref()
-                    .expect("checked")
-                    .timeline
-                    .from_media(position)?,
-            );
+        if let Some(position) = view.position {
+            let observed = self
+                .loaded
+                .as_ref()
+                .expect("checked")
+                .timeline
+                .from_media(position)?;
+            if !preserve_position || !self.position.is_some_and(|p| observed < p) {
+                self.position = Some(observed);
+            }
         }
         self.state = if paused {
             PlaybackStatus::Paused

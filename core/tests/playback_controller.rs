@@ -356,6 +356,7 @@ async fn output_recovery_reloads_same_source_at_current_clock_without_advancing_
     for (paused, reported, expected) in [
         (true, None, 42.5),
         (true, Some(42.1), 42.5),
+        (true, Some(43.0), 43.0),
         (false, None, 42.5),
         (false, Some(43.0), 43.0),
     ] {

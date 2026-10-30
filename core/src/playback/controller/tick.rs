@@ -115,7 +115,10 @@ impl Actor {
             matches!(event, EngineEvent::OutputReload { entry_id } if *entry_id == loaded.media.entry_id)
         }) {
             let observed = view.position.map(|p| loaded.timeline.from_media(p)).transpose()?;
-            let position = if was_paused { self.position.or(observed) } else { observed.or(self.position) };
+            let position = if was_paused { match (self.position, observed) {
+                (Some(accepted), Some(observed)) => Some(accepted.max(observed)),
+                _ => self.position.or(observed),
+            } } else { observed.or(self.position) };
             let options = LoadOptions {
                 paused: self.state == PlaybackStatus::Paused,
                 position,
@@ -164,14 +167,15 @@ impl Actor {
         }
         if ended {
             self.position = loaded.timeline.display_end();
-        } else if (!was_paused || !view.paused || self.position.is_none())
-            && let Some(position) = view.position
-        {
+        } else if let Some(position) = view.position {
             // A paused libmpv clock can include queued output latency, which
             // changes again when speed changes. An accepted paused seek is the
-            // logical position until playback resumes; polling must not rewind
-            // its UI, durable restore position, or same-account relay state.
-            self.position = Some(loaded.timeline.from_media(position)?);
+            // logical position must not rewind its UI or durable restore. Keep
+            // forward observations, including Together preview/progress clocks.
+            let observed = loaded.timeline.from_media(position)?;
+            if !was_paused || !view.paused || !self.position.is_some_and(|p| observed < p) {
+                self.position = Some(observed);
+            }
         }
         if ended || self.last_save.elapsed() >= Duration::from_secs(1) {
             self.save_position()?;
