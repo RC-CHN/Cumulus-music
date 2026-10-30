@@ -22,7 +22,7 @@
   await filter('');click(button('加载更多'));await wait(()=>ready()&&count()===123&&!button('加载更多'),'saved last page');one('.catalog-card-scroll').scrollTop=999999;await capture('saved_scrolled');
   await mode('fail_saved');refresh();await wait(()=>ready()&&one('.catalog-error'),'refresh failure');assert(count()===123,'refresh erased previous pages');await capture('saved_refresh_error');
   await mode('none');click(button('重试'));await wait(()=>ready()&&count()===50&&!one('.catalog-error'),'refresh retry must replace first page');await capture('saved_refreshed');
-  click(one('.catalog-card'));await wait(()=>one('.catalog-label')?.textContent==='专辑','saved album navigation');await capture('saved_album');back();await wait(()=>ready()&&count()===50,'back from album');
+  click(one('.catalog-card'));await wait(()=>one('.album-header'),'saved album navigation');await capture('saved_album');back();await wait(()=>ready()&&count()===50,'back from album');
   click(button('已购专辑'));await wait(()=>ready()&&count()===2,'purchased albums');await capture('purchased');
   await mode('empty_purchase');refresh();await wait(()=>ready()&&one('.empty-state')?.textContent.includes('还没有已购专辑'),'empty purchases');await capture('purchased_empty');
   await mode('fail_purchase');refresh();await wait(()=>ready()&&one('.catalog-error'),'purchase error');assert(!one('.collections-page .empty-state'),'error shown as empty purchases');await capture('purchased_error');
@@ -30,7 +30,7 @@
   click(button('关注歌手'));await wait(()=>ready()&&count()===20,'followed first page');await capture('followed_first');
   for(let i=0;button('加载更多')&&i<20;i++){const before=count();click(button('加载更多'));await wait(()=>ready()&&count()>before,'followed continuation');}
   assert(count()===205&&!button('加载更多'),'followed list end');one('.collection-follow-scroll').scrollTop=999999;await sleep(350);assert(one('article.collection-follow-card'),'user-only record not mistaken for artist');await capture('followed_scrolled');
-  one('.collection-follow-scroll').scrollTop=0;await sleep(350);click(one('button.collection-follow-card'));await wait(()=>one('.catalog-label')?.textContent==='歌手','followed artist navigation');await capture('followed_artist');
+  one('.collection-follow-scroll').scrollTop=0;await sleep(350);click(one('button.collection-follow-card'));await wait(()=>one('.artist-header'),'followed artist navigation');await capture('followed_artist');
   back();await wait(()=>ready()&&button('关注歌手')?.getAttribute('aria-current')==='page','back retains followed tab');await capture('followed_back');
   click(one('[aria-label="外观主题"]'));await wait(()=>button('深色'),'theme menu');click(button('深色'));await wait(()=>document.documentElement.dataset.theme==='dark','dark');await capture('followed_dark');
   await emit('resize',{width:760,height:540});await wait(()=>innerWidth===760,'small window');await capture('followed_small');

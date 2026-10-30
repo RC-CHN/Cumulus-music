@@ -14,6 +14,8 @@ pub struct Library {
     album_collected: AtomicBool,
     mode: Mutex<String>,
     pub comment_reads: AtomicUsize,
+    pub artist_song_reads: AtomicUsize,
+    pub artist_album_reads: AtomicUsize,
 }
 impl Library {
     pub fn mode(&self, mode: &str) {
@@ -27,7 +29,7 @@ fn song(n: u64) -> Value {
     json!({"id":n,"name":format!("合成歌曲 {n}"),"ar":[{"id":12,"name":"测试歌手"}],"al":{"id":7,"name":"测试专辑"},"dt":235000,"fee":n%3})
 }
 fn artist(n: u64) -> Value {
-    json!({"id":n,"name":if n==12 {"测试歌手".into()}else{format!("相似歌手 {n}")},"musicSize":55,"albumSize":62,"alias":["A synthetic artist"],"briefDesc":"用于检查歌手详情的合成简介。"})
+    json!({"id":n,"name":if n==12 {"测试歌手".into()}else{format!("相似歌手 {n}")},"musicSize":55,"albumSize":62,"mvSize":2,"alias":["A synthetic artist"],"briefDesc":"用于检查歌手详情的合成简介。"})
 }
 fn album(n: u64) -> Value {
     let mut value = json!({"id":n,"name":if n==7 {"测试专辑".into()}else{format!("合成专辑 {n}")},"size":11,"publishTime":1700000000000_i64,"artists":[{"id":12,"name":"测试歌手"}],"description":"这是合成的专辑介绍。\n用于检查多行文本、深色配色和长内容布局。"});
@@ -56,6 +58,12 @@ impl Api for Library {
             {
                 return Err(Error::Transport("synthetic album metadata offline".into()));
             }
+            if path.starts_with("/api/artist/albums/") {
+                self.artist_album_reads.fetch_add(1, Ordering::SeqCst);
+            }
+            if mode == "artist-albums-offline" && path.starts_with("/api/artist/albums/") {
+                return Err(Error::Transport("synthetic artist albums offline".into()));
+            }
             let offset = args["offset"].as_u64().unwrap_or(0);
             let limit = args["limit"].as_u64().unwrap_or(20);
             Ok(match path {
@@ -75,7 +83,18 @@ impl Api for Library {
                     json!({"code":200,"songs":rows.iter().map(|v|song(id(&v["id"]))).collect::<Vec<_>>()})
                 }
                 "/api/artist/v3/detail" => {
-                    json!({"code":200,"artist":artist(id(&args["id"])),"hotSongs":(1..=50).map(song).collect::<Vec<_>>(),"more":false})
+                    let mut value = artist(id(&args["id"]));
+                    if mode == "artist-long" {
+                        value["name"] =
+                            json!("长名称测试歌手 · An artist with a very long display name");
+                        value["alias"] = json!(["LongSyntheticArtistAliasWithoutBreaks".repeat(5)]);
+                    }
+                    if mode == "artist-zero" {
+                        value["musicSize"] = json!(0);
+                        value["albumSize"] = json!(0);
+                        value["mvSize"] = json!(0);
+                    }
+                    json!({"code":200,"artist":value,"hotSongs":if mode=="artist-zero"{vec![]}else{(1..=50).map(song).collect::<Vec<_>>()},"more":false})
                 }
                 "/api/song/enhance/privilege" => {
                     let ids: Vec<Value> =
@@ -83,9 +102,10 @@ impl Api for Library {
                     json!({"code":200,"data":ids.iter().map(|v|json!({"id":v,"pl":320000})).collect::<Vec<_>>()})
                 }
                 "/api/artist/detail/dynamic" => {
-                    json!({"code":200,"followed":self.artist_collected.load(Ordering::SeqCst),"concert":{"onlineCount":1}})
+                    json!({"code":200,"followed":self.artist_collected.load(Ordering::SeqCst),"concert":{"onlineCount":if mode=="artist-zero"{0}else{1}}})
                 }
                 "/api/v2/artist/songs" => {
+                    self.artist_song_reads.fetch_add(1, Ordering::SeqCst);
                     json!({"code":200,"total":55,"more":offset+limit<55,"songs":((offset+1)..=(offset+limit).min(55)).map(song).collect::<Vec<_>>()})
                 }
                 "/api/artist/introduction" => {

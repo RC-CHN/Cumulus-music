@@ -6,6 +6,7 @@ from pathlib import Path
 import subprocess
 import sqlite3
 import time
+from motion_smoke import paint_checks
 
 
 def launch(binary, env, log, root, screenshots):
@@ -25,10 +26,25 @@ def launch(binary, env, log, root, screenshots):
             for path in (root / 'run/first').glob('ux_*.json'):
                 if path in seen:
                     continue
+                try:
+                    payload = json.loads(path.read_text(encoding='utf-8'))
+                except json.JSONDecodeError:
+                    continue
                 window = Gdk.get_default_root_window()
-                picture = Gdk.pixbuf_get_from_window(window, 0, 0, window.get_width(), window.get_height())
-                assert picture is not None
+                started = time.monotonic()
+                while True:
+                    picture = Gdk.pixbuf_get_from_window(window, 0, 0, window.get_width(), window.get_height())
+                    assert picture is not None
+                    checks = paint_checks(picture, payload)
+                    if all(check['ok'] for check in checks) or time.monotonic() - started >= 3:
+                        break
+                    time.sleep(.08)
                 picture.savev(str(path.with_suffix('.png')), 'png', [], [])
+                if checks:
+                    path.with_name('paint-' + path.name).write_text(json.dumps({
+                        'waitSeconds': time.monotonic() - started, 'samples': checks,
+                    }, indent=2) + '\n', encoding='utf-8')
+                    assert all(check['ok'] for check in checks), 'catalog cards remained unpainted'
                 if env.get('CUMULUS_PROOF_CAPTURE_ACK') == '1':
                     path.with_suffix('.captured').write_text('captured\n', encoding='utf-8')
                 seen.add(path)
@@ -51,6 +67,7 @@ def main():
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--screenshots', action='store_true', help='local Linux GTK captures; not required in CI')
     mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--artist', action='store_true', help='artist header, tab prefixes, viewport return and native playback')
     mode.add_argument('--album', action='store_true', help='album-local tabs, draft retention, header actions and native null playback')
     mode.add_argument('--layout', action='store_true', help='long content, artwork and comment scrolling')
     mode.add_argument('--collections', action='store_true')
@@ -65,6 +82,11 @@ def main():
     root.mkdir(parents=True, exist_ok=False)
     env = {k: v for k, v in os.environ.items() if not k.startswith('CUMULUS_')}
     env['CUMULUS_PROOF_DIR'] = str(root / 'run')
+    if args.artist:
+        env['CUMULUS_ARTIST_PROOF'] = '1'
+        env['CUMULUS_UX_SCRIPT'] = str(Path(__file__).resolve().parents[2] / 'desktop/examples/artist_ui_probe.js')
+        if args.screenshots:
+            env['CUMULUS_PROOF_CAPTURE_ACK'] = '1'
     if args.album:
         env['CUMULUS_ALBUM_PROOF'] = '1'
         if args.screenshots:
@@ -103,6 +125,36 @@ def main():
         raise AssertionError((output / 'failed.json').read_text(encoding='utf-8'))
     assert returncode == 0, f'catalog probe exited {returncode}'
     complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
+    if args.artist:
+        assert complete['ok'] and complete['stageCount'] == 50 and complete['preservedPrefixes']
+        assert complete['realMusicRequests'] == 0 and complete['playbackVerified']
+        assert complete['decoder'] == 'libmpv' and complete['audioOutput'] == 'null'
+        stages = [json.loads(path.read_text(encoding='utf-8')) for path in sorted(output.glob('ux_*.json'))]
+        assert len(stages) == 50 and (not args.screenshots or captures == 50)
+        for stage in stages:
+            if stage.get('playing'):
+                player, queue = stage['nativePlayer'], stage['nativeQueue']
+                size = stage['expectedQueue']
+                assert size in (50, 55) and player['queueLen'] == size and player['position'] > .2
+                assert player['state'] == 'playing' and not player['error']
+                assert player['origin'] == {'kind': 'artist', 'id': '12'}
+                assert [row['track']['id'] for row in queue['tracks']] == [str(n) for n in range(1, size + 1)]
+                if '_after_all_back_' in stage['stage']:
+                    suffix = stage['stage'].split('_after_all_back_', 1)[1]
+                    previous = next(s for s in stages if s['stage'].endswith('_all_playing_' + suffix))
+                    assert player['playId'] and player['playId'] == previous['nativePlayer']['playId']
+            if '_albums_return_' in stage['stage']:
+                suffix = stage['stage'].split('_albums_return_', 1)[1]
+                original = next(s for s in stages if s['stage'].endswith('_albums_40_' + suffix))
+                hot = next(s for s in stages if s['stage'].endswith('_intro_playing_' + suffix))
+                assert abs(stage['listScroll'] - original['listScroll']) < 1
+                assert stage['artistAlbumReads'] == original['artistAlbumReads']
+                assert stage['artistSongReads'] == hot['artistSongReads']
+        result = {'ok': True, 'actualWebView': True, 'states': 50, 'screenshots': captures,
+                  'realMusicRequests': 0, 'nativeNullPlaybackVerified': True, 'physicalAudioOutputVerified': False}
+        (root / 'audit.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
+        print(json.dumps(result))
+        return
     if args.album:
         assert complete['ok'] and complete['stageCount'] == 30 and complete['playbackVerified']
         assert complete['realMusicRequests'] == 0 and complete['draftIsolation']

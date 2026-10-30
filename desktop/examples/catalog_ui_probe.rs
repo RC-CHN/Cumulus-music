@@ -41,6 +41,11 @@ fn main() {
     context.config_mut().app.windows[0].create = false;
     let profile = std::env::var_os("CUMULUS_CATALOG_PROFILE").map(PathBuf::from);
     let is_live = profile.is_some();
+    let artists = std::env::var("CUMULUS_ARTIST_PROOF").as_deref() == Ok("1");
+    assert!(
+        !(artists && is_live),
+        "artist proof uses synthetic services only"
+    );
     let albums = std::env::var("CUMULUS_ALBUM_PROOF").as_deref() == Ok("1");
     assert!(
         !(albums && is_live),
@@ -74,7 +79,7 @@ fn main() {
         let publisher=Arc::new(cumulus_core::relay::publisher::RelayPublisher::new(session.clone())?);
         let client=MusicClient::with_session(session.clone(),registry);
         let client=if relay_publication {client.with_relay_publication()}else{client};
-        let client=if (relays || albums) && !is_live {let wave=relay_fixture::wave(&root)?;client.with_audio_factory(move||Ok(Box::new(relay_fixture::NativeAudio::open(wave.clone())?)))}else{cumulus_desktop::configure_native_audio(client,&app.path().resource_dir()?,true)};
+        let client=if (relays || albums || artists) && !is_live {let wave=relay_fixture::wave(&root)?;client.with_audio_factory(move||Ok(Box::new(relay_fixture::NativeAudio::open(wave.clone())?)))}else{cumulus_desktop::configure_native_audio(client,&app.path().resource_dir()?,true)};
         app.manage(client);
         app.add_capability(r#"{"identifier":"ux-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
         let handle=app.handle().clone();
@@ -82,7 +87,7 @@ fn main() {
         app.listen("ux-proof",move |event| {
             let value:Value=serde_json::from_str(event.payload()).unwrap();
             let stage=value["stage"].as_str().unwrap_or("");
-            if stage=="fixture" && albums && !is_live {
+            if stage=="fixture" && (albums || artists) && !is_live {
                 catalog_fixture.mode(value["mode"].as_str().unwrap_or(""));
                 handle.get_webview_window("main").unwrap().eval(format!("window.__CUMULUS_ALBUM_MODE__={};",value["mode"])).unwrap();
                 return;
@@ -115,6 +120,8 @@ fn main() {
             if !(["complete","failed"].contains(&stage) || stage.starts_with("ux_") && stage.chars().all(|c|c.is_ascii_alphanumeric()||c=='_')){return;}
             let handle=handle.clone();let output=output.clone();let stage=stage.to_owned();
             let publication_fixture=relay_fixture.clone();let publication=publisher.clone();let publication_session=session.clone();
+            let artist_song_reads=catalog_fixture.artist_song_reads.load(std::sync::atomic::Ordering::SeqCst);
+            let artist_album_reads=catalog_fixture.artist_album_reads.load(std::sync::atomic::Ordering::SeqCst);
             let comment_reads=catalog_fixture.comment_reads.load(std::sync::atomic::Ordering::SeqCst);
             let history_writes=history_fixture.writes.load(std::sync::atomic::Ordering::SeqCst);
             let settings_writes=settings_fixture.writes.load(std::sync::atomic::Ordering::SeqCst);
@@ -122,7 +129,8 @@ fn main() {
             let relay_setting_writes=relay_fixture.setting_writes.load(std::sync::atomic::Ordering::SeqCst);
             tauri::async_runtime::spawn(async move {
                 let mut value=value;
-                if albums {value["commentReads"]=serde_json::json!(comment_reads);}
+                if artists {value["artistSongReads"]=serde_json::json!(artist_song_reads);value["artistAlbumReads"]=serde_json::json!(artist_album_reads);}
+                if albums || artists {value["commentReads"]=serde_json::json!(comment_reads);}
                 if histories {value["syntheticHistoryWrites"]=serde_json::json!(history_writes);}
                 if settings {value["syntheticSettingsWrites"]=serde_json::json!(settings_writes);}
                 if relays {value["syntheticRelayPulls"]=serde_json::json!(relay_pulls);value["syntheticRelaySettingWrites"]=serde_json::json!(relay_setting_writes);}
@@ -133,7 +141,7 @@ fn main() {
                     value["publicationCalls"]=serde_json::json!(publication_fixture.publications.lock().unwrap().len());
                     value["networkCalls"]=serde_json::json!(publication_fixture.network_calls.load(std::sync::atomic::Ordering::SeqCst));
                 }
-                if (is_live || relays || albums) && value["playing"]==true {
+                if (is_live || relays || albums || artists) && value["playing"]==true {
                     let player=client.subscribe_playback(&epoch).await.unwrap().current().unwrap();
                     if player.position.is_none_or(|p|p<=0.2)||player.queue_len==0||player.error.is_some(){
                         fs::write(output.join("failed.json"),br#"{"ok":false,"error":"native playback did not advance"}"#).unwrap();handle.exit(1);return;
@@ -141,7 +149,7 @@ fn main() {
                     value["nativePlayer"]=serde_json::to_value(player).unwrap();
                     value["nativeQueue"]=serde_json::to_value(client.player_queue(&epoch).await.unwrap()).unwrap();
                 }
-                if (is_live || relays || albums) && ["complete","failed"].contains(&stage.as_str()){let _=client.player_action(&epoch,PlayerAction::Stop).await;}
+                if (is_live || relays || albums || artists) && ["complete","failed"].contains(&stage.as_str()){let _=client.player_action(&epoch,PlayerAction::Stop).await;}
                 if relay_publication && stage=="complete" {
                     let token=publication_session.token().unwrap();
                     let settled=tokio::time::timeout(std::time::Duration::from_secs(5),async {
@@ -152,7 +160,7 @@ fn main() {
                     value["publicationPhases"]=serde_json::json!(publication.intents_for(&token).unwrap().into_iter().map(|r|r.phase).collect::<Vec<_>>());
                 }
                 fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
-                if albums && stage.starts_with("ux_") {
+                if (albums || artists) && stage.starts_with("ux_") {
                     if std::env::var("CUMULUS_PROOF_CAPTURE_ACK").as_deref()==Ok("1") {
                         let marker=output.join(format!("{stage}.captured"));
                         let captured=tokio::time::timeout(std::time::Duration::from_secs(10),async {

@@ -54,7 +54,7 @@
     await sleep(400);
   }
   async function albums() {
-    click(button('专辑', one('.catalog-tabs')));
+    click(one('[data-catalog-tab="albums"]'));
     await wait(() => all('.catalog-card').length >= 2, 'album cards');
     const page = one('.catalog-page');
     one('.catalog-tabs').scrollIntoView({ block: 'start' });

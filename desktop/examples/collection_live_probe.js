@@ -13,13 +13,13 @@
  async function capture(name){await sleep(600);assert(document.documentElement.scrollWidth<=innerWidth,'horizontal overflow');assert(all('.catalog-card,.collection-follow-card').length<=30,'unbounded collection cards');await emit(`ux_${String(++stageCount).padStart(2,'0')}_${name}`,{width:innerWidth,height:innerHeight,theme:document.documentElement.dataset.theme,loaded:count()||0,title:one('.catalog-heading h1')?.textContent});await sleep(1200);}
  try{
   await wait(()=>one('.track-row'),'account');click(button('专辑与关注'));await wait(()=>ready()&&one('.catalog-card'),'saved albums');await capture('live_saved');
-  click(one('.catalog-card'));await wait(()=>one('.catalog-label')?.textContent==='专辑'&&one('.catalog-page .track-row'),'saved album');await capture('live_saved_album');back();await wait(ready,'back saved');
+  click(one('.catalog-card'));await wait(()=>one('.album-header')&&one('.catalog-page .track-row'),'saved album');await capture('live_saved_album');back();await wait(ready,'back saved');
   click(button('已购专辑'));await wait(()=>ready()&&one('.catalog-card'),'purchased albums');await capture('live_purchased');
-  click(one('.catalog-card'));await wait(()=>one('.catalog-label')?.textContent==='专辑'&&one('.catalog-page .track-row'),'purchased album');await capture('live_purchased_album');back();await wait(ready,'back purchased');
+  click(one('.catalog-card'));await wait(()=>one('.album-header')&&one('.catalog-page .track-row'),'purchased album');await capture('live_purchased_album');back();await wait(ready,'back purchased');
   click(button('关注歌手'));await wait(()=>ready()&&one('.collection-follow-card'),'followed artists');await capture('live_followed');
   for(let i=0;button('加载更多')&&i<500;i++){const before=count();click(button('加载更多'));await sleep(50);await wait(ready,'followed next');assert(!one('.catalog-error'),'followed read failed');assert(count()>before||!button('加载更多'),'followed page did not advance');}
   assert(ready()&&!button('加载更多')&&!button('正在加载…'),'followed page limit or unfinished request');one('.collection-follow-scroll').scrollTop=999999;await capture('live_followed_end');
-  one('.collection-follow-scroll').scrollTop=0;await sleep(350);click(one('button.collection-follow-card'));await wait(()=>one('.catalog-label')?.textContent==='歌手','followed artist');await capture('live_artist');back();await wait(()=>ready()&&button('关注歌手')?.getAttribute('aria-current')==='page','back scope');
+  one('.collection-follow-scroll').scrollTop=0;await sleep(350);click(one('button.collection-follow-card'));await wait(()=>one('.artist-header'),'followed artist');await capture('live_artist');back();await wait(()=>ready()&&button('关注歌手')?.getAttribute('aria-current')==='page','back scope');
   click(one('[aria-label="外观主题"]'));await wait(()=>button('深色'),'theme');click(button('深色'));await wait(()=>document.documentElement.dataset.theme==='dark','dark');await emit('resize',{width:760,height:540});await wait(()=>innerWidth===760,'small');await capture('live_small_dark');
   await emit('complete',{ok:true,stageCount,explicitRemoteWrites:0,playbackVerified:false});
  }catch(error){await emit('failed',{ok:false,error:String(error),stageCount,message:one('.catalog-error')?.textContent});}

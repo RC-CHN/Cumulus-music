@@ -47,7 +47,7 @@
   async function openAlbum(index = 1) {
     click(button('每日推荐')); await sleep(500); await wait(() => one('.track-credit-links button'), 'daily');
     click(one('.track-credit-links button')); await wait(() => one('.catalog-heading h1')?.textContent === '测试歌手', 'artist');
-    click(button('专辑', one('.catalog-tabs'))); await wait(() => all('.catalog-card').length > index, 'albums');
+    click(one('[data-catalog-tab="albums"]')); await wait(() => all('.catalog-card').length > index, 'albums');
     click(all('.catalog-card')[index]); await wait(() => one('.album-tabs'), 'album'); await sleep(400);
   }
   try {
