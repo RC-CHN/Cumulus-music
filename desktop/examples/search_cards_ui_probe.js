@@ -48,6 +48,7 @@
     const menu=one('.action-menu'); if(menu){const r=menu.getBoundingClientRect();assert(r.left>=0&&r.top>=0&&r.right<=innerWidth+1&&r.bottom<=innerHeight+1,'menu contained');}
     await emit(`ux_${String(++count).padStart(2,'0')}_${label}`,{width:innerWidth,height:innerHeight,theme:document.documentElement.dataset.theme,label,nativePointer:true});await sleep(420);
   }
+  const submit=()=>{const input=one('[aria-label="搜索音乐"]');input.value='合成卡片';input.dispatchEvent(new Event('input',{bubbles:true}));input.form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));};
   try {
     await wait(()=>one('.track-row'),'daily ready');
     const input=one('[aria-label="搜索音乐"]');input.value='合成卡片';input.dispatchEvent(new Event('input',{bubbles:true}));input.form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
@@ -55,6 +56,7 @@
     for(const [w,h,t] of [[1120,760,'light'],[1120,760,'dark'],[760,540,'light'],[760,540,'dark']]){
       await emit('resize',{width:w,height:h});await wait(()=>innerWidth===w&&innerHeight===h,'resize');
       click(button('外观主题'));await wait(()=>one('.action-menu'),'theme menu');click(button(t==='dark'?'深色':'浅色'));await wait(()=>!one('.action-menu')&&document.documentElement.dataset.theme===t,'theme');
+      submit();await sleep(0);await wait(()=>ready()&&one('[data-category="all"]')?.getAttribute('aria-selected')==='true','fresh theme search');
       for(const category of ['playlists','albums','artists','podcasts','voices']){
         await choose(category);const card=one('.search-result-card');await hover(card);await capture(`${category}_hover_${w}_${t}`);
         const cr=card.getBoundingClientRect();card.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:cr.left+80,clientY:cr.top+60}));await wait(()=>one('.action-menu'),'context menu');await capture(`${category}_menu_${w}_${t}`);
@@ -79,10 +81,10 @@
     await choose('voices');const voice=all('.search-result-card')[1];voice.dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));await wait(()=>voice.classList.contains('search-card-current')&&voice.querySelector('.search-card-play').getAttribute('aria-label').startsWith('暂停'),'voice double click');await capture('voice_double_play');
     click(voice.querySelector('.menu-trigger'));await wait(()=>one('.action-menu'),'voice menu');click(button('下载声音'));await wait(()=>one('.download-dialog[open]'),'voice download options');await capture('voice_download_options');
     const close=one('.download-dialog button[aria-label^="关闭"]');click(close);await wait(()=>!one('.download-dialog'),'download cancel');
-    step='playback_read_error';await fixture('card_error');await choose('albums');click(one('.search-card-play'));await wait(()=>one('.playback-message')||document.body.innerText.includes('请重试')||button('重试'),'read failure feedback');await capture('playback_read_error');
+    step='playback_read_error';await fixture('card_error');submit();await sleep(0);await choose('albums');click(one('.search-card-play'));await wait(()=>one('.playback-message')||document.body.innerText.includes('请重试')||button('重试'),'read failure feedback');await capture('playback_read_error');
     await fixture('good');click(button('重试'));await wait(()=>one('.search-card-current')?.querySelector('.search-card-play')?.getAttribute('aria-label').startsWith('暂停'),'playback retry');await capture('playback_recovered');
-    await fixture('cover');await choose('playlists');await wait(()=>one('.search-result-art img')?.complete&&one('.search-result-art img').naturalWidth>0,'local artwork loaded');await hover(one('.search-result-card'));await capture('cover_loaded');
-    await fixture('cover_error');await choose('artists');await choose('playlists');await wait(()=>!one('.search-result-art img'),'failed cover fallback');assert(one('.search-result-art > .icon'),'placeholder after error');await hover(one('.search-result-card'));await capture('cover_failed');
+    await fixture('cover');submit();await sleep(0);await choose('playlists');await wait(()=>one('.search-result-art img')?.complete&&one('.search-result-art img').naturalWidth>0,'local artwork loaded');await hover(one('.search-result-card'));await capture('cover_loaded');
+    await fixture('cover_error');submit();await sleep(0);await choose('artists');await choose('playlists');await wait(()=>!one('.search-result-art img'),'failed cover fallback');assert(one('.search-result-art > .icon'),'placeholder after error');await hover(one('.search-result-card'));await capture('cover_failed');
     assert(localImageAssignments>0,'image outcome injection exercised');
     await emit('complete',{ok:true,stageCount:count,nativePointer:true,coverOutcomeInjected:true,keyboardContextMenu:true,voiceMenuDoubleClickSafe:true,realMusicRequests:0,realAccountWrites:0});
   }catch(e){await emit('failed',{step,message:String(e),stack:e?.stack,stageCount:count,ipcCalls:ipcCalls.slice(-18),body:document.body.innerText.slice(0,4000)});}

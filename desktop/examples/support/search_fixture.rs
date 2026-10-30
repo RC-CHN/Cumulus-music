@@ -22,6 +22,9 @@ pub fn control(value: &Value) {
             "card_error",
             "cover",
             "cover_error",
+            "scroll",
+            "scroll_error",
+            "scroll_duplicates",
             "empty",
             "expired"
         ]
@@ -163,6 +166,9 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
     };
     CALLS.fetch_add(1, Ordering::SeqCst);
     let mode = MODE.lock().unwrap().clone();
+    if mode == "scroll_error" && args["offset"].as_u64().unwrap_or(0) > 0 {
+        return Some(Err(Error::Transport("合成续页失败".into())));
+    }
     if mode == "expired" {
         return Some(Ok(json!({"code":301})));
     }
@@ -194,12 +200,18 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
     let rows = container[key].as_array().unwrap();
     let offset = args["offset"].as_u64().unwrap_or(0) as usize;
     let limit = args["limit"].as_u64().unwrap_or(30) as usize;
+    let total = if mode.starts_with("scroll") { 600 } else { 60 };
+    let start = if mode == "scroll_duplicates" {
+        0
+    } else {
+        offset
+    };
     container[key] = json!(if mode == "empty" {
         vec![]
     } else if category == "all" {
         rows.clone()
     } else {
-        (offset..(offset + limit).min(60))
+        (start..(start + limit).min(total))
             .map(|i| {
                 let mut row = rows[i % rows.len()].clone();
                 // Additional grid rows have distinct identities, so the active
@@ -211,15 +223,36 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
                         &mut row["baseInfo"]
                     };
                     let field = if category == "users" { "userId" } else { "id" };
-                    if let Some(id) = item[field].as_u64() {
-                        item[field] = json!(id + (i / rows.len()) as u64 * 1000);
+                    if let Some(id) = item[field]
+                        .as_u64()
+                        .or_else(|| item[field].as_str().and_then(|s| s.parse::<u64>().ok()))
+                    {
+                        let next = id + (i / rows.len()) as u64 * 1000;
+                        item[field] = if item[field].is_string() {
+                            json!(next.to_string())
+                        } else {
+                            json!(next)
+                        };
                     }
                 }
                 row
             })
             .collect()
     });
-    container["hasMore"] = json!(mode != "empty" && category != "all" && offset + limit < 60);
+    container["hasMore"] = json!(mode != "empty" && category != "all" && offset + limit < total);
+    if mode.starts_with("scroll") {
+        for key in [
+            "totalCount",
+            "playlistCount",
+            "artistCount",
+            "albumCount",
+            "userprofileCount",
+        ] {
+            if !container[key].is_null() {
+                container[key] = json!(total);
+            }
+        }
+    }
     if mode == "empty" {
         for key in [
             "totalCount",

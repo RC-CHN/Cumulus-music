@@ -26,10 +26,11 @@
   }
   async function theme(w,h,t){await emit('resize',{width:w,height:h});await wait(()=>innerWidth===w&&innerHeight===h,'window resize');click(button('外观主题'));await wait(()=>one('.action-menu'),'theme menu');click(button(t==='dark'?'深色':'浅色'));await wait(()=>!one('.action-menu')&&document.documentElement.dataset.theme===t,'theme');}
   const submit=word=>{const input=one('[aria-label="搜索音乐"]');input.value=word;input.dispatchEvent(new Event('input',{bubbles:true}));input.form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));};
+  async function fresh(word){submit(word);await sleep(0);await wait(()=>one('.search-results-page h1')?.textContent===word&&one('[data-category="all"]')?.getAttribute('aria-selected')==='true'&&ready()&&!one('.page-leave-active,.page-enter-active'),'fresh search '+word);await sleep(200);}
   try {
     await wait(()=>one('.track-row'),'daily ready');submit('合成搜索结果');await wait(()=>one('.search-results-page')&&ready(),'search entry');
     for(const [w,h,t] of [[1120,760,'light'],[1120,760,'dark'],[760,540,'light'],[760,540,'dark']]){
-      await theme(w,h,t);
+      await theme(w,h,t);await fresh('合成搜索结果');
       for(const category of ['all','songs','playlists','artists','voices','podcasts','lyrics','albums','mvs','users']){
         await choose(category);await capture(`${category}_${w}_${t}`);
         if(category==='all'){const p=one('.search-result-panel');p.scrollTop=p.scrollHeight;await capture(`all_bottom_${w}_${t}`);p.scrollTop=0;}
@@ -41,16 +42,16 @@
         }
       }
     }
-    await choose('artists');const p=one('.search-result-panel');p.scrollTop=p.scrollHeight;click(button('下一页'));await wait(()=>ready()&&one('.search-result-pagination').textContent.includes('第 2 页'),'next page');await capture('artists_page_two');
+    await choose('playlists');const p=one('.search-result-panel');p.scrollTop=p.scrollHeight;click(button('下一页'));await wait(()=>ready()&&one('.search-result-pagination').textContent.includes('第 2 页'),'next page');await capture('playlists_page_two');
     click(button('上一页'));await wait(()=>ready()&&one('.search-result-pagination').textContent.includes('第 1 页'),'previous page');
-    await fixture('empty');await choose('lyrics');await capture('empty');assert(one('.search-result-panel').textContent.includes('没有找到'),'empty copy');
-    await fixture('result_error');await choose('albums');await capture('error');assert(button('重新加载'),'retry action');await fixture('good');click(button('重新加载'));await wait(()=>ready()&&one('.search-result-card'),'retry recovery');await capture('recovered');
-    hold('all');click(one('[data-category="all"]'));await wait(()=>held,'held response');await capture('loading');await choose('songs');release();await sleep(220);assert(one('[data-category="songs"]').getAttribute('aria-selected')==='true'&&one('.search-result-actions'),'late result ignored');await capture('late_result');
+    await fixture('empty');await fresh('合成空结果');await choose('lyrics');await capture('empty');assert(one('.search-result-panel').textContent.includes('没有找到'),'empty copy');
+    await fixture('result_error');await fresh('合成失败结果');await choose('albums');await capture('error');assert(button('重新加载'),'retry action');await fixture('good');click(button('重新加载'));await wait(()=>ready()&&one('.search-result-card'),'retry recovery');await capture('recovered');
+    hold('all');submit('合成延迟结果');await wait(()=>held,'held response');await capture('loading');await choose('songs');release();await sleep(220);assert(one('[data-category="songs"]').getAttribute('aria-selected')==='true'&&one('.search-result-actions'),'late result ignored');await capture('late_result');
     const songTab=one('[data-category="songs"]');songTab.focus();key(songTab,'ArrowRight');await wait(()=>one('[data-category="playlists"]').getAttribute('aria-selected')==='true'&&ready(),'keyboard tab switch');assert(document.activeElement.dataset.category==='playlists','keyboard focus follows');await capture('keyboard_tabs');
     await choose('songs');
     const album=one('.track-album[data-tooltip]');assert(album&&!album.hasAttribute('title'),'native title replaced');album.dispatchEvent(new PointerEvent('pointerover',{bubbles:true}));await wait(()=>one('.content-tooltip')&&getComputedStyle(one('.content-tooltip')).visibility==='visible','content tooltip');await capture('content_tooltip');
     await choose('artists');assert(!one('.content-tooltip'),'route clears tooltip');await capture('tooltip_cleared');
-    await fixture('unavailable');await choose('voices');assert(!one('.search-result-card .search-card-play')&&one('.search-result-card').textContent.includes('暂不可打开'),'missing radio target disabled');await capture('voice_unavailable');await choose('mvs');assert(one('.search-card-open').disabled,'non-MV target disabled');await capture('mv_unavailable');await fixture('good');
+    await fixture('unavailable');await fresh('合成不可用结果');await choose('voices');assert(!one('.search-result-card .search-card-play')&&one('.search-result-card').textContent.includes('暂不可打开'),'missing radio target disabled');await capture('voice_unavailable');await choose('mvs');assert(one('.search-card-open').disabled,'non-MV target disabled');await capture('mv_unavailable');await fixture('good');
     await choose('songs');click(button('播放全部'));await wait(()=>one('.now-playing')?.textContent.includes('界面')||button('暂停'),'play selection');await capture('play');
     await fixture('expired');click(one('[data-category="albums"]'));await wait(()=>button('重新登录')&&!one('.search-results-page'),'expired account');await capture('expired');
     await emit('complete',{ok:true,stageCount:count,responseTimingInjected:true,realMusicRequests:0,realAccountWrites:0});
