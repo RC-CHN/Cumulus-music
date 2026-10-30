@@ -134,6 +134,8 @@
 .track-share-body {
   padding: 0 0 8px;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   gap: 12px;
   overflow: auto;
 }
@@ -141,8 +143,13 @@
 .track-menu p {
   overflow-wrap: anywhere;
 }
+.track-share-body > * {
+  min-width: 0;
+  max-width: 100%;
+}
 .track-share-body p {
   margin: 0;
+  overflow-wrap: anywhere;
 }
 .track-share-body input {
   width: 100%;
