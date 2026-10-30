@@ -161,6 +161,48 @@ test('each download navigation has an independent identity and back returns the 
   assert.notEqual(music.page.value, first);
 });
 
+test('artist tabs push within one visit, while leaving and returning keep the original route', async () => {
+  const music = useMusic(backend());
+  await music.bootstrap();
+  music.navigate({ kind: 'catalog', resource: { kind: 'artist', id: '12' } });
+  const songs = music.page.value;
+  if (songs.kind !== 'catalog') throw Error('catalog route');
+  assert.ok(songs.catalogVisit);
+  music.navigate({ ...songs, artistTab: 'albums' });
+  const albums = music.page.value;
+  music.navigate({ kind: 'catalog', resource: { kind: 'album', id: '8' } });
+  music.back();
+  assert.equal(music.page.value, albums);
+  music.back();
+  assert.equal(music.page.value, songs);
+  music.navigate({ kind: 'catalog', resource: { kind: 'artist', id: '12' } });
+  assert.notEqual(
+    music.page.value.kind === 'catalog' && music.page.value.catalogVisit,
+    songs.catalogVisit,
+  );
+});
+
+test('album tab replacement preserves visit identity without adding a back step', async () => {
+  const music = useMusic(backend());
+  await music.bootstrap();
+  music.navigate({ kind: 'catalog', resource: { kind: 'album', id: '8' } });
+  const route = music.page.value;
+  if (route.kind !== 'catalog') throw Error('catalog route');
+  const depth = music.historyLength.value;
+  music.replace({ ...route, albumTab: 'comments' });
+  music.replace({ ...route, albumTab: 'details' });
+  assert.equal(music.historyLength.value, depth);
+  music.navigate({ kind: 'settings' });
+  music.back();
+  assert.equal(music.page.value.kind === 'catalog' && music.page.value.albumTab, 'details');
+  assert.equal(
+    music.page.value.kind === 'catalog' && music.page.value.catalogVisit,
+    route.catalogVisit,
+  );
+  music.back();
+  assert.equal(music.page.value.kind, 'daily');
+});
+
 test('navigation during restore cannot invalidate the initial identity response', async () => {
   const identity = deferred<Awaited<ReturnType<CoreClient['restoreAccount']>>>();
   const music = useMusic(backend({ restoreAccount: () => identity.promise }));

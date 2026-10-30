@@ -13,6 +13,7 @@ const props = defineProps<{
   playDisabled: boolean;
   downloadDisabled: boolean;
   refreshDisabled: boolean;
+  refreshing: boolean;
 }>();
 const emit = defineEmits<{
   open: [resource: CatalogResource];
@@ -42,7 +43,7 @@ const published = computed(() => {
 });
 </script>
 <template>
-  <header class="catalog-header album-header">
+  <header class="catalog-header album-header" :aria-busy="refreshing">
     <img
       v-if="album.coverUrl"
       class="catalog-cover"
@@ -99,6 +100,8 @@ const published = computed(() => {
         </button>
         <ActionMenu
           label="更多专辑操作"
+          :icon="refreshing ? 'refresh' : 'more'"
+          :class="{ 'catalog-refreshing': refreshing }"
           :items="[
             { key: 'share', label: '分享专辑', icon: 'share' },
             { key: 'refresh', label: '刷新详情', icon: 'refresh', disabled: refreshDisabled },

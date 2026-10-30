@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref, useId, watch } from 'vue';
+import { computed, useId } from 'vue';
 import type { AccountView, TrackView } from '../../services/contracts';
 import type { AlbumCard, CatalogResource } from '../../services/catalog';
 import type { TrackMenuRequest } from '../../services/trackMenu';
-import { useComments } from '../../composables/useComments';
+import type { CatalogSession } from '../../composables/useCatalogSession';
+import type { AlbumTab } from '../../services/catalogNavigation';
 import TrackTable from '../TrackTable.vue';
 import CommentsPage from '../CommentsPage.vue';
 const props = defineProps<{
   album: AlbumCard;
   account: AccountView;
+  model: CatalogSession;
   tracks: TrackView[];
   liked: Set<string>;
   busyLikes: Set<string>;
@@ -21,28 +23,20 @@ const emit = defineEmits<{
   more: [request: TrackMenuRequest];
   open: [resource: CatalogResource];
   expired: [];
+  choose: [tab: AlbumTab];
+  enter: [element: Element];
 }>();
-type Tab = 'songs' | 'comments' | 'details';
-const selected = ref<Tab>('songs');
+type Tab = AlbumTab;
+const selected = props.model.albumTab;
+const comments = props.model.comments;
 const tabs = computed<{ key: Tab; label: string; count?: number }[]>(() => [
   { key: 'songs', label: '歌曲', count: props.album.trackCount },
   { key: 'comments', label: '评论', count: comments.page.value?.total },
   { key: 'details', label: '专辑详情' },
 ]);
 const id = useId();
-const comments = useComments(undefined, () => emit('expired'));
-watch(
-  [() => props.account.epoch, () => props.account.status, () => props.album.id],
-  () => {
-    comments.connect(props.account);
-    selected.value = 'songs';
-  },
-  { immediate: true },
-);
 function select(tab: Tab) {
-  selected.value = tab;
-  if (tab === 'comments' && comments.resource.value?.id !== props.album.id)
-    void comments.open({ kind: 'album', id: props.album.id });
+  emit('choose', tab);
 }
 function keydown(event: KeyboardEvent, index: number) {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -57,7 +51,6 @@ function keydown(event: KeyboardEvent, index: number) {
   select(tab.key);
   document.getElementById(`${id}-${tab.key}`)?.focus();
 }
-onUnmounted(() => comments.connect({ ...props.account, status: 'signed_out' }));
 </script>
 <template>
   <div class="album-content">
@@ -79,6 +72,7 @@ onUnmounted(() => comments.connect({ ...props.account, status: 'signed_out' }));
     <Transition
       name="catalog-tab"
       mode="out-in"
+      @enter="emit('enter', $event)"
       @before-leave="($event as HTMLElement).inert = true"
       @before-enter="($event as HTMLElement).inert = false"
     >
@@ -89,6 +83,8 @@ onUnmounted(() => comments.connect({ ...props.account, status: 'signed_out' }));
           key="comments"
           embedded
           :model="comments"
+          :context="model.commentContext"
+          data-album-panel="comments"
           :title="album.name"
           role="tabpanel"
           :aria-labelledby="`${id}-comments`"
@@ -98,6 +94,7 @@ onUnmounted(() => comments.connect({ ...props.account, status: 'signed_out' }));
           :id="`${id}-panel`"
           key="details"
           class="catalog-description album-description"
+          data-album-panel="details"
           role="tabpanel"
           :aria-labelledby="`${id}-details`"
         >
@@ -109,6 +106,7 @@ onUnmounted(() => comments.connect({ ...props.account, status: 'signed_out' }));
           :id="`${id}-panel`"
           key="songs"
           class="catalog-tab-panel"
+          data-album-panel="songs"
           role="tabpanel"
           :aria-labelledby="`${id}-songs`"
         >

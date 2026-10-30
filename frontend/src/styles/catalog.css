@@ -87,6 +87,14 @@
   color: var(--accent);
   background: var(--accent-soft);
 }
+.catalog-refreshing .icon {
+  animation: spin 800ms linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .catalog-refreshing .icon {
+    animation: none;
+  }
+}
 .catalog-error {
   color: var(--danger);
   font-size: 13px;
@@ -107,6 +115,10 @@
   padding: 10px 0;
   color: var(--text-secondary);
   position: relative;
+}
+.catalog-tabs button:focus-visible {
+  outline-offset: -2px;
+  border-radius: 4px;
 }
 .catalog-tabs button[aria-current='page'] {
   color: var(--text);
@@ -185,6 +197,10 @@
   background: none;
   border: 0;
   color: var(--text);
+}
+.catalog-card:focus-visible {
+  outline-offset: -2px;
+  border-radius: 8px;
 }
 .catalog-card img,
 .catalog-card-placeholder {

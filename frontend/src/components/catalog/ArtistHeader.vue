@@ -7,11 +7,12 @@ defineProps<{
   followDisabled: boolean;
   playDisabled: boolean;
   refreshDisabled: boolean;
+  refreshing: boolean;
 }>();
 const emit = defineEmits<{ play: []; follow: []; refresh: [] }>();
 </script>
 <template>
-  <header class="catalog-header artist-header">
+  <header class="catalog-header artist-header" :aria-busy="refreshing">
     <img
       v-if="artist.coverUrl"
       class="catalog-cover artist"
@@ -47,6 +48,8 @@ const emit = defineEmits<{ play: []; follow: []; refresh: [] }>();
         <button
           class="icon-button"
           aria-label="刷新详情"
+          :class="{ 'catalog-refreshing': refreshing }"
+          :aria-busy="refreshing"
           :disabled="refreshDisabled"
           @click="emit('refresh')"
         >

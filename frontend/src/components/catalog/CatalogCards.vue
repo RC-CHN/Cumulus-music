@@ -92,6 +92,7 @@ function date(value: string | number | null) {
         v-for="(album, i) in windowAlbums"
         :key="`album:${i}:${album.id}`"
         class="catalog-card"
+        :data-catalog-key="`album:${album.id}`"
         @click="emit('open', { kind: 'album', id: album.id })"
       >
         <img
@@ -109,6 +110,7 @@ function date(value: string | number | null) {
         v-for="(artist, i) in windowArtists"
         :key="`artist:${i}:${artist.id}`"
         class="catalog-card artist"
+        :data-catalog-key="`artist:${artist.id}`"
         @click="emit('open', { kind: 'artist', id: artist.id })"
       >
         <img

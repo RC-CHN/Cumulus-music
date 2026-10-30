@@ -5,12 +5,17 @@ import type { CommentsModel } from '../composables/useComments';
 import CommentCard from './CommentCard.vue';
 import CommentWritePanel from './CommentWritePanel.vue';
 import CommentFloorPanel from './CommentFloorPanel.vue';
-import { useCommentWrites } from '../composables/useCommentWrites';
-import { useCommentFloor } from '../composables/useCommentFloor';
+import { useCommentContext, type CommentContext } from '../composables/useCommentContext';
 import { resourceKey, type CommentItem } from '../services/comments';
-const props = defineProps<{ model: CommentsModel; title: string; embedded?: boolean }>();
+const props = defineProps<{
+  model: CommentsModel;
+  title: string;
+  embedded?: boolean;
+  context?: CommentContext;
+}>();
 const { page, query, loading, error, actionError, busy, history } = props.model;
-const target = ref('');
+const context = props.context ?? useCommentContext(props.model);
+const { target, floor, writer } = context;
 const scroller = ref<HTMLElement>();
 watch(
   query,
@@ -30,42 +35,9 @@ watch(
 );
 const composer = ref<InstanceType<typeof CommentWritePanel>>(),
   floorContainer = ref<HTMLDivElement>();
-const floor = useCommentFloor(undefined, () => props.model.sessionExpired());
-const writer = useCommentWrites(
-  undefined,
-  async (row) => {
-    const e = props.model.epoch.value,
-      k = resourceKey(row.resource);
-    if (row.command.kind === 'publish' && row.receiptId) await props.model.locate(row.receiptId);
-    else await props.model.load();
-    if (
-      e === props.model.epoch.value &&
-      props.model.resource.value &&
-      resourceKey(props.model.resource.value) === k &&
-      floor.query.value
-    )
-      await floor.load();
-  },
-  () => props.model.invalidate(),
-  () => props.model.sessionExpired(),
-);
 const writing = computed(() => writer.busy.value || writer.pending.value.length > 0);
-watch(
-  () => [
-    props.model.epoch.value,
-    props.model.resource.value ? resourceKey(props.model.resource.value) : '',
-  ],
-  () => {
-    const e = props.model.epoch.value,
-      r = props.model.resource.value;
-    floor.connect(e, r);
-    void writer.connect(e, r);
-  },
-  { immediate: true },
-);
 onUnmounted(() => {
-  writer.disconnect();
-  floor.connect('');
+  if (!props.context) context.dispose();
 });
 async function replyTo(item: CommentItem) {
   writer.setReply(item);

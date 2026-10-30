@@ -5,7 +5,7 @@ import { createSearchViewportMemory } from './services/searchViewport';
 import ContentTooltip from './components/ContentTooltip.vue';
 import type { SearchItem } from './services/search';
 import { searchCardIsCurrent, searchCardSelection } from './services/searchCards';
-import { computed, onMounted, onUnmounted, watch, ref, nextTick } from 'vue';
+import { computed, onMounted, onUnmounted, watch, ref, shallowRef, nextTick } from 'vue';
 import { onDesktopLyricOpen } from './adapters/desktopLyrics';
 import { useLocalShortcuts } from './composables/useLocalShortcuts';
 import Icon from './components/Icon.vue';
@@ -27,6 +27,8 @@ import LoginDialog from './components/LoginDialog.vue';
 import AccountDialog from './components/AccountDialog.vue';
 import TrackTable from './components/TrackTable.vue';
 import CatalogPage from './components/CatalogPage.vue';
+import { useCatalogWorkspace } from './composables/useCatalogWorkspace';
+import type { CatalogSession } from './composables/useCatalogSession';
 import CollectionsPage from './components/CollectionsPage.vue';
 import HistoryPage from './components/HistoryPage.vue';
 import SettingsPage from './components/SettingsPage.vue';
@@ -91,23 +93,41 @@ const core = useCore();
 const searchMemory = createSearchViewportMemory();
 const playlistLibraryState = ref(libraryView());
 const music = useMusic(undefined, (commit) => {
+  const proceed = () => {
+    catalogDetailPage.value?.checkpoint();
+    commit();
+  };
   if (batchTarget.value && batchPage.value)
     batchPage.value.requestLeave(() => {
       void closeBatch(false);
-      commit();
+      proceed();
     });
   else if (downloadBatch.value && downloadBatchPage.value)
     downloadBatchPage.value.requestLeave(() => {
       closeDownloadBatch(false);
-      commit();
+      proceed();
     });
   else if (playlistEditor.value && playlistEditorPage.value)
     playlistEditorPage.value.requestLeave(() => {
       closePlaylistEditor(false);
-      commit();
+      proceed();
     });
-  else commit();
+  else proceed();
 });
+const catalogWorkspace = useCatalogWorkspace(core, () => {
+  void music.bootstrap(false);
+});
+const catalogSession = shallowRef<CatalogSession>();
+watch(
+  [() => music.page.value, () => music.account.value.epoch, () => music.account.value.status],
+  () => {
+    catalogSession.value = catalogWorkspace.open(
+      music.account.value,
+      music.page.value.kind === 'catalog' ? music.page.value : undefined,
+    );
+  },
+  { immediate: true, flush: 'sync' },
+);
 const settings = useSettings(core, () => {
   void music.bootstrap(false);
 });
@@ -463,18 +483,10 @@ function downloadBatchLeft() {
     ?.focus({ preventScroll: true });
 }
 const catalogDetailPage = ref<InstanceType<typeof CatalogPage>>();
-const catalogCanGoBack = computed(
-  () =>
-    page.value.kind === 'catalog' &&
-    catalogDetailPage.value?.resourceKey ===
-      `${page.value.resource.kind}:${page.value.resource.id}` &&
-    !!catalogDetailPage.value?.canGoBack,
-);
 function backFromPage() {
   if (batchTarget.value) batchPage.value?.requestLeave();
   else if (downloadBatch.value) downloadBatchPage.value?.requestLeave();
   else if (playlistEditor.value) playlistEditorPage.value?.requestLeave();
-  else if (catalogCanGoBack.value) catalogDetailPage.value?.back();
   else music.back();
 }
 const downloadDialog = ref<DownloadDialogTarget>();
@@ -637,7 +649,15 @@ const pageKey = computed(() =>
   JSON.stringify({
     account: [account.value.epoch, account.value.status],
     page:
-      page.value.kind === 'search' ? { kind: 'search', keyword: page.value.keyword } : page.value,
+      page.value.kind === 'search'
+        ? { kind: 'search', keyword: page.value.keyword }
+        : page.value.kind === 'catalog'
+          ? {
+              kind: 'catalog',
+              resource: page.value.resource,
+              catalogVisit: page.value.catalogVisit,
+            }
+          : page.value,
   }),
 );
 const playingLikes = computed(() => {
@@ -742,6 +762,7 @@ onMounted(async () => {
   if (mounted) await music.bootstrap();
 });
 onUnmounted(() => {
+  catalogWorkspace.clear();
   mounted = false;
   accountListener?.();
   nativeLikeListener?.();
@@ -979,9 +1000,7 @@ onUnmounted(() => {
       <button
         class="back-button icon-button"
         aria-label="返回上一页"
-        :disabled="
-          !historyLength && !playlistEditor && !batchTarget && !downloadBatch && !catalogCanGoBack
-        "
+        :disabled="!historyLength && !playlistEditor && !batchTarget && !downloadBatch"
         @click="backFromPage"
       >
         <Icon name="back" />
@@ -1195,9 +1214,9 @@ onUnmounted(() => {
                 @expired="music.bootstrap(false)"
               />
               <CatalogPage
-                v-else-if="page.kind === 'catalog'"
+                v-else-if="page.kind === 'catalog' && catalogSession"
                 ref="catalogDetailPage"
-                :resource="page.resource"
+                :model="catalogSession"
                 :account="account"
                 :playable="player.ready.value"
                 :play-busy="player.busy.value"
@@ -1206,6 +1225,17 @@ onUnmounted(() => {
                 :busy-likes="busyLikes"
                 :current-id="currentTrackId"
                 @open="openCatalog"
+                @artist-tab="
+                  (tab) => {
+                    if (page.kind === 'catalog') music.navigate({ ...page, artistTab: tab });
+                  }
+                "
+                @album-tab="
+                  (tab) => {
+                    if (page.kind === 'catalog') music.replace({ ...page, albumTab: tab });
+                  }
+                "
+                @back="backFromPage"
                 @play="playCatalog"
                 @like="music.like"
                 @more="(request) => trackActions?.show(request)"
@@ -1213,6 +1243,11 @@ onUnmounted(() => {
                 @mv="openMv"
                 @expired="music.bootstrap(false)"
               />
+              <div v-else-if="page.kind === 'catalog'" class="empty-state">
+                请登录后查看详情<button class="text-button" @click="loginOpen = true">
+                  登录账号
+                </button>
+              </div>
               <MemberPage
                 v-else-if="page.kind === 'member'"
                 :model="member"

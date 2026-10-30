@@ -14,7 +14,7 @@ export type Page =
   | { kind: 'settings' }
   | { kind: 'history'; scope: import('../services/history').HistoryKind }
   | { kind: 'collections'; scope: import('../services/collections').CollectionScope }
-  | { kind: 'catalog'; resource: import('../services/catalog').CatalogResource }
+  | ({ kind: 'catalog' } & import('../services/catalogNavigation').CatalogLocation)
   | { kind: 'scene_fm' }
   | { kind: 'member' }
   | { kind: 'fm' }
@@ -68,6 +68,7 @@ export function useMusic(
   let request = 0;
   let searchId = 0;
   let downloadVisit = 0;
+  let catalogVisit = 0;
   let accountRequest = 0;
   let resourceRequest = 0;
   let likeRevision = 0;
@@ -236,7 +237,9 @@ export function useMusic(
           ? { ...next, searchId: ++searchId }
           : next.kind === 'downloads'
             ? { ...next, downloadVisit: ++downloadVisit }
-            : next;
+            : next.kind === 'catalog' && next.catalogVisit === undefined
+              ? { ...next, catalogVisit: ++catalogVisit }
+              : next;
       void load();
     });
   }
@@ -253,7 +256,12 @@ export function useMusic(
   function replace(next: Page) {
     if (initializing.value) return;
     navigation(() => {
-      page.value = next.kind === 'downloads' ? { ...next, downloadVisit: ++downloadVisit } : next;
+      page.value =
+        next.kind === 'downloads'
+          ? { ...next, downloadVisit: ++downloadVisit }
+          : next.kind === 'catalog' && next.catalogVisit === undefined
+            ? { ...next, catalogVisit: ++catalogVisit }
+            : next;
       void load();
     });
   }
