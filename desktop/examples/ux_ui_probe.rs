@@ -10,6 +10,8 @@ mod like_recovery_fixture;
 mod media_shortcuts;
 #[path = "support/playlist_cover_layout_fixture.rs"]
 mod playlist_cover_layout_fixture;
+#[path = "support/playlist_cover_transfer_fixture.rs"]
+mod playlist_cover_transfer_fixture;
 #[path = "support/playlist_editor_fixture.rs"]
 mod playlist_editor_fixture;
 #[path = "support/playlist_layout_fixture.rs"]
@@ -155,9 +157,12 @@ fn main() {
         let proof_store=registry.store();
         let recovery = recovery_proof.then(||Arc::new(like_recovery_fixture::Library::new(Arc::new(Library))));
         let api:Arc<dyn Api>=recovery.as_ref().map(|f|f.clone() as Arc<dyn Api>).unwrap_or_else(||Arc::new(Library));
+        let transfer=playlist_cover_transfer_fixture::enabled().then(||Arc::new(playlist_cover_transfer_fixture::Fixture::new(api.clone(),proof_store.clone(),root.clone())));
+        let api=transfer.as_ref().map(|f|f.clone() as Arc<dyn Api>).unwrap_or(api);
         let session=Arc::new(AccountSession::new(api,Some(registry.store())));
         let mut client=MusicClient::with_session(session,registry);
-        if playlist_cover_layout_fixture::enabled() {
+        if let Some(fixture)=transfer.as_ref() { client=client.with_playlist_cover_backend(fixture.clone()); }
+        else if playlist_cover_layout_fixture::enabled() {
             client=client.with_playlist_cover_backend(Arc::new(playlist_cover_layout_fixture::NoNetwork));
         }
         let startup_delay: u64 = std::env::var("CUMULUS_PLAYER_START_DELAY_MS").ok()
@@ -186,6 +191,14 @@ fn main() {
         app.listen("ux-proof",move |event| {
             let mut value:Value=serde_json::from_str(event.payload()).unwrap();
             let stage=value["stage"].as_str().unwrap_or("");
+            if let Some(fixture)=transfer.as_ref() && stage=="cover-transfer-fixture" {
+                let handle=handle.clone();let fixture=fixture.clone();
+                tauri::async_runtime::spawn(async move {
+                    let result=fixture.control(&handle.state::<MusicClient>(),&value).await;
+                    let ack=match result {Ok(())=>json!({"ok":true,"report":fixture.report()}),Err(error)=>json!({"ok":false,"message":error.to_string()})};
+                    handle.get_webview_window("main").unwrap().eval(format!("window.__coverTransferAck={ack};")).unwrap();
+                });return;
+            }
             if playlist_cover_layout_fixture::enabled() && stage=="cover-fixture" {
                 let handle=handle.clone();let root=cover_root.clone();let store=proof_store.clone();
                 tauri::async_runtime::spawn(async move {
@@ -242,6 +255,7 @@ fn main() {
             }
             if !(["complete","failed"].contains(&stage) || stage.starts_with("ux_") && stage.chars().all(|c|c.is_ascii_alphanumeric()||c=='_')){return;}
             let stage=stage.to_owned();
+            if let Some(fixture)=transfer.as_ref() {value["syntheticCoverTransfer"]=fixture.report();}
             if playlist_editor_fixture::enabled() {value["syntheticMetadataWrites"]=json!(playlist_editor_fixture::writes());}
             if let Some(fixture)=recovery.as_ref() {
                 use std::sync::atomic::Ordering;

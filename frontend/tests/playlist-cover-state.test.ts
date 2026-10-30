@@ -254,3 +254,72 @@ test('revision conflict stays pending until an explicit rebase and never automat
   ]);
   model.dispose();
 });
+
+test('pause stays pending until the active transfer settles and rejects duplicate pause clicks', async () => {
+  const pending = deferred<AccountData<CoverOutcome>>();
+  let pauses = 0;
+  const current = { ...task('uploading'), transfer: 'uploading' as const, total: 500000 };
+  const model = fixture({
+    playlistCoverTasks: async () => data([current]),
+    playlistCoverCommand: async (_e, _id, command) => {
+      if (command.kind === 'pause') {
+        pauses++;
+        return data({ ...outcome('uploading'), task: current });
+      }
+      return pending.promise;
+    },
+  });
+  await model.connect(account(), '10');
+  const running = model.command({ kind: 'continue' });
+  await model.pause();
+  assert.equal(model.stopping.value, true);
+  assert.equal(model.busy.value, true);
+  await model.pause();
+  assert.equal(pauses, 1);
+  pending.resolve(data({ ...outcome('uploading'), task: { ...current, transfer: 'paused' } }));
+  await running;
+  assert.equal(model.stopping.value, false);
+  assert.equal(model.busy.value, false);
+  assert.equal(model.task.value?.transfer, 'paused');
+  model.dispose();
+});
+
+test('failed pause is retryable while the original transfer is still pending', async () => {
+  const pending = deferred<AccountData<CoverOutcome>>();
+  const model = fixture({
+    playlistCoverTasks: async () => data([task('uploading')]),
+    playlistCoverCommand: async (_e, _id, command) => {
+      if (command.kind === 'pause') throw { code: 'network', message: 'pause failed' };
+      return pending.promise;
+    },
+  });
+  await model.connect(account(), '10');
+  const running = model.command({ kind: 'continue' });
+  await model.pause();
+  assert.equal(model.stopping.value, false);
+  assert.equal(model.busy.value, true);
+  assert.equal(model.error.value, 'pause failed');
+  pending.resolve(data(outcome()));
+  await running;
+  model.dispose();
+});
+
+test('a late pause acknowledgment cannot replace a confirmed save', async () => {
+  const running = deferred<AccountData<CoverOutcome>>();
+  const pausing = deferred<AccountData<CoverOutcome>>();
+  const model = fixture({
+    playlistCoverTasks: async () => data([task('uploading')]),
+    playlistCoverCommand: (_e, _id, command) =>
+      command.kind === 'pause' ? pausing.promise : running.promise,
+  });
+  await model.connect(account(), '10');
+  const save = model.command({ kind: 'continue' });
+  const pause = model.pause();
+  running.resolve(data(outcome()));
+  await save;
+  pausing.resolve(data(outcome('uploading')));
+  await pause;
+  assert.equal(model.task.value?.phase, 'confirmed');
+  assert.equal(model.stopping.value, false);
+  model.dispose();
+});

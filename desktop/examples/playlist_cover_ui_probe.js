@@ -63,9 +63,8 @@
       await wait(stable,'replace_cancelled');if(JSON.stringify(crop())!==JSON.stringify(intended))throw Error('cancel_lost_crop');
     }
     step='save';await click(button('保存',el('.cover-dialog')));
-    await wait(()=>el('.cover-dialog')?.dataset.phase==='confirmed'&&button('完成',el('.cover-dialog'))&&!button('完成',el('.cover-dialog')).disabled,'cover_confirmed');
-    await stage('cover_confirmed',{intended});
-    await click(button('完成',el('.cover-dialog')));await wait(()=>!el('.cover-dialog'),'cover_closed');
+    await wait(()=>!el('.cover-dialog')&&el('.playlist-editor-page .notice')?.textContent.includes('封面已保存'),'cover_confirmed_and_closed');
+    await stage('cover_confirmed',{intended,closedAfterConfirmation:true});
     if(el('[aria-label="歌单名称"]').value!==expectedName||el('[aria-label="歌单简介"]').value!==expectedDescription)throw Error('metadata_draft_lost');
     await wait(()=>el('.playlist-cover-edit img')?.complete&&el('.playlist-cover-edit img')?.naturalWidth>0,'updated_cover_visible');
     await stage('cover_draft_preserved',{nameDraft:el('[aria-label="歌单名称"]').value,descriptionDraft:el('[aria-label="歌单简介"]').value,coverUrl:el('.playlist-cover-edit img').src});

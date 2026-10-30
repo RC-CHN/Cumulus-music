@@ -160,6 +160,7 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playlist_editor_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playlist-editor-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playlist_tags_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playlist-tags-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playlist_cover_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playlist-cover-layout-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playlist_cover_feedback_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playlist-cover-feedback-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/like_recovery_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-likes-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/keyboard_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-keyboard-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/motion_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-motion-linux
@@ -215,6 +216,7 @@ jobs:
           python scripts/ci/playlist_editor_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playlist-editor-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/playlist_tags_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playlist-tags-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/playlist_cover_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playlist-cover-layout-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/playlist_cover_feedback_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playlist-cover-feedback-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/like_recovery_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-likes-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/keyboard_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-keyboard-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/motion_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-motion-windows --runtime .build/package-stage/windows-x64/native
