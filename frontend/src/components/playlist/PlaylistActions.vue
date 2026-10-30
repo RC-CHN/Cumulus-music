@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MenuTransition from '../MenuTransition.vue';
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
 import {
   failure,
@@ -252,7 +253,7 @@ defineExpose({ show, busy, downloadOpen });
       </footer>
     </dialog>
   </ModalTransition>
-  <Transition name="menu"
+  <MenuTransition
     ><div
       v-if="message"
       class="track-action-feedback playlist-action-feedback"
@@ -269,6 +270,6 @@ defineExpose({ show, busy, downloadOpen });
       >
         {{ copying || adding ? '正在重试…' : '重试' }}</button
       ><button v-if="failed" class="text-button" @click="dismiss">关闭</button>
-    </div></Transition
+    </div></MenuTransition
   >
 </template>

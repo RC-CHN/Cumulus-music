@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MenuTransition from '../MenuTransition.vue';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import type { AccountView } from '../../services/contracts';
 import { useSearchBox } from '../../composables/useSearchBox';
@@ -228,7 +229,7 @@ onUnmounted(() => {
       </button>
     </form>
     <Teleport to="body"
-      ><Transition name="menu">
+      ><MenuTransition>
         <div
           v-if="open"
           id="search-discovery-panel"
@@ -297,7 +298,7 @@ onUnmounted(() => {
               @retry="(id) => model.load({ kind: 'chart', id }, 'chart:' + id)"
             />
           </template>
-        </div> </Transition
+        </div> </MenuTransition
     ></Teleport>
     <ModalTransition :fallback-focus="() => input ?? null"
       ><SearchHistoryConfirm

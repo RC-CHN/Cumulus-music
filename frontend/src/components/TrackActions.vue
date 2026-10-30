@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MenuTransition from './MenuTransition.vue';
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef } from 'vue';
 import type { TrackView, PlaylistView } from '../services/contracts';
 import type { PlayerModel } from '../composables/usePlayer';
@@ -195,7 +196,7 @@ defineExpose({ show, close });
   <ModalTransition
     ><TrackShareDialog v-if="shared" :track="shared" @close="shared = undefined"
   /></ModalTransition>
-  <Transition name="menu"
+  <MenuTransition
     ><div v-if="message" class="track-action-feedback" :class="{ failed }" role="status">
       {{ message
       }}<button
@@ -207,6 +208,6 @@ defineExpose({ show, close });
         {{ copying ? '正在复制…' : '重试' }}
       </button>
       <button v-if="failed" class="text-button" @click="dismiss">关闭</button>
-    </div></Transition
+    </div></MenuTransition
   >
 </template>

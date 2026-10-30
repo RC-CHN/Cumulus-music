@@ -19,6 +19,7 @@ onUnmounted(() => {
   for (const element of owned) modalLeft(element);
 });
 function entering(element: Element) {
+  (element as HTMLElement).inert = false;
   owned.add(element);
   modalEntered(element);
   const explicit = props.returnFocus?.();
@@ -31,6 +32,9 @@ function entering(element: Element) {
   const parentDialog = active.closest('dialog');
   const replacing = parentDialog?.classList.contains('modal-leave-active');
   returnTargets.set(element, (replacing && returnTargets.get(parentDialog!)) || active);
+}
+function leaving(element: Element) {
+  (element as HTMLElement).inert = true;
 }
 function left(element: Element) {
   owned.delete(element);
@@ -58,5 +62,7 @@ function left(element: Element) {
 }
 </script>
 <template>
-  <Transition name="modal" @before-enter="entering" @after-leave="left"><slot /></Transition>
+  <Transition name="modal" @before-enter="entering" @before-leave="leaving" @after-leave="left"
+    ><slot
+  /></Transition>
 </template>

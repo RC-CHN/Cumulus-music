@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MenuTransition from '../MenuTransition.vue';
 import { nextTick, ref, useId, watch } from 'vue';
 import Icon from '../Icon.vue';
 import PlaylistTagPopover from './PlaylistTagPopover.vue';
@@ -102,7 +103,7 @@ watch(
       </button>
     </div>
     <Teleport to="body"
-      ><Transition name="menu"
+      ><MenuTransition
         ><PlaylistTagPopover
           v-if="open"
           :id="id"
@@ -116,7 +117,7 @@ watch(
           @cancel="cancel"
           @confirm="close()"
           @dismiss="close"
-          @retry="emit('retry')" /></Transition
+          @retry="emit('retry')" /></MenuTransition
     ></Teleport>
   </div>
 </template>

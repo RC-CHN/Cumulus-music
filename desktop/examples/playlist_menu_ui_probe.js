@@ -10,7 +10,16 @@
   const click = (node) => { assert(node && !node.disabled, 'enabled control'); node.scrollIntoView({ block: 'nearest' }); node.focus({ preventScroll: true }); node.click(); };
   const key = (node, value, extra = {}) => node.dispatchEvent(new KeyboardEvent('keydown', { key: value, bubbles: true, cancelable: true, ...extra }));
   const menu = () => one('.action-menu');
-  let step = 'startup', count = 0, failCopy = false, holdCopy = false, copyCalls = 0;
+  const leavingChecks = [], seenLeaving = new WeakSet();
+  const observer = new MutationObserver(() => {
+    for (const node of all('.modal-leave-active, .menu-leave-active')) {
+      if (seenLeaving.has(node)) continue;
+      seenLeaving.add(node);
+      leavingChecks.push({ node: node.tagName, className: node.className, inert: node.inert });
+    }
+  });
+  observer.observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ['class', 'inert'] });
+  let step = 'startup' , count = 0, failCopy = false, holdCopy = false, copyCalls = 0;
   const originalFetch = window.fetch;
   window.fetch = async function(url, options) {
     if (String(url).endsWith('/copy_text')) {
@@ -31,7 +40,10 @@
     assert(window.__searchClipboardAck, 'actual native clipboard value');
   }
   async function capture(label) {
-    step = label; await sleep(200);
+    step = label;
+    await wait(() => !one('.modal-enter-active,.modal-leave-active,.menu-enter-active,.menu-leave-active'), 'overlay transitions settled');
+    await sleep(100);
+    assert(leavingChecks.every(row => row.inert), 'leaving overlay remained interactive');
     assert(document.documentElement.scrollWidth <= innerWidth, 'document containment');
     for (const n of all('.action-menu, dialog[open]')) {
       const r = n.getBoundingClientRect();
@@ -52,7 +64,7 @@
     const card = one(`[data-library-open="${id}"]`), trigger = context ? card : card.closest('article').querySelector('.menu-trigger');
     trigger.scrollIntoView({ block: 'center' }); await sleep(80); trigger.focus({ preventScroll: true });
     if (context) key(trigger, 'F10', { shiftKey: true }); else click(trigger);
-    await wait(() => menu()?.style.visibility === 'visible', 'resource menu'); await sleep(140);
+    await wait(() => menu()?.style.visibility === 'visible' && !one('.menu-enter-active,.menu-leave-active'), 'resource menu settled');
     return trigger;
   }
   async function choose(label) { click(button(label, menu())); await wait(() => !menu(), 'menu selection'); }
@@ -141,6 +153,17 @@
     step = 'play';
     trigger = await open(2); await choose('播放'); await wait(() => one('[data-library-open="2"]').closest('article').querySelector('.library-card-play')?.getAttribute('aria-label').startsWith('暂停'), 'native playlist playback'); await capture('playing');
     click(one('[data-library-open="2"]').closest('article').querySelector('.library-card-play')); await wait(() => one('[data-library-open="2"]').closest('article').querySelector('.library-card-play')?.getAttribute('aria-label').startsWith('播放'), 'paused'); await capture('paused');
-    await emit('complete',{ ok:true, playlistMenuUi:true, stageCount:count, realMusicRequests:0, realAccountWrites:0, clipboardVerified:true, mutationRecoveryVerified:true, fullDownloadVerified:true });
-  } catch(error) { await emit('failed',{ step,message:String(error),stack:error.stack,stageCount:count }); }
+    trigger = await open(2);
+    const leaving = menu(), leavingControl = leaving.querySelector('button:not(:disabled)');
+    key(leaving, 'Escape');
+    await sleep(0);
+    const focusedDuringLeave = leaving.isConnected;
+    assert(leaving.inert, 'closed menu is inert');
+    if (focusedDuringLeave) {
+      leavingControl.focus({ preventScroll: true });
+      assert(document.activeElement !== leavingControl && document.activeElement === trigger, 'outgoing menu accepted keyboard focus');
+    }
+    await wait(() => !leaving.isConnected, 'outgoing menu removed');
+    await emit('complete',{ ok:true, playlistMenuUi:true, focusedDuringLeave, leavingChecks, stageCount:count, realMusicRequests:0, realAccountWrites:0, clipboardVerified:true, mutationRecoveryVerified:true, fullDownloadVerified:true });
+  } catch(error) { await emit('failed',{ step,leavingChecks,message:String(error),stack:error.stack,stageCount:count }); }
 })();

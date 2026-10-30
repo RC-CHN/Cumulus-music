@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MenuTransition from '../MenuTransition.vue';
 import { nextTick, onMounted, onUnmounted, ref, useId, watch } from 'vue';
 import Icon from '../Icon.vue';
 
@@ -84,7 +85,7 @@ watch(
         详情
       </button>
     </div>
-    <Transition name="menu">
+    <MenuTransition>
       <div
         v-if="open"
         :id="id"
@@ -111,6 +112,6 @@ watch(
           <Icon name="close" />
         </button>
       </div>
-    </Transition>
+    </MenuTransition>
   </div>
 </template>

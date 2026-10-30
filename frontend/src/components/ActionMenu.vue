@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MenuTransition from './MenuTransition.vue';
 import { nextTick, onUnmounted, ref, useId, watch } from 'vue';
 import Icon from './Icon.vue';
 import type { MenuItem } from '../services/menu';
@@ -145,7 +146,7 @@ defineExpose({ show, showAt, close });
       <Icon :name="icon" />
     </button>
     <Teleport to="body">
-      <Transition name="menu">
+      <MenuTransition>
         <div
           v-if="open"
           :id="id"
@@ -175,7 +176,7 @@ defineExpose({ show, showAt, close });
             </button>
           </template>
         </div>
-      </Transition>
+      </MenuTransition>
     </Teleport>
   </span>
 </template>
