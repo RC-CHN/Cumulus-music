@@ -1,4 +1,4 @@
-import { ref, shallowRef } from 'vue';
+import { computed, ref, shallowRef } from 'vue';
 import { failure, type AccountView, type CoreClient } from '../services/contracts.ts';
 import { useCore } from '../services/core.ts';
 import {
@@ -18,9 +18,12 @@ export function usePlaylistCover(
 ) {
   const task = shallowRef<CoverTask>(),
     image = shallowRef<CoverImage>(),
-    error = ref(''),
+    actionError = ref(''),
+    previewError = ref(''),
     warning = ref('');
+  const error = computed(() => actionError.value || previewError.value);
   const busy = ref(false),
+    previewing = ref(false),
     loading = ref(false),
     readFailed = ref(false),
     stopping = ref(false),
@@ -39,9 +42,9 @@ export function usePlaylistCover(
     if (poll) clearTimeout(poll);
     poll = undefined;
   }
-  function problem(value: unknown) {
+  function problem(value: unknown, target = actionError) {
     const p = failure(value);
-    if (p.code !== 'stale') error.value = p.message;
+    if (p.code !== 'stale') target.value = p.message;
     if (p.code === 'snapshot_changed') changedElsewhere.value = true;
     if (['session_expired', 'profile_changed'].includes(p.code)) {
       connected = false;
@@ -52,6 +55,7 @@ export function usePlaylistCover(
       image.value = undefined;
       busy.value = false;
       loading.value = false;
+      previewing.value = false;
       expired();
     }
   }
@@ -76,12 +80,19 @@ export function usePlaylistCover(
   }
   async function preview(e = epoch, n = serial) {
     const id = task.value?.id;
-    if (!id || !task.value || coverTerminal(task.value)) return;
+    if (!live(e, n) || previewing.value || !id || !task.value || coverTerminal(task.value)) return;
+    previewing.value = true;
+    previewError.value = '';
     try {
       const result = await core.playlistCoverImage(e, id);
-      if (live(e, n) && result.epoch === e && task.value?.id === id) image.value = result.value;
+      if (live(e, n) && result.epoch === e && task.value?.id === id) {
+        image.value = result.value;
+        return true;
+      }
     } catch (value) {
-      if (live(e, n) && task.value?.id === id) problem(value);
+      if (live(e, n) && task.value?.id === id) problem(value, previewError);
+    } finally {
+      if (live(e, n)) previewing.value = false;
     }
   }
   async function connect(account: AccountView, id: string) {
@@ -94,7 +105,9 @@ export function usePlaylistCover(
     connected = account.status === 'authenticated';
     task.value = undefined;
     image.value = undefined;
-    error.value = '';
+    previewing.value = false;
+    previewError.value = '';
+    actionError.value = '';
     warning.value = '';
     busy.value = false;
     // Only a matching successful task read establishes that no task exists.
@@ -121,14 +134,15 @@ export function usePlaylistCover(
     }, 500);
   }
   async function choose(revision: string) {
-    if (!connected || busy.value || loading.value || readFailed.value) return;
+    if (!connected || busy.value || loading.value || previewing.value || readFailed.value) return;
     const previous = task.value;
     if (previous && !coverTerminal(previous) && !coverEditable(previous)) return;
     const e = epoch,
       n = ++serial;
     read++;
     busy.value = true;
-    error.value = '';
+    previewing.value = false;
+    actionError.value = '';
     warning.value = '';
     try {
       const result = await core.pickPlaylistCover(
@@ -163,7 +177,8 @@ export function usePlaylistCover(
       id = task.value.id;
     read++;
     busy.value = true;
-    error.value = '';
+    previewing.value = false;
+    actionError.value = '';
     warning.value = '';
     schedule(e, n);
     try {
@@ -171,7 +186,8 @@ export function usePlaylistCover(
       if (!live(e, n) || result.epoch !== e) return;
       read++;
       task.value = result.value.task;
-      error.value = '';
+      if (coverTerminal(result.value.task)) previewError.value = '';
+      actionError.value = '';
       warning.value = result.value.warning ?? '';
       if (command.kind === 'rebase') {
         changedElsewhere.value = false;
@@ -225,7 +241,7 @@ export function usePlaylistCover(
     const e = epoch,
       n = serial;
     loading.value = true;
-    error.value = '';
+    actionError.value = '';
     try {
       const result = await core.playlistEditor(e, playlist);
       if (live(e, n) && result.epoch === e) latest.value = result.value;
@@ -246,6 +262,8 @@ export function usePlaylistCover(
     busy.value = false;
     loading.value = false;
     readFailed.value = false;
+    previewing.value = false;
+    previewError.value = '';
   }
   return {
     task,
@@ -254,6 +272,7 @@ export function usePlaylistCover(
     warning,
     busy,
     loading,
+    previewing,
     readFailed,
     stopping,
     changedElsewhere,
@@ -264,7 +283,7 @@ export function usePlaylistCover(
     pause,
     inspectLatest,
     refresh: () => refresh(),
-    preview: () => preview(),
+    preview: () => (busy.value || loading.value ? Promise.resolve(undefined) : preview()),
     dispose,
   };
 }

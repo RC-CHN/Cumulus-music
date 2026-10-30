@@ -136,6 +136,59 @@ test('late preview cannot leak a previous account image or replace the new loadi
   assert.equal(model.loading.value, false);
   model.dispose();
 });
+test('preview retry clears its failure without hiding an independent save error', async () => {
+  let failPreview = true;
+  const model = fixture({
+    playlistCoverTasks: async () => data([task()]),
+    playlistCoverImage: async () => {
+      if (failPreview) throw { code: 'media', message: 'preview unavailable' };
+      return data(image);
+    },
+    playlistCoverCommand: async () => {
+      throw { code: 'network', message: 'save failed' };
+    },
+  });
+  await model.connect(account(), '10');
+  assert.equal(model.error.value, 'preview unavailable');
+  failPreview = false;
+  await model.preview();
+  assert.equal(model.error.value, '');
+  assert.equal(model.image.value, image);
+  await model.command({ kind: 'continue' });
+  await model.preview();
+  assert.equal(model.error.value, 'save failed');
+  model.dispose();
+});
+test('preview retry is single-flight and late rejection cannot replace a new account preview', async () => {
+  const old = deferred<AccountData<CoverImage>>();
+  const fresh = deferred<AccountData<CoverImage>>();
+  let reads = 0;
+  const model = fixture({
+    playlistCoverTasks: async (e) => data([task()], e),
+    playlistCoverImage: async (e) => {
+      reads++;
+      if (reads === 1) throw { code: 'media', message: 'preview unavailable' };
+      return e === '1' ? old.promise : fresh.promise;
+    },
+  });
+  await model.connect(account(), '10');
+  const retry = model.preview();
+  const duplicate = model.preview();
+  assert.equal(reads, 2);
+  await duplicate;
+  assert.equal(model.previewing.value, true);
+  const opening = model.connect(account('2'), '10');
+  await new Promise((r) => setImmediate(r));
+  old.reject({ code: 'media', message: 'old preview failure' });
+  await retry;
+  assert.equal(model.previewing.value, true);
+  assert.equal(model.error.value, '');
+  fresh.resolve(data(image, '2'));
+  await opening;
+  assert.equal(model.previewing.value, false);
+  assert.equal(model.image.value, image);
+  model.dispose();
+});
 test('unknown save is recovered through a read-only task refresh and explicit reconcile, without a second save', async () => {
   const commands: string[] = [];
   let saved = 0,

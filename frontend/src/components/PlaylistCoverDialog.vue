@@ -32,6 +32,7 @@ const {
   warning,
   busy,
   loading,
+  previewing,
   readFailed,
   stopping,
   changedElsewhere,
@@ -173,6 +174,16 @@ async function close() {
   }
   emit('close');
 }
+async function retryPreview(event: MouseEvent) {
+  const trigger = event.currentTarget;
+  const focused = document.activeElement === trigger;
+  if (!(await model.preview())) return;
+  await nextTick();
+  // Retry disappears on success. Restore keyboard access without taking focus
+  // away from another action the user chose during the read.
+  if (focused && (document.activeElement === trigger || document.activeElement === document.body))
+    dialog.value?.querySelector<HTMLElement>('.cover-crop-area')?.focus({ preventScroll: true });
+}
 async function save() {
   if (!task.value) return;
   if (coverEditable(task.value) && crop.value)
@@ -238,7 +249,17 @@ async function applyLatest() {
       <div v-else class="cover-empty">
         <img v-if="editor.coverUrl" :src="editor.coverUrl" alt="当前歌单封面" />
         <Icon v-else name="music" />
-        <p>{{ finished ? '本次封面编辑已结束' : '选择一张图片作为歌单封面' }}</p>
+        <p :role="previewing ? 'status' : undefined">
+          {{
+            finished
+              ? '本次封面编辑已结束'
+              : previewing
+                ? '正在读取图片预览…'
+                : task
+                  ? '暂时无法显示所选图片'
+                  : '选择一张图片作为歌单封面'
+          }}
+        </p>
       </div>
       <label v-if="image" class="cover-zoom" :style="{ '--cover-zoom-progress': zoomProgress }"
         ><span class="sr-only">封面缩放</span
@@ -254,7 +275,7 @@ async function applyLatest() {
           @input="zoom(Number(($event.target as HTMLInputElement).value))"
       /></label>
       <p v-if="busy" class="cover-status" role="status">{{ coverBusyMessage(task, stopping) }}</p>
-      <p v-else-if="task && !editable" class="cover-status" role="status">
+      <p v-else-if="task && !coverEditable(task)" class="cover-status" role="status">
         {{ coverMessage(task) }}
       </p>
       <p v-if="editable" class="cover-tip">
@@ -302,10 +323,10 @@ async function applyLatest() {
         <button
           v-if="!task || coverEditable(task) || finished"
           class="text-button"
-          :disabled="busy || loading || readFailed"
+          :disabled="busy || loading || previewing || readFailed"
           @click="model.choose(editor.revision)"
         >
-          {{ image ? '重新选取图片' : '选择图片' }}
+          {{ image || (task && !finished) ? '重新选取图片' : '选择图片' }}
         </button>
         <button
           v-if="task && !finished && !coverEditable(task)"
@@ -334,10 +355,10 @@ async function applyLatest() {
         <button
           v-if="task && !image && !finished"
           class="text-button"
-          :disabled="busy"
-          @click="model.preview"
+          :disabled="busy || loading || previewing"
+          @click="retryPreview"
         >
-          重新读取预览
+          {{ previewing ? '正在读取预览…' : '重新读取预览' }}
         </button>
       </div>
       <p v-if="!image && !finished" class="cover-tip">
@@ -362,6 +383,7 @@ async function applyLatest() {
         :disabled="
           busy ||
           loading ||
+          previewing ||
           !task ||
           ambiguous ||
           changedElsewhere ||
@@ -429,6 +451,7 @@ header .icon {
   height: 24px;
 }
 .cover-body {
+  flex: 1 1 auto;
   min-height: 0;
   margin-top: 40px;
   overflow-y: auto;
@@ -644,6 +667,15 @@ button:disabled {
   cursor: default;
 }
 @media (max-height: 600px) {
+  .cover-empty {
+    /* An unavailable preview needs room for its recovery actions. Keep the
+       actual image/crop viewport at its original size. */
+    height: 140px;
+  }
+  .cover-empty img {
+    width: 80px;
+    height: 80px;
+  }
   .cover-zoom {
     /* Keep the entire 18px thumb inside the initial 296px body viewport. */
     margin-top: 18px;
