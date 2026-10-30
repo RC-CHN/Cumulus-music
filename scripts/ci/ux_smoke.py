@@ -22,6 +22,7 @@ def main():
     root.mkdir(parents=True)
     env = {k: v for k, v in os.environ.items() if not k.startswith('CUMULUS_')}
     env['CUMULUS_PROOF_DIR'] = str(root)
+    env['CUMULUS_COVER_LAYOUT_PROOF'] = '1'
     for variable, directory in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'),
                                 ('XDG_CACHE_HOME', 'cache'), ('APPDATA', 'roaming'),
                                 ('LOCALAPPDATA', 'local')]:

@@ -187,10 +187,10 @@ fn main() {
             let mut value:Value=serde_json::from_str(event.payload()).unwrap();
             let stage=value["stage"].as_str().unwrap_or("");
             if playlist_cover_layout_fixture::enabled() && stage=="cover-fixture" {
-                let handle=handle.clone();let root=cover_root.clone();
+                let handle=handle.clone();let root=cover_root.clone();let store=proof_store.clone();
                 tauri::async_runtime::spawn(async move {
                     let client=handle.state::<MusicClient>();
-                    let result=playlist_cover_layout_fixture::control(&client,&root,&value).await;
+                    let result=playlist_cover_layout_fixture::control(&client,&store,&root,&value).await;
                     let ack=match result {Ok(())=>json!({"ok":true}),Err(error)=>json!({"ok":false,"message":error.to_string()})};
                     handle.get_webview_window("main").unwrap().eval(format!("window.__coverFixtureAck={ack};")).unwrap();
                 });

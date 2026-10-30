@@ -33,12 +33,11 @@
       await wait(()=>el('.playlist-hero')&&button('编辑歌单'),'playlist_loaded');
       await click(button('编辑歌单'));await wait(()=>el('[aria-label="替换歌单封面"]')&&!el('.playlist-editor-page .spinner'),'editor_loaded');
       input('歌单名称','UnsavedCoverDraft');input('歌单简介','Unsaved description stays local');
-      await click(el('[aria-label="替换歌单封面"]'));await wait(()=>button('选择图片',el('.cover-dialog')),'cover_open');
       await stage('cover_empty');
-      step='picker_cancel';await click(button('选择图片',el('.cover-dialog')));await stage('cover_picker_cancel');
-      await wait(()=>!button('选择图片',el('.cover-dialog')).disabled,'picker_cancelled');
-      if(el('.cover-crop-image')||el('.cover-dialog').dataset.phase!=='empty')throw Error('cancel_created_task');
-      step='invalid_image';await click(button('选择图片',el('.cover-dialog')));await stage('cover_picker_invalid');
+      step='picker_cancel';await click(el('[aria-label="替换歌单封面"]'));if(el('.cover-dialog'))throw Error('cropper_opened_before_selection');await stage('cover_picker_cancel');
+      await wait(()=>el('[aria-label="替换歌单封面"]').getAttribute('aria-busy')==='false','picker_cancelled');
+      if(el('.cover-dialog'))throw Error('cancel_opened_cropper');
+      step='invalid_image';await click(el('[aria-label="替换歌单封面"]'));await stage('cover_picker_invalid');
       await wait(()=>el('.cover-dialog .error-state'),'invalid_error');
       if(!el('.cover-dialog .error-state').textContent.includes('320'))throw Error('incorrect_image_error');
       await stage('cover_invalid_rejected');

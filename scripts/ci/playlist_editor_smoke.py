@@ -18,7 +18,7 @@ def main():
     root.mkdir(parents=True, exist_ok=False)
     env = {k: v for k, v in os.environ.items() if not k.startswith('CUMULUS_')}
     env.update(CUMULUS_PROOF_DIR=str(root), CUMULUS_MOTION_PROOF='1',
-               CUMULUS_PLAYLIST_EDITOR_PROOF='1')
+               CUMULUS_PLAYLIST_EDITOR_PROOF='1', CUMULUS_COVER_LAYOUT_PROOF='1')
     for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'),
                       ('XDG_CACHE_HOME', 'cache'), ('XDG_RUNTIME_DIR', 'runtime'),
                       ('APPDATA', 'roaming'), ('LOCALAPPDATA', 'local')]:

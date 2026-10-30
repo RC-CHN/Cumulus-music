@@ -104,13 +104,13 @@ def main():
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
     complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
-    expected = 52 if args.native_picker else 32
+    expected = 60 if args.native_picker else 36
     assert complete['ok'] and complete['stageCount'] == expected
     assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
     assert complete['syntheticMetadataWrites'] == 0
     if args.native_picker:
-        assert picker_result['pickerActions'] == 16 and complete['nativePickerVerified']
-    assert all(complete[key] for key in ['sourceImageDecodedByCore', 'cropControlsVerified', 'cancelAndFocusVerified', 'rejectionVisible'])
+        assert picker_result['pickerActions'] == 16 and complete['nativePickerVerified'] and complete['pickerFirstVerified'] and complete['draftPreserved']
+    assert all(complete[key] for key in ['sourceImageDecodedByCore', 'cropControlsVerified', 'cancelAndFocusVerified', 'rejectionVisible', 'recoveryEntryVerified', 'readFailureBlocksSelection'])
     assert len(list((root / 'first').glob('ux_*.json'))) == expected
     if args.screenshots:
         assert len(list((root / 'first').glob('ux_*.png'))) == expected

@@ -2,9 +2,10 @@
 //! Image decoding, crop geometry, journals and IPC still use the real core.
 use cumulus_core::{
     Error, Result,
-    client::MusicClient,
+    client::{MusicClient, dto::CoverCommand},
     cloud::nos::{NosBackend, NosNode, NosRequest},
     protocol::api::ApiFuture,
+    storage::StateStore,
 };
 use serde_json::{Value, json};
 use std::{
@@ -64,9 +65,27 @@ fn artwork(width: u32, height: u32) -> Vec<u8> {
     bytes
 }
 
-pub async fn control(client: &MusicClient, root: &Path, value: &Value) -> Result<()> {
+pub async fn control(
+    client: &MusicClient,
+    store: &StateStore,
+    root: &Path,
+    value: &Value,
+) -> Result<()> {
     assert!(enabled());
     let kind = value["kind"].as_str().unwrap();
+    if ["corrupt_tasks", "repair_tasks"].contains(&kind) {
+        assert!(
+            store.directory().starts_with(root),
+            "isolated proof store only"
+        );
+        let key = "cccccccccccccccccccccccccccccccc";
+        if kind == "corrupt_tasks" {
+            store.put("2", "playlist-covers-v1", key, &json!({}))?;
+        } else {
+            store.delete("2", "playlist-covers-v1", key)?;
+        }
+        return Ok(());
+    }
     if kind == "files" {
         std::fs::write(root.join("synthetic-cover.bmp"), artwork(640, 480))?;
         std::fs::write(root.join("invalid-cover.bmp"), artwork(100, 100))?;
@@ -76,18 +95,30 @@ pub async fn control(client: &MusicClient, root: &Path, value: &Value) -> Result
         *mode().lock().unwrap() = kind.into();
         return Ok(());
     }
+    let playlist_id = value["playlistId"].as_str().unwrap_or("3");
+    assert!((2..20).contains(&playlist_id.parse::<u64>().unwrap()));
+    let epoch = client.account()?.epoch;
+    if kind == "abandon" {
+        for task in client.playlist_cover_tasks(&epoch).await?.value {
+            if task.playlist_id == playlist_id && !task.phase.terminal() {
+                client
+                    .playlist_cover_command(&epoch, &task.id, CoverCommand::Abandon)
+                    .await?;
+            }
+        }
+        return Ok(());
+    }
     let (width, height) = match kind {
         "landscape" => (640, 480),
         "portrait" => (320, 960),
         "wide" => (1280, 320),
         _ => panic!("unsupported cover fixture shape"),
     };
-    let epoch = client.account()?.epoch;
-    let editor = client.playlist_editor(&epoch, "3").await?.value;
+    let editor = client.playlist_editor(&epoch, playlist_id).await?.value;
     let file = root.join("synthetic-cover.bmp");
     std::fs::write(&file, artwork(width, height))?;
     client
-        .select_playlist_cover(&epoch, "3", &editor.revision, &file)
+        .select_playlist_cover(&epoch, playlist_id, &editor.revision, &file)
         .await?;
     Ok(())
 }

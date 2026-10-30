@@ -121,6 +121,7 @@
       assert(one('[aria-label="歌单名称"]').value === '午后散步', 'return from confirmation must preserve unsaved edits');
     }
     await capture('editor_returned');
+    window.__coverFixtureAck=null;await emit('cover-fixture',{kind:'landscape',playlistId:'2'});await wait(()=>window.__coverFixtureAck,'cover fixture');assert(window.__coverFixtureAck.ok,'cover fixture prepared');
     click(one('[aria-label="替换歌单封面"]'));
     await wait(() => one('.cover-dialog[open]'), 'nested cover editor'); await capture('cover_dialog');
     click(one('[aria-label="关闭封面编辑"]')); await wait(() => !one('.cover-dialog'), 'close nested cover');
