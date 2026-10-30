@@ -12,7 +12,8 @@ import Icon from './components/Icon.vue';
 import WindowControls from './components/WindowControls.vue';
 import WindowClosePrompt from './components/WindowClosePrompt.vue';
 import AppearanceMenu from './components/AppearanceMenu.vue';
-import PlaylistCard from './components/PlaylistCard.vue';
+import PlaylistLibraryPage from './components/playlist/PlaylistLibraryPage.vue';
+import { libraryView } from './services/playlistLibrary';
 import DailyHeading from './components/DailyHeading.vue';
 import PlaylistHero from './components/playlist/PlaylistHero.vue';
 import PlaylistEditorPage from './components/playlist/PlaylistEditorPage.vue';
@@ -81,6 +82,7 @@ import { useMusic } from './composables/useMusic';
 import { useCore } from './services/core';
 const core = useCore();
 const searchMemory = createSearchViewportMemory();
+const playlistLibraryState = ref(libraryView());
 const music = useMusic(undefined, (commit) => {
   if (playlistEditor.value && playlistEditorPage.value)
     playlistEditorPage.value.requestLeave(() => {
@@ -474,6 +476,19 @@ watch(
 );
 // Stable scalar dependencies keep playback clock ticks out of the page tree.
 const currentTrackId = computed(() => player.view.value?.track?.id);
+const currentPlaylistId = computed(() =>
+  player.view.value?.origin?.kind === 'playlist' ? player.view.value.origin.id : undefined,
+);
+const libraryPlaying = computed(() => player.view.value?.state === 'playing');
+function refreshLibrary() {
+  notice.value = '';
+  void music.resources();
+}
+function playLibraryPlaylist(list: PlaylistView) {
+  if (currentPlaylistId.value === list.id)
+    void player.action({ kind: 'pause', paused: libraryPlaying.value });
+  else playMemberPlaylist(list.id, null);
+}
 const currentLocalId = computed(() =>
   player.view.value?.track?.local ? currentTrackId.value : undefined,
 );
@@ -605,6 +620,7 @@ watch(
   () => {
     playlistDialog.value = undefined;
     playlistEditor.value = undefined;
+    playlistLibraryState.value = libraryView();
     editorDeleted = false;
     playlistManager.connect(account.value);
     likeRecovery.connect(account.value);
@@ -1244,6 +1260,31 @@ onUnmounted(() => {
                 @play="player.downloads"
                 @play-mv="(task) => openMv(task.track.id, task.id)"
               />
+              <PlaylistLibraryPage
+                v-else-if="page.kind === 'library'"
+                :playlists="playlists"
+                :state="playlistLibraryState"
+                :loading="music.resourcesLoading.value"
+                :error="music.playlistError.value"
+                :notice="playlistManager.error.value || notice"
+                :operation-count="
+                  playlistManager.operations.value.length +
+                  playlistManager.coverOperations.value.length
+                "
+                :items="playlistMenu"
+                :playable="player.ready.value"
+                :preparing="player.busy.value"
+                :current-id="currentPlaylistId"
+                :playing="libraryPlaying"
+                @refresh="refreshLibrary"
+                @create="playlistDialog = { kind: 'create' }"
+                @link="playlistDialog = { kind: 'open' }"
+                @history="playlistDialog = { kind: 'history' }"
+                @browse="music.navigate({ kind: 'daily' })"
+                @open="(list) => music.navigate({ kind: 'playlist', id: list.id })"
+                @play="playLibraryPlaylist"
+                @action="playlistAction"
+              />
               <template v-else>
                 <PlaylistHero
                   v-if="result?.playlist"
@@ -1287,15 +1328,13 @@ onUnmounted(() => {
                     <h1>{{ title }}</h1>
                     <p class="muted">
                       {{
-                        page.kind === 'library'
-                          ? `${playlists.length} 个歌单，收藏每一刻心情`
-                          : result
-                            ? `找到 ${result.total} 首歌曲`
-                            : error
-                              ? '加载失败，可以重试'
-                              : page.kind === 'playlist'
-                                ? '正在读取歌单…'
-                                : '正在寻找音乐…'
+                        result
+                          ? `找到 ${result.total} 首歌曲`
+                          : error
+                            ? '加载失败，可以重试'
+                            : page.kind === 'playlist'
+                              ? '正在读取歌单…'
+                              : '正在寻找音乐…'
                       }}
                     </p>
                   </div>
@@ -1303,7 +1342,7 @@ onUnmounted(() => {
                     class="icon-button"
                     aria-label="刷新当前页面"
                     :disabled="loading"
-                    @click="page.kind === 'library' ? music.resources() : music.load()"
+                    @click="music.load()"
                   >
                     <Icon name="refresh" />
                   </button>
@@ -1327,20 +1366,6 @@ onUnmounted(() => {
                   >
                     歌曲 <small>{{ result.total }}</small>
                   </span>
-                  <button
-                    v-if="page.kind === 'library'"
-                    class="primary"
-                    @click="playlistDialog = { kind: 'create' }"
-                  >
-                    新建歌单
-                  </button>
-                  <button
-                    v-if="page.kind === 'library'"
-                    class="text-button"
-                    @click="playlistDialog = { kind: 'open' }"
-                  >
-                    打开歌单链接
-                  </button>
                   <template v-if="result?.playlist">
                     <button
                       class="text-button"
@@ -1376,17 +1401,7 @@ onUnmounted(() => {
                     >{{ playlistManager.error.value }}</span
                   >
                 </div>
-                <div v-if="page.kind === 'library'" class="playlist-grid">
-                  <PlaylistCard
-                    v-for="list in playlists"
-                    :key="list.id"
-                    :playlist="list"
-                    :items="playlistMenu(list)"
-                    @open="music.navigate({ kind: 'playlist', id: list.id })"
-                    @action="playlistAction(list, $event)"
-                  />
-                </div>
-                <div v-else-if="loading && !result" class="empty-state" role="status">
+                <div v-if="loading && !result" class="empty-state" role="status">
                   <span class="spinner" />
                   <p>正在加载歌曲…</p>
                 </div>

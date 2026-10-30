@@ -61,6 +61,8 @@ export function useMusic(
   const notice = ref('');
   const likeNotice = ref('');
   const libraryError = ref('');
+  const playlistError = ref('');
+  const resourcesLoading = ref(false);
   const history: Page[] = [];
   const historyLength = ref(0);
   let request = 0;
@@ -77,6 +79,8 @@ export function useMusic(
     error.value = issue.message;
     if (issue.code === 'session_expired' || issue.code === 'profile_changed') {
       request++;
+      resourceRequest++;
+      resourcesLoading.value = false;
       account.value = { ...account.value, status: 'expired', nickname: null, avatarUrl: null };
       playlists.value = [];
       liked.value = new Set();
@@ -90,16 +94,23 @@ export function useMusic(
   }
   async function resources() {
     const current = ++resourceRequest;
+    const owner = account.value.epoch;
     const likesAtStart = likeRevision;
     libraryError.value = '';
+    resourcesLoading.value = true;
     const replies = await Promise.allSettled([core.playlists(), core.likedIds()]);
-    if (current !== resourceRequest) return;
+    if (current !== resourceRequest || owner !== account.value.epoch) return;
+    resourcesLoading.value = false;
     const lists = replies[0];
     if (lists.status === 'fulfilled') {
       const v = accept(lists.value);
-      if (v) playlists.value = v;
+      if (v) {
+        playlists.value = v;
+        playlistError.value = '';
+      }
     } else {
       libraryError.value = failure(lists.reason).message;
+      playlistError.value = libraryError.value;
       handle(lists.reason);
     }
     const likes = replies[1];
@@ -183,12 +194,15 @@ export function useMusic(
     const current = ++accountRequest;
     request++;
     resourceRequest++;
+    resourcesLoading.value = false;
     initializing.value = true;
     error.value = '';
     try {
       const next = restoring ? await core.restoreAccount() : await core.accountSnapshot();
       if (current !== accountRequest) return;
       if (next.epoch !== account.value.epoch) {
+        playlistError.value = '';
+        libraryError.value = '';
         playlists.value = [];
         liked.value = new Set();
         result.value = undefined;
@@ -295,6 +309,8 @@ export function useMusic(
     notice,
     likeNotice,
     libraryError,
+    playlistError,
+    resourcesLoading,
     historyLength,
     signedIn,
     resources,

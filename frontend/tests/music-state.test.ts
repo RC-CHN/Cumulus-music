@@ -316,3 +316,60 @@ test('an old leave confirmation cannot navigate after an account change or anoth
   leaves[2]!();
   assert.equal(music.page.value.kind, 'downloads');
 });
+
+test('playlist refresh exposes waiting and keeps read failures until a successful retry', async () => {
+  let fail = false;
+  let pending: ReturnType<typeof deferred<AccountData<[]>>> | undefined;
+  const music = useMusic(
+    backend({
+      playlists: async () => {
+        if (pending) return pending.promise;
+        if (fail) throw { code: 'transport', message: 'playlist unavailable' };
+        return data([]);
+      },
+    }),
+  );
+  await music.bootstrap();
+  fail = true;
+  await music.resources();
+  assert.equal(music.playlistError.value, 'playlist unavailable');
+  assert.equal(music.resourcesLoading.value, false);
+  pending = deferred<AccountData<[]>>();
+  const retry = music.resources();
+  assert.equal(music.resourcesLoading.value, true);
+  assert.equal(music.playlistError.value, 'playlist unavailable');
+  pending.resolve(data([]));
+  await retry;
+  assert.equal(music.resourcesLoading.value, false);
+  assert.equal(music.playlistError.value, '');
+});
+
+test('old resource failures cannot replace the new account library or loading state', async () => {
+  let epoch = '1';
+  let pending: ReturnType<typeof deferred<AccountData<[]>>> | undefined;
+  const music = useMusic(
+    backend({
+      accountSnapshot: async () => ({
+        epoch,
+        status: 'authenticated',
+        nickname: 'synthetic',
+        avatarUrl: null,
+      }),
+      playlists: async () => (pending ? pending.promise : data([], epoch)),
+      likedIds: async () => data([], epoch),
+    }),
+  );
+  await music.bootstrap();
+  const stale = deferred<AccountData<[]>>();
+  pending = stale;
+  const before = music.resources();
+  pending = undefined;
+  epoch = '2';
+  await music.bootstrap(false);
+  stale.reject({ code: 'session_expired', message: 'previous account expired' });
+  await before;
+  assert.equal(music.account.value.epoch, '2');
+  assert.equal(music.account.value.status, 'authenticated');
+  assert.equal(music.resourcesLoading.value, false);
+  assert.equal(music.playlistError.value, '');
+});
