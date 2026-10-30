@@ -1436,3 +1436,36 @@ Windows现场与接续提示焦点复查（2026-10-29）
 - 图集.build/search-preview-gallery/index.html收录final3的43图、regression2的121图及
   此前regression的126图，共290张原图；按版本标明。图片总数不代表已完成页面数，
   也未声称全部逐张人工验收。最终源代码与二进制散列保留在私有proof manifest。
+
+2026-10-30 歌词搜索排布、展开与复制专项
+- 官方对照与适配差异见 search-lyrics-ui-contracts.txt。先核对 SearchResults/Track lyric、
+  LyricExtra 与 normalize 的 lyrics || lyric；确认多行正文使用纯文本，单行命中提示
+  属于另一个组件。本项不把接口成功或 Rust 测试计作歌词页一致性验收。
+- 实现歌曲行下方三行预览、展开/收起、复制已返回全部文字、短/空歌词、过长提示、
+  等待/失败/重试反馈；两主题与两尺寸检查字体、间距、横向溢出、双击边界、菜单返回。
+  保留展开与浏览位置；复制通过真实系统剪贴板写入，再在隔离会话异步读回合成文字。
+- search-lyrics-ui-first：36态后在等待复制故障注入时失败。误以为可覆盖Tauri的invoke，
+  实际该属性不可写，故该轮不能证明等待/失败状态；正常复制原生读回已通过。保留失败。
+  人工查看1/2/9/19/28，发现通用按钮最小高度覆盖28px设置；修正min-height。
+- search-lyrics-ui-final：改为探针拦截copy_text的IPC响应，明确标记故障/延迟注入；
+  42态、42图、13次合成搜索通过。覆盖实际Unicode/空行/HTML字面量复制、重复点击抑制、
+  拒绝后重试、截断提示及已显示512行复制读回、播放当前页与减少动态效果。
+  人工查看1/29/38/39/40/42，发现窄窗展开后收起按钮被推到播放器后面：只验证焦点
+  身份并不足够，不能把该轮42项自动通过写成排布验收完成。
+- search-lyrics-ui-visible：将窄窗操作行放在正文之前，按钮位置不再随展开文本移动；
+  加入展开后控件完整位于结果滚动区域内的断言。最终内嵌前端重跑42态、42图、13次
+  合成搜索通过；真实账号写入与真实音乐请求均0。人工查看20/29/38/40/42，确认浅/深色
+  窄窗收起按钮可见、复制失败及截断提示可读、减少动态效果时无歌词揭示动画。
+- 共用TrackRow抽取后的搜索结果回归 search-lyrics-regression-results：65态/65图通过；
+  连续浏览/长列表/歌曲表滚动回归 search-lyrics-regression-scroll：36态/36图通过。
+  这两组运行于最终“窄窗按钮前置”CSS修正之前，其余Rust/TrackRow源码相同；最新歌词
+  的按钮可见性证据以visible轮为准，不把早期截图混为最后版本。
+- Node24.16.0/Rust1.96.0；npm ci、format:check、264项前端测试、类型/production构建，
+  Rust fmt、严格全目标Clippy、全工作区259目标/1182 passed/0 failed/0 ignored均通过。
+  21项CI脚本测试通过。最终仅窄窗order样式变动后重新构建内嵌前端及原生二进制，
+  未重跑无关联的全Rust套件。App分块仍有500KB提示，未修改告警阈值。
+- Linux隔离Xvfb/D-Bus，en_US.UTF-8，真实Tauri WebView+生产IPC；不是实体桌面帧率或
+  Windows视觉证明。CI脚本同时接入Linux与Windows runner，远端结果另行记录。
+- 最终同一内嵌前端的 search-lyrics-regression-ux 共用交互39态及重启主题2态通过；
+  图集 .build/search-lyrics-gallery/index.html 汇集184张本轮专项/回归原图，另附4张旧布局
+  参考。图集中标明最后窄窗顺序修正前后的版本；仅CSS隐藏窗口外桌面，未编辑截图。

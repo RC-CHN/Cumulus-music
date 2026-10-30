@@ -1,0 +1,38 @@
+歌词搜索 UI/UX 对照（2026-10-30）
+
+官方依据（根 references/，不分发恢复代码）
+- ui-recovery/sources/packages/pc/src/pages/SearchResults/index.jsx：歌词分类使用 Track lyric。
+- 同源 components/TrackViewer/common/LyricExtra.tsx：歌曲行底部的附加内容；
+  默认前三行、展开全部返回歌词；文字 12px/18px、pre-wrap、图标间距4px；
+  左距110px、右侧24px；右侧展开/复制按钮间距10px，图标12px；
+  展开图标旋转180度。复制 data.lyrics，不是仅复制当前三行；双击按钮不触发行播放。
+- recovered-js/modules/hybrid_app.chunk.1482700000000.js/15.js 的 Wn：
+  /api/search/resource/lyric，合并 resource 与 song；21.js 的标准化保存 lyrics || lyric。
+  352.js 的歌词表 dynamicSize=true、bottomExtra=LyricExtra。当前分页仍是社区适配，
+  官方歌词列表连续加载未在本专项迁移，不把它写为整页交互一致。
+- components/Lyric/index.tsx 和上述 123.js、555.js：另一个单行命中提示使用 txt/range
+  分段标记；不能将这个组件误称为 LyricExtra 多行正文的高亮要求。当前专项保持后者
+  纯文本。标题及其他单行结果的完整命中提示仍留在搜索审计待办。
+
+当前界面
+- 统一复用 TrackRow 保留歌曲、歌手/专辑入口、喜欢、时长和更多操作；表头与歌曲页一致。
+  不把变量高度歌词放入56px固定行高的虚拟列表。每页30项，单条最多512行/64KiB；
+  超出时显示“歌词过长，仅显示部分内容”，复制按钮与成功反馈明确显示部分内容。
+- 歌词默认前三行；展开/收起保持当前控件焦点；切分类/详情返回保留展开和滚动位置，
+  状态只在账号隔离的搜索内存保存。新搜索和换账号不会复用旧关键词的展开记录。
+- 少于四行时展开不可用；没有歌词时明确说明，复制不可用；长行可换行，不产生横滚。
+  950px以下操作行移至正文前面右对齐，左距40px；展开后操作不会被推至视口外。
+  此为Cumulus窄窗适配；28px按钮高度/6px圆角亦非已证明的官方像素值。
+  展开/收起文字用160ms透明度/位移动画，图标旋转；尊重减少动态效果。
+- 复制通过类型化 copyText → desktop copy_text → 原生剪贴板；复制成功/失败和重试反馈
+  在按钮下方，不用浏览器剪贴板权限提示。请求进行中保留焦点、忽略重复点击。
+  Tauri官方剪贴板适配说明：https://v2.tauri.app/plugin/clipboard/
+  使用与现有Tauri兼容的clipboard-manager 2.3.2；锁文件不升级现有Tauri/WebView依赖。
+  正式前端没有读取/清空剪贴板权限；此能力不进入Rust业务core。
+- 旧 matchedLyric 字符串/数组仍作为兼容输入；移除em/b标记，其余内容按文字插值。
+  优先官方 lyrics/lyric，不再静默截为五行。不存在HTML注入或额外歌词网络请求。
+
+验收与边界
+逐态截图/实际剪贴板读回、失败注入及回归记录在 ui-ux-validation.txt。
+合成数据与隔离WebView用于布局/交互验证；不能证明真实账号完整歌词返回、Windows视觉、
+物理桌面帧率，也没有相同状态官方运行截图供像素比对。保留Cumulus品牌和图标。

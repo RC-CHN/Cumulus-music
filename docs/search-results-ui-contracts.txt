@@ -59,7 +59,8 @@ SearchResultsClient → desktop/search.rs search_results → MusicClient::search
 用户 /api/v1/search/user/get：同上；result.userprofiles。
 声音 /api/search/voice/get：keyword、scene、limit、offset；baseInfo → EpisodeView。
 播客 /api/search/voicelist/get：同上；baseInfo → PodcastCard。
-歌词 /api/search/resource/lyric：同上；resource.song和matchedLyric，片段按纯文本显示。
+歌词 /api/search/resource/lyric：同上；resource/song 的 lyrics || lyric 优先，
+  matchedLyric 保留兼容；纯文本三行预览、展开与复制见 search-lyrics-ui-contracts.txt。
 MV /api/search/mlog/get：keyword、scene、limit、offset、channel=suggest、os=pc、tag=MV；
   type=mv 的 baseInfo → CatalogVideoCard。实际读取出现总数46但resources为空。
 /api/search/pc/result/tab 已提供低层读取与只读验证；本次界面固定官方默认次序，
@@ -71,7 +72,8 @@ MV /api/search/mlog/get：keyword、scene、limit、offset、channel=suggest、o
   来源参数；当前复用歌曲播放入口不代表官方搜索试听分支全同态。
 - 歌手/用户/MV连续加载、分类与详情返回的位置恢复及默认旧版单行预览已专项实现。
   其余分类加载方式、新版轮播、综合cursor和官方全部滚动分支仍待对照。
-- 原始关键词/纠正查询完整关系、命中词着色、歌词更多片段与官方全部排布状态。
+- 原始关键词/纠正查询完整关系、命中词着色与官方全部排布状态；歌词正文已补三行/展开/复制专项，
+  连续加载、标题高亮及歌词表完整菜单仍待对照。
 - 热门解释/活动/运营和AB资源卡片，算法页签、追踪上下文来源、所有可用性标记。
 - 真实封面加载与失败、全部悬停/按下态、实机输入/刷新率、高DPI、Windows视觉。
 
