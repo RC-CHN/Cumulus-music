@@ -5,6 +5,7 @@ standalone probe. CSS/WAAPI/scroll calls, UI/IPC and libmpv remain real.
 """
 import argparse
 import json
+import math
 import os
 import re
 from pathlib import Path
@@ -30,8 +31,11 @@ def paint_checks(picture, payload):
         color = re.fullmatch(r'rgb\((\d+), (\d+), (\d+)\)', sample['color'])
         if color is None:
             continue
-        x = round((payload.get('screenX', 0) + sample['x']) * ratio)
-        y = round((payload.get('screenY', 0) + sample['y']) * ratio)
+        # CSS coordinates name a point inside a physical pixel, not its
+        # nearest integer boundary. At 125%, rounding a right-hand outline
+        # sample can move it into the adjacent background pixel.
+        x = math.floor((payload.get('screenX', 0) + sample['x']) * ratio)
+        y = math.floor((payload.get('screenY', 0) + sample['y']) * ratio)
         expected = tuple(map(int, color.groups()))
         if not (0 <= x < picture.get_width() and 0 <= y < picture.get_height()):
             raise AssertionError('paint sample outside captured root window')

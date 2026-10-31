@@ -14,6 +14,8 @@ mod library_fixture;
 mod like_recovery_fixture;
 #[path = "support/media_shortcuts.rs"]
 mod media_shortcuts;
+#[path = "support/playback_quality_fixture.rs"]
+mod playback_quality_fixture;
 #[path = "support/playlist_collect_fixture.rs"]
 mod playlist_collect_fixture;
 #[path = "support/playlist_cover_layout_fixture.rs"]
@@ -161,6 +163,9 @@ impl Api for Library {
                     json!({"code":200,"result":{"songs":(1..=12).map(song).collect::<Vec<_>>(),"songCount":12}})
                 }
                 "/api/song/enhance/player/url/v1" => {
+                    if let Some(value) = playback_quality_fixture::response(&args) {
+                        return value;
+                    }
                     let ids: Vec<Value> = serde_json::from_str(args["ids"].as_str().unwrap())?;
                     json!({"code":200,"data":[{"id":ids[0],"url":"https://m1.music.126.net/cumulus-relay-fixture.wav","code":200,"md5":"fixture","level":"standard","expi":120}]})
                 }
@@ -316,6 +321,12 @@ fn main() {
                 handle.get_webview_window("main").unwrap().eval(format!("window.__shortcutFixtureAck={};",serde_json::to_string(&value["kind"]).unwrap())).unwrap();
                 return;
             }
+            if playback_quality_fixture::enabled() && stage=="quality-fixture" {
+                playback_quality_fixture::control(&proof_store,&value);
+                let report=playback_quality_fixture::report();
+                handle.get_webview_window("main").unwrap().eval(format!("window.__qualityFixtureAck={report};")).unwrap();
+                return;
+            }
             if media_proof && stage=="media-fixture" {
                 let kind=value["kind"].as_str().unwrap();
                 match kind {
@@ -354,6 +365,7 @@ fn main() {
             }
             if !(["complete","failed"].contains(&stage) || stage.starts_with("ux_") && stage.chars().all(|c|c.is_ascii_alphanumeric()||c=='_')){return;}
             let stage=stage.to_owned();
+            if playback_quality_fixture::enabled() { value["syntheticQuality"] = playback_quality_fixture::report(); }
             if library_fixture::enabled() { value["syntheticLibrary"] = library_fixture::report(); }
             if playlist_collect_fixture::enabled() { value["syntheticCollection"] = playlist_collect_fixture::report(); }
             if let Some(fixture)=transfer.as_ref() {value["syntheticCoverTransfer"]=fixture.report();}
