@@ -1,5 +1,6 @@
 //! Lightweight second WebView; all media work stays in the shared MusicClient.
 pub(crate) mod commands;
+mod layout;
 mod shortcuts;
 mod state;
 use cumulus_core::{Error, Result, client::MusicClient};
@@ -131,6 +132,7 @@ async fn enter_expected<R: Runtime>(
                 .resizable(false)
                 .maximizable(false)
                 .focused(false)
+                .visible(false)
                 .always_on_top(preferences.always_on_top && !preferences.damaged)
                 .on_page_load(move |webview, event| {
                     if event.event() != PageLoadEvent::Started {

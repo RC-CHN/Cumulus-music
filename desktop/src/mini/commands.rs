@@ -48,7 +48,8 @@ pub async fn mini_read<R: Runtime>(
 pub async fn mini_ready<R: Runtime>(
     app: tauri::AppHandle<R>,
     generation: String,
-) -> std::result::Result<(), ClientError> {
+    viewport: layout::Viewport,
+) -> std::result::Result<bool, ClientError> {
     gui(&app, move |app| {
         let label = app.state::<Host>().lock()?.get(&generation)?.label.clone();
         let lifecycle = crate::lifecycle::view(&app)
@@ -70,16 +71,25 @@ pub async fn mini_ready<R: Runtime>(
                 return Err(Error::StaleResponse);
             }
         }
+        let size = viewport.size()?;
+        if !viewport.fits() {
+            // Realize the fitted content while keeping the main window usable;
+            // hidden GTK views may not allocate their final viewport until shown.
+            mini.set_size(size)
+                .and_then(|_| mini.show())
+                .map_err(|_| Error::State("mini resize failed"))?;
+            return Ok(false);
+        }
         let result = mini
             .show()
-            .and_then(|_| mini.set_focus())
-            .and_then(|_| main.hide());
+            .and_then(|_| main.hide())
+            .and_then(|_| mini.set_focus());
         if result.is_err() {
             dismiss(&app, Some(&generation), true);
             return Err(Error::State("mini window handover failed"));
         }
         app.state::<Host>().lock()?.ready(&generation)?;
-        Ok(())
+        Ok(true)
     })
     .await
     .map_err(Into::into)
@@ -144,15 +154,13 @@ pub async fn mini_panel<R: Runtime>(
     app: tauri::AppHandle<R>,
     generation: String,
     expanded: bool,
+    scale: f64,
 ) -> std::result::Result<(), ClientError> {
     gui(&app, move |app| {
         let label = app.state::<Host>().lock()?.get(&generation)?.label.clone();
         app.get_webview_window(&label)
             .ok_or(Error::StaleResponse)?
-            .set_size(tauri::LogicalSize::new(
-                420.0,
-                if expanded { 516.0 } else { 206.0 },
-            ))
+            .set_size(layout::size(scale, expanded)?)
             .map_err(|_| Error::State("mini resize failed"))
     })
     .await
