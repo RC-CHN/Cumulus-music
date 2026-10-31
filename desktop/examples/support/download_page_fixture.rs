@@ -169,6 +169,12 @@ impl Fixture {
                             ..Default::default()
                         },
                     )?;
+                    // Service creation canonicalizes the destination, including
+                    // Windows' verbatim prefix. Completed records must keep it.
+                    let path = match &task.destination {
+                        DownloadDestination::Path { path } => path.clone(),
+                        _ => unreachable!("synthetic path destination"),
+                    };
                     let (kind, origin) = if i <= 120 {
                         (
                             "单曲",
@@ -214,7 +220,11 @@ impl Fixture {
                             std::fs::write(&path, include_bytes!("fixtures/offline-mv.mp4"))?;
                             cumulus_core::media::integrity::inspect_file(&path)?
                         } else {
-                            std::fs::hard_link(&wave, &path)?;
+                            // Independent downloads have independent identities;
+                            // sharing every inode also aliases an unrelated
+                            // paused decoder on Windows. Explicit alias/conflict
+                            // fixtures below remain separate deliberate cases.
+                            std::fs::copy(&wave, &path)?;
                             integrity.clone()
                         };
                         task.target = Some(path.clone());
@@ -251,7 +261,12 @@ impl Fixture {
                             task.last_error = Some("synthetic destination exists".into());
                         }
                     }
-                    let value = serde_json::to_value(&task)?;
+                    let mut value = serde_json::to_value(&task)?;
+                    if task.status == DownloadStatus::Complete {
+                        // Simulate the target-parent receipt normally committed
+                        // by the native authorize/publish pipeline.
+                        value["target_parent"] = value["root_identity"].clone();
+                    }
                     self.store.put("2", "download_tasks_v1", &task.id, &value)?;
                     saved.push((task.id, value));
                     if i % 25 == 0 || i == 146 {

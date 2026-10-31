@@ -47,3 +47,15 @@ windows-encoding-download-proof在真实Linux production WebView的69态下载�
 将Python未指定encoding的Path.read_text默认值注入为CP1252；完整报告解析/原断言
 通过。它验证脚本编码边界，不冒充Windows WebView结果；修复后的Windows精确提交CI
 仍须独立通过。Python语法与CI工具36项测试通过。
+
+7. 完成下载夹具的路径与发布凭据（2026-10-31）
+41178544566 / Windows job 124471027730通过69态下载页面和72态表格后，在批量删除
+第52态失败，未通过完整gate。下载的合成SQLite记录显示：本地Rust DownloadService
+已把root/work/destination规范化为Windows扩展路径，而夹具又用未规范化的原始路径
+覆盖target，且target_parent为空。安全文件管理在创建操作日志前拒绝该记录；不是
+真实用户下载删除失败的证据，也没有日志证明Windows错误32是本次原因。
+夹具现在保留service.create返回的规范destination，并为模拟完成记录保存正常发布
+流程应有的父目录身份凭据。各独立下载使用独立文件，避免把全部WAV硬链接到同一
+文件身份；专门的别名/冲突场景仍保留。产品目录/文件身份检查没有放宽。
+windows-download-fixture-batch的真实Linux WebView53态、menu33态通过，严格Clippy
+与桌面构建通过；Windows修正效果仍以新精确提交的完整CI为准。
