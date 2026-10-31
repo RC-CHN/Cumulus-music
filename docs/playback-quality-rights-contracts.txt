@@ -52,9 +52,10 @@ canUse=true/userSrc=0/trialStatus=1 为可开始，状态2为活动试用；user
 试用写入边界
 QualityApi::activate 是 /api/vipauth/app/auth/set 的底层原语，数字 resourceId=0、
 resourceType=对应 PC 类型，仅 data===true 算正面回执。读取用例从不调用它。
-本轮没有向界面开放试用激活动作。后续原生生命周期已迁移并通过注册 IPC 验证，
+后续已通过显式确认向界面开放试用激活动作。原生生命周期已迁移并通过注册 IPC 验证，
 见 playback-quality-trials-contracts.txt：发送/未决日志、只读对账、偏好绑定与后台到期
-恢复已有实现，确认界面和动态菜单仍未完成。正面回执也不能当成实际播放通过；
+恢复已有实现，确认界面和动态菜单专项见 playback-quality-dynamic-ui-contracts.txt。
+正面回执也不能当成实际播放通过；
 不得因打开菜单、读取失败或超时自动激活/重放。没有使用真实账号额度。
 
 验证与证据层次

@@ -161,3 +161,22 @@ GUI proof, then failed a download-theme-menu interaction. Run 41150579875
 menu. Neither full CI gate passed. The current shared-menu geometry fix is
 locally verified; its effect on those Windows failures needs fresh CI evidence.
 No physical Windows-screen or speaker verification is claimed.
+
+Further failed-run evidence (2026-10-31)
+--------------------------------------
+9b8c8c3 / run 41156342201 passed the strict runtime, packaging, desktop native
+media/loudness and the loudness UI cases. The 20-state download-layout DOM
+proof also completed. Its subsequent Python check compared the Windows
+extended canonical path spelling against a normal path and rejected an
+unchanged directory; the archived synthetic database still points at the
+original downloads directory. That check now compares filesystem identity.
+
+d7acc05 / run 41158459808 returned exit code 0 from player_probe but its stdout
+was not valid JSON. The archived stderr contains all four PCM capture close
+markers; it does not prove completion of the later processing/cleanup stages.
+The old verifier did not retain stdout, so the cause is still unproven. Current
+verification preserves the entire stdout on success, malformed output, nonzero
+exit and timeout. Empty/prefixed/failed reports remain failures; no second run
+or earlier receipt substitutes for this verification. The complete CI gate
+remains required. This diagnostic-script change also changes the authenticated
+media cache key and therefore requires a fresh dependency build.

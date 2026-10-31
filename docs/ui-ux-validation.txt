@@ -2346,3 +2346,39 @@ speed-menu-focus-before，未忽略左右焦点框采样失败。额外键盘32�
   最终Rust日志以-final结尾，主程序构建为quality-trials-desktop-build.log。
 - 两平台CI分别新增quality_trial_native_smoke，失败仍使完整gate失败；远端与实际
   确认界面另取证，不将这轮合成原生流程称为当前账号线上试用或全范围任务完成。
+
+2026-10-31 动态音质菜单及试用确认/核对
+- 官方来源、前后端调用及差异见 playback-quality-dynamic-ui-contracts.txt，沿用原生
+  rights/trials 用例；没有用 YesPlayMusic 或在前端持有业务凭据/完整授权URL。
+- .build/quality-dynamic-embedded-verified：最终内嵌production前端首次35态及进程
+  重开3态，每态原图/原生JSON/保存握手保留。首次consentDialogVerified、
+  manualScrollVerified、dynamicRightsVerified均true；重开只证明菜单/到期恢复，
+  不再声称该进程另测过确认弹窗。真实音乐HTTP/账号写入/试用消耗均0。
+- .build/quality-dynamic-kde-verified/run/first：同一最终内嵌前端，本机KDE Wayland/
+  XWayland125%35态可见且有焦点，只截自身PID窗口；深浅色/两尺寸/实际弹窗/出错
+  后核对及重试均通过。合计73张最终原图；只采样声明的不透明留白以排除过期帧，
+  不把截图数量、显示器刷新率或虚拟CI帧率当作全页面/真实听感证明。
+- 初次流程三次合成Start，确认取消/菜单打开不消耗；播放失败的UseActive、丢响应
+  后Reconcile→UseActive均不重复Start，重开Start=0。逐态实际standard、暂停10秒、
+  具体曲目ID/请求/偏好与Rust快照一致。新增“不变档位不重载”也检查playId保持。
+- quality-dynamic-ui-geometry留有窄窗失败：刷新按钮继承width100%，footer329px/
+  items4px；修复后37px/296px，保留固定首尾和正文滚动。quality-dynamic-wheel-before
+  实际重现滚轮设0后轮询拉回208px；修复后跨650ms原生轮询仍为0，键盘再跟随焦点。
+- quality-dynamic-ui-3的音源拒绝负例使用了仍有有效Master授权缓存的旧歌，因此正确
+  复用了既有授权；没有把此测试安排问题称为取消失败。最终负例改选未授权的第3首，
+  保持真实resolver缓存，确认新请求拒绝后旧音频/偏好仍保留，显式重试再切换。
+- 共享回归：quality-dynamic-quality-regression35/重开3、speed-regression32、
+  download-layout-regression20、download-batch-regression53态均通过，无新增截图。
+  原生独立trial-native-regression首次6/重开2态也通过，仍明确不作为确认界面证据。
+  原音质探针仅选项区计行数，End额外检查刷新入口；试用写入仍严格为0，不用固定7次
+  读取否定新增的菜单真实读取。旧授权拒绝场景显式给合成Vivid已有权益，继续真实
+  检查URL拒绝，不将权益提示误算播放错误。所有修改都未忽略失败或恢复隐藏旧控件。
+- Node24.16.0/Rust1.96.0及锁文件：npm ci/格式/340项/类型/构建、Rust fmt/严格
+  workspace/all-targets/custom-protocol Clippy及262结果target/1246项均通过，0失败/
+  忽略；CI工具36项通过。主程序和UX探针已重建，日志前缀.build/quality-dynamic-，
+  最终检查以-final结尾。73图画廊及逐图/前端/源文件摘要保留在quality-dynamic-gallery。
+- 远端旧9b8c8c3的Windows20态下载对话框DOM全通过，随后Python检查将规范化的
+  \\?\D:\...\downloads误判为目录变更；合成数据库仍指向原downloads，改为samefile
+  比较实际目录身份。d7acc05的Windows原生PCM进程退出0但未产生可解析JSON；现保留
+  stdout全文、失败时输出原生阶段日志并补严格解析测试，空/污染/失败报告仍失败，不当作SDK已修好。
+  新音质三组CI诊断目录纳入显式白名单。完整远端gate仍需新提交结果，未发布版本。
