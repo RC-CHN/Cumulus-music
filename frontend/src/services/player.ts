@@ -227,10 +227,46 @@ export interface LyricsView {
 export type PlayerUpdate =
   | { kind: 'state'; value: PlayerView }
   | { kind: 'error'; error: CoreFailure };
+export type QualityAvailability = 'available' | 'unavailable' | 'unknown';
+export type QualityAccess =
+  | 'allowed'
+  | 'trial_eligible'
+  | 'trial_active'
+  | 'requires_vip'
+  | 'requires_svip'
+  | 'requires_purchase'
+  | 'unavailable'
+  | 'trial_unsupported'
+  | 'unknown';
+export type QualityTrialPhase = 'eligible' | 'active' | 'granted' | 'unavailable' | 'unknown';
+export type QualityReadState = 'ready' | 'missing' | 'failed';
+export interface QualityChoiceView {
+  quality: Quality;
+  availability: QualityAvailability;
+  access: QualityAccess;
+  sizeBytes: string | null;
+  trialPhase: QualityTrialPhase | null;
+  remainingMs: number | null;
+}
+export interface QualityDetailsView {
+  epoch: string;
+  playId: string;
+  songId: string;
+  revision: string;
+  choices: QualityChoiceView[];
+  status: {
+    privilege: QualityReadState;
+    subscriber: QualityReadState;
+    sizes: QualityReadState;
+    useRights: Partial<Record<'vivid' | 'jymaster' | 'sky' | 'jyeffect', QualityReadState>>;
+  };
+  refreshAfterMs: number | null;
+}
 export interface PlayerClient {
   watchPlayer(epoch: string, update: (event: PlayerUpdate) => void): Promise<() => void>;
   playSelection(epoch: string, selection: PlaySelection): Promise<PlayerView>;
   playerAction(epoch: string, action: PlayerAction): Promise<PlayerView>;
+  playerQualityDetails(epoch: string, playId: string): Promise<QualityDetailsView>;
   playerQueue(epoch: string): Promise<QueueView>;
   playerLyrics(epoch: string, playId: string): Promise<LyricsView>;
   lyricPreferences(

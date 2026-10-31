@@ -64,6 +64,20 @@ impl Api for Backend {
                         serde_json::from_str(payload["ids"].as_str().unwrap()).unwrap();
                     json!({"code":200,"data":[{"id":ids[0],"code":200,"url":"https://m1.music.126.net/a.mp3?key=SECRET","md5":"abc","expi":120,"level":"standard"}]})
                 }
+                "/api/song/enhance/privilege" => {
+                    let ids: Vec<Value> =
+                        serde_json::from_str(payload["ids"].as_str().unwrap()).unwrap();
+                    json!({"code":200,"data":ids.iter().map(|id|json!({"id":id,"flag":(1<<12)|(1<<16)|(1<<17)|(1<<18)|(1<<21),"maxbr":999000,"fl":128000,"payed":0,"fee":0})).collect::<Vec<_>>()})
+                }
+                "/api/song/music/detail/get" => {
+                    json!({"code":200,"data":{"id":payload["songId"],"sq":{"size":1234},"url":"https://private/?SECRET"}})
+                }
+                "/api/music-vip-membership/client/vip/info" => {
+                    json!({"code":200,"data":{"userId":9,"now":1000000,"associator":{"expireTime":2000000},"cookie":"SECRET"}})
+                }
+                "/api/vipauth/app/auth/query" => {
+                    json!({"code":200,"data":[{"resourceId":0,"resourceType":payload["resourceTypeList"],"canUse":true,"userSrc":0,"trialStatus":1,"leftTime":60000,"cookie":"SECRET"}]})
+                }
                 "/api/song/lyric/v1" => {
                     json!({"code":200,"lrc":{"lyric":"[00:01]第一行\n[00:03]第二行","version":1},"yrc":{"lyric":"[1000,1000](1000,500,0)你(1500,500,0)好","version":1},"ytlrc":{"lyric":"[1000,1000]hello"},"yromalrc":{"lyric":"[1000,1000]ni hao"},"lyricContributor":{"cookie":"SECRET"}})
                 }
@@ -808,3 +822,49 @@ mod next_play;
 mod playlist_batch;
 #[path = "client_player/queue_playlist.rs"]
 mod queue_playlist;
+
+#[tokio::test]
+async fn native_quality_details_are_bound_to_the_selected_song_and_whitelist_rights_and_sizes() {
+    use cumulus_core::playback::quality::{QualityAccess, QualityAvailability};
+    let (_dir, api, _session, client, _) = fixture();
+    let play = client.play_selection("1", songs("1")).await.unwrap();
+    let play_id = play.play_id.unwrap();
+    let details = client.player_quality_details("1", &play_id).await.unwrap();
+    assert_eq!(details.song_id, "1");
+    assert_eq!(details.play_id, play_id);
+    let hires = details
+        .choices
+        .iter()
+        .find(|c| c.quality == Quality::HiRes)
+        .unwrap();
+    assert_eq!(hires.availability, QualityAvailability::Available);
+    assert_eq!(hires.access, QualityAccess::Allowed);
+    let master = details
+        .choices
+        .iter()
+        .find(|c| c.quality == Quality::JyMaster)
+        .unwrap();
+    assert_eq!(master.access, QualityAccess::TrialEligible);
+    assert_eq!(
+        details
+            .choices
+            .iter()
+            .find(|c| c.quality == Quality::Lossless)
+            .unwrap()
+            .size_bytes
+            .as_deref(),
+        Some("1234")
+    );
+    let text = serde_json::to_string(&details).unwrap();
+    assert!(!text.contains("SECRET") && !text.contains("https://") && !text.contains("cookie"));
+    let again = client.player_quality_details("1", &play_id).await.unwrap();
+    assert_eq!(again.revision, details.revision);
+    client.play_selection("1", songs("2")).await.unwrap();
+    let calls = api.calls.lock().unwrap().len();
+    assert!(matches!(
+        client.player_quality_details("1", &play_id).await,
+        Err(Error::StaleResponse)
+    ));
+    assert_eq!(api.calls.lock().unwrap().len(), calls);
+    client.player_action("1", PlayerAction::Stop).await.unwrap();
+}

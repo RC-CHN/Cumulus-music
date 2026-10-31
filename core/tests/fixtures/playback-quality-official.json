@@ -1,0 +1,1978 @@
+{
+  "sourceHashes": {
+    "ui-recovery/sources/packages/pc/src/components/PlayBar/TrackSoundQuality.tsx": "18500ac3362b68c02986e83bf8fa66f66739ea534fc8c8261d6c853ac81e6b39",
+    "netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/40.js": "c5189d01b9179294192fdfeed90df1cf39e8668c384a52fa7aac1f6d2c3ddaf0",
+    "netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/23.js": "30179de6edd7412c718747b8162774cb9d872d6c86d13e8515ecc54fa61b9d45"
+  },
+  "method": "Evaluate the original recovered createQualityArr, flag helper and noNeedOpenCashier arrow bodies with explicit synthetic host/config inputs; Vivid exposure enabled. The original UI also has separate current-trial and usage-right branches, tested separately.",
+  "vectors": [
+    {
+      "case": "free range",
+      "quality": "standard",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 320000,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "free range",
+      "quality": "exhigh",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 320000,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "free range",
+      "quality": "lossless",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 320000,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": false
+    },
+    {
+      "case": "free range",
+      "quality": "hires",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 320000,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": false
+    },
+    {
+      "case": "free range",
+      "quality": "dolby",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 320000,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": false
+    },
+    {
+      "case": "free range",
+      "quality": "jyeffect",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 320000,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": false
+    },
+    {
+      "case": "free range",
+      "quality": "jymaster",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 320000,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": false
+    },
+    {
+      "case": "free range",
+      "quality": "sky",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 320000,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": false
+    },
+    {
+      "case": "free range",
+      "quality": "vivid",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 320000,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": false
+    },
+    {
+      "case": "zero free range uses higher",
+      "quality": "standard",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "zero free range uses higher",
+      "quality": "exhigh",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": false
+    },
+    {
+      "case": "zero free range uses higher",
+      "quality": "lossless",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": false
+    },
+    {
+      "case": "zero free range uses higher",
+      "quality": "hires",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": false
+    },
+    {
+      "case": "zero free range uses higher",
+      "quality": "dolby",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": false
+    },
+    {
+      "case": "zero free range uses higher",
+      "quality": "jyeffect",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": false
+    },
+    {
+      "case": "zero free range uses higher",
+      "quality": "jymaster",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": false
+    },
+    {
+      "case": "zero free range uses higher",
+      "quality": "sky",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": false
+    },
+    {
+      "case": "zero free range uses higher",
+      "quality": "vivid",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": false
+    },
+    {
+      "case": "vinyl",
+      "quality": "standard",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": true,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "vinyl",
+      "quality": "exhigh",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": true,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "vinyl",
+      "quality": "lossless",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": true,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "vinyl",
+      "quality": "hires",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": true,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "vinyl",
+      "quality": "dolby",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": true,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": false
+    },
+    {
+      "case": "vinyl",
+      "quality": "jyeffect",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": true,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "vinyl",
+      "quality": "jymaster",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": true,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": false
+    },
+    {
+      "case": "vinyl",
+      "quality": "sky",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": true,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": false
+    },
+    {
+      "case": "vinyl",
+      "quality": "vivid",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": true,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": false
+    },
+    {
+      "case": "svip",
+      "quality": "standard",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": true,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "svip",
+      "quality": "exhigh",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": true,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "svip",
+      "quality": "lossless",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": true,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "svip",
+      "quality": "hires",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": true,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "svip",
+      "quality": "dolby",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": true,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "svip",
+      "quality": "jyeffect",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": true,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "svip",
+      "quality": "jymaster",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": true,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "svip",
+      "quality": "sky",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": true,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "svip",
+      "quality": "vivid",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": true,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "permanent purchase bit2",
+      "quality": "standard",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 2,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "permanent purchase bit2",
+      "quality": "exhigh",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 2,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "permanent purchase bit2",
+      "quality": "lossless",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 2,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "permanent purchase bit2",
+      "quality": "hires",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 2,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "permanent purchase bit2",
+      "quality": "dolby",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 2,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "permanent purchase bit2",
+      "quality": "jyeffect",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 2,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "permanent purchase bit2",
+      "quality": "jymaster",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 2,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "permanent purchase bit2",
+      "quality": "sky",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 2,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "permanent purchase bit2",
+      "quality": "vivid",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 2,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "permanent purchase bit4",
+      "quality": "standard",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 4,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "permanent purchase bit4",
+      "quality": "exhigh",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 4,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "permanent purchase bit4",
+      "quality": "lossless",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 4,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "permanent purchase bit4",
+      "quality": "hires",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 4,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "permanent purchase bit4",
+      "quality": "dolby",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 4,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "permanent purchase bit4",
+      "quality": "jyeffect",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 4,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "permanent purchase bit4",
+      "quality": "jymaster",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 4,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "permanent purchase bit4",
+      "quality": "sky",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 4,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "permanent purchase bit4",
+      "quality": "vivid",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 4,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "music package on",
+      "quality": "standard",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": true
+      },
+      "experiments": {
+        "music_package_hires": true,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "music package on",
+      "quality": "exhigh",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": true
+      },
+      "experiments": {
+        "music_package_hires": true,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "music package on",
+      "quality": "lossless",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": true
+      },
+      "experiments": {
+        "music_package_hires": true,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "music package on",
+      "quality": "hires",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": true
+      },
+      "experiments": {
+        "music_package_hires": true,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "music package on",
+      "quality": "dolby",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": true
+      },
+      "experiments": {
+        "music_package_hires": true,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": false
+    },
+    {
+      "case": "music package on",
+      "quality": "jyeffect",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": true
+      },
+      "experiments": {
+        "music_package_hires": true,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": false
+    },
+    {
+      "case": "music package on",
+      "quality": "jymaster",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": true
+      },
+      "experiments": {
+        "music_package_hires": true,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": false
+    },
+    {
+      "case": "music package on",
+      "quality": "sky",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": true
+      },
+      "experiments": {
+        "music_package_hires": true,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": false
+    },
+    {
+      "case": "music package on",
+      "quality": "vivid",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": true
+      },
+      "experiments": {
+        "music_package_hires": true,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": false
+    },
+    {
+      "case": "music package off",
+      "quality": "standard",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": true
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "music package off",
+      "quality": "exhigh",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": true
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": false
+    },
+    {
+      "case": "music package off",
+      "quality": "lossless",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": true
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": false
+    },
+    {
+      "case": "music package off",
+      "quality": "hires",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": true
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": false
+    },
+    {
+      "case": "music package off",
+      "quality": "dolby",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": true
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": false
+    },
+    {
+      "case": "music package off",
+      "quality": "jyeffect",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": true
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": false
+    },
+    {
+      "case": "music package off",
+      "quality": "jymaster",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": true
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": false
+    },
+    {
+      "case": "music package off",
+      "quality": "sky",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": true
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": false
+    },
+    {
+      "case": "music package off",
+      "quality": "vivid",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 0,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": true
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": false
+    },
+    {
+      "case": "standard trial VIP experiment",
+      "quality": "standard",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 1,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": true
+      },
+      "trial": true,
+      "available": true,
+      "baseAllowed": false
+    },
+    {
+      "case": "standard trial VIP experiment",
+      "quality": "higher",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 1,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": true
+      },
+      "trial": true,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "standard trial VIP experiment",
+      "quality": "lossless",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 0,
+        "fee": 1,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": true
+      },
+      "trial": true,
+      "available": true,
+      "baseAllowed": false
+    },
+    {
+      "case": "purchased standard trial",
+      "quality": "standard",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 2,
+        "fee": 1,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": true
+      },
+      "trial": true,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "purchased standard trial",
+      "quality": "higher",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 2,
+        "fee": 1,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": true
+      },
+      "trial": true,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "purchased standard trial",
+      "quality": "lossless",
+      "privilege": {
+        "id": 7,
+        "maxbr": 999000,
+        "fl": 0,
+        "payed": 2,
+        "fee": 1,
+        "flag": 2576384
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": false,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": true
+      },
+      "trial": true,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "missing premium flag",
+      "quality": "standard",
+      "privilege": {
+        "id": 7,
+        "maxbr": 320000,
+        "fl": 128000,
+        "payed": 0,
+        "fee": 0,
+        "flag": 0
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": true,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": true,
+      "baseAllowed": true
+    },
+    {
+      "case": "missing premium flag",
+      "quality": "lossless",
+      "privilege": {
+        "id": 7,
+        "maxbr": 320000,
+        "fl": 128000,
+        "payed": 0,
+        "fee": 0,
+        "flag": 0
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": true,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": false,
+      "baseAllowed": true
+    },
+    {
+      "case": "missing premium flag",
+      "quality": "hires",
+      "privilege": {
+        "id": 7,
+        "maxbr": 320000,
+        "fl": 128000,
+        "payed": 0,
+        "fee": 0,
+        "flag": 0
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": true,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": false,
+      "baseAllowed": true
+    },
+    {
+      "case": "missing premium flag",
+      "quality": "vivid",
+      "privilege": {
+        "id": 7,
+        "maxbr": 320000,
+        "fl": 128000,
+        "payed": 0,
+        "fee": 0,
+        "flag": 0
+      },
+      "subscriber": {
+        "vip": false,
+        "svip": true,
+        "music_package": false
+      },
+      "experiments": {
+        "music_package_hires": false,
+        "standard_trial_requires_purchase": false
+      },
+      "trial": false,
+      "available": false,
+      "baseAllowed": true
+    }
+  ]
+}

@@ -5,6 +5,7 @@ mod origin;
 mod output;
 mod playlist_batch;
 mod preferences;
+mod quality;
 mod queue_playlist;
 mod selection;
 mod startup;
@@ -24,6 +25,7 @@ use crate::{
 pub use dto::*;
 pub use output::{OutputCommand, OutputEngineView, OutputView};
 pub use preferences::{StartupPreferencesCommand, StartupPreferencesView};
+pub use quality::{QualityChoiceView, QualityDetailsView};
 use std::sync::{Arc, Mutex, atomic::AtomicU64};
 use tokio::sync::{OnceCell, watch};
 

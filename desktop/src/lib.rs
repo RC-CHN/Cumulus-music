@@ -235,6 +235,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 player::watch_player,
                 player::unwatch_player,
                 player::player_action,
+                player::quality::player_quality_details,
                 player::play_selection,
                 player::player_queue,
                 player::player_lyrics,

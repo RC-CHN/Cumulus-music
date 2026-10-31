@@ -6,6 +6,7 @@ pub use constraint::PlaybackConstraint;
 pub mod engine;
 pub mod output;
 pub mod preferences;
+pub mod quality;
 pub mod quality_preferences;
 mod queue;
 pub mod source;

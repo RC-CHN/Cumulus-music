@@ -1,3 +1,4 @@
+pub mod quality;
 use cumulus_core::{
     Error,
     client::{ClientError, MusicClient, dto::*},
