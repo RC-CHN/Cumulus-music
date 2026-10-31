@@ -2540,3 +2540,20 @@ speed-menu-focus-before，未忽略左右焦点框采样失败。额外键盘32�
   新增playback_fm_identity三项，client_fm另覆盖过时普通票据/非法模式/新actor重开，
   原官方队列冻结序列和其余FM领域/播放器测试保持通过。最终日志在.build/empty-fm-*。
   单元/合成null音频不证明声卡听感或物理刷新率，Windows结果仍待精确提交完整CI。
+
+2026-10-31 FM主按钮的文案/图标/动作一致性
+- fm-primary-before-proof使用git归档的1015074生产前端和新增的真实WebView场景，
+  完成前43态后在领域队列为空、旧音频仍播放时明确失败于“pause label and icon agree”。
+  文案为暂停、点击也会暂停，图标却因empty优先而成重新获取；不是截图计数或编译失败。
+- 新fmPrimary使呈现与动作共用同一判断。5个前端用例另覆盖旧来源不暂停其他音频、
+  模式同步优先、空推荐重新获取与原生/协调器继续的边界；全前端372项/格式/类型构建通过。
+- fm-primary-mode-final用最终内嵌前端首次47态、重开3态全部通过；新场景保持同一
+  playId、暂停10秒，再还原领域条目。fm-primary-empty-final的13+5态亦通过。
+- fm-primary-kde-verified在真实本机125%桌面完成47+3态、50张自身PID原图，全部
+  visible/focused；新增待恢复空推荐/恢复条目两帧已视觉查看，消息、封面、按钮及底栏
+  无遮挡。gallery索引在.build/fm-primary-gallery/index.html；无真实请求/账号写入。
+- 首次本机fm-primary-kde-final也采完50帧，但本地采集驱动误要求普通重开阶段的
+  fmVerified=true而失败；该阶段实际应为false。改正驱动判断后完整重新采集verified组，
+  不将失败组混入最终50图。公开mode_ui_smoke的业务断言始终保持不变。
+- 严格Clippy/格式、CI工具36项及生产cumulus程序重建通过；Rust产品逻辑未再变化，
+  完整workspace1272项是上一空FM修复的本机结果，不能冒充后续Windows完整CI。

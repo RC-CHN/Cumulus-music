@@ -56,6 +56,10 @@ pub fn control(store: &StateStore, kind: &str) {
             store.delete("2", "fm-player-v1", "failure").unwrap();
             return;
         }
+        "empty_desired" | "restore_desired" => {
+            desired_queue(store, kind == "empty_desired");
+            return;
+        }
         _ => {}
     }
     let sql = rusqlite::Connection::open(store.directory().join("core.sqlite3")).unwrap();
@@ -64,4 +68,41 @@ pub fn control(store: &StateStore, kind: &str) {
         "allow"=>"DROP TRIGGER reject_mode;",
         _=>panic!("unknown isolated mode fixture"),
     }).unwrap();
+}
+
+// Model the recovery interval after the domain queue committed but before a
+// native queue update succeeded. Only the standalone synthetic profile exists.
+fn desired_queue(store: &StateStore, empty: bool) {
+    let sql = rusqlite::Connection::open(store.directory().join("core.sqlite3")).unwrap();
+    let mut query = sql
+        .prepare("SELECT key,value FROM state WHERE owner='2' AND kind='fm-queues-v1'")
+        .unwrap();
+    let (key, mut queue): (String, Value) = query
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .unwrap()
+        .map(|row| {
+            let (key, value) = row.unwrap();
+            (key, serde_json::from_str::<Value>(&value).unwrap())
+        })
+        .find(|(_, queue)| queue["source"] == json!({"kind":"personal"}))
+        .expect("synthetic FM queue missing");
+    let next = queue["revision"].as_u64().unwrap().checked_add(1).unwrap();
+    if empty {
+        assert!(
+            store
+                .get("2", "mode-ui-proof", "desired")
+                .unwrap()
+                .is_none()
+        );
+        store.put("2", "mode-ui-proof", "desired", &queue).unwrap();
+        queue["tracks"] = json!([]);
+        queue["index"] = json!(0);
+    } else {
+        queue = store.get("2", "mode-ui-proof", "desired").unwrap().unwrap();
+        store.delete("2", "mode-ui-proof", "desired").unwrap();
+    }
+    queue["revision"] = json!(next);
+    store.put("2", "fm-queues-v1", &key, &queue).unwrap();
 }

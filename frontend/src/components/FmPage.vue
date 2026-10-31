@@ -6,6 +6,7 @@ import type { TrackView } from '../services/contracts';
 import Icon from './Icon.vue';
 import FmExplore from './FmExplore.vue';
 import type { FmCard } from '../services/fm';
+import { fmPrimary } from '../services/fmPrimary';
 const props = defineProps<{
   model: FmModel;
   player: PlayerModel;
@@ -67,8 +68,18 @@ const pending = computed(() => busy.value || props.player.busy.value || !props.p
 const active = computed(() => !!view.value?.active);
 const transportActive = computed(() => active.value && props.player.view.value?.fm === true);
 const playing = computed(() => transportActive.value && props.player.playing.value);
-const emptyActive = computed(() => active.value && !current.value);
 const modePending = computed(() => active.value && !!view.value?.modePending);
+const primary = computed(() =>
+  fmPrimary({
+    active: active.value,
+    playing: playing.value,
+    modePending: modePending.value,
+    transportActive: transportActive.value,
+    hasCurrent: !!current.value,
+    pending: !!view.value?.pending,
+    notice: !!view.value?.notice,
+  }),
+);
 const dialog = ref<HTMLDialogElement>();
 const target = ref<{ entryId: string; name: string }>();
 watch(
@@ -115,17 +126,22 @@ function closeReasons() {
   props.model.clearReasons();
 }
 function play() {
-  if (active.value) {
-    if (modePending.value) resume();
-    else if (playing.value) void props.player.action({ kind: 'pause', paused: true });
-    else if (!transportActive.value || !current.value || view.value?.pending || view.value?.notice)
+  switch (primary.value.action) {
+    case 'resume':
       resume();
-    else void props.player.action({ kind: 'play' });
-  } else
-    void props.model.command({
-      kind: 'start',
-      quality: props.player.view.value?.qualityPreferences.quality ?? 'standard',
-    });
+      break;
+    case 'pause':
+      void props.player.action({ kind: 'pause', paused: true });
+      break;
+    case 'play':
+      void props.player.action({ kind: 'play' });
+      break;
+    case 'start':
+      void props.model.command({
+        kind: 'start',
+        quality: props.player.view.value?.qualityPreferences.quality ?? 'standard',
+      });
+  }
 }
 function resume() {
   heading.value?.focus({ preventScroll: true });
@@ -192,17 +208,7 @@ function resume() {
           <p class="fm-album">{{ current?.track.album }}</p>
           <div class="fm-actions">
             <button class="primary" :disabled="pending" @click="play">
-              <Icon :name="modePending || emptyActive ? 'repeat' : playing ? 'pause' : 'play'" />{{
-                modePending
-                  ? '同步并继续播放'
-                  : playing
-                    ? '暂停漫游'
-                    : emptyActive
-                      ? '重新获取推荐'
-                      : active
-                        ? '继续播放'
-                        : '开始漫游'
-              }}
+              <Icon :name="primary.icon" />{{ primary.label }}
             </button>
             <button
               class="icon-button"
