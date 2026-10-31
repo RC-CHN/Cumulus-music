@@ -68,7 +68,8 @@ Escape 返回标签、外侧关闭、账号/曲目/偏好改变关闭旧菜单�
 以歌曲和账号权益为准。高清臻音、臻音全景声名称已按官方恢复定义修正。
 规格文案是档位上限，不代表当前返回音源的实测采样率、位深或本机已启用空间 DSP。
 
-已定位但本轮尚未接入本浮层的官方读取：
+官方读取现已迁移为独立 Rust 用例及注册 IPC，尚未接入本浮层的动态行展示。
+实现、字段、82项官方对照向量和实际 IPC 验证详见 playback-quality-rights-contracts.txt：
 - /api/song/enhance/privilege：当前歌曲试用场景的 privilege/flag/maxbr/fl 等；
 - /api/song/music/detail/get：songId、immerseType；l/m/h/sq/hr/db/je/jm/sk/vi.size；
 - /api/vipauth/app/auth/query：resourceIdList=0、resourceTypeList 为 PC 的

@@ -1,0 +1,72 @@
+逐曲音质元数据和权益读取
+2026-10-31；本文件记录读取用例，不代表试用生命周期和整个音质 UI 已完成。
+
+来源与映射
+官方 3.1.42.205594 的 TrackSoundQuality.tsx、TrackNewSoundQualityContainer.tsx、
+M/40、M/23：能力列表、音质 flag、付费/会员/音乐包及试听条件。
+上述路径及 SHA256 见 playback-quality-ui-contracts.txt 和冻结向量中的 sourceHashes。
+M/100:116-169：PC resourceType vivid=41/jymaster=31/sky=32/jyeffect=33；
+M/86:278、M/15:1732：逐档文件大小及 immerseType；M/21:343：privilege 码率归一化；
+M/114:70：canUse/userSrc/trialStatus 的试用阶段判断；M/15:2592：query/set。
+recovered-client/docs/product/models/host.txt:1896、1963：读使用权益、毫秒定时、
+试用前偏好及到期恢复；playing.txt:5882：按曲目读取大小。未参考 YesPlayMusic。
+
+core/src/playback/quality/api.rs：严格解析 API，保留未知字段边界；
+policy.rs：分别计算音源能力、基础权益和使用权益；read.rs：账号隔离的并行读取；
+core/src/client/player/quality/：当前播放目标校验、白名单 DTO、稳定结果标识；
+desktop/src/player/quality.rs：player_quality_details；frontend/services/player.ts 与
+adapters/tauri.ts：对应类型及 IPC。核心不依赖 Tauri、WebView 或 Python。
+
+接口及顺序
+player_quality_details(epoch, playId) 先检查账号代次、当前普通在线歌曲、已加载状态，
+随后并行执行七个读取，每个独立最多 8 秒：
+1. /api/song/enhance/privilege，沿用 CatalogApi 当前 song ID 和 trialMode；
+2. /api/song/music/detail/get，{songId:十进制字符串,immerseType:"c51"}；
+   l/m/h/sq/hr/db/je/jm/sk/vi.size 映射对应档位；零值/缺失不伪造大小；
+3. /api/music-vip-membership/client/vip/info，沿用 MembershipManager、服务端时钟、
+   身份验证和账号隔离缓存；
+4-7. /api/vipauth/app/auth/query，{resourceIdList:0,resourceTypeList:PC 数字类型}。
+query 只接受零/一行；提供身份字段时必须匹配，重复、畸形或不匹配视作读取失败。
+c51 与现有播放/下载 URL 请求一致，不是对本机声道设备或空间 DSP 的检测结论。
+
+各部分 ready/missing/failed 独立，超时或部分失败保留其它有效结果。301、取消、
+账号换代不能作为普通未知项继续显示。发布 DTO 前再校验账号、playId 和偏好 CAS，
+迟到旧曲目结果不可成为新曲目的权益。会员读取可能更新本地缓存；七个 RPC 均无
+线上写入，不宣称完全没有 SQLite 写入。
+
+DTO 不含原响应、URL、Cookie 或密钥。sizeBytes 使用十进制字符串，避免 JS 精度损失。
+revision 包含播放身份、偏好和权益/能力；试用尚未启动时包括所提供的时长，活动试用
+倒计时和文件大小变化不使同一稳定权益结果换标识。refreshAfterMs 是读取调度建议，
+不是音频授权或试用激活。倒计时最少 1 秒，最大 i32::MAX，与官方计时上限一致。
+
+规则和未知值
+普通音质 maxbr/fl 向上取整到 kbps；Hi-Res/Dolby/Master/Effect/Sky/Vivid 分别
+使用 flag 位 12/14/16/17/18/21。缺字段不是零，不把失败当作没有音源或没有会员。
+payed&6、可免费码率、VIP/SVIP、音乐包和试用场景分别计算；Vivid 在当前部分/完整
+试听时间线上不可用。服务端最终返回音源及授权时间线仍由现有播放 resolver 验证。
+canUse=true/userSrc=0/trialStatus=1 为可开始，状态2为活动试用；userSrc>0 为已有
+使用权；canUse=false 为不可使用。未知状态保留 unknown。
+生产投影尚未读取 musicPackageCanUseHiresAndLoseless 与 StandardAudio_VIPLogo_PCV2
+实验配置；相关分支明确 unknown，不能以 false 冒充官方配置。
+
+试用写入边界
+QualityApi::activate 是 /api/vipauth/app/auth/set 的底层原语，数字 resourceId=0、
+resourceType=对应 PC 类型，仅 data===true 算正面回执。读取用例从不调用它。
+本轮没有向界面开放试用激活动作；试用确认、持久化发送/未决日志、只读对账、
+偏好绑定、后台到期恢复以及相应动态菜单仍需后续实现。正面回执也不能当成实际
+播放通过；不得因打开菜单、读取失败或超时自动激活/重放。没有使用真实账号额度。
+
+验证与证据层次
+core/tests/fixtures/playback-quality-official.json 包含 82 个无私人数据冻结向量。
+生成器实际在 Node VM 执行恢复的 createQualityArr、flag helper、noNeedOpenCashier
+函数体，只去掉 TypeScript 标注并提供合成 host/config；不是用 Rust 实现生成预期。
+生成器归档于 references/recovered-client/tools/rust-quality-policy-vectors.cjs，
+不属于公开 CI 的官方材料依赖。原始函数来源摘要随冻结向量提交。
+core/tests/playback_quality.rs：对照向量、阶段、未知配置、载荷、解析、部分失败、
+8秒上限与账号换代；client_player.rs：绑定当前曲目、稳定标识及 DTO 敏感字段白名单。
+
+.build/quality-rights-native-ipc：真实 production Vue 宿主中的注册 IPC 调用，首次
+35态和重开3态；每次进程确认7次合成元数据读取、0次试用写入。核对 Hi-Res 权益、
+Master 可试用状态、文件大小及无敏感字段。这组没有新增截图，也没有改变静态列表
+为动态权益菜单。它证明 GUI→IPC→Rust 用例，不证明真实账号网络或试用启用成功。
+菜单、下载、本机截图及全量验证记录见 ui-ux-validation.txt。

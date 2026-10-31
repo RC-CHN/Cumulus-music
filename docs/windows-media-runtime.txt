@@ -151,3 +151,13 @@ compatibility true, three fresh decoder reopen cycles.
 cases. These use a non-C system locale and null output, not a physical sound
 card listening test. The broader current Rust regression is recorded in the
 UI validation report; old Python checks are not used as native playback proof.
+
+Subsequent completed-run evidence (2026-10-31)
+--------------------------------------------
+Run 41144132539 (2dc4e62) finished Linux successfully. Windows passed runtime,
+workspace tests, packaging, native media/loudness PCM and the general 41-state
+GUI proof, then failed a download-theme-menu interaction. Run 41150579875
+(a150537) also passed the Windows media checks but failed the loudness theme
+menu. Neither full CI gate passed. The current shared-menu geometry fix is
+locally verified; its effect on those Windows failures needs fresh CI evidence.
+No physical Windows-screen or speaker verification is claimed.

@@ -2303,3 +2303,26 @@ speed-menu-focus-before，未忽略左右焦点框采样失败。额外键盘32�
   远端是否完整成功另按精确SHA确认；本地空输出不当作真实声卡听感或跑满刷新率，
   本机截图不当作Windows物理视觉。账号切换及播客浮层仍需各自UI专项截图；动态逐曲
   权益/试用等继续按审计表推进，完整目标保持进行中。
+
+2026-10-31 菜单几何、下载批量和音质读取
+- ActionMenu 对尺寸/锚点未改变的 resize 保持打开，真正尺寸变化仍关闭；下载主题
+  与音质探针直接验证，不增加自动重开或重复点击。前者失败记录增加受限几何诊断。
+- download_batch_ui_probe 改读实际音质按钮，继续检查 native lossless、00:30时长、
+  控件命中及非重叠；旧 .actual-quality 节点已经不存在，不能作为当前产品验收条件。
+- 当前内嵌 production 前端：.build/quality-rights-download-layout 20态、
+  quality-rights-download-batch 53态、quality-rights-menu-resize 首次35/重开3态，
+  均通过且逐态有原图和JSON。实际查看窄窗播放下载文件：无损标签和时长均可见。
+- .build/quality-rights-kde-menu：本机KDE Wayland/XWayland125%，35态可见/有焦点，
+  仅捕获自身PID窗口；包含无变化resize保留及实际resize关闭。此轮共146张截图，
+  并未新增146种设计；真实音乐HTTP、账号写入、试用激活均0。
+- .build/quality-rights-native-ipc：最终注册IPC的35/3态无截图回归，每进程7次合成
+  元数据读取、0次试用写入；nativeQualityReadVerified=true。核心新增82个官方函数
+  对照向量、部分失败/超时/换代与白名单测试；来源及剩余界面工作见新权益合同。
+- Rust fmt/严格workspace/all-targets/custom-protocol Clippy及全量260结果target/
+  1222项通过，0失败/忽略；前端格式/323项/类型/构建及CI工具34项通过。日志前缀
+  .build/quality-rights-*；最后一次完整Rust日志以-final结尾，探针亦已重建。
+- 远端旧CI 41144132539（2dc4e62）Linux整个原生job成功，Windows运行时、Rust、
+  打包、原生PCM和通用UX41态成功，后停在下载主题菜单。CI 41150579875（a150537）
+  Linux停在已移除的旧音质提示断言，Windows先在loudness主题菜单失败；两次完整
+  gate均失败。上述resize修复在本机实测有效，但Windows旧失败根因仍是待新CI验证
+  的推断，不能称Windows已通过。未发布新版本。
