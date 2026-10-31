@@ -2463,3 +2463,39 @@ speed-menu-focus-before，未忽略左右焦点框采样失败。额外键盘32�
   尚不据此称CI故障已修复，后续Windows/Linux精确提交CI仍需验证。
 - 旧构建可执行文件按6小时前、非运行中、仅target/debug编译产物清理725个，释放约
   110.77GiB；不删除源码/账号/恢复材料/失败证据/当前运行程序。
+
+2026-10-31 迷你窗口普通/房间策略及125%尺寸专项
+- mini-mode-ui-final/first内嵌production双WebView19态与mini-mode-kde-final/run/first本机
+  KDE/XWayland125%19态均通过，共38张最终原图；仅截自身PID可见窗口。图库
+  .build/mini-mode-gallery，几何及原生逐态断言在mini-mode-kde-final/geometry-validation.json。
+- 原8态的8秒就绪失败/权限隔离/播放暂停/音量喜欢/30+10队列/旧票据/置顶持久化/
+  重载/关闭策略/账号隔离均保留。新增普通四态、深浅色房间各三态与退出恢复1态。
+  模式与nativeMini/nativePlayer一致，所有模式帧暂停10秒，同组playId不变，无隐藏错误。
+- MiniView.modeFamily由现有本地房间状态派生；本次房间完全合成，正式创建/附着/
+  控制/结束经真实IPC和Rust协调器，只有1次合成创建/结束。没有真实HTTP/账号写入/
+  外部IM/RTC连接/第二账号，twoAccountRealtimeVerified=false。
+- mini-mode-ui-1在隔离WebView已有19态成功；mini-mode-kde-1首次实机测得336×164
+  CSS像素、ratio1.25、无焦点，暴露初始LogicalSize与WebView比例不一致，原采集器
+  因420物理宽度低于其500px最小值而拒绝。没有通过缩字体或隐藏底部解决。
+- 修正后真实CSS尺寸420×206/516，实际PNG525×258/645；19帧均可见且获得焦点，
+  原生会商最多3次且整体8秒lifetime仍有效，未将业务失败纳入自动重试。
+  原采集器也缩小到只截自身PID的200px最小窗口，图片不裁剪/不修改。
+- 官方M/308:onMiniPlayerAction确实复用M/7，但只传两个参数；将一起听三态用于
+  小窗是基于主播放条与服务限制的社区一致性修正。详见desktop-mini-player-contracts.txt。
+- 新原生2项覆盖普通全部模式不重载与附着房间模式/旧票据/退出；新前端4项覆盖
+  首次就绪、分数缩放协商、明确尝试/等待上限和native过期不重试。前端367项（含后续模式错误保留回归）、格式、
+  production类型/构建通过。Rust完整workspace264结果target/1262项、严格Clippy/格式均通过；
+  CI工具36项通过。mini-mode-shortcuts六态本地DOM+独立OS按键及mini-main-mode-final
+  普通/FM首次45/重开3态回归通过。
+- 首轮mini-mode-workspace-tests中原有共同试听进度用例失败：只等待权益元数据，
+  便把合成解码器时钟改为48秒，异步原生PAUSE/seek44秒仍可能随后提交。改等
+  shared_phase=Applied及原生暂停44秒后再注入48秒，保留原48000/PAUSE/PROGRESS/
+  恰好一次写入/不增加loads全部断言及原4秒时限；独立25项重验通过。未改产品时钟。
+
+- mini-main-mode-regression在旧主播放条版本复现仅队列版本变化便清除保存错误：原生
+  SQLite拒绝模式候选后仍推进queue_revision，以撤销旧fence；其状态可能晚于RPC
+  失败到达。usePlaybackMode不能把这个版本变化当作“独立恢复”。改为仅媒体身份或
+  实际mode改变时清除旧错误，新增确定性的晚到版本用例，重试仍取最新revision。
+  最终mini-main-mode-final的48态全部通过，未弱化SQL故障、错误/按钮/焦点断言。
+- 旧mini-mode-ui-1/2及mini-mode-kde-1/2保留作中间证据，最终38图取final两组，
+  不混用较早前端或未通过的本机截取。200%仍只有几何向量，Windows/跨屏视觉待验。

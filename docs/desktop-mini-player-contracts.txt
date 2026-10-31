@@ -79,6 +79,37 @@ mini_ui_probe 使用两张真正的生产 WebView 和同一个 MusicClient，合
 Windows 用对应 .exe 和 --runtime 指定打包原生 DLL 目录；不要求 Xvfb 或 Gdk 截图。
 CI 两个平台各自执行 mini_smoke，继续经原 CI gate；没有忽略失败的发布通道。
 Linux 实测证据及最终通过数在 ui-ux-validation.txt 的迷你窗口记录中补充。
-物理桌面暂未登录：这些截图不证明实机缩放、屏幕刷新率或真实声卡听感。
+早期隔离WebView截图不证明实机缩放；本轮新增KDE125%物理窗口证据见下文。
+所有null输出证据均不证明真实声卡听感。
 Windows 本轮代码仍须自己的 runner/实际窗口测试，不能拿 Linux 或 mock 测试代替。
 整个客户端完整目标仍未完成；本文件只描述本次小窗已接入的功能及明确剩余项。
+
+2026-10-31 普通/一起听模式及分数缩放修正
+- MiniView新增modeFamily（ordinary/together；MV、FM和空媒体为null），只由Rust读取
+  本地现有媒体/房间运行态派生，不做HTTP，不让小窗访问主窗口的房间/账号IPC。
+  主窗口和小窗复用playbackMode规则，房间内循环为列表→单曲→随机→列表，避免把
+  第四次点击变成原生明确拒绝的顺序播放。
+- modeFamily纳入same_controls及动作时检查；房间附着/退出改变策略会撤销旧ticket，
+  不能将已显示的普通操作重新解释成房间操作。模式提交在房间gate内重新检查快照、
+  允许列表及现有媒体fence，不重新捕获目标。UI仍等实际回执，不把失败显示成成功。
+- 来源为实际M/308:5125–5386（miniModePlayerInit/onMiniPlayerAction），SHA256
+  2cd3a0da5759370a80cfe20c7ac4e58ef192bab33c396e8eff3efdd35c254a7d，及M/7冻结循环。
+  官方onMiniPlayerAction只以两个参数调用M/7，未传入一起听第三参数；本项目为统一
+  主播放条与已验证服务限制，明确将房间三态用于小窗。这是社区一致性修正，不能
+  声称已观察到官方C++小窗在该场景完全相同。无YesPlayMusic来源。
+- 实际KDE/XWayland125%首次测得innerWidth=336、innerHeight=164，虽然原生设置
+  LogicalSize(420,206)；GTK原生scale与WebView的devicePixelRatio=1.25不相同，
+  导致底部账号/音量行被裁掉。不是通过缩小字号或隐藏功能适配。
+- mini_ready现在带真实CSS viewport和devicePixelRatio；Rust按比例设置PhysicalSize，
+  目标仍是420×206 CSS像素。小窗开始隐藏，首次安全读取后必要时先显示拟合窗口，
+  保留主窗口；确认viewport正确后才隐藏main并聚焦mini。初次协商最多3次、每次
+  最多20个25ms等待，总体仍受原8秒lifetime限制，不重试账号/播放业务。
+- 队列展开/收起也按当前WebView比例请求PhysicalSize，目标420×516/206；比例只
+  允许有限0.5..8并验证有限数。125%对应525×258/645物理像素，200%纯几何向量
+  为840×412；纯向量不代表200%物理窗口通过。跨不同缩放显示器拖动仍需专项。
+- 本轮离线合成房间使用独立mini_room_fixture，无真实HTTP、邀请、IM/RTC连接或
+  第二账号。测试创建/附着/模式/结束都经过正式IPC和Rust协调器；不能冒称双端同步。
+- mini_smoke当前完整19态：原8态加普通四态、两主题房间三态和退出恢复1态；保留
+  原超时、权限隔离、单音频工厂、队列分页、旧票据/账号、重载及关闭策略全部断言。
+  报告逐态比较nativeMini与nativePlayer及DOM，模式切换保持同playId和暂停10秒。
+  实际运行结果、失败/修正及共享回归见ui-ux-validation.txt。
