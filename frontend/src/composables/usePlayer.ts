@@ -228,6 +228,35 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       throw e;
     }
   }
+  async function configureMode(
+    mode: import('../services/player').PlaybackMode,
+    queueRevision: string,
+    fm: boolean,
+  ) {
+    const captured = epoch,
+      session = connection;
+    if (!ready.value) throw { code: 'stale', message: '播放器尚未连接', retryable: false };
+    try {
+      const next = await core.playerAction(captured, {
+        kind: 'mode_for',
+        mode,
+        expected_queue_revision: queueRevision,
+        fm,
+      });
+      if (captured !== epoch || session !== connection || !ready.value)
+        throw { code: 'stale', message: '账号或播放器连接已变化', retryable: false };
+      accept(next);
+      return next;
+    } catch (e) {
+      if (
+        captured === epoch &&
+        session === connection &&
+        ['session_expired', 'profile_changed'].includes(failure(e).code)
+      )
+        onSessionChanged();
+      throw e;
+    }
+  }
   const select = (input: PlaySelection) => run((e) => core.playSelection(e, input));
   // Card playback reads its authoritative list before selecting it. A delayed
   // read must not start audio after account replacement or a newer operation.
@@ -330,6 +359,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     qualityTrial,
     configureLoudness,
     configureVolume,
+    configureMode,
     select,
     downloads,
     retry,

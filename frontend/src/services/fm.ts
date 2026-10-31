@@ -40,6 +40,7 @@ export interface FmView {
   current: string | null;
   active: boolean;
   pending: boolean;
+  modePending: boolean;
   notice: string | null;
   operations: FmFeedback[];
   blockedArtists: { id: string; name: string }[];

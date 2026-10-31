@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import type { PlayerModel } from '../composables/usePlayer';
-import { time, type PlaybackMode } from '../services/player';
+import { time } from '../services/player';
 import type { TrackView } from '../services/contracts';
 import Icon from './Icon.vue';
 import EqualizerPanel from './EqualizerPanel.vue';
@@ -9,8 +9,17 @@ import ModalTransition from './ModalTransition.vue';
 import PlaybackSpeed from './PlaybackSpeed.vue';
 import PlaybackQuality from './PlaybackQuality.vue';
 import PlaybackVolume from './PlaybackVolume.vue';
+import PlaybackMode from './PlaybackMode.vue';
 const equalizerOpen = ref(false);
-const props = defineProps<{ player: PlayerModel; liked: Set<string>; likeBusy: Set<string> }>();
+const props = withDefaults(
+  defineProps<{
+    player: PlayerModel;
+    liked: Set<string>;
+    likeBusy: Set<string>;
+    togetherActive?: boolean;
+  }>(),
+  { togetherActive: false },
+);
 const emit = defineEmits<{
   like: [track: TrackView];
   retry: [];
@@ -19,20 +28,6 @@ const emit = defineEmits<{
 }>();
 const { view, ready, busy, error, playing, loaded } = props.player;
 const draft = ref<number>();
-const normalModes: { value: PlaybackMode; label: string; icon: string }[] = [
-  { value: 'order_loop', label: '列表循环', icon: 'repeat' },
-  { value: 'single_loop', label: '单曲循环', icon: 'repeatOne' },
-  { value: 'random', label: '随机播放', icon: 'shuffle' },
-  { value: 'sequential', label: '顺序播放', icon: 'list' },
-];
-const modes = computed(() =>
-  view.value?.fm
-    ? [{ value: 'sequential' as PlaybackMode, label: '无限漫游', icon: 'repeat' }, normalModes[1]!]
-    : normalModes,
-);
-const mode = computed(
-  () => modes.value.find((m) => m.value === view.value?.mode) ?? modes.value[0]!,
-);
 const pending = computed(
   () => busy.value || ['preparing', 'loading'].includes(view.value?.state ?? ''),
 );
@@ -48,13 +43,6 @@ const message = computed(
           ? '音源可播范围已变化，进度已重置'
           : (view.value?.historyWarning ?? '')),
 );
-function cycle() {
-  const index = modes.value.findIndex((m) => m.value === view.value?.mode);
-  void props.player.action({
-    kind: 'mode',
-    mode: modes.value[(index + 1) % modes.value.length]!.value,
-  });
-}
 async function seek(event: Event) {
   const seconds = Number((event.target as HTMLInputElement).value);
   await props.player.action({ kind: 'seek', seconds });
@@ -69,6 +57,7 @@ async function seek(event: Event) {
     :data-volume="view?.volume"
     :data-unmute-volume="view?.unmuteVolume"
     :data-mode="view?.mode"
+    :data-fm="view?.fm"
     :data-quality="view?.actualQuality"
     :data-requested-quality="view?.requestedQuality"
     :data-preferred-quality="view?.qualityPreferences.quality"
@@ -120,15 +109,7 @@ async function seek(event: Event) {
     </div>
     <div class="player-center">
       <div class="transport-controls">
-        <button
-          class="icon-button"
-          :aria-label="mode.label"
-          :title="mode.label"
-          :disabled="!ready"
-          @click="cycle"
-        >
-          <Icon :name="mode.icon" />
-        </button>
+        <PlaybackMode :player="player" :together-active="togetherActive" />
         <button
           class="icon-button"
           aria-label="上一首"

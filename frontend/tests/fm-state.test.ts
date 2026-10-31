@@ -17,6 +17,7 @@ const account = (epoch = '1') => ({
 const view = (revision = '1'): FmView => ({
   source: { kind: 'personal' },
   activeSource: null,
+  modePending: false,
   revision,
   items: [],
   current: null,

@@ -170,6 +170,42 @@ test('a late volume save cannot restore state after account replacement', async 
   assert.equal(f.player.view.value?.volume, 100);
   f.player.dispose();
 });
+test('mode changes keep pending transport and its feedback independent', async () => {
+  const loading = deferred<PlayerView>();
+  const calls: import('../src/services/player.ts').PlayerAction[] = [];
+  const f = fixture({
+    playerAction: async (_epoch, input) => {
+      calls.push(input);
+      if (input.kind === 'play') return loading.promise;
+      throw { code: 'storage', message: 'mode failure', retryable: true };
+    },
+  });
+  await f.player.connect(account());
+  const pending = f.player.action({ kind: 'play' });
+  await assert.rejects(f.player.configureMode('random', '1', false), { code: 'storage' });
+  assert.equal(f.player.busy.value, true);
+  assert.equal(f.player.error.value, '');
+  loading.resolve(state('3'));
+  await pending;
+  assert.deepEqual(calls, [
+    { kind: 'play' },
+    { kind: 'mode_for', mode: 'random', expected_queue_revision: '1', fm: false },
+  ]);
+  f.player.dispose();
+});
+test('late mode replies cannot restore a replaced account', async () => {
+  const saved = deferred<PlayerView>(),
+    f = fixture({ playerAction: () => saved.promise });
+  await f.player.connect(account());
+  const pending = f.player.configureMode('random', '1', false),
+    rejected = assert.rejects(pending, { code: 'stale' });
+  await f.player.connect(account('2'));
+  saved.resolve({ ...state('99', '1'), mode: 'random' });
+  await rejected;
+  assert.equal(f.player.view.value?.epoch, '2');
+  assert.equal(f.player.view.value?.mode, 'order_loop');
+  f.player.dispose();
+});
 function lyrics(playId: string): LyricsView {
   return {
     epoch: '1',

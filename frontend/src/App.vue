@@ -1615,6 +1615,7 @@ onUnmounted(() => {
       :player="player"
       :liked="playingLikes"
       :like-busy="playingLikeBusy"
+      :together-active="together.view.value?.attached ?? false"
       @like="likePlaying"
       @retry="player.connect(account)"
       @comments="trackComments"

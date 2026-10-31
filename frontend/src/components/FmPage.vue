@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import type { FmModel } from '../composables/useFm';
 import type { PlayerModel } from '../composables/usePlayer';
 import type { TrackView } from '../services/contracts';
@@ -21,6 +21,24 @@ const { view, trash, reasons, reasonsLoading, loading, busy, trashLoading, error
 const tab = ref<'fm' | 'trash'>('fm'),
   selected = ref(new Set<string>());
 const exploring = ref(false);
+const heading = ref<HTMLHeadingElement>(),
+  returnButton = ref<HTMLButtonElement>();
+async function leave() {
+  const owner = returnButton.value,
+    focused = document.activeElement === owner;
+  const epoch = props.player.view.value?.epoch;
+  await props.model.command({ kind: 'leave' });
+  await nextTick();
+  if (
+    focused &&
+    heading.value?.isConnected &&
+    epoch === props.player.view.value?.epoch &&
+    props.model.view.value?.active === false &&
+    props.model.view.value.activeSource === null &&
+    (document.activeElement === document.body || document.activeElement === owner)
+  )
+    heading.value.focus({ preventScroll: true });
+}
 function explore() {
   exploring.value = !exploring.value;
   if (exploring.value) void props.model.discovery.load({ kind: 'home' });
@@ -43,7 +61,12 @@ async function selectCard(card: FmCard, autoplay: boolean) {
 }
 const current = computed(() => view.value?.items.find((i) => i.entryId === view.value?.current));
 const pending = computed(() => busy.value || props.player.busy.value || !props.player.ready.value);
-const playing = computed(() => view.value?.active && props.player.playing.value);
+// Empty recommendations can still own the saved ordinary queue and its return
+// action. Only transport controls additionally require an actual FM projection.
+const active = computed(() => !!view.value?.active);
+const transportActive = computed(() => active.value && props.player.view.value?.fm === true);
+const playing = computed(() => transportActive.value && props.player.playing.value);
+const modePending = computed(() => active.value && !!view.value?.modePending);
 const dialog = ref<HTMLDialogElement>();
 const target = ref<{ entryId: string; name: string }>();
 watch(
@@ -90,23 +113,33 @@ function closeReasons() {
   props.model.clearReasons();
 }
 function play() {
-  if (view.value?.active) {
-    if (!current.value || view.value.pending || view.value.notice)
-      void props.model.command({ kind: 'resume' });
-    else
-      void props.player.action(playing.value ? { kind: 'pause', paused: true } : { kind: 'play' });
+  if (active.value) {
+    if (modePending.value) resume();
+    else if (playing.value) void props.player.action({ kind: 'pause', paused: true });
+    else if (!transportActive.value || !current.value || view.value?.pending || view.value?.notice)
+      resume();
+    else void props.player.action({ kind: 'play' });
   } else
     void props.model.command({
       kind: 'start',
       quality: props.player.view.value?.qualityPreferences.quality ?? 'standard',
     });
 }
+function resume() {
+  heading.value?.focus({ preventScroll: true });
+  void props.model.command({ kind: 'resume' });
+}
 </script>
 <template>
-  <section class="fm-page" aria-label="私人FM" :data-fm-source="JSON.stringify(model.source.value)">
+  <section
+    class="fm-page"
+    aria-label="私人FM"
+    :data-fm-source="JSON.stringify(model.source.value)"
+    :data-mode-pending="modePending"
+  >
     <header class="fm-header">
       <div>
-        <h1>{{ tab === 'fm' ? model.title.value : '音乐黑名单' }}</h1>
+        <h1 ref="heading" tabindex="-1">{{ tab === 'fm' ? model.title.value : '音乐黑名单' }}</h1>
         <p>
           {{
             tab === 'fm'
@@ -135,7 +168,9 @@ function play() {
     </div>
     <div v-if="view?.pending || view?.notice" class="fm-notice" role="status">
       {{ view.notice || '切歌尚未完成'
-      }}<button :disabled="pending" @click="model.command({ kind: 'resume' })">重试继续播放</button>
+      }}<button :disabled="pending" @click="resume">
+        {{ modePending ? '同步并继续播放' : '重试继续播放' }}
+      </button>
     </div>
     <div v-if="tab === 'fm'" class="fm-main">
       <div v-if="loading && !view" class="empty-state">正在寻找你的下一首歌…</div>
@@ -155,14 +190,20 @@ function play() {
           <p class="fm-album">{{ current?.track.album }}</p>
           <div class="fm-actions">
             <button class="primary" :disabled="pending" @click="play">
-              <Icon :name="playing ? 'pause' : 'play'" />{{
-                playing ? '暂停漫游' : view?.active ? '继续播放' : '开始漫游'
+              <Icon :name="modePending ? 'repeat' : playing ? 'pause' : 'play'" />{{
+                modePending
+                  ? '同步并继续播放'
+                  : playing
+                    ? '暂停漫游'
+                    : active
+                      ? '继续播放'
+                      : '开始漫游'
               }}
             </button>
             <button
               class="icon-button"
               aria-label="FM上一首"
-              :disabled="pending || !view?.active || view.pending || !current"
+              :disabled="pending || !transportActive || view?.pending || !current"
               @click="player.action({ kind: 'previous' })"
             >
               <Icon name="previous" />
@@ -170,7 +211,7 @@ function play() {
             <button
               class="icon-button"
               aria-label="FM下一首"
-              :disabled="pending || !view?.active || view.pending || !current"
+              :disabled="pending || !transportActive || view?.pending || !current"
               @click="player.action({ kind: 'next' })"
             >
               <Icon name="next" />
@@ -187,22 +228,23 @@ function play() {
             </button>
             <button
               class="text-button"
-              :disabled="pending || !view?.active || view.pending"
+              :disabled="pending || !transportActive || view?.pending"
               @click="askTrash"
             >
               减少推荐
             </button>
             <button class="text-button" @click="emit('comments', current.track)">评论</button>
             <button class="text-button" @click="emit('download', [current.track])">下载</button>
-            <button class="text-button" :disabled="!view?.active" @click="player.toggleLyrics">
+            <button class="text-button" :disabled="!transportActive" @click="player.toggleLyrics">
               歌词
             </button>
           </div>
           <button
-            v-if="view?.active"
+            ref="returnButton"
+            v-if="active"
             class="text-button fm-return"
             :disabled="pending"
-            @click="model.command({ kind: 'leave' })"
+            @click="leave"
           >
             返回原播放队列
           </button>
@@ -422,6 +464,11 @@ function play() {
 .fm-header h1 {
   font-size: 26px;
   margin: 0 0 8px;
+}
+.fm-header h1:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: 4px;
 }
 .fm-header p,
 .fm-copy p {

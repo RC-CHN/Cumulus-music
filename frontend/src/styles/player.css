@@ -69,6 +69,31 @@
   justify-content: center;
   gap: 14px;
 }
+.mode-control {
+  position: relative;
+  display: inline-flex;
+}
+.mode-control [aria-busy='true'] {
+  opacity: 0.65;
+}
+.mode-feedback {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  margin-left: -140px;
+  width: 280px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--warning);
+  box-shadow: 0 3px 20px #0002;
+  font-size: 12px;
+  line-height: 1.5;
+}
 .transport-controls .icon {
   width: 17px;
   height: 17px;

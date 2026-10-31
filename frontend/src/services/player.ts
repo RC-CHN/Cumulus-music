@@ -193,6 +193,7 @@ export type PlayerAction =
   | { kind: 'quality'; level: Quality }
   | { kind: 'quality_for'; level: Quality; play_id: string; expected_revision: string }
   | { kind: 'mode'; mode: PlaybackMode }
+  | { kind: 'mode_for'; mode: PlaybackMode; expected_queue_revision: string; fm: boolean }
   | { kind: 'select'; entry_id: string }
   | { kind: 'remove' | 'reorder'; entry_ids: string[] };
 export interface LyricLine {
