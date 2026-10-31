@@ -54,8 +54,12 @@
   账号写入，null输出不代表声卡听感。Windows同脚本接入独立CI runner。
 - 这是主播放条普通/FM模式专项，不能代替整页和全应用一致性验收。一起听仅策略和
   原生限制有独立测试，实际房间UI、双端同步尚未在此专项验证。
-- 心动/AI 模式尚未迁移：官方额外循环及 /api/playmode/intelligence/list（API0304，
+- 心动/AI 播放模式尚未迁移：官方额外循环及 /api/playmode/intelligence/list（API0304，
   M/15、M/308、playing模型）另有喜欢歌曲种子、推荐补充、原队列备份/退出恢复；
   不能以随机播放代替。迷你模式一起听限制已有后续独立专项（desktop-mini-player-contracts.txt）；
   空FM队列身份及小窗FM手动模式仍需继续审计。
 - 没有同状态官方运行截图，不能声称像素一致。具体运行结果见 ui-ux-validation.txt。
+
+2026-10-31 后续：intelligence/list的请求/响应已由Rust实现并读通当前账号两种入口，
+但上述心动播放协调器及UI仍未完成。原函数向量、别名语义和明确范围见
+intelligence-api-contracts.txt；不能以API成功代替心动播放/恢复验证。

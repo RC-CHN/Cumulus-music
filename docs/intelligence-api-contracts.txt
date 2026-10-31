@@ -1,0 +1,70 @@
+心动推荐接口迁移：已恢复请求/响应，尚未完成播放模式（2026-10-31）
+
+来源与实际执行对照
+- M/86.e（内部S）接收playlistId/songId/type/startMusicId/count/starPlaylist/uid，
+  仅把前五个字段交给M/15.n。文件SHA256：
+  b6f5b6f91be6f766c3e9374638d2c448c8bd791a8d86e63fcfc3b373411c3bb5。
+- M/15.n（内部je）请求/api/playmode/intelligence/list，g.enable=false，按响应顺序
+  解析songInfo或喜欢列表回退，并建立aiTracksRecommendInfo。SHA256：
+  8ec4bf8d343f6963860eb73bc59ca09f0dd1ae50db2608a6c5abc7d69a0b521a。
+- M/21.D（内部I）确实保留每行对应位置，包括undefined；并非过滤/去重。文件SHA256：
+  33d27af5a54c6a74641f192841637d2608d588d2d93091a9a61cb43948c93af7。
+- 在隔离Node vm执行以上原表达式，冻结core/tests/fixtures/official-intelligence.json
+  的4组纯合成向量。M/21.x只提供“原始元数据+algorithm=t.alg||空字符串”的桩；
+  不将完整歌曲规范化、原生Database写入或会员可播放筛选算作这个对照的覆盖范围。
+- 没有参考YesPlayMusic；公开仓库没有恢复源码或账号/真实推荐向量。
+
+Rust映射与接口
+core/src/catalog/intelligence.rs：IntelligenceRequest / IntelligenceApi::recommend。
+字段 | 线上的值/含义
+playlistId | 喜欢歌单ID；本核心沿用正十进制字符串，保留大ID与前导零
+songId | 选中的种子歌曲ID
+startMusicId | 官方aiPlay中可播放喜欢列表第一首ID
+count | 原喜欢列表数量，不替换成固定分页条数
+type | fromPlayAll 或 fromPlayOne
+starPlaylist、uid不发送；喜欢元数据只在本地解析回退。ApiOrigin/签名/登录上下文继续
+由现有MusicHttpClient提供，接口模块不另选协议、设备身份或Cookie范围。
+count/喜欢缓存/响应数量沿用完整歌单100000条的本地资源上限，拒绝而非静默截断；
+这项是本核心边界，不声称已实测服务端最大容量。
+
+响应与算法细节
+- songInfo存在时保留原始目录数据，覆盖alg；algorithm遵循M/21的JS真假值回退。
+  liked回退只改algorithm：null、0与缺失要区分，不把未知recommended状态强制转bool。
+- 无songInfo且本地喜欢缓存也没有对应歌曲时，返回source=unresolved及song=None。
+  保留位置、ID和推荐信息，不额外查询详情、编造可播放对象或忽略掉该行。
+- 轨道行顺序及重复行保留；推荐信息字典重复ID以最后一行覆盖，符合原对象赋值。
+- 原liked回退重复引用同一对象，所有同ID回退行最终都会看到最后一次回退算法。
+  冻结原函数先使朴素逐行clone实现失败；Rust改为私有喜欢副本两阶段投影，保持结果，
+  同时不修改调用者的全局喜欢缓存。songInfo行仍保留各自行算法，不套用liked别名规则。
+- 空data数组是成功的空批次；缺少data/非法行/非法songInfo或拒绝码返回错误。读失败
+  不自动改成随机列表，不自动重发，不在API层决定是否切换播放模式。
+- 返回的是native元数据；未来IPC仍须经既有白名单TrackView映射，不能把原JSON直接
+  暴露给前端。完整M/21歌曲/Database规范化不在本模块复刻。
+
+执行、账号隔离及线上验证
+  cargo test -p cumulus-core --test catalog_intelligence --locked
+5项测试覆盖4组原函数向量、单次请求及cache=false、未解析项、请求/响应错误、传输
+失败不重试、调用者缓存不变及账号切换丢弃晚到读结果。业务调用用AccountSession.run_for
+把请求与代次绑定，测试在请求未完成时换账号，旧推荐不能作为新账号结果返回。
+
+显式只读执行入口（不属于公开CI自动执行）：
+  cargo run -p cumulus-core --example intelligence_read --locked -- \
+    <existing-PC-profile-directory> <new-private-proof-directory>
+程序只读打开源SQLite，完整复制transport.credentials.session到新私有目录；原origin/
+domain/path/device均保留，由Credentials::open(Pc)验证，既有记录不迁移/写回。只允许
+account/get、user/playlist、playlist/detail、song/detail及intelligence/list五个路径。
+读取所选账号喜欢歌单及元数据后，各发送一次fromPlayAll/fromPlayOne；报告只保存
+路径/计数/状态，不保存账号ID、歌名、原始推荐、Cookie或授权URL。输出目录不可复用。
+
+本次在当前桌面选中的真实PC会话两条请求均成功，songInfo与喜欢回退均实际出现，
+未解析项为0。源凭据未写回，真实账号资源写入0；详细计数仅留在私有
+.build/intelligence-live-current/report.json。较早references/client-core的归档会话读取
+只得到session_expired；不据此声称当前桌面账号失效，随后已验证当前所选会话有效。
+
+未完成项，不能把本项计作完整心动模式通过
+- 官方M/308 aiPlay的喜欢列表可播放/黑名单过滤、种子选择与先播种子；
+- 成功切入AI并追加推荐而不抢播、旧普通队列备份、失败切列表循环及退出恢复；
+- 账号隔离的协调器持久化、崩溃/失回执恢复、与FM/一起听/同账号接续的所有权关系；
+- 心动按钮、五态循环资格、会员引导与实际桌面播放验证。
+只读报告明确seedPlayableVerified/coordinatorVerified/uiStartVerified=false。
+完整目标、MV网格历史CI漏项、其余页面一致性与Windows实机验证继续。

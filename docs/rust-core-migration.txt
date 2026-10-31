@@ -589,3 +589,12 @@ desktop-lyrics-contracts.txt。28组官方执行对照、247目标1152项Rust、
 与shortcut-contracts.txt；本批修正新增迷你入口后过时的三按钮滚动检查。
 透明桌面歌词窗口、锁定/穿透与解锁、设置UI、原生字体和歌词快捷键仍需接入；
 Wayland全局入口、Windows实际媒体验收及其余全目标未从范围中删除。完整目标继续。
+
+2026-10-31 心动推荐API及官方执行对照（播放协调器仍未完成）
+M/86.e→M/15.n的五字段请求、禁用缓存、songInfo/喜欢回退/未解析项、重复行及推荐
+信息字典已迁入catalog/intelligence.rs。4组原函数冻结向量保留M/21.D的空位及喜欢
+对象别名语义；没有把完整M/21歌曲Database规范化算作通过。5项Rust测试包含账号
+切换丢弃晚到结果；intelligence_read显式只读克隆同源凭据并在当前所选账号读通两个
+入口，未改歌单或任何账号资源。接口字段、执行入口及来源映射见intelligence-api-contracts.txt。
+这不是完整心动模式：种子/可播放筛选、AI队列/备份/退出/崩溃恢复、模式资格和UI仍
+需要迁移与验证，完整goal保持active。

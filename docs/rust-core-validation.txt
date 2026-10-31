@@ -1555,3 +1555,18 @@ login-interception-cache-tests.log。初次全量（workspace-tests3.log）一�
 不反推历史是否下发，不证明真实续期，亦不重算所有页面或音频验收。
 正式/探针哈希在运行前后保持一致；日志、证据和源码散列见.build/login-legacy-progress.json。
 完整目标继续：匿名恢复、完整JSK新登录、旧网页/原设备验证、真人CAPTCHA和真实轮换等仍有边界。
+
+2026-10-31 心动推荐API原函数对照与当前账号只读
+- catalog/intelligence.rs通过执行M/86.e/M/15.n/M/21.D生成的4组合成向量；M/21.x仅
+  对照algorithm装饰，未冒称完整Database歌曲规范化。初稿在重复liked别名向量失败，
+  之后改为私有副本两阶段投影，保留最后fallback算法及独立推荐字典，调用者缓存不变。
+- catalog_intelligence 5项涵盖有效请求、缺失元数据、不合法请求/响应/拒绝/传输失败
+  单次处理、账号换代拒绝旧读；完整workspace266结果target/1267项、0失败/忽略，
+  严格Clippy、Rust格式均通过。日志.build/intelligence-*，公开CI没有真实账号输入。
+- intelligence_read从显式PC profile只读复制原凭据到新0700目录，严格限制五个读取
+  路径；当前桌面所选真实会话两个intelligence入口均成功，songInfo与liked回退都出现，
+  未解析项0、资源写入0。用户名/ID/歌名/原推荐不进入公开报告；详细计数仅在
+  .build/intelligence-live-current/report.json。归档client-core会话不成功不作为当前账号失效证明。
+- 只是接口/原生格式化的可执行验证；seedPlayableVerified、coordinatorVerified及
+  uiStartVerified仍false。喜欢种子筛选、AI队列/失败切换/退出恢复、会员与UI继续；
+  入口、源码散列及接口字段映射详见intelligence-api-contracts.txt，不以此宣布完整模式通过。
