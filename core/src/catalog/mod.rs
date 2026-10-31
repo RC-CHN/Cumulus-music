@@ -3,6 +3,7 @@ mod album;
 mod api;
 mod artist;
 pub mod details;
+pub mod intelligence;
 pub mod metadata;
 mod privileges;
 pub mod rankings;

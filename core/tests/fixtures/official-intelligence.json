@@ -1,0 +1,445 @@
+{
+  "source": "official 3.1.42.205594 M/86.e, M/15.n formatter and M/21.D list mapper",
+  "sha256": {
+    "15": "8ec4bf8d343f6963860eb73bc59ca09f0dd1ae50db2608a6c5abc7d69a0b521a",
+    "21": "33d27af5a54c6a74641f192841637d2608d588d2d93091a9a61cb43948c93af7",
+    "86": "b6f5b6f91be6f766c3e9374638d2c448c8bd791a8d86e63fcfc3b373411c3bb5"
+  },
+  "scope": "Executed extracted original expressions. M/21.x is an algorithm-only stub: raw metadata passthrough plus algorithm=t.alg||empty; full song/database normalization is not claimed.",
+  "cases": [
+    {
+      "name": "payload-liked-unresolved-and-duplicate-fallback",
+      "input": {
+        "playlistId": "31",
+        "songId": "7",
+        "type": "fromPlayAll",
+        "startMusicId": "7",
+        "count": 3,
+        "uid": "2",
+        "starPlaylist": [
+          {
+            "id": "7",
+            "name": "Liked seven",
+            "algorithm": "old",
+            "ar": [
+              {
+                "name": "Synthetic"
+              }
+            ]
+          },
+          {
+            "id": "8",
+            "name": "Liked eight"
+          }
+        ]
+      },
+      "response": {
+        "code": 200,
+        "data": [
+          {
+            "id": "201",
+            "recommended": true,
+            "alg": "fresh-a",
+            "songInfo": {
+              "id": "201",
+              "name": "New song",
+              "ar": [
+                {
+                  "name": "Synthetic"
+                }
+              ]
+            }
+          },
+          {
+            "id": "7",
+            "recommended": false,
+            "alg": "liked-a"
+          },
+          {
+            "id": "999",
+            "recommended": null,
+            "alg": "unresolved"
+          },
+          {
+            "id": "201",
+            "recommended": false,
+            "alg": "fresh-b",
+            "songInfo": {
+              "id": "201",
+              "name": "Repeated new song"
+            }
+          },
+          {
+            "id": "7",
+            "recommended": true,
+            "alg": "liked-final"
+          }
+        ]
+      },
+      "expected": {
+        "wire": {
+          "path": "/api/playmode/intelligence/list",
+          "payload": {
+            "playlistId": "31",
+            "songId": "7",
+            "type": "fromPlayAll",
+            "startMusicId": "7",
+            "count": 3
+          },
+          "cache": false
+        },
+        "result": {
+          "aiTracks": [
+            {
+              "id": "201",
+              "name": "New song",
+              "ar": [
+                {
+                  "name": "Synthetic"
+                }
+              ],
+              "alg": "fresh-a",
+              "algorithm": "fresh-a"
+            },
+            {
+              "id": "7",
+              "name": "Liked seven",
+              "algorithm": "liked-final",
+              "ar": [
+                {
+                  "name": "Synthetic"
+                }
+              ]
+            },
+            null,
+            {
+              "id": "201",
+              "name": "Repeated new song",
+              "alg": "fresh-b",
+              "algorithm": "fresh-b"
+            },
+            {
+              "id": "7",
+              "name": "Liked seven",
+              "algorithm": "liked-final",
+              "ar": [
+                {
+                  "name": "Synthetic"
+                }
+              ]
+            }
+          ],
+          "aiTracksRecommendInfo": {
+            "7": {
+              "recommended": true,
+              "alg": "liked-final",
+              "id": "7"
+            },
+            "201": {
+              "recommended": false,
+              "alg": "fresh-b",
+              "id": "201"
+            },
+            "999": {
+              "recommended": null,
+              "alg": "unresolved",
+              "id": "999"
+            }
+          }
+        },
+        "normalizationCalls": [
+          {
+            "song": {
+              "id": "201",
+              "name": "New song",
+              "ar": [
+                {
+                  "name": "Synthetic"
+                }
+              ],
+              "alg": "fresh-a"
+            },
+            "uid": "2"
+          },
+          {
+            "song": {
+              "id": "201",
+              "name": "Repeated new song",
+              "alg": "fresh-b"
+            },
+            "uid": "2"
+          }
+        ],
+        "likedAfter": [
+          {
+            "id": "7",
+            "name": "Liked seven",
+            "algorithm": "liked-final",
+            "ar": [
+              {
+                "name": "Synthetic"
+              }
+            ]
+          },
+          {
+            "id": "8",
+            "name": "Liked eight"
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty-batch-from-one",
+      "input": {
+        "playlistId": "31",
+        "songId": "8",
+        "type": "fromPlayOne",
+        "startMusicId": "7",
+        "count": 2,
+        "uid": "2",
+        "starPlaylist": []
+      },
+      "response": {
+        "code": 200,
+        "data": []
+      },
+      "expected": {
+        "wire": {
+          "path": "/api/playmode/intelligence/list",
+          "payload": {
+            "playlistId": "31",
+            "songId": "8",
+            "type": "fromPlayOne",
+            "startMusicId": "7",
+            "count": 2
+          },
+          "cache": false
+        },
+        "result": {
+          "aiTracks": [],
+          "aiTracksRecommendInfo": {}
+        },
+        "normalizationCalls": [],
+        "likedAfter": []
+      }
+    },
+    {
+      "name": "missing-algorithm-removes-stale-fields",
+      "input": {
+        "playlistId": "31",
+        "songId": "8",
+        "type": "fromPlayOne",
+        "startMusicId": "7",
+        "count": 2,
+        "uid": "2",
+        "starPlaylist": [
+          {
+            "id": "8",
+            "name": "Liked eight",
+            "algorithm": "old",
+            "alg": "original-raw"
+          }
+        ]
+      },
+      "response": {
+        "code": 200,
+        "data": [
+          {
+            "id": "202",
+            "songInfo": {
+              "id": "202",
+              "name": "No new algorithm",
+              "alg": "stale"
+            }
+          },
+          {
+            "id": "8"
+          }
+        ]
+      },
+      "expected": {
+        "wire": {
+          "path": "/api/playmode/intelligence/list",
+          "payload": {
+            "playlistId": "31",
+            "songId": "8",
+            "type": "fromPlayOne",
+            "startMusicId": "7",
+            "count": 2
+          },
+          "cache": false
+        },
+        "result": {
+          "aiTracks": [
+            {
+              "id": "202",
+              "name": "No new algorithm",
+              "algorithm": ""
+            },
+            {
+              "id": "8",
+              "name": "Liked eight",
+              "alg": "original-raw"
+            }
+          ],
+          "aiTracksRecommendInfo": {
+            "8": {
+              "id": "8"
+            },
+            "202": {
+              "id": "202"
+            }
+          }
+        },
+        "normalizationCalls": [
+          {
+            "song": {
+              "id": "202",
+              "name": "No new algorithm"
+            },
+            "uid": "2"
+          }
+        ],
+        "likedAfter": [
+          {
+            "id": "8",
+            "name": "Liked eight",
+            "alg": "original-raw"
+          }
+        ]
+      }
+    },
+    {
+      "name": "opaque-falsy-and-null-metadata",
+      "input": {
+        "playlistId": "00031",
+        "songId": "90071992547409931",
+        "type": "fromPlayAll",
+        "startMusicId": "90071992547409931",
+        "count": 2,
+        "uid": "2",
+        "starPlaylist": [
+          {
+            "id": "9",
+            "name": "Liked nine",
+            "algorithm": "old"
+          }
+        ]
+      },
+      "response": {
+        "code": 200,
+        "data": [
+          {
+            "id": "203",
+            "recommended": 0,
+            "alg": null,
+            "songInfo": {
+              "id": "203",
+              "name": "Null algorithm"
+            }
+          },
+          {
+            "id": "204",
+            "recommended": "unknown",
+            "alg": {
+              "opaque": 7
+            },
+            "songInfo": {
+              "id": "204",
+              "name": "Opaque algorithm"
+            }
+          },
+          {
+            "id": "9",
+            "recommended": false,
+            "alg": 0
+          }
+        ]
+      },
+      "expected": {
+        "wire": {
+          "path": "/api/playmode/intelligence/list",
+          "payload": {
+            "playlistId": "00031",
+            "songId": "90071992547409931",
+            "type": "fromPlayAll",
+            "startMusicId": "90071992547409931",
+            "count": 2
+          },
+          "cache": false
+        },
+        "result": {
+          "aiTracks": [
+            {
+              "id": "203",
+              "name": "Null algorithm",
+              "alg": null,
+              "algorithm": ""
+            },
+            {
+              "id": "204",
+              "name": "Opaque algorithm",
+              "alg": {
+                "opaque": 7
+              },
+              "algorithm": {
+                "opaque": 7
+              }
+            },
+            {
+              "id": "9",
+              "name": "Liked nine",
+              "algorithm": 0
+            }
+          ],
+          "aiTracksRecommendInfo": {
+            "9": {
+              "recommended": false,
+              "alg": 0,
+              "id": "9"
+            },
+            "203": {
+              "recommended": 0,
+              "alg": null,
+              "id": "203"
+            },
+            "204": {
+              "recommended": "unknown",
+              "alg": {
+                "opaque": 7
+              },
+              "id": "204"
+            }
+          }
+        },
+        "normalizationCalls": [
+          {
+            "song": {
+              "id": "203",
+              "name": "Null algorithm",
+              "alg": null
+            },
+            "uid": "2"
+          },
+          {
+            "song": {
+              "id": "204",
+              "name": "Opaque algorithm",
+              "alg": {
+                "opaque": 7
+              }
+            },
+            "uid": "2"
+          }
+        ],
+        "likedAfter": [
+          {
+            "id": "9",
+            "name": "Liked nine",
+            "algorithm": 0
+          }
+        ]
+      }
+    }
+  ]
+}
