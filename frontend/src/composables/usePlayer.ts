@@ -5,6 +5,7 @@ import type {
   PlaySelection,
   PlayerAction,
   QueueView,
+  QueueEdit,
   LyricsView,
   LyricPreferences,
   QualityTrialCommand,
@@ -18,8 +19,11 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   const ready = ref(false),
     busy = ref(false),
     queueBusy = ref(false),
+    queueLoading = ref(false),
+    queueEditing = ref(false),
     error = ref(''),
     queueError = ref(''),
+    queueEditError = ref(''),
     lyricError = ref('');
   const queueOpen = ref(false),
     lyricsOpen = ref(false),
@@ -39,6 +43,13 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     ['playing', 'paused', 'buffering'].includes(view.value?.state ?? ''),
   );
   const restorable = computed(() => !!view.value?.queueLen && view.value.state === 'idle');
+  const queueCurrent = computed(
+    () =>
+      ready.value &&
+      !!queue.value &&
+      queue.value.epoch === view.value?.epoch &&
+      queue.value.revision === view.value.queueRevision,
+  );
   function handle(e: unknown) {
     const issue = failure(e);
     if (issue.code !== 'stale') error.value = issue.message;
@@ -68,6 +79,10 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     ready.value = false;
     busy.value = false;
     queueBusy.value = false;
+    queueLoading.value = false;
+    queueEditing.value = false;
+    queueError.value = '';
+    queueEditError.value = '';
     queuePreparation++;
     view.value = undefined;
     queue.value = undefined;
@@ -273,6 +288,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     const current = ++queueRequest,
       captured = epoch;
     queueError.value = '';
+    queueLoading.value = true;
     try {
       const value = await core.playerQueue(captured);
       if (
@@ -283,6 +299,44 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
         queue.value = value;
     } catch (e) {
       if (current === queueRequest) queueError.value = failure(e).message;
+    } finally {
+      if (current === queueRequest) queueLoading.value = false;
+    }
+  }
+  // Queue edits belong to the list the user saw, with their own pending/error
+  // feedback. They must never become the footer's audio-error retry operation.
+  async function editQueue(input: QueueEdit, displayed = queue.value): Promise<boolean> {
+    if (!ready.value || busy.value || queueBusy.value || queueEditing.value) return false;
+    if (
+      !displayed ||
+      displayed.epoch !== epoch ||
+      displayed.revision !== view.value?.queueRevision
+    ) {
+      queueEditError.value = '播放列表已更新，请核对当前列表后重试';
+      return false;
+    }
+    const captured = epoch,
+      session = connection;
+    queueEditing.value = true;
+    queueEditError.value = '';
+    try {
+      const next = await core.playerAction(captured, {
+        kind: 'queue_for',
+        expected_queue_revision: displayed.revision,
+        edit: input,
+      });
+      if (session !== connection || captured !== epoch || !ready.value) return false;
+      accept(next);
+      return true;
+    } catch (issue) {
+      if (session === connection && captured === epoch) {
+        const problem = failure(issue);
+        queueEditError.value = problem.message;
+        if (['session_expired', 'profile_changed'].includes(problem.code)) onSessionChanged();
+      }
+      return false;
+    } finally {
+      if (session === connection && captured === epoch) queueEditing.value = false;
     }
   }
   function toggleQueue() {
@@ -333,6 +387,8 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     queueRequest++;
     queuePreparation++;
     queueBusy.value = false;
+    queueLoading.value = false;
+    queueEditing.value = false;
     disconnect?.();
     ready.value = false;
   }
@@ -346,8 +402,12 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     ready,
     busy,
     queueBusy,
+    queueLoading,
+    queueEditing,
+    queueCurrent,
     error,
     queueError,
+    queueEditError,
     lyricError,
     queueOpen,
     lyricsOpen,
@@ -364,6 +424,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     downloads,
     retry,
     loadQueue,
+    editQueue,
     toggleQueue,
     loadLyrics,
     toggleLyrics,

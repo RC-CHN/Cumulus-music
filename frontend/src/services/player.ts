@@ -115,6 +115,10 @@ export interface QueueView {
   current: string | null;
   tracks: QueueTrack[];
 }
+export type QueueEdit =
+  | { kind: 'select'; entry_id: string }
+  | { kind: 'remove' | 'reorder'; entry_ids: string[] }
+  | { kind: 'clear' };
 export type PlaySelection =
   | { kind: 'downloads'; query: import('./downloads').DownloadQuery; start_id: string | null }
   | { kind: 'playlist_batch'; id: string; ids: string[]; revision: string; quality: Quality }
@@ -170,6 +174,7 @@ export type PlaySelection =
       quality: Quality;
     };
 export type PlayerAction =
+  | { kind: 'queue_for'; expected_queue_revision: string; edit: QueueEdit }
   | {
       kind: 'queue_playlist_batch';
       id: string;

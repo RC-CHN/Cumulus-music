@@ -330,6 +330,18 @@ async fn empty_recommendations_keep_leave_and_together_guards_until_explicit_exi
         client
             .player_action(
                 "1",
+                PlayerAction::QueueFor {
+                    expected_queue_revision: before.queue_revision.clone(),
+                    edit: cumulus_core::client::dto::QueueEdit::Clear,
+                }
+            )
+            .await,
+        Err(Error::State("FM queue requires its coordinator"))
+    ));
+    assert!(matches!(
+        client
+            .player_action(
+                "1",
                 PlayerAction::ModeFor {
                     mode: PlaybackMode::Random,
                     expected_queue_revision: before.queue_revision.clone(),

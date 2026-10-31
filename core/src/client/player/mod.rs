@@ -7,6 +7,7 @@ mod output;
 mod playlist_batch;
 mod preferences;
 mod quality;
+mod queue_edit;
 mod queue_playlist;
 mod selection;
 mod startup;
@@ -372,7 +373,38 @@ impl MusicClient {
                 )
                 .await;
         }
+        let (action, displayed_queue) = match action {
+            PlayerAction::QueueFor {
+                expected_queue_revision,
+                edit,
+            } => {
+                if native.is_some() {
+                    return Err(Error::InvalidInput(
+                        "displayed queue edit used as native media command",
+                    ));
+                }
+                (edit.into_action(), Some(expected_queue_revision))
+            }
+            other => (other, None),
+        };
         let token = self.player_token(epoch)?;
+        // Keep room attachment from changing the policy of a displayed edit.
+        let _queue_room = if displayed_queue.is_some() {
+            Some(
+                self.together
+                    .gate
+                    .try_lock()
+                    .map_err(|_| Error::MutationBusy)?,
+            )
+        } else {
+            None
+        };
+        // Reject stale UI before incrementing selection/cancelling a load.
+        let queue_guard = if let Some(revision) = displayed_queue {
+            Some(self.displayed_queue_fence(&token, &revision).await?)
+        } else {
+            None
+        };
         let local_effect = matches!(
             action,
             PlayerAction::Equalizer { .. }
@@ -442,6 +474,9 @@ impl MusicClient {
         let current = controller
             .command(&token, PlaybackCommand::Snapshot)
             .await?;
+        if queue_guard.as_ref().is_some_and(|f| *f != current.fence()) {
+            return Err(Error::QueueChanged);
+        }
         if matches!(action, PlayerAction::Mode { .. })
             && current
                 .intelligence
@@ -612,6 +647,9 @@ impl MusicClient {
             PlayerAction::ModeFor { .. } => {
                 unreachable!("fenced mode handled before generic action")
             }
+            PlayerAction::QueueFor { .. } => {
+                unreachable!("displayed queue edit normalized before generic action")
+            }
             PlayerAction::Select { entry_id } => PlaybackCommand::Select(entry_id),
             PlayerAction::Remove { entry_ids } => PlaybackCommand::Remove(entry_ids),
             PlayerAction::Reorder { entry_ids } => PlaybackCommand::Reorder(entry_ids),
@@ -642,7 +680,7 @@ impl MusicClient {
                     target.cancellation(self, lease, super::focus::Owner::Audio, control_intent),
                 )
                 .await?
-        } else if let Some(expected) = quality_guard {
+        } else if let Some(expected) = quality_guard.or(queue_guard) {
             controller
                 .command_guarded(&token, command, expected, Cancellation::default())
                 .await?

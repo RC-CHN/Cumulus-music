@@ -22,8 +22,11 @@ use tokio::sync::Notify;
 struct Backend {
     calls: Mutex<Vec<String>>,
     hold_id: AtomicU64,
+    hold_url_id: AtomicU64,
     started: Notify,
     release: Notify,
+    url_started: Notify,
+    url_release: Notify,
     trial: Mutex<Option<Value>>,
     playlist_tracks: Mutex<Option<Vec<Value>>>,
     quality_trial_state: AtomicU64,
@@ -68,6 +71,12 @@ impl Api for Backend {
                     *self.trial.lock().unwrap() = Some(payload["trialMode"].clone());
                     let ids: Vec<Value> =
                         serde_json::from_str(payload["ids"].as_str().unwrap()).unwrap();
+                    if ids[0].as_u64().or_else(|| ids[0].as_str()?.parse().ok())
+                        == Some(self.hold_url_id.load(Ordering::SeqCst))
+                    {
+                        self.url_started.notify_one();
+                        self.url_release.notified().await;
+                    }
                     json!({"code":200,"data":[{"id":ids[0],"code":if payload["level"]=="jymaster"&&self.quality_url_denied.load(Ordering::SeqCst)>0 {403}else{200},"url":"https://m1.music.126.net/a.mp3?key=SECRET","md5":"abc","expi":120,"level":"standard"}]})
                 }
                 "/api/song/enhance/privilege" => {
@@ -1159,6 +1168,172 @@ async fn checked_mode_during_source_loading_keeps_the_pending_selection_alive() 
     api.release.notify_one();
     let loaded = pending.await.unwrap().unwrap();
     assert_eq!(loaded.mode, PlaybackMode::SingleLoop);
+    assert_eq!(loaded.track.unwrap().id, "1");
+    assert_eq!(
+        loaded.state,
+        cumulus_core::playback::controller::PlaybackStatus::Playing
+    );
+    client.player_action("1", PlayerAction::Stop).await.unwrap();
+}
+
+#[tokio::test]
+async fn displayed_queue_edits_reject_replaced_lists_before_touching_transport() {
+    let (_dir, api, _session, client, _) = fixture();
+    let old = client.play_selection("1", songs("1")).await.unwrap();
+    let current = client.play_selection("1", songs("2")).await.unwrap();
+    let calls = api.calls.lock().unwrap().len();
+    for edit in [
+        QueueEdit::Clear,
+        QueueEdit::Select {
+            entry_id: current.entry_id.clone().unwrap(),
+        },
+        QueueEdit::Remove {
+            entry_ids: vec![current.entry_id.clone().unwrap()],
+        },
+        QueueEdit::Reorder {
+            entry_ids: vec![current.entry_id.clone().unwrap()],
+        },
+    ] {
+        assert!(matches!(
+            client
+                .player_action(
+                    "1",
+                    PlayerAction::QueueFor {
+                        expected_queue_revision: old.queue_revision.clone(),
+                        edit,
+                    }
+                )
+                .await,
+            Err(Error::QueueChanged)
+        ));
+    }
+    let after = client
+        .subscribe_playback("1")
+        .await
+        .unwrap()
+        .current()
+        .unwrap();
+    assert_eq!(after.play_id, current.play_id);
+    assert_eq!(after.queue_revision, current.queue_revision);
+    assert_eq!(after.entry_id, current.entry_id);
+    assert_eq!(api.calls.lock().unwrap().len(), calls);
+    client.player_action("1", PlayerAction::Stop).await.unwrap();
+}
+
+#[tokio::test]
+async fn displayed_queue_edits_keep_audible_identity_and_clear_only_the_confirmed_list() {
+    let (_dir, _api, _session, client, _) = fixture();
+    let playing = client
+        .play_selection(
+            "1",
+            PlaySelection::Songs {
+                ids: vec!["1".into(), "2".into(), "3".into()],
+                index: 1,
+                quality: Quality::Standard,
+            },
+        )
+        .await
+        .unwrap();
+    client
+        .player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    let before = client.player_queue("1").await.unwrap();
+    let ids: Vec<_> = before.tracks.iter().map(|i| i.entry_id.clone()).collect();
+    let reordered = client
+        .player_action(
+            "1",
+            PlayerAction::QueueFor {
+                expected_queue_revision: before.revision,
+                edit: QueueEdit::Reorder {
+                    entry_ids: ids.iter().rev().cloned().collect(),
+                },
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(reordered.play_id, playing.play_id);
+    assert_eq!(reordered.entry_id, playing.entry_id);
+    assert_eq!(
+        reordered.state,
+        cumulus_core::playback::controller::PlaybackStatus::Paused
+    );
+    let removed = client
+        .player_action(
+            "1",
+            PlayerAction::QueueFor {
+                expected_queue_revision: reordered.queue_revision,
+                edit: QueueEdit::Remove {
+                    entry_ids: vec![ids[0].clone()],
+                },
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(removed.queue_len, 2);
+    assert_eq!(removed.play_id, playing.play_id);
+    let selected = client
+        .player_action(
+            "1",
+            PlayerAction::QueueFor {
+                expected_queue_revision: removed.queue_revision,
+                edit: QueueEdit::Select {
+                    entry_id: ids[2].clone(),
+                },
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(selected.entry_id.as_deref(), Some(ids[2].as_str()));
+    let cleared = client
+        .player_action(
+            "1",
+            PlayerAction::QueueFor {
+                expected_queue_revision: selected.queue_revision,
+                edit: QueueEdit::Clear,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(cleared.queue_len, 0);
+    assert!(cleared.play_id.is_none() && cleared.track.is_none());
+    assert!(client.player_queue("1").await.unwrap().tracks.is_empty());
+}
+
+#[tokio::test]
+async fn stale_queue_confirmation_does_not_cancel_the_new_selection_in_flight() {
+    let (_dir, api, _session, client, _) = fixture();
+    let old = client.play_selection("1", songs("2")).await.unwrap();
+    api.hold_url_id.store(1, Ordering::SeqCst);
+    let next = client.clone();
+    let pending = tokio::spawn(async move { next.play_selection("1", songs("1")).await });
+    tokio::time::timeout(
+        std::time::Duration::from_secs(4),
+        api.url_started.notified(),
+    )
+    .await
+    .unwrap();
+    let loading = client
+        .subscribe_playback("1")
+        .await
+        .unwrap()
+        .current()
+        .unwrap();
+    assert_ne!(loading.queue_revision, old.queue_revision);
+    assert!(matches!(
+        client
+            .player_action(
+                "1",
+                PlayerAction::QueueFor {
+                    expected_queue_revision: old.queue_revision,
+                    edit: QueueEdit::Clear,
+                }
+            )
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    api.url_release.notify_one();
+    let loaded = pending.await.unwrap().unwrap();
     assert_eq!(loaded.track.unwrap().id, "1");
     assert_eq!(
         loaded.state,

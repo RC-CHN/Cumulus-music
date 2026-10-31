@@ -157,7 +157,19 @@ pub enum PlaySelection {
 }
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum QueueEdit {
+    Select { entry_id: String },
+    Remove { entry_ids: Vec<String> },
+    Reorder { entry_ids: Vec<String> },
+    Clear,
+}
+#[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PlayerAction {
+    QueueFor {
+        expected_queue_revision: String,
+        edit: QueueEdit,
+    },
     QueueDownloads {
         task_ids: Vec<String>,
         expected_queue_revision: String,

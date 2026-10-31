@@ -2,7 +2,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { usePlayer } from '../src/composables/usePlayer.ts';
 import type { CoreClient, AccountView } from '../src/services/contracts.ts';
-import type { PlayerView, PlayerUpdate, LyricsView, PlayerClient } from '../src/services/player.ts';
+import type {
+  PlayerView,
+  PlayerUpdate,
+  LyricsView,
+  PlayerClient,
+  PlayerAction,
+} from '../src/services/player.ts';
 function deferred<T>() {
   let resolve!: (v: T) => void;
   const promise = new Promise<T>((r) => (resolve = r));
@@ -536,5 +542,75 @@ test('a trial response after an account switch cannot replace the replacement pl
   await assert.rejects(old);
   assert.equal(f.player.view.value?.epoch, '2');
   assert.equal(f.player.view.value?.playId, null);
+  f.player.dispose();
+});
+
+test('queue edits capture the displayed revision, isolate errors and never enter audio retry', async () => {
+  const calls: PlayerAction[] = [];
+  let fail = true;
+  const f = fixture({
+    playerAction: async (_epoch, input) => {
+      calls.push(input);
+      if (input.kind === 'queue_for' && fail)
+        throw { code: 'queue_changed', message: 'list changed' };
+      return state('3');
+    },
+  });
+  await f.player.connect(account());
+  await f.player.loadQueue();
+  assert.equal(f.player.queueCurrent.value, true);
+  assert.equal(await f.player.editQueue({ kind: 'clear' }), false);
+  assert.equal(f.player.queueEditError.value, 'list changed');
+  assert.equal(f.player.error.value, '');
+  await f.player.retry();
+  assert.deepEqual(
+    calls.map((i) => i.kind),
+    ['queue_for', 'refresh'],
+  );
+  assert.deepEqual(calls[0], {
+    kind: 'queue_for',
+    expected_queue_revision: '1',
+    edit: { kind: 'clear' },
+  });
+  fail = false;
+  assert.equal(await f.player.editQueue({ kind: 'clear' }), true);
+  assert.equal(f.player.queueEditError.value, '');
+  const displayed = f.player.queue.value;
+  f.emit({ ...state('4'), queueRevision: '2' });
+  assert.equal(f.player.queueCurrent.value, false);
+  const before = calls.length;
+  assert.equal(await f.player.editQueue({ kind: 'clear' }, displayed), false);
+  assert.equal(calls.length, before);
+  f.player.dispose();
+});
+
+test('account replacement invalidates pending queue reads and edits without leaking their errors', async () => {
+  const editing = deferred<PlayerView>(),
+    reading = deferred<import('../src/services/player.ts').QueueView>();
+  let reads = 0;
+  const f = fixture({
+    playerQueue: async () =>
+      ++reads === 1
+        ? { epoch: '1', revision: '1', fm: false, current: null, tracks: [] }
+        : reading.promise,
+    playerAction: async () => editing.promise,
+  });
+  await f.player.connect(account());
+  await f.player.loadQueue();
+  const edit = f.player.editQueue({ kind: 'clear' });
+  const read = f.player.loadQueue();
+  assert.equal(f.player.queueEditing.value, true);
+  assert.equal(f.player.queueLoading.value, true);
+  await f.player.connect(account('2'));
+  assert.equal(f.player.queueEditing.value, false);
+  assert.equal(f.player.queueLoading.value, false);
+  editing.resolve(state('99', '1'));
+  reading.resolve({ epoch: '1', revision: '1', fm: false, current: null, tracks: [] });
+  assert.equal(await edit, false);
+  await read;
+  assert.equal(f.player.view.value?.epoch, '2');
+  assert.equal(f.player.queue.value, undefined);
+  assert.equal(f.player.queueEditError.value, '');
+  assert.equal(f.player.queueError.value, '');
   f.player.dispose();
 });
