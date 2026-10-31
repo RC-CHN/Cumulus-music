@@ -3,7 +3,7 @@
 window.__runPlayerProof=async({wait,stage,sleep})=>{
   const el=selector=>document.querySelector(selector);
   const control=label=>el(`.playerbar [aria-label="${label}"]`);
-  window.__playerProofFacts=()=>({state:el('.playerbar')?.dataset.state,actualQuality:el('.playerbar')?.dataset.quality,requestedQuality:control('音质')?.value,position:Number(el('.playerbar')?.dataset.position),message:el('.playback-message')?.textContent?.trim().slice(0,180),lyricsOpen:!!el('.lyrics-panel'),lyricsEmpty:el('.lyrics-column .empty-state')?.textContent?.trim().slice(0,100),queueCount:Number(el('.queue-toggle small')?.textContent),queueRemoveDisabled:el('.queue-row [aria-label="移出队列"]')?.disabled,queueError:el('.queue-panel .error-state')?.textContent?.trim().slice(0,100)});
+  window.__playerProofFacts=()=>({state:el('.playerbar')?.dataset.state,actualQuality:el('.playerbar')?.dataset.quality,requestedQuality:el('.playerbar')?.dataset.requestedQuality,position:Number(el('.playerbar')?.dataset.position),message:el('.playback-message')?.textContent?.trim().slice(0,180),lyricsOpen:!!el('.lyrics-panel'),lyricsEmpty:el('.lyrics-column .empty-state')?.textContent?.trim().slice(0,100),queueCount:Number(el('.queue-toggle small')?.textContent),queueRemoveDisabled:el('.queue-row [aria-label="移出队列"]')?.disabled,queueError:el('.queue-panel .error-state')?.textContent?.trim().slice(0,100)});
   const value=(label,v)=>{const node=control(label);node.value=String(v);node.dispatchEvent(new Event('change',{bubbles:true}));};
   await wait(()=>control('音量')&&!control('音量').disabled,'player_ready');
   value('音量',0);await wait(()=>el('.playerbar').dataset.volume==='0','muted_native');
@@ -21,7 +21,8 @@ window.__runPlayerProof=async({wait,stage,sleep})=>{
   control('播放速度').click();await wait(()=>el('.speed-action-menu'),'speed_menu');
   [...document.querySelectorAll('.speed-action-menu button')].find(n=>n.textContent.trim()==='1.25×').click();
   await wait(()=>el('.playerbar').dataset.speed==='1.25'&&!control('音质').disabled,'native_speed');
-  value('音质','lossless');await wait(()=>el('.playerbar').dataset.requestedQuality==='lossless'&&!control('音质').disabled&&el('.playerbar').dataset.state==='paused','quality_preserves_pause');
+  control('音质').click();await wait(()=>el('.quality-action-menu'),'quality_menu');
+  [...document.querySelectorAll('.quality-action-menu button')].find(n=>n.querySelector('.quality-menu-option > span')?.textContent.trim()==='无损').click();await wait(()=>el('.playerbar').dataset.requestedQuality==='lossless'&&!control('音质').disabled&&el('.playerbar').dataset.state==='paused','quality_preserves_pause');
   const qualityResult={requested:el('.playerbar').dataset.requestedQuality,actual:el('.playerbar').dataset.quality};
   // Wait for the actual queue mutation and enabled controls. Fixed sleeps can
   // click disabled buttons while a large queue is still being persisted.

@@ -63,6 +63,16 @@
     if(!panel())await open();click(row(label));
     await wait(()=>!one('.quality-action-menu')&&bar().dataset.requestedQuality===value&&bar().dataset.preferredQuality===value&&!one('.playback-message')&&document.activeElement===button(),'quality choice applied and focus restored');
   }
+  async function metadata() {
+    const account=await invoke('account_snapshot');
+    const details=await invoke('player_quality_details',{epoch:account.epoch,playId:bar().dataset.playId});
+    assert(details.playId===bar().dataset.playId&&details.songId===bar().dataset.trackId,'metadata bound to native current song');
+    assert(details.status.privilege==='ready'&&details.status.subscriber==='ready'&&details.status.sizes==='ready'&&Object.values(details.status.useRights).every(v=>v==='ready'),'native metadata reads');
+    const hires=details.choices.find(c=>c.quality==='hires'),master=details.choices.find(c=>c.quality==='jymaster');
+    assert(hires.availability==='available'&&hires.access==='allowed'&&master.access==='trial_eligible','native capability/entitlement policy');
+    assert(details.choices.find(c=>c.quality==='lossless').sizeBytes==='123456','native file size whitelist');
+    const json=JSON.stringify(details);assert(!json.includes('SECRET')&&!json.includes('https://')&&!json.includes('cookie'),'private response fields excluded');
+  }
   async function pauseAtTen() {
     if(bar().dataset.state!=='paused') {
       await wait(()=>bar().dataset.state==='playing'&&Number(bar().dataset.position)>.2,'native decode');
@@ -91,16 +101,19 @@
     await wait(()=>button()&&one('.track-row .track-play:not(:disabled)'),'UI ready');
     if(window.__qualityReopen) {
       await wait(()=>bar().dataset.requestedQuality==='lossless'&&bar().dataset.preferredQuality==='lossless'&&bar().dataset.state==='paused','durable restore');
-      expectedTrack='2';await capture('reopened_paused');await open();await capture('reopened_menu');key('Escape');await wait(()=>!one('.quality-action-menu'),'dismiss');
+      expectedTrack='2';await metadata();await capture('reopened_paused');await open();await capture('reopened_menu');key('Escape');await wait(()=>!one('.quality-action-menu'),'dismiss');
       await next('3');
       assert(bar().dataset.requestedQuality==='lossless','next after restart uses preference');await capture('reopened_next');
     } else {
-      click(one('.track-row .track-play:not(:disabled)'));await pauseAtTen();
+      click(one('.track-row .track-play:not(:disabled)'));await pauseAtTen();await metadata();
       for(const [width,height,theme] of [[1120,760,'light'],[760,540,'light'],[760,540,'dark'],[1120,760,'dark']]) {
         await resize(width,height);await appearance(theme);
         if(bar().dataset.requestedQuality!=='standard')await choose('标准','standard');
         const suffix=`${width}_${theme}`;
-        await capture(`resting_${suffix}`);await open();await capture(`menu_${suffix}`);
+        await capture(`resting_${suffix}`);await open();
+        window.dispatchEvent(new Event('resize'));await sleep(160);assert(panel(),'unchanged resize retains quality menu');
+        if(count===1) {await resize(1110,760);await wait(()=>!one('.quality-action-menu'),'real viewport resize closes menu');await resize(1120,760);await open();}
+        await capture(`menu_${suffix}`);
         key('Home');assert(document.activeElement.textContent.includes('臻音全景声'),'Home first quality');await capture(`first_${suffix}`);
         key('End');assert(document.activeElement.textContent.includes('节省流量'),'End compatibility quality');await capture(`last_${suffix}`);
         key('Escape');await wait(()=>!one('.quality-action-menu'),'Escape dismiss');assert(document.activeElement===button(),'Escape focus');await capture(`escape_${suffix}`);
@@ -120,6 +133,6 @@
       await next('2');
       assert(bar().dataset.requestedQuality==='lossless','already queued next uses preference');await capture('next_uses_preference');
     }
-    await emit('complete',{ok:true,stageCount:count,reopened:!!window.__qualityReopen,realMusicRequests:0,accountWrites:0});
+    await emit('complete',{ok:true,stageCount:count,reopened:!!window.__qualityReopen,nativeQualityReadVerified:true,realMusicRequests:0,accountWrites:0});
   } catch(error) {await emit('failed',{ok:false,error:String(error),stageCount:count,width:innerWidth,height:innerHeight,ratio:devicePixelRatio});}
 })();

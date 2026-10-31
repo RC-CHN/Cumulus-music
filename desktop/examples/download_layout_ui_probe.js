@@ -13,6 +13,8 @@
   const hit = node => { const r = rect(node); return node.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)); };
   let stageCount = 0;
   const checks = [];
+  const resizeTrace=[];
+  window.addEventListener('resize',event=>{resizeTrace.push({width:innerWidth,height:innerHeight,trusted:event.isTrusted,expanded:one('[aria-label="外观主题"]')?.getAttribute('aria-expanded')});if(resizeTrace.length>20)resizeTrace.shift();});
   async function capture(label) {
     await sleep(400);
     const dialog = one('.download-dialog');
@@ -34,6 +36,8 @@
   async function theme(value) {
     click(one('[aria-label="外观主题"]'));
     await wait(() => one('.action-menu'), 'theme menu');
+    window.dispatchEvent(new Event('resize'));await sleep(120);
+    assert(one('.action-menu')&&one('[aria-label="外观主题"]').getAttribute('aria-expanded')==='true','unchanged resize must retain theme menu');
     click(button(value === 'light' ? '浅色' : '深色'));
     await wait(() => document.documentElement.dataset.theme === value && !one('.action-menu'), 'theme');
   }
@@ -102,5 +106,5 @@
       }
     }
     await emit('complete', { ok: true, stageCount, checks, realMusicRequests: 0, downloadsStarted: 0, accountWrites: 0 });
-  } catch (error) { await emit('failed', { ok: false, stageCount, message: String(error), stack: error.stack }); }
+  } catch (error) { await emit('failed', { ok: false, stageCount, message: String(error), stack: error.stack, resizeTrace, viewport:{width:innerWidth,height:innerHeight}, themeExpanded:one('[aria-label="外观主题"]')?.getAttribute('aria-expanded'), dialogs:[...document.querySelectorAll('dialog')].map(n=>({open:n.open,inert:n.inert,leaving:n.classList.contains('modal-leave-active')})) }); }
 })();

@@ -3,8 +3,10 @@ use cumulus_core::{Result, storage::StateStore};
 use serde_json::{Value, json};
 use std::sync::{
     Mutex,
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
 };
+static METADATA_READS: AtomicUsize = AtomicUsize::new(0);
+static TRIAL_WRITES: AtomicUsize = AtomicUsize::new(0);
 static DENIED: AtomicBool = AtomicBool::new(false);
 static REQUESTS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 pub fn enabled() -> bool {
@@ -26,6 +28,36 @@ pub fn response(args: &Value) -> Option<Result<Value>> {
         )
     })())
 }
+pub fn metadata(path: &str, args: &Value) -> Option<Result<Value>> {
+    if !enabled() {
+        return None;
+    }
+    let data = match path {
+        "/api/song/enhance/privilege" => {
+            let ids: Vec<Value> =
+                serde_json::from_str(args["ids"].as_str().expect("fixture ids")).unwrap();
+            json!({"code":200,"data":ids.iter().map(|id|json!({"id":id,"flag":(1<<12)|(1<<14)|(1<<16)|(1<<17)|(1<<18)|(1<<21),"maxbr":999000,"fl":128000,"payed":0,"fee":0})).collect::<Vec<_>>()})
+        }
+        "/api/song/music/detail/get" => {
+            json!({"code":200,"data":{"id":args["songId"],"sq":{"size":123456},"hr":{"size":12340000},"url":"https://private/?SECRET"}})
+        }
+        "/api/music-vip-membership/client/vip/info" => {
+            json!({"code":200,"data":{"userId":2,"now":1000000,"associator":{"expireTime":2000000},"cookie":"SECRET"}})
+        }
+        "/api/vipauth/app/auth/query" => {
+            json!({"code":200,"data":[{"resourceId":0,"resourceType":args["resourceTypeList"],"canUse":args["resourceTypeList"]==31,"userSrc":0,"trialStatus":1,"leftTime":60000,"cookie":"SECRET"}]})
+        }
+        "/api/vipauth/app/auth/set" => {
+            TRIAL_WRITES.fetch_add(1, Ordering::SeqCst);
+            return Some(Err(cumulus_core::Error::State(
+                "trial writes forbidden in quality read proof",
+            )));
+        }
+        _ => return None,
+    };
+    METADATA_READS.fetch_add(1, Ordering::SeqCst);
+    Some(Ok(data))
+}
 pub fn control(store: &StateStore, value: &Value) {
     match value["kind"].as_str().expect("fixture kind") {
         "deny" => DENIED.store(true, Ordering::SeqCst),
@@ -42,5 +74,5 @@ pub fn control(store: &StateStore, value: &Value) {
     }
 }
 pub fn report() -> Value {
-    json!({"requests":*REQUESTS.lock().unwrap(),"denied":DENIED.load(Ordering::SeqCst)})
+    json!({"requests":*REQUESTS.lock().unwrap(),"denied":DENIED.load(Ordering::SeqCst),"metadataReads":METADATA_READS.load(Ordering::SeqCst),"trialWrites":TRIAL_WRITES.load(Ordering::SeqCst)})
 }

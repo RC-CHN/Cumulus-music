@@ -70,6 +70,8 @@ def main():
         count = 3 if reopened else 35
         assert complete['ok'] and complete['stageCount'] == count
         assert complete['realMusicRequests'] == complete['accountWrites'] == 0
+        assert complete['nativeQualityReadVerified']
+        assert complete['syntheticQuality']['metadataReads'] == 7 and complete['syntheticQuality']['trialWrites'] == 0
         stages = [json.loads(p.read_text(encoding='utf-8')) for p in sorted((root / name).glob('ux_*.json'))]
         report = verify(stages, reopened)
         if args.screenshots:

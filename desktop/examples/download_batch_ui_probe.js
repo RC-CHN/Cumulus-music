@@ -26,8 +26,8 @@
  function playerBounds(){
   for(const n of all('.playerbar select,.playerbar button,.playerbar input').filter(n=>n.getClientRects().length)){
    const r=n.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);assert(r.left>=0&&r.right<=innerWidth+1&&n.contains(hit),'playing control reachable '+(n.getAttribute('aria-label')||n.title));}
-  const hint=one('.actual-quality'),end=one('.seek-control time:last-child');assert(hint&&end,'actual quality and duration visible');
-  const a=hint.getBoundingClientRect(),b=end.getBoundingClientRect();assert(a.left>=b.right||a.top>=b.bottom||a.bottom<=b.top,'quality note does not cover duration');
+  const hint=one('.quality-control .menu-trigger'),end=one('.seek-control time:last-child');assert(hint&&end&&hint.textContent.trim()==='无损'&&one('.playerbar').dataset.quality==='lossless'&&end.textContent.trim()==='00:30','actual quality and duration visible');
+  const a=hint.getBoundingClientRect(),b=end.getBoundingClientRect();assert(a.left>=b.right||a.top>=b.bottom||a.bottom<=b.top,'actual quality tag does not cover duration');
  }
  async function capture(label){
   step=label;await sleep(225);

@@ -65,6 +65,9 @@ fn playlist(id: u64) -> Value {
 impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, args: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(result) = playback_quality_fixture::metadata(path, &args) {
+                return result;
+            }
             if let Some(result) = download_page_fixture::response(path, &args) {
                 return result;
             }
