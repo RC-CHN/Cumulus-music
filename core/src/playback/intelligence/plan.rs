@@ -188,6 +188,7 @@ fn begin(current: &QueueSnapshot, input: IntelligenceBegin) -> Result<Plan> {
         intelligence: Some(context.clone()),
     };
     let session = IntelligenceSession {
+        operation_id: input.operation_id,
         schema: 1,
         revision: Uuid::new_v4().simple().to_string(),
         context,

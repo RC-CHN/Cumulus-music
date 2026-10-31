@@ -12,6 +12,8 @@ pub struct PlayerView {
     pub fm: bool,
     /// Display state only. Never expose the native session, backup or algorithm map.
     pub intelligence: Option<crate::playback::intelligence::IntelligencePhase>,
+    /// The host-supplied operation UUID, never the private native session id.
+    pub intelligence_operation: Option<String>,
     pub equalizer: EqualizerView,
     pub loudness: LoudnessView,
     pub epoch: String,

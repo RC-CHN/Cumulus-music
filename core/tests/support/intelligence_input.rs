@@ -28,6 +28,7 @@ pub fn liked(ids: &[u64]) -> QueueSnapshot {
 }
 pub fn begin(seed: u64, preserve: bool) -> IntelligenceAction {
     IntelligenceAction::Begin(Box::new(IntelligenceBegin {
+        operation_id: None,
         request: IntelligenceRequest {
             playlist_id: "31".into(),
             song_id: seed.to_string(),

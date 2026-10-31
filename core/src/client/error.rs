@@ -22,6 +22,11 @@ impl From<Error> for ClientError {
                     "我喜欢的音乐中暂无可用于心动模式的歌曲",
                     false,
                 ),
+                Error::State("intelligence seed is blocked") => (
+                    "intelligence_blocked",
+                    "当前歌曲或歌手已屏蔽，无法开启心动模式",
+                    false,
+                ),
                 Error::State("intelligence seed is unavailable") => (
                     "intelligence_seed",
                     "当前歌曲无法用于心动模式，请从我喜欢的音乐重新开启",

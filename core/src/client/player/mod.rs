@@ -177,6 +177,7 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
     Ok(PlayerView {
         fm: value.fm,
         intelligence: value.intelligence.as_ref().map(|state| state.phase),
+        intelligence_operation: value.intelligence_operation.clone(),
         loudness: LoudnessView {
             revision: (!value.loudness.damaged)
                 .then(|| value.loudness.preferences.revision.clone()),
@@ -235,6 +236,17 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
     })
 }
 impl MusicClient {
+    pub async fn player_snapshot(&self, epoch: &str) -> Result<PlayerView> {
+        let token = self.player_token(epoch)?;
+        let value = self
+            .player
+            .controller()
+            .await?
+            .command(&token, PlaybackCommand::Snapshot)
+            .await?;
+        self.session.check_generation(&token)?;
+        project(&value, &token)
+    }
     /// Enable official same-account publication for a native host before its
     /// player starts. Injected read-only sessions stay isolated unless opted in.
     pub fn with_relay_publication(mut self) -> Self {

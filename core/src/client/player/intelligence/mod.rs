@@ -128,6 +128,7 @@ impl MusicClient {
         if before.queue_revision.to_string() != *revision {
             return Err(Error::QueueChanged);
         }
+        flight.watch_queue(controller.subscribe(), before.queue_revision)?;
         self.intelligence_room(&token)?;
         match command {
             IntelligenceCommand::Continue { .. } => self.intelligence_finish(&flight).await,
@@ -176,17 +177,30 @@ impl MusicClient {
                     .await?;
                 self.intelligence_start_guard(&flight, intent)?;
                 let explicit_seed = seed.is_some();
-                let seed = match seed {
-                    Some(id) => prepared
-                        .resources
-                        .iter()
-                        .find(|r| r["id"].as_str() == Some(&id))
-                        .cloned()
-                        .ok_or(Error::State("intelligence seed is unavailable"))?,
-                    None => {
-                        use rand::Rng;
-                        prepared.resources[rand::rng().random_range(0..prepared.resources.len())]
+                let seed = if preserve {
+                    // M/308 uses the actual firstTrack even if that song was
+                    // removed from likes after playback began. The source
+                    // playlist is checked above; final source authorization
+                    // still belongs to the native resolver.
+                    self.intelligence_current_seed(
+                        &flight,
+                        &before.selected.as_ref().unwrap().resource,
+                    )
+                    .await?
+                } else {
+                    match seed {
+                        Some(id) => prepared
+                            .resources
+                            .iter()
+                            .find(|r| r["id"].as_str() == Some(&id))
+                            .cloned()
+                            .ok_or(Error::State("intelligence seed is unavailable"))?,
+                        None => {
+                            use rand::Rng;
+                            prepared.resources
+                                [rand::rng().random_range(0..prepared.resources.len())]
                             .clone()
+                        }
                     }
                 };
                 let seed_id = identifier(&seed["id"])?;
@@ -246,6 +260,7 @@ impl MusicClient {
                         PlaybackCommand::Intelligence(IntelligenceUpdate {
                             expected: current.fence(),
                             action: IntelligenceAction::Begin(Box::new(IntelligenceBegin {
+                                operation_id: Some(flight.operation_id().into()),
                                 request,
                                 seed_resource: seed,
                                 seed_source: json!({"kind":"playlist","id":playlist}),

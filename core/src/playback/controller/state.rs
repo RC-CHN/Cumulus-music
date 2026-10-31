@@ -167,6 +167,10 @@ impl Actor {
             startup_autoplay: self.startup_autoplay,
             fm: self.queue.is_fm(),
             intelligence: self.queue.intelligence_context().cloned(),
+            intelligence_operation: self
+                .queue
+                .intelligence_session()
+                .and_then(|s| s.operation_id.clone()),
             equalizer: self.equalizer,
             loudness: self.loudness.clone(),
             revision: self.revision,

@@ -8,6 +8,44 @@ use crate::{
 use std::collections::{BTreeMap, HashSet};
 
 impl MusicClient {
+    pub(super) async fn intelligence_current_seed(
+        &self,
+        flight: &Flight,
+        current: &Value,
+    ) -> Result<Value> {
+        let id = crate::playback::intelligence::resource_id(current)?;
+        let mut resource = current.clone();
+        if !resource["song"].is_object() {
+            let batch = flight
+                .wait(
+                    &self.session,
+                    self.session.run_for(&flight.token, |api, _| async {
+                        CatalogApi::new(api).songs(&[json!(id)], 1).await
+                    }),
+                )
+                .await?;
+            resource["song"] = batch
+                .songs
+                .into_iter()
+                .next()
+                .flatten()
+                .ok_or(Error::State("intelligence seed is unavailable"))?;
+        }
+        if identifier(&resource["song"]["id"])? != id {
+            return Err(Error::State("intelligence seed is unavailable"));
+        }
+        let blacklist = FmService::new(self.session.clone())?.blacklist_for(&flight.token)?;
+        if blacklist.blocks(&FmTrack {
+            entry_id: String::new(),
+            id,
+            algorithm: String::new(),
+            song: resource["song"].clone(),
+        }) {
+            return Err(Error::State("intelligence seed is blocked"));
+        }
+        flight.check(&self.session)?;
+        Ok(resource)
+    }
     pub(super) async fn intelligence_filter(
         &self,
         flight: &Flight,

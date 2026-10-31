@@ -37,6 +37,7 @@ pub struct PlaybackSnapshot {
     pub startup_autoplay: bool,
     pub fm: bool,
     pub intelligence: Option<crate::playback::intelligence::IntelligenceContext>,
+    pub intelligence_operation: Option<String>,
     pub equalizer: crate::effects::equalizer::EqualizerSnapshot,
     pub loudness: crate::effects::loudness::LoudnessSnapshot,
     pub revision: u64,

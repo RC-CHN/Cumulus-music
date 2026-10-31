@@ -10,12 +10,6 @@ use crate::{
 impl MusicClient {
     async fn intelligence_pending(&self, flight: &Flight) -> Result<IntelligenceSession> {
         flight.check(&self.session)?;
-        let state = self
-            .player
-            .controller()
-            .await?
-            .command(&flight.token, PlaybackCommand::Snapshot)
-            .await?;
         let queue = self.session.with_token(&flight.token, |uid| {
             PlaybackQueue::new(Some(self.registry.store()), uid)
         })?;
@@ -23,6 +17,13 @@ impl MusicClient {
             .intelligence_session()
             .ok_or(Error::StaleResponse)?
             .clone();
+        let controller = self.player.controller().await?;
+        // Bind before the actor snapshot. Replacement either invalidates this
+        // snapshot or wakes the read, regardless of which window/API caused it.
+        flight.watch_session(controller.subscribe(), &session.context.id)?;
+        let state = controller
+            .command(&flight.token, PlaybackCommand::Snapshot)
+            .await?;
         if state.intelligence.as_ref() != Some(&session.context)
             || session.context.phase != IntelligencePhase::Seeded
         {

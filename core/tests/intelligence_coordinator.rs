@@ -352,8 +352,15 @@ async fn delayed_recommendations_cannot_replace_a_new_music_selection() {
         )
         .await
         .unwrap();
-    f.api.release.notify_one();
-    assert!(matches!(task.await.unwrap(), Err(Error::StaleResponse)));
+    // Do not release the obsolete HTTP future: the committed replacement
+    // itself must wake the read and free the feature gate.
+    assert!(matches!(
+        tokio::time::timeout(Duration::from_secs(5), task)
+            .await
+            .unwrap()
+            .unwrap(),
+        Err(Error::StaleResponse)
+    ));
     let q = f.client.player_queue("1").await.unwrap();
     assert_eq!(q.tracks[0].track.id, "11");
     assert_eq!(q.revision, fresh.queue_revision);
@@ -629,8 +636,15 @@ async fn newer_selection_during_catalogue_preparation_cannot_be_overwritten_by_s
         )
         .await
         .unwrap();
-    f.api.release.notify_one();
-    assert!(matches!(task.await.unwrap(), Err(Error::StaleResponse)));
+    // Do not release the obsolete HTTP future: the committed replacement
+    // itself must wake the read and free the feature gate.
+    assert!(matches!(
+        tokio::time::timeout(Duration::from_secs(5), task)
+            .await
+            .unwrap()
+            .unwrap(),
+        Err(Error::StaleResponse)
+    ));
     assert_eq!(
         f.client.player_queue("1").await.unwrap().revision,
         fresh.queue_revision
@@ -691,4 +705,224 @@ async fn legacy_seeded_session_can_continue_after_client_reopen_without_automati
         f.saved().intelligence_session().unwrap().backup.items.len(),
         3
     );
+}
+
+#[tokio::test]
+async fn current_first_track_survives_removal_from_likes_and_the_operation_token_is_correlated() {
+    let f = Fixture::new();
+    let current = f
+        .client
+        .play_selection(
+            "1",
+            PlaySelection::Playlist {
+                id: "31".into(),
+                start_id: Some("8".into()),
+                revision: None,
+                quality: Quality::Standard,
+            },
+        )
+        .await
+        .unwrap();
+    f.api.ids.lock().unwrap().retain(|row| row["id"] != 8);
+    let id = operation();
+    let result = f
+        .client
+        .player_intelligence(
+            "1",
+            IntelligenceCommand::Start {
+                operation_id: id.clone(),
+                expected_queue_revision: current.queue_revision,
+                origin: IntelligenceOrigin::Current,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(result.track.unwrap().id, "8");
+    assert_eq!(result.intelligence_operation.as_deref(), Some(id.as_str()));
+    let saved = f.saved();
+    let session = saved.intelligence_session().unwrap();
+    assert_eq!(session.operation_id.as_deref(), Some(id.as_str()));
+    assert_ne!(session.context.id, id);
+    assert_eq!(session.backup.items.len(), 3);
+    assert_eq!(session.fallback.items.len(), 2);
+    assert_eq!(
+        f.requests()[0],
+        json!({"playlistId":"31","songId":"8","type":"fromPlayOne","startMusicId":"7","count":2})
+    );
+}
+
+#[tokio::test]
+async fn blocked_current_first_track_cannot_be_used_even_when_the_remaining_likes_are_eligible() {
+    let f = Fixture::new();
+    let current = f
+        .client
+        .play_selection(
+            "1",
+            PlaySelection::Playlist {
+                id: "31".into(),
+                start_id: Some("8".into()),
+                revision: None,
+                quality: Quality::Standard,
+            },
+        )
+        .await
+        .unwrap();
+    *f.api.blocked.lock().unwrap() = vec![json!(8)];
+    assert!(matches!(
+        f.client
+            .player_intelligence(
+                "1",
+                IntelligenceCommand::Start {
+                    operation_id: operation(),
+                    expected_queue_revision: current.queue_revision.clone(),
+                    origin: IntelligenceOrigin::Current
+                }
+            )
+            .await,
+        Err(Error::State("intelligence seed is blocked"))
+    ));
+    assert_eq!(f.revision().await, current.queue_revision);
+    assert!(f.requests().is_empty());
+}
+
+#[tokio::test]
+async fn successful_mode_exit_cancels_only_the_old_recommendation_and_releases_its_gate() {
+    let f = Fixture::new();
+    f.api.hold_recommend.store(true, Ordering::SeqCst);
+    let id = operation();
+    let c = f.client.clone();
+    let command = f.start(f.revision().await, &id, Some("7"));
+    let request = tokio::spawn(async move { c.player_intelligence("1", command).await });
+    wait(&f.api.recommend).await;
+    let seeded = f
+        .client
+        .subscribe_playback("1")
+        .await
+        .unwrap()
+        .current()
+        .unwrap();
+    assert_eq!(seeded.intelligence_operation.as_deref(), Some(id.as_str()));
+    let exited = f
+        .client
+        .player_action(
+            "1",
+            PlayerAction::ModeFor {
+                mode: cumulus_core::playback::PlaybackMode::OrderLoop,
+                expected_queue_revision: seeded.queue_revision,
+                fm: false,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(exited.intelligence.is_none() && exited.intelligence_operation.is_none());
+    assert_eq!(exited.play_id, seeded.play_id);
+    assert!(matches!(
+        tokio::time::timeout(Duration::from_secs(5), request)
+            .await
+            .unwrap()
+            .unwrap(),
+        Err(Error::Cancelled | Error::StaleResponse)
+    ));
+    f.api.hold_recommend.store(false, Ordering::SeqCst);
+    f.client
+        .player_intelligence("1", f.start(exited.queue_revision, &operation(), Some("7")))
+        .await
+        .unwrap();
+    assert_eq!(f.requests().len(), 2);
+}
+
+#[tokio::test]
+async fn leaving_a_resumed_session_cancels_its_new_operation_without_waiting_for_http() {
+    let f = Fixture::new();
+    f.api.hold_recommend.store(true, Ordering::SeqCst);
+    let first_id = operation();
+    let c = f.client.clone();
+    let start = f.start(f.revision().await, &first_id, Some("7"));
+    let first = tokio::spawn(async move { c.player_intelligence("1", start).await });
+    wait(&f.api.recommend).await;
+    f.client.player_intelligence_cancel("1", &first_id).unwrap();
+    assert!(matches!(first.await.unwrap(), Err(Error::Cancelled)));
+    let paused = f
+        .client
+        .player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    let revision = paused.queue_revision.clone();
+    let c = f.client.clone();
+    let resume_id = operation();
+    assert_ne!(resume_id, first_id);
+    let continued = tokio::spawn(async move {
+        c.player_intelligence(
+            "1",
+            IntelligenceCommand::Continue {
+                operation_id: resume_id,
+                expected_queue_revision: revision,
+            },
+        )
+        .await
+    });
+    wait(&f.api.recommend).await;
+    let left = f
+        .client
+        .player_action(
+            "1",
+            PlayerAction::ModeFor {
+                mode: cumulus_core::playback::PlaybackMode::OrderLoop,
+                expected_queue_revision: paused.queue_revision,
+                fm: false,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(left.intelligence.is_none());
+    assert_eq!(left.play_id, paused.play_id);
+    assert_eq!(left.state, paused.state);
+    assert!(matches!(
+        tokio::time::timeout(Duration::from_secs(5), continued)
+            .await
+            .unwrap()
+            .unwrap(),
+        Err(Error::Cancelled | Error::StaleResponse)
+    ));
+    // The resumed request used a different UUID from the persisted Start. A
+    // future explicit Start must be possible without releasing either HTTP.
+    f.api.hold_recommend.store(false, Ordering::SeqCst);
+    f.client
+        .player_intelligence("1", f.start(left.queue_revision, &operation(), Some("7")))
+        .await
+        .unwrap();
+    assert_eq!(f.requests().len(), 3);
+}
+
+#[tokio::test]
+async fn cancellation_scheduled_before_start_prevents_that_exact_read_but_cannot_cross_generations()
+{
+    let f = Fixture::new();
+    let id = operation();
+    assert!(!f.client.player_intelligence_cancel("1", &id).unwrap());
+    assert!(matches!(
+        f.client
+            .player_intelligence("1", f.start("0".into(), &id, Some("7")))
+            .await,
+        Err(Error::Cancelled)
+    ));
+    assert!(f.api.calls.lock().unwrap().is_empty());
+    assert_eq!(f.device.state.lock().unwrap().loads, 0);
+    let pending = operation();
+    f.client.player_intelligence_cancel("1", &pending).unwrap();
+    f.session
+        .adopt(
+            f.api.clone(),
+            json!({"userId":9}),
+            &f.session.token().unwrap(),
+        )
+        .unwrap();
+    let epoch = f.client.account().unwrap().epoch;
+    assert_ne!(epoch, "1");
+    let revision = f.client.player_queue(&epoch).await.unwrap().revision;
+    f.client
+        .player_intelligence(&epoch, f.start(revision, &pending, Some("7")))
+        .await
+        .unwrap();
+    assert_eq!(f.requests().len(), 1);
 }

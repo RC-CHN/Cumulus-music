@@ -79,6 +79,7 @@ pub async fn control(
             PlaybackCommand::Intelligence(IntelligenceUpdate {
                 expected: before.fence(),
                 action: IntelligenceAction::Begin(Box::new(IntelligenceBegin {
+                    operation_id: None,
                     request: IntelligenceRequest {
                         playlist_id: "1".into(),
                         song_id: seed.to_string(),

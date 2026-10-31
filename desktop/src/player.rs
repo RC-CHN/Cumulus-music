@@ -128,6 +128,13 @@ pub fn unwatch_player<R: tauri::Runtime>(
     streams.stop(window.label(), Some(&stream_id));
 }
 #[tauri::command]
+pub async fn player_snapshot(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> Result<PlayerView, ClientError> {
+    client.player_snapshot(&epoch).await.map_err(Into::into)
+}
+#[tauri::command]
 pub async fn player_action(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

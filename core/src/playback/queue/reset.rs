@@ -147,6 +147,7 @@ mod tests {
         let liked = queue.snapshot();
         queue
             .intelligence_transition(IntelligenceAction::Begin(Box::new(IntelligenceBegin {
+                operation_id: None,
                 request: IntelligenceRequest {
                     playlist_id: "31".into(),
                     song_id: "7".into(),
