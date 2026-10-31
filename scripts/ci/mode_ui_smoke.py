@@ -23,7 +23,7 @@ def main():
     if args.runtime:env['PATH']=str(args.runtime.resolve())+os.pathsep+env.get('PATH','')
     if args.frontend_dist:env['CUMULUS_PROOF_FRONTEND_DIST']=str(args.frontend_dist.resolve())
     labels=[f'{stage}_{width}_{theme}' for width,theme in [(1120,'light'),(760,'light'),(760,'dark'),(1120,'dark')] for stage in ['single','random','sequential','loop','failed','closed','reopened','retried']]
-    labels+=['pending','coalesced','stale_ordinary','fresh_ordinary','fm_infinite','fm_single','fm_infinite_again','fm_failed','fm_recovered','fm_resumed','fm_warning_paused','fm_empty_desired_paused','fm_desired_restored','left_fm','late_fm_rejected']
+    labels+=['pending','coalesced','stale_ordinary','fresh_ordinary','fm_infinite','fm_single','fm_infinite_again','fm_failed','fm_recovered','fm_resumed','fm_warning_paused','fm_empty_desired_paused','fm_desired_restored','leaving_fm','left_fm','late_fm_rejected']
     reopened_labels=['reopened_normal','reopened_switched','reopened_restored']
     if args.empty_fm:
         labels=['normal_backup','empty_initial','empty_refetched']+[f'empty_{stage}_{width}_{theme}' for width,theme in [(1120,'light'),(760,'light'),(760,'dark'),(1120,'dark')] for stage in ['infinite','single']]+['empty_failed','empty_retried']

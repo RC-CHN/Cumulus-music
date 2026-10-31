@@ -2557,3 +2557,21 @@ speed-menu-focus-before，未忽略左右焦点框采样失败。额外键盘32�
   不将失败组混入最终50图。公开mode_ui_smoke的业务断言始终保持不变。
 - 严格Clippy/格式、CI工具36项及生产cumulus程序重建通过；Rust产品逻辑未再变化，
   完整workspace1272项是上一空FM修复的本机结果，不能冒充后续Windows完整CI。
+
+2026-10-31 FM返回等待与缺失歌手文案
+- Windows精确2e7b140 / 41179157691在FM退出焦点检查失败；该运行Linux成功，
+  完整gate失败。原probe只等待原生恢复队列，未等待页面fmCommand完成。新增挂起
+  页面回复场景，分别检查返回等待时禁用、响应后按钮移除/标题焦点、晚到模式拒绝。
+  不放宽原生模式/playId/暂停10秒/焦点断言；首次从47增加为48态，重开3态不变。
+- 真实截图发现song-101有歌曲但无歌手时，FM及底栏显示了空态引导。统一播放区的
+  元数据格式后改为“未知歌手”；真正无当前歌曲仍显示推荐/发现引导。歌词、队列与
+  小窗使用同一规则，未伪造原生资料。有曲与空态分别由FM及空FM WebView断言验证。
+- 最终artist-label-mode-final首次48/重开3态、artist-label-empty-final首次13/重开5态、
+  artist-label-mini-final双WebView19态、artist-label-motion-final首次16/重开2态通过。
+  这些是production前端与真实Rust IPC/SQLite/libmpv的合成场景，无真实账号请求或写入。
+- artist-label-kde-final本机KDE/XWayland125%全部48+3态、51张自身PID原图通过；
+  所有帧visible/focused。已查看FM有曲缺歌手与返回等待两帧，页面/底栏文案一致，
+  等待按钮禁用且普通播放条保持暂停10秒。图片未编辑，不能当作官方同状态像素对照。
+- 新前端锁文件检查沿用本轮npm ci环境，格式/372项测试/production类型构建通过；
+  主程序及ux/mini探针已重建。原生心动转换另有完整workspace1296项、严格Clippy/
+  格式证据，不能冒充心动UI已通过。无物理声卡/Windows实机视觉/双账号实时验证。

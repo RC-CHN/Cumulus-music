@@ -5,6 +5,7 @@ import { useLocalShortcuts } from '../composables/useLocalShortcuts';
 import { createMiniClient, createMiniShortcutClient } from '../adapters/mini';
 import type { MiniAction, MiniQueuePage, MiniView } from '../services/mini';
 import { nextMode, modeLabel, modeIcon } from '../services/playbackMode';
+import { artistLabel } from '../services/artistLabel';
 import './mini.css';
 
 const client = createMiniClient(location.hash.slice('#mini='.length));
@@ -244,8 +245,8 @@ onUnmounted(() => {
       </button>
       <div class="mini-track">
         <h1 :title="media?.item?.title">{{ media?.item?.title || '从主窗口选一首音乐' }}</h1>
-        <p :title="media?.item?.artists.join(' / ')">
-          {{ media?.item?.artists.join(' / ') || '让音乐陪着你' }}
+        <p :title="artistLabel(media?.item, '让音乐陪着你')">
+          {{ artistLabel(media?.item, '让音乐陪着你') }}
         </p>
         <div class="mini-timeline">
           <span>{{ time(media?.position) }}</span
@@ -384,11 +385,11 @@ onUnmounted(() => {
           <button
             class="mini-queue-track"
             :disabled="busy || !queue.editable"
-            :title="`${entry.track.name} · ${entry.track.artists.join(' / ')}`"
+            :title="`${entry.track.name} · ${artistLabel(entry.track)}`"
             @click="perform({ kind: 'select', entry_id: entry.entryId }, queueTicket)"
           >
             <Icon :name="queue.current === entry.entryId ? 'volume' : 'music'" /><span
-              >{{ entry.track.name }}<small>{{ entry.track.artists.join(' / ') }}</small></span
+              >{{ entry.track.name }}<small>{{ artistLabel(entry.track) }}</small></span
             >
           </button>
           <button

@@ -7,6 +7,7 @@ import Icon from './Icon.vue';
 import FmExplore from './FmExplore.vue';
 import type { FmCard } from '../services/fm';
 import { fmPrimary } from '../services/fmPrimary';
+import { artistLabel } from '../services/artistLabel';
 const props = defineProps<{
   model: FmModel;
   player: PlayerModel;
@@ -204,7 +205,7 @@ function resume() {
         <div class="fm-copy">
           <span class="fm-label">{{ model.title.value }} · 无限发现好音乐</span>
           <h2>{{ current?.track.name ?? '暂时没有可播放的推荐' }}</h2>
-          <p>{{ current?.track.artists.join(' / ') || '重新获取推荐，发现更多音乐' }}</p>
+          <p>{{ artistLabel(current?.track, '重新获取推荐，发现更多音乐') }}</p>
           <p class="fm-album">{{ current?.track.album }}</p>
           <div class="fm-actions">
             <button class="primary" :disabled="pending" @click="play">

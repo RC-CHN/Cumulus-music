@@ -4,6 +4,7 @@ import type { PlayerModel } from '../composables/usePlayer';
 import Icon from './Icon.vue';
 import DesktopLyricToggle from './DesktopLyricToggle.vue';
 import { useMotion } from '../composables/useMotion';
+import { artistLabel } from '../services/artistLabel';
 const props = defineProps<{ player: PlayerModel }>();
 const { view, lyrics, lyricLoading, lyricError, loaded } = props.player;
 const container = ref<HTMLElement>(),
@@ -106,7 +107,7 @@ function aligned(rows: { time?: number; lyric: string }[] | undefined, index: nu
           /><Icon v-else name="music" />
         </div>
         <h1 :title="view?.track?.name">{{ view?.track?.name }}</h1>
-        <p :title="view?.track?.artists.join(' / ')">{{ view?.track?.artists.join(' / ') }}</p>
+        <p :title="artistLabel(view?.track)">{{ artistLabel(view?.track) }}</p>
         <small :title="view?.track?.album">{{ view?.track?.album }}</small
         ><span v-if="view?.timeline?.mode === 'trial'" class="trial-badge">当前为试听片段</span>
       </div>

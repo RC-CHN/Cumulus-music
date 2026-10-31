@@ -25,7 +25,7 @@
   if(fm){
    assert(control().dataset.family==='fm'&&bar().dataset.state==='idle'&&!bar().dataset.trackId&&!bar().dataset.playId,'empty native FM');
    assert(hit(button('返回原播放队列'))&&emptyControlsDisabled,'return/disabled transport');
-   assert(one('.fm-copy h2').textContent==='暂时没有可播放的推荐','empty text');
+   assert(one('.fm-copy h2').textContent==='暂时没有可播放的推荐','empty text');assert(one('.fm-copy>p').textContent.trim()==='重新获取推荐，发现更多音乐','empty recommendation hint');assert(one('.now-copy small').textContent.trim()==='发现每一首喜欢的歌','empty footer copy remains');
    assert(one('.fm-actions .primary').textContent.trim()===(one('.fm-page').dataset.modePending==='true'?'同步并继续播放':'重新获取推荐'),'empty action describes fetching recommendations');
    assert(trigger().getAttribute('aria-label')===(bar().dataset.mode==='single_loop'?'单曲循环':'无限漫游'),'FM mode label');
   }else{

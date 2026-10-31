@@ -3,6 +3,7 @@ import { computed, watch, onMounted, onUnmounted } from 'vue';
 import { useVirtualRows } from '../composables/useVirtualRows';
 import type { PlayerModel } from '../composables/usePlayer';
 import { time } from '../services/player';
+import { artistLabel } from '../services/artistLabel';
 import Icon from './Icon.vue';
 const props = defineProps<{ player: PlayerModel }>();
 const { queue, view, busy, queueError } = props.player;
@@ -93,8 +94,8 @@ function move(index: number, direction: number) {
         >
           <Icon :name="item.entryId === currentEntry ? 'volume' : 'music'" /><span
             ><strong class="ellipsis" :title="item.track.name">{{ item.track.name }}</strong
-            ><small class="ellipsis" :title="item.track.artists.join(' / ')">{{
-              item.track.artists.join(' / ')
+            ><small class="ellipsis" :title="artistLabel(item.track)">{{
+              artistLabel(item.track)
             }}</small></span
           >
         </button>

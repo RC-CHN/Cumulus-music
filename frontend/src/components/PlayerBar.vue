@@ -10,6 +10,7 @@ import PlaybackSpeed from './PlaybackSpeed.vue';
 import PlaybackQuality from './PlaybackQuality.vue';
 import PlaybackVolume from './PlaybackVolume.vue';
 import PlaybackMode from './PlaybackMode.vue';
+import { artistLabel } from '../services/artistLabel';
 const equalizerOpen = ref(false);
 const props = withDefaults(
   defineProps<{
@@ -89,11 +90,9 @@ async function seek(event: Event) {
           @click="player.toggleLyrics"
         >
           {{ view?.track?.name ?? '云间音乐' }}</button
-        ><small
-          class="ellipsis"
-          :title="view?.track?.artists.join(' / ') || '发现每一首喜欢的歌'"
-          >{{ view?.track?.artists.join(' / ') || '发现每一首喜欢的歌' }}</small
-        >
+        ><small class="ellipsis" :title="artistLabel(view?.track, '发现每一首喜欢的歌')">{{
+          artistLabel(view?.track, '发现每一首喜欢的歌')
+        }}</small>
       </div>
       <button
         v-if="view?.track && !view.track.local"
