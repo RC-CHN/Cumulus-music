@@ -10,6 +10,8 @@ import {
   nextTick,
 } from 'vue';
 import { useVirtualRows } from '../composables/useVirtualRows';
+import { useQueueSelection } from '../composables/useQueueSelection';
+import { useQueueDrag } from '../composables/useQueueDrag';
 import { useControlFocus } from '../composables/useControlFocus';
 import type { PlayerModel } from '../composables/usePlayer';
 import type { TogetherModel } from '../composables/useTogether';
@@ -70,6 +72,8 @@ const collectionLocked = computed(
     !queue.value?.tracks.length,
 );
 const clearLocked = computed(() => locked.value || !!queue.value?.clearContext.issue);
+const selection = useQueueSelection(() => queue.value);
+const selected = selection.selected;
 const completedRoom = ref<string>();
 let completedObservation: TogetherModel['view']['value'];
 const clearCompletion = computed(() => {
@@ -86,6 +90,18 @@ const panel = ref<HTMLElement>(),
   closeButton = ref<HTMLButtonElement>();
 const clearOpen = ref(false),
   clearTicket = shallowRef<QueueView>();
+const drag = useQueueDrag({
+  queue: () => queue.value,
+  container: () => container.value,
+  disabled: () => locked.value || clearOpen.value,
+  selected: () => selected.value,
+  select: selection.select,
+  scroll: onScroll,
+  reorder: (ids, displayed, focusId) => {
+    void edit({ kind: 'reorder', entry_ids: ids }, ids.indexOf(focusId), displayed);
+  },
+});
+const dragging = drag.dragging;
 const clearChanged = computed(
   () =>
     !!clearTicket.value &&
@@ -249,11 +265,11 @@ async function focusRow(index: number) {
       ?.querySelector<HTMLButtonElement>('.queue-song')
       ?.focus({ preventScroll: true });
 }
-async function edit(input: QueueEdit, index?: number) {
+async function edit(input: QueueEdit, index?: number, displayed = queue.value) {
   if (locked.value) return;
   const active = document.activeElement;
   const owner = queue.value?.epoch;
-  if (await props.player.editQueue(input)) {
+  if (await props.player.editQueue(input, displayed)) {
     if (owner !== view.value?.epoch || !panel.value) return;
     const revision = view.value?.queueRevision;
     await props.player.loadQueue();
@@ -265,26 +281,94 @@ async function edit(input: QueueEdit, index?: number) {
       (document.activeElement === active || document.activeElement === document.body)
     )
       await focusRow(index);
+  } else {
+    // Disabling a pending control may move WebKit focus to body. A rejected
+    // edit keeps the selection; restore its live control only after observing
+    // the same entries, never after a replacement queue or a new user focus.
+    if (owner !== view.value?.epoch || !panel.value) return;
+    if (!queueCurrent.value) await props.player.loadQueue();
+    await nextTick();
+    if (
+      owner === view.value?.epoch &&
+      panel.value &&
+      displayed?.tracks.length === queue.value?.tracks.length &&
+      displayed?.tracks.every((item, i) => item.entryId === queue.value?.tracks[i]?.entryId) &&
+      (document.activeElement === active || document.activeElement === document.body) &&
+      active instanceof HTMLElement &&
+      active.isConnected &&
+      !active.matches(':disabled')
+    )
+      active.focus({ preventScroll: true });
   }
+}
+function selectRow(event: MouseEvent, id: string) {
+  // Pointer selection runs on down/up to preserve a group while dragging.
+  // Keyboard activation and accessibility tools produce a zero-detail click.
+  if (!locked.value && event.detail === 0)
+    selection.select(id, event.ctrlKey || event.metaKey, event.shiftKey);
+}
+function removeSelection() {
+  if (locked.value || !selected.value.size) return;
+  const ids = selection.ids.value.filter((id) => selected.value.has(id));
+  void edit({ kind: 'remove', entry_ids: ids }, selection.ids.value.indexOf(ids[0]!));
+}
+function clearSelection() {
+  const first = selection.ids.value.findIndex((id) => selected.value.has(id));
+  selection.clear();
+  void focusRow(Math.max(0, first));
 }
 function keydown(event: KeyboardEvent) {
   const target = event.target as HTMLElement;
-  if (!target.matches('.queue-song') || locked.value) return;
+  if (locked.value || event.altKey) return;
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
+    event.preventDefault();
+    event.stopPropagation();
+    selection.all();
+    return;
+  }
+  if (event.key === 'Delete' || event.key === 'Backspace') {
+    event.preventDefault();
+    if (!event.repeat && selected.value.size) removeSelection();
+    return;
+  }
+  if (!target.matches('.queue-song')) return;
   const id = target.closest<HTMLElement>('.queue-row')?.dataset.entryId;
   const index = queue.value?.tracks.findIndex((i) => i.entryId === id) ?? -1;
   if (index < 0) return;
-  const next = {
+  let next = {
     ArrowDown: index + 1,
     ArrowUp: index - 1,
     Home: 0,
     End: (queue.value?.tracks.length ?? 1) - 1,
   }[event.key];
+  if (
+    (event.key === 'ArrowUp' || event.key === 'ArrowDown') &&
+    !event.shiftKey &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    selected.value.size
+  ) {
+    const selectedIndices = selection.ids.value.flatMap((id, i) =>
+      selected.value.has(id) ? [i] : [],
+    );
+    next = event.key === 'ArrowUp' ? selectedIndices[0]! - 1 : selectedIndices.at(-1)! + 1;
+  }
   if (next !== undefined) {
     event.preventDefault();
+    if (!event.ctrlKey && !event.metaKey)
+      selection.select(
+        selection.ids.value[Math.max(0, Math.min(next, selection.ids.value.length - 1))]!,
+        false,
+        event.shiftKey,
+      );
     void focusRow(next);
-  } else if (event.key === 'Delete' || event.key === 'Backspace') {
+  } else if (event.key === 'Enter') {
     event.preventDefault();
-    if (!event.repeat) void edit({ kind: 'remove', entry_ids: [id!] }, index);
+    if (!event.repeat && !queue.value?.tracks[index]?.track.missing)
+      void edit({ kind: 'select', entry_id: id! });
+  } else if (event.key === ' ') {
+    event.preventDefault();
+    if (!event.repeat) selection.select(id!, true, event.shiftKey);
   }
 }
 function openClear() {
@@ -392,6 +476,20 @@ async function confirmClear(event: Event) {
     <p v-if="queue?.fm" class="queue-notice" role="status">
       漫游队列由推荐更新，请使用漫游页面控制播放。
     </p>
+    <div
+      v-if="queue?.tracks.length && !queue.fm"
+      class="queue-selection"
+      role="group"
+      aria-label="已选歌曲操作"
+    >
+      <span role="status">{{
+        selected.size ? `已选择 ${selected.size} 项` : '单击选择，双击播放'
+      }}</span>
+      <template v-if="selected.size">
+        <button class="text-button" :disabled="locked" @click="removeSelection">移出队列</button>
+        <button class="text-button" :disabled="locked" @click="clearSelection">取消选择</button>
+      </template>
+    </div>
     <p
       v-if="queue && (queueLoading || !queueCurrent) && !queueError"
       class="queue-notice"
@@ -416,62 +514,92 @@ async function confirmClear(event: Event) {
       @keydown="keydown"
       @scroll.passive="onScroll"
     >
-      <div :style="{ height: `${start * row}px` }" aria-hidden="true" />
-      <div
-        v-for="(item, index) in visible"
-        :key="item.entryId"
-        v-memo="[
-          item,
-          start + index,
-          currentEntry === item.entryId,
-          locked,
-          queue.fm,
-          queue.tracks.length,
-        ]"
-        class="queue-row"
-        :data-entry-id="item.entryId"
-        :class="{ current: item.entryId === currentEntry }"
-        :aria-current="item.entryId === currentEntry ? 'true' : undefined"
-      >
-        <button
-          class="queue-song"
-          :disabled="locked || item.track.missing"
-          @click="edit({ kind: 'select', entry_id: item.entryId })"
+      <div class="queue-items">
+        <div :style="{ height: `${start * row}px` }" aria-hidden="true" />
+        <div
+          v-for="(item, index) in visible"
+          :key="item.entryId"
+          v-memo="[
+            item,
+            start + index,
+            currentEntry === item.entryId,
+            locked,
+            queue.fm,
+            queue.tracks.length,
+            selected.has(item.entryId),
+            dragging.has(item.entryId),
+          ]"
+          class="queue-row"
+          :data-entry-id="item.entryId"
+          :class="{
+            current: item.entryId === currentEntry,
+            selected: selected.has(item.entryId),
+            dragging: dragging.has(item.entryId),
+          }"
+          :aria-current="item.entryId === currentEntry ? 'true' : undefined"
         >
-          <Icon :name="item.entryId === currentEntry ? 'volume' : 'music'" /><span
-            ><strong class="ellipsis" :title="item.track.name">{{ item.track.name }}</strong
-            ><small class="ellipsis" :title="artistLabel(item.track)">{{
-              artistLabel(item.track)
-            }}</small></span
+          <button
+            class="icon-button queue-play"
+            :disabled="locked || item.track.missing"
+            :aria-label="`播放 ${item.track.name}`"
+            @click="edit({ kind: 'select', entry_id: item.entryId })"
           >
-        </button>
-        <time :title="item.track.durationMs > 0 ? undefined : '时长未知'">{{
-          item.track.durationMs > 0 ? time(item.track.durationMs / 1000) : '—'
-        }}</time>
-        <button
-          class="icon-button"
-          aria-label="上移歌曲"
-          :disabled="locked || start + index === 0"
-          @click="move(start + index, -1)"
-        >
-          <Icon name="up" /></button
-        ><button
-          class="icon-button"
-          aria-label="下移歌曲"
-          :disabled="locked || start + index + 1 === queue.tracks.length"
-          @click="move(start + index, 1)"
-        >
-          <Icon name="down" /></button
-        ><button
-          class="icon-button"
-          aria-label="移出队列"
-          :disabled="locked"
-          @click="edit({ kind: 'remove', entry_ids: [item.entryId] }, start + index)"
-        >
-          <Icon name="close" />
-        </button>
+            <Icon :name="item.entryId === currentEntry ? 'volume' : 'play'" />
+          </button>
+          <button
+            class="queue-song"
+            :disabled="locked"
+            :aria-pressed="selected.has(item.entryId)"
+            title="单击选择，双击播放；Ctrl 多选，Shift 连选"
+            @pointerdown="drag.start($event, item.entryId)"
+            @dragstart.prevent
+            @click="selectRow($event, item.entryId)"
+            @dblclick="!item.track.missing && edit({ kind: 'select', entry_id: item.entryId })"
+          >
+            <span
+              ><strong class="ellipsis" :title="item.track.name">{{ item.track.name }}</strong
+              ><small class="ellipsis" :title="artistLabel(item.track)">{{
+                artistLabel(item.track)
+              }}</small></span
+            >
+          </button>
+          <time :title="item.track.durationMs > 0 ? undefined : '时长未知'">{{
+            item.track.durationMs > 0 ? time(item.track.durationMs / 1000) : '—'
+          }}</time>
+          <button
+            class="icon-button"
+            aria-label="上移歌曲"
+            :disabled="locked || start + index === 0"
+            @click="move(start + index, -1)"
+          >
+            <Icon name="up" /></button
+          ><button
+            class="icon-button"
+            aria-label="下移歌曲"
+            :disabled="locked || start + index + 1 === queue.tracks.length"
+            @click="move(start + index, 1)"
+          >
+            <Icon name="down" /></button
+          ><button
+            class="icon-button"
+            aria-label="移出队列"
+            :disabled="locked"
+            @click="edit({ kind: 'remove', entry_ids: [item.entryId] }, start + index)"
+          >
+            <Icon name="close" />
+          </button>
+        </div>
+        <div :style="{ height: `${(queue.tracks.length - end) * row}px` }" aria-hidden="true" />
+        <div
+          v-if="drag.marker.value !== undefined"
+          class="queue-drop-marker"
+          :style="{ top: `${drag.marker.value}px` }"
+          aria-hidden="true"
+        />
       </div>
-      <div :style="{ height: `${(queue.tracks.length - end) * row}px` }" aria-hidden="true" />
+      <div v-if="dragging.size" class="queue-drag-hint" role="status">
+        正在移动 {{ dragging.size }} 项 · Esc 取消
+      </div>
     </div>
     <ModalTransition
       :restore-focus="clearTicket?.epoch === view?.epoch"

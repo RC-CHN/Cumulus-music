@@ -1,0 +1,80 @@
+播放列表选择、批量移除与拖动排序
+2026-10-31；普通队列专项，不能据此宣布整个队列或全站UI完成。
+
+官方恢复来源（优先使用，无YesPlayMusic）
+相对references/ui-recovery/sources/packages/pc/src：
+- components/PlayBar/PlaylistContent.tsx，SHA256
+  234d446a26c9ed7f2a12b8a36b62e7081dd7c6b22467aee14e4f68788090b986：
+  displayOrder顺序、selectedDataRef、Delete/Backspace批量移除且忽略repeat；
+  onDrop转Action.splice，目标Scene.playingList及insertIndex。
+- components/XTableViewer/Row.tsx，SHA256
+  1b6b94cf0e1d00596f83e1595cb6f74a01e8bb12266d3138befdcba56c22a2b4：
+  行的onMouseDown/onMouseUp选择与双击Action.play，普通歌曲单击不播放。
+相对references/netease-3.1.42.205594-analysis/recovered-js/modules/
+hybrid_app.chunk.1482700000000.js：
+- 106.js，SHA256
+  8cc5c5e903bcd82d4a2a550ccdaf235e8fb9e44cda4babdc6605295458439ec4，
+  152–300行：普通点击替换、Ctrl切换、Shift替换连续区间、Ctrl+Shift减去区间；
+  点击已选择项延至鼠标抬起才折叠，允许拖动保留多项；全选及方向键越过选择范围。
+- 195.js，SHA256
+  7607df5988746dbca8fe51ea1e9749cdd03bdee725d1e5795c3b3a4bd001a447，
+  350–425行：插入线按行边界取整、边缘滚动、多项selectedData及drop插入位置。
+没有同状态官方运行截图，未声称像素一致或原有所有资源的拖放完整复刻。
+
+正式交互与模块
+- QueuePanel：单击标题选择，双击/Enter实际播放；独立播放图标保留单击播放入口。
+  当前播放标识与选中状态分开。不可播放的失效资料仍可选择/移出，不伪造可播放性。
+- useQueueSelection、queueSelection：按entryId保存选择及锚点；同一首录音的不同
+  队列实例不能混成trackId。Ctrl切换、Shift连续、Ctrl+Shift减去、Ctrl/Meta+A完整
+  全选、Space切换；Home/End与Shift方向扩选是社区键盘适配。普通上下键从当前
+  选中范围的首/末继续。没有选择时Delete/Backspace不发删除；忽略repeat。
+  官方锚点在行删除后可能保留旧位置；社区实现用身份重查，锚点消失按新单点选择。
+- 固定38px提示/批量操作区：未选时说明单击/双击，选中后提供计数、移出、取消。
+  不因第一次选中突然挤动歌曲，避免下一次点击落到另一行；此工具栏是社区适配。
+  全选覆盖完整QueueView，不能只选虚拟DOM可见行。取消选择回到原选择的首行。
+- useQueueDrag：鼠标/笔在标题按下后移动至少6px才进入排序；在选中项按下不立即
+  折叠多项。插入边界按64px行高取整，已选项按显示顺序组成稳定块；跨过自身的
+  连续块或拖动全部而顺序不变均不写入。页面内PointerEvent实现避免OS文件drop
+  与Tauri文件拖放混在一起；本专项未实现外部资源拖进队列。
+- 只在有效目标内抬起才提交一次完整排列；外侧抬起、pointercancel、Escape、失焦、
+  抽屉退出、账号/队列版本变化、编辑锁定均取消。拖动期间没有原生写入。
+  按边缘48px区间滚动，行保持有界；捕获与焦点放到稳定容器，避免源行被虚拟回收。
+  取消时源行仍在渲染区才恢复其焦点。尊重期间进入其他控件的焦点。
+- 批量移除一次发送所有已选entryId；原生失败仍保留选择与存储原因，重新观察相同
+  条目后恢复原可用控件。不能把旧失败的焦点交给替换队列，不能自动重试写入。
+  成功移除回到后继行；排序保持原播放会话、暂停及定位；编辑错误仍独立于音频重试。
+- 账号切换与替换队列通过新epoch/entryId清理选择。队列重读仅保留仍存在的身份，
+  不将旧位置映射成新歌曲。FM仍由原生协调，所有队列编辑与选择操作禁用。
+
+IPC、接口及持久化
+读取：CoreClient.playerQueue(epoch) → 本地player_queue。
+提交：CoreClient.playerAction(epoch, {
+  kind:"queue_for", expected_queue_revision:displayed.revision,
+  edit:{kind:"remove",entry_ids:[...]} 或 {kind:"reorder",entry_ids:[完整新顺序]}
+}) → 本地player_action。双击/Enter/播放图标走同一封装的select/entry_id。
+使用既有独立Rust状态机、账号/代次、PlaybackFence、队列CAS与SQLite事务；没有
+新增HTTP接口、签名或前端凭据。原生要求reorder保留所有身份且恰好出现一次，
+remove拒绝未知身份；失败不能形成一半删除或一半排序。拖动捕获原QueueView后，
+提交沿用该版本，不能在抬起时自动采用后来读到的版本。
+纯排序/移除其他项不拉新音源；选择或移除当前项可能沿既有/api/v3/song/detail与
+/api/song/enhance/player/url/v1或本地/下载/CUE音源链路。本次未扩大会员或登录权限。
+一起听仍使用既有房间协调；原27态只证明清空/退出专项。本次批量/拖动验证使用
+普通队列，不能外推为一起听这些操作、双账号或专有心动模式全部通过。
+
+验证入口和证据边界
+  npm --prefix frontend test
+  python3 scripts/ci/queue_selection_smoke.py --binary PATH_TO_UX_UI_PROBE --root NEW_ROOT
+需先构建production前端及custom-protocol ux_ui_probe。Linux/Windows独立CI均接入。
+前端7项有意义用例覆盖选择/缺失锚点、稳定块、无变化、不合法输入，以及全部63个
+非空子集×7个边界的排列/相对顺序约束。不是Rust迁移新增业务测试数。
+24态真实WebView脚本覆盖选择/范围/折叠、组拖预览与原生排序、三种取消/版本替换、
+SQL失败保留选择/焦点、批量移除、跨虚拟窗口全选/边缘滚动、两尺寸两主题、真实
+原生选曲与替换队列。每态核对Rust队列顺序/计数、暂停10秒及音频会话身份；
+仅双击/显式播放/替换改变会话。HTTP/账号/音源为合成，libmpv使用null输出。
+截图、本机125%和失败记录见ui-ux-validation.txt，不能把截图称为物理鼠标输入或
+真实扬声器听感。Windows结果必须跟精确提交完整CI，不能用Linux替代。
+
+未纳入本专项
+推荐分隔/推荐边界、心动展示、外部跨列表拖放、完整资源菜单/封面布局、全套键盘
+与触屏默认事件行为、一起听多项编辑及Windows实机视觉继续独立审计。UI只按
+恢复行为及社区布局改进，不把这24态称为整个播放列表已经1:1完成。

@@ -321,6 +321,53 @@ input[type='range'] {
 .queue-row.current {
   color: var(--accent);
 }
+.queue-items {
+  position: relative;
+}
+.queue-row.selected {
+  background: var(--surface-hover);
+  box-shadow: inset 2px 0 var(--accent);
+}
+.queue-row.dragging {
+  opacity: 0.5;
+}
+.queue-selection {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 20px 10px;
+  font-size: 12px;
+  color: var(--muted);
+  height: 38px;
+  flex-shrink: 0;
+}
+.queue-selection > span {
+  flex: 1;
+}
+.queue-selection button {
+  padding: 4px 0;
+}
+.queue-drop-marker {
+  position: absolute;
+  inset-inline: 0;
+  height: 2px;
+  background: var(--accent);
+  pointer-events: none;
+}
+.queue-drag-hint {
+  position: sticky;
+  bottom: 8px;
+  width: max-content;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 7px 12px;
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: 0 2px 12px #0003;
+  color: var(--muted);
+  font-size: 12px;
+  pointer-events: none;
+}
 .queue-song {
   display: flex;
   align-items: center;
@@ -329,6 +376,8 @@ input[type='range'] {
   flex: 1;
   text-align: left;
   padding: 8px;
+  user-select: none;
+  touch-action: pan-y;
 }
 .queue-song > span {
   display: flex;
