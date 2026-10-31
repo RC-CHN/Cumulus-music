@@ -2,7 +2,7 @@
 (async () => {
   const one=s=>document.querySelector(s),all=s=>[...document.querySelectorAll(s)];
   const invoke=(...a)=>window.__TAURI_INTERNALS__.invoke(...a);
-  const emit=(stage,value={})=>invoke('plugin:event|emit',{event:'ux-proof',payload:{stage,...value}});
+  const emit=async(stage,value={})=>{if(stage.startsWith('ux_'))window.__queueRoomRecorded='';await invoke('plugin:event|emit',{event:'ux-proof',payload:{stage,...value}});if(stage.startsWith('ux_'))await wait(()=>window.__queueRoomRecorded===stage,'native observation saved');};
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const assert=(v,m)=>{if(!v)throw Error(m);};
   const wait=async(f,m)=>{for(let i=0;i<400;i++){if(await f())return;await sleep(60);}throw Error(m);};

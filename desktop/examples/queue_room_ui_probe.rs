@@ -81,6 +81,9 @@ fn main() {
                 value["imClosed"]=json!(im.closed.load(Ordering::SeqCst));
                 fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
                 if !capture_ack::acknowledge(&handle,&output,&stage,value["captureHandshake"]==true).await{return;}
+                if stage.starts_with("ux_") {
+                    handle.get_webview_window("main").unwrap().eval(format!("window.__queueRoomRecorded={};",json!(stage))).unwrap();
+                }
                 if ["complete","failed"].contains(&stage.as_str()) {
                     api.hold_end.store(false,Ordering::SeqCst);api.end_release.notify_one();
                     let clean=client.close_together().await.is_ok()&&!client.has_together_cleanup().unwrap_or(true);

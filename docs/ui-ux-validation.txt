@@ -2687,3 +2687,28 @@ speed-menu-focus-before，未忽略左右焦点框采样失败。额外键盘32�
   归档SQLite随后为Complete；不能把分页已隐藏任务当成实际文件清理完成。另行补
   等待原生删除日志Complete/非working/无error，保留原全部实际文件断言；该CI失败
   不混称完整gate通过。Windows同轮结果跟随权威运行状态，不能以本机代替。
+
+
+2026-10-31 原生观察完成握手与下载删除检查
+- download-completion-focus-final的实际WebView33态通过；仍逐个检查重命名/移动后
+  真实文件、仅移出仍保留、明确删除synthetic-3及相邻文件保留，并新增该任务的
+  Delete日志Complete断言。通过捕获operationId等待对应job结束/无error及活动操作
+  消失，不从列表数量推测文件已清理，也不向公开view强求其本来会过滤的Complete项。
+- 8210ee2 Linux CI的删除失败原日志在ci-linux-8210ee2-job.log，归档合成SQLite的
+  操作随后Complete。第一次完成等待错误地查询公开活动操作中的Complete，诊断后
+  改用实际jobs接口加原生日志断言，保留download-native-focus-diagnostic失败记录。
+- 窄窗返回焦点补充诊断：行仍为activeElement，但:focus-within=false、更多按钮
+  display:none且手动focus失败。加入原生自身窗口focus-sample与document.hasFocus
+  检查后原按钮焦点通过。只加DOM等待或显式传递入口未解决，临时产品改动已撤回；
+  下载菜单现在在resize后及关闭弹窗后明确确认测试窗口活跃，原焦点条件保持不变。
+  download-origin-navigation-final的24态通过，未虚增本轮截图。
+- queue-room-native-observation-final：内嵌production前端27态无截图通过；
+  queue-room-native-observation-kde-final在本机125%另通过27态及27张补充原图。
+  此次增加独立原生记录完成回执，未启用截图时也等Rust写好观察JSON后再放行后续
+  fixture。否则end_pending的异步记录可能晚于release_end，错读成Verifying/Uncertain；
+  通过PNG保存握手的54张既有原图保持原证据范围，不把补充图片混入此前54图。
+- 补充检查不新增产品业务。Rust/前端完整检查和本批精确CI结果继续按实际日志记录；
+  不以本机33/27态通过覆盖旧CI失败，也不将合成SDK/设备叫做真实双账号或声卡证明。
+- 最后完整workspace/all-targets/custom-protocol/locked重验274个结果target/1340项、
+  失败/忽略0：observation-probes-final-workspace-tests.log；严格Clippy及格式通过，
+  前端375项/格式/production类型构建、CI工具36项通过；正式程序和两个GUI探针重建。

@@ -424,6 +424,14 @@ impl Fixture {
                 assert!(!media.join("synthetic-3.wav").exists());
                 assert!(media.join("synthetic-4.wav").is_file());
                 let records = self.records.lock().unwrap();
+                assert!(
+                    self.store
+                        .values("2", "download_file_operations_v1")?
+                        .values()
+                        .any(|operation| operation["task_id"] == records[2].0
+                            && operation["action"] == "delete"
+                            && operation["phase"] == "complete")
+                );
                 for (index, (id, _)) in records.iter().take(3).enumerate() {
                     let record = self.store.get("2", "download_tasks_v1", id)?;
                     if index == 0 {

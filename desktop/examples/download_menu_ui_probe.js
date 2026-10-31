@@ -156,6 +156,11 @@
     ]) {
       await emit("resize", { width: w, height: h });
       await wait(() => innerWidth === w && innerHeight === h, "resize");
+      await emit("focus-sample");
+      await wait(
+        () => document.hasFocus(),
+        "native WebView focused after resize",
+      );
       click(button("外观主题"));
       await wait(() => one(".action-menu"), "themes");
       click(button(theme, one(".action-menu")));
@@ -193,8 +198,16 @@
         "blank filename cannot submit",
       );
       await close();
-      assert(
-        document.activeElement ===
+      // A headless resize/modal close can leave the native toplevel inactive.
+      // :focus-within actions cannot be focused until our own WebView is active.
+      await emit("focus-sample");
+      await wait(
+        () => document.hasFocus(),
+        "native WebView focused after modal",
+      );
+      await wait(
+        () =>
+          document.activeElement ===
           row().querySelector('[aria-label^="管理下载"]'),
         "cancel returns more control",
       );
@@ -363,7 +376,10 @@
     // Windows verbatim paths do not normalize '/' separators. Keep the native
     // root spelling when entering a child directory, as a folder picker does.
     const separator = directory.includes("\\") ? "\\" : "/";
-    input(one('[aria-label="移动目标目录"]'), directory + separator + "menu-moved");
+    input(
+      one('[aria-label="移动目标目录"]'),
+      directory + separator + "menu-moved",
+    );
     await wait(
       () => !one(".download-dialog button.primary").disabled,
       "valid move directory",
@@ -393,11 +409,35 @@
     await action("删除下载");
     await wait(() => button("确认删除本地文件"), "delete confirm");
     await capture("delete_confirm");
+    const submitDelete = client.downloadCommand;
+    let deleteOperation;
+    client.downloadCommand = async (e, command) => {
+      const result = await submitDelete(e, command);
+      if (
+        command.kind === "file" &&
+        command.action === "delete" &&
+        command.task_id === state.tasks[2].id
+      )
+        deleteOperation = result.operationId;
+      return result;
+    };
     click(button("确认删除本地文件"));
-    await wait(
-      async () => !one("dialog") && (await current()).total === 118,
-      "delete done",
-    );
+    await wait(async () => {
+      const value = await current();
+      const job = value.jobs.find((item) => item.id === deleteOperation);
+      // Hidden inventory rows mean deletion started, not filesystem cleanup.
+      // Completed operations disappear from the public active-operation list.
+      // Keep exact journal and native file assertions in verify_menu_files.
+      return (
+        !one("dialog") &&
+        value.total === 118 &&
+        !!job &&
+        !job.running &&
+        !job.error &&
+        !value.operations.some((item) => item.id === deleteOperation)
+      );
+    }, "delete done");
+    client.downloadCommand = submitDelete;
     await fixture("verify_menu_files");
     await capture("deleted");
     await open();
@@ -512,6 +552,26 @@
       message: String(error),
       stack: error.stack,
       active: document.activeElement?.outerHTML.slice(0, 500),
+      moreDiagnostic: (() => {
+        const n = row()?.querySelector('[aria-label^="管理下载"]'),
+          r = n?.closest(".download-row"),
+          a = n?.closest(".download-row-actions");
+        if (!n) return null;
+        const before = document.activeElement;
+        const value = {
+          html: n.outerHTML,
+          rects: n.getClientRects().length,
+          disabled: n.disabled,
+          inert: !!n.closest("[inert]"),
+          windowFocused: document.hasFocus(),
+          rowFocused: r === before,
+          rowWithin: r?.matches(":focus-within"),
+          actionsDisplay: a && getComputedStyle(a).display,
+          visibility: getComputedStyle(n).visibility,
+        };
+        n.focus({ preventScroll: true });
+        return { ...value, manualFocus: document.activeElement === n };
+      })(),
       body: document.body.innerText.slice(-1600),
     });
   }
