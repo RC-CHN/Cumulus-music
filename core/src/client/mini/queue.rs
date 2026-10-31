@@ -28,10 +28,20 @@ impl MusicClient {
         target.audio(&state)?;
         let page = MiniQueuePage {
             epoch: displayed.view.epoch.clone(),
-            current: queue.current,
+            current: queue
+                .current
+                .as_ref()
+                .filter(|id| {
+                    queue
+                        .items
+                        .iter()
+                        .any(|item| &item.entry_id == *id && item.visible_in_queue())
+                })
+                .cloned(),
             tracks: queue
                 .items
                 .iter()
+                .filter(|item| item.visible_in_queue())
                 .skip(offset)
                 .take(limit)
                 .map(|i| {
@@ -42,7 +52,7 @@ impl MusicClient {
                 })
                 .collect::<Result<_>>()?,
             offset,
-            total: queue.items.len(),
+            total: state.visible_queue_len,
             editable: !state.fm,
         };
         displayed.check(self)?;

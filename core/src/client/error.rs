@@ -17,6 +17,11 @@ impl From<Error> for ClientError {
             ("session_expired", "登录已失效，请重新登录", false)
         } else {
             match error.root() {
+                Error::State("resume audio before leaving intelligence") => (
+                    "intelligence_audio_ownership",
+                    "请先恢复音乐播放，再退出心动模式",
+                    true,
+                ),
                 Error::LoginDeferred => ("login_check", "请求未通过登录校验，请稍后重试", true),
                 Error::State("CAPTCHA timed out") => {
                     ("captcha_timeout", "验证码已超时，请重新打开验证", true)

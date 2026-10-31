@@ -317,3 +317,47 @@ async fn a_competing_native_host_cannot_use_an_older_seed_fence_after_activation
         vec![json!(7), json!(90), json!(91)]
     );
 }
+
+#[tokio::test]
+async fn explicit_experimental_retention_promotes_a_hidden_current_back_to_a_visible_row() {
+    let f = Fixture::new();
+    let id = act(&f, begin(90, false))
+        .await
+        .unwrap()
+        .intelligence
+        .unwrap()
+        .id;
+    act(
+        &f,
+        IntelligenceAction::Fail {
+            session_id: id.clone(),
+            failure: IntelligenceFailure::RequestFailed,
+        },
+    )
+    .await
+    .unwrap();
+    let before = f.player.queue(&f.token()).await.unwrap();
+    assert!(
+        !before
+            .items
+            .iter()
+            .find(|e| Some(&e.entry_id) == before.current.as_ref())
+            .unwrap()
+            .visible_in_queue()
+    );
+    act(
+        &f,
+        IntelligenceAction::Leave {
+            session_id: id,
+            mode: PlaybackMode::Sequential,
+            retain_missing_current: true,
+        },
+    )
+    .await
+    .unwrap();
+    let after = f.player.queue(&f.token()).await.unwrap();
+    assert!(after.intelligence.is_none());
+    assert_eq!(after.items.len(), 4);
+    assert!(after.items.iter().all(|e| e.visible_in_queue()));
+    assert_eq!(after.current, before.current);
+}

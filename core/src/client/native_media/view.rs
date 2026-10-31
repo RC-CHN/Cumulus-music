@@ -52,8 +52,8 @@ impl MusicClient {
             NativeMediaSnapshot {
                 title: public.track.map(|track| track.name).unwrap_or_default(),
                 playing,
-                can_previous: true,
-                can_next: true,
+                can_previous: value.visible_queue_len > 0,
+                can_next: value.visible_queue_len > 0,
                 target: Some(NativeMediaTarget {
                     token: token.clone(),
                     focus,

@@ -79,6 +79,12 @@ impl MusicClient {
             self.together_attached(token, None).map(|attached| {
                 if attached {
                     ModeFamily::Together
+                } else if self.player.controller.get().is_some_and(|controller| {
+                    let state = controller.snapshot();
+                    state.account == *token
+                        && state.intelligence.as_ref().is_some_and(|v| v.active())
+                }) {
+                    ModeFamily::Intelligence
                 } else {
                     ModeFamily::Ordinary
                 }

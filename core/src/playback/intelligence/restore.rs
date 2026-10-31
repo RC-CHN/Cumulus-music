@@ -46,6 +46,7 @@ pub(super) fn restore_current(
             .unwrap_or(0);
         let mut selected = selected;
         if let Some(source) = selected.source.as_object_mut() {
+            source.remove(TRANSIENT);
             source.insert(RETAINED.into(), json!(true));
         }
         queue.current = Some(selected.entry_id.clone());

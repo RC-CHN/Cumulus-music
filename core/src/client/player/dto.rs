@@ -10,6 +10,8 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "camelCase")]
 pub struct PlayerView {
     pub fm: bool,
+    /// Display state only. Never expose the native session, backup or algorithm map.
+    pub intelligence: Option<crate::playback::intelligence::IntelligencePhase>,
     pub equalizer: EqualizerView,
     pub loudness: LoudnessView,
     pub epoch: String,

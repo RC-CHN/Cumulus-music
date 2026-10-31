@@ -8,6 +8,7 @@ pub enum ModeFamily {
     Ordinary,
     Fm,
     Together,
+    Intelligence,
 }
 impl ModeFamily {
     pub fn choices(self) -> &'static [PlaybackMode] {
@@ -16,6 +17,7 @@ impl ModeFamily {
             Self::Ordinary => &[Sequential, OrderLoop, SingleLoop, Random],
             Self::Together => &[OrderLoop, SingleLoop, Random],
             Self::Fm => &[Sequential, SingleLoop],
+            Self::Intelligence => &[OrderLoop],
         }
     }
     pub fn supports(self, mode: PlaybackMode) -> bool {

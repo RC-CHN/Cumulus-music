@@ -47,7 +47,7 @@ impl MusicClient {
             let mut duplicates = 0;
             let mut total = 0;
             for item in &queue.items {
-                if item.source[crate::playback::intelligence::TRANSIENT] == true {
+                if !item.visible_in_queue() {
                     continue;
                 }
                 total += 1;

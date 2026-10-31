@@ -172,6 +172,7 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
     }
     Ok(PlayerView {
         fm: value.fm,
+        intelligence: value.intelligence.as_ref().map(|state| state.phase),
         loudness: LoudnessView {
             revision: (!value.loudness.damaged)
                 .then(|| value.loudness.preferences.revision.clone()),
@@ -220,7 +221,7 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
         unmute_volume: value.unmute_volume,
         speed: value.speed,
         mode: value.mode,
-        queue_len: value.queue_len,
+        queue_len: value.visible_queue_len,
         error: value
             .error
             .as_ref()
@@ -374,7 +375,7 @@ impl MusicClient {
                 )
                 .await;
         }
-        let (action, displayed_queue, clear_room) = match action {
+        let (mut action, displayed_queue, clear_room) = match action {
             PlayerAction::QueueFor {
                 expected_queue_revision,
                 expected_room_id,
@@ -404,7 +405,10 @@ impl MusicClient {
         };
         // Reject stale UI before incrementing selection/cancelling a load.
         let queue_guard = if let Some(revision) = displayed_queue {
-            Some(self.displayed_queue_fence(&token, &revision).await?)
+            Some(
+                self.displayed_queue_fence(&token, &revision, &mut action)
+                    .await?,
+            )
         } else {
             None
         };
@@ -709,10 +713,20 @@ impl MusicClient {
             clear_context: self.queue_clear_context(&token)?,
             epoch: epoch.into(),
             revision: snapshot.queue_revision.to_string(),
-            current: queue.current,
+            current: queue
+                .current
+                .as_ref()
+                .filter(|id| {
+                    queue
+                        .items
+                        .iter()
+                        .any(|item| &item.entry_id == *id && item.visible_in_queue())
+                })
+                .cloned(),
             tracks: queue
                 .items
                 .iter()
+                .filter(|item| item.visible_in_queue())
                 .map(|i| {
                     Ok(QueueTrack {
                         entry_id: i.entry_id.clone(),

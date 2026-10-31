@@ -43,6 +43,13 @@ pub struct QueueEntry {
     #[serde(default)]
     pub source: Value,
 }
+impl QueueEntry {
+    /// Native current media may temporarily remain outside the official list.
+    /// Its authorization/resource bytes stay private and must not become a row.
+    pub fn visible_in_queue(&self) -> bool {
+        self.source[super::intelligence::TRANSIENT] != true
+    }
+}
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -156,6 +163,13 @@ impl PlaybackQueue {
     }
     pub fn len(&self) -> usize {
         self.state.items.len()
+    }
+    pub fn visible_len(&self) -> usize {
+        self.state
+            .items
+            .iter()
+            .filter(|item| item.visible_in_queue())
+            .count()
     }
     pub fn is_empty(&self) -> bool {
         self.state.items.is_empty()
@@ -414,7 +428,8 @@ impl PlaybackQueue {
         if ended
             && self.state.mode == PlaybackMode::SingleLoop
             && self.selected().is_some_and(|e| {
-                super::PlaybackConstraint::from_resource(&e.resource).ok() == Some(None)
+                e.visible_in_queue()
+                    && super::PlaybackConstraint::from_resource(&e.resource).ok() == Some(None)
             })
         {
             return self.selected();
@@ -431,6 +446,7 @@ impl PlaybackQueue {
             };
             let id = &self.state.order[next];
             if let Some(item) = self.state.items.iter().find(|i| &i.entry_id == id)
+                && item.visible_in_queue()
                 && super::PlaybackConstraint::playable(&item.resource)
                 // A shared preview must not repeat forever if all others are blocked.
                 && !(ended && next == index && item.resource.get("playback_constraint").is_some())

@@ -202,6 +202,7 @@ impl Actor {
             speed: self.prefs.speed,
             mode: self.queue.mode(),
             queue_len: self.queue.len(),
+            visible_queue_len: self.queue.visible_len(),
             error: self.error.clone(),
             history_error: self.history_error.clone(),
             prefetch: self.prefetch.clone(),

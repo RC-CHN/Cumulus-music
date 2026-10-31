@@ -1639,3 +1639,16 @@ login-interception-cache-tests.log。初次全量（workspace-tests3.log）一�
   crate::client边界提供调用，没有放开内部错误锁。第二轮测试错写不存在的Sqlite
   错误分支，改为实际Storage后4项通过；失败日志仍保留queue-room-initial-native/
   native-tests2。前端新增旧roomId确认和只读刷新、不重发用例；实际UI另行验证。
+
+2026-10-31 心动公开状态与可见队列
+- PlayerView增加有限phase投影，主/小窗分页、收藏和公开计数共用可见策略；完整
+  队列/会话/授权保留原生。可见排序由原生补回隐藏槽位后按原fence提交；拒绝
+  选中/移除隐藏身份。系统前后能力及结束步进不让临时当前曲再次循环。
+- client_intelligence新增2项：恢复phase、可见分页/编辑/隐藏身份拒绝、全部可见
+  删除后的当前音频/能力，以及活动小窗族/退出/旧票据。recovery新增t1提升隐藏
+  当前为可见的1项。使用合成Device，桌面libmpv/实际UI另行验证。
+- 完整workspace/all-targets/custom-protocol/locked：1343项、274个结果target，
+  失败/忽略0，.build/intelligence-ui-workspace-tests.log；严格Clippy/格式通过。
+  含复用fixture，本批仅新增上述3项，不能称为1343条新增功能。
+- 正式开启协调器仍未完成，26态实际WebView恢复/退出、截图及错误分支详见
+  intelligence-restored-ui-contracts.txt与ui-ux-validation.txt。
