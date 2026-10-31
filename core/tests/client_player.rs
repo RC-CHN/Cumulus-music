@@ -26,6 +26,12 @@ struct Backend {
     release: Notify,
     trial: Mutex<Option<Value>>,
     playlist_tracks: Mutex<Option<Vec<Value>>>,
+    quality_trial_state: AtomicU64,
+    quality_start_mode: AtomicU64,
+    quality_writes: AtomicU64,
+    quality_url_denied: AtomicU64,
+    quality_started: Notify,
+    quality_release: Notify,
 }
 impl Api for Backend {
     fn request<'a>(&'a self, path: &'a str, payload: Value, _: bool) -> ApiFuture<'a, Value> {
@@ -62,7 +68,7 @@ impl Api for Backend {
                     *self.trial.lock().unwrap() = Some(payload["trialMode"].clone());
                     let ids: Vec<Value> =
                         serde_json::from_str(payload["ids"].as_str().unwrap()).unwrap();
-                    json!({"code":200,"data":[{"id":ids[0],"code":200,"url":"https://m1.music.126.net/a.mp3?key=SECRET","md5":"abc","expi":120,"level":"standard"}]})
+                    json!({"code":200,"data":[{"id":ids[0],"code":if payload["level"]=="jymaster"&&self.quality_url_denied.load(Ordering::SeqCst)>0 {403}else{200},"url":"https://m1.music.126.net/a.mp3?key=SECRET","md5":"abc","expi":120,"level":"standard"}]})
                 }
                 "/api/song/enhance/privilege" => {
                     let ids: Vec<Value> =
@@ -76,7 +82,21 @@ impl Api for Backend {
                     json!({"code":200,"data":{"userId":9,"now":1000000,"associator":{"expireTime":2000000},"cookie":"SECRET"}})
                 }
                 "/api/vipauth/app/auth/query" => {
-                    json!({"code":200,"data":[{"resourceId":0,"resourceType":payload["resourceTypeList"],"canUse":true,"userSrc":0,"trialStatus":1,"leftTime":60000,"cookie":"SECRET"}]})
+                    let state = self.quality_trial_state.load(Ordering::SeqCst);
+                    json!({"code":200,"data":[{"resourceId":0,"resourceType":payload["resourceTypeList"],"canUse":state!=2,"userSrc":0,"trialStatus":if state==1 {2}else{1},"leftTime":60000,"cookie":"SECRET"}]})
+                }
+                "/api/vipauth/app/auth/set" => {
+                    self.quality_writes.fetch_add(1, Ordering::SeqCst);
+                    self.quality_started.notify_one();
+                    let mode = self.quality_start_mode.load(Ordering::SeqCst);
+                    if mode == 1 {
+                        self.quality_release.notified().await;
+                    }
+                    self.quality_trial_state.store(1, Ordering::SeqCst);
+                    if mode == 2 {
+                        return Err(Error::State("synthetic lost activation response"));
+                    }
+                    json!({"code":200,"data":true})
                 }
                 "/api/song/lyric/v1" => {
                     json!({"code":200,"lrc":{"lyric":"[00:01]第一行\n[00:03]第二行","version":1},"yrc":{"lyric":"[1000,1000](1000,500,0)你(1500,500,0)好","version":1},"ytlrc":{"lyric":"[1000,1000]hello"},"yromalrc":{"lyric":"[1000,1000]ni hao"},"lyricContributor":{"cookie":"SECRET"}})
@@ -867,4 +887,207 @@ async fn native_quality_details_are_bound_to_the_selected_song_and_whitelist_rig
     ));
     assert_eq!(api.calls.lock().unwrap().len(), calls);
     client.player_action("1", PlayerAction::Stop).await.unwrap();
+}
+
+#[tokio::test]
+async fn an_explicit_quality_trial_uses_native_playback_and_preserves_pause_position_and_actual_quality()
+ {
+    let (_dir, api, _session, client, _) = fixture();
+    let playing = client.play_selection("1", songs("1")).await.unwrap();
+    let play_id = playing.play_id.unwrap();
+    client
+        .player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    client
+        .player_action("1", PlayerAction::Seek { seconds: 10.0 })
+        .await
+        .unwrap();
+    let details = client.player_quality_details("1", &play_id).await.unwrap();
+    let result = client
+        .player_quality_trial(
+            "1",
+            QualityTrialCommand::Start {
+                play_id: play_id.clone(),
+                details_revision: details.revision,
+                level: Quality::JyMaster,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(result.trial.acknowledged && result.trial.can_use && result.playback_error.is_none());
+    let player = result.playback.unwrap();
+    assert_eq!(
+        player.state,
+        cumulus_core::playback::controller::PlaybackStatus::Paused
+    );
+    assert_eq!(player.position, Some(10.0));
+    assert_eq!(player.requested_quality.as_deref(), Some("jymaster"));
+    assert_eq!(player.actual_quality.as_deref(), Some("standard"));
+    assert_eq!(player.quality_preferences.quality, Quality::JyMaster);
+    assert_eq!(api.quality_writes.load(Ordering::SeqCst), 1);
+    let updated = client
+        .player_quality_details("1", player.play_id.as_ref().unwrap())
+        .await
+        .unwrap();
+    assert_eq!(updated.trials[0].operation, result.trial.operation);
+    assert!(!updated.trials_damaged);
+}
+
+#[tokio::test]
+async fn obsolete_quality_trial_offers_are_rejected_before_activating_quota() {
+    let (_dir, api, _session, client, _) = fixture();
+    let playing = client.play_selection("1", songs("1")).await.unwrap();
+    let play_id = playing.play_id.unwrap();
+    let details = client.player_quality_details("1", &play_id).await.unwrap();
+    client
+        .player_action(
+            "1",
+            PlayerAction::Quality {
+                level: Quality::HiRes,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(
+        client
+            .player_quality_trial(
+                "1",
+                QualityTrialCommand::Start {
+                    play_id,
+                    details_revision: details.revision,
+                    level: Quality::JyMaster
+                }
+            )
+            .await
+            .is_err()
+    );
+    assert_eq!(api.quality_writes.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn a_lost_activation_is_reconciled_and_retried_as_playback_without_a_second_start() {
+    use cumulus_core::playback::quality::{QualityRight, trials::QualityTrialPhase};
+    let (_dir, api, _session, client, _) = fixture();
+    let playing = client.play_selection("1", songs("1")).await.unwrap();
+    let play_id = playing.play_id.unwrap();
+    let details = client.player_quality_details("1", &play_id).await.unwrap();
+    api.quality_start_mode.store(2, Ordering::SeqCst);
+    let uncertain = client
+        .player_quality_trial(
+            "1",
+            QualityTrialCommand::Start {
+                play_id: play_id.clone(),
+                details_revision: details.revision,
+                level: Quality::JyMaster,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(uncertain.trial.phase, QualityTrialPhase::Uncertain);
+    assert!(uncertain.playback.is_none());
+    let checked = client
+        .player_quality_trial(
+            "1",
+            QualityTrialCommand::Reconcile {
+                right: QualityRight::JyMaster,
+                operation: uncertain.trial.operation,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(checked.trial.can_use && !checked.trial.acknowledged);
+    let details = client.player_quality_details("1", &play_id).await.unwrap();
+    let applied = client
+        .player_quality_trial(
+            "1",
+            QualityTrialCommand::UseActive {
+                play_id,
+                details_revision: details.revision,
+                level: Quality::JyMaster,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(applied.playback.is_some());
+    assert_eq!(api.quality_writes.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn activation_completed_after_a_new_selection_cannot_change_the_new_song() {
+    let (_dir, api, _session, client, _) = fixture();
+    let playing = client.play_selection("1", songs("1")).await.unwrap();
+    let play_id = playing.play_id.unwrap();
+    let details = client.player_quality_details("1", &play_id).await.unwrap();
+    api.quality_start_mode.store(1, Ordering::SeqCst);
+    let pending = tokio::spawn({
+        let client = client.clone();
+        async move {
+            client
+                .player_quality_trial(
+                    "1",
+                    QualityTrialCommand::Start {
+                        play_id,
+                        details_revision: details.revision,
+                        level: Quality::JyMaster,
+                    },
+                )
+                .await
+        }
+    });
+    api.quality_started.notified().await;
+    let current = client.play_selection("1", songs("2")).await.unwrap();
+    api.quality_release.notify_one();
+    let result = pending.await.unwrap().unwrap();
+    assert!(result.trial.can_use && result.playback.is_none());
+    assert_eq!(result.playback_error.unwrap().code, "stale");
+    let after = client
+        .player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    assert_eq!(after.track.unwrap().id, "2");
+    assert_eq!(after.play_id, current.play_id);
+    assert_eq!(after.quality_preferences.quality, Quality::Standard);
+    assert_eq!(api.quality_writes.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn failed_playback_after_activation_keeps_the_receipt_and_retries_only_the_authorized_url() {
+    let (_dir, api, _session, client, _) = fixture();
+    let playing = client.play_selection("1", songs("1")).await.unwrap();
+    let play_id = playing.play_id.unwrap();
+    let details = client.player_quality_details("1", &play_id).await.unwrap();
+    api.quality_url_denied.store(1, Ordering::SeqCst);
+    let failed = client
+        .player_quality_trial(
+            "1",
+            QualityTrialCommand::Start {
+                play_id: play_id.clone(),
+                details_revision: details.revision,
+                level: Quality::JyMaster,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(
+        failed.trial.acknowledged
+            && failed.trial.can_use
+            && failed.playback.is_none()
+            && failed.playback_error.is_some()
+    );
+    api.quality_url_denied.store(0, Ordering::SeqCst);
+    let details = client.player_quality_details("1", &play_id).await.unwrap();
+    let applied = client
+        .player_quality_trial(
+            "1",
+            QualityTrialCommand::UseActive {
+                play_id,
+                details_revision: details.revision,
+                level: Quality::JyMaster,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(applied.playback.is_some());
+    assert_eq!(api.quality_writes.load(Ordering::SeqCst), 1);
 }

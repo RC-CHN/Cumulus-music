@@ -25,7 +25,10 @@ use crate::{
 pub use dto::*;
 pub use output::{OutputCommand, OutputEngineView, OutputView};
 pub use preferences::{StartupPreferencesCommand, StartupPreferencesView};
-pub use quality::{QualityChoiceView, QualityDetailsView};
+pub use quality::{
+    QualityChoiceView, QualityDetailsView, QualityTrialCommand, QualityTrialOutcome,
+    QualityTrialView,
+};
 use std::sync::{Arc, Mutex, atomic::AtomicU64};
 use tokio::sync::{OnceCell, watch};
 

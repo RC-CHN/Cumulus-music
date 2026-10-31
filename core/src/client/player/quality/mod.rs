@@ -1,3 +1,4 @@
+mod trial;
 mod view;
 use super::{MusicClient, PlaybackCommand, PlaybackSnapshot};
 use crate::{
@@ -5,6 +6,7 @@ use crate::{
     account::SessionToken,
     playback::quality::{QualityFormat, QualityReader},
 };
+pub use trial::{QualityTrialCommand, QualityTrialOutcome, QualityTrialView};
 pub use view::{QualityChoiceView, QualityDetailsView};
 
 impl MusicClient {
@@ -69,6 +71,21 @@ impl MusicClient {
         {
             return Err(Error::StaleResponse);
         }
-        view::project(epoch, play_id, &song, &latest, &information)
+        let records = crate::playback::quality::trials::QualityTrials::new(self.session.clone())?
+            .records_for(&token);
+        self.session.check_generation(&token)?;
+        let (records, damaged) = match records {
+            Ok(records) => (records, false),
+            Err(_) => (vec![], true),
+        };
+        view::project(
+            epoch,
+            play_id,
+            &song,
+            &latest,
+            &information,
+            records,
+            damaged,
+        )
     }
 }

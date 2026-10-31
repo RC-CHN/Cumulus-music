@@ -33,6 +33,8 @@ pub struct QualityDetailsView {
     pub choices: Vec<QualityChoiceView>,
     pub status: QualityReadStatus,
     pub refresh_after_ms: Option<u64>,
+    pub trials: Vec<super::QualityTrialView>,
+    pub trials_damaged: bool,
 }
 pub(super) fn project(
     epoch: &str,
@@ -40,6 +42,8 @@ pub(super) fn project(
     song: &str,
     current: &PlaybackSnapshot,
     information: &QualityInformation,
+    trials: Vec<crate::playback::quality::trials::QualityTrial>,
+    trials_damaged: bool,
 ) -> Result<QualityDetailsView> {
     let trial = current
         .timeline
@@ -130,5 +134,7 @@ pub(super) fn project(
         choices,
         status: information.status.clone(),
         refresh_after_ms,
+        trials: trials.into_iter().map(Into::into).collect(),
+        trials_damaged,
     })
 }

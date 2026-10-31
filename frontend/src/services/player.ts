@@ -261,12 +261,34 @@ export interface QualityDetailsView {
     useRights: Partial<Record<'vivid' | 'jymaster' | 'sky' | 'jyeffect', QualityReadState>>;
   };
   refreshAfterMs: number | null;
+  trials: QualityTrialView[];
+  trialsDamaged: boolean;
+}
+export type QualityTrialRight = 'vivid' | 'jymaster' | 'sky' | 'jyeffect';
+export interface QualityTrialView {
+  right: QualityTrialRight;
+  operation: string;
+  revision: string;
+  phase: 'sending' | 'uncertain' | 'acknowledged' | 'active' | 'expired' | 'rejected';
+  acknowledged: boolean;
+  canUse: boolean;
+  readFailed: boolean;
+  remainingMs: number | null;
+}
+export type QualityTrialCommand =
+  | { kind: 'start' | 'use_active'; play_id: string; details_revision: string; level: Quality }
+  | { kind: 'reconcile'; right: QualityTrialRight; operation: string };
+export interface QualityTrialOutcome {
+  trial: QualityTrialView;
+  playback: PlayerView | null;
+  playbackError: CoreFailure | null;
 }
 export interface PlayerClient {
   watchPlayer(epoch: string, update: (event: PlayerUpdate) => void): Promise<() => void>;
   playSelection(epoch: string, selection: PlaySelection): Promise<PlayerView>;
   playerAction(epoch: string, action: PlayerAction): Promise<PlayerView>;
   playerQualityDetails(epoch: string, playId: string): Promise<QualityDetailsView>;
+  playerQualityTrial(epoch: string, command: QualityTrialCommand): Promise<QualityTrialOutcome>;
   playerQueue(epoch: string): Promise<QueueView>;
   playerLyrics(epoch: string, playId: string): Promise<LyricsView>;
   lyricPreferences(
