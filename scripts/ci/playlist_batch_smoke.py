@@ -34,16 +34,16 @@ def main():
     with (root / 'first.log').open('x', encoding='utf-8') as log:
         status = launch(args.binary.resolve(), env, log, root / 'first', args.screenshots)
     failed = root / 'first/failed.json'
-    assert not failed.exists(), failed.read_text() if failed.exists() else ''
+    assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert status == 0, f'probe exit {status}'
-    result = json.loads((root / 'first/complete.json').read_text())
+    result = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
     assert result['ok'] and result['playlistBatchUi']
     assert result['realMusicRequests'] == result['realAccountWrites'] == 0
     records = sorted((root / 'first').glob('ux_*.json'))
     assert len(records) == result['stageCount'] == 52
     if args.screenshots:
         assert len(list((root / 'first').glob('ux_*.png'))) == 52
-    captures = {p.stem.split('_',2)[2]:json.loads(p.read_text()) for p in records}
+    captures = {p.stem.split('_',2)[2]:json.loads(p.read_text(encoding='utf-8')) for p in records}
     ids = lambda name: [item['track']['id'] for item in captures[name]['nativeQueue']['tracks']]
     assert ids('selected_playback') == ['1','3','240']
     assert ids('selected_queue') == ['1','2','4','3','240']
@@ -58,7 +58,7 @@ def main():
         {'pid':2,'op':'add','ids':['240']},
     ]
     result.update(actualWebView=True, physicalDisplayVerified=False, windowsVisualVerified=False)
-    (root / 'audit.json').write_text(json.dumps(result,indent=2)+'\n')
+    (root / 'audit.json').write_text(json.dumps(result,indent=2)+'\n', encoding='utf-8')
     print(json.dumps({k:result[k] for k in ['ok','stageCount','actualWebView','realAccountWrites']}))
 
 

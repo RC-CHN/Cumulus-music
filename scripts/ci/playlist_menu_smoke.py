@@ -46,8 +46,8 @@ def main():
     assert len(list((root / 'first').glob('ux_*.json'))) == 52
     if args.screenshots:
         assert len(list((root / 'first').glob('ux_*.png'))) == 52
-    playing = json.loads((root / 'first/ux_51_playing.json').read_text())['nativePlayer']
-    paused = json.loads((root / 'first/ux_52_paused.json').read_text())['nativePlayer']
+    playing = json.loads((root / 'first/ux_51_playing.json').read_text(encoding='utf-8'))['nativePlayer']
+    paused = json.loads((root / 'first/ux_52_paused.json').read_text(encoding='utf-8'))['nativePlayer']
     assert playing['state'] == 'playing' and paused['state'] == 'paused'
     assert playing['queueLen'] == paused['queueLen'] == 40
     assert playing['playId'] == paused['playId'] and paused['position'] > 0

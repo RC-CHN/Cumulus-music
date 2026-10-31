@@ -43,9 +43,9 @@ def main():
     assert len(records) == 44
     if args.screenshots:
         assert len(list((root / 'first').glob('ux_*.png'))) == 44
-    initial = json.loads(records[1].read_text())['nativePlayer']
+    initial = json.loads(records[1].read_text(encoding='utf-8'))['nativePlayer']
     for file in records:
-        data = json.loads(file.read_text())
+        data = json.loads(file.read_text(encoding='utf-8'))
         player, queue = data['nativePlayer'], data['nativeQueue']
         ids = [item['track']['id'] for item in queue['tracks']]
         if '_next_done_' in file.name or file.name == 'ux_33_retry_done.json':

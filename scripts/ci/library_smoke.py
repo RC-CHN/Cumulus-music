@@ -44,8 +44,8 @@ def main():
     assert first['orderVerified'] and first['playbackVerified'] and first['returnVerified']
     assert first['syntheticLibrary']['writes'] == 1
     assert results['reopen']['reopened']
-    playing = json.loads((root / 'first/ux_29_playing.json').read_text())['nativePlayer']
-    paused = json.loads((root / 'first/ux_30_paused.json').read_text())['nativePlayer']
+    playing = json.loads((root / 'first/ux_29_playing.json').read_text(encoding='utf-8'))['nativePlayer']
+    paused = json.loads((root / 'first/ux_30_paused.json').read_text(encoding='utf-8'))['nativePlayer']
     assert playing['state'] == 'playing' and paused['state'] == 'paused'
     assert playing['origin'] == paused['origin'] == {'kind': 'playlist', 'id': '2'}
     assert playing['queueLen'] == paused['queueLen'] == 40 and paused['position'] > 0

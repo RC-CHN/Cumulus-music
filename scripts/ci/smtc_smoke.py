@@ -87,7 +87,7 @@ def main():
         pending.replace(run / 'command.json')
         reply = run / f'ack-{sequence}.json'
         wait(reply.exists, 'fixture ' + kind)
-        assert json.loads(reply.read_text())['ok'] == expected, kind
+        assert json.loads(reply.read_text(encoding='utf-8'))['ok'] == expected, kind
     def consumer(command='snapshot'):
         assert time.monotonic() < deadline, 'overall SMTC proof deadline'
         result = subprocess.run([str(executable), '--consumer', prefix, command],

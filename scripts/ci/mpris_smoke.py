@@ -75,17 +75,17 @@ def main():
             if process.poll() is not None: raise AssertionError(f'probe exited {process.returncode}: '+message)
             time.sleep(.025)
         raise AssertionError('timed out: '+message)
-    def state(): return json.loads((run/'state.json').read_text())
+    def state(): return json.loads((run/'state.json').read_text(encoding='utf-8'))
     sequence = 0
     def control(kind, expected=True):
         nonlocal sequence
         sequence += 1
         pending = run / 'command.pending'
-        pending.write_text(json.dumps({'kind':kind,'id':sequence}))
+        pending.write_text(json.dumps({'kind':kind,'id':sequence}), encoding='utf-8')
         pending.replace(run/'command.json')
         reply = run/f'ack-{sequence}.json'
         wait(reply.exists, 'fixture '+kind)
-        assert json.loads(reply.read_text())['ok'] == expected, kind
+        assert json.loads(reply.read_text(encoding='utf-8'))['ok'] == expected, kind
     def call(interface, name, parameters=None):
         result = connection.call_sync(service, PATH, interface, name, parameters, None, Gio.DBusCallFlags.NONE, 10000, None)
         drain()
@@ -121,7 +121,7 @@ def main():
         with (root/'host.log').open('x') as log:
             process = subprocess.Popen([str(args.binary.resolve())], env=env, stdout=log, stderr=log)
             wait(lambda:(run/'ready.json').exists() and (run/'state.json').exists(), 'native GUI')
-            service = json.loads((run/'ready.json').read_text())['service']
+            service = json.loads((run/'ready.json').read_text(encoding='utf-8'))['service']
             assert not has_owner() and state()['engines']==0
             steps.append('lazy-unselected')
             control('start')
@@ -291,10 +291,10 @@ def main():
             control('exit')
             assert process.wait(timeout=10)==0
             report={'ok':True,'steps':steps,'actualTauri':True,'actualMpris':True,'nativePcmNull':True,'propertySignals':len(changes),'seekedSignals':len(seeks),'nativeSeekRequests':seek_samples,'realAccountRequests':0,'physicalDesktopPanelVerified':False,'windowsSmtcVerified':False}
-            (root/'report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
+            (root/'report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n', encoding='utf-8')
             print(json.dumps(report,ensure_ascii=False))
     except Exception:
-        (root/'failed.json').write_text(json.dumps({'completedSteps':steps,'propertySignals':changes,'seekedSignals':seeks,'nativeSeekRequests':seek_samples,'processExit':process.poll() if process is not None else None},ensure_ascii=False,indent=2)+'\n')
+        (root/'failed.json').write_text(json.dumps({'completedSteps':steps,'propertySignals':changes,'seekedSignals':seeks,'nativeSeekRequests':seek_samples,'processExit':process.poll() if process is not None else None},ensure_ascii=False,indent=2)+'\n', encoding='utf-8')
         raise
     finally:
         for subscription in subscriptions: connection.signal_unsubscribe(subscription)

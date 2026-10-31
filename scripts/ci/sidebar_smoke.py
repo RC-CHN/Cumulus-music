@@ -44,8 +44,8 @@ def main():
     assert first['focusRecovery'] and first['foldingVerified']
     assert first['syntheticLibrary']['writes'] == 0
     assert results['reopen']['reopened']
-    playing = json.loads((root / 'first/ux_33_playing.json').read_text())['nativePlayer']
-    paused = json.loads((root / 'first/ux_34_paused.json').read_text())['nativePlayer']
+    playing = json.loads((root / 'first/ux_33_playing.json').read_text(encoding='utf-8'))['nativePlayer']
+    paused = json.loads((root / 'first/ux_34_paused.json').read_text(encoding='utf-8'))['nativePlayer']
     assert playing['state'] == 'playing' and paused['state'] == 'paused'
     assert playing['origin'] == paused['origin'] == {'kind': 'playlist', 'id': '2'}
     assert playing['queueLen'] == paused['queueLen'] == 40 and paused['position'] > 0

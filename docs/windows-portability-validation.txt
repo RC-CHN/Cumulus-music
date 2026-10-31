@@ -36,3 +36,14 @@ https://learn.microsoft.com/en-us/cpp/build/reference/manifestdependency-specify
 仍检查不跟随重定向、不回放 Cookie/Authorization、Range/If-Range 请求头和禁用透明解压。产品下载实现不变。
 
 上述测试均使用合成账号/本地临时媒体，不代表真实双账号一起听验证完成。
+
+6. 中文WebView报告的编码（2026-10-31）
+41172145253的Windows job 124452198626已完成并明确失败：download_page_smoke.py
+读取first/complete.json时使用CP1252默认编码，在中文UTF-8字节0x90处发生
+UnicodeDecodeError。此前普通/FM的48态报告成功不代表该job整体成功。
+CI脚本现在显式以UTF-8读取原生JSON/失败报告并写回审计数据；一并检查下载、歌单、
+侧栏、本地库、MPRIS、托盘及SMTC的同类读写，未改变任何产品断言或忽略失败。
+windows-encoding-download-proof在真实Linux production WebView的69态下载专项上，
+将Python未指定encoding的Path.read_text默认值注入为CP1252；完整报告解析/原断言
+通过。它验证脚本编码边界，不冒充Windows WebView结果；修复后的Windows精确提交CI
+仍须独立通过。Python语法与CI工具36项测试通过。

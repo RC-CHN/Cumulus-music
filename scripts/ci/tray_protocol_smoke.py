@@ -84,7 +84,7 @@ def main():
                     picture.savev(str(evidence.with_suffix('.png')), 'png', [], [])
                     seen.add(evidence)
             failure = root / 'run/failed.json'
-            assert not failure.exists(), failure.read_text() if failure.exists() else ''
+            assert not failure.exists(), failure.read_text(encoding='utf-8') if failure.exists() else ''
             value = predicate()
             if value: return value
             time.sleep(.02)
@@ -101,7 +101,7 @@ def main():
         with (root / 'host.log').open('x') as log:
             process = subprocess.Popen([str(args.binary.resolve())], env=env, stdout=log, stderr=log)
             wait(lambda: (root / 'run/ready.json').exists(), 'tray constructed')
-            ready = json.loads((root / 'run/ready.json').read_text())
+            ready = json.loads((root / 'run/ready.json').read_text(encoding='utf-8'))
             assert ready['trayBuilt'] and ready['visible'] and not state['host']
             if args.lifecycle:
                 wait(lambda: (root / 'run/host_enable.json').exists(), 'UI unavailable-host checks')
@@ -127,12 +127,12 @@ def main():
                 call(item, menu_path, 'com.canonical.dbusmenu', 'Event', GLib.Variant('(isvu)', (labels[label], 'clicked', GLib.Variant('i', 0), 0)))
                 path = root / 'run' / (event + '.json')
                 wait(path.exists, 'real native menu callback ' + event)
-                result = json.loads(path.read_text())
+                result = json.loads(path.read_text(encoding='utf-8'))
                 assert result['ok'] and result['noAccountOrMediaInitialized']
                 return result
             if args.lifecycle:
                 wait(lambda: (root / 'run/hidden_first.json').exists(), 'UI first close to tray')
-                first = json.loads((root / 'run/hidden_first.json').read_text())
+                first = json.loads((root / 'run/hidden_first.json').read_text(encoding='utf-8'))
                 assert not first['visible'] and first['lifecycle']['hidden'] and first['preferences']['settings']['rememberChoice']
                 assert first['backgroundPlayback']['verified'] and first['backgroundPlayback']['advance'] > .2
                 transports = []
@@ -148,7 +148,7 @@ def main():
                     call(item, native_path, 'com.canonical.dbusmenu', 'Event', GLib.Variant('(isvu)', (native_id, 'clicked', GLib.Variant('i', 0), 0)))
                     path = root / 'run' / (evidence + '.json')
                     wait(path.exists, 'native transport ' + evidence)
-                    result = json.loads(path.read_text())
+                    result = json.loads(path.read_text(encoding='utf-8'))
                     assert result['ok'] and not result['visible'] and result['lifecycle']['hidden']
                     transports.append(result['playerState'])
                 for label, evidence in [('喜欢', 'media_liked'), ('取消喜欢', 'media_unliked'), ('喜欢', 'like_reconcile_ready'), ('核对喜欢状态', 'media_like_reconciled')]:
@@ -158,7 +158,7 @@ def main():
                     call(item, native_path, 'com.canonical.dbusmenu', 'Event', GLib.Variant('(isvu)', (native_id, 'clicked', GLib.Variant('i', 0), 0)))
                     path = root / 'run' / (evidence + '.json')
                     wait(path.exists, 'native like proof ' + evidence)
-                    result = json.loads(path.read_text())
+                    result = json.loads(path.read_text(encoding='utf-8'))
                     assert result['ok']
                     if evidence == 'like_reconcile_ready':
                         assert result['nativeLike']['pending'] and result['likeWrites'] == 3
@@ -170,18 +170,18 @@ def main():
                     call(item, native_path, 'com.canonical.dbusmenu', 'Event', GLib.Variant('(isvu)', (native_id, 'clicked', GLib.Variant('i', 0), 0)))
                     path = root / 'run' / (evidence + '.json')
                     wait(path.exists, 'native voice proof ' + evidence)
-                    result = json.loads(path.read_text())
+                    result = json.loads(path.read_text(encoding='utf-8'))
                     assert result['ok'] and not result['visible'] and result['likeWrites'] == 3
                     if evidence == 'native_voice_complete': assert result['voiceWrites'] == 2
 
                 call(item, menu_path, 'com.canonical.dbusmenu', 'Event', GLib.Variant('(isvu)', (labels['显示 Cumulus'], 'clicked', GLib.Variant('i', 0), 0)))
                 wait(lambda: (root / 'run/hidden_second.json').exists(), 'remembered native close')
-                second = json.loads((root / 'run/hidden_second.json').read_text())
+                second = json.loads((root / 'run/hidden_second.json').read_text(encoding='utf-8'))
                 assert not second['visible'] and second['lifecycle']['prompt'] is None
                 state['host'] = False
                 connection.emit_signal(None, WATCHER_PATH, WATCHER, 'StatusNotifierHostUnregistered', None)
                 wait(lambda: (root / 'run/host_restart.json').exists(), 'lost host recovery')
-                restored = json.loads((root / 'run/host_restart.json').read_text())
+                restored = json.loads((root / 'run/host_restart.json').read_text(encoding='utf-8'))
                 assert restored['visible'] and not restored['lifecycle']['trayAvailable']
                 before = len(registrations)
                 Gio.bus_unown_name(owner)
@@ -197,7 +197,7 @@ def main():
                 wait(lambda: (root / 'run/complete.json').exists(), 'remaining WebView checks')
                 wait(lambda: process.poll() is not None, 'explicit UI exit')
                 assert process.returncode == 0 and (root / 'run/exited.json').exists()
-                complete = json.loads((root / 'run/complete.json').read_text())
+                complete = json.loads((root / 'run/complete.json').read_text(encoding='utf-8'))
                 assert complete['ok'] and complete['states'] == 17
                 assert not args.screenshots or len(seen) == 17
                 with sqlite3.connect((root / 'run/state/core.sqlite3').as_uri() + '?mode=ro', uri=True) as db:
@@ -216,7 +216,7 @@ def main():
                     'nativeShowMenu': True, 'nativeTransportStates': transports, 'hostLossRestoresWindow': True, 'backgroundPlayback': first['backgroundPlayback'],
                     'panelRestartReRegisters': True, 'explicitExit': True,
                     'physicalPanelIconVerified': False, 'windowsShellVerified': False}
-                (root / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n')
+                (root / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
                 print(json.dumps(report))
                 return
             hidden = activate('隐藏窗口', 'proof-hide')
@@ -244,7 +244,7 @@ def main():
                 'registrations': registrations, 'itemProperties': {k: properties.get(k) for k in ['Id', 'Status', 'Menu', 'IconName', 'Title']},
                 'physicalPanelIconVerified': False, 'productClosePolicyVerified': False,
                 'remoteMusicRequests': 0}
-            (root / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n')
+            (root / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
             print(json.dumps({k: v for k, v in report.items() if k not in ['registrations', 'itemProperties']}))
     finally:
         if process is not None and process.poll() is None:
