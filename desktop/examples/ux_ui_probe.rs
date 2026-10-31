@@ -423,6 +423,9 @@ fn main() {
                     } else { value["nativePlayerUnavailable"]=json!(true); }
                     fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
                     if !capture_ack::acknowledge(&handle,&output,&stage,value["captureHandshake"]==true).await {return;}
+                    if std::env::var_os("CUMULUS_QUEUE_SELECTION_UI_PROOF").is_some() && stage.starts_with("ux_") {
+                        handle.get_webview_window("main").unwrap().eval(format!("window.__queueSelectionRecorded={};",serde_json::json!(stage))).unwrap();
+                    }
                     if ["complete","failed"].contains(&stage.as_str()) {
                         let _=client.player_action(&epoch,cumulus_core::client::dto::PlayerAction::Stop).await;
                         handle.exit(if stage=="complete" {0} else {1});

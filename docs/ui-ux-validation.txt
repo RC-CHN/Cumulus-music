@@ -1323,6 +1323,45 @@ Windows现场与接续提示焦点复查（2026-10-29）
 - 先前提交6776958的CI 41009825071中Linux失败：本地匹配状态轮询与工作线程的
   operation lock竞争，返回MutationBusy。测试仅在既有10秒期限内重试该可恢复错误，
   其他读取错误/持久工作失败仍立即失败；该修正不作为UI进度，也不绕过CI gate。
+
+2026-10-31 播放队列选择、批量移除、内部排序
+- 需求优先级按用户指示：先处理UI逻辑一致性与可用功能，性能保留有界渲染即可，
+  本轮没有新增帧率/硬件调优。官方来源与接口逐项见playback-queue-selection-contracts.txt。
+- queue-selection-ui-final4、queue-selection-kde-final2各24态通过，共48张最终原图；
+  后者为本机KDE Wayland/XWayland、125%缩放、仅自己的PID窗口合成器原图，均
+  可见且聚焦。已看窄窗两主题、拖动插入线、失败后原控件焦点等实际图。
+  图集.build/queue-selection-gallery/index.html，manifest包含原图/JSON/源码/
+  使用的探针程序SHA256及production前端全部文件摘要；图片不进公开仓库。
+- queue-selection-fast-final无截图24态通过，额外避免截图等待掩盖焦点竞争。脚本
+  原生观察保存完成后才允许推进，真实IPC/actor/SQLite/libmpv，HTTP/账号/音源
+  为合成、输出null；暂停10秒及同一playId在选择/排序/删除非当前项中保持。
+  双击、显式播放、替换队列三个动作分别进入新的真实原生播放会话。
+- 首次选中使工具栏插入后挤动歌曲的缺陷已修正为固定38px区；脚本检查行top不变。
+  批量失败导致disabled控件失焦的问题另修为重读/核对同一条目后恢复原控件，并
+  保留原选中组和存储原因；最终24态明确断言其焦点，没有删掉失败检查。
+- 7项选择/排序规则测试含全部63非空子集×7边界的排列/相对顺序断言；前端最终
+  382项/格式/production类型检查及构建通过。Rust严格格式/Clippy与全workspace/
+  all-targets/custom-protocol/locked通过，274个结果target、1340项、失败/忽略0；
+  未新增Rust业务模块或冒称1340为本轮新增功能。CI工具36项为合成工具测试。
+  日志queue-selection-final-tests/final-format/build-final、queue-selection-fmt/
+  clippy/workspace-tests/ci-tools，最终可执行程序构建日志final-desktop-build。
+- 已有queue-selection-controls-regression28态、collection-regression32态及room-
+  regression27态通过，分别仍保留原队列、收藏和房间清空/恢复的原断言，不外推
+  为所有批量/拖动模式。房间探针API、IM、音频均合成，不代表一起听真实双端。
+- 最终重建cumulus与ux_ui_probe后，queue-selection-embedded-final不提供外部dist，
+  直接内嵌production前端24态通过；queue-selection-controls-final同样内嵌28态通过。
+  它们覆盖最后一处失败焦点修正，不能用较早controls-regression替代此最终复验。
+- 中间失败独立保留：queue-selection-debug在Vite重建清空dist时提前启动，资产
+  index断言失败；修正测试顺序先等构建完成。ui-final未初始化GDK、ui-final2
+  截图进程采用Wayland而无法取得X11根窗口；最终隔离截图明确初始化GTK且指定
+  GDK_BACKEND=x11后通过，未修改产品图形策略或以这些失败当成业务成功。
+- 本机额外可信鼠标尝试记录native-kde-debug、native-kde-debug2、pointer-debug，
+  XTest请求未成为WebView的可信pointer事件，实际DOM日志为空；没有放松断言、
+  改用合成DOM事件冒充实体鼠标、修改系统权限或全局输入设置。最终48图的动作
+  本来就是脚本合成pointer，物理桌面截图与实体输入能力分开报告。完整物理
+  鼠标/触屏行为与Windows实机视觉仍未完成。
+- Linux/Windows独立CI新增queue_selection_smoke，精确新提交完整gate须另行核对；
+  本机通过不当作远端已通过，没有合入main、打新标签或重新发布0.1.0。
 - Linux隔离Xvfb/private D-Bus/xcompmgr、LC_ALL=zh_CN.UTF-8、真实WebKitGTK；操作由
   DOM驱动。未验证物理输入/显示器刷新率、Windows视觉或高DPI。动画只检查实际完成后
   的状态，不能据此声称所有动态效果已与官方一致。完整UI/UX逐页审计和目标仍未完成。
