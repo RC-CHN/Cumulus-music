@@ -1,0 +1,80 @@
+心动会话恢复、显示与退出（2026-10-31）
+这是既有原生心动会话的实际UI/控制迁移，不代表正式开启协调器已完成。
+喜欢列表完整读取、M59/M23权益/下载/替代曲筛选、黑名单、资格与五态进入、
+推荐HTTP编排/重试仍继续。没有新增一个未接线的“开启心动”按钮。
+
+官方依据
+references/ui-recovery/sources/packages/pc/src/components/PlayBar/PlayMode.tsx：
+  SHA256 6aa41644381ae6f88bfdcd106f2915091e6aecf45e613c4f905237d48fd35e0d。
+  PlayAi单独名称与心跳图标，模式点击按nextPlayingMode切换。
+references/netease-3.1.42.205594-analysis/recovered-js/modules/
+hybrid_app.chunk.1482700000000.js/7.js：
+  SHA256 4914ce443197d0538f055ae064b910a1a5f7c3d83c1c1e60978b9d7f2b055e1e。
+  d=[PlayAi,playCycle,PlayOneCycle,PlayRandom,PlayOrder]，从心动下一次是列表循环。
+同目录308.js的switchPlayingMode/aiPlay、1384.js的file实现remove动作、176.js的
+插入/顺序，以及冻结队列散列沿用intelligence-playback-contracts.txt。官方可见
+播放列表与curPlaying分开；移除没有包含curPlaying的歌曲不会自动停止它。
+未使用YesPlayMusic。心跳图标是Cumulus现有线条图标系统的重绘，不宣称官方位图。
+
+原生和公开投影
+- PlaybackSnapshot保留内部queue_len，另提供visible_queue_len；PlayerView.queueLen、
+  player_queue.tracks/current及mini_queue.total/分页先排除intelligence_transient。
+  PlayerView.entryId/track仍描述实际当前音频。可见列表允许为0且有当前歌曲；
+  UI明确说明当前歌曲在列表之外，不伪造一条普通歌曲或隐藏掉实际音频资料。
+- PlayerView.intelligence只投影seeded/active/fallback或null，不传会话ID、请求、
+  备份、推荐字典、授权/音源或原生source。seeded说明推荐未完成；active显示心动；
+  fallback说明失败并返回列表循环，不把它渲染成推荐成功。
+- QueueEntry.visible_in_queue供主窗口、小窗、收藏及自动前后切歌共用。隐藏当前
+  不能在推荐全部移除后再次循环，单曲循环也不能让它重新进入可见列表。进入
+  其它曲目时原有核心原子移除临时项。显式t1保留缺失当前项时清除transient后
+  才提升为普通可见保留项，不能永久隐藏一首应显示的歌曲。
+- 显示队列的queue_for仍绑定epoch/expected_queue_revision。隐藏项的select/remove
+  被拒绝；完整reorder仅接收所有可见身份且恰好一次，原生在同一已确认快照把
+  隐藏槽位补回，再以原fence提交完整排列。前端不掌握或拼接隐藏来源/授权数据。
+  无效或过时输入在取消加载/改变媒体所有权前拒绝。raw native命令仍使用完整队列。
+
+正式UI行为
+- 主播放条恢复心动名称/心跳图标；主窗口和小窗均有intelligence模式族。心动
+  内部仍以OrderLoop维护队列，点击时必须实际发mode_for/OrderLoop执行Leave，
+  不能因为数值已经OrderLoop就短路成“没有变化”。小窗也只接受此退出目标，
+  原生媒体票据仍校验模式族/队列/账号。MPRIS标准不能表达心动名称，其常规
+  LoopStatus保持既有协议，未杜撰一个协议值。
+- 等待退出时显示普通目标；连续点击合并为首次退出及最新普通模式。自己的
+  心动→普通观察不清掉同一请求的后续目标；账号/连接更换仍撤销。新选曲使旧
+  退出失败时，按实际公开snapshot_changed/stale错误丢弃旧提示/重试，不抢改新队列。
+- 存储失败保持心动与原暂停/位置，显示独立的“重试切换”，不进入音频失败重试。
+  明确恢复后的暂停会话尚未取得Audio输出权限，或MV持有权限时，原生拒绝退出。
+  公开intelligence_audio_ownership说明“请先恢复音乐播放，再退出心动模式”；UI
+  提供实际Play操作的“恢复音乐”。只有用户点此操作才交接输出，不因模式点击
+  自动盖过MV。迟到回复不夺取新账号或用户后来选择的焦点。
+- 可见列表为空而当前音频仍保留时，暂停/继续、空格及恢复会话仍可用；上一首/
+  下一首与系统/小窗对应能力禁用。列表计数和收藏不计隐藏项。“下一首播放”反馈
+  仍区分当前媒体存在与完全没有媒体，不把可见计数当成所有播放状态的替代品。
+
+IPC与服务端接口
+本批不增加音乐HTTP：player_queue、player_action(mode_for/queue_for/play)、
+mini_snapshot/mini_queue/mini_action均为既有本地接口。原生恢复/选曲仍可通过既有
+/api/song/enhance/player/url/v1及目录元数据链路加载授权音频。
+仅文档中此前的IntelligenceApi实现会用/api/playmode/intelligence/list；这批UI
+场景没有调用它，productionStartVerified始终false，不能借恢复夹具声称正式开启通过。
+
+验证
+  cargo test -p cumulus-core --test client_intelligence --test intelligence_player_recovery --locked
+  python3 scripts/ci/intelligence_ui_smoke.py --binary PATH_TO_UX_UI_PROBE --root NEW_ROOT
+- 原生新增两项边界测试：隐藏当前不成为主/小窗行、可见排列补槽/禁止隐藏身份、
+  删除全部可见仍保留音频与系统能力；活动会话小窗族/退出/旧票据。另有原生退出
+  t1提升隐藏项为可见的测试。现有原函数、存储/重开、媒体身份/恢复测试保持。
+- 前端新增5项：已恢复心动退出、快速连续目标、失败重试、账号替换和新选曲迟到
+  错误隔离。模型用例采用Rust实际公开snapshot_changed，补实际WebView揭示的差异。
+- intelligence_ui_probe通过真实域actor创建隔离持久化Seeded/Active/Fallback，再从
+  MusicClient恢复，用production UI/IPC/actor/SQLite/libmpv的null输出验证26态。
+  夹具仅存在独立example，HTTP、账号、音乐源为合成，不是正式开启用例或在线权益。
+  包括Audio所有权引导、两尺寸/两主题、失败/重试/合并、隐藏列表空态与控制、旧
+  请求被新选曲取代。Native观察保存与截图握手后才推进，不以截图延迟掩盖竞争。
+- 本机原图、精确日志/源码指纹及远端状态见ui-ux-validation.txt。Linux/Windows
+  CI均执行同一26态；无Windows实机、实体输入或真实扬声器证明。
+
+继续项
+正式开启资格/喜欢列表/权益筛选/黑名单/请求协调器、UI五态进入、API真实心动
+播放及补充推荐，损坏会话恢复入口、完整推荐分隔/菜单和小窗逐态视觉仍未完成。
+本批只证明恢复和退出及其队列/控制行为，完整大目标保持进行中。

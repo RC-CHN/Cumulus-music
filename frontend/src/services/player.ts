@@ -45,6 +45,7 @@ export interface Timeline {
 export interface PlayerView {
   origin?: PlayerOrigin | null;
   fm: boolean;
+  intelligence?: 'seeded' | 'active' | 'fallback' | null;
   equalizer: EqualizerView;
   loudness: LoudnessView;
   epoch: string;

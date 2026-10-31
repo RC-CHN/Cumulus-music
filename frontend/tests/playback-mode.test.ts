@@ -36,8 +36,15 @@ function fixture(save: (mode: PlaybackMode) => Promise<void> = async () => {}) {
       await save(mode);
       if (view.value.epoch !== epoch) throw { code: 'stale', message: 'changed', retryable: false };
       if (view.value.queueRevision !== revision || view.value.fm !== fm)
-        throw { code: 'queue_changed', message: 'queue changed', retryable: true };
-      view.value = { ...view.value, mode, queueRevision: String(BigInt(revision) + 1n) };
+        throw { code: 'snapshot_changed', message: 'queue changed', retryable: true };
+      view.value = {
+        ...view.value,
+        intelligence: ['seeded', 'active'].includes(view.value.intelligence ?? '')
+          ? null
+          : view.value.intelligence,
+        mode,
+        queueRevision: String(BigInt(revision) + 1n),
+      };
       return view.value;
     },
   } as unknown as PlayerModel;
@@ -180,7 +187,7 @@ test('a replaced queue rejects pending mode work without automatic replay', asyn
   await turn();
   assert.equal(f.calls.length, 1);
   assert.equal(f.view.value.mode, 'order_loop');
-  assert.equal(f.model.issue.value?.code, 'queue_changed');
+  assert.equal(f.model.issue.value?.code, 'snapshot_changed');
   f.stop();
 });
 test('account and player-family changes discard obsolete mode intentions and errors', async () => {
@@ -228,5 +235,98 @@ test('together cycling excludes sequential and external state remains authoritat
   );
   f.view.value = { ...f.view.value, mode: 'random' };
   assert.equal(f.model.value.value, 'random');
+  f.stop();
+});
+
+test('restored intelligence is labelled independently and its first click exits to list loop', async () => {
+  const f = fixture();
+  f.view.value = { ...f.view.value, intelligence: 'active' };
+  assert.equal(f.model.family.value, 'intelligence');
+  assert.equal(nextMode('order_loop', 'intelligence'), 'order_loop');
+  f.model.cycle();
+  await turn();
+  assert.deepEqual(f.calls, [{ mode: 'order_loop', revision: '1', fm: false }]);
+  assert.equal(f.model.family.value, 'ordinary');
+  assert.equal(f.view.value.intelligence, null);
+  f.stop();
+});
+test('rapid clicks across an intelligence exit retain the latest ordinary target', async () => {
+  const saved = deferred(),
+    f = fixture((m) => (m === 'order_loop' ? saved.promise : Promise.resolve()));
+  f.view.value = { ...f.view.value, intelligence: 'seeded' };
+  f.model.cycle();
+  f.model.cycle();
+  f.model.cycle();
+  assert.equal(f.model.value.value, 'random');
+  assert.equal(f.model.displayFamily.value, 'ordinary');
+  saved.resolve();
+  await turn();
+  assert.deepEqual(
+    f.calls.map((c) => [c.mode, c.revision]),
+    [
+      ['order_loop', '1'],
+      ['random', '2'],
+    ],
+  );
+  assert.equal(f.model.actual.value, 'random');
+  assert.equal(f.model.pending.value, false);
+  f.stop();
+});
+test('failed intelligence exit keeps its family and retries the same observed ordinary target', async () => {
+  let reject = true;
+  const f = fixture(async () => {
+    if (reject) throw { code: 'storage', message: 'save failed', retryable: true };
+  });
+  f.view.value = { ...f.view.value, intelligence: 'active' };
+  f.model.cycle();
+  await turn();
+  assert.equal(f.model.family.value, 'intelligence');
+  assert.equal(f.model.displayFamily.value, 'intelligence');
+  assert.equal(f.model.canRetry.value, true);
+  reject = false;
+  f.model.retry();
+  await turn();
+  assert.deepEqual(
+    f.calls.map((c) => c.mode),
+    ['order_loop', 'order_loop'],
+  );
+  assert.equal(f.model.family.value, 'ordinary');
+  f.stop();
+});
+test('account replacement while leaving intelligence discards both the late exit and queued targets', async () => {
+  const saved = deferred(),
+    f = fixture(() => saved.promise);
+  f.view.value = { ...f.view.value, intelligence: 'active' };
+  f.model.cycle();
+  f.model.cycle();
+  f.view.value = { ...f.view.value, epoch: '2', intelligence: null, queueRevision: '9' };
+  saved.resolve();
+  await turn();
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.model.pending.value, false);
+  assert.equal(f.model.issue.value, undefined);
+  assert.equal(f.model.value.value, 'order_loop');
+  f.stop();
+});
+test('a replacement ordinary selection discards late AI exit errors and queued modes', async () => {
+  const saved = deferred(),
+    f = fixture(() => saved.promise);
+  f.view.value = { ...f.view.value, intelligence: 'active', playId: 'old', entryId: 'old-entry' };
+  f.model.cycle();
+  f.model.cycle();
+  f.view.value = {
+    ...f.view.value,
+    intelligence: null,
+    queueRevision: '9',
+    mode: 'sequential',
+    playId: 'new',
+    entryId: 'new-entry',
+  };
+  saved.resolve();
+  await turn();
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.model.issue.value, undefined);
+  assert.equal(f.model.pending.value, false);
+  assert.equal(f.model.value.value, 'sequential');
   f.stop();
 });

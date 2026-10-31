@@ -83,7 +83,8 @@ client/player、fm/player、client/together及relay/publisher/player：现有边
 - 官方curPlaying可在可见列表之外；Cumulus队列要求当前项属于items。截断或失败回退
   排除当前音频时，内部留一个intelligence_transient条目，继续播放/暂停原音频，切到
   其它歌曲后原子移除，避免它再次循环。可见10000项向量排除此内部项。正式IPC列表
-  的过滤、计数及多窗口呈现仍须接入，不把原始items直接宣称官方列表完全一致。
+  的过滤/计数、主/小窗模式及退出已有后续实现，见intelligence-restored-ui-contracts.txt；
+  小窗完整视觉、正式开启编排和推荐分隔仍待审计，不把原始items称为官方列表。
 - 实验保留项以intelligence_retained标记，用下次喜欢回退清理已取消喜欢的项；核对
   后移除标记。当前t1随机插入场景采用本核心随机排列，不宣称原JS随机数逐位相同。
 - 已明确停止时，晚到完成/回退和普通模式元数据不会自行发声；默认退出缺失当前项
@@ -94,8 +95,8 @@ client/player、fm/player、client/together及relay/publisher/player：现有边
   已消费的失败标记，避免恢复悬空会话。relay按官方aiMode排除活动心动来源；内部
   transient尚未离开时也不假报远端普通队列。没有新增真实邀请或双账号验证。
 - 原生已经验证备份切换/落盘/重开；正式喜欢种子选择、完整M/23权益和黑名单/替代曲
-  筛选、在线请求编排/重试、心动五态资格/会员引导、主窗口/迷你/MPRIS呈现及桌面实际
-  心动播放仍待迁移。原API只读报告的uiStartVerified=false没有被改成true。
+  筛选、在线请求编排/重试、心动五态资格/会员引导及完整桌面
+  心动开启播放仍待迁移；恢复会话的主/小窗呈现/退出见后续专项。原API只读报告的uiStartVerified=false没有被改成true。
 
 显式损坏恢复
 IntelligenceRecovery::inspect返回原生私有票据，调用者必须绑定owner和账号代次。

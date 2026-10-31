@@ -1087,7 +1087,11 @@ function keyboard(event: KeyboardEvent) {
     void mv.action(mv.video.value.paused ? { kind: 'play' } : { kind: 'pause', paused: true });
     return;
   }
-  if (player.ready.value && player.view.value?.queueLen && !player.busy.value) {
+  if (
+    player.ready.value &&
+    (player.view.value?.queueLen || player.view.value?.track) &&
+    !player.busy.value
+  ) {
     event.preventDefault();
     void player.action(player.playing.value ? { kind: 'pause', paused: true } : { kind: 'play' });
   }

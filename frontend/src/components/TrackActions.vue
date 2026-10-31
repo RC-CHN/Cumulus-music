@@ -176,7 +176,7 @@ async function select(key: string) {
       feedback(
         view.track?.id === track.id
           ? '这首歌已是当前歌曲'
-          : view.queueLen
+          : view.queueLen || view.track
             ? '已设为下一首播放'
             : '已开始播放',
       );

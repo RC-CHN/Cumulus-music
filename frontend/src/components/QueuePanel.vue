@@ -476,6 +476,38 @@ async function confirmClear(event: Event) {
     <p v-if="queue?.fm" class="queue-notice" role="status">
       漫游队列由推荐更新，请使用漫游页面控制播放。
     </p>
+    <p
+      v-else-if="view?.intelligence === 'seeded'"
+      class="queue-notice queue-intelligence"
+      role="status"
+    >
+      心动推荐尚未完成，当前保留种子歌曲；可从播放模式切回列表循环。
+    </p>
+    <p
+      v-else-if="view?.intelligence === 'fallback'"
+      class="queue-notice queue-intelligence"
+      role="status"
+    >
+      心动模式开启失败，当前使用列表循环。
+    </p>
+    <p
+      v-else-if="view?.intelligence === 'active'"
+      class="queue-notice queue-intelligence"
+      role="status"
+    >
+      心动模式
+    </p>
+    <p
+      v-if="
+        queueCurrent &&
+        view?.entryId &&
+        !queue?.tracks.some((item) => item.entryId === view?.entryId)
+      "
+      class="queue-notice queue-current-outside"
+      role="status"
+    >
+      当前歌曲继续保留，未列入此播放列表。
+    </p>
     <div
       v-if="queue?.tracks.length && !queue.fm"
       class="queue-selection"

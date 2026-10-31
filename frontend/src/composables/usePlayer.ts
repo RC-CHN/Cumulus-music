@@ -42,7 +42,9 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   const loaded = computed(() =>
     ['playing', 'paused', 'buffering'].includes(view.value?.state ?? ''),
   );
-  const restorable = computed(() => !!view.value?.queueLen && view.value.state === 'idle');
+  const restorable = computed(
+    () => !!(view.value?.queueLen || view.value?.track) && view.value?.state === 'idle',
+  );
   const queueCurrent = computed(
     () =>
       ready.value &&

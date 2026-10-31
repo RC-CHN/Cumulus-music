@@ -110,5 +110,6 @@ intelligence-api-contracts.txt；不能以API成功代替心动播放/恢复验�
   artistLabel；存在条目却无有效歌手名时显示“未知歌手”，真正空态保留各自引导。
   FM probe核对有曲缺歌手，空FM probe另核对空推荐和底栏引导，未改原生歌曲资料。
 - 心动模式的原生持久化/播放转换已有独立实现及测试，见
-  intelligence-playback-contracts.txt。正式账号协调器、五态UI入口和全链路仍未完成，
+  intelligence-playback-contracts.txt。恢复会话的主/小窗状态/退出已有intelligence-restored-ui-contracts.txt后续专项；
+  正式账号协调器、五态UI入口和全链路仍未完成，
   不能把上述普通/FM通过或原生转换通过当作完整心动功能验收。

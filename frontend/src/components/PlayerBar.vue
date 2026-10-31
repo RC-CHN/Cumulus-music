@@ -120,7 +120,7 @@ async function seek(event: Event) {
         <button
           class="play-toggle"
           :aria-label="playing ? '暂停' : '播放'"
-          :disabled="!ready || !view?.queueLen || pending"
+          :disabled="!ready || (!view?.queueLen && !view?.track) || pending"
           @click="player.action(playing ? { kind: 'pause', paused: true } : { kind: 'play' })"
         >
           <Icon :name="playing ? 'pause' : 'play'" />
