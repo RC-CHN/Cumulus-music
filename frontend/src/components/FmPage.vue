@@ -37,7 +37,7 @@ async function selectCard(card: FmCard, autoplay: boolean) {
   ) {
     await props.model.command({
       kind: 'start',
-      quality: props.player.view.value?.requestedQuality ?? 'standard',
+      quality: props.player.view.value?.qualityPreferences.quality ?? 'standard',
     });
   }
 }
@@ -98,7 +98,7 @@ function play() {
   } else
     void props.model.command({
       kind: 'start',
-      quality: props.player.view.value?.requestedQuality ?? 'standard',
+      quality: props.player.view.value?.qualityPreferences.quality ?? 'standard',
     });
 }
 </script>

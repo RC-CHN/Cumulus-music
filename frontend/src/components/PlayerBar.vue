@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import type { PlayerModel } from '../composables/usePlayer';
-import { qualities, time, type PlaybackMode, type Quality } from '../services/player';
+import { time, type PlaybackMode } from '../services/player';
 import type { TrackView } from '../services/contracts';
 import Icon from './Icon.vue';
 import EqualizerPanel from './EqualizerPanel.vue';
 import ModalTransition from './ModalTransition.vue';
 import PlaybackSpeed from './PlaybackSpeed.vue';
+import PlaybackQuality from './PlaybackQuality.vue';
 const equalizerOpen = ref(false);
 const props = defineProps<{ player: PlayerModel; liked: Set<string>; likeBusy: Set<string> }>();
 const emit = defineEmits<{ like: [track: TrackView]; retry: []; comments: [track: TrackView] }>();
@@ -68,6 +69,10 @@ function mute() {
     :data-volume="view?.volume"
     :data-quality="view?.actualQuality"
     :data-requested-quality="view?.requestedQuality"
+    :data-preferred-quality="view?.qualityPreferences.quality"
+    :data-quality-preferences-damaged="view?.qualityPreferences.damaged"
+    :data-play-id="view?.playId"
+    :data-track-id="view?.track?.id"
     :data-speed="view?.speed"
     aria-label="播放器"
   >
@@ -171,33 +176,7 @@ function mute() {
       </div>
     </div>
     <div class="player-tools">
-      <label
-        v-if="!view?.track?.local"
-        class="quality-control"
-        :title="`实际音质：${qualities.find((q) => q.value === view?.actualQuality)?.label ?? '未播放'}`"
-        ><span class="sr-only">音质</span
-        ><select
-          aria-label="音质"
-          :value="view?.requestedQuality ?? 'standard'"
-          :disabled="!loaded || pending"
-          @change="
-            player.action({
-              kind: 'quality',
-              level: ($event.target as HTMLSelectElement).value as Quality,
-            })
-          "
-        >
-          <option v-for="q in qualities" :key="q.value" :value="q.value">
-            {{ q.label }}
-          </option></select
-        ><small
-          v-if="view?.actualQuality && view.actualQuality !== view.requestedQuality"
-          class="actual-quality"
-          >实际{{
-            qualities.find((q) => q.value === view?.actualQuality)?.label ?? view.actualQuality
-          }}</small
-        ></label
-      >
+      <PlaybackQuality :player="player" />
       <PlaybackSpeed :player="player" />
       <div class="volume-control">
         <button

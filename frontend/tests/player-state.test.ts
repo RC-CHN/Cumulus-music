@@ -33,6 +33,14 @@ function state(revision = '1', epoch = '1', playId: string | null = null): Playe
     track: null,
     position: 0,
     timeline: null,
+    fm: false,
+    qualityPreferences: {
+      revision: 'initial',
+      quality: 'standard',
+      damaged: false,
+      appliesToCurrent: false,
+    },
+    canChangeQuality: false,
     requestedQuality: null,
     actualQuality: null,
     volume: 100,
@@ -44,6 +52,32 @@ function state(revision = '1', epoch = '1', playId: string | null = null): Playe
     historyWarning: null,
   };
 }
+test('queueing a playlist uses the saved listening preference rather than current requested or actual quality', async () => {
+  const calls: import('../src/services/player.ts').PlayerAction[] = [];
+  const f = fixture({
+    playerAction: async (_epoch, input) => {
+      calls.push(input);
+      return state('3');
+    },
+  });
+  await f.player.connect(account());
+  f.emit({
+    ...state('2', '1', 'playing'),
+    requestedQuality: 'exhigh',
+    actualQuality: 'standard',
+    qualityPreferences: {
+      revision: 'saved',
+      quality: 'hires',
+      damaged: false,
+      appliesToCurrent: true,
+    },
+  });
+  await f.player.queuePlaylist('7');
+  assert.deepEqual(calls, [
+    { kind: 'queue_playlist', id: '7', quality: 'hires', expected_queue_revision: '1' },
+  ]);
+  f.player.dispose();
+});
 test('loudness preferences can be saved without completing a pending transport request', async () => {
   const loading = deferred<PlayerView>();
   const f = fixture({

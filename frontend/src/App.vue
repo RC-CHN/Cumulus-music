@@ -152,7 +152,7 @@ function playHistory(kind: HistoryKind, revision: string, ids: string[], index: 
     revision,
     ids,
     index,
-    quality: player.view.value?.requestedQuality ?? 'standard',
+    quality: player.view.value?.qualityPreferences.quality ?? 'standard',
   });
 }
 function openHistory(resource: HistoryResource) {
@@ -188,7 +188,7 @@ function openMemberTarget(target: MemberTarget) {
       kind: 'songs',
       ids: [target.id],
       index: 0,
-      quality: player.view.value?.requestedQuality ?? 'standard',
+      quality: player.view.value?.qualityPreferences.quality ?? 'standard',
     });
 }
 function playMember(section: string | null, index: number) {
@@ -200,7 +200,7 @@ function playMember(section: string | null, index: number) {
     revision: member.view.value.revision,
     section,
     index,
-    quality: player.view.value?.requestedQuality ?? 'standard',
+    quality: player.view.value?.qualityPreferences.quality ?? 'standard',
   });
 }
 function playMemberPlaylist(id: string, startId: string | null) {
@@ -209,7 +209,7 @@ function playMemberPlaylist(id: string, startId: string | null) {
     id,
     start_id: startId,
     revision: null,
-    quality: player.view.value?.requestedQuality ?? 'standard',
+    quality: player.view.value?.qualityPreferences.quality ?? 'standard',
   });
 }
 const sceneFm = useSceneFm(core, () => {
@@ -253,7 +253,7 @@ function playSearchCard(item: SearchItem) {
   ) {
     void player.action({ kind: 'pause', paused: player.playing.value });
   } else {
-    const quality = view?.requestedQuality ?? 'standard';
+    const quality = view?.qualityPreferences.quality ?? 'standard';
     void player.prepareSelection((epoch) => searchCardSelection(core, epoch, item, quality));
   }
 }
@@ -272,7 +272,7 @@ function playCatalog(pages: CatalogSelectionPage[], index: number) {
     kind: 'catalog',
     pages,
     index,
-    quality: player.view.value?.requestedQuality ?? 'standard',
+    quality: player.view.value?.qualityPreferences.quality ?? 'standard',
   });
 }
 function playRankingPlaylist(id: string) {
@@ -281,7 +281,7 @@ function playRankingPlaylist(id: string) {
     id,
     start_id: null,
     revision: null,
-    quality: player.view.value?.requestedQuality ?? 'standard',
+    quality: player.view.value?.qualityPreferences.quality ?? 'standard',
   });
 }
 function playRankingSongs(tracks: TrackView[], index: number) {
@@ -290,7 +290,7 @@ function playRankingSongs(tracks: TrackView[], index: number) {
     kind: 'songs',
     ids: tracks.map((t) => t.id),
     index,
-    quality: player.view.value?.requestedQuality ?? 'standard',
+    quality: player.view.value?.qualityPreferences.quality ?? 'standard',
   });
 }
 function playAlbum(id: string, revision: string, startId: string | null) {
@@ -299,7 +299,7 @@ function playAlbum(id: string, revision: string, startId: string | null) {
     id,
     revision,
     start_id: startId,
-    quality: player.view.value?.requestedQuality ?? 'standard',
+    quality: player.view.value?.qualityPreferences.quality ?? 'standard',
   });
 }
 const together = useTogether(
@@ -364,7 +364,7 @@ async function playMvRelated(mvId: string, songId: string) {
     kind: 'mv_related',
     mv_id: mvId,
     song_id: songId,
-    quality: player.view.value?.requestedQuality ?? 'standard',
+    quality: player.view.value?.qualityPreferences.quality ?? 'standard',
   });
   if (player.view.value?.track?.id === songId && !player.error.value && !player.lyricsOpen.value)
     player.toggleLyrics();
@@ -539,7 +539,7 @@ function playCloud(query: CloudQuery, revision: string, startId: string | null) 
     query,
     revision,
     start_id: startId,
-    quality: player.view.value?.requestedQuality ?? 'standard',
+    quality: player.view.value?.qualityPreferences.quality ?? 'standard',
   });
 }
 const playlistManager = usePlaylists(
@@ -895,7 +895,7 @@ watch(
 function play(index = 0) {
   const tracks = result.value?.tracks;
   if (!tracks?.[index] || tracks[index].missing) return;
-  const quality = player.view.value?.requestedQuality ?? 'standard';
+  const quality = player.view.value?.qualityPreferences.quality ?? 'standard';
   if (page.value.kind === 'playlist')
     void player.select({
       kind: 'playlist',
@@ -1601,7 +1601,7 @@ onUnmounted(() => {
           player.lyricsOpen.value
         )
       "
-      :quality="player.view.value?.requestedQuality ?? 'standard'"
+      :quality="player.view.value?.qualityPreferences.quality ?? 'standard'"
     />
     <WindowClosePrompt />
     <ModalTransition :fallback-focus="likeRecoveryFocus">

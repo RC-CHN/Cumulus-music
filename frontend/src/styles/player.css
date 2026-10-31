@@ -510,9 +510,6 @@ input[type='range'] {
   .transport-controls {
     gap: 8px;
   }
-  .quality-control select {
-    max-width: 60px;
-  }
   .lyrics-body {
     gap: 15px;
   }
@@ -555,13 +552,28 @@ input[type='range'] {
 .quality-control {
   position: relative;
 }
-.actual-quality {
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
+
+.player-tools .quality-control .menu-trigger {
+  width: auto;
+  min-width: 48px;
+  max-width: 88px;
+  height: 26px;
+  padding: 4px 7px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--text-secondary);
+  font-size: 11px;
   white-space: nowrap;
-  font-size: 9px !important;
-  color: var(--gold) !important;
-  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.player-tools .quality-control .menu-trigger span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 800px) {
+  .player-tools .quality-control .menu-trigger {
+    max-width: 60px;
+  }
 }

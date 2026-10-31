@@ -169,7 +169,7 @@ async function select(key: string) {
     const next = await props.player.action({
       kind: 'next_play',
       id: track.id,
-      quality: view.requestedQuality ?? 'standard',
+      quality: view.qualityPreferences.quality,
       expected_queue_revision: view.queueRevision,
     });
     if (attempt === sequence && next)

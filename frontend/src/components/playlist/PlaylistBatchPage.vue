@@ -92,7 +92,7 @@ async function perform(kind: 'play' | 'queue') {
     id: props.playlist.id,
     ids: available.value.map((t) => t.id),
     revision: data.value.revision,
-    quality: props.player.view.value?.requestedQuality ?? 'standard',
+    quality: props.player.view.value?.qualityPreferences.quality ?? 'standard',
   };
   const wasRetry = !!document.activeElement?.closest('.batch-operation-feedback');
   acting.value = true;

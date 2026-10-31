@@ -12,13 +12,13 @@ const props = withDefaults(
     disabled?: boolean;
     focusChecked?: boolean;
     contextOnly?: boolean;
-    variant?: 'song' | 'speed';
+    variant?: 'song' | 'speed' | 'quality';
   }>(),
   {
     icon: 'more',
   },
 );
-const emit = defineEmits<{ select: [key: string] }>();
+const emit = defineEmits<{ select: [key: string]; opened: [] }>();
 const open = ref(false);
 const trigger = ref<HTMLButtonElement>();
 const panel = ref<HTMLElement>();
@@ -65,6 +65,7 @@ async function display(last = false, point?: { x: number; y: number }, target?: 
     returnTarget.setAttribute('aria-controls', id);
   }
   open.value = true;
+  emit('opened');
   position.value.visibility = 'hidden';
   await nextTick();
   if (revision !== displayRevision || !open.value || (!point && !trigger.value) || !panel.value)
@@ -75,10 +76,17 @@ async function display(last = false, point?: { x: number; y: number }, target?: 
     box = panel.value.getBoundingClientRect();
   const left = Math.max(
     8,
-    Math.min(point ? point.x : anchor.right - box.width, innerWidth - box.width - 8),
+    Math.min(
+      point
+        ? point.x
+        : props.variant === 'quality'
+          ? (anchor.right + trigger.value!.getBoundingClientRect().left - box.width) / 2
+          : anchor.right - box.width,
+      innerWidth - box.width - 8,
+    ),
   );
   const top =
-    anchor.bottom + box.height + 8 < innerHeight
+    props.variant !== 'quality' && anchor.bottom + box.height + 8 < innerHeight
       ? anchor.bottom + 6
       : Math.max(8, anchor.top - box.height - 6);
   position.value = { left: `${left}px`, top: `${top}px`, visibility: 'visible' };
@@ -89,7 +97,9 @@ async function display(last = false, point?: { x: number; y: number }, target?: 
   const checked = props.focusChecked
     ? items.find((item) => item.getAttribute('aria-checked') === 'true')
     : undefined;
-  ((last ? items.at(-1) : (checked ?? items[0])) ?? panel.value)?.focus({ preventScroll: true });
+  const focusedItem = (last ? items.at(-1) : (checked ?? items[0])) ?? panel.value;
+  focusedItem?.focus({ preventScroll: true });
+  if (focusedItem !== panel.value) focusedItem?.scrollIntoView({ block: 'nearest' });
 }
 const show = (last = false) => display(last);
 const showAt = (x: number, y: number, target?: HTMLElement) => display(false, { x, y }, target);
@@ -177,7 +187,8 @@ defineExpose({ show, showAt, close });
       ref="trigger"
       class="icon-button menu-trigger"
       :aria-label="label"
-      :data-tooltip="label"
+      :data-tooltip="triggerText ? `${label}：${triggerText}` : label"
+      :aria-describedby="triggerText ? `${id}-value` : undefined"
       aria-haspopup="menu"
       :aria-expanded="open"
       :aria-controls="open ? id : undefined"
@@ -189,6 +200,7 @@ defineExpose({ show, showAt, close });
       <span v-if="triggerText">{{ triggerText }}</span>
       <Icon v-else :name="icon" />
     </button>
+    <span v-if="triggerText" :id="`${id}-value`" class="sr-only">当前{{ triggerText }}</span>
     <Teleport to="body">
       <MenuTransition>
         <div
@@ -199,6 +211,7 @@ defineExpose({ show, showAt, close });
           :class="{
             'song-action-menu': variant === 'song',
             'speed-action-menu': variant === 'speed',
+            'quality-action-menu': variant === 'quality',
           }"
           role="menu"
           tabindex="-1"
@@ -206,22 +219,27 @@ defineExpose({ show, showAt, close });
           :style="position"
           @keydown="keydown"
         >
-          <template v-for="item in items" :key="item.key">
-            <div v-if="item.separator" role="separator" class="menu-separator" />
-            <button
-              v-else
-              type="button"
-              :role="item.checked === undefined ? 'menuitem' : 'menuitemradio'"
-              :aria-checked="item.checked"
-              :disabled="item.disabled"
-              :title="item.hint"
-              :class="{ danger: item.danger, checked: item.checked }"
-              @click="select(item.key)"
-            >
-              <Icon v-if="item.icon" :name="item.icon" /><span>{{ item.label }}</span
-              ><Icon v-if="item.checked" class="menu-check" name="check" />
-            </button>
-          </template>
+          <slot name="header" />
+          <div class="menu-items">
+            <template v-for="item in items" :key="item.key">
+              <div v-if="item.separator" role="separator" class="menu-separator" />
+              <button
+                v-else
+                type="button"
+                :role="item.checked === undefined ? 'menuitem' : 'menuitemradio'"
+                :aria-checked="item.checked"
+                :disabled="item.disabled"
+                :title="item.hint"
+                :class="{ danger: item.danger, checked: item.checked }"
+                @click="select(item.key)"
+              >
+                <Icon v-if="item.icon" :name="item.icon" /><slot name="item" :item="item"
+                  ><span>{{ item.label }}</span></slot
+                ><Icon v-if="item.checked" class="menu-check" name="check" />
+              </button>
+            </template>
+          </div>
+          <slot name="footer" />
         </div>
       </MenuTransition>
     </Teleport>

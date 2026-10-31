@@ -221,3 +221,64 @@
 .track-remove-actions .primary {
   border-color: var(--accent);
 }
+.menu-items {
+  display: contents;
+}
+.quality-action-menu {
+  display: flex;
+  flex-direction: column;
+  width: 378px;
+  padding: 6px 0 10px;
+  border-radius: 8px;
+  max-height: calc(100vh - 104px);
+  overflow: hidden;
+}
+.quality-menu-heading {
+  padding: 0 16px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.quality-menu-heading strong {
+  display: block;
+  height: 34px;
+  line-height: 34px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.quality-menu-heading p,
+.quality-menu-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 20px;
+}
+.quality-menu-heading .quality-warning {
+  color: var(--warning);
+}
+.quality-action-menu .menu-items {
+  display: block;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  min-height: 0;
+}
+.quality-action-menu button {
+  padding: 12px 16px;
+  border-radius: 0;
+}
+.quality-action-menu button:focus-visible {
+  outline-offset: -2px;
+}
+.quality-menu-option {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.quality-menu-option small {
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--muted);
+}
+.quality-menu-note {
+  padding: 8px 16px 0;
+  border-top: 1px solid var(--line);
+  flex-shrink: 0;
+}

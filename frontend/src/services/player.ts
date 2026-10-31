@@ -18,10 +18,10 @@ export const qualities: { value: Quality; label: string }[] = [
   { value: 'lossless', label: '无损' },
   { value: 'hires', label: 'Hi-Res' },
   { value: 'dolby', label: '杜比全景声' },
-  { value: 'jyeffect', label: '高清环绕声' },
+  { value: 'jyeffect', label: '高清臻音' },
   { value: 'jymaster', label: '超清母带' },
   { value: 'sky', label: '沉浸环绕声' },
-  { value: 'vivid', label: '臻品音质' },
+  { value: 'vivid', label: '臻音全景声' },
   { value: '64aac', label: '节省流量' },
 ];
 export type PlaybackMode = 'order_loop' | 'single_loop' | 'random' | 'sequential';
@@ -56,6 +56,13 @@ export interface PlayerView {
   track: TrackView | null;
   position: number | null;
   timeline: Timeline | null;
+  qualityPreferences: {
+    revision: string | null;
+    quality: Quality;
+    damaged: boolean;
+    appliesToCurrent: boolean;
+  };
+  canChangeQuality: boolean;
   requestedQuality: Quality | null;
   actualQuality: Quality | null;
   volume: number;
@@ -175,6 +182,7 @@ export type PlayerAction =
   | { kind: 'next_play'; id: string; quality: Quality; expected_queue_revision: string }
   | { kind: 'loudness'; expected_revision: string; enabled: boolean }
   | { kind: 'retry_loudness' | 'repair_loudness' }
+  | { kind: 'repair_quality' }
   | { kind: 'equalizer'; expected_revision: string; settings: EqualizerSettings }
   | { kind: 'retry_equalizer' | 'repair_equalizer' }
   | { kind: 'play' | 'next' | 'previous' | 'stop' | 'restore' | 'startup' | 'refresh' | 'clear' }
@@ -182,6 +190,7 @@ export type PlayerAction =
   | { kind: 'seek'; seconds: number }
   | { kind: 'volume' | 'speed'; value: number }
   | { kind: 'quality'; level: Quality }
+  | { kind: 'quality_for'; level: Quality; play_id: string; expected_revision: string }
   | { kind: 'mode'; mode: PlaybackMode }
   | { kind: 'select'; entry_id: string }
   | { kind: 'remove' | 'reorder'; entry_ids: string[] };

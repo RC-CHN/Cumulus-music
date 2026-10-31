@@ -122,7 +122,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   // Resource-menu failures belong to that operation, not the audio-error bar.
   // A user retry captures the latest queue fence; no automatic write replay.
   function queuePlaylist(id: string, selection?: { ids: string[]; revision: string }) {
-    const quality = view.value?.requestedQuality ?? 'standard';
+    const quality = view.value?.qualityPreferences.quality ?? 'standard';
     return queueAction(
       selection
         ? { kind: 'queue_playlist_batch', id, quality, ...selection }
