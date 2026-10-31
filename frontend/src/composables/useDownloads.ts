@@ -143,9 +143,12 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
     await refresh();
   }
   function show(value: boolean) {
+    const quiet = visible && !!view.value;
     visible = value;
     stopTimer();
-    if (value) void refresh();
+    // Opening/closing an overlay on an already visible page must not disable
+    // the control to which its leave transition is returning keyboard focus.
+    if (value) void refresh(quiet);
   }
   function filter(value: Partial<DownloadQuery>) {
     const next = { ...query.value, ...value, offset: 0, limit: 100 };

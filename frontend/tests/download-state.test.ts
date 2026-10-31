@@ -386,3 +386,21 @@ test('download feedback retains operation context across category switches and l
   assert.equal(model.notice.value, '暂停全部下载：已受理 1 项');
   model.dispose();
 });
+
+test('overlay visibility refresh retains loaded controls while its read is pending', async () => {
+  let pending: ReturnType<typeof deferred<DownloadsView>> | undefined;
+  const model = useDownloads({
+    downloads: async (e) => (pending ? pending.promise : state(e)),
+  } as DownloadClient);
+  await model.connect(account());
+  model.show(true);
+  await turn();
+  pending = deferred<DownloadsView>();
+  const loaded = model.view.value;
+  model.show(true);
+  assert.equal(model.loading.value, false);
+  assert.equal(model.view.value, loaded);
+  pending.resolve(state());
+  await turn();
+  model.dispose();
+});

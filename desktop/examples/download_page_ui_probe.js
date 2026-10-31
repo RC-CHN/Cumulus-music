@@ -40,7 +40,7 @@
       await select('voice');assert(all('.download-table-header>[role="columnheader"]').length===4&&!one('.download-pagination'),'voice classified');assert(first().textContent.includes('合成声音'),'voice resource');await capture(`voices_${suffix}`);
       await select('mv');const grid=one('.download-mv-scroll');const ids=new Set(all('.download-mv-card').map(n=>n.dataset.downloadMv));assert(all('.download-mv-card').every(n=>n.textContent.includes('合成MV')),'MV source');grid.scrollTop=grid.scrollHeight;grid.dispatchEvent(new Event('scroll'));await sleep(180);all('.download-mv-card').forEach(n=>ids.add(n.dataset.downloadMv));assert(ids.size===9,'all MV records reachable through virtualization');grid.scrollTop=0;grid.dispatchEvent(new Event('scroll'));await sleep(180);const cover=one('.download-mv-cover'),r=rect(cover);near(r.height,r.width*.565,'MV aspect');await capture(`mvs_${suffix}`);
       await select('active');assert(all('.download-table-header>[role="columnheader"]').length===3&&all('[data-download-index]').length===5,'active all resources');for(const n of all('.download-toolbar>.download-button')){near(rect(n).width,114,'action width');near(rect(n).height,48,'action height');}assert(one('.download-progress.failed'),'failure row');const paused=all('.download-progress-status').find(n=>n.textContent==='已暂停');assert(paused&&paused.scrollWidth<=paused.clientWidth+1,'paused label fits');await capture(`active_${suffix}`);
-      click(button('全部清空'));await wait(()=>one('.download-dialog[open]'),'clear confirm');await capture(`clear_${suffix}`);await closeDialog();assert(document.activeElement===button('全部清空'),'clear return focus');
+      click(button('全部清空'));await wait(()=>one('.download-dialog[open]'),'clear confirm');await capture(`clear_${suffix}`);const provides=one('#app').__vue_app__._context.provides,bridge=provides[Reflect.ownKeys(provides).find(k=>typeof k==='symbol'&&k.description==='core-client')],read=bridge.downloads;let releaseClose;bridge.downloads=async(...args)=>{await new Promise(r=>releaseClose=r);return read(...args);};await closeDialog();await wait(()=>releaseClose,'closing modal refresh held');assert(document.activeElement===button('全部清空')&&!button('全部清空').disabled,'clear return focus '+document.activeElement?.outerHTML.slice(0,500));bridge.downloads=read;releaseClose();await wait(()=>ready(),'close refresh settled');
     }
     await emit('resize',{width:1120,height:760});await wait(()=>innerWidth===1120,'wide controls');await select('song');
     for(const [label,expected] of [['name_ascending','合成单曲 001'],['name_descending','合成单曲 120'],['artist_ascending',null],['artist_descending',null]]) {
@@ -71,13 +71,14 @@
     await select('voice');await select('song');await fixture('remove_first');scroll=one('.download-scroll');scroll.scrollTop=scroll.scrollHeight;scroll.dispatchEvent(new Event('scroll'));await wait(()=>!one('.download-continuation')&&one('.download-table').getAttribute('aria-rowcount')==='120','changed prefix');const freshIds=new Set();for(let top=0;top<=scroll.scrollHeight;top+=scroll.clientHeight){scroll.scrollTop=top;scroll.dispatchEvent(new Event('scroll'));await sleep(70);all('[data-download-index]').forEach(n=>freshIds.add(n.dataset.downloadTask));}assert(freshIds.size===119,'changed prefix has no skipped or duplicate records');await capture('growth_changed_inventory');await fixture('restore');
     await select('voice');await select('song');mode='hold';readStarted=false;scroll=one('.download-scroll');scroll.scrollTop=scroll.scrollHeight;scroll.dispatchEvent(new Event('scroll'));await wait(()=>readStarted,'held second window');await select('voice');mode='';releaseGrowth();await sleep(250);assert(tab('voice').getAttribute('aria-selected')==='true'&&first().textContent.includes('合成声音'),'late window cannot restore previous category');await capture('growth_late_category');client.downloads=originalDownloads;
     await fixture('mv_window');
+    let lastMv;client.downloads=async(...args)=>{const result=await originalDownloads(...args);if(args[1].category==='mv')lastMv=result;return result;};
     for(const [w,h] of [[1120,760],[760,540]]){
       await emit('resize',{width:w,height:h});await wait(()=>innerWidth===w,'MV continuation resize');
       await select('voice');await select('mv');const grid=one('.download-mv-scroll');
       assert(one('.download-continuation'),'MV first window has more');
       grid.scrollTop=grid.scrollHeight;grid.dispatchEvent(new Event('scroll'));
-      await wait(()=>!one('.download-continuation'),'MV continuation completed');assert(grid.scrollTop>0,'MV growth preserves scroll');
-      const ids=new Set(),trace=[];
+      await wait(()=>!one('.download-continuation')&&lastMv?.tasks.length===129,'MV continuation completed');assert(new Set(lastMv.tasks.map(t=>t.id)).size===129,'native MV inventory is unique');assert(grid.scrollTop>0,'MV growth preserves scroll');
+      const ids=new Set(),trace=[],mapping=new Map();
       for(let top=0;top<=grid.scrollHeight;top+=grid.clientHeight){
         const y=Math.min(top,grid.scrollHeight-grid.clientHeight);
         grid.scrollTop=y;grid.dispatchEvent(new Event('scroll'));
@@ -87,12 +88,13 @@
           const rendered=all('.download-mv-row');
           return Math.abs(grid.scrollTop-y)<=1 && rendered.length && rect(rendered[0]).y<=rect(grid).y+1 && rect(rendered.at(-1)).bottom>=rect(grid).bottom-1;
         },'MV viewport '+w+' target '+y);
-        const cards=all('.download-mv-card');cards.forEach(n=>ids.add(n.dataset.downloadMv));
+        const cards=all('.download-mv-card');assert(cards.every(n=>lastMv.tasks[Number(n.dataset.mvIndex)]?.id===n.dataset.downloadMv),'MV card index matches native inventory '+JSON.stringify({w,cards:cards.map(n=>[n.dataset.mvIndex,n.dataset.downloadMv]),native:lastMv.tasks.map(t=>t.id)}));cards.forEach(n=>{ids.add(n.dataset.downloadMv);mapping.set(n.dataset.mvIndex,n.dataset.downloadMv);});
         trace.push([y,grid.scrollTop,grid.scrollHeight,grid.clientHeight,cards[0].dataset.mvIndex,cards.at(-1).dataset.mvIndex]);
       }
-      assert(ids.size===129,'all 129 distinct MV records reachable '+JSON.stringify({w,count:ids.size,trace}));
+      assert(ids.size===129,'all 129 distinct MV records reachable '+JSON.stringify({w,count:ids.size,trace,mapping:[...mapping]}));
       await capture('mv_continuous_'+w,{viewportSteps:trace});
     }
+    client.downloads=originalDownloads;
     // Full-size and narrow grids use four and two columns, respectively.
     for(const [w,h,n] of [[1120,760,4],[760,540,2]]){
       await emit('resize',{width:w,height:h});await wait(()=>innerWidth===w,'keyboard grid size');await select('voice');await select('mv');
