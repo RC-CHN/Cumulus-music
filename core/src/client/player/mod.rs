@@ -7,6 +7,7 @@ mod output;
 mod playlist_batch;
 mod preferences;
 mod quality;
+mod queue_collection;
 mod queue_edit;
 mod queue_playlist;
 mod selection;

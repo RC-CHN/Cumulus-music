@@ -62,6 +62,31 @@ impl LocalLibrary {
         if ids.len() > 500 {
             return Err(Error::InvalidInput("local mapping page exceeds 500"));
         }
+        self.online_mappings_inner(session, token, ids)
+    }
+
+    /// Native collection uses one index scan for the complete queue, retaining
+    /// the public page limit and the same account/file identity checks.
+    pub(crate) fn online_mappings_for_collection(
+        &self,
+        session: &AccountSession,
+        token: &SessionToken,
+        ids: &[String],
+    ) -> Result<BTreeMap<String, LocalMapping>> {
+        if ids.len() > 50_000 {
+            return Err(Error::InvalidInput(
+                "local collection exceeds queue capacity",
+            ));
+        }
+        self.online_mappings_inner(session, token, ids)
+    }
+
+    fn online_mappings_inner(
+        &self,
+        session: &AccountSession,
+        token: &SessionToken,
+        ids: &[String],
+    ) -> Result<BTreeMap<String, LocalMapping>> {
         let requested = ids.iter().collect::<BTreeSet<_>>();
         let _lock = self.lock()?;
         let current = self

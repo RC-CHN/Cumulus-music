@@ -83,6 +83,16 @@ pub struct QueueView {
     pub current: Option<String>,
     pub tracks: Vec<QueueTrack>,
 }
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueueCollectionView {
+    pub epoch: String,
+    pub revision: String,
+    pub total: usize,
+    pub unsupported: usize,
+    pub duplicates: usize,
+    pub tracks: Vec<super::super::dto::TrackView>,
+}
 
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]

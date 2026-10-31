@@ -249,6 +249,9 @@ function fixture(overrides: Partial<PlayerClient> = {}) {
       throw Error('unexpected quality trial command');
     },
     playerQueue: async () => ({ epoch: '1', revision: '1', current: null, tracks: [] }),
+    playerQueueCollection: async () => {
+      throw Error('unexpected queue collection read');
+    },
     playerLyrics: async (_e, id) => lyrics(id),
     lyricPreferences: async (_e, id) => lyrics(id),
     lyricOffset: async (_e, id) => lyrics(id),

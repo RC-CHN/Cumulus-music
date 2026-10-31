@@ -24,7 +24,7 @@ pub use super::mv::{
 pub use super::player::{
     LyricsView, OutputCommand, OutputEngineView, OutputView, PlaySelection, PlayerAction,
     PlayerOrigin, PlayerView, QualityChoiceView, QualityDetailsView, QualityTrialCommand,
-    QualityTrialOutcome, QualityTrialView, QueueEdit, QueueTrack, QueueView,
+    QualityTrialOutcome, QualityTrialView, QueueCollectionView, QueueEdit, QueueTrack, QueueView,
     StartupPreferencesCommand, StartupPreferencesView,
 };
 pub use super::playlist_cover::{CoverCommand, CoverOutcome};

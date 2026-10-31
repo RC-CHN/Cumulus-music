@@ -310,6 +310,10 @@ fn account_snapshot_and_stale_mutation_cross_registered_commands() {
             json!({"epoch":"0","selection":{"kind":"songs","ids":["1"],"index":0,"quality":"lossless"}}),
         ),
         ("player_queue", json!({"epoch":"0"})),
+        (
+            "player_queue_collection",
+            json!({"epoch":"0","revision":"0"}),
+        ),
         ("player_lyrics", json!({"epoch":"0","playId":"old"})),
         ("playlist_editor", json!({"epoch":"0","id":"10"})),
         ("playlist_tags", json!({"epoch":"0"})),

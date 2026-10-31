@@ -115,6 +115,14 @@ export interface QueueView {
   current: string | null;
   tracks: QueueTrack[];
 }
+export interface QueueCollectionView {
+  epoch: string;
+  revision: string;
+  total: number;
+  unsupported: number;
+  duplicates: number;
+  tracks: TrackView[];
+}
 export type QueueEdit =
   | { kind: 'select'; entry_id: string }
   | { kind: 'remove' | 'reorder'; entry_ids: string[] }
@@ -297,6 +305,7 @@ export interface PlayerClient {
   playerQualityDetails(epoch: string, playId: string): Promise<QualityDetailsView>;
   playerQualityTrial(epoch: string, command: QualityTrialCommand): Promise<QualityTrialOutcome>;
   playerQueue(epoch: string): Promise<QueueView>;
+  playerQueueCollection(epoch: string, revision: string): Promise<QueueCollectionView>;
   playerLyrics(epoch: string, playId: string): Promise<LyricsView>;
   lyricPreferences(
     epoch: string,
