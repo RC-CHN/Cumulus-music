@@ -64,17 +64,18 @@ fn song(id: u64) -> Value {
     json!({"id":id,"name":format!("合成歌曲 {id} · A quiet afternoon"),"ar":[{"name":"Cumulus"}],"al":{"name":"界面体验验证"},"dt":if id==1 {6_000_000} else {235_000},"fee":id%3})
 }
 fn playlist(id: u64) -> Value {
-    playlist_editor_fixture::decorate(
+    intelligence_start_fixture::playlist(playlist_editor_fixture::decorate(
         playlist_layout_fixture::decorate(
             json!({"id":id,"userId":if id<20 {2} else {3},"name":if id==1 {"我喜欢的音乐".into()} else if id==2 {"午后散步 · 一份用来检查较长名称与编辑入口的歌单".into()} else {format!("合成歌单 {id}")},"creator":{"userId":if id<20 {2} else {3},"nickname":"Cumulus"},"specialType":if id==1 {5} else {0},"privacy":10,"trackCount":40,"description":"沿着熟悉的小路，留一点时间给音乐。这是一段较长的合成简介，用来检查窄窗口里的文字、封面和操作入口。","tags":["轻音乐"],"trackIds":(1..=40).map(|id|json!({"id":id,"v":0})).collect::<Vec<_>>()}),
             id,
         ),
         id,
-    )
+    ))
 }
 impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, args: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            intelligence_start_fixture::before(path).await;
             if let Some(response) = intelligence_start_fixture::response(path, &args).await {
                 return response;
             }
@@ -281,7 +282,7 @@ fn main() {
             let stage=value["stage"].as_str().unwrap_or("");
             if intelligence_start_fixture::enabled() && stage=="intelligence-start-fixture" {
                 let kind=value["kind"].as_str().unwrap();intelligence_start_fixture::control(kind);
-                handle.get_webview_window("main").unwrap().eval(format!("window.__intelligenceStartAck={};",json!(kind))).unwrap();return;
+                handle.get_webview_window("main").unwrap().eval(format!("window.__intelligenceStartReport={};window.__intelligenceStartAck={};",intelligence_start_fixture::report(),json!(kind))).unwrap();return;
             }
             if intelligence_ui_fixture::enabled() && stage=="intelligence-fixture" {
                 let handle=handle.clone();let store=proof_store.clone();let session=fixture_session.clone();let root=cover_root.clone();

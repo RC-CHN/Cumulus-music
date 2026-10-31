@@ -5,7 +5,8 @@
 “我喜欢的音乐”详情页。不是用恢复夹具冒充实际开启，也没有Python子进程。
 UI/原生/网络各层验证须分别看待：本批桌面演练仍使用合成账号、API及音源，
 不能据此宣称当前真实账号的会员、风控或线上心动推荐已经重新验证。
-大目标保持进行中。主播放条五态进入、小窗完整进入、补充推荐/分隔等仍继续。
+大目标保持进行中。主播放条五态已由intelligence-mode-cycle-contracts.txt专项接入；
+小窗完整进入、补充推荐/分隔等仍继续。
 
 官方依据（没有使用YesPlayMusic）
 references/netease-3.1.42.205594-analysis/recovered-js/modules/
@@ -44,7 +45,8 @@ FeatureRecommend/HeartbeatCard.tsx：
   仅本地提交竞争最多重试4次，HTTP不自动重放。暂停/定位/停止不会使正常推荐
   元数据完成失效；新选曲/退出/新会话则使迟到结果失效。
 - playback/intelligence：已有原子Begin/Complete/Fail/Leave及双CAS恢复；本批在同一
-  账号事务持久化liked_metadata，供推荐中的喜欢曲回查。前端只收到phase。
+  账号事务持久化liked_metadata，供推荐中的喜欢曲回查。前端收到phase与它提交的
+  操作UUID用于精确关联；原生context.id、元数据/备份与推荐字典不公开。
 - desktop/src/player/intelligence.rs：Tauri命令薄适配，无业务或凭据副本。
 - services/player.ts、adapters/tauri.ts：类型化IPC；usePlayer.intelligence接收新快照，
   清掉旧音频操作的失败重试所有者，不占用通用transport busy。
@@ -89,7 +91,8 @@ player_intelligence_eligibility(epoch, revision)：实际检查当前歌曲是�
   开始的播放；UI明确叫“取消推荐”，持久化Seeded仍可显式继续或退出。
 - Continue不重放种子、不夺取Audio焦点、不自动恢复播放；无缓存的旧schema=1
   Seeded会话仅补目录回查资料，原始请求count/backup保持不变。重开也不自动请求。
-- Current原生入口必须从喜欢歌单的实际当前媒体开始，备份普通队列；Likes入口
+- Current原生入口从喜欢歌单的实际当前媒体开始，即使它后来移出喜欢列表仍可
+  作为firstTrack，仍检查黑名单及正常音源授权；备份普通队列。Likes入口
   随机从筛选候选选择，显式first_id使用fromPlayOne。旧队列/旧版本不能误播。
 - 社区差异：始终尊重现有歌曲/歌手黑名单，直接从候选中排除；不伪造官方AB
   分配，也没有实现官方被拦曲目的解除屏蔽弹窗/逐条播放跳过界面。

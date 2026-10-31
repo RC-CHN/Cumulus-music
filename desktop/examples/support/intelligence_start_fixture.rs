@@ -12,6 +12,9 @@ struct Fixture {
     fail: AtomicBool,
     wake: Notify,
     requests: Mutex<Vec<Value>>,
+    hold_catalog: AtomicBool,
+    catalog_started: AtomicBool,
+    removed_seed: AtomicBool,
 }
 fn fixture() -> &'static Fixture {
     static VALUE: OnceLock<Fixture> = OnceLock::new();
@@ -24,6 +27,16 @@ pub fn control(kind: &str) {
     assert!(enabled());
     let f = fixture();
     match kind {
+        "observe" => {}
+        "hold_catalog" => {
+            f.catalog_started.store(false, Ordering::SeqCst);
+            f.hold_catalog.store(true, Ordering::SeqCst);
+        }
+        "release_catalog" => {
+            f.hold_catalog.store(false, Ordering::SeqCst);
+            f.wake.notify_waiters();
+        }
+        "unlike_seed" => f.removed_seed.store(true, Ordering::SeqCst),
         "hold" => {
             f.hold.store(true, Ordering::SeqCst);
             f.fail.store(false, Ordering::SeqCst);
@@ -42,7 +55,33 @@ pub fn control(kind: &str) {
     }
 }
 pub fn report() -> Value {
-    json!({"requests":fixture().requests.lock().unwrap().clone(),"realAccountWrites":0,"realMusicRequests":0})
+    json!({"requests":fixture().requests.lock().unwrap().clone(),"catalogStarted":fixture().catalog_started.load(Ordering::SeqCst),"realAccountWrites":0,"realMusicRequests":0})
+}
+pub fn playlist(mut value: Value) -> Value {
+    if enabled() && value["id"] == 1 && fixture().removed_seed.load(Ordering::SeqCst) {
+        value["trackIds"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|row| row["id"] != 1);
+        value["trackCount"] = json!(39);
+    }
+    value
+}
+pub async fn before(path: &str) {
+    if !enabled() || path != "/api/v3/song/detail" {
+        return;
+    }
+    let f = fixture();
+    loop {
+        let wake = f.wake.notified();
+        tokio::pin!(wake);
+        wake.as_mut().enable();
+        if !f.hold_catalog.load(Ordering::SeqCst) {
+            break;
+        }
+        f.catalog_started.store(true, Ordering::SeqCst);
+        wake.await;
+    }
 }
 pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
     if !enabled() {

@@ -26,6 +26,8 @@ hybrid_app.chunk.1482700000000.js/7.js：
 - PlayerView.intelligence只投影seeded/active/fallback或null，不传会话ID、请求、
   备份、推荐字典、授权/音源或原生source。seeded说明推荐未完成；active显示心动；
   fallback说明失败并返回列表循环，不把它渲染成推荐成功。
+  后续新增intelligenceOperation回传调用端自己生成的UUID，仅作开启归属关联；
+  私有context.id仍不传。新入口及兼容格式见intelligence-mode-cycle-contracts.txt。
 - QueueEntry.visible_in_queue供主窗口、小窗、收藏及自动前后切歌共用。隐藏当前
   不能在推荐全部移除后再次循环，单曲循环也不能让它重新进入可见列表。进入
   其它曲目时原有核心原子移除临时项。显式t1保留缺失当前项时清除transient后

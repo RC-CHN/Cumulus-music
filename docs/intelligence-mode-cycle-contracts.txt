@@ -1,0 +1,93 @@
+主播放条心动五态、请求归属与取消（2026-10-31）
+
+交付范围
+正式主播放条已经接入心动→列表循环→单曲循环→随机→顺序→心动五态；不具备
+资格时保留普通四态，一起听三态与FM两态独立。Native PlaybackMode仍只有四个
+普通队列模式；心动是完整的业务会话，进入调用实际Current开启协调器，退出调用
+已有Leave，不把随机模式或一个额外枚举值当作心动实现。
+本批不代表小窗五态入口、补充推荐/分隔或全应用UI已经完成；完整目标继续。
+
+官方来源
+recovered-js/modules/hybrid_app.chunk.1482700000000.js/7.js导出t：
+  SHA256 4914ce443197d0538f055ae064b910a1a5f7c3d83c1c1e60978b9d7f2b055e1e。
+  原函数实际选择：一起听p环，否则有资格d环，否则f环；非法现态按max(index,0)。
+  core/tests/fixtures/official-intelligence-modes.json为原factory执行的20个组合，
+  包含心动资格开关、一起听覆盖和五种当前值；FM仍按既有PlayMode独立分支。
+  私有冻结脚本仅为不参与模式计算的M59质量表初始化提供空Map，不重写环或公式。
+同目录308.js（SHA256 2cd3a0da5759370a80cfe20c7ac4e58ef192bab33c396e8eff3efdd35c254a7d）：
+  setPlaying的isCanHeartBeat按原始来源是否本人喜欢歌单或aiMode判断；不按搜索结果
+  中某首歌的liked布尔值开启。switchPlayingMode/aiPlay使用实际firstTrack，备份
+  当前普通列表，再明确重新播放这个种子；不是保持暂停位置地冒充进入完成。
+  当前曲后来从喜欢列表移除，firstTrack仍可作种子；喜欢列表仍用于count/首项/回退。
+references/ui-recovery/sources/packages/pc/src/components/PlayBar/PlayMode.tsx：
+  SHA256 6aa41644381ae6f88bfdcd106f2915091e6aecf45e613c4f905237d48fd35e0d。
+  显示最新点击目标、debounce分发，实际playingMode回读后修正。没有使用YesPlayMusic。
+
+前端结构与资格
+- playbackMode.ts的ModeTarget是UI目标，intelligence单独表达完整用例；nextModeTarget
+  对照上述20向量。actual普通mode、实际family与乐观目标分开，不向普通Mode IPC传AI。
+- App只传当前账号已读取且owned的favorite歌单ID；canHeartBeat再核对原生公开
+  PlayerView.origin，且排除FM/一起听。账号资源未读到时不猜测资格。此为显示提示，
+  Current Start仍重新从服务端核对本人喜欢歌单、队列版本、账号和媒体焦点。
+- usePlaybackMode串行提交首次与最后点击目标；排队的心动目标被后续普通目标取代
+  时可以跳过开启。如果种子已提交，新的普通目标必须执行真实Leave；种子未提交
+  时取消这次读取后，仅对原队列应用用户最新普通模式。
+- useIntelligence为详情入口、播放条入口、取消/继续共用的请求所有者。等待不占用
+  transport busy；准备与获取推荐有不同文案。模式入口准备失败在模式控件旁显示
+  独立错误/重试；已提交种子后的推荐失败使用共享心动反馈，不重复成普通播放重试。
+- intelligenceAttempt观察精确操作UUID，而非仅看phase变化。只有本次请求已经提交
+  的种子才可接续本轮点击；其它窗口、新选曲、新账号的结果不能被误认。
+  观察到自己的种子后即释放模式切换等待，不要求HTTP推荐返回才允许退出/切换。
+- 在五态模式开启过程中点共享“取消推荐”，也视为用户明确取消，不显示假模式错误。
+  取消后Native回执和状态事件乱序时，使用一次本地只读Snapshot核对；没有HTTP重放。
+  取消已开始播放的推荐仍保留种子并显示显式继续/退出，不承诺撤销已经播放的音乐。
+- 资格丢失/队列更换不自动迁移旧写操作；过时结果丢弃或明确要求刷新/重试。保存失败
+  即使推进了队列版本，也不能当作恢复成功；显式重试使用当前版本及新的操作UUID。
+- 图标有短暂opacity/transform进退，快速点击只绘制最新目标；系统及应用减少动态
+  效果均关闭此动画。没有以这些动效证明实机刷新率或官方逐像素一致。
+
+原生关联、账号隔离及数据格式
+- IntelligenceSession新增可选operation_id（schema=1，旧记录默认None）。它由调用端
+  生成，跟种子/备份/缓存同事务保存；另有的context.id仍为私有原生会话ID。
+  PlaybackSnapshot与公开PlayerView.intelligenceOperation仅投影这个调用端UUID，
+  没有暴露context.id、请求、喜欢元数据、备份、推荐字典、Cookie或授权URL。
+  UUID是归属标记，不是权限；所有操作仍验证账号代次/队列/焦点。
+- Current种子来自实际原生资源，不能再错误要求它仍在最新喜欢候选列表里。缺元数据
+  时按ID补目录，再检查歌曲/歌手黑名单；正常音源、离线账本/权益/完整性依旧由
+  Native SourceResolver授权。显式Likes first_id仍必须在筛选后的喜欢候选中。
+- Flight在准备阶段订阅原队列版本，在种子提交后的读取阶段订阅私有context.id。
+  普通模式退出、FM/一起听或其它入口选曲/替换都会立即使旧读取失效；无需前端还
+  保持存活，也不要求HTTP先返回才能释放gate。Continue使用新的调用UUID也不遗漏。
+  订阅先于actor核对；之后的网络wait同时观察账号、取消和播放状态。暂停/定位/
+  音量/时钟不改队列身份，推荐读取不被这些操作错误取消。已提交命令的成功回执
+  不会改成取消结果；失败的Leave仍保留原会话，迟到提交继续有会话/fence保护。
+- 公共Cancel可能比Start的IPC handler更早运行。Host保留最多64个内存取消标记，
+  精确绑定SessionToken与UUID，Open消费匹配标记；跨账号/代次不会继承。不落盘，
+  不影响其它UUID，不把其它未决操作当成成功取消。原生退出清理不制造提前取消标记。
+
+IPC与HTTP
+既有player_intelligence(Start Current)/Cancel/Continue与player_action(mode_for)继续
+使用原类型。新增player_snapshot(epoch)：只读Native Snapshot并投影公开DTO，
+不刷新音源、不重放播放、不改队列，也不调用音乐HTTP。
+心动HTTP依旧只发playlistId/songId/type/startMusicId/count；operation_id不会发往
+/api/playmode/intelligence/list。目录/黑名单/下载/会员等调用顺序见intelligence-start-
+contracts.txt。本批实际请求全部由合成后端处理，不冒称真实账号线上验证。
+
+验证
+- intelligence_coordinator目前19项，从实际MusicClient运行；新增当前曲已移出喜欢
+  仍作为种子、当前曲屏蔽拒绝、成功退出取消旧读取、Continue的新UUID退出取消、
+  Cancel先于Start且不跨代次。已有两条新选曲测试加强为不释放旧HTTP仍须自动结束。
+  对外关联UUID与私有context.id分别断言；既有原始pl、离线/恢复/取消等仍保留。
+- 前端模式状态覆盖完整20向量、普通/一起听/FM隔离、首次/最后目标、未提交取消、
+  种子抢先提交、等待读取时跳过、跨五态重进、显式重试、别窗口与新来源隔离、
+  共享取消无假错误；新Snapshot读回仍让更新的订阅状态优先。
+  详情按钮和播放条共同区分准备/获取推荐；按钮宽度固定，不推挤下载/更多入口。
+- intelligence_cycle_probe通过正式按钮/Vue/IPC/SQLite/actor/libmpv(null)演练21态：
+  普通三态、实际心动、退出；推荐挂起中跨五态重进/取消/继续/退出；准备中连续点击取消与
+  底部取消；SQLite拒绝时两尺寸两主题的局部错误/重试；旧分发被新选曲取代；
+  不具备资格时仍普通循环；当前曲移出远端喜欢后仍使用fromPlayOne/count=39。
+  保存实际Native状态/队列、操作UUID、五字段请求次数和顺序，检查暂停10秒与
+  媒体身份，不能用乐观图标或截图数量代替原生结果。
+- 仅账号、HTTP、音源和指针事件合成。真实WebView和libmpv初始化存在，但null
+  输出不是声卡听感；无Windows实机、双账号或真实会员风控证明。
+  原图、完整检查、内嵌产物与远端CI见ui-ux-validation.txt。

@@ -1662,3 +1662,23 @@ login-interception-cache-tests.log。初次全量（workspace-tests3.log）一�
   Applied、保持暂停12秒且不产生新的playlist/play回报；实际WebView27态复验通过。
 - 最终全工作区276个结果目标/1362 passed/0 failed/ignored，严格Clippy/fmt通过。
   前端395项；真实WebView与产物边界见ui-ux-validation.txt，不混计线上或听感证明。
+
+2026-10-31 心动五态关联、失效读取与当前种子
+- IntelligenceSession的可选调用端operation_id与种子/备份同事务持久化并投影；
+  私有context.id不跨IPC。新增只读player_snapshot，仅本地actor查询，不刷新授权源。
+- Flight读取在准备时观察原队列版本，在推荐时观察私有会话；任意入口成功替换后
+  不等旧HTTP回包就结束。Cancel先于Start按代次/UUID保留最多64个内存标记；
+  失败退出不取消原会话，暂停/定位/音量仍允许原请求完成。无Python或Tauri核心依赖。
+- Current遵循M308的实际firstTrack，即使刚从喜欢列表删除仍可用；重新检查屏蔽，
+  最终音源仍原生授权。intelligence_coordinator从14增至19项，新增移出喜欢/屏蔽、
+  退出释放gate、Continue新UUID退出、提前取消/代次隔离；另加强两条新选曲用例，
+  不释放旧HTTP也必须结束，不能靠模拟服务先返回才声称失效处理有效。
+- 最终完整workspace/all-targets/custom-protocol/locked为276个结果target、1367
+  passed、0 failed/ignored：.build/intelligence-cycle-workspace-tests-product-final.log。
+  严格Clippy、格式与正式cumulus/两个探针构建通过：intelligence-cycle-clippy-
+  scope-final.log、rust-format-scope-final.log、native-scope-final.log。
+- build/Clippy/test串联的一轮scope-final进程中途以143结束，只有39个完整结果target，
+  不能称为全量通过。保留原日志后独立执行上述最终测试，其完整终止状态为0。
+- 前端412项、官方模式20向量及42张最终实际WebView原图见ui-ux-validation.txt。
+  本批新增5项原生用例，不把1367项累计结果称为新增功能或整体覆盖百分比；
+  无Windows实机视觉、真实会员风控或一起听双账号证明，完整目标继续。

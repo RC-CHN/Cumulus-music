@@ -2831,3 +2831,40 @@ intelligence-start-contracts.txt；本批没有把主播放条五态进入或所
   独立runner，仍需新提交自身远端CI，不能把本地或旧提交通过当成精确head通过。
   旧运行41205215264的Linux已因成员观察竞争失败；修复原因见核心一起听文档。
   Windows本机视觉、真实账号心动会员/风控、FM进入等未增加实景证明，范围如实保留。
+
+2026-10-31 主播放条心动五态、取消及稳定排布
+- 新专项使用正式Vue/typed IPC/MusicClient/SQLite/actor/libmpv(null)，不是只更换图标。
+  21态逐项核对原生模式、phase、队列、实际playId/暂停10秒及五字段HTTP次数/顺序；
+  含跨五态重进、准备中连续点击/共享取消、取消后Continue再退出、保存拒绝/显式
+  重试、旧分发被新选曲取代、不具备资格四态，以及当前曲已移出喜欢的Current入口。
+  失败弹层在1120浅色/760深色实际hit；所有阶段逐一比较详情操作按钮位置和宽度。
+- .build/intelligence-cycle-screen-product-final：21态/21图，隔离GTK/WebView。
+- .build/intelligence-cycle-kde-product-final：21态/21图，本机KDE Wayland/XWayland
+  自有PID窗口125%，全部可见/聚焦且不截取其它窗口；physical.json独立记录。
+- .build/intelligence-cycle-gallery/index.html：42张最终原图；manifest.json记录原图/
+  观察JSON、产品源码、production dist及截图时实际可执行文件的SHA256。这两组
+  都直接使用最终内嵌production前端，无--frontend-dist替换资源。音源/账号/HTTP/
+  指针事件为合成，null输出不代表扬声器，通用audit的physicalDisplayVerified=false
+  按原记录保留，不冒称Windows实机/真实会员风控/实体输入或双账号通过。
+- 最终内嵌回归：intelligence-cycle-start-product-regression为Start11态；restored-
+  product-regression为恢复/退出26态；mode-product-regression为普通/FM48+重开3态。
+  empty-fm-product-regression为13+重开5态，room-product-regression为27态；各组
+  按自身audit核对，不把恢复夹具productionStartVerified=false改称正式开启通过。
+- 前端412项/format:check/production类型检查与构建通过：intelligence-cycle-frontend-
+  tests-final2.log、frontend-format-check-final2.log、frontend-build-final2.log。
+  CI工具36项通过：intelligence-cycle-ci-tools-final.log。其published=true只是单测
+  的合成输出；本批没有发布、标签或替换v0.1.0附件。
+- 中间探针失败保留：fast第一次在Vue更新前按旧标签判断模式已完成，第二次对
+  离场提示过早作不存在断言；改等明确实际目标/aria-busy及离场样式结束，原生
+  模式/队列/暂停与hit条件不放宽。最初标为light的截图实际沿用OS深色，现显式
+  选择浅色并由Python核对width/theme；这些旧图不混入最终42张。
+- 截图复查另查出共享取消误报模式错误、Continue沿用“准备”文案、按钮文字改变
+  推挤下载入口，均修复后全套重拍。原生检查另将只按Start编号清理改为订阅队列/
+  私有会话，覆盖Continue与其它入口选曲；两条旧新选曲测试不再释放旧HTTP回包。
+- 小窗五态进入、补充推荐/推荐分隔、全应用UI以及Windows实机视觉仍未完成。
+  本批完整合同、官方来源、请求与边界见intelligence-mode-cycle-contracts.txt。
+- 最终Rust完整workspace/all-targets/custom-protocol/locked：276个结果target、1367
+  passed/0 failed/ignored，intelligence-cycle-workspace-tests-product-final.log；严格
+  Clippy/fmt通过：intelligence-cycle-clippy-scope-final.log、rust-format-scope-final.log。
+  串联构建/Clippy/test的一轮scope-final中途143终止，不当作通过；最终独立全量
+  测试正常结束0。最终正式cumulus、ux与queue_room探针已重新构建。
