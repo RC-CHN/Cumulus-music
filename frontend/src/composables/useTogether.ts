@@ -91,7 +91,10 @@ export function useTogether(
     }
     try {
       const result = await core.togetherView(e, refresh);
-      if (valid(g, e, n) && result.epoch === e) view.value = result.value;
+      if (valid(g, e, n) && result.epoch === e) {
+        view.value = result.value;
+        return result.value;
+      }
     } catch (value) {
       if (valid(g, e, n)) {
         issue(value);

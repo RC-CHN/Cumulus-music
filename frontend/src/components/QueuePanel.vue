@@ -1,8 +1,18 @@
 <script setup lang="ts">
-import { computed, watch, onMounted, onUnmounted, ref, shallowRef, nextTick } from 'vue';
+import {
+  computed,
+  watch,
+  onMounted,
+  onBeforeUnmount,
+  onUnmounted,
+  ref,
+  shallowRef,
+  nextTick,
+} from 'vue';
 import { useVirtualRows } from '../composables/useVirtualRows';
 import { useControlFocus } from '../composables/useControlFocus';
 import type { PlayerModel } from '../composables/usePlayer';
+import type { TogetherModel } from '../composables/useTogether';
 import { time, type QueueView, type QueueEdit, type QueueCollectionView } from '../services/player';
 import { failure } from '../services/contracts';
 import { useCore } from '../services/core';
@@ -10,11 +20,17 @@ import { artistLabel } from '../services/artistLabel';
 import Icon from './Icon.vue';
 import ModalTransition from './ModalTransition.vue';
 import QueueClearDialog from './queue/QueueClearDialog.vue';
-const props = defineProps<{ player: PlayerModel; authenticated: boolean }>();
+const props = defineProps<{
+  player: PlayerModel;
+  authenticated: boolean;
+  together: TogetherModel;
+}>();
 const emit = defineEmits<{
   collect: [value: QueueCollectionView, trigger: HTMLElement | undefined];
   login: [];
   discover: [];
+  together: [];
+  cleared: [];
 }>();
 const client = useCore();
 const collecting = ref(false),
@@ -53,6 +69,18 @@ const collectionLocked = computed(
     !!queueError.value ||
     !queue.value?.tracks.length,
 );
+const clearLocked = computed(() => locked.value || !!queue.value?.clearContext.issue);
+const completedRoom = ref<string>();
+let completedObservation: TogetherModel['view']['value'];
+const clearCompletion = computed(() => {
+  if (!completedRoom.value || props.together.epoch.value !== view.value?.epoch) return '';
+  const state = props.together.view.value;
+  if (!state || state === completedObservation || props.together.loading.value)
+    return '播放列表已清空，正在核对一起听退出状态。';
+  if (!state.room && !state.attached && !state.localRecovery && !state.pending.length)
+    return state.lifecycleNotice ?? '播放列表已清空，一起听已结束。';
+  return '播放列表已清空，一起听退出或本机恢复尚未完成，请查看房间状态。';
+});
 const panel = ref<HTMLElement>(),
   clearButton = ref<HTMLButtonElement>(),
   closeButton = ref<HTMLButtonElement>();
@@ -64,7 +92,8 @@ const clearChanged = computed(
     (!queueCurrent.value ||
       !!queueError.value ||
       clearTicket.value.epoch !== view.value?.epoch ||
-      clearTicket.value.revision !== view.value.queueRevision),
+      clearTicket.value.revision !== view.value.queueRevision ||
+      clearTicket.value.clearContext.roomId !== queue.value?.clearContext.roomId),
 );
 // Keep the last dialog body during its exit animation, including error text.
 const clearLeaving = shallowRef({
@@ -73,6 +102,7 @@ const clearLeaving = shallowRef({
   changed: false,
   blocked: false,
   issue: '',
+  endTogether: false,
 });
 const clearPresentation = computed(() =>
   clearOpen.value
@@ -80,8 +110,9 @@ const clearPresentation = computed(() =>
         count: clearTicket.value?.tracks.length ?? 0,
         busy: queueEditing.value,
         changed: !queueEditing.value && clearChanged.value,
-        blocked: locked.value,
+        blocked: clearLocked.value,
         issue: queueEditError.value,
+        endTogether: !!clearTicket.value?.clearContext.roomId,
       }
     : clearLeaving.value,
 );
@@ -107,13 +138,24 @@ watch(
     collectionRead++;
     collecting.value = false;
     collectionIssue.value = '';
+    completedRoom.value = undefined;
     clearLeaving.value = clearPresentation.value;
     clearOpen.value = false;
   },
 );
+let leavingPanel: HTMLElement | undefined;
+onBeforeUnmount(() => {
+  leavingPanel = panel.value;
+});
 onUnmounted(() => {
   collectionRead++;
-  if (focus?.isConnected && !focus.matches(':disabled')) focus.focus({ preventScroll: true });
+  const active = document.activeElement;
+  if (
+    (active === document.body || leavingPanel?.contains(active)) &&
+    focus?.isConnected &&
+    !focus.matches(':disabled')
+  )
+    focus.focus({ preventScroll: true });
 });
 async function collectAll(event: Event) {
   if (collectionLocked.value) return;
@@ -246,7 +288,7 @@ function keydown(event: KeyboardEvent) {
   }
 }
 function openClear() {
-  if (locked.value || !queue.value?.tracks.length) return;
+  if (clearLocked.value || !queue.value?.tracks.length) return;
   queueEditError.value = '';
   clearTicket.value = queue.value;
   clearOpen.value = true;
@@ -267,7 +309,7 @@ const clearFocus = useControlFocus(
   () => panel.value?.querySelector<HTMLButtonElement>('.queue-clear-dialog .secondary'),
 );
 async function confirmClear(event: Event) {
-  if (!clearOpen.value || clearChanged.value || locked.value) return;
+  if (!clearOpen.value || clearChanged.value || clearLocked.value) return;
   await clearFocus.run(event, async () => {
     const ticket = clearTicket.value;
     if (await props.player.editQueue({ kind: 'clear' }, ticket)) {
@@ -278,8 +320,12 @@ async function confirmClear(event: Event) {
           changed: false,
           blocked: true,
           issue: '',
+          endTogether: !!ticket?.clearContext.roomId,
         };
+        completedObservation = props.together.view.value;
+        completedRoom.value = ticket?.clearContext.roomId ?? undefined;
         clearOpen.value = false;
+        emit('cleared');
       }
     }
   });
@@ -311,7 +357,7 @@ async function confirmClear(event: Event) {
       <button
         ref="clearButton"
         class="text-button"
-        :disabled="locked || !queue?.tracks.length"
+        :disabled="clearLocked || !queue?.tracks.length"
         @click="openClear"
       >
         <Icon name="trash" />清空</button
@@ -328,6 +374,14 @@ async function confirmClear(event: Event) {
       {{ queueError }}<button @click="retryQueue">重试</button>
     </div>
     <p v-if="collectionIssue" class="queue-notice" role="alert">{{ collectionIssue }}</p>
+    <p v-if="queue?.tracks.length && queue.clearContext.issue" class="queue-notice" role="status">
+      {{ queue.clearContext.issue }}
+      <button class="text-button" @click="emit('together')">查看一起听状态</button>
+    </p>
+    <p v-if="clearCompletion" class="queue-notice queue-clear-completion" role="status">
+      {{ clearCompletion }}
+      <button class="text-button" @click="emit('together')">查看一起听状态</button>
+    </p>
     <p
       v-if="queueEditError && !clearTicket && !queueLoading && !queueError"
       class="queue-notice"

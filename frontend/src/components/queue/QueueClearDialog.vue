@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import Icon from '../Icon.vue';
-defineProps<{ count: number; busy: boolean; changed: boolean; blocked: boolean; issue: string }>();
+defineProps<{
+  count: number;
+  busy: boolean;
+  changed: boolean;
+  blocked: boolean;
+  issue: string;
+  endTogether: boolean;
+}>();
 const emit = defineEmits<{ close: []; confirm: [event: Event] }>();
 const dialog = ref<HTMLDialogElement>(),
   cancel = ref<HTMLButtonElement>();
@@ -33,6 +40,7 @@ onMounted(() => {
     </header>
     <p id="queue-clear-description">
       清空当前播放列表中的 {{ count }} 首歌曲，并停止播放。歌单和本地音乐文件会保留。
+      <strong v-if="endTogether" class="queue-clear-together">清空后一起听模式将自动结束。</strong>
     </p>
     <p v-if="changed" class="form-warning" role="alert">
       播放列表已变化或暂时无法读取，请取消后核对当前列表。
@@ -55,5 +63,10 @@ onMounted(() => {
 .queue-clear-dialog {
   width: 420px;
   max-width: calc(100vw - 32px);
+}
+.queue-clear-together {
+  display: block;
+  margin-top: 12px;
+  color: var(--text);
 }
 </style>

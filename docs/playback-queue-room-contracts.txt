@@ -1,0 +1,65 @@
+播放列表清空与一起听退出
+2026-10-31；本专项使用官方恢复代码，没有同状态官方运行图，不称像素一致。
+
+官方依据
+- references/ui-recovery/sources/packages/pc/src/components/PlayBar/Playlist.tsx
+  SHA256 e4185ae44c94e62148a710c5827dff9736cd9d9acd34753de6eeb50b4e225dc0。
+  isInListenTogether以非alone且roomInfo.roomId非空判断；清空确认正文提示自动结束。
+- modules/hybrid_app.chunk.1482700000000.js/1384.js:2689–2741，clearCurPlayingList
+  SHA256 1436e04e398744bd85857aed562bffc88513ee3b9eb49582f5519e5ebb243111。
+  停止原生播放器、清当前/上次队列、退出AI恢复前模式、清当前播放信息和歌词。
+- modules/hybrid_196.chunk.1482700000000.js/3079.js:975–1067，onPlayingListChange
+  SHA256 1e750d107c091fce54a7b3d72020d498d5559bb920985ae07d5e13f4b2596173。
+  onClearCurPlayingList非一起听内部场景且仍有房间时派发leaveListenTogether，原因
+  PLAYLIST_CLEAR。不是由前端直接发送空共享队列替代退出。未使用YesPlayMusic。
+
+原生读取和确认
+player_queue新增clearContext={roomId,issue}：只读本账号房间状态、实际本机绑定/
+连接、同步日志/未决操作。无音乐HTTP、聊天/RTC凭据或完整资源URL。匿名返回无房间。
+附着未恢复、同步尚未完成、结果待确认或实时连接未就绪时说明先核对；FM仍由原协调器
+管理。该恢复门槛为Cumulus显式错误策略，不冒称官方在网络故障时完全相同。
+
+player_action的queue_for增加expected_room_id（可为null；缺省按null）。只对clear
+校验房间，其余显示编辑仍按原队列版本处理。正式清空从捕获的QueueView同时提交
+expected_queue_revision、expected_room_id和edit={kind:"clear"}，不从当前新房间重取。
+持有本机room gate，先核对显示版本、FM策略、房间及可清空状态，再取消音源/提交actor；
+actor继续使用原PlaybackFence。旧确认不抢新媒体，不清新队列或结束另一房间。
+此处是本机gate加既有队列CAS，不宣称跨进程原子锁住所有外部房间状态；服务端退出
+仍由end_for重新核对实际roomId，不退出不同房间。现有raw原生命令未改为UI确认票据。
+
+实际清空与退出为两个明确阶段：
+1. actor落盘空队列并停止当前音频。失败保留原队列/暂停音频，不发房间退出。
+2. 现有一起听worker观察有效共享队列变空，通过TogetherService退出绑定房间。
+   使用/api/listen/together/status/get核对身份，再/api/listen/together/end/v2，roomId
+   来自绑定，count=None不构造shareInfo。既有日志先落盘Sending，成功回读核对房间消失；
+   丢回执保留未决记录，仅显式Reconcile通过读取确认，绝不自动重发end。
+   空本机队列不覆盖上次确认的房间歌曲卡片，待确认期间仍可查看歌名/实际元数据。
+3. 确认退出后关闭消息连接、核对旧记录，移除共享播放约束并恢复进入前倍速/顺序策略，
+   不恢复已清除的队列或重新加载音频。原SDK清理失败保留localRecovery，不能显示已恢复。
+先前的service/worker/恢复实现继续复用；本批补UI确认、房间凭据及验证，不把所有底层
+一起听功能重算为新增，也不以合成IM说明真实双账号同步通过。
+
+界面流程
+- 清空确认显示捕获条目数；有房间则显示自动结束提示。默认取消、等待禁用重复提交；
+  房间/队列变化使旧确认失效，原正文在退出动画期间保留，不改写成新房间的同意。
+- 原生清空拒绝后只读刷新队列/房间政策，保留错误，不自动重复提交。尚未附着或需
+  恢复时清空禁用，提供查看一起听状态入口；其它可读内容仍可查看。
+- 本地队列已空不等于退出成功。当前抽屉保留正在核对/尚未完成提示，直到新一次本机
+  权威房间读取确认room=None、无绑定恢复和未决操作，才显示结束/恢复通知。
+- 查看入口在抽屉离场后，按当前账号和当前页面定位实际核对按钮并滚到可见位置；
+  无待核对时聚焦房间主操作，等待期间可退到有主题焦点的标题，不抢其它新焦点。
+- 待确认退出将远端缓存标明为上次同步的共享队列，保留已确认曲目信息。使用正在
+  结束标题/说明，禁用再次退出及同步，显示核对提示，避免网络
+  泛化错误引导重发。一起听页自身退出确认也捕获原roomId，变化后禁用并要求重开。
+- 账号更替撤销旧确认和焦点归属；关闭后不持久化DOM焦点，业务未决记录仍由Rust恢复。
+  其它一起听页面布局、多选/拖放/推荐分隔、正式AI入口、邀请/真实双账号仍有独立边界。
+
+验证入口
+cargo test -p cumulus-core --test client_together --test client_player --test client_fm --locked
+新增四项覆盖不改队列版本的房间进入/更换、未附着拒绝、账号隔离、无凭据泄漏、
+等候/合成成员房间清空后仅退出一次且恢复设置、丢回执只读核对、落盘失败保留音频。
+前端追加捕获旧roomId、拒绝后只读刷新且不重发的并发用例。
+python3 scripts/ci/queue_room_smoke.py --binary PATH_TO_QUEUE_ROOM_UI_PROBE --root NEW_PRIVATE_ROOT
+真实production WebView/IPC/actor/SQLite，API、IM和AudioEngine为合成设备；本机截图
+只证明显示及业务接线，不证明libmpv或扬声器/真实远端。正常队列/收藏原libmpv回归
+另行保留。具体最终轮次和平台结果见ui-ux-validation.txt。

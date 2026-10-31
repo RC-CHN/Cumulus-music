@@ -312,6 +312,24 @@ const together = useTogether(
     music.navigate({ kind: 'together' });
   },
 );
+watch(
+  () => {
+    const value = together.view.value;
+    return JSON.stringify([
+      together.epoch.value,
+      value?.room?.id,
+      value?.attached,
+      value?.ending,
+      value?.pending.map((op) => op.id + ':' + op.phase).join(','),
+      value?.sharedPhase,
+      value?.syncError,
+      value?.connection.state,
+    ]);
+  },
+  () => {
+    if (player.queueOpen.value) void player.loadQueue();
+  },
+);
 const podcasts = usePodcasts(undefined, () => {
   void music.bootstrap(false);
 });
@@ -387,6 +405,7 @@ const playlistDialog = ref<PlaylistDialogTarget>();
 const queueCollectionReturn = shallowRef<HTMLElement>();
 const queueCollectionOwner = ref('');
 let queueDiscoverOwner: string | undefined;
+let queueRoomOwner: string | undefined;
 function collectQueue(value: QueueCollectionView, trigger: HTMLElement | undefined) {
   if (!signedIn.value || value.epoch !== account.value.epoch) return;
   queueCollectionReturn.value = trigger;
@@ -423,10 +442,55 @@ function discoverFromQueue() {
   music.navigate({ kind: 'daily' });
   player.queueOpen.value = false;
 }
+function openTogetherFromQueue() {
+  queueRoomOwner = account.value.epoch;
+  music.navigate({ kind: 'together' });
+  player.queueOpen.value = false;
+}
 async function queueLeft() {
   const owner = queueDiscoverOwner;
+  const roomOwner = queueRoomOwner;
   queueDiscoverOwner = undefined;
+  queueRoomOwner = undefined;
   await nextTick();
+  if (
+    roomOwner === account.value.epoch &&
+    !player.queueOpen.value &&
+    music.page.value.kind === 'together' &&
+    !document.querySelector('dialog[open]')
+  ) {
+    // A clear may finish before the page's background observation catches up.
+    // Read its current journal before focusing an action that could be disabled
+    // by the next observation (stranding focus on the document body).
+    const refreshed = await together.load(false, true);
+    await nextTick();
+    if (
+      roomOwner !== account.value.epoch ||
+      player.queueOpen.value ||
+      music.page.value.kind !== 'together' ||
+      document.querySelector('dialog[open]')
+    )
+      return;
+    const active = document.activeElement;
+    if (
+      active !== document.body &&
+      active?.getAttribute('aria-label') !== '播放队列' &&
+      !active?.closest('.queue-panel')
+    )
+      return;
+    const action =
+      refreshed && together.view.value === refreshed
+        ? (document.querySelector<HTMLElement>('.together-pending button:not(:disabled)') ??
+          document.querySelector<HTMLElement>('.together-actions .primary:not(:disabled)'))
+        : null;
+    const target = action ?? document.querySelector<HTMLElement>('.together-heading h1');
+    if (target) {
+      if (!action) target.tabIndex = -1;
+      target.focus({ preventScroll: true });
+      target.scrollIntoView({ block: 'center' });
+    }
+    return;
+  }
   if (
     owner !== account.value.epoch ||
     music.page.value.kind !== 'daily' ||
@@ -1645,9 +1709,12 @@ onUnmounted(() => {
         v-if="player.queueOpen.value"
         :player="player"
         :authenticated="signedIn"
+        :together="together"
         @collect="collectQueue"
         @login="loginOpen = true"
         @discover="discoverFromQueue"
+        @together="openTogetherFromQueue"
+        @cleared="together.load(false, true)"
       />
     </Transition>
     <RelayPrompt

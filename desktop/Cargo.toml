@@ -80,6 +80,10 @@ name = "shared_queue_ui_probe"
 required-features = ["custom-protocol"]
 
 [[example]]
+name = "queue_room_ui_probe"
+required-features = ["custom-protocol"]
+
+[[example]]
 name = "saved_accounts_ui_probe"
 required-features = ["custom-protocol"]
 

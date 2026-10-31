@@ -16,6 +16,11 @@
   font-size: 26px;
   margin: 0 0 8px;
 }
+.together-heading h1:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
 .together-heading p,
 .together-room p {
   color: var(--muted);

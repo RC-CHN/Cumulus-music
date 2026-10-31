@@ -6,7 +6,7 @@ import Icon from './Icon.vue';
 const props = defineProps<{ model: TogetherModel }>();
 const { view, loading, busy, error, closeError, notice } = props.model;
 const scroll = ref(0),
-  leave = ref(false);
+  leave = ref<string>();
 const failedAvatars = ref(new Set<string>());
 const start = computed(() => Math.max(0, Math.floor(scroll.value / 58) - 3));
 const end = computed(() => Math.min(view.value?.tracks.length ?? 0, start.value + 18));
@@ -21,6 +21,9 @@ const labels: Record<string, string> = {
 const unavailable = computed(
   () => busy.value || !!view.value?.pending.length || !!view.value?.ending,
 );
+const exitPending = computed(() => !!view.value?.pending.some((op) => op.action === 'end'));
+const ending = computed(() => !!view.value?.ending || exitPending.value);
+const leaveChanged = computed(() => !!leave.value && leave.value !== view.value?.room?.id);
 const access = computed(
   () => new Map(view.value?.commonAccess.map((item) => [item.trackId, item]) ?? []),
 );
@@ -49,10 +52,11 @@ const connectionLabels = {
   closed: '消息连接已关闭',
 };
 async function exit() {
-  const id = view.value?.room?.id;
+  const id = leave.value;
+  if (id !== view.value?.room?.id || ending.value) return;
   if (id) {
     await props.model.command({ kind: 'end', room_id: id });
-    if (!view.value?.room) leave.value = false;
+    if (!view.value?.room) leave.value = undefined;
   }
 }
 </script>
@@ -76,7 +80,7 @@ async function exit() {
     <p v-if="closeError" class="error-state" role="alert">{{ closeError }}</p>
     <p v-if="notice" class="notice" role="status">{{ notice }}</p>
     <p v-if="view?.lifecycleNotice" class="notice" role="status">{{ view.lifecycleNotice }}</p>
-    <p v-if="view?.ending" class="notice" role="status">
+    <p v-if="ending" class="notice" role="status">
       一起听正在结束。若结果未确认，请先核对退出状态。
     </p>
     <p v-if="!view" class="empty-state" role="status">
@@ -133,13 +137,13 @@ async function exit() {
           </div>
         </div>
         <h2>
-          {{ view.ending ? '正在结束一起听' : view.room ? '房间已创建' : '一起分享喜欢的音乐' }}
+          {{ ending ? '正在结束一起听' : view.room ? '房间已创建' : '一起分享喜欢的音乐' }}
         </h2>
         <p>
           {{
             view.room
               ? view.attached
-                ? view.ending
+                ? ending
                   ? '正在结束当前房间，播放同步已停止'
                   : '当前播放队列和播放条已连接房间'
                 : '本机尚未连接这个房间的播放控制'
@@ -173,11 +177,15 @@ async function exit() {
             >
               {{ view.attached ? '重新同步当前播放' : '继续本机控制' }}
             </button>
-            <button class="text-button" :disabled="busy" @click="leave = true">退出房间</button>
+            <button class="text-button" :disabled="busy || ending" @click="leave = view.room.id">
+              退出房间
+            </button>
           </template>
         </div>
       </section>
-      <p v-if="view.syncError" class="error-state" role="alert">{{ view.syncError }}</p>
+      <p v-if="view.syncError" class="error-state" role="alert">
+        {{ exitPending ? '退出房间的结果尚未确认，请先核对状态。' : view.syncError }}
+      </p>
       <section v-if="view.pending.length" class="together-pending" aria-label="待核对的房间操作">
         <h3>操作结果待确认</h3>
         <p>先核对服务端状态，再继续同步。</p>
@@ -199,13 +207,18 @@ async function exit() {
         aria-label="退出一起听确认"
       >
         <p>退出当前房间？本机音乐将继续播放。</p>
-        <button class="primary" :disabled="busy" @click="exit">确认退出</button
-        ><button class="text-button" :disabled="busy" @click="leave = false">继续收听</button>
+        <p v-if="leaveChanged" class="form-warning" role="alert">
+          房间已变化，请取消后核对当前房间。
+        </p>
+        <button class="primary" :disabled="busy || ending || leaveChanged" @click="exit">
+          确认退出</button
+        ><button class="text-button" :disabled="busy" @click="leave = undefined">继续收听</button>
       </div>
       <section v-if="view.room" class="together-queue">
         <header>
           <h2>
-            共享队列 <small>{{ view.tracks.length }} 首</small>
+            {{ ending ? '上次同步的共享队列' : '共享队列' }}
+            <small>{{ view.tracks.length }} 首</small>
           </h2>
           <span>{{
             view.mode === 'RANDOM'

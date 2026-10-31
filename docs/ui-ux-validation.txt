@@ -2649,3 +2649,41 @@ speed-menu-focus-before，未忽略左右焦点框采样失败。额外键盘32�
   同状态官方截图，不称像素一致；未测Windows物理桌面/两账号实时一起听/正式AI入口。
   Linux独立CI845f229已全通过，Windows同SHA仍在下载移动探针失败，完整gate失败；
   b254044已修正探针Windows扩展路径分隔符，需新精确提交CI，不能用本地结果冒充。
+
+
+2026-10-31 队列清空与一起听状态一致性
+- queue-room-observation-ui-final：production前端、真实WebView/IPC/Rust actor/SQLite，
+  27态/27图；queue-room-observation-kde-final在本机KDE Wayland/XWayland的125%
+  缩放重复全部27态，仅取自身进程compositor pixmap，visible/focused均true；实际
+  桌面佐证在first/physical.json，通用audit的physicalDisplayVerified仍false。
+  两组共54张最终原图，浅深色/1120×760及760×540；不是官方同状态像素对照。
+- 普通确认期间出现外部房间、原生拒绝/旧确认禁用、未附着状态入口、一起听页退出
+  确认后房间更换、四组合主题/尺寸的清空确认/取消/焦点、实际SQLite清空失败与取消、
+  本地已空但End仍在发送、确认恢复、合成成员状态、丢回执未决、核对入口可见/焦点、
+  显式读取核对与重开空队列均有状态检查。非空媒体保持同playId、暂停12秒。
+- 每轮合成End恰好2次、IM关闭2次；核对不增加End。最终房间为空、无绑定恢复/未决，
+  本机速度恢复1.25、模式sequential、原生idle无playId/队列；3首上次同步的歌名和
+  120秒元数据在未决期间保留。真实账号/音乐API写入和请求0。
+- 该新探针复用合成HTTP、IM和AudioEngine，不证明libmpv、声卡或真实好友同步；
+  原普通队列queue-room-observation-controls-regression的28态与收藏32态
+  queue-room-observation-collection-regression仍使用实际libmpv/null并通过，未虚增
+  54图。queue-room-observation-embedded-final不指定外部前端，内嵌production UI
+  另通过27态且无截图，不把后端/API单测当成实际界面证据。
+- 完整Rust修正后274个结果target/1340项，失败/忽略0；严格Clippy、Rust格式及
+  前端375项/格式/production类型构建，CI工具36项均通过；日志见queue-room-cards-
+  workspace-tests、queue-room-final-clippy、queue-room-observation-*。完整音频引擎
+  初始化和物理输出边界仍按原合同，本批没有真实账号资源写入或邀请。
+- 中间失败保留：ui-1在SQLite错误分支预期了不存在的原始错误文案，实际公有错误为
+  “无法读写本地数据”，改查真实稳定契约而保留存储失败及原音频断言；ui-2/kde-1的
+  25态没有后续恢复入口/房间更换修正。recovery系列27态通过时截图节拍足以让轮询
+  先更新；embedded-final和cards-ui-final在快速交互失焦。focusTrace证明确实聚焦了
+  旧“重新同步”，随后原生状态观察将其禁用。现先读取新日志并核对账号/结果引用，
+  才选择焦点目标；保持原焦点命中/离场后稳定断言，不以加长等待或改为任意焦点通过。
+  卡片空缓存也由实际待确认帧发现，修正原生worker再重拍，不混计旧图。
+- 最终原图已查看，索引.build/queue-room-gallery/index.html，源码/原图/程序SHA256
+  在manifest.json。两平台独立CI增加同一queue_room_smoke；Windows实机视觉仍待。
+- 上批8210ee2的CI41194379148：Linux Rust/格式/Clippy及队列/收藏专项通过，后在
+  download-menu verify_menu_files核对synthetic-3删除时失败。日志表明操作仅开始，
+  归档SQLite随后为Complete；不能把分页已隐藏任务当成实际文件清理完成。另行补
+  等待原生删除日志Complete/非working/无error，保留原全部实际文件断言；该CI失败
+  不混称完整gate通过。Windows同轮结果跟随权威运行状态，不能以本机代替。
