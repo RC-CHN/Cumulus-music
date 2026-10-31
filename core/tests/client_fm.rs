@@ -331,6 +331,7 @@ async fn empty_recommendations_keep_leave_and_together_guards_until_explicit_exi
             .player_action(
                 "1",
                 PlayerAction::QueueFor {
+                    expected_room_id: None,
                     expected_queue_revision: before.queue_revision.clone(),
                     edit: cumulus_core::client::dto::QueueEdit::Clear,
                 }

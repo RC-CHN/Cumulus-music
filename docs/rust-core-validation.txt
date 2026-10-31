@@ -1622,3 +1622,20 @@ login-interception-cache-tests.log。初次全量（workspace-tests3.log）一�
 - 前端374项、格式、production类型/构建通过，原生程序及ux_ui_probe重新构建；
   真实WebView/本机KDE的32+32图、失败/重试/空态/声音/FM覆盖详见UI验证文档，
   不以原生单测替代实际界面验收。Windows精确提交CI与其它完整目标仍待跟进。
+
+
+2026-10-31 显示清空确认的房间边界与退出卡片
+- QueueView.clearContext投影账号房间身份及恢复门槛，queue_for的clear同时绑定显示
+  队列版本与expected_room_id；在本机room gate内提交前检查，旧输入不取消新音频。
+  协议/官方M1384、M3079来源与跨进程边界见playback-queue-room-contracts.txt。
+- client_together新增4项，覆盖同一队列版本的房间更换/未附着、账号与DTO隔离，等候/
+  合成成员房间仅退出一次并恢复设置，丢回执只读核对，SQLite拒绝落盘保留房间与
+  暂停音频；丢回执额外严格核对3首上次确认的歌名和120秒元数据，不写空卡片。
+- 完整workspace/all-targets/custom-protocol/locked：274个结果target/1340项，失败/
+  忽略0，.build/queue-room-cards-workspace-tests.log。计数含共享WebView探针复用的
+  原生fixture测试；并非新增38条业务分支。初次queue-room-workspace-tests.log在卡片
+  修正前同为1340项通过，不能拿它替代修正后日志。
+- 第一轮编译因跨领域私有成员访问失败，房间策略移回together/queue_policy.rs并以
+  crate::client边界提供调用，没有放开内部错误锁。第二轮测试错写不存在的Sqlite
+  错误分支，改为实际Storage后4项通过；失败日志仍保留queue-room-initial-native/
+  native-tests2。前端新增旧roomId确认和只读刷新、不重发用例；实际UI另行验证。

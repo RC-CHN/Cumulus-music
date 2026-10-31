@@ -78,10 +78,18 @@ pub struct QueueTrack {
 #[serde(rename_all = "camelCase")]
 pub struct QueueView {
     pub fm: bool,
+    pub clear_context: QueueClearContext,
     pub epoch: String,
     pub revision: String,
     pub current: Option<String>,
     pub tracks: Vec<QueueTrack>,
+}
+/// Local room policy for the displayed confirmation. No chat/RTC credentials.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueueClearContext {
+    pub room_id: Option<String>,
+    pub issue: Option<&'static str>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -178,6 +186,8 @@ pub enum QueueEdit {
 pub enum PlayerAction {
     QueueFor {
         expected_queue_revision: String,
+        #[serde(default)]
+        expected_room_id: Option<String>,
         edit: QueueEdit,
     },
     QueueDownloads {

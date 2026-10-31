@@ -374,9 +374,10 @@ impl MusicClient {
                 )
                 .await;
         }
-        let (action, displayed_queue) = match action {
+        let (action, displayed_queue, clear_room) = match action {
             PlayerAction::QueueFor {
                 expected_queue_revision,
+                expected_room_id,
                 edit,
             } => {
                 if native.is_some() {
@@ -384,9 +385,10 @@ impl MusicClient {
                         "displayed queue edit used as native media command",
                     ));
                 }
-                (edit.into_action(), Some(expected_queue_revision))
+                let room = matches!(edit, QueueEdit::Clear).then_some(expected_room_id);
+                (edit.into_action(), Some(expected_queue_revision), room)
             }
-            other => (other, None),
+            other => (other, None, None),
         };
         let token = self.player_token(epoch)?;
         // Keep room attachment from changing the policy of a displayed edit.
@@ -406,6 +408,9 @@ impl MusicClient {
         } else {
             None
         };
+        if let Some(room) = clear_room {
+            self.validate_queue_clear_room(&token, room.as_deref())?;
+        }
         let local_effect = matches!(
             action,
             PlayerAction::Equalizer { .. }
@@ -701,6 +706,7 @@ impl MusicClient {
         self.session.check_generation(&token)?;
         Ok(QueueView {
             fm: snapshot.fm,
+            clear_context: self.queue_clear_context(&token)?,
             epoch: epoch.into(),
             revision: snapshot.queue_revision.to_string(),
             current: queue.current,

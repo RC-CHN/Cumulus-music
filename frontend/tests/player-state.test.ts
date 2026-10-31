@@ -248,7 +248,14 @@ function fixture(overrides: Partial<PlayerClient> = {}) {
     playerQualityTrial: async () => {
       throw Error('unexpected quality trial command');
     },
-    playerQueue: async () => ({ epoch: '1', revision: '1', current: null, tracks: [] }),
+    playerQueue: async () => ({
+      epoch: '1',
+      revision: '1',
+      fm: false,
+      clearContext: { roomId: null, issue: null },
+      current: null,
+      tracks: [],
+    }),
     playerQueueCollection: async () => {
       throw Error('unexpected queue collection read');
     },
@@ -304,7 +311,14 @@ test('late lyrics never replace the selected song and old queues are rejected', 
   const old = deferred<LyricsView>();
   const f = fixture({
     playerLyrics: async (_e, id) => (id === 'old' ? old.promise : lyrics(id)),
-    playerQueue: async () => ({ epoch: '0', revision: '1', current: null, tracks: [] }),
+    playerQueue: async () => ({
+      epoch: '0',
+      revision: '1',
+      fm: false,
+      clearContext: { roomId: null, issue: null },
+      current: null,
+      tracks: [],
+    }),
   });
   await f.player.connect(account());
   f.emit(state('2', '1', 'old'));
@@ -573,6 +587,7 @@ test('queue edits capture the displayed revision, isolate errors and never enter
   assert.deepEqual(calls[0], {
     kind: 'queue_for',
     expected_queue_revision: '1',
+    expected_room_id: null,
     edit: { kind: 'clear' },
   });
   fail = false;
@@ -594,7 +609,14 @@ test('account replacement invalidates pending queue reads and edits without leak
   const f = fixture({
     playerQueue: async () =>
       ++reads === 1
-        ? { epoch: '1', revision: '1', fm: false, current: null, tracks: [] }
+        ? {
+            epoch: '1',
+            revision: '1',
+            fm: false,
+            clearContext: { roomId: null, issue: null },
+            current: null,
+            tracks: [],
+          }
         : reading.promise,
     playerAction: async () => editing.promise,
   });
@@ -608,12 +630,62 @@ test('account replacement invalidates pending queue reads and edits without leak
   assert.equal(f.player.queueEditing.value, false);
   assert.equal(f.player.queueLoading.value, false);
   editing.resolve(state('99', '1'));
-  reading.resolve({ epoch: '1', revision: '1', fm: false, current: null, tracks: [] });
+  reading.resolve({
+    epoch: '1',
+    revision: '1',
+    fm: false,
+    clearContext: { roomId: null, issue: null },
+    current: null,
+    tracks: [],
+  });
   assert.equal(await edit, false);
   await read;
   assert.equal(f.player.view.value?.epoch, '2');
   assert.equal(f.player.queue.value, undefined);
   assert.equal(f.player.queueEditError.value, '');
   assert.equal(f.player.queueError.value, '');
+  f.player.dispose();
+});
+
+test('clear consent retains its captured room and a rejection only re-reads the new policy', async () => {
+  const calls: PlayerAction[] = [];
+  let roomId = 'room-a',
+    reads = 0;
+  const f = fixture({
+    playerQueue: async () => {
+      reads++;
+      return {
+        epoch: '1',
+        revision: '1',
+        fm: false,
+        current: null,
+        tracks: [],
+        clearContext: { roomId, issue: null },
+      };
+    },
+    playerAction: async (_epoch, input) => {
+      calls.push(input);
+      throw { code: 'queue_changed', message: 'room changed' };
+    },
+  });
+  await f.player.connect(account());
+  await f.player.loadQueue();
+  const consent = f.player.queue.value;
+  roomId = 'room-b';
+  await f.player.loadQueue();
+  const before = reads;
+  assert.equal(await f.player.editQueue({ kind: 'clear' }, consent), false);
+  assert.equal(reads, before + 1);
+  assert.deepEqual(calls, [
+    {
+      kind: 'queue_for',
+      expected_queue_revision: '1',
+      expected_room_id: 'room-a',
+      edit: { kind: 'clear' },
+    },
+  ]);
+  assert.equal(f.player.queue.value?.clearContext.roomId, 'room-b');
+  assert.equal(f.player.queueEditError.value, 'room changed');
+  assert.equal(f.player.error.value, '');
   f.player.dispose();
 });

@@ -338,14 +338,6 @@ impl Context {
         }
         let shared =
             selection::shared_selection(&self.session, &self.token, self.store.clone(), &queue)?;
-        self.session.with_token(&self.token, |uid| {
-            self.store.put(
-                uid,
-                "listen-together-cards-v1",
-                "current",
-                &serde_json::to_value(&shared.cards)?,
-            )
-        })?;
         if snapshot.mode == PlaybackMode::Sequential {
             snapshot = self
                 .controller
@@ -377,6 +369,16 @@ impl Context {
         let Some(target) = shared.current else {
             return Err(Error::State("current resource cannot join together"));
         };
+        // Empty local playback starts room exit; it is not an authoritative
+        // empty remote list. Keep its last confirmed cards while end is pending.
+        self.session.with_token(&self.token, |uid| {
+            self.store.put(
+                uid,
+                "listen-together-cards-v1",
+                "current",
+                &serde_json::to_value(&shared.cards)?,
+            )
+        })?;
         let changed = remote.snapshot.playlist.as_ref().is_none_or(|p| {
             p.display != shared.display
                 || p.mode != shared.mode

@@ -323,6 +323,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       const next = await core.playerAction(captured, {
         kind: 'queue_for',
         expected_queue_revision: displayed.revision,
+        ...(input.kind === 'clear' ? { expected_room_id: displayed.clearContext.roomId } : {}),
         edit: input,
       });
       if (session !== connection || captured !== epoch || !ready.value) return false;
@@ -333,6 +334,9 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
         const problem = failure(issue);
         queueEditError.value = problem.message;
         if (['session_expired', 'profile_changed'].includes(problem.code)) onSessionChanged();
+        // Re-read room policy after a rejected confirmation. This never
+        // retries the clear or adopts a new room as the old confirmation.
+        if (input.kind === 'clear') await loadQueue();
       }
       return false;
     } finally {

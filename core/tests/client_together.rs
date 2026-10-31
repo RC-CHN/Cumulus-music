@@ -11,6 +11,8 @@ mod lifecycle_tests;
 mod mini_tests;
 #[path = "support/together_progress.rs"]
 mod progress_tests;
+#[path = "support/together_queue_clear.rs"]
+mod queue_clear_tests;
 #[path = "support/together_shared.rs"]
 mod shared_tests;
 use cumulus_core::{
@@ -45,6 +47,9 @@ pub(crate) struct Backend {
     pub(crate) calls: Mutex<Vec<(String, Value)>>,
     drop_play: AtomicBool,
     pub(crate) drop_end: AtomicBool,
+    pub(crate) hold_end: AtomicBool,
+    pub(crate) end_started: AtomicBool,
+    pub(crate) end_release: tokio::sync::Notify,
     pub(crate) common: Mutex<Option<Vec<Value>>>,
     pub(crate) shell: AtomicBool,
     hold_privilege: AtomicBool,
@@ -74,6 +79,10 @@ impl Api for Backend {
     fn request<'a>(&'a self, path: &'a str, p: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             self.calls.lock().unwrap().push((path.into(), p.clone()));
+            if path == "/api/listen/together/end/v2" && self.hold_end.load(Ordering::SeqCst) {
+                self.end_started.store(true, Ordering::SeqCst);
+                self.end_release.notified().await;
+            }
             if path == "/api/listen/together/privilege/get"
                 && self.hold_privilege.load(Ordering::SeqCst)
             {

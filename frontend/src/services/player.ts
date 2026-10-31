@@ -110,6 +110,7 @@ export interface QueueTrack {
 }
 export interface QueueView {
   fm: boolean;
+  clearContext: { roomId: string | null; issue: string | null };
   epoch: string;
   revision: string;
   current: string | null;
@@ -182,7 +183,12 @@ export type PlaySelection =
       quality: Quality;
     };
 export type PlayerAction =
-  | { kind: 'queue_for'; expected_queue_revision: string; edit: QueueEdit }
+  | {
+      kind: 'queue_for';
+      expected_queue_revision: string;
+      expected_room_id?: string | null;
+      edit: QueueEdit;
+    }
   | {
       kind: 'queue_playlist_batch';
       id: string;

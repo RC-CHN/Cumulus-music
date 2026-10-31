@@ -1199,6 +1199,7 @@ async fn displayed_queue_edits_reject_replaced_lists_before_touching_transport()
                 .player_action(
                     "1",
                     PlayerAction::QueueFor {
+                        expected_room_id: None,
                         expected_queue_revision: old.queue_revision.clone(),
                         edit,
                     }
@@ -1244,6 +1245,7 @@ async fn displayed_queue_edits_keep_audible_identity_and_clear_only_the_confirme
         .player_action(
             "1",
             PlayerAction::QueueFor {
+                expected_room_id: None,
                 expected_queue_revision: before.revision,
                 edit: QueueEdit::Reorder {
                     entry_ids: ids.iter().rev().cloned().collect(),
@@ -1262,6 +1264,7 @@ async fn displayed_queue_edits_keep_audible_identity_and_clear_only_the_confirme
         .player_action(
             "1",
             PlayerAction::QueueFor {
+                expected_room_id: None,
                 expected_queue_revision: reordered.queue_revision,
                 edit: QueueEdit::Remove {
                     entry_ids: vec![ids[0].clone()],
@@ -1276,6 +1279,7 @@ async fn displayed_queue_edits_keep_audible_identity_and_clear_only_the_confirme
         .player_action(
             "1",
             PlayerAction::QueueFor {
+                expected_room_id: None,
                 expected_queue_revision: removed.queue_revision,
                 edit: QueueEdit::Select {
                     entry_id: ids[2].clone(),
@@ -1289,6 +1293,7 @@ async fn displayed_queue_edits_keep_audible_identity_and_clear_only_the_confirme
         .player_action(
             "1",
             PlayerAction::QueueFor {
+                expected_room_id: None,
                 expected_queue_revision: selected.queue_revision,
                 edit: QueueEdit::Clear,
             },
@@ -1325,6 +1330,7 @@ async fn stale_queue_confirmation_does_not_cancel_the_new_selection_in_flight() 
             .player_action(
                 "1",
                 PlayerAction::QueueFor {
+                    expected_room_id: None,
                     expected_queue_revision: old.queue_revision,
                     edit: QueueEdit::Clear,
                 }
