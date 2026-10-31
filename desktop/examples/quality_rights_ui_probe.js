@@ -28,11 +28,11 @@
       preferred:bar().dataset.preferredQuality,state:bar().dataset.state,position:Number(bar().dataset.position),
       contained:document.documentElement.scrollWidth<=innerWidth,tagHit:hit(tag()),
       popup:panel()?{...rect(panel()),text:panel().textContent,rows:[...panel().querySelectorAll('.menu-items button')].map(n=>({text:n.textContent,disabled:n.disabled,checked:n.getAttribute('aria-checked')==='true',focused:document.activeElement===n,hit:hit(n)}))}:null,
-      dialog:dialog()?{...rect(dialog()),text:dialog().textContent,phase:dialog().dataset.phase,kind:dialog().dataset.kind,busy:dialog().getAttribute('aria-busy')==='true',
+      dialog:dialog()?{...rect(dialog()),text:dialog().textContent,phase:dialog().dataset.phase,kind:dialog().dataset.kind,busy:dialog().getAttribute('aria-busy')==='true',focusInside:dialog().contains(document.activeElement),focusedTag:document.activeElement?.tagName,
         controls:[...dialog().querySelectorAll('button')].map(n=>({text:n.textContent.trim(),hit:hit(n),focused:document.activeElement===n,disabled:n.getAttribute('aria-disabled')==='true'}))}:null,paintSamples:[]};
     assert(payload.contained,'horizontal overflow');assert(payload.state==='paused'&&Math.abs(payload.position-10)<.2,'native pause/position');assert(payload.actual==='standard','actual quality remains standard');
     if(r){assert(r.left>=8&&r.top>=8&&r.right<=innerWidth-8&&r.bottom<=innerHeight-8,'surface inside viewport');payload.paintSamples=[{x:r.left+(dialog()?8:4),y:r.top+(dialog()?12:6),color:getComputedStyle(surface).backgroundColor}];}
-    if(payload.dialog)assert(payload.dialog.controls.every(c=>c.hit)&&dialog().open,'dialog controls are visible and reachable');
+    if(payload.dialog){assert(payload.dialog.controls.every(c=>c.hit)&&dialog().open,'dialog controls are visible and reachable');assert(payload.dialog.focusInside,'dialog retains focus when its primary action changes');}
     else {assert(payload.tagHit,'quality tag hit');if(panel()){const focused=document.activeElement;assert(panel().contains(focused)&&hit(focused),'menu focus remains visible');}}
     await emit(`ux_${String(++count).padStart(2,'0')}_${label}`,payload);
   }

@@ -46,7 +46,9 @@ def main():
             assert player['track']['id']==row['trackId']
             assert player['requestedQuality']==row['requested']
             assert player['qualityPreferences']['quality']==row['preferred']
-            if row['dialog']:assert all(c['hit'] for c in row['dialog']['controls'])
+            if row['dialog']:
+                assert row['dialog']['focusInside']
+                assert all(c['hit'] for c in row['dialog']['controls'])
             else:assert row['tagHit']
             if args.screenshots:assert path.with_suffix('.png').is_file()
         reports.append({'ok':True,'actualWebView':True,'consentDialogVerified':not reopened,'manualScrollVerified':not reopened,'dynamicRightsVerified':True,'states':len(labels),'reopened':reopened,'syntheticTrialWrites':0 if reopened else 3,'realAccountWrites':0,'physicalAudioOutputVerified':False,'physicalDisplayVerified':False,'screenshots':len(labels) if args.screenshots else 0})

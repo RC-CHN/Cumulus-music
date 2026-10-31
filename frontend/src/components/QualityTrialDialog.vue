@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, useId, watchEffect } from 'vue';
+import { computed, nextTick, onMounted, ref, useId, watch, watchEffect } from 'vue';
 import type { PlaybackQualityModel, QualityPrompt } from '../composables/usePlaybackQuality';
 import { qualityDuration, qualityLabel } from '../services/playbackQuality';
 import Icon from './Icon.vue';
@@ -43,6 +43,24 @@ onMounted(() => {
   dialog.value?.showModal();
   void nextTick(() => cancel.value?.focus({ preventScroll: true }));
 });
+watch(
+  [() => prompt.value.kind, member, () => trial.value?.canUse, pending, changed],
+  () => {
+    const surface = dialog.value;
+    const active = document.activeElement;
+    // Replacing a focused primary action can leave focus on <body>. Keep the
+    // next action explicit by returning to Close, without stealing valid focus.
+    if (
+      props.model.prompt.value &&
+      surface?.open &&
+      !surface.inert &&
+      !surface.contains(active) &&
+      !active?.closest('dialog[open]')
+    )
+      cancel.value?.focus({ preventScroll: true });
+  },
+  { flush: 'post' },
+);
 </script>
 <template>
   <dialog
