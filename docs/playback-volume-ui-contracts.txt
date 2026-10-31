@@ -51,7 +51,7 @@ PlayMode.tsx 确认官方主入口为点击循环，FM受实验配置约束；�
 无同状态官方运行截图，不宣称像素一致；null输出不证明实际声卡响度或Windows实机视觉。
 
 验收证据
-volume-ui-final的35/重开3态和volume-kde-final本机125%的35态均通过，73张原图未裁改。
+volume-ui-verified的35/重开3态和volume-kde-verified本机125%的35态均通过，73张原图未裁改。
 四普通模式/音量读值与原生快照逐态核对；错误恢复、连续合并、静音重开均有实际
 Vue→注册IPC→Rust→SQLite→libmpv/null证据。真实账号写入和音乐HTTP均0。
 详细失败记录、工程检查及未覆盖范围见ui-ux-validation.txt，不用截图数量替代整页审计。

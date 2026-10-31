@@ -50,7 +50,9 @@ window.__runCloudProof=async({wait,stage,sleep})=>{
     if(el('.cloud-track-title strong')?.textContent!==sorted.tracks[0].track.name)throw Error('cloud_sort_mismatch');
     let index=sorted.tracks.findIndex(t=>['aac','m4a','mp3','flac'].includes(t.format)&&t.fileSize>1000000&&t.fileSize<10000000);
     if(index<0)index=0;
+    el('.playerbar .volume-trigger').focus();await wait(()=>el('.playerbar [aria-label="音量"]'),'volume_slider_open');
     const volume=el('.playerbar [aria-label="音量"]');volume.value='0';volume.dispatchEvent(new Event('change',{bubbles:true}));
+    await wait(()=>Number(el('.playerbar').dataset.volume)===0,'muted_before_playback');
     await click(all('.cloud-row-play')[index]);
     await wait(()=>el('.playerbar')?.dataset.state==='playing'&&Number(el('.playerbar').dataset.position)>.3,'cloud_native_playback');
     await click(el('.playerbar [aria-label="暂停"]'));await wait(()=>el('.playerbar').dataset.state==='paused','cloud_native_pause');

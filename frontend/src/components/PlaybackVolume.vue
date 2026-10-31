@@ -12,17 +12,14 @@ const opened = ref(false),
   retryButton = ref<HTMLButtonElement>(),
   slider = ref<HTMLInputElement>();
 const id = useId();
-let hide: ReturnType<typeof setTimeout> | undefined,
-  suppressed = false;
+let hide: ReturnType<typeof setTimeout> | undefined;
 function show() {
   if (!props.player.ready.value) return;
   clearTimeout(hide);
-  suppressed = false;
   opened.value = true;
 }
 function close(restore = false) {
   clearTimeout(hide);
-  suppressed = true;
   opened.value = false;
   model.end();
   if (restore) trigger.value?.focus({ preventScroll: true });
@@ -35,7 +32,7 @@ function leave() {
 }
 function focus(event: FocusEvent) {
   if (root.value?.contains(event.relatedTarget as Node)) return;
-  if (!suppressed) show();
+  show();
 }
 function keydown(event: KeyboardEvent) {
   if (event.key === 'Escape' && opened.value) {

@@ -34,6 +34,8 @@ mod search_fixture;
 #[allow(dead_code)]
 #[path = "support/settings_fixture.rs"]
 mod settings_fixture;
+#[path = "support/volume_fixture.rs"]
+mod volume_fixture;
 use cumulus_core::{
     account::{AccountSession, profiles::ProfileRegistry},
     client::MusicClient,
@@ -329,6 +331,12 @@ fn main() {
                 playback_quality_fixture::control(&proof_store,&value);
                 let report=playback_quality_fixture::report();
                 handle.get_webview_window("main").unwrap().eval(format!("window.__qualityFixtureAck={report};")).unwrap();
+                return;
+            }
+            if volume_fixture::enabled() && stage=="volume-fixture" {
+                let kind=value["kind"].as_str().unwrap();
+                volume_fixture::apply(&proof_store,kind);
+                handle.get_webview_window("main").unwrap().eval(format!("window.__volumeFixtureAck={};",serde_json::to_string(kind).unwrap())).unwrap();
                 return;
             }
             if media_proof && stage=="media-fixture" {

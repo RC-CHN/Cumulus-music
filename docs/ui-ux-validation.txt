@@ -2401,7 +2401,7 @@ speed-menu-focus-before，未忽略左右焦点框采样失败。额外键盘32�
   主播放条。PlayMode仍保留点击循环；四种普通模式逐态检查原生实际mode，不将其
   当作心动/FM/一起听所有限制已对齐。来源、调用、社区适配及其余边界见
   playback-volume-ui-contracts.txt。
-- volume-ui-final：内嵌production前端首次35态、重开3态；volume-kde-final/run/first：
+- volume-ui-verified：内嵌production前端首次35态、重开3态；volume-kde-verified/run/first：
   同一内嵌前端、本机KDE/XWayland125%35态，均可见且获得焦点，仅截自身PID窗口。
   合计73张新原图。深浅色和两尺寸均检查悬停/37%/静音/精确恢复/键盘进入与Escape。
   另含四模式、100%/0%边界、滚轮、外部原生设零、合并、保存失败和重开恢复。
@@ -2425,3 +2425,7 @@ speed-menu-focus-before，未忽略左右焦点框采样失败。额外键盘32�
 - 新Windows失败41164120051保留了含两行libmpv诊断前缀的完整成功JSON，严格解析仍拒绝。
   PCM专用宿主改走warn事件→stderr，保留完整stdout及全部原PCM/控制/清理断言；本机
   真实player_probe三组零误差、严格JSON成功。Windows新CI仍待验证，细节见运行时报告。
+- 后续volume-keyboard-before在旧包复现首次聚焦图标却不显示浮层；原关闭抑制标记
+  在连接/关闭后一直保留。删除该冗余标记，改由focusin的relatedTarget区分内部返回与
+  外部进入。上述verified两组是此修正后的完整38/35态重新截图；初次与再次键盘进入
+  的独立complete标记只在首次流程为true，进程重开不冒称另测过。旧final证据保留。
