@@ -8,6 +8,8 @@ mod download_page_fixture;
 #[allow(dead_code)]
 #[path = "support/catalog_fixture.rs"]
 mod fixture;
+#[path = "support/intelligence_ui_fixture.rs"]
+mod intelligence_ui_fixture;
 #[path = "support/library_fixture.rs"]
 mod library_fixture;
 #[path = "support/like_recovery_fixture.rs"]
@@ -230,6 +232,7 @@ fn main() {
         let api=transfer.as_ref().map(|f|f.clone() as Arc<dyn Api>).unwrap_or(api);
         let session=Arc::new(AccountSession::new(api,Some(registry.store())));
         let download_page=download_page_fixture::enabled().then(||Arc::new(download_page_fixture::Fixture::new(session.clone(),proof_store.clone(),root.clone())));
+        let fixture_session=session.clone();
         let mut client=MusicClient::with_session(session,registry);
         if download_page.is_some() { client=client.with_download_backend(Arc::new(download_page_fixture::NoNetwork))
             .with_video_factory(Arc::new(|| Ok(Box::new(cumulus_core::playback::engine::MpvVideoEngine::open(cumulus_core::playback::engine::MpvConfig {null_output:true,..Default::default()},640,360)?)))); }
@@ -266,6 +269,14 @@ fn main() {
             let mut value:Value=serde_json::from_str(event.payload()).unwrap();
             if search_fixture::enabled() { value["syntheticSearchCalls"]=json!(search_fixture::calls()); }
             let stage=value["stage"].as_str().unwrap_or("");
+            if intelligence_ui_fixture::enabled() && stage=="intelligence-fixture" {
+                let handle=handle.clone();let store=proof_store.clone();let session=fixture_session.clone();let root=cover_root.clone();
+                tauri::async_runtime::spawn(async move {
+                    let result=intelligence_ui_fixture::control(&handle.state::<MusicClient>(),session,store,&root,value["kind"].as_str().unwrap()).await;
+                    let ack=match result {Ok(())=>json!({"ok":true}),Err(error)=>json!({"ok":false,"error":error.to_string()})};
+                    handle.get_webview_window("main").unwrap().eval(format!("window.__intelligenceFixtureAck={ack};")).unwrap();
+                });return;
+            }
             if (search_fixture::enabled() || std::env::var_os("CUMULUS_SIDEBAR_UI_PROOF").is_some() || std::env::var_os("CUMULUS_PLAYLIST_MENU_UI_PROOF").is_some()) && ["search-pointer", "sidebar-pointer"].contains(&stage) {
                 let window=handle.get_webview_window("main").unwrap();
                 let position=tauri::LogicalPosition::new(value["x"].as_f64().unwrap(),value["y"].as_f64().unwrap());
@@ -423,7 +434,7 @@ fn main() {
                     } else { value["nativePlayerUnavailable"]=json!(true); }
                     fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
                     if !capture_ack::acknowledge(&handle,&output,&stage,value["captureHandshake"]==true).await {return;}
-                    if std::env::var_os("CUMULUS_QUEUE_SELECTION_UI_PROOF").is_some() && stage.starts_with("ux_") {
+                    if (std::env::var_os("CUMULUS_QUEUE_SELECTION_UI_PROOF").is_some() || intelligence_ui_fixture::enabled()) && stage.starts_with("ux_") {
                         handle.get_webview_window("main").unwrap().eval(format!("window.__queueSelectionRecorded={};",serde_json::json!(stage))).unwrap();
                     }
                     if ["complete","failed"].contains(&stage.as_str()) {

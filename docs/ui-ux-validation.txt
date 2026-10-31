@@ -2751,3 +2751,44 @@ speed-menu-focus-before，未忽略左右焦点框采样失败。额外键盘32�
 - 最后完整workspace/all-targets/custom-protocol/locked重验274个结果target/1340项、
   失败/忽略0：observation-probes-final-workspace-tests.log；严格Clippy及格式通过，
   前端375项/格式/production类型构建、CI工具36项通过；正式程序和两个GUI探针重建。
+
+2026-10-31 心动会话恢复、退出与隐藏当前歌曲
+- 本轮按用户的UI逻辑/功能优先级，修正已恢复心动误显示普通循环、同值模式点击
+  被省略、隐藏当前曲被算作普通行，以及可见空列表禁用实际播放的状态混用。
+  官方依据及字段/调用顺序/差异见intelligence-restored-ui-contracts.txt。
+- intelligence-ui-screen-final2、intelligence-ui-kde-final2各26态/26图通过，共52张
+  最终原图；后者是本机KDE Wayland/XWayland自己的PID窗口、125%缩放，全部
+  可见/聚焦。已看权限引导、窄窗深色、空列表保留当前等原图。图集
+  .build/intelligence-ui-gallery/index.html，manifest记录原图/JSON/源码/程序及
+  实际production dist摘要。账号/API/音乐源均合成，libmpv使用null输出，交互
+  为合成事件；不能外推实体输入、真实会员/扬声器或Windows实机视觉。
+- 26态含未完成推荐/活动/失败回退三种实际持久化原生状态，两尺寸两主题、Audio
+  权限引导、SQLite失败/重试、连续模式目标、隐藏曲排序/可见全删/空态重开/暂停
+  继续、回退后普通模式，以及旧退出等待被新选曲取代。每态同时核对原生phase/
+  queueLen/可见队列、暂停10秒和实际playId，不只比较静态截图。
+- 夹具通过PlaybackController构造/保存状态，再由MusicClient恢复；没有执行正式
+  喜欢/权益/黑名单/推荐HTTP开启编排，productionStartVerified=false严格保留。
+  不能把历史API只读通过及本次恢复通过合并成正式开启成功。
+- intelligence-ui-fast-final无截图26态通过；最终重建后的embedded-final直接用
+  内嵌production前端另通过26态。普通/FM/重开mode-regression48+3态、selection-
+  regression24态、collection-regression32态、新链接room-regression27态通过。
+  房间探针API/IM/音频均合成，不代表真实一起听双端。
+- 完整Rust workspace/all-targets/custom-protocol/locked：274个结果target/1343项，
+  失败/忽略0，intelligence-ui-workspace-tests.log。本批仅新增3个原生测试，不把
+  复用fixture计数称为新增业务。严格Clippy/格式，前端387项/格式/类型/production
+  构建，CI工具36项通过；日志intelligence-ui-clippy-final、rust-format-final、
+  frontend-tests-final/format-final/build-final4、ci-tools-final。final-native-build
+  重建cumulus、ux与queue_room探针。
+- 中间失败保留：debug退出重试失败，定位到恢复的暂停会话未取得Audio权限；现有
+  明确原因及真实恢复音乐入口，没有放宽MV保护。debug2在尚未出现的恢复面板上
+  解引用null，改查存在后继续；debug3是连续点击后立即读旧DOM，改等实际随机
+  目标显示，保留原生目标/音频断言。debug4/5的边界失败是退出类移除后CSS变换
+  仍余约0.0009px；现在等计算样式真正none，不放宽最终几何边界。debug6到第25态
+  发现新选曲后的旧退出错误未清理：模型桩错用了queue_changed，Rust实际公开
+  snapshot_changed；修正真实错误分支及桩，新增单测，保留旧反馈不存在的严格断言。
+- 回退后的可见列表被用户编辑为空时，文案不再声称当前列表仍是原喜欢列表；
+  为该修正重拍final2全部52图，不拿较早final原图冒充修改后的源码/文案。
+- Linux/Windows CI均接入同一26态，精确新提交完整gate须另行跟进。正式开启
+  协调器、完整小窗视觉及原总目标仍未完成，没有绕过gate或重新发布0.1.0。
+- 加强后的embedded-order-final又以最终内嵌前端完整执行26态，额外逐态核对完整
+  歌曲顺序、隐藏当前身份/空current及非等待态的原生实际模式，不只检查数量。

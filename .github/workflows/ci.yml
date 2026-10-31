@@ -170,6 +170,7 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mode_ui_smoke.py --empty-fm --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-empty-fm-ui-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/queue_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-queue-ui-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/queue_selection_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-queue-selection-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/intelligence_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-intelligence-ui-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/queue_collection_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-queue-collection-linux
           cargo build -p cumulus-desktop --example queue_room_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/queue_room_smoke.py --binary .build/target/debug/examples/queue_room_ui_probe --root .build/ci-queue-room-linux
@@ -263,6 +264,7 @@ jobs:
           python scripts/ci/mode_ui_smoke.py --empty-fm --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-empty-fm-ui-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/queue_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-queue-ui-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/queue_selection_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-queue-selection-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/intelligence_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-intelligence-ui-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/queue_collection_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-queue-collection-windows --runtime .build/package-stage/windows-x64/native
           cargo build -p cumulus-desktop --example queue_room_ui_probe --features custom-protocol --locked
           python scripts/ci/queue_room_smoke.py --binary .build/target/debug/examples/queue_room_ui_probe.exe --root .build/ci-queue-room-windows --runtime .build/package-stage/windows-x64/native
