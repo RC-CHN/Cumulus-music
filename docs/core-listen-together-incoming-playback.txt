@@ -81,3 +81,13 @@ client_together::incoming_tests：模拟SDK消息经真实宿主到引擎；切�
 20001队列版本合并、共同可播权限、缺少本机目标时构建队列、其余成员/结束/权益/心跳/礼物事件；
 RTC、邀请/同账号接续以及新增流程的实际桌面交互验收仍需继续。
 仅双账号实时验证被用户暂排除；完整业务和其他目标领域并未因此完成。
+2026-10-31 HTTP/IM成员观察顺序修正
+CI 41205215264在queue_room_ui_probe第二次建房等待synthetic peer joined失败：
+房间已显示两人且role=together_owner，但sharedPhase为空。HTTP轮询先观察到成员
+后，后到的20002不再满足旧的Waiting guard，漏掉共享队列/共同权益读取。
+MemberJoined现在先刷新房间，再按实际非Waiting角色执行既有refresh_shared。
+版本/账号/房间/媒体fence和重复命令防护仍由原Receiver处理，不重复回报远端写入。
+这属于社区并发编排修正，不声称官方原样执行相同线程顺序。新增确定性测试让
+HTTP先更新角色，再发IM；保持暂停12秒并要求shared_phase=Applied及零新增回报。
+原27态WebView验收保留原先严格Applied条件，没有通过放松等待掩盖问题。
+仍不代表真实第二账号或实时双端验证通过。

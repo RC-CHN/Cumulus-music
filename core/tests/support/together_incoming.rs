@@ -77,6 +77,67 @@ async fn receipt(session: &Arc<AccountSession>, seq: u64, phase: IncomingPhase) 
 }
 
 #[tokio::test]
+async fn member_join_applies_shared_queue_even_when_http_observed_the_new_role_first() {
+    let root = tempfile::tempdir().unwrap();
+    let api = Arc::new(Backend::default());
+    let (session, client) = world(root.path(), api.clone());
+    let im = Arc::new(im::Device::default());
+    let client = client.with_together_im_factory(Arc::new(im::Factory(im.clone())));
+    play(&client).await;
+    client
+        .player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    client
+        .player_action("1", PlayerAction::Seek { seconds: 12.0 })
+        .await
+        .unwrap();
+    client
+        .together_command("1", TogetherCommand::Create)
+        .await
+        .unwrap();
+    wait(&client, |v| {
+        v.connection.state == ConnectionState::Connected
+            && v.connection.received == 1
+            && v.target_id.is_some()
+            && v.pending.is_empty()
+    })
+    .await;
+    api.state.lock().unwrap().peer = true;
+    let service = TogetherService::new(session.clone()).unwrap();
+    let observed = service
+        .refresh_for(&session.token().unwrap(), 100)
+        .await
+        .unwrap();
+    assert_ne!(
+        observed.role,
+        Some(cumulus_core::listen_together::RoomRole::Waiting)
+    );
+    assert!(observed.shared.is_none());
+    let before = writes(&api);
+    send(&im, 20002, json!({"roomId":"test-room"}));
+    wait(&client, |v| {
+        v.shared_phase == Some(IncomingPhase::Applied)
+            && v.room.as_ref().is_some_and(|r| r.members.len() == 2)
+    })
+    .await;
+    let native = client
+        .subscribe_playback("1")
+        .await
+        .unwrap()
+        .current()
+        .unwrap();
+    assert_eq!(native.state, PlaybackStatus::Paused);
+    assert_eq!(native.position, Some(12.0));
+    assert_eq!(
+        writes(&api),
+        before,
+        "incoming membership read must not echo playlist/play writes"
+    );
+    client.close_together().await.unwrap();
+}
+
+#[tokio::test]
 async fn decoded_business_commands_drive_native_player_without_echo_or_duplicate_rewind() {
     let root = tempfile::tempdir().unwrap();
     let api = Arc::new(Backend::default());

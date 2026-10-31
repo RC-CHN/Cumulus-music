@@ -196,9 +196,13 @@ impl Context {
                                 *last = Some(snapshot);
                             }
                         }
-                        MessageKind::MemberJoined if role == Some(RoomRole::Waiting) => {
+                        MessageKind::MemberJoined => {
+                            // HTTP polling may observe the peer before this IM
+                            // event is dequeued. The earlier role is not proof
+                            // that the shared queue/rights were already applied.
                             let refreshed = service.refresh_for(&self.token, now()).await?;
-                            if refreshed.role != Some(RoomRole::Waiting)
+                            if refreshed.role.is_some()
+                                && refreshed.role != Some(RoomRole::Waiting)
                                 && let Some(snapshot) =
                                     self.incoming().refresh_shared(None, false).await?
                             {
