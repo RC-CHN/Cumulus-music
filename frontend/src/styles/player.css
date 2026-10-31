@@ -135,15 +135,6 @@ input[type='range'] {
   font-size: 11px;
   white-space: nowrap;
 }
-.volume-control {
-  display: flex;
-  align-items: center;
-  position: relative;
-}
-.volume-control input {
-  width: 58px;
-  height: 12px;
-}
 .player-tools .icon-button {
   width: 27px;
   height: 30px;
@@ -477,9 +468,6 @@ input[type='range'] {
     gap: 10px;
     padding: 0 16px;
   }
-  .volume-control input {
-    width: 42px;
-  }
   .lyrics-body {
     padding: 0 30px 20px;
     gap: 25px;
@@ -496,9 +484,6 @@ input[type='range'] {
     grid-template-columns: 145px minmax(170px, 1fr) max-content;
     gap: 6px;
     padding: 0 12px;
-  }
-  .volume-control input {
-    width: 34px;
   }
   .player-tools {
     gap: 3px !important;

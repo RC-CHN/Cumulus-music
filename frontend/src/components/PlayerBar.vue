@@ -8,6 +8,7 @@ import EqualizerPanel from './EqualizerPanel.vue';
 import ModalTransition from './ModalTransition.vue';
 import PlaybackSpeed from './PlaybackSpeed.vue';
 import PlaybackQuality from './PlaybackQuality.vue';
+import PlaybackVolume from './PlaybackVolume.vue';
 const equalizerOpen = ref(false);
 const props = defineProps<{ player: PlayerModel; liked: Set<string>; likeBusy: Set<string> }>();
 const emit = defineEmits<{
@@ -18,7 +19,6 @@ const emit = defineEmits<{
 }>();
 const { view, ready, busy, error, playing, loaded } = props.player;
 const draft = ref<number>();
-const previousVolume = ref(50);
 const normalModes: { value: PlaybackMode; label: string; icon: string }[] = [
   { value: 'order_loop', label: '列表循环', icon: 'repeat' },
   { value: 'single_loop', label: '单曲循环', icon: 'repeatOne' },
@@ -60,11 +60,6 @@ async function seek(event: Event) {
   await props.player.action({ kind: 'seek', seconds });
   draft.value = undefined;
 }
-function mute() {
-  const v = view.value?.volume ?? 0;
-  if (v > 0) previousVolume.value = v;
-  void props.player.action({ kind: 'volume', value: v > 0 ? 0 : previousVolume.value });
-}
 </script>
 <template>
   <footer
@@ -72,6 +67,8 @@ function mute() {
     :data-state="view?.state ?? 'idle'"
     :data-position="view?.position ?? 0"
     :data-volume="view?.volume"
+    :data-unmute-volume="view?.unmuteVolume"
+    :data-mode="view?.mode"
     :data-quality="view?.actualQuality"
     :data-requested-quality="view?.requestedQuality"
     :data-preferred-quality="view?.qualityPreferences.quality"
@@ -183,29 +180,7 @@ function mute() {
     <div class="player-tools">
       <PlaybackQuality :player="player" @member="emit('member')" />
       <PlaybackSpeed :player="player" />
-      <div class="volume-control">
-        <button
-          class="icon-button"
-          :aria-label="view?.volume === 0 ? '取消静音' : '静音'"
-          :disabled="!ready"
-          @click="mute"
-        >
-          <Icon :name="view?.volume === 0 ? 'muted' : 'volume'" /></button
-        ><input
-          aria-label="音量"
-          type="range"
-          min="0"
-          max="100"
-          :value="view?.volume ?? 100"
-          :disabled="!ready"
-          @change="
-            player.action({
-              kind: 'volume',
-              value: Number(($event.target as HTMLInputElement).value),
-            })
-          "
-        />
-      </div>
+      <PlaybackVolume :player="player" />
       <button
         class="icon-button"
         aria-label="歌词"

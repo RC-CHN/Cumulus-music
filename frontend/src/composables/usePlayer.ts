@@ -206,6 +206,28 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       throw e;
     }
   }
+  // Volume uses absolute, repeatable values and its own feedback. It must not
+  // supersede a pending transport request or become the audio-error retry.
+  async function configureVolume(value: number) {
+    const captured = epoch,
+      session = connection;
+    if (!ready.value) throw { code: 'stale', message: '播放器尚未连接', retryable: false };
+    try {
+      const next = await core.playerAction(captured, { kind: 'volume', value });
+      if (captured !== epoch || session !== connection || !ready.value)
+        throw { code: 'stale', message: '账号或播放器连接已变化', retryable: false };
+      accept(next);
+      return next;
+    } catch (e) {
+      if (
+        captured === epoch &&
+        session === connection &&
+        ['session_expired', 'profile_changed'].includes(failure(e).code)
+      )
+        onSessionChanged();
+      throw e;
+    }
+  }
   const select = (input: PlaySelection) => run((e) => core.playSelection(e, input));
   // Card playback reads its authoritative list before selecting it. A delayed
   // read must not start audio after account replacement or a newer operation.
@@ -307,6 +329,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     action,
     qualityTrial,
     configureLoudness,
+    configureVolume,
     select,
     downloads,
     retry,

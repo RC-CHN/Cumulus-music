@@ -55,6 +55,7 @@ function current(): PlayerView {
       appliesToCurrent: true,
     },
     volume: 100,
+    unmuteVolume: 10,
     speed: 1,
     mode: 'order_loop',
     queueLen: 2,

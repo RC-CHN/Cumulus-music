@@ -1,0 +1,57 @@
+播放条音量与静音恢复
+2026-10-31；整体UI/UX目标仍进行中。
+
+官方恢复依据
+references/ui-recovery/sources/packages/pc/src/components/PlayBar/VolumeVertical.tsx
+SHA256 afcb574cda6b1e20aa41acd3503522ac9c3b9235ea0863a4814ef7bc622d285e
+PC分支使用hover竖向浮层：38×132px，6px圆角，88px轨道、6px轨道宽及12px手柄，
+底部10px百分比。拖动即时设置；显示时滚轮每事件调整3%；点击图标切换静音。
+数值0..1、步长0.01对应本核心0..100、步长1。按实际音量同步显示，拖动/滚动中
+保留本地显示，避免原生回读把手柄拉回。实验音量分档图标未在本专项强行启用。
+Volume.tsx 是横向/mac分支，不作为本次Windows/Linux播放条设计来源；不支持macOS。
+
+references/recovered-client/docs/product/models/playing.txt
+SHA256 977c042beb723ec1666ed311636d610bc7b57bb3646ce16c751e95c1bbca7b7b
+switchMute对应恢复模块308.js:1414..1445，保存muteVolume，解除静音恢复它，
+缺失/零值时恢复0.1。setVolume对应1526..1546，实际调用AudioPlayer.setVolume。
+不把官方JS状态或UI更新当作Cumulus Rust/音频引擎已验证的证据。
+
+核心与接口
+core/playback/controller/types.rs 的Preferences增加unmute_volume，旧记录缺字段时
+默认10；数值必须>0且<=100。Snapshot和公开PlayerView新增unmuteVolume。
+Volume绝对值命令把当前音量与恢复值作为一个preferences记录保存；新非零值更新
+恢复值，设零前保留先前非零值。数据库失败沿用原子回滚，恢复原生引擎音量及旧记录。
+这是社区持久化适配：官方只在显式静音时记录，社区也记住滑条或MPRIS设零前的值，
+使重启、外部媒体控制和主窗口使用相同恢复语义。账号之间分别保存，未扩大全局设置。
+解除静音仍调用player_action(epoch,{kind:volume,value:绝对值})，没有非幂等toggle重放。
+播放器未加载时可保存音量，加载完成使用最新已确认值；设置不取消正在加载的曲目。
+
+前端组织
+PlaybackVolume.vue：竖向浮层、拖动、百分比、键盘/指针退出和本地失败反馈。
+usePlaybackVolume.ts：绝对值串行保存和最新意图合并、拖动显示、重试及账号/卸载隔离。
+usePlayer.configureVolume：独立接收原生回执；不设置全局播放busy，不替换播放错误或
+通用重试，不改变慢速音源准备请求的序号。旧连接回执不能应用到新账号。
+原生响应失败后丢弃自动队列，显示确认的实际音量；明确重试只发送最新绝对目标。
+轮询/重试不自动切换静音，也不触发真实音乐HTTP、支付或账号资源写操作。
+
+键盘和浮层
+鼠标进入显示；移动到浮层可继续操作，离开且内部没有键盘焦点/拖动时延迟120ms关闭。
+图标获得键盘焦点显示浮层，方向上下键进入滑条；原生range保留方向/Home/End操作。
+Escape关闭并回到音量图标，Tab离开不陷入焦点循环。外部点击和账号变化关闭；离场
+沿用MenuTransition的inert及transform/opacity、减少动态效果规则。
+交互浮层使用group语义，不把有输入框的表面标成只读tooltip。滚轮只在音量控件内
+生效，不在浮层显示时拦截整页滚动。错误时窗口扩展显示说明和显式重试；重试按钮
+消失后恢复到滑条，已有有效内部焦点保留。错误布局及键盘能力属于社区适配。
+
+现有边界
+本专项为主窗口播放条；迷你播放器、MV音量与全局快捷键的完整视觉复核仍需另取证。
+官方系统主音量/音频增强/空间音效诊断与频控提示未在此实现，不伪造系统API支持。
+PlayMode.tsx 确认官方主入口为点击循环，FM受实验配置约束；本次保留当前四普通模式，
+循环顺序来源、心动模式及一起听限制的完整对齐仍需继续。不得据此称全部播放模式完成。
+无同状态官方运行截图，不宣称像素一致；null输出不证明实际声卡响度或Windows实机视觉。
+
+验收证据
+volume-ui-final的35/重开3态和volume-kde-final本机125%的35态均通过，73张原图未裁改。
+四普通模式/音量读值与原生快照逐态核对；错误恢复、连续合并、静音重开均有实际
+Vue→注册IPC→Rust→SQLite→libmpv/null证据。真实账号写入和音乐HTTP均0。
+详细失败记录、工程检查及未覆盖范围见ui-ux-validation.txt，不用截图数量替代整页审计。

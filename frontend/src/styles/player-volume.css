@@ -1,0 +1,92 @@
+/* PC VolumeVertical.tsx: 38×132 surface, 88px track, 6px rail, 12px thumb. */
+.volume-control {
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+.volume-popover {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  margin-left: -19px;
+  width: 38px;
+  height: 132px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text-secondary);
+  box-shadow: 0 1px 7px #0003;
+  z-index: 2;
+}
+.volume-popover::before {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  width: 10px;
+  height: 10px;
+  background: inherit;
+  transform: rotate(45deg);
+}
+.volume-slider-area {
+  position: relative;
+  width: 20px;
+  height: 88px;
+  margin-top: -8px;
+}
+.volume-slider-area input[type='range'] {
+  position: absolute;
+  width: 88px;
+  height: 20px;
+  top: 34px;
+  left: -34px;
+  transform: rotate(-90deg);
+}
+.volume-slider-area input[type='range']::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 6px;
+  background: linear-gradient(
+    to right,
+    var(--accent-fill) var(--volume-percent),
+    var(--surface-hover) var(--volume-percent)
+  );
+}
+.volume-slider-area input[type='range']::-webkit-slider-thumb {
+  width: 12px;
+  height: 12px;
+  margin-top: -3px;
+  border: 0.5px solid var(--line);
+  background: #fff;
+  box-shadow: 0 1px 2px #0003;
+}
+.volume-percentage {
+  position: absolute;
+  bottom: 2px;
+  font-size: 10px;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+}
+.volume-popover.volume-error {
+  width: 238px;
+  margin-left: -119px;
+  height: auto;
+  min-height: 132px;
+  padding: 18px 12px 12px;
+}
+.volume-error .volume-percentage {
+  position: static;
+  margin-top: 8px;
+}
+.volume-feedback {
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.volume-feedback p {
+  color: var(--warning);
+  margin: 8px 0 2px;
+}

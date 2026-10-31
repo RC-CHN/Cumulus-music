@@ -66,6 +66,7 @@ export interface PlayerView {
   requestedQuality: Quality | null;
   actualQuality: Quality | null;
   volume: number;
+  unmuteVolume: number;
   speed: number;
   mode: PlaybackMode;
   queueLen: number;

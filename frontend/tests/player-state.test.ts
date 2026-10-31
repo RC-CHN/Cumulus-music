@@ -44,6 +44,7 @@ function state(revision = '1', epoch = '1', playId: string | null = null): Playe
     requestedQuality: null,
     actualQuality: null,
     volume: 100,
+    unmuteVolume: 10,
     speed: 1,
     mode: 'order_loop',
     queueLen: 0,
@@ -133,6 +134,40 @@ test('a late loudness response cannot restore the previous account state', async
   await saved;
   assert.equal(f.player.view.value?.epoch, '2');
   assert.equal(f.player.view.value?.loudness.enabled, false);
+  f.player.dispose();
+});
+test('volume saves neither supersede pending transport nor become its error retry', async () => {
+  const loading = deferred<PlayerView>();
+  const calls: string[] = [];
+  const f = fixture({
+    playerAction: async (_epoch, input) => {
+      calls.push(input.kind);
+      if (input.kind === 'play') return loading.promise;
+      throw { code: 'storage', message: '合成音量保存失败', retryable: true };
+    },
+  });
+  await f.player.connect(account());
+  const playing = f.player.action({ kind: 'play' });
+  await assert.rejects(f.player.configureVolume(0), { code: 'storage' });
+  assert.equal(f.player.busy.value, true);
+  assert.equal(f.player.error.value, '');
+  loading.resolve(state('3'));
+  await playing;
+  assert.equal(f.player.busy.value, false);
+  assert.deepEqual(calls, ['play', 'volume']);
+  f.player.dispose();
+});
+test('a late volume save cannot restore state after account replacement', async () => {
+  const saved = deferred<PlayerView>();
+  const f = fixture({ playerAction: () => saved.promise });
+  await f.player.connect(account());
+  const pending = f.player.configureVolume(0);
+  const rejected = assert.rejects(pending, { code: 'stale' });
+  await f.player.connect(account('2'));
+  saved.resolve({ ...state('99', '1'), volume: 0, unmuteVolume: 70 });
+  await rejected;
+  assert.equal(f.player.view.value?.epoch, '2');
+  assert.equal(f.player.view.value?.volume, 100);
   f.player.dispose();
 });
 function lyrics(playId: string): LyricsView {

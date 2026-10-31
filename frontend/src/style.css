@@ -6,6 +6,7 @@
 @import './styles/states.css';
 @import './styles/login.css';
 @import './styles/player.css';
+@import './styles/player-volume.css';
 @import './styles/responsive.css';
 @import './styles/playlists.css';
 @import './styles/downloads.css';
