@@ -150,6 +150,26 @@ test('FM retry reaches native reconciliation even when target equals the audible
   assert.equal(f.calls[1]?.fm, true);
   f.stop();
 });
+test('a delayed queue revision after a failed durable mode commit preserves explicit retry', async () => {
+  let fail = true;
+  const f = fixture(async () => {
+    if (fail) throw { code: 'storage', message: 'save failed', retryable: true };
+  });
+  f.model.cycle();
+  await turn();
+  assert.equal(f.model.canRetry.value, true);
+  // Native queue fences advance even when SQLite rejects the candidate; a
+  // later state subscription must not erase the RPC failure/retry target.
+  f.view.value = { ...f.view.value, queueRevision: '2' };
+  assert.equal(f.model.issue.value?.code, 'storage');
+  assert.equal(f.model.canRetry.value, true);
+  fail = false;
+  f.model.retry();
+  await turn();
+  assert.deepEqual(f.calls[1], { mode: 'single_loop', revision: '2', fm: false });
+  assert.equal(f.model.issue.value, undefined);
+  f.stop();
+});
 test('a replaced queue rejects pending mode work without automatic replay', async () => {
   const saved = deferred(),
     f = fixture(() => saved.promise);

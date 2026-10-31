@@ -26,9 +26,11 @@ export function usePlaybackMode(player: PlayerModel, together: () => boolean) {
   }
   watch([() => player.view.value?.epoch, player.ready, family], reset, { flush: 'sync' });
   watch(
-    () => player.view.value?.queueRevision,
+    [() => player.view.value?.playId, actual],
     () => {
-      // An independent queue/mode operation supersedes an old failed target.
+      // A failed durable queue write also advances its native revision. That
+      // delayed observation is not recovery. Only a changed media identity or
+      // confirmed mode supersedes an old failed target here.
       if (!pending.value) {
         issue.value = undefined;
         retryTarget = undefined;
