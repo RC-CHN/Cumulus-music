@@ -14,7 +14,7 @@ This change prepares a complete FFmpeg runtime with the missing filter and
 removes the old packaging exception that reported Windows equalizer testing
 as skipped. Windows build, packaged PCM and GUI checks must actually pass;
 the preparation code or its synthetic Python tests are not that evidence.
-At implementation time, the new Windows native checks are still pending CI.
+The verification status below distinguishes completed runtime checks from whole-CI results.
 
 Sources and build
 -----------------
@@ -134,3 +134,20 @@ then identified both the Unix-only path classification and ANSI dlfcn loading.
 Revision 2.2 includes the explicit Windows patch and moves the full in-process
 Unicode/PCM probe into the runtime action itself. Those Windows checks are
 pending a new CI run; no old capability-only result is reused as PCM proof.
+
+Verification update (2026-10-31)
+-------------------------------
+CI run 41144132539, exact commit 2dc4e62, has completed its strict Windows
+media-runtime job step and the complete workspace Rust test step. This proves
+the rebuilt runtime passed the current absolute/Unicode-path PCM and reopen
+checks; packaging, GUI checks and the full CI gate are separate and were still
+in progress when this update was recorded. It does not validate later quality
+menu changes or a physical Windows screen.
+
+Local native_audio_probe proofs after actual GUI initialization also passed:
+.build/mpv-runtime-gui-media.json: productionDesktopStartup and numeric locale
+compatibility true, three fresh decoder reopen cycles.
+.build/mpv-runtime-gui-loudness.json: the same startup/locale checks and 12 PCM
+cases. These use a non-C system locale and null output, not a physical sound
+card listening test. The broader current Rust regression is recorded in the
+UI validation report; old Python checks are not used as native playback proof.

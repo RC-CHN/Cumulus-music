@@ -2265,3 +2265,41 @@ Rustfmt、严格workspace全target/custom-protocol Clippy；259个测试目标�
 speed-menu-focus-before，未忽略左右焦点框采样失败。额外键盘32态、歌曲菜单45态、
 歌词/底栏20态回归通过；后两项未新增截图。详见 playback-speed-ui-contracts.txt。
 此处只记录该专项的本机与隔离WebView证据，Windows运行时及完整CI尚不能据此称通过。
+
+2026-10-31 音质菜单、账号偏好与原生行为
+- 官方来源与边界：playback-quality-ui-contracts.txt，未参考 YesPlayMusic。
+- 原生修复：账号/访客隔离、UUID CAS、保存标记/损坏归档、原队列继承、显式调用者音质
+  保留、隐式档位/voice_id:null、预取、重启、账号切换、并发旧授权、存储失败、播客独立
+  授权及过期菜单不取消新选曲均有本轮 Rust 回归。偏好和队列在同一次事务提交；任一
+  写失败仍保留旧播放。服务端授权失败不改变偏好，返回降级档位则如实反映实际音质。
+- 主菜单改共享 ActionMenu：顶部居中、378px、正文单独滚动、固定标题与说明、实际音质
+  勾选、当前值辅助说明、窄窗标签、省略/完整悬停提示、关闭与焦点恢复。播放器周期
+  快照不关闭菜单；账号/曲目/偏好实际改变才关闭。配合既有动画及减少动态效果策略。
+- .build/quality-menu-embedded-final：最终内嵌 production 前端的35态及进程重开3态，
+  PNG/原生JSON/握手/审计均保留。1120×760、760×540、深浅色，19个浮层/57个
+  底色与焦点采样通过。暂停位置10秒；第35态确认为第2首，重开第3态确认为第3首，
+  两者均请求lossless且实际standard。合成请求日志同时核对，不以预取代替播放成功。
+- .build/quality-menu-kde-final/run/first：同一最终内嵌前端，本机KDE Wayland/
+  XWayland125%，35态全部可见/获得焦点，只捕获自身PID窗口；18个浮层/54个像素通过。
+  实际查看窄窗深浅色、实际/请求/偏好不同、损坏修复及焦点状态。
+- .build/quality-menu-webview-1为原型证据，不纳入最终通过：它暴露右对齐浮层偏左；
+  早期Next检查还会在旧歌仍暂停时立即发Seek，使断言误认下一首已经通过。最终探针
+  必须等待playId及具体曲目ID改变且原生已播放，随后才暂停定位；Rust快照也核对ID。
+- .build/quality-menu-kde-1第9态保留采样失败：125%时CSS右焦点点投影到840.5，
+  旧round错误采到841背景，原始图的840像素实际为正确强调色。采样改floor取包含点
+  的像素，冻结此无私人信息向量及“确实没有描边仍失败”的回归；未放宽颜色或丢掉
+  左右焦点检查。最终两组共111个像素均继续严格通过。此项是证据采样修复，不冒充产品
+  又修复一处不存在的描边裁切。
+- .build/quality-menu-gallery/index.html：73张最终原图及1张对齐调整前原图，未裁改，
+  逐图SHA256清单及前端构建摘要。真实音乐HTTP/账号写入/试用额度消耗均为0。
+- 共享控件回归：quality-speed-regression32态、quality-song-menu-regression45态、
+  quality-player-layout-regression20态，未新增截图；最后的当前内嵌版本另跑quality-speed-final。
+- Node24.16.0、Rust1.96.0及锁文件：npm ci、前端格式/323项/类型/构建通过；Rust
+  fmt、严格workspace/all-targets/custom-protocol Clippy、全量259结果target/1213项
+  （0失败/忽略）通过；CI工具34项通过。桌面主程序及UX探针均已重建。
+  日志前缀为.build/quality-{fmt,clippy,workspace-tests,frontend-*,ci-tools}-verified，
+  最终构建日志.build/quality-desktop-final-build.log。
+- 两平台CI新增playback_quality_smoke，包含重开、原生曲目/音质/位置/错误校验。
+  远端是否完整成功另按精确SHA确认；本地空输出不当作真实声卡听感或跑满刷新率，
+  本机截图不当作Windows物理视觉。账号切换及播客浮层仍需各自UI专项截图；动态逐曲
+  权益/试用等继续按审计表推进，完整目标保持进行中。

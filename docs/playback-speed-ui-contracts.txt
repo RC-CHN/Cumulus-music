@@ -33,7 +33,7 @@ controller 在已暂停且原生仍暂停时拒绝旧回报造成的位置倒退
 
 新增控制器测试使用滞后的引擎回报验证暂停定位、倍速、重复暂停、持久化恢复及恢复播放；
 扩展输出恢复测试为暂停/播放中的五组观测情况。初版13项控制器测试通过；随后全量
-测试发现一起听共同试听需要较新的暂停时钟，修正后的控制器13项与一起听24项回归通过；全量回归仍需重新通过。
+测试发现一起听共同试听需要较新的暂停时钟，修正后的控制器13项与一起听24项回归通过；7056a65 全量1201项/259结果target通过。
 真实 GUI 探针另验证全部 9 档速度后仍暂停在 10 秒，再恢复播放核对原生时钟从该位置继续；
 使用异步动作实际耗时及 1.25 倍速计算期望值，允许 0.35 秒的 IPC/轮询观测误差。
 并非仅把前端进度固定为 10 秒。
@@ -42,8 +42,8 @@ controller 在已暂停且原生仍暂停时拒绝旧回报造成的位置倒退
 - .build/speed-menu-before：改前系统 select 的实际 WebView 截图 1 张。
 - .build/speed-menu-focus-before：修正前焦点截图的采样失败，浮层底色正确，但左右
   焦点采样得到背景色而不是强调色；仍保留失败和截图，没有忽略断言。
-- .build/speed-menu-verified：最终内嵌 production 前端，Xvfb 独立 WebView 32 态。
-- .build/speed-menu-kde-embedded：同一最终内嵌前端，本机 KDE Wayland/XWayland，
+- .build/speed-menu-current：最终内嵌 production 前端，Xvfb 独立 WebView 32 态。
+- .build/speed-menu-kde-current/run：同一最终内嵌前端，本机 KDE Wayland/XWayland，
   125% 缩放，32 张仅含本应用窗口的原始截图；每态均可见/获得焦点。
   两组均覆盖 1120×760、760×540 与深浅色，每组 16 个浮层/48 个底色及焦点采样点。
   64 个原生快照全部暂停在 10 秒，实际速度与菜单勾选一致。
@@ -53,7 +53,7 @@ controller 在已暂停且原生仍暂停时拒绝旧回报造成的位置倒退
   ArrowUp/ArrowDown、Home/End、Escape；另完成 32 态及全部速度/实际恢复播放，无新增截图。
 - .build/speed-menu-song-regression：45 态共享歌曲菜单回归，含队列、剪贴板和实际锚点滚动。
 - .build/speed-menu-player-layout-regression：20 态长短元信息、歌词、队列与窄窗底栏回归。
-- .build/speed-menu-gallery/index.html：64 张最终原图和 2 张改前例子，逐图 SHA256 清单；
+- .build/speed-menu-current-gallery/index.html：64 张最终原图和 2 张改前例子，逐图 SHA256 清单；
   仅 HTML 展示，没有裁改原图。所有账号、媒体和写入均使用隔离合成数据，真实账号写入为 0。
 
 限制
