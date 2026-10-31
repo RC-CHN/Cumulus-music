@@ -222,6 +222,11 @@ pub enum PlayerAction {
     Mode {
         mode: PlaybackMode,
     },
+    ModeFor {
+        mode: PlaybackMode,
+        expected_queue_revision: String,
+        fm: bool,
+    },
     Select {
         entry_id: String,
     },

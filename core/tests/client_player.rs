@@ -1091,3 +1091,78 @@ async fn failed_playback_after_activation_keeps_the_receipt_and_retries_only_the
     assert!(applied.playback.is_some());
     assert_eq!(api.quality_writes.load(Ordering::SeqCst), 1);
 }
+
+#[tokio::test]
+async fn checked_mode_rejects_replaced_queues_and_the_wrong_player_family() {
+    use cumulus_core::playback::PlaybackMode;
+    let (_dir, api, _session, client, _) = fixture();
+    let old = client.play_selection("1", songs("1")).await.unwrap();
+    let current = client.play_selection("1", songs("2")).await.unwrap();
+    let calls = api.calls.lock().unwrap().len();
+    for (revision, fm) in [
+        (old.queue_revision, false),
+        (current.queue_revision.clone(), true),
+    ] {
+        assert!(matches!(
+            client
+                .player_action(
+                    "1",
+                    PlayerAction::ModeFor {
+                        mode: PlaybackMode::Random,
+                        expected_queue_revision: revision,
+                        fm,
+                    }
+                )
+                .await,
+            Err(Error::QueueChanged)
+        ));
+    }
+    let changed = client
+        .player_action(
+            "1",
+            PlayerAction::ModeFor {
+                mode: PlaybackMode::SingleLoop,
+                expected_queue_revision: current.queue_revision,
+                fm: false,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(changed.mode, PlaybackMode::SingleLoop);
+    assert_eq!(changed.play_id, current.play_id);
+    assert_eq!(changed.position, current.position);
+    assert_eq!(api.calls.lock().unwrap().len(), calls);
+    client.player_action("1", PlayerAction::Stop).await.unwrap();
+}
+
+#[tokio::test]
+async fn checked_mode_during_source_loading_keeps_the_pending_selection_alive() {
+    use cumulus_core::playback::PlaybackMode;
+    let (_dir, api, _session, client, _) = fixture();
+    api.hold_id.store(1, Ordering::SeqCst);
+    let next = client.clone();
+    let pending = tokio::spawn(async move { next.play_selection("1", songs("1")).await });
+    api.started.notified().await;
+    let subscription = client.subscribe_playback("1").await.unwrap();
+    let before = subscription.current().unwrap();
+    client
+        .player_action(
+            "1",
+            PlayerAction::ModeFor {
+                mode: PlaybackMode::SingleLoop,
+                expected_queue_revision: before.queue_revision,
+                fm: false,
+            },
+        )
+        .await
+        .unwrap();
+    api.release.notify_one();
+    let loaded = pending.await.unwrap().unwrap();
+    assert_eq!(loaded.mode, PlaybackMode::SingleLoop);
+    assert_eq!(loaded.track.unwrap().id, "1");
+    assert_eq!(
+        loaded.state,
+        cumulus_core::playback::controller::PlaybackStatus::Playing
+    );
+    client.player_action("1", PlayerAction::Stop).await.unwrap();
+}

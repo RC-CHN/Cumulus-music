@@ -357,6 +357,18 @@ async fn actual_native_player_drives_room_queue_seek_pause_next_remove_and_resto
     })
     .await;
     assert!(v.attached);
+    assert!(matches!(
+        c.player_action(
+            "1",
+            PlayerAction::Mode {
+                mode: PlaybackMode::Sequential
+            }
+        )
+        .await,
+        Err(Error::State(
+            "together does not support sequential playback"
+        ))
+    ));
     assert!(!v.realtime_ready);
     assert!(c.has_together_cleanup().unwrap());
     assert!(matches!(

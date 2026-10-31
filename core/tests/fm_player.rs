@@ -693,3 +693,131 @@ async fn artist_failure_still_advances_confirmed_song_and_never_sends_skip() {
     );
     assert_eq!(f.domain.api.count("/api/radio/trash/add"), 1);
 }
+
+#[tokio::test]
+async fn checked_repeat_rejects_a_changed_playback_fence_before_mutating_fm() {
+    let f = Native::new();
+    f.enter(&[1, 2, 3]).await;
+    let token = f.domain.session.token().unwrap();
+    let old = f.player.snapshot();
+    f.player
+        .command(&token, PlaybackCommand::Seek(18.0))
+        .await
+        .unwrap();
+    assert!(matches!(
+        f.host
+            .repeat_checked_for(&token, FmRepeat::One, f.intent(), old.fence())
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    assert_eq!(
+        f.player.snapshot().mode,
+        cumulus_core::playback::PlaybackMode::Sequential
+    );
+    assert_eq!(
+        f.domain
+            .fm
+            .queue_for(&token, &FmSource::Personal)
+            .unwrap()
+            .unwrap()
+            .repeat,
+        FmRepeat::Infinite
+    );
+}
+
+#[tokio::test]
+async fn repeat_retry_recovers_a_mode_only_commit_failure_without_replaying_a_skip() {
+    let f = Native::new();
+    f.enter(&[1, 2, 3]).await;
+    let token = f.domain.session.token().unwrap();
+    f.player
+        .command(&token, PlaybackCommand::Pause(true))
+        .await
+        .unwrap();
+    f.player
+        .command(&token, PlaybackCommand::Seek(18.0))
+        .await
+        .unwrap();
+    let before = f.player.snapshot();
+    let loads = f.device.state.lock().unwrap().loads;
+    let sql = rusqlite::Connection::open(f.domain.store.directory().join("core.sqlite3")).unwrap();
+    sql.execute_batch("CREATE TRIGGER deny_mode BEFORE UPDATE ON state WHEN NEW.kind='playback' AND NEW.key='queue' BEGIN SELECT RAISE(ABORT,'synthetic queue mode failure'); END;").unwrap();
+    assert!(
+        f.host
+            .repeat_checked_for(&token, FmRepeat::One, f.intent(), before.fence())
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        f.player.snapshot().mode,
+        cumulus_core::playback::PlaybackMode::Sequential
+    );
+    assert_eq!(
+        f.domain
+            .fm
+            .queue_for(&token, &FmSource::Personal)
+            .unwrap()
+            .unwrap()
+            .repeat,
+        FmRepeat::One
+    );
+    sql.execute_batch("DROP TRIGGER deny_mode;").unwrap();
+    let retry = f
+        .host
+        .repeat_checked_for(
+            &token,
+            FmRepeat::One,
+            f.intent(),
+            f.player.snapshot().fence(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(retry.mode, cumulus_core::playback::PlaybackMode::SingleLoop);
+    assert_eq!(retry.play_id, before.play_id);
+    assert_eq!(retry.position, Some(18.0));
+    assert_eq!(f.device.state.lock().unwrap().loads, loads);
+    assert_eq!(f.domain.api.count("/api/v1/radio/skip"), 0);
+}
+
+#[tokio::test]
+async fn explicit_resume_repairs_pending_mode_without_restarting_the_current_song() {
+    let f = Native::new();
+    f.enter(&[1, 2, 3]).await;
+    let token = f.domain.session.token().unwrap();
+    f.player
+        .command(&token, PlaybackCommand::Pause(true))
+        .await
+        .unwrap();
+    f.player
+        .command(&token, PlaybackCommand::Seek(18.0))
+        .await
+        .unwrap();
+    let before = f.player.snapshot();
+    let loads = f.device.state.lock().unwrap().loads;
+    let sql = rusqlite::Connection::open(f.domain.store.directory().join("core.sqlite3")).unwrap();
+    sql.execute_batch("CREATE TRIGGER deny_resume_mode BEFORE UPDATE ON state WHEN NEW.kind='playback' AND NEW.key='queue' BEGIN SELECT RAISE(ABORT,'synthetic queue mode failure'); END;").unwrap();
+    assert!(
+        f.host
+            .repeat_checked_for(&token, FmRepeat::One, f.intent(), before.fence())
+            .await
+            .is_err()
+    );
+    let queue = f.player.queue(&token).await.unwrap();
+    assert!(f.host.mode_pending_for(&token, &queue).unwrap());
+    sql.execute_batch("DROP TRIGGER deny_resume_mode;").unwrap();
+    let resumed = f.host.resume_for(&token, false, f.intent()).await.unwrap();
+    assert_eq!(
+        resumed.mode,
+        cumulus_core::playback::PlaybackMode::SingleLoop
+    );
+    assert_eq!(resumed.play_id, before.play_id);
+    assert_eq!(resumed.position, Some(18.0));
+    assert_eq!(resumed.state, PlaybackStatus::Playing);
+    assert_eq!(f.device.state.lock().unwrap().loads, loads);
+    assert!(
+        !f.host
+            .mode_pending_for(&token, &f.player.queue(&token).await.unwrap())
+            .unwrap()
+    );
+    assert_eq!(f.domain.api.count("/api/v1/radio/skip"), 0);
+}

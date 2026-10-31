@@ -2,6 +2,7 @@
 //! that an audio engine has successfully loaded the selected resource.
 mod constraint;
 pub mod controller;
+pub mod mode;
 pub use constraint::PlaybackConstraint;
 pub mod engine;
 pub mod output;

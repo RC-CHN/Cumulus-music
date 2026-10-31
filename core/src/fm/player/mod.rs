@@ -78,6 +78,15 @@ impl FmPlayer {
         };
         Ok(!matches_queue(&desired, queue))
     }
+    pub fn mode_pending_for(&self, token: &SessionToken, queue: &QueueSnapshot) -> Result<bool> {
+        let Some(source) = self.active_source_for(token, queue)? else {
+            return Ok(false);
+        };
+        let Some(desired) = self.inner.service.queue_for(token, &source)? else {
+            return Ok(false);
+        };
+        Ok(matches_entries(&desired, queue) && !matches_queue(&desired, queue))
+    }
     pub fn failure_for(&self, token: &SessionToken) -> Result<Option<String>> {
         self.inner.session.with_token(token, |uid| {
             Ok(self
@@ -152,7 +161,18 @@ impl FmPlayer {
         repeat: FmRepeat,
         intent: u64,
     ) -> Result<PlaybackSnapshot> {
-        self.inner.repeat(token, repeat, intent).await
+        self.inner.repeat(token, repeat, intent, None).await
+    }
+    pub async fn repeat_checked_for(
+        &self,
+        token: &SessionToken,
+        repeat: FmRepeat,
+        intent: u64,
+        expected: crate::playback::controller::PlaybackFence,
+    ) -> Result<PlaybackSnapshot> {
+        self.inner
+            .repeat(token, repeat, intent, Some(expected))
+            .await
     }
     pub async fn filter_for(&self, token: &SessionToken, intent: u64) -> Result<PlaybackSnapshot> {
         self.inner.filter(token, intent).await
@@ -225,7 +245,7 @@ fn projection(queue: &FmQueue, quality: &str) -> Result<QueueSnapshot> {
         },
     })
 }
-fn matches_queue(desired: &FmQueue, actual: &QueueSnapshot) -> bool {
+fn matches_entries(desired: &FmQueue, actual: &QueueSnapshot) -> bool {
     actual.current == desired.current().map(|t| t.entry_id.clone())
         && actual.order
             == desired
@@ -233,6 +253,9 @@ fn matches_queue(desired: &FmQueue, actual: &QueueSnapshot) -> bool {
                 .iter()
                 .map(|t| t.entry_id.clone())
                 .collect::<Vec<_>>()
+}
+fn matches_queue(desired: &FmQueue, actual: &QueueSnapshot) -> bool {
+    matches_entries(desired, actual)
         && actual.mode
             == if desired.repeat == FmRepeat::One {
                 PlaybackMode::SingleLoop

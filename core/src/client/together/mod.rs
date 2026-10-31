@@ -107,9 +107,15 @@ impl MusicClient {
         token: &SessionToken,
         action: &PlayerAction,
     ) -> Result<()> {
-        if self.together_attached(token, None)?
-            && matches!(action,PlayerAction::Speed {value} if *value!=1.0)
+        let attached = self.together_attached(token, None)?;
+        if attached
+            && matches!(action, PlayerAction::Mode { mode } if !crate::playback::mode::ModeFamily::Together.supports(*mode))
         {
+            return Err(Error::State(
+                "together does not support sequential playback",
+            ));
+        }
+        if attached && matches!(action,PlayerAction::Speed {value} if *value!=1.0) {
             return Err(Error::State("together requires normal playback speed"));
         }
         Ok(())

@@ -102,7 +102,10 @@ impl Inner {
         let _gate = self.gate.try_lock().map_err(|_| Error::MutationBusy)?;
         let (view, actual, mut desired) = self.current(token).await?;
         self.guard(token, intent)?;
-        if matches_queue(&desired, &actual) && desired.current().is_some() {
+        if matches_entries(&desired, &actual) && desired.current().is_some() {
+            if !matches_queue(&desired, &actual) {
+                self.apply(token, &view, &desired, intent, None).await?;
+            }
             return self
                 .controller
                 .command(
@@ -175,11 +178,19 @@ impl Inner {
         token: &SessionToken,
         repeat: FmRepeat,
         intent: u64,
+        expected: Option<crate::playback::controller::PlaybackFence>,
     ) -> Result<PlaybackSnapshot> {
         let _gate = self.gate.try_lock().map_err(|_| Error::MutationBusy)?;
         let (view, actual, desired) = self.current(token).await?;
         self.guard(token, intent)?;
-        Self::require_synced(&desired, &actual)?;
+        if expected.is_some_and(|expected| expected != view.fence()) {
+            return Err(Error::QueueChanged);
+        }
+        // A failed previous mode commit may leave only repeat out of sync.
+        // Recover that case without replaying a track step or a skip report.
+        if !matches_entries(&desired, &actual) {
+            return Err(Error::State("FM queue update requires recovery"));
+        }
         let desired = self
             .service
             .repeat_for(token, &desired.source, desired.revision, repeat)?;

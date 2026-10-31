@@ -43,6 +43,7 @@ pub struct FmView {
     pub current: Option<String>,
     pub active: bool,
     pub pending: bool,
+    pub mode_pending: bool,
     pub notice: Option<&'static str>,
     pub operations: Vec<FmFeedbackView>,
     pub blocked_artists: Vec<FmArtistView>,
@@ -218,6 +219,8 @@ impl MusicClient {
             .transpose()?
             .unwrap_or_default();
         let failure = fm.failure_for(&token)?;
+        let pending = active && fm.pending_for(&token, &actual)?;
+        let mode_pending = pending && fm.mode_pending_for(&token, &actual)?;
         let view = FmView {
             source,
             active_source,
@@ -228,8 +231,11 @@ impl MusicClient {
                 .and_then(|q| q.current())
                 .map(|t| t.entry_id.clone()),
             active,
-            pending: active && fm.pending_for(&token, &actual)?,
-            notice: if active {
+            pending,
+            mode_pending,
+            notice: if mode_pending {
+                Some("播放模式尚未同步，继续播放时将同步模式")
+            } else if active {
                 failure.map(|code| {
                     if code == "refill_failed" {
                         "推荐暂时加载失败，正在使用已有歌曲"

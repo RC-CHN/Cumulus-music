@@ -1,5 +1,6 @@
 mod dto;
 mod lyrics;
+mod mode;
 mod next_play;
 mod origin;
 mod output;
@@ -295,6 +296,21 @@ impl MusicClient {
         if matches!(action, PlayerAction::Startup) {
             return self.startup_player(epoch).await;
         }
+        if let PlayerAction::ModeFor {
+            mode,
+            expected_queue_revision,
+            fm,
+        } = action
+        {
+            if native.is_some() {
+                return Err(Error::InvalidInput(
+                    "popup mode target used as native media command",
+                ));
+            }
+            return self
+                .player_mode_for(epoch, mode, &expected_queue_revision, fm)
+                .await;
+        }
         if let PlayerAction::NextPlay {
             id,
             quality,
@@ -584,6 +600,9 @@ impl MusicClient {
                 PlaybackCommand::Quality(level)
             }
             PlayerAction::Mode { mode } => PlaybackCommand::Mode(mode),
+            PlayerAction::ModeFor { .. } => {
+                unreachable!("fenced mode handled before generic action")
+            }
             PlayerAction::Select { entry_id } => PlaybackCommand::Select(entry_id),
             PlayerAction::Remove { entry_ids } => PlaybackCommand::Remove(entry_ids),
             PlayerAction::Reorder { entry_ids } => PlaybackCommand::Reorder(entry_ids),
