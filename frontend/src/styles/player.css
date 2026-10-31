@@ -249,22 +249,33 @@ input[type='range'] {
   flex-direction: column;
   border-left: 1px solid var(--line);
 }
-.queue-panel header {
+.queue-panel > header {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 22px 20px 16px;
+  min-height: 58px;
+  padding: 0 20px;
+  flex-shrink: 0;
 }
-.queue-panel header > div {
+.queue-panel > header > div {
   flex: 1;
 }
-.queue-panel h2 {
-  font-size: 20px;
-  margin-bottom: 7px;
+.queue-panel > header h2 {
+  font-size: 18px;
+  margin: 0;
+  line-height: 32px;
 }
-.queue-panel small {
+.queue-panel > header small {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 13px;
+  font-weight: 400;
+}
+.queue-notice {
+  margin: 0;
+  padding: 8px 20px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
 }
 .queue-scroll {
   contain: strict;
@@ -280,7 +291,7 @@ input[type='range'] {
   outline-offset: -2px;
 }
 .queue-row {
-  height: 62px;
+  height: 64px;
   display: flex;
   align-items: center;
   gap: 3px;
@@ -304,9 +315,18 @@ input[type='range'] {
   gap: 6px;
   min-width: 0;
 }
+.queue-song:disabled {
+  /* The control is unavailable, but its track metadata remains readable. */
+  opacity: 1;
+  cursor: default;
+}
 .queue-song strong {
   font-size: 13px;
   font-weight: 400;
+}
+.queue-song small {
+  color: var(--muted);
+  font-size: 12px;
 }
 .queue-row time {
   font-size: 10px;

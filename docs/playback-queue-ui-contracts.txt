@@ -1,0 +1,69 @@
+播放列表：确认、定位、版本绑定与失败反馈
+2026-10-31；仅本专项，不代表所有队列/一起听/心动功能已完成。
+
+官方依据
+相对references/ui-recovery/sources/packages/pc/src：
+- components/PlayBar/Playlist.tsx，SHA256
+  e4185ae44c94e62148a710c5827dff9736cd9d9acd34753de6eeb50b4e225dc0：
+  播放列表标题/计数、58px页头、18px标题、清空确认及房间结束说明。
+- components/PlayBar/PlaylistContent.tsx，SHA256
+  234d446a26c9ed7f2a12b8a36b62e7081dd7c6b22467aee14e4f68788090b986：
+  displayOrder排序、按当前资源定位、Delete/Backspace忽略按键重复、空态发现入口。
+- components/TrackViewer/CurPlayingListTrackViewer.tsx，SHA256
+  dcb7d9326d97dff8134424851cf611b79792335b562b66d53d050da31af9a682：
+  无列表表头、普通行64px、推荐分隔行74px。当前只使用普通64px行。
+未使用YesPlayMusic。未获得同状态官方运行截图，不声称像素一致。
+
+本次正式行为
+- QueuePanel使用标题与行高来源，保留Cumulus右侧抽屉、关闭键、时长和移动按钮。
+  打开时定位当前歌曲；当前条目变化时更新定位，普通时钟轮询不拉回手动滚动。
+  虚拟窗口保持有界；键盘Home/End/上下移动歌曲焦点，Delete/Backspace移除该项，
+  长按重复被忽略。不是官方多选/拖放/双击语义的完整复刻。
+- 清空先打开独立QueueClearDialog，显示捕获的条目数和停止播放/保留文件说明，
+  默认聚焦取消。取消/Escape只关闭确认并返回清空按钮；执行等待禁止重复提交和
+  关闭确认。成功后空列表不能继续清空，焦点交给队列关闭键，关闭队列回到底栏入口。
+- 打开确认后账号/队列版本变化、列表读取失败会禁用旧确认。必须取消并核对新列表，
+  不自动改用新版本继续写。单个播放时钟更新不改变队列版本，也不使确认失效。
+- loadQueue显式区分加载与失败，已有列表读取失败仍可见但不能编辑；重试仅重读。
+  编辑有独立queueEditing/queueEditError，错误不进入音频错误栏，不成为播放重试。
+  新连接清理旧读取/编辑状态，旧回复不写入新账号；异步焦点恢复尊重期间的新焦点。
+  重读已有列表也显式显示更新提示；取消清空后清理该确认的错误，退出动画保留
+  原正文/计数/等待呈现，动画结束才释放确认数据。旧账号退出不清除新账号错误。
+  清空保存失败保留原生存储原因及重新核对提示；状态更新期间禁用确认并显示等待，
+  不让可点击按钮因为外部操作忙碌而静默无效。
+- FM各来源统一说明队列由推荐管理，选曲/排序/删除/清空仍由原生拒绝；不再误标
+  所有FM为私人漫游。禁用操作不降低歌曲资料可读性；缺歌手显示未知歌手，缺时长
+  显示“—/时长未知”，不把缺失值当成实际零秒。
+
+类型化接口与原生提交
+现有player_action新增：
+  {kind:"queue_for", expected_queue_revision:"十进制u64", edit:{kind:"clear"}}
+  edit也可为{kind:"select",entry_id}、{kind:"remove",entry_ids}、
+  {kind:"reorder",entry_ids}。未知字段由Rust反序列化拒绝。
+前端使用实际QueueView.epoch/revision，不从列表位置推造entry_id。发送前检查同账号/
+当前列表，原生在取消旧加载或取得媒体所有权之前再次检查队列版本，拒绝FM；持有
+房间gate避免附着策略竞态。检查所得PlaybackFence一直传到actor的原子命令提交，
+期间变更仍拒绝。既有select/remove/reorder/clear原生用例负责持久化与失败回滚。
+旧raw action仍供已有原生媒体票据等调用；本次未宣称所有外部调用都新增此UI凭据。
+
+player_queue为本地IPC读取。排序、移除其他条目、清空普通本地队列不需要新音乐HTTP；
+选曲/移除当前项可能沿既有SourceResolver授权/加载链路请求/api/v3/song/detail、
+/api/song/enhance/player/url/v1，
+下载/本地/CUE保留各自来源策略。本次未改签名、会员授权、音源或文件发布机制。
+一起听附着时仍经既有房间协调/后台队列处理，未以本次普通/FM场景验证房间清空或
+双端同步；官方清空自动结束提示、收藏全部、多选、拖放、推荐分隔和发现入口等
+剩余官方分支尚需独立迁移/验收，不能因新增确认而标为整个队列完成。
+
+验证与可执行入口
+  cargo test -p cumulus-core --test client_player --test client_fm --locked
+  python3 scripts/ci/queue_ui_smoke.py --binary PATH_TO_UX_UI_PROBE --root NEW_PRIVATE_ROOT
+原生新增三项覆盖旧列表的四种编辑拒绝、暂停音频身份保持/排序/删除/选曲/清空，
+以及新队列音源加载期间旧确认不会取消新选曲；FM空队列另核对原生拒绝。
+前端新增并发用例核对错误归属、当前版本及账号替换后的迟到读取/编辑。
+queue_ui_smoke共28态：当前位置、键盘首尾/删除/移动、两尺寸两主题的确认/取消、
+队列变化、SQLite拒绝保存、读取失败/等待/重试、旧编辑读取被新队列取代后不抢焦点、
+清空等待/成功/重开、FM所有权。
+使用production前端、真实WebView/IPC/Rust/SQLite/libmpv与合成账号/null输出，真实
+请求/账号写入为0；DOM键盘事件及合成cancel不代表全部实体键盘默认行为验证。
+Linux/Windows独立runner均接入；Windows通过与否必须查精确提交完整CI。
+实际原图、焦点与本机缩放证据见ui-ux-validation.txt，不把null输出称为声卡听感。

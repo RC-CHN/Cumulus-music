@@ -1598,3 +1598,10 @@ login-interception-cache-tests.log。初次全量（workspace-tests3.log）一�
   与Windows 2e7b140日志相符，另补明确待回执阶段，不把原回归失败略过。
   正式心动筛选/HTTP编排/入口/五态/多窗口与恢复UI待接线；完整目标继续。
   接口、源码、适配与真实未完成范围见intelligence-playback-contracts.txt。
+2026-10-31 播放列表显示版本与编辑提交
+- QueueFor/QueueEdit新增显示版本绑定，复用原生select/remove/reorder/clear；提交前
+  验证和actor fence都保留，不自动用新列表重试。旧确认不取消新队列正在加载的音源。
+- 完整workspace272个结果target/1299项，0失败/忽略；严格all-targets Clippy/格式通过。
+  日志.build/queue-ui-workspace-tests.log、queue-ui-clippy.log。前端374项/类型构建通过。
+- 真实队列GUI与缩放证据另见playback-queue-ui-contracts.txt、ui-ux-validation.txt，
+  不把这些原生用例替代页面、Windows实机或物理声卡验收。
