@@ -17,7 +17,7 @@
   let count=0, expectedTrack='1';
   async function capture(label) {
     await sleep(220);
-    const popup=panel(), items=popup ? [...popup.querySelectorAll('button')] : [], r=popup&&rect(popup);
+    const popup=panel(), items=popup ? [...popup.querySelectorAll('.menu-items button')] : [], r=popup&&rect(popup);
     const row={width:innerWidth,height:innerHeight,ratio:devicePixelRatio,screenX:window.screenX,screenY:window.screenY,
       theme:document.documentElement.dataset.theme,visible:document.visibilityState==='visible',focused:document.hasFocus(),
       trigger:{...rect(button()),text:button().textContent.trim(),tag:button().tagName,description:document.getElementById(button().getAttribute('aria-describedby'))?.textContent.trim(),focused:document.activeElement===button(),hit:hit(button())},
@@ -115,14 +115,14 @@
         if(count===1) {await resize(1110,760);await wait(()=>!one('.quality-action-menu'),'real viewport resize closes menu');await resize(1120,760);await open();}
         await capture(`menu_${suffix}`);
         key('Home');assert(document.activeElement.textContent.includes('臻音全景声'),'Home first quality');await capture(`first_${suffix}`);
-        key('End');assert(document.activeElement.textContent.includes('节省流量'),'End compatibility quality');await capture(`last_${suffix}`);
+        key('End');assert(document.activeElement.textContent.trim()==='刷新音质','End refresh action');key('ArrowUp');assert(document.activeElement.textContent.includes('节省流量'),'last compatibility quality');await capture(`last_${suffix}`);
         key('Escape');await wait(()=>!one('.quality-action-menu'),'Escape dismiss');assert(document.activeElement===button(),'Escape focus');await capture(`escape_${suffix}`);
         await choose('无损','lossless');await capture(`downgraded_${suffix}`);
         await open();await capture(`preference_${suffix}`);
         assert(panel().textContent.includes('请求：无损')&&panel().textContent.includes('后续播放偏好：无损'),'actual/request/preference explanation');
         one('.main-content').dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}));await wait(()=>!one('.quality-action-menu'),'outside dismiss');
       }
-      await fixture('deny');const oldPlay=bar().dataset.playId;
+      await fixture('grant-vivid');await fixture('deny');const oldPlay=bar().dataset.playId;
       await open();click(row('臻音全景声'));
       await wait(()=>one('.playback-message button')&&!one('.quality-action-menu'),'denied authorization');
       assert(bar().dataset.playId===oldPlay&&bar().dataset.preferredQuality==='lossless','denial preserves previous audio and preference');await capture('authorization_denied');

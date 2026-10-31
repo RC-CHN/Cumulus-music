@@ -176,6 +176,7 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playback_speed_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playback-speed-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playback_quality_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playback-quality-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/quality_trial_native_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-quality-trial-native-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/quality_rights_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-quality-rights-ui-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playlist_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playlist-layout-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playlist_editor_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playlist-editor-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playlist_tags_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playlist-tags-linux
@@ -260,6 +261,7 @@ jobs:
           python scripts/ci/playback_speed_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playback-speed-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/playback_quality_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playback-quality-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/quality_trial_native_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-quality-trial-native-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/quality_rights_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-quality-rights-ui-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/playlist_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playlist-layout-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/playlist_editor_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playlist-editor-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/playlist_tags_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playlist-tags-windows --runtime .build/package-stage/windows-x64/native
