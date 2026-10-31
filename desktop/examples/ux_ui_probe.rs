@@ -8,6 +8,8 @@ mod download_page_fixture;
 #[allow(dead_code)]
 #[path = "support/catalog_fixture.rs"]
 mod fixture;
+#[path = "support/intelligence_start_fixture.rs"]
+mod intelligence_start_fixture;
 #[path = "support/intelligence_ui_fixture.rs"]
 mod intelligence_ui_fixture;
 #[path = "support/library_fixture.rs"]
@@ -73,6 +75,9 @@ fn playlist(id: u64) -> Value {
 impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, args: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(response) = intelligence_start_fixture::response(path, &args).await {
+                return response;
+            }
             playback_quality_fixture::before(path).await;
             if let Some(response) = mode_fixture::response(path, &args).await {
                 return response;
@@ -162,7 +167,11 @@ impl Api for Library {
                 "/api/v3/song/detail" => {
                     let rows: Vec<Value> =
                         serde_json::from_str(args["c"].as_str().unwrap()).unwrap();
-                    json!({"code":200,"songs":rows.iter().map(|row|row["id"].as_str().and_then(|s|s.parse().ok()).or_else(||row["id"].as_u64()).unwrap()).filter(|id| !search_fixture::missing_song() || *id != 2).map(song).collect::<Vec<_>>()})
+                    let mut response = json!({"code":200,"songs":rows.iter().map(|row|row["id"].as_str().and_then(|s|s.parse().ok()).or_else(||row["id"].as_u64()).unwrap()).filter(|id| !search_fixture::missing_song() || *id != 2).map(song).collect::<Vec<_>>()});
+                    if intelligence_start_fixture::enabled() {
+                        response["privileges"]=json!(rows.iter().map(|row|json!({"id":row["id"],"pl":320000,"maxbr":999000,"flag":0})).collect::<Vec<_>>());
+                    }
+                    response
                 }
                 "/api/batch" if playlist_editor_fixture::enabled() => {
                     playlist_editor_fixture::wait_while("hold_write").await;
@@ -267,8 +276,13 @@ fn main() {
         let cover_root=root.clone();
         app.listen("ux-proof",move |event| {
             let mut value:Value=serde_json::from_str(event.payload()).unwrap();
+            if intelligence_start_fixture::enabled() {value["syntheticIntelligenceStart"]=intelligence_start_fixture::report();}
             if search_fixture::enabled() { value["syntheticSearchCalls"]=json!(search_fixture::calls()); }
             let stage=value["stage"].as_str().unwrap_or("");
+            if intelligence_start_fixture::enabled() && stage=="intelligence-start-fixture" {
+                let kind=value["kind"].as_str().unwrap();intelligence_start_fixture::control(kind);
+                handle.get_webview_window("main").unwrap().eval(format!("window.__intelligenceStartAck={};",json!(kind))).unwrap();return;
+            }
             if intelligence_ui_fixture::enabled() && stage=="intelligence-fixture" {
                 let handle=handle.clone();let store=proof_store.clone();let session=fixture_session.clone();let root=cover_root.clone();
                 tauri::async_runtime::spawn(async move {
@@ -434,7 +448,7 @@ fn main() {
                     } else { value["nativePlayerUnavailable"]=json!(true); }
                     fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
                     if !capture_ack::acknowledge(&handle,&output,&stage,value["captureHandshake"]==true).await {return;}
-                    if (std::env::var_os("CUMULUS_QUEUE_SELECTION_UI_PROOF").is_some() || intelligence_ui_fixture::enabled()) && stage.starts_with("ux_") {
+                    if (std::env::var_os("CUMULUS_QUEUE_SELECTION_UI_PROOF").is_some() || intelligence_ui_fixture::enabled() || intelligence_start_fixture::enabled()) && stage.starts_with("ux_") {
                         handle.get_webview_window("main").unwrap().eval(format!("window.__queueSelectionRecorded={};",serde_json::json!(stage))).unwrap();
                     }
                     if ["complete","failed"].contains(&stage.as_str()) {

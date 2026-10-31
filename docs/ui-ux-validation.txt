@@ -2792,3 +2792,42 @@ speed-menu-focus-before，未忽略左右焦点框采样失败。额外键盘32�
   协调器、完整小窗视觉及原总目标仍未完成，没有绕过gate或重新发布0.1.0。
 - 加强后的embedded-order-final又以最终内嵌前端完整执行26态，额外逐态核对完整
   歌曲顺序、隐藏当前身份/空current及非等待态的原生实际模式，不只检查数量。
+2026-10-31 心动开启的实际UI与故障路径
+本批正式入口：我喜欢的音乐详情→心动模式；等待时可暂停/定位并取消；取消后
+显示继续；显式Continue成功后保留当前解码器/暂停位置；播放模式退出恢复列表；
+请求失败明确提示回到列表循环，按钮允许用户明确重新开启。Source与接口映射见
+intelligence-start-contracts.txt；本批没有把主播放条五态进入或所有心动功能称为完成。
+
+最终原图与本机检查（均为合成账号，不含真实账号截图）
+- .build/intelligence-start-screen-final3：11态/11图，隔离GTK/WebView。
+- .build/intelligence-start-kde-final3：同11态/11图，本机KDE Wayland/XWayland125%。
+- .build/intelligence-restored-kde-start-final：恢复/退出26态/26图，本机同样缩放。
+- .build/intelligence-start-gallery/index.html：48张原图及manifest.json的SHA256清单。
+  37张本机窗口由own-PID compositor pixmap截取，physical.json另记可见/聚焦检查；
+  通用audit.json仍按CI能力报告physicalDisplayVerified=false，不覆盖其原始记录。
+  指针事件为合成，音频为libmpv/null，不能声称实体输入或真实声卡听感通过。
+  截图使用最终外部frontend/dist；同时进行只改变嵌入资源的重新链接，故清单
+  不冒称记录了每次截图启动可执行文件的精确散列；记录实际前端分发/源码及原图散列。
+
+实际复验与结果
+- 新Start 11态严格核对实际五字段请求/count/type、原生队列/phase/播放身份/暂停
+  10秒以及按钮可命中/文案不裁切/取消与关闭的焦点；两主题两尺寸均检查。
+- .build/intelligence-start-embedded-final：最终重新构建的内嵌生产前端11态通过，
+  不传--frontend-dist；这才补足内嵌产物流程，不拿外部目录冒充发布资源。
+- .build/intelligence-start-restored-regression-final：原26态无截图回归通过；上述
+  本机26张原图也通过。旧脚本允许独立心动提示，但不允许冒出通用音频错误；
+  模式恢复按钮仍逐个做实际hit检查，没有用更宽的几何容差掩盖遮挡。
+- .build/intelligence-start-mode-regression：普通/FM48态及进程重开3态通过。
+- .build/intelligence-start-room-embedded-final：保留严格Applied条件的27态通过，
+  只读HTTP先于IM的竞争另有确定性Rust用例，未靠加长等待或伪造第二人同步通过。
+- 前端395项、format:check、生产类型检查/构建通过；日志intelligence-start-
+  frontend-tests-final.log / frontend-format-check-final.log / frontend-build-final.log。
+- Rust全工作区276个结果目标累计1362 passed、0 failed/ignored；严格Clippy及fmt
+  通过：intelligence-start-workspace-tests-final.log、intelligence-start-clippy-final-
+  product.log、intelligence-start-rust-format-final.log。数字是测试结果，不是业务覆盖百分比。
+- CI脚本测试36项通过：intelligence-start-ci-tools.log；其published=true是发布单测
+  的合成输出，没有实际发布、标签或替换v0.1.0附件。
+- Linux当前实际产物cumulus及两个GUI probe已重建。新脚本加入Linux/Windows
+  独立runner，仍需新提交自身远端CI，不能把本地或旧提交通过当成精确head通过。
+  旧运行41205215264的Linux已因成员观察竞争失败；修复原因见核心一起听文档。
+  Windows本机视觉、真实账号心动会员/风控、FM进入等未增加实景证明，范围如实保留。

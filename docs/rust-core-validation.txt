@@ -1652,3 +1652,13 @@ login-interception-cache-tests.log。初次全量（workspace-tests3.log）一�
   含复用fixture，本批仅新增上述3项，不能称为1343条新增功能。
 - 正式开启协调器仍未完成，26态实际WebView恢复/退出、截图及错误分支详见
   intelligence-restored-ui-contracts.txt与ui-ux-validation.txt。
+2026-10-31 心动实际协调器与HTTP/IM观察竞争
+- intelligence_coordinator 14项从MusicClient实际Start/Continue运行，覆盖原始pl、
+  原始count、本人喜欢歌单、随机/显式种子、前后两阶段取消/选曲、账号替换/301、
+  暂停停止/原解码器保留、替代/空位、已下载文件篡改及缺少缓存后重开。
+- intelligence_eligibility两项包括83个执行官方M21.A/M23.Z/V/D/F的无私人信息向量。
+  NoCopyright MV实验关闭；格式错误明确拒绝。不能把这组候选判断当服务端授权。
+- client_together新增确定性HTTP先更新角色、后收到MemberJoined的测试，仍要求
+  Applied、保持暂停12秒且不产生新的playlist/play回报；实际WebView27态复验通过。
+- 最终全工作区276个结果目标/1362 passed/0 failed/ignored，严格Clippy/fmt通过。
+  前端395项；真实WebView与产物边界见ui-ux-validation.txt，不混计线上或听感证明。
