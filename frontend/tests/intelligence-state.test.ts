@@ -132,3 +132,46 @@ test('a native fallback result produces explicit failure feedback and permits a 
   assert.equal(f.model.canStart.value, true);
   f.stop();
 });
+test('mode entry owns pre-seed failures locally while a committed recommendation failure uses shared feedback', async () => {
+  const first = fixture();
+  const a = first.model.enterCurrent('4');
+  first.held.reject({ code: 'storage', message: 'prepare failed', retryable: true });
+  await assert.rejects(a.promise);
+  assert.equal(first.model.issue.value, undefined);
+  assert.equal(first.model.busy.value, false);
+  first.stop();
+  const second = fixture();
+  const b = second.model.enterCurrent('4');
+  second.view.value = {
+    ...second.view.value,
+    intelligence: 'seeded',
+    intelligenceOperation: b.id,
+    playId: 'seed',
+  };
+  second.held.reject({ code: 'storage', message: 'recommendation commit failed', retryable: true });
+  await assert.rejects(b.promise);
+  assert.equal(second.model.issue.value?.message, 'recommendation commit failed');
+  assert.equal(second.model.resumable.value, true);
+  second.stop();
+});
+test('a superseded committed entry cannot publish its late fallback feedback over another song', async () => {
+  const f = fixture();
+  const attempt = f.model.enterCurrent('4');
+  f.view.value = {
+    ...f.view.value,
+    intelligence: 'seeded',
+    intelligenceOperation: attempt.id,
+    playId: 'seed',
+  };
+  f.view.value = {
+    ...f.view.value,
+    intelligence: null,
+    intelligenceOperation: null,
+    playId: 'replacement',
+    queueRevision: '99',
+  };
+  f.held.reject({ code: 'storage', message: 'old error', retryable: true });
+  await assert.rejects(attempt.promise);
+  assert.equal(f.model.issue.value, undefined);
+  f.stop();
+});

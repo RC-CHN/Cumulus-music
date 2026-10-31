@@ -235,6 +235,9 @@ function fixture(overrides: Partial<PlayerClient> = {}) {
   let callback: (event: PlayerUpdate) => void = () => {};
   let stopped = 0;
   const backend: PlayerClient = {
+    playerSnapshot: async () => {
+      throw Error('unexpected playback snapshot read');
+    },
     playerIntelligence: async () => {
       throw Error('unexpected intelligence command');
     },
@@ -749,5 +752,17 @@ test('a late intelligence reply is rejected after reconnecting another account',
   await assert.rejects(request, (e: unknown) => (e as { code: string }).code === 'stale');
   assert.equal(f.player.view.value?.epoch, '2');
   assert.equal(f.player.view.value?.playId, null);
+  f.player.dispose();
+});
+test('local playback reconciliation keeps newer stream state and never takes transport busy or retry ownership', async () => {
+  const held = deferred<PlayerView>();
+  const f = fixture({ playerSnapshot: () => held.promise });
+  await f.player.connect(account());
+  const read = f.player.syncPlayback();
+  assert.equal(f.player.busy.value, false);
+  f.emit(state('8', '1', 'newest'));
+  held.resolve(state('5', '1', 'older'));
+  assert.equal((await read).playId, 'newest');
+  assert.equal(f.player.view.value?.revision, '8');
   f.player.dispose();
 });

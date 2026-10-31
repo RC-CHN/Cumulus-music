@@ -1,0 +1,167 @@
+{
+  "source": "official M/7 export t; executed factory",
+  "sha256": "4914ce443197d0538f055ae064b910a1a5f7c3d83c1c1e60978b9d7f2b055e1e",
+  "scope": "five-state eligibility plus together override; FM separately sourced",
+  "vectors": [
+    {
+      "canHeartbeat": false,
+      "together": false,
+      "current": "intelligence",
+      "next": "order_loop",
+      "sourceCurrent": "playAi",
+      "sourceNext": "playCycle"
+    },
+    {
+      "canHeartbeat": false,
+      "together": false,
+      "current": "order_loop",
+      "next": "single_loop",
+      "sourceCurrent": "playCycle",
+      "sourceNext": "playOneCycle"
+    },
+    {
+      "canHeartbeat": false,
+      "together": false,
+      "current": "single_loop",
+      "next": "random",
+      "sourceCurrent": "playOneCycle",
+      "sourceNext": "playRandom"
+    },
+    {
+      "canHeartbeat": false,
+      "together": false,
+      "current": "random",
+      "next": "sequential",
+      "sourceCurrent": "playRandom",
+      "sourceNext": "playOrder"
+    },
+    {
+      "canHeartbeat": false,
+      "together": false,
+      "current": "sequential",
+      "next": "order_loop",
+      "sourceCurrent": "playOrder",
+      "sourceNext": "playCycle"
+    },
+    {
+      "canHeartbeat": false,
+      "together": true,
+      "current": "intelligence",
+      "next": "single_loop",
+      "sourceCurrent": "playAi",
+      "sourceNext": "playOneCycle"
+    },
+    {
+      "canHeartbeat": false,
+      "together": true,
+      "current": "order_loop",
+      "next": "single_loop",
+      "sourceCurrent": "playCycle",
+      "sourceNext": "playOneCycle"
+    },
+    {
+      "canHeartbeat": false,
+      "together": true,
+      "current": "single_loop",
+      "next": "random",
+      "sourceCurrent": "playOneCycle",
+      "sourceNext": "playRandom"
+    },
+    {
+      "canHeartbeat": false,
+      "together": true,
+      "current": "random",
+      "next": "order_loop",
+      "sourceCurrent": "playRandom",
+      "sourceNext": "playCycle"
+    },
+    {
+      "canHeartbeat": false,
+      "together": true,
+      "current": "sequential",
+      "next": "single_loop",
+      "sourceCurrent": "playOrder",
+      "sourceNext": "playOneCycle"
+    },
+    {
+      "canHeartbeat": true,
+      "together": false,
+      "current": "intelligence",
+      "next": "order_loop",
+      "sourceCurrent": "playAi",
+      "sourceNext": "playCycle"
+    },
+    {
+      "canHeartbeat": true,
+      "together": false,
+      "current": "order_loop",
+      "next": "single_loop",
+      "sourceCurrent": "playCycle",
+      "sourceNext": "playOneCycle"
+    },
+    {
+      "canHeartbeat": true,
+      "together": false,
+      "current": "single_loop",
+      "next": "random",
+      "sourceCurrent": "playOneCycle",
+      "sourceNext": "playRandom"
+    },
+    {
+      "canHeartbeat": true,
+      "together": false,
+      "current": "random",
+      "next": "sequential",
+      "sourceCurrent": "playRandom",
+      "sourceNext": "playOrder"
+    },
+    {
+      "canHeartbeat": true,
+      "together": false,
+      "current": "sequential",
+      "next": "intelligence",
+      "sourceCurrent": "playOrder",
+      "sourceNext": "playAi"
+    },
+    {
+      "canHeartbeat": true,
+      "together": true,
+      "current": "intelligence",
+      "next": "single_loop",
+      "sourceCurrent": "playAi",
+      "sourceNext": "playOneCycle"
+    },
+    {
+      "canHeartbeat": true,
+      "together": true,
+      "current": "order_loop",
+      "next": "single_loop",
+      "sourceCurrent": "playCycle",
+      "sourceNext": "playOneCycle"
+    },
+    {
+      "canHeartbeat": true,
+      "together": true,
+      "current": "single_loop",
+      "next": "random",
+      "sourceCurrent": "playOneCycle",
+      "sourceNext": "playRandom"
+    },
+    {
+      "canHeartbeat": true,
+      "together": true,
+      "current": "random",
+      "next": "order_loop",
+      "sourceCurrent": "playRandom",
+      "sourceNext": "playCycle"
+    },
+    {
+      "canHeartbeat": true,
+      "together": true,
+      "current": "sequential",
+      "next": "single_loop",
+      "sourceCurrent": "playOrder",
+      "sourceNext": "playOneCycle"
+    }
+  ]
+}

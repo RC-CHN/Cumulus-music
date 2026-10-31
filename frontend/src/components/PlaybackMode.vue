@@ -3,10 +3,29 @@ import { computed, ref, watch } from 'vue';
 import type { PlayerModel } from '../composables/usePlayer';
 import { usePlaybackMode } from '../composables/usePlaybackMode';
 import { modeIcon, modeLabel } from '../services/playbackMode';
+import { canHeartBeat } from '../services/playbackMode';
+import type { IntelligenceModel } from '../composables/useIntelligence';
 import Icon from './Icon.vue';
 import MenuTransition from './MenuTransition.vue';
-const props = defineProps<{ player: PlayerModel; togetherActive: boolean }>();
-const model = usePlaybackMode(props.player, () => props.togetherActive);
+const props = defineProps<{
+  player: PlayerModel;
+  togetherActive: boolean;
+  intelligence?: IntelligenceModel;
+  likedPlaylistId?: string | null;
+}>();
+const model = usePlaybackMode(props.player, () => props.togetherActive, {
+  eligible: () =>
+    !!props.intelligence &&
+    !props.togetherActive &&
+    canHeartBeat(props.player.view.value, props.likedPlaylistId),
+  pending: () => props.intelligence?.busy.value ?? false,
+  enter: (revision) => {
+    if (!props.intelligence)
+      throw { code: 'stale', message: '心动模式入口已变化', retryable: false };
+    return props.intelligence.enterCurrent(revision);
+  },
+  idle: (epoch, signal) => props.intelligence!.idle(epoch, signal),
+});
 const trigger = ref<HTMLButtonElement>(),
   dismissed = ref(false);
 const label = computed(() => modeLabel(model.value.value, model.displayFamily.value));
@@ -47,6 +66,7 @@ function enter(event: FocusEvent) {
     class="mode-control"
     :data-family="model.family.value"
     :data-proposed-mode="model.value.value"
+    :data-proposed-target="model.target.value"
     @keydown="escape"
     @focusin="enter"
   >
@@ -59,7 +79,15 @@ function enter(event: FocusEvent) {
       :disabled="!player.ready.value"
       @click="model.cycle"
     >
-      <Icon :name="modeIcon(model.value.value, model.displayFamily.value)" />
+      <Transition name="mode-glyph" mode="out-in">
+        <span
+          class="mode-glyph"
+          :key="model.displayFamily.value + ':' + model.value.value"
+          aria-hidden="true"
+        >
+          <Icon :name="modeIcon(model.value.value, model.displayFamily.value)" />
+        </span>
+      </Transition>
     </button>
     <MenuTransition>
       <span v-if="model.issue.value && !dismissed" class="mode-feedback">

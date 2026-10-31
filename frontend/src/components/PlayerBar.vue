@@ -20,6 +20,7 @@ const props = withDefaults(
     likeBusy: Set<string>;
     togetherActive?: boolean;
     intelligence?: IntelligenceModel;
+    likedPlaylistId?: string | null;
   }>(),
   { togetherActive: false },
 );
@@ -98,6 +99,8 @@ async function seek(event: Event) {
     :data-volume="view?.volume"
     :data-unmute-volume="view?.unmuteVolume"
     :data-mode="view?.mode"
+    :data-intelligence-phase="view?.intelligence"
+    :data-intelligence-operation="view?.intelligenceOperation"
     :data-fm="view?.fm"
     :data-quality="view?.actualQuality"
     :data-requested-quality="view?.requestedQuality"
@@ -148,7 +151,12 @@ async function seek(event: Event) {
     </div>
     <div class="player-center">
       <div class="transport-controls">
-        <PlaybackMode :player="player" :together-active="togetherActive" />
+        <PlaybackMode
+          :player="player"
+          :together-active="togetherActive"
+          :intelligence="intelligence"
+          :liked-playlist-id="likedPlaylistId"
+        />
         <button
           class="icon-button"
           aria-label="上一首"
@@ -265,7 +273,9 @@ async function seek(event: Event) {
             intelligence.busy.value
               ? intelligence.cancelling.value
                 ? '正在取消推荐…'
-                : '正在获取心动推荐，可继续操作播放器'
+                : intelligence.progress.value === 'preparing'
+                  ? '正在准备心动模式，可继续操作播放器'
+                  : '正在获取心动推荐，可继续操作播放器'
               : (intelligence.issue.value?.message ?? '心动推荐尚未完成')
           }}</span>
           <button

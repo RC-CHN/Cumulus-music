@@ -1,5 +1,35 @@
 import type { PlaybackMode } from './player';
 export type ModeFamily = 'ordinary' | 'fm' | 'together' | 'intelligence';
+export type ModeTarget = PlaybackMode | 'intelligence';
+const eligible: ModeTarget[] = [
+  'intelligence',
+  'order_loop',
+  'single_loop',
+  'random',
+  'sequential',
+];
+export function nextModeTarget(
+  current: ModeTarget,
+  family: ModeFamily,
+  canHeartBeat: boolean,
+): ModeTarget {
+  if (family === 'fm' || family === 'together')
+    return nextMode(current === 'intelligence' ? 'order_loop' : current, family);
+  if (current === 'intelligence') return 'order_loop';
+  if (!canHeartBeat) return nextMode(current, 'ordinary');
+  return eligible[(Math.max(eligible.indexOf(current), 0) + 1) % eligible.length]!;
+}
+export function canHeartBeat(
+  view: import('./player').PlayerView | undefined,
+  likedPlaylistId: string | null | undefined,
+) {
+  return (
+    !!likedPlaylistId &&
+    !view?.fm &&
+    view?.origin?.kind === 'playlist' &&
+    view.origin.id === likedPlaylistId
+  );
+}
 // M/7 nextPlayingMode: ordinary (heartbeat unavailable) and together rings.
 // FM's two-state switch comes from PlayMode.tsx and fmPlaying, independently.
 const ordinary: PlaybackMode[] = ['sequential', 'order_loop', 'single_loop', 'random'];

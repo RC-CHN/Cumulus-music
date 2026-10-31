@@ -275,6 +275,16 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       throw e;
     }
   }
+  async function syncPlayback() {
+    const captured = epoch,
+      session = connection;
+    if (!ready.value) throw { code: 'stale', message: '播放器尚未连接', retryable: false };
+    const next = await core.playerSnapshot(captured);
+    if (captured !== epoch || session !== connection || !ready.value)
+      throw { code: 'stale', message: '账号或播放器连接已变化', retryable: false };
+    accept(next);
+    return view.value!;
+  }
   async function intelligence(command: IntelligenceCommand) {
     const captured = epoch,
       session = connection;
@@ -454,6 +464,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     configureVolume,
     configureMode,
     intelligence,
+    syncPlayback,
     select,
     downloads,
     retry,

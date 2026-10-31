@@ -183,6 +183,7 @@ export function createTauriClient(): CoreClient {
       invoke('player_intelligence_cancel', { epoch, operationId }),
     playerIntelligenceEligibility: (epoch, revision) =>
       invoke('player_intelligence_eligibility', { epoch, revision }),
+    playerSnapshot: (epoch) => invoke('player_snapshot', { epoch }),
     playerQueue: (epoch) => invoke('player_queue', { epoch }),
     playerQueueCollection: (epoch, revision) =>
       invoke('player_queue_collection', { epoch, revision }),

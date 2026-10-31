@@ -46,6 +46,7 @@ export interface PlayerView {
   origin?: PlayerOrigin | null;
   fm: boolean;
   intelligence?: 'seeded' | 'active' | 'fallback' | null;
+  intelligenceOperation?: string | null;
   equalizer: EqualizerView;
   loudness: LoudnessView;
   epoch: string;
@@ -323,6 +324,7 @@ export interface IntelligenceEligibility {
   likedPlaylistId: string | null;
 }
 export interface PlayerClient {
+  playerSnapshot(epoch: string): Promise<PlayerView>;
   playerIntelligence(epoch: string, command: IntelligenceCommand): Promise<PlayerView>;
   playerIntelligenceCancel(epoch: string, operationId: string): Promise<boolean>;
   playerIntelligenceEligibility(epoch: string, revision: string): Promise<IntelligenceEligibility>;

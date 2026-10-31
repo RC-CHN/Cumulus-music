@@ -712,7 +712,7 @@ const {
 } = music;
 const loginOpen = ref(false);
 const accountsOpen = ref(false);
-const favorite = computed(() => playlists.value.find((p) => p.favorite));
+const favorite = computed(() => playlists.value.find((p) => p.favorite && p.owned));
 const playlistActions = ref<InstanceType<typeof PlaylistActions>>();
 function playlistMenu(list: PlaylistView, scene: PlaylistMenuScene = 'collection') {
   return playlistMenuItems(list, scene, {
@@ -1763,6 +1763,7 @@ onUnmounted(() => {
     <PlayerBar
       :player="player"
       :intelligence="intelligence"
+      :liked-playlist-id="signedIn ? favorite?.id : null"
       :liked="playingLikes"
       :like-busy="playingLikeBusy"
       :together-active="together.view.value?.attached ?? false"

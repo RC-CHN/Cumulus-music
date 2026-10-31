@@ -71,17 +71,23 @@ defineEmits<{
             :aria-pressed="intelligenceActive ?? false"
             :disabled="intelligenceDisabled || intelligenceBusy || intelligenceActive"
             :title="
-              intelligenceSeeded
-                ? '心动推荐尚未完成，可在播放条继续'
-                : intelligenceActive
-                  ? '已开启心动模式'
-                  : '从我喜欢的音乐开启心动模式'
+              intelligenceBusy
+                ? intelligenceActive
+                  ? '正在获取心动推荐，可继续操作播放器'
+                  : '正在准备心动模式，可继续操作播放器'
+                : intelligenceSeeded
+                  ? '心动推荐尚未完成，可在播放条继续'
+                  : intelligenceActive
+                    ? '已开启心动模式'
+                    : '从我喜欢的音乐开启心动模式'
             "
             @click="$emit('intelligence')"
           >
             <Icon name="heartbeat" />{{
               intelligenceBusy
-                ? '准备心动模式…'
+                ? intelligenceActive
+                  ? '获取心动推荐…'
+                  : '准备心动模式…'
                 : intelligenceSeeded
                   ? '心动推荐待完成'
                   : intelligenceActive
