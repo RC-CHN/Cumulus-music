@@ -235,6 +235,15 @@ function fixture(overrides: Partial<PlayerClient> = {}) {
   let callback: (event: PlayerUpdate) => void = () => {};
   let stopped = 0;
   const backend: PlayerClient = {
+    playerIntelligence: async () => {
+      throw Error('unexpected intelligence command');
+    },
+    playerIntelligenceCancel: async () => {
+      throw Error('unexpected intelligence cancel');
+    },
+    playerIntelligenceEligibility: async () => {
+      throw Error('unexpected intelligence eligibility');
+    },
     watchPlayer: async (epoch, receive) => {
       callback = receive;
       receive({ kind: 'state', value: state('1', epoch) });
@@ -687,5 +696,58 @@ test('clear consent retains its captured room and a rejection only re-reads the 
   assert.equal(f.player.queue.value?.clearContext.roomId, 'room-b');
   assert.equal(f.player.queueEditError.value, 'room changed');
   assert.equal(f.player.error.value, '');
+  f.player.dispose();
+});
+
+test('intelligence owns its retry separately and cannot replay an earlier failed selection', async () => {
+  const held = deferred<PlayerView>();
+  let selections = 0;
+  const actions: PlayerAction[] = [];
+  const f = fixture({
+    playSelection: async () => {
+      selections++;
+      throw { code: 'transport', message: 'old selection failed' };
+    },
+    playerIntelligence: () => held.promise,
+    playerAction: async (_epoch, action) => {
+      actions.push(action);
+      return state(action.kind === 'refresh' ? '4' : '3', '1', 'native-new');
+    },
+  });
+  await f.player.connect(account());
+  await f.player.select({ kind: 'songs', ids: ['7'], index: 0, quality: 'standard' });
+  assert.equal(f.player.error.value, 'old selection failed');
+  const request = f.player.intelligence({
+    kind: 'start',
+    operation_id: crypto.randomUUID(),
+    expected_queue_revision: '1',
+    origin: { kind: 'current' },
+  });
+  assert.equal(f.player.busy.value, false);
+  assert.equal(f.player.error.value, '');
+  await f.player.action({ kind: 'pause', paused: true });
+  held.resolve({ ...state('2', '1', 'older-seed'), intelligence: 'active' });
+  await request;
+  assert.equal(f.player.view.value?.playId, 'native-new');
+  await f.player.retry();
+  assert.equal(selections, 1);
+  assert.equal(actions.at(-1)?.kind, 'refresh');
+  f.player.dispose();
+});
+
+test('a late intelligence reply is rejected after reconnecting another account', async () => {
+  const held = deferred<PlayerView>(),
+    f = fixture({ playerIntelligence: () => held.promise });
+  await f.player.connect(account());
+  const request = f.player.intelligence({
+    kind: 'continue',
+    operation_id: crypto.randomUUID(),
+    expected_queue_revision: '1',
+  });
+  await f.player.connect(account('2'));
+  held.resolve({ ...state('100', '1', 'old-seed'), intelligence: 'active' });
+  await assert.rejects(request, (e: unknown) => (e as { code: string }).code === 'stale');
+  assert.equal(f.player.view.value?.epoch, '2');
+  assert.equal(f.player.view.value?.playId, null);
   f.player.dispose();
 });

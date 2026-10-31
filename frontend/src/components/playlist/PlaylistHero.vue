@@ -14,6 +14,10 @@ defineProps<{
   subscribed: boolean;
   busy: boolean;
   items: MenuItem[];
+  intelligenceDisabled?: boolean;
+  intelligenceActive?: boolean;
+  intelligenceBusy?: boolean;
+  intelligenceSeeded?: boolean;
 }>();
 defineEmits<{
   edit: [];
@@ -21,6 +25,7 @@ defineEmits<{
   download: [];
   subscribe: [];
   action: [key: string];
+  intelligence: [];
 }>();
 </script>
 
@@ -59,6 +64,30 @@ defineEmits<{
         <div class="playlist-actions" :aria-busy="preparing">
           <button class="primary" :disabled="!playable || preparing" @click="$emit('play')">
             <Icon name="play" />{{ preparing ? '准备中…' : '播放全部' }}
+          </button>
+          <button
+            v-if="playlist.owned && playlist.favorite"
+            class="download-button intelligence-start"
+            :aria-pressed="intelligenceActive ?? false"
+            :disabled="intelligenceDisabled || intelligenceBusy || intelligenceActive"
+            :title="
+              intelligenceSeeded
+                ? '心动推荐尚未完成，可在播放条继续'
+                : intelligenceActive
+                  ? '已开启心动模式'
+                  : '从我喜欢的音乐开启心动模式'
+            "
+            @click="$emit('intelligence')"
+          >
+            <Icon name="heartbeat" />{{
+              intelligenceBusy
+                ? '准备心动模式…'
+                : intelligenceSeeded
+                  ? '心动推荐待完成'
+                  : intelligenceActive
+                    ? '心动模式已开启'
+                    : '心动模式'
+            }}
           </button>
           <button
             v-if="!playlist.owned"

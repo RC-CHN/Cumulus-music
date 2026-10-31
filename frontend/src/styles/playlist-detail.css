@@ -190,6 +190,10 @@
 .playlist-actions > .download-button {
   width: 80px;
 }
+.playlist-actions > .intelligence-start {
+  width: auto;
+  padding: 0 12px;
+}
 .playlist-actions .menu-trigger {
   width: 40px;
   border: 1px solid var(--line);

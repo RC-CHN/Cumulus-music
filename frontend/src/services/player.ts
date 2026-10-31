@@ -305,7 +305,27 @@ export interface QualityTrialOutcome {
   playback: PlayerView | null;
   playbackError: CoreFailure | null;
 }
+export type IntelligenceOrigin =
+  | { kind: 'current' }
+  | { kind: 'likes'; playlist_id: string; revision?: string; first_id?: string };
+export type IntelligenceCommand =
+  | {
+      kind: 'start';
+      operation_id: string;
+      expected_queue_revision: string;
+      origin: IntelligenceOrigin;
+    }
+  | { kind: 'continue'; operation_id: string; expected_queue_revision: string };
+export interface IntelligenceEligibility {
+  epoch: string;
+  revision: string;
+  canEnter: boolean;
+  likedPlaylistId: string | null;
+}
 export interface PlayerClient {
+  playerIntelligence(epoch: string, command: IntelligenceCommand): Promise<PlayerView>;
+  playerIntelligenceCancel(epoch: string, operationId: string): Promise<boolean>;
+  playerIntelligenceEligibility(epoch: string, revision: string): Promise<IntelligenceEligibility>;
   watchPlayer(epoch: string, update: (event: PlayerUpdate) => void): Promise<() => void>;
   playSelection(epoch: string, selection: PlaySelection): Promise<PlayerView>;
   playerAction(epoch: string, action: PlayerAction): Promise<PlayerView>;

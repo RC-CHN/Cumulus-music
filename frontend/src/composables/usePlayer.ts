@@ -9,6 +9,7 @@ import type {
   LyricsView,
   LyricPreferences,
   QualityTrialCommand,
+  IntelligenceCommand,
 } from '../services/player.ts';
 import { useCore } from '../services/core.ts';
 
@@ -274,6 +275,32 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       throw e;
     }
   }
+  async function intelligence(command: IntelligenceCommand) {
+    const captured = epoch,
+      session = connection;
+    if (!ready.value) throw { code: 'stale', message: '播放器尚未连接', retryable: false };
+    // This explicit selection supersedes an older generic playback retry, but
+    // recommendation I/O must leave transport controls usable.
+    request++;
+    busy.value = false;
+    failedOperation = undefined;
+    error.value = '';
+    try {
+      const next = await core.playerIntelligence(captured, command);
+      if (captured !== epoch || session !== connection || !ready.value)
+        throw { code: 'stale', message: '账号或播放器连接已变化', retryable: false };
+      accept(next);
+      return next;
+    } catch (e) {
+      if (
+        captured === epoch &&
+        session === connection &&
+        ['session_expired', 'profile_changed'].includes(failure(e).code)
+      )
+        onSessionChanged();
+      throw e;
+    }
+  }
   const select = (input: PlaySelection) => run((e) => core.playSelection(e, input));
   // Card playback reads its authoritative list before selecting it. A delayed
   // read must not start audio after account replacement or a newer operation.
@@ -426,6 +453,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     configureLoudness,
     configureVolume,
     configureMode,
+    intelligence,
     select,
     downloads,
     retry,

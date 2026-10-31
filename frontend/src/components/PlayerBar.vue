@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, nextTick, watch } from 'vue';
 import type { PlayerModel } from '../composables/usePlayer';
+import type { IntelligenceModel } from '../composables/useIntelligence';
 import { time } from '../services/player';
 import type { TrackView } from '../services/contracts';
 import Icon from './Icon.vue';
@@ -18,6 +19,7 @@ const props = withDefaults(
     liked: Set<string>;
     likeBusy: Set<string>;
     togetherActive?: boolean;
+    intelligence?: IntelligenceModel;
   }>(),
   { togetherActive: false },
 );
@@ -29,6 +31,44 @@ const emit = defineEmits<{
 }>();
 const { view, ready, busy, error, playing, loaded } = props.player;
 const draft = ref<number>();
+const intelligenceNotice = ref<HTMLElement>();
+let cancelFocus: { epoch: string; control: Element | null } | undefined;
+function focusIntelligence(epoch: string, control: Element | null) {
+  void nextTick(() => {
+    if (
+      view.value?.epoch !== epoch ||
+      (document.activeElement !== control && document.activeElement !== document.body)
+    )
+      return;
+    const next =
+      intelligenceNotice.value?.querySelector<HTMLElement>('button:not(:disabled)') ??
+      document.querySelector<HTMLElement>('.intelligence-start:not(:disabled)') ??
+      document.querySelector<HTMLElement>('.mode-control > button:not(:disabled)');
+    next?.focus({ preventScroll: true });
+  });
+}
+function cancelIntelligence() {
+  if (!props.intelligence || !view.value) return;
+  cancelFocus = { epoch: view.value.epoch, control: document.activeElement };
+  void props.intelligence.cancel();
+}
+watch(
+  () => props.intelligence?.busy.value,
+  (value, old) => {
+    if (!value && old && cancelFocus) {
+      const target = cancelFocus;
+      cancelFocus = undefined;
+      focusIntelligence(target.epoch, target.control);
+    }
+  },
+  { flush: 'post' },
+);
+function dismissIntelligence() {
+  const epoch = view.value?.epoch,
+    control = document.activeElement;
+  props.intelligence?.dismiss();
+  if (epoch) focusIntelligence(epoch, control);
+}
 const pending = computed(
   () => busy.value || ['preparing', 'loading'].includes(view.value?.state ?? ''),
 );
@@ -197,15 +237,62 @@ async function seek(event: Event) {
         <Icon name="comment" />
       </button>
     </div>
-    <div v-if="message" class="playback-message" role="status">
-      <span>{{ message }}</span
-      ><button
-        v-if="error || view?.error"
-        class="text-button"
-        @click="ready ? player.retry() : emit('retry')"
+    <div class="player-feedback-stack">
+      <div v-if="message" class="playback-message" role="status">
+        <span>{{ message }}</span
+        ><button
+          v-if="error || view?.error"
+          class="text-button"
+          @click="ready ? player.retry() : emit('retry')"
+        >
+          重试</button
+        ><span v-if="view?.timeline?.mode === 'trial'">试听片段</span>
+      </div>
+      <Transition
+        name="playback-feedback"
+        @before-leave="(element) => ((element as HTMLElement).inert = true)"
       >
-        重试</button
-      ><span v-if="view?.timeline?.mode === 'trial'">试听片段</span>
+        <div
+          v-if="
+            intelligence &&
+            (intelligence.busy.value || intelligence.issue.value || intelligence.resumable.value)
+          "
+          class="playback-message intelligence-message"
+          ref="intelligenceNotice"
+          role="status"
+        >
+          <span>{{
+            intelligence.busy.value
+              ? intelligence.cancelling.value
+                ? '正在取消推荐…'
+                : '正在获取心动推荐，可继续操作播放器'
+              : (intelligence.issue.value?.message ?? '心动推荐尚未完成')
+          }}</span>
+          <button
+            v-if="intelligence.busy.value"
+            class="text-button"
+            :disabled="intelligence.cancelling.value"
+            @click="cancelIntelligence"
+          >
+            取消推荐
+          </button>
+          <button
+            v-else-if="intelligence.resumable.value"
+            class="text-button"
+            @click="intelligence.resume"
+          >
+            继续获取推荐
+          </button>
+          <button
+            v-if="!intelligence.busy.value && intelligence.issue.value"
+            class="text-button"
+            @click="dismissIntelligence"
+            aria-label="关闭心动模式提示"
+          >
+            关闭
+          </button>
+        </div>
+      </Transition>
     </div>
   </footer>
   <ModalTransition>

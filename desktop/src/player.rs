@@ -1,3 +1,4 @@
+pub mod intelligence;
 pub mod quality;
 use cumulus_core::{
     Error,

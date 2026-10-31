@@ -1,0 +1,118 @@
+心动开启、继续与失败恢复用例（2026-10-31）
+
+范围
+本批把此前的域状态机与IntelligenceApi接为独立MusicClient用例，并接入正式
+“我喜欢的音乐”详情页。不是用恢复夹具冒充实际开启，也没有Python子进程。
+UI/原生/网络各层验证须分别看待：本批桌面演练仍使用合成账号、API及音源，
+不能据此宣称当前真实账号的会员、风控或线上心动推荐已经重新验证。
+大目标保持进行中。主播放条五态进入、小窗完整进入、补充推荐/分隔等仍继续。
+
+官方依据（没有使用YesPlayMusic）
+references/netease-3.1.42.205594-analysis/recovered-js/modules/
+hybrid_app.chunk.1482700000000.js/：
+  21.js SHA256 33d27af5a54c6a74641f192841637d2608d588d2d93091a9a61cb43948c93af7
+    M21.A把wire privilege.pl映射为maxPlayBr；maxbr代表歌曲最大码率，不是
+    当前账号的播放许可。不能用maxbr代替pl，也不能把原始pl误当缺失权限。
+  23.js SHA256 30179de6edd7412c718747b8162774cb9d872d6c86d13e8515ecc54fa61b9d45
+    M23.Z在线候选、M23.V的bit10试听、M23.Y下载权益；MV版权替代实验未观察到。
+  59.js SHA256 531056a73ff333769d96745809cc5ce1a0b0ecbd89d146ef1db96321674f366f
+    M59.O顺序筛选，到首个未解析位置停止；已下载候选、在线候选、相同录音替代，
+    最后按ID保留首次出现。没有把未解析项删除后继续穿越到后续歌曲。
+  308.js SHA256 2cd3a0da5759370a80cfe20c7ac4e58ef192bab33c396e8eff3efdd35c254a7d
+    aiPlay：完整喜欢列表、随机/显式种子、先播放种子、请求推荐、接入或回退；
+    Current进入备份当前列表，PlayAll进入备份筛选后的喜欢列表。
+  310.js SHA256 7b956eda21102ba42f500e36db07871500b7a7896cac753866a0fa0fa4e63e4a
+    歌曲及歌手ID黑名单比较；官方调用受AB及场景控制。
+references/ui-recovery/sources/packages/pc/src/pages/home-page/components/
+FeatureRecommend/HeartbeatCard.tsx：
+  SHA256 1ca23a0812584da24f08765f73cd4f08845cb9d61884e96ba086ec68d746b61a。
+  无显式种子为fromPlayAll，有种子为fromPlayOne；一起听期间不能开启。
+  此入口没有一个通用的“必须VIP”前置条件；最终音源仍由服务端授权决定。
+现有详情页内的按钮位置是社区适配，不宣称获得官方该页面的逐像素截图对照。
+
+实现映射
+- client/player/intelligence/mod.rs：类型化命令、资格、房间/队列/媒体所有权检查、
+  种子选择和Begin；不持有HTTP期间的播放器或一起听互斥锁。
+- prepare.rs：实际账号specialType=5且属于本人歌单，完整trackIds和版本散列，
+  每批至多500首的目录/原始privileges读取；保留缺失位置及未筛选总数。
+- filter.rs：M59次序、M21原始pl映射后的M23在线判断、实际离线登记/权益/文件
+  完整性、同录音替代与首次ID去重。替代曲目录不完整时按官方保留原位置候选，
+  仍须真实音源授权，不能因此生成可用URL。
+- flight.rs：操作UUID、账号代次、专属互斥、取消唤醒及账号订阅；取消或账号更换
+  可以中止一个没有返回的读取。原生提交前还校验取消票据；没有后台轮询重放。
+- finish.rs：只续接同一Seeded会话；读取/筛选推荐后以新fence执行Complete/Fail。
+  仅本地提交竞争最多重试4次，HTTP不自动重放。暂停/定位/停止不会使正常推荐
+  元数据完成失效；新选曲/退出/新会话则使迟到结果失效。
+- playback/intelligence：已有原子Begin/Complete/Fail/Leave及双CAS恢复；本批在同一
+  账号事务持久化liked_metadata，供推荐中的喜欢曲回查。前端只收到phase。
+- desktop/src/player/intelligence.rs：Tauri命令薄适配，无业务或凭据副本。
+- services/player.ts、adapters/tauri.ts：类型化IPC；usePlayer.intelligence接收新快照，
+  清掉旧音频操作的失败重试所有者，不占用通用transport busy。
+- useIntelligence：独立等待/错误/取消；没有开机自动续请求。PlaylistHero提供入口，
+  PlayerBar提供取消、继续、失败反馈和关闭。取消后聚焦继续控件，关闭失败反馈
+  后回到仍可用的入口；账号变化或用户移走焦点时不抢回旧焦点。
+  提示与音频错误分开堆叠，音源准备期间也能取消推荐；进入/离开只动画opacity/
+  transform，尊重系统及应用减少动态效果。按钮按文案宽度排布，不复用80px下载宽度。
+
+IPC（字段只含公开身份/代次/版本）
+player_intelligence(epoch, command)：
+  start {operation_id,expected_queue_revision,origin}；origin为current，或
+  likes {playlist_id,revision?,first_id?}。
+  continue {operation_id,expected_queue_revision}。
+player_intelligence_cancel(epoch, operationId)：只取消该账号代次的精确未完成操作。
+player_intelligence_eligibility(epoch, revision)：实际检查当前歌曲是否来自本账号
+  喜欢歌单，返回公开likedPlaylistId/canEnter；真正Start仍完整重验，不能用前端
+  布尔值授权。该原生API不代表主播放条五态进入UI已经交付。
+
+接口调用顺序与字段
+1. /api/user/playlist：uid/includeVideo=true及完整分页，识别本人喜欢歌单。
+2. /api/v6/playlist/detail：id,n=100000,s=0；要求authoritative trackIds。
+   前端详情版本按SHA256(JSON([playlistId,trackIds]))核对，不用页面可见行当全量。
+3. /api/v3/song/detail：c为[{id,v:0}]的JSON字符串，每批最多500首；按原顺序
+   整理歌曲，merge最后一个同ID privilege。缺失不是一条可播放空对象。
+4. /api/music/dislike/get：歌曲/歌手黑名单，仅只读；本地按实际离线账本检查
+   已下载候选。存在加密下载时经既有会员快照/续期逻辑，不扩大会员权限。
+   有同录音替代时再批读/api/v3/song/detail。
+5. final queue/account/focus/room检查后提交Begin，走既有播放器音源链：
+   /api/song/enhance/player/url/v1；已验证离线资源经原有安全解析器加载本地文件。
+6. /api/playmode/intelligence/list只发送五项：playlistId、songId、type
+   (fromPlayAll/fromPlayOne)、startMusicId、count。
+   count是原始喜欢列表总数；startMusicId是首个筛选后候选；songId为所选种子。
+   starPlaylist/uid仅作原生回查资料，不发送这两个额外请求字段。
+7. 成功按IntelligenceApi既有官方格式器建立推荐及算法字典，再筛选并Complete；
+   普通请求/格式失败提交Fail并使用列表循环；保留当前解码器及已接受的暂停/停止。
+   301由AccountSession使账号失效并交还登录生命周期，不能向已经失效的旧账号
+   再写Fail。旧账号的Seeded记录仍隔离保留，重登后可显式继续/退出。
+
+取消、恢复及差异
+- 准备完成前取消，不写队列或启动种子。种子提交后取消推荐，不承诺撤销已经
+  开始的播放；UI明确叫“取消推荐”，持久化Seeded仍可显式继续或退出。
+- Continue不重放种子、不夺取Audio焦点、不自动恢复播放；无缓存的旧schema=1
+  Seeded会话仅补目录回查资料，原始请求count/backup保持不变。重开也不自动请求。
+- Current原生入口必须从喜欢歌单的实际当前媒体开始，备份普通队列；Likes入口
+  随机从筛选候选选择，显式first_id使用fromPlayOne。旧队列/旧版本不能误播。
+- 社区差异：始终尊重现有歌曲/歌手黑名单，直接从候选中排除；不伪造官方AB
+  分配，也没有实现官方被拦曲目的解除屏蔽弹窗/逐条播放跳过界面。
+- 本批只处理在线音乐目录。trackIds的v=-1本机独有曲目没有恢复跨平台目录关联，
+  该位置保持未解析且触发M59停止语义，不假装本地/CUE/NCM路径已从远端恢复。
+- 在线候选只是前置筛选；最终URL/试听/会员权益仍走现有原生授权。未观察的
+  noCopyright MV实验关闭，不能拿MV信息替代音乐版权许可。
+- 音源加载本身失败时Begin可能已持久化Seeded；既有音频错误与显式继续/退出
+  分别处理，没有自动再次Begin。FM退出后开启路径有实现，本批没有新增FM实景证明。
+
+验证及可执行流程
+  cargo test -p cumulus-core --test intelligence_coordinator --test intelligence_eligibility --locked
+  cargo build -p cumulus-desktop --example ux_ui_probe --features custom-protocol --locked
+  LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/intelligence_start_smoke.py \
+    --binary .build/target/debug/examples/ux_ui_probe --root NEW_ISOLATED_DIRECTORY
+  Windows使用同一脚本，传.exe及--runtime NATIVE_DLL_DIRECTORY。
+- 14项实际MusicClient用例（包括缓存缺失后重开/原始pl/离线文件篡改/同录音替代/
+  前后两个网络窗口的新选曲/取消/账号切换/301），不是直接构造成功队列。
+- 83项冻结向量执行真实M21.A及M23.Z/V/D/F函数体，单独拒绝格式错误；冻结脚本
+  保留在私有references/recovered-client/scripts，不在公开CI依赖官方解包材料。
+- intelligence_start_probe经实际按钮、Vue、IPC、Rust actor、SQLite和libmpv/null
+  演练11态；API/账号/音源合成、指针事件合成，不代表真实音箱、双账号或线上权益。
+  UI状态、原生队列/播放身份/暂停位置、五字段请求及精确数量共同验收。
+- 详情11态：两主题两尺寸入口，等待、等待期间暂停定位、取消后继续焦点、成功、
+  退出、失败反馈、窄窗口显式重开。原有恢复退出26态仍单独回归，不混淆范围。
+最终日志、截图位置、完整检查结果和待验条件见ui-ux-validation.txt。

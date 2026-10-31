@@ -178,6 +178,11 @@ export function createTauriClient(): CoreClient {
     playerAction: (epoch, action) => invoke('player_action', { epoch, action }),
     playerQualityDetails: (epoch, playId) => invoke('player_quality_details', { epoch, playId }),
     playerQualityTrial: (epoch, command) => invoke('player_quality_trial', { epoch, command }),
+    playerIntelligence: (epoch, command) => invoke('player_intelligence', { epoch, command }),
+    playerIntelligenceCancel: (epoch, operationId) =>
+      invoke('player_intelligence_cancel', { epoch, operationId }),
+    playerIntelligenceEligibility: (epoch, revision) =>
+      invoke('player_intelligence_eligibility', { epoch, revision }),
     playerQueue: (epoch) => invoke('player_queue', { epoch }),
     playerQueueCollection: (epoch, revision) =>
       invoke('player_queue_collection', { epoch, revision }),

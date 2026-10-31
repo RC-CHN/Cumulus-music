@@ -43,6 +43,7 @@ import { useHistory } from './composables/useHistory';
 import type { HistoryKind, HistoryResource } from './services/history';
 import type { CatalogResource, CatalogSelectionPage } from './services/catalog';
 import PlayerBar from './components/PlayerBar.vue';
+import { useIntelligence } from './composables/useIntelligence';
 import QueuePanel from './components/QueuePanel.vue';
 import type { QueueCollectionView } from './services/player';
 import LyricsPanel from './components/LyricsPanel.vue';
@@ -391,6 +392,7 @@ async function playMvRelated(mvId: string, songId: string) {
 const player = usePlayer(undefined, () => {
   void music.bootstrap(false);
 });
+const intelligence = useIntelligence(player, () => together.view.value?.attached ?? false);
 watch(
   [
     () => player.view.value?.epoch,
@@ -1522,6 +1524,17 @@ onUnmounted(() => {
                   :total="result.total"
                   :playable="player.ready.value && result.tracks.some((track) => !track.missing)"
                   :preparing="player.busy.value"
+                  :intelligence-disabled="!intelligence.canStart.value"
+                  :intelligence-active="intelligence.active.value"
+                  :intelligence-busy="intelligence.busy.value"
+                  :intelligence-seeded="player.view.value?.intelligence === 'seeded'"
+                  @intelligence="
+                    intelligence.start({
+                      kind: 'likes',
+                      playlist_id: result.playlist.id,
+                      revision: result.revision ?? undefined,
+                    })
+                  "
                   :download-disabled="
                     downloads.busy.value ||
                     result.tracks.every((track) => track.missing || track.local)
@@ -1749,6 +1762,7 @@ onUnmounted(() => {
     </ModalTransition>
     <PlayerBar
       :player="player"
+      :intelligence="intelligence"
       :liked="playingLikes"
       :like-busy="playingLikeBusy"
       :together-active="together.view.value?.attached ?? false"

@@ -15,7 +15,7 @@
   grid-template-columns: minmax(170px, 1fr) minmax(200px, 1.35fr) minmax(250px, 1fr);
   gap: 18px;
   padding: 0 24px;
-  z-index: 12;
+  z-index: 16;
 }
 .playerbar > div {
   display: flex;
@@ -172,15 +172,25 @@ input[type='range'] {
   font-size: 9px;
   margin-left: -4px;
 }
-.playerbar .playback-message {
+.playerbar > .player-feedback-stack {
   position: absolute;
   bottom: calc(100% + 8px);
   left: 50%;
   transform: translateX(-50%);
   display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: 90vw;
+}
+.playerbar:has(.mode-feedback) > .player-feedback-stack {
+  bottom: calc(100% + 112px);
+}
+.playerbar .playback-message {
+  display: flex;
   align-items: center;
   white-space: nowrap;
-  max-width: 90vw;
+  max-width: 100%;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 9px;
@@ -195,6 +205,40 @@ input[type='range'] {
 .playback-message .text-button {
   font-size: 12px;
   padding: 3px 8px;
+}
+.playback-feedback-enter-active,
+.playback-feedback-leave-active {
+  transition:
+    opacity 100ms ease,
+    transform 120ms ease;
+}
+.playback-feedback-leave-active {
+  pointer-events: none;
+}
+.playback-feedback-enter-from,
+.playback-feedback-leave-to {
+  opacity: 0;
+  transform: translateY(4px);
+}
+:root[data-motion='reduced'] .playback-feedback-enter-active,
+:root[data-motion='reduced'] .playback-feedback-leave-active {
+  transition: none;
+}
+:root[data-motion='reduced'] .playback-feedback-enter-from,
+:root[data-motion='reduced'] .playback-feedback-leave-to {
+  opacity: 1;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .playback-feedback-enter-active,
+  .playback-feedback-leave-active {
+    transition: none;
+  }
+  .playback-feedback-enter-from,
+  .playback-feedback-leave-to {
+    opacity: 1;
+    transform: none;
+  }
 }
 .track-actions {
   display: flex;
