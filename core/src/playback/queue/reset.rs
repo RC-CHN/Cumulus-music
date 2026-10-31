@@ -158,6 +158,7 @@ mod tests {
                 seed_source: json!({"kind":"playlist","id":"31"}),
                 liked,
                 preserve_current_queue: true,
+                liked_metadata: vec![],
             })))
             .unwrap();
         assert_eq!(queue.mode(), PlaybackMode::OrderLoop);

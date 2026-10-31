@@ -1,6 +1,7 @@
 //! M/308 aiPlay/switchPlayingMode and M/1384/M/176 queue transitions. HTTP,
 //! rights/blacklist filtering and media ownership belong to the caller. These
 //! transitions are durable native queue operations, not an alternate player.
+pub mod eligibility;
 mod insertion;
 mod plan;
 mod recovery;
@@ -62,6 +63,10 @@ pub struct IntelligenceSession {
     pub fallback: QueueSnapshot,
     pub recommendations: BTreeMap<String, IntelligenceRecommendation>,
     pub failure: Option<IntelligenceFailure>,
+    /// Original catalogue lookup cache for the read-only recommendation request.
+    /// Kept in the same account transaction as the seed, never projected to UI.
+    #[serde(default)]
+    pub liked_metadata: Vec<Value>,
 }
 impl IntelligenceSession {
     pub(crate) fn validate(&self, queue: &QueueSnapshot) -> Result<()> {
@@ -78,6 +83,12 @@ impl IntelligenceSession {
             return Err(Error::State("invalid intelligence state"));
         }
         self.request.payload()?;
+        if self.liked_metadata.len() > MAX_LIKED_TRACKS {
+            return Err(Error::State("too much intelligence catalogue metadata"));
+        }
+        for song in &self.liked_metadata {
+            resource_id(song)?;
+        }
         ordinary(&self.backup)?;
         liked(&self.fallback)?;
         if self.recommendations.len() > MAX_LIKED_TRACKS {
@@ -102,6 +113,7 @@ pub struct IntelligenceBegin {
     pub seed_source: Value,
     pub liked: QueueSnapshot,
     pub preserve_current_queue: bool,
+    pub liked_metadata: Vec<Value>,
 }
 pub enum IntelligenceAction {
     Begin(Box<IntelligenceBegin>),

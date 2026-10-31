@@ -90,6 +90,7 @@ pub async fn control(
                     seed_source: json!({"kind":"playlist","id":"1"}),
                     liked,
                     preserve_current_queue: true,
+                    liked_metadata: vec![],
                 })),
             }),
         )

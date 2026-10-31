@@ -198,6 +198,7 @@ fn begin(current: &QueueSnapshot, input: IntelligenceBegin) -> Result<Plan> {
         fallback: input.liked,
         recommendations: BTreeMap::new(),
         failure: None,
+        liked_metadata: input.liked_metadata,
     };
     session.validate(&queue)?;
     Ok(Plan {

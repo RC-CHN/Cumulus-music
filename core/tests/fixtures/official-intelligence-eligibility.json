@@ -1,0 +1,755 @@
+{
+  "source": "official M/23.Z with actual M/23.V/D/F and M/21.A bodies",
+  "sha256": "30179de6edd7412c718747b8162774cb9d872d6c86d13e8515ecc54fa61b9d45",
+  "formatterSha256": "33d27af5a54c6a74641f192841637d2608d588d2d93091a9a61cb43948c93af7",
+  "boundary": "online=true; no-copyright MV experiment disabled; reason mapping and DB writes excluded",
+  "cases": [
+    {
+      "song": {},
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": null
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": false
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": null,
+          "flag": 0
+        }
+      },
+      "canPlay": false
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": null,
+          "flag": 1024
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": null,
+          "flag": 2048
+        }
+      },
+      "canPlay": false
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": null,
+          "flag": "1024"
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": null,
+          "flag": 4294968320
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": null,
+          "flag": -1024
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": 0,
+          "flag": 0
+        }
+      },
+      "canPlay": false
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": 0,
+          "flag": 1024
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": 0,
+          "flag": 2048
+        }
+      },
+      "canPlay": false
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": 0,
+          "flag": "1024"
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": 0,
+          "flag": 4294968320
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": 0,
+          "flag": -1024
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": -1,
+          "flag": 0
+        }
+      },
+      "canPlay": false
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": -1,
+          "flag": 1024
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": -1,
+          "flag": 2048
+        }
+      },
+      "canPlay": false
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": -1,
+          "flag": "1024"
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": -1,
+          "flag": 4294968320
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": -1,
+          "flag": -1024
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": 128000,
+          "flag": 0
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": 128000,
+          "flag": 1024
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": 128000,
+          "flag": 2048
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": 128000,
+          "flag": "1024"
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": 128000,
+          "flag": 4294968320
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": 128000,
+          "flag": -1024
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": "0",
+          "flag": 0
+        }
+      },
+      "canPlay": false
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": "0",
+          "flag": 1024
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": "0",
+          "flag": 2048
+        }
+      },
+      "canPlay": false
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": "0",
+          "flag": "1024"
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": "0",
+          "flag": 4294968320
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": "0",
+          "flag": -1024
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": "-1",
+          "flag": 0
+        }
+      },
+      "canPlay": false
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": "-1",
+          "flag": 1024
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": "-1",
+          "flag": 2048
+        }
+      },
+      "canPlay": false
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": "-1",
+          "flag": "1024"
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": "-1",
+          "flag": 4294968320
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": "-1",
+          "flag": -1024
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": "320000",
+          "flag": 0
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": "320000",
+          "flag": 1024
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": "320000",
+          "flag": 2048
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": "320000",
+          "flag": "1024"
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": "320000",
+          "flag": 4294968320
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": "320000",
+          "flag": -1024
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": "0x4e200",
+          "flag": 0
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": "0x4e200",
+          "flag": 1024
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": "0x4e200",
+          "flag": 2048
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": "0x4e200",
+          "flag": "1024"
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": "0x4e200",
+          "flag": 4294968320
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": "0x4e200",
+          "flag": -1024
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": true,
+          "flag": 0
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": true,
+          "flag": 1024
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": true,
+          "flag": 2048
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": true,
+          "flag": "1024"
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": true,
+          "flag": 4294968320
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": true,
+          "flag": -1024
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": false,
+          "flag": 0
+        }
+      },
+      "canPlay": false
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": false,
+          "flag": 1024
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": false,
+          "flag": 2048
+        }
+      },
+      "canPlay": false
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": false,
+          "flag": "1024"
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": false,
+          "flag": 4294968320
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": false,
+          "flag": -1024
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": "",
+          "flag": 0
+        }
+      },
+      "canPlay": false
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": "",
+          "flag": 1024
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": "",
+          "flag": 2048
+        }
+      },
+      "canPlay": false
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": "",
+          "flag": "1024"
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": "",
+          "flag": 4294968320
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": "",
+          "flag": -1024
+        }
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {}
+      },
+      "canPlay": false
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": 0
+        },
+        "isOfflineDownOnline": true
+      },
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": 0,
+          "fee": 64,
+          "flag": 4194304
+        }
+      },
+      "canPlay": false
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxPlayBr": 0
+        },
+        "noCopyrightRcmd": {
+          "type": 3,
+          "mvInfo": {
+            "id": 1
+          }
+        }
+      },
+      "canPlay": false
+    },
+    {
+      "song": {
+        "privilege": {
+          "pl": 0,
+          "maxbr": 999000
+        }
+      },
+      "formatter": "M/21.A",
+      "canPlay": false
+    },
+    {
+      "song": {
+        "privilege": {
+          "pl": 320000
+        }
+      },
+      "formatter": "M/21.A",
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "pl": "320000"
+        }
+      },
+      "formatter": "M/21.A",
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "pl": 0,
+          "flag": 1024
+        }
+      },
+      "formatter": "M/21.A",
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "pl": 0,
+          "flag": 0,
+          "maxPlayBr": 320000
+        }
+      },
+      "formatter": "M/21.A",
+      "canPlay": false
+    },
+    {
+      "song": {
+        "privilege": {
+          "maxbr": 999000
+        }
+      },
+      "formatter": "M/21.A",
+      "canPlay": false
+    },
+    {
+      "song": {
+        "privilege": {
+          "pl": null
+        }
+      },
+      "formatter": "M/21.A",
+      "canPlay": false
+    },
+    {
+      "song": {
+        "privilege": {
+          "pl": 320000,
+          "plLevel": "standard"
+        }
+      },
+      "formatter": "M/21.A",
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "pl": 0,
+          "flag": "1024"
+        }
+      },
+      "formatter": "M/21.A",
+      "canPlay": true
+    },
+    {
+      "song": {
+        "privilege": {
+          "pl": 0,
+          "fee": 1,
+          "payed": 1
+        }
+      },
+      "formatter": "M/21.A",
+      "canPlay": false
+    }
+  ]
+}

@@ -39,6 +39,7 @@ pub fn begin(seed: u64, preserve: bool) -> IntelligenceAction {
         seed_source: json!({"kind":"playlist","id":"31"}),
         liked: liked(&[7, 8, 9]),
         preserve_current_queue: preserve,
+        liked_metadata: vec![],
     }))
 }
 pub fn complete(id: &str, ids: &[u64]) -> IntelligenceAction {

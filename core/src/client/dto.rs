@@ -22,10 +22,11 @@ pub use super::mv::{
     MvView, VideoAction, VideoView,
 };
 pub use super::player::{
-    LyricsView, OutputCommand, OutputEngineView, OutputView, PlaySelection, PlayerAction,
-    PlayerOrigin, PlayerView, QualityChoiceView, QualityDetailsView, QualityTrialCommand,
-    QualityTrialOutcome, QualityTrialView, QueueClearContext, QueueCollectionView, QueueEdit,
-    QueueTrack, QueueView, StartupPreferencesCommand, StartupPreferencesView,
+    IntelligenceCommand, IntelligenceEligibility, IntelligenceOrigin, LyricsView, OutputCommand,
+    OutputEngineView, OutputView, PlaySelection, PlayerAction, PlayerOrigin, PlayerView,
+    QualityChoiceView, QualityDetailsView, QualityTrialCommand, QualityTrialOutcome,
+    QualityTrialView, QueueClearContext, QueueCollectionView, QueueEdit, QueueTrack, QueueView,
+    StartupPreferencesCommand, StartupPreferencesView,
 };
 pub use super::playlist_cover::{CoverCommand, CoverOutcome};
 pub use super::playlists::{PlaylistEditor, PlaylistMutationView, PlaylistOrderView, PlaylistTag};

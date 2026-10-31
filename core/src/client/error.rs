@@ -17,6 +17,30 @@ impl From<Error> for ClientError {
             ("session_expired", "登录已失效，请重新登录", false)
         } else {
             match error.root() {
+                Error::State("intelligence requires playable liked tracks") => (
+                    "intelligence_empty",
+                    "我喜欢的音乐中暂无可用于心动模式的歌曲",
+                    false,
+                ),
+                Error::State("intelligence seed is unavailable") => (
+                    "intelligence_seed",
+                    "当前歌曲无法用于心动模式，请从我喜欢的音乐重新开启",
+                    false,
+                ),
+                Error::State(
+                    "intelligence requires the liked playlist"
+                    | "intelligence requires a current song",
+                ) => (
+                    "intelligence_origin",
+                    "请从当前账号的我喜欢的音乐开启心动模式",
+                    false,
+                ),
+                Error::State("leave together before intelligence") => {
+                    ("intelligence_room", "请先退出一起听，再开启心动模式", false)
+                }
+                Error::State("intelligence mode is already active") => {
+                    ("intelligence_active", "心动模式已开启", false)
+                }
                 Error::State("resume audio before leaving intelligence") => (
                     "intelligence_audio_ownership",
                     "请先恢复音乐播放，再退出心动模式",

@@ -1,4 +1,5 @@
 mod dto;
+mod intelligence;
 mod lyrics;
 mod mode;
 mod next_play;
@@ -26,6 +27,7 @@ use crate::{
     storage::StateStore,
 };
 pub use dto::*;
+pub use intelligence::{IntelligenceCommand, IntelligenceEligibility, IntelligenceOrigin};
 pub use output::{OutputCommand, OutputEngineView, OutputView};
 pub use preferences::{StartupPreferencesCommand, StartupPreferencesView};
 pub use quality::{
@@ -58,6 +60,7 @@ pub(super) enum NativeTransportPolicy {
     RestartStopped,
 }
 pub(super) struct PlayerHost {
+    intelligence: Arc<intelligence::IntelligenceHost>,
     relay_enabled: bool,
     session: Arc<AccountSession>,
     store: Arc<StateStore>,
@@ -78,6 +81,7 @@ impl PlayerHost {
         output: Arc<crate::playback::output::OutputRuntime>,
     ) -> Self {
         Self {
+            intelligence: Arc::new(intelligence::IntelligenceHost::default()),
             relay_enabled: false,
             session,
             store,
