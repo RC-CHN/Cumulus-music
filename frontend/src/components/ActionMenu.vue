@@ -27,8 +27,10 @@ const id = useId();
 let stop: (() => void) | undefined;
 let returnTarget: HTMLElement | undefined;
 let displayRevision = 0;
+let viewportBounds: { width: number; height: number } | undefined;
 let anchorBounds: { left: number; top: number; width: number; height: number } | undefined;
 function rememberAnchor() {
+  viewportBounds = { width: innerWidth, height: innerHeight };
   const node = returnTarget ?? trigger.value;
   if (!node?.isConnected) {
     anchorBounds = undefined;
@@ -37,12 +39,24 @@ function rememberAnchor() {
   const { left, top, width, height } = node.getBoundingClientRect();
   anchorBounds = { left, top, width, height };
 }
+function anchorUnchanged() {
+  const node = returnTarget ?? trigger.value;
+  if (!node?.isConnected || !anchorBounds) return false;
+  const current = node.getBoundingClientRect();
+  return (
+    Math.abs(current.left - anchorBounds.left) < 0.5 &&
+    Math.abs(current.top - anchorBounds.top) < 0.5 &&
+    Math.abs(current.width - anchorBounds.width) < 0.5 &&
+    Math.abs(current.height - anchorBounds.height) < 0.5
+  );
+}
 const choices = () => [
   ...(panel.value?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? []),
 ];
 function close(restore = false) {
   displayRevision++;
   anchorBounds = undefined;
+  viewportBounds = undefined;
   open.value = false;
   returnTarget?.removeAttribute('aria-controls');
   if (returnTarget?.hasAttribute('aria-haspopup'))
@@ -150,20 +164,20 @@ watch(open, (active) => {
   };
   const scroll = (event: Event) => {
     if (panel.value?.contains(event.target as Node)) return;
-    const node = returnTarget ?? trigger.value;
-    if (node?.isConnected && anchorBounds) {
-      const current = node.getBoundingClientRect();
-      if (
-        Math.abs(current.left - anchorBounds.left) < 0.5 &&
-        Math.abs(current.top - anchorBounds.top) < 0.5 &&
-        Math.abs(current.width - anchorBounds.width) < 0.5 &&
-        Math.abs(current.height - anchorBounds.height) < 0.5
-      )
-        return;
-    }
+    if (anchorUnchanged()) return;
     close();
   };
-  const resize = () => close();
+  const resize = () => {
+    // Some native hosts report a resize even when CSS dimensions did not
+    // change. Keep a correctly anchored menu open for that notification.
+    if (
+      viewportBounds?.width === innerWidth &&
+      viewportBounds.height === innerHeight &&
+      anchorUnchanged()
+    )
+      return;
+    close();
+  };
   document.addEventListener('pointerdown', outside, true);
   document.addEventListener('scroll', scroll, true);
   window.addEventListener('resize', resize);
