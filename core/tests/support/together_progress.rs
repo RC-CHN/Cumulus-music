@@ -168,8 +168,14 @@ async fn common_preview_progress_reports_full_song_time_and_preserves_pause() {
         v.common_access
             .iter()
             .any(|p| p.track_id == "91" && p.preview.is_some())
+            && v.shared_phase == Some(cumulus_core::listen_together::IncomingPhase::Applied)
     })
     .await;
+    // Privilege metadata is published before the asynchronous native apply.
+    // Wait for its PAUSE/seek before injecting a later decoder clock; otherwise
+    // that still-running apply can legitimately replace the synthetic 48s.
+    position(&client, 44.0).await;
+    assert!(audio.state.lock().unwrap().view.paused);
     let before = writes(&api);
     let loads = audio.state.lock().unwrap().loads;
     audio.state.lock().unwrap().view.position = Some(48.0);
