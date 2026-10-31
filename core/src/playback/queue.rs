@@ -1,6 +1,7 @@
 //! Persistent queue semantics from playing/dbPlayingList. Entry identity is
 //! distinct from song identity; the on-disk representation is ours.
 mod reset;
+use super::quality_preferences::QualityPreferences;
 use crate::{Error, Result, storage::StateStore};
 use rand::{SeedableRng, rngs::StdRng, seq::SliceRandom};
 pub(crate) use reset::QueueResetPlan;
@@ -167,13 +168,27 @@ impl PlaybackQueue {
     }
 
     fn commit_with_fm_release(&mut self, candidate: QueueSnapshot, release_fm: bool) -> Result<()> {
+        self.commit_with_quality(candidate, release_fm, None)
+    }
+    fn commit_with_quality(
+        &mut self,
+        candidate: QueueSnapshot,
+        release_fm: bool,
+        quality: Option<(&str, &QualityPreferences)>,
+    ) -> Result<()> {
         candidate.validate()?;
+        if quality.is_some() && self.store.is_none() {
+            return Err(Error::State("quality requires persistent queue"));
+        }
         let revision = self.next_revision()?;
         let snapshot = serde_json::to_value(&candidate)?;
         if let Some(store) = &self.store {
             let result = store.transaction(|tx| {
                 if tx.get(&self.owner, "playback", "queue")? != self.persisted {
                     return Err(Error::QueueChanged);
+                }
+                if let Some((expected, preference)) = quality {
+                    QualityPreferences::replace_in(tx, &self.owner, expected, preference)?;
                 }
                 tx.put(&self.owner, "playback", "queue", &snapshot)?;
                 if release_fm {
@@ -306,6 +321,25 @@ impl PlaybackQueue {
             .ok_or(Error::InvalidInput("unknown queue entry"))?;
         item.resource = resource;
         self.commit(state)
+    }
+
+    /// Commit both CAS-protected records together before interrupting audio.
+    pub(crate) fn update_resource_with_quality(
+        &mut self,
+        entry_id: &str,
+        resource: Value,
+        expected: &str,
+        preference: &QualityPreferences,
+    ) -> Result<()> {
+        let mut state = self.snapshot();
+        let item = state
+            .items
+            .iter_mut()
+            .find(|i| i.entry_id == entry_id)
+            .ok_or(Error::InvalidInput("unknown queue entry"))?;
+        item.resource = resource;
+        let release_fm = state.items.iter().any(|e| e.source["kind"] != "fm");
+        self.commit_with_quality(state, release_fm, Some((expected, preference)))
     }
 
     pub fn reorder(&mut self, entry_ids: &[String]) -> Result<()> {

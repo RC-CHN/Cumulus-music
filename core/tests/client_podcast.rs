@@ -125,6 +125,50 @@ fn scope() -> PodcastScope {
     }
 }
 #[tokio::test]
+async fn podcast_quality_still_uses_voice_authorization_without_changing_song_preferences() {
+    use cumulus_core::membership::Quality;
+    let (_dir, api, _session, c) = fixture();
+    let p = c.podcast_page("1", query(scope(), 0), true).await.unwrap();
+    let play = c
+        .play_selection(
+            "1",
+            PlaySelection::Podcast {
+                scope: scope(),
+                revision: p.revision,
+                start_id: Some("1".into()),
+            },
+        )
+        .await
+        .unwrap();
+    assert!(play.can_change_quality);
+    assert!(!play.quality_preferences.applies_to_current);
+    let changed = c
+        .player_action(
+            "1",
+            PlayerAction::QualityFor {
+                play_id: play.play_id.unwrap(),
+                expected_revision: "podcast".into(),
+                level: Quality::HiRes,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(changed.requested_quality.as_deref(), Some("hires"));
+    assert_eq!(changed.quality_preferences.quality, Quality::Standard);
+    assert_eq!(
+        changed.quality_preferences.revision.as_deref(),
+        Some("initial")
+    );
+    assert!(
+        api.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(path, p)| path == "/api/song/enhance/player/url/v1" && p["level"] == "hires")
+    );
+    c.player_action("1", PlayerAction::Stop).await.unwrap();
+}
+#[tokio::test]
 async fn full_radio_queue_survives_page_slicing_and_keeps_voice_identity_private_fields_out() {
     let (_dir, api, session, c) = fixture();
     let p = c

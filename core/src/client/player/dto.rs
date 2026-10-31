@@ -22,6 +22,8 @@ pub struct PlayerView {
     pub origin: Option<PlayerOrigin>,
     pub position: Option<f64>,
     pub timeline: Option<TimelineSnapshot>,
+    pub quality_preferences: QualityPreferencesView,
+    pub can_change_quality: bool,
     pub requested_quality: Option<String>,
     pub actual_quality: Option<String>,
     pub volume: f64,
@@ -31,6 +33,14 @@ pub struct PlayerView {
     pub error: Option<&'static str>,
     pub history_warning: Option<&'static str>,
     pub position_reset: bool,
+}
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QualityPreferencesView {
+    pub applies_to_current: bool,
+    pub revision: Option<String>,
+    pub quality: Quality,
+    pub damaged: bool,
 }
 /// Public resource identity only; queue source metadata never crosses IPC.
 #[derive(Clone, Serialize)]
@@ -181,6 +191,7 @@ pub enum PlayerAction {
     },
     RetryLoudness,
     RepairLoudness,
+    RepairQuality,
     Play,
     Pause {
         paused: bool,
@@ -200,6 +211,11 @@ pub enum PlayerAction {
     Restore,
     Refresh,
     Quality {
+        level: Quality,
+    },
+    QualityFor {
+        play_id: String,
+        expected_revision: String,
         level: Quality,
     },
     Mode {

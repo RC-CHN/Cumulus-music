@@ -60,6 +60,7 @@ impl Actor {
                 | PlaybackCommand::Loudness { .. }
                 | PlaybackCommand::RetryLoudness
                 | PlaybackCommand::RepairLoudness
+                | PlaybackCommand::RepairQuality
         ) {
             // A user/remote transport intent wins over a delayed UI connect.
             self.startup_pending = false;
@@ -108,6 +109,7 @@ impl Actor {
                 | PlaybackCommand::Loudness { .. }
                 | PlaybackCommand::RetryLoudness
                 | PlaybackCommand::RepairLoudness
+                | PlaybackCommand::RepairQuality
         ) {
             let Some(revision) = self.control_revision.checked_add(1) else {
                 self.reply(
@@ -153,6 +155,7 @@ impl Actor {
             } => self.loudness_change(&expected_revision, enabled).await,
             PlaybackCommand::RetryLoudness => self.loudness_retry().await,
             PlaybackCommand::RepairLoudness => self.loudness_repair().await,
+            PlaybackCommand::RepairQuality => self.quality_repair(),
             PlaybackCommand::UpdateQueue(value) => {
                 self.update_queue(value).await.map(|value| options = value)
             }
@@ -160,15 +163,22 @@ impl Actor {
                 self.apply_remote(value).await.map(|value| options = value)
             }
             PlaybackCommand::Replace {
-                resources,
+                mut resources,
                 index,
                 source,
-            } => self.queue.replace(resources, index, source).map(|_| {
-                if !self.queue.is_empty() {
-                    options = Some(LoadOptions::default());
-                }
-            }),
-            PlaybackCommand::Append { resources, source } => {
+            } => {
+                self.stamp_quality(&mut resources);
+                self.queue.replace(resources, index, source).map(|_| {
+                    if !self.queue.is_empty() {
+                        options = Some(LoadOptions::default());
+                    }
+                })
+            }
+            PlaybackCommand::Append {
+                mut resources,
+                source,
+            } => {
+                self.stamp_quality(&mut resources);
                 self.queue.append(resources, source).map(|_| ())
             }
             PlaybackCommand::Select(id) => self

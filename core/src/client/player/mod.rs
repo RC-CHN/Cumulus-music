@@ -16,7 +16,7 @@ use crate::{
     lyrics::LyricsService,
     playback::{
         controller::{PlaybackCommand, PlaybackController, PlaybackSnapshot},
-        engine::{AudioEngine, MpvConfig, MpvEngine},
+        engine::{AudioEngine, Cancellation, MpvConfig, MpvEngine},
         source::SourceResolver,
     },
     storage::StateStore,
@@ -26,6 +26,21 @@ pub use output::{OutputCommand, OutputEngineView, OutputView};
 pub use preferences::{StartupPreferencesCommand, StartupPreferencesView};
 use std::sync::{Arc, Mutex, atomic::AtomicU64};
 use tokio::sync::{OnceCell, watch};
+
+fn validate_quality_target(
+    current: &PlaybackSnapshot,
+    play_id: &str,
+    expected_revision: &str,
+) -> Result<()> {
+    if current.play_id.as_deref() != Some(play_id)
+        || (current.quality_preferences_apply
+            && (current.quality_preferences.damaged
+                || current.quality_preferences.preferences.revision != expected_revision))
+    {
+        return Err(Error::StaleResponse);
+    }
+    Ok(())
+}
 
 type EngineFactory = Arc<dyn Fn() -> Result<Box<dyn AudioEngine>> + Send + Sync>;
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -183,6 +198,14 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
             .and_then(|i| origin::project(&i.source)),
         position: value.position,
         timeline: value.timeline.clone(),
+        quality_preferences: QualityPreferencesView {
+            applies_to_current: value.quality_preferences_apply,
+            revision: (!value.quality_preferences.damaged)
+                .then(|| value.quality_preferences.preferences.revision.clone()),
+            quality: value.quality_preferences.preferences.quality,
+            damaged: value.quality_preferences.damaged,
+        },
+        can_change_quality: value.can_change_quality,
         requested_quality: value.requested_quality.clone(),
         actual_quality: value.actual_quality.clone(),
         volume: value.volume,
@@ -336,9 +359,24 @@ impl MusicClient {
                 | PlayerAction::Loudness { .. }
                 | PlayerAction::RetryLoudness
                 | PlayerAction::RepairLoudness
+                | PlayerAction::RepairQuality
         );
         self.together_validate_action(&token, &action)?;
         let together_action = super::together::signal(&action);
+        // Reject obsolete popup input before it can supersede another pending
+        // selection. The actor fence below still covers the later race.
+        if let PlayerAction::QualityFor {
+            play_id,
+            expected_revision,
+            ..
+        } = &action
+        {
+            let controller = self.player.controller().await?;
+            let current = controller
+                .command(&token, PlaybackCommand::Snapshot)
+                .await?;
+            validate_quality_target(&current, play_id, expected_revision)?;
+        }
         let control_intent = if !matches!(
             action,
             PlayerAction::Volume { .. }
@@ -350,6 +388,7 @@ impl MusicClient {
                 | PlayerAction::Loudness { .. }
                 | PlayerAction::RetryLoudness
                 | PlayerAction::RepairLoudness
+                | PlayerAction::RepairQuality
         ) {
             Some(
                 self.player
@@ -387,6 +426,17 @@ impl MusicClient {
                 .cancellation(self, lease, super::focus::Owner::Audio, control_intent)
                 .check()?;
         }
+        let quality_guard = if let PlayerAction::QualityFor {
+            play_id,
+            expected_revision,
+            ..
+        } = &action
+        {
+            validate_quality_target(&current, play_id, expected_revision)?;
+            Some(current.fence())
+        } else {
+            None
+        };
         if current.fm {
             if matches!(
                 action,
@@ -504,6 +554,7 @@ impl MusicClient {
             },
             PlayerAction::RetryLoudness => PlaybackCommand::RetryLoudness,
             PlayerAction::RepairLoudness => PlaybackCommand::RepairLoudness,
+            PlayerAction::RepairQuality => PlaybackCommand::RepairQuality,
             PlayerAction::Play if policy == NativeTransportPolicy::RestartStopped => {
                 PlaybackCommand::PlayFromStart
             }
@@ -523,7 +574,9 @@ impl MusicClient {
             PlayerAction::Stop => PlaybackCommand::Stop,
             PlayerAction::Restore => PlaybackCommand::Restore,
             PlayerAction::Refresh => PlaybackCommand::RefreshSource,
-            PlayerAction::Quality { level } => PlaybackCommand::Quality(level),
+            PlayerAction::Quality { level } | PlayerAction::QualityFor { level, .. } => {
+                PlaybackCommand::Quality(level)
+            }
             PlayerAction::Mode { mode } => PlaybackCommand::Mode(mode),
             PlayerAction::Select { entry_id } => PlaybackCommand::Select(entry_id),
             PlayerAction::Remove { entry_ids } => PlaybackCommand::Remove(entry_ids),
@@ -554,6 +607,10 @@ impl MusicClient {
                     target.audio(&current)?,
                     target.cancellation(self, lease, super::focus::Owner::Audio, control_intent),
                 )
+                .await?
+        } else if let Some(expected) = quality_guard {
+            controller
+                .command_guarded(&token, command, expected, Cancellation::default())
                 .await?
         } else {
             controller.command(&token, command).await?

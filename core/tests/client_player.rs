@@ -104,6 +104,85 @@ fn songs(id: &str) -> PlaySelection {
 }
 
 #[tokio::test]
+async fn quality_menu_target_and_preference_revision_are_checked_before_requesting_a_url() {
+    let (_dir, api, _session, client, _) = fixture();
+    let first = client.play_selection("1", songs("1")).await.unwrap();
+    let old_play = first.play_id.unwrap();
+    let initial = first.quality_preferences.revision.unwrap();
+    let current = client.play_selection("1", songs("2")).await.unwrap();
+    let before = api.calls.lock().unwrap().len();
+    let old = client
+        .player_action(
+            "1",
+            PlayerAction::QualityFor {
+                play_id: old_play,
+                expected_revision: initial.clone(),
+                level: Quality::HiRes,
+            },
+        )
+        .await;
+    assert!(matches!(old, Err(Error::StaleResponse)));
+    assert_eq!(api.calls.lock().unwrap().len(), before);
+    let changed = client
+        .player_action(
+            "1",
+            PlayerAction::QualityFor {
+                play_id: current.play_id.unwrap(),
+                expected_revision: initial.clone(),
+                level: Quality::HiRes,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(changed.requested_quality.as_deref(), Some("hires"));
+    assert_eq!(changed.actual_quality.as_deref(), Some("standard"));
+    assert_eq!(changed.quality_preferences.quality, Quality::HiRes);
+    let before = api.calls.lock().unwrap().len();
+    assert!(matches!(
+        client
+            .player_action(
+                "1",
+                PlayerAction::QualityFor {
+                    play_id: changed.play_id.unwrap(),
+                    expected_revision: initial,
+                    level: Quality::ExHigh,
+                }
+            )
+            .await,
+        Err(Error::StaleResponse)
+    ));
+    assert_eq!(api.calls.lock().unwrap().len(), before);
+    client.player_action("1", PlayerAction::Stop).await.unwrap();
+}
+
+#[tokio::test]
+async fn rejecting_an_old_quality_menu_does_not_cancel_a_newer_pending_song_selection() {
+    let (_dir, api, _session, client, _) = fixture();
+    let first = client.play_selection("1", songs("1")).await.unwrap();
+    client.play_selection("1", songs("2")).await.unwrap();
+    api.hold_id.store(3, Ordering::SeqCst);
+    let next = client.clone();
+    let pending = tokio::spawn(async move { next.play_selection("1", songs("3")).await });
+    api.started.notified().await;
+    assert!(matches!(
+        client
+            .player_action(
+                "1",
+                PlayerAction::QualityFor {
+                    play_id: first.play_id.unwrap(),
+                    expected_revision: first.quality_preferences.revision.unwrap(),
+                    level: Quality::HiRes,
+                }
+            )
+            .await,
+        Err(Error::StaleResponse)
+    ));
+    api.release.notify_waiters();
+    assert_eq!(pending.await.unwrap().unwrap().track.unwrap().id, "3");
+    client.player_action("1", PlayerAction::Stop).await.unwrap();
+}
+
+#[tokio::test]
 async fn local_startup_preferences_need_no_engine_or_http_and_reject_old_account_writes() {
     use cumulus_core::client::dto::StartupPreferencesCommand as Change;
     use cumulus_core::playback::preferences::StartupSettings;

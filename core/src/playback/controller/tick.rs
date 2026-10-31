@@ -15,6 +15,7 @@ pub(super) struct PrefetchKey {
     generation: u64,
     queue_revision: u64,
     source_revision: u64,
+    quality_revision: String,
     entry_id: String,
     token: SessionToken,
 }
@@ -27,6 +28,7 @@ impl Actor {
     pub async fn rebind(&mut self) -> Result<()> {
         let token = self.session.token()?;
         if token == self.token && self.bound {
+            self.quality_sync()?;
             self.equalizer_sync().await?;
             return self.loudness_sync().await;
         }
@@ -36,6 +38,7 @@ impl Actor {
         // corrupt. An unbound actor retries loading; it cannot write a fallback.
         self.queue = PlaybackQueue::new(None, owner)?;
         self.prefs = Default::default();
+        self.quality_preferences = Default::default();
         self.token = token;
         self.bound = false;
         self.startup_pending = true;
@@ -55,6 +58,7 @@ impl Actor {
         self.error = None;
         self.equalizer_sync().await?;
         self.loudness_sync().await?;
+        self.quality_sync()?;
         stopped
     }
     pub async fn sync_queue(&mut self) -> Result<()> {
@@ -199,7 +203,7 @@ impl Actor {
             };
             return Ok(());
         }
-        let Some(next) = self.queue.peek(Step::Next, true).filter(|next| {
+        let Some(mut next) = self.queue.peek(Step::Next, true).filter(|next| {
             next.resource.get("id").is_some()
                 && next.resource.get("local_id").is_none()
                 && next.resource.get("path").is_none()
@@ -212,10 +216,12 @@ impl Actor {
             };
             return Ok(());
         };
+        self.apply_quality_preference(&mut next.resource);
         let key = PrefetchKey {
             generation: self.generation(),
             queue_revision: self.queue.revision(),
             source_revision: self.resolver.revision()?,
+            quality_revision: self.quality_preferences.preferences.revision.clone(),
             entry_id: next.entry_id.clone(),
             token: self.token.clone(),
         };
@@ -270,6 +276,7 @@ impl Actor {
             && self.session.token().ok().as_ref() == Some(&value.key.token)
             && self.queue.revision() == value.key.queue_revision
             && self.resolver.revision().ok() == Some(value.key.source_revision)
+            && self.quality_preferences.preferences.revision == value.key.quality_revision
         {
             self.refresh_at = value.deadline;
             self.prefetch = PrefetchSnapshot {

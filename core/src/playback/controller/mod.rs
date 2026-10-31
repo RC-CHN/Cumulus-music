@@ -5,6 +5,7 @@ mod equalizer;
 mod history;
 mod load;
 mod loudness;
+mod quality;
 mod remote;
 mod startup;
 mod state;
@@ -50,7 +51,7 @@ enum Message {
         generation: u64,
         result: Result<load::Prepared>,
     },
-    Quality(load::QualityReady),
+    Quality(quality::QualityReady),
     Prefetched(tick::Prefetched),
 }
 

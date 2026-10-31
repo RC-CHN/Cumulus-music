@@ -198,6 +198,73 @@ async fn account_change_clears_old_private_state_even_when_new_storage_is_corrup
 }
 
 #[tokio::test]
+async fn selected_quality_is_used_by_existing_queue_next_song_and_survives_reopen() {
+    let f = Fixture::new();
+    f.command(replace(&[1, 2, 3])).await.unwrap();
+    f.command(Cmd::Quality(Quality::Lossless)).await.unwrap();
+    let next = f.command(Cmd::Next).await.unwrap();
+    assert_eq!(next.requested_quality.as_deref(), Some("lossless"));
+    assert!(
+        f.api
+            .calls
+            .lock()
+            .unwrap()
+            .contains(&(2, "lossless".into()))
+    );
+    f.command(Cmd::Stop).await.unwrap();
+    let reopened = f.another_player();
+    reopened.command(&f.token(), Cmd::Restore).await.unwrap();
+    let next = reopened.command(&f.token(), Cmd::Next).await.unwrap();
+    assert_eq!(next.requested_quality.as_deref(), Some("lossless"));
+    assert!(
+        f.api
+            .calls
+            .lock()
+            .unwrap()
+            .contains(&(3, "lossless".into()))
+    );
+    reopened.command(&f.token(), Cmd::Stop).await.unwrap();
+}
+
+#[tokio::test]
+async fn implicit_native_queue_quality_and_null_voice_metadata_use_the_song_preference() {
+    let f = Fixture::new();
+    f.command(Cmd::Replace {
+        resources: vec![json!({"id":1,"voice_id":null})],
+        index: 0,
+        source: Value::Null,
+    })
+    .await
+    .unwrap();
+    f.command(Cmd::Quality(Quality::Lossless)).await.unwrap();
+    let selected = f
+        .command(Cmd::Replace {
+            resources: vec![json!({"id":2,"voice_id":null})],
+            index: 0,
+            source: Value::Null,
+        })
+        .await
+        .unwrap();
+    assert!(selected.quality_preferences_apply);
+    assert_eq!(selected.requested_quality.as_deref(), Some("lossless"));
+    f.command(Cmd::Append {
+        resources: vec![json!({"id":3,"level":null,"voice_id":null})],
+        source: Value::Null,
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        f.command(Cmd::Next)
+            .await
+            .unwrap()
+            .requested_quality
+            .as_deref(),
+        Some("lossless")
+    );
+    f.command(Cmd::Stop).await.unwrap();
+}
+
+#[tokio::test]
 async fn denied_quality_preserves_playback_and_authorized_downgrade_preserves_clock() {
     let f = Fixture::new();
     let first = f.command(replace(&[1])).await.unwrap();
@@ -213,18 +280,219 @@ async fn denied_quality_preserves_playback_and_authorized_downgrade_preserves_cl
     );
     let denied = f.command(Cmd::Snapshot).await.unwrap();
     assert_eq!(denied.play_id, first.play_id);
+    assert_eq!(
+        denied.quality_preferences.preferences.quality,
+        Quality::Standard
+    );
     assert_eq!(denied.state, Status::Paused);
     assert_eq!(f.device.state.lock().unwrap().loads, 1);
     f.api.deny_lossless.store(false, Ordering::SeqCst);
     let changed = f.command(Cmd::Quality(Quality::Lossless)).await.unwrap();
     assert_eq!(changed.requested_quality.as_deref(), Some("lossless"));
     assert_eq!(changed.actual_quality.as_deref(), Some("standard"));
+    assert_eq!(
+        changed.quality_preferences.preferences.quality,
+        Quality::Lossless
+    );
     assert_eq!(changed.position, Some(47.0));
     assert_eq!(changed.state, Status::Paused);
     let count = f.api.count(1);
     let refreshed = f.command(Cmd::RefreshSource).await.unwrap();
     assert!(f.api.count(1) > count);
     assert_eq!(refreshed.position, Some(47.0));
+}
+
+#[tokio::test]
+async fn explicit_new_queue_keeps_its_quality_until_the_preference_changes_again() {
+    let f = Fixture::new();
+    f.command(replace(&[1, 2])).await.unwrap();
+    f.command(Cmd::Quality(Quality::Lossless)).await.unwrap();
+    let explicit = Cmd::Replace {
+        resources: vec![
+            json!({"id":3,"level":"exhigh"}),
+            json!({"id":4,"level":"exhigh"}),
+        ],
+        index: 0,
+        source: Value::Null,
+    };
+    let first = f.command(explicit).await.unwrap();
+    assert_eq!(first.requested_quality.as_deref(), Some("exhigh"));
+    assert_eq!(
+        first.quality_preferences.preferences.quality,
+        Quality::Lossless
+    );
+    assert_eq!(
+        f.command(Cmd::Next)
+            .await
+            .unwrap()
+            .requested_quality
+            .as_deref(),
+        Some("exhigh")
+    );
+    f.command(Cmd::Quality(Quality::HiRes)).await.unwrap();
+    assert_eq!(
+        f.command(Cmd::Previous)
+            .await
+            .unwrap()
+            .requested_quality
+            .as_deref(),
+        Some("hires")
+    );
+    f.command(Cmd::Stop).await.unwrap();
+}
+
+#[tokio::test]
+async fn quality_preferences_and_queue_inheritance_are_isolated_between_accounts() {
+    let f = Fixture::new();
+    f.command(replace(&[1, 2])).await.unwrap();
+    f.command(Cmd::Quality(Quality::Lossless)).await.unwrap();
+    f.session
+        .adopt(f.api.clone(), json!({"userId":10}), &f.token())
+        .unwrap();
+    let other = f.command(replace(&[3, 4])).await.unwrap();
+    assert_eq!(
+        other.quality_preferences.preferences.quality,
+        Quality::Standard
+    );
+    f.command(Cmd::Quality(Quality::ExHigh)).await.unwrap();
+    f.session
+        .adopt(f.api.clone(), json!({"userId":9}), &f.token())
+        .unwrap();
+    let restored = f.command(Cmd::Restore).await.unwrap();
+    assert_eq!(
+        restored.quality_preferences.preferences.quality,
+        Quality::Lossless
+    );
+    let next = f.command(Cmd::Next).await.unwrap();
+    assert_eq!(song(&next), Some(2));
+    assert_eq!(next.requested_quality.as_deref(), Some("lossless"));
+    f.command(Cmd::Stop).await.unwrap();
+}
+
+#[tokio::test]
+async fn another_hosts_quality_change_rejects_old_authorization_without_interrupting_audio() {
+    use cumulus_core::playback::quality_preferences::QualityPreferences;
+    let f = Fixture::new();
+    let first = f.command(replace(&[1, 2])).await.unwrap();
+    f.api.hold.store(1, Ordering::SeqCst);
+    let pending = f.start(Cmd::Quality(Quality::Lossless));
+    f.api.started.notified().await;
+    QualityPreferences::replace(&f.store, "9", "initial", Quality::HiRes).unwrap();
+    f.api.release.notify_waiters();
+    assert!(pending.await.unwrap().is_err());
+    let kept = f.command(Cmd::Snapshot).await.unwrap();
+    assert_eq!(kept.play_id, first.play_id);
+    assert_eq!(kept.quality_preferences.preferences.quality, Quality::HiRes);
+    assert_eq!(f.device.state.lock().unwrap().loads, 1);
+    f.api.hold.store(0, Ordering::SeqCst);
+    assert_eq!(
+        f.command(Cmd::Next)
+            .await
+            .unwrap()
+            .requested_quality
+            .as_deref(),
+        Some("hires")
+    );
+    f.command(Cmd::Stop).await.unwrap();
+}
+
+#[tokio::test]
+async fn damaged_quality_preferences_allow_playback_and_require_explicit_non_reusing_repair() {
+    use cumulus_core::playback::quality_preferences::QualityPreferences;
+    let f = Fixture::new();
+    f.command(replace(&[1, 2])).await.unwrap();
+    let saved = f.command(Cmd::Quality(Quality::Lossless)).await.unwrap();
+    let old_revision = saved.quality_preferences.preferences.revision;
+    f.sql("UPDATE state SET value='malformed' WHERE owner='9' AND kind='playback-quality-v1' AND key='current'");
+    let reopened = f.another_player();
+    let restored = reopened.command(&f.token(), Cmd::Restore).await.unwrap();
+    assert!(restored.quality_preferences.damaged);
+    assert_eq!(restored.state, Status::Paused);
+    assert!(
+        reopened
+            .command(&f.token(), Cmd::Quality(Quality::HiRes))
+            .await
+            .is_err()
+    );
+    let repaired = reopened
+        .command(&f.token(), Cmd::RepairQuality)
+        .await
+        .unwrap();
+    assert!(!repaired.quality_preferences.damaged);
+    assert_ne!(
+        repaired.quality_preferences.preferences.revision,
+        old_revision
+    );
+    assert!(QualityPreferences::replace(&f.store, "9", &old_revision, Quality::HiRes).is_err());
+    assert_eq!(
+        f.store
+            .values("9", "playback-quality-recovery-v1")
+            .unwrap()
+            .len(),
+        1
+    );
+    let next = reopened.command(&f.token(), Cmd::Next).await.unwrap();
+    assert_eq!(next.requested_quality.as_deref(), Some("standard"));
+    reopened.command(&f.token(), Cmd::Stop).await.unwrap();
+    f.command(Cmd::Stop).await.unwrap();
+}
+
+#[tokio::test]
+async fn a_quality_storage_failure_preserves_audio_and_rolls_back_the_preference() {
+    let f = Fixture::new();
+    let before = f.command(replace(&[1, 2])).await.unwrap();
+    f.sql("CREATE TRIGGER deny_quality BEFORE INSERT ON state WHEN NEW.kind='playback-quality-v1' BEGIN SELECT RAISE(FAIL,'injected'); END;");
+    assert!(f.command(Cmd::Quality(Quality::Lossless)).await.is_err());
+    let after = f.command(Cmd::Snapshot).await.unwrap();
+    assert_eq!(after.play_id, before.play_id);
+    assert_eq!(after.quality_preferences.preferences.revision, "initial");
+    assert!(
+        f.store
+            .values("9", "playback-quality-v1")
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(f.device.state.lock().unwrap().loads, 1);
+    f.command(Cmd::Stop).await.unwrap();
+}
+
+#[tokio::test]
+async fn queue_write_failure_also_rolls_back_the_new_quality_preference() {
+    let f = Fixture::new();
+    let before = f.command(replace(&[1, 2])).await.unwrap();
+    f.sql("CREATE TRIGGER deny_quality_queue BEFORE INSERT ON state WHEN NEW.kind='playback' AND NEW.key='queue' BEGIN SELECT RAISE(FAIL,'injected'); END;");
+    assert!(f.command(Cmd::Quality(Quality::Lossless)).await.is_err());
+    let after = f.command(Cmd::Snapshot).await.unwrap();
+    assert_eq!(after.play_id, before.play_id);
+    assert_eq!(after.quality_preferences.preferences.revision, "initial");
+    assert!(
+        f.store
+            .values("9", "playback-quality-v1")
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(f.device.state.lock().unwrap().loads, 1);
+    f.command(Cmd::Stop).await.unwrap();
+}
+
+#[test]
+fn missing_quality_record_is_not_treated_as_a_first_run_and_repair_keeps_the_saved_marker() {
+    use cumulus_core::playback::quality_preferences::QualityPreferences;
+    let f = tempfile::tempdir().unwrap();
+    let store = cumulus_core::storage::StateStore::open(f.path()).unwrap();
+    let saved = QualityPreferences::replace(&store, "9", "initial", Quality::Lossless).unwrap();
+    store.delete("9", "playback-quality-v1", "current").unwrap();
+    assert!(QualityPreferences::read(&store, "9").is_err());
+    assert!(QualityPreferences::replace(&store, "9", "initial", Quality::HiRes).is_err());
+    let repaired = QualityPreferences::repair(&store, "9").unwrap();
+    assert_ne!(repaired.revision, saved.revision);
+    assert_eq!(repaired.quality, Quality::Standard);
+    assert!(QualityPreferences::repair(&store, "9").is_err());
+    let archived = store.values("9", "playback-quality-recovery-v1").unwrap();
+    assert_eq!(archived.len(), 1);
+    let raw = archived.values().next().unwrap();
+    assert_eq!(raw["saved_raw"], "true");
+    assert!(raw["current_raw"].is_null());
 }
 
 #[tokio::test]

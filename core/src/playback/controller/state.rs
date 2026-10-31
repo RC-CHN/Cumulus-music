@@ -62,6 +62,7 @@ pub(super) struct Actor {
     pub seek_revision: u64,
     pub queue: PlaybackQueue,
     pub prefs: Preferences,
+    pub quality_preferences: crate::playback::quality_preferences::QualityPreferencesSnapshot,
     pub state: PlaybackStatus,
     pub play_id: Option<String>,
     pub position: Option<f64>,
@@ -93,6 +94,8 @@ impl Actor {
         let owner = token.uid.as_deref().unwrap_or("local-guest");
         let queue = PlaybackQueue::new(Some(store.clone()), owner)?;
         let prefs = Self::preferences(&store, owner)?;
+        let quality_preferences =
+            crate::playback::quality_preferences::QualityPreferencesSnapshot::read(&store, owner)?;
         Ok(Self {
             startup_pending: true,
             startup_autoplay: true,
@@ -116,6 +119,7 @@ impl Actor {
             seek_revision: 0,
             queue,
             prefs,
+            quality_preferences,
             state: PlaybackStatus::Idle,
             play_id: None,
             position: None,
@@ -170,6 +174,13 @@ impl Actor {
             paused: self.state == PlaybackStatus::Paused
                 || self.pending.as_ref().is_some_and(|pending| pending.paused),
             play_id: self.play_id.clone(),
+            quality_preferences: self.quality_preferences.clone(),
+            can_change_quality: selected
+                .as_ref()
+                .is_some_and(|i| super::quality::online_resource(&i.resource)),
+            quality_preferences_apply: selected
+                .as_ref()
+                .is_some_and(|i| super::quality::song_resource(&i.resource)),
             requested_quality: selected
                 .as_ref()
                 .filter(|i| i.resource.get("id").is_some())

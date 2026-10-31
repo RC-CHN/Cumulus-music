@@ -4,14 +4,12 @@ use super::{
 };
 use crate::{
     Error, Result,
-    account::SessionToken,
     playback::{
         QueueEntry, Timeline, TimelineMode,
         engine::{LoadRequest, LoadedMedia},
         source::ResolvedSource,
     },
 };
-use serde_json::Value;
 use std::sync::Arc;
 
 #[derive(Default)]
@@ -30,15 +28,6 @@ pub(super) struct Prepared {
     pub timeline: Timeline,
     pub position: f64,
     pub reset: bool,
-}
-pub(super) struct QualityReady {
-    pub id: String,
-    pub generation: u64,
-    pub token: SessionToken,
-    pub entry_id: String,
-    pub resource: Value,
-    pub result: Result<Arc<ResolvedSource>>,
-    pub reply: Response,
 }
 
 impl Actor {
@@ -66,10 +55,19 @@ impl Actor {
         id: String,
         reply: &mut Option<Response>,
     ) -> Result<()> {
-        let item = self
+        let mut item = self
             .queue
             .selected()
             .ok_or(Error::State("queue is empty"))?;
+        // Recovery with an already authorized source must retain that source's
+        // request. Ordinary loads resolve the latest account listening choice.
+        if options.source.is_none() {
+            self.apply_quality_preference(&mut item.resource);
+            if self.queue.selected().as_ref() != Some(&item) {
+                self.queue
+                    .update_resource(&item.entry_id, item.resource.clone())?;
+            }
+        }
         let constraint = crate::playback::PlaybackConstraint::from_resource(&item.resource)?;
         if matches!(
             constraint,
@@ -319,83 +317,6 @@ impl Actor {
                     self.reply(reply, Err(error));
                 }
             }
-        }
-    }
-    pub fn quality(&mut self, id: String, level: crate::membership::Quality, reply: Response) {
-        let Some(selected) = self.queue.selected() else {
-            self.reply(reply, Err(Error::State("queue is empty")));
-            return;
-        };
-        if !self.state.active()
-            || selected.resource.get("id").is_none()
-            || selected.resource.get("local_id").is_some()
-            || selected.resource.get("path").is_some()
-        {
-            self.reply(
-                reply,
-                Err(Error::State("quality requires loaded online track")),
-            );
-            return;
-        }
-        if let Some(task) = self.quality_task.take() {
-            task.abort();
-        }
-        let mut resource = selected.resource;
-        resource["level"] = level.as_str().into();
-        let token = self.token.clone();
-        let generation = self.generation();
-        let resolver = self.resolver.clone();
-        let sender = self.sender.clone();
-        self.quality_id = Some(id.clone());
-        self.quality_task = Some(tokio::spawn(async move {
-            let result = resolver.resolve(&resource, &token).await;
-            let _ = sender.send(Message::Quality(QualityReady {
-                id,
-                generation,
-                token,
-                entry_id: selected.entry_id,
-                resource,
-                result,
-                reply,
-            }));
-        }));
-    }
-    pub async fn quality_ready(&mut self, ready: QualityReady) {
-        if ready.reply.is_closed()
-            || self.quality_id.as_deref() != Some(&ready.id)
-            || self.generation() != ready.generation
-            || self.session.token().ok().as_ref() != Some(&ready.token)
-        {
-            self.reply(ready.reply, Err(Error::StaleResponse));
-            return;
-        }
-        self.quality_task = None;
-        self.quality_id = None;
-        let source = match ready.result {
-            Ok(source) => source,
-            Err(error) => {
-                self.reply(ready.reply, Err(error));
-                return;
-            }
-        };
-        if self.queue.selected().as_ref().map(|i| i.entry_id.as_str()) != Some(&ready.entry_id) {
-            self.reply(ready.reply, Err(Error::StaleResponse));
-            return;
-        }
-        if let Err(error) = self.queue.update_resource(&ready.entry_id, ready.resource) {
-            self.reply(ready.reply, Err(error));
-            return;
-        }
-        let options = LoadOptions {
-            paused: self.state == PlaybackStatus::Paused,
-            position: self.position,
-            recover: true,
-            source: Some(source),
-            ..Default::default()
-        };
-        // The resource was authorized before interrupting the old track.
-        if let Err(error) = self.begin(options, ready.id, Some(ready.reply)).await {
-            self.error = Some(error.to_string());
         }
     }
 }
