@@ -10,7 +10,12 @@ import PlaybackSpeed from './PlaybackSpeed.vue';
 import PlaybackQuality from './PlaybackQuality.vue';
 const equalizerOpen = ref(false);
 const props = defineProps<{ player: PlayerModel; liked: Set<string>; likeBusy: Set<string> }>();
-const emit = defineEmits<{ like: [track: TrackView]; retry: []; comments: [track: TrackView] }>();
+const emit = defineEmits<{
+  like: [track: TrackView];
+  retry: [];
+  comments: [track: TrackView];
+  member: [];
+}>();
 const { view, ready, busy, error, playing, loaded } = props.player;
 const draft = ref<number>();
 const previousVolume = ref(50);
@@ -176,7 +181,7 @@ function mute() {
       </div>
     </div>
     <div class="player-tools">
-      <PlaybackQuality :player="player" />
+      <PlaybackQuality :player="player" @member="emit('member')" />
       <PlaybackSpeed :player="player" />
       <div class="volume-control">
         <button

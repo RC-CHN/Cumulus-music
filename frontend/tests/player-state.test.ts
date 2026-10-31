@@ -165,6 +165,12 @@ function fixture(overrides: Partial<PlayerClient> = {}) {
     },
     playSelection: async () => state(),
     playerAction: async () => state(),
+    playerQualityDetails: async () => {
+      throw Error('unexpected quality metadata read');
+    },
+    playerQualityTrial: async () => {
+      throw Error('unexpected quality trial command');
+    },
     playerQueue: async () => ({ epoch: '1', revision: '1', current: null, tracks: [] }),
     playerLyrics: async (_e, id) => lyrics(id),
     lyricPreferences: async (_e, id) => lyrics(id),
@@ -400,5 +406,64 @@ test('playlist feedback must not report a superseded operation as success', asyn
   assert.equal(await adding, undefined);
   assert.equal(f.player.queueBusy.value, false);
   assert.equal(f.player.view.value?.revision, '3');
+  f.player.dispose();
+});
+
+test('a trial activation error stays outside the generic playback retry', async () => {
+  let quota = 0;
+  const actions: string[] = [];
+  const f = fixture({
+    playerQualityTrial: async () => {
+      quota++;
+      throw { code: 'mutation_uncertain', message: 'please reconcile', retryable: false };
+    },
+    playerAction: async (_e, input) => {
+      actions.push(input.kind);
+      return state('2');
+    },
+  });
+  await f.player.connect(account());
+  await assert.rejects(
+    f.player.qualityTrial('1', {
+      kind: 'start',
+      play_id: 'song',
+      details_revision: 'offer',
+      level: 'jymaster',
+    }),
+  );
+  assert.equal(f.player.error.value, '');
+  await f.player.retry();
+  assert.equal(quota, 1);
+  assert.deepEqual(actions, ['refresh']);
+  f.player.dispose();
+});
+test('a trial response after an account switch cannot replace the replacement player', async () => {
+  const pending = deferred<import('../src/services/player.ts').QualityTrialOutcome>();
+  const f = fixture({ playerQualityTrial: () => pending.promise });
+  await f.player.connect(account());
+  const old = f.player.qualityTrial('1', {
+    kind: 'start',
+    play_id: 'song',
+    details_revision: 'offer',
+    level: 'jymaster',
+  });
+  await f.player.connect(account('2'));
+  pending.resolve({
+    trial: {
+      right: 'jymaster',
+      operation: 'op',
+      revision: '1',
+      phase: 'active',
+      acknowledged: true,
+      canUse: true,
+      readFailed: false,
+      remainingMs: 60000,
+    },
+    playback: state('999', '1', 'old'),
+    playbackError: null,
+  });
+  await assert.rejects(old);
+  assert.equal(f.player.view.value?.epoch, '2');
+  assert.equal(f.player.view.value?.playId, null);
   f.player.dispose();
 });

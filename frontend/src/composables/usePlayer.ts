@@ -7,6 +7,7 @@ import type {
   QueueView,
   LyricsView,
   LyricPreferences,
+  QualityTrialCommand,
 } from '../services/player.ts';
 import { useCore } from '../services/core.ts';
 
@@ -119,6 +120,37 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     }
   }
   const action = (input: PlayerAction) => run((e) => core.playerAction(e, input));
+  // Quota writes must never become the generic audio-error retry operation.
+  // A closed trial dialog may leave a native operation running; its durable
+  // result is still accepted for this connection, independently of that dialog.
+  async function qualityTrial(expectedEpoch: string, command: QualityTrialCommand) {
+    const owner = epoch,
+      session = connection,
+      control = request;
+    if (!ready.value || owner !== expectedEpoch)
+      throw { code: 'stale', message: '账号或播放状态已变化，请重新选择音质', retryable: false };
+    try {
+      const result = await core.playerQualityTrial(owner, command);
+      if (owner !== epoch || session !== connection || !ready.value)
+        throw { code: 'stale', message: '账号已切换，请重新选择音质', retryable: false };
+      if (result.playback) {
+        accept(result.playback);
+        if (control === request) {
+          failedOperation = undefined;
+          error.value = '';
+        }
+      }
+      return result;
+    } catch (e) {
+      if (
+        owner === epoch &&
+        session === connection &&
+        ['session_expired', 'profile_changed'].includes(failure(e).code)
+      )
+        onSessionChanged();
+      throw e;
+    }
+  }
   // Resource-menu failures belong to that operation, not the audio-error bar.
   // A user retry captures the latest queue fence; no automatic write replay.
   function queuePlaylist(id: string, selection?: { ids: string[]; revision: string }) {
@@ -273,6 +305,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     loaded,
     connect,
     action,
+    qualityTrial,
     configureLoudness,
     select,
     downloads,

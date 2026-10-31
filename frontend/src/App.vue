@@ -1618,6 +1618,7 @@ onUnmounted(() => {
       @like="likePlaying"
       @retry="player.connect(account)"
       @comments="trackComments"
+      @member="music.navigate({ kind: 'member' })"
     />
     <ModalTransition>
       <LoginDialog
