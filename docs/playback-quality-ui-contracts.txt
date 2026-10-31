@@ -75,9 +75,10 @@ Escape 返回标签、外侧关闭、账号/曲目/偏好改变关闭旧菜单�
 - /api/vipauth/app/auth/query：resourceIdList=0、resourceTypeList 为 PC 的
   vivid=41/jymaster=31/sky=32/jyeffect=33，读取可用/已使用/剩余时间；
 - /api/vipauth/app/auth/set 是激活试用的写入，不能在打开菜单时调用或自行消耗额度。
-官方还会保存试用前偏好、到期后恢复。此套权益提示/试用确认/未知写入对账及到期恢复
-仍需专项实现；本轮未用真实账号激活试用、购买或写线上资源。已有其它会员/音效接口
-的历史通过不能冒充此浮层的动态权益 UI 通过。
+官方还会保存试用前偏好、到期后恢复。原生发送/未决日志、只读对账、偏好绑定和后台
+到期恢复现已补齐，详见 playback-quality-trials-contracts.txt；权益提示/试用确认等
+界面仍需专项实现和验收。未用真实账号激活试用、购买或写线上资源。已有其它会员/
+音效接口的历史通过不能冒充此浮层的动态权益 UI 通过。
 
 验证
 专项脚本：desktop/examples/playback_quality_ui_probe.js、

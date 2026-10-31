@@ -2326,3 +2326,23 @@ speed-menu-focus-before，未忽略左右焦点框采样失败。额外键盘32�
   Linux停在已移除的旧音质提示断言，Windows先在loudness主题菜单失败；两次完整
   gate均失败。上述resize修复在本机实测有效，但Windows旧失败根因仍是待新CI验证
   的推断，不能称Windows已通过。未发布新版本。
+
+2026-10-31 音质试用原生流程及进程重开
+- .build/quality-trials-native-webview：6态首次/2态进程重开，各有未裁改原图、原生JSON、
+  截图保存握手及audit。真实production Vue宿主→注册IPC→Rust用例→SQLite→libmpv/null。
+  确认正面回执后请求jymaster，实际standard；偏好到期恢复lossless，保持暂停10秒，
+  不重载当前音源。丢回执→只读核对→UseActive的序列总共只调用一次对应激活；
+  首次两次合成激活，进程重开零次；重开后后台到期回退仍可用。
+- consentDialogVerified=false、physicalDisplayVerified=false，8张图不当作8种已完成
+  界面或确认弹窗通过。所有真实音乐HTTP/账号写入/真实试用消耗为0。
+- .build/quality-trials-quality-regression：原音质菜单35/重开3态全部通过，无新增截图，
+  每进程仍为7次合成元数据读取和0次试用激活。普通选择、降级、损坏修复等未出现回归。
+- 原生专项13条日志/协议试用测试、6条actor到期测试，client_player由24增至29条；
+  额外覆盖存储回执失败、报价变化、旧曲目竞争、试用后播放失败只重试音源。详情和
+  官方/社区扩展区别见 playback-quality-trials-contracts.txt。
+- Rust1.96.0/Node24.16.0：fmt、严格workspace/all-targets/custom-protocol Clippy及
+  全量262结果target/1246项通过，0失败/忽略；前端npm ci/格式/323项/类型/构建、CI
+  工具34项通过。桌面主程序及UX探针均已重建。日志均以.build/quality-trials-开头，
+  最终Rust日志以-final结尾，主程序构建为quality-trials-desktop-build.log。
+- 两平台CI分别新增quality_trial_native_smoke，失败仍使完整gate失败；远端与实际
+  确认界面另取证，不将这轮合成原生流程称为当前账号线上试用或全范围任务完成。

@@ -1,0 +1,87 @@
+音质试用：原生激活、未决结果及偏好到期恢复
+2026-10-31；动态菜单/确认弹窗仍单列待验收，本文件不把原生用例算作界面完成。
+
+官方来源与社区恢复策略
+沿用 playback-quality-rights-contracts.txt 的官方 M/100、M/114、M/198、host 模型。
+官方 setHostSoundQualityTrialRight 调用 /api/vipauth/app/auth/set，成功后保存试用前
+listenReg；getHostSoundQualityTrialRight 查询 canUse/userSrc/leftTime，canUse=false 时
+恢复偏好。没有恢复到单独停止音质试用的接口，不借用音效 interests/auth/stop。
+官方来源未提供本地持久化未决日志与跨进程 CAS；下面这些是社区版的失败恢复策略，
+不是将自行补充的流程称为官方逐字逻辑。未参考 YesPlayMusic。
+
+领域与存储
+core/src/playback/quality/trials/{record,mutate,monitor}.rs；mod.rs 只负责账号、锁和存储。
+quality-trials-v1 按账号/四种 PC 类型保存 operation UUID、单调 revision、阶段、真实
+正面回执标志、最近权益及读取失败标志；终态被新显式操作取代前归档到
+quality-trial-history-v1。读取、修改和修复账号的代次与既有 AccountSession 一致。
+使用 portable OperationLock 跨进程串行化同账号的激活/核对；不会跨网络持有账号或
+SQLite 互斥锁。损坏日志保留原值并拒绝覆盖。没有自动删除未知结果换取重试。
+
+状态与授权
+Sending：发送前已持久化；Uncertain：取消/崩溃遗留、超时、丢失或非正面回执；
+Acknowledged：data===true 已收到并保存，但尚未成功查询到正在使用；
+Active：新查询确认 Active/Granted；Expired：已确认启用/使用的操作新读到 canUse=false；
+Rejected：已知 301/400/403/405 拒绝。其它错误不会猜测成未激活。
+Active 与 acknowledged 独立：丢回执后查到活动权益可使用，但不伪造启用回执。
+查询失败或未知阶段不能作为新授权。只收到 true 回执也不能当作实际音频已播放。
+
+start_for 必须传显式同意，重查可开始状态和用户见过的 offered leftTime，变化则返回
+offer changed；随后保存 Sending，且只发一次 /api/vipauth/app/auth/set。每个查询/发送
+独立最多8秒。取消未来、进程终止或响应丢失后，下一次只核对，不重新激活。
+Sending/Uncertain 的后续 eligible/denied 不能证明原请求绝不会迟到提交，仍保持未决；
+读到 Active/Granted 才确认当前可使用。没有自动反复开始或用假停止接口释放额度。
+同账号同时存在其它音质的日志不当作另一种音质的授权；每种类型分别验证。
+
+已在官方客户端启用的试用可以 adopt_for 读取后使用，不需要再调 set。采用记录的
+acknowledged=false，不能当作本机启动过的回执。明确终态之后新的显式同意产生新 UUID，
+原操作留历史。收到回执时即使用户已切账号也存回原账号；结果不能发布到新账号。
+若回执保存失败，持久化 Sending 保持未决，不把只在内存中的回执当作已保存结果。
+
+播放、偏好与竞态
+core/src/client/player/quality/trial.rs 提供 Start/UseActive/Reconcile 三种用例。
+Start/UseActive 要求当前 playId、整个元数据稳定 revision、相应 TrialEligible/TrialActive；
+激活前再验账号、播放 fence、偏好和选曲意图，激活后也重新检查。迟到结果不能改变
+另一首歌曲。完成激活但播放失败时返回 trial 回执和独立 playbackError，前端必须重试
+UseActive；不能把这次音源错误交给会重新 Start 的通用重试器。
+
+TrialQuality 是 native controller 命令；不是普通 QualityFor 上伪造的前端参数。
+actor 从自己的偏好推导 previous，先检查活动日志再请求音源，在偏好/队列同一事务
+提交前再次校验 operation 和活动日志。新音源授权或持久化失败仍保留旧音频与旧偏好。
+成功时保存原生 QualityTrialBinding{right,operation,previous}，保留实际音源质量和时间线，
+沿用原暂停/位置。连续切换试用保留最初的非试用回退值，避免回退到另一条过期试用；
+这项持久化扩展是社区策略。普通手动选择清除 binding，不改写线上使用权益。
+
+monitor 随 controller 生命周期运行，不依赖菜单/WebView；关闭 controller 时中止。
+账号变化打断旧读取。读取到绑定后按剩余时间调度（1至15秒，有界）；失败保持未知，
+不因为倒计时归零或缓存结果而擅自回退。新读到拒绝，且 operation、偏好完整值及
+Expired 日志仍匹配时，事务恢复 previous 并产生新 UUID。较后的手动音质或其它试用
+不会被旧结果回退。只调整后续偏好，不自动恢复播放、重载音源或改变暂停/位置。
+原队列下一首/新加载按当前偏好请求，与官方修改 listenReg 的范围一致。
+
+IPC 与白名单
+player_quality_trial(epoch,command) 是注册 Tauri 命令；前端仅有类型化方法和 DTO。
+command: start/use_active {play_id,details_revision,level} 或 reconcile {right,operation}。
+回执 {trial,playback,playbackError}；trial 只含类型、公开操作标识/字符串 revision、阶段、
+acknowledged/canUse/readFailed、remainingMs。没有完整 URL、Cookie、原始响应或路径。
+player_quality_details 还返回当前账号的 trials 和 trialsDamaged；日志损坏不抹掉有效
+会员/能力/大小，但后续激活仍拒绝覆盖。实验配置仍按未知值边界处理。
+
+验证与明确缺口
+playback_quality_trials.rs：确认及报价变化、成功/丢回执、false回执、超时、取消、
+进程恢复记录、只读对账、已有活动权益采用、部分读取失败、原账号迟到保存、
+损坏保留、回执写失败及历史归档。playback_quality_expiry.rs：实际 actor 的偏好回退、
+暂停定位/不重载、下一首、手动选择、连续试用、读取失败、空闲重建及授权竞态。
+client_player.rs 追加五项：整个用例、旧报价拒绝、未决核对、切歌竞态与只重试播放。
+这些是 Rust/注入接口验证，不代表真实账号试用已启动。
+
+.build/quality-trials-native-webview：当前内嵌 production 前端、注册 IPC、SQLite、
+libmpv/null 的首次6态/重开2态，逐态原图/原生快照和截图保存握手通过。
+合成激活两次，进程重开零次；Lost→Reconcile→UseActive 未重复激活；重开后菜单关闭
+仍恢复原偏好，保持暂停10秒。真实音乐HTTP/账号写入/真实额度消耗均0。
+quality_trial_native_smoke.py 被两平台独立 CI 执行。Linux 本地通过不当作 Windows、
+本机物理屏幕或真实声卡听感通过。
+
+consentDialogVerified 明确为 false：现有 PlaybackQuality.vue 仍是前一轮静态列表，
+本轮原生试用入口尚未接确认界面。动态权益行、试用确认/核对/失败弹窗、会员引导、
+配置读取、未知记录显式放弃/修复及各自键盘/主题/窄窗实测仍需继续。上述可完成工作
+没有被改称不支持或以接口存在冒充完成。未运行真实账号 auth/set，也不自动支付。
