@@ -7,6 +7,8 @@ use std::sync::{
 };
 static METADATA_READS: AtomicUsize = AtomicUsize::new(0);
 static TRIAL_WRITES: AtomicUsize = AtomicUsize::new(0);
+static TRIAL_STATE: AtomicUsize = AtomicUsize::new(0);
+static TRIAL_MODE: AtomicUsize = AtomicUsize::new(0);
 static DENIED: AtomicBool = AtomicBool::new(false);
 static REQUESTS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 pub fn enabled() -> bool {
@@ -45,10 +47,24 @@ pub fn metadata(path: &str, args: &Value) -> Option<Result<Value>> {
             json!({"code":200,"data":{"userId":2,"now":1000000,"associator":{"expireTime":2000000},"cookie":"SECRET"}})
         }
         "/api/vipauth/app/auth/query" => {
-            json!({"code":200,"data":[{"resourceId":0,"resourceType":args["resourceTypeList"],"canUse":args["resourceTypeList"]==31,"userSrc":0,"trialStatus":1,"leftTime":60000,"cookie":"SECRET"}]})
+            let trial = std::env::var_os("CUMULUS_QUALITY_TRIAL_PROOF").is_some();
+            let mut state = TRIAL_STATE.load(Ordering::SeqCst);
+            if trial && state == 0 && std::env::var_os("CUMULUS_PROOF_REOPEN").is_some() {
+                state = 1;
+            }
+            json!({"code":200,"data":[{"resourceId":0,"resourceType":args["resourceTypeList"],"canUse":args["resourceTypeList"]==31&&(!trial||state!=2),"userSrc":0,"trialStatus":if trial&&state==1 {2}else{1},"leftTime":if trial&&state==1 {1000}else{60000},"cookie":"SECRET"}]})
         }
         "/api/vipauth/app/auth/set" => {
             TRIAL_WRITES.fetch_add(1, Ordering::SeqCst);
+            if std::env::var_os("CUMULUS_QUALITY_TRIAL_PROOF").is_some() {
+                assert_eq!(args, &json!({"resourceId":0,"resourceType":31}));
+                TRIAL_STATE.store(1, Ordering::SeqCst);
+                return Some(if TRIAL_MODE.load(Ordering::SeqCst) == 1 {
+                    Err(cumulus_core::Error::State("synthetic lost trial response"))
+                } else {
+                    Ok(json!({"code":200,"data":true}))
+                });
+            }
             return Some(Err(cumulus_core::Error::State(
                 "trial writes forbidden in quality read proof",
             )));
@@ -62,6 +78,9 @@ pub fn control(store: &StateStore, value: &Value) {
     match value["kind"].as_str().expect("fixture kind") {
         "deny" => DENIED.store(true, Ordering::SeqCst),
         "allow" => DENIED.store(false, Ordering::SeqCst),
+        "trial-expire" => TRIAL_STATE.store(2, Ordering::SeqCst),
+        "trial-eligible" => TRIAL_STATE.store(0, Ordering::SeqCst),
+        "trial-lost-response" => TRIAL_MODE.store(1, Ordering::SeqCst),
         "damage" => store
             .put(
                 "2",
