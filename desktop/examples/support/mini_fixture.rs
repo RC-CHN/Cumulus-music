@@ -1,8 +1,11 @@
 use cumulus_core::protocol::api::{Api, ApiFuture};
+#[path = "mini_room_fixture.rs"]
+mod room;
 use serde_json::{Value, json};
 #[derive(Default)]
 pub struct Library {
     pub likes: std::sync::Mutex<Vec<String>>,
+    pub room: room::RoomFixture,
 }
 fn song(id: u64) -> Value {
     json!({"id":id,"name":format!("合成歌曲 {id} · A quiet afternoon"),"ar":[{"name":"Cumulus"}],"al":{"name":"界面体验验证"},"dt":if id==1 {6_000_000} else {235_000},"fee":id%3})
@@ -13,6 +16,9 @@ fn playlist(id: u64) -> Value {
 impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, args: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(response) = self.room.response(path, &args) {
+                return response;
+            }
             Ok(match path {
                 "/api/rtrs/abt/front/expinfo/list" => json!({"code":200,"data":[]}),
                 "/api/relay/setting/show" => json!({"code":200,"data":{"groups":[]}}),

@@ -141,10 +141,12 @@ fn main() {
                     value["mainVisible"]=json!(handle.get_webview_window("main").unwrap().is_visible().unwrap());
                     value["miniWindows"]=json!(handle.webview_windows().keys().filter(|l|l.starts_with("mini-player-")).collect::<Vec<_>>());
                     value["likeWritesObserved"]=json!(api.likes.lock().unwrap().clone());
+                    value["syntheticRoom"]=api.room.report();
                     tauri::async_runtime::spawn(async move {
                         let client=handle.state::<MusicClient>();
                         let epoch=client.account().unwrap().epoch;
                         value["nativePlayer"]=serde_json::to_value(client.subscribe_playback(&epoch).await.unwrap().current().unwrap()).unwrap();
+                        value["nativeMini"]=serde_json::to_value(client.mini_snapshot().unwrap().view).unwrap();
                         let stage=value["stage"].as_str().unwrap_or("failed");
                         assert!(stage.chars().all(|c|c.is_ascii_alphanumeric()||c=='_'));
                         fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();

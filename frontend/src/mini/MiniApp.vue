@@ -4,7 +4,7 @@ import Icon from '../components/Icon.vue';
 import { useLocalShortcuts } from '../composables/useLocalShortcuts';
 import { createMiniClient, createMiniShortcutClient } from '../adapters/mini';
 import type { MiniAction, MiniQueuePage, MiniView } from '../services/mini';
-import type { PlaybackMode } from '../services/player';
+import { nextMode, modeLabel, modeIcon } from '../services/playbackMode';
 import './mini.css';
 
 const client = createMiniClient(location.hash.slice('#mini='.length));
@@ -24,19 +24,16 @@ let disposed = false;
 let reading = false;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let queueRequest = 0;
-const modes: PlaybackMode[] = ['order_loop', 'single_loop', 'random', 'sequential'];
-const modeNames = {
-  order_loop: '列表循环',
-  single_loop: '单曲循环',
-  random: '随机播放',
-  sequential: '顺序播放',
-};
-const modeIcons = {
-  order_loop: 'repeat',
-  single_loop: 'repeatOne',
-  random: 'shuffle',
-  sequential: 'list',
-};
+const modeName = computed(() =>
+  media.value?.mode && media.value.modeFamily
+    ? modeLabel(media.value.mode, media.value.modeFamily)
+    : '播放模式不可用',
+);
+function cycleMode() {
+  const value = media.value;
+  if (value?.mode && value.modeFamily)
+    void perform({ kind: 'mode', mode: nextMode(value.mode, value.modeFamily) });
+}
 const liked = computed(() => media.value?.like?.observed === true);
 const likeRefresh = computed(
   () => media.value?.like?.pending || media.value?.like?.observed === null,
@@ -199,7 +196,12 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <main class="mini-shell" :class="{ expanded }" aria-label="迷你播放器">
+  <main
+    class="mini-shell"
+    :class="{ expanded }"
+    :data-control-ticket="view?.ticket"
+    aria-label="迷你播放器"
+  >
     <header class="mini-header">
       <span class="mini-brand" @mousedown.left="windowAction('drag')"
         >Cumulus <span>迷你播放器</span></span
@@ -264,15 +266,19 @@ onUnmounted(() => {
     </section>
     <nav class="mini-transport" aria-label="播放控制">
       <button
-        :disabled="busy || !media?.mode"
-        :title="media?.mode ? modeNames[media.mode] : '当前模式由内容控制'"
-        :aria-label="media?.mode ? modeNames[media.mode] : '播放模式不可用'"
-        @click="
-          media?.mode &&
-          perform({ kind: 'mode', mode: modes[(modes.indexOf(media.mode) + 1) % modes.length]! })
-        "
+        data-mini-mode
+        :data-mode="media?.mode"
+        :data-family="media?.modeFamily"
+        :disabled="busy || !media?.mode || !media?.modeFamily"
+        :title="modeName"
+        :aria-label="modeName"
+        @click="cycleMode"
       >
-        <Icon :name="media?.mode ? modeIcons[media.mode] : 'repeat'" />
+        <Icon
+          :name="
+            media?.mode && media.modeFamily ? modeIcon(media.mode, media.modeFamily) : 'repeat'
+          "
+        />
       </button>
       <button
         :disabled="busy || !media?.canPrevious"

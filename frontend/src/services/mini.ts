@@ -1,5 +1,6 @@
 import type { PlaybackMode, QueueTrack } from './player';
 import type { ShortcutSelection } from './shortcuts';
+import type { ModeFamily } from './playbackMode';
 export interface MiniPreferences {
   revision: string | null;
   alwaysOnTop: boolean;
@@ -30,6 +31,7 @@ export interface MiniMedia {
   canSeek: boolean;
   volume: number;
   mode: PlaybackMode | null;
+  modeFamily: ModeFamily | null;
   like: { observed: boolean | null; pending: boolean } | null;
   error: string | null;
 }

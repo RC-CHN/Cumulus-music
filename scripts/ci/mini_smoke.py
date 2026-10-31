@@ -59,16 +59,30 @@ def main():
         print(json.dumps(report))
         return
     assert all(complete[k] for k in ['timeoutVerified', 'staleControlRejected', 'ipcIsolation',
-                                    'reloadFallback', 'sharedAudio', 'closePolicy', 'accountIsolation'])
+                                    'reloadFallback', 'sharedAudio', 'closePolicy', 'accountIsolation',
+                                    'ordinaryModeCycle', 'togetherModeCycle', 'roomModeTicketsRejected'])
     states = [json.loads(p.read_text(encoding='utf-8')) for p in sorted(output.glob('ux_*.json'))]
-    assert len(states) == complete['stageCount'] == 8
+    assert len(states) == complete['stageCount'] == 19
     assert all(v['factoryCount'] == 1 and not v['mainVisible'] and len(v['miniWindows']) == 1 for v in states)
     assert all(not v['overflow'] and v['width'] == 420 and v['height'] in [206, 516] for v in states)
     assert states[0]['nativePlayer']['playId'] == states[1]['nativePlayer']['playId']
     assert states[0]['nativePlayer']['state'] == states[1]['nativePlayer']['state'] == 'paused'
-    assert states[2]['rows'] == 30 and states[3]['rows'] == 10
-    assert states[4]['theme'] == states[5]['theme'] == 'dark'
-    assert states[0]['background'] != states[4]['background']
+    by_name=lambda name:next(s for s in states if s['stage'].endswith('_'+name))
+    assert by_name('queue_first_page')['rows']==30 and by_name('queue_second_page')['rows']==10
+    assert by_name('dark_queue')['theme']==by_name('dark_compact')['theme']=='dark'
+    assert states[0]['background']!=by_name('dark_queue')['background']
+    ordinary=[by_name('ordinary_'+name) for name in ['single','random','sequential','loop']]
+    rooms=[by_name('room_'+theme+'_'+name) for theme in ['light','dark'] for name in ['single','random','loop']]
+    for group,family in [(ordinary,'ordinary'),(rooms,'together')]:
+        assert len({s['nativePlayer']['playId'] for s in group})==1
+        for s in group:
+            assert s['modeFamily']==s['nativeMini']['modeFamily']==family and s['modeHit']
+            assert s['mode']==s['nativePlayer']['mode']==s['nativeMini']['mode'] and not s['modeError']
+            assert s['nativePlayer']['state']=='paused' and abs(s['nativePlayer']['position']-10)<.2
+    assert [s['mode'] for s in ordinary]==['single_loop','random','sequential','order_loop']
+    assert [s['mode'] for s in rooms]==['single_loop','random','order_loop']*2
+    assert not complete['twoAccountRealtimeVerified']
+    assert complete['syntheticRoom']==dict(created=1,ended=1,inside=False,realRequests=0)
     if args.screenshots:
         assert len(list(output.glob('ux_*.png'))) == len(states)
     report = dict(ok=True, actualWebViews=2, states=len(states),
