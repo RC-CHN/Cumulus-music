@@ -17,7 +17,7 @@ PATTERNS = (
     'ci-startup*', 'ci-output-settings*', 'ci-tray*', 'ci-mpris*', 'ci-catalog*', 'ci-likes*', 'ci-keyboard*',
     'ci-collections*', 'ci-history*', 'ci-settings*', 'ci-relay*',
     'ci-download-*', 'ci-playlist-*', 'ci-song-menu*', 'ci-search*',
-    'ci-playback-speed*', 'ci-playback-quality*', 'ci-quality-trial-native*', 'ci-quality-rights-ui*', 'ci-volume-ui*',
+    'ci-playback-speed*', 'ci-playback-quality*', 'ci-quality-trial-native*', 'ci-quality-rights-ui*', 'ci-volume-ui*', 'ci-mode-ui*',
     'ci-shortcuts*', 'ci-system-media*', 'ci-mini*', 'ci-desktop-lyrics*', 'ci-fonts*',
 )
 

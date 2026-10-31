@@ -14,6 +14,8 @@ mod library_fixture;
 mod like_recovery_fixture;
 #[path = "support/media_shortcuts.rs"]
 mod media_shortcuts;
+#[path = "support/mode_fixture.rs"]
+mod mode_fixture;
 #[path = "support/playback_quality_fixture.rs"]
 mod playback_quality_fixture;
 #[path = "support/playlist_collect_fixture.rs"]
@@ -68,6 +70,9 @@ impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, args: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             playback_quality_fixture::before(path).await;
+            if let Some(response) = mode_fixture::response(path, &args).await {
+                return response;
+            }
             if let Some(result) = playback_quality_fixture::metadata(path, &args) {
                 return result;
             }
@@ -333,6 +338,11 @@ fn main() {
                 handle.get_webview_window("main").unwrap().eval(format!("window.__qualityFixtureAck={report};")).unwrap();
                 return;
             }
+            if mode_fixture::enabled() && stage=="mode-fixture" {
+                let kind=value["kind"].as_str().unwrap();mode_fixture::control(&proof_store,kind);
+                handle.get_webview_window("main").unwrap().eval(format!("window.__modeFixtureAck={};",serde_json::to_string(kind).unwrap())).unwrap();
+                return;
+            }
             if volume_fixture::enabled() && stage=="volume-fixture" {
                 let kind=value["kind"].as_str().unwrap();
                 volume_fixture::apply(&proof_store,kind);
@@ -378,6 +388,7 @@ fn main() {
             if !(["complete","failed"].contains(&stage) || stage.starts_with("ux_") && stage.chars().all(|c|c.is_ascii_alphanumeric()||c=='_')){return;}
             let stage=stage.to_owned();
             if playback_quality_fixture::enabled() { value["syntheticQuality"] = playback_quality_fixture::report(); }
+            if mode_fixture::enabled() { value["syntheticMode"] = mode_fixture::report(); }
             if library_fixture::enabled() { value["syntheticLibrary"] = library_fixture::report(); }
             if playlist_collect_fixture::enabled() { value["syntheticCollection"] = playlist_collect_fixture::report(); }
             if let Some(fixture)=transfer.as_ref() {value["syntheticCoverTransfer"]=fixture.report();}

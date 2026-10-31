@@ -40,6 +40,7 @@ class ProofArchive(unittest.TestCase):
                      'ci-search-results-linux/first/failed.json', 'ci-playback-quality-linux/first/failed.json',
                      'ci-quality-trial-native-windows/reopen/failed.json', 'ci-quality-rights-ui-linux/first/failed.json',
                      'ci-volume-ui-windows/first/failed.json',
+                     'ci-mode-ui-linux/reopen/failed.json',
                      'windows-media/player-probe.stdout.log']
             for relative in paths:
                 path = root / relative

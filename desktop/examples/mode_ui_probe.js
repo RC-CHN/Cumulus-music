@@ -1,0 +1,62 @@
+// Real production mode controls, native queue fences and synthetic FM only.
+(async()=>{
+ const one=s=>document.querySelector(s),all=s=>[...document.querySelectorAll(s)],sleep=ms=>new Promise(r=>setTimeout(r,ms));
+ const invoke=(...args)=>(window.__CUMULUS_PROOF_INVOKE__??window.__TAURI_INTERNALS__.invoke)(...args);
+ const emit=(stage,value={})=>invoke('plugin:event|emit',{event:'ux-proof',payload:{stage,...value}});
+ const assert=(ok,m)=>{if(!ok)throw Error(m);};
+ const wait=async(f,m)=>{for(let i=0;i<280;i++){if(f())return;await sleep(60);}throw Error(m);};
+ const bar=()=>one('.playerbar'),control=()=>one('.mode-control'),trigger=()=>control()?.querySelector('button'),feedback=()=>one('.mode-feedback:not(.menu-leave-active)');
+ const button=text=>all('button').find(n=>n.getAttribute('aria-label')===text||n.textContent.trim()===text);
+ const click=n=>{assert(n&&!n.disabled,'enabled control '+n?.outerHTML.slice(0,240));n.focus({preventScroll:true});n.click();};
+ const key=(n,k)=>n.dispatchEvent(new KeyboardEvent('keydown',{key:k,bubbles:true,cancelable:true}));
+ const rect=n=>{const r=n.getBoundingClientRect();return {left:r.left,top:r.top,right:r.right,bottom:r.bottom,width:r.width,height:r.height};};
+ const hit=n=>{const r=rect(n),top=document.elementFromPoint((r.left+r.right)/2,(r.top+r.bottom)/2);return top===n||n.contains(top);};
+ const labels={order_loop:'列表循环',single_loop:'单曲循环',random:'随机播放',sequential:'顺序播放'};
+ let count=0,last='bootstrap',playId;
+ async function fixture(kind){window.__modeFixtureAck=null;await emit('mode-fixture',{kind});await wait(()=>window.__modeFixtureAck===kind,'mode fixture');}
+ async function settled(mode){await wait(()=>bar().dataset.mode===mode&&trigger().getAttribute('aria-busy')==='false','native mode '+mode);}
+ async function cycle(mode){click(trigger());await settled(mode);}
+ async function reach(mode){for(let i=0;i<4&&bar().dataset.mode!==mode;i++){const old=bar().dataset.mode;click(trigger());await wait(()=>bar().dataset.mode!==old&&trigger().getAttribute('aria-busy')==='false','cycle reaches next');}assert(bar().dataset.mode===mode,'bounded cycle');}
+ async function prepare(){
+  await wait(()=>['idle','paused','playing','ended'].includes(bar().dataset.state)&&(bar().dataset.trackId?!one('.playerbar .play-toggle').disabled:!!one('.track-row .track-play:not(:disabled)')),'native transport controls settled');
+  if(bar().dataset.state!=='paused'){
+   if(bar().dataset.state!=='playing')click(bar().dataset.trackId?one('.playerbar [aria-label="播放"]'):one('.track-row .track-play:not(:disabled)'));
+   await wait(()=>bar().dataset.state==='playing'&&Number(bar().dataset.position)>.2,'native decode');click(one('.playerbar [aria-label="暂停"]'));await wait(()=>bar().dataset.state==='paused','pause');
+  }
+  const seek=one('[aria-label="播放进度"]');seek.value='10';seek.dispatchEvent(new Event('change',{bubbles:true}));await wait(()=>Math.abs(Number(bar().dataset.position)-10)<.2&&!seek.disabled,'native seek');playId=bar().dataset.playId;
+ }
+ async function capture(label){
+  last=label;await sleep(300);const p=feedback(),r=p&&rect(p);
+  assert(document.documentElement.scrollWidth<=innerWidth,'horizontal overflow');assert(hit(trigger()),'mode button hit');assert(bar().dataset.state==='paused'&&Math.abs(Number(bar().dataset.position)-10)<.2,'pause position');assert(bar().dataset.playId===playId,'mode does not reload media');assert(!one('.playback-message'),'mode feedback independent of audio');
+  if(r){assert(r.left>=8&&r.right<=innerWidth-8&&r.top>=8&&r.bottom<=innerHeight-8,'feedback contained');assert([...p.querySelectorAll('button')].every(hit),'retry hit');}
+  if(trigger().getAttribute('aria-busy')==='false')assert(trigger().getAttribute('aria-label')===(bar().dataset.fm==='true'&&bar().dataset.mode==='sequential'?'无限漫游':labels[bar().dataset.mode]),'label actual confirmed mode');
+  await emit(`ux_${String(++count).padStart(2,'0')}_${label}`,{width:innerWidth,height:innerHeight,ratio:devicePixelRatio,screenX:window.screenX,screenY:window.screenY,visible:document.visibilityState==='visible',focused:document.hasFocus(),theme:document.documentElement.dataset.theme,active:{tag:document.activeElement?.tagName,label:document.activeElement?.getAttribute('aria-label'),text:document.activeElement?.textContent.trim().slice(0,80)},mode:bar().dataset.mode,proposed:control().dataset.proposedMode,family:control().dataset.family,fm:bar().dataset.fm==='true',trackId:bar().dataset.trackId,playId,position:Number(bar().dataset.position),contained:true,triggerHit:true,feedback:r?{...r,text:p.textContent,buttons:[...p.querySelectorAll('button')].map(n=>({text:n.textContent,hit:hit(n),focused:document.activeElement===n}))}:null,paintSamples:r?[{x:r.left+8,y:r.top+8,color:getComputedStyle(p).backgroundColor}]:[]});
+ }
+ try{
+  await wait(()=>trigger()&&!trigger().disabled&&one('.track-row .track-play:not(:disabled)'),'ready');
+  if(window.__modeReopen){
+   await wait(()=>bar().dataset.mode==='random'&&bar().dataset.trackId==='2','persisted normal mode/entry');await prepare();await capture('reopened_normal');await cycle('sequential');await capture('reopened_switched');await reach('random');await capture('reopened_restored');
+  }else{
+   await prepare();
+   for(const [w,h,theme] of [[1120,760,'light'],[760,540,'light'],[760,540,'dark'],[1120,760,'dark']]){
+    await emit('resize',{width:w,height:h});await sleep(240);if(innerWidth!==w||innerHeight!==h)await emit('resize',{width:w*w/innerWidth,height:h*h/innerHeight});await wait(()=>innerWidth===w&&innerHeight===h,'resize');click(one('[aria-label="外观主题"]'));await wait(()=>one('.action-menu'),'theme menu');click(button(theme==='dark'?'深色':'浅色'));await wait(()=>document.documentElement.dataset.theme===theme&&!one('.action-menu'),'theme applied');
+    await reach('order_loop');const suffix=`${w}_${theme}`;
+    for(const [mode,label] of [['single_loop','single'],['random','random'],['sequential','sequential'],['order_loop','loop']]){await cycle(mode);await capture(`${label}_${suffix}`);}
+    await fixture('reject');click(trigger());await wait(()=>feedback()?.querySelector('[role="alert"]')&&trigger().getAttribute('aria-busy')==='false','local mode error');assert(bar().dataset.mode==='order_loop','failed mode preserves actual');await capture(`failed_${suffix}`);
+    const retry=button('重试切换');retry.focus();key(retry,'Escape');await wait(()=>!one('.mode-feedback'),'Escape removes feedback');assert(document.activeElement===trigger(),'Escape focus');await capture(`closed_${suffix}`);one('[aria-label="外观主题"]').focus();trigger().focus();await wait(()=>feedback(),'external focus reopens retained feedback');await capture(`reopened_${suffix}`);
+    await fixture('allow');click(button('重试切换'));await settled('single_loop');await wait(()=>!one('.mode-feedback'),'retry feedback removed');assert(document.activeElement===trigger(),'retry focus restored');await capture(`retried_${suffix}`);await reach('order_loop');
+   }
+   const provides=one('#app').__vue_app__._context.provides,client=provides[Reflect.ownKeys(provides).find(k=>typeof k==='symbol'&&k.description==='core-client')],original=client.playerAction;
+   let release,held=true,writes=0;
+   client.playerAction=async(...args)=>{if(args[1].kind==='mode_for'){writes++;if(held){held=false;await new Promise(r=>release=r);}}return original(...args);};
+   click(trigger());click(trigger());click(trigger());await wait(()=>release,'held mode request');assert(control().dataset.proposedMode==='sequential'&&bar().dataset.mode==='order_loop'&&writes===1,'optimistic serialized intent');await capture('pending');release();await settled('sequential');assert(writes===2,'first and latest mode only');client.playerAction=original;await capture('coalesced');await reach('single_loop');
+   held=true;release=null;writes=0;client.playerAction=async(...args)=>{if(args[1].kind==='mode_for'){writes++;if(held){held=false;await new Promise(r=>release=r);}}return original(...args);};click(trigger());await wait(()=>release,'held old queue');click(all('.track-row .track-play:not(:disabled)')[1]);await wait(()=>bar().dataset.trackId==='2'&&bar().dataset.state==='playing','replaced normal queue');await prepare();release();await wait(()=>feedback()&&trigger().getAttribute('aria-busy')==='false','stale queue rejected');assert(bar().dataset.mode==='single_loop'&&writes===1,'old mode never applied to new queue');await capture('stale_ordinary');client.playerAction=original;await cycle('random');await wait(()=>!one('.mode-feedback'),'new intent clears error');await capture('fresh_ordinary');
+   click(button('私人漫游'));await wait(()=>one('.fm-page')&&button('开始漫游'),'FM page');click(button('开始漫游'));await wait(()=>bar().dataset.fm==='true'&&bar().dataset.state==='playing','native FM entered');await prepare();assert(control().dataset.family==='fm','FM policy family');await settled('sequential');await capture('fm_infinite');await cycle('single_loop');await capture('fm_single');await cycle('sequential');await capture('fm_infinite_again');
+   await fixture('reject');click(trigger());await wait(()=>feedback()&&trigger().getAttribute('aria-busy')==='false','FM mode apply failure');assert(bar().dataset.mode==='sequential','FM audible mode unchanged');await wait(()=>one('.fm-page').dataset.modePending==='true','FM mode notice settled');assert(one('.fm-notice button').textContent.trim()==='同步并继续播放','mode recovery notice');await capture('fm_failed');await fixture('allow');click(button('重试切换'));await settled('single_loop');await wait(()=>!one('.mode-feedback')&&!one('.fm-notice'),'FM recovered mode only');await capture('fm_recovered');
+   await wait(()=>!one('.fm-notice'),'FM notice clear');await fixture('reject');click(trigger());await wait(()=>feedback()&&one('.fm-page').dataset.modePending==='true','FM mode pending notice');assert(one('.fm-notice button').textContent.trim()==='同步并继续播放','mode notice verb');await fixture('allow');click(one('.fm-notice button'));await wait(()=>bar().dataset.state==='playing'&&Number(bar().dataset.position)>10.2&&!feedback()&&!one('.fm-notice'),'page resume repairs mode and clears footer error');const retained=playId;await prepare();assert(playId===retained,'mode-only page resume retains current audio');await settled('sequential');await capture('fm_resumed');
+   click(one('.fm-actions .primary'));await wait(()=>bar().dataset.state==='playing','FM playing before refill warning');await fixture('refill_warning');await wait(()=>one('.fm-notice')&&one('.fm-page').dataset.modePending==='false','generic refill warning');assert(one('.fm-actions .primary').textContent.trim()==='暂停漫游','warning does not change pause action');click(one('.fm-actions .primary'));await wait(()=>bar().dataset.state==='paused','warning primary pauses');assert(bar().dataset.playId===playId,'pause does not resume/reload');await prepare();await capture('fm_warning_paused');await fixture('clear_warning');await wait(()=>!one('.fm-notice'),'warning cleared');
+   held=true;release=null;client.playerAction=async(...args)=>{if(args[1].kind==='mode_for'&&held){held=false;await new Promise(r=>release=r);}return original(...args);};click(trigger());await wait(()=>release,'held FM mode');click(button('返回原播放队列'));await wait(()=>bar().dataset.fm==='false'&&bar().dataset.trackId==='2'&&bar().dataset.state==='paused','normal queue restored');playId=bar().dataset.playId;assert(control().dataset.family==='ordinary'&&bar().dataset.mode==='random','normal mode backup restored');assert(document.activeElement===one('.fm-header h1'),'FM leave restores focus to its heading');await capture('left_fm');release();await sleep(600);assert(!feedback()&&bar().dataset.mode==='random','late FM intent discarded');client.playerAction=original;await capture('late_fm_rejected');
+  }
+  await emit('complete',{ok:true,stageCount:count,reopened:!!window.__modeReopen,modeUiVerified:true,ordinaryVerified:true,fmVerified:!window.__modeReopen,togetherPresentationVerified:false,realMusicRequests:0,accountWrites:0});
+ }catch(error){await emit('failed',{ok:false,error:String(error),last,stageCount:count,active:document.activeElement?.outerHTML.slice(0,500),body:document.body.textContent.slice(-1600)});}
+})();

@@ -1,0 +1,59 @@
+播放器模式及 FM 操作一致性（2026-10-31）
+
+范围与来源
+- 主播放条按官方 PlayBar/PlayMode.tsx 的点击循环及 FM 独立分支恢复，不引入系统
+  select。官方文件 SHA256 为
+  6aa41644381ae6f88bfdcd106f2915091e6aecf45e613c4f905237d48fd35e0d。
+- 实际循环算法来自 recovered-js/modules/hybrid_app.chunk.1482700000000.js/7.js
+  导出 t（内部 v），SHA256
+  4914ce443197d0538f055ae064b910a1a5f7c3d83c1c1e60978b9d7f2b055e1e。
+  在隔离 Node vm 中执行原函数冻结12个无私人信息向量，core/tests/fixtures/
+  official-playback-mode.json 同时记录来源、原枚举和社区枚举。
+- 官方非心动普通循环：顺序→列表循环→单曲循环→随机→顺序；一起听：列表循环→
+  单曲循环→随机→列表循环。非法现态按官方 max(index,0) 再向前一步。
+- FM 保留独立无限漫游/单曲循环，不使用普通随机及列表循环。官方单曲入口受
+  PH-PC-FM-Single 实验影响，本项目暂直接提供两态，未验证该实验分配。
+- 未参考 YesPlayMusic。官方源码不纳入公开仓库。
+
+实际调用及并发
+- frontend/usePlaybackMode → usePlayer.configureMode → client.player_action(mode_for)
+  → MusicClient::player_mode_for → 普通 PlaybackController 或 FmPlayer。
+  输入包含 mode、expected_queue_revision 和 fm；epoch 仍由类型化 IPC 传入。
+- UI 先显示最新点击目标及“正在切换为…”，原生实际 mode 独立保留。连续输入只串行
+  提交首个和最终目标，每次采用成功回执的新 revision；不使用播放器全局忙碌/错误，
+  模式切换不取消正在加载的音源，也不自动暂停或重新载入当前歌曲。
+- 原生获取账号代次，串行化房间附着与模式限制，验证队列 revision 和 fm 身份，
+  再通过 playback fence 提交。换队列的旧操作返回 QueueChanged，不应用到新队列。
+  一起听已附着时原生拒绝顺序播放，保留既有同步信号；本次无双账号验证。
+- FM 检查相同条目顺序/当前项，并先保存领域 repeat，再投影到原生队列。只有模式
+  未提交成功时可以重试相同目标；其它队列未同步仍要求恢复。只修复模式不会发送
+  skip、取下一首、重载音频或改变暂停进度。
+
+错误、恢复及页面动作
+- 保存失败显示控件旁独立错误和“重试切换”，回到已确认图标；不会变成通用音频加载
+  错误。停止自动写入，显式重试取最后目标和当前队列上下文。账号/场景/卸载/断开
+  清除过时任务，独立队列或模式恢复清除已过时错误。
+- Escape 隐藏错误并返回模式按钮；从其它控件重新聚焦可再次查看保留错误。重试在
+  离场 surface 变 inert 前把焦点交回持久按钮，避免丢至 BODY。
+- FmView.modePending 区分“条目一致而模式不一致”和普通 refill_failed 提示。
+  仅模式失败时显示“播放模式尚未同步，继续播放时将同步模式”，按钮为“同步并继续
+  播放”；恢复保留同一 playId 和位置。普通推荐加载提示期间仍显示/执行“暂停漫游”。
+- FM 页的播放/切歌控制同时核对领域 active 与 PlayerView.fm，避免过时页面暂停普通歌曲。
+  空推荐仍按领域所有权保留返回原队列入口。
+  返回普通队列保留原模式/当前项/暂停位置，消失的返回按钮把焦点交给主题色页标题。
+
+验证入口及诚实边界
+- Rust：playback_modes 冻结向量；client_player 队列变化和加载中切换；fm_player
+  fence、落盘失败、相同目标修复、页面 resume 保留当前音频；client_together 限制。
+- 前端：playback-mode.test.ts 检查官方向量、独立 FM/一起听策略、合并、失败、
+  旧队列/账号/场景/卸载和外部恢复；player-state 检查独立错误和代次。
+- scripts/ci/mode_ui_smoke.py 启动真实 production WebView+IPC+Rust+SQLite+libmpv，
+  使用合成普通队列及 FM 后端，首次45态/重开3态；两尺寸两主题、等待、失败、焦点、
+  旧队列、FM恢复、页面暂停、正常队列返回及持久化均读取真实原生快照。无真实HTTP/
+  账号写入，null输出不代表声卡听感。Windows同脚本接入独立CI runner。
+- 这是主播放条普通/FM模式专项，不能代替整页和全应用一致性验收。一起听仅策略和
+  原生限制有独立测试，实际房间UI、双端同步尚未在此专项验证。
+- 心动/AI 模式尚未迁移：官方额外循环及 /api/playmode/intelligence/list（API0304，
+  M/15、M/308、playing模型）另有喜欢歌曲种子、推荐补充、原队列备份/退出恢复；
+  不能以随机播放代替。迷你模式一起听限制及空FM队列身份仍需继续审计。
+- 没有同状态官方运行截图，不能声称像素一致。具体运行结果见 ui-ux-validation.txt。
