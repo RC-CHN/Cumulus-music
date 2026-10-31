@@ -642,3 +642,116 @@ async fn reopening_requires_explicit_attach_and_account_switch_never_exposes_old
         Err(Error::StaleResponse)
     ));
 }
+
+#[tokio::test]
+async fn mini_room_modes_use_the_attached_cycle_and_exit_revokes_old_controls() {
+    use cumulus_core::{client::mini::MiniAction, playback::mode::ModeFamily};
+    let root = tempfile::tempdir().unwrap();
+    let api = Arc::new(Backend::default());
+    let (_, client) = world(root.path(), api);
+    play(&client).await;
+    let ordinary = client.mini_snapshot().unwrap();
+    assert_eq!(ordinary.view.mode_family, Some(ModeFamily::Ordinary));
+    client
+        .together_command("1", TogetherCommand::Create)
+        .await
+        .unwrap();
+    wait(&client, |v| {
+        v.attached && v.pending.is_empty() && v.tracks.len() == 3
+    })
+    .await;
+    assert!(matches!(
+        client
+            .mini_action(
+                &ordinary,
+                MiniAction::Mode {
+                    mode: PlaybackMode::Sequential
+                }
+            )
+            .await,
+        Err(Error::StaleResponse)
+    ));
+    client
+        .player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    client
+        .player_action("1", PlayerAction::Seek { seconds: 18.0 })
+        .await
+        .unwrap();
+    wait(&client, |v| {
+        !v.playing && v.pending.is_empty() && v.progress_ms == Some(18000)
+    })
+    .await;
+    let before = client
+        .subscribe_playback("1")
+        .await
+        .unwrap()
+        .current()
+        .unwrap();
+    for expected in [
+        PlaybackMode::SingleLoop,
+        PlaybackMode::Random,
+        PlaybackMode::OrderLoop,
+    ] {
+        let shown = client.mini_snapshot().unwrap();
+        assert_eq!(shown.view.mode_family, Some(ModeFamily::Together));
+        assert!(matches!(
+            client
+                .mini_action(
+                    &shown,
+                    MiniAction::Mode {
+                        mode: PlaybackMode::Sequential
+                    }
+                )
+                .await,
+            Err(Error::InvalidInput(
+                "mode unavailable in mini playback context"
+            ))
+        ));
+        let next = shown
+            .view
+            .mode_family
+            .unwrap()
+            .next(shown.view.mode.unwrap());
+        assert_eq!(next, expected);
+        client
+            .mini_action(&shown, MiniAction::Mode { mode: next })
+            .await
+            .unwrap();
+        wait(&client, |v| v.pending.is_empty()).await;
+        let current = client
+            .subscribe_playback("1")
+            .await
+            .unwrap()
+            .current()
+            .unwrap();
+        assert_eq!(current.mode, expected);
+        assert_eq!(current.play_id, before.play_id);
+        assert_eq!(current.position, Some(18.0));
+    }
+    let room = client.mini_snapshot().unwrap();
+    client
+        .together_command(
+            "1",
+            TogetherCommand::End {
+                room_id: "test-room".into(),
+            },
+        )
+        .await
+        .unwrap();
+    let normal = client.mini_snapshot().unwrap();
+    assert_eq!(normal.view.mode_family, Some(ModeFamily::Ordinary));
+    assert!(!room.same_controls(&normal));
+    assert!(matches!(
+        client
+            .mini_action(
+                &room,
+                MiniAction::Mode {
+                    mode: PlaybackMode::SingleLoop
+                }
+            )
+            .await,
+        Err(Error::StaleResponse)
+    ));
+}

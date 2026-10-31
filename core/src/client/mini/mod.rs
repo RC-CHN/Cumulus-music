@@ -3,6 +3,7 @@
 mod actions;
 mod queue;
 use super::{MusicClient, native_media::*};
+use crate::playback::mode::ModeFamily;
 use crate::{Error, Result, account::SessionToken, playback::PlaybackMode};
 use serde::Serialize;
 
@@ -30,6 +31,7 @@ pub struct MiniView {
     pub can_seek: bool,
     pub volume: f64,
     pub mode: Option<PlaybackMode>,
+    pub mode_family: Option<ModeFamily>,
     pub like: Option<MiniLikeView>,
     pub error: Option<&'static str>,
 }
@@ -42,13 +44,19 @@ impl MiniSnapshot {
     /// Clock ticks do not revoke controls; changes of account, playback intent,
     /// queue or observed like state do. The host still validates every command.
     pub fn same_controls(&self, other: &Self) -> bool {
-        self.token == other.token && self.target == other.target && self.like == other.like
+        self.token == other.token
+            && self.target == other.target
+            && self.like == other.like
+            && self.view.mode_family == other.view.mode_family
     }
     fn check(&self, client: &MusicClient) -> Result<()> {
         client.session.check_generation(&self.token)?;
         if let Some(target) = &self.target {
             target.check(client)?;
         } else if client.native_media_snapshot()?.target.is_some() {
+            return Err(Error::StaleResponse);
+        }
+        if client.mini_mode_family(&self.token, self.view.mode)? != self.view.mode_family {
             return Err(Error::StaleResponse);
         }
         Ok(())
@@ -62,6 +70,22 @@ impl MiniSnapshot {
     }
 }
 impl MusicClient {
+    fn mini_mode_family(
+        &self,
+        token: &SessionToken,
+        mode: Option<PlaybackMode>,
+    ) -> Result<Option<ModeFamily>> {
+        mode.map(|_| {
+            self.together_attached(token, None).map(|attached| {
+                if attached {
+                    ModeFamily::Together
+                } else {
+                    ModeFamily::Ordinary
+                }
+            })
+        })
+        .transpose()
+    }
     /// Lazy, local projection. No HTTP, audio initialization or playback startup.
     pub fn mini_snapshot(&self) -> Result<MiniSnapshot> {
         let token = self.session.token()?;
@@ -107,6 +131,7 @@ impl MusicClient {
                 can_seek: details.can_seek,
                 volume: details.volume,
                 mode: details.mode,
+                mode_family: self.mini_mode_family(&token, details.mode)?,
                 like: like.as_ref().map(|v| MiniLikeView {
                     observed: v.observed,
                     pending: v.pending,

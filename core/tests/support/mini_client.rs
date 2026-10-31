@@ -166,7 +166,9 @@ async fn mini_mv_ownership_and_account_change_invalidate_old_commands() {
         Err(Error::StaleResponse)
     ));
     let video = f.client.mini_snapshot().unwrap();
-    assert!(video.view.like.is_none() && video.view.mode.is_none());
+    assert!(
+        video.view.like.is_none() && video.view.mode.is_none() && video.view.mode_family.is_none()
+    );
     assert!(f.client.mini_queue(&video, 0, 10).await.is_err());
     assert!(f.client.mini_action(&video, Action::Next).await.is_err());
     f.client.mini_action(&video, Action::Toggle).await.unwrap();
@@ -262,4 +264,54 @@ async fn mini_seek_volume_and_mode_use_ordinary_validation_and_fences() {
         f.client.mini_snapshot().unwrap().view.mode,
         Some(PlaybackMode::SingleLoop)
     );
+}
+
+#[tokio::test]
+async fn mini_ordinary_modes_share_the_main_cycle_without_reloading_paused_audio() {
+    use cumulus_core::playback::{PlaybackMode, mode::ModeFamily};
+    let f = Fixture::new();
+    f.client.play_selection("1", songs()).await.unwrap();
+    f.client
+        .player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    f.client
+        .player_action("1", PlayerAction::Seek { seconds: 18.0 })
+        .await
+        .unwrap();
+    let before = f
+        .client
+        .subscribe_playback("1")
+        .await
+        .unwrap()
+        .current()
+        .unwrap();
+    let loads = f.audio.state.lock().unwrap().loads;
+    for expected in [
+        PlaybackMode::SingleLoop,
+        PlaybackMode::Random,
+        PlaybackMode::Sequential,
+        PlaybackMode::OrderLoop,
+    ] {
+        let displayed = f.client.mini_snapshot().unwrap();
+        let family = displayed.view.mode_family.unwrap();
+        assert_eq!(family, ModeFamily::Ordinary);
+        let next = family.next(displayed.view.mode.unwrap());
+        assert_eq!(next, expected);
+        f.client
+            .mini_action(&displayed, Action::Mode { mode: next })
+            .await
+            .unwrap();
+        let after = f
+            .client
+            .subscribe_playback("1")
+            .await
+            .unwrap()
+            .current()
+            .unwrap();
+        assert_eq!(after.mode, expected);
+        assert_eq!(after.play_id, before.play_id);
+        assert_eq!(after.position, Some(18.0));
+        assert_eq!(f.audio.state.lock().unwrap().loads, loads);
+    }
 }

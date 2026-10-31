@@ -23,6 +23,29 @@ impl MusicClient {
     /// after rejection, or replay an uncertain remote mutation.
     pub async fn mini_action(&self, displayed: &MiniSnapshot, action: MiniAction) -> Result<()> {
         displayed.check(self)?;
+        if let MiniAction::Mode { mode } = action {
+            // The snapshot's policy is part of the displayed controls. Do not
+            // reinterpret an old ordinary cycle after a room attaches/exits.
+            let _room = self
+                .together
+                .gate
+                .try_lock()
+                .map_err(|_| Error::MutationBusy)?;
+            displayed.check(self)?;
+            let family = displayed
+                .view
+                .mode_family
+                .ok_or(Error::InvalidInput("mini mode unavailable"))?;
+            if !family.supports(mode) {
+                return Err(Error::InvalidInput(
+                    "mode unavailable in mini playback context",
+                ));
+            }
+            let target = displayed.target.as_ref().ok_or(Error::StaleResponse)?;
+            self.native_media_adjust(target, NativeMediaAdjustment::Mode { mode })
+                .await?;
+            return Ok(());
+        }
         match action {
             MiniAction::Like | MiniAction::RefreshLike => {
                 let like = displayed
@@ -51,7 +74,7 @@ impl MusicClient {
                 self.player_action_checked(&displayed.view.epoch, action, Some(target))
                     .await?;
             }
-            MiniAction::Seek { .. } | MiniAction::Volume { .. } | MiniAction::Mode { .. } => {
+            MiniAction::Seek { .. } | MiniAction::Volume { .. } => {
                 let target = displayed
                     .target
                     .as_ref()
@@ -59,15 +82,12 @@ impl MusicClient {
                 let adjustment = match action {
                     MiniAction::Seek { seconds } => NativeMediaAdjustment::Seek { seconds },
                     MiniAction::Volume { value } => NativeMediaAdjustment::Volume { value },
-                    MiniAction::Mode { mode } => {
-                        if displayed.view.mode.is_none() {
-                            return Err(Error::InvalidInput("mini mode unavailable"));
-                        }
-                        NativeMediaAdjustment::Mode { mode }
-                    }
                     _ => unreachable!(),
                 };
                 self.native_media_adjust(target, adjustment).await?;
+            }
+            MiniAction::Mode { .. } => {
+                unreachable!("mode context handled before generic adjustment")
             }
             _ => {
                 let target = displayed

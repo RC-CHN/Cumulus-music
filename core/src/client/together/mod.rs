@@ -120,7 +120,11 @@ impl MusicClient {
         }
         Ok(())
     }
-    fn together_attached(&self, token: &SessionToken, room: Option<&str>) -> Result<bool> {
+    pub(super) fn together_attached(
+        &self,
+        token: &SessionToken,
+        room: Option<&str>,
+    ) -> Result<bool> {
         Ok(self
             .together
             .runtime
