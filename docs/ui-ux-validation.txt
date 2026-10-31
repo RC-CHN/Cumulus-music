@@ -2612,3 +2612,40 @@ speed-menu-focus-before，未忽略左右焦点框采样失败。额外键盘32�
 - 最后实机失败帧发现提交时禁用确认键会让焦点丢到页面根部；复用useControlFocus，
   清空失败后聚焦可用的取消键，成功仍交由弹窗离场返回队列关闭键。最终失败帧
   严格等待取消键拥有焦点，并保留存储原因/旧确认失效/同一暂停音频全部断言。
+
+
+2026-10-31 队列收藏全部、空态与焦点一致性
+- 最终queue-collection-theme-ui-final使用production前端/真实WebView/IPC/Rust/
+  SQLite/libmpv/null，32态与32张原图；queue-collection-theme-kde-final在本机KDE
+  Wayland/XWayland 125%重复全部32态，仅捕获本进程compositor pixmap，32帧均可见且
+  focused，另有first/physical.json确认。通用audit的physicalDisplayVerified仍false，
+  真实桌面证据来自该独立记录，不把虚拟帧率作实机证明。最终共64张原图。
+- 两尺寸1120×760/760×540与浅深主题；完整40首准备/收藏/服务端回读、只渲染部分
+  虚拟行；准备等待、关闭及迟到结果、原生队列版本变化、只读失败及重试；歌单读取
+  失败/重试、实际合成提交等待/确认、关闭返回原按钮；清空/读取空队列失败/成功后
+  焦点、发现返回标题；真实声音队列排除、FM歌曲可收藏且编辑仍禁用均有状态断言。
+  声音走实际PodcastApi解析/授权/播放，夹具只提供API响应，不是把普通歌曲改名。
+- 每次仅明确提交一次合成歌单，回读目标2中全部40个歌曲ID顺序一致。声音/FM收藏
+  弹窗没有新增提交；真实音乐HTTP/账号写入0。非空媒体始终同playId、暂停10秒，
+  空队列idle且无playId，不把收藏错误混入音频重试。合成null不证明物理扬声器听感。
+- 已查看最终摘要、浅深窄窗、等待、空态错误/重试、发现标题和声音/FM原图；图库为
+  .build/queue-collection-gallery/index.html，源码/原图/程序散列保存在manifest.json。
+- queue-collection-empty-controls-final原队列28态、queue-collection-empty-dialog-final
+  共用收藏28态通过，未额外计入最终64截图。前端374项/格式/production类型与构建、
+  严格Clippy/Rust格式及CI工具36项通过；完整Rust本批273个结果target/1302项，失败/
+  忽略0，详见rust-core-validation.txt。生产cumulus及ux_ui_probe均重新构建。
+- queue-collection-embedded-dbus-final不使用外部前端目录，以同一程序内嵌production
+  前端另通过32态、无新增截图。此前embedded-verified在未隔离DBus的Xvfb会话未产生
+  页面状态，180秒超时；隔离后通过，未据此断定其根因或修改产品显卡/业务策略。
+- 测量修正与中间失败保留：empty-ui-final未启动X显示导致GTK初始化失败，不算功能
+  通过；empty-ui-final-x11/geometry-diagnostic因离场CSS残差0.000732px超出精确边界
+  失败，现队列边界仅允许1/64 CSSpx，原点击命中/容器布局断言保留。早期kde-1/2
+  在125%下出现clientWidth442/scrollWidth443，实际子元素边界都在弹窗内，允许1px
+  整数取整差。早期焦点2 CSSpx在125%量化为1.6 CSSpx，按一个设备像素检查误差，
+  保留solid及当前主题色要求；未削弱产品焦点样式。empty-kde-final的蓝色容器框
+  改为共享主题色后才重拍本条最终64图。ui-1/2/kde-3与其它旧30态均为中间证据，
+  不混入最终图数或冒称32态。
+- 本机、合成账号与当前专项边界保留：未新增真实账号写入/试用额度/邀请，未获得
+  同状态官方截图，不称像素一致；未测Windows物理桌面/两账号实时一起听/正式AI入口。
+  Linux独立CI845f229已全通过，Windows同SHA仍在下载移动探针失败，完整gate失败；
+  b254044已修正探针Windows扩展路径分隔符，需新精确提交CI，不能用本地结果冒充。

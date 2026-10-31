@@ -1,7 +1,11 @@
 import type { AccountData, PlaylistView, TrackView } from './contracts';
 export type PlaylistDialogTarget =
   | { kind: 'remove'; track: TrackView; playlist: PlaylistView }
-  | { kind: 'tracks'; tracks: TrackView[] }
+  | {
+      kind: 'tracks';
+      tracks: TrackView[];
+      selectionSummary?: { total: number; unsupported: number; duplicates: number };
+    }
   | { kind: 'create' | 'history' | 'open' }
   | { kind: 'track'; track: TrackView; playlist?: PlaylistView };
 export interface PlaylistEditor {

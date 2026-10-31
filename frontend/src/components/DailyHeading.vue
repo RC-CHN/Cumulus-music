@@ -32,6 +32,11 @@ h1 {
   height: 48px;
   letter-spacing: 0;
 }
+h1:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
 time {
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;

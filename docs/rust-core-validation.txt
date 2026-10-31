@@ -1605,3 +1605,20 @@ login-interception-cache-tests.log。初次全量（workspace-tests3.log）一�
   日志.build/queue-ui-workspace-tests.log、queue-ui-clippy.log。前端374项/类型构建通过。
 - 真实队列GUI与缩放证据另见playback-queue-ui-contracts.txt、ui-ux-validation.txt，
   不把这些原生用例替代页面、Windows实机或物理声卡验收。
+
+
+2026-10-31 原生完整队列收藏选择
+- player_queue_collection按显示epoch/revision捕获完整actor队列，只读准备后再次检查
+  原生队列版本与会话。普通/下载/云盘、本地/CUE映射、声音排除、稳定去重均在Rust；
+  DTO只给TrackView，路径/指纹/凭据不交给前端。规则与接口见新收藏合同。
+- client_queue_collection三项用真实临时文件、索引/指纹/StateStore及合成AudioProbe：
+  混合队列顺序、重复/不可收藏计数、旧文件版本与改文件重扫、账号隔离、旧队列版本，
+  501项映射不截取公开500项第一页；调用不发音乐HTTP/加载音频/修改队列。
+- 完整workspace/all-targets/custom-protocol/locked为273个结果target、1302项通过，
+  失败/忽略0：.build/queue-collection-workspace-tests.log；严格Clippy见
+  queue-collection-clippy-fixed.log，最终格式queue-collection-format-final.log。
+  第一轮Clippy要求夹具环境检查使用?而非手写if返回None，已修正，不把失败日志
+  queue-collection-clippy.log写成通过。公开本地映射页面的500项限制仍保留。
+- 前端374项、格式、production类型/构建通过，原生程序及ux_ui_probe重新构建；
+  真实WebView/本机KDE的32+32图、失败/重试/空态/声音/FM覆盖详见UI验证文档，
+  不以原生单测替代实际界面验收。Windows精确提交CI与其它完整目标仍待跟进。

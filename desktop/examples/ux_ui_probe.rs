@@ -28,6 +28,8 @@ mod playlist_cover_transfer_fixture;
 mod playlist_editor_fixture;
 #[path = "support/playlist_layout_fixture.rs"]
 mod playlist_layout_fixture;
+#[path = "support/queue_collection_fixture.rs"]
+mod queue_collection_fixture;
 #[allow(dead_code)]
 #[path = "support/relay_fixture.rs"]
 mod relay_fixture;
@@ -83,6 +85,9 @@ impl Api for Library {
                 return result;
             }
             if let Some(result) = playlist_collect_fixture::response(path, &args).await {
+                return result;
+            }
+            if let Some(result) = queue_collection_fixture::response(path, &args) {
                 return result;
             }
             if let Some(result) = search_fixture::response(path, &args) {

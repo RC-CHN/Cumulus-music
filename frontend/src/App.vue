@@ -44,6 +44,7 @@ import type { HistoryKind, HistoryResource } from './services/history';
 import type { CatalogResource, CatalogSelectionPage } from './services/catalog';
 import PlayerBar from './components/PlayerBar.vue';
 import QueuePanel from './components/QueuePanel.vue';
+import type { QueueCollectionView } from './services/player';
 import LyricsPanel from './components/LyricsPanel.vue';
 import PlaylistDialog from './components/PlaylistDialog.vue';
 import PlaylistCollectDialog from './components/PlaylistCollectDialog.vue';
@@ -383,6 +384,63 @@ watch(
 const trackActions = ref<InstanceType<typeof TrackActions>>();
 watch(music.page, () => trackActions.value?.close());
 const playlistDialog = ref<PlaylistDialogTarget>();
+const queueCollectionReturn = shallowRef<HTMLElement>();
+const queueCollectionOwner = ref('');
+let queueDiscoverOwner: string | undefined;
+function collectQueue(value: QueueCollectionView, trigger: HTMLElement | undefined) {
+  if (!signedIn.value || value.epoch !== account.value.epoch) return;
+  queueCollectionReturn.value = trigger;
+  queueCollectionOwner.value = value.epoch;
+  playlistDialog.value = {
+    kind: 'tracks',
+    tracks: value.tracks,
+    selectionSummary: {
+      total: value.total,
+      unsupported: value.unsupported,
+      duplicates: value.duplicates,
+    },
+  };
+}
+function queueCollectionFallback() {
+  if (!queueCollectionReturn.value) return null;
+  return (
+    document.querySelector<HTMLElement>('.queue-panel [aria-label="关闭播放队列"]') ??
+    document.querySelector<HTMLElement>('[aria-label="播放队列"]')
+  );
+}
+function collectionLeft() {
+  if (!playlistDialog.value) {
+    queueCollectionReturn.value = undefined;
+    queueCollectionOwner.value = '';
+  }
+}
+function discoverFromQueue() {
+  if (!signedIn.value) {
+    loginOpen.value = true;
+    return;
+  }
+  queueDiscoverOwner = account.value.epoch;
+  music.navigate({ kind: 'daily' });
+  player.queueOpen.value = false;
+}
+async function queueLeft() {
+  const owner = queueDiscoverOwner;
+  queueDiscoverOwner = undefined;
+  await nextTick();
+  if (
+    owner !== account.value.epoch ||
+    music.page.value.kind !== 'daily' ||
+    document.querySelector('dialog[open]')
+  )
+    return;
+  const active = document.activeElement;
+  if (active !== document.body && active?.getAttribute('aria-label') !== '播放队列') return;
+  const heading = document.querySelector<HTMLElement>('.page-view .daily-heading h1');
+  if (heading) {
+    heading.tabIndex = -1;
+    heading.focus({ preventScroll: true });
+  }
+}
 const playlistEditor = ref<{ id: string; cover?: boolean }>();
 const playlistEditorPage = ref<InstanceType<typeof PlaylistEditorPage>>();
 const batchTarget = ref<PlaylistView>();
@@ -1582,8 +1640,15 @@ onUnmounted(() => {
     <Transition name="lyrics-panel">
       <LyricsPanel v-if="player.lyricsOpen.value && currentTrackId" :player="player" />
     </Transition>
-    <Transition name="queue-panel">
-      <QueuePanel v-if="player.queueOpen.value" :player="player" />
+    <Transition name="queue-panel" @after-leave="queueLeft">
+      <QueuePanel
+        v-if="player.queueOpen.value"
+        :player="player"
+        :authenticated="signedIn"
+        @collect="collectQueue"
+        @login="loginOpen = true"
+        @discover="discoverFromQueue"
+      />
     </Transition>
     <RelayPrompt
       :model="relay"
@@ -1665,13 +1730,21 @@ onUnmounted(() => {
       @remove="(track, playlist) => (playlistDialog = { kind: 'remove', track, playlist })"
       @manage="(track, playlist) => (playlistDialog = { kind: 'track', track, playlist })"
     />
-    <ModalTransition :restore-focus="!playlistEditor">
+    <ModalTransition
+      :restore-focus="
+        !playlistEditor && (!queueCollectionReturn || queueCollectionOwner === account.epoch)
+      "
+      :return-focus="() => queueCollectionReturn ?? null"
+      :fallback-focus="queueCollectionFallback"
+      @left="collectionLeft"
+    >
       <PlaylistCollectDialog
         v-if="playlistDialog?.kind === 'tracks'"
         :key="account.epoch + ':collect'"
         :manager="playlistManager"
         :epoch="account.epoch"
         :tracks="playlistDialog.tracks"
+        :selection-summary="playlistDialog.selectionSummary"
         :playlists="playlists"
         @close="playlistDialog = undefined"
         @expired="music.bootstrap(false)"

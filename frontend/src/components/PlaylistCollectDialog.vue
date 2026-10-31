@@ -13,6 +13,7 @@ const props = defineProps<{
   epoch: string;
   tracks: TrackView[];
   playlists: PlaylistView[];
+  selectionSummary?: { total: number; unsupported: number; duplicates: number };
 }>();
 const emit = defineEmits<{ close: []; expired: [] }>();
 const client = useCore();
@@ -183,6 +184,14 @@ async function reconcile() {
     </header>
     <p class="sr-only">
       {{ tracks.length === 1 ? `收藏${tracks[0]?.name}` : `收藏${tracks.length}首歌曲` }}
+    </p>
+    <p v-if="selectionSummary" class="collect-selection-summary" role="status">
+      播放列表共 {{ selectionSummary.total }} 项，将收藏 {{ tracks.length }} 首歌曲。<template
+        v-if="selectionSummary.unsupported"
+        >{{ selectionSummary.unsupported }} 项声音或未匹配音乐无法收藏到歌单。</template
+      ><template v-if="selectionSummary.duplicates"
+        >{{ selectionSummary.duplicates }} 项重复歌曲已合并。</template
+      >
     </p>
     <div v-if="error && !pending" class="collect-feedback error-state" role="alert">
       {{ error }}

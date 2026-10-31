@@ -3,12 +3,23 @@ import { computed, watch, onMounted, onUnmounted, ref, shallowRef, nextTick } fr
 import { useVirtualRows } from '../composables/useVirtualRows';
 import { useControlFocus } from '../composables/useControlFocus';
 import type { PlayerModel } from '../composables/usePlayer';
-import { time, type QueueView, type QueueEdit } from '../services/player';
+import { time, type QueueView, type QueueEdit, type QueueCollectionView } from '../services/player';
+import { failure } from '../services/contracts';
+import { useCore } from '../services/core';
 import { artistLabel } from '../services/artistLabel';
 import Icon from './Icon.vue';
 import ModalTransition from './ModalTransition.vue';
 import QueueClearDialog from './queue/QueueClearDialog.vue';
-const props = defineProps<{ player: PlayerModel }>();
+const props = defineProps<{ player: PlayerModel; authenticated: boolean }>();
+const emit = defineEmits<{
+  collect: [value: QueueCollectionView, trigger: HTMLElement | undefined];
+  login: [];
+  discover: [];
+}>();
+const client = useCore();
+const collecting = ref(false),
+  collectionIssue = ref('');
+let collectionRead = 0;
 const { queue, view, busy, queueError, queueLoading, queueEditing, queueEditError, queueCurrent } =
   props.player;
 const row = 64;
@@ -30,6 +41,17 @@ const locked = computed(
     !queueCurrent.value ||
     !!queueError.value ||
     !!queue.value?.fm,
+);
+const collectionLocked = computed(
+  () =>
+    collecting.value ||
+    busy.value ||
+    props.player.queueBusy.value ||
+    queueLoading.value ||
+    queueEditing.value ||
+    !queueCurrent.value ||
+    !!queueError.value ||
+    !queue.value?.tracks.length,
 );
 const panel = ref<HTMLElement>(),
   clearButton = ref<HTMLButtonElement>(),
@@ -82,13 +104,74 @@ watch(
 watch(
   () => view.value?.epoch,
   () => {
+    collectionRead++;
+    collecting.value = false;
+    collectionIssue.value = '';
     clearLeaving.value = clearPresentation.value;
     clearOpen.value = false;
   },
 );
 onUnmounted(() => {
+  collectionRead++;
   if (focus?.isConnected && !focus.matches(':disabled')) focus.focus({ preventScroll: true });
 });
+async function collectAll(event: Event) {
+  if (collectionLocked.value) return;
+  if (!props.authenticated) {
+    emit('login');
+    return;
+  }
+  const displayed = queue.value!;
+  const current = ++collectionRead;
+  const trigger = event.currentTarget instanceof HTMLElement ? event.currentTarget : undefined;
+  collecting.value = true;
+  collectionIssue.value = '';
+  try {
+    const value = await client.playerQueueCollection(displayed.epoch, displayed.revision);
+    if (
+      current !== collectionRead ||
+      !props.player.queueOpen.value ||
+      value.epoch !== view.value?.epoch
+    )
+      return;
+    if (value.revision !== view.value.queueRevision) {
+      collectionIssue.value = '播放列表已更新，请核对后重新收藏';
+      return;
+    }
+    if (value.tracks.length) emit('collect', value, trigger);
+    else collectionIssue.value = '声音或未匹配的本地音乐无法收藏到歌单';
+  } catch (error) {
+    if (current === collectionRead) {
+      const issue = failure(error);
+      collectionIssue.value = issue.message;
+      if (['session_expired', 'profile_changed'].includes(issue.code)) emit('login');
+    }
+  } finally {
+    if (current === collectionRead) {
+      collecting.value = false;
+      await nextTick();
+      if (
+        props.player.queueOpen.value &&
+        collectionIssue.value &&
+        trigger?.isConnected &&
+        !trigger.matches(':disabled') &&
+        (document.activeElement === document.body || document.activeElement === panel.value)
+      )
+        trigger.focus({ preventScroll: true });
+    }
+  }
+}
+const queueReadFocus = useControlFocus(
+  () => view.value?.epoch,
+  () =>
+    panel.value?.querySelector<HTMLButtonElement>('.error-state button') ??
+    container.value ??
+    panel.value?.querySelector<HTMLButtonElement>('.queue-empty button') ??
+    closeButton.value,
+);
+function retryQueue(event: Event) {
+  return queueReadFocus.run(event, () => props.player.loadQueue());
+}
 function move(index: number, direction: number) {
   const ids = queue.value?.tracks.map((i) => i.entryId);
   if (!ids || !ids[index + direction]) return;
@@ -218,12 +301,20 @@ async function confirmClear(event: Event) {
         </h2>
       </div>
       <button
+        class="text-button queue-collect"
+        :disabled="collectionLocked"
+        :aria-busy="collecting"
+        @click="collectAll"
+      >
+        <Icon name="star" />{{ collecting ? '正在准备…' : '收藏全部' }}
+      </button>
+      <button
         ref="clearButton"
         class="text-button"
         :disabled="locked || !queue?.tracks.length"
         @click="openClear"
       >
-        清空</button
+        <Icon name="trash" />清空</button
       ><button
         ref="closeButton"
         class="icon-button"
@@ -234,8 +325,9 @@ async function confirmClear(event: Event) {
       </button>
     </header>
     <div v-if="queueError" class="error-state" role="alert">
-      {{ queueError }}<button @click="player.loadQueue">重试</button>
+      {{ queueError }}<button @click="retryQueue">重试</button>
     </div>
+    <p v-if="collectionIssue" class="queue-notice" role="alert">{{ collectionIssue }}</p>
     <p
       v-if="queueEditError && !clearTicket && !queueLoading && !queueError"
       class="queue-notice"
@@ -254,7 +346,13 @@ async function confirmClear(event: Event) {
       正在更新播放列表…
     </p>
     <div v-if="!queue && queueLoading" class="empty-state" role="status">正在加载队列…</div>
-    <div v-else-if="queue && !queue.tracks.length" class="empty-state">队列为空，去选一首歌吧</div>
+    <div
+      v-else-if="queueCurrent && !queueLoading && !queueError && queue && !queue.tracks.length"
+      class="empty-state queue-empty"
+    >
+      <p>播放列表空空如也</p>
+      <button class="secondary" @click="emit('discover')">发现音乐</button>
+    </div>
     <div
       v-else-if="queue?.tracks.length"
       ref="container"
@@ -322,6 +420,7 @@ async function confirmClear(event: Event) {
       <div :style="{ height: `${(queue.tracks.length - end) * row}px` }" aria-hidden="true" />
     </div>
     <ModalTransition
+      :restore-focus="clearTicket?.epoch === view?.epoch"
       :return-focus="() => clearButton ?? null"
       :fallback-focus="() => closeButton ?? null"
       @left="clearLeft"

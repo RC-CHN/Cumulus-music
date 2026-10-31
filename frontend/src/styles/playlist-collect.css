@@ -213,3 +213,9 @@
     top: -12px;
   }
 }
+.collect-selection-summary {
+  margin: 0 26px 12px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}

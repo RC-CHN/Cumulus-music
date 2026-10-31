@@ -1,0 +1,70 @@
+播放列表收藏全部与空态发现
+2026-10-31；官方来源优先，没有同状态官方运行图，不称像素一致。
+
+来源和转换
+references/ui-recovery/sources/packages/pc/src/components/PlayBar/Playlist.tsx
+（e4185ae44c94e62148a710c5827dff9736cd9d9acd34753de6eeb50b4e225dc0）
+按resourceType选择普通单曲、下载音乐、已有关联线上ID的本地音乐，排除声音；
+getIdFromOfflineId把下载标识变成歌曲ID。Cumulus下载任务已保存真实song_id，使用
+该原生来源，不重新从文件名或离线标识猜测。未使用YesPlayMusic。
+PlaylistContent.tsx（234d446a26c9ed7f2a12b8a36b62e7081dd7c6b22467aee14e4f68788090b986）
+提供空列表“发现音乐”，匿名先登录。Cumulus当前发现目的地为每日推荐，与官方
+完整首页存在明确差异；页面已存在时仍关闭队列并把焦点交给该页面标题。
+
+Rust清单
+player_queue_collection(epoch,revision)是只读IPC；不下载/匹配文件、不请求音乐API、
+不修改播放队列。要求登录及显示的队列版本。先从actor一次取得完整队列快照，
+在worker读取本账号的本地映射，再次核对账号和原生队列版本；不把变化后的队列
+自动代入旧请求。后续弹窗使用这次捕获的歌曲集合，播放下一首不重选收藏内容。
+返回QueueCollectionView：epoch/revision/total/unsupported/duplicates/tracks。
+tracks只有TrackView白名单；不导出文件路径、指纹、Cookie、原始接口或授权URL。
+
+规则：
+- 普通音乐和下载音乐使用原生resource.id；声音的mainSong音频ID不能充当歌曲目录ID。
+  root.voice、root.voice_id和song.voice_id任一表明声音即排除，包含下载声音。
+- 本地文件/CUE从UID隔离的LocalMapping取song_id。文件必须仍符合索引指纹，映射
+  版本还必须等于排队的local_revision；改文件/重扫/别的账号映射不能改变旧项的含义。
+  有映射歌曲元数据则白名单投影，无则使用本地标题/歌手并改为已关联歌曲ID。
+- 按显示顺序稳定保留第一次出现的歌曲ID，重复计数单列；不把可见虚拟行当作全队列。
+  原生AI临时保留且不在官方可见列表的项不计入收藏；不因此宣称正式AI界面完成。
+- 原有公开本地映射页仍限500项；完整队列专用读取支持50000项并只扫描索引一次。
+  不以分页前500项代替全部。歌曲能提交不等于服务端一定有收藏权限或容量。
+  最终拒绝/部分完成由既有歌单操作回读决定，不扩大会员/购买权益。
+
+界面与失效处理
+QueuePanel顶部恢复收藏/删除图标和同组文字操作。收藏准备有独立等待、重复提交
+禁用、错误提示，失败不进入音频重试。准备期间关闭队列或切账号丢弃结果，不重开
+弹窗；队列版本变化说明核对后重试。没有可转换项时解释声音/未匹配本地音乐原因。
+非空匿名队列先进入原登录流程；本次未以合成认证账号证明匿名扫码全链路。
+FM编辑仍禁用，收藏只读准备可用，不改变FM模式、当前音频、暂停或进度。
+
+共用PlaylistCollectDialog显示总项数/目标歌曲数及排除/重复说明，复用已有创建、
+选择歌单、未确认操作核对及部分失败。关闭后返回原收藏按钮；按钮不可用时退到
+队列关闭键/底栏入口。账号变化撤销旧焦点归属。清空确认也不恢复到新账号控件。
+空态只在原生读取成功且显示版本有效时展示；缓存为空但读取失败时仅提示错误/重试，
+不以失败结果给出“发现音乐”。重试成功后聚焦歌曲容器或确认的空态按钮。
+“发现音乐”在抽屉离场后聚焦实际每日推荐标题，不让已移除按钮留住焦点。
+队列容器/歌曲容器与目标标题均使用当前主题的可见焦点，避免系统默认蓝色框。
+这是Cumulus适配：官方零可收藏项时为禁用图标的外层提示，本项目提供原生准备及
+可读原因；没有添加无实现的收藏渠道。尚有多选/拖放/推荐分隔、一起听清空等边界。
+
+后续实际请求
+打开收藏列表：/api/user/playlist（现有账号歌单用例）；选择目标先读
+/api/v6/playlist/detail，使用其revision及owned校验。明确选择后经歌单日志发送
+/api/v1/playlist/manipulate/tracks，op=add、pid、trackIds为歌曲ID JSON字符串，
+再读详情核对实际成员。未知写结果只能显式核对，不重复创建/添加；签名、账号
+隔离、权限、批次及日志沿用既有Rust PlaylistService，不在Vue发音乐HTTP。
+
+验证入口及边界
+cargo test -p cumulus-core --test client_queue_collection --locked
+三项使用真实临时文件/指纹和合成AudioProbe，覆盖歌曲/下载/声音/本地/CUE混合、
+稳定去重、无路径/授权字段泄漏、旧文件版本、账号与队列版本、501项完整本地选择。
+只读调用没有音乐HTTP/实际音频加载，不把合成探针称为真实解码。
+python3 scripts/ci/queue_collection_smoke.py --binary PATH_TO_UX_UI_PROBE --root NEW_PRIVATE_ROOT
+32态使用production前端、实际WebView/IPC/Rust/SQLite/libmpv/null，四组合主题/尺寸，
+完整40首收藏及服务端回读、准备失败/关闭/迟到、列表读取失败/重试、等待/返回焦点、
+空态发现/读取失败/重试焦点、实际声音队列排除及FM收藏。只在合成后端明确写一次
+歌单，不使用真实账号写入，不调用支付/邀请/试用额度。声音走PodcastApi实际解析/
+授权/播放链路，夹具只替换接口响应；不靠把歌曲改名为声音冒充排除验证。
+同脚本接入Linux/Windows独立runner；本机截图与精确结果另见ui-ux-validation.txt。
+物理声卡、Windows实机视觉、真实账号本次写入、两账号实时一起听不在本专项通过内。
