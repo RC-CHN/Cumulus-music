@@ -13,6 +13,14 @@ struct Event {
     userdata: u64,
     data: *mut c_void,
 }
+// mpv/client.h: MPV_EVENT_LOG_MESSAGE data, borrowed until the next wait.
+#[repr(C)]
+struct LogMessage {
+    prefix: *const c_char,
+    level: *const c_char,
+    text: *const c_char,
+    _log_level: c_int,
+}
 type Handle = *mut c_void;
 type Create = unsafe extern "C" fn() -> Handle;
 type Initialize = unsafe extern "C" fn(Handle) -> c_int;
@@ -22,6 +30,7 @@ type Wait = unsafe extern "C" fn(Handle, f64) -> *const Event;
 type Destroy = unsafe extern "C" fn(Handle);
 type Property = unsafe extern "C" fn(Handle, *const c_char) -> *mut c_char;
 type Free = unsafe extern "C" fn(*mut c_void);
+type RequestLog = unsafe extern "C" fn(Handle, *const c_char) -> c_int;
 struct Player {
     _runtime: MpvRuntime,
     handle: Handle,
@@ -90,6 +99,9 @@ pub fn capture(input: &Path, output: &Path, graph: &str, rate: u32, channels: us
         let free = *library
             .get::<Free>(b"mpv_free\0")
             .map_err(|_| Error::State("mpv ABI"))?;
+        let request_log = *library
+            .get::<RequestLog>(b"mpv_request_log_messages\0")
+            .map_err(|_| Error::State("mpv ABI"))?;
         let handle = create();
         if handle.is_null() {
             return Err(Error::State("mpv allocation"));
@@ -104,7 +116,9 @@ pub fn capture(input: &Path, output: &Path, graph: &str, rate: u32, channels: us
             ("config", "no"),
             ("load-scripts", "no"),
             ("ytdl", "no"),
-            ("terminal", "yes"),
+            // stdout is the structured success report. Consume diagnostics
+            // through the API and preserve them on stderr instead.
+            ("terminal", "no"),
             ("msg-level", "all=warn"),
             ("vo", "null"),
             ("ao", "pcm"),
@@ -141,6 +155,7 @@ pub fn capture(input: &Path, output: &Path, graph: &str, rate: u32, channels: us
         let filter = format!("@cumulus-geq:lavfi=graph=%{}%{}", graph.len(), graph);
         check(option(handle, c"af".as_ptr(), c(filter)?.as_ptr()))?;
         check(initialize(handle))?;
+        check(request_log(handle, c"warn".as_ptr()))?;
         eprintln!("PCM proof: initialized");
         let args = [
             c"loadfile".to_owned(),
@@ -156,6 +171,23 @@ pub fn capture(input: &Path, output: &Path, graph: &str, rate: u32, channels: us
                 continue;
             }
             match (*event).id {
+                2 => {
+                    if (*event).data.is_null() {
+                        return Err(Error::State("missing native log data"));
+                    }
+                    let message = &*(*event).data.cast::<LogMessage>();
+                    if !message.prefix.is_null()
+                        && !message.level.is_null()
+                        && !message.text.is_null()
+                    {
+                        eprint!(
+                            "libmpv[{}/{}]: {}",
+                            CStr::from_ptr(message.prefix).to_string_lossy(),
+                            CStr::from_ptr(message.level).to_string_lossy(),
+                            CStr::from_ptr(message.text).to_string_lossy()
+                        );
+                    }
+                }
                 8 => loaded = true,
                 7 => {
                     // end-file data begins with reason:int, error:int.

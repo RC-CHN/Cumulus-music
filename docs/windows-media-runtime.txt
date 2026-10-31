@@ -180,3 +180,25 @@ exit and timeout. Empty/prefixed/failed reports remain failures; no second run
 or earlier receipt substitutes for this verification. The complete CI gate
 remains required. This diagnostic-script change also changes the authenticated
 media cache key and therefore requires a fresh dependency build.
+2026-10-31 stdout contamination identified
+----------------------------------------
+The retained stdout from f7f8353 / run 41164120051 starts with two lines of
+"client removed during hook handling", followed by the complete successful
+PCM/control/cleanup JSON. The strict parser correctly rejected that stream.
+This establishes output contamination for this run; it does not retroactively
+prove the earlier unretained d7acc05 stdout or make either CI gate successful.
+
+The raw PCM host explicitly enabled libmpv's terminal. It now disables that
+terminal and requests warn-level MPV_EVENT_LOG_MESSAGE events, forwarding their
+borrowed text to stderr before the next wait. The ABI and event ownership are
+from the primary client API documentation:
+https://github.com/mpv-player/mpv/blob/master/include/mpv/client.h
+Production MpvEngine already disables the terminal; no production logging or
+DSP acceptance condition was relaxed. Empty/prefixed/failed/nonzero/timeout
+reports remain failures, and stdout is still preserved in full.
+
+Local Linux player_probe passes the unchanged strict native_pcm_report parser,
+all three 44100/48000/96000 Hz PCM cases have zero absolute error, and the live
+control/detach checks still pass. Evidence is .build/volume-pcm-{stdout,stderr}.log
+and volume-pcm-checked.json. This is not a Windows success claim; the corrected
+native output channel still requires a fresh Windows CI result.
