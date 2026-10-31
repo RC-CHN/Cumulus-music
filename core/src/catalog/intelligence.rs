@@ -21,7 +21,7 @@ pub enum IntelligenceStart {
     #[serde(rename = "fromPlayOne")]
     PlayOne,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IntelligenceRequest {
     pub playlist_id: String,
     pub song_id: String,

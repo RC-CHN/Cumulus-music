@@ -74,6 +74,17 @@ impl StateStore {
         .get(owner, kind, key)
     }
 
+    /// Includes commits from other connections and mutations made through this
+    /// connection. Capture inside a read/write transaction when binding it to
+    /// cached content; a post-commit sample could conceal a competing write.
+    pub(crate) fn change_stamp(&self) -> Result<(i64, i64)> {
+        let connection = self.connection.lock().map_err(|_| Error::LockPoisoned)?;
+        StateTransaction {
+            connection: &connection,
+        }
+        .change_stamp()
+    }
+
     pub fn put(&self, owner: &str, kind: &str, key: &str, value: &Value) -> Result<()> {
         self.transaction(|tx| tx.put(owner, kind, key, value))
     }
@@ -113,6 +124,13 @@ impl StateStore {
 }
 
 impl StateTransaction<'_> {
+    pub(crate) fn change_stamp(&self) -> Result<(i64, i64)> {
+        Ok(self.connection.query_row(
+            "SELECT data_version,total_changes() FROM pragma_data_version",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?)
+    }
     /// Keyset pagination keeps migration work bounded even for large legacy
     /// namespaces. Keys inserted before the cursor must be indexed by writers.
     pub fn values_page(

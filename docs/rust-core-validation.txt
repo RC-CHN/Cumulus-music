@@ -1570,3 +1570,31 @@ login-interception-cache-tests.log。初次全量（workspace-tests3.log）一�
 - 只是接口/原生格式化的可执行验证；seedPlayableVerified、coordinatorVerified及
   uiStartVerified仍false。喜欢种子筛选、AI队列/失败切换/退出恢复、会员与UI继续；
   入口、源码散列及接口字段映射详见intelligence-api-contracts.txt，不以此宣布完整模式通过。
+
+2026-10-31 心动原生队列/播放器/恢复（正式账号与UI仍未完成）
+- intelligence_player的6项真实actor命令覆盖先播种子、当前项后推荐/重叠/首次去重、
+  保持解码器/暂停18秒、失败喜欢循环及单次内部当前项、默认首曲恢复、实验共同前驱
+  插入与取消喜欢清理，以及底层同为OrderLoop时依旧退出AI。
+- intelligence_player_recovery的8项覆盖Seeded/Active重开、原生Restore暂停21秒、
+  旧fence与旧会话、双记录提交故障整组回滚、Stop后晚到不发声、种子HTTP等待期间
+  退出仅重绑来源而不取消或重复加载、替换/清空撤销和账号切换/第二本地host竞争。
+- intelligence_storage的5项覆盖显式隔离坏记录且保留当前队列、不重播、过时修复/
+  事务失败、坏孤儿不冒认AI、不完整队列不猜测修复、普通切歌不重写备份，以及同/
+  异SQLite连接变更、其它缓存和回滚对队列版本的影响。
+- intelligence_official_queue执行7组原函数冻结结果（含10000项顺序SHA256），本核心
+  可见条目顺序与首次重复元数据一致。M/59权益、M/213构造等桩的范围写入fixture，
+  未将它们计作真实权益/完整规范化通过；原/API的4组格式化向量仍保持。
+- client_intelligence验证恢复AI在没有音频所有权时不能借模式命令抢播，不能附着
+  一起听；持有所有权后同OrderLoop模式也能退出且同playId。fm_player新增活动AI
+  无网络读取地拒绝进入、终态Fallback进入/退出不留悬空记录；relay_projection新增
+  活动心动/内部当前项的来源排除。lib新增登录策略清空恢复AI前模式的原子/幂等用例。
+- 原型新增替换用例曾得到OrderLoop而预期Random，补last_mode并在普通替换、清空和
+  登录策略清空恢复；以verified后缀为本次最终结果，不混用此前失败/中间日志。
+- 最终完整workspace272个结果target/1296项，0失败/忽略；严格Clippy/格式通过。
+  前端锁文件安装、格式、372项测试、production类型/构建通过；CI工具36项通过；
+  生产cumulus程序及实际ux_ui_probe重建成功。日志.build/intelligence-native-*。
+- Core测试为合成API/Device，无真实账号写入，不证明libmpv/GUI心动流程。已有桌面
+  空FM回归18态通过；普通/FM回归发现返回阶段焦点断言早于页面命令回执的旧时序，
+  与Windows 2e7b140日志相符，另补明确待回执阶段，不把原回归失败略过。
+  正式心动筛选/HTTP编排/入口/五态/多窗口与恢复UI待接线；完整目标继续。
+  接口、源码、适配与真实未完成范围见intelligence-playback-contracts.txt。

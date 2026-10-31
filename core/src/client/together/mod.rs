@@ -198,6 +198,13 @@ impl MusicClient {
             TogetherCommand::Create | TogetherCommand::Attach { .. }
         ) {
             let queue = self.player.controller().await?.queue(&token).await?;
+            if queue
+                .intelligence
+                .as_ref()
+                .is_some_and(crate::playback::intelligence::IntelligenceContext::active)
+            {
+                return Err(Error::State("leave intelligence before entering together"));
+            }
             if self
                 .player
                 .fm()

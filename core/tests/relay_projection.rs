@@ -9,6 +9,26 @@ use cumulus_core::{
     },
 };
 use serde_json::{Value, json};
+
+#[test]
+fn seeded_and_active_intelligence_never_publish_a_normal_list_loop_while_fallback_can() {
+    use cumulus_core::playback::intelligence::{IntelligenceContext, IntelligencePhase};
+    let mut current = queue(&[7, 8]);
+    for phase in [IntelligencePhase::Seeded, IntelligencePhase::Active] {
+        current.intelligence = Some(IntelligenceContext {
+            id: "00000000-0000-4000-8000-000000000001".into(),
+            phase,
+        });
+        let projected = project(&current, None, false).unwrap();
+        assert!(!projected.eligible_scene);
+        assert!(projected.items.is_empty());
+    }
+    current.intelligence.as_mut().unwrap().phase = IntelligencePhase::Fallback;
+    assert!(project(&current, None, false).unwrap().eligible_scene);
+    current.items[0].source["intelligence_transient"] = json!(true);
+    assert!(!project(&current, None, false).unwrap().eligible_scene);
+}
+
 fn queue(ids: &[u64]) -> QueueSnapshot {
     let items: Vec<_> = ids
         .iter()
@@ -24,6 +44,7 @@ fn queue(ids: &[u64]) -> QueueSnapshot {
         items,
         mode: PlaybackMode::OrderLoop,
         fm_source: None,
+        intelligence: None,
     }
 }
 fn frame(ids: &[u64]) -> PublicationFrame {

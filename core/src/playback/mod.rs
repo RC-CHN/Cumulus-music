@@ -5,6 +5,7 @@ pub mod controller;
 pub mod mode;
 pub use constraint::PlaybackConstraint;
 pub mod engine;
+pub mod intelligence;
 pub mod output;
 pub mod preferences;
 pub mod quality;

@@ -44,13 +44,24 @@ impl Inner {
         view: &PlaybackSnapshot,
         queue: &QueueSnapshot,
     ) -> Result<()> {
+        let mut queue = queue.clone();
+        if queue
+            .intelligence
+            .as_ref()
+            .is_some_and(crate::playback::intelligence::IntelligenceContext::active)
+        {
+            return Err(Error::State("leave intelligence before entering FM"));
+        }
+        // Fallback is ordinary playback. Its consumed notice must not become
+        // a dangling coordinator reference in the FM return snapshot.
+        queue.intelligence = None;
         self.session.with_token(token, |uid| {
             self.store.transaction(|tx| {
                 tx.put(
                     uid,
                     "playback",
                     FM_BACKUP_QUEUE,
-                    &serde_json::to_value(queue)?,
+                    &serde_json::to_value(&queue)?,
                 )?;
                 tx.put(
                     uid,
@@ -124,6 +135,13 @@ impl Inner {
         self.guard(token, intent)?;
         source.validate()?;
         let (mut before, actual) = self.controller.queue_with_state(token).await?;
+        if actual
+            .intelligence
+            .as_ref()
+            .is_some_and(crate::playback::intelligence::IntelligenceContext::active)
+        {
+            return Err(Error::State("leave intelligence before entering FM"));
+        }
         let active = self::source(&actual)?;
         if active.as_ref() == Some(&source) {
             let desired = self

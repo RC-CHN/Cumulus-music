@@ -1,0 +1,114 @@
+心动播放原生状态与队列迁移（2026-10-31；正式账号入口和UI尚未完成）
+
+范围
+本项是实际接入PlaybackController的Rust队列/引擎/持久化实现，不是只定义DTO。
+可以通过IntelligenceUpdate执行种子加载、接收推荐、失败回退及退出；集成测试实际
+执行这些命令并检查解码器调用、进度、SQLite、重开与竞争。测试引擎为合成Device，
+不能据此宣称真实账号心动播放、libmpv心动播放或桌面心动按钮通过。
+已有线上intelligence/list只读结果仍仅证明接口，参见intelligence-api-contracts.txt。
+
+官方来源（相对references/netease-3.1.42.205594-analysis/recovered-js/）
+modules/hybrid_app.chunk.1482700000000.js/308.js
+  switchPlayingMode:1156；aiPlay:2902；play:3126之后的offset解析。
+  对应可读控制流在recovered-client/docs/product/models/playing.txt。
+modules/hybrid_app.chunk.1482700000000.js/59.js
+  导出j/O，先按权益/下载/替代曲处理，最终按id或offlineId第一次出现去重。
+modules/hybrid_app.chunk.1482700000000.js/1384.js
+  当前配置M/7.o=file，采用5186行addItemToCurPlayingList的playingList分支；同文件
+  2579行另有同名动作，不能因模块ID相同而混用。replaceCurPlayingList:5131。
+modules/hybrid_app.chunk.1482700000000.js/176.js
+  导出b/p的前后缀合并、重叠ID移除和displayOrder排序；导出a/f只有随机模式用
+  randomOrder，心动模式按displayOrder前后移动并循环。M/7.g为10000。
+源文件散列在core/tests/fixtures/official-intelligence-queue.json。
+没有参考YesPlayMusic，没有公开恢复源码或真实用户数据。
+
+原函数执行范围
+- 私有freeze-intelligence-queue.cjs执行M/59.O、M/1384最后一个同名动作、M/176.p，
+  另载入78个实际恢复的vendor依赖，包括uniqBy和sortBy；各依赖散列进入冻结文件。
+- M/59的权益允许、下载映射为空、M/213歌曲条目构造、effect调度及随机值是桩。
+  不把这组向量当成会员筛选、离线替代、完整歌曲规范化或Windows原生调用证明。
+- M/308默认offset在有当前项时取其displayOrder，随后加1，所以推荐插在当前项后。
+  7组纯合成向量覆盖种子重叠、首个重复元数据、手动切换当前项、两侧重叠、空成功
+  和10000条截断。容量向量保存实际原函数结果的数量/首尾/完整顺序SHA256。
+- API层保留重复行和未解析位置；真正进入播放列表前官方还做M/59筛选/去重。两层
+  不能混为一谈。Rust原生边界接收已可播放资源，并复核ID、未解析标志及第一次去重。
+
+模块与职责
+catalog/intelligence.rs：既有五字段请求/响应；IntelligenceRequest可持久化。
+playback/intelligence/{mod,plan,insertion,restore,recovery}.rs：类型、状态转换、原顺序
+  合并、退出与损坏修复。核心不依赖Tauri/前端/Python。
+playback/queue/{intelligence,persistence}.rs：账号所有者、队列/状态双重CAS、原子发布。
+playback/controller/intelligence.rs：保留同一已加载/待加载媒体，或显式加载种子/新项。
+client/player、fm/player、client/together及relay/publisher/player：现有边界的防护；
+  这些防护不等于完整正式心动入口已经接线。
+
+原生调用顺序
+1. 调用者绑定账号代次、选择意图、音频所有权，读取完整喜欢歌单，按官方权益/黑名单/
+   替代曲逻辑得到可播放列表。此上层步骤仍待迁移，不能直接信任前端提交的歌曲JSON。
+2. 取得PlaybackSnapshot.fence，发送PlaybackCommand::Intelligence(IntelligenceUpdate)。
+   Begin包含request、seed_resource/source、已过滤完整liked QueueSnapshot，以及是否
+   从切模式进入而保存当前队列。request.count保留原喜欢数量，startMusicId为可播放
+   喜欢列表第一首；所选seed必须匹配songId。核心再次使用当前音质偏好装饰资源。
+3. 队列与备份原子保存为Seeded，只播一首种子；last_mode记录进入前普通模式。
+   成功返回表示引擎处理了种子请求；失败可能仍保留已提交Seeded，不能重新盲播。
+4. 上层通过既有IntelligenceApi推荐读取。网络等待不在播放actor内；完成后先检查
+   同一账号/会话，再取得新fence。暂停、定位、停止可在此期间生效；旧fence明确拒绝。
+5. Complete核对session_id且只能接收Seeded，保存推荐字典并进入Active。推荐插入
+   当前项后，重叠旧项移除，新资源第一次ID去重，最多10000个可见条目。保持当前
+   entry_id和完整资源字节，暂停/进度/playId不变；不会因为算法装饰重新加载当前歌。
+6. 请求失败用Fail进入Fallback，队列换成可播放喜欢列表、模式为列表循环。保留当前
+   音频及失败类型，用户仍须看到失败提示；不是把失败伪装成推荐成功。原生不自动请求。
+7. Leave保存指定普通模式并清除会话。备份为空时使用本次保存的喜欢回退；当前歌在
+   备份中则保留当前媒体并恢复来源，否则默认播放备份第一首。显式t1选项按最近的
+   前方共同歌曲位置插入当前项；未观察实际实验分配时不默认开启该分支。
+
+内存与持久化
+- QueueSnapshot.intelligence只保存会话ID/Seeded、Active、Fallback；完整会话在
+  UID名下playback-intelligence-v1/session，含schema/revision/request/seed ID/
+  last_mode/普通备份/喜欢回退/推荐信息/失败类型。前端不能取得完整记录。
+- 同一SQLite事务比较旧队列和旧会话原始字节，再写队列/状态/必要音质；失败整组
+  回滚。两份值从同一读事务取得，独立进程更新或只改会话也会撤销旧队列票据。
+- 未改变的会话用不可变Arc复用，不因每次选择/前后切歌反复改写备份。队列正常替换、
+  清空、移除最后条目会清除会话；普通替换/清空及登录策略清空恢复last_mode。
+- change_stamp由同连接total_changes和外部连接data_version组合；与内容在事务内
+  一起采集。没有变更时不每个播放器tick重新读解析大备份；其它领域改动、没有改变
+  队列的外部回滚不推进队列版本。候选队列提交失败仍按既有政策推进版本，撤销旧
+  票据。该缓存不依赖计时器或文件mtime，也不隐藏竞争提交。
+- 已加载媒体只允许改变来源，resource/entry ID/试听/CUE/音质/授权字节必须相同。
+  待加载种子也可在退出时恢复来源：完成阶段仅接纳相同资源的来源重绑定，不重播。
+- 重开Active恢复持久化队列，Seeded保留待请求状态；不会因读库自动再次请求推荐。
+  普通Startup/Restore政策仍由现有控制器执行，不自动恢复声音。
+
+明确的原生适配与边界
+- 官方curPlaying可在可见列表之外；Cumulus队列要求当前项属于items。截断或失败回退
+  排除当前音频时，内部留一个intelligence_transient条目，继续播放/暂停原音频，切到
+  其它歌曲后原子移除，避免它再次循环。可见10000项向量排除此内部项。正式IPC列表
+  的过滤、计数及多窗口呈现仍须接入，不把原始items直接宣称官方列表完全一致。
+- 实验保留项以intelligence_retained标记，用下次喜欢回退清理已取消喜欢的项；核对
+  后移除标记。当前t1随机插入场景采用本核心随机排列，不宣称原JS随机数逐位相同。
+- 已明确停止时，晚到完成/回退和普通模式元数据不会自行发声；默认退出缺失当前项
+  的首曲加载只在原生仍活动时执行。这是本核心停止优先策略，未冒称官方所有状态一致。
+- Core actor调用者负责媒体所有权。现有MusicClient模式命令在未持有音频所有权时
+  拒绝退出AI，避免借一次模式点击盖过MV。正式上层协调器仍须完整处理该所有权交接。
+- 现阶段活动AI必须先退出才能进FM/一起听；FM可从终态Fallback进入，返回备份去掉
+  已消费的失败标记，避免恢复悬空会话。relay按官方aiMode排除活动心动来源；内部
+  transient尚未离开时也不假报远端普通队列。没有新增真实邀请或双账号验证。
+- 原生已经验证备份切换/落盘/重开；正式喜欢种子选择、完整M/23权益和黑名单/替代曲
+  筛选、在线请求编排/重试、心动五态资格/会员引导、主窗口/迷你/MPRIS呈现及桌面实际
+  心动播放仍待迁移。原API只读报告的uiStartVerified=false没有被改成true。
+
+显式损坏恢复
+IntelligenceRecovery::inspect返回原生私有票据，调用者必须绑定owner和账号代次。
+adopt_ordinary比较精确旧队列/旧会话，在同一事务先把原始字节保存到该账号私有
+playback-intelligence-quarantine-v1，再移除心动所有权，保留曲目/顺序/选择/音质。
+不发HTTP、不重播、不静默丢失备份。票据过时或写库失败不改任何一份数据。
+会话缺失/损坏会明确失败；没有所有权的坏孤儿记录不使普通队列变成心动，也不阻止
+普通显式操作清理它。连队列本体都无法合法解析时拒绝修复，不猜测或清空用户列表。
+修复是可执行native API，正式UI恢复入口尚未接线。
+
+可执行验证入口
+  cargo test -p cumulus-core --test intelligence_player --test intelligence_player_recovery \
+    --test intelligence_official_queue --test intelligence_storage --test client_intelligence --locked
+另有fm_player的AI/Fallback往返、relay_projection的来源排除和lib中的登录策略清空。
+冻结向量及以上测试均只含合成数据；没有在公开CI解包安装包或读取用户登录态。
+本次结果与实际桌面回归另见rust-core-validation.txt，不以native单元通过代替UI验收。

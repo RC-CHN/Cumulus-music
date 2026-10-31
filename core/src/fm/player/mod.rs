@@ -254,6 +254,7 @@ fn projection(queue: &FmQueue, quality: &str) -> Result<QueueSnapshot> {
             PlaybackMode::Sequential
         },
         fm_source: Some(queue.source.clone()),
+        intelligence: None,
     })
 }
 fn matches_entries(desired: &FmQueue, actual: &QueueSnapshot) -> bool {

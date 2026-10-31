@@ -3,6 +3,7 @@
 mod actions;
 mod equalizer;
 mod history;
+mod intelligence;
 mod load;
 mod loudness;
 mod quality;
@@ -29,8 +30,8 @@ use std::sync::{
 use tokio::sync::{mpsc, oneshot, watch};
 use types::Reply;
 pub use types::{
-    PlaybackCommand, PlaybackFence, PlaybackSnapshot, PlaybackStatus, PrefetchSnapshot,
-    QueueTransport, QueueUpdate, RemotePlayback, StartupRestore,
+    IntelligenceUpdate, PlaybackCommand, PlaybackFence, PlaybackSnapshot, PlaybackStatus,
+    PrefetchSnapshot, QueueTransport, QueueUpdate, RemotePlayback, StartupRestore,
 };
 
 type Engine = Arc<Mutex<Box<dyn AudioEngine>>>;

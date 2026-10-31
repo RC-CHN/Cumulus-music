@@ -1,4 +1,7 @@
 #[allow(dead_code)]
+#[path = "support/intelligence_input.rs"]
+mod ai;
+#[allow(dead_code)]
 #[path = "support/fm.rs"]
 mod domain;
 #[allow(dead_code)]
@@ -29,6 +32,80 @@ struct Native {
     device: Arc<engine::Device>,
     host: Arc<FmPlayer>,
     intents: Arc<AtomicU64>,
+}
+
+#[tokio::test]
+async fn active_ai_requires_exit_and_terminal_fallback_can_enter_fm_and_return_without_a_dangling_owner()
+ {
+    use cumulus_core::playback::{
+        controller::IntelligenceUpdate,
+        intelligence::{IntelligenceAction, IntelligenceFailure},
+    };
+    let f = Native::new();
+    let token = f.domain.session.token().unwrap();
+    let initial = f
+        .player
+        .command(&token, PlaybackCommand::Snapshot)
+        .await
+        .unwrap();
+    let seeded = f
+        .player
+        .command(
+            &token,
+            PlaybackCommand::Intelligence(IntelligenceUpdate {
+                expected: initial.fence(),
+                action: ai::begin(7, false),
+            }),
+        )
+        .await
+        .unwrap();
+    let session_id = seeded.intelligence.as_ref().unwrap().id.clone();
+    let rejected = f
+        .host
+        .enter_for(&token, FmSource::Personal, Quality::Standard, f.intent())
+        .await;
+    assert!(matches!(
+        rejected,
+        Err(Error::State("leave intelligence before entering FM"))
+    ));
+    assert_eq!(f.domain.api.count("/api/v1/radio/get"), 0);
+    let before = f
+        .player
+        .command(&token, PlaybackCommand::Snapshot)
+        .await
+        .unwrap();
+    f.player
+        .command(
+            &token,
+            PlaybackCommand::Intelligence(IntelligenceUpdate {
+                expected: before.fence(),
+                action: IntelligenceAction::Fail {
+                    session_id,
+                    failure: IntelligenceFailure::RequestFailed,
+                },
+            }),
+        )
+        .await
+        .unwrap();
+    f.domain.api.batch(&[1, 2, 3]);
+    f.host
+        .enter_for(&token, FmSource::Personal, Quality::Standard, f.intent())
+        .await
+        .unwrap();
+    let during = f.player.snapshot();
+    assert!(during.fm);
+    assert!(during.intelligence.is_none());
+    let left = f.host.leave_for(&token, f.intent()).await.unwrap();
+    assert!(!left.fm);
+    assert!(left.intelligence.is_none());
+    assert_eq!(id(&left), Some("7".into()));
+    assert!(
+        f.domain
+            .store
+            .get("9", "playback-intelligence-v1", "session")
+            .unwrap()
+            .is_none()
+    );
 }
 impl Native {
     fn new() -> Self {

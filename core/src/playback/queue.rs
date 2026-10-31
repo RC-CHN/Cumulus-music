@@ -1,9 +1,12 @@
 //! Persistent queue semantics from playing/dbPlayingList. Entry identity is
 //! distinct from song identity; the on-disk representation is ours.
 mod fm_identity;
+mod intelligence;
+mod persistence;
 mod reset;
 use super::quality_preferences::QualityPreferences;
 use crate::{Error, Result, storage::StateStore};
+use intelligence::OwnedRead;
 use rand::{SeedableRng, rngs::StdRng, seq::SliceRandom};
 pub(crate) use reset::QueueResetPlan;
 use serde::{Deserialize, Serialize};
@@ -52,10 +55,12 @@ pub struct QueueSnapshot {
     /// native persistence, never a public IPC resource or authorization URL.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fm_source: Option<crate::fm::FmSource>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub intelligence: Option<super::intelligence::IntelligenceContext>,
 }
 
 impl QueueSnapshot {
-    fn load(value: Option<&Value>) -> Result<Self> {
+    pub(crate) fn load(value: Option<&Value>) -> Result<Self> {
         let mut state: Self = match value {
             Some(value) => serde_json::from_value(value.clone())?,
             None => Self::default(),
@@ -69,6 +74,7 @@ impl QueueSnapshot {
 
     pub(crate) fn validate(&self) -> Result<()> {
         self.validate_fm_identity()?;
+        self.validate_intelligence_identity()?;
         let ids: HashSet<_> = self.items.iter().map(|i| i.entry_id.as_str()).collect();
         let order: HashSet<_> = self.order.iter().map(String::as_str).collect();
         if ids.contains("")
@@ -84,7 +90,7 @@ impl QueueSnapshot {
         Ok(())
     }
 
-    fn selected(&self) -> Option<QueueEntry> {
+    pub(crate) fn selected(&self) -> Option<QueueEntry> {
         self.items
             .iter()
             .find(|i| Some(&i.entry_id) == self.current.as_ref())
@@ -97,6 +103,9 @@ pub struct PlaybackQueue {
     owner: String,
     state: QueueSnapshot,
     persisted: Option<Value>,
+    intelligence_raw: Option<String>,
+    intelligence: Option<Arc<super::intelligence::IntelligenceSession>>,
+    store_stamp: Option<(i64, i64)>,
     revision: u64,
     rng: StdRng,
 }
@@ -112,16 +121,21 @@ impl PlaybackQueue {
         rng: StdRng,
     ) -> Result<Self> {
         let owner = owner.into();
-        let persisted = match &store {
-            Some(store) => store.get(&owner, "playback", "queue")?,
-            None => None,
-        };
+        let OwnedRead {
+            queue: persisted,
+            session: intelligence_raw,
+            stamp: store_stamp,
+        } = Self::read_owned(store.as_deref(), &owner)?;
         let state = Self::load_current(store.as_deref(), &owner, persisted.as_ref())?;
+        let intelligence = Self::load_intelligence(&state, intelligence_raw.as_deref())?;
         Ok(Self {
             store,
             owner,
             state,
             persisted,
+            intelligence_raw,
+            intelligence,
+            store_stamp,
             revision: 0,
             rng,
         })
@@ -170,76 +184,30 @@ impl PlaybackQueue {
             .ok_or(Error::State("queue revision exhausted"))
     }
 
-    fn commit(&mut self, candidate: QueueSnapshot) -> Result<()> {
-        let release_fm = candidate.fm_source.is_none()
-            && (candidate.items.iter().any(|e| e.source["kind"] != "fm")
-                || (candidate.items.is_empty() && self.is_fm()));
-        self.commit_with_fm_release(candidate, release_fm)
-    }
-
-    fn commit_with_fm_release(&mut self, candidate: QueueSnapshot, release_fm: bool) -> Result<()> {
-        self.commit_with_quality(candidate, release_fm, None)
-    }
-    fn commit_with_quality(
-        &mut self,
-        candidate: QueueSnapshot,
-        release_fm: bool,
-        quality: Option<(&str, &QualityPreferences)>,
-    ) -> Result<()> {
-        candidate.validate()?;
-        if quality.is_some() && self.store.is_none() {
-            return Err(Error::State("quality requires persistent queue"));
-        }
-        let revision = self.next_revision()?;
-        let snapshot = serde_json::to_value(&candidate)?;
-        if let Some(store) = &self.store {
-            let result = store.transaction(|tx| {
-                if tx.get(&self.owner, "playback", "queue")? != self.persisted {
-                    return Err(Error::QueueChanged);
-                }
-                if let Some((expected, preference)) = quality {
-                    QualityPreferences::replace_in(tx, &self.owner, expected, preference)?;
-                }
-                tx.put(&self.owner, "playback", "queue", &snapshot)?;
-                if release_fm {
-                    tx.delete(&self.owner, "playback", FM_BACKUP_QUEUE)?;
-                    tx.delete(&self.owner, "playback", FM_BACKUP_POSITION)?;
-                    tx.delete(&self.owner, "fm-player-v1", "source")?;
-                    tx.delete(&self.owner, "fm-player-v1", "failure")?;
-                }
-                Ok(())
-            });
-            if let Err(error) = result {
-                // No candidate state is published after a failed write. On a
-                // competing edit, expose the newest valid committed queue.
-                if let Ok(raw) = store.get(&self.owner, "playback", "queue")
-                    && let Ok(state) = Self::load_current(Some(store), &self.owner, raw.as_ref())
-                {
-                    self.state = state;
-                    self.persisted = raw;
-                }
-                self.revision = revision;
-                return Err(error);
-            }
-            self.persisted = Some(snapshot);
-        }
-        self.state = candidate;
-        self.revision = revision;
-        Ok(())
-    }
-
     pub fn reload(&mut self) -> Result<bool> {
         let Some(store) = &self.store else {
             return Ok(false);
         };
-        let raw = store.get(&self.owner, "playback", "queue")?;
-        if raw == self.persisted {
+        if Some(store.change_stamp()?) == self.store_stamp {
+            return Ok(false);
+        }
+        let OwnedRead {
+            queue: raw,
+            session: intelligence_raw,
+            stamp: store_stamp,
+        } = Self::read_owned(Some(store), &self.owner)?;
+        if raw == self.persisted && intelligence_raw == self.intelligence_raw {
+            self.store_stamp = store_stamp;
             return Ok(false);
         }
         let state = Self::load_current(Some(store), &self.owner, raw.as_ref())?;
+        let intelligence = Self::load_intelligence(&state, intelligence_raw.as_deref())?;
         let revision = self.next_revision()?;
         self.state = state;
         self.persisted = raw;
+        self.intelligence_raw = intelligence_raw;
+        self.intelligence = intelligence;
+        self.store_stamp = store_stamp;
         self.revision = revision;
         Ok(true)
     }
@@ -262,7 +230,12 @@ impl PlaybackQueue {
         let items = Self::entries(resources, &source);
         let mut order: Vec<_> = items.iter().map(|i| i.entry_id.clone()).collect();
         let current = order.get(index).cloned();
-        if self.state.mode == PlaybackMode::Random {
+        let mode = self
+            .intelligence
+            .as_ref()
+            .filter(|s| s.context.active())
+            .map_or(self.state.mode, |s| s.last_mode);
+        if mode == PlaybackMode::Random {
             order.shuffle(&mut self.rng)
         }
         self.commit_with_fm_release(
@@ -270,8 +243,9 @@ impl PlaybackQueue {
                 items,
                 order,
                 current,
-                mode: self.state.mode,
+                mode,
                 fm_source: None,
+                intelligence: None,
             },
             source["kind"] != "fm",
         )
@@ -307,12 +281,27 @@ impl PlaybackQueue {
         }
         let mut state = self.snapshot();
         state.current = Some(entry_id.into());
+        if let Some(previous) = self
+            .selected()
+            .filter(|e| e.entry_id != entry_id && e.source[super::intelligence::TRANSIENT] == true)
+        {
+            state.items.retain(|e| e.entry_id != previous.entry_id);
+            state.order.retain(|id| *id != previous.entry_id);
+        }
         self.commit(state)?;
         Ok(selected)
     }
 
     pub fn set_mode(&mut self, mode: PlaybackMode) -> Result<()> {
         let mut state = self.snapshot();
+        if state
+            .intelligence
+            .as_ref()
+            .is_some_and(super::intelligence::IntelligenceContext::active)
+        {
+            return Err(Error::State("intelligence mode requires its coordinator"));
+        }
+        state.intelligence = None;
         if mode != state.mode {
             state.mode = mode;
             state.order = state.items.iter().map(|i| i.entry_id.clone()).collect();
@@ -411,6 +400,12 @@ impl PlaybackQueue {
         }
         state.items.retain(|i| !removed.contains(&i.entry_id));
         state.order = remaining;
+        if state.items.is_empty() {
+            state.intelligence = None;
+            if let Some(session) = self.intelligence.as_ref().filter(|s| s.context.active()) {
+                state.mode = session.last_mode;
+            }
+        }
         self.commit(state)
     }
 

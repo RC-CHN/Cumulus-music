@@ -226,7 +226,14 @@ impl Actor {
             return;
         }
         let result = match result {
-            Ok(prepared) => {
+            Ok(mut prepared) => {
+                if prepared.item.entry_id == pending.item.entry_id
+                    && prepared.item.resource == pending.item.resource
+                {
+                    // A coordinator may have restored only source provenance
+                    // during this load. It cannot replace media/authorization.
+                    prepared.item.source = pending.item.source.clone();
+                }
                 if let Err(error) = self.loudness_source(&prepared.source).await {
                     let _ = self.stop(false).await;
                     if let Some(reply) = pending.reply {

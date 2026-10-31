@@ -32,6 +32,17 @@ pub fn project(
         mode: Some(queue.mode.into()),
         eligible_scene: false,
     };
+    if queue
+        .intelligence
+        .as_ref()
+        .is_some_and(crate::playback::intelligence::IntelligenceContext::active)
+        || queue
+            .items
+            .iter()
+            .any(|e| e.source[crate::playback::intelligence::TRANSIENT] == true)
+    {
+        return Ok(frame);
+    }
     let Some(first) = queue.items.first() else {
         return Ok(frame);
     };

@@ -442,6 +442,15 @@ impl MusicClient {
         let current = controller
             .command(&token, PlaybackCommand::Snapshot)
             .await?;
+        if matches!(action, PlayerAction::Mode { .. })
+            && current
+                .intelligence
+                .as_ref()
+                .is_some_and(crate::playback::intelligence::IntelligenceContext::active)
+            && self.focus.snapshot()?.owner != Some(super::focus::Owner::Audio)
+        {
+            return Err(Error::State("resume audio before leaving intelligence"));
+        }
         if let Some(target) = native {
             target.audio(&current)?;
             target

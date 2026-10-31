@@ -30,6 +30,14 @@ impl MusicClient {
         if before.queue_revision != revision || before.fm != fm {
             return Err(Error::QueueChanged);
         }
+        if before
+            .intelligence
+            .as_ref()
+            .is_some_and(crate::playback::intelligence::IntelligenceContext::active)
+            && self.focus.snapshot()?.owner != Some(super::super::focus::Owner::Audio)
+        {
+            return Err(Error::State("resume audio before leaving intelligence"));
+        }
         let state = if fm {
             if !crate::playback::mode::ModeFamily::Fm.supports(mode) {
                 return Err(Error::InvalidInput(
@@ -51,7 +59,12 @@ impl MusicClient {
                     before.fence(),
                 )
                 .await?
-        } else if before.mode == mode {
+        } else if before.mode == mode
+            && !before
+                .intelligence
+                .as_ref()
+                .is_some_and(crate::playback::intelligence::IntelligenceContext::active)
+        {
             before
         } else {
             controller

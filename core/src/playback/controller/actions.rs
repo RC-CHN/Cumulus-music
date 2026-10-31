@@ -97,6 +97,12 @@ impl Actor {
             self.reply(request.reply, Err(Error::QueueChanged));
             return;
         }
+        if let PlaybackCommand::Intelligence(value) = &request.command
+            && value.expected != self.snapshot().fence()
+        {
+            self.reply(request.reply, Err(Error::QueueChanged));
+            return;
+        }
         if !matches!(
             request.command,
             PlaybackCommand::Snapshot
@@ -163,6 +169,10 @@ impl Actor {
             PlaybackCommand::UpdateQueue(value) => {
                 self.update_queue(value).await.map(|value| options = value)
             }
+            PlaybackCommand::Intelligence(value) => self
+                .intelligence(value.action)
+                .await
+                .map(|value| options = value),
             PlaybackCommand::ApplyRemote(value) => {
                 self.apply_remote(value).await.map(|value| options = value)
             }
@@ -191,7 +201,24 @@ impl Actor {
                 .map(|_| options = Some(LoadOptions::default())),
             PlaybackCommand::Remove(ids) => self.queue.remove(&ids),
             PlaybackCommand::Reorder(ids) => self.queue.reorder(&ids),
-            PlaybackCommand::Mode(mode) => self.queue.set_mode(mode),
+            PlaybackCommand::Mode(mode) => {
+                if let Some(context) = self
+                    .queue
+                    .intelligence_context()
+                    .filter(|c| c.active())
+                    .cloned()
+                {
+                    self.intelligence(crate::playback::intelligence::IntelligenceAction::Leave {
+                        session_id: context.id,
+                        mode,
+                        retain_missing_current: false,
+                    })
+                    .await
+                    .map(|value| options = value)
+                } else {
+                    self.queue.set_mode(mode)
+                }
+            }
             PlaybackCommand::PlayFromStart => {
                 if self.state == PlaybackStatus::Paused || self.pending.is_some() {
                     self.pause(false).await

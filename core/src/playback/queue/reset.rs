@@ -56,7 +56,23 @@ impl QueueResetPlan {
             let previous = tx.get(&self.owner, "playback", "queue")?;
             let outcome = if digest(previous.clone())? == self.expected_queue {
                 let current = QueueSnapshot::load(previous.as_ref())?;
-                let mode = if current.fm_source.is_some()
+                let mode = if current
+                    .intelligence
+                    .as_ref()
+                    .is_some_and(crate::playback::intelligence::IntelligenceContext::active)
+                {
+                    let session: crate::playback::intelligence::IntelligenceSession =
+                        serde_json::from_value(
+                            tx.get(
+                                &self.owner,
+                                crate::playback::intelligence::KIND,
+                                crate::playback::intelligence::KEY,
+                            )?
+                            .ok_or(Error::State("missing intelligence session"))?,
+                        )?;
+                    session.validate(&current)?;
+                    session.last_mode
+                } else if current.fm_source.is_some()
                     || current.items.iter().any(|item| item.source["kind"] == "fm")
                 {
                     match tx.get(&self.owner, "playback", FM_BACKUP_QUEUE)? {
@@ -75,6 +91,11 @@ impl QueueResetPlan {
                     "playback",
                     "queue",
                     &serde_json::to_value(empty)?,
+                )?;
+                tx.delete(
+                    &self.owner,
+                    crate::playback::intelligence::KIND,
+                    crate::playback::intelligence::KEY,
                 )?;
                 for key in ["position", FM_BACKUP_QUEUE, FM_BACKUP_POSITION] {
                     tx.delete(&self.owner, "playback", key)?;
@@ -95,5 +116,68 @@ impl QueueResetPlan {
                 &json!(outcome),
             )
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        catalog::intelligence::{IntelligenceRequest, IntelligenceStart},
+        playback::{
+            PlaybackMode, PlaybackQueue,
+            intelligence::{IntelligenceAction, IntelligenceBegin},
+        },
+    };
+    use std::sync::Arc;
+
+    #[test]
+    fn login_policy_clear_restores_the_mode_before_ai_and_removes_its_backup_atomically() {
+        let root = tempfile::tempdir().unwrap();
+        let store = Arc::new(StateStore::open(root.path()).unwrap());
+        let mut queue = PlaybackQueue::new(Some(store.clone()), "9").unwrap();
+        queue
+            .replace(
+                vec![json!({"id":7}), json!({"id":8})],
+                0,
+                json!({"kind":"playlist","id":"31"}),
+            )
+            .unwrap();
+        queue.set_mode(PlaybackMode::Random).unwrap();
+        let liked = queue.snapshot();
+        queue
+            .intelligence_transition(IntelligenceAction::Begin(Box::new(IntelligenceBegin {
+                request: IntelligenceRequest {
+                    playlist_id: "31".into(),
+                    song_id: "7".into(),
+                    start_music_id: "7".into(),
+                    start: IntelligenceStart::PlayAll,
+                    count: 2,
+                },
+                seed_resource: json!({"id":7}),
+                seed_source: json!({"kind":"playlist","id":"31"}),
+                liked,
+                preserve_current_queue: true,
+            })))
+            .unwrap();
+        assert_eq!(queue.mode(), PlaybackMode::OrderLoop);
+        let plan = QueueResetPlan::capture(&store, "9").unwrap();
+        plan.apply(&store).unwrap();
+        assert!(queue.reload().unwrap());
+        assert!(queue.is_empty());
+        assert_eq!(queue.mode(), PlaybackMode::Random);
+        assert!(queue.intelligence_context().is_none());
+        assert!(
+            store
+                .get(
+                    "9",
+                    crate::playback::intelligence::KIND,
+                    crate::playback::intelligence::KEY
+                )
+                .unwrap()
+                .is_none()
+        );
+        plan.apply(&store).unwrap();
+        assert!(!queue.reload().unwrap());
     }
 }

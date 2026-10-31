@@ -166,6 +166,7 @@ impl Actor {
             startup_pending: self.startup_pending,
             startup_autoplay: self.startup_autoplay,
             fm: self.queue.is_fm(),
+            intelligence: self.queue.intelligence_context().cloned(),
             equalizer: self.equalizer,
             loudness: self.loudness.clone(),
             revision: self.revision,

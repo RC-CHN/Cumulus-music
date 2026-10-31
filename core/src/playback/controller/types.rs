@@ -36,6 +36,7 @@ pub struct PlaybackSnapshot {
     pub startup_pending: bool,
     pub startup_autoplay: bool,
     pub fm: bool,
+    pub intelligence: Option<crate::playback::intelligence::IntelligenceContext>,
     pub equalizer: crate::effects::equalizer::EqualizerSnapshot,
     pub loudness: crate::effects::loudness::LoudnessSnapshot,
     pub revision: u64,
@@ -101,6 +102,13 @@ pub struct QueueUpdate {
     pub queue: QueueSnapshot,
     pub transport: Option<QueueTransport>,
 }
+/// Native callers must hold media ownership before an action that can start a
+/// seed or select the first restored track. Recommendation completion does not
+/// take ownership from later pause/stop/selection intents.
+pub struct IntelligenceUpdate {
+    pub expected: PlaybackFence,
+    pub action: crate::playback::intelligence::IntelligenceAction,
+}
 /// One native initialization per account binding. The first binding alone may
 /// autoplay; the host must also hold audio media ownership before permitting it.
 pub struct StartupRestore {
@@ -127,6 +135,7 @@ pub enum PlaybackCommand {
     RepairLoudness,
     RepairQuality,
     UpdateQueue(QueueUpdate),
+    Intelligence(IntelligenceUpdate),
     ApplyRemote(RemotePlayback),
     Replace {
         resources: Vec<Value>,

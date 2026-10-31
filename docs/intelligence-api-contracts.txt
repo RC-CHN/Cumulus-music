@@ -68,3 +68,8 @@ account/get、user/playlist、playlist/detail、song/detail及intelligence/list�
 - 心动按钮、五态循环资格、会员引导与实际桌面播放验证。
 只读报告明确seedPlayableVerified/coordinatorVerified/uiStartVerified=false。
 完整目标、MV网格历史CI漏项、其余页面一致性与Windows实机验证继续。
+
+2026-10-31 后续原生队列/状态实现
+playback/intelligence及PlaybackController已实现原生种子/插入/回退/退出和持久化，
+并有独立官方队列向量；详细范围、适配及尚未完成的正式账号/UI链路见
+intelligence-playback-contracts.txt。上述历史只读报告仍不作为心动播放通过证明。
