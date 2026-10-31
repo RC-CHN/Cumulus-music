@@ -121,7 +121,11 @@ impl Actor {
             self.control_revision = revision;
         }
         if let PlaybackCommand::Quality(level) = request.command {
-            self.quality(request.id, level, request.reply);
+            self.quality(request.id, level, None, request.reply);
+            return;
+        }
+        if let PlaybackCommand::TrialQuality { right, operation } = request.command {
+            self.trial_quality(request.id, right, operation, request.reply);
             return;
         }
         let mut options = None;
@@ -287,6 +291,7 @@ impl Actor {
             }
             PlaybackCommand::Snapshot | PlaybackCommand::SyncQueue => Ok(()),
             PlaybackCommand::Quality(_)
+            | PlaybackCommand::TrialQuality { .. }
             | PlaybackCommand::Queue
             | PlaybackCommand::SkipStartup(_) => unreachable!("handled above"),
         };

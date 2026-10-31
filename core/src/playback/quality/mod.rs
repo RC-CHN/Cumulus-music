@@ -3,6 +3,7 @@
 mod api;
 mod policy;
 mod read;
+pub mod trials;
 pub use api::{QualityApi, QualityFormat, QualityRight, QualitySizes, QualityUseRight, TrialPhase};
 pub use policy::{
     QualityAccess, QualityAvailability, QualityExperiments, QualityPolicy, QualityPrivilege,

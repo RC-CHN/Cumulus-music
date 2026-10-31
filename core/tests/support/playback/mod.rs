@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 use std::{
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering},
     },
     time::Duration,
 };
@@ -35,12 +35,25 @@ pub struct Backend {
     pub hold: AtomicU64,
     pub deny_lossless: AtomicBool,
     pub trial: AtomicBool,
+    pub quality_use_state: AtomicU8,
+    pub quality_read_failed: AtomicBool,
+    pub quality_reads: AtomicU64,
     pub started: Notify,
     pub release: Notify,
 }
 impl Api for Backend {
     fn request<'a>(&'a self, path: &'a str, payload: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if path == "/api/vipauth/app/auth/query" {
+                self.quality_reads.fetch_add(1, Ordering::SeqCst);
+                if self.quality_read_failed.load(Ordering::SeqCst) {
+                    return Err(Error::State("synthetic quality read failure"));
+                }
+                let state = self.quality_use_state.load(Ordering::SeqCst);
+                return Ok(
+                    json!({"code":200,"data":[{"resourceId":0,"resourceType":payload["resourceTypeList"],"canUse":state!=2,"userSrc":0,"trialStatus":if state==1 {2}else{1},"leftTime":1000}]}),
+                );
+            }
             assert_eq!(path, "/api/song/enhance/player/url/v1");
             let ids: Vec<Value> = serde_json::from_str(payload["ids"].as_str().unwrap()).unwrap();
             let id = ids[0]
@@ -277,10 +290,20 @@ pub struct Fixture {
 }
 impl Fixture {
     pub fn new() -> Self {
+        Self::with_store(false)
+    }
+    #[allow(dead_code)]
+    pub fn persistent() -> Self {
+        Self::with_store(true)
+    }
+    fn with_store(persistent: bool) -> Self {
         let temp = tempfile::tempdir().unwrap();
         let store = Arc::new(StateStore::open(temp.path()).unwrap());
         let api = Arc::new(Backend::default());
-        let session = Arc::new(AccountSession::new(api.clone(), None));
+        let session = Arc::new(AccountSession::new(
+            api.clone(),
+            persistent.then(|| store.clone()),
+        ));
         session
             .adopt(api.clone(), json!({"userId":9}), &session.token().unwrap())
             .unwrap();

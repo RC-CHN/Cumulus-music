@@ -60,6 +60,7 @@ pub struct PlaybackController {
     view: watch::Receiver<PlaybackSnapshot>,
     shutdown: Arc<AtomicBool>,
     relay: Option<Arc<crate::relay::publisher::player::Runtime>>,
+    quality_trials: tokio::task::JoinHandle<()>,
 }
 impl PlaybackController {
     pub fn start(
@@ -100,7 +101,7 @@ impl PlaybackController {
             shutdown.clone(),
         )?;
         let relay = if relay_enabled {
-            let runtime = crate::relay::publisher::player::Runtime::start(session)?;
+            let runtime = crate::relay::publisher::player::Runtime::start(session.clone())?;
             actor.relay = Some(crate::relay::publisher::player::Observer::new(
                 runtime.clone(),
                 actor.token.clone(),
@@ -112,11 +113,13 @@ impl PlaybackController {
         };
         let (publisher, view) = watch::channel(actor.snapshot());
         tokio::spawn(actor.run(receiver, publisher));
+        let quality_trials = crate::playback::quality::trials::monitor::spawn(session);
         Ok(Self {
             sender,
             view,
             shutdown,
             relay,
+            quality_trials,
         })
     }
     pub fn relay_runtime(&self) -> Option<&Arc<crate::relay::publisher::player::Runtime>> {
@@ -199,6 +202,7 @@ impl PlaybackController {
 }
 impl Drop for PlaybackController {
     fn drop(&mut self) {
+        self.quality_trials.abort();
         self.shutdown.store(true, Ordering::Release);
         let _ = self.sender.send(Message::Shutdown);
     }

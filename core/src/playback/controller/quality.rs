@@ -3,7 +3,9 @@ use crate::{
     Error, Result,
     account::SessionToken,
     playback::{
-        quality_preferences::{QualityPreferences, QualityPreferencesSnapshot},
+        quality_preferences::{
+            QualityPreferences, QualityPreferencesSnapshot, QualityTrialBinding,
+        },
         source::ResolvedSource,
     },
 };
@@ -30,6 +32,7 @@ pub(super) struct QualityReady {
     pub resource: Value,
     pub preference_revision: String,
     pub save_preference: bool,
+    pub trial: Option<QualityTrialBinding>,
     pub result: Result<Arc<ResolvedSource>>,
     pub reply: Response,
 }
@@ -69,7 +72,49 @@ impl Actor {
             resource[STAMP] = preferences.preferences.revision.clone().into();
         }
     }
-    pub fn quality(&mut self, id: String, level: crate::membership::Quality, reply: Response) {
+    pub fn trial_quality(
+        &mut self,
+        id: String,
+        right: crate::playback::quality::QualityRight,
+        operation: String,
+        reply: Response,
+    ) {
+        let verified = crate::playback::quality::trials::QualityTrials::new(self.session.clone())
+            .and_then(|trials| trials.record_for(&self.token, right))
+            .is_ok_and(|record| record.is_some_and(|r| r.operation == operation && r.can_use()));
+        if !verified
+            || !self
+                .queue
+                .selected()
+                .is_some_and(|s| song_resource(&s.resource))
+        {
+            self.reply(reply, Err(Error::State("quality trial is not active")));
+            return;
+        }
+        let previous = self
+            .quality_preferences
+            .preferences
+            .trial
+            .as_ref()
+            .map_or(self.quality_preferences.preferences.quality, |t| t.previous);
+        self.quality(
+            id,
+            right.quality(),
+            Some(QualityTrialBinding {
+                operation,
+                right,
+                previous,
+            }),
+            reply,
+        );
+    }
+    pub fn quality(
+        &mut self,
+        id: String,
+        level: crate::membership::Quality,
+        trial: Option<QualityTrialBinding>,
+        reply: Response,
+    ) {
         let Some(selected) = self.queue.selected() else {
             self.reply(reply, Err(Error::State("queue is empty")));
             return;
@@ -106,6 +151,7 @@ impl Actor {
                 resource,
                 preference_revision,
                 save_preference,
+                trial,
                 result,
                 reply,
             }));
@@ -143,7 +189,10 @@ impl Actor {
                     return;
                 }
             };
-            let preference = QualityPreferences::fresh(level);
+            let preference = match ready.trial {
+                Some(trial) => QualityPreferences::fresh_trial(level, trial),
+                None => QualityPreferences::fresh(level),
+            };
             ready.resource[STAMP] = preference.revision.clone().into();
             let committed = self.session.with_local_owner(&self.token, |_| {
                 self.queue.update_resource_with_quality(

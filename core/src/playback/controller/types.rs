@@ -157,6 +157,12 @@ pub enum PlaybackCommand {
     Restore,
     RefreshSource,
     Quality(Quality),
+    /// Native trial provenance; the actor derives the fallback from its own
+    /// preference and verifies the durable active journal at commit time.
+    TrialQuality {
+        right: crate::playback::quality::QualityRight,
+        operation: String,
+    },
     SyncQueue,
     Snapshot,
     Queue,
