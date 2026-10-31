@@ -160,6 +160,7 @@ impl MusicClient {
                             order,
                             current,
                             mode,
+                            fm_source: None,
                         },
                         transport: Some(QueueTransport {
                             position: Some(plan.position_ms as f64 / 1000.0),

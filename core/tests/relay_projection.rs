@@ -23,6 +23,7 @@ fn queue(ids: &[u64]) -> QueueSnapshot {
         current: items.first().map(|i| i.entry_id.clone()),
         items,
         mode: PlaybackMode::OrderLoop,
+        fm_source: None,
     }
 }
 fn frame(ids: &[u64]) -> PublicationFrame {

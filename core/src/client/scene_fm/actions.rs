@@ -166,6 +166,7 @@ impl MusicClient {
                             order,
                             current,
                             mode: before.mode,
+                            fm_source: None,
                         },
                         transport: Some(QueueTransport {
                             position: None,

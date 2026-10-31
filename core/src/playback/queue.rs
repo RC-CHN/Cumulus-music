@@ -1,5 +1,6 @@
 //! Persistent queue semantics from playing/dbPlayingList. Entry identity is
 //! distinct from song identity; the on-disk representation is ours.
+mod fm_identity;
 mod reset;
 use super::quality_preferences::QualityPreferences;
 use crate::{Error, Result, storage::StateStore};
@@ -47,6 +48,10 @@ pub struct QueueSnapshot {
     pub order: Vec<String>,
     pub current: Option<String>,
     pub mode: PlaybackMode,
+    /// Coordinator identity survives an empty recommendation batch. This is
+    /// native persistence, never a public IPC resource or authorization URL.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fm_source: Option<crate::fm::FmSource>,
 }
 
 impl QueueSnapshot {
@@ -63,6 +68,7 @@ impl QueueSnapshot {
     }
 
     pub(crate) fn validate(&self) -> Result<()> {
+        self.validate_fm_identity()?;
         let ids: HashSet<_> = self.items.iter().map(|i| i.entry_id.as_str()).collect();
         let order: HashSet<_> = self.order.iter().map(String::as_str).collect();
         if ids.contains("")
@@ -110,7 +116,7 @@ impl PlaybackQueue {
             Some(store) => store.get(&owner, "playback", "queue")?,
             None => None,
         };
-        let state = QueueSnapshot::load(persisted.as_ref())?;
+        let state = Self::load_current(store.as_deref(), &owner, persisted.as_ref())?;
         Ok(Self {
             store,
             owner,
@@ -141,7 +147,9 @@ impl PlaybackQueue {
         self.state.items.is_empty()
     }
     pub fn is_fm(&self) -> bool {
-        !self.state.items.is_empty() && self.state.items.iter().all(|e| e.source["kind"] == "fm")
+        self.state.fm_source.is_some()
+            || (!self.state.items.is_empty()
+                && self.state.items.iter().all(|e| e.source["kind"] == "fm"))
     }
     pub fn mode(&self) -> PlaybackMode {
         self.state.mode
@@ -163,7 +171,9 @@ impl PlaybackQueue {
     }
 
     fn commit(&mut self, candidate: QueueSnapshot) -> Result<()> {
-        let release_fm = candidate.items.iter().any(|e| e.source["kind"] != "fm");
+        let release_fm = candidate.fm_source.is_none()
+            && (candidate.items.iter().any(|e| e.source["kind"] != "fm")
+                || (candidate.items.is_empty() && self.is_fm()));
         self.commit_with_fm_release(candidate, release_fm)
     }
 
@@ -203,7 +213,7 @@ impl PlaybackQueue {
                 // No candidate state is published after a failed write. On a
                 // competing edit, expose the newest valid committed queue.
                 if let Ok(raw) = store.get(&self.owner, "playback", "queue")
-                    && let Ok(state) = QueueSnapshot::load(raw.as_ref())
+                    && let Ok(state) = Self::load_current(Some(store), &self.owner, raw.as_ref())
                 {
                     self.state = state;
                     self.persisted = raw;
@@ -226,7 +236,7 @@ impl PlaybackQueue {
         if raw == self.persisted {
             return Ok(false);
         }
-        let state = QueueSnapshot::load(raw.as_ref())?;
+        let state = Self::load_current(Some(store), &self.owner, raw.as_ref())?;
         let revision = self.next_revision()?;
         self.state = state;
         self.persisted = raw;
@@ -261,6 +271,7 @@ impl PlaybackQueue {
                 order,
                 current,
                 mode: self.state.mode,
+                fm_source: None,
             },
             source["kind"] != "fm",
         )

@@ -56,7 +56,9 @@ impl QueueResetPlan {
             let previous = tx.get(&self.owner, "playback", "queue")?;
             let outcome = if digest(previous.clone())? == self.expected_queue {
                 let current = QueueSnapshot::load(previous.as_ref())?;
-                let mode = if current.items.iter().any(|item| item.source["kind"] == "fm") {
+                let mode = if current.fm_source.is_some()
+                    || current.items.iter().any(|item| item.source["kind"] == "fm")
+                {
                     match tx.get(&self.owner, "playback", FM_BACKUP_QUEUE)? {
                         Some(backup) => QueueSnapshot::load(Some(&backup))?.mode,
                         None => current.mode,

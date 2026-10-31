@@ -210,7 +210,10 @@ impl FmPlayer {
 }
 pub fn source(queue: &QueueSnapshot) -> Result<Option<FmSource>> {
     let Some(first) = queue.items.first() else {
-        return Ok(None);
+        if let Some(source) = &queue.fm_source {
+            source.validate()?;
+        }
+        return Ok(queue.fm_source.clone());
     };
     if first.source["kind"] != "fm" {
         return Ok(None);
@@ -220,6 +223,13 @@ pub fn source(queue: &QueueSnapshot) -> Result<Option<FmSource>> {
     }
     let source: FmSource = serde_json::from_value(first.source["source"].clone())?;
     source.validate()?;
+    if queue
+        .fm_source
+        .as_ref()
+        .is_some_and(|saved| *saved != source)
+    {
+        return Err(Error::State("mixed FM queue sources"));
+    }
     Ok(Some(source))
 }
 fn projection(queue: &FmQueue, quality: &str) -> Result<QueueSnapshot> {
@@ -243,10 +253,12 @@ fn projection(queue: &FmQueue, quality: &str) -> Result<QueueSnapshot> {
         } else {
             PlaybackMode::Sequential
         },
+        fm_source: Some(queue.source.clone()),
     })
 }
 fn matches_entries(desired: &FmQueue, actual: &QueueSnapshot) -> bool {
-    actual.current == desired.current().map(|t| t.entry_id.clone())
+    source(actual).ok().flatten().as_ref() == Some(&desired.source)
+        && actual.current == desired.current().map(|t| t.entry_id.clone())
         && actual.order
             == desired
                 .tracks

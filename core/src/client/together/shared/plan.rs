@@ -156,6 +156,7 @@ pub(super) fn build(
                 SharedMode::SingleLoop => PlaybackMode::SingleLoop,
                 SharedMode::OrderLoop => PlaybackMode::OrderLoop,
             },
+            fm_source: None,
         },
         transport,
     })

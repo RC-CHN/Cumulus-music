@@ -2516,3 +2516,27 @@ speed-menu-focus-before，未忽略左右焦点框采样失败。额外键盘32�
   在原4秒上限内重新取得本地票据；其它错误不重试，也不重放未知远端写入。
   失败断言现在输出真实错误。未放宽为任意失败通过，未改产品策略/自动重试。
 - 本机client_together的26项及完整严格Clippy通过；Windows结果须以修复提交CI为准。
+
+2026-10-31 空FM与普通播放身份、按钮及返回专项
+- 修改前empty-fm-before用例明确失败：领域已active而主播放条fm=false。修复原生
+  队列所有者的持久化及空队列退出事务，前端沿用已确认的FM身份；没有添加假推荐。
+- empty-fm-ui-final使用production构建前端、真实WebView/IPC/Rust/SQLite/libmpv，
+  首次13态、重开5态，共18张原图；1120×760/760×540、浅深色下，空态/禁用控制/
+  模式标签/可点击返回、领域repeat落盘失败及重试、焦点都逐项读取DOM与原生快照。
+- empty-fm-kde-final在本机KDE Wayland的XWayland窗口重复全部18态，所有帧visible/
+  focused、ratio1.25，只取自身PID合成账号窗口的compositor pixmap，未截其他应用。
+  每次重新获取推荐有实际合成后端read增量，skipWrites/真实请求/真实账号写入均为0。
+  两组共36图；native报告明确空FM为idle、无track/playId/position、queueLen0，
+  模式切换不会播放空资源。重开保留single_loop；返回普通队列还原歌曲2/随机/暂停10秒。
+- 空态主按钮原“继续播放”与实际重新取推荐动作不符，已改为“重新获取推荐”；可读
+  副文案同步。页面探索/其他FM来源、迷你手动模式与官方像素一致不属于本次通过范围。
+- empty-fm-mode-regression的原普通/FM首次45态+重开3态通过，无新增截图数冒计。
+  最终cumulus程序及ux_ui_probe重建成功；empty-fm-embedded-final不使用外部前端
+  目录，以新程序内嵌的production前端再次通过空FM首次13态/重开5态。
+  empty-fm-ui-1因采集器继承Wayland而无法读取Xvfb根窗口失败；显式让本地采集进程
+  使用GDK_BACKEND=x11后可采集。ui-2是文案调整前16图，仅作中间证据，不混入最终36图。
+- Rust完整workspace267个结果target/1272项、0失败/忽略，严格Clippy/格式通过；
+  前端锁文件安装、格式、367项测试、production类型/构建通过；CI工具36项通过。
+  新增playback_fm_identity三项，client_fm另覆盖过时普通票据/非法模式/新actor重开，
+  原官方队列冻结序列和其余FM领域/播放器测试保持通过。最终日志在.build/empty-fm-*。
+  单元/合成null音频不证明声卡听感或物理刷新率，Windows结果仍待精确提交完整CI。

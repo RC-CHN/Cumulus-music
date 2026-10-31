@@ -62,10 +62,12 @@ async function selectCard(card: FmCard, autoplay: boolean) {
 const current = computed(() => view.value?.items.find((i) => i.entryId === view.value?.current));
 const pending = computed(() => busy.value || props.player.busy.value || !props.player.ready.value);
 // Empty recommendations can still own the saved ordinary queue and its return
-// action. Only transport controls additionally require an actual FM projection.
+// action. Transport controls additionally require the matching FM projection
+// and a current item; an empty FM projection still owns its repeat policy.
 const active = computed(() => !!view.value?.active);
 const transportActive = computed(() => active.value && props.player.view.value?.fm === true);
 const playing = computed(() => transportActive.value && props.player.playing.value);
+const emptyActive = computed(() => active.value && !current.value);
 const modePending = computed(() => active.value && !!view.value?.modePending);
 const dialog = ref<HTMLDialogElement>();
 const target = ref<{ entryId: string; name: string }>();
@@ -186,18 +188,20 @@ function resume() {
         <div class="fm-copy">
           <span class="fm-label">{{ model.title.value }} · 无限发现好音乐</span>
           <h2>{{ current?.track.name ?? '暂时没有可播放的推荐' }}</h2>
-          <p>{{ current?.track.artists.join(' / ') || '重新加载，发现更多音乐' }}</p>
+          <p>{{ current?.track.artists.join(' / ') || '重新获取推荐，发现更多音乐' }}</p>
           <p class="fm-album">{{ current?.track.album }}</p>
           <div class="fm-actions">
             <button class="primary" :disabled="pending" @click="play">
-              <Icon :name="modePending ? 'repeat' : playing ? 'pause' : 'play'" />{{
+              <Icon :name="modePending || emptyActive ? 'repeat' : playing ? 'pause' : 'play'" />{{
                 modePending
                   ? '同步并继续播放'
                   : playing
                     ? '暂停漫游'
-                    : active
-                      ? '继续播放'
-                      : '开始漫游'
+                    : emptyActive
+                      ? '重新获取推荐'
+                      : active
+                        ? '继续播放'
+                        : '开始漫游'
               }}
             </button>
             <button

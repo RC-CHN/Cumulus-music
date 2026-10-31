@@ -13,7 +13,9 @@ fn backend() -> &'static fm_domain::Backend {
     static BACKEND: OnceLock<fm_domain::Backend> = OnceLock::new();
     BACKEND.get_or_init(|| {
         let backend = fm_domain::Backend::default();
-        backend.batch(&(101..=140).collect::<Vec<_>>());
+        if std::env::var_os("CUMULUS_EMPTY_FM_UI_PROOF").is_none() {
+            backend.batch(&(101..=140).collect::<Vec<_>>());
+        }
         backend
     })
 }

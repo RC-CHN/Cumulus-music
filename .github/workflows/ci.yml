@@ -167,6 +167,7 @@ jobs:
           cargo build -p cumulus-desktop --example ux_ui_probe --features custom-protocol --locked
           xvfb-run -a dbus-run-session -- python3 scripts/ci/ux_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-ux-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mode_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-mode-ui-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mode_ui_smoke.py --empty-fm --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-empty-fm-ui-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/download_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-layout-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/download_page_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-page-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/download_page_smoke.py --table --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-table-linux
@@ -254,6 +255,7 @@ jobs:
           cargo build -p cumulus-desktop --example ux_ui_probe --features custom-protocol --locked
           python scripts/ci/ux_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-ux-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/mode_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-mode-ui-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/mode_ui_smoke.py --empty-fm --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-empty-fm-ui-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/download_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-download-layout-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/download_page_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-download-page-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/download_page_smoke.py --table --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-download-table-windows --runtime .build/package-stage/windows-x64/native

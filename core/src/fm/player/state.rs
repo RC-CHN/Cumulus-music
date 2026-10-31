@@ -8,8 +8,9 @@ impl Inner {
         queue: &QueueSnapshot,
     ) -> Result<Option<FmSource>> {
         self.session.with_token(token, |uid| {
-            if !queue.items.is_empty() {
-                return source(queue);
+            let actual = source(queue)?;
+            if !queue.items.is_empty() || actual.is_some() {
+                return Ok(actual);
             }
             let saved = self
                 .store

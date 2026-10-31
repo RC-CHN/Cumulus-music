@@ -306,7 +306,7 @@ async fn fm_and_together_do_not_enter_each_others_queue_and_stale_account_does_n
 
 #[tokio::test]
 async fn empty_recommendations_keep_leave_and_together_guards_until_explicit_exit() {
-    let (_dir, api, _session, client) = fixture();
+    let (dir, api, session, client) = fixture();
     let empty = client
         .fm_command(
             "1",
@@ -319,6 +319,70 @@ async fn empty_recommendations_keep_leave_and_together_guards_until_explicit_exi
         .unwrap();
     assert!(empty.value.active);
     assert!(empty.value.items.is_empty());
+    let player = client.subscribe_playback("1").await.unwrap();
+    assert!(
+        player.current().unwrap().fm,
+        "empty FM keeps its mode policy"
+    );
+    let before = player.current().unwrap();
+    assert!(client.player_queue("1").await.unwrap().fm);
+    assert!(matches!(
+        client
+            .player_action(
+                "1",
+                PlayerAction::ModeFor {
+                    mode: PlaybackMode::Random,
+                    expected_queue_revision: before.queue_revision.clone(),
+                    fm: true,
+                }
+            )
+            .await,
+        Err(Error::InvalidInput(
+            "FM only supports infinite or single repeat"
+        ))
+    ));
+    let repeated = client
+        .player_action(
+            "1",
+            PlayerAction::ModeFor {
+                mode: PlaybackMode::SingleLoop,
+                expected_queue_revision: before.queue_revision.clone(),
+                fm: true,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(repeated.fm);
+    assert_eq!(repeated.mode, PlaybackMode::SingleLoop);
+    assert!(repeated.play_id.is_none());
+    assert!(matches!(
+        client
+            .player_action(
+                "1",
+                PlayerAction::ModeFor {
+                    mode: PlaybackMode::Random,
+                    expected_queue_revision: repeated.queue_revision,
+                    fm: false,
+                }
+            )
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    drop(player);
+    drop(client);
+    let client = MusicClient::with_session(
+        session,
+        ProfileRegistry::open(dir.path(), ApiOrigin::Pc).unwrap(),
+    )
+    .with_audio_factory(|| Ok(engine::audio_engine(Arc::new(engine::Device::default()))));
+    let player = client.subscribe_playback("1").await.unwrap();
+    let reopened = player.current().unwrap();
+    assert!(
+        reopened.fm,
+        "empty ownership must survive a fresh native actor"
+    );
+    assert_eq!(reopened.mode, PlaybackMode::SingleLoop);
+    assert!(reopened.track.is_none());
     assert!(matches!(
         client.together_command("1", TogetherCommand::Create).await,
         Err(Error::State("leave FM before entering together"))
@@ -333,6 +397,8 @@ async fn empty_recommendations_keep_leave_and_together_guards_until_explicit_exi
         .await
         .unwrap();
     assert!(!left.value.active);
+    assert!(!player.current().unwrap().fm);
+    assert!(!client.player_queue("1").await.unwrap().fm);
     assert_eq!(api.count("/api/v1/radio/skip"), 0);
 }
 
