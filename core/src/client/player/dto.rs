@@ -27,6 +27,7 @@ pub struct PlayerView {
     pub requested_quality: Option<String>,
     pub actual_quality: Option<String>,
     pub volume: f64,
+    pub unmute_volume: f64,
     pub speed: f64,
     pub mode: PlaybackMode,
     pub queue_len: usize,

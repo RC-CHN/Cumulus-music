@@ -214,6 +214,7 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
         requested_quality: value.requested_quality.clone(),
         actual_quality: value.actual_quality.clone(),
         volume: value.volume,
+        unmute_volume: value.unmute_volume,
         speed: value.speed,
         mode: value.mode,
         queue_len: value.queue_len,

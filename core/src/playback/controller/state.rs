@@ -150,6 +150,9 @@ impl Actor {
             .unwrap_or_default();
         if !value.volume.is_finite()
             || !(0.0..=100.0).contains(&value.volume)
+            || !value.unmute_volume.is_finite()
+            || !(0.0..=100.0).contains(&value.unmute_volume)
+            || value.unmute_volume == 0.0
             || !value.speed.is_finite()
             || !(0.25..=4.0).contains(&value.speed)
         {
@@ -194,6 +197,7 @@ impl Actor {
             position: self.position,
             timeline: self.loaded.as_ref().map(|l| l.timeline.snapshot()),
             volume: self.prefs.volume,
+            unmute_volume: self.prefs.unmute_volume,
             speed: self.prefs.speed,
             mode: self.queue.mode(),
             queue_len: self.queue.len(),

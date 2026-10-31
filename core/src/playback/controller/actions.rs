@@ -384,6 +384,13 @@ impl Actor {
         let mut next = before;
         if volume {
             next.volume = value;
+            // Keep restoration native and durable for UI, media keys and MPRIS.
+            // Old zero-volume preferences without a saved value restore to 10%.
+            if value > 0.0 {
+                next.unmute_volume = value;
+            } else if before.volume > 0.0 {
+                next.unmute_volume = before.volume;
+            }
         } else {
             next.speed = value;
         }

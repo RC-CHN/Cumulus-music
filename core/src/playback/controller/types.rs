@@ -58,6 +58,7 @@ pub struct PlaybackSnapshot {
     pub requested_quality: Option<String>,
     pub actual_quality: Option<String>,
     pub volume: f64,
+    pub unmute_volume: f64,
     pub speed: f64,
     pub mode: PlaybackMode,
     pub queue_len: usize,
@@ -174,12 +175,18 @@ pub(super) struct Reply {
 #[derive(Clone, Copy, Serialize, Deserialize)]
 pub(super) struct Preferences {
     pub volume: f64,
+    #[serde(default = "default_unmute_volume")]
+    pub unmute_volume: f64,
     pub speed: f64,
+}
+fn default_unmute_volume() -> f64 {
+    10.0
 }
 impl Default for Preferences {
     fn default() -> Self {
         Self {
             volume: 100.0,
+            unmute_volume: default_unmute_volume(),
             speed: 1.0,
         }
     }
