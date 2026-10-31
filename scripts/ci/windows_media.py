@@ -73,6 +73,22 @@ def write_json(path, value):
     path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
 
 
+def native_pcm_report(stdout, destination, stderr):
+    """Keep the full response even when exit=0 has no valid verification report."""
+    destination.write_text(stdout, encoding='utf-8', newline='')
+    try:
+        report = json.loads(stdout)
+        assert isinstance(report, dict) and report.get('ok') is True
+        assert type(report.get('remote_requests')) is int and report['remote_requests'] == 0
+    except (ValueError, AssertionError):
+        print('Native PCM verifier produced no valid success report; exit=0 is insufficient.', flush=True)
+        print(f'Captured stdout: {stdout[:4000]!r}', flush=True)
+        if stderr.exists():
+            print(stderr.read_text(encoding='utf-8', errors='replace')[-16000:], flush=True)
+        raise
+    return report
+
+
 def prepare(msys):
     BUILD.mkdir(parents=True, exist_ok=True)
     lock = json.loads((HERE / 'windows_media.lock.json').read_text(encoding='utf-8'))
@@ -185,12 +201,15 @@ def install(msys):
             result = subprocess.run([str(probe), str(plugin.resolve()), str(BUILD / 'equalizer-proof')],
                                     stdout=subprocess.PIPE, stderr=log, env=env, check=True,
                                     text=True, encoding='utf-8', timeout=60)
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+            captured = error.stdout or ''
+            if isinstance(captured, bytes):
+                captured = captured.decode('utf-8', errors='replace')
+            (BUILD / 'player-probe.stdout.log').write_text(captured, encoding='utf-8', newline='')
             log.flush()
             print((BUILD / 'player-probe.log').read_text(encoding='utf-8', errors='replace')[-16000:], flush=True)
             raise
-    pcm = json.loads(result.stdout)
-    assert pcm['ok'] and pcm['remote_requests'] == 0
+    pcm = native_pcm_report(result.stdout, BUILD / 'player-probe.stdout.log', BUILD / 'player-probe.log')
     write_json(BUILD / 'player-probe.json', pcm)
     libraries = {p.name: sha256(p) for p in sorted(binary.glob('*.dll'))
                  if p.name.startswith(('avcodec-', 'avdevice-', 'avfilter-', 'avformat-', 'avutil-', 'swresample-', 'swscale-'))}

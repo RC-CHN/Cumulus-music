@@ -12,12 +12,13 @@ PATTERNS = (
     'package-stage/*/equalizer-proof',
     'ci-login*', 'ci-native-audio*', 'ci-engine-roundtrip*.log', 'ci-equalizer-roundtrip*.log',
     'windows-media/build.log', 'windows-media/plan.json', 'windows-media/installed.json',
-    'windows-media/player-probe.log', 'windows-media/player-probe.json', 'windows-media/equalizer-proof',
+    'windows-media/player-probe.log', 'windows-media/player-probe.stdout.log', 'windows-media/player-probe.json', 'windows-media/equalizer-proof',
     'ci-scroll*', 'ci-graphics*', 'ci-ux*', 'ci-motion*', 'ci-accounts*',
     'ci-startup*', 'ci-output-settings*', 'ci-tray*', 'ci-mpris*', 'ci-catalog*', 'ci-likes*', 'ci-keyboard*',
     'ci-collections*', 'ci-history*', 'ci-settings*', 'ci-relay*',
     'ci-download-*', 'ci-playlist-*', 'ci-song-menu*', 'ci-search*',
-    'ci-playback-speed*', 'ci-shortcuts*', 'ci-system-media*', 'ci-mini*', 'ci-desktop-lyrics*', 'ci-fonts*',
+    'ci-playback-speed*', 'ci-playback-quality*', 'ci-quality-trial-native*', 'ci-quality-rights-ui*',
+    'ci-shortcuts*', 'ci-system-media*', 'ci-mini*', 'ci-desktop-lyrics*', 'ci-fonts*',
 )
 
 

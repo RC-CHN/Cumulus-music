@@ -47,7 +47,9 @@ def main():
     assert complete['realMusicRequests'] == complete['downloadsStarted'] == complete['accountWrites'] == 0
     with sqlite3.connect((root / 'state/core.sqlite3').as_uri() + '?mode=ro', uri=True) as db:
         directory = json.loads(db.execute("SELECT value FROM state WHERE owner='2' AND kind='download_directory_v1' AND key='settings'").fetchone()[0])
-        assert Path(directory['root']) == root / 'downloads', 'cancelled directory change was persisted'
+        # Rust canonicalize retains Windows' extended-length prefix. Compare
+        # the directory identity rather than two spellings of the same path.
+        assert Path(directory['root']).samefile(root / 'downloads'), 'cancelled directory change was persisted'
         assert db.execute("SELECT COUNT(*) FROM state WHERE kind IN ('download_tasks_v1', 'download_migrations_v1', 'download_file_operations_v1', 'media_transfers_v1')").fetchone()[0] == 0
     if not args.baseline:
         assert all(row['radiosCompact'] and row['choicesReadable'] and row['footerReachable'] for row in complete['checks']), complete['checks']

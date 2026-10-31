@@ -37,7 +37,9 @@ class ProofArchive(unittest.TestCase):
             root = Path(directory)
             paths = ['ci-download-page-linux/first.log', 'ci-download-menu-windows/first/failed.json',
                      'ci-playlist-menu-linux/host.log', 'ci-song-menu-linux/audit.json',
-                     'ci-search-results-linux/first/failed.json']
+                     'ci-search-results-linux/first/failed.json', 'ci-playback-quality-linux/first/failed.json',
+                     'ci-quality-trial-native-windows/reopen/failed.json', 'ci-quality-rights-ui-linux/first/failed.json',
+                     'windows-media/player-probe.stdout.log']
             for relative in paths:
                 path = root / relative
                 path.parent.mkdir(parents=True, exist_ok=True)

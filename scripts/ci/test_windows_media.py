@@ -4,8 +4,10 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+import contextlib
+import io
 
-from windows_media import HERE, configuration, patch_recipe, sha256, verify_cache
+from windows_media import HERE, configuration, patch_recipe, sha256, verify_cache, native_pcm_report
 
 RECIPE = '''pkgrel=2
 depends=("${MINGW_PACKAGE_PREFIX}-aom")
@@ -37,6 +39,20 @@ package() {
 
 
 class WindowsRuntimeIntegrity(unittest.TestCase):
+    def test_zero_exit_without_a_json_report_cannot_become_a_runtime_receipt(self):
+        with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stdout(io.StringIO()):
+            root=Path(directory);stderr=root/'stderr.log';stderr.write_text('synthetic native stage')
+            for text in ['', 'native banner\n{"ok":true,"remote_requests":0}', '{"ok":false,"remote_requests":0}', '{"ok":true,"remote_requests":false}']:
+                with self.assertRaises((ValueError, AssertionError)):
+                    native_pcm_report(text,root/'stdout.log',stderr)
+                self.assertEqual((root/'stdout.log').read_text(),text)
+
+    def test_valid_native_report_is_retained_without_discarding_any_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);text=' {"ok":true,"remote_requests":0,"pcm_cases":["合成"]}\n'
+            value=native_pcm_report(text,root/'stdout.log',root/'stderr.log')
+            self.assertTrue(value['ok']);self.assertEqual((root/'stdout.log').read_bytes(),text.encode())
+
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
