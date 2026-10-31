@@ -59,3 +59,13 @@ windows-encoding-download-proof在真实Linux production WebView的69态下载�
 文件身份；专门的别名/冲突场景仍保留。产品目录/文件身份检查没有放宽。
 windows-download-fixture-batch的真实Linux WebView53态、menu33态通过，严格Clippy
 与桌面构建通过；Windows修正效果仍以新精确提交的完整CI为准。
+
+8. 文件菜单移动输入的Windows扩展路径（2026-10-31）
+cfb7b76 / 41184989134的Windows job 124490004760已实际通过下载69态、表格72态、
+批量53态和导航24态；菜单在重命名完成后的移动输入失败。合成SQLite中重命名日志
+已complete，尚未创建第二条移动日志，前端显示本地存储错误；不将整个平台称为通过。
+probe把规范目录（带Windows扩展路径前缀）直接拼接“/menu-moved”。微软文档明确
+扩展路径不执行普通路径的斜杠转换，因此这是不合法的输入拼接；修正为使用该原生
+目录的分隔符。产品路径/文件身份检查不变，未把移动失败改为任意错误通过。
+依据：https://learn.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation
+这是与日志/源码相符的定位，修正后的Windows实际移动仍须新精确提交CI确认。

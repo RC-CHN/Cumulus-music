@@ -360,7 +360,10 @@
       () => one('[aria-label="移动目标目录"]') === document.activeElement,
       "move input focus",
     );
-    input(one('[aria-label="移动目标目录"]'), directory + "/menu-moved");
+    // Windows verbatim paths do not normalize '/' separators. Keep the native
+    // root spelling when entering a child directory, as a folder picker does.
+    const separator = directory.includes("\\") ? "\\" : "/";
+    input(one('[aria-label="移动目标目录"]'), directory + separator + "menu-moved");
     await wait(
       () => !one(".download-dialog button.primary").disabled,
       "valid move directory",
