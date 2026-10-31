@@ -14,6 +14,7 @@ const props = withDefaults(
   }>(),
   { restoreFocus: true },
 );
+const emit = defineEmits<{ left: [] }>();
 const owned = new Set<Element>();
 onUnmounted(() => {
   for (const element of owned) modalLeft(element);
@@ -59,6 +60,7 @@ function left(element: Element) {
     target.focus({ preventScroll: true });
     if (target !== original) target.scrollIntoView({ block: 'nearest' });
   }
+  emit('left');
 }
 </script>
 <template>

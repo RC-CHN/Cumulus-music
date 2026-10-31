@@ -18,7 +18,7 @@ const props = withDefaults(
     icon: 'more',
   },
 );
-const emit = defineEmits<{ select: [key: string]; opened: [] }>();
+const emit = defineEmits<{ select: [key: string]; opened: []; closed: [] }>();
 const open = ref(false);
 const trigger = ref<HTMLButtonElement>();
 const panel = ref<HTMLElement>();
@@ -29,6 +29,9 @@ let returnTarget: HTMLElement | undefined;
 let displayRevision = 0;
 let viewportBounds: { width: number; height: number } | undefined;
 let anchorBounds: { left: number; top: number; width: number; height: number } | undefined;
+let origin: { x: number; y: number } | undefined;
+let resizeObserver: ResizeObserver | undefined;
+let followFocus = true;
 function rememberAnchor() {
   viewportBounds = { width: innerWidth, height: innerHeight };
   const node = returnTarget ?? trigger.value;
@@ -57,7 +60,12 @@ function close(restore = false) {
   displayRevision++;
   anchorBounds = undefined;
   viewportBounds = undefined;
-  open.value = false;
+  if (open.value) {
+    open.value = false;
+    emit('closed');
+  }
+  resizeObserver?.disconnect();
+  resizeObserver = undefined;
   returnTarget?.removeAttribute('aria-controls');
   if (returnTarget?.hasAttribute('aria-haspopup'))
     returnTarget.setAttribute('aria-expanded', 'false');
@@ -72,6 +80,8 @@ async function display(last = false, point?: { x: number; y: number }, target?: 
   if (props.disabled) return;
   close();
   const revision = displayRevision;
+  origin = point;
+  followFocus = true;
   returnTarget = target ?? trigger.value;
   rememberAnchor();
   if (returnTarget?.hasAttribute('aria-haspopup')) {
@@ -84,6 +94,34 @@ async function display(last = false, point?: { x: number; y: number }, target?: 
   await nextTick();
   if (revision !== displayRevision || !open.value || (!point && !trigger.value) || !panel.value)
     return;
+  place();
+  await nextTick();
+  if (revision !== displayRevision || !open.value) return;
+  rememberAnchor();
+  focusChoice(last);
+  if (typeof ResizeObserver !== 'undefined') {
+    resizeObserver = new ResizeObserver(() => {
+      if (!open.value) return;
+      place();
+      if (followFocus && panel.value?.contains(document.activeElement))
+        (document.activeElement as HTMLElement)?.scrollIntoView({ block: 'nearest' });
+    });
+    observeContent();
+  }
+}
+function observeContent() {
+  resizeObserver?.disconnect();
+  if (!panel.value) return;
+  for (const element of [
+    panel.value,
+    ...panel.value.children,
+    ...panel.value.querySelectorAll('.menu-items button'),
+  ])
+    resizeObserver?.observe(element);
+}
+function place() {
+  if (!panel.value || !open.value || (!origin && !trigger.value)) return;
+  const point = origin;
   const anchor = point
       ? { right: point.x, top: point.y, bottom: point.y }
       : trigger.value!.getBoundingClientRect(),
@@ -104,9 +142,8 @@ async function display(last = false, point?: { x: number; y: number }, target?: 
       ? anchor.bottom + 6
       : Math.max(8, anchor.top - box.height - 6);
   position.value = { left: `${left}px`, top: `${top}px`, visibility: 'visible' };
-  await nextTick();
-  if (revision !== displayRevision || !open.value) return;
-  rememberAnchor();
+}
+function focusChoice(last = false) {
   const items = choices();
   const checked = props.focusChecked
     ? items.find((item) => item.getAttribute('aria-checked') === 'true')
@@ -115,6 +152,29 @@ async function display(last = false, point?: { x: number; y: number }, target?: 
   focusedItem?.focus({ preventScroll: true });
   if (focusedItem !== panel.value) focusedItem?.scrollIntoView({ block: 'nearest' });
 }
+watch(
+  () =>
+    JSON.stringify(
+      props.items.map((item) => [item.key, item.checked, item.disabled, item.separator]),
+    ),
+  async () => {
+    if (!open.value) return;
+    const revision = displayRevision;
+    const wasInside = panel.value?.contains(document.activeElement);
+    await nextTick();
+    if (revision !== displayRevision || !open.value) return;
+    place();
+    observeContent();
+    if (
+      wasInside &&
+      (!panel.value?.contains(document.activeElement) ||
+        (document.activeElement as HTMLButtonElement)?.disabled)
+    )
+      focusChoice();
+    else if (wasInside && followFocus)
+      (document.activeElement as HTMLElement)?.scrollIntoView({ block: 'nearest' });
+  },
+);
 const show = (last = false) => display(last);
 const showAt = (x: number, y: number, target?: HTMLElement) => display(false, { x, y }, target);
 function select(key: string) {
@@ -133,6 +193,7 @@ function keydown(event: KeyboardEvent) {
     return;
   }
   if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+  followFocus = true;
   event.preventDefault();
   const items = choices();
   const current = items.indexOf(document.activeElement as HTMLButtonElement);
@@ -232,6 +293,12 @@ defineExpose({ show, showAt, close });
           :aria-label="label"
           :style="position"
           @keydown="keydown"
+          @wheel.passive="followFocus = false"
+          @touchmove.passive="followFocus = false"
+          @pointerdown="
+            ($event.target as HTMLElement)?.classList.contains('menu-items') &&
+            (followFocus = false)
+          "
         >
           <slot name="header" />
           <div class="menu-items">
