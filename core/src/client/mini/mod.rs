@@ -1,6 +1,7 @@
 //! A second surface over the existing player, never a second player. Hosts retain
 //! the opaque snapshot and pass only its public view to an untrusted UI.
 mod actions;
+mod feedback;
 mod fm;
 mod intelligence;
 mod mode;
@@ -211,6 +212,7 @@ impl MusicClient {
     }
 }
 pub use actions::MiniAction;
+pub use feedback::MiniFmFeedbackView;
 pub use fm::MiniFmModePending;
 pub use intelligence::{MiniIntelligenceCommand, MiniIntelligenceRead};
 pub use mode::MiniPlaybackReceipt;

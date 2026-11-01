@@ -34,6 +34,8 @@ fn fixture() -> (
 
 #[path = "support/fm_feedback_client.rs"]
 mod feedback_tests;
+#[path = "support/mini_fm_feedback.rs"]
+mod mini_feedback_tests;
 #[path = "support/mini_fm_client.rs"]
 mod mini_tests;
 
