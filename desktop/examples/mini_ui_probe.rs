@@ -119,6 +119,7 @@ fn main() {
         app.manage(client);
         app.add_capability(r#"{"identifier":"mini-proof","windows":["main","mini-player-*"],"permissions":["core:event:allow-emit"]}"#)?;
         let handle=app.handle().clone();
+        let cloud_removal_lock=Arc::new(std::sync::Mutex::new(None::<cumulus_core::storage::OperationLock>));
         app.listen("mini-proof", move |event| {
             let value:Value=serde_json::from_str(event.payload()).unwrap();
             let kind=value["kind"].as_str().unwrap_or("");
@@ -194,20 +195,53 @@ fn main() {
                 "cloud-menu-seed"=>{
                     assert!(mini_fixture::cloud_ui::menu_enabled());
                     let handle=handle.clone();let directory=root.join("menu-originals");
+                    let song_id=value["songId"].as_str().unwrap_or("1004").to_owned();assert!(["1004","1005","1006"].contains(&song_id.as_str()));
                     tauri::async_runtime::spawn(async move {
                         use cumulus_core::client::dto::*;
                         let client=handle.state::<MusicClient>();let epoch=client.account().unwrap().epoch;
                         let page=client.cloud_page(&epoch,CloudQuery{tab:CloudTab::Uploaded,keyword:String::new(),sort:CloudSort::Natural,descending:false,offset:0,limit:200},true).await.unwrap();
+                        let completed=client.downloads(&epoch,DownloadQuery::default()).await.unwrap().completed_count;
                         client.download_command(&epoch,DownloadCommand::Configure{root:directory.to_string_lossy().into_owned(),path_type:2,file_type:1}).await.unwrap();
-                        client.download_command(&epoch,DownloadCommand::StartCloud{song_ids:vec!["1004".into()],revision:page.revision.clone().unwrap(),lyrics:false}).await.unwrap();
+                        client.download_command(&epoch,DownloadCommand::StartCloud{song_ids:vec![song_id.clone()],revision:page.revision.clone().unwrap(),lyrics:false}).await.unwrap();
                         for _ in 0..200 {
                             let view=client.downloads(&epoch,DownloadQuery::default()).await.unwrap();
-                            if view.completed_count==1 {break;}
+                            if view.completed_count>completed {break;}
                             tokio::time::sleep(std::time::Duration::from_millis(20)).await;
                         }
-                        let path=client.cloud_directory_path(&epoch,"1004",&page.revision.unwrap()).await.unwrap();
+                        let path=client.cloud_directory_path(&epoch,&song_id,&page.revision.unwrap()).await.unwrap();
                         assert!(path.canonicalize().unwrap().starts_with(directory.canonicalize().unwrap()));
                         handle.get_webview_window("main").unwrap().eval(format!("window.__miniAck[{}]={{ok:true,verifiedOriginal:true}};",id)).unwrap();
+                    });
+                }
+                "cloud-removal-file"=>{
+                    assert!(mini_fixture::cloud_ui::menu_enabled());
+                    let action=value["action"].as_str().unwrap().to_owned();let song_id=value["songId"].as_str().unwrap().to_owned();assert!(["1004","1005","1006"].contains(&song_id.as_str()));
+                    let session=session.clone();let root=root.clone();let store=proof_store.clone();let handle=handle.clone();let held=cloud_removal_lock.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let result=tauri::async_runtime::spawn_blocking(move || -> cumulus_core::Result<Value> {
+                            use cumulus_core::download::service::DownloadService;
+                            let tasks=DownloadService::new(session)?.list()?;
+                            let recorded=root.join(format!("removal-path-{song_id}.json"));
+                            let path=if recorded.exists(){serde_json::from_slice::<PathBuf>(&fs::read(&recorded)?)?}else{
+                                let path=tasks.iter().find(|t|t.song_id==song_id).and_then(|t|t.target.clone()).expect("seeded synthetic original");
+                                assert!(path.starts_with(root.join("menu-originals")));fs::write(&recorded,serde_json::to_vec(&path)?)?;path
+                            };
+                            assert!(path.starts_with(root.join("menu-originals")));
+                            match action.as_str(){
+                                "observe"=>{},
+                                "hold-index"=>{*held.lock().unwrap()=Some(cumulus_core::storage::OperationLock::acquire(store.directory(),"local","library-index")?);},
+                                "release-index"=>{held.lock().unwrap().take();},
+                                "change"=>{let mut bytes=fs::read(&path)?;bytes.push(0);fs::write(&path,bytes)?;},
+                                "cue"=>{
+                                    let cue=path.with_extension("cue");fs::write(&cue,format!("FILE \"{}\" WAVE\n TRACK 01 AUDIO\n INDEX 01 00:00:00\n",path.file_name().unwrap().to_str().unwrap()))?;
+                                    cumulus_core::library::LocalLibrary::new(store)?.import_cue(cue)?;
+                                },
+                                _=>panic!("unknown synthetic file mutation"),
+                            }
+                            Ok(json!({"exists":path.is_file(),"downloadPresent":tasks.iter().any(|t|t.song_id==song_id)}))
+                        }).await.unwrap();
+                        let reply=match result{Ok(v)=>v,Err(e)=>json!({"error":e.to_string()})};
+                        handle.get_webview_window("main").unwrap().eval(format!("window.__miniAck[{}]={};",id,reply)).unwrap();
                     });
                 }
                 "cloud-download-root"=>{

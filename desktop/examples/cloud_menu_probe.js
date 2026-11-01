@@ -3,7 +3,7 @@
 (async()=>{
  const native=window.__TAURI_INTERNALS__.invoke.bind(window.__TAURI_INTERNALS__),sleep=ms=>new Promise(r=>setTimeout(r,ms));
  const invoke=(name,args={})=>window.__TAURI_INTERNALS__.invoke(name,args),assert=(v,m)=>{if(!v)throw Error(m);};
- const wait=async(fn,label)=>{for(let i=0;i<300;i++){if(await fn())return;await sleep(60);}throw Error(label);};
+ const wait=async(fn,label)=>{for(let i=0;i<300;i++){const observed=await fn();if(observed&&(!(observed instanceof Element)||!observed.matches('.cloud-delete-dialog')||observed.dataset.cloudDeleteReady==='true'))return;await sleep(60);}throw Error(label);};
  const emit=value=>native('plugin:event|emit',{event:'mini-proof',payload:value});window.__miniAck={};let serial=0,count=0,last='startup',epoch,readMode='',release;
  let client,originalRead,originalOpen,originalPlay;const selections=[];
  function restore(){if(client){client.cloudResource=originalRead;client.openCloudDirectory=originalOpen;client.playSelection=originalPlay;}}

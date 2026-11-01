@@ -1,7 +1,7 @@
 // Production WebView/IPC/core/SQLite, synthetic catalog and isolated media bytes.
 (async()=>{
  const invoke=(name,args={})=>window.__TAURI_INTERNALS__.invoke(name,args),sleep=ms=>new Promise(r=>setTimeout(r,ms));
- const assert=(v,m)=>{if(!v)throw Error(m);},wait=async(fn,label)=>{for(let i=0;i<300;i++){if(await fn())return;await sleep(60);}throw Error(label);};
+ const assert=(v,m)=>{if(!v)throw Error(m);},wait=async(fn,label)=>{for(let i=0;i<300;i++){const observed=await fn();if(observed&&(!(observed instanceof Element)||!observed.matches('.cloud-delete-dialog')||observed.dataset.cloudDeleteReady==='true'))return;await sleep(60);}throw Error(label);};
  const emit=value=>invoke('plugin:event|emit',{event:'mini-proof',payload:value});window.__miniAck={};let serial=0,count=0,last='startup',epoch,downloadRoot;
  async function control(kind,data={}){const id=++serial;await emit({kind,id,...data});await wait(()=>id in window.__miniAck,kind);const value=window.__miniAck[id];delete window.__miniAck[id];assert(!value.error,value.error);return value.value??value;}
  const config=data=>control('cloud-config',data),stats=()=>control('cloud-state'),page=()=>document.querySelector('.cloud-page'),batch=()=>document.querySelector('.cloud-batch-page:not(.page-leave-active)'),dialog=()=>document.querySelector('dialog[open]:not(.modal-leave-active)');

@@ -12,6 +12,7 @@ from pathlib import Path
 import subprocess
 import sys
 import time
+from snapshot_read import read_snapshot
 
 
 class Keyboard:
@@ -109,7 +110,7 @@ def main():
         keyboard = Keyboard()
     process, sequence, steps = None, 0, []
 
-    def state(): return json.loads((run / 'state.json').read_text(encoding='utf-8'))
+    def state(): return read_snapshot(run / 'state.json')
 
     def wait(condition, message, seconds=20):
         deadline = time.monotonic() + seconds

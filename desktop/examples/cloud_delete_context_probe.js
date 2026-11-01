@@ -8,7 +8,8 @@
     },
     wait = async (fn, label) => {
       for (let i = 0; i < 600; i++) {
-        if (await fn()) return;
+        const observed = await fn();
+        if (observed && (!(observed instanceof Element) || !observed.matches('.cloud-delete-dialog') || observed.dataset.cloudDeleteReady === 'true')) return;
         await sleep(50);
       }
       throw Error(label);
@@ -22,7 +23,7 @@
     epoch,
     legacy = false,
     client,
-    originalRead;
+    originalRead, originalPrepare;
   async function control(kind, data = {}) {
     const id = ++serial;
     await emit({ kind, id, ...data });
@@ -224,6 +225,11 @@
         )
       ];
     originalRead = client.cloudPage.bind(client);
+    originalPrepare = client.cloudDeletePrepare.bind(client);
+    client.cloudDeletePrepare = async (...args) => {
+      const value = await originalPrepare(...args);
+      return legacy ? {...value, kinds: value.ids.map(() => 'unknown')} : value;
+    };
     client.cloudPage = async (...args) => {
       const v = await originalRead(...args);
       return legacy
@@ -435,6 +441,7 @@
       "exact original natural targets",
     );
     client.cloudPage = originalRead;
+    client.cloudDeletePrepare = originalPrepare;
     await emit({
       kind: "complete",
       stage: "complete",
@@ -446,7 +453,7 @@
       realAccountWrites: 0,
     });
   } catch (e) {
-    if (client && originalRead) client.cloudPage = originalRead;
+    if (client && originalRead) {client.cloudPage = originalRead;client.cloudDeletePrepare = originalPrepare;}
     await emit({
       kind: "failed",
       stage: "failed",
