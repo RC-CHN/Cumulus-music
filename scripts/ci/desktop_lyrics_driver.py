@@ -6,6 +6,7 @@ display performance or every compositor's click-through implementation.
 import ctypes as C
 import ctypes.util
 import json
+import os
 import subprocess
 import sys
 import time
@@ -104,6 +105,8 @@ def launch(binary, env, log, output, capture):
         gi.require_version('Gdk', '3.0')
         from gi.repository import Gdk
     seen, sent, regions = set(), [], []
+    if windows:
+        env = {**env, 'CUMULUS_KEY_PRODUCER_PID': str(os.getpid())}
     process = subprocess.Popen([str(binary)], env=env, stdout=log, stderr=log)
     try:
         deadline = time.monotonic() + 240
@@ -119,6 +122,12 @@ def launch(binary, env, log, output, capture):
                 value = json.loads(path.read_text(encoding='utf-8'))
                 assert value['key'] in ['d', 'Escape', 'Tab'], value
                 if value['key'] == 'd':
+                    if windows:
+                        grant_path = path.with_name('foreground-' + path.stem.split('-', 1)[1] + '.json')
+                        grant = json.loads(grant_path.read_text(encoding='utf-8'))
+                        assert grant['producerPid'] == os.getpid() and grant['fixturePid'] == process.pid
+                        assert grant['foregroundPid'] in [0, process.pid, os.getpid()]
+                        assert grant['granted'] or grant['foregroundPid'] == os.getpid()
                     keyboard.chord('d')
                 else:
                     # Keep the real main WebView focused for local dialog keys.

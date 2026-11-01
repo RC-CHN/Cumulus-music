@@ -14,6 +14,8 @@ mod relay_fixture;
 #[allow(dead_code)]
 #[path = "support/settings_fixture.rs"]
 mod settings_fixture;
+#[path = "support/shortcut_foreground.rs"]
+mod shortcut_foreground;
 use cumulus_core::{
     account::{AccountSession, profiles::ProfileRegistry},
     client::MusicClient,
@@ -117,6 +119,13 @@ fn main() {
                 "result" => ack(value.clone()),
                 "key" => {
                     let id = id.as_u64().expect("key sequence");
+                    if value["key"]=="d" {
+                        match shortcut_foreground::grant() {
+                            Ok(Some(grant)) => fs::write(output.join(format!("foreground-{id}.json")),serde_json::to_vec_pretty(&grant).unwrap()).unwrap(),
+                            Ok(None) => (),
+                            Err(error) => { ack(json!({"error":error}));return; }
+                        }
+                    }
                     let request = output.join(format!("key-{id}.json"));
                     let pending = request.with_extension("pending");
                     fs::write(&pending, serde_json::to_vec(&value).unwrap()).unwrap();
