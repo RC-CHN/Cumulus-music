@@ -156,7 +156,25 @@
         ".build/ui-proof/fm-feedback-20261027-a/independent-audit.json",
         ".build/ui-proof/fm-feedback-20261027-b-lost/independent-audit.json"
       ],
-      "status": "native_and_desktop_live_roundtrip_passed"
+      "status": "native_and_desktop_live_roundtrip_passed",
+      "frontend": [
+        "frontend/src/components/FmPage.vue",
+        "frontend/src/components/fm/FmVirtualList.vue",
+        "frontend/src/components/fm/FmStateRecovery.vue",
+        "frontend/src/composables/useFm.ts"
+      ],
+      "ui_regression": {
+        "contract": "docs/fm-feedback-ui-contracts.txt",
+        "entries": [
+          "scripts/ci/fm_state_recovery_smoke.py",
+          "scripts/ci/fm_blacklist_smoke.py"
+        ],
+        "state_tests": "frontend/tests/fm-state.test.ts",
+        "synthetic_rows": 1001,
+        "synthetic_artists": 120,
+        "live_account_retested": false,
+        "full_fm_complete": false
+      }
     },
     {
       "id": "blacklist_filter",
@@ -200,7 +218,8 @@
         "entry": "scripts/ci/fm_feedback_dialog_smoke.py",
         "state_tests": "frontend/tests/fm-feedback-state.test.ts",
         "live_account_retested": false,
-        "full_fm_complete": false
+        "full_fm_complete": false,
+        "state_recovery_entry": "scripts/ci/fm_state_recovery_smoke.py"
       }
     },
     {

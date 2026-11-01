@@ -3032,3 +3032,66 @@ intelligence-start-contracts.txt；本批没有把主播放条五态进入或所
   和音乐请求0，libmpv/null不代表声卡或物理键鼠。没有官方同状态图或Windows实机证明。
 - 新增CI入口同时分配Linux/Windows runner，完整精确提交CI仍须另行核对。没有
   标签、Release或覆盖v0.1.0。全目标active；新版H5/小窗菜单/二级读取失败等继续。
+
+
+2026-11-01 FM二级读取失败与长黑名单UI/UX（性能以可用为目标）
+实现/来源
+- 30895d2：原提交错误与当前状态错误分开，未观察到新状态时禁止再次写入；明确
+  只读重查恢复缓存后仍检查原生journal。黑名单保留旧页、正确页/游标重试、ID选择、
+  单行/批量精确清理、两个列表的有界渲染及首尾键盘导航。
+- b052b17：实际WebView/IPC/Rust/SQLite/libmpv/null合成故障/长列表流程，两平台CI
+  接入14态和17态新检查；原31态完整保留。官方MainView来源及缺失Viewer边界见
+  fm-feedback-ui-contracts.txt、fm-core-mapping.json。没有使用YesPlayMusic。
+- 原始二级失败用例先红：fm-state-recovery-before.log显示canSubmit仍为true；修复
+  后5项前端恢复用例通过。另加3项分页/刷新/账号隔离用例。不是Python历史测试计数。
+
+本地检查
+- Node v24.16.0 / Rust 1.96.0，锁文件不变；npm ci通过，最终format/test/type build
+  为fm-consistency-{format,frontend,build}-accepted.log。442 passed，0 failed/skipped。
+- Rust全工作区1386 passed、0 failed/ignored、276个结果目标：
+  fm-consistency-workspace-delivery.log；本批Rust源码与该次全测相同。最后的弹窗正文
+  滚动/缩放及列表读取反馈调整后再次通过前端全测、严格Clippy、原生应用/探针构建，
+  不以Rust测试替代后述最终UI验收。
+- fmt/严格Clippy及最终内嵌production前端的cumulus、ux_ui_probe构建通过：
+  fm-consistency-{rust-format,clippy,native}-accepted.log。未在Rust嵌入资源时重写dist。
+- source_audit、release_guard及CI工具36项：fm-consistency-{source-audit,release-guard,
+  ci-tools}.log。版本/标签/发布附件未更动。已移除误建的工作树局部1.5GiB缓存；
+  共享已验证target与研究/会话资料保留。
+
+最终真实WebView及截图
+- 仅下列六组计最终证据：
+  fm-consistency-recovery-accepted-{gui,kde}，每组14态/14图；
+  fm-consistency-blacklist-accepted2-{gui,kde}，每组17态/17图；
+  fm-consistency-feedback-accepted-{gui,kde}，每组31态/31图。
+  合计124态/124图。gui为隔离Xvfb，kde为本人KDE/XWayland125%自有PID窗口，
+  后者还逐态核对可见/聚焦及不透明面板实际绘制；所有组使用最终内嵌production前端。
+- 恢复14态：实际合成写入丢回执/明确拒绝，随后隔离缓存损坏导致真正fmView(false)
+  失败；不是在CoreClient Promise上注入成功。明确只读刷新失败/再次成功后修复缓存，
+  未决记录仍禁止重发；恢复推荐保留选择，明确核对后刷新，精确验证请求计数。
+- 长列表17态：1001首/120位歌手；两组每个列表实测最多15行DOM，检查顺/逆/首尾、
+  翻页失败及原页重试、ID去重单元分支、离屏选择、100首全局上限、行恢复后保留
+  其他选择、刷新失败锁定旧列表、恢复第901行后列表收缩及100首实际批量请求ID。
+  页刷新后未重新加载到的选择仍保留，由Rust成员校验，不靠DOM猜测成功。
+- 共用滚动hook额外回归：fm-consistency-sidebar，43态/重启，无账号写入；不计入124图。
+- 私有索引/原图SHA256/六张总览：.build/fm-consistency-gallery/{index.html,manifest.json}。
+  六张总览均检查，另放大检查窄窗恢复及长列表帧。缩略图裁去黑边，原PNG未修改。
+
+截图/实际交互发现与修正
+- 窄窗口中原sticky底栏遮挡重查按钮下缘，旧中心命中检查没有识别完整遮挡。
+  改为独立正文滚动、固定标题/底栏，ResizeObserver仅将正文内现有焦点滚到可见区；
+  不改变焦点、不写业务。新增整按钮位于正文可视区的检查；两个实际WebView都
+  复现过缺陷后通过最终14态。中间delivery/layout截图不计最终124图。
+- KDE长列表收缩检查最初早于组件约定的两帧焦点恢复完成。保留完整焦点/命中条件，
+  改为有期限等待实际可见焦点，不强制滚动、不忽略失败；accepted2两组17态都通过。
+- 自动化使用合成DOM指针/键盘事件；本次没有真实账号读写、真实音乐请求、支付或邀请。
+  null输出不证明扬声器听感，KDE截图不证明Windows实机、官方逐像素一致或实机刷新率。
+
+CI与剩余边界
+- 4f3c0dd/41273189272：Linux完整job成功；Windows在desktop_lyrics_driver外进程
+  获取前台失败，CI gate失败，原始失败日志保存在ci-4f3c0dd-windows-failed.log；
+  不能因为Linux/局部成功而报告完整CI通过。
+- b2e1c15/41277325383是上一批精确SHA的独立运行；本批功能/探针/文档提交完成后
+  再触发一次精确新HEAD CI，回执单独存到.build/fm-consistency-ci-receipt.json。
+  CI结果必须按新HEAD报告，不用旧运行替代；尚未发新版本或修改main。
+- 新版分层理由/H5黑名单、小窗完整菜单、推荐补充/分隔及全应用UI/UX逐项审计
+  仍继续；一起听双账号仍排除。完整总目标active，不把本批或测试总数当作全范围完成。
