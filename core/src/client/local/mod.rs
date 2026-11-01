@@ -66,6 +66,9 @@ impl MusicClient {
         query.validate()?;
         let context = self.local.context().await?;
         tokio::task::spawn_blocking(move || {
+            // A scan publishes its catalog before marking the root Ready. Read
+            // roots first so a completed status cannot describe an older page.
+            let roots = context.monitor.roots()?.iter().map(view::root).collect();
             let snapshot = context.library.catalog(&query)?;
             let total = snapshot.items.len();
             let playable = snapshot.items.iter().filter(|i| i.available()).count();
@@ -80,7 +83,7 @@ impl MusicClient {
                 revision: snapshot.revision,
                 tracks,
                 groups: snapshot.groups,
-                roots: context.monitor.roots()?.iter().map(view::root).collect(),
+                roots,
                 total,
                 playable,
                 offset: query.offset,
