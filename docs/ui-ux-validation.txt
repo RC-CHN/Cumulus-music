@@ -2946,3 +2946,49 @@ intelligence-start-contracts.txt；本批没有把主播放条五态进入或所
   结果；其门禁不能报告通过。本批修正还需新精确提交的完整 CI；不跳过测试或发布。
 - 所有账号/API/音源合成，真实账号写入和真实音乐请求均为0，无双账号一起听结论。
   原总目标继续；本批没有标签、Release 或覆盖 v0.1.0 附件。
+
+2026-11-01 小窗 FM、队列对账及历史 Windows 证据编码
+- mini-fm-screen-final：两个实际隔离 WebView，22 态/22 图；mini-fm-kde-final：本机
+  KDE/XWayland 125% 自有 PID 同样 22 态/22 图，完整通过最新内嵌 production 前端。
+  核对 FM 两态、暂停10秒/同 playId、只读分页、空频道、模式保存拒绝/关闭/重试、
+  返回主窗口 DOM 和重开后的未完成目标。每个有曲阶段只有一个音频工厂，空频道
+  无 track/playId；模式动作不发推荐、skip/trash。HTTP/账号/PCM全为合成。
+- 实际查看有曲/空频道两类深色错误面板和重开恢复图。初次截图曾露出面板底下的
+  进度条碎片；固定反馈高度并让正文独立滚动，最终图与几何断言均确认完整遮盖
+  元数据/进度区，传输按钮仍可命中。没有官方同状态原图，不称像素一致。
+- queue-reconcile-screen-final：实际隔离 WebView 24 态/24 图通过。599316a 的 Linux
+  CI 41268377368 仍在第12态前失焦，说明此前停放焦点还不够；现失败后总是只读
+  对账，再等已启用控制完成绘制后恢复。探针增加被动轨迹，原严格断言不变，仍须
+  新精确提交完整 CI 证明。没有重试原生编辑或改成任意焦点即可通过。
+- mini-intelligence-regression-final：旧心动入口/取消/失败/恢复/双窗口23态和23图
+  通过；不是旧 Python 业务测试，实际运行共享 Rust actor、IPC、WebView 和 libmpv/null。
+- 旧 d9ee98a / CI 41265484850 已终止失败：Linux 同一队列焦点错误；Windows 已完成
+  小窗心动23态运行，却在 Python 默认 cp1252 读取 UTF-8 JSON 时崩溃，尚未进入
+  独立键盘检查。修复验证器的显式 UTF-8 后，原 Windows 产物在非 UTF-8 locale 下
+  完整23态字段审计通过，cp1252 错误也单独复现；这不是新 Windows 运行或 CI 通过。
+  archive/job/SHA 来源与审计记录保留在 .build/ci-d9ee98a-windows/mini-intelligence-
+  utf8-audit，未用编造字段补齐，不提交私人诊断或截图。
+- 首次 full workspace 在 client_local 发现既有读序竞态：catalog 为空后扫描提交，
+  roots 已 Ready，导致启用目录后 UI 可提前认为扫描结束。修为先读 roots 再 catalog，
+  保留原 disabled/重新启用/取消部分发布/进程重开断言。初次失败日志保留，不冒充通过。
+- 本批最终 Rust/前端/构建结果、其他回归及精确提交 CI 状态续记于本节，原总目标
+  仍 active。完整小窗菜单、不喜欢/屏蔽、推荐补充、全应用逐页审计继续；无发布操作。
+- 最终读序修正后 workspace/all-targets/custom-protocol/locked 完整通过：276个结果
+  target、1384 passed、0 failed/ignored（mini-fm-workspace-tests-final2.log）。本地库
+  原6项流程单独通过后才跑全量；此前失败日志仍保留。严格 fmt/Clippy、正式 cumulus
+  与 mini/ux/catalog 三探针重建通过，见 mini-fm-{rust-format,clippy,native-build}-final2.log。
+- 前端 npm ci、格式、427项测试、production类型检查及构建通过；最后一次只读文字
+  样式修改后再次核对格式、427测试和build，日志 mini-fm-frontend-*-final2.log。
+  CI工具36项、watchman环境/兼容8项、source_audit与release_guard全部通过。
+- 最后实际截图发现FM只读行整体opacity=.4，虽然禁用正确但资料不易读。加入只读
+  列表样式，按钮依旧disabled但文字opacity=1；mini-fm-readable-screen-final和
+  mini-fm-readable-kde-final各22态/22图完整重跑，均逐行核对这个条件。已查看最后
+  浅色展开原图，歌名/歌手/当前标识可读。前两组FM截图作为中间记录保留，最终图库
+  使用这两组readable结果，不重复计入最终数量。
+- queue-reconcile-kde-final也完整24态/24张本机图；旧小窗19态和独立OS键盘6态
+  分别通过mini-base-fm-regression、mini-shortcuts-fm-regression，各有逐态截图。
+  所有最终分组共140图，其中46图为KDE自有PID，索引和SHA256在私有.build/
+  mini-fm-consistency-gallery。不是实体鼠标/键盘、真实扬声器或Windows实机证明。
+- 主窗口的mini-fm-main-mode-regression另通过48+重开3态；这些没有新增截图，
+  不能混入140图。mini-fm-empty-mode-regression空FM另通过13+重开5态，同样不计
+  新图；模式/返回/恢复的严格断言全部保留。完整新CI仍须按最终提交核对。
