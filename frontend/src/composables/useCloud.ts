@@ -1,4 +1,4 @@
-import { ref, shallowRef } from 'vue';
+import { computed, ref, shallowRef } from 'vue';
 import { useCore } from '../services/core.ts';
 import { failure, type AccountView } from '../services/contracts.ts';
 import {
@@ -9,16 +9,29 @@ import {
   type CloudCommand,
   type CloudResult,
 } from '../services/cloud.ts';
-export function useCloud(core: CloudClient = useCore(), sessionChanged = () => {}) {
-  const view = shallowRef<CloudPage>();
-  const query = ref<CloudQuery>({
+function defaultQuery(): CloudQuery {
+  return {
     tab: 'uploaded',
     keyword: '',
     sort: 'uploaded',
     descending: true,
     offset: 0,
     limit: 200,
-  });
+  };
+}
+function queryKey(v: CloudQuery) {
+  return JSON.stringify([v.tab, v.keyword, v.sort, v.descending, v.offset, v.limit]);
+}
+export function useCloud(core: CloudClient = useCore(), sessionChanged = () => {}) {
+  const view = shallowRef<CloudPage>();
+  const snapshotQuery = shallowRef<CloudQuery>();
+  const query = ref<CloudQuery>(defaultQuery());
+  const accountEpoch = ref('');
+  const page = computed(() =>
+    snapshotQuery.value && queryKey(snapshotQuery.value) === queryKey(query.value)
+      ? view.value
+      : undefined,
+  );
   const loading = ref(false),
     busy = ref(false),
     error = ref(''),
@@ -43,12 +56,14 @@ export function useCloud(core: CloudClient = useCore(), sessionChanged = () => {
     if (!epoch) return;
     const serial = ++read,
       version = generation,
-      captured = epoch;
+      captured = epoch,
+      requested = { ...query.value };
     if (!quiet) loading.value = true;
     try {
-      const value = await core.cloudPage(captured, { ...query.value }, remote);
+      const value = await core.cloudPage(captured, requested, remote);
       if (version !== generation || serial !== read || value.epoch !== epoch) return;
       view.value = value;
+      snapshotQuery.value = requested;
       if (remote) readError.value = '';
       if (value.offset >= value.total && value.offset > 0) {
         query.value.offset =
@@ -70,7 +85,10 @@ export function useCloud(core: CloudClient = useCore(), sessionChanged = () => {
     read++;
     stop();
     epoch = account.status === 'authenticated' ? account.epoch : '';
+    if (accountEpoch.value !== epoch) query.value = defaultQuery();
+    accountEpoch.value = epoch;
     view.value = undefined;
+    snapshotQuery.value = undefined;
     error.value = '';
     readError.value = '';
     notice.value = '';
@@ -137,6 +155,8 @@ export function useCloud(core: CloudClient = useCore(), sessionChanged = () => {
   }
   return {
     view,
+    page,
+    accountEpoch,
     query,
     loading,
     busy,

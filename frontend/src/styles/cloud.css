@@ -15,12 +15,20 @@
 }
 .cloud-capacity {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 180px;
-  color: var(--text-secondary);
-  font-size: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  padding-top: 20px;
+  color: var(--muted);
+  font-size: 13px;
 }
+.cloud-capacity progress {
+  width: 200px;
+}
+.cloud-capacity-tip {
+  overflow-wrap: anywhere;
+}
+
 .cloud-page progress {
   height: 5px;
   border: 0;
@@ -39,9 +47,10 @@
 .cloud-toolbar {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   flex-wrap: wrap;
-  margin: 22px 0 18px;
+  padding: 20px 0;
+  margin: 0;
 }
 .cloud-search {
   display: flex;
@@ -51,7 +60,8 @@
   padding: 6px 10px;
   gap: 6px;
   margin-left: auto;
-  max-width: 190px;
+  max-width: 220px;
+  min-width: 0;
 }
 .cloud-search input {
   width: 130px;
@@ -59,6 +69,12 @@
   outline: 0;
   background: transparent;
   font-size: 12px;
+}
+.cloud-search .icon-button {
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
 }
 .cloud-search .icon {
   width: 14px;
@@ -72,7 +88,7 @@
   table-layout: fixed;
   width: 100%;
   min-width: 660px;
-  font-size: 12px;
+  font-size: 14px;
 }
 .cloud-table th {
   text-align: left;
@@ -84,7 +100,9 @@
   padding: 0;
 }
 .cloud-table td {
-  padding: 10px 6px;
+  height: 64px;
+  box-sizing: border-box;
+  padding: 8px 6px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -117,10 +135,24 @@
   width: 75px;
 }
 .cloud-check {
-  width: 25px;
+  width: 28px;
 }
 .cloud-index {
-  width: 34px;
+  width: 45px;
+}
+.cloud-table td:first-child {
+  overflow: visible;
+  text-overflow: clip;
+  padding-inline: 0;
+  text-align: center;
+}
+.cloud-table td:nth-child(2) {
+  padding-inline: 0;
+  text-align: center;
+}
+.cloud-table input[type='checkbox'] {
+  margin: 0;
+  vertical-align: middle;
 }
 .cloud-page input[type='checkbox'] {
   accent-color: var(--accent);
@@ -154,14 +186,14 @@
   color: var(--muted);
   margin-top: 4px;
 }
-.cloud-track-title .text-button {
+.cloud-track-title .cloud-artist {
   padding: 0;
   max-width: 80%;
   overflow: hidden;
   text-overflow: ellipsis;
   color: inherit;
   vertical-align: middle;
-  font-size: 11px;
+  font-size: 13px;
 }
 .cloud-track-title small {
   color: var(--gold);
@@ -362,4 +394,63 @@
     justify-content: flex-start;
     padding-top: 4px;
   }
+}
+
+.cloud-toolbar > .primary,
+.cloud-toolbar > .secondary {
+  min-height: 48px;
+  border-radius: 8px;
+}
+.cloud-toolbar > .primary {
+  min-width: 114px;
+  font-size: 16px;
+}
+.cloud-toolbar .cloud-upload-button {
+  width: 48px;
+  padding: 0;
+  flex-shrink: 0;
+}
+.cloud-upload-dialog,
+.cloud-delete-dialog {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  max-height: calc(100dvh - 48px);
+}
+.cloud-upload-dialog:not([open]),
+.cloud-delete-dialog:not([open]) {
+  display: none;
+}
+.cloud-upload-dialog header,
+.cloud-delete-dialog header,
+.cloud-upload-dialog footer,
+.cloud-delete-dialog footer {
+  flex-shrink: 0;
+}
+.cloud-dialog-body {
+  overflow: auto;
+  min-height: 0;
+  padding: 4px;
+  overflow-wrap: anywhere;
+}
+.cloud-dialog-body > p:first-child {
+  margin-top: 0;
+}
+.cloud-delete-targets {
+  max-height: 180px;
+  overflow: auto;
+  margin: 16px 0;
+  padding-left: 24px;
+}
+.cloud-delete-targets li {
+  margin: 6px 0;
+}
+.cloud-delete-dialog:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.cloud-file-list {
+  max-height: none;
+  overflow: visible;
 }

@@ -69,6 +69,7 @@ export interface CloudUpload {
 }
 export interface CloudDelete {
   id: string;
+  ids: string[];
   phase: 'sending' | 'verifying' | 'uncertain' | 'confirmed' | 'partial' | 'rejected';
   total: number;
   removed: number;

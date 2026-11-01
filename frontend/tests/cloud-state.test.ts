@@ -149,7 +149,14 @@ test('cloud uncertain deletion is presented as uncertain and never retried by re
         epoch: e,
         accepted: ['op'],
         failed: [],
-        deletion: { id: 'op', phase: 'confirmed', total: 1, removed: 1, remaining: 0 },
+        deletion: {
+          id: 'op',
+          ids: ['new'],
+          phase: 'confirmed',
+          total: 1,
+          removed: 1,
+          remaining: 0,
+        },
       });
     },
   } as CloudClient);
@@ -163,7 +170,7 @@ test('cloud uncertain deletion is presented as uncertain and never retried by re
     epoch: '1',
     accepted: [],
     failed: [],
-    deletion: { id: 'op', phase: 'uncertain', total: 1, removed: 0, remaining: 1 },
+    deletion: { id: 'op', ids: ['new'], phase: 'uncertain', total: 1, removed: 0, remaining: 1 },
   });
   await pending;
   assert.match(model.notice.value, /尚未确认/);
@@ -199,4 +206,40 @@ test('cloud navigation and disposal do not cancel native uploads or trigger late
   assert.equal(reads, 1);
   assert.equal(writes, 0);
   assert.equal(model.view.value, undefined);
+});
+
+test('a pending or failed new cloud query cannot expose old rows under new actions', async () => {
+  const wait = deferred<CloudPage>();
+  const model = useCloud({
+    cloudPage: async (e, q) => (q.keyword === 'pending' ? wait.promise : page(e, 3)),
+  } as CloudClient);
+  await model.connect(account());
+  await model.refresh();
+  assert.equal(model.page.value?.total, 3);
+  model.filter({ keyword: 'pending' });
+  assert.equal(model.page.value, undefined);
+  assert.equal(model.view.value?.total, 3);
+  wait.resolve(page('1', 7));
+  await turn();
+  assert.equal(model.page.value?.total, 7);
+  model.filter({ sort: 'title' });
+  assert.equal(model.page.value, undefined);
+  await turn();
+  assert.equal(model.page.value?.total, 7);
+  model.dispose();
+});
+
+test('cloud search is isolated by account, while same account reconnect preserves the query', async () => {
+  const model = useCloud({ cloudPage: async (e) => page(e) } as CloudClient);
+  await model.connect(account());
+  model.filter({ keyword: 'private query', sort: 'title' });
+  await turn();
+  await model.connect(account());
+  assert.equal(model.query.value.keyword, 'private query');
+  await model.connect(account('2'));
+  assert.equal(model.query.value.keyword, '');
+  assert.equal(model.query.value.sort, 'uploaded');
+  assert.equal(model.accountEpoch.value, '2');
+  assert.equal(model.page.value, undefined);
+  model.dispose();
 });

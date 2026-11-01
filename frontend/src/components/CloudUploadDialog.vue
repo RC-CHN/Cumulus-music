@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import type { CloudModel } from '../composables/useCloud';
 import type { CloudUploadInput } from '../services/cloud';
 import Icon from './Icon.vue';
@@ -10,13 +10,10 @@ const files = ref<CloudUploadInput[]>([]),
   choosing = ref(false),
   dialog = ref<HTMLDialogElement>();
 const blocked = computed(() => busy.value || choosing.value);
-let focus: HTMLElement | null = null;
 onMounted(() => {
-  focus = document.activeElement as HTMLElement;
   dialog.value?.showModal();
   error.value = '';
 });
-onUnmounted(() => focus?.focus());
 function basename(path: string | null) {
   return path?.split(/[\\/]/).pop() ?? '未选择';
 }
@@ -61,6 +58,7 @@ function close() {
     ref="dialog"
     class="playlist-dialog cloud-upload-dialog"
     aria-labelledby="cloud-upload-title"
+    @keydown.esc.stop
     @cancel.prevent="close"
   >
     <header>
@@ -69,51 +67,57 @@ function close() {
         <Icon name="close" />
       </button>
     </header>
-    <p class="muted">选择本地音频，上传后可在登录此账号的设备上收听。每个文件最大 512 MB。</p>
-    <div class="cloud-source-actions">
-      <button class="secondary" :disabled="blocked" @click="pick('audio')">
-        <Icon name="up" />选择音频文件
-      </button>
-      <button class="secondary" :disabled="blocked" @click="pick('folder')">选择文件夹</button>
-    </div>
-    <div class="cloud-file-list">
-      <article v-for="(file, index) in files" :key="file.path">
-        <div class="cloud-file-title">
-          <strong :title="file.path">{{ basename(file.path) }}</strong
-          ><button class="text-button" :disabled="blocked" @click="files.splice(index, 1)">
-            移除
-          </button>
-        </div>
-        <details>
-          <summary>附加封面、歌词或 CUE</summary>
-          <div
-            v-for="entry in [
-              { kind: 'cover', name: '封面' },
-              { kind: 'lyric', name: '歌词' },
-              { kind: 'cue', name: 'CUE' },
-            ] as const"
-            :key="entry.kind"
-            class="cloud-attachment"
-          >
-            <span>{{ entry.name }}</span
-            ><span class="ellipsis" :title="file[entry.kind] ?? ''">{{
-              basename(file[entry.kind])
-            }}</span
-            ><button class="text-button" :disabled="blocked" @click="attachment(file, entry.kind)">
-              选择</button
-            ><button
-              v-if="file[entry.kind]"
-              class="text-button"
-              :disabled="blocked"
-              @click="file[entry.kind] = null"
-            >
-              清除
+    <div class="cloud-dialog-body">
+      <p class="muted">选择本地音频，上传后可在登录此账号的设备上收听。每个文件最大 512 MB。</p>
+      <div class="cloud-source-actions">
+        <button class="secondary" :disabled="blocked" @click="pick('audio')">
+          <Icon name="up" />选择音频文件
+        </button>
+        <button class="secondary" :disabled="blocked" @click="pick('folder')">选择文件夹</button>
+      </div>
+      <div class="cloud-file-list">
+        <article v-for="(file, index) in files" :key="file.path">
+          <div class="cloud-file-title">
+            <strong :title="file.path">{{ basename(file.path) }}</strong
+            ><button class="text-button" :disabled="blocked" @click="files.splice(index, 1)">
+              移除
             </button>
           </div>
-        </details>
-      </article>
+          <details>
+            <summary>附加封面、歌词或 CUE</summary>
+            <div
+              v-for="entry in [
+                { kind: 'cover', name: '封面' },
+                { kind: 'lyric', name: '歌词' },
+                { kind: 'cue', name: 'CUE' },
+              ] as const"
+              :key="entry.kind"
+              class="cloud-attachment"
+            >
+              <span>{{ entry.name }}</span
+              ><span class="ellipsis" :title="file[entry.kind] ?? ''">{{
+                basename(file[entry.kind])
+              }}</span
+              ><button
+                class="text-button"
+                :disabled="blocked"
+                @click="attachment(file, entry.kind)"
+              >
+                选择</button
+              ><button
+                v-if="file[entry.kind]"
+                class="text-button"
+                :disabled="blocked"
+                @click="file[entry.kind] = null"
+              >
+                清除
+              </button>
+            </div>
+          </details>
+        </article>
+      </div>
+      <p v-if="error" role="alert" class="cloud-error">{{ error }}</p>
     </div>
-    <p v-if="error" role="alert" class="cloud-error">{{ error }}</p>
     <footer>
       <button class="secondary" :disabled="blocked" @click="close">取消</button
       ><button class="primary" :disabled="blocked || !files.length" @click="upload">
