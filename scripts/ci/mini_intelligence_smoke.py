@@ -16,15 +16,19 @@ def main():
     for key,name in [('XDG_DATA_HOME','data'),('XDG_CONFIG_HOME','config'),('XDG_CACHE_HOME','cache'),('XDG_RUNTIME_DIR','runtime'),('APPDATA','roaming'),('LOCALAPPDATA','local')]:
         directory=root/'os-profile'/name;directory.mkdir(parents=True,mode=0o700);env[key]=str(directory)
     if a.runtime:env['PATH']=str(a.runtime.resolve())+os.pathsep+env.get('PATH','')
-    with (root/'host.log').open('x') as log:code=launch(a.binary.resolve(),env,log,root/'first',a.screenshots)
-    failed=root/'first/failed.json';assert not failed.exists(),failed.read_text() if failed.exists() else ''
+    with (root/'host.log').open('x',encoding='utf-8') as log:code=launch(a.binary.resolve(),env,log,root/'first',a.screenshots)
+    verify(root,code,a.screenshots)
+
+
+def verify(root,code,screenshots):
+    failed=root/'first/failed.json';assert not failed.exists(),failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code==0,f'mini intelligence exit {code}'
-    complete=json.loads((root/'first/complete.json').read_text());assert complete['ok'] and complete['intelligenceMini'] and complete['stageCount']==len(LABELS)
+    complete=json.loads((root/'first/complete.json').read_text(encoding='utf-8'));assert complete['ok'] and complete['intelligenceMini'] and complete['stageCount']==len(LABELS)
     phases=[None,None,None,None,'seeded','seeded','seeded',None,None,None,None,None,'active','active','seeded','seeded','seeded','active',None,None,'fallback','fallback','active']
     modes=['order_loop','single_loop','random','sequential','order_loop','order_loop','order_loop','order_loop','sequential','sequential','sequential','sequential','order_loop','order_loop','order_loop','order_loop','order_loop','order_loop','order_loop','sequential','order_loop','order_loop','order_loop']
     counts=[0,0,0,0,1,1,2,2,2,2,2,2,3,3,4,4,4,5,5,5,6,6,7]
     for i,name in enumerate(LABELS):
-        path=root/'first'/f'ux_{i+1:02}_{name}.json';v=json.loads(path.read_text());native=v['nativePlayer'];mini=v['nativeMini'];sent=v['syntheticIntelligence']['requests']
+        path=root/'first'/f'ux_{i+1:02}_{name}.json';v=json.loads(path.read_text(encoding='utf-8'));native=v['nativePlayer'];mini=v['nativeMini'];sent=v['syntheticIntelligence']['requests']
         assert native['mode']==mini['mode']==modes[i] and native['intelligence']==mini['intelligence']==phases[i]
         assert native['playId']==v['expectedPlayId'] and native['state']=='paused' and abs(native['position']-10)<.2 and not native['error']
         assert len(sent)==counts[i] and v['factoryCount']==1
@@ -39,11 +43,11 @@ def main():
             dom=v['mainPlayerDom'];assert dom['playId']==native['playId'] and dom['state']=='paused' and abs(float(dom['position'])-10)<.2 and dom['intelligencePhase']=='seeded'
         if name.endswith('_light'):assert v['theme']=='light'
         if name.endswith('_dark'):assert v['theme']=='dark'
-        if a.screenshots:assert path.with_suffix('.png').is_file()
+        if screenshots:assert path.with_suffix('.png').is_file()
     for i,payload in enumerate(sent):
         assert set(payload)=={'playlistId','songId','type','startMusicId','count'}
         assert payload==dict(playlistId='1',songId='1' if i<5 else '2',type='fromPlayOne',startMusicId='1',count=40)
-    report=dict(ok=True,actualWebViews=2,states=len(LABELS),screenshots=len(LABELS) if a.screenshots else 0,productionStartVerified=True,sharedAudioFactoryCount=1,realMusicRequests=0,realAccountWrites=0,syntheticPointerEvents=True,physicalDisplayVerified=False,physicalAudioOutputVerified=False)
-    (root/'audit.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report))
+    report=dict(ok=True,actualWebViews=2,states=len(LABELS),screenshots=len(LABELS) if screenshots else 0,productionStartVerified=True,sharedAudioFactoryCount=1,realMusicRequests=0,realAccountWrites=0,syntheticPointerEvents=True,physicalDisplayVerified=False,physicalAudioOutputVerified=False)
+    (root/'audit.json').write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8');print(json.dumps(report))
 
 if __name__=='__main__':main()
