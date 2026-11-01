@@ -1,0 +1,82 @@
+云盘上传表单、失败归属与登记回执
+2026-11-02；完整桌面目标中的上传表单专项，goal仍active。
+
+来源与范围
+- 以desktop-cloud-contracts.txt和core-cloud-upload-contracts.txt记录的官方M/3100
+  上传入口、M/3127递归选文件/重启暂停/父任务状态、U:audio_upload_task/MetaInfo
+  及附件恢复证据为依据；不改变已恢复的官方API参数和对象传输状态机。
+- 本次重新逐行阅读恢复的Uploading.tsx、UploadingTrackViewer.tsx及公共
+  UploadProgressCell/UploadingIndexCell，SHA256分别为：
+  5a60b1699d612c3e80f3704aabda1ddcaaa7a14c7ea21a8a1aa430a1c9a6ed73
+  1f41798443c6ae2acbbcbf47467e662c7fde5f2c102649546f8f996c57876a7a
+  33f81d510d53642d855c4d3ee21f0f0ef42b2c05a308f8184a1daff53bb0fb51
+  4bede2ab0a2fb7fafa7fdcf08af003fd11559a655e6df0ba75ebede0798e774a
+  路径相对references/ui-recovery/sources/packages/pc/src/，依次位于
+  pages/cloudDisk/views/、components/TrackViewer/及其common/。
+- 官方上传任务页隐藏upload6Done，默认64px行、#44/标题438grow1/进度290grow1，
+  全部上传/全部暂停/全部清空各114x48，删除前确认。此为后续任务页审计依据，
+  本批没有完成该任务表、更多菜单、全部清空及已完成历史的官方一致性。
+- 可选封面/LRC/CUE表单是社区显式暴露已恢复native能力的界面，没有找到对应
+  官方同状态表单/运行图，不能称官方像素复刻。未使用YesPlayMusic。
+
+界面状态和交互
+- useCloudUploadForm独立管理选取、提交、结果未确认、逐文件错误和账号生命周期。
+  同名文件通过完整路径区分；路径只来自本机用户选择，显示次级路径辅助识别。
+  原生选择器仍在desktop/src/cloud.rs，目录枚举/格式/来源验证仍在Rust。
+- 每批最多500；多次选择合计超限时整体拒绝本次新增，不截取或提交前500。
+  路径去重保留原选择和附件；每页只渲染20个文件，全部选取仍随一次命令提交。
+  分页不修改选择；删掉末页记录后页码收缩。附件展开、文件移除不自动上传。
+- 音频/文件夹/附件选择取消保留已有输入；选择失败在同一弹窗中反馈，可显式重试。
+  pending时聚焦稳定dialog并禁用重入；返回后恢复原控件，移除/末页分页时选可用
+  后备控件。提交部分失败后焦点转到首个失败原因，正文可滚动，标题/页脚固定。
+  用户已经主动移走焦点时不抢回。沿用ModalTransition离场和入口焦点恢复。
+- 每个失败项就地显示原因，只保留未登记文件；已经登记的任务切换至正在上传。
+  修改/清除附件清掉旧错误并更换该文件的request ID；其他文件保持原标识。
+  封面无效、附件格式/大小、文本内容、空/超大音频、NCM有有界中文反馈，不暴露
+  传输错误正文、对象URL、凭据或任意异常字符串。
+- 切换账号时同步清除私有路径/错误，旧dialog立即隐藏；迟到选择、提交回执或
+  组件卸载后的结果不触发新账号的弹窗、任务页或焦点更新。
+
+登记与传输分开
+- frontend通过CoreClient.cloudCommand调用现有cloud_command IPC，新增命令
+  {kind:'upload_planned',files:[{request_id:<32位小写hex>,input:{path,cover,lyric,cue}}]}。
+  request ID由crypto.getRandomValues产生，只标记本次选取，不是授权凭据或签名。
+  旧CloudCommand.upload继续兼容；正式新表单使用upload_planned。
+- CloudUploads::create_once由request ID派生稳定native task ID；原输入路径组合
+  与cloud_uploads_v1任务在同一SQLite事务写入cloud_upload_creations_v1，均按
+  账号owner隔离。没有receipt而只有任务、输入不一致或记录损坏时拒绝覆盖。
+  同ID/输入的重试返回原任务，先读回执，不等待正在运行的远端任务锁。
+- 已有回执不再读源文件、不再次调度，不恢复暂停/取消/失败/未决/完成任务。
+  即使容量现已满或原文件已移动，仍允许读回已有登记；无回执的新文件受容量
+  保护。新选择有新request ID；同标识重放始终关联原任务内容快照。
+- accepted是已登记的task ID，failed用原选取完整路径定位未登记项。
+  新增notStarted：任务已成功登记但自动排程失败的路径/有界原因；仍计入
+  accepted，界面提示到正在上传处理，不把它当未登记文件重新创建。回读的未完成
+  任务若没有活动排程，也明确返回notStarted，说明保留原状态而没有重新启动。
+- undefined/抛出/代次错误/覆盖不完整的回执都保持原文件和标识，锁定编辑；
+  用户可“核对并补全任务”，已有回执只读复用，尚未登记项仍可补全。也可查看
+  当前任务或关闭。未确认选取草稿仅在当前弹窗保留，关闭/重启后不自动恢复草稿；
+  已登记任务及receipt持久存在，不能称跨重启选取草稿恢复已实现。
+- 任务登记不等于媒体上传完成。后续仍为check→分配→实际音频/附件NOS或OSS→
+  metadata→转码→publish→完整账号列表回读，成功以实际native任务Complete为准。
+  远端未决写入仍遵守原核对边界，不因UI重试放宽。
+
+接口、验证和边界
+- 没有新增官方业务API。继续/api/cloud/upload/check、/api/whale/token/alloc、
+  /api/nos/token/alloc、NOS/OSS对象请求、/api/upload/cloud/info/v2、
+  /api/v1/cloud/music/status、/api/cloud/pub/v2、/api/v1/cloud/get。
+  请求字段/通道/签名与线上限制见core-cloud-upload、core-nos-upload、
+  core-oss-upload及desktop-cloud契约；前端不持Cookie/签名/完整授权URL。
+- core/tests/cloud_upload_creation.rs覆盖持久回执、事务回滚、在途锁下回读、
+  源文件删除后恢复、暂停/取消与账号；client_cloud/creation.rs覆盖容量、
+  排程保存失败、完整请求预检及附件错误。前端cloud-upload-form覆盖部分失败、
+  丢失/坏回执、稳定ID、附件、上限/分页、重入、迟到结果和已登记未排程。
+- desktop/examples/cloud_upload_probe.js、support/cloud_upload_ui_fixture.rs和
+  scripts/ci/cloud_upload_smoke.py运行生产WebView/IPC/Rust/SQLite/ffprobe及实际
+  合成FLAC/PNG/LRC/CUE字节。仅OS选择结果和API/对象后端是明确替身；损坏封面
+  用实际原生验证拒绝，丢回执是在实际native登记后显式注入。
+  3个任务/4附件的实际存储字节逐个比较；恢复不增加check/分配/metadata/publish。
+  500个只验证选择/分页/上限，未声称500个已完整上传。
+- 此专项不证明真实服务配额/OSS通道/LRC或CUE服务接受、OS文件对话框视觉、
+  Windows实机、物理声卡听感、刷新率或全应用完成。最终截图/工程检查和失败
+  修正记录见ui-ux-validation.txt；普通任务页其余差异继续按全范围目标推进。

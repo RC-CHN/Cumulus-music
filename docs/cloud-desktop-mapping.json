@@ -108,16 +108,29 @@
       "source": "native upload pending journal + scheduler live state",
       "implementation": "core/src/client/cloud/view.rs",
       "evidence": "core/tests/client_cloud.rs"
+    },
+    {
+      "feature": "durable_upload_creation_receipts",
+      "source": "Rust safety strengthening over official M/3127 task registration; not a recovered server API",
+      "implementation": "core/src/cloud/upload/creation.rs",
+      "evidence": "core/tests/cloud_upload_creation.rs; core/tests/client_cloud/creation.rs"
+    },
+    {
+      "feature": "per_file_partial_and_unknown_registration_form",
+      "source": "official native upload/attachment capabilities; community explicit form",
+      "implementation": "frontend/src/composables/useCloudUploadForm.ts; frontend/src/components/CloudUploadDialog.vue",
+      "evidence": "frontend/tests/cloud-upload-form.test.ts; scripts/ci/cloud_upload_smoke.py"
     }
   ],
   "pending": [
     "metadata matching/editing UI",
     "real channel=3 OSS allocation and live UI",
     "LRC/CUE service restrictions",
-    "Windows/macOS actual runtime evidence"
+    "Windows actual runtime evidence; macOS is not supported"
   ],
   "completed_followups": [
     "docs/cloud-download-mapping.json",
-    "docs/cloud-order-mapping.json"
+    "docs/cloud-order-mapping.json",
+    "docs/cloud-upload-form-ui-contracts.txt"
   ]
 }

@@ -3649,3 +3649,67 @@ Windows既有失败与修正边界
 - 普通列宽、扫描库关联、全部上传/长附件、容量扩容、细分删除、本地/CUE删除
   和其余业务UI仍继续审计，goal保持active。没有支付、邀请、公开内容或用户
   已有资源修改；支持目标Linux/Windows，不承诺macOS。
+
+2026-11-02 上传表单、附件、逐文件失败与登记回执
+
+范围和官方依据
+- 详见cloud-upload-form-ui-contracts.txt。沿用恢复的M/3127/3100和native上传/
+  附件状态机；本次重读Uploading/UploadingTrackViewer/UploadProgressCell/
+  UploadingIndexCell并记录SHA。任务viewer的完成过滤、列宽、全部清空、删除
+  确认及更多菜单是后续范围；显式附件表单是社区设计，不称官方像素一致。
+- 新增upload_planned是本机登记幂等性保护，不是新增服务签名或官方网络API。
+  SQLite任务和选取回执同事务；恢复只读复用旧任务，不重启动暂停/取消/未决。
+  已登记但未排程以accepted+notStarted反馈，避免把它再当新文件添加。
+
+最终UI证据（根.build，原图、合成文件、数据库、二进制不提交）
+- cloud-upload-form-final-gui-1：Xvfb/Openbox，DPR1，16态/16图。
+- cloud-upload-form-final-kde-1：真实KDE Wayland/XWayland，DPR1.25，同版16态/
+  16图；仅自有PID窗口pixmap，聚焦/可见、实际绘制色样、截图回执均检查。
+  first/physical.json为本机桌面证据；通用report保留physicalDisplayVerified=false，
+  不证明物理刷新率或声卡听感。本轮没有高刷新率专项。
+- 空/选择中/等名路径、展开全部三类附件、实际损坏封面部分失败与首错聚焦、
+  改封面后只重试剩余一项、完成、丢回执/核对、500文件首尾页、合计超限、
+  选择错误/取消、短窗附件、切换账号丢迟到选择，共16个具体状态。
+  检查两主题/两尺寸、按钮命中、弹窗边界、正文滚动、禁用、防重入及焦点。
+  所有原图及8张联系表见cloud-upload-form-delivery-gallery/index.html。
+- 真实Rust父任务运行3个，音频NOS对象3个，封面2/LRC1/CUE1共4个附件对象；
+  底层实际存储字节与合成FLAC/PNG/LRC/CUE比较，7个均一致。实际ffprobe读取
+  合成音频；metadata分别携带[coverid,lyricid,cueid]、[coverid]和空附件集合。
+  check3次、音频alloc3次、附件alloc4次、metadata3次、publish3次，完整列表
+  回读确认3任务Complete。丢回执后的第4条登记命令返回第3条相同ID，不新增
+  check/alloc/metadata/publish。500个仅验证选择/分页/上限，没有全部上传。
+- OS选择器返回通过类型化Client显式注入；音频/目录仍交给实际Rust枚举校验，
+  附件由实际文件/图片/文本验证。实际native登记后显式丢弃一次回执，测试
+  未确认UI；服务和NOS后端为合成替身，不把它称真实服务已接受附件。
+  0真实账号写入/音乐请求，没有支付、邀请、公开内容或删除已有用户资源。
+- 第一轮cloud-upload-form-gui-1在第3态后失败：探针读到Vue更新前的aria-busy
+  便点下个附件，控件已正确禁用；改为先等一次渲染再等返回，不重试上传写入。
+  gui-2/kde-1为中间版32图；逐图发现错误泛化、分页焦点框裁切和完成截图早于
+  UI缓存轮询，已分别修复中文错误/首错聚焦、分页留白、等待真实可见完成状态。
+  最终证据只有上述final-*两目录，不把中间图累计成最终通过数。
+- 首次原生探针构建曾因JSON表达式语法和复用测试适配器缺显式dev依赖失败；
+  已修复并锁定既有hex/md-5/sha2/url。首轮全测1420项通过但存在新错误映射顺序
+  不可达告警；已在通用InvalidInput前匹配，并由最终严格Clippy/全测重新验证。
+  新notStarted常量多余into也在严格Clippy中发现并移除，没有忽略告警。
+
+工程检查、CI及尚待边界
+- 最终Node24.16.0/npm锁文件ci、format:check、499项前端测试、typecheck和build
+  通过，日志cloud-upload-form-{npm-ci,format-delivery,frontend-tests-delivery,
+  build-delivery}.log；新增8项状态测试含多种坏/丢失回执、账号/卸载及上限。
+- Rust最终格式、严格workspace/all-target/custom-protocol Clippy已通过，日志
+  rust-format-delivery.log、clippy-final.log；全测与产物最终记录随后追加。
+  没有在Rust嵌入资源时改写dist；最终GUI使用内嵌的production前端。
+- CI工具40项、JS/Python语法、source_audit/release_guard及diff检查通过；两平台
+  runner均增加cloud_upload_smoke，不跳过失败。新精确HEAD的CI须单独核对。
+- 03bbdf9/41324519800（前一批工具栏）本轮最近查询前端、两平台Clippy/全测/
+  发行构建已成功，Linux/Windows桌面smoke仍在运行；未称完整CI通过。
+- 原研究未通过的真实OSS分配、LRC/CUE接受、Windows实机、原生选择器视觉，
+  以及任务表/清空、普通列、扫描库关联、容量、细分删除/本地删除等继续推进。
+  未确认选取草稿不跨关闭/重启恢复；已登记任务和回执会持久化。完整goal仍active。
+- 最终Rust1.96全workspace/all-targets/custom-protocol/locked重跑通过：279结果
+  目标、1420 passed、0 failed/ignored，且0编译告警，日志cloud-upload-form-rust-
+  tests-delivery.log。Clippy-final、格式及最终原生探针构建均0退出；之后未再改
+  业务/UI代码，最终前端499项和32截图对应同一内容树。正式cumulus产物重新构建。
+- cloud-upload-form-delivery-manifest.json冻结production dist、原生二进制与本批
+  源码/探针/合成输入哈希；32张最终原图的8张联系表已全部实际查看。
+  完整CI状态仍以精确HEAD运行结果为准，本地通过不代表Windows实机已验收。
