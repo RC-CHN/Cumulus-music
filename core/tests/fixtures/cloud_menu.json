@@ -1,0 +1,208 @@
+{
+  "sources": [
+    {
+      "module": 5,
+      "sha256": "a6bf0cb489d2f700805d1e2cb68e575ddae46d97a8c29e742ccf86770ee74c10"
+    },
+    {
+      "module": 35,
+      "sha256": "dfe4955a5747bf986ada1dcfaeefd341d2a8ed4734f1a36758ff55a1bbdbd116"
+    },
+    {
+      "module": 556,
+      "sha256": "ba9fea37236253341e1efc97b1b644d5173a30612f0c641799ceeab6b3c5fe20"
+    }
+  ],
+  "vectors": [
+    {
+      "status": 0,
+      "local": false,
+      "selection": false,
+      "rows": [
+        {
+          "label": "播放",
+          "action": "play",
+          "separator": false,
+          "enabled": true
+        },
+        {
+          "label": "下一首播放",
+          "action": "nextPlay",
+          "separator": false,
+          "enabled": true
+        },
+        {
+          "label": "",
+          "action": null,
+          "separator": true,
+          "enabled": true
+        },
+        {
+          "label": "收藏",
+          "action": "favorite",
+          "separator": false,
+          "enabled": true
+        },
+        {
+          "label": "分享",
+          "action": "share",
+          "separator": false,
+          "enabled": true
+        },
+        {
+          "label": "",
+          "action": null,
+          "separator": true,
+          "enabled": true
+        },
+        {
+          "label": "从网盘中删除",
+          "action": "removeFromCloudDisk",
+          "separator": false,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "status": -100,
+      "local": false,
+      "selection": false,
+      "rows": [
+        {
+          "label": "播放",
+          "action": "play",
+          "separator": false,
+          "enabled": true
+        },
+        {
+          "label": "下一首播放",
+          "action": "nextPlay",
+          "separator": false,
+          "enabled": true
+        },
+        {
+          "label": "",
+          "action": null,
+          "separator": true,
+          "enabled": true
+        },
+        {
+          "label": "收藏",
+          "action": "favorite",
+          "separator": false,
+          "enabled": true
+        },
+        {
+          "label": "",
+          "action": null,
+          "separator": true,
+          "enabled": true
+        },
+        {
+          "label": "从网盘中删除",
+          "action": "removeFromCloudDisk",
+          "separator": false,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "status": 0,
+      "local": true,
+      "selection": false,
+      "rows": [
+        {
+          "label": "播放",
+          "action": "play",
+          "separator": false,
+          "enabled": true
+        },
+        {
+          "label": "下一首播放",
+          "action": "nextPlay",
+          "separator": false,
+          "enabled": true
+        },
+        {
+          "label": "",
+          "action": null,
+          "separator": true,
+          "enabled": true
+        },
+        {
+          "label": "收藏",
+          "action": "favorite",
+          "separator": false,
+          "enabled": true
+        },
+        {
+          "label": "分享",
+          "action": "share",
+          "separator": false,
+          "enabled": true
+        },
+        {
+          "label": "打开文件所在目录",
+          "action": "viewFileLocation",
+          "separator": false,
+          "enabled": true
+        },
+        {
+          "label": "",
+          "action": null,
+          "separator": true,
+          "enabled": true
+        },
+        {
+          "label": "从网盘中删除",
+          "action": "removeFromCloudDisk",
+          "separator": false,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "status": 0,
+      "local": false,
+      "selection": true,
+      "rows": [
+        {
+          "label": "播放",
+          "action": "play",
+          "separator": false,
+          "enabled": true
+        },
+        {
+          "label": "下一首播放",
+          "action": "nextPlay",
+          "separator": false,
+          "enabled": true
+        },
+        {
+          "label": "",
+          "action": null,
+          "separator": true,
+          "enabled": true
+        },
+        {
+          "label": "收藏",
+          "action": "favorite",
+          "separator": false,
+          "enabled": true
+        },
+        {
+          "label": "",
+          "action": null,
+          "separator": true,
+          "enabled": true
+        },
+        {
+          "label": "从网盘中删除",
+          "action": "removeFromCloudDisk",
+          "separator": false,
+          "enabled": true
+        }
+      ]
+    }
+  ]
+}

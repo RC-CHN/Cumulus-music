@@ -126,6 +126,25 @@ fn main() {
             match kind {
                 "cloud-config"=>{api.cloud_ui.configure(&value);ack(json!({"ok":true}));}
                 "cloud-state"=>ack(api.cloud_ui.report()),
+                "cloud-menu-seed"=>{
+                    assert!(mini_fixture::cloud_ui::menu_enabled());
+                    let handle=handle.clone();let directory=root.join("menu-originals");
+                    tauri::async_runtime::spawn(async move {
+                        use cumulus_core::client::dto::*;
+                        let client=handle.state::<MusicClient>();let epoch=client.account().unwrap().epoch;
+                        let page=client.cloud_page(&epoch,CloudQuery{tab:CloudTab::Uploaded,keyword:String::new(),sort:CloudSort::Natural,descending:false,offset:0,limit:200},true).await.unwrap();
+                        client.download_command(&epoch,DownloadCommand::Configure{root:directory.to_string_lossy().into_owned(),path_type:2,file_type:1}).await.unwrap();
+                        client.download_command(&epoch,DownloadCommand::StartCloud{song_ids:vec!["1004".into()],revision:page.revision.clone().unwrap(),lyrics:false}).await.unwrap();
+                        for _ in 0..200 {
+                            let view=client.downloads(&epoch,DownloadQuery::default()).await.unwrap();
+                            if view.completed_count==1 {break;}
+                            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                        }
+                        let path=client.cloud_directory_path(&epoch,"1004",&page.revision.unwrap()).await.unwrap();
+                        assert!(path.canonicalize().unwrap().starts_with(directory.canonicalize().unwrap()));
+                        handle.get_webview_window("main").unwrap().eval(format!("window.__miniAck[{}]={{ok:true,verifiedOriginal:true}};",id)).unwrap();
+                    });
+                }
                 "cloud-download-root"=>{
                     assert!(mini_fixture::cloud_ui::batch_enabled());
                     let handle=handle.clone();let directory=root.join("batch-downloads");
