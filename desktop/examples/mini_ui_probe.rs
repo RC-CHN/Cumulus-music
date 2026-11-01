@@ -110,6 +110,11 @@ fn main() {
             let id=value["id"].clone();
             let ack=|value:Value| { handle.get_webview_window("main").unwrap().eval(format!("window.__miniAck[{}]={};",id,value)).unwrap(); };
             match kind {
+                "fm-feedback" => {
+                    let owner=session.token().unwrap().uid.unwrap();
+                    api.fm.control(&proof_store,&owner,value["action"].as_str().unwrap());
+                    ack(api.fm.report());
+                }
                 "eval" => {
                     let mini=handle.webview_windows().into_iter().find(|(label,_)|label.starts_with("mini-player-")).expect("mini window").1;
                     let source=value["source"].as_str().unwrap();
@@ -167,7 +172,10 @@ fn main() {
                         value["nativeMini"]=serde_json::to_value(client.mini_snapshot().unwrap().view).unwrap();
                         if mini_fixture::fm::enabled() {
                             let source=serde_json::from_value(value.get("fmSource").cloned().unwrap_or_else(||json!({"kind":"personal"}))).unwrap();
-                            value["nativeFm"]=serde_json::to_value(client.fm_view(&epoch,source,false).await.unwrap().value).unwrap();
+                            match client.fm_view(&epoch,source,false).await {
+                                Ok(view)=>value["nativeFm"]=serde_json::to_value(view.value).unwrap(),
+                                Err(error)=>value["nativeFmFailure"]=serde_json::to_value(cumulus_core::client::ClientError::from(error)).unwrap(),
+                            }
                         }
                         let stage=value["stage"].as_str().unwrap_or("failed");
                         assert!(stage.chars().all(|c|c.is_ascii_alphanumeric()||c=='_'));

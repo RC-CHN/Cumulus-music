@@ -74,7 +74,9 @@ def verify(root, code, screenshots):
         assert value['factoryCount'] == 1
         # Enter's preload and playable pass each read the empty zone once.
         # Every subsequent repeat/recovery must leave both read counts fixed.
-        assert value['syntheticFm'] == dict(personalReads=1, zoneReads=2 if index >= 13 else 0, skipWrites=0, trashWrites=0)
+        assert value['syntheticFm'] == dict(personalReads=1, zoneReads=2 if index >= 13 else 0,
+                                           skipWrites=0, trashWrites=0, reasonReads=0,
+                                           artistWrites=0, remoteTrash=[], remoteArtists=[], corrupted=False)
         if empty:
             assert native['playId'] is None and native['state'] == 'idle'
         else:
