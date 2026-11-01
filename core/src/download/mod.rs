@@ -6,5 +6,5 @@ pub mod offline;
 pub mod service;
 pub mod transfer;
 
-mod file_identity;
+pub(crate) mod file_identity;
 pub(crate) mod playback;

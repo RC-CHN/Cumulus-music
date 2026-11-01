@@ -5,7 +5,7 @@ use cumulus_core::download::{
 };
 pub(super) const MEDIA_BYTES: &[u8] = include_bytes!("../fixtures/tag_audio/seed.flac");
 pub(super) const MEDIA_URL: &str = "https://m1.music.126.net/cloud-menu-original.flac";
-struct Files;
+pub(super) struct Files;
 impl MediaBackend for Files {
     fn get(&self, request: MediaRequest) -> ApiFuture<'_, MediaReply> {
         Box::pin(async move {

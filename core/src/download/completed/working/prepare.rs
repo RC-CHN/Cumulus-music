@@ -84,6 +84,7 @@ impl CompletedDownloads {
             id: id.into(),
             task_id: task_id.into(),
             action: FileAction::Move,
+            cloud_removal: false,
             phase: FilePhase::Prepared,
             task: task.clone(),
             target: after.target.clone(),

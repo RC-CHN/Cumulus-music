@@ -71,6 +71,8 @@ impl CloudSnapshot {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DeletePhase {
+    Preparing,
+    NotSubmitted,
     Sending,
     Verifying,
     Uncertain,
@@ -80,7 +82,10 @@ pub enum DeletePhase {
 }
 impl DeletePhase {
     pub fn pending(self) -> bool {
-        matches!(self, Self::Sending | Self::Verifying | Self::Uncertain)
+        matches!(
+            self,
+            Self::Preparing | Self::Sending | Self::Verifying | Self::Uncertain
+        )
     }
 }
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

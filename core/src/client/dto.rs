@@ -181,8 +181,9 @@ pub use super::catalog::{
     CatalogSelectionPage, CatalogVideoCard, CatalogVideoKind, CatalogView, ConcertCard,
 };
 pub use super::cloud::{
-    CloudCommand, CloudDeleteView, CloudFailure, CloudPageView, CloudQuery, CloudResourceView,
-    CloudResult, CloudSort, CloudTab, CloudTrackView, CloudUploadInput, CloudUploadRemovalItem,
+    CloudCommand, CloudDeleteView, CloudFailure, CloudPageView, CloudQuery, CloudRemovalFileState,
+    CloudRemovalFileView, CloudRemovalPhase, CloudRemovalView, CloudResourceView, CloudResult,
+    CloudSort, CloudTab, CloudTrackView, CloudUploadInput, CloudUploadRemovalItem,
     CloudUploadRemovalView, CloudUploadView, PlannedCloudUploadInput,
 };
 pub use super::comments::{

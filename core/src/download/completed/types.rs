@@ -6,6 +6,14 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, sync::Arc};
 
+/// Native-only selection-time identity. Content is verified by the file worker.
+#[derive(Clone, Serialize, Deserialize)]
+pub(crate) struct DeleteSource {
+    pub path: PathBuf,
+    pub facts: Facts,
+    pub parent: Identity,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FileAction {
@@ -93,6 +101,8 @@ pub(super) struct Operation {
     pub id: String,
     pub task_id: String,
     pub action: FileAction,
+    #[serde(default)]
+    pub cloud_removal: bool,
     pub phase: FilePhase,
     #[serde(default)]
     pub migration_id: Option<String>,

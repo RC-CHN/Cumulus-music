@@ -1,6 +1,7 @@
 mod commands;
 mod dto;
 mod files;
+mod removal;
 mod selection;
 mod view;
 use super::{ClientError, MusicClient};
@@ -10,6 +11,9 @@ use crate::{
     cloud::{library::CloudLibrary, upload::*},
 };
 pub use dto::*;
+pub use removal::{
+    CloudRemovalFileState, CloudRemovalFileView, CloudRemovalPhase, CloudRemovalView,
+};
 use std::sync::{Arc, Mutex};
 use tokio::sync::{Mutex as AsyncMutex, Notify};
 

@@ -22,7 +22,7 @@ impl CloudLibrary {
                 "cloud selection is not owned by account",
             ));
         }
-        let mut op = DeleteOperation {
+        let op = DeleteOperation {
             id: uuid::Uuid::new_v4().simple().to_string(),
             created_ms: types::now_ms()?,
             phase: DeletePhase::Sending,
@@ -43,6 +43,9 @@ impl CloudLibrary {
                 .collect(),
         };
         self.save(&op)?;
+        self.transmit(op).await
+    }
+    pub(super) async fn transmit(&self, mut op: DeleteOperation) -> Result<DeleteOperation> {
         for index in 0..op.batches.len() {
             op.batches[index].phase = BatchPhase::Sending;
             self.save(&op)?;
@@ -97,7 +100,7 @@ impl CloudLibrary {
     pub async fn reconcile_delete(&self, id: &str) -> Result<DeleteOperation> {
         let _lock = self.lock()?;
         let mut op = self.operation(id)?;
-        if !op.phase.pending() {
+        if !op.phase.pending() || op.phase == DeletePhase::Preparing {
             return Ok(op);
         }
         self.observe(&mut op).await?;

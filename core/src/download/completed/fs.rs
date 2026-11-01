@@ -12,7 +12,7 @@ use std::{
 };
 
 #[derive(Clone, Serialize, Deserialize)]
-pub(in crate::download) struct Facts {
+pub(crate) struct Facts {
     pub identity: Identity,
     pub integrity: FileIntegrity,
     pub fingerprint: FileFingerprint,
@@ -20,7 +20,7 @@ pub(in crate::download) struct Facts {
     pub readonly: bool,
     pub mode: Option<u32>,
 }
-pub(in crate::download) fn facts(path: &Path) -> Result<Facts> {
+pub(crate) fn facts(path: &Path) -> Result<Facts> {
     let meta = fs::symlink_metadata(path)?;
     if !meta.is_file() {
         return Err(Error::State("managed output is not a regular file"));
@@ -47,7 +47,36 @@ pub(in crate::download) fn facts(path: &Path) -> Result<Facts> {
         mode,
     })
 }
-pub(in crate::download) fn parent(path: &Path, expected: &Identity) -> Result<()> {
+/// A cheap selection-time pin using an already recorded content digest. This
+/// does not claim the current bytes match; destructive workers still call facts.
+pub(crate) fn recorded_facts(path: &Path, integrity: FileIntegrity) -> Result<Facts> {
+    integrity.validate()?;
+    let meta = fs::symlink_metadata(path)?;
+    if !meta.is_file() || meta.len() != integrity.bytes {
+        return Err(Error::State("recorded output is missing or changed"));
+    }
+    let identity = identity(path)?;
+    let before = fingerprint(path)?;
+    if before != fingerprint(path)? || identity != crate::download::file_identity::identity(path)? {
+        return Err(Error::State("recorded output changed while pinning"));
+    }
+    #[cfg(unix)]
+    let mode = {
+        use std::os::unix::fs::PermissionsExt;
+        Some(meta.permissions().mode())
+    };
+    #[cfg(not(unix))]
+    let mode = None;
+    Ok(Facts {
+        identity,
+        integrity,
+        fingerprint: before,
+        modified: meta.modified()?,
+        readonly: meta.permissions().readonly(),
+        mode,
+    })
+}
+pub(crate) fn parent(path: &Path, expected: &Identity) -> Result<()> {
     let p = path
         .parent()
         .ok_or(Error::State("managed file lacks a parent"))?;
@@ -56,7 +85,7 @@ pub(in crate::download) fn parent(path: &Path, expected: &Identity) -> Result<()
     }
     Ok(())
 }
-pub(in crate::download) fn matches(path: &Path, expected: &Facts) -> Result<()> {
+pub(crate) fn matches(path: &Path, expected: &Facts) -> Result<()> {
     let actual = facts(path)?;
     if actual.identity != expected.identity
         || actual.integrity != expected.integrity
@@ -69,7 +98,7 @@ pub(in crate::download) fn matches(path: &Path, expected: &Facts) -> Result<()> 
     Ok(())
 }
 /// Short recheck after a full hash, suitable for the final account-guarded step.
-pub(in crate::download) fn unchanged(path: &Path, expected: &Facts) -> Result<()> {
+pub(crate) fn unchanged(path: &Path, expected: &Facts) -> Result<()> {
     if !fs::symlink_metadata(path)?.is_file()
         || identity(path)? != expected.identity
         || fingerprint(path)? != expected.fingerprint
@@ -80,14 +109,14 @@ pub(in crate::download) fn unchanged(path: &Path, expected: &Facts) -> Result<()
     }
     Ok(())
 }
-pub(in crate::download) fn absent(path: &Path) -> Result<()> {
+pub(crate) fn absent(path: &Path) -> Result<()> {
     match fs::symlink_metadata(path) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(e) => Err(e.into()),
         Ok(_) => Err(Error::State("file destination already exists")),
     }
 }
-pub(in crate::download) fn normalize_target(path: &Path, state: &Path) -> Result<PathBuf> {
+pub(crate) fn normalize_target(path: &Path, state: &Path) -> Result<PathBuf> {
     let path = std::path::absolute(path)?;
     let name = path
         .file_name()
@@ -104,14 +133,14 @@ pub(in crate::download) fn normalize_target(path: &Path, state: &Path) -> Result
     }
     Ok(target)
 }
-pub(in crate::download) fn sync(path: &Path) -> Result<()> {
+pub(crate) fn sync(path: &Path) -> Result<()> {
     #[cfg(unix)]
     fs::File::open(path)?.sync_all()?;
     #[cfg(not(unix))]
     let _ = path;
     Ok(())
 }
-pub(in crate::download) fn path_key(path: &Path) -> Result<String> {
+pub(crate) fn path_key(path: &Path) -> Result<String> {
     use sha2::{Digest, Sha256};
     Ok(hex::encode(Sha256::digest(
         path.to_str()

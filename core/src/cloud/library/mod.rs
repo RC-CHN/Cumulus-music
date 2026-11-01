@@ -2,6 +2,7 @@
 mod api;
 mod classification;
 mod delete;
+mod reservation;
 mod service;
 mod types;
 use super::CloudApi;

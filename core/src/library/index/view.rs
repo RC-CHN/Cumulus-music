@@ -25,6 +25,30 @@ fn fold(value: &str) -> String {
 }
 
 impl LocalLibrary {
+    /// Caller holds the shared index lock when using this as an unlink guard.
+    pub(crate) fn protects_cue_source(&self, path: &std::path::Path) -> Result<bool> {
+        let index = self.load()?;
+        if index
+            .cues
+            .values()
+            .any(|cue| cue.sources.contains_key(path))
+        {
+            return Ok(true);
+        }
+        let candidate = match crate::download::file_identity::identity(path) {
+            Ok(value) => value,
+            Err(Error::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(e) => return Err(e),
+        };
+        Ok(index
+            .cues
+            .values()
+            .flat_map(|cue| cue.sources.keys())
+            .any(|source| {
+                crate::download::file_identity::identity(source)
+                    .is_ok_and(|identity| identity == candidate)
+            }))
+    }
     pub fn list(&self, options: ListOptions<'_>) -> Result<Vec<LibraryItem>> {
         let index = self.load()?;
         let virtual_tracks = cue_items(&index, options.include_missing);

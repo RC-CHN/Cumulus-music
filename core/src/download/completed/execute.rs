@@ -51,6 +51,28 @@ impl CompletedDownloads {
         }
     }
     fn advance(&self, op: &mut Operation, token: &Option<SessionToken>) -> Result<()> {
+        let protected = if op.cloud_removal {
+            let path = op
+                .task
+                .target
+                .as_deref()
+                .ok_or(Error::State("missing cloud removal output"))?;
+            crate::library::LocalLibrary::new(self.store.clone())?.protects_cue_source(path)?
+        } else {
+            false
+        };
+        if protected {
+            if op.phase == FilePhase::Prepared {
+                return Err(Error::State("CUE source is protected from cloud removal"));
+            }
+            // A new CUE was indexed after an interruption. Keep its source even
+            // if download metadata had already committed before the crash.
+            for file in &mut op.files {
+                file.replacement_retained = true;
+                file.stage = FileStage::Cleaned;
+            }
+            self.save(op)?;
+        }
         if op.phase == FilePhase::Prepared {
             for i in 0..op.files.len() {
                 let f = &op.files[i];

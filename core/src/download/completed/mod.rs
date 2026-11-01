@@ -2,7 +2,7 @@
 //! No remote API calls. All filesystem work is blocking: hosts use a worker.
 mod commit;
 mod execute;
-pub(in crate::download) mod fs;
+pub(crate) mod fs;
 mod prepare;
 mod types;
 mod working;
@@ -14,6 +14,7 @@ use crate::{
     storage::{OperationLock, StateStore},
 };
 use std::sync::Arc;
+pub(crate) use types::DeleteSource;
 pub use types::{
     FileAction, FileEntryView, FileEvent, FileObserver, FileOperationView, FileOptions, FilePhase,
     FileStage,

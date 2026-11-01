@@ -1,7 +1,7 @@
 use super::*;
 use cumulus_core::library::{AudioMetadata, ListOptions, LocalLibrary, probe::AudioProbe};
 use std::path::Path;
-struct Probe;
+pub(super) struct Probe;
 impl AudioProbe for Probe {
     fn inspect(&self, _: &Path) -> cumulus_core::Result<AudioMetadata> {
         Ok(AudioMetadata {
@@ -18,7 +18,7 @@ impl AudioProbe for Probe {
         })
     }
 }
-fn library(f: &Fixture) -> LocalLibrary {
+pub(super) fn library(f: &Fixture) -> LocalLibrary {
     LocalLibrary::with_probe(
         ProfileRegistry::open(f.root.path(), ApiOrigin::Pc)
             .unwrap()

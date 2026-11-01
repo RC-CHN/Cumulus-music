@@ -160,6 +160,29 @@ impl Host {
     }
 }
 impl MusicClient {
+    pub(in crate::client) async fn cloud_removal_downloads(
+        &self,
+        epoch: &str,
+    ) -> Result<Vec<crate::download::service::DownloadTask>> {
+        let context = self.downloads.inner.context(epoch)?;
+        tokio::task::spawn_blocking(move || {
+            context.guard()?;
+            let mut tasks = context
+                .service
+                .list()?
+                .into_iter()
+                .filter(|task| task.origin.is_cloud())
+                .collect::<Vec<_>>();
+            if tasks.len() > 50_000 {
+                return Err(Error::State("cloud download associations exceed limit"));
+            }
+            tasks.sort_by(|a, b| b.created_ms.cmp(&a.created_ms).then(b.id.cmp(&a.id)));
+            context.guard()?;
+            Ok(tasks)
+        })
+        .await
+        .map_err(|_| Error::State("cloud removal association worker stopped"))?
+    }
     pub(in crate::client) async fn cloud_file_downloads(
         &self,
         epoch: &str,

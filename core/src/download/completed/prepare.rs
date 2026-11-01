@@ -5,6 +5,13 @@ use crate::download::{
 };
 use std::path::{Path, PathBuf};
 
+#[derive(Default)]
+struct Intent {
+    rename_source: Option<PathBuf>,
+    operation_id: Option<String>,
+    deletion_source: Option<DeleteSource>,
+}
+
 impl CompletedDownloads {
     pub fn rename(&self, task_id: &str, name: &str) -> Result<FileOperationView> {
         if name.is_empty() || name == "." || name == ".." || name.contains(['/', '\\']) {
@@ -23,8 +30,10 @@ impl CompletedDownloads {
             FileAction::Move,
             Some(target),
             t,
-            task.target,
-            None,
+            Intent {
+                rename_source: task.target,
+                ..Default::default()
+            },
         )
     }
     /// Only records intent. Resume advances the operation; callers retain its ID.
@@ -34,7 +43,7 @@ impl CompletedDownloads {
         action: FileAction,
         target: Option<PathBuf>,
     ) -> Result<FileOperationView> {
-        self.start_for(task_id, action, target, self.token()?, None, None)
+        self.start_for(task_id, action, target, self.token()?, Intent::default())
     }
     pub(in crate::download) fn start_planned(
         &self,
@@ -50,8 +59,29 @@ impl CompletedDownloads {
             FileAction::Move,
             Some(target),
             self.token()?,
+            Intent {
+                operation_id: Some(id.into()),
+                ..Default::default()
+            },
+        )
+    }
+    pub(crate) fn start_delete_once(
+        &self,
+        task_id: &str,
+        id: &str,
+        source: DeleteSource,
+    ) -> Result<FileOperationView> {
+        valid_id(id)?;
+        self.start_for(
+            task_id,
+            FileAction::Delete,
             None,
-            Some(id),
+            self.token()?,
+            Intent {
+                operation_id: Some(id.into()),
+                deletion_source: Some(source),
+                ..Default::default()
+            },
         )
     }
     fn start_for(
@@ -60,17 +90,39 @@ impl CompletedDownloads {
         action: FileAction,
         target: Option<PathBuf>,
         token: Option<SessionToken>,
-        rename_source: Option<PathBuf>,
-        operation_id: Option<&str>,
+        intent: Intent,
     ) -> Result<FileOperationView> {
         if (action == FileAction::Move) != target.is_some() {
             return Err(Error::InvalidInput("only move accepts a destination"));
         }
         let _locks = self.locks(task_id)?;
         self.guard(&token)?;
+        if action == FileAction::Delete
+            && let Some(id) = &intent.operation_id
+            && self.has_operation(id)?
+        {
+            let op = self.read(id)?;
+            if op.task_id != task_id || op.action != FileAction::Delete || op.migration_id.is_some()
+            {
+                return Err(Error::State("file deletion intent changed"));
+            }
+            return Ok(op.view());
+        }
         let task = self.task(task_id)?;
-        if rename_source.is_some() && task.target != rename_source {
+        if intent.rename_source.is_some() && task.target != intent.rename_source {
             return Err(Error::State("download moved before rename; refresh first"));
+        }
+        if let Some(source) = &intent.deletion_source {
+            if crate::library::LocalLibrary::new(self.store.clone())?
+                .protects_cue_source(&source.path)?
+            {
+                return Err(Error::State("CUE source is protected from cloud removal"));
+            }
+            if task.target.as_deref() != Some(source.path.as_path())
+                || task.output_integrity.as_ref() != Some(&source.facts.integrity)
+            {
+                return Err(Error::State("download changed after deletion confirmation"));
+            }
         }
         if task.status != DownloadStatus::Complete || task.file_operation.is_some() {
             return Err(Error::State(
@@ -83,13 +135,14 @@ impl CompletedDownloads {
             ));
         }
         let mut op = Operation {
-            id: operation_id
-                .map(str::to_owned)
+            id: intent
+                .operation_id
                 .unwrap_or_else(|| uuid::Uuid::new_v4().simple().to_string()),
             migration_id: self.migration.as_ref().map(|m| m.0.clone()),
             working: None,
             task_id: task_id.into(),
             action,
+            cloud_removal: intent.deletion_source.is_some(),
             phase: FilePhase::Prepared,
             task: task.clone(),
             target: None,
@@ -156,6 +209,16 @@ impl CompletedDownloads {
                 let source_parent =
                     identity(path.parent().ok_or(Error::State("missing source parent"))?)?;
                 fs::parent(&path, &source_parent)?;
+                if role == "audio"
+                    && let Some(source) = &intent.deletion_source
+                    && (actual.identity != source.facts.identity
+                        || actual.fingerprint != source.facts.fingerprint
+                        || source_parent != source.parent)
+                {
+                    return Err(Error::State(
+                        "download file identity changed after confirmation",
+                    ));
+                }
                 let destination_parent = destination
                     .as_ref()
                     .map(|p| {

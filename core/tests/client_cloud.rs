@@ -11,6 +11,8 @@ mod lyric_reports;
 #[allow(dead_code)]
 #[path = "support/playback/mod.rs"]
 mod playback_support;
+#[path = "client_cloud/removal.rs"]
+mod removal;
 #[path = "client_cloud/resources.rs"]
 mod resources;
 #[path = "support/cloud_upload.rs"]
@@ -45,6 +47,8 @@ struct Backend {
     allocation_gate: Mutex<Option<Arc<support::nos::Gate>>>,
     full: AtomicBool,
     encoding_mode: std::sync::atomic::AtomicUsize,
+    delete_mode: std::sync::atomic::AtomicUsize,
+    change_on_list: std::sync::atomic::AtomicUsize,
 }
 impl Api for Backend {
     fn request<'a>(&'a self, path: &'a str, payload: Value, _: bool) -> ApiFuture<'a, Value> {
@@ -54,6 +58,13 @@ impl Api for Backend {
                 .unwrap()
                 .push((path.into(), payload.clone()));
             if path == support::LIST {
+                if self
+                    .change_on_list
+                    .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
+                    .is_ok_and(|n| n == 1)
+                {
+                    self.rows.lock().unwrap().retain(|r| r["songId"] != 700);
+                }
                 let gate = self.gate.lock().unwrap().take();
                 if let Some(gate) = gate {
                     gate.entered.notify_one();
@@ -106,10 +117,21 @@ impl Api for Backend {
                 "/api/cloud/del" => {
                     let ids: Vec<String> =
                         serde_json::from_str(payload["songIds"].as_str().unwrap()).unwrap();
+                    let mode = self.delete_mode.load(Ordering::SeqCst);
+                    if mode == 1 {
+                        return Ok(json!({"code":403}));
+                    }
+                    let removed = if mode == 2 { &ids[..1] } else { &ids[..] };
                     self.rows
                         .lock()
                         .unwrap()
-                        .retain(|r| !ids.contains(&r["songId"].to_string()));
+                        .retain(|r| !removed.contains(&r["songId"].to_string()));
+                    if mode == 3 {
+                        return Err(Error::Transport("synthetic lost reply".into()));
+                    }
+                    if mode == 2 {
+                        return Ok(json!({"code":200,"succIds":removed,"failIds":ids[1..]}));
+                    }
                     json!({"code":200,"succIds":ids,"failIds":[]})
                 }
                 "/api/song/enhance/player/url/v1" => {

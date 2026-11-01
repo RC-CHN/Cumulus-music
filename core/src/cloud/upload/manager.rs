@@ -185,6 +185,32 @@ impl CloudUploads {
         self.guard()?;
         Ok(task.source.path)
     }
+    pub(crate) fn removal_source(
+        &self,
+        id: &str,
+        song_id: &str,
+    ) -> Result<(
+        std::path::PathBuf,
+        crate::media::integrity::FileIntegrity,
+        bool,
+    )> {
+        let task = self.read(id)?;
+        if task.song_id.as_deref() != Some(song_id)
+            || !matches!(task.phase, CloudPhase::Published | CloudPhase::Complete)
+        {
+            return Err(Error::State("cloud source association changed"));
+        }
+        let cue = task
+            .attachments
+            .iter()
+            .any(|a| a.kind == AttachmentKind::Cue);
+        let integrity = crate::media::integrity::FileIntegrity {
+            bytes: task.source.bytes,
+            sha256: task.source.sha256,
+        };
+        self.guard()?;
+        Ok((task.source.path, integrity, cue))
+    }
     pub fn verified_task_source_file(&self, id: &str) -> Result<std::path::PathBuf> {
         let task = self.read(id)?;
         task.source
