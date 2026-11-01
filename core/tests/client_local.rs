@@ -223,6 +223,64 @@ async fn settled(client: &MusicClient) -> LocalPageView {
     panic!("library did not settle")
 }
 #[tokio::test]
+async fn authenticated_local_and_cue_mini_controls_do_not_require_an_online_song_id() {
+    use cumulus_core::client::mini::MiniAction;
+    let dir = tempfile::tempdir().unwrap();
+    let media = dir.path().join("media");
+    std::fs::create_dir(&media).unwrap();
+    std::fs::write(media.join("album.wav"), b"synthetic cue source").unwrap();
+    std::fs::write(media.join("single.wav"), b"synthetic local source").unwrap();
+    std::fs::write(
+        media.join("album.cue"),
+        "FILE \"album.wav\" WAVE\nTRACK 01 AUDIO\nTITLE \"First\"\nINDEX 01 00:00:00\n",
+    )
+    .unwrap();
+    let (session, client, library) = client(&dir.path().join("state"), Arc::new(Probe::default()));
+    session
+        .adopt(
+            Arc::new(Offline),
+            json!({"userId":9}),
+            &session.token().unwrap(),
+        )
+        .unwrap();
+    library.scan(&media).unwrap();
+    let page = client.local_page(LocalQuery::default()).await.unwrap();
+    assert_eq!(page.total, 2);
+    assert!(page.tracks.iter().any(|row| row.cue));
+    assert!(page.tracks.iter().any(|row| !row.cue));
+    for row in &page.tracks {
+        client
+            .play_selection(
+                "1",
+                PlaySelection::Local {
+                    query: LocalQuery::default(),
+                    revision: page.revision.clone(),
+                    start_id: Some(row.track.id.clone()),
+                },
+            )
+            .await
+            .unwrap();
+        assert!(client.native_like_selection().unwrap().is_none());
+        let mini = client.mini_snapshot().unwrap();
+        assert_eq!(mini.view.item.as_ref().unwrap().title, row.track.name);
+        assert!(mini.view.like.is_none());
+        assert!(mini.view.playing);
+        let queue = client.mini_queue(&mini, 0, 10).await.unwrap();
+        assert_eq!(queue.tracks.len(), 2);
+        assert!(queue.tracks.iter().all(|item| item.track.local));
+        let public = serde_json::to_string(&mini.view).unwrap();
+        assert!(!public.contains(media.to_str().unwrap()));
+        client.mini_action(&mini, MiniAction::Toggle).await.unwrap();
+        assert!(!client.mini_snapshot().unwrap().view.playing);
+        assert!(matches!(
+            client.mini_action(&mini, MiniAction::Toggle).await,
+            Err(Error::StaleResponse)
+        ));
+    }
+    client.player_action("1", PlayerAction::Stop).await.unwrap();
+}
+
+#[tokio::test]
 async fn guest_full_queue_pagination_search_groups_and_account_isolation() {
     let dir = tempfile::tempdir().unwrap();
     let media = dir.path().join("media");

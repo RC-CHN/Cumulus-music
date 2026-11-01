@@ -918,6 +918,48 @@ async fn unsorted_downloads_preserve_service_order_across_windows() {
 }
 
 #[tokio::test]
+async fn downloaded_mini_projection_preserves_the_service_like_identity_without_reauthorization() {
+    use cumulus_core::client::{mini::MiniAction, native_media::NativeLikeResource};
+    let f = Fixture::new();
+    let (id, _) = f.completed().await;
+    let calls = f.api.count("player/url");
+    let selected = f
+        .client
+        .play_selection(
+            "1",
+            PlaySelection::Downloads {
+                query: DownloadQuery {
+                    tab: DownloadTab::Completed,
+                    ..Default::default()
+                },
+                start_id: Some(id),
+            },
+        )
+        .await
+        .unwrap();
+    let like = f.client.native_like_selection().unwrap().unwrap();
+    assert_eq!(like.resource, NativeLikeResource::Song("123".into()));
+    let mini = f.client.mini_snapshot().unwrap();
+    assert_eq!(
+        mini.view.item.as_ref().unwrap().title,
+        selected.track.unwrap().name
+    );
+    assert!(mini.view.like.is_some());
+    let public = serde_json::to_string(&mini.view).unwrap();
+    assert!(!public.contains(f.root.path().to_str().unwrap()) && !public.contains("auth=fixture"));
+    f.client
+        .mini_action(&mini, MiniAction::Toggle)
+        .await
+        .unwrap();
+    assert!(!f.client.mini_snapshot().unwrap().view.playing);
+    assert_eq!(f.api.count("player/url"), calls);
+    f.client
+        .player_action("1", PlayerAction::Stop)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
 async fn downloaded_batch_queue_keeps_the_offline_entry_current_and_rejects_old_revisions() {
     let f = Fixture::new();
     let (id, _) = f.completed().await;

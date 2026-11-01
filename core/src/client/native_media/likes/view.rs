@@ -18,7 +18,10 @@ impl MusicClient {
         let Some(selected) = value.selected.as_ref() else {
             return Ok(None);
         };
-        let track = super::super::super::mapping::track(&selected.resource)?;
+        // The queue also owns opaque local IDs and downloaded song wrappers.
+        // Project the selected resource exactly as the main player does before
+        // deciding whether a service like target exists.
+        let track = super::super::super::player::track(&selected.resource)?;
         if track.local || track.missing {
             return Ok(None);
         }
