@@ -221,7 +221,7 @@ impl NativeAudio {
             download_directory: None,
         })
     }
-    // Only the download UI probe enables this in the shared fixture module.
+    // Download/local-resource UI probes may decode their own isolated files.
     #[allow(dead_code)]
     pub fn allow_download_directory(mut self, directory: PathBuf) -> Self {
         self.download_directory = Some(directory);

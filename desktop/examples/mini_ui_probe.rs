@@ -108,9 +108,14 @@ fn main() {
         let session=Arc::new(AccountSession::new(api.clone(),Some(registry.store())));
         let count=Arc::new(AtomicUsize::new(0));
         let factory_count=count.clone(); let wave=relay_fixture::wave(&root)?;
+        let local_media_directory=std::env::var_os("CUMULUS_LOCAL_RESOURCE_UI_PROOF").map(|_|root.join("menu-originals"));
         let client=MusicClient::with_session(session.clone(),registry).with_audio_factory(move || {
             factory_count.fetch_add(1,Ordering::AcqRel);
-            Ok(Box::new(relay_fixture::NativeAudio::open(wave.clone())?))
+            let audio=relay_fixture::NativeAudio::open(wave.clone())?;
+            Ok(Box::new(match &local_media_directory {
+                Some(directory)=>audio.allow_download_directory(directory.clone()),
+                None=>audio,
+            }))
         });
         let client = if mini_fixture::cloud_ui::batch_enabled() {
             client.with_download_backend(Arc::new(mini_fixture::cloud_ui::media::Backend))
@@ -229,6 +234,7 @@ fn main() {
                             assert!(path.starts_with(root.join("menu-originals")));
                             match action.as_str(){
                                 "observe"=>{},
+                                "index"=>{cumulus_core::library::LocalLibrary::new(store.clone())?.scan(root.join("menu-originals"))?;},
                                 "hold-index"=>{*held.lock().unwrap()=Some(cumulus_core::storage::OperationLock::acquire(store.directory(),"local","library-index")?);},
                                 "release-index"=>{held.lock().unwrap().take();},
                                 "change"=>{let mut bytes=fs::read(&path)?;bytes.push(0);fs::write(&path,bytes)?;},
