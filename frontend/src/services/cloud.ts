@@ -54,6 +54,7 @@ export interface CloudResource {
   revision: string;
   track: CloudTrack;
   localAvailable: boolean;
+  localIssue?: string | null;
 }
 export interface CloudUpload {
   id: string;
@@ -132,6 +133,7 @@ export interface CloudUploadRemoval {
   items: { id: string; removed: boolean; requested: boolean; error: string | null }[];
 }
 export interface CloudClient {
+  openCloudCapacity(epoch: string): Promise<void>;
   cloudUploadSelection(epoch: string, history: boolean): Promise<CloudPage>;
   cloudUploadRemovals(epoch: string, ids: string[]): Promise<CloudUploadRemoval>;
   openCloudUploadDirectory(epoch: string, id: string): Promise<void>;

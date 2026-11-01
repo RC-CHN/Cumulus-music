@@ -117,15 +117,16 @@ export function useCloud(core: CloudClient = useCore(), sessionChanged = () => {
   }
   function filter(value: Partial<CloudQuery>) {
     saved[query.value.tab] = { ...query.value };
-    if (value.tab && value.tab !== query.value.tab) {
-      notice.value = '';
-      error.value = '';
-    }
     const base =
       value.tab && value.tab !== query.value.tab
         ? (saved[value.tab] ?? defaultQuery(value.tab))
         : { ...query.value, offset: 0 };
-    query.value = { ...base, ...value };
+    const next = { ...base, ...value };
+    if (queryKey(next) !== queryKey(query.value)) {
+      notice.value = '';
+      error.value = '';
+    }
+    query.value = next;
     void refresh();
   }
   async function command(input: CloudCommand): Promise<CloudResult | undefined> {

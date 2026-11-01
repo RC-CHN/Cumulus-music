@@ -28,3 +28,7 @@
 .table-column-resizer[aria-disabled='true']::after {
   opacity: 0;
 }
+
+.table-column-resizer:focus {
+  outline: none;
+}

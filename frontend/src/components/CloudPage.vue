@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, watch, onUnmounted, nextTick } from 'vue';
+import { ref, shallowRef, computed, watch, onUnmounted, nextTick } from 'vue';
 import ModalTransition from './ModalTransition.vue';
 import type { CloudDeleteTarget } from '../composables/useCloudDelete';
 import Icon from './Icon.vue';
+import CloudCapacity from './cloud/CloudCapacity.vue';
+import CloudSongTable from './cloud/CloudSongTable.vue';
+import { cloudSongColumns } from '../services/cloudSongs';
 import CloudTaskTable from './cloud/CloudTaskTable.vue';
 import CloudTasksToolbar from './cloud/CloudTasksToolbar.vue';
 import CloudTaskRemoveDialog from './cloud/CloudTaskRemoveDialog.vue';
@@ -18,10 +21,10 @@ import type { CloudMenuTarget } from '../services/cloudMenu';
 import type { CloudModel } from '../composables/useCloud';
 import { failure, type PlaylistView, type TrackView } from '../services/contracts';
 import {
-  cloudBytes,
   deletionMessage,
   nextCloudSort,
   type CloudUpload,
+  type CloudTrack,
   type CloudQuery,
   type CloudCommand,
 } from '../services/cloud';
@@ -57,6 +60,7 @@ function fallbackFocus() {
     null
   );
 }
+const songGrowth = shallowRef(cloudSongColumns.map((column) => column.grow));
 const keyword = ref(query.value.keyword),
   selected = ref(new Set<string>()),
   uploadOpen = ref(false),
@@ -76,11 +80,7 @@ const full = computed(
     metadata.value.size !== null &&
     metadata.value.size >= metadata.value.maxSize,
 );
-const capacity = computed(() =>
-  metadata.value?.maxSize && metadata.value.size !== null
-    ? Math.min(100, (metadata.value.size / metadata.value.maxSize) * 100)
-    : 0,
-);
+
 watch(
   () => [
     query.value.tab,
@@ -96,6 +96,24 @@ watch(
     if (pageRoot.value) pageRoot.value.scrollTop = 0;
   },
 );
+// Feedback inserted above the table must not push the focused song under the player.
+watch([notice, error, readError], async () => {
+  const origin = document.activeElement,
+    owner = props.model.accountEpoch.value,
+    host = pageRoot.value;
+  const row =
+    origin instanceof HTMLElement
+      ? origin.closest<HTMLElement>('.cloud-table [data-cloud-id]')
+      : null;
+  if (!row || !host?.contains(row)) return;
+  await nextTick();
+  if (
+    owner === props.model.accountEpoch.value &&
+    row.isConnected &&
+    document.activeElement === origin
+  )
+    row.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+});
 // A background native completion can remove the focused row between polls.
 // Only restore when that exact element vanished and the user has not moved on.
 watch(uploads, async () => {
@@ -134,6 +152,7 @@ watch(
 watch(
   () => props.model.accountEpoch.value,
   () => {
+    songGrowth.value = cloudSongColumns.map((column) => column.grow);
     uploadOpen.value = false;
     deletion.value = undefined;
     taskRemoval.value = undefined;
@@ -174,31 +193,11 @@ function tabKey(event: KeyboardEvent) {
   next?.focus();
   next?.click();
 }
-function toggle(id: string) {
-  const next = new Set(selected.value);
-  next.has(id) ? next.delete(id) : next.add(id);
-  selected.value = next;
-}
-function all() {
-  selected.value = selected.value.size === ids.value.length ? new Set() : new Set(ids.value);
-}
+
 function sort(value: Exclude<CloudQuery['sort'], 'natural'>) {
   props.model.filter(nextCloudSort(query.value, value));
 }
-function sortState(column: CloudQuery['sort']): 'none' | 'ascending' | 'descending' {
-  return query.value.sort === column || (column === 'title' && query.value.sort === 'artist')
-    ? query.value.descending
-      ? 'descending'
-      : 'ascending'
-    : 'none';
-}
-function indicator(column: CloudQuery['sort']) {
-  if (sortState(column) === 'none') return '';
-  return `${column === 'title' && query.value.sort === 'artist' ? '歌手 ' : ''}${query.value.descending ? '↓' : '↑'}`;
-}
-function date(ms: number) {
-  return ms ? new Date(ms).toLocaleDateString('zh-CN') : '—';
-}
+
 async function play(id: string | null = null) {
   if (
     !props.playable ||
@@ -276,6 +275,21 @@ function download() {
       view.value.revision,
     );
 }
+function removeSong(row: CloudTrack, origin: HTMLElement) {
+  const target = props.model.page.value?.revision;
+  if (!target || busy.value) return;
+  dialogOwner.value = props.model.accountEpoch.value;
+  dialogReturn.value = origin;
+  const rows = selected.value.has(row.track.id)
+    ? tracks.value.filter((item) => selected.value.has(item.track.id))
+    : [row];
+  deletion.value = {
+    epoch: dialogOwner.value,
+    revision: target,
+    ids: rows.map((item) => item.track.id),
+    titles: rows.map((item) => item.track.name),
+  };
+}
 function removeTasks(target: CloudTaskTarget, origin: HTMLElement | undefined) {
   if (busy.value) return;
   dialogOwner.value = target.epoch;
@@ -337,16 +351,7 @@ async function taskCommand(command: CloudCommand, event?: MouseEvent) {
         正在上传 <span>{{ view?.uploadingCount ?? '—' }}</span>
       </button>
     </div>
-    <div class="cloud-capacity" aria-label="网盘容量">
-      <span>网盘容量</span><progress :value="capacity" max="100" aria-label="云盘空间使用量" />
-      <span
-        >{{ cloudBytes(metadata?.size ?? null) }} /
-        {{ cloudBytes(metadata?.maxSize ?? null) }}</span
-      >
-      <span v-if="metadata?.revision && !full" class="cloud-capacity-tip"
-        >歌曲永久保存，随时随地多端畅听</span
-      >
-    </div>
+    <CloudCapacity :epoch="model.accountEpoch.value" :view="metadata" @expired="emit('expired')" />
     <div class="cloud-toolbar">
       <template v-if="query.tab === 'uploaded'"
         ><button
@@ -455,7 +460,6 @@ async function taskCommand(command: CloudCommand, event?: MouseEvent) {
       </button>
       <button class="text-button" :disabled="toolbar.busy" @click="toolbar.clear()">关闭</button>
     </p>
-    <p v-if="full" class="cloud-error" role="status">云盘空间已满，请清理部分歌曲后再上传。</p>
     <p v-if="notice" class="cloud-notice" role="status">{{ notice }}</p>
     <p v-if="error || (readError && view) || view?.workerError" class="cloud-error" role="alert">
       {{ error || readError || view?.workerError }}
@@ -480,111 +484,22 @@ async function taskCommand(command: CloudCommand, event?: MouseEvent) {
       <button class="primary" :disabled="loading" @click="model.refresh(true)">重新加载</button>
     </div>
     <template v-else-if="query.tab === 'uploaded' && view">
-      <div v-if="tracks.length" class="cloud-table-wrap">
-        <table class="cloud-table">
-          <thead>
-            <tr>
-              <th class="cloud-check">
-                <input
-                  type="checkbox"
-                  aria-label="选择本页全部歌曲"
-                  :checked="selected.size === ids.length && !!ids.length"
-                  @change="all"
-                />
-              </th>
-              <th class="cloud-index">#</th>
-              <th :aria-sort="sortState('title')">
-                <button data-cloud-sort="title" @click="sort('title')">
-                  标题 <span>{{ indicator('title') }}</span>
-                </button>
-              </th>
-              <th :aria-sort="sortState('album')">
-                <button data-cloud-sort="album" @click="sort('album')">
-                  专辑 <span>{{ indicator('album') }}</span>
-                </button>
-              </th>
-              <th :aria-sort="sortState('format')">
-                <button data-cloud-sort="format" @click="sort('format')">
-                  格式 <span>{{ indicator('format') }}</span>
-                </button>
-              </th>
-              <th :aria-sort="sortState('uploaded')">
-                <button data-cloud-sort="uploaded" @click="sort('uploaded')">
-                  上传时间 <span>{{ indicator('uploaded') }}</span>
-                </button>
-              </th>
-              <th :aria-sort="sortState('size')">
-                <button data-cloud-sort="size" @click="sort('size')">
-                  大小 <span>{{ indicator('size') }}</span>
-                </button>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="(row, index) in tracks"
-              :key="row.track.id"
-              :data-cloud-id="row.track.id"
-              :class="{ selected: selected.has(row.track.id), playing: currentId === row.track.id }"
-              @contextmenu="rowMenu?.show($event, row)"
-              @keydown="rowMenu?.show($event, row)"
-              @dblclick="
-                !($event.target as HTMLElement).closest('button,input') && play(row.track.id)
-              "
-            >
-              <td>
-                <input
-                  type="checkbox"
-                  :aria-label="`选择 ${row.track.name}`"
-                  :checked="selected.has(row.track.id)"
-                  @change="toggle(row.track.id)"
-                />
-              </td>
-              <td>
-                <button
-                  class="cloud-row-play"
-                  :aria-label="`播放 ${row.track.name}`"
-                  :disabled="!playable || player.busy.value || busy || loading"
-                  @click="play(row.track.id)"
-                >
-                  <span>{{ view!.offset + index + 1 }}</span
-                  ><Icon name="play" />
-                </button>
-              </td>
-              <td class="cloud-track-title">
-                <div class="cloud-title-content">
-                  <div class="cloud-title-copy">
-                    <strong :title="row.track.name">{{ row.track.name }}</strong
-                    ><span
-                      ><span class="cloud-artist" :title="row.track.artists.join(' / ')">{{
-                        row.track.artists.join(' / ') || '未知歌手'
-                      }}</span
-                      ><small v-if="row.bitrate >= 900000">无损</small></span
-                    >
-                  </div>
-                  <button
-                    class="icon-button cloud-more"
-                    :aria-label="`更多操作：${row.track.name}`"
-                    aria-haspopup="menu"
-                    :disabled="
-                      busy || loading || uploadOpen || !!deletion || !!collecting || rowDialogOpen
-                    "
-                    @click="rowMenu?.show($event, row)"
-                  >
-                    <Icon name="more" />
-                  </button>
-                </div>
-              </td>
-              <td class="cloud-album" :title="row.track.album">
-                {{ row.track.album || '未知专辑' }}
-              </td>
-              <td class="cloud-format">{{ row.format.toUpperCase() || '—' }}</td>
-              <td class="cloud-date">{{ date(row.addedAt) }}</td>
-              <td class="cloud-size">{{ cloudBytes(row.fileSize) }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <CloudSongTable
+        v-if="tracks.length"
+        v-model:growth="songGrowth"
+        :rows="tracks"
+        :selected="selected"
+        :offset="view.offset"
+        :query="query"
+        :current-id="currentId"
+        :disabled="busy || loading || uploadOpen || !!deletion || !!collecting || rowDialogOpen"
+        :playable="playable && !player.busy.value"
+        @select="selected = $event"
+        @sort="sort"
+        @play="play"
+        @menu="(event, row) => rowMenu?.show(event, row)"
+        @remove="removeSong"
+      />
       <div v-else class="empty-state">
         <Icon name="cloud" />
         <h2>{{ query.keyword ? '没有找到相关歌曲' : '把喜欢的音乐带在身边' }}</h2>

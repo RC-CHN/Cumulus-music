@@ -117,18 +117,38 @@
   border-collapse: collapse;
   table-layout: fixed;
   width: 100%;
-  min-width: 660px;
-  font-size: 14px;
+  min-width: 582px;
+  font-size: 13px;
 }
 .cloud-table th {
+  position: relative;
   text-align: left;
   color: var(--muted);
   height: 36px;
   font-weight: 400;
 }
 .cloud-table th button {
-  padding: 0;
+  padding: 0 9px 0 0;
+  display: block;
+  width: 100%;
+  text-align: left;
+  min-height: 28px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
+.cloud-table tbody:focus,
+.cloud-table tbody tr:focus {
+  outline: none;
+}
+.cloud-table tbody tr:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.cloud-table tbody tr:focus-within {
+  background: var(--surface-hover);
+}
+
 .cloud-table td {
   height: 64px;
   box-sizing: border-box;
@@ -148,21 +168,6 @@
 }
 .cloud-table tr.playing .cloud-track-title strong {
   color: var(--accent);
-}
-.cloud-table th:nth-child(3) {
-  width: 34%;
-}
-.cloud-table th:nth-child(4) {
-  width: 22%;
-}
-.cloud-table th:nth-child(5) {
-  width: 62px;
-}
-.cloud-table th:nth-child(6) {
-  width: 100px;
-}
-.cloud-table th:nth-child(7) {
-  width: 75px;
 }
 .cloud-check {
   width: 28px;
@@ -624,4 +629,29 @@
   font-size: 14px;
   font-weight: 500;
   margin: 0 0 16px;
+}
+
+.cloud-capacity:focus {
+  outline: none;
+}
+.cloud-capacity-numbers {
+  white-space: nowrap;
+}
+.cloud-capacity .unknown {
+  opacity: 0.35;
+}
+.cloud-capacity-tip.full,
+.cloud-capacity-feedback.failed {
+  color: var(--danger);
+}
+.cloud-capacity-expand {
+  white-space: nowrap;
+  font-size: 13px;
+}
+.cloud-capacity-feedback {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-wrap: anywhere;
 }

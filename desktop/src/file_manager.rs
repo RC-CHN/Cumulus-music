@@ -64,13 +64,6 @@ fn launch(path: PathBuf) -> cumulus_core::Result<()> {
 
 #[cfg(windows)]
 fn windows_open(path: PathBuf) -> cumulus_core::Result<()> {
-    use std::os::windows::ffi::OsStrExt;
-    use windows_sys::Win32::{
-        System::Com::{
-            COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE, CoInitializeEx, CoUninitialize,
-        },
-        UI::{Shell::ShellExecuteW, WindowsAndMessaging::SW_SHOWNORMAL},
-    };
     // Shell extensions need not accept canonical verbatim prefixes. Keep UNC
     // paths absolute when removing that prefix.
     let path = match path.components().next() {
@@ -90,13 +83,26 @@ fn windows_open(path: PathBuf) -> cumulus_core::Result<()> {
         },
         _ => path,
     };
-    let mut wide: Vec<u16> = path.as_os_str().encode_wide().collect();
+    windows_open_target(path.as_os_str())
+}
+
+#[cfg(windows)]
+pub(crate) fn windows_open_target(target: &std::ffi::OsStr) -> cumulus_core::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::{
+        System::Com::{
+            COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE, CoInitializeEx, CoUninitialize,
+        },
+        UI::{Shell::ShellExecuteW, WindowsAndMessaging::SW_SHOWNORMAL},
+    };
+    let mut wide: Vec<u16> = target.encode_wide().collect();
     if wide.contains(&0) {
         return Err(Error::State("file manager directory invalid"));
     }
     wide.push(0);
     // SAFETY: this dedicated thread owns live NUL-terminated UTF-16 buffers.
-    // Open only a verified directory with a fixed verb, no parameters/elevation.
+    // The caller supplies a verified directory or a fixed public browser target;
+    // fixed verb, no parameters/elevation.
     unsafe {
         let initialized = CoInitializeEx(
             std::ptr::null(),

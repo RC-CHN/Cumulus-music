@@ -42,6 +42,9 @@ export function cloudMenuItems(
 ): MenuItem[] {
   const share = !target.selection && cloudShareTrack(resource);
   return [
+    ...(resource.localIssue
+      ? [{ key: 'local-issue', label: resource.localIssue, disabled: true }]
+      : []),
     { key: 'play', label: '播放', icon: 'play', disabled: state.locked || !state.playable },
     {
       key: 'next',

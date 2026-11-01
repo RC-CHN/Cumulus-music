@@ -1,0 +1,317 @@
+{
+  "sources": [
+    {
+      "name": "viewer",
+      "path": "references/ui-recovery/sources/packages/pc/src/components/TrackViewer/UploadedTrackViewer.tsx",
+      "sha256": "9af35352bebed43fa56987f47cc48fe1de0be76a9f8fbd944a76fd44e14d819b"
+    },
+    {
+      "name": "capacity",
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/cloudDisk/components/Capacity.tsx",
+      "sha256": "fe606dc3a81bc4201d34c076768e7aa34f84445bc90351f342f9c567c17e7b99"
+    },
+    {
+      "name": "table",
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/106.js",
+      "sha256": "8cc5c5e903bcd82d4a2a550ccdaf235e8fb9e44cda4babdc6605295458439ec4"
+    }
+  ],
+  "shims": [
+    "TypeScript transpile of recovered column config",
+    "cell renderers null; not called",
+    "React hook slots/effects/dependencies; no official runtime"
+  ],
+  "columns": [
+    {
+      "id": "num",
+      "width": 45,
+      "grow": 0,
+      "resize": false,
+      "sort": false
+    },
+    {
+      "id": "trackName",
+      "width": 180,
+      "grow": 360,
+      "resize": true,
+      "sort": true,
+      "sortType": "quinary"
+    },
+    {
+      "id": "albumName",
+      "width": 115,
+      "grow": 230,
+      "resize": true,
+      "sort": true
+    },
+    {
+      "id": "type",
+      "width": 64,
+      "grow": 0,
+      "resize": false,
+      "sort": true
+    },
+    {
+      "id": "uploadTime",
+      "width": 90,
+      "grow": 45,
+      "resize": true,
+      "sort": true
+    },
+    {
+      "id": "size",
+      "width": 60,
+      "grow": 30,
+      "resize": true,
+      "sort": true
+    }
+  ],
+  "resizing": [
+    {
+      "width": 554,
+      "initial": [
+        45,
+        180,
+        115,
+        64,
+        90,
+        60
+      ],
+      "steps": []
+    },
+    {
+      "width": 1054,
+      "initial": [
+        45,
+        450.6766917293233,
+        287.93233082706763,
+        64,
+        123.8345864661654,
+        82.55639097744361
+      ],
+      "steps": [
+        {
+          "index": 1,
+          "delta": 50,
+          "growth": [
+            0,
+            426.49999999999994,
+            163.5,
+            0,
+            45,
+            29.999999999999996
+          ],
+          "widths": [
+            45,
+            500.6766917293233,
+            237.9323308270677,
+            64,
+            123.8345864661654,
+            82.55639097744361
+          ]
+        },
+        {
+          "index": 1,
+          "delta": 400,
+          "growth": [
+            0,
+            664.9999999999999,
+            0,
+            0,
+            0,
+            0
+          ],
+          "widths": [
+            45,
+            679.9999999999998,
+            115,
+            64,
+            90,
+            60
+          ]
+        },
+        {
+          "index": 1,
+          "delta": -900,
+          "growth": [
+            0,
+            0,
+            664.9999999999999,
+            0,
+            0,
+            0
+          ],
+          "widths": [
+            45,
+            180,
+            614.9999999999998,
+            64,
+            90,
+            60
+          ]
+        },
+        {
+          "index": 2,
+          "delta": 40,
+          "growth": [
+            0,
+            0,
+            664.9999999999999,
+            0,
+            0,
+            0
+          ],
+          "widths": [
+            45,
+            180,
+            614.9999999999998,
+            64,
+            90,
+            60
+          ]
+        },
+        {
+          "index": 4,
+          "delta": 40,
+          "growth": [
+            0,
+            0,
+            664.9999999999999,
+            0,
+            0,
+            0
+          ],
+          "widths": [
+            45,
+            180,
+            614.9999999999998,
+            64,
+            90,
+            60
+          ]
+        },
+        {
+          "index": 4,
+          "delta": -1000,
+          "growth": [
+            0,
+            0,
+            664.9999999999999,
+            0,
+            0,
+            0
+          ],
+          "widths": [
+            45,
+            180,
+            614.9999999999998,
+            64,
+            90,
+            60
+          ]
+        }
+      ]
+    }
+  ],
+  "selection": [
+    {
+      "index": 2,
+      "ctrl": false,
+      "shift": false,
+      "button": 0,
+      "selected": [
+        "3"
+      ]
+    },
+    {
+      "index": 4,
+      "ctrl": true,
+      "shift": false,
+      "button": 0,
+      "selected": [
+        "3",
+        "5"
+      ]
+    },
+    {
+      "index": 6,
+      "ctrl": false,
+      "shift": true,
+      "button": 0,
+      "selected": [
+        "5",
+        "6",
+        "7"
+      ]
+    },
+    {
+      "index": 5,
+      "ctrl": true,
+      "shift": true,
+      "button": 0,
+      "selected": [
+        "7"
+      ]
+    },
+    {
+      "index": 6,
+      "ctrl": false,
+      "shift": false,
+      "button": 2,
+      "selected": [
+        "7"
+      ]
+    },
+    {
+      "index": 1,
+      "ctrl": false,
+      "shift": false,
+      "button": 2,
+      "selected": [
+        "2"
+      ]
+    }
+  ],
+  "formats": [
+    {
+      "bytes": 0,
+      "text": "0G"
+    },
+    {
+      "bytes": 1,
+      "text": "0.0G"
+    },
+    {
+      "bytes": 42949672.96,
+      "text": "0.0G"
+    },
+    {
+      "bytes": 1020054732.8,
+      "text": "0.9G"
+    },
+    {
+      "bytes": 1072668082.176,
+      "text": "1.0G"
+    },
+    {
+      "bytes": 1073741824,
+      "text": "1G"
+    },
+    {
+      "bytes": 1610612736,
+      "text": "2G"
+    },
+    {
+      "bytes": 1099082131046.4,
+      "text": "1024G"
+    },
+    {
+      "bytes": 1099511627776,
+      "text": "1.0TB"
+    },
+    {
+      "bytes": 1264438371942.4,
+      "text": "1.1TB"
+    }
+  ]
+}

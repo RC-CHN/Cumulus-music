@@ -1,3 +1,4 @@
+mod browser;
 pub mod captcha;
 mod catalog;
 mod clipboard;
@@ -286,6 +287,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 cloud::cloud_upload_removals,
                 cloud::cloud_upload_selection,
                 cloud::open_cloud_upload_directory,
+                cloud::open_cloud_capacity,
                 cloud::pick_cloud_files,
                 mv::mv_page,
                 mv::mv_detail,

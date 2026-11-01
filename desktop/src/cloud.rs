@@ -183,3 +183,20 @@ pub async fn open_cloud_upload_directory<R: tauri::Runtime>(
         .await
         .map_err(Into::into)
 }
+
+#[tauri::command]
+pub async fn open_cloud_capacity<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> Result<(), ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("cloud capacity requires main window").into());
+    }
+    client
+        .validate_cloud_epoch(&epoch)
+        .map_err(ClientError::from)?;
+    crate::browser::open_cloud_capacity()
+        .await
+        .map_err(Into::into)
+}
