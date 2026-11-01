@@ -27,7 +27,7 @@ def main():
     failed=root/'first/failed.json';assert not failed.exists(),failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code==0,f'five-mode UI exited {code}'
     complete=json.loads((root/'first/complete.json').read_text(encoding='utf-8'))
-    assert complete['ok'] and complete['intelligenceCycle'] and complete['stageCount']==len(LABELS)
+    assert complete['ok'] and complete['intelligenceCycle'] and complete['pauseGuardVerified'] and complete['stageCount']==len(LABELS)
     assert complete['realMusicRequests']==complete['accountWrites']==0
     modes=['single_loop','random','sequential','order_loop','order_loop','order_loop','order_loop','order_loop','order_loop','order_loop','sequential','random','sequential','sequential','sequential','order_loop','order_loop','sequential','sequential','order_loop','order_loop']
     phases=[None,None,None,'active',None,'seeded','seeded','seeded','seeded',None,None,None,None,None,None,'active','active',None,None,None,'active']

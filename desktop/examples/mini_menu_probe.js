@@ -22,6 +22,7 @@
   async function openMini(){await invoke('mini_enter');await wait(async()=>!(await fixture('windows')).main,'mini visible');await wait(()=>mini("return !!document.querySelector('[aria-label=\"小窗菜单\"]:not(:disabled)');"),'menu trigger ready');await auditMenu();}
   async function auditMenu(){await mini(`window.__miniMenuLeaving=[];const seen=new WeakSet();new MutationObserver(()=>{for(const p of document.querySelectorAll('.menu-leave-active')){if(seen.has(p))continue;seen.add(p);const n=p.querySelector('[data-menu-key=\"pin\"]')||p.querySelector('[data-menu-key=\"mode:random\"]');if(!n)continue;n.focus();window.__miniMenuLeaving.push({inert:p.inert,focusBlocked:document.activeElement!==n});n.click();}}).observe(document.documentElement,{subtree:true,attributes:true,attributeFilter:['class']});return true;`);}
   async function openMenu(){
+    await wait(async()=>{const shown=await read();return await mini(`const shell=document.querySelector('.mini-shell'),trigger=document.querySelector('[aria-label=\"小窗菜单\"]');return shell?.dataset.controlTicket===${JSON.stringify(shown.ticket)}&&!!trigger&&!trigger.disabled;`);},'displayed menu control context');
     if(!await mini(`return !!${root};`))await mini("const b=document.querySelector('[aria-label=\"小窗菜单\"]');if(!b||b.disabled)throw Error('menu unavailable');b.focus({preventScroll:true});b.click();return true;");
     await wait(()=>mini(`return !!${root}&&!${root}.querySelector('[role=\"status\"]');`),'menu read complete');
     await wait(()=>mini("return !!document.querySelector('.action-menu-host[data-lyric-context]');"),'native lyric context');
@@ -43,10 +44,10 @@
     await invoke('player_action',{epoch,action:{kind:'seek',seconds:10}});
     await wait(()=>{const p=document.querySelector('.playerbar');return p?.dataset.state==='paused'&&Math.abs(Number(p.dataset.position)-10)<.2;},'paused10');
     playId=document.querySelector('.playerbar').dataset.playId;
-    await wait(async()=>{const v=await read();return v.media.selection.audioPlayId===playId&&await mini("return document.querySelector('.mini-timeline span')?.textContent==='0:10';");},'mini paused projection');
+    await wait(async()=>{const v=await read();return v.media.selection.audioPlayId===playId&&await mini(`return document.querySelector('.mini-shell')?.dataset.controlTicket===${JSON.stringify(v.ticket)}&&document.querySelector('.mini-timeline span')?.textContent==='0:10';`);},'mini paused projection');
   }
   async function settled(mode,family){
-    await wait(async()=>{const v=await read();return v.media.mode===mode&&v.media.modeFamily===family&&await mini("return document.querySelector('[data-mini-mode]')?.getAttribute('aria-busy')==='false';");},'mode '+mode+'/'+family);
+    await wait(async()=>{const v=await read();return v.media.mode===mode&&v.media.modeFamily===family&&await mini(`const n=document.querySelector('[data-mini-mode]');return n?.getAttribute('aria-busy')==='false'&&n.dataset.mode===${JSON.stringify(mode)}&&n.dataset.family===${JSON.stringify(family)};`);},'mode '+mode+'/'+family);
   }
   const facts=`const r=n=>{const b=n.getBoundingClientRect();return {left:b.left,top:b.top,right:b.right,bottom:b.bottom,width:b.width,height:b.height}};const root=${root},sub=${child},panels=[root,sub].filter(Boolean),active=document.activeElement;
     const inside=(a,b)=>a.left>=b.left-1&&a.right<=b.right+1&&a.top>=b.top-1&&a.bottom<=b.bottom+1;

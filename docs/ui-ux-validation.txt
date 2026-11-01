@@ -3500,3 +3500,19 @@ Windows CI独立输入链路
   intelligence_cycle_smoke第0态点击仍disabled的暂停按钮。两者实际登录均已通过，
   失败位于综合“登录生命周期”大步骤内。原始及去ANSI日志为cloud-page-ci-
   {linux,windows}-failed.raw/.log，Linux失败对象另存JSON；继续单独修正并验证。
+
+2026-11-01 CI交互探针的就绪条件补充
+- 保留41305938835失败，不重启或把部分成功改成整个job通过。Windows日志明确
+  显示原生playing事件已到，但播放选择回执未落定、暂停按钮仍disabled；探针
+  现在等待按钮可用后点击。另在首次选择回执加入受控挂起，断言playing与disabled
+  同时存在，180ms后释放，再执行暂停/定位；complete必须pauseGuardVerified=true。
+- Linux失败时原生房间已结束、mini为FM/sequential，菜单已关闭。结合源码的
+  来源变化关闭菜单规则，推断旧DOM与即时mini_read被混为同一已显示状态；不能
+  从本机未复现断言唯一原因。openMenu/prepare先核对Mini DOM controlTicket等于
+  当前原生ticket，settled同时核对已显示mode/family，之后才开菜单。没有为此
+  自动重复菜单写操作、删除失败断言或放宽原生/界面结果一致性要求。
+- cloud-batch-ci-menu与cloud-batch-ci-menu-exit在隔离Xvfb/Openbox、软件渲染下
+  分别33态通过，包含真实桌面歌词窗口生命周期和真实菜单退出；cloud-batch-ci-
+  cycle的21态及受控回执挂起通过。均0新增截图，不计入58图或Windows实机证据。
+- 这次只修改探针就绪判断/受控回执验证，没有改产品业务或用延长固定sleep冒充
+  就绪。最终精确HEAD仍须Linux/Windows完整CI，未运行完时仅报告已派发/运行中。
