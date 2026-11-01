@@ -1,0 +1,100 @@
+词曲/歌词报错：官方流程、Rust迁移和验证边界
+
+官方证据
+路径相对references/netease-3.1.42.205594-analysis/recovered-js/modules/。
+- hybrid_app.chunk.1482700000000.js/622.js的miniMode菜单含“词曲报错”；
+  23.js se（w导出）排除voice/downloadVoice/localVoice。
+- hybrid_73.chunk.1482700000000.js/3085.js at约1792、lyricError约2231：
+  捕获curTrack/currentUsedLyricVersion，小窗先返回完整模式，再打开574宽“歌词报错”
+  弹窗；必选类型，描述JS长度5–50，成功提示并关闭，失败保留表单。
+- hybrid_app.chunk.1482700000000.js/109.js C/j约120：取data的Object.entries，
+  排除字面键1/2/3；选项键parseInt后作为correctType提交。
+- 15.js约4081经12.js的a工厂注册两个端点；12.js约278默认method=POST且关闭
+  缓存。更正上一轮GET描述：类型读取也是POST，不从业务“读取”推断HTTP方法。
+- 370.js a约54–139：初始version=-1，LRC存在时选其version；没有LRC才选YRC
+  version。可见逐字层不改变选择。缺失version保持undefined，提交时省略字段。
+  直接复用既有Rust ParsedLyrics，不在前端猜版本。
+
+SHA256
+370.js 17b3019dbf150c7240042c10258e8adcfcf4dc11029e3dd7ff9b7fa5adab161a
+12.js  da570de13fd15b094bc6898cebb51273b2ee0e2b1d9ab39398a61717db732176
+15.js  8ec4bf8d343f6963860eb73bc59ca09f0dd1ae50db2608a6c5abc7d69a0b521a
+109.js 36321d51bb6375cfd894ff45d65a713fd8a3c7e623b8eeeb9c6967ae8134f5ea
+23.js  30179de6edd7412c718747b8162774cb9d872d6c86d13e8515ecc54fa61b9d45
+3085.js 121b1cc930b106acf5bb01d86305725ddd6abe2484120fee339a682301c7f0be
+未使用YesPlayMusic，也未复制官方组件或图片进公开源码。
+
+接口与顺序
+1. 从正式播放选择取得epoch/playId；Rust验证账号和当前音频，复用LyricsService
+   请求/缓存及ParsedLyrics，不接受前端传任意songId或lyricVersion。
+2. 本地创建/恢复账号隔离的记录，冻结歌曲名、songId和歌词版本；弹窗显示目标歌曲。
+3. POST /api/feedback/correct/lyric/type，payload={}，cache=false，接受code=200。
+   类型动态读取，排除1/2/3，数值索引按JavaScript Object.entries顺序排列。
+   类型重试先读最新原生revision，防止其他窗口修改后反复使用旧revision。
+4. 选择类型并填写描述。界面和核心均按UTF-16计数，保留空白，不用歌单名称的
+   中文加权长度；textarea上限50，核心独立拒绝少于5或超过50。
+5. POST /api/feedback/correct/song，cache=false，字段只有：songId（冻结编号
+   字符串）、lyricVersion（选定的原始JSON版本值，缺失则省略）、content（描述）、
+   correctType（已加载类型对应整数）。沿用通用PC EAPI/请求上下文；失败后不改
+   协议、不扩大Cookie作用域。
+6. 只有服务端200明确回执才提示“反馈信息已发送！”并关闭；本地保存成功、歌词
+   播放或类型列表成功不能代表反馈已发送。
+
+模块和入口
+- core/src/lyrics/reports/{model,mod}.rs：校验、API、跨进程锁、账号记录、一次
+  发送及恢复；独立Rust，不依赖Tauri/WebView/Python。
+- core/src/client/player/reports.rs：实际播放/歌词版本、本地匹配绑定和UI投影。
+  标准歌曲及云盘编号沿用LyricTarget；本地音乐须有当前账号有效在线匹配，使用
+  匹配编号与本地歌词版本，不把路径或散列当成服务端歌曲编号。
+- core/src/client/mini/reports.rs检查捕获的小窗媒体及音频所有权。
+  desktop/src/player/reports.rs提供主窗open/read/types/submit/abandon窄IPC；
+  desktop/src/mini/menu.rs的小窗mini_lyric_report检查代次/媒体后返回主窗，复用
+  mini-return只读同步，并传原生记录ID打开同一表单。
+- frontend的services/adapters/lyricReports.ts、useLyricReport.ts和
+  LyricReportDialog.vue；App管理生命周期，LyricsPanel底部共用菜单和小窗菜单
+  接实际用例。小窗没有通用报错提交/账号IPC，主窗不能使用小窗IPC。
+- DTO只有epoch/id/revision/title/options/selected/content/phase/issue，
+  不含Cookie、签名、授权URL、原始本地资源或设备标识。
+
+持久化和失败恢复
+- 账号owner下lyric-reports-v1，保存UUID/revision、冻结目标和版本、类型选项、
+  最后提交的选择/描述、阶段和有限错误类型；未提交的逐键草稿不持久化。
+- 同账号/歌曲跨进程文件锁。取到账号API后先持久化Sending，再允许一次请求。
+  写前保存失败不发请求；响应丢失、取消、崩溃或回执保存失败保留Sending/Uncertain。
+  重开、读取、歌词版本变化均不重发；未确认不被显示成已失败或已成功。
+- 明确服务拒绝或RequestNotSent保留表单，用户显式重试使用新revision。账号切换
+  丢弃前端迟到结果；后台迟到回执仍只落原owner，不进入替代账号。
+- 未恢复可可靠核对反馈结果的服务端查询接口。未知结果只能读本地已到达回执，
+  不伪造远端对账。显式停止本地跟踪保留Abandoned和原未知事实，不撤回服务端
+  内容；用户随后重新打开才产生新意图，不自动重放旧POST。
+- 发送中阻止重复按钮/表单事件和关闭；歌词/类型读取可取消。换曲不改变已显示
+  的冻结目标；账号变化关闭弹窗，不恢复旧账号焦点或发布旧结果通知。
+- 类型失败、空类型、保存拒绝、明确拒绝、未发送和未知分别有状态及恢复入口。
+  损坏持久化记录拒绝写入并保留原值，不静默重置账号记录。
+
+界面差异
+- 保留官方574宽、标题、类型/必填描述/取消/发送顺序及成功失败规则，使用Cumulus
+  共用菜单/ModalTransition、品牌和主题；缺原运行截图时不宣称像素一致。
+- 增加冻结歌曲提示、实际发送状态、重复提交限制和未知结果恢复，是社区可靠性
+  改进。取消未发送表单沿用官方关闭行为；发送失败/未知描述可从持久化恢复。
+- 窄窗正文有界滚动、页脚保持可用；长类型换行，描述框/计数有滚动留白，焦点环
+  留在输入框内。减少动态效果沿用共用策略，未增加高刷新率专项。
+
+验证入口和边界
+- core/tests/lyric_reports.rs验证SQLite/操作锁、类型/UTF-16、精确字段、拒绝、
+  确认丢失、取消、账号替换和保存失败；公开类型向量另检查11项及数值顺序。
+- frontend/tests/lyric-report-state.test.ts验证迟到结果、失败保留、未知不重发、
+  账号隔离、类型变化及旧revision的只读恢复。
+- lyric_report_probe.js和scripts/ci/lyric_report_smoke.py使用生产前端/IPC/Rust/
+  SQLite/libmpv(null)38态；账号/PCM/API写入均合成，核对8次尝试/6次合成接受、
+  版本规则、缺失版本、重复事件、目标冻结和真实小窗跳转。
+- core/examples/lyric_report_read.rs <private-profile> <new-proof-directory>是
+  显式原生只读入口，白名单仅账号查询和类型列表，不能提交反馈；不扫描Cookie，
+  档案不进公开CI。建议提供一致性备份。
+- 本机11月1日读取到公开类型4–14共11项，无私人信息向量冻结在
+  core/tests/fixtures/lyric_report_types.json。所用旧档案账号校验过期；公开类型
+  成功不能冒充当前账号认证成功，没有发送真实反馈或扩大Cookie范围。
+- 标准歌曲的合成桌面流程和公开类型读取分别记证。云盘/有效本地匹配已有实现，
+  不能用标准歌曲截图外推它们已完成真实账号端到端验证。
+  一起听实时双账号仍排除；截图不证明物理声卡或Windows实机视觉。
+- 最终检查、截图和精确SHA CI见ui-ux-validation.txt；本专项不代表全产品完成。

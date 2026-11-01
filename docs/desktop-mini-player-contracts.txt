@@ -28,7 +28,8 @@ FM减少推荐/服务器理由/歌手屏蔽已接入小窗专用IPC及主窗口�
 mini-fm-feedback-contracts.txt；复杂右键资源菜单仍继续恢复与审计。
 置顶偏好与实际窗口属性的区分、只应用重试及Linux缓存修正见mini-pin-ui-contracts.txt。
 小窗窗口菜单、播放模式子菜单及桌面歌词开关/锁定衔接见mini-window-menu-contracts.txt；
-其中明确保留官方“词曲报错”尚未迁移的业务缺口，不能据此称完整菜单范围已完成。
+官方“词曲报错”已在后续专项接入同一Rust/主窗流程，见lyric-report-contracts.txt；
+真实反馈写入与Windows实机视觉未验证，普通资源菜单等仍继续，不能称全部完成。
 
 分层与调用
 core/src/client/mini/{mod,actions,queue}.rs：

@@ -3267,3 +3267,79 @@ Windows CI独立输入链路
 - 旧1483741/41288744819最近观察Linux完整job/前端成功，Windows仍进行中；不把
   它当成本批CI。最终功能/探针/文档分批提交后只触发一次新HEAD手动CI，收据保存
   在私有mini-menu-ci-receipt.json。未合并main、创建版本标签或修改发行附件。
+
+
+2026-11-01 词曲报错：实际表单、冻结目标与一次发送恢复
+- 继续以UI逻辑/功能一致性优先，性能以日常可用为准。官方来源、模块、API字段、
+  调用顺序、版本规则和社区差异见lyric-report-contracts.txt；没有使用YesPlayMusic。
+- M622小窗“词曲报错”实际返回主窗，与歌词页底部入口打开同一574宽表单。
+  M12工厂证明类型读取也是POST，修正上一专项的GET描述；M109排除字面键1/2/3。
+  M370优先选LRC版本，只有无LRC才选YRC；没有歌词用-1，缺版本字段不补造。
+- Rust独立Reports将类型、冻结目标、最后提交描述、阶段及revision持久保存到
+  原账号owner；同歌曲跨进程互斥。拿到账号API后、请求前保存Sending，保存失败
+  不发请求；取消/崩溃/丢回执保持未知。未知结果重开/读状态/换版本都不自动重发。
+  不存在已恢复的可靠远端核对端点；“停止本地跟踪”仅保留事实并解除本地限制。
+- 小窗窄IPC仍核对当前账号、代次和原生媒体快照，异步歌词等待不占原播放控制锁；
+  界面不持有任意songId、版本、凭据或授权URL。迟到回执只保存原owner，不能进入
+  新账号。发送中重复表单事件不重复请求，换歌不改已显示目标，换账号撤销旧表单。
+
+实际检查发现与修正
+- 窄窗长类型下输入框/计数焦点环曾被滚动边裁切；加入滚动留白和内侧轮廓，页脚
+  保持在正文之外。加载与发送中焦点先停在稳定弹窗，完成后仅在仍持有焦点时回归
+  可用按钮；发送中系统默认蓝框改为主题强调色，离场不抢回新账号焦点。
+- 早期lyric-report-final与delivery截图虽DOM断言通过，逐张看图却发现“已填写”
+  仍显示空白、“空类型”残留上一错误、小窗返回残留上一帧。原因是等待加载节点
+  消失会在Vue更新前成立，且实色内边采样不能证明文字/控件已绘制。
+  改用明确loading/working标志、Vue让出、实际可见WebView两帧加绘制等待，保留
+  原失败证据，不放宽命中/颜色断言；新证据目录另起，不累计旧截图为最终通过。
+- 换账号时歌词面板之前仍沿用打开偏好：现在关闭旧面板、清除旧loading/error，
+  离场inert并移走其持有的焦点；同账号重连仍保留打开偏好。最终逐图又发现原账号
+  “反馈信息已发送”提示残留，useMusic在换代或认证失效时清除，保留同账号刷新提示。
+
+最终证据
+- lyric-report-account-final-gui为Xvfb/Openbox，lyric-report-account-final-kde为
+  本人KDE Wayland/XWayland125%自有PID窗口，各38态/38张截图。通用报告的
+  physicalDisplayVerified=false不替代本机physical.json记录；libmpv输出为null。
+  仅计上述76图，先前各轮重复/过早图不计最终验收。
+- lyric-report-account-final-gallery保存原PNG索引/SHA256及十张总览；浅/深色、
+  必填/UTF-16、类型加载/取消/拒绝/空/恢复、40长类型与760×540、发送失败/未发送、
+  小窗实际返回、换曲目标冻结、未知重开/只读/停止跟踪、写前保存拒绝、发送中换曲、
+  LRC/YRC/无歌词/缺版本、换账号均逐态检查。原PNG保留，缩略图不代替原图。
+- 两组均经正式Vue/IPC/Rust/SQLite/libmpv，核对8次合成尝试、6次合成接受；
+  前五次目标7/version17，之后8/42、9/-1、10/省略version。真实SQLite trigger
+  拒绝保存，另有真实在途等待及重复submit事件，未通过JS假成功代替正式用例。
+- core/tests/lyric_reports.rs新增8项：公开11类型及排序、UTF-16/字段、操作锁、
+  明确拒绝/请求未发送/未知/取消、账号代次和保存失败；client_local与client_cloud
+  各1项真实SQLite/文件/正式facade的合成资源验证。本地未匹配不发请求，有效匹配
+  绑定123和sidecar版本-1；替代账号不能复用映射。云盘使用私有编号2而非元数据
+  999999，沿用云歌词路由。DTO不暴露路径/会话。这两项不是实机或线上账号证明。
+- Rust1.96.0/锁文件：最终fmt、严格workspace/all-targets/custom-protocol Clippy及
+  完整cargo test通过，1405 passed、0 failed/ignored、278结果目标；日志
+  lyric-report-final-all-{rust-format,clippy,workspace}.log。其后未改Rust业务源码。
+- Node24.16.0/锁文件：npm ci见lyric-report-npm-ci.log；最终format:check、467项
+  前端测试0失败/跳过、类型检查和production build见lyric-report-delivery-
+  {format,frontend,build}.log。包含7项报错状态、1项歌词账号生命周期及已有账号测试
+  增强；总数不等于UI完成。最终产品/三种原生探针构建见lyric-report-delivery-native.log。
+- 原共享回归lyric-report-regression-{menu,mini,fm,feedback,intelligence,pin,unmanaged,
+  shortcuts,lyrics,speed,quality}分别33/19/22/28/23/14/2/6/25/32/35+3态通过。
+  后续歌词工具顺序/账号面板/焦点改变后，painted-regression再次验33/19/6/25态；
+  最后仅清理跨账号提示，完整38态再验。回归无额外截图，不重复累加为业务数。
+- source_audit、release_guard、CI工具36项及JS/Python语法检查通过；日志
+  lyric-report-{final-source-audit,final-release-guard,ci-tools}.log。构建期间没有同时
+  改写Rust正在嵌入的dist；原生产品与探针保留同一实际播放器/窗口职责。
+
+线上观察与不能外推的边界
+- 显式原生只读lyric_report_read使用旧研究档案的一致性私有备份，只允许账号
+  查询和类型列表两端点。account/get返回session_expired；public类型读取成功，
+  冻结4–14共11项无私人信息向量。私有证据lyric-report-live/proof-public，报告
+  overall ok=false/authenticatedAccountVerified=false，没有把公开成功冒充登录成功。
+  临时凭据备份已删除，原references档案和只读证明保留。没有发送真实反馈。
+- 合成桌面所有账号/API/PCM均合成；没有真实音乐请求或真实账号写入/邀请/支付。
+  本地/云盘facade测试不证明线上真实账号完整报错；Linux截图不证明Windows实机、
+  官方像素一致、物理声卡听感或一起听实时双账号。
+- 旧1483741/41288744819已完整CI成功，包括Windows独立歌词键盘前台交接；
+  它只证明那一SHA。上一菜单f5bbf82/41295332825最近为Linux/前端成功，Windows
+  仍在运行，不能替代本批结果。新HEAD分批提交后仅触发一次手动CI，并保存
+  lyric-report-ci-receipt.json；Linux/Windows各执行38态，仍以精确SHA完整CI为准。
+- 未合并main、移动/新增版本标签、创建release commit或改发行附件；全应用逐页、
+  普通资源菜单、新版FM/H5、推荐补充、跨屏DPI及Windows实机视觉继续，目标active。

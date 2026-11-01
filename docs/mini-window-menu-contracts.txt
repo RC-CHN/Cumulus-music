@@ -68,17 +68,17 @@ desktop/src/mini/menu.rs、desktop/src/desktop_lyrics/mini_menu.rs：
 - 普通/心动/FM/一起听选择互相排斥，菜单选中标志来自播放器回读；pending不是
   成功态。桌面歌词操作有自己的进行提示，不将其等待映射为播放器不可操作。
 
-新发现的未完成业务（必须继续）
-- 官方M622还包含“词曲报错”，本批未实现，未添加空按钮或虚假的成功提示。
-- M3085 LyricReportContainer（约1792）及lyricError（约2231）恢复出主窗弹窗：
-  先从小窗返回完整模式，标题“歌词报错”，574宽；必选类型，描述JS长度5–50。
-- M109（hybrid_app.chunk.1482700000000.js/109.js，约120）先GET
-  /api/feedback/correct/lyric/type，取data对象，排除键1/2/3再生成类型选项；提交
-  /api/feedback/correct/song，字段songId、lyricVersion、content、correctType整数。
-  M3085的版本取currentUsedLyricVersion；成功提示并关闭，失败保留表单。
-- 尚需建立当前实际使用歌词版本到Rust/界面的准确映射、账号/曲目上下文与提交失败
-  处理及合成桌面验证。不能把当前歌词显示/偏移能力算成该反馈业务已通过。
-- 没有自动向官方反馈系统发送内容，本批全部账号/API/PCM为合成数据。
+词曲报错（后续专项已迁移）
+- 官方M622“词曲报错”现在调用独立Rust记录并实际返回主窗574宽“歌词报错”，
+  与主歌词页底部入口使用同一表单、冻结目标、动态类型及失败恢复，没有空按钮。
+- M109类型读取和M3085提交均经M12默认POST；类型排除字面键1/2/3，描述按
+  UTF-16长度5–50。版本沿用M370：LRC优先、仅无LRC才用YRC，缺失版本不补造。
+- mini_lyric_report仅对当前账号/窗口代次/原生媒体上下文开放，读取歌词不占小窗
+  播放控制锁；完成后重新校验再切回主窗，前端只接收记录ID与账号epoch。
+- 明确拒绝保留选择/描述，回执不明持久保留且禁止自动重发；实际发送与存储故障
+  不互相冒充。完整官方来源、字段、模块和恢复限制见lyric-report-contracts.txt。
+- 已有38态生产双WebView合成验证及公开11项类型只读观察；未发送真实反馈。
+  公开类型成功不证明旧档案的账号认证成功，也不证明Windows实机视觉。
 
 执行和证据入口
 - frontend/tests/mini-window-menu-state.test.ts：迟到读、账号隔离、消费后确认丢失、
