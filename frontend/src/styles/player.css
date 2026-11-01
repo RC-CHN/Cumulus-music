@@ -758,3 +758,8 @@ input[type='range'] {
     max-width: 60px;
   }
 }
+.transport-controls:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: 8px;
+}

@@ -3,6 +3,7 @@ import { computed, ref, nextTick, watch } from 'vue';
 import type { PlayerModel } from '../composables/usePlayer';
 import type { IntelligenceModel } from '../composables/useIntelligence';
 import { time } from '../services/player';
+import type { PlayerAction } from '../services/player';
 import type { TrackView } from '../services/contracts';
 import Icon from './Icon.vue';
 import EqualizerPanel from './EqualizerPanel.vue';
@@ -31,6 +32,22 @@ const emit = defineEmits<{
   member: [];
 }>();
 const { view, ready, busy, error, playing, loaded } = props.player;
+const transportControls = ref<HTMLElement>();
+async function transport(event: MouseEvent, action: PlayerAction) {
+  const origin = event.currentTarget as HTMLButtonElement,
+    owner = view.value?.epoch,
+    host = transportControls.value;
+  if (document.activeElement === origin) host?.focus({ preventScroll: true });
+  await props.player.action(action);
+  await nextTick();
+  if (
+    owner === view.value?.epoch &&
+    document.activeElement === host &&
+    origin.isConnected &&
+    !origin.disabled
+  )
+    origin.focus({ preventScroll: true });
+}
 const draft = ref<number>();
 const intelligenceNotice = ref<HTMLElement>();
 let cancelFocus: { epoch: string; control: Element | null } | undefined;
@@ -150,7 +167,13 @@ async function seek(event: Event) {
       </button>
     </div>
     <div class="player-center">
-      <div class="transport-controls">
+      <div
+        ref="transportControls"
+        class="transport-controls"
+        tabindex="-1"
+        role="group"
+        aria-label="播放控制"
+      >
         <PlaybackMode
           :player="player"
           :together-active="togetherActive"
@@ -161,7 +184,7 @@ async function seek(event: Event) {
           class="icon-button"
           aria-label="上一首"
           :disabled="!ready || !view?.queueLen || pending"
-          @click="player.action({ kind: 'previous' })"
+          @click="transport($event, { kind: 'previous' })"
         >
           <Icon name="previous" />
         </button>
@@ -169,7 +192,7 @@ async function seek(event: Event) {
           class="play-toggle"
           :aria-label="playing ? '暂停' : '播放'"
           :disabled="!ready || (!view?.queueLen && !view?.track) || pending"
-          @click="player.action(playing ? { kind: 'pause', paused: true } : { kind: 'play' })"
+          @click="transport($event, playing ? { kind: 'pause', paused: true } : { kind: 'play' })"
         >
           <Icon :name="playing ? 'pause' : 'play'" />
         </button>
@@ -177,7 +200,7 @@ async function seek(event: Event) {
           class="icon-button"
           aria-label="下一首"
           :disabled="!ready || !view?.queueLen || pending"
-          @click="player.action({ kind: 'next' })"
+          @click="transport($event, { kind: 'next' })"
         >
           <Icon name="next" />
         </button>
@@ -185,7 +208,7 @@ async function seek(event: Event) {
           class="icon-button"
           aria-label="停止播放"
           :disabled="!ready"
-          @click="player.action({ kind: 'stop' })"
+          @click="transport($event, { kind: 'stop' })"
         >
           <Icon name="stop" />
         </button>
