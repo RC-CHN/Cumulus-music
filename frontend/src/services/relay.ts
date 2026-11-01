@@ -63,5 +63,7 @@ export function relayOutcome(operation: RelayOperation) {
   if (operation.phase === 'applying') return '正在更新播放队列';
   if (operation.canRetry) return '未完成本机播放，可重新准备已取回的内容';
   if (operation.pullPhase === 'rejected') return '设备接续请求被服务端拒绝';
+  if (operation.phase === 'failed' && operation.pullPhase === null)
+    return '尚未发送接续请求，可稍后重试或重新检查其他设备';
   return '未确认接续结果，未自动重试。可重新检查其他设备';
 }

@@ -113,7 +113,9 @@ impl MusicClient {
             let controller = self.player.controller().await?;
             let (before, _) = controller.queue_with_state(&token).await?;
             let intent = if let Some(revision) = revision {
-                service.pull_for(&token, &pull_id, &revision).await?
+                service
+                    .pull_when_available_for(&token, &pull_id, &revision)
+                    .await?
             } else {
                 service
                     .intent_for(&token, &pull_id)?

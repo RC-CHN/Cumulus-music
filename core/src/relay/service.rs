@@ -74,6 +74,25 @@ impl RelayService {
         let lock = OperationLock::acquire(self.store.directory(), NAMESPACE, &owner)?;
         Ok((owner, lock))
     }
+    /// Interactive reads/pulls can briefly wait for the background publisher.
+    /// Only acquiring a local lock is retried, before any HTTP or pull intent.
+    /// Existing nonblocking service methods and publisher dispatch stay intact.
+    async fn interactive_lock(&self, token: &SessionToken) -> Result<(String, OperationLock)> {
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+        for _ in 0..80 {
+            match self.lock(token) {
+                Err(Error::MutationBusy) if tokio::time::Instant::now() < deadline => {
+                    tokio::time::sleep(
+                        std::time::Duration::from_millis(25)
+                            .min(deadline.saturating_duration_since(tokio::time::Instant::now())),
+                    )
+                    .await;
+                }
+                result => return result,
+            }
+        }
+        self.lock(token)
+    }
     pub fn snapshot_for(&self, token: &SessionToken) -> Result<RelaySnapshot> {
         self.session.with_token(token, |uid| {
             self.store
@@ -101,6 +120,10 @@ impl RelayService {
     /// The UI may display old content separately but cannot use it to authorize.
     pub async fn refresh_for(&self, token: &SessionToken) -> Result<RelaySnapshot> {
         let (_owner, _lock) = self.lock(token)?;
+        self.refresh_locked(token).await
+    }
+    pub async fn refresh_when_available_for(&self, token: &SessionToken) -> Result<RelaySnapshot> {
+        let (_owner, _lock) = self.interactive_lock(token).await?;
         self.refresh_locked(token).await
     }
     async fn refresh_locked(&self, token: &SessionToken) -> Result<RelaySnapshot> {
@@ -188,6 +211,28 @@ impl RelayService {
     ) -> Result<PullIntent> {
         validate_id(id)?;
         let (owner, _lock) = self.lock(token)?;
+        self.pull_locked(token, id, revision, &owner).await
+    }
+    /// Wait at most two seconds for local contention, then make one attempt.
+    /// The revision/eligibility are rechecked after acquiring the lock; an old
+    /// UI action never inherits a newer alert, account or remote write.
+    pub async fn pull_when_available_for(
+        &self,
+        token: &SessionToken,
+        id: &str,
+        revision: &str,
+    ) -> Result<PullIntent> {
+        validate_id(id)?;
+        let (owner, _lock) = self.interactive_lock(token).await?;
+        self.pull_locked(token, id, revision, &owner).await
+    }
+    async fn pull_locked(
+        &self,
+        token: &SessionToken,
+        id: &str,
+        revision: &str,
+        owner: &str,
+    ) -> Result<PullIntent> {
         if let Some(intent) = self.intent_for(token, id)? {
             if intent.revision != revision {
                 return Err(Error::InvalidInput("relay intent identity reused"));
@@ -286,7 +331,7 @@ impl RelayService {
         // Commit the outcome to the ORIGINAL account even if it changed during
         // the request. Never disclose the old plan to the new account.
         self.store
-            .put(&owner, JOURNAL, id, &serde_json::to_value(&intent)?)?;
+            .put(owner, JOURNAL, id, &serde_json::to_value(&intent)?)?;
         self.session.check_generation(token)?;
         Ok(intent)
     }

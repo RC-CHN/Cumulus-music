@@ -2912,3 +2912,37 @@ intelligence-start-contracts.txt；本批没有把主播放条五态进入或所
   voice resume，Windows在独立键盘producer获取前台。完整gate未过，不能将本机
   通过称为CI通过，也没有发布/覆盖附件。两份诊断已取回.build/ci-764d2cd-{linux,
   windows}；这些问题本批尚未修复，后续继续定位，不忽略或跳过原断言。
+
+2026-11-01 接续锁竞争、队列失败焦点与 Windows 输入验证修正
+- 新增 6 项 Rust：relay_service 的 5 项及 client_relay 的 1 项；先保留锁竞争旧路径
+  的红测试 relay-lock-regression-before.log，再通过完整公开 MusicClient/actor。
+  验证本地等待时没有 pull 意图/HTTP、两秒上限、取消、提示/账号变化、声音 12.5 秒
+  恢复以及同 UUID 不重复应用。既有 service 的非阻塞和未决写入测试全部保留。
+- Rust 完整 workspace/all-targets/custom-protocol/locked：276 个结果 target、1378
+  passed、0 failed/ignored，ci-repair-workspace-tests-final.log。包含新增 Windows
+  前台授权 PID 的拒绝广播/自进程/非法值用例；非 Windows 运行不能验证 Win32 行为。
+  严格 fmt/Clippy 见 ci-repair-rust-format-final2.log、ci-repair-clippy-final2.log。
+- 前端 npm ci、格式、423 项测试、production 类型检查及构建通过：ci-repair-frontend-
+  {ci,format-final,tests-final,build-final}.log；正式程序和三个探针重建记录为
+  ci-repair-native-build-final2.log。本批没有依赖或锁文件变更。
+- relay-contention-embedded-final：真实隔离 WebView 20 态/20 图；原 19 态全部保留，增加
+  持锁两秒后的“尚未发送”状态。另一段持锁时原生 SQLite 为 Preparing，pull 数不增，
+  释放后才继续实际 libmpv/null 的声音恢复；全部上行仍 Confirmed，不忽略失败。
+  原 timeout-gui 的20态保留为中间证据；最终组使用最新内嵌 production 前端。
+- relay-contention-kde-visual：本机 KDE/XWayland 125% 自有 PID 截图 19 态/19 图，
+  专门验证同一续播业务、明暗主题与 760×540 布局。没有执行悬停计时专项，报告为
+  visualBusinessOnly=true、physicalHoverVerified=false，不能混称完整 20 态桌面通过。
+  两次全流程在 pointer entered prompt 失败；独立诊断三个比例均无 DOM pointermove。
+  不屏蔽 :hover 断言，不用合成匹配结果冒充真实悬停；完整专项仍由隔离 WebView 验证。
+- queue-focus-parked-gui：24 态/24 图，production dist 显式快照；queue-focus-kde-final：
+  本机 KDE125% 自有 PID 24 态/24 图，内嵌前端。批量编辑前明确检查焦点已在容器，
+  拒绝后仍检查原按钮、原40项与选中2项、同 playId 暂停10秒，原断言未放松。
+- ci-repair-mini-shortcuts-linux：两个 WebView/独立 OS 输入进程六态通过，前台、
+  改键、窗口/账号隔离断言保留；不是 Windows、实体键盘或扬声器证明。
+- CI 工具36项通过（ci-repair-tools-final.log）；published=true 是隔离发布单元测试
+  的合成输出，没有真实发布。最终图片索引与文件 SHA256 见私有 .build/
+  ui-consistency-repair-gallery；其中本机自有窗口43图，其余为隔离 WebView 截图。
+- 旧 d9ee98a 的 CI 41265484850 已确认 Linux 队列焦点失败，Windows 仍须读取最终
+  结果；其门禁不能报告通过。本批修正还需新精确提交的完整 CI；不跳过测试或发布。
+- 所有账号/API/音源合成，真实账号写入和真实音乐请求均为0，无双账号一起听结论。
+  原总目标继续；本批没有标签、Release 或覆盖 v0.1.0 附件。

@@ -19,6 +19,8 @@ mod fixture;
 mod history_fixture;
 #[path = "support/catalog_live.rs"]
 mod live;
+#[path = "support/relay_contention.rs"]
+mod relay_contention;
 #[path = "support/relay_fixture.rs"]
 mod relay_fixture;
 #[path = "support/settings_fixture.rs"]
@@ -67,6 +69,7 @@ fn main() {
         || std::env::var("CUMULUS_RELAY_PROOF").as_deref() == Ok("1");
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
         let registry=ProfileRegistry::open(&root.join("state"),ApiOrigin::Pc)?;
+        let contention=Arc::new(relay_contention::Fixture::new(registry.store()));
         let catalog_fixture=Arc::new(fixture::Library::default());
         let collection_fixture=Arc::new(collection_fixture::Library::default());
         let history_fixture=Arc::new(history_fixture::Library::default());
@@ -87,6 +90,17 @@ fn main() {
         app.listen("ux-proof",move |event| {
             let value:Value=serde_json::from_str(event.payload()).unwrap();
             let stage=value["stage"].as_str().unwrap_or("");
+            if stage=="relay_contention" && relay_publication && !is_live {
+                let contention=contention.clone();let session=session.clone();let fixture=relay_fixture.clone();let handle=handle.clone();
+                let id=value["id"].as_u64().expect("contention sequence");
+                let action=value["action"].as_str().unwrap().to_owned();
+                tauri::async_runtime::spawn(async move {
+                    let owner=session.token().unwrap().uid.unwrap();
+                    let mut result=contention.command(&owner,&action).await.unwrap_or_else(|error|serde_json::json!({"error":error.to_string()}));
+                    result["pulls"]=serde_json::json!(fixture.pulls.load(std::sync::atomic::Ordering::SeqCst));
+                    handle.get_webview_window("main").unwrap().eval(format!("window.__relayContentionAck[{id}]={result};")).unwrap();
+                });return;
+            }
             if stage=="fixture" && (albums || artists) && !is_live {
                 catalog_fixture.mode(value["mode"].as_str().unwrap_or(""));
                 handle.get_webview_window("main").unwrap().eval(format!("window.__CUMULUS_ALBUM_MODE__={};",value["mode"])).unwrap();

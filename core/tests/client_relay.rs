@@ -203,6 +203,42 @@ fn plan(kind: &str) -> Value {
     json!({"relayMode":"snapshot","resources":[{"id":"2","type":"song"},{"id":"5","type":"voice"}],"currentPlayState":{"resourceId":if kind=="song"{"2"}else{"5"},"resourceType":kind,"progress":12500},"playMode":"random"})
 }
 
+#[tokio::test(start_paused = true)]
+async fn native_continuation_survives_short_background_lock_contention_without_replaying() {
+    let w = World::new(plan("voice"));
+    let revision = w.revision().await;
+    let operation = id();
+    let held = cumulus_core::storage::OperationLock::acquire(w.store.directory(), "relay-v1", "9")
+        .unwrap();
+    let call = w.play(&operation, &revision);
+    tokio::pin!(call);
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(100), &mut call)
+            .await
+            .is_err()
+    );
+    assert_eq!(w.api.pulls(), 0);
+    assert_eq!(
+        w.store
+            .get("9", "relay-playback-intents-v1", &operation)
+            .unwrap()
+            .unwrap()["phase"],
+        "preparing"
+    );
+    drop(held);
+    let view = call.await;
+    assert_eq!(view.operations[0].phase, RelayPlaybackPhase::Installed);
+    assert_eq!(w.api.pulls(), 1);
+    let player = w.playing().await;
+    assert_eq!(player.state, PlaybackStatus::Playing);
+    assert!(player.position.is_some_and(|position| position >= 12.5));
+    assert_eq!(
+        w.play(&operation, &revision).await.operations[0].phase,
+        RelayPlaybackPhase::Installed
+    );
+    assert_eq!(w.api.pulls(), 1);
+}
+
 #[tokio::test]
 async fn mixed_queue_native_playback_music_restarts_and_voice_resumes_without_leaking_alert_fields()
 {

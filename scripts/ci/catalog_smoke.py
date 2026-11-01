@@ -209,7 +209,7 @@ def main():
         (root / 'audit.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
         print(json.dumps(result))
         return
-    count = 14 if args.relay_recovery else 19 if args.relay else 22 if args.settings else 21 if args.relay_settings else 24 if args.history else 18
+    count = 14 if args.relay_recovery else 20 if args.relay_publication else 19 if args.relay else 22 if args.settings else 21 if args.relay_settings else 24 if args.history else 18
     assert complete['ok'] and complete['stageCount'] == count and complete['realMusicRequests'] == 0
     if args.screenshots:
         assert captures == count, 'missing WebView screenshots'
@@ -240,6 +240,7 @@ def main():
         assert complete['freshOfferBeforeFocusHold']
         assert complete['leavingFocusChecks'] and all(v['inert'] and v['focusBlocked'] for v in complete['leavingFocusChecks'])
         if args.relay_publication:
+            assert complete['publicationLockContention'] and complete['unsentTimeout']
             uploads = complete['syntheticRelayPublications']
             assert len(uploads) >= 4 and len(uploads) == len(complete['publicationPhases'])
             assert all(phase == 'confirmed' for phase in complete['publicationPhases'])

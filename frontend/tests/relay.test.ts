@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { useRelay } from '../src/composables/useRelay.ts';
-import type { RelayClient, RelayView } from '../src/services/relay.ts';
+import { relayOutcome, type RelayClient, type RelayView } from '../src/services/relay.ts';
 const account = {
   epoch: '1',
   status: 'authenticated' as const,
@@ -27,6 +27,19 @@ function deferred<T>() {
   const promise = new Promise<T>((r) => (resolve = r));
   return { promise, resolve };
 }
+test('relay distinguishes a confirmed unsent failure from a lost remote result', () => {
+  const operation = {
+    id: 'synthetic',
+    phase: 'failed' as const,
+    pullPhase: null,
+    canRetry: false,
+    createdAt: 1,
+  };
+  assert.match(relayOutcome(operation), /尚未发送/);
+  assert.match(relayOutcome({ ...operation, pullPhase: 'uncertain' }), /未确认接续结果/);
+  assert.match(relayOutcome({ ...operation, pullPhase: 'rejected' }), /被服务端拒绝/);
+  assert.match(relayOutcome({ ...operation, phase: 'uncertain' }), /未确认接续结果/);
+});
 test('relay consumes only an explicit continuation and ignores duplicate clicks while pending', async () => {
   const gate = deferred<ReturnType<typeof reply>>();
   let calls = 0;

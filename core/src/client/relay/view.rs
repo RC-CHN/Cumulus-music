@@ -51,7 +51,7 @@ impl MusicClient {
         }
         let service = RelayService::new(self.session.clone())?;
         let snapshot = if refresh {
-            service.refresh_for(&token).await?
+            service.refresh_when_available_for(&token).await?
         } else {
             service.snapshot_for(&token)?
         };

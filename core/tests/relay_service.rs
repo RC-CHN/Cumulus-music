@@ -71,6 +71,205 @@ fn lost() -> Reply {
     Reply::Ready(Err(Error::Transport("synthetic lost response".into())))
 }
 
+#[tokio::test(start_paused = true)]
+async fn continuation_waits_for_the_publisher_lock_before_sending_exactly_one_pull() {
+    let w = World::new([
+        ab("t2"),
+        config(true),
+        setting(true),
+        alert(),
+        ab("t2"),
+        config(true),
+        pull().into(),
+    ])
+    .await;
+    let snapshot = w.read().await;
+    let operation = id();
+    let held = cumulus_core::storage::OperationLock::acquire(w.store.directory(), "relay-v1", "1")
+        .unwrap();
+    let call = w
+        .service
+        .pull_when_available_for(&w.token, &operation, &snapshot.revision);
+    tokio::pin!(call);
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(100), &mut call)
+            .await
+            .is_err()
+    );
+    assert_eq!(w.pulls(), 0);
+    assert!(
+        w.service
+            .intent_for(&w.token, &operation)
+            .unwrap()
+            .is_none()
+    );
+    drop(held);
+    assert_eq!(call.await.unwrap().phase, PullPhase::Ready);
+    assert_eq!(w.pulls(), 1);
+    assert_eq!(
+        w.service
+            .pull_for(&w.token, &operation, &snapshot.revision)
+            .await
+            .unwrap()
+            .phase,
+        PullPhase::Ready
+    );
+    assert_eq!(w.pulls(), 1);
+}
+
+#[tokio::test(start_paused = true)]
+async fn interactive_lock_timeout_is_bounded_and_does_not_consume_the_alert_or_send_a_pull() {
+    let w = World::new([ab("t2"), config(true), setting(true), alert()]).await;
+    let snapshot = w.read().await;
+    let operation = id();
+    let _held = cumulus_core::storage::OperationLock::acquire(w.store.directory(), "relay-v1", "1")
+        .unwrap();
+    let started = tokio::time::Instant::now();
+    assert!(matches!(
+        w.service
+            .pull_when_available_for(&w.token, &operation, &snapshot.revision)
+            .await,
+        Err(Error::MutationBusy)
+    ));
+    assert_eq!(started.elapsed(), std::time::Duration::from_secs(2));
+    assert_eq!(w.pulls(), 0);
+    assert!(
+        w.service
+            .intent_for(&w.token, &operation)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        w.service.snapshot_for(&w.token).unwrap().revision,
+        snapshot.revision
+    );
+    assert!(w.service.snapshot_for(&w.token).unwrap().alert.is_some());
+}
+
+#[tokio::test(start_paused = true)]
+async fn cancelled_local_wait_has_no_intent_and_a_new_explicit_call_can_continue() {
+    let w = World::new([
+        ab("t2"),
+        config(true),
+        setting(true),
+        alert(),
+        ab("t2"),
+        config(true),
+        pull().into(),
+    ])
+    .await;
+    let snapshot = w.read().await;
+    let operation = id();
+    let held = cumulus_core::storage::OperationLock::acquire(w.store.directory(), "relay-v1", "1")
+        .unwrap();
+    assert!(
+        tokio::time::timeout(
+            std::time::Duration::from_millis(100),
+            w.service
+                .pull_when_available_for(&w.token, &operation, &snapshot.revision)
+        )
+        .await
+        .is_err()
+    );
+    drop(held);
+    assert!(
+        w.service
+            .intent_for(&w.token, &operation)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        w.service
+            .pull_when_available_for(&w.token, &operation, &snapshot.revision)
+            .await
+            .unwrap()
+            .phase,
+        PullPhase::Ready
+    );
+    assert_eq!(w.pulls(), 1);
+}
+
+#[tokio::test(start_paused = true)]
+async fn waiting_continuation_rechecks_the_original_alert_and_account_before_http() {
+    for replace_account in [false, true] {
+        let w = World::new([ab("t2"), config(true), setting(true), alert()]).await;
+        let snapshot = w.read().await;
+        let operation = id();
+        let held =
+            cumulus_core::storage::OperationLock::acquire(w.store.directory(), "relay-v1", "1")
+                .unwrap();
+        let call = w
+            .service
+            .pull_when_available_for(&w.token, &operation, &snapshot.revision);
+        tokio::pin!(call);
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(100), &mut call)
+                .await
+                .is_err()
+        );
+        if replace_account {
+            let other = Arc::new(ScriptApi::new([
+                json!({"code":200,"profile":{"userId":2}}).into()
+            ]));
+            w.session.attach(other).unwrap();
+            w.session.refresh().await.unwrap();
+        } else {
+            w.store
+                .put(
+                    "1",
+                    "relay-v1",
+                    "snapshot",
+                    &serde_json::to_value(RelaySnapshot::default()).unwrap(),
+                )
+                .unwrap();
+        }
+        drop(held);
+        assert!(matches!(call.await, Err(Error::StaleResponse)));
+        assert_eq!(w.pulls(), 0);
+        assert!(
+            w.store
+                .get("1", "relay-pull-intents-v1", &operation)
+                .unwrap()
+                .is_none()
+        );
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn interactive_refresh_waits_without_invalidating_the_visible_alert_until_it_owns_the_lock() {
+    let w = World::new([
+        ab("t2"),
+        config(true),
+        setting(true),
+        alert(),
+        ab("t2"),
+        config(true),
+        setting(true),
+        alert(),
+    ])
+    .await;
+    let snapshot = w.read().await;
+    let held = cumulus_core::storage::OperationLock::acquire(w.store.directory(), "relay-v1", "1")
+        .unwrap();
+    let call = w.service.refresh_when_available_for(&w.token);
+    tokio::pin!(call);
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(100), &mut call)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        w.service.snapshot_for(&w.token).unwrap().revision,
+        snapshot.revision
+    );
+    drop(held);
+    assert_eq!(
+        call.await.unwrap().availability,
+        RelayAvailability::Available
+    );
+    assert_eq!(w.pulls(), 0);
+}
+
 #[tokio::test]
 async fn eligibility_and_missing_setting_never_invent_available_devices() {
     let w = World::new([
