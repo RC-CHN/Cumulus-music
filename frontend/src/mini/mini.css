@@ -29,12 +29,15 @@
 }
 .mini-mode-feedback {
   position: absolute;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 4px;
   z-index: 3;
   top: 34px;
   left: 12px;
   right: 12px;
-  max-height: 76px;
-  overflow: auto;
+  height: 74px;
+  overflow: hidden;
   padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -42,6 +45,11 @@
   box-shadow: 0 4px 16px #0002;
   font-size: 11px;
   line-height: 16px;
+}
+.mini-mode-feedback > span {
+  min-height: 0;
+  overflow: auto;
+  overflow-wrap: anywhere;
 }
 .mini-mode-feedback > div {
   display: flex;
@@ -336,6 +344,9 @@
   min-width: 0;
   padding: 5px 8px;
   color: var(--text);
+}
+.mini-queue-rows.readonly .mini-queue-track:disabled {
+  opacity: 1;
 }
 .mini-queue-track > span {
   overflow: hidden;

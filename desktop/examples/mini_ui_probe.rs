@@ -158,12 +158,17 @@ fn main() {
                     value["miniWindows"]=json!(handle.webview_windows().keys().filter(|l|l.starts_with("mini-player-")).collect::<Vec<_>>());
                     value["likeWritesObserved"]=json!(api.likes.lock().unwrap().clone());
                     value["syntheticRoom"]=api.room.report();
+                    if mini_fixture::fm::enabled() { value["syntheticFm"]=api.fm.report(); }
                     if intelligence_start_fixture::enabled() { value["syntheticIntelligence"]=intelligence_start_fixture::report(); }
                     tauri::async_runtime::spawn(async move {
                         let client=handle.state::<MusicClient>();
                         let epoch=client.account().unwrap().epoch;
                         value["nativePlayer"]=serde_json::to_value(client.subscribe_playback(&epoch).await.unwrap().current().unwrap()).unwrap();
                         value["nativeMini"]=serde_json::to_value(client.mini_snapshot().unwrap().view).unwrap();
+                        if mini_fixture::fm::enabled() {
+                            let source=serde_json::from_value(value.get("fmSource").cloned().unwrap_or_else(||json!({"kind":"personal"}))).unwrap();
+                            value["nativeFm"]=serde_json::to_value(client.fm_view(&epoch,source,false).await.unwrap().value).unwrap();
+                        }
                         let stage=value["stage"].as_str().unwrap_or("failed");
                         assert!(stage.chars().all(|c|c.is_ascii_alphanumeric()||c=='_'));
                         fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();

@@ -116,7 +116,8 @@ async function readOnce(): Promise<MiniView | undefined> {
     view.value = value;
     shortcuts.account(value.media.epoch);
     if (changed && expanded.value) {
-      if (value.media.item?.kind === 'music') void refreshQueue();
+      if (value.media.item?.kind === 'music' || value.media.modeFamily === 'fm')
+        void refreshQueue();
       else {
         expanded.value = false;
         queue.value = null;
@@ -287,9 +288,26 @@ onUnmounted(() => {
         />
       </button>
       <div class="mini-track">
-        <h1 :title="media?.item?.title">{{ media?.item?.title || '从主窗口选一首音乐' }}</h1>
-        <p :title="artistLabel(media?.item, '让音乐陪着你')">
-          {{ artistLabel(media?.item, '让音乐陪着你') }}
+        <h1 :title="media?.item?.title">
+          {{
+            media?.item?.title ||
+            (media?.modeFamily === 'fm' ? '暂时没有漫游推荐' : '从主窗口选一首音乐')
+          }}
+        </h1>
+        <p
+          :title="
+            artistLabel(
+              media?.item,
+              media?.modeFamily === 'fm' ? '返回主窗口重新获取推荐' : '让音乐陪着你',
+            )
+          "
+        >
+          {{
+            artistLabel(
+              media?.item,
+              media?.modeFamily === 'fm' ? '返回主窗口重新获取推荐' : '让音乐陪着你',
+            )
+          }}
         </p>
         <div class="mini-timeline">
           <span>{{ time(media?.position) }}</span
@@ -380,7 +398,7 @@ onUnmounted(() => {
       </button>
       <button
         :class="{ selected: expanded }"
-        :disabled="media?.item?.kind !== 'music'"
+        :disabled="media?.item?.kind !== 'music' && media?.modeFamily !== 'fm'"
         :aria-expanded="expanded"
         title="播放队列"
         aria-label="播放队列"
@@ -443,7 +461,7 @@ onUnmounted(() => {
         <span>{{ modes.issue.value.message }}</span>
         <div>
           <button v-if="modes.canRetry.value" @click="retryMode">重试</button
-          ><button aria-label="关闭心动提示" @click="dismissModes">关闭</button>
+          ><button aria-label="关闭播放模式提示" @click="dismissModes">关闭</button>
         </div>
       </section>
     </Transition>
@@ -467,7 +485,10 @@ onUnmounted(() => {
         {{ queueError }}<button @click="refreshQueue()">重新加载</button>
       </div>
       <div v-else-if="!queue" class="mini-queue-empty">正在读取队列…</div>
-      <ol v-else class="mini-queue-rows">
+      <div v-else-if="!queue.total" class="mini-queue-empty">
+        {{ media?.modeFamily === 'fm' ? '暂无漫游推荐，可返回主窗口重新获取' : '播放队列空空如也' }}
+      </div>
+      <ol v-else class="mini-queue-rows" :class="{ readonly: !queue.editable }">
         <li
           v-for="entry in queue.tracks"
           :key="entry.entryId"

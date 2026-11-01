@@ -215,5 +215,17 @@ export function usePlaybackMode<V extends ModePlaybackState = PlayerView>(
     alive = false;
     reset();
   });
-  return { family, displayFamily, actual, target, value, pending, issue, canRetry, cycle, retry };
+  return {
+    family,
+    displayFamily,
+    actual,
+    target,
+    value,
+    pending,
+    issue,
+    canRetry,
+    cycle,
+    select: set,
+    retry,
+  };
 }

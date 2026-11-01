@@ -32,6 +32,7 @@ export interface MiniMedia {
   volume: number;
   mode: PlaybackMode | null;
   modeFamily: ModeFamily | null;
+  fmModePending?: { mode: PlaybackMode; revision: string } | null;
   queueRevision?: string | null;
   canIntelligence?: boolean;
   intelligence?: 'seeded' | 'active' | 'fallback' | null;

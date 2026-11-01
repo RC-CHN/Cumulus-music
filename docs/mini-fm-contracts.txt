@@ -1,0 +1,88 @@
+小窗 FM 模式、空队列和持久恢复（2026-11-01）
+本专项为跨窗口 UI/业务一致性，不代表小窗所有菜单、全部 FM 页面或官方像素复刻完成。
+
+官方来源及明确差异
+- 官方恢复的 PlayBar/PlayMode.tsx，SHA256
+  6aa41644381ae6f88bfdcd106f2915091e6aecf45e613c4f905237d48fd35e0d，
+  PlayFm 在 PH-PC-FM-Single 的 t1 分支调用 fmPlaying/switchPlayingMode，独立切换
+  infinite/one。实际实验分配尚未验证；社区主播放条此前已明确提供两态。
+- M/308 miniModePlayerInit/onMiniPlayerAction，SHA256
+  2cd3a0da5759370a80cfe20c7ac4e58ef192bab33c396e8eff3efdd35c254a7d；
+  M/7 export t，SHA256
+  4914ce443197d0538f055ae064b910a1a5f7c3d83c1c1e60978b9d7f2b055e1e。
+  恢复的小窗通用 mode 回调只传两参数；PlayFm 不在普通环中，按该函数回到
+  playCycle。C++ 小窗在 FM 中是否展示/触发这个按钮的完整呈现尚未恢复。
+- 本项目明确采用与主窗口相同的无限漫游/单曲循环，保留 FM 频道，不用普通模式
+  操作悄悄退出 FM。这是社区一致性修正，不能称为已观察到官方 C++ 小窗完全相同。
+  原来源优先，没有采用 YesPlayMusic 实现，也不修改服务端实验/会员权益。
+
+核心及上下文
+- core/client/mini/{mod,mode,fm,queue,actions}.rs：MiniModeContext 捕获原账号代次、
+  媒体所有权、actor 的 control_revision/queue_revision/play_id。时钟不撤销控制，
+  播放/队列/账号/所有权改变会使旧快照失效。空 FM 没有 NativeMediaTarget，仍有
+  独立模式上下文；不能用“没有当前歌曲”把它误识别为普通空队列。
+- MiniView.modeFamily=fm，mode 为 sequential 或 single_loop；queueRevision 仍来自
+  实际 actor。canIntelligence=false，FM 无移除/选择/清空入口，后端在修改 transport
+  代次之前就拒绝这些动作。mini_queue 返回真实只读分页，包括总数为0的空频道。
+- mini_mode 保留房间 gate，验证当前小窗冻结的上下文，仅接受上述两态，再调用
+  FmPlayer::repeat_checked_for。领域 repeat 先持久化，再 CAS 更新实际队列，最后返回
+  精确 MiniPlaybackReceipt。模式改变保持解码器、暂停、位置和 playId，不重播歌曲。
+- 通用 native FM mode 原先会在等待中的 Next 之外增加 selection 代次，即使 repeat
+  因锁忙被拒绝也使 Next 变 stale。现只观察已接受的 intent，并使用原 actor fence；
+  模式被拒绝不能取消已接受的推荐补充/下一首。复现先红后绿，原日志保留。
+
+保存失败与重开
+- MiniView.fmModePending={mode,revision} 是本地待应用 repeat 的只读提示。它与当前
+  actor 及持久队列核对，只在条目/顺序相同而模式不同的恢复场景返回。读取不启动
+  播放器/FM worker，不发 HTTP，不应用目标。提示不是写入授权，命令仍验证完整 fence。
+- PlaybackQueue 新 reader 的内存 revision 从0开始，不能与活跃 actor 的 queue_revision
+  比较。读取提示核对持久投影和原 actor，旧账号的提示不交给新账号；重复读取发生
+  变化时返回 stale，由原 mini_read 的有限纯读取策略处理。
+- same_controls 同时观察模式上下文和待应用信息；待应用目标或领域 revision 改变
+  会撤销旧 ticket，即使空 FM 没有播放 ID。前端关闭提示的键绑定 epoch、实际队列
+  revision、领域 revision 与目标，不能把一个频道的关闭套用到另一频道。
+- frontend/useMiniModes 复用 usePlaybackMode 的串行提交和显式重试。当前窗口切换
+  期间不把中间待应用状态误报为失败；失败后保持已确认图标。关闭提示不写 repeat，
+  同一时钟读取不重新弹出；关闭/重开窗口仍会从 Rust 读回尚未完成的目标。
+- 重开后的“重试”只提交显示的待应用目标，不能重新推荐、切歌或重放音源。成功后
+  提示消失；失败仍保留真实实际模式和明确恢复入口。模式反馈统一为“关闭播放模式
+  提示”，不再把 FM 的错误按钮标成“关闭心动提示”。
+- 空 FM 显示“暂时没有漫游推荐”和返回主窗口提示。模式及只读空队列仍可操作，
+  没有媒体目标的播放/切歌/定位保持禁用，不能用模拟进度代替实际播放。
+- 只读队列仍正常显示歌名/歌手/当前歌曲颜色，不把文字整体淡化；实际选择按钮继续
+  disabled，没有移除/清空入口，底部说明当前频道管理。明暗主题的真实 WebView 均
+  核对禁用行为与文字 opacity=1，禁用不等于资料不可读。
+
+接口与分层
+- MiniApp → useMiniModes → 专属 mini_mode(generation,ticket,mode) → Rust 协调器。
+  小窗不能调用主窗口的 fm_command/account_snapshot。返回主窗口仍接入原生可见/
+  聚焦后的只读同步，不重复 Startup、Play、模式写入或远端请求。
+- FM 开启沿用会员读取 /api/music-vip-membership/client/vip/info、黑名单
+  /api/music/dislike/get、FM垃圾桶 /api/v3/radio/trash/get、推荐 /api/v1/radio/get
+  或 /api/tag/tab/fm/recommends，以及正常音源 /api/song/enhance/player/url/v1。
+  repeat/待应用读取/重试均为 Rust 本地操作，不调用这些推荐接口，不发送 skip/trash。
+- 合成空 zone 的 Enter 先 preload、再 playable，各读取一次。验收严格断言共两次，
+  后续模式、重试、重开均不能增加。不是通过放宽请求计数掩盖重复调用。
+- core 无 Tauri/前端/Python 子进程依赖；desktop 只负责窗口票据和 IPC；前端没有
+  Cookie、签名密钥、完整授权地址。Python 仅用于启动/核对合成 WebView 证据。
+
+验收入口与边界
+- 固定仓库工具链并安装相应平台的既有 native 运行依赖后，构建与运行：
+    npm --prefix frontend ci
+    npm --prefix frontend run build
+    cargo build -p cumulus-desktop --example mini_ui_probe --features custom-protocol --locked
+    python3 scripts/ci/mini_fm_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root NEW_ROOT --screenshots
+  Linux 无显示会话时在最后一行前使用 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session --；
+  Windows 使用 python、mini_ui_probe.exe，并传 --runtime 指向已组装的 native DLL目录。
+  NEW_ROOT 必须不存在，脚本自建隔离配置/账号/数据库，不复用个人客户端的登录态。
+- core/tests/support/mini_fm_client.rs：本人 FM 的暂停模式切换、非法/旧输入、空频道、
+  空频道换源/换账号、存储拒绝后的领域/actor恢复、进程对象重建后的未完成模式、
+  拒绝 native mode 不取消已接受 Next。旧普通/MV/心动/一起听边界继续回归。
+- desktop/examples/mini_fm_probe.js 与 scripts/ci/mini_fm_smoke.py：两个正式 WebView、
+  22态，核对实际 FM、目标/实际模式、native playId/位置、单音频工厂、分页与空态。
+  包括关闭失败小窗→主窗口→重新开启→显示同一未完成目标→明确重试。
+- 新增只隔离合成 FM fixture；HTTP、账号、PCM均合成，SQLite/actor/libmpv(null)是真实。
+  本机截图按原 mini 几何适配检查125%，仍不能称为物理音响、第二账号或官方像素一致。
+  实际最终结果和精确 CI 见 ui-ux-validation.txt；Windows 必须按新提交复验。
+- 完整小窗资源/队列菜单、FM不喜欢/屏蔽弹窗、跨显示器缩放、推荐补充展示及
+  全应用逐页审计继续；本专项不缩减原完整目标，不创建新版本或覆盖已发布附件。

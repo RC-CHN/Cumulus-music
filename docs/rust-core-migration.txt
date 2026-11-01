@@ -625,3 +625,18 @@ lifetime管理其自己发起的读取；推荐等待不持有通用操作锁。
 23态双WebView及46张最终原图、原生4项/前端10项新增用例见mini-intelligence-
 contracts.txt与ui-ux-validation.txt。小窗FM/完整菜单、推荐补充和全范围审计继续；
 此前精确CI失败仍未解决，没有把累计通过数或本轮截图当作完整目标达成。
+
+2026-11-01 小窗 FM 原生模式与持久恢复
+- 官方 PlayBar FM two-state 及 M308/M7 通用小窗回调的差异，映射到
+  core/client/mini/{mode,fm,queue,actions}.rs、fm/player 的 unapplied_mode 和
+  client/player 的 repeat_checked_for。明确采用社区双窗口两态一致性，原生小窗
+  完整行为未知部分仍保留；来源路径、SHA 和接口详见 mini-fm-contracts.txt。
+- 新增6项 Rust 公共 MusicClient 用例，覆盖拒绝模式不取消已接受 Next、暂停模式
+  切换、空队列独立 fence、换源/换账号、SQL拒绝后的领域/actor恢复和对象重建。
+  原迷你只读 FM 用例继续核对选择/移除/清空禁用。没有归档 Python 业务调用。
+- 前端通过类型化 MiniView.fmModePending 读取尚未应用的模式目标；专属 IPC 返回
+  精确 actor 回执，空频道也能操作模式而不授予无媒体 transport 权限。两窗口实际
+  WebView 22态同时读取 Rust/DOM，错误关闭/重开/显式重试有最终证据。
+- 本地库另外修复 local_page 的观察顺序，避免“歌曲旧快照+扫描新Ready”。验证仍
+  使用原取消/启用/进程重建流程，实际日志及 CI 边界见 ui-ux-validation.txt。
+- 完整菜单、推荐补充/分隔、全应用逐页UIUX、Windows实机及其余原目标继续。

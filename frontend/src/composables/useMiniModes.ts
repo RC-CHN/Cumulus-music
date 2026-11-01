@@ -4,6 +4,7 @@ import { failure, type CoreFailure } from '../services/contracts.ts';
 import { useIntelligence, type IntelligenceControl } from './useIntelligence.ts';
 import { usePlaybackMode, type ModePlaybackControl } from './usePlaybackMode.ts';
 import { intelligenceIdle, staleMode } from './intelligenceAttempt.ts';
+import { modeLabel } from '../services/playbackMode.ts';
 
 /** A narrow adapter over the second window's own snapshots and exact native
  * acknowledgements. It never invokes main-window player/account commands. */
@@ -20,7 +21,7 @@ export function useMiniModes(
       queueRevision: media.queueRevision,
       playId: media.selection.audioPlayId,
       mode: media.mode,
-      fm: false,
+      fm: media.modeFamily === 'fm',
       intelligence: media.intelligence,
       intelligenceOperation: media.intelligenceOperation ?? null,
     };
@@ -100,6 +101,16 @@ export function useMiniModes(
     enter: (revision) => local.enterCurrent(revision),
     idle: (epoch, signal) => intelligenceIdle(busy, port, epoch, signal),
   });
+  const fmPendingKey = computed(() => {
+    const media = view.value?.media;
+    return media?.modeFamily === 'fm' && media.fmModePending
+      ? `${media.epoch}:${media.queueRevision}:${media.fmModePending.revision}:${media.fmModePending.mode}`
+      : undefined;
+  });
+  const dismissedFmPending = ref<string>();
+  watch(fmPendingKey, () => {
+    if (!mode.pending.value) mode.issue.value = undefined;
+  });
   watch(
     () => view.value?.media.epoch,
     () => {
@@ -133,6 +144,16 @@ export function useMiniModes(
       mode.issue.value ??
       local.issue.value ??
       remoteIssue.value ??
+      (!mode.pending.value &&
+      !busy.value &&
+      fmPendingKey.value &&
+      fmPendingKey.value !== dismissedFmPending.value
+        ? {
+            code: 'fm_mode_pending',
+            message: `${modeLabel(view.value!.media.fmModePending!.mode, 'fm')}尚未生效，可重试切换`,
+            retryable: true,
+          }
+        : undefined) ??
       (fallbackKey.value && fallbackKey.value !== dismissedFallback.value
         ? {
             code: 'intelligence_failed',
@@ -146,10 +167,13 @@ export function useMiniModes(
     local.dismiss();
     remoteIssue.value = undefined;
     dismissedFallback.value = fallbackKey.value;
+    dismissedFmPending.value = fmPendingKey.value;
   }
   function retry() {
     if (!issue.value) return;
     if (mode.issue.value) mode.retry();
+    else if (fmPendingKey.value && view.value?.media.fmModePending)
+      mode.select(view.value.media.fmModePending.mode);
     else if (resumable.value) void local.resume();
     else if (canStart()) void local.start({ kind: 'current' });
   }
@@ -167,7 +191,10 @@ export function useMiniModes(
     canRetry: computed(() =>
       mode.issue.value
         ? mode.canRetry.value
-        : issue.value?.retryable !== false && (resumable.value || canStart()),
+        : issue.value?.retryable !== false &&
+          !mode.pending.value &&
+          !busy.value &&
+          (!!fmPendingKey.value || resumable.value || canStart()),
     ),
   };
 }

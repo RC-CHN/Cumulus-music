@@ -62,7 +62,7 @@ function fixture() {
       queueRevision: m.queueRevision!,
       playId: m.selection.audioPlayId,
       mode: m.mode!,
-      fm: false,
+      fm: m.modeFamily === 'fm',
       intelligence: m.intelligence,
       intelligenceOperation: m.intelligenceOperation ?? null,
     };
@@ -88,7 +88,8 @@ function fixture() {
       modes.push({ ticket, mode });
       update({
         mode,
-        modeFamily: 'ordinary',
+        modeFamily: view.value!.media.modeFamily === 'fm' ? 'fm' : 'ordinary',
+        fmModePending: null,
         intelligence: null,
         intelligenceOperation: null,
         queueRevision: String(Number(view.value!.media.queueRevision) + 1),
@@ -125,6 +126,108 @@ function fixture() {
     reads: () => readCount,
   };
 }
+
+test('mini FM uses its two-state ring and never starts intelligence or leaves its channel', async () => {
+  const f = fixture();
+  try {
+    f.update({ modeFamily: 'fm', canIntelligence: false });
+    assert.equal(f.model.mode.family.value, 'fm');
+    f.model.mode.cycle();
+    await turn();
+    assert.equal(f.view.value!.media.mode, 'single_loop');
+    assert.equal(f.model.mode.displayFamily.value, 'fm');
+    const second = f.view.value!.ticket;
+    f.model.mode.cycle();
+    await turn();
+    assert.deepEqual(
+      f.modes.map((v) => v.mode),
+      ['single_loop', 'sequential'],
+    );
+    assert.equal(f.modes[1]!.ticket, second);
+    assert.equal(f.view.value!.media.modeFamily, 'fm');
+    assert.equal(f.view.value!.media.selection.audioPlayId, 'old');
+    assert.equal(f.starts.length, 0);
+    assert.equal(f.cancels.length, 0);
+  } finally {
+    f.scope.stop();
+  }
+});
+
+test('mini FM mode failure remains local and retries only with an explicit fresh ticket', async () => {
+  const f = fixture();
+  try {
+    f.update({ modeFamily: 'fm', canIntelligence: false });
+    const original = f.client.mode;
+    let calls = 0;
+    f.client.mode = async () => {
+      calls++;
+      throw { code: 'storage', message: 'Synthetic FM save denied', retryable: true };
+    };
+    f.model.mode.cycle();
+    await turn();
+    assert.equal(f.model.issue.value?.code, 'storage');
+    assert.equal(f.model.mode.value.value, 'sequential');
+    assert.equal(f.model.canRetry.value, true);
+    await turn();
+    assert.equal(calls, 1);
+    f.update({ queueRevision: '3' });
+    const ticket = f.view.value!.ticket;
+    f.client.mode = original;
+    f.model.retry();
+    await turn();
+    assert.deepEqual(f.modes, [{ ticket, mode: 'single_loop' }]);
+    assert.equal(f.model.issue.value, undefined);
+    assert.equal(f.view.value!.media.modeFamily, 'fm');
+    assert.equal(f.starts.length, 0);
+  } finally {
+    f.scope.stop();
+  }
+});
+
+test('reopened mini exposes an unapplied FM repeat and retries that exact target explicitly', async () => {
+  const f = fixture();
+  try {
+    f.update({
+      modeFamily: 'fm',
+      canIntelligence: false,
+      fmModePending: { mode: 'single_loop', revision: '7' },
+    });
+    assert.equal(f.model.issue.value?.code, 'fm_mode_pending');
+    assert.match(f.model.issue.value!.message, /单曲循环尚未生效/);
+    await turn();
+    assert.equal(f.modes.length, 0);
+    const ticket = f.view.value!.ticket;
+    f.model.retry();
+    await turn();
+    assert.deepEqual(f.modes, [{ ticket, mode: 'single_loop' }]);
+    assert.equal(f.model.issue.value, undefined);
+    assert.equal(f.view.value!.media.fmModePending, null);
+  } finally {
+    f.scope.stop();
+  }
+});
+
+test('FM pending dismissal survives clock reads but cannot hide another channel or a new failure', () => {
+  const f = fixture();
+  try {
+    f.update({
+      modeFamily: 'fm',
+      canIntelligence: false,
+      fmModePending: { mode: 'single_loop', revision: '7' },
+    });
+    f.model.dismiss();
+    f.update({ position: 10.5 });
+    assert.equal(f.model.issue.value, undefined);
+    f.update({ queueRevision: '2' });
+    assert.equal(f.model.issue.value?.code, 'fm_mode_pending');
+    f.model.dismiss();
+    f.update({ fmModePending: { mode: 'single_loop', revision: '8' } });
+    assert.equal(f.model.issue.value?.code, 'fm_mode_pending');
+    assert.equal(f.modes.length, 0);
+  } finally {
+    f.scope.stop();
+  }
+});
 
 test('mini mode acknowledges its own seed while the full read remains pending, then exits with the fresh ticket', async () => {
   const f = fixture();

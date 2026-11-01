@@ -1,5 +1,8 @@
 use cumulus_core::protocol::api::{Api, ApiFuture};
 #[allow(dead_code)]
+#[path = "mini_fm_fixture.rs"]
+pub(super) mod fm;
+#[allow(dead_code)]
 #[path = "intelligence_start_fixture.rs"]
 pub(super) mod intelligence_start_fixture;
 #[path = "mini_room_fixture.rs"]
@@ -9,6 +12,7 @@ use serde_json::{Value, json};
 pub struct Library {
     pub likes: std::sync::Mutex<Vec<String>>,
     pub room: room::RoomFixture,
+    pub fm: fm::Fixture,
 }
 fn song(id: u64) -> Value {
     json!({"id":id,"name":format!("合成歌曲 {id} · A quiet afternoon"),"ar":[{"name":"Cumulus"}],"al":{"name":"界面体验验证"},"dt":if id==1 {6_000_000} else {235_000},"fee":id%3})
@@ -24,6 +28,9 @@ impl Api for Library {
                 return response;
             }
             if let Some(response) = self.room.response(path, &args) {
+                return response;
+            }
+            if let Some(response) = self.fm.response(path, &args).await {
                 return response;
             }
             Ok(match path {
