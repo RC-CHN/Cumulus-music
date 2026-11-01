@@ -1,0 +1,72 @@
+云盘列表、查询上下文与确认界面一致性
+本专项属于全应用UI/UX逐项审计，未声称整页所有分支或官方像素一致。
+
+官方来源
+路径相对references/ui-recovery/sources/packages/pc/src/，没有使用YesPlayMusic。
+- pages/cloudDisk/index.tsx：已上传单曲/正在上传两页签，独立批量操作路由。
+  SHA256 4f10cb6e20dea4e1d9d84c39ead5449f6f5ae05d2b105be6fc0f96f84f410963
+- pages/cloudDisk/views/UploadedTrack.tsx：类型、关键词、排序绑定同一列表与播放来源，
+  每页200条，筛选/排序回第一页，翻页回顶部；工具栏上下20px、间距12px，默认
+  播放全部114×48，上传48方形图标，实验showMore另36px分支。
+  SHA256 ff900eb5e2e7fe130aa47ad93f17b527748d6283f4cfefc1ab9bd32f630a82c3
+- components/TrackViewer/UploadedTrackViewer.tsx：默认64px行，showMore为56px；
+  编号/标题/专辑/格式/上传时间/大小，标题五态（含歌手）、其他三态排序。
+  SHA256 9af35352bebed43fa56987f47cc48fe1de0be76a9f8fbd944a76fd44e14d819b
+- pages/cloudDisk/components/Capacity.tsx：位于页签下、工具栏前；横向间距20，
+  200px进度条、13px容量及状态提示。
+  SHA256 fe606dc3a81bc4201d34c076768e7aa34f84445bc90351f342f9c567c17e7b99
+- actions/remove/removeFromCloudDisk.tsx：捕获已选择资源，删除前确认；按私有/下架/
+  普通区分提示，并有可选删除本地副本/CUE分支。
+  SHA256 a6065d42b42e8e03b66517adcc9df8ae470d6b17c48c00958b7e27ec1e04d7ed
+
+当前页面与状态
+- CloudPage保留Cumulus页标题，采用官方两页签文案、容量区位置、默认64px行及
+  工具栏尺寸。格式/日期/大小沿用原Rust来源；标题/歌手/专辑长文本省略可读全名。
+- 表头排序保留已对照的五/三态，重置页码及选中；歌手正文不再伪装成排序按钮，
+  排序仅由明确表头触发。恢复目录未含UploadedTrackTitleCell实现，不能声称其
+  作者跳转已按官方复刻。本批不新增猜测的歌手/专辑ID。
+- useCloud保留请求query与成功返回query的关联。只有关键词、类型、顺序、页码、
+  大小全部相同，page才暴露当前列表；不把旧行配上新条件执行播放/下载/删除。
+  新查询失败展示明确重试页；同查询远端失败可继续显示缓存，并保留远端错误。
+- 容量是当前账号最近已知元数据，不随分页/筛选被当成空容量。没有有效快照时
+  不显示伪造零计数或空库；搜索未提交的输入不改变已应用的空结果文案。
+- 新账号重置关键词、类型、顺序和页码，关闭上传/删除弹窗并清除选择；同账号
+  重连保留搜索条件。迟到读取/写入/文件选择不进入替代账号。页签有方向/Home/End
+  键与单一Tab入口，搜索有实际提交及清空按钮。
+
+删除结果与焦点
+- CloudDeleteTarget捕获epoch、revision、所选ID和名称。确认明确只移除云盘资源，
+  不删除本地文件。列表revision已变化则要求回列表重选，不自动套用新快照提交。
+- core CloudDeleteView增加原记录的ids；useCloudDelete按真实目标识别已有未决
+  操作，不凭总数或最近一条记录猜测归属。持久化/互斥/先保存后发送/重叠未决阻断
+  继续由CloudLibrary执行，UI没有另造删除实现。
+- 只有confirmed关闭；rejected/partial保留实际结果供查看。uncertain显示只读
+  核对入口，重开同一目标也接续未决操作。IPC回执丢失先读本地记录；没有记录
+  不能断言未执行，因此当前表单继续禁止重发。核对只用reconcile_delete，不重POST。
+- 两弹窗统一ModalTransition和账号焦点边界；退出动画完成后才恢复入口，账号变化
+  不回旧焦点。正文滚动、标题和页脚固定，发送/核对中聚焦稳定容器并禁用重复动作。
+  上传附件/文件选择保持原正式用例，本批没有改上传协议或用前端模拟上传。
+
+接口和模块
+- core/src/client/cloud/{dto,view,commands}.rs及cloud/library/*：原列表/完整筛选播放/
+  删除日志；frontend useCloud/useCloudDelete、CloudPage、Cloud*Dialog；云盘样式独立。
+- 列表POST /api/v1/cloud/get，offset/limit=200；完整拉取后在本地快照筛选分页。
+  删除POST /api/cloud/del，songIds为选中编号JSON数组字符串；原CloudLibrary按
+  1000分批、记录每批状态，再只读重新取完整列表确认。未知不会由刷新重发。
+- cloud_page/cloud_command/pick_cloud_files继续原窄接口及账号代次校验，没有新增
+  前端直连网络、Cookie、签名、授权URL或任意文件删除能力。云盘ID保持songId，
+  不使用simpleSong.id替换。上传、附件、OSS/NOS与其他下载详见desktop-cloud-contracts.txt。
+
+验证与尚待范围
+- cloud-state与cloud-delete-state覆盖查询匹配、账号搜索隔离、拒绝/未知/目标归属、
+  只读恢复、迟到结果和卸载后不可再派发。core客户端用例核对投影ids为原删除目标。
+- cloud_page_probe.js/cloud_page_smoke.py经生产WebView/IPC/Rust/SQLite/实际libmpv
+  null。合成405条资源检查200/200/5分页、筛选原生播放、缓存损坏/读取失败恢复、
+  删除取消/拒绝/部分/确认/未知及重开只读、账号切换和两主题/窄窗弹窗。
+  合成服务计数必须只有4次删除，所有核对不得增加请求。
+- 本批仍保留社区常驻选择框、删除/下载所选按钮，尚未按官方独立批量路由拆页；
+  表头列宽拖动、完整资源菜单、所有上传任务/长附件组合、会员容量扩容界面、
+  下架/私有分类提示和可选本地删除继续审计，不能称为已一致。没有真实支付入口。
+- 缺同状态官方运行截图，品牌/强调色/精确容量文字格式为社区差异。实际执行、
+  逐图复核、失败修正、最终计数和精确CI见ui-ux-validation.txt。没有真实账号写入，
+  不用Linux截图或null音频证明Windows实机视觉、物理声卡或全部云盘上传通道通过。

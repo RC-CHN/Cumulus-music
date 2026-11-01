@@ -3343,3 +3343,70 @@ Windows CI独立输入链路
   lyric-report-ci-receipt.json；Linux/Windows各执行38态，仍以精确SHA完整CI为准。
 - 未合并main、移动/新增版本标签、创建release commit或改发行附件；全应用逐页、
   普通资源菜单、新版FM/H5、推荐补充、跨屏DPI及Windows实机视觉继续，目标active。
+
+
+2026-11-01 云盘页面：查询、选择、弹窗与删除结果一致性
+- 按用户优先级，性能达到日常可用，继续UI逻辑和功能专项。来源、默认/实验尺寸、
+  API调用、模块映射和差异详见cloud-page-ui-contracts.txt；没有使用YesPlayMusic。
+- 列表行64px、容量区200px进度、48px操作；标题五态/其余三态仍复用已验证规则。
+  只有query与返回快照一致才展示/操作列表；元数据保留在当前账号。新查询失败
+  不把旧行配上新条件，同查询远端失败保持缓存可见并显示错误，不当成空云盘。
+- 删除目标带epoch/revision/IDs/名称；Rust DTO的ids来自原owner持久日志。确认、
+  拒绝、部分、未知、只读核对分别呈现，未知不能自动重新删除。上传选择/附件/
+  实际调度仍走原用例，本批没有用静态任务图代替传输验证。
+
+实测与修正
+- first-gui跑到排序时，原探针只数200行就认为加载完成，读到了旧DOM；改为让出
+  Vue更新并等待显式data-cloud-loading=false、ready=true及真实行数，不放宽断言。
+- accepted-gui选中后在同一JS事件立即检查按钮，尚未等待Vue更新；修正探针事件
+  间等待。selection-gui跑到25态，末尾尝试检索刚被本测试删除的001而失败；改为
+  未删除的005。均保留原记录，不以这些未完成轮次作为26态/图证据。
+- 人工看selection截图发现选择框被25px窄列的单元格padding挤出省略号，上传按钮
+  也未呈现方形。修正选择/编号列几何、checkbox留白及48px图标按钮，加入实际命中/
+  列内边界和尺寸断言。排序/翻页/筛选由生产页面回顶部，探针不再代为重置滚动。
+- 两弹窗使用共享动画，标题/页脚固定、正文有界滚动、主题/焦点一致。取消后回原
+  按钮；成功删除使原按钮禁用时回搜索，账号变更不回旧焦点。焦点归位已有原生
+  WebView断言；不宣称整张表所有键盘/拖放行为均完成。
+
+最终证据与检查
+- cloud-page-delivery-gui：Xvfb/Openbox26态/26图；cloud-page-delivery-kde：本人
+  KDE Wayland/XWayland125%自有PID26态/26图，physical.json确认本机窗口可见/
+  焦点/捕获。只截测试PID的准确主窗口pixmap，不捕获别的桌面内容。
+- cloud-page-delivery-gallery：52张原PNG索引/SHA256和8张总览；已查看全部总览并
+  放大检查选择列、上传窄窗及部分删除。缩略图不替换原图，不使用生成图作证据。
+  只计最终52图，先前调试重复截图不累计。
+- 405条合成云盘经真实API适配/独立Rust/SQLite投影，200/200/5分页、标题排序、
+  筛选播放1005、空搜索、真实SQLite缓存损坏/查询恢复、远端失败保留缓存、任务
+  空态、两主题/760×540上传弹窗、删除确认/取消/拒绝/部分/成功/未知/重开/只读
+  恢复、账号替换均通过。上传文件选择/长附件及真实线上传输不属于这26态证明。
+- 每环境仅4次合成删除，精确目标[1001,1002]、[1001,1002]、[1002]、[1003,1004]，
+  最终资源401；只读核对未重POST。筛选播放实际libmpv/native状态为歌曲1005，
+  所有换账号前状态暂停10秒、一个播放工厂。补强断言对原JSON重核见
+  cloud-page-extra-assertions.json，CI同一脚本保留这些断言，没有因此重复跑GUI。
+- Node24.16.0/锁文件：npm ci后format:check、473项前端测试0失败/跳过、类型检查
+  及production build通过；日志cloud-page-{npm-ci,locked-format,locked-frontend,
+  locked-build}.log。锁文件安装后dist与已嵌入/实测资产逐字节一致，记录
+  cloud-page-dist-reproduced.json。新增2项query/账号及4项删除状态用例。
+- Rust1.96.0/锁文件：fmt、严格workspace/all-targets/custom-protocol Clippy及完整
+  cargo test通过，1405 passed、0 failed/ignored、278结果目标；日志
+  cloud-page-{rust-format,clippy,workspace}.log。核心只增加删除投影真实目标并加强
+  原客户端用例，其后未改Rust源码；最后产品/三探针构建见cloud-page-delivery-native.log。
+- 通用真实WebView41态含跨进程主题重开回归：cloud-page-regression-ux；歌词报错
+  双窗口38态回归：cloud-page-regression-report。均0额外截图，不累加到本专项52图。
+- source_audit/release_guard、CI工具36项和新旧JS/Python语法检查通过，日志
+  cloud-page-{source-audit-final,release-guard-final,ci-tools}.log。没有在Rust嵌入dist
+  时并行改写前端构建输出。Linux/Windows各新增同一26态脚本，仍须精确SHA完整CI。
+
+边界与交付
+- 所有本专项账号、云盘数据、写入和PCM均合成，实际音频输出为null；无真实音乐
+  请求/账号写入/上传/删除/支付/邀请。Linux截图不证明Windows实机或物理声卡。
+- 官方独立批量页、完整资源菜单、列宽拖动、所有任务/附件组合、会员容量扩容、
+  下架/私有分类提示和可选本地副本删除仍继续，不能由这26态外推整页已完成。
+- 本批分职责提交后，只对最终HEAD触发一次手动CI，私有收据cloud-page-ci-receipt.json；
+  前一歌词批次51107e2/41302478899的状态另记，不能冒充本批通过。没有合并main、
+  创建release commit/标签或更改发行附件；全范围目标保持active。
+
+- 提交前再次核对51107e2/41302478899：Linux原生job失败于该大步骤内的下载MV
+  连续可达性检查，实际登录检查已通过；Windows仍运行。失败的trace显示0–128，
+  累计集合却缺0–33，不能以本地云盘/歌词回归替代该结果。后续改为逐视口保存
+  索引/编号原始快照后归并，并保留129个唯一项/完整映射要求，另记验证结果。

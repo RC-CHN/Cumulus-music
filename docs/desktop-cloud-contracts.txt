@@ -131,3 +131,8 @@ python3 desktop/examples/run_cloud_probe.py NEW_PRIVATE_PROOF EXISTING_PC_PROFIL
 --resume-proof PRIOR_PROOF仅用于核对原私有身份后继续此前唯一测试任务，不能与--roundtrip并用。
 正常客户端使用.build/target/debug/cumulus；运行目录与依赖详见README.txt。
 本批逐项来源映射：cloud-desktop-mapping.json（15条、3份官方来源SHA256）。
+
+2026-11-01 云盘页面一致性继续审计
+查询/渲染快照绑定、账号搜索/弹窗隔离、64px行/容量区、删除结果与焦点恢复见
+cloud-page-ui-contracts.txt。新增CloudDeleteView.ids来自原owner日志，用于识别未决
+操作目标；不扩大IPC账号范围或文件删除权限。实际执行记录以ui-ux-validation.txt为准。
