@@ -23,6 +23,46 @@ use std::sync::{
 };
 use tokio::sync::Mutex;
 
+/// Reserve a coordinated operation before the client changes playback intent.
+/// A busy/refused operation must not cancel the operation holding this gate.
+pub(crate) struct FmOperation<'a> {
+    inner: &'a Inner,
+    _gate: tokio::sync::MutexGuard<'a, ()>,
+}
+impl FmOperation<'_> {
+    pub async fn trash(
+        &self,
+        token: &SessionToken,
+        entry_id: &str,
+        reason: Option<&str>,
+        intent: u64,
+    ) -> Result<FmTrashMutation> {
+        self.inner
+            .trash_locked(token, entry_id, reason, intent)
+            .await
+    }
+    pub async fn step(
+        &self,
+        token: &SessionToken,
+        step: FmStep,
+        intent: u64,
+        preserve: bool,
+    ) -> Result<PlaybackSnapshot> {
+        self.inner.step(token, step, intent, preserve).await
+    }
+    pub async fn resume(
+        &self,
+        token: &SessionToken,
+        restore: bool,
+        intent: u64,
+        restart: bool,
+    ) -> Result<PlaybackSnapshot> {
+        self.inner
+            .resume_locked(token, restore, intent, restart)
+            .await
+    }
+}
+
 pub struct FmPlayer {
     inner: Arc<Inner>,
     worker: tokio::task::JoinHandle<()>,
@@ -41,6 +81,16 @@ impl Drop for FmPlayer {
     }
 }
 impl FmPlayer {
+    pub(crate) fn operation(&self) -> Result<FmOperation<'_>> {
+        Ok(FmOperation {
+            inner: &self.inner,
+            _gate: self
+                .inner
+                .gate
+                .try_lock()
+                .map_err(|_| Error::MutationBusy)?,
+        })
+    }
     pub fn new(
         session: Arc<AccountSession>,
         controller: Arc<PlaybackController>,

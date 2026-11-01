@@ -457,6 +457,21 @@ impl MusicClient {
                 .await?;
             validate_quality_target(&current, play_id, expected_revision)?;
         }
+        let fm_transport = if matches!(
+            action,
+            PlayerAction::Next
+                | PlayerAction::Previous
+                | PlayerAction::Play
+                | PlayerAction::Restore
+        ) && self.player.controller.get().is_some_and(|controller| {
+            let state = controller.snapshot();
+            state.account == token && state.fm
+        }) {
+            Some(self.player.fm().await?)
+        } else {
+            None
+        };
+        let fm_operation = fm_transport.as_ref().map(|fm| fm.operation()).transpose()?;
         let control_intent = if !matches!(
             action,
             PlayerAction::Volume { .. }
@@ -561,33 +576,72 @@ impl MusicClient {
                 let fm = self.player.fm().await?;
                 let state = match action {
                     PlayerAction::Next => {
-                        fm.step_with_state_for(
-                            &token,
-                            crate::fm::FmStep::ManualNext,
-                            attempt,
-                            policy == NativeTransportPolicy::PreserveStep,
-                        )
-                        .await?
+                        if let Some(operation) = fm_operation.as_ref() {
+                            operation
+                                .step(
+                                    &token,
+                                    crate::fm::FmStep::ManualNext,
+                                    attempt,
+                                    policy == NativeTransportPolicy::PreserveStep,
+                                )
+                                .await?
+                        } else {
+                            fm.step_with_state_for(
+                                &token,
+                                crate::fm::FmStep::ManualNext,
+                                attempt,
+                                policy == NativeTransportPolicy::PreserveStep,
+                            )
+                            .await?
+                        }
                     }
                     PlayerAction::Previous => {
-                        fm.step_with_state_for(
-                            &token,
-                            crate::fm::FmStep::Previous,
-                            attempt,
-                            policy == NativeTransportPolicy::PreserveStep,
-                        )
-                        .await?
+                        if let Some(operation) = fm_operation.as_ref() {
+                            operation
+                                .step(
+                                    &token,
+                                    crate::fm::FmStep::Previous,
+                                    attempt,
+                                    policy == NativeTransportPolicy::PreserveStep,
+                                )
+                                .await?
+                        } else {
+                            fm.step_with_state_for(
+                                &token,
+                                crate::fm::FmStep::Previous,
+                                attempt,
+                                policy == NativeTransportPolicy::PreserveStep,
+                            )
+                            .await?
+                        }
                     }
                     PlayerAction::Play => {
-                        fm.resume_with_start_for(
-                            &token,
-                            false,
-                            attempt,
-                            policy == NativeTransportPolicy::RestartStopped,
-                        )
-                        .await?
+                        if let Some(operation) = fm_operation.as_ref() {
+                            operation
+                                .resume(
+                                    &token,
+                                    false,
+                                    attempt,
+                                    policy == NativeTransportPolicy::RestartStopped,
+                                )
+                                .await?
+                        } else {
+                            fm.resume_with_start_for(
+                                &token,
+                                false,
+                                attempt,
+                                policy == NativeTransportPolicy::RestartStopped,
+                            )
+                            .await?
+                        }
                     }
-                    PlayerAction::Restore => fm.resume_for(&token, true, attempt).await?,
+                    PlayerAction::Restore => {
+                        if let Some(operation) = fm_operation.as_ref() {
+                            operation.resume(&token, true, attempt, false).await?
+                        } else {
+                            fm.resume_for(&token, true, attempt).await?
+                        }
+                    }
                     PlayerAction::Mode { mode } => {
                         fm.repeat_checked_for(
                             &token,

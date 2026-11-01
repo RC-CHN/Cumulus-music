@@ -100,6 +100,16 @@ impl Inner {
         restart_stopped: bool,
     ) -> Result<PlaybackSnapshot> {
         let _gate = self.gate.try_lock().map_err(|_| Error::MutationBusy)?;
+        self.resume_locked(token, restore, intent, restart_stopped)
+            .await
+    }
+    pub(super) async fn resume_locked(
+        &self,
+        token: &SessionToken,
+        restore: bool,
+        intent: u64,
+        restart_stopped: bool,
+    ) -> Result<PlaybackSnapshot> {
         let (view, actual, mut desired) = self.current(token).await?;
         self.guard(token, intent)?;
         if matches_entries(&desired, &actual) && desired.current().is_some() {
@@ -204,6 +214,15 @@ impl Inner {
         intent: u64,
     ) -> Result<FmTrashMutation> {
         let _gate = self.gate.try_lock().map_err(|_| Error::MutationBusy)?;
+        self.trash_locked(token, entry_id, reason_key, intent).await
+    }
+    pub(super) async fn trash_locked(
+        &self,
+        token: &SessionToken,
+        entry_id: &str,
+        reason_key: Option<&str>,
+        intent: u64,
+    ) -> Result<FmTrashMutation> {
         let (view, actual, desired) = self.current(token).await?;
         self.guard(token, intent)?;
         if view

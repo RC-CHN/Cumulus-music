@@ -301,6 +301,25 @@ impl MusicClient {
             command,
             FmCommand::Artist { blocked: true, .. } | FmCommand::ReconcileArtist { .. }
         );
+        let feedback = if matches!(
+            command,
+            FmCommand::Trash { .. } | FmCommand::Feedback { .. }
+        ) {
+            let operation = fm.operation()?;
+            let actual = self.player.controller().await?.queue(&token).await?;
+            let entry_id = match &command {
+                FmCommand::Trash { entry_id } | FmCommand::Feedback { entry_id, .. } => entry_id,
+                _ => unreachable!("feedback command reserved"),
+            };
+            if fm.active_source_for(&token, &actual)?.as_ref() != Some(&source)
+                || actual.current.as_deref() != Some(entry_id)
+            {
+                return Err(Error::QueueChanged);
+            }
+            Some(operation)
+        } else {
+            None
+        };
         let intent = if transport || affects_filter {
             self.player.selection.fetch_add(1, Ordering::AcqRel) + 1
         } else {
@@ -333,13 +352,20 @@ impl MusicClient {
                 fm.leave_for(&token, intent).await?;
             }
             FmCommand::Trash { entry_id } => {
-                fm.trash_for(&token, &entry_id, intent).await?;
+                feedback
+                    .as_ref()
+                    .expect("feedback reserved")
+                    .trash(&token, &entry_id, None, intent)
+                    .await?;
             }
             FmCommand::Feedback {
                 entry_id,
                 reason_key,
             } => {
-                fm.feedback_for(&token, &entry_id, &reason_key, intent)
+                feedback
+                    .as_ref()
+                    .expect("feedback reserved")
+                    .trash(&token, &entry_id, Some(&reason_key), intent)
                     .await?;
             }
             FmCommand::Reconcile { id } => {
