@@ -1,3 +1,5 @@
+#[path = "support/intelligence_mini.rs"]
+mod mini_tests;
 #[allow(dead_code)]
 #[path = "support/playback/mod.rs"]
 mod native;
@@ -54,7 +56,7 @@ impl Api for Backend {
                 .push((path.into(), payload.clone()));
             Ok(match path {
                 "/api/user/playlist" => {
-                    json!({"code":200,"more":false,"playlist":[{"id":31,"specialType":5,"userId":if self.foreign.load(Ordering::SeqCst){10}else{9}}]})
+                    json!({"code":200,"more":false,"playlist":[{"id":31,"specialType":5,"name":"Synthetic likes","privacy":0,"userId":if self.foreign.load(Ordering::SeqCst){10}else{9}}]})
                 }
                 "/api/v6/playlist/detail" => {
                     json!({"code":200,"playlist":{"id":31,"trackIds":self.ids.lock().unwrap().clone()}})

@@ -1,6 +1,8 @@
 //! A second surface over the existing player, never a second player. Hosts retain
 //! the opaque snapshot and pass only its public view to an untrusted UI.
 mod actions;
+mod intelligence;
+mod mode;
 mod queue;
 use super::{MusicClient, native_media::*};
 use crate::playback::mode::ModeFamily;
@@ -32,6 +34,11 @@ pub struct MiniView {
     pub volume: f64,
     pub mode: Option<PlaybackMode>,
     pub mode_family: Option<ModeFamily>,
+    pub queue_revision: Option<String>,
+    pub can_intelligence: bool,
+    pub intelligence: Option<crate::playback::intelligence::IntelligencePhase>,
+    pub intelligence_operation: Option<String>,
+    pub intelligence_read: Option<MiniIntelligenceRead>,
     pub like: Option<MiniLikeView>,
     pub error: Option<&'static str>,
 }
@@ -48,6 +55,7 @@ impl MiniSnapshot {
             && self.target == other.target
             && self.like == other.like
             && self.view.mode_family == other.view.mode_family
+            && self.view.can_intelligence == other.view.can_intelligence
     }
     fn check(&self, client: &MusicClient) -> Result<()> {
         client.session.check_generation(&self.token)?;
@@ -57,6 +65,9 @@ impl MiniSnapshot {
             return Err(Error::StaleResponse);
         }
         if client.mini_mode_family(&self.token, self.view.mode)? != self.view.mode_family {
+            return Err(Error::StaleResponse);
+        }
+        if client.mini_heart_hint(&self.token, self.view.mode)? != self.view.can_intelligence {
             return Err(Error::StaleResponse);
         }
         Ok(())
@@ -121,6 +132,14 @@ impl MusicClient {
         } else {
             None
         };
+        let audio = self
+            .player
+            .controller
+            .get()
+            .map(|v| v.snapshot())
+            .filter(|v| v.account == token);
+        let mode_audio = audio.as_ref().filter(|_| details.mode.is_some());
+        let activity = self.intelligence_read_operation(&token)?;
         let snapshot = MiniSnapshot {
             view: MiniView {
                 epoch: token.generation.to_string(),
@@ -138,6 +157,19 @@ impl MusicClient {
                 volume: details.volume,
                 mode: details.mode,
                 mode_family: self.mini_mode_family(&token, details.mode)?,
+                queue_revision: mode_audio.map(|v| v.queue_revision.to_string()),
+                can_intelligence: self.mini_heart_hint(&token, details.mode)?,
+                intelligence: mode_audio.and_then(|v| v.intelligence.as_ref().map(|s| s.phase)),
+                intelligence_operation: mode_audio.and_then(|v| v.intelligence_operation.clone()),
+                intelligence_read: activity.map(|operation_id| {
+                    let preparing = audio
+                        .as_ref()
+                        .is_none_or(|v| v.intelligence.as_ref().is_none_or(|s| !s.active()));
+                    MiniIntelligenceRead {
+                        operation_id,
+                        preparing,
+                    }
+                }),
                 like: like.as_ref().map(|v| MiniLikeView {
                     observed: v.observed,
                     pending: v.pending,
@@ -153,4 +185,6 @@ impl MusicClient {
     }
 }
 pub use actions::MiniAction;
+pub use intelligence::{MiniIntelligenceCommand, MiniIntelligenceRead};
+pub use mode::MiniPlaybackReceipt;
 pub use queue::MiniQueuePage;

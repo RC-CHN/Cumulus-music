@@ -50,6 +50,25 @@ pub struct IntelligenceEligibility {
     pub liked_playlist_id: Option<String>,
 }
 impl MusicClient {
+    pub(crate) fn remember_intelligence_likes(
+        &self,
+        token: &SessionToken,
+        id: Option<String>,
+    ) -> Result<()> {
+        self.session.check_generation(token)?;
+        self.player.intelligence.remember_liked(token, id)
+    }
+    pub(crate) fn intelligence_liked_hint(&self, token: &SessionToken) -> Result<Option<String>> {
+        self.session.check_generation(token)?;
+        self.player.intelligence.liked_hint(token)
+    }
+    pub(crate) fn intelligence_read_operation(
+        &self,
+        token: &SessionToken,
+    ) -> Result<Option<String>> {
+        self.session.check_generation(token)?;
+        self.player.intelligence.pending_id(token)
+    }
     pub fn player_intelligence_cancel(&self, epoch: &str, id: &str) -> Result<bool> {
         self.player
             .intelligence
@@ -102,6 +121,14 @@ impl MusicClient {
         epoch: &str,
         command: IntelligenceCommand,
     ) -> Result<PlayerView> {
+        self.player_intelligence_checked(epoch, command, None).await
+    }
+    pub(crate) async fn player_intelligence_checked(
+        &self,
+        epoch: &str,
+        command: IntelligenceCommand,
+        expected: Option<&crate::client::native_media::NativeMediaTarget>,
+    ) -> Result<PlayerView> {
         let token = self.playlist_token(epoch)?;
         let (id, revision) = match &command {
             IntelligenceCommand::Start {
@@ -128,6 +155,10 @@ impl MusicClient {
         if before.queue_revision.to_string() != *revision {
             return Err(Error::QueueChanged);
         }
+        if let Some(target) = expected {
+            target.check(self)?;
+            target.audio(&before)?;
+        }
         flight.watch_queue(controller.subscribe(), before.queue_revision)?;
         self.intelligence_room(&token)?;
         match command {
@@ -136,7 +167,9 @@ impl MusicClient {
                 if before.intelligence.as_ref().is_some_and(|s| s.active()) {
                     return Err(Error::State("intelligence mode is already active"));
                 }
-                let focus = self.focus.snapshot()?;
+                let focus = expected
+                    .map(|target| target.focus)
+                    .map_or_else(|| self.focus.snapshot(), Ok)?;
                 let intent = self.player.selection.fetch_add(1, Ordering::AcqRel) + 1;
                 let preserve = matches!(origin, IntelligenceOrigin::Current);
                 let (playlist, revision, seed) = match origin {

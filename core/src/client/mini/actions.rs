@@ -24,26 +24,7 @@ impl MusicClient {
     pub async fn mini_action(&self, displayed: &MiniSnapshot, action: MiniAction) -> Result<()> {
         displayed.check(self)?;
         if let MiniAction::Mode { mode } = action {
-            // The snapshot's policy is part of the displayed controls. Do not
-            // reinterpret an old ordinary cycle after a room attaches/exits.
-            let _room = self
-                .together
-                .gate
-                .try_lock()
-                .map_err(|_| Error::MutationBusy)?;
-            displayed.check(self)?;
-            let family = displayed
-                .view
-                .mode_family
-                .ok_or(Error::InvalidInput("mini mode unavailable"))?;
-            if !family.supports(mode) {
-                return Err(Error::InvalidInput(
-                    "mode unavailable in mini playback context",
-                ));
-            }
-            let target = displayed.target.as_ref().ok_or(Error::StaleResponse)?;
-            self.native_media_adjust(target, NativeMediaAdjustment::Mode { mode })
-                .await?;
+            self.mini_mode(displayed, mode).await?;
             return Ok(());
         }
         match action {

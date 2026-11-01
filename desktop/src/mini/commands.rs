@@ -29,7 +29,16 @@ pub async fn mini_read<R: Runtime>(
     tauri::async_runtime::spawn_blocking(move || -> Result<View> {
         app.state::<Host>().lock()?.get(&generation)?;
         let client = app.state::<MusicClient>();
-        let snapshot = client.mini_snapshot()?;
+        // A transition can advance the actor between the local details reads.
+        // Retry only this side-effect-free snapshot, never a business command.
+        let mut snapshot = client.mini_snapshot();
+        for _ in 0..2 {
+            if !matches!(snapshot, Err(Error::StaleResponse)) {
+                break;
+            }
+            snapshot = client.mini_snapshot();
+        }
+        let snapshot = snapshot?;
         let preferences = client.mini_preferences(&snapshot.view.epoch)?.value;
         let media = snapshot.view.clone();
         let ticket = app.state::<Host>().lock()?.observe(&generation, snapshot)?;

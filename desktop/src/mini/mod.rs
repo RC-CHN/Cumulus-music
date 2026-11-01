@@ -1,5 +1,6 @@
 //! Lightweight second WebView; all media work stays in the shared MusicClient.
 pub(crate) mod commands;
+pub(crate) mod intelligence;
 mod layout;
 mod shortcuts;
 mod state;
@@ -79,6 +80,11 @@ pub(crate) fn dismiss<R: Runtime>(
         .try_state::<Host>()
         .and_then(|h| h.lock().ok().and_then(|mut l| l.take(Some(&current))));
     if let Some(window) = window {
+        if let Some((epoch, operation)) = window.intelligence {
+            let _ = app
+                .state::<MusicClient>()
+                .player_intelligence_cancel(&epoch, &operation);
+        }
         crate::shortcuts::local::closed(app, &window.label);
         if let Some(window) = app.get_webview_window(&window.label) {
             let _ = window.destroy();

@@ -13,6 +13,7 @@ pub struct Window {
     pub loaded: bool,
     pub ticket: u64,
     pub snapshot: Option<MiniSnapshot>,
+    pub intelligence: Option<(String, String)>,
 }
 #[derive(Default)]
 pub struct Ledger {
@@ -61,6 +62,7 @@ impl Ledger {
             loaded: false,
             ticket: 0,
             snapshot: None,
+            intelligence: None,
         });
         Ok((generation, label))
     }

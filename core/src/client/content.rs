@@ -22,6 +22,13 @@ impl MusicClient {
                     .collect::<Result<Vec<_>>>()
             })
             .await?;
+        self.remember_intelligence_likes(
+            &token,
+            value
+                .iter()
+                .find(|p| p.favorite && p.owned)
+                .map(|p| p.id.clone()),
+        )?;
         Ok(AccountData {
             epoch: token.generation.to_string(),
             value,

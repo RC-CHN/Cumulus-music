@@ -30,10 +30,12 @@ impl MusicClient {
                 .map(|p| identifier(&p["id"]))
                 .transpose()
         });
-        match flight {
+        let id = match flight {
             Some(f) => f.wait(&self.session, read).await,
             None => read.await,
-        }
+        }?;
+        self.remember_intelligence_likes(token, id.clone())?;
+        Ok(id)
     }
 
     pub(super) async fn intelligence_catalog(

@@ -18,6 +18,7 @@ pub(in crate::client::player) struct IntelligenceHost {
     pub gate: tokio::sync::Mutex<()>,
     pending: Mutex<Option<Pending>>,
     cancelled_before_open: Mutex<std::collections::VecDeque<(SessionToken, String)>>,
+    liked_hint: Mutex<Option<(SessionToken, Option<String>)>>,
 }
 struct Pending {
     token: SessionToken,
@@ -39,6 +40,28 @@ enum Scope {
     Session(String),
 }
 impl IntelligenceHost {
+    pub fn remember_liked(&self, token: &SessionToken, id: Option<String>) -> Result<()> {
+        *self.liked_hint.lock().map_err(|_| Error::LockPoisoned)? = Some((token.clone(), id));
+        Ok(())
+    }
+    pub fn liked_hint(&self, token: &SessionToken) -> Result<Option<String>> {
+        Ok(self
+            .liked_hint
+            .lock()
+            .map_err(|_| Error::LockPoisoned)?
+            .as_ref()
+            .filter(|(owner, _)| owner == token)
+            .and_then(|(_, id)| id.clone()))
+    }
+    pub fn pending_id(&self, token: &SessionToken) -> Result<Option<String>> {
+        Ok(self
+            .pending
+            .lock()
+            .map_err(|_| Error::LockPoisoned)?
+            .as_ref()
+            .filter(|p| &p.token == token)
+            .map(|p| p.id.clone()))
+    }
     pub(super) fn open(self: &Arc<Self>, token: SessionToken, id: String) -> Result<Flight> {
         uuid::Uuid::parse_str(&id)
             .map_err(|_| Error::InvalidInput("invalid intelligence operation id"))?;
