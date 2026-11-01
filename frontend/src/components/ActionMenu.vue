@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import MenuTransition from './MenuTransition.vue';
-import { nextTick, onUnmounted, ref, useId, watch } from 'vue';
+import MenuSubmenu from './MenuSubmenu.vue';
+import { computed, nextTick, onUnmounted, ref, shallowRef, useId, watch } from 'vue';
 import Icon from './Icon.vue';
 import type { MenuItem } from '../services/menu';
 const props = withDefaults(
@@ -12,7 +13,7 @@ const props = withDefaults(
     disabled?: boolean;
     focusChecked?: boolean;
     contextOnly?: boolean;
-    variant?: 'song' | 'speed' | 'quality';
+    variant?: 'song' | 'speed' | 'quality' | 'mini';
   }>(),
   {
     icon: 'more',
@@ -24,6 +25,9 @@ const trigger = ref<HTMLButtonElement>();
 const panel = ref<HTMLElement>();
 const position = ref({ left: '0px', top: '0px', visibility: 'hidden' as 'hidden' | 'visible' });
 const id = useId();
+const submenu = ref<InstanceType<typeof MenuSubmenu>>();
+const child = shallowRef<{ key: string; anchor: HTMLElement; takeFocus: boolean }>();
+const childItem = computed(() => props.items.find((item) => item.key === child.value?.key));
 let stop: (() => void) | undefined;
 let returnTarget: HTMLElement | undefined;
 let displayRevision = 0;
@@ -57,6 +61,7 @@ const choices = () => [
   ...(panel.value?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? []),
 ];
 function close(restore = false) {
+  child.value = undefined;
   displayRevision++;
   anchorBounds = undefined;
   viewportBounds = undefined;
@@ -129,11 +134,13 @@ function place() {
   const left = Math.max(
     8,
     Math.min(
-      point
-        ? point.x
-        : props.variant === 'quality'
-          ? (anchor.right + trigger.value!.getBoundingClientRect().left - box.width) / 2
-          : anchor.right - box.width,
+      props.variant === 'mini'
+        ? innerWidth - box.width - 8
+        : point
+          ? point.x
+          : props.variant === 'quality'
+            ? (anchor.right + trigger.value!.getBoundingClientRect().left - box.width) / 2
+            : anchor.right - box.width,
       innerWidth - box.width - 8,
     ),
   );
@@ -142,6 +149,7 @@ function place() {
       ? anchor.bottom + 6
       : Math.max(8, anchor.top - box.height - 6);
   position.value = { left: `${left}px`, top: `${top}px`, visibility: 'visible' };
+  submenu.value?.place();
 }
 function focusChoice(last = false) {
   const items = choices();
@@ -155,7 +163,13 @@ function focusChoice(last = false) {
 watch(
   () =>
     JSON.stringify(
-      props.items.map((item) => [item.key, item.checked, item.disabled, item.separator]),
+      props.items.map((item) => [
+        item.key,
+        item.checked,
+        item.disabled,
+        item.separator,
+        item.children,
+      ]),
     ),
   async () => {
     if (!open.value) return;
@@ -164,6 +178,8 @@ watch(
     await nextTick();
     if (revision !== displayRevision || !open.value) return;
     place();
+    if (child.value && (!childItem.value?.children?.length || childItem.value.disabled))
+      closeChild(true);
     observeContent();
     if (
       wasInside &&
@@ -177,15 +193,67 @@ watch(
 );
 const show = (last = false) => display(last);
 const showAt = (x: number, y: number, target?: HTMLElement) => display(false, { x, y }, target);
-function select(key: string) {
+function closeChild(restore: boolean) {
+  const parent = child.value?.anchor;
+  child.value = undefined;
+  if (restore && parent?.isConnected && !(parent as HTMLButtonElement).disabled)
+    parent.focus({ preventScroll: true });
+}
+function rootScroll() {
+  closeChild(!!submenu.value?.contains(document.activeElement as Node));
+}
+async function openChild(key: string, target: EventTarget | null, takeFocus = true) {
+  const item = props.items.find((item) => item.key === key);
+  if (!open.value || !item?.children?.length || item.disabled || !(target instanceof HTMLElement))
+    return;
+  if (child.value?.key === key) {
+    if (takeFocus) submenu.value?.focus();
+    return;
+  }
+  target.focus({ preventScroll: true });
+  child.value = { key, anchor: target, takeFocus };
+  await nextTick();
+  place();
+}
+function select(key: string, target: EventTarget | null = null) {
+  if (
+    !open.value ||
+    props.disabled ||
+    !(target instanceof HTMLElement) ||
+    !target.isConnected ||
+    target.closest('[inert]') ||
+    (!panel.value?.contains(target) && !submenu.value?.contains(target))
+  )
+    return;
+  const parent = props.items.find((item) => item.key === key);
+  const item =
+    parent ?? props.items.flatMap((item) => item.children ?? []).find((item) => item.key === key);
+  if (!item || item.disabled || item.separator) return;
+  if (parent?.children?.length) {
+    void openChild(key, target);
+    return;
+  }
   close(true);
   emit('select', key);
 }
 function keydown(event: KeyboardEvent) {
+  if (event.key === 'ArrowRight') {
+    const target = (event.target as HTMLElement)?.closest<HTMLButtonElement>('[data-menu-key]');
+    if (
+      target &&
+      props.items.find((item) => item.key === target.dataset.menuKey)?.children?.length
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      void openChild(target.dataset.menuKey!, target);
+    }
+    return;
+  }
   if (event.key === 'Escape') {
     event.preventDefault();
     event.stopPropagation();
-    close(true);
+    if (child.value) closeChild(true);
+    else close(true);
     return;
   }
   if (event.key === 'Tab') {
@@ -196,6 +264,7 @@ function keydown(event: KeyboardEvent) {
   followFocus = true;
   event.preventDefault();
   const items = choices();
+  closeChild(false);
   const current = items.indexOf(document.activeElement as HTMLButtonElement);
   const target =
     event.key === 'Home'
@@ -219,12 +288,17 @@ watch(open, (active) => {
   const outside = (event: PointerEvent) => {
     if (
       !panel.value?.contains(event.target as Node) &&
+      !submenu.value?.contains(event.target as Node) &&
       !trigger.value?.contains(event.target as Node)
     )
       close();
   };
   const scroll = (event: Event) => {
-    if (panel.value?.contains(event.target as Node)) return;
+    if (
+      panel.value?.contains(event.target as Node) ||
+      submenu.value?.contains(event.target as Node)
+    )
+      return;
     if (anchorUnchanged()) return;
     close();
   };
@@ -252,7 +326,14 @@ onUnmounted(() => {
   close();
   stop?.();
 });
-defineExpose({ show, showAt, close });
+defineExpose({
+  show,
+  showAt,
+  close,
+  containsFocus: () =>
+    !!panel.value?.contains(document.activeElement) ||
+    !!submenu.value?.contains(document.activeElement as Node),
+});
 </script>
 <template>
   <span class="action-menu-host">
@@ -287,12 +368,14 @@ defineExpose({ show, showAt, close });
             'song-action-menu': variant === 'song',
             'speed-action-menu': variant === 'speed',
             'quality-action-menu': variant === 'quality',
+            'mini-action-menu': variant === 'mini',
           }"
           role="menu"
           tabindex="-1"
           :aria-label="label"
           :style="position"
           @keydown="keydown"
+          @scroll="rootScroll"
           @wheel.passive="followFocus = false"
           @touchmove.passive="followFocus = false"
           @pointerdown="
@@ -307,21 +390,53 @@ defineExpose({ show, showAt, close });
               <button
                 v-else
                 type="button"
-                :role="item.checked === undefined ? 'menuitem' : 'menuitemradio'"
+                :data-menu-key="item.key"
+                :aria-haspopup="item.children?.length ? 'menu' : undefined"
+                :aria-expanded="item.children?.length ? child?.key === item.key : undefined"
+                :aria-controls="child?.key === item.key ? `${id}-child` : undefined"
+                :role="
+                  item.checked === undefined
+                    ? 'menuitem'
+                    : item.checkKind === 'checkbox'
+                      ? 'menuitemcheckbox'
+                      : 'menuitemradio'
+                "
                 :aria-checked="item.checked"
                 :disabled="item.disabled"
                 :title="item.hint"
                 :class="{ danger: item.danger, checked: item.checked }"
-                @click="select(item.key)"
+                @click="select(item.key, $event.currentTarget)"
+                @mouseenter="
+                  item.children?.length
+                    ? openChild(item.key, $event.currentTarget, false)
+                    : closeChild(false)
+                "
               >
                 <Icon v-if="item.icon" :name="item.icon" /><slot name="item" :item="item"
                   ><span>{{ item.label }}</span></slot
                 ><Icon v-if="item.checked" class="menu-check" name="check" />
+                <Icon v-if="item.children?.length" class="menu-child-caret" name="back" />
               </button>
             </template>
           </div>
           <slot name="footer" />
         </div>
+      </MenuTransition>
+      <MenuTransition>
+        <MenuSubmenu
+          v-if="open && child && childItem?.children"
+          :id="`${id}-child`"
+          ref="submenu"
+          :key="child.key"
+          :items="childItem.children"
+          :label="childItem.label"
+          :anchor="child.anchor"
+          :take-focus="child.takeFocus"
+          :compact="variant === 'mini'"
+          @select="select"
+          @close="closeChild"
+          @dismiss="close(true)"
+        />
       </MenuTransition>
     </Teleport>
   </span>

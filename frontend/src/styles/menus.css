@@ -51,6 +51,31 @@
   margin-left: auto;
   color: var(--accent);
 }
+.action-menu .menu-child-caret {
+  margin-left: auto;
+}
+.mini-action-menu {
+  width: 190px;
+  min-width: 190px;
+  box-sizing: border-box;
+  border-radius: 8px;
+  padding: 4px;
+}
+.mini-action-menu button {
+  min-height: 28px;
+  padding: 5px 8px;
+  font-size: 11px;
+  line-height: 18px;
+}
+.mini-action-menu button > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mini-action-menu button .icon {
+  width: 14px;
+  height: 14px;
+}
 .appearance-warning {
   position: absolute;
   right: 0;
