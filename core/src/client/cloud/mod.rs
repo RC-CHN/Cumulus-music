@@ -137,6 +137,84 @@ impl Host {
     }
 }
 impl MusicClient {
+    /// Complete current pending-task selection, independent of display page and
+    /// uploaded-song filters. Captured IDs never grow during a later confirmation.
+    pub async fn cloud_upload_selection(
+        &self,
+        epoch: &str,
+        history: bool,
+    ) -> Result<CloudPageView> {
+        let context = self.cloud.inner.context(epoch).await?;
+        tokio::task::spawn_blocking(move || {
+            let result = view::project(
+                &context,
+                CloudQuery {
+                    tab: if history {
+                        CloudTab::History
+                    } else {
+                        CloudTab::Uploading
+                    },
+                    keyword: String::new(),
+                    sort: CloudSort::Natural,
+                    descending: false,
+                    offset: 0,
+                    limit: 50_000,
+                },
+            )?;
+            if result.total > 50_000 {
+                return Err(Error::InvalidInput(
+                    "cloud task selection exceeds 50000 items",
+                ));
+            }
+            Ok(result)
+        })
+        .await
+        .map_err(|_| Error::State("cloud selection view worker stopped"))?
+    }
+    /// Read-only task removal receipts; does not repeat Cancel or delete objects.
+    pub async fn cloud_upload_removals(
+        &self,
+        epoch: &str,
+        ids: Vec<String>,
+    ) -> Result<CloudUploadRemovalView> {
+        if ids.is_empty()
+            || ids.len() > 5000
+            || ids.iter().collect::<std::collections::BTreeSet<_>>().len() != ids.len()
+        {
+            return Err(Error::InvalidInput("invalid cloud removal selection"));
+        }
+        let context = self.cloud.inner.context(epoch).await?;
+        let epoch = epoch.to_owned();
+        tokio::task::spawn_blocking(move || {
+            let entries = context
+                .scheduler
+                .entries()?
+                .into_iter()
+                .map(|entry| (entry.id.clone(), entry))
+                .collect::<std::collections::HashMap<_, _>>();
+            let items = ids
+                .into_iter()
+                .map(|id| {
+                    let task = context.uploads.get(&id)?;
+                    let state = entries.get(&id);
+                    Ok(CloudUploadRemovalItem {
+                        removed: state.is_some_and(|s| s.hidden)
+                            && matches!(task.phase, CloudPhase::Complete | CloudPhase::Cancelled),
+                        requested: state.is_some_and(|s| s.removing)
+                            || task.requested == Some(UploadControl::Cancel),
+                        error: state
+                            .and_then(|s| s.error.clone())
+                            .or_else(|| task.error.map(|e| e.kind)),
+                        id,
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?;
+            context.guard()?;
+            Ok(CloudUploadRemovalView { epoch, items })
+        })
+        .await
+        .map_err(|_| Error::State("cloud removal view worker stopped"))?
+    }
     pub(super) async fn cloud_resources(
         &self,
         epoch: &str,
@@ -146,6 +224,11 @@ impl MusicClient {
         quality: crate::membership::Quality,
     ) -> Result<(Vec<serde_json::Value>, usize)> {
         query.validate()?;
+        if !matches!(query.tab, CloudTab::Uploaded) {
+            return Err(Error::InvalidInput(
+                "cloud playback requires uploaded songs",
+            ));
+        }
         let context = self.cloud.inner.context(epoch).await?;
         let snapshot = context.library.refresh().await?;
         if snapshot.revision != revision {

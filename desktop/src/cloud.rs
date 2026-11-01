@@ -137,3 +137,49 @@ pub async fn pick_cloud_files<R: tauri::Runtime>(
         })
         .collect()
 }
+
+#[tauri::command]
+pub async fn cloud_upload_removals(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    ids: Vec<String>,
+) -> Result<CloudUploadRemovalView, ClientError> {
+    client
+        .cloud_upload_removals(&epoch, ids)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn cloud_upload_selection(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    history: bool,
+) -> Result<CloudPageView, ClientError> {
+    client
+        .cloud_upload_selection(&epoch, history)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn open_cloud_upload_directory<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    id: String,
+) -> Result<(), ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("cloud file manager requires main window").into());
+    }
+    let path = client
+        .cloud_upload_directory_path(&epoch, &id)
+        .await
+        .map_err(ClientError::from)?;
+    client
+        .validate_cloud_epoch(&epoch)
+        .map_err(ClientError::from)?;
+    crate::file_manager::open_directory(path)
+        .await
+        .map_err(Into::into)
+}

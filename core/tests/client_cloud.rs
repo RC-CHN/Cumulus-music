@@ -11,6 +11,8 @@ mod playback_support;
 mod resources;
 #[path = "support/cloud_upload.rs"]
 mod support;
+#[path = "client_cloud/tasks.rs"]
+mod tasks;
 use cumulus_core::{
     Error,
     account::{AccountSession, profiles::ProfileRegistry},
@@ -38,6 +40,7 @@ struct Backend {
     gate: Mutex<Option<Arc<support::nos::Gate>>>,
     allocation_gate: Mutex<Option<Arc<support::nos::Gate>>>,
     full: AtomicBool,
+    encoding_mode: std::sync::atomic::AtomicUsize,
 }
 impl Api for Backend {
     fn request<'a>(&'a self, path: &'a str, payload: Value, _: bool) -> ApiFuture<'a, Value> {
@@ -83,7 +86,10 @@ impl Api for Backend {
                     json!({"code":200,"data":support::allocation("audio",1)})
                 }
                 support::META => {
-                    json!({"code":200,"songId":700,"exists":true,"privateCloud":{"songId":700}})
+                    json!({"code":200,"songId":700,"exists":self.encoding_mode.load(Ordering::Acquire)==0,"waitTime":0,"privateCloud":{"songId":700}})
+                }
+                support::STATUS => {
+                    json!({"code":200,"statuses":{"700":{"status":if self.encoding_mode.load(Ordering::Acquire)==1{-1}else{9},"waitTime":0}}})
                 }
                 support::PUBLISH => {
                     let (name, size) = self.input.lock().unwrap().clone();
@@ -320,7 +326,7 @@ async fn wait_done(client: &MusicClient) -> CloudPageView {
     tokio::time::timeout(Duration::from_secs(8), async {
         loop {
             let view = client
-                .cloud_page("1", query(CloudTab::Uploading), false)
+                .cloud_page("1", query(CloudTab::History), false)
                 .await
                 .unwrap();
             if view.uploads.iter().any(|v| v.phase == CloudPhase::Complete) {

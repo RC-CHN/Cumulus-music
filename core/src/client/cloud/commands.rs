@@ -6,6 +6,7 @@ impl MusicClient {
             command,
             CloudCommand::Upload { .. }
                 | CloudCommand::UploadPlanned { .. }
+                | CloudCommand::RetryEncoding { .. }
                 | CloudCommand::Resume { .. }
                 | CloudCommand::ResumeAll { .. }
         );
@@ -15,6 +16,10 @@ impl MusicClient {
         if capacity_full && !matches!(command, CloudCommand::UploadPlanned { .. }) {
             return Err(Error::State("cloud capacity exhausted"));
         }
+        let bulk_tasks = matches!(
+            command,
+            CloudCommand::PauseAll | CloudCommand::ResumeAll { .. }
+        );
         let command = match command {
             CloudCommand::PauseAll => CloudCommand::Pause {
                 ids: context
@@ -33,7 +38,7 @@ impl MusicClient {
                     .scheduler
                     .entries()?
                     .into_iter()
-                    .filter(|v| v.enabled || v.running)
+                    .filter(|v| v.enabled || v.running || v.removing)
                     .map(|v| v.id)
                     .collect::<std::collections::BTreeSet<_>>();
                 CloudCommand::Resume {
@@ -44,6 +49,9 @@ impl MusicClient {
                         .filter(|v| {
                             !matches!(v.phase, CloudPhase::Complete | CloudPhase::Cancelled)
                                 && v.requested != Some(UploadControl::Cancel)
+                                && v.error
+                                    .as_ref()
+                                    .is_none_or(|error| error.kind != "encoding_failed")
                                 && !active.contains(&v.id)
                         })
                         .map(|v| v.id)
@@ -100,6 +108,11 @@ impl MusicClient {
             CloudCommand::ReconcileDelete { id } => {
                 result.deletion = Some(context.library.reconcile_delete(&id).await?.into());
             }
+            CloudCommand::RetryEncoding { id } => {
+                context.uploads.retry_encoding(&id)?;
+                context.scheduler.start(&id, false)?;
+                result.accepted.push(id);
+            }
             CloudCommand::Renew { id } => {
                 context.uploads.renew_token(&id).await?;
                 result.accepted.push(id);
@@ -121,9 +134,12 @@ impl MusicClient {
                         retry_rejected,
                     } => (ids, "resume", retry_rejected),
                     CloudCommand::Dismiss { ids } => (ids, "dismiss", false),
+                    CloudCommand::RemoveUploads { ids, retry } => (ids, "remove", retry),
                     _ => unreachable!(),
                 };
-                if ids.len() > 5000 {
+                if ids.len() > if bulk_tasks { 50_000 } else { 5000 }
+                    || ids.iter().collect::<std::collections::BTreeSet<_>>().len() != ids.len()
+                {
                     return Err(Error::InvalidInput("invalid upload task selection"));
                 }
                 for id in &ids {
@@ -142,6 +158,7 @@ impl MusicClient {
                             .await
                             .map(|_| ()),
                         "resume" => context.scheduler.start(&id, retry).map(|_| ()),
+                        "remove" => context.scheduler.remove(&id, retry).await.map(|_| ()),
                         _ => context.scheduler.dismiss(&id),
                     };
                     context.guard()?;
@@ -206,9 +223,8 @@ async fn add_files(
                     && task.phase != CloudPhase::Complete
                     && !context
                         .scheduler
-                        .entries()?
-                        .iter()
-                        .any(|entry| entry.id == task.id && (entry.enabled || entry.running));
+                        .entry(&task.id)?
+                        .is_some_and(|entry| entry.enabled || entry.running);
                 result.accepted.push(task.id);
                 context.notify.notify_one();
                 if retained {

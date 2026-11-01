@@ -11,12 +11,14 @@ pub struct UploadSchedule {
     pub enabled: bool,
     pub running: bool,
     pub hidden: bool,
+    #[serde(default)]
+    pub removing: bool,
     pub retry_rejected: bool,
     pub error: Option<String>,
 }
 #[derive(Clone)]
 pub struct UploadScheduler {
-    uploads: CloudUploads,
+    pub(super) uploads: CloudUploads,
 }
 impl UploadScheduler {
     pub fn new(uploads: CloudUploads) -> Self {
@@ -29,6 +31,21 @@ impl UploadScheduler {
             "cloud-scheduler",
             &self.uploads.owner,
         )
+    }
+    pub fn entry(&self, id: &str) -> Result<Option<UploadSchedule>> {
+        types::valid_id(id)?;
+        self.uploads.session.with_token(&self.uploads.token, |_| {
+            let entry = self
+                .uploads
+                .store
+                .get(&self.uploads.owner, SCHEDULE, id)?
+                .map(serde_json::from_value::<UploadSchedule>)
+                .transpose()?;
+            if entry.as_ref().is_some_and(|entry| entry.id != id) {
+                return Err(Error::State("cloud schedule identity mismatch"));
+            }
+            Ok(entry)
+        })
     }
     pub fn entries(&self) -> Result<Vec<UploadSchedule>> {
         self.uploads.session.with_token(&self.uploads.token, |_| {
@@ -50,7 +67,7 @@ impl UploadScheduler {
             Ok(values)
         })
     }
-    fn change(
+    pub(super) fn change(
         &self,
         id: &str,
         change: impl FnOnce(&mut UploadSchedule) -> Result<()>,
@@ -67,6 +84,7 @@ impl UploadScheduler {
                         enabled: false,
                         running: false,
                         hidden: false,
+                        removing: false,
                         retry_rejected: false,
                         error: None,
                     },
@@ -90,7 +108,7 @@ impl UploadScheduler {
     pub async fn recover(&self) -> Result<()> {
         let _lock = self.lock()?;
         for task in self.uploads.list()? {
-            self.change(&task.id, |state| {
+            let state = self.change(&task.id, |state| {
                 state.enabled = false;
                 state.running = false;
                 state.revision = state
@@ -99,7 +117,19 @@ impl UploadScheduler {
                     .ok_or(Error::State("cloud schedule exhausted"))?;
                 Ok(())
             })?;
-            if !matches!(task.phase, CloudPhase::Complete | CloudPhase::Cancelled)
+            if state.removing {
+                // Removal was explicitly authorized and Cancel was already
+                // persisted before removing=true. Unknown writes stay visible.
+                if matches!(task.phase, CloudPhase::Complete | CloudPhase::Cancelled) {
+                    self.change(&task.id, |state| {
+                        state.hidden = true;
+                        Ok(())
+                    })?;
+                } else if task.requested == Some(UploadControl::Cancel) {
+                    let outcome = self.uploads.control(&task.id, UploadControl::Cancel).await;
+                    self.finish_removal(&task.id, outcome)?;
+                }
+            } else if !matches!(task.phase, CloudPhase::Complete | CloudPhase::Cancelled)
                 && task.requested != Some(UploadControl::Cancel)
             {
                 self.uploads.control(&task.id, UploadControl::Pause).await?;
@@ -109,6 +139,9 @@ impl UploadScheduler {
     }
     pub fn start(&self, id: &str, retry_rejected: bool) -> Result<UploadSchedule> {
         let task = self.uploads.get(id)?;
+        if self.entry(id)?.is_some_and(|entry| entry.removing) {
+            return Err(Error::State("cloud task removal is pending"));
+        }
         if task.requested == Some(UploadControl::Pause) {
             self.uploads.resume(id)?;
         }
@@ -116,6 +149,14 @@ impl UploadScheduler {
             || task.requested == Some(UploadControl::Cancel)
         {
             return Err(Error::State("cloud task cannot start"));
+        }
+        if task.phase == CloudPhase::Failed
+            && task
+                .error
+                .as_ref()
+                .is_some_and(|error| error.kind == "encoding_failed")
+        {
+            return Err(Error::State("cloud encoding retry requires status check"));
         }
         if task.phase == CloudPhase::Failed && !retry_rejected {
             return Err(Error::State("cloud rejection requires explicit retry"));
@@ -219,6 +260,12 @@ impl UploadScheduler {
             let current = self.uploads.get(&entry.id)?;
             self.change(&entry.id, |state| {
                 state.running = false;
+                if state.removing
+                    && matches!(current.phase, CloudPhase::Complete | CloudPhase::Cancelled)
+                {
+                    state.hidden = true;
+                    state.enabled = false;
+                }
                 if state.revision == dispatch.revision {
                     state.retry_rejected = false;
                     if let Err(error) = &result {

@@ -90,6 +90,29 @@ impl CloudUploads {
         task.next_check_ms = next;
         self.save(task)
     }
+    /// Official M/3127 retryTransform restarts mst reads, never reuploads the
+    /// audio or repeats a possibly accepted metadata/publication request.
+    pub fn retry_encoding(&self, id: &str) -> Result<CloudView> {
+        let _lock = self.lock(id)?;
+        let mut task = self.read(id)?;
+        if task.phase != CloudPhase::Failed
+            || task
+                .error
+                .as_ref()
+                .is_none_or(|error| error.kind != "encoding_failed")
+            || task.song_id.is_none()
+            || task.metadata.is_none()
+            || self.requested(id)? == Some(UploadControl::Cancel)
+        {
+            return Err(Error::State("cloud task is not awaiting encoding retry"));
+        }
+        task.phase = CloudPhase::Encoding;
+        task.error = None;
+        task.retry_phase = None;
+        task.next_check_ms = task.next_check_ms.max(self.clock.now_ms()?);
+        self.save(&task)?;
+        self.view(&task)
+    }
     pub(super) async fn encoding(&self, task: &mut Task) -> Result<bool> {
         if self.clock.now_ms()? < task.next_check_ms {
             return Ok(false);

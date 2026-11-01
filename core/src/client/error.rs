@@ -275,6 +275,16 @@ impl From<Error> for ClientError {
                     "该账号的登录身份已变化，请重新登录",
                     false,
                 ),
+                Error::State("cloud upload source unavailable") => (
+                    "cloud_source_unavailable",
+                    "原文件已移动、变化或无法读取，请检查文件位置与权限",
+                    true,
+                ),
+                Error::State("cloud encoding retry requires status check") => (
+                    "cloud_encoding_retry",
+                    "请使用重新检查转码状态，避免再次上传音频",
+                    false,
+                ),
                 Error::State("cloud capacity exhausted") => {
                     ("cloud_full", "云盘空间已满，请清理部分歌曲后再上传", false)
                 }

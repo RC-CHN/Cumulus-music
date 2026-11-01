@@ -26,8 +26,18 @@ pub(super) fn project(context: &Context, query: CloudQuery) -> Result<CloudPageV
         .iter()
         .filter(|v| !matches!(v.phase, CloudPhase::Complete | CloudPhase::Cancelled))
         .count();
+    let history_count = uploads
+        .iter()
+        .filter(|v| matches!(v.phase, CloudPhase::Complete | CloudPhase::Cancelled))
+        .count();
     uploads.retain(|v| {
-        v.title.to_lowercase().contains(&keyword) || v.file_name.to_lowercase().contains(&keyword)
+        let terminal = matches!(v.phase, CloudPhase::Complete | CloudPhase::Cancelled);
+        (match query.tab {
+            CloudTab::Uploading => !terminal,
+            CloudTab::History => terminal,
+            CloudTab::Uploaded => true,
+        }) && (v.title.to_lowercase().contains(&keyword)
+            || v.file_name.to_lowercase().contains(&keyword))
     });
     uploads.sort_by(|a, b| {
         entries
@@ -38,7 +48,7 @@ pub(super) fn project(context: &Context, query: CloudQuery) -> Result<CloudPageV
     });
     let total = match query.tab {
         CloudTab::Uploaded => tracks.len(),
-        CloudTab::Uploading => uploads.len(),
+        CloudTab::Uploading | CloudTab::History => uploads.len(),
     };
     match query.tab {
         CloudTab::Uploaded => {
@@ -49,7 +59,7 @@ pub(super) fn project(context: &Context, query: CloudQuery) -> Result<CloudPageV
                 .collect();
             uploads.clear();
         }
-        CloudTab::Uploading => {
+        CloudTab::Uploading | CloudTab::History => {
             uploads = uploads
                 .into_iter()
                 .skip(query.offset)
@@ -70,6 +80,7 @@ pub(super) fn project(context: &Context, query: CloudQuery) -> Result<CloudPageV
         max_size: snapshot.as_ref().and_then(|s| s.max_size),
         uploaded_count,
         uploading_count,
+        history_count,
         total,
         offset: query.offset,
         tracks,
@@ -92,6 +103,17 @@ fn upload(task: CloudView, entries: &HashMap<String, UploadSchedule>) -> CloudUp
         .is_some_and(|e| e.kind == "write_outcome_unknown")
         || matches!(&task.transfer,Some(CloudTransfer::Oss(v)) if matches!(v.pending,Some(OssPending::Initiate|OssPending::Put|OssPending::Complete|OssPending::Abort)))
         || matches!(&task.transfer,Some(CloudTransfer::Nos(v)) if v.status==crate::cloud::nos::NosStatus::Ambiguous);
+    let pending = matches!(
+        task.phase,
+        CloudPhase::AllocationPending
+            | CloudPhase::MetadataPending
+            | CloudPhase::PublicationPending
+    ) || task
+        .attachments
+        .iter()
+        .any(|a| a.phase == AttachmentPhase::AllocationPending);
+    let removing = state.is_some_and(|state| state.removing);
+    let cancellable = !unknown && !pending && task.phase != CloudPhase::Published;
     let cancelling = task.requested == Some(UploadControl::Cancel);
     let reconcile = task.phase == CloudPhase::PublicationPending
         || matches!(&task.transfer,Some(CloudTransfer::Oss(v)) if matches!(v.pending,Some(OssPending::Put|OssPending::Complete)));
@@ -111,6 +133,8 @@ fn upload(task: CloudView, entries: &HashMap<String, UploadSchedule>) -> CloudUp
         .or_else(|| task.error.as_ref().map(|e| e.kind.clone()))
         .or(child_error)
         .filter(|error| !(running && error == "write_outcome_unknown"));
+    let encoding_failed =
+        task.phase == CloudPhase::Failed && error.as_deref() == Some("encoding_failed");
     let label = if terminal {
         if task.phase == CloudPhase::Complete {
             "已上传"
@@ -119,6 +143,8 @@ fn upload(task: CloudView, entries: &HashMap<String, UploadSchedule>) -> CloudUp
         }
     } else if (unknown || reconcile) && !running {
         "等待核对"
+    } else if removing {
+        "正在移除"
     } else if cancelling {
         "取消待确认"
     } else if task.requested == Some(UploadControl::Pause) {
@@ -139,6 +165,8 @@ fn upload(task: CloudView, entries: &HashMap<String, UploadSchedule>) -> CloudUp
     CloudUploadView {
         id: task.id,
         title: task.title,
+        artists: task.artists,
+        album: task.album,
         file_name: task
             .source
             .file_name()
@@ -152,11 +180,27 @@ fn upload(task: CloudView, entries: &HashMap<String, UploadSchedule>) -> CloudUp
         enabled,
         running,
         error,
-        can_resume: !terminal && !unknown && !reconcile && !cancelling && !enabled && !running,
-        can_pause: !terminal && (enabled || running) && !cancelling,
-        can_cancel: !terminal && !unknown && task.phase != CloudPhase::Published,
+        can_resume: !encoding_failed
+            && !terminal
+            && !unknown
+            && !pending
+            && !reconcile
+            && !removing
+            && !cancelling
+            && !enabled
+            && !running,
+        can_pause: !terminal && (enabled || running) && !cancelling && !removing,
+        can_cancel: !terminal && cancellable && !cancelling,
+        removal_pending: removing,
+        can_remove: !removing && (terminal || cancellable),
+        can_retry_remove: removing && !running && (terminal || cancellable),
+        can_retry_encoding: encoding_failed
+            && !removing
+            && !running
+            && !cancelling
+            && task.song_id.is_some(),
         can_reconcile: reconcile && !running,
-        can_renew: renew && !running,
+        can_renew: renew && !running && !removing,
         can_dismiss: terminal,
         attachments: task.attachments,
     }

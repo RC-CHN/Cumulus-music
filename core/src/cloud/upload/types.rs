@@ -117,6 +117,8 @@ pub struct CloudView {
     pub id: String,
     pub source: PathBuf,
     pub title: String,
+    pub artists: Vec<String>,
+    pub album: String,
     pub phase: CloudPhase,
     pub channel: Option<u64>,
     pub bytes: u64,

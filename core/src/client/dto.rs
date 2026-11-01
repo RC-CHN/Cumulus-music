@@ -182,8 +182,8 @@ pub use super::catalog::{
 };
 pub use super::cloud::{
     CloudCommand, CloudDeleteView, CloudFailure, CloudPageView, CloudQuery, CloudResourceView,
-    CloudResult, CloudSort, CloudTab, CloudTrackView, CloudUploadInput, CloudUploadView,
-    PlannedCloudUploadInput,
+    CloudResult, CloudSort, CloudTab, CloudTrackView, CloudUploadInput, CloudUploadRemovalItem,
+    CloudUploadRemovalView, CloudUploadView, PlannedCloudUploadInput,
 };
 pub use super::comments::{
     CommentAuthorView, CommentFloorQuery, CommentFloorView, CommentOperationView, CommentPageView,

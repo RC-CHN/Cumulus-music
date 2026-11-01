@@ -9,6 +9,7 @@ use std::path::PathBuf;
 pub enum CloudTab {
     Uploaded,
     Uploading,
+    History,
 }
 #[derive(Clone, Copy, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -66,6 +67,8 @@ pub struct CloudResourceView {
 pub struct CloudUploadView {
     pub id: String,
     pub title: String,
+    pub artists: Vec<String>,
+    pub album: String,
     pub file_name: String,
     pub phase: CloudPhase,
     pub bytes: u64,
@@ -80,6 +83,10 @@ pub struct CloudUploadView {
     pub can_reconcile: bool,
     pub can_renew: bool,
     pub can_dismiss: bool,
+    pub removal_pending: bool,
+    pub can_remove: bool,
+    pub can_retry_remove: bool,
+    pub can_retry_encoding: bool,
     pub attachments: Vec<AttachmentView>,
 }
 #[derive(Serialize)]
@@ -114,6 +121,7 @@ pub struct CloudPageView {
     pub max_size: Option<u64>,
     pub uploaded_count: usize,
     pub uploading_count: usize,
+    pub history_count: usize,
     pub total: usize,
     pub offset: usize,
     pub tracks: Vec<CloudTrackView>,
@@ -161,7 +169,15 @@ pub enum CloudCommand {
     Dismiss {
         ids: Vec<String>,
     },
+    RemoveUploads {
+        ids: Vec<String>,
+        #[serde(default)]
+        retry: bool,
+    },
     Renew {
+        id: String,
+    },
+    RetryEncoding {
         id: String,
     },
     ReconcileUpload {
@@ -188,4 +204,19 @@ pub struct CloudResult {
     pub failed: Vec<CloudFailure>,
     pub not_started: Vec<CloudFailure>,
     pub deletion: Option<CloudDeleteView>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudUploadRemovalView {
+    pub epoch: String,
+    pub items: Vec<CloudUploadRemovalItem>,
+}
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudUploadRemovalItem {
+    pub id: String,
+    pub removed: bool,
+    pub requested: bool,
+    pub error: Option<String>,
 }

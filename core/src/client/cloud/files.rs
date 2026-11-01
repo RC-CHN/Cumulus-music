@@ -141,3 +141,24 @@ fn require_revision(context: &Context, revision: &str) -> Result<()> {
     }
     Ok(())
 }
+
+impl MusicClient {
+    pub async fn cloud_upload_directory_path(&self, epoch: &str, id: &str) -> Result<PathBuf> {
+        let context = self.cloud.inner.context(epoch).await?;
+        let id = id.to_owned();
+        tokio::task::spawn_blocking(move || {
+            let file = context.uploads.verified_task_source_file(&id)?;
+            if !regular(&file, context.uploads.get(&id)?.total) {
+                return Err(Error::State("cloud upload source unavailable"));
+            }
+            let directory = file
+                .parent()
+                .ok_or(Error::State("cloud upload directory missing"))?
+                .to_owned();
+            context.guard()?;
+            Ok(directory)
+        })
+        .await
+        .map_err(|_| Error::State("cloud file worker stopped"))?
+    }
+}

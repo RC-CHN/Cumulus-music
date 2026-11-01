@@ -148,6 +148,8 @@ impl CloudUploads {
             id: task.id.clone(),
             source: task.source.path.clone(),
             title: task.info.title.clone(),
+            artists: task.info.artists.clone(),
+            album: task.info.album.clone(),
             phase: task.phase,
             channel: task.allocation.as_ref().and_then(|v| v["channel"].as_u64()),
             bytes: audio.as_ref().map_or(
@@ -180,6 +182,14 @@ impl CloudUploads {
             return Err(Error::State("cloud source association changed"));
         }
         task.source.open()?;
+        self.guard()?;
+        Ok(task.source.path)
+    }
+    pub fn verified_task_source_file(&self, id: &str) -> Result<std::path::PathBuf> {
+        let task = self.read(id)?;
+        task.source
+            .open()
+            .map_err(|_| Error::State("cloud upload source unavailable"))?;
         self.guard()?;
         Ok(task.source.path)
     }

@@ -5,6 +5,7 @@ mod controls;
 mod creation;
 mod manager;
 mod publication;
+mod removal;
 mod run;
 mod scheduler;
 mod selection;
