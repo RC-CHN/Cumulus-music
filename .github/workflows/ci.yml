@@ -227,6 +227,7 @@ jobs:
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_menu_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-menu-exit-linux --exit
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/lyric_report_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-lyric-report-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/cloud_page_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-cloud-page-linux
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/cloud_batch_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-cloud-batch-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-shortcuts-linux --shortcuts
           cargo build -p cumulus-desktop --example desktop_lyrics_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/desktop_lyrics_smoke.py --binary .build/target/debug/examples/desktop_lyrics_ui_probe --root .build/ci-desktop-lyrics-linux
@@ -333,6 +334,7 @@ jobs:
           python scripts/ci/mini_menu_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-mini-menu-exit-windows --runtime .build/package-stage/windows-x64/native --exit
           python scripts/ci/lyric_report_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-lyric-report-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/cloud_page_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-cloud-page-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/cloud_batch_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-cloud-batch-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/mini_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-mini-shortcuts-windows --runtime .build/package-stage/windows-x64/native --shortcuts
           cargo build -p cumulus-desktop --example desktop_lyrics_ui_probe --features custom-protocol --locked
           python scripts/ci/desktop_lyrics_smoke.py --binary .build/target/debug/examples/desktop_lyrics_ui_probe.exe --root .build/ci-desktop-lyrics-windows --runtime .build/package-stage/windows-x64/native

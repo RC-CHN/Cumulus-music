@@ -112,6 +112,9 @@ fn main() {
             factory_count.fetch_add(1,Ordering::AcqRel);
             Ok(Box::new(relay_fixture::NativeAudio::open(wave.clone())?))
         });
+        let client = if mini_fixture::cloud_ui::batch_enabled() {
+            client.with_download_backend(Arc::new(mini_fixture::cloud_ui::media::Backend))
+        } else {client};
         app.manage(client);
         app.add_capability(r#"{"identifier":"mini-proof","windows":["main","mini-player-*"],"permissions":["core:event:allow-emit"]}"#)?;
         let handle=app.handle().clone();
@@ -123,6 +126,15 @@ fn main() {
             match kind {
                 "cloud-config"=>{api.cloud_ui.configure(&value);ack(json!({"ok":true}));}
                 "cloud-state"=>ack(api.cloud_ui.report()),
+                "cloud-download-root"=>{
+                    assert!(mini_fixture::cloud_ui::batch_enabled());
+                    let handle=handle.clone();let directory=root.join("batch-downloads");
+                    tauri::async_runtime::spawn(async move {
+                        let client=handle.state::<MusicClient>();let epoch=client.account().unwrap().epoch;
+                        client.download_command(&epoch,cumulus_core::client::dto::DownloadCommand::Configure{root:directory.to_string_lossy().into_owned(),path_type:2,file_type:1}).await.unwrap();
+                        handle.get_webview_window("main").unwrap().eval(format!("window.__miniAck[{}]={};",id,json!({"ok":true,"root":directory}))).unwrap();
+                    });
+                }
                 "cloud-cache-break"=>{
                     let sql=rusqlite::Connection::open(proof_store.directory().join("core.sqlite3")).unwrap();
                     assert_eq!(sql.execute("UPDATE state SET value=? WHERE kind='cloud_library_v1' AND key='snapshot'",["{"]).unwrap(),1);
