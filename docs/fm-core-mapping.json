@@ -190,9 +190,18 @@
       "status": "native_and_desktop_live_reason_selection_passed",
       "frontend": [
         "frontend/src/components/FmPage.vue",
-        "frontend/src/composables/useFm.ts"
+        "frontend/src/composables/useFm.ts",
+        "frontend/src/components/fm/FmFeedbackDialog.vue",
+        "frontend/src/composables/useFmFeedback.ts"
       ],
-      "official_bug_fixed": "M1384 and recovered TSX onClick shadows reason with event; implementation passes server-offered option key"
+      "official_bug_fixed": "M1384 and recovered TSX onClick shadows reason with event; implementation passes server-offered option key",
+      "ui_regression": {
+        "contract": "docs/fm-feedback-ui-contracts.txt",
+        "entry": "scripts/ci/fm_feedback_dialog_smoke.py",
+        "state_tests": "frontend/tests/fm-feedback-state.test.ts",
+        "live_account_retested": false,
+        "full_fm_complete": false
+      }
     },
     {
       "id": "playback_ui",
@@ -246,13 +255,22 @@
       "status": "native_and_desktop_live_roundtrip_lost_reply_recovery_passed",
       "frontend": [
         "frontend/src/components/FmPage.vue",
-        "frontend/src/composables/useFm.ts"
+        "frontend/src/composables/useFm.ts",
+        "frontend/src/components/fm/FmFeedbackDialog.vue",
+        "frontend/src/composables/useFmFeedback.ts"
       ],
       "limits": [
         "lost reply deliberately injected after real server 200",
         "full recommendation model statistics cannot be rolled back or independently inspected",
         "unrecognized cached artist names display IDs"
-      ]
+      ],
+      "ui_regression": {
+        "contract": "docs/fm-feedback-ui-contracts.txt",
+        "entry": "scripts/ci/fm_feedback_dialog_smoke.py",
+        "state_tests": "frontend/tests/fm-feedback-state.test.ts",
+        "live_account_retested": false,
+        "full_fm_complete": false
+      }
     },
     {
       "id": "normal_queue_restore",
@@ -332,5 +350,6 @@
   "desktop_contract": "docs/desktop-fm-contracts.txt",
   "feedback_contract": "docs/desktop-fm-feedback-contracts.txt",
   "modes_contract": "docs/desktop-fm-modes-contracts.txt",
-  "scene_fm_mapping": "docs/scene-fm-mapping.json"
+  "scene_fm_mapping": "docs/scene-fm-mapping.json",
+  "ui_contract": "docs/fm-feedback-ui-contracts.txt"
 }

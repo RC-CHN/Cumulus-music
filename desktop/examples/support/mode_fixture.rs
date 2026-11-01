@@ -1,7 +1,5 @@
 //! Isolated mode UI faults and a synthetic FM backend; no network fallback.
-#[allow(dead_code)]
-#[path = "../../../core/tests/support/fm.rs"]
-mod fm_domain;
+use super::fm_domain;
 use cumulus_core::{Result, protocol::api::Api, storage::StateStore};
 use serde_json::{Value, json};
 use std::sync::OnceLock;

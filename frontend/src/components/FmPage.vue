@@ -5,9 +5,12 @@ import type { PlayerModel } from '../composables/usePlayer';
 import type { TrackView } from '../services/contracts';
 import Icon from './Icon.vue';
 import FmExplore from './FmExplore.vue';
-import type { FmCard } from '../services/fm';
+import type { FmCard, FmFeedback } from '../services/fm';
 import { fmPrimary } from '../services/fmPrimary';
 import { artistLabel } from '../services/artistLabel';
+import ModalTransition from './ModalTransition.vue';
+import FmFeedbackDialog from './fm/FmFeedbackDialog.vue';
+import { useFmFeedback } from '../composables/useFmFeedback';
 const props = defineProps<{
   model: FmModel;
   player: PlayerModel;
@@ -24,7 +27,12 @@ const tab = ref<'fm' | 'trash'>('fm'),
   selected = ref(new Set<string>());
 const exploring = ref(false);
 const heading = ref<HTMLHeadingElement>(),
-  returnButton = ref<HTMLButtonElement>();
+  returnButton = ref<HTMLButtonElement>(),
+  feedbackButton = ref<HTMLButtonElement>(),
+  trashToolbar = ref<HTMLElement>(),
+  recovery = ref<HTMLElement>();
+const feedback = useFmFeedback(props.model, () => props.player.view.value);
+const afterFeedback = ref<'trash' | 'recovery'>();
 async function leave() {
   const owner = returnButton.value,
     focused = document.activeElement === owner;
@@ -70,6 +78,9 @@ const active = computed(() => !!view.value?.active);
 const transportActive = computed(() => active.value && props.player.view.value?.fm === true);
 const playing = computed(() => transportActive.value && props.player.playing.value);
 const modePending = computed(() => active.value && !!view.value?.modePending);
+const restorePending = computed(
+  () => !!view.value?.operations.some((op) => op.kind === 'trash' && op.desired === false),
+);
 const primary = computed(() =>
   fmPrimary({
     active: active.value,
@@ -81,13 +92,10 @@ const primary = computed(() =>
     notice: !!view.value?.notice,
   }),
 );
-const dialog = ref<HTMLDialogElement>();
-const target = ref<{ entryId: string; name: string }>();
 watch(
   () => JSON.stringify(view.value?.source),
   () => {
     selected.value = new Set();
-    dialog.value?.close();
   },
 );
 function toggle(id: string) {
@@ -101,30 +109,72 @@ function openTrash() {
   selected.value = new Set();
   void props.model.loadTrash();
 }
-async function restore() {
+async function restore(event?: Event) {
+  if (restorePending.value || busy.value || trashLoading.value) return;
+  const trigger = event?.currentTarget,
+    owned = trigger instanceof HTMLElement && document.activeElement === trigger,
+    owner = props.player.view.value?.epoch,
+    channel = JSON.stringify(props.model.source.value);
+  if (owned) trashToolbar.value?.focus({ preventScroll: true });
   const ids = [...selected.value];
-  await props.model.command({ kind: 'restore_trash', ids });
-  selected.value = new Set();
-  await props.model.loadTrash();
-}
-function askTrash() {
-  if (!current.value) return;
-  target.value = { entryId: current.value.entryId, name: current.value.track.name };
-  dialog.value?.showModal();
-  void props.model.loadReasons(target.value.entryId);
-}
-async function reduce(reasonKey?: string) {
-  if (!target.value) return;
-  await props.model.command(
-    reasonKey
-      ? { kind: 'feedback', entry_id: target.value.entryId, reason_key: reasonKey }
-      : { kind: 'trash', entry_id: target.value.entryId },
+  const result = await props.model.command({ kind: 'restore_trash', ids });
+  if (result?.ok) {
+    selected.value = new Set();
+    await props.model.loadTrash();
+  }
+  await nextTick();
+  await new Promise<void>((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
   );
-  dialog.value?.close();
+  if (
+    owned &&
+    tab.value === 'trash' &&
+    owner === props.player.view.value?.epoch &&
+    channel === JSON.stringify(props.model.source.value) &&
+    (document.activeElement === trashToolbar.value || document.activeElement === document.body)
+  ) {
+    const next =
+      trigger.isConnected && !trigger.matches(':disabled') ? trigger : trashToolbar.value;
+    next?.focus({ preventScroll: true });
+  }
 }
-function closeReasons() {
-  target.value = undefined;
-  props.model.clearReasons();
+async function reconcileFeedback(op: FmFeedback, event: Event) {
+  const trigger = event.currentTarget,
+    owned = trigger instanceof HTMLElement && document.activeElement === trigger,
+    owner = props.player.view.value?.epoch;
+  if (owned) recovery.value?.focus({ preventScroll: true });
+  const result = await props.model.command({ kind: 'reconcile', id: op.id });
+  if (result?.ok && op.desired === false) {
+    selected.value = new Set();
+    await props.model.loadTrash();
+  }
+  await nextTick();
+  if (
+    owned &&
+    owner === props.player.view.value?.epoch &&
+    (document.activeElement === recovery.value || document.activeElement === document.body)
+  ) {
+    const next =
+      trigger.isConnected && !trigger.matches(':disabled')
+        ? trigger
+        : op.desired === false
+          ? trashToolbar.value
+          : (recovery.value ?? heading.value);
+    next?.focus({ preventScroll: true });
+  }
+}
+function feedbackNavigate(destination: 'trash' | 'recovery') {
+  if (feedback.busy.value) return;
+  afterFeedback.value = destination;
+  feedback.close();
+}
+async function feedbackLeft() {
+  const destination = afterFeedback.value;
+  afterFeedback.value = undefined;
+  if (!destination || !feedback.accountCurrent.value) return;
+  if (destination === 'trash') openTrash();
+  await nextTick();
+  (destination === 'recovery' ? recovery.value : heading.value)?.focus({ preventScroll: true });
 }
 function play() {
   switch (primary.value.action) {
@@ -177,7 +227,7 @@ function resume() {
         {{ exploring ? '收起模式' : '切换漫游' }}
       </button>
       <button class="text-button" @click="tab === 'fm' ? openTrash() : (tab = 'fm')">
-        {{ tab === 'fm' ? '减少推荐列表' : '返回私人漫游' }}
+        {{ tab === 'fm' ? '减少推荐列表' : `返回${model.title.value}` }}
       </button>
     </header>
     <FmExplore v-if="tab === 'fm' && exploring" :model="model" @select="selectCard" />
@@ -238,9 +288,10 @@ function resume() {
               <Icon name="heart" />{{ liked.has(current.track.id) ? '已喜欢' : '喜欢' }}
             </button>
             <button
+              ref="feedbackButton"
               class="text-button"
               :disabled="pending || !transportActive || view?.pending"
-              @click="askTrash"
+              @click="feedback.show"
             >
               减少推荐
             </button>
@@ -262,7 +313,7 @@ function resume() {
         </div>
       </div>
     </div>
-    <div v-else class="fm-trash">
+    <div v-else class="fm-trash" :aria-busy="busy || trashLoading">
       <section v-if="view?.blockedArtists.length" class="fm-artists" aria-label="屏蔽的歌手">
         <h2>屏蔽的歌手</h2>
         <div
@@ -271,7 +322,7 @@ function resume() {
           :data-artist-id="artist.id"
           class="fm-trash-row"
         >
-          <strong>{{ artist.name }}</strong>
+          <strong :title="artist.name">{{ artist.name }}</strong>
           <button
             class="text-button"
             :disabled="busy"
@@ -281,16 +332,24 @@ function resume() {
           </button>
         </div>
       </section>
-      <div class="fm-trash-toolbar">
+      <div ref="trashToolbar" class="fm-trash-toolbar" tabindex="-1">
         <span>已加载 {{ trash?.songs.length ?? 0 }} 首 · 每次最多恢复 100 首</span
         ><button
           class="primary"
-          :disabled="busy || trashLoading || !selected.size"
+          :disabled="busy || trashLoading || restorePending || !selected.size"
           @click="restore"
         >
           恢复推荐{{ selected.size ? `（${selected.size}）` : '' }}
         </button>
       </div>
+      <p v-if="restorePending" class="fm-notice" role="status">
+        有恢复操作尚未确认，请先在反馈状态中核对。<button
+          class="text-button"
+          @click="recovery?.focus()"
+        >
+          查看反馈状态
+        </button>
+      </p>
       <div v-if="!trash" class="empty-state">{{ trashLoading ? '正在读取歌曲…' : '暂无列表' }}</div>
       <div v-else-if="!trash.songs.length" class="empty-state">这里还没有歌曲</div>
       <div
@@ -302,21 +361,23 @@ function resume() {
         <label
           ><input
             type="checkbox"
-            :aria-label="`选择${track.name}`"
+            :aria-label="`选择${track.name || `歌曲 ${track.id}`}`"
             :checked="selected.has(track.id)"
-            :disabled="busy || (!selected.has(track.id) && selected.size >= 100)"
+            :disabled="busy || restorePending || (!selected.has(track.id) && selected.size >= 100)"
             @change="toggle(track.id)"
           /><span
-            ><strong>{{ track.name }}</strong
-            ><small>{{ track.artists.join(' / ') }}</small></span
+            ><strong :title="track.name || `歌曲 ${track.id}`">{{
+              track.name || `歌曲 ${track.id}`
+            }}</strong
+            ><small>{{ artistLabel(track) }}</small></span
           ></label
         >
         <button
           class="text-button"
-          :disabled="busy || trashLoading"
+          :disabled="busy || trashLoading || restorePending"
           @click="
             selected = new Set([track.id]);
-            restore();
+            restore($event);
           "
         >
           恢复推荐
@@ -331,7 +392,13 @@ function resume() {
         {{ trashLoading ? '正在加载…' : '加载更多' }}
       </button>
     </div>
-    <div v-if="view?.operations.length" class="fm-recovery" aria-label="FM待处理操作">
+    <div
+      ref="recovery"
+      v-if="view?.operations.length"
+      class="fm-recovery"
+      tabindex="-1"
+      aria-label="FM待处理操作"
+    >
       <h3>反馈状态</h3>
       <div v-for="op in view.operations" :key="op.id">
         <template v-if="op.kind === 'artist'">
@@ -367,8 +434,8 @@ function resume() {
                 ? '减少推荐结果尚未确认'
                 : '恢复推荐结果尚未确认'
           }}</span
-          ><button :disabled="busy" @click="model.command({ kind: 'reconcile', id: op.id })">
-            核对并继续
+          ><button :disabled="busy" @click="reconcileFeedback(op, $event)">
+            {{ op.desired ? '核对并继续' : '核对恢复状态' }}
           </button></template
         >
         <template v-else-if="op.phase === 'prepared'"
@@ -382,81 +449,34 @@ function resume() {
         <span v-else>跳过反馈结果尚未确认，不会重复发送</span>
       </div>
     </div>
-    <dialog ref="dialog" class="fm-dialog" @close="closeReasons">
-      <h2>减少推荐</h2>
-      <p>减少推荐「{{ target?.name }}」，并播放下一首。之后可以在减少推荐列表中恢复。</p>
-      <p v-if="target && target.entryId !== current?.entryId" role="status">
-        当前歌曲已切换，请重新打开此窗口。
-      </p>
-      <p v-if="reasonsLoading">正在读取反馈选项…</p>
-      <div v-if="reasons" class="fm-reasons">
-        <button
-          v-for="reason in reasons.options.filter((r) => r.artistId)"
-          :key="reason.key"
-          :data-reason-key="reason.key"
-          :data-artist-id="reason.artistId"
-          class="fm-reason"
-          :disabled="busy || target?.entryId !== current?.entryId"
-          @click="reduce(reason.key)"
-        >
-          {{ reason.label }}
-        </button>
-        <h3>歌曲反馈</h3>
-        <button
-          v-for="reason in reasons.options.filter((r) => !r.artistId)"
-          :key="reason.key"
-          class="fm-reason"
-          :disabled="busy || target?.entryId !== current?.entryId"
-          @click="reduce(reason.key)"
-        >
-          {{ reason.label }}
-        </button>
-      </div>
-      <div v-if="error" class="error-state" role="alert">
-        {{ error
-        }}<button
-          :disabled="busy || reasonsLoading || !target"
-          @click="target && model.loadReasons(target.entryId)"
-        >
-          重新加载选项
-        </button>
-      </div>
-      <div>
-        <button :disabled="busy" @click="dialog?.close()">取消</button
-        ><button
-          class="primary"
-          :disabled="busy || target?.entryId !== current?.entryId"
-          @click="reduce()"
-        >
-          仅减少此歌曲
-        </button>
-      </div>
-    </dialog>
+    <ModalTransition
+      :restore-focus="feedback.accountCurrent.value && !afterFeedback"
+      :return-focus="() => feedbackButton ?? null"
+      :fallback-focus="() => heading ?? null"
+      @left="feedbackLeft"
+    >
+      <FmFeedbackDialog
+        v-if="feedback.open.value && feedback.target.value"
+        :key="feedback.target.value.id"
+        :name="feedback.target.value.name"
+        :reasons="reasons"
+        :loading="reasonsLoading"
+        :busy="feedback.busy.value"
+        :changed="feedback.changed.value"
+        :review="feedback.review.value"
+        :can-submit="feedback.canSubmit.value"
+        :issue="feedback.issue.value?.message ?? ''"
+        :reason-issue="model.reasonsIssue.value?.message ?? ''"
+        @close="feedback.close"
+        @submit="feedback.submit"
+        @reload="feedback.retryReasons"
+        @blacklist="feedbackNavigate('trash')"
+        @review="feedbackNavigate('recovery')"
+      />
+    </ModalTransition>
   </section>
 </template>
 <style scoped>
-.fm-dialog .fm-reasons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin: 20px 0;
-  justify-content: flex-start;
-}
-.fm-reasons h3 {
-  width: 100%;
-  margin: 10px 0 0;
-}
-.fm-reason {
-  padding: 12px;
-  border-radius: 8px;
-  background: var(--surface-alt);
-  max-width: 100%;
-  white-space: normal;
-}
-.fm-reason:hover {
-  background: var(--surface-alt);
-  color: var(--primary);
-}
 .fm-artists {
   margin-bottom: 24px;
 }
@@ -471,6 +491,12 @@ function resume() {
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
+}
+.fm-trash-toolbar:focus-visible,
+.fm-recovery:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 6px;
 }
 .fm-header h1 {
   font-size: 26px;
@@ -607,24 +633,6 @@ function resume() {
 }
 .fm-trash-row button {
   flex-shrink: 0;
-}
-.fm-dialog {
-  max-width: min(440px, 80vw);
-  border: 0;
-  border-radius: 14px;
-  padding: 24px;
-  box-shadow: 0 16px 70px #0003;
-}
-.fm-dialog::backdrop {
-  background: #0005;
-}
-.fm-dialog p {
-  line-height: 1.8;
-}
-.fm-dialog > div {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
 }
 .liked {
   color: var(--accent);

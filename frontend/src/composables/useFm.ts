@@ -1,5 +1,5 @@
 import { ref, shallowRef } from 'vue';
-import { failure, type AccountView } from '../services/contracts.ts';
+import { failure, type AccountView, type CoreFailure } from '../services/contracts.ts';
 import type { FmClient, FmCommand, FmSource, FmTrash, FmView, FmReasons } from '../services/fm.ts';
 import { useCore } from '../services/core.ts';
 import { useFmDiscovery } from './useFmDiscovery.ts';
@@ -10,6 +10,7 @@ export function useFm(core: FmClient = useCore(), expired = () => {}) {
     view = shallowRef<FmView>();
   const trash = shallowRef<FmTrash>(),
     reasons = shallowRef<FmReasons>(),
+    reasonsIssue = shallowRef<CoreFailure>(),
     reasonsLoading = ref(false),
     loading = ref(false),
     busy = ref(false),
@@ -55,10 +56,12 @@ export function useFm(core: FmClient = useCore(), expired = () => {}) {
       clearReasons();
       expired();
     }
+    return issue;
   }
   function clearReasons() {
     reasonSerial++;
     reasons.value = undefined;
+    reasonsIssue.value = undefined;
     reasonsLoading.value = false;
   }
   async function loadReasons(entryId: string) {
@@ -73,7 +76,7 @@ export function useFm(core: FmClient = useCore(), expired = () => {}) {
       const r = await core.fmReasons(owner, source.value, entryId);
       if (active() && r.epoch === owner && r.value.entryId === entryId) reasons.value = r.value;
     } catch (e) {
-      if (active()) fail(e);
+      if (active()) reasonsIssue.value = fail(e);
     } finally {
       if (active()) reasonsLoading.value = false;
     }
@@ -130,11 +133,15 @@ export function useFm(core: FmClient = useCore(), expired = () => {}) {
     const active = () => !disposed && owner === epoch && current === writeSerial;
     try {
       const r = await core.fmCommand(owner, source.value, command);
-      if (active() && r.epoch === owner) view.value = r.value;
+      if (active() && r.epoch === owner) {
+        view.value = r.value;
+        return { ok: true, value: r.value } as const;
+      }
     } catch (e) {
       if (active()) {
-        fail(e);
+        const issue = fail(e);
         await load(false, true);
+        if (active()) return { ok: false, issue } as const;
       }
     } finally {
       if (active()) busy.value = false;
@@ -197,6 +204,7 @@ export function useFm(core: FmClient = useCore(), expired = () => {}) {
     view,
     trash,
     reasons,
+    reasonsIssue,
     reasonsLoading,
     clearReasons,
     loadReasons,

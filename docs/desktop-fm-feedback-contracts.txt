@@ -1,5 +1,7 @@
 私人FM原因、歌手屏蔽与恢复
 2026-10-27；完整桌面目标仍active。
+2026-11-01 后续UI、上下文保护和恢复选择修正见fm-feedback-ui-contracts.txt；
+本次31态使用合成接口，不能把下面历史真实账号记录当作当前UI的再次线上验收。
 
 来源与一处明确修正
 官方M1384的qe.u、dislikeModal，以及恢复的components/Minibar/FmDisLikeModal.tsx：

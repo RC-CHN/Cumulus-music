@@ -8,6 +8,11 @@ mod download_page_fixture;
 #[allow(dead_code)]
 #[path = "support/catalog_fixture.rs"]
 mod fixture;
+#[allow(dead_code)]
+#[path = "../../core/tests/support/fm.rs"]
+mod fm_domain;
+#[path = "support/fm_feedback_fixture.rs"]
+mod fm_feedback_fixture;
 #[path = "support/intelligence_start_fixture.rs"]
 mod intelligence_start_fixture;
 #[path = "support/intelligence_ui_fixture.rs"]
@@ -75,6 +80,9 @@ fn playlist(id: u64) -> Value {
 impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, args: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(response) = fm_feedback_fixture::response(path, &args).await {
+                return response;
+            }
             intelligence_start_fixture::before(path).await;
             if let Some(response) = intelligence_start_fixture::response(path, &args).await {
                 return response;
@@ -374,6 +382,10 @@ fn main() {
                 handle.get_webview_window("main").unwrap().eval(format!("window.__modeFixtureAck={};",serde_json::to_string(kind).unwrap())).unwrap();
                 return;
             }
+            if fm_feedback_fixture::enabled() && stage=="fm-feedback-fixture" {
+                let kind=value["kind"].as_str().unwrap();fm_feedback_fixture::control(kind);
+                handle.get_webview_window("main").unwrap().eval(format!("window.__fmFeedbackFixtureAck={};",serde_json::to_string(kind).unwrap())).unwrap();return;
+            }
             if volume_fixture::enabled() && stage=="volume-fixture" {
                 let kind=value["kind"].as_str().unwrap();
                 volume_fixture::apply(&proof_store,kind);
@@ -441,6 +453,10 @@ fn main() {
                 let stage = stage.to_owned(); let handle=handle.clone(); let output=output.clone();
                 tauri::async_runtime::spawn(async move {
                     let client=handle.state::<MusicClient>(); let epoch=client.account().unwrap().epoch;
+                    if fm_feedback_fixture::enabled() {
+                        value["nativeFm"]=serde_json::to_value(client.fm_view(&epoch,cumulus_core::fm::FmSource::Personal,false).await.unwrap().value).unwrap();
+                        value["syntheticFmFeedback"]=fm_feedback_fixture::report();
+                    }
                     if let Ok(playback)=client.subscribe_playback(&epoch).await && let Ok(snapshot)=playback.current() {
                         value["nativePlayer"]=serde_json::to_value(snapshot).unwrap();
                         if std::env::var_os("CUMULUS_PLAYLIST_QUEUE_UI_PROOF").is_some() || std::env::var_os("CUMULUS_QUEUE_UI_PROOF").is_some() || download_page_fixture::enabled() {
@@ -449,7 +465,7 @@ fn main() {
                     } else { value["nativePlayerUnavailable"]=json!(true); }
                     fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
                     if !capture_ack::acknowledge(&handle,&output,&stage,value["captureHandshake"]==true).await {return;}
-                    if (std::env::var_os("CUMULUS_QUEUE_SELECTION_UI_PROOF").is_some() || intelligence_ui_fixture::enabled() || intelligence_start_fixture::enabled()) && stage.starts_with("ux_") {
+                    if (std::env::var_os("CUMULUS_QUEUE_SELECTION_UI_PROOF").is_some() || intelligence_ui_fixture::enabled() || intelligence_start_fixture::enabled() || fm_feedback_fixture::enabled()) && stage.starts_with("ux_") {
                         handle.get_webview_window("main").unwrap().eval(format!("window.__queueSelectionRecorded={};",serde_json::json!(stage))).unwrap();
                     }
                     if ["complete","failed"].contains(&stage.as_str()) {

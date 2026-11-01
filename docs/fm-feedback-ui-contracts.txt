@@ -1,0 +1,84 @@
+FM 减少推荐、失败反馈与恢复列表（2026-11-01）
+本专项修复已接入的主窗口流程，不代表整个FM、所有黑名单变体或小窗菜单完成。
+
+官方来源与差异
+- references/ui-recovery/sources/packages/pc/src/components/Minibar/FmDisLikeModal.tsx
+  SHA256 52e35f40509ed6c1449e32ab56b342dfc96bdc45a68da49f71e55beae8a31e9d：
+  410px宽、歌手/歌曲反馈分组、两列44px理由、长理由省略、音乐黑名单入口；
+  先加入歌曲垃圾桶，可选歌手屏蔽，再推进FM。固定理由没有单独上传文本的接口。
+- 同一恢复源码根下的 components/AppModal/dialogs/BlackList/index.tsx，SHA256
+  74df39e8f9b61e26fce193a0446ad053546f9cc9883a0bf380e7f49f61c8a52a：
+  另一新版黑名单弹窗有分层理由、新API与H5分支。它们仍须单独迁移/审计，不能
+  用现有旧版减少推荐界面冒充新版全部完成。新版H5分支仍待恢复为可验证的流程。
+- 恢复TSX有onClick形参遮蔽reason的问题；此前Rust已用服务器提供的键查真实选项。
+  本次保留这个修正，使用Cumulus共用弹窗、深浅色、进退动画及减少动态效果。
+  未取得官方同状态运行图，不声称逐像素一致，没有参考YesPlayMusic。
+
+界面及生命周期
+- components/fm/FmFeedbackDialog.vue：独立有标题/描述的原生dialog，初始聚焦取消；
+  ModalTransition管理背景inert、动画、离场禁用和焦点返回。关闭/取消/Escape统一，
+  写入期间不能关闭或绕过modalDepth触发主窗口播放快捷键。
+- useFmFeedback捕获打开时的账号代次、频道、entryId与曲名。媒体已换歌，即使FM
+  轮询还没到达也立即禁用旧操作；不把旧窗口套到新歌曲。切号/换频道使上下文失效，
+  迟到的原因、写入成功和错误不会关闭或污染新窗口。组件卸载不自动重放反馈。
+- 理由读取的等待/失败/重载与写入失败分开；原因失败仍允许“仅减少此歌曲”。
+  关闭后拒绝晚到列表；无附加理由明确显示空态。轮询不会抹掉弹窗内的写入原因。
+- 使用官方两列、44px理由按钮及省略。完整理由通过title和可访问名称保留；窄窗
+  可滚动但不能横向溢出。错误/过期提示有明确区域，正文与主次按钮保持可读/可命中。
+- 提交前后将焦点停在稳定dialog，原因重试按钮消失或其他按钮被禁用不会掉到body。
+  关闭回到减少推荐入口；入口不可用时回到本页标题。前往黑名单或反馈状态须等弹窗
+  离场后才切换/聚焦，不能隔着仍inert的背景强抢焦点，也不恢复旧账号焦点。
+
+真实结果与未决写入
+- useFm.command现在返回当前上下文确认的成功/失败结果；过期回复不当作成功。
+  拒绝时保持弹窗和原目标，不因Promise已经结束就关窗；显式再选才发新操作。
+- 丢回执/本地未完成提交留下原生操作记录时，只提供“查看反馈状态”，禁止从原弹窗
+  再发同一反馈。只读刷新不会自动提交；用户关闭提示也不会改变确认结果。
+- 歌曲已减少、歌手屏蔽失败是部分成功：实际播放器可以已进入下一首，保留说明和
+  原目标，禁止再次减少新歌曲。反馈状态沿原ID核对或显式重试歌手操作；不回滚歌曲。
+  fm/blacklist.rs按同一个trash UUID的实际子记录，把首次已确认拒绝与恢复时的拒绝
+  映射到同一个artist_rejected提示；301仍返回登录失效，未知/存储错误仍保留原错误。
+  这里只读本地记录，不追加请求，也不根据UI换歌自行猜测远端写入成功。
+- 恢复推荐失败保留勾选和已读列表，不把失败表现为成功清空。启用/禁用时停放并恢复
+  原可用控制；若账号/频道/页面已换，旧结果不抢焦点。每次批量最多100首不变。
+  接口只返回ID而未给歌曲资料时，明确显示“歌曲 ID”和“未知歌手”，不能留下无字
+  的复选框。长歌手名仍可查看完整title；稳定焦点容器使用统一强调色。
+- 恢复回执未知时保留勾选、禁用再次恢复，提供“核对恢复状态”。明确核对确认后才
+  清理选择并重新读取垃圾桶；不能只更新后台journal却仍把已恢复歌曲留在列表中。
+
+Rust与接口
+- core/client/fm.rs在增加selection代次、请求媒体所有权之前核对反馈entryId仍为
+  actual.current；FmPlayer仍在自己的gate内再次检查，随后才执行持久化/API。
+  修复旧窗口虽被MutationBusy拒绝，却已使另一个已接受Next变StaleResponse的竞态。
+  core/tests/support/fm_feedback_client.rs复现先红后绿，Next仍推进到歌曲3且无trash请求。
+- 类型化CoreClient.fmReasons/fmCommand/fmTrash → desktop/fm.rs → MusicClient →
+  FmPlayer/FmService；前端没有Cookie、签名或授权音源地址，不调用归档Python。
+- 原因：/api/personalized/dislike/reason，resources是JSON字符串数组，元素含
+  resourceId/resourceType=4/targetUrl=""/encId；scene=""、page="userfm"。
+  Rust把服务端fixed/artist选项绑定当前entry并生成键，不接受UI任意构造歌手ID。
+- 减少：/api/radio/trash/add，songId、alg、time（实际播放秒数）；成功后可调用
+  /api/music-blacklist/add，contentType="artist"、contentIdList=[id]，再更新队列。
+- 列表/核对：/api/v3/radio/trash/get，pagesize、from=page-1、to=page、addTime；
+  账号黑名单读取/api/music/dislike/get。恢复：/api/radio/trash/del/batch，songIds数组。
+  取消歌手屏蔽：/api/music-blacklist/delete，仍为artist和contentIdList。
+- 沿用原生journal、账号代次、operation lock、CAS及未知结果处理；本次不改变
+  权益、签名或Cookie作用域，不自动向真实服务发送任何写操作。
+
+验收及边界
+- 新增7项前端行为用例：拒绝保持/显式再提交、旧媒体、未知结果禁止重发、歌手
+  部分失败、切号晚到、关闭原因请求/读取失败重试及确认成功关闭。Rust新增旧反馈
+  代次竞态、首次/恢复拒绝与301生命周期两项，并扩展既有ClientError的部分成功检查。
+- fm_feedback_dialog_probe.js / scripts/ci/fm_feedback_dialog_smoke.py：31态，实际
+  production前端、IPC、Rust actor、SQLite和libmpv/null，全部账号/接口/PCM为合成。
+  核对拒绝、等待、空理由、长理由、两主题两窗口尺寸、过期弹窗、歌手部分失败/恢复、
+  勾选保留、丢回执核对和返回焦点，并逐态检查真实请求次数、播放ID及暂停10秒。
+- 可执行：先npm --prefix frontend ci和npm --prefix frontend run build，再cargo build
+  -p cumulus-desktop --example ux_ui_probe --features custom-protocol --locked；最后运行
+  python3 scripts/ci/fm_feedback_dialog_smoke.py --binary .build/target/debug/examples/ux_ui_probe
+  --root NEW_ROOT --screenshots。Linux无会话可加LC_ALL=en_US.UTF-8 xvfb-run -a
+  dbus-run-session --；Windows使用.exe、python及--runtime原生DLL目录。根目录必须新建。
+- 最终图片、严格检查和精确CI状态见ui-ux-validation.txt；中间显式frontend-dist运行
+  与最终内嵌production前端分开。null不证明真实扬声器，合成指针不证明物理输入，
+  Linux截图不证明Windows实机。新版分层黑名单、小窗菜单/反馈、推荐补充和全应用
+  UI/UX逐项审计继续；写入失败后对账读取也失败的组合故障仍须独立核对。完整目标
+  保持active，不发布新版本或覆盖既有附件。
