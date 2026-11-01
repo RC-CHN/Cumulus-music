@@ -269,6 +269,16 @@ async function edit(input: QueueEdit, index?: number, displayed = queue.value) {
   if (locked.value) return;
   const active = document.activeElement;
   const owner = queue.value?.epoch;
+  // Park keyboard focus on a stable enabled container BEFORE disabling rows.
+  // WebKit may deliver the focused button's disabled blur after Vue nextTick;
+  // refocusing that same button too early otherwise strands focus on body.
+  const parking = panel.value?.contains(active) ? container.value : undefined;
+  if (parking && active !== parking) parking.focus({ preventScroll: true });
+  const parked = parking && document.activeElement === parking ? parking : undefined;
+  const ownsFocus = () =>
+    document.activeElement === active ||
+    document.activeElement === document.body ||
+    (!!parked && document.activeElement === parked);
   if (await props.player.editQueue(input, displayed)) {
     if (owner !== view.value?.epoch || !panel.value) return;
     const revision = view.value?.queueRevision;
@@ -276,11 +286,7 @@ async function edit(input: QueueEdit, index?: number, displayed = queue.value) {
     if (owner !== view.value?.epoch || revision !== view.value?.queueRevision || !panel.value)
       return;
     // Preserve newer user focus while native/list replies were pending.
-    if (
-      index !== undefined &&
-      (document.activeElement === active || document.activeElement === document.body)
-    )
-      await focusRow(index);
+    if (index !== undefined && ownsFocus()) await focusRow(index);
   } else {
     // Disabling a pending control may move WebKit focus to body. A rejected
     // edit keeps the selection; restore its live control only after observing
@@ -293,7 +299,7 @@ async function edit(input: QueueEdit, index?: number, displayed = queue.value) {
       panel.value &&
       displayed?.tracks.length === queue.value?.tracks.length &&
       displayed?.tracks.every((item, i) => item.entryId === queue.value?.tracks[i]?.entryId) &&
-      (document.activeElement === active || document.activeElement === document.body) &&
+      ownsFocus() &&
       active instanceof HTMLElement &&
       active.isConnected &&
       !active.matches(':disabled')
