@@ -2992,3 +2992,43 @@ intelligence-start-contracts.txt；本批没有把主播放条五态进入或所
 - 主窗口的mini-fm-main-mode-regression另通过48+重开3态；这些没有新增截图，
   不能混入140图。mini-fm-empty-mode-regression空FM另通过13+重开5态，同样不计
   新图；模式/返回/恢复的严格断言全部保留。完整新CI仍须按最终提交核对。
+
+2026-11-01 FM反馈对话框、明确部分成功和恢复选择
+- 修复旧FmPage在command失败后仍关闭减少推荐、清除恢复勾选的问题。拆出
+  FmFeedbackDialog与useFmFeedback，正式CoreClient/IPC不变；分别记录理由读取
+  和写入原因，保持打开时的账号/频道/entry，拒绝晚到与新媒体混用。
+- 新增2项Rust：旧反馈在Next补充等待期间不得撤销其intent；首次歌手拒绝与恢复
+  的部分成功口径一致，301保持旧代次失效、重新登录同UID后仍有原journal。原
+  client_fm用例另核对ClientError=artist_rejected。先红日志分别为fm-feedback-old-
+  dialog-before.log、fm-feedback-dialog-partial-before.log。修复不追加HTTP或重放。
+- 最终完整workspace/all-targets/custom-protocol/locked通过：276结果target、1386
+  passed、0 failed/ignored，fm-feedback-dialog-workspace-tests-delivery.log；37项
+  client_fm/fm_feedback/fm_player专项先通过partial-after3.log。严格fmt、Clippy及
+  正式cumulus程序和ux/mini/catalog三探针构建均通过，日志为
+  fm-feedback-dialog-{rust-format,native-build,clippy}-delivery.log。
+- 前端npm ci后，最终格式、434项行为测试和production类型检查/build通过；其中
+  7项新增反馈控制用例，覆盖拒绝保持、旧媒体、未知结果、部分失败、旧账号、原因
+  读取及确认关闭。日志frontend-*-delivery.log，测试夹具字段清理后又有434项的
+  frontend-tests-commit.log。CI工具36项和脚本语法检查通过，不计作UI视觉通过。
+- fm-feedback-dialog-keys-gui：最终内嵌production前端31态/31图；同代码的
+  fm-feedback-dialog-keys-kde：KDE/XWayland125%自有PID31态/31图，全部通过。
+  逐态核对真实Rust队列/操作journal/API计数，暂停10秒及5个实际播放会话。
+  等待期间Escape不关闭弹窗，空格不切换后台播放；丢回执均须明确核对且不重发。
+- 31态包含长理由、原因等待/关闭晚回/读取失败/明确重试/空理由、两主题两尺寸、
+  提交拒绝/关闭/等待、切歌后的旧弹窗、歌手部分失败/明确重试、黑名单跳转、批量
+  选择/恢复拒绝/未知/核对、取消歌手屏蔽及未知歌曲反馈的恢复。固定理由两列44px，
+  长文title保留；资料只有ID时也可辨识，UI和原生分别核对，而不是只看网络200。
+- 实图发现理由按钮被长歌手名撑高，已恢复官方省略/44px；原因重载入口移除时丢
+  焦点，已在DOM更新前停放。旧截图早于错误画面绘制时，加强双帧及真实不透明
+  提示区域的颜色核对。渐变按钮不使用错误的平色采样假设；未放宽既有颜色比较。
+  已查看最终窄窗、拒绝、等待、部分成功、未知恢复等实际原图；本机图未捕获其他应用。
+- 初次Clippy遇到并行前端重建替换嵌入资源，另有测试材料重复模块导入。已改为
+  前端构建→原生构建→Clippy→测试顺序，FM合成Backend只导入一次，未忽略警告。
+  早期1385项的finish日志为最后部分成功修正之前的树，不能替代最终1386项结果。
+- Space负例最终从dialog元素派发code=Space；旧document事件未经过快捷键解析，
+  不能作为该键隔离证明。keys两组重新完成31+31，保留原暂停/请求计数断言。
+- 最终截图索引与SHA256保存在私有.build/fm-feedback-dialog-gallery；只计62图，
+  fast/layout/embedded等中间分组不重复累计。所有接口/账号/PCM合成，真实账号写入
+  和音乐请求0，libmpv/null不代表声卡或物理键鼠。没有官方同状态图或Windows实机证明。
+- 新增CI入口同时分配Linux/Windows runner，完整精确提交CI仍须另行核对。没有
+  标签、Release或覆盖v0.1.0。全目标active；新版H5/小窗菜单/二级读取失败等继续。

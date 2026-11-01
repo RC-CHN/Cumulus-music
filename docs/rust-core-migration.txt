@@ -640,3 +640,12 @@ contracts.txt与ui-ux-validation.txt。小窗FM/完整菜单、推荐补充和�
 - 本地库另外修复 local_page 的观察顺序，避免“歌曲旧快照+扫描新Ready”。验证仍
   使用原取消/启用/进程重建流程，实际日志及 CI 边界见 ui-ux-validation.txt。
 - 完整菜单、推荐补充/分隔、全应用逐页UIUX、Windows实机及其余原目标继续。
+
+2026-11-01 FM反馈上下文、部分成功和主窗口恢复
+client/fm.rs在transport intent与媒体所有权变更之前拒绝旧entry，原协调器仍在gate内
+复核。fm/blacklist.rs按同一个trash UUID的真实子记录统一首次/缓存拒绝，301与未知
+结果不改写；新增两项Rust及扩展ClientError检查。主窗口使用独立反馈控制器/组件、
+明确command结果与原因错误，保留恢复勾选，未决必须核对后刷新，稀疏资料可读。
+官方来源→Rust→IPC→Vue→31态实际WebView映射在fm-feedback-ui-contracts.txt和
+fm-core-mapping.json。Python仅启动/核对合成证据，未参与任何业务实现。62张最终图
+及精确验证边界见ui-ux-validation.txt；不据此宣布新版黑名单、小窗或整个目标完成。
