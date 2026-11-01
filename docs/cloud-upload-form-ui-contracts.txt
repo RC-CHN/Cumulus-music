@@ -15,7 +15,8 @@
   pages/cloudDisk/views/、components/TrackViewer/及其common/。
 - 官方上传任务页隐藏upload6Done，默认64px行、#44/标题438grow1/进度290grow1，
   全部上传/全部暂停/全部清空各114x48，删除前确认。此为后续任务页审计依据，
-  本批没有完成该任务表、更多菜单、全部清空及已完成历史的官方一致性。
+  当时尚未完成任务表；后续任务页、更多菜单、全部清空及独立历史见
+  cloud-task-table-ui-contracts.txt，不能将后续证据倒算为本表单批次通过。
 - 可选封面/LRC/CUE表单是社区显式暴露已恢复native能力的界面，没有找到对应
   官方同状态表单/运行图，不能称官方像素复刻。未使用YesPlayMusic。
 

@@ -1,0 +1,97 @@
+云盘上传任务表、全部操作与转码重查
+2026-11-02。完整桌面目标中的任务页专项，完成状态以ui-ux-validation.txt为准。
+
+官方来源和保留差异
+- references/ui-recovery/sources/packages/pc/src/pages/cloudDisk/views/Uploading.tsx
+  SHA256 5a60b1699d612c3e80f3704aabda1ddcaaa7a14c7ea21a8a1aa430a1c9a6ed73：
+  隐藏upload6Done；全部上传/全部暂停/全部清空；清空前确认并捕获file IDs。
+- 同源components/TrackViewer/UploadingTrackViewer.tsx
+  SHA256 1f41798443c6ae2acbbcbf47467e662c7fde5f2c102649546f8f996c57876a7a：
+  默认64px行，#44、标题438grow1、进度290grow1；无播放/排序；行暂停/开始、删除、更多。
+  common/UploadProgressCell.tsx：
+  33f81d510d53642d855c4d3ee21f0f0ef42b2c05a308f8184a1daff53bb0fb51。
+  common/UploadingIndexCell.tsx：
+  4bede2ab0a2fb7fafa7fdcf08af003fd11559a655e6df0ba75ebede0798e774a。
+- 恢复M/3127.js SHA256
+  aeb3bae71f266c627f6d4749ed807a283672af9b1275e3d97ffc4f71703acea3：
+  removeUpload/removeFromList只移除上传记录；retryTransform重启mst查询，
+  nextCheckMst=max(旧值,now)，不重新分配对象或重放metadata。retryAdd仍走已有
+  明确拒绝后publish重试，不与转码失败重查合并。
+- 622.We SHA256 347d7d067eeb1b883dec32a290e8e9a960fdc97a8acafe7d44ebe5a1960735b0：
+  播放禁用、下一首播放禁用、分隔、打开文件所在目录。冻结无账号向量为
+  core/tests/fixtures/cloud-upload-ui.json；来源执行脚本仅留references。
+  该执行使用显式enum/spread替身，不是官方完整运行时。
+- 未使用YesPlayMusic。无官方同尺寸窗口逐像素对照，不声称像素一致。
+- 社区明确增强：未决写入恢复、删除结果/只读核对、三类附件合并实际字节进度，
+  以及单独“上传记录”入口。主分类仍只有已上传单曲/正在上传；完成与取消记录
+  从当前任务隐藏，可在上传记录查看和清除，既有云盘条目和本地音频均保留。
+
+UI逻辑和范围
+- CloudTasksToolbar与CloudTaskTable分离。三项全部按钮各114x48、圆角8、间隔12。
+  #列44px；表格最小772px；超出宽度等分到标题/进度，保持差值148px。
+  用ResizeObserver测实际容器后设像素列宽，避免WebKit忽略col上的calc导致均分。
+  只在自身横向滚动，不撑开窗口。每次展示最多200行，64px；任务无常驻选择框。
+- 全部上传/暂停由Rust枚举本账号完整未完成任务，不局限当前页、筛选或选择。
+  直接单次指定任务上限5000；全部操作上限50000，超过拒绝而非截断。
+  已在取消/移除的任务不可再次启动，全部上传也不重启明确转码失败项。
+- 全部清空通过cloud_upload_selection先读取完整范围（最多50000，不能静默截断），
+  确认弹窗固定IDs和标题/文件名；确认之后新添任务不会被纳入。单项删除同样捕获
+  原任务。对话框只渲染前20项及剩余数，正文滚动，固定头尾。
+- 取消不执行；确认按5000一组提交，组间检查账号/组件生命周期。部分失败留在
+  原弹窗，逐项保留结果；读回全范围确认hidden且terminal才关闭。收到发送成功
+  只是接受请求，不冒充实际取消完成；丢回执先只读核对，不自动再发写请求。
+- 返回任务列表可稍后重新打开处理。显式重试仅剩余原任务，removing任务标记
+  retry=true；每次只读核对不增加取消、分配或发布。没有自动支付/删除云盘歌曲。
+- 各页独立保留查询。已上传的搜索/排序/页码不带到任务/历史，也不会被往返丢失。
+  查询切换清旧反馈；迟到命令反馈不能显示到新分类。账号替换清原弹窗和旧结果。
+- 右键、更多按钮、ContextMenu/Shift+F10/ArrowDown进入同一官方菜单；不可播放。
+  原生目录失败显示有界错误并允许重新打开；返回原更多入口，用户已移焦则不抢回。
+  pending期间暂存焦点到稳定容器；移除后原行消失则回任务工具栏。
+  后台完成导致原控件消失/禁用时，未主动移焦才返回可用入口；最后一项完成
+  返回上传记录，避免焦点落body或在整页保留原生蓝框。
+- 深浅主题共用语义变量，小窗口缩减空白；菜单/弹窗沿用现有进出动画和减少动态
+  设置。性能以有界列表与正常操作流畅为基准，没有新增帧率承诺或GPU专项。
+
+Rust持久化与恢复
+- UploadSchedule新增serde(default) removing，旧记录兼容；保留revision/enabled/
+  running/hidden/error。entry按单ID读取，避免每个任务反复枚举整张排程表。
+- UploadScheduler::remove先确认父任务、取消日志和子传输边界。Complete/Cancelled
+  只做本地隐藏；未完成先持久Cancel并停止调度，实际终态后才hidden。
+  在途对象未结束时保留removing可见；worker收到真实取消结果才隐藏。
+- 已有removing且retry=false只返回当前状态，不重发远端取消。Cancel落盘后隐藏
+  事务失败，显式重试对已取消任务只补本地隐藏；原文件保持原样。
+- 恢复时停止自动排程；removing且已有Cancel的任务按既有NOS/OSS日志继续处理。
+  不可核对的父分配/附件分配/元数据/发布意图、未知对象写入保持可见；不通过清空
+  擦去未决证据，也不重放可能已成功的请求。发布中歌曲不能作为取消对象删除。
+- retry_encoding仅接受Failed+encoding_failed、已知song_id和metadata、未Cancel的
+  原任务；重置Encoding并保留deadline，再启动已有worker。只查询已知song ID，
+  成功后走既有publish+完整列表回读。无需再次读取已删除的源文件。ResumeAll和
+  普通Resume不能将此状态重置为重新check/上传。仍遵守官方容量满保护。
+- 文件目录由原生按当前账号和原任务ID重查原文件、大小、内容完整性和常规祖先路径。
+  前端DTO不含本机路径/授权URL；桌面只调用共享file_manager打开已验证目录。
+
+类型化命令、IPC和真实接口
+- CoreClient.cloudUploadSelection -> cloud_upload_selection(epoch,history)：完整本地
+  任务快照；CoreClient.cloudUploadRemovals -> cloud_upload_removals(epoch,ids)：
+  返回每个id的removed/requested/error，只读且严格校验完整覆盖和代次。
+- cloud_command新增{kind:'remove_uploads',ids,retry:false|true}与
+  {kind:'retry_encoding',id}。原pause_all/resume_all维持独立完整范围，逐项失败回执。
+- CoreClient.openCloudUploadDirectory -> open_cloud_upload_directory(epoch,id)，
+  只允许main窗口；core独立解析路径，desktop执行OS操作。
+- 不新增官方业务HTTP；转码重查调用/api/v1/cloud/music/status(songIds)，成功后
+  /api/cloud/pub/v2(songid)及/api/v1/cloud/get回读。移除本地任务不调用云盘歌曲
+  删除API；尚未完成的已知OSS分片可能按原协议Abort，NOS按原本地取消日志处理。
+- 新上传仍check→audio alloc→NOS/OSS→附件→metadata→status→publish→list；
+  请求字段、签名、账号上下文和不确定写入边界见core-cloud-upload、core-nos-upload、
+  core-oss-upload及desktop-cloud契约，不把任务清理绕过底层恢复机制。
+
+测试和证据入口
+- core/tests/cloud_scheduler_removal.rs：等待任务、在途NOS、未知分配、隐藏事务失败、
+  完成历史清除，均核对源文件/远端资源保留及不重放。
+- core/tests/client_cloud/tasks.rs：205任务完整范围/确认后新任务、待传/历史隔离、
+  目录完整性/账号边界、源文件消失后的转码重查不重复check/alloc/metadata。
+- frontend/tests/cloud-tasks-state.test.ts：官方菜单向量、附件真实进度、分类查询、
+  捕获范围、丢回执只读、部分重试、5000分块账号隔离、迟到分类反馈。
+- scripts/ci/cloud_task_smoke.py及desktop/examples/cloud_task_probe.js使用实际production
+  WebView、IPC、Rust worker/SQLite/ffprobe；服务/对象存储及OS目录启动器显式替换。
+  实际native目录验证仍执行。不是线上服务、物理声卡或Windows实机视觉通过证明。

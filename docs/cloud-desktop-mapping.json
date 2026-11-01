@@ -120,6 +120,30 @@
       "source": "official native upload/attachment capabilities; community explicit form",
       "implementation": "frontend/src/composables/useCloudUploadForm.ts; frontend/src/components/CloudUploadDialog.vue",
       "evidence": "frontend/tests/cloud-upload-form.test.ts; scripts/ci/cloud_upload_smoke.py"
+    },
+    {
+      "feature": "official_pending_task_table_and_complete_bulk_controls",
+      "source": "Uploading.tsx; UploadingTrackViewer.tsx; M/3127 resumeUploadAll",
+      "implementation": "frontend/src/components/cloud/CloudTasksToolbar.vue; frontend/src/components/cloud/CloudTaskTable.vue; core/src/client/cloud/commands.rs",
+      "evidence": "core/tests/client_cloud/tasks.rs; scripts/ci/cloud_task_smoke.py"
+    },
+    {
+      "feature": "confirmed_task_removal_without_source_or_cloud_resource_deletion",
+      "source": "Uploading.tsx confirmations; M/3127 removeUpload/removeFromList; stronger native unknown-write guard",
+      "implementation": "core/src/cloud/upload/removal.rs; frontend/src/composables/useCloudTaskRemoval.ts",
+      "evidence": "core/tests/cloud_scheduler_removal.rs; frontend/tests/cloud-tasks-state.test.ts; scripts/ci/cloud_task_smoke.py"
+    },
+    {
+      "feature": "encoding_failure_status_only_retry",
+      "source": "M/3127 retryTransform",
+      "implementation": "core/src/cloud/upload/publication.rs; core/src/client/cloud/commands.rs; frontend/src/components/cloud/CloudTaskTable.vue",
+      "evidence": "core/tests/client_cloud/tasks.rs; scripts/ci/cloud_task_smoke.py"
+    },
+    {
+      "feature": "upload_task_menu_and_verified_native_directory",
+      "source": "622.We uploadingCloudTrack; frozen cloud-upload-ui.json",
+      "implementation": "frontend/src/services/cloudTasks.ts; core/src/client/cloud/files.rs; desktop/src/cloud.rs",
+      "evidence": "core/tests/fixtures/cloud-upload-ui.json; frontend/tests/cloud-tasks-state.test.ts; core/tests/client_cloud/tasks.rs; scripts/ci/cloud_task_smoke.py"
     }
   ],
   "pending": [
@@ -131,6 +155,7 @@
   "completed_followups": [
     "docs/cloud-download-mapping.json",
     "docs/cloud-order-mapping.json",
-    "docs/cloud-upload-form-ui-contracts.txt"
+    "docs/cloud-upload-form-ui-contracts.txt",
+    "docs/cloud-task-table-ui-contracts.txt"
   ]
 }

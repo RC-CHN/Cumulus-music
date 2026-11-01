@@ -3713,3 +3713,74 @@ Windows既有失败与修正边界
 - cloud-upload-form-delivery-manifest.json冻结production dist、原生二进制与本批
   源码/探针/合成输入哈希；32张最终原图的8张联系表已全部实际查看。
   完整CI状态仍以精确HEAD运行结果为准，本地通过不代表Windows实机已验收。
+
+2026-11-02 云盘上传任务表、清空与转码状态重查（完整goal继续active）
+来源、实现及接口
+- 详见cloud-task-table-ui-contracts.txt与cloud-desktop-mapping.json。重新阅读官方
+  Uploading.tsx/UploadingTrackViewer/common两cell、M/3127 retryTransform与
+  removeUpload/removeFromList、622.We；冻结安全菜单向量cloud-upload-ui.json。
+  未使用YesPlayMusic，没有官方同尺寸运行窗口，不能称像素一致。
+- Rust新增本地完整任务选择/移除只读回执、durable removing/终态隐藏、转码状态
+  专用重查、任务目录原生验证；UI按官方三项全部操作/64px列/禁用播放菜单重建。
+  历史、附件聚合进度与未决结果交互为社区明确增强，不假装官方原样界面。
+
+最终真实WebView与本机截图
+- .build/cloud-task-table-final-gui-1：Xvfb/Openbox，27态/27图，DPR1；
+  .build/cloud-task-table-final-kde-1：本机KDE Wayland/XWayland，27态/27图，DPR1.25。
+  KDE只捕获自建进程窗口合成器pixmap；physical.json逐态确认可见/聚焦与绘制。
+  两者使用同一内嵌production dist与原生mini_ui_probe。54原图没有修改，10张
+  联系表cloud-task-table-final-gallery/{gui,kde}-sheet-{1..5}.jpg已全部实际查看。
+- 1120x760、760x540、深浅主题；实际读取205父任务，200+5有界分页；全部上传
+  排程205、全部暂停205；取消清空不改变任务，单项移除1，再固定204并加入新项，
+  确认只清204、新任务保留。保存208源文件，执行前后逐字节一致。
+- 两份实际合成FLAC由Rust/ffprobe读取，经原生worker、SQLite、NOS替身存下实际
+  字节对象并完成发布回读。check4、音频alloc3、metadata2、status2、publish2，
+  对象2个均与合成音频一致。多出的alloc是显式丢分配回执的未决分支，不是重放。
+  转码失败→重新检查只追加status/已知publish，不增加check/alloc/metadata。
+- 已完成离开当前任务，历史可取消删除/清除记录；已发布2条资源均保留。当前任务
+  菜单播放/下一首禁用、目录可用；指针/键盘菜单顺序与官方向量一致。原生目录
+  完整性验证实际执行，OS目录启动器显式替换，不能称Explorer/xdg-open视觉通过。
+  目录失败反馈与重开后返回原更多按钮，最后任务完成返回上传记录。
+- 分配请求在途时删除禁用；全部清空拒绝后留逐项结果与只读核对；丢回执后任务
+  保留等待核对，重复刷新未增加分配请求。账号替换立即移除旧弹窗和旧任务/历史。
+  无真实账号写入或音乐请求，无支付、公开发布、他人消息或既有资源删除。
+
+相关回归与失败证据
+- .build/cloud-task-table-final-regression-{page,batch,menu,toolbar,upload}分别通过
+  26/29/23/24/16态，共118态；此次不另截图，不与54张最终任务截图混计。
+  批量收藏在打开瞬间显式blur，模拟Windows禁用入口丢焦条件，成功后严格断言
+  返回“收藏”；没有移除focusInside/控件命中/几何检查。
+- 最初cloud-task-table-gui-1为24态中间版，之后gui-2/kde-1各27态仍看到整页
+  原生蓝框；实际截图推动完成后焦点返回与容器样式修正。仅上述final-*54图为
+  本批最终证据，不累计中间截图。小窗口首行bottom<=player.top、#44/标题与进度
+  差148px、完成回历史入口等均在最终探针作实际WebView断言。
+- 首次新增转码用例因合成时钟固定、无法越过下一次查询deadline超时；修正为
+  推进合成时钟后，Rust验证源文件删除仍可重查，无重传。不是放松真实超时边界。
+- 首次旧cloud_page探针在任务页仍无条件读取已隐藏的歌曲搜索框，诊断又重复该
+  空引用，最终180秒超时；改为任务页keyword=null和独立保护失败诊断。最终26态
+  原有断言全部保留并通过，不通过延长超时或忽略错误处理。
+- 前一HEAD e58b851/41330672542终态：Frontend与Linux成功，Windows失败、CI gate
+  失败；Windows发生collect_confirmed_dark焦点落body，窗口可见且聚焦。更早
+  03bbdf9/41324519800也是该Windows焦点失败、Linux成功。日志保留在
+  cloud-task-table-baseline-windows-job.raw/.log及prior-windows-*；当前显式入口
+  修正已通过Linux模拟丢焦回归，Windows新精确HEAD仍需CI验证，未称已修复通过。
+
+工程验证与边界
+- Node24.16.0/npm ci、最终format:check、507项前端测试、typecheck/build通过；
+  cloud-task-table-{npm-ci,format-final,frontend-tests-final,build-final}.log。
+  8项新增状态测试覆盖完整范围/丢回执/部分结果/分块账号隔离/分类迟到反馈。
+- 真实原生探针最终构建通过，cloud-task-table-native-build-final.log；生产前端
+  dist固定后才编译Rust/Tauri，没有在嵌入时改写资源。严格Clippy-final与格式
+  通过；全workspace/all-target/custom-protocol/locked最终结果另附末尾。
+- 新smoke纳入Linux/Windows独立runner，不跳过失败。CI工具40项、source_audit、
+  release_guard及JS/Python语法通过。清理冗余worktree-local target缓存约1.3GiB，
+  保留共享已验证产物、研究材料和账号数据。未改main、标签、版本或发布附件。
+- 线上真实OSS分配、LRC/CUE接受、原生选择器/OS目录窗口视觉、Windows实际桌面
+  及其他云盘/全应用UI分支仍保留边界，不从本合成服务/本机验证推导全部完成。
+- 最终Rust1.96全workspace/all-targets/custom-protocol/locked重跑0退出：280个结果
+  目标、1429 passed、0 failed/ignored、0编译告警，cloud-task-table-rust-tests-final.log。
+  fmt、strict Clippy和正常cumulus构建均0退出，cloud-task-table-{rust-format-final,
+  clippy-final,app-build-final}.log。之后未改业务/UI代码，54截图与此production前端一致。
+- cloud-task-table-delivery-manifest.json记录本批源码、production dist、原生二进制、
+  合成输入和54原图哈希。最终截图联系表见cloud-task-table-final-gallery/index.html。
+  新精确HEAD CI必须单独核对，不以本地1429/507通过替代Windows runner结果。

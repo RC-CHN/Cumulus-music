@@ -154,4 +154,5 @@ queue_cloud_batch和StartCloud，未新增前端HTTP或凭据入口。
 正式表单新增upload_planned及持久create_once，部分失败逐路径反馈；未确认回执可
 复用原登记，accepted/notStarted明确区分登记与排程。已有暂停/取消/未决任务不因
 回执恢复而重启，容量满时仍可回读旧登记。详细交互、持久化字段、原生流程测试及
-官方/社区界面边界见cloud-upload-form-ui-contracts.txt；任务表/全部清空仍待后续核对。
+官方/社区界面边界见cloud-upload-form-ui-contracts.txt；后续任务表/全部清空/转码重查
+见cloud-task-table-ui-contracts.txt，保留原接口和真实服务条件限制。
