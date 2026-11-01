@@ -126,6 +126,23 @@ fn main() {
             let ack=|value:Value| { handle.get_webview_window("main").unwrap().eval(format!("window.__miniAck[{}]={};",id,value)).unwrap(); };
             match kind {
                 "upload-state"=>ack(api.upload_ui.report()),
+                "upload-config"=>{api.upload_ui.configure(&value);ack(json!({"ok":true}));}
+                "upload-task-seed"=>{
+                    assert!(mini_fixture::upload_ui::enabled());
+                    let api=api.clone();let session=session.clone();let root=root.clone();let handle=handle.clone();let count=value["count"].as_u64().unwrap() as usize;
+                    tauri::async_runtime::spawn(async move {
+                        let reply=match api.upload_ui.seed(&root,session,count).await{Ok(ids)=>json!({"ids":ids}),Err(error)=>json!({"error":cumulus_core::client::ClientError::from(error).message})};
+                        handle.get_webview_window("main").unwrap().eval(format!("window.__miniAck[{}]={};",id,reply)).unwrap();
+                    });
+                }
+                "upload-directory"=>{
+                    let handle=handle.clone();let task_id=value["taskId"].as_str().unwrap().to_owned();let epoch=value["epoch"].as_str().unwrap().to_owned();let root=root.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let client=handle.state::<MusicClient>();
+                        let reply=match client.cloud_upload_directory_path(&epoch,&task_id).await{Ok(path)=>{assert!(path.canonicalize().unwrap().starts_with(root.join("upload-inputs").canonicalize().unwrap()));json!({"verified":true,"osLauncherInjected":true})},Err(error)=>json!({"error":cumulus_core::client::ClientError::from(error).message})};
+                        handle.get_webview_window("main").unwrap().eval(format!("window.__miniAck[{}]={};",id,reply)).unwrap();
+                    });
+                }
                 "upload-select"=>{
                     assert!(mini_fixture::upload_ui::enabled());
                     let paths=api.upload_ui.selection(&root,value["selection"].as_str().unwrap());

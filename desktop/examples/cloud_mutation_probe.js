@@ -22,6 +22,7 @@ window.__runCloudMutationProof=async({wait,stage,sleep,baseline,epoch,query,snap
     return matches[0];
   };
   const restored=rows=>JSON.stringify(rows.map(r=>r.track.id))===JSON.stringify(baseline);
+  const taskState=async()=>{const pending=await snapshot({...query,tab:'uploading'});const history=await snapshot({...query,tab:'history'});return {...pending,uploads:[...pending.uploads,...history.uploads]};};
   let submitted=false,uiDeleted=false,cleaned=false,taskId;
   await privateReport({phase:'prepared',cleanupRequired:false});
   try{
@@ -32,9 +33,9 @@ window.__runCloudMutationProof=async({wait,stage,sleep,baseline,epoch,query,snap
       taskId=task.id;
       await click(all('.cloud-page [role="tab"]').find(b=>b.textContent.includes('正在上传')));
       await wait(()=>all('.cloud-upload-row').length===1,'previous_upload_task_render');
-      if(el('.cloud-upload-name small')?.textContent!==fixture.name)throw Error('wrong_upload_task_rendered');
+      if(el('.cloud-task-copy small')?.textContent!==fixture.name)throw Error('wrong_upload_task_rendered');
       await privateReport({phase:'resuming',cleanupRequired:true,taskId});submitted=true;
-      await click(button('继续',el('.cloud-upload-row')));
+      await click(el('.cloud-upload-row button[aria-label^="开始上传"]'));
       await stage('cloud_roundtrip_selected',{selectedFiles:1,sourceIsSynthetic:true,previousTaskResumed:true});
     }else{
     await click(button('上传音乐',el('.cloud-toolbar')));await wait(()=>el('.cloud-upload-dialog')?.open,'roundtrip_dialog');
@@ -50,7 +51,7 @@ window.__runCloudMutationProof=async({wait,stage,sleep,baseline,epoch,query,snap
     const deadline=Date.now()+150000;
     let uploaded=false;
     while(Date.now()<deadline){
-      const state=await snapshot({...query,tab:'uploading'});const task=state.uploads.find(t=>t.fileName===fixture.name);
+      const state=await taskState();const task=state.uploads.find(t=>t.fileName===fixture.name);
       if(task){taskId=task.id;if(task.phase==='complete'){uploaded=true;break;}if(task.error&&!task.running&&!task.enabled)throw Error('native_upload_stopped:'+task.error);}
       await sleep(750);
     }
@@ -84,18 +85,18 @@ window.__runCloudMutationProof=async({wait,stage,sleep,baseline,epoch,query,snap
     if(submitted&&!cleaned){
       // Read and identify before cleanup. Never choose a pre-existing ID, guess
       // from title alone, or replay an unknown delete.
-      let tasks=await snapshot({...query,tab:'uploading'});
+      let tasks=await taskState();
       let task=tasks.uploads.find(t=>t.fileName===fixture.name);
       if(task){
         taskId=task.id;
         if(task.phase!=='complete'&&(task.running||task.enabled))await invoke('cloud_command',{epoch,command:{kind:'pause',ids:[task.id]}});
         const until=Date.now()+60000;
-        while(task.running&&Date.now()<until){await sleep(500);tasks=await snapshot({...query,tab:'uploading'});task=tasks.uploads.find(t=>t.id===taskId);if(!task)throw Error('cleanup_upload_disappeared');}
+        while(task.running&&Date.now()<until){await sleep(500);tasks=await taskState();task=tasks.uploads.find(t=>t.id===taskId);if(!task)throw Error('cleanup_upload_disappeared');}
         if(task.running)throw Error('cleanup_waiting_for_active_upload');
       }
       let state=await readAll();let created=candidate(state.rows);
       if(!created&&taskId){
-        const tasks=await snapshot({...query,tab:'uploading'});const task=tasks.uploads.find(t=>t.id===taskId);
+        const tasks=await taskState();const task=tasks.uploads.find(t=>t.id===taskId);
         if(task?.phase==='publication_pending'){
           await invoke('cloud_command',{epoch,command:{kind:'reconcile_upload',id:taskId}});
           state=await readAll();created=candidate(state.rows);

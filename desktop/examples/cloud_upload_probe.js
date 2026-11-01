@@ -207,7 +207,7 @@
     await wait(() => window.__miniRecorded === stage, "capture " + name);
   }
   const nativeQuery = {
-    tab: "uploading",
+    tab: "history",
     keyword: "",
     sort: "natural",
     descending: false,
@@ -378,14 +378,12 @@
         calls[1].files[0].request_id !== oldRequest,
       "retry changed only rejected file",
     );
-    await wait(() => {
-      const labels = [
-        ...page().querySelectorAll(".cloud-upload-progress > span"),
-      ];
-      return (
-        labels.length === 2 && labels.every((n) => n.textContent === "已上传")
-      );
-    }, "visible tasks caught up");
+    await wait(
+      () =>
+        !page().querySelector(".cloud-upload-row") &&
+        page().textContent.includes("还没有上传任务"),
+      "completed task leaves current list",
+    );
     await capture("completed_tasks_dark", { actualUploads: two.uploads });
     await theme("light");
     await open();
