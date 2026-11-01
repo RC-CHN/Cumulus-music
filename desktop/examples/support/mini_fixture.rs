@@ -9,6 +9,9 @@ pub(super) mod intelligence_start_fixture;
 mod room;
 use serde_json::{Value, json};
 #[allow(dead_code)]
+#[path = "cloud_ui_fixture.rs"]
+pub(super) mod cloud_ui;
+#[allow(dead_code)]
 #[path = "lyric_report_fixture.rs"]
 pub(super) mod lyric_reports;
 #[derive(Default)]
@@ -17,6 +20,7 @@ pub struct Library {
     pub room: room::RoomFixture,
     pub fm: fm::Fixture,
     pub lyric_reports: lyric_reports::Fixture,
+    pub cloud_ui: cloud_ui::Fixture,
 }
 fn song(id: u64) -> Value {
     json!({"id":id,"name":format!("合成歌曲 {id} · A quiet afternoon"),"ar":[{"name":"Cumulus"}],"al":{"name":"界面体验验证"},"dt":if id==1 {6_000_000} else {235_000},"fee":id%3})
@@ -28,6 +32,9 @@ impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, args: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             if let Some(response) = self.lyric_reports.response(path, &args).await {
+                return response;
+            }
+            if let Some(response) = self.cloud_ui.response(path, &args).await {
                 return response;
             }
             intelligence_start_fixture::before(path).await;

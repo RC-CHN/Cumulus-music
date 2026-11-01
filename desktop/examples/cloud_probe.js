@@ -73,7 +73,7 @@ window.__runCloudProof=async({wait,stage,sleep})=>{
     if(all('.cloud-file-list article').length)throw Error('cancelled_picker_added_files');await click(el('[aria-label="关闭上传窗口"]'));
     all('.cloud-table tbody input[type="checkbox"]')[0].click();await click(button('删除所选',el('.cloud-toolbar')));await wait(()=>!!el('#cloud-delete-title'),'cloud_delete_confirmation');
     await stage('cloud_delete_cancel',{confirmationOpen:true,submitted:false});await click(button('保留歌曲',el('dialog')));
-    const tab=all('.cloud-page [role="tab"]').find(b=>b.textContent.includes('上传任务'));await click(tab);await wait(()=>!!el('.cloud-page .empty-state'),'cloud_empty_uploads');await stage('cloud_tasks',{pendingTasks:0});
+    const tab=all('.cloud-page [role="tab"]').find(b=>b.textContent.includes('正在上传'));await click(tab);await wait(()=>!!el('.cloud-page .empty-state'),'cloud_empty_uploads');await stage('cloud_tasks',{pendingTasks:0});
     const final=await snapshot(query,true);const after=[];
     for(let offset=0;offset<final.total;offset+=200){const page=await snapshot({...query,offset});after.push(...page.tracks.map(t=>t.track.id));}
     if(JSON.stringify(after)!==JSON.stringify(baseline))throw Error('cloud_account_resources_changed');

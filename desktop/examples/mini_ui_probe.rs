@@ -121,6 +121,13 @@ fn main() {
             let id=value["id"].clone();
             let ack=|value:Value| { handle.get_webview_window("main").unwrap().eval(format!("window.__miniAck[{}]={};",id,value)).unwrap(); };
             match kind {
+                "cloud-config"=>{api.cloud_ui.configure(&value);ack(json!({"ok":true}));}
+                "cloud-state"=>ack(api.cloud_ui.report()),
+                "cloud-cache-break"=>{
+                    let sql=rusqlite::Connection::open(proof_store.directory().join("core.sqlite3")).unwrap();
+                    assert_eq!(sql.execute("UPDATE state SET value=? WHERE kind='cloud_library_v1' AND key='snapshot'",["{"]).unwrap(),1);
+                    ack(json!({"ok":true}));
+                }
                 "report-config"=>{api.lyric_reports.configure(&value);ack(json!({"ok":true}));}
                 "report-state"=>ack(api.lyric_reports.report()),
                 "report-resize"=>{let scale=value["scale"].as_f64().unwrap();handle.get_webview_window("main").unwrap().set_size(tauri::PhysicalSize::new((value["width"].as_f64().unwrap()*scale).round() as u32,(value["height"].as_f64().unwrap()*scale).round() as u32)).unwrap();ack(json!({"ok":true}));}
@@ -225,6 +232,7 @@ fn main() {
                     value["lyricWindows"]=json!(handle.webview_windows().keys().filter(|l|l.starts_with("desktop-lyrics-")).collect::<Vec<_>>());
                     value["likeWritesObserved"]=json!(api.likes.lock().unwrap().clone());
                     if mini_fixture::lyric_reports::enabled(){value["syntheticLyricReports"]=api.lyric_reports.report();}
+                    if mini_fixture::cloud_ui::enabled(){value["syntheticCloud"]=api.cloud_ui.report();}
                     value["syntheticRoom"]=api.room.report();
                     if mini_fixture::fm::enabled() { value["syntheticFm"]=api.fm.report(); }
                     if intelligence_start_fixture::enabled() { value["syntheticIntelligence"]=intelligence_start_fixture::report(); }

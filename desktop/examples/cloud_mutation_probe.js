@@ -30,7 +30,7 @@ window.__runCloudMutationProof=async({wait,stage,sleep,baseline,epoch,query,snap
       const state=await snapshot({...query,tab:'uploading'});const task=state.uploads.find(t=>t.id===fixture.resumeTaskId);
       if(state.uploads.length!==1||!task||task.fileName!==fixture.name||task.total!==fixture.bytes||!task.canResume)throw Error('prior_upload_task_identity_or_state_mismatch');
       taskId=task.id;
-      await click(all('.cloud-page [role="tab"]').find(b=>b.textContent.includes('上传任务')));
+      await click(all('.cloud-page [role="tab"]').find(b=>b.textContent.includes('正在上传')));
       await wait(()=>all('.cloud-upload-row').length===1,'previous_upload_task_render');
       if(el('.cloud-upload-name small')?.textContent!==fixture.name)throw Error('wrong_upload_task_rendered');
       await privateReport({phase:'resuming',cleanupRequired:true,taskId});submitted=true;
