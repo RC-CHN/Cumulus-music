@@ -1,0 +1,297 @@
+{
+  "sources": [
+    {
+      "name": "action",
+      "path": "references/ui-recovery/sources/packages/pc/src/actions/remove/removeFromCloudDisk.tsx",
+      "sha256": "a6065d42b42e8e03b66517adcc9df8ae470d6b17c48c00958b7e27ec1e04d7ed"
+    },
+    {
+      "name": "normalizer",
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/21.js",
+      "sha256": "33d27af5a54c6a74641f192841637d2608d588d2d93091a9a61cb43948c93af7"
+    }
+  ],
+  "shims": [
+    "TypeScript transpilation of recovered action generator",
+    "M/21 extracted cs/t/pst scalar normalization; not the full formatter",
+    "synthetic select/call commands; confirmation cancelled; no official runtime or file operations"
+  ],
+  "cases": [
+    {
+      "raw": {},
+      "kind": "private",
+      "confirmation": {
+        "hasLocal": false,
+        "cueFileStatus": "none",
+        "message": "从网盘删除文件后，其他端将无法同步，确认删除？"
+      }
+    },
+    {
+      "raw": {
+        "privilege": {
+          "cs": false
+        }
+      },
+      "kind": "private",
+      "confirmation": {
+        "hasLocal": false,
+        "cueFileStatus": "none",
+        "message": "从网盘删除文件后，其他端将无法同步，确认删除？"
+      }
+    },
+    {
+      "raw": {
+        "privilege": {
+          "cs": 1
+        },
+        "t": 0
+      },
+      "kind": "ordinary",
+      "confirmation": {
+        "hasLocal": false,
+        "cueFileStatus": "none",
+        "message": "确定将选中的歌曲从网盘删除？"
+      }
+    },
+    {
+      "raw": {
+        "privilege": {
+          "cs": true
+        },
+        "t": 1
+      },
+      "kind": "private",
+      "confirmation": {
+        "hasLocal": false,
+        "cueFileStatus": "none",
+        "message": "从网盘删除文件后，其他端将无法同步，确认删除？"
+      }
+    },
+    {
+      "raw": {
+        "privilege": {
+          "cs": 1
+        },
+        "t": 3
+      },
+      "kind": "off_store",
+      "confirmation": {
+        "hasLocal": false,
+        "cueFileStatus": "none",
+        "message": "从网盘删除文件后，将无法再试听下载，确认删除？"
+      }
+    },
+    {
+      "raw": {
+        "privilege": {
+          "cs": 1
+        },
+        "t": 2,
+        "pst": -100
+      },
+      "kind": "off_store",
+      "confirmation": {
+        "hasLocal": false,
+        "cueFileStatus": "none",
+        "message": "从网盘删除文件后，将无法再试听下载，确认删除？"
+      }
+    },
+    {
+      "raw": {
+        "privilege": {
+          "cs": 1
+        },
+        "t": 2,
+        "pst": 0
+      },
+      "kind": "ordinary",
+      "confirmation": {
+        "hasLocal": false,
+        "cueFileStatus": "none",
+        "message": "确定将选中的歌曲从网盘删除？"
+      }
+    },
+    {
+      "raw": {
+        "privilege": {
+          "cs": 1
+        },
+        "t": 2,
+        "pst": 1
+      },
+      "kind": "ordinary",
+      "confirmation": {
+        "hasLocal": false,
+        "cueFileStatus": "none",
+        "message": "确定将选中的歌曲从网盘删除？"
+      }
+    },
+    {
+      "raw": {
+        "privilege": {
+          "cs": 1
+        },
+        "t": 0,
+        "pst": -100
+      },
+      "kind": "ordinary",
+      "confirmation": {
+        "hasLocal": false,
+        "cueFileStatus": "none",
+        "message": "确定将选中的歌曲从网盘删除？"
+      }
+    },
+    {
+      "raw": {
+        "privilege": {
+          "cs": "0"
+        },
+        "t": "1"
+      },
+      "kind": "ordinary",
+      "confirmation": {
+        "hasLocal": false,
+        "cueFileStatus": "none",
+        "message": "确定将选中的歌曲从网盘删除？"
+      }
+    },
+    {
+      "raw": {
+        "privilege": {
+          "cs": 1
+        },
+        "t": 2,
+        "pst": " -100 "
+      },
+      "kind": "off_store",
+      "confirmation": {
+        "hasLocal": false,
+        "cueFileStatus": "none",
+        "message": "从网盘删除文件后，将无法再试听下载，确认删除？"
+      }
+    },
+    {
+      "raw": {
+        "privilege": {
+          "cs": 1
+        },
+        "t": 2,
+        "pst": "bad"
+      },
+      "kind": "ordinary",
+      "confirmation": {
+        "hasLocal": false,
+        "cueFileStatus": "none",
+        "message": "确定将选中的歌曲从网盘删除？"
+      }
+    },
+    {
+      "raw": {
+        "privilege": {
+          "cs": 1
+        },
+        "t": 2,
+        "pst": "-Infinity"
+      },
+      "kind": "off_store",
+      "confirmation": {
+        "hasLocal": false,
+        "cueFileStatus": "none",
+        "message": "从网盘删除文件后，将无法再试听下载，确认删除？"
+      }
+    },
+    {
+      "raw": {
+        "privilege": {
+          "cs": 0
+        },
+        "t": 3
+      },
+      "kind": "private",
+      "confirmation": {
+        "hasLocal": false,
+        "cueFileStatus": "none",
+        "message": "从网盘删除文件后，其他端将无法同步，确认删除？"
+      }
+    },
+    {
+      "raw": {
+        "privilege": {
+          "cs": 1
+        },
+        "t": 2,
+        "pst": "-1e-2"
+      },
+      "kind": "off_store",
+      "confirmation": {
+        "hasLocal": false,
+        "cueFileStatus": "none",
+        "message": "从网盘删除文件后，将无法再试听下载，确认删除？"
+      }
+    }
+  ],
+  "groups": [
+    {
+      "name": "ordinary",
+      "kinds": [
+        "ordinary"
+      ],
+      "confirmation": {
+        "hasLocal": false,
+        "cueFileStatus": "none",
+        "message": "确定将选中的歌曲从网盘删除？"
+      }
+    },
+    {
+      "name": "off_store",
+      "kinds": [
+        "ordinary",
+        "off_store"
+      ],
+      "confirmation": {
+        "hasLocal": false,
+        "cueFileStatus": "none",
+        "message": "从网盘删除文件后，将无法再试听下载，确认删除？"
+      }
+    },
+    {
+      "name": "private_priority",
+      "kinds": [
+        "off_store",
+        "private",
+        "ordinary"
+      ],
+      "confirmation": {
+        "hasLocal": false,
+        "cueFileStatus": "none",
+        "message": "从网盘删除文件后，其他端将无法同步，确认删除？"
+      }
+    }
+  ],
+  "cue": [
+    {
+      "name": "cue_all",
+      "confirmation": {
+        "hasLocal": false,
+        "cueFileStatus": "all",
+        "message": "确定将选中的歌曲从网盘删除？"
+      }
+    },
+    {
+      "name": "cue_partial",
+      "confirmation": {
+        "hasLocal": true,
+        "cueFileStatus": "partial",
+        "message": "确定将选中的歌曲从网盘删除？"
+      }
+    },
+    {
+      "name": "source",
+      "confirmation": {
+        "hasLocal": true,
+        "cueFileStatus": "none",
+        "message": "确定将选中的歌曲从网盘删除？"
+      }
+    }
+  ]
+}

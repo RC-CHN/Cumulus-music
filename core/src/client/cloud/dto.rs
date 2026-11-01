@@ -1,6 +1,6 @@
 use super::*;
 use crate::client::dto::TrackView;
-use crate::cloud::library::{DeleteOperation, DeletePhase};
+use crate::cloud::library::{CloudDeletionKind, DeleteOperation, DeletePhase};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -47,6 +47,7 @@ impl CloudQuery {
 #[serde(rename_all = "camelCase")]
 pub struct CloudTrackView {
     pub track: TrackView,
+    pub deletion_kind: CloudDeletionKind,
     pub public_song_id: Option<String>,
     pub file_name: String,
     pub file_size: u64,

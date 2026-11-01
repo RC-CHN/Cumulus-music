@@ -47,7 +47,7 @@ fn metadata(raw: &Value, id: &str) -> Result<Value> {
     // is unavailable. Never substitute the account's distinct cloud songId.
     let catalog_id = crate::protocol::api::identifier(&simple["id"]).ok();
     Ok(
-        json!({"id":id,"name":title,"ar":artists,"al":album,"dt":number(&simple["dt"])?.unwrap_or(0),"fee":simple["fee"].as_u64().unwrap_or(0),"privilege":simple["privilege"],"_cloud_public_id":public_id,"_cloud_catalog_id":catalog_id,"_cloud_sort":{"title":row_string(raw,"songName"),"artist":row_string(raw,"artist"),"album":row_string(raw,"album")}}),
+        json!({"id":id,"name":title,"ar":artists,"al":album,"dt":number(&simple["dt"])?.unwrap_or(0),"fee":simple["fee"].as_u64().unwrap_or(0),"privilege":simple["privilege"],"_cloud_delete_kind":CloudDeletionKind::from_api(simple),"_cloud_public_id":public_id,"_cloud_catalog_id":catalog_id,"_cloud_sort":{"title":row_string(raw,"songName"),"artist":row_string(raw,"artist"),"album":row_string(raw,"album")}}),
     )
 }
 fn row_string(row: &Value, key: &str) -> String {

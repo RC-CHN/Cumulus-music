@@ -219,6 +219,9 @@ pub(super) fn catalog(
                     let track = super::super::mapping::track(&entry.song)?;
                     Ok((
                         CloudTrackView {
+                            deletion_kind: crate::cloud::library::CloudDeletionKind::from_cached(
+                                &entry.song,
+                            ),
                             public_song_id: (entry.song["privilege"]["st"]
                                 .as_i64()
                                 .is_none_or(|status| status >= 0)

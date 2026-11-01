@@ -1,5 +1,6 @@
 //! Official M/3023/M/3100/M/3127 cloud list and deletion with durable recovery.
 mod api;
+mod classification;
 mod delete;
 mod service;
 mod types;
@@ -9,6 +10,7 @@ use crate::{
     account::{AccountSession, SessionToken},
     storage::{OperationLock, StateStore},
 };
+pub use classification::CloudDeletionKind;
 use serde_json::{Value, json};
 pub use service::CloudLibrary;
 use std::{collections::BTreeSet, sync::Arc};

@@ -2,6 +2,8 @@
 mod batch;
 #[path = "client_cloud/creation.rs"]
 mod creation;
+#[path = "client_cloud/deletion_context.rs"]
+mod deletion_context;
 #[path = "client_cloud/local_files.rs"]
 mod local_files;
 #[path = "client_cloud/lyric_reports.rs"]
