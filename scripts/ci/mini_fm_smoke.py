@@ -7,7 +7,7 @@ import argparse
 import json
 import os
 from pathlib import Path
-from motion_smoke import launch
+from window_manager import launch
 
 
 LABELS = ['personal_infinite_light', 'personal_single_light', 'personal_infinite_dark',

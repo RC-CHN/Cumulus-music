@@ -3,7 +3,7 @@ import argparse
 import json
 import os
 from pathlib import Path
-from motion_smoke import launch
+from window_manager import launch
 
 LABELS = ['compact_light', 'reason_wait_light', 'reason_cancelled_light', 'ready_light',
           'ready_dark', 'expanded_dark', 'reason_error_dark', 'reason_retried_dark',

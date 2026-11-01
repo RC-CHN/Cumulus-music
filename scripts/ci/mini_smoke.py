@@ -3,7 +3,7 @@ import argparse
 import json
 import os
 from pathlib import Path
-from motion_smoke import launch
+from window_manager import launch
 
 
 def main():

@@ -98,7 +98,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev patchelf libmpv-dev ffmpeg xvfb dbus-x11 python3-gi gir1.2-gtk-3.0 libxtst6
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev patchelf libmpv-dev ffmpeg xvfb dbus-x11 python3-gi gir1.2-gtk-3.0 libxtst6 openbox
           sudo locale-gen en_US.UTF-8
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
@@ -217,11 +217,13 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/system_media_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-system-media-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/shortcuts_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-shortcuts-ui-linux
           cargo build -p cumulus-desktop --example mini_ui_probe --features custom-protocol --locked
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_intelligence_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-intelligence-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_fm_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-fm-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_feedback_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-feedback-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-shortcuts-linux --shortcuts
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-linux
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_intelligence_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-intelligence-linux
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_fm_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-fm-linux
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_feedback_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-feedback-linux
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_pin_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-pin-linux
+          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_pin_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-pin-unmanaged-linux --unmanaged
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-shortcuts-linux --shortcuts
           cargo build -p cumulus-desktop --example desktop_lyrics_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/desktop_lyrics_smoke.py --binary .build/target/debug/examples/desktop_lyrics_ui_probe --root .build/ci-desktop-lyrics-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/fonts_smoke.py --binary .build/target/debug/examples/desktop_lyrics_ui_probe --root .build/ci-fonts-linux
@@ -322,6 +324,7 @@ jobs:
           python scripts/ci/mini_intelligence_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-mini-intelligence-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/mini_fm_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-mini-fm-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/mini_feedback_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-mini-feedback-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/mini_pin_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-mini-pin-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/mini_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-mini-shortcuts-windows --runtime .build/package-stage/windows-x64/native --shortcuts
           cargo build -p cumulus-desktop --example desktop_lyrics_ui_probe --features custom-protocol --locked
           python scripts/ci/desktop_lyrics_smoke.py --binary .build/target/debug/examples/desktop_lyrics_ui_probe.exe --root .build/ci-desktop-lyrics-windows --runtime .build/package-stage/windows-x64/native

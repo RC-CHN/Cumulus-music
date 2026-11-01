@@ -6,6 +6,8 @@ mod assets;
 mod fixture;
 #[path = "support/mini_fixture.rs"]
 mod mini_fixture;
+#[path = "support/mini_pin_fixture.rs"]
+mod mini_pin_fixture;
 use mini_fixture::intelligence_start_fixture;
 #[allow(dead_code)]
 #[path = "support/relay_fixture.rs"]
@@ -110,6 +112,36 @@ fn main() {
             let id=value["id"].clone();
             let ack=|value:Value| { handle.get_webview_window("main").unwrap().eval(format!("window.__miniAck[{}]={};",id,value)).unwrap(); };
             match kind {
+                "pin-native" => {
+                    let mini=handle.webview_windows().into_iter().find(|(label,_)|label.starts_with("mini-player-")).expect("mini window").1;
+                    if let Some(pinned)=value["set"].as_bool() {
+                        mini.set_always_on_top(pinned).unwrap();
+                        fs::write(output.join("pin-native-request.json"),serde_json::to_vec(&value).unwrap()).unwrap();
+                    }
+                    let client=handle.state::<MusicClient>();
+                    let epoch=client.account().unwrap().epoch;
+                    if let Some(pinned)=value["save"].as_bool() {
+                        let revision=client.mini_preferences(&epoch).unwrap().value.revision.unwrap();
+                        client.mini_preferences_command(&epoch,cumulus_core::client::dto::MiniPreferencesCommand::Change{expected_revision:revision,always_on_top:pinned}).unwrap();
+                    }
+                    if value["corrupt"]==true { proof_store.put("local-device","mini-preferences-v1","current",&json!("synthetic damaged pin preference")).unwrap(); }
+                    let pin=json!({"applied":mini_pin_fixture::applied(&mini),"tauriCached":mini.is_always_on_top().unwrap(),"preferences":client.mini_preferences(&epoch).unwrap().value,"requested":value.get("set")});
+                    #[cfg(target_os="linux")]
+                    let pin={
+                        use gtk::prelude::*;
+                        let mut pin=pin;
+                        pin["gdkAbove"]=json!(mini.gtk_window().unwrap().window().map(|w|w.state().contains(gtk::gdk::WindowState::ABOVE)));
+                        pin
+                    };
+                    ack(pin);
+                }
+                "pin-storage" => {
+                    let sql=rusqlite::Connection::open(proof_store.directory().join("core.sqlite3")).unwrap();
+                    sql.execute_batch(if value["reject"]==true {
+                        "CREATE TRIGGER reject_mini_pin_insert BEFORE INSERT ON state WHEN NEW.owner='local-device' AND NEW.kind='mini-preferences-v1' BEGIN SELECT RAISE(ABORT,'synthetic mini pin commit failure'); END;
+                         CREATE TRIGGER reject_mini_pin_update BEFORE UPDATE ON state WHEN NEW.owner='local-device' AND NEW.kind='mini-preferences-v1' BEGIN SELECT RAISE(ABORT,'synthetic mini pin commit failure'); END;"
+                    } else { "DROP TRIGGER reject_mini_pin_insert; DROP TRIGGER reject_mini_pin_update;" }).unwrap();ack(json!({"ok":true}));
+                }
                 "fm-feedback" => {
                     let owner=session.token().unwrap().uid.unwrap();
                     api.fm.control(&proof_store,&owner,value["action"].as_str().unwrap());
@@ -206,6 +238,7 @@ fn main() {
             } else {
                 include_str!("mini_ui_probe.js").into()
             };
+            let source=if std::env::var_os("CUMULUS_MINI_PIN_UNMANAGED_PROOF").is_some() { format!("window.__pinUnmanagedProof=true;\n{source}") } else {source};
             view.eval(source).unwrap();
         }
     }).run(context).expect("mini WebView proof");

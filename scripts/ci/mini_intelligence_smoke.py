@@ -3,7 +3,7 @@ import argparse
 import json
 import os
 from pathlib import Path
-from motion_smoke import launch
+from window_manager import launch
 
 LABELS=['liked_light','ring_single','ring_random','ring_sequential','seeded_light','cancelled_light','resumed_dark','exited_dark','preparing_dark','cancelled_preparation_dark','failed_dark','failed_light','retried_light','active_expanded_light','rapid_reentered_dark','returned_main','reopened_dark','continued_dark','exit_dark','stale_selected_dark','remote_failed_dark','remote_dismissed_dark','remote_retried_dark']
 
