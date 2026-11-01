@@ -4,6 +4,44 @@ use cumulus_core::{
 };
 use tauri_plugin_dialog::DialogExt;
 #[tauri::command]
+pub async fn cloud_resource<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    song_id: String,
+    revision: String,
+) -> Result<CloudResourceView, ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("cloud resource menu requires main window").into());
+    }
+    client
+        .cloud_resource(&epoch, &song_id, &revision)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
+pub async fn open_cloud_directory<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    song_id: String,
+    revision: String,
+) -> Result<(), ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("cloud file manager requires main window").into());
+    }
+    let path = client
+        .cloud_directory_path(&epoch, &song_id, &revision)
+        .await
+        .map_err(ClientError::from)?;
+    client
+        .validate_cloud_epoch(&epoch)
+        .map_err(ClientError::from)?;
+    crate::file_manager::open_directory(path)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn cloud_page(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

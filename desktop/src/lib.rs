@@ -8,6 +8,7 @@ mod comments;
 pub mod desktop_lyrics;
 mod downloads;
 mod effects;
+mod file_manager;
 mod fm;
 mod fonts;
 mod graphics;
@@ -279,6 +280,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 downloads::pick_download_directory,
                 downloads::open_download_directory,
                 cloud::cloud_page,
+                cloud::cloud_resource,
+                cloud::open_cloud_directory,
                 cloud::cloud_command,
                 cloud::pick_cloud_files,
                 mv::mv_page,

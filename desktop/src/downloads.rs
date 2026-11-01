@@ -87,35 +87,7 @@ pub async fn open_download_directory(
     client
         .validate_download_epoch(&epoch)
         .map_err(ClientError::from)?;
-    tauri::async_runtime::spawn_blocking(move || -> cumulus_core::Result<()> {
-        #[cfg(target_os = "linux")]
-        let mut command = std::process::Command::new("xdg-open");
-        #[cfg(target_os = "macos")]
-        let mut command = {
-            let mut c = std::process::Command::new("/usr/bin/open");
-            c.arg("--");
-            c
-        };
-        #[cfg(windows)]
-        let mut command = std::process::Command::new("explorer.exe");
-        #[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
-        return Err(Error::State("file manager not supported on this platform"));
-        #[cfg(any(target_os = "linux", target_os = "macos", windows))]
-        {
-            // Direct argv, no shell interpolation or arbitrary URLs/programs.
-            let status = command
-                .arg(path)
-                .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .status()?;
-            if !status.success() {
-                return Err(Error::State("file manager failed"));
-            }
-            Ok(())
-        }
-    })
-    .await
-    .map_err(|_| ClientError::from(Error::State("file manager worker stopped")))?
-    .map_err(Into::into)
+    crate::file_manager::open_directory(path)
+        .await
+        .map_err(Into::into)
 }
