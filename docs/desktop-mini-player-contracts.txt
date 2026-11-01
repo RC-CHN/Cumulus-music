@@ -26,6 +26,7 @@ mini_max 已接入共享快捷键设置：默认窗口内 Ctrl+M、全局 Ctrl+A
 主窗口和小窗。播放、音量、喜欢等已支持动作也共用配置，详情见 shortcut-contracts.txt。
 FM减少推荐/服务器理由/歌手屏蔽已接入小窗专用IPC及主窗口核对，见
 mini-fm-feedback-contracts.txt；复杂右键资源菜单仍继续恢复与审计。
+置顶偏好与实际窗口属性的区分、只应用重试及Linux缓存修正见mini-pin-ui-contracts.txt。
 
 分层与调用
 core/src/client/mini/{mod,actions,queue}.rs：

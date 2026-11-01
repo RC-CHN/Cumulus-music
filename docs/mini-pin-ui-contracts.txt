@@ -1,0 +1,66 @@
+迷你窗口置顶：偏好、原生属性和显式恢复（2026-11-01）
+
+问题和来源
+- 官方M/622 miniMode菜单“总在最前面”按setting.miniModeAlwaysTop绘制勾选；
+  M/3085对应动作先更新设置，再AudioPlayer.setMiniPlayerAlwaysOnTop。来源SHA256
+  沿用mini-fm-feedback-contracts.txt的M/622和M/3085，没有使用YesPlayMusic。
+- 本项目原来也在保存偏好后调用原生窗口，再只用保存值显示选中。如果保存成功但
+  原生应用失败，下一次点击会反向改偏好，而不是重试原目标。本批将两种确认分开。
+- 实测进一步发现：本机KDE/XWayland取消置顶后，独立自有PID窗口的_NET_WM_STATE
+  已无ABOVE，GTK/Tauri却仍返回旧true。不能用缓存查询为图标自证。
+  当前锁定Tao 0.35.3的Linux实现以AtomicBool保存window_state_event结果；
+  本机证据说明该回读路径会滞后，不声称所有GTK版本/后端都有同样表现。
+
+分层和读取
+- core的设备本地MiniPreferences/CAS/损坏备份逻辑继续复用，无Tauri/WebView依赖。
+  本批没有增加官方HTTP、账号资源写入或Python业务进程。
+- desktop/mini/native_pin.rs在GUI线程捕获当前已登记小窗的原生句柄；不会从前端
+  接收XID、display或任意窗口标签。GObject不跨线程，X11只读查询在blocking worker。
+- Linux X11：使用已锁定gdkx11 0.18.2安全绑定获得当前窗口XID，x11rb读取该窗口的
+  _NET_WM_STATE/_NET_WM_STATE_ABOVE。每次确认窗口管理器仍可用；复用本进程连接，
+  连接失败丢弃后只在后续读请求重建。不修改其他窗口、系统配置、显卡或桌面策略。
+  gdkx11原已在依赖锁中，本次仅增加desktop直接依赖边；没有更新其他依赖版本。
+- 无EWMH窗口管理器、属性异常或读取错误返回null，不能当作false或保存偏好。
+  Windows及非X11原生后端使用Tauri窗口属性查询；本批KDE证据是XWayland，不是
+  纯Wayland或Windows实机验证。窗口管理器的最终堆叠策略仍由其自身决定。
+- mini_read返回新增pinApplied:bool|null，与preferences.alwaysOnTop/revision独立。
+  普通播放快照ticket、队列版本、音频会话不因属性读取而改变。
+
+写入和恢复
+- desktop/mini/preferences.rs承接原mini_preferences_command：仍以当前generation/
+  ticket/账号校验，保存CAS偏好后到GUI应用；应用前再核对同一账号和同一偏好revision。
+  用户改设置、窗口生命周期结束或账号变化后不会把旧回执应用到新窗口。
+- 新增mini_preferences_apply(generation,ticket,expectedRevision)：只读取已保存偏好，
+  精确revision相同后应用同一值，不生成新revision、不反向切换、不修复损坏数据。
+  和原写入共用Host.operation互斥；main/其他窗口、旧ticket、旧账号或旧revision拒绝。
+- 设置和应用分开，不自动反复执行原生setter。操作失败只回读，用户选择重试才应用。
+  调用成功也等下一次原生属性观察，不在前端预先选中。
+
+前端交互
+- useMiniPin及MiniApp置顶入口：选中/aria-pressed来自pinApplied，不来自保存偏好。
+  已确认一致时“始终置顶”执行一次明确的新偏好；两值不同时“重试应用置顶设置”
+  只应用原revision；未知时“重新读取置顶状态”只读；损坏且属性已知时明确修复。
+- 保存错误和随后读取错误分别保留。读失败后即使后台轮询有回复，也不会把下一次
+  重试解释为新切换；需明确读取成功后再决定。账号变化、卸载撤销迟到错误。
+- 禁用按钮前将该按钮的焦点停在稳定小窗容器，完成后仅在原账号、原焦点仍未被
+  用户移动时恢复；不抢别处焦点。反馈沿用mini-footer完整title和共用主题/强调色，
+  整窗206px内不挤掉进度、播放、音量或返回按钮。
+
+真实验证和CI
+- scripts/ci/mini_pin_smoke.py：14态覆盖两主题、置顶/取消置顶两方向原生偏离、
+  只应用不写库、正常切换、真实SQLite拒绝/恢复、旧revision、重开、损坏/修复、
+  main/mini IPC隔离和旧账号拒绝。账号/API/PCM合成，实际WebView/IPC/Rust/SQLite/
+  libmpv null输出保留；独立夹具用新X11连接查询属性，不拿Tauri缓存当预期值。
+- --unmanaged是Linux裸Xvfb的2态：pinApplied=null、无aria-pressed确定值，点击只
+  读取、偏好revision不变，深浅色焦点保留。它不证明置顶成功。
+- Linux需要openbox；CUMULUS_TEST_WINDOW_MANAGER=openbox仅显式启用隔离测试启动器。
+  window_manager.py遇到已有WM直接复用，不替换/终止它，只清理自己启动的子进程。
+  6秒启动超时；生产客户端不导入此Python脚本，也不启动窗口管理器。
+- 可执行流程（需先构建production前端和带custom-protocol的mini_ui_probe）：
+  CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_pin_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root NEW_ROOT --screenshots
+  GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_pin_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root ANOTHER_NEW_ROOT --unmanaged --screenshots
+  Windows使用.exe及--runtime；不传窗口管理器标志或--unmanaged。
+- 最终日志、逐态截图及CI精确提交回执见ui-ux-validation.txt。null音频不证明声卡，
+  DOM事件不等于物理键盘，Linux截图不代表Windows实机或官方像素一致。
+- 本批修正窗口菜单审计发现的置顶状态，不等于完整菜单已完成。完整小窗菜单、
+  资源右键菜单、桌面歌词菜单衔接等仍在原范围内；总目标继续。

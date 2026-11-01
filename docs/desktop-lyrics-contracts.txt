@@ -131,3 +131,15 @@ Windows将binary换为.exe，并通过--runtime指定打包的native目录。--s
   Windows验证读取WS_EX_TRANSPARENT等原生样式，真实桌面仍须各自验收。
 - 透明窗要求平台合成器支持；Wayland可能限制位置恢复、全局快捷键与穿透。位置保存
   失败会显示提示；不改变系统级图形设置。主窗/歌词窗关闭错误不会触发图形自动重启。
+
+2026-11-01 Windows独立输入验证修正
+- a4732c4/41281027082的Linux完整job成功，Windows在desktop_lyrics_driver的独立
+  输入进程取前台失败，整个CI失败。原日志保存在ci-a4732c4-windows-failed.log。
+- 原迷你窗口测试已经有精确PID前台交接，桌面歌词探针/驱动没有接入。本次在全局
+  Ctrl+Alt+D之前复用同一shortcut_foreground模块，宿主只向启动器真实PID调用
+  AllowSetForegroundWindow，并在发出按键请求前写回producer/fixture/foreground PID。
+  驱动核对回执后仍需GetForegroundWindow精确匹配自己的窗口，再真实SendInput。
+- Escape/Tab继续发送给实际主WebView，不转移到外部输入窗。没有ASFW_ANY、修改
+  系统前台策略、弱化按键/窗口断言或调用业务IPC代替系统按键。此模块只链接示例。
+- 本地严格Clippy、该示例新增的1项PID边界用例及Linux完整25态/重启/独立输入检查
+  通过。Windows前台交接必须以新HEAD自身的Windows CI结果为准，本地结果不作替代。

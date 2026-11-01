@@ -3142,3 +3142,59 @@ CI与剩余边界
 - main、v0.1.0标签、版本文件和发行附件未改变，没有发新版本。
 - 小窗完整窗口菜单与普通资源菜单、新版分层理由/H5、推荐补充和全应用逐项审计
   继续；一起听实时双账号仍暂排除。专项通过不代表完整原目标完成。
+
+2026-11-01 小窗置顶：保存偏好与实际窗口分开确认
+- 沿菜单来源审计发现保存成功/窗口应用失败后，原图标仍显示保存值，下一次点击
+  反向切换。现改为显示实际属性，不一致时只应用原revision，未知时只读重查。
+  官方逻辑、社区差异、模块/IPC和流程见mini-pin-ui-contracts.txt；总目标继续。
+
+实际定位及最终检查
+- 初次裸Xvfb的mini-pin-before没有窗口管理器，不能用期望置顶变化的失败为产品
+  缺陷自证；未计入最终截图。随后真实KDE的native-diagnostic2读取自有PID窗口：
+  _NET_WM_STATE已无ABOVE，但Tauri/GTK仍为true。独立C/Xlib查询日志保留在
+  mini-pin-native-diagnostic2-kde/native-x11-state.log；没有读取其他应用内容。
+- Linux X11改读当前小窗真实属性并核对WM可用；不以Tauri缓存替代。Windows/非X11
+  保留平台查询边界。新增gdkx11直接依赖只改变Cargo.lock一条依赖边，未更新版本。
+- Node24.16.0、Rust1.96.0及锁文件：npm ci/format:check、455项前端测试（0失败/
+  跳过）、类型检查和production build通过。日志mini-pin-{npm-ci,format,frontend,
+  frontend-build}.log。新增5项前端用例覆盖原意图、反向偏离、并发/读失败/账号。
+- 最终全工作区Rust1395 passed、0 failed/ignored、276个结果目标：
+  mini-pin-workspace-delivery.log。1394基础上包含桌面歌词示例新增的1项PID守卫用例；
+  没有把不同测试层简单相加称为业务通过。最终严格Clippy/格式见
+  lyric-foreground-{clippy,format}.log；最终产品和mini/ux探针构建见
+  mini-pin-app-accepted.log，歌词示例另见lyric-foreground-build.log。
+- source_audit、release_guard、CI工具36项均通过：mini-pin-{source-audit,
+  release-guard,ci-tools}.log。没有同时重建Rust正在嵌入的dist。
+
+最终截图及交互
+- mini-pin-final-gui：隔离Xvfb/Openbox，14态/14图；mini-pin-final-kde：本人KDE/
+  XWayland125%自有PID窗口，14态/14图，physical.json与独立Xlib属性日志保留。
+- mini-pin-final-unmanaged：裸Xvfb两主题2态/2图，确认null、无确定aria-pressed、
+  按钮只读且revision不变；不是置顶成功证明。合计30态/30图。
+- 仅计上述最终三组，mini-pin-final-gallery含原PNG索引/SHA256和三张总览，已查看
+  三张总览并放大查看本机未应用、保存拒绝帧。缩略图按各自客户区位置裁去背景，
+  原PNG未改；没有使用生成图片替代证据。
+- 两方向偏离后重试不改revision，旧revision不能作用于新偏好；保存失败/损坏保持
+  实际图标与明确恢复入口。禁用时停在稳定容器，完成后保留原账号并恢复原按钮焦点。
+  206px窗内标题、进度、控制、提示及音量均可见；两主题的错误色/按钮命中一致。
+- 已在最终产品二进制回归mini-pin-regression-{mini,fm,feedback,intelligence,shortcuts}，
+  分别19/22/28/23/6态。最后6态保留独立外进程的实际X11系统按键与原行为断言；
+  无额外截图、不计入30图，也不外推为Wayland/Windows或物理键盘。
+- 账号/API/PCM全部合成，没有真实账号/音乐请求或账号写入；libmpv实际解码至null，
+  不证明声卡听感，Linux截图不证明Windows实机或官方像素一致。
+
+Windows CI独立输入链路
+- 旧a4732c4/41281027082已结束：Linux完整job成功，Windows的desktop_lyrics_driver
+  取前台失败，CI gate失败。日志ci-a4732c4-windows-failed.log保留；不能忽略该失败。
+- 定位桌面歌词探针/驱动漏接迷你窗口已有的精确PID授权。现只在全局Ctrl+Alt+D前
+  授权实际独立进程、核对原生回执；仍要求自己的窗口实际成为前台，再真实SendInput。
+  Escape/Tab继续使用主窗口；不修改系统策略、广播权限或用业务IPC替代系统按键。
+- 本地歌词完整25态/重启/输入区域及独立系统按键回归通过：lyric-foreground-regression，
+  25态没有新增截图。Windows授权本身仍须新HEAD的Windows job实际验证。
+- 50e09cd/41285968621为上一批小窗反馈运行；本批最终HEAD另触发一次CI并保存到
+  mini-pin-ci-receipt.json，不取消/重启旧运行。只按精确SHA报告完整CI结果；本地
+  全测或旧Linux成功不能代替最终Windows/CI gate。
+- 生产客户端不导入window_manager.py。测试只有显式标志才在隔离显示启动Openbox，
+  已有WM不替换，超时6秒且只清理本次子进程；Windows不启用该启动器。
+- 本批代码、原生探针/CI、Windows独立输入修正和文档分别提交，main/版本/标签/
+  发布附件未改变。完整菜单、资源菜单、新版H5/分层理由、推荐补充和逐页对照继续。
