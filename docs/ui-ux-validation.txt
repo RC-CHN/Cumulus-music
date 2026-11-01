@@ -3198,3 +3198,72 @@ Windows CI独立输入链路
   已有WM不替换，超时6秒且只清理本次子进程；Windows不启用该启动器。
 - 本批代码、原生探针/CI、Windows独立输入修正和文档分别提交，main/版本/标签/
   发布附件未改变。完整菜单、资源菜单、新版H5/分层理由、推荐补充和逐页对照继续。
+
+
+2026-11-01 小窗窗口菜单：播放策略与桌面歌词的同一状态
+- 最新优先级是性能达到正常可用，先解决UI逻辑一致性和功能。本专项没有增加帧率
+  指标或新图形后端开关。官方来源/字段/调用关系、社区差异和明确缺口见
+  mini-window-menu-contracts.txt；总目标继续active。
+- 窗口菜单复用置顶、完整模式、普通/心动/FM/一起听播放策略，接入桌面歌词开关、
+  重试、修复和锁定/解锁，并经真实生命周期退出。新增三个小窗专用窄IPC，保留
+  账号/窗口代次/偏好revision/原生状态快照和一次性上下文；主窗不能借用这些命令。
+- 歌词启动等待不占小窗transport锁。真实8秒启动超时时仍可暂停/定位；保存成功
+  而窗口失败可只重试打开，保存拒绝不伪造窗口变化，设置损坏有显式修复入口。
+  菜单打开期间只读观察其他窗口的改动；短暂忙碌后继续读，不重放写操作。
+
+实测发现与修正
+- mini-menu-inert-before复现退场旧节点迟到click触发置顶。修正select的当前open/
+  节点连接/inert/所属面板/当前可用项校验；inert本身不足以拦截程序化迟到回调。
+- mini-menu-inert-fixed暴露子菜单可见性更新前聚焦失败。place后再等一次布局，
+  才把键盘焦点交给子菜单；Escape先回父菜单，第二次才关闭整组。
+- mini-menu-final-kde与final-native-gui跑到33态后发现旧账号菜单中的已有焦点
+  仍停在离场节点，虽然不能重新聚焦/写操作也被拒绝。MenuTransition离场先移除
+  自己持有的焦点，再inert；不抢走其他控件或新账号的焦点。
+- 截图发现顶栏焦点环被上沿裁掉。mini-menu-focus-outline-before在菜单关闭时
+  复现top=-2，新增独立轮廓几何断言后失败；现将顶栏焦点环放入按钮内侧，最终
+  33态通过。歌词失败提示补上“桌面歌词”上下文，与播放故障区分。
+- 早期accept-gui的左侧采样点被相邻子菜单阴影覆盖；改为菜单上部中央的实色内边。
+  另一个final-gui在19态被无合成器Xvfb中的透明歌词窗口黑底遮挡，截图检查真实
+  失败，未减弱颜色断言，也未算入完整33图。隔离Openbox仅用于完整交互/原生流程，
+  视觉证据使用有合成器的本机KDE/XWayland；不能宣称无合成器桌面视觉已通过。
+
+最终证据（不累计先前失败/修正中的重复截图）
+- mini-menu-delivery-kde：本人KDE Wayland/XWayland125%，33态/33张实际截图。
+  只从自有PID中按准确窗口标题读取目标客户区的合成器pixmap，不捕获整个桌面；
+  三窗口同时存在时也不会误截桌面歌词代替迷你播放器。physical.json另确认可见/
+  焦点/采样检查；通用report的physicalDisplayVerified=false不覆盖这份本机记录。
+- mini-menu-delivery-gallery：原PNG索引及SHA256、三张总览。已查看全部总览，并
+  放大检查最终保存拒绝帧、顶栏焦点环和菜单失败/重试布局。缩略图不替换原PNG。
+  两主题在420×206内有界滚动、190px父子菜单不重叠，标题/进度/音量仍可用。
+- mini-menu-delivery-gui：Xvfb/Openbox完整33态，0额外截图；同一原生播放器保持
+  暂停10秒，普通随机/心动开启退出/房间三态/FM两态、切歌/账号及旧窗口上下文均
+  经生产UI/IPC验证。FM/心动/一起听API请求数量也核对合成服务端记录。
+- mini-menu-delivery-exit-gui：另一新隔离配置33态，最后实际点击菜单退出，主进程
+  以0退出。exit-armed仅记录前置证据，不会自己退出，不能用fixture关程序冒充菜单。
+- mini-menu-regression-{mini,fm,feedback,intelligence,pin,unmanaged,shortcuts}分别
+  19/22/28/23/14/2/6态通过；lyrics另25态含重开、独立系统按键及原生输入区域。
+  speed32态、quality35+重开3态均通过，验证新增子菜单及通用离场处理未破坏原菜单。
+  前几组使用accepted构建；最后仅改顶栏焦点环与歌词错误文案后，delivery构建重新
+  验完整菜单33态/真实退出33态及本机33图。不把这些回归数等同全应用UI完成。
+- Node24.16.0、Rust1.96.0及锁文件：npm ci，最终format:check、459项前端测试
+  （0失败/跳过）、类型检查及production build通过，见mini-menu-npm-ci.log和
+  mini-menu-delivery-{format,frontend,build}.log。新增4项前端状态用例。
+- 最终Rust业务源码的fmt/严格Clippy和全工作区1395 passed、0 failed/ignored、
+  276结果目标通过：mini-menu-accepted-{rust-format,clippy,workspace}.log。之后只有
+  上述CSS/文案与探针几何检查变化；最终生产客户端及三种探针重新构建见
+  mini-menu-delivery-native.log，没有在Rust嵌入dist时同时重建前端。
+- source_audit/release_guard、CI工具36项及新增JS/Python语法检查通过。Linux/Windows
+  CI各新增正常/真实退出两组33态；只有精确SHA运行可证明最终跨平台CI。
+
+未完成与交付边界
+- M622官方菜单的“词曲报错”仍是新确认缺口；M3085/M109及API-0116/0117的类型
+  读取、字段、筛选、描述校验/当前歌词版本/提交/失败保留表单已记录，尚未迁移，
+  不能将当前歌词显示/偏移或这33态替代该功能验收。没有添加占位入口。
+- 账号/API/PCM全为合成，没有真实账号读取、写入、反馈提交、邀请或公开发布；
+  libmpv实际解码至null，不证明物理声卡听感或一起听实时双账号。
+- 没有同状态官方运行截图，不宣称像素一致；FM两态/房间三态是明确的社区适配。
+  Windows实机视觉、其余歌词异常组合、普通资源菜单、新版H5/推荐补充和全应用
+  逐页对照仍在原目标内。
+- 旧1483741/41288744819最近观察Linux完整job/前端成功，Windows仍进行中；不把
+  它当成本批CI。最终功能/探针/文档分批提交后只触发一次新HEAD手动CI，收据保存
+  在私有mini-menu-ci-receipt.json。未合并main、创建版本标签或修改发行附件。
