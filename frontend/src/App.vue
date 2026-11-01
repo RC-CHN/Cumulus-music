@@ -719,7 +719,7 @@ function cloudBatchLeft() {
   const target =
     cloudBatchOrigin?.isConnected && !cloudBatchOrigin.matches(':disabled')
       ? cloudBatchOrigin
-      : root?.querySelector<HTMLElement>('[data-cloud-batch-open]');
+      : root?.querySelector<HTMLElement>('[data-cloud-toolbar-more] .menu-trigger');
   target?.focus({ preventScroll: true });
 }
 

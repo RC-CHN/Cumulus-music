@@ -18,6 +18,7 @@ const paths: Record<string, string> = {
     'M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 0-4 2 2 0 0 1 0-4h4a4 4 0 0 0 4-4c0-4-5-6-9-6ZM7 10h.01M10 7h.01M15 7h.01',
   star: 'm12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9z',
   download: 'M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5',
+  upload: 'M12 15V3m-5 5 5-5 5 5M4 16v5h16v-5',
   headphones: 'M4 14v-3a8 8 0 0 1 16 0v3M4 12H2v8h5v-8zM20 12h2v8h-5v-8z',
   comment: 'M4 4h16v12H9l-5 4zM8 8h8M8 12h5',
   thumb: 'M8 10l4-7h3v7h6l-2 11H8zM3 10h5v11H3z',

@@ -839,3 +839,45 @@ test('local playback reconciliation keeps newer stream state and never takes tra
   assert.equal(f.player.view.value?.revision, '8');
   f.player.dispose();
 });
+
+test('a cloud toolbar preparation preserves query/quality but cannot target a newer player intent', async () => {
+  const q = {
+    tab: 'uploaded' as const,
+    keyword: '合成',
+    sort: 'title' as const,
+    descending: true,
+    offset: 200,
+    limit: 200,
+  };
+  for (const changed of ['none', 'pause', 'queue', 'account']) {
+    const calls: PlayerAction[] = [];
+    const f = fixture({
+      playerAction: async (_e, action) => {
+        calls.push(action);
+        return state('4', '1', 'p1');
+      },
+    });
+    await f.player.connect(account());
+    f.emit(state('2', '1', 'p1'));
+    const prepared = f.player.prepareCloudQueue();
+    if (changed === 'pause') await f.player.action({ kind: 'pause', paused: true });
+    if (changed === 'queue') f.emit({ ...state('3', '1', 'p1'), queueRevision: 'new' });
+    if (changed === 'account') await f.player.connect(account('2'));
+    const before = calls.length;
+    if (changed === 'none') {
+      await prepared(['3', '1'], 'cloud-r1', q);
+      assert.deepEqual(calls.at(-1), {
+        kind: 'queue_cloud_batch',
+        ids: ['3', '1'],
+        revision: 'cloud-r1',
+        query: q,
+        quality: 'standard',
+        expected_queue_revision: '1',
+      });
+    } else {
+      assert.throws(() => prepared(['3', '1'], 'cloud-r1', q), { code: 'playback_changed' });
+      assert.equal(calls.length, before);
+    }
+    f.player.dispose();
+  }
+});

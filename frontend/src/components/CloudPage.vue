@@ -6,6 +6,7 @@ import Icon from './Icon.vue';
 import CloudUploadDialog from './CloudUploadDialog.vue';
 import CloudDeleteDialog from './CloudDeleteDialog.vue';
 import CloudRowMenu from './cloud/CloudRowMenu.vue';
+import CloudToolbarMenu from './cloud/CloudToolbarMenu.vue';
 import PlaylistCollectDialog from './PlaylistCollectDialog.vue';
 import type { PlayerModel } from '../composables/usePlayer';
 import type { PlaylistManager } from '../composables/usePlaylists';
@@ -37,7 +38,8 @@ const emit = defineEmits<{
 const { page: view, query, busy, loading, error, readError, notice } = props.model;
 const dialogOwner = ref(props.model.accountEpoch.value);
 const pageRoot = ref<HTMLElement>();
-const rowMenu = ref<InstanceType<typeof CloudRowMenu>>(),
+const toolbar = ref<InstanceType<typeof CloudToolbarMenu>>(),
+  rowMenu = ref<InstanceType<typeof CloudRowMenu>>(),
   rowDialogOpen = ref(false),
   collecting = ref<{ epoch: string; tracks: TrackView[] }>(),
   dialogReturn = ref<HTMLElement>();
@@ -107,6 +109,7 @@ watch(
 );
 onUnmounted(() => emit('dialog', false));
 function openUpload() {
+  if (toolbar.value?.busy || busy.value) return;
   dialogReturn.value = undefined;
   dialogOwner.value = props.model.accountEpoch.value;
   uploadOpen.value = true;
@@ -261,6 +264,7 @@ function control(task: CloudUpload, kind: 'pause' | 'resume' | 'cancel' | 'dismi
     ref="pageRoot"
     class="cloud-page"
     aria-label="音乐云盘"
+    :data-cloud-epoch="model.accountEpoch.value"
     :data-cloud-loading="loading"
     :data-cloud-ready="!!view"
   >
@@ -314,22 +318,36 @@ function control(task: CloudUpload, kind: 'pause' | 'resume' | 'cancel' | 'dismi
           class="secondary cloud-upload-button"
           aria-label="上传音乐"
           title="上传音乐"
-          :disabled="busy || full"
+          :disabled="busy || full || toolbar?.busy"
           @click="openUpload"
         >
-          <Icon name="up" /></button
-        ><button
+          <Icon name="upload" /></button
+        ><CloudToolbarMenu
+          ref="toolbar"
+          :model="model"
+          :player="player"
+          :disabled="busy || loading || uploadOpen || !!deletion || !!collecting || rowDialogOpen"
+          @batch="emit('batch')"
+          @download="(tracks, revision) => emit('download', tracks, revision)"
+          @expired="emit('expired')"
+        /><button
+          v-if="selected.size"
           class="secondary"
-          :disabled="busy || !view?.revision || !selected.size"
+          :disabled="busy || !view?.revision || toolbar?.busy"
           @click="remove"
         >
           删除所选</button
-        ><button class="secondary" :disabled="!selected.size || !view?.revision" @click="download">
-          <Icon name="down" />下载所选
+        ><button
+          v-if="selected.size"
+          class="secondary"
+          :disabled="busy || !view?.revision || toolbar?.busy"
+          @click="download"
+        >
+          <Icon name="download" />下载所选
         </button></template
       ><template v-else
         ><button class="primary" :disabled="busy || full" @click="openUpload">
-          <Icon name="up" />上传音乐</button
+          <Icon name="upload" />上传音乐</button
         ><button
           class="secondary"
           :disabled="busy || full || !view?.uploadingCount"
@@ -344,15 +362,6 @@ function control(task: CloudUpload, kind: 'pause' | 'resume' | 'cancel' | 'dismi
           {{ selected.size ? '暂停所选' : '全部暂停' }}
         </button></template
       >
-      <button
-        v-if="query.tab === 'uploaded'"
-        data-cloud-batch-open
-        class="secondary"
-        :disabled="busy || loading || !view?.revision"
-        @click="emit('batch')"
-      >
-        批量操作
-      </button>
       <form class="cloud-search" role="search" @submit.prevent="model.filter({ keyword })">
         <input
           v-model="keyword"
@@ -382,6 +391,20 @@ function control(task: CloudUpload, kind: 'pause' | 'resume' | 'cancel' | 'dismi
         <Icon name="refresh" />
       </button>
     </div>
+    <p v-if="toolbar?.message" class="cloud-notice cloud-toolbar-feedback" role="status">
+      {{ toolbar.message }}
+    </p>
+    <p v-if="toolbar?.error" class="cloud-error cloud-toolbar-feedback failed" role="alert">
+      {{ toolbar.error }}
+      <button
+        class="text-button"
+        :disabled="toolbar.busy"
+        @click="toolbar.needsRefresh ? toolbar.refresh() : toolbar.retry()"
+      >
+        {{ toolbar.needsRefresh ? '刷新云盘列表' : '重新执行' }}
+      </button>
+      <button class="text-button" :disabled="toolbar.busy" @click="toolbar.clear()">关闭</button>
+    </p>
     <p v-if="full" class="cloud-error" role="status">云盘空间已满，请清理部分歌曲后再上传。</p>
     <p v-if="notice" class="cloud-notice" role="status">{{ notice }}</p>
     <p v-if="error || (readError && view) || view?.workerError" class="cloud-error" role="alert">
@@ -606,7 +629,7 @@ function control(task: CloudUpload, kind: 'pause' | 'resume' | 'cancel' | 'dismi
         </article>
       </div>
       <div v-else class="empty-state">
-        <Icon name="up" />
+        <Icon name="upload" />
         <h2>还没有上传任务</h2>
         <p>选择音频文件，开始建立你的音乐云盘</p>
         <button class="primary" :disabled="busy || full" @click="openUpload">上传音乐</button>
@@ -674,7 +697,15 @@ function control(task: CloudUpload, kind: 'pause' | 'resume' | 'cancel' | 'dismi
       :player="player"
       :rows="tracks"
       :selected="selected"
-      :disabled="busy || loading || uploadOpen || !!deletion || !!collecting || rowDialogOpen"
+      :disabled="
+        busy ||
+        loading ||
+        !!toolbar?.busy ||
+        uploadOpen ||
+        !!deletion ||
+        !!collecting ||
+        rowDialogOpen
+      "
       @collect="collectRows"
       @remove="deleteRows"
       @dialog="rowDialogOpen = $event"

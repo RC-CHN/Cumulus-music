@@ -71,7 +71,7 @@ function close() {
       <p class="muted">选择本地音频，上传后可在登录此账号的设备上收听。每个文件最大 512 MB。</p>
       <div class="cloud-source-actions">
         <button class="secondary" :disabled="blocked" @click="pick('audio')">
-          <Icon name="up" />选择音频文件
+          <Icon name="upload" />选择音频文件
         </button>
         <button class="secondary" :disabled="blocked" @click="pick('folder')">选择文件夹</button>
       </div>

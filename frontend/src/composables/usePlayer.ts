@@ -192,6 +192,32 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       quality: view.value?.qualityPreferences.quality ?? 'standard',
     });
   }
+  // A toolbar may first read multiple catalog pages. Capture the user's player
+  // intent before that read, so its late result cannot target a newer queue.
+  function prepareCloudQueue() {
+    const captured = epoch,
+      session = connection,
+      intent = request,
+      before = view.value;
+    return (ids: string[], revision: string, query: CloudQuery) => {
+      const current = view.value;
+      if (
+        !ready.value ||
+        captured !== epoch ||
+        session !== connection ||
+        intent !== request ||
+        !before ||
+        !current ||
+        before.queueRevision !== current.queueRevision ||
+        before.playId !== current.playId ||
+        before.entryId !== current.entryId ||
+        before.state !== current.state ||
+        before.fm !== current.fm
+      )
+        throw { code: 'playback_changed', message: '播放状态已变化，请重新执行添加。' };
+      return queueCloud(ids, revision, query);
+    };
+  }
   function queueDownloads(task_ids: string[]) {
     return queueAction({ kind: 'queue_downloads', task_ids });
   }
@@ -477,6 +503,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     queuePlaylist,
     queueDownloads,
     queueCloud,
+    prepareCloudQueue,
     prepareSelection,
     view,
     queue,
