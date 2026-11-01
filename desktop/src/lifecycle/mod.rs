@@ -301,6 +301,9 @@ pub async fn window_lifecycle<R: tauri::Runtime>(
 ) -> Result<LifecycleView, String> {
     view(&app)
 }
+pub(crate) fn request_exit<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    actions::request(app, true);
+}
 #[tauri::command]
 pub async fn window_close_command<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,

@@ -27,6 +27,10 @@ export function createMiniClient(generation: string): MiniClient {
       invoke('mini_preferences_command', { generation, ticket, command }),
     applyPreferences: (ticket, expectedRevision) =>
       invoke('mini_preferences_apply', { generation, ticket, expectedRevision }),
+    lyricMenu: (ticket) => invoke('mini_lyric_menu_read', { generation, ticket }),
+    lyricMenuAction: (menuTicket, action) =>
+      invoke('mini_lyric_menu_action', { generation, menuTicket, action }),
+    exit: () => invoke('mini_exit', { generation }),
     drag: () => getCurrentWindow().startDragging(),
     close: () => getCurrentWindow().close(),
   };

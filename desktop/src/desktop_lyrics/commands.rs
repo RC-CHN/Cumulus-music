@@ -179,15 +179,8 @@ pub async fn desktop_lyric_action<R: Runtime>(
         }
         Action::Lock => gui(&app, move |app| {
             if !snapshot.same_controls(&app.state::<MusicClient>().mini_snapshot()?) { return Err(Error::StaleResponse); }
-            let label = app.state::<Host>().lock()?.get(&generation)?.label.clone();
-            if !crate::lifecycle::view(&app).is_ok_and(|v| v.tray_available) {
-                let main = app.get_webview_window("main").ok_or(Error::State("lyric unlock surface unavailable"))?;
-                main.show().and_then(|_| main.unminimize()).map_err(|_| Error::State("lyric unlock surface unavailable"))?;
-            }
-            app.get_webview_window(&label).ok_or(Error::StaleResponse)?.set_ignore_cursor_events(true)
-                .map_err(|_| Error::State("desktop lyric lock failed"))?;
-            app.state::<Host>().lock()?.get_mut(&generation)?.locked = true;
-            Ok(())
+            app.state::<Host>().lock()?.get(&generation)?;
+            lock(&app)
         }).await?,
         Action::Details | Action::Settings => gui(&app, move |app| {
             if !snapshot.same_controls(&app.state::<MusicClient>().mini_snapshot()?) { return Err(Error::StaleResponse); }

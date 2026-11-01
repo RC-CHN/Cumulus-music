@@ -5,10 +5,13 @@ import { useLocalShortcuts } from '../composables/useLocalShortcuts';
 import { useMiniModes } from '../composables/useMiniModes';
 import { useMiniFeedback } from '../composables/useMiniFeedback';
 import { useMiniPin } from '../composables/useMiniPin';
+import { useMiniWindowMenu } from '../composables/useMiniWindowMenu';
+import MiniWindowMenu from './MiniWindowMenu.vue';
 import MiniFeedbackPanel from './MiniFeedbackPanel.vue';
 import ModalTransition from '../components/ModalTransition.vue';
 import { createMiniClient, createMiniShortcutClient } from '../adapters/mini';
-import type { MiniAction, MiniQueuePage, MiniView } from '../services/mini';
+import type { MiniAction, MiniQueuePage, MiniView, MiniLyricMenuAction } from '../services/mini';
+import type { ModeTarget } from '../services/playbackMode';
 import { modeLabel, modeIcon } from '../services/playbackMode';
 import { artistLabel } from '../services/artistLabel';
 import './mini.css';
@@ -41,6 +44,70 @@ const feedbackTrigger = ref<HTMLButtonElement>();
 const feedbackNavigationError = ref('');
 const pinState = useMiniPin(view, client, () => refresh(true), busy);
 const pinTrigger = ref<HTMLButtonElement>();
+const windowMenu = ref<InstanceType<typeof MiniWindowMenu>>();
+const menuModel = useMiniWindowMenu(view, client, busy, () => refresh(true));
+const lyricMenuIssue = computed(() =>
+  menuModel.issue.value ? `桌面歌词：${menuModel.issue.value}` : '',
+);
+let menuFocus: { epoch: string; control: HTMLElement; surface: HTMLElement } | undefined;
+async function restoreMenuFocus() {
+  if (
+    busy.value ||
+    menuModel.working.value ||
+    modes.busy.value ||
+    modes.mode.pending.value ||
+    !menuFocus
+  )
+    return;
+  const saved = menuFocus;
+  menuFocus = undefined;
+  await nextTick();
+  if (
+    !disposed &&
+    media.value?.epoch === saved.epoch &&
+    document.activeElement === saved.surface &&
+    saved.control.isConnected &&
+    !(saved.control as HTMLButtonElement).disabled
+  )
+    saved.control.focus({ preventScroll: true });
+}
+watch([busy, menuModel.working, modes.busy, modes.mode.pending], () => void restoreMenuFocus());
+async function windowMenuSelect(key: string) {
+  const control = document.activeElement,
+    surface = control?.closest<HTMLElement>('.mini-shell');
+  if (view.value && control instanceof HTMLElement && surface) {
+    menuFocus = { epoch: view.value.media.epoch, control, surface };
+    surface.focus({ preventScroll: true });
+  }
+  if (key === 'pin') await pinState.apply();
+  else if (key === 'return') await windowAction('returnMain');
+  else if (key === 'exit') {
+    try {
+      await client.exit();
+    } catch (e) {
+      error.value = message(e);
+    }
+  } else if (key.startsWith('mode:')) modes.mode.select(key.slice(5) as ModeTarget);
+  else if (key.startsWith('lyric:')) await menuModel.action(key.slice(6) as MiniLyricMenuAction);
+  await restoreMenuFocus();
+}
+function windowContext(event: MouseEvent | KeyboardEvent) {
+  if (
+    event instanceof KeyboardEvent &&
+    event.key !== 'ContextMenu' &&
+    !(event.key === 'F10' && event.shiftKey)
+  )
+    return;
+  event.preventDefault();
+  event.stopPropagation();
+  const header = event.currentTarget as HTMLElement,
+    box = header.getBoundingClientRect();
+  void windowMenu.value?.showAt(
+    event instanceof MouseEvent ? event.clientX : box.right - 8,
+    event instanceof MouseEvent ? event.clientY : box.bottom,
+    header,
+  );
+}
 watch(feedback.open, () => {
   feedbackNavigationError.value = '';
 });
@@ -281,10 +348,28 @@ onUnmounted(() => {
     :data-intelligence-operation="media?.intelligenceOperation"
     aria-label="迷你播放器"
   >
-    <header class="mini-header">
+    <header class="mini-header" tabindex="-1" @contextmenu="windowContext" @keydown="windowContext">
       <span class="mini-brand" @mousedown.left="windowAction('drag')"
         >Cumulus <span>迷你播放器</span></span
       >
+      <MiniWindowMenu
+        ref="windowMenu"
+        :view="view"
+        :modes="modes"
+        :lyrics="menuModel"
+        :pin-label="pinState.label.value"
+        :pin-selected="pinState.selected.value"
+        :disabled="
+          busy ||
+          menuModel.working.value ||
+          !view ||
+          feedback.open.value ||
+          modes.busy.value ||
+          modes.mode.pending.value
+        "
+        :aria-busy="menuModel.working.value"
+        @select="windowMenuSelect"
+      />
       <button
         ref="pinTrigger"
         data-mini-pin
@@ -480,10 +565,22 @@ onUnmounted(() => {
       <span
         v-else
         class="mini-message"
-        :title="error || pinState.notice.value || media?.error || ''"
-        :role="error || pinState.notice.value || media?.error ? 'alert' : undefined"
+        :title="
+          menuModel.working.value
+            ? '正在更新桌面歌词…'
+            : error || lyricMenuIssue || pinState.notice.value || media?.error || ''
+        "
+        :role="
+          menuModel.working.value
+            ? 'status'
+            : error || lyricMenuIssue || pinState.notice.value || media?.error
+              ? 'alert'
+              : undefined
+        "
         >{{
+          (menuModel.working.value ? '正在更新桌面歌词…' : '') ||
           error ||
+          lyricMenuIssue ||
           pinState.notice.value ||
           media?.error ||
           (media?.state === 'loading' ? '正在加载…' : media?.item?.album || '云间音乐')

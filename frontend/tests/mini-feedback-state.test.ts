@@ -57,6 +57,11 @@ function fixture(overrides: Partial<MiniClient> = {}) {
     refreshes = 0;
   const client = {
     applyPreferences: async () => {},
+    lyricMenu: async () => {
+      throw Error('unused');
+    },
+    lyricMenuAction: async () => {},
+    exit: async () => {},
     feedbackView: async (ticket: string, remote: boolean) => {
       reads.push([ticket, remote]);
       return { ...status };

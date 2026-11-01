@@ -84,9 +84,22 @@ export interface MiniClient {
   panel(expanded: boolean): Promise<void>;
   preferences(ticket: string, command: MiniPreferencesCommand): Promise<void>;
   applyPreferences(ticket: string, expectedRevision: string): Promise<void>;
+  lyricMenu(ticket: string): Promise<MiniLyricMenuView>;
+  lyricMenuAction(menuTicket: string, action: MiniLyricMenuAction): Promise<void>;
+  exit(): Promise<void>;
   drag(): Promise<void>;
   close(): Promise<void>;
 }
+export interface MiniLyricMenuView {
+  ticket: string;
+  enabled: boolean;
+  visible: boolean;
+  opening: boolean;
+  locked: boolean;
+  damaged: boolean;
+  error: string | null;
+}
+export type MiniLyricMenuAction = 'toggle' | 'retry' | 'repair' | 'lock' | 'unlock';
 export type MiniIntelligenceCommand = { kind: 'start' | 'continue'; operation_id: string };
 export interface MiniPlaybackReceipt {
   epoch: string;

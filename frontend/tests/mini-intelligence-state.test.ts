@@ -119,6 +119,11 @@ function fixture() {
     panel: async () => {},
     preferences: async () => {},
     applyPreferences: async () => {},
+    lyricMenu: async () => {
+      throw Error('unused');
+    },
+    lyricMenuAction: async () => {},
+    exit: async () => {},
     drag: async () => {},
     close: async () => {},
   };

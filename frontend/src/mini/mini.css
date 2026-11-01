@@ -137,6 +137,9 @@
   width: 30px;
   height: 28px;
 }
+.mini-header button:focus-visible {
+  outline-offset: -2px;
+}
 .mini-header .icon {
   width: 15px;
   height: 15px;

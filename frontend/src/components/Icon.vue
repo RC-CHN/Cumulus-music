@@ -51,6 +51,8 @@ const paths: Record<string, string> = {
   refresh: 'M20 7a9 9 0 1 0 1 8M20 2v5h-5',
   user: 'M20 21a8 8 0 0 0-16 0M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z',
   lock: 'M5 10h14v11H5zM8 10V6a4 4 0 0 1 8 0v4',
+  unlock: 'M5 10h14v11H5zM8 10V6a4 4 0 0 1 8 0',
+  pin: 'M9 3h6l-1 6 4 4v2H6v-2l4-4-1-6m3 12v7',
 };
 </script>
 <template>

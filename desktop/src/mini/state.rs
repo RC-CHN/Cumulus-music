@@ -14,6 +14,8 @@ pub struct Window {
     pub ticket: u64,
     pub snapshot: Option<MiniSnapshot>,
     pub intelligence: Option<(String, String)>,
+    pub lyric_menu_serial: u64,
+    pub lyric_menu: Option<(String, crate::desktop_lyrics::mini_menu::Snapshot)>,
 }
 #[derive(Default)]
 pub struct Ledger {
@@ -63,6 +65,8 @@ impl Ledger {
             ticket: 0,
             snapshot: None,
             intelligence: None,
+            lyric_menu_serial: 0,
+            lyric_menu: None,
         });
         Ok((generation, label))
     }

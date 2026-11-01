@@ -2,6 +2,7 @@
 pub(crate) mod commands;
 mod content;
 mod geometry;
+pub(crate) mod mini_menu;
 pub(crate) mod settings;
 pub(crate) mod shortcuts;
 mod state;
@@ -92,6 +93,39 @@ pub(crate) fn unlock<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<()> {
             window.locked = false;
         }
     }
+    Ok(())
+}
+pub(crate) fn lock<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<()> {
+    let label = app
+        .state::<Host>()
+        .lock()?
+        .window
+        .as_ref()
+        .filter(|w| w.ready)
+        .map(|w| w.label.clone())
+        .ok_or(Error::StaleResponse)?;
+    if !crate::lifecycle::view(app).is_ok_and(|v| v.tray_available)
+        && !crate::mini::unlock_surface(app)
+    {
+        let main = app
+            .get_webview_window("main")
+            .ok_or(Error::State("lyric unlock surface unavailable"))?;
+        main.show()
+            .and_then(|_| main.unminimize())
+            .map_err(|_| Error::State("lyric unlock surface unavailable"))?;
+    }
+    app.get_webview_window(&label)
+        .ok_or(Error::StaleResponse)?
+        .set_ignore_cursor_events(true)
+        .map_err(|_| Error::State("desktop lyric lock failed"))?;
+    let host = app.state::<Host>();
+    let mut state = host.lock()?;
+    state
+        .window
+        .as_mut()
+        .filter(|w| w.label == label)
+        .ok_or(Error::StaleResponse)?
+        .locked = true;
     Ok(())
 }
 pub(crate) fn closing<R: Runtime>(window: &tauri::Window<R>, event: &tauri::WindowEvent) -> bool {

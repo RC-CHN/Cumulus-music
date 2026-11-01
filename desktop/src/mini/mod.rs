@@ -3,6 +3,7 @@ pub(crate) mod commands;
 pub(crate) mod feedback;
 pub(crate) mod intelligence;
 mod layout;
+pub(crate) mod menu;
 pub(crate) mod native_pin;
 pub(crate) mod preferences;
 mod shortcuts;
@@ -34,6 +35,20 @@ pub(crate) fn owns<R: Runtime>(app: &tauri::AppHandle<R>, label: &str) -> bool {
                 .map(|l| l.window.as_ref().is_some_and(|w| w.label == label))
         })
         .unwrap_or(false)
+}
+pub(crate) fn unlock_surface<R: Runtime>(app: &tauri::AppHandle<R>) -> bool {
+    app.try_state::<Host>()
+        .and_then(|host| {
+            host.lock().ok().and_then(|state| {
+                state
+                    .window
+                    .as_ref()
+                    .filter(|w| w.phase == Phase::Active)
+                    .map(|w| w.label.clone())
+            })
+        })
+        .and_then(|label| app.get_webview_window(&label))
+        .is_some_and(|w| w.is_visible().unwrap_or(false))
 }
 async fn gui<R: Runtime, T: Send + 'static>(
     app: &tauri::AppHandle<R>,
