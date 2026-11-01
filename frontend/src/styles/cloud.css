@@ -438,6 +438,40 @@
   color: var(--muted);
   font-size: 13px;
 }
+.cloud-delete-dialog .cloud-delete-local-option {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  text-align: left;
+  gap: 8px;
+  margin-block: 12px;
+}
+.cloud-delete-dialog .cloud-delete-local-option input {
+  flex-shrink: 0;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.cloud-delete-local-result summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+.cloud-delete-local-result ul {
+  list-style: none;
+  padding: 0;
+  max-height: 160px;
+  overflow: auto;
+}
+.cloud-delete-local-result li {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding-block: 4px;
+  font-size: 12px;
+}
+.cloud-delete-local-result li > span:last-child {
+  color: var(--muted);
+}
 .cloud-delete-review:focus {
   outline: none;
 }

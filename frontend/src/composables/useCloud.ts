@@ -9,7 +9,9 @@ import {
   type CloudCommand,
   type CloudResult,
   type CloudTab,
+  type CloudRemoval,
 } from '../services/cloud.ts';
+import type { CloudDeleteTarget } from '../services/cloudDelete.ts';
 function defaultQuery(tab: CloudTab = 'uploaded'): CloudQuery {
   return {
     tab,
@@ -169,6 +171,52 @@ export function useCloud(core: CloudClient = useCore(), sessionChanged = () => {
       return [];
     }
   }
+  async function removalCall(
+    run: (captured: string) => Promise<CloudRemoval>,
+    mutating = false,
+  ): Promise<CloudRemoval | undefined> {
+    if (!epoch || busy.value) return;
+    const version = generation;
+    busy.value = true;
+    error.value = '';
+    try {
+      const result = await run(epoch);
+      if (version !== generation || result.epoch !== epoch) return;
+      if (mutating) {
+        notice.value = result.error ?? (result.deletion ? deletionMessage(result.deletion) : '');
+        await refresh(false, true);
+      }
+      return result;
+    } catch (e) {
+      if (version === generation) issue(e);
+    } finally {
+      if (version === generation) busy.value = false;
+    }
+  }
+  function deletePrepare(target: CloudDeleteTarget) {
+    if (target.epoch !== accountEpoch.value) return Promise.resolve(undefined);
+    return removalCall((captured) =>
+      core.cloudDeletePrepare(captured, [...target.ids], target.revision),
+    );
+  }
+  function deleteRead(id: string) {
+    return removalCall((captured) => core.cloudDeleteView(captured, id, true), true);
+  }
+  function deleteExecute(id: string, deleteLocal: boolean, retryLocal: boolean) {
+    return removalCall(
+      (captured) => core.cloudDeleteExecute(captured, id, deleteLocal, retryLocal),
+      true,
+    );
+  }
+  async function deleteDiscard(captured: string, id: string) {
+    // Discard only unconfirmed native previews. Files and remote resources are untouched.
+    if (captured !== epoch) return;
+    try {
+      await core.cloudDeleteDiscard(captured, id);
+    } catch {
+      /* Core bounds abandoned previews. */
+    }
+  }
   function dispose() {
     generation++;
     read++;
@@ -191,6 +239,10 @@ export function useCloud(core: CloudClient = useCore(), sessionChanged = () => {
     filter,
     command,
     pick,
+    deletePrepare,
+    deleteRead,
+    deleteExecute,
+    deleteDiscard,
     dispose,
   };
 }

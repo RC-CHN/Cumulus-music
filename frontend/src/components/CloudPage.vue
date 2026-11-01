@@ -28,6 +28,7 @@ import {
   type CloudTrack,
   type CloudQuery,
   type CloudCommand,
+  type CloudDelete,
 } from '../services/cloud';
 const props = defineProps<{
   model: CloudModel;
@@ -268,6 +269,19 @@ function download() {
       tracks.value.filter((row) => selected.value.has(row.track.id)).map((row) => row.track),
       view.value.revision,
     );
+}
+function reviewDeletion(op: CloudDelete, event: Event) {
+  dialogReturn.value = event.currentTarget as HTMLElement;
+  dialogOwner.value = props.model.accountEpoch.value;
+  deletion.value = {
+    epoch: props.model.accountEpoch.value,
+    revision: view.value?.revision ?? '',
+    operationId: op.id,
+    ids: [...op.ids],
+    titles: op.ids.map(
+      (id) => tracks.value.find((row) => row.track.id === id)?.track.name ?? `云盘歌曲 ${id}`,
+    ),
+  };
 }
 function removeSong(row: CloudTrack, origin: HTMLElement) {
   const target = props.model.page.value?.revision;
@@ -558,13 +572,8 @@ async function taskCommand(command: CloudCommand, event?: MouseEvent) {
       <summary>最近的删除操作</summary>
       <div v-for="op in view.deletions" :key="op.id">
         <span>{{ deletionMessage(op) }}</span
-        ><button
-          v-if="['sending', 'verifying', 'uncertain'].includes(op.phase)"
-          class="text-button"
-          :disabled="busy"
-          @click="model.command({ kind: 'reconcile_delete', id: op.id })"
-        >
-          只读核对
+        ><button class="text-button" :disabled="busy" @click="reviewDeletion(op, $event)">
+          查看结果
         </button>
       </div>
     </details>

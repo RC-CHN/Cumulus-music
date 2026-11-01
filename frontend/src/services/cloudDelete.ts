@@ -5,6 +5,7 @@ export interface CloudDeleteTarget {
   ids: string[];
   titles: string[];
   revision: string;
+  operationId?: string;
   kinds?: CloudTrack['deletionKind'][];
 }
 

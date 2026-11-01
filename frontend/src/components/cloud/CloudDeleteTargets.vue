@@ -24,14 +24,24 @@ async function move(direction: number) {
 }
 </script>
 <template>
-  <section ref="root" class="cloud-delete-review" aria-label="待删除歌曲范围" tabindex="-1">
+  <section
+    ref="root"
+    class="cloud-delete-review"
+    :aria-label="submitted ? '本次操作的歌曲范围' : '待删除歌曲范围'"
+    tabindex="-1"
+  >
     <p v-if="target.ids.length > count">
       <template v-if="submitted"
         >本次查看 {{ target.ids.length }} 首，以下为打开确认时固定的范围。</template
       >
       <template v-else>共 {{ target.ids.length }} 首，确认后将处理全部所选歌曲。</template>
     </p>
-    <ul ref="list" class="cloud-delete-targets" aria-label="待删除歌曲" tabindex="0">
+    <ul
+      ref="list"
+      class="cloud-delete-targets"
+      :aria-label="submitted ? '本次操作歌曲' : '待删除歌曲'"
+      tabindex="0"
+    >
       <li v-for="(title, index) in titles" :key="offset + index">{{ title }}</li>
     </ul>
     <nav

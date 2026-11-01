@@ -85,10 +85,42 @@ export interface CloudUpload {
 export interface CloudDelete {
   id: string;
   ids: string[];
-  phase: 'sending' | 'verifying' | 'uncertain' | 'confirmed' | 'partial' | 'rejected';
+  phase:
+    | 'preparing'
+    | 'not_submitted'
+    | 'sending'
+    | 'verifying'
+    | 'uncertain'
+    | 'confirmed'
+    | 'partial'
+    | 'rejected';
   total: number;
   removed: number;
   remaining: number;
+}
+export interface CloudRemoval {
+  epoch: string;
+  id: string;
+  revision: string;
+  ids: string[];
+  titles: string[];
+  kinds: NonNullable<CloudTrack['deletionKind']>[];
+  phase: 'prepared' | 'local' | 'remote' | 'result';
+  running: boolean;
+  deleteLocal: boolean | null;
+  localCount: number;
+  cueCount: number;
+  localIssue: string | null;
+  files: {
+    cloudId: string;
+    title: string;
+    state: 'pending' | 'removing' | 'removed' | 'missing' | 'retained' | 'failed' | 'skipped';
+    issue: string | null;
+  }[];
+  deletion: CloudDelete | null;
+  legacyOnly: boolean;
+  canContinue: boolean;
+  error: string | null;
 }
 export interface CloudPage {
   epoch: string;
@@ -134,6 +166,15 @@ export interface CloudUploadRemoval {
   items: { id: string; removed: boolean; requested: boolean; error: string | null }[];
 }
 export interface CloudClient {
+  cloudDeletePrepare(epoch: string, ids: string[], revision: string): Promise<CloudRemoval>;
+  cloudDeleteView(epoch: string, id: string, reconcile: boolean): Promise<CloudRemoval>;
+  cloudDeleteExecute(
+    epoch: string,
+    id: string,
+    deleteLocal: boolean,
+    retryLocal: boolean,
+  ): Promise<CloudRemoval>;
+  cloudDeleteDiscard(epoch: string, id: string): Promise<void>;
   openCloudCapacity(epoch: string): Promise<void>;
   cloudUploadSelection(epoch: string, history: boolean): Promise<CloudPage>;
   cloudUploadRemovals(epoch: string, ids: string[]): Promise<CloudUploadRemoval>;
@@ -174,6 +215,8 @@ export function cloudBytes(value: number | null): string {
   return `${(value / 1024 ** unit).toFixed(unit > 1 ? 2 : 0)} ${['B', 'KB', 'MB', 'GB'][unit]}`;
 }
 export function deletionMessage(op: CloudDelete): string {
+  if (op.phase === 'not_submitted') return '云盘列表已变化，本次删除未提交';
+  if (op.phase === 'preparing') return '云盘删除尚未提交，可继续已确认的操作';
   return op.phase === 'confirmed'
     ? `已确认删除 ${op.removed} 首歌曲`
     : op.phase === 'partial'

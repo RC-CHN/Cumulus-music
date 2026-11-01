@@ -1,104 +1,146 @@
-import { computed, onScopeDispose, ref, shallowRef } from 'vue';
+import { computed, onScopeDispose, reactive, ref, shallowRef } from 'vue';
 import type { CloudModel } from './useCloud.ts';
-import type { CloudDelete } from '../services/cloud.ts';
+import type { CloudRemoval } from '../services/cloud.ts';
 import type { CloudDeleteTarget } from '../services/cloudDelete.ts';
 import { captureCloudDeleteTarget } from '../services/cloudDelete.ts';
 export type { CloudDeleteTarget } from '../services/cloudDelete.ts';
 
 export function useCloudDelete(model: CloudModel, input: CloudDeleteTarget, completed: () => void) {
-  const target = captureCloudDeleteTarget(input);
-  const operation = shallowRef<CloudDelete>();
+  const original = captureCloudDeleteTarget(input);
+  const target = reactive(captureCloudDeleteTarget(original));
+  const removal = shallowRef<CloudRemoval>();
+  const operation = computed(() => removal.value?.deletion ?? undefined);
   const unknown = ref(false),
-    working = ref(false);
+    working = ref(false),
+    preparing = ref(false),
+    deleteLocal = ref(false);
   const activity = ref<'send' | 'read'>('send');
-  const known = new Set(model.view.value?.deletions.map((v) => v.id));
+  const submitted = ref(false);
   let alive = true;
-  onScopeDispose(() => (alive = false));
-  const active = () => alive && model.accountEpoch.value === target.epoch;
-  const pending = (v: CloudDelete) => ['sending', 'verifying', 'uncertain'].includes(v.phase);
-  const related = (v: CloudDelete) => v.ids.some((id) => target.ids.includes(id));
-  operation.value = model.view.value?.deletions.find((v) => pending(v) && related(v));
+  const active = () => alive && model.accountEpoch.value === original.epoch;
   const stale = computed(() => model.view.value?.revision !== target.revision);
+  const resumed = ref(false);
+  const ready = () => active() && !working.value && !preparing.value && !model.busy.value;
+  const valid = () =>
+    original.ids.length > 0 &&
+    original.ids.length <= 5000 &&
+    original.ids.length === original.titles.length &&
+    new Set(original.ids).size === original.ids.length;
+  const canPrepare = computed(
+    () =>
+      ready() &&
+      valid() &&
+      (!stale.value || !!original.operationId) &&
+      !removal.value &&
+      !submitted.value,
+  );
   const canSend = computed(
     () =>
-      active() &&
+      ready() &&
       !stale.value &&
-      target.ids.length > 0 &&
-      target.ids.length <= 5000 &&
-      target.ids.length === target.titles.length &&
-      new Set(target.ids).size === target.ids.length &&
-      !operation.value &&
-      !unknown.value &&
-      !working.value &&
-      !model.busy.value,
-  );
-  const canRead = computed(
-    () =>
-      active() &&
-      !working.value &&
-      !model.busy.value &&
-      (unknown.value || (!!operation.value && pending(operation.value))),
+      !!removal.value &&
+      removal.value.phase === 'prepared' &&
+      !removal.value.running &&
+      !submitted.value &&
+      !unknown.value,
   );
   const needsRead = computed(
-    () => unknown.value || (!!operation.value && pending(operation.value)),
+    () => unknown.value || !!removal.value?.running || removal.value?.phase === 'remote',
   );
-  function accept(value: CloudDelete) {
-    operation.value = value;
-    unknown.value = false;
-    if (value.phase === 'confirmed') completed();
-  }
-  async function recover() {
-    await model.refresh(false, true);
-    if (!active()) return;
-    const saved = model.view.value?.deletions.find(
-      (v) => related(v) && (!known.has(v.id) || pending(v)),
+  const canRead = computed(() => ready() && !!removal.value && needsRead.value);
+  const canContinue = computed(() => ready() && !unknown.value && !!removal.value?.canContinue);
+  function accept(value: CloudRemoval, allowClose = false) {
+    if (!active() || value.epoch !== original.epoch) return;
+    removal.value = value;
+    Object.assign(
+      target,
+      captureCloudDeleteTarget({
+        epoch: value.epoch,
+        ids: value.ids,
+        titles: value.titles,
+        kinds: value.kinds,
+        revision: value.revision,
+      }),
     );
-    if (saved) accept(saved);
-    // A local read without a record cannot prove that a lost IPC call never ran.
-    // Stay read-only; the native journal independently fences overlapping writes.
+    if (value.deleteLocal !== null) {
+      deleteLocal.value = value.deleteLocal;
+      submitted.value = true;
+      unknown.value = false;
+    }
+    if (
+      allowClose &&
+      value.deletion?.phase === 'confirmed' &&
+      !value.error &&
+      !value.files.some((f) => ['retained', 'failed', 'removing'].includes(f.state))
+    )
+      completed();
   }
-  async function send() {
-    if (!active() || !canSend.value) return;
+  async function prepare() {
+    if (!canPrepare.value) return;
+    preparing.value = true;
+    try {
+      const value = original.operationId
+        ? await model.deleteRead(original.operationId)
+        : await model.deletePrepare(original);
+      if (value && !active()) {
+        if (value.deleteLocal === null) void model.deleteDiscard(original.epoch, value.id);
+      } else if (value) {
+        resumed.value = value.deleteLocal !== null;
+        accept(value);
+      }
+    } finally {
+      if (active()) preparing.value = false;
+    }
+  }
+  async function execute(continuing = false) {
+    if (!(continuing ? canContinue.value : canSend.value) || !removal.value) return;
     working.value = true;
     activity.value = 'send';
+    submitted.value = true;
     unknown.value = true;
     try {
-      const result = await model.command({
-        kind: 'delete',
-        ids: [...target.ids],
-        revision: target.revision,
-      });
-      if (!active()) return;
-      if (result?.deletion) accept(result.deletion);
-      else await recover();
+      const value = await model.deleteExecute(removal.value.id, deleteLocal.value, continuing);
+      if (value) accept(value, true);
     } finally {
       if (active()) working.value = false;
     }
   }
   async function read() {
-    if (!active() || !canRead.value) return;
+    if (!canRead.value || !removal.value) return;
     working.value = true;
     activity.value = 'read';
     try {
-      if (operation.value) {
-        const result = await model.command({ kind: 'reconcile_delete', id: operation.value.id });
-        if (active() && result?.deletion) accept(result.deletion);
-      } else await recover();
+      const value = await model.deleteRead(removal.value.id);
+      if (value) accept(value, true);
     } finally {
       if (active()) working.value = false;
     }
   }
+  onScopeDispose(() => {
+    alive = false;
+    if (removal.value && !submitted.value && removal.value.deleteLocal === null)
+      void model.deleteDiscard(original.epoch, removal.value.id);
+  });
   return {
     target,
+    removal,
     operation,
     unknown,
     working,
+    preparing,
+    deleteLocal,
+    resumed,
+    submitted,
     activity,
     stale,
+    canPrepare,
     canSend,
     canRead,
     needsRead,
-    send,
+    canContinue,
+    prepare,
+    send: () => execute(),
+    resume: () => execute(true),
     read,
   };
 }

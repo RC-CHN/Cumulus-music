@@ -4,6 +4,70 @@ use cumulus_core::{
 };
 use tauri_plugin_dialog::DialogExt;
 #[tauri::command]
+pub async fn cloud_delete_prepare<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    ids: Vec<String>,
+    revision: String,
+) -> Result<CloudRemovalView, ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("cloud removal requires main window").into());
+    }
+    client
+        .cloud_delete_prepare(&epoch, ids, revision)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
+pub async fn cloud_delete_view<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    id: String,
+    reconcile: bool,
+) -> Result<CloudRemovalView, ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("cloud removal requires main window").into());
+    }
+    client
+        .cloud_delete_view(&epoch, &id, reconcile)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
+pub async fn cloud_delete_execute<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    id: String,
+    delete_local: bool,
+    retry_local: bool,
+) -> Result<CloudRemovalView, ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("cloud removal requires main window").into());
+    }
+    client
+        .cloud_delete_execute(&epoch, &id, delete_local, retry_local)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
+pub async fn cloud_delete_discard<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    id: String,
+) -> Result<(), ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("cloud removal requires main window").into());
+    }
+    client
+        .cloud_delete_discard(&epoch, &id)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn cloud_resource<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,

@@ -134,6 +134,13 @@ export function createTauriClient(): CoreClient {
       return decodeVideoFrame(bytes);
     },
     cloudPage: (epoch, query, refresh) => invoke('cloud_page', { epoch, query, refresh }),
+    cloudDeletePrepare: (epoch, ids, revision) =>
+      invoke('cloud_delete_prepare', { epoch, ids, revision }),
+    cloudDeleteView: (epoch, id, reconcile) =>
+      invoke('cloud_delete_view', { epoch, id, reconcile }),
+    cloudDeleteExecute: (epoch, id, deleteLocal, retryLocal) =>
+      invoke('cloud_delete_execute', { epoch, id, deleteLocal, retryLocal }),
+    cloudDeleteDiscard: (epoch, id) => invoke('cloud_delete_discard', { epoch, id }),
     cloudResource: (epoch, songId, revision) =>
       invoke('cloud_resource', { epoch, songId, revision }),
     openCloudDirectory: (epoch, songId, revision) =>

@@ -5,6 +5,7 @@ import { useCloudDelete, type CloudDeleteTarget } from '../composables/useCloudD
 import { deletionMessage } from '../services/cloud';
 import { cloudDeleteWarning } from '../services/cloudDelete';
 import CloudDeleteTargets from './cloud/CloudDeleteTargets.vue';
+import CloudDeleteLocal from './cloud/CloudDeleteLocal.vue';
 import Icon from './Icon.vue';
 const props = defineProps<{ model: CloudModel; target: CloudDeleteTarget }>();
 const emit = defineEmits<{ close: [] }>();
@@ -16,6 +17,7 @@ onMounted(() => {
   dialog.value?.showModal();
   cancel.value?.focus();
   props.model.error.value = '';
+  void state.prepare();
 });
 watch(state.working, async (value) => {
   const node = dialog.value;
@@ -37,7 +39,8 @@ function close() {
     aria-labelledby="cloud-delete-title"
     :data-cloud-delete-phase="state.operation.value?.phase"
     :data-cloud-delete-working="state.working.value"
-    :aria-busy="state.working.value"
+    :data-cloud-delete-ready="!!state.removal.value"
+    :aria-busy="state.working.value || state.preparing.value"
     @keydown.esc.stop
     @cancel.prevent="close"
   >
@@ -46,7 +49,8 @@ function close() {
         {{
           state.working.value && state.activity.value === 'send'
             ? `正在删除 ${target.ids.length} 首歌曲`
-            : state.operation.value ||
+            : state.submitted.value ||
+                state.operation.value ||
                 (state.unknown.value && (!state.working.value || state.activity.value === 'read'))
               ? '云盘删除结果'
               : `从云盘删除 ${target.ids.length} 首歌曲？`
@@ -54,7 +58,7 @@ function close() {
       </h2>
       <button
         class="icon-button"
-        aria-label="关闭删除确认"
+        :aria-label="state.submitted.value ? '关闭删除结果' : '关闭删除确认'"
         :disabled="state.working.value"
         @click="close"
       >
@@ -62,8 +66,21 @@ function close() {
       </button>
     </header>
     <div class="cloud-dialog-body">
-      <p v-if="!state.operation.value && !state.unknown.value" class="cloud-delete-warning">
+      <p v-if="state.resumed.value" class="cloud-delete-local-note">
+        以下为此前确认的删除范围和本地文件选项。
+      </p>
+      <p
+        v-if="!state.submitted.value && !state.operation.value && !state.unknown.value"
+        class="cloud-delete-warning"
+      >
         {{ cloudDeleteWarning(target) }}
+      </p>
+      <p
+        v-else-if="state.removal.value?.error && !state.unknown.value"
+        class="cloud-error cloud-delete-result"
+        role="status"
+      >
+        {{ state.removal.value.error }}
       </p>
       <p v-else-if="state.operation.value" role="status" class="cloud-delete-result">
         {{ deletionMessage(state.operation.value)
@@ -77,14 +94,26 @@ function close() {
       <p v-else class="cloud-error" role="status">
         删除结果尚未确认。请只读核对，暂时不要重复删除。
       </p>
-      <p class="cloud-delete-local-note">操作范围为当前账号的云盘资源，本地文件保留。</p>
+      <p v-if="state.preparing.value" role="status">正在检查本地关联…</p>
+      <CloudDeleteLocal
+        v-model="state.deleteLocal.value"
+        :view="state.removal.value"
+        :total="target.ids.length"
+        :disabled="state.working.value || state.submitted.value || !!state.removal.value?.running"
+        :submitted="state.submitted.value"
+      />
       <CloudDeleteTargets
         :target="target"
         :disabled="state.working.value"
-        :submitted="state.unknown.value || !!state.operation.value"
+        :submitted="state.submitted.value || !!state.operation.value"
       />
       <p
-        v-if="state.stale.value && !state.operation.value && !state.unknown.value"
+        v-if="
+          state.stale.value &&
+          !state.submitted.value &&
+          !state.operation.value &&
+          !state.unknown.value
+        "
         class="cloud-error"
         role="status"
       >
@@ -97,6 +126,7 @@ function close() {
     <footer>
       <button ref="cancel" class="secondary" :disabled="state.working.value" @click="close">
         {{
+          state.submitted.value ||
           state.operation.value ||
           (state.unknown.value && (!state.working.value || state.activity.value === 'read'))
             ? '保留记录并返回'
@@ -112,7 +142,25 @@ function close() {
         {{ state.working.value ? '正在核对…' : '只读核对' }}
       </button>
       <button
-        v-else-if="!state.operation.value"
+        v-else-if="state.working.value && state.activity.value === 'send'"
+        class="primary"
+        disabled
+      >
+        正在删除…
+      </button>
+      <button v-else-if="state.canContinue.value" class="primary" @click="state.resume()">
+        {{ state.removal.value?.phase === 'result' ? '重试本地清理' : '继续删除' }}
+      </button>
+      <button
+        v-else-if="!state.removal.value && !state.submitted.value"
+        class="primary"
+        :disabled="!state.canPrepare.value"
+        @click="state.prepare()"
+      >
+        {{ state.preparing.value ? '正在检查…' : '重新检查' }}
+      </button>
+      <button
+        v-else-if="!state.submitted.value"
         class="primary"
         :disabled="!state.canSend.value"
         @click="state.send()"
