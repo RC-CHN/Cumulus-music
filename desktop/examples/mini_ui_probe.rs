@@ -41,9 +41,16 @@ use tauri::{
 struct FaultAssets {
     files: BTreeMap<String, Vec<u8>>,
     block: Arc<AtomicBool>,
+    lyric_block: Arc<AtomicBool>,
 }
 impl tauri::Assets<tauri::Wry> for FaultAssets {
     fn get(&self, key: &AssetKey) -> Option<Cow<'_, [u8]>> {
+        if self.lyric_block.load(Ordering::Acquire)
+            && key.as_ref().contains("DesktopLyricApp-")
+            && key.as_ref().ends_with(".js")
+        {
+            return Some(Cow::Borrowed(b"export default {};"));
+        }
         if self.block.load(Ordering::Acquire)
             && key.as_ref().contains("MiniApp-")
             && key.as_ref().ends_with(".js")
@@ -73,6 +80,7 @@ fn main() {
     let output = root.join("first");
     fs::create_dir(&output).expect("new proof directory");
     let block = Arc::new(AtomicBool::new(false));
+    let lyric_block = Arc::new(AtomicBool::new(false));
     let mut context = assets::context();
     let config = context.config().app.windows[0].clone();
     context.config_mut().app.windows[0].create = false;
@@ -91,6 +99,7 @@ fn main() {
     context.set_assets(Box::new(FaultAssets {
         files,
         block: block.clone(),
+        lyric_block: lyric_block.clone(),
     }));
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
         let registry=ProfileRegistry::open(&root.join("state"),ApiOrigin::Pc)?;
@@ -112,6 +121,17 @@ fn main() {
             let id=value["id"].clone();
             let ack=|value:Value| { handle.get_webview_window("main").unwrap().eval(format!("window.__miniAck[{}]={};",id,value)).unwrap(); };
             match kind {
+                "lyric-assets" => {lyric_block.store(value["blocked"]==true,Ordering::Release);ack(json!({"ok":true}));}
+                "lyric-storage" => {
+                    let sql=rusqlite::Connection::open(proof_store.directory().join("core.sqlite3")).unwrap();
+                    if value["fail"]==true {sql.execute_batch("CREATE TRIGGER reject_mini_lyric_pref BEFORE INSERT ON state WHEN NEW.owner='local-device' AND NEW.kind='desktop-lyric-preferences-v1' BEGIN SELECT RAISE(ABORT,'synthetic mini lyric preference failure'); END;").unwrap();}
+                    if value["fail"]==false {sql.execute_batch("DROP TRIGGER IF EXISTS reject_mini_lyric_pref;").unwrap();}
+                    if value["corrupt"]==true {proof_store.put("local-device","desktop-lyric-preferences-v1","current",&json!("synthetic damaged desktop lyric settings")).unwrap();}
+                    ack(json!({"ok":true}));
+                }
+                "exit-armed" => {
+                    fs::write(output.join("exit-armed.json"),serde_json::to_vec_pretty(&value).unwrap()).unwrap();ack(json!({"ok":true}));
+                }
                 "pin-native" => {
                     let mini=handle.webview_windows().into_iter().find(|(label,_)|label.starts_with("mini-player-")).expect("mini window").1;
                     if let Some(pinned)=value["set"].as_bool() {
@@ -187,12 +207,13 @@ fn main() {
                 "block" => { block.store(value["enabled"]==true,Ordering::Release); ack(json!({"ok":true})); }
                 "account" => { session.adopt(api.clone(),json!({"userId":99}),&session.token().unwrap()).unwrap(); ack(json!({"ok":true})); }
                 "show" => { cumulus_desktop::lifecycle::show(&handle); ack(json!({"ok":true})); }
-                "windows" => ack(json!({"main":handle.get_webview_window("main").unwrap().is_visible().unwrap(),"mini":handle.webview_windows().keys().filter(|l|l.starts_with("mini-player-")).collect::<Vec<_>>()})),
+                "windows" => ack(json!({"main":handle.get_webview_window("main").unwrap().is_visible().unwrap(),"mini":handle.webview_windows().keys().filter(|l|l.starts_with("mini-player-")).collect::<Vec<_>>(),"lyrics":handle.webview_windows().keys().filter(|l|l.starts_with("desktop-lyrics-")).collect::<Vec<_>>()})),
                 "snapshot" | "complete" | "failed" => {
                     let mut value=value.clone(); let output=output.clone(); let handle=handle.clone();
                     value["factoryCount"]=json!(count.load(Ordering::Acquire));
                     value["mainVisible"]=json!(handle.get_webview_window("main").unwrap().is_visible().unwrap());
                     value["miniWindows"]=json!(handle.webview_windows().keys().filter(|l|l.starts_with("mini-player-")).collect::<Vec<_>>());
+                    value["lyricWindows"]=json!(handle.webview_windows().keys().filter(|l|l.starts_with("desktop-lyrics-")).collect::<Vec<_>>());
                     value["likeWritesObserved"]=json!(api.likes.lock().unwrap().clone());
                     value["syntheticRoom"]=api.room.report();
                     if mini_fixture::fm::enabled() { value["syntheticFm"]=api.fm.report(); }
@@ -239,6 +260,7 @@ fn main() {
                 include_str!("mini_ui_probe.js").into()
             };
             let source=if std::env::var_os("CUMULUS_MINI_PIN_UNMANAGED_PROOF").is_some() { format!("window.__pinUnmanagedProof=true;\n{source}") } else {source};
+            let source=if std::env::var_os("CUMULUS_MINI_MENU_EXIT_PROOF").is_some() { format!("window.__miniMenuExitProof=true;\n{source}") } else {source};
             view.eval(source).unwrap();
         }
     }).run(context).expect("mini WebView proof");
