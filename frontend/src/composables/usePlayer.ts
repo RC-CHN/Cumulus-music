@@ -12,6 +12,7 @@ import type {
   IntelligenceCommand,
 } from '../services/player.ts';
 import { useCore } from '../services/core.ts';
+import type { CloudQuery } from '../services/cloud.ts';
 
 export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => void = () => {}) {
   const view = shallowRef<PlayerView>();
@@ -182,9 +183,10 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
         : { kind: 'queue_playlist', id, quality },
     );
   }
-  function queueCloud(ids: string[], revision: string) {
+  function queueCloud(ids: string[], revision: string, query?: CloudQuery) {
     return queueAction({
       kind: 'queue_cloud_batch',
+      ...(query ? { query } : {}),
       ids,
       revision,
       quality: view.value?.qualityPreferences.quality ?? 'standard',

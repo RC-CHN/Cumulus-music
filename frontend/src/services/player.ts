@@ -1,4 +1,5 @@
 import type { TrackView, CoreFailure } from './contracts';
+import type { CloudQuery } from './cloud';
 export type Quality =
   | '64aac'
   | 'standard'
@@ -43,6 +44,7 @@ export interface Timeline {
   media_start: number;
 }
 export interface PlayerView {
+  resourceKind?: 'catalog' | 'cloud' | 'local' | 'downloaded' | 'voice' | null;
   origin?: PlayerOrigin | null;
   fm: boolean;
   intelligence?: 'seeded' | 'active' | 'fallback' | null;
@@ -176,7 +178,7 @@ export type PlaySelection =
       revision: string;
       quality: Quality;
     }
-  | { kind: 'cloud_batch'; ids: string[]; revision: string; quality: Quality }
+  | { kind: 'cloud_batch'; ids: string[]; revision: string; quality: Quality; query?: CloudQuery }
   | { kind: 'songs'; ids: string[]; index: number; quality: Quality }
   | {
       kind: 'playlist';
@@ -202,6 +204,7 @@ export type PlayerAction =
     }
   | {
       kind: 'queue_cloud_batch';
+      query?: CloudQuery;
       ids: string[];
       revision: string;
       quality: Quality;

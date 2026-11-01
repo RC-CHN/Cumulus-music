@@ -42,11 +42,18 @@ export type CloudPhase =
   | 'cancelled';
 export interface CloudTrack {
   track: TrackView;
+  publicSongId?: string | null;
   fileName: string;
   fileSize: number;
   addedAt: number;
   bitrate: number;
   format: string;
+}
+export interface CloudResource {
+  epoch: string;
+  revision: string;
+  track: CloudTrack;
+  localAvailable: boolean;
 }
 export interface CloudUpload {
   id: string;
@@ -111,6 +118,8 @@ export interface CloudResult {
   deletion: CloudDelete | null;
 }
 export interface CloudClient {
+  cloudResource(epoch: string, songId: string, revision: string): Promise<CloudResource>;
+  openCloudDirectory(epoch: string, songId: string, revision: string): Promise<void>;
   cloudPage(epoch: string, query: CloudQuery, refresh: boolean): Promise<CloudPage>;
   cloudCommand(epoch: string, command: CloudCommand): Promise<CloudResult>;
   pickCloudFiles(

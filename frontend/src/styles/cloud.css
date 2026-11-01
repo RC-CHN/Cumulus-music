@@ -83,6 +83,31 @@
 .cloud-table-wrap {
   overflow-x: auto;
 }
+.cloud-title-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.cloud-title-copy {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+.cloud-table .cloud-more {
+  width: 24px;
+  height: 28px;
+  flex-shrink: 0;
+  opacity: 0;
+}
+.cloud-table tr:hover .cloud-more,
+.cloud-table tr:focus-within .cloud-more {
+  opacity: 1;
+}
+.cloud-table .cloud-more .icon {
+  width: 20px;
+  height: 20px;
+}
 .cloud-table {
   border-collapse: collapse;
   table-layout: fixed;

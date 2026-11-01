@@ -5,8 +5,13 @@ import type { CloudDeleteTarget } from '../composables/useCloudDelete';
 import Icon from './Icon.vue';
 import CloudUploadDialog from './CloudUploadDialog.vue';
 import CloudDeleteDialog from './CloudDeleteDialog.vue';
+import CloudRowMenu from './cloud/CloudRowMenu.vue';
+import PlaylistCollectDialog from './PlaylistCollectDialog.vue';
+import type { PlayerModel } from '../composables/usePlayer';
+import type { PlaylistManager } from '../composables/usePlaylists';
+import type { CloudMenuTarget } from '../services/cloudMenu';
 import type { CloudModel } from '../composables/useCloud';
-import type { TrackView } from '../services/contracts';
+import { failure, type PlaylistView, type TrackView } from '../services/contracts';
 import {
   cloudBytes,
   cloudIssue,
@@ -15,16 +20,27 @@ import {
   type CloudUpload,
   type CloudQuery,
 } from '../services/cloud';
-const props = defineProps<{ model: CloudModel; playable: boolean; currentId?: string }>();
+const props = defineProps<{
+  model: CloudModel;
+  playable: boolean;
+  currentId?: string;
+  player: PlayerModel;
+  manager: PlaylistManager;
+  playlists: PlaylistView[];
+}>();
 const emit = defineEmits<{
-  play: [query: CloudQuery, revision: string, startId: string | null];
   dialog: [open: boolean];
   batch: [];
   download: [tracks: TrackView[], revision: string];
+  expired: [];
 }>();
 const { page: view, query, busy, loading, error, readError, notice } = props.model;
 const dialogOwner = ref(props.model.accountEpoch.value);
 const pageRoot = ref<HTMLElement>();
+const rowMenu = ref<InstanceType<typeof CloudRowMenu>>(),
+  rowDialogOpen = ref(false),
+  collecting = ref<{ epoch: string; tracks: TrackView[] }>(),
+  dialogReturn = ref<HTMLElement>();
 function fallbackFocus() {
   return pageRoot.value?.querySelector<HTMLInputElement>('[aria-label="搜索云盘歌曲"]') ?? null;
 }
@@ -61,6 +77,7 @@ watch(
     props.model.accountEpoch.value,
   ],
   () => {
+    rowMenu.value?.close();
     selected.value = new Set();
     if (pageRoot.value) pageRoot.value.scrollTop = 0;
   },
@@ -70,7 +87,7 @@ watch(
   (rows) => (selected.value = new Set([...selected.value].filter((id) => rows.includes(id)))),
 );
 watch(
-  () => uploadOpen.value || !!deletion.value,
+  () => uploadOpen.value || !!deletion.value || !!collecting.value || rowDialogOpen.value,
   (value) => emit('dialog', value),
 );
 watch(
@@ -78,6 +95,9 @@ watch(
   () => {
     uploadOpen.value = false;
     deletion.value = undefined;
+    collecting.value = undefined;
+    dialogReturn.value = undefined;
+    rowMenu.value?.close();
     keyword.value = query.value.keyword;
   },
 );
@@ -87,6 +107,7 @@ watch(
 );
 onUnmounted(() => emit('dialog', false));
 function openUpload() {
+  dialogReturn.value = undefined;
   dialogOwner.value = props.model.accountEpoch.value;
   uploadOpen.value = true;
 }
@@ -135,11 +156,48 @@ function indicator(column: CloudQuery['sort']) {
 function date(ms: number) {
   return ms ? new Date(ms).toLocaleDateString('zh-CN') : '—';
 }
-function play(id: string | null = null) {
-  if (props.playable && view.value?.revision)
-    emit('play', { ...query.value }, view.value.revision, id);
+async function play(id: string | null = null) {
+  if (
+    !props.playable ||
+    props.player.busy.value ||
+    busy.value ||
+    loading.value ||
+    !view.value?.revision
+  )
+    return;
+  const owner = props.model.accountEpoch.value,
+    revision = view.value.revision,
+    captured = { ...query.value };
+  props.model.error.value = '';
+  props.model.notice.value = '正在准备播放…';
+  try {
+    const value = await props.player.selectForPage({
+      kind: 'cloud',
+      query: captured,
+      revision,
+      start_id: id,
+      quality: props.player.view.value?.qualityPreferences.quality ?? 'standard',
+    });
+    if (
+      owner === props.model.accountEpoch.value &&
+      JSON.stringify(captured) === JSON.stringify(query.value)
+    )
+      props.model.notice.value = value ? '正在播放云盘歌曲' : '本次播放操作已更新或取消';
+  } catch (e) {
+    if (
+      owner !== props.model.accountEpoch.value ||
+      revision !== view.value?.revision ||
+      JSON.stringify(captured) !== JSON.stringify(query.value)
+    )
+      return;
+    const issue = failure(e);
+    props.model.notice.value = '';
+    props.model.error.value = issue.message;
+    if (['session_expired', 'profile_changed'].includes(issue.code)) emit('expired');
+  }
 }
 function remove() {
+  dialogReturn.value = undefined;
   if (view.value?.revision && selected.value.size) {
     dialogOwner.value = props.model.accountEpoch.value;
     deletion.value = {
@@ -151,6 +209,21 @@ function remove() {
       revision: view.value.revision,
     };
   }
+}
+function collectRows(target: CloudMenuTarget, origin: HTMLElement | undefined) {
+  dialogOwner.value = target.epoch;
+  dialogReturn.value = origin;
+  collecting.value = { epoch: target.epoch, tracks: target.tracks.map((row) => row.track) };
+}
+function deleteRows(target: CloudMenuTarget, origin: HTMLElement | undefined) {
+  dialogOwner.value = target.epoch;
+  dialogReturn.value = origin;
+  deletion.value = {
+    epoch: target.epoch,
+    revision: target.revision,
+    ids: target.tracks.map((row) => row.track.id),
+    titles: target.tracks.map((row) => row.track.name),
+  };
 }
 function download() {
   if (view.value?.revision && selected.value.size)
@@ -231,7 +304,9 @@ function control(task: CloudUpload, kind: 'pause' | 'resume' | 'cancel' | 'dismi
       <template v-if="query.tab === 'uploaded'"
         ><button
           class="primary"
-          :disabled="!playable || !view?.total || !view.revision"
+          :disabled="
+            !playable || player.busy.value || busy || loading || !view?.total || !view.revision
+          "
           @click="play()"
         >
           <Icon name="play" />播放全部</button
@@ -378,6 +453,8 @@ function control(task: CloudUpload, kind: 'pause' | 'resume' | 'cancel' | 'dismi
               :key="row.track.id"
               :data-cloud-id="row.track.id"
               :class="{ selected: selected.has(row.track.id), playing: currentId === row.track.id }"
+              @contextmenu="rowMenu?.show($event, row)"
+              @keydown="rowMenu?.show($event, row)"
               @dblclick="
                 !($event.target as HTMLElement).closest('button,input') && play(row.track.id)
               "
@@ -394,7 +471,7 @@ function control(task: CloudUpload, kind: 'pause' | 'resume' | 'cancel' | 'dismi
                 <button
                   class="cloud-row-play"
                   :aria-label="`播放 ${row.track.name}`"
-                  :disabled="!playable"
+                  :disabled="!playable || player.busy.value || busy || loading"
                   @click="play(row.track.id)"
                 >
                   <span>{{ view!.offset + index + 1 }}</span
@@ -402,13 +479,28 @@ function control(task: CloudUpload, kind: 'pause' | 'resume' | 'cancel' | 'dismi
                 </button>
               </td>
               <td class="cloud-track-title">
-                <strong :title="row.track.name">{{ row.track.name }}</strong
-                ><span
-                  ><span class="cloud-artist" :title="row.track.artists.join(' / ')">{{
-                    row.track.artists.join(' / ') || '未知歌手'
-                  }}</span
-                  ><small v-if="row.bitrate >= 900000">无损</small></span
-                >
+                <div class="cloud-title-content">
+                  <div class="cloud-title-copy">
+                    <strong :title="row.track.name">{{ row.track.name }}</strong
+                    ><span
+                      ><span class="cloud-artist" :title="row.track.artists.join(' / ')">{{
+                        row.track.artists.join(' / ') || '未知歌手'
+                      }}</span
+                      ><small v-if="row.bitrate >= 900000">无损</small></span
+                    >
+                  </div>
+                  <button
+                    class="icon-button cloud-more"
+                    :aria-label="`更多操作：${row.track.name}`"
+                    aria-haspopup="menu"
+                    :disabled="
+                      busy || loading || uploadOpen || !!deletion || !!collecting || rowDialogOpen
+                    "
+                    @click="rowMenu?.show($event, row)"
+                  >
+                    <Icon name="more" />
+                  </button>
+                </div>
               </td>
               <td class="cloud-album" :title="row.track.album">
                 {{ row.track.album || '未知专辑' }}
@@ -555,6 +647,7 @@ function control(task: CloudUpload, kind: 'pause' | 'resume' | 'cancel' | 'dismi
     <ModalTransition
       :restore-focus="dialogOwner === model.accountEpoch.value"
       :fallback-focus="fallbackFocus"
+      :return-focus="() => dialogReturn ?? null"
     >
       <CloudUploadDialog
         v-if="uploadOpen"
@@ -566,12 +659,40 @@ function control(task: CloudUpload, kind: 'pause' | 'resume' | 'cancel' | 'dismi
     <ModalTransition
       :restore-focus="dialogOwner === model.accountEpoch.value"
       :fallback-focus="fallbackFocus"
+      :return-focus="() => dialogReturn ?? null"
     >
       <CloudDeleteDialog
         v-if="deletion"
         :model="model"
         :target="deletion"
         @close="deletion = undefined"
+      />
+    </ModalTransition>
+    <CloudRowMenu
+      ref="rowMenu"
+      :model="model"
+      :player="player"
+      :rows="tracks"
+      :selected="selected"
+      :disabled="busy || loading || uploadOpen || !!deletion || !!collecting || rowDialogOpen"
+      @collect="collectRows"
+      @remove="deleteRows"
+      @dialog="rowDialogOpen = $event"
+      @expired="emit('expired')"
+    />
+    <ModalTransition
+      :restore-focus="collecting?.epoch === model.accountEpoch.value"
+      :return-focus="() => dialogReturn ?? null"
+      :fallback-focus="fallbackFocus"
+    >
+      <PlaylistCollectDialog
+        v-if="collecting"
+        :manager="manager"
+        :epoch="collecting.epoch"
+        :tracks="collecting.tracks"
+        :playlists="playlists"
+        @close="collecting = undefined"
+        @expired="emit('expired')"
       />
     </ModalTransition>
   </section>

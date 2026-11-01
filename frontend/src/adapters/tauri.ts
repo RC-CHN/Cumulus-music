@@ -134,6 +134,10 @@ export function createTauriClient(): CoreClient {
       return decodeVideoFrame(bytes);
     },
     cloudPage: (epoch, query, refresh) => invoke('cloud_page', { epoch, query, refresh }),
+    cloudResource: (epoch, songId, revision) =>
+      invoke('cloud_resource', { epoch, songId, revision }),
+    openCloudDirectory: (epoch, songId, revision) =>
+      invoke('open_cloud_directory', { epoch, songId, revision }),
     commentsPage: (epoch, resource, query, refresh) =>
       invoke('comments_page', { epoch, resource, query, refresh }),
     commentsLike: (epoch, resource, id, desired) =>

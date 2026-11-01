@@ -256,7 +256,9 @@ defineExpose({ requestLeave });
       :tracks="tracks"
       :selected="selected"
       :disabled="locked || !!error || stale"
-      :current-id="player.view.value?.track?.id"
+      :current-id="
+        player.view.value?.resourceKind === 'cloud' ? player.view.value?.track?.id : undefined
+      "
       @toggle="batch.toggle"
       @select="batch.select"
       @all="batch.all"

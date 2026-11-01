@@ -184,6 +184,7 @@ watch(
     if (
       wasInside &&
       (!panel.value?.contains(document.activeElement) ||
+        (followFocus && document.activeElement === panel.value && choices().length > 0) ||
         (document.activeElement as HTMLButtonElement)?.disabled)
     )
       focusChoice();
@@ -233,7 +234,7 @@ function select(key: string, target: EventTarget | null = null) {
     void openChild(key, target);
     return;
   }
-  close(true);
+  if (!item.keepOpen) close(true);
   emit('select', key);
 }
 function keydown(event: KeyboardEvent) {

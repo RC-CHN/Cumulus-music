@@ -1,0 +1,42 @@
+/* Shared cloud/batch/dialog selection controls, independent of GTK's palette. */
+:is(.cloud-page, .playlist-dialog, .batch-columns) input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  margin: 0;
+  accent-color: var(--accent);
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid var(--muted);
+  border-radius: 3px;
+  background: var(--surface);
+  display: inline-grid;
+  place-content: center;
+  vertical-align: middle;
+}
+:is(.cloud-page, .playlist-dialog, .batch-columns)
+  input[type='checkbox']:is(:checked, :indeterminate) {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+:is(.cloud-page, .playlist-dialog, .batch-columns) input[type='checkbox']:checked::after {
+  content: '';
+  width: 8px;
+  height: 4px;
+  border: solid white;
+  border-width: 0 0 2px 2px;
+  transform: translateY(-1px) rotate(-45deg);
+}
+:is(.cloud-page, .playlist-dialog, .batch-columns) input[type='checkbox']:indeterminate::after {
+  content: '';
+  width: 8px;
+  height: 2px;
+  background: white;
+}
+:is(.cloud-page, .playlist-dialog, .batch-columns) input[type='checkbox']:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+:is(.cloud-page, .playlist-dialog, .batch-columns) input[type='checkbox']:disabled {
+  opacity: 0.45;
+}

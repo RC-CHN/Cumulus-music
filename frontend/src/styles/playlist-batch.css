@@ -152,38 +152,6 @@
 .batch-track-row.unavailable {
   color: var(--muted);
 }
-.batch-columns input {
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  accent-color: var(--accent);
-  appearance: none;
-  -webkit-appearance: none;
-  border: 1px solid var(--muted);
-  border-radius: 3px;
-  background: var(--surface);
-  display: inline-grid;
-  place-content: center;
-}
-.batch-columns input:checked,
-.batch-columns input:indeterminate {
-  border-color: var(--accent);
-  background: var(--accent);
-}
-.batch-columns input:checked::after {
-  content: '';
-  width: 8px;
-  height: 4px;
-  border: solid white;
-  border-width: 0 0 2px 2px;
-  transform: translateY(-1px) rotate(-45deg);
-}
-.batch-columns input:indeterminate::after {
-  content: '';
-  width: 8px;
-  height: 2px;
-  background: white;
-}
 .batch-track-title {
   display: flex;
   gap: 12px;

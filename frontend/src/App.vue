@@ -88,7 +88,6 @@ import { useComments } from './composables/useComments';
 import type { CommentResource } from './services/comments';
 import { useMv } from './composables/useMv';
 import { useCloud } from './composables/useCloud';
-import type { CloudQuery } from './services/cloud';
 import { useDownloads } from './composables/useDownloads';
 import type { DownloadDialogTarget } from './services/downloads';
 import { usePlaylists } from './composables/usePlaylists';
@@ -724,15 +723,6 @@ function cloudBatchLeft() {
   target?.focus({ preventScroll: true });
 }
 
-function playCloud(query: CloudQuery, revision: string, startId: string | null) {
-  void player.select({
-    kind: 'cloud',
-    query,
-    revision,
-    start_id: startId,
-    quality: player.view.value?.qualityPreferences.quality ?? 'standard',
-  });
-}
 const playlistManager = usePlaylists(
   undefined,
   async (change) => {
@@ -1635,9 +1625,14 @@ onUnmounted(() => {
               <CloudPage
                 v-else-if="page.kind === 'cloud'"
                 :model="cloud"
+                :player="player"
+                :manager="playlistManager"
+                :playlists="playlists"
+                @expired="music.bootstrap(false)"
                 :playable="player.ready.value"
-                :current-id="currentTrackId"
-                @play="playCloud"
+                :current-id="
+                  player.view.value?.resourceKind === 'cloud' ? currentTrackId : undefined
+                "
                 @batch="openCloudBatch"
                 @dialog="cloudDialogOpen = $event"
                 @download="
