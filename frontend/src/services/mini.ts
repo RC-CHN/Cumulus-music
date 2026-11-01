@@ -32,6 +32,11 @@ export interface MiniMedia {
   volume: number;
   mode: PlaybackMode | null;
   modeFamily: ModeFamily | null;
+  queueRevision?: string | null;
+  canIntelligence?: boolean;
+  intelligence?: 'seeded' | 'active' | 'fallback' | null;
+  intelligenceOperation?: string | null;
+  intelligenceRead?: { operationId: string; preparing: boolean } | null;
   like: { observed: boolean | null; pending: boolean } | null;
   error: string | null;
 }
@@ -60,9 +65,22 @@ export interface MiniClient {
   ready(): Promise<void>;
   returnMain(): Promise<void>;
   action(ticket: string, action: MiniAction): Promise<void>;
+  intelligence(ticket: string, command: MiniIntelligenceCommand): Promise<MiniPlaybackReceipt>;
+  mode(ticket: string, mode: PlaybackMode): Promise<MiniPlaybackReceipt>;
+  cancelIntelligence(epoch: string, operationId: string): Promise<boolean>;
   queue(ticket: string, offset: number): Promise<MiniQueuePage>;
   panel(expanded: boolean): Promise<void>;
   preferences(ticket: string, command: MiniPreferencesCommand): Promise<void>;
   drag(): Promise<void>;
   close(): Promise<void>;
+}
+export type MiniIntelligenceCommand = { kind: 'start' | 'continue'; operation_id: string };
+export interface MiniPlaybackReceipt {
+  epoch: string;
+  queueRevision: string;
+  playId: string | null;
+  mode: PlaybackMode;
+  fm: boolean;
+  intelligence: MiniMedia['intelligence'];
+  intelligenceOperation: string | null;
 }

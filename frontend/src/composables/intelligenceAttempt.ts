@@ -1,19 +1,30 @@
 import { watch, type Ref } from 'vue';
 import type { PlayerView } from '../services/player.ts';
-import type { PlayerModel } from './usePlayer.ts';
 import { failure } from '../services/contracts.ts';
 
-export interface IntelligenceAttempt {
+export interface IntelligenceState {
+  epoch: string;
+  queueRevision: string;
+  playId?: string | null;
+  intelligence?: 'seeded' | 'active' | 'fallback' | null;
+  intelligenceOperation?: string | null;
+}
+export interface IntelligencePlayer<V extends IntelligenceState = PlayerView> {
+  view: Ref<V | undefined>;
+  ready: Ref<boolean>;
+  syncPlayback(): Promise<V>;
+}
+export interface IntelligenceAttempt<V extends IntelligenceState = PlayerView> {
   id: string;
   epoch: string;
-  promise: Promise<PlayerView>;
+  promise: Promise<V>;
   cancel(): Promise<void>;
   cancelRequested?(): boolean;
 }
-export interface IntelligenceCycle {
+export interface IntelligenceCycle<V extends IntelligenceState = PlayerView> {
   eligible(): boolean;
   pending(): boolean;
-  enter(revision: string): IntelligenceAttempt;
+  enter(revision: string): IntelligenceAttempt<V>;
   idle(epoch: string, signal: AbortSignal): Promise<void>;
 }
 export const staleMode = () => ({
@@ -22,9 +33,9 @@ export const staleMode = () => ({
   retryable: false,
 });
 
-export function intelligenceIdle(
+export function intelligenceIdle<V extends IntelligenceState>(
   busy: Ref<boolean>,
-  player: PlayerModel,
+  player: IntelligencePlayer<V>,
   epoch: string,
   signal: AbortSignal,
 ): Promise<void> {
@@ -57,17 +68,17 @@ export function intelligenceIdle(
  * seed. A phase change alone could belong to another window or stale request.
  * Only a cancelled, uncommitted attempt may continue on its original queue.
  */
-export function intelligenceBoundary(
-  player: PlayerModel,
-  attempt: IntelligenceAttempt,
+export function intelligenceBoundary<V extends IntelligenceState>(
+  player: IntelligencePlayer<V>,
+  attempt: IntelligenceAttempt<V>,
   revision: string,
   signal: AbortSignal,
   cancelled: () => boolean,
-): Promise<PlayerView> {
+): Promise<V> {
   return new Promise((resolve, reject) => {
     let done = false;
     const stop = watch([player.view, player.ready], observe, { flush: 'sync' });
-    function finish(view?: PlayerView, error?: unknown) {
+    function finish(view?: V, error?: unknown) {
       if (done) return;
       done = true;
       stop();
@@ -86,7 +97,7 @@ export function intelligenceBoundary(
       }
       return view;
     }
-    function owned(view: PlayerView) {
+    function owned(view: V) {
       return view.intelligenceOperation === attempt.id && !!view.intelligence;
     }
     function observe() {

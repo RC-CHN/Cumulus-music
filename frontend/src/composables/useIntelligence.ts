@@ -1,14 +1,21 @@
 import { computed, onScopeDispose, ref, watch } from 'vue';
-import type { PlayerModel } from './usePlayer';
-import type { IntelligenceOrigin } from '../services/player.ts';
+import type { IntelligenceCommand, IntelligenceOrigin, PlayerView } from '../services/player.ts';
 import { failure, type CoreFailure, type CoreClient } from '../services/contracts.ts';
 import { useCore } from '../services/core.ts';
-import { intelligenceIdle, type IntelligenceAttempt } from './intelligenceAttempt.ts';
+import {
+  intelligenceIdle,
+  type IntelligenceAttempt,
+  type IntelligencePlayer,
+  type IntelligenceState,
+} from './intelligenceAttempt.ts';
+export interface IntelligenceControl<V extends IntelligenceState> extends IntelligencePlayer<V> {
+  intelligence(command: IntelligenceCommand): Promise<V>;
+}
 
-export function useIntelligence(
-  player: PlayerModel,
+export function useIntelligence<V extends IntelligenceState = PlayerView>(
+  player: IntelligenceControl<V>,
   together: () => boolean,
-  core: CoreClient = useCore(),
+  core: Pick<CoreClient, 'playerIntelligenceCancel'> = useCore(),
 ) {
   const busy = ref(false),
     cancelling = ref(false),
@@ -59,7 +66,7 @@ export function useIntelligence(
     origin?: IntelligenceOrigin,
     revision?: string,
     mode = false,
-  ): IntelligenceAttempt | undefined {
+  ): IntelligenceAttempt<V> | undefined {
     if (origin ? !canStart.value : !resumable.value) return;
     const view = player.view.value!;
     const operation = { id: crypto.randomUUID(), epoch: view.epoch, cancelled: false },
@@ -69,7 +76,7 @@ export function useIntelligence(
     progress.value = origin ? 'preparing' : 'recommendation';
     issue.value = undefined;
     cancelling.value = false;
-    const attempt: IntelligenceAttempt = {
+    const attempt: IntelligenceAttempt<V> = {
       ...operation,
       cancelRequested: () => operation.cancelled,
       promise: execute(),
@@ -186,4 +193,4 @@ export function useIntelligence(
     },
   };
 }
-export type IntelligenceModel = ReturnType<typeof useIntelligence>;
+export type IntelligenceModel = ReturnType<typeof useIntelligence<PlayerView>>;

@@ -1,6 +1,5 @@
 import { computed, onScopeDispose, ref, watch } from 'vue';
-import type { PlayerModel } from './usePlayer';
-import type { PlaybackMode } from '../services/player';
+import type { PlaybackMode, PlayerView } from '../services/player';
 import { failure, type CoreFailure } from '../services/contracts.ts';
 import { nextModeTarget, type ModeFamily, type ModeTarget } from '../services/playbackMode.ts';
 import {
@@ -8,12 +7,21 @@ import {
   staleMode,
   type IntelligenceAttempt,
   type IntelligenceCycle,
+  type IntelligencePlayer,
+  type IntelligenceState,
 } from './intelligenceAttempt.ts';
+export interface ModePlaybackState extends IntelligenceState {
+  mode: PlaybackMode;
+  fm: boolean;
+}
+export interface ModePlaybackControl<V extends ModePlaybackState> extends IntelligencePlayer<V> {
+  configureMode(mode: PlaybackMode, revision: string, fm: boolean): Promise<V>;
+}
 
-export function usePlaybackMode(
-  player: PlayerModel,
+export function usePlaybackMode<V extends ModePlaybackState = PlayerView>(
+  player: ModePlaybackControl<V>,
   together: () => boolean,
-  entry?: IntelligenceCycle,
+  entry?: IntelligenceCycle<V>,
 ) {
   const isAi = () => ['seeded', 'active'].includes(player.view.value?.intelligence ?? '');
   const family = computed<ModeFamily>(() =>
@@ -41,7 +49,7 @@ export function usePlaybackMode(
     wanted: ModeTarget | undefined,
     retryTarget: ModeTarget | undefined;
   let exitingEpoch: string | undefined, enteringId: string | undefined;
-  let attempt: IntelligenceAttempt | undefined,
+  let attempt: IntelligenceAttempt<V> | undefined,
     cancelled = false,
     scope: AbortController | undefined;
   function reset() {

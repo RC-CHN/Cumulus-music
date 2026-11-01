@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import Icon from '../components/Icon.vue';
 import { useLocalShortcuts } from '../composables/useLocalShortcuts';
+import { useMiniModes } from '../composables/useMiniModes';
 import { createMiniClient, createMiniShortcutClient } from '../adapters/mini';
 import type { MiniAction, MiniQueuePage, MiniView } from '../services/mini';
-import { nextMode, modeLabel, modeIcon } from '../services/playbackMode';
+import { modeLabel, modeIcon } from '../services/playbackMode';
 import { artistLabel } from '../services/artistLabel';
 import './mini.css';
 
@@ -22,19 +23,45 @@ const queueTicket = ref('');
 const queueError = ref('');
 const confirmingClear = ref(false);
 let disposed = false;
-let reading = false;
+let reading: Promise<MiniView | undefined> | undefined;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let queueRequest = 0;
+const modes = useMiniModes(view, client, () => refresh(true));
+const modeTrigger = ref<HTMLButtonElement>();
+let cancelFocus: { epoch: string; control: Element | null } | undefined;
+watch(modes.busy, async (active) => {
+  if (active || !cancelFocus) return;
+  const saved = cancelFocus;
+  cancelFocus = undefined;
+  await nextTick();
+  if (
+    disposed ||
+    media.value?.epoch !== saved.epoch ||
+    (document.activeElement !== saved.control && document.activeElement !== document.body)
+  )
+    return;
+  (
+    document.querySelector<HTMLButtonElement>('.mini-intelligence button:not(:disabled)') ??
+    modeTrigger.value
+  )?.focus({ preventScroll: true });
+});
+function cancelRecommendation() {
+  if (media.value) cancelFocus = { epoch: media.value.epoch, control: document.activeElement };
+  void modes.cancel();
+}
+function dismissModes() {
+  modeTrigger.value?.focus({ preventScroll: true });
+  modes.dismiss();
+}
+function retryMode() {
+  modeTrigger.value?.focus({ preventScroll: true });
+  modes.retry();
+}
 const modeName = computed(() =>
   media.value?.mode && media.value.modeFamily
-    ? modeLabel(media.value.mode, media.value.modeFamily)
+    ? modeLabel(modes.mode.value.value, modes.mode.displayFamily.value)
     : '播放模式不可用',
 );
-function cycleMode() {
-  const value = media.value;
-  if (value?.mode && value.modeFamily)
-    void perform({ kind: 'mode', mode: nextMode(value.mode, value.modeFamily) });
-}
 const liked = computed(() => media.value?.like?.observed === true);
 const likeRefresh = computed(
   () => media.value?.like?.pending || media.value?.like?.observed === null,
@@ -71,9 +98,17 @@ async function refreshQueue(offset = queue.value?.offset || 0) {
     if (!disposed && request === queueRequest) queueError.value = message(e);
   }
 }
-async function refresh() {
-  if (reading || disposed) return;
-  reading = true;
+async function refresh(fresh = false): Promise<MiniView | undefined> {
+  if (disposed) return;
+  if (reading) {
+    if (!fresh) return reading;
+    await reading.catch(() => {});
+    return refresh();
+  }
+  reading = readOnce();
+  return reading;
+}
+async function readOnce(): Promise<MiniView | undefined> {
   try {
     const value = await client.read();
     if (disposed) return;
@@ -89,15 +124,17 @@ async function refresh() {
         void client.panel(false).catch(() => {});
       }
     }
+    return value;
   } finally {
-    reading = false;
+    reading = undefined;
   }
 }
 async function poll() {
   try {
     await refresh();
   } catch (e) {
-    if (!disposed) error.value = message(e);
+    if (!disposed && !['stale', 'snapshot_changed'].includes((e as { code?: string })?.code ?? ''))
+      error.value = message(e);
   }
   if (!disposed) timer = setTimeout(() => void poll(), 350);
 }
@@ -168,6 +205,10 @@ function key(event: KeyboardEvent) {
     !event.shiftKey
   ) {
     event.preventDefault();
+    if (modes.issue.value) {
+      dismissModes();
+      return;
+    }
     void windowAction('returnMain');
     return;
   }
@@ -201,6 +242,8 @@ onUnmounted(() => {
     class="mini-shell"
     :class="{ expanded }"
     :data-control-ticket="view?.ticket"
+    :data-intelligence-phase="media?.intelligence"
+    :data-intelligence-operation="media?.intelligenceOperation"
     aria-label="迷你播放器"
   >
     <header class="mini-header">
@@ -267,19 +310,31 @@ onUnmounted(() => {
     </section>
     <nav class="mini-transport" aria-label="播放控制">
       <button
+        ref="modeTrigger"
         data-mini-mode
         :data-mode="media?.mode"
         :data-family="media?.modeFamily"
+        :data-target="modes.mode.target.value"
+        :aria-busy="modes.mode.pending.value"
         :disabled="busy || !media?.mode || !media?.modeFamily"
         :title="modeName"
         :aria-label="modeName"
-        @click="cycleMode"
+        @click="modes.mode.cycle"
       >
-        <Icon
-          :name="
-            media?.mode && media.modeFamily ? modeIcon(media.mode, media.modeFamily) : 'repeat'
-          "
-        />
+        <Transition name="mini-mode-glyph" mode="out-in">
+          <span
+            :key="modes.mode.displayFamily.value + ':' + modes.mode.value.value"
+            class="mini-mode-glyph"
+          >
+            <Icon
+              :name="
+                media?.mode && media.modeFamily
+                  ? modeIcon(modes.mode.value.value, modes.mode.displayFamily.value)
+                  : 'repeat'
+              "
+            />
+          </span>
+        </Transition>
       </button>
       <button
         :disabled="busy || !media?.canPrevious"
@@ -336,6 +391,30 @@ onUnmounted(() => {
     </nav>
     <footer class="mini-footer">
       <span
+        v-if="modes.busy.value || modes.resumable.value"
+        class="mini-intelligence"
+        role="status"
+      >
+        <span>{{
+          modes.busy.value
+            ? modes.cancelling.value
+              ? '正在取消…'
+              : modes.preparing.value
+                ? '准备心动模式'
+                : '获取心动推荐'
+            : '推荐尚未完成'
+        }}</span>
+        <button
+          v-if="modes.busy.value"
+          :disabled="modes.cancelling.value"
+          @click="cancelRecommendation"
+        >
+          取消推荐
+        </button>
+        <button v-else @click="modes.resume">继续获取</button>
+      </span>
+      <span
+        v-else
         class="mini-message"
         :title="error || media?.error || ''"
         :role="error || media?.error ? 'alert' : undefined"
@@ -356,6 +435,18 @@ onUnmounted(() => {
         "
       />
     </footer>
+    <Transition
+      name="mini-mode-feedback"
+      @before-leave="(element) => ((element as HTMLElement).inert = true)"
+    >
+      <section v-if="modes.issue.value" class="mini-mode-feedback" role="alert">
+        <span>{{ modes.issue.value.message }}</span>
+        <div>
+          <button v-if="modes.canRetry.value" @click="retryMode">重试</button
+          ><button aria-label="关闭心动提示" @click="dismissModes">关闭</button>
+        </div>
+      </section>
+    </Transition>
     <section v-if="expanded" class="mini-queue" aria-label="播放队列列表">
       <header>
         <strong

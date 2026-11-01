@@ -88,6 +88,7 @@ import type { DownloadDialogTarget } from './services/downloads';
 import { usePlaylists } from './composables/usePlaylists';
 import { playlistSaved, type PlaylistDialogTarget } from './services/playlists';
 import { usePlayer } from './composables/usePlayer';
+import { createPlayerResume } from './services/playerResume';
 import { useMusic } from './composables/useMusic';
 import { downloadSectionQuery } from './services/downloadPage';
 import { useCore } from './services/core';
@@ -1098,12 +1099,21 @@ function keyboard(event: KeyboardEvent) {
     void player.action(player.playing.value ? { kind: 'pause', paused: true } : { kind: 'play' });
   }
 }
+const playerResume = createPlayerResume(player, () => document.visibilityState === 'visible');
+const resumeNativePlayer = () => {
+  void playerResume.wake();
+};
 onMounted(() => {
   window.addEventListener('keydown', keyboard);
+  window.addEventListener('focus', resumeNativePlayer);
+  document.addEventListener('visibilitychange', resumeNativePlayer);
   void shortcutKeys.connect(account.value.epoch);
 });
 onUnmounted(() => {
   window.removeEventListener('keydown', keyboard);
+  window.removeEventListener('focus', resumeNativePlayer);
+  document.removeEventListener('visibilitychange', resumeNativePlayer);
+  playerResume.dispose();
   shortcutKeys.dispose();
 });
 </script>
