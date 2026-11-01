@@ -1,0 +1,76 @@
+云盘删除类型提示、确认范围和结果视图
+2026-11-02。完整目标中的一项UI/功能增量，完整应用目标仍在进行。
+
+官方材料与执行边界
+- actions/remove/removeFromCloudDisk.tsx，SHA256
+  a6065d42b42e8e03b66517adcc9df8ae470d6b17c48c00958b7e27ec1e04d7ed。
+  来源优先parentData.from.selectedData，再data.from.selectedData，最后当前resource。
+  privateSongCount>0优先同步风险提示；否则offStoreSongCount>0提示不可再试听/下载；
+  其余普通确认。混合选择不会只依据最后点击的一首给出提示。
+- M/21 normalize，SHA256
+  33d27af5a54c6a74641f192841637d2608d588d2d93091a9a61cb43948c93af7。
+  privilege.cs的JS真假值规范化为cloudSong=1/0；songType=t||0、pstatus=pst||0。
+  官方私有条件cloudSong!==1或songType===1；下架为songType===3，或songType===2
+  且pstatus<0。这些条件不能用是否能分享、privilege.st<0或云盘/普通同号替代。
+- 私有netease_cloud_delete_oracle.cjs执行恢复generator，select/call为显式合成
+  effect解释器；确认一律取消，put/all/Storage写操作若触发则失败。M/21只提取
+  cs/t/pst标量表达式，不冒称完整官方normalizer或整个官方程序运行。
+- 冻结core/tests/fixtures/cloud-delete-ui.json包含两来源哈希、15个原始字段向量、
+  3个混合提示组和3个本地/CUE参数观察。向量没有真实账号或原生文件操作。
+  重新执行可逐字节比对；没有使用YesPlayMusic。
+
+Rust投影与版本归属
+- CloudApi.snapshot仍从/api/v1/cloud/get取完整账号列表。metadata新增native-only
+  _cloud_delete_kind；CloudDeletionKind::from_api根据官方字段产出ordinary/private/
+  off_store；CloudTrackView只增加deletionKind枚举，不投射原始响应、凭据或本地路径。
+  pstatus支持实际数值及负十进制字符串；不能将异常结构推导为额外权益或公开身份。
+- 旧缓存此前没有保留t/pst，from_cached缺失/非法字段时为unknown，不从可播放或
+  publicSongId猜普通类型。前端缺字段也给“类型尚未核实”的明确社区提示。
+  API中新分类属于快照revision；确认后类型变化会使原revision失效，原生删除
+  在任何POST前重新读取并拒绝旧范围。没有放松原账号、成员或未知写入校验。
+
+同一份确认与请求
+- cloudDeleteTarget在普通工具栏、行菜单、行键盘及独立完整库批量入口捕获账号、
+  revision、IDs、标题和每首deletionKind。普通工具栏保留既有选择顺序，菜单保持
+  当前展示子集顺序；独立批量维持官方完整natural cloudOnlineList，不继承普通页排序。
+- 批量页在点击删除时保存独立target，不再以实时chosen computed作为弹窗prop。
+  useCloudDelete再防御性复制数组；弹窗与实际命令共同使用state.target。因此外部
+  rows/选择/原对象变化不能悄悄改掉本次显示范围、警告、请求IDs或revision。
+- 空范围、超过5000、重复IDs或标题数不符均不能派发；重复确认、拒绝、部分结果、
+  未知回执/只读核对、账号替换、卸载和迟到结果仍由既有状态机与native日志处理。
+  不因为重开或读取结果重发原删除。
+
+界面与列表
+- 普通/私有/下架使用上述官方消息及私有优先级；未知类型为社区明确降级。
+  保留现有带数量标题及取消/删除、关闭和原返回焦点。没有同状态官方窗口截图，
+  不声明像素一致；目标审阅清单和结果视图是社区增强。
+- CloudDeleteTargets每次最多渲染20个标题，有独立滚动和分页。显示总选择数和
+  全范围说明；翻页只改变审阅页，不改变请求范围。到首/末页后焦点转向仍可用
+  的相邻翻页按钮，不能掉到body；实际操作仍按全部已捕获IDs，最多5000首。
+- 提交后不再显示“确认删除？”及未来确认文案。已知结果放在标题后，未决/在途
+  使用独立提示；清单说明为打开确认时固定的查看范围。部分结果保留原清单供
+  核对，关闭再开才以剩余最新资源建立新范围。旧操作更大的total继续明确显示。
+- 窄窗正文滚动，固定头尾；标题清单、分页、两主题、关闭/返回和原生拒绝/部分/
+  未知读回见真实WebView证据。减少动态效果继续由共用ModalTransition遵守。
+
+调用与尚待范围
+- cloud_command.kind=delete仍携带原ids/revision，经CloudLibrary::delete。POST
+  /api/cloud/del的songIds为JSON数组字符串，1000一批，保存每批结果并完整读回；
+  reconcile_delete只读核对。此次没有新增业务HTTP或前端直连接口。
+- 当前仍明确“本地文件保留”。官方可选同时删除本地文件、上传源/下载来源分流、
+  CUE全部/部分保留提示还需要原生文件意图/恢复和组合结果接线；本次未提供一个
+  无执行链的复选框，也未将冻结CUE参数观察称为该业务已迁移通过。已完成下载
+  自身的文件管理能力不自动等于云盘与本地的组合删除能力。
+- 官方元数据匹配/纠正的保存调用链仍缺证据，未编造端点。新版SVIP远端配置、
+  真实OSS/LRC/CUE服务限制、Windows实机视觉及全应用其他分支继续原边界。
+
+验证入口
+- core/tests/client_cloud/deletion_context.rs：官方15向量经实际MusicClient投影，
+  类型变化令revision失效并在POST前拒绝；旧快照仍可分享但分类unknown。
+- frontend/tests/cloud-delete-context.test.ts：官方混合优先级、未知投影、外部target/
+  rows变化不改变实际发送范围与文案、非法范围不能发送；旧状态机用例保留。
+- cloud_delete_context_probe.js/cloud_delete_context_smoke.py：实际production WebView/
+  IPC/Rust/SQLite及libmpv null，合成服务。unknown UI刻意移除类型DTO，和Rust真实
+  旧缓存测试分开记载；不宣称执行完整官方runtime、真实账号写或物理声卡听感。
+- 最终截图、状态/测试计数、失败修正及精确HEAD CI见ui-ux-validation.txt，不能
+  以本文件设计说明或历史Python测试代替当前Rust/桌面实测。

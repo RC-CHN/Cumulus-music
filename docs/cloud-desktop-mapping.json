@@ -168,19 +168,39 @@
       "source": "Capacity.tsx default branch; fixed official fallback URL",
       "implementation": "frontend/src/components/cloud/CloudCapacity.vue; desktop/src/browser.rs; desktop/src/cloud.rs",
       "evidence": "core/tests/fixtures/cloud-song-ui.json; frontend/tests/cloud-song-table.test.ts; desktop/src/browser.rs tests; scripts/ci/cloud_song_smoke.py"
+    },
+    {
+      "feature": "cloud_deletion_warning_classification_and_legacy_unknown",
+      "source": "removeFromCloudDisk and M/21 scalar normalization; frozen cloud-delete-ui.json",
+      "implementation": "core/src/cloud/library/classification.rs; core/src/cloud/library/api.rs; core/src/client/cloud/view.rs",
+      "evidence": "core/tests/client_cloud/deletion_context.rs; scripts/ci/cloud_delete_context_smoke.py"
+    },
+    {
+      "feature": "immutable_cloud_delete_confirmation_and_request_scope",
+      "source": "official selectedData action scope; community defensive snapshot",
+      "implementation": "frontend/src/services/cloudDelete.ts; frontend/src/composables/useCloudDelete.ts; frontend/src/components/cloud/CloudBatchPage.vue",
+      "evidence": "frontend/tests/cloud-delete-context.test.ts; scripts/ci/cloud_delete_context_smoke.py"
+    },
+    {
+      "feature": "bounded_delete_review_and_past_tense_outcomes",
+      "source": "official warning priority; community review/result presentation",
+      "implementation": "frontend/src/components/CloudDeleteDialog.vue; frontend/src/components/cloud/CloudDeleteTargets.vue",
+      "evidence": "scripts/ci/cloud_delete_context_smoke.py"
     }
   ],
   "pending": [
     "metadata matching/editing UI",
     "real channel=3 OSS allocation and live UI",
     "LRC/CUE service restrictions",
-    "Windows actual runtime evidence; macOS is not supported"
+    "Windows actual runtime evidence; macOS is not supported",
+    "composed cloud/local removal journal, source/download dispatch and CUE preservation UI"
   ],
   "completed_followups": [
     "docs/cloud-download-mapping.json",
     "docs/cloud-order-mapping.json",
     "docs/cloud-upload-form-ui-contracts.txt",
     "docs/cloud-task-table-ui-contracts.txt",
-    "docs/cloud-song-table-ui-contracts.txt"
+    "docs/cloud-song-table-ui-contracts.txt",
+    "docs/cloud-delete-ui-contracts.txt"
   ]
 }

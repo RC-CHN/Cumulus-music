@@ -88,8 +88,8 @@ Rust / IPC / 请求
 
 保留边界
 - 工具栏三项与完整查询范围另见cloud-toolbar-ui-contracts；普通列宽和默认容量
-  扩容见cloud-song-table-ui-contracts。所有上传/长附件组合、新SVIP营销、
-  私有/下架细分删除及本地/CUE删除继续审计。
+  扩容见cloud-song-table-ui-contracts，删除类型警告见cloud-delete-ui-contracts.txt。
+  所有上传/长附件组合、新SVIP营销、可选本地/CUE组合删除继续审计。
 - 本批原先仅支持上传/下载关联；后续已补扫描库localMap及本地故障隔离，见
   cloud-song-table-ui-contracts.txt。当前必须是已确认catalog映射和本账号/文件/CUE
   revision，不用同名碰撞猜测身份；本地关联故障保留其他菜单并仅隐藏目录。

@@ -162,3 +162,9 @@ CloudResourceView增加有界localIssue；本地日志/扫描关联错误仅降�
 _cloud_catalog_id用于已确认下载/扫描映射，publicSongId分享限制保持独立；不以云盘ID
 猜测普通歌曲。默认容量/固定官方扩容入口及表格鼠标键盘、列宽详见
 cloud-song-table-ui-contracts.txt；新SVIP远端配置营销卡片仍未声称已实现。
+
+2026-11-02 删除类型与确认范围
+CloudTrackView增加deletionKind，保留官方私有优先于下架的消息；旧缓存缺类型则unknown。
+普通/行菜单/键盘/批量均捕获独立范围，确认与请求使用同一份snapshot；20项审阅不截断
+实际删除。结果视图不再展示确认问题。来源/接口/验证见cloud-delete-ui-contracts.txt，
+可选本地删除和CUE保护的组合流程尚待原生持久化接线，不从单独下载文件管理推导完成。

@@ -3845,3 +3845,63 @@ Windows既有失败与修正边界
   源码。source_audit/JS/Python语法/diff检查通过，详细哈希见
   .build/cloud-song-table-delivery-manifest.json；截图集入口为
   .build/cloud-song-table-final-gallery-v4/index.html。
+
+2026-11-02 云盘删除类型、固定确认范围与结果文案
+来源与新增逻辑
+- cloud-delete-ui-contracts.txt及cloud-desktop-mapping.json记录官方源哈希、枚举、
+  各入口捕获、状态/接口与剩余本地删除边界；没有使用YesPlayMusic。
+- 私有netease_cloud_delete_oracle.cjs解释恢复generator到取消确认，独立执行15个
+  cs/t/pst原始字段、3个混合组和3个CUE/本地参数观察；与公开cloud-delete-ui.json
+  最终逐字节一致。只提取M/21标量表达式/显式effect替身，没有完整官方runtime，
+  也没有执行Storage删除。不能把CUE向量当作客户端本地/CUE删除迁移完成。
+- Rust两新增集成经实际MusicClient与SQLite投射所有15分类，类型变化改变revision
+  并在POST前拒绝旧确认；真实旧缓存删去类型字段仍可分享但提示unknown。前端
+  unknown实验显式移除DTO字段，与这个原生旧缓存测试分开记载。
+
+最终GUI与截图
+- .build/cloud-delete-context-final-gui-3：Xvfb/Openbox，16态/16原图，DPR1；
+  .build/cloud-delete-context-final-kde-3：本机KDE Wayland/XWayland，16态/16原图，
+  DPR1.25。KDE只抓自建PID窗口pixmap，physical.json核对16态可见/聚焦；原始32PNG
+  没有修改，cloud-delete-context-final-gallery-v3的gui/kde各3张联系表均实际查看。
+- 同一冻结production dist/mini_ui_probe，1120x760与760x540、两主题；原生
+  WebView/Vue/IPC/Rust/SQLite、实际libmpv null保持真实，账号/业务服务为合成数据。
+  无物理声卡听感、真实账号/音乐请求或完整官方同尺寸运行窗口像素一致证明。
+- 普通/私有/下架、混合私有优先、缺类型明示，普通选择与独立完整库批量均通过。
+  清单始终<=20 DOM条目，实际405个固定natural IDs只发1次；末页5首。部分1成功/
+  404失败后原查看范围405不变，关闭后新确认404。列表分页未缩小实际写入范围。
+- 显式持住原生预读取，使实际删除用例在途；标题/状态与按钮禁用、对话框焦点
+  保留，释放后结果先行，不再显示确认问题或将要执行的文案。末页焦点回可用
+  上一页；关闭/部分结果返回、账号替换清旧弹窗均通过。全部本地文件保留。
+
+发现与纠正
+- 首轮gui/kde-1各15态完整绘制，末尾严格IDs断言失败：探针误以为批量继承普通
+  页descending；实际readCloudBatch按官方独立natural读取。核对已有来源/契约后
+  将新断言固定为1001..1405，保留完整405 IDs顺序检查，没有改产品排序或放宽范围。
+- 首次strict Clippy因合成fixture的to_string比较分配失败；改为解析ID并数值比较，
+  没有allow告警。该失败发生于全测开始前，不将该次未执行的测试称为通过。
+- 首轮截图推动修复结果阶段再次确认/未来文案。final-*-2是中间15态/30图；再补
+  在途实测和标题/中性说明后，以final-*-3的16态/32图为本批最终证据，不累计中间图。
+
+工程验证与边界
+- Node24.16.0/npm ci通过；最终format:check、516项前端测试、typecheck/build均0退出，
+  cloud-delete-context-{format-final3,tests-final3,build-final3}.log。3新增状态测试核对
+  官方混合优先级/未知、原target/rows变动不改变真实发送和非法范围不能派发。
+- 最后Rust源修改后，Rust1.96全workspace/all-target/custom-protocol/locked、fmt和
+  strict Clippy均0退出：280个结果目标、1435 passed、0 failed/ignored/编译告警，
+  cloud-delete-context-{rust-format-delivery,clippy-delivery,rust-tests-delivery}.log。
+  随后仅更新前端结果/在途文案；新dist固定并等frontend成功退出后才重建mini和
+  普通cumulus，二者0退出，cloud-delete-context-{native-build-final3,app-build-final3}.log。
+  Rust测试不冒称对前端文字的验证；最终文字以该新dist实际GUI记录为准。
+- desktop JS8项、CI工具40项、JS/Python语法、release_guard通过；新smoke加入
+  Linux/Windows独立runner。公开源码审计在所有新增文件进入索引后再次执行。
+  Windows新精确HEAD CI需单独核对，不能由本机Linux结果推导Windows实机通过。
+- 本批只删除合成云盘资源；真实账号写/真实音乐请求0，本地文件删除0。没有支付、
+  公开发内容、他人邀请消息或已有用户资源变更。元数据保存、本地组合删除/CUE
+  保留、服务限制和全应用其他分支继续完整目标，不以本批证据宣布全目标完成。
+- 最终相关回归cloud-delete-context-final3-regression-{page,batch,menu,toolbar,upload,task,
+  song}分别26/29/23/24/16/27/32态，共177态通过；原有请求IDs、focusInside、几何、
+  命中、完整文件/未决恢复断言全部保留。本组没有另截图，不与32张删除专项图混计。
+- .build/cloud-delete-context-delivery-manifest.json冻结公开源码、production dist、
+  两个原生二进制、检查日志和32原图哈希；最终截图入口为
+  .build/cloud-delete-context-final-gallery-v3/index.html。精确HEAD CI回执在.build单独保存，
+  不从历史65bfd5a或178f0e2运行推导本批新HEAD全绿。未改main、版本、标签或发布附件。
