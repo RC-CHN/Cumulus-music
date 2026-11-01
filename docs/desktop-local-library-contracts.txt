@@ -1,5 +1,5 @@
 本地音乐库桌面契约与恢复映射
-2026-10-26；完整桌面目标仍未完成。
+2026-10-26；查询和跨页交互补充见 local-resource-ui-contracts.txt（2026-11-02）。完整桌面目标仍未完成。
 
 产品与来源
 官方恢复 M/461（page:localMusic）包含标题倒序初始排序、搜索、分页、getAllList 和分组状态。
@@ -104,7 +104,8 @@ Linux编排：desktop/scripts/capture_local_proof.py；独立Xvfb与D-Bus、XTes
 官方付费本地歌曲页、逐曲CUE侧车/嵌入歌词，以及超大目录/分组性能和各平台打包验收。
 本次暂停扫描明确保留索引，不能当作官方删除扫描目录后的全部条目移除行为。
 当前目录监视是可移植的周期对账，尚无原生事件加速。FFprobe仍由宿主环境提供。
-Windows/macOS未在本机实测；当前Linux验证不能推出其选择器/进程/路径/音频设备均已通过。
+Windows未在本机实测；逐批精确提交CI结果见ui-ux-validation.txt，不能推出真实Windows声卡听感。
+macOS不在当前支持范围。Linux验证不能单独推出Windows选择器/进程/路径/设备均已通过。
 此前把最小窗口截图判断为侧栏导航绘制缺失属于误判，后续原图像素与DOM复核已排除；
 正常/小窗口的5处导航文字区域逐字节相同，未修改产品CSS。复核见.build/shell-layout-audit.json
 和.build/ui-proof/shell-20261026-a；该检查只覆盖此次窗口布局，不代替完整视觉验收。

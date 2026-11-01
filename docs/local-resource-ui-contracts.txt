@@ -1,0 +1,85 @@
+本地搜索与云盘/下载/本地库/队列一致性
+2026-11-02；本批是全应用 UI/UX 审计的一部分，完整目标仍在继续。
+
+来源
+官方恢复 LocalMusic.tsx 使用模型 groupBy.searchKey 控制搜索框，切换类别时清空
+key/searchKey，并以 groupByType 作为搜索控件 key。FlexSearchInput 使用 10ms
+debounce、保留输入值和清空按钮。本批沿用这些业务交互，没有参考 YesPlayMusic。
+原始文件仅保留在 references，不作为公开构建依赖：
+- references/ui-recovery/sources/packages/pc/src/pages/localMusic/views/LocalMusic.tsx
+  SHA256 6b3e82a4402badb941a900634b4c577847f3b5c81b87ae800452e44ee13d1ef2
+- references/ui-recovery/sources/packages/pc/src/components/FlexSearchInput/index.tsx
+  SHA256 8768a0459609cc2a0b71ef494239fb7ae1e46aa07c3cf66c5730989574919c9f
+已有 M/461 本地查询、M/2304 扫描、Rust CUE/下载与队列恢复继续使用原实现。
+完整旧来源、字段和边界见 local-library-desktop-mapping.json、
+desktop-local-library-contracts.txt、cloud-local-delete-contracts.txt。
+
+实际发现与修复
+1. 离开后返回本地页，原查询仍筛选列表，搜索框却重新变成空值。搜索草稿现在从
+   同一 LocalQuery 初始化，离开页面前同步提交尚未到 10ms 的完整输入。旧页面
+   的计时器只属于原 visit；隐藏、重新进入或销毁后不能覆盖新页面输入。
+2. 发出新查询后，旧行仍可播放，导致新查询配旧行/revision。本地快照现在绑定
+   keyword/sort/descending/group/groupKey/includeMissing/offset/limit；revision
+   仅作为索引前置条件，不作为显示条件。新条件没有成功结果时不显示旧行。
+   loading、读取错误或写操作进行中，播放处理函数和按钮都拒绝旧行播放。
+3. 读取失败曾与命令失败共用错误；正常后台轮询会清掉扫描失败提示。现在
+   readError 与 command error 分开，读成功只清读取错误。扫描失败带具体动作，
+   必须由用户再次执行该动作，不以“重读列表”冒充重试扫描。
+4. 登录后本地/CUE 曲目进入队列，native_like_selection 曾直接按线上歌曲映射
+   解析，导致 mini_snapshot 报非正整数 ID。现在复用主播放器资源投影，未关联
+   的本地/CUE 无线上喜欢目标；已下载歌曲保留真正的线上 song/voice ID。
+   迷你窗口、系统媒体与快捷键继续共享原播放器、账号及队列控制边界。
+5. 原生重新扫描执行期间按钮会禁用，WebKit 因此把焦点移到 body，结束后不会
+   自动恢复。现在选择目录、重新扫描、暂停/恢复扫描完成后，若仍属于同一次
+   本地页访问且焦点没有移到其他控件，返回原可用按钮；离开页面后不抢回焦点。
+
+搜索与错误交互
+- 普通输入 10ms 后发起实际 typed local_page；保留用户输入中的空格。Rust 查询
+  仍按原契约处理 trim/casefold，不能用结果文本反向改写输入框。
+- 中文输入法组合中不发送中间拼音，compositionend 提交完整文字。这是为避免
+  不完整输入干扰结果而添加的社区交互约束；原 FlexSearchInput 的组合分支并非
+  完全相同，不能称为逐行复刻。切换分组同时取消待发输入/组合并清空关键词。
+- 清空按钮保留搜索框焦点；歌曲/歌手/专辑/文件夹共用权威查询。分类键变化会
+  重建输入控件；不从旧类别的延迟回执恢复文字。
+- 首次或新条件读失败显示“本地音乐暂时无法读取”及“重试读取”，不显示空库
+  引导。确实无匹配显示“没有匹配的本地音乐”，与失败、尚未扫描明确区分。
+- 同一查询后台读失败保留已有行并禁用依赖它们的动作；1500ms 可见页轮询仍为
+  只读。显式重试成功后，如果原重试按钮移除且焦点落到 body，返回搜索框。
+  新焦点已由用户移动时不抢回；失败仍保留可见的读取重试入口。
+- 扫描失败不销毁索引，不自动重放命令；后续正常轮询不隐藏命令失败。显式
+  重新扫描成功清除该提示。已有 native snapshot_changed 回第一页规则保留。
+
+跨页产品约束
+云盘删除仍使用冻结的确认计划及单独的本地文件选项；本批不增加 HTTP 接口。
+选择删除本地下载文件：真实文件、完成下载记录、离线登记、本地索引以及队列
+中的该文件条目一致移除。返回下载页仍保留原搜索值，不能显示旧完成行；返回
+本地库重新读取；原队列中其他条目、CUE 身份及暂停状态继续有效。
+不勾选本地删除：云盘记录删除后，已完成文件和下载任务保留，下载页可继续
+从已验证的离线资源播放，不因云盘删除重新申请在线音源。
+CUE 对应整文件保护沿用组合删除预检，不允许误删共用音源。
+
+实现与调用
+frontend/src/composables/useLocal.ts：查询快照/读写错误/可见页与读取代次。
+frontend/src/composables/useLocalSearch.ts：输入法、延迟、类别、visit 生命周期。
+frontend/src/components/LocalPage.vue、App.vue：控件状态、焦点、离开前 checkpoint。
+core/src/client/native_media/likes/view.rs：主/迷你播放器的资源类型投影一致。
+local_page / local_command / play_selection / player_queue / player_action 使用既有
+typed IPC；云盘删除及完成下载使用原计划/任务命令。没有前端直连业务 API。
+
+验证入口与边界
+frontend/tests/local-state.test.ts、local-search-state.test.ts 覆盖输入所有权、延迟
+回执、IME、类别清空、失败后轮询和销毁；不代替实际 WebView。
+core/tests/client_local.rs 新增登录态普通本地/CUE 的迷你投影、队列、暂停和旧
+控制拒绝；Offline API 遇到任何 HTTP 直接失败。
+core/tests/client_downloads.rs 新增离线下载迷你投影、真实喜欢 ID、暂停及不重新
+取音源。使用合成媒体和测试音频适配器，不能称作声卡验证。
+desktop/examples/local_resource_probe.js + scripts/ci/local_resource_smoke.py 使用
+生产 WebView/IPC/Rust/SQLite/文件/队列；只有账号服务/下载媒体是合成适配器，
+并显式注入读取延迟、IO 失败、扫描失败。启动线上歌曲被替换为合成 WAV；仅该
+证明进程显式允许 menu-originals 内的合成 FLAC/CUE 交给 libmpv/null 直接读取，
+其他文件和非固定合成 CDN URL 一律拒绝。文件由真实 FFprobe 索引；不证明声卡听感。
+按实际 UI 操作核对亮/暗主题、1120x760/900x620、点击命中、可见焦点、无横向
+溢出、精确删除 IDs 和文件/任务/索引/队列结果。实际通过目录由 ui-ux-validation.txt
+登记；脚本存在、类型检查或编译成功均不单独算桌面流程通过。
+不新增真实账号写入、支付、公开内容或邀请。不声称官方完整窗口像素一致。
+Windows 结果取决于本批精确提交的完整 CI；macOS 不在支持范围。

@@ -3974,3 +3974,54 @@ Windows既有失败与修正边界
   libmpv使用null，非声卡听感证明。官方恢复generator及标量向量不冒充完整官方runtime。
 - Windows本批实际运行待精确HEAD CI；Windows实机视觉未验证，macOS不在支持范围。
   元数据保存调用链、OSS/LRC/CUE线上外部条件及全应用其他UI分支继续既有边界。
+
+2026-11-02 本地搜索与跨页资源一致性
+来源、状态与调用：local-resource-ui-contracts.txt、local-library-desktop-mapping.json。
+全部为本批新Rust/桌面执行证据；没有把历史Python验证计入通过。
+
+实际界面和文件结果
+- .build/local-resource-final-gui-2及-final-kde-2：各24态/24原始PNG，通过。
+  前者Xvfb 100%，后者当前KDE/XWayland 125%，只捕获本证明子进程的窗口像素。
+  每个流程分别覆盖1120x760和900x620、亮/暗、中文组合输入、10ms搜索、未到延迟
+  就离开/返回、旧实际native回执落后于新查询、失败/真实空结果/显式恢复及可见焦点。
+- 三份实际合成FLAC完成下载登记后由FFprobe索引，其中1004导入CUE。当前CUE暂停，
+  删除云盘1006且勾选本地删除，核对文件/任务/索引/队列中该条目消失；原下载页006
+  搜索保留且为空，另两项及CUE playId/暂停状态保留。删除1005不勾选，本地任务/文件
+  保留，随后实际离线播放，resourceKind=downloaded，云盘重新授权次数不增加。
+  每个进程只有两次精确云盘删除[1006]、[1005]，真实账号写/真实音乐请求均0。
+- 缓存读失败保留两行并禁用依赖行的动作；读取恢复返回输入框。扫描失败经至少一次
+  成功后台读取仍显示原动作错误；显式重新扫描成功清除，焦点回到原按钮。
+- 两个环境各20帧有不透明按钮/弹窗像素检查，全部通过。完整读取有限CSS/WAAPI动画
+  后截图，保留产品动画；较早final-1截在140ms颜色过渡中，不列为最终样式证据。
+  .build/local-resource-final-gallery/index.html收录最终图；6张主流程联系表已全部查看。
+- .build/local-resource-guest-final：真实GTK选择目录、游客本地库、CUE实际时间线/
+  本地歌词、分组、历史查看/回放、历史保存失败提示、NCM播放8态；同目录最小窗口
+  760x540重开2态通过，共10态及额外选择目录后图。3张联系表已查看。系统选择器初始
+  首页可能包含本机目录名，其截图只保留私有证明，不进入交付图集或仓库。
+  native-startup.json与native-startup-reopened.json均证明GUI初始化后LC_NUMERIC=C，
+  LC_MESSAGES=en_US.UTF-8保留。真实API读取仅为合成未登录回应，音频为合成媒体/null。
+
+本批实现检查
+- local-resource-rust-format-final.log、-clippy-final.log、-workspace-final.log：
+  workspace/all-target/custom-protocol/locked格式、严格Clippy、完整测试通过；280个
+  target结果，1450通过、0失败/忽略。新增两项资源类型/迷你控制/离线不重授权测试，
+  不把测试音频适配器当成真实GUI音频证明。
+- local-resource-npm-ci.log、-front-format-check-visit.log、-front-tests-focus.log及
+  -front-build-final.log：固定Node 24.16.0，npm ci、格式、526项前端测试、vue-tsc及
+  生产build通过。本批新增8项有实际延迟/输入法/页面生命周期/失败恢复的状态测试。
+- 冻结最终dist后再构建mini_ui_probe、local_ui_probe及普通cumulus；
+  local-resource-binaries-build-final.log成功，后执行上述最终UI/原生证明。没有边构建
+  Tauri边替换dist。普通二进制编译不单独当作桌面流程通过。
+- scripts/ci单元43、桌面JS8通过；source_audit、release_guard通过。新增24态脚本
+  同时接入Linux/Windows独立runner的必需步骤，不忽略失败。
+- 验证器曾误把closed details/未hover按钮计为可见、在Vue提交前读取旧分组DOM，
+  并在删除后才首次记录原合成文件路径；已按真实可见性、类别、先记录再观察修正。
+  本地读取需要显式只允许menu-originals内合成文件的测试引擎开关；此前拒绝文件
+  属于证明适配器边界，不修改生产播放器来绕过。线上ID解析失败及扫描焦点丢失
+  则确为产品缺陷，分别有核心测试/最终实际UI证明。
+
+CI与边界
+- 上一批b0d14ac运行41353355228的Linux和Frontend已成功，Windows仍需最终结果；
+  不将它当成本批新增功能的精确提交验证。本批完整CI在分批提交后另行登记回执。
+- 本机是Linux；不声称Windows实机选择器/声卡/视觉均已通过，macOS不支持。
+  无真实账号写入/支付/公开发布/邀请。完整应用目标仍在逐项审计，未因这批通过而完成。

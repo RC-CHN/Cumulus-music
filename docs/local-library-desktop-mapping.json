@@ -3,6 +3,7 @@
   "scope": "Local library desktop query, monitoring, guest playback, CUE lyrics, existing NCM integration",
   "goal_complete": false,
   "contract": "docs/desktop-local-library-contracts.txt",
+  "query_and_cross_page_contract": "docs/local-resource-ui-contracts.txt",
   "yesplaymusic_used": false,
   "sources": [
     {
@@ -28,6 +29,11 @@
     {
       "path": "references/ui-recovery/sources/packages/pc/src/pages/localMusic/components/LocalMusicCategory.tsx",
       "sha256": "aeb5382bc8a9d87f3427053ff7a1a3a995dd520b6e2f484639c83e506b15b2e5",
+      "kind": "official_recovered"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/components/FlexSearchInput/index.tsx",
+      "sha256": "8768a0459609cc2a0b71ef494239fb7ae1e46aa07c3cf66c5730989574919c9f",
       "kind": "official_recovered"
     },
     {
@@ -114,6 +120,40 @@
       ]
     },
     {
+      "feature": "controlled debounced search, IME, visit ownership and distinct read/command recovery",
+      "implementation": [
+        "frontend/src/composables/useLocal.ts",
+        "frontend/src/composables/useLocalSearch.ts",
+        "frontend/src/services/local.ts",
+        "frontend/src/components/LocalPage.vue",
+        "frontend/src/App.vue"
+      ],
+      "validation": [
+        "frontend/tests/local-state.test.ts",
+        "frontend/tests/local-search-state.test.ts",
+        "desktop/examples/local_resource_probe.js",
+        "scripts/ci/local_resource_smoke.py"
+      ],
+      "difference": "IME ignores incomplete composition as a community correctness constraint; not identical to the recovered composition branch"
+    },
+    {
+      "feature": "cloud file retention/removal reflected in downloads, local CUE queue and offline playback",
+      "implementation": [
+        "core/src/client/cloud/removal",
+        "core/src/client/native_media/likes/view.rs",
+        "core/src/download/completed",
+        "frontend/src/components/LocalPage.vue",
+        "frontend/src/components/DownloadPage.vue"
+      ],
+      "validation": [
+        "core/tests/client_local.rs::authenticated_local_and_cue_mini_controls_do_not_require_an_online_song_id",
+        "core/tests/client_downloads.rs::downloaded_mini_projection_preserves_the_service_like_identity_without_reauthorization",
+        "core/tests/client_cloud/removal.rs",
+        "scripts/ci/local_resource_smoke.py"
+      ],
+      "boundary": "isolated synthetic service/media; null output does not prove physical sound"
+    },
+    {
       "feature": "page and account response races",
       "implementation": [
         "frontend/src/composables/useLocal.ts",
@@ -127,7 +167,6 @@
     }
   ],
   "remaining": [
-    "automatic online matching and manual mapping UI",
     "tag edits, artwork and native local file/batch management",
     "official paid-local-music page",
     "embedded and track-specific CUE lyric selection",
