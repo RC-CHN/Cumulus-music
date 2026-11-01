@@ -8,11 +8,15 @@ pub(super) mod intelligence_start_fixture;
 #[path = "mini_room_fixture.rs"]
 mod room;
 use serde_json::{Value, json};
+#[allow(dead_code)]
+#[path = "lyric_report_fixture.rs"]
+pub(super) mod lyric_reports;
 #[derive(Default)]
 pub struct Library {
     pub likes: std::sync::Mutex<Vec<String>>,
     pub room: room::RoomFixture,
     pub fm: fm::Fixture,
+    pub lyric_reports: lyric_reports::Fixture,
 }
 fn song(id: u64) -> Value {
     json!({"id":id,"name":format!("合成歌曲 {id} · A quiet afternoon"),"ar":[{"name":"Cumulus"}],"al":{"name":"界面体验验证"},"dt":if id==1 {6_000_000} else {235_000},"fee":id%3})
@@ -23,6 +27,9 @@ fn playlist(id: u64) -> Value {
 impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, args: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(response) = self.lyric_reports.response(path, &args).await {
+                return response;
+            }
             intelligence_start_fixture::before(path).await;
             if let Some(response) = intelligence_start_fixture::response(path, &args).await {
                 return response;
@@ -76,6 +83,9 @@ impl Api for Library {
                     json!({"code":200,"data":[{"id":ids[0],"url":"https://m1.music.126.net/cumulus-relay-fixture.wav","code":200,"md5":"fixture","level":"standard","expi":120}]})
                 }
                 "/api/song/lyric/v1" => {
+                    if lyric_reports::enabled() {
+                        return Ok(lyric_reports::lyrics(&args["id"]));
+                    }
                     json!({"code":200,"lrc":{"lyric":(0..30).map(|i|format!("[00:{i:02}.00]合成歌词 {i}\n")).collect::<String>()}})
                 }
                 _ => {
