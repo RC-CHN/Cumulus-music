@@ -1,0 +1,98 @@
+迷你播放器心动五态与双窗口请求生命周期（2026-11-01）
+
+范围与官方来源
+官方M308:5125–5386 miniModePlayerInit/onMiniPlayerAction的mode分支，实际读取
+isCanHeartBeat/playingMode，调用M7.t后进入switchPlayingMode。M308 SHA256：
+2cd3a0da5759370a80cfe20c7ac4e58ef192bab33c396e8eff3efdd35c254a7d。
+M7 SHA256 4914ce443197d0538f055ae064b910a1a5f7c3d83c1c1e60978b9d7f2b055e1e；
+原factory的20组冻结向量仍由主/小窗共用playbackMode规则验证。
+这次补齐有资格时的心动→列表循环→单曲循环→随机→顺序→心动。一起听保留
+此前明确标注的社区三态修正；FM手动模式仍不可用，未伪装为完整官方小窗还原。
+官方C++布局没有完整恢复；本界面保持Cumulus主题，不声称逐像素一致或使用了
+Windows官方客户端的运行截图。没有使用YesPlayMusic。
+
+原生领域与资格提示
+core/client/mini/{intelligence,mode}.rs：
+- mini_heart_hint只读取既有播放源和当前SessionToken代次的喜欢歌单提示；不发HTTP、
+  不初始化音频、不授予会员或离线权限。提示由正式client.playlists读取到的owned/
+  favorite资源，以及intelligence_liked_id成功读取的归属结果更新。没有提示时不猜测。
+- 提示只留在IntelligenceHost内存中，绑定完整SessionToken；同uid的新代次、另一
+  账号都不能继承。重新启动先由主窗口正常读取账号资源；不把旧硬盘缓存当成授权。
+- MiniSnapshot仍是Rust不透明控制能力。same_controls包括显示的资格策略；原生
+  重新检查账号、队列、媒体焦点与原控制fence。Public MiniView增加queueRevision、
+  canIntelligence、phase、调用端operation UUID和正在读取的UUID/准备阶段布尔值。
+  没有公开私有context.id、请求、元数据、备份、Cookie或完整授权URL。
+- mini_intelligence只接受Start Current和Continue，不能传任意Likes源或任意接口。
+  Start仍通过正式协调器重新读取本人喜欢归属、完整trackIds/目录、黑名单、正常
+  音源/下载权益；所有HTTP字段和顺序见intelligence-start-contracts.txt。
+- player_intelligence_checked携带原生NativeMediaTarget，在初始actor Snapshot核对
+  原fence，并在真正准备/夺取音频前保留原focus快照。旧窗口输入不能重新捕获更新
+  后的MV/歌曲目标；业务域不依赖Tauri、WebView或Python子进程。
+- mini_mode与原MiniAction::Mode复用同一策略，保持房间gate与完整NativeTarget；
+  心动退出仍真实Leave，即使普通数字模式已经是order_loop。
+- MiniPlaybackReceipt只返回epoch/queueRevision/playId/mode/fm/phase/调用UUID，
+  是该次actor操作的实际回执。不能用稍后可能属于新选曲的MiniRead冒充旧操作回执。
+
+桌面边界与生命周期
+desktop/mini/intelligence.rs提供mini_mode、mini_intelligence、mini_intelligence_cancel，
+仅登记的mini-player-N能调用；主窗口与伪造/已销毁窗口不能调用。Start/Continue
+必须提供当前generation/ticket，Rust捕获MiniSnapshot后再执行业务；Cancel校验
+该代窗口的已观察epoch并交给原生按账号代次/UUID取消。
+- 推荐HTTP不持有Host.operation的播放/设置互斥锁，暂停、定位、音量与退出可用。
+- 每个窗口登记自己发起的(epoch,UUID)。返回、重载、销毁或主窗口关闭时仅取消
+  该窗口拥有的未完成读取；不自动退出已经提交的心动，不重播音乐、不取消别的
+  窗口后来发起的操作。已提交Seeded保留在原生，主窗口可显式继续或退出。
+- 迟到handler只清理仍匹配原generation与UUID的登记；不能清掉新小窗的请求。
+  Cancel早于Start handler由现有有界、按代次隔离的提前取消记录处理。
+- 通过小窗明确取消主窗口发起且当前可见的推荐也受支持；同一MusicClient会把
+  原读取唤醒。没有第二个播放器、第二套Cookie或第二条授权请求链。
+- mini_read最多重试3次无副作用本地Snapshot，只处理actor在多次读取间推进导致的
+  StaleResponse；不重放任何业务写入。前端非重叠轮询继续保留可用旧视图，过时的
+  本地读不会作为播放故障提示。首次小窗就绪、缩放和8秒lifetime上限保持原约束。
+
+共用前端逻辑与界面
+intelligenceAttempt/useIntelligence/usePlaybackMode现在依赖最小类型化播放投影和
+控制端口；主窗口仍使用PlayerView。useMiniModes用专属MiniClient桥接相同状态机，
+没有伪造完整PlayerModel，也没有调用主窗口账号/播放器IPC。
+- 模式乐观目标、实际模式和当前family分开。快速点击串行提交首次/最后目标；
+  准备中的后续普通目标取消本次读取；种子已提交则按新fence真实Leave。
+- 精确UUID观察种子提交后立即释放模式等待，不必等推荐HTTP才允许退出/切换。
+  继续获取使用新UUID，已提交Start UUID仍是会话归属标记，不替换为私有session id。
+- 轮询读为single-flight；操作完成后需要新读取时先等待旧读结束，再发无副作用
+  本地新读。真实回执与新读取分开比较，新选曲不会继承旧模式的排队点击。
+- Footer区分准备心动、获取推荐、正在取消和推荐待完成，提供取消/继续；等待
+  不占通用transport busy。取消完成后将仍属于原账号且未被用户移走的焦点交给
+  继续按钮或模式控件；不会强抢用户的新焦点。
+- 主窗口从隐藏恢复或重新聚焦时，createPlayerResume合并为串行本地Snapshot读；
+  原usePlayer revision规则阻止隐藏期的旧事件覆盖新状态。它不执行Startup/Play/
+  Refresh、不重放失败命令；未连接/不可见/销毁时不启动读取，失败由既有恢复UI处理。
+- 错误面板在歌曲信息区内换行，播放控件仍可命中；明暗主题都保留关闭/显式重试。
+  主窗口发起的请求失败回到Fallback时，小窗也显示相同失败原因，不能静默消失。
+  关闭同一次持久化失败后，时钟轮询不重新弹出；重新开启必须有用户新操作。
+- 图标/错误面板使用短opacity/transform动效并尊重系统和应用减少动态效果。
+  离场面板立即inert，重试入口还检查当前确有issue，不能因动画中的旧按钮重复开启。
+
+接口和可执行验证
+MiniClient.mode(ticket,mode) -> MiniPlaybackReceipt
+MiniClient.intelligence(ticket,{kind:start|continue,operation_id}) -> MiniPlaybackReceipt
+MiniClient.cancelIntelligence(epoch,operationId) -> bool
+以上均绑定创建MiniClient时的窗口generation；公共HTTP仍仅由core执行。
+  npm --prefix frontend run build
+  cargo build -p cumulus-desktop --example mini_ui_probe --features custom-protocol --locked
+  LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 \
+    scripts/ci/mini_intelligence_smoke.py --binary .build/target/debug/examples/mini_ui_probe \
+    --root .build/mini-intelligence-proof
+Windows使用对应.exe与--runtime原生库目录，无Xvfb；两个runner均加入同一23态。
+
+证据与尚未覆盖项
+- intelligence_coordinator新增4项mini用例，原19项保留；检查提示读取无HTTP、服务端
+  归属重新核对、实际Current入口/公开回执、旧票据、等待期间暂停/定位/退出、
+  Continue新UUID不重载当前解码器。前端新增6项Mini适配与4项主窗口恢复读测试，原有状态机仍执行。
+- 23态实际双WebView包括五态、取消/继续、准备中取消、保存拒绝/重试、展开队列、
+  连点重进、关闭后主窗口恢复/新小窗继续、旧窗口拒绝、新选曲取消旧读取、主窗口
+  请求的Fallback显示/关闭/明确重开，以及离场面板不接收焦点或产生幽灵重试。
+  原生逐态核对队列、phase、暂停10秒、实际playId和全部七次五字段HTTP；单一
+  音频工厂始终为1。账号/API/音源与指针事件合成，libmpv/null不是声卡听感。
+- 最终原图、本机KDE、完整Rust/前端检查与精确CI状态见ui-ux-validation.txt。
+- FM手动模式、完整小窗资源/队列菜单、屏蔽弹窗、推荐补充/分隔、跨显示器缩放及
+  Windows实机视觉仍需要后续逐项完成；本批不代表全应用UI或原完整目标已完成。

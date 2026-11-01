@@ -6,6 +6,7 @@ mod assets;
 mod fixture;
 #[path = "support/mini_fixture.rs"]
 mod mini_fixture;
+use mini_fixture::intelligence_start_fixture;
 #[allow(dead_code)]
 #[path = "support/relay_fixture.rs"]
 mod relay_fixture;
@@ -89,6 +90,7 @@ fn main() {
     }));
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
         let registry=ProfileRegistry::open(&root.join("state"),ApiOrigin::Pc)?;
+        let proof_store=registry.store();
         let api=Arc::new(mini_fixture::Library::default());
         let session=Arc::new(AccountSession::new(api.clone(),Some(registry.store())));
         let count=Arc::new(AtomicUsize::new(0));
@@ -109,9 +111,16 @@ fn main() {
                 "eval" => {
                     let mini=handle.webview_windows().into_iter().find(|(label,_)|label.starts_with("mini-player-")).expect("mini window").1;
                     let source=value["source"].as_str().unwrap();
-                    mini.eval(format!(r#"(async()=>{{try{{const value=await (async()=>{{{source}}})();await window.__TAURI_INTERNALS__.invoke('plugin:event|emit',{{event:'mini-proof',payload:{{kind:'result',id:{id},value}}}});}}catch(e){{await window.__TAURI_INTERNALS__.invoke('plugin:event|emit',{{event:'mini-proof',payload:{{kind:'result',id:{id},error:String(e?.message||e)}}}});}}}})();"#)).unwrap();
+                    mini.eval(format!(r#"(async()=>{{try{{const value=await (async()=>{{{source}}})();await window.__TAURI_INTERNALS__.invoke('plugin:event|emit',{{event:'mini-proof',payload:{{kind:'result',id:{id},value}}}});}}catch(e){{await window.__TAURI_INTERNALS__.invoke('plugin:event|emit',{{event:'mini-proof',payload:{{kind:'result',id:{id},error:String(e?.message||e),code:e?.code}}}});}}}})();"#)).unwrap();
                 }
                 "result" => ack(value.clone()),
+                "intelligence" => { intelligence_start_fixture::control(value["action"].as_str().unwrap());ack(intelligence_start_fixture::report()); }
+                "storage" => {
+                    let sql=rusqlite::Connection::open(proof_store.directory().join("core.sqlite3")).unwrap();
+                    sql.execute_batch(if value["reject"]==true {
+                        "CREATE TRIGGER reject_mini_mode BEFORE UPDATE ON state WHEN NEW.owner='2' AND NEW.kind='playback' AND NEW.key='queue' BEGIN SELECT RAISE(ABORT,'synthetic mini commit failure'); END;"
+                    } else { "DROP TRIGGER reject_mini_mode;" }).unwrap();ack(json!({"ok":true}));
+                }
                 "key" => {
                     let id = id.as_u64().expect("key sequence");
                     let request = output.join(format!("key-{id}.json"));
@@ -142,6 +151,7 @@ fn main() {
                     value["miniWindows"]=json!(handle.webview_windows().keys().filter(|l|l.starts_with("mini-player-")).collect::<Vec<_>>());
                     value["likeWritesObserved"]=json!(api.likes.lock().unwrap().clone());
                     value["syntheticRoom"]=api.room.report();
+                    if intelligence_start_fixture::enabled() { value["syntheticIntelligence"]=intelligence_start_fixture::report(); }
                     tauri::async_runtime::spawn(async move {
                         let client=handle.state::<MusicClient>();
                         let epoch=client.account().unwrap().epoch;
@@ -150,6 +160,14 @@ fn main() {
                         let stage=value["stage"].as_str().unwrap_or("failed");
                         assert!(stage.chars().all(|c|c.is_ascii_alphanumeric()||c=='_'));
                         fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+                        if stage.starts_with("ux_") {
+                            if std::env::var_os("CUMULUS_PROOF_CAPTURE_ACK").is_some() {
+                                let ack=output.join(format!("{stage}.captured"));
+                                for _ in 0..250 { if ack.exists() { break; } tokio::time::sleep(std::time::Duration::from_millis(20)).await; }
+                                assert!(ack.exists(),"mini screenshot acknowledgement missing");
+                            }
+                            handle.get_webview_window("main").unwrap().eval(format!("window.__miniRecorded={};",json!(stage))).unwrap();
+                        }
                         if stage=="complete" || stage=="failed" { handle.exit(if stage=="complete" {0}else{1}); }
                     });
                 }
@@ -162,11 +180,13 @@ fn main() {
         Ok(())
     }).on_page_load(|view,payload| {
         if view.label()=="main" && payload.event()==PageLoadEvent::Finished {
-            view.eval(if std::env::var_os("CUMULUS_MINI_SHORTCUT_PROOF").is_some() {
-                include_str!("mini_shortcuts_ui_probe.js")
+            let source=if let Some(path)=std::env::var_os("CUMULUS_MINI_SCRIPT") { fs::read_to_string(path).unwrap()
+            } else if std::env::var_os("CUMULUS_MINI_SHORTCUT_PROOF").is_some() {
+                include_str!("mini_shortcuts_ui_probe.js").into()
             } else {
-                include_str!("mini_ui_probe.js")
-            }).unwrap();
+                include_str!("mini_ui_probe.js").into()
+            };
+            view.eval(source).unwrap();
         }
     }).run(context).expect("mini WebView proof");
 }

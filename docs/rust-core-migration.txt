@@ -616,3 +616,12 @@ M59顺序/空位/替代/去重、实际下载账本及黑名单接入，网络�
 小窗进入/补充推荐等仍继续。官方与社区差异、原始接口
 字段/顺序、14项真实用例和83向量详见intelligence-start-contracts.txt。
 当次UI/原生测试使用合成API，不把旧Python或早期线上只读推荐成功冒充新账号实测。
+
+2026-11-01 小窗心动进入与两窗口状态
+官方M308 mini action复用同一五态规则；core/mini使用已有Current/Continue协调器，
+代次内资源提示不当作权限，新增精确actor回执和原生显示目标fence。desktop以窗口
+lifetime管理其自己发起的读取；推荐等待不持有通用操作锁。frontend复用最小类型化
+模式/心动状态机，返回主窗口只读同步现有actor，迟到旧事件仍由revision丢弃。
+23态双WebView及46张最终原图、原生4项/前端10项新增用例见mini-intelligence-
+contracts.txt与ui-ux-validation.txt。小窗FM/完整菜单、推荐补充和全范围审计继续；
+此前精确CI失败仍未解决，没有把累计通过数或本轮截图当作完整目标达成。

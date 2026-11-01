@@ -1682,3 +1682,13 @@ login-interception-cache-tests.log。初次全量（workspace-tests3.log）一�
 - 前端412项、官方模式20向量及42张最终实际WebView原图见ui-ux-validation.txt。
   本批新增5项原生用例，不把1367项累计结果称为新增功能或整体覆盖百分比；
   无Windows实机视觉、真实会员风控或一起听双账号证明，完整目标继续。
+
+2026-11-01 迷你心动协调器与精确模式回执
+- intelligence_coordinator新增4项：正式资源读形成的代次提示仍须服务端重新核对；
+  实际Current开启及安全回执；推荐挂起期间暂停/定位与退出释放gate；新UUID的
+  Continue不重载当前媒体。原19项保留，共23项。
+- 当前完整workspace/all-targets/custom-protocol/locked为276个结果target、1371
+  passed/0 failed/ignored：mini-intelligence-workspace-tests-final.log，终止状态0。
+  严格Clippy/fmt通过；实际双WebView和422项前端检查见ui-ux-validation.txt。
+- 提示/活动UUID及回执不包含原生私有session id/授权URL。核心新增mini/{mode,
+  intelligence}.rs仍只使用Rust业务/actor，无Tauri或Python子进程依赖。

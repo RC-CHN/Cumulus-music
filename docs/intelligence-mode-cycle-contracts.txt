@@ -5,7 +5,8 @@
 资格时保留普通四态，一起听三态与FM两态独立。Native PlaybackMode仍只有四个
 普通队列模式；心动是完整的业务会话，进入调用实际Current开启协调器，退出调用
 已有Leave，不把随机模式或一个额外枚举值当作心动实现。
-本批不代表小窗五态入口、补充推荐/分隔或全应用UI已经完成；完整目标继续。
+小窗五态入口已有后续mini-intelligence-contracts.txt专项；补充推荐/分隔与全应用
+UI仍未完成，完整目标继续。
 
 官方来源
 recovered-js/modules/hybrid_app.chunk.1482700000000.js/7.js导出t：

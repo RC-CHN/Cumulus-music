@@ -2868,3 +2868,47 @@ intelligence-start-contracts.txt；本批没有把主播放条五态进入或所
   Clippy/fmt通过：intelligence-cycle-clippy-scope-final.log、rust-format-scope-final.log。
   串联构建/Clippy/test的一轮scope-final中途143终止，不当作通过；最终独立全量
   测试正常结束0。最终正式cumulus、ux与queue_room探针已重新构建。
+
+2026-11-01 小窗心动五态与主窗口恢复同步
+- 新mini_intelligence_smoke通过正式双WebView/专属IPC/MusicClient/SQLite/actor/
+  libmpv(null)执行23态；7次实际五字段请求，由合成API处理。原生逐态核对模式/
+  phase/队列、同一音频工厂、暂停10秒和playId，不用乐观图标代替真正业务提交。
+- .build/mini-intelligence-screen-final2：隔离GTK23态/23图。
+- .build/mini-intelligence-kde-final2：本机KDE Wayland/XWayland23态/23图，125%，
+  自有PID窗口compositor pixmap；包括返回时真实主窗口1图，其余22张为小窗。
+  两组均直接使用最终内嵌production前端，无外部dist替换。
+- .build/mini-intelligence-gallery/index.html保存46图，manifest.json记录产品源码、
+  原图/原生JSON、production dist与实际可执行文件SHA256。只证明该范围；通用
+  audit仍报告physicalDisplayVerified=false，本机physical.json独立保存可见/聚焦。
+  指针事件、账号/API/音源合成，null不代表扬声器或Windows实机；没有双账号验证。
+- 场景覆盖准备/种子/取消/Continue/退出、存储拒绝两主题/重试、展开3项推荐队列、
+  快速跨五态重进、返回主窗口后保留Seeded、新小窗继续同一解码器、旧窗口拒绝、
+  新选曲自动丢弃旧目录读取，以及主窗口发起请求失败后的显示/关闭/明确再开启。
+  离场错误浮层实测拒绝focus，并主动点击旧DOM重试按钮；原生7次请求数量不增加，
+  不能通过关闭提示触发隐藏的新Start。
+- 第一轮新增原生4项因错误假定client.playlists已写完整playlist-cache而失败。实际
+  正式资源读取只返回映射；改为从该正式读和归属核对维护按完整SessionToken绑定
+  的内存提示，不人为给测试写授权缓存。原始失败mini-intelligence-native-tests.log
+  保留，修正后的intelligence_coordinator为23项通过。
+- mini-intelligence-fast首次在actor切换时直接读取MiniSnapshot得到stale，原业务已
+  开启但探针过早失败；mini_read对纯本地读最多尝试3次，探针保留有界stale读取
+  等待，业务命令绝不重放。fast2在此修正后23态通过。
+- 旧screen-final/kde-final的主窗口返回图片仍是隐藏前画面，虽然原生JSON已经正确；
+  这组不能替代最终46图。补可见/聚焦只读同步后，final2先验证主窗口DOM与原生
+  同一playId/暂停10秒/Seeded，再等两帧和提示区opaque采样；已实际查看新原图，
+  心动图标、1项队列、继续获取提示及10秒位置均与原生一致。旧组留作失败证据。
+- 前端422项/格式/production类型检查和构建通过：mini-intelligence-frontend-tests-
+  resume.log、frontend-format-check-resume.log、frontend-build-resume.log。新增6项
+  Mini适配/归属/取消/重试/新来源用例及4项前台恢复读隔离/合并/销毁/错误用例。
+- Rust完整workspace/all-targets/custom-protocol/locked：276个结果target、1371
+  passed、0 failed/ignored，mini-intelligence-workspace-tests-final.log；严格Clippy
+  及fmt通过：mini-intelligence-clippy.log、rust-format-final.log。正式cumulus、
+  ux与mini探针最终重建：mini-intelligence-native-build-resume.log。
+- 共享回归：mini-intelligence-ordinary-regression旧小窗19态；main-resume-regression
+  主播放条21态；keyboard-final本机隔离Xvfb中的独立OS键盘6态，保留全部前台/
+  热键/重映射/窗口账号隔离断言。它不是Windows或实体键盘证明。CI工具36项
+  mini-intelligence-ci-tools.log通过，其中published=true只是合成发布单测。
+- 前一精确提交764d2cd的CI41216500324已终止失败：Linux在relay-publication的
+  voice resume，Windows在独立键盘producer获取前台。完整gate未过，不能将本机
+  通过称为CI通过，也没有发布/覆盖附件。两份诊断已取回.build/ci-764d2cd-{linux,
+  windows}；这些问题本批尚未修复，后续继续定位，不忽略或跳过原断言。

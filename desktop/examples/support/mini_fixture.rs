@@ -1,4 +1,7 @@
 use cumulus_core::protocol::api::{Api, ApiFuture};
+#[allow(dead_code)]
+#[path = "intelligence_start_fixture.rs"]
+pub(super) mod intelligence_start_fixture;
 #[path = "mini_room_fixture.rs"]
 mod room;
 use serde_json::{Value, json};
@@ -16,6 +19,10 @@ fn playlist(id: u64) -> Value {
 impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, args: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            intelligence_start_fixture::before(path).await;
+            if let Some(response) = intelligence_start_fixture::response(path, &args).await {
+                return response;
+            }
             if let Some(response) = self.room.response(path, &args) {
                 return response;
             }
