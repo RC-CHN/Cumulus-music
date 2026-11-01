@@ -276,6 +276,14 @@ impl MusicClient {
             if fm.active_source_for(&token, &actual)?.as_ref() != Some(&source) {
                 return Err(Error::QueueChanged);
             }
+            // Reject an obsolete dialog before superseding a valid transport
+            // intent or claiming media ownership. The coordinator still checks
+            // the current entry again under its own gate before any write.
+            if let FmCommand::Trash { entry_id } | FmCommand::Feedback { entry_id, .. } = &command
+                && actual.current.as_deref() != Some(entry_id)
+            {
+                return Err(Error::QueueChanged);
+            }
         }
         let transport = matches!(
             command,

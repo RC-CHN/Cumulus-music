@@ -32,6 +32,8 @@ fn fixture() -> (
     (dir, api, session, Arc::new(client))
 }
 
+#[path = "support/fm_feedback_client.rs"]
+mod feedback_tests;
 #[path = "support/mini_fm_client.rs"]
 mod mini_tests;
 
@@ -419,18 +421,21 @@ async fn native_reason_dialog_artist_state_and_explicit_restore_share_account_ep
         .find(|r| r.artist_id.is_some())
         .unwrap();
     api.fault("/api/music-blacklist/add", domain::Fault::Reject(403));
-    assert!(
-        client
-            .fm_command(
-                "1",
-                FmSource::Personal,
-                FmCommand::Feedback {
-                    entry_id: entry,
-                    reason_key: reason.key
-                }
-            )
-            .await
-            .is_err()
+    let error = client
+        .fm_command(
+            "1",
+            FmSource::Personal,
+            FmCommand::Feedback {
+                entry_id: entry,
+                reason_key: reason.key,
+            },
+        )
+        .await
+        .err()
+        .unwrap();
+    assert_eq!(
+        cumulus_core::client::ClientError::from(error).code,
+        "artist_rejected"
     );
     let failed = client
         .fm_view("1", FmSource::Personal, false)

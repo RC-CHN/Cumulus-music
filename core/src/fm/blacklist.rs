@@ -221,7 +221,19 @@ impl FmService {
         let child = match self.artist_operation_for(token, &r.id)? {
             Some(child) if child.phase.pending() => self.reconcile_artist_for(token, &r.id).await?,
             Some(child) => child,
-            None => self.change_artist_id(token, &r.id, artist, true).await?,
+            None => match self.change_artist_id(token, &r.id, artist, true).await {
+                Ok(child) => child,
+                // An initial rejection has already been journaled. Report the
+                // same partial outcome as a later read of that exact child;
+                // preserve auth expiry and every uncertain/storage failure.
+                Err(error) if !error.is_service_code(301) => {
+                    match self.artist_operation_for(token, &r.id)? {
+                        Some(child) if child.phase == MutationPhase::Rejected => child,
+                        _ => return Err(error),
+                    }
+                }
+                Err(error) => return Err(error),
+            },
         };
         match child.phase {
             MutationPhase::Confirmed | MutationPhase::Unchanged => Ok(()),

@@ -5,6 +5,65 @@ use cumulus_core::{Error, account::resources::MutationPhase, fm::*};
 use support::{Fault, Fixture};
 
 #[tokio::test]
+async fn first_artist_rejection_reports_partial_success_but_preserves_auth_expiry() {
+    for code in [403, 301] {
+        let f = Fixture::new();
+        let queue = f.preload(&[1, 2, 3]).await;
+        let token = f.session.token().unwrap();
+        let choices =
+            f.fm.reason_choices_for(&token, &queue.source, &queue.current().unwrap().entry_id)
+                .await
+                .unwrap();
+        let key = &choices
+            .options
+            .iter()
+            .find(|reason| reason.artist_id.is_some())
+            .unwrap()
+            .key;
+        let record =
+            f.fm.trash_reason_for(&token, &queue.source, queue.revision, None, Some(key))
+                .await
+                .unwrap();
+        assert_eq!(record.phase, MutationPhase::Confirmed);
+        f.api.fault("/api/music-blacklist/add", Fault::Reject(code));
+        let error =
+            f.fm.finish_trash_artist_for(&token, &record)
+                .await
+                .unwrap_err();
+        if code == 301 {
+            assert!(error.is_service_code(301));
+            assert!(matches!(
+                f.fm.artist_operation_for(&token, &record.id),
+                Err(Error::StaleResponse)
+            ));
+            let guest = f.session.token().unwrap();
+            f.session
+                .adopt(
+                    f.api.clone(),
+                    serde_json::json!({"userId":token.uid.as_deref().unwrap()}),
+                    &guest,
+                )
+                .unwrap();
+        } else {
+            assert!(matches!(error, Error::State("FM artist change rejected")));
+            assert!(matches!(
+                f.fm.finish_trash_artist_for(&token, &record).await,
+                Err(Error::State("FM artist change rejected"))
+            ));
+        }
+        assert_eq!(f.api.count("/api/radio/trash/add"), 1);
+        assert_eq!(f.api.count("/api/music-blacklist/add"), 1);
+        assert_eq!(
+            f.fm.artist_operation_for(&f.session.token().unwrap(), &record.id)
+                .unwrap()
+                .unwrap()
+                .phase,
+            MutationPhase::Rejected
+        );
+    }
+}
+
+#[tokio::test]
 async fn fixed_reasons_do_not_invent_payload_fields_or_block_artists() {
     let f = Fixture::new();
     let q = f.preload(&[1, 2, 3]).await;
