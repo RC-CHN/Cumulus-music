@@ -52,6 +52,23 @@ impl Default for Fixture {
 }
 impl Fixture {
     pub fn configure(&self, v: &Value) {
+        if let Some(kinds) = v["deletionKinds"].as_object() {
+            let mut rows = self.rows.lock().unwrap();
+            for (id, kind) in kinds {
+                let id: u64 = id.parse().unwrap();
+                let row = rows
+                    .iter_mut()
+                    .find(|row| row["songId"].as_u64() == Some(id))
+                    .unwrap();
+                row["simpleSong"]["privilege"]["cs"] = json!(true);
+                row["simpleSong"]["t"] = json!(match kind.as_str().unwrap() {
+                    "ordinary" => 0,
+                    "private" => 1,
+                    "off_store" => 3,
+                    _ => panic!("unknown synthetic cloud deletion type"),
+                });
+            }
+        }
         for (key, index) in [("size", 0), ("maxSize", 1)] {
             if let Some(value) = v.get(key) {
                 assert!(value.is_null() || value.as_u64().is_some());
