@@ -3427,3 +3427,76 @@ Windows CI独立输入链路
 - CI工具现在40项通过，见cloud-page-final-ci-tools.log；JS/Python语法与source_audit/
   release_guard通过。本机没有复现CI上trace和集合的矛盾，不能据此推断JS引擎
   或产品缺陷的唯一原因；新的精确SHA runner仍须实际跑完，不能宣称旧失败已通过。
+
+2026-11-01 云盘独立批量页、五动作与失败反馈
+来源/实现/API/限额/未知边界见cloud-batch-ui-contracts.txt，没有参考YesPlayMusic。
+这批优先UI逻辑和功能，不新增刷新率专项，不以本专项代替全应用审计。
+
+实际流程
+- 生产Vue WebView -> Tauri IPC -> MusicClient -> CloudLibrary/PlaylistService/
+  DownloadService/SQLite/实际libmpv；仅账号/API响应、PCM与传输字节由合成服务提供。
+  catalog405条、200/200/5完整读取，批量源为自然顺序，普通页则保留自己的排序/
+  搜索/页码。全选405并打开相同数量的原文件下载确认，取消后仍保留405选择。
+- Home/End、Shift连续选择、首尾歌曲可达；最多只渲染16行（断言上限32），行高64。
+  列宽键盘调整、标题/专辑长文本、两主题、1120×760与760×540均检查几何及命中。
+  选择底色、焦点、工具栏、横向滚动、弹窗正文/页脚与错误/空库已逐图复核。
+- 所选1001/1002通过原生音频播放；加入1405后原生队列为1001/1405/1002，
+  playId不变，保持暂停与10秒位置。核心另测普通/云盘相同数字ID不被合并、
+  原生列表顺序、重复/不存在的ID、过期云盘或队列revision以及旧账号拒绝。
+- 收藏第一次合成403留表单及所选，明确重试后读取目标为42首且包含1001/1002；
+  两次POST，真实账号没有写入。实际私有云盘ID能否被官方服务收藏仍保留边界。
+- 两首StartCloud经正式授权/三路调度/校验/发布至proof下batch-downloads，均为
+  seed.flac原始12458字节，MD5 6b1c7d8698e1e941ad6f2046faa0b611。媒体后端只接受
+  固定合成URL，不打开socket。另有全405下载目标打开/取消，不产生405份文件。
+- 删除取消不发送，部分完成后重读保留1002；未知删除重开同一日志，只读核对。
+  每轮精确两次删除目标[1001,1002]与[1002]，核对不得增加POST。原生结果与前端一致。
+- 完成后原query/200条页码及360px滚动恢复；退出节点再次触发也不能派发动作。
+  读取失败/重读、服务目录变化导致旧播放快照拒绝、重读保留幸存ID、空库、
+  挂起读取期间换账号均通过。页面播放失败没有留下底栏旧revision重试。
+
+发现与修正记录
+- 首轮合成目标详情缺privacy/tags，严格解析拒绝于发送之前，不能当成服务403。
+  补齐真实协议所需字段；程序点击选择行之前聚焦，模拟浏览器实际鼠标/键盘行为。
+- 返回云盘时后台刷新未结束，过早打开批量页可撞上并发保护。入口增加loading
+  保护；忙碌动作结束、错误重读后恢复焦点，且不抢夺用户已移到有效控件的焦点。
+- 批量播放改用selectForPage，由本页持有错误/重读状态，失败不在底栏保存捕获
+  旧revision的retry闭包；加入队列的取消也不借用旧的播放错误。
+- 早期探针搜索后立即读DOM，或将无revision的初始空缓存当成405库就绪，导致
+  下一页按钮未就绪。改为等待Vue更新及loading=false/ready=true/200实际行；
+  失败JSON可记录没有表格的页面。没有放宽全库、字节、恢复或写入计数断言。
+- 保留debug-kde-1/2、delivery-kde、final-kde等未完成轮次与日志，不计入最终58图。
+  首次隔离WM启动缺本机openbox路径；后续仅在独立Xvfb环境提供私有wrapper，
+  没有替换用户桌面WM。测试环境失败不当成产品通过或重复操作真实账号。
+
+最终证据（均在根.build，未提交原图/账号/构建产物）
+- cloud-batch-final-kde-2：29态/29图，本机KDE Wayland/XWayland，DPR1.25，
+  仅捕获自有PID窗口，真实合成器绘制/可见/聚焦与弹窗色样回执通过。
+- cloud-batch-final-gui-2：同一29态/29图，隔离Xvfb/Openbox，DPR1。
+  各自report.json、first/complete.json、所有ux JSON/PNG及host.log可检查。
+- cloud-batch-final-gallery/index.html和8张联系表已逐项查看，合计58张；窄窗表格、
+  收藏和下载弹窗另有原图放大检查。cloud-batch-extra-assertions.json再次核对
+  队列playId/暂停10秒、360px返回、写入/授权/媒体计数及下载SHA256。
+- cloud-batch-regression-cloud-2：原云盘26态/26图通过，仍精确四次合成删除；
+  不累加进本专项58图。新增方法没有替换普通播放或既有云盘上传用例。
+- 固定Node24.16.0锁文件npm ci通过；最终format:check、前端480项、类型检查与
+  build通过，见cloud-batch-{npm-ci,format-check-final,frontend-tests-final,
+  frontend-build-final}.log。Rust1.96 fmt、严格Clippy、workspace/all-targets/
+  custom-protocol全测1408项/278结果目标通过，见cloud-batch-{fmt-final,
+  clippy-final,workspace-tests}.log与workspace-result.json。
+- 完整Rust检查后仅细化前端焦点/页面错误归属与探针；最终前端重测并重建原生
+  mini_ui_probe再跑上述58图，没有在Tauri嵌入dist时改写构建输出。
+- CI工具40项、source_audit/release_guard、新JS/Python语法与暂存检查通过。
+  Linux/Windows均加入同一29态脚本，在各自runner执行，不跳过失败。最终HEAD
+  提交后触发一次CI，私有收据cloud-batch-ci-receipt.json；运行中不称完整CI通过。
+
+界限
+- 合成服务成功不外推真实账号权限、私有歌曲收藏服务策略、OSS/NOS附件通道或
+  Windows实机视觉/物理音频。一账号、null输出、所有账号写入均为合成，没有支付/
+  公开发布/私信/邀请或用户资源变更；没有使用旧Python记录替代Rust/桌面验证。
+- 普通页资源菜单/列宽/表单主题、所有任务及长附件、会员扩容、下架/私有提示、
+  可选本地删除仍继续；全范围goal保持active，没有据本页计数宣布应用完成。
+- 上一提交da2f573/CI41305938835最终失败，不能以本地云盘58图代替该结果：
+  Linux在mini_menu_smoke的room_modes_light后等待FM菜单读取完成；Windows在
+  intelligence_cycle_smoke第0态点击仍disabled的暂停按钮。两者实际登录均已通过，
+  失败位于综合“登录生命周期”大步骤内。原始及去ANSI日志为cloud-page-ci-
+  {linux,windows}-failed.raw/.log，Linux失败对象另存JSON；继续单独修正并验证。

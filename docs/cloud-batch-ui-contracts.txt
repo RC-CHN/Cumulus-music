@@ -1,0 +1,72 @@
+云盘独立批量页：来源、状态和用例
+
+官方依据
+路径相对references/ui-recovery/sources/packages/pc/src/。未使用YesPlayMusic。
+- pages/cloudDisk/views/UploadedTrackBatchOperation.tsx
+  SHA256 1262851ab54bd20bf8ea8c858bb7f1208f095d69dd445268cecc427f1b944000
+  使用完整cloudOnlineList，selected按origin.id匹配；所选结果保持原列表顺序。
+  普通页的搜索、排序和200条分页不限制此独立页的选择范围。官方先显示200条，
+  100ms后放入完整列表；本实现先读完整一致快照，再以有界虚拟行展示。
+  五动作依次为play、addToPlayList、download、favorite、removeFromCloudDisk。
+  addToPlayList是加入播放队列，favorite才是收藏到歌单，二者不可混淆。
+- components/BatchOperationHeader/index.tsx
+  SHA256 25e2bea23c0f2f9f107d25d9fcd6f1fb1280ab9fec43b46e90049c178fbb4f28
+  默认40px按钮、间距12px、下边距20px；播放40方形，队列145，其余80；
+  完成按钮靠右并返回。showMore实验36px分支本实现未启用。
+- components/TrackViewer/UploadedTrackBatchViewer原实现没有恢复，不能声称其精确
+  列布局已知。本表依据已恢复UploadedTrackViewer的标题/专辑/格式/时间/大小列，
+  将45px序号列替换为选择框；64px行与共享键盘/列宽控件沿用已验证表格规则。
+
+界面状态
+- 普通云盘页“批量操作”进入独立页，保留原DOM、query、页码、滚动和入口焦点。
+  顶栏返回、完成和Escape离开；普通导航经过同一requestLeave保护。弹窗/写入中
+  不穿透离开；已经退出的动画节点不能继续派发播放/删除/下载等动作。
+- 全选覆盖完整快照，不只渲染行或第一批200条；Shift连续选择、Ctrl+A、
+  Home/End、方向键与Space使用共享useBatchRows。渲染仅保留视口附近行。
+  条纹依据真实索引，虚拟行回收不改变同一歌曲的底色。标题长文省略可读全名。
+- useCloudBatch与readCloudBatch独立于普通页query，按200条读取同一revision。
+  epoch、revision、total、offset、重复ID和空中间页不一致时整次读取失败，
+  不把部分列表显示为可全选的完整库。提供加载进度、空库和明确“重新读取”。
+- 选中ID与所读revision一起提交。普通云盘快照变化会禁用旧批量动作并提示重读；
+  重读只保留仍存在的选中ID。换账号立即清空数据、选择与弹窗，迟到结果丢弃。
+- 完成后从当前云盘缓存刷新原query；同query恢复页码、scrollTop和入口焦点，
+  原入口失效则回批量入口。账号变化不回旧账号焦点。主题/过渡使用共享规则。
+
+Rust与接口映射
+- frontend/components/cloud/{CloudBatchPage,CloudBatchTable}.vue与useCloudBatch、
+  services/cloudBatch负责展示/选择；账号、协议和实际写入继续在core中。
+- cloud_page -> CloudHost -> CloudLibrary，以POST /api/v1/cloud/get取得完整原生
+  列表，offset/limit=200；后续分页读同一缓存revision。前端不访问官方API。
+- PlaySelection::CloudBatch与PlayerAction::QueueCloudBatch ->
+  client/cloud/selection.rs::cloud_selected_resources：验证唯一且属于当前账号的ID，
+  重新取完整快照核对revision，按原生顺序挑选。保留cloud_song_id专用资源身份，
+  不通过普通song/detail替换私有云盘歌曲。播放经现有Replace/焦点租约/账号围栏；
+  队列经queue_collection，核对显示的queueRevision，保留当前entry/playId。
+  数字ID相同的普通在线、云盘、下载副本在队列去重中使用不同域。
+  批量播放使用selectForPage，失败由本页显示并要求重读/重选；不在播放器底栏
+  保存捕获旧revision的重试闭包。新账号/后续操作到来后，迟到结果不能覆盖新状态。
+  忙碌按钮结束后恢复原焦点，错误重读后回完成，均不抢走已经移动的有效焦点。
+- 单次批量播放选择上限10000，队列整体上限10000，超限明确提示。队列合并/容量
+  规则沿用原实现，成功只表示列表更新，不承诺超出容量仍全部插入。
+- 下载复用DownloadDialog -> Configure -> StartCloud {song_ids,revision,lyrics}，
+  单次最多5000。核心核对当前账号完整云盘列表、原始文件名和大小，再按每首
+  POST /api/cloud/dowonload {songId}授权；保留官方接口拼写。下载字节、MD5、
+  续传、发布/登记和原文件标签保护沿用download/service/cloud。前端不接触授权URL。
+- 收藏复用PlaylistCollectDialog：读取自建且非“我喜欢”的目标列表；读取目标
+  /api/v6/playlist/detail -> 捕获目标revision -> PlaylistCommand::Tracks(Add) ->
+  POST /api/v1/playlist/manipulate/tracks {pid,trackIds:JSON字符串,op:add,imme:true}，
+  持久化操作日志后发送，读回目标确认。拒绝留表单，未知只读核对，不自动重发。
+- 删除复用CloudDeleteDialog和CloudLibrary。目标epoch/revision/ID/名称冻结，
+  POST /api/cloud/del，单次最多5000、每批1000；取消不发送，部分结果保留，
+  关闭后重读并保留剩余选择；未知重开同一操作，只读核对不重复POST。
+
+边界
+- 独立批量页新增正式入口；普通页现有常驻选择框/删除和下载所选仍为社区附加项。
+  完整云盘资源菜单、所有上传/长附件组合、会员容量扩容、下架/私有分类提示、
+  可选本地副本删除继续审计，不能由本页通过推导整页/全应用已一致。
+- 无同状态官方运行截图；批量专用viewer缺失、社区品牌/强调色、先完成完整读取
+  再开放选择等差异已明确。不能宣称未知列样式或实验分支像素一致。
+- 合成服务的收藏成功证明客户端流程与对账；不证明真实私有云盘ID一定被服务端
+  允许收藏。真实账号的权限/服务拒绝边界保留。没有提交真实账号写入或下载音乐。
+- Linux GUI证据、null音频不证明Windows实机视觉或物理声卡；Windows需精确SHA
+  runner执行独立流程。实际执行记录统一见ui-ux-validation.txt。
