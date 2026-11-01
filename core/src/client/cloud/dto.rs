@@ -61,6 +61,7 @@ pub struct CloudResourceView {
     pub revision: String,
     pub track: CloudTrackView,
     pub local_available: bool,
+    pub local_issue: Option<&'static str>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]

@@ -30,6 +30,39 @@ pub struct LocalMapping {
 }
 
 impl LocalLibrary {
+    /// Reverse lookup for native resource menus. Only explicit, account-owned
+    /// mappings at the current file/CUE revision count; filenames are not IDs.
+    pub(crate) fn files_for_online_song(
+        &self,
+        session: &AccountSession,
+        token: &SessionToken,
+        song_id: &str,
+    ) -> Result<Vec<crate::library::LibraryItem>> {
+        identifier(&serde_json::json!(song_id))?;
+        let _lock = self.lock()?;
+        let mappings = session.with_token(token, |uid| self.store.values(uid, MAPS))?;
+        if mappings.len() > 50_000 {
+            return Err(Error::State("local file associations exceed 50000"));
+        }
+        let wanted = mappings
+            .into_iter()
+            .map(|(id, value)| Ok((id, serde_json::from_value::<LocalMapping>(value)?)))
+            .collect::<Result<BTreeMap<_, _>>>()?;
+        let found = self
+            .list(ListOptions {
+                include_containers: true,
+                ..Default::default()
+            })?
+            .into_iter()
+            .filter(|item| {
+                wanted.get(&item.id).is_some_and(|mapping| {
+                    mapping.song_id == song_id && mapping.revision == item.revision
+                }) && Self::check_current(item).is_ok()
+            })
+            .collect();
+        session.with_token(token, |_| Ok(found))
+    }
+
     pub fn map_online(&self, session: &AccountSession, id: &str, song_id: &Value) -> Result<()> {
         let song_id = identifier(song_id)?;
         let token = session.token()?;
