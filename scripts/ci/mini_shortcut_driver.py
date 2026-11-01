@@ -1,5 +1,6 @@
 """Separate OS key producer for the mini-player WebView proof; no business IPC."""
 import json
+import os
 import subprocess
 import sys
 import time
@@ -17,6 +18,11 @@ def launch(binary, env, log, output, capture):
         gi.require_version('Gdk', '3.0')
         from gi.repository import Gdk
     seen, sent = set(), []
+    # Permission is granted by the foreground fixture to this exact producer,
+    # never ASFW_ANY. Keys still come from independent SendInput after native
+    # GetForegroundWindow proves our own foreign window really owns input.
+    if windows:
+        env = {**env, 'CUMULUS_KEY_PRODUCER_PID': str(os.getpid())}
     process = subprocess.Popen([str(binary)], env=env, stdout=log, stderr=log)
     try:
         deadline = time.monotonic() + 180
@@ -31,6 +37,12 @@ def launch(binary, env, log, output, capture):
                     continue
                 value = json.loads(path.read_text(encoding='utf-8'))
                 assert value['key'] in ['q', 'm', 'p'], value
+                if windows:
+                    grant_path = path.with_name('foreground-' + path.stem.split('-', 1)[1] + '.json')
+                    grant = json.loads(grant_path.read_text(encoding='utf-8'))
+                    assert grant['producerPid'] == os.getpid() and grant['fixturePid'] == process.pid
+                    assert grant['foregroundPid'] in [0, process.pid, os.getpid()]
+                    assert grant['granted'] or grant['foregroundPid'] == os.getpid()
                 keyboard.chord(value['key'])
                 sent.append(value['key'])
                 reply.write_text('sent', encoding='utf-8')

@@ -69,10 +69,17 @@ class Keyboard:
 
     def focus(self):
         self.drain()
-        self.u.SetForegroundWindow(self.window)
-        self.u.SetFocus(self.window)
-        self.drain()
-        assert self.u.GetForegroundWindow() == self.window, 'independent producer did not obtain foreground window'
+        # Activation is asynchronous across GUI queues. This is bounded window
+        # plumbing, not a retry of any key or Cumulus business operation.
+        deadline = time.monotonic() + 1
+        while True:
+            self.u.SetForegroundWindow(self.window)
+            self.u.SetFocus(self.window)
+            self.drain()
+            if self.u.GetForegroundWindow() == self.window:
+                break
+            assert time.monotonic() < deadline, 'independent producer did not obtain foreground window'
+            time.sleep(.02)
 
     def chord(self, key, hold=.06, modifiers=('Control_L', 'Alt_L')):
         self.focus()

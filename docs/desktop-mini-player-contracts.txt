@@ -114,3 +114,16 @@ Windows 本轮代码仍须自己的 runner/实际窗口测试，不能拿 Linux 
   原超时、权限隔离、单音频工厂、队列分页、旧票据/账号、重载及关闭策略全部断言。
   报告逐态比较nativeMini与nativePlayer及DOM，模式切换保持同playId和暂停10秒。
   实际运行结果、失败/修正及共享回归见ui-ux-validation.txt。
+
+独立 Windows 输入进程的前台权限（2026-11-01）
+- 旧 CI 41216500324 的小窗 19 态通过，随后独立快捷键进程未取得前台而失败；
+  此失败不能算作全局快捷键通过。窗口激活受 Windows 前台策略约束。
+- 测试主机在每次请求按键前，仅向启动器的准确 PID 调用 AllowSetForegroundWindow；
+  不使用 ASFW_ANY，不修改注册表/系统前台策略，不调用业务 IPC 代替按键。
+  当前前台只能属于测试主机、独立输入进程或无窗口；其他应用占有前台时明确失败。
+- 启动器核对 PID 和授权回执，独立输入进程在一秒内尝试激活自己的窗口，仍须满足
+  GetForegroundWindow 精确相等后才 SendInput。六次真实系统注入及原业务断言保留。
+- 本地非 Windows 只验证 PID 拒绝广播/自进程/非法值；实际权限交接须由新的 Windows
+  runner 验证。测试支持模块不链接到正式客户端，不能当成物理键盘或用户设备证明。
+- 平台依据（仅窗口权限，无第三方业务实现）：
+  https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-allowsetforegroundwindow
