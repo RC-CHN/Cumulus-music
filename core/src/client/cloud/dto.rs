@@ -77,6 +77,7 @@ pub struct CloudUploadView {
 #[serde(rename_all = "camelCase")]
 pub struct CloudDeleteView {
     pub id: String,
+    pub ids: Vec<String>,
     pub phase: DeletePhase,
     pub total: usize,
     pub removed: usize,
@@ -88,6 +89,7 @@ impl From<DeleteOperation> for CloudDeleteView {
             id: op.id,
             phase: op.phase,
             total: op.ids.len(),
+            ids: op.ids,
             removed: op.removed.len(),
             remaining: op.remaining.len(),
         }

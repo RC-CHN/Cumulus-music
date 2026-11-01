@@ -549,7 +549,9 @@ async fn native_upload_worker_survives_navigation_pauses_reopens_and_resumes_the
         )
         .await
         .unwrap();
-    assert_eq!(deleted.deletion.unwrap().removed, 1);
+    let deletion = deleted.deletion.unwrap();
+    assert_eq!(deletion.removed, 1);
+    assert_eq!(deletion.ids, ["700"]);
     client
         .cloud_command("1", CloudCommand::Dismiss { ids: vec![id] })
         .await
