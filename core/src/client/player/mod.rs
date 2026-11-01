@@ -11,6 +11,7 @@ mod quality;
 mod queue_collection;
 mod queue_edit;
 mod queue_playlist;
+mod reports;
 mod selection;
 mod startup;
 use super::{MusicClient, mapping};
@@ -34,6 +35,7 @@ pub use quality::{
     QualityChoiceView, QualityDetailsView, QualityTrialCommand, QualityTrialOutcome,
     QualityTrialView,
 };
+pub use reports::LyricReportView;
 use std::sync::{Arc, Mutex, atomic::AtomicU64};
 use tokio::sync::{OnceCell, watch};
 

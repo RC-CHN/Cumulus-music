@@ -6,6 +6,7 @@ mod fm;
 mod intelligence;
 mod mode;
 mod queue;
+mod reports;
 use super::{MusicClient, native_media::*};
 use crate::playback::mode::ModeFamily;
 use crate::{Error, Result, account::SessionToken, playback::PlaybackMode};
@@ -41,6 +42,7 @@ pub struct MiniView {
     pub fm_mode_pending: Option<MiniFmModePending>,
     pub queue_revision: Option<String>,
     pub can_intelligence: bool,
+    pub can_lyric_report: bool,
     pub intelligence: Option<crate::playback::intelligence::IntelligencePhase>,
     pub intelligence_operation: Option<String>,
     pub intelligence_read: Option<MiniIntelligenceRead>,
@@ -161,6 +163,17 @@ impl MusicClient {
             details.mode.is_some() || (state.fm && focus.owner != Some(super::focus::Owner::Video))
         });
         let mode = mode_audio.map(|state| state.mode);
+        let can_lyric_report = token.uid.is_some()
+            && details
+                .item
+                .as_ref()
+                .is_some_and(|i| i.kind == NativeMediaKind::Music)
+            && audio
+                .as_ref()
+                .and_then(|s| s.selected.as_ref())
+                .is_some_and(|s| {
+                    s.resource["voice_id"].is_null() && s.resource["song"]["voice_id"].is_null()
+                });
         let activity = self.intelligence_read_operation(&token)?;
         let snapshot = MiniSnapshot {
             view: MiniView {
@@ -182,6 +195,7 @@ impl MusicClient {
                 fm_mode_pending: self.mini_fm_mode_pending(&token, mode_audio)?,
                 queue_revision: mode_audio.map(|v| v.queue_revision.to_string()),
                 can_intelligence: self.mini_heart_hint(&token, mode)?,
+                can_lyric_report,
                 intelligence: mode_audio.and_then(|v| v.intelligence.as_ref().map(|s| s.phase)),
                 intelligence_operation: mode_audio.and_then(|v| v.intelligence_operation.clone()),
                 intelligence_read: activity.map(|operation_id| {

@@ -197,3 +197,4 @@ pub use super::mini_preferences::{MiniPreferencesCommand, MiniPreferencesView};
 pub use super::desktop_lyric_preferences::{
     DesktopLyricPreferencesCommand, DesktopLyricPreferencesView,
 };
+pub use super::player::LyricReportView;

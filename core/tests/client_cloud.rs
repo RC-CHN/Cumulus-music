@@ -1,3 +1,5 @@
+#[path = "client_cloud/lyric_reports.rs"]
+mod lyric_reports;
 #[allow(dead_code)]
 #[path = "support/playback/mod.rs"]
 mod playback_support;
@@ -94,6 +96,10 @@ impl Api for Backend {
                 "/api/cloud/lyric/get" => {
                     json!({"code":200,"lrc":"[00:01]云盘歌词\n[00:02]第二行"})
                 }
+                "/api/feedback/correct/lyric/type" => {
+                    json!({"code":200,"data":{"10":"歌词缺失/错误"}})
+                }
+                "/api/feedback/correct/song" => json!({"code":200}),
                 _ => panic!("unexpected {path}"),
             })
         })

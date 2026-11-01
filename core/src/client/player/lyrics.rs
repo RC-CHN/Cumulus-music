@@ -13,7 +13,7 @@ fn auxiliary(text: Option<&str>) -> Vec<crate::lyrics::LyricLine> {
 }
 
 impl MusicClient {
-    async fn lyric_context(
+    pub(super) async fn lyric_context(
         &self,
         epoch: &str,
         play_id: &str,

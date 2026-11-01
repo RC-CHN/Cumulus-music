@@ -5,6 +5,7 @@ pub mod files;
 mod format;
 mod lrc;
 mod presentation;
+pub mod reports;
 mod response;
 mod service;
 mod types;

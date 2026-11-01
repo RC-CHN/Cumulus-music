@@ -71,6 +71,17 @@ impl From<Error> for ClientError {
                 Error::InvalidInput("comment must contain 1 to 1000 UTF-16 units") => {
                     ("comment_text", "请输入不超过 1000 字符的评论内容", false)
                 }
+                Error::InvalidInput("lyric report requires 5 to 50 UTF-16 units") => {
+                    ("lyric_report_text", "请输入 5–50 字符的错误描述", false)
+                }
+                Error::InvalidInput("choose a loaded lyric report type") => {
+                    ("lyric_report_type", "请从已加载的错误类型中选择一项", false)
+                }
+                Error::InvalidInput("local lyric report requires an online match") => (
+                    "lyric_report_local",
+                    "这首本地音乐尚未关联曲库歌曲，请先在本地音乐中完成匹配",
+                    false,
+                ),
                 Error::InvalidInput("only own comments may be deleted") => {
                     ("comment_owner", "只能删除自己发表的评论", false)
                 }

@@ -1,3 +1,5 @@
+#[path = "client_local/lyric_reports.rs"]
+mod lyric_reports;
 #[allow(dead_code)]
 #[path = "support/playback/mod.rs"]
 mod support;
