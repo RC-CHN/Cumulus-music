@@ -220,6 +220,20 @@
         "live_account_retested": false,
         "full_fm_complete": false,
         "state_recovery_entry": "scripts/ci/fm_state_recovery_smoke.py"
+      },
+      "mini_ui_regression": {
+        "contract": "docs/mini-fm-feedback-contracts.txt",
+        "rust": "core/src/client/mini/feedback.rs",
+        "ipc": "desktop/src/mini/feedback.rs",
+        "frontend": [
+          "frontend/src/composables/useMiniFeedback.ts",
+          "frontend/src/mini/MiniFeedbackPanel.vue"
+        ],
+        "entry": "scripts/ci/mini_feedback_smoke.py",
+        "state_tests": "frontend/tests/mini-feedback-state.test.ts",
+        "core_tests": "core/tests/support/mini_fm_feedback.rs",
+        "live_account_retested": false,
+        "full_fm_complete": false
       }
     },
     {

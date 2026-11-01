@@ -24,7 +24,8 @@ MV 复用当前视频控制，不显示音频队列、音频喜欢或音频模�
 主题/减少动态效果沿用设备设置；队列出现仅用 transform/opacity 动画。
 mini_max 已接入共享快捷键设置：默认窗口内 Ctrl+M、全局 Ctrl+Alt+M，改键同时作用于
 主窗口和小窗。播放、音量、喜欢等已支持动作也共用配置，详情见 shortcut-contracts.txt。
-FM 不喜欢及复杂右键资源菜单仍从主窗口进入，本次没有新增这些小窗菜单。
+FM减少推荐/服务器理由/歌手屏蔽已接入小窗专用IPC及主窗口核对，见
+mini-fm-feedback-contracts.txt；复杂右键资源菜单仍继续恢复与审计。
 
 分层与调用
 core/src/client/mini/{mod,actions,queue}.rs：

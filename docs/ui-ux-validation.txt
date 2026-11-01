@@ -3095,3 +3095,50 @@ CI与剩余边界
   CI结果必须按新HEAD报告，不用旧运行替代；尚未发新版本或修改main。
 - 新版分层理由/H5黑名单、小窗完整菜单、推荐补充/分隔及全应用UI/UX逐项审计
   仍继续；一起听双账号仍排除。完整总目标active，不把本批或测试总数当作全范围完成。
+
+2026-11-01 小窗FM反馈、双窗同步与并发接收顺序
+- 产品/官方来源/API/错误边界：mini-fm-feedback-contracts.txt。优先解决用户要求的
+  UI逻辑一致性与功能问题，没有新增高刷新率指标。完整原目标仍active。
+
+本地固定工具链及验证
+- Node v24.16.0 / Rust 1.96.0，锁文件不变，沿用本批已经成功的npm ci依赖；
+  format:check、450项前端测试（0失败/跳过）、类型检查/production build全部通过：
+  mini-feedback-{format,frontend,frontend-build}-final.log。
+- Rust fmt、严格全工作区Clippy、全工作区/全部target测试、最终内嵌production前端
+  的cumulus/mini_ui_probe/ux_ui_probe构建通过。日志：
+  mini-feedback-{format-rust,clippy,workspace,app}-final.log。
+  全测1394 passed、0 failed/ignored、276个结果目标；没有同时改写嵌入中的dist。
+- 新增8项core测试和8项前端状态用例。mini-feedback-concurrency.log保留并发反例：
+  被拒绝反馈使已接受Next返回Stale；mini-feedback-concurrency-fixed.log为8项通过。
+  双方向都检查先接受操作最终成功、真实actor歌曲、请求次数和未决记录。
+- source_audit/release_guard通过，CI工具36项通过，日志mini-feedback-ci-tools-final.log。
+  其中release工具的published:true是冻结假数据用例输出，不是实际发布。
+
+最终UI及截图（只计下列两组）
+- mini-feedback-final-gui-x11：Xvfb真实GTK/WebKit，28态/28图。
+- mini-feedback-final-kde：当前本人KDE/XWayland125%自有PID窗口，28态/28图；
+  first/physical.json逐态记录可见/焦点及实际不透明面板绘制，未捕获其他应用。
+- 两个production WebView、真实IPC/Rust/SQLite/actor/libmpv null输出，共56态/56图。
+  原始PNG、快照、SHA256及两个总览索引：mini-feedback-final-gallery/{index.html,
+  manifest.json}。已查看两张总览，另放大检查成功后队列、长理由、状态读取失败、
+  主窗口部分成功/未知恢复及最后返回画面。最终成功队列没有旧快照错误；最后主窗
+  标题与实际歌曲一致且没有旧缓存错误。中间delivery/fast组不计最终证据。
+- mini-feedback-final-gui首轮仅在第一态截图基础设施失败：Gdk根表面尺寸无效。
+  改为本次隔离Xvfb进程明确GDK_BACKEND=x11后使用新证据目录成功；没有改变产品
+  图形策略、放松断言或覆盖失败目录。
+- 28态涵盖理由等待/关闭迟到/失败重试/空列表/长文、深浅色和206/516高度、明确拒绝
+  后只读查询、等待写入拒绝Next、切歌旧目标、歌手部分失败后的真实主页面核对、
+  丢回执重开禁止重发、隔离缓存损坏/查询失败/只读修复及普通返回同步。
+  main调用mini专用命令、mini调用账号命令、假窗口代次都实际拒绝；按原请求计数核对。
+- 最终二进制回归mini-feedback-regression-final-{fm,mini,main,state}分别22/19/31/14态
+  通过，未额外截图、不计入56图。不是旧Python业务脚本或前端Promise冒充Rust验收。
+- 本次账号/服务/PCM全部合成，无真实账号/音乐请求或账号写入；合成DOM事件不等于
+  物理系统键盘，null输出不证明声卡，KDE截图不证明Windows实机或官方像素一致。
+
+提交及CI边界
+- 核心接收顺序、mini业务、桌面UI、原生故障探针/CI、文档按职责分别提交。
+  本批最终HEAD单独触发CI并将回执保存mini-feedback-ci-receipt.json；只按对应SHA
+  的结果报告，不把本地通过、旧a4732c4运行或局部job当成本批完整CI通过。
+- main、v0.1.0标签、版本文件和发行附件未改变，没有发新版本。
+- 小窗完整窗口菜单与普通资源菜单、新版分层理由/H5、推荐补充和全应用逐项审计
+  继续；一起听实时双账号仍暂排除。专项通过不代表完整原目标完成。

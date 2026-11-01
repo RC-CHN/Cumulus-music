@@ -1,0 +1,96 @@
+小窗FM减少推荐与主窗口反馈核对（2026-11-01）
+本专项补小窗FM反馈入口；窗口菜单、完整队列资源菜单及新版H5黑名单仍单独审计。
+
+官方来源及重建差异
+- M/308 miniModePlayerInit，SHA256
+  2cd3a0da5759370a80cfe20c7ac4e58ef192bab33c396e8eff3efdd35c254a7d，
+  subScribeMiniPlayerFMTrash以实际当前歌曲、fmTrack、触发窗口mode调用popMenu；
+  PlayingListMenu另有track资源菜单，并不是只读FM队列可任意删改的授权。
+- M/622 Ce(fmTrack)，SHA256
+  347d7d067eeb1b883dec32a290e8e9a960fdc97a8acafe7d44ebe5a1960735b0：
+  使用M/15.Ae查询服务器理由，逐项unshift后以unlikeFm和真实type/id派发。
+  本项目保留理由反向顺序、长文省略/title，实际提交仅接受Rust生成的服务器选项键。
+- M/3085 Le(unlikeFm)，SHA256
+  121b1cc930b106acf5bb01d86305725ddd6abe2484120fee339a682301c7f0be：
+  先歌曲trash（算法/实际播放秒数），可选歌手屏蔽，最后FM推进。与主窗口复用
+  已恢复Rust流程和journal，不建立另一套请求或自动撤销已成功的歌曲反馈。
+- 原始C++小窗菜单几何没有完整恢复。本项目在420×206/展开516的小窗内使用
+  共用ModalTransition、原生dialog、固定标题/底栏和独立正文滚动；服务器理由仍为
+  可选择动作，额外提供仅减少此歌曲、只读状态重查和主窗口核对。这些呈现属于
+  社区适配，不声称官方像素一致；没有参考YesPlayMusic。
+
+核心及窄IPC
+- core/client/mini/feedback.rs：MiniSnapshot保留账号、真实媒体目标和队列fence；
+  从实际FM队列派生频道/entry，WebView不传任意歌曲/歌手/频道。仅读取当前对象，
+  普通播放、MV、无媒体、旧账号、旧控制快照及已换频道在请求前拒绝。
+- mini_fm_feedback_view(displayed,refresh)：返回epoch/entryId/title/pending的白名单。
+  false只读本地状态；true只刷新黑名单与垃圾桶，不启动/补充推荐、不应用未决写入。
+  返回前重新验证原快照。未决trash/artist与主窗口同一journal判断，skip独立。
+- mini_fm_feedback_reasons(displayed)：沿当前entry读取理由，返回前再次核对；
+  异步读取期间切歌后，旧结果失效。原因读取失败不假装状态读取成功，反之亦然。
+- mini_fm_feedback(displayed,reason_key)：再次观察同一队列和journal，未决反馈直接
+  返回MutationUncertain；否则复用fm_command。None只减少歌曲，Some仅接受实际缓存
+  的服务器键，不给前端开放artist ID或通用HTTP能力。
+- desktop/mini/feedback.rs只在当前已登记mini-player-N窗口注册；generation/ticket
+  均由Host核对，写入共用mini操作锁。main、其他窗口、旧lifetime不能调用。
+- 前端只调用typed MiniClient的feedbackView/Reasons/Submit；没有Cookie、签名密钥
+  或授权音源地址，不运行Python业务进程。Python仅启动/审计合成原生WebView证据。
+
+UI状态及失败恢复
+- useMiniFeedback捕获打开时epoch/entryId/title/ticket。首次本地状态未读到时不能
+  提交；理由单独等待/失败/空态/重试，不妨碍已确认可用的仅歌曲反馈。
+- 弹窗显示原歌曲，控制快照改变就禁用旧菜单；真正换歌后不能只用新ticket重绑到
+  新歌曲。账号变化、关闭和卸载撤销迟到回复，不关闭新账号窗口或回写新选择。
+- 写入只执行一次。成功后关闭并返回入口焦点；失败保留目标/原因，并锁住当前窗口
+  的再提交。mini_read获取了新ticket也不表示允许重发。
+- 明确“重新读取状态”只在原entry/账号仍相同时使用当前真实ticket重新查询。查询
+  失败仍锁住；读到未决记录仍锁住；确认已拒绝且无未决操作后，才允许用户再选一次。
+  歌手部分失败可以已换歌，保留原目标，不能重复减少新歌曲。
+- 正文可滚动，底部取消/提交/到主窗口查看始终可见。等待/禁用前停在稳定dialog，
+  原因重试按钮消失后焦点不会掉到body；状态重查焦点滚到正文可视区。关闭恢复入口，
+  入口已不可用时回到模式控制；Escape/cancel只关闭本弹窗，Space不穿透播放快捷键。
+- 到主窗口查看：mini_return(fm=true)校验原窗口open_epoch仍是当前账号后，仅向main
+  发cumulus:mini-return{epoch,fm:true}。主窗口验证自己的账号，导航实际FM页；已在FM页时
+  只读刷新一次。useMiniFmFocus等待真实读取和页面动画完成，再优先聚焦可见的
+  恢复区域；用户已移动焦点、换页或换账号时不抢回。事件/窗口恢复失败保留小窗并显示错误。
+  普通返回也发送同账号的只读同步通知；只有主窗口仍在FM页时刷新，保留原页面和焦点。
+  旧账号小窗的普通返回仍能恢复主窗口，但不发送新账号的导航/同步请求。
+  主窗口继续沿原操作ID核对/显式重试，不自动重复trash或歌手屏蔽。
+- 小窗队列纯读取遇到过期快照时，先同步新ticket并有限重读（同一上下文最多两次），
+  不把自己的成功反馈/定位所导致的短暂过期显示成业务失败；非过期错误仍显示并可
+  明确重试，不重放选择/移除/清空等写操作。
+
+并发接收顺序
+- 新增复现曾发现：推荐补充持有FM gate时，小窗反馈被拒绝，却先增加selection，
+  使已接受的Next返回Stale。相反方向的被拒绝Next也可能取消已发送反馈。
+- FmOperation先预留协调器gate，客户端随后才增加intent/申请媒体；FM反馈在gate内
+  再读同一entry/source。普通FM反馈与小窗共用此路径；FM Next/Previous/Play/Restore
+  也先预留，再进入原step/resume实现，避免双重加锁。时钟不参与失效，Stop/账号
+  切换仍使用原有撤销机制。持锁并不阻塞播放器actor或额外重放HTTP。
+- core/tests/support/mini_fm_feedback.rs涵盖这两个并发方向；只比较拒绝类型不够，
+  必须让先接受的操作最终成功、验证实际歌曲、一次请求与未决记录。具体先红后绿
+  日志、全量回归与实际GUI结果见ui-ux-validation.txt。
+
+接口
+- 理由：/api/personalized/dislike/reason，resources JSON字符串数组，每项含
+  resourceId/resourceType=4/targetUrl=""/encId；scene=""、page="userfm"。
+- 减少：/api/radio/trash/add，songId/alg/time；可选/api/music-blacklist/add，
+  contentType="artist"、contentIdList=[id]。固定理由不单独上传标签文本。
+- 只读重查：/api/music/dislike/get、/api/v3/radio/trash/get。主窗口核对仍使用
+  既有FmService持久记录；不额外发送skip/trash/add，也不扩展Cookie域或权益。
+
+验证入口及边界
+- 固定Node/Rust工具链、锁文件及原生运行依赖后：
+  npm --prefix frontend ci
+  npm --prefix frontend run build
+  cargo build -p cumulus-desktop --example mini_ui_probe --features custom-protocol --locked
+  python3 scripts/ci/mini_feedback_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root NEW_ROOT --screenshots
+- Linux无显示会话在最后一行前加LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session --；
+  Windows使用python/.exe并传--runtime指向已打包native DLL目录。必须使用新目录。
+- 28态覆盖原因等待/取消/重试/空态/长名称、两主题与两小窗高度、旧窗口/账号IPC隔离、
+  拒绝后只读重查、写入等待时拒绝Next、换歌旧菜单、歌手部分成功、主窗口恢复、
+  丢回执重开不重发以及隔离缓存损坏/查询失败/只读修复。不是前端Promise模拟。
+- 全部账号/服务/PCM为合成；Tauri WebView、IPC、SQLite、Rust actor和libmpv/null
+  真实。不能外推为真实账号新写入、物理音响、第二账号、Windows实机或官方像素证明。
+- 本专项没有完成小窗窗口菜单、普通资源右键菜单、新版分层理由/H5或跨显示器专项；
+  原总目标和全应用UI/UX审计继续，不能用28态或全测数量缩小目标并称完成。
