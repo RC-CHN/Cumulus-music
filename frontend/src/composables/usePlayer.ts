@@ -71,6 +71,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     if (queueOpen.value && old?.queueRevision !== next.queueRevision) void loadQueue();
   }
   async function connect(account: AccountView) {
+    if (epoch !== account.epoch) lyricsOpen.value = false;
     const version = ++connection;
     disconnect?.();
     disconnect = undefined;
@@ -90,6 +91,8 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     view.value = undefined;
     queue.value = undefined;
     lyrics.value = undefined;
+    lyricLoading.value = false;
+    lyricError.value = '';
     error.value = '';
     try {
       const stop = await core.watchPlayer(epoch, (event) => {

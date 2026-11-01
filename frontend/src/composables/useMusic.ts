@@ -84,6 +84,7 @@ export function useMusic(
       resourceRequest++;
       resourcesLoading.value = false;
       account.value = { ...account.value, status: 'expired', nickname: null, avatarUrl: null };
+      notice.value = '';
       playlists.value = [];
       liked.value = new Set();
       result.value = undefined;
@@ -214,6 +215,7 @@ export function useMusic(
         result.value = undefined;
         busyLikes.value = new Set();
         likeNotice.value = '';
+        notice.value = '';
       }
       account.value = next;
       if (signedIn.value) {

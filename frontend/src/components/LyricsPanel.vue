@@ -3,9 +3,11 @@ import { computed, ref, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import type { PlayerModel } from '../composables/usePlayer';
 import Icon from './Icon.vue';
 import DesktopLyricToggle from './DesktopLyricToggle.vue';
+import ActionMenu from './ActionMenu.vue';
 import { useMotion } from '../composables/useMotion';
 import { artistLabel } from '../services/artistLabel';
 const props = defineProps<{ player: PlayerModel }>();
+const emit = defineEmits<{ report: [] }>();
 const { view, lyrics, lyricLoading, lyricError, loaded } = props.player;
 const container = ref<HTMLElement>(),
   close = ref<HTMLButtonElement>();
@@ -58,12 +60,16 @@ watch(
   () => (manual.value = false),
 );
 let previous: HTMLElement | null = null;
+let previousEpoch: string | undefined;
 onMounted(() => {
   previous = document.activeElement as HTMLElement;
+  previousEpoch = view.value?.epoch;
   close.value?.focus();
   void scroll();
 });
-onUnmounted(() => previous?.focus());
+onUnmounted(() => {
+  if (view.value?.epoch === previousEpoch && previous?.isConnected) previous.focus();
+});
 function wordProgress(word: { time: number; duration: number }) {
   const seconds = (view.value?.position ?? 0) + (lyrics.value?.offset ?? 0);
   return `${Math.min(100, Math.max(0, word.duration ? ((seconds - word.time) / word.duration) * 100 : seconds >= word.time ? 100 : 0))}%`;
@@ -164,7 +170,9 @@ function aligned(rows: { time?: number; lyric: string }[] | undefined, index: nu
             </button>
             <div class="lyric-padding" />
           </div>
-          <div class="lyric-tools">
+        </template>
+        <div class="lyric-tools">
+          <template v-if="lyrics">
             <button
               class="text-button"
               :aria-pressed="lyrics.preferences.translationEnable"
@@ -219,8 +227,14 @@ function aligned(rows: { time?: number; lyric: string }[] | undefined, index: nu
             >
               回到当前
             </button>
-          </div>
-        </template>
+          </template>
+          <ActionMenu
+            v-if="!view?.track?.voiceId"
+            label="歌词操作"
+            :items="[{ key: 'report', label: '歌词报错', icon: 'edit' }]"
+            @select="emit('report')"
+          />
+        </div>
       </div>
     </div>
   </section>

@@ -90,9 +90,13 @@ test('account changes leave resource pages and search text from the prior identi
   );
   await music.bootstrap(false);
   music.navigate({ kind: 'search', keyword: 'prior-private-query' });
+  music.notice.value = '原账号反馈已发送';
+  await music.bootstrap(false);
+  assert.equal(music.notice.value, '原账号反馈已发送');
   epoch = '2';
   await music.bootstrap(false);
   assert.equal(music.page.value.kind, 'daily');
+  assert.equal(music.notice.value, '');
   music.navigate({
     kind: 'comments',
     resource: { kind: 'playlist', id: '9' },
@@ -295,12 +299,14 @@ test('301 clears private views and old-epoch results never appear', async () => 
   music.navigate({ kind: 'playlist', id: 'old-epoch' });
   await turn();
   assert.equal(music.result.value, undefined);
+  music.notice.value = '反馈已发送';
   music.navigate({ kind: 'playlist', id: 'expired' });
   await turn();
   assert.equal(music.signedIn.value, false);
   assert.equal(music.playlists.value.length, 0);
   assert.equal(music.liked.value.size, 0);
   assert.equal(music.result.value, undefined);
+  assert.equal(music.notice.value, '');
 });
 
 test('native like read-back cannot overwrite a newer UI like or a replacement account', async () => {

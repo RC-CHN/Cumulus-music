@@ -42,6 +42,7 @@ export interface MiniMedia {
   fmModePending?: { mode: PlaybackMode; revision: string } | null;
   queueRevision?: string | null;
   canIntelligence?: boolean;
+  canLyricReport?: boolean;
   intelligence?: 'seeded' | 'active' | 'fallback' | null;
   intelligenceOperation?: string | null;
   intelligenceRead?: { operationId: string; preparing: boolean } | null;
@@ -86,6 +87,7 @@ export interface MiniClient {
   applyPreferences(ticket: string, expectedRevision: string): Promise<void>;
   lyricMenu(ticket: string): Promise<MiniLyricMenuView>;
   lyricMenuAction(menuTicket: string, action: MiniLyricMenuAction): Promise<void>;
+  reportLyrics(ticket: string): Promise<void>;
   exit(): Promise<void>;
   drag(): Promise<void>;
   close(): Promise<void>;

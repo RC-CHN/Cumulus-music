@@ -31,6 +31,7 @@ export function createMiniClient(generation: string): MiniClient {
     lyricMenuAction: (menuTicket, action) =>
       invoke('mini_lyric_menu_action', { generation, menuTicket, action }),
     exit: () => invoke('mini_exit', { generation }),
+    reportLyrics: (ticket) => invoke('mini_lyric_report', { generation, ticket }),
     drag: () => getCurrentWindow().startDragging(),
     close: () => getCurrentWindow().close(),
   };

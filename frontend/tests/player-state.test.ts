@@ -344,6 +344,31 @@ test('late lyrics never replace the selected song and old queues are rejected', 
   assert.equal(f.player.queue.value, undefined);
   f.player.dispose();
 });
+test('an account change closes old lyrics and rejects their pending result while same-account reconnect preserves the open preference', async () => {
+  const held = deferred<LyricsView>();
+  const f = fixture({
+    playerLyrics: async (epoch, id) => (id === 'old' ? held.promise : { ...lyrics(id), epoch }),
+  });
+  await f.player.connect(account('1'));
+  f.emit(state('2', '1', 'old'));
+  f.player.toggleLyrics();
+  assert.equal(f.player.lyricsOpen.value, true);
+  assert.equal(f.player.lyricLoading.value, true);
+  await f.player.connect(account('2'));
+  held.resolve(lyrics('old'));
+  await turn();
+  assert.equal(f.player.lyricsOpen.value, false);
+  assert.equal(f.player.lyrics.value, undefined);
+  assert.equal(f.player.lyricLoading.value, false);
+  assert.equal(f.player.lyricError.value, '');
+  f.emit(state('2', '2', 'new'));
+  f.player.toggleLyrics();
+  await turn();
+  assert.equal(f.player.lyrics.value?.epoch, '2');
+  await f.player.connect(account('2'));
+  assert.equal(f.player.lyricsOpen.value, true);
+  f.player.dispose();
+});
 test('subscription completing after an account switch is disposed without changing the new view', async () => {
   const old = deferred<() => void>();
   let released = 0;

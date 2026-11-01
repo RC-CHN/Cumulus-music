@@ -62,6 +62,7 @@ function fixture(overrides: Partial<MiniClient> = {}) {
     },
     lyricMenuAction: async () => {},
     exit: async () => {},
+    reportLyrics: async () => {},
     feedbackView: async (ticket: string, remote: boolean) => {
       reads.push([ticket, remote]);
       return { ...status };

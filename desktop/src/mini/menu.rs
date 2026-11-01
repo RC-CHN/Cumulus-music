@@ -2,6 +2,50 @@ use super::*;
 use crate::desktop_lyrics::mini_menu::{Action, Snapshot, View as LyricView};
 use cumulus_core::client::ClientError;
 use serde::Serialize;
+use tauri::Emitter;
+
+#[tauri::command]
+pub async fn mini_lyric_report<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    generation: String,
+    ticket: String,
+) -> std::result::Result<(), ClientError> {
+    let captured = app.state::<Host>().lock()?.captured(&generation, &ticket)?;
+    let report = app
+        .state::<MusicClient>()
+        .mini_lyric_report_open(&captured)
+        .await?;
+    gui(&app, move |app| {
+        if !captured.same_controls(&app.state::<MusicClient>().mini_snapshot()?) {
+            return Err(Error::StaleResponse);
+        }
+        app.state::<Host>().lock()?.get(&generation)?;
+        if crate::lifecycle::view(&app)
+            .map_err(|_| Error::State("window lifecycle unavailable"))?
+            .busy
+        {
+            return Err(Error::MutationBusy);
+        }
+        if !dismiss(&app, Some(&generation), true) {
+            return Err(Error::State("main window unavailable"));
+        }
+        app.emit_to(
+            "main",
+            "cumulus:mini-return",
+            serde_json::json!({"epoch":report.epoch,"fm":false}),
+        )
+        .map_err(|_| Error::State("main window handoff unavailable"))?;
+        app.emit_to(
+            "main",
+            "cumulus:lyric-report-open",
+            serde_json::json!({"epoch":report.epoch,"id":report.id}),
+        )
+        .map_err(|_| Error::State("lyric report handoff unavailable"))?;
+        Ok(())
+    })
+    .await
+    .map_err(Into::into)
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]

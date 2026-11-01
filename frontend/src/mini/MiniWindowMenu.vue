@@ -102,6 +102,7 @@ const items = computed<MenuItem[]>(() => {
       result.push({ key: 'lyric:unlock', label: '解锁桌面歌词', icon: 'unlock' });
   } else if (props.lyrics.readIssue.value)
     result.push({ key: 'lyric:read', label: '重新读取歌词状态', icon: 'refresh' });
+  if (media?.canLyricReport) result.push({ key: 'lyric:report', label: '词曲报错', icon: 'edit' });
   result.push(
     { key: 'exit-separator', label: '', separator: true },
     { key: 'exit', label: '退出 Cumulus', icon: 'close' },

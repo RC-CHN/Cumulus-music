@@ -8,6 +8,9 @@ import { searchCardIsCurrent, searchCardSelection } from './services/searchCards
 import { computed, onMounted, onUnmounted, watch, ref, shallowRef, nextTick } from 'vue';
 import { onDesktopLyricOpen } from './adapters/desktopLyrics';
 import { onMiniReturn } from './adapters/mini';
+import { createLyricReportClient, onLyricReportOpen } from './adapters/lyricReports';
+import { useLyricReport } from './composables/useLyricReport';
+import LyricReportDialog from './components/LyricReportDialog.vue';
 import { useMiniFmFocus } from './composables/useMiniFmFocus';
 import { useLocalShortcuts } from './composables/useLocalShortcuts';
 import Icon from './components/Icon.vue';
@@ -714,6 +717,29 @@ const {
   signedIn,
 } = music;
 const loginOpen = ref(false);
+const lyricReport = useLyricReport(
+  () => account.value.epoch,
+  createLyricReportClient(),
+  (message) => {
+    notice.value = message;
+  },
+);
+function reportLyrics() {
+  if (!signedIn.value) {
+    loginOpen.value = true;
+    return;
+  }
+  const id = player.view.value?.playId;
+  if (id) void lyricReport.show(id);
+}
+function lyricPanelEnter(element: Element) {
+  (element as HTMLElement).inert = false;
+}
+function lyricPanelLeave(element: Element) {
+  const active = document.activeElement;
+  if (active instanceof HTMLElement && element.contains(active)) active.blur();
+  (element as HTMLElement).inert = true;
+}
 const accountsOpen = ref(false);
 const favorite = computed(() => playlists.value.find((p) => p.favorite && p.owned));
 const playlistActions = ref<InstanceType<typeof PlaylistActions>>();
@@ -835,6 +861,7 @@ watch(music.likeActivity, () => {
 });
 let nativeLikeListener: (() => void) | undefined;
 let desktopLyricListener: (() => void) | undefined;
+let lyricReportListener: (() => void) | undefined;
 let miniFmListener: (() => void) | undefined;
 const miniFmFocus = useMiniFmFocus(
   fm,
@@ -873,6 +900,15 @@ onMounted(async () => {
     else stop();
   } catch {
     notice.value = '托盘喜欢状态订阅失败，请刷新资源或重新启动客户端';
+  }
+  try {
+    const stop = await onLyricReportOpen((value) => {
+      if (mounted && value.epoch === account.value.epoch) void lyricReport.showId(value.id);
+    });
+    if (mounted) lyricReportListener = stop;
+    else stop();
+  } catch {
+    /* The lyric panel remains an independent entry. */
   }
   try {
     const stop = await onDesktopLyricOpen(async (value) => {
@@ -924,6 +960,7 @@ onUnmounted(() => {
   accountListener?.();
   nativeLikeListener?.();
   desktopLyricListener?.();
+  lyricReportListener?.();
   miniFmListener?.();
 });
 watch(
@@ -1761,9 +1798,17 @@ onUnmounted(() => {
       @expand="openMv(mv.video.value.id)"
       @downloads="music.navigate({ kind: 'downloads' })"
     />
-    <Transition name="lyrics-panel">
-      <LyricsPanel v-if="player.lyricsOpen.value && currentTrackId" :player="player" />
+    <Transition name="lyrics-panel" @before-enter="lyricPanelEnter" @before-leave="lyricPanelLeave">
+      <LyricsPanel
+        v-if="player.lyricsOpen.value && currentTrackId"
+        :player="player"
+        @report="reportLyrics"
+      />
     </Transition>
+    <ModalTransition
+      :restore-focus="!initializing && lyricReport.ownerEpoch.value === account.epoch"
+      ><LyricReportDialog v-if="lyricReport.open.value" :model="lyricReport"
+    /></ModalTransition>
     <Transition name="queue-panel" @after-leave="queueLeft">
       <QueuePanel
         v-if="player.queueOpen.value"

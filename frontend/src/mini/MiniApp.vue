@@ -46,6 +46,13 @@ const pinState = useMiniPin(view, client, () => refresh(true), busy);
 const pinTrigger = ref<HTMLButtonElement>();
 const windowMenu = ref<InstanceType<typeof MiniWindowMenu>>();
 const menuModel = useMiniWindowMenu(view, client, busy, () => refresh(true));
+const reportingEpoch = ref<string>();
+const reportOpening = computed(
+  () => !!reportingEpoch.value && reportingEpoch.value === media.value?.epoch,
+);
+const menuProgress = computed(() =>
+  reportOpening.value ? '正在打开歌词报错…' : menuModel.working.value ? '正在更新桌面歌词…' : '',
+);
 const lyricMenuIssue = computed(() =>
   menuModel.issue.value ? `桌面歌词：${menuModel.issue.value}` : '',
 );
@@ -53,6 +60,7 @@ let menuFocus: { epoch: string; control: HTMLElement; surface: HTMLElement } | u
 async function restoreMenuFocus() {
   if (
     busy.value ||
+    reportOpening.value ||
     menuModel.working.value ||
     modes.busy.value ||
     modes.mode.pending.value ||
@@ -71,7 +79,10 @@ async function restoreMenuFocus() {
   )
     saved.control.focus({ preventScroll: true });
 }
-watch([busy, menuModel.working, modes.busy, modes.mode.pending], () => void restoreMenuFocus());
+watch(
+  [busy, menuModel.working, reportOpening, modes.busy, modes.mode.pending],
+  () => void restoreMenuFocus(),
+);
 async function windowMenuSelect(key: string) {
   const control = document.activeElement,
     surface = control?.closest<HTMLElement>('.mini-shell');
@@ -86,6 +97,17 @@ async function windowMenuSelect(key: string) {
       await client.exit();
     } catch (e) {
       error.value = message(e);
+    }
+  } else if (key === 'lyric:report') {
+    const shown = view.value;
+    if (!shown || reportOpening.value) return;
+    reportingEpoch.value = shown.media.epoch;
+    try {
+      await client.reportLyrics(shown.ticket);
+    } catch (e) {
+      if (!disposed && media.value?.epoch === shown.media.epoch) error.value = message(e);
+    } finally {
+      if (reportingEpoch.value === shown.media.epoch) reportingEpoch.value = undefined;
     }
   } else if (key.startsWith('mode:')) modes.mode.select(key.slice(5) as ModeTarget);
   else if (key.startsWith('lyric:')) await menuModel.action(key.slice(6) as MiniLyricMenuAction);
@@ -362,12 +384,13 @@ onUnmounted(() => {
         :disabled="
           busy ||
           menuModel.working.value ||
+          reportOpening ||
           !view ||
           feedback.open.value ||
           modes.busy.value ||
           modes.mode.pending.value
         "
-        :aria-busy="menuModel.working.value"
+        :aria-busy="menuModel.working.value || reportOpening"
         @select="windowMenuSelect"
       />
       <button
@@ -566,19 +589,19 @@ onUnmounted(() => {
         v-else
         class="mini-message"
         :title="
-          menuModel.working.value
-            ? '正在更新桌面歌词…'
+          menuProgress
+            ? menuProgress
             : error || lyricMenuIssue || pinState.notice.value || media?.error || ''
         "
         :role="
-          menuModel.working.value
+          menuProgress
             ? 'status'
             : error || lyricMenuIssue || pinState.notice.value || media?.error
               ? 'alert'
               : undefined
         "
         >{{
-          (menuModel.working.value ? '正在更新桌面歌词…' : '') ||
+          menuProgress ||
           error ||
           lyricMenuIssue ||
           pinState.notice.value ||

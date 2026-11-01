@@ -1,5 +1,6 @@
 pub mod intelligence;
 pub mod quality;
+pub mod reports;
 use cumulus_core::{
     Error,
     client::{ClientError, MusicClient, dto::*},

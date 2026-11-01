@@ -124,6 +124,7 @@ function fixture() {
     },
     lyricMenuAction: async () => {},
     exit: async () => {},
+    reportLyrics: async () => {},
     drag: async () => {},
     close: async () => {},
   };
