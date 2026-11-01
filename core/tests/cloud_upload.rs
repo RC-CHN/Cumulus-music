@@ -110,7 +110,7 @@ async fn complete_nos_and_three_attachments_preserve_bytes_wait_for_encoding_and
         f.manager
             .verified_source_file(&id, published.song_id.as_deref().unwrap())
             .unwrap(),
-        f.source
+        f.source.canonicalize().unwrap()
     );
     assert!(f.manager.verified_source_file(&id, "999").is_err());
     assert!(f.manager.control(&id, UploadControl::Cancel).await.is_err());
@@ -125,7 +125,7 @@ async fn complete_nos_and_three_attachments_preserve_bytes_wait_for_encoding_and
         f.reopened()
             .verified_source_file(&id, done.song_id.as_deref().unwrap())
             .unwrap(),
-        f.source
+        f.source.canonicalize().unwrap()
     );
     let public = serde_json::to_string(&done).unwrap();
     for secret in [
