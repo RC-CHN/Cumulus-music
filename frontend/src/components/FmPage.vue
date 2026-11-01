@@ -11,6 +11,8 @@ import { artistLabel } from '../services/artistLabel';
 import ModalTransition from './ModalTransition.vue';
 import FmFeedbackDialog from './fm/FmFeedbackDialog.vue';
 import { useFmFeedback } from '../composables/useFmFeedback';
+import FmStateRecovery from './fm/FmStateRecovery.vue';
+import FmVirtualList from './fm/FmVirtualList.vue';
 const props = defineProps<{
   model: FmModel;
   player: PlayerModel;
@@ -25,11 +27,13 @@ const emit = defineEmits<{
 const { view, trash, reasons, reasonsLoading, loading, busy, trashLoading, error } = props.model;
 const tab = ref<'fm' | 'trash'>('fm'),
   selected = ref(new Set<string>());
+let restoreIds = new Set<string>();
 const exploring = ref(false);
 const heading = ref<HTMLHeadingElement>(),
   returnButton = ref<HTMLButtonElement>(),
   feedbackButton = ref<HTMLButtonElement>(),
   trashToolbar = ref<HTMLElement>(),
+  stateRegion = ref<HTMLElement>(),
   recovery = ref<HTMLElement>();
 const feedback = useFmFeedback(props.model, () => props.player.view.value);
 const afterFeedback = ref<'trash' | 'recovery'>();
@@ -70,7 +74,20 @@ async function selectCard(card: FmCard, autoplay: boolean) {
   }
 }
 const current = computed(() => view.value?.items.find((i) => i.entryId === view.value?.current));
-const pending = computed(() => busy.value || props.player.busy.value || !props.player.ready.value);
+const pending = computed(
+  () =>
+    busy.value ||
+    !!props.model.stateIssue.value ||
+    props.player.busy.value ||
+    !props.player.ready.value,
+);
+const writeLocked = computed(() => busy.value || !!props.model.stateIssue.value);
+const listLocked = computed(
+  () =>
+    writeLocked.value ||
+    trashLoading.value ||
+    (!!props.model.trashIssue.value && !props.model.trashIssue.value.more),
+);
 // Empty recommendations can still own the saved ordinary queue and its return
 // action. Transport controls additionally require the matching FM projection
 // and a current item; an empty FM projection still owns its repeat policy.
@@ -92,12 +109,10 @@ const primary = computed(() =>
     notice: !!view.value?.notice,
   }),
 );
-watch(
-  () => JSON.stringify(view.value?.source),
-  () => {
-    selected.value = new Set();
-  },
-);
+watch([() => props.player.view.value?.epoch, () => JSON.stringify(view.value?.source)], () => {
+  selected.value = new Set();
+  restoreIds = new Set();
+});
 function toggle(id: string) {
   const next = new Set(selected.value);
   if (next.has(id)) next.delete(id);
@@ -106,20 +121,75 @@ function toggle(id: string) {
 }
 function openTrash() {
   tab.value = 'trash';
-  selected.value = new Set();
   void props.model.loadTrash();
 }
-async function restore(event?: Event) {
-  if (restorePending.value || busy.value || trashLoading.value) return;
+function removeSelection(ids: Set<string>) {
+  selected.value = new Set([...selected.value].filter((id) => !ids.has(id)));
+}
+async function readTrash(event: Event, more = false) {
+  const trigger = event.currentTarget,
+    owner = props.player.view.value?.epoch,
+    channel = JSON.stringify(props.model.source.value),
+    owned = trigger instanceof HTMLElement && document.activeElement === trigger;
+  if (owned) trashToolbar.value?.focus({ preventScroll: true });
+  await props.model.loadTrash(more);
+  await nextTick();
+  if (
+    owned &&
+    tab.value === 'trash' &&
+    owner === props.player.view.value?.epoch &&
+    channel === JSON.stringify(props.model.source.value) &&
+    [trashToolbar.value, document.body].includes(document.activeElement as HTMLElement)
+  ) {
+    const next =
+      trigger.isConnected && !trigger.matches(':disabled')
+        ? trigger
+        : (trashToolbar.value?.parentElement?.querySelector<HTMLElement>('.fm-list-error button') ??
+          trashToolbar.value);
+    next?.focus({ preventScroll: true });
+    next?.scrollIntoView({ block: 'nearest' });
+  }
+}
+async function unblock(id: string, event: Event) {
+  const trigger = event.currentTarget as HTMLElement,
+    list = trigger.closest<HTMLElement>('.fm-virtual-list'),
+    index = Number(trigger.closest<HTMLElement>('[data-fm-index]')?.dataset.fmIndex),
+    owner = props.player.view.value?.epoch,
+    owned = document.activeElement === trigger;
+  if (owned) list?.focus({ preventScroll: true });
+  await props.model.command({ kind: 'artist', id, blocked: false });
+  await nextTick();
+  if (
+    owned &&
+    list?.isConnected &&
+    tab.value === 'trash' &&
+    owner === props.player.view.value?.epoch &&
+    [list, document.body].includes(document.activeElement as HTMLElement)
+  ) {
+    const next = props.model.stateIssue.value
+      ? stateRegion.value
+      : trigger.isConnected && !trigger.matches(':disabled')
+        ? trigger
+        : (list.querySelector<HTMLElement>(
+            `[data-fm-index="${Math.min(index, (view.value?.blockedArtists.length ?? 1) - 1)}"] button:not(:disabled)`,
+          ) ?? list);
+    next?.focus({ preventScroll: true });
+    next?.scrollIntoView({ block: 'nearest' });
+  }
+}
+async function restore(event?: Event, ids = [...selected.value]) {
+  if (restorePending.value || listLocked.value || !ids.length) return;
   const trigger = event?.currentTarget,
     owned = trigger instanceof HTMLElement && document.activeElement === trigger,
     owner = props.player.view.value?.epoch,
     channel = JSON.stringify(props.model.source.value);
   if (owned) trashToolbar.value?.focus({ preventScroll: true });
-  const ids = [...selected.value];
+  const submitted = new Set(ids);
+  restoreIds = submitted;
   const result = await props.model.command({ kind: 'restore_trash', ids });
   if (result?.ok) {
-    selected.value = new Set();
+    removeSelection(submitted);
+    restoreIds = new Set();
     await props.model.loadTrash();
   }
   await nextTick();
@@ -133,9 +203,31 @@ async function restore(event?: Event) {
     channel === JSON.stringify(props.model.source.value) &&
     (document.activeElement === trashToolbar.value || document.activeElement === document.body)
   ) {
-    const next =
-      trigger.isConnected && !trigger.matches(':disabled') ? trigger : trashToolbar.value;
+    const next = props.model.stateIssue.value
+      ? stateRegion.value
+      : trigger.isConnected && !trigger.matches(':disabled')
+        ? trigger
+        : trashToolbar.value;
     next?.focus({ preventScroll: true });
+    next?.scrollIntoView({ block: 'nearest' });
+  }
+}
+async function readState(event: Event) {
+  const trigger = event.currentTarget,
+    owner = props.player.view.value?.epoch;
+  const owned = trigger instanceof HTMLElement && document.activeElement === trigger;
+  const parked = stateRegion.value;
+  if (owned) parked?.focus({ preventScroll: true });
+  await props.model.load(true);
+  await nextTick();
+  if (
+    owned &&
+    owner === props.player.view.value?.epoch &&
+    (document.activeElement === parked || document.activeElement === document.body)
+  ) {
+    const target = trigger.isConnected && !trigger.matches(':disabled') ? trigger : heading.value;
+    target?.focus({ preventScroll: true });
+    target?.scrollIntoView({ block: 'nearest' });
   }
 }
 async function reconcileFeedback(op: FmFeedback, event: Event) {
@@ -145,7 +237,8 @@ async function reconcileFeedback(op: FmFeedback, event: Event) {
   if (owned) recovery.value?.focus({ preventScroll: true });
   const result = await props.model.command({ kind: 'reconcile', id: op.id });
   if (result?.ok && op.desired === false) {
-    selected.value = new Set();
+    removeSelection(restoreIds);
+    restoreIds = new Set();
     await props.model.loadTrash();
   }
   await nextTick();
@@ -161,6 +254,7 @@ async function reconcileFeedback(op: FmFeedback, event: Event) {
           ? trashToolbar.value
           : (recovery.value ?? heading.value);
     next?.focus({ preventScroll: true });
+    next?.scrollIntoView({ block: 'nearest' });
   }
 }
 function feedbackNavigate(destination: 'trash' | 'recovery') {
@@ -174,7 +268,9 @@ async function feedbackLeft() {
   if (!destination || !feedback.accountCurrent.value) return;
   if (destination === 'trash') openTrash();
   await nextTick();
-  (destination === 'recovery' ? recovery.value : heading.value)?.focus({ preventScroll: true });
+  const target = destination === 'recovery' ? recovery.value : heading.value;
+  target?.focus({ preventScroll: true });
+  target?.scrollIntoView({ block: 'nearest' });
 }
 function play() {
   switch (primary.value.action) {
@@ -205,6 +301,7 @@ function resume() {
     aria-label="私人FM"
     :data-fm-source="JSON.stringify(model.source.value)"
     :data-mode-pending="modePending"
+    :data-fm-state-error="model.stateIssue.value?.code"
   >
     <header class="fm-header">
       <div>
@@ -226,12 +323,30 @@ function resume() {
       >
         {{ exploring ? '收起模式' : '切换漫游' }}
       </button>
-      <button class="text-button" @click="tab === 'fm' ? openTrash() : (tab = 'fm')">
+      <button
+        class="text-button"
+        :disabled="busy"
+        @click="tab === 'fm' ? openTrash() : (tab = 'fm')"
+      >
         {{ tab === 'fm' ? '减少推荐列表' : `返回${model.title.value}` }}
       </button>
     </header>
     <FmExplore v-if="tab === 'fm' && exploring" :model="model" @select="selectCard" />
-    <div v-if="error" class="error-state" role="alert">
+    <section
+      v-if="model.stateIssue.value"
+      ref="stateRegion"
+      tabindex="-1"
+      class="fm-state-region"
+      aria-label="读取状态恢复"
+    >
+      <FmStateRecovery
+        :issue="model.stateIssue.value.message"
+        :previous="model.writeIssue.value?.message"
+        :busy="loading || busy"
+        @retry="readState"
+      />
+    </section>
+    <div v-else-if="error" class="error-state" role="alert">
       {{ error
       }}<button @click="tab === 'fm' ? model.load(true) : model.loadTrash()">重新加载</button>
     </div>
@@ -313,33 +428,47 @@ function resume() {
         </div>
       </div>
     </div>
-    <div v-else class="fm-trash" :aria-busy="busy || trashLoading">
+    <div
+      v-else
+      class="fm-trash"
+      :aria-busy="busy || trashLoading"
+      :data-selected-count="selected.size"
+    >
       <section v-if="view?.blockedArtists.length" class="fm-artists" aria-label="屏蔽的歌手">
         <h2>屏蔽的歌手</h2>
-        <div
-          v-for="artist in view.blockedArtists"
-          :key="artist.id"
-          :data-artist-id="artist.id"
-          class="fm-trash-row"
-        >
-          <strong :title="artist.name">{{ artist.name }}</strong>
-          <button
-            class="text-button"
-            :disabled="busy"
-            @click="model.command({ kind: 'artist', id: artist.id, blocked: false })"
-          >
-            取消屏蔽
-          </button>
-        </div>
+        <FmVirtualList :items="view.blockedArtists" :row-height="56" label="屏蔽的歌手">
+          <template #default="{ item: artist }">
+            <div :data-artist-id="artist.id" class="fm-trash-row">
+              <strong :title="artist.name">{{ artist.name }}</strong>
+              <button
+                class="text-button"
+                :disabled="writeLocked"
+                @click="unblock(artist.id, $event)"
+              >
+                取消屏蔽
+              </button>
+            </div>
+          </template>
+        </FmVirtualList>
       </section>
       <div ref="trashToolbar" class="fm-trash-toolbar" tabindex="-1">
         <span>已加载 {{ trash?.songs.length ?? 0 }} 首 · 每次最多恢复 100 首</span
         ><button
           class="primary"
-          :disabled="busy || trashLoading || restorePending || !selected.size"
+          :disabled="listLocked || restorePending || !selected.size"
           @click="restore"
         >
           恢复推荐{{ selected.size ? `（${selected.size}）` : '' }}
+        </button>
+      </div>
+      <div v-if="model.trashIssue.value" class="fm-list-error error-state" role="alert">
+        <span>{{ model.trashIssue.value.message }}</span>
+        <button
+          class="text-button"
+          :disabled="trashLoading || busy"
+          @click="readTrash($event, model.trashIssue.value.more)"
+        >
+          {{ model.trashIssue.value.more ? '重试加载更多' : '重新读取列表' }}
         </button>
       </div>
       <p v-if="restorePending" class="fm-notice" role="status">
@@ -352,42 +481,45 @@ function resume() {
       </p>
       <div v-if="!trash" class="empty-state">{{ trashLoading ? '正在读取歌曲…' : '暂无列表' }}</div>
       <div v-else-if="!trash.songs.length" class="empty-state">这里还没有歌曲</div>
-      <div
-        v-for="track in trash?.songs"
-        :key="track.id"
-        :data-song-id="track.id"
-        class="fm-trash-row"
+      <FmVirtualList
+        v-if="trash?.songs.length"
+        :items="trash.songs"
+        :row-height="72"
+        label="减少推荐的歌曲"
       >
-        <label
-          ><input
-            type="checkbox"
-            :aria-label="`选择${track.name || `歌曲 ${track.id}`}`"
-            :checked="selected.has(track.id)"
-            :disabled="busy || restorePending || (!selected.has(track.id) && selected.size >= 100)"
-            @change="toggle(track.id)"
-          /><span
-            ><strong :title="track.name || `歌曲 ${track.id}`">{{
-              track.name || `歌曲 ${track.id}`
-            }}</strong
-            ><small>{{ artistLabel(track) }}</small></span
-          ></label
-        >
-        <button
-          class="text-button"
-          :disabled="busy || trashLoading || restorePending"
-          @click="
-            selected = new Set([track.id]);
-            restore($event);
-          "
-        >
-          恢复推荐
-        </button>
-      </div>
+        <template #default="{ item: track }">
+          <div :data-song-id="track.id" class="fm-trash-row">
+            <label
+              ><input
+                type="checkbox"
+                :aria-label="`选择${track.name || `歌曲 ${track.id}`}`"
+                :checked="selected.has(track.id)"
+                :disabled="
+                  listLocked || restorePending || (!selected.has(track.id) && selected.size >= 100)
+                "
+                @change="toggle(track.id)"
+              /><span
+                ><strong :title="track.name || `歌曲 ${track.id}`">{{
+                  track.name || `歌曲 ${track.id}`
+                }}</strong
+                ><small>{{ artistLabel(track) }}</small></span
+              ></label
+            >
+            <button
+              class="text-button"
+              :disabled="listLocked || restorePending"
+              @click="restore($event, [track.id])"
+            >
+              恢复推荐
+            </button>
+          </div>
+        </template>
+      </FmVirtualList>
       <button
         v-if="trash?.more"
         class="text-button"
         :disabled="trashLoading || busy"
-        @click="model.loadTrash(true)"
+        @click="readTrash($event, true)"
       >
         {{ trashLoading ? '正在加载…' : '加载更多' }}
       </button>
@@ -411,14 +543,14 @@ function resume() {
           }}</span>
           <button
             v-if="op.phase === 'rejected' && op.artistId"
-            :disabled="busy"
+            :disabled="writeLocked"
             @click="model.command({ kind: 'artist', id: op.artistId, blocked: op.desired ?? true })"
           >
             重试此操作
           </button>
           <button
             v-else
-            :disabled="busy"
+            :disabled="writeLocked"
             @click="model.command({ kind: 'reconcile_artist', id: op.id })"
           >
             核对状态
@@ -434,15 +566,21 @@ function resume() {
                 ? '减少推荐结果尚未确认'
                 : '恢复推荐结果尚未确认'
           }}</span
-          ><button :disabled="busy" @click="reconcileFeedback(op, $event)">
+          ><button :disabled="writeLocked" @click="reconcileFeedback(op, $event)">
             {{ op.desired ? '核对并继续' : '核对恢复状态' }}
           </button></template
         >
         <template v-else-if="op.phase === 'prepared'"
           ><span>有一条尚未发送的跳过反馈</span
-          ><button :disabled="busy" @click="model.command({ kind: 'dispatch_skip', id: op.id })">
+          ><button
+            :disabled="writeLocked"
+            @click="model.command({ kind: 'dispatch_skip', id: op.id })"
+          >
             发送反馈</button
-          ><button :disabled="busy" @click="model.command({ kind: 'abandon_skip', id: op.id })">
+          ><button
+            :disabled="writeLocked"
+            @click="model.command({ kind: 'abandon_skip', id: op.id })"
+          >
             放弃
           </button></template
         >
@@ -467,9 +605,12 @@ function resume() {
         :can-submit="feedback.canSubmit.value"
         :issue="feedback.issue.value?.message ?? ''"
         :reason-issue="model.reasonsIssue.value?.message ?? ''"
+        :state-issue="model.stateIssue.value?.message ?? ''"
+        :reading-state="!!model.stateIssue.value && loading"
         @close="feedback.close"
         @submit="feedback.submit"
         @reload="feedback.retryReasons"
+        @recover="feedback.retryState"
         @blacklist="feedbackNavigate('trash')"
         @review="feedbackNavigate('recovery')"
       />
@@ -492,6 +633,7 @@ function resume() {
   gap: 16px;
   flex-wrap: wrap;
 }
+.fm-state-region:focus-visible,
 .fm-trash-toolbar:focus-visible,
 .fm-recovery:focus-visible {
   outline: 2px solid var(--accent);
@@ -604,6 +746,9 @@ function resume() {
   margin-bottom: 12px;
 }
 .fm-trash-row {
+  height: 100%;
+  box-sizing: border-box;
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -612,6 +757,7 @@ function resume() {
   border-bottom: 1px solid var(--line);
 }
 .fm-trash-row label {
+  flex: 1;
   display: flex;
   align-items: center;
   gap: 14px;
@@ -623,6 +769,10 @@ function resume() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.fm-trash-row > strong {
+  min-width: 0;
+  flex: 1;
 }
 .fm-trash-row label span {
   min-width: 0;

@@ -41,7 +41,9 @@ export function useFmFeedback(model: FmModel, playback: () => Playback | undefin
   });
   const busy = computed(() => pending.value || model.busy.value);
   const review = computed(() => !!model.view.value?.operations.some((op) => op.kind !== 'skip'));
-  const canSubmit = computed(() => open.value && !busy.value && !changed.value && !review.value);
+  const canSubmit = computed(
+    () => open.value && !busy.value && !changed.value && !review.value && !model.stateIssue.value,
+  );
   function reset() {
     serial++;
     open.value = false;
@@ -57,7 +59,14 @@ export function useFmFeedback(model: FmModel, playback: () => Playback | undefin
   function show() {
     const actual = playback(),
       current = model.view.value?.items.find((item) => item.entryId === model.view.value?.current);
-    if (open.value || busy.value || !actual?.fm || !current || actual.entryId !== current.entryId)
+    if (
+      open.value ||
+      busy.value ||
+      model.stateIssue.value ||
+      !actual?.fm ||
+      !current ||
+      actual.entryId !== current.entryId
+    )
       return;
     serial++;
     target.value = {
@@ -75,9 +84,20 @@ export function useFmFeedback(model: FmModel, playback: () => Playback | undefin
     if (!busy.value) reset();
   }
   function retryReasons() {
-    if (!open.value || changed.value || busy.value || model.reasonsLoading.value || !target.value)
+    if (
+      !open.value ||
+      changed.value ||
+      busy.value ||
+      model.stateIssue.value ||
+      model.reasonsLoading.value ||
+      !target.value
+    )
       return;
     void model.loadReasons(target.value.entryId);
+  }
+  async function retryState() {
+    if (!open.value || busy.value || model.loading.value || !model.stateIssue.value) return false;
+    return model.load(true);
   }
   async function submit(reasonKey?: string) {
     const displayed = target.value;
@@ -123,6 +143,7 @@ export function useFmFeedback(model: FmModel, playback: () => Playback | undefin
     show,
     close,
     retryReasons,
+    retryState,
     submit,
   };
 }

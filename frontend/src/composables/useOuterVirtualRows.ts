@@ -5,7 +5,9 @@ import { rowWindow } from '../services/virtualWindow';
 export function useOuterVirtualRows(
   count: () => number,
   rowHeight: number,
-  root: () => HTMLElement | undefined,
+  root: (list?: HTMLElement) => HTMLElement | undefined,
+  focusIndex: (element: HTMLElement) => number = (element) =>
+    Number(element.closest<HTMLElement>('[data-sidebar-index]')?.dataset.sidebarIndex),
 ) {
   const container = ref<HTMLElement>();
   const range = shallowRef({ start: 0, end: 0 });
@@ -14,7 +16,7 @@ export function useOuterVirtualRows(
   function update() {
     frame = undefined;
     const list = container.value,
-      outer = root();
+      outer = root(list);
     if (!list || !outer) return;
     const a = list.getBoundingClientRect(),
       b = outer.getBoundingClientRect();
@@ -29,9 +31,7 @@ export function useOuterVirtualRows(
           : { start: count(), end: count() };
     const focused = document.activeElement as HTMLElement | null;
     if (focused && list.contains(focused) && focused !== list) {
-      const index = Number(
-        focused.closest<HTMLElement>('[data-sidebar-index]')?.dataset.sidebarIndex,
-      );
+      const index = focusIndex(focused);
       if (index < next.start || index >= next.end) list.focus({ preventScroll: true });
     }
     if (next.start !== range.value.start || next.end !== range.value.end) range.value = next;
@@ -40,7 +40,7 @@ export function useOuterVirtualRows(
     frame ??= requestAnimationFrame(update);
   }
   watch(
-    [container, root],
+    [container, () => root(container.value)],
     ([list, outer]) => {
       stop?.();
       if (!list || !outer) return;

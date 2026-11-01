@@ -233,3 +233,55 @@ test('only a confirmed current-context result dismisses the feedback dialog', as
   assert.equal(f.dialog.open.value, false);
   assert.deepEqual(f.commands, [{ kind: 'trash', entry_id: 'entry-1' }]);
 });
+
+test('failed write plus failed state read blocks resubmission until an explicit read succeeds', async (t) => {
+  const f = fixture();
+  t.after(f.close);
+  const originalView = f.model.view.value!;
+  let writes = 0,
+    reads = 0;
+  f.port.fmCommand = async () => {
+    writes++;
+    throw { code: 'network', message: 'Write response lost', retryable: true };
+  };
+  f.port.fmView = async () => {
+    reads++;
+    throw { code: 'storage', message: 'State unreadable', retryable: true };
+  };
+  f.dialog.show();
+  await nextTick();
+  await f.dialog.submit();
+  assert.equal(f.dialog.open.value, true);
+  assert.equal(f.dialog.canSubmit.value, false, 'an unobserved write must not look safe to resend');
+  assert.equal(f.dialog.issue.value?.message, 'Write response lost');
+  assert.equal(f.model.stateIssue.value?.message, 'State unreadable');
+  await f.dialog.submit();
+  assert.equal(writes, 1);
+  await f.dialog.retryState();
+  assert.equal(reads, 2);
+  assert.equal(writes, 1);
+  f.port.fmView = async (epoch) => {
+    reads++;
+    return {
+      epoch,
+      value: {
+        ...originalView,
+        operations: [
+          {
+            id: 'op',
+            kind: 'trash',
+            phase: 'uncertain',
+            desired: true,
+            canApply: false,
+            artistId: null,
+          },
+        ],
+      },
+    };
+  };
+  await f.dialog.retryState();
+  assert.equal(f.model.stateIssue.value, undefined);
+  assert.equal(f.dialog.review.value, true);
+  assert.equal(f.dialog.canSubmit.value, false);
+  assert.equal(writes, 1);
+});

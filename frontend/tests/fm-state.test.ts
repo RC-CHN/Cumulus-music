@@ -2,11 +2,15 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { useFm } from '../src/composables/useFm.ts';
 import type { FmClient, FmView, FmTrash, FmReasons } from '../src/services/fm.ts';
-import type { AccountData } from '../src/services/contracts.ts';
+import type { AccountData, TrackView } from '../src/services/contracts.ts';
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((r) => (resolve = r));
-  return { resolve, promise };
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((r, j) => {
+    resolve = r;
+    reject = j;
+  });
+  return { resolve, reject, promise };
 }
 const account = (epoch = '1') => ({
   epoch,
@@ -244,4 +248,214 @@ test('会话失效清除FM和减少推荐列表', async (t) => {
   assert.equal(expired, 1);
   assert.equal(model.view.value, undefined);
   assert.equal(model.trash.value, undefined);
+});
+
+test('failed observation blocks every new FM write and a successful read preserves the original refusal', async (t) => {
+  let writes = 0,
+    broken = true;
+  const model = useFm(
+    client({
+      fmCommand: async () => {
+        writes++;
+        throw { code: 'service_rejected', message: 'Submission refused', retryable: false };
+      },
+      fmView: async (epoch) => {
+        if (broken) throw { code: 'storage', message: 'State read failed', retryable: true };
+        return { epoch, value: view() };
+      },
+    }),
+  );
+  t.after(() => model.dispose());
+  model.connect(account());
+  await model.command({ kind: 'trash', entry_id: 'one' });
+  assert.equal(model.writeIssue.value?.message, 'Submission refused');
+  assert.equal(model.stateIssue.value?.message, 'State read failed');
+  await model.command({ kind: 'start', quality: 'standard' });
+  await model.command({ kind: 'restore_trash', ids: ['1'] });
+  assert.equal(writes, 1);
+  broken = false;
+  assert.equal(await model.load(true), true);
+  assert.equal(model.stateIssue.value, undefined);
+  assert.equal(model.error.value, 'Submission refused');
+  await model.command({ kind: 'trash', entry_id: 'one' });
+  assert.equal(writes, 2);
+});
+
+test('an unavailable FM state suspends polling until an explicit read', async (t) => {
+  let reads = 0;
+  const model = useFm(
+    client({
+      fmView: async () => {
+        reads++;
+        throw { code: 'storage', message: 'Unreadable', retryable: true };
+      },
+    }),
+  );
+  t.after(() => model.dispose());
+  model.connect(account());
+  model.show(true);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.ok(model.stateIssue.value);
+  await new Promise((resolve) => setTimeout(resolve, 1250));
+  assert.equal(reads, 1);
+  await model.load(true);
+  assert.equal(reads, 2);
+});
+
+test('a late old-account state cannot clear the current account recovery gate', async (t) => {
+  const old = deferred<AccountData<FmView>>();
+  const model = useFm(
+    client({
+      fmView: async (epoch) =>
+        epoch === '1'
+          ? old.promise
+          : Promise.reject({ code: 'storage', message: 'New owner unreadable', retryable: true }),
+    }),
+  );
+  t.after(() => model.dispose());
+  model.connect(account());
+  const reading = model.load();
+  model.connect(account('2'));
+  await model.load();
+  old.resolve({ epoch: '1', value: view('old') });
+  await reading;
+  assert.equal(model.stateIssue.value?.message, 'New owner unreadable');
+  assert.equal(model.view.value, undefined);
+});
+
+test('a mismatched source is not a successful observation and cannot unlock writing', async (t) => {
+  let writes = 0;
+  const model = useFm(
+    client({
+      fmView: async (epoch) => ({
+        epoch,
+        value: { ...view(), source: { kind: 'zone', rule_id: '999', trial_mode: null } },
+      }),
+      fmCommand: async (epoch) => {
+        writes++;
+        return { epoch, value: view() };
+      },
+    }),
+  );
+  t.after(() => model.dispose());
+  model.connect(account());
+  assert.equal(await model.load(), false);
+  assert.equal(model.stateIssue.value?.code, 'stale');
+  await model.command({ kind: 'start', quality: 'standard' });
+  assert.equal(writes, 0);
+});
+
+function track(id: string, name = id): TrackView {
+  return {
+    id,
+    name,
+    artists: [],
+    artistRefs: [],
+    album: '',
+    albumId: null,
+    coverUrl: null,
+    durationMs: 0,
+    fee: 0,
+    missing: false,
+    local: false,
+  };
+}
+
+test('a failed next page keeps loaded rows and retries the exact cursor without duplicating IDs', async (t) => {
+  let attempts = 0;
+  const requests: unknown[] = [];
+  const model = useFm(
+    client({
+      fmTrash: async (epoch, page, cursor) => {
+        requests.push([page, cursor]);
+        if (page === 1)
+          return {
+            epoch,
+            value: { ...empty, songs: [track('1'), track('2')], more: true, cursor: 99 },
+          };
+        if (++attempts === 1)
+          throw { code: 'network', message: 'Next page failed', retryable: true };
+        return {
+          epoch,
+          value: { ...empty, page, songs: [track('2', 'Updated'), track('3')], cursor: 100 },
+        };
+      },
+    }),
+  );
+  t.after(() => model.dispose());
+  model.connect(account());
+  await model.loadTrash();
+  assert.equal(await model.loadTrash(true), false);
+  assert.equal(model.trashIssue.value?.more, true);
+  assert.deepEqual(
+    model.trash.value?.songs.map((t) => t.id),
+    ['1', '2'],
+  );
+  assert.equal(model.error.value, '');
+  assert.equal(await model.loadTrash(true), true);
+  assert.deepEqual(requests, [
+    [1, ''],
+    [2, 99],
+    [2, 99],
+  ]);
+  assert.deepEqual(
+    model.trash.value?.songs.map((t) => [t.id, t.name]),
+    [
+      ['1', '1'],
+      ['2', 'Updated'],
+      ['3', '3'],
+    ],
+  );
+  assert.equal(model.trashIssue.value, undefined);
+  await model.loadTrash(true);
+  assert.equal(requests.length, 3, 'exhausted list cannot request another page');
+});
+
+test('refresh keeps the old blacklist visible through failure and accepts only its requested page', async (t) => {
+  let calls = 0;
+  const late = deferred<AccountData<FmTrash>>();
+  const model = useFm(
+    client({
+      fmTrash: async (epoch) => {
+        if (++calls === 1) return { epoch, value: { ...empty, songs: [track('1')] } };
+        if (calls === 2) return late.promise;
+        if (calls === 3) return { epoch, value: { ...empty, page: 7, songs: [] } };
+        return { epoch, value: empty };
+      },
+    }),
+  );
+  t.after(() => model.dispose());
+  model.connect(account());
+  await model.loadTrash();
+  const refreshing = model.loadTrash();
+  assert.equal(model.trash.value?.songs[0].id, '1');
+  late.reject({ code: 'network', message: 'Refresh failed', retryable: true });
+  await refreshing;
+  assert.equal(model.trash.value?.songs[0].id, '1');
+  assert.equal(model.trashIssue.value?.more, false);
+  await model.loadTrash();
+  assert.equal(model.trashIssue.value?.code, 'stale');
+  assert.equal(model.trash.value?.songs[0].id, '1');
+  await model.loadTrash();
+  assert.deepEqual(model.trash.value?.songs, []);
+  assert.equal(model.trashIssue.value, undefined);
+});
+
+test('old-account blacklist failures cannot replace a new owner or its recovery state', async (t) => {
+  const late = deferred<AccountData<FmTrash>>();
+  const model = useFm(
+    client({
+      fmTrash: async (epoch) =>
+        epoch === '1' ? late.promise : { epoch, value: { ...empty, songs: [track('new')] } },
+    }),
+  );
+  t.after(() => model.dispose());
+  model.connect(account());
+  const old = model.loadTrash();
+  model.connect(account('2'));
+  await model.loadTrash();
+  late.reject({ code: 'network', message: 'Old failure' });
+  await old;
+  assert.equal(model.trashIssue.value, undefined);
+  assert.equal(model.trash.value?.songs[0].id, 'new');
 });
