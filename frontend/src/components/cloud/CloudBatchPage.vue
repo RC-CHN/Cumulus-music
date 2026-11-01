@@ -37,7 +37,8 @@ const dialog = ref<'collect' | 'download' | 'delete'>(),
   acting = ref(false),
   message = ref(''),
   failed = ref(false),
-  done = ref<HTMLButtonElement>();
+  done = ref<HTMLButtonElement>(),
+  dialogReturn = ref<HTMLElement>();
 const locked = computed(
   () =>
     retiring.value ||
@@ -149,13 +150,19 @@ async function perform(kind: 'play' | 'queue') {
     }
   }
 }
-function chooseDialog(kind: 'collect' | 'download' | 'delete') {
+function chooseDialog(kind: 'collect' | 'download' | 'delete', event?: MouseEvent) {
   if (!usable.value) return;
   if (kind !== 'collect' && chosen.value.length > 5000) {
     message.value = `单次${kind === 'download' ? '下载' : '删除'}最多选择 5000 首云盘歌曲，请减少选择后重试。`;
     failed.value = true;
     return;
   }
+  dialogReturn.value =
+    (event?.currentTarget as HTMLElement | undefined) ??
+    (document.activeElement instanceof HTMLElement &&
+    document.activeElement.closest('.cloud-batch-page')
+      ? document.activeElement
+      : done.value);
   dialog.value = kind;
 }
 async function deleted() {
@@ -204,13 +211,16 @@ defineExpose({ requestLeave });
         >
           <Icon name="list" />添加到播放列表
         </button>
-        <button :disabled="!usable || downloads.busy.value" @click="chooseDialog('download')">
+        <button
+          :disabled="!usable || downloads.busy.value"
+          @click="chooseDialog('download', $event)"
+        >
           <Icon name="download" />下载
         </button>
-        <button :disabled="!usable" @click="chooseDialog('collect')">
+        <button :disabled="!usable" @click="chooseDialog('collect', $event)">
           <Icon name="star" />收藏
         </button>
-        <button :disabled="!usable" @click="chooseDialog('delete')">
+        <button :disabled="!usable" @click="chooseDialog('delete', $event)">
           <Icon name="trash" />删除
         </button>
       </div>
@@ -266,6 +276,7 @@ defineExpose({ requestLeave });
     <ModalTransition
       :restore-focus="account.epoch === batch.owner"
       :fallback-focus="() => done ?? null"
+      :return-focus="() => dialogReturn ?? done ?? null"
     >
       <PlaylistCollectDialog
         v-if="dialog === 'collect'"
