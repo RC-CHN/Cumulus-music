@@ -320,9 +320,10 @@
     );
     dialog().dispatchEvent(new Event("cancel", { cancelable: true }));
     assert(!!dialog(), "pending cancel blocked");
-    document.dispatchEvent(
+    dialog().dispatchEvent(
       new KeyboardEvent("keydown", {
         key: " ",
+        code: "Space",
         bubbles: true,
         cancelable: true,
       }),
