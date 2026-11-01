@@ -19,6 +19,7 @@ pub fn batch_enabled() -> bool {
 pub mod media;
 pub struct Fixture {
     rows: Mutex<Vec<Value>>,
+    capacity: Mutex<(Value, Value)>,
     writes: Mutex<Vec<Vec<String>>>,
     fail: AtomicBool,
     held: AtomicBool,
@@ -36,6 +37,7 @@ impl Default for Fixture {
     fn default() -> Self {
         Self {
             rows: Mutex::new(if enabled() { rows(405) } else { vec![] }),
+            capacity: Mutex::new((json!(123456789), json!(1073741824))),
             writes: Mutex::new(vec![]),
             fail: AtomicBool::new(false),
             held: AtomicBool::new(false),
@@ -50,6 +52,17 @@ impl Default for Fixture {
 }
 impl Fixture {
     pub fn configure(&self, v: &Value) {
+        for (key, index) in [("size", 0), ("maxSize", 1)] {
+            if let Some(value) = v.get(key) {
+                assert!(value.is_null() || value.as_u64().is_some());
+                let mut capacity = self.capacity.lock().unwrap();
+                if index == 0 {
+                    capacity.0 = value.clone();
+                } else {
+                    capacity.1 = value.clone();
+                }
+            }
+        }
         if let Some(count) = v["rows"].as_u64() {
             *self.rows.lock().unwrap() = rows(count as usize);
         }
@@ -145,9 +158,10 @@ impl Fixture {
             }
             let rows = self.rows.lock().unwrap();
             let offset = payload["offset"].as_u64().unwrap() as usize;
-            return Some(Ok(
-                json!({"code":200,"size":123456789,"maxSize":1073741824,"hasMore":offset+200<rows.len(),"data":rows.iter().skip(offset).take(200).cloned().collect::<Vec<_>>()}),
-            ));
+            return Some(Ok({
+                let (size, max_size) = self.capacity.lock().unwrap().clone();
+                json!({"code":200,"size":size,"maxSize":max_size,"hasMore":offset+200<rows.len(),"data":rows.iter().skip(offset).take(200).cloned().collect::<Vec<_>>()})
+            }));
         }
         if path == "/api/cloud/del" {
             let ids: Vec<String> =

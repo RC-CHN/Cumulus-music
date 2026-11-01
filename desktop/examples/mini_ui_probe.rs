@@ -154,6 +154,41 @@ fn main() {
                         handle.get_webview_window("main").unwrap().eval(format!("window.__miniAck[{}]={};",id,json!({"ok":true,"paths":paths}))).unwrap();
                     });
                 }
+                "cloud-local-file"=>{
+                    assert!(mini_fixture::cloud_ui::enabled());
+                    let action=value["action"].as_str().unwrap().to_owned();let root=root.clone();let session=session.clone();let store=proof_store.clone();let handle=handle.clone();
+                    let epoch=value["epoch"].as_str().unwrap_or("").to_owned();let revision=value["revision"].as_str().unwrap_or("").to_owned();
+                    tauri::async_runtime::spawn(async move {
+                        let outcome=async {
+                            let path=root.join("cloud-local-source/mapped.flac");
+                            if action=="verify" {
+                                let directory=handle.state::<MusicClient>().cloud_directory_path(&epoch,"1001",&revision).await?;
+                                assert_eq!(directory.canonicalize()?,path.parent().unwrap().canonicalize()?);
+                                return Ok(json!({"verified":true,"osLauncherInjected":true}));
+                            }
+                            tauri::async_runtime::spawn_blocking(move || -> cumulus_core::Result<Value> {
+                                let lib=cumulus_core::library::LocalLibrary::new(store.clone())?;
+                                match action.as_str() {
+                                    "map"=>{
+                                        fs::create_dir_all(path.parent().unwrap())?;fs::write(&path,mini_fixture::cloud_ui::media::DATA)?;
+                                        lib.scan(path.parent().unwrap())?;
+                                        let item=lib.list(Default::default())?.into_iter().find(|item|item.path==path.canonicalize().unwrap()).unwrap();
+                                        lib.map_online(&session,&item.id,&json!(900001))?;
+                                    }
+                                    "change"=>{let mut bytes=fs::read(&path)?;bytes.push(0);fs::write(&path,bytes)?;}
+                                    "corrupt"|"repair"=>{let token=session.token()?;let uid=token.uid.as_deref().expect("synthetic signed in account");
+                                        if action=="corrupt"{store.put(uid,"local_map_v1","damaged",&json!("synthetic invalid mapping"))?;}else{store.delete(uid,"local_map_v1","damaged")?;}
+                                        assert_eq!(session.token()?,token);
+                                    }
+                                    _=>panic!("unknown cloud local proof action"),
+                                }
+                                Ok(json!({"ok":true,"actualFfprobe":true}))
+                            }).await.map_err(|_|cumulus_core::Error::State("synthetic cloud local worker stopped"))?
+                        }.await;
+                        let reply=match outcome {Ok(value)=>value,Err(error)=>json!({"error":cumulus_core::client::ClientError::from(error).message})};
+                        handle.get_webview_window("main").unwrap().eval(format!("window.__miniAck[{}]={};",id,reply)).unwrap();
+                    });
+                }
                 "cloud-config"=>{api.cloud_ui.configure(&value);ack(json!({"ok":true}));}
                 "cloud-state"=>ack(api.cloud_ui.report()),
                 "cloud-menu-seed"=>{
