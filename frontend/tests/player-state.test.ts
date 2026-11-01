@@ -85,6 +85,54 @@ test('queueing a playlist uses the saved listening preference rather than curren
   ]);
   f.player.dispose();
 });
+test('page-owned selection failures cannot become a footer retry with an expired snapshot', async () => {
+  const calls: PlayerAction[] = [];
+  let selections = 0;
+  const f = fixture({
+    playSelection: async () => {
+      selections++;
+      throw { code: 'queue_changed', message: '快照已变化' };
+    },
+    playerAction: async (_e, input) => {
+      calls.push(input);
+      return state('3');
+    },
+  });
+  await f.player.connect(account());
+  await assert.rejects(
+    f.player.selectForPage({
+      kind: 'cloud_batch',
+      ids: ['1'],
+      revision: 'old',
+      quality: 'standard',
+    }),
+    { code: 'queue_changed' },
+  );
+  assert.equal(f.player.error.value, '');
+  assert.equal(f.player.busy.value, false);
+  await f.player.retry();
+  assert.equal(selections, 1);
+  assert.deepEqual(calls, [{ kind: 'refresh' }]);
+  f.player.dispose();
+});
+test('a page-owned selection reply cannot restore its previous account', async () => {
+  const held = deferred<PlayerView>();
+  const f = fixture({ playSelection: async () => held.promise });
+  await f.player.connect(account());
+  const operation = f.player.selectForPage({
+    kind: 'cloud_batch',
+    ids: ['1'],
+    revision: 'old',
+    quality: 'standard',
+  });
+  await f.player.connect(account('2'));
+  held.resolve(state('9', '1', 'old-song'));
+  assert.equal(await operation, undefined);
+  assert.equal(f.player.view.value?.epoch, '2');
+  assert.equal(f.player.error.value, '');
+  assert.equal(f.player.busy.value, false);
+  f.player.dispose();
+});
 test('loudness preferences can be saved without completing a pending transport request', async () => {
   const loading = deferred<PlayerView>();
   const f = fixture({

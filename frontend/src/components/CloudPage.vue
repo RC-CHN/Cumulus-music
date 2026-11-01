@@ -19,6 +19,7 @@ const props = defineProps<{ model: CloudModel; playable: boolean; currentId?: st
 const emit = defineEmits<{
   play: [query: CloudQuery, revision: string, startId: string | null];
   dialog: [open: boolean];
+  batch: [];
   download: [tracks: TrackView[], revision: string];
 }>();
 const { page: view, query, busy, loading, error, readError, notice } = props.model;
@@ -268,6 +269,15 @@ function control(task: CloudUpload, kind: 'pause' | 'resume' | 'cancel' | 'dismi
           {{ selected.size ? '暂停所选' : '全部暂停' }}
         </button></template
       >
+      <button
+        v-if="query.tab === 'uploaded'"
+        data-cloud-batch-open
+        class="secondary"
+        :disabled="busy || loading || !view?.revision"
+        @click="emit('batch')"
+      >
+        批量操作
+      </button>
       <form class="cloud-search" role="search" @submit.prevent="model.filter({ keyword })">
         <input
           v-model="keyword"

@@ -60,6 +60,7 @@ import type { BatchCategory } from './services/downloadBatch';
 import type { DownloadQuery } from './services/downloads';
 import DownloadDialog from './components/DownloadDialog.vue';
 import CloudPage from './components/CloudPage.vue';
+import CloudBatchPage from './components/cloud/CloudBatchPage.vue';
 import MvCollection from './components/MvCollection.vue';
 import MvPlayer from './components/MvPlayer.vue';
 import CommentsPage from './components/CommentsPage.vue';
@@ -113,6 +114,11 @@ const music = useMusic(undefined, (commit) => {
   else if (downloadBatch.value && downloadBatchPage.value)
     downloadBatchPage.value.requestLeave(() => {
       closeDownloadBatch(false);
+      proceed();
+    });
+  else if (cloudBatchTarget.value && cloudBatchPage.value)
+    cloudBatchPage.value.requestLeave(() => {
+      void closeCloudBatch(false);
       proceed();
     });
   else if (playlistEditor.value && playlistEditorPage.value)
@@ -568,6 +574,11 @@ function editPlaylist(id: string, cover = false) {
       void closeBatch(false);
       enter();
     });
+  else if (cloudBatchTarget.value && cloudBatchPage.value)
+    cloudBatchPage.value.requestLeave(() => {
+      void closeCloudBatch(false);
+      enter();
+    });
   else if (playlistEditor.value && playlistEditorPage.value)
     playlistEditorPage.value.requestLeave(enter);
   else enter();
@@ -616,6 +627,7 @@ const catalogDetailPage = ref<InstanceType<typeof CatalogPage>>();
 function backFromPage() {
   if (batchTarget.value) batchPage.value?.requestLeave();
   else if (downloadBatch.value) downloadBatchPage.value?.requestLeave();
+  else if (cloudBatchTarget.value) cloudBatchPage.value?.requestLeave();
   else if (playlistEditor.value) playlistEditorPage.value?.requestLeave();
   else music.back();
 }
@@ -663,6 +675,55 @@ const cloud = useCloud(undefined, () => {
   void music.bootstrap(false);
 });
 const cloudDialogOpen = ref(false);
+const cloudBatchTarget = ref<{ epoch: string }>();
+const cloudBatchPage = ref<InstanceType<typeof CloudBatchPage>>();
+const cloudBatchClosing = ref(false);
+let cloudBatchOrigin: HTMLElement | undefined,
+  cloudBatchScroll = 0,
+  cloudBatchQuery = '',
+  cloudBatchOwner = '',
+  restoreCloudBatch = false;
+function openCloudBatch() {
+  if (cloud.busy.value || cloud.loading.value || !cloud.page.value?.revision) return;
+  cloudBatchOrigin =
+    document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
+  cloudBatchScroll = document.querySelector<HTMLElement>('.cloud-page')?.scrollTop ?? 0;
+  cloudBatchQuery = JSON.stringify(cloud.query.value);
+  cloudBatchOwner = music.account.value.epoch;
+  cloudBatchTarget.value = { epoch: cloudBatchOwner };
+}
+async function closeCloudBatch(restore = true) {
+  if (cloudBatchClosing.value) return;
+  const owner = cloudBatchTarget.value?.epoch;
+  if (!owner) return;
+  cloudBatchClosing.value = true;
+  if (restore) await cloud.refresh(false, true);
+  if (music.account.value.epoch !== owner || cloudBatchTarget.value?.epoch !== owner) return;
+  restoreCloudBatch = restore;
+  cloudBatchTarget.value = undefined;
+  cloudBatchClosing.value = false;
+}
+function cloudBatchLeft() {
+  if (!restoreCloudBatch || cloudBatchTarget.value) return;
+  restoreCloudBatch = false;
+  if (music.account.value.epoch !== cloudBatchOwner || music.page.value.kind !== 'cloud') return;
+  const root = document.querySelector<HTMLElement>('.cloud-page');
+  if (root)
+    root.scrollTop = JSON.stringify(cloud.query.value) === cloudBatchQuery ? cloudBatchScroll : 0;
+  const active = document.activeElement;
+  if (
+    active !== document.body &&
+    active !== cloudBatchOrigin &&
+    !(active as HTMLElement)?.closest('.cloud-batch-page')
+  )
+    return;
+  const target =
+    cloudBatchOrigin?.isConnected && !cloudBatchOrigin.matches(':disabled')
+      ? cloudBatchOrigin
+      : root?.querySelector<HTMLElement>('[data-cloud-batch-open]');
+  target?.focus({ preventScroll: true });
+}
+
 function playCloud(query: CloudQuery, revision: string, startId: string | null) {
   void player.select({
     kind: 'cloud',
@@ -968,6 +1029,15 @@ watch(
   () => {
     playlistDialog.value = undefined;
     playlistEditor.value = undefined;
+    if (
+      cloudBatchTarget.value &&
+      (cloudBatchTarget.value.epoch !== account.value.epoch ||
+        account.value.status !== 'authenticated')
+    ) {
+      cloudBatchTarget.value = undefined;
+      cloudBatchClosing.value = false;
+      restoreCloudBatch = false;
+    }
     batchTarget.value = undefined;
     downloadBatch.value = undefined;
     restoreDownloadFocus = false;
@@ -1208,7 +1278,9 @@ onUnmounted(() => {
       <button
         class="back-button icon-button"
         aria-label="返回上一页"
-        :disabled="!historyLength && !playlistEditor && !batchTarget && !downloadBatch"
+        :disabled="
+          !historyLength && !playlistEditor && !batchTarget && !downloadBatch && !cloudBatchTarget
+        "
         @click="backFromPage"
       >
         <Icon name="back" />
@@ -1304,8 +1376,25 @@ onUnmounted(() => {
             @expired="music.bootstrap(false)"
           />
         </Transition>
+        <Transition name="page" @after-leave="cloudBatchLeft">
+          <CloudBatchPage
+            v-if="cloudBatchTarget"
+            ref="cloudBatchPage"
+            :key="cloudBatchTarget.epoch + ':cloud-batch'"
+            :account="account"
+            :model="cloud"
+            :player="player"
+            :downloads="downloads"
+            :manager="playlistManager"
+            :playlists="playlists"
+            :leaving="cloudBatchClosing"
+            @close="closeCloudBatch()"
+            @expired="music.bootstrap(false)"
+            @downloaded="music.navigate({ kind: 'downloads', initialTab: 'active' })"
+          />
+        </Transition>
         <div
-          v-show="!playlistEditor && !batchTarget && !downloadBatch"
+          v-show="!playlistEditor && !batchTarget && !downloadBatch && !cloudBatchTarget"
           class="content-page-previous"
         >
           <Transition name="page" mode="out-in" @after-enter="miniFmFocus.complete">
@@ -1549,6 +1638,7 @@ onUnmounted(() => {
                 :playable="player.ready.value"
                 :current-id="currentTrackId"
                 @play="playCloud"
+                @batch="openCloudBatch"
                 @dialog="cloudDialogOpen = $event"
                 @download="
                   (tracks, revision) => (downloadDialog = { kind: 'cloud', tracks, revision })

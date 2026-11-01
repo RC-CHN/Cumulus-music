@@ -176,6 +176,7 @@ export type PlaySelection =
       revision: string;
       quality: Quality;
     }
+  | { kind: 'cloud_batch'; ids: string[]; revision: string; quality: Quality }
   | { kind: 'songs'; ids: string[]; index: number; quality: Quality }
   | {
       kind: 'playlist';
@@ -194,6 +195,13 @@ export type PlayerAction =
   | {
       kind: 'queue_playlist_batch';
       id: string;
+      ids: string[];
+      revision: string;
+      quality: Quality;
+      expected_queue_revision: string;
+    }
+  | {
+      kind: 'queue_cloud_batch';
       ids: string[];
       revision: string;
       quality: Quality;

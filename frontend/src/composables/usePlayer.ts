@@ -182,6 +182,14 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
         : { kind: 'queue_playlist', id, quality },
     );
   }
+  function queueCloud(ids: string[], revision: string) {
+    return queueAction({
+      kind: 'queue_cloud_batch',
+      ids,
+      revision,
+      quality: view.value?.qualityPreferences.quality ?? 'standard',
+    });
+  }
   function queueDownloads(task_ids: string[]) {
     return queueAction({ kind: 'queue_downloads', task_ids });
   }
@@ -190,7 +198,12 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     : never;
   async function queueAction(
     action: QueueInput<
-      Extract<PlayerAction, { kind: 'queue_downloads' | 'queue_playlist' | 'queue_playlist_batch' }>
+      Extract<
+        PlayerAction,
+        {
+          kind: 'queue_downloads' | 'queue_playlist' | 'queue_playlist_batch' | 'queue_cloud_batch';
+        }
+      >
     >,
   ) {
     if (!ready.value || busy.value || queueBusy.value) return;
@@ -315,6 +328,26 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     }
   }
   const select = (input: PlaySelection) => run((e) => core.playSelection(e, input));
+  // A page with its own snapshot/retry UI owns this failure. Do not retain a
+  // footer retry that would resend its captured, potentially expired revision.
+  async function selectForPage(input: PlaySelection) {
+    if (!ready.value || busy.value || queueBusy.value) return;
+    const captured = epoch,
+      session = connection,
+      current = ++request;
+    busy.value = true;
+    error.value = '';
+    failedOperation = undefined;
+    try {
+      const next = await core.playSelection(captured, input);
+      if (captured === epoch && session === connection) accept(next);
+      if (captured === epoch && session === connection && current === request) return next;
+    } catch (issue) {
+      if (captured === epoch && session === connection && current === request) throw issue;
+    } finally {
+      if (current === request) busy.value = false;
+    }
+  }
   // Card playback reads its authoritative list before selecting it. A delayed
   // read must not start audio after account replacement or a newer operation.
   const prepareSelection = (prepare: (epoch: string) => Promise<PlaySelection>) =>
@@ -441,6 +474,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   return {
     queuePlaylist,
     queueDownloads,
+    queueCloud,
     prepareSelection,
     view,
     queue,
@@ -469,6 +503,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     intelligence,
     syncPlayback,
     select,
+    selectForPage,
     downloads,
     retry,
     loadQueue,

@@ -1,0 +1,46 @@
+.cloud-batch-table {
+  flex: 1;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.cloud-batch-inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 554px;
+}
+.cloud-batch-table .batch-columns {
+  flex-shrink: 0;
+}
+.cloud-batch-table .batch-title-heading {
+  position: relative;
+}
+.cloud-batch-table .batch-track-row {
+  border-radius: 0;
+}
+.cloud-batch-table .batch-track-row.alternate {
+  background: var(--surface-alt);
+}
+.cloud-batch-table .batch-track-row.selected {
+  background: var(--surface-selected);
+}
+.cloud-batch-title strong,
+.cloud-batch-title small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 400;
+}
+.cloud-batch-title strong {
+  font-size: 16px;
+}
+.cloud-batch-title small {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.cloud-batch-scroll:focus-visible {
+  outline-offset: -2px;
+}
