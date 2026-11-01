@@ -3516,3 +3516,70 @@ Windows CI独立输入链路
   cycle的21态及受控回执挂起通过。均0新增截图，不计入58图或Windows实机证据。
 - 这次只修改探针就绪判断/受控回执验证，没有改产品业务或用延长固定sleep冒充
   就绪。最终精确HEAD仍须Linux/Windows完整CI，未运行完时仅报告已派发/运行中。
+
+2026-11-01 云盘普通行菜单、共享控件和资源身份
+
+实现与实际检查
+- 官方恢复5/35/556菜单条件经显式依赖替换后实际执行，冻结4类纯合成向量；
+  来源、Rust/IPC/请求和未完成分支详见cloud-menu-ui-contracts.txt。没有引用
+  YesPlayMusic，也没有把恢复JS当作当前Rust功能通过。
+- 普通菜单的公开/私有/下架/本地、单选/多选范围、当前查询排序、分享公开ID、
+  收藏拒绝重试、删除取消/拒绝、下一首、只读失败/重试/挂起/迟到、账号替换、
+  两主题/1120x760与760x540在实际生产WebView逐态运行。
+- 截图发现加载后键盘焦点仍停留面板；共享ActionMenu现在在可用项出现时进入
+  第一项。实际失败重试发现选择动作会提前关闭面板；新增只读keepOpen选项，
+  云盘重试保留面板，写入动作仍按原规则关闭，不引入自动写入重试。
+- 云盘普通播放及批量页仅标亮cloud来源。真实core队列验证普通/云盘同号不合并，
+  普通NextPlay不会误判同号云盘为当前在线歌曲。菜单的公开分享使用900001，
+  播放/收藏/删除保持1001等账号云盘身份；不把两种ID混用。
+
+证据（根.build，均未提交原图、账号、构建或音乐）
+- cloud-menu-final-gui-5：23态/23图，隔离Xvfb/Openbox、DPR1。
+- cloud-menu-final-kde-1：同版23态/23图，本机KDE Wayland/XWayland、DPR1.25，
+  仅自有PID窗口合成器pixmap；可见、聚焦、弹窗色样/绘制及截图回执通过。
+  通用report的physicalDisplayVerified仍为false；独立first/physical.json记载
+  实际桌面捕获方式，不以虚拟帧率或null声音输出冒充实机刷新率/物理听感。
+- cloud-menu-final-gallery的12张联系表已逐项查看，共46张菜单专项截图；窄窗
+  菜单/分享/收藏、两主题、已选/未选、失败反馈与账号清理均复核，未见超出视口
+  或按钮被覆盖。没有同状态官方运行截图，不能宣称所有像素一致。
+- 完成下载的固定FLAC实际经DownloadService发布，再由native关联/验证1004；
+  下载授权1次/媒体1次，MD5 6b1c7d8698e1e941ad6f2046faa0b611。
+  原生测试另验证文件替换/删除/符号链接/账号快照变化拒绝访问。
+- 多选真实队列按上传时间降序为1003,1001；下一首1004后为1003,1004,1001，
+  保留同playId、暂停与10秒位置。收藏两次合成提交（一次拒绝一次确认），读回
+  尾部1003,1001；删除取消无请求，明确拒绝只提交一次[1003,1001]，不自动重发。
+- cloud-menu-batch-regression：现有独立批量29态/29图通过，实际2个合成FLAC；
+  cloud-menu-page-regression：普通页26态/26图通过，4次精确合成删除及上传表单。
+  这55张回归图不累计为菜单专项46图。
+- 失败轮次保留cloud-menu-gui-*、cloud-menu-final-gui-1..4及日志，不计为通过
+  或最终46图。首次误用了尚未重建的探针；种子目录断言曾误认为path_type=2
+  不分艺人/专辑子目录；均修正后重建。测试曾在同一JS任务切换选择立即点击菜单、
+  以及用不聚焦的程序click模拟收藏；现在先等显示选择/转场，再聚焦操作，严格
+  断言最终原生范围，没有为此更改产品多选语义或放宽结果。
+- 显式故障替换仅在探针的类型化CoreClient方法：菜单只读拒绝/挂起和文件管理器
+  启动失败。Tauri内部invoke不可写，早期替换无效的失败轮次不作故障验证通过；
+  当前目录项的字节与本地关联由native实际验证，OS文件管理器视觉不作通过声明。
+
+固定工具链与必需检查
+- Rust1.96.0；fmt、严格workspace/all-targets/custom-protocol Clippy及全测通过。
+  cloud-menu-workspace-tests.log / workspace-results.json：1412项、278结果目标。
+  cloud-menu-clippy-delivery.log和cloud-menu-fmt-final.log为最终Rust检查。
+- Node24.16.0，锁文件npm ci、format:check、485项前端测试、vue-tsc和build通过；
+  cloud-menu-{npm-ci,format-final,tests-final,build-final}.log。CI工具40项及
+  source_audit/release_guard、JS/Python语法与diff检查通过。
+- cloud-menu-delivery-manifest.json冻结本版dist哈希及原生探针哈希；没有在Tauri
+  嵌入资源过程中改写dist。Linux/Windows分别加入同一cloud_menu_smoke。
+
+上一精确HEAD CI与边界
+- 93e2d15的41311926893：前端和Linux成功，Windows失败，CI gate失败。此前
+  mini_menu的普通/退出33态及intelligence_cycle已在Windows跑通，不再把旧失败
+  当作当前原因。新失败位于cloud_page第0态“native playback”，native仍idle、
+  queueRevision=0、track=null且error=null；日志及失败JSON保留为cloud-menu-
+  previous-windows-failed.raw/.log与previous-windows-failure.json。
+- 根据TrackRow的playable保护，推断探针只等待行存在便双击，可能早于播放器
+  连接；失败时未保存disabled状态，不能断言唯一原因。三个云盘探针改为先等
+  实际track-play按钮可用再双击，不重试播放写入、不放宽native playing断言。
+  新精确HEAD仍需Windows完整CI；Linux本机通过不能代替该结果。
+- 正常工具栏更多、普通列宽、扫描库localMap关联、全部上传/长附件组合、容量
+  扩容、私有/下架细分删除、本地/CUE删除和全部分享渠道仍待审计。全范围goal
+  保持active。所有账号/服务/媒体合成，不涉及真实支付、邀请、用户资源变更。

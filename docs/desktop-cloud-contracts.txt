@@ -137,3 +137,10 @@ python3 desktop/examples/run_cloud_probe.py NEW_PRIVATE_PROOF EXISTING_PC_PROFIL
 查询/渲染快照绑定、账号搜索/弹窗隔离、64px行/容量区、删除结果与焦点恢复见
 cloud-page-ui-contracts.txt。新增CloudDeleteView.ids来自原owner日志，用于识别未决
 操作目标；不扩大IPC账号范围或文件删除权限。实际执行记录以ui-ux-validation.txt为准。
+
+云盘普通行菜单补充（2026-11-01）
+cloud_resource与open_cloud_directory仅主窗口可用，参数epoch/songId/revision；
+资源DTO不含路径，目录在native重查后交共享file_manager。publicSongId与cloud
+songId分离，PlayerView.resourceKind区分当前播放来源；cloud_batch与queue_cloud_batch
+新增可选query用于普通行多选保持当前排序，独立批量页缺省仍为全库自然序。
+正式入口、状态、官方来源、实际请求及剩余差异见cloud-menu-ui-contracts.txt。

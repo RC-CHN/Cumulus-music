@@ -1,0 +1,97 @@
+云盘普通行资源菜单：来源、身份与交互契约
+
+优先级
+性能满足正常使用即可，本专项优先修正UI逻辑和功能一致性。完整应用目标仍进行中。
+没有同状态官方运行截图，不声称官方像素一致；不使用YesPlayMusic作为来源。
+
+官方依据
+references/netease-3.1.42.205594-analysis/recovered-js/modules/
+hybrid_app.chunk.1482700000000.js/ 下恢复模块：
+- 5.js SHA256 a6bf0cb489d2f700805d1e2cb68e575ddae46d97a8c29e742ccf86770ee74c10
+  将cloudTrack映射到track资源菜单。
+- 556.js SHA256 ba9fea37236253341e1efc97b1b644d5173a30612f0c641799ceeab6b3c5fe20
+  track场景过滤后顺序：播放、下一首播放、分隔、收藏、分享、打开文件所在目录、
+  分隔、从网盘中删除。分享需可用且没有selectedData；目录项需本地文件关联。
+  云盘场景不能套普通在线歌曲的评论/单曲下载/复制链接/艺人等完整菜单。
+- 35.js SHA256 dfe4955a5747bf986ada1dcfaeefd341d2a8ed4734f1a36758ff55a1bbdbd116
+  不可用状态判断读取规范化privilege.status。1194.js说明原st到status、t到
+  songType的归一化；私有t=1不构造公开歌曲链接。核心同时检查raw st/normalized
+  status。没有公开编号证据的旧缓存保留可播放云盘资源，不猜测公开链接。
+- 私有研究脚本references/recovered-client/scripts/netease_cloud_menu_oracle.cjs
+  用vm执行5/35/556，并显式替代状态/枚举/本地关联等依赖。公开冻结向量
+  core/tests/fixtures/cloud_menu.json仅保留合成条件、标签、顺序、可用性及来源哈希。
+  前端测试直接比较执行结果；这不是官方完整进程、服务权限或全部菜单条件验证。
+
+行为与界面
+- 普通行更多按钮、右键、Shift+F10/ContextMenu进入同一菜单；标题保留64px行高，
+  更多按钮在悬停/行内焦点时显示。菜单遵守视口边界、键盘导航、退出和焦点返回。
+- 只读cloud_resource先核对账号epoch、云盘revision和成员身份。加载/失败/显式
+  重试呈现在同一菜单。普通只读重试保持面板打开；过期快照要求刷新列表重开。
+  加载面板获得焦点后，首个可用项出现时将焦点移到该项。用户已移动焦点时不抢夺。
+- 点击已选中的行时，操作对象为当前显示顺序的已选歌曲；只有一项选中也隐藏
+  分享。点击未选行时使用该行，不把其他已选行混入。目标query/epoch/revision/
+  clickedId/选择范围在打开时冻结。单行播放使用完整当前筛选/排序列表并从该行
+  开始；多选播放只替换为所选子集。下一首按同样顺序加入当前项后，不重启解码。
+- 播放使用selectForPage；页面拥有本次失败，不往播放底栏保存旧revision重试闭包。
+  正常行按钮、双击和播放全部也使用页面反馈。查询/账号改变后的迟到反馈被丢弃。
+- 收藏复用PlaylistCollectDialog，删除复用CloudDeleteDialog。关闭返回发起行，
+  行被移除时回搜索入口；旧账号不能恢复旧焦点。弹窗打开时父页面热键受保护。
+  收藏失败保留实际结果与目标供显式重试；删除取消不发请求，拒绝不自动重发。
+  既有未知/部分删除只读核对和持久化规则沿用cloud-page/batch契约。
+- 换账号、换查询、快照失效或卸载清除菜单上下文，迟到读取不能打开旧菜单。
+  分享弹窗随账号清除；转场节点不能继续触发已退休操作。
+- 云盘、共享歌单/下载弹窗和批量列设置的复选框统一使用主题变量绘制，16px，
+  支持checked/indeterminate/focus-visible/disabled，不受GTK白色控件背景干扰。
+
+Rust / IPC / 请求
+- CloudLibrary::metadata保留原cloud songId用于播放/收藏/删除，同时单独保存
+  simpleSong.id的公开身份依据；CloudTrackView.publicSongId只投射有效公开编号。
+  分享构造https://music.163.com/song?id=<publicSongId>，绝不代入cloud songId。
+- CloudResourceView只包含epoch/revision/安全歌曲DTO/localAvailable，不含绝对路径、
+  Cookie、签名、授权URL。cloud_resource/open_cloud_directory仅主窗口可调用。
+- 原云盘列表请求POST /api/v1/cloud/get。菜单读取使用现有本地快照，不新增远端
+  变更。play_selection(cloud/cloud_batch)或player_action(queue_cloud_batch)
+  刷新并核对云盘revision，保留cloud_song_id资源域，不换成普通song/detail。
+  CloudBatch新增可选query：普通行菜单保留筛选排序；独立批量页不传，仍完整自然序。
+  云盘播放授权走既有源选择流程；本专项没有增加任意HTTP/业务请求入口。
+- PlayerView.resourceKind投射catalog/cloud/local/downloaded/voice。队列去重和
+  普通NextPlay共用身份规则，数字ID相同的云盘与在线歌曲互不顶替。
+  云盘普通/批量页仅在resourceKind=cloud时标亮当前行。
+- 收藏仍经目标歌单读取、revision、持久化意图、POST
+  /api/v1/playlist/manipulate/tracks与读回确认；删除仍POST /api/cloud/del。
+  参数、未知写入边界和单次/批次上限见cloud-batch-ui-contracts.txt。
+- 目录关联优先已发布/完成上传的已登记源文件，再找完整下载的Cloud来源或通过
+  已验证公开ID关联的Song来源。候选必须是完整任务、没有进行中文件操作、大小
+  符合且非符号链接。真正打开前重新读取并验证内容完整性、成员、账号和revision。
+  路径只在core→desktop内部传递，前端仅请求songId/revision。
+- desktop/file_manager为下载/云盘共享本机适配：Linux以直接argv调用xdg-open，
+  观察最多500ms即时失败，长期运行的管理器在后台回收，不等待窗口关闭阻塞IPC。
+  Windows使用专用STA线程、固定open动词的ShellExecuteW，按其返回约定判断
+  接受/失败，不拿Explorer进程的退出码当显示结果。显式处理UTF-16与verbatim/UNC
+  路径；无shell拼接、任意URL或提权。COM与Shell约定参考微软原始文档：
+  https://learn.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-shellexecutew
+  UI仅反馈“已请求打开”，接受请求不等于目视验证文件管理器已展示目录。
+
+验证入口
+- cargo test -p cumulus-core --test client_cloud --test cloud_upload --locked
+  覆盖不同资源域的同号队列、当前来源、captured query、实际合成FLAC下载后的
+  本地关联、内容被改/删除/链接、账号/快照替换、已发布上传源重新验证。
+- frontend/tests/cloud-menu-state.test.ts比较官方冻结向量，验证选择/公开链接及
+  迟到读取、失败、显式重试、账号/查询/卸载隔离。
+- scripts/ci/cloud_menu_smoke.py启动实际mini_ui_probe；生产WebView/IPC/core/
+  SQLite/null音频与固定FLAC合成服务。私有/下架/本地菜单、多选播放/下一首/
+  收藏拒绝重试/删除取消拒绝、分享、两主题/两尺寸、加载与账号查询隔离逐态检查。
+  只读读取与文件管理器失败由测试显式替换类型化CoreClient方法；其余请求实际
+  通过生产IPC。目录关联与字节在native核对，注入失败不声称OS管理器通过。
+  Linux与Windows各自runner执行；当前实际运行证据见ui-ux-validation.txt。
+
+保留边界
+- 正常云盘工具栏的官方三项更多菜单、列宽拖动、全量查询下载、所有上传/长附件
+  组合、容量扩容、私有/下架细分删除文案及可选删除本地/CUE继续审计。
+- 官方本地文件关联还有扫描库localMap分支，当前仅迁移已登记上传/完成下载关联；
+  没有用文件名碰撞猜测扫描库身份。本地操作日志损坏会使菜单读取明确失败并可
+  重试，尚未独立降级为仅隐藏目录项；不能将该情况称为完整恢复。
+- 分享仅提供已有复制链接渠道，不能将此称为官方全部社交分享通道。
+- 合成收藏/下载/删除证明客户端执行和UI状态，不外推服务端对真实私有歌曲的
+  收藏策略或真实账号权益。不发送真实支付/邀请/公开内容，不改变用户已有资源。
+- Linux null输出不代表物理听感；Windows runner与Windows实机视觉分开记载。
