@@ -292,8 +292,15 @@ async function edit(input: QueueEdit, index?: number, displayed = queue.value) {
     // edit keeps the selection; restore its live control only after observing
     // the same entries, never after a replacement queue or a new user focus.
     if (owner !== view.value?.epoch || !panel.value) return;
-    if (!queueCurrent.value) await props.player.loadQueue();
+    // A same-revision cache can still have a read/enable transition in flight.
+    // Reconcile explicitly before restoring the failed edit's keyboard target.
+    await props.player.loadQueue();
     await nextTick();
+    // Let WebKit apply the re-enabled controls and its deferred native blur.
+    // Vue's microtask flush alone can precede that blur on a slower renderer.
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+    );
     if (
       owner === view.value?.epoch &&
       panel.value &&

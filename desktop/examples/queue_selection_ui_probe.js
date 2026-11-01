@@ -14,7 +14,17 @@
  const hit=n=>{const r=rect(n),top=document.elementFromPoint((r.left+r.right)/2,(r.top+r.bottom)/2);return n===top||n.contains(top);};
  const key=(n,k,mod={})=>n.dispatchEvent(new KeyboardEvent('keydown',{key:k,bubbles:true,cancelable:true,...mod}));
  const pointer=(n,type,x,y,mod={})=>n.dispatchEvent(new PointerEvent(type,{pointerId:42,pointerType:'mouse',button:0,buttons:type==='pointerup'?0:1,clientX:x,clientY:y,bubbles:true,cancelable:true,...mod}));
- let client,epoch,playId,count=0,last='bootstrap',phase='initial';
+ let client,epoch,playId,count=0,last='bootstrap',phase='initial',editTrace=[];
+ function traceRejectedFocus(original) {
+  const describe=n=>n instanceof Element?{tag:n.tagName,class:n.className,entry:n.closest('.queue-row')?.dataset.entryId}:null;
+  const record=(event,extra={})=>{if(editTrace.length<60)editTrace.push({event,at:performance.now(),active:describe(document.activeElement),originalConnected:original.isConnected,originalDisabled:original.matches(':disabled'),containerConnected:!!body(),...extra});};
+  const focus=e=>record(e.type,{target:describe(e.target),related:describe(e.relatedTarget)});
+  document.addEventListener('focusin',focus,true);document.addEventListener('focusout',focus,true);
+  const observer=new MutationObserver(()=>record('mutation'));
+  observer.observe(panel(),{subtree:true,childList:true,attributes:true,attributeFilter:['disabled']});
+  record('capture');
+  return ()=>{record('stop');observer.disconnect();document.removeEventListener('focusin',focus,true);document.removeEventListener('focusout',focus,true);};
+ }
  async function ready(){await wait(()=>panel()&&!button('清空',panel()).disabled,'queue editable');}
  async function scrollTop(){body().scrollTop=0;body().dispatchEvent(new Event('scroll'));await wait(()=>row((window.__queueIds??[])[0]),'first virtual row');await sleep(60);}
  async function choose(id,mod={}){const n=song(id);assert(n,'visible selection row');n.focus({preventScroll:true});const r=rect(n);pointer(n,'pointerdown',r.left+8,r.top+12,mod);pointer(n,'pointerup',r.left+8,r.top+12,mod);await sleep(35);}
@@ -57,7 +67,7 @@
   point=await begin(ids[0],rect(row(ids[4])).top+5);pointer(document,'pointermove',rect(panel()).left-20,point.y);await sleep(30);assert(!one('.queue-drop-marker'),'outside target hidden');await end({x:rect(panel()).left-20,y:point.y});assert((await client.playerQueue(epoch)).revision===beforeCancel,'outside drop no write');await capture('outside_cancelled');
   // A changed displayed revision cancels the gesture; pointer-up cannot reuse it.
   point=await begin(ids[0],rect(row(ids[4])).top+5);await client.playerAction(epoch,{kind:'mode',mode:'single_loop'});await wait(()=>!one('.queue-drag-hint'),'revision cancels drag');await ready();const changed=(await client.playerQueue(epoch)).revision;await end(point);assert((await client.playerQueue(epoch)).revision===changed,'old drag not retried');await capture('revision_cancelled');
-  await choose(ids[0]);await choose(ids[2],{ctrlKey:true});await fixture('reject');song(ids[2]).focus();key(document.activeElement,'Delete');assert(document.activeElement===body(),'pending edit parks focus before disabling the original button');await wait(()=>panel().querySelector('[role="alert"]'),'batch failure');await ready();assert((await client.playerQueue(epoch)).tracks.length===40,'failed batch atomic');assert(selected().length===2,'failed batch retains selection');await wait(()=>document.activeElement===song(ids[2]),'failed edit returns enabled original control');await capture('remove_failed');await fixture('allow');
+  await choose(ids[0]);await choose(ids[2],{ctrlKey:true});await fixture('reject');song(ids[2]).focus();const stopFocusTrace=traceRejectedFocus(song(ids[2]));key(document.activeElement,'Delete');assert(document.activeElement===body(),'pending edit parks focus before disabling the original button');await wait(()=>panel().querySelector('[role="alert"]'),'batch failure');await ready();assert((await client.playerQueue(epoch)).tracks.length===40,'failed batch atomic');assert(selected().length===2,'failed batch retains selection');await wait(()=>document.activeElement===song(ids[2]),'failed edit returns enabled original control');stopFocusTrace();await capture('remove_failed',{editTrace});await fixture('allow');
   const expected=ids.filter(id=>![ids[0],ids[2]].includes(id));song(ids[2]).focus();key(document.activeElement,'Delete');await wait(()=>one('.queue-panel h2 small').textContent.trim()==='38','batch removed');await ready();q=await client.playerQueue(epoch);assert(q.tracks.map(t=>t.entryId).join()===expected.join(),'native batch removes only selected');await wait(()=>document.activeElement.matches('.queue-song'),'batch focus successor');await capture('batch_removed');ids=expected;window.__queueIds=ids;
   // Selection is complete, including offscreen entries, rather than just DOM rows.
   key(document.activeElement,'a',{ctrlKey:true});await wait(()=>one('.queue-selection')?.textContent.includes('38'),'select entire queue');await capture('all_selected');
@@ -73,5 +83,5 @@
   // A new queue has new entry identities; no selection leaks to replacement.
   await client.playSelection(epoch,{kind:'songs',ids:['1','2','3'],index:1,quality:'standard'});await prepare();phase='replacement';await ready();await wait(()=>!one('.queue-selection button'),'replacement selection cleared');await capture('queue_replaced');
   await emit('complete',{ok:true,queueSelectionUi:true,stageCount:count,realMusicRequests:0,accountWrites:0});
- } catch(error) {await emit('failed',{ok:false,last,count,error:String(error),phase,active:document.activeElement?.outerHTML,body:document.body.textContent.slice(-2500)});}
+ } catch(error) {await emit('failed',{ok:false,last,count,error:String(error),phase,editTrace,active:document.activeElement?.outerHTML.slice(0,350),body:document.body.textContent.slice(-2500)});}
 })();
