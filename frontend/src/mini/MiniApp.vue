@@ -4,6 +4,7 @@ import Icon from '../components/Icon.vue';
 import { useLocalShortcuts } from '../composables/useLocalShortcuts';
 import { useMiniModes } from '../composables/useMiniModes';
 import { useMiniFeedback } from '../composables/useMiniFeedback';
+import { useMiniPin } from '../composables/useMiniPin';
 import MiniFeedbackPanel from './MiniFeedbackPanel.vue';
 import ModalTransition from '../components/ModalTransition.vue';
 import { createMiniClient, createMiniShortcutClient } from '../adapters/mini';
@@ -38,6 +39,8 @@ const feedback = useMiniFeedback(
 );
 const feedbackTrigger = ref<HTMLButtonElement>();
 const feedbackNavigationError = ref('');
+const pinState = useMiniPin(view, client, () => refresh(true), busy);
+const pinTrigger = ref<HTMLButtonElement>();
 watch(feedback.open, () => {
   feedbackNavigationError.value = '';
 });
@@ -194,27 +197,15 @@ async function perform(action: MiniAction, ticket = view.value?.ticket) {
   }
 }
 async function pin() {
-  if (!view.value || busy.value) return;
-  const saved = view.value;
-  busy.value = true;
-  error.value = '';
-  try {
-    await client.preferences(
-      saved.ticket,
-      saved.preferences.damaged
-        ? { kind: 'repair' }
-        : {
-            kind: 'change',
-            expected_revision: saved.preferences.revision!,
-            always_on_top: !saved.preferences.alwaysOnTop,
-          },
-    );
-  } catch (e) {
-    error.value = message(e);
-  } finally {
-    busy.value = false;
-    await refresh().catch(() => {});
-  }
+  if (busy.value || !view.value) return;
+  const epoch = view.value.media.epoch;
+  const focused = document.activeElement === pinTrigger.value;
+  const shell = pinTrigger.value?.closest<HTMLElement>('.mini-shell');
+  if (focused) shell?.focus({ preventScroll: true });
+  await pinState.apply();
+  await nextTick();
+  if (!disposed && focused && view.value?.media.epoch === epoch && document.activeElement === shell)
+    pinTrigger.value?.focus({ preventScroll: true });
 }
 async function panel() {
   const next = !expanded.value;
@@ -283,6 +274,7 @@ onUnmounted(() => {
 <template>
   <main
     class="mini-shell"
+    tabindex="-1"
     :class="{ expanded }"
     :data-control-ticket="view?.ticket"
     :data-intelligence-phase="media?.intelligence"
@@ -294,11 +286,13 @@ onUnmounted(() => {
         >Cumulus <span>迷你播放器</span></span
       >
       <button
-        :class="{ selected: view?.preferences.alwaysOnTop }"
+        ref="pinTrigger"
+        data-mini-pin
+        :class="{ selected: pinState.selected.value }"
         :disabled="busy || !view"
-        :title="view?.preferences.damaged ? '修复置顶设置' : '始终置顶'"
-        :aria-label="view?.preferences.damaged ? '修复置顶设置' : '始终置顶'"
-        :aria-pressed="view?.preferences.alwaysOnTop"
+        :title="pinState.label.value"
+        :aria-label="pinState.label.value"
+        :aria-pressed="pinState.selected.value"
         @click="pin"
       >
         <svg viewBox="0 0 24 24" class="icon" fill="none" stroke="currentColor" stroke-width="1.6">
@@ -486,10 +480,11 @@ onUnmounted(() => {
       <span
         v-else
         class="mini-message"
-        :title="error || media?.error || ''"
-        :role="error || media?.error ? 'alert' : undefined"
+        :title="error || pinState.notice.value || media?.error || ''"
+        :role="error || pinState.notice.value || media?.error ? 'alert' : undefined"
         >{{
           error ||
+          pinState.notice.value ||
           media?.error ||
           (media?.state === 'loading' ? '正在加载…' : media?.item?.album || '云间音乐')
         }}</span

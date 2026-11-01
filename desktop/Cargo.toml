@@ -133,6 +133,7 @@ tauri-plugin-clipboard-manager = "=2.3.2"
 libc = "0.2"
 webkit2gtk = "=2.0.2"
 gtk = "=0.18.2"
+gdkx11 = "=0.18.2"
 gio = "=0.18.4"
 libloading = "=0.7.4"
 x11rb = { version = "=0.13.2", features = ["xkb"] }

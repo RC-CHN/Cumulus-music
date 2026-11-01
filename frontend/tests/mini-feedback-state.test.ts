@@ -18,6 +18,7 @@ function fixture(overrides: Partial<MiniClient> = {}) {
     generation: '1',
     ticket: '1',
     preferences: { revision: 'p', alwaysOnTop: true, damaged: false },
+    pinApplied: true,
     media: {
       epoch: '1',
       selection: { audioPlayId: 'play-1', audioEntryId: 'entry-1', videoPlayId: null },
@@ -55,6 +56,7 @@ function fixture(overrides: Partial<MiniClient> = {}) {
   let reasonReads = 0,
     refreshes = 0;
   const client = {
+    applyPreferences: async () => {},
     feedbackView: async (ticket: string, remote: boolean) => {
       reads.push([ticket, remote]);
       return { ...status };

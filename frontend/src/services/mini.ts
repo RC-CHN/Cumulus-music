@@ -53,6 +53,7 @@ export interface MiniView {
   ticket: string;
   media: MiniMedia;
   preferences: MiniPreferences;
+  pinApplied: boolean | null;
 }
 export interface MiniQueuePage {
   epoch: string;
@@ -82,6 +83,7 @@ export interface MiniClient {
   queue(ticket: string, offset: number): Promise<MiniQueuePage>;
   panel(expanded: boolean): Promise<void>;
   preferences(ticket: string, command: MiniPreferencesCommand): Promise<void>;
+  applyPreferences(ticket: string, expectedRevision: string): Promise<void>;
   drag(): Promise<void>;
   close(): Promise<void>;
 }

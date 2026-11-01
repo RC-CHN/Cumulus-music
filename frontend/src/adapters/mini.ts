@@ -25,6 +25,8 @@ export function createMiniClient(generation: string): MiniClient {
     panel: (expanded) => invoke('mini_panel', { generation, expanded, scale: devicePixelRatio }),
     preferences: (ticket, command) =>
       invoke('mini_preferences_command', { generation, ticket, command }),
+    applyPreferences: (ticket, expectedRevision) =>
+      invoke('mini_preferences_apply', { generation, ticket, expectedRevision }),
     drag: () => getCurrentWindow().startDragging(),
     close: () => getCurrentWindow().close(),
   };

@@ -22,6 +22,7 @@ function fixture() {
     generation: '1',
     ticket: '1',
     preferences: { revision: 'settings', alwaysOnTop: true, damaged: false },
+    pinApplied: true,
     media: {
       epoch: '1',
       selection: { audioPlayId: 'old', audioEntryId: 'entry', videoPlayId: null },
@@ -117,6 +118,7 @@ function fixture() {
     },
     panel: async () => {},
     preferences: async () => {},
+    applyPreferences: async () => {},
     drag: async () => {},
     close: async () => {},
   };

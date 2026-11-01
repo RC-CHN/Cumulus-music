@@ -3,6 +3,8 @@ pub(crate) mod commands;
 pub(crate) mod feedback;
 pub(crate) mod intelligence;
 mod layout;
+pub(crate) mod native_pin;
+pub(crate) mod preferences;
 mod shortcuts;
 mod state;
 use cumulus_core::{Error, Result, client::MusicClient};
@@ -15,6 +17,7 @@ use tauri::{Manager, Runtime, webview::PageLoadEvent};
 pub(crate) struct Host {
     ledger: Mutex<Ledger>,
     operation: tokio::sync::Mutex<()>,
+    pin: native_pin::Reader,
 }
 impl Host {
     fn lock(&self) -> Result<std::sync::MutexGuard<'_, Ledger>> {

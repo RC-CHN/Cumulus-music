@@ -1,7 +1,7 @@
 use super::*;
 use cumulus_core::client::{
     ClientError,
-    dto::{MiniPreferencesCommand, MiniPreferencesView},
+    dto::MiniPreferencesView,
     mini::{MiniAction, MiniQueuePage, MiniView},
 };
 use serde::Serialize;
@@ -14,6 +14,7 @@ pub struct View {
     ticket: String,
     media: MiniView,
     preferences: MiniPreferencesView,
+    pin_applied: Option<bool>,
 }
 #[tauri::command]
 pub async fn mini_enter<R: Runtime>(
@@ -26,6 +27,8 @@ pub async fn mini_read<R: Runtime>(
     app: tauri::AppHandle<R>,
     generation: String,
 ) -> std::result::Result<View, ClientError> {
+    let label = app.state::<Host>().lock()?.get(&generation)?.label.clone();
+    let native = native_pin::capture(&app, label).await?;
     tauri::async_runtime::spawn_blocking(move || -> Result<View> {
         app.state::<Host>().lock()?.get(&generation)?;
         let client = app.state::<MusicClient>();
@@ -47,6 +50,7 @@ pub async fn mini_read<R: Runtime>(
             ticket,
             media,
             preferences,
+            pin_applied: app.state::<Host>().pin.read(native),
         })
     })
     .await
@@ -192,35 +196,6 @@ pub async fn mini_panel<R: Runtime>(
             .ok_or(Error::StaleResponse)?
             .set_size(layout::size(scale, expanded)?)
             .map_err(|_| Error::State("mini resize failed"))
-    })
-    .await
-    .map_err(Into::into)
-}
-#[tauri::command]
-pub async fn mini_preferences_command<R: Runtime>(
-    app: tauri::AppHandle<R>,
-    generation: String,
-    ticket: String,
-    command: MiniPreferencesCommand,
-) -> std::result::Result<(), ClientError> {
-    let host = app.state::<Host>();
-    let _operation = host.operation.try_lock().map_err(|_| Error::MutationBusy)?;
-    let snapshot = host.lock()?.captured(&generation, &ticket)?;
-    let epoch = snapshot.view.epoch;
-    let worker = app.clone();
-    let value = tauri::async_runtime::spawn_blocking(move || {
-        worker
-            .state::<MusicClient>()
-            .mini_preferences_command(&epoch, command)
-    })
-    .await
-    .map_err(|_| Error::State("mini settings unavailable"))??;
-    gui(&app, move |app| {
-        let label = app.state::<Host>().lock()?.get(&generation)?.label.clone();
-        app.get_webview_window(&label)
-            .ok_or(Error::StaleResponse)?
-            .set_always_on_top(value.value.always_on_top)
-            .map_err(|_| Error::State("mini pin failed"))
     })
     .await
     .map_err(Into::into)
