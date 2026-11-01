@@ -144,6 +144,32 @@ impl From<Error> for ClientError {
                     "当前播放列表最多容纳 5000 首，请先缩小下载搜索范围",
                     false,
                 ),
+                Error::Media("invalid cloud cover attachment") => (
+                    "cloud_cover_invalid",
+                    "封面无法识别，请重新选择有效的 JPG 或 PNG 图片",
+                    false,
+                ),
+                Error::Media("unsupported cloud text attachment") => (
+                    "cloud_text_invalid",
+                    "歌词或 CUE 不是受支持的文本文件，请检查文件内容",
+                    false,
+                ),
+                Error::InvalidInput("unsupported cloud attachment file") => (
+                    "cloud_attachment_invalid",
+                    "附件格式不支持或超过 4 MB，请使用 JPG/PNG 封面、LRC 歌词或 CUE 文件",
+                    false,
+                ),
+                Error::InvalidInput("upload requires nonempty regular input up to 512 MiB") => (
+                    "cloud_input_size",
+                    "音频或附件为空、不是普通文件，或超过 512 MB",
+                    false,
+                ),
+                Error::InvalidInput("official cloud workflow excludes NCM uploads")
+                | Error::Media("encrypted cloud input") => (
+                    "cloud_input_encrypted",
+                    "不能上传 NCM 文件，请先选择可直接播放的音频文件",
+                    false,
+                ),
                 Error::InvalidInput(_) => ("invalid_input", "输入内容不符合要求", false),
                 Error::QueueChanged => ("snapshot_changed", "列表已更新，请刷新后重试", true),
                 Error::State("playlist has no online tracks") => {

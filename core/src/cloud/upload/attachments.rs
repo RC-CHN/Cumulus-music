@@ -37,7 +37,9 @@ pub(super) fn inspect(inputs: AttachmentInputs) -> Result<Vec<Attachment>> {
         }
         source.verify(&mut file)?;
         let mime = if kind == AttachmentKind::Cover {
-            crate::media::validate_cover(&bytes)?.mime
+            crate::media::validate_cover(&bytes)
+                .map_err(|_| Error::Media("invalid cloud cover attachment"))?
+                .mime
         } else {
             if bytes.starts_with(b"krc1")
                 || (bytes.contains(&0)

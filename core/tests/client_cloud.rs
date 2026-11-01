@@ -1,5 +1,7 @@
 #[path = "client_cloud/batch.rs"]
 mod batch;
+#[path = "client_cloud/creation.rs"]
+mod creation;
 #[path = "client_cloud/lyric_reports.rs"]
 mod lyric_reports;
 #[allow(dead_code)]

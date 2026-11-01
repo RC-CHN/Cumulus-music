@@ -130,6 +130,12 @@ pub struct CloudUploadInput {
     pub cue: Option<PathBuf>,
 }
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlannedCloudUploadInput {
+    pub request_id: String,
+    pub input: CloudUploadInput,
+}
+#[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum CloudCommand {
     PauseAll,
@@ -138,6 +144,9 @@ pub enum CloudCommand {
     },
     Upload {
         files: Vec<CloudUploadInput>,
+    },
+    UploadPlanned {
+        files: Vec<PlannedCloudUploadInput>,
     },
     Pause {
         ids: Vec<String>,
@@ -177,5 +186,6 @@ pub struct CloudResult {
     pub epoch: String,
     pub accepted: Vec<String>,
     pub failed: Vec<CloudFailure>,
+    pub not_started: Vec<CloudFailure>,
     pub deletion: Option<CloudDeleteView>,
 }

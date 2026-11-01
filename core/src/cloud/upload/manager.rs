@@ -194,10 +194,26 @@ impl CloudUploads {
         keys.iter().map(|id| self.get(id)).collect()
     }
     pub async fn create(&self, source: &Path, attachments: AttachmentInputs) -> Result<CloudView> {
+        let task = self
+            .prepare_task(
+                source,
+                attachments,
+                uuid::Uuid::new_v4().simple().to_string(),
+            )
+            .await?;
+        self.save(&task)?;
+        self.view(&task)
+    }
+    pub(super) async fn prepare_task(
+        &self,
+        source: &Path,
+        attachments: AttachmentInputs,
+        id: String,
+    ) -> Result<Task> {
         self.guard()?;
         let path = source.to_owned();
         let probe = self.probe.clone();
-        let task = tokio::task::spawn_blocking(move || {
+        tokio::task::spawn_blocking(move || {
             let source = Source::inspect(&path)?;
             if source
                 .path
@@ -218,7 +234,7 @@ impl CloudUploads {
             }
             let attachments = attachments::inspect(attachments)?;
             let task = Task {
-                id: uuid::Uuid::new_v4().simple().to_string(),
+                id,
                 source,
                 info,
                 phase: CloudPhase::Queued,
@@ -237,9 +253,7 @@ impl CloudUploads {
             Ok(task)
         })
         .await
-        .map_err(|_| Error::State("cloud input worker stopped"))??;
-        self.save(&task)?;
-        self.view(&task)
+        .map_err(|_| Error::State("cloud input worker stopped"))?
     }
     /// Atomically order a remote write intent after any durable user control.
     pub(super) fn begin(&self, task: &mut Task, phase: CloudPhase) -> Result<()> {

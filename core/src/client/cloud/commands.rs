@@ -2,16 +2,17 @@ use super::*;
 impl MusicClient {
     pub async fn cloud_command(&self, epoch: &str, command: CloudCommand) -> Result<CloudResult> {
         let context = self.cloud.inner.context(epoch).await?;
-        if matches!(
+        let needs_capacity = matches!(
             command,
             CloudCommand::Upload { .. }
+                | CloudCommand::UploadPlanned { .. }
                 | CloudCommand::Resume { .. }
                 | CloudCommand::ResumeAll { .. }
-        ) && let Some(snapshot) = context.library.cached()?
-            && let (Some(size), Some(max)) = (snapshot.size, snapshot.max_size)
-            && max > 0
-            && size >= max
-        {
+        );
+        let capacity_full = needs_capacity && context.library.cached()?.is_some_and(|snapshot| {
+            matches!((snapshot.size, snapshot.max_size), (Some(size), Some(max)) if max > 0 && size >= max)
+        });
+        if capacity_full && !matches!(command, CloudCommand::UploadPlanned { .. }) {
             return Err(Error::State("cloud capacity exhausted"));
         }
         let command = match command {
@@ -56,41 +57,42 @@ impl MusicClient {
             epoch: epoch.into(),
             accepted: vec![],
             failed: vec![],
+            not_started: vec![],
             deletion: None,
         };
         match command {
             CloudCommand::Upload { files } => {
-                if files.is_empty() || files.len() > 500 {
-                    return Err(Error::InvalidInput("invalid upload selection"));
-                }
-                for file in files {
-                    // Echo the selected path, already held by this caller, so
-                    // partial failures cannot confuse equal basenames.
-                    let label = file.path.to_string_lossy().into_owned();
-                    let created = context
-                        .uploads
-                        .create(
-                            &file.path,
-                            AttachmentInputs {
-                                cover: file.cover,
-                                lyric: file.lyric,
-                                cue: file.cue,
-                            },
-                        )
-                        .await;
-                    context.guard()?;
-                    match created {
-                        Ok(task) => {
-                            context.scheduler.start(&task.id, false)?;
-                            result.accepted.push(task.id);
-                            context.notify.notify_one();
-                        }
-                        Err(e) => result.failed.push(CloudFailure {
-                            id: label,
-                            message: ClientError::from(e).message,
-                        }),
+                add_files(
+                    &context,
+                    files.into_iter().map(|file| (None, file)).collect(),
+                    true,
+                    &mut result,
+                )
+                .await?;
+            }
+            CloudCommand::UploadPlanned { files } => {
+                let mut ids = std::collections::BTreeSet::new();
+                for file in &files {
+                    if file.request_id.len() != 32
+                        || !file
+                            .request_id
+                            .bytes()
+                            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+                        || !ids.insert(&file.request_id)
+                    {
+                        return Err(Error::InvalidInput("invalid cloud creation request IDs"));
                     }
                 }
+                add_files(
+                    &context,
+                    files
+                        .into_iter()
+                        .map(|file| (Some(file.request_id), file.input))
+                        .collect(),
+                    !capacity_full,
+                    &mut result,
+                )
+                .await?;
             }
             CloudCommand::Delete { ids, revision } => {
                 result.deletion = Some(context.library.delete(&ids, &revision).await?.into());
@@ -161,4 +163,71 @@ impl MusicClient {
         context.notify.notify_one();
         Ok(result)
     }
+}
+async fn add_files(
+    context: &Context,
+    files: Vec<(Option<String>, CloudUploadInput)>,
+    allow_new: bool,
+    result: &mut CloudResult,
+) -> Result<()> {
+    if files.is_empty() || files.len() > 500 {
+        return Err(Error::InvalidInput("invalid upload selection"));
+    }
+    for (request_id, file) in files {
+        let label = file.path.to_string_lossy().into_owned();
+        let attachments = AttachmentInputs {
+            cover: file.cover,
+            lyric: file.lyric,
+            cue: file.cue,
+        };
+        let created = if let Some(request_id) = request_id {
+            context
+                .uploads
+                .create_once(&request_id, &file.path, attachments, allow_new)
+                .await
+        } else {
+            context
+                .uploads
+                .create(&file.path, attachments)
+                .await
+                .map(|task| (task, true))
+        };
+        context.guard()?;
+        match created {
+            Ok((task, fresh)) => {
+                // An old receipt is a read, never implicit resume/retry. In
+                // particular keep old pause/cancel and unknown remote intents.
+                let scheduled = if fresh {
+                    context.scheduler.start(&task.id, false).map(|_| ())
+                } else {
+                    Ok(())
+                };
+                let retained = !fresh
+                    && task.phase != CloudPhase::Complete
+                    && !context
+                        .scheduler
+                        .entries()?
+                        .iter()
+                        .any(|entry| entry.id == task.id && (entry.enabled || entry.running));
+                result.accepted.push(task.id);
+                context.notify.notify_one();
+                if retained {
+                    result.not_started.push(CloudFailure {
+                        id: label,
+                        message: "已登记任务保留原状态，未重新启动",
+                    });
+                } else if let Err(e) = scheduled {
+                    result.not_started.push(CloudFailure {
+                        id: label,
+                        message: ClientError::from(e).message,
+                    });
+                }
+            }
+            Err(e) => result.failed.push(CloudFailure {
+                id: label,
+                message: ClientError::from(e).message,
+            }),
+        }
+    }
+    Ok(())
 }

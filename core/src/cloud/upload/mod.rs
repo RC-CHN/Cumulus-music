@@ -2,6 +2,7 @@
 //! An accepted media object is not yet a published account cloud item.
 mod attachments;
 mod controls;
+mod creation;
 mod manager;
 mod publication;
 mod run;
