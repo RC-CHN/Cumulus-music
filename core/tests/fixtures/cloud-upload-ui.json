@@ -1,0 +1,27 @@
+{
+  "source": "622.We uploadingCloudTrack",
+  "sha256": "347d7d067eeb1b883dec32a290e8e9a960fdc97a8acafe7d44ebe5a1960735b0",
+  "rows": [
+    {
+      "label": "播放",
+      "action": "play",
+      "disabled": true
+    },
+    {
+      "label": "下一首播放",
+      "action": "nextPlay",
+      "disabled": true
+    },
+    {
+      "separator": true
+    },
+    {
+      "label": "打开文件所在目录",
+      "action": "viewFileLocation",
+      "disabled": false,
+      "menuPayload": {
+        "path": "/synthetic/same.flac"
+      }
+    }
+  ]
+}

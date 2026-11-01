@@ -1,8 +1,12 @@
 <script setup lang="ts">
-import { ref, computed, watch, onUnmounted } from 'vue';
+import { ref, computed, watch, onUnmounted, nextTick } from 'vue';
 import ModalTransition from './ModalTransition.vue';
 import type { CloudDeleteTarget } from '../composables/useCloudDelete';
 import Icon from './Icon.vue';
+import CloudTaskTable from './cloud/CloudTaskTable.vue';
+import CloudTasksToolbar from './cloud/CloudTasksToolbar.vue';
+import CloudTaskRemoveDialog from './cloud/CloudTaskRemoveDialog.vue';
+import { cloudTaskTarget, type CloudTaskTarget } from '../services/cloudTasks';
 import CloudUploadDialog from './CloudUploadDialog.vue';
 import CloudDeleteDialog from './CloudDeleteDialog.vue';
 import CloudRowMenu from './cloud/CloudRowMenu.vue';
@@ -15,11 +19,11 @@ import type { CloudModel } from '../composables/useCloud';
 import { failure, type PlaylistView, type TrackView } from '../services/contracts';
 import {
   cloudBytes,
-  cloudIssue,
   deletionMessage,
   nextCloudSort,
   type CloudUpload,
   type CloudQuery,
+  type CloudCommand,
 } from '../services/cloud';
 const props = defineProps<{
   model: CloudModel;
@@ -44,12 +48,20 @@ const toolbar = ref<InstanceType<typeof CloudToolbarMenu>>(),
   collecting = ref<{ epoch: string; tracks: TrackView[] }>(),
   dialogReturn = ref<HTMLElement>();
 function fallbackFocus() {
-  return pageRoot.value?.querySelector<HTMLInputElement>('[aria-label="搜索云盘歌曲"]') ?? null;
+  const root = pageRoot.value;
+  return (
+    root?.querySelector<HTMLElement>('[aria-label="搜索云盘歌曲"]') ??
+    root?.querySelector<HTMLElement>('.cloud-task-toolbar button:not(:disabled)') ??
+    root?.querySelector<HTMLElement>('.cloud-task-history-entry:not(:disabled)') ??
+    root?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]') ??
+    null
+  );
 }
 const keyword = ref(query.value.keyword),
   selected = ref(new Set<string>()),
   uploadOpen = ref(false),
-  deletion = ref<CloudDeleteTarget>();
+  deletion = ref<CloudDeleteTarget>(),
+  taskRemoval = ref<CloudTaskTarget>();
 const tracks = computed(() => view.value?.tracks ?? []),
   uploads = computed(() => view.value?.uploads ?? []);
 const ids = computed(() =>
@@ -84,12 +96,39 @@ watch(
     if (pageRoot.value) pageRoot.value.scrollTop = 0;
   },
 );
+// A background native completion can remove the focused row between polls.
+// Only restore when that exact element vanished and the user has not moved on.
+watch(uploads, async () => {
+  const origin = document.activeElement,
+    owner = props.model.accountEpoch.value,
+    host = pageRoot.value;
+  if (
+    !(origin instanceof HTMLElement) ||
+    !host?.contains(origin) ||
+    !origin.closest('.cloud-task-table,.cloud-task-toolbar')
+  )
+    return;
+  await nextTick();
+  if (
+    owner === props.model.accountEpoch.value &&
+    host.isConnected &&
+    document.hasFocus() &&
+    (!origin.isConnected || origin.matches(':disabled')) &&
+    (document.activeElement === document.body || document.activeElement === origin)
+  )
+    fallbackFocus()?.focus({ preventScroll: true });
+});
 watch(
   ids,
   (rows) => (selected.value = new Set([...selected.value].filter((id) => rows.includes(id)))),
 );
 watch(
-  () => uploadOpen.value || !!deletion.value || !!collecting.value || rowDialogOpen.value,
+  () =>
+    uploadOpen.value ||
+    !!deletion.value ||
+    !!collecting.value ||
+    rowDialogOpen.value ||
+    !!taskRemoval.value,
   (value) => emit('dialog', value),
 );
 watch(
@@ -97,6 +136,7 @@ watch(
   () => {
     uploadOpen.value = false;
     deletion.value = undefined;
+    taskRemoval.value = undefined;
     collecting.value = undefined;
     dialogReturn.value = undefined;
     rowMenu.value?.close();
@@ -236,33 +276,36 @@ function download() {
       view.value.revision,
     );
 }
-function group(kind: 'pause' | 'resume') {
-  if (!selected.value.size) {
-    void props.model.command(
-      kind === 'pause' ? { kind: 'pause_all' } : { kind: 'resume_all', retry_rejected: true },
-    );
-    return;
-  }
-  const rows = uploads.value.filter(
-    (v) => selected.value.has(v.id) && (kind === 'pause' ? v.canPause : v.canResume),
-  );
-  if (rows.length)
-    void props.model.command(
-      kind === 'pause'
-        ? { kind, ids: rows.map((v) => v.id) }
-        : { kind, ids: rows.map((v) => v.id), retry_rejected: true },
-    );
+function removeTasks(target: CloudTaskTarget, origin: HTMLElement | undefined) {
+  if (busy.value) return;
+  dialogOwner.value = target.epoch;
+  dialogReturn.value = origin;
+  taskRemoval.value = target;
 }
-function control(task: CloudUpload, kind: 'pause' | 'resume' | 'cancel' | 'dismiss') {
-  void props.model.command(
-    kind === 'resume' ? { kind, ids: [task.id], retry_rejected: true } : { kind, ids: [task.id] },
+function removeTask(task: CloudUpload, origin: HTMLElement | undefined) {
+  removeTasks(
+    cloudTaskTarget(props.model.accountEpoch.value, [task], false, query.value.tab === 'history'),
+    origin,
   );
+}
+async function taskCommand(command: CloudCommand, event?: MouseEvent) {
+  const owner = props.model.accountEpoch.value,
+    origin = event?.currentTarget as HTMLElement | undefined,
+    host = pageRoot.value;
+  if (origin && document.activeElement === origin) host?.focus({ preventScroll: true });
+  await props.model.command(command);
+  await nextTick();
+  if (owner === props.model.accountEpoch.value && document.activeElement === host)
+    (origin?.isConnected && !origin.matches(':disabled') ? origin : fallbackFocus())?.focus({
+      preventScroll: true,
+    });
 }
 </script>
 <template>
   <section
     ref="pageRoot"
     class="cloud-page"
+    tabindex="-1"
     aria-label="音乐云盘"
     :data-cloud-epoch="model.accountEpoch.value"
     :data-cloud-loading="loading"
@@ -284,11 +327,11 @@ function control(task: CloudUpload, kind: 'pause' | 'resume' | 'cancel' | 'dismi
         已上传单曲 <span>{{ view?.revision ? view.uploadedCount : '—' }}</span></button
       ><button
         role="tab"
-        :aria-selected="query.tab === 'uploading'"
-        :tabindex="query.tab === 'uploading' ? 0 : -1"
+        :aria-selected="query.tab !== 'uploaded'"
+        :tabindex="query.tab !== 'uploaded' ? 0 : -1"
         data-cloud-tab="uploading"
         @keydown="tabKey"
-        :class="{ selected: query.tab === 'uploading' }"
+        :class="{ selected: query.tab !== 'uploaded' }"
         @click="model.filter({ tab: 'uploading' })"
       >
         正在上传 <span>{{ view?.uploadingCount ?? '—' }}</span>
@@ -345,24 +388,22 @@ function control(task: CloudUpload, kind: 'pause' | 'resume' | 'cancel' | 'dismi
         >
           <Icon name="download" />下载所选
         </button></template
-      ><template v-else
-        ><button class="primary" :disabled="busy || full" @click="openUpload">
-          <Icon name="upload" />上传音乐</button
-        ><button
-          class="secondary"
-          :disabled="busy || full || !view?.uploadingCount"
-          @click="group('resume')"
-        >
-          {{ selected.size ? '继续所选' : '全部继续' }}</button
-        ><button
-          class="secondary"
-          :disabled="busy || !view?.uploadingCount"
-          @click="group('pause')"
-        >
-          {{ selected.size ? '暂停所选' : '全部暂停' }}
-        </button></template
+      ><CloudTasksToolbar
+        v-else
+        :key="model.accountEpoch.value"
+        :model="model"
+        :disabled="busy || loading || !!taskRemoval"
+        :full="full"
+        :history="query.tab === 'history'"
+        @remove="removeTasks"
+        @expired="emit('expired')"
+      />
+      <form
+        v-if="query.tab === 'uploaded'"
+        class="cloud-search"
+        role="search"
+        @submit.prevent="model.filter({ keyword })"
       >
-      <form class="cloud-search" role="search" @submit.prevent="model.filter({ keyword })">
         <input
           v-model="keyword"
           aria-label="搜索云盘歌曲"
@@ -383,6 +424,14 @@ function control(task: CloudUpload, kind: 'pause' | 'resume' | 'cancel' | 'dismi
         </button>
       </form>
       <button
+        v-if="query.tab === 'uploading'"
+        class="text-button cloud-task-history-entry"
+        :disabled="busy"
+        @click="model.filter({ tab: 'history' })"
+      >
+        上传记录 <span>{{ metadata?.historyCount ?? 0 }}</span>
+      </button>
+      <button
         class="icon-button"
         aria-label="刷新云盘"
         :disabled="loading"
@@ -391,6 +440,7 @@ function control(task: CloudUpload, kind: 'pause' | 'resume' | 'cancel' | 'dismi
         <Icon name="refresh" />
       </button>
     </div>
+    <h2 v-if="query.tab === 'history'" class="cloud-task-history-heading">上传记录</h2>
     <p v-if="toolbar?.message" class="cloud-notice cloud-toolbar-feedback" role="status">
       {{ toolbar.message }}
     </p>
@@ -550,91 +600,38 @@ function control(task: CloudUpload, kind: 'pause' | 'resume' | 'cancel' | 'dismi
         </button>
       </div>
     </template>
-    <template v-else-if="view"
-      ><div v-if="uploads.length" class="cloud-upload-list">
-        <div class="cloud-upload-select">
-          <input
-            type="checkbox"
-            aria-label="选择本页全部上传任务"
-            :checked="selected.size === ids.length && !!ids.length"
-            @change="all"
-          /><span>歌曲</span><span>上传状态</span>
-        </div>
-        <article v-for="task in uploads" :key="task.id" class="cloud-upload-row">
-          <input
-            type="checkbox"
-            :aria-label="`选择上传任务 ${task.title}`"
-            :checked="selected.has(task.id)"
-            @change="toggle(task.id)"
-          />
-          <div class="cloud-upload-name">
-            <strong :title="task.title">{{ task.title || task.fileName }}</strong
-            ><small :title="task.fileName">{{ task.fileName }}</small>
-            <p v-if="task.error" class="cloud-error">{{ cloudIssue(task.error) }}</p>
-            <small v-if="task.attachments.length">含 {{ task.attachments.length }} 个附件</small>
-          </div>
-          <div class="cloud-upload-progress">
-            <span>{{ task.label }}</span
-            ><progress
-              :value="task.bytes"
-              :max="task.total || 1"
-              :aria-label="`${task.title} 上传进度`"
-            /><small>{{ cloudBytes(task.bytes) }} / {{ cloudBytes(task.total) }}</small>
-          </div>
-          <div class="cloud-upload-actions">
-            <button
-              v-if="task.canPause"
-              class="text-button"
-              :disabled="busy"
-              @click="control(task, 'pause')"
-            >
-              暂停</button
-            ><button
-              v-if="task.canResume"
-              class="text-button"
-              :disabled="busy"
-              @click="control(task, 'resume')"
-            >
-              继续</button
-            ><button
-              v-if="task.canReconcile"
-              class="text-button"
-              :disabled="busy"
-              @click="model.command({ kind: 'reconcile_upload', id: task.id })"
-            >
-              核对结果</button
-            ><button
-              v-if="task.canRenew"
-              class="text-button"
-              :disabled="busy"
-              @click="model.command({ kind: 'renew', id: task.id })"
-            >
-              更新上传凭证</button
-            ><button
-              v-if="task.canCancel"
-              class="text-button"
-              :disabled="busy"
-              @click="control(task, 'cancel')"
-            >
-              取消</button
-            ><button
-              v-if="task.canDismiss"
-              class="text-button"
-              :disabled="busy"
-              @click="control(task, 'dismiss')"
-            >
-              清除记录
-            </button>
-          </div>
-        </article>
-      </div>
+    <template v-else-if="view">
+      <CloudTaskTable
+        v-if="uploads.length"
+        :key="`${model.accountEpoch.value}:${query.tab}`"
+        :rows="uploads"
+        :offset="view.offset"
+        :epoch="model.accountEpoch.value"
+        :disabled="busy || !!taskRemoval"
+        @remove="removeTask"
+        @command="taskCommand"
+        @expired="emit('expired')"
+      />
       <div v-else class="empty-state">
-        <Icon name="upload" />
-        <h2>还没有上传任务</h2>
-        <p>选择音频文件，开始建立你的音乐云盘</p>
-        <button class="primary" :disabled="busy || full" @click="openUpload">上传音乐</button>
-      </div></template
-    >
+        <Icon :name="query.tab === 'history' ? 'history' : 'upload'" />
+        <h2>{{ query.tab === 'history' ? '还没有上传记录' : '还没有上传任务' }}</h2>
+        <p>
+          {{
+            query.tab === 'history'
+              ? '完成和取消的任务会保留在这里'
+              : '选择音频文件，开始建立你的音乐云盘'
+          }}
+        </p>
+        <button
+          v-if="query.tab !== 'history'"
+          class="primary"
+          :disabled="busy || full"
+          @click="openUpload"
+        >
+          上传音乐
+        </button>
+      </div>
+    </template>
     <div v-if="view && view.total > query.limit" class="cloud-pagination">
       <button
         class="secondary"
@@ -667,6 +664,16 @@ function control(task: CloudUpload, kind: 'pause' | 'resume' | 'cancel' | 'dismi
         </button>
       </div>
     </details>
+    <ModalTransition
+      :restore-focus="dialogOwner === model.accountEpoch.value"
+      :fallback-focus="fallbackFocus"
+      :return-focus="() => dialogReturn ?? null"
+      ><CloudTaskRemoveDialog
+        v-if="taskRemoval"
+        :model="model"
+        :target="taskRemoval"
+        @close="taskRemoval = undefined"
+    /></ModalTransition>
     <ModalTransition
       :restore-focus="dialogOwner === model.accountEpoch.value"
       :fallback-focus="fallbackFocus"

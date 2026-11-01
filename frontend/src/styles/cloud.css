@@ -29,6 +29,11 @@
   overflow-wrap: anywhere;
 }
 
+/* Programmatic pending focus is internal; restore to a control on completion. */
+.cloud-page:focus {
+  outline: none;
+}
+
 .cloud-page progress {
   height: 5px;
   border: 0;
@@ -254,56 +259,6 @@
   font-size: 12px;
   color: var(--text-secondary);
 }
-.cloud-upload-row,
-.cloud-upload-select {
-  display: grid;
-  grid-template-columns: 24px minmax(150px, 1fr) 170px 145px;
-  gap: 12px;
-  align-items: center;
-  padding: 15px 8px;
-  border-bottom: 1px solid var(--line);
-}
-.cloud-upload-select {
-  color: var(--muted);
-  font-size: 12px;
-  padding: 9px 8px;
-}
-.cloud-upload-name {
-  min-width: 0;
-}
-.cloud-upload-name strong,
-.cloud-upload-name > small {
-  display: block;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  font-weight: 400;
-}
-.cloud-upload-name small {
-  font-size: 11px;
-  color: var(--muted);
-  margin-top: 5px;
-}
-.cloud-upload-progress {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 12px;
-}
-.cloud-upload-progress small {
-  color: var(--muted);
-  font-size: 10px;
-}
-.cloud-upload-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 5px;
-  font-size: 12px;
-}
-.cloud-upload-actions .text-button {
-  padding: 2px 4px;
-}
 .cloud-upload-dialog .muted {
   font-size: 12px;
   line-height: 1.7;
@@ -381,7 +336,8 @@
     margin-bottom: 12px;
   }
   .cloud-toolbar {
-    margin: 14px 0;
+    margin: 0;
+    padding-block: 12px;
   }
   .cloud-page > .empty-state {
     gap: 12px;
@@ -408,16 +364,6 @@
   }
   .cloud-search {
     margin-left: 0;
-  }
-  .cloud-upload-row,
-  .cloud-upload-select {
-    grid-template-columns: 20px minmax(110px, 1fr) 130px;
-    gap: 8px;
-  }
-  .cloud-upload-actions {
-    grid-column: 2/4;
-    justify-content: flex-start;
-    padding-top: 4px;
   }
 }
 
@@ -539,4 +485,143 @@
   outline: 2px solid var(--danger);
   outline-offset: 2px;
   border-radius: 2px;
+}
+
+.cloud-task-table-wrap {
+  overflow-x: auto;
+  outline-offset: -2px;
+}
+.cloud-task-table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  min-width: 772px;
+  font-size: 14px;
+}
+.cloud-task-table .task-number-col {
+  width: 44px;
+}
+.cloud-task-table th {
+  height: 36px;
+  text-align: left;
+  font-weight: 400;
+  color: var(--muted);
+}
+.cloud-task-table td {
+  height: 64px;
+  box-sizing: border-box;
+  padding: 8px 6px;
+}
+.cloud-task-table tbody tr:nth-child(odd) {
+  background: var(--surface-alt);
+}
+.cloud-task-table tbody tr:hover,
+.cloud-task-table tr:focus-within {
+  background: var(--surface-hover);
+}
+.cloud-task-number {
+  color: var(--muted);
+  text-align: center;
+}
+.cloud-task-number .icon {
+  width: 20px;
+  height: 20px;
+}
+.cloud-task-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.cloud-task-copy {
+  flex: 1;
+  min-width: 0;
+}
+.cloud-task-copy strong,
+.cloud-task-copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 400;
+}
+.cloud-task-copy small {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.cloud-task-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.cloud-task-actions .icon-button,
+.cloud-task-actions .menu-trigger {
+  width: 28px;
+  height: 28px;
+  padding: 4px;
+}
+.cloud-task-actions .icon {
+  width: 20px;
+  height: 20px;
+}
+.cloud-task-progress {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  font-size: 13px;
+  line-height: 18px;
+  min-width: 0;
+}
+.cloud-task-progress progress {
+  width: 160px;
+  flex-shrink: 0;
+  height: 5px;
+}
+.cloud-task-progress .failed {
+  color: var(--danger);
+}
+.cloud-task-progress .text-button {
+  white-space: nowrap;
+  font-size: 12px;
+}
+.cloud-task-info .icon {
+  width: 20px;
+  height: 20px;
+  color: var(--muted);
+}
+.cloud-task-toolbar .secondary {
+  width: 114px;
+  height: 48px;
+  font-size: 16px;
+  padding: 0;
+  gap: 6px;
+  border-radius: 8px;
+}
+.cloud-task-toolbar .secondary .icon {
+  width: 20px;
+  height: 20px;
+}
+.cloud-task-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.cloud-task-toolbar:focus-visible,
+.cloud-task-table-wrap:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+.cloud-task-history-entry {
+  margin-left: auto;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.cloud-task-history-heading {
+  font-size: 14px;
+  font-weight: 500;
+  margin: 0 0 16px;
 }

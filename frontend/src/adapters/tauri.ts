@@ -152,6 +152,9 @@ export function createTauriClient(): CoreClient {
       invoke('comments_write_command', { epoch, id, command }),
     commentsFloor: (epoch, resource, query, refresh) =>
       invoke('comments_floor', { epoch, resource, query, refresh }),
+    cloudUploadSelection: (epoch, history) => invoke('cloud_upload_selection', { epoch, history }),
+    cloudUploadRemovals: (epoch, ids) => invoke('cloud_upload_removals', { epoch, ids }),
+    openCloudUploadDirectory: (epoch, id) => invoke('open_cloud_upload_directory', { epoch, id }),
     cloudCommand: (epoch, command) => invoke('cloud_command', { epoch, command }),
     pickCloudFiles: (epoch, kind) => invoke('pick_cloud_files', { epoch, kind }),
     downloads: (epoch, query) => invoke('downloads', { epoch, query }),

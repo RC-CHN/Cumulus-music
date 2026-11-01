@@ -8,13 +8,14 @@ import {
   type CloudQuery,
   type CloudCommand,
   type CloudResult,
+  type CloudTab,
 } from '../services/cloud.ts';
-function defaultQuery(): CloudQuery {
+function defaultQuery(tab: CloudTab = 'uploaded'): CloudQuery {
   return {
-    tab: 'uploaded',
+    tab,
     keyword: '',
-    sort: 'uploaded',
-    descending: true,
+    sort: tab === 'uploaded' ? 'uploaded' : 'natural',
+    descending: tab === 'uploaded',
     offset: 0,
     limit: 200,
   };
@@ -37,6 +38,7 @@ export function useCloud(core: CloudClient = useCore(), sessionChanged = () => {
     error = ref(''),
     readError = ref(''),
     notice = ref('');
+  let saved: Partial<Record<CloudTab, CloudQuery>> = {};
   let epoch = '',
     generation = 0,
     read = 0,
@@ -85,7 +87,10 @@ export function useCloud(core: CloudClient = useCore(), sessionChanged = () => {
     read++;
     stop();
     epoch = account.status === 'authenticated' ? account.epoch : '';
-    if (accountEpoch.value !== epoch) query.value = defaultQuery();
+    if (accountEpoch.value !== epoch) {
+      saved = {};
+      query.value = defaultQuery();
+    }
     accountEpoch.value = epoch;
     view.value = undefined;
     snapshotQuery.value = undefined;
@@ -111,29 +116,43 @@ export function useCloud(core: CloudClient = useCore(), sessionChanged = () => {
     }
   }
   function filter(value: Partial<CloudQuery>) {
-    query.value = { ...query.value, offset: 0, ...value };
+    saved[query.value.tab] = { ...query.value };
+    if (value.tab && value.tab !== query.value.tab) {
+      notice.value = '';
+      error.value = '';
+    }
+    const base =
+      value.tab && value.tab !== query.value.tab
+        ? (saved[value.tab] ?? defaultQuery(value.tab))
+        : { ...query.value, offset: 0 };
+    query.value = { ...base, ...value };
     void refresh();
   }
   async function command(input: CloudCommand): Promise<CloudResult | undefined> {
     if (!epoch || busy.value) return;
-    const version = generation;
+    const version = generation,
+      tab = query.value.tab;
     busy.value = true;
     error.value = '';
     notice.value = '';
     try {
       const result = await core.cloudCommand(epoch, input);
       if (version !== generation || result.epoch !== epoch) return;
-      notice.value = result.deletion
-        ? deletionMessage(result.deletion)
-        : result.notStarted?.length
-          ? `已登记 ${result.accepted.length} 个任务，${result.notStarted.length} 个尚未开始：${result.notStarted[0]?.message}`
-          : result.failed.length
-            ? `${result.accepted.length} 项已受理，${result.failed.length} 项未完成：${result.failed[0]?.message}`
-            : `已受理 ${result.accepted.length} 项`;
+      if (tab === query.value.tab)
+        notice.value = result.deletion
+          ? deletionMessage(result.deletion)
+          : result.notStarted?.length
+            ? `已登记 ${result.accepted.length} 个任务，${result.notStarted.length} 个尚未开始：${result.notStarted[0]?.message}`
+            : result.failed.length
+              ? `${result.accepted.length} 项已受理，${result.failed.length} 项未完成：${result.failed[0]?.message}`
+              : `已受理 ${result.accepted.length} 项`;
       await refresh(false, true);
       return result;
     } catch (e) {
-      if (version === generation) issue(e);
+      if (version === generation) {
+        if (tab === query.value.tab) issue(e);
+        else if (['session_expired', 'profile_changed'].includes(failure(e).code)) sessionChanged();
+      }
     } finally {
       if (version === generation) busy.value = false;
     }

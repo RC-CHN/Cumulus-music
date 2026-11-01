@@ -1,5 +1,5 @@
 import type { TrackView } from './contracts';
-export type CloudTab = 'uploaded' | 'uploading';
+export type CloudTab = 'uploaded' | 'uploading' | 'history';
 export interface CloudQuery {
   tab: CloudTab;
   keyword: string;
@@ -58,6 +58,8 @@ export interface CloudResource {
 export interface CloudUpload {
   id: string;
   title: string;
+  artists?: string[];
+  album?: string;
   fileName: string;
   phase: CloudPhase;
   bytes: number;
@@ -72,6 +74,10 @@ export interface CloudUpload {
   canReconcile: boolean;
   canRenew: boolean;
   canDismiss: boolean;
+  removalPending?: boolean;
+  canRemove?: boolean;
+  canRetryRemove?: boolean;
+  canRetryEncoding?: boolean;
   attachments: { kind: string; phase: string; bytes: number; total: number }[];
 }
 export interface CloudDelete {
@@ -90,6 +96,7 @@ export interface CloudPage {
   maxSize: number | null;
   uploadedCount: number;
   uploadingCount: number;
+  historyCount?: number;
   total: number;
   offset: number;
   tracks: CloudTrack[];
@@ -110,7 +117,8 @@ export type CloudCommand =
   | { kind: 'upload_planned'; files: { request_id: string; input: CloudUploadInput }[] }
   | { kind: 'pause' | 'cancel' | 'dismiss'; ids: string[] }
   | { kind: 'resume'; ids: string[]; retry_rejected: boolean }
-  | { kind: 'renew' | 'reconcile_upload' | 'reconcile_delete'; id: string }
+  | { kind: 'remove_uploads'; ids: string[]; retry: boolean }
+  | { kind: 'renew' | 'reconcile_upload' | 'reconcile_delete' | 'retry_encoding'; id: string }
   | { kind: 'delete'; ids: string[]; revision: string };
 export interface CloudResult {
   epoch: string;
@@ -119,7 +127,15 @@ export interface CloudResult {
   deletion: CloudDelete | null;
   notStarted?: { id: string; message: string }[];
 }
+export interface CloudUploadRemoval {
+  epoch: string;
+  items: { id: string; removed: boolean; requested: boolean; error: string | null }[];
+}
 export interface CloudClient {
+  cloudUploadSelection(epoch: string, history: boolean): Promise<CloudPage>;
+  cloudUploadRemovals(epoch: string, ids: string[]): Promise<CloudUploadRemoval>;
+  openCloudUploadDirectory(epoch: string, id: string): Promise<void>;
+
   cloudResource(epoch: string, songId: string, revision: string): Promise<CloudResource>;
   openCloudDirectory(epoch: string, songId: string, revision: string): Promise<void>;
   cloudPage(epoch: string, query: CloudQuery, refresh: boolean): Promise<CloudPage>;
@@ -134,6 +150,7 @@ export function cloudIssue(code: string | null): string {
   return (
     (
       {
+        encoding_failed: '云端转码暂未成功，可重新检查转码状态',
         write_outcome_unknown: '服务端结果尚未确认，请先核对',
         source_changed: '本地文件已变化，请重新选择文件',
         file_unavailable: '本地文件无法读取，请检查位置与权限',
