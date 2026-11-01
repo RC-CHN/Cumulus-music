@@ -3583,3 +3583,69 @@ Windows CI独立输入链路
 - 正常工具栏更多、普通列宽、扫描库localMap关联、全部上传/长附件组合、容量
   扩容、私有/下架细分删除、本地/CUE删除和全部分享渠道仍待审计。全范围goal
   保持active。所有账号/服务/媒体合成，不涉及真实支付、邀请、用户资源变更。
+
+2026-11-02 云盘工具栏、完整结果与传输焦点
+
+范围和来源
+- 依据官方UploadedTrack.tsx、622.Ue、265/404云盘资源读取、3085动作分派，恢复
+  三项更多菜单及默认48px工具栏。恢复表达式实际执行的合成枚举结果为
+  cloud-toolbar-official-oracle.json；代码/接口/限制/来源SHA见cloud-toolbar-ui-
+  contracts.txt。没有使用YesPlayMusic，也没有官方同状态运行图可作像素一致声明。
+- 提取readCloudCollection共享严格完整性读取，批量页明确使用完整自然序，普通
+  工具栏保留捕获搜索/排序并从offset0读取；显示页码不截断操作对象。限额不截取
+  前N首冒充成功。未接入新的前端HTTP、授权URL或凭据。
+- 读取前捕获播放器意图/账号/队列与来源；新控制使旧添加失效。正常播放/暂停
+  按钮等待期间使用稳定控制组焦点，回执后恢复，不抢已移开的焦点。错误刷新/
+  关闭回更多按钮；查询/账号变化或已有模态窗口使未提交的迟到结果失效。
+
+最终GUI证据（根.build，原图/文件/会话/构建均不提交）
+- cloud-toolbar-final-gui-3：24态/24图，隔离Xvfb/Openbox，DPR1。
+- cloud-toolbar-final-kde-3：同版24态/24图，真实KDE Wayland/XWayland，DPR1.25；
+  仅自有PID合成器pixmap，聚焦/可见/弹窗绘制色样与截图回执通过，详见
+  first/physical.json。通用report的physicalDisplayVerified仍false，不将其
+  当作实机刷新率或物理声卡听感；本次没有高刷新率专项。
+- cloud-toolbar-delivery-gallery的12张联系表已逐项查看，共48张；三项菜单、完整
+  和筛选下载、空搜索/空库、全库批量/返回、失败/上限/快照、两主题/两尺寸、
+  查询/账号切换均核对。默认播放114x48、上传/更多48x48在每个适用状态精确检查。
+  修正了通用padding将播放按钮撑到148px以及上传误用折叠箭头的实际样式问题。
+- 第2页展示200条时添加全部，实际队列为在线1、云盘1405..1001、原在线2..40，
+  共445条；同playId、暂停10秒保持。对9条筛选结果提交下载，实际9个FLAC、
+  授权9次/媒体9次，每个MD5 6b1c7d8698e1e941ad6f2046faa0b611。全库405表单
+  取消不授权。所用账号/目录/媒体全部合成，0真实账号写入、0真实音乐请求。
+- 只读拒绝/挂起、返回总数5001/10001、初始revision变化由类型化Client明确
+  注入，验证界面读取/上限/过期处理；不宣称服务真的返回这些条件。队列/解码、
+  SQLite、下载服务和文件发布仍走实际Rust/IPC，不用前端假进度代替。
+- cloud-toolbar-batch-1：改为从正式更多菜单进入的独立批量29态/29图通过，包含
+  新入口的query/page/360px滚动和焦点返回、空库刷新、账号更换。此轮先于最终
+  图标修正，批量业务代码相同，不把旧图当作最终图标样式。
+- cloud-toolbar-page-final：普通页26态通过；cloud-toolbar-menu-final：普通行
+  菜单23态通过；cloud-toolbar-cycle-regression：播放器五态21态及受控回执
+  pauseGuard通过。三者0新增截图，运行在最终传输行为上；最后仅更正云盘SVG
+  图标并重建原生后跑上述最终48图，没有重复计数旧截图。
+- 早期cloud-toolbar-gui-*及final-*1/2保留。最初队列期望忘了保留原在线2..40，
+  已按实际队列语义修正严格完整序列；刷新探针曾读取旧DOM的ready，现先等
+  Vue更新与按钮可用。账号切换探针增加实际显示的cloud epoch及初始化完成检查，
+  不在旧DOM上抢先聚焦。产品本身的传输焦点问题另已实际修复并断言返回。
+
+工具链/检查
+- Node24.16.0锁文件npm ci、最终format:check/491项/test/typecheck/build通过，
+  cloud-toolbar-{npm-ci,format-check,frontend-tests,frontend-build}.log。
+- Rust1.96 fmt、严格workspace/all-targets/custom-protocol Clippy及全测通过，
+  cloud-toolbar-clippy-final.log与workspace-tests-final.log：1412项/278结果目标。
+  cloud_upload规范化路径修正后已单独12项验证并纳入本次全测。最终只有云盘SVG
+  展示修正，之后重建mini_ui_probe并实际跑最终48图；未在资源嵌入时改写dist。
+- CI工具40项、JS/Python语法、source_audit/release_guard与diff检查通过。
+  cloud-toolbar-delivery-manifest.json冻结最终21个dist资源、原生探针及18个合成
+  文件哈希；Linux/Windows独立runner加入同一cloud_toolbar_smoke，不忽略失败。
+
+Windows既有失败与修正边界
+- f75343e/41320130391的Windows Clippy成功，Rust全测仅cloud_upload新增源路径
+  断言失败：返回规范化\\?\C:\Users\runneradmin路径，预期为C:\Users\RUNNER~1别名。
+  证据cloud-toolbar-prior-windows-job.log/clean.log及diagnostics.zip；业务源文件
+  和账号完整性校验保持不变，断言比较两侧规范化路径，修复提交42de901。
+  Windows该次没有运行桌面smoke，不能宣称云盘菜单在Windows已验收。
+- 上一次CI结论如实保留；新精确HEAD须重新完整CI，不以局部成功、Linux本地
+  或上一个HEAD替代。仅推送feature分支，不创建/移动版本标签或发布附件。
+- 普通列宽、扫描库关联、全部上传/长附件、容量扩容、细分删除、本地/CUE删除
+  和其余业务UI仍继续审计，goal保持active。没有支付、邀请、公开内容或用户
+  已有资源修改；支持目标Linux/Windows，不承诺macOS。

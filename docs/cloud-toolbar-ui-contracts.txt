@@ -1,0 +1,88 @@
+云盘普通工具栏：完整范围、状态与官方对应
+
+来源
+未使用YesPlayMusic。路径相对references/：
+- ui-recovery/sources/packages/pc/src/pages/cloudDisk/views/UploadedTrack.tsx
+  SHA256 ff900eb5e2e7fe130aa47ad93f17b527748d6283f4cfefc1ab9bd32f630a82c3
+  工具栏播放全部114x48、上传/更多48x48、间距12、padding 20px 0；搜索靠右。
+  hasTracks基于完整cloudOnlineList，搜索无结果不等于库为空。更多的from包含
+  当前keyword/orderBy；批量入口转入独立/cloudDisk/track/batch。
+  官方另有showMore实验的36px分支，本实现采用默认48px，不声称实验全部覆盖。
+- netease-3.1.42.205594-analysis/recovered-js/modules/
+  hybrid_app.chunk.1482700000000.js/622.js Ue（3390行起）
+  SHA256 347d7d067eeb1b883dec32a290e8e9a960fdc97a8acafe7d44ebe5a1960735b0
+  菜单顺序为添加全部至播放列表、批量操作、下载全部。私有脚本
+  recovered-client/scripts/netease_cloud_toolbar_oracle.cjs实际执行恢复的Ue对象
+  表达式，仅替代资源/动作枚举；结果cloud-toolbar-official-oracle.json在根.build。
+  这不等于官方进程、winhelper菜单或界面像素验证。
+- 同目录265.js将资源读取委派到404.js；404.js的cloudTrack分支（374行起）
+  SHA256 cb691eded78b1f0ed006108063a7baecfcda1c8b8dd3f6ab7b9fedb3b09ce96b
+  直接读取page:cloudDisk.keyword/sortBy及完整async:cloudList.cloudOnlineList，
+  筛选、排序后返回origin，不读取200条展示分页。这解释了下载动作即使没有显式
+  传keyword也仍使用当前结果，不能从其参数缺省推断为无筛选全库。
+- hybrid_73.chunk.1482700000000.js/3085.js
+  SHA256 121b1cc930b106acf5bb01d86305725ddd6abe2484120fee339a682301c7f0be
+  播放动作将云盘from/listData转交资源读取；downloadAll同样调用265.c。添加全部
+  与下一首的默认插入点证据及队列容量规则见playlist-queue-ui-contracts.txt。
+
+交互契约
+- 正常已上传页面提供播放、上传、更多，搜索与刷新靠右；删除/下载所选仅在有
+  选择时出现，属于社区附加项，不将其宣称为官方普通表格的完整多选形态。
+- 更多始终按官方三项顺序；当前搜索无结果时添加/下载禁用，仍可进入完整库批量。
+  完整库为空时更多禁用。加载/已有写入/相关弹窗打开时禁用不适用操作。
+- “添加全部”使用当前搜索/排序的全部结果；即使正在第2页，也从完整结果开头
+  插入当前歌曲之后。保留原来的其他队列项、当前entry/playId、暂停位置，不把
+  “添加全部”误当作替换队列或追加至队尾。空队列使用现有核心的启动行为。
+- “下载全部”先读取完整结果，再打开显示实际数量的云盘原文件下载表单；取消
+  不请求下载授权。只在用户提交下载表单后配置目录并启动真正的DownloadService。
+- “批量操作”保持现有完整自然序全库页面；与普通页搜索/分页独立，返回后保持
+  query/page/scroll和更多触发按钮焦点。空库在批量页内刷新可以显示空内容；普通
+  空库没有可用更多入口。菜单退出、页面/弹窗过渡和减少动态效果沿用共享组件。
+- 完整读取进度、失败、上限、快照变化在本页反馈，不显示成音频加载错误。失败
+  只能显式重新执行；快照变化先刷新列表，不自动重复队列或下载动作。
+- 操作期间将焦点暂放到稳定的工具栏容器；完成、错误关闭或刷新后返回更多按钮。
+  用户已经移到搜索、播放器等有效控件时不抢焦点；换账号不返回旧账号入口。
+- 待读取期间上传入口禁用；若其他模态弹窗已打开，迟到结果不再打开下载弹窗。
+  查询、分页、账号、快照变化或组件卸载取消尚未提交的读取，迟到结果丢弃。
+- 添加操作在读列表前捕获播放意图、队列版本、账号/连接、playId/entryId/状态/FM。
+  读期间的前端切歌/暂停等意图、新队列、来源或账号变化会拒绝这次添加，供用户
+  明确重新执行。不是先读完才拿一个新的队列版本，把旧请求附加到新播放状态。
+  已提交原生队列命令继续由核心意图/版本/账号围栏判断；不能把界面关闭理解为
+  撤销已经完成的本地队列修改。
+- 实测播放/暂停按钮在等待回执时会失去焦点。PlayerBar的四个传输按钮现在先将
+  焦点留在播放控制组，结束后回原按钮；用户移开、账号变化或按钮失效时不抢回。
+
+分层与接口
+- CloudToolbarMenu负责菜单和焦点；useCloudToolbar负责读取/状态/失效；
+  cloudCollection.readCloudCollection按捕获query从offset=0逐批200读完整列表。
+  原readCloudBatch改为调用同一完整性读取器，显式传空搜索/自然序，维持其语义。
+- 每批核对epoch、初始显示revision、offset、整数total、重复ID、空中间页、
+  超出total和跨页revision/total变化；任一失败都不发布部分结果供“全部”操作。
+  添加单次上限10000、下载单次5000，超限明确提示缩小搜索，不悄悄只取前N项。
+  原生队列整体容量10000及保留当前项规则仍适用，见既有队列契约。
+- 只调用类型化CoreClient.cloudPage、PlayerModel.prepareCloudQueue/queueCloud及
+  现有download事件。前端不直接发官方HTTP，不持有Cookie/签名或授权音源URL。
+- cloud_page(epoch,query,refresh) -> CloudLibrary：首批refresh读取官方
+  POST /api/v1/cloud/get，随后从同一revision缓存投射分页，UI不会重复远程翻页。
+- player_action(epoch,{kind:queue_cloud_batch,ids,revision,query,quality,
+  expected_queue_revision}) -> 重新核对云盘完整快照/归属/排序 -> 本地持久化队列。
+  普通歌曲和云盘ID使用独立域，不用普通song/detail替换私有云盘资源。
+- 下载表单 Configure -> StartCloud{song_ids,revision,lyrics} -> 每首
+  POST /api/cloud/dowonload {songId} -> 既有下载授权、调度、完整性、发布与记录。
+  保留接口官方拼写；拒绝/过期/文件失败恢复沿用core-cloud-download-contracts.txt。
+
+可执行验证
+- frontend/tests/cloud-toolbar-state.test.ts：405条跨页保持捕获query、初始revision、
+  非整数total、超限、读取失败显式重试、查询/账号/卸载迟到隔离、空结果/过期。
+- frontend/tests/player-state.test.ts：读取前捕获的添加在暂停意图、新队列或账号
+  改变后不会提交；无变化时完整保留query和音质偏好。
+- scripts/ci/cloud_toolbar_smoke.py：实际mini_ui_probe、生产WebView/IPC/core/
+  SQLite/null输出、合成405库。第二页添加完整结果；筛选下载9个实际FLAC；
+  只读故障/限制/快照条件为明确的类型化Client注入，媒体字节与核心命令仍真实。
+  正式运行记录、截图和仍未验证的平台边界见ui-ux-validation.txt。
+
+后续审计
+普通列宽、扫描库关联、上传任务/长附件组合、容量扩容、私有/下架细分删除、
+本地/CUE删除及全部分享渠道仍继续。这里没有同状态官方运行截图，不声称官方
+像素一致；一页功能通过也不代表完整应用goal已完成。Linux/Windows为支持目标，
+不承诺macOS；null音频和虚拟显示不能当作物理声卡听感或实机刷新率证明。

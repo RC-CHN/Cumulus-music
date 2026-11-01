@@ -144,3 +144,8 @@ cloud_resource与open_cloud_directory仅主窗口可用，参数epoch/songId/rev
 songId分离，PlayerView.resourceKind区分当前播放来源；cloud_batch与queue_cloud_batch
 新增可选query用于普通行多选保持当前排序，独立批量页缺省仍为全库自然序。
 正式入口、状态、官方来源、实际请求及剩余差异见cloud-menu-ui-contracts.txt。
+
+普通工具栏与完整查询（2026-11-02）
+三项更多与完整结果/独立全库批量范围、48px默认规格、上传图标、读取取消、
+播放意图围栏及传输焦点详见cloud-toolbar-ui-contracts.txt；仍复用cloud_page/
+queue_cloud_batch和StartCloud，未新增前端HTTP或凭据入口。
