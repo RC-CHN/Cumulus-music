@@ -360,6 +360,7 @@ function trackComments(track: TrackView) {
   );
 }
 const local = useLocal();
+const localPageRef = ref<InstanceType<typeof LocalPage>>();
 const localMatching = useLocalMatching(undefined, () => {
   void music.bootstrap(false);
 });
@@ -644,6 +645,7 @@ const downloadPageRef = ref<InstanceType<typeof DownloadPage>>();
 watch(
   music.page,
   (next, previous) => {
+    if (previous.kind === 'local' && next.kind !== 'local') localPageRef.value?.checkpoint();
     if (previous.kind === 'downloads') {
       downloadPageRef.value?.checkpoint();
       downloads.leaveVisit();
@@ -1394,6 +1396,7 @@ onUnmounted(() => {
                 <p>正在连接你的音乐…</p>
               </div>
               <LocalPage
+                ref="localPageRef"
                 v-else-if="page.kind === 'local'"
                 :model="local"
                 :matching="localMatching"

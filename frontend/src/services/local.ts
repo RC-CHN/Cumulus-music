@@ -23,6 +23,19 @@ export const defaultLocalQuery = (): LocalQuery => ({
   limit: 200,
   revision: null,
 });
+/** Revision is an index precondition; every presentation field owns its rows. */
+export function localQueryKey(query: LocalQuery): string {
+  return JSON.stringify([
+    query.keyword,
+    query.sort,
+    query.descending,
+    query.group,
+    query.groupKey,
+    query.includeMissing,
+    query.offset,
+    query.limit,
+  ]);
+}
 export interface LocalTrack {
   track: TrackView;
   revision: string;

@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, nextTick } from 'vue';
 import Icon from './Icon.vue';
 import LocalMatchDialog from './LocalMatchDialog.vue';
 import type { LocalMatchingModel } from '../composables/useLocalMatching';
 import type { LocalModel } from '../composables/useLocal';
+import { useLocalSearch } from '../composables/useLocalSearch';
 import type { LocalGroup, LocalQuery, LocalSort, LocalRoot } from '../services/local';
 import { time } from '../services/player';
 const props = defineProps<{
@@ -16,8 +17,54 @@ const emit = defineEmits<{
   play: [query: LocalQuery, revision: string, id: string | null];
   comments: [id: string, title: string];
 }>();
-const { view, query, loading, busy, error, notice } = props.model;
-const keyword = ref('');
+const { view, query, loading, busy, error, readError, notice } = props.model;
+const search = useLocalSearch(props.model);
+const { keyword } = search;
+const searchInput = ref<HTMLInputElement>();
+const pageRoot = ref<HTMLElement>();
+const ownsVisit = props.model.captureVisit();
+const readLocked = computed(() => loading.value || !!readError.value || !view.value);
+const canPlay = computed(
+  () => props.playable && !busy.value && !readLocked.value && !!view.value?.playable,
+);
+defineExpose({ checkpoint: search.flush });
+async function runAction(action: () => Promise<void>) {
+  const origin = document.activeElement;
+  await action();
+  await nextTick();
+  if (
+    ownsVisit() &&
+    origin instanceof HTMLElement &&
+    pageRoot.value?.contains(origin) &&
+    document.activeElement === document.body &&
+    !origin.matches(':disabled')
+  ) {
+    origin.focus({ preventScroll: true });
+    origin.scrollIntoView({ block: 'nearest' });
+  }
+}
+async function clearSearch() {
+  search.clear();
+  await nextTick();
+  if (ownsVisit()) searchInput.value?.focus({ preventScroll: true });
+}
+async function retryRead() {
+  const origin = document.activeElement;
+  await props.model.refresh();
+  await nextTick();
+  if (
+    ownsVisit() &&
+    origin instanceof HTMLElement &&
+    pageRoot.value?.isConnected &&
+    document.activeElement === document.body
+  ) {
+    const target = readError.value
+      ? pageRoot.value.querySelector<HTMLElement>('[data-local-read-error] button:not(:disabled)')
+      : searchInput.value;
+    target?.focus({ preventScroll: true });
+    target?.scrollIntoView({ block: 'nearest' });
+  }
+}
 const tabs: { kind: LocalGroup; name: string }[] = [
   { kind: 'list', name: '歌曲' },
   { kind: 'artist', name: '歌手' },
@@ -28,7 +75,12 @@ const scanning = computed(() =>
   view.value?.roots.some((r) => r.enabled && ['pending', 'scanning'].includes(r.status)),
 );
 function play(id: string | null = null) {
-  if (view.value && props.playable) emit('play', { ...query.value }, view.value.revision, id);
+  if (
+    view.value &&
+    canPlay.value &&
+    (id === null || view.value.tracks.some((row) => row.track.id === id && !row.track.missing))
+  )
+    emit('play', { ...query.value }, view.value.revision, id);
 }
 function sort(field: LocalSort) {
   props.model.filter({
@@ -51,15 +103,24 @@ function status(root: LocalRoot) {
 }
 </script>
 <template>
-  <section class="local-page" aria-label="本地音乐">
+  <section
+    ref="pageRoot"
+    class="local-page"
+    aria-label="本地音乐"
+    :data-local-loading="loading"
+    :data-local-ready="!!view && !readError"
+    :aria-busy="loading"
+  >
     <header class="local-heading">
       <h1>本地音乐</h1>
       <span>共 {{ view?.total ?? 0 }} 首</span
       ><span role="status">{{ scanning ? '正在更新列表' : '' }}</span
-      ><button class="text-button" :disabled="busy" @click="model.choose">选择目录</button>
+      ><button class="text-button" :disabled="busy" @click="runAction(model.choose)">
+        选择目录
+      </button>
     </header>
     <div class="local-toolbar">
-      <button class="primary" :disabled="!playable || !view?.playable || loading" @click="play()">
+      <button class="primary" :disabled="!canPlay" @click="play()">
         <Icon name="play" />播放全部
       </button>
       <button
@@ -68,6 +129,7 @@ function status(root: LocalRoot) {
           !matching.ready.value ||
           matching.busy.value ||
           matching.unfinished.value ||
+          readLocked ||
           !view?.playable
         "
         :title="matching.ready.value ? '匹配未关联的本地音乐' : '登录后可关联线上歌曲'"
@@ -78,15 +140,30 @@ function status(root: LocalRoot) {
       <button
         class="secondary"
         :disabled="busy || !view?.roots.some((r) => r.enabled)"
-        @click="model.command({ kind: 'rescan' })"
+        @click="runAction(() => model.command({ kind: 'rescan' }))"
       >
         重新扫描
       </button>
-      <form class="local-search" @submit.prevent="model.filter({ keyword: keyword.trim() })">
-        <input v-model="keyword" aria-label="搜索本地音乐" placeholder="搜索本地音乐" /><button
+      <form class="local-search" @submit.prevent="search.flush">
+        <input
+          ref="searchInput"
+          :key="query.group"
+          v-model="keyword"
+          aria-label="搜索本地音乐"
+          placeholder="搜索本地音乐"
+          @input="search.input(($event.target as HTMLInputElement).value)"
+          @compositionstart="search.compositionStart"
+          @compositionend="search.compositionEnd(($event.target as HTMLInputElement).value)"
+        />
+        <button
+          v-if="keyword"
+          type="button"
           class="icon-button"
-          aria-label="搜索本地音乐列表"
+          aria-label="清空本地搜索"
+          @click="clearSearch"
         >
+          <Icon name="close" /></button
+        ><button class="icon-button" aria-label="搜索本地音乐列表">
           <Icon name="search" />
         </button>
       </form>
@@ -150,7 +227,7 @@ function status(root: LocalRoot) {
         v-for="tab in tabs"
         :key="tab.kind"
         :aria-pressed="query.group === tab.kind"
-        @click="model.filter({ group: tab.kind, groupKey: null })"
+        @click="search.group(tab.kind)"
       >
         {{ tab.name }}</button
       ><label
@@ -177,18 +254,31 @@ function status(root: LocalRoot) {
         <button
           class="text-button"
           :disabled="busy"
-          @click="model.command({ kind: root.enabled ? 'disable' : 'enable', id: root.id })"
+          @click="
+            runAction(() =>
+              model.command({ kind: root.enabled ? 'disable' : 'enable', id: root.id }),
+            )
+          "
         >
           {{ root.enabled ? '暂停扫描' : '恢复扫描' }}
         </button>
       </div>
     </details>
     <p v-if="notice" class="notice" role="status">{{ notice }}</p>
-    <div v-if="error" class="error-banner" role="alert">
-      {{ error }}<button class="text-button" @click="model.refresh()">重试</button>
+    <div v-if="error" class="error-banner" role="alert" data-local-command-error>
+      {{ error }}
+    </div>
+    <div v-if="readError && view" class="error-banner" role="alert" data-local-read-error>
+      {{ readError
+      }}<button class="text-button" :disabled="loading" @click="retryRead">重试读取</button>
     </div>
     <div v-if="loading && !view" class="empty-state" role="status">
       <span class="spinner" />正在读取音乐库…
+    </div>
+    <div v-else-if="!view && readError" class="error-state" role="alert" data-local-read-error>
+      <h2>本地音乐暂时无法读取</h2>
+      <p>{{ readError }}</p>
+      <button class="primary" :disabled="loading" @click="retryRead">重试读取</button>
     </div>
     <div v-else-if="!view?.total && !query.keyword && !query.groupKey" class="empty-state">
       <Icon name="music" />
@@ -239,7 +329,7 @@ function status(root: LocalRoot) {
               <td>
                 <button
                   class="icon-button"
-                  :disabled="!playable || row.track.missing"
+                  :disabled="!canPlay || row.track.missing"
                   :aria-label="`播放本地歌曲 ${row.track.name}`"
                   @click="play(row.track.id)"
                 >
@@ -251,7 +341,7 @@ function status(root: LocalRoot) {
               <td>
                 <button
                   class="local-title"
-                  :disabled="!playable || row.track.missing"
+                  :disabled="!canPlay || row.track.missing"
                   :title="`${row.folder}/${row.fileName}`"
                   @click="play(row.track.id)"
                 >
@@ -271,7 +361,9 @@ function status(root: LocalRoot) {
               <td v-if="matching.ready.value" class="local-online" @dblclick.stop>
                 <button
                   class="text-button"
-                  :disabled="row.track.missing || matching.busy.value || matching.running.value"
+                  :disabled="
+                    readLocked || row.track.missing || matching.busy.value || matching.running.value
+                  "
                   :aria-label="`关联本地歌曲 ${row.track.name}`"
                   @click="matching.open(row)"
                 >
@@ -279,6 +371,7 @@ function status(root: LocalRoot) {
                 ><button
                   v-if="matching.link(row)"
                   class="icon-button"
+                  :disabled="readLocked"
                   :aria-label="`${row.track.name} 的线上评论`"
                   @click="
                     emit(
@@ -300,7 +393,7 @@ function status(root: LocalRoot) {
     <footer v-if="view?.total" class="local-pagination">
       <button
         class="text-button"
-        :disabled="!query.offset || loading"
+        :disabled="!query.offset || readLocked"
         @click="model.page(Math.max(0, query.offset - query.limit))"
       >
         上一页</button
@@ -311,7 +404,7 @@ function status(root: LocalRoot) {
         / {{ view.total }}</span
       ><button
         class="text-button"
-        :disabled="!view.more || loading"
+        :disabled="!view.more || readLocked"
         @click="model.page(query.offset + query.limit)"
       >
         下一页
