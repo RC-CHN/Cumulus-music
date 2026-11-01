@@ -1,9 +1,9 @@
 //! All mutations stay in this process's synthetic service and isolated store.
 use super::fm_domain as domain;
-use cumulus_core::{Error, Result, protocol::api::Api};
+use cumulus_core::{Error, Result, protocol::api::Api, storage::StateStore};
 use serde_json::{Value, json};
 use std::sync::{
-    OnceLock,
+    Arc, Mutex, OnceLock,
     atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering},
 };
 use tokio::sync::Notify;
@@ -13,6 +13,48 @@ static FAIL_REASON: AtomicBool = AtomicBool::new(false);
 static REASON_STYLE: AtomicU8 = AtomicU8::new(0);
 static REASON_READS: AtomicU64 = AtomicU64::new(0);
 static WRITE_ATTEMPTS: AtomicU64 = AtomicU64::new(0);
+struct CorruptRead {
+    store: Arc<StateStore>,
+    owner: String,
+    armed: bool,
+}
+fn corruption() -> &'static Mutex<Option<CorruptRead>> {
+    static VALUE: OnceLock<Mutex<Option<CorruptRead>>> = OnceLock::new();
+    VALUE.get_or_init(|| Mutex::new(None))
+}
+fn corrupt_after_write() -> Result<()> {
+    let target = {
+        let mut guard = corruption().lock().unwrap();
+        guard.as_mut().filter(|value| value.armed).map(|value| {
+            value.armed = false;
+            (value.store.clone(), value.owner.clone())
+        })
+    };
+    if let Some((store, owner)) = target {
+        store.put(
+            &owner,
+            "fm-blacklist-v1",
+            "current",
+            &json!({"songs":[],"artists":"synthetic unreadable cache"}),
+        )?;
+    }
+    Ok(())
+}
+fn unreadable_cache() -> bool {
+    let target = corruption()
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|value| (value.store.clone(), value.owner.clone()));
+    target.is_some_and(|(store, owner)| {
+        store
+            .get(&owner, "fm-blacklist-v1", "current")
+            .unwrap()
+            .is_some_and(|value| {
+                serde_json::from_value::<cumulus_core::fm::FmBlacklist>(value).is_err()
+            })
+    })
+}
 fn wake() -> &'static Notify {
     static WAKE: OnceLock<Notify> = OnceLock::new();
     WAKE.get_or_init(Notify::new)
@@ -75,10 +117,12 @@ pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
             return Ok(json!({"code":200,"data":data}));
         }
         if path=="/api/radio/trash/add" { WRITE_ATTEMPTS.fetch_add(1,Ordering::AcqRel); wait(&HOLD_WRITE).await?; }
-        backend().request(path,args.clone(),false).await
+        let result = backend().request(path,args.clone(),false).await;
+        if matches!(path,"/api/radio/trash/add"|"/api/radio/trash/del/batch") { corrupt_after_write()?; }
+        result
     }.await)
 }
-pub fn control(kind: &str) {
+pub fn control(store: &Arc<StateStore>, owner: &str, kind: &str) {
     match kind {
         "hold-reasons" => HOLD_REASONS.store(true, Ordering::Release),
         "release-reasons" => {
@@ -102,9 +146,44 @@ pub fn control(kind: &str) {
             backend().fault("/api/radio/trash/del/batch", domain::Fault::Reject(403))
         }
         "restore-lost" => backend().fault("/api/radio/trash/del/batch", domain::Fault::Lost),
+        "corrupt-next-write" => {
+            *corruption().lock().unwrap() = Some(CorruptRead {
+                store: store.clone(),
+                owner: owner.into(),
+                armed: true,
+            })
+        }
+        "fail-refresh" => backend().fault("/api/music/dislike/get", domain::Fault::Before),
+        "trash-page-error" => backend().fault("/api/v3/radio/trash/get", domain::Fault::Before),
+        "seed-long-list" => {
+            let songs = (100000..=101000).map(|id| id.to_string()).collect();
+            *backend().trash.lock().unwrap() = songs;
+            let mut blacklist = backend().blacklist.lock().unwrap();
+            blacklist.artists = (20000..20120).map(|id| id.to_string()).collect();
+            store
+                .put(
+                    owner,
+                    "fm-blacklist-v1",
+                    "current",
+                    &serde_json::to_value(&*blacklist).unwrap(),
+                )
+                .unwrap();
+        }
         _ => panic!("unknown synthetic FM feedback control"),
     }
 }
 pub fn report() -> Value {
-    json!({"reasonReads":REASON_READS.load(Ordering::Acquire),"trashAttempts":WRITE_ATTEMPTS.load(Ordering::Acquire),"trashPosts":backend().count("/api/radio/trash/add"),"restorePosts":backend().count("/api/radio/trash/del/batch"),"artistPosts":backend().count("/api/music-blacklist/add"),"artistDeletes":backend().count("/api/music-blacklist/delete"),"skipPosts":backend().count("/api/v1/radio/skip"),"remoteTrash":backend().trash.lock().unwrap().clone(),"remoteArtists":backend().blacklist.lock().unwrap().artists.clone()})
+    let mut value = json!({"reasonReads":REASON_READS.load(Ordering::Acquire),"trashAttempts":WRITE_ATTEMPTS.load(Ordering::Acquire),"trashPosts":backend().count("/api/radio/trash/add"),"restorePosts":backend().count("/api/radio/trash/del/batch"),"artistPosts":backend().count("/api/music-blacklist/add"),"artistDeletes":backend().count("/api/music-blacklist/delete"),"skipPosts":backend().count("/api/v1/radio/skip"),"remoteTrash":backend().trash.lock().unwrap().clone(),"remoteArtists":backend().blacklist.lock().unwrap().artists.clone()});
+    value["unreadableCache"] = json!(unreadable_cache());
+    value["trashReads"] = json!(backend().count("/api/v3/radio/trash/get"));
+    value["lastRestore"] = backend()
+        .calls
+        .lock()
+        .unwrap()
+        .iter()
+        .rev()
+        .find(|(path, _)| path == "/api/radio/trash/del/batch")
+        .map(|(_, args)| args["songIds"].clone())
+        .unwrap_or(json!([]));
+    value
 }

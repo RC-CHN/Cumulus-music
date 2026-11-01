@@ -383,7 +383,7 @@ fn main() {
                 return;
             }
             if fm_feedback_fixture::enabled() && stage=="fm-feedback-fixture" {
-                let kind=value["kind"].as_str().unwrap();fm_feedback_fixture::control(kind);
+                let kind=value["kind"].as_str().unwrap();let owner=fixture_session.token().unwrap().uid.unwrap();fm_feedback_fixture::control(&proof_store,&owner,kind);
                 handle.get_webview_window("main").unwrap().eval(format!("window.__fmFeedbackFixtureAck={};",serde_json::to_string(kind).unwrap())).unwrap();return;
             }
             if volume_fixture::enabled() && stage=="volume-fixture" {
@@ -454,7 +454,10 @@ fn main() {
                 tauri::async_runtime::spawn(async move {
                     let client=handle.state::<MusicClient>(); let epoch=client.account().unwrap().epoch;
                     if fm_feedback_fixture::enabled() {
-                        value["nativeFm"]=serde_json::to_value(client.fm_view(&epoch,cumulus_core::fm::FmSource::Personal,false).await.unwrap().value).unwrap();
+                        match client.fm_view(&epoch,cumulus_core::fm::FmSource::Personal,false).await {
+                            Ok(view)=>value["nativeFm"]=serde_json::to_value(view.value).unwrap(),
+                            Err(error)=>value["nativeFmFailure"]=serde_json::to_value(cumulus_core::client::ClientError::from(error)).unwrap(),
+                        }
                         value["syntheticFmFeedback"]=fm_feedback_fixture::report();
                     }
                     if let Ok(playback)=client.subscribe_playback(&epoch).await && let Ok(snapshot)=playback.current() {
