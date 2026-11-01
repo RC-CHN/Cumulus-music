@@ -115,6 +115,7 @@ fn main() {
         let client = if mini_fixture::cloud_ui::batch_enabled() {
             client.with_download_backend(Arc::new(mini_fixture::cloud_ui::media::Backend))
         } else {client};
+        let client=if mini_fixture::upload_ui::enabled() { api.upload_ui.initialize(&root)?; client.with_cloud_adapters(api.upload_ui.adapters()) } else { client };
         app.manage(client);
         app.add_capability(r#"{"identifier":"mini-proof","windows":["main","mini-player-*"],"permissions":["core:event:allow-emit"]}"#)?;
         let handle=app.handle().clone();
@@ -124,6 +125,18 @@ fn main() {
             let id=value["id"].clone();
             let ack=|value:Value| { handle.get_webview_window("main").unwrap().eval(format!("window.__miniAck[{}]={};",id,value)).unwrap(); };
             match kind {
+                "upload-state"=>ack(api.upload_ui.report()),
+                "upload-select"=>{
+                    assert!(mini_fixture::upload_ui::enabled());
+                    let paths=api.upload_ui.selection(&root,value["selection"].as_str().unwrap());
+                    let audio=matches!(value["pickKind"].as_str(),Some("audio"|"folder"));
+                    let handle=handle.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let client=handle.state::<MusicClient>();let epoch=client.account().unwrap().epoch;
+                        let paths=if audio {client.select_cloud_sources(&epoch,paths).await.unwrap()}else{paths.into_iter().map(|p|p.to_string_lossy().into_owned()).collect()};
+                        handle.get_webview_window("main").unwrap().eval(format!("window.__miniAck[{}]={};",id,json!({"ok":true,"paths":paths}))).unwrap();
+                    });
+                }
                 "cloud-config"=>{api.cloud_ui.configure(&value);ack(json!({"ok":true}));}
                 "cloud-state"=>ack(api.cloud_ui.report()),
                 "cloud-menu-seed"=>{
@@ -264,6 +277,7 @@ fn main() {
                     value["likeWritesObserved"]=json!(api.likes.lock().unwrap().clone());
                     if mini_fixture::lyric_reports::enabled(){value["syntheticLyricReports"]=api.lyric_reports.report();}
                     if mini_fixture::cloud_ui::enabled(){value["syntheticCloud"]=api.cloud_ui.report();}
+                    if mini_fixture::upload_ui::enabled(){value["syntheticUpload"]=api.upload_ui.report();}
                     value["syntheticRoom"]=api.room.report();
                     if mini_fixture::fm::enabled() { value["syntheticFm"]=api.fm.report(); }
                     if intelligence_start_fixture::enabled() { value["syntheticIntelligence"]=intelligence_start_fixture::report(); }
