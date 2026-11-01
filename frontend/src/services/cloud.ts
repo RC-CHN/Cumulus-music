@@ -107,6 +107,7 @@ export type CloudCommand =
   | { kind: 'pause_all' }
   | { kind: 'resume_all'; retry_rejected: boolean }
   | { kind: 'upload'; files: CloudUploadInput[] }
+  | { kind: 'upload_planned'; files: { request_id: string; input: CloudUploadInput }[] }
   | { kind: 'pause' | 'cancel' | 'dismiss'; ids: string[] }
   | { kind: 'resume'; ids: string[]; retry_rejected: boolean }
   | { kind: 'renew' | 'reconcile_upload' | 'reconcile_delete'; id: string }
@@ -116,6 +117,7 @@ export interface CloudResult {
   accepted: string[];
   failed: { id: string; message: string }[];
   deletion: CloudDelete | null;
+  notStarted?: { id: string; message: string }[];
 }
 export interface CloudClient {
   cloudResource(epoch: string, songId: string, revision: string): Promise<CloudResource>;

@@ -125,9 +125,11 @@ export function useCloud(core: CloudClient = useCore(), sessionChanged = () => {
       if (version !== generation || result.epoch !== epoch) return;
       notice.value = result.deletion
         ? deletionMessage(result.deletion)
-        : result.failed.length
-          ? `${result.accepted.length} 项已受理，${result.failed.length} 项未完成：${result.failed[0]?.message}`
-          : `已受理 ${result.accepted.length} 项`;
+        : result.notStarted?.length
+          ? `已登记 ${result.accepted.length} 个任务，${result.notStarted.length} 个尚未开始：${result.notStarted[0]?.message}`
+          : result.failed.length
+            ? `${result.accepted.length} 项已受理，${result.failed.length} 项未完成：${result.failed[0]?.message}`
+            : `已受理 ${result.accepted.length} 项`;
       await refresh(false, true);
       return result;
     } catch (e) {
