@@ -6,6 +6,21 @@ from pathlib import Path
 from motion_smoke import launch
 
 
+def verify_mv_coverage(value):
+    native = value['nativeIds']
+    assert len(native) == len(set(native)) == 129, 'unique frozen native MV inventory'
+    found = {}
+    for viewport in value['viewportSamples']:
+        assert abs(viewport['y'] - viewport['scrollTop']) <= 1, 'requested MV viewport settled'
+        assert viewport['cards'], 'nonempty rendered MV viewport'
+        for card in viewport['cards']:
+            index = card['index']
+            assert isinstance(index, int) and 0 <= index < len(native)
+            assert card['id'] == native[index], 'rendered MV ID matches frozen native index'
+            found[index] = card['id']
+    assert len(found) == len(set(found.values())) == 129, 'all 129 MV records reachable'
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
@@ -47,6 +62,11 @@ def main():
     assert result['realMusicRequests'] == result['realAccountWrites'] == 0
     assert result['syntheticNativeRecords'] == 146
     assert len(list((root / 'first').glob('ux_*.json'))) == result['stageCount'] == expected
+    if not any([args.table, args.batch, args.navigation, args.menu]):
+        for width in [1120, 760]:
+            paths = list((root / 'first').glob(f'ux_*_mv_continuous_{width}.json'))
+            assert len(paths) == 1, 'one complete MV viewport sweep per width'
+            verify_mv_coverage(json.loads(paths[0].read_text(encoding='utf-8')))
     if args.screenshots:
         assert len(list((root / 'first').glob('ux_*.png'))) == expected
     result.update(actualWebView=True, physicalDisplayVerified=False, windowsVisualVerified=False)

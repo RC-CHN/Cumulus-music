@@ -3410,3 +3410,20 @@ Windows CI独立输入链路
   连续可达性检查，实际登录检查已通过；Windows仍运行。失败的trace显示0–128，
   累计集合却缺0–33，不能以本地云盘/歌词回归替代该结果。后续改为逐视口保存
   索引/编号原始快照后归并，并保留129个唯一项/完整映射要求，另记验证结果。
+
+2026-11-01 CI下载MV覆盖证据修正
+- 51107e2/41302478899的Linux失败属于名为“登录生命周期”的综合步骤，实际失败
+  在download_page_smoke的MV连续滚动。保留lyric-report-linux-failed-job.log：
+  视口trace跨0–128，但累计Map只有34–128/95项。登录与云盘通过不能抵消该失败。
+- 没有忽略失败、缩小129项要求或重启旧CI。探针改为每个就绪视口保存不可变的
+  index/id数值快照，逐项比对捕获的129项原生清单，最后归并；失败JSON保留
+  全部视口样本，成功截图记录也带原始样本。几何就绪/有界渲染检查继续保留。
+- download_page_smoke.py另在Python中独立重核两个宽度的所有样本，检查视口
+  scrollTop、非空卡片、索引范围、精确编号、129项唯一覆盖；不只相信JS布尔值。
+  新增4项校验测试：完整重叠窗口、缺前34、编号错位/原生重复、未就绪/越界拒绝。
+- 本机按CI的软件渲染环境重新执行完整69态通过：cloud-page-regression-download-
+  coverage；1120宽14个视口、760宽59个视口均129项。新Python校验对原JSON再核对
+  通过，见cloud-page-mv-coverage-verified.json。没有为此重建UI或减弱原断言。
+- CI工具现在40项通过，见cloud-page-final-ci-tools.log；JS/Python语法与source_audit/
+  release_guard通过。本机没有复现CI上trace和集合的矛盾，不能据此推断JS引擎
+  或产品缺陷的唯一原因；新的精确SHA runner仍须实际跑完，不能宣称旧失败已通过。

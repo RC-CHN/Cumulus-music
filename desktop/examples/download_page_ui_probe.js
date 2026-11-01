@@ -78,21 +78,26 @@
       assert(one('.download-continuation'),'MV first window has more');
       grid.scrollTop=grid.scrollHeight;grid.dispatchEvent(new Event('scroll'));
       await wait(()=>!one('.download-continuation')&&lastMv?.tasks.length===129,'MV continuation completed');assert(new Set(lastMv.tasks.map(t=>t.id)).size===129,'native MV inventory is unique');assert(grid.scrollTop>0,'MV growth preserves scroll');
-      const ids=new Set(),trace=[],mapping=new Map();
+      const nativeIds=lastMv.tasks.map(t=>t.id),trace=[],samples=[];
+      window.__downloadCoverage={w,nativeIds,samples};
       for(let top=0;top<=grid.scrollHeight;top+=grid.clientHeight){
         const y=Math.min(top,grid.scrollHeight-grid.clientHeight);
         grid.scrollTop=y;grid.dispatchEvent(new Event('scroll'));
-        // A refresh, scroll event and the virtual row patch can cross a frame.
-        // Check the actual requested viewport and the rows covering it.
         await wait(()=>{
           const rendered=all('.download-mv-row');
           return Math.abs(grid.scrollTop-y)<=1 && rendered.length && rect(rendered[0]).y<=rect(grid).y+1 && rect(rendered.at(-1)).bottom>=rect(grid).bottom-1;
         },'MV viewport '+w+' target '+y);
-        const cards=all('.download-mv-card');assert(cards.every(n=>lastMv.tasks[Number(n.dataset.mvIndex)]?.id===n.dataset.downloadMv),'MV card index matches native inventory '+JSON.stringify({w,cards:cards.map(n=>[n.dataset.mvIndex,n.dataset.downloadMv]),native:lastMv.tasks.map(t=>t.id)}));cards.forEach(n=>{ids.add(n.dataset.downloadMv);mapping.set(n.dataset.mvIndex,n.dataset.downloadMv);});
-        trace.push([y,grid.scrollTop,grid.scrollHeight,grid.clientHeight,cards[0].dataset.mvIndex,cards.at(-1).dataset.mvIndex]);
+        // Store primitive pairs for this exact settled viewport. Recycled DOM
+        // nodes and an incrementally mutated coverage set are not the evidence.
+        const cards=all('.download-mv-card').map(n=>({index:Number(n.dataset.mvIndex),id:n.dataset.downloadMv}));
+        assert(cards.every(n=>nativeIds[n.index]===n.id),'MV card index matches frozen native inventory');
+        samples.push({y,scrollTop:grid.scrollTop,cards});
+        trace.push([y,grid.scrollTop,grid.scrollHeight,grid.clientHeight,cards[0].index,cards.at(-1).index]);
       }
-      assert(ids.size===129,'all 129 distinct MV records reachable '+JSON.stringify({w,count:ids.size,trace,mapping:[...mapping]}));
-      await capture('mv_continuous_'+w,{viewportSteps:trace});
+      const mapping=new Map(samples.flatMap(s=>s.cards.map(n=>[n.index,n.id])));
+      const ids=new Set(mapping.values()),missing=nativeIds.flatMap((id,index)=>mapping.get(index)===id?[]:[index]);
+      assert(ids.size===129 && mapping.size===129 && !missing.length,'all 129 distinct MV records reachable '+JSON.stringify({w,count:ids.size,indices:mapping.size,missing,trace}));
+      await capture('mv_continuous_'+w,{viewportSteps:trace,viewportSamples:samples,nativeIds});
     }
     client.downloads=originalDownloads;
     // Full-size and narrow grids use four and two columns, respectively.
@@ -119,5 +124,5 @@
     await wait(()=>{const px=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;nonBlack=0;for(let i=0;i<px.length;i+=4)if(px[i]+px[i+1]+px[i+2]>20)nonBlack++;return nonBlack>=100;},'nonblank decoded video frame');
     await fixture('verify_local_mv');const videoBefore=await client.videoSnapshot((await client.accountSnapshot()).epoch);click(button('重新读取MV资料'));await wait(()=>button('重新读取MV资料')&&!button('重新读取MV资料').disabled,'detail retry');const videoAfter=await client.videoSnapshot(videoBefore.epoch);assert(videoAfter.playId===videoBefore.playId,'detail retry does not restart local video');await capture('mv_offline_playback',{nonBlackPixels:nonBlack,frames:Number(canvas.dataset.renderedFrames),local:videoAfter.local,id:videoAfter.id,retryKeptPlayId:videoAfter.playId===videoBefore.playId});
     await emit('complete',{ok:true,downloadPageUi:true,stageCount:count,realMusicRequests:0,realAccountWrites:0,syntheticNativeRecords:146,physicalPointerVerified:false});
-  }catch(error){const failedAt=stage;await capture('failure_state').catch(()=>{});await emit('failed',{stageCount:count,step:failedAt,message:String(error),stack:error.stack});}
+  }catch(error){const failedAt=stage;await capture('failure_state').catch(()=>{});await emit('failed',{stageCount:count,step:failedAt,message:String(error),stack:error.stack,coverage:window.__downloadCoverage});}
 })();
