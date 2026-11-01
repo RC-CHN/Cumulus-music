@@ -42,6 +42,7 @@ export type CloudPhase =
   | 'cancelled';
 export interface CloudTrack {
   track: TrackView;
+  deletionKind?: 'ordinary' | 'private' | 'off_store' | 'unknown';
   publicSongId?: string | null;
   fileName: string;
   fileSize: number;

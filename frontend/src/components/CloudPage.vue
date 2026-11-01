@@ -2,6 +2,7 @@
 import { ref, shallowRef, computed, watch, onUnmounted, nextTick } from 'vue';
 import ModalTransition from './ModalTransition.vue';
 import type { CloudDeleteTarget } from '../composables/useCloudDelete';
+import { cloudDeleteTarget } from '../services/cloudDelete';
 import Icon from './Icon.vue';
 import CloudCapacity from './cloud/CloudCapacity.vue';
 import CloudSongTable from './cloud/CloudSongTable.vue';
@@ -242,14 +243,12 @@ function remove() {
   dialogReturn.value = undefined;
   if (view.value?.revision && selected.value.size) {
     dialogOwner.value = props.model.accountEpoch.value;
-    deletion.value = {
-      epoch: dialogOwner.value,
-      ids: [...selected.value],
-      titles: tracks.value
-        .filter((row) => selected.value.has(row.track.id))
-        .map((row) => row.track.name),
-      revision: view.value.revision,
-    };
+    const rows = new Map(tracks.value.map((row) => [row.track.id, row]));
+    deletion.value = cloudDeleteTarget(
+      dialogOwner.value,
+      view.value.revision,
+      [...selected.value].map((id) => rows.get(id)!).filter(Boolean),
+    );
   }
 }
 function collectRows(target: CloudMenuTarget, origin: HTMLElement | undefined) {
@@ -260,12 +259,7 @@ function collectRows(target: CloudMenuTarget, origin: HTMLElement | undefined) {
 function deleteRows(target: CloudMenuTarget, origin: HTMLElement | undefined) {
   dialogOwner.value = target.epoch;
   dialogReturn.value = origin;
-  deletion.value = {
-    epoch: target.epoch,
-    revision: target.revision,
-    ids: target.tracks.map((row) => row.track.id),
-    titles: target.tracks.map((row) => row.track.name),
-  };
+  deletion.value = cloudDeleteTarget(target.epoch, target.revision, target.tracks);
 }
 function download() {
   if (view.value?.revision && selected.value.size)
@@ -283,12 +277,7 @@ function removeSong(row: CloudTrack, origin: HTMLElement) {
   const rows = selected.value.has(row.track.id)
     ? tracks.value.filter((item) => selected.value.has(item.track.id))
     : [row];
-  deletion.value = {
-    epoch: dialogOwner.value,
-    revision: target,
-    ids: rows.map((item) => item.track.id),
-    titles: rows.map((item) => item.track.name),
-  };
+  deletion.value = cloudDeleteTarget(dialogOwner.value, target, rows);
 }
 function removeTasks(target: CloudTaskTarget, origin: HTMLElement | undefined) {
   if (busy.value) return;

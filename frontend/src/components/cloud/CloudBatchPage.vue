@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue';
+import { computed, nextTick, onMounted, ref, shallowRef } from 'vue';
+import { cloudDeleteTarget, type CloudDeleteTarget } from '../../services/cloudDelete';
 import type { AccountView, PlaylistView } from '../../services/contracts';
 import { failure } from '../../services/contracts';
 import { useCore } from '../../services/core';
@@ -57,12 +58,7 @@ const usable = computed(
   () => batch.active() && !!chosen.value.length && !locked.value && !error.value && !stale.value,
 );
 const cloudTracks = computed(() => chosen.value.map((v) => v.track));
-const deletion = computed(() => ({
-  epoch: batch.owner,
-  ids: chosen.value.map((v) => v.track.id),
-  titles: chosen.value.map((v) => v.track.name),
-  revision: data.value?.revision ?? '',
-}));
+const deletion = shallowRef<CloudDeleteTarget>();
 async function reload() {
   await batch.load();
   if (batch.active() && !error.value) {
@@ -163,6 +159,8 @@ function chooseDialog(kind: 'collect' | 'download' | 'delete', event?: MouseEven
     document.activeElement.closest('.cloud-batch-page')
       ? document.activeElement
       : done.value);
+  if (kind === 'delete')
+    deletion.value = cloudDeleteTarget(batch.owner, data.value!.revision, chosen.value);
   dialog.value = kind;
 }
 async function deleted() {
@@ -295,7 +293,7 @@ defineExpose({ requestLeave });
         @started="emit('downloaded')"
       />
       <CloudDeleteDialog
-        v-else-if="dialog === 'delete'"
+        v-else-if="dialog === 'delete' && deletion"
         :model="model"
         :target="deletion"
         @close="deleted"

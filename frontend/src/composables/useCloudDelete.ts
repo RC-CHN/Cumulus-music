@@ -1,19 +1,12 @@
 import { computed, onScopeDispose, ref, shallowRef } from 'vue';
 import type { CloudModel } from './useCloud.ts';
 import type { CloudDelete } from '../services/cloud.ts';
+import type { CloudDeleteTarget } from '../services/cloudDelete.ts';
+import { captureCloudDeleteTarget } from '../services/cloudDelete.ts';
+export type { CloudDeleteTarget } from '../services/cloudDelete.ts';
 
-export interface CloudDeleteTarget {
-  epoch: string;
-  ids: string[];
-  titles: string[];
-  revision: string;
-}
-
-export function useCloudDelete(
-  model: CloudModel,
-  target: CloudDeleteTarget,
-  completed: () => void,
-) {
+export function useCloudDelete(model: CloudModel, input: CloudDeleteTarget, completed: () => void) {
+  const target = captureCloudDeleteTarget(input);
   const operation = shallowRef<CloudDelete>();
   const unknown = ref(false),
     working = ref(false);
@@ -30,6 +23,10 @@ export function useCloudDelete(
     () =>
       active() &&
       !stale.value &&
+      target.ids.length > 0 &&
+      target.ids.length <= 5000 &&
+      target.ids.length === target.titles.length &&
+      new Set(target.ids).size === target.ids.length &&
       !operation.value &&
       !unknown.value &&
       !working.value &&
@@ -91,5 +88,17 @@ export function useCloudDelete(
       if (active()) working.value = false;
     }
   }
-  return { operation, unknown, working, activity, stale, canSend, canRead, needsRead, send, read };
+  return {
+    target,
+    operation,
+    unknown,
+    working,
+    activity,
+    stale,
+    canSend,
+    canRead,
+    needsRead,
+    send,
+    read,
+  };
 }

@@ -434,6 +434,25 @@
 .cloud-delete-targets li {
   margin: 6px 0;
 }
+.cloud-delete-local-note {
+  color: var(--muted);
+  font-size: 13px;
+}
+.cloud-delete-review:focus {
+  outline: none;
+}
+.cloud-delete-targets:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.cloud-delete-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
 .cloud-upload-dialog:focus-visible,
 .cloud-delete-dialog:focus-visible {
   outline: 2px solid var(--accent);
