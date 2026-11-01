@@ -102,6 +102,15 @@ function fixture() {
     },
     ready: async () => {},
     returnMain: async () => {},
+    feedbackView: async () => {
+      throw new Error('FM feedback not requested');
+    },
+    feedbackReasons: async () => {
+      throw new Error('FM feedback not requested');
+    },
+    feedbackSubmit: async () => {
+      throw new Error('FM feedback not requested');
+    },
     action: async () => {},
     queue: async () => {
       throw Error('not used');

@@ -3,6 +3,9 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import Icon from '../components/Icon.vue';
 import { useLocalShortcuts } from '../composables/useLocalShortcuts';
 import { useMiniModes } from '../composables/useMiniModes';
+import { useMiniFeedback } from '../composables/useMiniFeedback';
+import MiniFeedbackPanel from './MiniFeedbackPanel.vue';
+import ModalTransition from '../components/ModalTransition.vue';
 import { createMiniClient, createMiniShortcutClient } from '../adapters/mini';
 import type { MiniAction, MiniQueuePage, MiniView } from '../services/mini';
 import { modeLabel, modeIcon } from '../services/playbackMode';
@@ -27,6 +30,24 @@ let reading: Promise<MiniView | undefined> | undefined;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let queueRequest = 0;
 const modes = useMiniModes(view, client, () => refresh(true));
+const feedback = useMiniFeedback(
+  view,
+  client,
+  () => refresh(true),
+  () => busy.value || modes.busy.value || modes.mode.pending.value,
+);
+const feedbackTrigger = ref<HTMLButtonElement>();
+const feedbackNavigationError = ref('');
+watch(feedback.open, () => {
+  feedbackNavigationError.value = '';
+});
+async function feedbackMain() {
+  try {
+    await client.returnMain(true);
+  } catch (e) {
+    feedbackNavigationError.value = message(e);
+  }
+}
 const modeTrigger = ref<HTMLButtonElement>();
 let cancelFocus: { epoch: string; control: Element | null } | undefined;
 watch(modes.busy, async (active) => {
@@ -78,9 +99,10 @@ function time(seconds: number | null | undefined) {
   const value = Math.max(0, Math.floor(seconds || 0));
   return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`;
 }
-async function refreshQueue(offset = queue.value?.offset || 0) {
+async function refreshQueue(offset = queue.value?.offset || 0, retry = 0) {
   if (!view.value || !expanded.value) return;
   const ticket = view.value.ticket;
+  const owner = view.value.media.epoch;
   const request = ++queueRequest;
   confirmingClear.value = false;
   queue.value = null;
@@ -95,7 +117,26 @@ async function refreshQueue(offset = queue.value?.offset || 0) {
     queue.value = page;
     queueTicket.value = ticket;
   } catch (e) {
-    if (!disposed && request === queueRequest) queueError.value = message(e);
+    if (
+      !disposed &&
+      expanded.value &&
+      request === queueRequest &&
+      view.value?.media.epoch === owner
+    ) {
+      if (
+        ['stale', 'snapshot_changed'].includes((e as { code?: string })?.code ?? '') &&
+        retry < 2
+      ) {
+        await refresh(true).catch(() => {});
+        if (
+          !disposed &&
+          expanded.value &&
+          request === queueRequest &&
+          view.value?.media.epoch === owner
+        )
+          await refreshQueue(offset, retry + 1);
+      } else queueError.value = message(e);
+    }
   }
 }
 async function refresh(fresh = false): Promise<MiniView | undefined> {
@@ -198,6 +239,7 @@ async function windowAction(kind: 'returnMain' | 'close' | 'drag') {
 }
 function key(event: KeyboardEvent) {
   if (event.repeat || event.isComposing || event.defaultPrevented) return;
+  if (feedback.open.value) return;
   if (
     event.key === 'Escape' &&
     !event.ctrlKey &&
@@ -397,6 +439,16 @@ onUnmounted(() => {
         <Icon :name="likeRefresh ? 'refresh' : 'heart'" />
       </button>
       <button
+        v-if="media?.modeFamily === 'fm'"
+        ref="feedbackTrigger"
+        :disabled="!feedback.canOpen.value"
+        title="减少推荐"
+        aria-label="减少推荐"
+        @click="feedback.show"
+      >
+        <Icon name="trash" />
+      </button>
+      <button
         :class="{ selected: expanded }"
         :disabled="media?.item?.kind !== 'music' && media?.modeFamily !== 'fm'"
         :aria-expanded="expanded"
@@ -528,5 +580,16 @@ onUnmounted(() => {
       </footer>
       <p v-if="queue && !queue.editable" class="mini-queue-note">漫游队列由当前频道管理</p>
     </section>
+    <ModalTransition
+      :return-focus="() => feedbackTrigger ?? null"
+      :fallback-focus="() => modeTrigger ?? null"
+    >
+      <MiniFeedbackPanel
+        v-if="feedback.open.value"
+        :model="feedback"
+        :navigation-issue="feedbackNavigationError"
+        @main="feedbackMain"
+      />
+    </ModalTransition>
   </main>
 </template>

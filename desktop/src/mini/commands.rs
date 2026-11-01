@@ -107,9 +107,30 @@ pub async fn mini_ready<R: Runtime>(
 pub async fn mini_return<R: Runtime>(
     app: tauri::AppHandle<R>,
     generation: String,
+    fm: Option<bool>,
 ) -> std::result::Result<(), ClientError> {
     gui(&app, move |app| {
         app.state::<Host>().lock()?.get(&generation)?;
+        let epoch = app
+            .state::<Host>()
+            .lock()?
+            .get(&generation)?
+            .open_epoch
+            .clone();
+        let current = app.state::<MusicClient>().account()?.epoch == epoch;
+        if fm == Some(true) && !current {
+            return Err(Error::StaleResponse);
+        }
+        if current {
+            let result = app.emit_to(
+                "main",
+                "cumulus:mini-return",
+                serde_json::json!({"epoch":epoch,"fm":fm==Some(true)}),
+            );
+            if fm == Some(true) {
+                result.map_err(|_| Error::State("main navigation unavailable"))?;
+            }
+        }
         if !dismiss(&app, Some(&generation), true) {
             return Err(Error::State("main window unavailable"));
         }

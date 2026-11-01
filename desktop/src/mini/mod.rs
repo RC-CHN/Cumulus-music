@@ -1,5 +1,6 @@
 //! Lightweight second WebView; all media work stays in the shared MusicClient.
 pub(crate) mod commands;
+pub(crate) mod feedback;
 pub(crate) mod intelligence;
 mod layout;
 mod shortcuts;

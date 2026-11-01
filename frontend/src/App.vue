@@ -7,6 +7,8 @@ import type { SearchItem } from './services/search';
 import { searchCardIsCurrent, searchCardSelection } from './services/searchCards';
 import { computed, onMounted, onUnmounted, watch, ref, shallowRef, nextTick } from 'vue';
 import { onDesktopLyricOpen } from './adapters/desktopLyrics';
+import { onMiniReturn } from './adapters/mini';
+import { useMiniFmFocus } from './composables/useMiniFmFocus';
 import { useLocalShortcuts } from './composables/useLocalShortcuts';
 import Icon from './components/Icon.vue';
 import WindowControls from './components/WindowControls.vue';
@@ -833,6 +835,12 @@ watch(music.likeActivity, () => {
 });
 let nativeLikeListener: (() => void) | undefined;
 let desktopLyricListener: (() => void) | undefined;
+let miniFmListener: (() => void) | undefined;
+const miniFmFocus = useMiniFmFocus(
+  fm,
+  () => account.value,
+  () => music.page.value.kind,
+);
 let mounted = true;
 onMounted(async () => {
   try {
@@ -884,6 +892,30 @@ onMounted(async () => {
   } catch {
     /* The settings entry remains available if event subscription fails. */
   }
+  try {
+    const stop = await onMiniReturn(async (value) => {
+      if (
+        !mounted ||
+        value.epoch !== account.value.epoch ||
+        account.value.status !== 'authenticated'
+      )
+        return;
+      if (!value.fm) {
+        if (music.page.value.kind === 'fm') await fm.load(true);
+        return;
+      }
+      const wasFm = music.page.value.kind === 'fm';
+      miniFmFocus.request(value.epoch);
+      music.navigate({ kind: 'fm' });
+      if (wasFm) await fm.load(true);
+      await nextTick();
+      miniFmFocus.complete();
+    });
+    if (mounted) miniFmListener = stop;
+    else stop();
+  } catch {
+    /* The sidebar remains available when an event listener fails. */
+  }
   if (mounted) await music.bootstrap();
 });
 onUnmounted(() => {
@@ -892,6 +924,7 @@ onUnmounted(() => {
   accountListener?.();
   nativeLikeListener?.();
   desktopLyricListener?.();
+  miniFmListener?.();
 });
 watch(
   () => [account.value.epoch, account.value.status],
@@ -1238,7 +1271,7 @@ onUnmounted(() => {
           v-show="!playlistEditor && !batchTarget && !downloadBatch"
           class="content-page-previous"
         >
-          <Transition name="page" mode="out-in">
+          <Transition name="page" mode="out-in" @after-enter="miniFmFocus.complete">
             <div class="page-view" :key="pageKey">
               <div v-if="initializing" class="empty-state" role="status">
                 <span class="spinner" />

@@ -1,6 +1,13 @@
 import type { PlaybackMode, QueueTrack } from './player';
 import type { ShortcutSelection } from './shortcuts';
 import type { ModeFamily } from './playbackMode';
+import type { FmReasons } from './fm';
+export interface MiniFmFeedbackView {
+  epoch: string;
+  entryId: string;
+  title: string;
+  pending: boolean;
+}
 export interface MiniPreferences {
   revision: string | null;
   alwaysOnTop: boolean;
@@ -64,7 +71,10 @@ export type MiniAction =
 export interface MiniClient {
   read(): Promise<MiniView>;
   ready(): Promise<void>;
-  returnMain(): Promise<void>;
+  returnMain(fm?: boolean): Promise<void>;
+  feedbackView(ticket: string, refresh: boolean): Promise<MiniFmFeedbackView>;
+  feedbackReasons(ticket: string): Promise<FmReasons>;
+  feedbackSubmit(ticket: string, reasonKey?: string): Promise<void>;
   action(ticket: string, action: MiniAction): Promise<void>;
   intelligence(ticket: string, command: MiniIntelligenceCommand): Promise<MiniPlaybackReceipt>;
   mode(ticket: string, mode: PlaybackMode): Promise<MiniPlaybackReceipt>;
