@@ -36,7 +36,7 @@ impl MusicClient {
         if before
             .selected
             .as_ref()
-            .is_some_and(|e| e.resource["id"] == id)
+            .is_some_and(|e| super::identity::online_song(&e.resource, &id))
         {
             return project(&before, &token);
         }
@@ -63,7 +63,7 @@ impl MusicClient {
         let existing = queue
             .items
             .iter()
-            .find(|e| e.resource["id"] == id && e.resource.get("local_id").is_none())
+            .find(|e| super::identity::online_song(&e.resource, &id))
             .cloned();
         let entry = existing.unwrap_or_else(|| QueueEntry {
             entry_id: uuid::Uuid::new_v4().to_string(),
@@ -73,7 +73,7 @@ impl MusicClient {
         let removed: Vec<_> = queue
             .items
             .iter()
-            .filter(|e| e.resource["id"] == id && e.resource.get("local_id").is_none())
+            .filter(|e| super::identity::online_song(&e.resource, &id))
             .map(|e| e.entry_id.clone())
             .collect();
         queue.items.retain(|e| !removed.contains(&e.entry_id));

@@ -38,8 +38,13 @@ fn metadata(raw: &Value, id: &str) -> Result<Value> {
     {
         album.insert("name".into(), json!(raw["album"].as_str().unwrap_or("")));
     }
+    // Keep a catalog identity separate from the account's cloud songId. Older
+    // cached records without this evidence must never invent a public URL.
+    let public_id = (simple["t"].is_null() || simple["t"].as_i64().is_some_and(|kind| kind != 1))
+        .then(|| crate::protocol::api::identifier(&simple["id"]).ok())
+        .flatten();
     Ok(
-        json!({"id":id,"name":title,"ar":artists,"al":album,"dt":number(&simple["dt"])?.unwrap_or(0),"fee":simple["fee"].as_u64().unwrap_or(0),"privilege":simple["privilege"],"_cloud_sort":{"title":row_string(raw,"songName"),"artist":row_string(raw,"artist"),"album":row_string(raw,"album")}}),
+        json!({"id":id,"name":title,"ar":artists,"al":album,"dt":number(&simple["dt"])?.unwrap_or(0),"fee":simple["fee"].as_u64().unwrap_or(0),"privilege":simple["privilege"],"_cloud_public_id":public_id,"_cloud_sort":{"title":row_string(raw,"songName"),"artist":row_string(raw,"artist"),"album":row_string(raw,"album")}}),
     )
 }
 fn row_string(row: &Value, key: &str) -> String {

@@ -160,6 +160,39 @@ impl Host {
     }
 }
 impl MusicClient {
+    pub(in crate::client) async fn cloud_file_downloads(
+        &self,
+        epoch: &str,
+        cloud_id: String,
+        public_id: Option<String>,
+    ) -> Result<Vec<crate::download::service::DownloadTask>> {
+        let context = self.downloads.inner.context(epoch)?;
+        tokio::task::spawn_blocking(move || {
+            use crate::download::service::{DownloadOrigin, DownloadStatus};
+            context.guard()?;
+            let mut tasks = context
+                .service
+                .list()?
+                .into_iter()
+                .filter(|task| {
+                    task.status == DownloadStatus::Complete
+                        && task.file_operation.is_none()
+                        && task.target.is_some()
+                        && task.output_integrity.is_some()
+                        && match &task.origin {
+                            DownloadOrigin::Cloud { .. } => task.song_id == cloud_id,
+                            DownloadOrigin::Song => public_id.as_ref() == Some(&task.song_id),
+                            _ => false,
+                        }
+                })
+                .collect::<Vec<_>>();
+            tasks.sort_by_key(|t| !matches!(t.origin, DownloadOrigin::Cloud { .. }));
+            context.guard()?;
+            Ok(tasks)
+        })
+        .await
+        .map_err(|_| Error::State("cloud file association worker stopped"))?
+    }
     pub(super) async fn download_resources(
         &self,
         epoch: &str,

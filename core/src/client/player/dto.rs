@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlayerView {
+    pub resource_kind: Option<PlayerResourceKind>,
     pub fm: bool,
     /// Display state only. Never expose the native session, backup or algorithm map.
     pub intelligence: Option<crate::playback::intelligence::IntelligencePhase>,
@@ -38,6 +39,15 @@ pub struct PlayerView {
     pub error: Option<&'static str>,
     pub history_warning: Option<&'static str>,
     pub position_reset: bool,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlayerResourceKind {
+    Catalog,
+    Cloud,
+    Local,
+    Downloaded,
+    Voice,
 }
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -163,6 +173,8 @@ pub enum PlaySelection {
         ids: Vec<String>,
         revision: String,
         quality: Quality,
+        #[serde(default)]
+        query: Option<crate::client::dto::CloudQuery>,
     },
     Songs {
         ids: Vec<String>,
@@ -215,6 +227,8 @@ pub enum PlayerAction {
         revision: String,
         quality: Quality,
         expected_queue_revision: String,
+        #[serde(default)]
+        query: Option<crate::client::dto::CloudQuery>,
     },
     QueuePlaylist {
         id: String,

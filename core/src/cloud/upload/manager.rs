@@ -170,6 +170,19 @@ impl CloudUploads {
     pub fn get(&self, id: &str) -> Result<CloudView> {
         self.view(&self.read(id)?)
     }
+    /// Resolve only a published source recorded by this account. The caller
+    /// supplies an upload task identity, never an arbitrary filesystem path.
+    pub fn verified_source_file(&self, id: &str, song_id: &str) -> Result<std::path::PathBuf> {
+        let task = self.read(id)?;
+        if task.song_id.as_deref() != Some(song_id)
+            || !matches!(task.phase, CloudPhase::Published | CloudPhase::Complete)
+        {
+            return Err(Error::State("cloud source association changed"));
+        }
+        task.source.open()?;
+        self.guard()?;
+        Ok(task.source.path)
+    }
     pub fn list(&self) -> Result<Vec<CloudView>> {
         let keys = self.session.with_token(&self.token, |_| {
             Ok(self

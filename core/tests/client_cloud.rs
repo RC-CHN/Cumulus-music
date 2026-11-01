@@ -5,6 +5,8 @@ mod lyric_reports;
 #[allow(dead_code)]
 #[path = "support/playback/mod.rs"]
 mod playback_support;
+#[path = "client_cloud/resources.rs"]
+mod resources;
 #[path = "support/cloud_upload.rs"]
 mod support;
 use cumulus_core::{
@@ -55,6 +57,14 @@ impl Api for Backend {
                 );
             }
             Ok(match path {
+                "/api/cloud/dowonload" => {
+                    json!({"code":200,"songId":payload["songId"],"name":"original.flac","size":resources::MEDIA_BYTES.len(),"url":resources::MEDIA_URL})
+                }
+                "/api/v3/song/detail" => {
+                    let rows: Vec<Value> =
+                        serde_json::from_str(payload["c"].as_str().unwrap()).unwrap();
+                    json!({"code":200,"songs":rows.iter().map(|row|json!({"id":row["id"],"name":format!("Catalog {}",row["id"].as_str().unwrap()),"ar":[],"al":{},"dt":120000})).collect::<Vec<_>>()})
+                }
                 support::CHECK => {
                     *self.input.lock().unwrap() = (
                         payload["fileName"].as_str().unwrap().into(),

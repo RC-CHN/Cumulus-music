@@ -31,6 +31,7 @@ pub(super) enum QueueCollection {
         ids: Vec<String>,
         revision: String,
         quality: Quality,
+        query: Option<crate::client::dto::CloudQuery>,
     },
 }
 
@@ -138,10 +139,11 @@ impl MusicClient {
                 ids,
                 revision,
                 quality,
+                query,
             } => (
-                self.cloud_selected_resources(epoch, ids, &revision, quality)
+                self.cloud_selected_resources(epoch, ids, &revision, quality, query.clone())
                     .await?,
-                json!({"kind":"cloud","revision":revision}),
+                json!({"kind":"cloud","revision":revision,"query":query}),
                 false,
             ),
         };
@@ -177,22 +179,8 @@ impl MusicClient {
     }
 }
 
-fn resource_key(resource: &Value, downloaded: bool) -> Option<(u8, &str)> {
-    // A local file, an episode and an online song can share the same numeric id.
-    if downloaded {
-        return resource["download_task_id"].as_str().map(|id| (2, id));
-    }
-    if ["local_id", "voice_id", "download_task_id"]
-        .iter()
-        .any(|key| resource.get(key).is_some())
-    {
-        None
-    } else {
-        resource["cloud_song_id"]
-            .as_str()
-            .map(|id| (1, id))
-            .or_else(|| resource["id"].as_str().map(|id| (0, id)))
-    }
+fn resource_key(resource: &Value, downloaded: bool) -> Option<(PlayerResourceKind, &str)> {
+    super::identity::collection_key(resource, downloaded)
 }
 
 fn insert_collection(

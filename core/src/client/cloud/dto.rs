@@ -21,7 +21,7 @@ pub enum CloudSort {
     Format,
     Size,
 }
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CloudQuery {
     pub tab: CloudTab,
@@ -46,11 +46,20 @@ impl CloudQuery {
 #[serde(rename_all = "camelCase")]
 pub struct CloudTrackView {
     pub track: TrackView,
+    pub public_song_id: Option<String>,
     pub file_name: String,
     pub file_size: u64,
     pub added_at: u64,
     pub bitrate: u64,
     pub format: String,
+}
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudResourceView {
+    pub epoch: String,
+    pub revision: String,
+    pub track: CloudTrackView,
+    pub local_available: bool,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]

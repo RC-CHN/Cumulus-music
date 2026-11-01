@@ -23,8 +23,8 @@ pub use super::mv::{
 };
 pub use super::player::{
     IntelligenceCommand, IntelligenceEligibility, IntelligenceOrigin, LyricsView, OutputCommand,
-    OutputEngineView, OutputView, PlaySelection, PlayerAction, PlayerOrigin, PlayerView,
-    QualityChoiceView, QualityDetailsView, QualityTrialCommand, QualityTrialOutcome,
+    OutputEngineView, OutputView, PlaySelection, PlayerAction, PlayerOrigin, PlayerResourceKind,
+    PlayerView, QualityChoiceView, QualityDetailsView, QualityTrialCommand, QualityTrialOutcome,
     QualityTrialView, QueueClearContext, QueueCollectionView, QueueEdit, QueueTrack, QueueView,
     StartupPreferencesCommand, StartupPreferencesView,
 };
@@ -181,8 +181,8 @@ pub use super::catalog::{
     CatalogSelectionPage, CatalogVideoCard, CatalogVideoKind, CatalogView, ConcertCard,
 };
 pub use super::cloud::{
-    CloudCommand, CloudDeleteView, CloudFailure, CloudPageView, CloudQuery, CloudResult, CloudSort,
-    CloudTab, CloudTrackView, CloudUploadInput, CloudUploadView,
+    CloudCommand, CloudDeleteView, CloudFailure, CloudPageView, CloudQuery, CloudResourceView,
+    CloudResult, CloudSort, CloudTab, CloudTrackView, CloudUploadInput, CloudUploadView,
 };
 pub use super::comments::{
     CommentAuthorView, CommentFloorQuery, CommentFloorView, CommentOperationView, CommentPageView,

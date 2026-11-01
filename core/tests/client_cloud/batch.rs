@@ -12,6 +12,7 @@ async fn selected_cloud_playback_keeps_native_order_and_appends_without_restarti
         .play_selection(
             "1",
             PlaySelection::CloudBatch {
+                query: None,
                 ids: vec!["3".into(), "1".into()],
                 revision: revision.clone(),
                 quality: Quality::Standard,
@@ -32,6 +33,7 @@ async fn selected_cloud_playback_keeps_native_order_and_appends_without_restarti
         .player_action(
             "1",
             PlayerAction::QueueCloudBatch {
+                query: None,
                 ids: vec!["2".into()],
                 revision: revision.clone(),
                 quality: Quality::Standard,
@@ -55,6 +57,7 @@ async fn selected_cloud_playback_keeps_native_order_and_appends_without_restarti
             .player_action(
                 "1",
                 PlayerAction::QueueCloudBatch {
+                    query: None,
                     ids: vec!["2".into()],
                     revision: revision.clone(),
                     quality: Quality::Standard,
@@ -70,6 +73,7 @@ async fn selected_cloud_playback_keeps_native_order_and_appends_without_restarti
                 .play_selection(
                     "1",
                     PlaySelection::CloudBatch {
+                        query: None,
                         ids,
                         revision: revision.clone(),
                         quality: Quality::Standard
@@ -104,6 +108,7 @@ async fn a_changed_catalog_or_account_cannot_play_a_captured_cloud_selection() {
             .play_selection(
                 "1",
                 PlaySelection::CloudBatch {
+                    query: None,
                     ids: vec!["1".into()],
                     revision: revision.clone(),
                     quality: Quality::Standard
@@ -124,6 +129,7 @@ async fn a_changed_catalog_or_account_cannot_play_a_captured_cloud_selection() {
             .play_selection(
                 "1",
                 PlaySelection::CloudBatch {
+                    query: None,
                     ids: vec!["1".into()],
                     revision,
                     quality: Quality::Standard

@@ -17,7 +17,22 @@ impl MusicClient {
         ids: Vec<String>,
         revision: &str,
         quality: Quality,
+        query: Option<CloudQuery>,
     ) -> Result<Vec<Value>> {
+        let query = query.unwrap_or(CloudQuery {
+            tab: CloudTab::Uploaded,
+            keyword: String::new(),
+            sort: CloudSort::Natural,
+            descending: false,
+            offset: 0,
+            limit: 200,
+        });
+        query.validate()?;
+        if !matches!(query.tab, CloudTab::Uploaded) {
+            return Err(Error::InvalidInput(
+                "cloud playback requires uploaded tracks",
+            ));
+        }
         if ids.is_empty() || ids.len() > 10_000 {
             return Err(Error::InvalidInput(
                 "invalid cloud batch playback selection",
@@ -37,19 +52,10 @@ impl MusicClient {
         }
         tokio::task::spawn_blocking(move || {
             context.guard()?;
-            // Official UploadedTrackBatchOperation selects from the complete
-            // cloudOnlineList in its original order, independent of page filters.
-            let entries = view::catalog(
-                Some(&snapshot),
-                &CloudQuery {
-                    tab: CloudTab::Uploaded,
-                    keyword: String::new(),
-                    sort: CloudSort::Natural,
-                    descending: false,
-                    offset: 0,
-                    limit: 200,
-                },
-            )?;
+            // Independent batch uses full natural order; ordinary row menus
+            // retain the captured list filter/order. Pagination never truncates
+            // the selected-resource validation or ordering.
+            let entries = view::catalog(Some(&snapshot), &query)?;
             let resources = entries
                 .into_iter()
                 .filter(|v| selected.contains(&v.track.id))

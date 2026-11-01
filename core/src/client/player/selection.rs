@@ -236,9 +236,10 @@ impl MusicClient {
                 ids,
                 revision,
                 quality,
+                query,
             } => {
                 let resources = self
-                    .cloud_selected_resources(epoch, ids, &revision, quality)
+                    .cloud_selected_resources(epoch, ids, &revision, quality, query.clone())
                     .await?;
                 let controller = self.player.controller().await?;
                 if self.player.selection.load(Ordering::Acquire) != attempt {
@@ -251,7 +252,7 @@ impl MusicClient {
                         PlaybackCommand::Replace {
                             resources,
                             index: 0,
-                            source: json!({"kind":"cloud","revision":revision}),
+                            source: json!({"kind":"cloud","revision":revision,"query":query}),
                         },
                     )
                     .await?;

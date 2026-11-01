@@ -1,5 +1,6 @@
 mod commands;
 mod dto;
+mod files;
 mod selection;
 mod view;
 use super::{ClientError, MusicClient};

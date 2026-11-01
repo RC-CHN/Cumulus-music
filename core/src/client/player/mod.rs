@@ -1,4 +1,5 @@
 mod dto;
+mod identity;
 mod intelligence;
 mod lyrics;
 mod mode;
@@ -203,6 +204,7 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
         state: value.state,
         play_id: value.play_id.clone(),
         entry_id: value.selected.as_ref().map(|i| i.entry_id.clone()),
+        resource_kind: value.selected.as_ref().map(|i| identity::kind(&i.resource)),
         track: value
             .selected
             .as_ref()
@@ -398,6 +400,7 @@ impl MusicClient {
             revision,
             quality,
             expected_queue_revision,
+            query,
         } = action
         {
             return self
@@ -407,6 +410,7 @@ impl MusicClient {
                         ids,
                         revision,
                         quality,
+                        query,
                     },
                     expected_queue_revision,
                 )

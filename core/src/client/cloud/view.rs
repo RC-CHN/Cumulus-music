@@ -175,6 +175,17 @@ pub(super) fn catalog(
                     let track = super::super::mapping::track(&entry.song)?;
                     Ok((
                         CloudTrackView {
+                            public_song_id: (entry.song["privilege"]["st"]
+                                .as_i64()
+                                .is_none_or(|status| status >= 0)
+                                && entry.song["privilege"]["status"]
+                                    .as_i64()
+                                    .is_none_or(|status| status >= 0))
+                            .then(|| {
+                                crate::protocol::api::identifier(&entry.song["_cloud_public_id"])
+                                    .ok()
+                            })
+                            .flatten(),
                             track,
                             file_name: entry.file_name.clone(),
                             file_size: entry.file_size,

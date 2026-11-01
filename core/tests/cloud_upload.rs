@@ -106,6 +106,13 @@ async fn complete_nos_and_three_attachments_preserve_bytes_wait_for_encoding_and
     f.api.listed(false);
     let published = f.reopened().run(&id, Default::default()).await.unwrap();
     assert_eq!(published.phase, CloudPhase::Published);
+    assert_eq!(
+        f.manager
+            .verified_source_file(&id, published.song_id.as_deref().unwrap())
+            .unwrap(),
+        f.source
+    );
+    assert!(f.manager.verified_source_file(&id, "999").is_err());
     assert!(f.manager.control(&id, UploadControl::Cancel).await.is_err());
     let count = f.api.calls().len();
     f.reopened().run(&id, Default::default()).await.unwrap();
@@ -114,6 +121,12 @@ async fn complete_nos_and_three_attachments_preserve_bytes_wait_for_encoding_and
     f.api.listed(true);
     let done = f.reopened().run(&id, Default::default()).await.unwrap();
     assert_eq!(done.phase, CloudPhase::Complete);
+    assert_eq!(
+        f.reopened()
+            .verified_source_file(&id, done.song_id.as_deref().unwrap())
+            .unwrap(),
+        f.source
+    );
     let public = serde_json::to_string(&done).unwrap();
     for secret in [
         "opaque-upload-ticket",
