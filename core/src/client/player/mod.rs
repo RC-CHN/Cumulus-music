@@ -393,6 +393,25 @@ impl MusicClient {
                 )
                 .await;
         }
+        if let PlayerAction::QueueCloudBatch {
+            ids,
+            revision,
+            quality,
+            expected_queue_revision,
+        } = action
+        {
+            return self
+                .queue_collection(
+                    epoch,
+                    queue_playlist::QueueCollection::Cloud {
+                        ids,
+                        revision,
+                        quality,
+                    },
+                    expected_queue_revision,
+                )
+                .await;
+        }
         let (mut action, displayed_queue, clear_room) = match action {
             PlayerAction::QueueFor {
                 expected_queue_revision,
@@ -676,7 +695,8 @@ impl MusicClient {
             PlayerAction::NextPlay { .. }
             | PlayerAction::QueuePlaylist { .. }
             | PlayerAction::QueueDownloads { .. }
-            | PlayerAction::QueuePlaylistBatch { .. } => {
+            | PlayerAction::QueuePlaylistBatch { .. }
+            | PlayerAction::QueueCloudBatch { .. } => {
                 unreachable!("handled before user transport commands")
             }
             PlayerAction::Equalizer {

@@ -159,6 +159,11 @@ pub enum PlaySelection {
         revision: String,
         quality: Quality,
     },
+    CloudBatch {
+        ids: Vec<String>,
+        revision: String,
+        quality: Quality,
+    },
     Songs {
         ids: Vec<String>,
         index: usize,
@@ -200,6 +205,12 @@ pub enum PlayerAction {
     },
     QueuePlaylistBatch {
         id: String,
+        ids: Vec<String>,
+        revision: String,
+        quality: Quality,
+        expected_queue_revision: String,
+    },
+    QueueCloudBatch {
         ids: Vec<String>,
         revision: String,
         quality: Quality,

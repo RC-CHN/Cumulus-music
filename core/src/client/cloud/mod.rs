@@ -1,5 +1,6 @@
 mod commands;
 mod dto;
+mod selection;
 mod view;
 use super::{ClientError, MusicClient};
 use crate::{
@@ -150,27 +151,27 @@ impl MusicClient {
             return Err(Error::QueueChanged);
         }
         tokio::task::spawn_blocking(move || {
-        context.guard()?;
-        let tracks = view::catalog(Some(&snapshot), &query)?;
-        if tracks.is_empty() || tracks.len() > 50000 {
-            return Err(Error::InvalidInput("invalid cloud playback selection"));
-        }
-        let index = match start {
-            Some(id) => tracks
-                .iter()
-                .position(|row| row.track.id == id)
-                .ok_or(Error::QueueChanged)?,
-            None => 0,
-        };
-        let resources=tracks.into_iter().map(|row|{
-            let track=row.track;
-            serde_json::json!({"id":track.id,"cloud_song_id":track.id,"level":quality.as_str(),"dt":track.duration_ms,
-                "song":{"id":track.id,"name":track.name,"ar":track.artists.iter().map(|name|serde_json::json!({"name":name})).collect::<Vec<_>>(),
-                    "al":{"name":track.album,"picUrl":track.cover_url},"dt":track.duration_ms,"fee":track.fee}})
-        }).collect();
-        context.guard()?;
-        Ok((resources, index))
-        }).await.map_err(|_| Error::State("cloud playback ordering worker stopped"))?
+            context.guard()?;
+            let tracks = view::catalog(Some(&snapshot), &query)?;
+            if tracks.is_empty() || tracks.len() > 50000 {
+                return Err(Error::InvalidInput("invalid cloud playback selection"));
+            }
+            let index = match start {
+                Some(id) => tracks
+                    .iter()
+                    .position(|row| row.track.id == id)
+                    .ok_or(Error::QueueChanged)?,
+                None => 0,
+            };
+            let resources = tracks
+                .into_iter()
+                .map(|row| selection::resource(row, quality))
+                .collect();
+            context.guard()?;
+            Ok((resources, index))
+        })
+        .await
+        .map_err(|_| Error::State("cloud playback ordering worker stopped"))?
     }
     pub fn with_cloud_adapters(mut self, adapters: UploadAdapters) -> Self {
         Arc::get_mut(&mut self.cloud.inner)

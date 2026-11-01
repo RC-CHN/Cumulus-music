@@ -27,6 +27,11 @@ pub(super) enum QueueCollection {
         selection: Option<(Vec<String>, String)>,
     },
     Downloads(Vec<String>),
+    Cloud {
+        ids: Vec<String>,
+        revision: String,
+        quality: Quality,
+    },
 }
 
 impl MusicClient {
@@ -129,6 +134,16 @@ impl MusicClient {
                 json!({"kind":"downloads"}),
                 true,
             ),
+            QueueCollection::Cloud {
+                ids,
+                revision,
+                quality,
+            } => (
+                self.cloud_selected_resources(epoch, ids, &revision, quality)
+                    .await?,
+                json!({"kind":"cloud","revision":revision}),
+                false,
+            ),
         };
         let start = queue.current.is_none();
         let queue = insert_collection(queue, resources, source, downloaded);
@@ -162,10 +177,10 @@ impl MusicClient {
     }
 }
 
-fn resource_key(resource: &Value, downloaded: bool) -> Option<&str> {
+fn resource_key(resource: &Value, downloaded: bool) -> Option<(u8, &str)> {
     // A local file, an episode and an online song can share the same numeric id.
     if downloaded {
-        return resource["download_task_id"].as_str();
+        return resource["download_task_id"].as_str().map(|id| (2, id));
     }
     if ["local_id", "voice_id", "download_task_id"]
         .iter()
@@ -173,7 +188,10 @@ fn resource_key(resource: &Value, downloaded: bool) -> Option<&str> {
     {
         None
     } else {
-        resource["id"].as_str()
+        resource["cloud_song_id"]
+            .as_str()
+            .map(|id| (1, id))
+            .or_else(|| resource["id"].as_str().map(|id| (0, id)))
     }
 }
 
@@ -198,7 +216,7 @@ fn insert_collection(
         .into_iter()
         .filter_map(|resource| {
             let id = resource_key(&resource, downloaded)?;
-            if !seen.insert(id.to_owned())
+            if !seen.insert((id.0, id.1.to_owned()))
                 || current
                     .as_ref()
                     .is_some_and(|e| resource_key(&e.resource, downloaded) == Some(id))
@@ -207,7 +225,7 @@ fn insert_collection(
             }
             Some(
                 existing
-                    .get(id)
+                    .get(&id)
                     .map(|e| (*e).clone())
                     .unwrap_or_else(|| QueueEntry {
                         entry_id: uuid::Uuid::new_v4().to_string(),
@@ -230,7 +248,7 @@ fn insert_collection(
         .position(|e| Some(&e.entry_id) == queue.current.as_ref())
         .map_or(0, |i| i + 1);
     let keep = |e: &&QueueEntry| {
-        !resource_key(&e.resource, downloaded).is_some_and(|id| replaced.contains(id))
+        !resource_key(&e.resource, downloaded).is_some_and(|id| replaced.contains(&id))
     };
     let space = QUEUE_LIMIT - inserted.len();
     let mut prefix: Vec<_> = queue.items[..split]
@@ -273,6 +291,28 @@ fn insert_collection(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cloud_and_online_entries_with_equal_numeric_ids_remain_distinct() {
+        let current = QueueEntry {
+            entry_id: "public".into(),
+            resource: json!({"id":"9"}),
+            source: Value::Null,
+        };
+        let queue = QueueSnapshot {
+            items: vec![current],
+            order: vec!["public".into()],
+            current: Some("public".into()),
+            ..Default::default()
+        };
+        let cloud = vec![json!({"id":"9","cloud_song_id":"9"})];
+        let added = insert_collection(queue, cloud.clone(), json!({"kind":"cloud"}), false);
+        assert_eq!(added.items.len(), 2);
+        assert_eq!(added.items[1].resource["cloud_song_id"], "9");
+        let again = insert_collection(added.clone(), cloud, json!({"kind":"cloud"}), false);
+        assert_eq!(again.items.len(), 2);
+        assert_eq!(again.order, added.order);
+        assert_eq!(again.current.as_deref(), Some("public"));
+    }
     #[test]
     fn offline_insertions_keep_online_ids_and_distinct_offline_copies_separate() {
         let current = QueueEntry {

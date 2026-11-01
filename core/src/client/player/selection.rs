@@ -232,6 +232,32 @@ impl MusicClient {
                 self.session.with_token(&token, |_| Ok(()))?;
                 return project(&state, &token);
             }
+            PlaySelection::CloudBatch {
+                ids,
+                revision,
+                quality,
+            } => {
+                let resources = self
+                    .cloud_selected_resources(epoch, ids, &revision, quality)
+                    .await?;
+                let controller = self.player.controller().await?;
+                if self.player.selection.load(Ordering::Acquire) != attempt {
+                    return Err(Error::StaleResponse);
+                }
+                self.focus.check(lease, super::super::focus::Owner::Audio)?;
+                let state = controller
+                    .command(
+                        &token,
+                        PlaybackCommand::Replace {
+                            resources,
+                            index: 0,
+                            source: json!({"kind":"cloud","revision":revision}),
+                        },
+                    )
+                    .await?;
+                self.session.with_token(&token, |_| Ok(()))?;
+                return project(&state, &token);
+            }
             other => other,
         };
         let selection_token = token.clone();
@@ -304,6 +330,7 @@ impl MusicClient {
                         json!({"kind":"mv_related","mvId":mv_id,"scene":"video"}),
                     )),
                     PlaySelection::Cloud { .. }
+                    | PlaySelection::CloudBatch { .. }
                     | PlaySelection::Downloads { .. }
                     | PlaySelection::History { .. }
                     | PlaySelection::Local { .. }
