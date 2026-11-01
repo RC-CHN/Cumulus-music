@@ -85,7 +85,7 @@ impl FmPlayer {
         let Some(desired) = self.inner.service.queue_for(token, &source)? else {
             return Ok(false);
         };
-        Ok(matches_entries(&desired, queue) && !matches_queue(&desired, queue))
+        Ok(unapplied_mode(&desired, queue).is_some())
     }
     pub fn failure_for(&self, token: &SessionToken) -> Result<Option<String>> {
         self.inner.session.with_token(token, |uid| {
@@ -256,6 +256,14 @@ fn projection(queue: &FmQueue, quality: &str) -> Result<QueueSnapshot> {
         fm_source: Some(queue.source.clone()),
         intelligence: None,
     })
+}
+pub(crate) fn unapplied_mode(desired: &FmQueue, actual: &QueueSnapshot) -> Option<PlaybackMode> {
+    let mode = if desired.repeat == FmRepeat::One {
+        PlaybackMode::SingleLoop
+    } else {
+        PlaybackMode::Sequential
+    };
+    (matches_entries(desired, actual) && actual.mode != mode).then_some(mode)
 }
 fn matches_entries(desired: &FmQueue, actual: &QueueSnapshot) -> bool {
     source(actual).ok().flatten().as_ref() == Some(&desired.source)

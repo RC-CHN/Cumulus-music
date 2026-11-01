@@ -1,12 +1,14 @@
 //! A second surface over the existing player, never a second player. Hosts retain
 //! the opaque snapshot and pass only its public view to an untrusted UI.
 mod actions;
+mod fm;
 mod intelligence;
 mod mode;
 mod queue;
 use super::{MusicClient, native_media::*};
 use crate::playback::mode::ModeFamily;
 use crate::{Error, Result, account::SessionToken, playback::PlaybackMode};
+use mode::MiniModeContext;
 use serde::Serialize;
 
 #[derive(Clone, Debug)]
@@ -14,6 +16,7 @@ pub struct MiniSnapshot {
     token: SessionToken,
     target: Option<NativeMediaTarget>,
     like: Option<NativeLikeSnapshot>,
+    mode_context: Option<MiniModeContext>,
     pub view: MiniView,
 }
 #[derive(Clone, Debug, Serialize)]
@@ -34,6 +37,7 @@ pub struct MiniView {
     pub volume: f64,
     pub mode: Option<PlaybackMode>,
     pub mode_family: Option<ModeFamily>,
+    pub fm_mode_pending: Option<MiniFmModePending>,
     pub queue_revision: Option<String>,
     pub can_intelligence: bool,
     pub intelligence: Option<crate::playback::intelligence::IntelligencePhase>,
@@ -54,7 +58,9 @@ impl MiniSnapshot {
         self.token == other.token
             && self.target == other.target
             && self.like == other.like
+            && self.mode_context == other.mode_context
             && self.view.mode_family == other.view.mode_family
+            && self.view.fm_mode_pending == other.view.fm_mode_pending
             && self.view.can_intelligence == other.view.can_intelligence
     }
     fn check(&self, client: &MusicClient) -> Result<()> {
@@ -62,6 +68,16 @@ impl MiniSnapshot {
         if let Some(target) = &self.target {
             target.check(client)?;
         } else if client.native_media_snapshot()?.target.is_some() {
+            return Err(Error::StaleResponse);
+        }
+        if let Some(context) = &self.mode_context {
+            context.check(client, &self.token)?;
+        }
+        let state = client.player.controller.get().map(|v| v.snapshot());
+        let state = state
+            .as_ref()
+            .filter(|v| v.account == self.token && self.view.mode_family == Some(ModeFamily::Fm));
+        if client.mini_fm_mode_pending(&self.token, state)? != self.view.fm_mode_pending {
             return Err(Error::StaleResponse);
         }
         if client.mini_mode_family(&self.token, self.view.mode)? != self.view.mode_family {
@@ -90,14 +106,15 @@ impl MusicClient {
             self.together_attached(token, None).map(|attached| {
                 if attached {
                     ModeFamily::Together
-                } else if self.player.controller.get().is_some_and(|controller| {
-                    let state = controller.snapshot();
-                    state.account == *token
-                        && state.intelligence.as_ref().is_some_and(|v| v.active())
-                }) {
-                    ModeFamily::Intelligence
                 } else {
-                    ModeFamily::Ordinary
+                    let state = self.player.controller.get().map(|v| v.snapshot());
+                    match state.filter(|v| v.account == *token) {
+                        Some(state) if state.fm => ModeFamily::Fm,
+                        Some(state) if state.intelligence.as_ref().is_some_and(|v| v.active()) => {
+                            ModeFamily::Intelligence
+                        }
+                        _ => ModeFamily::Ordinary,
+                    }
                 }
             })
         })
@@ -138,7 +155,11 @@ impl MusicClient {
             .get()
             .map(|v| v.snapshot())
             .filter(|v| v.account == token);
-        let mode_audio = audio.as_ref().filter(|_| details.mode.is_some());
+        let focus = self.focus.snapshot()?;
+        let mode_audio = audio.as_ref().filter(|state| {
+            details.mode.is_some() || (state.fm && focus.owner != Some(super::focus::Owner::Video))
+        });
+        let mode = mode_audio.map(|state| state.mode);
         let activity = self.intelligence_read_operation(&token)?;
         let snapshot = MiniSnapshot {
             view: MiniView {
@@ -155,10 +176,11 @@ impl MusicClient {
                 seek_end: details.seek_end,
                 can_seek: details.can_seek,
                 volume: details.volume,
-                mode: details.mode,
-                mode_family: self.mini_mode_family(&token, details.mode)?,
+                mode,
+                mode_family: self.mini_mode_family(&token, mode)?,
+                fm_mode_pending: self.mini_fm_mode_pending(&token, mode_audio)?,
                 queue_revision: mode_audio.map(|v| v.queue_revision.to_string()),
-                can_intelligence: self.mini_heart_hint(&token, details.mode)?,
+                can_intelligence: self.mini_heart_hint(&token, mode)?,
                 intelligence: mode_audio.and_then(|v| v.intelligence.as_ref().map(|s| s.phase)),
                 intelligence_operation: mode_audio.and_then(|v| v.intelligence_operation.clone()),
                 intelligence_read: activity.map(|operation_id| {
@@ -179,12 +201,17 @@ impl MusicClient {
             token,
             target: details.transport.target,
             like,
+            mode_context: mode_audio.map(|state| MiniModeContext {
+                focus,
+                expected: state.fence(),
+            }),
         };
         snapshot.check(self)?;
         Ok(snapshot)
     }
 }
 pub use actions::MiniAction;
+pub use fm::MiniFmModePending;
 pub use intelligence::{MiniIntelligenceCommand, MiniIntelligenceRead};
 pub use mode::MiniPlaybackReceipt;
 pub use queue::MiniQueuePage;

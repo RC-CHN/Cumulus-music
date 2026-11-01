@@ -22,10 +22,16 @@ impl MusicClient {
         if !(1..=100).contains(&limit) {
             return Err(Error::InvalidInput("mini queue page limit must be 1..100"));
         }
-        let target = displayed.audio(self)?;
+        displayed.check(self)?;
+        let context = displayed
+            .mode_context
+            .as_ref()
+            .ok_or(Error::InvalidInput("mini queue requires audio context"))?;
         let controller = self.player.controller.get().ok_or(Error::StaleResponse)?;
         let (state, queue) = controller.queue_with_state(&displayed.token).await?;
-        target.audio(&state)?;
+        if state.fence() != context.expected {
+            return Err(Error::StaleResponse);
+        }
         let page = MiniQueuePage {
             epoch: displayed.view.epoch.clone(),
             current: queue

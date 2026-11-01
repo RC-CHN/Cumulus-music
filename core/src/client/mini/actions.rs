@@ -41,7 +41,9 @@ impl MusicClient {
             }
             MiniAction::Select { .. } | MiniAction::Remove { .. } | MiniAction::Clear => {
                 let target = displayed.audio(self)?;
-                if displayed.view.mode.is_none() {
+                if displayed.view.mode.is_none()
+                    || displayed.view.mode_family == Some(ModeFamily::Fm)
+                {
                     return Err(Error::InvalidInput("FM owns the mini queue"));
                 }
                 let action = match action {

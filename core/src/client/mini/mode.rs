@@ -1,5 +1,30 @@
 use super::*;
 use crate::client::dto::{PlayerAction, PlayerView};
+use crate::client::focus::FocusSnapshot;
+use crate::playback::controller::PlaybackFence;
+
+/// Includes an empty FM queue, which has no system media/transport target.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct MiniModeContext {
+    pub focus: FocusSnapshot,
+    pub expected: PlaybackFence,
+}
+impl MiniModeContext {
+    pub fn check(&self, client: &MusicClient, token: &SessionToken) -> Result<()> {
+        let state = client
+            .player
+            .controller
+            .get()
+            .ok_or(Error::StaleResponse)?
+            .snapshot();
+        client.session.check_generation(token)?;
+        client.focus.check_snapshot(self.focus)?;
+        if state.account != *token || state.fence() != self.expected {
+            return Err(Error::StaleResponse);
+        }
+        Ok(())
+    }
+}
 
 /// Exact actor acknowledgement, rather than a later read of possibly new media.
 #[derive(Clone, Debug, Serialize)]
@@ -46,6 +71,29 @@ impl MusicClient {
             return Err(Error::InvalidInput(
                 "mode unavailable in mini playback context",
             ));
+        }
+        if family == ModeFamily::Fm {
+            let context = displayed
+                .mode_context
+                .as_ref()
+                .ok_or(Error::StaleResponse)?;
+            let coordinator = self.player.fm().await?;
+            context.check(self, &displayed.token)?;
+            let state = coordinator
+                .repeat_checked_for(
+                    &displayed.token,
+                    if mode == PlaybackMode::SingleLoop {
+                        crate::fm::FmRepeat::One
+                    } else {
+                        crate::fm::FmRepeat::Infinite
+                    },
+                    self.player
+                        .selection
+                        .load(std::sync::atomic::Ordering::Acquire),
+                    context.expected.clone(),
+                )
+                .await?;
+            return super::super::player::project(&state, &displayed.token).map(Into::into);
         }
         let target = displayed.target.as_ref().ok_or(Error::StaleResponse)?;
         self.player_action_checked(

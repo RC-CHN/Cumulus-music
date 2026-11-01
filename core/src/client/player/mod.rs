@@ -550,11 +550,13 @@ impl MusicClient {
                 if let Some(lease) = lease {
                     self.focus.check(lease, super::focus::Owner::Audio)?;
                 }
+                // Mode changes must not supersede an accepted FM step when
+                // its coordinator is busy. Transport already owns an intent;
+                // mode only observes it and retains the exact actor fence.
                 let attempt = control_intent.unwrap_or_else(|| {
                     self.player
                         .selection
-                        .fetch_add(1, std::sync::atomic::Ordering::AcqRel)
-                        + 1
+                        .load(std::sync::atomic::Ordering::Acquire)
                 });
                 let fm = self.player.fm().await?;
                 let state = match action {
@@ -587,7 +589,7 @@ impl MusicClient {
                     }
                     PlayerAction::Restore => fm.resume_for(&token, true, attempt).await?,
                     PlayerAction::Mode { mode } => {
-                        fm.repeat_for(
+                        fm.repeat_checked_for(
                             &token,
                             match mode {
                                 crate::playback::PlaybackMode::SingleLoop => {
@@ -604,6 +606,7 @@ impl MusicClient {
                                 }
                             },
                             attempt,
+                            current.fence(),
                         )
                         .await?
                     }
