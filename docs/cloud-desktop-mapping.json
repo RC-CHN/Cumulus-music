@@ -186,14 +186,31 @@
       "source": "official warning priority; community review/result presentation",
       "implementation": "frontend/src/components/CloudDeleteDialog.vue; frontend/src/components/cloud/CloudDeleteTargets.vue",
       "evidence": "scripts/ci/cloud_delete_context_smoke.py"
+    },
+    {
+      "feature": "composed_cloud_local_removal_intent_and_recovery",
+      "source": "removeFromCloudDisk upload-first/download fallback, local-first dispatch; community durable file authority",
+      "implementation": "core/src/client/cloud/removal/; core/src/cloud/library/reservation.rs; core/src/download/completed/",
+      "evidence": "core/tests/client_cloud/removal.rs; docs/cloud-local-delete-contracts.txt"
+    },
+    {
+      "feature": "local_choice_cue_retention_and_separate_outcome_ui",
+      "source": "removeFromCloudDisk hasLocal/cueFileStatus/initial false; community receipt/retry states",
+      "implementation": "frontend/src/components/cloud/CloudDeleteLocal.vue; frontend/src/components/CloudDeleteDialog.vue; frontend/src/composables/useCloudDelete.ts",
+      "evidence": "frontend/tests/cloud-delete-state.test.ts; scripts/ci/cloud_local_delete_smoke.py"
+    },
+    {
+      "feature": "exact_plan_readback_and_local_only_retry_after_remote_terminal",
+      "source": "community account-isolated recovery, no write replay",
+      "implementation": "desktop/src/cloud.rs; frontend/src/components/CloudPage.vue; frontend/src/composables/useCloud.ts",
+      "evidence": "core/tests/client_cloud/removal.rs; scripts/ci/cloud_local_delete_smoke.py"
     }
   ],
   "pending": [
     "metadata matching/editing UI",
     "real channel=3 OSS allocation and live UI",
     "LRC/CUE service restrictions",
-    "Windows actual runtime evidence; macOS is not supported",
-    "composed cloud/local removal journal, source/download dispatch and CUE preservation UI"
+    "Windows actual runtime evidence; macOS is not supported"
   ],
   "completed_followups": [
     "docs/cloud-download-mapping.json",

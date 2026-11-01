@@ -3905,3 +3905,72 @@ Windows既有失败与修正边界
   两个原生二进制、检查日志和32原图哈希；最终截图入口为
   .build/cloud-delete-context-final-gallery-v3/index.html。精确HEAD CI回执在.build单独保存，
   不从历史65bfd5a或178f0e2运行推导本批新HEAD全绿。未改main、版本、标签或发布附件。
+
+2026-11-02 云盘/本地组合删除与结果恢复
+范围与来源
+- 当前按用户新优先级推进UI逻辑一致性和功能；性能只处理影响使用的实际问题。
+  本批是完整目标中的一个增量，完整goal保持active；没有合并main、打标签或发布。
+- 官方removeFromCloudDisk的上传源优先、下载后备、初始不勾选、CUE all/partial、
+  本地异常仍处理云盘顺序为依据；来源哈希沿用cloud-delete-ui-contracts.txt。
+  原生意图、接口、恢复及社区差异见cloud-local-delete-contracts.txt；没有使用YesPlayMusic。
+- core保存账号隔离的固定范围/文件pin/选择/逐文件回执；desktop提供四条main窗口IPC，
+  frontend只接收安全投影和原操作ID。原/api/v1/cloud/get、/api/cloud/del保持不变。
+
+实际发现并修正
+- 截图发现通用playlist-dialog label把新复选框排成上下两行；弹窗专用横向样式修正，
+  在所有有复选框的最终截图状态断言框/文字同排，而非只看CSS声明。
+- 提交后锁定本地选项；未知回执只读，失败项可单独重试本地，不再次POST云盘。
+  最近删除操作可按原ID查看结果，恢复原范围/选择。头尾与焦点、主题、窄窗一致。
+- 前检失败的本地项明确为“未执行”，不继续显示等待处理。结果和无障碍标签改用
+  本次操作/删除结果语义，不再出现确认问题。文件变化/CUE保留和实际删除分别显示。
+- 本地完成后远端revision变化使用NotSubmitted及真实当前存在数量，不把其他端移除
+  冒充本次提交，也不误报全部仍保留。本地删除前失败则不碰文件。
+- 异步调用方取消时，blocking文件worker继续持有原意图锁直至完成；新调用不会
+  提前重入或先发远端请求，之后只能明确继续原已接受操作。
+
+最终真实WebView证据
+- .build/cloud-local-removal-final-gui-3及-final-kde-3：各10态/10原始PNG，全部通过。
+  KDE使用当前登录会话及仅属于本机子进程的窗口像素，未截取其他用户窗口。
+  同时覆盖1120x760与900x620，亮/暗、默认保留/勾选、前检失败、全部/部分CUE、
+  丢失IPC回执、变更文件保留、云盘部分结果+本地失败、单独重试和重开持久回执。
+- 每个进程真实创建3份合成FLAC下载；两次精确云盘删除为[1005]、[1006,1007]，
+  第二次只读/重开/本地重试不增加POST。最终只有1006文件及其下载登记删除，
+  1005修改文件与1004的CUE音源都保留。前检失败不提交、不删除本地。
+  服务、媒体输入、文件占用、一次回执丢失为显式合成/故障注入；不是实际账号写入。
+- .build/cloud-local-removal-final-context-2：16态/16图，新的完整pipeline仍保持普通/
+  私有/下架/未知提示、405首固定范围、20行分页及首末焦点、900x620、在途禁用、
+  部分结果、404首重新确认及账号切换。实际完整自然序1001..1405一次POST，
+  仅移除1首，原405查看范围保持。本地文件删除0。unknown UI是双DTO边界的显式
+  类型缺失注入；实际旧缓存的unknown由独立Rust集成测试覆盖，二者不混记。
+- .build/cloud-local-removal-regression-{page,batch,menu,toolbar,upload,task,song,delete_context}
+  分别26/29/23/24/16/27/32/16态，共193态通过；最后context在前端无障碍标签和
+  本地未执行文案定稿后重新运行并截图。其他7组没有生产行为变更，使用前一冻结
+  构建验证。不是宣称193张新截图。
+- .build/cloud-local-removal-final-gallery/index.html收录上述36张最终原始截图；
+  7张联系表均已查看。几何断言覆盖dialog边界、正文滚动、头尾点击命中、焦点、
+  本地复选框横排和有界列表。虚拟runner帧率不作为实际刷新率证明。
+
+原生和前端验证
+- cloud-local-removal-rust-format-final.log、-clippy-final.log、-workspace-final.log：
+  格式、workspace/all-target/custom-protocol严格Clippy及完整测试通过。共280个
+  测试结果target、1448通过、0失败/忽略。core/tests/client_cloud/removal.rs有13项
+  新组合流程集成，用实际SQLite、上传/下载、OS锁和文件验证；含删除后保存失败
+  的重开、相同路径替换保护、来源失效、真实decoder lease等待时取消调用方等。
+- 前端npm ci、format:check、518个状态/服务测试、vue-tsc、生产build通过，最终日志
+  cloud-local-removal-{npm-ci,front-format-check-delivery,front-tests-delivery,front-build-delivery}.log。
+  最后前端结果语义/无障碍改动后冻结dist，再顺序构建mini和普通cumulus二进制；
+  cloud-local-removal-{native,app}-build-final2.log通过，之后完成上述最终截图。
+- scripts/ci单元43、桌面JS8通过；source_audit与release_guard通过。中间验证器误写
+  pause缺paused字段、字典键及普通工具栏顺序假设，均按真实类型/选择顺序修正；
+  没有放松精确IDs、文件结果、点击/焦点和账号/请求计数断言来通过。
+- 先前65bfd5a的Windows CI 41338685674失败于shortcut_smoke并发读state.json的
+  短暂PermissionError。本批只为只读合成快照添加2秒上限的占用/替换重读；持续
+  权限/缺失/JSON损坏及其他IO依旧失败，不重试业务写。三项单元覆盖这些边界。
+- 较早178f0e2的完整CI 41343432878已成功（Frontend、Linux、Windows、CI gate），
+  不将其当作本批组合删除的Windows证据。本批精确HEAD CI在分批提交后单独登记。
+
+边界
+- 真实账号写、真实音乐请求均0；无支付、公开内容、他人邀请或既有用户资源变更。
+  libmpv使用null，非声卡听感证明。官方恢复generator及标量向量不冒充完整官方runtime。
+- Windows本批实际运行待精确HEAD CI；Windows实机视觉未验证，macOS不在支持范围。
+  元数据保存调用链、OSS/LRC/CUE线上外部条件及全应用其他UI分支继续既有边界。

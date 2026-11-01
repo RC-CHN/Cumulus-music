@@ -167,4 +167,5 @@ cloud-song-table-ui-contracts.txt；新SVIP远端配置营销卡片仍未声称�
 CloudTrackView增加deletionKind，保留官方私有优先于下架的消息；旧缓存缺类型则unknown。
 普通/行菜单/键盘/批量均捕获独立范围，确认与请求使用同一份snapshot；20项审阅不截断
 实际删除。结果视图不再展示确认问题。来源/接口/验证见cloud-delete-ui-contracts.txt，
-可选本地删除和CUE保护的组合流程尚待原生持久化接线，不从单独下载文件管理推导完成。
+可选本地删除和CUE保护的后续组合流程见cloud-local-delete-contracts.txt；具有独立
+持久化意图、原生文件验证、逐项回执和WebView证据，不从单独下载文件管理推导完成。

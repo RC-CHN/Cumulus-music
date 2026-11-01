@@ -34,7 +34,7 @@ Rust投影与版本归属
   revision、IDs、标题和每首deletionKind。普通工具栏保留既有选择顺序，菜单保持
   当前展示子集顺序；独立批量维持官方完整natural cloudOnlineList，不继承普通页排序。
 - 批量页在点击删除时保存独立target，不再以实时chosen computed作为弹窗prop。
-  useCloudDelete再防御性复制数组；弹窗与实际命令共同使用state.target。因此外部
+  useCloudDelete再防御性复制数组；新流程以此建立原生plan，再以同一plan ID执行。因此外部
   rows/选择/原对象变化不能悄悄改掉本次显示范围、警告、请求IDs或revision。
 - 空范围、超过5000、重复IDs或标题数不符均不能派发；重复确认、拒绝、部分结果、
   未知回执/只读核对、账号替换、卸载和迟到结果仍由既有状态机与native日志处理。
@@ -54,13 +54,13 @@ Rust投影与版本归属
   未知读回见真实WebView证据。减少动态效果继续由共用ModalTransition遵守。
 
 调用与尚待范围
-- cloud_command.kind=delete仍携带原ids/revision，经CloudLibrary::delete。POST
+- 原cloud_command.kind=delete保留兼容，携带原ids/revision，经CloudLibrary::delete。POST
   /api/cloud/del的songIds为JSON数组字符串，1000一批，保存每批结果并完整读回；
   reconcile_delete只读核对。此次没有新增业务HTTP或前端直连接口。
-- 当前仍明确“本地文件保留”。官方可选同时删除本地文件、上传源/下载来源分流、
-  CUE全部/部分保留提示还需要原生文件意图/恢复和组合结果接线；本次未提供一个
-  无执行链的复选框，也未将冻结CUE参数观察称为该业务已迁移通过。已完成下载
-  自身的文件管理能力不自动等于云盘与本地的组合删除能力。
+- 后续组合删除将实际UI改为cloud_delete_prepare/view/execute/discard四条IPC，
+  默认保留本地；可选删除、CUE提示、逐文件结果和单独重试见
+  cloud-local-delete-contracts.txt。原云盘分批/对账协议不变；不能将冻结CUE参数
+  观察当作真实文件副作用通过，必须对照该文档指向的Rust和WebView运行证据。
 - 官方元数据匹配/纠正的保存调用链仍缺证据，未编造端点。新版SVIP远端配置、
   真实OSS/LRC/CUE服务限制、Windows实机视觉及全应用其他分支继续原边界。
 

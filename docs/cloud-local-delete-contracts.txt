@@ -1,0 +1,91 @@
+云盘与本地组合删除：原生意图、界面状态与恢复
+2026-11-02。完整目标中的一个功能/UI增量，完整目标仍在进行。
+
+官方依据与社区边界
+- 来源沿用cloud-delete-ui-contracts.txt记录的removeFromCloudDisk.tsx及其哈希；
+  官方cloudUploadingList.onlineTrackId关联优先于downloadTrackMap；上传源的cueFile
+  进入all/partial提示而不删除音源。确认中的本地选项初始false；只有确认删除云盘
+  后才处理本地，随后删除云盘；本地异常不阻止后续云盘请求。没有引用YesPlayMusic。
+- Cumulus对应Published/Complete上传记录；无该记录时查当前账号最新的Cloud来源
+  下载。普通在线下载、仅扫描/在线映射、本地同名/同号文件不因此获得删除权限。
+  不按目录搜索猜测关联。关联已变化或不可核对时保留文件，并给出明确反馈。
+- 额外保护已索引CUE的音源，包括同一原生文件身份的别名；实际删除前在共享索引锁
+  内复查。CUE提示来自实际关联，不用仅有歌名/扩展名的猜测取代来源证据。
+- 可选文件仅指已确认的本机上传源或已完成云盘下载；不暗示各机器文件同步删除。
+  所有本地副作用均发生于明确勾选且确认之后。原生不可逆unlink并非回收站移动。
+  真实账号验证授权不包含删除已有用户资源；本批仅使用合成账号、文件和服务。
+
+职责与入口
+- core/src/client/cloud/removal/按types/preview/files/execute/view分离组合用例；
+  core/src/cloud/library/reservation.rs将既有CloudLibrary远端日志扩展为可预留意图。
+  下载复用CompletedDownloads文件日志、安全文件身份/内容验证、索引/离线登记清理。
+- desktop/src/cloud.rs新增四条仅main窗口可用的命令，frontend通过CloudClient调用。
+  CloudRemovalView仅含ID、标题、分类、状态和有界问题提示；不包含文件路径、
+  原生文件身份、指纹、哈希、Cookie、凭据或完整授权URL。
+- 普通工具栏、行菜单和完整库批量页共用CloudDeleteDialog。最近删除操作的
+  “查看结果”按原操作ID打开结果，也可重试尚未完成的本地清理。
+
+IPC与执行顺序（无新增业务HTTP）
+1 cloud_delete_prepare(epoch, ids, revision) -> CloudRemovalView。
+  先查询已有接受意图和未决远端操作；存在重叠时返回原意图的完整范围及选项。
+  新预览校验1..5000个唯一ID、账号及云盘revision，固定标题/分类/本地来源，
+  保存随机32位小写十六进制ID。文件pin含原父目录/文件身份、stat指纹和已登记
+  内容哈希；预览不扫描全部音频内容，破坏性执行前再作完整内容校验。
+  界面在预览返回前禁用确认，但仍允许取消。未接受的遗留预览有100条上限。
+2 cloud_delete_execute(epoch, id, deleteLocal, retryLocal) -> CloudRemovalView。
+  首次接受先持久化本地选择；此ID后续调用不能改选项。独立操作锁防止并发执行，blocking文件worker持有共享锁句柄直到实际结束，异步调用方取消也不会提前释放。
+  以同一ID及原revision在CloudLibrary预留Preparing操作；重新完整读取
+  /api/v1/cloud/get确认成员和revision，失败时不处理本地文件。
+  未勾选时记Skipped；勾选时逐项先记Removing，再验证关联、身份、内容、CUE，
+  执行上传源删除或下载日志删除，再保存单项结果。下载子日志ID固定，不能重开后
+  生成另一删除。上传源unlink后才清理索引/队列映射；崩溃后通过Missing完成清理。
+  本地完成后再次读取云盘revision；发生变化则不POST，并明确本地/云盘的不同结果。
+  此时远端阶段为NotSubmitted，保存当前真实存在/缺失数量；即便资源被其他端移除，
+  也不能把外部移除冒充本次提交成功，或错误宣称全部仍在云盘。
+  Preparing只能在此执行入口转Sending，复用既有/api/cloud/del的1000首分批、
+  每批持久化和完整列表对账。songIds仍为JSON数组字符串。
+3 cloud_delete_view(epoch, id, reconcile) -> CloudRemovalView。
+  接受意图中的文件结果和原范围来自账号SQLite。reconcile=true仅核对已提交的
+  远端操作；Preparing表示尚未提交，读回绝不触发其POST或本地unlink。
+  正在执行时只返回当前状态；Sending/Verifying/Uncertain只允许只读对账。
+  旧版仅有远端日志的操作以legacyOnly投影，不追补本地删除权限。
+4 cloud_delete_discard(epoch, id) -> void。
+  只清除尚未接受、无远端日志的预览；不能丢弃已接受意图或删除任何文件/云盘资源。
+
+持久化和失败恢复
+- cloud_removal_plans_v1按账号隔离保存原选择、关联pin、不可变本地选项、逐文件结果。
+  所有读写/最终unlink带SessionToken代次校验，文件哈希不持有账号或SQLite锁。
+  崩溃/卸载/迟到响应不能把结果写入另一个账号；原操作继续依赖原账号登录。
+- Preparing是明确“尚未发送”的远端意图；与原delete入口共享重叠写入防护。
+  重开确认不会绕过它。Sending以后不会自动重发；只读对账也不重新执行本地。
+- 文件状态：Pending、Removing、Removed、Missing、Retained、Failed、Skipped。
+  变更/替换或CUE变为Retained，显式重试也不删除新文件；失败/中断才可以重试。
+  删除完成后同一路径新建的文件不属于原意图，重复调用仅返回原回执。
+- retryLocal=true只继续原Preparing流程或重试原Failed/Removing文件；远端已终结时
+  不再POST。网络或IPC回执丢失必须先只读取得同一ID记录；界面不会用新ID重发。
+- 账号切换和持久化失败作为错误传播；不能把未写入的文件进展伪装为成功回执。
+  本地单项IO/占用失败记Failed，仍继续远端；界面分开显示，不用一个成功提示覆盖。
+
+界面与可操作性
+- 确认中保留官方私有/下架优先警告和总范围；仅存在候选文件时显示本地复选框。
+  显示上传源/云盘下载范围及不可撤销提示。全部/部分CUE明确提示音源保留。
+- 原意图恢复时显示原范围和已确认选项，不能把这次新选子集冒充原操作全部范围。
+  正在执行禁用头尾和复选框，焦点留在dialog。未知结果只出现“只读核对”。
+- 云盘拒绝、部分、未决和本地清理结果分别呈现；本地文件明细最多20行/页，
+  单独滚动及分页。Failed可“重试本地清理”，已变化/CUE文件保持保留。
+- 云盘全部确认且本地无保留/失败时正常关闭并恢复入口焦点；需要用户核对的
+  结果保留弹窗。最近操作可重开查看终结回执。窄窗正文滚动，头尾固定；遵守
+  共用主题、ModalTransition、减少动态效果和基本键盘焦点规则。
+
+证据与适用范围
+- core/tests/client_cloud/removal.rs使用实际MusicClient、SQLite、上传状态机、
+  下载服务及合成文件，覆盖未勾选/勾选、替换保留、云盘前检变化、账号切换、
+  拒绝/部分/回执丢失、下载日志清理、取消、CUE前检/执行复查、保存中断重开、
+  本地失败后单独重试；既有远端、下载文件和迁移测试继续作为回归要求。
+- 前端状态测试覆盖原范围、原操作ID、选项冻结、迟到响应、丢失回执只读、
+  恢复原范围、预览卸载清理。不能把这些状态测试当成真实WebView通过。
+- cloud_local_delete_probe.js/cloud_local_delete_smoke.py执行production UI/IPC/Rust/
+  SQLite及真实合成FLAC文件；服务、文件占用和一次IPC回执丢失为显式故障注入。
+  Linux/Windows分别进入必需WebView CI。最终运行结果及截图见ui-ux-validation.txt。
+- 不宣称完整官方runtime/像素一致、Windows实机视觉或真实声卡听感。原研究的
+  元数据保存端点、OSS/LRC/CUE线上条件及全应用其余未完成项沿用既有边界。
