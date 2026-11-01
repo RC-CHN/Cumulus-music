@@ -3784,3 +3784,64 @@ Windows既有失败与修正边界
 - cloud-task-table-delivery-manifest.json记录本批源码、production dist、原生二进制、
   合成输入和54原图哈希。最终截图联系表见cloud-task-table-final-gallery/index.html。
   新精确HEAD CI必须单独核对，不以本地1429/507通过替代Windows runner结果。
+
+2026-11-02 云盘普通歌曲表、扫描库目录与容量区
+范围和官方对照
+- 来源、命令/API、状态归属与边界见cloud-song-table-ui-contracts.txt及
+  cloud-desktop-mapping.json新四项；没有使用YesPlayMusic。官方viewer/106/Capacity
+  执行仅使用显式cell/React替身，无完整官方runtime/同尺寸运行窗口像素比较。
+- 私有netease_cloud_song_ui_oracle.cjs重新执行结果与公开冻结cloud-song-ui.json
+  逐字节一致；记录三份官方源码SHA256、列/实际resizer/selection与容量格式结果。
+  源码留研究目录，冻结向量不含账号信息。
+
+最终真实WebView和截图
+- .build/cloud-song-table-final-gui-4：Xvfb/Openbox，32态/32图，DPR1；
+  .build/cloud-song-table-final-kde-3：本机KDE Wayland/XWayland，32态/32图，DPR1.25。
+  KDE仅捕获自建PID窗口合成器pixmap，physical.json核对32态可见/聚焦；原始64PNG
+  未改动。cloud-song-table-final-gallery-v4的gui/kde各6张联系表均已实际查看。
+- production dist固定后构建mini_ui_probe；实际WebView/Vue/类型化IPC/Rust/SQLite、
+  ffprobe扫描/映射与libmpv null保持真实，业务服务和OS浏览器/目录启动器显式替换。
+  不能称真实声卡听感、真实网易账号/音乐请求或Explorer/浏览器视觉验证通过。
+- 验证列边界键盘/指针/Escape、固定编号45/格式64/选择框28、排序/分类保留宽度、
+  普通/Ctrl/Shift/Ctrl+Shift、部分选择/当前页200、方向键范围边缘/首尾、重复删除
+  忽略、确认取消返回、Enter实际云盘播放且焦点行bottom<=player.top。
+- 实际合成FLAC经ffprobe扫描并原生登记catalog900001关联云盘1001；目录核对后
+  返回同一自建文件夹；源内容变化隐藏目录，本地映射损坏仍能实际云盘播放。
+  CUE与账号隔离/重扫不继承另由Rust集成验证；没有按同名/同号猜测关联。
+- 容量满/未知/TB/空库、扩容失败/重试/在途/换账号均通过；OS浏览器共3次替身
+  调用，目录1次；云盘删除/收藏写0，真实账号写与真实音乐请求均0。
+
+发现与纠正
+- 初版窄表误留682px最小宽，导致固定编号/格式被浏览器同比放大；改为官方六列
+  基础554+社区选择框28=582，保留原固定宽断言。初版截图还发现蓝色边界框、
+  播放反馈将末行推入播放器、换查询旧反馈残留和满容量重复文案，已修复。
+- 旧cloud_page回归严格断言发现连续勾选只提交1002，预期1001+1002；修为同步
+  维护受控选择，并加入Vue尚未patch props前连续事件/外部重置测试。
+- 随后旧cloud_menu回归发现行内更多按钮Shift+F10被通用控件键过滤吞掉；菜单
+  快捷键在控件过滤前处理。原菜单/实际写入IDs/焦点/命中/几何断言全部保留。
+- gui-1/gui-2、final-gui/kde-1/2及regression-v1/v2为中间版本，不累计最终截图。
+  final-gui-3和regression-v3-page因本地Openbox未在PATH，在应用启动前失败；
+  显式使用已隔离安装的Openbox wrapper重跑到上述gui-4和regression-v4。
+- 一次中间普通app构建曾与后续frontend重建邻接，其二进制不作交付证据；最终
+  前端构建先0退出且固定，mini构建/截图/严格Rust检查后再独立构建正常cumulus。
+
+工程验证
+- Node24.16.0/npm ci已完成，最终format:check、513项前端测试与typecheck/build
+  通过，cloud-song-table-{format-keyboard,tests-keyboard,build-keyboard}.log。
+- Rust1.96全workspace/all-target/custom-protocol/locked：280个结果目标，1433 passed、
+  0 failed/ignored、0编译告警；fmt与strict Clippy同样0退出，日志为
+  cloud-song-table-{rust-format-keyboard,clippy-keyboard,rust-tests-keyboard}.log。
+  新3项本地文件集成和1项Linux浏览器argv/即时失败测试；浏览器实际进程测试
+  不代表网站页面/支付已验证。desktop JS8项、CI工具40项、release_guard通过。
+- 新smoke已接入Linux/Windows独立runner。Windows原生编译/运行结论必须以新
+  精确HEAD CI为准；本机Linux结果不能替代Windows。CI回执保存在.build，不将
+  尚在运行或历史CI称为本批完整通过。未改main、版本、标签或Release附件。
+
+- 最终相关回归cloud-song-table-regression-v4-{page,batch,menu,toolbar,upload,task}
+  分别26/29/23/24/16/27态，共145态通过；保留原有真实请求范围、未决核对、焦点
+  和几何检查，没有改小预期范围。此组未另截图，不与64张最终普通表截图混计。
+- 正常cumulus独立构建0退出，cloud-song-table-app-build-delivery.log；mini探针
+  构建0退出，cloud-song-table-native-build-keyboard.log。最终前端固定后未改产品
+  源码。source_audit/JS/Python语法/diff检查通过，详细哈希见
+  .build/cloud-song-table-delivery-manifest.json；截图集入口为
+  .build/cloud-song-table-final-gallery-v4/index.html。

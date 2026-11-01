@@ -144,6 +144,30 @@
       "source": "622.We uploadingCloudTrack; frozen cloud-upload-ui.json",
       "implementation": "frontend/src/services/cloudTasks.ts; core/src/client/cloud/files.rs; desktop/src/cloud.rs",
       "evidence": "core/tests/fixtures/cloud-upload-ui.json; frontend/tests/cloud-tasks-state.test.ts; core/tests/client_cloud/tasks.rs; scripts/ci/cloud_task_smoke.py"
+    },
+    {
+      "feature": "ordinary_cloud_columns_keyboard_selection_and_focus",
+      "source": "UploadedTrackViewer config; 106.useResizer/useSelect; XTableViewer/Row",
+      "implementation": "frontend/src/components/cloud/CloudSongTable.vue; frontend/src/services/cloudSongs.ts",
+      "evidence": "core/tests/fixtures/cloud-song-ui.json; frontend/tests/cloud-song-table.test.ts; scripts/ci/cloud_song_smoke.py"
+    },
+    {
+      "feature": "scanned_file_and_cue_cloud_directory_association",
+      "source": "556.viewFileLocation localMap; native account/revision strengthening",
+      "implementation": "core/src/client/cloud/files.rs; core/src/library/index/mapping.rs",
+      "evidence": "core/tests/client_cloud/local_files.rs; scripts/ci/cloud_song_smoke.py"
+    },
+    {
+      "feature": "local_association_fault_does_not_block_cloud_actions",
+      "source": "native failure isolation; explicit community status",
+      "implementation": "core/src/client/cloud/dto.rs; core/src/client/cloud/files.rs; frontend/src/services/cloudMenu.ts",
+      "evidence": "core/tests/client_cloud/local_files.rs; frontend/tests/cloud-song-table.test.ts; scripts/ci/cloud_song_smoke.py"
+    },
+    {
+      "feature": "official_default_capacity_format_full_state_and_expand_link",
+      "source": "Capacity.tsx default branch; fixed official fallback URL",
+      "implementation": "frontend/src/components/cloud/CloudCapacity.vue; desktop/src/browser.rs; desktop/src/cloud.rs",
+      "evidence": "core/tests/fixtures/cloud-song-ui.json; frontend/tests/cloud-song-table.test.ts; desktop/src/browser.rs tests; scripts/ci/cloud_song_smoke.py"
     }
   ],
   "pending": [
@@ -156,6 +180,7 @@
     "docs/cloud-download-mapping.json",
     "docs/cloud-order-mapping.json",
     "docs/cloud-upload-form-ui-contracts.txt",
-    "docs/cloud-task-table-ui-contracts.txt"
+    "docs/cloud-task-table-ui-contracts.txt",
+    "docs/cloud-song-table-ui-contracts.txt"
   ]
 }

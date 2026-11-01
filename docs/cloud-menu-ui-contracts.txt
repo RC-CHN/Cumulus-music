@@ -60,9 +60,10 @@ Rust / IPC / 请求
 - 收藏仍经目标歌单读取、revision、持久化意图、POST
   /api/v1/playlist/manipulate/tracks与读回确认；删除仍POST /api/cloud/del。
   参数、未知写入边界和单次/批次上限见cloud-batch-ui-contracts.txt。
-- 目录关联优先已发布/完成上传的已登记源文件，再找完整下载的Cloud来源或通过
-  已验证公开ID关联的Song来源。候选必须是完整任务、没有进行中文件操作、大小
-  符合且非符号链接。真正打开前重新读取并验证内容完整性、成员、账号和revision。
+- 目录关联优先已发布/完成上传的已登记源文件，再找完整下载的Cloud来源或已知
+  catalog ID关联的Song来源，再查明确扫描库映射；catalog身份与分享权限分离。
+  下载候选必须完整、没有进行中文件操作、大小符合且非符号链接。真正打开前
+  重新读取并验证各来源完整性、成员、账号和revision。扫描/CUE细节见后续契约。
   路径只在core→desktop内部传递，前端仅请求songId/revision。
 - desktop/file_manager为下载/云盘共享本机适配：Linux以直接argv调用xdg-open，
   观察最多500ms即时失败，长期运行的管理器在后台回收，不等待窗口关闭阻塞IPC。
@@ -86,11 +87,12 @@ Rust / IPC / 请求
   Linux与Windows各自runner执行；当前实际运行证据见ui-ux-validation.txt。
 
 保留边界
-- 工具栏三项与完整查询范围另见cloud-toolbar-ui-contracts；普通列宽拖动、
-  所有上传/长附件组合、容量扩容、私有/下架细分删除及本地/CUE删除继续审计。
-- 官方本地文件关联还有扫描库localMap分支，当前仅迁移已登记上传/完成下载关联；
-  没有用文件名碰撞猜测扫描库身份。本地操作日志损坏会使菜单读取明确失败并可
-  重试，尚未独立降级为仅隐藏目录项；不能将该情况称为完整恢复。
+- 工具栏三项与完整查询范围另见cloud-toolbar-ui-contracts；普通列宽和默认容量
+  扩容见cloud-song-table-ui-contracts。所有上传/长附件组合、新SVIP营销、
+  私有/下架细分删除及本地/CUE删除继续审计。
+- 本批原先仅支持上传/下载关联；后续已补扫描库localMap及本地故障隔离，见
+  cloud-song-table-ui-contracts.txt。当前必须是已确认catalog映射和本账号/文件/CUE
+  revision，不用同名碰撞猜测身份；本地关联故障保留其他菜单并仅隐藏目录。
 - 分享仅提供已有复制链接渠道，不能将此称为官方全部社交分享通道。
 - 合成收藏/下载/删除证明客户端执行和UI状态，不外推服务端对真实私有歌曲的
   收藏策略或真实账号权益。不发送真实支付/邀请/公开内容，不改变用户已有资源。

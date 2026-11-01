@@ -156,3 +156,9 @@ queue_cloud_batch和StartCloud，未新增前端HTTP或凭据入口。
 回执恢复而重启，容量满时仍可回读旧登记。详细交互、持久化字段、原生流程测试及
 官方/社区界面边界见cloud-upload-form-ui-contracts.txt；后续任务表/全部清空/转码重查
 见cloud-task-table-ui-contracts.txt，保留原接口和真实服务条件限制。
+
+2026-11-02 普通歌曲表与本地关联补充
+CloudResourceView增加有界localIssue；本地日志/扫描关联错误仅降级目录项。Native保留
+_cloud_catalog_id用于已确认下载/扫描映射，publicSongId分享限制保持独立；不以云盘ID
+猜测普通歌曲。默认容量/固定官方扩容入口及表格鼠标键盘、列宽详见
+cloud-song-table-ui-contracts.txt；新SVIP远端配置营销卡片仍未声称已实现。

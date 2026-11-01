@@ -1,0 +1,83 @@
+云盘普通歌曲表、扫描库关联和容量区
+2026-11-02。完整应用目标中的UI/功能专项，不代表全部云盘或全应用完成。
+
+官方来源与对照
+- references/ui-recovery/sources/packages/pc/src/components/TrackViewer/UploadedTrackViewer.tsx：
+  默认64px行，#45固定、标题180/grow360、专辑115/grow230、格式64固定、上传时间
+  90/grow45、大小60/grow30；标题/专辑/时间/大小可参与剩余空间调整。原六列基础
+  总宽554。当前社区常驻选择框另占28，因此最小582；没有把选择框算成官方列。
+- 同源TrackViewer/style.ts：13px基础字号、1.4行高；UploadedTrack.tsx维持当前查询
+  的200条分页。Uploaded*Cell源码未恢复，不能猜测缺失的作者/专辑跳转或图标细节。
+- 官方hybrid_app.chunk.1482700000000.js/106.js的useResizer与useSelect：调整只分配
+  可调整列的额外空间；编号/格式不变；Ctrl增减、Shift连续、Ctrl+Shift移除范围、
+  右键保留已有选择、方向键从选中范围首/尾收缩。XTableViewer/Row.tsx说明云盘
+  Delete/Backspace走removeFromCloudDisk，忽略按键重复，双击播放。
+- Capacity.tsx默认分支：200px进度、13px、间距20；binary G/TB和不同区间取整；
+  使用量非零最小0.1%；有歌曲时才显示永久保存或空间已满提示，扩容默认打开
+  https://music.163.com/#/vip。useNewFeat=true的SVIP营销/倒计时/新扩容卡片依赖
+  官方远端配置，当前未冒充获取该配置或展示猜测价格/容量权益。
+- 556.js viewFileLocation：已上传源关联→完成下载→扫描库localMap。恢复执行脚本
+  references/recovered-client/scripts/netease_cloud_song_ui_oracle.cjs仅在研究目录。
+  冻结无账号向量core/tests/fixtures/cloud-song-ui.json记录viewer/106/Capacity的
+  SHA256、列配置、真实resizer/selection执行结果和容量格式。
+- 对照使用TypeScript转换列配置、空cell引用和显式React hooks/dependency替身；
+  没有运行完整官方程序，没有同尺寸像素对照。未使用YesPlayMusic。
+
+列表与交互
+- CloudSongTable独立渲染当前200条。用同一列模型计算colgroup像素宽度并复用
+  TableColumnResize；列宽保持原基础+grow比例，表头/行对齐。标题、专辑和时间
+  边界可拖动/方向键8px/Shift32px、Home/End、回车/双击重置；最后大小列只作为
+  调整的空间来源。Escape/失焦/窗口变宽/禁用/卸载取消正在进行的指针事务。
+- 相同账号内排序、筛选、分页、任务页往返保留已调整比例；切账号恢复默认。
+  不写磁盘，也不声称关闭应用后仍保留。窄窗只在表格自身横向滚动，不撑开窗口。
+- useCloudSongSelection同步维护受控选择；连续事件在Vue更新props前不会覆盖前项。
+  父级换查询/账号重设选择时同步跟随。支持普通点击、Ctrl增减、Shift范围及
+  Ctrl+Shift范围移除；原社区选择框仍可用。Ctrl+A只选当前展示页，完整库批量/工具栏全部动作保持原独立范围。
+- 表体有键盘入口，焦点进入选中行或第一行；上下/Home/End移动，Shift扩选，
+  Ctrl方向键仅移焦；空格切换选择，Enter播放该行。复选框保留原生空格操作，
+  Ctrl+A/方向/删除也能从复选框进入行逻辑。菜单/独立按钮保留自己的键盘行为；行内按钮上的Shift+F10/菜单键仍打开该行菜单。
+- Delete/Backspace捕获当时账号、revision和所选/当前行，经既有CloudDeleteDialog
+  确认；重复按键忽略，取消保留选择并回原行。不会因按键直接删除资源。
+  菜单/播放/收藏/删除仍使用现有类型化用例，没有前端另发HTTP。
+- 播放反馈插入表格上方时保持原焦点行完整可见，不推入底部播放器。换查询清掉
+  旧行的播放/操作反馈，迟到回执仍受查询与账号限制。列边界使用已有主题线提示，
+  去掉浏览器默认蓝框，保留键盘焦点可见性。
+
+扫描库关联和安全边界
+- CloudLibrary原始simpleSong.id另存native-only _cloud_catalog_id，用于已确认本地
+  歌曲映射；_cloud_public_id仍单独受私有类型/下架状态约束。不能把云盘songId
+  当普通catalog ID，也不能因无法分享而丢弃已知的本地关联。旧缓存只回退已有
+  _cloud_public_id，不从标题、文件名、云盘ID或缺失字段发明身份。
+- LocalLibrary::files_for_online_song按当前账号owner的local_map_v1及当前本地/CUE
+  revision反向查找；最多50000映射，超限拒绝而非截断。候选需仍可读、文件身份/
+  大小/mtime一致；CUE还核对sheet与源文件revision。普通文件与CUE音源均支持。
+  这些是本地库既有fingerprint证据，不声称是对所有扫描文件的全内容密码学校验。
+- 优先已有上传源，其次已完成且无文件操作的云盘/已知catalog下载，最后扫描库。
+  打开前再次验证账号、云盘revision、成员和记录来源；路径及原生映射不投射前端。
+  symlink/变化/缺失文件不提供目录；上传与下载仍按各自原有完整性检查。
+- 本地库/下载日志故障不能抹掉播放/收藏/分享/删除菜单。CloudResourceView新增
+  localIssue的有界提示、localAvailable=false；只隐藏目录项。账号失效或云盘快照
+  变化仍整体拒绝。实际打开目录遇到故障仍报错，不用坏缓存猜测路径。
+
+容量与扩容入口
+- CloudCapacity显示最近已知账号容量，不随歌曲筛选变成空容量。缺字段显示—，
+  不编造0；满容量提示与上传禁用保持一致，只保留一处满容量文案。
+- 扩容由用户点击后经CoreClient.openCloudCapacity(epoch)→open_cloud_capacity。
+  desktop只允许main，先核对账号代次，再以固定官方公开默认地址打开系统浏览器。
+  前端不持授权URL，不接受任意URL参数，不自动购买、支付或改会员权益。
+- Linux直接argv调用xdg-open，观察500ms即时失败后后台回收，不等待浏览器关闭；
+  Windows复用固定open动词的专用STA/ShellExecuteW边界，不执行shell拼接或提权。
+  接受启动仅提示“已请求”，不宣称页面已加载或购买成功。
+- pending禁重入、稳定焦点/返回、失败重试/关闭；账号变化丢弃旧反馈，旧启动回执
+  不污染新账号。未自动替用户打开真实浏览器进行支付路径测试。
+
+接口和验证入口
+- 官方列表仍/api/v1/cloud/get；文件/本地映射查询不新增远端API。播放继续使用
+  已恢复的云盘授权与实际播放器；删除仍是原/api/cloud/del持久化/只读核对流程。
+- core/tests/client_cloud/local_files.rs：同名/同号误关联阻断，私有/下架歌曲的明确
+  catalog映射、源变化/重扫不继承、CUE sheet变化、账号隔离、本地损坏不阻断播放。
+- frontend/tests/cloud-song-table.test.ts：执行官方列/调整/选择/容量向量、本地故障
+  不阻断其他菜单、查询反馈归属。desktop browser测试验证真实进程argv和即时失败。
+- cloud_song_probe.js/cloud_song_smoke.py：production WebView/IPC/Rust/SQLite/实际
+  ffprobe扫描与映射、实际null音频；服务及OS浏览器/目录启动器显式替换，原生
+  目录核对仍执行。最终状态/截图/全测和CI以ui-ux-validation.txt实际记录为准。
