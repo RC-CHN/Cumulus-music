@@ -33,6 +33,23 @@ const emit = defineEmits<{
 }>();
 const { view, ready, busy, error, playing, loaded } = props.player;
 const transportControls = ref<HTMLElement>();
+async function retryPlayback(event: MouseEvent) {
+  const origin = event.currentTarget as HTMLButtonElement,
+    owner = view.value?.epoch,
+    host = transportControls.value,
+    feedback = origin.closest('.playback-message');
+  if (document.activeElement === origin) host?.focus({ preventScroll: true });
+  if (ready.value) await props.player.retry();
+  else emit('retry');
+  await nextTick();
+  if (owner === view.value?.epoch && document.activeElement === host) {
+    const target =
+      (feedback?.isConnected
+        ? feedback.querySelector<HTMLButtonElement>('button:not(:disabled)')
+        : null) ?? host?.querySelector<HTMLButtonElement>('.play-toggle:not(:disabled)');
+    target?.focus({ preventScroll: true });
+  }
+}
 async function transport(event: MouseEvent, action: PlayerAction) {
   const origin = event.currentTarget as HTMLButtonElement,
     owner = view.value?.epoch,
@@ -271,12 +288,7 @@ async function seek(event: Event) {
     <div class="player-feedback-stack">
       <div v-if="message" class="playback-message" role="status">
         <span>{{ message }}</span
-        ><button
-          v-if="error || view?.error"
-          class="text-button"
-          @click="ready ? player.retry() : emit('retry')"
-        >
-          重试</button
+        ><button v-if="error || view?.error" class="text-button" @click="retryPlayback">重试</button
         ><span v-if="view?.timeline?.mode === 'trial'">试听片段</span>
       </div>
       <Transition

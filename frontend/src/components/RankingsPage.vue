@@ -3,7 +3,7 @@ import type { TrackMenuRequest } from '../services/trackMenu';
 import { computed, ref, nextTick } from 'vue';
 import type { useRankings } from '../composables/useRankings';
 import { useRankingViewport } from '../composables/useRankingViewport';
-import { useRankingPlaybackFocus } from '../composables/useRankingPlaybackFocus';
+import { usePlaybackTriggerFocus } from '../composables/usePlaybackTriggerFocus';
 import type {
   RankingCard,
   RankingPeriod,
@@ -40,7 +40,7 @@ const page = computed(() => props.model.view.value?.page);
 const pageRoot = ref<HTMLElement>();
 const viewport = useRankingViewport(props.model, pageRoot);
 const ownsVisit = props.model.captureVisit();
-const playbackFocus = useRankingPlaybackFocus(() => props.playable, pageRoot, ownsVisit);
+const playbackFocus = usePlaybackTriggerFocus(() => props.playable, pageRoot, ownsVisit);
 defineExpose({ checkpoint: viewport.checkpoint });
 async function readPage() {
   const origin = document.activeElement;

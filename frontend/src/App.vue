@@ -275,7 +275,7 @@ function playSearchCard(item: SearchItem) {
     searchCardIsCurrent(item, view?.origin, view?.track?.voiceId ?? undefined) &&
     player.loaded.value
   ) {
-    void player.action({ kind: 'pause', paused: player.playing.value });
+    void player.toggleSource();
   } else {
     const quality = view?.qualityPreferences.quality ?? 'standard';
     void player.prepareSelection((epoch) => searchCardSelection(core, epoch, item, quality));
@@ -848,14 +848,13 @@ const currentTrackId = computed(() => player.view.value?.track?.id);
 const currentPlaylistId = computed(() =>
   player.view.value?.origin?.kind === 'playlist' ? player.view.value.origin.id : undefined,
 );
-const libraryPlaying = computed(() => player.view.value?.state === 'playing');
+const libraryPlaying = player.playing;
 function refreshLibrary() {
   notice.value = '';
   void music.resources();
 }
 function playLibraryPlaylist(list: PlaylistView) {
-  if (currentPlaylistId.value === list.id)
-    void player.action({ kind: 'pause', paused: libraryPlaying.value });
+  if (currentPlaylistId.value === list.id && player.loaded.value) void player.toggleSource();
   else playMemberPlaylist(list.id, null);
 }
 const currentLocalId = computed(() =>

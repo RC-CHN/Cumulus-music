@@ -5,6 +5,7 @@ import type { MenuItem } from '../services/menu';
 import type { LibraryMode } from '../services/playlistLibrary';
 import Icon from './Icon.vue';
 import ActionMenu from './ActionMenu.vue';
+import { usePlaybackTriggerFocus } from '../composables/usePlaybackTriggerFocus';
 const props = withDefaults(
   defineProps<{
     playlist: PlaylistView;
@@ -19,6 +20,16 @@ const props = withDefaults(
 );
 const emit = defineEmits<{ open: []; action: [key: string]; play: [] }>();
 const menu = ref<InstanceType<typeof ActionMenu>>();
+const element = ref<HTMLElement>();
+const identity = props.playlist.id;
+const playbackFocus = usePlaybackTriggerFocus(
+  () => props.playable,
+  element,
+  () => props.playlist.id === identity && !element.value?.closest('.page-leave-active'),
+);
+function play() {
+  playbackFocus.start(() => emit('play'));
+}
 const failed = ref(false);
 watch(
   () => props.playlist.coverUrl,
@@ -48,6 +59,7 @@ function keyboard(event: KeyboardEvent) {
 </script>
 <template>
   <article
+    ref="element"
     class="playlist-shell"
     :class="{ 'library-row': layout === 'list', 'library-current': current }"
     @contextmenu="context"
@@ -58,7 +70,7 @@ function keyboard(event: KeyboardEvent) {
       class="library-index"
       :aria-label="`${current && playing ? '暂停' : '播放'}歌单：${playlist.name}`"
       :disabled="!playable || !playlist.trackCount"
-      @click="emit('play')"
+      @click="play"
     >
       <span>{{ index }}</span
       ><Icon :name="current && playing ? 'pause' : 'play'" />
@@ -105,7 +117,7 @@ function keyboard(event: KeyboardEvent) {
       class="library-card-play"
       :aria-label="`${current && playing ? '暂停' : '播放'}歌单：${playlist.name}`"
       :disabled="!playable || !playlist.trackCount"
-      @click="emit('play')"
+      @click="play"
     >
       <Icon :name="current && playing ? 'pause' : 'play'" />
     </button>

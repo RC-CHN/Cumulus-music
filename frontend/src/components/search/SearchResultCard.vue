@@ -6,6 +6,7 @@ import Icon from '../Icon.vue';
 import ActionMenu from '../ActionMenu.vue';
 import type { MenuItem } from '../../services/menu';
 import { searchCardCanPlay, searchCardKey } from '../../services/searchCards';
+import { usePlaybackTriggerFocus } from '../../composables/usePlaybackTriggerFocus';
 const props = defineProps<{
   item: SearchItem;
   playable: boolean;
@@ -20,6 +21,14 @@ const emit = defineEmits<{
 }>();
 const menu = ref<InstanceType<typeof ActionMenu>>();
 const element = ref<HTMLElement>();
+const identity = searchCardKey(props.item);
+const playbackFocus = usePlaybackTriggerFocus(
+  () => props.playable,
+  element,
+  () =>
+    searchCardKey(props.item) === identity &&
+    !element.value?.closest('.page-leave-active,.search-results-leave-active'),
+);
 function contextMenu(event: MouseEvent | KeyboardEvent) {
   const focused =
     event instanceof KeyboardEvent && event.target instanceof Element
@@ -85,7 +94,11 @@ const items = computed<MenuItem[]>(() => [
     : []),
 ]);
 function action(key: string) {
-  if (key === 'play' && canPlay.value && props.playable) emit('play', props.item);
+  if (key === 'play' && canPlay.value && props.playable)
+    playbackFocus.start(
+      () => emit('play', props.item),
+      element.value?.querySelector<HTMLElement>('.search-card-play'),
+    );
   else if (key === 'open' && !unavailable.value) emit('open', props.item);
   else if (key === 'comments') emit('comments', props.item);
   else if (key === 'download') emit('download', props.item);

@@ -400,6 +400,106 @@ test('a pending source command rejects repeated card clicks and cannot publish i
   assert.equal(f.player.view.value?.state, 'playing');
   f.player.dispose();
 });
+test('shared source transport binds album, artist and voice sessions without rereading their lists', async () => {
+  const calls: PlayerAction[] = [];
+  let selections = 0;
+  const f = fixture({
+    playerAction: async (_epoch, input) => {
+      calls.push(input);
+      return state('3');
+    },
+    playSelection: async () => {
+      selections++;
+      return state('3');
+    },
+  });
+  await f.player.connect(account());
+  for (const origin of [
+    { kind: 'album', id: '7' },
+    { kind: 'artist', id: '12' },
+    { kind: 'podcast', id: '8' },
+    null,
+  ] as const) {
+    f.emit({ ...state('4', '1', 'loaded-source'), origin, queueRevision: '9' });
+    await f.player.toggleSource();
+  }
+  assert.equal(selections, 0);
+  assert.deepEqual(
+    calls,
+    Array.from({ length: 4 }, () => ({
+      kind: 'pause_for',
+      play_id: 'loaded-source',
+      expected_queue_revision: '9',
+      paused: true,
+    })),
+  );
+  f.player.dispose();
+});
+test('an explicit source retry retains the failed target instead of pausing another stream session', async () => {
+  const calls: PlayerAction[] = [];
+  const f = fixture({
+    playerAction: async (_epoch, input) => {
+      calls.push(input);
+      throw { code: 'unavailable', message: '合成输出失败', retryable: true };
+    },
+  });
+  await f.player.connect(account());
+  f.emit({
+    ...state('2', '1', 'paused-source'),
+    state: 'paused',
+    origin: { kind: 'album', id: '7' },
+    queueRevision: '9',
+  });
+  await f.player.toggleSource();
+  assert.equal(f.player.error.value, '合成输出失败');
+  f.emit({
+    ...state('3', '1', 'new-source'),
+    origin: { kind: 'playlist', id: '8' },
+    queueRevision: '10',
+  });
+  await f.player.retry();
+  assert.deepEqual(
+    calls,
+    Array.from({ length: 2 }, () => ({
+      kind: 'pause_for',
+      play_id: 'paused-source',
+      expected_queue_revision: '9',
+      paused: false,
+    })),
+  );
+  assert.equal(f.player.view.value?.playId, 'new-source');
+  f.player.dispose();
+});
+test('source pause remains usable while a queue preparation is waiting for its read', async () => {
+  const held = deferred<PlayerView>();
+  const calls: PlayerAction[] = [];
+  const f = fixture({
+    playerAction: async (_epoch, input) => {
+      calls.push(input);
+      return input.kind === 'queue_playlist'
+        ? held.promise
+        : { ...state('4', '1', 'current'), state: 'paused', origin: { kind: 'playlist', id: '7' } };
+    },
+  });
+  await f.player.connect(account());
+  f.emit({ ...state('2', '1', 'current'), origin: { kind: 'playlist', id: '7' } });
+  const queue = f.player.queuePlaylist('8');
+  assert.equal(f.player.queueBusy.value, true);
+  await f.player.togglePlaylist('7');
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[1], {
+    kind: 'pause_for',
+    play_id: 'current',
+    expected_queue_revision: '1',
+    paused: true,
+  });
+  assert.equal(f.player.view.value?.state, 'paused');
+  held.resolve({ ...state('3', '1', 'current'), origin: { kind: 'playlist', id: '7' } });
+  await queue;
+  assert.equal(f.player.queueBusy.value, false);
+  assert.equal(f.player.view.value?.state, 'paused');
+  f.player.dispose();
+});
 function fixture(overrides: Partial<PlayerClient> = {}) {
   let callback: (event: PlayerUpdate) => void = () => {};
   let stopped = 0;

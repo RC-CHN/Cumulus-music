@@ -356,8 +356,19 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     }
   }
   const select = (input: PlaySelection) => run((e) => core.playSelection(e, input));
+  function toggleSource() {
+    if (!ready.value || busy.value) return;
+    const current = view.value;
+    if (!current?.playId || !loaded.value) return;
+    return action({
+      kind: 'pause_for',
+      play_id: current.playId,
+      expected_queue_revision: current.queueRevision,
+      paused: playing.value,
+    });
+  }
   function togglePlaylist(id: string) {
-    if (!ready.value || busy.value || queueBusy.value) return;
+    if (!ready.value || busy.value) return;
     const current = view.value;
     if (
       current?.origin?.kind === 'playlist' &&
@@ -366,12 +377,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       !current.fm &&
       loaded.value
     )
-      return action({
-        kind: 'pause_for',
-        play_id: current.playId,
-        expected_queue_revision: current.queueRevision,
-        paused: playing.value,
-      });
+      return toggleSource();
     return select({
       kind: 'playlist',
       id,
@@ -556,6 +562,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     intelligence,
     syncPlayback,
     select,
+    toggleSource,
     togglePlaylist,
     selectForPage,
     downloads,

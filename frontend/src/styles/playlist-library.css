@@ -279,6 +279,10 @@
 .library-current .library-index {
   color: var(--accent);
 }
+.library-index:focus-visible {
+  outline-offset: -2px;
+  border-radius: 4px;
+}
 .library-row .playlist-card-menu {
   position: static;
   opacity: 1;
