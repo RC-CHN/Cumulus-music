@@ -13,6 +13,8 @@ pub(super) struct State {
     pub challenge: Option<Value>,
     pub verification: Option<LoginStatus>,
     pub device: Option<super::device::Attempt>,
+    pub sms_context: Option<super::sms::Context>,
+    pub sms: Option<super::sms::Attempt>,
 }
 
 impl Default for State {
@@ -27,6 +29,8 @@ impl Default for State {
             challenge: None,
             verification: None,
             device: None,
+            sms_context: None,
+            sms: None,
         }
     }
 }
@@ -106,6 +110,9 @@ impl Drop for Operation<'_> {
             state.busy = false;
             state.status = LoginStatus::Error;
             state.error_kind = Some("interrupted");
+            if let Some(sms) = &mut state.sms {
+                sms.view.phase = super::SmsPhase::RecoveryRequired;
+            }
         }
     }
 }

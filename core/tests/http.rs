@@ -687,6 +687,7 @@ async fn non_completing_login_steps_cannot_install_a_refresh_header() {
         "/api/user/2fa/list",
         "/api/user/2fa/begin",
         "/api/user/2fa/securityEmail/send",
+        "/api/middle/account/uplinkcaptcha/get",
         "/api/read",
     ] {
         let (_tmp, credentials) = credentials();
@@ -720,6 +721,7 @@ async fn verification_ack_without_an_authorizing_cookie_cannot_install_refresh()
         "/api/login/2fa/mail/captcha/check",
         "/api/user/2fa/securityEmail/verify",
         "/api/middle/account/captcha/verify",
+        "/api/middle/account/uplinkcaptcha/verify",
         "/api/user/2fa/order/check",
         "/api/user/2fa/bindcellphone",
         "/api/login/cellphone/twice/question/verify",
@@ -743,6 +745,44 @@ async fn verification_ack_without_an_authorizing_cookie_cannot_install_refresh()
                 .unwrap()
                 .refresh_token
                 .is_none()
+        );
+    }
+}
+
+#[tokio::test]
+async fn uplink_polling_only_accepts_a_truthy_business_acknowledgement_for_refresh_headers() {
+    for data in [
+        Value::Null,
+        json!(false),
+        json!(0),
+        json!(""),
+        json!({"success":false}),
+        json!(true),
+        json!({"success":true}),
+    ] {
+        let (_tmp, credentials) = credentials();
+        credentials.clear().unwrap();
+        let expected = data == true || data["success"] == true;
+        let mut response = reply(json!({"code":200,"data":data}));
+        response.set_cookies = vec!["MUSIC_U=fixture-uplink; Path=/; Secure; HttpOnly".into()];
+        response.refresh_token = Some("synthetic-uplink-refresh".into());
+        let transport = client(
+            credentials.clone(),
+            Arc::new(Backend::new([Reply::Ready(response)])),
+            RequestOptions::default(),
+            None,
+        );
+        transport
+            .request("/api/middle/account/uplinkcaptcha/verify", json!({}), false)
+            .await
+            .unwrap();
+        assert_eq!(
+            credentials
+                .login_credentials()
+                .unwrap()
+                .refresh_token
+                .is_some(),
+            expected
         );
     }
 }

@@ -32,7 +32,7 @@ pub struct CredentialLogin {
     candidate: LoginCandidate,
     base: SessionToken,
     pub(super) state: Mutex<State>,
-    cooldown: Arc<ResendCooldown>,
+    pub(super) cooldown: Arc<ResendCooldown>,
     guardian: Option<Arc<dyn LoginGuardian>>,
     pub(super) protocol: LoginProtocol,
     pub(super) api: Arc<dyn Api>,
@@ -99,11 +99,16 @@ impl CredentialLogin {
             ));
         }
         state.generation = next_generation(state.generation)?;
+        if let Some(sms) = &state.sms {
+            sms.cancel.send_replace(true);
+        }
         state.status = LoginStatus::Cancelled;
         state.pending = None;
         state.challenge = None;
         state.verification = None;
         state.device = None;
+        state.sms = None;
+        state.sms_context = None;
         state.busy = false;
         Ok(())
     }
@@ -173,6 +178,13 @@ impl CredentialLogin {
                 if state.status.verification() {
                     state.verification = Some(state.status);
                 }
+                if login && state.status != LoginStatus::Authorized {
+                    // Keep the active cancellation handle while an acknowledged
+                    // SMS step replays login or awaits account/get. Dropping it
+                    // before network completion would cancel our own operation.
+                    state.sms = None;
+                    state.sms_context = None;
+                }
                 if matches!(code, Some(8830 | 8860))
                     && let Some(ticket) = response["MUSIC_TU"].as_str().filter(|s| !s.is_empty())
                 {
@@ -199,6 +211,8 @@ impl CredentialLogin {
         state.challenge = None;
         state.verification = None;
         state.device = None;
+        state.sms = None;
+        state.sms_context = None;
         state.status = LoginStatus::Authenticated;
         Ok(())
     }
@@ -354,13 +368,28 @@ impl CredentialLogin {
                     ));
                 }
             }
+            if response["code"] == 200 {
+                operation.lock()?.sms_context = Some(super::sms::Context::from_list(&response));
+            }
             Ok(response)
         }
         .await;
         operation.finish(result)
     }
     pub async fn verification(&self, action: VerificationAction, params: Value) -> Result<Value> {
-        let request = action.request(params)?;
+        let mut request = action.request(params)?;
+        if matches!(action, VerificationAction::SmsSend) {
+            request.payload = if self.protocol == LoginProtocol::Jsk {
+                json!({"scene":"undefined"})
+            } else {
+                json!({})
+            };
+        } else if matches!(action, VerificationAction::SmsVerify)
+            && self.protocol == LoginProtocol::Jsk
+        {
+            request.payload["ctcode"] = json!("undefined");
+            request.payload["scene"] = json!("undefined");
+        }
         let (generation, previous) = {
             let state = self.lock()?;
             if state.pending.is_none() {
@@ -396,6 +425,8 @@ impl CredentialLogin {
                 && (response["data"].is_null()
                     || response["data"].as_object().is_some_and(|v| v.is_empty()));
             if response["code"].as_i64() == Some(200)
+                && response["data"]["success"] != false
+                && response["data"] != false
                 && (request.completes || no_question)
                 && let Some(replayed) = self.complete_verification(&operation).await?
             {

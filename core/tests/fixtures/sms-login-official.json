@@ -1,0 +1,63 @@
+{
+  "sources": {
+    "hybrid_vendors_app_subApp.chunk.1482700000000.js/1368.js": "49da1d26373042091a3123f8948f1ce7e9968ec185e57369156fc1c6a6700db3",
+    "hybrid_app.chunk.1482700000000.js/15.js": "8ec4bf8d343f6963860eb73bc59ca09f0dd1ae50db2608a6c5abc7d69a0b521a",
+    "hybrid_app.chunk.1482700000000.js/48.js": "d8c0a8a0c03aca1339bc38e61c8c9a943cd3f4db6e214492e10c3c114acba4db"
+  },
+  "jsk": {
+    "sendDownSms": {
+      "path": "/api/middle/account/captcha/sent",
+      "payload": {
+        "scene": "undefined",
+        "fromPage": "JSK"
+      }
+    },
+    "verifyDownSms": {
+      "path": "/api/middle/account/captcha/verify",
+      "payload": {
+        "captcha": "123456",
+        "ctcode": "undefined",
+        "scene": "undefined",
+        "fromPage": "JSK"
+      }
+    },
+    "getUpSmsInfo": {
+      "path": "/api/middle/account/uplinkcaptcha/get",
+      "payload": {
+        "cellphone": "138****8000",
+        "enUserId": "undefined",
+        "channel": "music_test",
+        "scene": "undefined",
+        "fromPage": "JSK"
+      }
+    },
+    "verifyUpSms": {
+      "path": "/api/middle/account/uplinkcaptcha/verify",
+      "payload": {
+        "cellphone": "138****8000",
+        "enUserId": "undefined",
+        "captcha": "SEND 1234",
+        "channel": "music_test",
+        "scene": "undefined",
+        "fromPage": "JSK"
+      }
+    }
+  },
+  "legacy": {
+    "/api/middle/account/uplinkcaptcha/get": {
+      "channel": "music_test"
+    },
+    "/api/middle/account/uplinkcaptcha/verify": {
+      "channel": "music_test",
+      "captcha": "SEND 1234"
+    },
+    "/api/middle/account/captcha/verify": {
+      "captcha": "123456"
+    },
+    "/api/middle/account/captcha/sent": {}
+  },
+  "stopBehavior": {
+    "localOnly": true,
+    "networkRequests": 0
+  }
+}

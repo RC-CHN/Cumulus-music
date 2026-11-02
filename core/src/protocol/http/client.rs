@@ -263,7 +263,11 @@ impl MusicHttpClient {
         };
         let login_path = super::login::completes_login(path, &response.set_cookies);
         let authorized = parsed.as_ref().is_ok_and(|v| {
-            [Some(200), Some(803)].contains(&v["code"].as_i64()) && v["data"]["success"] != false
+            [Some(200), Some(803)].contains(&v["code"].as_i64())
+                && v["data"]["success"] != false
+                && v["data"] != false
+                && (path != "/api/middle/account/uplinkcaptcha/verify"
+                    || crate::protocol::wire::serialization::js_truthy(&v["data"]))
         });
         let refresh = if (200..300).contains(&response.status) && login_path && authorized {
             response.refresh_token.as_deref()

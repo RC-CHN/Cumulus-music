@@ -1,4 +1,6 @@
-use crate::account::login::{DeviceVerificationKind, DeviceVerificationView, LoginStatus};
+use crate::account::login::{
+    DeviceVerificationKind, DeviceVerificationView, LoginStatus, SmsDirection, SmsVerificationView,
+};
 use serde::{Deserialize, Serialize};
 
 /// Only the bounded resulting state crosses IPC; never the CAPTCHA proof.
@@ -44,6 +46,18 @@ pub enum LoginCommand {
         country_code: String,
     },
     VerificationMethods,
+    SmsStart {
+        direction: SmsDirection,
+    },
+    SmsRefresh {
+        verification_id: String,
+    },
+    SmsCheck {
+        verification_id: String,
+    },
+    SmsStop {
+        verification_id: String,
+    },
     DeviceStart {
         method: DeviceVerificationKind,
     },
@@ -89,6 +103,7 @@ pub struct LoginChallengeView {
     pub nickname: Option<String>,
     pub avatar_url: Option<String>,
     pub phone_mask: Option<String>,
+    pub country_code: Option<String>,
     pub question: Option<String>,
     pub answers: Vec<LoginAnswerView>,
     pub reuse_confirmation: bool,
@@ -123,6 +138,7 @@ pub struct LoginView {
     pub interrupted: bool,
     pub challenge: LoginChallengeView,
     pub device: Option<DeviceVerificationView>,
+    pub sms: Option<SmsVerificationView>,
 }
 
 #[derive(Serialize)]

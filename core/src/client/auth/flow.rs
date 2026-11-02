@@ -41,6 +41,20 @@ impl MusicClient {
     }
 
     pub async fn login_command(&self, id: &str, command: LoginCommand) -> Result<LoginView> {
+        if let LoginCommand::SmsStop { verification_id } = &command {
+            let slot = self.auth.pending.lock().map_err(|_| Error::LockPoisoned)?;
+            let pending = slot
+                .as_ref()
+                .filter(|p| p.id == id)
+                .ok_or(Error::StaleResponse)?;
+            pending.captcha.check_idle()?;
+            let PendingFlow::Credentials { flow, .. } = &pending.flow else {
+                return Err(Error::StaleResponse);
+            };
+            flow.sms_stop(verification_id)?;
+            drop(slot);
+            return self.login_snapshot(id);
+        }
         if let LoginCommand::DeviceStop { verification_id } = &command {
             let flow = {
                 let slot = self.auth.pending.lock().map_err(|_| Error::LockPoisoned)?;
@@ -95,6 +109,20 @@ impl MusicClient {
             ));
         }
         let initial = matches!(state.status, LoginStatus::Ready | LoginStatus::CodeSent);
+        if flow.sms_snapshot()?.is_some()
+            && !matches!(
+                &command,
+                LoginCommand::SmsCheck { .. }
+                    | LoginCommand::SmsRefresh { .. }
+                    | LoginCommand::VerificationSmsSend
+                    | LoginCommand::VerificationSmsVerify { .. }
+                    | LoginCommand::Reconcile
+            )
+        {
+            return Err(Error::State(
+                "stop SMS verification before changing methods",
+            ));
+        }
         let initial_mode = |expected| -> Result<()> {
             if mode != expected || !initial {
                 return Err(Error::State("start a new login attempt"));
@@ -181,9 +209,27 @@ impl MusicClient {
                         .collect();
                     next.nickname = view::short_text(&r["data"]["nickName"]);
                     next.avatar_url = mapping::artwork(&r["data"]["avatarUrl"]);
-                    next.phone_mask = view::short_text(&r["data"]["phoneMask"]);
+                    next.phone_mask = view::short_text(&r["data"]["authDetail"]["UP_SMS"])
+                        .filter(|s| !s.is_empty())
+                        .or_else(|| view::short_text(&r["data"]["phoneMask"]));
+                    next.country_code = view::short_text(&r["data"]["ctCode"]).filter(|s| {
+                        !s.is_empty() && s.len() <= 4 && s.bytes().all(|c| c.is_ascii_digit())
+                    });
                     projection = Some(next);
                 }
+            }
+            LoginCommand::SmsStart { direction } => {
+                offered("UP_SMS")?;
+                flow.sms_start(direction).await?;
+            }
+            LoginCommand::SmsRefresh { verification_id } => {
+                flow.sms_refresh(&verification_id).await?;
+            }
+            LoginCommand::SmsCheck { verification_id } => {
+                completed_device = flow.sms_check_up(&verification_id).await?;
+            }
+            LoginCommand::SmsStop { .. } => {
+                unreachable!("local stop handled before the business gate")
             }
             LoginCommand::DeviceStart { method } => {
                 offered(if method == DeviceVerificationKind::Confirm {
@@ -223,14 +269,10 @@ impl MusicClient {
                 .await?;
             }
             LoginCommand::VerificationSmsSend => {
-                offered("UP_SMS")?;
-                flow.verification(VerificationAction::SmsSend, json!({"scene":"0"}))
-                    .await?;
+                flow.sms_send_down().await?;
             }
             LoginCommand::VerificationSmsVerify { code } => {
-                offered("UP_SMS")?;
-                flow.verification(VerificationAction::SmsVerify, json!({"captcha":code}))
-                    .await?;
+                completed_device = flow.sms_verify_down(&code).await?;
             }
             LoginCommand::BindPhoneVerify {
                 phone,
