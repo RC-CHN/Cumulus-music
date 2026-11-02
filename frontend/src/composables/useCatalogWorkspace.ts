@@ -2,12 +2,14 @@ import type { AccountView, CoreClient } from '../services/contracts.ts';
 import { useCore } from '../services/core.ts';
 import { catalogVisitKey, type CatalogLocation } from '../services/catalogNavigation.ts';
 import { useCatalogSession } from './useCatalogSession.ts';
+import type { CatalogMembershipListener } from '../services/catalog.ts';
 
 /** Account-owned LRU of models; route history does not keep rendered pages alive. */
 export function useCatalogWorkspace(
   core: CoreClient = useCore(),
   expired = () => {},
   capacity = 8,
+  membershipChanged: CatalogMembershipListener = () => {},
 ) {
   if (!Number.isInteger(capacity) || capacity < 2) throw Error('invalid catalog memory capacity');
   const sessions = new Map<string, ReturnType<typeof useCatalogSession>>();
@@ -31,7 +33,8 @@ export function useCatalogWorkspace(
     }
     const key = catalogVisitKey(location);
     let session = sessions.get(key);
-    if (!session) session = useCatalogSession(account, location.resource, core, expired);
+    if (!session)
+      session = useCatalogSession(account, location.resource, core, expired, membershipChanged);
     sessions.delete(key);
     sessions.set(key, session);
     while (sessions.size > capacity) {

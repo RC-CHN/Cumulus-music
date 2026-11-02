@@ -6,6 +6,8 @@ import { createCollectionViewportMemory } from './services/collectionViewport';
 import ContentTooltip from './components/ContentTooltip.vue';
 import type { SearchItem } from './services/search';
 import { searchCardIsCurrent, searchCardSelection } from './services/searchCards';
+import { catalogResourceSelection, type AlbumCardRequest } from './services/catalogCards';
+import AlbumActions from './components/catalog/AlbumActions.vue';
 import { computed, onMounted, onUnmounted, watch, ref, shallowRef, nextTick } from 'vue';
 import { onDesktopLyricOpen } from './adapters/desktopLyrics';
 import { onMiniReturn } from './adapters/mini';
@@ -48,7 +50,7 @@ import LikeRecoveryNotice from './components/LikeRecoveryNotice.vue';
 import { useLikeRecovery } from './composables/useLikeRecovery';
 import { useHistory } from './composables/useHistory';
 import type { HistoryKind, HistoryResource } from './services/history';
-import type { CatalogResource, CatalogSelectionPage } from './services/catalog';
+import type { AlbumCard, CatalogResource, CatalogSelectionPage } from './services/catalog';
 import PlayerBar from './components/PlayerBar.vue';
 import { useIntelligence } from './composables/useIntelligence';
 import QueuePanel from './components/QueuePanel.vue';
@@ -102,6 +104,8 @@ import { useCore } from './services/core';
 const core = useCore();
 const searchMemory = createSearchViewportMemory();
 const collectionMemory = createCollectionViewportMemory();
+const collectionRevision = ref(0);
+const albumActions = ref<InstanceType<typeof AlbumActions>>();
 const collectionsPageRef = ref<InstanceType<typeof CollectionsPage>>();
 const playlistLibraryState = ref(libraryView());
 const music = useMusic(undefined, (commit) => {
@@ -132,9 +136,14 @@ const music = useMusic(undefined, (commit) => {
     });
   else proceed();
 });
-const catalogWorkspace = useCatalogWorkspace(core, () => {
-  void music.bootstrap(false);
-});
+const catalogWorkspace = useCatalogWorkspace(
+  core,
+  () => {
+    void music.bootstrap(false);
+  },
+  8,
+  catalogMembershipChanged,
+);
 const catalogSession = shallowRef<CatalogSession>();
 watch(
   [() => music.page.value, () => music.account.value.epoch, () => music.account.value.status],
@@ -306,6 +315,33 @@ function playCatalog(pages: CatalogSelectionPage[], index: number) {
     index,
     quality: player.view.value?.qualityPreferences.quality ?? 'standard',
   });
+}
+function playAlbumCard(album: AlbumCard) {
+  const view = player.view.value;
+  if (view?.origin?.kind === 'album' && view.origin.id === album.id && player.loaded.value)
+    void player.toggleSource();
+  else
+    void player.prepareSelection((epoch) =>
+      catalogResourceSelection(
+        core,
+        epoch,
+        { kind: 'album', id: album.id },
+        view?.qualityPreferences.quality ?? 'standard',
+      ),
+    );
+}
+function albumAction(request: AlbumCardRequest) {
+  trackActions.value?.close();
+  void albumActions.value?.show(request);
+}
+function catalogMembershipChanged(epoch: string, resource: CatalogResource) {
+  if (account.value.status !== 'authenticated' || account.value.epoch !== epoch) return;
+  collectionsPageRef.value?.checkpoint();
+  collectionMemory.invalidate(
+    resource.kind === 'album' ? 'saved_albums' : 'followed_artists',
+    account.value.epoch,
+  );
+  collectionRevision.value++;
 }
 function playRankingPlaylist(id: string) {
   void player.togglePlaylist(id);
@@ -658,6 +694,7 @@ const downloadPageRef = ref<InstanceType<typeof DownloadPage>>();
 watch(
   music.page,
   (next, previous) => {
+    albumActions.value?.close();
     if (previous.kind === 'rankings') {
       checkpointRanking(previous);
       rankings.leave();
@@ -1470,8 +1507,20 @@ onUnmounted(() => {
                 :scope="page.scope"
                 :visit="page.collectionVisit ?? 0"
                 :memory="collectionMemory"
+                :revision="collectionRevision"
+                :playable="player.ready.value && !player.busy.value"
+                :queueable="
+                  player.ready.value &&
+                  !player.busy.value &&
+                  !player.queueBusy.value &&
+                  !player.view.value?.fm
+                "
+                :origin="player.loaded.value ? player.view.value?.origin : null"
+                :playing="player.playing.value"
                 @scope="music.replace({ kind: 'collections', scope: $event })"
                 @open="openCatalog"
+                @play-album="playAlbumCard"
+                @album-action="albumAction"
                 @expired="music.bootstrap(false)"
               />
               <SearchResultsPage
@@ -1520,11 +1569,21 @@ onUnmounted(() => {
                 :account="account"
                 :playable="player.ready.value"
                 :play-busy="player.busy.value"
+                :origin="player.loaded.value ? player.view.value?.origin : null"
+                :playing="player.playing.value"
+                :queueable="
+                  player.ready.value &&
+                  !player.busy.value &&
+                  !player.queueBusy.value &&
+                  !player.view.value?.fm
+                "
                 :download-busy="downloads.busy.value"
                 :liked="liked"
                 :busy-likes="busyLikes"
                 :current-id="currentTrackId"
                 @open="openCatalog"
+                @play-album="playAlbumCard"
+                @album-action="albumAction"
                 @artist-tab="
                   (tab) => {
                     if (page.kind === 'catalog') music.navigate({ ...page, artistTab: tab });
@@ -1994,6 +2053,15 @@ onUnmounted(() => {
       :player="player"
       @expired="music.bootstrap(false)"
       @started="music.navigate({ kind: 'downloads', initialTab: 'active' })"
+    />
+    <AlbumActions
+      ref="albumActions"
+      :key="`${account.epoch}:${account.status}:album-actions`"
+      :account="account"
+      :player="player"
+      :changed="catalogMembershipChanged"
+      @expired="music.bootstrap(false)"
+      @download="(tracks) => (downloadDialog = { kind: 'start', tracks })"
     />
     <TrackActions
       ref="trackActions"

@@ -8,14 +8,27 @@ import type {
   ConcertCard,
   CatalogResource,
 } from '../../services/catalog';
+import type { PlayerOrigin } from '../../services/player';
+import type { AlbumCardRequest } from '../../services/catalogCards';
+import AlbumItem from './AlbumCard.vue';
 import Icon from '../Icon.vue';
 const props = defineProps<{
   albums?: AlbumCard[];
   artists?: ArtistCard[];
   videos?: CatalogVideoCard[];
   concerts?: ConcertCard[];
+  playable?: boolean;
+  queueable?: boolean;
+  origin?: PlayerOrigin | null;
+  playing?: boolean;
+  saved?: boolean;
 }>();
-const emit = defineEmits<{ open: [resource: CatalogResource]; mv: [id: string] }>();
+const emit = defineEmits<{
+  open: [resource: CatalogResource];
+  mv: [id: string];
+  playAlbum: [album: AlbumCard];
+  albumAction: [request: AlbumCardRequest];
+}>();
 const albums = computed(() => props.albums ?? []);
 const artists = computed(() => props.artists ?? []);
 const videos = computed(() => props.videos ?? []);
@@ -88,24 +101,19 @@ function date(value: string | number | null) {
         gridAutoRows: `${rowHeight - 16}px`,
       }"
     >
-      <button
+      <AlbumItem
         v-for="(album, i) in windowAlbums"
         :key="`album:${i}:${album.id}`"
-        class="catalog-card"
-        :data-catalog-key="`album:${album.id}`"
-        @click="emit('open', { kind: 'album', id: album.id })"
-      >
-        <img
-          v-if="album.coverUrl"
-          :src="album.coverUrl"
-          alt=""
-          loading="lazy"
-          decoding="async"
-          referrerpolicy="no-referrer"
-        /><span v-else class="catalog-card-placeholder"><Icon name="music" /></span
-        ><strong :title="album.name">{{ album.name }}</strong
-        ><small>{{ date(album.publishedAt) }} · {{ album.trackCount }} 首</small>
-      </button>
+        :album="album"
+        :playable="!!playable"
+        :queueable="!!queueable"
+        :current="origin?.kind === 'album' && origin.id === album.id"
+        :playing="!!playing"
+        :saved="!!saved"
+        @open="emit('open', $event)"
+        @play="emit('playAlbum', $event)"
+        @action="emit('albumAction', $event)"
+      />
       <button
         v-for="(artist, i) in windowArtists"
         :key="`artist:${i}:${artist.id}`"

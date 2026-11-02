@@ -246,3 +246,24 @@ test('collection history isolates visits while album tabs share a keyword, and c
   memory.connect({ ...account, status: 'expired' });
   assert.equal(memory.get(3, 'saved_albums', '1'), undefined);
 });
+test('membership invalidation clears all affected visits and fences stale unmount checkpoints while preserving filters and other scopes', () => {
+  const memory = createCollectionViewportMemory();
+  memory.connect(account);
+  const data = { epoch: '1', scope: 'saved_albums' as const, pages: [], error: '', retry: null };
+  const revision = memory.revision('saved_albums');
+  memory.set(1, data, 'first', { scrollTop: 800 }, revision);
+  memory.set(2, data, 'second', { scrollTop: 900 }, revision);
+  memory.set(1, { ...data, scope: 'purchased_albums' }, 'shared', { scrollTop: 10 });
+  memory.invalidate('saved_albums', 'old-account');
+  assert.ok(memory.get(2, 'saved_albums', '1'));
+  memory.invalidate('saved_albums', '1');
+  assert.equal(memory.get(1, 'saved_albums', '1'), undefined);
+  assert.equal(memory.get(2, 'saved_albums', '1'), undefined);
+  assert.ok(memory.get(1, 'purchased_albums', '1'));
+  assert.equal(memory.keyword(1, 'saved_albums', '1'), 'shared');
+  memory.set(2, data, 'stale checkpoint', { scrollTop: 900 }, revision);
+  assert.equal(memory.get(2, 'saved_albums', '1'), undefined);
+  assert.equal(memory.keyword(2, 'saved_albums', '1'), 'second');
+  memory.set(2, data, 'refreshed', { scrollTop: 0 }, memory.revision('saved_albums'));
+  assert.ok(memory.get(2, 'saved_albums', '1'));
+});

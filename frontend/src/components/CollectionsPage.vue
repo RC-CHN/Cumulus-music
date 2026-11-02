@@ -2,6 +2,9 @@
 import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from 'vue';
 import type { AccountView } from '../services/contracts';
 import type { CatalogResource } from '../services/catalog';
+import type { AlbumCard } from '../services/catalog';
+import type { AlbumCardRequest } from '../services/catalogCards';
+import type { PlayerOrigin } from '../services/player';
 import type { CollectionScope } from '../services/collections';
 import { normalizeKeyword } from '../services/keyword';
 import { useCollections } from '../composables/useCollections';
@@ -15,11 +18,18 @@ const props = defineProps<{
   scope: CollectionScope;
   visit: number;
   memory: CollectionViewportMemory;
+  revision: number;
+  playable: boolean;
+  queueable: boolean;
+  origin?: PlayerOrigin | null;
+  playing: boolean;
 }>();
 const emit = defineEmits<{
   open: [resource: CatalogResource];
   scope: [scope: CollectionScope];
   expired: [];
+  playAlbum: [album: AlbumCard];
+  albumAction: [request: AlbumCardRequest];
 }>();
 const model = useCollections(undefined, () => emit('expired'));
 const keyword = ref('');
@@ -28,6 +38,7 @@ const root = ref<HTMLElement>(),
 const panelId = useId();
 let owner = props.account.epoch,
   visit = props.visit;
+let scopeRevision = props.memory.revision(props.scope);
 const owns = () =>
   props.account.status === 'authenticated' &&
   props.account.epoch === owner &&
@@ -40,7 +51,7 @@ const viewport = useCollectionViewport(
 );
 function checkpoint() {
   const data = model.snapshot();
-  if (data) props.memory.set(visit, data, keyword.value, viewport.checkpoint());
+  if (data) props.memory.set(visit, data, keyword.value, viewport.checkpoint(), scopeRevision);
 }
 defineExpose({ checkpoint });
 const tabs: { key: CollectionScope; label: string }[] = [
@@ -140,12 +151,19 @@ watch([needle, visibleCount, model.next, model.loading, model.error, root], () =
     void model.more();
 });
 watch(
-  [() => props.account.epoch, () => props.account.status, () => props.scope, () => props.visit],
+  [
+    () => props.account.epoch,
+    () => props.account.status,
+    () => props.scope,
+    () => props.visit,
+    () => props.revision,
+  ],
   () => {
     checkpoint();
     viewport.cancel();
     owner = props.account.epoch;
     visit = props.visit;
+    scopeRevision = props.memory.revision(props.scope);
     model.connect(props.account);
     const saved = props.memory.get(visit, props.scope, owner);
     keyword.value = props.memory.keyword(visit, props.scope, owner);
@@ -258,7 +276,14 @@ onBeforeUnmount(() => {
         <CatalogCards
           v-else-if="model.scope.value !== 'followed_artists' && visibleCount"
           :albums="filteredAlbums"
+          :playable="playable"
+          :queueable="queueable"
+          :origin="origin"
+          :playing="playing"
+          :saved="scope === 'saved_albums'"
           @open="emit('open', $event)"
+          @play-album="emit('playAlbum', $event)"
+          @album-action="emit('albumAction', $event)"
         />
         <p
           v-else-if="!model.loading.value && !model.error.value && model.pages.value.length"

@@ -19,6 +19,7 @@ export function createCollectionViewportMemory(capacity = 8) {
   if (!Number.isSafeInteger(capacity) || capacity < 1)
     throw Error('invalid collection memory capacity');
   const visits = new Map<number, Visit>();
+  const revisions = new Map<CollectionScope, number>();
   let owner = '';
   function find(visit: number, epoch: string) {
     if (!owner || owner !== epoch) return;
@@ -32,7 +33,10 @@ export function createCollectionViewportMemory(capacity = 8) {
   return {
     connect(account: AccountView) {
       const next = account.status === 'authenticated' ? account.epoch : '';
-      if (!next || next !== owner) visits.clear();
+      if (!next || next !== owner) {
+        visits.clear();
+        revisions.clear();
+      }
       owner = next;
     },
     get(visit: number, scope: CollectionScope, epoch: string) {
@@ -42,8 +46,23 @@ export function createCollectionViewportMemory(capacity = 8) {
       const value = find(visit, epoch);
       return (scope === 'followed_artists' ? value?.followKeyword : value?.albumKeyword) ?? '';
     },
-    set(visit: number, data: CollectionSnapshot, keyword: string, position: CollectionPosition) {
+    revision(scope: CollectionScope) {
+      return revisions.get(scope) ?? 0;
+    },
+    invalidate(scope: CollectionScope, epoch: string) {
+      if (!owner || epoch !== owner) return;
+      revisions.set(scope, (revisions.get(scope) ?? 0) + 1);
+      for (const visit of visits.values()) visit.scopes.delete(scope);
+    },
+    set(
+      visit: number,
+      data: CollectionSnapshot,
+      keyword: string,
+      position: CollectionPosition,
+      revision = revisions.get(data.scope) ?? 0,
+    ) {
       if (!owner || data.epoch !== owner || !Number.isSafeInteger(visit) || visit < 0) return;
+      if (revision !== (revisions.get(data.scope) ?? 0)) return;
       const value = find(visit, owner) ?? {
         albumKeyword: '',
         followKeyword: '',

@@ -192,6 +192,13 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       quality: view.value?.qualityPreferences.quality ?? 'standard',
     });
   }
+  function queueAlbum(id: string) {
+    return queueAction({
+      kind: 'queue_album',
+      id,
+      quality: view.value?.qualityPreferences.quality ?? 'standard',
+    });
+  }
   // A toolbar may first read multiple catalog pages. Capture the user's player
   // intent before that read, so its late result cannot target a newer queue.
   function prepareCloudQueue() {
@@ -229,7 +236,12 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       Extract<
         PlayerAction,
         {
-          kind: 'queue_downloads' | 'queue_playlist' | 'queue_playlist_batch' | 'queue_cloud_batch';
+          kind:
+            | 'queue_downloads'
+            | 'queue_playlist'
+            | 'queue_playlist_batch'
+            | 'queue_cloud_batch'
+            | 'queue_album';
         }
       >
     >,
@@ -531,6 +543,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   }
   return {
     queuePlaylist,
+    queueAlbum,
     queueDownloads,
     queueCloud,
     prepareCloudQueue,

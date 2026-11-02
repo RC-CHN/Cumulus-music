@@ -85,6 +85,39 @@ test('queueing a playlist uses the saved listening preference rather than curren
   ]);
   f.player.dispose();
 });
+test('album queue requests capture current queue and quality and reject repeated busy or old-account completion', async () => {
+  const pending = deferred<PlayerView>(),
+    calls: PlayerAction[] = [];
+  const f = fixture({
+    playerAction: async (_epoch, input) => {
+      calls.push(input);
+      return pending.promise;
+    },
+  });
+  await f.player.connect(account());
+  f.emit({
+    ...state('2', '1', 'playing'),
+    queueRevision: '42',
+    qualityPreferences: {
+      revision: 'saved',
+      quality: 'hires',
+      damaged: false,
+      appliesToCurrent: true,
+    },
+  });
+  const first = f.player.queueAlbum('7');
+  await f.player.queueAlbum('8');
+  assert.equal(f.player.queueBusy.value, true);
+  assert.deepEqual(calls, [
+    { kind: 'queue_album', id: '7', quality: 'hires', expected_queue_revision: '42' },
+  ]);
+  await f.player.connect(account('2'));
+  pending.resolve(state('99', '1', 'old'));
+  assert.equal(await first, undefined);
+  assert.equal(f.player.view.value?.epoch, '2');
+  assert.notEqual(f.player.view.value?.playId, 'old');
+  f.player.dispose();
+});
 test('page-owned selection failures cannot become a footer retry with an expired snapshot', async () => {
   const calls: PlayerAction[] = [];
   let selections = 0;

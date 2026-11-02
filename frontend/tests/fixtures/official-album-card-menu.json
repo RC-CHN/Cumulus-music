@@ -1,0 +1,70 @@
+{
+  "source": "hybrid_app.chunk.1482700000000.js/622.js k.content/check",
+  "sha256": "347d7d067eeb1b883dec32a290e8e9a960fdc97a8acafe7d44ebe5a1960735b0",
+  "method": "Execute recovered album menu literal and exact scene predicate; enums and non-digital synthetic state only; native renderer not run",
+  "boundary": "Current card adds ordinary download; digital AB/buy and album-detail-only actions are not included in common keys",
+  "vectors": [
+    {
+      "scene": "artist",
+      "isFav": false,
+      "rows": [
+        {
+          "text": "查看专辑",
+          "action": "link"
+        },
+        {
+          "text": "播放",
+          "action": "playAll"
+        },
+        {
+          "text": "下一首播放",
+          "action": "nextPlay"
+        },
+        {
+          "text": "收藏",
+          "action": "favorite"
+        },
+        {
+          "text": "分享...",
+          "action": "share"
+        },
+        {
+          "text": "复制链接",
+          "action": "copy"
+        }
+      ],
+      "commonCardKeys": ["open", "play", "next", "collect", "share", "copy"]
+    },
+    {
+      "scene": "myFavorite",
+      "isFav": true,
+      "rows": [
+        {
+          "text": "查看专辑",
+          "action": "link"
+        },
+        {
+          "text": "播放",
+          "action": "playAll"
+        },
+        {
+          "text": "下一首播放",
+          "action": "nextPlay"
+        },
+        {
+          "text": "分享...",
+          "action": "share"
+        },
+        {
+          "text": "复制链接",
+          "action": "copy"
+        },
+        {
+          "text": "删除专辑",
+          "action": "remove"
+        }
+      ],
+      "commonCardKeys": ["open", "play", "next", "share", "copy", "remove"]
+    }
+  ]
+}

@@ -11,6 +11,7 @@ const props = withDefaults(
     icon?: string;
     triggerText?: string;
     triggerPressed?: boolean;
+    catalogKey?: string;
     disabled?: boolean;
     focusChecked?: boolean;
     contextOnly?: boolean;
@@ -346,6 +347,7 @@ defineExpose({
       type="button"
       ref="trigger"
       class="icon-button menu-trigger"
+      :data-catalog-key="catalogKey"
       :aria-label="label"
       :data-tooltip="triggerText ? `${label}：${triggerText}` : label"
       :aria-describedby="triggerText ? `${id}-value` : undefined"

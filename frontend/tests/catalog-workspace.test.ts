@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import type { AccountView, CoreClient } from '../src/services/contracts.ts';
 import type { CatalogQuery, CatalogView } from '../src/services/catalog.ts';
 import { useCatalogWorkspace } from '../src/composables/useCatalogWorkspace.ts';
+import { createCollectionViewportMemory } from '../src/services/collectionViewport.ts';
 const account: AccountView = {
   epoch: 'one',
   status: 'authenticated',
@@ -10,6 +11,61 @@ const account: AccountView = {
   avatarUrl: null,
 };
 const tick = () => new Promise((resolve) => setImmediate(resolve));
+test('membership completion notifies after model disposal and never invalidates a replacement account', async () => {
+  for (const replaceAccount of [false, true]) {
+    let release!: () => void,
+      writes = 0;
+    const wait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { core } = backend({
+      catalogMembership: async (epoch, resource, action) => {
+        if (action.kind === 'inspect') return { epoch, value: { resource, operation: null } };
+        assert.equal(action.kind, 'set');
+        writes++;
+        await wait;
+        return {
+          epoch,
+          value: { resource, operation: { phase: 'confirmed', desired: true, observed: true } },
+        };
+      },
+    });
+    const memory = createCollectionViewportMemory();
+    memory.connect(account);
+    const events: unknown[] = [];
+    const workspace = useCatalogWorkspace(
+      core,
+      () => {},
+      8,
+      (epoch, resource) => {
+        events.push([epoch, resource.id]);
+        memory.invalidate('saved_albums', epoch);
+      },
+    );
+    const model = workspace.open(account, {
+      resource: { kind: 'album', id: '8' },
+      catalogVisit: 1,
+    })!;
+    await tick();
+    const pending = model.collect();
+    assert.deepEqual(events, [['one', '8']]);
+    if (replaceAccount) {
+      const next = { ...account, epoch: 'two' };
+      memory.connect(next);
+      workspace.open(next);
+    } else workspace.clear();
+    assert.equal(model.valid(), false);
+    release();
+    await pending;
+    assert.equal(writes, 1);
+    assert.deepEqual(events, [
+      ['one', '8'],
+      ['one', '8'],
+    ]);
+    assert.equal(memory.revision('saved_albums'), replaceAccount ? 0 : 2);
+    workspace.clear();
+  }
+});
 function view(query: CatalogQuery): CatalogView {
   let page: CatalogView['page'];
   switch (query.kind) {

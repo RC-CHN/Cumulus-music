@@ -3,6 +3,9 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } fro
 import type { TrackMenuRequest } from '../services/trackMenu';
 import type { AccountView, TrackView } from '../services/contracts';
 import type { ArtistTab, CatalogResource, CatalogSelectionPage } from '../services/catalog';
+import type { AlbumCard } from '../services/catalog';
+import type { AlbumCardRequest } from '../services/catalogCards';
+import type { PlayerOrigin } from '../services/player';
 import type { AlbumTab, CatalogPanelKey } from '../services/catalogNavigation';
 import type { CatalogSession } from '../composables/useCatalogSession';
 import { usePageEntryFocus } from '../composables/usePageEntryFocus';
@@ -22,6 +25,9 @@ const props = defineProps<{
   liked: Set<string>;
   busyLikes: Set<string>;
   currentId?: string;
+  origin?: PlayerOrigin | null;
+  playing: boolean;
+  queueable: boolean;
 }>();
 const emit = defineEmits<{
   open: [resource: CatalogResource];
@@ -34,6 +40,8 @@ const emit = defineEmits<{
   artistTab: [tab: ArtistTab];
   albumTab: [tab: AlbumTab];
   back: [];
+  playAlbum: [album: AlbumCard];
+  albumAction: [request: AlbumCardRequest];
 }>();
 const {
   resource,
@@ -402,8 +410,14 @@ defineExpose({ checkpoint: () => checkpoint(), resourceKey: `${resource.kind}:${
           <CatalogCards
             v-else-if="list.pages.value.length"
             v-bind="cards"
+            :playable="playable && !playBusy"
+            :queueable="queueable"
+            :origin="origin"
+            :playing="playing"
             @open="emit('open', $event)"
             @mv="emit('mv', $event)"
+            @play-album="emit('playAlbum', $event)"
+            @album-action="emit('albumAction', $event)"
           />
           <p v-if="list.loading.value" class="catalog-loading" role="status">正在加载…</p>
           <button v-if="next" class="load-more" :disabled="list.loading.value" @click="list.more">

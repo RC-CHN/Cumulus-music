@@ -1,6 +1,11 @@
 import { computed, ref } from 'vue';
 import type { AccountView, CoreClient } from '../services/contracts.ts';
-import type { ArtistTab, CatalogResource, CatalogSelectionPage } from '../services/catalog.ts';
+import type {
+  ArtistTab,
+  CatalogResource,
+  CatalogSelectionPage,
+  CatalogMembershipListener,
+} from '../services/catalog.ts';
 import {
   artistQuery,
   type AlbumTab,
@@ -21,8 +26,10 @@ export function useCatalogSession(
   resource: CatalogResource,
   core: CoreClient,
   expired: () => void,
+  membershipChanged: CatalogMembershipListener = () => {},
 ) {
   resource = { ...resource };
+  const owner = account.epoch;
   const tab = ref<ArtistTab>('songs'),
     albumTab = ref<AlbumTab>('songs');
   const positions = new Map<CatalogPanelKey, CatalogPosition>();
@@ -149,10 +156,17 @@ export function useCatalogSession(
   }
   async function collect(reconcile = false) {
     if (disposed || (!reconcile && (subscribed.value === null || stateReading.value))) return;
-    const result = await membership.command(
-      reconcile ? { kind: 'reconcile' } : { kind: 'set', desired: !subscribed.value },
-    );
-    if (!disposed && result !== null) observed.value = result;
+    membershipChanged(owner, resource);
+    try {
+      const result = await membership.command(
+        reconcile ? { kind: 'reconcile' } : { kind: 'set', desired: !subscribed.value },
+      );
+      if (!disposed && result !== null) observed.value = result;
+      return !disposed ? result : null;
+    } finally {
+      // This epoch-bound listener outlives an unmounted page or evicted model.
+      membershipChanged(owner, resource);
+    }
   }
   function dispose() {
     if (disposed) return;

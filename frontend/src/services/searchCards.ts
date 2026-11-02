@@ -1,6 +1,7 @@
 import type { CoreClient } from './contracts.ts';
 import type { PlaySelection, PlayerOrigin, Quality } from './player.ts';
 import type { SearchItem } from './search.ts';
+import { catalogResourceSelection } from './catalogCards.ts';
 
 export function searchCardKey(item: SearchItem): string {
   switch (item.kind) {
@@ -51,21 +52,12 @@ export async function searchCardSelection(
   if (item.kind === 'playlist')
     return { kind: 'playlist', id: item.playlist.id, start_id: null, revision: null, quality };
   if (item.kind === 'artist' || item.kind === 'album') {
-    const query = { kind: item.kind, id: item.kind === 'artist' ? item.artist.id : item.album.id };
-    const result = await core.catalogPage(epoch, query, true);
-    if (result.epoch !== epoch) throw { code: 'stale', message: '账号已切换' };
-    const view = result.value;
-    if (!view || !['artist', 'album'].includes(view.page.kind))
-      throw { code: 'unavailable', message: '暂时无法读取歌曲，请重试' };
-    const songs = view.page.kind === 'artist' || view.page.kind === 'album' ? view.page.tracks : [];
-    const index = songs.findIndex((t) => !t.missing);
-    if (index < 0) throw { code: 'unavailable', message: '暂无可播放歌曲' };
-    return {
-      kind: 'catalog',
-      pages: [{ query: view.query, revision: view.revision }],
-      index,
+    return catalogResourceSelection(
+      core,
+      epoch,
+      { kind: item.kind, id: item.kind === 'artist' ? item.artist.id : item.album.id },
       quality,
-    };
+    );
   }
   if (item.kind === 'podcast' || item.kind === 'voice') {
     const scope = {
