@@ -70,6 +70,12 @@ import CloudBatchPage from './components/cloud/CloudBatchPage.vue';
 import MvCollection from './components/MvCollection.vue';
 import MvPlayer from './components/MvPlayer.vue';
 import CommentsPage from './components/CommentsPage.vue';
+import {
+  commentResourceSelection,
+  currentCommentResource,
+  type CommentResourceCard,
+  type CommentResourceDestination,
+} from './services/commentResource';
 import LocalPage from './components/LocalPage.vue';
 import PodcastPage from './components/PodcastPage.vue';
 import TogetherPage from './components/TogetherPage.vue';
@@ -435,6 +441,19 @@ const comments = useComments(undefined, () => {
 function openComments(resource: CommentResource, title: string) {
   playlistDialog.value = undefined;
   music.navigate({ kind: 'comments', resource, title });
+}
+function playCommentResource(card: CommentResourceCard) {
+  if (currentCommentResource(card, player.view.value) && player.loaded.value)
+    void player.toggleSource();
+  else {
+    const selection = commentResourceSelection(card, player.view.value);
+    if (selection) void player.select(selection);
+  }
+}
+function openCommentResource(destination: CommentResourceDestination) {
+  if (destination.kind === 'radio') openSceneRadio(destination.id);
+  else if (destination.kind === 'mv') openMv(destination.id);
+  else openCatalog({ kind: destination.kind, id: destination.id });
 }
 const mv = useMv(undefined, () => {
   void music.bootstrap(false);
@@ -1691,6 +1710,10 @@ onUnmounted(() => {
                 v-else-if="page.kind === 'comments'"
                 :model="comments"
                 :title="page.title"
+                :playable="player.ready.value && !player.busy.value"
+                :player="player.view.value"
+                @play="playCommentResource"
+                @open="openCommentResource"
               />
               <MvPlayer
                 v-else-if="page.kind === 'mv'"

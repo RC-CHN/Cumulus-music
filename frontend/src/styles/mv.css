@@ -237,6 +237,7 @@
 .mv-info h1 {
   font-size: 22px;
   margin: 12px 0;
+  overflow-wrap: anywhere;
 }
 .mv-info p {
   margin-bottom: 10px;

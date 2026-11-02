@@ -5,6 +5,9 @@ import { useCommentFloorView } from '../composables/useCommentFloorView';
 import { computed, ref, watch, nextTick, onUnmounted, useId } from 'vue';
 import type { CommentsModel } from '../composables/useComments';
 import CommentCard from './CommentCard.vue';
+import CommentResourceHeader from './CommentResourceHeader.vue';
+import type { CommentResourceCard, CommentResourceDestination } from '../services/commentResource';
+import type { PlayerView } from '../services/player';
 import CommentWritePanel from './CommentWritePanel.vue';
 import CommentFloorPanel from './CommentFloorPanel.vue';
 import { useCommentContext, type CommentContext } from '../composables/useCommentContext';
@@ -14,6 +17,12 @@ const props = defineProps<{
   title: string;
   embedded?: boolean;
   context?: CommentContext;
+  playable?: boolean;
+  player?: PlayerView | null;
+}>();
+const emit = defineEmits<{
+  play: [card: CommentResourceCard];
+  open: [destination: CommentResourceDestination];
 }>();
 const { page, query, loading, error, actionError, busy, history } = props.model;
 const context = props.context ?? useCommentContext(props.model);
@@ -120,9 +129,29 @@ const missingTarget = computed(
     aria-label="评论页面"
     :aria-busy="loading"
   >
+    <CommentResourceHeader
+      v-if="
+        !embedded &&
+        model.resource.value &&
+        ['track', 'voice', 'mv'].includes(model.resource.value.kind)
+      "
+      :epoch="model.epoch.value"
+      :resource="model.resource.value"
+      :title="title"
+      :playable="!!playable"
+      :player="player"
+      @play="emit('play', $event)"
+      @open="emit('open', $event)"
+      @expired="model.sessionExpired"
+    />
     <header class="page-heading">
       <div>
-        <p v-if="!embedded" class="muted">{{ title }}</p>
+        <p
+          v-if="!embedded && !['track', 'voice', 'mv'].includes(model.resource.value?.kind ?? '')"
+          class="muted"
+        >
+          {{ title }}
+        </p>
         <component :is="embedded ? 'h2' : 'h1'" data-comment-read-heading tabindex="-1">
           评论 <small v-if="page">{{ page.total }}</small>
         </component>

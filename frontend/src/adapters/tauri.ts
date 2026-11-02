@@ -147,6 +147,8 @@ export function createTauriClient(): CoreClient {
       invoke('open_cloud_directory', { epoch, songId, revision }),
     commentsPage: (epoch, resource, query, refresh) =>
       invoke('comments_page', { epoch, resource, query, refresh }),
+    commentsResource: (epoch, resource, refresh) =>
+      invoke('comments_resource', { epoch, resource, refresh }),
     commentsLike: (epoch, resource, id, desired) =>
       invoke('comments_like', { epoch, resource, id, desired }),
     commentsReconcile: (epoch, resource, id) =>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { usePageEntryFocus } from '../composables/usePageEntryFocus';
 import Icon from './Icon.vue';
 import { time } from '../services/player';
 import type { PodcastModel } from '../composables/usePodcasts';
@@ -11,6 +12,12 @@ const emit = defineEmits<{
   download: [voices: EpisodeView[]];
 }>();
 const { page, query, loading, busy, error, notice, operations } = props.model;
+const root = ref<HTMLElement>();
+usePageEntryFocus(
+  root,
+  () => !!page.value || !!error.value,
+  () => true,
+);
 const keyword = ref(query.value.keyword);
 const reference = ref('');
 watch(
@@ -38,7 +45,7 @@ function order() {
 }
 </script>
 <template>
-  <section class="podcast-page" aria-label="我的播客">
+  <section ref="root" class="podcast-page" aria-label="我的播客">
     <header class="podcast-heading">
       <h1>{{ detail ? '播客详情' : '我的播客' }}</h1>
       <button class="text-button" :disabled="loading || busy" @click="model.load(true)">

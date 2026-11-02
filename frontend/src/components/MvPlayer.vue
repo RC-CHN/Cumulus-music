@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { usePageEntryFocus } from '../composables/usePageEntryFocus';
 import type { MvModel } from '../composables/useMv';
 import VideoCanvas from './VideoCanvas.vue';
 import MvRecommendations from './MvRecommendations.vue';
@@ -33,6 +34,12 @@ const emit = defineEmits<{
 }>();
 const { video, detail, detailLoading, error, videoError, videoReadError, notice, busy } =
   props.model;
+const root = ref<HTMLElement>();
+usePageEntryFocus(
+  root,
+  () => !!detail.value || !!videoError.value || !!videoReadError.value,
+  () => !props.mini,
+);
 const fullscreen = ref(false),
   downloadOpen = ref(false);
 const displayTitle = computed(() => detail.value?.card.title ?? props.model.localCard.value?.name);
@@ -73,6 +80,7 @@ onUnmounted(() => window.removeEventListener('keydown', key, true));
 </script>
 <template>
   <section
+    ref="root"
     class="mv-detail"
     :class="{ 'mv-mini': mini, 'mv-fullscreen': fullscreen }"
     aria-label="MV播放器"

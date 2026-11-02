@@ -12,6 +12,13 @@
 .comments-page .page-heading {
   align-items: flex-start;
   gap: 16px;
+  margin: 20px 0 12px;
+}
+.comments-page .page-heading :is(h1, h2) {
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 600;
+  margin: 0;
 }
 .comments-page .page-heading > div {
   min-width: 0;
@@ -23,11 +30,12 @@
   overflow-wrap: anywhere;
   line-height: 1.6;
 }
-.comments-page h1 small,
-.comments-page h2 small {
-  font-size: 14px;
-  color: var(--muted);
-  font-weight: 400;
+.comments-page .page-heading small {
+  display: inline-block;
+  font-size: 11px;
+  line-height: 13px;
+  vertical-align: top;
+  color: inherit;
 }
 .comments-tools,
 .comment-footer,

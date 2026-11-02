@@ -133,6 +133,7 @@ export type QueueEdit =
   | { kind: 'remove' | 'reorder'; entry_ids: string[] }
   | { kind: 'clear' };
 export type PlaySelection =
+  | { kind: 'voice'; id: string }
   | { kind: 'downloads'; query: import('./downloads').DownloadQuery; start_id: string | null }
   | { kind: 'playlist_batch'; id: string; ids: string[]; revision: string; quality: Quality }
   | {
