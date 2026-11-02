@@ -91,7 +91,7 @@ onBeforeUnmount(deactivate);
         />
       </div>
     </Transition>
-    <button class="login-accounts" @click="close('accounts')">切换已保存账号</button>
-    <p class="login-note">Cumulus · 社区客户端</p>
+    <button v-if="!safety" class="login-accounts" @click="close('accounts')">切换已保存账号</button>
+    <p v-if="!safety" class="login-note">Cumulus · 社区客户端</p>
   </dialog>
 </template>

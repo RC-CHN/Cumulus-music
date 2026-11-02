@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import type { LoginModel } from '../../composables/useLogin';
 import VerificationMethods from './VerificationMethods.vue';
 import DeviceVerification from './DeviceVerification.vue';
 const props = defineProps<{ model: LoginModel }>();
-const emit = defineEmits<{ qr: [] }>();
+const emit = defineEmits<{ qr: []; device: [value: 'confirm' | 'scan' | null] }>();
 const { view, busy, seconds } = props.model;
 const method = ref(''),
   code = ref(''),
@@ -12,6 +12,7 @@ const method = ref(''),
 const root = ref<HTMLElement>();
 const devicePanel = ref<{ clearSecrets: () => void }>();
 const returning = ref(false);
+const blockedNotice = ref('');
 const known: Record<string, string> = {
   SECURITY_EMAIL: '安全邮箱',
   UP_SMS: '短信验证码',
@@ -23,6 +24,9 @@ const known: Record<string, string> = {
 const selected = computed(() =>
   view.value?.challenge.methods.includes(method.value) ? method.value : '',
 );
+watch(selected, (value) =>
+  emit('device', value === 'DEVICE_SCAN' ? 'scan' : value === 'DEVICE_CONFIRM' ? 'confirm' : null),
+);
 function clearSecrets() {
   code.value = '';
   answer.value = '';
@@ -31,6 +35,7 @@ function clearSecrets() {
 defineExpose({ clearSecrets });
 async function choose(value: string) {
   if (busy.value) return;
+  blockedNotice.value = '';
   clearSecrets();
   method.value = value;
   if (value === 'DEVICE_CONFIRM' || value === 'DEVICE_SCAN')
@@ -74,6 +79,20 @@ async function verify() {
   else if (selected.value === 'UP_SMS')
     await props.model.run({ kind: 'verification_sms_verify', code: otp });
 }
+watch(
+  () => [view.value?.device?.phase, busy.value],
+  () => {
+    if (
+      view.value?.device?.phase === 'blocked' &&
+      !busy.value &&
+      selected.value.startsWith('DEVICE_') &&
+      !returning.value
+    ) {
+      blockedNotice.value = '原设备已拒绝登录请求，请次日再试或尝试其他验证方式';
+      void back();
+    }
+  },
+);
 </script>
 <template>
   <section ref="root" class="login-challenge" aria-label="登录验证">
@@ -100,8 +119,11 @@ async function verify() {
         获取验证方式
       </button>
       <template v-else>
+        <p v-if="!selected && blockedNotice" class="verification-blocked" role="alert">
+          {{ blockedNotice }}
+        </p>
         <p
-          v-if="!selected && view.device?.phase === 'stop_unconfirmed'"
+          v-if="!selected && !blockedNotice && view.device?.phase === 'stop_unconfirmed'"
           class="muted"
           role="status"
         >
@@ -117,6 +139,7 @@ async function verify() {
           v-else-if="selected.startsWith('DEVICE_')"
           ref="devicePanel"
           :model="model"
+          :kind="selected === 'DEVICE_SCAN' ? 'scan' : 'confirm'"
         />
         <div v-else-if="selected === 'BINDING_CELLPHONE'" class="verification-handoff">
           <p>如需通过绑定手机号验证，请前往手机端操作。</p>

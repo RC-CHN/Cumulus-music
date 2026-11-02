@@ -23,6 +23,7 @@ const password = ref(''),
   code = ref('');
 const root = ref<HTMLElement>();
 const challenge = ref<{ clearSecrets: () => void }>();
+const deviceKind = ref<'confirm' | 'scan' | null>(null);
 let active = true;
 function deactivate() {
   if (!active) return;
@@ -49,17 +50,18 @@ const deviceActive = computed(
     !!view.value?.device &&
     !['stopped', 'cancelled', 'stop_unconfirmed'].includes(view.value.device.phase),
 );
-watch([busy, () => view.value?.status, deviceActive], async () => {
+watch([busy, () => view.value?.status, deviceActive, deviceKind], async () => {
   if (active) {
     const safety =
+      deviceKind.value ||
       deviceActive.value ||
       (!!view.value &&
         ['two_factor', 'security_question', 'phone_reuse'].includes(view.value.status));
     emit(
       'safety',
       safety
-        ? deviceActive.value
-          ? view.value?.device?.kind === 'scan'
+        ? deviceKind.value || deviceActive.value
+          ? (deviceKind.value ?? view.value?.device?.kind) === 'scan'
             ? '身份验证'
             : '登录安全确认'
           : '登录安全验证'
@@ -214,7 +216,13 @@ async function submit() {
         {{ busy ? '正在登录…' : '登录' }}
       </button>
     </form>
-    <LoginChallenge v-else ref="challenge" :model="model" @qr="emit('qr')" />
+    <LoginChallenge
+      v-else
+      ref="challenge"
+      :model="model"
+      @qr="emit('qr')"
+      @device="deviceKind = $event"
+    />
     <p class="login-status" role="status" :data-login-status="view?.status">
       {{ deviceActive || view?.status === 'two_factor' ? '' : error || loginMessage(view) }}
     </p>
