@@ -38,7 +38,8 @@ rankings-desktop-mapping.json。未使用 YesPlayMusic，无同状态官方运�
   的页面历史，不承诺应用重启恢复。没有增加远端写入，也不把失败请求自动重放。
 - useRankingViewport 管理滚动及来源操作；有限页面动画完成后再恢复，用户已选择
   其他控件时不抢焦点。滚轮/触摸移动阻止迟到读取重置阅读位置。
-- useRankingPlaybackFocus 仅处理原生加载禁用控件后的焦点；读取重试单独处理。
+- usePlaybackTriggerFocus 处理原生加载禁用控件后的焦点；读取重试单独处理。
+  该工具已与我的歌单/搜索共用，不恢复到已经滚出可视区域的卡片，见card-source-ui-contracts.txt。
 - usePageEntryFocus 仅用于新打开共享详情/独立评论，等待可读及有限过渡；失效、
   离开或用户主动另选控件后不聚焦。h1 的 tabindex=-1 不改变按钮 Tab 顺序；
   标题焦点用强调色下划线，避免外侧轮廓在详情/评论滚动容器边缘被裁切。

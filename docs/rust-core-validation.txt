@@ -1705,3 +1705,14 @@ login-interception-cache-tests.log。初次全量（workspace-tests3.log）一�
   0 failed/ignored；严格Clippy/fmt通过。日志前缀.build/ranking-playback-*。
 - 533项前端与两组各37态生产WebView证据详见ui-ux-validation.txt；GUI使用实际libmpv
   和合成WAV/null，不作为真实音源、Windows视觉或双账号一起听通过。全范围目标继续。
+
+2026-11-02 资源卡片继续失败后的显式重试
+- client_player/source_control新增第5项实际MusicClient/actor测试：在19秒暂停后注入
+  unpause失败，确认仍为原暂停会话，撤销失败后同PauseFor显式重试成功；playId/
+  队列版本/位置保留，load只有1次且无新增API读取。不是只测DTO或模拟前端返回。
+- 本批280个workspace/all-targets/custom-protocol/locked结果程序1458 passed，
+  0 failed/ignored；格式及严格Clippy通过，日志card-source-{rust-format,clippy,workspace}-final.log。
+- 前端新增3项：通用来源绑定、失败目标替换后的旧重试、队列准备等待期间允许暂停及
+  迟到回执不回滚。536项通过；实际播放/缓冲/失败和重试UI边界见card-source-ui-contracts.txt。
+  原生测试失败是合成Device注入；桌面另使用真实libmpv/null与明确单次失败适配器，
+  不把这些证明写成真实CDN/物理声卡/全部持久化错误矩阵通过。

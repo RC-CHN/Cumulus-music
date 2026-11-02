@@ -4093,3 +4093,44 @@ CI失败定位与后续验证（2026-11-02）
   Windows视觉或实体声卡听感结论，不声称整体UI已完成。
 - 55610a5的CI 41367708178是上一批精确提交，不含本次PauseFor/37态变更；本批需要
   新的精确提交CI，回执留在私有构建目录，不用上一批结果代替。本轮无真实账号写入。
+
+
+资源卡片播放、停止重播与失败恢复一致性（2026-11-02后续）
+来源、逐项调用/状态边界见card-source-ui-contracts.txt、card-source-desktop-mapping.json。
+- 改前实际生产构建在card-source-baseline-first保存3态：播放、停止、同歌单重播失败；
+  原生保持idle/playId=null，来源仍是原歌单，反馈“暂时无法完成此操作”。这才是修复
+  loaded条件的原始复现；不是只由代码推测，也不把旧证据称为修复后验证。
+- 最终card-source-final-gui-1和card-source-final-kde-1各37态/37PNG，进程均0退出：
+  我的歌单网格/列表、缓冲中暂停、一次原生继续失败/底栏重试、停止重播、切其他来源；
+  搜索歌单/专辑/歌手/播客/声音五类各自播放/暂停/继续/停止/重播，声音继续走菜单。
+  原生Player/Queue和UI同步核对；定位3/4秒后保留playId/entryId/队列/位置，load计数
+  证明暂停/继续没有重新加载；六种停止重播各恰好增加一次load。
+- 每态检查窗口可见/持有焦点、具体来源按钮焦点、可点击命中、无页面横向溢出；
+  1120×760/760×540和两主题，本机KDE Wayland/XWayland125%仅捕获本次子进程窗口。
+  列表焦点轮廓曾在首轮实机图发现左边裁切，改内侧后重建；最终浅/深态均有轮廓
+  实际像素检查。74张最终图通过14张联系表全部查看，另放大最终列表、成功重试后
+  底栏及声音菜单返回。私有总览card-source-gallery-final/index.html。
+- 使用生产dist/IPC/SQLite/libmpv/null；服务、封面和WAV合成。缓冲位和一次unpause
+  失败明确由card_source_fixture注入，未伪造原生时钟/队列；定位/停止经真实IPC触发，
+  不能据此称底栏全部输入方式或真实CDN/声卡错误矩阵通过。无真实账号请求/写入。
+- 同一最终dist/原生构建回归：card-source-regression-rankings-1为37态/37图；
+  card-source-regression-library-wm-2为首轮40+重开2态/42图；
+  card-source-regression-search-wm-2为56态/56图、33次合成搜索调用。各自外层进程0。
+  回归主要核对已有断言；本批完整人工查看范围是上述新增74图，不冒称逐图复核
+  这些旧专项的所有135张回归图。
+- 初轮无WM在声音菜单关闭后document.hasFocus=false，More虽为activeElement但
+  focus-within=false/父层opacity=0。相同产品在KDE和隔离Openbox通过；新卡片探针
+  及两项旧卡片回归显式复用测试WM，不在截图前强行set_focus、不修改生产启动。
+  无WM歌单回归也在焦点显隐失败。搜索旧探针固定230ms后读opacity的断言失败，
+  改为有界等待真实:hover和opacity>.99并保留诊断后56态通过，未移除动画或放宽最终值。
+  library-wm-1虽生成42态成功报告，但外层会话143，不当成完整终止证据；-wm-2为0。
+- 工具链Node24.16.0/Rust1.96.0：npm ci、前端格式/536项测试/类型/生产构建通过；
+  Rust格式、严格workspace/all-targets/custom-protocol/locked Clippy和280个结果程序
+  共1458 passed、0 failed/ignored。Python43、桌面JS8、源码/发行规则检查通过。
+  业务逻辑检查后只追加列表轮廓CSS，重新前端格式/构建并冻结dist，再重建普通cumulus、
+  ux_ui_probe、catalog_ui_probe和mini_ui_probe执行最终GUI。没有边嵌入构建边替换dist。
+  源码/21个dist/4个二进制/74图散列保存在card-source-delivery-manifest.json；不提交产物。
+- 先前55610a5的CI 41367708178已见Frontend/Linux成功，Windows仍运行；cae58a7的
+  CI 41370263237尚在原生WebView步骤。本批需要新精确提交CI，回执保存在私有构建目录，
+  不以旧提交或局部成功替代。Windows实机视觉、其他DPI、完整卡片菜单与其余逐页
+  UI/UX继续审计；完整应用目标未完成，没有创建新版本或发布标签。

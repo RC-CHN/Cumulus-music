@@ -58,3 +58,8 @@ desktop/examples/library_ui_probe.js、support/library_fixture.rs和scripts/ci/l
 另检查播放反馈、空歌单、排序、读取失败/等待/恢复、空组/创建取消、资源减少后页码
 归一、偏好保存失败、减少动态效果、会话失效、进程重启两组视图独立恢复。
 自动布局断言和人工查看截图分别记录在ui-ux-validation.txt；截图数不是完成页数。
+
+2026-11-02补充：修复停止后同歌单不能重新播放、buffering仍显示播放的问题；当前
+来源使用绑定playId/队列版本的PauseFor，暂停/继续保留位置与队列。网格/列表加载
+后接回原按钮焦点，列表播放键使用内侧轮廓避免左边裁切。原生继续失败和播放条重试
+及五类搜索卡片的共享规则见card-source-ui-contracts.txt。其余差异仍按上文继续审计。

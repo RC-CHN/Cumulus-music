@@ -1,0 +1,84 @@
+资源卡片播放、停止重播与失败恢复的 UI/UX 约定
+2026-11-02；补充我的歌单、搜索卡片及排行榜专项，完整桌面目标仍进行中。
+
+官方来源与社区边界
+以下路径相对 references/ui-recovery/sources/packages/pc/src/components/：
+- PlaylistCard/index.tsx、AlbumCard/index.tsx、AudioCard/index.tsx 使用 RoundPlayButton；
+  ArtistCard/index.jsx、VoiceCard/index.jsx 使用 TrianglePlayButton。
+- XPlayButton/RoundPlayButton.tsx 的 isCurrentPlay/isPlaying/currentAction：按资源来源
+  判断暂停、继续或首次播放，暂停/继续不重新选择列表。
+- XPlayButton/TrianglePlayButton.tsx 区分资源来源和当前声音ID；声音卡片控制选中声音，
+  不能仅因同属一个播客就把另一声音当成当前声音。
+- AudioCard/index.tsx 在 currentAction 为 resume/pause 时不走重新读取资源的分支。
+精确路径/散列及实现映射见 card-source-desktop-mapping.json。未使用 YesPlayMusic。
+没有同状态官方运行截图，不宣称像素一致。原生 stopped/idle 状态重新选择、绑定
+playId/队列版本、缓冲中允许暂停、异步焦点修复均为本客户端的明确适配。
+
+修正的实际问题
+1. 我的歌单在停止后保留 origin，但原实现只比较歌单ID，继续发送 Pause(false)，
+   无法重新播放。现在同时检查已加载状态；已停止时走既有 playlist 选择，保留保存的
+   音质偏好，由 Rust 重新核对资源与播放权限。没有通过直接使用搜索元数据绕过权限。
+2. 我的歌单原来只将 playing 显示为暂停，buffering 却显示播放。现在与搜索/排行榜
+   一致：playing/buffering 显示暂停，paused 显示播放，图标和动作使用同一状态。
+3. 搜索与我的歌单的当前来源原来发送不绑定目标的通用 Pause。现共用 toggleSource，
+   记录当时 playId/queueRevision，通过 PauseFor 拒绝过期控制；不暂停后来选择的音频。
+4. 原生加载暂时禁用按钮时，WebKit 会将焦点移到 body。共享 usePlaybackTriggerFocus
+   在同一资源/访问、按钮恢复可用、仍在可视区域且用户没有另选控件时接回焦点。
+   菜单关闭保留原触发器；若触发器已移除，可使用本卡片播放键。离开/卸载使回调失效，
+   不滚回用户已经离开的卡片。排行榜改为复用这个实现。
+5. 播放条“重试”成功后按钮消失会丢焦点。重试时先保留在传输控制组，成功后移到
+   当前可用的播放键，仍有可重试错误则返回重试键；账号代次变化或用户另选后不抢回。
+6. 我的歌单列表最左播放键的外侧轮廓被滚动容器裁切；改为内侧主题轮廓和4px圆角。
+   保留可见键盘焦点，不以移除轮廓解决裁切。
+
+状态/来源规则
+- 相同来源且已加载：只暂停/继续，保留当前曲目、位置、播放身份和整个队列。
+- 来源类型或ID不同：走对应的既有资源选择；声音额外比较 voiceId。
+- idle/stopped/未加载：重新选择资源；空歌单和不可用声音保持不可播放。
+- busy 抑制重复卡片命令；独立队列读取等待不阻止控制当前来源。队列回执仍按单调
+  revision接受，不能用迟到读取把暂停回滚成播放；提交时核心继续核对实际队列版本。
+- 原生继续失败：保留原暂停会话和可见反馈。显式重试仍携带原目标；成功不重载音频。
+  若目标已被另一来源替换，旧重试应被核心拒绝，不能改为操纵后来音频。
+- 完全卸载、持久化失败等其他错误组合仍按已有播放器恢复路径；本专项没有全部覆盖，
+  不将这里的单次 unpause 失败恢复扩大成全部输出异常均已通过。
+
+类型化调用和接口
+页面/卡片 -> App -> usePlayer -> CoreClient -> desktop IPC -> MusicClient/actor。
+- 当前来源：player_action(epoch,{kind:pause_for,play_id,expected_queue_revision,paused})；
+  Rust 先验证账号/目标/已加载状态，再走既有媒体焦点、一起听及持久化控制路径。
+  不增加业务网络接口，不将 Cookie、授权音源或签名密钥传给前端。
+- 我的歌单/搜索歌单重新选择：play_selection 的 playlist 输入，仍由核心读取
+  /api/v6/playlist/detail、/api/v3/song/detail 及 /api/song/enhance/player/url/v1。
+- 搜索专辑/歌手：catalog_page 取得账号绑定快照和 revision，play_selection 的 catalog
+  输入核对顺序。现有读取包括 /api/album/v3/detail、/api/artist/v3/detail；专辑播放
+  继续沿用已有重读/版本验证，不能把搜索卡片内容直接当作权威歌曲列表。
+- 搜索播客/声音：podcast_page 的 radio scope/ascending=true/offset=0/limit=100，
+  随后 play_selection 的 podcast 输入携带 scope/revision/start_id。现有读取包括
+  /api/djradio/v3/get、/api/v6/dj/program/byradio、/api/dj/program/detail 和既有音源解析。
+  当前声音优先精确 voiceId；播客选择首个可用项，缺 radioId 和超首屏边界未在此扩展。
+- 查询/账号迟到回执保护、会员/版权判断和选曲取消沿用原用例；没有新增前端业务HTTP。
+
+实际证明与复现
+desktop/examples/card_source_ui_probe.js、support/card_source_fixture.rs、
+scripts/ci/card_source_smoke.py 执行生产 dist/WebView/IPC/SQLite/实际 libmpv/null。
+37态覆盖我的歌单网格/列表、缓冲暂停、继续失败/显式重试、停止重播、切其他歌单；
+另覆盖搜索歌单/专辑/歌手/播客/声音的播放、暂停、继续、停止、重播。声音继续走菜单。
+每态核对实际原生 Player/Queue、可见焦点、按钮命中、无横向溢出；定位3/4秒后比较
+暂停/继续身份、位置及队列，load计数排除重新加载冒充继续。列表焦点框另有像素采样。
+定位和停止由真实IPC命令触发，再通过卡片操作验证后续状态；不能据此称底栏定位/
+停止按钮的每种鼠标与键盘输入均在本专项逐态覆盖。
+状态/失败注入只改变明确命名的缓冲位和一次 unpause 返回值，不伪造队列或播放时钟。
+服务、封面和音频合成；真实CDN缓冲、物理声卡听感、完整错误矩阵、全部DPI以及
+Windows实机视觉不由此证明。没有真实账号请求或写入。最终批次/截图查看见
+ui-ux-validation.txt，核心失败重试测试见 rust-core-validation.txt。
+
+先 npm --prefix frontend ci，再 npm --prefix frontend run build；之后保持 dist 不变：
+  cargo build -p cumulus-desktop --example ux_ui_probe --features custom-protocol --locked
+  CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 \
+    xvfb-run -a -s '-screen 0 1600x1000x24' dbus-run-session -- \
+    python3 scripts/ci/card_source_smoke.py --binary BINARY --root NEW_ROOT --screenshots
+Openbox仅由测试脚本在显式启用且无现有WM时启动，退出后清理，不替换用户桌面WM。
+无WM的Xvfb曾在声音菜单关闭后使 document.hasFocus=false、焦点控件被隐藏；同一构建
+在真实KDE与隔离Openbox通过。没有在截图前强制 set_focus 或放松可见焦点断言。
+Windows使用对应.exe及已验证媒体runtime，不需要Xvfb。两平台CI均为必需步骤，
+完整CI/Windows结果须按精确提交另行核对，不能用本机证据替代。

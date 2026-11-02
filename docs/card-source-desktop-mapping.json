@@ -1,0 +1,92 @@
+{
+  "schema": 1,
+  "date": "2026-11-02",
+  "goal_complete": false,
+  "yesplaymusic_used": false,
+  "contract": "docs/card-source-ui-contracts.txt",
+  "sources": [
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/components/PlaylistCard/index.tsx",
+      "sha256": "c9306f558438bf73f9a1db0d678692a419854a414ced5916654f115ea8baab69",
+      "kind": "official_recovered"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/components/AlbumCard/index.tsx",
+      "sha256": "6551da9e4c5d95769956f6f848045e0cbe7a05a8c80004c6ed57e5e30a6fe763",
+      "kind": "official_recovered"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/components/ArtistCard/index.jsx",
+      "sha256": "39d0c5e1448b35b32e53ef937f28a103f524b2e2b150258d332fdd0c617eefa1",
+      "kind": "official_recovered"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/components/AudioCard/index.tsx",
+      "sha256": "ad331e407c73fb414d5d8757ec629355267b4658bdd05bf8f688c709287877a6",
+      "kind": "official_recovered"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/components/VoiceCard/index.jsx",
+      "sha256": "7ae15894d8ad7b1f5b2ea394c835a44eb5721947ca6900b007ae50e0630ddd01",
+      "kind": "official_recovered"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/components/XPlayButton/RoundPlayButton.tsx",
+      "sha256": "f6193c1352520fdbcafd27afe8610b825eaeca899ff5638440acdf2366920c5d",
+      "kind": "official_recovered"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/components/XPlayButton/TrianglePlayButton.tsx",
+      "sha256": "02bfd0451d58fcc8b47cc740994ff7f9f60a9b39eab22fe78ecb19c6dbe2cedb",
+      "kind": "official_recovered"
+    }
+  ],
+  "features": [
+    {
+      "feature": "current source pause/resume and stopped selection",
+      "implementation": [
+        "frontend/src/App.vue",
+        "frontend/src/composables/usePlayer.ts",
+        "core/src/client/player/source_control.rs"
+      ],
+      "validation": [
+        "core/tests/client_player/source_control.rs",
+        "frontend/tests/player-state.test.ts",
+        "desktop/examples/card_source_ui_probe.js"
+      ]
+    },
+    {
+      "feature": "shared temporary-disable focus recovery and footer retry",
+      "implementation": [
+        "frontend/src/composables/usePlaybackTriggerFocus.ts",
+        "frontend/src/components/PlaylistCard.vue",
+        "frontend/src/components/search/SearchResultCard.vue",
+        "frontend/src/components/RankingsPage.vue",
+        "frontend/src/components/PlayerBar.vue"
+      ],
+      "validation": [
+        "scripts/ci/card_source_smoke.py",
+        "scripts/ci/rankings_smoke.py",
+        "scripts/ci/library_smoke.py",
+        "scripts/ci/search_cards_smoke.py"
+      ]
+    },
+    {
+      "feature": "list play button unclipped focus",
+      "implementation": [
+        "frontend/src/styles/playlist-library.css"
+      ],
+      "validation": [
+        "desktop/examples/card_source_ui_probe.js paintSamples",
+        "scripts/ci/motion_smoke.py paint_checks"
+      ]
+    }
+  ],
+  "boundaries": [
+    "Synthetic APIs/artwork/WAV and null output; native buffering bit and one resume error injected explicitly",
+    "Real CDN, physical audio output, complete native failure matrix, Windows visual/high-DPI not proven",
+    "Podcast first 100 candidate selection and missing radioId boundaries remain",
+    "No same-state official runtime screenshots; no pixel-identical claim",
+    "Full application UI/UX audit remains active"
+  ]
+}

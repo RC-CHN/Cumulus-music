@@ -52,3 +52,7 @@ Rust PlayerView.origin仅投影已知playlist/album/artist/podcast的公开资�
 - 真实CDN异常、物理输入/显示器刷新率、高DPI与Windows视觉没有本地本轮证据。
 
 证据轮次、人工截图查看范围和回归结果见 ui-ux-validation.txt。
+
+2026-11-02补充：五类卡片的当前来源暂停/继续改用绑定playId/队列版本的PauseFor；
+停止后重新选择。共享异步焦点修复和原生失败重试详见card-source-ui-contracts.txt，
+新增37态为该专项，不将它称作原56态的全部菜单/布局覆盖。上列未完成差异继续保留。
