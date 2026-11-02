@@ -4655,3 +4655,33 @@ collection-library-mapping.json；没有使用YesPlayMusic。
   新提交必须独立跑完整CI，不把本地修复称为Windows已经通过。
 - 不代表真实邮箱验证/refreshToken发放与轮换、官方像素一致或显示器刷新率性能；
   处罚/实名/旧网页/第三方等仍继续，整个目标未完成。
+
+2026-11-03：安全问题三类布局、短窗焦点和可取消的核对
+- 官方QuestionVerify.tsx、QuestionRadio.tsx、M2992/1368/290/15/48为来源；
+  原表达式/旧helper/序列化输出与冻结合成向量一致。本批未用YesPlayMusic。
+- 正式页自动读取；设备36px、专辑48px、歌手52px/圆形与可选tag；294px列表按短窗缩小，
+  选项单行省略/完整title、none、原生radio/焦点轮廓、下一步、错误/编辑清错均已接线。
+  根层重复状态/重开提示撤下；120–150ms transform/opacity动画尊重减少动态效果。
+- question-initial-gui-jsk在business_false_small_dark实测整窗出现滚动；初版错误截图又显示
+  禁用提交后焦点移到返回。修正列表高度和步骤自有焦点后，question-fit-gui-jsk22态/22PNG通过。
+  初版Rust测试一次编译失败是对不实现Debug的LoginView使用unwrap_err，另一次错误期待
+  已取消的候选仍能snapshot；修正测试并未改变原取消删除语义，不算产品缺陷修复证据。
+- question-reconcile-red另真实复现核对身份挂起时关闭不释放请求；question_reconcile已纳入
+  取消通知和45秒截止，question-reconcile-green十一项通过；未知写入与只读超时均不重发答案。
+- 最终question-approved-gui-jsk和legacy各25态/25PNG，独立只读SQLite审计各通过；
+  本机question-approved-kde-jsk和legacy各25张本人进程compositor图，KDE/XWayland125%，
+  50图通过question-approved-gallery-{jsk,legacy}十张联系表全部查看。加载文字另有实际
+  字形像素对比度检查；环境刷新率不当作FPS，未截其它进程窗口，不声称官方像素一致。
+- 两协议均实测业务false不采用、读取已知/中断后显式重取、未知答案只读核对、核对/读取/提交
+  三个在途HTTP关闭或返回实际丢弃、过渡保留DOM勾选清空、迟到回执不替换账号。
+  数据库每协议21个候选中恰一条有效成对回执、三条未确认Cookie无RT/登录时间；保存UID4
+  去重、选中凭据落盘、核对前后代次变化及无答案持久化均独立检查。
+- 同批最终产物回归：question-approved-account28态/28PNG；saved10态；jsk-auth16态/15SQLite；
+  device-login-question-approved-legacy-auth-regression16态/16PNG/15SQLite；
+  device-login-question-approved-renewal-regression7态/7PNG/journal审计；
+  question-approved-email-jsk和legacy各22态/22PNG及凭据审计，全部通过。
+- Rust292程序1543项通过，严格fmt/Clippy及main+六探针构建完成；固定Node24.16 npm ci、
+  format:check、560测试、类型和生产构建通过；21dist先冻结再编译，七二进制散列已记录。
+  最终证明输入见question-approved-{dist-freeze,binaries}.json；47项CI工具与语法/源码边界检查通过。
+- 真实音乐API/账号写入为0；本人安全问题、真实RT下发/轮换、Windows实机视觉、全SDK及
+  其它模块完整UI审计仍须继续。精确新头CI另行验证，不用旧头或本地证明冒称跨平台CI通过。

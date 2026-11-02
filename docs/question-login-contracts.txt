@@ -1,0 +1,79 @@
+账号安全问题：官方PC来源、原生业务边界和界面
+2026-11-03。本专项继续账号/登录目标，不代表整个登录SDK或完整桌面目标完成。
+
+官方优先证据
+PC 3.1.42.205594，未使用YesPlayMusic。
+references/ui-recovery/sources/packages/pc/src/pages/login/views/QuestionVerify.tsx
+sha256 5eca2dee60b9292dbd81c23177d7aa4f8970f1328d1382d9c9a74bae4a1ec634
+components/QuestionRadio.tsx
+sha256 68b98ab4b1ad63a0b1946293b9bb341e4e83da7a2dcb9bc47adf22753675a47e
+M/2992 getQuestion/verifyAnswer调用主登录页面；M/1368 QuestionVerifyHandler、VerifyManager、
+kernelService方法及PcPlatformAdapter；M/15旧helper；M/48表单序列化。
+M/290的k/_将query交给M/48，未过滤undefined；本轮另检查该原生PC适配层，
+sha256 73e775eae2e4b1da2e97b70b9415e2e101ba876ea1f6b877bd7cc054c7a4ea9b。
+完整模块散列与冻结合成字段在core/tests/fixtures/question-login-official.json。
+node desktop/tests/question_login_official.cjs /absolute/recovered-js/modules
+执行原参数表达式、旧helper和M/48序列化。它不执行完整SDK、不联网，CI不依赖references。
+
+协议修正
+此前PC两链固定scene="0"与实际页面省略参数的行为不一致。
+新JSK：/api/login/cellphone/twice/question/get {scene:"undefined",fromPage:"JSK"}
+       /api/login/cellphone/twice/question/verify {ans:选项title或"none",scene:"undefined",fromPage:"JSK"}
+旧链：get {}；verify {ans:选项title或"none"}，不带scene/fromPage。
+JSK的scene来自省略参数的undefined，经原M/48得到字符串"undefined"；不是JSON null或字符串0。
+原SDK读问题以GET交给PC原生桥，当前HTTP仍沿用原生EAPI通道；读操作可显式重试。
+签名、候选限定票据、fromPage和响应Cookie/RT保存沿用既有原生传输；前端不选择协议或注入scene。
+底层通用VerificationAction仍可供原生调用者显式选择其它scene；正式桌面使用本专项PC用例。
+
+状态、取消和未知结果
+core/src/account/login/question.rs持有候选内存状态、每次读取UUID、可提交title白名单和取消通知。
+QuestionRead只允许待处理SecurityQuestion或其已知失败读取；已有ready问题不能再次读取绕过状态。
+QuestionAnswer必须有当前question_id和已提供的精确title/none，核验在同一原生操作锁内进行。
+未读取、旧ID、其它候选、未提供答案及未知提交结果均不能发verify请求。
+loading -> ready：完整code200且data不为false、data.success不为false，并有有效问题数据。
+questionType原生有界传给前端，选项title/题干限512字符且不含控制字符；选项最多64个，
+重复title或与保留none冲突会返回明确读取失败，不以截断列表或猜测答案代替服务端问题。
+本机上限不是官方服务器限制。只投影title/subtitle/受限公开CDN图片和tag，不暴露原始challenge。
+读取明确失败/断开/45秒截止或任务丢弃 -> failed，允许显式重试，新UUID使旧页面失效。
+空问题null/{}是已确认完成步骤：先读取account/get，仅明确301允许原登录回放一次。
+答案完整拒绝或business=false -> ready并保留已选项错误提示；没有身份采用或盲目原登录回放。
+答案明确RequestNotSent -> ready，允许本人显式再次提交，不要求重新读取问题。
+答案发出后断开/截止/任务丢弃，或已确认步骤后身份/原登录结果不明 -> recovery_required。
+该阶段只能只读核对，不能再读取题目、再次提交或以普通“重试”重发未知写入。
+只读核对也有45秒截止，复用本题取消通知；关闭、超时或任务中止会释放实际身份读取HTTP，
+不会因核对挂起而阻止之后登录。结果仍不明时保留recovery_required，不把只读超时改成可重发答案。
+新挑战清除旧问题与前端投影；确认身份并原子选择账号后清除当前问题。
+关闭/返回撤回整个候选并抢先丢弃在途HTTP；没有编造远程取消API，也不声称服务器已经撤销操作。
+状态只保存在候选内存；重启不自动重放读取/答案。已采用账号继续按既有持久化流程恢复。
+
+UI/UX
+自动读取题目，标题“回答与你账号相关的问题”、题干说明、选项和“下一步”；返回回到原登录方式。
+设备题为36px图标和设备名；专辑为48px方形封面，歌手为52px圆形头像及可选16px标记。
+后两者显示副标题，设备不显示；none独立70px行。未知类型按官方默认卡片布局显示。
+列表在普通窗口采用294px高度，短窗口适配，内容仅列表滚动；文字单行省略且保留title。
+radio仍为原生控件，提供组名、选项标签、单选/键盘语义及焦点轮廓；不以单独div模拟选择。
+读取、提交和核对开始时由本步骤持有焦点；读取成功回首项，已知答案失败回所选项，
+失败读取/未知结果回对应动作；不因禁用“下一步”而将焦点跳到返回。
+空选择不能提交；已知答案错误保留选中项，编辑清除旧提示；未知结果撤下输入，只显示核对。
+返回或关闭清除Vue状态以及过渡动画保留的DOM勾选，不向浏览器存储/日志持久化答案。
+加载、读取失败、验证中、验证失败、未知结果各有自己的动作和提示，隐藏重复普通登录页脚/重开入口。
+缺封面/头像使用本地Cumulus图标，未照搬官方默认CDN图片；未知结果和读取过程为社区恢复界面。
+没有同状态官方实机截图，不声称像素一致、Windows实机视觉或刷新率性能已经验证。
+
+可执行验证
+cargo test -p cumulus-core --test client_question_login --test client_auth --locked
+npm --prefix frontend run format:check；npm --prefix frontend test；npm --prefix frontend run build
+前端完成后再cargo build -p cumulus-desktop --example question_login_ui_probe --features custom-protocol --locked。
+Linux：CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a \
+  dbus-run-session -- python3 scripts/ci/question_login_smoke.py --binary /absolute/question_login_ui_probe \
+  --root /absolute/new-evidence --screenshots
+另用新root加--legacy；Windows使用.exe和--runtime目录。仅合成EAPI服务、真实Vue/WebView/IPC/core。
+audit_question_probe.py另只读核对SQLite账号去重、有效回执、未确认Cookie无RT/登录时间、无答案持久化。
+本地最终question-approved轮次：两协议各25态/25PNG与独立SQLite审计；
+真实KDE/XWayland125%另各25张本人进程截图，50图经十张联系表全部查看。
+全workspace292个结果程序1543项通过、前端560项通过；详细输入、失败探索、回归和CI边界
+见ui-ux-validation.txt及rust-core-validation.txt，不将这些合成结果当作本人账号通过。
+
+外部边界
+本人安全问题挑战、真实refreshToken下发和成对轮换尚未验证；不会为了触发挑战修改账号资源。
+处罚8831、实名/RN、旧网页验证、第三方授权等其余登录分支及全范围UI仍继续。

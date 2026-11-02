@@ -53,7 +53,7 @@ login_command(operationId,command) -> LoginView
   security_mail_resend{verification_id} / security_mail_stop{verification_id}
   verification_sms_send / verification_sms_verify{code}
   bind_phone_verify{phone,country_code,code}（仅原生已恢复动作；当前页面使用官方App提示）
-  question_read / question_answer{answer}；reuse_read / reuse_confirm；reconcile。
+  question_read / question_answer{question_id,answer}；reuse_read / reuse_confirm；reconcile。
 login_snapshot(operationId) -> LoginView：只读本地，不重发登录或验证码。
 cancel_login(operationId)：只取消当前同ID候选；已认证结果不回滚，陈旧ID不影响新尝试。
 saved_accounts(epoch) -> AccountData<SavedAccountView[]>：本地读取，不证明登录态仍有效。
@@ -81,7 +81,9 @@ cumulus:account-changed（受限AccountView）。前端据此重读状态，不�
 SECURITY_EMAIL：/api/user/2fa/securityEmail/send {scene:"0"}；verify {scene:"0",captcha}。
 UP_SMS：已按绑定区号拆分上行与下行，精确四端点字段、JSK/旧链差异、轮询与取消见
 sms-login-contracts.txt；不再用通用scene:"0"的验证码表单代替全部短信流程。
-8861：/api/login/cellphone/twice/question/get {scene:"0"}；verify {scene:"0",ans}。
+8861：自动读取/api/login/cellphone/twice/question/get；verify传ans。
+  正式PC新JSK的scene为字符串"undefined"，旧链省略scene，详见question-login-contracts.txt；
+  此前统一scene:"0"的正式入口已修正。question_id是本机能力字段，不发给服务端。
   官方答案为options对象的title，不是数组位置；附加none=以上都不是，禁止提交未提供选项。
   官方成功且data为空表示该步骤结束：先读身份，301才允许原登录请求重放一次。
 8860：/api/login/cellphone/twice/used/user/get {}；确认前必须已读取关联账号，

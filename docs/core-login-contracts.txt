@@ -61,7 +61,9 @@ verification(action,params)明确动作对应：
   SmsSend：/api/middle/account/captcha/sent {scene}；SmsVerify：/api/middle/account/captcha/verify {captcha}。
   OrderList/OrderVerify：/api/user/2fa/order/list、check；scene / scene,paymentMethod,paymentOrderId。
   BindPhoneVerify：/api/user/2fa/bindcellphone {phone,countrycode,captcha}。
-  QuestionGet/QuestionVerify：/api/login/cellphone/twice/question/get、verify；scene / scene,ans。
+  QuestionGet/QuestionVerify：底层通用原生动作可指定scene；正式PC使用question_read/answer，
+  /api/login/cellphone/twice/question/get、verify，新JSK省略值序列化为scene="undefined"，旧链
+  无scene。生命周期、选项/本机ID、取消与只读核对见question-login-contracts.txt。
   PhoneReuseUser/PhoneReuseConfirm：/api/login/cellphone/twice/used/user/get、confirm；{}。
 scene默认"0"；不接受多余/缺失字段。发送邮件/SMS动作同样受冷却约束，不自动挑选验证方式。
 错误答案保留可修正状态；步骤成功先读身份，若301才允许一次原登录重放，新挑战继续等待。

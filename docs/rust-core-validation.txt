@@ -1767,3 +1767,20 @@ fmt及main+五探针构建完成，.build/email-visible-{clippy,native}.log。
 历史21b5b34 CI41484936886 Windows审计失败且旧诊断包漏掉其日志；本地复现并修正非UTF8默认
 编码依赖，保留红绿日志email-audit-{encoding,ascii}-red与email-audit-encoding-green-*。
 47项CI工具通过；新头CI需另行观察，不把原生Linux或本地非UTF8检查冒称Windows通过。
+
+2026-11-03：安全问题的候选状态机、正式PC协议和桌面
+独立account/login/question.rs迁移本机问题ID/白名单、读/提交/未知恢复和取消；
+M2992/M1368/M290/M15/M48实际调用确认新JSK scene="undefined"、旧链省略scene，
+并非此前统一0。可选原函数表达式/旧helper/序列化对照等于冻结向量，公开CI不读取references。
+client_question_login十一项经真实MusicClient/原生HTTP/SQLite测试：两协议三种类型/精确字段、
+合法none/拒绝旧ID和注入答案、图/标记受限投影、已知拒绝/business=false、明确未发送、
+读取失败重取/无效或歧义问题、空问题/已确认步骤一次原登录回放、新挑战清投影、
+实际挂起read/answer/原登录replay/只读reconcile的取消、超时/任务丢弃及未知只读恢复。
+核对取消问题由question-reconcile-red真实复现，修复后同测试及全量通过；初版测试自身
+编译/已取消候选的错误断言保留历史日志，没有冒称产品功能红绿证据。
+最终workspace/all-targets/custom-protocol/locked：292程序1543通过0失败0忽略，
+.build/question-approved-workspace.log；严格fmt/Clippy、main+六探针构建均0，
+question-approved-{fmt,clippy,native}.log。固定Node24.16.0 npm ci/格式/560测试/类型/生产构建0。
+两协议各25态与独立凭据审计，本机另各25图全部复核；普通账号/保存账号/新旧登录/重启/
+续期/邮箱回归通过。21dist先冻结，七二进制散列验证；证据边界详见ui-ux-validation.txt。
+全部为合成服务，无本人账号问题或真实RT下发/轮换证明。处罚、实名、其它SDK/完整UI仍继续。
