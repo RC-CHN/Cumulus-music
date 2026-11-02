@@ -235,6 +235,11 @@ pub enum PlayerAction {
         quality: Quality,
         expected_queue_revision: String,
     },
+    QueueAlbum {
+        id: String,
+        quality: Quality,
+        expected_queue_revision: String,
+    },
     NextPlay {
         id: String,
         quality: Quality,

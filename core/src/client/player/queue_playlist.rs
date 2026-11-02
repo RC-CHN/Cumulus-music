@@ -21,6 +21,10 @@ use std::{
 const QUEUE_LIMIT: usize = 10_000;
 
 pub(super) enum QueueCollection {
+    Album {
+        id: String,
+        quality: Quality,
+    },
     Playlist {
         id: String,
         quality: Quality,
@@ -70,6 +74,16 @@ impl MusicClient {
                 .map(Value::from)
                 .collect::<Vec<_>>()
         };
+        self.online_queue_resources(token, &ids, quality, attempt)
+            .await
+    }
+    async fn online_queue_resources(
+        &self,
+        token: &SessionToken,
+        ids: &[Value],
+        quality: Quality,
+        attempt: u64,
+    ) -> Result<Vec<Value>> {
         let mut resources = Vec::new();
         for chunk in ids.chunks(100) {
             self.session.check_generation(token)?;
@@ -94,9 +108,6 @@ impl MusicClient {
                 break;
             }
         }
-        if resources.is_empty() {
-            return Err(Error::State("playlist has no online tracks"));
-        }
         Ok(resources)
     }
     pub(super) async fn queue_collection(
@@ -118,6 +129,42 @@ impl MusicClient {
         let focus = self.focus.snapshot()?;
         let attempt = self.player.selection.fetch_add(1, Ordering::AcqRel) + 1;
         let (resources, source, downloaded) = match collection {
+            QueueCollection::Album { id, quality } => {
+                self.session.with_token(&token, |_| Ok(()))?;
+                let id = identifier(&json!(id))?;
+                let tracks = self
+                    .session
+                    .run_for(&token, |api, _| async {
+                        CatalogApi::new(api).album_playback_tracks(&json!(id)).await
+                    })
+                    .await?;
+                if tracks.len() > 50_000 {
+                    return Err(Error::InvalidInput("album too large"));
+                }
+                let mut seen = HashSet::new();
+                let ids = tracks
+                    .iter()
+                    .map(|song| identifier(&song["id"]))
+                    .collect::<Result<Vec<_>>>()?
+                    .into_iter()
+                    .filter(|id| seen.insert(id.clone()))
+                    .map(Value::from)
+                    .collect::<Vec<_>>();
+                let mut resources = self
+                    .online_queue_resources(&token, &ids, quality, attempt)
+                    .await?;
+                if resources.is_empty() {
+                    return Err(Error::State("album has no online tracks"));
+                }
+                for resource in &mut resources {
+                    resource["trial_mode"] = json!(-1);
+                }
+                (
+                    resources,
+                    json!({"kind":"album","id":id,"scene":"album","trial_mode":-1}),
+                    false,
+                )
+            }
             QueueCollection::Playlist {
                 id,
                 quality,
@@ -128,6 +175,9 @@ impl MusicClient {
                 let resources = self
                     .playlist_queue_resources(&token, &id, quality, selection, attempt)
                     .await?;
+                if resources.is_empty() {
+                    return Err(Error::State("playlist has no online tracks"));
+                }
                 (resources, json!({"kind":"playlist","id":id}), false)
             }
             QueueCollection::Downloads(ids) => (

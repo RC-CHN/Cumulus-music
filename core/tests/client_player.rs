@@ -29,6 +29,7 @@ struct Backend {
     url_release: Notify,
     trial: Mutex<Option<Value>>,
     playlist_tracks: Mutex<Option<Vec<Value>>>,
+    album_tracks: Mutex<Option<Vec<Value>>>,
     quality_trial_state: AtomicU64,
     quality_start_mode: AtomicU64,
     quality_writes: AtomicU64,
@@ -52,7 +53,7 @@ impl Api for Backend {
                     json!({"code":200,"data":{"resourceType":"other"}})
                 }
                 "/api/album/v3/detail" => {
-                    json!({"code":200,"album":{"id":7,"name":"长专辑"},"songs":(1..=501).map(|id|json!({"id":id,"name":"曲目","dt":120000})).collect::<Vec<_>>()})
+                    json!({"code":200,"album":{"id":7,"name":"长专辑"},"songs":self.album_tracks.lock().unwrap().clone().unwrap_or_else(||(1..=501).map(|id|json!({"id":id,"name":"曲目","dt":120000})).collect::<Vec<_>>())})
                 }
                 "/api/v6/playlist/detail" => {
                     json!({"code":200,"playlist":{"trackIds":self.playlist_tracks.lock().unwrap().clone().unwrap_or_else(|| (1..=205).map(|id|json!({"id":id})).collect::<Vec<_>>())}})
@@ -146,6 +147,8 @@ fn songs(id: &str) -> PlaySelection {
     }
 }
 
+#[path = "client_player/queue_album.rs"]
+mod queue_album;
 #[path = "client_player/source_control.rs"]
 mod source_control;
 

@@ -376,6 +376,20 @@ impl MusicClient {
                 )
                 .await;
         }
+        if let PlayerAction::QueueAlbum {
+            id,
+            quality,
+            expected_queue_revision,
+        } = action
+        {
+            return self
+                .queue_collection(
+                    epoch,
+                    queue_playlist::QueueCollection::Album { id, quality },
+                    expected_queue_revision,
+                )
+                .await;
+        }
         if let PlayerAction::QueuePlaylistBatch {
             id,
             ids,
@@ -733,6 +747,7 @@ impl MusicClient {
             PlayerAction::Startup => unreachable!("handled before user transport commands"),
             PlayerAction::NextPlay { .. }
             | PlayerAction::QueuePlaylist { .. }
+            | PlayerAction::QueueAlbum { .. }
             | PlayerAction::QueueDownloads { .. }
             | PlayerAction::QueuePlaylistBatch { .. }
             | PlayerAction::QueueCloudBatch { .. } => {
