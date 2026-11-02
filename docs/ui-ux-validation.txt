@@ -4177,3 +4177,53 @@ collection-library-mapping.json；没有使用YesPlayMusic。
   不把上一提交成功或局部步骤成功当成本轮完整CI通过。没有新版本、标签或发布。
 - 完整卡片菜单/直接播放、收藏关注写后联动、专辑商店、跨列数变更的历史重排、
   真实CDN/全部DPI及Windows实机视觉仍需继续审计；全应用目标保持进行中。
+
+
+专辑卡片：菜单、播放与收藏写后联动（2026-11-02后续）
+来源、接口/命令链及边界见album-card-ui-contracts.txt和album-card-desktop-mapping.json。
+- 按官方AlbumCard恢复主署名排序、固定日期、名称/描述层次、独立歌手链接/详情/播放
+  和菜单。普通卡片及收藏场景的共同菜单顺序对照执行官方M622恢复表达式所得两组
+  冻结向量；没有执行官方原生菜单渲染器，不声称像素一致，也没有使用YesPlayMusic。
+- 新增Rust QueueAlbum：有当前项时保持音频/暂停/位置，去重后在当前项之后插入；
+  空队列才开始播放。三个新增核心测试覆盖顺序/持久化来源、空队列/过期/空结果、
+  迟到读取/切号；前端覆盖独立busy/质量/账号围栏。卡片收藏复用既有持久化意图，
+  丢响应后重开只能核对、不重发。详情和卡片写入开始及结束均按捕获epoch通知App，
+  失效对应收藏/关注访问快照并保留筛选。卸载/LRU淘汰后完成通知、旧账号拒绝有
+  单独模型测试；本39态没有覆盖实机上请求中途切号的全部组合。
+- 最终album-card-final-gui-4（隔离Xvfb/Openbox100%）和album-card-final-kde-5
+  （本机KDE Wayland/XWayland125%）各39态/39PNG，外层进程均0，report.ok=true。
+  CSS窗口1120×760/760×540、两主题、动画保持启用，最终同一生产dist/IPC/SQLite/
+  libmpv构建。服务、封面及WAV均合成；坏封面实际解码失败，启动前用data image替换
+  合成CDN地址，无真实账号请求/写入。音频输出为null，不代表物理声卡听感。
+- 39态包含元数据/歌手跳转及返回、键盘菜单、分享/复制、播放/暂停/继续/停止重播、
+  下一首插入及真实切歌、失败重试、下载窗口取消、长名收藏确认/取消、读取失败恢复、
+  写入403和显式重试、移除/筛选保留、响应丢失后重开核对、详情移除后返回、窄窗菜单。
+  每态检查窗口可见/持有焦点、实际命中、焦点可见、横向溢出及DOM<=36；原生队列为
+  [1,4,5,6,2,3]，暂停/继续保持playId/entryId/revision，核对期间写请求计数不增加。
+- 最终KDE39图经7张联系表全部人工查看；GUI39由自动布局/焦点/像素断言检查，没有
+  冒称人工逐张查看全部78图。私有总览album-card-gallery-final/index.html，原PNG/
+  状态JSON及源码/21个dist/5个原生二进制/78最终图散列见album-card-delivery-manifest.json。
+- 探索轮实际修复了多歌手链接被裁切、重试成功后焦点落body、只读加载禁用取消键、
+  移除来源卡片后弹窗关闭无焦点落点。探针/夹具问题分别为页签文字含计数、专辑歌曲
+  与privilege不一致、sublist缺hasMore；修正夹具/选择器后仍检查原有队列/命中/像素条件。
+  三个旧专项的专辑选择器改为拆分后的真实标题/描述/主按钮，没有删除既有断言。
+  物理KDE3/4及诊断轮被document.hasFocus=false中断，不计通过、不强行抢焦点；最终
+  KDE5在桌面焦点保持稳定的一轮完整通过，断言未放宽。
+- 回归均外层0：album-card-regression-context-2为44态，source-1为37态，artist2为50态，
+  navigation1为52态，layout1为30态。context-2包含最终账号通知模型；其他四轮在该模型
+  调整之前，均在后续仅Linux MPRIS后端修改之前。不将这213态称为最终全应用人工复核。
+- 固定Node24.16.0/Rust1.96.0：npm ci、前端格式/545项测试/类型/生产构建通过；Rust
+  格式、严格workspace/all-targets/custom-protocol/locked Clippy及280个结果程序共
+  1463 passed、0 failed/ignored（album-card-*-delivery.log）。Python43、桌面JS8通过。
+  冻结dist后重建普通cumulus和catalog/ux/mini/mpris四个探针，执行上述最终两组39态。
+- 前次94635e0的CI 41380885370中收藏上下文44态通过，但Linux在MPRIS Next收到
+  D-Bus NoReply，进程仍存活，因此该CI不能称成功；Windows WebView步骤已通过。
+  根据源码推断并修正同账号撕裂快照导致媒体总线被关闭的路径，新增两个寿命测试。
+  900ms原生load延迟在修复前也通过，不是原CI故障的确定性复现。修复后的真实私有
+  D-Bus/Tauri/libmpv/null协议专项13步、28属性信号、8 Seeked通过，含总线断开恢复、
+  偏好回滚和账号隔离；物理桌面媒体面板未验证。详见linux-mpris-contracts.txt。
+- b4b8103的CI 41375509347已全量成功，cae58a7的41370263237也成功；它们不含本次
+  专辑卡片改动。本批最终提交单独发送精确SHA CI，回执保存在私有album-card-ci-receipt.json，
+  未取得完整CI gate前保持待验证。来源/发行规则另行检查，无新版本、标签或发布。
+- 官方唱片/色彩封面层、数字专辑AB购买、详情批量操作、其余逐页UI/UX、真实CDN、
+  全部DPI及Windows实机视觉仍继续审计。优先界面逻辑一致性和功能，全应用目标未完成。

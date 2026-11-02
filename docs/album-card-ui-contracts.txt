@@ -1,0 +1,78 @@
+专辑卡片：信息、来源播放、通用菜单与收藏联动
+2026-11-02；继续全应用UI/UX审计，不将本专项称为完整产品完成。
+
+官方依据
+- components/AlbumCard/index.tsx默认simple、showArtists=true/showSize=false，主歌手若在
+  artists中排到首位；15px名称/22px行高、12px描述/14px行高、12px左右内距。
+  默认显示歌手与发行日期；没有日期/歌手时不补虚构信息。独立RoundPlayButton、封面
+  hover及整个卡片的右键菜单分别对应播放、详情和menu动作。
+- hybrid_app M103.c的formatDate默认YYYY-MM-DD，本地日历。详情的点分日期保留其原
+  页头格式；专辑卡片不再随系统locale变成月/日/年。primary artist依据同组件原代码。
+- M622 k.content/check：普通卡片为查看/播放/下一首/收藏/分享/复制；myFavorite且
+  isFav时隐藏收藏并显示删除。专辑详情场景有批量/添加全部，数字专辑下载/购买受
+  isShowDigitalAlbumTag、AB组和歌曲权限共同限制，不能只凭一条卡片计数推断购买权益。
+- M404 album resolver、M308 playing/play和M3085的当前队列插入，沿用已有歌单
+  插入的去重/容量/空队列开始逻辑。新Rust QueueAlbum不调用归档Python。
+- 参考路径/散列见album-card-desktop-mapping.json。官方菜单的非数字专辑两组冻结
+  向量在frontend/tests/fixtures/official-album-card-menu.json；研究脚本在私有
+  references/recovered-client/scripts/netease_album_card_menu_oracle.cjs。
+  执行的是恢复表达式/场景检查与合成枚举，不是官方进程/原生菜单渲染器。未使用YesPlayMusic。
+
+产品行为与结构
+- CatalogCards保留有界虚拟网格，将专辑交给独立AlbumCard；歌手/视频/演出原有分支
+  继续。收藏/已购、歌手专辑页复用此组件，搜索仍用既有SearchResultCard。
+- 详情、歌手链接、播放、菜单都是独立按钮，没有按钮嵌套。主署名优先，长名称省略，
+  多歌手链接共同收缩保留可点击区域；缺图/解码失败回音乐占位，explicit依核心mark位。
+  图标悬停/键盘focus-within出现，当前播放来源常显；transform/opacity过渡尊重减少动态。
+- App按PlayerOrigin(kind/id)且已加载判断同一专辑。当前来源走PauseFor，保留曲目、
+  队列和位置；Stop后重新读取专辑并选择，不能以旧origin误当仍加载。不同来源走
+  catalogResourceSelection，校验账号、查询身份、类型和revision，再选首个非missing项。
+  搜索歌手/专辑也复用这一只读准备过程。读取失败保留既有播放错误/显式重试机制。
+- ActionMenu复用同一套右键、Shift+F10、方向键、Esc、弹层定位与关闭行为；菜单来源键
+  进入既有浏览历史的焦点记录，查看详情、分享关闭和读写恢复后返回真实来源控件。
+  AlbumActions由App按账号挂载，业务由typed CoreClient/PlayerModel调用。页面变化或
+  账号卸载推进序号，迟到读取不会打开另一个页面的下载窗口。
+- 下一首播放使用独立queueBusy，错误属于该菜单操作；用户显式重试重新捕获当前队列
+  revision。重试按钮在处理中保留，成功消失后只在body仍持有焦点时回来源，不抢用户
+  另选控件。自动消失的成功提示遇到内部键盘焦点时保留，由用户关闭。
+- 分享只打开已有公开链接分享窗口，复制只写公开album?id=链接；不发给他人或公开发布。
+  下载读取完整当前歌曲后进入既有音质/目录/授权流程，不因打开菜单而自动创建下载任务。
+  普通专辑的直接下载入口是社区增强，不能冒称恢复了官方数字专辑AB购买分支。
+
+请求/命令链
+播放：App -> catalogResourceSelection -> catalog_page(epoch,{kind:album,id},true) ->
+MusicClient::catalog_page/CatalogDetails。play_selection Catalog携带该query/revision，
+核心重读专辑/privilege并核对歌曲顺序，再批量song/detail、建立队列及请求会员允许的音源。
+主要读取为/api/album/v3/detail（详情失败有既有v4回退）、/api/album/detail/dynamic、
+/api/album/privilege、/api/resource-exposure/config、/api/v3/song/detail；播放音源继续
+/api/song/enhance/player/url/v1，前端不持有完整授权URL。
+下一首：PlayerModel.queueAlbum -> player_action QueueAlbum{id,quality,expected_queue_revision}
+-> queue_collection(Album)。先核对队列与FM，读取album_playback_tracks的v3/privilege，
+验证身份/最多50000条、去重、分批song/detail、最多10000队列项。Actor fence与selection
+序号拒绝迟到传输/切号；有当前项时保留原音频状态，仅空队列取得媒体焦点并开始。新增
+项携带album来源及trial_mode=-1，普通播放/会员权限继续在既有音源路径判断。
+收藏：菜单 -> AlbumMembershipDialog -> catalog_page(true)+catalog_membership Inspect，
+以当前动态isSub显示确认。catalog_membership Set{desired}复用AccountResources的持久化
+before/intent/发送/读取确认状态机；调用/api/album/sublist和/api/album/sub或/unsub。
+响应丢失后保留uncertain，后续重开先Inspect；“核对结果”只Reconcile读回，不重发写入。
+失败/过期显示明确状态，账号变更卸载旧窗口。取消确认不写，不触碰下载文件。
+
+收藏/关注列表联动
+App在操作开始和完成时接收捕获账号epoch的通知，先保存当前筛选，再使受影响scope的所有
+浏览访问快照失效；专辑只影响saved_albums，关注只影响followed_artists，已购不受影响。
+collection memory的scope revision拒绝旧页面卸载时把已失效快照写回。当前列表/返回
+旧收藏访问时重新读取首页；保留该访问的筛选词，不沿用可能移位的旧分页/滚动前缀。
+这是显式写入后的重新校验；没有写入时仍保留上一专项已验证的分页/滚动历史。
+CatalogSession的通知由账号workspace持有，页面卸载或LRU淘汰后仍会通知完成，App拒绝
+旧账号epoch；卡片确认窗口也使用同一账号回调。这样读取发生在慢写入中途时，完成后
+仍能再次使旧结果失效，不依赖已卸载组件发Vue事件。该代次/卸载分支有单独模型测试，
+不冒称39态已包含真实桌面上请求中途切号的全部组合。
+
+验证与保留边界
+scripts/ci/album_card_smoke.py和album_card_ui_probe.js使用生产dist/IPC/SQLite及libmpv/null，
+合成API/封面；坏封面使用实际不能解码的data image，拦截合成CDN地址，不访问真实CDN。
+39态目标包含元数据/链接/菜单/分享复制、同来源暂停继续/Stop重播、队列保留/失败重试、
+下载窗口取消、收藏读取失败/恢复、写入拒绝/重试/取消、移除及筛选保留、丢响应重开只核对、详情写后返回与
+窄窗两主题。运行结果、失败定位和最终截图人工复查范围以ui-ux-validation.txt为准。
+数字专辑购买/AB菜单、详情批量操作、官方AlbumCover唱片层与图片色彩、全部DPI和Windows
+实机视觉仍继续审计；不使用虚拟帧率/合成音源证明刷新率、真实CDN或物理声卡听感。

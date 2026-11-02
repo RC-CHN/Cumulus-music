@@ -128,7 +128,7 @@
     }
   ],
   "unverifiedOrIncomplete": [
-    "New collection-context exact-commit CI pending; 55610a5 Windows WebView step succeeded but the complete run exceeded its 120-minute limit during cache save",
+    "Exact 94635e0 CI 41380885370 passed the new Linux collection-context step, but its Linux job later failed at MPRIS Next/NoReply; Windows and the new album-card exact-commit CI are tracked separately in private receipts, not a full-green claim",
     "User profile/message actions",
     "Complete official context menus",
     "Digital album store navigation"

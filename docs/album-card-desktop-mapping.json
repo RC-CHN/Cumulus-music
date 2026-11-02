@@ -1,0 +1,97 @@
+{
+  "date": "2026-11-02",
+  "contract": "docs/album-card-ui-contracts.txt",
+  "officialSources": [
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/components/AlbumCard/index.tsx",
+      "sha256": "6551da9e4c5d95769956f6f848045e0cbe7a05a8c80004c6ed57e5e30a6fe763"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/components/AlbumCover/index.tsx",
+      "sha256": "cc36cf795390aa487a83454a744e0dcdb788ca7c440c041403f15a8853eefa67"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/103.js",
+      "sha256": "667f71f29b59b37af1ef012192c736912151fe4017ebbfae45e71e401ff26c60"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/622.js",
+      "sha256": "347d7d067eeb1b883dec32a290e8e9a960fdc97a8acafe7d44ebe5a1960735b0"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/404.js",
+      "sha256": "cb691eded78b1f0ed006108063a7baecfcda1c8b8dd3f6ab7b9fedb3b09ce96b"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/308.js",
+      "sha256": "2cd3a0da5759370a80cfe20c7ac4e58ef192bab33c396e8eff3efdd35c254a7d"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_73.chunk.1482700000000.js/3085.js",
+      "sha256": "121b1cc930b106acf5bb01d86305725ddd6abe2484120fee339a682301c7f0be"
+    }
+  ],
+  "features": [
+    {
+      "feature": "Album metadata, primary credits, fixed date, fallback and source controls",
+      "frontend": [
+        "components/catalog/AlbumCard.vue",
+        "services/catalogCards.ts",
+        "components/catalog/CatalogCards.vue",
+        "App.vue"
+      ],
+      "core": [
+        "client/catalog/cards.rs",
+        "client/catalog/selection.rs",
+        "client/player/source_control.rs"
+      ],
+      "verification": [
+        "frontend/tests/catalog-cards.test.ts",
+        "desktop/examples/album_card_ui_probe.js"
+      ]
+    },
+    {
+      "feature": "Album next-play insertion",
+      "frontend": [
+        "composables/usePlayer.ts queueAlbum",
+        "services/player.ts QueueAlbum"
+      ],
+      "core": [
+        "client/player/dto.rs",
+        "client/player/mod.rs",
+        "client/player/queue_playlist.rs"
+      ],
+      "verification": [
+        "core/tests/client_player/queue_album.rs",
+        "frontend/tests/player-state.test.ts",
+        "scripts/ci/album_card_smoke.py"
+      ]
+    },
+    {
+      "feature": "Menu, membership confirmation/recovery, download and account-scoped collection invalidation",
+      "frontend": [
+        "components/catalog/AlbumActions.vue",
+        "components/catalog/AlbumMembershipDialog.vue",
+        "composables/useCatalogMembership.ts",
+        "services/collectionViewport.ts",
+        "components/CollectionsPage.vue",
+        "components/CatalogPage.vue",
+        "composables/useCatalogSession.ts",
+        "composables/useCatalogWorkspace.ts"
+      ],
+      "verification": [
+        "frontend/tests/collections.test.ts",
+        "frontend/tests/fixtures/official-album-card-menu.json",
+        "scripts/ci/album_card_smoke.py",
+        "frontend/tests/catalog-workspace.test.ts"
+      ]
+    }
+  ],
+  "boundaries": [
+    "Synthetic account/API/artwork and null audio; exact final evidence in ui-ux-validation.txt",
+    "Ordinary direct download is a community addition; digital AB/buy menu and detail-only batch actions not complete",
+    "Official vinyl/color layer, Windows physical visual and all DPI remain open",
+    "Full application goal active"
+  ],
+  "alternativeClientSources": []
+}
