@@ -3,6 +3,8 @@
 mod backend;
 mod client;
 mod login;
+#[cfg(test)]
+mod login_timing_tests;
 pub(crate) use login::JskLoginContext;
 mod origin;
 mod profile;

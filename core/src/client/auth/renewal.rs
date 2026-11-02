@@ -54,6 +54,7 @@ struct NativeRenewal {
 #[derive(Default)]
 pub(super) struct RenewalHost {
     native: Option<NativeRenewal>,
+    clock: Option<Arc<dyn Fn() -> Result<u64> + Send + Sync>>,
     gate: tokio::sync::Mutex<()>,
     last: Mutex<Option<(SessionToken, RenewalState)>>,
     flight: Mutex<Option<SessionToken>>,
@@ -68,6 +69,16 @@ impl Drop for Flight<'_> {
 }
 
 impl MusicClient {
+    /// Native clock injection for deterministic hosts and renewal verification.
+    /// No IPC exposes a clock or a way to bypass the durable daily gate.
+    pub fn with_session_renewal_clock(
+        mut self,
+        clock: Arc<dyn Fn() -> Result<u64> + Send + Sync>,
+    ) -> Self {
+        self.auth.renewal.clock = Some(clock);
+        self
+    }
+
     /// Native opt-in: use the recovered PC experiment assignments for login
     /// interception and foreground renewal. There is no frontend override.
     pub fn with_official_login_policy(self) -> Self {
@@ -204,7 +215,11 @@ impl MusicClient {
             .ok_or(Error::State("session renewal unavailable"))?;
         let mut device = native.device.clone();
         device.device_id = client.credentials().device_id()?;
-        let lifecycle = AccountLifecycle::new(self.session.clone(), client);
+        let lifecycle = if let Some(clock) = &host.clock {
+            AccountLifecycle::with_clock(self.session.clone(), client, clock.clone())
+        } else {
+            AccountLifecycle::new(self.session.clone(), client)
+        };
         self.session.check_generation(&token)?;
         *host.flight.lock().map_err(|_| Error::LockPoisoned)? = Some(token.clone());
         let flight = Flight(&host.flight);

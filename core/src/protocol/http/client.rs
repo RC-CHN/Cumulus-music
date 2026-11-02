@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
     sync::{Arc, Mutex},
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 #[derive(Debug, Clone)]
@@ -269,18 +269,27 @@ impl MusicHttpClient {
                 && (path != "/api/middle/account/uplinkcaptcha/verify"
                     || crate::protocol::wire::serialization::js_truthy(&v["data"]))
         });
-        let refresh = if (200..300).contains(&response.status) && login_path && authorized {
+        let acknowledged = (200..300).contains(&response.status) && login_path && authorized;
+        let refresh = if acknowledged {
             response.refresh_token.as_deref()
         } else {
             None
         };
         // Even an unreadable body may have issued a valid Cookie. Persist it
         // for explicit account reconciliation, without replaying credentials.
-        self.credentials.record_response(
+        // M/1368 prepareAndSaveLoginInfo supplies Date.now() for a completed
+        // JSK login. Do not reset this on resource reads, legacy requests or
+        // refresh itself. Commit it atomically with the candidate credentials.
+        let last_login_at = (acknowledged && jsk == Jsk::Login)
+            .then(|| SystemTime::now().duration_since(UNIX_EPOCH).ok())
+            .flatten()
+            .map(|time| time.as_secs());
+        self.credentials.record_login_response(
             &response_url,
             &response.set_cookies,
             refresh,
             &snapshot.revision,
+            last_login_at,
         )?;
         if (200..300).contains(&response.status)
             && super::login::can_emit_verification(path)

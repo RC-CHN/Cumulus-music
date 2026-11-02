@@ -27,6 +27,10 @@ struct Record {
     refresh_token: Option<String>,
     #[serde(default)]
     login_rotation: Option<String>,
+    /// Successful JSK login receipt, in Unix seconds. Separate from the
+    /// confirmed refresh journal: logging in is not a token rotation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    last_login_at: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     login_notice: Option<super::login_policy::LoginNotice>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -51,6 +55,7 @@ pub struct LoginCredentials {
     pub refresh_token: Option<String>,
     pub revision: String,
     pub rotation: Option<String>,
+    pub last_login_at: Option<u64>,
 }
 
 pub struct RequestCredentials {
@@ -73,6 +78,7 @@ impl Credentials {
             record.cookies = legacy.cookies;
             record.refresh_token = legacy.refresh_token;
             record.login_rotation = None;
+            record.last_login_at = None;
             Ok(())
         })
     }
@@ -90,6 +96,7 @@ impl Credentials {
                 cookies: vec![],
                 refresh_token: None,
                 login_rotation: None,
+                last_login_at: None,
                 login_notice: None,
                 queue_reset: None,
                 revision: Uuid::new_v4().simple().to_string(),
@@ -152,6 +159,7 @@ impl Credentials {
             refresh_token: state.record.refresh_token.clone(),
             revision: state.record.revision.clone(),
             rotation: state.record.login_rotation.clone(),
+            last_login_at: state.record.last_login_at,
         })
     }
 
@@ -189,11 +197,24 @@ impl Credentials {
         refresh_token: Option<&str>,
         expected_revision: &str,
     ) -> Result<()> {
+        self.record_login_response(url, set_cookies, refresh_token, expected_revision, None)
+    }
+
+    /// Only the native JSK transport can acknowledge a new login. Ordinary
+    /// Cookie updates and restored profiles must not postpone daily renewal.
+    pub(crate) fn record_login_response(
+        &self,
+        url: &Url,
+        set_cookies: &[String],
+        refresh_token: Option<&str>,
+        expected_revision: &str,
+        last_login_at: Option<u64>,
+    ) -> Result<()> {
         self.origin.require_url(url)?;
         if let Some(token) = refresh_token {
             validate_token(token)?;
         }
-        if set_cookies.is_empty() && refresh_token.is_none() {
+        if set_cookies.is_empty() && refresh_token.is_none() && last_login_at.is_none() {
             let state = self.lock()?;
             self.require_current(&state)?;
             if state.record.revision != expected_revision {
@@ -204,6 +225,9 @@ impl Credentials {
         self.change(|record| {
             if record.revision != expected_revision {
                 return Err(Error::CredentialChanged);
+            }
+            if let Some(at) = last_login_at {
+                record.last_login_at = Some(at);
             }
             let mut store = jar(record)?;
             for value in set_cookies {
@@ -268,6 +292,7 @@ impl Credentials {
             record.cookies.clear();
             record.refresh_token = None;
             record.login_rotation = None;
+            record.last_login_at = None;
             record.login_notice = None;
             Ok(())
         })
@@ -295,6 +320,7 @@ impl Credentials {
             record.cookies.clear();
             record.refresh_token = None;
             record.login_rotation = None;
+            record.last_login_at = None;
             record.login_notice = Some(notice.clone());
             record.queue_reset = queue_reset;
             Ok(())

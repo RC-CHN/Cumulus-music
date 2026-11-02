@@ -137,6 +137,7 @@ fn signature_and_model_match_fourteen_direct_official_function_results() {
         refresh_token: Some("R".into()),
         revision: "old".into(),
         rotation: None,
+        last_login_at: None,
     };
     let device = DeviceInfo {
         device_name: "my,pc,2".into(),

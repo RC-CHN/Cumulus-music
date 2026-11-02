@@ -194,11 +194,13 @@ impl AccountLifecycle {
             return Ok(RefreshOutcome::RecoveryRequired);
         }
         let now = (self.clock)()?;
-        if !force
-            && journal::load(&store, uid)?
-                .and_then(|i| i.last_success)
-                .is_some_and(|last| last != 0 && now < last.saturating_add(86400))
-        {
+        let last_update = journal::load(&store, uid)?
+            .and_then(|i| i.last_success)
+            .into_iter()
+            .chain(before.last_login_at)
+            .filter(|at| *at != 0)
+            .max();
+        if !force && last_update.is_some_and(|last| now < last.saturating_add(86400)) {
             return Ok(RefreshOutcome::NotDue);
         }
         if device.device_id != credentials.device_id()? {
