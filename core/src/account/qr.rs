@@ -1,4 +1,5 @@
 //! Official QR request sequence and cancellation boundary.
+use super::login::LoginProtocol;
 use super::session::next_generation;
 use crate::{Error, Result, protocol::api::Api};
 use serde::Serialize;
@@ -51,13 +52,18 @@ pub struct QrSnapshot {
 
 pub struct QrLogin {
     api: Arc<dyn Api>,
+    protocol: LoginProtocol,
     state: Mutex<QrState>,
 }
 
 impl QrLogin {
     pub fn new(api: Arc<dyn Api>) -> Self {
+        Self::with_protocol(api, LoginProtocol::Legacy)
+    }
+    pub(crate) fn with_protocol(api: Arc<dyn Api>, protocol: LoginProtocol) -> Self {
         Self {
             api,
+            protocol,
             state: Mutex::new(QrState {
                 generation: 0,
                 key: None,
@@ -92,8 +98,10 @@ impl QrLogin {
             state.polling = false;
             (state.generation, old_key)
         };
-        let mut payload = json!({"type": 3});
-        if let Some(key) = old_key {
+        let mut payload = json!({"type": self.protocol.qr_type()});
+        if self.protocol == LoginProtocol::Legacy
+            && let Some(key) = old_key
+        {
             payload["lastUniKey"] = key.into();
         }
         let response = self
@@ -155,7 +163,10 @@ impl QrLogin {
             state: &self.state,
             generation,
         };
-        let mut payload = json!({"key": key, "type": 3});
+        let mut payload = json!({"key": key, "type": self.protocol.qr_type()});
+        if self.protocol == LoginProtocol::Jsk {
+            payload["secureCaptcha"] = "".into();
+        }
         if let Some(captcha) = secure_captcha {
             payload["secureCaptcha"] = captcha.into();
         }

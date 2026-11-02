@@ -158,6 +158,7 @@ impl Default for PageRequest {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QrView {
+    pub poll_after_ms: u32,
     pub operation_id: String,
     pub status: QrStatus,
     /// Row-major module matrix. The host does not receive raw login tickets.

@@ -65,6 +65,7 @@ pub fn build_request(input: RequestInput<'_>) -> Result<RequestPlan> {
             "MConfig-Bucket",
             "X-antiCheatToken",
             "x-login-chain-id",
+            "x-music-tu",
         ]
         .contains(&key.as_str())
             || value.contains(['\r', '\n', '\0'])

@@ -53,9 +53,14 @@ impl MusicClient {
     pub async fn begin_qr(&self) -> Result<QrView> {
         let _gate = self.together.gate.lock().await;
         self.check_account_transition()?;
-        let flow = Arc::new(QrAuthentication::new(
+        let protocol = self
+            .session
+            .new_login_protocol(&self.session.token()?)
+            .await?;
+        let flow = Arc::new(QrAuthentication::new_with_protocol(
             self.session.clone(),
             self.login_candidate(None)?,
+            protocol,
         )?);
         let id = uuid::Uuid::new_v4().simple().to_string();
         self.auth.replace(PendingLogin {
@@ -78,6 +83,11 @@ impl MusicClient {
         Ok(QrView {
             operation_id: id,
             status: QrStatus::WaitingScan,
+            poll_after_ms: if protocol == crate::account::login::LoginProtocol::Jsk {
+                1000
+            } else {
+                2000
+            },
             modules,
         })
     }

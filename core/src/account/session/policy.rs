@@ -128,6 +128,18 @@ impl Scope {
     }
 }
 impl AccountSession {
+    pub(crate) async fn new_login_protocol(
+        &self,
+        token: &SessionToken,
+    ) -> Result<crate::account::login::LoginProtocol> {
+        use crate::account::login::LoginProtocol;
+        self.check_generation(token)?;
+        if self.policy.configured() && self.refresh_login_policy(token).await? {
+            Ok(LoginProtocol::Jsk)
+        } else {
+            Ok(LoginProtocol::Legacy)
+        }
+    }
     pub(crate) fn enable_official_login_policy(&self) {
         self.policy.enabled.store(true, Ordering::Release);
     }

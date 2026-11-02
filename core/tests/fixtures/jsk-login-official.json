@@ -1,0 +1,50 @@
+{
+  "sources": {
+    "hybrid_vendors_app_subApp.chunk.1482700000000.js/1368.js": "49da1d26373042091a3123f8948f1ce7e9968ec185e57369156fc1c6a6700db3",
+    "hybrid_app.chunk.1482700000000.js/290.js": "73e775eae2e4b1da2e97b70b9415e2e101ba876ea1f6b877bd7cc054c7a4ea9b"
+  },
+  "phonePassword": {
+    "phone": "13800138000",
+    "password": "c8bb92c7cea0c507b569cf2ddc73896c",
+    "countrycode": "86",
+    "once": "01234567-89ab-4cde-8f01-23456789abcd",
+    "nonce": "fedcba98-7654-4321-8765-fedcba987654",
+    "secureCaptcha": "",
+    "version": "1",
+    "fromPage": "JSK"
+  },
+  "phoneSms": {
+    "phone": "13800138000",
+    "captcha": "123456",
+    "countryCode": "86",
+    "fromPage": "JSK"
+  },
+  "email": {
+    "username": "me@example.test",
+    "password": "c8bb92c7cea0c507b569cf2ddc73896c",
+    "fromPage": "JSK"
+  },
+  "qrCreate": {
+    "type": 5,
+    "fromPage": "JSK"
+  },
+  "qrPoll": {
+    "key": "fixture-qr-key",
+    "type": 5,
+    "secureCaptcha": "",
+    "fromPage": "JSK"
+  },
+  "headers": {
+    "x-login-chain-id": ""
+  },
+  "challengeHeaders": {
+    "x-login-chain-id": "",
+    "x-music-tu": "fixture-ticket"
+  },
+  "pcVerifySms": {
+    "result": {
+      "success": true,
+      "ursToken": ""
+    }
+  }
+}

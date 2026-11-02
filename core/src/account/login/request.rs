@@ -85,3 +85,34 @@ pub(super) fn email(
         payload,
     })
 }
+
+pub(super) fn jsk_phone(input: PhoneLogin<'_>) -> Result<LoginRequest> {
+    phone_number(input.phone, input.country_code)?;
+    let payload = match input.credential {
+        PhoneCredential::Password(password) => json!({
+            "phone":input.phone,"password":password_digest(password)?,"countrycode":input.country_code,
+            "once":uuid::Uuid::new_v4().to_string(),"nonce":uuid::Uuid::new_v4().to_string(),
+            "secureCaptcha":input.secure_captcha.unwrap_or(""),"version":"1"
+        }),
+        PhoneCredential::Sms(code) => {
+            if !(4..=8).contains(&code.len()) || !code.bytes().all(|b| b.is_ascii_digit()) {
+                return Err(Error::InvalidInput("invalid SMS code"));
+            }
+            // M/290 verifySms explicitly succeeds with an empty ursToken on PC.
+            // M/1368 therefore omits ursToken; it is not a fabricated URS result.
+            json!({"phone":input.phone,"captcha":code,"countryCode":input.country_code})
+        }
+    };
+    Ok(LoginRequest {
+        path: "/api/login/cellphone",
+        payload,
+    })
+}
+
+pub(super) fn jsk_email(address: &str, password: &str) -> Result<LoginRequest> {
+    let legacy = email(address, password, false, None)?;
+    Ok(LoginRequest {
+        path: "/api/login",
+        payload: json!({"username":legacy.payload["username"],"password":legacy.payload["password"]}),
+    })
+}

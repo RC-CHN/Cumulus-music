@@ -42,6 +42,7 @@ pub struct WireCall {
     pub payload: Value,
     pub cookie: Option<String>,
     pub login_chain: Option<String>,
+    pub music_tu: Option<String>,
 }
 pub struct ScriptHttp {
     replies: Mutex<VecDeque<HttpResponse>>,
@@ -81,6 +82,7 @@ impl HttpBackend for ScriptHttp {
                 payload,
                 cookie: plan.headers.get("Cookie").cloned(),
                 login_chain: plan.headers.get("x-login-chain-id").cloned(),
+                music_tu: plan.headers.get("x-music-tu").cloned(),
             });
             self.started.notify_one();
             let response = self

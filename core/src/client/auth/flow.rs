@@ -10,16 +10,22 @@ impl MusicClient {
         saved_id: Option<&str>,
     ) -> Result<LoginView> {
         let _gate = self.together.gate.lock().await;
-        self.auth_token(epoch)?;
+        let token = self.auth_token(epoch)?;
         self.check_account_transition()?;
         if (mode == LoginMode::SavedAccount) != saved_id.is_some() {
             return Err(Error::InvalidInput("invalid saved account login mode"));
         }
-        let flow = Arc::new(CredentialLogin::new(
+        let protocol = if mode == LoginMode::SavedAccount {
+            crate::account::login::LoginProtocol::Legacy
+        } else {
+            self.session.new_login_protocol(&token).await?
+        };
+        let flow = Arc::new(CredentialLogin::new_with_protocol(
             self.session.clone(),
             self.login_candidate(saved_id)?,
             self.auth.cooldown.clone(),
             self.auth.guardian.clone(),
+            protocol,
         )?);
         let id = uuid::Uuid::new_v4().simple().to_string();
         self.auth.replace(PendingLogin {

@@ -612,3 +612,120 @@ async fn redirects_oversized_bodies_and_wrong_context_origin_do_not_claim_succes
         .is_err()
     );
 }
+
+#[tokio::test]
+async fn jsk_primary_and_completed_verification_refresh_headers_require_complete_success() {
+    for path in [
+        "/api/login",
+        "/api/login/cellphone",
+        "/api/login/2fa/mail/captcha/check",
+        "/api/user/2fa/securityEmail/verify",
+        "/api/middle/account/captcha/verify",
+        "/api/user/2fa/order/check",
+        "/api/user/2fa/bindcellphone",
+        "/api/login/cellphone/twice/question/verify",
+        "/api/login/cellphone/twice/used/confirm",
+    ] {
+        for (status, code, body_status, malformed, expected) in [
+            (200, 200, BodyStatus::Complete, false, true),
+            (200, 200, BodyStatus::Interrupted, false, false),
+            (500, 200, BodyStatus::Complete, false, false),
+            (200, 502, BodyStatus::Complete, false, false),
+            (200, 200, BodyStatus::Complete, true, false),
+        ] {
+            let (_tmp, credentials) = credentials();
+            credentials.clear().unwrap();
+            let mut response = reply(json!({"code":code}));
+            response.status = status;
+            response.body_status = body_status;
+            response.set_cookies =
+                vec!["MUSIC_U=synthetic-reconciliable; Path=/; Secure; HttpOnly".into()];
+            response.refresh_token = Some("synthetic-paired-refresh".into());
+            if malformed {
+                response.body = b"{incomplete".to_vec();
+            }
+            let transport = client(
+                credentials.clone(),
+                Arc::new(Backend::new([Reply::Ready(response)])),
+                RequestOptions::default(),
+                None,
+            );
+            let _ = transport.request(path, json!({}), false).await;
+            assert_eq!(
+                credentials
+                    .login_credentials()
+                    .unwrap()
+                    .refresh_token
+                    .as_deref(),
+                if expected {
+                    Some("synthetic-paired-refresh")
+                } else {
+                    None
+                },
+                "{path} {status}/{code}"
+            );
+        }
+    }
+}
+#[tokio::test]
+async fn non_completing_login_steps_cannot_install_a_refresh_header() {
+    for path in [
+        "/api/login/qrcode/unikey",
+        "/api/user/2fa/list",
+        "/api/user/2fa/begin",
+        "/api/user/2fa/securityEmail/send",
+        "/api/read",
+    ] {
+        let (_tmp, credentials) = credentials();
+        credentials.clear().unwrap();
+        let mut response = reply(json!({"code":200}));
+        response.refresh_token = Some("must-not-install".into());
+        let transport = client(
+            credentials.clone(),
+            Arc::new(Backend::new([Reply::Ready(response)])),
+            RequestOptions::default(),
+            None,
+        );
+        transport.request(path, json!({}), false).await.unwrap();
+        assert!(
+            credentials
+                .login_credentials()
+                .unwrap()
+                .refresh_token
+                .is_none()
+        );
+    }
+}
+
+#[tokio::test]
+async fn verification_ack_without_an_authorizing_cookie_cannot_install_refresh() {
+    for path in [
+        "/api/login/2fa/mail/captcha/check",
+        "/api/user/2fa/securityEmail/verify",
+        "/api/middle/account/captcha/verify",
+        "/api/user/2fa/order/check",
+        "/api/user/2fa/bindcellphone",
+        "/api/login/cellphone/twice/question/verify",
+        "/api/login/cellphone/twice/used/confirm",
+    ] {
+        let (_tmp, credentials) = credentials();
+        credentials.clear().unwrap();
+        let mut response = reply(json!({"code":200}));
+        response.set_cookies.clear();
+        response.refresh_token = Some("not-an-authorization-receipt".into());
+        let transport = client(
+            credentials.clone(),
+            Arc::new(Backend::new([Reply::Ready(response)])),
+            RequestOptions::default(),
+            None,
+        );
+        transport.request(path, json!({}), false).await.unwrap();
+        assert!(
+            credentials
+                .login_credentials()
+                .unwrap()
+                .refresh_token
+                .is_none()
+        );
+    }
+}

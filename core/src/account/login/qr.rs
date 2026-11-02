@@ -1,6 +1,6 @@
 //! QR authorization, identity read and profile commit as one candidate flow.
 use super::{
-    LoginStatus,
+    LoginProtocol, LoginStatus,
     state::{Operation, State},
 };
 use crate::{
@@ -22,8 +22,15 @@ pub struct QrAuthentication {
 
 impl QrAuthentication {
     pub fn new(session: Arc<AccountSession>, candidate: LoginCandidate) -> Result<Self> {
+        Self::new_with_protocol(session, candidate, LoginProtocol::Legacy)
+    }
+    pub fn new_with_protocol(
+        session: Arc<AccountSession>,
+        candidate: LoginCandidate,
+        protocol: LoginProtocol,
+    ) -> Result<Self> {
         let base = session.token()?;
-        let qr = QrLogin::new(candidate.api());
+        let qr = QrLogin::with_protocol(protocol.api(candidate.client()), protocol);
         Ok(Self {
             session,
             candidate,

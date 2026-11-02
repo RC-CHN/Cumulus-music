@@ -1,12 +1,12 @@
 use super::{
-    LoginStatus, PhoneLogin, ResendCooldown, VerificationAction, classify,
+    LoginProtocol, LoginStatus, PhoneLogin, ResendCooldown, VerificationAction, classify,
     request::{self, LoginRequest},
     state::{Operation, State},
 };
 use crate::{
     Error, Result,
     account::{AccountSession, SessionToken, profiles::LoginCandidate, session::next_generation},
-    protocol::api::ApiFuture,
+    protocol::api::{Api, ApiFuture},
 };
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -34,6 +34,8 @@ pub struct CredentialLogin {
     state: Mutex<State>,
     cooldown: Arc<ResendCooldown>,
     guardian: Option<Arc<dyn LoginGuardian>>,
+    protocol: LoginProtocol,
+    api: Arc<dyn Api>,
 }
 
 impl CredentialLogin {
@@ -43,7 +45,23 @@ impl CredentialLogin {
         cooldown: Arc<ResendCooldown>,
         guardian: Option<Arc<dyn LoginGuardian>>,
     ) -> Result<Self> {
+        Self::new_with_protocol(
+            session,
+            candidate,
+            cooldown,
+            guardian,
+            LoginProtocol::Legacy,
+        )
+    }
+    pub fn new_with_protocol(
+        session: Arc<AccountSession>,
+        candidate: LoginCandidate,
+        cooldown: Arc<ResendCooldown>,
+        guardian: Option<Arc<dyn LoginGuardian>>,
+        protocol: LoginProtocol,
+    ) -> Result<Self> {
         let base = session.token()?;
+        let api = protocol.api(candidate.client());
         Ok(Self {
             session,
             candidate,
@@ -51,6 +69,8 @@ impl CredentialLogin {
             state: Mutex::new(State::default()),
             cooldown,
             guardian,
+            protocol,
+            api,
         })
     }
     fn lock(&self) -> Result<MutexGuard<'_, State>> {
@@ -112,11 +132,17 @@ impl CredentialLogin {
             payload["checkToken"] = token.into();
         }
         operation.check()?;
-        let response = self
-            .candidate
-            .api()
-            .request(request.path, payload, false)
-            .await;
+        // The recovered PC SMS-send UI still uses the native legacy helper.
+        // Its SDK bridge producer is not present in M/290; do not invent one.
+        let api = if matches!(
+            request.path,
+            "/api/sms/captcha/sent" | "/api/middle/captcha/sent/v1"
+        ) {
+            self.candidate.api()
+        } else {
+            self.api.clone()
+        };
+        let response = api.request(request.path, payload, false).await;
         {
             let mut state = operation.lock()?;
             let response = response.as_ref().ok();
@@ -175,13 +201,26 @@ impl CredentialLogin {
         Ok(())
     }
 
-    async fn submit(&self, request: LoginRequest, expected: Option<u64>) -> Result<Value> {
+    async fn submit(
+        &self,
+        request: LoginRequest,
+        expected: Option<u64>,
+        remember: Option<bool>,
+    ) -> Result<Value> {
         let operation = Operation::begin(&self.state, LoginStatus::Submitting, expected)?;
+        if let Some(remember) = remember {
+            self.candidate.remember(remember);
+        }
         let result = self.send(&operation, request, true, None).await;
         operation.finish(result)
     }
     pub async fn phone(&self, input: PhoneLogin<'_>) -> Result<Value> {
-        self.submit(request::phone(input)?, None).await
+        let remember = input.remember;
+        let request = match self.protocol {
+            LoginProtocol::Legacy => request::phone(input)?,
+            LoginProtocol::Jsk => request::jsk_phone(input)?,
+        };
+        self.submit(request, None, Some(remember)).await
     }
     pub async fn email(
         &self,
@@ -191,8 +230,20 @@ impl CredentialLogin {
         secure_captcha: Option<&str>,
     ) -> Result<Value> {
         self.submit(
-            request::email(address, password, remember, secure_captcha)?,
+            match self.protocol {
+                LoginProtocol::Legacy => {
+                    request::email(address, password, remember, secure_captcha)?
+                }
+                LoginProtocol::Jsk => {
+                    let mut request = request::jsk_email(address, password)?;
+                    if let Some(captcha) = secure_captcha.filter(|value| !value.is_empty()) {
+                        request.payload["secureCaptcha"] = captcha.into();
+                    }
+                    request
+                }
+            },
             None,
+            Some(remember),
         )
         .await
     }
@@ -214,7 +265,7 @@ impl CredentialLogin {
             )
         };
         request.payload["secureCaptcha"] = value.into();
-        self.submit(request, Some(generation)).await
+        self.submit(request, Some(generation), None).await
     }
     /// Call only after an explicit user send action. No automatic retry.
     pub async fn send_sms(&self, phone: &str, country_code: &str, middle: bool) -> Result<Value> {
@@ -254,6 +305,22 @@ impl CredentialLogin {
             Some(generation),
         )?;
         let result = async {
+            if self.protocol == LoginProtocol::Jsk {
+                // M/1368 beginVerify precedes the list and swallows its own
+                // network/service failure. Only the read follows; never resend.
+                let _ = self
+                    .send(
+                        &operation,
+                        LoginRequest {
+                            path: "/api/user/2fa/begin",
+                            payload: json!({}),
+                        },
+                        false,
+                        Some(LoginStatus::TwoFactor),
+                    )
+                    .await;
+                operation.check()?;
+            }
             let response = self
                 .send(
                     &operation,
@@ -265,7 +332,7 @@ impl CredentialLogin {
                     Some(LoginStatus::TwoFactor),
                 )
                 .await?;
-            if response["code"].as_i64() == Some(200) {
+            if response["code"].as_i64() == Some(200) && self.protocol == LoginProtocol::Legacy {
                 let begun = self
                     .send(
                         &operation,

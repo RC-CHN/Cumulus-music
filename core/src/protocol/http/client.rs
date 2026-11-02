@@ -36,6 +36,13 @@ pub struct MusicHttpClient {
     last_response: Mutex<Option<ResponseInfo>>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Jsk {
+    None,
+    Lifecycle,
+    Login,
+}
+
 impl MusicHttpClient {
     pub(crate) fn credentials(&self) -> Arc<Credentials> {
         self.credentials.clone()
@@ -89,12 +96,26 @@ impl MusicHttpClient {
         payload: Value,
         expected: &str,
     ) -> Result<Value> {
-        self.execute(path, payload, false, Some(expected), true)
+        self.execute(path, payload, false, Some(expected), Jsk::Lifecycle, None)
             .await
     }
 
     pub(crate) async fn request_jsk(&self, path: &str, payload: Value) -> Result<Value> {
-        self.execute(path, payload, false, None, true).await
+        self.execute(path, payload, false, None, Jsk::Lifecycle, None)
+            .await
+    }
+
+    pub(crate) async fn request_jsk_login(
+        &self,
+        path: &str,
+        payload: Value,
+        context: &super::JskLoginContext,
+    ) -> Result<Value> {
+        if self.credentials.origin() != super::ApiOrigin::Pc {
+            return Err(Error::InvalidInput("JSK login requires the PC origin"));
+        }
+        self.execute(path, payload, false, None, Jsk::Login, Some(context))
+            .await
     }
 
     async fn execute(
@@ -103,13 +124,19 @@ impl MusicHttpClient {
         mut payload: Value,
         cache: bool,
         expected: Option<&str>,
-        jsk: bool,
+        jsk: Jsk,
+        login_context: Option<&super::JskLoginContext>,
     ) -> Result<Value> {
-        if jsk {
-            if !matches!(
-                path,
-                "/api/login/token/refresh/v1" | "/api/middle/account/token/refresh"
-            ) {
+        if jsk != Jsk::None {
+            let allowed = match jsk {
+                Jsk::Login => super::login::jsk_login_path(path),
+                Jsk::Lifecycle => matches!(
+                    path,
+                    "/api/login/token/refresh/v1" | "/api/middle/account/token/refresh"
+                ),
+                Jsk::None => false,
+            };
+            if !allowed {
                 return Err(Error::InvalidInput("unsupported JSK lifecycle endpoint"));
             }
             payload
@@ -118,7 +145,16 @@ impl MusicHttpClient {
                 .insert("fromPage".into(), json!("JSK"));
         }
         let origin = self.credentials.origin();
-        let route = select_route_with_policy(origin, path, &payload, self.options.routing)?;
+        let route = select_route_with_policy(
+            origin,
+            path,
+            &payload,
+            if jsk == Jsk::None {
+                self.options.routing
+            } else {
+                RoutingPolicy::OfficialEapi
+            },
+        )?;
         // Async gate serializes cookie rotation for one candidate/profile;
         // no blocking mutex is held during network I/O.
         let _guard = self.gate.lock().await;
@@ -161,11 +197,16 @@ impl MusicHttpClient {
         if self.credentials.request_credentials(&target)?.revision != snapshot.revision {
             return Err(Error::CredentialChanged);
         }
-        if jsk {
+        if jsk != Jsk::None {
             // M/1368 PcPlatformAdapter.fetch -> M/290 nativeRequest passes this
             // header through M/402. M/290 getCurrentEnv supplies no chain ID;
             // preserve the empty value instead of fabricating a native chain.
             extra_headers.insert("x-login-chain-id".into(), String::new());
+            if let Some(context) = login_context
+                && let Some(ticket) = context.ticket()?
+            {
+                extra_headers.insert("x-music-tu".into(), ticket);
+            }
         }
         // M/92 pre-request middleware runs after M/402 EAPI serialization;
         // automatic MConfig negotiation is an HTTP header, not encrypted data.
@@ -220,14 +261,7 @@ impl MusicHttpClient {
                 Err(_) => Err(Error::Response("API returned non-JSON data")),
             }
         };
-        let login_path = [
-            "/api/w/login",
-            "/api/w/login/cellphone",
-            "/api/w/register/cellphone",
-            "/api/login/qrcode/client/login",
-            "/api/login/token/refresh/v1",
-        ]
-        .contains(&path);
+        let login_path = super::login::completes_login(path, &response.set_cookies);
         let authorized = parsed
             .as_ref()
             .is_ok_and(|v| [Some(200), Some(803)].contains(&v["code"].as_i64()));
@@ -244,6 +278,15 @@ impl MusicHttpClient {
             refresh,
             &snapshot.revision,
         )?;
+        if (200..300).contains(&response.status)
+            && super::login::can_emit_verification(path)
+            && parsed
+                .as_ref()
+                .is_ok_and(|value| matches!(value["code"].as_i64(), Some(8830 | 8860 | 8831)))
+            && let Some(context) = login_context
+        {
+            context.observe_challenge(&response.set_cookies)?;
+        }
         if let Some(context) = &self.context {
             context.observe_response(response.metadata.clone());
         }
@@ -269,6 +312,9 @@ impl Api for MusicHttpClient {
         self.credentials.device_id().map(Some)
     }
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value> {
-        Box::pin(async move { self.execute(path, payload, cache, None, false).await })
+        Box::pin(async move {
+            self.execute(path, payload, cache, None, Jsk::None, None)
+                .await
+        })
     }
 }
