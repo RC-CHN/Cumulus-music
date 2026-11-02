@@ -1,0 +1,80 @@
+{
+  "scope": "Account/login mode lifecycle, QR states and saved-account integration",
+  "date": "2026-11-02",
+  "sources": [
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/login/views/Phone.jsx",
+      "sha256": "08b48ac2f74c9e083173fa07f6d5682110c17d17d201ed6b007e83d2c22a3e17"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/login/views/Qrcode.jsx",
+      "sha256": "1b09ed6bbb1dc73d15fd5300322b75fbccbe6218f636b509aef57b8152e387e0"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/login/components/index.jsx",
+      "sha256": "d4c12ca4afd6d89f3a69fbf718586cc3600924301b5dae7fcf963aa9a58a9495"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/login/components/Operate.jsx",
+      "sha256": "76152a9bc4dcb136a69f6f111547d945924b5a2e65ca50c85508220d150d98e0"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/switchAccount/index.tsx",
+      "sha256": "e2fab5c36116417e7f65868a2d08da60ad4c75101a231ae7b69982ab3eff7f7a"
+    }
+  ],
+  "mapping": [
+    {
+      "official": "Phone.jsx local phone/isPasswordLogin",
+      "rust": [
+        "core/src/client/auth",
+        "core/src/account/login"
+      ],
+      "ui": [
+        "frontend/src/components/LoginDialog.vue",
+        "frontend/src/components/login/CredentialLogin.vue"
+      ],
+      "evidence": "account_login_ui_probe: mode identity retention, cleared secrets, native cancellation, SMS cooldown"
+    },
+    {
+      "official": "Qrcode.jsx 194px and scaned",
+      "rust": [
+        "core/src/client/auth/qr.rs"
+      ],
+      "ui": [
+        "frontend/src/components/login/QrLogin.vue",
+        "frontend/src/styles/login.css"
+      ],
+      "evidence": "account_login_ui_probe: QR error/retry/scanned/expired/authorized"
+    },
+    {
+      "official": "switchAccount/index.tsx",
+      "rust": [
+        "core/src/account/profiles",
+        "core/src/client/auth/lifecycle.rs"
+      ],
+      "ui": [
+        "frontend/src/components/AccountDialog.vue"
+      ],
+      "evidence": "accounts_smoke + account_login_smoke; exact platform outcomes in ui-ux-validation.txt"
+    },
+    {
+      "official": "M/1368, M/34, M/1384; existing session-renewal-mapping.json",
+      "rust": [
+        "core/src/account/refresh",
+        "core/src/client/auth/renewal.rs"
+      ],
+      "ui": [
+        "frontend/src/components/SessionRenewal.vue",
+        "desktop/src/renewal.rs"
+      ],
+      "evidence": "synthetic production pump only; real refresh-token issuance/rotation remains unverified"
+    }
+  ],
+  "boundaries": [
+    "No real-account mutations, SMS/email sends, logout or token rotation in this synthetic suite",
+    "No claim that the current real account has a refresh token",
+    "Full JSK new login handlers and unsupported external challenges remain in prior audit",
+    "No whole-module/pixel-perfect or physical Windows verification claim"
+  ]
+}

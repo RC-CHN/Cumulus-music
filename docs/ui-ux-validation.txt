@@ -4385,3 +4385,52 @@ collection-library-mapping.json；没有使用YesPlayMusic。
   完整CI gate成功前保持待验证，没有新版本/标签/发布。
 - 吸顶输入、VIP/富文本/用户主页/完整菜单、其他AB/全部DPI、真实CDN、Windows实机
   视觉及其余逐页业务仍继续；本轮不代表整个评论域或全应用目标完成。
+
+2026-11-02：账号/登录优先专项（官方源、真实WebView与本机逐图对照）
+- 来源与接口/状态/边界：account-login-ui-contracts.txt、account-login-desktop-mapping.json；
+  官方Phone/Qrcode/Content/Operate/switchAccount五份源码散列已记录，本批无YesPlayMusic。
+- LoginDialog仅在本次窗口内共享标识/自动登录选择；模式切换保留手机号/区号，密码/OTP/问题选择
+  清空。旧面板立即inert并取消原生候选，卸载后离场DOM中的敏感输入也同步清理。
+  useModalOrigin保留账号窗口→添加账号→登录链的页面入口，入口已移除则回到顶栏账号按钮；
+  异步错误恢复操作焦点。当前账号不再由disabled全局样式过度变灰，并显示未开启自动登录。
+- 按恢复源码校正20px标题、36px输入、40px登录按钮、194px二维码与登录渐变。已扫码替换二维码，
+  手机确认提示只显示一次；空提示不占位，短窗口媒体规则放到默认规则之后，普通登录/发送成功/
+  二维码状态在760×540无需纵向滚动。长错误/挑战仍使用有界滚动，不隐藏操作。
+- core只在原生未知/已退出、无UID/成对凭据/已存失效提示/待清队列，且身份读取301时保留原状态。
+  身份读取仍执行，200仍正常采用；真实已登录301继续失效。新增三项用例，client_auth共21项通过。
+- 最终证据：.build/account-login-delivery-gui-10（隔离Xvfb/Openbox）和
+  account-login-delivery-kde-7（本机KDE Wayland/XWayland125%）各28态/28原PNG，外层0。
+  两主题，1120×760/760×540，production dist/实际IPC/原生凭据及账户状态机/正式续期pump，
+  仅音乐HTTP为进程内合成EAPI服务。网页坐标、可点击命中、焦点、无横溢、普通登录无纵滚、
+  图形实绘取样与截图ACK均实际检查。最终KDE28图经5张裁切联系表全部人工查看，另原尺寸查看
+  短窗短信发送成功、远端退出失败；GUI28由自动断言检查，未将56张都声称人工复核。
+- 28态覆盖：扫码等待；短信/密码切换保留与密码/OTP清空；短窗两主题；真实60秒冷却跨切换保留；
+  邮箱拒绝/在途/切换后旧响应丢弃；关闭焦点和再开标识清空；QR创建失败/重试/802确认/800过期/
+  再生成/803认证；已保存账号；退出确认/远端失败保留会话/明确本机退出/取消恢复；手机密码与SMS
+  认证、双账号列表及切换、自动登录关闭可见。没有使用真实第二账号或一起听验证。
+- 原生请求计数严格核对：邮箱提交3次（拒绝、被取消在途、明确成功），手机密码/SMS合计2次，
+  SMS发送1次，远端logout1次（失败），明确本机退出未增加远端请求，合成成对续期4次。
+  在途fixture确实pending，释放后完成1次且当前仍未登录；远端退出失败仍Authenticated。
+  成功身份与当前账号逐态由Rust独立核对，最终SavedAccount.autoLogin=false，UI同时显示这一状态。
+- account-login-ci-mode-delivery为不截图的CI运行方式，仍28态、外层0、report.ok=true；
+  Linux/Windows两runner均新增同一必需专项，不设置continue-on-error或删减既有gate。
+- 本轮还以重建的原生宿主回归auth13态+重启3态、renewal5态，独立审计分别验证15个SQLite库的
+  凭据/自动登录隔离，以及缺令牌零刷新、间隔内零重复、未知结果未重放、成功/未决意图持久化。
+  这两套在最后仅账号行状态文字/透明度调整前通过；最终该差异由上述28态和
+  account-login-removal-delivery的10态账号移除/失败恢复/重启再次验证（外层0）。
+- Node24.16.0/Rust1.96.0及锁文件；npm ci、格式/557前端测试/类型与生产构建通过；严格Rust格式、
+  workspace/all-targets/custom-protocol/locked Clippy和282测试程序1472项通过，0失败/0忽略。
+  Python CI工具47项与新探针JS语法检查通过。最后的账号行调整只改Vue/CSS及对应DOM断言，
+  新构建和全部28态/移除10态复验通过；没有将编译成功等同于桌面验证。
+- 21个dist文件先冻结再强制重建正式cumulus及四个探针；最终散列/mtime回查及投递清单在私有.build。
+  图库account-login-gallery-delivery/index.html；原PNG、JSON、日志、隔离状态库及失败轮次保留。
+- 失败记录未删除：baseline3记录修复前手机号丢失、旧DOM仍留6位验证码、离场未inert、焦点body；
+  GUI1揭示只清Vue变量不足，补同步DOM清理。GUI2–4的旧绘制位置与KDE1的错误尺寸来自新测试宿主
+  漏正式prepare_graphics和CSS/GTK缩放换算，修正宿主后通过；试验性产品弹窗重开/居中改动已撤回。
+  GUI5/KDE2的QR检查误把确认图标SVG当二维码，改为role=img语义选择器；GUI6/KDE3实际复现
+  添加账号链登录后焦点丢失，生产useModalOrigin修复，原断言未放宽。GUI7/KDE4虽28态通过，
+  看图发现短窗/重复提示问题，增强普通布局无纵滚断言；GUI8/KDE5/CI模式首轮在发送成功仍失败，
+  修正媒体规则顺序后GUI9/KDE6通过。最后修正当前行颜色/自动登录标签，才得到上述最终投递证据。
+- 本专项没有真实账号登录/短信邮件/退出/刷新/音乐请求或写入；合成令牌自动续期不是本人真实令牌
+  发放或轮换成功。原记录缺refreshToken，完整JSK新登录/外部挑战及真人令牌发放仍按既有边界保留。
+  Windows专项须等待本次精确提交CI，不能用父提交成功代替；不声称Windows实机或整模块已闭合。

@@ -1,0 +1,77 @@
+账号与登录 UI/UX 对照（2026-11-02）
+
+范围与来源
+优先处理账号/登录这一模块。本专项不代表 ui-ux-audit.txt 的整个模块已经闭合。
+官方 PC 3.1.42.205594 恢复材料优先，本专项未使用 YesPlayMusic：
+- pc/src/pages/login/views/Phone.jsx：手机号为同一表单的状态，短信/密码切换保留手机号。
+- login/views/Qrcode.jsx：旧二维码画布194px；scaned状态显示确认图和“请在手机上确认登录”。
+- login/components/index.jsx：标题20px/600，输入36px；Inner横向40px。
+- login/components/Operate.jsx：登录按钮40px、16px/500、圆角与红粉渐变。
+- switchAccount/index.tsx：标题22px，账号行80px，头像36px。
+本客户端保留Cumulus身份。尚未复刻官方营销AB素材、协议/找回密码/地区选择完整界面，
+也未声称390px弹窗宽度、所有平台DPI和官方截图像素一致。细节来源散列见配套mapping。
+
+登录方式与输入生命周期
+LoginDialog持有仅本次模态框有效的phone/country/email/remember；没有写入localStorage。
+密码、短信码和安全验证答案仍属于各自流程，不进入上述共享对象。
+短信/密码之间切换保留手机号、区号和自动登录选择；点击已选中的手机入口不重置。
+关闭登录窗口后再次打开，标识输入重新为空、区号86、自动登录默认选中。
+每次模式切换、返回已保存账号、关闭/销毁窗口时显式deactivate：
+先使旧面板inert，清理密码/验证码/问题选择，再取消旧原生候选。
+离场DOM可能在组件卸载后继续动画，所以同步清空其敏感输入value/checked；只改Vue变量不够。
+新的候选仍经core代次/身份核对才能成为当前账号；异步响应不能打开或关闭替代后的登录页。
+每个请求和返回采用既有类型化CoreClient，不向Vue暴露Cookie、refreshToken、验证码证明或完整授权URL。
+
+焦点、状态与动画
+保留既有tab/modal动画和减少动态效果策略。内部切换链接离场后，焦点回到新面板可用控件；
+点击常驻登录方式按钮则保留其焦点。凭据提交/验证导致控件禁用或替换时，在原流程内恢复可用焦点。
+父级ModalTransition负责最终离场后的页面焦点恢复；useModalOrigin在首次打开前记录页面入口，
+在账号窗口→添加账号→登录等替换过程中保留它，入口被换页移除时回到顶栏账号按钮。
+账号异步失败使用既有useControlFocus恢复原操作焦点，不在卸载时过早focus。
+二维码有生成、等待扫码、已扫码待确认、过期、创建失败/重试、挑战状态。
+已扫码后隐藏原二维码，显示确认状态；过期或创建失败由用户重新生成。
+验证码窗口完成时若二维码已被替换/取消，旧finally不再解除新流程的busy。
+普通登录空提示不占位；短窗口媒体规则置于默认样式之后，避免品牌/页脚间距被覆盖。
+待确认提示只出现一次，普通凭据/发送成功/二维码状态在760×540内无需纵向滚动。
+二维码仍为原生返回的模块矩阵SVG；没有把含key的完整登录URL交给前端。
+
+实际接口与调用边界
+begin_login只创建本机候选；login_command执行所选动作：
+- 邮箱：/api/w/login；手机号密码或短信：/api/w/login/cellphone。
+- 发送短信：/api/sms/captcha/sent；真实共享冷却由core维护，切换表单不会重置。
+- 成功授权后必须读取/api/w/nuser/account/get并核对身份才持久化、发布当前账号。
+- 二次验证/安全问题等沿用desktop-login-contracts.txt，失败只读取候选状态，不自动重发凭据/验证码。
+二维码为/api/login/qrcode/unikey→/api/login/qrcode/client/login；801/802/800/803分别对应
+等待扫码、待手机确认、过期和授权；803也必须完成原生身份核对。
+当前账号保留完整可读颜色，并独立显示“未开启自动登录”，不由“当前账号”标签遮掉这个选择。
+已保存账号切换使用本机候选及身份核对；移除与清理失败恢复见desktop-saved-account-removal.txt。
+退出确认可选远端/api/logout；远端失败必须保留当前会话。用户取消远端选项后可显式本机退出，
+不会自动重发logout，也不会声称已撤销服务器会话。
+
+首次启动与真正过期
+AccountSession::refresh仍发送身份读取，不把缺少Cookie解释成已知的匿名身份。
+仅当原生未知/明确退出状态、无UID、无MUSIC_U、无refreshToken、无已存失效提示、无待清队列记录，
+身份读取返回301时保持原状态/代次，不凭空产生“登录已失效”。
+已经认证、存在凭据或失效恢复记录的会话继续遵守现有301/JSK/旧客户端拦截策略。
+新增三个Rust用例分别验证全新目录、明确本机退出后301，以及真实登录后301仍失效。
+
+refreshToken与自动续期
+服务器登录成功的完整响应头x-refresh-token是取得位置，客户端不能自行派生它。
+现有Rust HTTP在成功路径原子保存它和Cookie；会员身份不构成必定发放的客户端条件。
+正式桌面宿主的前台/账号变化通知触发检查；满足官方外层实验条件、具有成对凭据且达到间隔后，
+才调用/api/login/token/refresh/v1。30分钟计时用于实验配置更新，不是无条件周期轮换。
+成功必须同时收到新的MUSIC_U和refreshToken。未知刷新结果进入持久化恢复，只读核对而不重放。
+界面展示missing_credentials/refreshed/not_due/recovery_required等公开状态，无秘密值。
+参见desktop-session-renewal-contracts.txt和refresh-token-issuance-evidence.txt。
+上次真实会话检查缺refreshToken；不能用合成续期成功宣称此账号已经实现真实自动轮换。
+
+可执行检查
+Rust：cargo test -p cumulus-core --test client_auth --locked。
+前端：npm --prefix frontend ci；format:check、test、build。
+专项：cargo build -p cumulus-desktop --example account_login_ui_probe --features custom-protocol --locked；
+Linux：CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a \
+  dbus-run-session -- python3 scripts/ci/account_login_smoke.py --binary /absolute/account_login_ui_probe \
+  --root /absolute/new-evidence-root --screenshots
+Windows：同一脚本，传入.exe与--runtime，原生runner独立运行并纳入CI gate。
+--baseline仅用于修复前取证，不放宽正式专项断言；截图/真实桌面记录仅在私有.build保留。
+最终截图、请求计数、回归结果和未通过的探索轮次以ui-ux-validation.txt本专项条目为准。
