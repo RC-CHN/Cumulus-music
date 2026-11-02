@@ -4,6 +4,8 @@ use cumulus_core::{
     protocol::api::{Api, ApiFuture},
 };
 use serde_json::{Value, json};
+#[path = "rankings_fixture.rs"]
+mod rankings;
 use std::sync::{
     Mutex,
     atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -53,6 +55,9 @@ impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, args: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             let mode = self.mode.lock().unwrap().clone();
+            if let Some(response) = rankings::response(path, &args, &mode) {
+                return response;
+            }
             if mode == "catalog-hold"
                 && matches!(path, "/api/artist/v3/detail" | "/api/artist/detail/dynamic")
             {

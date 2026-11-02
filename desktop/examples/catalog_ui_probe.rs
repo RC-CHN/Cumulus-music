@@ -53,6 +53,12 @@ fn main() {
         !(albums && is_live),
         "album proof uses synthetic services only"
     );
+    let rankings = std::env::var("CUMULUS_RANKINGS_PROOF").as_deref() == Ok("1");
+    assert!(
+        !(rankings && is_live),
+        "ranking proof uses synthetic services only"
+    );
+    let interactive = albums || artists || rankings;
     let collections = std::env::var("CUMULUS_COLLECTION_PROOF").as_deref() == Ok("1");
     let histories = std::env::var("CUMULUS_HISTORY_PROOF").as_deref() == Ok("1");
     let settings = std::env::var("CUMULUS_SETTINGS_PROOF").as_deref() == Ok("1");
@@ -82,7 +88,7 @@ fn main() {
         let publisher=Arc::new(cumulus_core::relay::publisher::RelayPublisher::new(session.clone())?);
         let client=MusicClient::with_session(session.clone(),registry);
         let client=if relay_publication {client.with_relay_publication()}else{client};
-        let client=if (relays || albums || artists) && !is_live {let wave=relay_fixture::wave(&root)?;client.with_audio_factory(move||Ok(Box::new(relay_fixture::NativeAudio::open(wave.clone())?)))}else{cumulus_desktop::configure_native_audio(client,&app.path().resource_dir()?,true)};
+        let client=if (relays || interactive) && !is_live {let wave=relay_fixture::wave(&root)?;client.with_audio_factory(move||Ok(Box::new(relay_fixture::NativeAudio::open(wave.clone())?)))}else{cumulus_desktop::configure_native_audio(client,&app.path().resource_dir()?,true)};
         app.manage(client);
         app.add_capability(r#"{"identifier":"ux-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
         let handle=app.handle().clone();
@@ -101,7 +107,7 @@ fn main() {
                     handle.get_webview_window("main").unwrap().eval(format!("window.__relayContentionAck[{id}]={result};")).unwrap();
                 });return;
             }
-            if stage=="fixture" && (albums || artists) && !is_live {
+            if stage=="fixture" && interactive && !is_live {
                 catalog_fixture.mode(value["mode"].as_str().unwrap_or(""));
                 handle.get_webview_window("main").unwrap().eval(format!("window.__CUMULUS_ALBUM_MODE__={};",value["mode"])).unwrap();
                 return;
@@ -111,7 +117,14 @@ fn main() {
             if stage=="fixture" && settings && !is_live {settings_fixture.mode(value["mode"].as_str().unwrap_or(""));return;}
             if stage=="fixture" && relays && !is_live {relay_fixture.mode(value["mode"].as_str().unwrap_or(""));return;}
             if stage=="resize" {
-                handle.get_webview_window("main").unwrap().set_size(tauri::LogicalSize::new(value["width"].as_f64().unwrap(),value["height"].as_f64().unwrap())).unwrap();return;
+                let window=handle.get_webview_window("main").unwrap();
+                let width=value["width"].as_f64().unwrap();let height=value["height"].as_f64().unwrap();
+                // WebKit's CSS device ratio can differ from GTK's integer scale.
+                if let Some(scale)=value["scale"].as_f64() {
+                    assert!(scale.is_finite() && scale>0.0 && scale<=4.0);
+                    window.set_size(tauri::PhysicalSize::new((width*scale).round() as u32,(height*scale).round() as u32)).unwrap();
+                } else {window.set_size(tauri::LogicalSize::new(width,height)).unwrap();}
+                return;
             }
             if stage=="pointer" && !is_live {
                 handle.get_webview_window("main").unwrap().set_cursor_position(tauri::LogicalPosition::new(value["x"].as_f64().unwrap(),value["y"].as_f64().unwrap())).unwrap();return;
@@ -155,7 +168,7 @@ fn main() {
                     value["publicationCalls"]=serde_json::json!(publication_fixture.publications.lock().unwrap().len());
                     value["networkCalls"]=serde_json::json!(publication_fixture.network_calls.load(std::sync::atomic::Ordering::SeqCst));
                 }
-                if (is_live || relays || albums || artists) && value["playing"]==true {
+                if (is_live || relays || interactive) && value["playing"]==true {
                     let player=client.subscribe_playback(&epoch).await.unwrap().current().unwrap();
                     if player.position.is_none_or(|p|p<=0.2)||player.queue_len==0||player.error.is_some(){
                         fs::write(output.join("failed.json"),br#"{"ok":false,"error":"native playback did not advance"}"#).unwrap();handle.exit(1);return;
@@ -163,7 +176,7 @@ fn main() {
                     value["nativePlayer"]=serde_json::to_value(player).unwrap();
                     value["nativeQueue"]=serde_json::to_value(client.player_queue(&epoch).await.unwrap()).unwrap();
                 }
-                if (is_live || relays || albums || artists) && ["complete","failed"].contains(&stage.as_str()){let _=client.player_action(&epoch,PlayerAction::Stop).await;}
+                if (is_live || relays || interactive) && ["complete","failed"].contains(&stage.as_str()){let _=client.player_action(&epoch,PlayerAction::Stop).await;}
                 if relay_publication && stage=="complete" {
                     let token=publication_session.token().unwrap();
                     let settled=tokio::time::timeout(std::time::Duration::from_secs(5),async {
@@ -174,7 +187,7 @@ fn main() {
                     value["publicationPhases"]=serde_json::json!(publication.intents_for(&token).unwrap().into_iter().map(|r|r.phase).collect::<Vec<_>>());
                 }
                 fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
-                if (albums || artists) && stage.starts_with("ux_") {
+                if interactive && stage.starts_with("ux_") {
                     if std::env::var("CUMULUS_PROOF_CAPTURE_ACK").as_deref()==Ok("1") {
                         let marker=output.join(format!("{stage}.captured"));
                         let captured=tokio::time::timeout(std::time::Duration::from_secs(10),async {
