@@ -897,6 +897,16 @@ const accountFocus = useModalOrigin(
   () => loginOpen.value || accountsOpen.value,
   () => document.querySelector<HTMLElement>('.account-button'),
 );
+// A successful login can close its dialog while account bootstrap still
+// disables the original page button. Recover only unowned focus after the
+// current bootstrap finishes; never steal it from another modal or control.
+watch(
+  initializing,
+  (pending) => {
+    if (!pending) accountFocus.restoreIfUnowned();
+  },
+  { flush: 'post' },
+);
 const favorite = computed(() => playlists.value.find((p) => p.favorite && p.owned));
 const playlistActions = ref<InstanceType<typeof PlaylistActions>>();
 function playlistMenu(list: PlaylistView, scene: PlaylistMenuScene = 'collection') {
@@ -2067,6 +2077,7 @@ onUnmounted(() => {
     <ModalTransition
       :return-focus="accountFocus.returnFocus"
       :fallback-focus="accountFocus.fallbackFocus"
+      @left="accountFocus.restoreIfUnowned()"
     >
       <LoginDialog
         v-if="loginOpen"
@@ -2082,6 +2093,7 @@ onUnmounted(() => {
     <ModalTransition
       :return-focus="accountFocus.returnFocus"
       :fallback-focus="accountFocus.fallbackFocus"
+      @left="accountFocus.restoreIfUnowned()"
     >
       <AccountDialog
         v-if="accountsOpen"

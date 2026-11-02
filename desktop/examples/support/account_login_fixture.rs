@@ -46,6 +46,11 @@ impl HttpBackend for Service {
             let (path, data) = eapi::unwrap(params)?;
             *self.paths.lock().unwrap().entry(path.clone()).or_default() += 1;
             let mode = self.mode.lock().unwrap().clone();
+            if mode == "bootstrap_slow"
+                && matches!(path.as_str(), "/api/user/playlist" | "/api/song/like/get")
+            {
+                tokio::time::sleep(std::time::Duration::from_millis(750)).await;
+            }
             if matches!(
                 path.as_str(),
                 "/api/login"

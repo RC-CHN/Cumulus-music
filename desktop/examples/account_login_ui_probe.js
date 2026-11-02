@@ -436,8 +436,11 @@
       one('[aria-label="登录邮箱"]').value === "",
       "closed dialog discards identifier",
     );
+    await mode("bootstrap_slow");
     await email();
     await logged();
+    assert(document.activeElement === one(".account-button"), "login focus restored after delayed resource initialization");
+    await mode("normal");
     await stage("email_authenticated_light", {
       expectNickname: "邮箱验证账号",
     });
