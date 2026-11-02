@@ -1,0 +1,108 @@
+{
+  "scope": "original-device verification and official method selection; full SDK remains open",
+  "sources": {
+    "hybrid_vendors_app_subApp.chunk.1482700000000.js/1368.js": "49da1d26373042091a3123f8948f1ce7e9968ec185e57369156fc1c6a6700db3",
+    "hybrid_app.chunk.1482700000000.js/15.js": "8ec4bf8d343f6963860eb73bc59ca09f0dd1ae50db2608a6c5abc7d69a0b521a",
+    "hybrid_app.chunk.1482700000000.js/48.js": "d8c0a8a0c03aca1339bc38e61c8c9a943cd3f4db6e214492e10c3c114acba4db",
+    "ui-recovery/sources/packages/pc/src/pages/login/views/DoubleVerifyList.tsx": "9e278bd8b2697a6fc613233163bd148089248499aa25255aa9d39fffe253ff63",
+    "ui-recovery/sources/packages/pc/src/pages/login/views/DoubleVerifyConfirm.tsx": "31381bc747c598bf2ba058cf4d46130edfc8332d2b0831258eaa898767e27f61",
+    "ui-recovery/sources/packages/pc/src/pages/login/views/DoubleVerifyScan.tsx": "efedb5c7b78e37f9ab0fc802ac2c29894e3c8813003ec029839ba7e69d226e69",
+    "ui-recovery/sources/packages/pc/src/pages/login/views/DoublVerifyeCellphoneBind.tsx": "5a0e0317bb6fb16a82a6806447acd043c0df1adada4f76a9f2a09011a703eda4"
+  },
+  "officialFirst": true,
+  "yesPlayMusicUsed": false,
+  "flows": [
+    {
+      "name": "confirmation",
+      "endpoints": [
+        "/api/login/origin-device/apply/start",
+        "/api/login/origin-device/apply/check-status",
+        "/api/login/origin-device/apply/check",
+        "/api/login/origin-device/apply/cancel"
+      ],
+      "core": [
+        "core/src/account/login/device/mod.rs",
+        "core/src/account/login/device/model.rs",
+        "core/src/client/auth/flow.rs"
+      ],
+      "ui": [
+        "frontend/src/components/login/DeviceVerification.vue"
+      ],
+      "tests": [
+        "core/tests/client_device_login.rs",
+        "desktop/examples/device_login_ui_probe.js"
+      ]
+    },
+    {
+      "name": "scan",
+      "endpoints": [
+        "/api/login/origin-device/scan-apply/start",
+        "/api/login/origin-device/scan-apply/check",
+        "/api/login/origin-device/scan-apply/cancel"
+      ],
+      "core": [
+        "core/src/account/login/device/mod.rs",
+        "core/src/protocol/http/login.rs"
+      ],
+      "ui": [
+        "frontend/src/components/login/DeviceVerification.vue"
+      ],
+      "tests": [
+        "core/tests/client_device_login.rs",
+        "core/tests/http.rs",
+        "desktop/examples/device_login_ui_probe.js"
+      ]
+    },
+    {
+      "name": "method selection / mobile binding handoff",
+      "core": [
+        "core/src/client/auth/flow.rs"
+      ],
+      "ui": [
+        "frontend/src/components/login/VerificationMethods.vue",
+        "frontend/src/components/login/LoginChallenge.vue"
+      ],
+      "tests": [
+        "desktop/examples/device_login_ui_probe.js",
+        "desktop/examples/auth_ui_probe.js"
+      ]
+    },
+    {
+      "name": "stop / close / late response fences",
+      "core": [
+        "core/src/account/login/device/mod.rs",
+        "core/src/client/auth/mod.rs",
+        "core/src/client/auth/flow.rs"
+      ],
+      "desktop": [
+        "desktop/src/auth.rs"
+      ],
+      "ui": [
+        "frontend/src/composables/useLogin.ts",
+        "frontend/src/components/login/LoginChallenge.vue"
+      ],
+      "tests": [
+        "core/tests/client_device_login.rs",
+        "frontend/tests/login-state.test.ts",
+        "desktop/examples/device_login_ui_probe.js"
+      ]
+    }
+  ],
+  "boundaries": [
+    "Synthetic API evidence does not prove real phone verification or refresh issuance.",
+    "JSK page Back/Close stops local polling without remote cancellation; legacy sends one known-token cancellation.",
+    "Hostname is original-device request data, distinct from refresh signature model.",
+    "Binding phone follows official PC mobile handoff; WeChat and full mainland UP_SMS uplink remain open.",
+    "No same-state official runtime image: no pixel-identity claim.",
+    "Only Linux and Windows x86_64 are support targets.",
+    "Continue UI audit: six-slot automatic PIN submission, five-minute instructions, scan/expiry overlays and inline refresh, visible pending-start feedback. These are not declared complete or externally blocked."
+  ],
+  "verification": {
+    "officialOracle": "desktop/tests/device_login_official.cjs",
+    "frozenVectors": "core/tests/fixtures/device-login-official.json",
+    "coreSuite": "core/tests/client_device_login.rs",
+    "desktopProbe": "desktop/examples/device_login_ui_probe.rs",
+    "ci": "scripts/ci/device_login_smoke.py",
+    "realAccountRequestsThisIncrement": 0
+  }
+}

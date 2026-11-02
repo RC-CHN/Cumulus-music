@@ -90,7 +90,8 @@ M/1368 refreshInvalidToken 是另一流程：NET_USER_CODE_INTERCEPT →
 连续 3 次业务失败及 action=1/登录失效通知。原先 AccountSession 的直接301过期不等价于此流程；
 后续现已接通JSK分支并完成原函数/原生HTTP/合成服务桌面验证，见login-interception-contracts.txt。
 AB关闭时的旧M/1384处理已在后续迁移，见login-legacy-contracts.txt。
-旧 702/8840 网页身份验证、原设备安全二维码等也仍须继续；真人 CAPTCHA、真实成对续期、
+旧702/8840网页身份验证等仍须继续；原设备确认/扫码现已迁移，见device-login-contracts.txt。
+真人原设备确认、CAPTCHA、真实成对续期、
 Windows/macOS 设备采集与实际发行验证没有被合成测试替代。YesPlayMusic 本批未使用。
 
 2026-11-02登录入口更新

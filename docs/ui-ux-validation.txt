@@ -4471,3 +4471,48 @@ collection-library-mapping.json；没有使用YesPlayMusic。
   记录；本文不将旧头运行、Linux本地通过或部分job成功说成Windows通过。未合并main或发布版本。
 - 本轮无真实登录/短信邮件/远端退出/令牌轮换或音乐业务写入；新登录可接收令牌，仍不能保证
   服务端下发，也未验证本人真实成对续期。原设备、处罚/实名、注册找回等SDK分支仍未闭合。
+
+2026-11-02 账号/登录续项：原设备验证、停止语义与刷新回执
+- 官方M1368七个请求字段构造、M48表单序列化、M15旧字段及两种stopVerify原函数已执行
+  对照，冻结向量复算cmp一致。特别保留scene的undefined/null序列化值，JSK Back只停止
+  本机轮询、旧链Back/Close一次远端取消；未用YesPlayMusic。来源散列/API/字段见
+  device-login-contracts.txt与device-login-mapping.json，不把SDK所有分支算作已迁移。
+- 新增17项Rust原设备专项，两协议字段/业务拒绝/错误确认码/终态/只读重试/未知申请及确认/
+  取消/在途停止与关闭/迟到授权/新挑战方法清空均覆盖。确认status200不能直接授权，
+  check完成后先读身份，明确301才允许原凭据重放一次。未知写入不能用后续读抹去限制。
+- HTTP成功回执矩阵扩展原设备完成和非完成端点。最终审查补data.success=false拒绝刷新头，
+  即使同次有MUSIC_U仍不能保存refreshToken；Cookie仅供明确的只读身份核对。核心候选
+  测试在这种矛盾回执后显式reconcile，独立重新打开保存凭据验证没有存入被拒绝刷新头。
+- 最终源码严格格式/Clippy、workspace/all-targets/custom-protocol/locked完整回归：
+  285个测试程序1503项通过，0失败/0忽略。日志device-login-refresh-guard-{clippy,workspace}.log。
+  Node24.16.0/Rust1.96.0与锁文件；npm ci、格式、558项前端测试、类型/生产构建通过。
+  Python CI工具47项、脚本语法/编译、公开来源审计与发行规则检查通过。
+- 前端完成退出后固定21个dist文件，重建正式cumulus及五个相关探针；最后补刷新回执
+  判断后重新完整测试与构建，dist散列/mtime保持不变。最终原生构建退出成功再运行下列证明。
+- device-login-guard-gui-final和device-login-guard-legacy-gui-final在隔离Xvfb/Openbox各29态/
+  29张PNG，device-login-guard-kde-final在实际本机KDE Wayland/XWayland125%另29态/29PNG。
+  只截自有PID窗口。1120×760/760×540、两主题、真实WebView/Vue/IPC/core/隔离SQLite；
+  只有音乐HTTP为进程内合成服务。三组均外层0，公开状态无token，方法列表有界，窗口焦点、
+  无横溢、命中、二维码撤下和绘制ACK通过。所有返回核对原方法焦点，而非只判断仍在弹窗内。
+- 29态覆盖方法列表/手机端引导/微信边界、确认等待/错码/过期、扫码/已扫/过期/阻止/拒绝、
+  status200不授权/正文业务拒绝/明确确认、未知申请/读失败与只读重试/未知取消、确认回包
+  丢失与只读核对、在途扫码返回/迟到成功/再次扫码关闭/迟到授权不采用。原生账号epoch和
+  fixture请求计数逐态核对，JSK cancel为0，旧链实际取消；停止后旧响应不能切换账号。
+- 最终KDE29图经device-login-guard-gallery-final的5张裁切联系表全部查看；此前同UI构建的
+  原始短窗返回图已放大确认四边焦点轮廓。隔离两协议原图由自动断言与绘制取样检查，
+  没有把87张都称为人工逐图查看。图库、PNG、JSON、状态库与构建散列仅保留私有.build。
+- 最终二进制还通过device-login-guard-account-regression28态/28PNG，JSK auth16态（含重启）
+  和15个SQLite独立审计、legacy-auth-guard-regression同16态/16PNG及独立审计、账号移除/
+  失败恢复/重启10态；未放宽前一专项的请求次数或账号隔离要求。续期五态/5PNG及独立
+  journal审计确认缺凭据0轮换、间隔内不重复、回包丢失不重放、成功/未决意图持久化。
+- 探索轮次保留：早期Clippy发现collapsible_if已改正；first/delivery/final各界面轮次均有记录。
+  delivery阶段DOM通过后，实际看图发现方法卡片外侧轮廓被裁，改内侧并新增全部返回的
+  精确方法焦点断言后才得到final；随后补刷新头拒绝判断，以上guard轮次全部用重建宿主重跑。
+- 父头316ba8d的CI41422606803 Windows在邮箱切换时误读离场ready，随后新面板仍Preparing。
+  驱动现等待Vue patch、所选tab、正确新输入可用及新原生ready；当前28态验证通过，未改
+  正式账号状态来迎合测试。旧头20d96c2 CI41434748784的Linux/前端已成功，Windows在本条
+  记录时仍运行；当前增量须按新精确头CI结果另计，不继承父头、局部job或本机成功。
+- 本轮没有真实登录、原设备手机通知、短信邮件、远端退出/轮换或音乐业务写入。真实账号
+  refreshToken下发/成对续期仍未实测，不把会员身份或合成刷新解释为一定可取得令牌。
+  六格PIN/自动提交、官方5分钟说明、扫码/失效遮罩与就地刷新、申请加载/在途关闭截图、
+  完整UP_SMS境内上行、处罚/实名、旧网页/注册找回等仍继续；整个目标保持进行中。

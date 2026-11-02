@@ -85,6 +85,20 @@
         "desktop/src/renewal.rs"
       ],
       "evidence": "synthetic production pump only; real refresh-token issuance/rotation remains unverified"
+    },
+    {
+      "official": "DoubleVerifyList/Confirm/Scan/DoublVerifyeCellphoneBind; M1368/M15/M48",
+      "rust": [
+        "core/src/account/login/device",
+        "core/src/client/auth/flow.rs",
+        "desktop/src/login_device.rs"
+      ],
+      "ui": [
+        "frontend/src/components/login/VerificationMethods.vue",
+        "frontend/src/components/login/DeviceVerification.vue",
+        "frontend/src/components/login/LoginChallenge.vue"
+      ],
+      "evidence": "device-login-mapping.json; synthetic actual WebView only, real phone verification untested"
     }
   ],
   "boundaries": [

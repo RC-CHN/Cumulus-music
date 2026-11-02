@@ -66,8 +66,11 @@ refreshToken与自动续期
 参见desktop-session-renewal-contracts.txt和refresh-token-issuance-evidence.txt。
 上次真实会话检查缺refreshToken；不能用合成续期成功宣称此账号已经实现真实自动轮换。
 
-二次验证列表中的未接入方式只说明该方式的边界，不把一个可选的绑定手机号方式描述为
-“当前账号必须绑定”。安全邮箱等已支持方式仍可选择并继续。实际DOM断言与JSK截图复核通过。
+二次验证列表改为官方有界方法卡片和独立步骤，原设备确认/扫码接通；详见
+device-login-contracts.txt和device-login-mapping.json。返回恢复原卡片焦点，关闭撤回本机授权能力。
+绑定手机号按官方PC引导手机端，不把一个可选方式描述为“当前账号必须绑定”。
+微信仍明确当前不支持；安全邮箱等已支持方式可继续。原设备页拥有自己的状态/恢复提示，
+不再叠加普通登录错误和重开按钮；扫码/确认标题分别沿用官方“身份验证”/“登录安全确认”。
 
 可执行检查
 Rust：cargo test -p cumulus-core --test client_auth --locked。

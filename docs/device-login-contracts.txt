@@ -1,0 +1,116 @@
+原设备确认与扫码验证：官方来源、业务流程和桌面交互
+2026-11-02；本专项属于账号/登录，未宣称完整应用或整个登录SDK闭合。
+
+来源与可重现对照
+官方PC 3.1.42.205594恢复材料优先，本专项未使用YesPlayMusic。
+recovered-js/modules/下：
+  hybrid_vendors_app_subApp.chunk.1482700000000.js/1368.js
+  sha256 49da1d26373042091a3123f8948f1ce7e9968ec185e57369156fc1c6a6700db3
+  hybrid_app.chunk.1482700000000.js/15.js
+  sha256 8ec4bf8d343f6963860eb73bc59ca09f0dd1ae50db2608a6c5abc7d69a0b521a
+  hybrid_app.chunk.1482700000000.js/48.js
+  sha256 d8c0a8a0c03aca1339bc38e61c8c9a943cd3f4db6e214492e10c3c114acba4db
+pc/src/pages/login/views/DoubleVerifyList.tsx、DoubleVerifyConfirm.tsx、DoubleVerifyScan.tsx、
+DoublVerifyeCellphoneBind.tsx为恢复的页面依据，最后一个拼写沿用官方文件。
+desktop/tests/device_login_official.cjs执行原M1368七个请求参数构造、M48表单序列化、
+M15旧请求参数及两种stopVerify函数；只输出合成设备名/票据/确认码与来源散列。
+公开冻结向量core/tests/fixtures/device-login-official.json不包含原始官方代码或真实会话。
+有恢复材料时运行node desktop/tests/device_login_official.cjs /absolute/recovered-js/modules；
+公开CI只消费冻结向量，不要求私有references，也不重新解包安装包。
+
+入口和原生职责
+沿用主登录选定的协议，不在验证失败后自动换链。收到8821等二次验证后，先取得服务端方法列表；
+只有列出的DEVICE_CONFIRM/DEVICE_SCAN可由login_command device_start启动。每次原设备申请属于
+一个原生登录候选和本机UUID；该UUID不是服务端pollingToken，不能用另一个候选/旧ID控制它。
+core/src/account/login/device/{mod,model}.rs持有状态机和私有票据；client/auth提供类型化用例。
+desktop/src/login_device.rs取真实本机computer name，Windows取COMPUTERNAME，Linux有界读取
+/proc/sys/kernel/hostname；为空或无效时回PC。只允许有界非控制字符，不接受Vue注入。
+此字段按原页面Os.getDeviceInfo().computername恢复，不是续期签名使用的model/DMI型号；
+不为通过风控伪造硬件或把hostname混入refreshToken派生。
+
+请求及调用顺序
+原设备确认：
+  POST /api/login/origin-device/apply/start {deviceName}
+  POST /api/login/origin-device/apply/check-status {pollingToken}
+  POST /api/login/origin-device/apply/check {pollingToken,captcha}
+  POST /api/login/origin-device/apply/cancel {pollingToken}
+原设备扫码：
+  POST /api/login/origin-device/scan-apply/start {deviceName}
+  POST /api/login/origin-device/scan-apply/check {pollingToken}
+  POST /api/login/origin-device/scan-apply/cancel {pollingToken}
+旧链使用上列字段；JSK还经PC adapter附加fromPage=JSK和候选限定x-music-tu、空x-login-chain-id。
+JSK start/check/cancel的scene在恢复源码为undefined，M48序列化后发送字符串"undefined"；
+确认check-status的currentScene初值为null，发送字符串"null"。冻结向量来自实际原序列化器，
+没有把这些值按常识改为空字段或漏掉。其余请求加密/Guardian上下文沿用正式原生HTTP链。
+start200读取data.pollingToken、deviceName、safeDeviceCount；缺token不能开始状态轮询。
+JSK扫码每1000ms、确认每2000ms只读检查；旧链采用data.intervalMillis，无值默认3000ms，
+原生边界100..60000ms。Vue仅调度单个在途读，不自行请求官方API。
+
+状态与授权
+801等待；扫码802已扫待手机确认，立即撤下二维码；810过期；811拒绝；815原设备阻止。
+明确终态停止计时并撤下二维码。确认码只接受6位ASCII数字，发出前清空Vue值；错误码允许
+用户重新输入，但不自动重复提交。HTTP200且data.success=false仍是业务拒绝，不算授权。
+重要区别：确认check-status200只切到需要确认码，不调用登录成功处理；确认check200与
+扫码check200才是验证完成。完成后先只读account/get核对身份；只有明确301才允许原凭据
+重放一次。读失败/未知结果不重复登录，出现新挑战必须重新读取方法列表，旧offers不能复用。
+仅完成验证端点同次真实返回MUSIC_U时才可接收x-refresh-token；start、状态读取、cancel、
+begin/list/send和无授权Cookie的200均不能安装refresh凭据。秘密只进原生隔离凭据库。
+HTTP200且正文data.success=false也不接收刷新头，即使带了MUSIC_U；Cookie只供明确身份
+核对，不自动登录。该区别同时有HTTP矩阵和候选持久化回读验证。
+
+返回、关闭与未知写入
+官方JSK VerifyManager.stopScanVerify/stopDeviceVerify仅调用handler.stopPolling，没有网络取消。
+页面选择其他方式/关闭时调用这些stop函数；旧链页面则调用相应cancel API。Rust桌面保持此差别：
+device_stop先撤回本机代次/二维码/票据，JSK零cancel请求；旧链对已知token至多发送一次cancel。
+关闭整个登录先撤销候选，再等待旧链清理；不会等待尚未返回的状态读取才能撤销本机授权能力。
+core另保留显式device_cancel SDK用例，不用它冒充JSK页面Back。未知取消不重复发，也不声称
+服务端已取消。页面/账号代次和useLogin控制代次共同拒绝停止、关闭后迟到的成功回包。
+start响应丢失进入recovery_required，不自动再次发申请；不知道token时不能编造cancel。
+确认码回包丢失保留uncertain_submit，隐藏再提交表单，仅允许只读reconcile或离开；
+后来只读poll不能抹去不确定标记再放开写入。状态读取本身失败只提供明确的只读重试。
+本机离开不能证明手机上远端请求已经撤销，尤其JSK仅stopPolling；文案如实区分。
+
+UI/UX规则
+验证方式使用官方顺序的已知方法卡片，300px列表、50px行、24px图标、226px有界高度。
+原设备确认/扫码有独立操作页，返回列表恢复原卡片焦点并滚入可视区域；忙的状态读取可被返回
+抢先停止，防止旧finally解除后来操作的busy。切方法/关闭时清空输入并停止前端计时器。
+标题分别为“登录安全确认”/“身份验证”；独立页自行显示错误和核对入口，避免全局登录错误与
+重新开始按钮重复。返回列表后恢复“登录安全验证”，页面不同时显示两套步骤操作。
+扫码二维码原生生成模块矩阵；内容为官方orpheus://rnpage的rn-account-verify/confirmOldDevice
+路由，携带私有pollingToken。完整URI/token不进入Vue文本或IPC公开对象。Low纠错、画布122px，
+白边2px，外126px；设备名称按官方15个UTF16单位加省略号显示，完整值在title中。
+绑定手机号方式按官方PC页明确引导手机端，不编造桌面绑定申请；微信方式当前说明不支持并可返回。
+发送/填写安全邮箱与现有短信验证仍可继续。UP_SMS的完整境内上行短信分支、旧网页702/8840、
+处罚/实名、注册找回及第三方授权等仍需继续，不能把本次原设备功能说成全SDK完成。
+保留社区品牌、统一弹窗和既有主题/动画；没有同状态官方实机截图，不声称像素一致。
+继续对照的UI差异：确认页仍用单个六位输入和明确提交按钮，尚未复刻官方六格PIN自动提交；
+官方5分钟说明、二维码扫描/失效遮罩和就地刷新布局也仍须逐项对齐。目前可返回方法列表重新
+选择发起申请。申请尚未回包时的可见加载提示及原生申请在途关闭截图还需补专项覆盖。
+这些是继续工作的范围，不是服务端条件或理论不可实现的功能。
+
+验证边界
+core/tests/client_device_login.rs覆盖两协议/原字段、确认与扫码、业务拒绝、终态、读重试、
+未知申请/确认/取消、候选隔离、持久化refresh回执和停止/关闭后迟到授权。
+desktop device_login_ui_probe在实际生产Vue/WebView/IPC/core和隔离SQLite上操作；仅官方HTTP
+由进程内合成服务替换。脚本不使用业务IPC跳过界面，mode事件仅控制合成服务故障。
+本专项不读取真实账号、不发手机确认通知、短信/邮件、真实退出或轮换。实际手机扫码/原设备
+确认、本人refreshToken真实下发与轮换均未实测；合成结果不能扩大成真实账号成功。
+最终构建、完整回归、两主题与短窗口截图和各失败轮次见ui-ux-validation.txt本专项追加记录。
+
+可执行流程（仓库根，使用固定工具链与锁文件）
+  cargo test -p cumulus-core --test client_device_login --test http --locked
+  npm --prefix frontend ci
+  npm --prefix frontend run format:check
+  npm --prefix frontend test
+  npm --prefix frontend run build
+等待前端构建退出成功，固定dist后再编译原生宿主：
+  cargo build -p cumulus-desktop --example device_login_ui_probe --features custom-protocol --locked
+Linux安装WebKitGTK/Openbox/Xvfb等仓库CI所列原生依赖后：
+  CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a \
+    dbus-run-session -- python3 scripts/ci/device_login_smoke.py \
+    --binary /absolute/device_login_ui_probe --root /absolute/new-proof-root --screenshots
+再用另一个全新root添加--legacy运行旧链，不覆盖既有证据。
+Windows：python scripts/ci/device_login_smoke.py --binary /absolute/device_login_ui_probe.exe \
+  --root /absolute/new-proof-root --runtime /absolute/native-runtime
+可用--legacy重复旧链，--screenshots保存实际窗口截图。两平台CI均必须完成两协议，失败不忽略。
+这些是合成服务的桌面流程；正式客户端真实登录仍由本人在主界面输入或扫码，不从探针导入凭据。
