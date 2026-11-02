@@ -12,7 +12,7 @@
     await wait(()=>el('.login-methods'),'login');
     button('邮箱').click();
     await wait(()=>el('[data-login-status]')?.dataset.loginStatus==='ready','email');
-    fill('登录邮箱','blocked@example.test'); fill('登录密码','fixture-password'); el('.login-submit').click();
+    fill('登录邮箱','blocked@example.test'); fill('登录密码','fixture-password'); el('[aria-label="同意登录协议"]').click(); el('.login-submit').click();
     await wait(()=>button('打开安全验证')&&!button('打开安全验证').disabled,'challenge');
     await stage('captcha_form'); button('打开安全验证').click();
     await wait(()=>window.__captchaAck==='captcha_window','widget');

@@ -59,7 +59,7 @@
     await click(one('.account-button'));
     if(!one('.login-methods')){await wait(()=>one('.account-add'),'account chooser');await click(one('.account-add'));}
     await wait(()=>one('.login-methods'),'login dialog');await click(button('邮箱'));
-    await fill('登录邮箱','device@example.test');await fill('登录密码','fixture-password');await click(one('.login-submit'));
+    await fill('登录邮箱','device@example.test');await fill('登录密码','fixture-password');await click(one('[aria-label="同意登录协议"]'));await click(one('.login-submit'));
     await wait(()=>button('获取验证方式'),'two factor challenge');await click(button('获取验证方式'));
     await wait(()=>one('[data-verification-method="DEVICE_SCAN"]'),'offered device methods');await settle();
   }

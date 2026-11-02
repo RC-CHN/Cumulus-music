@@ -19,7 +19,9 @@ fn main() {
     fs::create_dir(&output).unwrap();
     let service = Arc::new(fixture::Service::default());
     let baseline = std::env::var_os("CUMULUS_PROOF_BASELINE").is_some();
+    let browser_service = service.clone();
     cumulus_desktop::configure(tauri::Builder::default())
+        .manage(cumulus_desktop::LoginDocumentBrowser::with_launcher(move |document| browser_service.open_document(document)))
         .setup(move |app| {
             let client = MusicClient::open_with_http_backend(&root.join("state"), None, service.clone())?;
             let client = cumulus_desktop::renewal::configure(client, &cumulus_core::protocol::http::ClientProfile::default());
@@ -73,7 +75,12 @@ fn main() {
         .on_page_load(move |webview, payload| {
             if payload.event() == PageLoadEvent::Finished {
                 webview.eval(format!("window.__accountLoginBaseline={baseline};")).unwrap();
-                webview.eval(capture_ack::script(include_str!("account_login_ui_probe.js"))).unwrap();
+                let script = if std::env::var("CUMULUS_PROOF_LOGIN_ENTRY").as_deref() == Ok("1") {
+                    include_str!("login_entry_ui_probe.js")
+                } else {
+                    include_str!("account_login_ui_probe.js")
+                };
+                webview.eval(capture_ack::script(script)).unwrap();
             }
         })
         .run(tauri::generate_context!())

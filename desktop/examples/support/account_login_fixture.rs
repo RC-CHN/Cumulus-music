@@ -19,8 +19,20 @@ pub struct Service {
     paths: Mutex<BTreeMap<String, u64>>,
     held: Mutex<Option<oneshot::Sender<()>>>,
     completed: Mutex<u64>,
+    browser_documents: Mutex<Vec<cumulus_core::account::login::presentation::LoginDocument>>,
 }
 impl Service {
+    pub fn open_document(
+        &self,
+        document: cumulus_core::account::login::presentation::LoginDocument,
+    ) -> cumulus_core::Result<()> {
+        self.browser_documents.lock().unwrap().push(document);
+        if self.mode.lock().unwrap().as_str() == "browser_failed" {
+            Err(Error::State("synthetic browser launch failed"))
+        } else {
+            Ok(())
+        }
+    }
     pub fn command(&self, mode: &str) {
         if mode == "release" {
             if let Some(sender) = self.held.lock().unwrap().take() {
@@ -31,7 +43,7 @@ impl Service {
         }
     }
     pub fn snapshot(&self) -> Value {
-        json!({"paths":*self.paths.lock().unwrap(),"pending":self.held.lock().unwrap().is_some(),"completed":*self.completed.lock().unwrap()})
+        json!({"paths":*self.paths.lock().unwrap(),"pending":self.held.lock().unwrap().is_some(),"completed":*self.completed.lock().unwrap(),"browserDocuments":*self.browser_documents.lock().unwrap()})
     }
 }
 impl HttpBackend for Service {

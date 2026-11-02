@@ -239,6 +239,15 @@
     );
     await settle();
   }
+  async function country(alpha) {
+    click(one('[aria-label="国际区号"]'));
+    await wait(() => one('[aria-label="搜索国家或地区"]'), 'country picker');
+    fill('搜索国家或地区', alpha);
+    await wait(() => one(`[data-country="${alpha}"]`), 'country option');
+    await settle();
+    click(one(`[data-country="${alpha}"]`));
+    await wait(() => !one('.login-country-menu'), 'country selection');
+  }
   async function email(
     address = "alice@example.test",
     password = "fixture-password",
@@ -246,6 +255,8 @@
     await tab("邮箱");
     fill("登录邮箱", address);
     fill("登录密码", password);
+    if (!one('[aria-label="同意登录协议"]').checked)
+      click(one('[aria-label="同意登录协议"]'));
     click(one(".login-submit"));
   }
   try {
@@ -256,7 +267,7 @@
     await wait(() => one('.qr-frame svg[role="img"]'), "QR created");
     await stage("qr_waiting_light", { expectGuest: true });
     await tab("手机");
-    fill("国际区号", "852");
+    await country("HK");
     fill("登录手机号", "51234567");
     fill("短信验证码", "123456");
     click(one('.login-options input[type="checkbox"]'));
@@ -279,7 +290,7 @@
     await settle();
     const retained =
       one('[aria-label="登录手机号"]').value === "51234567" &&
-      one('[aria-label="国际区号"]').value === "852";
+      one('[aria-label="国际区号"]').textContent.includes("+852");
     if (window.__accountLoginBaseline) {
       await stage("baseline_phone_switch", {
         expectGuest: true,
@@ -336,8 +347,9 @@
     await theme("dark");
     await resize(760, 540);
     await stage("phone_sms_small_dark", { expectGuest: true });
-    fill("国际区号", "86");
+    await country("CN");
     fill("登录手机号", "13800138000");
+    click(one('[aria-label="同意登录协议"]'));
     click(button("获取验证码"));
     await wait(() => status() === "code_sent", "SMS sent once");
     await stage("sms_cooldown_small_dark", { expectGuest: true });
@@ -375,6 +387,8 @@
     );
     await mode("login_hold");
     fill("登录密码", "fixture-password");
+    if (!one('[aria-label="同意登录协议"]').checked)
+      click(one('[aria-label="同意登录协议"]'));
     click(one(".login-submit"));
     await sleep(120);
     await stage("email_inflight_small_dark", { expectGuest: true });
@@ -513,6 +527,8 @@
     );
     await settle();
     fill("登录密码", "fixture-password");
+    if (!one('[aria-label="同意登录协议"]').checked)
+      click(one('[aria-label="同意登录协议"]'));
     click(one(".login-submit"));
     await logged("短信验证账号");
     await stage("phone_password_authenticated_dark", {
@@ -535,6 +551,8 @@
     fill("登录手机号", "13800138000");
     fill("短信验证码", "123456");
     click(one('.login-options input[type="checkbox"]'));
+    if (!one('[aria-label="同意登录协议"]').checked)
+      click(one('[aria-label="同意登录协议"]'));
     click(one(".login-submit"));
     await logged("短信验证账号");
     await chooser();

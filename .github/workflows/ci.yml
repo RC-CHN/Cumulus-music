@@ -247,6 +247,7 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/accounts_smoke.py --binary .build/target/debug/examples/saved_accounts_ui_probe --root .build/ci-accounts-linux
           cargo build -p cumulus-desktop --example account_login_ui_probe --features custom-protocol --locked
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/account_login_smoke.py --binary .build/target/debug/examples/account_login_ui_probe --root .build/ci-account-login-linux
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/login_entry_smoke.py --binary .build/target/debug/examples/account_login_ui_probe --root .build/ci-login-entry-linux
           cargo build -p cumulus-desktop --example renewal_ui_probe --features custom-protocol --locked
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/session_renewal_smoke.py --binary .build/target/debug/examples/renewal_ui_probe --root .build/ci-session-renewal-linux
           cargo build -p cumulus-desktop --example auth_ui_probe --features custom-protocol --locked
@@ -394,6 +395,7 @@ jobs:
           python scripts/ci/accounts_smoke.py --binary .build/target/debug/examples/saved_accounts_ui_probe.exe --root .build/ci-accounts-windows --runtime .build/package-stage/windows-x64/native
           cargo build -p cumulus-desktop --example account_login_ui_probe --features custom-protocol --locked
           python scripts/ci/account_login_smoke.py --binary .build/target/debug/examples/account_login_ui_probe.exe --root .build/ci-account-login-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/login_entry_smoke.py --binary .build/target/debug/examples/account_login_ui_probe.exe --root .build/ci-login-entry-windows --runtime .build/package-stage/windows-x64/native
           cargo build -p cumulus-desktop --example renewal_ui_probe --features custom-protocol --locked
           python scripts/ci/session_renewal_smoke.py --binary .build/target/debug/examples/renewal_ui_probe.exe --root .build/ci-session-renewal-windows --runtime .build/package-stage/windows-x64/native
           cargo build -p cumulus-desktop --example auth_ui_probe --features custom-protocol --locked

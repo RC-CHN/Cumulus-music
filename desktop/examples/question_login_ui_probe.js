@@ -36,7 +36,7 @@
    dialogs:d?[{open:true,opacity:getComputedStyle(d).opacity,background:getComputedStyle(d).backgroundColor,rect:r.toJSON()}]:[],
    loadingText:(()=>{const n=one('.question-loading-text');return n?{rect:n.getBoundingClientRect().toJSON(),color:getComputedStyle(n).color,background:getComputedStyle(d).backgroundColor}:null;})(),phase:phase()??null,overflow:false,focusValid:!d||d.contains(document.activeElement),focused:document.hasFocus(),choiceCount:choices().length,checked:choices().filter(n=>n.checked).length,card:card?{width:card.getBoundingClientRect().width,radius:style.borderRadius}:null});
  }
- async function openQuestion(){await click(one('.account-button'));if(!one('.login-methods')){await wait(()=>one('.account-add'),'account chooser');await click(one('.account-add'));}await click(button('邮箱'));await fill('登录邮箱','question@example.test');await fill('登录密码','fixture-password');await click(one('.login-submit'));await wait(()=>panel(),'question entered');}
+ async function openQuestion(){await click(one('.account-button'));if(!one('.login-methods')){await wait(()=>one('.account-add'),'account chooser');await click(one('.account-add'));}await click(button('邮箱'));await fill('登录邮箱','question@example.test');await fill('登录密码','fixture-password');await click(one('[aria-label="同意登录协议"]'));await click(one('.login-submit'));await wait(()=>panel(),'question entered');}
  async function ready(){await wait(()=>phase()==='ready'&&idle(),'question loaded');await settle();}
  async function close(){await click(button('关闭登录'));await wait(()=>!one('dialog[open]'),'dialog closed');await settle();}
  async function logged(){await wait(()=>!one('dialog')&&one('.account-button').textContent.includes('安全问题账号'),'authenticated account');await settle();}
