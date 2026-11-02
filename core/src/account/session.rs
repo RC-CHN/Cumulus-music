@@ -340,6 +340,13 @@ impl AccountSession {
         }
         let profile = match api.account().await {
             Ok(profile) => profile,
+            Err(error)
+                if error.is_service_code(301) && self.has_no_native_login(&token, &api)? =>
+            {
+                // account/get can reject a fresh installation or an explicitly
+                // signed-out profile. There is no previous login to expire.
+                return Err(error);
+            }
             Err(error) => return Err(self.reject(&token, error).await?),
         };
         let uid = identifier(&profile["userId"])?;
@@ -364,6 +371,29 @@ impl AccountSession {
             state.changes.send_replace(state.token());
         }
         Ok(profile)
+    }
+
+    fn has_no_native_login(&self, token: &SessionToken, api: &Arc<dyn Api>) -> Result<bool> {
+        let state = self.lock()?;
+        state.require(token)?;
+        if state.uid.is_some()
+            || !matches!(
+                state.status,
+                SessionStatus::Unknown | SessionStatus::SignedOut
+            )
+        {
+            return Ok(false);
+        }
+        let native: Arc<dyn std::any::Any + Send + Sync> = api.clone();
+        let Ok(client) = native.downcast::<crate::protocol::http::MusicHttpClient>() else {
+            return Ok(false);
+        };
+        let stored = client.credentials();
+        let credentials = stored.login_credentials()?;
+        Ok(credentials.token.is_none()
+            && credentials.refresh_token.is_none()
+            && stored.invalid_login_notice()?.is_none()
+            && stored.pending_queue_reset()?.is_none())
     }
 
     async fn reject(&self, token: &SessionToken, error: Error) -> Result<Error> {

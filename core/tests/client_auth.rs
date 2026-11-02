@@ -696,6 +696,45 @@ async fn logout_clears_only_bound_credentials_and_failed_remote_logout_keeps_ses
 }
 
 #[tokio::test]
+async fn restoring_a_fresh_native_profile_does_not_invent_an_expired_login() {
+    let root = tempfile::tempdir().unwrap();
+    let http = Arc::new(ScriptHttp::new([json!({"code":301}).into()]));
+    let client = MusicClient::open_with_http_backend(root.path(), None, http.clone()).unwrap();
+    let before = client.account().unwrap();
+    let restored = client.restore_account().await.unwrap();
+    assert_eq!(restored.status, SessionStatus::Unknown);
+    assert_eq!(restored.epoch, before.epoch);
+    assert!(!restored.can_sign_out);
+    assert_eq!(http.calls().len(), 1);
+}
+
+#[tokio::test]
+async fn restoring_after_local_signout_preserves_signed_out_when_identity_returns_301() {
+    let w = World::new([authorized(), identity(2), json!({"code":301}).into()]).await;
+    let id = w.begin(Mode::Email).await;
+    w.client.login_command(&id, password(true)).await.unwrap();
+    let signed_out = w.client.logout_account(&w.epoch(), false).await.unwrap();
+    let restored = w.client.restore_account().await.unwrap();
+    assert_eq!(restored.status, SessionStatus::SignedOut);
+    assert_eq!(restored.epoch, signed_out.account.epoch);
+    assert!(!restored.can_sign_out);
+    assert_eq!(w.http.calls().len(), 4);
+}
+
+#[tokio::test]
+async fn restoring_a_real_session_still_checks_identity_and_expires_on_301() {
+    let w = World::new([authorized(), identity(2), json!({"code":301}).into()]).await;
+    let id = w.begin(Mode::Email).await;
+    w.client.login_command(&id, password(true)).await.unwrap();
+    let restored = w.client.restore_account().await.unwrap();
+    assert_eq!(restored.status, SessionStatus::Expired);
+    assert_eq!(
+        w.http.calls().last().unwrap().path,
+        "/api/w/nuser/account/get"
+    );
+}
+
+#[tokio::test]
 async fn invalid_epoch_mode_and_credentials_do_not_send_requests() {
     let w = World::new([]).await;
     assert!(matches!(
