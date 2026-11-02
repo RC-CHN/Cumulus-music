@@ -23,7 +23,7 @@ def main():
     args = parser.parse_args()
     root = args.root.resolve()
     # Require synthetic-run markers before inspecting any credential storage.
-    first = json.loads((root / "first/complete.json").read_text())
+    first = json.loads((root / "first/complete.json").read_text(encoding="utf-8"))
     assert first["ok"] and first["networkRequests"] == first["realAccountMutations"] == 0
     assert first["expectNickname"] == "短信验证账号"
     expected = {"2": "邮箱验证账号", "3": "二次验证账号", "4": "安全问题账号", "5": "短信验证账号"}
@@ -62,13 +62,14 @@ def main():
     stages = []
     for directory, expected_count in [("first", 13), ("reopen", 3)]:
         run = root / directory
-        complete = json.loads((run / "complete.json").read_text())
+        complete = json.loads((run / "complete.json").read_text(encoding="utf-8"))
         assert complete["ok"] and complete["nativeAccount"]["nickname"] == expected["5"]
         paths = list(run.glob("auth_*.json"))
         assert len(paths) == expected_count
         for path in paths:
-            data = json.loads(path.read_text())
-            assert all(secret not in path.read_text() for secret in
+            raw = path.read_text(encoding="utf-8")
+            data = json.loads(raw)
+            assert all(secret not in raw for secret in
                        ["MUSIC_U=", "fixture-refresh", "fixture-two-factor", "DO_NOT_EXPORT"])
             assert data["networkRequests"] == 0 and data["overflow"] is False
             if not args.without_screenshots:
@@ -80,7 +81,7 @@ def main():
                 assert data["nativeAccount"]["nickname"] == data["expectNickname"]
                 assert data["nativeAccount"]["canSignOut"] is True
             stages.append(path.stem)
-    before_switch = json.loads((root / "reopen/auth_reopen_accounts.json").read_text())
+    before_switch = json.loads((root / "reopen/auth_reopen_accounts.json").read_text(encoding="utf-8"))
     assert not before_switch["fixtureRequests"].get("/api/w/login", 0)
     assert not before_switch["fixtureRequests"].get("/api/login", 0)
     assert len(before_switch["savedAccounts"]["value"]) == 4
@@ -88,8 +89,8 @@ def main():
               "profile_checks": check, "databases_checked": len(databases),
               "credential_inputs_absent": True, "auto_login_disabled_restart_guest": True,
               "explicit_saved_switch_verified": True, "stages": stages}
-    (root / "independent-audit.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
-    print(json.dumps(result, ensure_ascii=False))
+    (root / "independent-audit.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(result))
 
 
 if __name__ == "__main__":

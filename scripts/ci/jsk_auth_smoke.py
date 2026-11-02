@@ -45,7 +45,8 @@ def main():
     assert paths.get('/api/user/2fa/securityEmail/send') == paths.get('/api/sms/captcha/sent') == 1
     audit = Path(__file__).resolve().parents[2]/'desktop/examples/audit_auth_probe.py'
     with (root/'audit.log').open('x', encoding='utf-8') as log:
-        result = subprocess.run([sys.executable, str(audit), str(root/'run'), '--without-screenshots'],
+        result = subprocess.run([sys.executable, '-X', 'warn_default_encoding', '-W', 'error::EncodingWarning',
+                                 str(audit), str(root/'run'), '--without-screenshots'],
                                 stdout=log, stderr=log, timeout=30)
     assert result.returncode == 0, 'independent auth SQLite audit failed'
     evidence = json.loads((root/'run/independent-audit.json').read_text(encoding='utf-8'))

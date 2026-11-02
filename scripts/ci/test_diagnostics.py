@@ -42,6 +42,8 @@ class ProofArchive(unittest.TestCase):
                      'ci-volume-ui-windows/first/failed.json',
                      'ci-mode-ui-linux/reopen/failed.json',
                      'ci-session-renewal-windows/run/first/failed.json',
+                     'ci-email-login-linux/run/first/failed.json',
+                     'ci-jsk-auth-windows/audit.log',
                      'ci-empty-fm-ui-windows/reopen/failed.json',
                      'windows-media/player-probe.stdout.log',
                      'ci-cloud-local-delete-windows/host.log', 'ci-local-resource-windows/first/failed.json',

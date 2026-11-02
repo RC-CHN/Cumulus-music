@@ -259,6 +259,9 @@ jobs:
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/sms_login_smoke.py --binary .build/target/debug/examples/sms_login_ui_probe --root .build/ci-sms-login-legacy-linux --legacy
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/sms_login_smoke.py --binary .build/target/debug/examples/sms_login_ui_probe --root .build/ci-sms-send-failure-linux --send-failure
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/sms_login_smoke.py --binary .build/target/debug/examples/sms_login_ui_probe --root .build/ci-sms-send-failure-legacy-linux --legacy --send-failure
+          cargo build -p cumulus-desktop --example email_login_ui_probe --features custom-protocol --locked
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/email_login_smoke.py --binary .build/target/debug/examples/email_login_ui_probe --root .build/ci-email-login-linux
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/email_login_smoke.py --binary .build/target/debug/examples/email_login_ui_probe --root .build/ci-email-login-legacy-linux --legacy
           cargo build -p cumulus-desktop --example output_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/output_settings_smoke.py --binary .build/target/debug/examples/output_ui_probe --root .build/ci-output-settings-linux
           cargo build -p cumulus-desktop --example tray_ui_probe --features custom-protocol --locked
@@ -397,6 +400,9 @@ jobs:
           python scripts/ci/sms_login_smoke.py --binary .build/target/debug/examples/sms_login_ui_probe.exe --root .build/ci-sms-login-legacy-windows --runtime .build/package-stage/windows-x64/native --legacy
           python scripts/ci/sms_login_smoke.py --binary .build/target/debug/examples/sms_login_ui_probe.exe --root .build/ci-sms-send-failure-windows --runtime .build/package-stage/windows-x64/native --send-failure
           python scripts/ci/sms_login_smoke.py --binary .build/target/debug/examples/sms_login_ui_probe.exe --root .build/ci-sms-send-failure-legacy-windows --runtime .build/package-stage/windows-x64/native --legacy --send-failure
+          cargo build -p cumulus-desktop --example email_login_ui_probe --features custom-protocol --locked
+          python scripts/ci/email_login_smoke.py --binary .build/target/debug/examples/email_login_ui_probe.exe --root .build/ci-email-login-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/email_login_smoke.py --binary .build/target/debug/examples/email_login_ui_probe.exe --root .build/ci-email-login-legacy-windows --runtime .build/package-stage/windows-x64/native --legacy
           cargo build -p cumulus-desktop --example output_ui_probe --features custom-protocol --locked
           python scripts/ci/output_settings_smoke.py --binary .build/target/debug/examples/output_ui_probe.exe --root .build/ci-output-settings-windows --runtime .build/package-stage/windows-x64/native
           cargo build -p cumulus-desktop --example startup_ui_probe --features custom-protocol --locked
