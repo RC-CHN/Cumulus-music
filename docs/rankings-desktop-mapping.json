@@ -54,6 +54,14 @@
     "python_catalog": {
       "path": "references/recovered-client/cumulus_core/api.py",
       "sha256": "571c2100750fd5324fcd35437ed20242d8715d74f0dd75d97cf9edcfff24efd9"
+    },
+    "state_play_button": {
+      "path": "references/ui-recovery/sources/packages/pc/src/components/StatePlayButton/index.tsx",
+      "sha256": "d9f3330d190288cc708ab11707491760647fef6c6cb3b7f1a6d6c11107106ad7"
+    },
+    "round_play_button": {
+      "path": "references/ui-recovery/sources/packages/pc/src/components/XPlayButton/RoundPlayButton.tsx",
+      "sha256": "f6193c1352520fdbcafd27afe8610b825eaeca899ff5638440acdf2366920c5d"
     }
   },
   "entries": [
@@ -160,11 +168,24 @@
       "entry": "逐访问筛选/位置/来源操作、同账号重读、跨专辑/评论返回、失败重试",
       "read_report_check": null,
       "evidence": "新增4项前端所有权/迟到读取测试及28态生产WebView；历史项状态属于社区客户端适配，不声称官方使用同一存储实现"
+    },
+    {
+      "id": "ranking_source_transport",
+      "sources": [
+        "rank_cards",
+        "cover_cards",
+        "state_play_button",
+        "round_play_button"
+      ],
+      "rust_or_ui": "core/src/client/player/source_control.rs + frontend/src/composables/usePlayer.ts + RankingCards.vue",
+      "entry": "当前来源卡片暂停/继续、播放中常显按钮、非当前来源选择整榜",
+      "read_report_check": null,
+      "evidence": "4项原生核心身份/请求/队列测试、3项前端选择/缓冲/账号替换测试；生产WebView扩为37态，两环境每组8个真实原生播放态，具体记录见rankings-ui-contracts.txt"
     }
   ],
   "contract": "docs/desktop-rankings-contracts.txt",
   "boundaries": [
-    "排行榜普通卡片完整菜单和当前来源播放/暂停组合尚未逐态恢复",
+    "排行榜普通卡片完整菜单、全部播放器错误/缓冲/终止的桌面组合尚未逐态复核",
     "合法空销售榜采用空状态，区别于官方抛错",
     "首页默认3小时缓存，服务配置宿主尚未接入；销售榜每次进入刷新",
     "真实封面、全部尺寸/DPI和Windows视觉尚未逐态复核；无同状态官方运行截图",

@@ -86,8 +86,49 @@ Linux、Windows CI 各自执行此探针，失败会阻止 CI gate；实机截�
 明确差异/未覆盖
 - 年份弹层改用语义主题和窗口内有界滚动（最高 360px），区别于恢复源码固定白底、
   无高度上限；保留键盘访问和焦点轮廓。卡片只做 opacity 动画并尊重减少动态效果。
-- 普通榜单完整上下文菜单、官方 StatePlayButton 的当前来源播放/暂停组合、封面榜
-  GLOBAL 分类/日期位置等尚未完成逐态一致性，不能把本次开始播放验证算作这些通过。
+- 普通榜单完整上下文菜单、封面榜 GLOBAL 分类/日期位置等尚未完成逐态一致性。
+  当前来源播放/暂停后续专项见下文；不把这一范围扩大成全部播放器状态通过。
 - 真实封面位图、所有尺寸/DPI、Windows 视觉、完整资源菜单/写操作分支尚未逐态复核。
 - 更广的 FM、专辑、导航等迁移进度分别以对应专项为准，不沿用早期排行榜文档中的
   “FM 尚未迁移/专辑只有基础读取”等过时总述，也不因此宣布全范围目标完成。
+
+
+追加：当前来源播放控制（2026-11-02）
+来源：components/StatePlayButton/index.tsx 的 isCurrentPlayingResource/InnerPlayButton，
+以及 XPlayButton/RoundPlayButton.tsx 的 isCurrentPlay/currentAction/forceShowWhenPlaying。
+两类官方卡片分别使用这两个组件，按资源类型+ID区分当前来源：当前播放时pause、
+当前暂停时resume，其余playAll；播放中的按钮常显。精确来源散列已加入JSON映射。
+本次没有改用其他客户端实现。
+
+实现
+- RankingCards接收稳定的当前歌单ID/PlaybackStatus，显示暂停/继续播放/播放榜单，
+  同步图标、title和aria-pressed。播放中即使鼠标移走、焦点在标题也保持可见。
+  特殊销售榜不显示整榜播放按钮。只传标量，播放时钟不作为卡片树的渲染依赖。
+- App的排行榜入口改用usePlayer.togglePlaylist。相同playlist来源、非FM且已加载时，
+  调用player_action {kind:pause_for,play_id,expected_queue_revision,paused}；其他资源类型、
+  其他歌单及未加载/错误来源仍走原有playlist选择和保存的音质偏好。
+- core/src/client/player/source_control.rs验证账号代次（沿用player_token）、播放身份、
+  精确队列版本和已加载状态；在取消选择/申请媒体焦点之前拒绝已过期目标，再核对
+  actor的control_revision/queue_revision/play_id，并通过command_guarded提交Pause。
+  不接受WebView传来的音源/凭据，不新增业务API，不修改官方会员或版权判断。
+- PauseFor在既有播放控制前归一为Pause，保留一起听/媒体焦点/持久化的既有路径；
+  它不能作为OS媒体会话的NativeMediaTarget命令使用。未在这里实现第二账号验证。
+- 同次命令busy期间拒绝重复卡片选择；响应仍按账号和单调播放器revision接受。
+  核心拒绝旧playId、旧队列、已停止目标；旧命令不会暂停后来歌曲或取消后来加载。
+- 状态映射的社区差异：本地播放器buffering按正在播放显示暂停，允许用户中断；
+  不复刻旧StatePlayButton的120ms界面debounce，使用原生命令等待和现有状态版本。
+  年份菜单焦点轮廓改为内侧绘制，避免40px行和有界滚动把轮廓裁成一条横线。
+
+验收范围
+- 核心4项：从歌单第2首定位45秒后反复暂停/继续，playId/entryId/队列/位置保留且
+  没有新增歌单/歌曲/音源请求；旧来源/畸形队列/已停止/旧代次拒绝；追加队列保留
+  playId时旧队列命令仍拒绝；拒绝旧目标不会取消后来被挂起的音源读取。
+- 前端3项：同来源playing/paused/buffering只发送绑定命令；不同类型/ID、idle/error
+  重新选择并保留音质偏好；busy重复点击与跨账号迟到回复隔离。
+- 实际WebView由28扩为37态，保留原筛选/返回/错误恢复全部步骤；新增Top3暂停/继续、
+  下一首后暂停/继续、换另一榜单及旧命令拒绝、封面榜暂停/继续。每组8个原生playing
+  快照，每次5首队列；暂停前后和继续后比较真实playId、entryId、queueRevision、
+  当前歌曲、完整队列及位置。另断言常显按钮和只有当前来源呈现暂停状态。
+- Xvfb与本机KDE125%各自截图和最终构建绑定见ui-ux-validation.txt；服务/音源是
+  隔离合成数据，libmpv和持久化/IPC真实执行。不代表扬声器、真实CDN缓冲、全部
+  输出错误/停止恢复/账号切换的桌面组合，亦不宣称Windows视觉通过。

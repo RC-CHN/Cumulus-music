@@ -4067,3 +4067,29 @@ CI失败定位与后续验证（2026-11-02）
 - 补ci-cloud-*、ci-local-resource*、ci-rankings*的失败诊断归档及覆盖测试；新增排行榜
   28态作为Linux/Windows各自必需步骤，不忽略失败。新运行回执保存在私有构建目录。
 完整应用UI/UX与功能审计继续，以上不构成全范围完成声明。
+
+
+排行榜卡片与当前播放来源（2026-11-02后续）
+来源/类型化命令/状态边界见rankings-ui-contracts.txt的“当前来源播放控制”追加。
+- 两类普通榜单卡片恢复按来源播放/暂停/继续与播放时常显；销售榜特殊入口不显示
+  播放按钮。组件只接收当前歌单/状态标量。年份菜单按钮焦点改内侧轮廓，避免裁切。
+- 最终.build/ranking-playback-final-gui-1与ranking-playback-final-kde-1各37态/37PNG通过：
+  原28态全部保留，新增Top3和封面榜暂停/继续、下一首后控制、切换另一榜单及旧命令拒绝。
+  每组8个原生播放态，检查playId/entryId/queueRevision、当前曲目/位置和完整队列，
+  不只检查按钮标签；暂停后继续保持第2首，定位4秒后继续不回到开头。
+- 新增核心PauseFor在取消选择/抢媒体焦点前验证目标，再由actor fence防止竞争；
+  4个核心测试覆盖保留队列/位置且不重发读取、错误/过期目标、队列变化和新加载保留。
+  前端新增3项，覆盖状态映射/不同来源/未加载/偏好音质、busy和账号替换。
+- 首轮37态通过后，截图发现年份菜单轮廓裁切；仅调整该样式，再重建正式cumulus、
+  catalog_ui_probe、mini_ui_probe并执行上述最终两组37态。最终KDE37张已逐图查看，
+  特别复查常显暂停、主题、菜单焦点、返回和读取失败。总览在私有
+  .build/ranking-playback-gallery-final/index.html；源码/21个dist/3个二进制/74图散列见
+  .build/ranking-playback-delivery-manifest.json，未提交截图、缓存或真实账号数据。
+- Rust格式、严格workspace/all-targets/custom-protocol/locked Clippy通过；完整280个
+  测试程序共1457 passed、0 failed/ignored（ranking-playback-workspace-first.log）。
+  npm ci、前端格式/533项/类型及构建通过；Python43项、JS8项、来源及发行规则检查通过。
+- 两轮均为合成服务+实际生产dist/IPC/SQLite/libmpv/null；本机是KDE XWayland125%，
+  窗口1120×760/760×540且两主题。没有真实CDN缓冲、输出错误/全部停止恢复组合、
+  Windows视觉或实体声卡听感结论，不声称整体UI已完成。
+- 55610a5的CI 41367708178是上一批精确提交，不含本次PauseFor/37态变更；本批需要
+  新的精确提交CI，回执留在私有构建目录，不用上一批结果代替。本轮无真实账号写入。

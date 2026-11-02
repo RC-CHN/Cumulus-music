@@ -1692,3 +1692,16 @@ login-interception-cache-tests.log。初次全量（workspace-tests3.log）一�
   严格Clippy/fmt通过；实际双WebView和422项前端检查见ui-ux-validation.txt。
 - 提示/活动UUID及回执不包含原生私有session id/授权URL。核心新增mini/{mode,
   intelligence}.rs仍只使用Rust业务/actor，无Tauri或Python子进程依赖。
+
+
+2026-11-02 当前来源卡片的原生暂停/继续
+- 新增PlayerAction::PauseFor{play_id,expected_queue_revision,paused}；source_control.rs
+  独立验证目标，早期拒绝过期控制，后续使用actor PlaybackFence提交现有Pause命令。
+  账号、媒体焦点、一起听、持久化仍走既有业务；core无Tauri/WebView/Python依赖。
+- client_player/source_control.rs新增4个实际MusicClient/原生actor测试：第2首/45秒/队列
+  保留且无额外API；旧来源/畸形队列/停止/旧代次拒绝；同playId追加队列后的版本拒绝；
+  被拒旧命令不会取消后来挂起的音源读取。来源映射见rankings-desktop-mapping.json。
+- 本次完整280个workspace/all-targets/custom-protocol/locked结果程序1457 passed，
+  0 failed/ignored；严格Clippy/fmt通过。日志前缀.build/ranking-playback-*。
+- 533项前端与两组各37态生产WebView证据详见ui-ux-validation.txt；GUI使用实际libmpv
+  和合成WAV/null，不作为真实音源、Windows视觉或双账号一起听通过。全范围目标继续。
