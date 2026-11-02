@@ -1,5 +1,6 @@
 mod commands;
 mod dispatch;
+mod lifetime;
 mod properties;
 mod signals;
 use super::policy;
@@ -33,6 +34,7 @@ struct Anchor {
 }
 #[derive(Default)]
 struct Bus {
+    epoch: String,
     connection: Option<gio::DBusConnection>,
     objects: Vec<gio::RegistrationId>,
     properties: Properties,
@@ -108,28 +110,57 @@ pub(super) fn install<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
                 }
             }
             if let Some(ticket) = ticket {
-                if let Ok(view) = current(&app) {
-                    if view.transport.target.is_some() {
-                        ensure(&app, &host, ticket);
-                        signals::publish(&host, &view);
-                    } else {
-                        if host.bus.lock().is_ok_and(|bus| bus.is_some()) {
-                            remove(&host);
+                match current(&app) {
+                    Ok(view) => {
+                        if let Some(target) = &view.transport.target {
+                            let epoch = target.epoch();
+                            let other = host.bus.lock().is_ok_and(|bus| {
+                                bus.as_ref().is_some_and(|bus| bus.epoch != epoch)
+                            });
+                            if other {
+                                remove(&host);
+                            }
+                            ensure(&app, &host, ticket, epoch);
+                            signals::publish(&host, &view);
+                        } else {
+                            if host.bus.lock().is_ok_and(|bus| bus.is_some()) {
+                                remove(&host);
+                            }
+                            policy::report(&app, ticket, policy::Phase::Idle);
                         }
-                        policy::report(&app, ticket, policy::Phase::Idle);
                     }
-                } else {
-                    if host.bus.lock().is_ok_and(|bus| bus.is_some()) {
-                        remove(&host);
+                    Err(error) => {
+                        let epoch = app
+                            .state::<MusicClient>()
+                            .account()
+                            .ok()
+                            .map(|account| account.epoch);
+                        let retain = host.bus.lock().is_ok_and(|bus| {
+                            lifetime::retain_read_error(
+                                &error,
+                                epoch.as_deref(),
+                                bus.as_ref().map(|bus| bus.epoch.as_str()),
+                            )
+                        });
+                        if !retain {
+                            if host.bus.lock().is_ok_and(|bus| bus.is_some()) {
+                                remove(&host);
+                            }
+                            policy::report(&app, ticket, policy::Phase::Unavailable);
+                        }
                     }
-                    policy::report(&app, ticket, policy::Phase::Unavailable);
                 }
             }
             glib::timeout_future(Duration::from_millis(250)).await;
         }
     });
 }
-fn ensure<R: tauri::Runtime>(app: &tauri::AppHandle<R>, host: &Arc<Host>, ticket: u64) {
+fn ensure<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    host: &Arc<Host>,
+    ticket: u64,
+    epoch: String,
+) {
     if host
         .retry_after
         .lock()
@@ -144,7 +175,13 @@ fn ensure<R: tauri::Runtime>(app: &tauri::AppHandle<R>, host: &Arc<Host>, ticket
         return;
     }
     let generation = host.generation.fetch_add(1, Ordering::AcqRel) + 1;
-    *guard = Some(Bus::default());
+    *guard = Some(Bus {
+        epoch,
+        connection: None,
+        objects: Vec::new(),
+        properties: Properties::new(),
+        anchor: None,
+    });
     drop(guard);
     policy::report(app, ticket, policy::Phase::Connecting);
     let host = host.clone();

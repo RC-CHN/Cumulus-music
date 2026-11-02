@@ -55,6 +55,10 @@ pub struct NativeMediaSnapshot {
     pub target: Option<NativeMediaTarget>,
 }
 impl NativeMediaTarget {
+    /// Account generation for native surface lifetime checks; never an account ID.
+    pub fn epoch(&self) -> String {
+        self.token.generation.to_string()
+    }
     pub(super) fn audio(&self, value: &PlaybackSnapshot) -> Result<PlaybackFence> {
         if self.token != value.account || self.media != Media::Audio(value.fence()) {
             return Err(Error::StaleResponse);

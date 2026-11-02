@@ -174,7 +174,10 @@ def main():
             call(PLAYER,'Seek',GLib.Variant('(x)',(-20_000_000,)))
             verify_native_seek(0, accepted_seeks, 'negative relative seek clamps to origin')
             steps.append('pause-seek-stale-bounds')
+            control('delay_next_load')
             call(PLAYER,'Next')
+            assert state()['delayedLoads'] == 1, 'delayed native load was not exercised'
+            steps.append('next-reply-survives-delayed-load')
             second_id = get('Metadata')['mpris:trackid']
             assert second_id!=first_id and get('PlaybackStatus')=='Paused'
             assert get('Metadata')['xesam:title']=='合成歌曲 3'

@@ -93,15 +93,17 @@ fn run_mode(shortcut_proof: bool) {
     let engines = Arc::new(AtomicUsize::new(0));
     let opened = engines.clone();
     let measured = observed::Probe::default();
+    let load_delay = Arc::new(observed::LoadDelay::default());
+    let engine_delay = load_delay.clone();
     let measured_engine = measured.clone();
     let client =
         MusicClient::with_session(session.clone(), registry).with_audio_factory(move || {
             let engine = super::relay_fixture::NativeAudio::open(wave.clone())?;
             opened.fetch_add(1, Ordering::AcqRel);
-            Ok(Box::new(observed::Observed::new(
-                engine,
-                measured_engine.clone(),
-            )))
+            Ok(Box::new(
+                observed::Observed::new(engine, measured_engine.clone())
+                    .with_load_delay(engine_delay.clone()),
+            ))
         });
     let mut context = tauri::generate_context!();
     context.config_mut().app.windows[0].create = false;
@@ -135,6 +137,7 @@ fn run_mode(shortcut_proof: bool) {
                         "start" => client.play_selection(&epoch, PlaySelection::Songs { ids:vec!["2".into(),"3".into()],index:0,quality:Quality::Standard }).await.map(|_|()),
                         "seek" => client.player_action(&epoch, PlayerAction::Seek {seconds:9.0}).await.map(|_|()),
                         "short_seek" => client.player_action(&epoch, PlayerAction::Seek {seconds:4.01}).await.map(|_|()),
+                        "delay_next_load" if !shortcut_proof => {load_delay.arm();Ok(())},
                         "clear" => client.player_action(&epoch, PlayerAction::Clear).await.map(|_|()),
                         "media_off" | "media_on" => {
                             let value=cumulus_desktop::system_media::settings::read(&app,&epoch).unwrap().value;
@@ -165,6 +168,7 @@ fn run_mode(shortcut_proof: bool) {
                 if let Ok(view) = client.native_media_details() {
                     let mut state = json!({"status":format!("{:?}",view.state),"position":view.position,"volume":view.volume,"speed":view.speed,"id":view.item.as_ref().map(|i|&i.id),"title":view.item.as_ref().map(|i|&i.title),"systemMedia":cumulus_desktop::system_media::settings::system_media_status(app.clone()),"mode":view.mode,"engines":engines.load(Ordering::Acquire),"nativeSeeks":measured.lock().unwrap().clone(),"visible":app.get_webview_window("main").unwrap().is_visible().unwrap()});
                     if shortcut_proof {shortcuts::observe(&app,&mut state);}
+                    state["delayedLoads"]=json!(load_delay.count());
                     write(&root.join("state.json"), &state);
                 }
                 tokio::time::sleep(Duration::from_millis(50)).await;
