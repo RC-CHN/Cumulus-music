@@ -42,6 +42,7 @@ onUnmounted(() => observer?.disconnect());
         v-for="(entry, index) in visible"
         :key="start * columns + index"
         class="collection-follow-card"
+        :data-collection-key="entry.artist ? `artist:${entry.artist.id}` : undefined"
         :aria-label="entry.artist ? `查看歌手 ${entry.artist.name}` : undefined"
         @click="entry.artist && emit('artist', entry.artist.id)"
       >

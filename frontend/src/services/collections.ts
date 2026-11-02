@@ -31,6 +31,14 @@ export interface CollectionClient {
     refresh: boolean,
   ): Promise<AccountData<CollectionView | null>>;
 }
+/** In-memory, account-owned read state; never a persisted authorization snapshot. */
+export interface CollectionSnapshot {
+  epoch: string;
+  scope: CollectionScope;
+  pages: CollectionView[];
+  error: string;
+  retry: { query: CollectionQuery; append: boolean } | null;
+}
 export function collectionKey(query: CollectionQuery) {
   switch (query.kind) {
     case 'saved_albums':

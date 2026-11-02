@@ -13,7 +13,11 @@ import type { CommentResource } from '../services/comments';
 export type Page =
   | { kind: 'settings' }
   | { kind: 'history'; scope: import('../services/history').HistoryKind }
-  | { kind: 'collections'; scope: import('../services/collections').CollectionScope }
+  | {
+      kind: 'collections';
+      scope: import('../services/collections').CollectionScope;
+      collectionVisit?: number;
+    }
   | ({ kind: 'catalog' } & import('../services/catalogNavigation').CatalogLocation)
   | { kind: 'scene_fm' }
   | { kind: 'member' }
@@ -73,6 +77,7 @@ export function useMusic(
   let searchId = 0;
   let downloadVisit = 0;
   let catalogVisit = 0;
+  let collectionVisit = 0;
   let accountRequest = 0;
   let resourceRequest = 0;
   let likeRevision = 0;
@@ -245,7 +250,9 @@ export function useMusic(
             ? { ...next, downloadVisit: ++downloadVisit }
             : next.kind === 'catalog' && next.catalogVisit === undefined
               ? { ...next, catalogVisit: ++catalogVisit }
-              : next;
+              : next.kind === 'collections' && next.collectionVisit === undefined
+                ? { ...next, collectionVisit: ++collectionVisit }
+                : next;
       void load();
     });
   }
@@ -267,7 +274,15 @@ export function useMusic(
           ? { ...next, downloadVisit: ++downloadVisit }
           : next.kind === 'catalog' && next.catalogVisit === undefined
             ? { ...next, catalogVisit: ++catalogVisit }
-            : next;
+            : next.kind === 'collections' && next.collectionVisit === undefined
+              ? {
+                  ...next,
+                  collectionVisit:
+                    page.value.kind === 'collections'
+                      ? (page.value.collectionVisit ?? ++collectionVisit)
+                      : ++collectionVisit,
+                }
+              : next;
       void load();
     });
   }

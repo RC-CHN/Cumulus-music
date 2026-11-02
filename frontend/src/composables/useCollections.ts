@@ -7,6 +7,7 @@ import {
   type CollectionScope,
   type CollectionQuery,
   type CollectionView,
+  type CollectionSnapshot,
 } from '../services/collections.ts';
 import { useCore } from '../services/core.ts';
 
@@ -22,16 +23,69 @@ export function useCollections(core: CollectionClient = useCore(), expired = () 
     serial = 0,
     disposed = false;
   let retryTarget: { query: CollectionQuery; append: boolean } | undefined;
-  function connect(account: AccountView) {
-    const owner = account.status === 'authenticated' ? account.epoch : undefined;
-    if (owner === epoch) return;
-    epoch = owner;
+  function reset() {
     serial++;
     pages.value = [];
     loading.value = false;
     loadingMore.value = false;
     error.value = '';
     retryTarget = undefined;
+  }
+  function connect(account: AccountView) {
+    const owner = account.status === 'authenticated' ? account.epoch : undefined;
+    if (owner === epoch) return;
+    epoch = owner;
+    reset();
+  }
+  function snapshot(): CollectionSnapshot | undefined {
+    if (!epoch || disposed) return;
+    return {
+      epoch,
+      scope: scope.value,
+      pages: [...pages.value],
+      error: error.value,
+      retry: retryTarget ? { query: { ...retryTarget.query }, append: retryTarget.append } : null,
+    };
+  }
+  function restore(saved: CollectionSnapshot, target: CollectionScope) {
+    if (!epoch || disposed || saved.epoch !== epoch || saved.scope !== target) return false;
+    const keys = new Set<string>();
+    let expected: CollectionQuery | null = firstCollectionQuery(target);
+    if (saved.pages.length > 500) return false;
+    for (const page of saved.pages) {
+      const key = collectionKey(page.query);
+      if (
+        !expected ||
+        key !== collectionKey(expected) ||
+        keys.has(key) ||
+        page.query.kind !== target ||
+        page.page.kind !== (target === 'followed_artists' ? 'follows' : 'albums') ||
+        (page.next && page.next.kind !== target)
+      )
+        return false;
+      keys.add(key);
+      expected = page.next;
+    }
+    if (
+      saved.retry &&
+      (saved.retry.query.kind !== target ||
+        collectionKey(saved.retry.query) !==
+          collectionKey(
+            saved.retry.append
+              ? (expected ?? firstCollectionQuery(target))
+              : firstCollectionQuery(target),
+          ) ||
+        (saved.retry.append && (!expected || !saved.pages.length)))
+    )
+      return false;
+    reset();
+    scope.value = target;
+    pages.value = [...saved.pages];
+    error.value = saved.error;
+    retryTarget = saved.retry
+      ? { query: { ...saved.retry.query }, append: saved.retry.append }
+      : undefined;
+    return true;
   }
   async function request(query: CollectionQuery, append: boolean, cache: boolean) {
     if (!epoch || disposed) return;
@@ -125,6 +179,9 @@ export function useCollections(core: CollectionClient = useCore(), expired = () 
     next,
     total,
     connect,
+    reset,
+    snapshot,
+    restore,
     open,
     more,
     retry,

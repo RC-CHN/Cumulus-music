@@ -75,6 +75,29 @@ function backend(overrides: Partial<CoreClient> = {}): CoreClient {
     ...overrides,
   };
 }
+
+test('collection tab replacement keeps its visit while new navigation gets an independent history entry', async () => {
+  const music = useMusic(backend());
+  await music.bootstrap();
+  music.navigate({ kind: 'collections', scope: 'saved_albums' });
+  const first = music.page.value;
+  assert.equal(first.kind, 'collections');
+  if (first.kind !== 'collections') throw Error('collections page');
+  assert.ok(first.collectionVisit);
+  music.replace({ kind: 'collections', scope: 'purchased_albums' });
+  assert.deepEqual(music.page.value, { ...first, scope: 'purchased_albums' });
+  music.navigate({ kind: 'catalog', resource: { kind: 'album', id: '7' } });
+  music.back();
+  assert.deepEqual(music.page.value, { ...first, scope: 'purchased_albums' });
+  music.navigate({ kind: 'daily' });
+  music.navigate({ kind: 'collections', scope: 'saved_albums' });
+  const second = music.page.value;
+  if (second.kind !== 'collections') throw Error('collections page');
+  assert.notEqual(second.collectionVisit, first.collectionVisit);
+  music.back();
+  music.back();
+  assert.deepEqual(music.page.value, { ...first, scope: 'purchased_albums' });
+});
 const turn = () => new Promise((resolve) => setImmediate(resolve));
 test('account changes leave resource pages and search text from the prior identity behind', async () => {
   let epoch = '1';

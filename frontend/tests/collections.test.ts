@@ -4,6 +4,7 @@ import { useCollections } from '../src/composables/useCollections.ts';
 import { normalizeKeyword } from '../src/services/keyword.ts';
 import type { CollectionQuery, CollectionView } from '../src/services/collections.ts';
 import vectors from './fixtures/keyword-vectors.json' with { type: 'json' };
+import { createCollectionViewportMemory } from '../src/services/collectionViewport.ts';
 const account = {
   epoch: '1',
   status: 'authenticated' as const,
@@ -159,4 +160,89 @@ test('wrong scope response does not appear and expired account clears its recove
   assert.equal(n.pages.value.length, 0);
   assert.match(n.error.value, /不匹配/);
   n.dispose();
+});
+
+test('a restored collection prefix retries its failed continuation without rereading or losing earlier pages', async () => {
+  let fail = false;
+  const offsets: number[] = [];
+  const core = {
+    collectionPage: async (epoch: string, query: CollectionQuery, refresh: boolean) => {
+      if (refresh && query.kind === 'saved_albums') {
+        offsets.push(query.offset);
+        if (fail) throw { code: 'network', message: 'later page offline' };
+      }
+      return { epoch, value: view(query, !refresh) };
+    },
+  };
+  const first = useCollections(core);
+  first.connect(account);
+  await first.open('saved_albums');
+  await first.more();
+  fail = true;
+  await first.more();
+  const saved = first.snapshot()!;
+  first.dispose();
+  const returned = useCollections(core);
+  returned.connect(account);
+  assert.equal(returned.restore(saved, 'saved_albums'), true);
+  assert.equal(returned.pages.value.length, 2);
+  assert.equal(returned.error.value, 'later page offline');
+  assert.deepEqual(offsets, [0, 50, 100]);
+  fail = false;
+  await returned.retry();
+  assert.equal(returned.pages.value.length, 3);
+  assert.deepEqual(offsets, [0, 50, 100, 100]);
+  returned.dispose();
+});
+test('restoring another scope invalidates an in-flight continuation and rejects mixed or old-account snapshots', async () => {
+  const late = defer<{ epoch: string; value: CollectionView }>();
+  const model = useCollections({
+    collectionPage: async (epoch, query, refresh) =>
+      refresh && query.kind === 'saved_albums' && query.offset > 0
+        ? late.promise
+        : { epoch, value: view(query, !refresh) },
+  });
+  model.connect(account);
+  await model.open('purchased_albums');
+  const purchased = model.snapshot()!;
+  await model.open('saved_albums');
+  const saved = model.snapshot()!;
+  const pending = model.more();
+  assert.equal(model.restore(purchased, 'purchased_albums'), true);
+  late.resolve({ epoch: '1', value: view({ kind: 'saved_albums', offset: 50, limit: 50 }) });
+  await pending;
+  assert.equal(model.scope.value, 'purchased_albums');
+  assert.equal(model.pages.value.length, 1);
+  assert.equal(model.pages.value[0]?.query.kind, 'purchased_albums');
+  assert.equal(
+    model.restore(
+      { ...saved, pages: [...saved.pages, view({ kind: 'saved_albums', offset: 100, limit: 50 })] },
+      'saved_albums',
+    ),
+    false,
+  );
+  model.connect({ ...account, epoch: '2' });
+  assert.equal(model.restore(saved, 'saved_albums'), false);
+  assert.equal(model.pages.value.length, 0);
+  model.dispose();
+});
+test('collection history isolates visits while album tabs share a keyword, and clears old-account writes', () => {
+  const memory = createCollectionViewportMemory(2);
+  memory.connect(account);
+  const state = { epoch: '1', scope: 'saved_albums' as const, pages: [], error: '', retry: null };
+  memory.set(1, state, '臺灣 A', { scrollTop: 1800, focus: 'album:23' });
+  assert.equal(memory.keyword(1, 'purchased_albums', '1'), '臺灣 A');
+  assert.equal(memory.keyword(1, 'followed_artists', '1'), '');
+  memory.set(2, state, 'second visit', { scrollTop: 0 });
+  assert.equal(memory.get(1, 'saved_albums', '1')?.position.focus, 'album:23');
+  memory.set(3, state, 'third visit', { scrollTop: 20 });
+  assert.equal(memory.get(2, 'saved_albums', '1'), undefined);
+  memory.connect({ ...account });
+  assert.equal(memory.keyword(1, 'saved_albums', '1'), '臺灣 A');
+  memory.connect({ ...account, epoch: '2' });
+  memory.set(1, state, 'late old account', { scrollTop: 900 });
+  assert.equal(memory.get(1, 'saved_albums', '1'), undefined);
+  assert.equal(memory.keyword(1, 'saved_albums', '2'), '');
+  memory.connect({ ...account, status: 'expired' });
+  assert.equal(memory.get(3, 'saved_albums', '1'), undefined);
 });

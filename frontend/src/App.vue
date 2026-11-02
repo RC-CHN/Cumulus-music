@@ -2,6 +2,7 @@
 import SearchBox from './components/search/SearchBox.vue';
 import SearchResultsPage from './components/search/SearchResultsPage.vue';
 import { createSearchViewportMemory } from './services/searchViewport';
+import { createCollectionViewportMemory } from './services/collectionViewport';
 import ContentTooltip from './components/ContentTooltip.vue';
 import type { SearchItem } from './services/search';
 import { searchCardIsCurrent, searchCardSelection } from './services/searchCards';
@@ -30,6 +31,7 @@ import TrackActions from './components/TrackActions.vue';
 import ModalTransition from './components/ModalTransition.vue';
 import LoginDialog from './components/LoginDialog.vue';
 import AccountDialog from './components/AccountDialog.vue';
+import AccountWelcome from './components/AccountWelcome.vue';
 import TrackTable from './components/TrackTable.vue';
 import CatalogPage from './components/CatalogPage.vue';
 import { useCatalogWorkspace } from './composables/useCatalogWorkspace';
@@ -99,10 +101,13 @@ import { downloadSectionQuery } from './services/downloadPage';
 import { useCore } from './services/core';
 const core = useCore();
 const searchMemory = createSearchViewportMemory();
+const collectionMemory = createCollectionViewportMemory();
+const collectionsPageRef = ref<InstanceType<typeof CollectionsPage>>();
 const playlistLibraryState = ref(libraryView());
 const music = useMusic(undefined, (commit) => {
   const proceed = () => {
     catalogDetailPage.value?.checkpoint();
+    collectionsPageRef.value?.checkpoint();
     commit();
   };
   if (batchTarget.value && batchPage.value)
@@ -146,7 +151,10 @@ const settings = useSettings(core, () => {
 });
 watch(
   () => [music.account.value.epoch, music.account.value.status],
-  () => searchMemory.connect(music.account.value),
+  () => {
+    searchMemory.connect(music.account.value);
+    collectionMemory.connect(music.account.value);
+  },
   { immediate: true },
 );
 const relay = useRelay(core, () => {
@@ -883,7 +891,9 @@ const pageKey = computed(() =>
               resource: page.value.resource,
               catalogVisit: page.value.catalogVisit,
             }
-          : page.value,
+          : page.value.kind === 'collections'
+            ? { kind: 'collections', collectionVisit: page.value.collectionVisit }
+            : page.value,
   }),
 );
 const playingLikes = computed(() => {
@@ -1029,6 +1039,7 @@ onMounted(async () => {
 });
 onUnmounted(() => {
   catalogWorkspace.clear();
+  collectionMemory.clear();
   mounted = false;
   accountListener?.();
   nativeLikeListener?.();
@@ -1444,40 +1455,21 @@ onUnmounted(() => {
                 @accounts="accountsOpen = true"
                 @downloads="music.navigate({ kind: 'downloads' })"
               />
-              <div v-else-if="!signedIn" class="empty-state welcome">
-                <div class="welcome-note">♪</div>
-                <h1>
-                  {{
-                    account.loginNotice?.title ||
-                    (account.status === 'expired' ? '登录已失效' : '让喜欢的音乐，陪在身边')
-                  }}
-                </h1>
-                <p aria-live="polite">
-                  {{
-                    account.loginNotice?.message ||
-                    error ||
-                    (account.status === 'expired'
-                      ? '请重新登录后继续管理歌单、查看推荐和使用账号资源。'
-                      : '登录网易云音乐，找回你的歌单与每日推荐')
-                  }}
-                </p>
-                <button class="primary" @click="loginOpen = true">
-                  {{
-                    account.loginNotice || account.status === 'expired' ? '重新登录' : '登录账号'
-                  }}</button
-                ><button
-                  v-if="error && !account.loginNotice"
-                  class="text-button"
-                  @click="music.bootstrap()"
-                >
-                  重新连接
-                </button>
-              </div>
+              <AccountWelcome
+                v-else-if="!signedIn"
+                :account="account"
+                :error="error"
+                @login="loginOpen = true"
+                @retry="music.bootstrap()"
+              />
               <MvCollection v-else-if="page.kind === 'mvs'" :model="mv" @open="openMv" />
               <CollectionsPage
+                ref="collectionsPageRef"
                 v-else-if="page.kind === 'collections'"
                 :account="account"
                 :scope="page.scope"
+                :visit="page.collectionVisit ?? 0"
+                :memory="collectionMemory"
                 @scope="music.replace({ kind: 'collections', scope: $event })"
                 @open="openCatalog"
                 @expired="music.bootstrap(false)"
