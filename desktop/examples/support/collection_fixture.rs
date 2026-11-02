@@ -4,16 +4,25 @@ use cumulus_core::{
     protocol::api::{Api, ApiFuture},
 };
 use serde_json::{Value, json};
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::{
+    Mutex,
+    atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering},
+};
 pub struct Library {
     base: super::fixture::Library,
     mode: AtomicU8,
+    calls: Mutex<Vec<Value>>,
+    pending: AtomicBool,
+    delayed: AtomicU64,
 }
 impl Default for Library {
     fn default() -> Self {
         Self {
             base: super::fixture::Library::default(),
             mode: AtomicU8::new(0),
+            calls: Mutex::new(Vec::new()),
+            pending: AtomicBool::new(false),
+            delayed: AtomicU64::new(0),
         }
     }
 }
@@ -25,10 +34,18 @@ impl Library {
                 "fail_more" => 2,
                 "fail_purchase" => 3,
                 "empty_purchase" => 4,
+                "empty_saved" => 5,
+                "fail_follow" => 6,
+                "empty_follow" => 7,
+                "delay_more" => 8,
+                "expire" => 9,
                 _ => 0,
             },
             Ordering::SeqCst,
         );
+    }
+    pub fn report(&self) -> Value {
+        json!({"calls":self.calls.lock().unwrap().clone(),"pending":self.pending.load(Ordering::SeqCst),"delayedCompleted":self.delayed.load(Ordering::SeqCst)})
     }
 }
 fn album(id: u64) -> Value {
@@ -38,12 +55,36 @@ impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, args: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             let mode = self.mode.load(Ordering::SeqCst);
+            if [
+                "/api/album/sublist",
+                "/api/digitalAlbum/purchased",
+                "/api/user/follow/users/mixed/get/v2",
+            ]
+            .contains(&path)
+            {
+                self.calls
+                    .lock()
+                    .unwrap()
+                    .push(json!({"path":path,"args":args,"mode":mode}));
+                if mode == 9 {
+                    return Ok(json!({"code":301}));
+                }
+            }
             match path {
                 "/api/album/sublist" => {
                     let offset = args["offset"].as_u64().unwrap_or(0);
                     let limit = args["limit"].as_u64().unwrap_or(50);
+                    if mode == 8 && offset > 0 {
+                        self.pending.store(true, Ordering::SeqCst);
+                        tokio::time::sleep(std::time::Duration::from_millis(750)).await;
+                        self.pending.store(false, Ordering::SeqCst);
+                        self.delayed.fetch_add(1, Ordering::SeqCst);
+                    }
                     if mode == 1 || mode == 2 && offset > 0 {
                         return Ok(json!({"code":503}));
+                    }
+                    if mode == 5 {
+                        return Ok(json!({"code":200,"data":[],"hasMore":false,"count":0}));
                     }
                     Ok(
                         json!({"code":200,"data":(offset..(offset+limit).min(123)).map(|n|album(n+7)).collect::<Vec<_>>(),"hasMore":offset+limit<123,"count":123}),
@@ -61,6 +102,14 @@ impl Api for Library {
                     Ok(json!({"code":200,"total":rows.len(),"paidAlbums":rows}))
                 }
                 "/api/user/follow/users/mixed/get/v2" => {
+                    if mode == 6 {
+                        return Ok(json!({"code":503}));
+                    }
+                    if mode == 7 {
+                        return Ok(
+                            json!({"code":200,"data":{"records":[],"page":{"more":false,"cursor":"0","size":19}}}),
+                        );
+                    }
                     let cursor = args["page"]["cursor"].as_str().unwrap_or("0");
                     let offset = if cursor == "0" {
                         0

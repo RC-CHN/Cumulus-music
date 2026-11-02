@@ -60,6 +60,12 @@ fn main() {
     );
     let interactive = albums || artists || rankings;
     let collections = std::env::var("CUMULUS_COLLECTION_PROOF").as_deref() == Ok("1");
+    let collection_context =
+        std::env::var("CUMULUS_COLLECTION_CONTEXT_PROOF").as_deref() == Ok("1");
+    assert!(
+        !collection_context || (collections && !is_live),
+        "collection context proof uses isolated synthetic APIs only"
+    );
     let histories = std::env::var("CUMULUS_HISTORY_PROOF").as_deref() == Ok("1");
     let settings = std::env::var("CUMULUS_SETTINGS_PROOF").as_deref() == Ok("1");
     let relay_settings = std::env::var("CUMULUS_RELAY_SETTING_PROOF").as_deref() == Ok("1");
@@ -96,6 +102,13 @@ fn main() {
         app.listen("ux-proof",move |event| {
             let value:Value=serde_json::from_str(event.payload()).unwrap();
             let stage=value["stage"].as_str().unwrap_or("");
+            if collection_context && stage=="collection-context-fixture" {
+                let id=value["id"].as_u64().expect("collection fixture id");
+                let mode=value["mode"].as_str().unwrap();
+                assert!(["read","none","fail_saved","fail_more","fail_purchase","empty_purchase","empty_saved","fail_follow","empty_follow","delay_more","expire"].contains(&mode));
+                if mode!="read" {collection_fixture.mode(mode);}
+                handle.get_webview_window("main").unwrap().eval(format!("window.__collectionContextAck[{id}]={};",collection_fixture.report())).unwrap();return;
+            }
             if stage=="relay_contention" && relay_publication && !is_live {
                 let contention=contention.clone();let session=session.clone();let fixture=relay_fixture.clone();let handle=handle.clone();
                 let id=value["id"].as_u64().expect("contention sequence");
@@ -146,6 +159,7 @@ fn main() {
             }
             if !(["complete","failed"].contains(&stage) || stage.starts_with("ux_") && stage.chars().all(|c|c.is_ascii_alphanumeric()||c=='_')){return;}
             let handle=handle.clone();let output=output.clone();let stage=stage.to_owned();
+            let collection_report=collection_context.then(|| collection_fixture.report());
             let publication_fixture=relay_fixture.clone();let publication=publisher.clone();let publication_session=session.clone();
             let artist_song_reads=catalog_fixture.artist_song_reads.load(std::sync::atomic::Ordering::SeqCst);
             let artist_album_reads=catalog_fixture.artist_album_reads.load(std::sync::atomic::Ordering::SeqCst);
@@ -156,6 +170,7 @@ fn main() {
             let relay_setting_writes=relay_fixture.setting_writes.load(std::sync::atomic::Ordering::SeqCst);
             tauri::async_runtime::spawn(async move {
                 let mut value=value;
+                if let Some(report)=collection_report {value["collectionFixture"]=report;}
                 if artists {value["artistSongReads"]=serde_json::json!(artist_song_reads);value["artistAlbumReads"]=serde_json::json!(artist_album_reads);}
                 if albums || artists {value["commentReads"]=serde_json::json!(comment_reads);}
                 if histories {value["syntheticHistoryWrites"]=serde_json::json!(history_writes);}
@@ -187,7 +202,7 @@ fn main() {
                     value["publicationPhases"]=serde_json::json!(publication.intents_for(&token).unwrap().into_iter().map(|r|r.phase).collect::<Vec<_>>());
                 }
                 fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
-                if interactive && stage.starts_with("ux_") {
+                if (interactive || collection_context) && stage.starts_with("ux_") {
                     if std::env::var("CUMULUS_PROOF_CAPTURE_ACK").as_deref()==Ok("1") {
                         let marker=output.join(format!("{stage}.captured"));
                         let captured=tokio::time::timeout(std::time::Duration::from_secs(10),async {

@@ -56,7 +56,7 @@ def launch(binary, env, log, output: Path, capture):
     manager = None
     try:
         if not check.ready():
-            with (output.parent/'window-manager.log').open('x', encoding='utf-8') as manager_log:
+            with Path(log.name).with_name('window-manager.log').open('x', encoding='utf-8') as manager_log:
                 manager = subprocess.Popen(['openbox', '--sm-disable'], env=env, stdout=manager_log, stderr=manager_log)
                 deadline = time.monotonic()+6
                 while not check.ready():
