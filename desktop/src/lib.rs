@@ -304,6 +304,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 mv::video_action,
                 mv::video_frame,
                 comments::comments_page,
+                comments::comments_resource,
                 comments::comments_like,
                 comments::comments_reconcile,
                 comments::comments_prepare_write,

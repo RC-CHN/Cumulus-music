@@ -23,6 +23,7 @@ struct Backend {
     calls: Mutex<Vec<String>>,
     hold_id: AtomicU64,
     hold_url_id: AtomicU64,
+    deny_voice: std::sync::atomic::AtomicBool,
     started: Notify,
     release: Notify,
     url_started: Notify,
@@ -42,6 +43,18 @@ impl Api for Backend {
         Box::pin(async move {
             self.calls.lock().unwrap().push(path.into());
             Ok(match path {
+                "/api/dj/program/detail" => {
+                    if payload["id"].as_str().and_then(|id| id.parse::<u64>().ok())
+                        == Some(self.hold_id.load(Ordering::SeqCst))
+                    {
+                        self.started.notify_one();
+                        self.release.notified().await;
+                    }
+                    json!({"code":200,"program":{"id":payload["id"],"name":"声音","mainTrackId":181,"duration":120000}})
+                }
+                "/api/dj/play/url/check" => {
+                    json!({"code":200,"data":{"voiceId":payload["voiceId"],"songId":181,"canPlay":!self.deny_voice.load(Ordering::SeqCst)}})
+                }
                 "/api/v2/artist/songs" => {
                     let offset = payload["offset"].as_u64().unwrap();
                     let limit = payload["limit"].as_u64().unwrap();
@@ -146,6 +159,9 @@ fn songs(id: &str) -> PlaySelection {
         quality: Quality::Lossless,
     }
 }
+
+#[path = "client_player/voice_selection.rs"]
+mod voice_selection;
 
 #[path = "client_player/queue_album.rs"]
 mod queue_album;

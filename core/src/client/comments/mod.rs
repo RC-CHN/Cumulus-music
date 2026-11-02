@@ -1,4 +1,5 @@
 mod floor;
+mod resource;
 mod writes;
 use super::{MusicClient, dto::AccountData, mapping};
 pub use crate::comments::{
@@ -11,6 +12,7 @@ use crate::{
     comments::{Comment, CommentLike, Comments},
 };
 pub use floor::CommentFloorView;
+pub use resource::{CommentResourceCard, CommentResourceView};
 use serde::Serialize;
 pub use writes::{CommentWriteAction, CommentWriteView};
 

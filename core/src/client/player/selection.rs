@@ -111,6 +111,38 @@ impl MusicClient {
                 self.session.check_generation(&token)?;
                 return project(&state, &token);
             }
+            PlaySelection::Voice { id } => {
+                let id = identifier(&json!(id))?;
+                let resource = self
+                    .session
+                    .run_for(&token, |api, _| async {
+                        let episode = crate::podcast::PodcastApi::new(api)
+                            .episode(&json!(id))
+                            .await?;
+                        let mut resource = episode.playback_resource()?;
+                        resource["song"] = episode.download_metadata()?;
+                        resource["level"] = json!("standard");
+                        Ok(resource)
+                    })
+                    .await?;
+                let controller = self.player.controller().await?;
+                if self.player.selection.load(Ordering::Acquire) != attempt {
+                    return Err(Error::StaleResponse);
+                }
+                self.focus.check(lease, super::super::focus::Owner::Audio)?;
+                let state = controller
+                    .command(
+                        &token,
+                        PlaybackCommand::Replace {
+                            resources: vec![resource],
+                            index: 0,
+                            source: json!({"kind":"voice","id":id,"scene":"comment"}),
+                        },
+                    )
+                    .await?;
+                self.session.with_token(&token, |_| Ok(()))?;
+                return project(&state, &token);
+            }
             PlaySelection::Podcast {
                 scope,
                 start_id,
@@ -335,7 +367,8 @@ impl MusicClient {
                     | PlaySelection::Downloads { .. }
                     | PlaySelection::History { .. }
                     | PlaySelection::Local { .. }
-                    | PlaySelection::Podcast { .. } => {
+                    | PlaySelection::Podcast { .. }
+                    | PlaySelection::Voice { .. } => {
                         unreachable!("cloud handled before song detail requests")
                     }
                     PlaySelection::Songs {

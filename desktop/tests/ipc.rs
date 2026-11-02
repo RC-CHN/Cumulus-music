@@ -252,6 +252,10 @@ fn account_snapshot_and_stale_mutation_cross_registered_commands() {
         ),
         ("mv_detail", json!({"epoch":"0","id":"123"})),
         (
+            "comments_resource",
+            json!({"epoch":"0","resource":{"kind":"track","id":"123"},"refresh":true}),
+        ),
+        (
             "comments_page",
             json!({"epoch":"0","resource":{"kind":"track","id":"123"},"query":{"sort":"latest","limit":20,"offset":0,"beforeTime":0,"commentId":null},"refresh":true}),
         ),

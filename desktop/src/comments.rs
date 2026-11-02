@@ -1,5 +1,17 @@
 use cumulus_core::client::{ClientError, MusicClient, dto::*};
 #[tauri::command]
+pub async fn comments_resource(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    resource: CommentResource,
+    refresh: bool,
+) -> Result<AccountData<CommentResourceView>, ClientError> {
+    client
+        .comments_resource(&epoch, resource, refresh)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn comments_floor(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

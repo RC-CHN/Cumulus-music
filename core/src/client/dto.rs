@@ -188,8 +188,9 @@ pub use super::cloud::{
 };
 pub use super::comments::{
     CommentAuthorView, CommentFloorQuery, CommentFloorView, CommentOperationView, CommentPageView,
-    CommentQuery, CommentReplyView, CommentResource, CommentSort, CommentView, CommentWriteAction,
-    CommentWriteCommand, CommentWritePhase, CommentWriteView,
+    CommentQuery, CommentReplyView, CommentResource, CommentResourceCard, CommentResourceView,
+    CommentSort, CommentView, CommentWriteAction, CommentWriteCommand, CommentWritePhase,
+    CommentWriteView,
 };
 pub use super::likes::{LikeOperationView, LikeRecoveryCommand, LikeRecoveryView};
 pub use crate::catalog::details::CatalogQuery;

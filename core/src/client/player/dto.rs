@@ -119,6 +119,9 @@ pub struct QueueCollectionView {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PlaySelection {
+    Voice {
+        id: String,
+    },
     Downloads {
         query: crate::client::dto::DownloadQuery,
         start_id: Option<String>,
