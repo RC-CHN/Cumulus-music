@@ -148,10 +148,13 @@ function place() {
       innerWidth - box.width - 8,
     ),
   );
-  const top =
+  const preferredTop =
     props.variant !== 'quality' && anchor.bottom + box.height + 8 < innerHeight
       ? anchor.bottom + 6
       : Math.max(8, anchor.top - box.height - 6);
+  // A keyboard context anchor can be taller than its visible virtual row.
+  // Keep the entire panel inside the viewport even when that anchor ends below it.
+  const top = Math.max(8, Math.min(preferredTop, innerHeight - box.height - 8));
   position.value = { left: `${left}px`, top: `${top}px`, visibility: 'visible' };
   submenu.value?.place();
 }
