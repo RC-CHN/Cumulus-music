@@ -58,7 +58,12 @@ fn main() {
         !(rankings && is_live),
         "ranking proof uses synthetic services only"
     );
-    let interactive = albums || artists || rankings;
+    let album_cards = std::env::var("CUMULUS_ALBUM_CARD_PROOF").as_deref() == Ok("1");
+    assert!(
+        !album_cards || !is_live,
+        "album card proof uses isolated synthetic APIs only"
+    );
+    let interactive = albums || artists || rankings || album_cards;
     let collections = std::env::var("CUMULUS_COLLECTION_PROOF").as_deref() == Ok("1");
     let collection_context =
         std::env::var("CUMULUS_COLLECTION_CONTEXT_PROOF").as_deref() == Ok("1");
@@ -83,6 +88,7 @@ fn main() {
         let registry=ProfileRegistry::open(&root.join("state"),ApiOrigin::Pc)?;
         let contention=Arc::new(relay_contention::Fixture::new(registry.store()));
         let catalog_fixture=Arc::new(fixture::Library::default());
+        if album_cards {catalog_fixture.album_cards();}
         let collection_fixture=Arc::new(collection_fixture::Library::default());
         let history_fixture=Arc::new(history_fixture::Library::default());
         let settings_fixture=Arc::new(settings_fixture::Library::default());
@@ -108,6 +114,12 @@ fn main() {
                 assert!(["read","none","fail_saved","fail_more","fail_purchase","empty_purchase","empty_saved","fail_follow","empty_follow","delay_more","expire"].contains(&mode));
                 if mode!="read" {collection_fixture.mode(mode);}
                 handle.get_webview_window("main").unwrap().eval(format!("window.__collectionContextAck[{id}]={};",collection_fixture.report())).unwrap();return;
+            }
+            if album_cards && stage=="album-card-fixture" {
+                let id=value["id"].as_u64().expect("album fixture id");let mode=value["mode"].as_str().unwrap();
+                assert!(["read","none","album-offline","album-sub-reject","album-sub-lost"].contains(&mode));
+                if mode!="read" {catalog_fixture.mode(mode);}
+                handle.get_webview_window("main").unwrap().eval(format!("window.__albumCardAck[{id}]={};",catalog_fixture.report())).unwrap();return;
             }
             if stage=="relay_contention" && relay_publication && !is_live {
                 let contention=contention.clone();let session=session.clone();let fixture=relay_fixture.clone();let handle=handle.clone();
@@ -160,6 +172,7 @@ fn main() {
             if !(["complete","failed"].contains(&stage) || stage.starts_with("ux_") && stage.chars().all(|c|c.is_ascii_alphanumeric()||c=='_')){return;}
             let handle=handle.clone();let output=output.clone();let stage=stage.to_owned();
             let collection_report=collection_context.then(|| collection_fixture.report());
+            let album_card_report=album_cards.then(||catalog_fixture.report());
             let publication_fixture=relay_fixture.clone();let publication=publisher.clone();let publication_session=session.clone();
             let artist_song_reads=catalog_fixture.artist_song_reads.load(std::sync::atomic::Ordering::SeqCst);
             let artist_album_reads=catalog_fixture.artist_album_reads.load(std::sync::atomic::Ordering::SeqCst);
@@ -171,6 +184,7 @@ fn main() {
             tauri::async_runtime::spawn(async move {
                 let mut value=value;
                 if let Some(report)=collection_report {value["collectionFixture"]=report;}
+                if let Some(report)=album_card_report {value["albumCardFixture"]=report;}
                 if artists {value["artistSongReads"]=serde_json::json!(artist_song_reads);value["artistAlbumReads"]=serde_json::json!(artist_album_reads);}
                 if albums || artists {value["commentReads"]=serde_json::json!(comment_reads);}
                 if histories {value["syntheticHistoryWrites"]=serde_json::json!(history_writes);}

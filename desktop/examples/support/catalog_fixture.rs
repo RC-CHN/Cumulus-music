@@ -18,10 +18,18 @@ pub struct Library {
     pub comment_reads: AtomicUsize,
     pub artist_song_reads: AtomicUsize,
     pub artist_album_reads: AtomicUsize,
+    calls: Mutex<Vec<Value>>,
+    album_cards: AtomicBool,
 }
 impl Library {
+    pub fn album_cards(&self) {
+        self.album_cards.store(true, Ordering::SeqCst);
+    }
     pub fn mode(&self, mode: &str) {
         *self.mode.lock().unwrap() = mode.into();
+    }
+    pub fn report(&self) -> Value {
+        json!({"albumCollected":self.album_collected.load(Ordering::SeqCst),"calls":self.calls.lock().unwrap().clone()})
     }
 }
 fn id(v: &Value) -> u64 {
@@ -48,6 +56,25 @@ fn album(n: u64) -> Value {
     }
     value
 }
+fn action_album(n: u64) -> Value {
+    let mut value = album(n);
+    value["picUrl"] = json!(format!(
+        "https://p1.music.126.net/cumulus-synthetic-{}.png",
+        if n == 9 { "missing" } else { "cover" }
+    ));
+    if n == 7 {
+        value["artists"] = json!([{"id":12,"name":"测试歌手"},{"id":13,"name":"主要署名"}]);
+        value["artist"] = json!({"id":13,"name":"主要署名"});
+    }
+    if n == 9 {
+        value["artists"] = json!([]);
+        value["artist"] = Value::Null;
+        value["publishTime"] = json!(0);
+        value["mark"] = json!(1 << 20);
+    }
+    value["size"] = json!(if n == 9 { 0 } else { 3 });
+    value
+}
 fn comment(n: u64) -> Value {
     json!({"commentId":n,"content":format!("第 {n} 条合成评论：这首歌适合慢慢听。\n用于验证长页面滚动、文字换行和底部翻页。"),"time":1700000000000_u64-n,"timeStr":"合成评论时间","liked":false,"likedCount":1234,"user":{"userId":3,"nickname":if n==1 {"LongUnbrokenSyntheticListenerName".repeat(5)}else{format!("合成听友 {n}")}},"beReplied":[],"parentCommentId":"0"})
 }
@@ -55,6 +82,11 @@ impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, args: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             let mode = self.mode.lock().unwrap().clone();
+            let album_cards = self.album_cards.load(Ordering::SeqCst);
+            self.calls
+                .lock()
+                .unwrap()
+                .push(json!({"path":path,"args":args,"mode":mode}));
             if let Some(response) = rankings::response(path, &args, &mode) {
                 return response;
             }
@@ -139,13 +171,22 @@ impl Api for Library {
                     json!({"code":200,"simpleConcerts":[{"id":1,"title":"合成演出","time":[1800000000000_i64,1800086400000_i64],"simpleAddress":{"address":"合成场馆"},"price":"88起","url":"https://invalid.example/private"}],"total":1})
                 }
                 "/api/album/v3/detail" => {
-                    json!({"code":200,"album":album(id(&args["id"])),"songs":(1..=11).map(song).collect::<Vec<_>>()})
+                    let n = id(&args["id"]);
+                    json!({"code":200,"album":if album_cards{action_album(n)}else{album(n)},"songs":if !album_cards{(1..=11).map(song).collect::<Vec<_>>()}else if n==9{vec![]}else{((n-7)*3+1..=(n-7)*3+3).map(song).collect::<Vec<_>>()}})
                 }
                 "/api/album/detail/dynamic" => {
                     json!({"code":200,"isSub":self.album_collected.load(Ordering::SeqCst)})
                 }
                 "/api/album/privilege" => {
-                    json!({"code":200,"data":(1..=11).map(|id|json!({"id":id,"pl":320000})).collect::<Vec<_>>()})
+                    let n = id(&args["id"]);
+                    let ids = if !album_cards {
+                        (1..=11).collect::<Vec<_>>()
+                    } else if n == 9 {
+                        vec![]
+                    } else {
+                        ((n - 7) * 3 + 1..=(n - 7) * 3 + 3).collect::<Vec<_>>()
+                    };
+                    json!({"code":200,"data":ids.into_iter().map(|id|json!({"id":id,"pl":320000})).collect::<Vec<_>>()})
                 }
                 "/api/song/enhance/player/url/v1" => {
                     let ids: Vec<Value> = serde_json::from_str(args["ids"].as_str().unwrap())?;
@@ -167,7 +208,7 @@ impl Api for Library {
                     json!({"code":200,"more":false,"count":usize::from(self.artist_collected.load(Ordering::SeqCst)),"data":if self.artist_collected.load(Ordering::SeqCst){vec![artist(12)]}else{vec![]}})
                 }
                 "/api/album/sublist" => {
-                    json!({"code":200,"more":false,"count":usize::from(self.album_collected.load(Ordering::SeqCst)),"data":if self.album_collected.load(Ordering::SeqCst){vec![album(7)]}else{vec![]}})
+                    json!({"code":200,"more":false,"hasMore":false,"count":usize::from(self.album_collected.load(Ordering::SeqCst)),"data":if self.album_collected.load(Ordering::SeqCst){vec![if album_cards{action_album(7)}else{album(7)}]}else{vec![]}})
                 }
                 "/api/artist/sub" | "/api/artist/unsub" => {
                     self.artist_collected
@@ -175,12 +216,24 @@ impl Api for Library {
                     json!({"code":200})
                 }
                 "/api/album/sub" | "/api/album/unsub" => {
+                    if mode == "album-sub-reject" {
+                        return Ok(json!({"code":403}));
+                    }
                     self.album_collected
                         .store(path.ends_with("/sub"), Ordering::SeqCst);
+                    if mode == "album-sub-lost" {
+                        return Err(Error::Transport(
+                            "synthetic lost album write response".into(),
+                        ));
+                    }
                     json!({"code":200})
                 }
                 _ if path.starts_with("/api/artist/albums/") => {
-                    json!({"code":200,"artist":{"albumSize":62},"more":offset+limit<62,"hotAlbums":((offset+7)..(offset+limit+7).min(69)).map(album).collect::<Vec<_>>()})
+                    if album_cards {
+                        json!({"code":200,"artist":{"albumSize":3},"more":false,"hotAlbums":(7..=9).map(action_album).collect::<Vec<_>>()})
+                    } else {
+                        json!({"code":200,"artist":{"albumSize":62},"more":offset+limit<62,"hotAlbums":((offset+7)..(offset+limit+7).min(69)).map(album).collect::<Vec<_>>()})
+                    }
                 }
                 _ => return Err(Error::Response("unsupported synthetic catalog endpoint")),
             })

@@ -26,7 +26,7 @@
   async function capture(name, checks = {}) {
     await sleep(500);
     const page = one('.catalog-page, .comments-page');
-    const cards = all('.catalog-card');
+    const cards = all('.catalog-album-card');
     checks.documentContained = document.documentElement.scrollWidth <= innerWidth;
     checks.pageContained = !!page && rect(page).bottom <= rect(one('.main-content')).bottom + 1;
     checks.boundedCards = cards.length <= 30;
@@ -55,20 +55,20 @@
   }
   async function albums() {
     click(one('[data-catalog-tab="albums"]'));
-    await wait(() => all('.catalog-card').length >= 2, 'album cards');
+    await wait(() => all('.catalog-album-card').length >= 2, 'album cards');
     const page = one('.catalog-page');
     one('.catalog-tabs').scrollIntoView({ block: 'start' });
     await sleep(500);
     return page;
   }
   function cardChecks() {
-    const cards = all('.catalog-card');
+    const cards = all('.catalog-album-card');
     return {
       squareArtwork: cards.every(card => {
         const r = rect(card.querySelector('img, .catalog-card-placeholder'));
         return Math.abs(r.width - r.height) < 1;
       }),
-      titleHints: cards.every(card => card.querySelector('strong').title === card.querySelector('strong').textContent),
+      titleHints: cards.every(card => card.querySelector('strong').title === card.querySelector('.catalog-album-name').textContent),
       noInternalOverflow: one('.catalog-card-scroll').scrollWidth <= one('.catalog-card-scroll').clientWidth + 1,
     };
   }
@@ -86,10 +86,10 @@
       const grid = one('.catalog-card-scroll');
       grid.scrollTop = grid.scrollHeight; await sleep(500);
       await capture(`albums_bottom_${width}_${color}`, {
-        ...cardChecks(), lastCardRendered: all('.catalog-card strong').at(-1)?.textContent === '合成专辑 26',
+        ...cardChecks(), lastCardRendered: all('.catalog-album-card .catalog-album-name').at(-1)?.textContent === '合成专辑 26',
       });
       grid.scrollTop = 0; await sleep(500);
-      click(all('.catalog-card')[1]);
+      click(all('.catalog-album-open')[1]);
       await wait(() => one('.catalog-heading h1')?.textContent.startsWith('漫长的午后'), 'long album');
       await sleep(400);
       await capture(`album_long_${width}_${color}`, {
@@ -132,8 +132,8 @@
       await sleep(500);
       grid.scrollTop = grid.scrollHeight; await sleep(500);
       await capture(`grid_resized_${width}`, {
-        ...cardChecks(), lastCardRendered: all('.catalog-card strong').at(-1)?.textContent === '合成专辑 26',
-        labelsInsideCards: all('.catalog-card').every(card => rect(card.querySelector('small')).bottom <= rect(card).bottom),
+        ...cardChecks(), lastCardRendered: all('.catalog-album-card .catalog-album-name').at(-1)?.textContent === '合成专辑 26',
+        labelsInsideCards: all('.catalog-album-card').every(card => rect(card.querySelector('.catalog-album-description')).bottom <= rect(card).bottom),
       });
     }
     assert(!failures.length, failures.join('; '));

@@ -22,7 +22,7 @@
     const page=one('.catalog-page'),grid=one('.catalog-card-scroll');
     if (!page||!grid) return [];
     const outer=page.getBoundingClientRect(),bounds=grid.getBoundingClientRect();
-    return all('.catalog-card:not(.artist) .catalog-card-placeholder').flatMap(node=>{
+    return all('.catalog-album-card .catalog-card-placeholder').flatMap(node=>{
       const r=node.getBoundingClientRect(),x=r.left+12,y=Math.max(r.top+12,bounds.top+12,outer.top+12);
       return x<bounds.right&&y<Math.min(r.bottom,bounds.bottom,outer.bottom)-12
         ? [{x,y,color:getComputedStyle(node).backgroundColor}]:[];
@@ -80,7 +80,7 @@
       await pick('albums');await wait(()=>one('.catalog-card')&&button('加载更多'),'album page');
       click(button('加载更多'));await wait(()=>one('.catalog-card-scroll')?.dataset.catalogTotal==='40','album continuation');
       let grid=one('.catalog-card-scroll');grid.scrollTop=grid.scrollHeight;grid.dispatchEvent(new Event('scroll'));
-      await wait(()=>all('.catalog-card strong').at(-1)?.textContent==='合成专辑 46','album last');
+      await wait(()=>all('.catalog-album-card .catalog-album-name').at(-1)?.textContent==='合成专辑 46','album last');
       const albumTop=grid.scrollTop;await capture(`albums40_${suffix}`);
       click(one('[data-catalog-key="album:46"]'));await wait(()=>one('.album-header')&&settled(),'album child');
       click(albumTab('details'));await wait(()=>one('.album-description')&&settled(),'album detail tab');await capture(`album_details_${suffix}`);

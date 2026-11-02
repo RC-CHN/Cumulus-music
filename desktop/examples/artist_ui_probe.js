@@ -21,7 +21,7 @@
     const bounds = scroller.getBoundingClientRect(), outer = page.getBoundingClientRect();
     // Only opaque, square album covers: disabled video opacity and circular
     // artist corners intentionally do not equal their raw background color.
-    return all('.catalog-card:not(.artist) .catalog-card-placeholder').flatMap(node => {
+    return all('.catalog-album-card .catalog-card-placeholder').flatMap(node => {
       const r = node.getBoundingClientRect(), x = r.left + 12,
         y = Math.max(r.top + 12, bounds.top + 12, outer.top + 12);
       if (x >= bounds.right || y >= Math.min(r.bottom, bounds.bottom, outer.bottom) - 12) return [];
@@ -52,7 +52,7 @@
       selected: one('.artist-tabs [aria-selected="true"]')?.dataset.catalogTab,
       title: one('.artist-header h1')?.textContent,
       listScroll: one('.track-scroll,.catalog-card-scroll')?.scrollTop ?? 0,
-      lastAlbum: all('.catalog-card strong').at(-1)?.textContent,
+      lastAlbum: all('.catalog-album-card .catalog-album-name').at(-1)?.textContent,
     });
     await wait(() => window.__CUMULUS_ALBUM_CAPTURE_ACK__ === stage, 'capture acknowledgement');
     await sleep(150);
@@ -66,7 +66,7 @@
   }
   async function albumsBottom(name) {
     const grid = one('.catalog-card-scroll'); grid.scrollTop = grid.scrollHeight; grid.dispatchEvent(new Event('scroll'));
-    await wait(() => all('.catalog-card strong').at(-1)?.textContent === name, `last album ${name}`);
+    await wait(() => all('.catalog-album-card .catalog-album-name').at(-1)?.textContent === name, `last album ${name}`);
     return grid.scrollTop;
   }
   try {
@@ -109,12 +109,12 @@
       await back();
       click(tab('albums')); click(tab('intro')); click(tab('albums'));
       await wait(() => tab('albums')?.getAttribute('aria-selected') === 'true' && settled(), 'rapid tab return');
-      await wait(() => Math.abs(one('.catalog-card-scroll').scrollTop - albumTop) < 1 && all('.catalog-card strong').at(-1)?.textContent === '合成专辑 46', 'album prefix and viewport restored');
+      await wait(() => Math.abs(one('.catalog-card-scroll').scrollTop - albumTop) < 1 && all('.catalog-album-card .catalog-album-name').at(-1)?.textContent === '合成专辑 46', 'album prefix and viewport restored');
       await capture(`albums_return_${width}_${color}`);
     }
     await mode('artist-albums-offline'); click(one('[aria-label="刷新详情"]'));
     await wait(() => one('.catalog-list-error'), 'album refresh error');
-    assert(all('.catalog-card strong').at(-1)?.textContent === '合成专辑 46', 'refresh failure discarded prefix');
+    assert(all('.catalog-album-card .catalog-album-name').at(-1)?.textContent === '合成专辑 46', 'refresh failure discarded prefix');
     await capture('albums_refresh_failed');
     await pick('intro'); await pick('albums'); assert(one('.catalog-list-error'), 'return erased pending read error'); await capture('albums_failed_return');
     await mode('normal'); click(button('重试', one('.catalog-list-error'))); await wait(() => !one('.catalog-list-error') && one('.catalog-card-scroll')?.dataset.catalogTotal === '20', 'retry first page');
@@ -137,6 +137,6 @@
       selected: one('.artist-tabs [aria-selected="true"]')?.dataset.catalogTab,
       grid: grid ? { scrollTop:grid.scrollTop, scrollHeight:grid.scrollHeight,
         height:grid.clientHeight, width:grid.clientWidth, total:grid.dataset.catalogTotal,
-        first:one('.catalog-card strong')?.textContent, last:all('.catalog-card strong').at(-1)?.textContent } : null });
+        first:one('.catalog-album-card .catalog-album-name')?.textContent, last:all('.catalog-album-card .catalog-album-name').at(-1)?.textContent } : null });
   }
 })();
