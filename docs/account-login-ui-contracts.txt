@@ -36,12 +36,13 @@ LoginDialog持有仅本次模态框有效的phone/country/email/remember；没�
 二维码仍为原生返回的模块矩阵SVG；没有把含key的完整登录URL交给前端。
 
 实际接口与调用边界
-begin_login只创建本机候选；login_command执行所选动作：
-- 邮箱：/api/w/login；手机号密码或短信：/api/w/login/cellphone。
+begin_login创建本机候选前，按官方策略读取/复用双实验分组；login_command执行所选动作：
+- 双t1时邮箱/api/login，手机号密码或短信/api/login/cellphone；其它组沿用/api/w/login及手机旧链。
+- 新版字段、候选验证票据、错误分支和令牌接收边界见jsk-login-contracts.txt。
 - 发送短信：/api/sms/captcha/sent；真实共享冷却由core维护，切换表单不会重置。
 - 成功授权后必须读取/api/w/nuser/account/get并核对身份才持久化、发布当前账号。
 - 二次验证/安全问题等沿用desktop-login-contracts.txt，失败只读取候选状态，不自动重发凭据/验证码。
-二维码为/api/login/qrcode/unikey→/api/login/qrcode/client/login；801/802/800/803分别对应
+二维码为/api/login/qrcode/unikey→/api/login/qrcode/client/login；新版type5/1000ms轮询、旧版type3/2000ms；801/802/800/803分别对应
 等待扫码、待手机确认、过期和授权；803也必须完成原生身份核对。
 当前账号保留完整可读颜色，并独立显示“未开启自动登录”，不由“当前账号”标签遮掉这个选择。
 已保存账号切换使用本机候选及身份核对；移除与清理失败恢复见desktop-saved-account-removal.txt。
@@ -64,6 +65,9 @@ refreshToken与自动续期
 界面展示missing_credentials/refreshed/not_due/recovery_required等公开状态，无秘密值。
 参见desktop-session-renewal-contracts.txt和refresh-token-issuance-evidence.txt。
 上次真实会话检查缺refreshToken；不能用合成续期成功宣称此账号已经实现真实自动轮换。
+
+二次验证列表中的未接入方式只说明该方式的边界，不把一个可选的绑定手机号方式描述为
+“当前账号必须绑定”。安全邮箱等已支持方式仍可选择并继续。实际DOM断言与JSK截图复核通过。
 
 可执行检查
 Rust：cargo test -p cumulus-core --test client_auth --locked。

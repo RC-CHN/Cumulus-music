@@ -24,9 +24,11 @@ M/1368 PcPlatformAdapter.fetch（约8640行）给业务参数附加 fromPage="JS
 needsGuardianToken=true、tokenKey="checkToken"，发送 x-login-chain-id；有当前二次验证票据时
 另带 x-music-tu。M/290 nativeRequest 将 headers 交给正式请求链，收集响应头。
 M/290 getCurrentEnv 只给 clientType，没有 loginChainId；不能为本平台凭空编造有效链ID。
-当前 Rust 定期续期/JSK301校验已经补 fromPage 和空 x-login-chain-id，易盾仍走已接通的
-MConfig/M402路径匹配。完整 JSK 新登录 handler、票据上下文和原设备确认仍需独立迁移审计；
-当前 /api/w/login 和 /api/w/login/cellphone 是已恢复的传统桌面登录路径，不能标成完整 JSK。
+Rust 定期续期/JSK301校验已补 fromPage 和空 x-login-chain-id，易盾仍走已接通的
+MConfig/M402路径匹配。2026-11-02 新版邮箱/手机/QR主登录与候选票据上下文也已迁移，
+按真实双实验选择，完整字段和成功接收范围见jsk-login-contracts.txt；
+/api/w/login、/api/w/login/cellphone仍是实验关闭时的旧链，不标成完整JSK。
+原设备、处罚steps及其它尚未迁移的SDK挑战仍需继续，不能将主登录迁移说成整个SDK完成。
 fromPage 或其它差异是否影响服务端发放令牌尚无单变量实测，不将它说成已定位根因。
 
 为什么当前会话缺令牌仍不能证明“服务端未下发”
@@ -50,6 +52,13 @@ core/examples/login_policy_read.rs 的原生传输只允许 account/get 和上�
 只有取得服务端真实令牌后才能实测成对轮换。不能补造令牌或把24小时后检查当作自动获得令牌。
 当前用户无需为了本次只读检查重新扫码。正式新登录需在相应交互可用时由本人确认。
 官方材料优先，本批未使用 YesPlayMusic；来源文件散列见 login-interception-mapping.json。
+
+2026-11-02实现与验证更新
+已补齐新版主登录成功端点的x-refresh-token接收；已恢复的验证完成端点只有实际返回
+MUSIC_U时才采纳刷新头。begin/list/send、错误或中断回执不算登录成功。
+原函数纯字段对照、11项新版Rust链路测试、HTTP回执矩阵、JSK实际WebView16态及
+28态界面/账号切换与续期五态已通过本地隔离验证。全部是合成账号/令牌，不更新上述真实观察。
+获取并保存服务端令牌和自动续期的客户端链路已接通；本人真实令牌下发/轮换仍未实测。
 
 正式宿主补充观察
 最终正式二进制以windows-local启动并恢复真实账号，首页推荐可见；

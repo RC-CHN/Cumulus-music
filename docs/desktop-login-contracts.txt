@@ -159,3 +159,8 @@ desktop-captcha-contracts.txt与login-captcha-mapping.json。主界面只收登�
 AB关闭的已登录账号旧301链与持久化清队列已在后续完成，见login-legacy-contracts.txt；
 匿名账号恢复、完整JSK新登录及原设备确认仍待继续。刷新凭据来源、旧探针未保存响应头的
 证据和本次真实只读实验分组见refresh-token-issuance-evidence.txt，不能把缺令牌推断成未下发或风控。
+
+2026-11-02后续：JSK邮箱/手机/二维码主登录及候选验证票据已接入，按双实验选择；
+新版主登录和实际返回MUSIC_U的验证完成响应可保存刷新头，见jsk-login-contracts.txt。
+这更新了此前“完整JSK新登录待继续”中的主登录部分；其余SDK挑战/原设备、真人令牌下发与
+真实成对轮换仍未被本地合成验证替代。

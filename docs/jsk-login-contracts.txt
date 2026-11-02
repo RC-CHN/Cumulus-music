@@ -1,0 +1,97 @@
+官方 JSK 新登录、验证上下文和 refresh token 接收（2026-11-02）
+
+当前结果与边界
+Rust 已接入官方 PC 的 JSK 邮箱、手机密码、手机验证码和二维码主登录请求，并与现有候选账号、
+身份核对、账号切换、验证码窗口和续期宿主连接。此前“所有新登录仍走 /api/w/login”已不准确。
+本文件不代表整个 JSK SDK、注册/找回密码、处罚申诉、原设备或第三方验证均已迁移。
+服务器下发 x-refresh-token 才能得到该值；本轮没有本人新登录、真实短信/邮件发送或真实轮换。
+历史真实会话缺令牌，2026-10-27 双实验未命中 t1；这不是当前服务端状态或发放规则的推断。
+
+官方来源与可重现对照
+恢复根：references/netease-3.1.42.205594-analysis/recovered-js/modules/。
+hybrid_vendors_app_subApp.chunk.1482700000000.js/1368.js：
+SHA256 49da1d26373042091a3123f8948f1ce7e9968ec185e57369156fc1c6a6700db3。
+hybrid_app.chunk.1482700000000.js/290.js：
+SHA256 73e775eae2e4b1da2e97b70b9415e2e101ba876ea1f6b877bd7cc054c7a4ea9b。
+M/17 登录委托与 M/34 两个实验决定是否走 JSK；M/290 为实际 PC 平台桥。
+M/1368 约3452/3530/3658/3721/4090行为主请求；约5123为验证开始/列表；
+约7385为 VerifyManager 票据；约8640为 PcPlatformAdapter.fetch；约2862为成功保存凭据。
+仅执行恢复代码的纯字段构造/摘要/上下文/PC verifySms：
+  node desktop/tests/jsk_login_official.cjs /absolute/recovered-js/modules
+生成结果与 core/tests/fixtures/jsk-login-official.json 逐字一致；含合成输入与来源散列。
+不把私有恢复代码放进公开 CI。公开 Rust 测试使用冻结的合成向量，既检查字段精确值，
+也先检查动态 UUID 格式、版本和互异，再归一化后与向量比对。未参考 YesPlayMusic。
+
+选择协议及请求上下文
+正式宿主已启用官方登录策略。新候选先读取/复用该账号代次的真实双实验配置，
+只有 PH-PC-loginJsk、PH-PC-newLoginBenefit 均为 t1 才选择 Jsk；默认/失败沿用已缓存组或旧链。
+实验读取失败不伪造 t1，不在一次密码/验证码提交遭拒后自动改协议重放。
+已保存账号切换只读取现有凭据并核对身份，不重新提交密码或为了选择协议增加实验读取。
+core/src/account/login/protocol.rs 的 JskLoginApi 只接受固定登录/验证端点，限 PC origin，
+明确走 OfficialEapi；fromPage="JSK"、x-login-chain-id="" 在原生层加入。
+M/290 getCurrentEnv 没有 loginChainId，空值符合证据，不能伪造一个有效服务链 ID。
+请求路径仍经过已有 MConfig/M402 匹配的 RequestContext。没有另造通用易盾或 URS token。
+前端无法选择原生协议、注入上述 header、读取 Cookie/refresh token 或二维码完整授权 URL。
+
+主登录接口（以下是业务字段；原生 EAPI 仍添加自己的 header/e_r 和路径匹配令牌）
+邮箱：/api/login，username、password=MD5(UTF-8密码)。显式完成滑块后可添加 secureCaptcha。
+手机号密码：/api/login/cellphone，phone、password=MD5、countrycode、once、nonce、
+secureCaptcha（初次为空字符串）、version="1"。两个随机值为独立小写带连字符 UUIDv4。
+CAPTCHA 显式继续重用同一 pending 请求和 once/nonce，不能偷偷重新执行首次登录。
+手机号验证码：同 /api/login/cellphone，phone、captcha、countryCode；大小写与密码路线不同。
+M/290 verifySms 明确回 success=true、ursToken=""，M/1368 只在非空时传 ursToken，所以原生省略它。
+这只是官方 PC 桥的行为，不代表取得或破解了移动端 URS 令牌。
+上述新版主登录不带旧链的 remember/type/https 业务字段；remember 仍保存为本机账号自动登录意图，
+包括经过滑块继续之后。旧链字段和端点保持兼容。
+验证码发送仍使用已恢复的旧 PC UI 原生 /api/sms/captcha/sent {cellphone,ctcode}（另保留 middle helper），
+共享真实冷却；M/1368 的 nm.login.sendSms 在 M/290 中缺生产者，没有伪造完整 SDK 发送实现。
+
+二维码：/api/login/qrcode/unikey {type:5}，随后 /api/login/qrcode/client/login
+{key,type:5,secureCaptcha:""}；原生 EAPI 的值字符串化与 M/48/M/402 一致。
+M/1368 默认 clientType=5，kernelServiceLogin 调用没有覆盖它；新版不添加 lastUniKey。
+旧链 type=3/previous-key 行为不变。QrView.pollAfterMs 返回新版1000/旧版2000；Vue串行定时轮询，
+上一请求完成才计时，取消/替换后不再接收。801/802/800/803 映射等待/手机确认/过期/授权。
+803仍要读 /api/w/nuser/account/get 核对身份、候选代次和当前账号，才能提交保存；取消后的迟到803
+不能发布账号或保存为当前账号。二维码 key 仅用于原生生成模块矩阵。
+
+二次验证及票据寿命
+每个原生 JskLoginApi 有自己的 JskLoginContext，不能跨候选、账号或普通业务复用。
+只在实际验证事件对应的8830/8860/8831响应中从原始 Set-Cookie 提取 MUSIC_TU；
+不从业务正文或持久 CookieJar 猜测。即使该 Cookie 的 Path 不匹配后续端点，事件票据仍可作为
+x-music-tu 发送；反过来，验证码8821或 begin/list/send 的普通回执不能替换这个事件状态。
+该头只在候选的已列举 JSK 登录/验证请求中传递；普通身份读取和新候选没有旧头。
+M/1368 getVerifyList 先 /api/user/2fa/begin {}，再 /api/user/2fa/list
+{bindingCellphoneEnable:true,smsCaptchaAble:true}。begin 的网络/服务失败按 SDK 行为仍继续读列表，
+不重发 begin；取消/失效仍立即停止。旧链保留原有 list→begin 顺序。
+现有两步验证投影/动作白名单继续适用；安全邮箱发送/核验、短信核验、安全问题和换绑确认
+使用 desktop-login-contracts.txt 的精确端点。这里仅接通已支持动作的 JSK 上下文，未声称完成
+SDK 所有验证方法、处罚8831的steps/musicTuP处理、实名认证、原设备确认或微信授权。
+未知方法继续明确显示边界，不自动发信、提交答案或绕过服务端挑战。
+UI显示未接入的绑定手机号选项时，不再暗示当前账号必须绑定；已支持的安全邮箱仍可继续。
+
+令牌接收与自动续期
+core/src/protocol/http/login.rs 明确列举成功登录路径。完整 HTTP 2xx、业务200（QR803亦可）
+才能采纳 x-refresh-token；新主登录端点现已加入旧登录/QR/刷新白名单。
+已恢复的验证完成端点必须同时实际返回非空 MUSIC_U Cookie，才有资格保存其 refresh header；
+单独200确认、begin/list/send/get 回执、部分正文、错误HTTP/业务码、非JSON均不能安装刷新令牌。
+普通 Cookie 的记录继续支持未知结果后的显式身份核对；不会自动重放原密码/验证码。
+账号候选通过身份核对后才成为活跃账号，秘密存于该原生账号库，公开 DTO 不包含它们。
+续期触发、24小时间隔、签名、成对轮换和未决持久恢复见 desktop-session-renewal-contracts.txt。
+获取和轮换是两个条件：接收逻辑已具备，不等于服务器保证下发，更不等于真实账号轮换已通过。
+
+本轮实际证据
+core/tests/client_jsk_login.rs 的11项验证主字段、双实验/读取失败、验证码重放、票据来源/隔离、
+二维码授权/取消、begin失败后只读列表；http.rs 的新增回归覆盖成功/错误/部分/不成对回执。
+实际内嵌 WebView 28态+本机KDE 28态（125%，1120×760与760×540）通过；全部PNG已分组查看。
+CI不截图运行方式28态通过；JSK挑战/退出/切换/重启16态通过，独立只读检查15个SQLite库。
+续期五态截图和独立持久化审计通过：缺令牌零请求、间隔内不重复、未知写入不重放。
+这些均使用隔离合成账号与HTTP；没有真实音乐请求、真实账号写入或真人令牌发放证明。
+最新全量检查、旧链复验、Windows精确CI状态以 ui-ux-validation.txt 的本轮条目为准。
+
+公开可执行流程
+  cargo test -p cumulus-core --test client_jsk_login --test http --test client_auth --locked
+  cargo build -p cumulus-desktop --example account_login_ui_probe --example auth_ui_probe --features custom-protocol --locked
+  GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/jsk_auth_smoke.py \
+    --binary /absolute/auth_ui_probe --root /absolute/new-proof-directory
+Windows使用同一脚本、.exe和--runtime原生库目录。输出目录必须全新，状态/日志保留在私有.build。
+本脚本启动正式Vue/WebView/IPC/核心，用受限合成后端；不是用Python代替Rust实现。

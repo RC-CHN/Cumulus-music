@@ -25,6 +25,22 @@
   ],
   "mapping": [
     {
+      "official": "M/17+M/34 JSK selection; M/1368 login handlers/VerifyManager/PcPlatformAdapter; M/290 PC bridge",
+      "sourceHashes": "core/tests/fixtures/jsk-login-official.json",
+      "rust": [
+        "core/src/account/login/protocol.rs",
+        "core/src/account/login/request.rs",
+        "core/src/account/session/policy.rs",
+        "core/src/protocol/http/login.rs"
+      ],
+      "ui": [
+        "frontend/src/components/login/QrLogin.vue",
+        "frontend/src/components/login/CredentialLogin.vue"
+      ],
+      "evidence": "client_jsk_login (11), HTTP receipt matrix, recovered pure-function vectors, account_login_smoke (28), jsk_auth_smoke (16 with independent SQLite audit)",
+      "contract": "docs/jsk-login-contracts.txt"
+    },
+    {
       "official": "Phone.jsx local phone/isPasswordLogin",
       "rust": [
         "core/src/client/auth",
@@ -74,7 +90,7 @@
   "boundaries": [
     "No real-account mutations, SMS/email sends, logout or token rotation in this synthetic suite",
     "No claim that the current real account has a refresh token",
-    "Full JSK new login handlers and unsupported external challenges remain in prior audit",
+    "JSK primary handlers and scoped challenge headers are migrated; remaining SDK branches and external challenges stay explicit in jsk-login-contracts.txt",
     "No whole-module/pixel-perfect or physical Windows verification claim"
   ]
 }

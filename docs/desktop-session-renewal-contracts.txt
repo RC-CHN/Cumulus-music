@@ -89,6 +89,12 @@ M/1368 refreshInvalidToken 是另一流程：NET_USER_CODE_INTERCEPT →
 /api/middle/account/token/refresh {fromAPI}，5 秒有效令牌抑制、匿名 URL 白名单、处理互斥、
 连续 3 次业务失败及 action=1/登录失效通知。原先 AccountSession 的直接301过期不等价于此流程；
 后续现已接通JSK分支并完成原函数/原生HTTP/合成服务桌面验证，见login-interception-contracts.txt。
-AB关闭时的旧M/1384处理仍是单独待迁移项。
+AB关闭时的旧M/1384处理已在后续迁移，见login-legacy-contracts.txt。
 旧 702/8840 网页身份验证、原设备安全二维码等也仍须继续；真人 CAPTCHA、真实成对续期、
 Windows/macOS 设备采集与实际发行验证没有被合成测试替代。YesPlayMusic 本批未使用。
+
+2026-11-02登录入口更新
+新版主登录成功端点与已恢复验证完成端点的刷新头接收已接通，详见jsk-login-contracts.txt。
+正式入口遵守外层双实验；保存账号切换仍只核对身份。新版回执不会放宽续期的成对要求、
+24小时间隔或未决结果不重放的边界。本轮重新运行五态GUI与SQLite审计通过，仍仅合成数据。
+当前支持目标为Linux/Windows x86_64，不承诺macOS；上文macOS属于历史研究边界。
