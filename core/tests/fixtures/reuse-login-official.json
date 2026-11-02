@@ -1,0 +1,89 @@
+{
+  "sources": {
+    "hybrid_vendors_app_subApp.chunk.1482700000000.js/1368.js": "49da1d26373042091a3123f8948f1ce7e9968ec185e57369156fc1c6a6700db3",
+    "hybrid_app.chunk.1482700000000.js/363.js": "8b8122f09a875f50026599cca589ba3e1318e01e260b21f925adbdbc567206f0",
+    "hybrid_app.chunk.1482700000000.js/15.js": "8ec4bf8d343f6963860eb73bc59ca09f0dd1ae50db2608a6c5abc7d69a0b521a",
+    "hybrid_app.chunk.1482700000000.js/48.js": "d8c0a8a0c03aca1339bc38e61c8c9a943cd3f4db6e214492e10c3c114acba4db",
+    "hybrid_19.chunk.1482700000000.js/3138.js": "02677bdbb947009de508bf4d4d159f91a72f62dfc172d190d74c42679e245ed4",
+    "hybrid_app.chunk.1482700000000.js/32.js": "1aa3d1f17a38717843340a7c33c87419bc7c952bc423fc58ab45d1630561ff34",
+    "hybrid_app.chunk.1482700000000.js/103.js": "667f71f29b59b37af1ef012192c736912151fe4017ebbfae45e71e401ff26c60"
+  },
+  "vectors": {
+    "jskRead": {
+      "path": "/api/login/cellphone/twice/used/user/get",
+      "payload": {
+        "fromPage": "JSK"
+      }
+    },
+    "legacyRead": {
+      "path": "/api/login/cellphone/twice/used/user/get",
+      "payload": {}
+    },
+    "jskConfirm": {
+      "path": "/api/login/cellphone/twice/used/confirm",
+      "payload": {
+        "fromPage": "JSK"
+      }
+    },
+    "legacyConfirm": {
+      "path": "/api/login/cellphone/twice/used/confirm",
+      "payload": {}
+    },
+    "registerNamed": {
+      "path": "/api/w/register/cellphone",
+      "payload": {
+        "phone": "13800000000",
+        "password": "",
+        "countrycode": "86",
+        "captcha": "246810",
+        "nickname": "社区昵称",
+        "force": "true"
+      }
+    },
+    "registerDefault": {
+      "path": "/api/w/register/cellphone",
+      "payload": {
+        "phone": "13800000000",
+        "password": "",
+        "countrycode": "86",
+        "captcha": "246810",
+        "isSkipSetNickname": "true",
+        "force": "true"
+      }
+    },
+    "nicknameHint": {
+      "path": "/api/nickname/hint/get",
+      "payload": {
+        "isAlter": "false"
+      }
+    },
+    "nicknameDuplicate": {
+      "path": "/api/nickname/duplicated",
+      "payload": {
+        "nickname": "社区昵称"
+      }
+    }
+  },
+  "lengths": [
+    {
+      "input": "abcd",
+      "length": 4
+    },
+    {
+      "input": "中文",
+      "length": 4
+    },
+    {
+      "input": "中a文b",
+      "length": 6
+    },
+    {
+      "input": "ab-c_",
+      "length": 5
+    },
+    {
+      "input": "😀😀",
+      "length": 8
+    }
+  ]
+}

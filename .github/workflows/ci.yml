@@ -265,6 +265,9 @@ jobs:
           cargo build -p cumulus-desktop --example question_login_ui_probe --features custom-protocol --locked
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/question_login_smoke.py --binary .build/target/debug/examples/question_login_ui_probe --root .build/ci-question-login-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/question_login_smoke.py --binary .build/target/debug/examples/question_login_ui_probe --root .build/ci-question-login-legacy-linux --legacy
+          cargo build -p cumulus-desktop --example reuse_login_ui_probe --features custom-protocol --locked
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/reuse_login_smoke.py --binary .build/target/debug/examples/reuse_login_ui_probe --root .build/ci-reuse-login-linux
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/reuse_login_smoke.py --binary .build/target/debug/examples/reuse_login_ui_probe --root .build/ci-reuse-login-legacy-linux --legacy
           cargo build -p cumulus-desktop --example output_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/output_settings_smoke.py --binary .build/target/debug/examples/output_ui_probe --root .build/ci-output-settings-linux
           cargo build -p cumulus-desktop --example tray_ui_probe --features custom-protocol --locked
@@ -409,6 +412,9 @@ jobs:
           cargo build -p cumulus-desktop --example question_login_ui_probe --features custom-protocol --locked
           python scripts/ci/question_login_smoke.py --binary .build/target/debug/examples/question_login_ui_probe.exe --root .build/ci-question-login-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/question_login_smoke.py --binary .build/target/debug/examples/question_login_ui_probe.exe --root .build/ci-question-login-legacy-windows --runtime .build/package-stage/windows-x64/native --legacy
+          cargo build -p cumulus-desktop --example reuse_login_ui_probe --features custom-protocol --locked
+          python scripts/ci/reuse_login_smoke.py --binary .build/target/debug/examples/reuse_login_ui_probe.exe --root .build/ci-reuse-login-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/reuse_login_smoke.py --binary .build/target/debug/examples/reuse_login_ui_probe.exe --root .build/ci-reuse-login-legacy-windows --runtime .build/package-stage/windows-x64/native --legacy
           cargo build -p cumulus-desktop --example output_ui_probe --features custom-protocol --locked
           python scripts/ci/output_settings_smoke.py --binary .build/target/debug/examples/output_ui_probe.exe --root .build/ci-output-settings-windows --runtime .build/package-stage/windows-x64/native
           cargo build -p cumulus-desktop --example startup_ui_probe --features custom-protocol --locked
