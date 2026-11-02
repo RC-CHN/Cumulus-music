@@ -466,6 +466,7 @@
       "QR ready for authorization",
     );
     await logged();
+    await mode("normal");
     await stage("qr_authenticated_light", { expectNickname: "邮箱验证账号" });
     await theme("dark");
     await resize(1120, 760);

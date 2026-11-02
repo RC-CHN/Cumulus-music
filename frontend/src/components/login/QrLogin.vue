@@ -71,7 +71,7 @@ async function begin() {
     }
     qr.value = value;
     status.value = value.status;
-    timer = setTimeout(() => poll(current), 2000);
+    timer = setTimeout(() => poll(current), value.pollAfterMs ?? 2000);
   } catch (e) {
     if (!disposed && current === generation) {
       error.value = failure(e).message;
@@ -90,7 +90,7 @@ async function poll(current: number) {
       return;
     }
     if (next === 'waiting_scan' || next === 'waiting_confirmation')
-      timer = setTimeout(() => poll(current), 2000);
+      timer = setTimeout(() => poll(current), qr.value?.pollAfterMs ?? 2000);
   } catch (e) {
     if (!disposed && current === generation) {
       error.value = failure(e).message;
@@ -110,7 +110,7 @@ async function captcha() {
     status.value = next.value;
     if (next.value === 'authorized') emit('authorized');
     else if (next.value === 'waiting_scan' || next.value === 'waiting_confirmation')
-      timer = setTimeout(() => poll(current), 2000);
+      timer = setTimeout(() => poll(current), qr.value?.pollAfterMs ?? 2000);
   } catch (e) {
     if (!disposed && current === generation) error.value = failure(e).message;
   } finally {

@@ -58,8 +58,9 @@ def main():
         assert paths.get('/api/logout') == 1  # Local-only fallback sends no second request.
         assert any(account['current'] and not account['autoLogin'] and account['nickname'] == '短信验证账号'
                    for account in complete['savedAccounts']['value'])
-        assert paths.get('/api/w/login/cellphone') == 2
-        assert paths.get('/api/w/login') == 3  # Wrong, cancelled inflight, explicit successful retry.
+        assert paths.get('/api/w/login', 0) == paths.get('/api/w/login/cellphone', 0) == 0
+        assert paths.get('/api/login/cellphone') == 2
+        assert paths.get('/api/login') == 3  # Wrong, cancelled inflight, explicit successful retry.
     if args.screenshots:
         assert len(list(output.glob('ux_*.png'))) == len(states)
     report = dict(ok=True, baseline=args.baseline, states=len(states), screenshots=len(states) if args.screenshots else 0,

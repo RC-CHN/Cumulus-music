@@ -1,6 +1,7 @@
 (async()=>{
  const sleep=ms=>new Promise(r=>setTimeout(r,ms)),el=s=>document.querySelector(s),all=s=>[...document.querySelectorAll(s)];
  const report=(stage,data={})=>window.__TAURI_INTERNALS__.invoke('plugin:event|emit',{event:'auth-proof',payload:{stage,...data}});
+ const assert=(condition,label)=>{if(!condition)throw Error(label);};
  const wait=async(fn,label,ms=30000)=>{const end=Date.now()+ms;while(Date.now()<end){if(await fn())return;await sleep(100);}throw Error(label);};
  const click=async node=>{if(!node)throw Error('missing_control');await wait(()=>node.isConnected&&!node.disabled,'disabled_control',70000);node.scrollIntoView({block:'nearest'});node.click();await sleep(100);};
  const text=(value,root=document)=>[...root.querySelectorAll('button')].find(n=>n.textContent.trim()===value);
@@ -22,7 +23,7 @@
    await click(el('.account-button'));await wait(()=>el('.qr-frame svg'),'qr');await stage('auth_qr',{expectGuest:true});
    step='email_rejected';await email('alice@example.test','wrong-password');await wait(()=>status()==='rejected','wrong_password');await stage('auth_rejected',{expectGuest:true});
    fill('登录密码','fixture-password');await click(el('.login-submit'));await logged('邮箱验证账号');await stage('auth_email',{expectNickname:'邮箱验证账号'});
-   step='two_factor';await add();await email('verify@example.test');await wait(()=>status()==='two_factor','two_factor');await click(text('获取验证方式'));await wait(()=>el('[aria-label="安全验证方式"]'),'verification_methods');await click(text('发送验证码'));await wait(()=>!el('[aria-label="安全验证码"]').disabled,'verification_sent');await stage('auth_two_factor',{expectNickname:'邮箱验证账号'});fill('安全验证码','123456');await click(text('确认验证'));await logged('二次验证账号');
+   step='two_factor';await add();await email('verify@example.test');await wait(()=>status()==='two_factor','two_factor');await click(text('获取验证方式'));await wait(()=>el('[aria-label="安全验证方式"]'),'verification_methods');assert(el('.login-challenge').textContent.includes('绑定手机号验证尚未接入，可选择其他方式'),'offered_binding_is_not_a_mandatory_requirement');assert(!el('.login-challenge').textContent.includes('当前账号需要绑定手机号'),'no_false_binding_requirement');await click(text('发送验证码'));await wait(()=>!el('[aria-label="安全验证码"]').disabled,'verification_sent');await stage('auth_two_factor',{expectNickname:'邮箱验证账号'});fill('安全验证码','123456');await click(text('确认验证'));await logged('二次验证账号');
    step='switch';await chooser();await stage('auth_accounts',{expectNickname:'二次验证账号'});await choose('邮箱验证账号');await logged('邮箱验证账号');await stage('auth_switched',{expectNickname:'邮箱验证账号'});
    step='question';await add();await email('question@example.test');await wait(()=>status()==='security_question','question_challenge');await click(text('读取安全问题'));await wait(()=>el('.login-questions'),'question');await stage('auth_question',{expectNickname:'邮箱验证账号'});await click(el('input[name="login-answer"][value="设备甲"]'));await click(text('确认答案'));await logged('安全问题账号');
    step='captcha_boundary';await add();await email('blocked@example.test');await wait(()=>status()==='captcha','captcha_boundary');await stage('auth_captcha_boundary',{expectNickname:'安全问题账号'});await click(el('[aria-label="关闭登录"]'));await logged('安全问题账号');

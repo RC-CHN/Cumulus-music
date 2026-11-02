@@ -75,7 +75,7 @@ impl HttpBackend for Service {
                     (json!({"code":200,"unikey":"synthetic-ui-qr"}), None)
                 }
                 "/api/login/qrcode/client/login" => (json!({"code":801}), None),
-                "/api/w/login" => {
+                "/api/w/login" | "/api/login" => {
                     if data["password"] != eapi::md5_hex(b"fixture-password") {
                         (json!({"code":502}), None)
                     } else {
@@ -115,7 +115,7 @@ impl HttpBackend for Service {
                     }
                     (json!({"code":200}), Some(4))
                 }
-                "/api/w/login/cellphone" => {
+                "/api/w/login/cellphone" | "/api/login/cellphone" => {
                     if data["captcha"] != "123456" || data["phone"] != "13800138000" {
                         return Err(Error::Response("fixture phone mismatch"));
                     }
@@ -136,7 +136,14 @@ impl HttpBackend for Service {
                 }
                 _ => return Err(Error::Response("unexpected native fixture request")),
             };
-            Ok(reply(value, login))
+            let is_jsk_challenge = path == "/api/login" && value["code"] == 8830;
+            let mut response = reply(value, login);
+            if is_jsk_challenge {
+                response
+                    .set_cookies
+                    .push("MUSIC_TU=fixture-two-factor; Path=/; Secure; HttpOnly".into());
+            }
+            Ok(response)
         })
     }
 }

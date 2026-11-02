@@ -46,6 +46,23 @@ impl HttpBackend for Service {
             let (path, data) = eapi::unwrap(params)?;
             *self.paths.lock().unwrap().entry(path.clone()).or_default() += 1;
             let mode = self.mode.lock().unwrap().clone();
+            if matches!(
+                path.as_str(),
+                "/api/login"
+                    | "/api/login/cellphone"
+                    | "/api/login/qrcode/unikey"
+                    | "/api/login/qrcode/client/login"
+            ) {
+                if data["fromPage"] != "JSK"
+                    || plan.headers.get("x-login-chain-id").map(String::as_str) != Some("")
+                {
+                    return Err(Error::Response("fixture JSK context missing"));
+                }
+                if path.contains("/qrcode/") && data["type"] != "5" {
+                    return Err(Error::Response("fixture JSK QR type"));
+                }
+            }
+
             if path == "/api/login/token/refresh/v1" {
                 if data["ydDeviceToken"] != "" || data["_scver"] != "1" {
                     return Err(Error::Response("fixture renewal fields"));
@@ -64,7 +81,11 @@ impl HttpBackend for Service {
                 }
                 return Ok(auth::reply(json!({"code":200}), uid));
             }
-            if path == "/api/w/login/cellphone" && data["password"].is_string() {
+            if matches!(
+                path.as_str(),
+                "/api/w/login/cellphone" | "/api/login/cellphone"
+            ) && data["password"].is_string()
+            {
                 if data["phone"] != "13800138000"
                     || data["password"] != eapi::md5_hex(b"fixture-password")
                 {
@@ -86,7 +107,7 @@ impl HttpBackend for Service {
             if path == "/api/logout" && mode == "logout_error" {
                 return Err(Error::Transport("合成服务器退出失败".into()));
             }
-            if path == "/api/w/login" && mode == "login_hold" {
+            if matches!(path.as_str(), "/api/w/login" | "/api/login") && mode == "login_hold" {
                 let (sender, receiver) = oneshot::channel();
                 *self.held.lock().unwrap() = Some(sender);
                 receiver

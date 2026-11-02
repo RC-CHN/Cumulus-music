@@ -64,11 +64,7 @@ async function verify() {
           :key="m"
           class="muted"
         >
-          {{
-            m === 'BINDING_CELLPHONE'
-              ? '当前账号需要绑定手机号，请前往官方 App 操作。'
-              : `${known[m]}尚未接入，请使用官方 App 完成验证。`
-          }}
+          {{ known[m] }}尚未接入，可选择其他方式，或前往官方 App 完成验证。
         </p>
         <form v-if="selected" class="credential-form" @submit.prevent="verify">
           <label
