@@ -1,0 +1,79 @@
+{
+  "sources": {
+    "hybrid_vendors_app_subApp.chunk.1482700000000.js/1368.js": "49da1d26373042091a3123f8948f1ce7e9968ec185e57369156fc1c6a6700db3",
+    "hybrid_app.chunk.1482700000000.js/15.js": "8ec4bf8d343f6963860eb73bc59ca09f0dd1ae50db2608a6c5abc7d69a0b521a",
+    "hybrid_app.chunk.1482700000000.js/48.js": "d8c0a8a0c03aca1339bc38e61c8c9a943cd3f4db6e214492e10c3c114acba4db"
+  },
+  "jsk": {
+    "startDeviceApply": {
+      "deviceName": "Synthetic PC",
+      "scene": "undefined",
+      "fromPage": "JSK"
+    },
+    "startScanApply": {
+      "deviceName": "Synthetic PC",
+      "scene": "undefined",
+      "fromPage": "JSK"
+    },
+    "checkDeviceStatus": {
+      "pollingToken": "fixture-device-token",
+      "scene": "null",
+      "fromPage": "JSK"
+    },
+    "checkScanApplyStatus": {
+      "pollingToken": "fixture-device-token",
+      "scene": "undefined",
+      "fromPage": "JSK"
+    },
+    "checkDeviceCaptcha": {
+      "pollingToken": "fixture-device-token",
+      "captcha": "123456",
+      "scene": "undefined",
+      "fromPage": "JSK"
+    },
+    "cancelDeviceApply": {
+      "pollingToken": "fixture-device-token",
+      "scene": "undefined",
+      "fromPage": "JSK"
+    },
+    "cancelScanApply": {
+      "pollingToken": "fixture-device-token",
+      "scene": "undefined",
+      "fromPage": "JSK"
+    }
+  },
+  "legacy": {
+    "/api/login/origin-device/apply/start": {
+      "deviceName": "Synthetic PC"
+    },
+    "/api/login/origin-device/apply/check": {
+      "pollingToken": "fixture-device-token",
+      "captcha": "123456"
+    },
+    "/api/login/origin-device/apply/check-status": {
+      "pollingToken": "fixture-device-token"
+    },
+    "/api/login/origin-device/apply/cancel": {
+      "pollingToken": "fixture-device-token"
+    },
+    "/api/login/origin-device/scan-apply/start": {
+      "deviceName": "Synthetic PC"
+    },
+    "/api/login/origin-device/scan-apply/check": {
+      "pollingToken": "fixture-device-token"
+    },
+    "/api/login/origin-device/scan-apply/cancel": {
+      "pollingToken": "fixture-device-token"
+    }
+  },
+  "stopBehavior": {
+    "stopScanVerify": {
+      "pollingStops": 1,
+      "networkRequests": 0
+    },
+    "stopDeviceVerify": {
+      "pollingStops": 1,
+      "networkRequests": 0
+    }
+  }
+}

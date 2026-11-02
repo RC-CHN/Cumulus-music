@@ -3,6 +3,7 @@
 //! account/get and an atomic profile-selection commit.
 mod challenge;
 mod cooldown;
+mod device;
 mod flow;
 mod protocol;
 mod qr;
@@ -10,6 +11,8 @@ mod request;
 mod state;
 pub use challenge::{LoginStatus, VerificationAction, classify};
 pub use cooldown::ResendCooldown;
+pub(crate) use device::DeviceCancellation;
+pub use device::{DeviceVerificationKind, DeviceVerificationPhase, DeviceVerificationView};
 pub use flow::{CredentialLogin, LoginGuardian, LoginSnapshot};
 pub use protocol::LoginProtocol;
 pub use qr::QrAuthentication;

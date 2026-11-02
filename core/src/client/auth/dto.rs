@@ -1,4 +1,4 @@
-use crate::account::login::LoginStatus;
+use crate::account::login::{DeviceVerificationKind, DeviceVerificationView, LoginStatus};
 use serde::{Deserialize, Serialize};
 
 /// Only the bounded resulting state crosses IPC; never the CAPTCHA proof.
@@ -44,6 +44,22 @@ pub enum LoginCommand {
         country_code: String,
     },
     VerificationMethods,
+    DeviceStart {
+        method: DeviceVerificationKind,
+    },
+    DevicePoll {
+        verification_id: String,
+    },
+    DeviceVerify {
+        verification_id: String,
+        code: String,
+    },
+    DeviceCancel {
+        verification_id: String,
+    },
+    DeviceStop {
+        verification_id: String,
+    },
     SecurityMailSend,
     SecurityMailVerify {
         code: String,
@@ -106,6 +122,7 @@ pub struct LoginView {
     pub retry_after_ms: u64,
     pub interrupted: bool,
     pub challenge: LoginChallengeView,
+    pub device: Option<DeviceVerificationView>,
 }
 
 #[derive(Serialize)]

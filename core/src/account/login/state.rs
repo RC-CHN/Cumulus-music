@@ -12,6 +12,7 @@ pub(super) struct State {
     pub pending: Option<LoginRequest>,
     pub challenge: Option<Value>,
     pub verification: Option<LoginStatus>,
+    pub device: Option<super::device::Attempt>,
 }
 
 impl Default for State {
@@ -25,6 +26,7 @@ impl Default for State {
             pending: None,
             challenge: None,
             verification: None,
+            device: None,
         }
     }
 }

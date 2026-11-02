@@ -31,11 +31,11 @@ pub struct CredentialLogin {
     session: Arc<AccountSession>,
     candidate: LoginCandidate,
     base: SessionToken,
-    state: Mutex<State>,
+    pub(super) state: Mutex<State>,
     cooldown: Arc<ResendCooldown>,
     guardian: Option<Arc<dyn LoginGuardian>>,
-    protocol: LoginProtocol,
-    api: Arc<dyn Api>,
+    pub(super) protocol: LoginProtocol,
+    pub(super) api: Arc<dyn Api>,
 }
 
 impl CredentialLogin {
@@ -73,7 +73,7 @@ impl CredentialLogin {
             api,
         })
     }
-    fn lock(&self) -> Result<MutexGuard<'_, State>> {
+    pub(super) fn lock(&self) -> Result<MutexGuard<'_, State>> {
         self.state.lock().map_err(|_| Error::LockPoisoned)
     }
     pub fn snapshot(&self) -> Result<LoginSnapshot> {
@@ -103,11 +103,12 @@ impl CredentialLogin {
         state.pending = None;
         state.challenge = None;
         state.verification = None;
+        state.device = None;
         state.busy = false;
         Ok(())
     }
 
-    async fn send(
+    pub(super) async fn send(
         &self,
         operation: &Operation<'_>,
         request: LoginRequest,
@@ -197,6 +198,7 @@ impl CredentialLogin {
         state.pending = None;
         state.challenge = None;
         state.verification = None;
+        state.device = None;
         state.status = LoginStatus::Authenticated;
         Ok(())
     }
@@ -393,26 +395,34 @@ impl CredentialLogin {
             let no_question = matches!(action, VerificationAction::QuestionGet)
                 && (response["data"].is_null()
                     || response["data"].as_object().is_some_and(|v| v.is_empty()));
-            if response["code"].as_i64() == Some(200) && (request.completes || no_question) {
-                match self.verify_identity(&operation).await {
-                    Ok(()) => (),
-                    Err(error) if error.is_service_code(301) => {
-                        let pending = operation
-                            .lock()?
-                            .pending
-                            .clone()
-                            .ok_or(Error::State("missing pending login"))?;
-                        // Only an acknowledged completed step permits this one
-                        // replay. A new challenge remains pending for the user.
-                        return self.send(&operation, pending, true, None).await;
-                    }
-                    Err(error) => return Err(error),
-                }
+            if response["code"].as_i64() == Some(200)
+                && (request.completes || no_question)
+                && let Some(replayed) = self.complete_verification(&operation).await?
+            {
+                return Ok(replayed);
             }
             Ok(response)
         }
         .await;
         operation.finish(result)
+    }
+    pub(super) async fn complete_verification(
+        &self,
+        operation: &Operation<'_>,
+    ) -> Result<Option<Value>> {
+        match self.verify_identity(operation).await {
+            Ok(()) => Ok(None),
+            Err(error) if error.is_service_code(301) => {
+                let pending = operation
+                    .lock()?
+                    .pending
+                    .clone()
+                    .ok_or(Error::State("missing pending login"))?;
+                // Only an acknowledged completed verification permits this one replay.
+                self.send(operation, pending, true, None).await.map(Some)
+            }
+            Err(error) => Err(error),
+        }
     }
     pub async fn reconcile(&self) -> Result<LoginSnapshot> {
         let operation = Operation::begin(&self.state, LoginStatus::CheckingIdentity, None)?;

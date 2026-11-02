@@ -62,6 +62,7 @@ pub(super) struct AuthHost {
     pending: Mutex<Option<PendingLogin>>,
     backend: Option<Arc<dyn HttpBackend>>,
     guardian: Option<Arc<dyn LoginGuardian>>,
+    device_name: Option<String>,
     cooldown: Arc<ResendCooldown>,
     renewal: renewal::RenewalHost,
 }
@@ -76,6 +77,15 @@ impl AuthHost {
     }
 }
 impl MusicClient {
+    /// Official original-device verification uses the local computer name.
+    /// This native configuration is distinct from the renewal signature model.
+    pub fn with_login_device_name(mut self, name: &str) -> Result<Self> {
+        if name.is_empty() || name.chars().count() > 256 || name.chars().any(char::is_control) {
+            return Err(Error::InvalidInput("invalid native login device name"));
+        }
+        self.auth.device_name = Some(name.into());
+        Ok(self)
+    }
     fn check_account_transition(&self) -> Result<()> {
         let token = self.session.token()?;
         if token.uid.is_none() {
@@ -157,13 +167,36 @@ impl MusicClient {
             .map_or(Ok(false), |p| p.authenticated().map(|done| !done))
     }
     pub fn cancel_login(&self, id: &str) -> Result<()> {
+        self.cancel_login_parts(id, false).map(|_| ())
+    }
+    /// Revoke locally first, then perform the legacy PC close cleanup once.
+    /// A lost cleanup response is returned, never automatically repeated.
+    pub async fn cancel_login_and_cleanup(&self, id: &str) -> Result<()> {
+        if let Some(cleanup) = self.cancel_login_parts(id, true)? {
+            cleanup.send().await?;
+        }
+        Ok(())
+    }
+    fn cancel_login_parts(
+        &self,
+        id: &str,
+        remote: bool,
+    ) -> Result<Option<crate::account::login::DeviceCancellation>> {
         let mut slot = self.auth.pending.lock().map_err(|_| Error::LockPoisoned)?;
         let pending = slot
             .as_ref()
             .filter(|p| p.id == id)
             .ok_or(Error::StaleResponse)?;
+        let cleanup = if remote {
+            match &pending.flow {
+                PendingFlow::Credentials { flow, .. } => flow.take_device_cleanup()?,
+                PendingFlow::Qr(_) => None,
+            }
+        } else {
+            None
+        };
         pending.cancel()?;
         *slot = None;
-        Ok(())
+        Ok(cleanup)
     }
 }

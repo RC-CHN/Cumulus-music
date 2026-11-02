@@ -57,6 +57,7 @@ impl MusicClient {
             retry_after_ms: state.retry_after_ms,
             interrupted: state.error_kind.is_some(),
             challenge: pending.view.clone(),
+            device: flow.device_snapshot()?,
         })
     }
 }

@@ -618,7 +618,10 @@ async fn jsk_primary_and_completed_verification_refresh_headers_require_complete
     for path in [
         "/api/login",
         "/api/login/cellphone",
+        "/api/login/token/refresh/v1",
         "/api/login/2fa/mail/captcha/check",
+        "/api/login/origin-device/apply/check",
+        "/api/login/origin-device/scan-apply/check",
         "/api/user/2fa/securityEmail/verify",
         "/api/middle/account/captcha/verify",
         "/api/user/2fa/order/check",
@@ -626,16 +629,21 @@ async fn jsk_primary_and_completed_verification_refresh_headers_require_complete
         "/api/login/cellphone/twice/question/verify",
         "/api/login/cellphone/twice/used/confirm",
     ] {
-        for (status, code, body_status, malformed, expected) in [
-            (200, 200, BodyStatus::Complete, false, true),
-            (200, 200, BodyStatus::Interrupted, false, false),
-            (500, 200, BodyStatus::Complete, false, false),
-            (200, 502, BodyStatus::Complete, false, false),
-            (200, 200, BodyStatus::Complete, true, false),
+        for (status, code, body_status, malformed, rejected, expected) in [
+            (200, 200, BodyStatus::Complete, false, false, true),
+            (200, 200, BodyStatus::Interrupted, false, false, false),
+            (500, 200, BodyStatus::Complete, false, false, false),
+            (200, 502, BodyStatus::Complete, false, false, false),
+            (200, 200, BodyStatus::Complete, true, false, false),
+            (200, 200, BodyStatus::Complete, false, true, false),
         ] {
             let (_tmp, credentials) = credentials();
             credentials.clear().unwrap();
-            let mut response = reply(json!({"code":code}));
+            let mut body = json!({"code":code});
+            if rejected {
+                body["data"] = json!({"success":false});
+            }
+            let mut response = reply(body);
             response.status = status;
             response.body_status = body_status;
             response.set_cookies =
@@ -670,6 +678,11 @@ async fn jsk_primary_and_completed_verification_refresh_headers_require_complete
 #[tokio::test]
 async fn non_completing_login_steps_cannot_install_a_refresh_header() {
     for path in [
+        "/api/login/origin-device/apply/start",
+        "/api/login/origin-device/apply/check-status",
+        "/api/login/origin-device/apply/cancel",
+        "/api/login/origin-device/scan-apply/start",
+        "/api/login/origin-device/scan-apply/cancel",
         "/api/login/qrcode/unikey",
         "/api/user/2fa/list",
         "/api/user/2fa/begin",
@@ -679,6 +692,8 @@ async fn non_completing_login_steps_cannot_install_a_refresh_header() {
         let (_tmp, credentials) = credentials();
         credentials.clear().unwrap();
         let mut response = reply(json!({"code":200}));
+        response.set_cookies =
+            vec!["MUSIC_U=fixture-non-completion; Path=/; Secure; HttpOnly".into()];
         response.refresh_token = Some("must-not-install".into());
         let transport = client(
             credentials.clone(),
@@ -700,6 +715,8 @@ async fn non_completing_login_steps_cannot_install_a_refresh_header() {
 #[tokio::test]
 async fn verification_ack_without_an_authorizing_cookie_cannot_install_refresh() {
     for path in [
+        "/api/login/origin-device/apply/check",
+        "/api/login/origin-device/scan-apply/check",
         "/api/login/2fa/mail/captcha/check",
         "/api/user/2fa/securityEmail/verify",
         "/api/middle/account/captcha/verify",

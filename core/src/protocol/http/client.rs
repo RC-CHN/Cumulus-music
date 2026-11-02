@@ -262,9 +262,9 @@ impl MusicHttpClient {
             }
         };
         let login_path = super::login::completes_login(path, &response.set_cookies);
-        let authorized = parsed
-            .as_ref()
-            .is_ok_and(|v| [Some(200), Some(803)].contains(&v["code"].as_i64()));
+        let authorized = parsed.as_ref().is_ok_and(|v| {
+            [Some(200), Some(803)].contains(&v["code"].as_i64()) && v["data"]["success"] != false
+        });
         let refresh = if (200..300).contains(&response.status) && login_path && authorized {
             response.refresh_token.as_deref()
         } else {

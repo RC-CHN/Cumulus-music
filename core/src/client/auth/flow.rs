@@ -1,5 +1,8 @@
 use super::*;
-use crate::account::login::{PhoneCredential, PhoneLogin, VerificationAction};
+use crate::account::login::{
+    DeviceVerificationKind, DeviceVerificationPhase, PhoneCredential, PhoneLogin,
+    VerificationAction,
+};
 use serde_json::{Value, json};
 
 impl MusicClient {
@@ -38,6 +41,22 @@ impl MusicClient {
     }
 
     pub async fn login_command(&self, id: &str, command: LoginCommand) -> Result<LoginView> {
+        if let LoginCommand::DeviceStop { verification_id } = &command {
+            let flow = {
+                let slot = self.auth.pending.lock().map_err(|_| Error::LockPoisoned)?;
+                let pending = slot
+                    .as_ref()
+                    .filter(|p| p.id == id)
+                    .ok_or(Error::StaleResponse)?;
+                pending.captcha.check_idle()?;
+                let PendingFlow::Credentials { flow, .. } = &pending.flow else {
+                    return Err(Error::StaleResponse);
+                };
+                flow.clone()
+            };
+            flow.device_leave(verification_id).await?;
+            return self.login_snapshot(id);
+        }
         let _gate = self.together.gate.lock().await;
         self.check_account_transition()?;
         let (mode, flow, view) = {
@@ -53,6 +72,28 @@ impl MusicClient {
             (*mode, flow.clone(), p.view.clone())
         };
         let state = flow.snapshot()?;
+        let device = flow.device_snapshot()?;
+        if device.as_ref().is_some_and(|v| {
+            matches!(
+                v.phase,
+                DeviceVerificationPhase::Starting
+                    | DeviceVerificationPhase::Waiting
+                    | DeviceVerificationPhase::Scanned
+                    | DeviceVerificationPhase::CodeRequired
+                    | DeviceVerificationPhase::Error
+                    | DeviceVerificationPhase::RecoveryRequired
+            )
+        }) && !matches!(
+            &command,
+            LoginCommand::DevicePoll { .. }
+                | LoginCommand::DeviceVerify { .. }
+                | LoginCommand::DeviceCancel { .. }
+                | LoginCommand::Reconcile
+        ) {
+            return Err(Error::State(
+                "stop device verification before changing methods",
+            ));
+        }
         let initial = matches!(state.status, LoginStatus::Ready | LoginStatus::CodeSent);
         let initial_mode = |expected| -> Result<()> {
             if mode != expected || !initial {
@@ -67,6 +108,7 @@ impl MusicClient {
             Ok(())
         };
         let mut projection = None;
+        let mut completed_device = false;
         match command {
             LoginCommand::PhonePassword {
                 phone,
@@ -142,6 +184,30 @@ impl MusicClient {
                     next.phone_mask = view::short_text(&r["data"]["phoneMask"]);
                     projection = Some(next);
                 }
+            }
+            LoginCommand::DeviceStart { method } => {
+                offered(if method == DeviceVerificationKind::Confirm {
+                    "DEVICE_CONFIRM"
+                } else {
+                    "DEVICE_SCAN"
+                })?;
+                flow.device_start(method, self.auth.device_name.as_deref().unwrap_or("PC"))
+                    .await?;
+            }
+            LoginCommand::DevicePoll { verification_id } => {
+                completed_device = flow.device_poll(&verification_id).await?;
+            }
+            LoginCommand::DeviceVerify {
+                verification_id,
+                code,
+            } => {
+                completed_device = flow.device_verify(&verification_id, &code).await?;
+            }
+            LoginCommand::DeviceCancel { verification_id } => {
+                flow.device_cancel(&verification_id).await?;
+            }
+            LoginCommand::DeviceStop { .. } => {
+                unreachable!("local stop handled before the business gate")
             }
             LoginCommand::SecurityMailSend => {
                 offered("SECURITY_EMAIL")?;
@@ -252,6 +318,9 @@ impl MusicClient {
             LoginCommand::Reconcile => {
                 flow.reconcile().await?;
             }
+        }
+        if completed_device && flow.snapshot()?.status != LoginStatus::Authenticated {
+            projection = Some(LoginChallengeView::default());
         }
         if let Some(view) = projection {
             let mut slot = self.auth.pending.lock().map_err(|_| Error::LockPoisoned)?;

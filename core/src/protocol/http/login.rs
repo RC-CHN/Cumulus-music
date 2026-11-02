@@ -70,6 +70,8 @@ fn verification_completion(path: &str) -> bool {
     matches!(
         path,
         "/api/login/2fa/mail/captcha/check"
+            | "/api/login/origin-device/apply/check"
+            | "/api/login/origin-device/scan-apply/check"
             | "/api/user/2fa/securityEmail/verify"
             | "/api/middle/account/captcha/verify"
             | "/api/user/2fa/order/check"
@@ -91,6 +93,13 @@ pub(super) fn jsk_login_path(path: &str) -> bool {
     matches!(
         path,
         "/api/login"
+            | "/api/login/origin-device/apply/start"
+            | "/api/login/origin-device/apply/check-status"
+            | "/api/login/origin-device/apply/check"
+            | "/api/login/origin-device/apply/cancel"
+            | "/api/login/origin-device/scan-apply/start"
+            | "/api/login/origin-device/scan-apply/check"
+            | "/api/login/origin-device/scan-apply/cancel"
             | "/api/login/cellphone"
             | "/api/login/qrcode/unikey"
             | "/api/login/qrcode/client/login"
