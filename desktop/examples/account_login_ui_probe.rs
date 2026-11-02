@@ -1,0 +1,81 @@
+//! Production account/login UI and IPC; synthetic HTTP, isolated native credentials.
+#[path = "support/auth.rs"]
+mod auth;
+#[path = "support/capture_ack.rs"]
+mod capture_ack;
+#[path = "support/account_login_fixture.rs"]
+mod fixture;
+use cumulus_core::client::MusicClient;
+use serde_json::{Value, json};
+use std::{fs, path::PathBuf, sync::Arc};
+use tauri::{Listener, Manager, webview::PageLoadEvent};
+
+fn main() {
+    // SAFETY: first operation, before GTK or any runtime/worker starts.
+    unsafe { cumulus_desktop::prepare_graphics() };
+    let root = PathBuf::from(std::env::var_os("CUMULUS_PROOF_DIR").expect("isolated output root"));
+    fs::create_dir(&root).expect("new proof root");
+    let output = root.join("first");
+    fs::create_dir(&output).unwrap();
+    let service = Arc::new(fixture::Service::default());
+    let baseline = std::env::var_os("CUMULUS_PROOF_BASELINE").is_some();
+    cumulus_desktop::configure(tauri::Builder::default())
+        .setup(move |app| {
+            let client = MusicClient::open_with_http_backend(&root.join("state"), None, service.clone())?;
+            let client = cumulus_desktop::renewal::configure(client, &cumulus_core::protocol::http::ClientProfile::default());
+            app.manage(cumulus_desktop::configure_native_audio(client, &app.path().resource_dir()?, true));
+            cumulus_desktop::renewal::start(app.handle());
+            app.get_webview_window("main").unwrap().set_size(tauri::LogicalSize::new(1120.0, 760.0))?;
+            app.add_capability(r#"{"identifier":"account-login-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
+            let handle = app.handle().clone();
+            let fixture = service.clone();
+            app.listen("account-login-fixture", move |event| {
+                let value: Value = serde_json::from_str(event.payload()).unwrap();
+                fixture.command(value["mode"].as_str().unwrap());
+                handle.get_webview_window("main").unwrap().eval(format!("window.__accountLoginAck={};", value["id"])).unwrap();
+            });
+            let handle = app.handle().clone();
+            app.listen("ux-proof", move |event| {
+                let mut value: Value = serde_json::from_str(event.payload()).unwrap();
+                let stage = value["stage"].as_str().unwrap_or("").to_owned();
+                if stage == "resize" {
+                    let scale = value["scale"].as_f64().unwrap();
+                    assert!(scale.is_finite() && scale > 0.0 && scale <= 4.0);
+                    handle.get_webview_window("main").unwrap().set_size(tauri::PhysicalSize::new((value["width"].as_f64().unwrap()*scale).round() as u32, (value["height"].as_f64().unwrap()*scale).round() as u32)).unwrap();
+                    return;
+                }
+                if !stage.starts_with("ux_") && !["complete", "failed"].contains(&stage.as_str()) { return; }
+                let client = handle.state::<MusicClient>();
+                let account = client.account().unwrap();
+                value["nativeAccount"] = serde_json::to_value(&account).unwrap();
+                value["sessionRenewal"] = serde_json::to_value(client.session_renewal(&account.epoch).unwrap()).unwrap();
+                value["fixture"] = service.snapshot();
+                value["savedAccounts"] = serde_json::to_value(client.saved_accounts(&account.epoch).unwrap()).unwrap();
+                value["realMusicRequests"] = json!(0);
+                let correct = value["expectNickname"].as_str().is_none_or(|name| account.nickname.as_deref() == Some(name))
+                    && (!value["expectGuest"].as_bool().unwrap_or(false) || account.status != cumulus_core::account::SessionStatus::Authenticated);
+                if !correct { value["nativeMismatch"] = json!(true); }
+                let name = if correct { stage.as_str() } else { "failed" };
+                fs::write(output.join(format!("{name}.json")), serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+                if !correct || stage == "failed" || stage == "complete" {
+                    handle.exit(if correct && stage == "complete" { 0 } else { 1 });
+                } else if std::env::var("CUMULUS_PROOF_CAPTURE_ACK").as_deref() != Ok("1") {
+                    handle.get_webview_window("main").unwrap().eval(format!("window.__CUMULUS_PROOF_ACK__={};", json!(stage))).unwrap();
+                } else {
+                    let handle = handle.clone(); let output = output.clone();
+                    tauri::async_runtime::spawn(async move {
+                        capture_ack::acknowledge(&handle, &output, &stage, value["captureHandshake"] == true).await;
+                    });
+                }
+            });
+            Ok(())
+        })
+        .on_page_load(move |webview, payload| {
+            if payload.event() == PageLoadEvent::Finished {
+                webview.eval(format!("window.__accountLoginBaseline={baseline};")).unwrap();
+                webview.eval(capture_ack::script(include_str!("account_login_ui_probe.js"))).unwrap();
+            }
+        })
+        .run(tauri::generate_context!())
+        .expect("account/login proof");
+}

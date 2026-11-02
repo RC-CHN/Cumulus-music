@@ -36,6 +36,10 @@ name = "auth_ui_probe"
 required-features = ["custom-protocol"]
 
 [[example]]
+name = "account_login_ui_probe"
+required-features = ["custom-protocol"]
+
+[[example]]
 name = "captcha_ui_probe"
 required-features = ["custom-protocol"]
 

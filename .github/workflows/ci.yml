@@ -245,6 +245,8 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/fonts_smoke.py --binary .build/target/debug/examples/desktop_lyrics_ui_probe --root .build/ci-fonts-linux
           cargo build -p cumulus-desktop --example saved_accounts_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/accounts_smoke.py --binary .build/target/debug/examples/saved_accounts_ui_probe --root .build/ci-accounts-linux
+          cargo build -p cumulus-desktop --example account_login_ui_probe --features custom-protocol --locked
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/account_login_smoke.py --binary .build/target/debug/examples/account_login_ui_probe --root .build/ci-account-login-linux
           cargo build -p cumulus-desktop --example output_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/output_settings_smoke.py --binary .build/target/debug/examples/output_ui_probe --root .build/ci-output-settings-linux
           cargo build -p cumulus-desktop --example tray_ui_probe --features custom-protocol --locked
@@ -369,6 +371,8 @@ jobs:
           python scripts/ci/shortcut_smoke.py --binary .build/target/debug/examples/shortcut_probe.exe --root .build/ci-shortcuts-windows --runtime .build/package-stage/windows-x64/native
           cargo build -p cumulus-desktop --example saved_accounts_ui_probe --features custom-protocol --locked
           python scripts/ci/accounts_smoke.py --binary .build/target/debug/examples/saved_accounts_ui_probe.exe --root .build/ci-accounts-windows --runtime .build/package-stage/windows-x64/native
+          cargo build -p cumulus-desktop --example account_login_ui_probe --features custom-protocol --locked
+          python scripts/ci/account_login_smoke.py --binary .build/target/debug/examples/account_login_ui_probe.exe --root .build/ci-account-login-windows --runtime .build/package-stage/windows-x64/native
           cargo build -p cumulus-desktop --example output_ui_probe --features custom-protocol --locked
           python scripts/ci/output_settings_smoke.py --binary .build/target/debug/examples/output_ui_probe.exe --root .build/ci-output-settings-windows --runtime .build/package-stage/windows-x64/native
           cargo build -p cumulus-desktop --example startup_ui_probe --features custom-protocol --locked
