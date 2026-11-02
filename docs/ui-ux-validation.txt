@@ -4516,3 +4516,48 @@ collection-library-mapping.json；没有使用YesPlayMusic。
   refreshToken下发/成对续期仍未实测，不把会员身份或合成刷新解释为一定可取得令牌。
   六格PIN/自动提交、官方5分钟说明、扫码/失效遮罩与就地刷新、申请加载/在途关闭截图、
   完整UP_SMS境内上行、处罚/实名、旧网页/注册找回等仍继续；整个目标保持进行中。
+
+2026-11-02 账号/登录续项：六格PIN、重新申请与实际绘制
+- 官方恢复pinCode.tsx及DoubleVerifyConfirm/Scan逐项对照；六格、18px字号、44px高、5px
+  圆角、10px间隔、填满自动提交、删除前一格和粘贴已恢复。窄窗等分缩小单格宽、数字过滤、
+  一次性验证码填入是明确的社区适配；来源散列与映射在device-login-mapping.json。
+- 新增待发输入只等待正在执行的状态读取，不重复发送确认；发送前清空全部6个DOM值，
+  错误回首格，编辑清错误；失效/返回/关闭撤回待发内容。已恢复5分钟说明、确认重新发送、
+  扫码确认/失效遮罩及就地刷新。811扫码按官方使用失效遮罩，不混用确认码的次数过多文案。
+- 815自动回方法列表并恢复原卡片焦点，拒绝说明采用列表内持久提示，随后安全邮箱仍可选择。
+  没有自动再发申请。未知申请/确认结果只允许核对或离开；无验证ID的申请在途可以关闭。
+- Native fake service增加每次申请不同token、申请回包屏障和慢状态读；没有真实设备通知、
+  短信邮件或服务端请求。脚本仍只从DOM操作业务，私有事件只控制fake服务何时回包。
+- 原29态扩为39态：增加逐格/箭头/删除/非法粘贴、填满等待只读完成、错误后编辑、确认
+  重新发送、新二维码内容变化、部分输入关闭与原DOM清空、申请在途关闭/迟到回包忽略。
+  初始部分输入不提交，整轮确认POST严格为4次，未知结果未重复发；每次刷新恰好多一次
+  start，旧URI不复用；在途/关闭后的原生账号epoch不变。两平台CI均必需运行同39态两协议。
+- 最终device-ui-visible-gui与device-ui-visible-legacy各39态/39PNG，device-ui-visible-kde为
+  本机KDE Wayland/XWayland125%另39态/39PNG，均外层0。两主题与1120×760/760×540，
+  实际生产Vue/WebView/IPC/core与隔离SQLite；只有HTTP为合成服务。标准PIN/错误/二维码
+  步骤新增无纵向滚动断言，其它长内容仍有界。焦点、命中、无横溢、原生状态与请求计数通过。
+- 最终本机39图经device-ui-visible-gallery七张裁切联系表全部查看。最初first轮发现错误文字
+  贴PIN过近、短窗社区页脚裁切；已修间距并隐藏验证步骤的重复账号入口/社区页脚，普通登录
+  入口不变。后续delivery/paint轮发现加载PNG处于过渡绘制状态，DOM opacity=1不足以证明
+  文字可见；这些中间PNG不算最终可见性证据。没有为通过截图删掉动画或放宽功能断言。
+- 进入/返回/遮罩动画仅transform/opacity、120–150ms，显式保留终值；减少动态效果下停用。
+  拍照前检查实际计算透明度并留出绘制间隔；本机截自有PID窗口后，额外读取加载文字区域
+  像素，要求至少1%像素达到预期前背景差的60%。最终stage37为835像素/最低44，通过；
+  绘制检查等待约0.82秒。此结果证明最终截图文字可读，不能反推此前永久卡住或显卡根因，
+  也不当作实机满刷新率或Windows/macOS视觉证明。
+- Rust业务代码本轮未变，native fixture变更后严格格式/Clippy及workspace/all-targets/
+  custom-protocol/locked完整回归285程序1503项通过，0失败/0忽略（device-ui-workspace-first）。
+  其后仅Vue/CSS/DOM断言调整；最终重新严格Clippy和构建正式cumulus及四个相关探针。
+  npm ci、格式/558前端测试/类型与生产构建通过；最终21个dist先冻结再编译原生宿主，
+  冻结清单device-ui-visible-dist-freeze.json；Python CI工具47项、脚本语法/编译通过。
+- 最终device-ui-visible-account普通账号28态/28PNG、device-ui-visible-jsk-auth的16态
+  （含重启）/15个SQLite独立审计均通过。最终宿主旧链16态/16PNG/15SQLite与续期五态/
+  5PNG及journal审计也通过，分别在device-login-device-ui-visible-legacy-auth-regression和
+  device-login-device-ui-visible-renewal-regression；不把合成自动续期称为本人真实令牌轮换。
+- 旧头20d96c2 CI41434748784现已最终失败：Windows仍为此前邮箱切换读到离场ready的
+  第6态editable登录邮箱；日志device-ui-prior-head-failed.log，4665fb3已修所选tab/新输入/
+  原生ready等待。96a3b00 CI41449092743仍须观察同一运行的最终结果，不盲目再派发。
+  当前新头CI另计；本文不将父头/本机/单个平台成功当作跨平台CI全部成功。未合并或发布。
+- 本轮没有真实账号登录、设备通知、短信邮件、真实退出/轮换或音乐业务写入；真人原设备
+  验证、真实refreshToken下发/成对轮换仍未实测。完整UP_SMS上行、处罚/实名、旧网页、
+  注册找回/地区协议及其余UI/SDK分支仍继续，整个目标保持进行中。

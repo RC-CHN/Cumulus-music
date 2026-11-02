@@ -7,7 +7,8 @@
     "ui-recovery/sources/packages/pc/src/pages/login/views/DoubleVerifyList.tsx": "9e278bd8b2697a6fc613233163bd148089248499aa25255aa9d39fffe253ff63",
     "ui-recovery/sources/packages/pc/src/pages/login/views/DoubleVerifyConfirm.tsx": "31381bc747c598bf2ba058cf4d46130edfc8332d2b0831258eaa898767e27f61",
     "ui-recovery/sources/packages/pc/src/pages/login/views/DoubleVerifyScan.tsx": "efedb5c7b78e37f9ab0fc802ac2c29894e3c8813003ec029839ba7e69d226e69",
-    "ui-recovery/sources/packages/pc/src/pages/login/views/DoublVerifyeCellphoneBind.tsx": "5a0e0317bb6fb16a82a6806447acd043c0df1adada4f76a9f2a09011a703eda4"
+    "ui-recovery/sources/packages/pc/src/pages/login/views/DoublVerifyeCellphoneBind.tsx": "5a0e0317bb6fb16a82a6806447acd043c0df1adada4f76a9f2a09011a703eda4",
+    "ui-recovery/sources/packages/pc/src/pages/login/views/pinCode.tsx": "c0eb25f547b4cc546faad65ec0a3828683dd7272c4925f935eb7e203a15f23bb"
   },
   "officialFirst": true,
   "yesPlayMusicUsed": false,
@@ -86,6 +87,23 @@
         "frontend/tests/login-state.test.ts",
         "desktop/examples/device_login_ui_probe.js"
       ]
+    },
+    {
+      "name": "six-slot automatic PIN, pending reads, terminal retry and pending application close",
+      "official": [
+        "pinCode.tsx",
+        "DoubleVerifyConfirm.tsx",
+        "DoubleVerifyScan.tsx"
+      ],
+      "ui": [
+        "frontend/src/components/login/PinCode.vue",
+        "frontend/src/components/login/DeviceVerification.vue"
+      ],
+      "tests": [
+        "desktop/examples/device_login_ui_probe.js",
+        "scripts/ci/device_login_smoke.py"
+      ],
+      "boundary": "Digits-only and responsive slot width are community adaptations; no real-phone confirmation or pixel-identity claim."
     }
   ],
   "boundaries": [
@@ -94,8 +112,7 @@
     "Hostname is original-device request data, distinct from refresh signature model.",
     "Binding phone follows official PC mobile handoff; WeChat and full mainland UP_SMS uplink remain open.",
     "No same-state official runtime image: no pixel-identity claim.",
-    "Only Linux and Windows x86_64 are support targets.",
-    "Continue UI audit: six-slot automatic PIN submission, five-minute instructions, scan/expiry overlays and inline refresh, visible pending-start feedback. These are not declared complete or externally blocked."
+    "Only Linux and Windows x86_64 are support targets."
   ],
   "verification": {
     "officialOracle": "desktop/tests/device_login_official.cjs",
