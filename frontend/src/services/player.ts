@@ -220,6 +220,7 @@ export type PlayerAction =
   | { kind: 'retry_equalizer' | 'repair_equalizer' }
   | { kind: 'play' | 'next' | 'previous' | 'stop' | 'restore' | 'startup' | 'refresh' | 'clear' }
   | { kind: 'pause'; paused: boolean }
+  | { kind: 'pause_for'; play_id: string; expected_queue_revision: string; paused: boolean }
   | { kind: 'seek'; seconds: number }
   | { kind: 'volume' | 'speed'; value: number }
   | { kind: 'quality'; level: Quality }

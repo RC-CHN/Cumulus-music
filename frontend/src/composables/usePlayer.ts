@@ -356,6 +356,30 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     }
   }
   const select = (input: PlaySelection) => run((e) => core.playSelection(e, input));
+  function togglePlaylist(id: string) {
+    if (!ready.value || busy.value || queueBusy.value) return;
+    const current = view.value;
+    if (
+      current?.origin?.kind === 'playlist' &&
+      current.origin.id === id &&
+      current.playId &&
+      !current.fm &&
+      loaded.value
+    )
+      return action({
+        kind: 'pause_for',
+        play_id: current.playId,
+        expected_queue_revision: current.queueRevision,
+        paused: playing.value,
+      });
+    return select({
+      kind: 'playlist',
+      id,
+      start_id: null,
+      revision: null,
+      quality: current?.qualityPreferences.quality ?? 'standard',
+    });
+  }
   // A page with its own snapshot/retry UI owns this failure. Do not retain a
   // footer retry that would resend its captured, potentially expired revision.
   async function selectForPage(input: PlaySelection) {
@@ -532,6 +556,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     intelligence,
     syncPlayback,
     select,
+    togglePlaylist,
     selectForPage,
     downloads,
     retry,

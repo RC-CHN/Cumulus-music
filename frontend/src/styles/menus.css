@@ -26,6 +26,9 @@
 .action-menu.ranking-year-menu button.checked {
   background: var(--accent-soft);
 }
+.action-menu.ranking-year-menu button:focus-visible {
+  outline-offset: -2px;
+}
 .action-menu.ranking-year-menu .menu-check {
   display: none;
 }

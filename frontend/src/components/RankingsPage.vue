@@ -11,6 +11,7 @@ import type {
   RankingUiState,
 } from '../services/rankings';
 import type { TrackView } from '../services/contracts';
+import type { PlaybackStatus } from '../services/player';
 import RankingCards from './RankingCards.vue';
 import RankingPeriods from './RankingPeriods.vue';
 import TrackTable from './TrackTable.vue';
@@ -21,6 +22,8 @@ const props = defineProps<{
   liked: Set<string>;
   busyLikes: Set<string>;
   currentId?: string;
+  currentPlaylistId?: string;
+  playbackState?: PlaybackStatus;
 }>();
 const emit = defineEmits<{
   navigate: [query: RankingQuery, state?: RankingUiState];
@@ -177,6 +180,8 @@ function change(n: number | null, newest: boolean) {
       v-if="page?.kind === 'home'"
       :groups="page.groups"
       :playable="playable"
+      :current-playlist-id="currentPlaylistId"
+      :playback-state="playbackState"
       @open="open"
       @play="playPlaylist"
     />

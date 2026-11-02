@@ -300,13 +300,7 @@ function playCatalog(pages: CatalogSelectionPage[], index: number) {
   });
 }
 function playRankingPlaylist(id: string) {
-  void player.select({
-    kind: 'playlist',
-    id,
-    start_id: null,
-    revision: null,
-    quality: player.view.value?.qualityPreferences.quality ?? 'standard',
-  });
+  void player.togglePlaylist(id);
 }
 function playRankingSongs(tracks: TrackView[], index: number) {
   if (!tracks[index] || tracks[index].missing) return;
@@ -1605,6 +1599,8 @@ onUnmounted(() => {
                 :liked="liked"
                 :busy-likes="busyLikes"
                 :current-id="currentTrackId"
+                :current-playlist-id="currentPlaylistId"
+                :playback-state="playbackState"
                 @navigate="openRanking"
                 @playlist="(id) => music.navigate({ kind: 'playlist', id })"
                 @play-playlist="playRankingPlaylist"

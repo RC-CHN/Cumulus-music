@@ -3,9 +3,28 @@ import { ref } from 'vue';
 import type { RankingCard, RankingGroup } from '../services/rankings';
 import { movement } from '../services/rankings';
 import Icon from './Icon.vue';
-defineProps<{ groups: RankingGroup[]; playable: boolean }>();
+import type { PlaybackStatus } from '../services/player';
+const props = defineProps<{
+  groups: RankingGroup[];
+  playable: boolean;
+  currentPlaylistId?: string;
+  playbackState?: PlaybackStatus;
+}>();
 defineEmits<{ open: [card: RankingCard]; play: [id: string] }>();
 const failedCovers = ref(new Set<string>());
+function active(id: string) {
+  return (
+    props.currentPlaylistId === id && ['playing', 'buffering'].includes(props.playbackState ?? '')
+  );
+}
+function label(card: RankingCard) {
+  const action = active(card.id)
+    ? '暂停榜单'
+    : props.currentPlaylistId === card.id && props.playbackState === 'paused'
+      ? '继续播放榜单'
+      : '播放榜单';
+  return `${action} ${card.name}`;
+}
 </script>
 <template>
   <div class="ranking-groups">
@@ -88,12 +107,15 @@ const failedCovers = ref(new Set<string>());
           <button
             v-if="card.canPlay && card.target === 'playlist'"
             class="rank-play icon-button"
+            :class="{ playing: active(card.id) }"
             data-rank-action="play"
-            :aria-label="`播放榜单 ${card.name}`"
+            :aria-label="label(card)"
+            :title="label(card)"
+            :aria-pressed="active(card.id)"
             :disabled="!playable"
             @click="$emit('play', card.id)"
           >
-            <Icon name="play" />
+            <Icon :name="active(card.id) ? 'pause' : 'play'" />
           </button>
         </article>
       </div>
@@ -184,11 +206,13 @@ const failedCovers = ref(new Set<string>());
 .rank-play:disabled {
   opacity: 0;
 }
+.rank-play.playing,
 .ranking-card:hover .rank-play,
 .ranking-card:focus-within .rank-play {
   opacity: 1;
   pointer-events: auto;
 }
+.rank-play.playing:disabled,
 .ranking-card:hover .rank-play:disabled,
 .ranking-card:focus-within .rank-play:disabled {
   opacity: 0.4;

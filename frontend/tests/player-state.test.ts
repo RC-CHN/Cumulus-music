@@ -279,6 +279,127 @@ function lyrics(playId: string): LyricsView {
     fromCache: false,
   };
 }
+test('playlist source controls pause or resume the loaded native session without selecting it again', async () => {
+  const calls: PlayerAction[] = [];
+  let selections = 0;
+  const f = fixture({
+    playerAction: async (_epoch, input) => {
+      calls.push(input);
+      return { ...state('10', '1', 'native-play'), origin: { kind: 'playlist', id: '7' } };
+    },
+    playSelection: async () => {
+      selections++;
+      return state('20');
+    },
+  });
+  await f.player.connect(account());
+  for (const status of ['playing', 'paused', 'buffering'] as const) {
+    f.emit({
+      ...state('11', '1', 'native-play'),
+      state: status,
+      origin: { kind: 'playlist', id: '7' },
+      queueRevision: '9',
+    });
+    await f.player.togglePlaylist('7');
+  }
+  assert.deepEqual(
+    calls,
+    [true, false, true].map((paused) => ({
+      kind: 'pause_for',
+      play_id: 'native-play',
+      expected_queue_revision: '9',
+      paused,
+    })),
+  );
+  assert.equal(selections, 0);
+  f.player.dispose();
+});
+test('other resource origins and unloaded playlist sessions select with the saved quality', async () => {
+  const selections: import('../src/services/player.ts').PlaySelection[] = [];
+  let actions = 0;
+  const f = fixture({
+    playerAction: async () => {
+      actions++;
+      return state();
+    },
+    playSelection: async (_epoch, input) => {
+      selections.push(input);
+      return state('10');
+    },
+  });
+  await f.player.connect(account());
+  for (const value of [
+    {
+      origin: { kind: 'album' as const, id: '7' },
+      state: 'playing' as const,
+      playId: 'album-play',
+    },
+    {
+      origin: { kind: 'playlist' as const, id: '8' },
+      state: 'paused' as const,
+      playId: 'other-play',
+    },
+    { origin: { kind: 'playlist' as const, id: '7' }, state: 'idle' as const, playId: null },
+    {
+      origin: { kind: 'playlist' as const, id: '7' },
+      state: 'error' as const,
+      playId: 'failed-play',
+    },
+  ]) {
+    f.emit({
+      ...state('11'),
+      ...value,
+      qualityPreferences: {
+        revision: 'saved',
+        quality: 'hires',
+        damaged: false,
+        appliesToCurrent: true,
+      },
+    });
+    await f.player.togglePlaylist('7');
+  }
+  assert.equal(actions, 0);
+  assert.equal(selections.length, 4);
+  for (const input of selections)
+    assert.deepEqual(input, {
+      kind: 'playlist',
+      id: '7',
+      start_id: null,
+      revision: null,
+      quality: 'hires',
+    });
+  f.player.dispose();
+});
+test('a pending source command rejects repeated card clicks and cannot publish into another account', async () => {
+  const result = deferred<PlayerView>();
+  let actions = 0,
+    selections = 0;
+  const f = fixture({
+    playerAction: async () => {
+      actions++;
+      return result.promise;
+    },
+    playSelection: async () => {
+      selections++;
+      return state();
+    },
+  });
+  await f.player.connect(account());
+  f.emit({ ...state('2', '1', 'old-play'), origin: { kind: 'playlist', id: '7' } });
+  const pending = f.player.togglePlaylist('7');
+  await f.player.togglePlaylist('7');
+  await f.player.togglePlaylist('8');
+  assert.equal(actions, 1);
+  assert.equal(selections, 0);
+  await f.player.connect(account('2'));
+  f.emit({ ...state('2', '2', 'new-play'), origin: { kind: 'playlist', id: '8' } });
+  result.resolve({ ...state('9', '1', 'old-play'), state: 'paused' });
+  await pending;
+  assert.equal(f.player.view.value?.epoch, '2');
+  assert.equal(f.player.view.value?.playId, 'new-play');
+  assert.equal(f.player.view.value?.state, 'playing');
+  f.player.dispose();
+});
 function fixture(overrides: Partial<PlayerClient> = {}) {
   let callback: (event: PlayerUpdate) => void = () => {};
   let stopped = 0;
