@@ -1,0 +1,99 @@
+安全邮箱二次验证：官方依据、原生状态机与桌面交互
+2026-11-03。本专项属于账号/登录；不代表全部登录SDK或全应用完成。
+
+官方来源与对照
+优先使用官方3.1.42.205594恢复材料，本批未参考YesPlayMusic。
+references/ui-recovery/sources/packages/pc/src/pages/login/views/：
+DoubleVerifyEmailBind.tsx sha256 1f1759285125d7a6e6bc27d3536a0c2436ceaf442a25e3966ef71363af15cc28
+LoginUserInfo.tsx sha256 490faa596e2f0c4925f05fb9caf491574b7e118b05d78f207115ddf8454651a7
+pinCode.tsx sha256 c0eb25f547b4cc546faad65ec0a3828683dd7272c4925f935eb7e203a15f23bb
+DoubleVerifyList.tsx sha256 9e278bd8b2697a6fc613233163bd148089248499aa25255aa9d39fffe253ff63
+JSK M/1368 EmailVerifyHandler.sendEmailCaptcha/verifyEmailCaptcha选择SECURITY_EMAIL的两个端点，
+默认scene字符串"0"；M/15旧helper使用scene数字0，经M/48序列化后同为字符串"0"。
+三个模块的完整来源散列随冻结向量保存在core/tests/fixtures/email-login-official.json。
+有本地恢复材料时可从仓库根运行：node desktop/tests/email_login_official.cjs。
+该脚本执行原参数构造、旧helper和M/48序列化；不执行完整SDK、不联网，也不代表真人验证。
+
+入口及接口
+真实双实验仍决定使用新JSK或旧链，整个候选沿用同一协议，不在失败后换链。
+先完成原登录的8830挑战、获取服务端方法列表和对应begin；只有SECURITY_EMAIL确实被提供，
+正式入口才允许发送。选择安全邮箱即发送一次，与官方页面进入时发送一致。
+POST /api/user/2fa/securityEmail/send {scene:"0"}
+POST /api/user/2fa/securityEmail/verify {scene:"0",captcha:"六位ASCII数字"}
+JSK另由原生适配加fromPage=JSK、候选限定x-music-tu和空x-login-chain-id；旧链不加这些SDK项。
+邮箱目标、scene、票据、授权Cookie和接口URL均不能由前端填写；目标来自账号自身绑定的安全邮箱。
+mailAddress仅作为有界显示信息返回，不作为之后verify请求的参数；URL、控制字符和异常邮箱格式
+不进入DTO，也不因显示字段无效阻止验证。输入OTP在发出前清空DOM，
+不写设置、日志、草稿或登录凭据库；验证码本身不会进入返回DTO。
+core/src/account/login/email.rs保存候选限定UUID、状态和取消通知；client/auth只提供类型化用例。
+security_mail_verify/resend/stop都要求当前本机verification_id；旧ID或其它候选不能控制新尝试。
+
+状态及恢复
+sending -> code_required：已确认code200且data不是false、data.success不是false。
+显示服务端mailAddress；缺显示信息时用“绑定的安全邮箱”，不让显示字段缺失阻止本人的验证码验证。
+4011 -> send_limit：邮箱验证码使用达上限；无再次发送/输入入口，点击“我知道了”回方法列表。
+4012：六格清空、显示验证码错误，回首格；编辑时清除旧错误，不自动再次提交。
+4013 -> verify_limit：过期或错误次数过多；移除输入框，显示“重新发送”，明确点击才发新请求。
+重新发送创建新本机ID并清旧输入；不借用短信发送的本机60秒计时阻止官方邮箱重发流程。
+服务端明确拒绝发送 -> failed，提供显式重试；没有已发送提示。
+发送响应丢失/中断 -> send_unconfirmed，不自动再发；如本人已收到邮件，仍可输入原验证码。
+验证响应丢失/中断或已确认步骤后的身份/原登录回放结果不明 -> recovery_required，撤下PIN，
+仅提供只读“核对登录状态”，不重复提交验证码或再次发送。请求有45秒截止，取消与任务丢弃
+释放本机忙状态；未知写入不转为一个可再次写入的普通错误。
+没有恢复到有效账号时保留不确定状态；已收到Cookie的中断响应可供明确account/get核对，
+但中断响应中的RT不算已确认回执。明确RequestNotSent的上下文准备失败允许本人重试PIN，
+不要求重新发邮件；只有真正无法确认是否已发出的请求才进入只读恢复。服务器未返回RT时不生成、猜测或复制其它账号令牌。
+确认verify成功后先account/get，只在明确301时允许原登录请求回放一次；其它失败只核对。
+发送成功不是验证成功，HTTP200/business=false也不是；均不得采用身份。
+若回放产生新挑战，清掉旧邮件步骤与方法投影，必须重新获取适用方法，不复用过期offers。
+只有核对实际身份并原子采用候选后才成为当前账号。登录队列/媒体切换沿用既有账号代次屏障。
+
+返回与关闭
+官方邮箱流程没有远程cancel接口。返回本机停止当前尝试、清输入并撤回迟到结果的采用能力；
+不声称邮件已撤回，也不调用一个编造的取消API。停止在业务互斥锁前处理，可抢先取消在途验证码
+校验；关闭整个登录同样立即撤回候选。其它方法在邮箱仍活动时不能并行开始。
+新登录完成、切换或关闭之后，旧响应不能覆盖新账号，也不能重开已经离开的步骤。
+
+UI/UX
+标题“安全邮箱验证”，头像/昵称沿用列表的服务端身份；这一步隐藏普通登录重复入口与页脚。
+采用既有六格PIN控件：六位ASCII、粘贴/系统一次性验证码、左右/退格、填满一次自动提交。
+邮箱PIN使用独立可访问名称，不把它标成原设备确认码；底层控件默认原设备语义保持兼容。
+315px有界内容、44px高输入、18px字号、10px间隔；长邮箱保留域名并有完整title，窄窗不横向溢出。
+按LoginUserInfo.tsx恢复60px头像/缺图人物占位、横排“用户昵称”与两行有界昵称，不叠加手机号。
+验证有效期按语义短句换行，避免只把最后一个汉字挤到单独一行。
+发送加载文字显式采用主题次要文字颜色；最终深色截图另检查实际字形像素对比度，
+避免透明布局/正文继承导致文字落成近黑色。
+十分钟有效期沿用官方说明，由服务器判断是否过期；前端不猜造发码时间或本地过期授权。
+发送上限、校验上限、已知错误、未知发送/验证均有不同提示和动作；返回恢复原安全邮箱卡片焦点。
+保留Cumulus品牌、统一主题与弹窗，以及120–150ms transform/opacity过渡；尊重减少动态效果。
+没有同状态官方实机截图，不声称像素一致；新增未知结果提示属于社区恢复行为。
+
+可执行验证
+固定工具链与锁文件：
+  cargo test -p cumulus-core --test client_email_login --test client_auth --test client_jsk_login --locked
+  npm --prefix frontend ci
+  npm --prefix frontend run format:check
+  npm --prefix frontend test
+  npm --prefix frontend run build
+先等待前端构建完成并固定dist，再编译原生宿主：
+  cargo build -p cumulus-desktop --example email_login_ui_probe --features custom-protocol --locked
+Linux：
+  CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a \
+    dbus-run-session -- python3 scripts/ci/email_login_smoke.py --binary /absolute/email_login_ui_probe \
+    --root /absolute/new-proof-root --screenshots
+另用全新root加--legacy验证旧链。Windows同一驱动，传.exe和--runtime原生库目录；CI两协议都必须通过。
+探针使用真实Vue/WebView/IPC/core，只有音乐HTTP为隔离合成服务；并不发送真实邮件或采用真实账号。
+audit_email_probe.py只读审计SQLite：保存账号按UID去重、选定凭据真实落库；两条有效成对回执、
+一条中断响应的Cookie无RT且不补造登录时间；核对身份后账号代次改变，公开阶段没有凭据。
+该审计已纳入email_login_smoke.py，两平台CI失败不能忽略。
+实际通过记录、截图、失败探索及精确CI结果补充在ui-ux-validation.txt和rust-core-validation.txt。
+本地最终轮次为.build/email-visible-*：两协议各22态/22PNG，真实KDE/XWayland 125%
+另各22PNG；四个运行均有独立SQLite审计，44张本机图经八张联系表全部查看。
+本机截图与合成服务不能替代Windows CI或本人真实安全邮箱验证。
+
+边界
+本批不自动向真实邮箱发信、不读取邮箱、不代替用户点击验证码，也没有取得本人真实RT下发/轮换证明。
+原账号处罚8831的steps/musicTuP、实名原生服务、702/8840网页分支及第三方授权仍须继续，
+不能因邮件接口或合成链路通过而称整个登录SDK已完成。
+发码/PIN尝试保存在本机候选内存，验证码不持久化；进程重启不自动重发这些操作，
+尚未采用的候选需重新开始登录，已采用的账号仍按既有持久化流程恢复。

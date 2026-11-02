@@ -91,3 +91,8 @@ Linux：CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 x
 Windows：同一脚本，传入.exe与--runtime，原生runner独立运行并纳入CI gate。
 --baseline仅用于修复前取证，不放宽正式专项断言；截图/真实桌面记录仅在私有.build保留。
 最终截图、请求计数、回归结果和未通过的探索轮次以ui-ux-validation.txt本专项条目为准。
+
+2026-11-03：安全邮箱从通用表单迁移为官方PC步骤。选择后发送一次、邮箱/十分钟提示、
+用户昵称横排头像/占位、六格PIN填满提交、4011发送上限/4012错误/4013过期与显式重发、
+返回原卡片焦点、关闭清理及未知结果核对，见email-login-contracts.txt。
+新旧链分别验证；原设备PIN默认名称未变。真实邮箱和本人令牌下发仍需本人条件，不冒称通过。

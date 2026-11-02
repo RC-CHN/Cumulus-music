@@ -1,0 +1,92 @@
+{
+  "date": "2026-11-03",
+  "full_goal_complete": false,
+  "contract": "docs/email-login-contracts.txt",
+  "official": "PC 3.1.42.205594; no YesPlayMusic used",
+  "sources": {
+    "hybrid_vendors_app_subApp.chunk.1482700000000.js/1368.js": "49da1d26373042091a3123f8948f1ce7e9968ec185e57369156fc1c6a6700db3",
+    "hybrid_app.chunk.1482700000000.js/15.js": "8ec4bf8d343f6963860eb73bc59ca09f0dd1ae50db2608a6c5abc7d69a0b521a",
+    "hybrid_app.chunk.1482700000000.js/48.js": "d8c0a8a0c03aca1339bc38e61c8c9a943cd3f4db6e214492e10c3c114acba4db"
+  },
+  "rows": [
+    {
+      "requirement": "offered method and single send on selection",
+      "official": [
+        "DoubleVerifyList.tsx",
+        "DoubleVerifyEmailBind.tsx useAsyncEffect",
+        "M1368 sendEmailCaptcha",
+        "M15 Xa"
+      ],
+      "core": [
+        "core/src/account/login/email.rs",
+        "core/src/client/auth/flow.rs"
+      ],
+      "frontend": [
+        "frontend/src/components/login/LoginChallenge.vue",
+        "frontend/src/components/login/EmailVerification.vue"
+      ]
+    },
+    {
+      "requirement": "native ID fences, cancellation, unknown writes and identity adoption",
+      "core": [
+        "core/src/account/login/email.rs",
+        "core/src/account/login/state.rs",
+        "core/src/client/auth/dto.rs"
+      ],
+      "tests": [
+        "core/tests/client_email_login.rs",
+        "desktop/examples/email_login_ui_probe.js",
+        "scripts/ci/email_login_smoke.py"
+      ]
+    },
+    {
+      "requirement": "4011/4012/4013 and six PIN fields, privacy, themes/short windows",
+      "official": [
+        "DoubleVerifyEmailBind.tsx",
+        "pinCode.tsx",
+        "LoginUserInfo.tsx"
+      ],
+      "frontend": [
+        "frontend/src/components/login/EmailVerification.vue",
+        "frontend/src/components/login/VerificationIdentity.vue",
+        "frontend/src/components/login/PinCode.vue",
+        "frontend/src/styles/login.css"
+      ],
+      "tests": [
+        "desktop/examples/email_login_ui_probe.js"
+      ]
+    },
+    {
+      "requirement": "known pre-transport failure permits explicit PIN retry",
+      "core": [
+        "core/src/protocol/http/client.rs",
+        "core/src/account/login/email.rs"
+      ],
+      "tests": [
+        "core/tests/client_email_login.rs:a_proven_not_sent_verification_can_retry_without_resending_email"
+      ]
+    },
+    {
+      "requirement": "saved identity/token boundary actually persisted",
+      "tests": [
+        "desktop/examples/audit_email_probe.py"
+      ],
+      "boundary": "synthetic accounts only; partial response never installs refresh token; real user email/refresh flow unverified"
+    }
+  ],
+  "local_validation": {
+    "rust": "290 workspace/all-targets programs; 1532 passed, 0 failed or ignored; .build/email-final-workspace.log",
+    "frontend": "560 tests; fixed Node 24.16.0 npm ci, formatting, typecheck and production build passed",
+    "final_artifacts": ".build/email-visible-dist-freeze.json and email-visible-binaries.json; frontend frozen before native build and unchanged during proof",
+    "webview": "email-visible-gui-jsk and email-visible-gui-legacy: 22 states and screenshots each; independent SQLite audits passed",
+    "desktop": "email-visible-kde-jsk and email-visible-kde-legacy: 22 own-process screenshots each at 125%; all 44 images reviewed; loading text glyph contrast checked",
+    "regressions": "email-visible-account 28 states; email-visible-saved 10; email-visible-jsk-auth 16 plus 15 databases; device-login-email-visible-legacy-auth-regression 16 plus 15 databases; device-login-email-visible-renewal-regression 7 plus journal audit",
+    "ci": "Previous head 21b5b34 CI 41484936886 failed Windows auth SQLite audit. New email head must run its own CI; no success claim from the previous head."
+  },
+  "boundaries": [
+    "no real email sent or mailbox read this increment",
+    "no real refresh-token issuance or rotation verified",
+    "in-progress PIN attempts are memory-only; never automatically replayed after process restart",
+    "penalty/real-name/702/8840/third-party flows remain in the full goal"
+  ]
+}

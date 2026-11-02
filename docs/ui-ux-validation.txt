@@ -4628,3 +4628,30 @@ collection-library-mapping.json；没有使用YesPlayMusic。
   无pending且调用模式[fail_saved,delay_first]。后续分页、返回、筛选、过期恢复的断言保留。
 - 首次延迟探索.build/collection-retry-delay-red由于探针模式白名单未同步导致回调panic，
   已终止该孤立进程并修正白名单；它不是产品故障或本次修复的复现证据。
+
+2026-11-03：安全邮箱二次验证的官方PC交互与账号回归
+- 依据DoubleVerifyEmailBind.tsx、LoginUserInfo.tsx、pinCode.tsx、DoubleVerifyList.tsx及
+  M/1368、M/15、M/48恢复；来源散列和调用见email-login-contracts.txt、email-login-mapping.json。
+  选择即发送、六格填满提交、4011/4012/4013分支与显式重新发送，替换原通用手动表单。
+  发送成功/丢失、验证失败/丢失、已知未发出、正在发送/验证、返回/关闭有独立原生状态。
+- 最终email-visible-gui-jsk、email-visible-gui-legacy各22态/22PNG；实际Vue/WebView/IPC/core
+  和合成HTTP参与，两协议四轮中的独立SQLite审计均通过。本人音乐请求、邮箱发信和账号写入为0。
+  本机email-visible-kde-jsk、email-visible-kde-legacy另各22张本人进程compositor截图，
+  KDE/XWayland125%，44图经email-visible-gallery-{jsk,legacy}的八张联系表全部查看；
+  ux_16发送在途深色图另放大检查。正式宿主cumulus也已构建，未将探针冒称真实账号验证。
+- 逐图发现并修复：邮箱页叠加手机号、头像/昵称排布、长邮箱换行、提示孤字、错误宽度，
+  以及深色加载文字过暗。最终加载字形像素超过最低对比度检查；有界窗口和焦点断言均保留。
+  首轮email-gui/email-kde、后续email-final/email-approved保留为探索记录；最终以email-visible为准。
+- 同一最终嵌入产物回归：email-visible-account28态/28PNG、saved10态、jsk-auth16态/15SQLite；
+  device-login-email-visible-legacy-auth-regression16态/16PNG/15SQLite；
+  device-login-email-visible-renewal-regression7态/7PNG及成功/未决journal独立审计，全部通过。
+  续期没有将新登录显示成已经轮换；未知结果没有重发。
+- 前端npm ci/560测试/格式/类型与生产构建通过，21个dist先冻结再构建六个原生二进制，
+  最终证据期间sha+mtime未变。最终严格Clippy、fmt及原生构建通过；完整Rust1532通过见配套记录。
+- 21b5b34的CI41484936886：Linux与前端成功，Windows在JSK账号独立审计失败，CI gate失败。
+  诊断白名单遗漏ci-jsk-auth，历史包中没有audit.log，不能断言其精确根因。已补日志收录；
+  本机另用非UTF8默认编码和实际合成登录证据复现read_text默认编码错误，显式UTF8读写及
+  ASCII安全控制台输出后通过；CI调用强制EncodingWarning为错误，不以UTF8模式掩盖依赖。
+  新提交必须独立跑完整CI，不把本地修复称为Windows已经通过。
+- 不代表真实邮箱验证/refreshToken发放与轮换、官方像素一致或显示器刷新率性能；
+  处罚/实名/旧网页/第三方等仍继续，整个目标未完成。

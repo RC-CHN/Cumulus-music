@@ -49,7 +49,8 @@ login_command(operationId,command) -> LoginView
   phone_password{phone,country_code,password,remember}
   phone_sms{phone,country_code,code,remember}；email{address,password,remember}
   send_sms{phone,country_code}；verification_methods
-  security_mail_send / security_mail_verify{code}
+  security_mail_send / security_mail_verify{verification_id,code}
+  security_mail_resend{verification_id} / security_mail_stop{verification_id}
   verification_sms_send / verification_sms_verify{code}
   bind_phone_verify{phone,country_code,code}（仅原生已恢复动作；当前页面使用官方App提示）
   question_read / question_answer{answer}；reuse_read / reuse_confirm；reconcile。
@@ -88,8 +89,10 @@ sms-login-contracts.txt；不再用通用scene:"0"的验证码表单代替全部
 密码/短信/挑战成功均继续/api/w/nuser/account/get，核验真实UID后才提交选择和账号资料。
 保存账号切换不提交密码，reconcile仅account/get；UID与保存记录不一致时拒绝切换。
 logout(true)调用/api/logout，成功后清本地；logout(false)无远端请求。
-本批仅邮件验证码、安全问题和普通短信在GUI模拟服务中实际执行；手机密码、二次验证短信、
-手机号复用等有代码接线/核心证据，尚未新增对应真实窗口及线上验证。
+最初批次仅邮件验证码、安全问题和普通短信有GUI模拟证据；后续主登录、原设备、短信上下行和
+安全邮箱专项已补真实WebView合成验证，详见jsk-login-contracts.txt、device-login-contracts.txt、
+sms-login-contracts.txt和email-login-contracts.txt。
+这些专项不替代本人的线上验证，也不代表整个SDK完成。
 
 事务、取消与恢复
 registry的transport/saved-profiles-v1/<uid>保存session_id/uid/nickname/avatar_url/auto_login。
@@ -98,8 +101,10 @@ active选择新增auto_login，旧记录缺字段按true读取。身份、保存
 即使服务器已设Cookie，注册库写入失败也不发布新账号；可通过同候选只读核验再提交。
 退出只清当前绑定HTTP实例中的凭据，避免错误清理另一选中目录；其他账号凭据不变。
 端点未被确认为登录/刷新成功响应时，不能用其x-refresh-token生成已确认刷新凭证；
-测试中的安全邮箱/问题响应带该头但不会落为refresh_token，登录Cookie仍按响应正常保存。
-验证码冷却在发送前预占60秒，同MusicClient跨取消/新尝试共享；不自动重发中断的写请求。
+安全邮箱/问题完成响应还须同次有有效MUSIC_U才能接收refresh_token；未配对、中断或明确
+business=false的回执不算成功。普通Cookie仍按响应正常保存，仅可用于明确的只读核对。
+普通短信验证码冷却在发送前预占60秒，同MusicClient跨取消/新尝试共享；不自动重发中断的写请求。
+安全邮箱依官方4013明确重发，无短信60秒本机限制，详见email-login-contracts.txt。
 useLogin命令失败只补一次login_snapshot，取消或换方式后迟到的成功/快照均不能替换新界面。
 登录、退出和一起听建房/附加共用门控：已绑定房间、持久房间或未决房间操作阻止切号。
 取消无需等待该异步门控，能够使正在网络等待的候选失效。
@@ -165,3 +170,9 @@ AB关闭的已登录账号旧301链与持久化清队列已在后续完成，见
 新版主登录和实际返回MUSIC_U的验证完成响应可保存刷新头，见jsk-login-contracts.txt。
 这更新了此前“完整JSK新登录待继续”中的主登录部分；其余SDK挑战/原设备、真人令牌下发与
 真实成对轮换仍未被本地合成验证替代。
+
+2026-11-03 安全邮箱入口更新
+此前通用验证码表单和邮件/短信共用60秒本机冷却已由独立邮箱状态机替代。选方法发送一次、
+六格PIN自动校验、4011/4012/4013、原生ID/取消/未知结果只读核对及持久化边界详见
+email-login-contracts.txt和email-login-mapping.json。发送不会采用身份；已确认verify才核对身份，
+中断响应只保留Cookie供核对，不安装RT。本文此前安全邮箱回执/冷却测试属于当时版本的历史证据。

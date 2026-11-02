@@ -1747,3 +1747,23 @@ source_audit/release_guard/syntax均通过，未创建release提交/标签/附�
 真实WebView账号28态/28PNG、续期7态、真实KDE本人进程7PNG+SQLite独立审计通过；
 收藏旧断言通过原生750ms延迟复现，修正检查时序后44态/44PNG通过且业务焦点断言未放宽。
 本轮线上音乐请求为0，不包含本人RT下发/轮换或Windows实际通过证明；完整目标仍进行中。
+
+2026-11-03：安全邮箱原生生命周期及真实桌面合成验证
+独立account/login/email.rs保存候选ID/阶段/取消能力；必须服务端提供SECURITY_EMAIL，
+选择发送一次，六位ASCII校验，4011/4012/4013与显式重发，失联不重放；停止抢先丢弃HTTP，
+旧ID/旧候选不能采用新账号。确认后身份核对，仅明确301回放原登录一次，跨新挑战清理旧投影。
+上下文在传输前明确失败现保留RequestNotSent，允许本人重试PIN，不误入不可恢复未知写入。
+client_email_login九项通过：两协议官方冻结字段、方法限制/业务false、401x、未知发送仍可用
+已收验证码、未知验证只读恢复、真实挂起future被丢弃、原登录回放与取消、超时/任务丢弃、
+显示邮箱字段不能输出URL/控制字符、明确未发出等。可选原源码执行对照与公开冻结向量一致。
+最终完整workspace/all-targets/custom-protocol/locked：290程序1532项通过0失败0忽略，
+.build/email-final-workspace.log；其后仅Vue/嵌入探针断言与审计脚本变动，最终严格Clippy、
+fmt及main+五探针构建完成，.build/email-visible-{clippy,native}.log。
+固定Node24.16.0/npm ci、560测试、格式/类型/生产构建通过，最终21dist冻结与六个二进制
+散列记录email-visible-{dist-freeze,binaries}.json。两协议22态隔离WebView、本机各22截图、
+独立SQLite及账号/保存账号/新旧登录/续期回归通过，细节见ui-ux-validation.txt。
+审计确认两条合成有效凭据对、一条中断Cookie没有RT或伪造登录时间、选中账号去重及真实代次变化；
+不输出秘密。本人真实RT下发/成对轮换未验证，不能由合成fixture凭据推断服务器发放。
+历史21b5b34 CI41484936886 Windows审计失败且旧诊断包漏掉其日志；本地复现并修正非UTF8默认
+编码依赖，保留红绿日志email-audit-{encoding,ascii}-red与email-audit-encoding-green-*。
+47项CI工具通过；新头CI需另行观察，不把原生Linux或本地非UTF8检查冒称Windows通过。
