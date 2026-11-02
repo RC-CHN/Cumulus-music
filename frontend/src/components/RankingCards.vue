@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import { ref } from 'vue';
 import type { RankingCard, RankingGroup } from '../services/rankings';
 import { movement } from '../services/rankings';
 import Icon from './Icon.vue';
 defineProps<{ groups: RankingGroup[]; playable: boolean }>();
 defineEmits<{ open: [card: RankingCard]; play: [id: string] }>();
+const failedCovers = ref(new Set<string>());
 </script>
 <template>
   <div class="ranking-groups">
@@ -15,22 +17,36 @@ defineEmits<{ open: [card: RankingCard]; play: [id: string] }>();
           :key="card.id"
           class="ranking-card"
           :data-rank-id="card.id"
+          :style="{ '--rank-caption-height': card.nameShowStyle === 'doubleRow' ? '49px' : '29px' }"
         >
-          <button class="rank-open" :aria-label="`查看 ${card.name}`" @click="$emit('open', card)">
+          <button
+            class="rank-open"
+            data-rank-action="open"
+            :aria-label="`查看 ${card.name}`"
+            @click="$emit('open', card)"
+          >
             <template v-if="group.displayType === 'TOP_3'">
-              <span class="rank-heading">{{ card.name }} <Icon name="next" /></span>
-              <small>{{ card.updateFrequency }}</small>
+              <span class="rank-title-row">
+                <span class="rank-heading" :title="card.name">{{ card.name }}</span>
+                <small :title="card.updateFrequency">{{ card.updateFrequency }}</small>
+              </span>
               <div class="rank-preview-content">
                 <div class="rank-preview-covers">
-                  <img
+                  <span
                     v-for="(track, index) in card.tracks.slice(0, 3)"
                     :key="track.id"
-                    :src="track.coverUrl || undefined"
+                    class="rank-preview-image"
                     :style="{ '--cover-index': index }"
-                    alt=""
-                    loading="lazy"
-                    referrerpolicy="no-referrer"
-                  />
+                  >
+                    <img
+                      v-if="track.coverUrl && !failedCovers.has(track.coverUrl)"
+                      :src="track.coverUrl"
+                      alt=""
+                      loading="lazy"
+                      referrerpolicy="no-referrer"
+                      @error="failedCovers.add(track.coverUrl)"
+                    /><Icon v-else name="music" />
+                  </span>
                 </div>
                 <div class="rank-preview-rows">
                   <div
@@ -55,11 +71,12 @@ defineEmits<{ open: [card: RankingCard]; play: [id: string] }>();
             <template v-else>
               <div class="rank-cover">
                 <img
-                  v-if="card.coverUrl"
+                  v-if="card.coverUrl && !failedCovers.has(card.coverUrl)"
                   :src="card.coverUrl"
                   alt=""
                   loading="lazy"
                   referrerpolicy="no-referrer"
+                  @error="failedCovers.add(card.coverUrl)"
                 /><Icon v-else name="music" />
                 <small v-if="!card.textCover">{{ card.updateFrequency }}</small>
               </div>
@@ -71,6 +88,7 @@ defineEmits<{ open: [card: RankingCard]; play: [id: string] }>();
           <button
             v-if="card.canPlay && card.target === 'playlist'"
             class="rank-play icon-button"
+            data-rank-action="play"
             :aria-label="`播放榜单 ${card.name}`"
             :disabled="!playable"
             @click="$emit('play', card.id)"
@@ -130,83 +148,139 @@ defineEmits<{ open: [card: RankingCard]; play: [id: string] }>();
   color: var(--on-accent);
   text-shadow: 0 1px 4px #333;
 }
+.rank-cover:has(> .icon) small {
+  color: var(--text-secondary);
+  text-shadow: none;
+}
 .rank-name {
   display: block;
   padding-top: 9px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+  height: 29px;
+  line-height: 20px;
 }
 .rank-name.double {
   white-space: normal;
+  height: 49px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 .rank-play {
   position: absolute;
+  z-index: 5;
   right: 10px;
-  top: 10px;
+  top: calc(100% - var(--rank-caption-height) - 35px);
   background: var(--surface-raised);
   border-radius: 50%;
   width: 30px;
   height: 30px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 200ms ease;
+}
+.rank-play:disabled {
+  opacity: 0;
+}
+.ranking-card:hover .rank-play,
+.ranking-card:focus-within .rank-play {
+  opacity: 1;
+  pointer-events: auto;
+}
+.ranking-card:hover .rank-play:disabled,
+.ranking-card:focus-within .rank-play:disabled {
+  opacity: 0.4;
 }
 .with-preview .ranking-card {
   border-radius: 10px;
   background: var(--surface-alt);
+  border: 1px solid var(--line);
+  box-shadow: 0 6px 16px rgb(40 50 72 / 4%);
 }
 .with-preview .rank-open {
   padding: 16px 20px 19px;
 }
-.rank-heading {
-  font-size: 18px;
-  font-weight: 650;
+.with-preview .rank-play {
+  left: 59px;
+  top: 94px;
+  bottom: auto;
+  transform: translate(-50%, -50%);
+}
+.rank-title-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding-right: 22px;
+  justify-content: space-between;
+  height: 24px;
+  gap: 12px;
 }
-.rank-heading .icon {
-  width: 12px;
-  height: 12px;
+.rank-title-row > small {
+  flex-shrink: 0;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 12px;
 }
-.rank-open > small {
+.rank-heading {
+  font-size: 18px;
+  font-weight: 400;
   display: block;
-  margin-top: 6px;
-  color: var(--text-secondary);
-  font-size: 11px;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .rank-preview-content {
   display: flex;
-  gap: 16px;
-  margin-top: 16px;
+  gap: 14px;
+  margin-top: 15px;
   align-items: center;
 }
 .rank-preview-covers {
   position: relative;
-  width: 98px;
-  min-width: 98px;
+  width: 94px;
+  min-width: 94px;
   height: 78px;
 }
-.rank-preview-covers img {
+.rank-preview-image {
   position: absolute;
   width: calc(78px - var(--cover-index) * 20px);
   height: calc(78px - var(--cover-index) * 20px);
-  top: calc(var(--cover-index) * 10px);
-  left: calc(var(--cover-index) * 30px);
+  bottom: 0;
+  left: calc(var(--cover-index) * 28px);
   z-index: calc(3 - var(--cover-index));
-  border-radius: 8px;
-  object-fit: cover;
+  border-radius: 6px;
+  overflow: hidden;
   background: var(--surface-hover);
+  box-shadow: 0 4px 10px rgb(0 0 0 / 10%);
+  display: grid;
+  place-items: center;
+}
+.rank-preview-image:nth-child(3) {
+  opacity: 0.6;
+}
+.rank-preview-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 .rank-preview-rows {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 78px;
 }
 .rank-preview-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 26px;
-  font-size: 12px;
+  height: 20px;
+  font-size: 15px;
 }
 .rank-preview-row > .ellipsis {
   flex: 1;
@@ -229,5 +303,11 @@ defineEmits<{ open: [card: RankingCard]; play: [id: string] }>();
 }
 .rank-movement.fresh {
   color: var(--success);
+  font-size: 15px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rank-play {
+    transition: none;
+  }
 }
 </style>

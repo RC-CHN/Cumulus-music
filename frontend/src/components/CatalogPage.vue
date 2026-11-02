@@ -5,6 +5,7 @@ import type { AccountView, TrackView } from '../services/contracts';
 import type { ArtistTab, CatalogResource, CatalogSelectionPage } from '../services/catalog';
 import type { AlbumTab, CatalogPanelKey } from '../services/catalogNavigation';
 import type { CatalogSession } from '../composables/useCatalogSession';
+import { usePageEntryFocus } from '../composables/usePageEntryFocus';
 import TrackTable from './TrackTable.vue';
 import CatalogCards from './catalog/CatalogCards.vue';
 import AlbumHeader from './catalog/AlbumHeader.vue';
@@ -65,6 +66,12 @@ const section = ref<HTMLElement>(),
 const panelId = useId();
 const selectedPanel = computed<CatalogPanelKey>(() =>
   resource.kind === 'artist' ? `artist:${tab.value}` : `album:${albumTab.value}`,
+);
+const entryPanel = selectedPanel.value;
+usePageEntryFocus(
+  section,
+  () => !!detail.view.value || !!detail.error.value,
+  () => props.model.valid() && selectedPanel.value === entryPanel && !positions.has(entryPanel),
 );
 let pendingRestore: CatalogPanelKey | undefined = positions.has(selectedPanel.value)
   ? selectedPanel.value

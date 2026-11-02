@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useMotion } from '../composables/useMotion';
+import { usePageEntryFocus } from '../composables/usePageEntryFocus';
 import { computed, ref, watch, nextTick, onUnmounted } from 'vue';
 import type { CommentsModel } from '../composables/useComments';
 import CommentCard from './CommentCard.vue';
@@ -17,6 +18,11 @@ const { page, query, loading, error, actionError, busy, history } = props.model;
 const context = props.context ?? useCommentContext(props.model);
 const { target, floor, writer } = context;
 const scroller = ref<HTMLElement>();
+usePageEntryFocus(
+  scroller,
+  () => !!page.value || !!error.value,
+  () => !props.embedded,
+);
 watch(
   query,
   (value, previous) => {

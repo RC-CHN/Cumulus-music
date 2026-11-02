@@ -5,6 +5,32 @@ export type RankingQuery =
   | { kind: 'album_year'; year: number }
   | { kind: 'song_sales' }
   | { kind: 'album'; id: string };
+export type RankingPeriod = 'daily' | 'week' | 'year' | 'total';
+export interface RankingSelection {
+  period: RankingPeriod;
+  singles: boolean;
+}
+export interface RankingUiState extends RankingSelection {
+  epoch: string;
+  queryKey: string;
+  scrollTop: number;
+  focus: {
+    kind: 'card' | 'album' | 'song';
+    id: string;
+    action?: 'open' | 'play' | 'like' | 'comments';
+  } | null;
+}
+export const rankingQueryKey = (query: RankingQuery): string =>
+  JSON.stringify([
+    query.kind,
+    query.kind === 'album' ? query.id : 'year' in query ? query.year : null,
+  ]);
+export function rankingSelection(query: RankingQuery, state?: RankingSelection): RankingSelection {
+  return {
+    period: query.kind === 'album_year' ? 'year' : (state?.period ?? 'daily'),
+    singles: state?.singles ?? false,
+  };
+}
 export interface RankingPreview {
   id: string;
   rank: number | null;

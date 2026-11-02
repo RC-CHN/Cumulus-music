@@ -10,10 +10,11 @@ const props = withDefaults(
     items: MenuItem[];
     icon?: string;
     triggerText?: string;
+    triggerPressed?: boolean;
     disabled?: boolean;
     focusChecked?: boolean;
     contextOnly?: boolean;
-    variant?: 'song' | 'speed' | 'quality' | 'mini';
+    variant?: 'song' | 'speed' | 'quality' | 'mini' | 'year';
   }>(),
   {
     icon: 'more',
@@ -140,7 +141,9 @@ function place() {
           ? point.x
           : props.variant === 'quality'
             ? (anchor.right + trigger.value!.getBoundingClientRect().left - box.width) / 2
-            : anchor.right - box.width,
+            : props.variant === 'year'
+              ? trigger.value!.getBoundingClientRect().left
+              : anchor.right - box.width,
       innerWidth - box.width - 8,
     ),
   );
@@ -348,6 +351,7 @@ defineExpose({
       :aria-describedby="triggerText ? `${id}-value` : undefined"
       aria-haspopup="menu"
       :aria-expanded="open"
+      :aria-pressed="triggerPressed"
       :aria-controls="open ? id : undefined"
       :disabled="disabled"
       @click="open ? close() : show()"
@@ -370,6 +374,7 @@ defineExpose({
             'speed-action-menu': variant === 'speed',
             'quality-action-menu': variant === 'quality',
             'mini-action-menu': variant === 'mini',
+            'ranking-year-menu': variant === 'year',
           }"
           role="menu"
           tabindex="-1"

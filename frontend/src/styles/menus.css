@@ -4,6 +4,31 @@
   display: inline-flex;
   flex-shrink: 0;
 }
+.action-menu.ranking-year-menu {
+  width: 90px;
+  min-width: 90px;
+  border-radius: 6px;
+  padding: 0;
+}
+.action-menu.ranking-year-menu .menu-items {
+  display: block;
+  max-height: min(360px, calc(100vh - 120px));
+  overflow-y: auto;
+}
+.action-menu.ranking-year-menu button {
+  justify-content: center;
+  height: 40px;
+  min-height: 40px;
+  padding: 0;
+  border-radius: 0;
+  font-size: 14px;
+}
+.action-menu.ranking-year-menu button.checked {
+  background: var(--accent-soft);
+}
+.action-menu.ranking-year-menu .menu-check {
+  display: none;
+}
 .menu-trigger .icon {
   width: 18px;
   height: 18px;

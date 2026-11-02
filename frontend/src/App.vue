@@ -76,7 +76,7 @@ import type { MemberTarget } from './services/member';
 import { useSceneFm } from './composables/useSceneFm';
 import { useFm } from './composables/useFm';
 import { useRankings } from './composables/useRankings';
-import type { RankingQuery } from './services/rankings';
+import { rankingQueryKey, type RankingQuery } from './services/rankings';
 import { useTogether } from './composables/useTogether';
 import { usePodcasts } from './composables/usePodcasts';
 import type { PodcastScope } from './services/podcast';
@@ -238,9 +238,20 @@ const fm = useFm(undefined, () => {
 const rankings = useRankings(undefined, () => {
   void music.bootstrap(false);
 });
-function openRanking(query: RankingQuery) {
+const rankingsPageRef = ref<InstanceType<typeof RankingsPage>>();
+function checkpointRanking(target: {
+  query: RankingQuery;
+  rankingState?: import('./services/rankings').RankingUiState;
+}) {
+  const saved = rankingsPageRef.value?.checkpoint();
+  if (saved?.queryKey === rankingQueryKey(target.query)) target.rankingState = saved;
+}
+function openRanking(
+  query: RankingQuery,
+  rankingState?: import('./services/rankings').RankingUiState,
+) {
   if (query.kind === 'album') openCatalog({ kind: 'album', id: query.id });
-  else music.navigate({ kind: 'rankings', query });
+  else music.navigate({ kind: 'rankings', query, rankingState });
 }
 function openCatalog(resource: CatalogResource) {
   music.navigate({ kind: 'catalog', resource });
@@ -645,6 +656,10 @@ const downloadPageRef = ref<InstanceType<typeof DownloadPage>>();
 watch(
   music.page,
   (next, previous) => {
+    if (previous.kind === 'rankings') {
+      checkpointRanking(previous);
+      rankings.leave();
+    }
     if (previous.kind === 'local' && next.kind !== 'local') localPageRef.value?.checkpoint();
     if (previous.kind === 'downloads') {
       downloadPageRef.value?.checkpoint();
@@ -655,6 +670,18 @@ watch(
         next,
         next.initialTab === 'active' ? downloadSectionQuery('active') : undefined,
       );
+  },
+  { flush: 'sync' },
+);
+watch(
+  music.initializing,
+  (value) => {
+    const target = music.page.value;
+    if (target.kind !== 'rankings') return;
+    if (value) {
+      checkpointRanking(target);
+      rankings.leave();
+    } else void rankings.enter(target.query, target.rankingState);
   },
   { flush: 'sync' },
 );
@@ -1016,47 +1043,45 @@ onUnmounted(() => {
   lyricReportListener?.();
   miniFmListener?.();
 });
-watch(
-  () => [account.value.epoch, account.value.status],
-  () => {
-    playlistDialog.value = undefined;
-    playlistEditor.value = undefined;
-    if (
-      cloudBatchTarget.value &&
-      (cloudBatchTarget.value.epoch !== account.value.epoch ||
-        account.value.status !== 'authenticated')
-    ) {
-      cloudBatchTarget.value = undefined;
-      cloudBatchClosing.value = false;
-      restoreCloudBatch = false;
-    }
-    batchTarget.value = undefined;
-    downloadBatch.value = undefined;
-    restoreDownloadFocus = false;
-    batchClosing.value = false;
-    restoreBatchFocus = false;
-    batchReturnFocus = undefined;
-    playlistLibraryState.value = libraryView();
-    editorDeleted = false;
-    playlistManager.connect(account.value);
-    likeRecovery.connect(account.value);
-    downloadDialog.value = undefined;
-    void downloads.connect(account.value);
-    void cloud.connect(account.value);
-    mv.connect(account.value);
-    podcasts.connect(account.value);
-    together.connect(account.value);
-    rankings.connect(account.value);
-    fm.connect(account.value);
-    sceneFm.connect(account.value);
-    member.connect(account.value);
-    if (page.value.kind === 'rankings') void rankings.open(page.value.query);
-    comments.connect(account.value);
-    localMatching.connect(account.value);
-    if (page.value.kind === 'mv') void loadMv(page.value.id, page.value.taskId);
-    if (page.value.kind === 'comments') void comments.open(page.value.resource);
-  },
-);
+watch([() => account.value.epoch, () => account.value.status], () => {
+  playlistDialog.value = undefined;
+  playlistEditor.value = undefined;
+  if (
+    cloudBatchTarget.value &&
+    (cloudBatchTarget.value.epoch !== account.value.epoch ||
+      account.value.status !== 'authenticated')
+  ) {
+    cloudBatchTarget.value = undefined;
+    cloudBatchClosing.value = false;
+    restoreCloudBatch = false;
+  }
+  batchTarget.value = undefined;
+  downloadBatch.value = undefined;
+  restoreDownloadFocus = false;
+  batchClosing.value = false;
+  restoreBatchFocus = false;
+  batchReturnFocus = undefined;
+  playlistLibraryState.value = libraryView();
+  editorDeleted = false;
+  playlistManager.connect(account.value);
+  likeRecovery.connect(account.value);
+  downloadDialog.value = undefined;
+  void downloads.connect(account.value);
+  void cloud.connect(account.value);
+  mv.connect(account.value);
+  podcasts.connect(account.value);
+  together.connect(account.value);
+  rankings.connect(account.value);
+  fm.connect(account.value);
+  sceneFm.connect(account.value);
+  member.connect(account.value);
+  if (page.value.kind === 'rankings' && !music.initializing.value)
+    void rankings.enter(page.value.query, page.value.rankingState);
+  comments.connect(account.value);
+  localMatching.connect(account.value);
+  if (page.value.kind === 'mv') void loadMv(page.value.id, page.value.taskId);
+  if (page.value.kind === 'comments') void comments.open(page.value.resource);
+});
 watch(
   () => [account.value.epoch, account.value.status, initializing.value],
   () => {
@@ -1114,7 +1139,7 @@ watch(
     mv.show(value.kind === 'mvs');
     if (value.kind === 'mv') void loadMv(value.id, value.taskId);
     if (value.kind === 'comments') void comments.open(value.resource);
-    if (value.kind === 'rankings') void rankings.open(value.query);
+    if (value.kind === 'rankings') void rankings.enter(value.query, value.rankingState);
     if (value.kind === 'history') void recent.open(value.scope);
     if (value.kind === 'settings') void settings.open();
   },
@@ -1573,6 +1598,7 @@ onUnmounted(() => {
                 @download="(tracks) => (downloadDialog = { kind: 'start', tracks })"
               />
               <RankingsPage
+                ref="rankingsPageRef"
                 v-else-if="page.kind === 'rankings'"
                 :model="rankings"
                 :playable="player.ready.value && !player.busy.value"

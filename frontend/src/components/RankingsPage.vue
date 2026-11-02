@@ -1,10 +1,18 @@
 <script setup lang="ts">
 import type { TrackMenuRequest } from '../services/trackMenu';
-import { computed, ref, watch } from 'vue';
+import { computed, ref, nextTick } from 'vue';
 import type { useRankings } from '../composables/useRankings';
-import type { RankingCard, RankingQuery } from '../services/rankings';
+import { useRankingViewport } from '../composables/useRankingViewport';
+import { useRankingPlaybackFocus } from '../composables/useRankingPlaybackFocus';
+import type {
+  RankingCard,
+  RankingPeriod,
+  RankingQuery,
+  RankingUiState,
+} from '../services/rankings';
 import type { TrackView } from '../services/contracts';
 import RankingCards from './RankingCards.vue';
+import RankingPeriods from './RankingPeriods.vue';
 import TrackTable from './TrackTable.vue';
 import Icon from './Icon.vue';
 const props = defineProps<{
@@ -15,7 +23,7 @@ const props = defineProps<{
   currentId?: string;
 }>();
 const emit = defineEmits<{
-  navigate: [query: RankingQuery];
+  navigate: [query: RankingQuery, state?: RankingUiState];
   playlist: [id: string];
   playPlaylist: [id: string];
   play: [tracks: TrackView[], index: number];
@@ -26,23 +34,35 @@ const emit = defineEmits<{
   download: [tracks: TrackView[]];
 }>();
 const page = computed(() => props.model.view.value?.page);
-const period = ref('daily');
-const singles = ref(false);
-const year = ref(new Date().getFullYear());
-const years = Array.from(
-  { length: Math.max(1, new Date().getFullYear() - 2018 + 1) },
-  (_, i) => 2018 + i,
-);
-watch(
-  () => props.model.query.value,
-  (q) => {
-    if (q.kind === 'album_year') {
-      period.value = 'year';
-      year.value = q.year;
-    } else if (q.kind === 'album_sales') year.value = q.year;
-  },
-  { immediate: true },
-);
+const pageRoot = ref<HTMLElement>();
+const viewport = useRankingViewport(props.model, pageRoot);
+const ownsVisit = props.model.captureVisit();
+const playbackFocus = useRankingPlaybackFocus(() => props.playable, pageRoot, ownsVisit);
+defineExpose({ checkpoint: viewport.checkpoint });
+async function readPage() {
+  const origin = document.activeElement;
+  await props.model.refresh();
+  await nextTick();
+  if (ownsVisit() && pageRoot.value?.isConnected && document.activeElement === document.body) {
+    const target =
+      origin instanceof HTMLElement &&
+      pageRoot.value.contains(origin) &&
+      !origin.matches(':disabled')
+        ? origin
+        : pageRoot.value.querySelector<HTMLElement>('[aria-label="刷新榜单"]');
+    target?.focus({ preventScroll: true });
+    target?.scrollIntoView({ block: 'nearest' });
+  }
+}
+const period = computed(() => props.model.selection.value.period);
+const singles = computed({
+  get: () => props.model.selection.value.singles,
+  set: (value: boolean) => (props.model.selection.value.singles = value),
+});
+const year = computed(() => {
+  const q = props.model.query.value;
+  return q.kind === 'album_year' || q.kind === 'album_sales' ? q.year : new Date().getFullYear();
+});
 const board = computed(() =>
   page.value?.kind === 'album_sales'
     ? page.value.boards.find(
@@ -74,14 +94,26 @@ function open(card: RankingCard) {
         : { kind: 'song_sales' },
     );
 }
-function choosePeriod(next: string) {
-  period.value = next;
-  if (props.model.query.value.kind === 'album_year' && next !== 'year')
-    emit('navigate', { kind: 'album_sales', year: new Date().getFullYear() });
+function choosePeriod(next: RankingPeriod) {
+  if (props.model.query.value.kind === 'album_year' && next !== 'year') {
+    const query: RankingQuery = { kind: 'album_sales', year: new Date().getFullYear() };
+    emit(
+      'navigate',
+      query,
+      props.model.destination(query, { period: next, singles: singles.value }),
+    );
+  } else props.model.selection.value.period = next;
 }
-function chooseYear() {
-  period.value = 'year';
-  emit('navigate', { kind: 'album_year', year: year.value });
+function chooseYear(value: number) {
+  if (year.value === value) choosePeriod('year');
+  else {
+    const query: RankingQuery = { kind: 'album_year', year: value };
+    emit(
+      'navigate',
+      query,
+      props.model.destination(query, { period: 'year', singles: singles.value }),
+    );
+  }
 }
 function tracks(): TrackView[] {
   const p = page.value;
@@ -93,60 +125,64 @@ function tracks(): TrackView[] {
 }
 function play(index = 0) {
   const p = page.value;
-  if (p?.kind === 'album') emit('playAlbum', p.id, p.revision, p.tracks[index]?.id ?? null);
-  else emit('play', tracks(), index);
+  playbackFocus.start(() => {
+    if (p?.kind === 'album') emit('playAlbum', p.id, p.revision, p.tracks[index]?.id ?? null);
+    else emit('play', tracks(), index);
+  });
+}
+function playPlaylist(id: string) {
+  playbackFocus.start(() => emit('playPlaylist', id));
 }
 function change(n: number | null, newest: boolean) {
   return newest ? '新' : n == null ? '' : n === 0 ? '—' : n > 0 ? `↑${n}` : `↓${-n}`;
 }
 </script>
 <template>
-  <section class="rankings-page" :aria-busy="model.loading.value">
+  <section
+    ref="pageRoot"
+    class="rankings-page"
+    :aria-busy="model.loading.value"
+    @focusin="viewport.remember($event.target)"
+  >
     <header class="rankings-header">
-      <h1>{{ title }}</h1>
+      <h1 tabindex="-1">{{ title }}</h1>
       <button
         class="icon-button"
         aria-label="刷新榜单"
         :disabled="model.loading.value"
-        @click="model.refresh"
+        @click="readPage"
       >
         <Icon name="refresh" />
       </button>
     </header>
-    <div v-if="model.error.value" class="rank-error" role="alert">
+    <div v-if="model.error.value && page" class="rank-error" role="alert" data-ranking-read-error>
       {{ model.error.value }}<span v-if="page"> · 保留上次加载的内容</span
-      ><button class="text-button" :disabled="model.loading.value" @click="model.refresh">
-        重试
-      </button>
+      ><button class="text-button" :disabled="model.loading.value" @click="readPage">重试</button>
     </div>
-    <p v-if="model.loading.value" role="status">正在加载…</p>
+    <div v-if="model.loading.value && !page" class="empty-state" role="status">
+      <span class="spinner" />正在读取榜单…
+    </div>
+    <p v-else-if="model.loading.value" role="status">正在更新榜单…</p>
+    <div
+      v-else-if="model.error.value && !page"
+      class="error-state"
+      role="alert"
+      data-ranking-read-error
+    >
+      <h2>榜单暂时无法读取</h2>
+      <p>{{ model.error.value }}</p>
+      <button class="primary" @click="readPage">重试读取</button>
+    </div>
     <RankingCards
       v-if="page?.kind === 'home'"
       :groups="page.groups"
       :playable="playable"
       @open="open"
-      @play="(id) => emit('playPlaylist', id)"
+      @play="playPlaylist"
     />
     <template v-else-if="page?.kind === 'album_sales'">
       <p class="rank-description">统计网易云音乐数字专辑与数字单曲销量，每 30 分钟更新。</p>
-      <div class="rank-filters" aria-label="榜单周期">
-        <button
-          v-for="item in [
-            { id: 'daily', name: '日榜' },
-            { id: 'week', name: '周榜' },
-            { id: 'total', name: '总榜' },
-          ]"
-          :key="item.id"
-          :aria-pressed="period === item.id"
-          @click="choosePeriod(item.id)"
-        >
-          {{ item.name }}
-        </button>
-        <button :aria-pressed="period === 'year'" @click="choosePeriod('year')">年榜</button>
-        <select v-model.number="year" aria-label="榜单年份" @change="chooseYear">
-          <option v-for="y in years" :key="y" :value="y">{{ y }} 年</option>
-        </select>
-      </div>
+      <RankingPeriods :period="period" :year="year" @period="choosePeriod" @year="chooseYear" />
       <div class="rank-filters" aria-label="商品类型">
         <button :aria-pressed="!singles" @click="singles = false">数字专辑</button
         ><button :aria-pressed="singles" @click="singles = true">数字单曲</button>
@@ -156,12 +192,14 @@ function change(n: number | null, newest: boolean) {
           v-for="(album, index) in board?.products ?? []"
           :key="`${index}:${album.id}`"
           class="rank-sale-row"
+          :data-sale-id="album.id"
         >
           <span class="sale-position"
             >{{ index + 1 }}<small>{{ change(album.rankIncr, album.newest) }}</small></span
           >
           <button
             class="sale-album"
+            data-rank-action="open"
             :aria-label="`查看专辑 ${album.name}`"
             @click="emit('navigate', { kind: 'album', id: album.id })"
           >
@@ -207,6 +245,7 @@ function change(n: number | null, newest: boolean) {
           :key="`${index}:${row.track.id}`"
           class="rank-sale-row"
           :class="{ current: currentId === row.track.id }"
+          :data-sale-song-id="row.track.id"
         >
           <span class="sale-position"
             >{{ index + 1 }}<small>{{ change(row.rankIncr, row.newest) }}</small></span
@@ -214,6 +253,7 @@ function change(n: number | null, newest: boolean) {
           <button
             class="sale-album"
             :aria-label="`播放 ${row.track.name}`"
+            data-rank-action="play"
             :disabled="!playable || row.track.missing"
             @click="play(index)"
           >
@@ -233,6 +273,7 @@ function change(n: number | null, newest: boolean) {
           >
           <button
             class="icon-button like-button"
+            data-rank-action="like"
             :class="{ liked: liked.has(row.track.id) }"
             :aria-pressed="liked.has(row.track.id)"
             :aria-label="`${liked.has(row.track.id) ? '取消喜欢' : '喜欢'} ${row.track.name}`"
@@ -244,6 +285,7 @@ function change(n: number | null, newest: boolean) {
           <button
             class="icon-button"
             :aria-label="`评论 ${row.track.name}`"
+            data-rank-action="comments"
             @click="emit('comments', row.track)"
           >
             <Icon name="comment" />

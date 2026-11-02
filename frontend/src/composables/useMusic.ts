@@ -18,7 +18,11 @@ export type Page =
   | { kind: 'scene_fm' }
   | { kind: 'member' }
   | { kind: 'fm' }
-  | { kind: 'rankings'; query: import('../services/rankings').RankingQuery }
+  | {
+      kind: 'rankings';
+      query: import('../services/rankings').RankingQuery;
+      rankingState?: import('../services/rankings').RankingUiState;
+    }
   | { kind: 'together' }
   | { kind: 'podcasts' }
   | { kind: 'local' }
