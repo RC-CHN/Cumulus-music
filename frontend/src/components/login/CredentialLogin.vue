@@ -2,30 +2,56 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, toRefs, watch } from 'vue';
 import { useCore } from '../../services/core';
 import { useLogin } from '../../composables/useLogin';
+import { useControlFocus } from '../../composables/useControlFocus';
 import { loginMessage, type LoginMode } from '../../services/auth';
 import type { LoginIdentity } from '../../services/loginIdentity';
+import {
+  phoneError,
+  type LoginCountry,
+  type LoginDocument,
+} from '../../services/loginPresentation';
 import LoginChallenge from './LoginChallenge.vue';
+import LoginCountryPicker from './LoginCountryPicker.vue';
+import LoginEmailInput from './LoginEmailInput.vue';
+import LoginConsent from './LoginConsent.vue';
 import { reuseTitle } from '../../services/phoneReuse';
 const props = defineProps<{
   epoch: string;
   mode: Exclude<LoginMode, 'saved_account'>;
   identity: LoginIdentity;
+  countries: LoginCountry[];
+  countryLoading: boolean;
+  countryError: string;
 }>();
 const emit = defineEmits<{
   authorized: [];
   mode: [value: Exclude<LoginMode, 'saved_account'>];
   qr: [];
   safety: [value: string | null];
+  country: [value: LoginCountry];
+  retryCountries: [];
+  forgot: [];
 }>();
-const model = useLogin(useCore(), () => emit('authorized'));
+const core = useCore();
+const model = useLogin(core, () => emit('authorized'));
 const { view, busy, error, seconds } = model;
 const { phone, country, email, remember } = toRefs(props.identity);
 const password = ref(''),
   code = ref('');
 const root = ref<HTMLElement>();
+const phoneInput = ref<HTMLInputElement>(),
+  passwordInput = ref<HTMLInputElement>();
+const consent = ref<{ focus: () => void }>();
+const consentRequired = ref(false),
+  validation = ref(''),
+  openingDocument = ref(false);
 const challenge = ref<{ clearSecrets: () => void }>();
 const deviceKind = ref<'confirm' | 'scan' | 'sms' | 'email' | null>(null);
 let active = true;
+const documentFocus = useControlFocus(
+  () => (active ? props.identity : null),
+  () => root.value?.querySelector<HTMLElement>('input:not(:disabled),button:not(:disabled)'),
+);
 function deactivate() {
   if (!active) return;
   active = false;
@@ -104,17 +130,81 @@ watch(
     await nextTick();
     if (!active || !owned || !root.value) return;
     const focused = document.activeElement as HTMLElement | null;
-    if (focused && root.value.contains(focused) && !focused.matches(':disabled')) return;
-    const target = root.value.querySelector<HTMLElement>(
-      'input:not(:disabled),button:not(:disabled)',
-    );
+    if (
+      focused &&
+      focused !== root.value &&
+      root.value.contains(focused) &&
+      !focused.matches(':disabled')
+    )
+      return;
+    const preferred =
+      props.mode === 'phone_sms' && view.value?.status === 'code_sent'
+        ? '[aria-label="短信验证码"]:not(:disabled)'
+        : view.value?.status === 'rejected' && view.value.code === 502
+          ? '[aria-label="登录密码"]:not(:disabled)'
+          : null;
+    const target =
+      (preferred ? root.value.querySelector<HTMLElement>(preferred) : null) ??
+      root.value.querySelector<HTMLElement>('input:not(:disabled),button:not(:disabled)');
     (target ?? root.value).focus({ preventScroll: true });
   },
 );
 const initial = computed(
   () => !!view.value && ['ready', 'code_sent', 'rejected'].includes(view.value.status),
 );
-const disabled = computed(() => busy.value || !view.value || !initial.value);
+const disabled = computed(
+  () =>
+    busy.value ||
+    !view.value ||
+    !initial.value ||
+    (props.mode !== 'email' && (props.countryLoading || !props.countries.length)),
+);
+const formError = computed(
+  () =>
+    validation.value ||
+    (initial.value && view.value?.status === 'rejected'
+      ? error.value || loginMessage(view.value)
+      : ''),
+);
+watch(
+  () => props.identity.consent,
+  (value) => {
+    if (value) consentRequired.value = false;
+  },
+);
+watch([phone, country, email, password, code], () => {
+  validation.value = '';
+});
+function agreed() {
+  if (props.identity.consent) return true;
+  consentRequired.value = true;
+  consent.value?.focus();
+  return false;
+}
+function validPhone() {
+  validation.value = phoneError(props.countries, phone.value.trim(), country.value);
+  if (validation.value) phoneInput.value?.focus({ preventScroll: true });
+  return !validation.value;
+}
+async function sendSms() {
+  if (!active || disabled.value || seconds.value > 0 || !agreed() || !validPhone()) return;
+  await model.run({ kind: 'send_sms', phone: phone.value.trim(), country_code: country.value });
+}
+async function openDocument(kind: LoginDocument) {
+  if (!active || openingDocument.value) return;
+  const restoreFocus = documentFocus.capture(document.activeElement);
+  openingDocument.value = true;
+  validation.value = '';
+  try {
+    await core.openLoginDocument(kind);
+  } catch {
+    if (active) validation.value = '浏览器未能打开，请检查默认浏览器后重试';
+  } finally {
+    if (active) openingDocument.value = false;
+    await nextTick();
+    restoreFocus();
+  }
+}
 async function start() {
   password.value = '';
   code.value = '';
@@ -131,7 +221,26 @@ onMounted(() => {
 });
 onBeforeUnmount(deactivate);
 async function submit() {
-  if (!active || disabled.value) return;
+  if (!active || disabled.value || !agreed()) return;
+  if (props.mode !== 'email' && !validPhone()) return;
+  if (
+    props.mode === 'email' &&
+    !root.value?.querySelector<HTMLInputElement>('[aria-label="登录邮箱"]')?.validity.valid
+  ) {
+    validation.value = '请输入正确的邮箱';
+    root.value?.querySelector<HTMLInputElement>('[aria-label="登录邮箱"]')?.focus();
+    return;
+  }
+  if (props.mode !== 'phone_sms' && !password.value) {
+    validation.value = '请输入密码';
+    passwordInput.value?.focus();
+    return;
+  }
+  if (props.mode === 'phone_sms' && !/^[0-9]{4,8}$/.test(code.value)) {
+    validation.value = '请输入4至8位短信验证码';
+    root.value?.querySelector<HTMLInputElement>('[aria-label="短信验证码"]')?.focus();
+    return;
+  }
   const secret = password.value,
     otp = code.value;
   password.value = '';
@@ -165,55 +274,61 @@ async function submit() {
 </script>
 <template>
   <div ref="root" class="login-flow" tabindex="-1" :aria-busy="busy">
-    <form v-if="initial || !view" class="credential-form" @submit.prevent="submit">
-      <label v-if="mode === 'email'"
-        >邮箱<input
-          v-model="email"
-          aria-label="登录邮箱"
-          type="email"
-          autocomplete="username"
-          maxlength="254"
-          required
-          :disabled="disabled"
-      /></label>
+    <form v-if="initial || !view" class="credential-form" novalidate @submit.prevent="submit">
+      <LoginEmailInput
+        v-if="mode === 'email'"
+        v-model="email"
+        :disabled="disabled"
+        @chosen="passwordInput?.focus()"
+      />
       <div v-else class="login-phone">
-        <label class="country"
-          >区号<input
-            v-model="country"
-            aria-label="国际区号"
-            inputmode="numeric"
-            pattern="[0-9]{1,4}"
-            maxlength="4"
-            required
-            :disabled="disabled"
-        /></label>
+        <LoginCountryPicker
+          :countries="countries"
+          :alpha="identity.countryAlpha"
+          :disabled="disabled || countryLoading || !countries.length"
+          @select="emit('country', $event)"
+        />
         <label
-          >手机号<input
+          ><span class="sr-only">手机号</span
+          ><input
+            ref="phoneInput"
             v-model="phone"
             aria-label="登录手机号"
             type="tel"
             autocomplete="tel-national"
-            pattern="[0-9]{5,15}"
-            maxlength="15"
+            placeholder="请输入手机号"
+            pattern="[0-9]{1,32}"
+            maxlength="32"
             required
             :disabled="disabled"
         /></label>
       </div>
+      <p v-if="mode !== 'email' && countryError" class="credential-error" role="alert">
+        {{ countryError }}
+        <button v-if="!countries.length" type="button" @click="emit('retryCountries')">
+          重新加载
+        </button>
+      </p>
       <label v-if="mode !== 'phone_sms'"
-        >密码<input
+        ><span class="sr-only">密码</span
+        ><input
+          ref="passwordInput"
           v-model="password"
           aria-label="登录密码"
           type="password"
+          placeholder="请输入密码"
           autocomplete="current-password"
           maxlength="1024"
           required
           :disabled="disabled"
       /></label>
       <label v-else
-        >验证码<span class="login-code"
+        ><span class="sr-only">验证码</span
+        ><span class="login-code"
           ><input
             v-model="code"
             aria-label="短信验证码"
+            placeholder="请输入验证码"
             inputmode="numeric"
             autocomplete="one-time-code"
             pattern="[0-9]{4,8}"
@@ -222,32 +337,51 @@ async function submit() {
             :disabled="disabled"
           /><button
             type="button"
-            :disabled="
-              disabled ||
-              seconds > 0 ||
-              !/^[0-9]{5,15}$/.test(phone) ||
-              !/^[0-9]{1,4}$/.test(country)
-            "
-            @click="model.run({ kind: 'send_sms', phone, country_code: country })"
+            :disabled="disabled || seconds > 0 || !countries.length"
+            @click="sendSms"
           >
             {{ seconds ? `${seconds} 秒后重发` : '获取验证码' }}
           </button></span
         ></label
       >
       <div class="login-options">
-        <label><input v-model="remember" type="checkbox" :disabled="busy" />自动登录</label
-        ><button
-          v-if="mode !== 'email'"
-          type="button"
-          :disabled="busy"
-          @click="emit('mode', mode === 'phone_sms' ? 'phone_password' : 'phone_sms')"
-        >
-          {{ mode === 'phone_sms' ? '密码登录' : '验证码登录' }}
-        </button>
+        <p v-if="formError" class="credential-error" role="alert">{{ formError }}</p>
+        <label v-else><input v-model="remember" type="checkbox" :disabled="busy" />自动登录</label>
+        <div class="login-option-links">
+          <button
+            v-if="mode !== 'phone_sms'"
+            type="button"
+            :disabled="busy || openingDocument"
+            @click="mode === 'email' ? openDocument('email_recovery') : emit('forgot')"
+          >
+            忘记密码
+          </button>
+          <span v-if="mode === 'phone_password'" aria-hidden="true">|</span>
+          <button
+            v-if="mode !== 'email'"
+            type="button"
+            :disabled="busy"
+            @click="emit('mode', mode === 'phone_sms' ? 'phone_password' : 'phone_sms')"
+          >
+            {{ mode === 'phone_sms' ? '密码登录' : '验证码登录' }}
+          </button>
+        </div>
       </div>
-      <button class="primary login-submit" type="submit" :disabled="disabled">
+      <button
+        class="primary login-submit"
+        type="submit"
+        :disabled="disabled || (mode !== 'email' && !countries.length)"
+      >
         {{ busy ? '正在登录…' : '登录' }}
       </button>
+      <LoginConsent
+        ref="consent"
+        v-model="identity.consent"
+        :invalid="consentRequired"
+        :disabled="busy"
+        :opening="openingDocument || busy"
+        @open="openDocument"
+      />
     </form>
     <LoginChallenge
       v-else
@@ -266,6 +400,7 @@ async function submit() {
         emailActive ||
         questionActive ||
         reuseActive ||
+        (initial && view?.status === 'rejected') ||
         view?.status === 'two_factor'
           ? ''
           : error || loginMessage(view)

@@ -6,6 +6,7 @@ mod cooldown;
 mod device;
 mod email;
 mod flow;
+pub mod presentation;
 mod protocol;
 mod qr;
 mod question;

@@ -1,6 +1,35 @@
 use cumulus_core::client::{ClientError, MusicClient, dto::*};
 use tauri::{Emitter, Manager};
 
+#[tauri::command]
+pub fn login_presentation(
+    client: tauri::State<'_, MusicClient>,
+) -> Result<LoginPresentation, ClientError> {
+    client.login_presentation().map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn select_login_country(
+    client: tauri::State<'_, MusicClient>,
+    alpha: String,
+) -> Result<(), ClientError> {
+    client.select_login_country(&alpha).map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn open_login_document<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    document: LoginDocument,
+) -> Result<(), ClientError> {
+    let browser = app
+        .try_state::<crate::LoginDocumentBrowser>()
+        .map(|value| value.inner().clone())
+        .unwrap_or_default();
+    crate::browser::open_login_document(browser, document)
+        .await
+        .map_err(Into::into)
+}
+
 pub(super) fn publish<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>, client: &MusicClient) {
     if let Ok(account) = client.account() {
         let _ = window.emit("cumulus:account-changed", account);

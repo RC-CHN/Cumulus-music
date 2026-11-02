@@ -21,11 +21,7 @@ pub(super) struct LoginRequest {
 }
 
 pub(super) fn phone_number(phone: &str, country: &str) -> Result<()> {
-    if !(5..=15).contains(&phone.len())
-        || !phone.bytes().all(|b| b.is_ascii_digit())
-        || !(1..=4).contains(&country.len())
-        || !country.bytes().all(|b| b.is_ascii_digit())
-    {
+    if !super::presentation::valid_phone_number(phone, country) {
         return Err(Error::InvalidInput("invalid phone or country code"));
     }
     Ok(())

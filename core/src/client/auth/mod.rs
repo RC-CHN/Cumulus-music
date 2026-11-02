@@ -2,6 +2,7 @@ mod captcha;
 mod dto;
 mod flow;
 mod lifecycle;
+mod presentation;
 mod qr;
 mod renewal;
 mod view;
@@ -17,6 +18,7 @@ use crate::{
 };
 pub use captcha::LoginCaptchaProvider;
 pub use dto::*;
+pub use presentation::LoginPresentation;
 pub use renewal::{RenewalAction, RenewalState, SessionRenewalView};
 use std::sync::{Arc, Mutex};
 

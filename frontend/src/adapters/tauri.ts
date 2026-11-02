@@ -89,6 +89,9 @@ export function createTauriClient(): CoreClient {
       listen<NativeLikeChanged>('cumulus:native-like-changed', (event) => handler(event.payload)),
     onAccountChanged: (handler) =>
       listen<AccountView>('cumulus:account-changed', (event) => handler(event.payload)),
+    loginPresentation: () => invoke('login_presentation'),
+    selectLoginCountry: (alpha) => invoke('select_login_country', { alpha }),
+    openLoginDocument: (document) => invoke('open_login_document', { document }),
     beginLogin: (epoch, mode, savedId) =>
       invoke('begin_login', { epoch, mode, savedId: savedId ?? null }),
     loginSnapshot: (operationId) => invoke('login_snapshot', { operationId }),

@@ -1,4 +1,5 @@
 mod browser;
+pub use browser::LoginDocumentBrowser;
 pub mod captcha;
 mod catalog;
 mod clipboard;
@@ -168,6 +169,9 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 watchman::watchman_observation,
                 watchman::collection::broker::watchman_measurement,
                 auth::begin_login,
+                auth::login_presentation,
+                auth::select_login_country,
+                auth::open_login_document,
                 auth::login_snapshot,
                 auth::login_command,
                 auth::cancel_login,

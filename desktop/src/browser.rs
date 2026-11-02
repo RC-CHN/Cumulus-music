@@ -1,8 +1,35 @@
 //! Fixed native browser targets; no renderer-supplied URLs or credentials.
+use cumulus_core::account::login::presentation::LoginDocument;
 use cumulus_core::{Error, Result};
+use std::sync::Arc;
+
+/// A native host can supply its platform browser launcher. Renderer commands
+/// can only choose a fixed public document, never replace this adapter.
+#[derive(Clone)]
+pub struct LoginDocumentBrowser(Arc<dyn Fn(LoginDocument) -> Result<()> + Send + Sync>);
+impl Default for LoginDocumentBrowser {
+    fn default() -> Self {
+        Self::with_launcher(|document| launch(document.url()))
+    }
+}
+impl LoginDocumentBrowser {
+    pub fn with_launcher(
+        launcher: impl Fn(LoginDocument) -> Result<()> + Send + Sync + 'static,
+    ) -> Self {
+        Self(Arc::new(launcher))
+    }
+}
 const CLOUD_CAPACITY_PAGE: &str = "https://music.163.com/#/vip";
 pub async fn open_cloud_capacity() -> Result<()> {
     tauri::async_runtime::spawn_blocking(|| launch(CLOUD_CAPACITY_PAGE))
+        .await
+        .map_err(|_| Error::State("browser worker stopped"))?
+}
+pub async fn open_login_document(
+    browser: LoginDocumentBrowser,
+    document: LoginDocument,
+) -> Result<()> {
+    tauri::async_runtime::spawn_blocking(move || (browser.0)(document))
         .await
         .map_err(|_| Error::State("browser worker stopped"))?
 }
@@ -68,12 +95,21 @@ mod tests {
         )
         .unwrap();
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o700)).unwrap();
-        launch_with(script.as_os_str(), CLOUD_CAPACITY_PAGE).unwrap();
         let receipt = dir.path().join("browser.receipt");
-        assert_eq!(
-            std::fs::read_to_string(receipt).unwrap(),
-            format!("1\n{CLOUD_CAPACITY_PAGE}\n")
-        );
+        use cumulus_core::account::login::presentation::LoginDocument;
+        for url in [
+            CLOUD_CAPACITY_PAGE,
+            LoginDocument::Service.url(),
+            LoginDocument::Privacy.url(),
+            LoginDocument::Children.url(),
+            LoginDocument::EmailRecovery.url(),
+        ] {
+            launch_with(script.as_os_str(), url).unwrap();
+            assert_eq!(
+                std::fs::read_to_string(&receipt).unwrap(),
+                format!("1\n{url}\n")
+            );
+        }
         std::fs::write(&script, "#!/bin/sh\nexit 2\n").unwrap();
         assert!(launch_with(script.as_os_str(), CLOUD_CAPACITY_PAGE).is_err());
     }

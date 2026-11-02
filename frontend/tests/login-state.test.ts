@@ -32,6 +32,9 @@ function fixture(overrides: Partial<AuthClient> = {}) {
   const cancelled: string[] = [];
   let authorized = 0;
   const core: AuthClient = {
+    loginPresentation: async () => ({ countries: [], selectedCountry: 'CN' }),
+    selectLoginCountry: async () => {},
+    openLoginDocument: async () => {},
     sessionRenewal: async () => {
       throw Error('unused renewal');
     },

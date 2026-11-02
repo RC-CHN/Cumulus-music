@@ -1,5 +1,6 @@
 import type { AccountData, AccountView, QrStatus } from './contracts';
 import type { RenewalClient } from './renewal';
+import type { LoginPresentationClient } from './loginPresentation';
 export type LoginMode = 'phone_password' | 'phone_sms' | 'email' | 'saved_account';
 export type LoginStatus =
   | 'ready'
@@ -201,7 +202,7 @@ export interface SavedAccount {
 export type LoginCaptchaView =
   | { kind: 'credentials'; value: LoginView }
   | { kind: 'qr'; value: QrStatus };
-export interface AuthClient extends RenewalClient {
+export interface AuthClient extends RenewalClient, LoginPresentationClient {
   solveLoginCaptcha(operationId: string): Promise<LoginCaptchaView>;
   onAccountChanged(handler: (account: AccountView) => void): Promise<() => void>;
   beginLogin(epoch: string, mode: LoginMode, savedId?: string): Promise<LoginView>;

@@ -2,6 +2,8 @@
 export interface LoginIdentity {
   phone: string;
   country: string;
+  countryAlpha: string;
+  consent: boolean;
   email: string;
   remember: boolean;
 }

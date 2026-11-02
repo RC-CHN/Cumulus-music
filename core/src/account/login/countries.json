@@ -1,0 +1,1383 @@
+[
+  {
+    "alpha": "CN",
+    "name": "中国",
+    "englishName": "China",
+    "calling": "86",
+    "allowedLengths": [
+      11
+    ]
+  },
+  {
+    "alpha": "HK",
+    "name": "中国香港",
+    "englishName": "Hongkong",
+    "calling": "852",
+    "allowedLengths": [
+      8
+    ]
+  },
+  {
+    "alpha": "MO",
+    "name": "中国澳门",
+    "englishName": "Macao",
+    "calling": "853",
+    "allowedLengths": [
+      8
+    ]
+  },
+  {
+    "alpha": "TW",
+    "name": "中国台湾",
+    "englishName": "Taiwan",
+    "calling": "886",
+    "allowedLengths": [
+      9
+    ]
+  },
+  {
+    "alpha": "JP",
+    "name": "日本",
+    "englishName": "Japan",
+    "calling": "81",
+    "allowedLengths": [
+      10
+    ]
+  },
+  {
+    "alpha": "KR",
+    "name": "韩国",
+    "englishName": "Korea",
+    "calling": "82",
+    "allowedLengths": [
+      10
+    ]
+  },
+  {
+    "alpha": "GB",
+    "name": "英国",
+    "englishName": "United Kingdom",
+    "calling": "44",
+    "allowedLengths": [
+      10
+    ]
+  },
+  {
+    "alpha": "US",
+    "name": "美国",
+    "englishName": "United States of America",
+    "calling": "1",
+    "allowedLengths": [
+      10
+    ]
+  },
+  {
+    "alpha": "CA",
+    "name": "加拿大",
+    "englishName": "Canada",
+    "calling": "1",
+    "allowedLengths": [
+      10
+    ]
+  },
+  {
+    "alpha": "FR",
+    "name": "法国",
+    "englishName": "France",
+    "calling": "33",
+    "allowedLengths": [
+      9
+    ]
+  },
+  {
+    "alpha": "FI",
+    "name": "芬兰",
+    "englishName": "Finland",
+    "calling": "358",
+    "allowedLengths": [
+      9
+    ]
+  },
+  {
+    "alpha": "DE",
+    "name": "德国",
+    "englishName": "Germany",
+    "calling": "49",
+    "allowedLengths": [
+      11
+    ]
+  },
+  {
+    "alpha": "NL",
+    "name": "荷兰",
+    "englishName": "Netherlands",
+    "calling": "31",
+    "allowedLengths": [
+      9
+    ]
+  },
+  {
+    "alpha": "IT",
+    "name": "意大利",
+    "englishName": "Italy",
+    "calling": "39",
+    "allowedLengths": [
+      10
+    ]
+  },
+  {
+    "alpha": "IN",
+    "name": "印度",
+    "englishName": "India",
+    "calling": "91",
+    "allowedLengths": [
+      10
+    ]
+  },
+  {
+    "alpha": "TH",
+    "name": "泰国",
+    "englishName": "Thailand",
+    "calling": "66",
+    "allowedLengths": [
+      9
+    ]
+  },
+  {
+    "alpha": "NZ",
+    "name": "新西兰",
+    "englishName": "NewZealand",
+    "calling": "64",
+    "allowedLengths": [
+      9
+    ]
+  },
+  {
+    "alpha": "PT",
+    "name": "葡萄牙",
+    "englishName": "Portugal",
+    "calling": "351",
+    "allowedLengths": [
+      9
+    ]
+  },
+  {
+    "alpha": "RU",
+    "name": "俄罗斯",
+    "englishName": "Russia",
+    "calling": "7",
+    "allowedLengths": [
+      10
+    ]
+  },
+  {
+    "alpha": "SG",
+    "name": "新加坡",
+    "englishName": "Singapore",
+    "calling": "65",
+    "allowedLengths": [
+      8
+    ]
+  },
+  {
+    "alpha": "MY",
+    "name": "马来西亚",
+    "englishName": "Malaysia",
+    "calling": "60",
+    "allowedLengths": [
+      9,
+      10
+    ]
+  },
+  {
+    "alpha": "ES",
+    "name": "西班牙",
+    "englishName": "Spain",
+    "calling": "34",
+    "allowedLengths": [
+      9
+    ]
+  },
+  {
+    "alpha": "ZA",
+    "name": "南非",
+    "englishName": "South Africa",
+    "calling": "27",
+    "allowedLengths": [
+      9
+    ]
+  },
+  {
+    "alpha": "SE",
+    "name": "瑞典",
+    "englishName": "Sweden",
+    "calling": "46",
+    "allowedLengths": [
+      9
+    ]
+  },
+  {
+    "alpha": "AO",
+    "name": "安哥拉",
+    "englishName": "Angola",
+    "calling": "244",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "AF",
+    "name": "阿富汗",
+    "englishName": "Afghanistan",
+    "calling": "93",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "AL",
+    "name": "阿尔巴尼亚",
+    "englishName": "Albania",
+    "calling": "355",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "DZ",
+    "name": "阿尔及利亚",
+    "englishName": "Algeria",
+    "calling": "213",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "AD",
+    "name": "安道尔共和国",
+    "englishName": "Andorra",
+    "calling": "376",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "AI",
+    "name": "安圭拉岛",
+    "englishName": "Anguilla",
+    "calling": "1264",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "AG",
+    "name": "安提瓜和巴布达",
+    "englishName": "Antigua and Barbuda",
+    "calling": "1268",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "AR",
+    "name": "阿根廷",
+    "englishName": "Argentina",
+    "calling": "54",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "AM",
+    "name": "亚美尼亚",
+    "englishName": "Armenia",
+    "calling": "374",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "AC",
+    "name": "阿森松",
+    "englishName": "Ascension",
+    "calling": "247",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "AU",
+    "name": "澳大利亚",
+    "englishName": "Australia",
+    "calling": "61",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "AT",
+    "name": "奥地利",
+    "englishName": "Austria",
+    "calling": "43",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "AZ",
+    "name": "阿塞拜疆",
+    "englishName": "Azerbaijan",
+    "calling": "994",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "BS",
+    "name": "巴哈马",
+    "englishName": "Bahamas",
+    "calling": "1242",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "BH",
+    "name": "巴林",
+    "englishName": "Bahrain",
+    "calling": "973",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "BD",
+    "name": "孟加拉国",
+    "englishName": "Bangladesh",
+    "calling": "880",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "BB",
+    "name": "巴巴多斯",
+    "englishName": "Barbados",
+    "calling": "1246",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "BY",
+    "name": "白俄罗斯",
+    "englishName": "Belarus",
+    "calling": "375",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "BE",
+    "name": "比利时",
+    "englishName": "Belgium",
+    "calling": "32",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "BZ",
+    "name": "伯利兹",
+    "englishName": "Belize",
+    "calling": "501",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "BJ",
+    "name": "贝宁",
+    "englishName": "Benin",
+    "calling": "229",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "BM",
+    "name": "百慕大群岛",
+    "englishName": "BermudaIs.",
+    "calling": "1441",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "BO",
+    "name": "玻利维亚",
+    "englishName": "Bolivia",
+    "calling": "591",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "BW",
+    "name": "博茨瓦纳",
+    "englishName": "Botswana",
+    "calling": "267",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "BR",
+    "name": "巴西",
+    "englishName": "Brazil",
+    "calling": "55",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "BN",
+    "name": "文莱",
+    "englishName": "Brunei",
+    "calling": "673",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "BG",
+    "name": "保加利亚",
+    "englishName": "Bulgaria",
+    "calling": "359",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "BF",
+    "name": "布基纳法索",
+    "englishName": "Burkina-faso",
+    "calling": "226",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "MM",
+    "name": "缅甸",
+    "englishName": "Burma",
+    "calling": "95",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "BI",
+    "name": "布隆迪",
+    "englishName": "Burundi",
+    "calling": "257",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "CM",
+    "name": "喀麦隆",
+    "englishName": "Cameroon",
+    "calling": "237",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "KY",
+    "name": "开曼群岛",
+    "englishName": "Cayman Is.",
+    "calling": "1345",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "CF",
+    "name": "中非共和国",
+    "englishName": "Central African Republic",
+    "calling": "236",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "TD",
+    "name": "乍得",
+    "englishName": "Chad",
+    "calling": "235",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "CL",
+    "name": "智利",
+    "englishName": "Chile",
+    "calling": "56",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "CO",
+    "name": "哥伦比亚",
+    "englishName": "Colombia",
+    "calling": "57",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "CG",
+    "name": "刚果",
+    "englishName": "Congo",
+    "calling": "242",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "CK",
+    "name": "库克群岛",
+    "englishName": "Cook Is.",
+    "calling": "682",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "CR",
+    "name": "哥斯达黎加",
+    "englishName": "Costa Rica",
+    "calling": "506",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "CU",
+    "name": "古巴",
+    "englishName": "Cuba",
+    "calling": "53",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "CY",
+    "name": "塞浦路斯",
+    "englishName": "Cyprus",
+    "calling": "357",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "CZ",
+    "name": "捷克",
+    "englishName": "Czech Republic",
+    "calling": "420",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "DK",
+    "name": "丹麦",
+    "englishName": "Denmark",
+    "calling": "45",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "DJ",
+    "name": "吉布提",
+    "englishName": "Djibouti",
+    "calling": "253",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "DO",
+    "name": "多米尼加共和国",
+    "englishName": "Dominica Rep.",
+    "calling": "1890",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "EC",
+    "name": "厄瓜多尔",
+    "englishName": "Ecuador",
+    "calling": "593",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "EG",
+    "name": "埃及",
+    "englishName": "Egypt",
+    "calling": "20",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "SV",
+    "name": "萨尔瓦多",
+    "englishName": "EISalvador",
+    "calling": "503",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "EE",
+    "name": "爱沙尼亚",
+    "englishName": "Estonia",
+    "calling": "372",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "ET",
+    "name": "埃塞俄比亚",
+    "englishName": "Ethiopia",
+    "calling": "251",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "FJ",
+    "name": "斐济",
+    "englishName": "Fiji",
+    "calling": "679",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "GF",
+    "name": "法属圭亚那",
+    "englishName": "French Guiana",
+    "calling": "594",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "GA",
+    "name": "加蓬",
+    "englishName": "Gabon",
+    "calling": "241",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "GM",
+    "name": "冈比亚",
+    "englishName": "Gambia",
+    "calling": "220",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "GE",
+    "name": "格鲁吉亚",
+    "englishName": "Georgia",
+    "calling": "995",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "GH",
+    "name": "加纳",
+    "englishName": "Ghana",
+    "calling": "233",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "GI",
+    "name": "直布罗陀",
+    "englishName": "Gibraltar",
+    "calling": "350",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "GR",
+    "name": "希腊",
+    "englishName": "Greece",
+    "calling": "30",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "GD",
+    "name": "格林纳达",
+    "englishName": "Grenada",
+    "calling": "1473",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "GU",
+    "name": "关岛",
+    "englishName": "Guam",
+    "calling": "1671",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "GT",
+    "name": "危地马拉",
+    "englishName": "Guatemala",
+    "calling": "502",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "GN",
+    "name": "几内亚",
+    "englishName": "Guinea",
+    "calling": "224",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "GY",
+    "name": "圭亚那",
+    "englishName": "Guyana",
+    "calling": "592",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "HT",
+    "name": "海地",
+    "englishName": "Haiti",
+    "calling": "509",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "HN",
+    "name": "洪都拉斯",
+    "englishName": "Honduras",
+    "calling": "504",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "HU",
+    "name": "匈牙利",
+    "englishName": "Hungary",
+    "calling": "36",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "IS",
+    "name": "冰岛",
+    "englishName": "Iceland",
+    "calling": "354",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "ID",
+    "name": "印度尼西亚",
+    "englishName": "Indonesia",
+    "calling": "62",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "IR",
+    "name": "伊朗",
+    "englishName": "Iran",
+    "calling": "98",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "IQ",
+    "name": "伊拉克",
+    "englishName": "Iraq",
+    "calling": "964",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "IE",
+    "name": "爱尔兰",
+    "englishName": "Ireland",
+    "calling": "353",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "IL",
+    "name": "以色列",
+    "englishName": "Israel",
+    "calling": "972",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "CI",
+    "name": "科特迪瓦",
+    "englishName": "IvoryCoast",
+    "calling": "225",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "JM",
+    "name": "牙买加",
+    "englishName": "Jamaica",
+    "calling": "1876",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "JO",
+    "name": "约旦",
+    "englishName": "Jordan",
+    "calling": "962",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "KH",
+    "name": "柬埔寨",
+    "englishName": "Kampuchea (Cambodia )",
+    "calling": "855",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "KZ",
+    "name": "哈萨克斯坦",
+    "englishName": "Kazakstan",
+    "calling": "7",
+    "allowedLengths": [
+      10
+    ]
+  },
+  {
+    "alpha": "KE",
+    "name": "肯尼亚",
+    "englishName": "Kenya",
+    "calling": "254",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "KW",
+    "name": "科威特",
+    "englishName": "Kuwait",
+    "calling": "965",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "KG",
+    "name": "吉尔吉斯坦",
+    "englishName": "Kyrgyzstan",
+    "calling": "996",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "LA",
+    "name": "老挝",
+    "englishName": "Laos",
+    "calling": "856",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "LV",
+    "name": "拉脱维亚",
+    "englishName": "Latvia",
+    "calling": "371",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "LB",
+    "name": "黎巴嫩",
+    "englishName": "Lebanon",
+    "calling": "961",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "LS",
+    "name": "莱索托",
+    "englishName": "Lesotho",
+    "calling": "266",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "LR",
+    "name": "利比里亚",
+    "englishName": "Liberia",
+    "calling": "231",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "LY",
+    "name": "利比亚",
+    "englishName": "Libya",
+    "calling": "218",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "LI",
+    "name": "列支敦士登",
+    "englishName": "Liechtenstein",
+    "calling": "423",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "LT",
+    "name": "立陶宛",
+    "englishName": "Lithuania",
+    "calling": "370",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "LU",
+    "name": "卢森堡",
+    "englishName": "Luxembourg",
+    "calling": "352",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "MG",
+    "name": "马达加斯加",
+    "englishName": "Madagascar",
+    "calling": "261",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "MW",
+    "name": "马拉维",
+    "englishName": "Malawi",
+    "calling": "265",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "MV",
+    "name": "马尔代夫",
+    "englishName": "Maldives",
+    "calling": "960",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "ML",
+    "name": "马里",
+    "englishName": "Mali",
+    "calling": "223",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "MT",
+    "name": "马耳他",
+    "englishName": "Malta",
+    "calling": "356",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "MP",
+    "name": "马里亚那群岛",
+    "englishName": "Mariana Is",
+    "calling": "1670",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "MQ",
+    "name": "马提尼克",
+    "englishName": "Martinique",
+    "calling": "596",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "MU",
+    "name": "毛里求斯",
+    "englishName": "Mauritius",
+    "calling": "230",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "MX",
+    "name": "墨西哥",
+    "englishName": "Mexico",
+    "calling": "52",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "MD",
+    "name": "摩尔多瓦",
+    "englishName": "Republic of Moldova",
+    "calling": "373",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "MC",
+    "name": "摩纳哥",
+    "englishName": "Monaco",
+    "calling": "377",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "MN",
+    "name": "蒙古",
+    "englishName": "Mongolia",
+    "calling": "976",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "MS",
+    "name": "蒙特塞拉特岛",
+    "englishName": "Montserrat Is",
+    "calling": "1664",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "MA",
+    "name": "摩洛哥",
+    "englishName": "Morocco",
+    "calling": "212",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "MZ",
+    "name": "莫桑比克",
+    "englishName": "Mozambique",
+    "calling": "258",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "NA",
+    "name": "纳米比亚",
+    "englishName": "Namibia",
+    "calling": "264",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "NR",
+    "name": "瑙鲁",
+    "englishName": "Nauru",
+    "calling": "674",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "NP",
+    "name": "尼泊尔",
+    "englishName": "Nepal",
+    "calling": "977",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "AN",
+    "name": "荷属安的列斯",
+    "englishName": "Netheriands Antilles",
+    "calling": "599",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "NI",
+    "name": "尼加拉瓜",
+    "englishName": "Nicaragua",
+    "calling": "505",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "NE",
+    "name": "尼日尔",
+    "englishName": "Niger",
+    "calling": "227",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "NG",
+    "name": "尼日利亚",
+    "englishName": "Nigeria",
+    "calling": "234",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "KP",
+    "name": "朝鲜",
+    "englishName": "North Korea",
+    "calling": "850",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "NO",
+    "name": "挪威",
+    "englishName": "Norway",
+    "calling": "47",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "OM",
+    "name": "阿曼",
+    "englishName": "Oman",
+    "calling": "968",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "PK",
+    "name": "巴基斯坦",
+    "englishName": "Pakistan",
+    "calling": "92",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "PA",
+    "name": "巴拿马",
+    "englishName": "Panama",
+    "calling": "507",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "PG",
+    "name": "巴布亚新几内亚",
+    "englishName": "Papua New Cuinea",
+    "calling": "675",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "PY",
+    "name": "巴拉圭",
+    "englishName": "Paraguay",
+    "calling": "595",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "PE",
+    "name": "秘鲁",
+    "englishName": "Peru",
+    "calling": "51",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "PH",
+    "name": "菲律宾",
+    "englishName": "Philippines",
+    "calling": "63",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "PL",
+    "name": "波兰",
+    "englishName": "Poland",
+    "calling": "48",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "PF",
+    "name": "法属玻利尼西亚",
+    "englishName": "French Polynesia",
+    "calling": "689",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "PR",
+    "name": "波多黎各",
+    "englishName": "PuertoRico",
+    "calling": "1787",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "QA",
+    "name": "卡塔尔",
+    "englishName": "Qatar",
+    "calling": "974",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "RE",
+    "name": "留尼旺",
+    "englishName": "Reunion",
+    "calling": "262",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "RO",
+    "name": "罗马尼亚",
+    "englishName": "Romania",
+    "calling": "40",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "LC",
+    "name": "圣卢西亚",
+    "englishName": "Saint Lueia",
+    "calling": "1758",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "VC",
+    "name": "圣文森特岛",
+    "englishName": "Saint Vincent",
+    "calling": "1784",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "AS",
+    "name": "东萨摩亚(美)",
+    "englishName": "Samoa Eastern",
+    "calling": "684",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "WS",
+    "name": "西萨摩亚",
+    "englishName": "Samoa Western",
+    "calling": "685",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "SM",
+    "name": "圣马力诺",
+    "englishName": "San Marino",
+    "calling": "378",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "ST",
+    "name": "圣多美和普林西比",
+    "englishName": "Sao Tome and Principe",
+    "calling": "239",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "SA",
+    "name": "沙特阿拉伯",
+    "englishName": "Saudi Arabia",
+    "calling": "966",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "SN",
+    "name": "塞内加尔",
+    "englishName": "Senegal",
+    "calling": "221",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "SC",
+    "name": "塞舌尔",
+    "englishName": "Seychelles",
+    "calling": "248",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "SL",
+    "name": "塞拉利昂",
+    "englishName": "Sierra Leone",
+    "calling": "232",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "SK",
+    "name": "斯洛伐克",
+    "englishName": "Slovakia",
+    "calling": "421",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "SI",
+    "name": "斯洛文尼亚",
+    "englishName": "Slovenia",
+    "calling": "386",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "SB",
+    "name": "所罗门群岛",
+    "englishName": "Solomon Is",
+    "calling": "677",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "SO",
+    "name": "索马里",
+    "englishName": "Somali",
+    "calling": "252",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "LK",
+    "name": "斯里兰卡",
+    "englishName": "Sri Lanka",
+    "calling": "94",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "SD",
+    "name": "苏丹",
+    "englishName": "Sudan",
+    "calling": "249",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "SR",
+    "name": "苏里南",
+    "englishName": "Suriname",
+    "calling": "597",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "SZ",
+    "name": "斯威士兰",
+    "englishName": "Swaziland",
+    "calling": "268",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "CH",
+    "name": "瑞士",
+    "englishName": "Switzerland",
+    "calling": "41",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "SY",
+    "name": "叙利亚",
+    "englishName": "Syria",
+    "calling": "963",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "TJ",
+    "name": "塔吉克斯坦",
+    "englishName": "Tajikstan",
+    "calling": "992",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "TZ",
+    "name": "坦桑尼亚",
+    "englishName": "Tanzania",
+    "calling": "255",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "TG",
+    "name": "多哥",
+    "englishName": "Togo",
+    "calling": "228",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "TO",
+    "name": "汤加",
+    "englishName": "Tonga",
+    "calling": "676",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "TT",
+    "name": "特立尼达和多巴哥",
+    "englishName": "Trinidad and Tobago",
+    "calling": "1868",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "TN",
+    "name": "突尼斯",
+    "englishName": "Tunisia",
+    "calling": "216",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "TR",
+    "name": "土耳其",
+    "englishName": "Turkey",
+    "calling": "90",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "TM",
+    "name": "土库曼斯坦",
+    "englishName": "Turkmenistan",
+    "calling": "993",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "UG",
+    "name": "乌干达",
+    "englishName": "Uganda",
+    "calling": "256",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "UA",
+    "name": "乌克兰",
+    "englishName": "Ukraine",
+    "calling": "380",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "AE",
+    "name": "阿拉伯联合酋长国",
+    "englishName": "United Arab Emirates",
+    "calling": "971",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "UY",
+    "name": "乌拉圭",
+    "englishName": "Uruguay",
+    "calling": "598",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "UZ",
+    "name": "乌兹别克斯坦",
+    "englishName": "Uzbekistan",
+    "calling": "998",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "VE",
+    "name": "委内瑞拉",
+    "englishName": "Venezuela",
+    "calling": "58",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "VN",
+    "name": "越南",
+    "englishName": "Vietnam",
+    "calling": "84",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "YE",
+    "name": "也门",
+    "englishName": "Yemen",
+    "calling": "967",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "YU",
+    "name": "南斯拉夫",
+    "englishName": "Yugoslavia",
+    "calling": "381",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "ZW",
+    "name": "津巴布韦",
+    "englishName": "Zimbabwe",
+    "calling": "263",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "ZR",
+    "name": "扎伊尔",
+    "englishName": "Zaire",
+    "calling": "243",
+    "allowedLengths": []
+  },
+  {
+    "alpha": "ZM",
+    "name": "赞比亚",
+    "englishName": "Zambia",
+    "calling": "260",
+    "allowedLengths": []
+  }
+]
