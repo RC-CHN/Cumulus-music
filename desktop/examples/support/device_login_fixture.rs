@@ -15,11 +15,23 @@ pub struct Service {
     pub base: super::auth::Service,
     mode: Mutex<String>,
     held: Mutex<Option<oneshot::Sender<HttpReply>>>,
+    held_start: Mutex<Option<oneshot::Sender<()>>>,
+    completed_start: Mutex<u64>,
+    tokens: Mutex<Vec<String>>,
     completed: Mutex<u64>,
 }
 impl Service {
     pub fn command(&self, mode: &str) {
-        if mode == "release_poll" {
+        if mode == "release_start" {
+            self.held_start
+                .lock()
+                .unwrap()
+                .take()
+                .expect("one pending device start")
+                .send(())
+                .unwrap();
+            *self.mode.lock().unwrap() = "normal".into();
+        } else if mode == "release_poll" {
             let sender = self
                 .held
                 .lock()
@@ -37,7 +49,7 @@ impl Service {
         }
     }
     pub fn snapshot(&self) -> Value {
-        json!({"paths":*self.base.paths.lock().unwrap(),"pending":self.held.lock().unwrap().is_some(),"completed":*self.completed.lock().unwrap()})
+        json!({"paths":*self.base.paths.lock().unwrap(),"pending":self.held.lock().unwrap().is_some(),"pendingStart":self.held_start.lock().unwrap().is_some(),"completedStarts":*self.completed_start.lock().unwrap(),"deviceStarts":self.tokens.lock().unwrap().len(),"completed":*self.completed.lock().unwrap()})
     }
 }
 impl HttpBackend for Service {
@@ -103,16 +115,33 @@ impl HttpBackend for Service {
                 if mode == "start_lost" {
                     return Err(Error::Transport("synthetic lost start receipt".into()));
                 }
+                let token = {
+                    let mut tokens = self.tokens.lock().unwrap();
+                    let token = format!("fixture-device-token-{}", tokens.len() + 1);
+                    tokens.push(token.clone());
+                    token
+                };
+                if mode == "start_hold" {
+                    let (sender, receiver) = oneshot::channel();
+                    *self.held_start.lock().unwrap() = Some(sender);
+                    receiver
+                        .await
+                        .map_err(|_| Error::Response("device start hold cancelled"))?;
+                    *self.completed_start.lock().unwrap() += 1;
+                }
                 return Ok(super::auth::reply(
                     if mode == "blocked" {
                         json!({"code":815})
                     } else {
-                        json!({"code":200,"data":{"pollingToken":"fixture-device-token","deviceName":"Synthetic PC","safeDeviceCount":2}})
+                        json!({"code":200,"data":{"pollingToken":token,"deviceName":"Synthetic PC","safeDeviceCount":2}})
                     },
                     None,
                 ));
             }
-            if data["pollingToken"] != "fixture-device-token" {
+            if !data["pollingToken"]
+                .as_str()
+                .is_some_and(|token| self.tokens.lock().unwrap().iter().any(|t| t == token))
+            {
                 return Err(Error::Response("device fixture polling token"));
             }
             if path.ends_with("/cancel") {
@@ -148,6 +177,9 @@ impl HttpBackend for Service {
             }
             if mode == "poll_error" {
                 return Err(Error::Transport("synthetic unreadable device state".into()));
+            }
+            if mode == "poll_slow" {
+                tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
             }
             let code = match mode.as_str() {
                 "scanned" => 802,

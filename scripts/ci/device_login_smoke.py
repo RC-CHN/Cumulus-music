@@ -24,7 +24,7 @@ def main():
     assert code==0,code
     complete=json.loads((output/'complete.json').read_text(encoding='utf-8'));assert complete['ok']
     states=[json.loads(f.read_text(encoding='utf-8')) for f in sorted(output.glob('ux_*.json'))]
-    assert len(states)==complete['stageCount']==29
+    assert len(states)==complete['stageCount']==39
     assert all(not s['overflow'] and s['focusValid'] and s['focused'] and s['realMusicRequests']==0 for s in states)
     by_name={s['stage'].split('_',2)[2]:s for s in states}
     assert by_name['scan_inflight']['fixture']['pending']
@@ -37,6 +37,15 @@ def main():
     assert by_name['confirmed_account']['nativeAccount']['epoch']==by_name['start_unknown']['nativeAccount']['epoch']
     assert by_name['confirmation_reconciled']['nativeAccount']['epoch']==by_name['late_authorization_ignored']['nativeAccount']['epoch']
     assert by_name['confirmation_unknown']['codeLength']==0
+    assert by_name['pin_partial_keyboard']['codeLength']==3
+    assert by_name['pin_waits_for_read']['codeLength']==0
+    assert by_name['pin_waits_for_read']['fixture']['paths'].get('/api/login/origin-device/apply/check',0)==0
+    assert by_name['confirm_resent']['fixture']['deviceStarts']==by_name['confirm_expired']['fixture']['deviceStarts']+1
+    assert by_name['scan_refreshed']['fixture']['deviceStarts']==by_name['scan_expired']['fixture']['deviceStarts']+1
+    assert by_name['application_inflight']['fixture']['pendingStart']
+    assert by_name['closed_application_inflight']['fixture']['pendingStart']
+    assert by_name['late_application_ignored']['fixture']['completedStarts']==1
+    assert complete['fixture']['paths']['/api/login/origin-device/apply/check']==4
     if args.screenshots:assert len(list(output.glob('ux_*.png')))==len(states)
     report=dict(ok=True,actualWebView=True,states=len(states),screenshots=len(states) if args.screenshots else 0,realMusicRequests=0,realAccountWrites=0)
     (root/'report.json').write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8');print(json.dumps(report))
