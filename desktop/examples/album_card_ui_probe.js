@@ -548,7 +548,12 @@
     );
     await capture("reconciled_light");
     click(button("专辑与关注"));
-    await wait(() => card(), "reconciled collection");
+    // The departing artist page also contains album:7. Wait for the destination
+    // collection opener rather than letting that old card satisfy readiness.
+    await wait(
+      () => one('.collections-page [data-catalog-key="album:7"]'),
+      "reconciled collection opener",
+    );
     await settle();
     click(opener());
     await wait(() => one(".album-header"), "album detail");
