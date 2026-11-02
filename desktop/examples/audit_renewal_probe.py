@@ -7,12 +7,16 @@ import sqlite3
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('root', type=Path)
-root = parser.parse_args().root.resolve()
+parser.add_argument('--no-screenshots', action='store_true')
+args = parser.parse_args()
+root = args.root.resolve()
 run = root / 'first'
 expected = [
     ('renewal_missing', 0, {'missing_credentials'}),
+    ('renewal_login', 0, {'not_due'}),
     ('renewal_success', 1, {'refreshed', 'not_due'}),
     ('renewal_daily', 1, {'not_due'}),
+    ('renewal_second_login', 1, {'not_due'}),
     ('renewal_unknown', 2, {'recovery_required', 'reauthentication_required'}),
     ('renewal_relogin', 2, {'reauthentication_required'}),
 ]
@@ -21,11 +25,18 @@ for name, count, states in expected:
     data = json.loads(raw)
     assert data['state'] in states and data['nativeRenewal']['state'] in states
     assert data['rotationRequests'] == count and data['realMusicNetworkRequests'] == 0
-    assert not data['overflow'] and (run / (name + '.png')).is_file()
+    if name in ['renewal_login', 'renewal_second_login']:
+        assert data['nativeRenewal']['lastSuccess'] is None
+    if name in ['renewal_success', 'renewal_daily']:
+        assert data['nativeRenewal']['lastSuccess'] is not None
+    assert not data['overflow']
+    if not args.no_screenshots:
+        assert (run / (name + '.png')).is_file()
     for secret in ['MUSIC_U', 'fixture-refresh', 'fixture-password', '_sign', 'deviceId']:
         assert secret not in raw
 capture = json.loads((run / 'capture.json').read_text())
-assert capture['ok'] and capture['screenshots'] == 5
+screenshots = 0 if args.no_screenshots else 7
+assert capture['ok'] and capture['screenshots'] == screenshots
 complete = json.loads((run / 'complete.json').read_text())
 assert complete['ok'] and complete['rotationRequests'] == 2
 journals = []
@@ -39,7 +50,8 @@ assert sum(j['pending'] for j in journals) == 1
 assert sum(not j['pending'] and j['last_success'] is not None for j in journals) == 1
 assert all(j['last_success'] is None for j in journals if j['pending'])
 result = {'ok': True, 'syntheticOnly': True, 'realMusicRequests': 0,
-          'screenshots': 5, 'missingCredentialsSentNothing': True,
+          'screenshots': screenshots, 'missingCredentialsSentNothing': True,
+          'freshLoginDidNotRotateOrClaimRefresh': True,
           'dailyCheckDidNotRotate': True, 'unknownWriteNotReplayed': True,
           'successfulAndPendingJournalsDurable': True, 'publicStagesExcludeSecrets': True}
 (root / 'independent-audit.json').write_text(json.dumps(result, indent=2) + '\n')

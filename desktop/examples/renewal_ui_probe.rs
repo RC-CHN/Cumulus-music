@@ -18,8 +18,9 @@ use std::{
     path::PathBuf,
     sync::{
         Arc,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicU64, AtomicUsize, Ordering},
     },
+    time::{SystemTime, UNIX_EPOCH},
 };
 use tauri::{Listener, Manager, webview::PageLoadEvent};
 #[derive(Default)]
@@ -72,12 +73,22 @@ fn main() {
         )
         .unwrap();
     let service = Arc::new(Service::default());
+    let clock_offset = Arc::new(AtomicU64::new(0));
     cumulus_desktop::configure(tauri::Builder::default()).setup(move|app| {
   let client=MusicClient::open_with_http_backend(&root.join("state"),Some(&profile),service.clone())?;
-  let client=cumulus_desktop::renewal::configure(client,&ClientProfile::default());
+  let client=cumulus_desktop::renewal::configure(client,&ClientProfile::default()).with_session_renewal_clock({
+   let offset=clock_offset.clone();Arc::new(move|| Ok(SystemTime::now().duration_since(UNIX_EPOCH).map_err(|_|Error::State("fixture clock"))?.as_secs()+offset.load(Ordering::SeqCst)))
+  });
   app.manage(client);cumulus_desktop::renewal::start(app.handle());
   if std::env::var_os("CUMULUS_PROOF_SMALL").is_some() { app.get_webview_window("main").unwrap().set_size(tauri::LogicalSize::new(760.0,540.0))?; }
   app.add_capability(r#"{"identifier":"renewal-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
+  let clock_handle=app.handle().clone();
+  app.listen("renewal-clock-proof",move|event| {
+   let action: String=serde_json::from_str(event.payload()).unwrap();
+   let offset=match action.as_str() {"reset"=>0,"advance"=>86401,_=>panic!("unexpected fixture clock action")};
+   clock_offset.store(offset,Ordering::SeqCst);
+   clock_handle.get_webview_window("main").unwrap().eval(format!("window.__renewalClockAck={};",json!(action))).unwrap();
+  });
   let handle=app.handle().clone();
   app.listen("auth-proof",move|event| {
    let mut value:Value=serde_json::from_str(event.payload()).unwrap();

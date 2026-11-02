@@ -52,8 +52,9 @@ def main():
         assert by_name['logout_failed_small_light']['nativeAccount']['status'] == 'authenticated'
         assert by_name['local_logout_light']['nativeAccount']['status'] != 'authenticated'
         paths = complete['fixture']['paths']
-        assert paths.get('/api/login/token/refresh/v1') == 4
-        assert by_name['saved_current_small_light']['sessionRenewal']['state'] in ['refreshed', 'not_due']
+        assert paths.get('/api/login/token/refresh/v1', 0) == 0  # Fresh login starts the daily interval.
+        renewal = by_name['saved_current_small_light']['sessionRenewal']
+        assert renewal['state'] == 'not_due' and renewal['lastSuccess'] is None
         assert paths.get('/api/sms/captcha/sent') == 1
         assert paths.get('/api/logout') == 1  # Local-only fallback sends no second request.
         assert any(account['current'] and not account['autoLogin'] and account['nickname'] == '短信验证账号'

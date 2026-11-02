@@ -35,7 +35,7 @@ export function renewalMessage(state: RenewalState): string {
     ready: '回到应用时会自动检查登录续期',
     checking: '正在检查登录续期…',
     missing_credentials: '本次登录未提供续期凭据，可以继续使用；登录失效后需重新登录',
-    not_due: '登录已续期，距上次成功不足 24 小时',
+    not_due: '距登录或上次成功续期不足 24 小时，暂时无需续期',
     refreshed: '登录续期成功，账号身份已核对',
     recovery_required: '上次续期结果尚未确认，请先核对结果',
     reauthentication_required: '无法确认上次续期，请重新登录；仍可重试核对结果',
