@@ -1,3 +1,10 @@
+当前状态说明（2026-11-02）
+本文件保留 2026-10-27 排行榜接口和原始线上验证范围。后续 UI/UX 专项见
+rankings-ui-contracts.txt，原文“专辑只有基础入口/私人 FM 未迁移”已过时：
+共享专辑详情、目录历史与 FM 分别见 album-detail-ui-contracts.txt、
+catalog-navigation-ui-contracts.txt、desktop-fm-contracts.txt。旧通过数量及截图
+仅代表其记载日期，不作为最新实现验证；本轮只声明 Linux/Windows 支持目标。
+
 排行榜、畅销榜与专辑播放入口
 2026-10-27；完整桌面目标仍在进行。私人 FM 不计入本批完成范围。
 
@@ -124,4 +131,4 @@ Rust 全工作区 632 项及 custom-protocol 桌面示例 24 项，共 656 项�
 私人 FM 状态机、队列补充、跳过上报、减少推荐/恢复等仍待迁移并接界面；真实响应里的
 alg 需要保留给官方 skip/trash 请求，不能把 FM 当普通推荐歌曲列表冒充完成。
 完整内容发现、专辑/歌手全页、同账号接续、剩余音效、身份/易盾及其他原目标继续。
-本批只在 Linux 环境验证；Windows/macOS 不据此宣称运行通过。
+本批只在 Linux 环境验证；Windows 不据此宣称运行通过，macOS 不在支持范围。

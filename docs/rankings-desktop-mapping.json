@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-27",
+  "date": "2026-11-02",
   "full_goal_complete": false,
   "yesplaymusic_used": false,
   "sources": {
@@ -109,9 +109,9 @@
         "python_catalog"
       ],
       "rust_or_ui": "core/src/client/rankings.rs",
-      "entry": "销售榜进入专辑基础详情",
+      "entry": "销售榜进入共享专辑详情",
       "read_report_check": "album",
-      "evidence": "真实11首读取；501首原生队列测试；窗口3首实际播放"
+      "evidence": "早期真实11首读取；后续共享详情见album-detail-ui-contracts.txt；本次周榜/历史年榜返回恢复用生产WebView验证"
     },
     {
       "id": "album_queue",
@@ -144,19 +144,33 @@
         "sales_period",
         "sales_year"
       ],
-      "rust_or_ui": "frontend/src/components/RankingsPage.vue",
-      "entry": "正常/最小窗口、前三名卡片",
+      "rust_or_ui": "frontend/src/components/RankingCards.vue + RankingPeriods.vue",
+      "entry": "前三名卡片、周期/年份及正常/最小窗口",
       "read_report_check": null,
-      "evidence": "b/c/d共23截图；无像素一致声明"
+      "evidence": "2026-11-02合成服务+生产WebView 28态；封面尺寸/标题对齐/菜单几何、键盘与两主题断言；详见rankings-ui-contracts.txt，不宣称像素一致"
+    },
+    {
+      "id": "ranking_history",
+      "sources": [
+        "M400",
+        "sales_period",
+        "sales_year"
+      ],
+      "rust_or_ui": "frontend/src/composables/useRankings.ts + useRankingViewport.ts + App.vue",
+      "entry": "逐访问筛选/位置/来源操作、同账号重读、跨专辑/评论返回、失败重试",
+      "read_report_check": null,
+      "evidence": "新增4项前端所有权/迟到读取测试及28态生产WebView；历史项状态属于社区客户端适配，不声称官方使用同一存储实现"
     }
   ],
   "contract": "docs/desktop-rankings-contracts.txt",
   "boundaries": [
-    "FM仅有真实读取结构探针，正式状态机和UI未完成",
-    "专辑为基础读取/完整播放入口，未计完整官方专辑模型完成",
+    "排行榜普通卡片完整菜单和当前来源播放/暂停组合尚未逐态恢复",
     "合法空销售榜采用空状态，区别于官方抛错",
     "首页默认3小时缓存，服务配置宿主尚未接入；销售榜每次进入刷新",
-    "跨平台运行未实测",
-    "双账号一起听仍暂排除，其他完整目标继续"
-  ]
+    "真实封面、全部尺寸/DPI和Windows视觉尚未逐态复核；无同状态官方运行截图",
+    "早期FM/专辑迁移状态已由desktop-fm-contracts.txt、album-detail-ui-contracts.txt、catalog-navigation-ui-contracts.txt更新，不能沿用旧未迁移结论",
+    "双账号一起听仍暂排除；完整目标继续，不能以本专项替代全范围验收"
+  ],
+  "ui_contract": "docs/rankings-ui-contracts.txt",
+  "current_evidence_scope": "2026-11-02 UI/UX consistency; original live account evidence keeps its 2026-10-27 scope"
 }

@@ -1,0 +1,93 @@
+排行榜：卡片、周期/年份、历史返回及读取恢复
+2026-11-02；本专项针对 UI/UX 与功能一致性，不代表完整桌面目标完成。
+
+官方来源
+- pc/src/pages/choice/ranklist/components/RankListTop3Card.tsx：标题与更新频率同行，
+  16/20/19px 内边距、14px 内容间距、底边对齐的 78/58/38px 三张封面。
+- 同目录 RankListItemCard.tsx：封面入口、名称行数、普通榜单播放入口。
+- pc/src/pages/album-list/views/RankPeriodSelector.jsx：日榜、周榜、年份、总榜顺序，
+  7×16px 按钮内边距、13px 字号、18px 行高、20px 圆角。
+- 同目录 ../components/YearSelector.jsx：2018 到当前本地年份升序，打开年份选择
+  同时进入年榜模式；90px 弹层、40px 选项、6px 圆角。
+以上相对路径位于 references/ui-recovery/sources/packages/；精确散列见
+rankings-desktop-mapping.json。未使用 YesPlayMusic，无同状态官方运行截图，
+没有“像素一致”结论。接口/缓存来源仍为 desktop-rankings-contracts.txt 所列模块。
+
+这次修正的可复现问题
+1. 周榜/数字单曲进入专辑后返回，原来重置为日榜/数字专辑。现在每个历史项独立
+   保存 period、singles、scrollTop 和来源卡片/专辑/歌曲/具体操作；打开另一年榜
+   保留产品类型，返回原历史项不覆盖其原周期。历史年榜返回周榜会明确读取当前年。
+2. 同账号 AccountView 重读会产生新对象。原 watch 返回新数组，使代次/状态未变
+   也重置共用界面模型；改为两个 primitive watch sources。初始化卸载榜单之前
+   保存历史状态，完成后重新进入；真实原生命令重读及 DOM 重挂载已经专项覆盖。
+3. 三张封面重叠层遮住播放按钮。调整播放层级并恢复悬停/键盘显示、禁用透明度；
+   封面缺失或损坏使用已有音乐图标。播放加载暂时禁用按钮引起的 WebKit 焦点丢失
+   只在同次访问、按钮仍存在且用户没有另选控件时恢复。
+4. 新打开详情后焦点落在 body；新入榜页还可能继承上一页滚动位置。榜单独立
+   恢复阅读位置，新访问归零；共享详情和独立评论页在可读后承接标题焦点。
+   专辑内嵌评论不抢焦点，已有详情访问继续使用自己的位置/草稿恢复。
+5. 读取失败与合法空结果独立显示。已有内容的刷新失败保留内容；首次失败显示
+   重读按钮；空首页与空周期显示各自空状态。重试保留年份/产品选择并接回焦点。
+
+结构与所有权
+- services/rankings.ts 定义 RankingSelection、RankingUiState 和规范 query key；
+  useMusic 的排名历史项持有状态，不存登录态、授权 URL 或响应原文。
+- useRankings 负责账号代次、读取序号、当前访问、筛选与恢复快照。恢复同时验证
+  query key 和 epoch；离开会撤销未完成读取/焦点回调，旧账号结果不会回到新页面。
+- App 在路由离开、同账号初始化前 checkpoint，进入时 enter。该状态属于当前进程
+  的页面历史，不承诺应用重启恢复。没有增加远端写入，也不把失败请求自动重放。
+- useRankingViewport 管理滚动及来源操作；有限页面动画完成后再恢复，用户已选择
+  其他控件时不抢焦点。滚轮/触摸移动阻止迟到读取重置阅读位置。
+- useRankingPlaybackFocus 仅处理原生加载禁用控件后的焦点；读取重试单独处理。
+- usePageEntryFocus 仅用于新打开共享详情/独立评论，等待可读及有限过渡；失效、
+  离开或用户主动另选控件后不聚焦。h1 的 tabindex=-1 不改变按钮 Tab 顺序；
+  标题焦点用强调色下划线，避免外侧轮廓在详情/评论滚动容器边缘被裁切。
+- RankingPeriods 使用已有 ActionMenu 的年份变体，复用窗口内定位、方向键、
+  Home/End、Escape 和触发器焦点返回。其他菜单默认样式和行为不改。
+
+类型化调用及业务链路
+页面 -> CoreClient.rankingPage(epoch,query,refresh) -> desktop ranking_page ->
+MusicClient::ranking_page -> core/catalog/rankings；前端不直接访问业务接口。
+- 首页读取 /api/toplist/detail/v2、/api/feealbum/songsaleboard/daily/type、
+  /api/single/sales-ranking/get；官方分组过滤、追加两种销售榜在 Rust 完成。
+- album_sales：/api/batch 一次取日/周/总/年×专辑/单曲八路；album_year 取所选年
+  两路。子参数 JSON 文本、尾斜线路径区分、错误码和缓存规则沿用核心。
+- song_sales：/api/single/sales-ranking/get 后 /api/v3/song/detail，按原榜单重组。
+- 普通榜单播放经已有 playlist 选择重新读取 /api/v6/playlist/detail，建立原生队列；
+  歌曲指数榜使用现有播放器选择；音源/解码/时间均由 Rust 播放器处理。
+- 销售专辑进入共享 Catalog 详情，使用已有 /api/album/v3/detail 及动态权限读取；
+  专辑收藏、评论、下载和原生完整播放不另建“基础详情”替代页。
+- 歌曲评论进入已有 /api/v1/resource/comments/R_SO_4_{songId} 读取链路；返回保持
+  来源歌曲及 comments 按钮。喜欢/下载/发表评论未在本专项执行真实账号写入。
+
+实际验证方法
+scripts/ci/rankings_smoke.py 运行生产 dist、Tauri/WebView、实际 IPC、SQLite 缓存、
+播放器/队列；仅服务响应、固定合成音源和 null 音频输出被隔离替换。
+desktop/examples/support/rankings_fixture.rs 不允许排名场景复用真实账号 profile。
+28 个状态覆盖普通卡片/播放、全球榜、同账号重读、周榜单曲到专辑返回、年份菜单、
+历史年榜两类产品和多层返回、歌曲播放到评论返回、缓存错误/恢复、首次错误/恢复、
+空首页/空周期及恢复。宽窗 1120×760、窄窗 760×540，浅/深主题均涉及。
+每态检查点击命中、可见焦点、无页面横向溢出；菜单尺寸和顺序、封面尺寸/对齐、
+精确筛选/榜单响应标记、原生队列和真实时钟都单独断言。
+正常截图和本机 KDE Wayland/XWayland 125% 的最终证据见 ui-ux-validation.txt。
+两个播放态使用实际 libmpv 和生成 WAV、队列各 5 首，不能据此声称扬声器听感、
+真实 CDN、会员权限或 Windows 视觉通过。既有线上验证保留原日期，不冒充本轮。
+
+复现（固定版本/锁文件，先构建前端，之后保持 dist 不变）
+  npm --prefix frontend ci
+  npm --prefix frontend run build
+  cargo build -p cumulus-desktop --example catalog_ui_probe --features custom-protocol --locked
+  GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1600x1000x24' \
+    dbus-run-session -- python3 scripts/ci/rankings_smoke.py \
+    --binary .build/target/debug/examples/catalog_ui_probe --root NEW_PROOF_ROOT --screenshots
+Windows 使用对应 .exe，--runtime 指向已验证的 native 媒体运行库；无需 Xvfb。
+Linux、Windows CI 各自执行此探针，失败会阻止 CI gate；实机截图不是虚拟 runner 帧率证明。
+
+明确差异/未覆盖
+- 年份弹层改用语义主题和窗口内有界滚动（最高 360px），区别于恢复源码固定白底、
+  无高度上限；保留键盘访问和焦点轮廓。卡片只做 opacity 动画并尊重减少动态效果。
+- 普通榜单完整上下文菜单、官方 StatePlayButton 的当前来源播放/暂停组合、封面榜
+  GLOBAL 分类/日期位置等尚未完成逐态一致性，不能把本次开始播放验证算作这些通过。
+- 真实封面位图、所有尺寸/DPI、Windows 视觉、完整资源菜单/写操作分支尚未逐态复核。
+- 更广的 FM、专辑、导航等迁移进度分别以对应专项为准，不沿用早期排行榜文档中的
+  “FM 尚未迁移/专辑只有基础读取”等过时总述，也不因此宣布全范围目标完成。
