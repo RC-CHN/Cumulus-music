@@ -2,9 +2,10 @@
 import { computed, onUnmounted, ref, watch } from 'vue';
 import type { FollowCard } from '../../services/collections';
 import { useVirtualRows } from '../../composables/useVirtualRows';
-import Icon from '../Icon.vue';
+import FollowArtistCard from './FollowArtistCard.vue';
+import type { ArtistCardRequest } from '../../services/artistCards';
 const props = defineProps<{ entries: FollowCard[] }>();
-const emit = defineEmits<{ artist: [id: string] }>();
+const emit = defineEmits<{ artist: [id: string]; action: [request: ArtistCardRequest] }>();
 const columns = ref(2);
 const { container, start, end, onScroll } = useVirtualRows(
   () => Math.ceil(props.entries.length / columns.value),
@@ -37,31 +38,17 @@ onUnmounted(() => observer?.disconnect());
       class="collection-follow-grid"
       :style="{ gridTemplateColumns: `repeat(${columns},minmax(0,1fr))` }"
     >
-      <component
-        :is="entry.artist ? 'button' : 'article'"
+      <FollowArtistCard
         v-for="(entry, index) in visible"
-        :key="start * columns + index"
-        class="collection-follow-card"
-        :data-collection-key="entry.artist ? `artist:${entry.artist.id}` : undefined"
-        :aria-label="entry.artist ? `查看歌手 ${entry.artist.name}` : undefined"
-        @click="entry.artist && emit('artist', entry.artist.id)"
-      >
-        <img
-          v-if="entry.user?.avatarUrl || entry.artist?.coverUrl"
-          :src="entry.user?.avatarUrl ?? entry.artist?.coverUrl ?? undefined"
-          alt=""
-          loading="lazy"
-          decoding="async"
-          referrerpolicy="no-referrer"
-        />
-        <span v-else class="collection-avatar"><Icon name="user" /></span>
-        <span class="collection-follow-info"
-          ><strong>{{ entry.artist?.name || entry.user?.name || '资料暂缺' }}</strong>
-          <small v-if="entry.user?.unavailable">关联用户已注销</small>
-          <small v-else-if="entry.user?.signature">{{ entry.user.signature }}</small>
-          <small v-if="!entry.artist && entry.user">用户主页暂未接入</small>
-        </span>
-      </component>
+        :key="
+          entry.artist
+            ? `artist:${entry.artist.id}`
+            : `user:${entry.user?.id ?? start * columns + index}`
+        "
+        :entry="entry"
+        @artist="emit('artist', $event)"
+        @action="emit('action', $event)"
+      />
     </div>
     <div
       :style="{ height: `${(Math.ceil(entries.length / columns) - end) * 96}px` }"

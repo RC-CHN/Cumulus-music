@@ -8,6 +8,8 @@ import type { SearchItem } from './services/search';
 import { searchCardIsCurrent, searchCardSelection } from './services/searchCards';
 import { catalogResourceSelection, type AlbumCardRequest } from './services/catalogCards';
 import AlbumActions from './components/catalog/AlbumActions.vue';
+import ArtistActions from './components/catalog/ArtistActions.vue';
+import type { ArtistCardRequest } from './services/artistCards';
 import { computed, onMounted, onUnmounted, watch, ref, shallowRef, nextTick } from 'vue';
 import { onDesktopLyricOpen } from './adapters/desktopLyrics';
 import { onMiniReturn } from './adapters/mini';
@@ -106,6 +108,7 @@ const searchMemory = createSearchViewportMemory();
 const collectionMemory = createCollectionViewportMemory();
 const collectionRevision = ref(0);
 const albumActions = ref<InstanceType<typeof AlbumActions>>();
+const artistActions = ref<InstanceType<typeof ArtistActions>>();
 const collectionsPageRef = ref<InstanceType<typeof CollectionsPage>>();
 const playlistLibraryState = ref(libraryView());
 const music = useMusic(undefined, (commit) => {
@@ -317,22 +320,31 @@ function playCatalog(pages: CatalogSelectionPage[], index: number) {
   });
 }
 function playAlbumCard(album: AlbumCard) {
+  playResourceCard({ kind: 'album', id: album.id });
+}
+function playResourceCard(resource: CatalogResource) {
   const view = player.view.value;
-  if (view?.origin?.kind === 'album' && view.origin.id === album.id && player.loaded.value)
+  if (view?.origin?.kind === resource.kind && view.origin.id === resource.id && player.loaded.value)
     void player.toggleSource();
   else
     void player.prepareSelection((epoch) =>
       catalogResourceSelection(
         core,
         epoch,
-        { kind: 'album', id: album.id },
+        resource,
         view?.qualityPreferences.quality ?? 'standard',
       ),
     );
 }
 function albumAction(request: AlbumCardRequest) {
   trackActions.value?.close();
+  artistActions.value?.close();
   void albumActions.value?.show(request);
+}
+function artistAction(request: ArtistCardRequest) {
+  trackActions.value?.close();
+  albumActions.value?.close();
+  void artistActions.value?.show(request);
 }
 function catalogMembershipChanged(epoch: string, resource: CatalogResource) {
   if (account.value.status !== 'authenticated' || account.value.epoch !== epoch) return;
@@ -695,6 +707,7 @@ watch(
   music.page,
   (next, previous) => {
     albumActions.value?.close();
+    artistActions.value?.close();
     if (previous.kind === 'rankings') {
       checkpointRanking(previous);
       rankings.leave();
@@ -1521,6 +1534,7 @@ onUnmounted(() => {
                 @open="openCatalog"
                 @play-album="playAlbumCard"
                 @album-action="albumAction"
+                @artist-action="artistAction"
                 @expired="music.bootstrap(false)"
               />
               <SearchResultsPage
@@ -1584,6 +1598,8 @@ onUnmounted(() => {
                 @open="openCatalog"
                 @play-album="playAlbumCard"
                 @album-action="albumAction"
+                @play-artist="playResourceCard({ kind: 'artist', id: $event.id })"
+                @artist-action="artistAction"
                 @artist-tab="
                   (tab) => {
                     if (page.kind === 'catalog') music.navigate({ ...page, artistTab: tab });
@@ -2062,6 +2078,13 @@ onUnmounted(() => {
       :changed="catalogMembershipChanged"
       @expired="music.bootstrap(false)"
       @download="(tracks) => (downloadDialog = { kind: 'start', tracks })"
+    />
+    <ArtistActions
+      ref="artistActions"
+      :key="`${account.epoch}:${account.status}:artist-actions`"
+      :account="account"
+      :changed="catalogMembershipChanged"
+      @expired="music.bootstrap(false)"
     />
     <TrackActions
       ref="trackActions"

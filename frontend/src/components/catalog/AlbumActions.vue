@@ -8,7 +8,7 @@ import { useCore } from '../../services/core';
 import MenuTransition from '../MenuTransition.vue';
 import ModalTransition from '../ModalTransition.vue';
 import TrackShareDialog from '../TrackShareDialog.vue';
-import AlbumMembershipDialog from './AlbumMembershipDialog.vue';
+import CatalogMembershipDialog from './CatalogMembershipDialog.vue';
 const props = defineProps<{
   account: AccountView;
   player: PlayerModel;
@@ -128,10 +128,11 @@ const fallbackFocus = () =>
     ><TrackShareDialog v-if="shared && request" :album="request.album" @close="shared = false"
   /></ModalTransition>
   <ModalTransition :return-focus="() => request?.anchor ?? null" :fallback-focus="fallbackFocus"
-    ><AlbumMembershipDialog
+    ><CatalogMembershipDialog
       v-if="membership && request"
       :account="account"
-      :album="request.album"
+      :resource="{ kind: 'album', id: request.album.id }"
+      :name="request.album.name"
       :desired="request.action === 'collect'"
       :changed="changed"
       @close="membership = false"

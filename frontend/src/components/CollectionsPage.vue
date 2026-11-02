@@ -4,6 +4,7 @@ import type { AccountView } from '../services/contracts';
 import type { CatalogResource } from '../services/catalog';
 import type { AlbumCard } from '../services/catalog';
 import type { AlbumCardRequest } from '../services/catalogCards';
+import type { ArtistCardRequest } from '../services/artistCards';
 import type { PlayerOrigin } from '../services/player';
 import type { CollectionScope } from '../services/collections';
 import { normalizeKeyword } from '../services/keyword';
@@ -30,6 +31,7 @@ const emit = defineEmits<{
   expired: [];
   playAlbum: [album: AlbumCard];
   albumAction: [request: AlbumCardRequest];
+  artistAction: [request: ArtistCardRequest];
 }>();
 const model = useCollections(undefined, () => emit('expired'));
 const keyword = ref('');
@@ -272,6 +274,7 @@ onBeforeUnmount(() => {
           v-if="model.scope.value === 'followed_artists' && visibleCount"
           :entries="filteredFollows"
           @artist="emit('open', { kind: 'artist', id: $event })"
+          @action="emit('artistAction', $event)"
         />
         <CatalogCards
           v-else-if="model.scope.value !== 'followed_artists' && visibleCount"

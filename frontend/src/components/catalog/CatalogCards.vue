@@ -10,7 +10,9 @@ import type {
 } from '../../services/catalog';
 import type { PlayerOrigin } from '../../services/player';
 import type { AlbumCardRequest } from '../../services/catalogCards';
+import type { ArtistCardRequest } from '../../services/artistCards';
 import AlbumItem from './AlbumCard.vue';
+import ArtistItem from './ArtistCard.vue';
 import Icon from '../Icon.vue';
 const props = defineProps<{
   albums?: AlbumCard[];
@@ -28,6 +30,8 @@ const emit = defineEmits<{
   mv: [id: string];
   playAlbum: [album: AlbumCard];
   albumAction: [request: AlbumCardRequest];
+  playArtist: [artist: ArtistCard];
+  artistAction: [request: ArtistCardRequest];
 }>();
 const albums = computed(() => props.albums ?? []);
 const artists = computed(() => props.artists ?? []);
@@ -35,11 +39,10 @@ const videos = computed(() => props.videos ?? []);
 const concerts = computed(() => props.concerts ?? []);
 const columns = ref(3);
 const availableWidth = ref(540);
-const rowHeight = computed(() =>
-  albums.value.length
-    ? (availableWidth.value - (columns.value - 1) * 16) / columns.value + 80
-    : 260,
-);
+const rowHeight = computed(() => {
+  const width = (availableWidth.value - (columns.value - 1) * 16) / columns.value;
+  return albums.value.length ? width + 80 : artists.value.length ? width + 74 : 260;
+});
 const total = computed(
   () => albums.value.length + artists.value.length + videos.value.length + concerts.value.length,
 );
@@ -114,23 +117,17 @@ function date(value: string | number | null) {
         @play="emit('playAlbum', $event)"
         @action="emit('albumAction', $event)"
       />
-      <button
+      <ArtistItem
         v-for="(artist, i) in windowArtists"
         :key="`artist:${i}:${artist.id}`"
-        class="catalog-card artist"
-        :data-catalog-key="`artist:${artist.id}`"
-        @click="emit('open', { kind: 'artist', id: artist.id })"
-      >
-        <img
-          v-if="artist.coverUrl"
-          :src="artist.coverUrl"
-          alt=""
-          loading="lazy"
-          decoding="async"
-          referrerpolicy="no-referrer"
-        /><span v-else class="catalog-card-placeholder"><Icon name="user" /></span
-        ><strong :title="artist.name">{{ artist.name }}</strong>
-      </button>
+        :artist="artist"
+        :playable="!!playable"
+        :current="origin?.kind === 'artist' && origin.id === artist.id"
+        :playing="!!playing"
+        @open="emit('open', $event)"
+        @play="emit('playArtist', $event)"
+        @action="emit('artistAction', $event)"
+      />
       <article
         v-for="(video, i) in windowVideos"
         :key="`video:${i}:${video.id}`"

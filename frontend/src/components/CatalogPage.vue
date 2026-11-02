@@ -3,8 +3,9 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } fro
 import type { TrackMenuRequest } from '../services/trackMenu';
 import type { AccountView, TrackView } from '../services/contracts';
 import type { ArtistTab, CatalogResource, CatalogSelectionPage } from '../services/catalog';
-import type { AlbumCard } from '../services/catalog';
+import type { AlbumCard, ArtistCard } from '../services/catalog';
 import type { AlbumCardRequest } from '../services/catalogCards';
+import type { ArtistCardRequest } from '../services/artistCards';
 import type { PlayerOrigin } from '../services/player';
 import type { AlbumTab, CatalogPanelKey } from '../services/catalogNavigation';
 import type { CatalogSession } from '../composables/useCatalogSession';
@@ -42,6 +43,8 @@ const emit = defineEmits<{
   back: [];
   playAlbum: [album: AlbumCard];
   albumAction: [request: AlbumCardRequest];
+  playArtist: [artist: ArtistCard];
+  artistAction: [request: ArtistCardRequest];
 }>();
 const {
   resource,
@@ -418,6 +421,8 @@ defineExpose({ checkpoint: () => checkpoint(), resourceKey: `${resource.kind}:${
             @mv="emit('mv', $event)"
             @play-album="emit('playAlbum', $event)"
             @album-action="emit('albumAction', $event)"
+            @play-artist="emit('playArtist', $event)"
+            @artist-action="emit('artistAction', $event)"
           />
           <p v-if="list.loading.value" class="catalog-loading" role="status">正在加载…</p>
           <button v-if="next" class="load-more" :disabled="list.loading.value" @click="list.more">

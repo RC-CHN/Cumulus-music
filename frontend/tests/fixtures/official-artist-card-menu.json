@@ -1,0 +1,39 @@
+{
+  "source": "hybrid_app.chunk.1482700000000.js/622.js S.content/check",
+  "sha256": "347d7d067eeb1b883dec32a290e8e9a960fdc97a8acafe7d44ebe5a1960735b0",
+  "method": "Execute recovered literal and exact checks; synthetic enums/scenes; native renderer not run",
+  "vectors": [
+    {
+      "scene": "search",
+      "rows": [
+        {
+          "text": "查看歌手",
+          "action": "link"
+        },
+        {
+          "text": "收藏",
+          "action": "favorite"
+        },
+        {
+          "text": "复制链接",
+          "action": "copy"
+        }
+      ],
+      "keys": ["open", "collect", "copy"]
+    },
+    {
+      "scene": "myFollow",
+      "rows": [
+        {
+          "text": "查看歌手",
+          "action": "link"
+        },
+        {
+          "text": "复制链接",
+          "action": "copy"
+        }
+      ],
+      "keys": ["open", "copy"]
+    }
+  ]
+}

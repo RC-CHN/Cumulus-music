@@ -26,6 +26,7 @@
 @import './styles/catalog.css';
 @import './styles/artist.css';
 @import './styles/collections.css';
+@import './styles/artist-cards.css';
 @import './styles/history.css';
 @import './styles/search-results.css';
 @import './styles/search-preview.css';

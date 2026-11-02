@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId } from 'vue';
 import { failure, type AccountView } from '../../services/contracts';
-import type { AlbumCard, CatalogResource, CatalogMembershipListener } from '../../services/catalog';
+import type { CatalogResource, CatalogMembershipListener } from '../../services/catalog';
+import { catalogMembershipObservation } from '../../services/catalogMembership';
 import { useCore } from '../../services/core';
 import { useCatalogMembership } from '../../composables/useCatalogMembership';
 import Icon from '../Icon.vue';
 const props = defineProps<{
   account: AccountView;
-  album: AlbumCard;
+  resource: CatalogResource;
+  name: string;
   desired: boolean;
   changed: CatalogMembershipListener;
 }>();
@@ -19,7 +21,18 @@ const dialog = ref<HTMLDialogElement>(),
   error = ref('');
 const observed = ref<boolean | null>(null);
 const writing = ref(false);
-const resource: CatalogResource = { kind: 'album', id: props.album.id };
+const resource = { ...props.resource };
+const artist = resource.kind === 'artist';
+const titleId = useId();
+const title = computed(() =>
+  artist
+    ? props.desired
+      ? '关注歌手'
+      : '取消关注歌手'
+    : props.desired
+      ? '收藏专辑'
+      : '删除收藏专辑',
+);
 const owner = props.account.epoch;
 const busy = computed(() => loading.value || model.busy.value);
 const message = computed(
@@ -55,18 +68,13 @@ async function load() {
   observed.value = null;
   try {
     const [result] = await Promise.all([
-      core.catalogPage(props.account.epoch, resource, true),
+      catalogMembershipObservation(core, owner, resource),
       model.command({ kind: 'inspect' }),
     ]);
     if (!alive) return;
-    if (
-      result.epoch !== props.account.epoch ||
-      result.value?.page.kind !== 'album' ||
-      result.value.page.album.id !== resource.id
-    )
-      throw { code: 'stale', message: '专辑状态已变化，请重试' };
-    observed.value = result.value.page.album.subscribed;
-    if (observed.value === null) error.value = '暂时无法确认收藏状态，请重试';
+    observed.value = result;
+    if (observed.value === null)
+      error.value = artist ? '暂时无法确认关注状态，请重试' : '暂时无法确认收藏状态，请重试';
   } catch (issue) {
     if (!alive) return;
     const value = failure(issue);
@@ -110,30 +118,49 @@ async function command(reconcile = false) {
 <template>
   <dialog
     ref="dialog"
-    class="playlist-dialog album-membership-dialog"
-    aria-labelledby="album-membership-title"
+    class="playlist-dialog catalog-membership-dialog"
+    :class="artist ? 'artist-membership-dialog' : 'album-membership-dialog'"
+    :aria-labelledby="titleId"
     :aria-busy="busy"
     @cancel.prevent="!writing && emit('close')"
   >
     <header>
-      <h2 id="album-membership-title">{{ desired ? '收藏专辑' : '删除收藏专辑' }}</h2>
+      <h2 :id="titleId">{{ title }}</h2>
       <button
         class="icon-button"
-        aria-label="关闭专辑收藏确认"
+        :aria-label="artist ? '关闭歌手关注确认' : '关闭专辑收藏确认'"
         :disabled="writing"
         @click="emit('close')"
       >
         <Icon name="close" />
       </button>
     </header>
-    <p class="album-membership-name">{{ album.name }}</p>
-    <p v-if="loading" role="status">正在核对当前收藏状态…</p>
+    <p class="album-membership-name">{{ name }}</p>
+    <p v-if="loading" role="status">
+      {{ artist ? '正在核对当前关注状态…' : '正在核对当前收藏状态…' }}
+    </p>
     <p v-else-if="model.pending.value">上次操作结果尚未确认，请先核对结果。</p>
     <p v-else-if="observed === desired">
-      {{ desired ? '这张专辑已在你的收藏中。' : '这张专辑已不在你的收藏中。' }}
+      {{
+        artist
+          ? desired
+            ? '你已经关注了这位歌手。'
+            : '你已经取消关注这位歌手。'
+          : desired
+            ? '这张专辑已在你的收藏中。'
+            : '这张专辑已不在你的收藏中。'
+      }}
     </p>
     <p v-else-if="observed !== null">
-      {{ desired ? '将这张专辑加入你的收藏？' : '从你的收藏中删除这张专辑？已下载的文件会保留。' }}
+      {{
+        artist
+          ? desired
+            ? '关注这位歌手？'
+            : '取消关注这位歌手？'
+          : desired
+            ? '将这张专辑加入你的收藏？'
+            : '从你的收藏中删除这张专辑？已下载的文件会保留。'
+      }}
     </p>
     <p v-if="message" class="catalog-error" role="alert">{{ message }}</p>
     <footer>
