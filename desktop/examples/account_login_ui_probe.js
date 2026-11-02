@@ -187,10 +187,19 @@
   }
   async function tab(label) {
     click(button(label, one(".login-methods")));
+    // Vue can still expose the outgoing ready status until its next patch.
+    // Wait for the selected panel and its native begin-login reply together.
+    await sleep(0);
     await wait(
       () =>
+        button(label, one(".login-methods")).getAttribute("aria-pressed") === "true" &&
         !one(".tab-leave-active") &&
-        (label === "扫码" ? one(".qr-frame") : status() === "ready"),
+        (label === "扫码"
+          ? one(".qr-frame")
+          : status() === "ready" &&
+            all(`[aria-label="${label === "邮箱" ? "登录邮箱" : "登录手机号"}"]`).some(
+              (node) => !node.disabled && !node.closest("[inert]"),
+            )),
       "login method ready",
     );
     await settle();
