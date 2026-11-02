@@ -45,7 +45,7 @@ class ProofArchive(unittest.TestCase):
                      'windows-media/player-probe.stdout.log',
                      'ci-cloud-local-delete-windows/host.log', 'ci-local-resource-windows/first/failed.json',
                      'ci-rankings-linux/run/first/failed.json', 'ci-library-linux/first/failed.json',
-                     'ci-card-source-windows/host.log', 'ci-collections-context-linux/run/first/failed.json', 'ci-album-card-windows/run/first/failed.json', 'ci-artist-card-windows/run/first/failed.json', 'ci-comment-read-windows/run/first/failed.json']
+                     'ci-card-source-windows/host.log', 'ci-collections-context-linux/run/first/failed.json', 'ci-album-card-windows/run/first/failed.json', 'ci-artist-card-windows/run/first/failed.json', 'ci-comment-read-windows/run/first/failed.json', 'ci-comment-resource-windows/run/first/failed.json']
             for relative in paths:
                 path = root / relative
                 path.parent.mkdir(parents=True, exist_ok=True)

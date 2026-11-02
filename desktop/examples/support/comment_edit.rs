@@ -84,6 +84,19 @@ impl Service {
             "/api/v3/discovery/recommend/songs" => Ok(
                 json!({"code":200,"data":{"dailySongs":[{"id":123,"name":"夏日回声（合成测试）","ar":[{"id":1,"name":"合成歌手"}],"al":{"id":1,"name":"验证专辑"},"dt":180000}]}}),
             ),
+            "/api/v3/song/detail" => {
+                let rows: Vec<Value> = serde_json::from_str(
+                    data["c"]
+                        .as_str()
+                        .ok_or(Error::State("fixture song request missing"))?,
+                )?;
+                if rows.len() != 1 || rows[0]["id"] != "123" {
+                    return Err(Error::State("unexpected fixture song identity"));
+                }
+                Ok(
+                    json!({"code":200,"songs":[{"id":123,"name":"夏日回声（合成测试）","ar":[{"id":1,"name":"合成歌手"}],"al":{"id":1,"name":"验证专辑"},"dt":180000}]}),
+                )
+            }
             "/api/resource/comments/add" | "/api/v1/resource/comments/reply" => {
                 if data["threadId"] != "R_SO_4_123" {
                     return Err(Error::State("unexpected fixture thread"));

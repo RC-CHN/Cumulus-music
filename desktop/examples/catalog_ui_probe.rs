@@ -124,7 +124,7 @@ fn main() {
             let stage=value["stage"].as_str().unwrap_or("");
             if comment_reads && stage=="comment-read-fixture" {
                 let id=value["id"].as_u64().expect("comment fixture sequence");let mode=value["mode"].as_str().unwrap();
-                assert!(["read","none","fail-next","fail-hot","fail-target","fail-floor-first","fail-floor-next","hold-next","expire","empty","missing-target"].contains(&mode));
+                assert!(["read","none","fail-next","fail-hot","fail-target","fail-floor-first","fail-floor-next","hold-next","expire","empty","missing-target","resource-offline","hold-resource"].contains(&mode));
                 if mode!="read" {comment_fixture.mode(mode);}
                 handle.get_webview_window("main").unwrap().eval(format!("window.__commentReadAck[{id}]={};",comment_fixture.report())).unwrap();return;
             }

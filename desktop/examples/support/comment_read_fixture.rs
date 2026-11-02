@@ -37,9 +37,93 @@ fn comment(id: u64, parent: u64) -> Value {
     }
     value
 }
+fn radio() -> Value {
+    json!({"id":71,"name":"合成播单 · A radio with a long title","programCount":1,"dj":{"userId":3,"nickname":"合成主播"}})
+}
+fn voice() -> Value {
+    json!({"id":81,"name":"合成声音 · An episode with a long title","mainTrackId":181,"duration":30000,"coverUrl":"https://p1.music.126.net/cumulus-synthetic-cover.png","radio":radio(),"dj":{"userId":3,"nickname":"合成主播"}})
+}
+fn video() -> Value {
+    json!({"id":"123","isMv":true,"resource":{"threadId":"R_MV_5_123","mlogBaseData":{"type":3,"text":"合成MV · LongSyntheticVideoTitleWithoutBreaksLongSyntheticVideoTitleWithoutBreaks","coverUrl":"https://p1.music.126.net/cumulus-synthetic-cover.png","duration":30000},"mlogExtVO":{"artists":[{"id":12,"name":"测试歌手"}]}}})
+}
 impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, args: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            let mode = self.mode.lock().unwrap().clone();
+            let metadata = matches!(
+                path,
+                "/api/v3/song/detail" | "/api/dj/program/detail" | "/api/mlog/detail/v1"
+            );
+            if metadata {
+                self.calls
+                    .lock()
+                    .unwrap()
+                    .push(json!({"path":path,"args":args,"mode":mode}));
+                if mode == "resource-offline" {
+                    return Err(Error::Transport(
+                        "synthetic resource information offline".into(),
+                    ));
+                }
+                if mode == "hold-resource" {
+                    self.pending.store(true, Ordering::SeqCst);
+                    let released = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                        while self.mode.lock().unwrap().as_str() == "hold-resource" {
+                            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                        }
+                    })
+                    .await;
+                    self.pending.store(false, Ordering::SeqCst);
+                    self.delayed.fetch_add(1, Ordering::SeqCst);
+                    if released.is_err() {
+                        return Err(Error::Transport("synthetic resource hold timed out".into()));
+                    }
+                }
+                if path == "/api/v3/song/detail" {
+                    let rows: Vec<Value> =
+                        serde_json::from_str(args["c"].as_str().unwrap()).unwrap();
+                    return Ok(
+                        json!({"code":200,"songs":rows.into_iter().map(|row|json!({"id":row["id"],"name":format!("合成歌曲 {} · A song for comment resource navigation",row["id"].as_str().unwrap()),"dt":30000,"ar":[{"id":12,"name":"测试歌手"},{"id":0,"name":"未关联署名"}],"al":{"id":7,"name":"合成专辑 · A long album name","picUrl":if row["id"]=="2" {"https://p1.music.126.net/cumulus-synthetic-missing.png"}else{"https://p1.music.126.net/cumulus-synthetic-cover.png"}}})).collect::<Vec<_>>()}),
+                    );
+                }
+                return Ok(if path == "/api/dj/program/detail" {
+                    json!({"code":200,"program":voice()})
+                } else {
+                    json!({"code":200,"data":video()})
+                });
+            }
+            match path {
+                "/api/my/podcast/page/list" => {
+                    return Ok(
+                        json!({"code":200,"data":{"radioIdList":[71],"myPodcastVOList":[radio()]}}),
+                    );
+                }
+                "/api/content/my/liked/voice" => {
+                    return Ok(json!({"code":200,"data":{"data":[],"hasMore":false}}));
+                }
+                "/api/djradio/v3/get" => return Ok(json!({"code":200,"data":radio()})),
+                "/api/v6/dj/program/byradio" => {
+                    return Ok(
+                        json!({"code":200,"data":{"programs":[voice()],"count":1,"more":false,"asc":args["asc"]}}),
+                    );
+                }
+                "/api/dj/user/setting/resumeplay/get" => {
+                    return Ok(json!({"code":200,"data":{"resumePlayValue":0}}));
+                }
+                "/api/dj/play/url/check" => {
+                    return Ok(
+                        json!({"code":200,"data":{"voiceId":"81","songId":"181","canPlay":true}}),
+                    );
+                }
+                "/api/mlog/mycollect/bytime/get" => {
+                    return Ok(
+                        json!({"code":200,"data":{"hasMore":false,"mlogs":[video()],"time":"1"}}),
+                    );
+                }
+                "/api/song/enhance/play/mv/url" => {
+                    return Err(Error::State("comment resource proof does not play video"));
+                }
+                _ => {}
+            }
             let floor = path == "/api/resource/comment/floor/get";
             let latest = path.starts_with("/api/v1/resource/comments/");
             let hot = path.starts_with("/api/v1/resource/hotcomments/");
@@ -54,7 +138,6 @@ impl Api for Library {
                 }
                 return self.base.request(path, args, cache).await;
             }
-            let mode = self.mode.lock().unwrap().clone();
             self.calls
                 .lock()
                 .unwrap()
