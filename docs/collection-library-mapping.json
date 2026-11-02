@@ -1,49 +1,166 @@
 {
   "scope": "Saved albums, purchased albums and current account followed artists",
-  "platforms": ["linux-x64", "windows-x64"],
+  "platforms": [
+    "linux-x64",
+    "windows-x64"
+  ],
   "officialEvidenceRoot": "references/netease-3.1.42.205594-analysis/recovered-js/modules/",
   "entries": [
     {
       "feature": "Saved album pages",
-      "source": ["hybrid_166.chunk.1482700000000.js/3011.js fetchFavAlbumList", "hybrid_166.chunk.1482700000000.js/2252.js", "hybrid_app.chunk.1482700000000.js/15.js K/export u"],
+      "source": [
+        "hybrid_166.chunk.1482700000000.js/3011.js fetchFavAlbumList",
+        "hybrid_166.chunk.1482700000000.js/2252.js",
+        "hybrid_app.chunk.1482700000000.js/15.js K/export u"
+      ],
       "api": "/api/album/sublist",
-      "rust": ["account/collections/api.rs CollectionApi::page", "account/collections/service.rs Collections"],
+      "rust": [
+        "account/collections/api.rs CollectionApi::page",
+        "account/collections/service.rs Collections"
+      ],
       "ui": "CollectionsPage 收藏专辑 → CatalogPage",
-      "verification": ["core/tests/collection_pages.rs", "collection_read example: 14 saved albums", "collection_ui_probe: page failures, retry, refresh and later-page filtering", "collection_live_probe: saved album detail navigation"]
+      "verification": [
+        "core/tests/collection_pages.rs",
+        "collection_read example: 14 saved albums",
+        "collection_ui_probe: page failures, retry, refresh and later-page filtering",
+        "collection_live_probe: saved album detail navigation"
+      ]
     },
     {
       "feature": "Existing purchased albums",
-      "source": ["hybrid_166.chunk.1482700000000.js/3011.js fetchPayedAlbumList", "hybrid_app.chunk.1482700000000.js/15.js J/export nb"],
+      "source": [
+        "hybrid_166.chunk.1482700000000.js/3011.js fetchPayedAlbumList",
+        "hybrid_app.chunk.1482700000000.js/15.js J/export nb"
+      ],
       "api": "/api/digitalAlbum/purchased",
-      "rust": ["CollectionQuery::PurchasedAlbums", "CollectionApi::page"],
+      "rust": [
+        "CollectionQuery::PurchasedAlbums",
+        "CollectionApi::page"
+      ],
       "ui": "CollectionsPage 已购专辑 → CatalogPage",
-      "verification": ["collection_read example: 2 purchased albums", "synthetic WebView: empty/failure/retry", "live WebView: purchased album detail navigation"],
+      "verification": [
+        "collection_read example: 2 purchased albums",
+        "synthetic WebView: empty/failure/retry",
+        "live WebView: purchased album detail navigation"
+      ],
       "boundary": "No purchase/payment operation; shop navigation remains separate incomplete scope"
     },
     {
       "feature": "Own followed artists",
-      "source": ["hybrid_38.chunk.1482700000000.js/3088.js un/en", "hybrid_223.chunk.1482700000000.js/3000.js fetchHostFollowList", "hybrid_app.chunk.1482700000000.js/15.js be/export eh"],
+      "source": [
+        "hybrid_38.chunk.1482700000000.js/3088.js un/en",
+        "hybrid_223.chunk.1482700000000.js/3000.js fetchHostFollowList",
+        "hybrid_app.chunk.1482700000000.js/15.js be/export eh"
+      ],
       "api": "/api/user/follow/users/mixed/get/v2",
-      "rust": ["CollectionQuery::FollowedArtists", "client/collections.rs FollowCard and FollowUser"],
+      "rust": [
+        "CollectionQuery::FollowedArtists",
+        "client/collections.rs FollowCard and FollowUser"
+      ],
       "ui": "CollectionsPage 关注歌手 → FollowCards → CatalogPage",
-      "verification": ["opaque cursor, invalid/empty continuation, account isolation tests", "synthetic WebView: 205 records including user-only fallback", "real core and WebView: 217 records over 12 pages including terminal empty page", "independent SQLite cursor-chain audit"],
+      "verification": [
+        "opaque cursor, invalid/empty continuation, account isolation tests",
+        "synthetic WebView: 205 records including user-only fallback",
+        "real core and WebView: 217 records over 12 pages including terminal empty page",
+        "independent SQLite cursor-chain audit"
+      ],
       "boundary": "Not a complete artist/sublist snapshot for membership mutation; user-only profile navigation and messages are not implemented by this page"
     },
     {
       "feature": "Safe projection and recovery",
-      "source": ["M21 artist/album normalization", "M15 cacheStrategy g", "community durable recovery extension"],
-      "rust": ["client/collections.rs MusicClient::collection_page", "desktop/src/collections.rs collection_page"],
+      "source": [
+        "M21 artist/album normalization",
+        "M15 cacheStrategy g",
+        "community durable recovery extension"
+      ],
+      "rust": [
+        "client/collections.rs MusicClient::collection_page",
+        "desktop/src/collections.rs collection_page"
+      ],
       "ui": "useCollections, typed CollectionClient; no raw API transport in frontend",
-      "verification": ["native cache reopened after failed refresh", "late old-account response rejected", "DTO private-field/CDN sanitization", "desktop IPC stale-account and captcha-window isolation", "frontend failed-first-page vs continuation retry tests"]
+      "verification": [
+        "native cache reopened after failed refresh",
+        "late old-account response rejected",
+        "DTO private-field/CDN sanitization",
+        "desktop IPC stale-account and captcha-window isolation",
+        "frontend failed-first-page vs continuation retry tests"
+      ]
     },
     {
       "feature": "Collection keyword matching",
-      "source": ["hybrid_60.chunk.1482700000000.js/3116.js d", "hybrid_app.chunk.1482700000000.js/123.js b"],
-      "frontend": ["services/keyword.ts", "services/keywordMap.json", "CollectionsPage.vue"],
-      "verification": ["9 frozen vectors obtained by executing recovered M123", "synthetic native WebView finds 臺灣 Ａ [Live] on a later page using 台湾 a [live]"],
+      "source": [
+        "hybrid_60.chunk.1482700000000.js/3116.js d",
+        "hybrid_app.chunk.1482700000000.js/123.js b"
+      ],
+      "frontend": [
+        "services/keyword.ts",
+        "services/keywordMap.json",
+        "CollectionsPage.vue"
+      ],
+      "verification": [
+        "9 frozen vectors obtained by executing recovered M123",
+        "synthetic native WebView finds 臺灣 Ａ [Live] on a later page using 台湾 a [live]"
+      ],
       "boundary": "Character-by-character official table, not general Chinese transliteration; followed-artist keyword filter is a community addition"
+    },
+    {
+      "feature": "Collection visit, shared album filter, prefix/error/viewport restoration and expired entry focus",
+      "source": [
+        "my-favorite root shared keyword",
+        "PageAlbum SelectionTag",
+        "PageFavAlbum no-match continuation",
+        "community bounded visit restoration over already loaded prefixes"
+      ],
+      "frontend": [
+        "services/collectionViewport.ts",
+        "composables/useCollections.ts",
+        "composables/useCollectionViewport.ts",
+        "components/CollectionsPage.vue",
+        "components/AccountWelcome.vue"
+      ],
+      "verification": [
+        "frontend/tests/collections.test.ts",
+        "frontend/tests/music-state.test.ts",
+        "desktop/examples/collection_context_ui_probe.js",
+        "scripts/ci/collection_context_smoke.py"
+      ],
+      "boundary": "Read snapshots only; full menus, membership-write invalidation and complete UI goal remain active"
     }
   ],
-  "unverifiedOrIncomplete": ["This batch's Windows CI pending at documentation time", "User profile/message actions", "Complete official context menus", "Digital album store navigation"],
-  "alternativeClientSources": []
+  "unverifiedOrIncomplete": [
+    "New collection-context exact-commit CI pending; 55610a5 Windows WebView step succeeded but the complete run exceeded its 120-minute limit during cache save",
+    "User profile/message actions",
+    "Complete official context menus",
+    "Digital album store navigation"
+  ],
+  "alternativeClientSources": [],
+  "ui_context_contract": "docs/collection-context-ui-contracts.txt",
+  "ui_context_sources": [
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/my-favorite/index.jsx",
+      "sha256": "28891457872bb0e1cc8759bdb4a3510d5a1bb1aa029ea8847a9de120d9c2ecc8",
+      "kind": "official_recovered"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/my-favorite/views/PageAlbum.tsx",
+      "sha256": "ac360f5ea5bd2294a7c3fdf374b94a9125e1ff3b7ef9950093dc6dceb488b17d",
+      "kind": "official_recovered"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/my-favorite/views/PageFavAlbum.tsx",
+      "sha256": "0bf97184b5376864f8d97aef71fdb2279bd56d20040ea1792bf5310da3be5f2b",
+      "kind": "official_recovered"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/my-favorite/views/PagePayedAlbum.tsx",
+      "sha256": "b3a949615d00957c3e5088f9353e2c95184b7f27f18e290ebd6bb6b29bb62e5b",
+      "kind": "official_recovered"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/components/SelectionTag/index.tsx",
+      "sha256": "95f2166dc850bcfddf320f9c242b70fdfa0906bab3007f404962c0ddcaf5bfaf",
+      "kind": "official_recovered"
+    }
+  ],
+  "ui_context_date": "2026-11-02"
 }

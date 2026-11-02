@@ -24,8 +24,9 @@ Cumulus 专辑收藏、已购专辑与关注歌手浏览
 
 核心与持久化
 account/collections 按query/api/service拆分，CollectionQuery只有上述三种读取。
-Collections按账号代次与完整查询保存account-collection-pages-v1恢复快照；进入页面必联机，
-本地快照不绕过当前服务端权限。请求失败、坏资料、空页却声称有后页、游标不推进时不替换旧页。
+Collections按账号代次与完整查询保存account-collection-pages-v1恢复快照；初次进入及显式
+刷新会联机。2026-11-02起同次UI浏览访问返回可保留已读前缀，见collection-context-ui-contracts.txt；
+这些只读快照不能作为播放/写入授权。请求失败、坏资料、空页却声称有后页、游标不推进时不替换旧页。
 一次页请求通过OperationLock串行化，切号或退出后的迟到响应不能写入任何账号。
 查询限制为offset<=50000、收藏页1..200、关注页1..100；游标保持字符串、限制长度且拒绝
 控制字符。前端另拒绝跨页游标环和超过500页的循环，并给出显式刷新恢复。
@@ -97,3 +98,7 @@ Windows省略dbus/xvfb，二进制加.exe，并传 --runtime .build/package-stag
 
 当前仍不提供用户独立主页、私信、收藏条目完整官方菜单和数字专辑商店入口；这些分支
 不是本列表已完成的功能，完整目标需继续。没有使用YesPlayMusic作为来源。
+
+2026-11-02追加：页签/共享筛选、逐访问历史、已读分页/错误/精确重试、滚动/焦点及
+失效后的登录入口已继续专项核对，详见collection-context-ui-contracts.txt和最新
+ui-ux-validation.txt。不重记本文件2026-10-28真实账号读取日期或数量；本轮使用合成服务。

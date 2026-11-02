@@ -1,0 +1,79 @@
+专辑与关注：页签、筛选、历史和失败恢复
+2026-11-02；在 collection-library-contracts.txt 既有读取业务上继续逐项 UI/UX 审计。
+
+官方来源
+路径相对 references/ui-recovery/sources/packages/pc/src/：
+- pages/my-favorite/index.jsx：专辑/MV顶层切换才清空keyword；收藏专辑/已购专辑共用
+  PageAlbum的keyword，不因两者内部切换清空。该文件还明确注释：旧滚动恢复会边滚
+  边请求，先禁用。因此本次有已读分页的历史恢复属于社区改进，不称官方同实现。
+- pages/my-favorite/views/PageAlbum.tsx：内部两项SelectionTag type=tab，12px间隔，
+  18px行高；SelectionTag/index.tsx为32px高、4px/16px内距、14px字号和圆角胶囊。
+- PageFavAlbum.tsx：保留已读记录，规范关键字，当前无匹配且仍有后页时继续查找；
+  读取失败明确重试。PagePayedAlbum.tsx采用一次完整读取，同样接受keyword。
+- 官方关注位于独立用户主页；当前第三个“关注歌手”页签及混合卡片继续保留社区
+  合并布局。其原始混合读取依据仍为collection-library-contracts.txt所列M3088/M3000。
+没有使用YesPlayMusic，无同状态官方运行截图，不宣称像素一致。官方路径/散列追加
+在collection-library-mapping.json，恢复源码不随应用分发。
+
+实际复现的问题
+改前collection-baseline-third四态：加载100张并筛选“收藏专辑”、滚动1800后打开专辑23，
+返回只剩50张、输入框清空、滚动0、焦点丢失；收藏/已购内部切换同样清空筛选。
+前两轮基线探针在启动之前因WM日志目录/私有新目录约束失败，无产品观察，不计通过。
+
+实现与状态所有权
+- useMusic为每次新收藏页访问分配collectionVisit；页签replace沿用该访问，详情进入/
+  返回保留原ID。App的pageKey不再因收藏内部页签而重建整个页面，改用内容短过渡。
+- createCollectionViewportMemory仅在App内存保存最多8次访问，每次最多3种scope；
+  不保存DOM、Cookie、授权URL或原始API响应。页签持有已投影的CollectionView分页、
+  精确只读重试目标、错误、滚动和来源焦点；两专辑页签共享原始筛选词，关注独立。
+  账号epoch/认证状态变更清除；迟到旧账号checkpoint也不能写回。没有磁盘恢复承诺。
+- useCollections.snapshot/restore核对账号、scope、首查询、连续分页链、重复查询和
+  重试方向。恢复会推进读取序号，旧续页不能覆盖后来scope。超过500页仍走既有
+  显式分页错误路径，不把有界内存宣称全部服务端资源已经读完。
+- 返回直接使用本次访问已读前缀，不重发第一页，也不为恢复滚动加载缺失页面。
+  手动刷新成功替换为新第一页并归零；失败保留完整旧前缀/位置，显式重试仍区分
+  首次/刷新和续页。页面显示的是读快照，远端改变后须刷新；它不是新的权限依据。
+- useCollectionViewport等待有限页面/页签动画及虚拟行提交，按精确资源键恢复焦点，
+  用户另选控件、输入、滚动或离开后不抢回。首次/空/失败页有可见标题焦点。
+  切换页签保留选中页签焦点，键盘支持左右/Home/End及单一Tab入口；role/tab/panel关联。
+- 清空筛选后焦点回输入框；筛选变更回列表顶部，中文组合输入沿用Vue的完整提交规则。
+  读取按钮临时禁用/消失后只在同账号/访问/scope且用户没有另选时恢复；重试消失时
+  返回刷新键。原有规范关键字/后页无匹配时自动继续查找仍保留，失败不自动重试。
+  实机截图另发现关注卡片、右侧刷新键及筛选框外轮廓裁切；均使用内侧主题轮廓，
+  没有移除焦点来隐藏问题，最终截图另采样实际轮廓像素。
+- 失效时移除收藏内容并清理账号浏览内存。AccountWelcome复用共用页面标题焦点管理，
+  接住旧页移除后的焦点；已有模态窗口时不抢焦点。重新登录仍走原登录窗口，未新增登录
+  方式或声称这一步完成真实账号重新授权。
+
+接口保持原业务
+CollectionsPage -> useCollections -> CoreClient.collectionPage(epoch,query,refresh) ->
+desktop collection_page -> MusicClient::collection_page -> account/collections。
+saved_albums为offset/limit=50的/api/album/sublist；purchased_albums为无分页的
+/api/digitalAlbum/purchased；followed_artists使用/api/user/follow/users/mixed/get/v2，
+保留size=19与不转数字的opaque cursor。完整字段/服务端分页边界见原业务文档。
+详情复用catalog_page和既有专辑/歌手页；模型恢复/焦点保存不新增业务HTTP，不执行
+收藏/关注/购买/支付。后页或失效由真实Rust会话/IPC处理，探针仅提供明确合成回应。
+
+验证入口
+scripts/ci/collection_context_smoke.py + desktop/examples/collection_context_ui_probe.js，
+使用生产dist/Tauri/WebView/SQLite/真实IPC；合成API包含失败、空结果、750ms迟到续页
+和301失效。account-changed仅注入失效提示，实际bootstrap仍调用原生account_snapshot。
+44态检查三页签、过滤/清空/中文组合、两次独立访问、详情返回、同账号重挂载、延迟
+回包、续页/刷新失败保留及精确重试、空/失败区分、窄窗两主题、失效/重新登录打开关闭。
+每态核对命中、可见焦点、无横向溢出、有界DOM；返回核对分页数量、原词、资源键、
+滚动与原生读取次数；不把只对上页签文案当作历史恢复通过。最终轮次和人工看图范围
+见ui-ux-validation.txt。此专项不执行音频或会员请求，不能以此称播放/真实账号通过。
+
+复现：固定版本/锁文件，构建前端后冻结dist再构建catalog_ui_probe：
+  CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 \
+    xvfb-run -a -s '-screen 0 1600x1000x24' dbus-run-session -- \
+    python3 scripts/ci/collection_context_smoke.py --binary BINARY --root NEW_ROOT --screenshots
+Windows直接使用.exe和已验证native媒体runtime。两平台均接入必需CI步骤，不忽略失败；
+实机视觉与精确提交CI分别记证据，不能互相替代。WM仅在显式测试进程内提供，不替换用户WM。
+
+保留边界
+- 卡片完整官方菜单/直接播放、收藏/关注修改后的列表联动、数字专辑商店、用户独立
+  主页/私信、官方顶层专辑/MV合并结构尚未逐态对齐，继续按整体UI/UX审计推进。
+- 缺恢复页被LRU淘汰时重新读取；进程重启/跨设备不恢复该内存；没有伪称这些历史永不丢失。
+- 本轮合成封面/占位，不代表真实CDN位图、全部DPI、Windows实机视觉或真实账号权限通过。
+  完整应用目标仍进行中；局部状态通过不代表整个收藏/登录模块或全应用完成。
