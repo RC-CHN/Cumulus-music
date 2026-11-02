@@ -82,6 +82,14 @@ fn verification_completion(path: &str) -> bool {
     )
 }
 
+pub(super) fn authentication_write(path: &str) -> bool {
+    verification_completion(path)
+        || matches!(
+            path,
+            "/api/w/login" | "/api/w/login/cellphone" | "/api/w/register/cellphone"
+        )
+}
+
 pub(super) fn can_emit_verification(path: &str) -> bool {
     verification_completion(path)
         || matches!(

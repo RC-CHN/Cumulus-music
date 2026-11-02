@@ -123,6 +123,23 @@ impl MusicClient {
             ));
         }
         let initial = matches!(state.status, LoginStatus::Ready | LoginStatus::CodeSent);
+        if flow.reuse_snapshot()?.is_some()
+            && !matches!(
+                &command,
+                LoginCommand::ReuseRead
+                    | LoginCommand::ReuseBack { .. }
+                    | LoginCommand::ReuseChoose { .. }
+                    | LoginCommand::ReuseConfirm { .. }
+                    | LoginCommand::ReusePrepareRegister { .. }
+                    | LoginCommand::ReuseNicknameHint { .. }
+                    | LoginCommand::ReuseRegister { .. }
+                    | LoginCommand::Reconcile
+            )
+        {
+            return Err(Error::State(
+                "finish or cancel phone reuse before changing methods",
+            ));
+        }
         if flow.question_snapshot()?.is_some()
             && !matches!(
                 &command,
@@ -368,34 +385,42 @@ impl MusicClient {
                 completed_device = flow.question_snapshot()?.is_none();
             }
             LoginCommand::ReuseRead => {
-                if state.status != LoginStatus::PhoneReuse {
-                    return Err(Error::State("no phone reuse confirmation pending"));
-                }
-                let r = flow
-                    .verification(VerificationAction::PhoneReuseUser, json!({}))
-                    .await?;
-                if r["code"] == 200 {
-                    let mut next = view.clone();
-                    next.nickname = view::short_text(&r["data"]["nickName"])
-                        .and_then(|s| s.chars().next().map(|c| format!("{c}****")));
-                    next.avatar_url = mapping::artwork(
-                        r["data"]
-                            .get("avatarImgUrl")
-                            .unwrap_or(&r["data"]["avatarUrl"]),
-                    );
-                    next.reuse_confirmation = true;
-                    projection = Some(next);
-                }
+                let r = flow.reuse_read().await?;
+                projection = Some(reuse_projection(&flow, &r));
+                completed_device = flow.reuse_snapshot()?.is_none();
             }
-            LoginCommand::ReuseConfirm => {
-                if state.status != LoginStatus::PhoneReuse || !view.reuse_confirmation {
-                    return Err(Error::State("read the previous account before confirming"));
-                }
-                flow.verification(VerificationAction::PhoneReuseConfirm, json!({}))
+            LoginCommand::ReuseBack { verification_id } => {
+                let r = flow.reuse_back(&verification_id).await?;
+                projection = Some(reuse_projection(&flow, &r));
+                completed_device = flow.reuse_snapshot()?.is_none();
+            }
+            LoginCommand::ReuseChoose {
+                verification_id,
+                choice,
+            } => {
+                flow.reuse_choose(&verification_id, choice)?;
+            }
+            LoginCommand::ReuseConfirm { verification_id } => {
+                flow.reuse_confirm(&verification_id).await?;
+                completed_device = flow.reuse_snapshot()?.is_none();
+            }
+            LoginCommand::ReusePrepareRegister { verification_id } => {
+                flow.reuse_prepare_register(&verification_id).await?;
+            }
+            LoginCommand::ReuseNicknameHint { verification_id } => {
+                flow.reuse_nickname_hint(&verification_id).await?;
+            }
+            LoginCommand::ReuseRegister {
+                verification_id,
+                nickname,
+            } => {
+                flow.reuse_register(&verification_id, nickname.as_deref())
                     .await?;
             }
             LoginCommand::Reconcile => {
-                if flow.question_snapshot()?.is_some() {
+                if flow.reuse_snapshot()?.is_some() {
+                    flow.reuse_reconcile().await?;
+                } else if flow.question_snapshot()?.is_some() {
                     flow.question_reconcile().await?;
                 } else {
                     flow.reconcile().await?;
@@ -419,4 +444,21 @@ impl MusicClient {
         }
         Ok(result)
     }
+}
+
+fn reuse_projection(flow: &CredentialLogin, r: &Value) -> LoginChallengeView {
+    let mut next = LoginChallengeView::default();
+    if let Ok(Some(a)) = flow.reuse_snapshot()
+        && a.phase == crate::account::login::ReusePhase::Choice
+    {
+        next.nickname = a.masked_nickname;
+        next.avatar_url = mapping::artwork(
+            r["data"]
+                .get("avatarImgUrl")
+                .filter(|v| v.as_str().is_some_and(|s| !s.is_empty()))
+                .unwrap_or(&r["data"]["avatarUrl"]),
+        );
+        next.reuse_confirmation = true;
+    }
+    next
 }

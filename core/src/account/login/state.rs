@@ -18,6 +18,7 @@ pub(super) struct State {
     pub email_allowed: bool,
     pub email: Option<super::email::Attempt>,
     pub question: Option<super::question::Attempt>,
+    pub reuse: Option<super::reuse::Attempt>,
 }
 
 impl Default for State {
@@ -37,6 +38,7 @@ impl Default for State {
             email_allowed: false,
             email: None,
             question: None,
+            reuse: None,
         }
     }
 }
@@ -140,6 +142,14 @@ impl Drop for Operation<'_> {
                     super::QuestionPhase::Failed
                 } else {
                     super::QuestionPhase::RecoveryRequired
+                };
+            }
+            if let Some(reuse) = &mut state.reuse {
+                use super::ReusePhase;
+                reuse.view.phase = match reuse.view.phase {
+                    ReusePhase::Loading => ReusePhase::ReadFailed,
+                    ReusePhase::Hinting | ReusePhase::CheckingNickname => ReusePhase::Nickname,
+                    _ => ReusePhase::RecoveryRequired,
                 };
             }
         }

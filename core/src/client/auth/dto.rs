@@ -1,6 +1,7 @@
 use crate::account::login::{
     DeviceVerificationKind, DeviceVerificationView, EmailVerificationView, LoginStatus,
-    QuestionVerificationView, SmsDirection, SmsVerificationView,
+    QuestionVerificationView, ReuseChoice, ReuseVerificationView, SmsDirection,
+    SmsVerificationView,
 };
 use serde::{Deserialize, Serialize};
 
@@ -101,7 +102,26 @@ pub enum LoginCommand {
         answer: String,
     },
     ReuseRead,
-    ReuseConfirm,
+    ReuseBack {
+        verification_id: String,
+    },
+    ReuseChoose {
+        verification_id: String,
+        choice: ReuseChoice,
+    },
+    ReuseConfirm {
+        verification_id: String,
+    },
+    ReusePrepareRegister {
+        verification_id: String,
+    },
+    ReuseNicknameHint {
+        verification_id: String,
+    },
+    ReuseRegister {
+        verification_id: String,
+        nickname: Option<String>,
+    },
     Reconcile,
 }
 
@@ -151,6 +171,7 @@ pub struct LoginView {
     pub sms: Option<SmsVerificationView>,
     pub email: Option<EmailVerificationView>,
     pub question: Option<QuestionVerificationView>,
+    pub reuse: Option<ReuseVerificationView>,
 }
 
 #[derive(Serialize)]

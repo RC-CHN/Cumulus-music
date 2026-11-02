@@ -34,6 +34,7 @@ pub struct MusicHttpClient {
     backend: Arc<dyn HttpBackend>,
     gate: tokio::sync::Mutex<()>,
     last_response: Mutex<Option<ResponseInfo>>,
+    registration_user: Mutex<Option<String>>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -79,6 +80,7 @@ impl MusicHttpClient {
             backend,
             gate: tokio::sync::Mutex::new(()),
             last_response: Mutex::new(None),
+            registration_user: Mutex::new(None),
         })
     }
 
@@ -88,6 +90,17 @@ impl MusicHttpClient {
             .lock()
             .map_err(|_| Error::LockPoisoned)?
             .clone())
+    }
+
+    /// Candidate-local proof that the force-register response actually issued
+    /// the effective authorization Cookie. No header value leaves native code.
+    pub(crate) fn registration_authorized(&self) -> Result<bool> {
+        let issued = self
+            .registration_user
+            .lock()
+            .map_err(|_| Error::LockPoisoned)?
+            .clone();
+        Ok(issued.is_some() && self.credentials.login_credentials()?.token == issued)
     }
 
     pub(crate) async fn request_jsk_if_revision(
@@ -158,6 +171,12 @@ impl MusicHttpClient {
         // Async gate serializes cookie rotation for one candidate/profile;
         // no blocking mutex is held during network I/O.
         let _guard = self.gate.lock().await;
+        if path == "/api/w/register/cellphone" {
+            *self
+                .registration_user
+                .lock()
+                .map_err(|_| Error::LockPoisoned)? = None;
+        }
         let target = origin.request_url(route, path)?;
         let snapshot = self.credentials.request_credentials(&target)?;
         if expected.is_some_and(|revision| revision != snapshot.revision) {
@@ -183,7 +202,10 @@ impl MusicHttpClient {
             && let Some(context) = &self.context
         {
             let prepared = context.prepare(path, &payload).await.map_err(|error| {
-                if expected.is_some() || jsk == Jsk::Login {
+                if expected.is_some()
+                    || jsk == Jsk::Login
+                    || super::login::authentication_write(path)
+                {
                     Error::RequestNotSent(Box::new(error))
                 } else {
                     error
@@ -291,6 +313,25 @@ impl MusicHttpClient {
             &snapshot.revision,
             last_login_at,
         )?;
+        if path == "/api/w/register/cellphone" && (200..300).contains(&response.status) {
+            let effective = self.credentials.login_credentials()?.token;
+            let target = origin.request_url(WireRoute::Eapi, "/api/login/token/refresh/v1")?;
+            let issued = response.set_cookies.iter().any(|value| {
+                cookie_store::Cookie::parse(value.as_str(), &response_url).is_ok_and(|cookie| {
+                    cookie.name() == "MUSIC_U"
+                        && !cookie.value().is_empty()
+                        && !cookie.is_expired()
+                        && cookie.matches(&target)
+                        && effective.as_deref() == Some(cookie.value())
+                })
+            });
+            if issued {
+                *self
+                    .registration_user
+                    .lock()
+                    .map_err(|_| Error::LockPoisoned)? = effective;
+            }
+        }
         if (200..300).contains(&response.status)
             && super::login::can_emit_verification(path)
             && parsed

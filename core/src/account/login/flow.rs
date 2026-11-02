@@ -29,7 +29,7 @@ pub struct LoginSnapshot {
 
 pub struct CredentialLogin {
     session: Arc<AccountSession>,
-    candidate: LoginCandidate,
+    pub(super) candidate: LoginCandidate,
     base: SessionToken,
     pub(super) state: Mutex<State>,
     pub(super) cooldown: Arc<ResendCooldown>,
@@ -108,6 +108,9 @@ impl CredentialLogin {
         if let Some(question) = &state.question {
             question.cancel.send_replace(true);
         }
+        if let Some(reuse) = &state.reuse {
+            reuse.cancel.send_replace(true);
+        }
         state.status = LoginStatus::Cancelled;
         state.pending = None;
         state.challenge = None;
@@ -118,6 +121,7 @@ impl CredentialLogin {
         state.email = None;
         state.email_allowed = false;
         state.question = None;
+        state.reuse = None;
         state.busy = false;
         Ok(())
     }
@@ -147,11 +151,15 @@ impl CredentialLogin {
             payload["checkToken"] = token.into();
         }
         operation.check()?;
-        // The recovered PC SMS-send UI still uses the native legacy helper.
-        // Its SDK bridge producer is not present in M/290; do not invent one.
+        // Recovered PC SMS sending and the nickname registration page use
+        // native legacy helpers even after JSK login (M290/M3138/M363/M15).
         let api = if matches!(
             request.path,
-            "/api/sms/captcha/sent" | "/api/middle/captcha/sent/v1"
+            "/api/sms/captcha/sent"
+                | "/api/middle/captcha/sent/v1"
+                | "/api/w/register/cellphone"
+                | "/api/nickname/hint/get"
+                | "/api/nickname/duplicated"
         ) {
             self.candidate.api()
         } else {
@@ -196,6 +204,7 @@ impl CredentialLogin {
                     state.email = None;
                     state.email_allowed = false;
                     state.question = None;
+                    state.reuse = None;
                 }
                 if matches!(code, Some(8830 | 8860))
                     && let Some(ticket) = response["MUSIC_TU"].as_str().filter(|s| !s.is_empty())
@@ -214,7 +223,7 @@ impl CredentialLogin {
         Ok(response)
     }
 
-    async fn verify_identity(&self, operation: &Operation<'_>) -> Result<()> {
+    pub(super) async fn verify_identity(&self, operation: &Operation<'_>) -> Result<()> {
         operation.check()?;
         let profile = self.candidate.api().account().await;
         let mut state = operation.lock()?;
@@ -228,6 +237,7 @@ impl CredentialLogin {
         state.email = None;
         state.email_allowed = false;
         state.question = None;
+        state.reuse = None;
         state.status = LoginStatus::Authenticated;
         Ok(())
     }
@@ -239,6 +249,23 @@ impl CredentialLogin {
         remember: Option<bool>,
     ) -> Result<Value> {
         let operation = Operation::begin(&self.state, LoginStatus::Submitting, expected)?;
+        let sms_phone = matches!(
+            request.path,
+            "/api/login/cellphone" | "/api/w/login/cellphone"
+        )
+        .then(|| request.payload["captcha"].as_str())
+        .flatten()
+        .and_then(|_| {
+            Some((
+                request.payload["phone"].as_str()?,
+                request
+                    .payload
+                    .get("countryCode")
+                    .or_else(|| request.payload.get("countrycode"))?
+                    .as_str()?,
+            ))
+        });
+        self.candidate.bind_registration_phone(sms_phone)?;
         if let Some(remember) = remember {
             self.candidate.remember(remember);
         }

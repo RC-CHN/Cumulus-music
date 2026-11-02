@@ -36,6 +36,7 @@ export interface LoginView {
   sms?: SmsVerificationView | null;
   email?: EmailVerificationView | null;
   question?: QuestionVerificationView | null;
+  reuse?: ReuseVerificationView | null;
   operationId: string;
   mode: LoginMode;
   status: LoginStatus;
@@ -78,14 +79,53 @@ export type LoginCommand =
         | 'verification_sms_send'
         | 'question_read'
         | 'reuse_read'
-        | 'reuse_confirm'
         | 'reconcile';
     }
   | { kind: 'security_mail_verify'; verification_id: string; code: string }
   | { kind: 'security_mail_resend' | 'security_mail_stop'; verification_id: string }
   | { kind: 'verification_sms_verify'; code: string }
   | { kind: 'bind_phone_verify'; phone: string; country_code: string; code: string }
-  | { kind: 'question_answer'; question_id: string; answer: string };
+  | { kind: 'question_answer'; question_id: string; answer: string }
+  | { kind: 'reuse_choose'; verification_id: string; choice: 'login' | 'register' }
+  | {
+      kind: 'reuse_back' | 'reuse_confirm' | 'reuse_prepare_register' | 'reuse_nickname_hint';
+      verification_id: string;
+    }
+  | { kind: 'reuse_register'; verification_id: string; nickname: string | null };
+export interface ReuseVerificationView {
+  id: string;
+  phase:
+    | 'loading'
+    | 'choice'
+    | 'login_consent'
+    | 'register_consent'
+    | 'nickname'
+    | 'read_failed'
+    | 'login_failed'
+    | 'confirming'
+    | 'hinting'
+    | 'checking_nickname'
+    | 'registering'
+    | 'recovery_required';
+  code: number | null;
+  maskedNickname: string | null;
+  createdAt: number | string | null;
+  registrationBlocked: 'fresh_sms_required' | 'unconfirmed_registration' | null;
+  canSkipNickname: boolean;
+  suggestedNickname: string | null;
+  nicknameError:
+    | 'too_short'
+    | 'too_long'
+    | 'invalid_characters'
+    | 'taken'
+    | 'check_failed'
+    | 'rejected'
+    | 'sms_invalid'
+    | 'phone_registered'
+    | 'anti_abuse'
+    | 'rate_limited'
+    | null;
+}
 export interface QuestionVerificationView {
   id: string;
   phase: 'loading' | 'ready' | 'verifying' | 'failed' | 'recovery_required';

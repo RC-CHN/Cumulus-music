@@ -10,6 +10,7 @@ mod protocol;
 mod qr;
 mod question;
 mod request;
+mod reuse;
 mod sms;
 mod state;
 pub use challenge::{LoginStatus, VerificationAction, classify};
@@ -22,4 +23,7 @@ pub use protocol::LoginProtocol;
 pub use qr::QrAuthentication;
 pub use question::{QuestionPhase, QuestionVerificationView};
 pub use request::{PhoneCredential, PhoneLogin};
+pub use reuse::{
+    NicknameError, RegistrationBlocked, ReuseChoice, ReusePhase, ReuseVerificationView,
+};
 pub use sms::{SmsDirection, SmsPhase, SmsVerificationView};

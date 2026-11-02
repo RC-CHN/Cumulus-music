@@ -1,6 +1,7 @@
 //! Same-origin account selection and isolated candidate credential stores.
 //! SQLite commits the selected profile and identity together before publishing
 //! the in-memory account. Old candidates cannot replace a newer selection.
+mod registration;
 mod removal;
 mod saved;
 use super::{AccountSession, SessionToken, credentials::Credentials};
@@ -22,7 +23,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
     time::Duration,
@@ -58,6 +59,7 @@ pub struct LoginCandidate {
     credentials: Arc<Credentials>,
     expected_uid: Option<String>,
     auto_login: AtomicBool,
+    registration_phone: Mutex<Option<registration::Binding>>,
 }
 
 /// Native-only handle. It deliberately has no Debug/Serialize implementation.
@@ -190,6 +192,7 @@ impl ProfileRegistry {
             credentials,
             expected_uid: None,
             auto_login: AtomicBool::new(true),
+            registration_phone: Mutex::new(None),
         })
     }
 
@@ -258,6 +261,11 @@ impl LoginCandidate {
             auto_login: self.auto_login.load(Ordering::Acquire),
         };
         let saved = SavedProfile::from_verified(&self.id, &profile, selection.auto_login)?;
+        let registration_phone = self
+            .registration_phone
+            .lock()
+            .map_err(|_| Error::LockPoisoned)?
+            .clone();
         let prior = self
             .expected
             .as_ref()
@@ -288,6 +296,7 @@ impl LoginCandidate {
                 }
                 // Selection, identity and the safe account-list metadata commit
                 // together. A failed write cannot publish a selectable account.
+                registration::settle(tx, registration_phone.as_ref(), &self.id)?;
                 tx.put(OWNER, saved::KIND, &uid, &serde_json::to_value(&saved)?)?;
                 tx.put(OWNER, KIND, "active", &serde_json::to_value(selection)?)
             },

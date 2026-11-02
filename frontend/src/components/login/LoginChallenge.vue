@@ -7,10 +7,13 @@ import SmsVerification from './SmsVerification.vue';
 import EmailVerification from './EmailVerification.vue';
 import VerificationIdentity from './VerificationIdentity.vue';
 import QuestionVerification from './QuestionVerification.vue';
+import ReuseVerification from './ReuseVerification.vue';
 const props = defineProps<{ model: LoginModel }>();
 const emit = defineEmits<{
   qr: [];
   back: [];
+  phone: [];
+  reuseTitle: [value: string | null];
   device: [value: 'confirm' | 'scan' | 'sms' | 'email' | null];
 }>();
 const { view, busy } = props.model;
@@ -20,6 +23,7 @@ const devicePanel = ref<{ clearSecrets: () => void }>();
 const smsPanel = ref<{ clearSecrets: () => void }>();
 const emailPanel = ref<{ clearSecrets: () => void }>();
 const questionPanel = ref<{ clearSecrets: () => void }>();
+const reusePanel = ref<{ clearSecrets: () => void }>();
 const returning = ref(false);
 const blockedNotice = ref('');
 const selected = computed(() =>
@@ -44,6 +48,7 @@ function clearSecrets() {
   smsPanel.value?.clearSecrets();
   emailPanel.value?.clearSecrets();
   questionPanel.value?.clearSecrets();
+  reusePanel.value?.clearSecrets();
 }
 defineExpose({ clearSecrets });
 async function choose(value: string) {
@@ -221,29 +226,14 @@ watch(
       :model="model"
       @back="emit('back')"
     />
-    <template v-else-if="view?.status === 'phone_reuse'">
-      <button
-        v-if="!view.challenge.reuseConfirmation"
-        :disabled="busy"
-        class="primary"
-        @click="model.run({ kind: 'reuse_read' })"
-      >
-        查看关联账号
-      </button>
-      <template v-else
-        ><img
-          v-if="view.challenge.avatarUrl"
-          class="login-avatar"
-          :src="view.challenge.avatarUrl"
-          alt=""
-          referrerpolicy="no-referrer"
-        />
-        <p>{{ view.challenge.nickname }}</p>
-        <button class="primary" :disabled="busy" @click="model.run({ kind: 'reuse_confirm' })">
-          这是我的账号，继续验证
-        </button></template
-      >
-    </template>
+    <ReuseVerification
+      v-else-if="view?.status === 'phone_reuse' || view?.reuse"
+      ref="reusePanel"
+      :model="model"
+      @back="emit('back')"
+      @phone="emit('phone')"
+      @title="emit('reuseTitle', $event)"
+    />
     <button
       v-else-if="view?.status === 'captcha' && view.captchaAvailable"
       class="primary"

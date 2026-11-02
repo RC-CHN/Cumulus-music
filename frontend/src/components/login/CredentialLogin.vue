@@ -5,6 +5,7 @@ import { useLogin } from '../../composables/useLogin';
 import { loginMessage, type LoginMode } from '../../services/auth';
 import type { LoginIdentity } from '../../services/loginIdentity';
 import LoginChallenge from './LoginChallenge.vue';
+import { reuseTitle } from '../../services/phoneReuse';
 const props = defineProps<{
   epoch: string;
   mode: Exclude<LoginMode, 'saved_account'>;
@@ -55,6 +56,8 @@ const emailActive = computed(() => !!view.value?.email);
 const questionActive = computed(
   () => view.value?.status === 'security_question' || !!view.value?.question,
 );
+const reuseActive = computed(() => view.value?.status === 'phone_reuse' || !!view.value?.reuse);
+const reuseHeading = ref<string | null>(null);
 watch(
   [
     busy,
@@ -64,6 +67,9 @@ watch(
     smsActive,
     emailActive,
     questionActive,
+    reuseActive,
+    reuseHeading,
+    () => view.value?.reuse?.phase,
   ],
   async () => {
     if (active) {
@@ -73,24 +79,27 @@ watch(
         smsActive.value ||
         emailActive.value ||
         questionActive.value ||
+        reuseActive.value ||
         (!!view.value &&
           ['two_factor', 'security_question', 'phone_reuse'].includes(view.value.status));
       emit(
         'safety',
         safety
-          ? questionActive.value
-            ? '回答与你账号相关的问题'
-            : deviceKind.value === 'email' || emailActive.value
-              ? '安全邮箱验证'
-              : deviceKind.value || deviceActive.value || smsActive.value
-                ? (deviceKind.value ?? view.value?.device?.kind) === 'scan'
-                  ? '身份验证'
-                  : '登录安全确认'
-                : '登录安全验证'
+          ? reuseActive.value
+            ? (reuseHeading.value ?? reuseTitle(view.value?.reuse?.phase))
+            : questionActive.value
+              ? '回答与你账号相关的问题'
+              : deviceKind.value === 'email' || emailActive.value
+                ? '安全邮箱验证'
+                : deviceKind.value || deviceActive.value || smsActive.value
+                  ? (deviceKind.value ?? view.value?.device?.kind) === 'scan'
+                    ? '身份验证'
+                    : '登录安全确认'
+                  : '登录安全验证'
           : null,
       );
     }
-    if (questionActive.value) return;
+    if (questionActive.value || reuseActive.value) return;
     const owned = root.value?.contains(document.activeElement);
     await nextTick();
     if (!active || !owned || !root.value) return;
@@ -246,11 +255,18 @@ async function submit() {
       :model="model"
       @qr="emit('qr')"
       @back="start"
+      @phone="props.mode === 'phone_sms' ? start() : emit('mode', 'phone_sms')"
+      @reuse-title="reuseHeading = $event"
       @device="deviceKind = $event"
     />
     <p class="login-status" role="status" :data-login-status="view?.status">
       {{
-        deviceActive || smsActive || emailActive || questionActive || view?.status === 'two_factor'
+        deviceActive ||
+        smsActive ||
+        emailActive ||
+        questionActive ||
+        reuseActive ||
+        view?.status === 'two_factor'
           ? ''
           : error || loginMessage(view)
       }}
@@ -262,6 +278,7 @@ async function submit() {
         !smsActive &&
         !emailActive &&
         !questionActive &&
+        !reuseActive &&
         (!view || ['error', 'rejected', 'rate_limited', 'account_disabled'].includes(view.status))
       "
       class="login-restart"
