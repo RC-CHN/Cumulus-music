@@ -59,6 +59,7 @@ impl MusicClient {
             challenge: pending.view.clone(),
             device: flow.device_snapshot()?,
             sms: flow.sms_snapshot()?,
+            email: flow.email_snapshot()?,
         })
     }
 }

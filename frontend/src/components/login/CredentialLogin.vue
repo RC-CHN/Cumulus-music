@@ -23,7 +23,7 @@ const password = ref(''),
   code = ref('');
 const root = ref<HTMLElement>();
 const challenge = ref<{ clearSecrets: () => void }>();
-const deviceKind = ref<'confirm' | 'scan' | 'sms' | null>(null);
+const deviceKind = ref<'confirm' | 'scan' | 'sms' | 'email' | null>(null);
 let active = true;
 function deactivate() {
   if (!active) return;
@@ -51,35 +51,42 @@ const deviceActive = computed(
     !['stopped', 'cancelled', 'stop_unconfirmed'].includes(view.value.device.phase),
 );
 const smsActive = computed(() => !!view.value?.sms);
-watch([busy, () => view.value?.status, deviceActive, deviceKind, smsActive], async () => {
-  if (active) {
-    const safety =
-      deviceKind.value ||
-      deviceActive.value ||
-      smsActive.value ||
-      (!!view.value &&
-        ['two_factor', 'security_question', 'phone_reuse'].includes(view.value.status));
-    emit(
-      'safety',
-      safety
-        ? deviceKind.value || deviceActive.value || smsActive.value
-          ? (deviceKind.value ?? view.value?.device?.kind) === 'scan'
-            ? '身份验证'
-            : '登录安全确认'
-          : '登录安全验证'
-        : null,
+const emailActive = computed(() => !!view.value?.email);
+watch(
+  [busy, () => view.value?.status, deviceActive, deviceKind, smsActive, emailActive],
+  async () => {
+    if (active) {
+      const safety =
+        deviceKind.value ||
+        deviceActive.value ||
+        smsActive.value ||
+        emailActive.value ||
+        (!!view.value &&
+          ['two_factor', 'security_question', 'phone_reuse'].includes(view.value.status));
+      emit(
+        'safety',
+        safety
+          ? deviceKind.value === 'email' || emailActive.value
+            ? '安全邮箱验证'
+            : deviceKind.value || deviceActive.value || smsActive.value
+              ? (deviceKind.value ?? view.value?.device?.kind) === 'scan'
+                ? '身份验证'
+                : '登录安全确认'
+              : '登录安全验证'
+          : null,
+      );
+    }
+    const owned = root.value?.contains(document.activeElement);
+    await nextTick();
+    if (!active || !owned || !root.value) return;
+    const focused = document.activeElement as HTMLElement | null;
+    if (focused && root.value.contains(focused) && !focused.matches(':disabled')) return;
+    const target = root.value.querySelector<HTMLElement>(
+      'input:not(:disabled),button:not(:disabled)',
     );
-  }
-  const owned = root.value?.contains(document.activeElement);
-  await nextTick();
-  if (!active || !owned || !root.value) return;
-  const focused = document.activeElement as HTMLElement | null;
-  if (focused && root.value.contains(focused) && !focused.matches(':disabled')) return;
-  const target = root.value.querySelector<HTMLElement>(
-    'input:not(:disabled),button:not(:disabled)',
-  );
-  (target ?? root.value).focus({ preventScroll: true });
-});
+    (target ?? root.value).focus({ preventScroll: true });
+  },
+);
 const initial = computed(
   () => !!view.value && ['ready', 'code_sent', 'rejected'].includes(view.value.status),
 );
@@ -227,7 +234,7 @@ async function submit() {
     />
     <p class="login-status" role="status" :data-login-status="view?.status">
       {{
-        deviceActive || smsActive || view?.status === 'two_factor'
+        deviceActive || smsActive || emailActive || view?.status === 'two_factor'
           ? ''
           : error || loginMessage(view)
       }}
@@ -237,6 +244,7 @@ async function submit() {
         !busy &&
         !deviceActive &&
         !smsActive &&
+        !emailActive &&
         (!view || ['error', 'rejected', 'rate_limited', 'account_disabled'].includes(view.status))
       "
       class="login-restart"

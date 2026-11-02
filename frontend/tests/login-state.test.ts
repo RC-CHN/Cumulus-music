@@ -226,26 +226,37 @@ test('local device stop preempts a pending poll without publishing its late auth
   f.model.dispose();
 });
 
-test('local SMS stop preempts checking and ignores a late authorization or finally', async () => {
-  const pending = deferred<LoginView>();
-  const stopped = state('one', 'two_factor');
-  const commands: string[] = [];
-  const f = fixture({
-    loginCommand: async (_id, command) => {
-      commands.push(command.kind);
-      return command.kind === 'sms_stop' ? stopped : pending.promise;
-    },
+for (const method of ['sms', 'email'] as const)
+  test(`local ${method} stop ignores a late authorization and finally`, async () => {
+    const pending = deferred<LoginView>();
+    const stopped = state('one', 'two_factor');
+    const commands: string[] = [];
+    const f = fixture({
+      loginCommand: async (_id, command) => {
+        commands.push(command.kind);
+        return command.kind === (method === 'sms' ? 'sms_stop' : 'security_mail_stop')
+          ? stopped
+          : pending.promise;
+      },
+    });
+    await f.model.start('1', 'email');
+    const check = f.model.run(
+      method === 'sms'
+        ? { kind: 'sms_check', verification_id: 'local-step' }
+        : { kind: 'security_mail_verify', verification_id: 'local-step', code: '123456' },
+    );
+    assert.equal(f.model.busy.value, true);
+    if (method === 'sms') await f.model.stopSms('local-step');
+    else await f.model.stopEmail('local-step');
+    assert.equal(f.model.view.value, stopped);
+    assert.equal(f.model.busy.value, false);
+    pending.resolve(state('one', 'authenticated'));
+    await check;
+    assert.equal(f.model.view.value, stopped);
+    assert.equal(f.authorized(), 0);
+    assert.deepEqual(
+      commands,
+      method === 'sms' ? ['sms_check', 'sms_stop'] : ['security_mail_verify', 'security_mail_stop'],
+    );
+    f.model.dispose();
   });
-  await f.model.start('1', 'email');
-  const check = f.model.run({ kind: 'sms_check', verification_id: 'local-sms-operation' });
-  assert.equal(f.model.busy.value, true);
-  await f.model.stopSms('local-sms-operation');
-  assert.equal(f.model.view.value, stopped);
-  assert.equal(f.model.busy.value, false);
-  pending.resolve(state('one', 'authenticated'));
-  await check;
-  assert.equal(f.model.view.value, stopped);
-  assert.equal(f.authorized(), 0);
-  assert.deepEqual(commands, ['sms_check', 'sms_stop']);
-  f.model.dispose();
-});

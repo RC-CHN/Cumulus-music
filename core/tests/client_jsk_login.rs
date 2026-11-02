@@ -239,6 +239,7 @@ async fn challenge_ticket_is_forwarded_only_inside_its_candidate_and_verificatio
         HttpResponse::Ready(Ok(challenge)),
         json!({"code":200}).into(),
         json!({"code":200,"data":{"types":["SECURITY_EMAIL"]}}).into(),
+        json!({"code":200,"data":{"mailAddress":"m***@example.test"}}).into(),
         authorized(200, 3, "verified-refresh"),
         identity(3),
         identity(3),
@@ -251,10 +252,16 @@ async fn challenge_ticket_is_forwarded_only_inside_its_candidate_and_verificatio
         .login_command(&id, Cmd::VerificationMethods)
         .await
         .unwrap();
+    let sent = w
+        .client
+        .login_command(&id, Cmd::SecurityMailSend)
+        .await
+        .unwrap();
     w.client
         .login_command(
             &id,
             Cmd::SecurityMailVerify {
+                verification_id: sent.email.unwrap().id,
                 code: "123456".into(),
             },
         )
@@ -274,12 +281,12 @@ async fn challenge_ticket_is_forwarded_only_inside_its_candidate_and_verificatio
             .unwrap_or("")
             .contains("MUSIC_TU")
     );
-    assert_eq!(calls.len(), 9);
-    for call in &calls[2..=4] {
+    assert_eq!(calls.len(), 10);
+    for call in &calls[2..=5] {
         assert_eq!(call.music_tu.as_deref(), Some("fixture-ticket"));
         assert_eq!(call.login_chain.as_deref(), Some(""));
     }
-    for index in [1, 5, 6, 7, 8] {
+    for index in [1, 6, 7, 8, 9] {
         assert!(calls[index].music_tu.is_none());
     }
     assert!(

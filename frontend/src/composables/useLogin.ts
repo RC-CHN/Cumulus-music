@@ -107,6 +107,13 @@ export function useLogin(core: AuthClient, authorized: () => void = () => {}) {
       return next.value;
     });
   }
+  function stopEmail(verificationId: string) {
+    return execute(
+      (id) =>
+        core.loginCommand(id, { kind: 'security_mail_stop', verification_id: verificationId }),
+      true,
+    );
+  }
   function dispose() {
     disposed = true;
     generation++;
@@ -115,6 +122,18 @@ export function useLogin(core: AuthClient, authorized: () => void = () => {}) {
     view.value = undefined;
     if (id) void cancel(id);
   }
-  return { view, busy, error, seconds, start, run, stopDevice, stopSms, captcha, dispose };
+  return {
+    view,
+    busy,
+    error,
+    seconds,
+    start,
+    run,
+    stopDevice,
+    stopSms,
+    stopEmail,
+    captcha,
+    dispose,
+  };
 }
 export type LoginModel = ReturnType<typeof useLogin>;

@@ -183,7 +183,7 @@ impl MusicHttpClient {
             && let Some(context) = &self.context
         {
             let prepared = context.prepare(path, &payload).await.map_err(|error| {
-                if expected.is_some() {
+                if expected.is_some() || jsk == Jsk::Login {
                     Error::RequestNotSent(Box::new(error))
                 } else {
                     error

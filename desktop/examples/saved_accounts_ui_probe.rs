@@ -40,7 +40,8 @@ fn main() {
                     client.login_command(&attempt.operation_id,LoginCommand::Email {address:address.into(),password:"fixture-password".into(),remember:true}).await?;
                     if address.starts_with("verify") {
                         client.login_command(&attempt.operation_id,LoginCommand::VerificationMethods).await?;
-                        client.login_command(&attempt.operation_id,LoginCommand::SecurityMailVerify {code:"123456".into()}).await?;
+                        let sent=client.login_command(&attempt.operation_id,LoginCommand::SecurityMailSend).await?;
+                        client.login_command(&attempt.operation_id,LoginCommand::SecurityMailVerify {verification_id:sent.email.unwrap().id,code:"123456".into()}).await?;
                     }
                 }
                 Ok::<_,cumulus_core::Error>(())

@@ -41,6 +41,20 @@ impl MusicClient {
     }
 
     pub async fn login_command(&self, id: &str, command: LoginCommand) -> Result<LoginView> {
+        if let LoginCommand::SecurityMailStop { verification_id } = &command {
+            let slot = self.auth.pending.lock().map_err(|_| Error::LockPoisoned)?;
+            let pending = slot
+                .as_ref()
+                .filter(|p| p.id == id)
+                .ok_or(Error::StaleResponse)?;
+            pending.captcha.check_idle()?;
+            let PendingFlow::Credentials { flow, .. } = &pending.flow else {
+                return Err(Error::StaleResponse);
+            };
+            flow.email_stop(verification_id)?;
+            drop(slot);
+            return self.login_snapshot(id);
+        }
         if let LoginCommand::SmsStop { verification_id } = &command {
             let slot = self.auth.pending.lock().map_err(|_| Error::LockPoisoned)?;
             let pending = slot
@@ -109,6 +123,18 @@ impl MusicClient {
             ));
         }
         let initial = matches!(state.status, LoginStatus::Ready | LoginStatus::CodeSent);
+        if flow.email_snapshot()?.is_some()
+            && !matches!(
+                &command,
+                LoginCommand::SecurityMailVerify { .. }
+                    | LoginCommand::SecurityMailResend { .. }
+                    | LoginCommand::Reconcile
+            )
+        {
+            return Err(Error::State(
+                "stop email verification before changing methods",
+            ));
+        }
         if flow.sms_snapshot()?.is_some()
             && !matches!(
                 &command,
@@ -257,16 +283,19 @@ impl MusicClient {
             }
             LoginCommand::SecurityMailSend => {
                 offered("SECURITY_EMAIL")?;
-                flow.verification(VerificationAction::SecurityMailSend, json!({"scene":"0"}))
-                    .await?;
+                flow.email_start().await?;
             }
-            LoginCommand::SecurityMailVerify { code } => {
-                offered("SECURITY_EMAIL")?;
-                flow.verification(
-                    VerificationAction::SecurityMailVerify,
-                    json!({"scene":"0","captcha":code}),
-                )
-                .await?;
+            LoginCommand::SecurityMailResend { verification_id } => {
+                flow.email_resend(&verification_id).await?;
+            }
+            LoginCommand::SecurityMailStop { .. } => {
+                unreachable!("local email stop handled before the business gate")
+            }
+            LoginCommand::SecurityMailVerify {
+                verification_id,
+                code,
+            } => {
+                completed_device = flow.email_verify(&verification_id, &code).await?;
             }
             LoginCommand::VerificationSmsSend => {
                 flow.sms_send_down().await?;

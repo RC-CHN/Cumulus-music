@@ -4,25 +4,22 @@ import type { LoginModel } from '../../composables/useLogin';
 import VerificationMethods from './VerificationMethods.vue';
 import DeviceVerification from './DeviceVerification.vue';
 import SmsVerification from './SmsVerification.vue';
+import EmailVerification from './EmailVerification.vue';
+import VerificationIdentity from './VerificationIdentity.vue';
 const props = defineProps<{ model: LoginModel }>();
-const emit = defineEmits<{ qr: []; device: [value: 'confirm' | 'scan' | 'sms' | null] }>();
-const { view, busy, seconds } = props.model;
+const emit = defineEmits<{
+  qr: [];
+  device: [value: 'confirm' | 'scan' | 'sms' | 'email' | null];
+}>();
+const { view, busy } = props.model;
 const method = ref(''),
-  code = ref(''),
   answer = ref('');
 const root = ref<HTMLElement>();
 const devicePanel = ref<{ clearSecrets: () => void }>();
 const smsPanel = ref<{ clearSecrets: () => void }>();
+const emailPanel = ref<{ clearSecrets: () => void }>();
 const returning = ref(false);
 const blockedNotice = ref('');
-const known: Record<string, string> = {
-  SECURITY_EMAIL: '安全邮箱',
-  UP_SMS: '短信验证码',
-  BINDING_CELLPHONE: '绑定手机号验证',
-  DEVICE_CONFIRM: '原设备确认',
-  DEVICE_SCAN: '原设备扫码',
-  WEICHAT_AUTH: '微信授权',
-};
 const selected = computed(() =>
   view.value?.challenge.methods.includes(method.value) ? method.value : '',
 );
@@ -35,14 +32,16 @@ watch(selected, (value) =>
         ? 'confirm'
         : value === 'UP_SMS'
           ? 'sms'
-          : null,
+          : value === 'SECURITY_EMAIL'
+            ? 'email'
+            : null,
   ),
 );
 function clearSecrets() {
-  code.value = '';
   answer.value = '';
   devicePanel.value?.clearSecrets();
   smsPanel.value?.clearSecrets();
+  emailPanel.value?.clearSecrets();
 }
 defineExpose({ clearSecrets });
 async function choose(value: string) {
@@ -60,6 +59,7 @@ async function choose(value: string) {
       kind: 'sms_start',
       direction: view.value?.challenge.countryCode === '86' ? 'uplink' : 'downlink',
     });
+  if (value === 'SECURITY_EMAIL') await props.model.run({ kind: 'security_mail_send' });
   await nextTick();
   if (root.value?.isConnected && !root.value.closest('[inert]'))
     root.value
@@ -72,7 +72,8 @@ async function back() {
     busy.value &&
     !(
       (selected.value.startsWith('DEVICE_') && view.value?.device) ||
-      (selected.value === 'UP_SMS' && view.value?.sms)
+      (selected.value === 'UP_SMS' && view.value?.sms) ||
+      (selected.value === 'SECURITY_EMAIL' && view.value?.email)
     )
   )
     return;
@@ -83,6 +84,8 @@ async function back() {
     if (selected.value.startsWith('DEVICE_') && device) await props.model.stopDevice(device.id);
     if (selected.value === 'UP_SMS' && view.value?.sms)
       await props.model.stopSms(view.value.sms.id);
+    if (selected.value === 'SECURITY_EMAIL' && view.value?.email)
+      await props.model.stopEmail(view.value.email.id);
     const previous = method.value;
     method.value = '';
     await nextTick();
@@ -96,12 +99,6 @@ async function back() {
   } finally {
     returning.value = false;
   }
-}
-async function verify() {
-  const otp = code.value;
-  code.value = '';
-  if (selected.value === 'SECURITY_EMAIL')
-    await props.model.run({ kind: 'security_mail_verify', code: otp });
 }
 watch(
   () => [view.value?.device?.phase, busy.value],
@@ -125,20 +122,28 @@ watch(
         view &&
         (view.status === 'two_factor' ||
           (selected.startsWith('DEVICE_') && view.device) ||
-          (selected === 'UP_SMS' && view.sms))
+          (selected === 'UP_SMS' && view.sms) ||
+          (selected === 'SECURITY_EMAIL' && view.email))
       "
     >
-      <img
-        v-if="view?.challenge.avatarUrl"
-        :src="view.challenge.avatarUrl"
-        class="login-avatar"
-        alt=""
-        referrerpolicy="no-referrer"
+      <VerificationIdentity
+        v-if="selected === 'SECURITY_EMAIL'"
+        :nickname="view.challenge.nickname"
+        :avatar-url="view.challenge.avatarUrl"
       />
-      <p v-if="view.challenge.nickname">{{ view.challenge.nickname }}</p>
-      <p v-if="view.challenge.phoneMask && selected !== 'UP_SMS'" class="muted">
-        {{ view.challenge.phoneMask }}
-      </p>
+      <template v-else>
+        <img
+          v-if="view?.challenge.avatarUrl"
+          :src="view.challenge.avatarUrl"
+          class="login-avatar"
+          alt=""
+          referrerpolicy="no-referrer"
+        />
+        <p v-if="view.challenge.nickname">{{ view.challenge.nickname }}</p>
+        <p v-if="view.challenge.phoneMask && selected !== 'UP_SMS'" class="muted">
+          {{ view.challenge.phoneMask }}
+        </p>
+      </template>
       <button
         v-if="!view.challenge.methods.length"
         class="primary"
@@ -171,6 +176,12 @@ watch(
           :kind="selected === 'DEVICE_SCAN' ? 'scan' : 'confirm'"
         />
         <SmsVerification v-else-if="selected === 'UP_SMS'" ref="smsPanel" :model="model" />
+        <EmailVerification
+          v-else-if="selected === 'SECURITY_EMAIL'"
+          ref="emailPanel"
+          :model="model"
+          @back="back"
+        />
         <div v-else-if="selected === 'BINDING_CELLPHONE'" class="verification-handoff">
           <p>如需通过绑定手机号验证，请前往手机端操作。</p>
           <p class="muted">也可以返回选择其他验证方式。</p>
@@ -178,50 +189,27 @@ watch(
         <p v-else-if="selected === 'WEICHAT_AUTH'" class="muted">
           当前客户端暂不支持微信验证，请选择其他验证方式。
         </p>
-        <form
-          v-else-if="selected === 'SECURITY_EMAIL'"
-          class="credential-form"
-          @submit.prevent="verify"
-        >
-          <p>{{ known[selected] }}</p>
-          <label
-            >验证码<input
-              v-model="code"
-              aria-label="安全验证码"
-              inputmode="numeric"
-              autocomplete="one-time-code"
-              pattern="[0-9]{4,8}"
-              maxlength="8"
-              required
-              :disabled="busy"
-          /></label>
-          <button
-            type="button"
-            :disabled="busy || seconds > 0"
-            @click="
-              model.run({
-                kind: 'security_mail_send',
-              })
-            "
-          >
-            {{ seconds ? `${seconds} 秒后重发` : '发送验证码' }}
-          </button>
-          <button type="submit" class="primary" :disabled="busy">确认验证</button>
-        </form>
         <button
-          v-if="selected"
+          v-if="selected && !(selected === 'SECURITY_EMAIL' && view.email?.phase === 'send_limit')"
           class="verification-back"
           :disabled="
             returning ||
             (busy &&
               !(
                 (selected.startsWith('DEVICE_') && view.device) ||
-                (selected === 'UP_SMS' && view.sms)
+                (selected === 'UP_SMS' && view.sms) ||
+                (selected === 'SECURITY_EMAIL' && view.email)
               ))
           "
           @click="back"
         >
-          选择其他验证方式
+          {{
+            selected === 'SECURITY_EMAIL' &&
+            view.email &&
+            ['code_required', 'verifying', 'send_unconfirmed'].includes(view.email.phase)
+              ? '收不到邮箱验证码？尝试其他验证方式'
+              : '选择其他验证方式'
+          }}
         </button>
       </template>
     </template>

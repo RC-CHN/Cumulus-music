@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, ref } from 'vue';
-const props = defineProps<{ disabled: boolean }>();
+const props = withDefaults(
+  defineProps<{ disabled: boolean; label?: string; groupLabel?: string }>(),
+  { label: '确认码', groupLabel: '原设备确认码' },
+);
 const emit = defineEmits<{ complete: [value: string]; edit: [] }>();
 const root = ref<HTMLElement>();
 const digits = ref(Array<string>(6).fill(''));
@@ -70,12 +73,12 @@ defineExpose({ clear, focus });
 onBeforeUnmount(clear);
 </script>
 <template>
-  <div ref="root" class="login-pin" role="group" aria-label="原设备确认码">
+  <div ref="root" class="login-pin" role="group" :aria-label="groupLabel">
     <input
       v-for="(_, index) in digits"
       :key="index"
       :value="digits[index]"
-      :aria-label="`确认码第 ${index + 1} 位`"
+      :aria-label="`${label}第 ${index + 1} 位`"
       :data-pin-index="index"
       type="text"
       :autocomplete="index === 0 ? 'one-time-code' : 'off'"

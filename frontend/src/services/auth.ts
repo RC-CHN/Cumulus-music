@@ -33,6 +33,7 @@ export interface LoginAnswer {
 export interface LoginView {
   device?: DeviceVerificationView | null;
   sms?: SmsVerificationView | null;
+  email?: EmailVerificationView | null;
   operationId: string;
   mode: LoginMode;
   status: LoginStatus;
@@ -78,7 +79,9 @@ export type LoginCommand =
         | 'reuse_confirm'
         | 'reconcile';
     }
-  | { kind: 'security_mail_verify' | 'verification_sms_verify'; code: string }
+  | { kind: 'security_mail_verify'; verification_id: string; code: string }
+  | { kind: 'security_mail_resend' | 'security_mail_stop'; verification_id: string }
+  | { kind: 'verification_sms_verify'; code: string }
   | { kind: 'bind_phone_verify'; phone: string; country_code: string; code: string }
   | { kind: 'question_answer'; answer: string };
 export interface DeviceVerificationView {
@@ -121,6 +124,21 @@ export interface SmsVerificationView {
   countryCode: string | null;
   uploadText: string | null;
   uploadNumber: string | null;
+  answerRejected: boolean;
+}
+export interface EmailVerificationView {
+  id: string;
+  phase:
+    | 'sending'
+    | 'code_required'
+    | 'verifying'
+    | 'send_limit'
+    | 'verify_limit'
+    | 'failed'
+    | 'send_unconfirmed'
+    | 'recovery_required';
+  code: number | null;
+  mailAddress: string | null;
   answerRejected: boolean;
 }
 export interface SavedAccount {

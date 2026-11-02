@@ -4,6 +4,7 @@
 mod challenge;
 mod cooldown;
 mod device;
+mod email;
 mod flow;
 mod protocol;
 mod qr;
@@ -14,6 +15,7 @@ pub use challenge::{LoginStatus, VerificationAction, classify};
 pub use cooldown::ResendCooldown;
 pub(crate) use device::DeviceCancellation;
 pub use device::{DeviceVerificationKind, DeviceVerificationPhase, DeviceVerificationView};
+pub use email::{EmailPhase, EmailVerificationView};
 pub use flow::{CredentialLogin, LoginGuardian, LoginSnapshot};
 pub use protocol::LoginProtocol;
 pub use qr::QrAuthentication;

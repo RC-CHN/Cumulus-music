@@ -1,5 +1,6 @@
 use crate::account::login::{
-    DeviceVerificationKind, DeviceVerificationView, LoginStatus, SmsDirection, SmsVerificationView,
+    DeviceVerificationKind, DeviceVerificationView, EmailVerificationView, LoginStatus,
+    SmsDirection, SmsVerificationView,
 };
 use serde::{Deserialize, Serialize};
 
@@ -75,7 +76,14 @@ pub enum LoginCommand {
         verification_id: String,
     },
     SecurityMailSend,
+    SecurityMailResend {
+        verification_id: String,
+    },
+    SecurityMailStop {
+        verification_id: String,
+    },
     SecurityMailVerify {
+        verification_id: String,
         code: String,
     },
     VerificationSmsSend,
@@ -139,6 +147,7 @@ pub struct LoginView {
     pub challenge: LoginChallengeView,
     pub device: Option<DeviceVerificationView>,
     pub sms: Option<SmsVerificationView>,
+    pub email: Option<EmailVerificationView>,
 }
 
 #[derive(Serialize)]

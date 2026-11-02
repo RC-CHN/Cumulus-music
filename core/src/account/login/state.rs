@@ -15,6 +15,8 @@ pub(super) struct State {
     pub device: Option<super::device::Attempt>,
     pub sms_context: Option<super::sms::Context>,
     pub sms: Option<super::sms::Attempt>,
+    pub email_allowed: bool,
+    pub email: Option<super::email::Attempt>,
 }
 
 impl Default for State {
@@ -31,6 +33,8 @@ impl Default for State {
             device: None,
             sms_context: None,
             sms: None,
+            email_allowed: false,
+            email: None,
         }
     }
 }
@@ -47,6 +51,14 @@ impl<'a> Operation<'a> {
         status: LoginStatus,
         expected: Option<u64>,
     ) -> Result<Self> {
+        Self::begin_checked(state, status, expected, |_| Ok(()))
+    }
+    pub fn begin_checked(
+        state: &'a Mutex<State>,
+        status: LoginStatus,
+        expected: Option<u64>,
+        ready: impl FnOnce(&State) -> Result<()>,
+    ) -> Result<Self> {
         let mut current = state.lock().map_err(|_| Error::LockPoisoned)?;
         if expected.is_some_and(|g| g != current.generation) {
             return Err(Error::StaleResponse);
@@ -60,6 +72,7 @@ impl<'a> Operation<'a> {
         if current.busy {
             return Err(Error::State("login operation is already pending"));
         }
+        ready(&current)?;
         current.busy = true;
         current.status = status;
         current.error_kind = None;
@@ -112,6 +125,13 @@ impl Drop for Operation<'_> {
             state.error_kind = Some("interrupted");
             if let Some(sms) = &mut state.sms {
                 sms.view.phase = super::SmsPhase::RecoveryRequired;
+            }
+            if let Some(email) = &mut state.email {
+                email.view.phase = if email.view.phase == super::EmailPhase::Sending {
+                    super::EmailPhase::SendUnconfirmed
+                } else {
+                    super::EmailPhase::RecoveryRequired
+                };
             }
         }
     }

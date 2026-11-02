@@ -1,0 +1,37 @@
+{
+  "sources": {
+    "hybrid_vendors_app_subApp.chunk.1482700000000.js/1368.js": "49da1d26373042091a3123f8948f1ce7e9968ec185e57369156fc1c6a6700db3",
+    "hybrid_app.chunk.1482700000000.js/15.js": "8ec4bf8d343f6963860eb73bc59ca09f0dd1ae50db2608a6c5abc7d69a0b521a",
+    "hybrid_app.chunk.1482700000000.js/48.js": "d8c0a8a0c03aca1339bc38e61c8c9a943cd3f4db6e214492e10c3c114acba4db"
+  },
+  "vectors": {
+    "jskSend": {
+      "path": "/api/user/2fa/securityEmail/send",
+      "payload": {
+        "scene": "0",
+        "fromPage": "JSK"
+      }
+    },
+    "legacySend": {
+      "path": "/api/user/2fa/securityEmail/send",
+      "payload": {
+        "scene": "0"
+      }
+    },
+    "jskVerify": {
+      "path": "/api/user/2fa/securityEmail/verify",
+      "payload": {
+        "scene": "0",
+        "captcha": "123456",
+        "fromPage": "JSK"
+      }
+    },
+    "legacyVerify": {
+      "path": "/api/user/2fa/securityEmail/verify",
+      "payload": {
+        "scene": "0",
+        "captcha": "123456"
+      }
+    }
+  }
+}

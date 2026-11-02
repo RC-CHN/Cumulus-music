@@ -102,6 +102,9 @@ impl CredentialLogin {
         if let Some(sms) = &state.sms {
             sms.cancel.send_replace(true);
         }
+        if let Some(email) = &state.email {
+            email.cancel.send_replace(true);
+        }
         state.status = LoginStatus::Cancelled;
         state.pending = None;
         state.challenge = None;
@@ -109,6 +112,8 @@ impl CredentialLogin {
         state.device = None;
         state.sms = None;
         state.sms_context = None;
+        state.email = None;
+        state.email_allowed = false;
         state.busy = false;
         Ok(())
     }
@@ -184,6 +189,8 @@ impl CredentialLogin {
                     // before network completion would cancel our own operation.
                     state.sms = None;
                     state.sms_context = None;
+                    state.email = None;
+                    state.email_allowed = false;
                 }
                 if matches!(code, Some(8830 | 8860))
                     && let Some(ticket) = response["MUSIC_TU"].as_str().filter(|s| !s.is_empty())
@@ -213,6 +220,8 @@ impl CredentialLogin {
         state.device = None;
         state.sms = None;
         state.sms_context = None;
+        state.email = None;
+        state.email_allowed = false;
         state.status = LoginStatus::Authenticated;
         Ok(())
     }
@@ -313,6 +322,11 @@ impl CredentialLogin {
             if state.verification != Some(LoginStatus::TwoFactor) {
                 return Err(Error::State("two-factor verification is not pending"));
             }
+            if state.email.is_some() {
+                return Err(Error::State(
+                    "stop email verification before reading methods",
+                ));
+            }
             state.generation
         };
         let operation = Operation::begin(
@@ -369,7 +383,11 @@ impl CredentialLogin {
                 }
             }
             if response["code"] == 200 {
-                operation.lock()?.sms_context = Some(super::sms::Context::from_list(&response));
+                let mut state = operation.lock()?;
+                state.sms_context = Some(super::sms::Context::from_list(&response));
+                state.email_allowed = response["data"]["types"]
+                    .as_array()
+                    .is_some_and(|types| types.iter().any(|v| v == "SECURITY_EMAIL"));
             }
             Ok(response)
         }

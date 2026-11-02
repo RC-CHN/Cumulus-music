@@ -591,7 +591,8 @@ async fn two_factor_offers_only_whitelisted_methods_and_answers_reconcile_before
             .await
             .is_err()
     );
-    w.client
+    let sent = w
+        .client
         .login_command(&id, Cmd::SecurityMailSend)
         .await
         .unwrap();
@@ -600,6 +601,7 @@ async fn two_factor_offers_only_whitelisted_methods_and_answers_reconcile_before
         .login_command(
             &id,
             Cmd::SecurityMailVerify {
+                verification_id: sent.email.unwrap().id,
                 code: "123456".into(),
             },
         )

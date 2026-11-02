@@ -180,6 +180,7 @@
 .verification-choice,
 .verification-handoff,
 .sms-verification,
+.email-verification,
 .device-loading,
 .device-confirm-content {
   opacity: 1;
@@ -396,6 +397,7 @@ ol.sms-tips {
   .verification-choice,
   .verification-handoff,
   .sms-verification,
+  .email-verification,
   .device-loading,
   .device-confirm-content,
   .device-qr-mask {
@@ -647,4 +649,113 @@ ol.sms-tips {
   .login-note {
     margin-top: 10px;
   }
+}
+.email-verification {
+  width: 315px;
+  max-width: 100%;
+  margin: 20px auto 0;
+  text-align: center;
+  font-size: 14px;
+  line-height: 22px;
+}
+.email-verification:focus {
+  outline: none;
+}
+.email-description {
+  margin-top: 20px;
+}
+.email-description strong {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+  font-weight: 400;
+}
+.email-pin {
+  margin-top: 20px;
+  text-align: left;
+}
+.email-pin > p:first-child {
+  color: var(--text-secondary);
+}
+.email-pin .verification-error {
+  margin-top: 10px;
+  font-size: 11px;
+  line-height: 13px;
+}
+.email-verification .device-resend {
+  width: 296px;
+  max-width: 100%;
+}
+.email-description,
+.email-pin {
+  animation: device-enter 0.15s ease-out both;
+}
+.email-validity {
+  display: inline-block;
+}
+.email-loading-text {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+.verification-identity {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  max-width: 100%;
+  margin: 0 auto;
+  text-align: left;
+  line-height: 20px;
+}
+.verification-identity > img,
+.verification-identity-placeholder {
+  flex: 0 0 60px;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--surface-alt);
+}
+.verification-identity-placeholder {
+  display: grid;
+  place-items: center;
+  color: var(--text-secondary);
+}
+.verification-identity-placeholder .icon {
+  width: 30px;
+  height: 30px;
+}
+.verification-identity > div {
+  min-width: 0;
+  max-width: 128px;
+}
+.verification-identity-title {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+.verification-identity-name {
+  margin-top: 8px;
+  font-size: 14px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+@media (prefers-reduced-motion: reduce) {
+  .email-description,
+  .email-pin {
+    animation: none;
+  }
+}
+.email-verification .email-description[role='alert'] {
+  width: 252px;
+  max-width: 100%;
+  margin-inline: auto;
+}
+.email-verification .device-resend {
+  font-size: 16px;
+  font-weight: 500;
 }
