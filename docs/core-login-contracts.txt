@@ -65,6 +65,8 @@ verification(action,params)明确动作对应：
   /api/login/cellphone/twice/question/get、verify，新JSK省略值序列化为scene="undefined"，旧链
   无scene。生命周期、选项/本机ID、取消与只读核对见question-login-contracts.txt。
   PhoneReuseUser/PhoneReuseConfirm：/api/login/cellphone/twice/used/user/get、confirm；{}。
+  桌面业务使用候选归属的reuse状态机和二次确认，不直接暴露上述通用动作；force注册、
+  原SMS证明、昵称及持久化意图边界见phone-reuse-login-contracts.txt。
 scene默认"0"；不接受多余/缺失字段。发送邮件/SMS动作同样受冷却约束，不自动挑选验证方式。
 错误答案保留可修正状态；步骤成功先读身份，若301才允许一次原登录重放，新挑战继续等待。
 challenge_native仅是原生内部数据，不能把原始响应和票据直接序列化成前端DTO。

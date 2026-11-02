@@ -53,7 +53,10 @@ login_command(operationId,command) -> LoginView
   security_mail_resend{verification_id} / security_mail_stop{verification_id}
   verification_sms_send / verification_sms_verify{code}
   bind_phone_verify{phone,country_code,code}（仅原生已恢复动作；当前页面使用官方App提示）
-  question_read / question_answer{question_id,answer}；reuse_read / reuse_confirm；reconcile。
+  question_read / question_answer{question_id,answer}；reconcile。
+  reuse_read；reuse_choose{verification_id,choice:login|register}；reuse_back{verification_id}
+  reuse_confirm{verification_id}；reuse_prepare_register{verification_id}；reuse_nickname_hint{verification_id}
+  reuse_register{verification_id,nickname:string|null}：默认昵称必须由原8860挑战明确允许。
 login_snapshot(operationId) -> LoginView：只读本地，不重发登录或验证码。
 cancel_login(operationId)：只取消当前同ID候选；已认证结果不回滚，陈旧ID不影响新尝试。
 saved_accounts(epoch) -> AccountData<SavedAccountView[]>：本地读取，不证明登录态仍有效。
@@ -61,10 +64,13 @@ logout_account(epoch,remote) -> {account,remoteRevoked}：绑定当前HTTP凭据
 原begin_qr/poll_qr/cancel_qr保持可用，与上述流程共享待登录槽；新方式取消旧方式。
 
 返回字段
-LoginView={operationId,mode,status,code,busy,retryAfterMs,interrupted,challenge}。
-challenge仅methods/nickname/avatarUrl/phoneMask/question/answers/reuseConfirmation。
-answers含value/title/subtitle/picture；头像/图片走现有来源白名单，不返回挑战原文/票据。
-SavedAccountView={id,nickname,avatarUrl,current,autoLogin}，id为不透明候选句柄，无UID/本地路径。
+LoginView={operationId,mode,status,code,busy,captchaAvailable,retryAfterMs,interrupted,challenge,
+  device,sms,email,question,reuse}；各专项视图可为null，字段/状态见对应登录专项文档。
+challenge仅methods/nickname/avatarUrl/phoneMask/countryCode/question/answers/reuseConfirmation。
+answers含value/title/subtitle/picture/tag；头像/图片走现有来源白名单，不返回挑战原文/票据。
+reuse只含不透明ID、phase/code、掩码昵称/有界日期、注册阻止原因、默认昵称许可、推荐昵称与错误枚举；
+  当前UI的选择、二次确认和昵称注册由该状态机控制，不以reuseConfirmation布尔跳过确认步骤。
+SavedAccountView={id,nickname,avatarUrl,current,autoLogin,removalPending}，id为不透明候选句柄，无UID/本地路径。
 AccountView新增canSignOut，取当前绑定凭据中有效登录/刷新材料的存在性；读取后再核对账号代次。
 login_command/cancel_login/logout_account和QR轮询/取消结束后，包括错误返回，发布
 cumulus:account-changed（受限AccountView）。前端据此重读状态，不能仅依赖弹窗成功回调。

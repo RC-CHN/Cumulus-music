@@ -649,3 +649,5 @@ client/fm.rs在transport intent与媒体所有权变更之前拒绝旧entry，�
 官方来源→Rust→IPC→Vue→31态实际WebView映射在fm-feedback-ui-contracts.txt和
 fm-core-mapping.json。Python仅启动/核对合成证据，未参与任何业务实现。62张最终图
 及精确验证边界见ui-ux-validation.txt；不据此宣布新版黑名单、小窗或整个目标完成。
+
+2026-11-03：8860关联账号读取与两步登录/注册确认、PC M3138→M363/M15 force注册、昵称/默认许可和跨候选持久恢复已迁移core/account/login/reuse及profiles/registration；前端只用类型化命令。原确认已接受后的登录重放若未发出仍只读核对，不重复确认。两协议WebView与本机34态、独立存储及旧账号回归通过；全部合成，真实RT和其余SDK边界不变。

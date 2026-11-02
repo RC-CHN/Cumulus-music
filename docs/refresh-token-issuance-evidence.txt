@@ -80,3 +80,5 @@ Rust账号恢复、普通读请求和账号切换不会把起算时间改成当�
 本轮真实WebView/原生HTTP/SQLite与本机截图均为合成账号，服务器是否给本人账号下发RT、
 是否能完成真实成对轮换仍未验证；不能用合成fixture-refresh或旧Cookie存在来声称已获得RT。
 本轮未对真实服务发登录、短信或轮换请求。详见desktop-session-renewal-contracts.txt。
+
+2026-11-03 手机号复用增量：新旧确认与实际PC旧链注册的令牌接收/恢复通过合成原生及WebView/KDE测试；没有新真人扫码、注册或成对轮换。不能把fixture-refresh、已保存Cookie或合成账号身份通过说成本人获得了RT。现有真实观察仍不变。

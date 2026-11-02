@@ -1,0 +1,83 @@
+手机号二次分配：官方确认、重新注册与结果恢复
+2026-11-03；仅覆盖8860分支，不代表整个账号SDK或全目标完成。
+
+来源与接口
+官方3.1.42.205594的AccountCheck.tsx、AccountConfirm.tsx、Nicknamev2.jsx为页面依据；
+vendor M1368为JSK读关联账号和登录确认；app M15/M363和M3138为PC昵称注册实际调用链。
+M32的getLength按UTF-16将非Latin-1单元计两位；M103默认本地日历YYYY-MM-DD。
+本批未参考YesPlayMusic。公开冻结向量与七个模块SHA256见
+core/tests/fixtures/reuse-login-official.json；原材料不随公开仓库提交。
+
+1. /api/login/cellphone/twice/used/user/get {}：只读关联账号。
+2. /api/login/cellphone/twice/used/confirm {}：用户明确点击确认页“登录”后才发送。
+以上随原登录所选协议，JSK另带fromPage="JSK"、原生链上下文/已确认验证票据；
+旧链不添加JSK字段。不能根据服务错误擅自切换协议。
+3. /api/nickname/hint/get {isAlter:false}，结果hintNickname；只读推荐昵称。
+4. /api/nickname/duplicated {nickname}，结果duplicated布尔；检查昵称是否重复。
+5. /api/w/register/cellphone {phone,password:"",countrycode,captcha,force:"true",nickname}
+   或最后一项改为isSkipSetNickname:"true"，两项不能同时存在。
+3–5沿用官方PC的M3138→M363/M15原生旧链，即使之前手机登录使用JSK也如此；
+这不是请求失败后的协议回退。不替换成SDK中需要ursToken的另一个注册handler。
+PC桥verifySms没有提供有效ursToken，因此不编造URS证明、不添加虚假的设备或风控令牌。
+M402仍按真实配置的路径匹配加保护；没有因源码checkToken选项强制伪造令牌。
+
+原生业务和隔离
+core/account/login/reuse按model、状态机、registration分文件；ProfileRegistry负责注册意图。
+每次读取/返回重读生成独立UUID，旧ID不可选择、确认、注册；同一候选只有一个在途操作。
+ReuseRead/Back只读；ReuseChoose只改变本地Choice→LoginConsent或RegisterConsent，零HTTP。
+ReusePrepareRegister只读昵称推荐；提示失败仍可手填。最终ReuseRegister才允许注册写入。
+手机号、区号、SMS证明只来自Rust持有的原始手机SMS登录请求，前端不能重新注入。
+密码或邮箱挑战可以确认登录，但不能拿缺失的短信证明去强制注册；界面返回短信登录。
+默认昵称只在原8860挑战明确canSkipSetNickname=true时提供；原生再次检查，不能由IPC开启。
+昵称修剪后按官方4–30加权长度和中英文/数字/-_字符范围校验，提交前只读重复检查；
+查重失败和已占用分别显示。重复检查不自动重试或提交。
+503验证码错误会废弃保留的旧SMS证明，明确返回短信登录；504已注册、250安全检查拒绝和509限流
+分别显示，不误报为昵称重复。已知业务拒绝不保留未知注册锁，但旧无效SMS仍不能再次提交。
+
+读取只向前端投影首个UTF-16单元加****，日期为有界时间字段，头像沿用受限图片映射。
+完整关联昵称、原手机号、Cookie、RT、请求签名、旧SMS证明不跨IPC。
+登录确认接受后先只读account/get；只有明确301才允许一次原登录重放，沿用既有验证完成规则。
+如果确认已接受、但之后的原登录重放在发送前失败，仍进入只读核对，不能重新显示确认重试；
+只有确认请求本身明确未发出才允许用户重试该确认。
+注册接受后只核对身份，不重放原SMS登录，也不重新发force注册。
+注册响应必须实际提供对本域/路径有效且当前仍适用的MUSIC_U授权回执；候选中已有的Cookie
+不算这次注册的授权。正文中断但真正下发Cookie时可以明确执行只读核对；不能据旧Cookie误收旧账号。
+服务要求额外挑战时，注册进入未决状态，不将CAPTCHA接到原SMS重放通道。
+新的关联账号/其它已识别挑战会废弃旧页面投影，下一步由新挑战决定。
+
+注册意图与失败恢复
+发force注册前，在根注册表事务写入phone-registration-v1。使用私有随机根种子及
+HMAC-SHA256(country:phone)作键；根日志不保存手机号、OTP或昵称草稿。
+同一原始手机号/区号表示下，跨候选、跨进程和重启均排除并发/未知注册重发；
+不声称覆盖所有服务端手机号别名表示。
+明确未发出的原生准备失败、完整业务拒绝可以结束自己那条意图，其他请求不能误删。
+发出后的网络错误/丢包/中断、取消、任务丢弃、进程退出保留未决记录。
+45秒截止与watch取消覆盖读取、登录确认、注册、只读核对；取消会丢弃被挂起的HTTP future。
+关闭窗口只停止本机操作，不伪造远端取消成功。
+成功身份收养、保存账号和选择账号在同一根事务结算意图；持久化失败不能发布新账号。
+较早发出的SMS登录不能清掉另一个候选后来写入的意图；新登录只结算发请求前已观察到的意图，
+或本候选自己的注册意图，保留跨候选的时序边界。
+如果没有本次有效授权回执，须重新短信登录或由本人在官方App核实，不捏造注册状态接口。
+
+界面与社区差异
+确认账号：官方二次售卖号说明、60px圆头像、掩码昵称/注册日历日期、300×50两张选择卡。
+登录/注册确认：62px信息图标、原风险/解绑说明、220px圆角主按钮和取消按钮；取消返回并重读账号。
+昵称：推荐/换一个/手填、服务端错误、明确完成注册，只有原挑战允许时才显示默认昵称入口。
+昵称标题“希望大家怎么称呼你呢？”、默认入口“以默认昵称注册”来自Nicknamev2。
+各页面有加载、读取失败/重试、明确登录拒绝、未决/只读核对、需重新短信登录分支。
+页面切换仅transform/opacity，遵循减少动态效果；原生操作中保留关闭/回到登录的取消路径。
+短窗口缩减确认页空白，不靠隐藏按钮或页面横向滚动。
+官方Nickname关闭会尝试注册，且官方注册会预先退出旧账号并强制自动登录；本项目不照搬：
+关闭只取消；验证通过前保留当前账号；保留用户原自动登录选择。提交前增加原生只读查重，
+避免仅依赖前端异步查重竞态。昵称输入修剪后提交。这些差异不称为官方逐像素一致。
+
+验证边界
+可选原函数对照：node desktop/tests/reuse_login_official.cjs /absolute/recovered-js/modules。
+该程序执行SDK fetch参数表达式、M363注册、M3138昵称辅助函数、M48序列化及M32长度函数；
+旧读/确认路由和日期格式来自静态定位，不冒充完整SDK/React运行。
+Rust集成测试：cargo test -p cumulus-core --test client_phone_reuse --locked。
+真实WebView探针：reuse_login_ui_probe + scripts/ci/reuse_login_smoke.py，支持--legacy和--screenshots。
+持久化独立审计：desktop/examples/audit_reuse_probe.py，读取隔离SQLite，不访问网络。
+本批仅使用合成手机号/验证码/账号/令牌，没有向真实服务发送注册/解绑、短信或登录确认。
+本人二次分配挑战、真实手机号重新注册、真实RT下发/轮换、Windows实机界面均仍需外部验证。
+上述边界不能用编译成功、原函数局部表达式或合成GUI结果替代。

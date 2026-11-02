@@ -4685,3 +4685,53 @@ collection-library-mapping.json；没有使用YesPlayMusic。
   最终证明输入见question-approved-{dist-freeze,binaries}.json；47项CI工具与语法/源码边界检查通过。
 - 真实音乐API/账号写入为0；本人安全问题、真实RT下发/轮换、Windows实机视觉、全SDK及
   其它模块完整UI审计仍须继续。精确新头CI另行验证，不用旧头或本地证明冒称跨平台CI通过。
+
+2026-11-03 手机号二次分配8860：本轮增量通过，全目标未完成
+官方AccountCheck/AccountConfirm/Nicknamev2及M1368/M3138/M363/M15/M48/M32/M103为依据；
+完整接口、请求字段、协议选择、社区差异见phone-reuse-login-contracts.txt和对应mapping.json。
+UI：自动读取关联账号、首UTF-16单元掩码、可选注册日期、60px圆头像、300×50两张选择卡；
+独立登录/注册确认及220×40主按钮；昵称提示/换一个/查重/4–30长度/默认许可/明确完成注册。
+昵称反馈按官方Error组件左对齐，普通说明灰色、错误红色；250安全拒绝不冒称注册成功。
+在途步骤可关闭或返回，草稿/旧OTP及被保留DOM清理；切换只用transform/opacity并尊重减少动态。
+焦点在完整入场之后恢复，跳过inert离场节点；标题随当前本地步骤同步，不等网络结束才切换。
+Native：原SMS证明仅在Rust、候选ID与阶段守卫、45秒截止、取消/丢弃、确认后301一次登录重放；
+已确认操作后的重放准备失败不允许再发确认。force注册未知结果持久化排他，不自动重发；
+旧Cookie不冒充本次注册授权，账号收养与意图结算同事务；旧在途SMS不清掉较新的注册意图。
+
+最终验证与产物
+- Rust17项业务集成通过；reuse-confirm-replay-red.log先稳定复现“确认已接受却重新提供确认”问题，
+  修复后17项通过。全量custom-protocol fmt/Clippy及294程序1560测试通过，0失败/忽略；
+  见reuse-reviewed-{fmt,clippy,workspace}.log。最后仅昵称错误颜色/对齐调整，重跑前端全套、
+  全workspace Clippy与九个原生构建（reuse-final-layout-*），随后全部桌面回归，未把颜色改动
+  称为另一轮Rust业务全测。最终前端563项、格式、类型检查/构建通过；npm锁文件安装通过。
+- 官方局部函数对照重复生成并与冻结向量cmp一致；7个模块、5个UI文件散列已记录。
+  只执行SDK参数表达式、注册/昵称辅助函数、序列化与长度函数；旧路由/日期为静态定位。
+- 21个dist先冻结，正式cumulus及8个探针构建后记录9份SHA256；最终全部GUI结束再次核对未变。
+  .build/reuse-approved-dist-freeze.json、reuse-final-binaries.json。
+- 最终真实WebView：reuse-final-gui-{jsk,legacy}各34态/34PNG及独立SQLite审计通过。
+- 本机KDE Wayland/XWayland125%：reuse-final-kde-{jsk,legacy}各34态/34个本应用PID合成器PNG；
+  两份独立SQLite审计通过。68张实际本机截图全部查看；登记光/暗、1120×760与760×540、
+  选项/确认/昵称/已知拒绝/未决/在途/关闭/重新短信登录，未见按钮截断或额外滚动。
+  画廊reuse-final-gallery-{jsk,legacy}/index.html；加载字形对比检查通过。
+  2560×1440输出/125%/约144Hz只为显示器配置，不能当作应用FPS证明。
+- 持久化审计：最终保存账号2条，autoLogin=false、选择指向已核对候选、未决意图最终结算；
+  原phone/OTP/昵称草稿未落盘；旧链注册不伪造JSK登录起算时间。4个挂起HTTP future关闭后丢弃，
+  未决期间不重发force或原SMS，只有明确的新SMS登录/授权核对推进账号代次。
+- 同一最终前端与原生构建回归：原设备两协议各39态、普通账号28态/28PNG、保存账号10态、
+  新旧主登录各16态并审计、邮箱两协议各22态/22PNG、问题两协议各25态/25PNG、续期7态并审计，
+  全部通过。目录reuse-final-*及device-login-reuse-final-{auth-legacy,renewal}-regression。
+  Linux/Windows CI中的新手机号专项均为必需步骤，失败诊断仅收集ci-reuse-login*合成资料。
+
+失败轮次与边界
+reuse-initial-gui-jsk未切换默认扫码页，是探针入口错误，已改为手机入口。
+reuse-focus/reuse-layout早期焦点断言记录显示enter-active仍在，不能当作动画结束后产品错误的
+充分证据；探针现在同时等待类消失、opacity=1及有限动画完成，产品也在after-enter管理焦点。
+早期gallery用于本机窗口的裁剪公式不适合Xvfb整屏坐标，复核时发现并修正为加screenX/Y；
+最终本机画廊只裁本PID图像，所有完整PNG保留。没有把错误裁剪认作产品越界。
+一次前端构建与原生检查并排导致旧资源清理、Tauri找不到旧文件；该轮已作废，重新冻结后检查。
+真实重放缺陷有明确red/green；以上脚本时序/构建组织问题不混充产品故障修复证据。
+旧邮箱/问题头CI在原设备scan_blocked还查找已删除的单输入框，Linux与Windows日志均确认；
+现探针等待六格邮箱PIN/原生idle并用正确返回标签，同构建两协议39态本地通过。
+旧失败运行不因本地修复改称成功，新头完整CI仍须另行验证。
+本轮音乐真实请求/真实注册解绑/付费/短信/邀请均为0；本人RT下发与成对轮换、真实二次分配
+账号、Windows物理桌面、其余SDK和注册找回/终止升级分支及完整目标仍未验收。

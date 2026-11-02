@@ -1,0 +1,122 @@
+{
+  "scope": "Official desktop 3.1.42.205594 phone-reuse code 8860; full account SDK and whole goal remain incomplete",
+  "full_goal_complete": false,
+  "officialModules": {
+    "hybrid_vendors_app_subApp.chunk.1482700000000.js/1368.js": "49da1d26373042091a3123f8948f1ce7e9968ec185e57369156fc1c6a6700db3",
+    "hybrid_app.chunk.1482700000000.js/363.js": "8b8122f09a875f50026599cca589ba3e1318e01e260b21f925adbdbc567206f0",
+    "hybrid_app.chunk.1482700000000.js/15.js": "8ec4bf8d343f6963860eb73bc59ca09f0dd1ae50db2608a6c5abc7d69a0b521a",
+    "hybrid_app.chunk.1482700000000.js/48.js": "d8c0a8a0c03aca1339bc38e61c8c9a943cd3f4db6e214492e10c3c114acba4db",
+    "hybrid_19.chunk.1482700000000.js/3138.js": "02677bdbb947009de508bf4d4d159f91a72f62dfc172d190d74c42679e245ed4",
+    "hybrid_app.chunk.1482700000000.js/32.js": "1aa3d1f17a38717843340a7c33c87419bc7c952bc423fc58ab45d1630561ff34",
+    "hybrid_app.chunk.1482700000000.js/103.js": "667f71f29b59b37af1ef012192c736912151fe4017ebbfae45e71e401ff26c60"
+  },
+  "sources": [
+    "packages/pc/src/pages/login/views/AccountCheck.tsx",
+    "packages/pc/src/pages/login/views/AccountConfirm.tsx",
+    "packages/pc/src/pages/login/views/Nicknamev2.jsx"
+  ],
+  "mapping": [
+    {
+      "business": "Read associated account and choose locally",
+      "official": "AccountCheck + M1368 phone-reuse fetch",
+      "rust": [
+        "core/src/account/login/reuse/mod.rs",
+        "core/src/client/auth/flow.rs"
+      ],
+      "ui": "frontend/src/components/login/ReuseVerification.vue",
+      "actions": [
+        "ReuseRead",
+        "ReuseChoose",
+        "ReuseBack"
+      ],
+      "test": "consent_cancel_rereads_user_info_and_invalidates_the_old_id_without_any_confirm_write"
+    },
+    {
+      "business": "Explicit login consent and readonly identity reconciliation",
+      "official": "AccountConfirm + M1368 confirmPhoneReuseLogin",
+      "rust": [
+        "core/src/account/login/reuse/mod.rs",
+        "core/src/account/login/flow.rs"
+      ],
+      "ui": "ReuseVerification login_consent/login_failed/recovery_required",
+      "actions": [
+        "ReuseConfirm",
+        "Reconcile"
+      ],
+      "test": "both_protocols_require_a_native_two_step_choice_before_confirm_and_preserve_auto_login"
+    },
+    {
+      "business": "Explicit forced re-registration, original native SMS and named/default nickname",
+      "official": "AccountConfirm -> Nicknamev2 -> M3138 -> M363 -> M15 legacy helper, even after JSK",
+      "rust": [
+        "core/src/account/login/reuse/registration.rs",
+        "core/src/protocol/http/client.rs"
+      ],
+      "ui": "ReuseVerification register_consent/nickname",
+      "actions": [
+        "ReusePrepareRegister",
+        "ReuseNicknameHint",
+        "ReuseRegister"
+      ],
+      "test": "registration_uses_original_sms_and_actual_pc_legacy_route_even_after_jsk"
+    },
+    {
+      "business": "Durable unknown-write exclusion and atomic account adoption",
+      "official": "Community recovery added around official force operation; never closes by registering implicitly",
+      "rust": [
+        "core/src/account/profiles/registration.rs",
+        "core/src/account/profiles.rs"
+      ],
+      "ui": "ReuseVerification recovery_required/fresh SMS",
+      "test": "an_older_inflight_sms_login_cannot_clear_a_newer_candidates_unresolved_registration"
+    }
+  ],
+  "validation": {
+    "oracle": "desktop/tests/reuse_login_official.cjs",
+    "frozenVectors": "core/tests/fixtures/reuse-login-official.json",
+    "nativeTests": "core/tests/client_phone_reuse.rs",
+    "webviewProbe": "desktop/examples/reuse_login_ui_probe.rs",
+    "driver": "scripts/ci/reuse_login_smoke.py",
+    "independentAudit": "desktop/examples/audit_reuse_probe.py",
+    "onlineVerified": false,
+    "nativeTestsPassed": 17,
+    "workspacePrograms": 294,
+    "workspaceTestsPassed": 1560,
+    "frontendTestsPassed": 563,
+    "webviewStatesPerProtocol": 34,
+    "physicalKdeStatesPerProtocol": 34,
+    "physicalKdeScreenshotsViewed": 68,
+    "sameBundleRegressions": {
+      "devicePerProtocol": 39,
+      "account": 28,
+      "savedAccounts": 10,
+      "mainLoginPerProtocol": 16,
+      "emailPerProtocol": 22,
+      "questionPerProtocol": 25,
+      "renewal": 7
+    },
+    "details": "docs/ui-ux-validation.txt"
+  },
+  "boundaries": [
+    "Only synthetic registration and phone unbinding; no real account changes",
+    "Original-device and other unrecovered registration challenges retain explicit recovery boundaries; no automatic original-SMS replay",
+    "Real account refresh-token issuance and paired rotation remain unverified",
+    "Windows physical GUI unverified",
+    "No dual-account together-listening claim"
+  ],
+  "communityDifferences": [
+    "Closing cancels locally and never registers",
+    "Keep current account until verified candidate adoption",
+    "Preserve auto-login preference",
+    "Native final nickname validation and readonly duplicate guard",
+    "Trim nickname before submission",
+    "45-second deadlines and durable unknown-write recovery"
+  ],
+  "officialUiSources": {
+    "packages/pc/src/pages/login/views/AccountCheck.tsx": "f06ad805362fdc9c6b20167dae30e8284e1c010287cabb91ad9c51496ea9e626",
+    "packages/pc/src/pages/login/views/AccountConfirm.tsx": "78496a3e1b55e8ce65f44b826b105149cfeb55ceafb10765ac9ab63ad9db287b",
+    "packages/pc/src/pages/login/views/Nicknamev2.jsx": "447da11de72ffe25c314dbe4c5ce5bdc7fa099df41082178177f190eea881dad",
+    "packages/pc/src/pages/login/components/Error.jsx": "5f66db2373b8e6b97bf7c89329061f35e7b903bce4b6503ef3355ab686caf35a",
+    "packages/pc/src/pages/login/components/index.jsx": "d4c12ca4afd6d89f3a69fbf718586cc3600924301b5dae7fcf963aa9a58a9495"
+  }
+}
