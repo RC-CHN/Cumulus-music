@@ -66,6 +66,15 @@ refreshToken与自动续期
 参见desktop-session-renewal-contracts.txt和refresh-token-issuance-evidence.txt。
 上次真实会话检查缺refreshToken；不能用合成续期成功宣称此账号已经实现真实自动轮换。
 
+2026-11-02账号初始化与关闭后焦点
+登录/账号对话框关闭动画结束后仍按原入口恢复焦点；若资源初始化暂时禁用该入口，
+保持一次待恢复意图，等待当前初始化结束、DOM更新后再尝试。用户已经聚焦其它可用
+控件、其它对话框仍打开或窗口失焦时不抢焦点。初次启动没有关闭意图时不自动聚焦头像。
+useModalOrigin负责意图和归属，App的初始化观察与ModalTransition的left通知共同触发。
+实际桌面探针用750ms延迟资源读取覆盖该竞态；结果见ui-ux-validation.txt。
+短信二次验证的区号分流、上行发送说明/轮询、下行验证码、超时/未知结果与关闭取消，
+现已拆为独立Rust状态与生产组件，接口/产品步骤及来源见sms-login-contracts.txt。
+
 二次验证列表改为官方有界方法卡片和独立步骤，原设备确认/扫码接通；详见
 device-login-contracts.txt和device-login-mapping.json。返回恢复原卡片焦点，关闭撤回本机授权能力。
 绑定手机号按官方PC引导手机端，不把一个可选方式描述为“当前账号必须绑定”。

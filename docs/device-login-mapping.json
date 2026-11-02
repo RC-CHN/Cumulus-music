@@ -110,7 +110,7 @@
     "Synthetic API evidence does not prove real phone verification or refresh issuance.",
     "JSK page Back/Close stops local polling without remote cancellation; legacy sends one known-token cancellation.",
     "Hostname is original-device request data, distinct from refresh signature model.",
-    "Binding phone follows official PC mobile handoff; WeChat and full mainland UP_SMS uplink remain open.",
+    "Binding phone follows official PC mobile handoff; WeChat remains open. UP_SMS is mapped separately in sms-login-mapping.json; real carrier verification is untested.",
     "No same-state official runtime image: no pixel-identity claim.",
     "Only Linux and Windows x86_64 are support targets."
   ],

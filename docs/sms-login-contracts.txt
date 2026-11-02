@@ -1,0 +1,107 @@
+短信二次验证：产品流程、官方字段、核心状态与边界
+2026-11-02；适用 Linux/Windows x86_64。当前只描述短信专项，不代表完整账号模块完成。
+
+来源
+官方恢复 DoubleVerifyList.tsx、DoubleVerifySms.tsx、DoubleVerifySmsCaptcha.tsx；
+M2992/M2993 的 fetchDoubleVerifyList；M1368 SmsVerifyHandler；M15 Ga/qa/Wa/Ka；
+M48 原始表单序列化。官方文件路径及散列在 sms-login-mapping.json。
+本批没有使用 YesPlayMusic。原始材料仍在 references，不进入公开仓库/CI。
+desktop/tests/sms_login_official.cjs 从原 AST 取 fetch 参数表达式，执行原 M48 序列化及
+stopUpSmsPolling，生成 core/tests/fixtures/sms-login-official.json 的无私人信息向量。
+公开 Rust 测试及桌面合成服务读取冻结向量，不要求官方安装包或私人会话。
+
+入口与分流
+1. 凭据登录返回8830后，用户读取可用验证方式。JSK保持 begin→list，旧链list→begin。
+2. 只在列表 types 包含 UP_SMS 时提供短信步骤。原生保存列表上下文，不能由前端指定
+   任意手机号、区号、enUserId、channel、scene、短信内容或收件号码。
+3. phoneMask 采用官方 authDetail.UP_SMS || phoneMask；区号字段是 ctCode。
+   只有字符串 "86" 默认进入上行。其它字符串、缺失或数字86均不假设为大陆上行。
+   缺失区号不伪造 +86；下行仍可使用服务器候选票据对应的绑定手机号。
+4. 上行选择时只读取发送说明；下行选择时不发网络请求。两个入口都不自动发验证码。
+
+上行：本人使用手机发送短信
+- 标题“登录安全确认”，显示账号信息、+86及绑定号码掩码。
+- 显示服务端 uploadText 和 uploadNumber，说明使用正确的SIM发送；桌面不代发短信。
+- 点击“已发送，立即登录”才开始核验。轮询、3秒间隔和30秒截止由 Rust 控制，
+  WebView不上传短信内容作为校验参数，也不能延长截止时间。
+- code200且data按JS规则为真才算核验通过；显式data.success=false单独判为失败。
+  false/null/0/空字符串不会触发身份读取/原密码重放；状态读传输失败按官方重试到截止。
+- 超时或明确失败显示“短信验证不成功”、双卡提示、“重新发送”和
+  “无法发送？获取短信验证码”。重新发送只显式重新获取说明，不自动代发。
+- 同一步骤第一次使用uploadNumber，显式重新获取后交替使用uploadNumberBackup和主号码。
+  每次新说明有新的本地操作ID；离开后重新进入从主号码开始，不复用已撤回的操作ID。
+- “无法发送”先本地停止上行，再切换到下行表单；切换本身仍不发送验证码。
+
+下行：接收验证码
+- 标题“登录安全确认”，显示区号/绑定号码掩码、验证码输入、获取验证码和确认按钮。
+- 获取验证码是明确用户操作。Rust共享60秒冷却，换方法、关闭、重开不能绕过。
+  输入4–8位数字，提交前清空Vue及仍存活DOM中的值；错误后恢复输入焦点，编辑清除反馈。
+- 明确错误允许重新输入；code200但data=false或data.success=false不继续身份核对。
+- 请求发出后丢失正文/结果不明，保留恢复状态，撤回提交能力；只提供只读核对。
+  IPC响应丢失只重新读取本地状态，不重复提交验证码或发送短信。
+- 获取验证码前撤回旧输入/编辑反馈，发送结果后恢复输入焦点；新发送错误不会被先前
+  的“正在编辑”状态隐藏。明确拒绝仍保留共享冷却，返回重进不会隐式再次发送。
+
+精确业务请求（全部 POST，不缓存）
+JSK PcPlatformAdapter/M48：
+  /api/middle/account/uplinkcaptcha/get
+    cellphone=<列表掩码>, enUserId="undefined", channel="music_test", scene="undefined"
+  /api/middle/account/uplinkcaptcha/verify
+    cellphone=<列表掩码>, enUserId="undefined", captcha=<核心保存的uploadText>,
+    channel="music_test", scene="undefined"
+  /api/middle/account/captcha/sent
+    scene="undefined"
+  /api/middle/account/captcha/verify
+    captcha=<用户输入>, ctcode="undefined", scene="undefined"
+  四者均由原生传输追加 fromPage="JSK"、空 x-login-chain-id；当前候选有SDK二次验证
+  MUSIC_TU事件票据时带x-music-tu。M402/MConfig请求保护沿用现有原生上下文。
+  "undefined" 是执行原序列化得到的表单字符串，不是客户端自行补出的有效场景。
+
+旧链 M15：
+  /api/middle/account/uplinkcaptcha/get       {channel:"music_test"}
+  /api/middle/account/uplinkcaptcha/verify    {channel:"music_test",captcha:<uploadText>}
+  /api/middle/account/captcha/sent            {}
+  /api/middle/account/captcha/verify          {captcha:<用户输入>}
+  不追加JSK字段/请求头，不在服务拒绝后切协议重发。
+
+完成授权与refresh token
+核验明确完成后先调用 /api/w/nuser/account/get；仅301允许重放一次当前候选保存的
+原登录请求，其它错误只保留恢复状态。原请求仍由core保存，不把密码交回前端。
+新挑战清空旧方法和短信上下文，不把“核验通过”直接当作当前账号已登录。
+上行/下行verify只有完整成功正文且同次包含真正MUSIC_U时才可接收x-refresh-token；
+上行还要求data为真，info/send端点即使夹带头也不能安装它。
+正文中断仅保留Cookie供显式只读身份核对，不能宣称刷新令牌已收到或完成轮换。
+真实本人令牌下发/成对轮换仍未实测；合成测试不更新此结论。
+
+状态与取消
+core/src/account/login/sms/{model,mod,uplink}.rs 与候选生命周期绑定。
+公共DTO仅包含本地ID、方向、阶段、业务码、掩码/区号、必要的发送说明和错误标记。
+阶段为 loading/ready/code_sent/checking/failed/timed_out/recovery_required。
+Cookie、候选票据、refresh token、原凭据和请求保护结果不跨IPC；发送说明不存浏览器。
+上行stop在官方只设置shouldStopPolling，无远端cancel请求。两协议返回/关闭均本地撤回
+能力、代次并取消尚在等待的HTTP future；旧确认不能被当前账号采纳，不阻塞新登录。
+已发送的请求无法撤销服务端执行；停止不是“服务器撤销验证码”的承诺。
+宿主中止原生任务时，Operation析构释放busy并进入recovery_required，不能留在无法
+操作的checking/ready界面；再次提交被拒绝，只读核对仍需本人明确触发。
+崩溃后不自动恢复发送/提交；重新进入必须本人明确操作，未选择候选不会自动发布为账号。
+
+与官方的明确差异
+- 保留Cumulus整体对话框及响应式布局；有恢复源码，没有同状态官方运行图，不宣称像素一致。
+- 使用原生单飞/有界截止/取消、账号身份核对及未知结果不重放；官方JS页面的定时器和
+  直接重放被收敛到核心。旧页面只看data真值的成功分支额外要求业务code200。
+- 下行错误仍保留共享60秒冷却；原页面JSK发送异常会提前解锁，社区实现不据此自动重发。
+- 验证码限制为4–8位数字；长/控制字符发送信息及非数字收件号码被拒绝并显示恢复状态，
+  不把未经验证的任意文本当作电话号码。没有找到额外格式时不猜测新格式。
+- 未新增真人短信发送、真实运营商收发、Windows实机截图或真实令牌发放证据。
+
+可执行验证
+  node desktop/tests/sms_login_official.cjs /absolute/recovered-js/modules
+  cargo test --locked -p cumulus-core --test client_sms_login --test http
+  npm --prefix frontend test
+  cargo build --locked -p cumulus-desktop --features custom-protocol --example sms_login_ui_probe
+  CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=zh_CN.UTF-8 \
+    xvfb-run -a dbus-run-session -- python3 scripts/ci/sms_login_smoke.py \
+    --binary /absolute/sms_login_ui_probe --root /absolute/new-proof --screenshots
+  旧链同命令附加 --legacy；Windows使用.exe及--runtime指定发行原生运行库目录。
+  发送失败/编辑反馈/冷却专项附加 --send-failure，在独立合成进程运行四态。
+实际结果和看图范围在 ui-ux-validation.txt，不能仅凭这些命令存在宣称验证通过。

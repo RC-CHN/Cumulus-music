@@ -1716,3 +1716,16 @@ login-interception-cache-tests.log。初次全量（workspace-tests3.log）一�
   迟到回执不回滚。536项通过；实际播放/缓冲/失败和重试UI边界见card-source-ui-contracts.txt。
   原生测试失败是合成Device注入；桌面另使用真实libmpv/null与明确单次失败适配器，
   不把这些证明写成真实CDN/物理声卡/全部持久化错误矩阵通过。
+
+
+2026-11-02：账号短信上下行二次验证
+官方优先来源、精确JSK/旧链字段与UI步骤见sms-login-contracts.txt和sms-login-mapping.json。
+原AST fetch参数/原表单序列化/本地stop纯函数输出与冻结无私人信息向量一致；公开CI不读取references。
+新增独立sms域模块、候选限定的列表掩码/区号、上行显式核验/3秒30秒截止/交替重取、
+下行显式发送/共享冷却/提交和未知恢复。中止或关闭撤回能力，不重发原验证码；成功先身份核对。
+HTTP刷新头在上行还要求有效data，不以信息、发送、失败或中断响应冒充授权/真实轮换。
+短信13项链路覆盖精确字段、两协议、缺区号、不提供方法、发送冷却、错误/中断、真实挂起
+原登录重放、任务被中止、取消后立即新登录、真值和超时。完整workspace/all-targets/
+custom-protocol/locked回归287程序1517项0失败0忽略；最终严格Clippy/格式/宿主构建通过。
+最终实际WebView两协议各25+4态、本机KDE另29态及账号/原设备/重启/续期回归通过，
+只是合成服务。本人真实SMS/原设备/refreshToken下发和轮换、其它SDK及全目标仍未闭合。

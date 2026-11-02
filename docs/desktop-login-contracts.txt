@@ -78,7 +78,8 @@ cumulus:account-changed（受限AccountView）。前端据此重读状态，不�
 8830：显式获取/api/user/2fa/list {bindingCellphoneEnable:true,smsCaptchaAble:true}，
   成功后/api/user/2fa/begin {}；页面只暴露服务器提供的已知验证方式。
 SECURITY_EMAIL：/api/user/2fa/securityEmail/send {scene:"0"}；verify {scene:"0",captcha}。
-UP_SMS：/api/middle/account/captcha/sent {scene:"0"}；verify {captcha}。
+UP_SMS：已按绑定区号拆分上行与下行，精确四端点字段、JSK/旧链差异、轮询与取消见
+sms-login-contracts.txt；不再用通用scene:"0"的验证码表单代替全部短信流程。
 8861：/api/login/cellphone/twice/question/get {scene:"0"}；verify {scene:"0",ans}。
   官方答案为options对象的title，不是数组位置；附加none=以上都不是，禁止提交未提供选项。
   官方成功且data为空表示该步骤结束：先读身份，301才允许原登录请求重放一次。

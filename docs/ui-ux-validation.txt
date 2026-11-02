@@ -4561,3 +4561,44 @@ collection-library-mapping.json；没有使用YesPlayMusic。
 - 本轮没有真实账号登录、设备通知、短信邮件、真实退出/轮换或音乐业务写入；真人原设备
   验证、真实refreshToken下发/成对轮换仍未实测。完整UP_SMS上行、处罚/实名、旧网页、
   注册找回/地区协议及其余UI/SDK分支仍继续，整个目标保持进行中。
+
+
+2026-11-02：短信二次验证上下行、在途取消与登录后焦点
+- 官方DoubleVerifyList/Sms/SmsCaptcha、M2992/M2993及M1368/M15/M48为依据；
+  来源散列、四端点字段、方法/区号选择、持久化边界与差异见sms-login-contracts.txt及JSON映射。
+  UP_SMS不再统用验证码表单：仅列表ctCode字符串86默认上行，其它/缺失区号走下行。
+  上行使用authDetail.UP_SMS优先的掩码，不把主登录原始手机号或前端参数当作核验目标。
+- Native核心接通读取发送说明、明确已发送后3秒/30秒轮询、主/备用号码交替重取、
+  显式下行发送/60秒共享冷却/验证码、返回/关闭/任务中止及未知结果只读核对。
+  上行通过还要求data真值；HTTP200的businessfalse、未完成正文、信息/发送端点不采纳刷新头。
+  先读身份，只有301允许一次原登录重放；在真实异步等待原登录回包时保留取消能力。
+- 初轮截图发现旧验证码错误残留在新请求未知结果页、重新获取键过近、处理中按钮文字
+  过淡及倒计时00:60；已清理新请求反馈、调整32px次操作/间距、处理中文字保持可读并
+  改为01:00→00:59。已编辑后发送失败仍显示新错误/清空旧码/恢复输入焦点，返回重入
+  不绕过冷却。原重放在途的新增回归先失败后修复；不以立即回包代替真实挂起未来。
+- 最终sms-final-gui、sms-final-legacy各25态/25PNG；各自-send另4态/4PNG，均外层0。
+  本机KDE Wayland/XWayland125%实际会话的sms-final-kde与sms-final-kde-send另25+4PNG，
+  只截自有PID窗口，均0；最终29图经sms-final-gallery及sms-final-send-gallery共6张联系表
+  全部查看。覆盖两主题、1120×760/760×540、无水平/标准步骤垂直溢出、指针命中、模态焦点、
+  已提交/关闭输入清零、正确信息/加载/错误/只读恢复、30秒实际等待及旧回执不改变账号epoch。
+  MM:SS实际DOM值单独断言秒数不超过59，最终截图含01:00，未用旧00:60图片作为最终证明。
+- 25态每协议整轮下行发送恰为1、验证码提交3（含被取消的在途）；选择/切换下行不发送，
+  非86/缺区号不读取上行信息。停止轮询/申请/提交后三个实际HTTP future被丢弃，零远端cancel。
+  四态发送失败每协议发送1、验证码提交0，错误后更换方法仍不能隐式重发。
+- 96a3b00的CI41449092743最终失败：Windows第15态email_authenticated_light中登录已成功，
+  资源初始化暂时禁用返回头像，模态离场焦点落body。与先前第6态切换就绪错误不同。
+  已为useModalOrigin补待恢复意图，App在初始化后和模态left只恢复无归属焦点，不抢其它控件。
+  account_login_ui_probe在该步骤强制750ms资源延迟；最终sms-final-account28态/28PNG通过。
+- 最终同批宿主回归：sms-final-jsk-auth16态（无截图）及15个SQLite审计；旧链
+  device-login-sms-final-legacy-auth-regression16态/16PNG及15SQLite；续期
+  device-login-sms-final-renewal-regression五态/5PNG及journal审计；sms-final-device与
+  sms-final-device-legacy各39态/39PNG，均通过。没有把合成账号/令牌当作本人真实登录或续期。
+- Rust最终业务及原生探针改动后workspace/all-targets/custom-protocol/locked完整回归：
+  287程序1517项，0失败/0忽略（sms-workspace-verified.log），含13项短信链路与中止/恢复回归。
+  其后仅Vue倒计时和嵌入JS显示断言调整；最终再次严格fmt/Clippy、构建cumulus及五个探针，
+  并以上述最终GUI复跑。npm ci、最终格式/559前端测试/类型/生产构建通过；21dist先冻结
+  再构建原生宿主，sms-final-dist-freeze.json。CI工具47项、来源纯函数向量cmp与脚本语法通过。
+- 全部服务请求为隔离合成EAPI，无真人短信/邮件、设备通知、支付、真实退出或音乐资源修改。
+  原生桌面实际渲染不代表官方像素一致、Windows实机视觉或144Hz性能证明；显示器刷新率
+  只记作环境事实。Linux/Windows CI各要求两协议25+4态，精确头的CI结果另行观察。
+  本人refreshToken下发/成对轮换、其它SDK处罚/实名/旧网页/注册找回等仍继续；整个目标未完成。
