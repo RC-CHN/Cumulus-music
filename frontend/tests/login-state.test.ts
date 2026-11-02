@@ -188,3 +188,40 @@ test('closed CAPTCHA leaves challenge retryable without resending credentials', 
   assert.equal(sent, 0);
   f.model.dispose();
 });
+
+test('local device stop preempts a pending poll without publishing its late authorization', async () => {
+  const pending = deferred<LoginView>();
+  const stopped = {
+    ...state('one', 'two_factor'),
+    device: {
+      id: 'local-device-operation',
+      kind: 'scan' as const,
+      phase: 'stopped' as const,
+      code: null,
+      deviceName: 'Synthetic PC',
+      safeDeviceCount: 1,
+      pollAfterMs: 1000,
+      modules: null,
+      answerRejected: false,
+    },
+  };
+  const commands: string[] = [];
+  const f = fixture({
+    loginCommand: async (_id, command) => {
+      commands.push(command.kind);
+      return command.kind === 'device_stop' ? stopped : pending.promise;
+    },
+  });
+  await f.model.start('1', 'email');
+  const read = f.model.run({ kind: 'device_poll', verification_id: 'local-device-operation' });
+  assert.equal(f.model.busy.value, true);
+  await f.model.stopDevice('local-device-operation');
+  assert.equal(f.model.view.value?.device?.phase, 'stopped');
+  assert.equal(f.model.busy.value, false);
+  pending.resolve(state('one', 'authenticated'));
+  await read;
+  assert.equal(f.model.view.value?.device?.phase, 'stopped');
+  assert.equal(f.authorized(), 0);
+  assert.deepEqual(commands, ['device_poll', 'device_stop']);
+  f.model.dispose();
+});

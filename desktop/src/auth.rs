@@ -42,12 +42,15 @@ pub async fn login_command<R: tauri::Runtime>(
     result
 }
 #[tauri::command]
-pub fn cancel_login<R: tauri::Runtime>(
+pub async fn cancel_login<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,
     operation_id: String,
 ) -> Result<(), ClientError> {
-    let result = client.cancel_login(&operation_id).map_err(Into::into);
+    let result = client
+        .cancel_login_and_cleanup(&operation_id)
+        .await
+        .map_err(Into::into);
     publish(&window, &client);
     result
 }

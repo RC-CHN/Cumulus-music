@@ -1,6 +1,9 @@
 <script setup lang="ts">
 defineProps<{ name: string }>();
 const paths: Record<string, string> = {
+  phoneConfirm: 'M6 2h12v20H6zM10 18h4M8 9l3 3 5-5',
+  scan: 'M3 8V3h5M16 3h5v5M21 16v5h-5M8 21H3v-5M7 7h3v3H7zM14 7h3v3h-3zM7 14h3v3H7zM14 14h3v3h-3z',
+  mail: 'M3 5h18v14H3zM3 5l9 7 9-7',
   folder: 'M3 7h18v13H3zM3 7V3h6l3 4',
   info: 'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM12 11v6m0-10h.01',
   share: 'M14 3h7v7M21 3 10 14M10 5H3v16h16v-7',

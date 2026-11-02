@@ -31,6 +31,7 @@ export interface LoginAnswer {
   picture: string | null;
 }
 export interface LoginView {
+  device?: DeviceVerificationView | null;
   operationId: string;
   mode: LoginMode;
   status: LoginStatus;
@@ -50,6 +51,9 @@ export interface LoginView {
   };
 }
 export type LoginCommand =
+  | { kind: 'device_start'; method: 'confirm' | 'scan' }
+  | { kind: 'device_poll' | 'device_cancel' | 'device_stop'; verification_id: string }
+  | { kind: 'device_verify'; verification_id: string; code: string }
   | {
       kind: 'phone_password';
       phone: string;
@@ -73,6 +77,30 @@ export type LoginCommand =
   | { kind: 'security_mail_verify' | 'verification_sms_verify'; code: string }
   | { kind: 'bind_phone_verify'; phone: string; country_code: string; code: string }
   | { kind: 'question_answer'; answer: string };
+export interface DeviceVerificationView {
+  id: string;
+  kind: 'confirm' | 'scan';
+  phase:
+    | 'starting'
+    | 'waiting'
+    | 'scanned'
+    | 'code_required'
+    | 'completed'
+    | 'expired'
+    | 'rejected'
+    | 'blocked'
+    | 'error'
+    | 'recovery_required'
+    | 'cancelled'
+    | 'stopped'
+    | 'stop_unconfirmed';
+  code: number | null;
+  deviceName: string | null;
+  safeDeviceCount: number | null;
+  pollAfterMs: number;
+  modules: boolean[][] | null;
+  answerRejected: boolean;
+}
 export interface SavedAccount {
   id: string;
   nickname: string;

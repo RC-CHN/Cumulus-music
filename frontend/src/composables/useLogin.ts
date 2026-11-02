@@ -53,10 +53,10 @@ export function useLogin(core: AuthClient, authorized: () => void = () => {}) {
       if (!disposed && serial === generation) busy.value = false;
     }
   }
-  async function execute(call: (id: string) => Promise<LoginView>) {
+  async function execute(call: (id: string) => Promise<LoginView>, preempt = false) {
     const current = view.value;
-    if (disposed || busy.value || !current) return;
-    const serial = generation;
+    if (disposed || (busy.value && !preempt) || !current) return;
+    const serial = preempt ? ++generation : generation;
     busy.value = true;
     error.value = '';
     try {
@@ -84,7 +84,15 @@ export function useLogin(core: AuthClient, authorized: () => void = () => {}) {
     }
   }
   function run(command: LoginCommand) {
+    if (command.kind === 'device_start' && !busy.value && view.value)
+      view.value = { ...view.value, device: null };
     return execute((id) => core.loginCommand(id, command));
+  }
+  function stopDevice(verificationId: string) {
+    return execute(
+      (id) => core.loginCommand(id, { kind: 'device_stop', verification_id: verificationId }),
+      true,
+    );
   }
   function captcha() {
     return execute(async (id) => {
@@ -101,6 +109,6 @@ export function useLogin(core: AuthClient, authorized: () => void = () => {}) {
     view.value = undefined;
     if (id) void cancel(id);
   }
-  return { view, busy, error, seconds, start, run, captcha, dispose };
+  return { view, busy, error, seconds, start, run, stopDevice, captcha, dispose };
 }
 export type LoginModel = ReturnType<typeof useLogin>;

@@ -14,6 +14,7 @@ const emit = defineEmits<{
   authorized: [];
   mode: [value: Exclude<LoginMode, 'saved_account'>];
   qr: [];
+  safety: [value: string | null];
 }>();
 const model = useLogin(useCore(), () => emit('authorized'));
 const { view, busy, error, seconds } = model;
@@ -43,7 +44,28 @@ function deactivate() {
   model.dispose();
 }
 defineExpose({ deactivate });
-watch([busy, () => view.value?.status], async () => {
+const deviceActive = computed(
+  () =>
+    !!view.value?.device &&
+    !['stopped', 'cancelled', 'stop_unconfirmed'].includes(view.value.device.phase),
+);
+watch([busy, () => view.value?.status, deviceActive], async () => {
+  if (active) {
+    const safety =
+      deviceActive.value ||
+      (!!view.value &&
+        ['two_factor', 'security_question', 'phone_reuse'].includes(view.value.status));
+    emit(
+      'safety',
+      safety
+        ? deviceActive.value
+          ? view.value?.device?.kind === 'scan'
+            ? '身份验证'
+            : '登录安全确认'
+          : '登录安全验证'
+        : null,
+    );
+  }
   const owned = root.value?.contains(document.activeElement);
   await nextTick();
   if (!active || !owned || !root.value) return;
@@ -194,11 +216,12 @@ async function submit() {
     </form>
     <LoginChallenge v-else ref="challenge" :model="model" @qr="emit('qr')" />
     <p class="login-status" role="status" :data-login-status="view?.status">
-      {{ error || loginMessage(view) }}
+      {{ deviceActive || view?.status === 'two_factor' ? '' : error || loginMessage(view) }}
     </p>
     <button
       v-if="
         !busy &&
+        !deviceActive &&
         (!view || ['error', 'rejected', 'rate_limited', 'account_disabled'].includes(view.status))
       "
       class="login-restart"

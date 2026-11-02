@@ -9,6 +9,7 @@ const props = defineProps<{ epoch: string }>();
 const emit = defineEmits<{ close: []; authorized: []; accounts: [] }>();
 const dialog = ref<HTMLDialogElement>();
 const mode = ref<'qr' | Exclude<LoginMode, 'saved_account'>>('qr');
+const safety = ref<string | null>(null);
 const identity = reactive<LoginIdentity>({ phone: '', country: '86', email: '', remember: true });
 const flow = ref<{ deactivate: () => void }>();
 const panel = ref<HTMLElement>();
@@ -20,6 +21,7 @@ function deactivate() {
 function select(value: typeof mode.value) {
   if (closing || mode.value === value) return;
   deactivate();
+  safety.value = null;
   mode.value = value;
 }
 function phone() {
@@ -41,7 +43,13 @@ function entered(element: Element) {
   }
 }
 const title = computed(() =>
-  mode.value === 'qr' ? '扫码登录' : mode.value === 'email' ? '邮箱登录' : '手机登录',
+  safety.value
+    ? safety.value
+    : mode.value === 'qr'
+      ? '扫码登录'
+      : mode.value === 'email'
+        ? '邮箱登录'
+        : '手机登录',
 );
 let focused: HTMLElement | null = null;
 watch(
@@ -60,9 +68,9 @@ onBeforeUnmount(deactivate);
     <button class="icon-button dialog-close" aria-label="关闭登录" @click="close()">
       <Icon name="close" />
     </button>
-    <div class="brand-mark">C</div>
+    <div v-if="!safety" class="brand-mark">C</div>
     <h2 id="login-title">{{ title }}</h2>
-    <nav class="login-methods" aria-label="登录方式">
+    <nav v-if="!safety" class="login-methods" aria-label="登录方式">
       <button :aria-pressed="mode === 'qr'" @click="select('qr')">扫码</button>
       <button :aria-pressed="mode.startsWith('phone')" @click="phone">手机</button>
       <button :aria-pressed="mode === 'email'" @click="select('email')">邮箱</button>
@@ -79,6 +87,7 @@ onBeforeUnmount(deactivate);
           @mode="select"
           @authorized="emit('authorized')"
           @qr="select('qr')"
+          @safety="safety = $event"
         />
       </div>
     </Transition>

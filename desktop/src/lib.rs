@@ -17,6 +17,7 @@ mod history;
 mod identity;
 pub mod lifecycle;
 mod local;
+mod login_device;
 mod member;
 pub mod mini;
 mod mv;
@@ -339,6 +340,7 @@ pub fn run() {
                 Some(context),
             )?;
             let client = renewal::configure(client, &profile);
+            let client = client.with_login_device_name(&login_device::name())?;
             let client = configure_native_im(client, &app.path().resource_dir()?);
             let client = configure_native_audio(client, &app.path().resource_dir()?, false);
             tauri::async_runtime::block_on(client.start_local_library())?;
