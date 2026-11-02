@@ -13,6 +13,8 @@ use tauri::{Listener, Manager, webview::PageLoadEvent};
 
 #[path = "support/collection_fixture.rs"]
 mod collection_fixture;
+#[path = "support/comment_read_fixture.rs"]
+mod comment_read_fixture;
 #[path = "support/catalog_fixture.rs"]
 mod fixture;
 #[path = "support/history_fixture.rs"]
@@ -68,7 +70,12 @@ fn main() {
         !artist_cards || !is_live,
         "artist card proof uses isolated synthetic APIs only"
     );
-    let interactive = albums || artists || rankings || album_cards || artist_cards;
+    let comment_reads = std::env::var("CUMULUS_COMMENT_READ_PROOF").as_deref() == Ok("1");
+    assert!(
+        !comment_reads || !is_live,
+        "comment read proof uses synthetic services only"
+    );
+    let interactive = albums || artists || rankings || album_cards || artist_cards || comment_reads;
     let collections = std::env::var("CUMULUS_COLLECTION_PROOF").as_deref() == Ok("1");
     let collection_context =
         std::env::var("CUMULUS_COLLECTION_CONTEXT_PROOF").as_deref() == Ok("1");
@@ -96,12 +103,13 @@ fn main() {
         if album_cards {catalog_fixture.album_cards();}
         if artist_cards {catalog_fixture.artist_cards();}
         let collection_fixture=Arc::new(collection_fixture::Library::default());
+        let comment_fixture=Arc::new(comment_read_fixture::Library::default());
         let history_fixture=Arc::new(history_fixture::Library::default());
         let settings_fixture=Arc::new(settings_fixture::Library::default());
         let relay_fixture=Arc::new(relay_fixture::Library::default());
         if relay_settings {relay_fixture.mode("setting-off");}
         if relay_recovery {relay_fixture.mode("publication-rejected");}
-        let api:Arc<dyn Api>=if let Some(profile)=profile{Arc::new(live::Reads::open(&profile,&output)?)}else if relays {relay_fixture.clone()}else if settings {settings_fixture.clone()}else if histories {history_fixture.clone()}else if collections{collection_fixture.clone()}else{catalog_fixture.clone()};
+        let api:Arc<dyn Api>=if let Some(profile)=profile{Arc::new(live::Reads::open(&profile,&output)?)}else if comment_reads {comment_fixture.clone()}else if relays {relay_fixture.clone()}else if settings {settings_fixture.clone()}else if histories {history_fixture.clone()}else if collections{collection_fixture.clone()}else{catalog_fixture.clone()};
         let session=Arc::new(AccountSession::new(api,Some(registry.store())));
         let publisher=Arc::new(cumulus_core::relay::publisher::RelayPublisher::new(session.clone())?);
         let client=MusicClient::with_session(session.clone(),registry);
@@ -114,6 +122,12 @@ fn main() {
         app.listen("ux-proof",move |event| {
             let value:Value=serde_json::from_str(event.payload()).unwrap();
             let stage=value["stage"].as_str().unwrap_or("");
+            if comment_reads && stage=="comment-read-fixture" {
+                let id=value["id"].as_u64().expect("comment fixture sequence");let mode=value["mode"].as_str().unwrap();
+                assert!(["read","none","fail-next","fail-hot","fail-target","fail-floor-first","fail-floor-next","hold-next","expire","empty","missing-target"].contains(&mode));
+                if mode!="read" {comment_fixture.mode(mode);}
+                handle.get_webview_window("main").unwrap().eval(format!("window.__commentReadAck[{id}]={};",comment_fixture.report())).unwrap();return;
+            }
             if collection_context && stage=="collection-context-fixture" {
                 let id=value["id"].as_u64().expect("collection fixture id");
                 let mode=value["mode"].as_str().unwrap();
@@ -185,6 +199,7 @@ fn main() {
             let handle=handle.clone();let output=output.clone();let stage=stage.to_owned();
             let collection_report=collection_context.then(|| collection_fixture.report());
             let album_card_report=(album_cards || artist_cards).then(||catalog_fixture.report());
+            let comment_read_report=comment_reads.then(||comment_fixture.report());
             let publication_fixture=relay_fixture.clone();let publication=publisher.clone();let publication_session=session.clone();
             let artist_song_reads=catalog_fixture.artist_song_reads.load(std::sync::atomic::Ordering::SeqCst);
             let artist_album_reads=catalog_fixture.artist_album_reads.load(std::sync::atomic::Ordering::SeqCst);
@@ -197,6 +212,7 @@ fn main() {
                 let mut value=value;
                 if let Some(report)=collection_report {value["collectionFixture"]=report;}
                 if let Some(report)=album_card_report {value["albumCardFixture"]=report;}
+                if let Some(report)=comment_read_report {value["commentReadFixture"]=report;}
                 if artists {value["artistSongReads"]=serde_json::json!(artist_song_reads);value["artistAlbumReads"]=serde_json::json!(artist_album_reads);}
                 if albums || artists {value["commentReads"]=serde_json::json!(comment_reads);}
                 if histories {value["syntheticHistoryWrites"]=serde_json::json!(history_writes);}
