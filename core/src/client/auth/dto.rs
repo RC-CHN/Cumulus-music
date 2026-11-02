@@ -1,6 +1,6 @@
 use crate::account::login::{
     DeviceVerificationKind, DeviceVerificationView, EmailVerificationView, LoginStatus,
-    SmsDirection, SmsVerificationView,
+    QuestionVerificationView, SmsDirection, SmsVerificationView,
 };
 use serde::{Deserialize, Serialize};
 
@@ -97,6 +97,7 @@ pub enum LoginCommand {
     },
     QuestionRead,
     QuestionAnswer {
+        question_id: String,
         answer: String,
     },
     ReuseRead,
@@ -124,6 +125,7 @@ pub struct LoginAnswerView {
     pub title: String,
     pub subtitle: Option<String>,
     pub picture: Option<String>,
+    pub tag: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -148,6 +150,7 @@ pub struct LoginView {
     pub device: Option<DeviceVerificationView>,
     pub sms: Option<SmsVerificationView>,
     pub email: Option<EmailVerificationView>,
+    pub question: Option<QuestionVerificationView>,
 }
 
 #[derive(Serialize)]

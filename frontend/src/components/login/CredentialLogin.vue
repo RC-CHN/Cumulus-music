@@ -52,8 +52,19 @@ const deviceActive = computed(
 );
 const smsActive = computed(() => !!view.value?.sms);
 const emailActive = computed(() => !!view.value?.email);
+const questionActive = computed(
+  () => view.value?.status === 'security_question' || !!view.value?.question,
+);
 watch(
-  [busy, () => view.value?.status, deviceActive, deviceKind, smsActive, emailActive],
+  [
+    busy,
+    () => view.value?.status,
+    deviceActive,
+    deviceKind,
+    smsActive,
+    emailActive,
+    questionActive,
+  ],
   async () => {
     if (active) {
       const safety =
@@ -61,21 +72,25 @@ watch(
         deviceActive.value ||
         smsActive.value ||
         emailActive.value ||
+        questionActive.value ||
         (!!view.value &&
           ['two_factor', 'security_question', 'phone_reuse'].includes(view.value.status));
       emit(
         'safety',
         safety
-          ? deviceKind.value === 'email' || emailActive.value
-            ? '安全邮箱验证'
-            : deviceKind.value || deviceActive.value || smsActive.value
-              ? (deviceKind.value ?? view.value?.device?.kind) === 'scan'
-                ? '身份验证'
-                : '登录安全确认'
-              : '登录安全验证'
+          ? questionActive.value
+            ? '回答与你账号相关的问题'
+            : deviceKind.value === 'email' || emailActive.value
+              ? '安全邮箱验证'
+              : deviceKind.value || deviceActive.value || smsActive.value
+                ? (deviceKind.value ?? view.value?.device?.kind) === 'scan'
+                  ? '身份验证'
+                  : '登录安全确认'
+                : '登录安全验证'
           : null,
       );
     }
+    if (questionActive.value) return;
     const owned = root.value?.contains(document.activeElement);
     await nextTick();
     if (!active || !owned || !root.value) return;
@@ -230,11 +245,12 @@ async function submit() {
       ref="challenge"
       :model="model"
       @qr="emit('qr')"
+      @back="start"
       @device="deviceKind = $event"
     />
     <p class="login-status" role="status" :data-login-status="view?.status">
       {{
-        deviceActive || smsActive || emailActive || view?.status === 'two_factor'
+        deviceActive || smsActive || emailActive || questionActive || view?.status === 'two_factor'
           ? ''
           : error || loginMessage(view)
       }}
@@ -245,6 +261,7 @@ async function submit() {
         !deviceActive &&
         !smsActive &&
         !emailActive &&
+        !questionActive &&
         (!view || ['error', 'rejected', 'rate_limited', 'account_disabled'].includes(view.status))
       "
       class="login-restart"

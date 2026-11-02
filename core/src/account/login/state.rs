@@ -17,6 +17,7 @@ pub(super) struct State {
     pub sms: Option<super::sms::Attempt>,
     pub email_allowed: bool,
     pub email: Option<super::email::Attempt>,
+    pub question: Option<super::question::Attempt>,
 }
 
 impl Default for State {
@@ -35,6 +36,7 @@ impl Default for State {
             sms: None,
             email_allowed: false,
             email: None,
+            question: None,
         }
     }
 }
@@ -131,6 +133,13 @@ impl Drop for Operation<'_> {
                     super::EmailPhase::SendUnconfirmed
                 } else {
                     super::EmailPhase::RecoveryRequired
+                };
+            }
+            if let Some(question) = &mut state.question {
+                question.view.phase = if question.view.phase == super::QuestionPhase::Loading {
+                    super::QuestionPhase::Failed
+                } else {
+                    super::QuestionPhase::RecoveryRequired
                 };
             }
         }

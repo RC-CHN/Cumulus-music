@@ -424,28 +424,217 @@ ol.sms-tips {
   height: 56px;
   border-radius: 50%;
 }
+.login-dialog:has(.question-verification) {
+  width: 430px;
+  padding: 38px 38px 24px;
+}
+.login-dialog:has(.question-verification) #login-title {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 28px;
+}
+.question-verification {
+  min-width: 0;
+}
+.question-verification:focus {
+  outline: none;
+}
+.question-back {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  width: 28px;
+  height: 28px;
+  color: var(--text-secondary);
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+}
+.question-back:hover {
+  background: var(--surface-hover);
+}
+.question-description {
+  margin: 16px 0 20px;
+  line-height: 22px;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
 .login-questions {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  min-width: 0;
   text-align: left;
 }
-.login-questions label {
+.question-options {
+  height: min(294px, max(132px, calc(100vh - 330px)));
+  overflow-y: auto;
+  overflow-x: hidden;
+  border-radius: 8px;
+  background: var(--surface-alt);
+}
+.question-option {
+  position: relative;
   display: flex;
-  gap: 10px;
+  width: 100%;
+  min-height: 84px;
   align-items: center;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--line);
+  padding: 16px 26px 16px 16px;
+  cursor: pointer;
 }
-.login-questions img {
-  width: 42px;
-  height: 42px;
+.question-option::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 20px;
+  right: 20px;
+  height: 1px;
+  background: var(--line);
+}
+.question-option:last-child::after {
+  display: none;
+}
+.question-option:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+.question-option:hover {
+  background: var(--surface-hover);
+}
+.question-option input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+.question-device {
+  min-height: 68px;
+}
+.question-none {
+  min-height: 70px;
+}
+.question-picture {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  border-radius: 2px;
+  background: var(--surface-hover);
+}
+.question-picture > img {
+  position: absolute;
+  width: 100%;
+  height: 100%;
   object-fit: cover;
+  border-radius: inherit;
 }
-.login-questions small {
+.question-artist .question-picture {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+}
+.question-picture > .question-tag {
+  width: 16px;
+  height: 16px;
+  right: 0;
+  bottom: 0;
+  border-radius: 0;
+}
+.question-device .question-picture,
+.question-none .question-picture {
+  width: 36px;
+  height: 36px;
+  background: transparent;
+}
+.question-info {
+  flex: 1;
+  min-width: 0;
+  padding: 0 12px;
+}
+.question-name,
+.question-info small {
   display: block;
-  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.question-name {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 21px;
+}
+.question-info small {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 15px;
   margin-top: 4px;
+}
+.question-check {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  border: 1px solid var(--line-strong, var(--text-secondary));
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+}
+.question-option:has(input:checked) .question-check {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.question-option:has(input:checked) .question-check::after {
+  content: '';
+  width: 3px;
+  height: 7px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: translateY(-1px) rotate(45deg);
+}
+.question-next,
+.question-failed > button {
+  width: 100%;
+  height: 40px;
+  border-radius: 20px;
+  margin-top: 20px;
+  font-size: 16px;
+}
+.question-loading {
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 18px;
+  color: var(--text-secondary);
+}
+.question-failed {
+  padding: 30px 0;
+}
+.question-loading-text {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+.question-verification .verification-error {
+  text-align: center;
+  margin-top: 10px;
+  line-height: 18px;
+}
+.question-description,
+.question-options,
+.question-failed {
+  animation: device-enter 0.15s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .question-description,
+  .question-options,
+  .question-failed {
+    animation: none;
+  }
 }
 .account-dialog {
   position: fixed;

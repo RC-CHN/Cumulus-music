@@ -6,6 +6,8 @@ const paths: Record<string, string> = {
   mail: 'M3 5h18v14H3zM3 5l9 7 9-7',
   folder: 'M3 7h18v13H3zM3 7V3h6l3 4',
   info: 'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM12 11v6m0-10h.01',
+  help: 'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM9 9a3 3 0 0 1 6 0c0 2-3 2-3 5m0 3h.01',
+  album: 'M3 3h18v18H3zM16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0Zm-4 0h.01',
   share: 'M14 3h7v7M21 3 10 14M10 5H3v16h16v-7',
   plus: 'M12 4v16M4 12h16',
   copy: 'M9 9h12v12H9zM15 6V3H3v12h3',

@@ -60,6 +60,7 @@ impl MusicClient {
             device: flow.device_snapshot()?,
             sms: flow.sms_snapshot()?,
             email: flow.email_snapshot()?,
+            question: flow.question_snapshot()?,
         })
     }
 }

@@ -105,6 +105,9 @@ impl CredentialLogin {
         if let Some(email) = &state.email {
             email.cancel.send_replace(true);
         }
+        if let Some(question) = &state.question {
+            question.cancel.send_replace(true);
+        }
         state.status = LoginStatus::Cancelled;
         state.pending = None;
         state.challenge = None;
@@ -114,6 +117,7 @@ impl CredentialLogin {
         state.sms_context = None;
         state.email = None;
         state.email_allowed = false;
+        state.question = None;
         state.busy = false;
         Ok(())
     }
@@ -191,6 +195,7 @@ impl CredentialLogin {
                     state.sms_context = None;
                     state.email = None;
                     state.email_allowed = false;
+                    state.question = None;
                 }
                 if matches!(code, Some(8830 | 8860))
                     && let Some(ticket) = response["MUSIC_TU"].as_str().filter(|s| !s.is_empty())
@@ -222,6 +227,7 @@ impl CredentialLogin {
         state.sms_context = None;
         state.email = None;
         state.email_allowed = false;
+        state.question = None;
         state.status = LoginStatus::Authenticated;
         Ok(())
     }

@@ -6,18 +6,20 @@ import DeviceVerification from './DeviceVerification.vue';
 import SmsVerification from './SmsVerification.vue';
 import EmailVerification from './EmailVerification.vue';
 import VerificationIdentity from './VerificationIdentity.vue';
+import QuestionVerification from './QuestionVerification.vue';
 const props = defineProps<{ model: LoginModel }>();
 const emit = defineEmits<{
   qr: [];
+  back: [];
   device: [value: 'confirm' | 'scan' | 'sms' | 'email' | null];
 }>();
 const { view, busy } = props.model;
-const method = ref(''),
-  answer = ref('');
+const method = ref('');
 const root = ref<HTMLElement>();
 const devicePanel = ref<{ clearSecrets: () => void }>();
 const smsPanel = ref<{ clearSecrets: () => void }>();
 const emailPanel = ref<{ clearSecrets: () => void }>();
+const questionPanel = ref<{ clearSecrets: () => void }>();
 const returning = ref(false);
 const blockedNotice = ref('');
 const selected = computed(() =>
@@ -38,10 +40,10 @@ watch(selected, (value) =>
   ),
 );
 function clearSecrets() {
-  answer.value = '';
   devicePanel.value?.clearSecrets();
   smsPanel.value?.clearSecrets();
   emailPanel.value?.clearSecrets();
+  questionPanel.value?.clearSecrets();
 }
 defineExpose({ clearSecrets });
 async function choose(value: string) {
@@ -213,35 +215,12 @@ watch(
         </button>
       </template>
     </template>
-    <template v-else-if="view?.status === 'security_question'">
-      <button
-        v-if="!view.challenge.question"
-        class="primary"
-        :disabled="busy"
-        @click="model.run({ kind: 'question_read' })"
-      >
-        读取安全问题
-      </button>
-      <form
-        v-else
-        class="login-questions"
-        @submit.prevent="model.run({ kind: 'question_answer', answer })"
-      >
-        <p>{{ view.challenge.question }}</p>
-        <label v-for="item in view.challenge.answers" :key="item.value"
-          ><input
-            v-model="answer"
-            type="radio"
-            name="login-answer"
-            :value="item.value"
-            :disabled="busy"
-          /><img v-if="item.picture" :src="item.picture" alt="" referrerpolicy="no-referrer" /><span
-            >{{ item.title }}<small v-if="item.subtitle">{{ item.subtitle }}</small></span
-          ></label
-        >
-        <button class="primary" type="submit" :disabled="busy || !answer">确认答案</button>
-      </form>
-    </template>
+    <QuestionVerification
+      v-else-if="view?.status === 'security_question' || view?.question"
+      ref="questionPanel"
+      :model="model"
+      @back="emit('back')"
+    />
     <template v-else-if="view?.status === 'phone_reuse'">
       <button
         v-if="!view.challenge.reuseConfirmation"

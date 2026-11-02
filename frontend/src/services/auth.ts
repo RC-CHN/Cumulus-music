@@ -29,11 +29,13 @@ export interface LoginAnswer {
   title: string;
   subtitle: string | null;
   picture: string | null;
+  tag?: string | null;
 }
 export interface LoginView {
   device?: DeviceVerificationView | null;
   sms?: SmsVerificationView | null;
   email?: EmailVerificationView | null;
+  question?: QuestionVerificationView | null;
   operationId: string;
   mode: LoginMode;
   status: LoginStatus;
@@ -83,7 +85,14 @@ export type LoginCommand =
   | { kind: 'security_mail_resend' | 'security_mail_stop'; verification_id: string }
   | { kind: 'verification_sms_verify'; code: string }
   | { kind: 'bind_phone_verify'; phone: string; country_code: string; code: string }
-  | { kind: 'question_answer'; answer: string };
+  | { kind: 'question_answer'; question_id: string; answer: string };
+export interface QuestionVerificationView {
+  id: string;
+  phase: 'loading' | 'ready' | 'verifying' | 'failed' | 'recovery_required';
+  questionType: number | null;
+  code: number | null;
+  answerRejected: boolean;
+}
 export interface DeviceVerificationView {
   id: string;
   kind: 'confirm' | 'scan';

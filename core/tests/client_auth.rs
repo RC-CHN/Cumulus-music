@@ -635,6 +635,7 @@ async fn official_question_options_and_none_answer_are_projected_without_raw_cha
             .login_command(
                 &id,
                 Cmd::QuestionAnswer {
+                    question_id: q.question.as_ref().unwrap().id.clone(),
                     answer: "injected".into()
                 }
             )
@@ -645,6 +646,7 @@ async fn official_question_options_and_none_answer_are_projected_without_raw_cha
         .login_command(
             &id,
             Cmd::QuestionAnswer {
+                question_id: q.question.as_ref().unwrap().id.clone(),
                 answer: "none".into(),
             },
         )

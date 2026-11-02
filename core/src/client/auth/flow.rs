@@ -123,6 +123,18 @@ impl MusicClient {
             ));
         }
         let initial = matches!(state.status, LoginStatus::Ready | LoginStatus::CodeSent);
+        if flow.question_snapshot()?.is_some()
+            && !matches!(
+                &command,
+                LoginCommand::QuestionRead
+                    | LoginCommand::QuestionAnswer { .. }
+                    | LoginCommand::Reconcile
+            )
+        {
+            return Err(Error::State(
+                "finish or cancel account question before changing methods",
+            ));
+        }
         if flow.email_snapshot()?.is_some()
             && !matches!(
                 &command,
@@ -316,13 +328,11 @@ impl MusicClient {
                 .await?;
             }
             LoginCommand::QuestionRead => {
-                if state.status != LoginStatus::SecurityQuestion {
-                    return Err(Error::State("no security question pending"));
-                }
-                let r = flow
-                    .verification(VerificationAction::QuestionGet, json!({"scene":"0"}))
-                    .await?;
-                if r["code"] == 200 {
+                let r = flow.question_read().await?;
+                if flow
+                    .question_snapshot()?
+                    .is_some_and(|q| q.phase == crate::account::login::QuestionPhase::Ready)
+                {
                     let mut next = view.clone();
                     next.question = view::short_text(&r["data"]["title"]);
                     next.answers = r["data"]["options"]
@@ -335,6 +345,7 @@ impl MusicClient {
                                 title,
                                 subtitle: view::short_text(&v["subtitle"]),
                                 picture: mapping::artwork(&v["pic"]),
+                                tag: mapping::artwork(&v["tag"]),
                             })
                         })
                         .collect();
@@ -343,21 +354,18 @@ impl MusicClient {
                         title: "以上都不是".into(),
                         subtitle: None,
                         picture: None,
+                        tag: None,
                     });
                     projection = Some(next);
                 }
+                completed_device = flow.question_snapshot()?.is_none();
             }
-            LoginCommand::QuestionAnswer { answer } => {
-                if state.status != LoginStatus::SecurityQuestion
-                    || !view.answers.iter().any(|v| v.value == answer)
-                {
-                    return Err(Error::InvalidInput("answer was not offered"));
-                }
-                flow.verification(
-                    VerificationAction::QuestionVerify,
-                    json!({"scene":"0","ans":answer}),
-                )
-                .await?;
+            LoginCommand::QuestionAnswer {
+                question_id,
+                answer,
+            } => {
+                flow.question_answer(&question_id, &answer).await?;
+                completed_device = flow.question_snapshot()?.is_none();
             }
             LoginCommand::ReuseRead => {
                 if state.status != LoginStatus::PhoneReuse {
@@ -387,7 +395,11 @@ impl MusicClient {
                     .await?;
             }
             LoginCommand::Reconcile => {
-                flow.reconcile().await?;
+                if flow.question_snapshot()?.is_some() {
+                    flow.question_reconcile().await?;
+                } else {
+                    flow.reconcile().await?;
+                }
             }
         }
         if completed_device && flow.snapshot()?.status != LoginStatus::Authenticated {
