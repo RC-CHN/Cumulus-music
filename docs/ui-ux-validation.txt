@@ -4227,3 +4227,50 @@ collection-library-mapping.json；没有使用YesPlayMusic。
   未取得完整CI gate前保持待验证。来源/发行规则另行检查，无新版本、标签或发布。
 - 官方唱片/色彩封面层、数字专辑AB购买、详情批量操作、其余逐页UI/UX、真实CDN、
   全部DPI及Windows实机视觉仍继续审计。优先界面逻辑一致性和功能，全应用目标未完成。
+
+
+歌手卡片与关注状态一致性（2026-11-02后续）
+来源、两场景菜单向量、接口链及未完成项见artist-card-ui-contracts.txt和配套mapping。
+- 新增独立ArtistCard及FollowArtistCard，恢复普通网格的圆形封面/中央播放/名称/单曲数，
+  保留关注横向行的署名/签名/注销状态。普通菜单严格采用查看/收藏/复制，myFollow
+  采用查看/复制；默认菜单没有照搬专辑下一首等动作。两组冻结向量执行官方M622
+  S.content/check，无官方原生菜单渲染器结论，没有使用YesPlayMusic。
+- App复用来源播放判断及Rust PauseFor/prepareSelection；关注与专辑收藏共享确认/
+  意图恢复窗口，新增读取身份校验，保留before/finally账号通知和访问失效。确认取消
+  不写；403显式重试；丢响应重开只核对，前后/api/artist/sub计数不增加。
+- 最终artist-card-final-gui-1（隔离Xvfb/Openbox100%）及artist-card-final-kde-2
+  （本机KDE Wayland/XWayland125%）各37态/37PNG，外层进程0，report.ok=true。
+  CSS1120×760/760×540、两主题/动画；同一冻结生产dist、真实IPC/SQLite/libmpv/null。
+  API/封面/WAV合成，坏封面实际解码失败；没有真实账号/CDN请求或写入，null输出
+  不能代替物理声卡。夹具只跟踪一个可写关注关系，不代表全部歌手关系组合已线上验证。
+- 37态含43条虚拟列表首尾/长名/无图/零曲数、键盘/More两场景菜单与复制、关注确认
+  取消/读取失败恢复/403重试、关注后的混合记录、详情取消后返回筛选空结果、未知写入
+  重开/读回、实际来源播放/定位/暂停/继续/停止重播/换歌手、空歌手失败保留原暂停
+  会话、有效来源恢复、详情返回及窄窗两主题。每态检查焦点/命中/溢出/DOM<=36；
+  菜单还须整体处于窗口8px边界内、所有可用选项均可见且命中，不能只验可见子集。
+- 最终KDE37图经7张联系表全部人工查看，并放大窄窗菜单；GUI37只自动布局/焦点/
+  像素检查，没有声称人工查看全部74图。私有总览artist-card-gallery-final/index.html，
+  来源/21个dist/4个原生二进制/最终74图散列见artist-card-delivery-manifest.json。
+- 早期gui-first在WM准备阶段缺Openbox路径，未启动产品，也在最终构建完成前被安排，
+  不计功能验证；补本地已存在的隔离工具路径。gui-second首次复制反馈后有背景卡片
+  命中失败：中央播放与瞬态反馈会覆盖详情按钮/下排。探针分别检查暴露的详情按钮
+  内距、播放中心和当前前景反馈控件。gui-third的两项关注菜单截图像素采样落在高亮
+  菜单行，改采不含子控件的菜单顶部内距，保留精确颜色/超时，不放宽为任意近似色。
+- 随后gui-fourth及KDE1各37态在当时断言下通过，但人工截图发现窄窗键盘菜单有两项
+  超出窗口，自动命中仅统计可见子集漏报。修正ActionMenu最终上下边界并加入整菜单/
+  全选项断言，重建后才得到上述最终GUI1/KDE2；旧两轮不是最终通过证据。修复前KDE1
+  的small_menu_dark记录仅1个可见控件，实际3个选项；修复后最终同态为3/3且contained。
+- 回归：artist-card-regression-album-2为39态、collections-2为18态、quality-1为35态+
+  重开3态，均使用最终定位修复构建、外层0。context-1的44态及artist-1的50态在定位
+  修复前通过，已包含最终卡片/共用确认/身份模型；不冒称覆盖了后来的菜单CSS坐标。
+  collections-1在回到205条关注列表首页时固定350ms后尚无虚拟行而失败，改等实际
+  artist:12 opener出现后collections-2通过，保留页首身份和用户专属行断言。
+- 固定Node24.16.0/Rust1.96.0：npm ci、格式/547项测试/类型及构建通过。Rust格式、
+  严格workspace/all-targets/custom-protocol/locked Clippy及280结果程序1463 passed、
+  0 failed/ignored通过；此后只改前端菜单定位，再做前端格式/547项/构建并重建普通
+  cumulus及catalog/ux/mini三个探针后执行最终GUI。Python43项、桌面JS8项通过。
+  详细日志在私有artist-card-*-current/menu-fixed.log，来源/发行规则单独核对。
+- 上轮795b76c的CI 41390725777仍单独跟踪，不含本批歌手改动；本批最终提交将单独
+  发送精确SHA CI并保存artist-card-ci-receipt.json。未取得完整CI gate前不称CI全绿。
+  用户主页/私信、新歌通知菜单、其余AB/逐页UI、全部DPI、真实CDN和Windows实机视觉
+  继续审计；本轮没有新版本/标签/发布，全应用目标保持进行中。

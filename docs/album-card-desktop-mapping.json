@@ -71,7 +71,7 @@
       "feature": "Menu, membership confirmation/recovery, download and account-scoped collection invalidation",
       "frontend": [
         "components/catalog/AlbumActions.vue",
-        "components/catalog/AlbumMembershipDialog.vue",
+        "components/catalog/CatalogMembershipDialog.vue",
         "composables/useCatalogMembership.ts",
         "services/collectionViewport.ts",
         "components/CollectionsPage.vue",

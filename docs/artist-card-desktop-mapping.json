@@ -1,0 +1,77 @@
+{
+  "date": "2026-11-02",
+  "contract": "docs/artist-card-ui-contracts.txt",
+  "officialSources": [
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/components/ArtistCard/index.jsx",
+      "sha256": "39d0c5e1448b35b32e53ef937f28a103f524b2e2b150258d332fdd0c617eefa1"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/user-detail/components/ArtistCard.tsx",
+      "sha256": "99e95c2719f080c963747a973bef6cbba9cab1840ba7304107c116936f920eb0"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/user-detail/components/ArtistOperation.tsx",
+      "sha256": "4878747ef6c9fee7da848e1b00ccba6a8ae6ee2fc4501d32b61e76e9245138ab"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/622.js",
+      "sha256": "347d7d067eeb1b883dec32a290e8e9a960fdc97a8acafe7d44ebe5a1960735b0"
+    }
+  ],
+  "features": [
+    {
+      "feature": "Public artist card metadata, source play and common-scene menu",
+      "frontend": [
+        "components/catalog/ArtistCard.vue",
+        "components/catalog/CatalogCards.vue",
+        "services/artistCards.ts",
+        "App.vue"
+      ],
+      "core": [
+        "client/catalog/selection.rs",
+        "client/player/source_control.rs"
+      ],
+      "verification": [
+        "frontend/tests/artist-cards.test.ts",
+        "desktop/examples/artist_card_ui_probe.js"
+      ]
+    },
+    {
+      "feature": "Follow card menu, confirmed membership and account-aware list invalidation",
+      "frontend": [
+        "components/collections/FollowArtistCard.vue",
+        "components/collections/FollowCards.vue",
+        "components/catalog/ArtistActions.vue",
+        "components/catalog/CatalogMembershipDialog.vue",
+        "services/catalogMembership.ts",
+        "services/collectionViewport.ts"
+      ],
+      "core": [
+        "client/catalog/membership.rs",
+        "client/collections.rs"
+      ],
+      "verification": [
+        "frontend/tests/artist-cards.test.ts",
+        "scripts/ci/artist_card_smoke.py"
+      ]
+    },
+    {
+      "feature": "Whole context menu stays within viewport for clipped/tall keyboard anchors",
+      "frontend": [
+        "components/ActionMenu.vue"
+      ],
+      "verification": [
+        "desktop/examples/artist_card_ui_probe.js menuContained/all-choice assertions"
+      ]
+    }
+  ],
+  "boundaries": [
+    "Final evidence and discovery failures in docs/ui-ux-validation.txt",
+    "Synthetic APIs/art/null audio; no real account writes or physical audio verification",
+    "User profile/message, newSongArtist notifications and AB variants remain open",
+    "Windows physical visual and all DPI unverified",
+    "Full application goal active"
+  ],
+  "alternativeClientSources": []
+}

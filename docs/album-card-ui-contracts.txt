@@ -51,7 +51,8 @@ MusicClient::catalog_page/CatalogDetails。play_selection Catalog携带该query/
 验证身份/最多50000条、去重、分批song/detail、最多10000队列项。Actor fence与selection
 序号拒绝迟到传输/切号；有当前项时保留原音频状态，仅空队列取得媒体焦点并开始。新增
 项携带album来源及trial_mode=-1，普通播放/会员权限继续在既有音源路径判断。
-收藏：菜单 -> AlbumMembershipDialog -> catalog_page(true)+catalog_membership Inspect，
+收藏：菜单 -> CatalogMembershipDialog（原AlbumMembershipDialog，后续与歌手关注共用）
+-> catalog_page(true)+catalog_membership Inspect，
 以当前动态isSub显示确认。catalog_membership Set{desired}复用AccountResources的持久化
 before/intent/发送/读取确认状态机；调用/api/album/sublist和/api/album/sub或/unsub。
 响应丢失后保留uncertain，后续重开先Inspect；“核对结果”只Reconcile读回，不重发写入。
