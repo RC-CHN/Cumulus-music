@@ -42,7 +42,9 @@ class ProofArchive(unittest.TestCase):
                      'ci-volume-ui-windows/first/failed.json',
                      'ci-mode-ui-linux/reopen/failed.json',
                      'ci-empty-fm-ui-windows/reopen/failed.json',
-                     'windows-media/player-probe.stdout.log']
+                     'windows-media/player-probe.stdout.log',
+                     'ci-cloud-local-delete-windows/host.log', 'ci-local-resource-windows/first/failed.json',
+                     'ci-rankings-linux/run/first/failed.json']
             for relative in paths:
                 path = root / relative
                 path.parent.mkdir(parents=True, exist_ok=True)

@@ -1,6 +1,8 @@
 //! Two real WebViews over one production MusicClient and synthetic PCM/null AO.
 #[path = "support/assets.rs"]
 mod assets;
+#[path = "support/cloud_file_fixture.rs"]
+mod cloud_file_fixture;
 #[allow(dead_code)]
 #[path = "support/catalog_fixture.rs"]
 mod fixture;
@@ -227,11 +229,8 @@ fn main() {
                             use cumulus_core::download::service::DownloadService;
                             let tasks=DownloadService::new(session)?.list()?;
                             let recorded=root.join(format!("removal-path-{song_id}.json"));
-                            let path=if recorded.exists(){serde_json::from_slice::<PathBuf>(&fs::read(&recorded)?)?}else{
-                                let path=tasks.iter().find(|t|t.song_id==song_id).and_then(|t|t.target.clone()).expect("seeded synthetic original");
-                                assert!(path.starts_with(root.join("menu-originals")));fs::write(&recorded,serde_json::to_vec(&path)?)?;path
-                            };
-                            assert!(path.starts_with(root.join("menu-originals")));
+                            let target=tasks.iter().find(|t|t.song_id==song_id).and_then(|t|t.target.as_deref());
+                            let path=cloud_file_fixture::original_path(&root.join("menu-originals"),&recorded,target)?;
                             match action.as_str(){
                                 "observe"=>{},
                                 "index"=>{cumulus_core::library::LocalLibrary::new(store.clone())?.scan(root.join("menu-originals"))?;},
@@ -245,8 +244,8 @@ fn main() {
                                 _=>panic!("unknown synthetic file mutation"),
                             }
                             Ok(json!({"exists":path.is_file(),"downloadPresent":tasks.iter().any(|t|t.song_id==song_id)}))
-                        }).await.unwrap();
-                        let reply=match result{Ok(v)=>v,Err(e)=>json!({"error":e.to_string()})};
+                        }).await;
+                        let reply=match result{Ok(Ok(v))=>v,Ok(Err(e))=>json!({"error":e.to_string()}),Err(_)=>json!({"error":"synthetic file inspection worker stopped"})};
                         handle.get_webview_window("main").unwrap().eval(format!("window.__miniAck[{}]={};",id,reply)).unwrap();
                     });
                 }
