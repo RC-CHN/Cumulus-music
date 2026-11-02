@@ -94,6 +94,12 @@ export function useLogin(core: AuthClient, authorized: () => void = () => {}) {
       true,
     );
   }
+  function stopSms(verificationId: string) {
+    return execute(
+      (id) => core.loginCommand(id, { kind: 'sms_stop', verification_id: verificationId }),
+      true,
+    );
+  }
   function captcha() {
     return execute(async (id) => {
       const next = await core.solveLoginCaptcha(id);
@@ -109,6 +115,6 @@ export function useLogin(core: AuthClient, authorized: () => void = () => {}) {
     view.value = undefined;
     if (id) void cancel(id);
   }
-  return { view, busy, error, seconds, start, run, stopDevice, captcha, dispose };
+  return { view, busy, error, seconds, start, run, stopDevice, stopSms, captcha, dispose };
 }
 export type LoginModel = ReturnType<typeof useLogin>;

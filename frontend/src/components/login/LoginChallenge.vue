@@ -3,14 +3,16 @@ import { computed, nextTick, ref, watch } from 'vue';
 import type { LoginModel } from '../../composables/useLogin';
 import VerificationMethods from './VerificationMethods.vue';
 import DeviceVerification from './DeviceVerification.vue';
+import SmsVerification from './SmsVerification.vue';
 const props = defineProps<{ model: LoginModel }>();
-const emit = defineEmits<{ qr: []; device: [value: 'confirm' | 'scan' | null] }>();
+const emit = defineEmits<{ qr: []; device: [value: 'confirm' | 'scan' | 'sms' | null] }>();
 const { view, busy, seconds } = props.model;
 const method = ref(''),
   code = ref(''),
   answer = ref('');
 const root = ref<HTMLElement>();
 const devicePanel = ref<{ clearSecrets: () => void }>();
+const smsPanel = ref<{ clearSecrets: () => void }>();
 const returning = ref(false);
 const blockedNotice = ref('');
 const known: Record<string, string> = {
@@ -25,12 +27,22 @@ const selected = computed(() =>
   view.value?.challenge.methods.includes(method.value) ? method.value : '',
 );
 watch(selected, (value) =>
-  emit('device', value === 'DEVICE_SCAN' ? 'scan' : value === 'DEVICE_CONFIRM' ? 'confirm' : null),
+  emit(
+    'device',
+    value === 'DEVICE_SCAN'
+      ? 'scan'
+      : value === 'DEVICE_CONFIRM'
+        ? 'confirm'
+        : value === 'UP_SMS'
+          ? 'sms'
+          : null,
+  ),
 );
 function clearSecrets() {
   code.value = '';
   answer.value = '';
   devicePanel.value?.clearSecrets();
+  smsPanel.value?.clearSecrets();
 }
 defineExpose({ clearSecrets });
 async function choose(value: string) {
@@ -43,6 +55,11 @@ async function choose(value: string) {
       kind: 'device_start',
       method: value === 'DEVICE_CONFIRM' ? 'confirm' : 'scan',
     });
+  if (value === 'UP_SMS')
+    await props.model.run({
+      kind: 'sms_start',
+      direction: view.value?.challenge.countryCode === '86' ? 'uplink' : 'downlink',
+    });
   await nextTick();
   if (root.value?.isConnected && !root.value.closest('[inert]'))
     root.value
@@ -51,12 +68,21 @@ async function choose(value: string) {
 }
 async function back() {
   if (returning.value) return;
-  if (busy.value && (!selected.value.startsWith('DEVICE_') || !view.value?.device)) return;
+  if (
+    busy.value &&
+    !(
+      (selected.value.startsWith('DEVICE_') && view.value?.device) ||
+      (selected.value === 'UP_SMS' && view.value?.sms)
+    )
+  )
+    return;
   returning.value = true;
   try {
     clearSecrets();
     const device = view.value?.device;
     if (selected.value.startsWith('DEVICE_') && device) await props.model.stopDevice(device.id);
+    if (selected.value === 'UP_SMS' && view.value?.sms)
+      await props.model.stopSms(view.value.sms.id);
     const previous = method.value;
     method.value = '';
     await nextTick();
@@ -76,8 +102,6 @@ async function verify() {
   code.value = '';
   if (selected.value === 'SECURITY_EMAIL')
     await props.model.run({ kind: 'security_mail_verify', code: otp });
-  else if (selected.value === 'UP_SMS')
-    await props.model.run({ kind: 'verification_sms_verify', code: otp });
 }
 watch(
   () => [view.value?.device?.phase, busy.value],
@@ -98,7 +122,10 @@ watch(
   <section ref="root" class="login-challenge" aria-label="登录验证">
     <template
       v-if="
-        view && (view.status === 'two_factor' || (selected.startsWith('DEVICE_') && view.device))
+        view &&
+        (view.status === 'two_factor' ||
+          (selected.startsWith('DEVICE_') && view.device) ||
+          (selected === 'UP_SMS' && view.sms))
       "
     >
       <img
@@ -109,7 +136,9 @@ watch(
         referrerpolicy="no-referrer"
       />
       <p v-if="view.challenge.nickname">{{ view.challenge.nickname }}</p>
-      <p v-if="view.challenge.phoneMask" class="muted">{{ view.challenge.phoneMask }}</p>
+      <p v-if="view.challenge.phoneMask && selected !== 'UP_SMS'" class="muted">
+        {{ view.challenge.phoneMask }}
+      </p>
       <button
         v-if="!view.challenge.methods.length"
         class="primary"
@@ -141,6 +170,7 @@ watch(
           :model="model"
           :kind="selected === 'DEVICE_SCAN' ? 'scan' : 'confirm'"
         />
+        <SmsVerification v-else-if="selected === 'UP_SMS'" ref="smsPanel" :model="model" />
         <div v-else-if="selected === 'BINDING_CELLPHONE'" class="verification-handoff">
           <p>如需通过绑定手机号验证，请前往手机端操作。</p>
           <p class="muted">也可以返回选择其他验证方式。</p>
@@ -149,7 +179,7 @@ watch(
           当前客户端暂不支持微信验证，请选择其他验证方式。
         </p>
         <form
-          v-else-if="['SECURITY_EMAIL', 'UP_SMS'].includes(selected)"
+          v-else-if="selected === 'SECURITY_EMAIL'"
           class="credential-form"
           @submit.prevent="verify"
         >
@@ -170,8 +200,7 @@ watch(
             :disabled="busy || seconds > 0"
             @click="
               model.run({
-                kind:
-                  selected === 'SECURITY_EMAIL' ? 'security_mail_send' : 'verification_sms_send',
+                kind: 'security_mail_send',
               })
             "
           >
@@ -182,7 +211,14 @@ watch(
         <button
           v-if="selected"
           class="verification-back"
-          :disabled="returning || (busy && (!selected.startsWith('DEVICE_') || !view.device))"
+          :disabled="
+            returning ||
+            (busy &&
+              !(
+                (selected.startsWith('DEVICE_') && view.device) ||
+                (selected === 'UP_SMS' && view.sms)
+              ))
+          "
           @click="back"
         >
           选择其他验证方式

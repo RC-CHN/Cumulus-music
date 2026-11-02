@@ -179,6 +179,7 @@
 .device-verification,
 .verification-choice,
 .verification-handoff,
+.sms-verification,
 .device-loading,
 .device-confirm-content {
   opacity: 1;
@@ -189,6 +190,104 @@
   margin-top: 20px;
   text-align: left;
   font-size: 14px;
+}
+.sms-verification {
+  width: 296px;
+  max-width: 100%;
+  margin: 24px auto 0;
+}
+.sms-verification:focus {
+  outline: none;
+}
+.sms-instructions {
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+.sms-instructions p + p {
+  margin-top: 10px;
+}
+.sms-instructions span,
+.sms-instructions strong,
+.sms-alternative {
+  color: var(--link);
+}
+.sms-secondary {
+  margin-top: 12px;
+  min-height: 32px;
+  font-size: 13px;
+  padding: 4px 10px;
+}
+.sms-verification .sms-checking:disabled {
+  opacity: 1;
+  cursor: wait;
+}
+.sms-instructions strong {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.sms-tips {
+  margin: 20px 0 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  text-align: left;
+}
+ol.sms-tips {
+  padding-left: 18px;
+}
+.sms-verification .login-submit {
+  margin-top: 26px;
+}
+.sms-alternative {
+  display: block;
+  margin: 16px auto 0;
+  font-size: 13px;
+}
+.sms-down-title {
+  font-size: 16px;
+  line-height: 22px;
+  margin-bottom: 20px;
+}
+.sms-phone {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+.sms-phone span + span {
+  padding-left: 12px;
+  border-left: 1px solid var(--line);
+}
+.sms-code-form {
+  margin-top: 10px;
+}
+.sms-code-form input {
+  width: 0;
+  min-width: 0;
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 6px 10px;
+  background: var(--surface);
+  color: var(--text);
+}
+.sms-code-form .verification-error {
+  text-align: left;
+  margin-top: 10px;
+  font-size: 11px;
+  line-height: 13px;
+}
+.sms-loading {
+  min-height: 100px;
+  display: grid;
+  place-items: center;
+  color: var(--text-secondary);
 }
 .verification-device-name strong {
   font-weight: 400;
@@ -296,6 +395,7 @@
   .device-verification,
   .verification-choice,
   .verification-handoff,
+  .sms-verification,
   .device-loading,
   .device-confirm-content,
   .device-qr-mask {

@@ -225,3 +225,27 @@ test('local device stop preempts a pending poll without publishing its late auth
   assert.deepEqual(commands, ['device_poll', 'device_stop']);
   f.model.dispose();
 });
+
+test('local SMS stop preempts checking and ignores a late authorization or finally', async () => {
+  const pending = deferred<LoginView>();
+  const stopped = state('one', 'two_factor');
+  const commands: string[] = [];
+  const f = fixture({
+    loginCommand: async (_id, command) => {
+      commands.push(command.kind);
+      return command.kind === 'sms_stop' ? stopped : pending.promise;
+    },
+  });
+  await f.model.start('1', 'email');
+  const check = f.model.run({ kind: 'sms_check', verification_id: 'local-sms-operation' });
+  assert.equal(f.model.busy.value, true);
+  await f.model.stopSms('local-sms-operation');
+  assert.equal(f.model.view.value, stopped);
+  assert.equal(f.model.busy.value, false);
+  pending.resolve(state('one', 'authenticated'));
+  await check;
+  assert.equal(f.model.view.value, stopped);
+  assert.equal(f.authorized(), 0);
+  assert.deepEqual(commands, ['sms_check', 'sms_stop']);
+  f.model.dispose();
+});

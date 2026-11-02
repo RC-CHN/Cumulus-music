@@ -32,6 +32,7 @@ export interface LoginAnswer {
 }
 export interface LoginView {
   device?: DeviceVerificationView | null;
+  sms?: SmsVerificationView | null;
   operationId: string;
   mode: LoginMode;
   status: LoginStatus;
@@ -45,12 +46,15 @@ export interface LoginView {
     nickname: string | null;
     avatarUrl: string | null;
     phoneMask: string | null;
+    countryCode?: string | null;
     question: string | null;
     answers: LoginAnswer[];
     reuseConfirmation: boolean;
   };
 }
 export type LoginCommand =
+  | { kind: 'sms_start'; direction: 'uplink' | 'downlink' }
+  | { kind: 'sms_refresh' | 'sms_check' | 'sms_stop'; verification_id: string }
   | { kind: 'device_start'; method: 'confirm' | 'scan' }
   | { kind: 'device_poll' | 'device_cancel' | 'device_stop'; verification_id: string }
   | { kind: 'device_verify'; verification_id: string; code: string }
@@ -99,6 +103,24 @@ export interface DeviceVerificationView {
   safeDeviceCount: number | null;
   pollAfterMs: number;
   modules: boolean[][] | null;
+  answerRejected: boolean;
+}
+export interface SmsVerificationView {
+  id: string;
+  direction: 'uplink' | 'downlink';
+  phase:
+    | 'loading'
+    | 'ready'
+    | 'code_sent'
+    | 'checking'
+    | 'failed'
+    | 'timed_out'
+    | 'recovery_required';
+  code: number | null;
+  phoneMask: string | null;
+  countryCode: string | null;
+  uploadText: string | null;
+  uploadNumber: string | null;
   answerRejected: boolean;
 }
 export interface SavedAccount {
