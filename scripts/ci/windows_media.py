@@ -6,6 +6,7 @@ cached packages are authenticated and the installed filter is checked every run.
 """
 import argparse
 import hashlib
+import http.client
 import json
 import os
 from pathlib import Path
@@ -14,6 +15,9 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
+import time
+import urllib.error
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -110,9 +114,28 @@ def prepare(msys):
 
 
 def download(url, path, expected):
-    with urllib.request.urlopen(url, timeout=60) as response, path.open('xb') as destination:
-        shutil.copyfileobj(response, destination)
-    assert sha256(path) == expected, f'source checksum mismatch: {path.name}'
+    if path.exists():
+        raise FileExistsError(path)
+    for attempt in range(3):
+        # Partial transfers never become recipe inputs. Each attempt owns only
+        # its temporary file and retains the same pinned SHA-256 requirement.
+        with tempfile.NamedTemporaryFile(dir=path.parent, prefix=path.name + '.', suffix='.part', delete=False) as stream:
+            temporary = Path(stream.name)
+        try:
+            with urllib.request.urlopen(url, timeout=60) as response, temporary.open('wb') as destination:
+                shutil.copyfileobj(response, destination)
+            assert sha256(temporary) == expected, f'source checksum mismatch: {path.name}'
+            temporary.rename(path)
+            return
+        except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.IncompleteRead) as error:
+            if isinstance(error, urllib.error.HTTPError) and error.code not in {429, 500, 502, 503, 504}:
+                raise
+            if attempt == 2:
+                raise
+            print(f'Retrying source transfer {path.name} ({attempt + 2}/3)', flush=True)
+            time.sleep(2 ** attempt)
+        finally:
+            temporary.unlink(missing_ok=True)
 
 
 def verify_cache(cache, plan, lock=None):
