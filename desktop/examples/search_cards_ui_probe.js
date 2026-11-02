@@ -19,7 +19,7 @@
     }
     imageSrc.set.call(this,value);
   }});
-  let count=0, step='start';
+  let count=0, step='start', hoverState;
   const ipcCalls=[];const originalFetch=window.fetch;
   window.fetch=async function(url,options){
     const command=String(url).split('/').at(-1);
@@ -35,9 +35,14 @@
     document.activeElement?.blur(); await pointer(innerWidth-3, 75); await sleep(200);
     const r=card.querySelector('.search-result-art').getBoundingClientRect();
     await pointer(r.left+r.width*.4,r.top+r.height*.4);
-    await wait(()=>card.matches(':hover'),'native hover hit'); await sleep(230);
+    await wait(()=>card.matches(':hover'),'native hover hit');
     const play=card.querySelector('.search-card-play');
-    assert(!play || Number(getComputedStyle(play).opacity)>0.99,'hover reveals play');
+    await wait(()=>{
+      hoverState={hover:card.matches(':hover'),focused:document.hasFocus(),visible:document.visibilityState,
+        opacity:play?getComputedStyle(play).opacity:null,disabled:play?.disabled,
+        animations:play?.getAnimations().map(a=>({state:a.playState,pending:a.pending,time:a.currentTime}))};
+      return hoverState.hover && (!play || Number(hoverState.opacity)>0.99);
+    },'hover reveals play');
     if(play){const b=play.getBoundingClientRect(); assert(document.elementFromPoint(b.x+b.width/2,b.y+b.height/2)?.closest('button')===play,'play hit target');}
   }
   async function capture(label) {
@@ -87,5 +92,5 @@
     await fixture('cover_error');submit();await sleep(0);await choose('artists');await choose('playlists');await wait(()=>!one('.search-result-art img'),'failed cover fallback');assert(one('.search-result-art > .icon'),'placeholder after error');await hover(one('.search-result-card'));await capture('cover_failed');
     assert(localImageAssignments>0,'image outcome injection exercised');
     await emit('complete',{ok:true,stageCount:count,nativePointer:true,coverOutcomeInjected:true,keyboardContextMenu:true,voiceMenuDoubleClickSafe:true,realMusicRequests:0,realAccountWrites:0});
-  }catch(e){await emit('failed',{step,message:String(e),stack:e?.stack,stageCount:count,ipcCalls:ipcCalls.slice(-18),body:document.body.innerText.slice(0,4000)});}
+  }catch(e){await emit('failed',{step,message:String(e),stack:e?.stack,stageCount:count,hoverState,ipcCalls:ipcCalls.slice(-18),body:document.body.innerText.slice(0,4000)});}
 })();

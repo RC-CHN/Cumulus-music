@@ -199,12 +199,13 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playlist_cover_preview_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playlist-cover-preview-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-results-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_cards_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-cards-linux
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_cards_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-cards-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_preview_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-preview-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_lyrics_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-lyrics-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/song_menu_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-song-menu-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playlist_collect_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playlist-collect-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/library_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-library-linux
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/library_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-library-linux
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/card_source_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-card-source-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playlist_menu_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playlist-menu-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playlist_queue_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playlist-queue-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playlist_batch_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playlist-batch-linux
@@ -323,6 +324,7 @@ jobs:
           python scripts/ci/song_menu_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-song-menu-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/playlist_collect_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playlist-collect-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/library_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-library-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/card_source_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-card-source-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/playlist_menu_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playlist-menu-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/playlist_queue_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playlist-queue-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/playlist_batch_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playlist-batch-windows --runtime .build/package-stage/windows-x64/native

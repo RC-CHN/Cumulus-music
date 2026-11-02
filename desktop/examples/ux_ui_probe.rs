@@ -3,6 +3,8 @@
 mod assets;
 #[path = "support/capture_ack.rs"]
 mod capture_ack;
+#[path = "support/card_source_fixture.rs"]
+mod card_source_fixture;
 #[path = "support/download_page_fixture.rs"]
 mod download_page_fixture;
 #[allow(dead_code)]
@@ -226,6 +228,12 @@ fn main() {
     let recovery_proof = std::env::var_os("CUMULUS_LIKE_RECOVERY_PROOF").is_some();
     let media_proof = std::env::var_os("CUMULUS_SYSTEM_MEDIA_PROOF").is_some();
     let shortcut_proof = std::env::var_os("CUMULUS_SHORTCUT_UI_PROOF").is_some();
+    let card_source_proof = card_source_fixture::enabled();
+    assert!(
+        !card_source_proof
+            || (motion_proof && library_fixture::enabled() && search_fixture::enabled()),
+        "card source proof requires isolated library/search/audio fixtures"
+    );
     let output = root.join(
         if motion_proof && std::env::var_os("CUMULUS_MOTION_NATIVE_REDUCED").is_some() {
             "native-reduced"
@@ -263,9 +271,11 @@ fn main() {
         assert!(startup_delay <= 5000, "bounded synthetic startup delay");
         let factory_elapsed = Arc::new(std::sync::atomic::AtomicU64::new(0));
         let factory_count = Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let card_audio = Arc::new(card_source_fixture::Control::default());
         if motion_proof {
             let elapsed = factory_elapsed.clone();
             let count=factory_count.clone();
+            let card_control=card_audio.clone();
             let wave = root.join("relay-synthetic.wav");
             let wave = if wave.exists() { wave } else { relay_fixture::wave(&root)? };
             let download_directory = download_page_fixture::enabled().then(||root.join("media"));
@@ -276,7 +286,8 @@ fn main() {
                 if let Some(directory)=download_directory.as_ref() { audio=audio.allow_download_directory(directory.clone()); }
                 elapsed.store(start.elapsed().as_millis() as u64, std::sync::atomic::Ordering::Release);
                 count.fetch_add(1,std::sync::atomic::Ordering::AcqRel);
-                Ok(Box::new(audio))
+                let audio:Box<dyn cumulus_core::playback::engine::AudioEngine>=if card_source_proof {Box::new(card_source_fixture::Audio::new(audio,card_control.clone()))}else{Box::new(audio)};
+                Ok(audio)
             });
         }
         app.manage(if motion_proof { client } else { cumulus_desktop::configure_native_audio(client,&app.path().resource_dir()?,true) });
@@ -288,6 +299,11 @@ fn main() {
             if intelligence_start_fixture::enabled() {value["syntheticIntelligenceStart"]=intelligence_start_fixture::report();}
             if search_fixture::enabled() { value["syntheticSearchCalls"]=json!(search_fixture::calls()); }
             let stage=value["stage"].as_str().unwrap_or("");
+            if card_source_proof && stage=="card-source-fixture" {
+                let id=value["id"].as_u64().expect("synthetic card control id");
+                let reply=card_audio.configure(value["mode"].as_str().unwrap_or("")).unwrap_or_else(|error|json!({"error":error.to_string()}));
+                handle.get_webview_window("main").unwrap().eval(format!("window.__cardSourceAck[{id}]={reply};")).unwrap();return;
+            }
             if intelligence_start_fixture::enabled() && stage=="intelligence-start-fixture" {
                 let kind=value["kind"].as_str().unwrap();intelligence_start_fixture::control(kind);
                 handle.get_webview_window("main").unwrap().eval(format!("window.__intelligenceStartReport={};window.__intelligenceStartAck={};",intelligence_start_fixture::report(),json!(kind))).unwrap();return;
@@ -426,7 +442,9 @@ fn main() {
                 handle.get_webview_window("main").unwrap().set_focus().unwrap();return;
             }
             if stage=="resize" {
-                handle.get_webview_window("main").unwrap().set_size(tauri::LogicalSize::new(value["width"].as_f64().unwrap(),value["height"].as_f64().unwrap())).unwrap();return;
+                let window=handle.get_webview_window("main").unwrap();let width=value["width"].as_f64().unwrap();let height=value["height"].as_f64().unwrap();
+                if let Some(scale)=value["scale"].as_f64() {assert!(scale.is_finite() && scale>0.0 && scale<=4.0);window.set_size(tauri::PhysicalSize::new((width*scale).round() as u32,(height*scale).round() as u32)).unwrap();}
+                else{window.set_size(tauri::LogicalSize::new(width,height)).unwrap();}return;
             }
             if !(["complete","failed"].contains(&stage) || stage.starts_with("ux_") && stage.chars().all(|c|c.is_ascii_alphanumeric()||c=='_')){return;}
             let stage=stage.to_owned();
@@ -442,6 +460,7 @@ fn main() {
                 value["syntheticLikeReads"]=json!(fixture.reads.load(Ordering::SeqCst));
             }
             if motion_proof {
+                if card_source_proof {value["sourceAudio"]=card_audio.report();}
                 value["audioFactoryElapsedMs"] = json!(factory_elapsed.load(std::sync::atomic::Ordering::Acquire));
                 value["audioFactoryDelayRequestedMs"] = json!(startup_delay);
                 value["audioFactoryCount"] = json!(factory_count.load(std::sync::atomic::Ordering::Acquire));
@@ -462,7 +481,7 @@ fn main() {
                     }
                     if let Ok(playback)=client.subscribe_playback(&epoch).await && let Ok(snapshot)=playback.current() {
                         value["nativePlayer"]=serde_json::to_value(snapshot).unwrap();
-                        if std::env::var_os("CUMULUS_PLAYLIST_QUEUE_UI_PROOF").is_some() || std::env::var_os("CUMULUS_QUEUE_UI_PROOF").is_some() || download_page_fixture::enabled() {
+                        if std::env::var_os("CUMULUS_PLAYLIST_QUEUE_UI_PROOF").is_some() || std::env::var_os("CUMULUS_QUEUE_UI_PROOF").is_some() || download_page_fixture::enabled() || card_source_proof {
                             value["nativeQueue"] = serde_json::to_value(client.player_queue(&epoch).await.unwrap()).unwrap();
                         }
                     } else { value["nativePlayerUnavailable"]=json!(true); }
