@@ -10,6 +10,50 @@ fn pause(view: &PlayerView, paused: bool) -> PlayerAction {
 }
 
 #[tokio::test]
+async fn failed_native_resume_can_be_explicitly_retried_without_rebuilding_the_source() {
+    let (_dir, api, _, client, _) = fixture();
+    let device = Arc::new(support::Device::default());
+    let engine_device = device.clone();
+    let client = Arc::try_unwrap(client)
+        .ok()
+        .expect("test owns the unused client")
+        .with_audio_factory(move || Ok(support::audio_engine(engine_device.clone())));
+    let playing = client.play_selection("1", songs("1")).await.unwrap();
+    client
+        .player_action("1", PlayerAction::Seek { seconds: 19.0 })
+        .await
+        .unwrap();
+    let paused = client
+        .player_action("1", pause(&playing, true))
+        .await
+        .unwrap();
+    let calls = api.calls.lock().unwrap().len();
+    device.fail_unpause.store(true, Ordering::SeqCst);
+    assert!(
+        client
+            .player_action("1", pause(&paused, false))
+            .await
+            .is_err()
+    );
+    let failed = client.player_snapshot("1").await.unwrap();
+    assert_eq!(failed.state, PlaybackStatus::Paused);
+    assert_eq!(failed.play_id, paused.play_id);
+    assert_eq!(failed.queue_revision, paused.queue_revision);
+    device.fail_unpause.store(false, Ordering::SeqCst);
+    let resumed = client
+        .player_action("1", pause(&paused, false))
+        .await
+        .unwrap();
+    assert_eq!(resumed.state, PlaybackStatus::Playing);
+    assert_eq!(resumed.play_id, paused.play_id);
+    assert_eq!(resumed.queue_revision, paused.queue_revision);
+    assert!(resumed.position.unwrap() >= 19.0);
+    assert_eq!(device.state.lock().unwrap().loads, 1);
+    assert_eq!(api.calls.lock().unwrap().len(), calls);
+    client.player_action("1", PlayerAction::Stop).await.unwrap();
+}
+
+#[tokio::test]
 async fn source_pause_and_resume_preserve_nonfirst_track_queue_clock_and_requests() {
     let (_dir, api, _, client, engines) = fixture();
     *api.playlist_tracks.lock().unwrap() = Some((1..=3).map(|id| json!({"id":id})).collect());
