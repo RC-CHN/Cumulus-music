@@ -29,7 +29,7 @@ model 首个逗号替换为点，空时 fallback；官方 pn 删除低位空白�
 POST /api/login/token/refresh/v1 的业务字段为 refreshToken、clientUserId、ydDeviceToken、_scver="1"、_sign。
 PC adapter传输时另附fromPage="JSK"及空x-login-chain-id，现已对照原fetch补齐。
 MUSIC_U 缺失或 refreshToken 缺失：MissingCredentials，不取设备令牌，不发刷新请求。
-与上次成功不足 86400 秒（包括时钟回退）：NotDue。原生底层 force 仍为明确调用选项，桌面 IPC
+与新JSK登录成功或上次确认续期不足 86400 秒（包括时钟回退）：NotDue。原生底层 force 仍为明确调用选项，桌面 IPC
 没有 force，正常触发和手动检查均不可绕过周期。该请求无 legacy 自动回退。
 200 仍需同次确认响应保存可用于此域/路径的 MUSIC_U+x-refresh-token 成对轮换回执；
 再通过 /api/w/nuser/account/get 核对同一 UID 后才能记录成功时间。普通 Cookie 更新不算轮换。
@@ -63,10 +63,11 @@ UI IPC 丢失响应后只重新读取状态，不自动重发命令；事件/读
   npm --prefix frontend run build
   CARGO_INCREMENTAL=0 cargo build --locked --offline -p cumulus-desktop --features custom-protocol --example renewal_ui_probe
   xvfb-run -a -s '-screen 0 1280x900x24' dbus-run-session -- env GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 \
-    python3 desktop/examples/run_auth_probe.py /absolute/new-proof-root --binary .build/target/debug/examples/renewal_ui_probe --stage-prefix renewal_ --screenshots 5
+    python3 desktop/examples/run_auth_probe.py /absolute/new-proof-root --binary .build/target/debug/examples/renewal_ui_probe --stage-prefix renewal_ --screenshots 7
   python3 desktop/examples/audit_renewal_probe.py /absolute/new-proof-root
 桌面探针使用真实 Vue/WebView/IPC/续期 pump 与持久化，仅音乐 HTTP 为进程内合成服务。
-DOM 完成缺凭据→重新登录→自动续期→手动检查间隔→新登录后丢失刷新响应→只读核对→重新登录提示。
+DOM 完成缺凭据→新登录未到期→原生测试时钟推进后检查并轮换→重复检查间隔→第二次新登录未到期→
+原生时钟再次推进后丢失刷新响应→只读核对及重新登录提示。生产IPC没有时钟控制入口。
 生产界面截图与原生请求计数分别取证；独立 Python 只读审计 SQLite，确认一条成功、一条未决意图，
 缺凭据零轮换、24 小时重复检查零轮换、未知写入未重发、公开阶段无凭据。
 .build/ui-proof/renewal-20261027-a 保存普通窗口五张截图和 independent-audit.json；
@@ -99,3 +100,21 @@ Windows/macOS 设备采集与实际发行验证没有被合成测试替代。Yes
 正式入口遵守外层双实验；保存账号切换仍只核对身份。新版回执不会放宽续期的成对要求、
 24小时间隔或未决结果不重放的边界。本轮重新运行五态GUI与SQLite审计通过，仍仅合成数据。
 当前支持目标为Linux/Windows x86_64，不承诺macOS；上文macOS属于历史研究边界。
+
+2026-11-03 新登录起算时间修正
+M/1368 prepareAndSaveLoginInfo在updateLoginInfo第四个参数传Date.now()，后者将其写入
+jsk_token_last_refresh_time；refreshToken以该值检查生产24小时间隔。此前Rust只有续期journal的
+last_success，因而新登录收到RT后可能立即再轮换。现在原生凭据新增可缺省last_login_at，
+仅在已确认完成的新JSK登录响应中与Cookie/RT原子提交，按Unix秒保存；低于一秒的边界精度不同于JS。
+HTTP失败、业务失败、未读完响应、挑战开始/方法列表/发送短信、普通Cookie更新、旧链登录、
+已保存账号恢复/切换均不重置这个时间。没有RT的已确认登录仍记时间，但继续显示缺少续期凭据。
+旧数据库没有该字段时不猜测历史登录时间；退出/服务端失效清凭据时一并清除此字段。
+真正确认轮换仍只记UID journal.last_success；两个有效时间取较晚者，不把新登录显示为续期成功。
+有pending时先核对，不因新登录起算时间尚近而把未知结果隐藏成NotDue。
+UI“暂时无需续期”不承诺已经轮换；lastSuccess只公开已确认轮换时间，登录时间留在原生层。
+可选本地官方表达式执行：node desktop/tests/renewal_timing_official.cjs（仓库根须有官方解包材料）。
+它执行原时间写入和间隔表达式，确认调用点Date.now()、恢复不重置和24小时边界/时钟回拨；
+这不是完整SDK执行，也不是线上令牌下发或真实轮换证明。YesPlayMusic未使用。
+原生注入with_session_renewal_clock仅配置宿主时钟，测试不修改系统时间；IPC没有clock或force参数。
+公开CI的session_renewal_smoke.py使用合成HTTP、真实WebView/IPC/pump，独立检查两次新登录零轮换、
+到期轮换、重复检查抑制、未决写不重放及SQLite持久化；不依赖官方私有文件或真实账号。

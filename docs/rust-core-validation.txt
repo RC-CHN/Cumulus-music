@@ -1729,3 +1729,21 @@ HTTP刷新头在上行还要求有效data，不以信息、发送、失败或中
 custom-protocol/locked回归287程序1517项0失败0忽略；最终严格Clippy/格式/宿主构建通过。
 最终实际WebView两协议各25+4态、本机KDE另29态及账号/原设备/重启/续期回归通过，
 只是合成服务。本人真实SMS/原设备/refreshToken下发和轮换、其它SDK及全目标仍未闭合。
+
+2026-11-03：新登录续期基准与账号UI复验
+生产core修复fcf2831：仅确认的新JSK登录原子记last_login_at；普通读/恢复/切换不延期；
+缺历史时间不猜，真正轮换成功仍另记journal.last_success，未决优先核对。见
+desktop-session-renewal-contracts.txt、session-renewal-mapping.json。
+新增login_timing_tests两项覆盖18种传输回执和无RT的成功回执；login_refresh_timing四项
+经真实登录/身份采用、24小时/回拨/重复检查、普通Cookie/保存账号/重启、退出清理、
+旧schema/旧链及未知结果恢复验证。不把单一传输成功当作完整账号登录或真实轮换。
+最终workspace/all-targets/custom-protocol/locked：288程序1523通过0失败0忽略，
+.build/login-timing-final-workspace.log；严格fmt、Clippy、main+3探针构建均完成0，
+.build/login-timing-final-{fmt,clippy,native}.log。main与3个探针的sha与最终构建一致；GUI实际运行3个探针。
+固定Node24.16.0 npm ci、format:check、559测试、类型检查与生产构建通过，
+.build/login-timing-{npm-ci,front-format,front-tests,front-build}.log；最终嵌入前冻结的21个
+dist文件sha+mtime在复验后未改变(.build/login-timing-dist-freeze.json)。CI工具47项及
+source_audit/release_guard/syntax均通过，未创建release提交/标签/附件。
+真实WebView账号28态/28PNG、续期7态、真实KDE本人进程7PNG+SQLite独立审计通过；
+收藏旧断言通过原生750ms延迟复现，修正检查时序后44态/44PNG通过且业务焦点断言未放宽。
+本轮线上音乐请求为0，不包含本人RT下发/轮换或Windows实际通过证明；完整目标仍进行中。

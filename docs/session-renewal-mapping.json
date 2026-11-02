@@ -127,6 +127,39 @@
       "status": "not_migrated_in_this_phase",
       "endpoint": "/api/middle/account/token/refresh",
       "boundary": "ordinary 301 invalidation is not equivalent"
+    },
+    {
+      "requirement": "successful JSK login starts the daily interval without claiming a refresh",
+      "official": [
+        "1368:prepareAndSaveLoginInfo -> updateLoginInfo(..., Date.now())",
+        "1368:updateLoginInfo jsk_token_last_refresh_time",
+        "1368:refreshToken 864e5 ms gate"
+      ],
+      "rust": [
+        "core/src/account/credentials.rs",
+        "core/src/protocol/http/client.rs",
+        "core/src/account/refresh/lifecycle.rs",
+        "core/src/client/auth/renewal.rs"
+      ],
+      "ui": [
+        "frontend/src/services/renewal.ts"
+      ],
+      "tests": [
+        "desktop/tests/renewal_timing_official.cjs",
+        "core/src/protocol/http/login_timing_tests.rs",
+        "core/tests/login_refresh_timing.rs",
+        "desktop/examples/renewal_ui_probe.rs",
+        "desktop/examples/audit_renewal_probe.py",
+        "scripts/ci/session_renewal_smoke.py",
+        "scripts/ci/account_login_smoke.py"
+      ],
+      "boundary": "native Unix seconds; no inferred historical login timestamp; lastSuccess remains confirmed rotation only; real account token issuance/rotation unverified",
+      "evidence": [
+        ".build/login-timing-official-oracle.json",
+        ".build/login-timing-ci-renewal/run/independent-audit.json",
+        ".build/login-timing-kde-renewal/run/independent-audit.json",
+        ".build/login-timing-gui-account/report.json"
+      ]
     }
   ],
   "yesplaymusic_used": false,
@@ -163,5 +196,6 @@
       "Missing saved refreshToken does not prove the historical login response omitted it."
     ],
     "realRefreshSuccessProven": false
-  }
+  },
+  "login_timing_update": "2026-11-03"
 }

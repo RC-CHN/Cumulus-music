@@ -71,3 +71,12 @@ MUSIC_U时才采纳刷新头。begin/list/send、错误或中断回执不算登�
 .build/ui-proof/login-interception-desktop-20261027-a/experiment-cache-audit.json独立只读检查
 绑定凭据库中的两个实验布尔仍为false。该结果是正式宿主的持久化缓存证据，
 不是新登录或真实续期成功，也不能代替服务器内部发放规则。
+
+2026-11-03续期起算与证据边界
+已完成的新JSK登录响应现与Cookie/RT原子保存原生last_login_at；登录不等于已经完成轮换。
+官方M/1368的prepareAndSaveLoginInfo给updateLoginInfo传Date.now()，定期刷新共用24小时间隔。
+Rust账号恢复、普通读请求和账号切换不会把起算时间改成当前时间；旧凭据缺该字段时不猜测。
+刷新结果不明仍保留pending并只读核对，不以新时间覆盖问题或自动重发。
+本轮真实WebView/原生HTTP/SQLite与本机截图均为合成账号，服务器是否给本人账号下发RT、
+是否能完成真实成对轮换仍未验证；不能用合成fixture-refresh或旧Cookie存在来声称已获得RT。
+本轮未对真实服务发登录、短信或轮换请求。详见desktop-session-renewal-contracts.txt。

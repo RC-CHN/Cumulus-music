@@ -4602,3 +4602,29 @@ collection-library-mapping.json；没有使用YesPlayMusic。
   原生桌面实际渲染不代表官方像素一致、Windows实机视觉或144Hz性能证明；显示器刷新率
   只记作环境事实。Linux/Windows CI各要求两协议25+4态，精确头的CI结果另行观察。
   本人refreshToken下发/成对轮换、其它SDK处罚/实名/旧网页/注册找回等仍继续；整个目标未完成。
+
+2026-11-03：新登录续期起算与界面语义
+- 官方M/1368登录成功会写续期时间；Rust此前只存轮换成功时间。已增加原生last_login_at并
+  原子保存，lastSuccess仍只表示真正完成轮换，不向前端导出登录时间或凭据。
+- 提示“距登录或上次成功续期不足24小时，暂时无需续期”，避免新登录显示已续期。
+- .build/login-timing-gui-account的28态/28PNG经公开CI驱动通过；已查看saved_current的小窗
+  浅色和普通深色截图，文本未溢出，焦点恢复要求保留，所有主登录后合成轮换请求为0。
+- .build/login-timing-ci-renewal以真实WebView/IPC/pump验证7态，独立SQLite审计通过；
+  .build/login-timing-kde-renewal另在真实KDE/XWayland按本人进程捕获7PNG，全部经画廊查看，
+  并放大核对新登录态。画廊.build/login-timing-gallery/index.html；没有截取其它窗口。
+- 两次新登录均NotDue/lastSuccess=null；原生测试时钟推进后恰有一次成功轮换和一次未知
+  轮换；重复检查及只读核对不重发，持久化恰有一条成功和一条pending journal。
+- UI/HTTP账号均为合成数据，系统时间未修改；不代表真实RT下发或轮换、Windows运行或全目标完成。
+
+2026-11-03：收藏重试专项检查时序
+- 旧2cf CI41461066656的Linux报告initial retry focus，但该断言同时检查条数与焦点，
+  实际输出焦点已在refresh，不能由错误标题直接归因为产品焦点故障。
+- 本机原快响应44态通过(.build/login-timing-gui-collection)；加入750ms首屏重试延迟后，
+  .build/collection-retry-delay-red2稳定复现旧等待条件提前返回：loaded=0、busy=true、
+  原生请求pending且delayedFirstCompleted=0，说明断言发生在响应完成前。
+- 检查脚本现在同时等待aria-busy=false和旧错误移除；条数50与回到refresh焦点两个要求
+  拆成明确断言并完整保留。未修改正式收藏数据、焦点或加载逻辑，没有添加任意重试/忽略失败。
+- .build/collection-retry-delay-green的44态/44PNG通过，CI驱动另断言首屏延迟完成恰一次、
+  无pending且调用模式[fail_saved,delay_first]。后续分页、返回、筛选、过期恢复的断言保留。
+- 首次延迟探索.build/collection-retry-delay-red由于探针模式白名单未同步导致回调panic，
+  已终止该孤立进程并修正白名单；它不是产品故障或本次修复的复现证据。
