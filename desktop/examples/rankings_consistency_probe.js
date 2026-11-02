@@ -166,6 +166,64 @@
       "paused",
     );
   }
+  const playerSnapshot = () => invoke("player_snapshot", { epoch });
+  const playerQueue = () => invoke("player_queue", { epoch });
+  async function sourceState() {
+    return { player: await playerSnapshot(), queue: await playerQueue() };
+  }
+  function sameSource(actual, expected) {
+    for (const key of ["playId", "entryId", "queueRevision"])
+      assert(actual[key] === expected[key], "source retains " + key);
+    assert(
+      actual.track.id === expected.track.id,
+      "source retains selected track",
+    );
+    assert(
+      actual.origin?.kind === expected.origin?.kind &&
+        actual.origin?.id === expected.origin?.id,
+      "source retains origin",
+    );
+    assert(
+      actual.position >= expected.position,
+      "source retains listening position",
+    );
+  }
+  async function nativePlaying(id) {
+    await wait(async () => {
+      const current = await playerSnapshot();
+      const control = rank()?.querySelector(
+        `[data-rank-id="${id}"] .rank-play`,
+      );
+      return (
+        current.state === "playing" &&
+        current.position > 0.2 &&
+        current.origin?.id === id &&
+        control &&
+        !control.disabled &&
+        control.getAttribute("aria-pressed") === "true" &&
+        control.getAttribute("aria-label").startsWith("暂停榜单")
+      );
+    }, "source native playback " + id);
+    await settle();
+    return playerSnapshot();
+  }
+  async function toggleSource(control, before, paused) {
+    click(control);
+    await wait(
+      () =>
+        document.querySelector(".playerbar")?.dataset.state ===
+          (paused ? "paused" : "playing") && !control.disabled,
+      "source transport settled",
+    );
+    await settle();
+    const after = await playerSnapshot();
+    sameSource(after, before);
+    assert(
+      control.getAttribute("aria-pressed") === String(!paused),
+      "card follows native pause state",
+    );
+    return after;
+  }
   function rect(node) {
     const b = node.getBoundingClientRect();
     return {
@@ -264,6 +322,14 @@
         : [],
       cardIds: r
         ? all("[data-rank-id]", r).map((node) => node.dataset.rankId)
+        : [],
+      cardControls: r
+        ? all(".rank-play", r).map((node) => ({
+            id: node.closest("[data-rank-id]").dataset.rankId,
+            label: node.getAttribute("aria-label"),
+            pressed: node.getAttribute("aria-pressed"),
+            opacity: getComputedStyle(node).opacity,
+          }))
         : [],
       readError: r
         ?.querySelector("[data-ranking-read-error]")
@@ -366,6 +432,95 @@
       "native card playback",
     );
     await capture("card_playing_light", { playing: true, expectedQueue: 5 });
+    let native = await playerSnapshot();
+    await invoke("player_action", {
+      epoch,
+      action: { kind: "seek", seconds: 4 },
+    });
+    await wait(
+      async () => (await playerSnapshot()).position >= 4,
+      "source seek",
+    );
+    native = await playerSnapshot();
+    let held = await toggleSource(playCard, native, true);
+    await theme("dark");
+    await capture("card_paused_dark", { sourceControl: await sourceState() });
+    native = await toggleSource(playCard, held, false);
+    rank().querySelector("h1").focus({ preventScroll: true });
+    await emit("pointer", { x: 10, y: 5 });
+    await settle();
+    assert(
+      !playCard.matches(":hover") &&
+        !playCard.closest(".ranking-card").matches(":focus-within") &&
+        getComputedStyle(playCard).opacity === "1",
+      "playing card remains visible without hover or focus",
+    );
+    await theme("light");
+    await capture("card_resumed_light", {
+      playing: true,
+      expectedQueue: 5,
+      sourceControl: await sourceState(),
+    });
+    await invoke("player_action", { epoch, action: { kind: "next" } });
+    await wait(async () => {
+      const p = await playerSnapshot();
+      return p.state === "playing" && p.track?.id === "2" && p.position > 0.2;
+    }, "next track in ranking");
+    native = await playerSnapshot();
+    await capture("card_next_light", {
+      playing: true,
+      expectedQueue: 5,
+      sourceControl: await sourceState(),
+    });
+    held = await toggleSource(playCard, native, true);
+    await theme("dark");
+    await capture("card_next_paused_dark", {
+      sourceControl: await sourceState(),
+    });
+    await toggleSource(playCard, held, false);
+    await nativePlaying("19723756");
+    await theme("light");
+    await capture("card_next_resumed_light", {
+      playing: true,
+      expectedQueue: 5,
+      sourceControl: await sourceState(),
+    });
+    const otherCard = rank().querySelector(
+      '[data-rank-id="19723757"] .rank-play',
+    );
+    click(otherCard);
+    const other = await nativePlaying("19723757");
+    assert(
+      other.playId !== native.playId && other.track.id === "1",
+      "another source starts its own queue",
+    );
+    let staleControlRejected = false;
+    try {
+      await invoke("player_action", {
+        epoch,
+        action: {
+          kind: "pause_for",
+          play_id: native.playId,
+          expected_queue_revision: native.queueRevision,
+          paused: true,
+        },
+      });
+    } catch (error) {
+      staleControlRejected = error.code === "stale";
+    }
+    assert(
+      staleControlRejected &&
+        (await playerSnapshot()).state === "playing" &&
+        (await playerSnapshot()).playId === other.playId,
+      "late old card cannot pause the new source",
+    );
+    await theme("dark");
+    await capture("other_card_playing_dark", {
+      playing: true,
+      expectedQueue: 5,
+      staleControlRejected,
+      sourceControl: await sourceState(),
+    });
     await pause();
     let global = rank().querySelector('[data-rank-id="101"] .rank-open');
     global.scrollIntoView({ block: "center" });
@@ -375,6 +530,30 @@
     global = rank().querySelector('[data-rank-id="101"] .rank-open');
     sameAccountRefreshVerified = true;
     await capture("global_dark", { sameAccountRefreshVerified });
+    const globalPlay = rank().querySelector('[data-rank-id="101"] .rank-play');
+    click(globalPlay);
+    native = await nativePlaying("101");
+    await capture("global_playing_dark", {
+      playing: true,
+      expectedQueue: 5,
+      sourceControl: await sourceState(),
+    });
+    held = await toggleSource(globalPlay, native, true);
+    await theme("light");
+    await capture("global_paused_light", {
+      sourceControl: await sourceState(),
+    });
+    await toggleSource(globalPlay, held, false);
+    await nativePlaying("101");
+    await theme("dark");
+    await capture("global_resumed_dark", {
+      playing: true,
+      expectedQueue: 5,
+      sourceControl: await sourceState(),
+    });
+    await pause();
+    global.scrollIntoView({ block: "center" });
+    global.focus({ preventScroll: true });
     const homeScroll = main().scrollTop;
     click(global);
     await wait(() => shown(".playlist-hero"), "playlist detail");

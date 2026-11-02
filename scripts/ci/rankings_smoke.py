@@ -5,7 +5,9 @@ import os
 from pathlib import Path
 from catalog_smoke import launch
 
-LABELS = ['home_light', 'card_keyboard_light', 'card_playing_light', 'global_dark', 'home_return_light',
+LABELS = ['home_light', 'card_keyboard_light', 'card_playing_light', 'card_paused_dark', 'card_resumed_light',
+          'card_next_light', 'card_next_paused_dark', 'card_next_resumed_light', 'other_card_playing_dark',
+          'global_dark', 'global_playing_dark', 'global_paused_light', 'global_resumed_dark', 'home_return_light',
           'sales_daily_light', 'weekly_singles_dark', 'album_dark', 'weekly_return_light', 'year_menu_light',
           'historical_singles_dark', 'historical_album_dark', 'historical_return_light', 'historical_week_light',
           'annual_history_dark', 'year_keyboard_dark', 'song_sales_light', 'songs_playing_dark',
@@ -56,6 +58,7 @@ def main():
             assert player['state'] == 'playing' and player['position'] > .2 and not player['error']
             assert player['queueLen'] == state['expectedQueue'] == len(state['nativeQueue']['tracks']) == 5
     assert len(states['home_light']['cardIds']) == 8
+    assert {item['id'] for item in states['home_light']['cardControls']} == {'19723756', '19723757', '101', '102', '103', '104'}
     assert states['global_dark']['sameAccountRefreshVerified'] and complete['sameAccountRefreshVerified']
     card = states['home_light']['topCard']
     assert card['rowFont'] == '15px' and [image['width'] for image in card['images']] == [78, 58, 38]
@@ -73,13 +76,36 @@ def main():
     assert abs(year['rect']['width']-90) < .1 and all(abs(option['rect']['height']-40) < .1 for option in year['options'])
     assert year['options'][0]['label'] == '2018年榜'
     assert states['song_return_dark']['focusedSong'] == '1' and states['song_return_dark']['focusedAction'] == 'comments'
+    for before, after in [('card_paused_dark', 'card_resumed_light'), ('card_next_paused_dark', 'card_next_resumed_light'), ('global_paused_light', 'global_resumed_dark')]:
+        a, b = states[before]['sourceControl'], states[after]['sourceControl']
+        assert a['player']['state'] == 'paused' and b['player']['state'] == 'playing'
+        for key in ['playId', 'entryId', 'queueRevision', 'origin']:
+            assert a['player'][key] == b['player'][key]
+        assert a['queue']['tracks'] == b['queue']['tracks'] and a['queue']['current'] == b['queue']['current']
+        assert b['player']['position'] >= a['player']['position']
+    assert states['card_paused_dark']['sourceControl']['player']['position'] >= 4
+    assert states['card_next_resumed_light']['sourceControl']['player']['track']['id'] == '2'
+    assert states['other_card_playing_dark']['staleControlRejected']
+    assert states['other_card_playing_dark']['sourceControl']['player']['origin'] == {'kind': 'playlist', 'id': '19723757'}
+    for label in ['card_resumed_light', 'card_next_light', 'card_next_resumed_light', 'other_card_playing_dark', 'global_playing_dark', 'global_resumed_dark']:
+        state = states[label]
+        identity = state['sourceControl']['player']['origin']['id']
+        assert [item['id'] for item in state['cardControls'] if item['pressed'] == 'true'] == [identity]
+        control = next(item for item in state['cardControls'] if item['id'] == identity)
+        assert control['label'].startswith('暂停榜单') and control['opacity'] == '1'
+    for label in ['card_paused_dark', 'card_next_paused_dark', 'global_paused_light']:
+        state = states[label]
+        identity = state['sourceControl']['player']['origin']['id']
+        assert all(item['pressed'] == 'false' for item in state['cardControls'])
+        assert next(item for item in state['cardControls'] if item['id'] == identity)['label'].startswith('继续播放榜单')
+    assert sum(bool(state.get('playing')) for state in states.values()) == 8
     assert len(states['cached_error_dark']['cardIds']) == 8 and states['cached_error_dark']['readError']
     assert states['home_empty_dark']['empty'] == '暂无榜单' and not states['home_empty_dark'].get('readError')
     assert states['first_read_failed_dark']['readError'] and not states['first_read_failed_dark']['saleIds'] and not states['first_read_failed_dark'].get('empty')
     assert '2019年year单曲' in states['first_read_recovered_light']['firstSale']
     assert states['period_empty_dark']['empty'] == '该周期暂无榜单数据' and not states['period_empty_dark'].get('readError')
     report = dict(ok=True, states=len(LABELS), screenshots=screenshots, historySelectionVerified=True,
-                  sourceFocusVerified=True, nativePlayingStates=2, realAccountWrites=0,
+                  sourceFocusVerified=True, nativePlayingStates=8, sourceTransportVerified=True, realAccountWrites=0,
                   realMusicRequests=0, physicalAudioOutputVerified=False)
     (root/'report.json').write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
     print(json.dumps(report))
