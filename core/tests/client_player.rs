@@ -146,6 +146,9 @@ fn songs(id: &str) -> PlaySelection {
     }
 }
 
+#[path = "client_player/source_control.rs"]
+mod source_control;
+
 #[tokio::test]
 async fn quality_menu_target_and_preference_revision_are_checked_before_requesting_a_url() {
     let (_dir, api, _session, client, _) = fixture();

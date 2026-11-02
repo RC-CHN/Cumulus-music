@@ -258,6 +258,11 @@ pub enum PlayerAction {
     Pause {
         paused: bool,
     },
+    PauseFor {
+        play_id: String,
+        expected_queue_revision: String,
+        paused: bool,
+    },
     Seek {
         seconds: f64,
     },

@@ -14,6 +14,7 @@ mod queue_edit;
 mod queue_playlist;
 mod reports;
 mod selection;
+mod source_control;
 mod startup;
 use super::{MusicClient, mapping};
 use crate::{
@@ -416,6 +417,24 @@ impl MusicClient {
                 )
                 .await;
         }
+        let (action, source_target) = match action {
+            PlayerAction::PauseFor {
+                play_id,
+                expected_queue_revision,
+                paused,
+            } => {
+                if native.is_some() {
+                    return Err(Error::InvalidInput(
+                        "source control used as native media command",
+                    ));
+                }
+                (
+                    PlayerAction::Pause { paused },
+                    Some((play_id, expected_queue_revision)),
+                )
+            }
+            other => (other, None),
+        };
         let (mut action, displayed_queue, clear_room) = match action {
             PlayerAction::QueueFor {
                 expected_queue_revision,
@@ -433,6 +452,19 @@ impl MusicClient {
             other => (other, None, None),
         };
         let token = self.player_token(epoch)?;
+        // A stale card must not cancel another selection or claim media focus.
+        let source_guard = if let Some((play_id, revision)) = &source_target {
+            let current = self
+                .player
+                .controller()
+                .await?
+                .command(&token, PlaybackCommand::Snapshot)
+                .await?;
+            source_control::validate(&current, play_id, revision)?;
+            Some(current.fence())
+        } else {
+            None
+        };
         // Keep room attachment from changing the policy of a displayed edit.
         let _queue_room = if displayed_queue.is_some() {
             Some(
@@ -542,6 +574,9 @@ impl MusicClient {
             .await?;
         if queue_guard.as_ref().is_some_and(|f| *f != current.fence()) {
             return Err(Error::QueueChanged);
+        }
+        if source_guard.as_ref().is_some_and(|f| *f != current.fence()) {
+            return Err(Error::StaleResponse);
         }
         if matches!(action, PlayerAction::Mode { .. })
             && current
@@ -735,6 +770,9 @@ impl MusicClient {
             }
             PlayerAction::Play => PlaybackCommand::Play,
             PlayerAction::Pause { paused } => PlaybackCommand::Pause(paused),
+            PlayerAction::PauseFor { .. } => {
+                unreachable!("source control normalized before generic action")
+            }
             PlayerAction::Seek { seconds } => PlaybackCommand::Seek(seconds),
             PlayerAction::Volume { value } => PlaybackCommand::Volume(value),
             PlayerAction::Speed { value } => PlaybackCommand::Speed(value),
@@ -789,7 +827,7 @@ impl MusicClient {
                     target.cancellation(self, lease, super::focus::Owner::Audio, control_intent),
                 )
                 .await?
-        } else if let Some(expected) = quality_guard.or(queue_guard) {
+        } else if let Some(expected) = quality_guard.or(queue_guard).or(source_guard) {
             controller
                 .command_guarded(&token, command, expected, Cancellation::default())
                 .await?
