@@ -4,6 +4,8 @@
 mod observed;
 #[path = "media_shortcuts.rs"]
 mod shortcuts;
+#[path = "atomic_snapshot.rs"]
+mod snapshot;
 use cumulus_core::protocol::api::{Api, ApiFuture};
 #[derive(Default)]
 struct MediaLibrary(super::relay_fixture::Library);
@@ -52,9 +54,7 @@ use std::{
 };
 use tauri::Manager;
 fn write(path: &Path, value: &Value) {
-    let next = path.with_extension("pending");
-    std::fs::write(&next, serde_json::to_vec(value).unwrap()).unwrap();
-    std::fs::rename(next, path).unwrap();
+    snapshot::write(path, value).unwrap();
 }
 pub fn run() {
     run_mode(false);

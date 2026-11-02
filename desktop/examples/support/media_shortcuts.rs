@@ -30,6 +30,7 @@ pub fn command<R: tauri::Runtime>(
     }
 }
 pub fn observe<R: tauri::Runtime>(app: &tauri::AppHandle<R>, state: &mut Value) {
+    state["shortcutBusy"] = cumulus_desktop::shortcuts::is_processing(app).into();
     state["shortcuts"] = serde_json::to_value(cumulus_desktop::shortcuts::status(app)).unwrap();
     state["shortcutSettings"] = serde_json::to_value(
         app.state::<MusicClient>()

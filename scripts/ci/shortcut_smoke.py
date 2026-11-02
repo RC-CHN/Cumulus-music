@@ -211,6 +211,10 @@ def main():
             keyboard.chord('Left')
             wait(lambda: state()['title'].endswith('合成歌曲 2'), 'previous track')
             record('official-manual-next-previous')
+            # Metadata can publish before the captured previous-track command
+            # releases its native dispatch lease. Do not send the volume key
+            # while production deliberately suppresses concurrent shortcuts.
+            wait(lambda: not state()['shortcutBusy'], 'previous shortcut completion')
             keyboard.chord('Down', hold=1.2)
             wait(lambda: state()['volume'] == 95, 'five percent volume step')
             keyboard.chord('Up')
