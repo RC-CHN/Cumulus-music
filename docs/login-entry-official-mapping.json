@@ -1,0 +1,70 @@
+{
+  "officialVersion": "3.1.42.205594",
+  "thirdPartyFallbackUsed": false,
+  "sources": [
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/541.js",
+      "sha256": "1ec5773f608b9b6fd175cf1480c157b11f2f25b656f0cca057cccfa491792a77"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/278.js",
+      "sha256": "bbb9eb11512e83d9be00dba4c94497cd5b12572e7efc3c1e788e82bd2fa24967"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_20.chunk.1482700000000.js/2992.js",
+      "sha256": "287d4036d1d6fa12b6ac6cda4f145eea0cd4892f1e0f2d9986368a96a94d82cb"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/login/components/PhoneZone.jsx",
+      "sha256": "f8856638c9968350ca55a2036abc9bd5ecd589d4866a9199ecbbbbfbcc19831c"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/login/views/Phone.jsx",
+      "sha256": "08b48ac2f74c9e083173fa07f6d5682110c17d17d201ed6b007e83d2c22a3e17"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/login/views/Mail.jsx",
+      "sha256": "4295af24d0236618f7b1b554862f64b53bbb4eb19063ba410385cd78e6c59d23"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/login/views/ForgetPassword.tsx",
+      "sha256": "d95b267d4a9b0c0dd4f040aedbe83442e236b8db723dc831289686b842a2ba9e"
+    }
+  ],
+  "mapping": {
+    "countryTableAndNumberRule": [
+      "core/src/account/login/presentation.rs",
+      "core/src/account/login/countries.json",
+      "frontend/src/components/login/LoginCountryPicker.vue"
+    ],
+    "regionPersistence": [
+      "core/src/client/auth/presentation.rs",
+      "frontend/src/components/LoginDialog.vue"
+    ],
+    "consentAndRecovery": [
+      "frontend/src/components/login/LoginConsent.vue",
+      "frontend/src/components/LoginDialog.vue",
+      "desktop/src/auth.rs",
+      "desktop/src/browser.rs"
+    ],
+    "emailCompletion": [
+      "frontend/src/services/loginPresentation.ts",
+      "frontend/src/components/login/LoginEmailInput.vue"
+    ],
+    "offlineEvidence": [
+      "desktop/tests/login_entry_official.cjs",
+      "core/tests/fixtures/login-entry-official.json",
+      "core/tests/login_presentation.rs",
+      "desktop/examples/login_entry_ui_probe.js",
+      "scripts/ci/login_entry_smoke.py",
+      "desktop/examples/audit_login_entry_probe.py"
+    ]
+  },
+  "boundaries": [
+    "Official historical country snapshot, not current international numbering standard.",
+    "Local 32-byte digit bound is a documented community adaptation.",
+    "WebView fixture uses no real account, SMS, renewal or browser-page visit.",
+    "Real refresh-token issuance and rotation remain unverified.",
+    "Native browser adapter is injected by the proof host; no real browser page is opened by the WebView test. Linux launcher argv is verified separately."
+  ]
+}

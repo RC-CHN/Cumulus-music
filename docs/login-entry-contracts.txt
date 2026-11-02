@@ -1,0 +1,98 @@
+账号登录基础输入、地区、协议与密码找回（2026-11-03）
+
+来源及适用范围
+官方PC 3.1.42.205594恢复材料优先，没有使用YesPlayMusic。
+M/541提供190项地区的顺序、名称、alpha和区号；M/278提供手机号数字及长度判断。
+PhoneZone.jsx给出296px宽、最高315px下拉和36px行高；Phone.jsx给出协议门槛、
+错误文字、密码/验证码切换及忘记密码入口。M/2992初始protocolChecked=false。
+ForgetPassword.tsx只有手机App操作说明，没有桌面密码重置接口。
+Mail.jsx给出6项邮箱补全及网易邮箱找回页面。具体散列见login-entry-official-mapping.json。
+这张表是原客户端的历史快照，包含历史地区名称，不宣称当前国际编号标准。
+
+地区和号码
+core/account/login/presentation保存公开静态表，client/auth/presentation保存本机选择。
+login_presentation无账号前提，返回countries和selectedCountry；select_login_country仅接受
+表中alpha。保存在安装级SQLite的_local/login_preferences/country，不属于任一账号Cookie。
+美国/加拿大等相同区号仍按alpha区分；重新打开登录窗口或重启后恢复所选地区。
+同一原生客户端的保存队列跨模态框生效；新模态框读取前等待此前保存结束，
+保存失败不会阻塞后续选择，不让已关闭窗口的迟到保存覆盖后来的选择。
+Vue只保存模态框内的手机号、邮箱、自动登录和协议选择；不把它们写浏览器存储。
+地区列表支持中文/英文/alpha/区号过滤、上下箭头/Home/End/Enter/Escape、鼠标滚动。
+使用36px虚拟行和3行缓冲，315px以内菜单，仅渲染当前窗口；菜单空间不足时向上展开。
+搜索无结果有明确空态；Escape只关闭菜单并归还焦点，Tab可离开；选择后保留手机号。
+文字标识替代原Windows旗帜精灵图，避免把私有恢复素材带入发行包；此项是视觉差异。
+
+号码判断共用官方表：首24项常用区号严格按位数判断，重复区号沿用首项规则。
+中国86为11位，香港852为8位，马来西亚60允许9或10位，其他规则逐项见表。
+其余地区接受非空ASCII数字，原实现不是统一5至15位；例如247的4位不再被本地错误拒绝。
+社区原生边界额外限制号码最多32字节、区号1至4位ASCII数字，避免无界输入；
+不将这个本地上限说成原客户端或服务器规则。未知区号的原生宽松判断仍保留，UI只能选表内项。
+发送短信与提交手机凭据前显示与所选区号对应的位数错误，并把焦点放回手机号；
+校验失败不调用login_command，不发送短信或登录请求。错误按Phone.jsx放在自动登录所在操作行，
+错误显示时隐藏自动登录控件但保留原选择；Rust入口重复校验，不能靠绕过Vue跳过号码规则。
+
+协议
+初始不勾选；同一模态框切换手机密码/短信/邮箱、密码找回返回时保留选择，关闭后重新打开不继承。
+提交或发送短信未勾选时显示“请阅读并勾选”，将焦点交给复选框，保留尚未提交的输入。
+这是官方UI层门槛，没有新增伪造的服务端consent字段，也不宣称它是独立的鉴权边界。
+官方邮箱入口经Other组件检查协议；本客户端的常驻方式按钮可以直接切邮箱，所以在邮箱提交处
+执行同一个门槛，避免常驻标签绕过确认。QR流程沿用独立的手机端授权，不增加桌面确认。
+协议链接在未勾选时仍可阅读。只有明确点击链接才调用open_login_document。
+前端仅传service/privacy/children/email_recovery枚举，URL由Rust确定，不接收任意URL或附加参数：
+  http://st.music.163.com/official-terms/service
+  http://st.music.163.com/official-terms/privacy
+  http://st.music.163.com/official-terms/children
+  http://reg.163.com/getpasswd/RetakePassword.jsp
+desktop调用本机默认浏览器；Linux逐个固定URL作为单个xdg-open参数，不经过shell；
+Windows使用既有原生Shell打开边界。浏览器调用失败显示可重试提示，不重放登录或短信。
+这些是官方源码中的公开地址，网页自身内容和可访问性不由本客户端控制。
+
+密码找回与邮箱补全
+手机密码页“忘记密码”进入说明：“请前往手机端最新版【网易云音乐 App】进行操作”。
+左上角提供“其他登录方式”返回入口。转换前清空旧密码/验证码DOM并取消原生候选，
+返回时创建新候选；
+手机号、所选地区、自动登录与协议选择保留，旧密码/验证码不恢复。不请求桌面重置接口。
+邮箱的同名入口调用email_recovery公开文档枚举，由默认浏览器继续网易邮箱恢复流程。
+邮箱补全顺序为163.com、126.com、yeah.net、vip.163.com、vip.126.com、188.com；
+方向键选择、Enter确认后焦点进入密码，Escape关闭建议，鼠标选择不触发表单提交。
+两个@或空白不推荐，最长254字符；补全使用字面匹配，避免源实现search把用户输入解释成正则。
+补全建议和地区弹层均在模态框内，随原面板卸载；动画遵守减少动态效果。
+
+请求与生命周期
+公开元数据和地区设置不发布account-changed，不唤醒续期泵，不访问音乐HTTP。
+生产应用dispatcher限制三个命令只能在main窗口调用；验证码/桌面歌词/迷你窗口不能打开这些页面。
+新建候选仍遵守实际双实验、账号代次和JSK/旧链选择，不因基础表单改动强制启用实验。
+成功必须通过现有原生身份核对和原子持久化；当前账号在替代登录确认前保持不变。
+密码和OTP在有效提交后立即清空，模式转换/找回/关闭时同步清空离场DOM；
+协议未确认或格式错误时尚未提交，不清空用户输入。原生短信冷却在方式转换后仍生效。发送时不把焦点移入协议链接，
+确认发送后焦点归还验证码输入；错误密码返回密码框。
+续期缺凭据提示为“当前会话未保存续期凭据”；不能由旧导入记录推断服务器当时是否下发。
+真实令牌发放、成对轮换及未迁移SDK/官方营销布局仍遵守原审计边界，见相应专项。
+
+可执行验证入口
+可选官方原函数对照（需要本地解包材料，不属于公开CI）：
+  node desktop/tests/login_entry_official.cjs /path/to/repository-with-references
+执行M/541静态表和M/278真实号码判断函数；2475个冻结案例覆盖190项/常用位数/非ASCII输入。
+不执行整个SDK、不连接服务端，不把本地号码判定解释为服务端一定接受。
+公开core/tests/login_presentation.rs对照冻结向量并测试地区重启保存/共享区号身份/固定文档枚举。
+frontend/tests/login-presentation.test.ts验证错误描述与邮箱建议；已有登录状态机测试保留。
+真实WebView专项使用既有account_login_ui_probe宿主与独立entry脚本：
+  cargo build -p cumulus-desktop --example account_login_ui_probe --features custom-protocol --locked
+  python3 scripts/ci/login_entry_smoke.py --binary /absolute/account_login_ui_probe --root /absolute/new-proof-root --screenshots
+Linux无桌面时显式使用独立Xvfb/Openbox；Windows用现有runtime参数。
+该脚本只使用合成HTTP，检查未勾选协议/格式错误零登录零短信、短窗口、深色、键盘、找回返回、
+邮箱补全、明确登录、地区恢复和短信冷却。浏览器由测试宿主注入原生适配器，真实命令分发/封闭枚举仍生效；
+测试记录3个协议、失败/显式重试和邮箱找回共6次原生适配器调用，不打开真实网页。
+Linux平台启动器另用可执行程序记录单个固定URL参数，报告即时失败；Windows实际浏览器仍需实机检查。
+独立SQLite只读审计检查CA恢复、选中账号/自动登录保留、Cookie/RT保存，以及输入/协议不持久化。
+这仍是合成令牌，不能证明本人真实RT发放。
+本机对4个原公开地址作不带Cookie的HEAD读取均为200；邮箱旧地址跳转https://id.163.com/mail/retrievepassword。
+这次HTTP观察不等于所有环境或以后均可访问；网页内容不属于本客户端恢复结果。
+实际本轮执行结果及平台边界记录在ui-ux-validation.txt；编译或上述命令存在本身不等于通过。
+
+本专项之后仍须继续的登录入口差异
+Phone.jsx先执行getCellphoneExistenceCheck并进入独立captchav2页；M/2992以exist=-1设置
+isNewUser/canSkipSetNickname。本客户端当前基础SMS仍为同页号码+验证码，
+未将这个存在性/新用户注册入口做成原有两段流程；已有8860手机号复用注册不是其替代。
+完整SDK处罚/风险/升级页与外部挑战、营销实验布局、本人真实新登录及RT成对轮换、
+Windows与其它DPI实际视觉仍须分别继续，不能用这25态宣称全部账号登录已完成。

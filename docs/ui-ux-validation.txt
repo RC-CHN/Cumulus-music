@@ -4735,3 +4735,64 @@ reuse-focus/reuse-layout早期焦点断言记录显示enter-active仍在，不�
 旧失败运行不因本地修复改称成功，新头完整CI仍须另行验证。
 本轮音乐真实请求/真实注册解绑/付费/短信/邀请均为0；本人RT下发与成对轮换、真实二次分配
 账号、Windows物理桌面、其余SDK和注册找回/终止升级分支及完整目标仍未验收。
+
+2026-11-03 账号优先：地区、协议、密码找回与邮箱输入
+官方来源7项及散列见login-entry-official-mapping.json，业务/字段/原生平台边界见
+login-entry-contracts.txt。使用M/541与M/278真实函数生成190项表和2475冻结号码案例，
+M/2992默认不勾选、PhoneZone/Phone/Mail/ForgetPassword决定交互；未使用YesPlayMusic。
+地区按alpha保存，公共文档仅接收封闭枚举；新增按钮均已连接实际原生路径。
+
+最终产物与执行：
+- Node24.16.0，Rust1.96.0及锁文件。前端format:check、567项测试、类型检查/build通过；
+  日志.build/login-entry-regionfocus-{format-check,front-tests,front-build}.log。
+- 全工作区Rust fmt/Clippy(all-targets/custom-protocol/locked/-D warnings)与测试通过，
+  .build/login-entry-delivery-workspace.log：295个程序、1563项、0失败/忽略。
+  此后只有Vue/TS及嵌入的探针JS焦点/地区断言调整，Rust业务源没有变化；
+  最终再跑fmt/全Clippy及主程序+9个账号例程构建，日志login-entry-regionfocus-*，均终态0。
+- .build/login-entry-dist-freeze.json冻结21个前端产物；native-input-freeze记录1447个相关源文件；
+  approved-binaries记录10个最终二进制。运行验证期间不修改来源、资产或二进制。
+- 最终独立Xvfb/Openbox真实WebView：.build/login-entry-final-gui为25态/25PNG，
+  .build/login-entry-final-account为原28态/28PNG，公共driver分别检查25/28状态及原生请求记录。
+- 实际本机KDE Wayland/XWayland 125%：.build/login-entry-final-kde为25态/25张自有PID窗口
+  合成器截图；.build/login-entry-final-kde-account为28态/28张。全部53幅已在10张图板中
+  人工逐态查看：login-entry-final-physical-gallery及login-entry-final-account-physical-gallery。
+  检查普通/短窗口浅深色、表单间距/错误操作行、协议圆形选择、地区菜单/空态/所选项滚动、
+  邮箱建议/键盘焦点、左上返回、二维码等待/失败/过期、账号/退出等当前专项状态。
+  没有发现当前53幅中的裁切、横向溢出、失焦或不可点击控件；不把这当成官方像素一致。
+- 25态独立只读SQLite审计在Xvfb与本机各通过：保存CA而不是只存共享区号1、当前账号仍选中、
+  自动登录false保持、合成Cookie/RT按原生规则保存；手机号/密码/OTP/协议不作为持久输入保存。
+  协议未确认和号码错误的原生登录/发送计数为0，用户明确同意后才有1次合成邮箱登录及1次SMS。
+- 原生浏览器适配器记录service/privacy/children、privacy失败/显式重试与email_recovery共6次，
+  界面测试不启动真实浏览器。Linux平台启动器单测用可执行程序逐个检查5个固定地址
+  （含原云盘入口）是单个argv，且即时失败向上返回；不能据此称Windows真实浏览器已验证。
+- Python CI工具47项通过；两个runner均加入同一个entrysmoke，Windows结果以新提交CI为准。
+
+真实失败与修正过程：
+首版21态及原28态在隔离WebView通过，但逐图复核发现校验文字位于协议下方、找回返回位于
+正文下方；随后按官方移动到操作行/左上角并重建，不拿早期截图当最终产物。
+增加真正的原生文档适配器调用后，approved-gui在legal_documents_light后失败：按钮禁用
+使焦点落到body。最终用既有useControlFocus在返回后只恢复所属动作，切换/关闭或其它输入胜出。
+focus-gui继续到22态，新增SMS焦点断言失败：busy时的容器兜底被误当成已可用控件；
+排除root自身后，确认发送会进入验证码框。两次失败各保留failed.json，均未重复发登录/SMS。
+旧country_picker_small_dark还观察到已选+60却scrollTop=0；清理搜索词的watch覆盖了所选索引。
+现在打开时保留当前项，最终DOM断言要求MY可见且拥有aria-activedescendant；键盘End仍到尾项。
+最终25态、原28态及本机各25/28态均在这些修正后完整通过，并对同一个最终bundle取证。
+
+本轮没有本人新登录、真实短信/注册/退出/续期或音乐账号写入。URL另用无Cookie HEAD读取
+4次均返回200，邮箱旧址跳转网易新找回页；这是公开HTTP观察，不是浏览器内容或登录成功证据。
+没有新真人RT、真实成对轮换、Windows实机截图、物理应用帧率或整个SDK完成的含义。
+仍须迁移手机存在性检查后的独立captchav2/普通新用户注册、风险/升级/处罚等分支；
+已有8860复用注册不替代这个入口。本专项不关闭完整账号模块或整个桌面目标。
+
+同一最终bundle账号回归补充（2026-11-03）
+所有进程终态0，运行前后再次核对1447源文件、21个前端资产和10个二进制散列未变：
+login-entry-final-device-{jsk,legacy}各39态；email-{jsk,legacy}各22态；
+question-{jsk,legacy}各25态；reuse-{jsk,legacy}各34态及独立SQLite审计；
+sms为25态，sms-failure为4态；auth-jsk为16态及15库审计；saved为10态。
+旧链auth在device-login-login-entry-final-auth-legacy-regression完成16态及重启/15库审计，
+最终renewal在device-login-login-entry-final-renewal-regression完成7态及持久化journal审计。
+缺RT零轮换、新登录/24小时内不刷新、不明续期只读核对不重放、账号切换/退出仍按原边界。
+这些回归是实际Vue/IPC/Rust/合成HTTP执行与原生数据检查；本轮手工视觉复核范围为前述53张
+本机基础登录/账号截图，没有把其余自动回归的每一幅图都说成人工逐态对过。
+CAPTCHA探针也已按新协议门槛显式勾选，但本轮未重新打开在线官方SDK窗口；已有挑战入口
+由auth回归覆盖，不把这说成新增真人CAPTCHA或整个外部验证通过。

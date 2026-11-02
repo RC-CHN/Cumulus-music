@@ -184,3 +184,11 @@ AB关闭的已登录账号旧301链与持久化清队列已在后续完成，见
 六格PIN自动校验、4011/4012/4013、原生ID/取消/未知结果只读核对及持久化边界详见
 email-login-contracts.txt和email-login-mapping.json。发送不会采用身份；已确认verify才核对身份，
 中断响应只保留Cookie供核对，不安装RT。本文此前安全邮箱回执/冷却测试属于当时版本的历史证据。
+
+2026-11-03 基础表单与公共文档
+login_presentation、select_login_country、open_login_document均经过现有main窗口dispatcher限制。
+前端仅获得公开地区表/所选alpha，文档仅传封闭枚举，原生确定官方公开URL；
+这些命令不发布账号变化、不唤醒续期、不发送登录或短信，也不能接收Cookie/签名/授权URL。
+平台浏览器适配器可由可信原生宿主注入，合成WebView测试由此验证6次文档打开/失败/显式重试，
+不让公开CI弹出真实浏览器。生产默认走Linux xdg-open或Windows原生Shell。
+界面协议门槛、地区规则、找回返回、输入清理和已知手机二段入口差异见login-entry-contracts.txt。

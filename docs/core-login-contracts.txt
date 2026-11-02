@@ -120,3 +120,10 @@ desktop-captcha-contracts.txt与login-captcha-mapping.json。主界面只收登�
 AB关闭的已登录账号旧301链与持久化清队列已在后续完成，见login-legacy-contracts.txt；
 匿名账号恢复、完整JSK新登录及原设备确认仍待继续。刷新凭据来源、旧探针未保存响应头的
 证据和本次真实只读实验分组见refresh-token-issuance-evidence.txt，不能把缺令牌推断成未下发或风控。
+
+2026-11-03 基础输入恢复补充
+官方M/541的190项地区表和M/278号码判断迁入account/login/presentation；
+phone_password/phone_sms/send_sms共用原生校验，常用区号位数规则与共享区号行为对照2475冻结案例。
+宽松地区允许原先5至15位错误限制之外的有效形态，本地额外上限32字节不冒称官方规则。
+client/auth/presentation提供安装级所选alpha的读取/验证/保存，独立于账号Cookie和刷新时间；
+公开固定文档枚举不接受任意URL，实际平台打开动作留在desktop。细节见login-entry-contracts.txt。

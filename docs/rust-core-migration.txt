@@ -651,3 +651,13 @@ fm-core-mapping.json。Python仅启动/核对合成证据，未参与任何业�
 及精确验证边界见ui-ux-validation.txt；不据此宣布新版黑名单、小窗或整个目标完成。
 
 2026-11-03：8860关联账号读取与两步登录/注册确认、PC M3138→M363/M15 force注册、昵称/默认许可和跨候选持久恢复已迁移core/account/login/reuse及profiles/registration；前端只用类型化命令。原确认已接受后的登录重放若未发出仍只读核对，不重复确认。两协议WebView与本机34态、独立存储及旧账号回归通过；全部合成，真实RT和其余SDK边界不变。
+
+2026-11-03 账号基础输入迁移补充
+M/541+M/278 → account/login/presentation（190项、号码规则、文档枚举）→
+client/auth/presentation（安装级alpha持久化）→ desktop三个main专用命令 →
+前端地区/协议/密码找回/邮箱补全。新静态表不依赖WebView/Tauri/Python业务进程。
+官方原函数对照/2475冻结案例、core持久化、567前端测试、25态真实WebView与原28态账号回归、
+本机125%同样53幅及只读SQLite审计分开取证；完整业务/字段/平台和未恢复分支见
+login-entry-contracts.txt及ui-ux-validation.txt，来源散列见login-entry-official-mapping.json。
+新入口不取得服务端未发的RT、不更改双实验或会员权限，不把8860注册或基础25态当作
+普通新用户注册和全SDK的替代。完整目标与逐项验收边界保持不变。

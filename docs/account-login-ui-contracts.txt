@@ -8,14 +8,18 @@
 - login/components/index.jsx：标题20px/600，输入36px；Inner横向40px。
 - login/components/Operate.jsx：登录按钮40px、16px/500、圆角与红粉渐变。
 - switchAccount/index.tsx：标题22px，账号行80px，头像36px。
-本客户端保留Cumulus身份。尚未复刻官方营销AB素材、协议/找回密码/地区选择完整界面，
-也未声称390px弹窗宽度、所有平台DPI和官方截图像素一致。细节来源散列见配套mapping。
+本客户端保留Cumulus身份。地区选择、协议与找回密码基础流程已按新增官方证据恢复，
+见login-entry-contracts.txt及其mapping；官方营销AB素材、手机存在性检查后的独立captchav2
+入口和完整新用户注册仍须继续。未声称390px弹窗、所有平台DPI和官方截图像素一致。
 
 登录方式与输入生命周期
-LoginDialog持有仅本次模态框有效的phone/country/email/remember；没有写入localStorage。
+LoginDialog持有本次模态框的phone/country/countryAlpha/email/remember/consent；没有写入localStorage。
+地区alpha另由Rust保存为安装级偏好，读取前等待同一客户端此前尚未完成的地区保存；
+新窗口加载期间不允许提交手机凭据，输入不会在用户提交过程中被迟到区号替换。
 密码、短信码和安全验证答案仍属于各自流程，不进入上述共享对象。
 短信/密码之间切换保留手机号、区号和自动登录选择；点击已选中的手机入口不重置。
-关闭登录窗口后再次打开，标识输入重新为空、区号86、自动登录默认选中。
+关闭后重开，标识输入重新为空、自动登录默认选中、协议默认不勾选；区号恢复本机所选地区，
+没有偏好时才默认中国86。相同区号的不同地区按alpha保存，不混为一个选项。
 每次模式切换、返回已保存账号、关闭/销毁窗口时显式deactivate：
 先使旧面板inert，清理密码/验证码/问题选择，再取消旧原生候选。
 离场DOM可能在组件卸载后继续动画，所以同步清空其敏感输入value/checked；只改Vue变量不够。

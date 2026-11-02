@@ -1786,3 +1786,16 @@ question-approved-{fmt,clippy,native}.log。固定Node24.16.0 npm ci/格式/560�
 全部为合成服务，无本人账号问题或真实RT下发/轮换证明。处罚、实名、其它SDK/完整UI仍继续。
 
 2026-11-03：phone reuse8860与PC昵称注册迁移。17项新集成包含官方字段向量、两次确认守卫、保留原SMS、旧链注册、昵称验证/查重/许可、durable未知写、跨候选/重启/SQLite原子回滚、真实授权Cookie回执、取消/超时及已接受确认后的未发出重放边界；重放问题red后green。全量294程序1560通过、无忽略；最终UI颜色调整后重编Clippy与九原生、前端563及两协议WebView34/KDE34、旧账号全回归通过。范围/失败轮次/产物散列和真实服务边界见ui-ux-validation.txt；不宣称本人注册、RT发放或全目标完成。
+
+2026-11-03 登录公开元数据与基本表单
+core/account/login/presentation的190项官方地区、原生号码校验、封闭文档枚举，以及
+client/auth/presentation的安装级所选alpha持久化已加入；core/tests/login_presentation.rs
+执行2475官方冻结判断、重开core后的共享区号身份及非法文档/地区测试。
+登录业务Rust代码的全工作区测试为295个程序/1563项/0失败忽略，日志
+.build/login-entry-delivery-workspace.log。其后仅前端/探针JS调整；最终再次fmt、全目标
+Clippy -D warnings及10个原生二进制构建通过，见login-entry-regionfocus-*。
+真实WebView25态与账号28态、本机KDE125%同样25+28态及独立SQLite审计通过；
+53张本机图全部人工复核。它们使用合成HTTP/令牌、注入原生浏览器适配器，不代表真实账号
+RT下发/轮换或真实浏览器网页已打开。细节、失败修正和界面回归见ui-ux-validation.txt。
+协议门槛属于官方UI层；没有伪造服务端协议字段。此前同页SMS仍须恢复官方两段/新用户入口，
+本批不把基础表单的通过扩张成整个登录SDK完成。官方来源与可执行入口见login-entry-contracts.txt。
