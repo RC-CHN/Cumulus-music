@@ -1,0 +1,63 @@
+独立评论页资源信息、跳转与单集播放
+2026-11-02；全应用目标继续进行。
+
+官方来源与场景
+pages/Comments/index.tsx的资源区域min-height72px；TrackResourceCard/VoiceResourceCard
+使用64×64封面、8px圆角、悬停播放、16px/600标题、12px署名与20px信息间隔；
+VideoResourceCard使用114×64封面，播放按钮实际执行路由跳转。CommentLayout的评论
+标题16px/22px，计数11px/13px上对齐。本次落实这些可证实的结构/参数，具体来源
+散列见comment-resource-desktop-mapping.json。没有同状态官方运行截图或官方MetaCard
+运行环境，不宣称所有内距/颜色/折行像素一致。
+实际恢复的M3120 ResourceCard只选择track、voice、mv/video；VideoResourceCard对
+普通video明确提前返回。album/playlist/event/topic没有该资源卡片。本实现保留这些
+评论页已有标题上下文，不伪造额外资源请求或将未恢复的普通video播放冒充MV。
+本轮未参考YesPlayMusic，沿用现有官方歌曲/节目/MV接口实现。
+
+状态、持久化和账号隔离
+comments_resource(epoch,resource,refresh)是独立只读IPC；评论分页不等待它成功。
+前端useCommentResource捕获账号、完整resourceKey和读序号。换资源/账号、卸载后
+失效旧回执；网络失败可读取同账号/完整资源缓存并明确显示错误和缓存提示，用户
+显式重试只重读元数据，不提交评论、点赞或重新加载评论分页/草稿。
+首次无缓存时显示来源标题/占位和“重试资源信息”；没有伪造可播放目标。已读卡片
+可在同资源重试时保留；新资源不得显示旧账号/旧资源卡。失效账号清理并通知主模型，
+不回退旧登录数据。重试按钮移除/禁用后的焦点复用评论读控件归属保护，用户已切走
+或另选控件后不抢回。
+Rust验证epoch和thread，原始元数据存于当前账号的comment-resource-v1。缓存记录
+保留完整resource和有类型payload；读回重新验证资源/载荷身份。网络读取在token
+有效时才写入，迟到结果既不返回给新账号也不污染新账号缓存；进程重开可读缓存。
+IPC只投影公开名称、数字资源ID、署名和白名单图片。原始Cookie/签名/音源URL不出
+核心；CDN图片统一https且移除原查询，前端没有直接业务API请求。
+
+调用链和交互
+- 单曲：comments_resource -> CatalogApi::songs -> /api/v3/song/detail，c为单个
+  {id:字符串,v:0}的JSON字符串数组。保留超出JS安全整数范围的ID。标题和专辑/歌手
+  来源于返回元数据；专辑ID有效才跳专辑，歌手ID缺失/0时只显示署名。
+  播放走既有PlaySelection::Songs单曲队列及会员允许音源；同catalog当前曲目且
+  已加载时走绑定playId/queueRevision的PauseFor，暂停/继续不重建队列。停止后
+  重新选择资源。相同数字ID的云盘/本地/声音不当作当前线上单曲。
+- 声音：PodcastApi::episode -> /api/dj/program/detail{id:节目ID}。展示节目名称/
+  封面、所属播单和主播文字；播单跳实际PodcastScope::Radio。官方主播用户主页
+  仍未实现，本轮保持文字，没有伪造可点击入口或用歌手主页代替。
+  新PlaySelection::Voice只选这一集，重新取得episode.playback_resource和节目
+  download_metadata作为队列显示元数据，初始level沿用既有节目standard策略。
+  节目ID和mainTrackId分开；SourceResolver再次核对节目主媒体，调用
+  /api/dj/play/url/check{voiceId}验证canPlay/songId，再用mainTrackId请求
+  /api/song/enhance/player/url/v1。拒绝/身份变化不能播放；会员/试听限制沿用现有
+  解析器，不推断扩充权益。播放选择序号/账号/媒体focus围栏和队列持久化继续生效。
+  当前voiceId匹配时PauseFor保留播放身份；停止后单集重播不先读取整个播单。
+- MV：MvApi::detail -> /api/mlog/detail/v1{id,type:"2"}，只为头卡读取，不拉取
+  下载参数或签名音源。显示114×64封面、标题及可用歌手链接；播放入口执行openMv
+  进入既有MV流程，没有把MV当成音频单曲。普通video分支仍为已知恢复边界。
+- 从卡片跳到播单/MV时，详情页沿用共享usePageEntryFocus处理源按钮离开DOM后的
+  进入焦点，保留已发生的新用户焦点选择；迷你MV不抢主页面焦点。
+
+验证和剩余差异
+core/tests/comment_resource.rs覆盖三类接口参数/公开投影、重开缓存、跨账号隔离、
+错误资源/缓存身份、未支持分支零请求及迟到账号替换。client_player/voice_selection
+覆盖单集与主媒体身份、实际控制器暂停、拒绝权限和被新选择取代。
+frontend/tests/comment-resource.test.ts覆盖独立错误/缓存/重试、切号/卸载迟到结果、
+错误身份与失效、命名空间和停止重播。实际WebView流程由comment_resource_smoke.py
+执行生产UI/IPC/SQLite/libmpv/null，截图/探针细节见ui-ux-validation.txt。
+这些合成测试不证明真实CDN/实体声卡、真实付费内容或Windows实机视觉。MV回跳专项
+刻意拒绝视频流，只验证资源信息和路由，不声称MV解码通过。官方用户主页、富文本/
+VIP/完整评论菜单、吸顶输入、其他AB/全部DPI及全应用逐页对齐仍继续。

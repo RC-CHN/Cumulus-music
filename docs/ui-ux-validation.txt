@@ -4327,3 +4327,61 @@ collection-library-mapping.json；没有使用YesPlayMusic。
   新精确SHA CI，回执另存comment-read-ci-receipt.json；未取得完整成功前保持待验证。
 - 官方资源页头/吸顶输入、VIP/富文本/用户资料/完整菜单、其他AB/全部DPI、真实CDN
   和Windows实机视觉继续审计。无新版本/标签/发布，完整全应用目标仍进行中。
+
+
+独立评论资源、单集播放与导航（2026-11-02后续）
+契约、准确接口参数和来源散列见comment-resource-ui-contracts.txt及配套mapping。
+- 官方M3120和Track/Voice/VideoResourceCard为依据；新增独立comments_resource IPC，
+  当前账号持久化原始元数据，仅投影公开字段/白名单图片。前端单独处理错误/缓存/
+  重试和代次；评论列表不等待元数据成功。标题/计数按CommentLayout16/11px层级。
+  普通video和未选择资源卡的类型不编造请求；主播用户主页仍是明确边界。
+- 新单集Voice选择与现有播单不同：重新读节目，持久化mainTrackId与voice_id，
+  复用现有权限/URL/试听解析器，不先拉整个播单。核心测试最初发现未补队列song
+  元数据会让播放条丢voiceId，已按既有podcast_resources补齐；没有修改通用投影
+  掩盖缺元数据。另一次测试错误假设声音不能切音质，与既有实现不符，改为核对
+  该选择沿用standard初始级别；没有因测试假设而额外限制真实用户权益。
+- 最终comment-resource-final-gui-3（Xvfb/Openbox100%）及comment-resource-final-kde-3
+  （本机KDE Wayland/XWayland125%）各28态/28PNG、外层0、report.ok=true。实际
+  生产dist/IPC/SQLite/libmpv/null，CSS1120×760/760×540、两主题及现有动画。
+  服务/封面/WAV全合成，无真实账号/CDN请求/写入，null不代表实体声卡听感。
+- 28态含单曲/声音播放暂停继续/停止重播、准确资源命名空间与相同playId/entryId/
+  queueRevision、专辑/歌手/播单跳转返回、元数据无缓存/缓存失败及显式重试、草稿
+  原文保持、坏封面实际解码失败、true pending离页后释放回执、窄窗/长标题/MV回跳。
+  声音节目81与主媒体181分别保留；封面64×64/114×64和实际16px标题有断言。
+  每态窗口可见/持焦点、控件实际命中、主评论DOM<=64、横向溢出及MV正文scrollWidth
+  受检。视频流刻意拒绝，单独记录错误小窗并用真实“关闭视频”关闭后查看评论，
+  不是视频解码成功证据；不宣称评论输入被浮窗覆盖时仍可命中所有背景控件。
+- 最终KDE28图通过5张联系表全部人工查看，并原尺寸查看MV长标题换行；GUI28自动
+  布局/焦点检查，不冒称人工看了所有56图。私有总览comment-resource-gallery-final/
+  index.html。源码/21个dist/5个原生二进制/56最终原图与报告散列另存delivery manifest。
+- 探索gui-first在radio_link发现焦点落body，补播单/MV详情进入焦点；gui-second当时
+  27态通过，未含最终标题层级/CSS。第一次标为final的两组27态虽通过，但原生构建
+  开始于前端产物写完前数秒，明确作废其最终验收资格，冻结产物并强制重新嵌入。
+  第二组27态通过后人工截图发现MV不间断长名在详情横向裁切、标题焦点仍是系统蓝框；
+  补换行与主题焦点、增加正文溢出断言和小窗关闭状态后，才得到上述最终28态。
+  comment-resource-dist-visual-freeze.json保存最终冻结散列；前端完成后才原生构建，
+  构建结束再次核对全部21文件散列/mtime未变。
+- 回归comment-resource-regression-writes-2为17态+进程重开/8次合成写入，外层0，
+  丢响应只读核对无自动重发，原101/102保持。writes-1原本失败：新元数据读未在旧
+  HTTP夹具实现，两个unexpected path也被标lostResponse，加上计划的写丢响应为3；
+  为夹具加入严格限123的只读song/detail，再跑writes-2，保留“仅一次丢响应”和所有
+  写计数/原文/进程重开断言，没有改成只统计期望子集放宽测试。
+  reads-1的39态/39图、layout-1的30态/30图也通过；两轮在末次MV换行/标题焦点CSS
+  之前，不冒称已覆盖该最后样式。这两处最终由新的28态实际WebView覆盖。
+- 固定Node24.16.0/Rust1.96.0，沿用未变锁文件及此前npm ci依赖；格式/557项前端
+  测试/类型与生产构建通过。Rust格式、严格workspace/all-targets/custom-protocol/
+  locked Clippy及281结果程序1469 passed、0 failed/ignored通过；旧写入夹具补读后
+  再完整Clippy/同1469测试通过。最后仅前端CSS再改，格式/构建后冻结并重建普通
+  cumulus与catalog/ux/mini/comment_edit四探针后执行最终两组28态。Python47、
+  桌面JS8项通过，原失败/通过日志均留在私有comment-resource-*下。
+- 旧04e351c的41394224795最终failure：Linux/前端成功，Windows为同一album_card
+  reconciled_light后enabled control错误，先前scoped destination wait修复尚未在
+  Windows验证。旧9cc1c80的41402975716单独跟踪，Windows在构建媒体依赖时下载
+  固定FFmpeg源码连接WinError10060/URLError，不是UI测试通过或功能拒绝。
+  windows_media下载现最多3次、每次60秒socket timeout，对429/部分5xx/连接中断
+  重试；独立临时文件完整SHA-256一致才发布输入，不重试404/校验不符，不忽略失败。
+  四个合成测试覆盖中断清理/重试耗尽/哈希错误/既有文件保留，未冒称复现远端网络。
+  本批最终提交另发精确SHA CI，回执comment-resource-ci-receipt.json；未取得该提交
+  完整CI gate成功前保持待验证，没有新版本/标签/发布。
+- 吸顶输入、VIP/富文本/用户主页/完整菜单、其他AB/全部DPI、真实CDN、Windows实机
+  视觉及其余逐页业务仍继续；本轮不代表整个评论域或全应用目标完成。

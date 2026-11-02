@@ -1,0 +1,88 @@
+{
+  "date": "2026-11-02",
+  "contract": "docs/comment-resource-ui-contracts.txt",
+  "officialSources": [
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/Comments/index.tsx",
+      "sha256": "0a7650a42e09370b0e102563813f686033b70c6f738e9ec56128a477fd5cb730"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/Comments/TrackResourceCard.tsx",
+      "sha256": "1858a4161f1eeea4e3b046dcba25d04aad38b10b26be61228e552b2e9a8633eb"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/Comments/VoiceResourceCard.tsx",
+      "sha256": "8b73f372cc06f0cdc86722a805c7c800871c5313b895cde267699a281caaea71"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/Comments/VideoResourceCard.tsx",
+      "sha256": "761568b30e673f4acac523fdbdd0aa29fc6372931f58f42c0df80053ab1e8ed1"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/components/Comment/components/CommentLayout.tsx",
+      "sha256": "3eafc57148160f82026e4de6388913084d2f003f6b2f32c3bb4dd33a74cab12f"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_74.chunk.1482700000000.js/3120.js",
+      "sha256": "30bfb59473d0e029752efda41fccec5a397ff86caa2d737e002b6f886ba90370"
+    }
+  ],
+  "features": [
+    {
+      "feature": "Official track/voice/MV standalone comment metadata header",
+      "frontend": [
+        "components/CommentResourceHeader.vue",
+        "composables/useCommentResource.ts",
+        "services/commentResource.ts"
+      ],
+      "core": [
+        "client/comments/resource.rs"
+      ],
+      "desktop": [
+        "src/comments.rs"
+      ],
+      "verification": [
+        "core/tests/comment_resource.rs",
+        "frontend/tests/comment-resource.test.ts",
+        "scripts/ci/comment_resource_smoke.py"
+      ]
+    },
+    {
+      "feature": "Namespace-aware header playback and explicit single-voice selection",
+      "frontend": [
+        "App.vue",
+        "services/commentResource.ts",
+        "services/player.ts"
+      ],
+      "core": [
+        "client/player/selection.rs",
+        "client/player/dto.rs",
+        "podcast/rights.rs",
+        "playback/source/fetch.rs"
+      ],
+      "verification": [
+        "core/tests/client_player/voice_selection.rs",
+        "desktop/examples/comment_resource_ui_probe.js"
+      ]
+    },
+    {
+      "feature": "Official comment count hierarchy and destination focus continuity",
+      "frontend": [
+        "styles/comments.css",
+        "components/PodcastPage.vue",
+        "components/MvPlayer.vue"
+      ],
+      "verification": [
+        "desktop/examples/comment_resource_ui_probe.js"
+      ]
+    }
+  ],
+  "alternativeClientSources": [],
+  "boundaries": [
+    "M3120 does not render album/playlist/event/topic cards; ordinary video implementation explicitly returns early",
+    "Voice creator profile remains plain text until user profile implementation",
+    "Synthetic APIs/art/audio and null output; no real account/CDN requests/writes or physical audio verification",
+    "Video stream deliberately rejected in header navigation proof; no video decoding claim",
+    "Sticky composer, rich text/VIP/full menus, other AB/all DPI/Windows physical visual and full application audit remain open"
+  ]
+}
