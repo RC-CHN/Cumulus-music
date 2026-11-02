@@ -131,7 +131,7 @@ fn main() {
             if collection_context && stage=="collection-context-fixture" {
                 let id=value["id"].as_u64().expect("collection fixture id");
                 let mode=value["mode"].as_str().unwrap();
-                assert!(["read","none","fail_saved","fail_more","fail_purchase","empty_purchase","empty_saved","fail_follow","empty_follow","delay_more","expire"].contains(&mode));
+                assert!(["read","none","fail_saved","fail_more","fail_purchase","empty_purchase","empty_saved","fail_follow","empty_follow","delay_more","delay_first","expire"].contains(&mode));
                 if mode!="read" {collection_fixture.mode(mode);}
                 handle.get_webview_window("main").unwrap().eval(format!("window.__collectionContextAck[{id}]={};",collection_fixture.report())).unwrap();return;
             }

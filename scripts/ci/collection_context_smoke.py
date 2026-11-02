@@ -37,6 +37,9 @@ def main():
     states = {value['stage'].split('_', 2)[2]: value for path in output.glob('ux_*.json')
               if (value := json.loads(path.read_text(encoding='utf-8')))}
     assert len(states) == 44
+    recovered = states['saved_first_recovered_light']['collectionFixture']
+    assert recovered['delayedFirstCompleted'] == 1 and not recovered['pending']
+    assert [call['mode'] for call in recovered['calls']] == [1, 10]
     for state in states.values():
         assert state['visible'] and state['focused'] and state['focusValid'] and not state['overflow']
         assert state['cards'] <= 36 and all(control['hit'] for control in state['controls'])

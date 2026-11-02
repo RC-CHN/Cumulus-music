@@ -14,6 +14,7 @@ pub struct Library {
     calls: Mutex<Vec<Value>>,
     pending: AtomicBool,
     delayed: AtomicU64,
+    delayed_first: AtomicU64,
 }
 impl Default for Library {
     fn default() -> Self {
@@ -23,6 +24,7 @@ impl Default for Library {
             calls: Mutex::new(Vec::new()),
             pending: AtomicBool::new(false),
             delayed: AtomicU64::new(0),
+            delayed_first: AtomicU64::new(0),
         }
     }
 }
@@ -39,13 +41,14 @@ impl Library {
                 "empty_follow" => 7,
                 "delay_more" => 8,
                 "expire" => 9,
+                "delay_first" => 10,
                 _ => 0,
             },
             Ordering::SeqCst,
         );
     }
     pub fn report(&self) -> Value {
-        json!({"calls":self.calls.lock().unwrap().clone(),"pending":self.pending.load(Ordering::SeqCst),"delayedCompleted":self.delayed.load(Ordering::SeqCst)})
+        json!({"calls":self.calls.lock().unwrap().clone(),"pending":self.pending.load(Ordering::SeqCst),"delayedCompleted":self.delayed.load(Ordering::SeqCst),"delayedFirstCompleted":self.delayed_first.load(Ordering::SeqCst)})
     }
 }
 fn album(id: u64) -> Value {
@@ -74,6 +77,12 @@ impl Api for Library {
                 "/api/album/sublist" => {
                     let offset = args["offset"].as_u64().unwrap_or(0);
                     let limit = args["limit"].as_u64().unwrap_or(50);
+                    if mode == 10 && offset == 0 {
+                        self.pending.store(true, Ordering::SeqCst);
+                        tokio::time::sleep(std::time::Duration::from_millis(750)).await;
+                        self.pending.store(false, Ordering::SeqCst);
+                        self.delayed_first.fetch_add(1, Ordering::SeqCst);
+                    }
                     if mode == 8 && offset > 0 {
                         self.pending.store(true, Ordering::SeqCst);
                         tokio::time::sleep(std::time::Duration::from_millis(750)).await;

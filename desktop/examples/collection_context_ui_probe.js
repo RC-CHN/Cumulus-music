@@ -120,7 +120,10 @@
   }
   async function retry() {
     click(button("重试", one(".collections-page")));
-    await wait(ready, "retry");
+    // A click can observe the old aria-busy=false before Vue flushes the
+    // request's loading state. Require the retry's error removal as well;
+    // the first-page fixture deliberately holds its response for 750 ms.
+    await wait(() => ready() && !one(".catalog-error"), "retry completion");
     await settle();
   }
   async function more() {
@@ -386,13 +389,18 @@
     click(button("专辑与关注"));
     await wait(() => ready() && one(".catalog-error"), "first page error");
     await capture("saved_first_error_light");
-    await mode("none");
+    await mode("delay_first");
     await retry();
     assert(
-      loaded() === 50 && focusKey(document.activeElement) === "control:refresh",
-      "initial retry focus",
+      loaded() === 50,
+      "initial retry loaded page: " + loaded(),
+    );
+    assert(
+      focusKey(document.activeElement) === "control:refresh",
+      "initial retry focus: " + focusKey(document.activeElement),
     );
     await capture("saved_first_recovered_light");
+    await mode("none");
     await more();
     await filter("收藏专辑");
     await scroll(1800);
