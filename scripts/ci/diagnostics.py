@@ -14,7 +14,7 @@ PATTERNS = (
     'windows-media/build.log', 'windows-media/plan.json', 'windows-media/installed.json',
     'windows-media/player-probe.log', 'windows-media/player-probe.stdout.log', 'windows-media/player-probe.json', 'windows-media/equalizer-proof',
     'ci-scroll*', 'ci-graphics*', 'ci-ux*', 'ci-motion*', 'ci-accounts*', 'ci-jsk-auth*',
-    'ci-startup*', 'ci-output-settings*', 'ci-tray*', 'ci-mpris*', 'ci-catalog*', 'ci-likes*', 'ci-keyboard*', 'ci-session-renewal*', 'ci-email-login*',
+    'ci-startup*', 'ci-output-settings*', 'ci-tray*', 'ci-mpris*', 'ci-catalog*', 'ci-likes*', 'ci-keyboard*', 'ci-session-renewal*', 'ci-email-login*', 'ci-question-login*',
     'ci-collections*', 'ci-history*', 'ci-settings*', 'ci-relay*',
     'ci-download-*', 'ci-cloud-*', 'ci-local-resource*', 'ci-rankings*',
     'ci-playlist-*', 'ci-song-menu*', 'ci-search*', 'ci-library*', 'ci-card-source*', 'ci-album-card*', 'ci-artist-card*', 'ci-comment-read*', 'ci-comment-resource*',
