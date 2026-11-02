@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { useMotion } from '../composables/useMotion';
 import { usePageEntryFocus } from '../composables/usePageEntryFocus';
-import { computed, ref, watch, nextTick, onUnmounted } from 'vue';
+import { useCommentReadFocus } from '../composables/useCommentReadFocus';
+import { useCommentFloorView } from '../composables/useCommentFloorView';
+import { computed, ref, watch, nextTick, onUnmounted, useId } from 'vue';
 import type { CommentsModel } from '../composables/useComments';
 import CommentCard from './CommentCard.vue';
 import CommentWritePanel from './CommentWritePanel.vue';
@@ -18,6 +19,29 @@ const { page, query, loading, error, actionError, busy, history } = props.model;
 const context = props.context ?? useCommentContext(props.model);
 const { target, floor, writer } = context;
 const scroller = ref<HTMLElement>();
+const owner = () =>
+  `${props.model.epoch.value}:${props.model.resource.value ? resourceKey(props.model.resource.value) : ''}`;
+const read = useCommentReadFocus(scroller, owner, () =>
+  JSON.stringify([query.value.sort, query.value.offset, query.value.commentId]),
+);
+const panelId = useId();
+function sortKey(event: KeyboardEvent, value: 'latest' | 'hot') {
+  const next =
+    event.key === 'Home'
+      ? 'latest'
+      : event.key === 'End'
+        ? 'hot'
+        : ['ArrowLeft', 'ArrowRight'].includes(event.key)
+          ? value === 'latest'
+            ? 'hot'
+            : 'latest'
+          : undefined;
+  if (!next || loading.value) return;
+  event.preventDefault();
+  const target = scroller.value?.querySelector<HTMLButtonElement>(`[data-comment-sort="${next}"]`);
+  target?.focus({ preventScroll: true });
+  void read(event, () => props.model.sort(next), target ?? undefined);
+}
 usePageEntryFocus(
   scroller,
   () => !!page.value || !!error.value,
@@ -41,6 +65,7 @@ watch(
 );
 const composer = ref<InstanceType<typeof CommentWritePanel>>(),
   floorContainer = ref<HTMLDivElement>();
+const floorView = useCommentFloorView(floor, scroller, floorContainer, owner);
 const writing = computed(() => writer.busy.value || writer.pending.value.length > 0);
 onUnmounted(() => {
   if (!props.context) context.dispose();
@@ -49,15 +74,6 @@ async function replyTo(item: CommentItem) {
   writer.setReply(item);
   await nextTick();
   composer.value?.focus();
-}
-async function openFloor(item: CommentItem) {
-  await floor.open(item);
-  await nextTick();
-  if (floor.query.value?.parentId === (item.parentId ?? item.id))
-    floorContainer.value?.scrollIntoView({
-      block: 'start',
-      behavior: useMotion().reduced.value ? 'instant' : 'smooth',
-    });
 }
 async function floorLike(item: CommentItem) {
   const e = props.model.epoch.value,
@@ -89,6 +105,12 @@ const groups = computed(() =>
       ]
     : [],
 );
+const missingTarget = computed(
+  () =>
+    !!query.value.commentId &&
+    !!page.value &&
+    !groups.value.some((group) => group.items.some((item) => item.id === query.value.commentId)),
+);
 </script>
 <template>
   <section
@@ -96,15 +118,18 @@ const groups = computed(() =>
     class="comments-page"
     :class="{ 'comments-embedded': embedded }"
     aria-label="评论页面"
+    :aria-busy="loading"
   >
     <header class="page-heading">
       <div>
         <p v-if="!embedded" class="muted">{{ title }}</p>
-        <component :is="embedded ? 'h2' : 'h1'">
+        <component :is="embedded ? 'h2' : 'h1'" data-comment-read-heading tabindex="-1">
           评论 <small v-if="page">{{ page.total }}</small>
         </component>
       </div>
-      <button class="text-button" :disabled="loading" @click="model.load()">刷新评论</button>
+      <button class="text-button" :disabled="loading" @click="read($event, () => model.load())">
+        刷新评论
+      </button>
     </header>
     <CommentWritePanel
       v-if="model.epoch.value && model.resource.value"
@@ -117,20 +142,30 @@ const groups = computed(() =>
         <button
           role="tab"
           :aria-selected="query.sort === 'latest'"
+          :id="`${panelId}-latest`"
+          :aria-controls="panelId"
+          :tabindex="query.sort === 'latest' ? 0 : -1"
+          data-comment-sort="latest"
           :disabled="loading"
-          @click="model.sort('latest')"
+          @click="read($event, () => model.sort('latest'))"
+          @keydown="sortKey($event, 'latest')"
         >
           最新评论</button
         ><button
           role="tab"
           :aria-selected="query.sort === 'hot'"
+          :id="`${panelId}-hot`"
+          :aria-controls="panelId"
+          :tabindex="query.sort === 'hot' ? 0 : -1"
+          data-comment-sort="hot"
           :disabled="loading"
-          @click="model.sort('hot')"
+          @click="read($event, () => model.sort('hot'))"
+          @keydown="sortKey($event, 'hot')"
         >
           精彩评论
         </button>
       </div>
-      <form @submit.prevent="model.locate(target.trim())">
+      <form @submit.prevent="read($event, () => model.locate(target.trim()))">
         <input
           v-model="target"
           aria-label="评论编号"
@@ -139,11 +174,31 @@ const groups = computed(() =>
         /><button class="text-button" :disabled="loading || !target.trim()">定位评论</button>
       </form>
     </div>
-    <div v-if="error || actionError" class="error-state" role="alert">
-      {{ actionError || error
-      }}<button class="text-button" :disabled="loading" @click="model.load()">刷新</button>
+    <div v-if="actionError" class="error-state" role="alert">
+      {{ actionError
+      }}<button class="text-button" :disabled="loading" @click="read($event, () => model.load())">
+        刷新
+      </button>
+    </div>
+    <div v-if="error" class="error-state comment-read-error" role="alert">
+      {{ error
+      }}<button
+        v-if="model.retryTarget.value"
+        class="text-button"
+        :disabled="loading"
+        @click="read($event, model.retry)"
+      >
+        重试
+      </button>
     </div>
     <p v-if="page?.cached" class="form-warning">当前显示缓存评论，联网刷新后可获取最新内容。</p>
+    <p
+      v-if="!loading && missingTarget && groups.some((group) => group.items.length)"
+      class="form-warning comment-target-missing"
+      role="status"
+    >
+      这条评论暂时无法读取
+    </p>
     <div v-if="page?.operations.length" class="comment-pending" role="status">
       <p>部分点赞结果尚未确认，请先核对。</p>
       <button
@@ -162,6 +217,7 @@ const groups = computed(() =>
     <div ref="floorContainer">
       <CommentFloorPanel
         :model="floor"
+        :owner="owner()"
         :busy="busy"
         :operations="page?.operations ?? []"
         :writing="writing"
@@ -170,45 +226,67 @@ const groups = computed(() =>
         @remove="composer?.requestDelete($event)"
         @locate="model.locate"
         @reconcile="floorReconcile"
+        @close="floorView.close"
       />
     </div>
-    <template v-for="group in groups" :key="group.key"
-      ><section v-if="group.items.length" class="comment-group" :data-group="group.key">
-        <h2>{{ group.title }}</h2>
-        <CommentCard
-          v-for="item in group.items"
-          :key="item.id"
-          :item="item"
-          :busy="busy.has(item.id)"
-          :pending="!!page?.operations.some((op) => op.id === item.id)"
-          :writing="writing"
-          @like="model.like"
-          @locate="model.locate"
-          @reconcile="model.reconcile"
-          @reply="replyTo"
-          @remove="composer?.requestDelete($event)"
-          @floor="openFloor"
-        /></section
-    ></template>
-    <div v-if="page && groups.every((group) => !group.items.length)" class="empty-state">
-      {{
-        query.commentId
-          ? '这条评论暂时无法读取'
-          : query.sort === 'hot'
-            ? '暂无精彩评论'
-            : '还没有评论'
-      }}
+    <div :id="panelId" role="tabpanel" :aria-labelledby="`${panelId}-${query.sort}`">
+      <template v-for="group in groups" :key="group.key"
+        ><section v-if="group.items.length" class="comment-group" :data-group="group.key">
+          <h2>{{ group.title }}</h2>
+          <CommentCard
+            v-for="item in group.items"
+            :key="item.id"
+            :item="item"
+            :busy="busy.has(item.id)"
+            :pending="!!page?.operations.some((op) => op.id === item.id)"
+            :writing="writing"
+            @like="model.like"
+            @locate="model.locate"
+            @reconcile="model.reconcile"
+            @reply="replyTo"
+            @remove="composer?.requestDelete($event)"
+            @floor="floorView.open"
+          /></section
+      ></template>
+      <div v-if="page && groups.every((group) => !group.items.length)" class="empty-state">
+        {{
+          query.commentId
+            ? '这条评论暂时无法读取'
+            : query.sort === 'hot'
+              ? '暂无精彩评论'
+              : '还没有评论'
+        }}
+      </div>
+      <footer v-if="page" class="comment-pagination">
+        <p v-if="error" class="comment-navigation-error" role="status">
+          {{ error
+          }}<button
+            v-if="model.retryTarget.value"
+            class="text-button"
+            :disabled="loading"
+            @click="read($event, model.retry)"
+          >
+            重试
+          </button>
+        </p>
+        <button
+          class="download-button"
+          :disabled="loading || !history.length"
+          @click="read($event, model.back)"
+        >
+          上一页</button
+        ><span
+          >{{ page.comments.length ? query.offset + 1 : 0
+          }}{{ page.comments.length ? `–${query.offset + page.comments.length}` : '' }} /
+          {{ page.total }}</span
+        ><button
+          class="download-button"
+          :disabled="loading || !page.next"
+          @click="read($event, model.next)"
+        >
+          下一页
+        </button>
+      </footer>
     </div>
-    <footer v-if="page" class="comment-pagination">
-      <button class="download-button" :disabled="loading || !history.length" @click="model.back">
-        上一页</button
-      ><span
-        >{{ page.comments.length ? query.offset + 1 : 0
-        }}{{ page.comments.length ? `–${query.offset + page.comments.length}` : '' }} /
-        {{ page.total }}</span
-      ><button class="download-button" :disabled="loading || !page.next" @click="model.next">
-        下一页
-      </button>
-    </footer>
   </section>
 </template>

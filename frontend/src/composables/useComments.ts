@@ -11,6 +11,8 @@ import {
   type CommentPage,
   type CommentQuery,
   type CommentResource,
+  type CommentReadNavigation,
+  type CommentReadRetry,
 } from '../services/comments.ts';
 export function useComments(core: CommentClient = useCore(), expired: () => void = () => {}) {
   const epoch = ref(''),
@@ -22,6 +24,7 @@ export function useComments(core: CommentClient = useCore(), expired: () => void
     actionError = ref(''),
     busy = shallowRef(new Set<string>()),
     history = shallowRef<CommentQuery[]>([]);
+  const retryTarget = shallowRef<CommentReadRetry<CommentQuery>>();
   let generation = 0,
     listing = 0,
     writes = 0;
@@ -40,6 +43,7 @@ export function useComments(core: CommentClient = useCore(), expired: () => void
     loading.value = false;
     busy.value = new Set();
     history.value = [];
+    retryTarget.value = undefined;
     expired();
   }
   function connect(account: AccountView) {
@@ -53,13 +57,12 @@ export function useComments(core: CommentClient = useCore(), expired: () => void
     loading.value = false;
     busy.value = new Set();
     history.value = [];
+    retryTarget.value = undefined;
     error.value = '';
     actionError.value = '';
   }
-  async function load(
-    target = query.value,
-    navigation: 'refresh' | 'next' | 'back' | 'reset' = 'refresh',
-  ) {
+  async function load(target = query.value, navigation: CommentReadNavigation = 'refresh') {
+    target = { ...target };
     const selected = resource.value,
       e = epoch.value,
       g = generation,
@@ -68,17 +71,23 @@ export function useComments(core: CommentClient = useCore(), expired: () => void
     if (!selected || !e) return;
     loading.value = true;
     error.value = '';
+    retryTarget.value = undefined;
+    const current = () => valid(g, e) && ticket === listing && revision === writes;
+    const checked = (reply: { epoch: string; value: CommentPage }) => {
+      if (reply.epoch !== e || resourceKey(reply.value.resource) !== resourceKey(selected))
+        throw { code: 'stale', message: '评论响应已变化，请重试' };
+      return reply.value;
+    };
     let result: CommentPage | undefined;
     try {
-      const reply = await core.commentsPage(e, selected, target, true);
-      if (reply.epoch === e) result = reply.value;
+      result = checked(await core.commentsPage(e, selected, target, true));
     } catch (value) {
-      if (valid(g, e) && ticket === listing) {
+      if (current()) {
         issue(value);
         if (!valid(g, e)) return;
+        retryTarget.value = { query: target, navigation };
         try {
-          const reply = await core.commentsPage(e, selected, target, false);
-          if (reply.epoch === e) result = reply.value;
+          result = checked(await core.commentsPage(e, selected, target, false));
         } catch {
           /* Keep the actionable network error. */
         }
@@ -97,6 +106,9 @@ export function useComments(core: CommentClient = useCore(), expired: () => void
           if (navigation === 'reset') history.value = [];
           page.value = result;
           query.value = target;
+          // Cache fallback already completed the navigation. A later refresh
+          // must not push/pop the history a second time.
+          if (error.value) retryTarget.value = { query: target, navigation: 'refresh' };
         }
       }
     }
@@ -108,6 +120,7 @@ export function useComments(core: CommentClient = useCore(), expired: () => void
     page.value = undefined;
     query.value = commentQuery();
     history.value = [];
+    retryTarget.value = undefined;
     busy.value = new Set();
     error.value = '';
     actionError.value = '';
@@ -187,6 +200,11 @@ export function useComments(core: CommentClient = useCore(), expired: () => void
     actionError,
     busy,
     history,
+    retryTarget,
+    retry: () => {
+      const target = retryTarget.value;
+      if (!loading.value && target) return load(target.query, target.navigation);
+    },
     connect,
     open,
     load,

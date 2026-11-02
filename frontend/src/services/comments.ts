@@ -11,6 +11,11 @@ export interface CommentQuery {
   beforeTime: number;
   commentId: string | null;
 }
+export type CommentReadNavigation = 'refresh' | 'next' | 'back' | 'reset';
+export interface CommentReadRetry<Query> {
+  query: Query;
+  navigation: CommentReadNavigation;
+}
 export interface CommentAuthor {
   name: string;
   avatarUrl: string | null;

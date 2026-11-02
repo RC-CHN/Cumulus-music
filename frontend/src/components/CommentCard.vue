@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref, watch } from 'vue';
 import type { CommentItem } from '../services/comments';
 import Icon from './Icon.vue';
 function timestamp(time: number): string | undefined {
@@ -8,7 +9,7 @@ function timestamp(time: number): string | undefined {
 function localTime(time: number): string {
   return timestamp(time) ? new Date(time).toLocaleString() : '时间未知';
 }
-withDefaults(
+const props = withDefaults(
   defineProps<{
     item: CommentItem;
     busy: boolean;
@@ -18,24 +19,33 @@ withDefaults(
   }>(),
   { writing: false, showFloor: true },
 );
+const failedAvatar = ref(false);
+watch(
+  () => props.item.author?.avatarUrl,
+  () => {
+    failedAvatar.value = false;
+  },
+);
 const emit = defineEmits<{
   like: [item: CommentItem];
   locate: [id: string];
   reconcile: [id: string];
   reply: [item: CommentItem];
   remove: [item: CommentItem];
-  floor: [item: CommentItem];
+  floor: [item: CommentItem, event: MouseEvent];
 }>();
 </script>
 <template>
   <article class="comment-card" :data-comment-id="item.id">
     <img
-      v-if="item.author?.avatarUrl"
+      v-if="item.author?.avatarUrl && !failedAvatar"
       class="comment-avatar"
       :src="item.author.avatarUrl"
       alt=""
       loading="lazy"
+      decoding="async"
       referrerpolicy="no-referrer"
+      @error="failedAvatar = true"
     />
     <span v-else class="comment-avatar"><Icon name="user" /></span>
     <div class="comment-copy">
@@ -53,7 +63,7 @@ const emit = defineEmits<{
       <div class="comment-footer">
         <time :datetime="timestamp(item.time)">{{ item.timeText || localTime(item.time) }}</time>
         <div class="comment-operations">
-          <button v-if="showFloor" class="text-button" @click="emit('floor', item)">
+          <button v-if="showFloor" class="text-button" @click="emit('floor', item, $event)">
             查看回复
           </button>
           <button class="text-button" :disabled="writing || busy" @click="emit('reply', item)">
@@ -90,7 +100,8 @@ const emit = defineEmits<{
             :disabled="writing || busy || pending || item.liked === null"
             @click="emit('like', item)"
           >
-            <Icon name="thumb" /><span>{{ item.likedCount || '' }}</span>
+            <span>{{ item.likedCount || '' }}</span
+            ><Icon name="thumb" />
           </button>
         </div>
       </div>
