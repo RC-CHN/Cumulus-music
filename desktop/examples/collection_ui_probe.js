@@ -29,8 +29,8 @@
   await mode('none');click(button('重试'));await wait(()=>ready()&&count()===2,'purchase retry');await capture('purchased_recovered');
   click(button('关注歌手'));await wait(()=>ready()&&count()===20,'followed first page');await capture('followed_first');
   for(let i=0;button('加载更多')&&i<20;i++){const before=count();click(button('加载更多'));await wait(()=>ready()&&count()>before,'followed continuation');}
-  assert(count()===205&&!button('加载更多'),'followed list end');one('.collection-follow-scroll').scrollTop=999999;await sleep(350);assert(one('article.collection-follow-card'),'user-only record not mistaken for artist');await capture('followed_scrolled');
-  one('.collection-follow-scroll').scrollTop=0;await sleep(350);click(one('button.collection-follow-card'));await wait(()=>one('.artist-header'),'followed artist navigation');await capture('followed_artist');
+  assert(count()===205&&!button('加载更多'),'followed list end');one('.collection-follow-scroll').scrollTop=999999;await sleep(350);assert(one('.collection-follow-card:not(:has(.collection-follow-open))'),'user-only record not mistaken for artist');await capture('followed_scrolled');
+  one('.collection-follow-scroll').scrollTop=0;await wait(()=>one('.collection-follow-open[data-collection-key="artist:12"]'),'first followed artist rendered');click(one('.collection-follow-open[data-collection-key="artist:12"]'));await wait(()=>one('.artist-header'),'followed artist navigation');await capture('followed_artist');
   back();await wait(()=>ready()&&button('关注歌手')?.getAttribute('aria-current')==='page','back retains followed tab');await capture('followed_back');
   click(one('[aria-label="外观主题"]'));await wait(()=>button('深色'),'theme menu');click(button('深色'));await wait(()=>document.documentElement.dataset.theme==='dark','dark');await capture('followed_dark');
   await emit('resize',{width:760,height:540});await wait(()=>innerWidth===760,'small window');await capture('followed_small');

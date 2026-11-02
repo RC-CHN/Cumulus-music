@@ -63,7 +63,12 @@ fn main() {
         !album_cards || !is_live,
         "album card proof uses isolated synthetic APIs only"
     );
-    let interactive = albums || artists || rankings || album_cards;
+    let artist_cards = std::env::var("CUMULUS_ARTIST_CARD_PROOF").as_deref() == Ok("1");
+    assert!(
+        !artist_cards || !is_live,
+        "artist card proof uses isolated synthetic APIs only"
+    );
+    let interactive = albums || artists || rankings || album_cards || artist_cards;
     let collections = std::env::var("CUMULUS_COLLECTION_PROOF").as_deref() == Ok("1");
     let collection_context =
         std::env::var("CUMULUS_COLLECTION_CONTEXT_PROOF").as_deref() == Ok("1");
@@ -89,6 +94,7 @@ fn main() {
         let contention=Arc::new(relay_contention::Fixture::new(registry.store()));
         let catalog_fixture=Arc::new(fixture::Library::default());
         if album_cards {catalog_fixture.album_cards();}
+        if artist_cards {catalog_fixture.artist_cards();}
         let collection_fixture=Arc::new(collection_fixture::Library::default());
         let history_fixture=Arc::new(history_fixture::Library::default());
         let settings_fixture=Arc::new(settings_fixture::Library::default());
@@ -120,6 +126,12 @@ fn main() {
                 assert!(["read","none","album-offline","album-sub-reject","album-sub-lost"].contains(&mode));
                 if mode!="read" {catalog_fixture.mode(mode);}
                 handle.get_webview_window("main").unwrap().eval(format!("window.__albumCardAck[{id}]={};",catalog_fixture.report())).unwrap();return;
+            }
+            if artist_cards && stage=="artist-card-fixture" {
+                let id=value["id"].as_u64().expect("artist fixture id");let mode=value["mode"].as_str().unwrap();
+                assert!(["read","none","artist-state-offline","artist-sub-reject","artist-sub-lost"].contains(&mode));
+                if mode!="read" {catalog_fixture.mode(mode);}
+                handle.get_webview_window("main").unwrap().eval(format!("window.__artistCardAck[{id}]={};",catalog_fixture.report())).unwrap();return;
             }
             if stage=="relay_contention" && relay_publication && !is_live {
                 let contention=contention.clone();let session=session.clone();let fixture=relay_fixture.clone();let handle=handle.clone();
@@ -172,7 +184,7 @@ fn main() {
             if !(["complete","failed"].contains(&stage) || stage.starts_with("ux_") && stage.chars().all(|c|c.is_ascii_alphanumeric()||c=='_')){return;}
             let handle=handle.clone();let output=output.clone();let stage=stage.to_owned();
             let collection_report=collection_context.then(|| collection_fixture.report());
-            let album_card_report=album_cards.then(||catalog_fixture.report());
+            let album_card_report=(album_cards || artist_cards).then(||catalog_fixture.report());
             let publication_fixture=relay_fixture.clone();let publication=publisher.clone();let publication_session=session.clone();
             let artist_song_reads=catalog_fixture.artist_song_reads.load(std::sync::atomic::Ordering::SeqCst);
             let artist_album_reads=catalog_fixture.artist_album_reads.load(std::sync::atomic::Ordering::SeqCst);

@@ -170,7 +170,7 @@
     await sleep(30);
   }
   function visibleCard() {
-    const cards = all("button.catalog-card,button.collection-follow-card");
+    const cards = all("button.catalog-card,button.collection-follow-open");
     return (
       cards.find((node) => {
         const b = bounds(node),
@@ -196,7 +196,7 @@
     const focusSamples = [];
     if (
       active?.matches(
-        ".collection-follow-card:focus-visible,[data-collection-key='control:refresh']:focus-visible",
+        ".collection-follow-open:focus-visible,[data-collection-key='control:refresh']:focus-visible",
       )
     ) {
       const box = active.getBoundingClientRect();

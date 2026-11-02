@@ -20,16 +20,20 @@ pub struct Library {
     pub artist_album_reads: AtomicUsize,
     calls: Mutex<Vec<Value>>,
     album_cards: AtomicBool,
+    artist_cards: AtomicBool,
 }
 impl Library {
     pub fn album_cards(&self) {
         self.album_cards.store(true, Ordering::SeqCst);
     }
+    pub fn artist_cards(&self) {
+        self.artist_cards.store(true, Ordering::SeqCst);
+    }
     pub fn mode(&self, mode: &str) {
         *self.mode.lock().unwrap() = mode.into();
     }
     pub fn report(&self) -> Value {
-        json!({"albumCollected":self.album_collected.load(Ordering::SeqCst),"calls":self.calls.lock().unwrap().clone()})
+        json!({"albumCollected":self.album_collected.load(Ordering::SeqCst),"artistCollected":self.artist_collected.load(Ordering::SeqCst),"calls":self.calls.lock().unwrap().clone()})
     }
 }
 fn id(v: &Value) -> u64 {
@@ -40,6 +44,21 @@ fn song(n: u64) -> Value {
 }
 fn artist(n: u64) -> Value {
     json!({"id":n,"name":if n==12 {"测试歌手".into()}else{format!("相似歌手 {n}")},"musicSize":55,"albumSize":62,"mvSize":2,"alias":["A synthetic artist"],"briefDesc":"用于检查歌手详情的合成简介。"})
+}
+fn action_artist(n: u64) -> Value {
+    let mut value = artist(n);
+    if n == 13 {
+        value["name"] =
+            json!("长名称歌手 · AnArtistWithAnUnbrokenDisplayNameForLayoutVerification");
+    }
+    if n == 15 {
+        value["musicSize"] = json!(0);
+    }
+    value["picUrl"] = json!(format!(
+        "https://p1.music.126.net/cumulus-synthetic-{}.png",
+        if n == 14 { "missing" } else { "cover" }
+    ));
+    value
 }
 fn album(n: u64) -> Value {
     let mut value = json!({"id":n,"name":if n==7 {"测试专辑".into()}else{format!("合成专辑 {n}")},"size":11,"publishTime":1700000000000_i64,"artists":[{"id":12,"name":"测试歌手"}],"description":"这是合成的专辑介绍。\n用于检查多行文本、深色配色和长内容布局。"});
@@ -83,6 +102,7 @@ impl Api for Library {
         Box::pin(async move {
             let mode = self.mode.lock().unwrap().clone();
             let album_cards = self.album_cards.load(Ordering::SeqCst);
+            let artist_cards = self.artist_cards.load(Ordering::SeqCst);
             self.calls
                 .lock()
                 .unwrap()
@@ -107,6 +127,9 @@ impl Api for Library {
                 && matches!(path, "/api/album/v3/detail" | "/api/album/v4/detail")
             {
                 return Err(Error::Transport("synthetic album metadata offline".into()));
+            }
+            if mode == "artist-state-offline" && path == "/api/artist/detail/dynamic" {
+                return Err(Error::Transport("synthetic artist state offline".into()));
             }
             if path.starts_with("/api/artist/albums/") {
                 self.artist_album_reads.fetch_add(1, Ordering::SeqCst);
@@ -133,7 +156,12 @@ impl Api for Library {
                     json!({"code":200,"songs":rows.iter().map(|v|song(id(&v["id"]))).collect::<Vec<_>>()})
                 }
                 "/api/artist/v3/detail" => {
-                    let mut value = artist(id(&args["id"]));
+                    let n = id(&args["id"]);
+                    let mut value = if artist_cards {
+                        action_artist(n)
+                    } else {
+                        artist(n)
+                    };
                     if mode == "artist-long" {
                         value["name"] =
                             json!("长名称测试歌手 · An artist with a very long display name");
@@ -144,7 +172,7 @@ impl Api for Library {
                         value["albumSize"] = json!(0);
                         value["mvSize"] = json!(0);
                     }
-                    json!({"code":200,"artist":value,"hotSongs":if mode=="artist-zero"{vec![]}else{(1..=50).map(song).collect::<Vec<_>>()},"more":false})
+                    json!({"code":200,"artist":value,"hotSongs":if mode=="artist-zero" || artist_cards && n==15 {vec![]}else{(1..=50).map(song).collect::<Vec<_>>()},"more":false})
                 }
                 "/api/song/enhance/privilege" => {
                     let ids: Vec<Value> =
@@ -162,7 +190,7 @@ impl Api for Library {
                     json!({"code":200,"briefDesc":"合成概述","introduction":[{"ti":"音乐经历","txt":"这段内容是合成测试文本。\n没有真实账号信息。"}]})
                 }
                 "/api/discovery/simiArtist" => {
-                    json!({"code":200,"artists":(13..=32).map(artist).collect::<Vec<_>>(),"more":false})
+                    json!({"code":200,"artists":if artist_cards{(13..=55).map(action_artist).collect::<Vec<_>>()}else{(13..=32).map(artist).collect::<Vec<_>>()},"more":false})
                 }
                 "/api/mlog/artist/video" => {
                     json!({"code":200,"data":{"records":[{"id":"21","resource":{"mlogBaseData":{"type":3,"text":"合成 MV"}}},{"id":"opaque","resource":{"mlogBaseData":{"type":2,"text":"普通视频类型"}}}],"page":{"cursor":"20","size":20,"more":false}}})
@@ -205,15 +233,32 @@ impl Api for Library {
                     json!({"code":200,"data":{"resourceType":"other"}})
                 }
                 "/api/artist/sublist" => {
-                    json!({"code":200,"more":false,"count":usize::from(self.artist_collected.load(Ordering::SeqCst)),"data":if self.artist_collected.load(Ordering::SeqCst){vec![artist(12)]}else{vec![]}})
+                    json!({"code":200,"more":false,"count":usize::from(self.artist_collected.load(Ordering::SeqCst)),"data":if self.artist_collected.load(Ordering::SeqCst){vec![if artist_cards{action_artist(13)}else{artist(12)}]}else{vec![]}})
                 }
                 "/api/album/sublist" => {
                     json!({"code":200,"more":false,"hasMore":false,"count":usize::from(self.album_collected.load(Ordering::SeqCst)),"data":if self.album_collected.load(Ordering::SeqCst){vec![if album_cards{action_album(7)}else{album(7)}]}else{vec![]}})
                 }
                 "/api/artist/sub" | "/api/artist/unsub" => {
+                    if mode == "artist-sub-reject" {
+                        return Ok(json!({"code":403}));
+                    }
                     self.artist_collected
                         .store(path.ends_with("/sub"), Ordering::SeqCst);
+                    if mode == "artist-sub-lost" {
+                        return Err(Error::Transport(
+                            "synthetic lost artist write response".into(),
+                        ));
+                    }
                     json!({"code":200})
+                }
+                "/api/user/follow/users/mixed/get/v2" if artist_cards => {
+                    let mut records = vec![];
+                    if self.artist_collected.load(Ordering::SeqCst) {
+                        records.push(json!({"artistInfo":action_artist(13),"userProfile":{"userId":113,"nickname":"关联用户","signature":"合成签名 · LongSignatureWithoutBreaksForOverflowVerification","avatarUrl":"https://p1.music.126.net/cumulus-synthetic-cover.png"}}));
+                    }
+                    records.push(json!({"artistInfo":action_artist(14),"userProfile":Value::Null}));
+                    records.push(json!({"userProfile":{"userId":114,"nickname":"已注销的合成用户","accountStatus":30}}));
+                    json!({"code":200,"data":{"records":records,"page":{"cursor":"0","size":19,"more":false}}})
                 }
                 "/api/album/sub" | "/api/album/unsub" => {
                     if mode == "album-sub-reject" {
