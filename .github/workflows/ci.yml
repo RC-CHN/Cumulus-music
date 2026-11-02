@@ -80,7 +80,9 @@ jobs:
           - os: windows-2022
             platform: windows-x64
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 120
+    # Windows' observed full run took ~120 minutes before the cache save;
+    # individual WebView probes retain their own bounded timeouts.
+    timeout-minutes: 150
     defaults:
       run:
         shell: bash
