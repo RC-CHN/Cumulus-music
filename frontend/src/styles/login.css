@@ -46,7 +46,7 @@
 .login-challenge select {
   width: 100%;
   min-width: 0;
-  height: 38px;
+  height: 36px;
   padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -71,7 +71,7 @@
 }
 .login-code button {
   flex-shrink: 0;
-  height: 38px;
+  height: 36px;
   color: var(--accent);
   font-size: 12px;
 }
@@ -89,6 +89,9 @@
   width: 100%;
   border-radius: 24px;
   height: 40px;
+  font-size: 16px;
+  font-weight: 500;
+  background: linear-gradient(242.83deg, #fc3d49 16.96%, #fc3d49 34.33%, #ff1168 83.04%);
 }
 .login-accounts,
 .login-restart {
@@ -189,6 +192,9 @@
 .saved-account:hover {
   background: var(--surface-alt);
 }
+.saved-account[data-current='true'] {
+  opacity: 1;
+}
 .saved-account img,
 .saved-account > svg {
   width: 36px;
@@ -232,20 +238,6 @@
   justify-content: end;
   gap: 20px;
 }
-@media (max-height: 620px) {
-  .login-dialog {
-    padding: 22px 32px 18px;
-  }
-  .login-dialog .brand-mark {
-    margin-bottom: 8px;
-  }
-  .login-methods {
-    margin: 12px 0;
-  }
-  .login-note {
-    margin-top: 10px;
-  }
-}
 .login-dialog::backdrop {
   background: #19102066;
   backdrop-filter: blur(3px);
@@ -262,7 +254,8 @@
   font-size: 28px;
 }
 .login-dialog h2 {
-  font-size: 24px;
+  font-size: 20px;
+  font-weight: 600;
 }
 .login-dialog > .muted {
   font-size: 12px;
@@ -279,14 +272,42 @@
   border: 1px solid var(--line);
 }
 .qr-frame svg {
-  width: 210px;
-  height: 210px;
+  width: 194px;
+  height: 194px;
+}
+.qr-confirmation {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.qr-confirmation svg {
+  width: 48px;
+  height: 48px;
+  color: var(--accent);
+}
+.qr-confirmation strong {
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 500;
+}
+.login-panel:focus,
+.login-flow:focus,
+.qr-frame:focus {
+  outline: none;
 }
 .login-status {
   font-size: 12px;
   line-height: 1.8;
-  min-height: 44px;
+  min-height: 22px;
+  margin: 8px 0;
   color: var(--text-secondary);
+}
+.login-status:empty {
+  min-height: 0;
+  margin: 0;
 }
 .login-note {
   font-size: 10px;
@@ -303,4 +324,18 @@
 }
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+@media (max-height: 620px) {
+  .login-dialog {
+    padding: 22px 32px 18px;
+  }
+  .login-dialog .brand-mark {
+    margin-bottom: 8px;
+  }
+  .login-methods {
+    margin: 12px 0;
+  }
+  .login-note {
+    margin-top: 10px;
+  }
 }

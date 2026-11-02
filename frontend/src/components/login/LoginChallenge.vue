@@ -21,6 +21,11 @@ const available = computed(
 const selected = computed(() =>
   available.value.includes(method.value) ? method.value : (available.value[0] ?? ''),
 );
+function clearSecrets() {
+  code.value = '';
+  answer.value = '';
+}
+defineExpose({ clearSecrets });
 async function verify() {
   const otp = code.value;
   code.value = '';

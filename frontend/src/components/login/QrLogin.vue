@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useCore } from '../../services/core';
 import { failure, type QrView, type QrStatus } from '../../services/contracts';
+import Icon from '../Icon.vue';
 const emit = defineEmits<{ authorized: [] }>();
 const core = useCore();
 const qr = ref<QrView>();
@@ -11,6 +12,22 @@ const captchaBusy = ref(false);
 let generation = 0;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let disposed = false;
+const frame = ref<HTMLElement>();
+function deactivate() {
+  if (disposed) return;
+  disposed = true;
+  generation++;
+  clearTimeout(timer);
+  if (qr.value) void cancel(qr.value.operationId);
+  qr.value = undefined;
+}
+defineExpose({ deactivate });
+watch(status, async () => {
+  const owned = frame.value?.contains(document.activeElement);
+  await nextTick();
+  if (!disposed && owned && document.activeElement === document.body)
+    frame.value?.focus({ preventScroll: true });
+});
 const path = computed(
   () =>
     qr.value?.modules
@@ -38,6 +55,7 @@ async function cancel(id: string) {
 }
 async function begin() {
   const current = ++generation;
+  captchaBusy.value = false;
   clearTimeout(timer);
   error.value = '';
   status.value = 'creating';
@@ -96,23 +114,28 @@ async function captcha() {
   } catch (e) {
     if (!disposed && current === generation) error.value = failure(e).message;
   } finally {
-    captchaBusy.value = false;
+    if (!disposed && current === generation) captchaBusy.value = false;
   }
 }
 onMounted(() => {
   void begin();
 });
-onUnmounted(() => {
-  disposed = true;
-  generation++;
-  clearTimeout(timer);
-  if (qr.value) void cancel(qr.value.operationId);
-});
+onBeforeUnmount(deactivate);
 </script>
 <template>
-  <div class="qr-frame" :aria-busy="status === 'creating'">
+  <div ref="frame" class="qr-frame" tabindex="-1" :aria-busy="status === 'creating'">
+    <div
+      v-if="status === 'waiting_confirmation'"
+      class="qr-confirmation"
+      aria-label="扫码成功"
+      role="status"
+    >
+      <Icon name="check" />
+      <strong>扫码成功</strong>
+      <span>请在手机上确认登录</span>
+    </div>
     <svg
-      v-if="qr && !['expired', 'error', 'challenge'].includes(status)"
+      v-else-if="qr && ['waiting_scan', 'authorized'].includes(status)"
       :viewBox="`0 0 ${size} ${size}`"
       role="img"
       aria-label="网易云音乐登录二维码"
@@ -127,5 +150,7 @@ onUnmounted(() => {
   <button v-if="status === 'challenge'" class="primary" :disabled="captchaBusy" @click="captcha">
     {{ captchaBusy ? '请在验证窗口中完成操作…' : '打开安全验证' }}
   </button>
-  <p class="login-status" role="status">{{ error || labels[status] }}</p>
+  <p class="login-status" role="status">
+    {{ error || (status === 'waiting_confirmation' ? '' : labels[status]) }}
+  </p>
 </template>

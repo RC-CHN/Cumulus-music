@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import type { AccountView } from '../services/contracts';
 import { failure } from '../services/contracts';
 import type { SavedAccount } from '../services/auth';
@@ -9,6 +9,7 @@ import { useSavedAccounts } from '../composables/useSavedAccounts';
 import Icon from './Icon.vue';
 import SessionRenewal from './SessionRenewal.vue';
 import { useConfirmationFocus } from '../composables/useConfirmationFocus';
+import { useControlFocus } from '../composables/useControlFocus';
 const props = defineProps<{ account: AccountView }>();
 const emit = defineEmits<{ close: []; login: []; changed: [] }>();
 const core = useCore();
@@ -25,12 +26,29 @@ const leaving = ref(false),
 let alive = true,
   focused: HTMLElement | null = null;
 const epoch = props.account.epoch;
+const actionFocus = useControlFocus(
+  () => props.account.epoch,
+  () => dialog.value?.querySelector<HTMLElement>('[data-confirmation-fallback]'),
+);
+function deactivate() {
+  if (!alive) return;
+  alive = false;
+  model.dispose();
+  saved.dispose();
+}
+function login() {
+  deactivate();
+  emit('login');
+}
 useConfirmationFocus(
   dialog,
   computed(() => removal.value?.id ?? (confirm.value ? 'logout' : undefined)),
 );
 function close() {
-  if (!leaving.value && !removing.value) emit('close');
+  if (!leaving.value && !removing.value) {
+    deactivate();
+    emit('close');
+  }
 }
 function cancel() {
   if (leaving.value || removing.value) return;
@@ -40,7 +58,10 @@ function cancel() {
 }
 watch(
   () => props.account.epoch,
-  () => emit('close'),
+  () => {
+    deactivate();
+    emit('close');
+  },
 );
 async function load() {
   model.error.value = '';
@@ -80,11 +101,9 @@ onMounted(() => {
   void load();
 });
 onUnmounted(() => {
-  alive = false;
-  model.dispose();
-  saved.dispose();
   focused?.focus();
 });
+onBeforeUnmount(deactivate);
 </script>
 <template>
   <dialog
@@ -112,7 +131,7 @@ onUnmounted(() => {
         <button data-confirmation-cancel :disabled="removing" @click="removal = undefined">
           取消
         </button>
-        <button class="primary" :disabled="removing" @click="remove">
+        <button class="primary" :disabled="removing" @click="actionFocus.run($event, remove)">
           {{ removing ? '正在移除…' : '确认移除' }}
         </button>
       </div>
@@ -124,7 +143,7 @@ onUnmounted(() => {
       >
       <div class="account-confirm">
         <button data-confirmation-cancel :disabled="leaving" @click="confirm = false">取消</button
-        ><button class="primary" :disabled="leaving" @click="logout">
+        ><button class="primary" :disabled="leaving" @click="actionFocus.run($event, logout)">
           {{ leaving ? '正在退出…' : '确认退出' }}
         </button>
       </div></template
@@ -137,7 +156,7 @@ onUnmounted(() => {
         :key="epoch"
         :epoch="epoch"
         :disabled="busy || leaving || removing"
-        @login="emit('login')"
+        @login="login"
       />
       <p v-if="loading" role="status">正在读取账号…</p>
       <p v-else-if="!accounts.length" class="muted">暂无已保存账号</p>
@@ -147,7 +166,7 @@ onUnmounted(() => {
             class="saved-account"
             :data-current="item.current"
             :disabled="item.current || busy || leaving || removing || item.removalPending"
-            @click="select(item)"
+            @click="actionFocus.run($event, () => select(item))"
           >
             <img
               v-if="item.avatarUrl"
@@ -157,7 +176,7 @@ onUnmounted(() => {
             /><Icon v-else name="user" /><span
               >{{ item.nickname }}<small v-if="item.current">当前账号</small
               ><small v-else-if="item.removalPending">凭据清理未完成</small
-              ><small v-else-if="!item.autoLogin">未开启自动登录</small></span
+              ><small v-if="!item.autoLogin && !item.removalPending">未开启自动登录</small></span
             >
           </button>
           <button
@@ -172,7 +191,7 @@ onUnmounted(() => {
           </button>
         </div>
       </div>
-      <button class="account-add" :disabled="busy || leaving || removing" @click="emit('login')">
+      <button class="account-add" :disabled="busy || leaving || removing" @click="login">
         ＋ 添加账号
       </button>
       <button

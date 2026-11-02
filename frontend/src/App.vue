@@ -33,6 +33,7 @@ import PlaylistActions from './components/playlist/PlaylistActions.vue';
 import PlaylistBatchPage from './components/playlist/PlaylistBatchPage.vue';
 import TrackActions from './components/TrackActions.vue';
 import ModalTransition from './components/ModalTransition.vue';
+import { useModalOrigin } from './composables/useModalOrigin';
 import LoginDialog from './components/LoginDialog.vue';
 import AccountDialog from './components/AccountDialog.vue';
 import AccountWelcome from './components/AccountWelcome.vue';
@@ -892,6 +893,10 @@ function lyricPanelLeave(element: Element) {
   (element as HTMLElement).inert = true;
 }
 const accountsOpen = ref(false);
+const accountFocus = useModalOrigin(
+  () => loginOpen.value || accountsOpen.value,
+  () => document.querySelector<HTMLElement>('.account-button'),
+);
 const favorite = computed(() => playlists.value.find((p) => p.favorite && p.owned));
 const playlistActions = ref<InstanceType<typeof PlaylistActions>>();
 function playlistMenu(list: PlaylistView, scene: PlaylistMenuScene = 'collection') {
@@ -2059,7 +2064,10 @@ onUnmounted(() => {
       @comments="trackComments"
       @member="music.navigate({ kind: 'member' })"
     />
-    <ModalTransition>
+    <ModalTransition
+      :return-focus="accountFocus.returnFocus"
+      :fallback-focus="accountFocus.fallbackFocus"
+    >
       <LoginDialog
         v-if="loginOpen"
         :epoch="account.epoch"
@@ -2071,7 +2079,10 @@ onUnmounted(() => {
         "
       />
     </ModalTransition>
-    <ModalTransition>
+    <ModalTransition
+      :return-focus="accountFocus.returnFocus"
+      :fallback-focus="accountFocus.fallbackFocus"
+    >
       <AccountDialog
         v-if="accountsOpen"
         :account="account"
