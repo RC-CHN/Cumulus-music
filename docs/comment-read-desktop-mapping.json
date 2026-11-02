@@ -1,0 +1,81 @@
+{
+  "date": "2026-11-02",
+  "contract": "docs/comment-read-ui-contracts.txt",
+  "officialSources": [
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/components/Comment/components/CommentCard.jsx",
+      "sha256": "dc8b5255e18d7259fed08d488f2a98c78112ffb7cd2da15770c283c867915224"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/components/Comment/components/CommentLayout.tsx",
+      "sha256": "3eafc57148160f82026e4de6388913084d2f003f6b2f32c3bb4dd33a74cab12f"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/Comments/index.tsx",
+      "sha256": "0a7650a42e09370b0e102563813f686033b70c6f738e9ec56128a477fd5cb730"
+    },
+    {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/HotComments/index.tsx",
+      "sha256": "e48426524ae96d11b8c92a43c83ad5cb1b16f0b0ff993ef07d1c391fc632fd6c"
+    }
+  ],
+  "features": [
+    {
+      "feature": "Exact failed query retry and cache-aware navigation history",
+      "frontend": [
+        "composables/useComments.ts",
+        "composables/useCommentFloor.ts",
+        "services/comments.ts"
+      ],
+      "core": [
+        "comments/api.rs",
+        "comments/cache.rs",
+        "comments/floor.rs",
+        "client/comments/mod.rs",
+        "client/comments/floor.rs"
+      ],
+      "verification": [
+        "frontend/tests/comment-read-retry.test.ts",
+        "desktop/examples/comment_read_ui_probe.js"
+      ]
+    },
+    {
+      "feature": "Read focus ownership, pagination feedback and inline floor lifecycle",
+      "frontend": [
+        "components/CommentsPage.vue",
+        "components/CommentFloorPanel.vue",
+        "composables/useCommentReadFocus.ts",
+        "composables/useCommentFloorView.ts"
+      ],
+      "verification": [
+        "scripts/ci/comment_read_smoke.py",
+        "desktop/examples/support/comment_read_fixture.rs"
+      ]
+    },
+    {
+      "feature": "Recovered non-macOS comment card dimensions and bad artwork fallback",
+      "frontend": [
+        "components/CommentCard.vue",
+        "styles/comments.css"
+      ],
+      "verification": [
+        "desktop/examples/comment_read_ui_probe.js"
+      ]
+    }
+  ],
+  "alternativeClientSources": [
+    {
+      "scope": "Existing floor endpoint only",
+      "source": "Archived API-Reborn and historical real PC response",
+      "implementation": "core/src/comments/floor.rs",
+      "reason": "Endpoint absent from recovered official desktop registry"
+    }
+  ],
+  "boundaries": [
+    "Synthetic read proof rejects account writes; no real account/CDN/audio verification",
+    "Shared dimensions are source-derived; no official same-state pixel oracle",
+    "Resource header/sticky composer/VIP/rich text/user profile/full menus remain open",
+    "Windows physical visual and all DPI unverified",
+    "Full application goal active"
+  ]
+}

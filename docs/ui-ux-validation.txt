@@ -4274,3 +4274,56 @@ collection-library-mapping.json；没有使用YesPlayMusic。
   发送精确SHA CI并保存artist-card-ci-receipt.json。未取得完整CI gate前不称CI全绿。
   用户主页/私信、新歌通知菜单、其余AB/逐页UI、全部DPI、真实CDN和Windows实机视觉
   继续审计；本轮没有新版本/标签/发布，全应用目标保持进行中。
+
+
+评论读取恢复、楼层阅读位置与焦点（2026-11-02后续）
+来源、API参数/调用链、导航状态和边界见comment-read-ui-contracts.txt及配套mapping。
+- 改前生产WebView的comment-read-baseline-1为3态/3图，真实合成调用为offset0→
+  offset20失败→点击“刷新”却重读offset0，证实失败的下一页目标丢失。主评论和
+  楼层现保存准确query/navigation；缓存已完成的next/back重试改为refresh，不重复
+  修改历史。六项新模型测试覆盖第三页缓存回退、排序/超长ID、切号及楼层limit。
+- 页面把读取与写错误分开，分页处就近重试；排序键盘、缺目标提示、坏头像回退及
+  官方非macOS卡片尺寸已接入。楼层补currentComment，展开/关闭和读控件恢复按
+  账号/资源/位置/组件寿命保留焦点；新用户选择及离开后的迟到回执不得抢回。
+- 最终comment-read-final-gui-1（隔离Xvfb/Openbox100%）及comment-read-final-kde-2
+  （本机KDE Wayland/XWayland125%）各39态/39原PNG，外层0，report.ok=true。
+  CSS1120×760/760×540、两主题、正常动画及减少动态偏好；同一冻结生产dist/真实
+  Tauri IPC/SQLite。服务和头像合成，坏图实际解码失败，无真实账号/CDN请求/写入。
+  本专项没有播放音频，不能当作实体声卡或播放器验证。
+- 39态包括主列表next/back、无缓存失败、缓存回退/重读、热评失败/键盘切回、无效/
+  巨大字符串ID/缺目标、空结果、楼层首读/续页/缓存/收起、真实pending后离页再释放
+  回执、重新进入、末页、窄窗两主题、减少动态和会话失效。前25态草稿原文未变；
+  下一页/楼层time1000失败与重试的序列化API参数完全相同，缓存重试后140/540仍
+  可见，楼层关闭回原101入口；true pending及delayedCompleted=1证明实际迟到读。
+  每态检查窗口可见/焦点/命中/横溢出及DOM<=64；最终新增重试按钮完整可见断言，
+  不用仅1px可见或只检查已暴露控件的子集代替反馈可达。
+- 最终KDE39图经7张联系表全部人工查看，另原尺寸查看主分页、楼层分页及窄窗楼层
+  失败反馈。GUI39自动布局/焦点/像素核验，不宣称人工查看了所有78图。私有总览
+  comment-read-gallery-final/index.html；原图/状态/源码/dist/二进制散列另存manifest。
+- 探索gui-first在v-model完成前点禁用定位，改为等控件实际可用；不是产品失败。
+  gui-second的错误收尾提前释放hold，诊断不代表在途状态；gui-third先保存诊断后
+  才释放，确认加载时disabled按钮失焦落body，修复主动临时区域焦点。gui-fourth
+  当时39态通过，但新增页底断言后gui-fifth发现同页缓存重试跳到顶部；增加位置key
+  保护后gui-sixth通过。随后KDE1人工截图发现新错误提示把分页挤出视口，只露焦点
+  框顶边；修复nearest反馈滚动和主题轮廓，补完整控件断言并重建得到最终两轮。
+  gui-sixth/KDE1因此不是最终证据，未将断言漏报隐去。
+- 最后滚动修复后的回归：comment-read-regression-layout-3为30态/30PNG，writes-3
+  为17态+进程重开、8次合成写入，均外层0；不自动重发未决写入，旧101/102保留。
+  album-card-2为39态/39PNG，含播放/队列/收藏未知回执只读核对。先前album-2的
+  专辑详情50态在最后DOM滚动修正前通过，不能当成覆盖该末次修改的证据。
+- 固定Node24.16.0/Rust1.96.0：npm ci、前端格式/553项测试/类型/生产构建通过。
+  Rust格式、严格workspace/all-targets/custom-protocol/locked Clippy和280结果程序
+  共1463 passed、0 failed/ignored；此后仅前端焦点/样式再改，重新做前端检查并
+  冻结dist，重建cumulus及catalog/ux/mini/comment_edit四探针才跑最终GUI。
+  Python43项和桌面JS8项通过；误用*.test.*的空匹配只运行0项，不计验证，通过的是
+  显式watchman_environment.cjs/watchman_compatibility.cjs的corrected日志。
+- 上轮795b76c的CI 41390725777最终failure：前端/Linux成功，Windows已通过评论
+  写入/布局/收藏44态后，album_card探针在reconciled_light后找不到可用入口。
+  下载原始合成诊断保留failed/状态JSON；源码显示等待普通album:7可能被离开中的
+  歌手页满足，而真实收藏页尚在读取。改为等待.collections-page内的同ID入口，
+  保留既有39态/身份/写请求计数断言；这是推断的探针就绪竞态，未在本机确定性重现
+  Windows原故障，不声称已取得Windows修复通过证据。该探针调整独立于产品修复。
+  04e351c的CI 41394224795另行跟踪，不以局部成功代替CI gate。当前最终提交发送
+  新精确SHA CI，回执另存comment-read-ci-receipt.json；未取得完整成功前保持待验证。
+- 官方资源页头/吸顶输入、VIP/富文本/用户资料/完整菜单、其他AB/全部DPI、真实CDN
+  和Windows实机视觉继续审计。无新版本/标签/发布，完整全应用目标仍进行中。

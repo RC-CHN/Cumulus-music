@@ -1,0 +1,70 @@
+评论读取、分页恢复与楼层阅读交互
+2026-11-02；全应用UI/UX审计继续进行。
+
+依据和边界
+- 官方CommentCard.jsx的非macOS分支：40px头像，19px/17px上下内距，12px正文间隔，
+  昵称15px/20px、正文15px/20px，引用左内距7px/右外距40px，点赞数字在图标之前。
+  恢复文件、CommentLayout及Comments/HotComments页面的散列见配套JSON。
+- 本次对齐上述可证实的卡片参数，保留已有最新/精彩排序、定位、分页、点赞、回复、
+  发布/删除及持久化写入意图。不是本次从零增加了全部评论功能。
+- 楼层/api/resource/comment/floor/get不在恢复的官方PC注册表中。沿用core/comments/
+  floor.rs记录的归档API-Reborn与历史真实PC响应来源；不宣称找回官方楼层渲染器。
+  本轮未参考YesPlayMusic，也未重新进行真实账号请求。
+- 精确读取重试、键盘页签、失效请求围栏和焦点处理为社区实现；没有同状态官方运行
+  截图，不能把参数对照或合成API成功称作像素一致。
+
+读取状态与失败恢复
+- 主列表保留已经确认的query、page、history。每次读取先捕获独立query副本，网络
+  成功且账号epoch/资源/代次/读序号/写修订仍有效才应用；写入后旧读取不得覆盖点赞。
+- 失败独立保存{query,navigation}，navigation为refresh/next/back/reset。用户点击
+  “重试”发送失败的准确目标，不用旧页的refresh代替失败的next或排序/定位请求。
+  没有可用缓存时原页和历史保持不变；提示仍显示在顶部，并在分页处提供就近重试。
+- 有相同目标的有效缓存时允许完成这次翻页并明确提示缓存。此时重试标为refresh，
+  刷新成功不得第二次push/pop历史。失败的back和第三页缓存回退也有模型测试。
+- 新读取、重新选资源、账号变化/失效清除旧重试目标；楼层关闭同样清除。楼层校验
+  epoch/资源/parentId/time/limit，服务端提供的time游标不由界面自行计算。
+- 读取error和写操作actionError分开显示，不互相遮蔽。写入的未知结果、核对和持久化
+  继续沿用既有Rust意图，不因重试读取自动重新发布/删除/点赞。
+- 评论ID全程保持字符串。无效编号显示错误；服务返回普通列表而没有目标时明确提示
+  “这条评论暂时无法读取”，不把“未看见”推断成删除成功。
+
+阅读位置与键盘
+- 已确认sort/offset/commentId变化才回到主评论起点；同页刷新保留阅读位置。焦点
+  恢复另检查位置key，缓存页底重试不能因为按钮移除而跳回顶部。
+- useCommentReadFocus在调用前捕获来源和分页/工具区域。加载导致按钮禁用或移除时，
+  将焦点临时放到仍可见的同一区域；WebKit延迟把disabled按钮blur到body也得到处理。
+  结束优先回原控件，同页保留原区域，换页才回标题。使用nearest显示反馈及按钮。
+  用户已经转焦点、切资源/账号/页面、组件销毁或有新读取时不能抢回旧焦点。
+- 最新/精彩使用roving tab与关联tabpanel，支持左右/Home/End；目标页签作为恢复锚点，
+  不把键盘切换结束后的焦点还给旧页签。aria-busy和实际加载/错误/空结果独立表示。
+- 楼层展开立即定位并聚焦标题；减少动态偏好下禁用平滑滚动。加载不阻止关闭；关闭
+  使旧读失效，回原“查看回复”控件或主标题。原评论、定位回复、精彩及普通回复分别
+  显示，补上之前未渲染的currentComment。页面离开后的迟到读取不能重新打开楼层。
+- 头像延迟解码，坏图实际进入占位；长昵称和正文可换行。临时区域用主题色内侧焦点
+  轮廓；错误区域可折行，窄窗重试必须完整可见，不能只剩一条焦点框边缘。
+
+类型化调用和接口
+主读：CommentsPage -> useComments -> CoreClient.commentsPage -> comments_page
+ -> Rust Client::comments_page -> Comments缓存/CommentApi::page。
+最新：/api/v1/resource/comments/{thread}，limit/offset/beforeTime/compareUserLocation，
+以及commentId/composeConcert/markReplied/forceFlatComment/showInner。
+精彩：/api/v1/resource/hotcomments/{thread}，limit/offset/beforeTime/compareUserLocation。
+结果包含comments/topComments/hotComments/currentComment/total/next；next的offset和
+beforeTime由Rust解析服务端条目生成。refresh=false读取相同账号与查询的持久化缓存。
+楼层：CommentFloorPanel -> useCommentFloor -> comments_floor -> Rust comments_floor/
+CommentApi::floor，/api/resource/comment/floor/get参数threadId/parentCommentId/time/limit；
+结果ownerComment/currentComment/bestComments/comments/totalCount/hasMore/time，经Rust
+身份/分页验证后交给UI。time=-1为首读，续页使用服务返回值。
+点赞仍调用comment_like及/api/v1/comment/like或/unlike；本专项读夹具明确拒绝写操作。
+发布/回复/删除另走CommentWritePanel和既有journal，见core-comment-write-contracts.txt。
+Cookie/签名/授权URL不进前端；没有新增直接业务HTTP请求或Python业务进程依赖。
+
+可执行验证和未完成项
+scripts/ci/comment_read_smoke.py运行生产dist/真实Tauri IPC/SQLite及独立合成API，39态
+覆盖精确重试、缓存历史、排序/字符串定位、楼层首读/续页/关闭、在途离开后回执、
+失效、两主题/两尺寸/减少动态。夹具不访问真实账号或CDN，并拒绝评论写入。
+frontend/tests/comment-read-retry.test.ts六项覆盖模型游标/历史/缓存/代次/limit边界。
+Windows/Linux各自CI runner接入同一专项；本机桌面截图不替代Windows视觉验证。
+最终轮次、人工看图范围与旧写入/布局回归见ui-ux-validation.txt。
+官方独立资源页头卡片、吸顶输入、VIP/富文本/用户资料与完整菜单、其他AB/全部DPI、
+真实CDN及Windows实机视觉继续审计；本专项不验证音频播放或物理声卡。
