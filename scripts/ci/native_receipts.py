@@ -13,3 +13,22 @@ def verify_pinned(report):
     ) and all(report.get(name) is True for name in PINNED_CHECKS), (
         "packaged pinned audio verification missing"
     )
+
+
+def verify_parametric(report):
+    failure = "packaged parametric equalizer verification missing"
+    assert isinstance(report, dict) and report.get("nativeLibmpv") is True and (
+        report.get("hardwareOutput") is False
+    ), failure
+    cases = report.get("cases")
+    assert isinstance(cases, list) and len(cases) == 2, failure
+    for rate, case in zip((44100, 96000), cases, strict=True):
+        assert isinstance(case, dict) and case.get("sourceSampleRate") == rate, failure
+        stats = case.get("stats")
+        assert isinstance(stats, dict) and stats.get("active_instances") == 2 and (
+            stats.get("failed_blocks") == 0
+        ), failure
+        assert type(stats.get("processed_samples")) is int and stats["processed_samples"] > 1024, failure
+        assert type(stats.get("revision")) is int and stats["revision"] > 0 and (
+            stats.get("observed_revision") == stats["revision"]
+        ), failure

@@ -14,7 +14,7 @@ import sys
 import tarfile
 import zipfile
 
-from native_receipts import verify_pinned
+from native_receipts import verify_parametric, verify_pinned
 from release_guard import check_versions, git
 from windows_media import copy_provenance
 
@@ -87,7 +87,7 @@ def main():
     native.mkdir()
     suffix = ".exe" if windows else ""
     filter_name = "cumulus_audio_filter.dll" if windows else "libcumulus_audio_filter.so"
-    run(["cargo", "build", "--release", "--locked", "-p", "cumulus-core", "-p", "cumulus-audio-filter", "--lib", "--example", "engine_roundtrip", "--example", "player_probe", "--example", "pinned_audio_probe"])
+    run(["cargo", "build", "--release", "--locked", "-p", "cumulus-core", "-p", "cumulus-audio-filter", "--lib", "--example", "engine_roundtrip", "--example", "player_probe", "--example", "pinned_audio_probe", "--example", "parametric_probe"])
     shutil.copy2(target / "release" / filter_name, native / filter_name)
     dlls = windows_media(native, Path(os.environ["CUMULUS_MSYS2_ROOT"])) if windows else []
     config = {"build": {"beforeBuildCommand": ""}, "bundle": {"active": True,
@@ -140,6 +140,16 @@ def main():
     assert eq_report["ok"] and eq_report["remote_requests"] == 0
     eq_probe.unlink()
 
+    peq_probe = portable / f"parametric_probe{suffix}"
+    shutil.copy2(target / "release/examples" / peq_probe.name, peq_probe)
+    peq_log = ROOT / ".build" / f"ci-parametric-roundtrip-{args.platform}.log"
+    with peq_log.open("x", encoding="utf-8") as log:
+        peq = run([peq_probe, portable / filter_name], env=env, stdout=subprocess.PIPE,
+                  stderr=log, text=True, encoding="utf-8", timeout=60)
+    peq_report = json.loads(peq.stdout)
+    verify_parametric(peq_report)
+    peq_probe.unlink()
+
     # Cargo's all-targets tests compile an example without running main.
     # Run the pinned decoder beside the exact portable Windows DLL closure;
     # Linux uses the system libmpv required by the Debian package.
@@ -154,7 +164,8 @@ def main():
     pinned_probe.unlink()
     (portable / "runtime-manifest.json").write_text(json.dumps({
         "version": version, "commit": sha, "platform": args.platform, "dlls": dlls,
-        "nativePlayback": media_report, "equalizerPlayback": eq_report, "pinnedPlayback": pinned_report,
+        "nativePlayback": media_report, "equalizerPlayback": eq_report,
+        "pinnedPlayback": pinned_report, "parametricPlayback": peq_report,
     }, indent=2), encoding="utf-8")
     archive_base = f"Cumulus-{version}-{args.platform}"
     if windows:
@@ -171,7 +182,8 @@ def main():
     assert git("rev-parse", "HEAD") == sha and not git("status", "--porcelain", "--untracked-files=normal"), "source changed during packaging"
     manifest = {"version": version, "commit": sha, "platform": args.platform,
         "ciRun": os.environ.get("GITHUB_RUN_ID"), "ciAttempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
-        "nativePlayback": media_report, "equalizerPlayback": eq_report, "pinnedPlayback": pinned_report,
+        "nativePlayback": media_report, "equalizerPlayback": eq_report,
+        "pinnedPlayback": pinned_report, "parametricPlayback": peq_report,
         "assets": [{"name": p.name, "bytes": p.stat().st_size, "sha256": digest(p)} for p in sorted(output.iterdir())]}
     (output / f"manifest-{args.platform}.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     if windows and (github_env := os.environ.get("GITHUB_ENV")):

@@ -23,7 +23,10 @@ Windows 按 libmpv/ffprobe 的 PE 导入表递归收集 DLL；实际解码和本
 Linux .deb 声明 libmpv2/WebKitGTK/FFmpeg 等系统依赖；tar.gz 也需要这些系统依赖。
 Windows 提供 NSIS/zip，附原生运行时依赖、上游许可证与包版本来源。没有签名证书，不声称已签名。
 主线 Windows 发行运行时使用启用 LADSPA 的固定 FFmpeg 配方。两平台
-打包均须通过实际 libmpv → LADSPA → C DSP 回归；当前配置不改变已发布包的边界。
+打包均须通过实际 libmpv → LADSPA → C DSP 回归。独立 PEQ 探针用 44.1/96 kHz
+双声道合成源核对处理进度、原生版本、无失败块；清单写入 parametricPlayback，
+CD 必须核对本次结果。这是原生组件验证，不代表桌面提供完整预设或实机听感。
+当前配置不改变已发布包的边界。
 Linux 原生 job 还会按本次 manifest 校验 .deb、解包到私有临时目录，
 核对其中的滤镜与已验证的便携运行时一致，在无外网 Xvfb、非 C locale
 启动普通程序并截图。此项覆盖 Debian 路径和首屏，不替代原生媒体探针、

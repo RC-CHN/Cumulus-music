@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 
-from native_receipts import verify_pinned
+from native_receipts import verify_parametric, verify_pinned
 from release_guard import VERSION, check_release, git
 
 PLATFORMS = ("linux-x64", "windows-x64")
@@ -69,6 +69,7 @@ def validate_manifest(directory, version, sha, platform, run_id, attempt):
         equalizer.get("remote_requests") == 0
     ), "packaged equalizer verification missing"
     verify_pinned(manifest.get("pinnedPlayback"))
+    verify_parametric(manifest.get("parametricPlayback"))
     prefix = f"Cumulus-{version}-{platform}"
     expected = {prefix + ".deb", prefix + ".tar.gz"} if platform == "linux-x64" else {prefix + ".zip", prefix + "-setup.exe"}
     assert {row["name"] for row in manifest["assets"]} == expected and len(manifest["assets"]) == 2, "unexpected release assets"

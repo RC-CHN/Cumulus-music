@@ -33,6 +33,11 @@ class PublishGate(unittest.TestCase):
             manifest = {"version": "0.1.0", "commit": "abc", "platform": "linux-x64", "ciRun": "12", "ciAttempt": "2", "nativePlayback": {"ok": True, "remote_requests": 0}, "assets": [{"name": name, "bytes": 17, "sha256": hashlib.sha256(b"synthetic package").hexdigest()} for name in names]}
             manifest["equalizerPlayback"] = {"ok": True, "remote_requests": 0}
             manifest["pinnedPlayback"] = dict.fromkeys(PINNED_CHECKS, True) | {"remote_requests": 0}
+            stats = {"active_instances": 2, "processed_samples": 4096, "failed_blocks": 0,
+                     "revision": 1, "observed_revision": 1}
+            manifest["parametricPlayback"] = {"nativeLibmpv": True, "hardwareOutput": False, "cases": [
+                {"sourceSampleRate": rate, "stats": stats.copy()} for rate in (44100, 96000)
+            ]}
             manifest_path = directory / "manifest-linux-x64.json"
             manifest_path.write_text(json.dumps(manifest))
             self.assertEqual(len(validate_manifest(directory, "0.1.0", "abc", "linux-x64", 12, 2)), 3)
@@ -41,6 +46,11 @@ class PublishGate(unittest.TestCase):
                 ("pinnedPlayback", {"ok": True, "remote_requests": 0}, "pinned"),
                 ("pinnedPlayback", manifest["pinnedPlayback"] | {"ncm_aac_m4a": False}, "pinned"),
                 ("pinnedPlayback", manifest["pinnedPlayback"] | {"remote_requests": 1}, "pinned"),
+                ("parametricPlayback", None, "parametric"),
+                ("parametricPlayback", manifest["parametricPlayback"] | {"cases": [
+                    manifest["parametricPlayback"]["cases"][0],
+                    {"sourceSampleRate": 96000, "stats": stats | {"observed_revision": 0}},
+                ]}, "parametric"),
             ]:
                 with self.subTest(field=field, replacement=replacement):
                     manifest_path.write_text(json.dumps(manifest | {field: replacement}))
