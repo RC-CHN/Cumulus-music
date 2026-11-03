@@ -5,7 +5,10 @@ use super::{MusicClient, PlaybackCommand, PlaybackSnapshot};
 use crate::{
     Error, Result,
     account::SessionToken,
-    playback::quality::{QualityFormat, QualityReader},
+    playback::{
+        TimelineMode,
+        quality::{QualityFormat, QualityReader},
+    },
 };
 pub use trial::{QualityTrialCommand, QualityTrialOutcome, QualityTrialView};
 pub use view::{QualityChoiceView, QualityDetailsView};
@@ -57,9 +60,25 @@ impl MusicClient {
         play_id: &str,
     ) -> Result<QualityDetailsView> {
         let (token, current, song, trial_mode) = self.quality_context(epoch, play_id).await?;
-        let information = QualityReader::new(self.session.clone())
-            .read_for(&token, &song, trial_mode, QualityFormat::Surround51)
-            .await?;
+        let reader = QualityReader::new(self.session.clone());
+        let read = reader.read_for(&token, &song, trial_mode, QualityFormat::Surround51);
+        let loaded_trial = current.timeline.as_ref().is_some_and(|timeline| {
+            matches!(timeline.mode, TimelineMode::Trial | TimelineMode::FullTrial)
+        });
+        let assignment = async {
+            if !loaded_trial {
+                return Ok(None);
+            }
+            match self
+                .quality_experiment
+                .standard_trial_for(&self.session, &token)
+                .await
+            {
+                Err(error) if matches!(error.root(), Error::StaleResponse) => Err(error),
+                result => Ok(result.unwrap_or_default()),
+            }
+        };
+        let (information, standard_trial) = tokio::try_join!(read, assignment)?;
         self.session.check_generation(&token)?;
         let latest = self
             .player
@@ -79,6 +98,8 @@ impl MusicClient {
             Ok(records) => (records, false),
             Err(_) => (vec![], true),
         };
+        let mut configuration = config::read(self.auth.context.as_deref());
+        configuration.experiments.standard_trial_requires_purchase = standard_trial;
         view::project(
             epoch,
             play_id,
@@ -86,7 +107,7 @@ impl MusicClient {
             &latest,
             &information,
             (records, damaged),
-            config::read(self.auth.context.as_deref()),
+            configuration,
         )
     }
 }

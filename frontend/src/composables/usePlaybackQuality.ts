@@ -196,10 +196,13 @@ export function usePlaybackQuality(
       };
       return;
     }
+    const standardTrial =
+      quality === 'standard' &&
+      (view?.timeline?.mode === 'trial' || view?.timeline?.mode === 'full_trial');
     if (
       target.song &&
       (!choice || choice.access === 'unknown') &&
-      !['64aac', 'standard', 'higher', 'exhigh'].includes(quality)
+      (standardTrial || !['64aac', 'standard', 'higher', 'exhigh'].includes(quality))
     ) {
       prompt.value = {
         kind: 'notice',

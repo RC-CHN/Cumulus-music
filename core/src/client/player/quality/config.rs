@@ -44,7 +44,7 @@ pub(super) fn read(context: Option<&RequestContext>) -> QualityConfiguration {
     QualityConfiguration {
         experiments: QualityExperiments {
             music_package_hires: snapshot.as_ref().and_then(|_| music_package_hires(data)),
-            // The separate StandardAudio_VIPLogo_PCV2 experiment is not config data.
+            // An independent native assignment supplies this after the snapshot read.
             standard_trial_requires_purchase: None,
         },
         hide_track_size: hide_track_size(data),

@@ -50,7 +50,13 @@ canUse=true/userSrc=0/trialStatus=1 为可开始，状态2为活动试用；user
 M/247 的内置默认是 true，远端布尔配置可覆盖；仅已接入原生 PC 配置中心的宿主使用
 该默认。固定/缺失宿主和非法配置保留 unknown。仅影响官方配置覆盖的音乐包用户
 超清、无损和 Hi-Res 选项投影；实际音源仍由独立授权确认。读取配置快照不增加请求。
-独立的 StandardAudio_VIPLogo_PCV2 实验仍未接入；标准试听相关分支保留 unknown。
+标准音质试听实验由原生读取 /api/rtrs/abt/front/expinfo/list，
+expNames=StandardAudio_VIPLogo_PCV2。只对原生已加载的部分/完整试听读音质详情
+时查询，与其它菜单读取并行，最长三秒，按账号缓存三十分钟；失败保留最近有效结果，
+无有效结果为 unknown。只有 t1 对标准档应用永久购买判断（payed & 6），不再额外
+依赖 fee 位；未命中则回到普通标准档逻辑。与音源许可分离，不调用收银台、支付、
+自动曝光或试用写入。试听中标准档权益仍未确认时，菜单说明后保持当前音源，
+不提前发出音质切换命令。官方另有 VIP 图标条件，不把图标条件用作切换许可。
 
 试用写入边界
 QualityApi::activate 是 /api/vipauth/app/auth/set 的底层原语，数字 resourceId=0、

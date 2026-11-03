@@ -36,6 +36,7 @@ mod playlist_creator;
 mod playlist_tags_browse;
 mod playlists;
 mod podcast;
+mod quality_experiment;
 mod rankings;
 mod relay;
 mod scene_fm;
@@ -80,6 +81,7 @@ pub struct MusicClient {
     account_avatar: account_avatar::AvatarHost,
     login_device_rows: login_devices::DeviceRows,
     search: search::experiment::SearchHost,
+    quality_experiment: quality_experiment::QualityExperiment,
 }
 
 impl MusicClient {
@@ -182,6 +184,12 @@ impl MusicClient {
         Ok(client)
     }
 
+    /// The desktop host enables native experiment lookups; IPC has no flag.
+    pub fn with_official_quality_experiments(mut self) -> Self {
+        self.quality_experiment.enabled = true;
+        self
+    }
+
     /// Explicit native-only cold offline capability; no desktop IPC exposes it.
     pub fn grant_cold_offline(&self) -> Result<crate::account::profiles::ColdOfflineGrant> {
         self.registry.grant_cold_offline(self.session.clone())
@@ -196,6 +204,7 @@ impl MusicClient {
             account_avatar: account_avatar::AvatarHost::default(),
             login_device_rows: login_devices::DeviceRows::default(),
             search: search::experiment::SearchHost::default(),
+            quality_experiment: quality_experiment::QualityExperiment::default(),
             together: together::TogetherHost::default(),
             scene_fm: scene_fm::SceneFmHost::default(),
             local: local::LocalHost::new(registry.store()),

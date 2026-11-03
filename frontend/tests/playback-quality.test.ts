@@ -427,3 +427,26 @@ test('rights refresh is bounded, read-only, and stops when the menu closes', asy
   assert.deepEqual(f.commands, []);
   f.scope.stop();
 });
+
+test('standard on a loaded trial waits for details and respects the purchase outcome', async () => {
+  const f = fixture();
+  const waitForAssignment = deferred<QualityDetailsView>();
+  f.view.value = {
+    ...current(),
+    requestedQuality: 'exhigh',
+    timeline: { mode: 'trial', start: 20, end: 40, total: 100, length: 20, media_start: 0 },
+  };
+  f.read(() => waitForAssignment.promise);
+  f.model.show();
+  f.model.choose('standard');
+  assert.match(f.model.prompt.value?.message ?? '', /暂未确认/);
+  assert.deepEqual(f.actions, []);
+  waitForAssignment.resolve(
+    details({ ...choice('requires_purchase'), quality: 'standard', trialPhase: null }),
+  );
+  await turn();
+  f.model.choose('standard');
+  assert.match(f.model.prompt.value?.message ?? '', /需要购买/);
+  assert.deepEqual(f.actions, []);
+  f.scope.stop();
+});

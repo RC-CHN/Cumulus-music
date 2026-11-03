@@ -158,15 +158,10 @@ impl QualityPolicy<'_> {
             return QualityAccess::Allowed;
         }
         if quality == Quality::Standard && self.trial {
-            let ts = self.privilege.and_then(|p| p.fee).map(|fee| fee & 1 != 0);
-            if ts != Some(false) {
-                match self.experiments.standard_trial_requires_purchase {
-                    Some(true) if purchased == Some(false) => {
-                        return QualityAccess::RequiresPurchase;
-                    }
-                    Some(false) => (),
-                    _ => return QualityAccess::Unknown,
-                }
+            match self.experiments.standard_trial_requires_purchase {
+                Some(true) if purchased == Some(false) => return QualityAccess::RequiresPurchase,
+                Some(false) => (),
+                _ => return QualityAccess::Unknown,
             }
         }
         // M/40 intrinsically free levels. A free quality does not grant full-song

@@ -427,3 +427,37 @@ mod reads {
         );
     }
 }
+
+#[test]
+fn standard_trial_experiment_applies_to_the_loaded_timeline_without_a_fee_bit() {
+    let rights = BTreeMap::new();
+    for (fee, payed, assignment, trial, expected) in [
+        (0, 0, Some(true), true, QualityAccess::RequiresPurchase),
+        (4, 0, Some(true), true, QualityAccess::RequiresPurchase),
+        (4, 2, Some(true), true, QualityAccess::Allowed),
+        (4, 4, Some(true), true, QualityAccess::Allowed),
+        (0, 0, Some(false), true, QualityAccess::Allowed),
+        (0, 0, None, true, QualityAccess::Unknown),
+        (0, 0, Some(true), false, QualityAccess::Allowed),
+    ] {
+        let privilege = QualityPrivilege::from_official(&json!({
+            "id":7,"maxbr":999000,"fl":320000,"payed":payed,"fee":fee
+        }))
+        .unwrap();
+        let policy = QualityPolicy {
+            privilege: Some(&privilege),
+            subscriber: Some(QualitySubscriber {
+                vip: true,
+                svip: true,
+                music_package: false,
+            }),
+            use_rights: &rights,
+            experiments: QualityExperiments {
+                standard_trial_requires_purchase: assignment,
+                ..Default::default()
+            },
+            trial,
+        };
+        assert_eq!(policy.access(Quality::Standard), expected);
+    }
+}

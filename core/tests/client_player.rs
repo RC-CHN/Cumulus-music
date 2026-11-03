@@ -36,6 +36,8 @@ struct Backend {
     quality_start_mode: AtomicU64,
     quality_writes: AtomicU64,
     quality_url_denied: AtomicU64,
+    quality_standard_assignment: AtomicU64,
+    quality_trial_source: std::sync::atomic::AtomicBool,
     quality_started: Notify,
     quality_release: Notify,
 }
@@ -45,6 +47,15 @@ impl Api for Backend {
             self.calls.lock().unwrap().push(path.into());
             Ok(match path {
                 "/api/w/nuser/account/get" => json!({"code":200,"profile":{"userId":9}}),
+                "/api/rtrs/abt/front/expinfo/list" => {
+                    assert_eq!(payload, json!({"expNames":"StandardAudio_VIPLogo_PCV2"}));
+                    let group = if self.quality_standard_assignment.load(Ordering::SeqCst) == 1 {
+                        "t1"
+                    } else {
+                        "t2"
+                    };
+                    json!({"code":200,"data":[{"expName":"StandardAudio_VIPLogo_PCV2","expGroupName":group}]})
+                }
                 "/api/dj/program/detail" => {
                     if payload["id"].as_str().and_then(|id| id.parse::<u64>().ok())
                         == Some(self.hold_id.load(Ordering::SeqCst))
@@ -99,7 +110,9 @@ impl Api for Backend {
                         return Ok(json!({"code":200,"data":[{"id":ids[0],"code":403,
                             "url":"https://secret.invalid/denied?token=SECRET","md5":"SECRET"}]}));
                     }
-                    json!({"code":200,"data":[{"id":ids[0],"code":if payload["level"]=="jymaster"&&self.quality_url_denied.load(Ordering::SeqCst)>0 {403}else{200},"url":"https://m1.music.126.net/a.mp3?key=SECRET","md5":"abc","expi":120,"level":"standard"}]})
+                    json!({"code":200,"data":[{"id":ids[0],"code":if payload["level"]=="jymaster"&&self.quality_url_denied.load(Ordering::SeqCst)>0 {403}else{200},"url":"https://m1.music.126.net/a.mp3?key=SECRET","md5":"abc","expi":120,"level":"standard",
+                        "freeTrialInfo": if self.quality_trial_source.load(Ordering::SeqCst) {json!({"start":20,"end":40})} else {Value::Null}
+                    }]})
                 }
                 "/api/song/enhance/privilege" => {
                     let ids: Vec<Value> =
@@ -1575,4 +1588,71 @@ async fn search_result_actions_keep_selected_index_and_use_the_recovered_trial_c
         assert_eq!(stored["items"][0]["source"], source);
         assert_eq!(stored["items"][1]["source"], source);
     }
+}
+
+#[tokio::test]
+async fn loaded_trial_reads_and_caches_standard_assignment_without_reusing_another_accounts_flag() {
+    use cumulus_core::playback::quality::QualityAccess;
+
+    let (_dir, api, session, client, _) = fixture();
+    let client = Arc::try_unwrap(client)
+        .unwrap_or_else(|_| panic!("fixture must own its client"))
+        .with_official_quality_experiments();
+    let assignment_calls = || {
+        api.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|path| path.as_str() == "/api/rtrs/abt/front/expinfo/list")
+            .count()
+    };
+    let standard = |details: &QualityDetailsView| {
+        details
+            .choices
+            .iter()
+            .find(|c| c.quality == Quality::Standard)
+            .unwrap()
+            .access
+    };
+    let ordinary = client.play_selection("1", songs("1")).await.unwrap();
+    assert_eq!(
+        standard(
+            &client
+                .player_quality_details("1", ordinary.play_id.as_deref().unwrap())
+                .await
+                .unwrap()
+        ),
+        QualityAccess::Allowed
+    );
+    assert_eq!(assignment_calls(), 0);
+    api.quality_trial_source.store(true, Ordering::SeqCst);
+    api.quality_standard_assignment.store(1, Ordering::SeqCst);
+    let trial = client.play_selection("1", songs("2")).await.unwrap();
+    let play_id = trial.play_id.unwrap();
+    for _ in 0..2 {
+        assert_eq!(
+            standard(&client.player_quality_details("1", &play_id).await.unwrap()),
+            QualityAccess::RequiresPurchase
+        );
+    }
+    assert_eq!(assignment_calls(), 1);
+    session
+        .adopt(api.clone(), json!({"userId":10}), &session.token().unwrap())
+        .unwrap();
+    api.quality_standard_assignment.store(0, Ordering::SeqCst);
+    assert!(matches!(
+        client.player_quality_details("1", &play_id).await,
+        Err(Error::StaleResponse)
+    ));
+    let new = client.play_selection("2", songs("2")).await.unwrap();
+    assert_eq!(
+        standard(
+            &client
+                .player_quality_details("2", new.play_id.as_deref().unwrap())
+                .await
+                .unwrap()
+        ),
+        QualityAccess::Allowed
+    );
+    assert_eq!(assignment_calls(), 2);
 }
