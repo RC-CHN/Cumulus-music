@@ -14,6 +14,7 @@
     throw new Error(message);
   };
   const birthday = window.__cumulusDailyBirthdayProof === true;
+  const styleWrite = window.__cumulusStyleWriteProof === true;
   function dailyHeadingMatches() {
     const heading = one('.daily-heading-copy');
     return heading?.classList.contains('daily-birthday') === birthday &&
@@ -113,7 +114,7 @@
     await wait(() => !sticky(), 'style toolbar hides at list start');
     const tagEntry = one('.style-tags-entry');
     tagEntry.click();
-    const tags = await wait(() => one('.style-tag-browser[open] .style-tag-current') &&
+    let tags = await wait(() => one('.style-tag-browser[open] .style-tag-current') &&
       one('.style-tag-browser'), 'style tags loaded');
     const applied = () => tags.querySelector('.style-tag-applied')?.textContent ?? '';
     const active = tags.querySelector('nav button[aria-pressed="true"]');
@@ -122,9 +123,30 @@
       throw new Error('style browser distinguishes the applied tag from other catalog tags');
     await sleep(250);
     await emit('ux_04_style_tags');
+    if (styleWrite) {
+      const tag = [...tags.querySelectorAll('ul[aria-label="当前分类标签"] button')].find((node) => node.textContent.trim() === '合成节拍');
+      const action = (label) => [...tags.querySelectorAll('button')].find((node) => node.textContent.trim() === label);
+      tag.click();
+      await wait(() => !action('确认更新风格标签').disabled && tags.querySelector('.style-tag-applied').textContent.includes('合成轻音乐'), 'style draft retains applied state');
+      [...tags.querySelectorAll('nav button')].find((node) => node.textContent.trim() === '合成空分类').click();
+      await wait(() => tags.textContent.includes('此分类暂无标签。') && tags.querySelector('.style-tag-draft')?.textContent.includes('合成曲风 · 合成节拍'), 'style draft stays visible when browsing another category');
+      action('确认更新风格标签').click();
+      await wait(() => action('核对服务端标签') && !action('核对服务端标签').disabled &&
+        action('确认更新风格标签').disabled, 'unknown style write disables resubmission');
+      await emit('ux_12_style_uncertain');
+      tags.querySelector('[aria-label="关闭风格标签"]').click();
+      await wait(() => !one('.style-tag-browser[open]') && document.activeElement === tagEntry, 'unknown operation dialog closes safely');
+      tagEntry.click();
+      tags = await wait(() => one('.style-tag-browser[open]'), 'reopen style tags for recovery');
+      await wait(() => action('核对服务端标签') && !action('核对服务端标签').disabled &&
+        action('确认更新风格标签').disabled && tags.querySelector('.style-tag-unresolved')?.textContent.includes('合成曲风 · 合成节拍'), 'reopened dialog recovers the exact unresolved style write');
+      action('核对服务端标签').click();
+      await wait(() => tags.querySelector('.style-tag-applied')?.textContent.includes('合成节拍') && tags.textContent.includes('风格标签已更新'), 'read-only reconciliation confirms applied style');
+      await emit('ux_13_style_confirmed');
+    }
     [...tags.querySelectorAll('nav button')].find((node) => node.textContent.trim() === '合成空分类').click();
     await wait(() => tags.textContent.includes('此分类暂无标签。'), 'style category changes without a write');
-    if (!applied().includes('合成轻音乐') || tags.querySelector('.style-tag-current'))
+    if (!applied().includes(styleWrite ? '合成节拍' : '合成轻音乐') || tags.querySelector('.style-tag-current'))
       throw new Error('browsing a different category changes neither applied tags nor their identity');
     tags.querySelector('[aria-label="关闭风格标签"]').click();
     await wait(() => !one('.style-tag-browser[open]') && document.activeElement === tagEntry, 'style tag focus restored');
@@ -140,7 +162,7 @@
       throw new Error('sticky style append replaced paused entry');
     sticky().querySelector('[aria-label="添加全部推荐歌曲至播放列表"]').focus();
     stylePausedScroll.scrollTop = 0;
-    await wait(() => !sticky() && document.activeElement === inline, 'style toolbar hides and restores inline action focus');
+    await wait(() => !sticky() && document.activeElement === one('.style-queue-all'), 'style toolbar hides and restores inline action focus');
     one('[aria-label="返回上一页"]').click();
     const trigger = () => one('.daily-track-actions [aria-label="每日推荐更多操作"]');
     async function menu() {
@@ -214,7 +236,7 @@
     await wait(() => bar().dataset.trackId === '1' && bar().dataset.state === 'playing', 'append all starts empty queue');
     if ((await invoke('player_queue', { epoch })).tracks.length !== 40) throw new Error('empty queue did not load all daily tracks');
     await emit('ux_09_daily_empty_queue');
-    await emit('complete', { ok: true, stageCount: 11, dailyPlayback: true, dailyCache: true, dailyBirthday: birthday, stylePlayback: true, dailyBatch: true, stickyRecommendations: true });
+    await emit('complete', { ok: true, stageCount: styleWrite ? 13 : 11, dailyPlayback: true, dailyCache: true, dailyBirthday: birthday, stylePlayback: true, dailyBatch: true, stickyRecommendations: true, styleWrite });
   } catch (error) {
     await emit('failed', { message: String(error), body: document.body.innerText.slice(-2200) });
   }
