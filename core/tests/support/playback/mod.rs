@@ -140,6 +140,7 @@ impl Default for Device {
                     entry_id: None,
                     position: None,
                     duration: None,
+                    buffered_through: None,
                     paused: true,
                     buffering: false,
                     volume: Some(100.0),
@@ -231,6 +232,7 @@ impl AudioEngine for Engine {
         state.view.entry_id = Some(entry_id);
         state.view.position = Some(request.start);
         state.view.duration = Some(state.duration);
+        state.view.buffered_through = None;
         state.view.paused = true;
         Ok(LoadedMedia {
             entry_id,

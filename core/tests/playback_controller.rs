@@ -686,3 +686,33 @@ async fn output_recovery_reloads_same_source_at_current_clock_without_advancing_
         f.command(Cmd::Stop).await.unwrap();
     }
 }
+
+#[tokio::test]
+async fn cache_observation_is_entry_scoped_and_capped_at_the_authorized_preview() {
+    let f = Fixture::new();
+    f.api.trial.store(true, Ordering::SeqCst);
+    f.device.state.lock().unwrap().duration = 20.0;
+    f.command(replace(&[1, 2])).await.unwrap();
+    {
+        let mut state = f.device.state.lock().unwrap();
+        state.view.position = Some(2.0);
+        state.view.buffered_through = Some(14.0);
+    }
+    let mapped = until(&f.player, |s| s.buffered_through == Some(44.0)).await;
+    assert_eq!(mapped.position, Some(32.0));
+    f.device.state.lock().unwrap().view.buffered_through = Some(200.0);
+    until(&f.player, |s| s.buffered_through == Some(50.0)).await;
+
+    f.device.state.lock().unwrap().view.entry_id = Some(999);
+    until(&f.player, |s| s.buffered_through.is_none()).await;
+    {
+        let mut state = f.device.state.lock().unwrap();
+        state.view.entry_id = Some(1);
+        state.view.buffered_through = Some(14.0);
+    }
+    until(&f.player, |s| s.buffered_through == Some(44.0)).await;
+    let seek = f.command(Cmd::Seek(37.0)).await.unwrap();
+    assert_eq!(seek.position, Some(37.0));
+    assert_eq!(seek.buffered_through, None);
+    assert_eq!(f.command(Cmd::Next).await.unwrap().buffered_through, None);
+}

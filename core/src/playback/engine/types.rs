@@ -129,6 +129,7 @@ pub struct EngineSnapshot {
     pub entry_id: Option<i64>,
     pub position: Option<f64>,
     pub duration: Option<f64>,
+    pub buffered_through: Option<f64>,
     pub paused: bool,
     pub buffering: bool,
     pub volume: Option<f64>,

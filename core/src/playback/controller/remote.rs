@@ -146,6 +146,7 @@ impl Actor {
             return Err(error);
         }
         self.position = Some(value.position);
+        self.buffered_through = None;
         self.seek_revision = self.control_revision;
         self.state = if value.paused {
             PlaybackStatus::Paused

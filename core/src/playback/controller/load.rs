@@ -95,6 +95,7 @@ impl Actor {
         self.loaded = None;
         self.loudness_forget_track();
         self.position = None;
+        self.buffered_through = None;
         self.error = None;
         self.reset = false;
         self.play_id = Some(uuid::Uuid::new_v4().simple().to_string());

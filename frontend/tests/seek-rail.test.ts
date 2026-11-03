@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Timeline } from '../src/services/player.ts';
-import { insidePlayableTrial, seekRail } from '../src/services/seekRail.ts';
+import { bufferedSeekSpan, insidePlayableTrial, seekRail } from '../src/services/seekRail.ts';
 
 const trial: Timeline = {
   mode: 'trial',
@@ -40,4 +40,15 @@ test('unknown total does not invent a full rail or relax rights; full and CUE st
     assert.deepEqual(seekRail(other), { min: 0, max: 40, span: null, trial: null });
     assert.equal(insidePlayableTrial(other, 10), true);
   }
+});
+
+test('native buffering appears ahead of the clock and never beyond the authorized trial', () => {
+  assert.deepEqual(bufferedSeekSpan(trial, 28, 60), { left: 28, right: 40 });
+  assert.deepEqual(bufferedSeekSpan({ ...trial, total: null }, 28, 36), { left: 40, right: 80 });
+  const full: Timeline = { ...trial, mode: 'full', start: 0, end: 100 };
+  assert.deepEqual(bufferedSeekSpan(full, 20, 30), { left: 20, right: 30 });
+  for (const unknown of [null, undefined, 15, NaN, Infinity])
+    assert.equal(bufferedSeekSpan(full, 20, unknown), null);
+  assert.equal(bufferedSeekSpan({ ...full, end: null }, 20, 30), null);
+  assert.equal(bufferedSeekSpan(trial, 40, 60), null);
 });

@@ -631,6 +631,10 @@ impl AudioEngine for MpvEngine {
             entry_id: self.entry,
             position: self.number(c"time-pos"),
             duration: self.number(c"duration"),
+            // Advisory demuxer timestamp; never use it for seeking or rights.
+            buffered_through: (self.property(c"seeking").as_deref() == Some("no"))
+                .then(|| self.number(c"demuxer-cache-time"))
+                .flatten(),
             paused: self.property(c"pause").as_deref() == Some("yes"),
             buffering: self.property(c"paused-for-cache").as_deref() == Some("yes"),
             volume: self.number(c"volume"),

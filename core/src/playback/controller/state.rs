@@ -66,6 +66,7 @@ pub(super) struct Actor {
     pub state: PlaybackStatus,
     pub play_id: Option<String>,
     pub position: Option<f64>,
+    pub buffered_through: Option<f64>,
     pub error: Option<crate::playback::failure::PlaybackFailure>,
     pub history_error: Option<String>,
     pub reset: bool,
@@ -128,6 +129,7 @@ impl Actor {
             state: PlaybackStatus::Idle,
             play_id: None,
             position: None,
+            buffered_through: None,
             error: None,
             history_error: None,
             reset: false,
@@ -206,6 +208,7 @@ impl Actor {
                 .map(str::to_owned),
             selected,
             position: self.position,
+            buffered_through: self.buffered_through.filter(|_| self.state.active()),
             timeline: self.loaded.as_ref().map(|l| l.timeline.snapshot()),
             volume: self.prefs.volume,
             unmute_volume: self.prefs.unmute_volume,
@@ -278,6 +281,7 @@ impl Actor {
         self.loudness_forget_track();
         self.play_id = None;
         self.position = None;
+        self.buffered_through = None;
         self.state = PlaybackStatus::Idle;
         self.reset = false;
         result.and(saved)

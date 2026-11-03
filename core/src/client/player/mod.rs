@@ -220,6 +220,7 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
             .as_ref()
             .and_then(|i| origin::project(&i.source)),
         position: value.position,
+        buffered_through: value.buffered_through,
         timeline: value.timeline.clone(),
         quality_preferences: QualityPreferencesView {
             applies_to_current: value.quality_preferences_apply,

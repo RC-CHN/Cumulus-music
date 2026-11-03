@@ -59,6 +59,7 @@ export interface PlayerView {
   entryId: string | null;
   track: TrackView | null;
   position: number | null;
+  bufferedThrough?: number | null;
   timeline: Timeline | null;
   qualityPreferences: {
     revision: string | null;

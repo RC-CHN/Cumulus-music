@@ -120,6 +120,7 @@ impl Fixture {
                 entry_id: Some(7),
                 position: Some(25.),
                 duration: Some(100.),
+                buffered_through: None,
                 paused: true,
                 buffering: false,
                 volume: None,

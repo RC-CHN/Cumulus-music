@@ -53,6 +53,7 @@ pub struct PlaybackSnapshot {
     pub play_id: Option<String>,
     pub selected: Option<QueueEntry>,
     pub position: Option<f64>,
+    pub buffered_through: Option<f64>,
     pub timeline: Option<TimelineSnapshot>,
     pub quality_preferences: crate::playback::quality_preferences::QualityPreferencesSnapshot,
     pub can_change_quality: bool,

@@ -190,6 +190,14 @@ impl Actor {
                 self.position = Some(observed);
             }
         }
+        self.buffered_through =
+            if !ended && view.position.is_some() && view.entry_id == Some(loaded.media.entry_id) {
+                view.buffered_through
+                    .and_then(|time| loaded.timeline.from_media(time).ok())
+                    .filter(|end| self.position.is_some_and(|position| *end > position))
+            } else {
+                None
+            };
         if ended || self.last_save.elapsed() >= Duration::from_secs(1) {
             self.save_position()?;
         }

@@ -409,6 +409,7 @@ impl Actor {
         })
         .await?;
         self.position = Some(seconds);
+        self.buffered_through = None;
         self.seek_revision = self.control_revision;
         self.persist_transport().await
     }

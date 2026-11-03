@@ -14,7 +14,7 @@ import PlaybackVolume from './PlaybackVolume.vue';
 import PlaybackMode from './PlaybackMode.vue';
 import { artistLabel } from '../services/artistLabel';
 import { equalizerLauncher } from '../services/equalizer';
-import { insidePlayableTrial, seekRail } from '../services/seekRail';
+import { bufferedSeekSpan, insidePlayableTrial, seekRail } from '../services/seekRail';
 const equalizerOpen = ref(false);
 const props = withDefaults(
   defineProps<{
@@ -82,9 +82,19 @@ const draft = ref<number>();
 const outsideTrial = ref(false);
 const rail = computed(() => seekRail(view.value?.timeline));
 const seekValue = computed(() => draft.value ?? view.value?.position ?? rail.value.min);
-const trialPlayed = computed(() => {
-  const { span, max } = rail.value;
-  return span ? Math.min(span.right, Math.max(span.left, (100 * seekValue.value) / max)) : 0;
+const buffered = computed(() =>
+  draft.value === undefined
+    ? bufferedSeekSpan(view.value?.timeline, view.value?.position, view.value?.bufferedThrough)
+    : null,
+);
+const layeredSeek = computed(
+  () => view.value?.timeline?.end != null && rail.value.max > rail.value.min,
+);
+const seekPlayed = computed(() => {
+  const { span, min, max } = rail.value;
+  if (max <= min) return 0;
+  const position = (100 * (seekValue.value - min)) / (max - min);
+  return Math.min(span?.right ?? 100, Math.max(span?.left ?? 0, position));
 });
 // Replacing a playback session also replaces its slider. A late event from
 // the old input still carries its own identity, not the new song's view.
@@ -308,18 +318,29 @@ async function seek(event: Event) {
       </div>
       <div class="seek-control">
         <time>{{ time(draft ?? view?.position) }}</time>
-        <div class="seek-rail" :class="{ 'seek-rail-trial': rail.span }">
-          <div v-if="rail.span" class="trial-seek-track" aria-hidden="true">
+        <div class="seek-rail" :class="{ 'seek-rail-layered': layeredSeek }">
+          <div v-if="layeredSeek" class="trial-seek-track" aria-hidden="true">
             <span
+              v-if="rail.span"
               class="trial-seek-window"
               :style="{ left: rail.span.left + '%', right: 100 - rail.span.right + '%' }"
             />
             <span
-              class="trial-seek-played"
-              :style="{ left: rail.span.left + '%', right: 100 - trialPlayed + '%' }"
+              v-if="buffered"
+              class="seek-buffered"
+              :style="{ left: buffered.left + '%', right: 100 - buffered.right + '%' }"
             />
-            <span class="trial-seek-start" :style="{ left: rail.span.left + '%' }" />
-            <span class="trial-seek-end" :style="{ left: rail.span.right + '%' }" />
+            <span
+              class="trial-seek-played"
+              :style="{
+                left: (rail.span?.left ?? 0) + '%',
+                right: 100 - seekPlayed + '%',
+              }"
+            />
+            <template v-if="rail.span">
+              <span class="trial-seek-start" :style="{ left: rail.span.left + '%' }" />
+              <span class="trial-seek-end" :style="{ left: rail.span.right + '%' }" />
+            </template>
           </div>
           <input
             :key="scrubKey"

@@ -137,6 +137,7 @@ impl AudioEngine for Fake {
             entry_id: Some(1),
             position: Some(d.position),
             duration: Some(120.0),
+            buffered_through: None,
             paused: d.paused,
             buffering: false,
             volume: Some(d.volume),

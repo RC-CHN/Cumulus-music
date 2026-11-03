@@ -568,6 +568,7 @@ async fn verify_cold_ncm(
                 entry_id: Some(7),
                 position: Some(0.4),
                 duration: Some(1.0),
+                buffered_through: None,
                 paused: false,
                 buffering: false,
                 volume: None,

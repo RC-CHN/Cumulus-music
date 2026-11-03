@@ -174,18 +174,18 @@
   width: 100%;
   height: 10px;
 }
-.seek-rail-trial input {
+.seek-rail-layered input {
   position: relative;
   appearance: none;
   -webkit-appearance: none;
   margin: 0;
   background: transparent;
 }
-.seek-rail-trial input::-webkit-slider-runnable-track {
+.seek-rail-layered input::-webkit-slider-runnable-track {
   height: 10px;
   background: transparent;
 }
-.seek-rail-trial input::-webkit-slider-thumb {
+.seek-rail-layered input::-webkit-slider-thumb {
   appearance: none;
   -webkit-appearance: none;
   width: 10px;
@@ -211,6 +211,9 @@
 }
 .trial-seek-window {
   background: var(--text-secondary);
+}
+.seek-buffered {
+  background: color-mix(in srgb, var(--accent) 55%, var(--surface));
 }
 .trial-seek-played {
   background: var(--accent);
