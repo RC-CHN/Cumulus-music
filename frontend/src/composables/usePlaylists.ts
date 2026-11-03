@@ -149,8 +149,9 @@ export function usePlaylists(
     observed?: PlaylistEditor | null,
   ) {
     if (!connected || epoch !== expectedEpoch || editor.value?.id !== id) return;
-    await refreshEditor(expectedEpoch, id, observed);
+    const latest = await refreshEditor(expectedEpoch, id, observed);
     if (epoch === expectedEpoch) await refreshOperations();
+    return latest;
   }
   async function run(
     operation: (

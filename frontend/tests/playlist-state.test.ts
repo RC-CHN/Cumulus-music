@@ -11,6 +11,7 @@ import {
   type PlaylistEditor,
   type PlaylistMutationView,
 } from '../src/services/playlists.ts';
+import type { CoverOutcome } from '../src/services/playlistCover.ts';
 import type { CoreClient, AccountData } from '../src/services/contracts.ts';
 function deferred<T>() {
   let resolve!: (v: T) => void;
@@ -260,37 +261,7 @@ test('a stale editor reads latest without replaying and preserves the reviewed d
       return data(receipt());
     },
   });
-  // Exercise the production form lifecycle without a browser.
-  type Host = Record<string, never>;
-  const empty = (): Host => ({});
-  const renderer = createRenderer<Host, Host>({
-    patchProp() {},
-    insert() {},
-    remove() {},
-    createElement: empty,
-    createText: empty,
-    createComment: empty,
-    setText() {},
-    setElementText() {},
-    parentNode: () => null,
-    nextSibling: () => null,
-  });
-  let form!: ReturnType<typeof usePlaylistEditor>;
-  const app = renderer.createApp(
-    defineComponent({
-      setup() {
-        form = usePlaylistEditor(
-          p,
-          account,
-          '10',
-          () => (closed = true),
-          () => {},
-        );
-        return () => h('div');
-      },
-    }),
-  );
-  app.mount({});
+  const { form, app } = mountEditor(p, () => (closed = true));
   try {
     await turn();
     assert.equal(form.loaded.value, true);
@@ -324,6 +295,154 @@ test('a stale editor reads latest without replaying and preserves the reviewed d
       description: 'remote-only',
       tags: ['local'],
     });
+    assert.equal(closed, true);
+  } finally {
+    app.unmount();
+  }
+});
+
+function mountEditor(p: ReturnType<typeof fixture>, close = () => {}, coverChanged = () => {}) {
+  // Exercise the production form lifecycle without a browser.
+  type Host = Record<string, never>;
+  const empty = (): Host => ({});
+  const renderer = createRenderer<Host, Host>({
+    patchProp() {},
+    insert() {},
+    remove() {},
+    createElement: empty,
+    createText: empty,
+    createComment: empty,
+    setText() {},
+    setElementText() {},
+    parentNode: () => null,
+    nextSibling: () => null,
+  });
+  let form!: ReturnType<typeof usePlaylistEditor>;
+  const app = renderer.createApp(
+    defineComponent({
+      setup() {
+        form = usePlaylistEditor(p, account, '10', close, coverChanged);
+        return () => h('div');
+      },
+    }),
+  );
+  app.mount({});
+  return { form, app };
+}
+
+function coverReceipt(editor: PlaylistEditor): CoverOutcome {
+  return {
+    editor,
+    warning: null,
+    task: {
+      id: 'cover-task',
+      playlistId: editor.id,
+      phase: 'confirmed',
+      crop: null,
+      width: 400,
+      height: 400,
+      bytes: 100,
+      total: 100,
+      transfer: 'uploaded',
+      binding: null,
+      error: null,
+      mayLeaveObject: false,
+      cleanupPending: false,
+    },
+  };
+}
+
+for (const remoteEdit of [false, true]) {
+  test(
+    remoteEdit
+      ? 'cover readback with changed metadata requires review before saving'
+      : 'cover-only revision lets the existing draft save without a false conflict',
+    async () => {
+      const original = { ...editor(), revision: 'before-cover' };
+      const latest = {
+        ...original,
+        revision: 'after-cover',
+        coverUrl: 'https://example.invalid/synthetic',
+        ...(remoteEdit ? { name: 'remote', description: 'remote-only' } : {}),
+      };
+      let reads = 0;
+      let coverUpdates = 0;
+      const writes: PlaylistCommand[] = [];
+      const p = fixture({
+        playlistEditor: async () => data(++reads === 1 ? original : latest),
+        mutatePlaylist: async (_epoch, command) => {
+          writes.push(command);
+          return data(receipt());
+        },
+      });
+      const { app, form } = mountEditor(
+        p,
+        () => {},
+        () => coverUpdates++,
+      );
+      try {
+        await turn();
+        form.name.value = 'local';
+        await form.coverSaved(coverReceipt(latest));
+        assert.equal(coverUpdates, 1);
+        assert.equal(reads, 1);
+        assert.equal(form.name.value, 'local');
+        assert.equal(form.needsRefresh.value, remoteEdit);
+        if (remoteEdit) {
+          await form.save();
+          assert.equal(writes.length, 0);
+          await form.refreshDraft();
+          assert.equal(reads, 2);
+          assert.deepEqual(form.conflicts.value, ['name']);
+          assert.equal(form.latestDraft.value.name, 'remote');
+          assert.equal(form.description.value, 'remote-only');
+          form.resolveConflicts(false);
+          assert.equal(form.name.value, 'remote');
+          form.name.value = 'local-after-review';
+        }
+        assert.equal(writes.length, 0);
+        await form.save();
+        assert.deepEqual(writes, [
+          {
+            kind: 'metadata',
+            id: '10',
+            revision: 'after-cover',
+            name: remoteEdit ? 'local-after-review' : 'local',
+            description: remoteEdit ? 'remote-only' : '',
+            tags: [],
+          },
+        ]);
+      } finally {
+        app.unmount();
+      }
+    },
+  );
+}
+
+test('partial metadata readback permits explicit retry at the observed revision', async () => {
+  const original = { ...editor(), revision: 'original' };
+  const partial = { ...original, revision: 'partial-readback', name: 'local' };
+  const writes: PlaylistCommand[] = [];
+  let closed = false;
+  const p = fixture({
+    playlistEditor: async () => data(original),
+    mutatePlaylist: async (_epoch, command) => {
+      writes.push(command);
+      return data(writes.length === 1 ? { ...receipt('partial'), observed: partial } : receipt());
+    },
+  });
+  const { app, form } = mountEditor(p, () => (closed = true));
+  try {
+    await turn();
+    form.name.value = 'local';
+    form.description.value = 'remaining';
+    await form.save();
+    assert.equal(writes.length, 1);
+    assert.equal(form.refreshBlocked.value, false);
+    assert.equal(form.description.value, 'remaining');
+    await form.save();
+    assert.equal(writes.length, 2);
+    assert.equal('revision' in writes[1]! && writes[1].revision, 'partial-readback');
     assert.equal(closed, true);
   } finally {
     app.unmount();

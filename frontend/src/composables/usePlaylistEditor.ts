@@ -1,7 +1,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import type { PlaylistManager } from './usePlaylists';
 import type { AccountView } from '../services/contracts';
-import { playlistLength, playlistPending } from '../services/playlists.ts';
+import { playlistLength, playlistPending, type PlaylistEditor } from '../services/playlists.ts';
 import { rebasePlaylistDraft, type PlaylistDraft, type PlaylistField } from './playlistDraft.ts';
 import type { CoverOutcome } from '../services/playlistCover';
 
@@ -19,7 +19,7 @@ export function usePlaylistEditor(
   const loaded = ref(false),
     message = ref('');
   const baseline = ref<PlaylistDraft>({ name: '', description: '', tags: [] });
-  let baselineRevision = '';
+  let baselineEditor: PlaylistEditor | undefined;
   const needsRefresh = ref(false);
   const refreshing = ref(false);
   const conflicts = ref<PlaylistField[]>([]);
@@ -79,7 +79,7 @@ export function usePlaylistEditor(
     description.value = editor.description;
     selectedTags.value = [...editor.tags];
     baseline.value = { name: editor.name, description: editor.description, tags: [...editor.tags] };
-    baselineRevision = editor.revision;
+    baselineEditor = editor;
     loaded.value = true;
   });
   onMounted(() => {
@@ -102,6 +102,22 @@ export function usePlaylistEditor(
       message.value = '';
     }
   }
+  function rebase(latest: PlaylistEditor) {
+    const next = rebasePlaylistDraft(
+      baseline.value,
+      { name: name.value, description: description.value, tags: selectedTags.value },
+      latest,
+    );
+    baseline.value = {
+      name: latest.name,
+      description: latest.description,
+      tags: [...latest.tags],
+    };
+    baselineEditor = latest;
+    applyDraft(next.draft);
+    conflicts.value = next.conflicts;
+    needsRefresh.value = false;
+  }
   async function refreshDraft() {
     if (!active() || !needsRefresh.value || refreshing.value || pending.value || manager.busy.value)
       return;
@@ -109,20 +125,7 @@ export function usePlaylistEditor(
     try {
       const latest = await manager.refreshEditor(owner, id);
       if (!active() || !latest) return;
-      const next = rebasePlaylistDraft(
-        baseline.value,
-        { name: name.value, description: description.value, tags: selectedTags.value },
-        latest,
-      );
-      baseline.value = {
-        name: latest.name,
-        description: latest.description,
-        tags: [...latest.tags],
-      };
-      baselineRevision = latest.revision;
-      applyDraft(next.draft);
-      conflicts.value = next.conflicts;
-      needsRefresh.value = false;
+      rebase(latest);
       message.value = '已读取最新歌单，草稿中的修改已保留。';
     } finally {
       if (active()) refreshing.value = false;
@@ -150,9 +153,9 @@ export function usePlaylistEditor(
   }
   async function save() {
     if (!active()) return;
-    const p = manager.editor.value;
+    const base = baselineEditor;
     if (
-      !p ||
+      !base ||
       !editable.value ||
       invalid.value ||
       !dirty.value ||
@@ -164,7 +167,7 @@ export function usePlaylistEditor(
     const result = await manager.mutate({
       kind: 'metadata',
       id,
-      revision: baselineRevision,
+      revision: base.revision,
       name: name.value.trim(),
       description: description.value,
       tags: [...selectedTags.value],
@@ -172,6 +175,15 @@ export function usePlaylistEditor(
     if (!active()) return;
     if (result && manager.saved(result.phase)) close();
     else if (!result) rememberConflict();
+    else if (
+      (result.phase === 'partial' || result.phase === 'rejected') &&
+      result.observed?.id === id &&
+      manager.editor.value === result.observed
+    ) {
+      // Known results may already have saved one field. Rebase on their
+      // readback so an explicit retry uses the observed revision.
+      rebase(result.observed);
+    }
   }
   async function reconcile() {
     if (!active()) return;
@@ -191,12 +203,12 @@ export function usePlaylistEditor(
       next?.();
       return;
     }
-    const p = manager.editor.value;
-    if (!p || !editable.value || pending.value || refreshBlocked.value) return;
+    const base = baselineEditor;
+    if (!base || !editable.value || pending.value || refreshBlocked.value) return;
     const result = await manager.mutate(
       kind === 'clear'
-        ? { kind: 'tracks', id, revision: baselineRevision, change: 'clear', ids: [] }
-        : { kind, id, revision: baselineRevision },
+        ? { kind: 'tracks', id, revision: base.revision, change: 'clear', ids: [] }
+        : { kind, id, revision: base.revision },
     );
     if (!active()) return;
     confirmation.value = undefined;
@@ -204,8 +216,14 @@ export function usePlaylistEditor(
     else if (!result) rememberConflict();
   }
   async function coverSaved(outcome: CoverOutcome) {
-    await manager.refreshAfterCover(owner, id, outcome.editor);
+    const latest = await manager.refreshAfterCover(owner, id, outcome.editor);
     if (active()) {
+      if (latest && manager.editor.value === latest && baselineEditor) {
+        // Cover changes advance the whole playlist revision. Adopt a new
+        // revision only if it still represents the form's non-cover data.
+        if (sameNonCoverFields(baselineEditor, latest)) baselineEditor = latest;
+        else needsRefresh.value = true;
+      }
       message.value = '封面已保存。';
       coverChanged();
     }
@@ -236,4 +254,18 @@ export function usePlaylistEditor(
     confirm,
     coverSaved,
   };
+}
+
+function sameNonCoverFields(before: PlaylistEditor, after: PlaylistEditor) {
+  return (
+    before.id === after.id &&
+    before.name === after.name &&
+    before.description === after.description &&
+    JSON.stringify(before.tags) === JSON.stringify(after.tags) &&
+    before.owned === after.owned &&
+    before.favorite === after.favorite &&
+    before.private === after.private &&
+    before.hasLocal === after.hasLocal &&
+    JSON.stringify(before.trackIds) === JSON.stringify(after.trackIds)
+  );
 }
