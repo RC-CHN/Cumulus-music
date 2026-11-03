@@ -26,6 +26,7 @@
     cloud = () => shown(".cloud-page");
   const dialog = () => shown("dialog[open]"),
     queue = () => shown(".queue-panel");
+  const localTrackMenu = () => shown('[role="menu"][aria-label="本地歌曲操作"]');
   const localField = () =>
     local()?.querySelector('[aria-label="搜索本地音乐"]');
   const localRows = () => all(".local-tracks tbody tr", local() ?? document);
