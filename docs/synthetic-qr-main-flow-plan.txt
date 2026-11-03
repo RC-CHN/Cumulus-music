@@ -1,8 +1,9 @@
-合成扫码接入单窗口主流程：实施计划
+合成扫码接入单窗口主流程
 
-现有 desktop/examples/main_flow_ui_probe.rs 使用闭合 Api 夹具和真实 Vue/Tauri/
-MusicClient/libmpv，但夹具的 account/get 直接返回身份，未验证游客扫码和会话采用。
-保留现有歌单、媒体、SQLite 完整性及清理断言。本计划尚未接线或执行。
+原探针使用闭合 Api 夹具，account/get 直接返回身份。现在
+desktop/examples/main_flow_ui_probe.rs 通过 main_flow_wire.rs 包装该夹具，
+在正式 Vue/Tauri/MusicClient/libmpv 流程前加入 Legacy 合成扫码与会话采用。
+歌单、媒体、SQLite 完整性及清理断言仍保留。以下记录接线依据和执行边界。
 
 宿主和传输
 - 让现有 Service 继续承担业务状态和 MediaBackend；新增测试专用 HttpBackend
@@ -51,3 +52,12 @@ unshare -Urn 仅启用回环，再在私有 D-Bus 和 Xvfb/Openbox 内运行；W
 后者断言采用的 epoch 一致，记录两次扫码轮询且无自动重试。已有下载后夹具断开、
 本地解码、哈希和清理判据继续强制。此验收不验证真实登录、真实账号写入、上游
 音源或物理声卡；若需证明已保存会话重开，另在同一合成状态启动第二个进程。
+
+
+本机结果：Linux 在无外网命名空间内完成 17 个检查点和 16 张截图，
+真实 WebView 等待确认时仍为游客代次 0；803 后先回读候选身份，
+再保存并采用代次 1。此后全部业务检查点均使用代次 1。媒体服务断开后
+无媒体或业务 API 请求；原生后台另尝试三次接续实验读取，均由闭合
+传输拒绝并单独计数，未影响 libmpv 本地播放及清理。证据见
+.build/main-flow-qr-current 指向的 run/report.json。未验证真实扫码、
+重启恢复、Windows 实机或实体音频输出。

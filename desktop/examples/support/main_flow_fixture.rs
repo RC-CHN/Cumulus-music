@@ -46,6 +46,9 @@ impl Service {
     pub fn offline(&self) {
         self.offline.store(true, Ordering::Release);
     }
+    pub fn is_offline(&self) -> bool {
+        self.offline.load(Ordering::Acquire)
+    }
     pub fn facts(&self) -> Value {
         let media = self.media.facts();
         json!({"calls":*self.calls.lock().unwrap(), "disposablePresent":self.playlist.lock().unwrap().is_some(),

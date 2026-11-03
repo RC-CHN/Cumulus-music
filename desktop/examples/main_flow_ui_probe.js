@@ -52,10 +52,31 @@
     await emit(name === "complete" ? name : "ux_" + name, extra);
   }
   try {
+    last = "guest";
+    const guest = await wait(async () => {
+      const view = await invoke("account_snapshot");
+      const entry = one(".account-button");
+      return ["unknown", "signed_out"].includes(view.status) && entry?.title === "点击登录" && !entry.disabled && view;
+    }, "signed-out startup");
+    await stage("guest", { epoch: guest.epoch, status: guest.status });
+
+    last = "qr_pending";
+    await click(() => one(".account-button"), "guest login entry");
+    await wait(() => one('.login-dialog[open] svg[aria-label="网易云音乐登录二维码"]'), "rendered login QR");
+    await wait(() => one('.login-dialog[open] .qr-confirmation'), "QR scanned, awaiting confirmation");
+    const pending = await invoke("account_snapshot");
+    check(pending.status === guest.status && pending.epoch === guest.epoch, "QR confirmation must retain guest account");
+    await stage("qr_pending", { epoch: pending.epoch, status: pending.status });
+
+    last = "login_adopted";
+    await emit("approve_login");
     const account = await wait(async () => {
       const view = await invoke("account_snapshot");
-      return view.status === "authenticated" && view.nickname === "合成主流程账号" && view;
-    }, "recover account through app startup");
+      return view.status === "authenticated" && view.epoch !== guest.epoch &&
+        view.nickname === "合成主流程账号" && one(".account-button")?.title === view.nickname &&
+        !one(".login-dialog[open]") && view;
+    }, "QR login adopted by the app");
+    await stage("login_adopted", { epoch: account.epoch, previousEpoch: guest.epoch, status: account.status });
     const epoch = account.epoch;
     const playlists = async () => (await invoke("account_playlists")).value;
     const baseline = (await playlists()).map(p => p.id);

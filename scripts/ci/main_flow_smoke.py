@@ -10,7 +10,7 @@ from pathlib import Path
 from window_manager import launch
 
 STAGES = (
-    'recovered', 'daily', 'search', 'playback', 'playlist_created', 'playlist_edited',
+    'guest', 'qr_pending', 'login_adopted', 'recovered', 'daily', 'search', 'playback', 'playlist_created', 'playlist_edited',
     'playlist_song_added', 'playlist_song_removed', 'playlist_cleaned', 'download_paused', 'download_complete', 'local_offline_playback', 'download_disposed', 'complete',
 )
 
@@ -42,7 +42,21 @@ def main():
     stages = {name: json.loads((output / ('complete.json' if name == 'complete' else
                                         f'ux_{name}.json')).read_text(encoding='utf-8'))
               for name in STAGES}
-    assert all(stage['authenticated'] for stage in stages.values())
+    guest, pending, adopted = (stages[name] for name in ('guest', 'qr_pending', 'login_adopted'))
+    assert not guest['authenticated'] and not pending['authenticated']
+    assert guest['status'] == pending['status'] and guest['status'] in ('unknown', 'signed_out')
+    assert guest['epoch'] == guest['nativeEpoch'] == pending['epoch'] == pending['nativeEpoch'] == adopted['previousEpoch']
+    assert guest['wire']['tickets'] == 0 and pending['wire']['guestIdentityReads'] >= 1
+    assert pending['wire']['tickets'] == 1 and pending['wire']['polls'] in (1, 2)
+    assert not pending['wire']['approved'] and not pending['wire']['authorized']
+    assert adopted['status'] == 'authenticated' and adopted['epoch'] != guest['epoch']
+    assert adopted['audit'] == {'savedCurrentProfile': True}
+    assert adopted['wire']['tickets'] == 1 and adopted['wire']['polls'] == 2
+    assert adopted['wire']['approved'] and adopted['wire']['authorized']
+    assert adopted['wire']['authenticatedIdentityReads'] >= 1
+    assert all(stages[name]['authenticated'] and stages[name]['nativeEpoch'] == adopted['epoch']
+               for name in STAGES[2:])
+    assert stages['complete']['wire']['tickets'] == 1 and stages['complete']['wire']['polls'] == 2
     assert stages['recovered']['fixture']['calls']['/api/w/nuser/account/get'] >= 1
     assert stages['daily']['fixture']['calls']['/api/v3/discovery/recommend/songs'] >= 1
     assert stages['search']['fixture']['calls']['/api/search/song/list/page'] >= 1
@@ -92,6 +106,7 @@ def main():
     for stage in (offline, disposal, stages['complete']):
         assert stage['fixture']['offline'] and not stage['fixture']['disposablePresent']
         assert stage['fixture']['offlineMediaAttempts'] == 0
+        assert stage['wire']['offlineBusinessAttempts'] == 0
         assert stage['fixture']['calls'] == downloaded['fixture']['calls']
         assert stage['fixture']['mediaTransfers'] == downloaded['fixture']['mediaTransfers']
         assert stage['fixture']['sourceLoads'] == 1 and stage['fixture']['localLoads'] == 1
@@ -117,7 +132,9 @@ def main():
     assert screenshots == (len(STAGES) - 1 if args.screenshots else 0)
     report = dict(ok=True, actualWebView=True, actualLibmpv=True, stages=len(STAGES), screenshots=screenshots, sqliteVerified=True,
                   realMusicRequests=0, realAccountWrites=0, syntheticOfflinePlayback=True, nativeDownloadDisposal=True, downloadIntegrityCheckpoint=True,
-                  pausedPartialAndVerifiedRangeResume=True, playlistMembershipReadback=True)
+                  pausedPartialAndVerifiedRangeResume=True, playlistMembershipReadback=True,
+                  syntheticQrAdoption=True, savedCurrentSyntheticProfile=True,
+                  rejectedOfflineRelayExperimentAttempts=stages['complete']['wire']['offlineRelayExperimentAttempts'])
     (root/'report.json').write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
     print(json.dumps(report))
 

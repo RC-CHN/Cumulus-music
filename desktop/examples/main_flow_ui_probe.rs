@@ -3,13 +3,15 @@
 mod capture_ack;
 #[path = "support/main_flow_fixture.rs"]
 mod fixture;
+#[path = "support/main_flow_wire.rs"]
+mod wire;
 
 use cumulus_core::{
     Error, Result,
-    account::{AccountSession, profiles::ProfileRegistry},
+    account::SessionStatus,
     client::MusicClient,
     media::integrity::inspect_file,
-    protocol::http::ApiOrigin,
+    protocol::http::{ClientProfile, OFFICIAL_WINDOWS_USER_AGENT},
     storage::StateStore,
 };
 use serde_json::{Value, json};
@@ -154,14 +156,21 @@ fn main() {
     ));
     cumulus_desktop::configure(tauri::Builder::default())
         .setup(move |app| {
-            let registry = ProfileRegistry::open(&root.join("state"), ApiOrigin::Pc)?;
-            let store = registry.store();
+            let store = Arc::new(StateStore::open(root.join("state"))?);
             let fixture = Arc::new(fixture::Service::new(store.clone()));
-            let session = Arc::new(AccountSession::new(fixture.clone(), Some(store.clone())));
+            let wire = Arc::new(wire::Wire::new(fixture.clone()));
             let audio_path = downloads.clone();
             let audio_fixture = fixture.clone();
             let checkpoint_seed = seed.clone();
-            let client = MusicClient::with_session(session, registry)
+            let client = MusicClient::open_with_request_context(
+                &root.join("state"), None,
+                ClientProfile {
+                    user_agent: OFFICIAL_WINDOWS_USER_AGENT.into(),
+                    os_version: "synthetic-windows".into(),
+                    client_sign: Some("synthetic-main-flow-sign".into()),
+                },
+                Some(wire.clone()), Some(wire::Wire::context()),
+            )?
                 .with_download_backend(fixture.clone())
                 .with_audio_factory(move || Ok(Box::new(fixture::Audio::open(seed.clone(), audio_path.clone(), audio_fixture.clone())?)));
             app.manage(client);
@@ -172,6 +181,13 @@ fn main() {
             app.listen("ux-proof", move |event| {
                 let Ok(mut value) = serde_json::from_str::<Value>(event.payload()) else { return };
                 let Some(stage) = value["stage"].as_str().map(str::to_owned) else { return };
+                if stage == "approve_login" {
+                    if wire.approve().is_err() {
+                        fs::write(out.join("failed.json"), br#"{"stage":"approve_login","ok":false}"#).unwrap();
+                        handle.exit(1);
+                    }
+                    return;
+                }
                 if stage == "wait_download_prefix" {
                     let fixture = fixture.clone();
                     let handle = handle.clone();
@@ -191,10 +207,19 @@ fn main() {
                     handle.get_webview_window("main").unwrap().eval("window.__mainFlowOffline=true;").unwrap();
                     return;
                 }
-                if !["ux_recovered","ux_daily","ux_search","ux_playback","ux_playlist_created","ux_playlist_edited","ux_playlist_song_added","ux_playlist_song_removed","ux_playlist_cleaned","ux_download_paused","ux_download_complete","ux_local_offline_playback","ux_download_disposed","complete","failed"].contains(&stage.as_str()) { return; }
+                if !["ux_guest","ux_qr_pending","ux_login_adopted","ux_recovered","ux_daily","ux_search","ux_playback","ux_playlist_created","ux_playlist_edited","ux_playlist_song_added","ux_playlist_song_removed","ux_playlist_cleaned","ux_download_paused","ux_download_complete","ux_local_offline_playback","ux_download_disposed","complete","failed"].contains(&stage.as_str()) { return; }
                 let client = handle.state::<MusicClient>();
-                value["authenticated"] = json!(client.account().is_ok_and(|v| v.status == cumulus_core::account::SessionStatus::Authenticated));
+                let account = client.account().unwrap();
+                value["authenticated"] = json!(account.status == SessionStatus::Authenticated);
+                value["nativeEpoch"] = json!(account.epoch);
+                value["wire"] = wire.facts();
                 let audit = match stage.as_str() {
+                    "ux_login_adopted" => client.saved_accounts(&account.epoch).and_then(|records| {
+                        if records.value.len() != 1 || !records.value[0].current || !records.value[0].auto_login {
+                            return Err(Error::State("synthetic profile was not saved and adopted"));
+                        }
+                        Ok(json!({"savedCurrentProfile":true}))
+                    }),
                     "ux_download_paused" => paused(&store, &value["taskId"]),
                     "ux_download_complete" => checkpoint(&store, &downloads, &checkpoint_seed),
                     "ux_download_disposed" => fs::read(out.join("ux_download_complete.json"))

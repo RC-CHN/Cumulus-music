@@ -171,3 +171,8 @@ Cumulus 桌面主流程验收
   同一次运行仍通过续传、成品校验、断网播放和文件清理；没有
   访问真实服务或写入真实账号。报告见
   .build/main-flow-membership-current 指向的 run/report.json。
+
+  合成主流程现从游客开始：正式登录窗口显示二维码待确认，随后采用
+  新账号并确认当前配置已保存。原生 PC EAPI 闭合夹具校验扫码、身份
+  回读和后续业务请求，全程同一 WebView。Linux 共 17 个检查点、
+  16 张截图；未访问真实服务。见 synthetic-qr-main-flow-plan.txt。
