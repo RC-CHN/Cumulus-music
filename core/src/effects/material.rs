@@ -1,7 +1,16 @@
 //! Official component parameter parsing. Enumerating a PEQ fragment does not
 //! imply that the full native material selector would activate that fragment.
+mod controls;
+mod equalization;
+mod routing;
 use super::dsp::{Coefficients, ParametricBand, ParametricEq, ParametricKind, RotationStage};
 use crate::{Error, Result};
+pub use controls::{
+    CompressorParameters, ControlCall, DelayParameters, LimiterParameters, alc_calls,
+    compressor_calls, delay_calls, limiter_calls, speaker_spatial_calls,
+};
+pub use equalization::{EqualizationCall, bass_treble_calls, graphic_calls};
+pub use routing::{Component, ComponentSection, MaterialRouting, MaterialSchema, route_sections};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
