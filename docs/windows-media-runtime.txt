@@ -226,3 +226,36 @@ the executable directory as its working directory and does not inherit PATH,
 so a missing executable or runtime dependency cannot trigger a lookup in the
 application's launch directory or PATH. Local NCM metadata does not use
 ffprobe. Unix keeps its existing system executable lookup.
+
+Installed NSIS verification still needed
+----------------------------------------
+The current Windows package proof runs engine_roundtrip, player_probe,
+parametric_probe and pinned_audio_probe beside the portable runtime closure.
+The WebView jobs later point MPV_DLL_DIR_CUMULUS at the same staged native
+directory. Neither path exercises file placement by the published NSIS
+installer. A missing or nested installed libmpv, ffprobe or filter could
+therefore pass both checks. This is a gap in evidence, not a confirmed bad
+installer. The exact extracted Linux Debian check is a separate test.
+
+An installed verification should run the exact same-run setup.exe from
+manifest-windows-x64.json in a disposable Windows user/VM with WebView2
+already present and network blocked. Verify the installer hash and commit
+before running it. Install into a fresh absolute directory for that user
+and wait for the installer to exit successfully; NSIS silent install uses
+/S and an absolute /D= destination as the final argument. Use the actual
+resulting filesystem rather than a 7-Zip listing: archive paths alone do not
+prove the installer places files there. Compare the installed cumulus.exe,
+ffprobe.exe, cumulus_audio_filter.dll and each runtime-manifest.json DLL
+against the same-run portable copies using SHA-256, requiring them beside
+cumulus.exe and rejecting links/reparse points on that path.
+
+Launch that ordinary installed executable from a separate working directory,
+with MPV_DLL_DIR_CUMULUS and CUMULUS_AUDIO_FILTER unset, a system-only PATH,
+and a fresh Windows profile. Import a generated local FLAC through the real
+WebView, verify metadata and native transport position/pause, and exercise
+the built-in equalizer through the installed adapter. A physical-output claim
+also needs evidence from the actual endpoint, such as a WASAPI loopback
+capture showing the synthetic tone; playback position alone is not that
+evidence. Keep installation, profile and registry changes confined to the
+disposable environment. No exact NSIS installation or Windows audio endpoint
+was available for this audit, so this plan does not add a required CI step.
