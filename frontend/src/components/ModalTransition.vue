@@ -5,7 +5,9 @@ const returnTargets = new WeakMap<Element, HTMLElement>();
 </script>
 <script setup lang="ts">
 import { onUnmounted } from 'vue';
+import { useMotion } from '../composables/useMotion';
 import { modalEntered, modalLeft } from '../services/modal';
+import { createPageTransition } from '../services/pageTransition';
 const props = withDefaults(
   defineProps<{
     fallbackFocus?: () => HTMLElement | null;
@@ -16,7 +18,13 @@ const props = withDefaults(
 );
 const emit = defineEmits<{ left: [] }>();
 const owned = new Set<Element>();
+const motion = useMotion();
+const animation = createPageTransition(() => motion.reduced.value, undefined, {
+  name: 'modal',
+  deadlineMs: 450,
+});
 onUnmounted(() => {
+  animation.dispose();
   for (const element of owned) modalLeft(element);
 });
 function entering(element: Element) {
@@ -36,6 +44,10 @@ function entering(element: Element) {
 }
 function leaving(element: Element) {
   (element as HTMLElement).inert = true;
+}
+function leaveCancelled(element: Element) {
+  animation.cancel(element);
+  (element as HTMLElement).inert = false;
 }
 function left(element: Element) {
   owned.delete(element);
@@ -64,7 +76,16 @@ function left(element: Element) {
 }
 </script>
 <template>
-  <Transition name="modal" @before-enter="entering" @before-leave="leaving" @after-leave="left"
-    ><slot
-  /></Transition>
+  <Transition
+    :css="false"
+    @before-enter="entering"
+    @enter="animation.enter"
+    @enter-cancelled="animation.cancel"
+    @before-leave="leaving"
+    @leave="animation.leave"
+    @leave-cancelled="leaveCancelled"
+    @after-leave="left"
+  >
+    <slot />
+  </Transition>
 </template>
