@@ -166,3 +166,32 @@ PipeWire 输出。原生时钟推进、暂停、定位后继续、倍速、CUE �
   恢复后回到 4862；暂停后 RMS 为零。报告在
   `.build/priority-{package,portable}-eq-bypass/report.json`。两种包均未发布；
   无外网、无 IPC 注入，未验证实体声卡。
+
+2026-11-04 Linux 打包快照与包内复验（dc537f3）
+  源提交 dc537f3832e220a691923eb71e94dfe1a1ede6b0；独立工作树用
+  npm --prefix frontend ci、npm --prefix frontend run build 和
+  python3 scripts/ci/package.py --platform linux-x64 构建。产物位于
+  .build/package-proof-dc537f3/.build/packages/linux-x64/：
+  Cumulus-0.1.0-linux-x64.deb
+    SHA-256 f100e59824c0c798c5ac0bd9260e89f17ae81ca249044e085d79521d0e915080
+  Cumulus-0.1.0-linux-x64.tar.gz
+    SHA-256 dae192874263e8daea755396eb0aba6ca7cd77ac845dc83412ddb40cc5532eb7
+  manifest-linux-x64.json 记录上述提交；ciRun 和 ciAttempt 都是 null。
+  若从该便携包运行，先解压到独立目录，再运行
+  ./Cumulus-0.1.0-linux-x64/cumulus；保留旁边的音效库。依赖见
+  docs/releases/0.1.0.txt。上述同名文件不属于已发布 v0.1.0。
+
+  在无外网、无宿主声卡的 Linux Xvfb/Openbox、en_US.UTF-8 locale 中，
+  分别从 .deb 和 tar.gz 取出程序，以实际窗口导入和播放合成 FLAC。
+  核对同曲继续、均衡器预设和旁路后的原生状态，包内滤镜正确映射。
+  私有 PipeWire 监测口读出的 440 Hz 振幅，依次为普通、均衡、旁路、
+  恢复、暂停：.deb 为 2895.643 / 4862.398 / 2895.643 / 4862.386 / 0；
+  便携版为 2895.643 / 4862.400 / 2895.643 / 4862.389 / 0。
+  对应本机报告和截图目录为
+  .build/package-proof-dc537f3-{deb,portable}-isolated/。
+  复跑用 scripts/ci/installed_linux_smoke.py，按脚本头隔离环境并传
+  --packages <上述包目录> --filter <工作树中同次打包的音效库>
+  --commit dc537f3832e220a691923eb71e94dfe1a1ede6b0 --root <新目录>
+  --verify-local-playback --verify-installed-equalizer --verify-monitor-pcm；
+  便携包另加 --portable。未使用实体声卡、真实账号、外网或测试 IPC。
+  快照不包含后续主线改动，不构成目标提交的 CI 或发布证据。

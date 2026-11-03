@@ -11,7 +11,8 @@ docs/rust-core-migration.txt；原包来源入口见 docs/migration-source-index
 2026-10-28 发布 v0.1.0，标签直接指向 0c56933（chore:release 0.1.0）。
 GitHub Release 有 Linux deb/tar.gz、Windows NSIS/zip 及两平台清单、
 SHA256SUMS、release-provenance.json。Linux deb 和 Windows zip 已分别
-复算 SHA-256，并核对 provenance 的标签提交。该包边界见
+复算 SHA-256，并核对 provenance 的标签提交；发布清单指向同一提交
+成功的 CI 40641117031（第 1 次执行，CD 未重建）。该包边界见
 docs/releases/0.1.0.txt；之后的 main 不属于这个包。下一版本必须满足 AGENTS.md 的唯一空发布
 提交和精确目标 CI 门禁，不能更新旧标签或附件。
 
@@ -21,13 +22,19 @@ docs/releases/0.1.0.txt；之后的 main 不属于这个包。下一版本必须
 系统依赖、Linux/Windows 发行构建及校验见 docs/releasing.txt。
 无 WebView 的 core 构建、职责与数据流见 docs/architecture.txt。
 普通 Linux 客户端启动、原生文件选择和播放证据见 docs/bootstrap-validation.txt。
-本机 1f44be9 的 .deb 和便携 tar.gz 均核对摘要并从包内正式窗口导入、
-播放、暂停合成 FLAC。选择均衡器预设后，同一曲目的时钟继续推进；
-核对持久化、进程映射的各自滤镜及独立 PipeWire 空输出的 PCM。
-两个包的 440 Hz 分量均提高约 4.5 dB，暂停后为零。
+主线快照 dc537f3832e220a691923eb71e94dfe1a1ede6b0 的 Linux deb 和便携
+tar.gz 已在本机按发行流程构建。两包均核对摘要，实际打开包内窗口、
+导入合成 FLAC、继续播放、切换音效旁路并暂停；独立 PipeWire 监测口
+测得 440 Hz 分量按「普通 → 均衡 → 旁路 → 恢复 → 暂停」约为
+2896 → 4862 → 2896 → 4862 → 0。见 docs/bootstrap-validation.txt 中
+该提交的本地路径、摘要及复跑方式。虽然文件名含 0.1.0，它们的清单
+没有 CI run，也不是 GitHub Release 附件。
 Windows 的便携 ZIP 核验与解包启动已接入 CI；独立 NSIS 诊断已实现，
 实际安装运行与安装后的正式界面播放仍须单独验收。
-这些记录不代替目标提交的两端 CI 或正式发布。
+实现批次 7cb1a9822dc37b626a7388fdbf39eb52a3732f35 对应
+https://github.com/RC-CHN/Cumulus-music/actions/runs/41734411223 。
+索引写入时前端 job 已成功、Linux/Windows job 仍在运行；以上本机包不
+包含这一批次，也不代替目标提交的两端 CI 或正式发布。
 主线 737fd6a 已在 Linux 重新构建桌面探针并复跑 19 个合成主流程检查点、
 18 张截图；实测 libmpv、HTTPS 自动换曲、下载断点及离线播放。报告在本机
 `.build/reconnect-main-eof/report.json`，与正式发行包分开记录。
@@ -60,11 +67,18 @@ Windows 的便携 ZIP 核验与解包启动已接入 CI；独立 NSIS 诊断已�
   分别验证：后者只读，能播放和插入下一首，不写风格偏好。见
   docs/search-scroll-ui-contracts.txt、docs/style-recommendations.txt。FM 和发现页
   各查专项，不用搜索通过推断全部内容、设备或账号行为。
+  综合搜索歌词高亮和别名回退另有 4 个 Linux WebView 检查点（含窄窗深色）；
+  见 docs/search-preview-ui-contracts.txt 和
+  .build/goal-search-track-hint-webview/audit.json。未用真实账号验证该分流。
 - 歌单、收藏、设置、历史：core/src/playlist、core/src/account、core/src/history；
   desktop/src/playlists.rs、desktop/src/collections.rs、desktop/src/settings.rs。
   docs/core-pc-playlist-official-contracts.txt、docs/playlist-detail-ui-contracts.txt、
   docs/desktop-main-flow-proof.txt、docs/play-history-contracts.txt。
   历史真实私密歌单独立往返和当前合成主流程增删回读不能拼成当前真实整链。
+  收藏目标的默认/常用优先按官方 /api/user/playlist/v2 读页码，
+  收藏弹窗 29 项、队列批量收藏 32 项 Linux WebView 检查点通过；见
+  docs/playlist-collect-ui-contracts.txt 及 .build/goal-collect-style-ui/audit.json、
+  .build/goal-collect-queue-ui/audit.json。服务端排序效果仍需真实样本。
 - 播放、队列、歌词、会员：core/src/playback、core/src/lyrics、core/src/membership；
   desktop/src/player.rs、frontend/src/components/PlayerBar.vue、
   frontend/src/components/LyricsPanel.vue、frontend/src/components/MemberPage.vue。
@@ -74,6 +88,8 @@ Windows 的便携 ZIP 核验与解包启动已接入 CI；独立 NSIS 诊断已�
   的 Linux 桌面验证另覆盖曲终换曲和首次 503 后显式重取音源，见
   docs/desktop-main-flow-proof.txt；此证据不代替真实 CDN。MP3、FLAC 和
   M4A 文本标签歌词有 Rust 测试，Linux Tauri 两个歌词窗口用 FLAC 验收。
+  播放详情来源入口以 7 张 Linux WebView 截图验证返回专辑而不改播放
+  ID 或队列；见 .build/goal-playback-source-paint.log，未验证真实服务。
   实体声卡、全部会员条件和专有歌词格式仍需独立验证。
 - 本地、NCM、下载：core/src/library、core/src/download、core/src/media；
   frontend/src/components/LocalPage.vue、frontend/src/components/DownloadPage.vue。
@@ -83,6 +99,8 @@ Windows 的便携 ZIP 核验与解包启动已接入 CI；独立 NSIS 诊断已�
   的真实下载模式尚未执行。独立冷离线窗口有无外网的明文 FLAC、NCM/FLAC
   及 NCM/AAC 合成证据，未验证真实服务下发的 NCM/AAC。文件管理及历史
   真实媒体另查专项报告。
+  从本地列表移除索引但保留文件、队列和其他 CUE 分段，重新扫描可恢复；
+  Linux WebView 28 项报告见 .build/goal-local-hide-ui/report.json。
 - 云盘：core/src/cloud、desktop/src/cloud.rs、frontend/src/components/CloudPage.vue。
   docs/desktop-cloud-contracts.txt、docs/core-nos-upload-contracts.txt、
   docs/core-oss-upload-contracts.txt。NOS 有独立真实往返；OSS 有签名、
@@ -135,7 +153,9 @@ Windows 的便携 ZIP 核验与解包启动已接入 CI；独立 NSIS 诊断已�
 --------------
 1. 从 docs/desktop-main-flow-proof.txt 复查两个进程的扫码、资源、搜索、
    原生音频、临时歌单、下载暂停续传、断网播放、清理和重开证据。合成链路
-   已通过 Linux 18 个检查点；不得把单独的真实只读播放算成真实整链。
+   有 Linux 19 个检查点和独立的 HTTPS 503 显式重试报告
+   .build/user-priority-main-flow-retry/report.json；不得把单独的真实只读
+   播放算成真实整链。
 2. 核对 docs/ui-ux-audit.txt 中官方来源和未对齐状态；窗口截图、键盘与
    焦点、原生请求和播放时钟分别验收，不能用一个截图代替交互。
 3. 在目标 SHA 上检查 Linux/Windows 产物及全部必需 CI job，并分别核对普通
