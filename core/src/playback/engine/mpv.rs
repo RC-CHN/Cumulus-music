@@ -13,8 +13,14 @@ use std::{
     path::PathBuf,
     time::{Duration, Instant},
 };
+#[cfg(test)]
+mod effect_order_tests;
 mod loudness;
 mod parametric;
+
+fn effect_filter(label: &str, graph: String) -> String {
+    format!("@cumulus-{label}:lavfi=graph=%{}%{graph}", graph.len())
+}
 
 #[derive(Default)]
 pub struct MpvConfig {
@@ -30,6 +36,7 @@ pub struct MpvEngine {
     // Native is destroyed first, so its filter callbacks finish before the
     // owning adapter handle/library are released.
     equalizer: Option<crate::effects::equalizer::EqualizerHost>,
+    equalizer_reserved: bool,
     loudness: Option<crate::effects::loudness::LoudnessHost>,
     parametric: Option<crate::effects::parametric::ParametricHost>,
     equalizer_library: Option<PathBuf>,
@@ -63,12 +70,19 @@ impl MpvEngine {
         library: &std::path::Path,
         settings: crate::effects::equalizer::EqualizerSettings,
     ) -> Result<()> {
+        if self.equalizer_reserved && self.equalizer_library.as_deref() == Some(library) {
+            return self.set_equalizer(settings);
+        }
         if self.equalizer.is_some() {
             return Err(Error::State("equalizer is already attached"));
         }
+        if self.parametric.is_some() {
+            // A missing/failed reservation cannot be reinserted during PEQ:
+            // changing the running graph can recreate PEQ instances.
+            return Err(Error::State("equalizer must be initialized before PEQ"));
+        }
         let host = crate::effects::equalizer::EqualizerHost::open(library, settings)?;
-        let graph = host.filter_graph();
-        let filter = format!("@cumulus-geq:lavfi=graph=%{}%{}", graph.len(), graph);
+        let filter = effect_filter("geq", host.filter_graph());
         self.control(&["af", "add", &filter])?;
         self.equalizer = Some(host);
         self.equalizer_library = Some(library.to_path_buf());
@@ -81,7 +95,11 @@ impl MpvEngine {
         self.equalizer
             .as_mut()
             .ok_or(Error::State("equalizer adapter is not attached"))?
-            .update(settings)
+            .update(settings)?;
+        if settings.effective().enabled() {
+            self.equalizer_reserved = false;
+        }
+        Ok(())
     }
     pub fn equalizer_stats(&self) -> Result<crate::effects::equalizer::abi::EqualizerStats> {
         self.equalizer
@@ -93,6 +111,7 @@ impl MpvEngine {
         if self.equalizer.is_some() {
             self.control(&["af", "remove", "@cumulus-geq"])?;
             self.equalizer = None;
+            self.equalizer_reserved = false;
         }
         Ok(())
     }
@@ -114,6 +133,7 @@ impl MpvEngine {
         let mut engine = Self {
             native,
             equalizer: None,
+            equalizer_reserved: false,
             loudness: None,
             parametric: None,
             equalizer_library: None,
@@ -555,6 +575,7 @@ impl AudioEngine for MpvEngine {
             return Ok(false);
         };
         if !settings.enabled()
+            && !self.equalizer_reserved
             && self
                 .equalizer
                 .as_ref()
@@ -572,7 +593,9 @@ impl AudioEngine for MpvEngine {
             self.detach_equalizer()?;
         }
         if self.equalizer.is_some() {
-            self.set_equalizer(settings)?;
+            if !self.equalizer_reserved || settings.enabled() {
+                self.set_equalizer(settings)?;
+            }
         } else if settings.enabled() {
             self.attach_equalizer(&path, settings)?;
         }
@@ -584,6 +607,9 @@ impl AudioEngine for MpvEngine {
     fn observe_equalizer(
         &mut self,
     ) -> Result<Option<crate::effects::equalizer::abi::EqualizerStats>> {
+        if self.equalizer_reserved {
+            return Ok(None);
+        }
         self.equalizer.as_ref().map(|h| h.stats()).transpose()
     }
     fn apply_loudness(
