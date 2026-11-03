@@ -1,5 +1,15 @@
 Cumulus 桌面主流程验收
 
+2026-11-04 Linux 回归（737fd6a）
+  使用生产 Vue、真实 Tauri IPC、SQLite 和 libmpv，合成主流程通过 19 个
+  检查点并保留 18 张截图。二维码采用期间读取旧代次的快照时，探针仅
+  再读一次待确认的状态，不重发扫码确认。验证合成账号重开、歌单成员
+  回读、两首回环 HTTPS 音频按原序换曲、下载断点续传、断网本地播放
+  和下载清理。无真实账号请求或写入。报告：`.build/reconnect-main-eof/report.json`。
+  独立的 NCM/AAC 冷启动验证通过：无法确认在线身份时仍提供「重新连接」；
+  用户明确重试后，可以继续进入缓存权益允许的本地播放。种子和冷启动
+  分进程，冷启动无外网，状态比对和截图在 `.build/reconnect-cold-ncm-xvfb/`。
+
 单进程桌面合成验收
   测试入口 desktop/examples/main_flow_ui_probe.rs 使用应用实际打包的
   Vue、Tauri IPC、MusicClient、播放器与 SQLite。只在测试入口注入
