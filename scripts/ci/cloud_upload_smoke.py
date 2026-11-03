@@ -8,7 +8,8 @@ LABELS = ['empty_light', 'choosing_light', 'same_names_light', 'attachments_ligh
           'partial_error_dark', 'corrected_attachment_dark', 'completed_tasks_dark',
           'unknown_receipt_light', 'receipt_recovered_light', 'many_first_small_dark',
           'many_last_small_dark', 'limit_small_dark', 'picker_error_small_light',
-          'cancelled_picker_small_light', 'attachments_small_light', 'account_replaced_dark']
+          'cancelled_picker_small_light', 'attachments_small_light', 'omission_lyric_dark',
+          'omission_cue_dark', 'omission_stopped_dark', 'account_replaced_dark']
 
 
 def main():
@@ -54,11 +55,12 @@ def main():
     assert '500' in states['limit_small_dark']['dialogText']
     fixture = complete['syntheticUpload']
     assert fixture['realRequests'] == 0 and fixture['probe'] == 'ffprobe'
-    assert len(fixture['publishedIds']) == 3 and len(fixture['objects']) == 7
+    assert len(fixture['publishedIds']) == 4 and len(fixture['objects']) == 9
     assert all(o['matchesFixture'] and o['bytes'] for o in fixture['objects'])
-    assert fixture['calls']['/api/cloud/upload/check'] == 3 and fixture['calls']['/api/cloud/pub/v2'] == 3
+    assert fixture['calls']['/api/cloud/upload/check'] == 4 and fixture['calls']['/api/cloud/pub/v2'] == 4
+    assert fixture['attachmentMetadata'][-1] == ['coverid']
     report = dict(ok=True, states=len(states), screenshots=len(states) if args.screenshots else 0,
-                  actualWebViews=1, nativeRegisteredUploads=3, actualSyntheticObjects=7,
+                  actualWebViews=1, nativeRegisteredUploads=4, actualSyntheticObjects=9, explicitTextOmissions=2,
                   typedOsPickerInjected=True, serviceAndObjectStorageSynthetic=True,
                   actualFfprobe=True, lostReplyInjected=True, realAccountWrites=0,
                   realMusicRequests=0, physicalAudioOutputVerified=False, physicalDisplayVerified=False)

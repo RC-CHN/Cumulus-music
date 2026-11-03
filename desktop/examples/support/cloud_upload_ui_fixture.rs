@@ -40,6 +40,7 @@ pub struct Fixture {
     hold_entered: AtomicUsize,
     release: tokio::sync::Notify,
     lose_allocation: AtomicBool,
+    image_only_text: AtomicBool,
     encoding_mode: AtomicUsize,
 }
 impl Fixture {
@@ -85,6 +86,9 @@ impl Fixture {
             if !held {
                 self.release.notify_one();
             }
+        }
+        if let Some(blocked) = value["imageOnlyText"].as_bool() {
+            self.image_only_text.store(blocked, Ordering::Release);
         }
         if let Some(lost) = value["loseAllocation"].as_bool() {
             self.lose_allocation.store(lost, Ordering::Release);
@@ -201,7 +205,14 @@ impl Fixture {
             adapters::ALLOC | adapters::ATTACH => {
                 state.serial += 1;
                 let key = format!("object-{}", state.serial);
-                json!({"code":200,"data":adapters::allocation(&key,state.serial)})
+                let mut data = adapters::allocation(&key, state.serial);
+                if path == adapters::ATTACH
+                    && args["type"] == "other"
+                    && self.image_only_text.load(Ordering::Acquire)
+                {
+                    data["bucket"] = json!("yyimgs");
+                }
+                json!({"code":200,"data":data})
             }
             adapters::META => {
                 let ticket = args["songid"].as_str().unwrap();

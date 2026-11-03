@@ -42,6 +42,8 @@
       document.querySelector(
         "dialog.cloud-upload-dialog[open]:not(.modal-leave-active)",
       ),
+    omissionDialog = () =>
+      document.querySelector("dialog[aria-labelledby=cloud-omit-attachment-title][open]:not(.modal-leave-active)"),
     files = () => [...(dialog()?.querySelectorAll("[data-upload-file]") ?? [])],
     ready = () =>
       page()?.dataset.cloudReady === "true" &&
@@ -118,7 +120,7 @@
     };
   }
   function facts() {
-    const d = dialog(),
+    const d = omissionDialog() ?? dialog(),
       r = d && rect(d),
       buttons = [...(d?.querySelectorAll("header button,footer button") ?? [])];
     return {
@@ -472,6 +474,64 @@
     await close();
     await resize(1120, 760);
     await theme("dark");
+    await control("upload-config", { imageOnlyText: true });
+    await open();
+    await choose("single");
+    const blockedFile = files()[0];
+    blockedFile.querySelector("summary").click();
+    for (const [kind, label] of [["cover", "封面"], ["lyric", "歌词"], ["cue", "CUE"]]) {
+      selection = kind;
+      click(`选择${label}：long.flac`, blockedFile);
+      await sleep(0);
+      await wait(() => dialog().getAttribute("aria-busy") === "false", kind + " chosen");
+    }
+    click("开始上传 (1)");
+    await wait(() => !dialog(), "blocked task registration closed");
+    const omitButton = () => page().querySelector('[data-testid="cloud-omit-attachment"]');
+    const resumeButton = () => page().querySelector('.cloud-upload-row button[title="开始"]');
+    const mutations = (state) => [
+      ...Object.entries(state.calls).filter(([path]) => path !== "/api/v1/cloud/get"),
+      state.objects,
+    ];
+    for (const [index, text, stage] of [
+      [0, "省略歌词", "omission_lyric_dark"],
+      [1, "省略CUE 曲目表", "omission_cue_dark"],
+    ]) {
+      await wait(() => omitButton()?.textContent.trim() === text, "blocked " + text);
+      assert(!resumeButton(), "blocked task offers no resume");
+      const beforeOmit = await control("upload-state");
+      const origin = click(text, page());
+      await wait(omissionDialog, "explicit omission confirmation");
+      await settled();
+      assert(document.activeElement?.textContent.trim() === "取消", "safe initial focus");
+      await capture(stage);
+      if (index === 0) {
+        click("取消", omissionDialog());
+        await wait(() => !omissionDialog(), "cancel omission");
+        await settled();
+        assert(document.activeElement === origin, "restored omission focus");
+        assert(JSON.stringify(mutations(await control("upload-state"))) ===
+          JSON.stringify(mutations(beforeOmit)), "cancel sends no service or object calls");
+        click(text, page());
+        await wait(omissionDialog, "reopened omission");
+        await settled();
+      }
+      click("确认省略", omissionDialog());
+      await wait(() => !omissionDialog() && resumeButton() && !omitButton(), "paused after omission");
+      await settled();
+      assert(JSON.stringify(mutations(await control("upload-state"))) ===
+        JSON.stringify(mutations(beforeOmit)), "omission does not send a service or object call");
+      if (index === 1) await capture("omission_stopped_dark");
+      click(resumeButton().getAttribute("aria-label"), page());
+    }
+    await completed(4);
+    await wait(
+      () => [...page().querySelectorAll("button")].some(
+        (button) => button.textContent.trim() === "上传音乐" && !button.disabled,
+      ),
+      "upload toolbar settles after resumed task",
+    );
+    await control("upload-config", { imageOnlyText: false });
     await open();
     selection = "single";
     pickMode = "hold";
@@ -495,16 +555,17 @@
     await capture("account_replaced_dark");
     const final = await control("upload-state");
     assert(
-      final.publishedIds.length === 3 && final.objects.length === 7,
-      "three real synthetic upload jobs and four attachments",
+      final.publishedIds.length === 4 && final.objects.length === 9,
+      "four synthetic upload jobs and five retained attachments",
     );
     assert(
       final.objects.every((o) => o.matchesFixture && o.bytes > 0),
       "all stored bytes match actual fixtures",
     );
     assert(
-      final.calls["/api/cloud/upload/check"] === 3 &&
-        final.calls["/api/cloud/pub/v2"] === 3,
+      final.calls["/api/cloud/upload/check"] === 4 &&
+        final.calls["/api/cloud/pub/v2"] === 4 &&
+        final.calls["/api/nos/token/alloc"] === 7,
       "one remote creation/publication per job",
     );
     assert(
@@ -512,6 +573,10 @@
         (keys) => keys.join(",") === "coverid,lyricid,cueid",
       ),
       "all attachment IDs reach metadata",
+    );
+    assert(
+      final.attachmentMetadata.at(-1)?.join(",") === "coverid",
+      "only retained cover reaches metadata after both explicit omissions",
     );
     await emit({
       kind: "complete",
@@ -522,8 +587,8 @@
       realMusicRequests: 0,
       realAccountWrites: 0,
       registrationCommands: calls.length,
-      actualUploadTasks: 3,
-      actualStoredObjects: 7,
+      actualUploadTasks: 4,
+      actualStoredObjects: 9,
       typedPickerInjected: true,
       lostReplyInjected: true,
       physicalAudioOutputVerified: false,
