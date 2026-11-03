@@ -70,7 +70,7 @@
     assert(details.status.privilege==='ready'&&details.status.subscriber==='ready'&&details.status.sizes==='ready'&&Object.values(details.status.useRights).every(v=>v==='ready'),'native metadata reads');
     const hires=details.choices.find(c=>c.quality==='hires'),master=details.choices.find(c=>c.quality==='jymaster');
     assert(hires.availability==='available'&&hires.access==='allowed'&&master.access==='trial_eligible','native capability/entitlement policy');
-    assert(details.choices.find(c=>c.quality==='lossless').sizeBytes==='123456','native file size whitelist');
+    assert(details.choices.every(c=>c.sizeBytes===null),'native read succeeds with file sizes hidden by default');
     const json=JSON.stringify(details);assert(!json.includes('SECRET')&&!json.includes('https://')&&!json.includes('cookie'),'private response fields excluded');
   }
   async function pauseAtTen() {

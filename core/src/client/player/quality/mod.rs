@@ -86,7 +86,7 @@ impl MusicClient {
             &latest,
             &information,
             (records, damaged),
-            config::experiments(self.auth.context.as_deref()),
+            config::read(self.auth.context.as_deref()),
         )
     }
 }

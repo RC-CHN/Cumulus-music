@@ -3,6 +3,30 @@ use crate::{playback::quality::QualityExperiments, protocol::context::RequestCon
 use serde_json::Value;
 
 const MUSIC_PACKAGE_HIRES: &str = "preload#musicPackageCanUseHiresAndLoseless";
+const AUDIO_POPOVER_TRACK_SIZE: &str = "preload#isShowAudioPopoverTrackSize";
+
+pub(super) struct QualityConfiguration {
+    pub(super) experiments: QualityExperiments,
+    hide_track_size: bool,
+}
+
+impl QualityConfiguration {
+    pub(super) fn display_size(&self, size: Option<u64>) -> Option<String> {
+        if self.hide_track_size {
+            None
+        } else {
+            size.map(|bytes| bytes.to_string())
+        }
+    }
+}
+
+fn hide_track_size(data: Option<&Value>) -> bool {
+    // Both recovered new quality item components prepend size only when
+    // !isShowSize. M/247 supplies true by default despite the name.
+    data.and_then(|data| data.get(AUDIO_POPOVER_TRACK_SIZE))
+        .and_then(Value::as_bool)
+        .unwrap_or(true)
+}
 
 fn music_package_hires(data: Option<&Value>) -> Option<bool> {
     match data.and_then(|data| data.get(MUSIC_PACKAGE_HIRES)) {
@@ -12,14 +36,18 @@ fn music_package_hires(data: Option<&Value>) -> Option<bool> {
     }
 }
 
-pub(super) fn experiments(context: Option<&RequestContext>) -> QualityExperiments {
+pub(super) fn read(context: Option<&RequestContext>) -> QualityConfiguration {
     let snapshot = context.and_then(|context| context.pc_snapshot().ok().flatten());
-    QualityExperiments {
-        music_package_hires: snapshot
-            .as_ref()
-            .and_then(|snapshot| music_package_hires(snapshot.data.as_ref())),
-        // The separate StandardAudio_VIPLogo_PCV2 experiment is not config data.
-        standard_trial_requires_purchase: None,
+    let data = snapshot
+        .as_ref()
+        .and_then(|snapshot| snapshot.data.as_ref());
+    QualityConfiguration {
+        experiments: QualityExperiments {
+            music_package_hires: snapshot.as_ref().and_then(|_| music_package_hires(data)),
+            // The separate StandardAudio_VIPLogo_PCV2 experiment is not config data.
+            standard_trial_requires_purchase: None,
+        },
+        hide_track_size: hide_track_size(data),
     }
 }
 
@@ -67,21 +95,50 @@ mod tests {
             "pc.music.163.com".to_owned(),
             Arc::new(NoToken),
         );
-        assert_eq!(experiments(None), QualityExperiments::default());
-        assert_eq!(experiments(Some(&fixed)), QualityExperiments::default());
+        assert_eq!(read(None).experiments, QualityExperiments::default());
+        assert_eq!(
+            read(Some(&fixed)).experiments,
+            QualityExperiments::default()
+        );
     }
-    struct DisableMusicPackage;
-    impl ConfigBackend for DisableMusicPackage {
+    #[test]
+    fn track_size_polarity_defaults_to_hidden_and_rejects_malformed_or_fixed_overrides() {
+        assert!(hide_track_size(None));
+        assert!(hide_track_size(Some(&json!({}))));
+        assert!(hide_track_size(Some(
+            &json!({(AUDIO_POPOVER_TRACK_SIZE):true})
+        )));
+        assert!(!hide_track_size(Some(
+            &json!({(AUDIO_POPOVER_TRACK_SIZE):false})
+        )));
+        for malformed in [json!(null), json!(0), json!("false"), json!({})] {
+            assert!(hide_track_size(Some(
+                &json!({(AUDIO_POPOVER_TRACK_SIZE):malformed})
+            )));
+        }
+        let fixed = RequestContext::new(
+            json!({(AUDIO_POPOVER_TRACK_SIZE):false}),
+            "pc.music.163.com".to_owned(),
+            Arc::new(NoToken),
+        );
+        assert_eq!(read(None).display_size(Some(100)), None);
+        assert_eq!(read(Some(&fixed)).display_size(Some(100)), None);
+    }
+
+    struct PcQualityOverride;
+    impl ConfigBackend for PcQualityOverride {
         fn get<'a>(&'a self, _: &'a ConfigUrl) -> ApiFuture<'a, Value> {
-            Box::pin(async { Ok(json!({(MUSIC_PACKAGE_HIRES):false})) })
+            Box::pin(async {
+                Ok(json!({(MUSIC_PACKAGE_HIRES):false,(AUDIO_POPOVER_TRACK_SIZE):false}))
+            })
         }
     }
 
     #[tokio::test]
-    async fn accepted_pc_snapshot_changes_music_package_quality_projection() {
+    async fn accepted_pc_snapshot_changes_quality_access_and_size_presentation() {
         let directory = tempfile::tempdir().unwrap();
         let store = Arc::new(StateStore::open(directory.path()).unwrap());
-        let config = PcConfig::new(store, Arc::new(DisableMusicPackage)).unwrap();
+        let config = PcConfig::new(store, Arc::new(PcQualityOverride)).unwrap();
         let context =
             RequestContext::from_pc(config.clone(), "3.1.42.205594", Arc::new(NoToken)).unwrap();
         let privilege = QualityPrivilege::from_official(
@@ -98,7 +155,7 @@ mod tests {
                     music_package: true,
                 }),
                 use_rights: &rights,
-                experiments: experiments(Some(&context)),
+                experiments: read(Some(&context)).experiments,
                 trial: false,
             }
             .access(quality)
@@ -116,11 +173,18 @@ mod tests {
             Update::NonPc
         );
         assert_eq!(access(Quality::Lossless), QualityAccess::Allowed);
+        assert_eq!(read(Some(&context)).display_size(Some(u64::MAX)), None);
         assert_eq!(
             config.resolve(&headers("pc")).await.unwrap(),
             Update::Updated
         );
         assert_eq!(access(Quality::Lossless), QualityAccess::RequiresVip);
         assert_eq!(access(Quality::Standard), QualityAccess::Allowed);
+        let presentation = read(Some(&context));
+        assert_eq!(
+            presentation.display_size(Some(u64::MAX)).as_deref(),
+            Some("18446744073709551615")
+        );
+        assert_eq!(presentation.display_size(None), None);
     }
 }

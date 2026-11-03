@@ -32,7 +32,13 @@ player_quality_trial。读取不设置全局播放器 busy，不妨碍已经播�
 高档使用权益未知时要求先刷新，不用一次普通音源请求冒充完整试用生命周期。
 播客保留原节目授权路径，不读取歌曲试用权益，不改动歌曲偏好。
 
-文件大小读取原生十进制字符串，以 BigInt 格式化，不丢失超过 JS 安全整数的精度。
+文件大小仍按原有原生请求读取。TrackSoundQuality.tsx:165、790 将
+preload#isShowAudioPopoverTrackSize 传给 TrackNewSoundQualityContainer.tsx:335、384、433；
+NonSvipTrackQualityNewItem.tsx:233–241 和 SvipTrackSoundQualityNewItem.tsx:195–203
+虽名为 isShowSize，实际只在 !isShowSize 时前置大小。M/247:551 默认 true 因而隐藏；
+只有已验证 PC MConfig 的布尔 false 才显示，缺失、坏值、Web 或固定配置均使用默认。
+隐藏只影响安全 DTO 的 sizeBytes，不改变读取状态、描述、权限或同意版本；显示时
+仍传原生十进制字符串，以 BigInt 格式化，不丢失超过 JS 安全整数的精度。
 规格标注仍是档位上限；实际质量来自 player.actualQuality。标题同时展示请求与后续
 偏好，降级后不把请求的无损显示成实际无损。三者相同时选择当前档位不重载；若
 实际为标准而请求/偏好更高，仍允许显式改为标准，以取消较高偏好。
@@ -76,7 +82,7 @@ standard，与原生快照逐态核对；没有真实账号写入或试用消耗
 后续焦点修正的内嵌前端复验位于 quality-focus-embedded-1（35+3态），本机桌面为
 quality-focus-kde（35态）；新探针逐态检查焦点仍在弹窗内，旧图不回写为新检查通过。
 
-源码中的实验配置尚未读取，音乐包/标准试听的对应分支仍明确未知；SVIP并列卡片
+标准试听实验的对应分支仍明确未知；SVIP并列卡片
 及其它实验布局尚未对齐，当前保留纵向选项与兼容音质区。未知记录的显式放弃/
 损坏记录修复、匿名/账号切换/播客各自的完整视觉专项、真实账号新接口读取及
 Windows实机视觉仍需继续。没有同状态官方运行截图，不宣称像素一致；本机null

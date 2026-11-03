@@ -1011,14 +1011,15 @@ mod playlist_batch;
 mod queue_playlist;
 
 #[tokio::test]
-async fn native_quality_details_are_bound_to_the_selected_song_and_whitelist_rights_and_sizes() {
-    use cumulus_core::playback::quality::{QualityAccess, QualityAvailability};
+async fn native_quality_details_bind_song_and_keep_size_reads_independent_of_default_visibility() {
+    use cumulus_core::playback::quality::{QualityAccess, QualityAvailability, QualityReadState};
     let (_dir, api, _session, client, _) = fixture();
     let play = client.play_selection("1", songs("1")).await.unwrap();
     let play_id = play.play_id.unwrap();
     let details = client.player_quality_details("1", &play_id).await.unwrap();
     assert_eq!(details.song_id, "1");
     assert_eq!(details.play_id, play_id);
+    assert_eq!(details.status.sizes, QualityReadState::Ready);
     let hires = details
         .choices
         .iter()
@@ -1038,9 +1039,8 @@ async fn native_quality_details_are_bound_to_the_selected_song_and_whitelist_rig
             .iter()
             .find(|c| c.quality == Quality::Lossless)
             .unwrap()
-            .size_bytes
-            .as_deref(),
-        Some("1234")
+            .size_bytes,
+        None
     );
     let text = serde_json::to_string(&details).unwrap();
     assert!(!text.contains("SECRET") && !text.contains("https://") && !text.contains("cookie"));

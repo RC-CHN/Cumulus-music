@@ -58,7 +58,7 @@
       const unchanged=bar().dataset.playId;await choose('标准');await wait(()=>!one('.quality-action-menu'),'current quality dismissed');await sleep(350);assert(bar().dataset.playId===unchanged,'selecting unchanged actual/requested/preferred quality does not reload playback');
       for(const [w,h,theme] of [[1120,760,'light'],[760,540,'light'],[760,540,'dark'],[1120,760,'dark']]){
         const suffix=`${w}_${theme}`;await layout(w,h,theme);await open();
-        assert(row('超清母带').textContent.includes('可试用')&&row('无损').textContent.includes('120.6 KB'),'native rights and byte sizes in rows');
+        assert(row('超清母带').textContent.includes('可试用')&&!row('无损').textContent.includes('120.6 KB'),'native rights visible with default-hidden byte sizes');
         assert(document.activeElement.getAttribute('aria-checked')==='true','focus actual checked quality');
         panel().dispatchEvent(new WheelEvent('wheel',{deltaY:-120,bubbles:true}));const list=panel().querySelector('.menu-items');list.scrollTop=0;await sleep(650);assert(list.scrollTop===0,'player polls must not snap a manually scrolled menu to its focused row');
         key('End');assert(document.activeElement.textContent.trim()==='刷新音质','footer keyboard action');key('Home');assert(document.activeElement===row('臻音全景声'),'first quality reachable');

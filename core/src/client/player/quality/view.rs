@@ -1,3 +1,4 @@
+use super::config::QualityConfiguration;
 use crate::{
     Result,
     membership::Quality,
@@ -5,8 +6,8 @@ use crate::{
         TimelineMode,
         controller::PlaybackSnapshot,
         quality::{
-            QualityAccess, QualityAvailability, QualityExperiments, QualityInformation,
-            QualityPolicy, QualityReadStatus, QualityRight, TrialPhase,
+            QualityAccess, QualityAvailability, QualityInformation, QualityPolicy,
+            QualityReadStatus, QualityRight, TrialPhase,
         },
     },
 };
@@ -43,7 +44,7 @@ pub(super) fn project(
     current: &PlaybackSnapshot,
     information: &QualityInformation,
     (trials, trials_damaged): (Vec<crate::playback::quality::trials::QualityTrial>, bool),
-    experiments: QualityExperiments,
+    config: QualityConfiguration,
 ) -> Result<QualityDetailsView> {
     let trial = current
         .timeline
@@ -53,7 +54,7 @@ pub(super) fn project(
         privilege: information.privilege.as_ref(),
         subscriber: information.subscriber,
         use_rights: &information.use_rights,
-        experiments,
+        experiments: config.experiments,
         trial,
     };
     let choices: Vec<_> = [
@@ -79,11 +80,8 @@ pub(super) fn project(
             quality,
             availability: policy.availability(quality),
             access: policy.access(quality),
-            size_bytes: information
-                .sizes
-                .as_ref()
-                .and_then(|s| s.bytes(quality))
-                .map(|v| v.to_string()),
+            size_bytes: config
+                .display_size(information.sizes.as_ref().and_then(|s| s.bytes(quality))),
             trial_phase: phase,
             remaining_ms: use_right
                 .filter(|_| matches!(phase, Some(TrialPhase::Eligible | TrialPhase::Active)))
