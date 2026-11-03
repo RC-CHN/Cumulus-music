@@ -8,6 +8,8 @@
 @import './styles/login.css';
 @import './styles/login-presentation.css';
 @import './styles/phone-reuse.css';
+@import './styles/login-notices.css';
+@import './styles/login-penalty.css';
 @import './styles/player.css';
 @import './styles/player-volume.css';
 @import './styles/responsive.css';

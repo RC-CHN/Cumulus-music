@@ -40,6 +40,10 @@ name = "account_login_ui_probe"
 required-features = ["custom-protocol"]
 
 [[example]]
+name = "login_notice_ui_probe"
+required-features = ["custom-protocol"]
+
+[[example]]
 name = "device_login_ui_probe"
 required-features = ["custom-protocol"]
 

@@ -7,6 +7,7 @@ import { loginMessage, type LoginMode, type PhoneEntryStep } from '../../service
 import type { LoginIdentity } from '../../services/loginIdentity';
 import {
   phoneError,
+  presentLoginNotice,
   type LoginCountry,
   type LoginDocument,
 } from '../../services/loginPresentation';
@@ -37,6 +38,11 @@ const emit = defineEmits<{
 const core = useCore();
 const model = useLogin(core, () => emit('authorized'));
 const { view, busy, error } = model;
+const notice = computed(() => presentLoginNotice(view.value));
+const securityQrActive = computed(
+  () => view.value?.status === 'security_qr' || !!view.value?.securityQr,
+);
+const penaltyActive = computed(() => view.value?.status === 'penalty' || !!view.value?.penalty);
 const { phone, country, email, remember } = toRefs(props.identity);
 const password = ref('');
 const phoneFlow = ref<{ clearSecrets: () => void }>();
@@ -90,6 +96,9 @@ watch(
   [
     busy,
     () => view.value?.status,
+    () => notice.value?.kind,
+    securityQrActive,
+    penaltyActive,
     deviceActive,
     deviceKind,
     smsActive,
@@ -101,33 +110,29 @@ watch(
   ],
   async () => {
     if (active) {
-      const safety =
-        deviceKind.value ||
-        deviceActive.value ||
-        smsActive.value ||
-        emailActive.value ||
-        questionActive.value ||
-        reuseActive.value ||
-        (!!view.value &&
-          ['two_factor', 'security_question', 'phone_reuse'].includes(view.value.status));
-      emit(
-        'safety',
-        safety
-          ? reuseActive.value
-            ? (reuseHeading.value ?? reuseTitle(view.value?.reuse?.phase))
-            : questionActive.value
-              ? '回答与你账号相关的问题'
-              : deviceKind.value === 'email' || emailActive.value
-                ? '安全邮箱验证'
-                : deviceKind.value || deviceActive.value || smsActive.value
-                  ? (deviceKind.value ?? view.value?.device?.kind) === 'scan'
-                    ? '身份验证'
-                    : '登录安全确认'
-                  : '登录安全验证'
-          : null,
-      );
+      let title: string | null = null;
+      if (notice.value) title = notice.value.kind === 'risk' ? '登录风险提示' : notice.value.title;
+      else if (penaltyActive.value) title = '账号安全确认';
+      else if (securityQrActive.value) title = '设备验证';
+      else if (reuseActive.value)
+        title = reuseHeading.value ?? reuseTitle(view.value?.reuse?.phase);
+      else if (questionActive.value) title = '回答与你账号相关的问题';
+      else if (deviceKind.value === 'email' || emailActive.value) title = '安全邮箱验证';
+      else if (deviceKind.value || deviceActive.value || smsActive.value)
+        title =
+          (deviceKind.value ?? view.value?.device?.kind) === 'scan' ? '身份验证' : '登录安全确认';
+      else if (view.value?.status === 'two_factor') title = '登录安全验证';
+      emit('safety', title);
     }
-    if (questionActive.value || reuseActive.value || phoneActive.value) return;
+    if (
+      notice.value ||
+      securityQrActive.value ||
+      penaltyActive.value ||
+      questionActive.value ||
+      reuseActive.value ||
+      phoneActive.value
+    )
+      return;
     const owned = root.value?.contains(document.activeElement);
     await nextTick();
     if (!active || !owned || !root.value) return;
@@ -153,7 +158,12 @@ const initial = computed(
   () => !!view.value && ['ready', 'code_sent', 'rejected'].includes(view.value.status),
 );
 const phoneActive = computed(
-  () => props.mode === 'phone_sms' && (initial.value || !view.value || !!view.value.phoneEntry),
+  () =>
+    !notice.value &&
+    !securityQrActive.value &&
+    !penaltyActive.value &&
+    props.mode === 'phone_sms' &&
+    (initial.value || !view.value || !!view.value.phoneEntry),
 );
 const disabled = computed(
   () =>
@@ -207,6 +217,7 @@ async function openDocument(kind: LoginDocument) {
 async function start() {
   password.value = '';
   phoneFlow.value?.clearSecrets();
+  challenge.value?.clearSecrets();
   await model.start(props.epoch, props.mode);
 }
 watch(
@@ -369,7 +380,12 @@ async function submit() {
       @reuse-title="reuseHeading = $event"
       @device="deviceKind = $event"
     />
-    <p class="login-status" role="status" :data-login-status="view?.status">
+    <p
+      v-if="!notice && !securityQrActive && !penaltyActive"
+      class="login-status"
+      role="status"
+      :data-login-status="view?.status"
+    >
       {{
         phoneActive ||
         deviceActive ||
@@ -386,6 +402,9 @@ async function submit() {
     <button
       v-if="
         !busy &&
+        !notice &&
+        !securityQrActive &&
+        !penaltyActive &&
         !phoneActive &&
         !deviceActive &&
         !smsActive &&

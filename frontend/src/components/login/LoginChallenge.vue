@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue';
 import type { LoginModel } from '../../composables/useLogin';
+import { presentLoginNotice } from '../../services/loginPresentation';
+import LoginNotice from './LoginNotice.vue';
+import SecurityQrVerification from './SecurityQrVerification.vue';
+import PenaltyVerification from './PenaltyVerification.vue';
 import VerificationMethods from './VerificationMethods.vue';
 import DeviceVerification from './DeviceVerification.vue';
 import SmsVerification from './SmsVerification.vue';
@@ -17,6 +21,7 @@ const emit = defineEmits<{
   device: [value: 'confirm' | 'scan' | 'sms' | 'email' | null];
 }>();
 const { view, busy } = props.model;
+const notice = computed(() => presentLoginNotice(view.value));
 const method = ref('');
 const root = ref<HTMLElement>();
 const devicePanel = ref<{ clearSecrets: () => void }>();
@@ -24,6 +29,8 @@ const smsPanel = ref<{ clearSecrets: () => void }>();
 const emailPanel = ref<{ clearSecrets: () => void }>();
 const questionPanel = ref<{ clearSecrets: () => void }>();
 const reusePanel = ref<{ clearSecrets: () => void }>();
+const securityQrPanel = ref<{ clearSecrets: () => void }>();
+const penaltyPanel = ref<{ clearSecrets: () => void }>();
 const returning = ref(false);
 const blockedNotice = ref('');
 const selected = computed(() =>
@@ -49,6 +56,8 @@ function clearSecrets() {
   emailPanel.value?.clearSecrets();
   questionPanel.value?.clearSecrets();
   reusePanel.value?.clearSecrets();
+  securityQrPanel.value?.clearSecrets();
+  penaltyPanel.value?.clearSecrets();
 }
 defineExpose({ clearSecrets });
 async function choose(value: string) {
@@ -124,8 +133,21 @@ watch(
 </script>
 <template>
   <section ref="root" class="login-challenge" aria-label="登录验证">
+    <LoginNotice v-if="notice" :notice="notice" @phone="emit('phone')" @other="emit('qr')" />
+    <PenaltyVerification
+      v-else-if="view?.penalty"
+      ref="penaltyPanel"
+      :model="model"
+      @phone="emit('phone')"
+    />
+    <SecurityQrVerification
+      v-else-if="view?.status === 'security_qr' || view?.securityQr"
+      ref="securityQrPanel"
+      :model="model"
+      @phone="emit('phone')"
+    />
     <template
-      v-if="
+      v-else-if="
         view &&
         (view.status === 'two_factor' ||
           (selected.startsWith('DEVICE_') && view.device) ||
@@ -251,12 +273,7 @@ watch(
       核对登录状态
     </button>
     <button
-      v-else-if="
-        view &&
-        ['captcha', 'verification', 'security_qr', 'risk_notice', 'upgrade_required'].includes(
-          view.status,
-        )
-      "
+      v-else-if="view && ['captcha', 'verification'].includes(view.status)"
       :disabled="busy"
       @click="emit('qr')"
     >

@@ -1,6 +1,7 @@
 import type { AccountData, AccountView, QrStatus } from './contracts';
 import type { RenewalClient } from './renewal';
 import type { LoginPresentationClient } from './loginPresentation';
+import type { PenaltyView } from './loginPenalty';
 export type LoginMode = 'phone_password' | 'phone_sms' | 'email' | 'saved_account';
 export type LoginStatus =
   | 'ready'
@@ -21,6 +22,7 @@ export type LoginStatus =
   | 'security_qr'
   | 'upgrade_required'
   | 'risk_notice'
+  | 'penalty'
   | 'rate_limited'
   | 'account_disabled'
   | 'rejected'
@@ -33,7 +35,24 @@ export interface LoginAnswer {
   picture: string | null;
   tag?: string | null;
 }
+export interface LoginNoticeView {
+  kind: 'risk' | 'upgrade' | 'disabled';
+  title: string;
+  paragraphs: string[];
+}
+export interface SecurityQrVerificationView {
+  id: string;
+  status: QrStatus;
+  nickname: string | null;
+  modules: boolean[][] | null;
+  pollAfterMs: number;
+  canRefresh?: boolean;
+  canReconcile?: boolean;
+}
 export interface LoginView {
+  penalty?: PenaltyView | null;
+  notice?: LoginNoticeView | null;
+  securityQr?: SecurityQrVerificationView | null;
   phoneEntry?: PhoneEntryView | null;
   device?: DeviceVerificationView | null;
   sms?: SmsVerificationView | null;
@@ -60,6 +79,8 @@ export interface LoginView {
   };
 }
 export type LoginCommand =
+  | { kind: 'penalty_check'; verification_id: string }
+  | { kind: 'security_qr_poll' | 'security_qr_refresh'; verification_id: string }
   | { kind: 'phone_start'; phone: string; country_code: string }
   | { kind: 'phone_retry' | 'phone_resend' | 'phone_nickname_hint'; entry_id: string }
   | { kind: 'phone_code'; entry_id: string; code: string; remember: boolean }
@@ -280,11 +301,12 @@ export function loginMessage(view: LoginView | undefined): string {
     phone_reuse: '需要确认此手机号关联的账号',
     phone_entry: '',
     security_question: '请回答账号安全问题',
-    security_qr: '此账号需要原设备安全验证，当前尚未接入，请在官方 App 完成验证后重新扫码',
-    upgrade_required: '服务要求更新登录组件，请暂时使用官方 App',
-    risk_notice: '账号需要安全检查，请先在官方 App 查看并处理',
+    security_qr: '请使用已登录该账号的设备扫码验证',
+    upgrade_required: '版本更新提醒',
+    risk_notice: '登录风险提示',
+    penalty: '账号安全确认',
     rate_limited: '操作过于频繁，请稍后再试',
-    account_disabled: '该账号暂时无法登录，请在官方 App 查看账号状态',
+    account_disabled: '用户禁止登录',
     rejected: '',
     cancelled: '已取消登录',
     error: '登录结果未确认，可以先核对登录状态',

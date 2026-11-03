@@ -28,6 +28,76 @@ function deferred<T>() {
   const promise = new Promise<T>((r) => (resolve = r));
   return { promise, resolve };
 }
+
+test('security QR authorization still requires the native identity check before announcing success', async () => {
+  const commands: string[] = [];
+  const qr = {
+    id: 'synthetic-security-qr',
+    status: 'waiting_scan' as const,
+    nickname: '合成昵称',
+    modules: [
+      [true, false],
+      [false, true],
+    ],
+    pollAfterMs: 1000,
+  };
+  const f = fixture({
+    beginLogin: async () => ({ ...state('one', 'security_qr'), securityQr: qr }),
+    loginCommand: async (_id, command) => {
+      commands.push(command.kind);
+      return command.kind === 'reconcile'
+        ? state('one', 'authenticated')
+        : {
+            ...state('one', 'error'),
+            securityQr: { ...qr, status: 'authorized' },
+          };
+    },
+  });
+  await f.model.start('1', 'email');
+  await f.model.run({ kind: 'security_qr_poll', verification_id: qr.id });
+  assert.equal(f.model.view.value?.securityQr?.status, 'authorized');
+  assert.equal(f.model.view.value?.status, 'error');
+  assert.equal(f.authorized(), 0);
+  await f.model.run({ kind: 'reconcile' });
+  assert.equal(f.authorized(), 1);
+  assert.deepEqual(commands, ['security_qr_poll', 'reconcile']);
+  f.model.dispose();
+});
+
+test('a lost security QR poll reply reads the native snapshot without refreshing or resubmitting', async () => {
+  const commands: string[] = [];
+  let reads = 0;
+  const f = fixture({
+    loginCommand: async (_id, command) => {
+      commands.push(command.kind);
+      throw Error('synthetic QR reply loss');
+    },
+    loginSnapshot: async () => {
+      reads++;
+      return {
+        ...state('one', 'error'),
+        securityQr: {
+          id: 'synthetic-security-qr',
+          status: 'error',
+          nickname: null,
+          modules: null,
+          pollAfterMs: 1000,
+          canRefresh: false,
+          canReconcile: true,
+        },
+      };
+    },
+  });
+  await f.model.start('1', 'email');
+  await f.model.run({ kind: 'security_qr_poll', verification_id: 'synthetic-security-qr' });
+  assert.equal(reads, 1);
+  assert.deepEqual(commands, ['security_qr_poll']);
+  assert.equal(f.model.view.value?.securityQr?.status, 'error');
+  assert.equal(f.model.view.value?.securityQr?.canRefresh, false);
+  assert.equal(f.model.view.value?.securityQr?.canReconcile, true);
+  assert.equal(f.authorized(), 0);
+  f.model.dispose();
+});
 function fixture(overrides: Partial<AuthClient> = {}) {
   const cancelled: string[] = [];
   let authorized = 0;

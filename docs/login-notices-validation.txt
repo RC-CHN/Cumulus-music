@@ -1,0 +1,63 @@
+登录提示、设备安全QR、8831与默认兼容：本批验证
+2026-11-03。范围是本批恢复分支，不表示全部账号SDK或整应用目标完成。
+
+最终本地结果
+Rust1.96.0、Node24.16.0，使用锁文件；Linux x86_64。
+cargo fmt --all --check 通过。
+cargo clippy --workspace --all-targets --features cumulus-desktop/custom-protocol --locked -- -D warnings 通过。
+cargo test --no-fail-fast --workspace --all-targets --features cumulus-desktop/custom-protocol --locked 通过：
+305个测试程序、1621项通过、0失败、0忽略。新测试覆盖实际MusicClient持有账号切换锁时，
+处罚已通过但身份读取挂起，取消释放整个命令和锁；旧账号保留、迟到身份被拒、密码不重放。
+另外冻结时钟证明状态读取已用30秒时，身份读取只剩15秒，总期限45秒。
+
+前端npm ci之后统一运行format:check、test、typecheck/build；590项通过。
+CI工具50项通过；source_audit和release_guard通过。
+正式cumulus及notice/account/phone探针以custom-protocol构建，实际嵌入同一最终frontend/dist。
+没有用仅编译成功或旧Python结果替代功能测试。
+
+官方对照
+desktop/tests/penalty_official.cjs执行完整M1368入口/状态/继续/PC-fetch方法，
+十个冻结合成场景通过，另核对缺步骤与服务拒绝的加固差异及完成回调。
+首轮脚本缺常量ln/hn，补入原始值后执行真实原方法，不用stub替代其状态选择。
+原始源码SHA256见login-notices-official-mapping.json；本批没有引用YesPlayMusic。
+
+实际WebView与本机截图
+桌面探针使用正式Vue组件、IPC、Rust流程、合成原生HTTP和验证码provider。
+login_notice_smoke.py最终23态通过，检查浅/深色、1120×760与760×540、滚动/焦点/命中、
+旧账号保持、单次凭据提交、处罚三次只读核对、安全QR旧票/刷新/验证码/迟到取消、
+803后身份读取完成才采用新账号。最终28态account_login_smoke.py回归也通过。
+
+同一最终二进制在真实KDE Wayland/XWayland会话、125%缩放再运行23态；
+只捕获本应用PID的窗口合成图，逐张核对长文、32步列表、按钮、深色和身份等待反馈。
+输出模式为2560×1440、约143.999Hz，这不是应用帧率证据。
+所有这些验证均为合成账号，实际网易请求0、真实账号写入0。没有重放此前真实RT未决续期。
+二维码803后的最后一个合成账号采用，会按继承的两项t1策略触发一次续期；
+夹具精确校验请求账号、RT、签名版本和一次计数，返回完整200但不换头，不把它当未知请求忽略。
+
+私有本地证据（不提交截图、账号库或构建产物）
+.build/login-notice-batch-workspace-accepted.log
+.build/login-notice-batch-clippy-accepted.log
+.build/login-notice-batch-frontend-tests-final.log
+.build/login-notice-batch-ci-tools-final.log
+.build/login-notice-batch-gui-accepted/report.json 与run/first/23张原图
+.build/login-notice-batch-account-accepted/run/first/28张原图
+.build/login-notice-batch-physical-accepted/audit.json 与run/first/23张原图
+.build/login-notice-batch-binary-freeze-4.json
+.build/login-notice-batch-source-freeze-5.json
+.build/login-notice-batch-dist-freeze.json
+
+修正与保留的失败证据
+早期整轮捕获注册8831误切入新登录挑战，增加注册未决屏障的路径保护后回归；
+处罚URL显示向量改为明确拒绝完整URL。新增取消测试又捕获旧入口误用仅刷新端点适配器，
+现用正确登录JSK路径；保留world(false)测试而非更换协议掩盖失败。
+界面前两轮捕获离场模态框仍占顶层以及查询禁用后焦点掉到body；分别等真实模态框移除、
+修复焦点与有界列表。逐图检查发现803身份等待仍要求扫码，增加超过500ms的等待反馈。
+最初严格驱动也捕获继承夹具遗漏自动续期响应，补入精确预期而未放宽unknown-request断言。
+这些日志仍在私有.build中；最终通过不抹去前序失败。
+
+尚不能据此证明的事项
+本批没有真人304/风险/处罚/安全QR挑战样本；没有真实实名、绑定、改密或版本门槛解除。
+RN内部动作未恢复，正式页面明确要求在官方客户端处理后只读核对，不伪造完成回调。
+Windows硬件采集、Windows运行/视觉、其他DPI及全账号SDK状态没有本轮实机证据。
+此前main的Windows账号探针失败已补就绪等待和诊断归档，新CI通过前不称Windows已修复。
+真实RT的发放已有另一独立记录；本批合成测试不证明真实成对轮换，也不改变一起听双账号边界。

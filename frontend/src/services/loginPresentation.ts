@@ -1,3 +1,5 @@
+import type { LoginNoticeView, LoginView } from './auth';
+
 export interface LoginCountry {
   alpha: string;
   name: string;
@@ -9,7 +11,36 @@ export interface LoginPresentation {
   countries: LoginCountry[];
   selectedCountry: string;
 }
-export type LoginDocument = 'service' | 'privacy' | 'children' | 'email_recovery';
+export type LoginDocument =
+  | 'service'
+  | 'privacy'
+  | 'children'
+  | 'email_recovery'
+  | 'client_release'
+  | 'app_download';
+
+export function presentLoginNotice(
+  view: Pick<LoginView, 'status' | 'notice'> | undefined,
+): LoginNoticeView | null {
+  const kind =
+    view?.status === 'risk_notice'
+      ? 'risk'
+      : view?.status === 'upgrade_required'
+        ? 'upgrade'
+        : view?.status === 'account_disabled'
+          ? 'disabled'
+          : null;
+  if (!kind) return null;
+  const notice = view?.notice?.kind === kind ? view.notice : null;
+  return {
+    kind,
+    title:
+      kind === 'disabled'
+        ? '用户禁止登录'
+        : notice?.title || (kind === 'risk' ? '登录风险提示' : '版本更新提醒'),
+    paragraphs: notice?.paragraphs ?? [],
+  };
+}
 
 export interface LoginPresentationClient {
   loginPresentation(): Promise<LoginPresentation>;

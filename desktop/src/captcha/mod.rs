@@ -12,6 +12,14 @@ static SERIAL: AtomicU64 = AtomicU64::new(1);
 type Completion = Arc<Mutex<Option<oneshot::Sender<Result<String>>>>>;
 
 pub struct NativeCaptcha<R: Runtime>(pub tauri::AppHandle<R>);
+/// Construction-only native provider for isolated hosts. No IPC can install a
+/// provider or supply a CAPTCHA result; production continues to use its window.
+pub struct CaptchaProviderOverride(Arc<dyn LoginCaptchaProvider>);
+impl CaptchaProviderOverride {
+    pub fn new(provider: Arc<dyn LoginCaptchaProvider>) -> Self {
+        Self(provider)
+    }
+}
 struct WindowGuard<R: Runtime> {
     window: WebviewWindow<R>,
     _directory: tempfile::TempDir,
@@ -106,9 +114,13 @@ pub async fn solve_login_captcha<R: Runtime>(
     cumulus_core::client::dto::LoginCaptchaView,
     cumulus_core::client::ClientError,
 > {
-    let result = client
-        .solve_login_captcha(&operation_id, &NativeCaptcha(window.app_handle().clone()))
-        .await;
+    let native = NativeCaptcha(window.app_handle().clone());
+    let configured = window.try_state::<CaptchaProviderOverride>();
+    let provider: &dyn LoginCaptchaProvider = configured
+        .as_ref()
+        .map(|configured| configured.inner().0.as_ref())
+        .unwrap_or(&native);
+    let result = client.solve_login_captcha(&operation_id, provider).await;
     crate::auth::publish(&window, &client);
     result.map_err(Into::into)
 }
