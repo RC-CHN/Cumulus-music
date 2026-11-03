@@ -97,6 +97,7 @@
           'terminal empty result identifies the effective query and category');
         assert(keyword.clientWidth<=200&&keyword.scrollWidth>keyword.clientWidth&&!more(),
           'long query is visually bounded and an exhausted search cannot continue');
+        await capture('empty_category_'+category);
       }
       await emit('complete',{ok:true,searchFilteredPaginationVerified:true,searchCategoryEmptyVerified:true,stageCount:count,filteredMvReads:filteredMvReads.slice(0,3),realMusicRequests:0,realAccountWrites:0});
       return;
