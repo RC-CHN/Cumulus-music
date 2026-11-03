@@ -270,6 +270,7 @@ jobs:
           python scripts/ci/fm_state_recovery_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-fm-state-recovery-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/fm_blacklist_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-fm-blacklist-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/queue_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-queue-ui-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/queue_ui_smoke.py --locate --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-queue-locate-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/queue_selection_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-queue-selection-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/queue_click_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-queue-click-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/intelligence_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-intelligence-ui-windows --runtime .build/package-stage/windows-x64/native
@@ -524,6 +525,7 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/fm_state_recovery_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-fm-state-recovery-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/fm_blacklist_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-fm-blacklist-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/queue_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-queue-ui-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/queue_ui_smoke.py --locate --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-queue-locate-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/queue_selection_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-queue-selection-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/queue_click_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-queue-click-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/intelligence_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-intelligence-ui-linux
