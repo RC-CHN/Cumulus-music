@@ -1,0 +1,50 @@
+官方前瞻限幅器：离线原始节点 PCM 探针
+
+本次在 Linux x86-64 直接调用 PC 3.1.42.205594 neaudioeffects.dll 中已审阅的
+LookaheadLimiter 节点，全部使用合成 PCM。未进入 DLL 初始化、Windows 导入、
+完整效果图或账号服务；未增加任何生产播放/界面接线。
+
+源与实际执行
+固定 DLL SHA256：
+c59105e1072d7d7dbd2d2844ac9c170de7e7b41eb463dc56a11c9b37bafac6be。
+官方效果图 1AEC0 在 1B318 调 6E5B→63B30，得到写入处理器偏移 B0 的 0xC8 字节
+对象。63B30 的构造目标 63900 写 vtable 23F588。vtable 已解析：
++00 初始化 63EB0（容量、声道、采样率），+10 处理 63B90（planar f32、end 指针、
+有效帧指针），+18 旁路 654A0，+20 重置 65490，+28 参数 654B0，+30 析构 63A70。
+本次直接调用构造、初始化、参数、旁路、重置、处理以及原始缓冲清理 63AC0。
+63B90 转换到内部 f64，经 63F30 处理后回写实际有效帧；默认参数来自已有
+material begin 对照：threshold=0、attack=f32(0.005)、release=f32(0.1)、
+outputgain=0、infiniteRatio=true、ratio=4、flag48=true。
+
+原始算术、重配置和 PCM 内核均执行。替身仅是四处 CRT 入口：2842 有界 calloc、
+2D15 验证所有权并释放/清空指针、9421 有界 memmove、6C4E 有界 memset。
+映像基址固定，执行页由写入切换到只读可执行，未改原始文件。Linux 子进程设置
+2 秒 CPU、3 秒 alarm、128 MiB 地址空间、无 core dump，限制采样率/容量/声道/块数
+与有限输入；Python 还对每次子进程设置 5 秒超时。报告只含合成输出摘要与哈希，
+不含映像、原始样本或账号数据。每次在私有临时目录内映射与构建，退出后清理。
+
+实测
+36 组连续流（44.1/48/96 kHz、1/2 声道、容量 256/1024、低幅正弦/超幅正弦/
+脉冲），累计 418,662 个有效输入样本；另有 1 组旁路与重置。
+- 启动少输出 219 / 238 / 478 帧，依采样率；与声道和这两个容量无关。
+- 容量 256 时首块分别只出 37 / 18 / 0 帧；96 kHz 第二块也只出 34 帧。
+- 继续送入 EOF 直至真实 end=true，所有连续案例均恢复原始总帧数；例如
+  48 kHz/256 末尾输入 73 帧且 EOF，先返回 256 帧且 end=false，再以空 EOF
+  取到 55 帧且 end=true。后续空 EOF 返回零帧和 end=true。
+- 低幅正弦在按实际有效帧重新拼接后与干声一致（逐样本误差不超过 1e-7）。
+  本次超幅和脉冲输入的原始有效输出峰值均为 1.0。
+- 48 kHz 双声道容量 256 的开关序列返回 18,256,256,256,256,18,256,18,256。
+  重启与重置需再次填充前瞻状态；没有把过渡样本当作常态处理。
+
+复验（仓库根目录，输出文件必须不存在；研究材料不进入 CI）：
+  unshare -Urn python3 scripts/research/original_limiter_oracle.py \
+    --dll references/netease-3.1.42.205594-x64-unpacked/redist_packages/neaudioeffects.dll \
+    --report .build/new-original-limiter.json
+
+本次实际报告 .build/original-limiter-oracle-report-final.json，SHA256
+16ac4538b7b39a952c1d1991175ee9186cdf44957552b4104b8fd69774908be2。
+报告保留每条流的有效帧/EOF、有效 planar PCM SHA256 及原始输出包 SHA256。
+现有固定帧 LADSPA 无法表达首块/尾部行为。下一步先写可变帧独立 Rust/C
+组件，并逐样本和逐调用核对；再验证上游时钟、定位、取消、动态变更与 EOF 后，
+才可讨论真实播放器图。未验证其它 limiter 参数、布局、多节点顺序的实际 PCM，
+也未启用任何完整预设。
