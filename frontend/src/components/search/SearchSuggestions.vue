@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { computed, ref, watch } from 'vue';
 import type { SearchWord } from '../../services/search';
 import SearchMatchText from './SearchMatchText.vue';
-defineProps<{
+const props = defineProps<{
   query: string;
   title: string;
   recommended: SearchWord[];
@@ -10,11 +11,24 @@ defineProps<{
   composing: boolean;
   error?: string;
 }>();
-const emit = defineEmits<{ select: [keyword: string, display?: string]; retry: [] }>();
+const emit = defineEmits<{
+  select: [keyword: string, display?: string];
+  retry: [];
+  restoreInputFocus: [];
+}>();
+const exactButton = ref<HTMLButtonElement>();
+const showExact = computed(
+  () => props.composing || props.pending || !!props.error || !props.suggestions.length,
+);
+// Check focus before Vue removes the temporary action.
+watch(showExact, (show) => {
+  if (!show && document.activeElement === exactButton.value) emit('restoreInputFocus');
+});
 </script>
 <template>
   <button
-    v-if="composing || pending || error || !suggestions.length"
+    v-if="showExact"
+    ref="exactButton"
     class="search-suggestion search-exact"
     data-search-choice
     :title="`搜索“${query}”`"

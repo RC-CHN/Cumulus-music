@@ -50,6 +50,49 @@
     } finally { window.requestAnimationFrame=frames; }
   }
   try {
+    if(window.__cumulusSearchSuggestionFocusProof){
+      await wait(()=>one('.track-row'),'daily ready');
+      const provides=one('#app').__vue_app__._context.provides;
+      const core=provides[Reflect.ownKeys(provides).find(k=>typeof k==='symbol'&&k.description==='core-client')];
+      const discovery=core.searchDiscovery;
+      const input=one('[aria-label="搜索音乐"]'), submitButton=button('开始搜索');
+      const exact=()=>one('.search-suggestion.search-exact');
+      const choice=()=>one('.search-suggestion[data-search-suggestion]');
+      let receipt, complete;
+      core.searchDiscovery=async(...args)=>{
+        if(args[1].kind!=='suggestions')return discovery(...args);
+        const waitForRelease=new Promise(resolve=>{receipt=resolve;});
+        const result=await discovery(...args);
+        complete=true;
+        await waitForRelease;
+        return {...result,value:{...result.value,suggestions:[{keyword:args[1].keyword,label:args[1].keyword+'建议',tag:null}]}};
+      };
+      async function pending(word){
+        receipt=undefined;complete=false;
+        input.focus();input.click();input.value=word;
+        input.dispatchEvent(new Event('input',{bubbles:true}));
+        await wait(()=>complete&&exact(),'pending exact search has a delayed suggestion reply');
+        key(input,'ArrowDown');
+        assert(document.activeElement===exact(),'ArrowDown focuses exact search while the reply is pending');
+      }
+      try{
+        await pending('合成焦点');
+        receipt();
+        await wait(()=>choice()&&!exact(),'suggestion replaces the temporary exact action');
+        assert(document.activeElement===input,'temporary exact action returns its owned focus to the search input');
+        key(input,'ArrowDown');
+        assert(document.activeElement===choice(),'keyboard can continue directly to the new suggestion');
+        await capture('suggestion_focus_handoff');
+        await pending('合成不抢焦点');
+        submitButton.focus();
+        receipt();
+        await wait(()=>choice()?.textContent.includes('不抢焦点')&&!exact(),'second suggestion reply');
+        assert(document.activeElement===submitButton,'reply must not steal focus that already left the exact action');
+        await capture('suggestion_focus_untouched');
+      } finally{receipt?.();core.searchDiscovery=discovery;}
+      await emit('complete',{ok:true,searchSuggestionFocusVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      return;
+    }
     if(window.__cumulusSearchAlbumArtistProof){
       await wait(()=>one('.track-row'),'daily ready');
       await fixture('album_artist_search');await fresh('合成艺人');

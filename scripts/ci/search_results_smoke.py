@@ -24,6 +24,7 @@ def main():
     mode.add_argument('--playlist-creator', action='store_true')
     mode.add_argument('--collection-next', action='store_true')
     mode.add_argument('--album-artist', action='store_true')
+    mode.add_argument('--suggestion-focus', action='store_true')
     parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--screenshots', action='store_true')
     args = parser.parse_args()
@@ -60,6 +61,8 @@ def main():
         prefix = 'window.__cumulusSearchPlaylistCreatorProof = true;\n'
     if args.collection_next:
         prefix = 'window.__cumulusSearchCollectionNextProof = true;\n'
+    if args.suggestion_focus:
+        prefix = 'window.__cumulusSearchSuggestionFocusProof = true;\n'
     if args.album_artist:
         prefix = 'window.__cumulusSearchAlbumArtistProof = true;\n'
     if args.correction_original:
@@ -79,6 +82,14 @@ def main():
     failed = root / 'first/failed.json'
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
+    if args.suggestion_focus:
+        first = root / 'first'
+        complete = json.loads((first / 'complete.json').read_text(encoding='utf-8'))
+        assert complete['ok'] and complete['searchSuggestionFocusVerified'] and complete['stageCount'] == 2
+        assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
+        assert len(list(first.glob('ux_*.png'))) == (2 if args.screenshots else 0)
+        print(json.dumps(dict(ok=True, actualWebView=True, searchSuggestionFocusVerified=True, stageCount=2)))
+        return
     if args.album_artist:
         first = root / 'first'
         complete = json.loads((first / 'complete.json').read_text(encoding='utf-8'))

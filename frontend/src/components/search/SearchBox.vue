@@ -315,6 +315,7 @@ onUnmounted(() => {
             :composing="composing"
             :error="errors.suggestions"
             @select="(word, display) => submit(word, undefined, display)"
+            @restore-input-focus="focusInput"
             @retry="model.load({ kind: 'suggestions', keyword: query.trim() })"
           />
           <template v-else>
