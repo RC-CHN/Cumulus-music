@@ -211,10 +211,10 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
         screenshot('installed-local-imported.png')
         inputs.click(316, 174)  # Play all in the local list.
         first = wait_for('native playing position', lambda: position('playing', .15))
-        screenshot('installed-local-playing.png')
         next_position = wait_for('native position advancement', lambda: position('playing', first['seconds']+1))
         assert next_position['entry_id'] == first['entry_id']
         wait_for('installed app linked to private PipeWire sink', lambda: private_pipewire_stream(app.pid, env), 6)
+        screenshot('installed-local-playing.png')
         inputs.click(559, 712)  # Pause.
         paused = wait_for('native paused position', lambda: position('paused', first['seconds']))
         assert paused['entry_id'] == first['entry_id'] and paused['paused']
