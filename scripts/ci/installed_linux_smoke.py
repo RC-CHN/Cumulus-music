@@ -135,6 +135,8 @@ def main():
     parser.add_argument('--filter', type=Path, help='portable filter to compare in package mode')
     parser.add_argument('--commit', required=True)
     parser.add_argument('--root', type=Path, required=True)
+    parser.add_argument('--ci-run', help='require this CI run in the package manifest')
+    parser.add_argument('--ci-attempt', help='require this CI attempt in the package manifest')
     parser.add_argument('--portable', action='store_true', help='verify the portable tar.gz instead of the Debian package')
     parser.add_argument('--verify-local-playback', action='store_true',
                         help='exercise synthetic audio via X11 and a private PipeWire null sink')
@@ -147,6 +149,11 @@ def main():
         parser.error('--verify-monitor-pcm needs --verify-local-playback')
     if args.portable and not args.packages:
         parser.error('--portable needs --packages')
+    if (args.ci_run or args.ci_attempt) and not (
+        args.packages and all(re.fullmatch(r'[1-9][0-9]*', value or '')
+                              for value in (args.ci_run, args.ci_attempt))
+    ):
+        parser.error('--ci-run and --ci-attempt need positive IDs and --packages')
     if bool(args.packages) != bool(args.filter):
         parser.error('--filter is required with --packages and must be omitted with --binary')
     if args.verify_installed_equalizer and not (args.packages and args.verify_local_playback):
@@ -165,6 +172,9 @@ def main():
     else:
         manifest = json.loads((args.packages/'manifest-linux-x64.json').read_text(encoding='utf-8'))
         assert manifest['commit'] == args.commit and manifest['platform'] == 'linux-x64'
+        if args.ci_run:
+            assert (manifest['ciRun'], manifest['ciAttempt']) == (args.ci_run, args.ci_attempt), (
+                'wrong package CI run or attempt')
         version = manifest['version']
         assert re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version), 'invalid package version'
         prefix = f'Cumulus-{version}-linux-x64'
@@ -187,7 +197,8 @@ def main():
                                               packaged_filter if args.verify_installed_equalizer else None,
                                               args.verify_monitor_pcm)
         result = dict(ok=True, commit=args.commit, archiveVerified=True, package=name,
-                      installedFilterMatchesPortable=True)
+                      packageSha256=asset['sha256'], ciRun=manifest['ciRun'],
+                      ciAttempt=manifest['ciAttempt'], installedFilterMatchesPortable=True)
     result.update(ordinaryWindowPainted=True, noExternalNetwork=True, width=width, height=height)
     if playback is not None:
         result['localPlayback'] = playback
