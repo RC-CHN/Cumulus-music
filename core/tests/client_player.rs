@@ -44,6 +44,7 @@ impl Api for Backend {
         Box::pin(async move {
             self.calls.lock().unwrap().push(path.into());
             Ok(match path {
+                "/api/w/nuser/account/get" => json!({"code":200,"profile":{"userId":9}}),
                 "/api/dj/program/detail" => {
                     if payload["id"].as_str().and_then(|id| id.parse::<u64>().ok())
                         == Some(self.hold_id.load(Ordering::SeqCst))
@@ -324,6 +325,68 @@ async fn local_startup_preferences_need_no_engine_or_http_and_reject_old_account
     );
     assert_eq!(count.load(Ordering::SeqCst), 0);
     assert!(api.calls.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn provisional_player_preserves_untouched_autoplay_only_for_first_authoritative_restore() {
+    use cumulus_core::playback::{
+        PlaybackQueue, controller::PlaybackStatus, preferences::StartupSettings,
+    };
+    for (interactive, guest_stopped, expected) in [
+        (false, false, PlaybackStatus::Playing),
+        (false, true, PlaybackStatus::Paused),
+        (true, false, PlaybackStatus::Paused),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let api = Arc::new(Backend::default());
+        let registry = ProfileRegistry::open(dir.path(), ApiOrigin::Pc).unwrap();
+        let store = registry.store();
+        let session = Arc::new(AccountSession::new(api.clone(), Some(store.clone())));
+        let client = MusicClient::with_session(session.clone(), registry)
+            .with_audio_factory(|| Ok(support::audio_engine(Arc::new(support::Device::default()))));
+        let mut queue = PlaybackQueue::new(Some(store), "9").unwrap();
+        queue
+            .replace(vec![json!({"id":1,"dt":120000})], 0, json!({"kind":"test"}))
+            .unwrap();
+        client
+            .startup_preferences_command(
+                "0",
+                StartupPreferencesCommand::Change {
+                    expected_revision: "0".into(),
+                    settings: StartupSettings {
+                        auto_play: true,
+                        remember_position: false,
+                    },
+                },
+            )
+            .unwrap();
+        let provisional = client.subscribe_playback("0").await.unwrap();
+        assert_eq!(provisional.current().unwrap().state, PlaybackStatus::Idle);
+        if guest_stopped {
+            client.player_action("0", PlayerAction::Stop).await.unwrap();
+        }
+        if interactive {
+            session
+                .adopt(api, json!({"userId":9}), &session.token().unwrap())
+                .unwrap();
+        } else {
+            client.restore_account().await.unwrap();
+        }
+        let restored = client
+            .player_action("1", PlayerAction::Startup)
+            .await
+            .unwrap();
+        assert_eq!(restored.state, expected);
+        assert_eq!(restored.position, Some(0.0));
+        assert_eq!(
+            client
+                .player_action("1", PlayerAction::Startup)
+                .await
+                .unwrap()
+                .play_id,
+            restored.play_id
+        );
+    }
 }
 
 #[tokio::test]

@@ -32,6 +32,9 @@ impl Actor {
             self.equalizer_sync().await?;
             return self.loudness_sync().await;
         }
+        let carry_startup_autoplay = self.startup_pending
+            && self.startup_autoplay
+            && self.session.is_initial_restore(&self.token, &token)?;
         let stopped = self.stop(false).await;
         let owner = token.uid.as_deref().unwrap_or("local-guest");
         // Clear the previous account even if the new account's database is
@@ -42,7 +45,7 @@ impl Actor {
         self.token = token;
         self.bound = false;
         self.startup_pending = true;
-        self.startup_autoplay = false;
+        self.startup_autoplay = carry_startup_autoplay;
         self.history_error = None;
         self.equalizer_clear().await?;
         self.resolver.invalidate(None)?;

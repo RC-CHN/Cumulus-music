@@ -46,6 +46,7 @@ struct SessionState {
     profile: Option<Value>,
     status: SessionStatus,
     login_notice: Option<LoginNotice>,
+    initial_restore_generation: Option<u64>,
     changes: tokio::sync::watch::Sender<SessionToken>,
 }
 
@@ -103,6 +104,7 @@ impl AccountSession {
                 profile: None,
                 status: SessionStatus::Unknown,
                 login_notice: None,
+                initial_restore_generation: None,
                 changes,
             }),
             store,
@@ -390,6 +392,20 @@ impl AccountSession {
         Ok(profile)
     }
 
+    /// Only the first authoritative restore can carry a cold-start intent
+    /// from the provisional local session. Interactive adoption cannot.
+    pub(crate) fn is_initial_restore(
+        &self,
+        previous: &SessionToken,
+        current: &SessionToken,
+    ) -> Result<bool> {
+        let state = self.lock()?;
+        Ok(previous.generation == 0
+            && previous.uid.is_none()
+            && state.token() == *current
+            && state.initial_restore_generation == Some(current.generation))
+    }
+
     pub async fn refresh(&self) -> Result<Value> {
         let (token, api) = {
             let state = self.lock()?;
@@ -431,6 +447,9 @@ impl AccountSession {
         // cannot report a successful login whose profile was not committed.
         if let Some(store) = &self.store {
             store.put(&uid, "account", "profile", &profile)?;
+        }
+        if token.generation == 0 && state.status == SessionStatus::Unknown && token.uid.is_none() {
+            state.initial_restore_generation = Some(generation);
         }
         state.generation = generation;
         state.uid = Some(uid);
