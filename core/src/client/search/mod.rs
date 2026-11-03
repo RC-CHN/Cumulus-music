@@ -1,6 +1,8 @@
 pub(crate) mod experiment;
 mod lyrics;
+mod reason;
 mod results;
+pub use reason::{ReasonTarget, SearchReasonPage};
 mod track_hint;
 use super::{MusicClient, dto::AccountData};
 use crate::{

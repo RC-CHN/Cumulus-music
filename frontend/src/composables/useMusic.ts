@@ -42,6 +42,11 @@ export type Page =
   | { kind: 'comments'; resource: CommentResource; title: string }
   | { kind: 'playlist'; id: string; subscriberReturn?: number }
   | { kind: 'playlist_tag'; tag: string }
+  | {
+      kind: 'search_reason';
+      label: string;
+      target: import('../services/search').SearchReasonTarget;
+    }
   | { kind: 'playlist_creator'; id: string }
   | {
       kind: 'search';
@@ -174,6 +179,7 @@ export function useMusic(
       if (
         !signedIn.value ||
         target.kind === 'search' ||
+        target.kind === 'search_reason' ||
         target.kind === 'library' ||
         target.kind === 'playlist_tag' ||
         target.kind === 'playlist_creator' ||

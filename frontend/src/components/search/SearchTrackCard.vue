@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import type { TrackView } from '../../services/contracts';
-import type { SearchTrackHint } from '../../services/search';
+import type { SearchTrackHint, SearchReasonTag, SearchReasonTarget } from '../../services/search';
 import { artworkAt } from '../../services/artwork';
 import Icon from '../Icon.vue';
 import SearchMatchText from './SearchMatchText.vue';
@@ -10,6 +10,7 @@ const props = defineProps<{
   mvId?: string;
   hint?: SearchTrackHint;
   explicit?: boolean;
+  reasons?: SearchReasonTag[];
   matchKeyword: string;
   playable: boolean;
   current: boolean;
@@ -24,6 +25,7 @@ const emit = defineEmits<{
   download: [];
   artist: [id: string];
   mv: [id: string];
+  reason: [label: string, target: SearchReasonTarget];
 }>();
 const hintText = computed(() =>
   props.hint?.kind === 'lyric'
@@ -114,6 +116,20 @@ watch(
         </template>
         <SearchMatchText v-else :text="hint.text" :keyword="matchKeyword" />
       </p>
+      <div v-else-if="reasons?.length" class="search-track-reasons">
+        <template v-for="(tag, index) in reasons" :key="index">
+          <button
+            v-if="tag.target"
+            :data-result-action="`reason:${index}`"
+            type="button"
+            @click.stop="emit('reason', tag.label, tag.target)"
+            @dblclick.stop
+          >
+            {{ tag.label }} ›
+          </button>
+          <span v-else>{{ tag.label }}</span>
+        </template>
+      </div>
     </div>
     <div class="search-track-actions">
       <button

@@ -250,6 +250,32 @@ fn podcast_response(path: &str, args: &Value) -> Option<Result<Value>> {
 
 fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
     if v3_enabled() {
+        let tag = match path {
+            "/api/homepage/rcmd/tag/songs"
+                if args
+                    == &json!({"reasonId":"reason-41","reasonName":"合成推荐","reasonType":1,"songId":"3"}) =>
+            {
+                Some(
+                    json!({"code":200,"data":{"title":"合成推荐详情","playCount":123,"reasonRcmdSongCommonVOS":[{"songData":{"id":18,"name":"合成推荐曲目"}}]}}),
+                )
+            }
+            "/api/chart/detail"
+                if args == &json!({"chartCode":"city-chart","targetId":"77","targetType":"4"}) =>
+            {
+                Some(json!({"code":200,"data":{"name":"合成城市详情","playCount":"456"}}))
+            }
+            "/api/chart/song/detail"
+                if args == &json!({"chartCode":"city-chart","targetId":"77","targetType":"4"}) =>
+            {
+                Some(
+                    json!({"code":200,"data":{"charts":[{"songData":{"id":19,"name":"合成城市曲目"}}]}}),
+                )
+            }
+            _ => None,
+        };
+        if let Some(reply) = tag {
+            return Some(Ok(reply));
+        }
         let response = match path {
             "/api/rtrs/abt/front/expinfo/list"
                 if args == &json!({"expNames":"PH-PC-searchHot"}) =>
@@ -266,7 +292,12 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
                 Some(json!({"code":200,"data":{"blocks":[
                     {"blockCode":"search_block_hot_result_hot_explain","resources":[{"baseInfo":{"hotExplainModuleData":{"title":"热点说明","text":"合成热点内容","textAction":"https://example.invalid/private"}}}]},
                     {"blockCode":"search_block_song","resources":[{"type":"song","baseInfo":{"simpleSongData":{"id":1,"name":"综合 V3 合成歌曲","mark":1048576,"dt":60000,"ar":[],"al":{"id":1,"name":"合成专辑"},"newSongExt":{"songAlias":"歌词存在时隐藏别名"}}},"extInfo":{"mv":601,"lyrics":{"txt":"🎵合成歌词片段","range":[{"first":2,"second":4}]}}},
-                    {"type":"song","baseInfo":{"simpleSongData":{"id":2,"name":"合成备用曲目","mark":1,"album":{"mark":1048576},"newSongExt":{"songAlias":"不会展示的旧别名"}}},"extInfo":{"songAlias":"前缀<em>合成 V3</em>别名","lyrics":{"txt":"🎵合成","range":[{"first":1,"second":4}]}}}]}
+                    {"type":"song","baseInfo":{"simpleSongData":{"id":2,"name":"合成备用曲目","mark":1,"album":{"mark":1048576},"newSongExt":{"songAlias":"不会展示的旧别名"}}},"extInfo":{"songAlias":"前缀<em>合成 V3</em>别名","lyrics":{"txt":"🎵合成","range":[{"first":1,"second":4}]}}},
+                    {"type":"song","baseInfo":{"simpleSongData":{"id":3,"name":"合成标签曲目"}},"extInfo":{"algClickableTags":[
+                        {"text":"合成推荐","clickable":true,"reasonType":1,"reasonId":"reason-41","resourceId":3},
+                        {"text":"合成城市","clickable":true,"reasonType":5,"url":"https://example.invalid/private?chartCode=city-chart&targetId=77&targetType=4"},
+                        {"text":"不可跳转","clickable":true,"reasonType":42}
+                    ]}}]}
                 ]}}))
             }
             _ => None,

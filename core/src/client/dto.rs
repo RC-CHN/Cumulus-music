@@ -50,8 +50,8 @@ pub use super::relay::{
 };
 pub use super::scene_fm::{SceneFmCategoryView, SceneFmCommand, SceneFmView};
 pub use super::search::{
-    SearchCategory, SearchHistoryCommand, SearchItem, SearchResultQuery, SearchResultView,
-    SearchSection,
+    ReasonTarget, SearchCategory, SearchHistoryCommand, SearchItem, SearchReasonPage,
+    SearchResultQuery, SearchResultView, SearchSection,
 };
 pub use super::settings::{
     AccountSettingField, AccountSettingsCommand, AccountSettingsPage, LinkedPrivacy,

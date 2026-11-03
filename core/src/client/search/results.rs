@@ -2,7 +2,7 @@
 use super::track_hint::{self, TrackHint};
 use crate::{
     Error, Result,
-    catalog::search::results as api,
+    catalog::search::results::{self as api, reason},
     client::{MusicClient, catalog::cards, dto::*, mapping, podcast::view},
     podcast::{Episode, Radio},
     protocol::api::identifier,
@@ -22,6 +22,8 @@ pub enum SearchItem {
         hint: Option<TrackHint>,
         #[serde(skip_serializing_if = "std::ops::Not::not")]
         explicit: bool,
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        reasons: Vec<reason::ReasonTag>,
         excerpt: Vec<String>,
         #[serde(rename = "excerptTruncated")]
         excerpt_truncated: bool,
@@ -246,10 +248,21 @@ fn item(
     Ok(Some(match kind {
         "song" => {
             let (excerpt, excerpt_truncated) = super::lyrics::project(excerpt);
+            let hint = comprehensive.and_then(|resource| track_hint::project(v, resource));
+            let reasons = if comprehensive.is_some() && hint.is_none() {
+                reason::tags(
+                    v["extInfo"]
+                        .get("algClickableTags")
+                        .unwrap_or(&v["newSongExt"]["algClickableTags"]),
+                )
+            } else {
+                Vec::new()
+            };
             SearchItem::Song {
                 track: mapping::track(v)?,
                 mv_id: comprehensive.and_then(|_| song_mv(v)),
-                hint: comprehensive.and_then(|resource| track_hint::project(v, resource)),
+                hint,
+                reasons,
                 explicit: comprehensive.is_some() && explicit_song(v),
                 excerpt,
                 excerpt_truncated,

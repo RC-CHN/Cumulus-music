@@ -631,7 +631,7 @@
       const verifyHints=()=>{
         const cards=all('.search-track-card');
         const hints=cards.map((card)=>card.querySelector('.search-track-hint'));
-        assert(hints.length===2&&hints[0]?.dataset.tooltip==='🎵合成歌词片段'&&
+        assert(hints.length===3&&!hints[2]&&hints[0]?.dataset.tooltip==='🎵合成歌词片段'&&
           hints[0]?.querySelector('mark')?.textContent==='合成'&&
           hints[1]?.textContent.trim()==='前缀合成 V3别名'&&
           hints[1]?.querySelector('mark')?.textContent==='合成 V3',
@@ -656,7 +656,24 @@
       await wait(()=>ready()&&one('[data-category="all"]')?.getAttribute('aria-selected')==='true','Back restores comprehensive');
       assert(tabs()==='all,mvs,songs'&&one('#search-result-panel').textContent.includes('合成热点内容'),'Back preserves search snapshot');
       await capture('v3_back');
-      await emit('complete',{ok:true,v3Verified:true,v3TrackHintsVerified:true,v3ExplicitVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      const tags=()=>one('.search-track-reasons');
+      assert(tags()?.querySelectorAll('button').length===2&&tags()?.querySelector('span')?.textContent==='不可跳转','only supported tags navigate');
+      click(button('合成推荐 ›',tags()));
+      await wait(()=>one('.search-reason-page h1')?.textContent==='合成推荐详情'&&one('.search-reason-page .track-row')?.textContent.includes('合成推荐曲目'),'recommendation tag uses native song detail');
+      await capture('v3_recommendation_tag');
+      click(button('返回上一页'));
+      await wait(()=>ready()&&tags(),'back restores tag row');
+      click(button('合成城市 ›',tags()));
+      await wait(()=>one('.search-reason-page h1')?.textContent==='合成城市详情'&&one('.search-reason-page .track-row')?.textContent.includes('合成城市曲目'),'city tag uses chart and song routes');
+      const filter=one('[aria-label="搜索推荐歌曲"]');
+      filter.value='不匹配';
+      filter.dispatchEvent(new Event('input',{bubbles:true}));
+      await wait(()=>one('.search-reason-page')?.textContent.includes('没有匹配的歌曲'),'reason page filter');
+      filter.value='';
+      filter.dispatchEvent(new Event('input',{bubbles:true}));
+      await wait(()=>one('.search-reason-page .track-row'),'reason rows return');
+      await capture('v3_city_tag');
+      await emit('complete',{ok:true,v3Verified:true,v3TrackHintsVerified:true,v3ExplicitVerified:true,v3ReasonRoutesVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     await wait(()=>one('.track-row'),'daily ready');submit('合成搜索结果');await wait(()=>one('.search-results-page')&&ready(),'search entry');

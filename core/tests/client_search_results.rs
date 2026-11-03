@@ -521,3 +521,52 @@ async fn comprehensive_song_explicit_badge_respects_official_mark_precedence() {
             .all(|row| row.get("mark").is_none())
     );
 }
+
+#[tokio::test]
+async fn reason_tags_project_safe_targets_and_use_the_official_detail_endpoint() {
+    let (_root, api, _, client) = fixture();
+    let epoch = client.account().unwrap().epoch;
+    *api.reply.lock().unwrap() = json!({"code":200,"data":{"blocks":[
+        {"blockCode":"search_block_song","resources":[{"type":"song","baseInfo":{
+            "id":3,"name":"标签曲目","newSongExt":{"algClickableTags":[
+                {"text":"旧标签","clickable":true,"reasonType":1,"reasonId":"old","resourceId":3}
+            ]},"extInfo":{"algClickableTags":[
+                {"text":"推荐","clickable":true,"reasonType":1,"reasonId":"r-9","resourceId":3},
+                {"text":"城市","clickable":true,"reasonType":5,"url":"https://example.invalid/private?chartCode=top-1&targetId=77&targetType=4"},
+                {"text":"无路由","clickable":true,"reasonType":5,"url":"https://example.invalid/?chartCode=a&chartCode=b&targetId=77&targetType=4"}
+            ]}
+        }}]}
+    ]}});
+    let response = client.search_results(&epoch, query(C::All)).await.unwrap();
+    let value = serde_json::to_value(response.value).unwrap();
+    let tags = &value["sections"][0]["items"][0]["reasons"];
+    assert_eq!(
+        tags[0]["target"],
+        json!({"kind":"recommendation","reasonId":"r-9","songId":"3","name":"推荐"})
+    );
+    assert_eq!(
+        tags[1]["target"],
+        json!({"kind":"city","chartCode":"top-1","targetId":"77","targetType":"4"})
+    );
+    assert_eq!(tags[2], json!({"label":"无路由"}));
+    assert!(!tags.to_string().contains("example.invalid"));
+    *api.reply.lock().unwrap() = json!({"code":200,"data":{"title":"推荐详情","playCount":"34",
+        "reasonRcmdSongCommonVOS":[{"songData":{"id":21,"name":"推荐曲目","url":"https://private.invalid/token"}}]
+    }});
+    let target = serde_json::from_value(tags[0]["target"].clone()).unwrap();
+    let page = client.search_reason_page(&epoch, target).await.unwrap();
+    let page = serde_json::to_value(page.value).unwrap();
+    assert_eq!(page["tracks"][0]["id"], "21");
+    assert_eq!(page["playCount"], 34);
+    assert!(!page.to_string().contains("private.invalid"));
+    let calls = api.calls.lock().unwrap();
+    assert_eq!(
+        calls.last().unwrap(),
+        &(
+            "/api/homepage/rcmd/tag/songs".into(),
+            json!({
+                "reasonId":"r-9","reasonName":"推荐","reasonType":1,"songId":"3"
+            })
+        )
+    );
+}

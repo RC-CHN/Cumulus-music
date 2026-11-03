@@ -148,6 +148,9 @@ fn credits(out: &mut Fields, input: &Value, key: &str) {
 
 fn song_tag(value: &Value) -> Fields {
     let mut tag = Fields::new();
+    if let Some(reasons) = value.get("algClickableTags") {
+        tag.insert("algClickableTags".into(), super::reason::whitelist(reasons));
+    }
     if let Some(alias) = value.get("songAlias") {
         tag.insert(
             "songAlias".into(),

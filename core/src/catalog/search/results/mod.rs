@@ -2,6 +2,7 @@
 use crate::{Error, Result, protocol::api::Api};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+pub(crate) mod reason;
 pub(crate) mod v3;
 
 #[derive(Debug, Serialize)]

@@ -11,6 +11,17 @@ pub async fn search_results(
         .map_err(Into::into)
 }
 #[tauri::command]
+pub async fn search_reason_page(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    target: ReasonTarget,
+) -> Result<AccountData<SearchReasonPage>, ClientError> {
+    client
+        .search_reason_page(&epoch, target)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn search_discovery(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

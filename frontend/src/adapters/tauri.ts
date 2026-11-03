@@ -13,6 +13,7 @@ import type { SessionRenewalView } from '../services/renewal';
 export function createTauriClient(): CoreClient {
   return {
     searchResults: (epoch, query) => invoke('search_results', { epoch, query }),
+    searchReasonPage: (epoch, target) => invoke('search_reason_page', { epoch, target }),
     coldOfflineOpen: () => invoke('cold_offline_open'),
     coldOfflineNext: () => invoke('cold_offline_next'),
     coldOfflinePlay: (id) => invoke('cold_offline_play', { id }),

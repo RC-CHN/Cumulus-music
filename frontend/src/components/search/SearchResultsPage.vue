@@ -12,6 +12,7 @@ import {
   type SearchCategory,
   type SearchChannel,
   type SearchItem,
+  type SearchReasonTarget,
   type SearchSection,
 } from '../../services/search';
 import { useLyricWindow } from '../../composables/useLyricWindow';
@@ -53,6 +54,7 @@ const props = defineProps<{
   searchId?: number;
 }>();
 const emit = defineEmits<{
+  reason: [label: string, target: SearchReasonTarget];
   navigate: [
     category: SearchCategory,
     pagination: SearchPageStep | undefined,
@@ -693,6 +695,8 @@ onBeforeUnmount(() => {
                 :mv-id="item.mvId"
                 :hint="item.hint"
                 :explicit="item.explicit"
+                :reasons="item.reasons"
+                @reason="(label, target) => emit('reason', label, target)"
                 :match-keyword="matchKeyword"
                 :playable="playable"
                 :current="item.track.id === currentId"

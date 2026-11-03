@@ -182,3 +182,28 @@
     text-decoration: underline;
   }
 }
+
+.search-track-reasons {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  overflow: hidden;
+  height: 17px;
+}
+.search-track-reasons > * {
+  flex: 0 1 auto;
+  min-width: 0;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  padding: 0 3px;
+  font-size: 10px;
+  line-height: 12px;
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.search-track-reasons button:focus-visible {
+  outline-offset: -1px;
+}

@@ -250,6 +250,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 commands::search_songs,
                 search::search_discovery,
                 search::search_results,
+                search::search_reason_page,
                 search::search_history,
                 commands::daily_songs,
                 commands::style_recommendations,

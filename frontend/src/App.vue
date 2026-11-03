@@ -3,6 +3,7 @@ import SearchBox from './components/search/SearchBox.vue';
 import { useMotion } from './composables/useMotion';
 import { createPageTransition } from './services/pageTransition';
 import SearchResultsPage from './components/search/SearchResultsPage.vue';
+import SearchReasonPage from './components/search/SearchReasonPage.vue';
 import { createSearchViewportMemory } from './services/searchViewport';
 import { createCollectionViewportMemory } from './services/collectionViewport';
 import ContentTooltip from './components/ContentTooltip.vue';
@@ -2229,6 +2230,9 @@ onUnmounted(() => {
                 "
                 @search="(keyword) => music.navigate({ kind: 'search', keyword })"
                 @search-original="searchOriginal"
+                @reason="
+                  (label, target) => music.navigate({ kind: 'search_reason', label, target })
+                "
                 @open="openSearchItem"
                 @mv="openMv"
                 @creator="(id) => music.navigate({ kind: 'playlist_creator', id })"
@@ -2246,6 +2250,21 @@ onUnmounted(() => {
                 @collect="(tracks) => (playlistDialog = { kind: 'tracks', tracks })"
                 @more="(request) => trackActions?.show(request)"
                 @like="music.like"
+                @artist="(id) => openCatalog({ kind: 'artist', id })"
+                @album="(id) => openCatalog({ kind: 'album', id })"
+                @expired="music.bootstrap(false)"
+              />
+              <SearchReasonPage
+                v-else-if="page.kind === 'search_reason'"
+                :epoch="account.epoch"
+                :label="page.label"
+                :target="page.target"
+                :liked="liked"
+                :busy-likes="busyLikes"
+                :playable="player.ready.value && !player.busy.value"
+                @play="playOnlineSongs"
+                @like="music.like"
+                @more="(request) => trackActions?.show(request)"
                 @artist="(id) => openCatalog({ kind: 'artist', id })"
                 @album="(id) => openCatalog({ kind: 'album', id })"
                 @expired="music.bootstrap(false)"

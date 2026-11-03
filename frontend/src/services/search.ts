@@ -38,6 +38,11 @@ export interface SearchResultQuery {
 export type SearchTrackHint =
   | { kind: 'lyric'; parts: { text: string; highlight: boolean }[] }
   | { kind: 'alias'; text: string };
+export type SearchReasonTarget =
+  | { kind: 'recommendation'; reasonId: string; songId: string; name: string }
+  | { kind: 'city'; chartCode: string; targetId: string; targetType: string };
+export type SearchReasonTag = { label: string; target?: SearchReasonTarget };
+export type SearchReasonPage = { title: string; playCount: number | null; tracks: TrackView[] };
 export type SearchItem =
   | {
       kind: 'song';
@@ -47,6 +52,7 @@ export type SearchItem =
       mvId?: string;
       hint?: SearchTrackHint;
       explicit?: boolean;
+      reasons?: SearchReasonTag[];
     }
   | { kind: 'playlist'; playlist: PlaylistView; recommendation?: string }
   | { kind: 'artist'; artist: ArtistCard }
@@ -92,6 +98,10 @@ export function searchExplanation(
   return { emptyTitle, notice, lines };
 }
 export interface SearchResultsClient {
+  searchReasonPage(
+    epoch: string,
+    target: SearchReasonTarget,
+  ): Promise<AccountData<SearchReasonPage>>;
   searchResults(epoch: string, query: SearchResultQuery): Promise<AccountData<SearchResultView>>;
 }
 export interface SearchWord {
