@@ -327,6 +327,21 @@ async function edit(input: QueueEdit, index?: number, displayed = queue.value) {
       active.focus({ preventScroll: true });
   }
 }
+const currentQueueTransport = computed(() =>
+  props.player.loaded.value ? view.value?.entryId : undefined,
+);
+const queueToggleFocus = useControlFocus(
+  () => `${view.value?.epoch}:${view.value?.queueRevision}:${view.value?.playId}`,
+  () => container.value,
+);
+function doubleClickRow(event: MouseEvent, entryId: string, missing: boolean) {
+  if (locked.value || missing) return;
+  if (entryId === currentQueueTransport.value) {
+    // The loaded entry already owns the decoder. Use its guarded transport
+    // command instead of selecting and opening the same source again.
+    void queueToggleFocus.run(event, () => props.player.toggleSource());
+  } else void edit({ kind: 'select', entry_id: entryId });
+}
 function selectRow(event: MouseEvent, id: string) {
   // Pointer selection runs on down/up to preserve a group while dragging.
   // Keyboard activation and accessibility tools produce a zero-detail click.
@@ -581,6 +596,7 @@ async function confirmClear(event: Event) {
             item,
             start + index,
             currentEntry === item.entryId,
+            currentQueueTransport === item.entryId,
             locked,
             queue.fm,
             queue.tracks.length,
@@ -608,11 +624,15 @@ async function confirmClear(event: Event) {
             class="queue-song"
             :disabled="locked"
             :aria-pressed="selected.has(item.entryId)"
-            title="单击选择，双击播放；Ctrl 多选，Shift 连选"
+            :title="
+              currentQueueTransport === item.entryId
+                ? '单击选择，双击暂停或继续；Ctrl 多选，Shift 连选'
+                : '单击选择，双击播放；Ctrl 多选，Shift 连选'
+            "
             @pointerdown="drag.start($event, item.entryId)"
             @dragstart.prevent
             @click="selectRow($event, item.entryId)"
-            @dblclick="!item.track.missing && edit({ kind: 'select', entry_id: item.entryId })"
+            @dblclick="doubleClickRow($event, item.entryId, item.track.missing)"
           >
             <span
               ><strong class="ellipsis" :title="item.track.name">{{ item.track.name }}</strong

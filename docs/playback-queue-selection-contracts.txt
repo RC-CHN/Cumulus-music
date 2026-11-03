@@ -99,3 +99,10 @@ SQL失败保留选择/焦点、批量移除、跨虚拟窗口全选/边缘滚动
 - 探针只被动记录 focusin/focusout、disabled 与节点连接状态，不包装 CoreClient
   Promise 或修改调度。24 态的严格焦点及存储原子性断言保持不变。最终验证及新的
   精确提交 CI 状态见 ui-ux-validation.txt。
+
+当前播放项的双击
+官方 XTableViewer/Row.tsx 的双击进入播放动作；M/3085:532–540 对已在播放的
+同一资源调用 playing/switchResumeOrPause。队列中双击已加载的当前条目现用
+playId 和队列版本绑定的 pause_for，保留已有解码器、播放位置及队列。已停止的
+条目、其他条目以及独立播放键/Enter 仍走原本的选择流程。相同歌曲在不同队列
+条目时按条目身份判断，不误切换另一条；FM 队列限制不变。
