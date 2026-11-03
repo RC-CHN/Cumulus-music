@@ -190,6 +190,7 @@ mod tests {
             preferences: LyricPreferences::default(),
             network_failed: false,
             from_cache: false,
+            from_sidecar: false,
         }
     }
     #[test]

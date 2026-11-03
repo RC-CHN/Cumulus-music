@@ -296,6 +296,7 @@ export interface LyricsView {
   preferences: LyricPreferences;
   networkFailed: boolean;
   fromCache: boolean;
+  fromSidecar?: boolean;
 }
 export type PlayerUpdate =
   | { kind: 'state'; value: PlayerView }

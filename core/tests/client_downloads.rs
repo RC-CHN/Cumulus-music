@@ -116,6 +116,7 @@ async fn downloaded_sidecar_fills_missing_lyrics_without_leaking_into_other_sele
     let play_id = play.play_id.as_deref().unwrap();
     let lyrics = f.client.player_lyrics("1", play_id).await.unwrap();
     assert_eq!(lyrics.lines[0].lyric, "本地附件歌词");
+    assert!(lyrics.from_sidecar);
     assert_eq!(
         f.client
             .lyric_offset("1", play_id, 1.0)
@@ -142,19 +143,15 @@ async fn downloaded_sidecar_fills_missing_lyrics_without_leaking_into_other_sele
         .unwrap();
     let other_id = other.play_id.as_deref().unwrap();
     assert_ne!(other_id, play_id);
-    assert!(
-        f.client
-            .player_lyrics("1", other_id)
-            .await
-            .unwrap()
-            .lines
-            .is_empty()
-    );
+    let other_lyrics = f.client.player_lyrics("1", other_id).await.unwrap();
+    assert!(other_lyrics.lines.is_empty());
+    assert!(!other_lyrics.from_sidecar);
     assert!(matches!(
         f.client.player_lyrics("1", play_id).await,
         Err(Error::StaleResponse)
     ));
 
+    *f.api.lyric.lock().unwrap() = Err(Error::Transport("offline lyric fixture".into()));
     let play = f
         .client
         .play_downloads("1", vec![id.clone()], 0)
@@ -167,6 +164,8 @@ async fn downloaded_sidecar_fills_missing_lyrics_without_leaking_into_other_sele
         .unwrap();
     assert_eq!(lyrics.lines[0].lyric, "本地附件歌词");
     assert_eq!(lyrics.offset, 0.5);
+    assert!(lyrics.network_failed && lyrics.from_sidecar);
+    *f.api.lyric.lock().unwrap() = Ok(json!({"code":200}));
 
     #[cfg(unix)]
     {
@@ -238,6 +237,7 @@ async fn downloaded_sidecar_fills_missing_lyrics_without_leaking_into_other_sele
         .await
         .unwrap();
     assert_eq!(lyrics.lines[0].lyric, "在线正文");
+    assert!(!lyrics.from_sidecar);
     assert_eq!(lyrics.offset, 0.0);
     assert_eq!(f.api.count("player/url"), 0);
 }

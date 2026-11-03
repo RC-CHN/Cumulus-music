@@ -27,6 +27,7 @@ pub struct DesktopLyricInfo {
     pub scrollable: bool,
     pub network_failed: bool,
     pub from_cache: bool,
+    pub from_sidecar: bool,
     pub fetch_failed: bool,
 }
 #[derive(Clone, Debug, Serialize)]
@@ -68,6 +69,7 @@ impl DesktopLyricDocument {
             scrollable: value.scrollable,
             network_failed: value.network_failed,
             from_cache: value.from_cache,
+            from_sidecar: value.from_sidecar,
             fetch_failed: failed,
         };
     }
@@ -112,6 +114,7 @@ impl MusicClient {
                 scrollable: value.scrollable,
                 network_failed: value.network_failed,
                 from_cache: value.from_cache,
+                from_sidecar: value.from_sidecar,
                 fetch_failed: failed,
             },
         };

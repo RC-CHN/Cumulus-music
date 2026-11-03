@@ -193,12 +193,14 @@ impl MusicClient {
             preferences: value.preferences,
             network_failed: value.network_failed,
             from_cache: value.from_cache,
+            from_sidecar: value.from_sidecar,
         };
         if let Some(timeline) = &player.timeline
             && timeline.mode == crate::playback::TimelineMode::Cue
         {
             segment::apply(&mut result, timeline.media_start, timeline.length);
         }
+        result.from_sidecar &= !result.lines.is_empty();
         Ok(result)
     }
     pub async fn player_lyrics(&self, epoch: &str, play_id: &str) -> Result<LyricsView> {

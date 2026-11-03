@@ -372,4 +372,5 @@ pub struct LyricsView {
     pub preferences: LyricPreferences,
     pub network_failed: bool,
     pub from_cache: bool,
+    pub from_sidecar: bool,
 }

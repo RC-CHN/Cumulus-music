@@ -95,7 +95,13 @@ export interface DesktopLyricView {
     speed: number;
     seekRevision: number;
     duration: number | null;
-    info: { scrollable: boolean; networkFailed: boolean; fromCache: boolean; fetchFailed: boolean };
+    info: {
+      scrollable: boolean;
+      networkFailed: boolean;
+      fromCache: boolean;
+      fromSidecar?: boolean;
+      fetchFailed: boolean;
+    };
     frame: {
       displayType: 'default' | 'pure' | 'ask';
       timedWords: boolean;

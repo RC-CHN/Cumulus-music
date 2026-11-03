@@ -248,7 +248,14 @@ function key(event: KeyboardEvent) {
       class="desktop-lyric-error"
       role="status"
     >
-      {{ error || view?.error || (rows.length ? '正在显示缓存歌词' : '歌词加载未完成')
+      {{
+        error ||
+        view?.error ||
+        (rows.length && view?.lyrics?.info.fromSidecar
+          ? '正在显示本地歌词'
+          : rows.length && view?.lyrics?.info.fromCache
+            ? '正在显示缓存歌词'
+            : '歌词加载未完成')
       }}<button :disabled="busy || !view" @click="perform('retry')">重试</button>
     </div>
     <template v-if="!view?.locked"

@@ -125,9 +125,16 @@ function aligned(rows: { time?: number; lyric: string }[] | undefined, index: nu
           {{ lyricError }}<button class="text-button" @click="player.loadLyrics">重新加载</button>
         </div>
         <template v-else-if="lyrics">
-          <div v-if="lyrics.networkFailed" class="lyric-cache-note">
-            {{ lyrics.fromCache ? '网络暂不可用，正在显示缓存歌词' : '暂未获取到歌词'
-            }}<button class="text-button" @click="player.loadLyrics">重试</button>
+          <div v-if="lyrics.fromSidecar || lyrics.networkFailed" class="lyric-cache-note">
+            {{
+              lyrics.fromSidecar
+                ? '正在显示本地歌词'
+                : lyrics.fromCache
+                  ? '网络暂不可用，正在显示缓存歌词'
+                  : '暂未获取到歌词'
+            }}<button v-if="lyrics.networkFailed" class="text-button" @click="player.loadLyrics">
+              重试
+            </button>
           </div>
           <div v-if="!lines.length" class="empty-state">
             {{ lyrics.displayType === 'pure' ? '纯音乐，请欣赏' : '暂无歌词' }}
