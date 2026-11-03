@@ -57,7 +57,7 @@ import type { AlbumCard, CatalogResource, CatalogSelectionPage } from './service
 import PlayerBar from './components/PlayerBar.vue';
 import { useIntelligence } from './composables/useIntelligence';
 import QueuePanel from './components/QueuePanel.vue';
-import type { QueueCollectionView } from './services/player';
+import type { QueueCollectionView, SearchResultPlayback } from './services/player';
 import LyricsPanel from './components/LyricsPanel.vue';
 import PlaylistDialog from './components/PlaylistDialog.vue';
 import PlaylistCollectDialog from './components/PlaylistCollectDialog.vue';
@@ -378,6 +378,16 @@ function catalogMembershipChanged(epoch: string, resource: CatalogResource) {
 }
 function playRankingPlaylist(id: string) {
   void player.togglePlaylist(id);
+}
+function playSearchResults(tracks: TrackView[], index: number, context: SearchResultPlayback) {
+  if (!tracks[index] || tracks[index].missing) return;
+  void player.select({
+    kind: 'search_results',
+    ids: tracks.map((t) => t.id),
+    index,
+    context,
+    quality: player.view.value?.qualityPreferences.quality ?? 'standard',
+  });
 }
 function playRankingSongs(tracks: TrackView[], index: number) {
   if (!tracks[index] || tracks[index].missing) return;
@@ -1656,7 +1666,7 @@ onUnmounted(() => {
                 "
                 @search="(keyword) => music.navigate({ kind: 'search', keyword })"
                 @open="openSearchItem"
-                @play="playRankingSongs"
+                @play="playSearchResults"
                 @play-card="playSearchCard"
                 @toggle-playback="player.action({ kind: 'pause', paused: player.playing.value })"
                 @download-track="(track) => (downloadDialog = { kind: 'start', tracks: [track] })"

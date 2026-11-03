@@ -22,7 +22,7 @@ import ModalTransition from '../ModalTransition.vue';
 import Icon from '../Icon.vue';
 import SearchResultCard from './SearchResultCard.vue';
 import { searchCardIsCurrent } from '../../services/searchCards';
-import type { PlayerOrigin, PlaybackStatus } from '../../services/player';
+import type { PlayerOrigin, PlaybackStatus, SearchResultPlayback } from '../../services/player';
 const props = defineProps<{
   account: AccountView;
   keyword: string;
@@ -50,7 +50,7 @@ const emit = defineEmits<{
   ];
   search: [keyword: string];
   open: [item: SearchItem];
-  play: [tracks: TrackView[], index: number];
+  play: [tracks: TrackView[], index: number, context: SearchResultPlayback];
   togglePlayback: [];
   downloadTrack: [track: TrackView];
   collect: [tracks: TrackView[]];
@@ -106,7 +106,7 @@ function playPreview(section: SearchSection, index: number) {
     ['playing', 'buffering', 'paused'].includes(props.playbackState ?? '')
   )
     emit('togglePlayback');
-  else emit('play', tracks(section), index);
+  else emit('play', tracks(section), index, 'track');
 }
 const songs = computed(() => view.value?.sections.flatMap(tracks) ?? []);
 const count = computed(() => view.value?.sections.reduce((n, s) => n + s.items.length, 0) ?? 0);
@@ -367,6 +367,7 @@ onBeforeUnmount(() => {
               'play',
               songs,
               songs.findIndex((t) => !t.missing),
+              'song_tab_all',
             )
           "
         >
@@ -449,6 +450,7 @@ onBeforeUnmount(() => {
                     'play',
                     tracks(section),
                     tracks(section).findIndex((t) => !t.missing),
+                    'comprehensive_all',
                   )
                 "
               >
@@ -484,7 +486,7 @@ onBeforeUnmount(() => {
                     :current-id="currentId"
                     :playable="playable"
                     navigable
-                    @play="emit('play', tracks(section), $event)"
+                    @play="emit('play', tracks(section), $event, 'track')"
                     @like="emit('like', $event)"
                     @more="emit('more', $event)"
                     @artist="emit('artist', $event)"
@@ -521,7 +523,11 @@ onBeforeUnmount(() => {
                 @like="emit('like', track)"
                 @more="
                   (event) =>
-                    emit('more', { track, event, play: () => emit('play', tracks(section), index) })
+                    emit('more', {
+                      track,
+                      event,
+                      play: () => emit('play', tracks(section), index, 'track'),
+                    })
                 "
                 @download="emit('downloadTrack', track)"
                 @artist="emit('artist', $event)"
@@ -535,7 +541,7 @@ onBeforeUnmount(() => {
               :playable="playable"
               :current-id="currentId"
               navigable
-              @play="emit('play', tracks(section), $event)"
+              @play="emit('play', tracks(section), $event, 'track')"
               @like="emit('like', $event)"
               @more="emit('more', $event)"
               @artist="emit('artist', $event)"

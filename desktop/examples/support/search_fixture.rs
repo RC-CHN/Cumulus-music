@@ -20,6 +20,8 @@ pub fn control(value: &Value) {
             "hot_source",
             "suggest_error",
             "result_error",
+            "result_play_trial",
+            "result_play_default",
             "unavailable",
             "missing_song",
             "mixed_results",
@@ -63,6 +65,16 @@ pub fn missing_song() -> bool {
 }
 pub fn card_failed() -> bool {
     *MODE.lock().unwrap() == "card_error"
+}
+pub fn result_play_trial() -> Option<i64> {
+    if !enabled() {
+        return None;
+    }
+    match MODE.lock().unwrap().as_str() {
+        "result_play_trial" => Some(42),
+        "result_play_default" => Some(-1),
+        _ => None,
+    }
 }
 pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
     if enabled()

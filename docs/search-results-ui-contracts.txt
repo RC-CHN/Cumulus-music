@@ -85,6 +85,14 @@ MV /api/search/mlog/get：keyword、scene、limit、offset、channel=suggest、o
   不在此专项。恢复 /audio 及有声书类目是公开发现页，本应用的“我的播客”
   是个人库，因此不能用它替代这些目的地。
 
+搜索歌曲播放来源：PC SearchResults/components/tab.jsx:108–125、
+  components/recommend.jsx:482–516 与恢复 M/352 的歌曲/歌词表动作上下文。
+  单曲“播放全部”、单个综合单曲卡片以及单曲/歌词行采用 search 场景和
+  M/91 的 TrialMode.search=42；单曲“播放全部”记录 searchSongTab。
+  综合区块标题“播放全部”仅记录 search 场景，保持默认试听模式。
+  这些上下文不修改账号权益，实际播放许可仍由原生音源解析判定。
+  其他搜索资源动作的完整来源参数和行为仍需分别核对。
+
 必须继续的对齐项
 - 卡片悬停播放/暂停、详情和部分菜单已接通并独立检查，详见卡片专项；完整菜单、
   用户主页、缺radioId声音的直接播放仍待补齐；播放场景search的完整

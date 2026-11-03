@@ -201,6 +201,13 @@ impl Api for Library {
                     json!({"code":200,"result":{"songs":(1..=12).map(song).collect::<Vec<_>>(),"songCount":12}})
                 }
                 "/api/song/enhance/player/url/v1" => {
+                    if let Some(expected) = search_fixture::result_play_trial()
+                        && args["trialMode"] != expected
+                    {
+                        return Err(cumulus_core::Error::InvalidInput(
+                            "wrong synthetic search playback trial",
+                        ));
+                    }
                     if let Some(value) = playback_quality_fixture::response(&args) {
                         return value;
                     }

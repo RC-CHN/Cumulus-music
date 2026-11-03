@@ -132,6 +132,7 @@ export type QueueEdit =
   | { kind: 'select'; entry_id: string }
   | { kind: 'remove' | 'reorder'; entry_ids: string[] }
   | { kind: 'clear' };
+export type SearchResultPlayback = 'track' | 'song_tab_all' | 'comprehensive_all';
 export type PlaySelection =
   | { kind: 'voice'; id: string }
   | { kind: 'downloads'; query: import('./downloads').DownloadQuery; start_id: string | null }
@@ -180,6 +181,13 @@ export type PlaySelection =
       quality: Quality;
     }
   | { kind: 'cloud_batch'; ids: string[]; revision: string; quality: Quality; query?: CloudQuery }
+  | {
+      kind: 'search_results';
+      ids: string[];
+      index: number;
+      quality: Quality;
+      context: SearchResultPlayback;
+    }
   | { kind: 'search_chart'; ids: string[]; quality: Quality }
   | { kind: 'songs'; ids: string[]; index: number; quality: Quality }
   | {

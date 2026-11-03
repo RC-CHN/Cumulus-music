@@ -1394,3 +1394,49 @@ async fn hot_search_selection_keeps_queue_order_and_requests_search_trial() {
     );
     assert_eq!(*api.trial.lock().unwrap(), Some(json!(42)));
 }
+
+#[tokio::test]
+async fn search_result_actions_keep_selected_index_and_use_the_recovered_trial_context() {
+    let (dir, api, _session, client, _) = fixture();
+    let store = ProfileRegistry::open(dir.path(), ApiOrigin::Pc)
+        .unwrap()
+        .store();
+    let contexts = [
+        (
+            SearchResultPlayback::Track,
+            42,
+            json!({"kind":"songs","scene":"search","trial_mode":42}),
+        ),
+        (
+            SearchResultPlayback::SongTabAll,
+            42,
+            json!({"kind":"songs","scene":"search","pldScene":"searchSongTab","trial_mode":42}),
+        ),
+        (
+            SearchResultPlayback::ComprehensiveAll,
+            -1,
+            json!({"kind":"songs","scene":"search"}),
+        ),
+    ];
+    for (i, (context, trial, source)) in contexts.into_iter().enumerate() {
+        let ids = vec![(i * 2 + 1).to_string(), (i * 2 + 2).to_string()];
+        let state = client
+            .play_selection(
+                "1",
+                PlaySelection::SearchResults {
+                    ids: ids.clone(),
+                    index: 1,
+                    quality: Quality::Standard,
+                    context,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(state.track.unwrap().id, ids[1]);
+        assert_eq!(state.queue_len, 2);
+        assert_eq!(*api.trial.lock().unwrap(), Some(json!(trial)));
+        let stored = store.get("9", "playback", "queue").unwrap().unwrap();
+        assert_eq!(stored["items"][0]["source"], source);
+        assert_eq!(stored["items"][1]["source"], source);
+    }
+}

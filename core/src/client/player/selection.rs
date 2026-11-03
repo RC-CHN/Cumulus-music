@@ -371,6 +371,30 @@ impl MusicClient {
                     | PlaySelection::Voice { .. } => {
                         unreachable!("cloud handled before song detail requests")
                     }
+                    PlaySelection::SearchResults {
+                        ids,
+                        index,
+                        quality,
+                        context,
+                    } => {
+                        if ids.is_empty() || ids.len() > 500 || index >= ids.len() {
+                            return Err(Error::InvalidInput("invalid search result selection"));
+                        }
+                        let ids = ids
+                            .iter()
+                            .map(|id| identifier(&json!(id)).map(Value::from))
+                            .collect::<Result<Vec<_>>>()?;
+                        // Recovered M/91 search trial and PC result action contexts.
+                        let source = match context {
+                            SearchResultPlayback::Track =>
+                                json!({"kind":"songs","scene":"search","trial_mode":42}),
+                            SearchResultPlayback::SongTabAll =>
+                                json!({"kind":"songs","scene":"search","pldScene":"searchSongTab","trial_mode":42}),
+                            SearchResultPlayback::ComprehensiveAll =>
+                                json!({"kind":"songs","scene":"search"}),
+                        };
+                        Ok((ids, index, quality, source))
+                    }
                     PlaySelection::SearchChart { ids, quality } => {
                         if ids.is_empty() || ids.len() > crate::catalog::search::CHART_ITEM_LIMIT {
                             return Err(Error::InvalidInput("invalid search chart selection"));

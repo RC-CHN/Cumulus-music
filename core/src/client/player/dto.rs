@@ -116,6 +116,14 @@ pub struct QueueCollectionView {
     pub tracks: Vec<super::super::dto::TrackView>,
 }
 
+#[derive(Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SearchResultPlayback {
+    Track,
+    SongTabAll,
+    ComprehensiveAll,
+}
+
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PlaySelection {
@@ -178,6 +186,12 @@ pub enum PlaySelection {
         quality: Quality,
         #[serde(default)]
         query: Option<crate::client::dto::CloudQuery>,
+    },
+    SearchResults {
+        ids: Vec<String>,
+        index: usize,
+        quality: Quality,
+        context: SearchResultPlayback,
     },
     SearchChart {
         ids: Vec<String>,

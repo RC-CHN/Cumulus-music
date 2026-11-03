@@ -75,8 +75,19 @@
     const album=one('.track-album[data-tooltip]');assert(album&&!album.hasAttribute('title'),'native title replaced');album.dispatchEvent(new PointerEvent('pointerover',{bubbles:true}));await wait(()=>one('.content-tooltip')&&getComputedStyle(one('.content-tooltip')).visibility==='visible','content tooltip');await capture('content_tooltip');
     await choose('artists');assert(!one('.content-tooltip'),'route clears tooltip');await capture('tooltip_cleared');
     await fixture('unavailable');await fresh('合成不可用结果');await choose('voices');assert(!one('.search-result-card .search-card-play')&&one('.search-result-card').textContent.includes('暂不可打开'),'missing radio target disabled');await capture('voice_unavailable');await choose('mvs');assert(one('.search-card-open').disabled,'non-MV target disabled');await capture('mv_unavailable');await fixture('good');
-    await choose('songs');click(button('播放全部'));await wait(()=>one('.now-playing')?.textContent.includes('界面')||button('暂停'),'play selection');await capture('play');
+    await choose('all');
+    const playingTrack=id=>one('.playerbar')?.dataset.state==='playing'&&one('.now-playing')?.textContent.includes('合成歌曲 '+id+' ·');
+    await fixture('result_play_default');click(button('播放全部搜索单曲'));
+    await wait(()=>playingTrack(1),'comprehensive header play uses default trial');
+    await fixture('result_play_trial');click(all('.search-track-cover')[1]);
+    await wait(()=>playingTrack(2),'individual preview uses search trial');
+    await choose('songs');click(button('播放全部'));
+    await wait(()=>playingTrack(1),'song tab play all uses search trial');await capture('play');
+    await choose('lyrics');click(one('.track-row[data-track-id="3"] .track-play'));
+    await wait(()=>playingTrack(3),'lyric row uses search trial');
+    await choose('songs');click(one('.track-row[data-track-id="2"] .track-play'));
+    await wait(()=>playingTrack(2),'song row uses search trial');
     await fixture('expired');click(one('[data-category="albums"]'));await wait(()=>button('重新登录')&&!one('.search-results-page'),'expired account');await capture('expired');
-    await emit('complete',{ok:true,stageCount:count,responseTimingInjected:true,shortPageOffsetsVerified:true,realMusicRequests:0,realAccountWrites:0});
+    await emit('complete',{ok:true,stageCount:count,responseTimingInjected:true,shortPageOffsetsVerified:true,searchResultPlaybackVerified:true,realMusicRequests:0,realAccountWrites:0});
   }catch(error){await emit('failed',{step,message:String(error),stack:error?.stack,stageCount:count,body:document.body.innerText.slice(0,3500)});}
 })();
