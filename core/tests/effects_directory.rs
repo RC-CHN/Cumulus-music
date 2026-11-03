@@ -201,7 +201,7 @@ async fn device_directory_rejects_duplicate_oversized_or_malformed_rows() {
         json!({"code":200,"data":[{"soundId":9007199254740992_u64,"deviceModel":"A"}]}).into(),
         json!({"code":200,"data":[{"soundId":1,"deviceModel":"a".repeat(161)}]}).into(),
         json!({"code":200,"data":[{"soundId":1,"deviceModel":"\u{0000}  "}]}).into(),
-        json!({"code":200,"data":vec![Value::Null;1025]}).into(),
+        json!({"code":200,"data":vec![json!({"deviceManagerId":1,"deviceName":"A"});1025]}).into(),
     ]));
     let (session, library) = library(api, root.path());
     let token = session.token().unwrap();
