@@ -391,6 +391,7 @@ async fn local_play_selection_publishes_embedded_lyrics_to_both_views() {
         include_bytes!("fixtures/tag_audio/seed.flac"),
     )
     .unwrap();
+    std::fs::write(media.join("track.lrc"), [0xff, 0xfe, 0x20]).unwrap();
     let (_, client, library) = client(&dir.path().join("state"), Arc::new(Probe::default()));
     library.scan(&media).unwrap();
     let page = client.local_page(LocalQuery::default()).await.unwrap();
@@ -415,6 +416,11 @@ async fn local_play_selection_publishes_embedded_lyrics_to_both_views() {
         .unwrap();
     assert!(desktop.info.from_embedded && !desktop.info.from_sidecar);
     assert_eq!(desktop.frame.lines[0].text, "保留歌词");
+
+    std::fs::write(media.join("track.lrc"), "[00:00]修复后的侧车歌词").unwrap();
+    let repaired = client.player_lyrics("0", &play_id).await.unwrap();
+    assert!(repaired.from_sidecar && !repaired.from_embedded);
+    assert_eq!(repaired.lines[0].lyric, "修复后的侧车歌词");
 }
 
 #[tokio::test]

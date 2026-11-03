@@ -56,19 +56,25 @@ impl LocalLyrics for LibraryLyrics {
         audio: &'a Path,
     ) -> ApiFuture<'a, Option<(String, LocalLyricSource)>> {
         Box::pin(async move {
-            if let Some(text) = self
-                .read(audio)
-                .await?
-                .filter(|text| !text.trim().is_empty())
-            {
-                return Ok(Some((text, LocalLyricSource::Sidecar)));
-            }
+            let sidecar_error = match self.read(audio).await {
+                Ok(Some(text)) if !text.trim().is_empty() => {
+                    return Ok(Some((text, LocalLyricSource::Sidecar)));
+                }
+                Ok(_) => None,
+                Err(error) => Some(error),
+            };
             let audio = audio.to_owned();
-            tokio::task::spawn_blocking(move || {
+            let embedded = tokio::task::spawn_blocking(move || {
                 super::embedded::read(&audio, LIMIT).map(|text| (text, LocalLyricSource::Embedded))
             })
             .await
-            .map_err(|_| Error::State("embedded lyric worker stopped"))
+            .map_err(|_| Error::State("embedded lyric worker stopped"))?;
+            // An optional damaged sidecar should not hide valid embedded text.
+            // Without a fallback, keep reporting the original read/parse error.
+            match (embedded, sidecar_error) {
+                (None, Some(error)) => Err(error),
+                (embedded, _) => Ok(embedded),
+            }
         })
     }
 }
@@ -82,7 +88,15 @@ fn read_sidecar(path: PathBuf) -> Result<Option<String>> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(e.into()),
     }
-    let file = match File::open(path) {
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        // A FIFO swapped in after the metadata check must not block the worker.
+        options.custom_flags(libc::O_NONBLOCK);
+    }
+    let file = match options.open(path) {
         Ok(file) => file,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(e.into()),
