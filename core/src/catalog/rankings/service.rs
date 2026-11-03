@@ -38,34 +38,6 @@ impl SavedRanking {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn home_ttl_uses_inclusive_official_cutoff_and_bounds() {
-        let mut saved = SavedRanking {
-            query: RankingQuery::Home,
-            fetched_at: 1_000,
-            page: RankingPage::Home { groups: vec![] },
-        };
-        for (hours, last_fresh_ms) in [
-            (None, 10_797_000),
-            (Some(2.0), 7_197_000),
-            (Some(0.01), 34_200),
-            (Some(0.0), 10_797_000),
-            (Some(-1.0), 10_797_000),
-            (Some(f64::INFINITY), 10_797_000),
-            (Some(1e30), 10_797_000),
-        ] {
-            assert!(saved.fresh_at_with_choice_hours(saved.fetched_at + last_fresh_ms, hours));
-            assert!(!saved.fresh_at_with_choice_hours(saved.fetched_at + last_fresh_ms + 1, hours));
-            assert!(!saved.fresh_at_with_choice_hours(saved.fetched_at - 1, hours));
-        }
-        saved.query = RankingQuery::SongSales;
-        assert!(!saved.fresh_at_with_choice_hours(saved.fetched_at, Some(2.0)));
-    }
-}
 pub struct Rankings {
     session: Arc<AccountSession>,
     store: Arc<StateStore>,
@@ -126,5 +98,34 @@ impl Rankings {
                 .put(uid, CACHE, &key, &serde_json::to_value(&saved)?)
         })?;
         Ok(saved)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn home_ttl_uses_inclusive_official_cutoff_and_bounds() {
+        let mut saved = SavedRanking {
+            query: RankingQuery::Home,
+            fetched_at: 1_000,
+            page: RankingPage::Home { groups: vec![] },
+        };
+        for (hours, last_fresh_ms) in [
+            (None, 10_797_000),
+            (Some(2.0), 7_197_000),
+            (Some(0.01), 34_200),
+            (Some(0.0), 10_797_000),
+            (Some(-1.0), 10_797_000),
+            (Some(f64::INFINITY), 10_797_000),
+            (Some(1e30), 10_797_000),
+        ] {
+            assert!(saved.fresh_at_with_choice_hours(saved.fetched_at + last_fresh_ms, hours));
+            assert!(!saved.fresh_at_with_choice_hours(saved.fetched_at + last_fresh_ms + 1, hours));
+            assert!(!saved.fresh_at_with_choice_hours(saved.fetched_at - 1, hours));
+        }
+        saved.query = RankingQuery::SongSales;
+        assert!(!saved.fresh_at_with_choice_hours(saved.fetched_at, Some(2.0)));
     }
 }
