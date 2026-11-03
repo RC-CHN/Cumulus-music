@@ -49,6 +49,30 @@
     } finally { window.requestAnimationFrame=frames; }
   }
   try {
+    if(window.__cumulusSearchCardMatchesProof){
+      await wait(()=>one('.track-row'),'daily ready');
+      await fixture('good');await fresh('合成');
+      const check=(kind, expected)=>{
+        const title=one(`[data-result-key^="${kind}:"] .search-result-name`);
+        const text=title?.textContent.trim();
+        assert(text&&title.dataset.tooltip===text,'title and tooltip keep identical text: '+kind);
+        const marks=[...title.querySelectorAll('mark.search-match-text')];
+        assert(marks.length===(expected?1:0)&&(!expected||marks[0].textContent==='合成'),
+          'exact card title mark: '+kind);
+        assert(!title.closest('.search-result-card').querySelector('.search-result-sub mark'),
+          'subtitle remains plain: '+kind);
+      };
+      for(const kind of ['playlist','podcast','voice','mv'])check(kind,true);
+      await capture('comprehensive_card_title_matches');
+      for(const [category,kind] of [['playlists','playlist'],['podcasts','podcast'],['voices','voice'],['mvs','mv']]){
+        await choose(category);check(kind,true);
+      }
+      await capture('mv_category_card_title_matches');
+      await fresh('不匹配结果');
+      for(const kind of ['playlist','podcast','voice','mv'])check(kind,false);
+      await emit('complete',{ok:true,cardTitleMatchesVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      return;
+    }
     if(window.__cumulusSearchVoiceDirectProof){
       await wait(()=>one('.track-row'),'daily ready');
       await fixture('unavailable');await fresh('合成无所属播客的声音');await choose('voices');

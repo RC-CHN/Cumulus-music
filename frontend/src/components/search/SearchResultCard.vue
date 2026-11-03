@@ -3,12 +3,14 @@ import { computed, ref, watch } from 'vue';
 import type { SearchItem } from '../../services/search';
 import { artworkAt } from '../../services/artwork';
 import Icon from '../Icon.vue';
+import SearchMatchText from './SearchMatchText.vue';
 import ActionMenu from '../ActionMenu.vue';
 import type { MenuItem } from '../../services/menu';
 import { searchCardCanPlay, searchCardKey } from '../../services/searchCards';
 import { usePlaybackTriggerFocus } from '../../composables/usePlaybackTriggerFocus';
 const props = defineProps<{
   item: SearchItem;
+  matchKeyword: string;
   playable: boolean;
   current: boolean;
   playing: boolean;
@@ -50,6 +52,9 @@ function contextMenu(event: MouseEvent | KeyboardEvent) {
 }
 const failedCover = ref(false);
 const canPlay = computed(() => searchCardCanPlay(props.item));
+const markedTitle = computed(() =>
+  ['playlist', 'podcast', 'voice', 'mv'].includes(props.item.kind),
+);
 const items = computed<MenuItem[]>(() => [
   ...(canPlay.value
     ? [
@@ -239,7 +244,10 @@ watch(
         <Icon :name="current && playing ? 'pause' : 'play'" />
       </button>
     </span>
-    <span class="search-result-name" :data-tooltip="card.name">{{ card.name }}</span>
+    <span class="search-result-name" :data-tooltip="card.name">
+      <SearchMatchText v-if="markedTitle" :text="card.name" :keyword="matchKeyword" />
+      <template v-else>{{ card.name }}</template>
+    </span>
     <button
       v-if="item.kind === 'voice' && item.voice.radioId"
       class="search-voice-radio"

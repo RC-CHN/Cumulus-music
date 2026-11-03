@@ -14,6 +14,7 @@ def main():
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--v3', action='store_true')
     mode.add_argument('--voice-direct', action='store_true')
+    mode.add_argument('--card-matches', action='store_true')
     parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--screenshots', action='store_true')
     args = parser.parse_args()
@@ -35,6 +36,8 @@ def main():
     prefix = ''
     if args.frontend_dist:
         env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve(strict=True))
+    if args.card_matches:
+        prefix = 'window.__cumulusSearchCardMatchesProof = true;\n'
     if args.voice_direct:
         prefix = 'window.__cumulusSearchVoiceDirectProof = true;\n'
     if args.v3:
@@ -48,9 +51,10 @@ def main():
     failed = root / 'first/failed.json'
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
-    if args.voice_direct:
+    if args.voice_direct or args.card_matches:
         complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
-        assert complete['ok'] and complete['voiceDirectVerified'] and complete['stageCount'] == 2
+        flag = 'cardTitleMatchesVerified' if args.card_matches else 'voiceDirectVerified'
+        assert complete['ok'] and complete[flag] and complete['stageCount'] == 2
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
         assert len(list((root / 'first').glob('ux_*.png'))) == (2 if args.screenshots else 0)
         print(json.dumps(dict(complete, actualWebView=True)))
