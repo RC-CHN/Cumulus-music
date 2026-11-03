@@ -6,7 +6,8 @@
 CI (.github/workflows/ci.yml)
 1. 独立前端 runner：公开源文件边界、版本与 release 历史、发布门禁的拒绝分支测试、格式、前端测试、类型检查和正式构建。
 2. Linux/Windows 两个原生 runner 并行：固定 Rust/Node、锁定依赖、fmt、严格 Clippy、全工作区测试（包括 examples 编译）、发行构建与合成媒体实际解码。
-3. 两端在真实桌面初始化后运行原生媒体测试；Linux 强制使用 en_US.UTF-8，检查 GTK 数字 locale 冲突及保留界面语言。Linux 另运行真实 FFmpeg LADSPA 音效链和 WebKitGTK 登录失效/重新登录 UI 截图测试。Windows 在真实 WebView2 中验证相同生产 UI/IPC 的 DOM 状态、凭据失效及旧策略队列清理；不声称有 Windows 截图验证。两端 UI 均只使用合成 HTTP。
+3. Linux WebView 独立 job 使用 Linux Native 的已验证发行运行时；Windows 的
+   WebView 验证仍在 Windows 原生 job。两端在真实桌面初始化后运行原生媒体测试；Linux 强制使用 en_US.UTF-8，检查 GTK 数字 locale 冲突及保留界面语言。Linux 另运行真实 FFmpeg LADSPA 音效链和 WebKitGTK 登录失效/重新登录 UI 截图测试。Windows 在真实 WebView2 中验证相同生产 UI/IPC 的 DOM 状态、凭据失效及旧策略队列清理；不声称有 Windows 截图验证。两端 UI 均只使用合成 HTTP。
 4. CI gate 只有全部必要 job success 才通过。失败/取消/跳过均不能发布。
    两端还运行长列表/自定义窗口、启动渲染自动回退及 29 项主题/菜单/弹窗/重启记忆的实际 WebView 检查。
 5. 输出 packages-linux-x64 / packages-windows-x64 两组产物，包含包、精确提交/CI run/attempt/大小/SHA256 清单。保留 14 天。
@@ -21,17 +22,18 @@ Windows 还需 CUMULUS_MSYS2_ROOT 指向装有 UCRT64 mpv/binutils 的 MSYS2 根
 Windows 按 libmpv/ffprobe 的 PE 导入表递归收集 DLL；实际解码和本地库元数据读取测试清除 PATH 中的 MSYS2，避免漏装依赖被 runner 掩盖。
 Linux .deb 声明 libmpv2/WebKitGTK/FFmpeg 等系统依赖；tar.gz 也需要这些系统依赖。
 Windows 提供 NSIS/zip，附原生运行时依赖、上游许可证与包版本来源。没有签名证书，不声称已签名。
-MSYS2 FFmpeg 未启用 LADSPA，因此 Windows 本地 DSP 核心可测试，但正式播放音效链不承诺可用。
+主线 Windows 发行运行时使用启用 LADSPA 的固定 FFmpeg 配方。两平台
+打包均须通过实际 libmpv → LADSPA → C DSP 回归；当前配置不改变已发布包的边界。
 打包脚本的生成目录必须不存在；重试前仅清理 .build/package-stage/<platform>、.build/packages/<platform> 中对应的失败构建，保留需要调查的证据。
 
 发布顺序
 1. 完成所有实现/配置/发行说明，更新 Cargo.toml、Cargo.lock、frontend/package*.json、desktop/tauri.conf.json，推送普通功能/修复提交，等待 CI 全绿。
-2. 创建唯一、内容树不变的标记提交：git commit --allow-empty -m 'chore:release 0.1.0'。
+2. 创建唯一、内容树不变的标记提交：git commit --allow-empty -m 'chore:release X.Y.Z'。
    git push origin main。不要提前打 tag。普通修改必须在该提交之前准备好。
 3. 等待该标记提交自己的 CI 全绿，取得其 run ID。
-4. gh workflow run release.yml --ref main -f version=0.1.0 -f ci_run_id=<ID>。
-5. CD 验证唯一 release commit、版本一致、main push CI、精确 SHA、四项必要 job、run attempt、产物集合与校验和。
-   只下载此 CI 的产物，不重新构建。创建指向该 commit 的 v0.1.0 标签；先草稿上传完整附件，再公开。
+4. gh workflow run release.yml --ref main -f version=X.Y.Z -f ci_run_id=<ID>。
+5. CD 验证唯一 release commit、版本一致、main push CI、精确 SHA、五项必要 job、run attempt、产物集合与校验和。
+   只下载此 CI 的产物，不重新构建。创建指向该 commit 的 vX.Y.Z 标签；先草稿上传完整附件，再公开。
 6. 检查 Release URL、所有附件、SHA256SUMS、release-provenance.json 和 tag 目标。
 
 失败处理

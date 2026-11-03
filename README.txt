@@ -168,6 +168,7 @@ docs/rust-core-validation.txt。完整播客发现页、封面取色及其余分
 本轮检查结果与边界：docs/bootstrap-validation.txt。
 Rust 迁移检查：docs/rust-core-validation.txt；来源索引：docs/migration-source-index.json。
 完整桌面初版与官方风格UI目标：docs/full-desktop-goal.txt。
+功能入口、当前验收证据与发布版本区别：docs/initial-desktop-evidence.txt。
 
 桌面业务契约与实际窗口验证：docs/ui-desktop-contracts.txt。
 原生播放器与真实媒体验证：docs/core-playback-contracts.txt；本机需要libmpv，本地库探测使用ffprobe。

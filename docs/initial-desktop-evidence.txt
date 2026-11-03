@@ -1,0 +1,92 @@
+桌面初版验收导航
+================
+
+这份索引区分已经发布的包、主线能力、实测范围和剩余缺口。逐项接口、
+字段及错误分支仍以各专项契约为准；历史 Python 结果只作来源。
+完整目标见 docs/full-desktop-goal.txt；历史迁移表见
+docs/rust-core-migration.txt；原包来源入口见 docs/migration-source-index.json。
+
+已发布与待验收的主线
+-------------------
+2026-10-28 发布 v0.1.0，标签直接指向 0c56933（chore:release 0.1.0）。
+GitHub Release 有 Linux deb/tar.gz、Windows NSIS/zip 及两平台清单、
+SHA256SUMS、release-provenance.json。Linux deb 和 Windows zip 已分别
+复算 SHA-256，并核对 provenance 的标签提交。该包边界见
+docs/releases/0.1.0.txt；之后的 main 不属于这个包。下一版本必须满足 AGENTS.md 的唯一空发布
+提交和精确目标 CI 门禁，不能更新旧标签或附件。
+
+正式开发启动：npm --prefix frontend ci；npm --prefix frontend run desktop:dev。
+独立原生构建：npm --prefix frontend run build；cargo build --locked
+-p cumulus-desktop --features custom-protocol --bin cumulus（在同一命令行执行）。
+系统依赖、Linux/Windows 发行构建及校验见 docs/releasing.txt。
+无 WebView 的 core 构建、职责与数据流见 docs/architecture.txt。
+普通 Linux 客户端启动、原生文件选择和播放证据见 docs/bootstrap-validation.txt；
+这里不把虚拟输出听感或旧安装包当作当前 main 的发布验收。
+
+功能、入口和证据
+----------------
+每项先列正式代码位置，再列可审阅的契约/证据及仍须单独验收的边界。
+
+- 协议、身份、风控：core/src/protocol、core/src/identity、core/src/watchman；
+  desktop/src/identity.rs、desktop/src/watchman 原生启动。
+  docs/core-pc-request-context-contracts.txt、
+  docs/core-watchman-collection-contracts.txt、docs/default-windows-compatibility.txt。
+  对照、Linux 采集、受保护账号读取各有证据；Windows 原生硬件采集未闭合，
+  服务端规则不能由本地对照推断。
+- 账号：core/src/account、desktop/src/auth.rs、desktop/src/renewal.rs；
+  frontend/src/components/login。docs/desktop-login-contracts.txt、
+  docs/desktop-session-renewal-contracts.txt、docs/synthetic-qr-main-flow-plan.txt。
+  合成扫码、候选采用、重启恢复及真实已有会话读取均有各自证据；
+  真实新挑战和服务发放 refresh token 的覆盖不完整。
+- 推荐、榜单、搜索、FM：core/src/catalog、core/src/fm；
+  desktop/src/search.rs、desktop/src/rankings.rs、desktop/src/fm.rs。
+  docs/search-results-ui-contracts.txt、docs/search-playback-read-proof.txt、
+  docs/desktop-rankings-contracts.txt、docs/desktop-fm-feedback-contracts.txt。
+  固定歌曲真实直连、合成搜索窗口和 FM 专项分开记录，不代表全部发现页对齐。
+- 歌单、收藏、设置、历史：core/src/playlist、core/src/account、core/src/history；
+  desktop/src/playlists.rs、desktop/src/collections.rs、desktop/src/settings.rs。
+  docs/core-pc-playlist-official-contracts.txt、docs/playlist-detail-ui-contracts.txt、
+  docs/desktop-main-flow-proof.txt、docs/play-history-contracts.txt。
+  历史真实私密歌单独立往返和当前合成主流程增删回读不能拼成当前真实整链。
+- 播放、队列、歌词、会员：core/src/playback、core/src/lyrics、core/src/membership；
+  desktop/src/player.rs、frontend/src/components/PlayerBar.vue、
+  frontend/src/components/LyricsPanel.vue、frontend/src/components/MemberPage.vue。
+  docs/core-playback-contracts.txt、docs/playback-search-priority.txt、
+  docs/core-lyrics-contracts.txt、docs/desktop-member-contracts.txt。
+  原生解码、暂停/启动恢复及权益分别有证据；实体声卡和会员条件需各自验证。
+- 本地、NCM、下载：core/src/library、core/src/download、core/src/media；
+  frontend/src/components/LocalPage.vue、frontend/src/components/DownloadPage.vue。
+  docs/desktop-local-library-contracts.txt、docs/core-ncm-contracts.txt、
+  docs/desktop-download-contracts.txt、docs/cold-offline-foundation.txt。
+  当前合成主流程核对暂停续传、文件完整性、离线播放和清理；独立下载探针
+  的真实下载模式尚未执行。文件管理及历史真实媒体另查专项报告。
+- 云盘：core/src/cloud、desktop/src/cloud.rs、frontend/src/components/CloudPage.vue。
+  docs/desktop-cloud-contracts.txt、docs/core-nos-upload-contracts.txt、
+  docs/core-oss-upload-contracts.txt。NOS 有独立真实往返；OSS 有签名、
+  CRC 和故障恢复对照，真实分配和自动 STS 续期仍缺证据。
+- 播客、有声书、MV、评论：core/src/podcast、core/src/mv、core/src/comments；
+  desktop/src/podcast.rs、desktop/src/mv.rs、desktop/src/comments.rs。
+  docs/desktop-podcast-contracts.txt、docs/desktop-mv-contracts.txt、
+  docs/core-comment-write-contracts.txt。真实读取、单集或视频解码及历史
+  隔离操作分别有记录；公开评论用合成写入验证，未用真实账号发评。
+- 同账号接续、一起听：core/src/relay、core/src/listen_together；
+  desktop/src/relay.rs、desktop/src/together.rs、frontend/src/components/TogetherPage.vue。
+  docs/relay-player-publication.txt、docs/desktop-listen-together-contracts.txt、
+  docs/core-listen-together-shared-queue.txt。已恢复单账号流程和本地消息
+  集成不代替双账号实时 IM/RTC；双账号验证按既定范围暂排除。
+- 音效：core/src/effects、core/audio-filter、desktop/src/effects.rs、
+  frontend/src/components/EqualizerPanel.vue。docs/desktop-equalizer-contracts.txt、
+  docs/core-effects-compose.txt、docs/core-effects-spatial.txt。
+  桌面 GEQ/低高音与重启有实际 Linux WebView/libmpv/虚拟输出证据；
+  其他 NCAE/PEQ/空间参数和独立 PCM 对照不等于完整官方音效图已接桌面。
+
+交付前逐项核对
+--------------
+1. 从 docs/desktop-main-flow-proof.txt 复查两个进程的扫码、资源、搜索、
+   原生音频、临时歌单、下载暂停续传、断网播放、清理和重开证据。合成链路
+   已通过 Linux 18 个检查点；不得把单独的真实只读播放算成真实整链。
+2. 核对 docs/ui-ux-audit.txt 中官方来源和未对齐状态；窗口截图、键盘与
+   焦点、原生请求和播放时钟分别验收，不能用一个截图代替交互。
+3. 在目标 SHA 上检查 Linux/Windows 产物及全部必需 CI job，并核对各自
+   WebView 和原生媒体证据。未验证的 Windows 实机设备、真实服务挑战、
+   专有能力和历史旧版证据继续标明，不把旧包当作当前版本完成。
