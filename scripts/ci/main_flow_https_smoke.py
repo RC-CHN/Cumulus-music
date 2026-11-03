@@ -138,6 +138,11 @@ def ordinary_https(args, directory):
 
 def outer(args):
     assert os.geteuid() != 0, 'invoke as the normal desktop user (sudo is used only for namespaces)'
+    child_path = '/usr/bin:/usr/sbin:/bin'
+    if args.openbox_directory:
+        if args.preflight or ':' in str(args.openbox_directory) or not (args.openbox_directory/'openbox').is_file():
+            raise ValueError('Openbox directory must contain the executable and is only used for desktop runs')
+        child_path += ':' + str(args.openbox_directory)
     if not args.preflight:
         assert args.binary and args.binary.is_file() and args.root and not args.root.exists()
     elif args.binary or args.root or args.screenshots:
@@ -168,7 +173,7 @@ def outer(args):
             'sudo', '-n', 'unshare', '--mount', '--propagation', 'private', '--net', '--fork',
             '--kill-child', '--', '/bin/sh', '-ec', setup, 'main-flow-https-namespace',
             str(directory), user.pw_name,
-            '/usr/bin/env', '-i', 'PATH=/usr/bin:/usr/sbin:/bin', f'HOME={directory}',
+            '/usr/bin/env', '-i', f'PATH={child_path}', f'HOME={directory}',
             'LC_ALL=en_US.UTF-8', 'GDK_BACKEND=x11', 'WEBKIT_DISABLE_DMABUF_RENDERER=1',
             'LIBGL_ALWAYS_SOFTWARE=1', 'CUMULUS_TEST_WINDOW_MANAGER=openbox',
             f'SSL_CERT_FILE={directory}/cert', f'G_TLS_CA_FILE={directory}/cert',
@@ -183,6 +188,7 @@ if __name__ == '__main__':
     parser.add_argument('--binary', type=lambda path: Path(path).resolve())
     parser.add_argument('--root', type=lambda path: Path(path).resolve())
     parser.add_argument('--screenshots', action='store_true')
+    parser.add_argument('--openbox-directory', type=lambda path: Path(path).resolve())
     parser.add_argument('--preflight', action='store_true', help='verify only TLS and namespace policy')
     parser.add_argument('--isolated', type=Path, help=argparse.SUPPRESS)
     arguments = parser.parse_args()
