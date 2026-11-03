@@ -2,6 +2,7 @@ use cumulus_core::{
     client::{ClientError, MusicClient},
     effects::{
         catalog::{CatalogueKind, EffectId},
+        device_directory::EffectDeviceRow,
         directory::{EffectDirectoryDetail, EffectDirectoryRow},
     },
     playback::engine::{MpvConfig, MpvEngine},
@@ -65,4 +66,27 @@ pub async fn effect_detail(
     id: EffectId,
 ) -> Result<Option<EffectDirectoryDetail>, ClientError> {
     client.effect_detail(&epoch, id).await.map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn effect_device_brands(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> Result<Vec<EffectDeviceRow>, ClientError> {
+    client
+        .effect_device_brands(&epoch)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn effect_device_models(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    brand: EffectId,
+) -> Result<Vec<EffectDeviceRow>, ClientError> {
+    client
+        .effect_device_models(&epoch, brand)
+        .await
+        .map_err(Into::into)
 }

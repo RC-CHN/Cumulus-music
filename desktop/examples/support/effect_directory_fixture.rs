@@ -26,6 +26,23 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
         return None;
     }
     let value = match path {
+        "/api/usertool/home/soundeffect/devicebrand/list" if args == &json!({}) => json!([
+            {"deviceManagerId":"4100","deviceName":"合成耳机品牌","deviceImgUrl":"https://example.invalid/brand-artwork-sentinel"},
+            {"deviceManagerId":4200,"deviceName":"合成空品牌"}
+        ]),
+        "/api/usertool/home/soundeffect/devicesound/list"
+            if args == &json!({"deviceManagerId":4100}) =>
+        {
+            json!([
+                {"soundId":4101,"deviceModel":"合成耳机甲","soundMd5":"private-sentinel","soundUrl":"https://example.invalid/model-material-sentinel"},
+                {"soundId":"4102","deviceModel":"合成耳机乙"}
+            ])
+        }
+        "/api/usertool/home/soundeffect/devicesound/list"
+            if args == &json!({"deviceManagerId":4200}) =>
+        {
+            json!([])
+        }
         "/api/usertool/sound/queryAllSound" => match args["exposeType"].as_u64() {
             Some(5) if args == &json!({"exposeType":5}) => json!([sound(200)]),
             Some(6) if args == &json!({"exposeType":6}) => json!([sound(300)]),
@@ -72,7 +89,8 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
         }
         path if path.starts_with("/api/vipauth/app/interests/")
             || path.starts_with("/api/usertool/sound/")
-            || path.starts_with("/api/usertool/home/sound/") =>
+            || path.starts_with("/api/usertool/home/sound/")
+            || path.starts_with("/api/usertool/home/soundeffect/") =>
         {
             CALLS
                 .lock()

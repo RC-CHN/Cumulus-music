@@ -4,6 +4,7 @@ use crate::{
     download::transfer::RunOptions,
     effects::{
         catalog::{CatalogueKind, EffectId},
+        device_directory::EffectDeviceRow,
         directory::{EffectDirectoryDetail, EffectDirectoryRow},
         service::{EffectsLibrary, ParametricPreparation},
     },
@@ -43,6 +44,23 @@ impl MusicClient {
         let token = self.player_token(epoch)?;
         EffectsLibrary::new(self.session.clone())?
             .directory_detail_for(&token, id)
+            .await
+    }
+    pub async fn effect_device_brands(&self, epoch: &str) -> Result<Vec<EffectDeviceRow>> {
+        let token = self.player_token(epoch)?;
+        EffectsLibrary::new(self.session.clone())?
+            .device_brands_for(&token)
+            .await
+    }
+
+    pub async fn effect_device_models(
+        &self,
+        epoch: &str,
+        brand: EffectId,
+    ) -> Result<Vec<EffectDeviceRow>> {
+        let token = self.player_token(epoch)?;
+        EffectsLibrary::new(self.session.clone())?
+            .device_models_for(&token, brand)
             .await
     }
 }

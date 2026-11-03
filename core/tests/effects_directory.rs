@@ -141,3 +141,101 @@ async fn late_rights_observation_cannot_cross_account_generation() {
     send.send(Ok(auth(json!({"canUse":true})))).unwrap();
     assert!(matches!(reading.await.unwrap(), Err(Error::StaleResponse)));
 }
+
+#[tokio::test]
+async fn device_directory_reads_only_requested_brand_and_projects_labels() {
+    let root = tempfile::tempdir().unwrap();
+    let api = Arc::new(ScriptApi::new([
+        json!({"code":200,"data":[
+            {"deviceManagerId":"41","deviceName":"Brand One","deviceImgUrl":"https://example.invalid/private-brand"},
+            {"deviceManagerId":42,"deviceName":"Brand Two"}
+        ]}).into(),
+        json!({"code":200,"data":[
+            {"soundId":"411","deviceModel":"Model A","soundUrl":"https://example.invalid/private-material","soundMd5":"private-digest"},
+            {"soundId":412,"deviceModel":"Model B"}
+        ]}).into(),
+        json!({"code":200,"data":[]}).into(),
+    ]));
+    let (session, library) = library(api.clone(), root.path());
+    let token = session.token().unwrap();
+    let brands = library.device_brands_for(&token).await.unwrap();
+    assert_eq!(
+        serde_json::to_value(brands).unwrap(),
+        json!([{"id":41,"name":"Brand One"},{"id":42,"name":"Brand Two"}])
+    );
+    assert_eq!(api.calls().len(), 1);
+    let models = library
+        .device_models_for(&token, EffectId::new(41).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(models).unwrap(),
+        json!([{"id":411,"name":"Model A"},{"id":412,"name":"Model B"}])
+    );
+    assert!(
+        library
+            .device_models_for(&token, EffectId::new(42).unwrap())
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    let calls = api.calls();
+    assert_eq!(calls.len(), 3);
+    assert_eq!(
+        calls[0].path,
+        "/api/usertool/home/soundeffect/devicebrand/list"
+    );
+    assert_eq!(calls[0].payload, json!({}));
+    for (call, brand) in calls[1..].iter().zip([41, 42]) {
+        assert_eq!(call.path, "/api/usertool/home/soundeffect/devicesound/list");
+        assert_eq!(call.payload, json!({"deviceManagerId":brand}));
+    }
+    assert!(calls.iter().all(|call| !call.cache));
+}
+
+#[tokio::test]
+async fn device_directory_rejects_duplicate_oversized_or_malformed_rows() {
+    let root = tempfile::tempdir().unwrap();
+    let api = Arc::new(ScriptApi::new([
+        json!({"code":200,"data":[{"soundId":1,"deviceModel":"A"},{"soundId":"1","deviceModel":"B"}]}).into(),
+        json!({"code":200,"data":[{"soundId":9007199254740992_u64,"deviceModel":"A"}]}).into(),
+        json!({"code":200,"data":[{"soundId":1,"deviceModel":"a".repeat(161)}]}).into(),
+        json!({"code":200,"data":[{"soundId":1,"deviceModel":"\u{0000}  "}]}).into(),
+        json!({"code":200,"data":vec![Value::Null;1025]}).into(),
+    ]));
+    let (session, library) = library(api, root.path());
+    let token = session.token().unwrap();
+    for _ in 0..4 {
+        assert!(matches!(
+            library
+                .device_models_for(&token, EffectId::new(41).unwrap())
+                .await,
+            Err(Error::Response(_))
+        ));
+    }
+    assert!(matches!(
+        library.device_brands_for(&token).await,
+        Err(Error::Response("effect device directory is too large"))
+    ));
+}
+
+#[tokio::test]
+async fn late_device_model_list_cannot_cross_account_generation() {
+    let root = tempfile::tempdir().unwrap();
+    let (pending, send) = gate();
+    let api = Arc::new(ScriptApi::new([pending]));
+    let (session, library) = library(api.clone(), root.path());
+    let token = session.token().unwrap();
+    let reading = tokio::spawn(async move {
+        library
+            .device_models_for(&token, EffectId::new(41).unwrap())
+            .await
+    });
+    api.wait_for_calls(1).await;
+    session.detach().unwrap();
+    send.send(Ok(
+        json!({"code":200,"data":[{"soundId":411,"deviceModel":"Model A"}]}),
+    ))
+    .unwrap();
+    assert!(matches!(reading.await.unwrap(), Err(Error::StaleResponse)));
+}

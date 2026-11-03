@@ -12,7 +12,7 @@ effect_detail：先读取该 ID 的 PC 详情（soundType=10），有唯一匹�
 不可用，读取失败或非布尔 canUse 为无法确认；会话失败仍按原有会话错误处理。
 目录的旧权益提示不能代替详情查询。此通道不传材料 URL、原始响应、
 权益拒绝正文、签名或本地文件路径，也不会下载材料、登记权益、开始试用、
-调用支付或接入播放器。匿名目录、设备目录和逐歌效果不在本次范围内。
+调用支付或接入播放器。匿名目录和逐歌效果不在本次范围内。
 
 effects_directory Rust 测试使用合成 Api，核对单分组请求、PC 类型与权益类型、
 安全投影、明确拒绝与未知的区分以及迟到账号结果。桌面 ux_ui_probe 的独立
@@ -31,3 +31,13 @@ pages/audio-effect/components/{OfficialSelectionSoundEffectSection,MoreSoundEffe
 两平台的 effect_directory_smoke.py 核对真实 WebView/IPC、三组分组读取、
 试用可用、查询未知后重新读取到明确不可用、空分组、深浅图及焦点返回，
 所有响应由本机合成夹具提供；测试在渲染器内把指定公开测试图替换成内联合成图。
+
+设备目录
+PC 恢复源码 packages/pc/src/pages/audio-effect/views/Device.tsx 映射
+deviceManagerId/deviceName 和 soundId/deviceModel。桌面只读实现通过
+effect_device_brands 获取品牌；明确选中品牌后，effect_device_models 用单个
+整数 deviceManagerId 获取型号，不预取其他品牌。官方 UI 的“关闭”是本地
+-1 哨兵，不是可请求的设备；这里仅返回服务端正整数身份与非空名称。
+保留顺序并拒绝重复、无效或超限响应（1024 品牌、4096 型号、名称 160 字符）。
+空品牌或型号数组是有效结果。账号切换丢弃迟到响应。无设备自动匹配、图片、
+材料读取、授权注册或播放应用。

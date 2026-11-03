@@ -200,6 +200,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 commands::get_app_info,
                 effects::effect_catalogue,
                 effects::effect_detail,
+                effects::effect_device_brands,
+                effects::effect_device_models,
                 together::together_view,
                 together::together_command,
                 podcast::podcast_page,
