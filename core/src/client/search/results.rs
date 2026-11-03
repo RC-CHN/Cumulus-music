@@ -187,7 +187,7 @@ fn voice_listener_count(value: &Value) -> Option<u64> {
     let mut valid = ["listenerCount", "playCount", "adjustedPlayCount"]
         .into_iter()
         .filter_map(|key| value[key].as_u64())
-        .filter(|count| *count <= (1 << 53) - 1);
+        .filter(|count| *count < (1 << 53));
     let first = valid.next()?;
     Some(if first == 0 {
         valid.find(|count| *count > 0).unwrap_or(0)
