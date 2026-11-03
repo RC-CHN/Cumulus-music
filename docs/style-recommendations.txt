@@ -53,3 +53,22 @@ daily_recommendation_cache.rs 还复验重开、权限及账号边界。Linux �
 探针注入一次 v1 传输失败，从缓存进入可重试状态，再取回新列表；按线序确认
 只进行一次分组查询和三次 v1 读取。截图见
 `.build/daily-official-webview/first/ux_05_daily_cached.png`。
+
+每日推荐顶部更多与批量操作
+官方 Content.jsx:201–227 和恢复 M/622:167–304：菜单顺序为「批量操作」、
+「添加全部至播放列表」；批量路由是 /dailyRecommend/batch。BatchOperation.tsx
+按原列表顺序筛选，提供播放、加入播放列表、下载、收藏到歌单。现复用当前日推
+快照进入独立批量页；返回时读取正常页面并恢复菜单焦点。下载及收藏进入现有
+授权/确认弹窗，无自动提交；进入批量页不重新请求列表。
+
+播放全部追加或选中项追加经原生 player_action/queue_daily_recommendations，
+选中播放经 play_selection/daily_recommendations_batch。原生复核账号代次、
+列表版本、选中位置，并在追加时验证队列版本；保留日推场景和 trialMode:35。
+已有播放列表时保留当前播放项及其播放/暂停状态，把所选按推荐顺序插到当前项后，
+移走同曲旧位置；空列表时开始播放第一首。M/3085 的空列表转换、非空 play:false
+和 M/1384 的插入去重对应此语义。还没有官方吸顶工具栏及其快捷入口。
+
+Linux Tauri 的普通与生日模式均验证九个状态，包括在暂停的风格歌曲后追加全部和
+所选、仅播放所选、打开并取消两种确认弹窗、返回菜单焦点，以及清空合成队列后
+从日推首曲启动。普通模式截图见 `.build/daily-batch-webview-plain/first/`；
+没有发送真实账号写请求。

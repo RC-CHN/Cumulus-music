@@ -100,7 +100,74 @@
     await wait(() => tags.textContent.includes('此分类暂无标签。'), 'style category changes without a write');
     tags.querySelector('[aria-label="关闭风格标签"]').click();
     await wait(() => !one('.style-tag-browser[open]') && document.activeElement === tagEntry, 'style tag focus restored');
-    await emit('complete', { ok: true, stageCount: 5, dailyPlayback: true, dailyCache: true, dailyBirthday: birthday, stylePlayback: true });
+    const bar = () => one('.playerbar');
+    bar().querySelector('[aria-label="暂停"]').click();
+    await wait(() => bar().dataset.state === 'paused', 'pause style song before daily append');
+    const paused = await invoke('player_snapshot', { epoch });
+    one('[aria-label="返回上一页"]').click();
+    const trigger = () => one('.daily-track-actions [aria-label="每日推荐更多操作"]');
+    async function menu() {
+      await wait(() => trigger() && !trigger().disabled, 'daily menu available');
+      trigger().click();
+      const list = await wait(() => trigger()?.getAttribute('aria-expanded') === 'true' &&
+        [...document.querySelectorAll('.action-menu[role="menu"]')].find((node) =>
+          !node.closest('[inert]') && node.querySelector('[data-menu-key="queue"]') &&
+          getComputedStyle(node).visibility === 'visible'), 'daily menu open');
+      if ([...list.querySelectorAll('[data-menu-key]')].map((node) => node.textContent.trim()).join('|') !== '批量操作|添加全部至播放列表')
+        throw new Error('wrong daily menu items');
+      return list;
+    }
+    let list = await menu();
+    await wait(() => Number(getComputedStyle(list).opacity) > .99, 'daily menu settles before capture');
+    await emit('ux_06_daily_menu');
+    list.querySelector('[data-menu-key="queue"]').click();
+    await wait(() => document.body.textContent.includes('已添加全部至播放列表'), 'append all feedback');
+    const appended = await invoke('player_snapshot', { epoch });
+    const all = (await invoke('player_queue', { epoch })).tracks.map((entry) => entry.track.id);
+    if (appended.playId !== paused.playId || appended.state !== 'paused' || Math.abs(appended.position - paused.position) > .05 ||
+        all.length !== 42 || all.slice(0, 4).join(',') !== '71,1,2,3' || all.at(-1) !== '72')
+      throw new Error('append all did not preserve paused playback and order');
+    list = await menu();
+    list.querySelector('[data-menu-key="batch"]').click();
+    const batch = await wait(() => one('.daily-batch-page [data-batch-index="2"]')?.closest('.daily-batch-page'), 'daily batch route');
+    const batchButton = (label) => [...batch.querySelectorAll('button')].find((node) => (node.getAttribute('aria-label') || node.textContent.trim()) === label);
+    if (!batchButton('添加所选至播放列表').disabled) throw new Error('empty batch is not disabled');
+    batch.querySelector('[data-batch-index="2"]').click();
+    batch.querySelector('[data-batch-index="0"]').click();
+    await wait(() => !batch.closest('.page-enter-active'), 'batch page settles before capture');
+    await emit('ux_07_daily_batch');
+    batchButton('添加所选至播放列表').click();
+    await wait(() => batch.querySelector('.batch-operation-feedback')?.textContent.includes('已添加所选'), 'append selected feedback');
+    const selectedQueue = (await invoke('player_queue', { epoch })).tracks.map((entry) => entry.track.id);
+    if ((await invoke('player_snapshot', { epoch })).playId !== paused.playId || selectedQueue.slice(0, 4).join(',') !== '71,1,3,2')
+      throw new Error('selected append lost source order or current playback');
+    for (const [label, dialog] of [['下载', '.download-dialog'], ['添加到歌单', '.playlist-collect-dialog']]) {
+      batchButton(label).click();
+      const opened = await wait(() => one(dialog + '[open]'), label + ' dialog');
+      opened.querySelector('button[aria-label^="关闭"]').click();
+      await wait(() => !one(dialog + '[open]'), label + ' dialog closed');
+    }
+    batchButton('播放所选歌曲').click();
+    await wait(() => bar().dataset.trackId === '1' && bar().dataset.state === 'playing', 'selected daily songs started');
+    const selectedPlay = (await invoke('player_queue', { epoch })).tracks.map((entry) => entry.track.id);
+    if (selectedPlay.join(',') !== '1,3') throw new Error('selected playback queue has unselected tracks');
+    await emit('ux_08_daily_batch_play');
+    batchButton('完成').focus();
+    batchButton('完成').click();
+    await wait(() => trigger() && document.activeElement === trigger(), 'return focus to daily menu');
+    bar().querySelector('[aria-label="播放队列"]').click();
+    const clear = await wait(() => [...document.querySelectorAll('.queue-panel header button')].find((node) => node.textContent.trim() === '清空' && !node.disabled), 'clear queue button');
+    clear.click();
+    const confirm = await wait(() => one('.queue-clear-dialog[open] .primary:not(:disabled)'), 'clear queue confirmation');
+    confirm.click();
+    await wait(() => !one('.queue-clear-dialog[open]') && bar().dataset.state === 'idle', 'clear queue completed');
+    one('.queue-panel [aria-label="关闭播放队列"]').click();
+    list = await menu();
+    list.querySelector('[data-menu-key="queue"]').click();
+    await wait(() => bar().dataset.trackId === '1' && bar().dataset.state === 'playing', 'append all starts empty queue');
+    if ((await invoke('player_queue', { epoch })).tracks.length !== 40) throw new Error('empty queue did not load all daily tracks');
+    await emit('ux_09_daily_empty_queue');
+    await emit('complete', { ok: true, stageCount: 9, dailyPlayback: true, dailyCache: true, dailyBirthday: birthday, stylePlayback: true, dailyBatch: true });
   } catch (error) {
     await emit('failed', { message: String(error), body: document.body.innerText.slice(-2200) });
   }

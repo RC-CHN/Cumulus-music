@@ -13,6 +13,7 @@ def main():
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--runtime', type=Path)
+    parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--screenshots', action='store_true')
     parser.add_argument('--birthday', action='store_true', help='seed only the synthetic profile birthday')
     args = parser.parse_args()
@@ -37,6 +38,8 @@ def main():
         env[key] = str(profile)
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
+    if args.frontend_dist:
+        env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve(strict=True))
     output = root / 'first'
     with (root / 'host.log').open('x', encoding='utf-8') as log:
         code = launch(args.binary.resolve(), env, log, output, args.screenshots)
@@ -44,7 +47,8 @@ def main():
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0
     complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
-    assert complete['ok'] and complete['stageCount'] == 5 and complete['dailyPlayback'] and complete['stylePlayback']
+    assert complete['ok'] and complete['stageCount'] == 9 and complete['dailyPlayback'] and complete['stylePlayback']
+    assert complete['dailyBatch']
     assert complete['dailyCache'] and complete['dailyBirthday'] is args.birthday
     prefix = '/api/discovery/recommend/songs/history/'
     calls = [call for call in complete['dailyHistoryCalls'] if call['path'].startswith(prefix)]
@@ -57,17 +61,18 @@ def main():
         '/api/v3/discovery/recommend/songs')]
     assert daily == [
         {'path': '/api/rtrs/abt/front/expinfo/list', 'args': {'expNames': 'PH-PC-Blacklist'}},
-        *[{'path': '/api/v1/discovery/recommend/songs', 'args': {'limit': 30}}] * 3,
+        *[{'path': '/api/v1/discovery/recommend/songs', 'args': {'limit': 30}}] * 5,
     ]
     assert complete['styleRecommendationCalls'] == [
         {'path': '/api/homepage/category/daily/song/list',
          'args': {'source': '', 'categoryId': '', 'tagId': '', 'songId': ''}},
         {'path': '/api/homepage/daily/song/config/get', 'args': {'limit': 20}},
     ]
-    assert len(list(output.glob('ux_*.png'))) == (5 if args.screenshots else 0)
+    assert len(list(output.glob('ux_*.png'))) == (9 if args.screenshots else 0)
     print(json.dumps({'ok': True, 'actualWebView': True, 'historyReads': len(calls),
                       'styleReads': 2, 'dailyPlayback': True, 'stylePlayback': True,
                       'dailyBirthday': args.birthday,
+                      'dailyBatch': True,
                       'realAccountWrites': 0}))
 
 
