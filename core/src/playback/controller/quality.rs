@@ -168,6 +168,12 @@ impl Actor {
         }
         self.quality_task = None;
         self.quality_id = None;
+        // Authorization is asynchronous. EOF or an engine failure can end
+        // the same selected entry without changing its generation.
+        if !self.state.active() {
+            self.reply(ready.reply, Err(Error::StaleResponse));
+            return;
+        }
         let source = match ready.result {
             Ok(source) => source,
             Err(error) => {

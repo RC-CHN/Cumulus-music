@@ -184,6 +184,43 @@ async fn retry_after_paused_stream_failure_keeps_position_and_transport() {
 }
 
 #[tokio::test]
+async fn late_quality_authorization_cannot_restart_a_terminal_entry() {
+    for reason in [EndReason::Error, EndReason::Eof] {
+        let f = Fixture::new();
+        let before = f.command(replace(&[1])).await.unwrap();
+        f.command(Cmd::Mode(PlaybackMode::Sequential))
+            .await
+            .unwrap();
+        f.api.hold.store(1, Ordering::SeqCst);
+        let quality = f.start(Cmd::Quality(Quality::Lossless));
+        tokio::time::timeout(std::time::Duration::from_secs(4), f.api.started.notified())
+            .await
+            .unwrap();
+        let terminal = if reason == EndReason::Eof {
+            Status::Ended
+        } else {
+            Status::Error
+        };
+        let entry_id = f.device.state.lock().unwrap().view.entry_id.unwrap();
+        event(&f.device, entry_id, reason);
+        until(&f.player, |s| s.state == terminal).await;
+        f.api.release.notify_one();
+        let error = tokio::time::timeout(std::time::Duration::from_secs(4), quality)
+            .await
+            .unwrap()
+            .unwrap()
+            .err()
+            .expect("terminal quality authorization must be refused");
+        assert!(matches!(root(&error), Error::StaleResponse));
+        let current = f.command(Cmd::Snapshot).await.unwrap();
+        assert_eq!(current.state, terminal);
+        assert_eq!(current.play_id, before.play_id);
+        assert_eq!(current.quality_preferences, before.quality_preferences);
+        assert_eq!(f.device.state.lock().unwrap().loads, 1);
+    }
+}
+
+#[tokio::test]
 async fn pause_at_native_eof_advances_without_resuming_playback() {
     let f = Fixture::new();
     f.command(replace(&[1, 2])).await.unwrap();
