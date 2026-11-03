@@ -295,6 +295,11 @@ pub enum PlayerAction {
         quality: Quality,
         expected_queue_revision: String,
     },
+    QueueDailyRecommendations {
+        revision: String,
+        quality: Quality,
+        expected_queue_revision: String,
+    },
     QueueArtistSongs {
         pages: Vec<super::super::catalog::CatalogSelectionPage>,
         quality: Quality,

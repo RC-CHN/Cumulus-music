@@ -420,6 +420,25 @@ impl MusicClient {
                 )
                 .await;
         }
+        if let PlayerAction::QueueDailyRecommendations {
+            revision,
+            quality,
+            expected_queue_revision,
+        } = action
+        {
+            if native.is_some() {
+                return Err(Error::InvalidInput(
+                    "daily queue used as native media command",
+                ));
+            }
+            return self
+                .queue_collection(
+                    epoch,
+                    queue_playlist::QueueCollection::DailyRecommendations { revision, quality },
+                    expected_queue_revision,
+                )
+                .await;
+        }
         if let PlayerAction::QueueArtistSongs {
             pages,
             quality,
@@ -855,6 +874,7 @@ impl MusicClient {
             | PlayerAction::QueuePlaylist { .. }
             | PlayerAction::QueueAlbum { .. }
             | PlayerAction::QueueAlbumBatch { .. }
+            | PlayerAction::QueueDailyRecommendations { .. }
             | PlayerAction::QueueArtistSongs { .. }
             | PlayerAction::QueueDownloads { .. }
             | PlayerAction::QueueLocal { .. }

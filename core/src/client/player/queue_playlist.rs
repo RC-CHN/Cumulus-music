@@ -21,6 +21,10 @@ use std::{
 const QUEUE_LIMIT: usize = 10_000;
 
 pub(super) enum QueueCollection {
+    DailyRecommendations {
+        revision: String,
+        quality: Quality,
+    },
     ArtistSongs {
         pages: Vec<super::super::catalog::CatalogSelectionPage>,
         quality: Quality,
@@ -140,11 +144,14 @@ impl MusicClient {
         if before.fm {
             return Err(Error::State("FM queue requires its coordinator"));
         }
+        let daily = matches!(collection, QueueCollection::DailyRecommendations { .. });
         let local = matches!(collection, QueueCollection::Local { .. });
         let artist = matches!(collection, QueueCollection::ArtistSongs { .. });
         let album_batch = matches!(collection, QueueCollection::AlbumBatch { .. });
-        let ordinary = local || artist || album_batch;
-        let special_queue = if artist {
+        let ordinary = daily || local || artist || album_batch;
+        let special_queue = if daily {
+            "daily recommendations require ordinary playback"
+        } else if artist {
             "artist songs require ordinary playback"
         } else if album_batch {
             "album batch requires ordinary playback"
@@ -154,9 +161,44 @@ impl MusicClient {
         if ordinary && (queue.intelligence.is_some() || self.together_attached(&token, None)?) {
             return Err(Error::State(special_queue));
         }
+        let (daily_ids, source_guard) = match &collection {
+            QueueCollection::DailyRecommendations { revision, .. } => {
+                let (ids, guard) = self.recommendation_selection(
+                    super::super::recommendations::RecommendationSource::Daily,
+                    &token,
+                    revision,
+                    0,
+                )?;
+                (Some(ids), Some(guard))
+            }
+            _ => (None, None),
+        };
         let focus = self.focus.snapshot()?;
         let attempt = self.player.selection.fetch_add(1, Ordering::AcqRel) + 1;
         let (resources, source, downloaded) = match collection {
+            QueueCollection::DailyRecommendations { revision, quality } => {
+                let mut resources = self
+                    .online_queue_resources(
+                        &token,
+                        &daily_ids.ok_or(Error::StaleResponse)?,
+                        quality,
+                        attempt,
+                    )
+                    .await?;
+                if resources.is_empty() {
+                    return Err(Error::State("daily recommendations have no online tracks"));
+                }
+                for resource in &mut resources {
+                    resource["trial_mode"] = json!(35);
+                }
+                (
+                    resources,
+                    json!({"kind":"daily_recommendations","scene":"dailyRecommend",
+                        "href":"/dailyRecommend","resourceType":"dailyRecommend",
+                        "revision":revision,"trial_mode":35}),
+                    false,
+                )
+            }
             QueueCollection::Local {
                 mut query,
                 revision,
@@ -323,6 +365,12 @@ impl MusicClient {
         if self.player.selection.load(Ordering::Acquire) != attempt {
             return Err(Error::StaleResponse);
         }
+        if source_guard
+            .as_ref()
+            .is_some_and(Cancellation::is_cancelled)
+        {
+            return Err(Error::QueueChanged);
+        }
         let _ordinary_room = if ordinary {
             let gate = self
                 .together
@@ -359,7 +407,12 @@ impl MusicClient {
                     &token,
                     command,
                     expected,
-                    Cancellation::new(move || selection.load(Ordering::Acquire) == attempt),
+                    Cancellation::new(move || {
+                        selection.load(Ordering::Acquire) == attempt
+                            && source_guard
+                                .as_ref()
+                                .is_none_or(|guard| !guard.is_cancelled())
+                    }),
                 )
                 .await?
         } else {
@@ -381,6 +434,7 @@ fn insert_collection(
     source: Value,
     downloaded: bool,
 ) -> QueueSnapshot {
+    let bind_daily_origin = source["kind"] == "daily_recommendations";
     let current = queue
         .items
         .iter()
@@ -408,7 +462,9 @@ fn insert_collection(
                     .get(&id)
                     .map(|e| {
                         let mut entry = (*e).clone();
-                        if id.0 == PlayerResourceKind::Local && entry.resource != resource {
+                        if bind_daily_origin
+                            || id.0 == PlayerResourceKind::Local && entry.resource != resource
+                        {
                             entry.resource = resource.clone();
                             entry.source = source.clone();
                         }

@@ -207,6 +207,8 @@ mod queue_click;
 
 #[path = "client_player/queue_album.rs"]
 mod queue_album;
+#[path = "client_player/queue_daily.rs"]
+mod queue_daily;
 #[path = "client_player/source_control.rs"]
 mod source_control;
 
