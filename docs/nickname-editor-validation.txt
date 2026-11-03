@@ -1,0 +1,62 @@
+昵称共享编辑器、草稿与账号证明隔离：本批结果
+2026-11-03。Linux x86_64，Rust1.96.0/Node24.16.0，锁文件与既有依赖。
+本专项通过，不表示完整账号SDK、全应用UI/UX或完整桌面目标完成。
+
+最终实现与检查
+普通手机与二次分配注册共用NicknameEditor、格式helper和候选限定草稿，
+源与字段映射见nickname-editor-official-mapping.json、行为见nickname-editor-contracts.txt。
+npm ci后按批次运行format:check/test/typecheck/build；最终598项前端测试通过。
+Rust fmt、严格workspace/all-target Clippy和完整workspace/all-target tests（custom-protocol/locked）
+均通过：305个测试程序、1621项通过、0失败、0忽略。
+CI工具54项通过，含合成账号库可归档、真实identity类别拒绝、WAL-only身份、损坏/缺schema等情况；
+拒绝前不创建tar、不输出字段值、不静默删除证据。最终cumulus与四个相关桌面探针均已构建。
+
+真实WebView与独立持久化审计
+同一最终frontend/dist和对应原生二进制：
+- 普通手机流程：JSK42态、legacy42态；手机号/验证码/昵称/未决注册/重开，含新增本地
+  非法零API、已占用手填锁定/默认许可、查重及推荐失败保留稿、清空、挂起推荐关闭后拒迟到。
+- 二次分配流程：JSK41态、legacy41态；保留原确认/注册/恢复断言，再加入同样七个昵称分支。
+- 原账号28态与风险/处罚/安全QR23态最终回归也通过。后者使用固定Windows声明、无clientSign，
+  driver只读确认所有proof core.sqlite3不存在device/identity记录。
+以上217态均使用生产Vue/IPC/Rust与合成HTTP，保存217张隔离图形会话原图。
+每种注册协议都执行独立SQLite只读审计：当前账号、自动登录、注册意图结清、输入/草稿不落盘。
+普通仍8次合成register、3次login，复用仍5次register、4次confirm；没有因新版UI增加重复写入。
+本地格式/taken重复form提交不会发昵称查重或注册请求，默认昵称仍受native许可。
+
+实际本机桌面
+KDE Wayland/XWayland，125%缩放，最终普通42张、复用41张窗口合成图实际捕获并全部复核。
+只截本应用PID，检查输入/随机/清空、16px固定反馈、同宽主按钮、深浅色、540px、焦点及取消重开。
+普通由协作审阅完整7张联系表并针对关键原图复查；复用完整7张联系表由主代理复核，均为最终图。
+显示器输出2560×1440、约143.999Hz仅说明输出模式，不证明应用跑满刷新率。
+本批最终截图与状态均无新确认的遮挡、裁切或控件错位；没有同状态官方运行截图，不声称像素全等。
+
+修正与前序证据
+首次166态自动检查通过后的逐图/源码核对仍发现taken手填可重复点击，以及无回执恢复文案与
+实际“重新短信登录”动作不符；已修正并增加手填禁用/default可用/禁止重复API的断言，最终整组重验。
+首次physical helper复用了expected变量保存RGB元组，导致42张均捕获后最终计数误判；
+独立核对原42张PNG/ACK/paint/focus后修正私有helper expected_states。最终42/41两组均重新执行成功，
+不把失败脚本直接写成通过，也不以先前包截图冒充最后的taken/恢复提示。
+
+CI数据隔离修复
+发现旧账号探针native_profile把真实硬件事实写进proof SQLite，后续failure归档可能递归上传。
+已停止main run41577057367，最终cancelled/gate failure；最终artifact仅frontend-dist，
+没有diagnostics-*。不是超时重试，也不是完整CI成功，更未据此发布版本。
+正式客户端默认映射未变。当前账号探针不调用collector，仅固定兼容声明；
+driver和归档器分别阻止硬件身份记录进入合成证明。私有本地历史default-profile证明仍单独保留，
+不得将它与当前公有CI的固定测试上下文混称为同一种证据。
+
+本地复查入口（私有，不提交产物/截图/库）
+.build/nickname-batch-frontend-tests-final.log、ci-tools-final.log、workspace-final.log、clippy-final.log
+上述后续简称与前者同属.build/nickname-batch-前缀。
+.build/nickname-batch-{phone-jsk,phone-legacy,reuse-jsk,reuse-legacy,account,notice}-final/report.json
+.build/nickname-batch-physical-{phone,reuse}-final/audit.json 与run/first/*.png
+.build/nickname-batch-{source-freeze-3,binary-freeze-3,dist-freeze}.json
+对应脚本scripts/ci/phone_entry_smoke.py、reuse_login_smoke.py均已纳入既有两平台CI入口；
+公开CI不运行依赖私人reference的原函数研究或真实账号流程。
+
+仍有边界
+全部应用验证的真实网易请求/账号写入均0，没有重放本人真实RT未决续期，也没有注册/解绑真实手机号。
+另一次SNS证据补充做7个不带会话的官方只读GET，未跟第三方或确认授权；
+它不是本批GUI通过数，更不证明第三方登录已实现。见sns-login-recovery.txt。
+Windows实机、其他DPI、原生Windows硬件collector、完整资料/登录设备/SNS等继续按
+account-feature-audit.txt和windows-hardware-collector-plan.txt的证据推进。

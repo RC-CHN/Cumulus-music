@@ -184,39 +184,6 @@
   font-size: 14px;
   line-height: 22px;
 }
-.reuse-name-field {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  margin-top: 28px;
-  padding: 0 8px;
-}
-.reuse-name-field input {
-  flex: 1;
-  min-width: 0;
-  height: 40px;
-  background: transparent;
-  color: var(--text);
-  border: 0;
-  outline: none;
-}
-.reuse-name-field:focus-within {
-  border-color: var(--accent);
-}
-.reuse-name-field button {
-  width: 28px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-}
-.reuse-name-help {
-  margin: 8px 0 0;
-  text-align: left;
-  font-size: 12px;
-  color: var(--text-secondary);
-}
 .reuse-default {
   display: block;
   margin: 14px auto 0;
@@ -230,9 +197,6 @@
 }
 .reuse-nickname .verification-error {
   text-align: left;
-}
-.reuse-nickname .reuse-name-muted {
-  color: var(--text-secondary);
 }
 .reuse-step-enter-active,
 .reuse-step-leave-active {
@@ -257,9 +221,6 @@
   }
   .reuse-nickname {
     padding-top: 0;
-  }
-  .reuse-name-field {
-    margin-top: 18px;
   }
   .reuse-loading,
   .reuse-failed {

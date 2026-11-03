@@ -1,0 +1,107 @@
+.nickname-editor {
+  width: 300px;
+  max-width: 100%;
+  margin-inline: auto;
+}
+.login-dialog:has(.reuse-verification .nickname-editor) .login-challenge {
+  margin: 0;
+}
+.login-dialog:has(.nickname-editor) #login-title {
+  line-height: 30px;
+}
+.nickname-editor .reuse-name-field {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 36px;
+  margin-top: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.nickname-editor .reuse-name-field:focus-within {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.nickname-editor .reuse-name-field input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 2px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+}
+.nickname-editor .nickname-clear {
+  display: grid;
+  place-items: center;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  color: var(--text-secondary);
+}
+.nickname-editor .nickname-clear .icon {
+  width: 16px;
+  height: 16px;
+}
+.nickname-editor .nickname-random {
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  margin-left: 4px;
+  padding: 0 2px 0 12px;
+  color: var(--link);
+  font-size: 14px;
+  line-height: 16px;
+}
+.nickname-editor .nickname-random::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  width: 1px;
+  height: 16px;
+  background: var(--line-strong);
+}
+.nickname-editor .nickname-random .icon {
+  width: 16px;
+  height: 16px;
+}
+.nickname-random-spinning {
+  animation: nickname-random-spin 400ms linear;
+}
+@keyframes nickname-random-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.nickname-editor-feedback {
+  height: 16px;
+  margin-top: 14px;
+  text-align: left;
+}
+.nickname-editor .nickname-editor-feedback .verification-error {
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  overflow-wrap: anywhere;
+}
+.nickname-editor .nickname-editor-feedback .nickname-feedback-muted {
+  color: var(--text-secondary);
+}
+.nickname-editor .reuse-primary {
+  width: 100%;
+  margin-top: 50px;
+}
+.nickname-editor .reuse-cancel {
+  width: 100%;
+}
+@media (prefers-reduced-motion: reduce) {
+  .nickname-random-spinning {
+    animation: none;
+  }
+}

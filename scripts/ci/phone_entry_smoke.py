@@ -38,19 +38,33 @@ def main():
     done = json.loads((output/'complete.json').read_text(encoding='utf-8'))
     assert done['ok'] and done['phoneEntry']
     states = [json.loads(path.read_text(encoding='utf-8')) for path in sorted(output.glob('ux_*.json'))]
-    expected = '''baseline_account_light number_light consent_required_light check_failed_light check_failed_small_dark check_inflight_dark check_cancelled_dark code_light code_small_dark code_bad_dark nickname_small_dark nickname_light nickname_short_light nickname_taken_dark nickname_refresh_dark registration_rejected_dark registration_rate_limited_dark registration_sms_invalid_dark nickname_no_default_light nickname_cancelled_light nickname_closed_light registered_default_light existing_code_light existing_login_light registered_named_light registration_partial_dark registration_reconciled_dark registration_lost_light registration_retry_blocked_light registration_fresh_login_light register_inflight_dark register_closed_dark registration_held_fresh_login_dark send_failed_light send_unknown_small_dark'''.split()
+    expected = '''baseline_account_light number_light consent_required_light check_failed_light check_failed_small_dark check_inflight_dark check_cancelled_dark code_light code_small_dark code_bad_dark nickname_small_dark nickname_light nickname_short_light nickname_long_light nickname_invalid_light nickname_taken_dark nickname_check_failed_dark nickname_hint_failed_dark nickname_refresh_dark nickname_cleared_dark registration_rejected_dark registration_rate_limited_dark registration_sms_invalid_dark nickname_no_default_light nickname_cancelled_light nickname_closed_light registered_default_light existing_code_light existing_login_light registered_named_light registration_partial_dark registration_reconciled_dark registration_lost_light registration_retry_blocked_light registration_fresh_login_light register_inflight_dark register_closed_dark registration_held_fresh_login_dark send_failed_light send_unknown_small_dark nickname_hint_inflight_dark nickname_hint_cancelled_dark'''.split()
     by = {state['stage'].split('_', 2)[2]: state for state in states}
     assert list(by) == expected and done['stageCount'] == len(states) == len(expected)
     for state in states:
         assert state['focusValid'] and state['focused'] and not state['overflow']
         assert all(control['hit'] for control in state['controls'])
         assert state['realMusicRequests'] == 0
+        geometry = state['nicknameGeometry']
+        if geometry:
+            for key, expected_value in dict(fieldWidth=300, fieldHeight=36, inputHeight=36,
+                                            feedbackHeight=16, primaryWidth=300, primaryHeight=40,
+                                            primaryMarginTop=50, randomDividerWidth=1,
+                                            randomDividerHeight=16).items():
+                assert abs(geometry[key] - expected_value) < .25, (state['stage'], key, geometry)
+            assert geometry['randomVisible']
     paths = lambda name: by[name]['fixture']['paths']
     register = '/api/w/register/cellphone'
     verify = '/api/sms/captcha/verify'
     assert paths('consent_required_light').get('/api/cellphone/existence/check', 0) == 0
     assert paths('check_cancelled_dark').get('/api/middle/captcha/sent/v1', 0) == 0
     assert paths('nickname_taken_dark').get(register, 0) == 0
+    assert paths('nickname_invalid_light').get('/api/nickname/duplicated', 0) == 0
+    assert paths('nickname_invalid_light').get(register, 0) == 0
+    assert by['nickname_taken_dark']['nicknameLength'] == len('重复昵称')
+    assert by['nickname_check_failed_dark']['nicknameLength'] == len('查重失败昵称')
+    assert by['nickname_hint_failed_dark']['nicknameLength'] == len('推荐失败保留昵称')
+    assert by['nickname_cleared_dark']['nicknameLength'] == 0
     assert paths('registration_rate_limited_dark')[register] == 2
     assert paths('nickname_closed_light')[register] == 3
     assert paths('existing_code_light').get(verify) == paths('existing_login_light').get(verify)
@@ -60,9 +74,11 @@ def main():
     assert paths('registration_lost_light')[register] == paths('registration_fresh_login_light')[register]
     assert paths('register_inflight_dark')[register] == paths('registration_held_fresh_login_dark')[register]
     assert not by['nickname_no_default_light']['hasDefault']
-    assert done['fixture']['dropped'] == 2
+    assert done['fixture']['dropped'] == 3
     assert done['fixture']['paths'][register] == 8
-    assert done['fixture']['paths'][verify] == 9
+    assert done['fixture']['paths'][verify] == 10
+    assert paths('nickname_hint_inflight_dark')[register] == paths('nickname_hint_cancelled_dark')[register] == 8
+    assert by['nickname_hint_cancelled_dark']['nicknameLength'] == 0
     login = '/api/w/login/cellphone' if args.legacy else '/api/login/cellphone'
     assert done['fixture']['paths'][login] == 3
     assert done['fixture']['paths'].get('/api/login/token/refresh/v1', 0) == 0

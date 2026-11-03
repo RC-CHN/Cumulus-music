@@ -1,17 +1,42 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { LoginModel } from '../../composables/useLogin';
+import { useNicknameDraft } from '../../composables/useNicknameDraft';
 import type { LoginCommand } from '../../services/auth';
 import { nicknameError, reuseDate, reuseTitle } from '../../services/phoneReuse';
+import { nicknameFormatIssue } from '../../services/nickname';
 import Icon from '../Icon.vue';
+import NicknameEditor from './NicknameEditor.vue';
 const props = defineProps<{ model: LoginModel }>();
 const emit = defineEmits<{ back: []; phone: []; title: [value: string | null] }>();
 const reuse = computed(() => props.model.view.value?.reuse);
 const smsInvalid = computed(() => reuse.value?.nicknameError === 'sms_invalid');
 const root = ref<HTMLElement>();
-const name = ref(''),
-  edited = ref(false),
-  attempted = ref(false);
+const attempted = ref(false);
+const nicknameDraft = useNicknameDraft(
+  () => {
+    const current = reuse.value;
+    const view = props.model.view.value;
+    if (
+      !view ||
+      !current ||
+      current.nicknameError === 'sms_invalid' ||
+      !['nickname', 'hinting', 'checking_nickname', 'registering'].includes(current.phase)
+    )
+      return null;
+    return {
+      owner: JSON.stringify([view.operationId, current.id]),
+      suggestion: current.suggestedNickname,
+    };
+  },
+  () => {
+    for (const input of root.value?.querySelectorAll<HTMLInputElement>('[aria-label="注册昵称"]') ??
+      [])
+      input.value = '';
+  },
+);
+const { name, edited, recommendationError } = nicknameDraft;
+const nameUnavailable = computed(() => reuse.value?.nicknameError === 'taken' && !edited.value);
 const action = ref<'loading' | 'confirming' | 'hinting' | 'checking_nickname' | null>(null);
 const phase = computed(
   () =>
@@ -29,12 +54,13 @@ const group = computed(() =>
 let alive = true;
 watch(phase, (value) => emit('title', reuseTitle(value)), { immediate: true });
 function clearSecrets() {
-  name.value = '';
+  nicknameDraft.clear();
   for (const input of root.value?.querySelectorAll('input') ?? []) input.value = '';
 }
 defineExpose({ clearSecrets });
 function leaving(element: Element) {
   (element as HTMLElement).inert = true;
+  for (const input of element.querySelectorAll<HTMLInputElement>('input')) input.value = '';
 }
 async function focusStep() {
   await nextTick();
@@ -52,7 +78,7 @@ async function run(command: LoginCommand, pending: typeof action.value = null) {
   root.value?.focus({ preventScroll: true });
   action.value = pending;
   try {
-    await props.model.run(command);
+    return await props.model.run(command);
   } finally {
     action.value = null;
     await focusStep();
@@ -86,22 +112,42 @@ async function confirm() {
 }
 async function hint(prepare = false) {
   const id = reuse.value?.id;
-  if (!id) return;
-  clearSecrets();
-  edited.value = false;
+  if (!id || props.model.busy.value || action.value || smsInvalid.value) return;
+  const operation = props.model.view.value?.operationId;
+  const request = nicknameDraft.recommendation();
   await run(
     { kind: prepare ? 'reuse_prepare_register' : 'reuse_nickname_hint', verification_id: id },
     'hinting',
   );
-  if (alive) name.value = reuse.value?.suggestedNickname ?? '';
+  if (
+    alive &&
+    props.model.view.value?.operationId === operation &&
+    reuse.value?.id === id &&
+    reuse.value.phase === 'nickname'
+  )
+    nicknameDraft.acceptRecommendation(
+      request ?? (prepare ? nicknameDraft.recommendation() : null),
+      reuse.value.suggestedNickname,
+    );
 }
 async function register(useDefault = false) {
   const a = reuse.value;
-  if (!a || phase.value !== 'nickname' || (!useDefault && !name.value.trim())) return;
+  if (
+    !a ||
+    phase.value !== 'nickname' ||
+    props.model.busy.value ||
+    smsInvalid.value ||
+    (useDefault ? !a.canSkipNickname : nameUnavailable.value || !!nicknameFormatIssue(name.value))
+  )
+    return;
   const nickname = useDefault ? null : name.value;
-  clearSecrets();
-  edited.value = false;
-  await run({ kind: 'reuse_register', verification_id: a.id, nickname }, 'checking_nickname');
+  const previous = reuse.value;
+  nicknameDraft.submitted();
+  const next = await run(
+    { kind: 'reuse_register', verification_id: a.id, nickname },
+    'checking_nickname',
+  );
+  if (alive && !next && props.model.error.value && reuse.value === previous) nicknameDraft.clear();
 }
 onMounted(() => {
   if (!reuse.value) void load();
@@ -201,55 +247,25 @@ onBeforeUnmount(() => {
         <button class="reuse-cancel" :disabled="model.busy.value" @click="back">取消</button>
       </div>
       <div v-else-if="group === 'nickname'" key="nickname" class="reuse-nickname">
-        <form @submit.prevent="register()">
-          <div class="reuse-name-field">
-            <input
-              v-model="name"
-              aria-label="注册昵称"
-              autocomplete="off"
-              maxlength="64"
-              :disabled="model.busy.value || !!action || smsInvalid"
-              placeholder="请输入昵称"
-              @input="edited = true"
-            /><button
-              type="button"
-              aria-label="换一个推荐昵称"
-              :disabled="model.busy.value || !!action || smsInvalid"
-              @click="hint()"
-            >
-              <Icon name="refresh" />
-            </button>
-          </div>
-          <p class="reuse-name-help">4–30 个字符，一个汉字占两个字符</p>
-          <p
-            v-if="reuse?.nicknameError && (!edited || smsInvalid)"
-            class="verification-error"
-            :class="{
-              'reuse-name-muted': ['too_short', 'phone_registered'].includes(
-                reuse?.nicknameError ?? '',
-              ),
-            }"
-            role="alert"
-          >
-            {{ nicknameError(reuse.nicknameError) }}
-          </p>
+        <NicknameEditor
+          :model-value="name"
+          :disabled="model.busy.value || !!action || smsInvalid"
+          :busy="model.busy.value || !!action"
+          :submit-blocked="smsInvalid"
+          :name-unavailable="nameUnavailable"
+          :error="
+            recommendationError ||
+            (reuse?.nicknameError && (!edited || smsInvalid)
+              ? nicknameError(reuse.nicknameError)
+              : '')
+          "
+          :error-muted="reuse?.nicknameError === 'phone_registered' && !edited"
+          :allow-default="!!reuse?.canSkipNickname && !smsInvalid"
+          @update:model-value="nicknameDraft.edit"
+          @random="hint()"
+          @submit="register"
+        >
           <p class="reuse-boundary">完成注册后，该手机号将与原账号解绑</p>
-          <button
-            type="submit"
-            class="primary reuse-primary"
-            :disabled="model.busy.value || !!action || !name.trim() || smsInvalid"
-          >
-            {{ model.busy.value || action ? '正在处理…' : '完成注册' }}
-          </button>
-          <button
-            v-if="reuse?.canSkipNickname && !smsInvalid"
-            type="button"
-            class="reuse-default"
-            :disabled="model.busy.value || !!action"
-            @click="register(true)"
-          >
-            以默认昵称注册
-          </button>
           <button
             v-if="smsInvalid"
             type="button"
@@ -262,10 +278,15 @@ onBeforeUnmount(() => {
           >
             重新短信登录
           </button>
-        </form>
-        <button class="reuse-cancel" :disabled="model.busy.value || !!action" @click="back">
-          取消
-        </button>
+          <button
+            type="button"
+            class="reuse-cancel"
+            :disabled="model.busy.value || !!action"
+            @click="back"
+          >
+            取消
+          </button>
+        </NicknameEditor>
       </div>
       <div
         v-else

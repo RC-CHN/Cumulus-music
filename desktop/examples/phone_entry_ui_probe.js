@@ -3,7 +3,7 @@
   const invoke = (command, args = {}) => window.__TAURI_INTERNALS__.invoke(command, args);
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   const assert = (value, message) => { if (!value) throw Error(message); };
-  const all = selector => [...document.querySelectorAll(selector)].filter(node => !node.closest('.tab-leave-active,.modal-leave-active,.reuse-step-leave-active'));
+  const all = selector => [...document.querySelectorAll(selector)].filter(node => !node.closest('[inert],.tab-leave-active,.modal-leave-active,.reuse-step-leave-active'));
   const one = selector => all(selector)[0];
   const button = text => all('button').find(node => node.textContent.trim() === text || node.getAttribute('aria-label') === text);
   const wait = async (check, message) => { const end = performance.now() + 24000; while (performance.now() < end) { if (await check()) return; await sleep(40); } throw Error(message); };
@@ -24,6 +24,17 @@
   const panel = () => one('.phone-sms-login'), phase = () => panel()?.dataset.phonePhase;
   const idle = () => !one('.login-flow[aria-busy="true"]');
   async function ready(value) { await wait(() => phase() === value && idle(), 'phone ' + value); await settle(); }
+  function nicknameGeometry() {
+    const field = one('.nickname-editor .reuse-name-field'), input = one('[aria-label="注册昵称"]');
+    if (!field || !input) return null;
+    const primary = one('.nickname-editor .reuse-primary'), feedback = one('.nickname-editor-feedback'), random = button('换一个推荐昵称');
+    const divider = getComputedStyle(random, '::before');
+    return { fieldWidth: field.getBoundingClientRect().width, fieldHeight: field.getBoundingClientRect().height,
+      inputHeight: input.getBoundingClientRect().height, feedbackHeight: feedback.getBoundingClientRect().height,
+      primaryWidth: primary.getBoundingClientRect().width, primaryHeight: primary.getBoundingClientRect().height,
+      primaryMarginTop: parseFloat(getComputedStyle(primary).marginTop), randomVisible: visible(random) && random.textContent.includes('随机'),
+      randomDividerWidth: parseFloat(divider.width), randomDividerHeight: parseFloat(divider.height) };
+  }
   async function stage(name, extra = {}) {
     last = name; await settle(); const d = one('dialog[open]'), r = d?.getBoundingClientRect();
     assert(document.documentElement.scrollWidth <= innerWidth + 1 && (!d || visible(d) && d.scrollWidth <= d.clientWidth + 1), 'viewport bounds');
@@ -34,10 +45,14 @@
     if (panel()) {
       assert(!one('.login-status').textContent.trim() && !one('.login-restart'), 'phone flow owns status and recovery actions');
       if (panel().dataset.phoneStep === 'nickname') assert(!one('dialog .brand-mark') && !one('.login-methods') && one('#login-title').textContent === '希望大家怎么称呼你呢？', 'official nickname header');
-      if (panel().dataset.phoneStep === 'nickname') { const field = one('.reuse-name-field').getBoundingClientRect(), primary = one('.reuse-nickname .reuse-primary').getBoundingClientRect(); assert(Math.abs(field.width - primary.width) < .25 && Math.abs(field.width - 300) < .25 && primary.height === 40 && one('[aria-label="注册昵称"]').getBoundingClientRect().height === 36, 'official full-width nickname field and primary geometry'); }
+      if (panel().dataset.phoneStep === 'nickname') {
+        const field = one('.reuse-name-field').getBoundingClientRect(), primary = one('.reuse-nickname .reuse-primary').getBoundingClientRect();
+        assert(Math.abs(field.width - primary.width) < .25 && Math.abs(field.width - 300) < .25 && field.height === 36 && primary.height === 40 && one('[aria-label="注册昵称"]').getBoundingClientRect().height === 36, 'official full-width nickname field and primary geometry');
+        assert(button('换一个推荐昵称').textContent.includes('随机'), 'visible random nickname action');
+      }
       if (phase() === 'code_required') assert(!one('[aria-label="登录手机号"]') && !one('[aria-label="国际区号"]'), 'immutable code recipient');
     }
-    await emit(`ux_${String(++count).padStart(2, '0')}_${name}`, { expectNickname: current, preserveEpoch: true, ...extra, width: innerWidth, height: innerHeight, ratio: devicePixelRatio, screenX: window.screenX, screenY: window.screenY, theme: document.documentElement.dataset.theme, phase: phase() ?? null, step: panel()?.dataset.phoneStep ?? null, issue: panel()?.dataset.phoneIssue ?? null, overflow: false, focusValid: true, focused: document.hasFocus(), controls, otpLength: one('[aria-label="短信验证码"]')?.value.length ?? 0, nicknameLength: one('[aria-label="注册昵称"]')?.value.length ?? 0, canReconcile: !!button('核对登录状态'), hasRegister: !!button('完成注册'), hasDefault: !!button('以默认昵称注册'), dialogs: d ? [{ open: true, opacity: getComputedStyle(d).opacity, background: getComputedStyle(d).backgroundColor, rect: r.toJSON() }] : [] });
+    await emit(`ux_${String(++count).padStart(2, '0')}_${name}`, { expectNickname: current, preserveEpoch: true, ...extra, width: innerWidth, height: innerHeight, ratio: devicePixelRatio, screenX: window.screenX, screenY: window.screenY, theme: document.documentElement.dataset.theme, phase: phase() ?? null, step: panel()?.dataset.phoneStep ?? null, issue: panel()?.dataset.phoneIssue ?? null, overflow: false, focusValid: true, focused: document.hasFocus(), controls, nicknameGeometry: nicknameGeometry(), otpLength: one('[aria-label="短信验证码"]')?.value.length ?? 0, nicknameLength: one('[aria-label="注册昵称"]')?.value.length ?? 0, canReconcile: !!button('核对登录状态'), hasRegister: !!button('完成注册'), hasDefault: !!button('以默认昵称注册'), dialogs: d ? [{ open: true, opacity: getComputedStyle(d).opacity, background: getComputedStyle(d).backgroundColor, rect: r.toJSON() }] : [] });
   }
   async function open() {
     await click(one('.account-button'));
@@ -68,9 +83,19 @@
     await mode('bad-code'); await submitCode(); await ready('code_required'); assert(one('.credential-error').textContent.includes('验证码错误') && !button('完成注册'), 'bad SMS cannot register'); await stage('code_bad_dark'); await fill('短信验证码', '111111'); assert(!one('.credential-error'), 'editing removes stale code rejection'); await click(button('清空验证码')); assert(one('[aria-label="短信验证码"]').value === '' && document.activeElement === one('[aria-label="短信验证码"]'), 'clear code keeps input focus');
     await mode('new'); await submitCode(); await ready('nickname'); await stage('nickname_small_dark');
     await theme('light'); await resize(1120, 760); await stage('nickname_light');
-    await fill('注册昵称', 'a'); await click(button('完成注册')); await ready('nickname'); assert(one('.verification-error').textContent.includes('不能少于'), 'native length validation'); await stage('nickname_short_light');
-    await theme('dark'); await mode('taken'); await fill('注册昵称', '重复昵称'); await click(button('完成注册')); await ready('nickname'); assert(one('.verification-error').textContent.includes('已使用'), 'readonly duplicate check'); await stage('nickname_taken_dark');
-    await mode('new'); await click(button('换一个推荐昵称')); await ready('nickname'); assert(one('[aria-label="注册昵称"]').value === '合成新昵称', 'native nickname hint'); await stage('nickname_refresh_dark'); await click(button('清空昵称')); assert(one('[aria-label="注册昵称"]').value === '' && button('完成注册').disabled, 'clear nickname disables empty registration'); await click(button('换一个推荐昵称')); await ready('nickname');
+    const beforeInvalid = await mode('read');
+    await fill('注册昵称', 'a'); assert(button('完成注册').disabled && one('.reuse-nickname').textContent.includes('不能少于'), 'live minimum length gate'); await stage('nickname_short_light');
+    await fill('注册昵称', '长'.repeat(16)); assert(button('完成注册').disabled && one('.reuse-nickname').textContent.includes('超出'), 'weighted maximum length gate'); await stage('nickname_long_light');
+    await fill('注册昵称', '昵称!'); assert(button('完成注册').disabled && one('.reuse-nickname').textContent.includes('只支持'), 'live character gate');
+    one('.reuse-nickname form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); await sleep(0);
+    const afterInvalid = await mode('read');
+    for (const path of ['/api/nickname/duplicated', '/api/w/register/cellphone']) assert((afterInvalid.paths[path] ?? 0) === (beforeInvalid.paths[path] ?? 0), 'invalid local input sends no nickname or registration request');
+    await stage('nickname_invalid_light');
+    await theme('dark'); await mode('taken'); await fill('注册昵称', '重复昵称'); await click(button('完成注册')); await ready('nickname'); assert(one('.verification-error').textContent.includes('已使用') && one('[aria-label="注册昵称"]').value === '重复昵称' && button('完成注册').disabled && !button('以默认昵称注册').disabled && one('[aria-label="注册昵称"]').getAttribute('aria-invalid') === 'true', 'known unavailable nickname retains editable draft, locks manual submit and allows default');
+    const takenPaths = (await mode('read')).paths; one('.nickname-editor').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); await sleep(0); assert((await mode('read')).paths['/api/nickname/duplicated'] === takenPaths['/api/nickname/duplicated'], 'unchanged unavailable name is not submitted again'); await stage('nickname_taken_dark');
+    await mode('check-name-failed'); await fill('注册昵称', '查重失败昵称'); await click(button('完成注册')); await ready('nickname'); assert(one('.verification-error').textContent.includes('检查昵称') && one('[aria-label="注册昵称"]').value === '查重失败昵称', 'failed availability read retains draft'); await stage('nickname_check_failed_dark');
+    await fill('注册昵称', '推荐失败保留昵称'); await mode('hint-failed'); await click(button('换一个推荐昵称')); await ready('nickname'); assert(one('[aria-label="注册昵称"]').value === '推荐失败保留昵称' && !one('[aria-label="注册昵称"]').disabled && document.activeElement === one('[aria-label="注册昵称"]') && !one('[aria-label="注册昵称"]').hasAttribute('aria-invalid'), 'failed recommendation retains editable focused format-valid draft'); await stage('nickname_hint_failed_dark');
+    await mode('new'); await click(button('换一个推荐昵称')); await ready('nickname'); assert(one('[aria-label="注册昵称"]').value === '合成新昵称', 'native nickname hint'); await stage('nickname_refresh_dark'); await click(button('清空昵称')); assert(one('[aria-label="注册昵称"]').value === '' && button('完成注册').disabled && document.activeElement === one('[aria-label="注册昵称"]'), 'clear nickname disables empty registration and retains focus'); await stage('nickname_cleared_dark'); await click(button('换一个推荐昵称')); await ready('nickname');
     await mode('anti-abuse'); await click(button('完成注册')); await ready('nickname'); assert(one('.verification-error').textContent.includes('安全检查'), 'known registration rejection'); await stage('registration_rejected_dark');
     await mode('rate-limit'); await click(button('完成注册')); await ready('nickname'); assert(one('.verification-error').textContent.includes('频繁'), 'known rate rejection'); await stage('registration_rate_limited_dark');
     await mode('sms-invalid'); await click(button('完成注册')); await ready('code_required'); assert(!button('完成注册') && one('[aria-label="短信验证码"]').value === '', 'invalid authorization clears verified code'); await stage('registration_sms_invalid_dark');
@@ -89,6 +114,9 @@
     await open(); await startCode(); await submitCode(); await logged(); await stage('registration_held_fresh_login_dark', { rememberEpoch: true, preserveEpoch: false });
     await theme('light'); await mode('send-failed'); await mode('advance'); await open(); await startCode(); assert(one('.credential-error')?.textContent.includes('发送失败'), 'explicit SMS failure'); await stage('send_failed_light'); await close();
     await mode('send-lost'); await mode('advance'); await open(); await startCode(); await theme('dark'); assert(one('.credential-error')?.textContent.includes('发送结果未确认'), 'lost send not automatically repeated'); await stage('send_unknown_small_dark'); await close();
+    await nickname(); const heldDraft = await fill('注册昵称', '挂起昵称'); await mode('hold-hint'); await click(button('换一个推荐昵称')); await wait(async () => (await mode('read')).pending, 'held nickname recommendation'); await stage('nickname_hint_inflight_dark');
+    await close(); await wait(async () => (await mode('read')).dropped === 3, 'cancelled recommendation future dropped'); assert(heldDraft.value === '', 'cancelled draft scrubbed from retained DOM');
+    await open(); await mode('release'); await settle(); assert(phase() === 'number' && panel()?.dataset.phoneStep === 'number' && !one('[aria-label="注册昵称"]'), 'late recommendation cannot repopulate replacement candidate'); await stage('nickname_hint_cancelled_dark'); await close();
     await emit('complete', { ok: true, stageCount: count, expectNickname: current, preserveEpoch: true, realMusicRequests: 0, phoneEntry: true });
   } catch (error) {
     await emit('failed', { last, error: String(error), stack: error.stack, body: document.body.innerText.slice(-2000), panel: panel()?.outerHTML ?? null, focusedElement: document.activeElement?.outerHTML });

@@ -46,6 +46,8 @@ impl Service {
                 "send-lost",
                 "bad-code",
                 "hint-failed",
+                "check-name-failed",
+                "hold-hint",
                 "taken",
                 "sms-invalid",
                 "phone-registered",
@@ -84,6 +86,7 @@ impl HttpBackend for Service {
             let mode = self.mode.lock().unwrap().clone();
             if path == "/api/cellphone/existence/check" && mode == "hold-check"
                 || path == "/api/w/register/cellphone" && mode == "hold-register"
+                || path == "/api/nickname/hint/get" && mode == "hold-hint"
             {
                 let (tx, rx) = oneshot::channel();
                 self.held.lock().unwrap().push(tx);
@@ -137,6 +140,9 @@ impl HttpBackend for Service {
                     super::auth::reply(json!({"code":200,"hintNickname":"合成新昵称"}), None)
                 }
                 "/api/nickname/duplicated" => {
+                    if mode == "check-name-failed" {
+                        return Err(Error::Transport("synthetic nickname check failure".into()));
+                    }
                     super::auth::reply(json!({"code":200,"duplicated":mode=="taken"}), None)
                 }
                 "/api/w/register/cellphone" => {

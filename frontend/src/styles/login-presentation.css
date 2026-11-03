@@ -300,29 +300,3 @@
   width: 16px;
   height: 16px;
 }
-.phone-sms-login .reuse-name-field input {
-  height: 36px;
-}
-.phone-sms-login .reuse-nickname {
-  width: 300px;
-  max-width: 100%;
-  margin-inline: auto;
-}
-.phone-sms-login .reuse-nickname .reuse-name-field {
-  margin-top: 30px;
-}
-.phone-sms-login .phone-nickname-error {
-  height: 16px;
-  margin-top: 14px;
-}
-.phone-sms-login .phone-nickname-error .verification-error {
-  margin: 0;
-  line-height: 16px;
-}
-.phone-sms-login .reuse-nickname .reuse-primary {
-  width: 100%;
-  margin-top: 50px;
-}
-.phone-sms-login .reuse-nickname .reuse-cancel {
-  width: 100%;
-}

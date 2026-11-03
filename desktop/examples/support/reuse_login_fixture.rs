@@ -17,9 +17,13 @@ use tokio::sync::oneshot;
 pub struct Service {
     inner: super::auth::Service,
     mode: Mutex<String>,
-    held: Mutex<Vec<oneshot::Sender<HttpReply>>>,
+    held: Mutex<Vec<PendingReply>>,
     pending: AtomicBool,
     dropped: AtomicU64,
+}
+struct PendingReply {
+    sender: oneshot::Sender<HttpReply>,
+    response: HttpReply,
 }
 impl Service {
     pub fn command(&self, mode: &str) {
@@ -32,6 +36,8 @@ impl Service {
                 "confirm-false",
                 "confirm-lost",
                 "hint-lost",
+                "check-name-failed",
+                "hold-hint",
                 "taken",
                 "register-false",
                 "register-lost",
@@ -49,8 +55,8 @@ impl Service {
             return;
         }
         if mode == "release" {
-            for sender in self.held.lock().unwrap().drain(..) {
-                let _ = sender.send(super::auth::reply(json!({"code":200}), Some(3)));
+            for pending in self.held.lock().unwrap().drain(..) {
+                let _ = pending.sender.send(pending.response);
             }
         }
         *self.mode.lock().unwrap() = if mode == "release" {
@@ -112,9 +118,20 @@ impl HttpBackend for Service {
                 || confirm && mode == "hold-confirm"
                 || register && mode == "hold-register"
                 || identity && mode == "hold-identity"
+                || path == "/api/nickname/hint/get" && mode == "hold-hint"
             {
                 let (tx, rx) = oneshot::channel();
-                self.held.lock().unwrap().push(tx);
+                self.held.lock().unwrap().push(PendingReply {
+                    sender: tx,
+                    response: if path == "/api/nickname/hint/get" {
+                        super::auth::reply(
+                            json!({"code":200,"hintNickname":"迟到建议不可采用"}),
+                            None,
+                        )
+                    } else {
+                        super::auth::reply(json!({"code":200}), Some(3))
+                    },
+                });
                 self.pending.store(true, Ordering::SeqCst);
                 let mut held = Held {
                     service: self,
@@ -193,6 +210,9 @@ impl HttpBackend for Service {
                 ));
             }
             if path == "/api/nickname/duplicated" {
+                if mode == "check-name-failed" {
+                    return Err(Error::Transport("synthetic nickname check failure".into()));
+                }
                 return Ok(super::auth::reply(
                     json!({"code":200,"duplicated":mode=="taken"}),
                     None,

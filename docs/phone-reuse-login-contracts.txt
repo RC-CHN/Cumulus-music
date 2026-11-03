@@ -82,3 +82,9 @@ Rust集成测试：cargo test -p cumulus-core --test client_phone_reuse --locked
 本批仅使用合成手机号/验证码/账号/令牌，没有向真实服务发送注册/解绑、短信或登录确认。
 本人二次分配挑战、真实手机号重新注册、真实RT下发/轮换、Windows实机界面均仍需外部验证。
 上述边界不能用编译成功、原函数局部表达式或合成GUI结果替代。
+
+2026-11-03 后续同源昵称专项
+普通/二次分配两流程现共用NicknameEditor与候选限定草稿。即时格式门槛、taken手填锁定/默认许可、
+推荐或查重失败留稿、清空/关闭/换候选和无效SMS清理均已统一；最终普通两协议各42态、复用各41态，
+另有本机42+41张最终窗口图。详见nickname-editor-contracts.txt及nickname-editor-validation.txt；
+历史35/34态证据保留，不把本批扩大成真人注册、Windows实机或全账号功能完成。

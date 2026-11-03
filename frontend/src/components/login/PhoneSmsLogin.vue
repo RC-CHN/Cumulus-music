@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, toRefs, watch } from 'vue';
 import type { LoginModel } from '../../composables/useLogin';
 import { useControlFocus } from '../../composables/useControlFocus';
+import { useNicknameDraft } from '../../composables/useNicknameDraft';
 import type { LoginCommand, PhoneEntryStep } from '../../services/auth';
 import type { LoginIdentity } from '../../services/loginIdentity';
 import {
@@ -10,10 +11,12 @@ import {
   type LoginDocument,
 } from '../../services/loginPresentation';
 import { nicknameError } from '../../services/phoneReuse';
+import { nicknameFormatIssue } from '../../services/nickname';
 import { useCore } from '../../services/core';
 import Icon from '../Icon.vue';
 import LoginConsent from './LoginConsent.vue';
 import LoginCountryPicker from './LoginCountryPicker.vue';
+import NicknameEditor from './NicknameEditor.vue';
 const props = defineProps<{
   epoch: string;
   model: LoginModel;
@@ -35,10 +38,8 @@ const entry = computed(() => view.value?.phoneEntry);
 const root = ref<HTMLElement>();
 const consent = ref<{ focus: () => void }>();
 const code = ref(''),
-  name = ref(''),
   validation = ref('');
-const edited = ref(false),
-  codeEdited = ref(false),
+const codeEdited = ref(false),
   consentRequired = ref(false),
   openingDocument = ref(false);
 const action = ref<
@@ -47,6 +48,28 @@ const action = ref<
 let alive = true,
   generation = 0;
 const phase = computed(() => entry.value?.phase);
+const nicknameDraft = useNicknameDraft(
+  () => {
+    const current = entry.value;
+    if (
+      !view.value ||
+      !current ||
+      !['nickname', 'hinting', 'checking_nickname', 'registering'].includes(current.phase)
+    )
+      return null;
+    return {
+      owner: JSON.stringify([view.value.operationId, current.id]),
+      suggestion: current.suggestedNickname,
+    };
+  },
+  () => {
+    for (const input of root.value?.querySelectorAll<HTMLInputElement>('[aria-label="注册昵称"]') ??
+      [])
+      input.value = '';
+  },
+);
+const { name, edited, recommendationError } = nicknameDraft;
+const nameUnavailable = computed(() => entry.value?.nicknameError === 'taken' && !edited.value);
 const group = computed(() => {
   if (action.value === 'start' || action.value === 'retry' || phase.value === 'checking_account')
     return 'preparing';
@@ -70,7 +93,6 @@ const step = computed<PhoneEntryStep>(() =>
 );
 watch(step, (value) => emit('stage', value), { immediate: true });
 watch(group, (value, previous) => {
-  if (previous === 'nickname' && value !== 'nickname') name.value = '';
   if (previous === 'code' && value !== 'code') code.value = '';
 });
 const disabled = computed(() => busy.value || !!action.value || !view.value);
@@ -108,31 +130,19 @@ watch(
     if (value) consentRequired.value = false;
   },
 );
-watch(
-  () => entry.value?.suggestedNickname,
-  (value) => {
-    if (!edited.value) name.value = value ?? '';
-  },
-);
 function clearSecrets() {
   code.value = '';
-  name.value = '';
+  nicknameDraft.clear();
   for (const input of root.value?.querySelectorAll<HTMLInputElement>(
     '[autocomplete="one-time-code"],[aria-label="注册昵称"]',
   ) ?? [])
     input.value = '';
 }
 defineExpose({ clearSecrets });
-function clearField(kind: 'code' | 'name') {
-  if (kind === 'code') {
-    code.value = '';
-    codeEdited.value = true;
-  } else {
-    name.value = '';
-    edited.value = true;
-  }
-  const label = kind === 'code' ? '短信验证码' : '注册昵称';
-  root.value?.querySelector<HTMLElement>(`[aria-label="${label}"]`)?.focus();
+function clearCode() {
+  code.value = '';
+  codeEdited.value = true;
+  root.value?.querySelector<HTMLElement>('[aria-label="短信验证码"]')?.focus();
 }
 function leaving(element: Element) {
   (element as HTMLElement).inert = true;
@@ -187,7 +197,7 @@ async function run(command: LoginCommand, pending: NonNullable<typeof action.val
   action.value = pending;
   validation.value = '';
   try {
-    await props.model.run(command);
+    return await props.model.run(command);
   } finally {
     if (alive && serial === generation) {
       action.value = null;
@@ -229,18 +239,30 @@ async function resend() {
 }
 async function hint() {
   const id = entry.value?.id;
-  if (!id || disabled.value) return;
-  name.value = '';
-  edited.value = false;
+  if (!id || disabled.value || phase.value !== 'nickname') return;
+  const request = nicknameDraft.recommendation();
   await run({ kind: 'phone_nickname_hint', entry_id: id }, 'hint');
-  if (alive) name.value = entry.value?.suggestedNickname ?? '';
+  if (alive) nicknameDraft.acceptRecommendation(request, entry.value?.suggestedNickname);
 }
 async function register(useDefault = false) {
   const id = entry.value?.id;
-  if (!id || disabled.value || (!useDefault && !name.value.trim()) || !agreed()) return;
+  if (
+    !id ||
+    disabled.value ||
+    phase.value !== 'nickname' ||
+    (useDefault
+      ? !entry.value?.canSkipNickname
+      : nameUnavailable.value || !!nicknameFormatIssue(name.value)) ||
+    !agreed()
+  )
+    return;
   const nickname = useDefault ? null : name.value;
-  edited.value = false;
-  await run({ kind: 'phone_register', entry_id: id, nickname }, 'register');
+  const previous = entry.value;
+  nicknameDraft.submitted();
+  const next = await run({ kind: 'phone_register', entry_id: id, nickname }, 'register');
+  // If both the command reply and the recovery snapshot are missing, the old
+  // projection cannot justify retaining a registration draft for another try.
+  if (alive && !next && error.value && entry.value === previous) nicknameDraft.clear();
 }
 async function startOver() {
   if (!alive) return;
@@ -373,7 +395,7 @@ onBeforeUnmount(() => {
                   type="button"
                   aria-label="清空验证码"
                   :disabled="disabled"
-                  @click="clearField('code')"
+                  @click="clearCode"
                 >
                   <Icon name="close" /></button></span
               ><button
@@ -420,49 +442,19 @@ onBeforeUnmount(() => {
         key="nickname"
         class="phone-entry-content reuse-nickname"
       >
-        <form @submit.prevent="register()">
-          <div class="reuse-name-field">
-            <input
-              v-model="name"
-              aria-label="注册昵称"
-              autocomplete="off"
-              maxlength="64"
-              placeholder="请输入昵称"
-              :disabled="disabled"
-              @input="edited = true"
-            /><button
-              v-if="name"
-              type="button"
-              aria-label="清空昵称"
-              :disabled="disabled"
-              @click="clearField('name')"
-            >
-              <Icon name="close" /></button
-            ><button type="button" aria-label="换一个推荐昵称" :disabled="disabled" @click="hint">
-              <Icon name="refresh" />
-            </button>
-          </div>
-          <div class="phone-nickname-error">
-            <p v-if="issueText" class="verification-error" role="alert">{{ issueText }}</p>
-          </div>
-          <button
-            type="submit"
-            class="primary login-submit reuse-primary"
-            :disabled="disabled || !name.trim()"
-          >
-            {{ busy ? '正在处理…' : '完成注册' }}
-          </button>
-          <button
-            v-if="entry?.canSkipNickname"
-            type="button"
-            class="reuse-default"
-            :disabled="disabled"
-            @click="register(true)"
-          >
-            以默认昵称注册
-          </button>
+        <NicknameEditor
+          :model-value="name"
+          :disabled="disabled"
+          :busy="busy || !!action"
+          :error="recommendationError || issueText"
+          :allow-default="!!entry?.canSkipNickname"
+          :name-unavailable="nameUnavailable"
+          @update:model-value="nicknameDraft.edit"
+          @random="hint"
+          @submit="register"
+        >
           <button type="button" class="reuse-cancel" @click="startOver">取消</button>
-        </form>
+        </NicknameEditor>
       </div>
       <div
         v-else-if="group === 'preparing'"
@@ -491,7 +483,13 @@ onBeforeUnmount(() => {
       </div>
       <div v-else key="recovery" class="phone-entry-content reuse-failed" role="status">
         <Icon name="info" class="reuse-info" />
-        <p>无法确认上次操作结果，请先核对登录状态。</p>
+        <p>
+          {{
+            entry?.canReconcile
+              ? '无法确认上次操作结果，请先核对登录状态。'
+              : '无法确认上次操作结果，请重新短信登录。'
+          }}
+        </p>
         <button
           v-if="entry?.canReconcile"
           type="button"
@@ -501,9 +499,7 @@ onBeforeUnmount(() => {
         >
           {{ busy ? '正在核对…' : '核对登录状态' }}
         </button>
-        <p v-else class="reuse-boundary">
-          没有可供核对的授权回执，请重新短信登录。不会重复提交注册。
-        </p>
+        <p v-else class="reuse-boundary">重新登录将核对账号，不会重复注册。</p>
         <p v-if="error" class="verification-error" role="alert">{{ error }}</p>
         <button type="button" class="reuse-cancel" @click="startOver">重新短信登录</button>
       </div>

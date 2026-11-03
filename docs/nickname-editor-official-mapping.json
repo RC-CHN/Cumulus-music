@@ -1,0 +1,80 @@
+{
+  "schema": 1,
+  "officialVersion": "3.1.42.205594",
+  "sources": {
+    "views/Nicknamev2.jsx": {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/login/views/Nicknamev2.jsx",
+      "sha256": "447da11de72ffe25c314dbe4c5ce5bdc7fa099df41082178177f190eea881dad"
+    },
+    "components/NicknameRandomSuffix.jsx": {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/login/components/NicknameRandomSuffix.jsx",
+      "sha256": "add68eba8bae472004995a9cbd0b70541fc994d036d3bacccd8c08f7170a2600"
+    },
+    "components/index.jsx": {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/login/components/index.jsx",
+      "sha256": "d4c12ca4afd6d89f3a69fbf718586cc3600924301b5dae7fcf963aa9a58a9495"
+    },
+    "components/Operate.jsx": {
+      "path": "references/ui-recovery/sources/packages/pc/src/pages/login/components/Operate.jsx",
+      "sha256": "76152a9bc4dcb136a69f6f111547d945924b5a2e65ca50c85508220d150d98e0"
+    },
+    "hybrid_19.chunk.1482700000000.js/3138.js": {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_19.chunk.1482700000000.js/3138.js",
+      "sha256": "02677bdbb947009de508bf4d4d159f91a72f62dfc172d190d74c42679e245ed4"
+    },
+    "hybrid_app.chunk.1482700000000.js/32.js": {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/32.js",
+      "sha256": "1aa3d1f17a38717843340a7c33c87419bc7c952bc423fc58ab45d1630561ff34"
+    }
+  },
+  "implementation": {
+    "format": "frontend/src/services/nickname.ts",
+    "draft": "frontend/src/composables/useNicknameDraft.ts",
+    "view": "frontend/src/components/login/NicknameEditor.vue",
+    "flows": [
+      "frontend/src/components/login/PhoneSmsLogin.vue",
+      "frontend/src/components/login/ReuseVerification.vue"
+    ],
+    "nativeAuthority": [
+      "core/src/account/login/nickname.rs",
+      "core/src/account/login/phone_entry/registration.rs",
+      "core/src/account/login/reuse/registration.rs"
+    ]
+  },
+  "proofs": [
+    "frontend/tests/nickname-editor.test.ts",
+    "desktop/examples/phone_entry_ui_probe.js",
+    "desktop/examples/reuse_login_ui_probe.js",
+    "desktop/examples/audit_phone_entry_probe.py",
+    "desktop/examples/audit_reuse_probe.py"
+  ],
+  "validation": {
+    "report": "docs/nickname-editor-validation.txt",
+    "frontendPassed": 598,
+    "ciToolsPassed": 54,
+    "linuxWorkspace": {
+      "programs": 305,
+      "passed": 1621,
+      "failed": 0,
+      "ignored": 0
+    },
+    "webView": {
+      "ordinaryJsk": 42,
+      "ordinaryLegacy": 42,
+      "reuseJsk": 41,
+      "reuseLegacy": 41,
+      "accountRegression": 28,
+      "noticeRegression": 23
+    },
+    "physicalDesktop": {
+      "scale": 1.25,
+      "ordinaryCaptures": 42,
+      "reuseCaptures": 41,
+      "allReviewed": true
+    },
+    "realRegistration": false,
+    "windowsRuntime": "new exact-SHA CI required; not locally verified"
+  },
+  "realRegistrationProof": false,
+  "yesPlayMusicUsed": false
+}

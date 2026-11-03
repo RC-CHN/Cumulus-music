@@ -32,7 +32,8 @@ def main():
     checked = 0
     for path in (root/'state').rglob('core.sqlite3'):
         values = json.dumps(list(records(path).values()), ensure_ascii=False)
-        for text in ['123456', '13800138000', 'fixture-password', '重复昵称', '关闭清空昵称', '明确新昵称']:
+        for text in ['123456', '13800138000', 'fixture-password', '重复昵称', '关闭清空昵称', '明确新昵称',
+                     '查重失败昵称', '推荐失败保留昵称', '挂起昵称']:
             assert json.dumps(text, ensure_ascii=False) not in values, 'credential input persisted'
         checked += 1
     for path in (root/'first').glob('*.json'):
