@@ -290,11 +290,14 @@ async fn saved_custom_curve_is_account_owned_revision_guarded_and_separate_from_
 async fn peer_replacing_the_same_active_curve_still_reapplies_its_new_revision() {
     let f = Fixture::new();
     f.device.equalizer_supported.store(true, Ordering::SeqCst);
-    f.command(change(0, 4.0)).await.unwrap();
+    let initial = f.command(change(0, 4.0)).await.unwrap();
+    assert_eq!(initial.equalizer.status, EqualizerStatus::Configured);
     let peer = f.another_player();
-    peer.command(&f.token(), change(1, 4.0)).await.unwrap();
 
+    // The local controller can observe the peer's revision on its periodic
+    // tick before the peer command returns. Arm this device first.
     f.device.equalizer_fail.store(true, Ordering::SeqCst);
+    peer.command(&f.token(), change(1, 4.0)).await.unwrap();
     let synced = f.command(Cmd::Snapshot).await.unwrap();
     assert_eq!(synced.equalizer.preferences.revision, 2);
     assert_eq!(synced.equalizer.preferences.settings, curve(4.0));
