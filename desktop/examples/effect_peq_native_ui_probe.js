@@ -78,6 +78,16 @@
       return state.state === 'playing' && state.playId === baseline.playId && state.position > detached.position + 0.25;
     }, 'ordinary native playback continues after detach');
 
+    stage = 'reopen_directory';
+    click(button(one('.effect-directory[open]'), '关闭音效目录'));
+    await wait(() => !one('.effect-directory[open]'), 'effect directory closes');
+    click(button(await wait(() => one('.equalizer-dialog[open]'), 'EQ dialog remains open'), '音效目录'));
+    const recovery = await wait(() => enabled(one('[data-effect-registration="300"]')),
+      'durable registration shown independently of selection');
+    click(recovery);
+    await wait(() => phase('recovery_required') && enabled(action('stop')), 'open recovery without catalogue detail');
+    assert(!action('prepare') && !action('activate'), 'recovery-only view never prepares or activates');
+
     stage = 'reconcile';
     click(action('status'));
     await sleep(0);
@@ -90,7 +100,8 @@
     stage = 'confirm';
     click(action('stop'));
     click(await wait(() => enabled(action('confirm-stop')), 'explicit retry confirmation reopened'));
-    await wait(() => phase('idle') && !enabled(action('stop')), 'acknowledged stop clears recovery');
+    await wait(() => phase('idle') && !enabled(action('stop')) && !one('[data-effect-registration="300"]'),
+      'acknowledged stop clears recovery and local list');
     const final = await player();
     assert(final.playId === baseline.playId && final.position > baseline.position, 'binding does not replace the ordinary queue');
     await capture('05_released');

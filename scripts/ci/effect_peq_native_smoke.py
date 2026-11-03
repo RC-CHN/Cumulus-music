@@ -53,7 +53,12 @@ def main():
     assert configured['starts'] == configured['attaches'] == 1 and configured['nativeAttached']
     assert configured['processedSamples'] > 0 and configured['failedBlocks'] == 0
     assert uncertain['stops'] == uncertain['detaches'] == 1 and not uncertain['nativeAttached']
-    assert reconciled == uncertain
+    assert {k: v for k, v in reconciled.items() if k != 'calls'} == {
+        k: v for k, v in uncertain.items() if k != 'calls'
+    }
+    assert reconciled['calls'] == uncertain['calls'] + [
+        {'path': '/api/usertool/sound/queryAllSound', 'result': 'ack'},
+    ]
     assert released == complete['nativePeq']
     assert released['stops'] == 2 and released['detaches'] == 1 and not released['nativeAttached']
     assert released['failedBlocks'] == 0
