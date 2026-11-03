@@ -94,7 +94,7 @@ fn target(tag: &Value, label: &str) -> Option<ReasonTarget> {
                     .as_str()
                     .filter(|s| s.len() <= 2048)?
                     .split_once('?')?;
-                let mut matches = url::form_urlencoded::parse(query.split('#').next()?)
+                let mut matches = url::form_urlencoded::parse(query.split('#').next()?.as_bytes())
                     .filter(|(name, _)| name == key);
                 let (_, value) = matches.next()?;
                 (matches.next().is_none() && atom(&value)).then(|| value.into_owned())
