@@ -50,8 +50,12 @@ PipeWire 使用独立空输出。后续加入的音效总开关另有真实 WebV
   docs/desktop-rankings-contracts.txt、docs/desktop-fm-feedback-contracts.txt。
   真实只读探针已收到 v3 分流，单首标准音质授权后 libmpv 时钟推进并停止；
   正式 Vue 的 v3 页签和旧版结果页分别有合成 WebView 证据。缺所属播客的单集、
-  卡片原生播放凭据、标题高亮、联想和最后一条历史删除均有独立复验。FM 和发现页
-  各查专项，不用一个搜索通过推断全部内容、设备或账号行为。
+  卡片原生播放凭据、标题高亮、联想和最后一条历史删除均有独立复验。Linux
+  的连续单曲测试核对 30 首原序入队、续页失败后重试及从编号分页返回；
+  「下一首」验证原生搜索试听上下文。每日推荐的风格偏好与首页风格卡片
+  分别验证：后者只读，能播放和插入下一首，不写风格偏好。见
+  docs/search-scroll-ui-contracts.txt、docs/style-recommendations.txt。FM 和发现页
+  各查专项，不用搜索通过推断全部内容、设备或账号行为。
 - 歌单、收藏、设置、历史：core/src/playlist、core/src/account、core/src/history；
   desktop/src/playlists.rs、desktop/src/collections.rs、desktop/src/settings.rs。
   docs/core-pc-playlist-official-contracts.txt、docs/playlist-detail-ui-contracts.txt、
@@ -62,7 +66,9 @@ PipeWire 使用独立空输出。后续加入的音效总开关另有真实 WebV
   frontend/src/components/LyricsPanel.vue、frontend/src/components/MemberPage.vue。
   docs/core-playback-contracts.txt、docs/playback-search-priority.txt、
   docs/core-lyrics-contracts.txt、docs/desktop-member-contracts.txt。
-  原生解码、暂停/启动恢复、试听区间、权益读取分别有证据。MP3、FLAC 和
+  原生解码、暂停/启动恢复、试听区间、权益读取分别有证据。回环 HTTPS
+  的 Linux 桌面验证另覆盖曲终换曲和首次 503 后显式重取音源，见
+  docs/desktop-main-flow-proof.txt；此证据不代替真实 CDN。MP3、FLAC 和
   M4A 文本标签歌词有 Rust 测试，Linux Tauri 两个歌词窗口用 FLAC 验收。
   实体声卡、全部会员条件和专有歌词格式仍需独立验证。
 - 本地、NCM、下载：core/src/library、core/src/download、core/src/media；
@@ -82,6 +88,8 @@ PipeWire 使用独立空输出。后续加入的音效总开关另有真实 WebV
   docs/desktop-podcast-contracts.txt、docs/desktop-mv-contracts.txt、
   docs/core-comment-write-contracts.txt。真实读取、单集或视频解码及历史
   隔离操作分别有记录；公开评论用合成写入验证，未用真实账号发评。
+  搜索单集和整档播客分别核对保留原队列与加载节目列表；搜索 MV 用固定
+  合成视频核对从卡片进入原生解码，见 docs/search-card-ui-contracts.txt。
 - 同账号接续、一起听：core/src/relay、core/src/listen_together；
   desktop/src/relay.rs、desktop/src/together.rs、frontend/src/components/TogetherPage.vue。
   docs/relay-player-publication.txt、docs/desktop-listen-together-contracts.txt、
@@ -92,7 +100,9 @@ PipeWire 使用独立空输出。后续加入的音效总开关另有真实 WebV
   docs/core-effects-compose.txt、docs/core-effects-spatial.txt、docs/effects-directory-desktop.txt。
   桌面 GEQ、独立低高音、总开关和重启恢复有实际 Linux WebView/libmpv/
   虚拟输出证据；响度与总开关相互独立。NCAE 的 PEQ 路由及非 44.1 kHz
-  旋转核心各有独立 PCM 对照；后者用 Linux SoXR 与五组冻结原厂样本核对。
+  旋转核心各有独立 PCM 对照；Linux 独立命令可渲染 48/96 kHz 旋转。
+  原生 PEQ 之前预留旁路均衡器，Linux 专项核对启用时既有滤镜实例和播放
+  时钟不变；没有桌面 PEQ 激活入口。见 docs/core-effects-dsp.txt。
   音效分组、权益及耳机品牌/型号有只读桌面入口；不应用设备调音或启动试用。
   完整官方音效图、桌面旋转播放及 Windows SoXR 分发尚未验收。
 
@@ -101,6 +111,7 @@ PipeWire 使用独立空输出。后续加入的音效总开关另有真实 WebV
 - 同一正式界面的合成主流程：scripts/ci/main_flow_smoke.py 与
   desktop/examples/main_flow_ui_probe.rs，证据分层见 docs/desktop-main-flow-proof.txt。
 - 搜索界面旧版与 v3：scripts/ci/search_results_smoke.py（新版加 --v3）。
+  按功能复跑可加 --song-waterfall、--search-next、--voice-queue 或 --mv-play。
   固定单曲的独立只读探针：scripts/ci/search_playback_read_smoke.py 仅跑合成；
   真实模式的权限、次数和范围见 docs/search-playback-read-proof.txt。
 - 音质、试听、歌词、音效：scripts/ci/quality_rights_ui_smoke.py、
