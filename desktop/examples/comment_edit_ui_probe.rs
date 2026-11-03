@@ -1,4 +1,6 @@
 //! Production Vue/IPC/Rust comment workflows with synthetic HTTP, no real accounts.
+#[path = "support/assets.rs"]
+mod assets;
 #[path = "support/comment_edit.rs"]
 mod fixture;
 use cumulus_core::{
@@ -42,5 +44,5 @@ fn main() {
             webview.eval(format!("window.__editProof={};",json!({"reopen":reopen}))).unwrap();
             webview.eval(include_str!("comment_edit_ui_probe.js")).unwrap();
         }
-    }).run(tauri::generate_context!()).expect("comment edit UI proof");
+    }).run(assets::context()).expect("comment edit UI proof");
 }

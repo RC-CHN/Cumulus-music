@@ -15,6 +15,19 @@ export function visibleCommentControl(node: HTMLElement | undefined): boolean {
     if (['auto', 'scroll', 'hidden', 'clip'].includes(style.overflowY)) {
       top = Math.max(top, box.top);
       bottom = Math.min(bottom, box.bottom);
+      if (parent.matches('.comments-page:not(.comments-embedded)')) {
+        const composer = parent.querySelector<HTMLElement>(':scope > .comment-write-sticky');
+        const cover = composer?.getBoundingClientRect();
+        if (
+          composer &&
+          cover &&
+          !composer.contains(node) &&
+          cover.top <= box.top + 1 &&
+          left < cover.right &&
+          right > cover.left
+        )
+          top = Math.max(top, cover.bottom);
+      }
     }
     if (['auto', 'scroll', 'hidden', 'clip'].includes(style.overflowX)) {
       left = Math.max(left, box.left);

@@ -91,6 +91,12 @@
       if (["auto", "scroll", "hidden", "clip"].includes(style.overflowY)) {
         top = Math.max(top, box.top);
         bottom = Math.min(bottom, box.bottom);
+        if (parent.matches('.comments-page:not(.comments-embedded)')) {
+          const composer = parent.querySelector(':scope > .comment-write-sticky');
+          const cover = composer?.getBoundingClientRect();
+          if (composer && cover && !composer.contains(node) && cover.top <= box.top + 1 &&
+              left < cover.right && right > cover.left) top = Math.max(top, cover.bottom);
+        }
       }
     }
     return right - left > 1 && bottom - top > 1
@@ -150,6 +156,21 @@
     click(button('查看回复',row));await wait(floorReady,'floor finished');await settle();
   }
   function fullControl(node) {const b=bounds(node),r=node?.getBoundingClientRect();return !!b&&b.bottom-b.top>=r.height-1&&b.right-b.left>=r.width-1;}
+  async function verifyStickyComposer() {
+    const viewport=page(), field=one('[aria-label="评论内容"]');
+    viewport.focus({preventScroll:true});
+    viewport.scrollTop=340;
+    await settle();
+    const composer=field.closest('.comment-write-panel'), box=composer.getBoundingClientRect();
+    const area=viewport.getBoundingClientRect(), fieldBox=field.getBoundingClientRect();
+    const hit=document.elementFromPoint(fieldBox.left+8,fieldBox.top+12);
+    assert(viewport.scrollTop>120&&Math.abs(area.top-box.top)<2&&hit===field,
+      'sticky composer remains usable while scrolling: '+JSON.stringify({scroll:viewport.scrollTop,delta:box.top-area.top,hit:hit?.tagName}));
+    field.focus({preventScroll:true});
+    assert(box.bottom<area.bottom-64,'composer leaves room to read comments');
+    assert(Math.abs(parseFloat(getComputedStyle(viewport).scrollPaddingTop)-composer.offsetHeight)<1,'scroll targets clear the composer');
+    return true;
+  }
   async function capture(label, extra={}) {
     last=label;await settle();
     const dialog=one('dialog[open]'),root=dialog??floor()??page()??one('.welcome')??one('.page-view');
@@ -173,7 +194,7 @@
   try {
     await wait(()=>one('.track-row'),'startup');await resize(1120,760);await theme('light');await comments();
     input('评论内容','合成草稿：只检查保留，不发送。');one('[aria-label="评论内容"]').focus();
-    await wait(()=>one('[data-group="page"] [data-comment-id="101"] .comment-avatar:not(img)'),'avatar fallback');await capture('initial_light');
+    await wait(()=>one('[data-group="page"] [data-comment-id="101"] .comment-avatar:not(img)'),'avatar fallback');await capture('initial_light',{stickyComposer:await verifyStickyComposer()});page().scrollTop=0;
     await mode('fail-next');await read(button('下一页',pagination()),()=>ready()&&one('.comment-read-error'),'next failed');assert(ids()[0]==='101','failed next retains page');assert(fullControl(button('重试',pagination())),'pagination error retry fully visible');await capture('next_failed_light');
     await mode('none');await read(button('重试',pagination()),()=>ready()&&ids()[0]==='121','retry exact next');await capture('next_retry_light');
     await read(button('上一页',pagination()),()=>ready()&&ids()[0]==='101','back first');await capture('back_light');
@@ -202,7 +223,7 @@
     click(button('每日推荐'));await wait(()=>one('.track-row')&&!page(),'leave before response');await capture('left_before_late_dark');
     await mode('none');await wait(async()=> (await mode('read')).delayedCompleted===1,'old read released');assert(!page(),'late read cannot reopen comments');await capture('late_finished_dark');
     await comments();one('[aria-label="评论内容"]').focus();await capture('reentered_dark');
-    await resize(760,540);await theme('light');one('[aria-label="评论内容"]').focus();await capture('small_latest_light');
+    await resize(760,540);await theme('light');one('[aria-label="评论内容"]').focus();await capture('small_latest_light',{stickyComposer:await verifyStickyComposer()});
     await read(button('下一页',pagination()),()=>ready()&&ids()[0]==='121','small next');await read(button('下一页',pagination()),()=>ready()&&ids()[0]==='141','last page');button('上一页',pagination()).focus();pagination().scrollIntoView({block:'nearest'});assert(button('下一页',pagination()).disabled,'last page bounded');await capture('small_page_end_light');
     await theme('dark');await read(one('[data-comment-sort="hot"]'),()=>ready()&&ids()[0]==='301','small hot');await capture('small_hot_dark');
     await openFloor(301);await capture('small_floor_dark');await mode('fail-floor-next');await read(button('下一页回复',floor()),()=>floorReady()&&one('.comment-floor-panel .error-state'),'small floor failure');assert(fullControl(button('重试',floor().querySelector('footer'))),'small floor error retry fully visible');await capture('small_floor_fail_dark');

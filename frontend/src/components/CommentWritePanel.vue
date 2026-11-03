@@ -9,9 +9,10 @@ import {
   type CommentWrite,
 } from '../services/commentWrites';
 import Icon from './Icon.vue';
-const props = defineProps<{ model: CommentWritesModel }>();
+const props = defineProps<{ model: CommentWritesModel; sticky?: boolean }>();
 const { draft, reply, busy, loading, pending, operations, error, message, validText } = props.model;
-const input = ref<HTMLTextAreaElement>(),
+const panel = ref<HTMLElement>(),
+  input = ref<HTMLTextAreaElement>(),
   dialog = ref<HTMLDialogElement>();
 const recent = computed(() => operations.value.filter((v) => !commentWritePending(v)).slice(0, 8));
 const confirmation = ref<
@@ -26,9 +27,16 @@ function requestDelete(item: CommentItem) {
     confirmation.value = { kind: 'delete', item };
 }
 function focus() {
-  input.value?.focus();
-  input.value?.scrollIntoView({
-    block: 'center',
+  const field = input.value;
+  if (!field) return;
+  field.focus({ preventScroll: true });
+  if (props.sticky) {
+    const viewport = field.closest('.comments-page')?.getBoundingClientRect();
+    const box = field.getBoundingClientRect();
+    if (viewport && box.top >= viewport.top && box.bottom <= viewport.bottom) return;
+  }
+  field.scrollIntoView({
+    block: 'nearest',
     behavior: useMotion().reduced.value ? 'instant' : 'smooth',
   });
 }
@@ -50,10 +58,15 @@ function abandon(row: CommentWrite) {
 }
 const label = (row: CommentWrite) =>
   row.command.kind === 'delete' ? '删除评论' : row.command.replyTo ? '回复评论' : '发布评论';
-defineExpose({ requestDelete, focus });
+defineExpose({ requestDelete, focus, panel });
 </script>
 <template>
-  <section class="comment-write-panel" aria-label="发表或回复评论">
+  <section
+    ref="panel"
+    class="comment-write-panel"
+    :class="{ 'comment-write-sticky': sticky }"
+    aria-label="发表或回复评论"
+  >
     <div v-if="reply" class="comment-reply-draft">
       <span>回复 {{ reply.author?.name || '云音乐用户' }}：{{ reply.content }}</span>
       <button class="text-button" :disabled="busy || !!pending.length" @click="model.setReply()">
@@ -81,6 +94,8 @@ defineExpose({ requestDelete, focus });
     </form>
     <p v-if="error" class="error-state" role="alert">{{ error }}</p>
     <p v-if="message" class="comment-write-message" role="status">{{ message }}</p>
+  </section>
+  <div v-if="pending.length || recent.length || error" class="comment-write-records">
     <section v-if="pending.length" class="comment-write-pending" aria-label="待确认的评论操作">
       <article v-for="row in pending" :key="row.id" :data-write-phase="row.phase">
         <strong>{{ label(row) }}</strong>
@@ -135,46 +150,63 @@ defineExpose({ requestDelete, focus });
     >
       刷新操作记录
     </button>
-    <dialog
-      v-if="confirmation"
-      ref="dialog"
-      class="comment-write-confirm"
-      aria-labelledby="comment-write-confirm-title"
-      @cancel.prevent="confirmation = undefined"
+  </div>
+  <dialog
+    v-if="confirmation"
+    ref="dialog"
+    class="comment-write-confirm"
+    aria-labelledby="comment-write-confirm-title"
+    @cancel.prevent="confirmation = undefined"
+  >
+    <header>
+      <h2 id="comment-write-confirm-title">
+        {{ confirmation.kind === 'abandon' ? '停止核对这次操作？' : '删除这条评论？' }}
+      </h2>
+      <button class="icon-button" aria-label="关闭评论确认" @click="confirmation = undefined">
+        <Icon name="close" />
+      </button>
+    </header>
+    <p v-if="confirmation.kind === 'abandon'">
+      停止核对不会撤回可能已提交的内容，也不表示操作失败。你仍可在评论页查看结果。
+    </p>
+    <template v-else
+      ><p>删除后将不再公开显示这条评论。</p>
+      <blockquote>
+        {{
+          confirmation.kind === 'delete'
+            ? confirmation.item.content
+            : confirmation.row.target?.content
+        }}
+      </blockquote></template
     >
-      <header>
-        <h2 id="comment-write-confirm-title">
-          {{ confirmation.kind === 'abandon' ? '停止核对这次操作？' : '删除这条评论？' }}
-        </h2>
-        <button class="icon-button" aria-label="关闭评论确认" @click="confirmation = undefined">
-          <Icon name="close" />
-        </button>
-      </header>
-      <p v-if="confirmation.kind === 'abandon'">
-        停止核对不会撤回可能已提交的内容，也不表示操作失败。你仍可在评论页查看结果。
-      </p>
-      <template v-else
-        ><p>删除后将不再公开显示这条评论。</p>
-        <blockquote>
-          {{
-            confirmation.kind === 'delete'
-              ? confirmation.item.content
-              : confirmation.row.target?.content
-          }}
-        </blockquote></template
-      >
-      <footer>
-        <button class="download-button" @click="confirmation = undefined">取消</button
-        ><button class="primary" @click="confirm">
-          {{ confirmation.kind === 'abandon' ? '停止核对' : '确认删除' }}
-        </button>
-      </footer>
-    </dialog>
-  </section>
+    <footer>
+      <button class="download-button" @click="confirmation = undefined">取消</button
+      ><button class="primary" @click="confirm">
+        {{ confirmation.kind === 'abandon' ? '停止核对' : '确认删除' }}
+      </button>
+    </footer>
+  </dialog>
 </template>
 <style scoped>
 .comment-write-panel {
   margin: 20px 0 28px;
+}
+.comment-write-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 6px 0;
+}
+.comment-write-sticky textarea {
+  max-height: max(100px, 24vh);
+}
+.comment-write-sticky textarea:focus-visible {
+  outline-offset: -2px;
+}
+.comment-write-records {
+  margin-bottom: 16px;
 }
 .comment-write-panel textarea {
   width: 100%;

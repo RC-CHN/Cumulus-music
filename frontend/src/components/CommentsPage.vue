@@ -74,6 +74,20 @@ watch(
 );
 const composer = ref<InstanceType<typeof CommentWritePanel>>(),
   floorContainer = ref<HTMLDivElement>();
+const composerHeight = ref(0);
+watch(
+  () => (props.embedded ? undefined : composer.value?.panel),
+  (element, _, cleanup) => {
+    composerHeight.value = 0;
+    if (!element) return;
+    const measure = () => (composerHeight.value = element.offsetHeight);
+    const resize = new ResizeObserver(measure);
+    resize.observe(element);
+    measure();
+    cleanup(() => resize.disconnect());
+  },
+  { flush: 'post' },
+);
 const floorView = useCommentFloorView(floor, scroller, floorContainer, owner);
 const writing = computed(() => writer.busy.value || writer.pending.value.length > 0);
 onUnmounted(() => {
@@ -126,6 +140,7 @@ const missingTarget = computed(
     ref="scroller"
     class="comments-page"
     :class="{ 'comments-embedded': embedded }"
+    :style="{ scrollPaddingTop: composerHeight + 'px' }"
     aria-label="评论页面"
     :aria-busy="loading"
   >
@@ -165,6 +180,7 @@ const missingTarget = computed(
       ref="composer"
       :key="`${model.epoch.value}:${resourceKey(model.resource.value)}`"
       :model="writer"
+      :sticky="!embedded"
     />
     <div class="comments-tools">
       <div class="comments-tabs" role="tablist" aria-label="评论排序">

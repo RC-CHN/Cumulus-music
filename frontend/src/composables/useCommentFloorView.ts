@@ -68,8 +68,10 @@ export function useCommentFloorView(
     )
       return;
     if (visibleCommentControl(anchor)) anchor!.focus({ preventScroll: true });
-    else if (anchor?.isConnected) anchor.focus();
-    else node.querySelector<HTMLElement>('[data-comment-read-heading]')?.focus();
+    else if (anchor?.isConnected) {
+      anchor.focus({ preventScroll: true });
+      anchor.scrollIntoView({ block: 'nearest' });
+    } else node.querySelector<HTMLElement>('[data-comment-read-heading]')?.focus();
   }
   return { open, close };
 }

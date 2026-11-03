@@ -11,6 +11,7 @@ def main():
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--runtime', type=Path)
+    parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--screenshots', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
@@ -25,6 +26,8 @@ def main():
         env[key] = str(path)
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve())+os.pathsep+env.get('PATH', '')
+    if args.frontend_dist:
+        env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve())
     output = root/'run/first'
     with (root/'host.log').open('x', encoding='utf-8') as log:
         code = launch(args.binary.resolve(), env, log, output, args.screenshots)
@@ -36,6 +39,7 @@ def main():
     states = {value['stage'].split('_', 2)[2]: value for path in sorted(output.glob('ux_*.json'))
               if (value := json.loads(path.read_text(encoding='utf-8')))}
     assert len(states) == complete['stageCount'] == 39
+    assert states['initial_light']['stickyComposer'] and states['small_latest_light']['stickyComposer']
     for state in states.values():
         assert state['visible'] and state['focused'] and state['focusValid'] and not state['overflow']
         assert state['cards'] <= 64 and all(control['hit'] for control in state['controls'])
@@ -63,7 +67,7 @@ def main():
     assert states['reduced_floor_open_light']['motion'] == states['reduced_floor_close_light']['motion'] == 'reduced'
     assert not states['expired_light']['ids'] and states['expired_light']['cards'] == 0
     if args.screenshots: assert len(list(output.glob('ux_*.png'))) == 39
-    report = dict(ok=True,states=39,screenshots=39 if args.screenshots else 0,exactReadRetryVerified=True,historyAndFocusVerified=True,realMusicRequests=0,realAccountWrites=0,playbackVerified=False)
+    report = dict(ok=True,states=39,screenshots=39 if args.screenshots else 0,exactReadRetryVerified=True,historyAndFocusVerified=True,stickyComposerVerified=True,realMusicRequests=0,realAccountWrites=0,playbackVerified=False)
     (root/'report.json').write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8')
     print(json.dumps(report))
 

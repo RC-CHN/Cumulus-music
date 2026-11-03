@@ -61,4 +61,4 @@ frontend/tests/comment-resource.test.ts覆盖独立错误/缓存/重试、切号
 执行生产UI/IPC/SQLite/libmpv/null，截图/探针细节见ui-ux-validation.txt。
 这些合成测试不证明真实CDN/实体声卡、真实付费内容或Windows实机视觉。MV回跳专项
 刻意拒绝视频流，只验证资源信息和路由，不声称MV解码通过。官方用户主页、富文本/
-VIP/完整评论菜单、吸顶输入、其他AB/全部DPI及全应用逐页对齐仍继续。
+VIP/完整评论菜单、其他AB/全部DPI及全应用逐页对齐仍继续。

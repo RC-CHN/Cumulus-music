@@ -53,6 +53,21 @@
       ]
     },
     {
+      "feature": "Standalone sticky comment composer with focus clearance",
+      "source": "CommentLayout.tsx / CommentTextAreaWrapper",
+      "frontend": [
+        "components/CommentsPage.vue",
+        "components/CommentWritePanel.vue",
+        "composables/useCommentReadFocus.ts",
+        "composables/useCommentFloorView.ts"
+      ],
+      "verification": [
+        "scripts/ci/comment_read_smoke.py",
+        "desktop/examples/comment_read_ui_probe.js"
+      ],
+      "boundary": "Embedded detail comments retain the existing scrolling structure."
+    },
+    {
       "feature": "Recovered non-macOS comment card dimensions and bad artwork fallback",
       "frontend": [
         "components/CommentCard.vue",
@@ -74,7 +89,7 @@
   "boundaries": [
     "Synthetic read proof rejects account writes; no real account/CDN/audio verification",
     "Shared dimensions are source-derived; no official same-state pixel oracle",
-    "Resource header/sticky composer/VIP/rich text/user profile/full menus remain open",
+    "Embedded comment layout, VIP, rich text, user profile, and full menus remain open",
     "Windows physical visual and all DPI unverified",
     "Full application goal active"
   ]
