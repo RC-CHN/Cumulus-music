@@ -79,3 +79,10 @@ rust-core-validation.txt。没有新增账号或网络请求，不能替代实�
   持久化最后一段滑杆增益并进入实际 libmpv 处理状态。过滤器仅在
   成功输出样本后报告已处理的 revision，重新激活或暂停不能用旧采样
   冒充新设置。独立三种采样率/声道组合逐样本 PCM 与恢复 DSP 一致。
+
+  同一正式界面探针另回读关闭、再开启和十段归零，确认原生 revision 前进且
+  同一播放条目继续推进。退出后独立核对 SQLite 中游客的完整预设与 revision；
+  启动第二个 WebView 进程，确认暂停位置及曲线恢复，继续播放后实际处理状态恢复，
+  且没有重复写设置。Linux 合成媒体/null 验收通过，测试进程无外网路由：
+  .build/equalizer-grouped-proof/report.json。平直状态的处理标签不证明 PCM 变化；
+  逐样本证据仍使用独立 DSP 对照。该次未在 Windows 或物理声卡运行。

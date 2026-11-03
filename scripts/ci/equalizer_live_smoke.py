@@ -1,9 +1,34 @@
-"""Exercise input-only equalizer adjustments in the production WebView."""
+"""Exercise live equalizer controls and durable state in two production WebViews."""
 import argparse
 import json
 import os
+import sqlite3
+from contextlib import closing
 from pathlib import Path
 import subprocess
+
+
+def run(binary, env, root, reopen=False):
+    output = root/'run'/('reopen' if reopen else 'first')
+    if reopen:
+        env = {**env, 'CUMULUS_PROOF_REOPEN': '1'}
+    with (root/('reopen.log' if reopen else 'host.log')).open('x', encoding='utf-8') as log:
+        completed = subprocess.run([str(binary)], env=env, stdout=log, stderr=log,
+                                   timeout=120, check=False)
+    failed = output/'failed.json'
+    assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
+    assert completed.returncode == 0
+    return lambda name: json.loads((output/f'{name}.json').read_text(encoding='utf-8'))
+
+
+def persisted(root):
+    database = root/'run/state/core.sqlite3'
+    with closing(sqlite3.connect(database.as_uri()+'?mode=ro', uri=True)) as store:
+        rows = store.execute(
+            "SELECT owner,value FROM state WHERE kind='equalizer-preferences-v1' AND key='current'"
+        ).fetchall()
+    assert len(rows) == 1 and rows[0][0] == 'local-guest'
+    return json.loads(rows[0][1])
 
 
 def main():
@@ -24,14 +49,8 @@ def main():
         directory = root/'os-profile'/key
         directory.mkdir(parents=True, mode=0o700)
         env[key] = str(directory)
-    with (root/'host.log').open('x', encoding='utf-8') as log:
-        completed = subprocess.run([str(args.binary.resolve(strict=True))], env=env,
-                                   stdout=log, stderr=log, timeout=120, check=False)
-    output = root/'run/first'
-    failed = output/'failed.json'
-    assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
-    assert completed.returncode == 0
-    read = lambda name: json.loads((output/f'{name}.json').read_text(encoding='utf-8'))
+    binary = args.binary.resolve(strict=True)
+    read = run(binary, env, root)
     custom = read('eq_custom')
     native = custom['native']['equalizer']
     assert custom['status'] == native['status'] == 'processing'
@@ -40,11 +59,41 @@ def main():
     after = custom['native']
     assert before['state'] == after['state'] == 'playing'
     assert before['entryId'] == after['entryId'] and after['position'] > before['position']
-    assert read('eq_off')['native']['equalizer']['settings']['enabled'] is False
-    assert read('eq_saved')['native']['equalizer']['settings']['gains'][4] == 4
+    off = read('eq_off')['native']
+    reenabled = read('eq_reenabled')['native']
+    flat = read('eq_flat')['native']
+    assert off['equalizer']['settings'] == {**native['settings'], 'enabled': False}
+    assert reenabled['equalizer']['settings'] == native['settings']
+    assert reenabled['equalizer']['status'] == 'processing'
+    assert flat['equalizer']['settings'] == {'enabled': True, 'gains': [0] * 10}
+    assert flat['equalizer']['status'] in ('configured', 'processing')
+    progression = [before, after, off, reenabled, flat]
+    assert all(stage['state'] == 'playing' and stage['entryId'] == before['entryId']
+               for stage in progression)
+    assert all(b['position'] > a['position'] and
+               int(b['equalizer']['revision']) > int(a['equalizer']['revision'])
+               for a, b in zip(progression, progression[1:]))
+    saved = read('eq_saved')['native']
+    assert saved['equalizer']['settings']['gains'][4] == 4
+    assert saved['state'] == 'paused' and saved['position'] >= 11
     assert read('complete')['ok']
+    record = persisted(root)
+    assert record == {'revision': int(saved['equalizer']['revision']),
+                      'settings': saved['equalizer']['settings']}
+
+    reopened = run(binary, env, root, reopen=True)
+    restored = reopened('eq_reopened')['native']
+    resumed = reopened('eq_reopened_playing')['native']
+    assert restored['state'] == 'paused' and restored['position'] >= 11
+    assert resumed['state'] == 'playing' and resumed['position'] > restored['position']
+    assert resumed['equalizer']['status'] == 'processing'
+    for stage in (restored, resumed):
+        assert stage['equalizer']['settings'] == record['settings']
+        assert int(stage['equalizer']['revision']) == record['revision']
+    assert persisted(root) == record and reopened('complete')['ok']
     report = {'ok': True, 'actualWebView': True, 'inputOnly': True, 'confirmedGain': -3.5,
-              'samePlayingEntryAdvanced': True}
+              'samePlayingEntryAdvanced': True, 'nativeFlatReset': True,
+              'persistedRevisionVerified': True, 'freshProcessResumedProcessing': True}
     (root/'report.json').write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
     print(json.dumps(report))
 

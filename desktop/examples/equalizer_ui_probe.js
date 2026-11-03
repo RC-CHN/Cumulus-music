@@ -33,8 +33,9 @@
    }else{
     await close();await click(el('[aria-label^="播放本地歌曲"]'));await wait(()=>el('.playerbar [aria-label="暂停"]')&&Number(el('[aria-label="播放进度"]')?.value)>.2,'actual_playback');await open();await wait(()=>el('.equalizer-status').dataset.status==='processing','actual_dsp');await stage('eq_enabled',{enabled:true,gains:pop});
     step='slider';const revision=el('.equalizer-dialog').dataset.revision,n=ranges()[4];for(const value of ['-1','-2','-3.5']){n.value=value;n.dispatchEvent(new Event('input',{bubbles:true}));}await wait(()=>settled()&&el('.equalizer-dialog').dataset.revision!==revision&&el('.equalizer-status').dataset.status==='processing','input_only_slider_processed');const custom=[...pop];custom[4]=-3.5;await stage('eq_custom',{enabled:true,gains:custom});
-    step='off';await toggle();await stage('eq_off',{enabled:false,gains:custom});await toggle();
-    step='reset';await click(byText('恢复平直'));await wait(()=>settled()&&gains().every(n=>n===0),'flat_reset');await preset(1);
+    step='off';await toggle();await stage('eq_off',{enabled:false,gains:custom});
+    step='reenable';await toggle();await wait(()=>el('.equalizer-status').dataset.status==='processing','reenabled_dsp');await stage('eq_reenabled',{enabled:true,gains:custom});
+    step='reset';const beforeReset=el('.equalizer-dialog').dataset.revision;await click(byText('恢复平直'));await wait(()=>settled()&&el('.equalizer-dialog').dataset.revision!==beforeReset&&gains().every(n=>n===0),'flat_reset');await stage('eq_flat',{enabled:true,gains:Array(10).fill(0)});await preset(1);
     step='seek';await close();const seek=el('[aria-label="播放进度"]');seek.value='12';seek.dispatchEvent(new Event('change',{bubbles:true}));await wait(()=>Number(seek.value)>=11&&!el('.playerbar [aria-label="暂停"]')?.disabled,'seek');await click(el('.playerbar [aria-label="暂停"]'));await wait(()=>el('.playerbar [aria-label="播放"]'),'pause');await open();await stage('eq_saved',{enabled:true,gains:pop});
    }
   }

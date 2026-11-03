@@ -84,7 +84,7 @@ fn main() {
         let handle=app.handle().clone();
         app.listen("equalizer-proof",move|event|{
             let value:Value=serde_json::from_str(event.payload()).unwrap();let stage=value["stage"].as_str().unwrap_or("").to_owned();
-            if !["eq_initial","eq_enabled","eq_custom","eq_off","eq_saved","eq_reopened","eq_reopened_playing","eq_missing","eq_disabled_recovery","complete","failed"].contains(&stage.as_str()) {return;}
+            if !["eq_initial","eq_enabled","eq_custom","eq_off","eq_reenabled","eq_flat","eq_saved","eq_reopened","eq_reopened_playing","eq_missing","eq_disabled_recovery","complete","failed"].contains(&stage.as_str()) {return;}
             let handle=handle.clone();let output=output.clone();
             tauri::async_runtime::spawn(async move {
                 let client=handle.state::<MusicClient>();
@@ -96,7 +96,9 @@ fn main() {
                             let enabled=value["expect"]["enabled"].as_bool();
                             let gains=value["expect"]["gains"].as_array();
                             let valid=enabled.is_none_or(|v|native["equalizer"]["settings"]["enabled"]==v)
-                                && gains.is_none_or(|g|g.iter().zip(native["equalizer"]["settings"]["gains"].as_array().unwrap()).all(|(a,b)|(a.as_f64().unwrap()-b.as_f64().unwrap()).abs()<1e-5));
+                                && gains.is_none_or(|g|native["equalizer"]["settings"]["gains"].as_array().is_some_and(|n|
+                                    g.len()==10 && n.len()==10 && g.iter().zip(n).all(|(a,b)|
+                                        a.as_f64().zip(b.as_f64()).is_some_and(|(a,b)|(a-b).abs()<1e-5))));
                             data["native"]=native;
                             if !valid {data["native_mismatch"]=json!(true);fs::write(output.join("failed.json"),serde_json::to_vec_pretty(&data).unwrap()).unwrap();handle.exit(1);return;}
                         }
