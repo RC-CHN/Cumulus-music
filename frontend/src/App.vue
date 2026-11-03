@@ -32,6 +32,8 @@ import PlaylistLibraryPage from './components/playlist/PlaylistLibraryPage.vue';
 import AppSidebar from './components/sidebar/AppSidebar.vue';
 import { libraryView } from './services/playlistLibrary';
 import DailyHeading from './components/DailyHeading.vue';
+import DailyBatchPage from './components/DailyBatchPage.vue';
+import ActionMenu from './components/ActionMenu.vue';
 import StyleTagBrowser from './components/StyleTagBrowser.vue';
 import PlaylistHero from './components/playlist/PlaylistHero.vue';
 import PlaylistTagBrowse from './components/playlist/PlaylistTagBrowse.vue';
@@ -117,7 +119,7 @@ import { rankingQueryKey, type RankingQuery } from './services/rankings';
 import { useTogether } from './composables/useTogether';
 import { usePodcasts } from './composables/usePodcasts';
 import type { PodcastScope } from './services/podcast';
-import type { PlaylistView, TrackView } from './services/contracts';
+import { failure, type PlaylistView, type TrackView } from './services/contracts';
 import { useLocal } from './composables/useLocal';
 import { useLocalMatching } from './composables/useLocalMatching';
 import type { LocalQuery } from './services/local';
@@ -774,6 +776,74 @@ function downloadBatchLeft() {
     ?.focus({ preventScroll: true });
 }
 const catalogDetailPage = ref<InstanceType<typeof CatalogPage>>();
+const dailyQueueMessage = ref('');
+const dailyQueueFailed = ref(false);
+const canQueueDaily = computed(
+  () =>
+    player.ready.value &&
+    !player.busy.value &&
+    !player.queueBusy.value &&
+    !music.loading.value &&
+    !player.view.value?.fm &&
+    !player.view.value?.intelligence &&
+    !together.view.value?.attached,
+);
+const dailyMenuItems = computed(() => [
+  { key: 'batch', label: '批量操作' },
+  { key: 'queue', label: '添加全部至播放列表', disabled: !canQueueDaily.value },
+]);
+let dailyMenuRevision: string | null | undefined;
+let restoreDailyMenu = false;
+watch([music.page, () => music.account.value.epoch], ([next], [previous]) => {
+  dailyQueueMessage.value = '';
+  restoreDailyMenu = next.kind === 'daily' && previous.kind === 'daily_batch';
+});
+function restoreDailyMenuFocus() {
+  if (!restoreDailyMenu || music.page.value.kind !== 'daily') return;
+  const trigger = document.querySelector<HTMLElement>(
+    '.page-view:not(.page-leave-active) .daily-track-actions .menu-trigger:not(:disabled)',
+  );
+  // Results can arrive while the old batch view is still leaving.
+  if (!trigger) return;
+  restoreDailyMenu = false;
+  if (document.activeElement === document.body) trigger.focus({ preventScroll: true });
+}
+watch([music.page, music.result], () => void nextTick(restoreDailyMenuFocus), { flush: 'post' });
+function mainPageEntered() {
+  miniFmFocus.complete();
+  restoreDailyMenuFocus();
+}
+async function dailyMenuAction(key: string) {
+  const currentPage = music.page.value;
+  const epoch = music.account.value.epoch;
+  const revision = music.result.value?.revision;
+  if (
+    currentPage.kind !== 'daily' ||
+    !revision ||
+    dailyMenuRevision !== revision ||
+    music.loading.value
+  )
+    return;
+  if (key === 'batch') return music.navigate({ kind: 'daily_batch' });
+  if (key !== 'queue' || !canQueueDaily.value) return;
+  const visible = () => music.page.value === currentPage && music.account.value.epoch === epoch;
+  const starts = !player.view.value?.queueLen && !player.view.value?.track;
+  dailyQueueFailed.value = false;
+  dailyQueueMessage.value = '正在添加至播放列表…';
+  try {
+    const state = await player.queueDaily(revision);
+    if (!visible()) return;
+    if (!state) throw { message: '播放状态已变化，请重试' };
+    if (starts && state.state === 'error') throw { message: '歌曲未能播放，请重试' };
+    dailyQueueMessage.value = starts ? '已开始播放每日推荐' : '已添加全部至播放列表';
+  } catch (error) {
+    if (!visible()) return;
+    const issue = failure(error);
+    dailyQueueFailed.value = true;
+    dailyQueueMessage.value = issue.message;
+    if (['session_expired', 'profile_changed'].includes(issue.code)) void music.bootstrap(false);
+  }
+}
 async function retryDailyCache(event: MouseEvent) {
   const trigger = event.currentTarget;
   if (!(trigger instanceof HTMLButtonElement)) return;
@@ -1715,7 +1785,7 @@ onUnmounted(() => {
   <div class="app-shell">
     <AppSidebar
       :key="`${account.epoch}:${account.status}`"
-      :page="page"
+      :page="page.kind === 'daily_batch' ? { kind: 'daily' } : page"
       :playlists="playlists"
       :history-kind="recent.kind.value"
       :initializing="initializing"
@@ -1867,7 +1937,7 @@ onUnmounted(() => {
             @leave="pageTransition.leave"
             @enter-cancelled="pageTransition.cancel"
             @leave-cancelled="pageTransition.cancel"
-            @after-enter="miniFmFocus.complete"
+            @after-enter="mainPageEntered"
           >
             <div class="page-view" :key="pageKey">
               <LocalPage
@@ -2196,6 +2266,21 @@ onUnmounted(() => {
                 @select="player.select"
                 @play-mv="(task) => openMv(task.track.id, task.id)"
               />
+              <DailyBatchPage
+                v-else-if="page.kind === 'daily_batch'"
+                :page="result"
+                :liked="liked"
+                :current-id="searchCurrentSongId(player.view.value)"
+                :loading="loading"
+                :error="error"
+                :player="player"
+                :queueable="canQueueDaily"
+                @close="music.back()"
+                @refresh="music.load()"
+                @expired="music.bootstrap(false)"
+                @collect="(tracks) => (playlistDialog = { kind: 'tracks', tracks })"
+                @download="(tracks) => (downloadDialog = { kind: 'start', tracks })"
+              />
               <PlaylistLibraryPage
                 v-else-if="page.kind === 'library'"
                 :playlists="playlists"
@@ -2442,6 +2527,15 @@ onUnmounted(() => {
                     <Icon v-if="page.kind === 'daily'" name="download" />
                     {{ page.kind === 'daily' ? '下载' : '下载当前歌曲列表' }}
                   </button>
+                  <ActionMenu
+                    v-if="page.kind === 'daily'"
+                    class="daily-more"
+                    label="每日推荐更多操作"
+                    :disabled="!result?.tracks.length || !result.revision || loading"
+                    :items="dailyMenuItems"
+                    @opened="dailyMenuRevision = result?.revision"
+                    @select="dailyMenuAction"
+                  />
                   <span v-if="player.busy.value" class="muted" role="status">正在准备播放…</span>
                   <nav v-if="page.kind === 'daily'" class="daily-links" aria-label="每日推荐入口">
                     <button
@@ -2461,6 +2555,14 @@ onUnmounted(() => {
                     </button>
                   </nav>
                 </div>
+                <p
+                  v-if="page.kind === 'daily' && dailyQueueMessage"
+                  class="batch-operation-feedback"
+                  :class="{ failed: dailyQueueFailed }"
+                  role="status"
+                >
+                  {{ dailyQueueMessage }}
+                </p>
                 <div v-if="loading && !result" class="empty-state" role="status">
                   <span class="spinner" />
                   <p>正在加载歌曲…</p>

@@ -234,6 +234,7 @@ export type PlaySelection =
       index: number;
       quality: Quality;
     }
+  | { kind: 'daily_recommendations_batch'; revision: string; indices: number[]; quality: Quality }
   | {
       kind: 'playlist';
       id: string;
@@ -272,6 +273,13 @@ export type PlayerAction =
     }
   | { kind: 'queue_downloads'; task_ids: string[]; expected_queue_revision: string }
   | { kind: 'queue_playlist'; id: string; quality: Quality; expected_queue_revision: string }
+  | {
+      kind: 'queue_daily_recommendations';
+      revision: string;
+      indices?: number[];
+      quality: Quality;
+      expected_queue_revision: string;
+    }
   | {
       kind: 'queue_artist_songs';
       pages: import('./catalog').CatalogSelectionPage[];

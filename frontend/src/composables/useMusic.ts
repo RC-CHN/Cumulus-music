@@ -31,6 +31,7 @@ export type Page =
   | { kind: 'podcasts' }
   | { kind: 'local' }
   | { kind: 'daily' }
+  | { kind: 'daily_batch' }
   | { kind: 'style_recommendations' }
   | { kind: 'library' }
   | { kind: 'downloads'; downloadVisit?: number; initialTab?: 'active' }
@@ -194,7 +195,7 @@ export function useMusic(
       )
         return;
       const data =
-        target.kind === 'daily'
+        target.kind === 'daily' || target.kind === 'daily_batch'
           ? await core.dailySongs()
           : target.kind === 'style_recommendations'
             ? await core.styleRecommendations(account.value.epoch)
@@ -259,6 +260,7 @@ export function useMusic(
             'comments',
             'catalog',
             'search',
+            'daily_batch',
             'mv',
           ].includes(page.value.kind)
         )
@@ -289,6 +291,11 @@ export function useMusic(
     const local = next.kind === 'local';
     if (initializing.value && !local) return;
     navigation(() => {
+      const keepDaily =
+        page.value.kind === 'daily' &&
+        next.kind === 'daily_batch' &&
+        !!result.value?.daily &&
+        !loading.value;
       history.push(
         page.value.kind === 'playlist' && subscriberReturn !== undefined
           ? { ...page.value, subscriberReturn }
@@ -305,7 +312,7 @@ export function useMusic(
               : next.kind === 'collections' && next.collectionVisit === undefined
                 ? { ...next, collectionVisit: ++collectionVisit }
                 : next;
-      void load();
+      if (!keepDaily) void load();
     }, local);
   }
   function back() {

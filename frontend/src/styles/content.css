@@ -81,6 +81,23 @@
 .daily-heading ~ .daily-track-actions > .download-button {
   width: 98px;
 }
+.daily-track-actions .daily-more {
+  flex: none;
+}
+.daily-track-actions .daily-more > .menu-trigger {
+  width: 48px;
+  height: 48px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-alt);
+}
+.daily-track-actions .daily-more > .menu-trigger:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+.daily-track-actions .daily-more > .menu-trigger .icon {
+  width: 24px;
+  height: 24px;
+}
 .daily-heading ~ .daily-track-actions .icon {
   width: 20px;
   height: 20px;
