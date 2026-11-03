@@ -13,9 +13,17 @@ use serde_json::{Value, json};
 use std::{fs, path::PathBuf, sync::Arc};
 use tauri::{Listener, Manager, webview::PageLoadEvent};
 
+const DAILY_TRACKS: u64 = 500;
+const PLAYLIST_TRACKS: u64 = 2_000;
+
+fn song(id: u64) -> Value {
+    json!({"id":id,"name":format!("合成歌曲 {id} · Scroll benchmark"),
+        "ar":[{"name":"Cumulus"}],"al":{"name":"合成专辑"},"dt":235000,"fee":id%3})
+}
+
 struct Library;
 impl Api for Library {
-    fn request<'a>(&'a self, path: &'a str, _: Value, _: bool) -> ApiFuture<'a, Value> {
+    fn request<'a>(&'a self, path: &'a str, args: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             Ok(match path {
                 "/api/w/nuser/account/get" => {
@@ -25,8 +33,39 @@ impl Api for Library {
                     json!({"code":200,"more":false,"playlist":(1..=300).map(|i|json!({"id":i,"userId":2,"name":format!("合成歌单 {i}"),"trackCount":2000})).collect::<Vec<_>>()})
                 }
                 "/api/song/like/get" => json!({"code":200,"ids":[3,7,100]}),
-                "/api/v3/discovery/recommend/songs" => {
-                    json!({"code":200,"data":{"dailySongs":(1..=2000).map(|i|json!({"id":i,"name":format!("合成歌曲 {i} · Scroll benchmark"),"ar":[{"name":"Cumulus"}],"al":{"name":"合成专辑"},"dt":235000,"fee":i%3})).collect::<Vec<_>>()}})
+                "/api/rtrs/abt/front/expinfo/list" if args["expNames"] == "PH-PC-Blacklist" => {
+                    json!({"code":200,"data":[{"expName":"PH-PC-Blacklist","expGroupName":"t2"}]})
+                }
+                "/api/v1/discovery/recommend/songs" if args == json!({"limit":30}) => {
+                    json!({"code":200,"recommend":(1..=DAILY_TRACKS).map(song).collect::<Vec<_>>()})
+                }
+                "/api/v6/playlist/detail" if args["id"] == "1" => {
+                    json!({"code":200,"playlist":{
+                        "id":1,"userId":2,"name":"合成歌单 1","trackCount":PLAYLIST_TRACKS,
+                        "trackIds":(1..=PLAYLIST_TRACKS).map(|id|json!({"id":id})).collect::<Vec<_>>()
+                    }})
+                }
+                "/api/v3/song/detail" => {
+                    let request = args["c"]
+                        .as_str()
+                        .ok_or(cumulus_core::Error::Response("missing scroll song batch"))?;
+                    let rows = serde_json::from_str::<Vec<Value>>(request)?;
+                    if rows.len() != 100 {
+                        return Err(cumulus_core::Error::Response(
+                            "invalid scroll song batch size",
+                        ));
+                    }
+                    let ids = rows
+                        .iter()
+                        .map(|row| {
+                            row["id"]
+                                .as_str()
+                                .and_then(|id| id.parse::<u64>().ok())
+                                .filter(|id| (1..=PLAYLIST_TRACKS).contains(id))
+                                .ok_or(cumulus_core::Error::Response("invalid scroll song ID"))
+                        })
+                        .collect::<cumulus_core::Result<Vec<_>>>()?;
+                    json!({"code":200,"songs":ids.into_iter().map(song).collect::<Vec<_>>()})
                 }
                 _ => {
                     return Err(cumulus_core::Error::Response(
@@ -48,7 +87,7 @@ fn main() {
         .setup(move |app| {
             let registry = ProfileRegistry::open(&root.join("state"), ApiOrigin::Pc)?;
             let session = Arc::new(AccountSession::new(Arc::new(Library), Some(registry.store())));
-            app.manage(MusicClient::with_session(session, registry));
+            app.manage(MusicClient::with_session(session, registry).with_official_daily_experiment());
             if std::env::var_os("CUMULUS_PROOF_SMALL").is_some() {
                 app.get_webview_window("main").unwrap().set_size(tauri::LogicalSize::new(760.0, 540.0))?;
             }

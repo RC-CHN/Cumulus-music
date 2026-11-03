@@ -30,11 +30,25 @@
     return { fps: 1000*(times.length-1)/(times.at(-1)-times[0]), p50Ms: deltas[Math.floor(deltas.length*.5)], p95Ms: deltas[Math.floor(deltas.length*.95)], p99Ms: deltas[Math.floor(deltas.length*.99)], frames: times.length, maxRows, scrollTop: element.scrollTop, scriptCostMs: costs.reduce((a,b)=>a+b,0), mutations };
   }
   try {
-    await until(()=>document.querySelector('.track-row'), 'daily tracks did not load');
-    const tracks = document.querySelector('.track-scroll');
-    assert(document.querySelector('.track-table').getAttribute('aria-rowcount')==='2001', 'fixture track count');
+    const current = selector => document.querySelector('.page-view:not(.page-leave-active) '+selector);
+    const trackCount = () => Number(current('.track-table')?.getAttribute('aria-rowcount')) - 1;
+    const nav = name => [...document.querySelectorAll('.nav-item')].find(e=>e.textContent.trim()===name);
+    await until(()=>trackCount()===500 && current('.track-row'), 'daily tracks did not load');
+    nav('我的歌单').click();
+    await until(()=>current('[data-library-open="1"]'), 'playlist stress entry did not load');
+    current('[data-library-open="1"]').click();
+    await until(()=>trackCount()===100 && current('.track-row'), 'playlist first page did not load');
+    for(let count=200;count<=2000;count+=100) {
+      await until(()=>current('.load-more:not(:disabled)'), `playlist page ${count/100} did not become available`);
+      current('.load-more:not(:disabled)').click();
+      await until(()=>trackCount()===count, `playlist page ${count/100} did not load`);
+    }
+    assert(!current('.load-more'), 'playlist fixture unexpectedly has another page');
+    const tracks = current('.track-scroll');
     const idle = await measure(tracks, false);
     const songs = await measure(tracks, true);
+    songs.total=trackCount();
+    songs.pages=20;
     assert(songs.maxRows < 80 && songs.scrollTop > 8000, 'track virtualization');
     const first = document.querySelector('.track-row');
     assert(Number(first.getAttribute('aria-rowindex')) > 100, 'virtual rows did not advance');
@@ -48,9 +62,8 @@
     const windowButtons = [...(controls?.querySelectorAll('button') ?? [])].map(button=>button.getAttribute('aria-label'));
     assert(['迷你模式','最小化','最大化','关闭窗口'].every(name=>windowButtons.filter(label=>label===name).length===1), `custom window buttons missing or duplicated: ${JSON.stringify(windowButtons)}`);
     assert(document.querySelector('[data-tauri-drag-region]'), 'drag region missing');
-    const nav = name => [...document.querySelectorAll('.nav-item')].find(e=>e.textContent.trim()===name);
     nav('我的歌单').click();
-    await until(()=>document.querySelector('[data-group="created"] [data-library-open]'), 'library did not open');
+    await until(()=>current('[data-group="created"] [data-library-open]'), 'library did not open');
     const group = document.querySelector('[data-group="created"]');
     assert(group.querySelector('h2 small').textContent.trim()==='300', 'fixture playlist total');
     // Each official library section now has 20-item pages. Check all fixture
@@ -80,8 +93,8 @@
     await until(()=>!document.querySelector('dialog[open]'), 'dialog leave did not finish');
     assert(document.activeElement===create, 'dialog did not restore focus');
     nav('每日推荐').click();
-    await until(()=>document.querySelector('.track-row'), 'return navigation failed');
-    const snapshot={ok:true,viewport:[innerWidth,innerHeight],dpr:devicePixelRatio,idle,songs,playlists,customControls:true,windowButtons,dialogFocusRestored:true,realMusicRequests:0};
+    await until(()=>trackCount()===500 && current('.track-row'), 'return navigation failed');
+    const snapshot={ok:true,dailyTracks:trackCount(),viewport:[innerWidth,innerHeight],dpr:devicePixelRatio,idle,songs,playlists,customControls:true,windowButtons,dialogFocusRestored:true,realMusicRequests:0};
     if (window.__testWindowControls) {
       document.querySelector('button[aria-label="最大化"]').click();
       await until(()=>document.querySelector('button[aria-label="还原窗口"]'), 'maximize did not update');

@@ -24,6 +24,8 @@ def main():
     for label in ['迷你模式', '最小化', '最大化', '关闭窗口']:
         assert proof['windowButtons'].count(label) == 1, proof['windowButtons']
     assert proof['nativeDecorations'] is False and proof['realMusicRequests'] == 0
+    assert proof['dailyTracks'] == 500
+    assert proof['songs']['total'] == 2000 and proof['songs']['pages'] == 20
     assert 0 < proof['songs']['maxRows'] < 80 and proof['songs']['scrollTop'] > 8000
     assert proof['playlists']['total'] == 300 and proof['playlists']['pages'] == 15
     assert proof['playlists']['maxRows'] == 20 and proof['playlists']['scrollTop'] > 0
