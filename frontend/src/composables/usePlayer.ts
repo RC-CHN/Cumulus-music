@@ -620,9 +620,15 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   function retry() {
     if (!canRetry.value) return;
     const failed = failedOperation;
-    return failed?.repeat
-      ? run(failed.repeat, failed.repeat, !!failed.selection)
-      : action({ kind: 'refresh' });
+    if (failed?.repeat) return run(failed.repeat, failed.repeat, !!failed.selection);
+    const current = view.value;
+    if (current?.state === 'error' && current.playId)
+      return action({
+        kind: 'refresh_for',
+        play_id: current.playId,
+        expected_queue_revision: current.queueRevision,
+      });
+    return action({ kind: 'refresh' });
   }
   async function loadQueue() {
     const current = ++queueRequest,

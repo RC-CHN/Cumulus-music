@@ -929,7 +929,9 @@ test('unavailable online source is actionable without replaying the rejected sel
   f.emit({ ...state('5', '1', 'other-song'), state: 'error', error: 'generic native error' });
   assert.equal(f.player.canRetry.value, true);
   await f.player.retry();
-  assert.deepEqual(actions, [{ kind: 'refresh' }]);
+  assert.deepEqual(actions, [
+    { kind: 'refresh_for', play_id: 'other-song', expected_queue_revision: '1' },
+  ]);
   f.player.dispose();
 });
 
@@ -999,7 +1001,9 @@ test('channel-only source denial does not offer or execute a refresh', async () 
   });
   assert.equal(f.player.canRetry.value, true);
   await f.player.retry();
-  assert.deepEqual(actions, [{ kind: 'refresh' }]);
+  assert.deepEqual(actions, [
+    { kind: 'refresh_for', play_id: 'denied', expected_queue_revision: '1' },
+  ]);
   f.player.dispose();
 });
 
