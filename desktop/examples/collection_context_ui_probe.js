@@ -413,8 +413,9 @@
     await wait(() => one(".album-header"), "album detail");
     await capture("album_detail_light");
     await backCollection(100);
-    assert(
-      input().value === "收藏专辑" &&
+    await wait(
+      () =>
+        input().value === "收藏专辑" &&
         Math.abs(scroller().scrollTop - before.scrollTop) < 1 &&
         focusKey(document.activeElement) === before.focus,
       "exact album return",
@@ -593,8 +594,9 @@
     await wait(() => one(".artist-header"), "artist detail");
     await capture("artist_detail_dark");
     await backCollection(40);
-    assert(
-      input().value === "关注歌手" &&
+    await wait(
+      () =>
+        input().value === "关注歌手" &&
         Math.abs(scroller().scrollTop - follow.scrollTop) < 1 &&
         focusKey(document.activeElement) === follow.focus,
       "exact artist return",
