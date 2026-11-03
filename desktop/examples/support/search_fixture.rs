@@ -48,6 +48,7 @@ pub fn control(value: &Value) {
             "song_waterfall_error",
             "voice_queue",
             "playlist_creator_search",
+            "album_artist_search",
             "preview",
             "lyrics",
             "empty",
@@ -322,6 +323,24 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
     ))
     .unwrap();
     let mut response = fixtures[category].clone();
+    if mode == "album_artist_search" && matches!(category, "all" | "albums") {
+        let album = if category == "all" {
+            &mut response["data"]["blocks"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|block| block["blockCode"] == "search_block_album")
+                .unwrap()["resources"][0]["baseInfo"]
+        } else {
+            &mut response["result"]["albums"][0]
+        };
+        album["artist"] = json!({"id":100,"name":"合成主艺人"});
+        album["artists"] = json!([
+            {"id":101,"name":"合成合作艺人"},
+            {"name":"合成未标识艺人"},
+            {"id":100,"name":"合成主艺人"}
+        ]);
+    }
     if mode == "playlist_creator_search" && matches!(category, "all" | "playlists") {
         fn creators(rows: &mut [Value]) {
             for row in rows {

@@ -50,6 +50,31 @@
     } finally { window.requestAnimationFrame=frames; }
   }
   try {
+    if(window.__cumulusSearchAlbumArtistProof){
+      await wait(()=>one('.track-row'),'daily ready');
+      await fixture('album_artist_search');await fresh('合成艺人');
+      const card=()=>one('[data-result-key="album:201"]');
+      const artist=()=>card()?.querySelector('[data-result-action="artist:101:1"]');
+      for(const category of ['all','albums']){
+        if(category!=='all')await choose(category);
+        const target=artist();
+        assert(card()?.querySelector('.search-card-open')&&card().querySelector('.search-card-play'),'album details and playback are independent');
+        assert([...card().querySelectorAll('.search-album-artist')].map(node=>node.textContent.trim()).join(',')==='合成主艺人,合成合作艺人',
+          'primary and credited artists are independent controls in order');
+        assert(target?.getAttribute('aria-label')==='查看歌手 合成合作艺人'&&
+          card().querySelector('.search-album-artist-text')?.textContent.trim()==='合成未标识艺人',
+          'credit without native identity is plain text');
+        click(target);
+        await wait(()=>one('.artist-header h1')?.textContent.trim()==='相似歌手 101'&&one('.track-row'),
+          'opens native details for the selected artist');
+        click(button('返回上一页'));
+        await wait(()=>ready()&&one(`[data-category="${category}"]`)?.getAttribute('aria-selected')==='true'&&
+          document.activeElement===artist(),'Back restores the exact credited artist button');
+        await capture('album_artist_'+category);
+      }
+      await emit('complete',{ok:true,searchAlbumArtistVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      return;
+    }
     if(window.__cumulusSearchCollectionNextProof){
       await wait(()=>one('.track-row'),'daily ready');
       await fixture('good');await fresh('合成下一首合集');
