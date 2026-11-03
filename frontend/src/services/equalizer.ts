@@ -2,6 +2,10 @@ import { equalizerPresets } from '../data/equalizer-presets.ts';
 import type { EqualizerView, EqualizerSettings, EqualizerPreset, PlayerAction } from './player.ts';
 export { equalizerPresets };
 export const equalizerLabels = ['31', '63', '125', '250', '500', '1k', '2k', '4k', '8k', '16k'];
+/** Show the same hundredth of a dB as the native range, without float32 tails. */
+export function equalizerGainLabel(gain: number): string {
+  return String(Number(gain.toFixed(2)));
+}
 export function equalizerPreset(gains: readonly number[]): number {
   return equalizerPresets.findIndex(
     (p) =>

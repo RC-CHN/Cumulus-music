@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import type { PlayerModel } from '../composables/usePlayer';
 import {
   equalizerCanRetry,
+  equalizerGainLabel,
   equalizerLabels,
   equalizerMessage,
   equalizerPresetOption,
@@ -227,13 +228,16 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
               step="0.01"
               aria-orientation="vertical"
               :aria-label="`${label} Hz 增益`"
-              :aria-valuetext="`${gains[index]} 分贝`"
+              :aria-valuetext="`${equalizerGainLabel(gains[index]!)} 分贝`"
               :value="gains[index]"
               :disabled="disabled"
               @input="slide(index, $event)"
               @change="slide(index, $event)"
           /></span>
           <span>{{ label }}</span>
+          <span class="equalizer-band-value" aria-hidden="true">
+            {{ equalizerGainLabel(gains[index]!) }} dB
+          </span>
         </label>
       </div>
       <fieldset class="equalizer-tone" :disabled="disabled">
@@ -472,12 +476,33 @@ select {
   margin: 24px 0 22px;
 }
 .equalizer-band {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 12px;
   font-size: 12px;
   min-width: 0;
+}
+.equalizer-band-value {
+  display: none;
+  position: absolute;
+  z-index: 1;
+  inset-block-start: -19px;
+  inset-inline-start: 50%;
+  transform: translateX(-50%);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 1px 5px;
+  background: var(--surface-raised);
+  color: var(--text);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.equalizer-band:focus-within .equalizer-band-value,
+.equalizer-band:not(:has(input:disabled)):hover .equalizer-band-value {
+  display: block;
 }
 .equalizer-slider {
   --slider-length: 211px;

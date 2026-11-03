@@ -59,6 +59,14 @@
     await toggle();await close();await click(el('[aria-label^="播放本地歌曲"]'));await wait(()=>el('.playerbar [aria-label="暂停"]')&&Number(el('[aria-label="播放进度"]')?.value)>.2,'ordinary_recovery');await open();await stage('eq_disabled_recovery',{enabled:false,gains:pop});
    }else{
     await close();await click(el('[aria-label^="播放本地歌曲"]'));await wait(()=>el('.playerbar [aria-label="暂停"]')&&Number(el('[aria-label="播放进度"]')?.value)>.2,'actual_playback');await open();await wait(()=>el('.equalizer-status').dataset.status==='processing','actual_dsp');await stage('eq_enabled',{enabled:true,gains:pop});
+    step='focused_gain';const focusedGain=ranges()[3];
+    focusedGain.focus({preventScroll:true});
+    await wait(()=>{
+      const label=focusedGain.closest('.equalizer-band')?.querySelector('.equalizer-band-value');
+      return document.activeElement===focusedGain&&label?.getBoundingClientRect().width>0&&
+        label.textContent.trim()==='1.79 dB'&&focusedGain.getAttribute('aria-valuetext')==='1.79 分贝';
+    },'focused equalizer gain is visible and announced');
+    focusedGain.blur();
     step='same_curve_identity';const sameRevision=el('.equalizer-dialog').dataset.revision,sameBand=ranges()[4];
     for(const gain of [3,pop[4]]){sameBand.value=String(gain);sameBand.dispatchEvent(new Event('input',{bubbles:true}));}
     await wait(()=>settled()&&el('.equalizer-dialog').dataset.revision!==sameRevision&&el('[aria-label="均衡器预设"]').value==='-1'&&!byText('保存自定义预设').disabled,'manual equal to built-in');

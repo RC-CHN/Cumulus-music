@@ -5,6 +5,7 @@ import {
   equalizerPreset,
   equalizerPresetOption,
   equalizerChange,
+  equalizerGainLabel,
   equalizerMessage,
   equalizerCanRetry,
   equalizerLauncher,
@@ -24,6 +25,12 @@ test('official presets retain all decimal gains and match native float32 roundtr
     assert.equal(equalizerPreset(p.gains.map(Math.fround)), index);
   });
   assert.equal(equalizerPreset([1, 2]), -1);
+});
+test('visible and announced gain labels keep slider precision without native float tails', () => {
+  assert.equal(equalizerGainLabel(Math.fround(1.79)), '1.79');
+  assert.equal(equalizerGainLabel(Math.fround(-3.5)), '-3.5');
+  assert.equal(equalizerGainLabel(-0), '0');
+  assert.equal(equalizerGainLabel(12), '12');
 });
 test('full curve edits keep opaque revision and copy the mutable draft', () => {
   const current = view();
