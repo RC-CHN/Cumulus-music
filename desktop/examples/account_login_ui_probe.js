@@ -7,12 +7,15 @@
     if (!value) throw Error(message);
   };
   const one = (selector) => document.querySelector(selector);
-  const all = (selector) =>
-    [...document.querySelectorAll(selector)].filter(
-      (node) => !node.closest(".tab-leave-active,.modal-leave-active"),
+  const all = (selector, root = document) =>
+    [...(root?.querySelectorAll(selector) ?? [])].filter(
+      (node) =>
+        !node.closest(
+          "[inert],.tab-leave-active,.modal-leave-active,.reuse-step-leave-active",
+        ),
     );
   const button = (text, root = document) =>
-    [...root.querySelectorAll("button")].find(
+    all("button", root).find(
       (node) =>
         node.textContent.trim() === text ||
         node.getAttribute("aria-label") === text,
@@ -367,15 +370,30 @@
     );
     await settle();
     click(button("验证码登录"));
+    // A password panel also has the phone field and ready status. Yield its
+    // Vue patch, then require the new SMS panel and native reply together.
+    await sleep(0);
     await wait(
-      () =>
-        all('[aria-label="登录手机号"]').length &&
-        status() === "ready" &&
-        !one(".tab-leave-active"),
-      "SMS return",
+      () => {
+        const panel = all(".phone-sms-login")[0];
+        if (!panel || panel.dataset.phonePhase !== "number") return false;
+        const input = all('[aria-label="登录手机号"]', panel)[0];
+        const submit = all(".login-submit", panel)[0];
+        return (
+          status() === "ready" &&
+          input &&
+          !input.disabled &&
+          submit &&
+          !submit.disabled &&
+          !one(
+            ".tab-enter-active,.tab-leave-active,.reuse-step-enter-active,.reuse-step-leave-active",
+          )
+        );
+      },
+      "SMS return ready with enabled controls",
     );
     await settle();
-    click(one(".login-submit"));
+    click(all(".phone-sms-login .login-submit")[0]);
     await wait(() => one('[data-phone-phase="code_required"]'), "same phone code page restored");
     await settle();
     assert(
@@ -587,6 +605,7 @@
       ok: false,
       last,
       error: error instanceof Error ? error.message : "unknown",
+      stack: error instanceof Error ? error.stack?.slice(0, 4096) ?? null : null,
       status: status() ?? null,
       stageCount: count,
       body: document.body.innerText.slice(-1800),

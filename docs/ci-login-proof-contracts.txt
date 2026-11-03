@@ -1,0 +1,22 @@
+CI账号界面就绪与失败证据归档
+2026-11-03。代码修正及本地验证，不替代新提交的Windows CI结果。
+
+基线run41559647715、SHA9e502b612631e068055c8a364fc902bf236c784e：
+Linux成功，Windows的WebView合并step在account_login_smoke.py读取failed.json后失败。
+证据为last=sms_cooldown_small_dark、stageCount=5、enabled control；没有原始JS堆栈，
+不能严格认定具体某次点击。页面已回手机号初始态，旧等待又能被密码页瞬间满足，
+支持切换就绪竞态的判断；不把随后出现的通用Chrome窗口注销日志当根因。
+原日志和合成artifact保留于.build/ci-investigation-41559647715，不提交截图和产物。
+
+探针现在只选非inert、非离场面板中的控件；密码切回验证码后先等待Vue提交，
+再要求新的phone-sms-login[number]、原生ready、输入与submit启用和切换动画结束。
+点击仍要求enabled、visible、hit/focus；不修改产品的disabled保护，不跳过原业务断言。
+失败报告另外保存最多4096字符堆栈，以便准确定位下一次失败。
+最终本地Linux28态及逐图复核通过；Windows必须由新main CI验证。
+
+原诊断白名单漏ci-account-login及若干device/sms/phone-entry/FM/queue根目录。
+现从已检出的workflow中读取字面--root，只接受.build单层字母数字、横线和下划线名称；
+归档精确根目录及同名.log，不执行workflow、不展开环境变量或通配符。
+少量不经--root的原生输出使用明确文件名与Linux/Windows平台闭集。
+合成测试从workflow独立推导预期，检查全部证明根目录能归档，近似private/research目录不能混入；
+保留特殊文件名和空证据集测试。CI工具共50项通过。

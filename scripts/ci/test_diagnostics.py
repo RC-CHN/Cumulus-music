@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+import re
 import tarfile
 import tempfile
 import unittest
@@ -15,14 +16,138 @@ class ProofArchive(unittest.TestCase):
             proof = root / 'package-stage/linux-x64/equalizer-proof' / name / 'filter.txt'
             proof.parent.mkdir(parents=True)
             proof.write_text('synthetic', encoding='utf-8')
-            (root / 'ci-engine-roundtrip-windows.log').write_text('stage engine_start')
+            (root / 'ci-engine-roundtrip-windows-x64.log').write_text('stage engine_start')
             (root / 'private-session').write_text('must not be archived')
             target = root / 'diagnostics/proofs.tar.gz'
             self.assertEqual(archive(root, target), 2)
             with tarfile.open(target) as saved:
                 self.assertEqual(saved.extractfile(proof.relative_to(root).as_posix()).read(), b'synthetic')
                 self.assertNotIn('private-session', saved.getnames())
-                self.assertEqual(saved.extractfile('ci-engine-roundtrip-windows.log').read(), b'stage engine_start')
+                self.assertEqual(saved.extractfile('ci-engine-roundtrip-windows-x64.log').read(), b'stage engine_start')
+
+    def test_every_literal_workflow_smoke_root_and_neighboring_log_is_retained(self):
+        repository = Path(__file__).resolve().parents[2]
+        roots = set()
+        for workflow in sorted((repository / '.github/workflows').glob('*.yml')):
+            source = workflow.read_text(encoding='utf-8')
+            # Derive expectations from the actual command arguments, without
+            # importing the production root parser or its allowlist.
+            for argument in re.findall(r'(?<!\S)--root[ \t]+(\.build/[^\s]+)', source):
+                relative = argument.removeprefix('.build/')
+                self.assertRegex(relative, r'^[A-Za-z0-9][A-Za-z0-9_-]*$')
+                roots.add(relative)
+        required = {
+            'ci-account-login-windows',
+            'ci-device-login-windows', 'ci-device-login-legacy-windows',
+            'ci-sms-login-windows', 'ci-sms-login-legacy-windows',
+            'ci-sms-send-failure-windows', 'ci-sms-send-failure-legacy-windows',
+            'ci-phone-entry-windows', 'ci-phone-entry-legacy-windows',
+            'ci-fm-feedback-dialog-windows', 'ci-fm-state-recovery-windows',
+            'ci-fm-blacklist-windows', 'ci-queue-ui-windows',
+            'ci-queue-selection-windows', 'ci-queue-collection-windows',
+            'ci-queue-room-windows', 'ci-intelligence-ui-windows',
+            'ci-intelligence-start-windows', 'ci-intelligence-cycle-windows',
+            'ci-loudness-ui-windows',
+        }
+        self.assertEqual(required - roots, set())
+        with tempfile.TemporaryDirectory() as directory:
+            build = Path(directory)
+            expected = {}
+            for name in sorted(roots):
+                failure = f'{name}/first/failed.json'
+                path = build / failure
+                path.parent.mkdir(parents=True)
+                path.write_text('{"ok":false,"synthetic":true}', encoding='utf-8')
+                expected[failure] = b'{"ok":false,"synthetic":true}'
+                log = f'{name}.log'
+                (build / log).write_text('synthetic WebView failure', encoding='utf-8')
+                expected[log] = b'synthetic WebView failure'
+            target = build / 'diagnostics/proofs.tar.gz'
+            self.assertEqual(archive(build, target), 2 * len(roots))
+            with tarfile.open(target) as saved:
+                for relative, content in expected.items():
+                    with self.subTest(path=relative):
+                        self.assertIn(relative, saved.getnames())
+                        self.assertEqual(saved.extractfile(relative).read(), content)
+
+    def test_positional_login_native_reports_and_supported_platform_proofs_are_retained(self):
+        paths = [
+            'ci-login/first/failed.json', 'ci-login.log',
+            'ci-native-audio-linux.json',
+            'ci-native-audio-linux.progress.jsonl',
+            'ci-native-audio-loudness-linux.failure.json',
+            'ci-native-audio-windows.log',
+            'ci-native-audio-loudness-windows.json',
+            'ci-native-audio-loudness-windows-profile/webview/failed.json',
+            'ci-engine-roundtrip-linux-x64.log',
+            'ci-equalizer-roundtrip-windows-x64.log',
+            'package-stage/windows-x64/equalizer-proof/filter.txt',
+            'windows-media/equalizer-proof/audit.json',
+            'windows-media/plan.json',
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            build = Path(directory)
+            for relative in paths:
+                path = build / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('synthetic declared proof', encoding='utf-8')
+            target = build / 'diagnostics/proofs.tar.gz'
+            self.assertEqual(archive(build, target), len(paths))
+            with tarfile.open(target) as saved:
+                for relative in paths:
+                    with self.subTest(path=relative):
+                        self.assertEqual(
+                            saved.extractfile(relative).read(),
+                            b'synthetic declared proof',
+                        )
+
+    def test_undeclared_private_neighbors_and_unsupported_package_platforms_are_excluded(self):
+        with tempfile.TemporaryDirectory() as directory:
+            build = Path(directory)
+            included = build / 'ci-fm-state-recovery-windows/first/failed.json'
+            included.parent.mkdir(parents=True)
+            included.write_text('synthetic expected proof', encoding='utf-8')
+            private = [
+                'research/account.json',
+                'references/session.json',
+                'private-session/cookies.json',
+                'ci-account-login-windows-private/first/failed.json',
+                'ci-account-login-windows-private.log',
+                'ci-fm-real-account/first/failed.json',
+                'ci-fm-real-account.log',
+                'ci-login-private-session/account.json',
+                'ci-login-windows-private/account.json',
+                'ci-native-audio-real-device.json',
+                'ci-download-private-account/account.json',
+                'ci-cloud-private-account/account.json',
+                'ci-ux-real-account/account.json',
+                'ci-email-login-private/account.json',
+                'ci-question-login-private/account.json',
+                'ci-reuse-login-private/account.json',
+                'ci-mini-real-account/account.json',
+                'ci-engine-roundtrip-windows.log',
+                'ci-engine-roundtrip-private-windows-x64.log',
+                'ci-equalizer-roundtrip-windows-x64-private.log',
+                'package-stage/private-platform/equalizer-proof/filter.txt',
+                'package-stage/linux-x64/equalizer-proof-private/filter.txt',
+                'windows-media/private-session/account.json',
+                'windows-media/player-probe-private.log',
+            ]
+            for relative in private:
+                path = build / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('synthetic excluded data', encoding='utf-8')
+            target = build / 'diagnostics/proofs.tar.gz'
+            self.assertEqual(archive(build, target), 1)
+            with tarfile.open(target) as saved:
+                names = set(saved.getnames())
+                self.assertEqual(
+                    saved.extractfile(included.relative_to(build).as_posix()).read(),
+                    b'synthetic expected proof',
+                )
+                for relative in private:
+                    with self.subTest(path=relative):
+                        self.assertNotIn(relative, names)
 
     def test_early_failure_can_archive_an_empty_proof_set(self):
         with tempfile.TemporaryDirectory() as directory:
