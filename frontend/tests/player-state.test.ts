@@ -167,7 +167,7 @@ test('page-owned selection failures cannot become a footer retry with an expired
   assert.equal(f.player.busy.value, false);
   await f.player.retry();
   assert.equal(selections, 1);
-  assert.deepEqual(calls, [{ kind: 'refresh' }]);
+  assert.deepEqual(calls, []);
   f.player.dispose();
 });
 test('a page-owned selection reply cannot restore its previous account', async () => {
@@ -953,6 +953,71 @@ test('prepared card playback cannot start after an account change or newer playb
   f.player.dispose();
 });
 
+test('a pending card read cannot select over a newer native track or queue', async () => {
+  for (const update of [
+    state('3', '1', 'replacement'),
+    { ...state('3', '1', 'source'), queueRevision: '2' },
+  ]) {
+    const pending = deferred<PlaySelection>();
+    let selections = 0;
+    const f = fixture({
+      playSelection: async () => {
+        selections++;
+        return state('4', '1', 'unexpected');
+      },
+    });
+    await f.player.connect(account());
+    f.emit(state('2', '1', 'source'));
+    const reading = f.player.prepareSelection(() => pending.promise);
+    f.emit(update);
+    pending.resolve({ kind: 'songs', ids: ['1'], index: 0, quality: 'standard' });
+    await reading;
+    assert.equal(selections, 0);
+    assert.equal(f.player.view.value?.playId, update.playId);
+    assert.equal(f.player.error.value, '');
+    f.player.dispose();
+  }
+});
+
+test('a newer native track makes a failed unguarded selection and any late reply non-retryable', async () => {
+  for (const late of [false, true]) {
+    let reject!: (issue: unknown) => void;
+    let selections = 0;
+    const controls: PlayerAction[] = [];
+    const f = fixture({
+      playSelection: () => {
+        selections++;
+        return new Promise((_, fail) => (reject = fail));
+      },
+      playerAction: async (_epoch, command) => {
+        controls.push(command);
+        return state('5', '1', 'unexpected');
+      },
+    });
+    await f.player.connect(account());
+    f.emit(state('2', '1', 'source'));
+    const selecting = f.player.select({ kind: 'songs', ids: ['1'], index: 0, quality: 'standard' });
+    const issue = { code: 'network', message: '旧请求失败', retryable: true };
+    if (!late) {
+      reject(issue);
+      await selecting;
+      assert.equal(f.player.canRetry.value, true);
+    }
+    f.emit(state('3', '1', 'replacement'));
+    if (late) {
+      reject(issue);
+      await selecting;
+    }
+    assert.equal(f.player.error.value, '');
+    assert.equal(f.player.canRetry.value, false);
+    await f.player.retry();
+    assert.equal(selections, 1);
+    assert.deepEqual(controls, []);
+    assert.equal(f.player.view.value?.playId, 'replacement');
+    f.player.dispose();
+  }
+});
+
 test('retrying card preparation rereads its list before any playback command', async () => {
   let reads = 0,
     calls = 0;
@@ -1039,7 +1104,7 @@ test('a trial activation error stays outside the generic playback retry', async 
   assert.equal(f.player.error.value, '');
   await f.player.retry();
   assert.equal(quota, 1);
-  assert.deepEqual(actions, ['refresh']);
+  assert.deepEqual(actions, []);
   f.player.dispose();
 });
 test('a trial response after an account switch cannot replace the replacement player', async () => {
@@ -1093,7 +1158,7 @@ test('queue edits capture the displayed revision, isolate errors and never enter
   await f.player.retry();
   assert.deepEqual(
     calls.map((i) => i.kind),
-    ['queue_for', 'refresh'],
+    ['queue_for'],
   );
   assert.deepEqual(calls[0], {
     kind: 'queue_for',
@@ -1233,7 +1298,7 @@ test('intelligence owns its retry separately and cannot replay an earlier failed
   assert.equal(f.player.view.value?.playId, 'native-new');
   await f.player.retry();
   assert.equal(selections, 1);
-  assert.equal(actions.at(-1)?.kind, 'refresh');
+  assert.equal(actions.at(-1)?.kind, 'pause');
   f.player.dispose();
 });
 

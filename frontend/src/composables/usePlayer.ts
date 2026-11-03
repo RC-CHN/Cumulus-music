@@ -21,6 +21,12 @@ import type { CloudQuery } from '../services/cloud.ts';
 import type { LocalQuery } from '../services/local.ts';
 import { useEqualizerDraft } from './useEqualizerDraft.ts';
 
+function sameSelection(a: PlayerView | undefined, b: PlayerView | undefined) {
+  return (
+    a?.playId === b?.playId && a?.entryId === b?.entryId && a?.queueRevision === b?.queueRevision
+  );
+}
+
 export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => void = () => {}) {
   const view = shallowRef<PlayerView>();
   const queue = shallowRef<QueueView>();
@@ -48,7 +54,8 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     queueRequest = 0,
     lyricRequest = 0;
   let disconnect: (() => void) | undefined;
-  let failedOperation: ((epoch: string) => Promise<PlayerView>) | undefined;
+  type PlaybackOperation = (epoch: string) => Promise<PlayerView>;
+  let failedOperation: { repeat?: PlaybackOperation; selection?: PlayerView } | undefined;
   const playing = computed(
     () => view.value?.state === 'playing' || view.value?.state === 'buffering',
   );
@@ -65,9 +72,9 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       queue.value.epoch === view.value?.epoch &&
       queue.value.revision === view.value.queueRevision,
   );
-  function handle(e: unknown) {
+  function handle(e: unknown, present = true) {
     const issue = failure(e);
-    if (issue.code !== 'stale') reported.value = issue;
+    if (present && issue.code !== 'stale') reported.value = issue;
     if (['session_expired', 'profile_changed'].includes(issue.code)) onSessionChanged();
     return issue;
   }
@@ -76,6 +83,12 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       return;
     const old = view.value;
     view.value = next;
+    // A native shortcut, mini player or queue step can select a replacement
+    // without touching this renderer's request counter.
+    if (failedOperation?.selection && !sameSelection(failedOperation.selection, next)) {
+      failedOperation = undefined;
+      reported.value = undefined;
+    }
     if (old?.playId !== next.playId) {
       lyrics.value = undefined;
       lyricRequest++;
@@ -145,10 +158,11 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       if (version === connection) handle(e);
     }
   }
-  async function run(operation: (current: string) => Promise<PlayerView>, onRetry = operation) {
+  async function run(operation: PlaybackOperation, onRetry = operation, selectionScoped = false) {
     if (!ready.value) return;
     const current = ++request;
     const captured = epoch;
+    const origin = selectionScoped ? view.value : undefined;
     busy.value = true;
     reported.value = undefined;
     try {
@@ -158,8 +172,12 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       if (captured === epoch && current === request) return next;
     } catch (e) {
       if (current === request && captured === epoch) {
-        const issue = handle(e);
-        failedOperation = issue.code !== 'stale' && issue.retryable ? onRetry : undefined;
+        const currentSelection = !selectionScoped || sameSelection(origin, view.value);
+        const issue = handle(e, currentSelection);
+        failedOperation =
+          currentSelection && issue.code !== 'stale'
+            ? { repeat: issue.retryable ? onRetry : undefined, selection: origin }
+            : undefined;
       }
     } finally {
       if (current === request) busy.value = false;
@@ -423,7 +441,8 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       throw e;
     }
   }
-  const select = (input: PlaySelection) => run((e) => core.playSelection(e, input));
+  const runSelection = (operation: PlaybackOperation) => run(operation, operation, true);
+  const select = (input: PlaySelection) => runSelection((e) => core.playSelection(e, input));
   function seekDisplayed(
     target: Pick<PlayerView, 'epoch' | 'playId' | 'queueRevision'>,
     seconds: number,
@@ -499,16 +518,22 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   // Card playback reads its authoritative list before selecting it. A delayed
   // read must not start audio after account replacement or a newer operation.
   const prepareSelection = (prepare: (epoch: string) => Promise<PlaySelection>) =>
-    run(async (e) => {
-      const captured = request;
+    runSelection(async (e) => {
+      const captured = request,
+        origin = view.value;
       const input = await prepare(e);
-      if (captured !== request || e !== epoch) throw { code: 'stale', message: '播放请求已更新' };
+      if (captured !== request || e !== epoch || !sameSelection(origin, view.value))
+        throw { code: 'stale', message: '播放请求已更新' };
       return core.playSelection(e, input);
     });
-  const downloads = (ids: string[], index: number) => run((e) => core.playDownloads(e, ids, index));
+  const downloads = (ids: string[], index: number) =>
+    runSelection((e) => core.playDownloads(e, ids, index));
   function retry() {
-    if ((reported.value?.retryable ?? view.value?.errorRetryable) === false) return;
-    return failedOperation ? run(failedOperation) : action({ kind: 'refresh' });
+    if (!canRetry.value) return;
+    const failed = failedOperation;
+    return failed?.repeat
+      ? run(failed.repeat, failed.repeat, !!failed.selection)
+      : action({ kind: 'refresh' });
   }
   async function loadQueue() {
     const current = ++queueRequest,
