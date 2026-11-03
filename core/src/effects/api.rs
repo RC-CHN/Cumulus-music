@@ -99,6 +99,19 @@ impl EffectsApi {
         self.detail(id, 10).await
     }
     pub async fn authorization(&self, id: EffectId) -> Result<Option<Authorization>> {
+        self.authorization_inner(id, false).await
+    }
+    pub(super) async fn directory_authorization(
+        &self,
+        id: EffectId,
+    ) -> Result<Option<Authorization>> {
+        self.authorization_inner(id, true).await
+    }
+    async fn authorization_inner(
+        &self,
+        id: EffectId,
+        require_observed_boolean: bool,
+    ) -> Result<Option<Authorization>> {
         let data = self
             .data("/api/vipauth/app/interests/auth/query", query(id))
             .await?;
@@ -118,7 +131,12 @@ impl EffectsApi {
                 {
                     return Err(Error::Response("effect authorization type mismatch"));
                 }
-                found = Some(Authorization::from_official(&row["authResp"]));
+                let response = &row["authResp"];
+                if require_observed_boolean && response["authResult"]["canUse"].as_bool().is_none()
+                {
+                    return Err(Error::Response("missing effect authorization decision"));
+                }
+                found = Some(Authorization::from_official(response));
             }
         }
         Ok(found.flatten())

@@ -198,6 +198,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 renewal::session_renewal,
                 renewal::renew_session,
                 commands::get_app_info,
+                effects::effect_catalogue,
+                effects::effect_detail,
                 together::together_view,
                 together::together_command,
                 podcast::podcast_page,

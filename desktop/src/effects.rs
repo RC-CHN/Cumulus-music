@@ -1,5 +1,9 @@
 use cumulus_core::{
-    client::MusicClient,
+    client::{ClientError, MusicClient},
+    effects::{
+        catalog::{CatalogueKind, EffectId},
+        directory::{EffectDirectoryDetail, EffectDirectoryRow},
+    },
     playback::engine::{MpvConfig, MpvEngine},
 };
 use std::path::{Path, PathBuf};
@@ -40,4 +44,25 @@ pub fn configure_native_audio(
             None => engine,
         }))
     })
+}
+
+#[tauri::command]
+pub async fn effect_catalogue(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    kind: CatalogueKind,
+) -> Result<Vec<EffectDirectoryRow>, ClientError> {
+    client
+        .effect_catalogue(&epoch, kind)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn effect_detail(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    id: EffectId,
+) -> Result<Option<EffectDirectoryDetail>, ClientError> {
+    client.effect_detail(&epoch, id).await.map_err(Into::into)
 }

@@ -7,6 +7,7 @@ pub mod api;
 pub mod authorization;
 pub mod catalog;
 pub mod compose;
+pub mod directory;
 pub mod dsp;
 pub mod equalizer;
 mod filter_graph;

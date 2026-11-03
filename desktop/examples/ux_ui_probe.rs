@@ -7,6 +7,8 @@ mod capture_ack;
 mod card_source_fixture;
 #[path = "support/download_page_fixture.rs"]
 mod download_page_fixture;
+#[path = "support/effect_directory_fixture.rs"]
+mod effect_directory_fixture;
 #[allow(dead_code)]
 #[path = "support/catalog_fixture.rs"]
 mod fixture;
@@ -112,6 +114,9 @@ fn playlist(id: u64) -> Value {
 impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, args: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(response) = effect_directory_fixture::response(path, &args) {
+                return response;
+            }
             if let Some(response) = fm_feedback_fixture::response(path, &args).await {
                 return response;
             }
@@ -412,6 +417,7 @@ fn main() {
         app.listen("ux-proof",move |event| {
             let mut value:Value=serde_json::from_str(event.payload()).unwrap();
             if intelligence_start_fixture::enabled() {value["syntheticIntelligenceStart"]=intelligence_start_fixture::report();}
+            if effect_directory_fixture::enabled() {value["effectDirectoryCalls"]=json!(effect_directory_fixture::calls());}
             if search_fixture::enabled() {
                 value["syntheticSearchCalls"] = json!(search_fixture::calls());
                 if search_fixture::v3_enabled() { value["syntheticV3Calls"] = json!(search_fixture::v3_calls()); }

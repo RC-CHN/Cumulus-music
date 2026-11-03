@@ -24,7 +24,7 @@ const LIMIT: u64 = 64 * 1024 * 1024;
 
 #[derive(Clone)]
 pub struct EffectsLibrary {
-    session: Arc<AccountSession>,
+    pub(super) session: Arc<AccountSession>,
     store: Arc<StateStore>,
     backend: Arc<dyn MediaBackend>,
 }

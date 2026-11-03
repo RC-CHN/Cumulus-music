@@ -14,6 +14,7 @@ mod comments;
 mod content;
 mod downloads;
 pub mod dto;
+mod effects;
 mod error;
 mod fm;
 mod fm_discovery;
