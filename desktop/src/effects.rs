@@ -9,7 +9,7 @@ use cumulus_core::{
 };
 use std::path::{Path, PathBuf};
 
-fn library(resources: &Path) -> Option<PathBuf> {
+pub(super) fn library(resources: &Path) -> Option<PathBuf> {
     if let Some(path) = std::env::var_os("CUMULUS_AUDIO_FILTER") {
         return Some(path.into());
     }

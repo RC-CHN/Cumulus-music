@@ -14,6 +14,7 @@ mod commands;
 mod comments;
 pub mod desktop_lyrics;
 mod downloads;
+pub mod effect_activation;
 mod effects;
 mod file_manager;
 mod fm;
@@ -199,6 +200,11 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 renewal::session_renewal,
                 renewal::renew_session,
                 commands::get_app_info,
+                effect_activation::effect_peq_status,
+                effect_activation::effect_peq_reconcile,
+                effect_activation::effect_peq_prepare,
+                effect_activation::effect_peq_activate,
+                effect_activation::effect_peq_stop,
                 effects::effect_catalogue,
                 effects::effect_detail,
                 effects::effect_device_brands,
@@ -397,7 +403,9 @@ pub fn run() {
                 .with_official_daily_experiment();
             let client = client.with_login_device_name(&login_device::name())?;
             let client = configure_native_im(client, &app.path().resource_dir()?);
-            let client = configure_native_audio(client, &app.path().resource_dir()?, false);
+            let resources = app.path().resource_dir()?;
+            app.manage(effect_activation::Host::new(&resources));
+            let client = configure_native_audio(client, &resources, false);
             tauri::async_runtime::block_on(client.start_local_library())?;
             app.manage(client);
             lifecycle::install(app.handle())?;
