@@ -734,6 +734,87 @@ test('existing account queue requests native startup policy and signed-out state
   f.player.dispose();
 });
 
+test('guest player connects while stale account streams still disconnect', async () => {
+  let stopped = 0;
+  const pending = deferred<() => void>();
+  let calls = 0;
+  const { player: model } = fixture({
+    watchPlayer: async (epoch, receive) => {
+      calls++;
+      receive({ kind: 'state', value: state('1', epoch) });
+      return calls === 1
+        ? pending.promise
+        : () => {
+            stopped++;
+          };
+    },
+  });
+  const old = model.connect({ epoch: '0', status: 'unknown', nickname: null, avatarUrl: null });
+  await model.connect({ epoch: '1', status: 'expired', nickname: null, avatarUrl: null });
+  pending.resolve(() => {
+    stopped++;
+  });
+  await old;
+  assert.equal(stopped, 1);
+  assert.equal(model.ready.value, true);
+  model.dispose();
+  assert.equal(stopped, 2);
+});
+
+test('startup waits for the first current snapshot if the watch acknowledgement arrives first', async () => {
+  const callbacks = new Map<string, (event: PlayerUpdate) => void>();
+  const calls: string[] = [];
+  const f = fixture({
+    watchPlayer: async (epoch, receive) => {
+      callbacks.set(epoch, receive);
+      return () => {};
+    },
+    playerAction: async (epoch, action) => {
+      calls.push(`${epoch}:${action.kind}`);
+      return { ...state('3', epoch, 'restored'), state: 'paused', queueLen: 2 };
+    },
+  });
+  await f.player.connect(account('1'));
+  await f.player.connect(account('2'));
+  assert.equal(f.player.ready.value, false);
+
+  callbacks.get('1')!({ kind: 'state', value: { ...state('1', '1'), queueLen: 2 } });
+  callbacks.get('2')!({ kind: 'state', value: { ...state('1', '1'), queueLen: 2 } });
+  assert.equal(f.player.ready.value, false);
+  assert.deepEqual(calls, []);
+
+  for (const revision of ['1', '2'])
+    callbacks.get('2')!({ kind: 'state', value: { ...state(revision, '2'), queueLen: 2 } });
+  await turn();
+  assert.equal(f.player.ready.value, true);
+  assert.deepEqual(calls, ['2:startup']);
+  assert.equal(f.player.view.value?.state, 'paused');
+  f.player.dispose();
+});
+
+test('a terminal stream error before acknowledgement cannot enable playback or start restoration', async () => {
+  const calls: string[] = [];
+  const f = fixture({
+    watchPlayer: async (epoch, receive) => {
+      receive({ kind: 'state', value: { ...state('1', epoch), queueLen: 2 } });
+      receive({
+        kind: 'error',
+        error: { code: 'network', message: 'watch ended', retryable: true },
+      });
+      return () => {};
+    },
+    playerAction: async (_epoch, action) => {
+      calls.push(action.kind);
+      return state();
+    },
+  });
+  await f.player.connect(account());
+  assert.equal(f.player.ready.value, false);
+  assert.equal(f.player.error.value, 'watch ended');
+  assert.deepEqual(calls, []);
+  f.player.dispose();
+});
+
 test('explicit retry after failed startup requests paused restore instead of repeating autoplay', async () => {
   const calls: string[] = [];
   const f = fixture({

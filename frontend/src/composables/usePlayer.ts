@@ -104,11 +104,28 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     lyricLoading.value = false;
     lyricError.value = '';
     reported.value = undefined;
+    let registered = false,
+      ended = false;
+    function finish() {
+      // The channel's initial state and the invoke reply can arrive in
+      // either order. Don't miss startup or re-run it on later snapshots.
+      if (version !== connection || !registered || ended || !view.value || ready.value) return;
+      ready.value = true;
+      if (restorable.value)
+        return run(
+          (e) => core.playerAction(e, { kind: 'startup' }),
+          // An explicit retry prepares paused media, never repeats automatic play.
+          (e) => core.playerAction(e, { kind: 'restore' }),
+        );
+    }
     try {
       const stop = await core.watchPlayer(epoch, (event) => {
-        if (version !== connection) return;
-        if (event.kind === 'state') accept(event.value);
-        else {
+        if (version !== connection || ended) return;
+        if (event.kind === 'state') {
+          accept(event.value);
+          void finish();
+        } else {
+          ended = true;
           ready.value = false;
           handle(event.error);
           if (event.error.code === 'stale') onSessionChanged();
@@ -119,13 +136,8 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
         return;
       }
       disconnect = stop;
-      ready.value = true;
-      if (restorable.value)
-        await run(
-          (e) => core.playerAction(e, { kind: 'startup' }),
-          // An explicit retry prepares paused media, never repeats automatic play.
-          (e) => core.playerAction(e, { kind: 'restore' }),
-        );
+      registered = true;
+      await finish();
     } catch (e) {
       if (version === connection) handle(e);
     }

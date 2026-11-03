@@ -1,8 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { useLocal } from '../src/composables/useLocal.ts';
-import { usePlayer } from '../src/composables/usePlayer.ts';
-import type { CoreClient } from '../src/services/contracts.ts';
 import type { LocalClient, LocalPage, LocalQuery } from '../src/services/local.ts';
 const turn = () => new Promise((r) => setImmediate(r));
 function deferred<T>() {
@@ -95,33 +93,6 @@ test('directory picker cancellation and disposal never enqueue a watch', async (
   assert.equal(writes, 0);
   cancel.dispose();
 });
-test('guest player connects while stale account streams still disconnect', async () => {
-  let stopped = 0;
-  const pending = deferred<() => void>();
-  let calls = 0;
-  const core = {
-    watchPlayer: async () => {
-      calls++;
-      return calls === 1
-        ? pending.promise
-        : () => {
-            stopped++;
-          };
-    },
-  } as unknown as CoreClient;
-  const model = usePlayer(core);
-  const old = model.connect({ epoch: '0', status: 'unknown', nickname: null, avatarUrl: null });
-  await model.connect({ epoch: '1', status: 'expired', nickname: null, avatarUrl: null });
-  pending.resolve(() => {
-    stopped++;
-  });
-  await old;
-  assert.equal(stopped, 1);
-  assert.equal(model.ready.value, true);
-  model.dispose();
-  assert.equal(stopped, 2);
-});
-
 test('a pending new query never exposes rows or groups from another query', async (t) => {
   const pending = deferred<LocalPage>();
   const model = useLocal(
