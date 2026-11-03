@@ -5,6 +5,7 @@ pub mod credential_import;
 pub mod credentials;
 pub mod login;
 pub mod login_policy;
+pub mod profile;
 pub mod profiles;
 pub mod qr;
 pub mod refresh;

@@ -12,6 +12,7 @@ pub use super::local::{
     LocalCommand, LocalGroup, LocalGroupEntry, LocalLinkView, LocalMatchCommand, LocalMatchView,
     LocalPageView, LocalQuery, LocalRootView, LocalSort, LocalTrackView,
 };
+pub use super::login_devices::{LoginDeviceLimitsView, LoginDeviceView, LoginDevicesView};
 pub use super::media_preferences::{SystemMediaPreferencesCommand, SystemMediaPreferencesView};
 pub use super::member::{
     MemberCard, MemberContent, MemberEntitlement, MemberModule, MemberPage, MemberPageView,

@@ -1,5 +1,6 @@
 //! Host-independent UI use cases. Native records and credentials never cross
 //! this boundary; account epochs also reject delayed frontend results.
+mod account_profile;
 mod auth;
 pub use auth::LoginCaptchaProvider;
 mod catalog;
@@ -16,6 +17,7 @@ mod focus;
 mod history;
 mod likes;
 mod local;
+mod login_devices;
 mod mapping;
 mod media_preferences;
 mod member;
