@@ -5,6 +5,7 @@ import { useCore } from '../services/core';
 import type { EffectPeqPhase, EffectPeqView } from '../services/effectDirectory';
 
 const props = defineProps<{ epoch: string; effectId: number; allowed: boolean }>();
+const emit = defineEmits<{ changed: [] }>();
 const core = useCore();
 const group = ref<HTMLElement>();
 const view = shallowRef<EffectPeqView>();
@@ -34,7 +35,7 @@ const mayActivate = computed(
   () => props.allowed && !another.value && view.value?.phase === 'prepared' && !!view.value.attempt,
 );
 
-async function run(action: () => Promise<EffectPeqView>) {
+async function run(action: () => Promise<EffectPeqView>, mayChangeRegistration = false) {
   if (busy.value || !alive) return;
   const focused = group.value?.contains(document.activeElement);
   confirmation.value = undefined;
@@ -52,6 +53,7 @@ async function run(action: () => Promise<EffectPeqView>) {
   } finally {
     if (alive) {
       busy.value = false;
+      if (mayChangeRegistration) emit('changed');
       await nextTick();
       if (alive && focused && document.activeElement === document.body)
         group.value?.focus({ preventScroll: true });
@@ -65,13 +67,13 @@ function prepare() {
 function activate() {
   const attempt = view.value?.attempt;
   if (mayActivate.value && attempt)
-    void run(() => core.effectPeqActivate(props.epoch, props.effectId, attempt));
+    void run(() => core.effectPeqActivate(props.epoch, props.effectId, attempt), true);
 }
 async function stop() {
   const state = view.value;
   if (busy.value || !state?.canStop || !state.release) return;
   if (!state.stopNeedsRetry) {
-    await run(() => core.effectPeqStop(props.epoch, props.effectId, state.release!, false));
+    await run(() => core.effectPeqStop(props.epoch, props.effectId, state.release!, false), true);
     return;
   }
   confirmation.value = state.release;
@@ -82,7 +84,7 @@ async function stop() {
 function confirmStop() {
   const release = confirmation.value;
   if (release && release === view.value?.release && view.value.stopNeedsRetry)
-    void run(() => core.effectPeqStop(props.epoch, props.effectId, release, true));
+    void run(() => core.effectPeqStop(props.epoch, props.effectId, release, true), true);
 }
 async function cancelStop() {
   confirmation.value = undefined;
@@ -162,6 +164,10 @@ onBeforeUnmount(() => {
   border-top: 1px solid var(--line);
   margin-top: 8px;
   padding-top: 8px;
+}
+.effect-parametric:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 3px;
 }
 .effect-parametric p {
   margin: 0 0 6px;

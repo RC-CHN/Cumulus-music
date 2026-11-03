@@ -24,6 +24,7 @@ export function createTauriClient(): CoreClient {
     searchHistory: (epoch, command) => invoke('search_history', { epoch, command }),
     effectCatalogue: (epoch, kind) => invoke('effect_catalogue', { epoch, kind }),
     effectDetail: (epoch, id) => invoke('effect_detail', { epoch, id }),
+    effectPeqPending: (epoch) => invoke('effect_peq_pending', { epoch }),
     effectPeqStatus: (epoch, id) => invoke('effect_peq_status', { epoch, id }),
     effectPeqPrepare: (epoch, id) => invoke('effect_peq_prepare', { epoch, id }),
     effectPeqActivate: (epoch, id, attempt) =>

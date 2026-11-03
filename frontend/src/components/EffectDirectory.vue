@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from 'vue';
+import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { failure, type AccountView } from '../services/contracts';
 import { useCore } from '../services/core';
 import { useAppearance } from '../composables/useAppearance';
@@ -7,6 +7,7 @@ import type {
   EffectCatalogueItem,
   EffectCatalogueKind,
   EffectAccess,
+  PendingEffectRegistration,
 } from '../services/effectDirectory';
 import Icon from './Icon.vue';
 import EffectDeviceDirectory from './EffectDeviceDirectory.vue';
@@ -35,6 +36,11 @@ const kind = ref<Category>('highly_recommended');
 const items = ref<EffectCatalogueItem[]>([]);
 const selected = ref<EffectCatalogueItem>();
 const access = ref<EffectAccess>();
+const pending = ref<PendingEffectRegistration[]>([]);
+const pendingError = ref('');
+const pendingLoading = ref(false);
+const recoveryOnly = ref(false);
+let pendingRequest = 0;
 const loading = ref(false);
 const checking = ref(false);
 const listError = ref('');
@@ -60,6 +66,7 @@ async function load(category: Category) {
   kind.value = category;
   items.value = [];
   selected.value = undefined;
+  recoveryOnly.value = false;
   access.value = undefined;
   checking.value = false;
   detailError.value = '';
@@ -87,6 +94,7 @@ async function inspect(item: EffectCatalogueItem) {
     props.account.epoch === epoch &&
     props.account.status === 'authenticated';
   selected.value = item;
+  recoveryOnly.value = false;
   access.value = undefined;
   detailError.value = '';
   checking.value = true;
@@ -101,6 +109,42 @@ async function inspect(item: EffectCatalogueItem) {
   } finally {
     if (current()) checking.value = false;
   }
+}
+
+async function refreshPending() {
+  if (props.account.status !== 'authenticated') return;
+  const epoch = props.account.epoch;
+  const request = ++pendingRequest;
+  const current = () =>
+    request === pendingRequest &&
+    epoch === props.account.epoch &&
+    props.account.status === 'authenticated';
+  pendingLoading.value = true;
+  pendingError.value = '';
+  try {
+    const rows = await core.effectPeqPending(epoch);
+    if (current()) pending.value = rows;
+  } catch {
+    if (current()) pendingError.value = '未能读取本机音效登记';
+  } finally {
+    if (current()) pendingLoading.value = false;
+  }
+}
+
+async function openRegistration(id: number) {
+  detailRequest++;
+  selected.value = items.value.find((item) => item.id === id) ?? {
+    id,
+    name: `音效 ${id}`,
+    subtitle: '',
+  };
+  recoveryOnly.value = true;
+  checking.value = false;
+  access.value = undefined;
+  detailError.value = '';
+  await nextTick();
+  if (selected.value?.id === id && recoveryOnly.value)
+    dialog.value?.querySelector<HTMLElement>('.effect-parametric')?.focus({ preventScroll: true });
 }
 
 function retryRights() {
@@ -119,10 +163,12 @@ onMounted(() => {
   previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   dialog.value?.showModal();
   void load(kind.value);
+  void refreshPending();
 });
 onUnmounted(() => {
   listRequest++;
   detailRequest++;
+  pendingRequest++;
   previousFocus?.focus({ preventScroll: true });
 });
 </script>
@@ -149,6 +195,41 @@ onUnmounted(() => {
         <button class="primary" type="button" @click="emit('login')">登录</button>
       </div>
       <template v-else>
+        <section
+          v-if="pending.length || pendingError"
+          class="effect-registration"
+          aria-label="本机音效登记"
+        >
+          <p v-if="pendingError" role="status">{{ pendingError }}</p>
+          <button
+            v-if="pendingError"
+            type="button"
+            :disabled="pendingLoading"
+            @click="refreshPending"
+          >
+            重新读取登记
+          </button>
+          <template v-if="pending.length">
+            <p>本机音效登记</p>
+            <button
+              v-for="registration in pending"
+              :key="registration.id"
+              type="button"
+              :data-effect-registration="registration.id"
+              @click="openRegistration(registration.id)"
+            >
+              管理
+              {{
+                items.find((item) => item.id === registration.id)?.name || `音效 ${registration.id}`
+              }}
+              <span
+                v-if="registration.phase === 'stop_uncertain' || registration.phase === 'releasing'"
+              >
+                · 停止待核对
+              </span>
+            </button>
+          </template>
+        </section>
         <nav aria-label="音效分类">
           <button
             v-for="[key, label] in categories"
@@ -201,7 +282,8 @@ onUnmounted(() => {
       aria-label="音效权益"
     >
       <h3>{{ selected.name || '未命名音效' }}</h3>
-      <p v-if="checking" role="status">正在查询账号权益…</p>
+      <p v-if="recoveryOnly">正在管理本机保留的登记。</p>
+      <p v-else-if="checking" role="status">正在查询账号权益…</p>
       <template v-else-if="detailError">
         <p role="alert">{{ detailError }}</p>
         <button type="button" @click="retryRights">重试权益</button>
@@ -211,10 +293,11 @@ onUnmounted(() => {
         重新查询权益
       </button>
       <EffectParametricControls
-        :key="`${account.epoch}:${selected.id}`"
+        :key="`${account.epoch}:${selected.id}:${recoveryOnly}`"
         :epoch="account.epoch"
         :effect-id="selected.id"
-        :allowed="access === 'allowed'"
+        :allowed="!recoveryOnly && access === 'allowed'"
+        @changed="refreshPending"
       />
     </section>
   </dialog>
@@ -266,6 +349,18 @@ onUnmounted(() => {
 .effect-directory nav button[aria-pressed='true'] {
   color: var(--accent);
   border-color: var(--accent);
+}
+.effect-registration {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  background: var(--surface-alt);
+  border-radius: 8px;
+}
+.effect-registration p {
+  margin: 0 4px 0 0;
 }
 .effect-directory-grid {
   display: grid;

@@ -34,6 +34,11 @@ export type EffectRegistration =
   | 'stop_uncertain'
   | 'stop_rejected';
 
+export interface PendingEffectRegistration {
+  id: number;
+  phase: EffectRegistration;
+}
+
 export interface EffectPeqView {
   id: number;
   phase: EffectPeqPhase;
@@ -52,6 +57,7 @@ export interface EffectDirectoryClient {
     epoch: string,
     id: number,
   ): Promise<(EffectCatalogueItem & { access: EffectAccess }) | null>;
+  effectPeqPending(epoch: string): Promise<PendingEffectRegistration[]>;
   effectPeqStatus(epoch: string, id: number): Promise<EffectPeqView>;
   effectPeqPrepare(epoch: string, id: number): Promise<EffectPeqView>;
   effectPeqActivate(epoch: string, id: number, attempt: string): Promise<EffectPeqView>;
