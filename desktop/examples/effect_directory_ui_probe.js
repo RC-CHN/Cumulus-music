@@ -50,14 +50,18 @@
     click(button(dialog(), '官方精选音效'));
     await wait(() => text().includes('合成均衡音效'), 'recommended list');
     click(one('.effect-directory-card'));
+    await wait(() => text().includes('暂未确认当前账号的权益'), 'uncertain rights');
+    await capture('02_unknown');
+    click(button(dialog(), '重新查询权益'));
+    assert(document.activeElement === one('.effect-directory-card'), 'retry retains focus inside directory');
     await wait(() => text().includes('当前账号没有使用权益'), 'unavailable rights');
-    await capture('02_unavailable');
+    await capture('03_unavailable');
     click(button(dialog(), '更多音效'));
     await wait(() => text().includes('此分类暂无音效'), 'empty group');
-    await capture('03_empty');
+    await capture('04_empty');
     click(button(dialog(), '关闭音效目录'));
     await wait(() => !dialog() && document.activeElement === opener, 'return focus to equalizer');
-    await emit('complete', { ok: true, stageCount: 3 });
+    await emit('complete', { ok: true, stageCount: 4 });
   } catch (error) {
     await emit('failed', { message: String(error), body: document.body.innerText.slice(0, 2000) });
   }

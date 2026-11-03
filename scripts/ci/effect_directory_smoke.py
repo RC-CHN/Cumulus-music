@@ -37,14 +37,16 @@ def main():
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0
     complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
-    assert complete['ok'] and complete['stageCount'] == 3
+    assert complete['ok'] and complete['stageCount'] == 4
     catalogue = '/api/usertool/sound/queryAllSound'
     detail = '/api/usertool/home/sound/info'
     rights = '/api/vipauth/app/interests/auth/query'
     calls = complete['effectDirectoryCalls']
-    assert [call['path'] for call in calls] == [catalogue, detail, rights, catalogue, detail, rights, catalogue]
+    assert [call['path'] for call in calls] == [
+        catalogue, detail, rights, catalogue, detail, rights, detail, rights, catalogue,
+    ]
     assert [call['args']['exposeType'] for call in calls if call['path'] == catalogue] == [5, 6, 7]
-    assert len(list(output.glob('ux_*.png'))) == (3 if args.screenshots else 0)
+    assert len(list(output.glob('ux_*.png'))) == (4 if args.screenshots else 0)
     print(json.dumps({'ok': True, 'actualWebView': True, 'syntheticReadCalls': len(calls),
                       'realAccountWrites': 0}))
 

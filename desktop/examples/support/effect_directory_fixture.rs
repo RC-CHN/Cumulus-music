@@ -51,6 +51,16 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
                 json!([{"interestsId":200,"interestsType":116,
                     "authResp":{"authResult":{"canUse":true,"canUseType":50}}}])
             } else if args == &json!({"queryInfo":{"interestsMap":{"127":[300]}}}) {
+                let mut calls = CALLS.lock().unwrap();
+                if !calls
+                    .iter()
+                    .any(|call| call["path"] == path && call["args"] == *args)
+                {
+                    calls.push(json!({"path":path,"args":args}));
+                    return Some(Err(Error::Response(
+                        "synthetic unavailable rights response",
+                    )));
+                }
                 json!([])
             } else {
                 return Some(Err(Error::Response(

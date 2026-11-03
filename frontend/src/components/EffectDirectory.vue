@@ -87,6 +87,14 @@ async function inspect(item: EffectCatalogueItem) {
   }
 }
 
+function retryRights() {
+  if (!selected.value) return;
+  dialog.value
+    ?.querySelector<HTMLButtonElement>('.effect-directory-card[aria-pressed="true"]')
+    ?.focus({ preventScroll: true });
+  void inspect(selected.value);
+}
+
 watch(
   () => [props.account.epoch, props.account.status],
   () => emit('close'),
@@ -165,9 +173,12 @@ onUnmounted(() => {
       <p v-if="checking" role="status">正在查询账号权益…</p>
       <template v-else-if="detailError">
         <p role="alert">{{ detailError }}</p>
-        <button type="button" @click="inspect(selected)">重试权益</button>
+        <button type="button" @click="retryRights">重试权益</button>
       </template>
       <p v-else-if="access" role="status">{{ accessLabels[access] }}</p>
+      <button v-if="access === 'unknown' && !checking" type="button" @click="retryRights">
+        重新查询权益
+      </button>
     </section>
   </dialog>
 </template>
