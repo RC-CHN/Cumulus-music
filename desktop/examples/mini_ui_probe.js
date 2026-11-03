@@ -84,7 +84,9 @@
     const stale=await read();
     await invoke('player_action',{epoch:account.epoch,action:{kind:'next'}});
     assert(await mini(`try { await window.__TAURI_INTERNALS__.invoke('mini_action',{generation:${JSON.stringify(stale.generation)},ticket:${JSON.stringify(stale.ticket)},action:{kind:'stop'}});return false;}catch{return true;}`),'old ticket stopped new track');
+    assert(await mini(`try { await window.__TAURI_INTERNALS__.invoke('mini_action',{generation:${JSON.stringify(stale.generation)},ticket:${JSON.stringify(stale.ticket)},action:{kind:'volume',value:77}});return false;}catch{return true;}`),'old ticket changed volume');
     await wait(async()=>(await read()).media.item?.id!==stale.media.item.id,'new track after stale action');
+    assert((await read()).media.volume===31,'stale ticket changed the next track volume');
     await invoke('player_action',{epoch:account.epoch,action:{kind:'pause',paused:true}});
     await mini(`localStorage.setItem('cumulus.appearance.v1','dark');window.dispatchEvent(new StorageEvent('storage',{key:'cumulus.appearance.v1',newValue:'dark'}));return true;`);
     await capture('dark_queue');

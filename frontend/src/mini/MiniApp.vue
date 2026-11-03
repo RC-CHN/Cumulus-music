@@ -27,7 +27,10 @@ const musicVolumeView = computed(() =>
 const musicVolume = {
   view: musicVolumeView,
   ready: computed(() => !!musicVolumeView.value),
-  scope: computed(() => musicVolumeView.value?.item?.id),
+  scope: computed(() => {
+    const shown = musicVolumeView.value;
+    return shown && JSON.stringify([shown.item?.id, shown.selection.audioPlayId]);
+  }),
   async configureVolume(value: number) {
     const shown = view.value;
     if (shown?.media.item?.kind !== 'music') return;
