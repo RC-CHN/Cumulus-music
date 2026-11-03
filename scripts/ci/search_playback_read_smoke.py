@@ -10,7 +10,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
-    parser.add_argument('--download', action='store_true', help='verify one synthetic download and local playback')
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--download', action='store_true', help='verify one synthetic download and local playback')
+    mode.add_argument('--search-experiment', choices=('v3', 'control'),
+                      help='verify a synthetic search experiment assignment and playback')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False, mode=0o700)
@@ -22,7 +25,8 @@ def main():
         path.mkdir(mode=0o700)
         env[key] = str(path)
     run = root / 'run'
-    mode = '--synthetic-download' if args.download else '--synthetic'
+    mode = ('--synthetic-download' if args.download else
+            f'--synthetic-search-{args.search_experiment}' if args.search_experiment else '--synthetic')
     with (root / 'host.log').open('x', encoding='utf-8') as log:
         result = subprocess.run([str(args.binary.resolve()), mode, str(run)],
                                 env=env, stdout=log, stderr=log, timeout=120, check=False)
@@ -32,6 +36,12 @@ def main():
     assert report['realAccountWrites'] == 0
     reads = dict(account=1, comprehensive=1, songs=1, song_detail=1, audio_source=1)
     facts = dict(comprehensiveSections=1, songs=1, clockAdvanced=True, stopped=True)
+    if args.search_experiment:
+        reads['search_assignment'] = 1
+        facts['searchExperiment'] = args.search_experiment
+        if args.search_experiment == 'v3':
+            del reads['comprehensive']
+            reads.update(search_tabs=1, comprehensive_v3=1)
     if args.download:
         reads.update(song_detail=2, download_source=1)
         seed = Path(__file__).resolve().parents[2]/'core/tests/fixtures/tag_audio/seed.flac'
