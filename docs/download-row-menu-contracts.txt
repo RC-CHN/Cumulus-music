@@ -73,3 +73,11 @@
   原生窗口聚焦并检查document.hasFocus，再检查原按钮焦点；不能把未激活窗口的
   CSS状态直接称为本机UI缺陷。此前尝试显式传递入口未解决，产品改动已撤回。
   后续33态及精确CI结果见ui-ux-validation.txt，保留失败诊断不冒称修复通过。
+
+暂停命令的 CI 回归
+- be3a6b9 的 Linux / Windows 日志均在下载菜单的 plays_full_download_selection 后
+  超时。原生状态和底栏已经暂停，旧探针仍等待未绑定的 pause；当前正式入口发的是
+  pause_for。探针等待可用的底栏按钮，独立核对暂停回执、底栏状态、显示的 playId
+  和请求所带队列版本，再验证插入下一首不改变该暂停播放。没有放松播放器断言。
+- Linux WebView 下载菜单 33 个检查点及 33 张截图通过，使用隔离合成下载文件；
+  Windows 同一探针由 CI 验证，不能用 Linux 结果代替。

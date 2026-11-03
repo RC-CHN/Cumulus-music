@@ -252,7 +252,7 @@ jobs:
         shell: pwsh
         run: |
           python scripts/ci/windows_zip_smoke.py --packages .build/packages/windows-x64 --commit "$env:GITHUB_SHA" --root .build/ci-windows-zip
-      - name: Windows WebView login lifecycle smoke
+      - name: Windows native media and desktop WebView regression
         if: runner.os == 'Windows'
         run: |
           cargo build -p cumulus-desktop --example native_audio_probe --features custom-protocol --locked
@@ -528,7 +528,7 @@ jobs:
           test -s .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
           test ! -d .build/target
           df -h .
-      - name: Linux WebView login lifecycle smoke
+      - name: Linux native media and desktop WebView regression
         # Start Xvfb before the private bus so activated GTK/AT-SPI services inherit DISPLAY.
         env:
           GDK_BACKEND: x11

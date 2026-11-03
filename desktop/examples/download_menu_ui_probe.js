@@ -265,13 +265,28 @@
       current: 1,
     });
     await capture("plays_full_download_selection");
+    await wait(() => {
+      const bar = one(".playerbar");
+      const pause = button("暂停", bar);
+      return bar.dataset.state === "playing" && pause && !pause.disabled;
+    }, "download playback ready for pause");
+    const displayedPlay = one(".playerbar").dataset.playId;
     click(button("暂停", one(".playerbar")));
     await wait(
       () =>
-        latest?.command.kind === "pause" && latest.result.state === "paused",
-      "paused",
+        latest?.command.kind === "pause_for" &&
+        latest.command.paused &&
+        latest.result.state === "paused" &&
+        one(".playerbar").dataset.state === "paused",
+      "native selection paused",
     );
     const before = latest.result;
+    assert(
+      latest.command.play_id === displayedPlay &&
+        before.playId === displayedPlay &&
+        latest.command.expected_queue_revision === before.queueRevision,
+      "footer pause targets the displayed native selection",
+    );
     await open(1);
     await action("下一首播放");
     await wait(
