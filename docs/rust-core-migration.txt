@@ -661,3 +661,8 @@ client/auth/presentation（安装级alpha持久化）→ desktop三个main专用
 login-entry-contracts.txt及ui-ux-validation.txt，来源散列见login-entry-official-mapping.json。
 新入口不取得服务端未发的RT、不更改双实验或会员权限，不把8860注册或基础25态当作
 普通新用户注册和全SDK的替代。完整目标与逐项验收边界保持不变。
+
+2026-11-03 普通手机号登录后续：官方存在性→独立Captchav2→新用户Nicknamev2完整接到Rust和Vue。
+老用户继续实际主登录；普通注册force=false与8860 force=true分开，已知拒绝/未决/取消/重启边界共用持久守护。
+新旧链各35态WebView/29库审计、本机125%35截图全部查看；原生完整测试1578通过。
+接口和来源见phone-entry-contracts.txt/phone-entry-official-mapping.json。本人真实注册/RT发放与轮换、其余SDK仍继续。

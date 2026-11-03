@@ -1,0 +1,100 @@
+普通手机号登录：号码 → 验证码 → 新用户昵称（2026-11-03）
+
+范围与来源
+以官方PC 3.1.42.205594的Phone.jsx、Captchav2.jsx、Nicknamev2.jsx和M/2992、2994、3138、363、15、48为依据。
+本专项恢复普通新用户入口；8860的手机号二次分配确认仍是独立流程，见phone-reuse-login-contracts.txt。
+没有参考YesPlayMusic。官方源文件散列及纯字段对照见phone-entry-official-mapping.json。
+本文描述已接入的实现；桌面运行/截图验收记录须与ui-ux-validation.txt的实际完成记录一起阅读。
+编译成功、冻结向量和合成服务均不能证明本人真实注册、短信到达、RT下发或成对轮换。
+
+官方调用顺序与接口
+1. Phone.onCheckCellphone先检查协议、国家和号码，调用M/2992.getCellphoneExistenceCheck。
+   M/363.d → /api/cellphone/existence/check {cellphone,ctcode}。
+   仅code=200且数字exist=-1标为新用户，canSkipSetNickname只采纳true。
+2. 进入Captchav2并获取验证码；号码保留在本次原生候选，不在验证码页重新输入。
+   原独立massagechange实验为t1时调用/api/middle/captcha/sent/v1，其他分组调用/api/sms/captcha/sent。
+   业务字段：{cellphone,ctcode,scene:0,secrete:"music_middleuser_pclogin"}；原生PC EAPI按M/48转换字段。
+   此实验与选择JSK主登录的PH-PC-loginJsk/PH-PC-newLoginBenefit相互独立。
+3. 老用户直接使用已有原生主登录：JSK为/api/login/cellphone，旧链为/api/w/login/cellphone。
+   原手机号、区号、OTP、remember进入既有主登录状态机；SDK挑战继续交给现有挑战界面。
+   不为老用户额外调用SMS verify或普通注册，也不因本专项强制切换协议或伪造URS票据。
+4. 新用户先调用M/363.g → /api/sms/captcha/verify {cellphone,captcha,ctcode}。
+   明确成功后才在原生候选保存校验过的短信码，读取昵称建议并进入昵称页。
+5. M/3138.p → M/15.oe → /api/nickname/hint/get {isAlter:false}；建议失败允许手工填写，不阻止回退/关闭。
+   提交非默认昵称前调用/api/nickname/duplicated {nickname}，明确duplicated=false才继续。
+   沿用官方JS trim、UTF-16字符计数：4–30，一个非Latin-1码元计2；仅中英文、数字、-、_。
+6. M/363.f → /api/w/register/cellphone：
+   {phone,password:"",countrycode,captcha,nickname,force:false}，
+   或仅在preflight允许时用isSkipSetNickname:true替换nickname。
+   PC表单转换后的force为"false"；8860另一路固定为"true"，互不混用。
+   不接受前端传入force、密码、URS、手机号或区号来替换已绑定的注册凭据。
+7. 成功响应必须有本次注册返回的可用MUSIC_U，再只读核对/api/w/nuser/account/get，最后原子选择账号。
+   不凭旧候选Cookie、200但data=false、data.success=false或中断正文宣称注册成功。
+   RT沿用通用成功回执条件，不能由注册开始/建议/重名/验证码校验响应生成刷新凭据。
+
+Rust职责与公开接口
+account/login/phone_entry分别负责不可变绑定、两段状态、发送/校验及注册恢复。
+共享nickname.rs和registration.rs供普通注册与8860使用；强制标志在各自原生用例中决定。
+account/login_policy/sms.rs按账号代次缓存独立实验，30分钟；重启先读本账号缓存。
+失败/畸形/非200响应保留已有或默认空分组，不合成t1；同一缓存的并发读取合并。
+client/auth提供类型化命令：
+  phone_start {phone,country_code}
+  phone_retry/phone_resend/phone_nickname_hint {entry_id}
+  phone_code {entry_id,code,remember}
+  phone_register {entry_id,nickname|null}
+  reconcile（只读核对，由原生状态决定适用性）
+快照phoneEntry只公开随机ID、阶段、有限错误枚举、昵称建议和允许动作。
+不公开验证码、手机号、Cookie、refresh token、签名、完整授权地址或原始服务端报文。
+前端不直接请求上述接口，也不通过Python进程代替Rust业务。
+原生构造参数with_login_resend_clock仅供宿主/合成测试配置，不存在IPC修改时钟或强制冷却接口。
+
+界面及取消
+PhoneSmsLogin独立承担号码、验证码和昵称页面，CredentialLogin继续持有主候选及SDK挑战。
+号码页提交“验证码登录”，一次明确动作触发原生preflight和一次短信发送；没有watch/onMounted自动重发。
+协议默认不勾选。验证码页只有OTP及重发/密码登录，左上角可修改手机号；号码和地区不可编辑。
+发送结果未知仍保留共享原生60秒冷却，提示先查看短信，不因换方式/重开候选清零。
+错误替代自动登录行但保留原选择；OTP仅有效提交后清除，协议/格式检查失败保留输入。
+新用户昵称页无Logo，标题“希望大家怎么称呼你呢？”，支持建议、错误和明确“完成注册”。
+只有原生允许时显示“以默认昵称注册”；昵称检查和错误均在原生重复执行。
+普通昵称页按官方InputWrap/Operate将36px输入与40px渐变主按钮对齐，错误区域预留16px、主按钮上距50px；
+社区模态框采用300px内容宽度，不据此声称原native窗口宽度已实测。验证码和昵称均可清空，焦点回到输入；
+编辑验证码只清除旧的验证码/登录拒绝提示，发送结果未知和限额提示仍保留。
+返回/修改号码创建新候选并取消旧任务；已确认的当前账号在新身份核对成功前保持不变。
+关闭、返回、方式切换清除OTP/昵称内存和仍在离场动画中的DOM，离场区域立即inert。
+步骤转换使用transform/opacity，遵守减少动态效果；操作完成归还本步骤输入或恢复按钮焦点。
+
+持久化与失败恢复
+昵称dup检查完成后、注册HTTP提交前，先持久化绑定手机号的HMAC注册意图。
+已知503/504/250/509业务拒绝和已证明RequestNotSent可以结束自己的意图；不会清理别的候选意图。
+503清除已验证OTP并返回验证码页；504也转为老用户，下次明确短信登录不再尝试注册。
+250/509分别显示安全检查/频繁错误，保留昵称页；新的显式点击仍经原生状态和重复检查。
+缺code、500、200但显式失败、后续挑战、丢包或进程退出都保留未知写意图，不自动重发注册。
+同次部分MUSIC_U回执可供只读身份核对，但中断的RT头不落为可用续期令牌。
+没有回执时不展示“核对登录状态”，引导重新短信登录；已提交注册不会再以注册按钮重放。
+新候选/重启后同一手机号仍受持久意图约束：即使preflight称新用户，也仅允许新短信主登录核对。
+只有确认的身份采用路径才能结清观察到的旧意图；不重复verify/regist来猜测远端状态。
+网络操作有45秒上限，关闭会取消等待，账号代次和候选ID拒绝迟到结果。
+
+明确的社区差异
+官方Phone页面同时发存在性检查并跳页；此实现先等待明确读取结果，再发送，读取失败给出显式重试。
+官方Nicknamev2关闭会自动用空昵称注册；本客户端关闭只取消，注册始终需要明确最终动作。
+官方注册完成强制remember=true；本客户端保留用户自动登录选择，关闭后不擅自开启。
+共享原生冷却覆盖候选切换，比官方页面本地计时更严格；仍非服务端限额的替代。
+常驻三种登录方式、社区身份及地区文字图标沿用login-entry-contracts中的视觉差异，不宣称逐像素一致。
+
+可执行验证
+可选本地官方对照：node desktop/tests/phone_entry_official.cjs /path/to/recovered-js/modules
+该工具执行M/363请求辅助函数和M/48表单转换，冻结6组字段；控制流仅核对相应源标记，不执行完整SDK。
+公开CI读取冻结向量，core/tests/client_phone_entry.rs通过真正EAPI解包比较完整业务字段。
+core/tests/client_phone_reuse.rs另外检查强制注册与普通注册不能混用、未知结果不重放。
+  cargo test -p cumulus-core --lib --test client_phone_entry --test client_phone_reuse --locked
+实际Vue/WebView、IPC、原生HTTP与SQLite使用无账号、无网络的独立宿主：
+  cargo build -p cumulus-desktop --example phone_entry_ui_probe --features custom-protocol --locked
+  python3 scripts/ci/phone_entry_smoke.py --binary /absolute/phone_entry_ui_probe --root /absolute/new-proof-root --screenshots
+增加--legacy验证旧链，Windows加--runtime。宿主本地推进冷却测试时钟，不改系统时间。
+运行后audit_phone_entry_probe.py只读SQLite核对账号选择/remember、未决注册结清、输入不落盘和令牌边界。
+实际完成：新旧主登录协议各35态实际WebView及各29个SQLite数据库的独立审计通过；
+本机KDE/XWayland、125%缩放另35态及29库审计通过，35张窗口截图已在6张联系表全部查看。
+覆盖1120×760/760×540、两主题、提示/清空/焦点/取消、明确注册和未决恢复；按钮与输入几何另有真实DOM断言。
+这些均为隔离合成HTTP；本人短信、普通新账号注册、真实RT下发与轮换仍未实测，Windows本专项由新增CI入口验收。
+最终构建、回归范围及失败迭代见ui-ux-validation.txt，不能扩大成全部SDK/所有平台视觉已完成。

@@ -1799,3 +1799,13 @@ Clippy -D warnings及10个原生二进制构建通过，见login-entry-regionfoc
 RT下发/轮换或真实浏览器网页已打开。细节、失败修正和界面回归见ui-ux-validation.txt。
 协议门槛属于官方UI层；没有伪造服务端协议字段。此前同页SMS仍须恢复官方两段/新用户入口，
 本批不把基础表单的通过扩张成整个登录SDK完成。官方来源与可执行入口见login-entry-contracts.txt。
+
+2026-11-03 普通手机两段登录与注册（phone-entry-contracts.txt）
+- 新的原生phone_entry状态机、独立massagechange分组、复用的昵称/注册策略及force=false边界，
+  新增冻结M/363请求/M/48表单6向量；11项phone entry集成、18项复用集成与3项SMS策略测试通过。
+- 全workspace/all-targets/custom-protocol：297个测试程序，1578 passed、0 failed、0 ignored，退出0；
+  最终Rust源码保持一致，后续只有Vue/探针JS的清空、返回焦点和正常昵称排布修正。
+- 严格Clippy及fmt通过；前端npm ci/format、567测试、类型检查及生产构建通过。
+- 正式cumulus与10个原生探针已构建。新增JSK/旧链各35态WebView和各29库独立只读审计，
+  本机KDE125%另35态/29库审计通过，所有35张物理窗口截图逐张复核；仅合成HTTP/账号/令牌。
+- 没有真实SMS/注册/RT轮换或音乐账号写入，不用这些测试替代本人令牌发放、完整SDK或Windows实机证明。

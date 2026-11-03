@@ -90,9 +90,9 @@ Linux平台启动器另用可执行程序记录单个固定URL参数，报告即
 这次HTTP观察不等于所有环境或以后均可访问；网页内容不属于本客户端恢复结果。
 实际本轮执行结果及平台边界记录在ui-ux-validation.txt；编译或上述命令存在本身不等于通过。
 
-本专项之后仍须继续的登录入口差异
-Phone.jsx先执行getCellphoneExistenceCheck并进入独立captchav2页；M/2992以exist=-1设置
-isNewUser/canSkipSetNickname。本客户端当前基础SMS仍为同页号码+验证码，
-未将这个存在性/新用户注册入口做成原有两段流程；已有8860手机号复用注册不是其替代。
+普通手机号两段流程的后续恢复
+Phone.jsx存在性读取→独立Captchav2→普通新用户Nicknamev2已在后续Rust/桌面专项接通，
+与8860手机号复用分开处理，接口/force=false/未决恢复及35态证据见phone-entry-contracts.txt。
+本文原有25态入口探针已改为号码页提交、独立验证码页及冷却回读，不再保留原同页SMS布局。
 完整SDK处罚/风险/升级页与外部挑战、营销实验布局、本人真实新登录及RT成对轮换、
-Windows与其它DPI实际视觉仍须分别继续，不能用这25态宣称全部账号登录已完成。
+Windows与其它DPI实际视觉仍须分别继续，不能用这些专项宣称全部账号登录已完成。
