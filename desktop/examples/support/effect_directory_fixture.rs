@@ -9,13 +9,15 @@ pub fn enabled() -> bool {
 }
 
 fn sound(id: u64) -> Value {
-    let (name, subtitle) = match id {
-        200 => ("合成空间音效", "合成强推荐"),
-        300 => ("合成均衡音效", "合成推荐"),
+    let (name, subtitle, tier) = match id {
+        200 => ("合成空间音效", "合成强推荐", 15),
+        300 => ("合成均衡音效", "合成推荐", 6),
+        301 => ("合成未标识音效", "未知会员等级", 99),
         _ => unreachable!("validated effect fixture ID"),
     };
     json!({"id":id,"name":name,"subTitle":subtitle,"soundType":3,
         "coverUrl":"https://example.invalid/cover-sentinel",
+        "vipAuthRespItem":{"interestsVipType":tier,"authResult":{"trialDto":{"trialStatus":1,"expireTime":4000000000000_u64}}},
         "lightImg":"https://p1.music.126.net/cumulus-proof-artwork-light.png?token=private-sentinel",
         "darkImg":"http://p1.music.126.net/cumulus-proof-artwork-dark.png#private-sentinel",
         "soundMaterialList":[{"link":"https://example.invalid/material-sentinel"}]})
@@ -45,7 +47,7 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
         }
         "/api/usertool/sound/queryAllSound" => match args["exposeType"].as_u64() {
             Some(5) if args == &json!({"exposeType":5}) => json!([sound(200)]),
-            Some(6) if args == &json!({"exposeType":6}) => json!([sound(300)]),
+            Some(6) if args == &json!({"exposeType":6}) => json!([sound(300), sound(301)]),
             Some(7) if args == &json!({"exposeType":7}) => json!([]),
             _ => {
                 return Some(Err(Error::Response(

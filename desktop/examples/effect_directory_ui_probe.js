@@ -67,6 +67,8 @@
     const opener = button(await wait(() => one('.equalizer-dialog[open]'), 'EQ dialog'), '音效目录');
     click(opener);
     await wait(() => text().includes('合成空间音效'), 'featured list');
+    assert(one('[data-effect-membership="svip"]')?.textContent.trim() === 'SVIP',
+      'featured card shows its catalogue tier');
     click(one('.effect-directory-card'));
     await wait(() => text().includes('当前账号拥有试用权益'), 'read-only trial rights');
     await wait(artworkLoaded, 'dark artwork displayed');
@@ -76,7 +78,11 @@
       artworkLoaded(), 'light artwork displayed');
     await capture('02_light_artwork');
     click(button(dialog(), '官方精选音效'));
-    await wait(() => text().includes('合成均衡音效'), 'recommended list');
+    await wait(() => text().includes('合成未标识音效'), 'recommended list');
+    const cards = [...dialog().querySelectorAll('.effect-directory-card')];
+    assert(cards[0].querySelector('[data-effect-membership="vip"]')?.textContent.trim() === 'VIP' &&
+      !cards[1].querySelector('[data-effect-membership]') && !text().includes('限免'),
+      'only known tiers get decorative badges; catalogue trial metadata does not change presentation');
     click(one('.effect-directory-card'));
     await wait(() => text().includes('暂未确认当前账号的权益'), 'uncertain rights');
     await capture('03_unknown');

@@ -76,3 +76,10 @@ Linux 跨进程合成验证：effect_peq_restart_smoke.py 启动两个不同 PID
 为空，仍能从本机列表找到登记；取消确认不写入，显式确认仅发送同一登记的停止。
 重开不读取详情、权益或材料，不重新登记。只读 SQLite 核对同一操作变为 Released。
 截图见 .build/peq-restart-integrated/reopen/。两端 CI 使用同一隔离夹具。
+
+目录会员标识
+恢复 AudioEffectCard.tsx:166–209 和 AudioCardNew.tsx:131–173 使用
+vipAuthRespItem.interestsVipType：6 显示 VIP，15 显示 SVIP。目录卡片仅展示
+这两种已知等级；该标识不说明当前账号的权益，详情仍通过原有新鲜权限请求判定。
+本次不显示限免或倒计时：官方限免变体另使用 trialDto.expireTime 和 dateSync，
+当前目录未接入该时钟。合成 WebView 验收覆盖两种等级、未知等级无标识及原请求次序。

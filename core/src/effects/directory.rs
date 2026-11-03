@@ -3,6 +3,7 @@
 use super::{
     api::EffectsApi,
     catalog::{CatalogueKind, EffectId, Sound},
+    rights::{RequiredMembership, tier},
     service::EffectsLibrary,
 };
 use crate::{Error, Result, account::SessionToken};
@@ -13,6 +14,9 @@ pub struct EffectDirectoryRow {
     pub id: EffectId,
     pub name: String,
     pub subtitle: String,
+    /// Catalogue presentation only; never a fresh access decision.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub membership: Option<RequiredMembership>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub light_artwork: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -49,6 +53,7 @@ impl From<Sound> for EffectDirectoryRow {
             id: sound.id,
             name: text(&sound.name),
             subtitle: text(&sound.subtitle),
+            membership: tier(sound.catalogue_authorization().as_ref()),
             light_artwork: crate::protocol::artwork::original(&sound.native_record()["lightImg"]),
             dark_artwork: crate::protocol::artwork::original(&sound.native_record()["darkImg"]),
         }

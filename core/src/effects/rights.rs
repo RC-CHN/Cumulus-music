@@ -69,7 +69,7 @@ pub enum AuthQuery<'a> {
     Confirmed(Option<&'a Authorization>),
     Unavailable,
 }
-fn tier(value: Option<&Authorization>) -> Option<RequiredMembership> {
+pub(super) fn tier(value: Option<&Authorization>) -> Option<RequiredMembership> {
     match value.and_then(|v| v.required_membership) {
         Some(6) => Some(RequiredMembership::Vip),
         Some(15) => Some(RequiredMembership::Svip),

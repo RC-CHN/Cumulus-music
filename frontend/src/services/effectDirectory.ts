@@ -4,6 +4,7 @@ export interface EffectCatalogueItem {
   id: number;
   name: string;
   subtitle: string;
+  membership?: 'vip' | 'svip';
   light_artwork?: string;
   dark_artwork?: string;
 }

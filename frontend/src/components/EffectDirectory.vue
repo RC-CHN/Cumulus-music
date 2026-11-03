@@ -269,7 +269,15 @@ onUnmounted(() => {
                 @error="failedArtwork.add(($event.currentTarget as HTMLImageElement).src)"
               />
               <Icon v-else name="music" />
-              <strong>{{ item.name || '未命名音效' }}</strong>
+              <strong>
+                {{ item.name || '未命名音效' }}
+                <span
+                  v-if="item.membership"
+                  class="effect-card-membership"
+                  :data-effect-membership="item.membership"
+                  >{{ item.membership === 'svip' ? 'SVIP' : 'VIP' }}</span
+                >
+              </strong>
               <span v-if="item.subtitle">{{ item.subtitle }}</span>
             </button>
           </li>
@@ -407,6 +415,16 @@ onUnmounted(() => {
 .effect-directory-card.with-artwork,
 .effect-directory-card.with-artwork span {
   color: #fff;
+}
+.effect-card-membership {
+  display: inline-block;
+  margin-inline-start: 4px;
+  padding-inline: 4px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  font-size: 10px;
+  line-height: 14px;
+  white-space: nowrap;
 }
 .effect-directory-card[aria-pressed='true'] {
   border-color: var(--accent);
