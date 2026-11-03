@@ -4,7 +4,7 @@ import { emailSuggestions } from '../../services/loginPresentation';
 const props = defineProps<{ modelValue: string; disabled: boolean }>();
 const emit = defineEmits<{ 'update:modelValue': [value: string]; chosen: [] }>();
 const focused = ref(false),
-  active = ref(-1),
+  active = ref(0),
   dismissed = ref(false);
 const id = useId();
 const suggestions = computed(() =>
@@ -12,29 +12,29 @@ const suggestions = computed(() =>
 );
 function input(event: Event) {
   dismissed.value = false;
-  active.value = -1;
+  active.value = 0;
   emit('update:modelValue', (event.target as HTMLInputElement).value);
 }
 function choose(value: string) {
   emit('update:modelValue', value);
   dismissed.value = true;
-  active.value = -1;
+  active.value = 0;
   emit('chosen');
 }
 function key(event: KeyboardEvent) {
+  if (event.isComposing || event.keyCode === 229) return;
   if (event.key === 'Escape' && suggestions.value.length) {
     event.stopPropagation();
     event.preventDefault();
     dismissed.value = true;
+    active.value = 0;
   } else if (['ArrowUp', 'ArrowDown'].includes(event.key) && suggestions.value.length) {
     event.preventDefault();
-    active.value =
-      event.key === 'ArrowDown'
-        ? (active.value + 1) % suggestions.value.length
-        : (active.value < 1 ? suggestions.value.length : active.value) - 1;
-  } else if (event.key === 'Enter' && active.value >= 0 && suggestions.value[active.value]) {
+    const delta = event.key === 'ArrowDown' ? 1 : -1;
+    active.value = Math.max(0, Math.min(suggestions.value.length - 1, active.value + delta));
+  } else if (event.key === 'Enter' && suggestions.value[active.value]) {
     event.preventDefault();
-    choose(suggestions.value[active.value]!);
+    if (!event.repeat) choose(suggestions.value[active.value]!);
   }
 }
 </script>
@@ -55,9 +55,7 @@ function key(event: KeyboardEvent) {
       aria-autocomplete="list"
       :aria-expanded="suggestions.length > 0"
       :aria-controls="suggestions.length ? `${id}-suggestions` : undefined"
-      :aria-activedescendant="
-        active >= 0 && suggestions[active] ? `${id}-suggestion-${active}` : undefined
-      "
+      :aria-activedescendant="suggestions[active] ? `${id}-suggestion-${active}` : undefined"
       @input="input"
       @focus="focused = true"
       @blur="focused = false"
