@@ -39,6 +39,7 @@ struct Snapshot {
     token: SessionToken,
     revision: String,
     ids: Vec<Value>,
+    style_preference: Option<super::style_tags::StylePreference>,
 }
 
 #[derive(Clone, Copy)]
@@ -210,6 +211,10 @@ impl MusicClient {
                 token: token.clone(),
                 revision: revision.clone(),
                 ids: value.tracks.iter().map(|row| json!(row.id)).collect(),
+                style_preference: value
+                    .style_tags
+                    .as_ref()
+                    .map(super::style_tags::StylePreference::from_category),
             });
             value.revision = Some(revision);
             Ok(AccountData {
@@ -217,6 +222,27 @@ impl MusicClient {
                 value,
             })
         })
+    }
+
+    /// Caller already holds the session fence when using this for a write.
+    pub(super) fn style_preference_at(
+        &self,
+        token: &SessionToken,
+        revision: &str,
+    ) -> Result<super::style_tags::StylePreference> {
+        let state = self
+            .style_recommendations
+            .lock()
+            .map_err(|_| Error::LockPoisoned)?;
+        let snapshot = state
+            .latest
+            .as_ref()
+            .filter(|snapshot| snapshot.token == *token && snapshot.revision == revision)
+            .ok_or(Error::QueueChanged)?;
+        snapshot
+            .style_preference
+            .clone()
+            .ok_or(Error::State("applied style preference unavailable"))
     }
 
     pub(super) fn recommendation_selection(

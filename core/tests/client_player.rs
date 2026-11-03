@@ -33,6 +33,10 @@ struct Backend {
     playlist_tracks: Mutex<Option<Vec<Value>>>,
     album_tracks: Mutex<Option<Vec<Value>>>,
     daily_tracks: Mutex<Option<Vec<Value>>>,
+    style_tag_state: AtomicU64,
+    style_tag_write_mode: AtomicU64,
+    style_tag_writes: AtomicU64,
+    style_tag_started: Notify,
     quality_trial_state: AtomicU64,
     quality_start_mode: AtomicU64,
     quality_writes: AtomicU64,
@@ -43,7 +47,7 @@ struct Backend {
     quality_release: Notify,
 }
 impl Api for Backend {
-    fn request<'a>(&'a self, path: &'a str, payload: Value, _: bool) -> ApiFuture<'a, Value> {
+    fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             self.calls.lock().unwrap().push(path.into());
             Ok(match path {
@@ -90,7 +94,35 @@ impl Api for Backend {
                         payload,
                         json!({"source":"","categoryId":"","tagId":"","songId":""})
                     );
-                    json!({"code":200,"data":{"dailySongs":[{"id":72,"name":"风格乙"},{"id":71,"name":"风格甲"}]}})
+                    assert!(!cache);
+                    let mut response = json!({"code":200,"data":{"dailySongs":[{"id":72,"name":"风格乙"},{"id":71,"name":"风格甲"}]}});
+                    match self.style_tag_state.load(Ordering::SeqCst) {
+                        0 => {}
+                        n => {
+                            response["data"]["tags"] = json!({"categoryId":7,"categoryName":"类型","tagVOList":[{"tagId":n,"tagName":"标签"}]})
+                        }
+                    }
+                    response
+                }
+                "/api/homepage/daily/song/config/get" => {
+                    assert!(!cache);
+                    assert_eq!(payload, json!({"limit":20}));
+                    json!({"code":200,"data":{"categorys":[{"categoryId":7,"categoryName":"类型","tagVOList":[{"tagId":1,"tagName":"甲"},{"tagId":2,"tagName":"乙"}]}]}})
+                }
+                "/api/homepage/daily/song/tag/save" => {
+                    assert!(!cache);
+                    assert_eq!(payload, json!({"tags":{"categoryId":7,"tagIds":[2]}}));
+                    self.style_tag_writes.fetch_add(1, Ordering::SeqCst);
+                    match self.style_tag_write_mode.load(Ordering::SeqCst) {
+                        1 => {
+                            self.style_tag_state.store(2, Ordering::SeqCst);
+                            self.style_tag_started.notify_one();
+                            std::future::pending::<()>().await;
+                        }
+                        2 => {}
+                        _ => self.style_tag_state.store(2, Ordering::SeqCst),
+                    }
+                    json!({"code":200})
                 }
                 "/api/v3/discovery/recommend/songs" => {
                     assert_eq!(payload, json!({"limit":30}));
@@ -223,6 +255,8 @@ mod queue_album;
 mod queue_daily;
 #[path = "client_player/source_control.rs"]
 mod source_control;
+#[path = "client_player/style_tag_intent.rs"]
+mod style_tag_intent;
 
 #[tokio::test]
 async fn rejected_online_selection_projects_no_source_and_allows_a_different_song() {

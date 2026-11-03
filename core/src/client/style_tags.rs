@@ -1,5 +1,8 @@
+mod intent;
+pub use intent::{StylePreference, StyleTagOperation, StyleTagPhase};
+
 use super::{MusicClient, dto::AccountData};
-use crate::{Error, Result};
+use crate::{Error, Result, protocol::api::Api};
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::collections::HashSet;
@@ -82,30 +85,10 @@ impl MusicClient {
         let token = self.player_token(epoch)?;
         let value = self
             .session
-            .run_for(&token, |api, _| async move {
-                let response = api
-                    .call(
-                        "/api/homepage/daily/song/config/get",
-                        json!({"limit":20}),
-                        false,
-                        &[200],
-                    )
-                    .await?;
-                if !response["data"].is_object() {
-                    return Err(Error::Response("invalid style tag configuration"));
-                }
-                let mut categories = HashSet::new();
-                rows(&response["data"]["categorys"], 64)?
-                    .iter()
-                    .map(|value| {
-                        let category = category(value, 256)?;
-                        if !categories.insert(category.id.clone()) {
-                            return Err(Error::Response("duplicate style category"));
-                        }
-                        Ok(category)
-                    })
-                    .collect::<Result<Vec<_>>>()
-            })
+            .run_for(
+                &token,
+                |api, _| async move { Ok(configuration(&*api).await?.1) },
+            )
             .await?;
         self.session.with_token(&token, |_| {
             Ok(AccountData {
@@ -114,4 +97,31 @@ impl MusicClient {
             })
         })
     }
+}
+
+async fn configuration(api: &dyn Api) -> Result<(Value, Vec<StyleCategory>)> {
+    let response = api
+        .call(
+            "/api/homepage/daily/song/config/get",
+            json!({"limit":20}),
+            false,
+            &[200],
+        )
+        .await?;
+    if !response["data"].is_object() {
+        return Err(Error::Response("invalid style tag configuration"));
+    }
+    let mut categories = HashSet::new();
+    let raw = &response["data"]["categorys"];
+    let projection = rows(raw, 64)?
+        .iter()
+        .map(|value| {
+            let category = category(value, 256)?;
+            if !categories.insert(category.id.clone()) {
+                return Err(Error::Response("duplicate style category"));
+            }
+            Ok(category)
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Ok((raw.clone(), projection))
 }
