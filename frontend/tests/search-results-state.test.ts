@@ -401,3 +401,53 @@ test('hot search explanation is all-only and does not repeat empty-state or noti
     lines: [],
   });
 });
+
+test('lyric append follows raw continuation, preserves distinct occurrences, and caps playback input', async () => {
+  const calls: number[] = [];
+  const api: SearchResultsClient = {
+    searchResults: async (_epoch, q) => {
+      calls.push(q.offset);
+      const response = view(q);
+      response.value.more = true;
+      response.value.nextOffset = q.offset + 10;
+      response.value.sections = [
+        {
+          id: 'lyrics',
+          title: '歌词',
+          category: 'lyrics',
+          items: Array.from({ length: q.offset ? 10 : 9 }, (_, i) => ({
+            kind: 'song' as const,
+            track: {
+              id: '7',
+              name: 'Same song',
+              artists: [],
+              album: '',
+              coverUrl: null,
+              durationMs: 1000,
+              fee: 0,
+              missing: false,
+              local: false,
+            },
+            excerpt: [`Occurrence ${q.offset + i}`],
+            excerptTruncated: false,
+          })),
+        },
+      ];
+      return response;
+    },
+  };
+  const model = useSearchResults(api, () => assert.fail('no expiry'));
+  model.connect(account);
+  await model.open({ ...query, category: 'lyrics', limit: 10 });
+  for (let i = 0; i < 51; i++) await model.more();
+  const result = model.view.value!;
+  const items = result.sections[0]!.items;
+  assert.deepEqual(calls.slice(0, 3), [0, 10, 20]);
+  assert.equal(items.length, 500);
+  assert.deepEqual(
+    items.slice(8, 10).map((i) => i.kind === 'song' && i.excerpt[0]),
+    ['Occurrence 8', 'Occurrence 10'],
+  );
+  assert.equal(result.more, false);
+  assert.match(result.notice ?? '', /浏览上限/);
+});

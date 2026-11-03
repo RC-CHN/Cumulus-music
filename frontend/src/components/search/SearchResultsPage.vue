@@ -14,6 +14,7 @@ import {
   type SearchItem,
   type SearchSection,
 } from '../../services/search';
+import { useLyricWindow } from '../../composables/useLyricWindow';
 import { useSearchResults } from '../../composables/useSearchResults';
 import { useMotion } from '../../composables/useMotion';
 import { createPageTransition } from '../../services/pageTransition';
@@ -96,8 +97,10 @@ const requestKeyword = computed(() =>
 const matchKeyword = computed(() =>
   category.value === 'all' ? props.keyword : (rewrite.value ?? requestKeyword.value),
 );
-const waterfall = computed(() => ['artists', 'users', 'mvs'].includes(category.value));
-const limit = computed(() => (waterfall.value ? 13 : 30));
+const lyrics = computed(() => category.value === 'lyrics');
+const gridWaterfall = computed(() => ['artists', 'users', 'mvs'].includes(category.value));
+const waterfall = computed(() => lyrics.value || gridWaterfall.value);
+const limit = computed(() => (lyrics.value ? 10 : gridWaterfall.value ? 13 : 30));
 const visibleTabs = computed(() => displayedSearchCategories(model.tabs.value, category.value));
 const selected = computed(() => visibleTabs.value.find((c) => c.key === category.value)!);
 const tracks = (section: SearchSection) =>
@@ -144,6 +147,32 @@ const panel = ref<HTMLElement>(),
   tabs = ref<HTMLElement>();
 const moreButton = ref<HTMLButtonElement>(),
   moreFooter = ref<HTMLElement>();
+const lyricBody = ref<HTMLElement>();
+const lyricItems = computed(() =>
+  lyrics.value ? (view.value?.sections[0]?.items.filter((item) => item.kind === 'song') ?? []) : [],
+);
+const lyricKey = (index: number, id: string) => `${index}:${id}`;
+const lyricWindow = useLyricWindow(panel, lyricBody, () =>
+  lyricItems.value.map((item, index) =>
+    expandedLyrics.value.has(lyricKey(index, item.track.id))
+      ? 90 + Math.max(3, item.excerpt.length) * 18
+      : 144,
+  ),
+);
+const renderedLyrics = computed(() =>
+  lyricWindow.rendered.value.flatMap((index) => {
+    const item = lyricItems.value[index];
+    return item ? [{ item, index, key: lyricKey(index, item.track.id) }] : [];
+  }),
+);
+function lyricFocus(event: FocusEvent) {
+  const row = (event.target as Element | null)?.closest<HTMLElement>('[data-lyric-index]');
+  if (row) lyricWindow.focus(Number(row.dataset.lyricIndex));
+}
+function lyricBlur(event: FocusEvent) {
+  if (!(event.relatedTarget instanceof Node) || !lyricBody.value?.contains(event.relatedTarget))
+    lyricWindow.focus();
+}
 function open(item: SearchItem) {
   if (item.kind === 'related') emit('search', item.keyword);
   else if (item.kind !== 'user' || !item.user.unavailable) emit('open', item);
@@ -178,6 +207,7 @@ function tabKey(event: KeyboardEvent, index: number) {
 let restoring = false,
   loadGeneration = 0,
   frame = 0;
+let scrollDeadline: ReturnType<typeof setTimeout> | undefined;
 let activeCategory = '';
 let observer: ResizeObserver | undefined;
 function checkpoint(focus = false) {
@@ -195,27 +225,43 @@ function checkpoint(focus = false) {
         ? document.activeElement.dataset.resultAction
         : undefined,
     expandedLyrics: [...expandedLyrics.value],
+    lyricAnchor: activeCategory === 'lyrics' ? lyricWindow.anchor() : undefined,
   });
 }
 function maybeMore() {
   const element = panel.value;
+  // An append updates the model before Vue paints the new spacer. Do not
+  // treat the previous page's bottom as the end of the newly loaded list.
+  if (
+    lyrics.value &&
+    (!lyricBody.value ||
+      lyricWindow.offsets.value.length !== lyricItems.value.length + 1 ||
+      Math.abs(lyricBody.value.clientHeight - lyricWindow.height.value) > 1)
+  )
+    return;
   if (
     !restoring &&
     waterfall.value &&
     element &&
     view.value?.more &&
     !moreError.value &&
-    element.scrollHeight - element.scrollTop - element.clientHeight < 180
+    element.scrollHeight - element.scrollTop - element.clientHeight < (lyrics.value ? 60 : 180)
   )
     void model.more();
 }
 function scroll() {
   checkpoint();
-  if (!frame)
-    frame = requestAnimationFrame(() => {
+  if (lyrics.value) lyricWindow.schedule();
+  if (!frame) {
+    const update = () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(scrollDeadline);
       frame = 0;
       maybeMore();
-    });
+    };
+    frame = requestAnimationFrame(update);
+    scrollDeadline = setTimeout(update, 64);
+  }
 }
 watch(
   () => view.value?.more,
@@ -249,7 +295,12 @@ async function restore() {
   )
     return;
   const position = model.position.value;
-  panel.value.scrollTop = position.top;
+  if (lyrics.value && position.lyricAnchor) lyricWindow.restore(position.lyricAnchor);
+  else panel.value.scrollTop = position.top;
+  if (lyrics.value && position.focus?.startsWith('lyric:')) {
+    const index = Number(position.focus.split(':')[1]);
+    if (Number.isInteger(index)) lyricWindow.focus(index);
+  }
   const inner = panel.value.querySelector('.track-scroll');
   if (inner) inner.scrollTop = position.tracks;
   await waitForViewportFrames(2);
@@ -300,6 +351,7 @@ watch(
   },
   { flush: 'post' },
 );
+watch(lyricWindow.height, maybeMore, { flush: 'post' });
 watch(
   () => view.value,
   () => {
@@ -324,7 +376,7 @@ watch(
     props.searchId,
   ],
   () => {
-    if (activeCategory) checkpoint();
+    if (activeCategory) checkpoint(true);
     void load(true);
   },
   { immediate: true },
@@ -334,6 +386,7 @@ onBeforeUnmount(() => {
   loadGeneration++;
   observer?.disconnect();
   cancelAnimationFrame(frame);
+  clearTimeout(scrollDeadline);
   model.dispose();
 });
 </script>
@@ -441,7 +494,7 @@ onBeforeUnmount(() => {
         :aria-labelledby="`search-tab-${category}`"
         :aria-busy="loading"
         class="search-result-panel"
-        :class="{ 'search-song-panel': category === 'songs' }"
+        :class="{ 'search-song-panel': category === 'songs', 'search-lyrics-panel': lyrics }"
         tabindex="0"
         @scroll.capture.passive="scroll"
       >
@@ -512,26 +565,36 @@ onBeforeUnmount(() => {
               class="search-lyric-list"
               role="table"
               aria-label="歌词搜索结果"
+              :aria-rowcount="lyricItems.length * 2 + 1"
             >
               <div class="track-columns track-header" role="row">
                 <span>#</span><span role="columnheader">歌曲 / 歌手</span
                 ><span role="columnheader">专辑</span><span role="columnheader">喜欢</span
                 ><span role="columnheader">时长</span>
               </div>
-              <template
-                v-for="(item, index) in section.items"
-                :key="`${index}:${item.kind === 'song' ? item.track.id : ''}`"
+              <div
+                :ref="(element) => (lyricBody = (element as HTMLElement | null) ?? undefined)"
+                class="search-lyric-window"
+                role="presentation"
+                :style="{ height: `${lyricWindow.height.value}px` }"
+                @focusin="lyricFocus"
+                @focusout="lyricBlur"
               >
                 <div
-                  v-if="item.kind === 'song'"
+                  v-for="{ item, index, key } in renderedLyrics"
+                  :key="key"
                   class="search-lyric-result"
+                  :class="{ 'lyric-striped': index % 2 }"
+                  :data-lyric-index="index"
+                  :style="{ top: `${lyricWindow.offsets.value[index]}px` }"
                   role="rowgroup"
-                  :data-result-key="`lyric:${index}:${item.track.id}`"
+                  :data-result-key="`lyric:${key}`"
                 >
                   <TrackRow
                     :track="item.track"
                     :match-keyword="matchKeyword"
                     :index="index"
+                    :aria-rowindex="index * 2 + 2"
                     :liked="liked.has(item.track.id)"
                     :busy="busyLikes.has(item.track.id)"
                     :current-id="currentId"
@@ -543,19 +606,19 @@ onBeforeUnmount(() => {
                     @artist="emit('artist', $event)"
                     @album="emit('album', $event)"
                   />
-                  <div role="row">
+                  <div role="row" :aria-rowindex="index * 2 + 3">
                     <div role="cell" aria-colspan="5">
                       <SearchLyricExtra
                         :lines="item.excerpt"
                         :truncated="item.excerptTruncated"
                         :content-id="`search-lyric-${index}`"
-                        :expanded="expandedLyrics.has(`${index}:${item.track.id}`)"
-                        @toggle="toggleLyric(`${index}:${item.track.id}`)"
+                        :expanded="expandedLyrics.has(key)"
+                        @toggle="toggleLyric(key)"
                       />
                     </div>
                   </div>
                 </div>
-              </template>
+              </div>
             </div>
             <div
               v-else-if="category === 'all' && section.items.some((i) => i.kind === 'song')"
@@ -604,7 +667,7 @@ onBeforeUnmount(() => {
               v-if="section.items.some((i) => i.kind !== 'song')"
               :items="previewItems(section)"
               :scroller="panel"
-              :virtual="waterfall"
+              :virtual="gridWaterfall"
               :preview="oneRowPreview(section)"
               v-slot="{ item }"
             >

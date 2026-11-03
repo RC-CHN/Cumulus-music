@@ -1,8 +1,16 @@
+.search-lyrics-panel {
+  overflow-anchor: none;
+}
+.search-lyric-window {
+  position: relative;
+}
 .search-lyric-result {
+  position: absolute;
+  inset-inline: 0;
   margin-bottom: 10px;
   border-radius: 6px;
 }
-.search-lyric-result:nth-child(even) {
+.search-lyric-result.lyric-striped {
   background: var(--surface-alt);
 }
 .search-lyric-result .track-row.striped {

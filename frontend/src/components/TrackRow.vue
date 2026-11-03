@@ -49,6 +49,7 @@ function duration(ms: number) {
     <span class="track-index" role="cell"
       ><button
         class="track-play icon-button"
+        data-result-action="play"
         :aria-label="`播放 ${track.name}`"
         :disabled="!playable || track.missing"
         @click.stop="emit('play', index)"
@@ -80,7 +81,12 @@ function duration(ms: number) {
           :data-tooltip="track.artistRefs.map((artist) => artist.name).join(' / ')"
           ><template v-for="(artist, i) in track.artistRefs" :key="i"
             ><span v-if="i"> / </span
-            ><button v-if="artist.id" @click.stop="emit('artist', artist.id)" @dblclick.stop>
+            ><button
+              v-if="artist.id"
+              :data-result-action="`artist:${artist.id}`"
+              @click.stop="emit('artist', artist.id)"
+              @dblclick.stop
+            >
               <SearchMatchText v-if="matchKeyword" :text="artist.name" :keyword="matchKeyword" />
               <template v-else>{{ artist.name }}</template>
             </button>
@@ -106,6 +112,7 @@ function duration(ms: number) {
       ><button
         v-if="navigable && track.albumId"
         class="track-album-link ellipsis"
+        data-result-action="album"
         @click.stop="emit('album', track.albumId)"
         @dblclick.stop
       >
@@ -118,6 +125,7 @@ function duration(ms: number) {
     <span role="cell"
       ><button
         class="icon-button like-button"
+        data-result-action="like"
         :class="{ liked: liked }"
         :aria-label="`${liked ? '取消喜欢' : '喜欢'} ${track.name}`"
         :aria-pressed="liked"
@@ -131,6 +139,7 @@ function duration(ms: number) {
       ><span class="track-duration">{{ track.missing ? '—' : duration(track.durationMs) }}</span
       ><button
         class="icon-button track-more"
+        data-result-action="more"
         :aria-label="`更多操作 ${track.name}`"
         aria-haspopup="menu"
         @click.stop="more"

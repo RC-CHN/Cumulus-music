@@ -11,6 +11,8 @@ def main():
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--runtime', type=Path)
+    parser.add_argument('--frontend-dist', type=Path)
+    parser.add_argument('--waterfall', action='store_true')
     parser.add_argument('--screenshots', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
@@ -24,9 +26,12 @@ def main():
         directory = root / 'os-profile' / name
         directory.mkdir(parents=True, mode=0o700)
         env[key] = str(directory)
+    if args.frontend_dist:
+        env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve(strict=True))
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
-    source = Path(__file__).resolve().parents[2] / 'desktop/examples/search_lyrics_ui_probe.js'
+    script_name = 'search_lyrics_waterfall_ui_probe.js' if args.waterfall else 'search_lyrics_ui_probe.js'
+    source = Path(__file__).resolve().parents[2] / 'desktop/examples' / script_name
     script = root / 'search-lyrics.js'
     script.write_text(source.read_text(encoding='utf-8'), encoding='utf-8')
     env['CUMULUS_UX_SCRIPT'] = str(script)
@@ -35,6 +40,14 @@ def main():
     failed = root / 'first/failed.json'
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
+    if args.waterfall:
+        complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
+        assert complete['ok'] and complete['lyricWaterfall'] and complete['stageCount'] == 3
+        assert complete['offsets'] == [0, 10, 10, 20, 30, 40, 50, 0, *range(10, 111, 10)]
+        assert complete['nativePlaybackId'] == '53' and complete['duplicateHitsPreserved']
+        assert len(list((root / 'first').glob('ux_*.png'))) == (3 if args.screenshots else 0)
+        print(json.dumps(dict(ok=True, actualWebView=True, lyricWaterfall=True)))
+        return
     verify(root, args.screenshots)
 
 def verify(root, capture):

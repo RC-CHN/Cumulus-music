@@ -1,3 +1,4 @@
+import type { LyricAnchor } from './lyricWindow.ts';
 import type { AccountView } from './contracts.ts';
 import type { SearchCategory, SearchResultQuery, SearchResultView } from './search.ts';
 
@@ -7,6 +8,7 @@ export interface SearchPosition {
   focus?: string;
   focusAction?: string;
   expandedLyrics?: string[];
+  lyricAnchor?: LyricAnchor;
 }
 interface Snapshot {
   view: SearchResultView;
