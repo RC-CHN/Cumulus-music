@@ -39,6 +39,15 @@ Cumulus 桌面主流程验收
   同轮另用固定只读桌面探针取得一个真实音源，验证 libmpv 时钟前进并
   正常停止。该探针不运行生产 Vue 或正式账号宿主，声道输出为 null。
   五条请求的计数、无账号写入及复跑方法见 search-playback-read-proof.txt。
+  当前生产 Vue 树（46523f5）已在独立的有界只读宿主完成真实 PC 服务
+  回读：校验本人身份、本人歌单、日推、默认搜索词、综合搜索和单曲搜索，
+  六个端点各成功一次。另一个非预设关键词在转发前被拒绝。Linux 进程
+  仅有 loopback、无路由和宿主代理，通过唯一核对 CONNECT 与 TLS SNI 的
+  私有 broker 出网。原始凭据记录与使用后的副本一致；复核后删除凭据与
+  本机账号缓存副本。匿名报告 .build/main-flow-live-readonly-summary.json。
+  本轮没有播放或下载媒体、歌单写入、续期，也没有运行正式 guardian 宿主。
+  第一次线上尝试没有确认单曲回包，不计为通过；第二次限定等待实际单曲
+  表格和成功回执后通过。隔离复跑程序保留在 research/main-flow-pinned-readonly。
   历史真实桌面目录 .build/ui-proof/ 下可检查 run-2-small 的账号
   恢复/推荐/歌单/搜索，player-6-small 的播放控制，
   playlist-3-small 的临时私密歌单与原始顺序恢复，
