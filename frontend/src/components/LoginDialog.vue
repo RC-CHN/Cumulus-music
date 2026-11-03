@@ -87,9 +87,11 @@ function close(destination: 'close' | 'accounts' = 'close') {
   else emit('close');
 }
 function entered(element: Element) {
-  // An internal switch link leaves with its panel. Keep focus inside the modal;
-  // clicks on the persistent method buttons keep their own focus.
-  if (document.activeElement === document.body || panel.value?.contains(document.activeElement)) {
+  // Replace lost focus or the panel's temporary focus, but preserve a
+  // control the user already reached while the new panel was entering.
+  if (closing || panel.value !== element) return;
+  const active = document.activeElement;
+  if (active === document.body || active === element) {
     const target =
       mode.value === 'phone_help'
         ? dialog.value?.querySelector<HTMLElement>('.login-help-back')

@@ -121,7 +121,21 @@
     await wait(() => one('.qr-confirmation') && !app() && document.activeElement === one('.qr-frame'), 'polling continues, scan removes app action and preserves focus');
     await mode('normal');
 
-    await tab('手机'); await wait(() => !one('[aria-label="国际区号"]').disabled, 'country metadata');
+    if (document.documentElement.dataset.motion === 'full') {
+      const frames = window.requestAnimationFrame;
+      window.requestAnimationFrame = () => -1;
+      try {
+        button('手机').focus(); button('手机').click();
+        await wait(() => one('.login-panel.tab-enter-active [aria-label="国际区号"]:not(:disabled)'), 'phone panel entering during stalled frames');
+        one('[aria-label="国际区号"]').click();
+        const region = () => one('[aria-label="搜索国家或地区"]');
+        await wait(() => region() && document.activeElement === region(), 'region search focuses during enter');
+        await wait(() => !one('.tab-enter-active'), 'transition deadline');
+        assert(document.activeElement === region(), 'completed transition preserves already-focused search');
+        region().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+      } finally { window.requestAnimationFrame = frames; }
+    } else await tab('手机');
+    await wait(() => !one('[aria-label="国际区号"]').disabled, 'country metadata');
     assert(!one('[aria-label="同意登录协议"]').checked, 'consent defaults unchecked');
     await stage('phone_default_light', { expectGuest: true });
     for (const name of ['《服务条款》', '《隐私政策》', '《儿童隐私政策》']) {
