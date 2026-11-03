@@ -12,6 +12,7 @@ pub use cold_offline::{ColdOfflinePageView, ColdOfflinePlayerView};
 mod collections;
 mod comments;
 mod content;
+mod daily_experiment;
 mod downloads;
 pub mod dto;
 mod effects;
@@ -87,6 +88,7 @@ pub struct MusicClient {
     daily_recommendations: Arc<std::sync::Mutex<recommendations::RecommendationSnapshot>>,
     style_recommendations: Arc<std::sync::Mutex<recommendations::RecommendationSnapshot>>,
     quality_experiment: quality_experiment::QualityExperiment,
+    daily_experiment: daily_experiment::DailyExperiment,
 }
 
 impl MusicClient {
@@ -212,6 +214,7 @@ impl MusicClient {
             daily_recommendations: Default::default(),
             style_recommendations: Default::default(),
             quality_experiment: quality_experiment::QualityExperiment::default(),
+            daily_experiment: daily_experiment::DailyExperiment::default(),
             together: together::TogetherHost::default(),
             scene_fm: scene_fm::SceneFmHost::default(),
             local: local::LocalHost::new(registry.store()),

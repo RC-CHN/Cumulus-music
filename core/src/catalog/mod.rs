@@ -9,7 +9,10 @@ mod privileges;
 pub mod rankings;
 pub mod search;
 pub use album::{AlbumDetailSource, AlbumDetails, AlbumReadState};
-pub use api::{CatalogApi, PlayOptions, SearchOptions, SongBatch};
+pub use api::{
+    CatalogApi, DailyRecommendationEndpoint, DailyRecommendationReply, PlayOptions, SearchOptions,
+    SongBatch,
+};
 pub use artist::{ArtistApi, ArtistPageRequest};
 
 /// Official M/21 R chooses id || albumId before converting to decimal text.

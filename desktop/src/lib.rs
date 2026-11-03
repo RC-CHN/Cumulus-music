@@ -387,7 +387,8 @@ pub fn run() {
             )?;
             let client = renewal::configure(client, &profile)
                 .with_official_search_experiment()
-                .with_official_quality_experiments();
+                .with_official_quality_experiments()
+                .with_official_daily_experiment();
             let client = client.with_login_device_name(&login_device::name())?;
             let client = configure_native_im(client, &app.path().resource_dir()?);
             let client = configure_native_audio(client, &app.path().resource_dir()?, false);

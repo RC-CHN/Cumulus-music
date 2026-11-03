@@ -51,6 +51,27 @@ pub struct SongBatch {
 pub struct CatalogApi {
     pub(super) api: Arc<dyn Api>,
 }
+/// M/244 chooses v3 only for PH-PC-Blacklist=t1; v1 is the control.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DailyRecommendationEndpoint {
+    V1,
+    V3,
+}
+
+impl DailyRecommendationEndpoint {
+    fn path(self) -> &'static str {
+        match self {
+            Self::V1 => "/api/v1/discovery/recommend/songs",
+            Self::V3 => "/api/v3/discovery/recommend/songs",
+        }
+    }
+}
+
+pub struct DailyRecommendationReply {
+    pub songs: Vec<Value>,
+    pub show_free_tag: bool,
+}
+
 impl CatalogApi {
     pub fn new(api: Arc<dyn Api>) -> Self {
         Self { api }
@@ -109,15 +130,40 @@ impl CatalogApi {
         self.api.call("/api/cloudsearch/pc", json!({"s":keyword,"type":options.kind,"limit":options.limit,"offset":options.offset,"total":true}),false,&[200]).await
     }
 
+    /// Historical raw v3 API used by existing independent callers and fixtures.
     pub async fn daily(&self) -> Result<Value> {
+        self.daily_response(DailyRecommendationEndpoint::V3).await
+    }
+
+    async fn daily_response(&self, endpoint: DailyRecommendationEndpoint) -> Result<Value> {
         self.api
-            .call(
-                "/api/v3/discovery/recommend/songs",
-                json!({"limit":30}),
-                false,
-                &[200],
-            )
+            .call(endpoint.path(), json!({"limit":30}), false, &[200])
             .await
+    }
+
+    /// M/15 Ph/ii have distinct list locations. No alternate endpoint retry.
+    pub async fn daily_for(
+        &self,
+        endpoint: DailyRecommendationEndpoint,
+    ) -> Result<DailyRecommendationReply> {
+        let mut response = self.daily_response(endpoint).await?;
+        let show_free_tag = response["data"]["showFreeTag"].as_bool().unwrap_or(false);
+        let value = match endpoint {
+            DailyRecommendationEndpoint::V1 => response.get_mut("recommend"),
+            DailyRecommendationEndpoint::V3 => response
+                .get_mut("data")
+                .and_then(|data| data.get_mut("dailySongs")),
+        };
+        let Some(Value::Array(songs)) = value.map(Value::take) else {
+            return Err(Error::Response("missing daily recommendation songs"));
+        };
+        if songs.len() > 500 {
+            return Err(Error::Response("too many daily recommendation songs"));
+        }
+        Ok(DailyRecommendationReply {
+            songs,
+            show_free_tag,
+        })
     }
 
     /// M/3126 daily-entry defaults. M/12 folds the query into the API payload.
