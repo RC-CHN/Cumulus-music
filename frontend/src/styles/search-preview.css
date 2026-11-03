@@ -114,8 +114,18 @@
   font-size: 10px;
   line-height: 12px;
 }
-.track-title .search-original-tag {
-  margin-inline-start: 5px;
+.track-title-with-original {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.track-title-with-original .track-row-title-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.track-title-with-original .vip-tag {
+  flex-shrink: 0;
 }
 .search-track-credit button {
   font: inherit;

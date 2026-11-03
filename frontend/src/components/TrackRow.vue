@@ -71,9 +71,15 @@ function duration(ms: number) {
         referrerpolicy="no-referrer"
       /><span v-else class="track-art"><Icon name="music" /></span>
       <div>
-        <div class="ellipsis" :data-tooltip="track.name">
-          <SearchMatchText v-if="matchKeyword" :text="track.name" :keyword="matchKeyword" />
-          <template v-else>{{ track.name }}</template>
+        <div
+          class="ellipsis"
+          :class="{ 'track-title-with-original': originalRecording }"
+          :data-tooltip="track.name"
+        >
+          <span class="track-row-title-text">
+            <SearchMatchText v-if="matchKeyword" :text="track.name" :keyword="matchKeyword" />
+            <template v-else>{{ track.name }}</template>
+          </span>
           <span v-if="track.fee === 1" class="vip-tag">VIP</span>
           <span v-if="originalRecording" class="search-original-tag">原唱</span>
         </div>

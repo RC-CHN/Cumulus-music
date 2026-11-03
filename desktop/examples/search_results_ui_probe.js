@@ -696,8 +696,13 @@
       await wait(()=>ready()&&one('[data-category="all"]')?.getAttribute('aria-selected')==='true','Back from chart');
       await choose('songs');
       const songRows=all('#search-result-panel .track-row');
-      assert(songRows[0]?.querySelector('.search-original-tag')?.textContent==='原唱'&&
-        !songRows[1]?.querySelector('.search-original-tag'),'song category honors original vs cover');
+      const original=songRows[0]?.querySelector('.search-original-tag');
+      assert(original?.textContent==='原唱'&&!songRows[1]?.querySelector('.search-original-tag'),
+        'song category honors original vs cover');
+      const originalRect=original.getBoundingClientRect();
+      assert(originalRect.width>0&&original.contains(document.elementFromPoint(
+        originalRect.x+originalRect.width/2,originalRect.y+originalRect.height/2)),
+        'original label remains visible beside the long narrow title');
       await capture('v3_original_recording_category');
 
       await emit('complete',{ok:true,v3Verified:true,v3TrackHintsVerified:true,v3ExplicitVerified:true,v3ReasonRoutesVerified:true,v3ReasonPlaybackVerified:true,v3OriginalRecordingVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
