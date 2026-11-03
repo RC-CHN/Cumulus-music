@@ -38,3 +38,17 @@ beforeDevCommand/beforeBuildCommand 在工作区根运行，已改为 npm --pref
 目前交付独立 core、Tauri 桥接、Vue 界面和可启动骨架。
 登录、搜索、播放、下载等旧实现仍在 references 中，尚未迁移为新 Rust 业务。
 新程序不读取旧会话，不链接官方 Windows DLL，不调用 Python 归档作为后台进程。
+
+2026-11-03 主线普通可执行文件复验（d7def3b）
+前端生产资产构建后，使用仓库固定 Rust 与锁文件执行
+`cargo build --offline --locked -p cumulus-desktop --features custom-protocol --bin cumulus`。
+本轮本机产物为 `.build/target-main-integration/debug/cumulus`
+（调试符号关闭，未打包发布）。使用新的私有数据目录、仅回环的网络
+命名空间、私有 D-Bus 及 Xvfb/Openbox，直接运行该普通入口，不使用
+桌面测试例程或合成 IPC。自动和软件渲染均显示实际应用界面。
+通过 XTest 鼠标事件打开「本地音乐」，核对空库提示、目录选择入口及
+侧栏选中状态。截图和报告见
+`.build/current-product-navigation-UwBXxzR9/run/`，其中
+`local-after-click.png` 是进入本地音乐后的实际窗口。
+本次未登录、未导入个人文件、未验收声卡或安装包，也不替代其他
+平台和真实账号业务流程的验收。
