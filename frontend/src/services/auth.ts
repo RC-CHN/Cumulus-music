@@ -1,3 +1,5 @@
+import type { ServerQuickLoginClient } from './serverQuickLogin';
+import type { QuickLoginEligibilityClient } from './quickLoginEligibility';
 import type { AccountData, AccountView, QrStatus } from './contracts';
 import type { RenewalClient } from './renewal';
 import type { LoginPresentationClient } from './loginPresentation';
@@ -263,7 +265,11 @@ export interface SavedAccount {
 export type LoginCaptchaView =
   | { kind: 'credentials'; value: LoginView }
   | { kind: 'qr'; value: QrStatus };
-export interface AuthClient extends RenewalClient, LoginPresentationClient {
+export interface AuthClient
+  extends RenewalClient,
+    LoginPresentationClient,
+    QuickLoginEligibilityClient,
+    ServerQuickLoginClient {
   solveLoginCaptcha(operationId: string): Promise<LoginCaptchaView>;
   onAccountChanged(handler: (account: AccountView) => void): Promise<() => void>;
   beginLogin(epoch: string, mode: LoginMode, savedId?: string): Promise<LoginView>;

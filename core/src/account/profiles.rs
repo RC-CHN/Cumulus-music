@@ -1,6 +1,7 @@
 //! Same-origin account selection and isolated candidate credential stores.
 //! SQLite commits the selected profile and identity together before publishing
 //! the in-memory account. Old candidates cannot replace a newer selection.
+mod quick;
 mod registration;
 mod removal;
 mod saved;
@@ -15,6 +16,10 @@ use crate::{
         },
     },
     storage::StateStore,
+};
+pub use quick::{
+    QuickLoginAccountView, QuickLoginEligibilityView, QuickLoginTransport, ServerQuickLogin,
+    ServerQuickLoginPhase, ServerQuickLoginView,
 };
 pub use saved::SavedProfile;
 use serde::{Deserialize, Serialize};
@@ -58,6 +63,7 @@ pub struct LoginCandidate {
     client: Arc<MusicHttpClient>,
     credentials: Arc<Credentials>,
     expected_uid: Option<String>,
+    quick_target: Option<quick::QuickSavedTarget>,
     auto_login: AtomicBool,
     registration_phone: Mutex<Option<registration::Binding>>,
 }
@@ -191,6 +197,7 @@ impl ProfileRegistry {
             client,
             credentials,
             expected_uid: None,
+            quick_target: None,
             auto_login: AtomicBool::new(true),
             registration_phone: Mutex::new(None),
         })
@@ -255,6 +262,9 @@ impl LoginCandidate {
         }
         // Check that another process did not clear/replace this credential set.
         self.credentials.device_id()?;
+        if let Some(target) = &self.quick_target {
+            self.registry.check_quick_target(target)?;
+        }
         let selection = Selection {
             session_id: self.id.clone(),
             revision: Uuid::new_v4().simple().to_string(),
@@ -290,7 +300,12 @@ impl LoginCandidate {
                         .get(OWNER, saved::KIND, &uid)?
                         .ok_or(Error::StaleResponse)
                         .and_then(|v| Ok(serde_json::from_value(v)?))?;
-                    if current.session_id != self.id {
+                    let target_matches = if let Some(target) = &self.quick_target {
+                        current == target.saved
+                    } else {
+                        current.session_id == self.id
+                    };
+                    if !target_matches {
                         return Err(Error::StaleResponse);
                     }
                 }

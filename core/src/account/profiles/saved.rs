@@ -94,6 +94,7 @@ impl ProfileRegistry {
             client,
             credentials,
             expected_uid: Some(record.uid),
+            quick_target: None,
             auto_login: AtomicBool::new(record.auto_login),
             registration_phone: Mutex::new(None),
         })

@@ -42,6 +42,8 @@ enum Jsk {
     None,
     Lifecycle,
     Login,
+    QuickEligibility,
+    GuestQuickExchange,
 }
 
 impl MusicHttpClient {
@@ -131,6 +133,50 @@ impl MusicHttpClient {
             .await
     }
 
+    pub(crate) async fn request_jsk_quick_eligibility(
+        &self,
+        payload: Value,
+        expected_revision: &str,
+    ) -> Result<Value> {
+        if self.credentials.origin() != super::ApiOrigin::Pc {
+            return Err(Error::InvalidInput(
+                "JSK quick login requires the PC origin",
+            ));
+        }
+        self.execute(
+            "/api/login/getquickloginlist",
+            payload,
+            false,
+            Some(expected_revision),
+            Jsk::QuickEligibility,
+            None,
+        )
+        .await
+    }
+
+    pub(crate) async fn request_jsk_guest_quick(&self, payload: Value) -> Result<Value> {
+        if self.credentials.origin() != super::ApiOrigin::Pc {
+            return Err(Error::InvalidInput(
+                "JSK quick login requires the PC origin",
+            ));
+        }
+        let before = self.credentials.login_credentials()?;
+        if before.token.is_some() || before.refresh_token.is_some() {
+            return Err(Error::State(
+                "server quick login requires a fresh candidate",
+            ));
+        }
+        self.execute(
+            "/api/login/quicklogin",
+            payload,
+            false,
+            Some(&before.revision),
+            Jsk::GuestQuickExchange,
+            None,
+        )
+        .await
+    }
+
     async fn execute(
         &self,
         path: &str,
@@ -147,6 +193,8 @@ impl MusicHttpClient {
                     path,
                     "/api/login/token/refresh/v1" | "/api/middle/account/token/refresh"
                 ),
+                Jsk::QuickEligibility => path == "/api/login/getquickloginlist",
+                Jsk::GuestQuickExchange => path == "/api/login/quicklogin",
                 Jsk::None => false,
             };
             if !allowed {
@@ -283,10 +331,14 @@ impl MusicHttpClient {
                 Err(_) => Err(Error::Response("API returned non-JSON data")),
             }
         };
-        let login_path = super::login::completes_login(path, &response.set_cookies);
+        let login_path = jsk == Jsk::GuestQuickExchange
+            || super::login::completes_login(path, &response.set_cookies);
         let authorized = parsed.as_ref().is_ok_and(|v| {
-            [Some(200), Some(803)].contains(&v["code"].as_i64())
-                && v["data"]["success"] != false
+            (if jsk == Jsk::GuestQuickExchange {
+                crate::error::code_matches(&v["code"], 200)
+            } else {
+                [Some(200), Some(803)].contains(&v["code"].as_i64())
+            }) && v["data"]["success"] != false
                 && v["data"] != false
                 && (path != "/api/middle/account/uplinkcaptcha/verify"
                     || crate::protocol::wire::serialization::js_truthy(&v["data"]))
@@ -303,17 +355,21 @@ impl MusicHttpClient {
         // M/1368 prepareAndSaveLoginInfo supplies Date.now() for a completed
         // JSK login. Do not reset this on resource reads, legacy requests or
         // refresh itself. Commit it atomically with the candidate credentials.
-        let last_login_at = (acknowledged && jsk == Jsk::Login)
+        let last_login_at = (acknowledged && matches!(jsk, Jsk::Login | Jsk::GuestQuickExchange))
             .then(|| SystemTime::now().duration_since(UNIX_EPOCH).ok())
             .flatten()
             .map(|time| time.as_secs());
-        self.credentials.record_login_response(
-            &response_url,
-            &response.set_cookies,
-            refresh,
-            &snapshot.revision,
-            last_login_at,
-        )?;
+        if jsk != Jsk::QuickEligibility
+            && (jsk != Jsk::GuestQuickExchange || (200..300).contains(&response.status))
+        {
+            self.credentials.record_login_response(
+                &response_url,
+                &response.set_cookies,
+                refresh,
+                &snapshot.revision,
+                last_login_at,
+            )?;
+        }
         if path == "/api/w/register/cellphone" && (200..300).contains(&response.status) {
             let effective = self.credentials.login_credentials()?.token;
             let target = origin.request_url(WireRoute::Eapi, "/api/login/token/refresh/v1")?;

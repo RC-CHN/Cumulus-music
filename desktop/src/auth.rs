@@ -90,6 +90,49 @@ pub fn saved_accounts(
 ) -> Result<AccountData<Vec<SavedAccountView>>, ClientError> {
     client.saved_accounts(&epoch).map_err(Into::into)
 }
+
+#[tauri::command]
+pub async fn quick_login_eligibility(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> Result<AccountData<QuickLoginEligibilityView>, ClientError> {
+    client
+        .quick_login_eligibility(&epoch)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn begin_server_quick_login(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    saved_id: String,
+    consent: bool,
+) -> Result<AccountData<ServerQuickLoginOperationView>, ClientError> {
+    client
+        .begin_server_quick_login(&epoch, &saved_id, consent)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn server_quick_login_command<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    id: String,
+    command: ServerQuickLoginCommand,
+) -> Result<AccountData<ServerQuickLoginOperationView>, ClientError> {
+    let result = client
+        .server_quick_login_command(&epoch, &id, command)
+        .await?;
+    if result.value.state.phase
+        == cumulus_core::account::profiles::ServerQuickLoginPhase::Authenticated
+    {
+        publish(&window, &client);
+    }
+    Ok(result)
+}
 #[tauri::command]
 pub async fn remove_saved_account<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,

@@ -1,0 +1,32 @@
+服务端访客快捷登录（PC JSK）
+
+账号选择器将“本机恢复”与“服务端快捷登录”分开。用户主动核对资格时，
+才向官方服务检查最多三条可用的本机账号记录。显示的是已核对结果；
+未发送的账号不显示为拒绝。资格名单不会删除本机保存的账号。
+
+来源：PC 3.1.42.205594 M1368:4269–4482、9475–9520；
+M290:524–556 提供本机历史账号；Quick.jsx:214–229 在快捷登录前要求同意协议。
+  /api/login/getquickloginlist（JSK EAPI）：currentEnv="{}"，userInfoList
+  是 JSON 字符串，包含原生有界选择的 userId、userProfile 和 musicU。
+  按 deleteUserIds 等回包字段核对；不是旧版 usableUserIds 协议。
+  /api/login/quicklogin（JSK EAPI）：重查资格后使用同一组历史，
+  附 targetUserId（SDK 原始数值类型，EAPI 上为标量字符串）及空 currentUserId。
+  targetUserId 必须是能精确往返的正整数，不能丢精度或前导零。
+
+资格读取忽略响应凭据，不修改 Cookie。WebView 仅收到不透明本机账号 ID、
+资格和阶段。发送前复核索引、目标账号、凭据版本和当前会话代次。
+正式命令在新建独立候选中只发送一次；要求真实响应中的、对身份回读
+及续期路由有效的 MUSIC_U，再以 /api/w/nuser/account/get 核对同一 UID。
+确认前不替换旧保存会话。丢回包但已有符合条件的凭据时只允许核对身份，
+不重放登录请求；明确拒绝或无可核验凭据不会采用候选。取消清理未采用的
+候选凭据；迟到的旧命令不能覆盖下一次登录。最终采用由目标保存记录
+和会话代次的原生事务保护。
+
+未接入已登录账号的服务端 /switchuser，也不猜测旧版协议与新链的混合用法。
+若上游要求尚无证据的快捷安全验证，提示改用现有登录方式；
+不自动发送验证消息或绕过挑战。本批没有用真实账号执行快捷登录。
+
+验收：core/tests/quick_login_eligibility.rs 覆盖资格、路由范围、丢回包、
+身份不符、取消和迟到；scripts/ci/account_login_smoke.py --quick-login
+在实际 Linux WebView 验证 7 个阶段。探针从两个合成账号的既有登录动作
+建立历史，验证同意协议、未支持挑战和只读恢复；不会访问真实服务。

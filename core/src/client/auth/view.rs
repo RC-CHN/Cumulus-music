@@ -11,6 +11,25 @@ pub(super) fn short_text(value: &Value) -> Option<String> {
 }
 
 impl MusicClient {
+    /// Explicit eligibility read for the existing saved-account chooser. No
+    /// credential, raw user ID or upstream response is exposed to IPC.
+    pub async fn quick_login_eligibility(
+        &self,
+        epoch: &str,
+    ) -> Result<AccountData<crate::account::profiles::QuickLoginEligibilityView>> {
+        let token = self.auth_token(epoch)?;
+        let value = self
+            .registry
+            .quick_login_eligibility_for(&self.session, &token)
+            .await?;
+        self.session.with_local_owner(&token, |_| {
+            Ok(AccountData {
+                epoch: epoch.into(),
+                value,
+            })
+        })
+    }
+
     pub(in crate::client) fn native_account_client(&self) -> Result<Option<Arc<MusicHttpClient>>> {
         let token = self.session.token()?;
         let api: Arc<dyn std::any::Any + Send + Sync> = self.session.native_api(&token)?;

@@ -206,9 +206,11 @@ pub use super::mini_preferences::{MiniPreferencesCommand, MiniPreferencesView};
 pub use super::account_avatar::AccountAvatarCommand;
 pub use super::account_profile::AccountProfileEditCommand;
 pub use super::auth::LoginPresentation;
+pub use super::auth::{ServerQuickLoginCommand, ServerQuickLoginOperationView};
 pub use super::desktop_lyric_preferences::{
     DesktopLyricPreferencesCommand, DesktopLyricPreferencesView,
 };
 pub use super::player::LyricReportView;
 pub use crate::account::login::presentation::{LoginCountry, LoginDocument};
 pub use crate::account::profile::avatar::{AvatarImage, AvatarTaskView};
+pub use crate::account::profiles::{QuickLoginAccountView, QuickLoginEligibilityView};

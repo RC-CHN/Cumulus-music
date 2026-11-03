@@ -5,6 +5,7 @@ mod lifecycle;
 mod presentation;
 mod qr;
 mod renewal;
+mod server_quick;
 mod view;
 use super::{MusicClient, mapping};
 use crate::{
@@ -20,10 +21,12 @@ pub use captcha::LoginCaptchaProvider;
 pub use dto::*;
 pub use presentation::LoginPresentation;
 pub use renewal::{RenewalAction, RenewalState, SessionRenewalView};
+pub use server_quick::{ServerQuickLoginCommand, ServerQuickLoginOperationView};
 use std::sync::{Arc, Mutex};
 
 enum PendingFlow {
     Qr(Arc<QrAuthentication>),
+    ServerQuick(Arc<crate::account::profiles::ServerQuickLogin>),
     Credentials {
         mode: LoginMode,
         flow: Arc<CredentialLogin>,
@@ -39,6 +42,8 @@ impl PendingLogin {
     fn authenticated(&self) -> Result<bool> {
         match &self.flow {
             PendingFlow::Qr(flow) => flow.authenticated(),
+            PendingFlow::ServerQuick(flow) => Ok(flow.snapshot()?.phase
+                == crate::account::profiles::ServerQuickLoginPhase::Authenticated),
             PendingFlow::Credentials { flow, .. } => {
                 Ok(flow.snapshot()?.status == LoginStatus::Authenticated)
             }
@@ -51,6 +56,7 @@ impl PendingLogin {
         }
         match &self.flow {
             PendingFlow::Qr(flow) => flow.cancel(),
+            PendingFlow::ServerQuick(flow) => flow.cancel(),
             PendingFlow::Credentials { flow, .. } => flow.cancel(),
         }
     }
@@ -201,7 +207,7 @@ impl MusicClient {
         let cleanup = if remote {
             match &pending.flow {
                 PendingFlow::Credentials { flow, .. } => flow.take_device_cleanup()?,
-                PendingFlow::Qr(_) => None,
+                PendingFlow::Qr(_) | PendingFlow::ServerQuick(_) => None,
             }
         } else {
             None

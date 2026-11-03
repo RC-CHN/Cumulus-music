@@ -88,6 +88,7 @@ impl MusicClient {
             match &pending.flow {
                 PendingFlow::Credentials { flow, .. } => (Some(flow.clone()), None),
                 PendingFlow::Qr(flow) => (None, Some(flow.clone())),
+                PendingFlow::ServerQuick(_) => return Err(Error::StaleResponse),
             }
         };
         if let Some(flow) = credentials {

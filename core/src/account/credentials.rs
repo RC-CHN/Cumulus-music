@@ -8,7 +8,10 @@ use crate::{
 use cookie_store::{Cookie, CookieStore};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::{
+    path::Path,
+    sync::{Arc, Mutex, MutexGuard},
+};
 use url::Url;
 use uuid::Uuid;
 
@@ -65,7 +68,70 @@ pub struct RequestCredentials {
     pub revision: String,
 }
 
+/// One saved authorization token scoped to the official eligibility request.
+/// This type is deliberately not serializable or printable.
+pub(super) struct QuickLoginCredential {
+    pub music_u: String,
+    pub revision: String,
+    pub last_login_at: Option<u64>,
+}
+
 impl Credentials {
+    pub(super) fn quick_login_credential(
+        database: &Path,
+        origin: ApiOrigin,
+        target: &Url,
+    ) -> Result<Option<QuickLoginCredential>> {
+        use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
+        origin.require_url(target)?;
+        match std::fs::symlink_metadata(database) {
+            Ok(metadata) if metadata.is_file() => (),
+            Ok(_) => return Err(Error::State("saved credential database is redirected")),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error.into()),
+        }
+        // Do not call StateStore::open or Credentials::open: an explicit
+        // eligibility read must not create/initialize missing saved stores.
+        let connection = Connection::open_with_flags(
+            database,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NOFOLLOW,
+        )?;
+        connection.busy_timeout(std::time::Duration::from_millis(100))?;
+        let raw: Option<String> = connection
+            .query_row(
+                "SELECT value FROM state WHERE owner=? AND kind=? AND key=?
+                AND length(CAST(value AS BLOB)) <= 524288",
+                params![OWNER, KIND, KEY],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let Some(raw) = raw else {
+            return Ok(None);
+        };
+        let record: Record = serde_json::from_str(&raw)
+            .map_err(|_| Error::Response("invalid saved credentials for quick login"))?;
+        validate_record(&record, origin)?;
+        if record.login_notice.is_some() || record.queue_reset.is_some() {
+            return Ok(None);
+        }
+        let cookies = jar(&record)?;
+        let mut tokens = request_cookies(&cookies, target)
+            .into_iter()
+            .filter_map(|(name, value)| (name == "MUSIC_U").then_some(value));
+        let Some(music_u) = tokens.next() else {
+            return Ok(None);
+        };
+        validate_token(&music_u)?;
+        if tokens.next().is_some() {
+            return Err(Error::State("ambiguous saved authorization cookie"));
+        }
+        Ok(Some(QuickLoginCredential {
+            music_u,
+            revision: record.revision,
+            last_login_at: record.last_login_at,
+        }))
+    }
+
     pub fn import_legacy(&self, legacy: super::credential_import::LegacySession) -> Result<()> {
         if legacy.origin != self.origin {
             return Err(Error::InvalidInput("legacy session origin mismatch"));
