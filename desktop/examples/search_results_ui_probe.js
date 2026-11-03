@@ -8,8 +8,9 @@
   const emit=(stage,data={})=>window.__TAURI_INTERNALS__.invoke('plugin:event|emit',{event:'ux-proof',payload:{stage,...data}});
   const key=(n,k)=>n.dispatchEvent(new KeyboardEvent('keydown',{key:k,bubbles:true,cancelable:true}));
   let count=0,step='startup',holdCategory,held=false,release,gate;
+  const songReads=[];
   const fetch=window.fetch;
-  window.fetch=async function(url,options){const query=String(url).endsWith('/search_results')?JSON.parse(options.body).query:null;const delayed=query?.category===holdCategory?gate:null;const response=await fetch.call(window,url,options);if(delayed){held=true;await delayed;}return response;};
+  window.fetch=async function(url,options){const query=String(url).endsWith('/search_results')?JSON.parse(options.body).query:null;if(window.__cumulusSearchSongWaterfallProof&&query?.category==='songs')songReads.push([query.offset,query.limit]);const delayed=query?.category===holdCategory?gate:null;const response=await fetch.call(window,url,options);if(delayed){held=true;await delayed;}return response;};
   const hold=category=>{held=false;holdCategory=category;gate=new Promise(r=>{const timer=setTimeout(r,10000);release=()=>{clearTimeout(timer);holdCategory=undefined;gate=undefined;r();};});};
   const fixture=async mode=>{window.__searchFixtureAck=false;await emit('search-fixture',{mode});await wait(()=>window.__searchFixtureAck,'fixture acknowledgement');};
   const ready=()=>one('#search-result-panel')?.getAttribute('aria-busy')==='false' && !one('.search-results-leave-active');
@@ -49,6 +50,61 @@
     } finally { window.requestAnimationFrame=frames; }
   }
   try {
+    if(window.__cumulusSearchSongWaterfallProof){
+      await wait(()=>one('.track-row'),'daily ready');
+      await emit('resize',{width:760,height:540});
+      await wait(()=>innerWidth===760&&innerHeight===540,'compact window');
+      await fixture('song_waterfall_error');await fresh('合成连续单曲');await choose('songs');
+      const table=()=>one('.search-song-panel .track-table');
+      const scroll=()=>table().querySelector('.track-scroll');
+      const loaded=()=>Number(table()?.getAttribute('aria-rowcount'))-1;
+      const scrollEnd=()=>{assert(scroll().scrollHeight>scroll().clientHeight,'table owns the scrollbar');scroll().scrollTop=scroll().scrollHeight;};
+      assert(loaded()===10&&!one('.search-result-pagination'),'continuous first ten rows');
+      scrollEnd();
+      await wait(()=>button('重试加载更多'),'append error exposes retry');
+      assert(loaded()===10&&scroll().scrollTop>0&&button('使用分页查看'),'first rows and position survive error');
+      await capture('song_append_failure_retains_first_chunk');
+      const anchor=scroll().scrollTop;
+      click(button('使用分页查看'));
+      await wait(()=>loaded()===30&&one('#search-song-batch-scope')?.textContent.trim()==='仅限当前页的单曲','explicit numbered fallback');
+      await capture('song_numbered_fallback');
+      click(button('返回上一页'));
+      await wait(()=>loaded()===10&&button('重试加载更多')&&Math.abs(scroll().scrollTop-anchor)<=1,'Back restores the continuous view');
+      await fixture('song_waterfall');
+      click(button('重试加载更多'));
+      await wait(()=>loaded()===20,'append retry retains both chunks');
+      assert(Math.abs(scroll().scrollTop-anchor)<=1,'appending does not reset the viewport');
+      scrollEnd();
+      await wait(()=>loaded()===30,'second scroll appends the third chunk');
+      assert(JSON.stringify(songReads)===JSON.stringify([[0,10],[10,10],[0,30],[10,10],[20,10]]),'only the expected cursor reads: '+JSON.stringify(songReads));
+      await capture('song_append_retains_thirty');
+      const invoke=(name,args={})=>window.__TAURI_INTERNALS__.invoke(name,args);
+      const {epoch}=await invoke('account_snapshot');
+      async function playing(id){
+        for(let index=0;index<160;index++){
+          const state=await invoke('player_snapshot',{epoch});
+          if(state.track?.id===id&&state.state==='playing'&&state.position>.1)return state;
+          await sleep(70);
+        }
+        throw Error('native player did not advance on '+id);
+      }
+      click(button('播放全部'));
+      await playing('101');
+      const queue=await invoke('player_queue',{epoch});
+      const expected=Array.from({length:30},(_,index)=>String(index+101));
+      assert(queue.tracks.map(row=>row.track.id).join(',')===expected.join(','),'Play All sends the exact loaded prefix');
+      await capture('song_all_loaded_prefix_playing');
+      scrollEnd();
+      await wait(()=>one('.track-row[data-track-id="130"] .track-play'),'deep virtual row available');
+      click(one('.track-row[data-track-id="130"] .track-play'));
+      const selected=await playing('130');
+      const deep=await invoke('player_queue',{epoch});
+      assert(selected.entryId===queue.tracks[29].entryId&&
+        deep.tracks.map(row=>row.entryId).sort().join(',')===queue.tracks.map(row=>row.entryId).sort().join(','),'deep row keeps all active queue entries');
+      await capture('song_deep_result_keeps_queue');
+      await emit('complete',{ok:true,songWaterfallVerified:true,stageCount:count,songReads,realMusicRequests:0,realAccountWrites:0});
+      return;
+    }
     if(window.__cumulusSearchNextProof){
       await wait(()=>one('.track-row'),'daily ready');
       await fixture('good');
@@ -268,7 +324,7 @@
           }
         }
         if(category==='songs'){
-          assert(button('播放全部')&&button('收藏全部'),'official actions');click(button('收藏全部'));await wait(()=>one('.playlist-dialog[open]'),'collection dialog');assert(one('.playlist-collect-dialog .sr-only')?.textContent.includes('30首'),'collection is explicit about current page');await capture(`collect_${w}_${t}`);click(button('关闭歌单操作'));await wait(()=>!one('.playlist-dialog'),'collect close');
+          assert(button('播放全部')&&button('收藏全部'),'official actions');click(button('收藏全部'));await wait(()=>one('.playlist-dialog[open]'),'collection dialog');assert(one('.playlist-collect-dialog .sr-only')?.textContent.includes('10首'),'collection is explicit about loaded songs');await capture(`collect_${w}_${t}`);click(button('关闭歌单操作'));await wait(()=>!one('.playlist-dialog'),'collect close');
         }
         if(category==='users'){
           const source=button('查看用户主页 合成用户 1');

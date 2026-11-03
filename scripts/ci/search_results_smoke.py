@@ -18,6 +18,7 @@ def main():
     mode.add_argument('--correction-original', action='store_true')
     mode.add_argument('--people-categories', action='store_true')
     mode.add_argument('--search-next', action='store_true')
+    mode.add_argument('--song-waterfall', action='store_true')
     parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--screenshots', action='store_true')
     args = parser.parse_args()
@@ -43,6 +44,8 @@ def main():
         prefix = 'window.__cumulusSearchPeopleCategoriesProof = true;\n'
     if args.search_next:
         prefix = 'window.__cumulusSearchNextProof = true;\n'
+    if args.song_waterfall:
+        prefix = 'window.__cumulusSearchSongWaterfallProof = true;\n'
     if args.correction_original:
         prefix = 'window.__cumulusSearchOriginalCorrectionProof = true;\n'
     if args.card_matches:
@@ -60,6 +63,15 @@ def main():
     failed = root / 'first/failed.json'
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
+    if args.song_waterfall:
+        complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
+        assert complete['ok'] and complete['songWaterfallVerified'] and complete['stageCount'] == 5
+        assert complete['songReads'] == [[0, 10], [10, 10], [0, 30], [10, 10], [20, 10]]
+        assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
+        assert len(list((root / 'first').glob('ux_*.png'))) == (5 if args.screenshots else 0)
+        print(json.dumps(dict(ok=True, actualWebView=True, songWaterfallVerified=True,
+                              stageCount=5, songReads=complete['songReads'])))
+        return
     if args.voice_direct or args.card_matches or args.correction_original or args.people_categories or args.search_next:
         complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
         flag = ('searchNextVerified' if args.search_next else

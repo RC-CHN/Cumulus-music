@@ -43,6 +43,8 @@ pub fn control(value: &Value) {
             "scroll",
             "scroll_error",
             "scroll_duplicates",
+            "song_waterfall",
+            "song_waterfall_error",
             "preview",
             "lyrics",
             "empty",
@@ -81,7 +83,7 @@ pub fn result_play_trial() -> Option<i64> {
         return None;
     }
     match MODE.lock().unwrap().as_str() {
-        "result_play_trial" => Some(42),
+        "result_play_trial" | "song_waterfall" | "song_waterfall_error" => Some(42),
         "result_play_default" => Some(-1),
         _ => None,
     }
@@ -286,6 +288,9 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
     if mode == "scroll_error" && args["offset"].as_u64().unwrap_or(0) > 0 {
         return Some(Err(Error::Transport("合成续页失败".into())));
     }
+    if mode == "song_waterfall_error" && category == "songs" && args["offset"] == 10 {
+        return Some(Err(Error::Transport("合成单曲续页失败".into())));
+    }
     if mode == "expired" {
         return Some(Ok(json!({"code":301})));
     }
@@ -451,6 +456,8 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
     };
     let total = if short_playlists {
         33
+    } else if mode.starts_with("song_waterfall") {
+        30
     } else if mode.starts_with("scroll") {
         600
     } else {
@@ -471,7 +478,11 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
                 let mut row = rows[i % rows.len()].clone();
                 // Additional grid rows have distinct identities, so the active
                 // resource marker cannot accidentally match repeated fixtures.
-                if category != "songs" && category != "lyrics" {
+                if category == "songs" && mode.starts_with("song_waterfall") {
+                    let song = &mut row["baseInfo"]["simpleSongData"];
+                    song["id"] = json!(i + 101);
+                    song["name"] = json!(format!("合成连续单曲 {}", i + 101));
+                } else if category != "songs" && category != "lyrics" {
                     let item = if legacy {
                         &mut row
                     } else {
@@ -530,7 +541,7 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
         }
     }
     container["hasMore"] = json!(mode != "empty" && category != "all" && offset + limit < total);
-    if mode.starts_with("scroll") {
+    if mode.starts_with("scroll") || mode.starts_with("song_waterfall") {
         for key in [
             "totalCount",
             "playlistCount",
