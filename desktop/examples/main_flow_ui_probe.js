@@ -102,6 +102,21 @@
     await search();
     await stage("search");
     await click(() => one(`${songPanel} ${songRow} .track-play`), "search play control");
+    if (window.__mainFlowHttpsRetry) {
+      const retry = () => button("重试", one(".playback-message"));
+      const openFailure = () => state() === "error" &&
+        one(".playback-message")?.textContent.includes("音源已选定，但无法打开或解码") &&
+        retry() && !retry().disabled;
+      await wait(openFailure, "ordinary HTTPS failure and explicit retry");
+      check(one(".playerbar")?.dataset.trackId === "1", "failed HTTPS selection retained");
+      await sleep(600);
+      check(openFailure(), "no automatic HTTPS replay");
+      await stage("https_failure", { failedBeforeExplicitRetry: true, rawLocatorVisible:
+        document.body.innerText.includes("cumulus-local-fixture.music.126.net") });
+      await wait(() => window.__mainFlowHttpsFailureRecorded, "native failure receipt");
+      await click(retry, "explicit HTTPS retry");
+      await wait(() => !one(".playback-message"), "retry clears playback feedback");
+    }
     await wait(() => state() === "playing" && one(".playerbar")?.dataset.trackId === "1" && position() >= .1, "native playback clock");
     await click(() => button("暂停", one(".playerbar")), "pause");
     await wait(() => state() === "paused", "native paused");

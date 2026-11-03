@@ -136,6 +136,8 @@ fn main() {
     unsafe { cumulus_desktop::prepare_graphics() };
     let root = PathBuf::from(std::env::var_os("CUMULUS_PROOF_DIR").expect("new proof root"));
     let ordinary_https = fixture::ordinary_https();
+    let retry_https = std::env::var("CUMULUS_MAIN_FLOW_HTTPS_RETRY").as_deref() == Ok("1");
+    assert!(!retry_https || ordinary_https);
     let reopen = std::env::var("CUMULUS_PROOF_REOPEN").as_deref() == Ok("1");
     if reopen {
         let completed: Value = serde_json::from_slice(
@@ -171,7 +173,7 @@ fn main() {
     cumulus_desktop::configure(tauri::Builder::default())
         .setup(move |app| {
             let store = Arc::new(StateStore::open(root.join("state"))?);
-            let fixture = Arc::new(fixture::Service::new(store.clone(), ordinary_https));
+            let fixture = Arc::new(fixture::Service::new(store.clone(), ordinary_https, retry_https));
             let wire = Arc::new(if reopen {
                 wire::Wire::reopen(fixture.clone())
             } else {
@@ -225,7 +227,8 @@ fn main() {
                     handle.get_webview_window("main").unwrap().eval("window.__mainFlowOffline=true;").unwrap();
                     return;
                 }
-                if !["ux_reopened","ux_guest","ux_qr_pending","ux_login_adopted","ux_recovered","ux_daily","ux_search","ux_playback","ux_playlist_created","ux_playlist_edited","ux_playlist_song_added","ux_playlist_song_removed","ux_playlist_cleaned","ux_download_paused","ux_download_complete","ux_local_offline_playback","ux_download_disposed","complete","failed"].contains(&stage.as_str()) { return; }
+                if !(retry_https && stage == "ux_https_failure")
+                    && !["ux_reopened","ux_guest","ux_qr_pending","ux_login_adopted","ux_recovered","ux_daily","ux_search","ux_playback","ux_playlist_created","ux_playlist_edited","ux_playlist_song_added","ux_playlist_song_removed","ux_playlist_cleaned","ux_download_paused","ux_download_complete","ux_local_offline_playback","ux_download_disposed","complete","failed"].contains(&stage.as_str()) { return; }
                 let client = handle.state::<MusicClient>();
                 let account = client.account().unwrap();
                 value["authenticated"] = json!(account.status == SessionStatus::Authenticated);
@@ -254,6 +257,7 @@ fn main() {
                 value["fixture"] = fixture.facts();
                 fs::write(out.join(format!("{stage}.json")), serde_json::to_vec_pretty(&value).unwrap()).unwrap();
                 let acknowledgement = match stage.as_str() {
+                    "ux_https_failure" => Some("window.__mainFlowHttpsFailureRecorded=true;"),
                     "ux_download_paused" => Some("window.__mainFlowPauseVerified=true;"),
                     "ux_download_complete" => Some("window.__mainFlowDownloadVerified=true;"),
                     "ux_download_disposed" => Some("window.__mainFlowDownloadDisposed=true;"),
@@ -285,7 +289,7 @@ fn main() {
         })
         .on_page_load(move |webview, payload| {
             if payload.event()==PageLoadEvent::Finished {
-                webview.eval(format!("window.__mainFlowDownloadPath={path};window.__mainFlowOrdinaryHttps={ordinary_https};")).unwrap();
+                webview.eval(format!("window.__mainFlowDownloadPath={path};window.__mainFlowOrdinaryHttps={ordinary_https};window.__mainFlowHttpsRetry={retry_https};")).unwrap();
                 let source = if reopen {
                     include_str!("main_flow_reopen_probe.js")
                 } else {

@@ -18,6 +18,7 @@ import threading
 SCRIPT = Path(__file__).resolve()
 HOST = 'cumulus-local-fixture.music.126.net'
 ROUTE = '/synthetic/audio.m4a'
+RETRY_ROUTE = ROUTE + '?proof-retry=2'
 SIZE = 39106
 SHA256 = '883d4ab2f3e6900f47a892c4941e3a6ae8aab577258aeca6fc7a1fe1d001d520'
 FIXTURE = SCRIPT.parents[2]/'core/tests/fixtures/tag_audio/playback-12s.m4a'
@@ -41,7 +42,7 @@ def ordinary_https(args, directory):
     with FIXTURE.open('rb') as source:
         payload = source.read(SIZE + 1)
     assert len(payload) == SIZE and hashlib.sha256(payload).hexdigest() == SHA256
-    counters = dict(gets=0, rejected=0)
+    counters = dict(gets=0, failedGets=0, rejected=0)
 
     class Handler(http.server.BaseHTTPRequestHandler):
         def log_message(self, *_):
@@ -55,7 +56,7 @@ def ordinary_https(args, directory):
 
         def serve(self, body):
             if (
-                self.path != ROUTE
+                self.path not in ((ROUTE, RETRY_ROUTE) if args.retry_once else (ROUTE,))
                 or self.headers.get_all('Host') != [HOST]
                 or not ipaddress.ip_address(self.client_address[0]).is_loopback
                 or any(name in self.headers for name in ('Cookie', 'Authorization', 'Proxy-Authorization'))
@@ -66,6 +67,16 @@ def ordinary_https(args, directory):
             # A short, fast-start file fits one whole GET. FFmpeg may express
             # that exact same request as bytes=0-.
             if ranges and ranges not in (['bytes=0-'], [f'bytes=0-{SIZE - 1}']):
+                return self.send_error(403)
+            if args.retry_once and self.path == ROUTE:
+                if counters['failedGets'] or not body:
+                    return self.send_error(403)
+                counters['failedGets'] += 1
+                self.send_response(503)
+                self.send_header('Content-Length', '0')
+                self.end_headers()
+                return
+            if args.retry_once and counters['failedGets'] != 1:
                 return self.send_error(403)
             self.send_response(206 if ranges else 200)
             self.send_header('Accept-Ranges', 'bytes')
@@ -106,22 +117,25 @@ def ordinary_https(args, directory):
                     assert denied.status == 403 and denied.read() == b''
                 finally:
                     connection.close()
-            assert counters == dict(gets=0, rejected=5)
+            assert counters == dict(gets=0, failedGets=0, rejected=5)
             counters['rejected'] = 0
             if args.preflight:
                 # Exercise the permitted HTTPS byte path without a desktop build.
-                connection = http.client.HTTPSConnection(HOST, context=trust, timeout=2)
-                try:
-                    connection.request('GET', ROUTE, headers={'Range': 'bytes=0-'})
-                    loaded = connection.getresponse()
-                    assert loaded.status == 206 and loaded.read() == payload
-                finally:
-                    connection.close()
+                cases = [(ROUTE, 503, b''), (RETRY_ROUTE, 206, payload)] if args.retry_once else [(ROUTE, 206, payload)]
+                for route, status, expected in cases:
+                    connection = http.client.HTTPSConnection(HOST, context=trust, timeout=2)
+                    try:
+                        connection.request('GET', route, headers={'Range': 'bytes=0-'})
+                        loaded = connection.getresponse()
+                        assert loaded.status == status and loaded.read() == expected
+                    finally:
+                        connection.close()
             else:
                 subprocess.run([
                     'xvfb-run', '-a', 'dbus-run-session', '--', '/usr/bin/python3',
                     str(SCRIPT.with_name('main_flow_smoke.py')), '--ordinary-https',
                     '--binary', str(args.binary), '--root', str(args.root),
+                    *(['--https-retry-once'] if args.retry_once else []),
                     *(['--screenshots'] if args.screenshots else []),
                 ], check=True, timeout=360)
         finally:
@@ -129,9 +143,10 @@ def ordinary_https(args, directory):
             thread.join(timeout=2)
             if not args.preflight and args.root.exists():
                 (args.root/'https-requests.json').write_text(json.dumps(counters)+'\n')
-    assert counters == dict(gets=1, rejected=0)
+    assert counters == dict(gets=1, failedGets=int(args.retry_once), rejected=0)
     report = dict(syntheticOnly=True, loopbackOnly=True, verifiedFixture=True,
-                  exactRouteRejected=5, ordinaryHttpsWebView=not args.preflight, localMediaGets=1)
+                  exactRouteRejected=5, ordinaryHttpsWebView=not args.preflight, localMediaGets=1,
+                  localMediaFailedGets=counters['failedGets'], explicitRetryMode=args.retry_once)
     if not args.preflight:
         (args.root/'https-receipt.json').write_text(json.dumps(report, indent=2)+'\n')
     print(json.dumps(report))
@@ -180,6 +195,7 @@ def outer(args):
             f'SSL_CERT_FILE={directory}/cert', f'G_TLS_CA_FILE={directory}/cert',
             '/usr/bin/python3', str(SCRIPT), '--isolated', str(directory),
             *(['--preflight'] if args.preflight else ['--binary', str(args.binary), '--root', str(args.root)]),
+            *(['--retry-once'] if args.retry_once else []),
             *(['--screenshots'] if args.screenshots else []),
         ], check=True, timeout=390)
 
@@ -190,6 +206,7 @@ if __name__ == '__main__':
     parser.add_argument('--root', type=lambda path: Path(path).resolve())
     parser.add_argument('--screenshots', action='store_true')
     parser.add_argument('--openbox-directory', type=lambda path: Path(path).resolve())
+    parser.add_argument('--retry-once', action='store_true', help='fail the first authorized HTTPS GET and require an explicit UI retry')
     parser.add_argument('--preflight', action='store_true', help='verify only TLS and namespace policy')
     parser.add_argument('--isolated', type=Path, help=argparse.SUPPRESS)
     arguments = parser.parse_args()

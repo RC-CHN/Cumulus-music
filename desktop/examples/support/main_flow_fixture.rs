@@ -23,6 +23,8 @@ pub const SOURCE: &str = media::URL;
 #[cfg(target_os = "linux")]
 const HTTPS_HOST: &str = "cumulus-local-fixture.music.126.net";
 const HTTPS_SOURCE: &str = "https://cumulus-local-fixture.music.126.net/synthetic/audio.m4a";
+const HTTPS_RETRY_SOURCE: &str =
+    "https://cumulus-local-fixture.music.126.net/synthetic/audio.m4a?proof-retry=2";
 
 /// The real URL path is test-only and fail-closed outside the loopback fixture.
 pub fn ordinary_https() -> bool {
@@ -59,6 +61,9 @@ pub struct Service {
     calls: Mutex<BTreeMap<String, u64>>,
     playlist: Mutex<Option<Value>>,
     ordinary_https: bool,
+    retry_https: bool,
+    source_authorizations: AtomicUsize,
+    source_load_attempts: AtomicUsize,
     offline: AtomicBool,
     local_loads: AtomicUsize,
     source_loads: AtomicUsize,
@@ -66,10 +71,13 @@ pub struct Service {
 }
 
 impl Service {
-    pub fn new(store: Arc<StateStore>, ordinary_https: bool) -> Self {
+    pub fn new(store: Arc<StateStore>, ordinary_https: bool, retry_https: bool) -> Self {
         Self {
             media: media::Media::new(store),
             ordinary_https,
+            retry_https,
+            source_authorizations: Default::default(),
+            source_load_attempts: Default::default(),
             calls: Default::default(),
             playlist: Default::default(),
             offline: Default::default(),
@@ -85,6 +93,24 @@ impl Service {
             SOURCE
         }
     }
+    fn authorize_playback(&self) -> Result<&'static str> {
+        let attempt = self.source_authorizations.fetch_add(1, Ordering::AcqRel);
+        if !self.retry_https || attempt == 0 {
+            Ok(self.playback_url())
+        } else if attempt == 1 {
+            Ok(HTTPS_RETRY_SOURCE)
+        } else {
+            Err(Error::State(
+                "synthetic HTTPS authorization budget exhausted",
+            ))
+        }
+    }
+    fn admits_playback(&self, url: &str) -> bool {
+        url == self.playback_url()
+            || (self.retry_https
+                && url == HTTPS_RETRY_SOURCE
+                && self.source_authorizations.load(Ordering::Acquire) == 2)
+    }
     pub fn offline(&self) {
         self.offline.store(true, Ordering::Release);
     }
@@ -95,7 +121,9 @@ impl Service {
         let media = self.media.facts();
         json!({"calls":*self.calls.lock().unwrap(), "disposablePresent":self.playlist.lock().unwrap().is_some(),
             "offline":self.offline.load(Ordering::Acquire), "mediaTransfers":media["count"], "mediaRequests":media["requests"],
-            "ordinaryHttps":self.ordinary_https, "sourceLoads":self.source_loads.load(Ordering::Acquire), "localLoads":self.local_loads.load(Ordering::Acquire),
+            "ordinaryHttps":self.ordinary_https, "retryHttps":self.retry_https,
+            "sourceAuthorizations":self.source_authorizations.load(Ordering::Acquire),
+            "sourceLoadAttempts":self.source_load_attempts.load(Ordering::Acquire), "sourceLoads":self.source_loads.load(Ordering::Acquire), "localLoads":self.local_loads.load(Ordering::Acquire),
             "offlineMediaAttempts":self.offline_media_attempts.load(Ordering::Acquire)})
     }
 }
@@ -141,7 +169,7 @@ impl Api for Service {
                 "/api/v3/song/detail" => json!({"code":200,"songs":[song()]}),
                 "/api/song/lyric/v1" => json!({"code":200,"lrc":{"lyric":"[00:00.00]合成测试"}}),
                 "/api/song/enhance/player/url/v1" => {
-                    json!({"code":200,"data":[{"id":1,"url":self.playback_url(),"code":200,"md5":"synthetic","level":"standard","expi":120}]})
+                    json!({"code":200,"data":[{"id":1,"url":self.authorize_playback()? ,"code":200,"md5":"synthetic","level":"standard","expi":120}]})
                 }
                 "/api/song/enhance/download/url/v1" => {
                     json!({"code":200,"data":{"id":1,"url":SOURCE,"code":200,"type":"flac","size":media::DATA.len(),"md5":media::MD5,"level":"lossless"}})
@@ -284,7 +312,7 @@ impl AudioEngine for Audio {
     fn load(&mut self, mut request: LoadRequest, cancel: &Cancellation) -> Result<LoadedMedia> {
         let offline = self.fixture.offline.load(Ordering::Acquire);
         let local = match &request.source {
-            MediaInput::Url(url) if !offline && url.as_str() == self.fixture.playback_url() => {
+            MediaInput::Url(url) if !offline && self.fixture.admits_playback(url.as_str()) => {
                 if !self.fixture.ordinary_https {
                     request.source = MediaInput::File(self.seed.clone());
                 }
@@ -304,6 +332,11 @@ impl AudioEngine for Audio {
                 ));
             }
         };
+        if !local {
+            self.fixture
+                .source_load_attempts
+                .fetch_add(1, Ordering::AcqRel);
+        }
         let loaded = self.inner.load(request, cancel)?;
         if self.fixture.ordinary_https && !local && loaded.codec.as_deref() != Some("aac") {
             let _ = self.inner.stop();

@@ -21,14 +21,23 @@ def main():
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--ordinary-https', action='store_true', help=argparse.SUPPRESS)
+    parser.add_argument('--https-retry-once', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--screenshots', action='store_true', help='optional isolated Linux GTK screenshots')
     args = parser.parse_args()
+    if args.https_retry_once and not args.ordinary_https:
+        parser.error('--https-retry-once requires --ordinary-https')
+    stage_names = STAGES
+    if args.https_retry_once:
+        position = STAGES.index('playback')
+        stage_names = STAGES[:position] + ('https_failure',) + STAGES[position:]
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
     env['CUMULUS_PROOF_DIR'] = str(root/'run')
     if args.ordinary_https:
         env['CUMULUS_MAIN_FLOW_HTTPS_PROOF'] = '1'
+    if args.https_retry_once:
+        env['CUMULUS_MAIN_FLOW_HTTPS_RETRY'] = '1'
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
     for key in ('XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR',
@@ -44,7 +53,7 @@ def main():
     assert code == 0
     stages = {name: json.loads((output / ('complete.json' if name == 'complete' else
                                         f'ux_{name}.json')).read_text(encoding='utf-8'))
-              for name in STAGES}
+              for name in stage_names}
     guest, pending, adopted = (stages[name] for name in ('guest', 'qr_pending', 'login_adopted'))
     assert not guest['authenticated'] and not pending['authenticated']
     assert guest['status'] == pending['status'] and guest['status'] in ('unknown', 'signed_out')
@@ -58,7 +67,7 @@ def main():
     assert adopted['wire']['approved'] and adopted['wire']['authorized']
     assert adopted['wire']['authenticatedIdentityReads'] >= 1
     assert all(stages[name]['authenticated'] and stages[name]['nativeEpoch'] == adopted['epoch']
-               for name in STAGES[2:])
+               for name in stage_names[2:])
     assert stages['complete']['wire']['tickets'] == 1 and stages['complete']['wire']['polls'] == 2
     assert stages['recovered']['fixture']['calls']['/api/w/nuser/account/get'] >= 1
     assert stages['daily']['fixture']['calls']['/api/v3/discovery/recommend/songs'] >= 1
@@ -67,6 +76,13 @@ def main():
     assert stages['playback']['fixture']['sourceLoads'] == 1
     assert stages['playback']['fixture']['ordinaryHttps'] == args.ordinary_https
     assert stages['playback']['resumedSameEntry'] == args.ordinary_https
+    if args.https_retry_once:
+        failed = stages['https_failure']
+        assert failed['failedBeforeExplicitRetry'] and not failed['rawLocatorVisible']
+        assert failed['fixture']['retryHttps']
+        assert failed['fixture']['sourceAuthorizations'] == failed['fixture']['sourceLoadAttempts'] == 1
+        assert failed['fixture']['sourceLoads'] == 0
+        assert stages['playback']['fixture']['sourceAuthorizations'] == stages['playback']['fixture']['sourceLoadAttempts'] == 2
     assert stages['playback']['fixture']['calls']['/api/song/enhance/player/url/v1'] >= 1
     assert stages['playlist_created']['fixture']['disposablePresent']
     assert stages['playlist_edited']['fixture']['calls']['/api/batch'] == 1
@@ -159,9 +175,10 @@ def main():
     assert reopened['fixture']['calls']['/api/user/playlist'] >= 1
     assert reopened['fixture']['mediaTransfers'] == reopened['fixture']['sourceLoads'] == 0
     screenshots = sum(len(list(folder.glob('ux_*.png'))) for folder in (output, reopened_output))
-    assert screenshots == (len(STAGES) if args.screenshots else 0)
-    report = dict(ok=True, actualWebView=True, actualLibmpv=True, stages=len(STAGES)+1, screenshots=screenshots, sqliteVerified=True,
+    assert screenshots == (len(stage_names) if args.screenshots else 0)
+    report = dict(ok=True, actualWebView=True, actualLibmpv=True, stages=len(stage_names)+1, screenshots=screenshots, sqliteVerified=True,
                   ordinaryHttpsPlayback=args.ordinary_https, resumedSameHttpsEntry=args.ordinary_https,
+                  explicitHttpsRetryVerified=args.https_retry_once,
                   realMusicRequests=0, realAccountWrites=0, syntheticOfflinePlayback=True, nativeDownloadDisposal=True, downloadIntegrityCheckpoint=True,
                   pausedPartialAndVerifiedRangeResume=True, playlistMembershipReadback=True,
                   syntheticQrAdoption=True, savedCurrentSyntheticProfile=True,
