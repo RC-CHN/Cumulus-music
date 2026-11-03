@@ -1,5 +1,10 @@
-import { ref, shallowRef } from 'vue';
-import { failure, type AccountView, type CoreClient } from '../services/contracts.ts';
+import { computed, ref, shallowRef } from 'vue';
+import {
+  failure,
+  type AccountView,
+  type CoreClient,
+  type CoreFailure,
+} from '../services/contracts.ts';
 import { useCore } from '../services/core.ts';
 import { coverTerminal, type CoverTask } from '../services/playlistCover.ts';
 import {
@@ -23,8 +28,9 @@ export function usePlaylists(
   const tagsLoading = ref(false);
   const result = shallowRef<PlaylistMutationView>();
   const busy = ref(false),
-    loading = ref(false),
-    error = ref('');
+    loading = ref(false);
+  const issue = shallowRef<CoreFailure>();
+  const error = computed(() => issue.value?.message ?? '');
   let epoch = '',
     revision = 0,
     read = 0,
@@ -33,7 +39,7 @@ export function usePlaylists(
     connected = false;
   function problem(e: unknown) {
     const v = failure(e);
-    if (v.code !== 'stale') error.value = v.message;
+    if (v.code !== 'stale') issue.value = v;
     if (['session_expired', 'profile_changed'].includes(v.code)) expired();
   }
   function connect(account: AccountView) {
@@ -45,7 +51,7 @@ export function usePlaylists(
     connected = account.status === 'authenticated';
     busy.value = false;
     loading.value = false;
-    error.value = '';
+    issue.value = undefined;
     editor.value = undefined;
     result.value = undefined;
     operations.value = [];
@@ -96,7 +102,7 @@ export function usePlaylists(
       e = epoch;
     editor.value = undefined;
     result.value = undefined;
-    error.value = '';
+    issue.value = undefined;
     loading.value = true;
     try {
       const v = await core.playlistEditor(e, id);
@@ -111,10 +117,10 @@ export function usePlaylists(
     read++;
     editor.value = undefined;
     result.value = undefined;
-    error.value = '';
+    issue.value = undefined;
     loading.value = false;
   }
-  async function refreshAfterCover(
+  async function refreshEditor(
     expectedEpoch: string,
     id: string,
     observed?: PlaylistEditor | null,
@@ -128,11 +134,22 @@ export function usePlaylists(
         if (response.epoch !== expectedEpoch) return;
         value = response.value;
       }
-      if (connected && epoch === expectedEpoch && read === n && value.id === id)
+      if (connected && epoch === expectedEpoch && read === n && value.id === id) {
+        if (issue.value?.code === 'snapshot_changed') issue.value = undefined;
         editor.value = value;
+        return value;
+      }
     } catch (value) {
       if (epoch === expectedEpoch && read === n) problem(value);
     }
+  }
+  async function refreshAfterCover(
+    expectedEpoch: string,
+    id: string,
+    observed?: PlaylistEditor | null,
+  ) {
+    if (!connected || epoch !== expectedEpoch || editor.value?.id !== id) return;
+    await refreshEditor(expectedEpoch, id, observed);
     if (epoch === expectedEpoch) await refreshOperations();
   }
   async function run(
@@ -144,7 +161,7 @@ export function usePlaylists(
     const e = epoch,
       r = ++revision;
     busy.value = true;
-    error.value = '';
+    issue.value = undefined;
     result.value = undefined;
     try {
       const v = await operation(e);
@@ -159,6 +176,7 @@ export function usePlaylists(
       if (r === revision && e === epoch) {
         problem(x);
         await refreshOperations();
+        if (r === revision && e === epoch && failure(x).code === 'snapshot_changed') problem(x);
       }
     } finally {
       if (r === revision) busy.value = false;
@@ -230,6 +248,7 @@ export function usePlaylists(
     busy,
     loading,
     error,
+    issue,
     tags,
     tagError,
     tagsLoading,
@@ -238,6 +257,7 @@ export function usePlaylists(
     open,
     reset,
     refreshAfterCover,
+    refreshEditor,
     refreshOperations,
     mutate,
     reconcile,

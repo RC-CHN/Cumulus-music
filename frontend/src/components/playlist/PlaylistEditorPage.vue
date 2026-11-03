@@ -38,7 +38,17 @@ const {
   editable,
   invalid,
   dirty,
+  needsRefresh,
+  refreshing,
+  refreshBlocked,
+  conflicts,
+  latestDraft,
 } = form;
+const fieldLabels = { name: '名称', description: '简介', tags: '标签' };
+function latestText(field: keyof typeof fieldLabels) {
+  const value = latestDraft.value[field];
+  return (Array.isArray(value) ? value.join('、') : value) || '（空）';
+}
 const nameInput = ref<HTMLInputElement>(),
   coverTrigger = ref<HTMLButtonElement>();
 const coverFocus = () => coverTrigger.value ?? null;
@@ -81,12 +91,28 @@ const actions = computed(() => [
     label: '清空歌曲',
     icon: 'list',
     disabled:
-      busy.value || pending.value || !editor.value?.trackIds.length || editor.value.hasLocal,
+      busy.value ||
+      pending.value ||
+      refreshBlocked.value ||
+      !editor.value?.trackIds.length ||
+      editor.value.hasLocal,
   },
   ...(editor.value?.private
-    ? [{ key: 'publish', label: '设为公开', icon: 'user', disabled: busy.value || pending.value }]
+    ? [
+        {
+          key: 'publish',
+          label: '设为公开',
+          icon: 'user',
+          disabled: busy.value || pending.value || refreshBlocked.value,
+        },
+      ]
     : []),
-  { key: 'delete', label: '删除歌单', icon: 'trash', disabled: busy.value || pending.value },
+  {
+    key: 'delete',
+    label: '删除歌单',
+    icon: 'trash',
+    disabled: busy.value || pending.value || refreshBlocked.value,
+  },
 ]);
 function action(key: string) {
   if (key === 'clear' || key === 'publish' || key === 'delete') confirmation.value = key;
@@ -132,7 +158,32 @@ defineExpose({ requestLeave });
             核对结果
           </button>
         </div>
-        <fieldset class="playlist-editor-grid" :disabled="busy || pending">
+        <div v-if="needsRefresh" class="mutation-result" role="status">
+          歌单已更新。读取最新内容后，可保留你的修改继续编辑。
+          <button
+            type="button"
+            class="text-button"
+            :disabled="busy || pending || refreshing"
+            @click="form.refreshDraft"
+          >
+            {{ refreshing ? '正在读取…' : '读取最新歌单' }}
+          </button>
+        </div>
+        <div v-if="conflicts.length" class="mutation-result" role="status">
+          以下字段你和歌单中的最新版本都已修改，请核对后再保存。
+          <ul>
+            <li v-for="field in conflicts" :key="field">
+              {{ fieldLabels[field] }}最新值：{{ latestText(field) }}
+            </li>
+          </ul>
+          <button type="button" class="text-button" @click="form.resolveConflicts(true)">
+            保留我的修改
+          </button>
+          <button type="button" class="text-button" @click="form.resolveConflicts(false)">
+            使用最新值
+          </button>
+        </div>
+        <fieldset class="playlist-editor-grid" :disabled="busy || pending || refreshing">
           <div class="playlist-editor-fields">
             <div class="playlist-editor-row">
               <label for="playlist-editor-name">名称：</label>
@@ -213,7 +264,7 @@ defineExpose({ requestLeave });
           type="submit"
           class="primary"
           aria-label="保存修改"
-          :disabled="busy || pending || invalid || !dirty"
+          :disabled="busy || pending || refreshBlocked || invalid || !dirty"
         >
           {{ busy ? '正在保存…' : '保存' }}
         </button>
@@ -221,7 +272,7 @@ defineExpose({ requestLeave });
           type="button"
           class="download-button"
           aria-label="取消编辑歌单"
-          :disabled="busy"
+          :disabled="busy || refreshing"
           @click="requestLeave()"
         >
           取消

@@ -1,7 +1,8 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import type { PlaylistManager } from './usePlaylists';
 import type { AccountView } from '../services/contracts';
-import { playlistLength, playlistPending } from '../services/playlists';
+import { playlistLength, playlistPending } from '../services/playlists.ts';
+import { rebasePlaylistDraft, type PlaylistDraft, type PlaylistField } from './playlistDraft.ts';
 import type { CoverOutcome } from '../services/playlistCover';
 
 /** Form draft stays separate from the core's latest observed revision and cover. */
@@ -17,7 +18,14 @@ export function usePlaylistEditor(
     selectedTags = ref<string[]>([]);
   const loaded = ref(false),
     message = ref('');
-  const baseline = ref({ name: '', description: '', tags: [] as string[] });
+  const baseline = ref<PlaylistDraft>({ name: '', description: '', tags: [] });
+  let baselineRevision = '';
+  const needsRefresh = ref(false);
+  const refreshing = ref(false);
+  const conflicts = ref<PlaylistField[]>([]);
+  const refreshBlocked = computed(
+    () => needsRefresh.value || refreshing.value || conflicts.value.length > 0,
+  );
   const confirmation = ref<'leave' | 'delete' | 'clear' | 'publish'>();
   let leave: (() => void) | undefined;
   let alive = true;
@@ -71,6 +79,7 @@ export function usePlaylistEditor(
     description.value = editor.description;
     selectedTags.value = [...editor.tags];
     baseline.value = { name: editor.name, description: editor.description, tags: [...editor.tags] };
+    baselineRevision = editor.revision;
     loaded.value = true;
   });
   onMounted(() => {
@@ -82,9 +91,55 @@ export function usePlaylistEditor(
     alive = false;
     leave = undefined;
   });
+  function applyDraft(draft: PlaylistDraft) {
+    name.value = draft.name;
+    description.value = draft.description;
+    selectedTags.value = [...draft.tags];
+  }
+  function rememberConflict() {
+    if (manager.issue.value?.code === 'snapshot_changed') {
+      needsRefresh.value = true;
+      message.value = '';
+    }
+  }
+  async function refreshDraft() {
+    if (!active() || !needsRefresh.value || refreshing.value || pending.value || manager.busy.value)
+      return;
+    refreshing.value = true;
+    try {
+      const latest = await manager.refreshEditor(owner, id);
+      if (!active() || !latest) return;
+      const next = rebasePlaylistDraft(
+        baseline.value,
+        { name: name.value, description: description.value, tags: selectedTags.value },
+        latest,
+      );
+      baseline.value = {
+        name: latest.name,
+        description: latest.description,
+        tags: [...latest.tags],
+      };
+      baselineRevision = latest.revision;
+      applyDraft(next.draft);
+      conflicts.value = next.conflicts;
+      needsRefresh.value = false;
+      message.value = '已读取最新歌单，草稿中的修改已保留。';
+    } finally {
+      if (active()) refreshing.value = false;
+    }
+  }
+  function resolveConflicts(keepDraft: boolean) {
+    if (!active() || !conflicts.value.length) return;
+    if (!keepDraft) {
+      if (conflicts.value.includes('name')) name.value = baseline.value.name;
+      if (conflicts.value.includes('description')) description.value = baseline.value.description;
+      if (conflicts.value.includes('tags')) selectedTags.value = [...baseline.value.tags];
+    }
+    conflicts.value = [];
+  }
   function requestLeave(next = close) {
     if (!active()) return;
-    if (manager.busy.value) {
+    if (manager.busy.value || refreshing.value) {
       message.value = '正在保存并核对，请稍候再离开。';
       return;
     }
@@ -102,18 +157,21 @@ export function usePlaylistEditor(
       invalid.value ||
       !dirty.value ||
       pending.value ||
+      refreshBlocked.value ||
       manager.busy.value
     )
       return;
     const result = await manager.mutate({
       kind: 'metadata',
       id,
-      revision: p.revision,
+      revision: baselineRevision,
       name: name.value.trim(),
       description: description.value,
       tags: [...selectedTags.value],
     });
-    if (active() && result && manager.saved(result.phase)) close();
+    if (!active()) return;
+    if (result && manager.saved(result.phase)) close();
+    else if (!result) rememberConflict();
   }
   async function reconcile() {
     if (!active()) return;
@@ -134,15 +192,16 @@ export function usePlaylistEditor(
       return;
     }
     const p = manager.editor.value;
-    if (!p || !editable.value || pending.value) return;
+    if (!p || !editable.value || pending.value || refreshBlocked.value) return;
     const result = await manager.mutate(
       kind === 'clear'
-        ? { kind: 'tracks', id, revision: p.revision, change: 'clear', ids: [] }
-        : { kind, id, revision: p.revision },
+        ? { kind: 'tracks', id, revision: baselineRevision, change: 'clear', ids: [] }
+        : { kind, id, revision: baselineRevision },
     );
     if (!active()) return;
     confirmation.value = undefined;
     if (result && manager.saved(result.phase)) close();
+    else if (!result) rememberConflict();
   }
   async function coverSaved(outcome: CoverOutcome) {
     await manager.refreshAfterCover(owner, id, outcome.editor);
@@ -165,6 +224,13 @@ export function usePlaylistEditor(
     invalid,
     dirty,
     requestLeave,
+    refreshDraft,
+    needsRefresh,
+    refreshing,
+    refreshBlocked,
+    conflicts,
+    latestDraft: baseline,
+    resolveConflicts,
     save,
     reconcile,
     confirm,

@@ -1,5 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createRenderer, defineComponent, h } from 'vue';
+import { usePlaylistEditor } from '../src/composables/usePlaylistEditor.ts';
 import { usePlaylists } from '../src/composables/usePlaylists.ts';
 import {
   playlistLength,
@@ -240,4 +242,90 @@ test('late catalogue requests cannot overwrite a retry or another account', asyn
   await pending;
   assert.deepEqual(other.tags.value, []);
   assert.equal(other.tagsLoading.value, false);
+});
+
+test('a stale editor reads latest without replaying and preserves the reviewed draft on explicit save', async () => {
+  const original = { ...editor(), revision: 'old', tags: ['old'] };
+  const latest = { ...original, revision: 'latest', name: 'remote', description: 'remote-only' };
+  const writes: PlaylistCommand[] = [];
+  let reads = 0;
+  let closed = false;
+  const p = fixture({
+    playlistEditor: async () => data(++reads === 1 ? original : latest),
+    mutatePlaylist: async (_epoch, command) => {
+      writes.push(command);
+      if (writes.length === 1) {
+        throw { code: 'snapshot_changed', message: 'playlist changed', retryable: true };
+      }
+      return data(receipt());
+    },
+  });
+  // Exercise the production form lifecycle without a browser.
+  type Host = Record<string, never>;
+  const empty = (): Host => ({});
+  const renderer = createRenderer<Host, Host>({
+    patchProp() {},
+    insert() {},
+    remove() {},
+    createElement: empty,
+    createText: empty,
+    createComment: empty,
+    setText() {},
+    setElementText() {},
+    parentNode: () => null,
+    nextSibling: () => null,
+  });
+  let form!: ReturnType<typeof usePlaylistEditor>;
+  const app = renderer.createApp(
+    defineComponent({
+      setup() {
+        form = usePlaylistEditor(
+          p,
+          account,
+          '10',
+          () => (closed = true),
+          () => {},
+        );
+        return () => h('div');
+      },
+    }),
+  );
+  app.mount({});
+  try {
+    await turn();
+    assert.equal(form.loaded.value, true);
+    form.name.value = 'local';
+    form.selectedTags.value = ['local'];
+    await form.save();
+    assert.equal(form.needsRefresh.value, true);
+    await form.save();
+    assert.equal(writes.length, 1);
+    assert.equal(reads, 1);
+
+    await form.refreshDraft();
+    assert.equal(reads, 2);
+    assert.equal(writes.length, 1);
+    assert.deepEqual(form.conflicts.value, ['name']);
+    assert.equal(form.name.value, 'local');
+    assert.equal(form.latestDraft.value.name, 'remote');
+    assert.equal(form.description.value, 'remote-only');
+    assert.deepEqual(form.selectedTags.value, ['local']);
+    await form.save();
+    assert.equal(writes.length, 1);
+
+    form.resolveConflicts(true);
+    assert.equal(writes.length, 1);
+    await form.save();
+    assert.deepEqual(writes[1], {
+      kind: 'metadata',
+      id: '10',
+      revision: 'latest',
+      name: 'local',
+      description: 'remote-only',
+      tags: ['local'],
+    });
+    assert.equal(closed, true);
+  } finally {
+    app.unmount();
+  }
 });
