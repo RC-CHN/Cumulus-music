@@ -26,7 +26,7 @@ const rowHeight = computed(
   () => Math.ceil(((width.value - (columns.value - 1) * 24) / columns.value) * 0.565) + 88,
 );
 const total = computed(() => Math.ceil(props.tasks.length / columns.value));
-const { container, start, end, onScroll } = useVirtualRows(
+const { container, start, end, onScroll, restore } = useVirtualRows(
   () => total.value,
   () => rowHeight.value,
   2,
@@ -38,7 +38,7 @@ const focus = useDownloadMvFocus(
   rowHeight,
   start,
   end,
-  onScroll,
+  restore,
 );
 const menu = ref<InstanceType<typeof ActionMenu>>(),
   menuId = ref('');

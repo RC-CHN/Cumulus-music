@@ -79,6 +79,7 @@ def main():
     assert len(list((root / 'first').glob('ux_*.json'))) == result['stageCount'] == expected
     if not any([args.table, args.batch, args.navigation, args.menu]):
         assert result['tabWithoutFramesVerified']
+        assert result['virtualKeyboardWithoutFramesVerified']
         paths = list((root / 'first').glob('ux_*_mv_offline_playback.json'))
         assert len(paths) == 1, 'one decoded local MV checkpoint'
         video = json.loads(paths[0].read_text(encoding='utf-8'))

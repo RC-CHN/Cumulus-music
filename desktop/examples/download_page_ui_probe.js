@@ -54,11 +54,23 @@
       window.requestAnimationFrame=()=>-(++withheld);
       key(tab('voice'),'ArrowRight');
       await wait(()=>tab('mv').getAttribute('aria-selected')==='true'&&ready()&&one('.download-mv-card'),'keyboard tab with no compositor frames');
+      assert(document.activeElement===tab('mv'),'roving tabs');
+      const mvCover=index=>one(`[data-mv-index="${index}"] .download-mv-cover`);
+      mvCover(0).focus();key(mvCover(0),'End');
+      await wait(()=>document.activeElement===mvCover(8),'MV keyboard End without compositor frames');
+      key(mvCover(8),'Home');
+      await wait(()=>document.activeElement===mvCover(0),'MV keyboard Home without compositor frames');
+      tab('mv').focus();
     }finally{window.requestAnimationFrame=nativeFrame;}
     assert(withheld>=2||document.documentElement.dataset.motion==='reduced','download transitions observed stalled frames');
     assert(document.activeElement===tab('mv'),'roving tabs');await capture('keyboard_tabs');
     await select('song');const pageScroll=one('.download-scroll');pageScroll.scrollTop=pageScroll.scrollHeight;pageScroll.dispatchEvent(new Event('scroll'));await wait(()=>!one('.download-continuation'),'continuous full prefix');const pageIds=new Set();for(let top=0;top<=pageScroll.scrollHeight;top+=pageScroll.clientHeight){pageScroll.scrollTop=top;pageScroll.dispatchEvent(new Event('scroll'));await sleep(70);all('[data-download-index]').forEach(n=>pageIds.add(n.dataset.downloadTask));}assert(pageIds.size===120,'all continuous records reachable');await capture('continuous_inventory');pageScroll.scrollTop=0;pageScroll.dispatchEvent(new Event('scroll'));await wait(()=>first(),'first after inventory');
-    const scroller=one('.download-scroll');first().focus({preventScroll:true});scroller.scrollTop=scroller.scrollHeight;scroller.dispatchEvent(new Event('scroll'));await wait(()=>!one('[data-download-index="0"]'),'virtual recycle');assert(document.activeElement===scroller,'recycled focus body');await capture('virtual_focus');key(scroller,'Home');await wait(()=>document.activeElement===first(),'keyboard home');
+    const scroller=one('.download-scroll');first().focus({preventScroll:true});scroller.scrollTop=scroller.scrollHeight;scroller.dispatchEvent(new Event('scroll'));await wait(()=>!one('[data-download-index="0"]'),'virtual recycle');assert(document.activeElement===scroller,'recycled focus body');await capture('virtual_focus');try{
+      window.requestAnimationFrame=()=>-(++withheld);
+      key(scroller,'Home');await wait(()=>document.activeElement===first(),'song keyboard Home without compositor frames');
+      key(first(),'End');await wait(()=>document.activeElement===one('[data-download-index="119"]'),'song keyboard End without compositor frames');
+      key(document.activeElement,'Home');await wait(()=>document.activeElement===first(),'song keyboard return without compositor frames');
+    }finally{window.requestAnimationFrame=nativeFrame;}
     click(button('更多下载操作'));await wait(()=>one('.action-menu')?.style.visibility==='visible','page menu');await capture('more_menu');click(button('批量操作',one('.action-menu')));await wait(()=>one('.download-batch-page [aria-label="全选下载"]'),'complete batch ready');assert(document.activeElement===one('.download-batch-page .batch-done'),'batch entry focus');click(one('[aria-label="全选下载"]'));await wait(()=>one('.download-batch-page .batch-select-label').textContent.includes('120'),'selects whole category');await capture('batch_selection');click(one('.download-batch-page .batch-done'));await wait(()=>!one('.download-batch-page')&&document.activeElement===button('更多下载操作'),'batch return focus');
     await fixture('read_error');click(tab('voice'));await wait(()=>one('.error-state')&&ready(),'read failure');assert(!first(),'no stale rows after failed category read');await capture('read_error');await fixture('repair_read');click(button('刷新状态'));await wait(()=>ready()&&first(),'read recovery');await capture('read_recovered');
     await select('active');const before=Number(one('progress').value);await fixture('progress');await wait(()=>Number(one('progress').value)>before+.005,'native progress update');await capture('progress');
@@ -172,6 +184,6 @@
     const videoAfter=await client.videoSnapshot(epoch);
     assert(videoAfter.playId===videoBefore.playId&&videoAfter.id==='133'&&videoAfter.local,'detail retry does not restart local video');
     await capture('mv_offline_playback',{exactMenu:true,routeOpened:true,nonBlackPixels:nonBlack,frames:Number(canvas.dataset.renderedFrames),local:videoAfter.local,id:videoAfter.id,retryKeptPlayId:true});
-    await emit('complete',{ok:true,downloadPageUi:true,stageCount:count,realMusicRequests:0,realAccountWrites:0,syntheticNativeRecords:146,physicalPointerVerified:false,tabWithoutFramesVerified:true});
+    await emit('complete',{ok:true,downloadPageUi:true,stageCount:count,realMusicRequests:0,realAccountWrites:0,syntheticNativeRecords:146,physicalPointerVerified:false,tabWithoutFramesVerified:true,virtualKeyboardWithoutFramesVerified:true});
   }catch(error){const failedAt=stage;await capture('failure_state').catch(()=>{});await emit('failed',{stageCount:count,step:failedAt,message:String(error),stack:error.stack,coverage:window.__downloadCoverage});}
 })();

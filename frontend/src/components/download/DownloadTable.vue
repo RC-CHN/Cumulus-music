@@ -45,7 +45,10 @@ const emit = defineEmits<{
 }>();
 const active = computed(() => props.query.tab === 'active'),
   voice = computed(() => props.query.category === 'voice');
-const { container, start, end, onScroll, reset } = useVirtualRows(() => props.tasks.length, 64);
+const { container, start, end, onScroll, reset, restore } = useVirtualRows(
+  () => props.tasks.length,
+  64,
+);
 const growth = computed({
   get: () => props.growth,
   set: (value: number[]) => emit('columns', value),
@@ -134,19 +137,23 @@ async function key(event: KeyboardEvent, index: number) {
           : index + (event.key === 'ArrowDown' ? 1 : -1),
     ),
   );
+  const el = container.value;
+  const target = props.tasks[next]?.id;
+  if (!el || !target) return;
+  el.focus({ preventScroll: true });
   focused.value = next;
-  if (container.value) {
-    const top = next * 64;
-    if (top < container.value.scrollTop) container.value.scrollTop = top;
-    else if (top + 64 > container.value.scrollTop + container.value.clientHeight)
-      container.value.scrollTop = top + 64 - container.value.clientHeight;
-    onScroll();
-  }
-  await new Promise<void>((r) => requestAnimationFrame(() => r()));
+  const top = next * 64;
+  const current = el.scrollTop;
+  restore(top < current ? top : Math.max(current, top + 64 - el.clientHeight));
   await nextTick();
-  container.value
-    ?.querySelector<HTMLElement>(`[data-download-index="${next}"]`)
-    ?.focus({ preventScroll: true });
+  if (
+    container.value !== el ||
+    document.activeElement !== el ||
+    focused.value !== next ||
+    props.tasks[next]?.id !== target
+  )
+    return;
+  el.querySelector<HTMLElement>(`[data-download-index="${next}"]`)?.focus({ preventScroll: true });
 }
 </script>
 <template>

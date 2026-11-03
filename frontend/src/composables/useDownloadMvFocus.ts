@@ -9,7 +9,7 @@ export function useDownloadMvFocus(
   height: Ref<number>,
   start: Ref<number>,
   end: Ref<number>,
-  update: () => void,
+  restore: (top: number) => void,
 ) {
   const active = ref('');
   const indexById = computed(() => new Map(tasks().map((item, i) => [item.id, i])));
@@ -87,11 +87,8 @@ export function useDownloadMvFocus(
     const el = grid.value;
     el.focus({ preventScroll: true });
     active.value = id;
-    if (row < el.scrollTop) el.scrollTop = row;
-    else if (row + height.value > el.scrollTop + el.clientHeight)
-      el.scrollTop = row + height.value - el.clientHeight;
-    update();
-    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+    const current = el.scrollTop;
+    restore(row < current ? row : Math.max(current, row + height.value - el.clientHeight));
     await nextTick();
     if (document.activeElement !== el || active.value !== id || tasks()[j]?.id !== id) return;
     el.querySelector<HTMLElement>(`[data-mv-index="${j}"] ${action}`)?.focus({
