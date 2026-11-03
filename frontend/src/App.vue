@@ -2481,6 +2481,7 @@ onUnmounted(() => {
       />
     </ModalTransition>
     <PlayerBar
+      :account="account"
       :player="player"
       :intelligence="intelligence"
       :liked-playlist-id="signedIn ? favorite?.id : null"
@@ -2493,6 +2494,7 @@ onUnmounted(() => {
       @comments="trackComments"
       @download="openCurrentDownload"
       @member="music.navigate({ kind: 'member' })"
+      @login="loginOpen = true"
     />
     <ModalTransition
       :return-focus="accountFocus.returnFocus"

@@ -17,3 +17,12 @@ effect_detail：先读取该 ID 的 PC 详情（soundType=10），有唯一匹�
 effects_directory Rust 测试使用合成 Api，核对单分组请求、PC 类型与权益类型、
 安全投影、明确拒绝与未知的区分以及迟到账号结果。桌面 ux_ui_probe 的独立
 CUMULUS_EFFECT_DIRECTORY_PROOF 开关向生产 IPC 提供三个固定读取响应，不接真实账号。
+
+从播放器「均衡器 → 音效目录」打开。目录分组、卡片高度和间距参考恢复的
+pages/audio-effect/components/{OfficialSelectionSoundEffectSection,MoreSoundEffectSection,AudioEffectCard}。
+为避免加载未投影的图片与混淆试听状态，当前使用社区图标和只读分组切换；
+选择卡片在底部显示权益。未登录时可转到现有登录流程。列表和详情独立处理
+加载、空结果、错误重试；切分组、切账号或关闭时丢弃已过时的响应。
+关闭目录后返回均衡器入口焦点，音效与播放设置不会改动。
+两平台的 effect_directory_smoke.py 核对真实 WebView/IPC、三组分组读取、
+试用可用和明确不可用、空分组以及焦点返回，所有响应由本机合成夹具提供。

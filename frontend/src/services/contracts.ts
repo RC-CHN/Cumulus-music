@@ -35,6 +35,7 @@ import type { WindowPreferencesClient, WindowLifecycleClient } from './window';
 import type { SystemMediaClient } from './systemMedia';
 import type { ShortcutsClient } from './shortcuts';
 import type { OutputClient } from './output';
+import type { EffectDirectoryClient } from './effectDirectory';
 import type { RelayClient } from './relay';
 import type { RelayPublicationClient } from './relayPublication';
 /** Wire format returned by core::AppInfo. Keep the IPC test in sync. */
@@ -81,6 +82,7 @@ export interface CoreClient
     StartupPreferencesClient,
     QueueClickPreferencesClient,
     OutputClient,
+    EffectDirectoryClient,
     WindowPreferencesClient,
     SystemMediaClient,
     ShortcutsClient,

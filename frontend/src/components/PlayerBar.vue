@@ -4,7 +4,7 @@ import type { PlayerModel } from '../composables/usePlayer';
 import type { IntelligenceModel } from '../composables/useIntelligence';
 import { currentCatalogDownload, time } from '../services/player';
 import type { PlayerAction } from '../services/player';
-import type { TrackView } from '../services/contracts';
+import type { AccountView, TrackView } from '../services/contracts';
 import Icon from './Icon.vue';
 import EqualizerPanel from './EqualizerPanel.vue';
 import ModalTransition from './ModalTransition.vue';
@@ -19,6 +19,7 @@ const equalizerOpen = ref(false);
 const props = withDefaults(
   defineProps<{
     player: PlayerModel;
+    account: AccountView;
     liked: Set<string>;
     likeBusy: Set<string>;
     togetherActive?: boolean;
@@ -34,10 +35,15 @@ const emit = defineEmits<{
   comments: [track: TrackView];
   download: [epoch: string, playId: string, trackId: string];
   member: [];
+  login: [];
 }>();
 const { view, ready, busy, error, canRetry, playing, loaded } = props.player;
 const equalizerDescription = useId();
 const equalizerEntry = computed(() => equalizerLauncher(view.value?.equalizer));
+function loginFromEffects() {
+  equalizerOpen.value = false;
+  emit('login');
+}
 const currentDownload = computed(() =>
   props.downloadsAllowed ? currentCatalogDownload(view.value) : undefined,
 );
@@ -477,6 +483,12 @@ async function seek(event: Event) {
     </div>
   </footer>
   <ModalTransition>
-    <EqualizerPanel v-if="equalizerOpen" :player="player" @close="equalizerOpen = false" />
+    <EqualizerPanel
+      v-if="equalizerOpen"
+      :account="account"
+      :player="player"
+      @close="equalizerOpen = false"
+      @login="loginFromEffects"
+    />
   </ModalTransition>
 </template>

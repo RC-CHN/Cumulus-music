@@ -12,14 +12,17 @@ import {
 } from '../services/equalizer';
 import type { EqualizerPreset } from '../services/player';
 import { failure } from '../services/contracts';
+import type { AccountView } from '../services/contracts';
+import EffectDirectory from './EffectDirectory.vue';
 import Icon from './Icon.vue';
-const props = defineProps<{ player: PlayerModel }>();
-const emit = defineEmits<{ close: [] }>();
+const props = defineProps<{ player: PlayerModel; account: AccountView }>();
+const emit = defineEmits<{ close: []; login: [] }>();
 const { view, ready, equalizerDraft } = props.player;
 const { settings, preset, draft, pending, blocked, error, stage, applyDraft, discard } =
   equalizerDraft;
 const current = computed(() => view.value?.equalizer);
 const dialog = ref<HTMLDialogElement>();
+const directoryOpen = ref(false);
 const gains = computed(() => settings.value?.gains ?? Array<number>(10).fill(0));
 const tone = computed(() => equalizerTone(settings.value));
 const storedToneBypassed = computed(
@@ -181,6 +184,7 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
           <span></span>{{ settings?.master_bypassed ? '音效已暂停' : '音效总开关' }}
         </button>
         <small v-if="settings?.master_bypassed">调整预设或增益会重新开启音效。</small>
+        <button type="button" @click="directoryOpen = true">音效目录</button>
       </div>
       <div class="equalizer-controls">
         <label
@@ -310,6 +314,12 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
       </button>
     </footer>
   </dialog>
+  <EffectDirectory
+    v-if="directoryOpen"
+    :account="account"
+    @close="directoryOpen = false"
+    @login="emit('login')"
+  />
 </template>
 <style scoped>
 .equalizer-dialog {

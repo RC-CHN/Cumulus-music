@@ -22,6 +22,8 @@ export function createTauriClient(): CoreClient {
     copyText: (text) => invoke('copy_text', { text }),
     searchDiscovery: (epoch, query) => invoke('search_discovery', { epoch, query }),
     searchHistory: (epoch, command) => invoke('search_history', { epoch, command }),
+    effectCatalogue: (epoch, kind) => invoke('effect_catalogue', { epoch, kind }),
+    effectDetail: (epoch, id) => invoke('effect_detail', { epoch, id }),
     shortcutSettings: (epoch) => invoke('shortcut_settings', { epoch }),
     shortcutSettingsCommand: (epoch, command) =>
       invoke('shortcut_settings_command', { epoch, command }),
