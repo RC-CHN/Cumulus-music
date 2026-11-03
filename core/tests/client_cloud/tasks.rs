@@ -425,37 +425,51 @@ async fn unresolved_attachment_allocation_cannot_be_omitted() {
     use cumulus_core::cloud::AttachmentKind;
     let f = Fixture::new(0);
     f.api.text_attachment_mode.store(2, Ordering::SeqCst);
-    let mut input = f.input();
+    let input = f.input();
     let lyric = f.root.path().join("input.lrc");
     std::fs::write(&lyric, b"[00:01.00]Line").unwrap();
-    input.lyric = Some(lyric);
-    let client = f.client();
-    let id = client
-        .cloud_command("1", CloudCommand::Upload { files: vec![input] })
+    let uploads = manager(&f);
+    let id = uploads
+        .create(
+            &input.path,
+            AttachmentInputs {
+                lyric: Some(lyric),
+                ..Default::default()
+            },
+        )
         .await
         .unwrap()
-        .accepted
+        .id;
+    let scheduler = UploadScheduler::new(uploads);
+    scheduler.start(&id, false).unwrap();
+    // Advance the production scheduler explicitly: the synthetic transport
+    // has no wall-clock dependencies, and the UI need not race SQLite writes
+    // in a background worker to observe the committed pending allocation.
+    let mut settled = false;
+    for _ in 0..16 {
+        if scheduler.step().await.unwrap().is_none() {
+            settled = true;
+            break;
+        }
+    }
+    assert!(
+        settled,
+        "synthetic upload did not settle into an idle schedule"
+    );
+
+    let client = f.client();
+    let row = client
+        .cloud_page("1", query(CloudTab::Uploading), false)
+        .await
+        .unwrap()
+        .uploads
         .pop()
         .unwrap();
-    tokio::time::timeout(Duration::from_secs(3), async {
-        loop {
-            let row = client
-                .cloud_page("1", query(CloudTab::Uploading), false)
-                .await
-                .unwrap()
-                .uploads
-                .pop()
-                .unwrap();
-            if !row.running && row.attachments[0].phase == AttachmentPhase::AllocationPending {
-                assert!(row.omittable_attachment.is_none());
-                assert!(!row.can_resume);
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    })
-    .await
-    .unwrap();
+    assert_eq!(row.id, id);
+    assert!(!row.enabled && !row.running);
+    assert_eq!(row.attachments[0].phase, AttachmentPhase::AllocationPending);
+    assert!(row.omittable_attachment.is_none());
+    assert!(!row.can_resume);
     assert!(matches!(
         client
             .cloud_command(
@@ -469,14 +483,15 @@ async fn unresolved_attachment_allocation_cannot_be_omitted() {
             .await,
         Err(Error::MutationUncertain)
     ));
-    assert!(
-        f.api
-            .calls
-            .lock()
-            .unwrap()
+    let calls = f.api.calls.lock().unwrap();
+    assert_eq!(
+        calls
             .iter()
-            .all(|(p, _)| p != support::META)
+            .filter(|(path, _)| path == support::ATTACH)
+            .count(),
+        1
     );
+    assert!(calls.iter().all(|(path, _)| path != support::META));
 }
 
 async fn stopped_upload(client: &MusicClient, error: &str) -> CloudUploadView {
