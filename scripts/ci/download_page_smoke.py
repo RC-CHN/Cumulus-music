@@ -67,6 +67,11 @@ def main():
     assert len(list((root / 'first').glob('ux_*.json'))) == result['stageCount'] == expected
     if not any([args.table, args.batch, args.navigation, args.menu]):
         assert result['tabWithoutFramesVerified']
+        paths = list((root / 'first').glob('ux_*_mv_offline_playback.json'))
+        assert len(paths) == 1, 'one decoded local MV checkpoint'
+        video = json.loads(paths[0].read_text(encoding='utf-8'))
+        assert all(video[key] for key in ('exactMenu', 'routeOpened', 'local', 'retryKeptPlayId'))
+        assert video['id'] == '133' and video['frames'] > 0 and video['nonBlackPixels'] >= 100
         for width in [1120, 760]:
             paths = list((root / 'first').glob(f'ux_*_mv_continuous_{width}.json'))
             assert len(paths) == 1, 'one complete MV viewport sweep per width'

@@ -126,11 +126,52 @@
     }
     await fixture('restore');await select('voice');await select('mv');
     const credit=button('Artist 17',one('.download-mv-scroll'));assert(credit&&!button('无标识艺人',one('.download-mv-scroll')),'only identified artist is interactive');click(credit);await wait(()=>one('.catalog-page[aria-label="歌手详情"] h1')?.textContent.includes('17'),'artist detail for this credit');assert(!one('.mv-detail:not(.mv-mini)'),'artist click does not open MV');await capture('mv_artist');click(button('返回上一页'));await wait(()=>one('.download-mv-card')&&ready(),'artist back to MV downloads');
-    const movie=all('.download-mv-cover').find(el=>el.getAttribute('aria-label').includes('合成MV 133'));assert(movie,'real MP4 fixture card');movie.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,button:2,clientX:150,clientY:180}));await wait(()=>one('.action-menu'),'pointer context menu');click(button('播放 MV',one('.action-menu')));
-    await wait(()=>one('.mv-info h1')?.textContent.includes('合成MV 133')&&one('.mv-play-facts')?.textContent.includes('本地文件')&&Number(one('.video-canvas')?.dataset.renderedFrames)>0&&button('重新读取MV资料'),'offline MP4 playback independent of detail');
-    const canvas=one('.video-canvas');let nonBlack=0;
+    stage='mv_origin_ready';
+    const movie=all('.download-mv-cover').find(el=>el.getAttribute('aria-label').includes('合成MV 133'));
+    assert(movie?.isConnected,'real MP4 fixture card');
+    // The download section may be ready while the main page is still moving.
+    // A real pointer cannot select a card until it has a stable hit target.
+    await wait(()=>movie.isConnected&&!movie.closest('.page-enter-active,.page-leave-active,[inert]'),'returned MV page finishes entering');
+    movie.scrollIntoView({block:'nearest'});
+    const pointerTarget=()=>{
+      const r=rect(movie),x=r.x+r.width/2,y=r.y+r.height/2;
+      return movie.contains(document.elementFromPoint(x,y))?{x,y}:null;
+    };
+    await wait(pointerTarget,'downloaded MV cover is a visible pointer target');
+    const {x,y}=pointerTarget();
+    stage='mv_active_menu';
+    movie.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,button:2,clientX:x,clientY:y}));
+    const activeMovieAction=()=>{
+      const id=movie.getAttribute('aria-controls'), menu=id&&document.getElementById(id);
+      if(!movie.isConnected||movie.getAttribute('aria-expanded')!=='true'||!menu?.matches('.action-menu:not([inert])')||getComputedStyle(menu).visibility!=='visible')return null;
+      const action=button('播放 MV',menu);
+      if(!action?.isConnected||action.disabled)return null;
+      const r=rect(action),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);
+      return action.contains(hit)?action:null;
+    };
+    await wait(activeMovieAction,'live pointer menu for the exact MV cover');
+    click(activeMovieAction());
+    stage='mv_route';
+    await wait(()=>one('.mv-detail:not(.mv-mini) .mv-info h1')?.textContent.includes('合成MV 133'),'MV route opens for the selected download');
+    stage='mv_local_source';
+    await wait(()=>one('.mv-play-facts')?.textContent.includes('本地文件'),'MV player reports the downloaded source');
+    const epoch=(await client.accountSnapshot()).epoch;
+    const videoBefore=await client.videoSnapshot(epoch);
+    assert(videoBefore.epoch===epoch&&videoBefore.id==='133'&&videoBefore.local&&!!videoBefore.playId,'native snapshot identifies local playback of MV 133');
+    stage='mv_offline_detail';
+    await wait(()=>button('重新读取MV资料')&&!button('重新读取MV资料').disabled,'offline MV detail has an independent retry action');
+    await fixture('verify_local_mv');
+    stage='mv_decoded_canvas';
+    const decodedCanvas=()=>one('.mv-detail:not(.mv-mini) .video-canvas');
+    await wait(()=>Number(decodedCanvas()?.dataset.renderedFrames)>0,'decoded local MV frame reaches the canvas');
+    const canvas=decodedCanvas();let nonBlack=0;
     await wait(()=>{const px=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;nonBlack=0;for(let i=0;i<px.length;i+=4)if(px[i]+px[i+1]+px[i+2]>20)nonBlack++;return nonBlack>=100;},'nonblank decoded video frame');
-    await fixture('verify_local_mv');const videoBefore=await client.videoSnapshot((await client.accountSnapshot()).epoch);click(button('重新读取MV资料'));await wait(()=>button('重新读取MV资料')&&!button('重新读取MV资料').disabled,'detail retry');const videoAfter=await client.videoSnapshot(videoBefore.epoch);assert(videoAfter.playId===videoBefore.playId,'detail retry does not restart local video');await capture('mv_offline_playback',{nonBlackPixels:nonBlack,frames:Number(canvas.dataset.renderedFrames),local:videoAfter.local,id:videoAfter.id,retryKeptPlayId:videoAfter.playId===videoBefore.playId});
+    stage='mv_detail_retry';
+    click(button('重新读取MV资料'));
+    await wait(()=>button('重新读取MV资料')&&!button('重新读取MV资料').disabled,'detail retry');
+    const videoAfter=await client.videoSnapshot(epoch);
+    assert(videoAfter.playId===videoBefore.playId&&videoAfter.id==='133'&&videoAfter.local,'detail retry does not restart local video');
+    await capture('mv_offline_playback',{exactMenu:true,routeOpened:true,nonBlackPixels:nonBlack,frames:Number(canvas.dataset.renderedFrames),local:videoAfter.local,id:videoAfter.id,retryKeptPlayId:true});
     await emit('complete',{ok:true,downloadPageUi:true,stageCount:count,realMusicRequests:0,realAccountWrites:0,syntheticNativeRecords:146,physicalPointerVerified:false,tabWithoutFramesVerified:true});
   }catch(error){const failedAt=stage;await capture('failure_state').catch(()=>{});await emit('failed',{stageCount:count,step:failedAt,message:String(error),stack:error.stack,coverage:window.__downloadCoverage});}
 })();
