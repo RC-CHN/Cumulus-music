@@ -401,6 +401,7 @@ async function seek(event: Event) {
         aria-haspopup="dialog"
         :aria-describedby="equalizerDescription"
         :data-equalizer-state="equalizerEntry.state"
+        :data-effect-state="effectEntry.state"
         :data-parametric-state="view?.boundParametric"
         :title="effectEntry.label"
         :disabled="!ready"

@@ -273,10 +273,11 @@ input[type='range'] {
   line-height: 1;
   pointer-events: none;
 }
-.equalizer-toggle[data-equalizer-state='processing'] .equalizer-marker {
+.equalizer-toggle:is([data-effect-state='processing'], [data-effect-state='configured'])
+  .equalizer-marker {
   color: var(--accent);
 }
-.equalizer-toggle[data-equalizer-state='problem'] .equalizer-marker {
+.equalizer-toggle[data-effect-state='problem'] .equalizer-marker {
   color: var(--warning);
 }
 .player-tools .icon {
