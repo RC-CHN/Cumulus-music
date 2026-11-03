@@ -1,21 +1,57 @@
 use super::MusicClient;
 use crate::{
-    Result,
+    Error, Result,
     download::transfer::RunOptions,
     effects::{
         authorization::{
             ActiveParametricObservation, BoundParametric, BoundParametricTarget,
-            EffectAuthorizations,
+            EffectAuthorizations, LeasePhase,
         },
         catalog::{CatalogueKind, EffectId},
         device_directory::EffectDeviceRow,
         directory::{EffectDirectoryDetail, EffectDirectoryRow},
         service::{
-            EffectsLibrary, ParametricPreparation, PreparedParametric,
+            EffectsLibrary, ParametricPreparation, PreparedParametric, StandaloneParametric,
             StandaloneParametricPreflight,
         },
     },
+    playback::controller::ParametricApplication,
 };
+
+/// Host-owned one-shot request. Keep it across the await: once the actor
+/// dispatch begins, its exact target is available even after cancellation.
+pub struct NativeParametricActivationAttempt {
+    effect: EffectId,
+    receipt: Option<Box<StandaloneParametric>>,
+    submitted_target: Option<BoundParametricTarget>,
+}
+
+impl NativeParametricActivationAttempt {
+    pub fn new(receipt: Box<StandaloneParametric>) -> Self {
+        Self {
+            effect: receipt.effect(),
+            receipt: Some(receipt),
+            submitted_target: None,
+        }
+    }
+
+    pub fn effect(&self) -> EffectId {
+        self.effect
+    }
+
+    /// Target for conditional local detach. Presence only means submission
+    /// began; it does not prove the node was mounted or is still active.
+    pub fn submitted_target(&self) -> Option<BoundParametricTarget> {
+        self.submitted_target
+    }
+}
+
+/// One-time actor receipt, not an ongoing observation or a PCM guarantee.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NativeParametricActivation {
+    Configured(BoundParametricTarget),
+    DeferredUntilLoaded(BoundParametricTarget),
+}
 
 impl MusicClient {
     /// Native-only preparation of one verified PEQ component. This does not
@@ -44,6 +80,55 @@ impl MusicClient {
         EffectsLibrary::new(self.session.clone())?
             .preflight_parametric_activation_for(&token, id, options)
             .await
+    }
+
+    /// Explicit native-only activation. Uses a fresh strict registration
+    /// observation, then submits the resulting binding to the playback actor.
+    /// No automatic cleanup, re-register, payment or trial is attempted.
+    pub async fn activate_native_effect_parametric(
+        &self,
+        epoch: &str,
+        attempt: &mut NativeParametricActivationAttempt,
+    ) -> Result<NativeParametricActivation> {
+        let token = self.player_token(epoch)?;
+        let library = EffectsLibrary::new(self.session.clone())?;
+        let authorization = EffectAuthorizations::new(self.session.clone())?;
+        let _lock = authorization.activation_lock_for(&token)?;
+        let receipt = attempt
+            .receipt
+            .take()
+            .ok_or(Error::State("parametric activation attempt already used"))?;
+        library.validate_parametric_preflight_for(&token, &receipt)?;
+        let controller = self.player.controller().await?;
+        let binding = authorization
+            .register_preflighted_parametric_for(&library, &token, *receipt)
+            .await?;
+        let target = binding.target();
+        attempt.submitted_target = Some(target);
+        let result = controller.apply_bound_parametric(&token, binding).await;
+        self.session.check_generation(&token)?;
+        match result? {
+            ParametricApplication::Configured => Ok(NativeParametricActivation::Configured(target)),
+            ParametricApplication::DeferredUntilLoaded => {
+                Ok(NativeParametricActivation::DeferredUntilLoaded(target))
+            }
+            _ => Err(Error::State(
+                "unexpected native parametric activation receipt",
+            )),
+        }
+    }
+
+    /// Read the durable registration phase after an interrupted/failed
+    /// activation. This is local state, not a remote occupancy observation.
+    pub fn native_effect_registration_phase(
+        &self,
+        epoch: &str,
+        effect: EffectId,
+    ) -> Result<Option<LeasePhase>> {
+        let token = self.player_token(epoch)?;
+        Ok(EffectAuthorizations::new(self.session.clone())?
+            .record_for(&token, effect)?
+            .map(|lease| lease.phase))
     }
 
     /// Read and bind an already acknowledged standalone PEQ registration.

@@ -16,6 +16,7 @@ mod daily_experiment;
 mod downloads;
 pub mod dto;
 mod effects;
+pub use effects::{NativeParametricActivation, NativeParametricActivationAttempt};
 mod error;
 mod fm;
 mod fm_discovery;

@@ -29,6 +29,13 @@ impl EffectAuthorizations {
             session,
         })
     }
+    /// Separate from the lease lock: the playback actor takes that lock
+    /// itself while applying the sealed binding.
+    pub(crate) fn activation_lock_for(&self, token: &SessionToken) -> Result<OperationLock> {
+        let owner = self.owner(token)?;
+        OperationLock::acquire(self.store.directory(), "effect-native-activation", &owner)
+    }
+
     pub fn record_for(
         &self,
         token: &SessionToken,

@@ -929,6 +929,130 @@ async fn standalone_activation_preflight_returns_only_enabled_receipts_owned_by_
     }
 }
 
+#[tokio::test]
+async fn preflighted_registration_seals_its_exact_observation_or_leaves_an_uncertain_lease() {
+    use cumulus_core::effects::{
+        authorization::{EffectAuthorizations, LeasePhase},
+        service::StandaloneParametricPreflight,
+    };
+    for lost in [false, true] {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Arc::new(StateStore::open(temp.path()).unwrap());
+        let (bytes, _) = sample("first");
+        let official = sound(&bytes, URL);
+        let mut replies = Vec::from(pair(&official, true));
+        replies.push(auth(true));
+        if lost {
+            replies.push(Reply::Ready(Err(Error::Transport(
+                "lost start receipt".into(),
+            ))));
+        } else {
+            replies.extend([
+                json!({"code":200,"data":true}).into(),
+                auth(true),
+                nontrial_recycle(false),
+            ]);
+        }
+        let api = Arc::new(ScriptApi::new(replies));
+        let session = world(api.clone(), store);
+        let token = session.token().unwrap();
+        let library =
+            EffectsLibrary::with_backend(session.clone(), Arc::new(Origin::new(bytes))).unwrap();
+        let authorization = EffectAuthorizations::new(session).unwrap();
+        let StandaloneParametricPreflight::Ready(receipt) = library
+            .preflight_parametric_activation_for(&token, id(), RunOptions::default())
+            .await
+            .unwrap()
+        else {
+            panic!("standalone fixture must be eligible");
+        };
+
+        let bound = authorization
+            .register_preflighted_parametric_for(&library, &token, *receipt)
+            .await;
+        let lease = authorization.record_for(&token, id()).unwrap().unwrap();
+        if lost {
+            assert!(matches!(bound, Err(Error::MutationUncertain)));
+            assert_eq!(lease.phase, LeasePhase::StartUncertain);
+            assert!(!lease.start_acknowledged);
+            assert_eq!(api.calls().len(), 4);
+        } else {
+            assert_eq!(lease.phase, LeasePhase::Registered);
+            assert!(lease.start_acknowledged);
+            authorization
+                .validate_bound_parametric_for(&library, &token, &bound.unwrap())
+                .unwrap();
+            assert_eq!(api.calls().len(), 6);
+        }
+        let calls = api.calls();
+        assert_eq!(
+            calls
+                .iter()
+                .filter(|call| call.path.ends_with("/set"))
+                .count(),
+            1
+        );
+        assert!(!calls.iter().any(|call| call.path.ends_with("/stop")));
+    }
+}
+
+#[tokio::test]
+async fn removed_material_during_registration_read_never_records_or_sends_start() {
+    use cumulus_core::effects::{
+        authorization::EffectAuthorizations, service::StandaloneParametricPreflight,
+    };
+    let temp = tempfile::tempdir().unwrap();
+    let store = Arc::new(StateStore::open(temp.path()).unwrap());
+    let (bytes, _) = sample("first");
+    let official = sound(&bytes, URL);
+    let (reply, release) = gate();
+    let api = Arc::new(ScriptApi::new(
+        pair(&official, true)
+            .into_iter()
+            .chain(pair(&official, true))
+            .chain([reply]),
+    ));
+    let session = world(api.clone(), store);
+    let token = session.token().unwrap();
+    let library =
+        EffectsLibrary::with_backend(session.clone(), Arc::new(Origin::new(bytes))).unwrap();
+    let authorization = EffectAuthorizations::new(session).unwrap();
+    let material = library
+        .acquire_for(&token, id(), RunOptions::default())
+        .await
+        .unwrap();
+    let StandaloneParametricPreflight::Ready(receipt) = library
+        .preflight_parametric_activation_for(&token, id(), RunOptions::default())
+        .await
+        .unwrap()
+    else {
+        panic!("standalone fixture must be eligible");
+    };
+    let pending = {
+        let (authorization, library, token) =
+            (authorization.clone(), library.clone(), token.clone());
+        tokio::spawn(async move {
+            authorization
+                .register_preflighted_parametric_for(&library, &token, *receipt)
+                .await
+        })
+    };
+    api.wait_for_calls(5).await;
+    library.remove_for(&token, &material.handle).unwrap();
+    let Reply::Ready(auth_result) = auth(true) else {
+        unreachable!()
+    };
+    release.send(auth_result).unwrap();
+    assert!(matches!(
+        pending.await.unwrap(),
+        Err(Error::State(
+            "prepared effect material is no longer available"
+        ))
+    ));
+    assert!(authorization.record_for(&token, id()).unwrap().is_none());
+    assert_eq!(api.calls().len(), 5);
+}
+
 fn nontrial_recycle(value: bool) -> Reply {
     json!({"code":200,"data":{"127":[{"interestsId":300,"canRecycle":value}]}}).into()
 }

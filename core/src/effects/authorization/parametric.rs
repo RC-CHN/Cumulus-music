@@ -1,6 +1,7 @@
 //! Bind verified material to an already acknowledged registration. This does
-//! not register, release, start a trial, or hand a plan to the audio engine.
-use super::{EffectAuthorizations, EffectLease, LeasePhase};
+//! can explicitly register a preflighted non-trial plan, but does not release,
+//! start a trial, or hand a plan to the audio engine.
+use super::{EffectAuthorizations, EffectLease, LeaseObservation, LeasePhase, TrialConsent};
 use crate::{
     Error, Result,
     account::SessionToken,
@@ -8,7 +9,7 @@ use crate::{
         api::EffectsApi,
         catalog::EffectId,
         rights::known_non_trial,
-        service::{EffectsLibrary, PreparedParametric},
+        service::{EffectsLibrary, PreparedParametric, StandaloneParametric},
     },
 };
 use std::{
@@ -163,6 +164,54 @@ pub(super) fn current_non_trial(lease: &EffectLease) -> bool {
 }
 
 impl EffectAuthorizations {
+    /// Explicit native registration from an opaque standalone preflight.
+    /// The material is rechecked under the authorization lock at the durable
+    /// write-intent boundary. A positive post-write observation is reused as
+    /// the binding receipt; no second rights check advances its revision.
+    pub async fn register_preflighted_parametric_for(
+        &self,
+        library: &EffectsLibrary,
+        token: &SessionToken,
+        preflight: StandaloneParametric,
+    ) -> Result<BoundParametric> {
+        if !Arc::ptr_eq(&self.session, &library.session) {
+            return Err(Error::StaleResponse);
+        }
+        let owner = self.owner(token)?;
+        let _lock = self.lock(&owner)?;
+        library.validate_parametric_preflight_for(token, &preflight)?;
+        let effect = preflight.effect();
+        let observation = self
+            .begin_locked(
+                token,
+                &owner,
+                effect,
+                TrialConsent::KnownNonTrial,
+                |lease| {
+                    library.with_prepared_parametric_for(token, &preflight.0, |_| {
+                        self.session.with_token(token, |_| self.save(&owner, lease))
+                    })
+                },
+            )
+            .await;
+        let observation = match observation {
+            Ok(observation) => observation,
+            Err(error) => {
+                self.session.check_generation(token)?;
+                if self.get(&owner, effect)?.is_some_and(|lease| {
+                    matches!(
+                        lease.phase,
+                        LeasePhase::Registering | LeasePhase::StartUncertain
+                    )
+                }) {
+                    return Err(Error::MutationUncertain);
+                }
+                return Err(error);
+            }
+        };
+        self.seal_parametric(library, token, Box::new(preflight.0), observation)
+    }
+
     /// Read fresh rights under the owner authorization lock, then bind one
     /// enabled PEQ-only material to the exact acknowledged observation.
     /// Additional routed sections, including off sections, are not treated as
@@ -191,6 +240,16 @@ impl EffectAuthorizations {
                 "no acknowledged non-trial effect registration",
             ))?;
         let observation = self.observe_locked(token, &owner, lease).await?;
+        self.seal_parametric(library, token, prepared, observation)
+    }
+
+    fn seal_parametric(
+        &self,
+        library: &EffectsLibrary,
+        token: &SessionToken,
+        prepared: Box<PreparedParametric>,
+        observation: LeaseObservation,
+    ) -> Result<BoundParametric> {
         if !observation.can_use || !current_non_trial(&observation.lease) {
             return Err(Error::State("effect activation authority is unavailable"));
         }

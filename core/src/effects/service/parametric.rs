@@ -27,7 +27,7 @@ pub enum StandaloneParametricPreflight {
     Ready(Box<StandaloneParametric>),
 }
 
-pub struct StandaloneParametric(PreparedParametric);
+pub struct StandaloneParametric(pub(in crate::effects) PreparedParametric);
 
 impl StandaloneParametric {
     pub fn effect(&self) -> EffectId {

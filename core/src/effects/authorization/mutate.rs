@@ -20,6 +20,20 @@ impl EffectAuthorizations {
     ) -> Result<LeaseObservation> {
         let owner = self.owner(token)?;
         let _lock = self.lock(&owner)?;
+        self.begin_locked(token, &owner, effect, trial, |lease| {
+            self.session.with_token(token, |_| self.save(&owner, lease))
+        })
+        .await
+    }
+
+    pub(super) async fn begin_locked(
+        &self,
+        token: &SessionToken,
+        owner: &str,
+        effect: EffectId,
+        trial: TrialConsent,
+        commit: impl FnOnce(&EffectLease) -> Result<()>,
+    ) -> Result<LeaseObservation> {
         for lease in self.records_for(token)? {
             if lease.effect != effect && lease.phase.needs_release() {
                 return Err(Error::State(
@@ -27,14 +41,14 @@ impl EffectAuthorizations {
                 ));
             }
         }
-        if let Some(lease) = self.get(&owner, effect)? {
+        if let Some(lease) = self.get(owner, effect)? {
             if lease.phase == LeasePhase::Registered {
                 if trial == TrialConsent::KnownNonTrial && !registered_non_trial(&lease) {
                     return Err(Error::State(
                         "no acknowledged non-trial effect registration",
                     ));
                 }
-                return self.observe_begin(token, &owner, lease, trial).await;
+                return self.observe_begin(token, owner, lease, trial).await;
             }
             if lease.phase.needs_release() {
                 return Err(Error::MutationUncertain);
@@ -70,10 +84,9 @@ impl EffectAuthorizations {
             recyclable: None,
             last_error: None,
         };
-        self.session
-            .with_token(token, |_| self.save(&owner, &lease))?;
-        self.send(token, &owner, &mut lease, true).await?;
-        self.observe_begin(token, &owner, lease, trial).await
+        commit(&lease)?;
+        self.send(token, owner, &mut lease, true).await?;
+        self.observe_begin(token, owner, lease, trial).await
     }
 
     async fn observe_begin(
