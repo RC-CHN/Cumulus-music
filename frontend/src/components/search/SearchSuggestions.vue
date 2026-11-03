@@ -36,16 +36,17 @@ function parts(label: string, query: string) {
   <template v-else>
     <section
       v-for="group in [
-        { title, words: recommended },
-        { title: '搜索建议', words: suggestions },
+        { id: 'suggestions', title: '搜索建议', words: suggestions },
+        { id: 'recommendations', title, words: recommended },
       ]"
-      :key="group.title"
+      :key="group.id"
     >
       <h3 v-if="group.words.length" class="search-section-heading">{{ group.title }}</h3>
       <button
         v-for="(word, i) in group.words"
         :key="i"
         data-search-choice
+        data-search-suggestion
         class="search-suggestion"
         :title="word.label"
         @click="emit('select', word.keyword, word.label)"

@@ -237,13 +237,28 @@
       await capture(`suggestions_${w}_${t}`);
       key(input(), "ArrowDown");
       assert(
-        document.activeElement?.hasAttribute("data-search-choice"),
-        "keyboard enters suggestions",
+        document.activeElement.textContent.includes("联想结果 1"),
+        "Down from input enters the first ordinary suggestion",
+      );
+      key(document.activeElement, "ArrowUp");
+      assert(
+        document.activeElement.textContent.includes("推荐结果"),
+        "Up from first ordinary suggestion wraps to last recommendation",
       );
       key(document.activeElement, "ArrowDown");
       assert(
+        document.activeElement.textContent.includes("联想结果 1"),
+        "Down from last recommendation wraps to first suggestion",
+      );
+      key(document.activeElement, "Escape");
+      await wait(() => !panel(), "escape from suggestion");
+      assert(document.activeElement === input(), "Escape restores input focus");
+      input().click();
+      await wait(() => panel()?.textContent.includes("合成 · 联想结果 1"), "reopened suggestions");
+      key(input(), "ArrowUp");
+      assert(
         document.activeElement.textContent.includes("推荐结果"),
-        "keyboard moves to recommended result",
+        "Up from input enters the last recommendation",
       );
       click(document.activeElement);
       await wait(
@@ -421,6 +436,7 @@
       conditionalChartPlayVerified: true,
       hotqueryChannelVerified: true,
       searchDisplayLabelVerified: true,
+      cyclicSuggestionsVerified: true,
       realMusicRequests: 0,
       realAccountWrites: 0,
       officialPixelMatchVerified: false,

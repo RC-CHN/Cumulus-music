@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import MenuTransition from '../MenuTransition.vue';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { searchSuggestionIndex } from '../../services/searchKeyboard';
 import type { SearchChannel } from '../../services/search';
 import type { AccountView } from '../../services/contracts';
 import { useSearchBox } from '../../composables/useSearchBox';
@@ -129,7 +130,14 @@ function key(event: KeyboardEvent) {
     if (!event.repeat) submit();
     return;
   }
-  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+  const direction = event.key;
+  if (
+    direction !== 'ArrowDown' &&
+    direction !== 'ArrowUp' &&
+    direction !== 'Home' &&
+    direction !== 'End'
+  )
+    return;
   const controls = [
     ...(panel.value?.querySelectorAll<HTMLButtonElement>(
       'button[data-search-choice]:not(:disabled)',
@@ -143,6 +151,21 @@ function key(event: KeyboardEvent) {
       (!clip || (r.top >= clip.top && r.bottom <= clip.bottom))
     );
   });
+  const fromInput = event.target === input.value;
+  const target = event.target as HTMLButtonElement;
+  const suggestions = controls.filter((button) => button.hasAttribute('data-search-suggestion'));
+  if (
+    open.value &&
+    suggestions.length &&
+    (fromInput ? direction === 'ArrowDown' || direction === 'ArrowUp' : controls.includes(target))
+  ) {
+    event.preventDefault();
+    const index = searchSuggestionIndex(suggestions.length, suggestions.indexOf(target), direction);
+    const next = index === undefined ? undefined : suggestions[index];
+    next?.focus({ preventScroll: true });
+    next?.scrollIntoView({ block: 'nearest' });
+    return;
+  }
   if (event.target === input.value) {
     if (event.key === 'ArrowDown') {
       event.preventDefault();
