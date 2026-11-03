@@ -11,7 +11,7 @@ import { failure } from '../services/contracts.ts';
 import { useCore } from '../services/core.ts';
 import type { CommentResource } from '../services/comments';
 export type Page =
-  | { kind: 'settings' }
+  | { kind: 'settings'; accountDetail?: 'profile' | 'devices' }
   | { kind: 'history'; scope: import('../services/history').HistoryKind }
   | {
       kind: 'collections';

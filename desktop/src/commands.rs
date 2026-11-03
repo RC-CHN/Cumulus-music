@@ -15,6 +15,24 @@ pub fn account_snapshot(client: tauri::State<'_, MusicClient>) -> Result<Account
     client.account().map_err(Into::into)
 }
 #[tauri::command]
+pub async fn account_profile_detail(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> Result<AccountData<cumulus_core::account::profile::SelfProfileDetailView>, ClientError> {
+    client
+        .account_profile_detail(&epoch)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn account_login_devices(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> Result<AccountData<LoginDevicesView>, ClientError> {
+    client.login_devices(&epoch).await.map_err(Into::into)
+}
+#[tauri::command]
 pub async fn restore_account<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,

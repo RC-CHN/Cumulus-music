@@ -24,6 +24,7 @@ import type { CatalogClient } from './catalog';
 import type { CollectionClient } from './collections';
 import type { HistoryClient } from './history';
 import type { SettingsClient } from './settings';
+import type { AccountDetailClient } from './accountDetail';
 import type { StartupPreferencesClient } from './startup';
 import type { WindowPreferencesClient, WindowLifecycleClient } from './window';
 import type { SystemMediaClient } from './systemMedia';
@@ -67,6 +68,7 @@ export interface CoreClient
     CollectionClient,
     HistoryClient,
     SettingsClient,
+    AccountDetailClient,
     StartupPreferencesClient,
     OutputClient,
     WindowPreferencesClient,

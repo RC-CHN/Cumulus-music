@@ -977,7 +977,9 @@ const pageKey = computed(() =>
             }
           : page.value.kind === 'collections'
             ? { kind: 'collections', collectionVisit: page.value.collectionVisit }
-            : page.value,
+            : page.value.kind === 'settings'
+              ? { kind: 'settings' }
+              : page.value,
   }),
 );
 const playingLikes = computed(() => {
@@ -1216,7 +1218,7 @@ watch(
     recent.connect(account.value);
     settings.connect(account.value);
     publication.connect(account.value);
-    if (page.value.kind === 'settings') void settings.open();
+    if (page.value.kind === 'settings' && !page.value.accountDetail) void settings.open();
     if (page.value.kind === 'history') void recent.open(page.value.scope);
   },
   { immediate: true },
@@ -1229,7 +1231,7 @@ watch(
     if (value.kind === 'comments') void comments.open(value.resource);
     if (value.kind === 'rankings') void rankings.enter(value.query, value.rankingState);
     if (value.kind === 'history') void recent.open(value.scope);
-    if (value.kind === 'settings') void settings.open();
+    if (value.kind === 'settings' && !value.accountDetail) void settings.open();
   },
 );
 watch([() => player.view.value?.entryId, () => player.view.value?.state], () => {
@@ -1535,9 +1537,15 @@ onUnmounted(() => {
                 :relay="relay"
                 :publication="publication"
                 :account="account"
+                :account-detail="page.accountDetail"
                 @login="loginOpen = true"
                 @accounts="accountsOpen = true"
                 @downloads="music.navigate({ kind: 'downloads' })"
+                @account-detail="
+                  (kind) => music.navigate({ kind: 'settings', accountDetail: kind })
+                "
+                @back="historyLength ? music.back() : music.replace({ kind: 'settings' })"
+                @expired="music.bootstrap(false)"
               />
               <AccountWelcome
                 v-else-if="!signedIn"

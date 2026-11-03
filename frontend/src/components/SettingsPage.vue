@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import type { AccountView } from '../services/contracts';
 import type { SettingsModel } from '../composables/useSettings';
 import { useAppearance } from '../composables/useAppearance';
@@ -27,6 +27,8 @@ import WindowBehavior from './settings/WindowBehavior.vue';
 import DesktopLyrics from './settings/DesktopLyrics.vue';
 import SystemMedia from './settings/SystemMedia.vue';
 import Shortcuts from './settings/Shortcuts.vue';
+import AccountProfilePage from './account/AccountProfilePage.vue';
+import LoginDevicesPage from './account/LoginDevicesPage.vue';
 import type { RelayModel } from '../composables/useRelay';
 import type { RelayPublicationModel } from '../composables/useRelayPublication';
 import '../styles/settings.css';
@@ -36,8 +38,37 @@ const props = defineProps<{
   player: PlayerModel;
   relay: RelayModel;
   publication: RelayPublicationModel;
+  accountDetail?: 'profile' | 'devices';
 }>();
-const emit = defineEmits<{ login: []; accounts: []; downloads: [] }>();
+const emit = defineEmits<{
+  login: [];
+  accounts: [];
+  downloads: [];
+  accountDetail: [kind: 'profile' | 'devices'];
+  back: [];
+  expired: [];
+}>();
+const settingsScroll = ref<HTMLElement>();
+let detailOrigin: HTMLElement | undefined;
+let detailScroll = 0;
+function openDetail(kind: 'profile' | 'devices', event: MouseEvent) {
+  if (props.account.status !== 'authenticated') return;
+  detailOrigin = event.currentTarget as HTMLElement;
+  detailScroll = settingsScroll.value?.scrollTop ?? 0;
+  emit('accountDetail', kind);
+}
+watch(
+  () => props.accountDetail,
+  async (kind, previous) => {
+    if (kind || !previous) return;
+    await nextTick();
+    if (props.accountDetail || !settingsScroll.value) return;
+    settingsScroll.value.scrollTop = detailScroll;
+    const active = document.activeElement;
+    if (active === document.body || !active?.isConnected || !active.getClientRects().length)
+      detailOrigin?.focus({ preventScroll: true });
+  },
+);
 const appearance = useAppearance();
 const themes: { value: AppearancePreference; label: string; icon: string }[] = [
   { value: 'system', label: '跟随系统', icon: 'monitor' },
@@ -132,8 +163,22 @@ function accept(op: SettingsOperation) {
 }
 </script>
 <template>
+  <AccountProfilePage
+    v-if="accountDetail === 'profile'"
+    :account="account"
+    @back="emit('back')"
+    @expired="emit('expired')"
+  />
+  <LoginDevicesPage
+    v-else-if="accountDetail === 'devices'"
+    :account="account"
+    @back="emit('back')"
+    @expired="emit('expired')"
+  />
   <section
+    v-show="!accountDetail"
     class="settings-page"
+    :inert="!!accountDetail"
     aria-labelledby="settings-title"
     :aria-busy="model.loading.value || model.busy.value"
   >
@@ -143,7 +188,7 @@ function accept(op: SettingsOperation) {
         <p class="muted">让音乐更合你的习惯</p>
       </div>
     </header>
-    <div class="settings-scroll" tabindex="0" aria-label="设置内容">
+    <div ref="settingsScroll" class="settings-scroll" tabindex="0" aria-label="设置内容">
       <section class="settings-section" aria-labelledby="settings-appearance">
         <h2 id="settings-appearance">外观</h2>
         <div class="settings-section-content">
@@ -205,12 +250,32 @@ function accept(op: SettingsOperation) {
         <h2 id="settings-account">账号</h2>
         <div class="settings-section-content">
           <p>{{ account.status === 'authenticated' ? account.nickname : '尚未登录网易云音乐' }}</p>
-          <button
-            class="secondary"
-            @click="account.status === 'authenticated' ? emit('accounts') : emit('login')"
-          >
-            {{ account.status === 'authenticated' ? '管理登录账号' : '登录账号' }}
-          </button>
+          <div class="settings-account-actions">
+            <button
+              class="secondary"
+              @click="account.status === 'authenticated' ? emit('accounts') : emit('login')"
+            >
+              {{ account.status === 'authenticated' ? '管理登录账号' : '登录账号' }}
+            </button>
+            <template v-if="account.status === 'authenticated'">
+              <button
+                type="button"
+                class="secondary"
+                data-testid="account-profile-open"
+                @click="openDetail('profile', $event)"
+              >
+                查看个人资料
+              </button>
+              <button
+                type="button"
+                class="secondary"
+                data-testid="account-devices-open"
+                @click="openDetail('devices', $event)"
+              >
+                登录设备管理
+              </button>
+            </template>
+          </div>
         </div>
       </section>
       <section class="settings-section" aria-labelledby="settings-privacy">
