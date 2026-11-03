@@ -1,10 +1,22 @@
 import { computed, ref, shallowRef, watch } from 'vue';
 import { failure } from '../services/contracts.ts';
 import { equalizerChange } from '../services/equalizer.ts';
-import type { EqualizerSettings, EqualizerView, PlayerAction } from '../services/player.ts';
+import type {
+  EqualizerPreset,
+  EqualizerSettings,
+  EqualizerView,
+  PlayerAction,
+} from '../services/player.ts';
 
 type EqualizerWrite = Extract<PlayerAction, { kind: 'equalizer' }>;
 type Current = { epoch: string; equalizer: EqualizerView };
+
+function samePreset(a?: EqualizerPreset | null, b?: EqualizerPreset | null) {
+  return (
+    a?.kind === b?.kind &&
+    (a?.kind !== 'built_in' || (b?.kind === 'built_in' && a.index === b.index))
+  );
+}
 
 function same(a: EqualizerSettings, b: EqualizerSettings) {
   return (
@@ -24,11 +36,12 @@ export function useEqualizerDraft(
   read: () => Promise<Current>,
   delay = 90,
 ) {
-  const draft = shallowRef<EqualizerSettings>();
+  const draft = shallowRef<{ settings: EqualizerSettings; preset?: EqualizerPreset }>();
   const pending = ref(false);
   const blocked = ref(false);
   const error = ref('');
-  const settings = computed(() => draft.value ?? current()?.equalizer.settings);
+  const settings = computed(() => draft.value?.settings ?? current()?.equalizer.settings);
+  const preset = computed(() => (draft.value ? draft.value.preset : current()?.equalizer.preset));
   let timer: ReturnType<typeof setTimeout> | undefined;
   let revision: string | undefined;
   let generation = 0;
@@ -54,11 +67,16 @@ export function useEqualizerDraft(
     }, delay);
   }
 
-  function stage(next: EqualizerSettings) {
+  function stage(next: EqualizerSettings, selected = preset.value ?? undefined) {
     const value = current();
-    if (!value || value.equalizer.damaged || (settings.value && same(settings.value, next))) return;
+    if (
+      !value ||
+      value.equalizer.damaged ||
+      (settings.value && same(settings.value, next) && samePreset(preset.value, selected))
+    )
+      return;
     if (!draft.value) revision = value.equalizer.revision;
-    draft.value = { ...next, gains: [...next.gains] };
+    draft.value = { settings: { ...next, gains: [...next.gains] }, preset: selected };
     schedule();
   }
 
@@ -72,7 +90,7 @@ export function useEqualizerDraft(
       const fresh = recover ? await read() : base;
       if (!active() || !draft.value) return;
       if (fresh.epoch !== base.epoch) throw new Error('无法确认当前账号的均衡器设置。');
-      if (recover && same(fresh.equalizer.settings, draft.value) && !fresh.equalizer.damaged) {
+      if (recover && matches(fresh.equalizer, draft.value) && !fresh.equalizer.damaged) {
         // A reply may have been lost after a successful durable write.
         draft.value = undefined;
         blocked.value = false;
@@ -84,16 +102,16 @@ export function useEqualizerDraft(
         revision: recover ? fresh.equalizer.revision : revision!,
       };
       const submitted = draft.value;
-      const next = await write(equalizerChange(value, submitted));
+      const next = await write(equalizerChange(value, submitted.settings, submitted.preset));
       if (!active()) return;
       if (
         next.epoch !== base.epoch ||
         next.equalizer.damaged ||
-        !same(submitted, next.equalizer.settings)
+        !matches(next.equalizer, submitted)
       )
         throw new Error('无法确认均衡器设置已保存，请读取当前设置后重试。');
       revision = next.equalizer.revision;
-      if (draft.value && same(draft.value, next.equalizer.settings)) draft.value = undefined;
+      if (draft.value && matches(next.equalizer, draft.value)) draft.value = undefined;
       blocked.value = false;
       error.value = '';
     } catch (issue) {
@@ -108,8 +126,13 @@ export function useEqualizerDraft(
     }
   }
 
+  function matches(view: EqualizerView, selected: NonNullable<typeof draft.value>) {
+    return same(view.settings, selected.settings) && samePreset(view.preset, selected.preset);
+  }
+
   return {
     settings,
+    preset,
     draft,
     pending,
     blocked,

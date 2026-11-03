@@ -122,9 +122,14 @@ export interface EqualizerSettings {
   bass_db?: number;
   treble_db?: number;
 }
+export type EqualizerPreset =
+  | { kind: 'built_in'; index: number }
+  | { kind: 'manual' }
+  | { kind: 'saved' };
 export interface EqualizerView {
   revision: string;
   settings: EqualizerSettings;
+  preset?: EqualizerPreset | null;
   saved_custom?: number[] | null;
   status: 'pending' | 'unavailable' | 'configured' | 'processing' | 'failed';
   damaged: boolean;
@@ -263,7 +268,12 @@ export type PlayerAction =
   | { kind: 'loudness'; expected_revision: string; enabled: boolean }
   | { kind: 'retry_loudness' | 'repair_loudness' }
   | { kind: 'repair_quality' }
-  | { kind: 'equalizer'; expected_revision: string; settings: EqualizerSettings }
+  | {
+      kind: 'equalizer';
+      expected_revision: string;
+      settings: EqualizerSettings;
+      preset?: EqualizerPreset;
+    }
   | { kind: 'save_custom_equalizer'; expected_revision: string }
   | { kind: 'retry_equalizer' | 'repair_equalizer' }
   | { kind: 'play' | 'next' | 'previous' | 'stop' | 'restore' | 'startup' | 'refresh' | 'clear' }

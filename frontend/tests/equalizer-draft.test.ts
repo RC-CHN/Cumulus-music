@@ -195,3 +195,23 @@ test('tone edits coalesce into the same acknowledged curve and reset independent
   assert.deepEqual(writes[1]?.settings, curve(3));
   assert.equal(draft.draft.value, undefined);
 });
+
+test('matching gains alone cannot acknowledge a manual preset selection', async () => {
+  const current = snapshot('A', '10');
+  const writes: Write[] = [];
+  const draft = useEqualizerDraft(
+    () => current,
+    async (command) => {
+      writes.push(command);
+      return snapshot('A', '11', command.settings);
+    },
+    async () => current,
+    1,
+  );
+  draft.stage(curve(0), { kind: 'manual' });
+  await tick();
+  assert.equal(writes.length, 1);
+  assert.deepEqual(writes[0]?.preset, { kind: 'manual' });
+  assert.equal(draft.blocked.value, true);
+  assert.deepEqual(draft.preset.value, { kind: 'manual' });
+});

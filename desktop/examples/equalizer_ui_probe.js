@@ -43,13 +43,22 @@
     await toggle();await close();await click(el('[aria-label^="播放本地歌曲"]'));await wait(()=>el('.playerbar [aria-label="暂停"]')&&Number(el('[aria-label="播放进度"]')?.value)>.2,'ordinary_recovery');await open();await stage('eq_disabled_recovery',{enabled:false,gains:pop});
    }else{
     await close();await click(el('[aria-label^="播放本地歌曲"]'));await wait(()=>el('.playerbar [aria-label="暂停"]')&&Number(el('[aria-label="播放进度"]')?.value)>.2,'actual_playback');await open();await wait(()=>el('.equalizer-status').dataset.status==='processing','actual_dsp');await stage('eq_enabled',{enabled:true,gains:pop});
+    step='same_curve_identity';const sameRevision=el('.equalizer-dialog').dataset.revision,sameBand=ranges()[4];
+    for(const gain of [3,pop[4]]){sameBand.value=String(gain);sameBand.dispatchEvent(new Event('input',{bubbles:true}));}
+    await wait(()=>settled()&&el('.equalizer-dialog').dataset.revision!==sameRevision&&el('[aria-label="均衡器预设"]').value==='-1'&&!byText('保存自定义预设').disabled,'manual equal to built-in');
+    await click(byText('保存自定义预设'));
+    await wait(()=>settled()&&el('[aria-label="均衡器预设"]').value==='-2','saved equal to built-in');
+    await stage('eq_same_curve_saved',{enabled:true,gains:pop});
+    await preset(1);
+    await wait(()=>el('[aria-label="均衡器预设"]').value==='1','explicit equal built-in remains selected');
+    await stage('eq_same_curve_builtin',{enabled:true,gains:pop});
     step='slider';const revision=el('.equalizer-dialog').dataset.revision,n=ranges()[4];for(const value of ['-1','-2','-3.5']){n.value=value;n.dispatchEvent(new Event('input',{bubbles:true}));}await wait(()=>settled()&&el('.equalizer-dialog').dataset.revision!==revision&&el('.equalizer-status').dataset.status==='processing','input_only_slider_processed');await stage('eq_custom',{enabled:true,gains:custom});
     step='save_custom';const beforeSave=el('.equalizer-dialog').dataset.revision;await click(byText('保存自定义预设'));
     await wait(()=>{
       const error=el('.equalizer-error');if(error)throw Error(error.textContent.trim());
       return settled()&&el('[aria-label="均衡器预设"] option[value="-2"]')&&byText('保存自定义预设').disabled;
     },'custom slot acknowledged');
-    if(el('.equalizer-dialog').dataset.revision!==beforeSave)throw Error('custom_save_changed_active_revision');
+    if(el('.equalizer-dialog').dataset.revision===beforeSave)throw Error('custom_save_identity_not_persisted');
     await stage('eq_custom_saved',{enabled:true,gains:custom});
     step='builtin_after_custom';await preset(1);await stage('eq_custom_built_in',{enabled:true,gains:pop});
     step='recall_custom';await preset(-2);await wait(()=>el('.equalizer-status').dataset.status==='processing','recalled custom reaches DSP');

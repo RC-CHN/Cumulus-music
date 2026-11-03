@@ -1,7 +1,9 @@
 use super::{PlaybackStatus, state::Actor};
 use crate::{
     Error, Result,
-    effects::equalizer::{EqualizerPreferences, EqualizerSettings, EqualizerStatus},
+    effects::equalizer::{
+        EqualizerPreferences, EqualizerPreset, EqualizerSettings, EqualizerStatus,
+    },
     playback::engine::Cancellation,
 };
 
@@ -13,7 +15,7 @@ impl Actor {
             Ok(preferences) => {
                 if !self.equalizer_initialized
                     || self.equalizer.damaged
-                    || preferences.revision != self.equalizer.preferences.revision
+                    || preferences.dsp_revision() != self.equalizer.preferences.dsp_revision()
                     || preferences.settings != self.equalizer.preferences.settings
                 {
                     self.equalizer.status = EqualizerStatus::Pending;
@@ -43,13 +45,22 @@ impl Actor {
         &mut self,
         expected: u64,
         settings: EqualizerSettings,
+        preset: Option<EqualizerPreset>,
     ) -> Result<()> {
         let preferences = self.session.with_local_owner(&self.token, |owner| {
-            EqualizerPreferences::replace(&self.store, owner, expected, settings)
+            EqualizerPreferences::replace(&self.store, owner, expected, settings, preset)
         })?;
+        let changed = !self.equalizer_initialized
+            || self.equalizer.damaged
+            || preferences.dsp_revision() != self.equalizer.preferences.dsp_revision()
+            || preferences.settings != self.equalizer.preferences.settings;
         self.equalizer.preferences = preferences;
-        self.equalizer.status = EqualizerStatus::Pending;
         self.equalizer_initialized = true;
+        self.equalizer.damaged = false;
+        if !changed {
+            return Ok(());
+        }
+        self.equalizer.status = EqualizerStatus::Pending;
         if self.pending.is_none() {
             self.equalizer_apply().await?;
         }
@@ -62,6 +73,11 @@ impl Actor {
         // This command owns only the saved slot. If another controller changed
         // the active settings, normal preference sync owns applying that change.
         self.equalizer.preferences.saved_custom = preferences.saved_custom;
+        if preferences.dsp_revision() == self.equalizer.preferences.dsp_revision()
+            && preferences.settings == self.equalizer.preferences.settings
+        {
+            self.equalizer.preferences = preferences;
+        }
         Ok(())
     }
     pub(super) async fn equalizer_retry(&mut self) -> Result<()> {

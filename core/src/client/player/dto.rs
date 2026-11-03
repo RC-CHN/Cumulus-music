@@ -71,6 +71,7 @@ pub enum PlayerOrigin {
 pub struct EqualizerView {
     pub revision: String,
     pub settings: crate::effects::equalizer::EqualizerSettings,
+    pub preset: Option<crate::effects::equalizer::EqualizerPreset>,
     pub saved_custom: Option<[f32; 10]>,
     pub status: crate::effects::equalizer::EqualizerStatus,
     pub damaged: bool,
@@ -296,6 +297,7 @@ pub enum PlayerAction {
     Equalizer {
         expected_revision: String,
         settings: crate::effects::equalizer::EqualizerSettings,
+        preset: Option<crate::effects::equalizer::EqualizerPreset>,
     },
     SaveCustomEqualizer {
         expected_revision: String,

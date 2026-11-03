@@ -59,11 +59,22 @@ def main():
     after = custom['native']
     assert before['state'] == after['state'] == 'playing'
     assert before['entryId'] == after['entryId'] and after['position'] > before['position']
+    same_saved = read('eq_same_curve_saved')['native']['equalizer']
+    same_builtin = read('eq_same_curve_builtin')['native']['equalizer']
+    assert same_saved['preset'] == {'kind': 'saved'}
+    assert same_builtin['preset'] == {'kind': 'built_in', 'index': 1}
+    assert same_saved['settings'] == same_builtin['settings'] == before['equalizer']['settings']
+    assert same_saved['saved_custom'] == same_builtin['saved_custom'] == same_builtin['settings']['gains']
+    assert same_saved['status'] == same_builtin['status'] == 'processing'
     custom_saved = read('eq_custom_saved')['native']
     built_in = read('eq_custom_built_in')['native']
     recalled = read('eq_custom_recalled')['native']
     custom_gains = native['settings']['gains']
-    assert custom_saved['equalizer']['revision'] == native['revision']
+    assert int(custom_saved['equalizer']['revision']) == int(native['revision']) + 1
+    assert native['preset'] == {'kind': 'manual'}
+    assert custom_saved['equalizer']['preset'] == {'kind': 'saved'}
+    assert built_in['equalizer']['preset'] == {'kind': 'built_in', 'index': 1}
+    assert recalled['equalizer']['preset'] == {'kind': 'saved'}
     assert custom_saved['equalizer']['settings'] == native['settings']
     assert built_in['equalizer']['settings'] != native['settings']
     assert recalled['equalizer']['settings'] == native['settings']
@@ -99,6 +110,7 @@ def main():
     record = persisted(root)
     assert record == {'revision': int(saved['equalizer']['revision']),
                       'settings': saved['equalizer']['settings'],
+                      'preset': {'kind': 'built_in', 'index': 1},
                       'saved_custom': native['settings']}
 
     reopened = run(binary, env, root, reopen=True)
@@ -109,6 +121,7 @@ def main():
     assert resumed['equalizer']['status'] == 'processing'
     for stage in (restored, resumed):
         assert stage['equalizer']['settings'] == record['settings']
+        assert stage['equalizer']['preset'] == record['preset']
         assert int(stage['equalizer']['revision']) == record['revision']
         assert stage['equalizer']['saved_custom'] == custom_gains
     recalled_reopen = reopened('eq_reopened_custom_recalled')['native']
@@ -124,12 +137,13 @@ def main():
     assert reset['native']['entryId'] == resumed['entryId'] and reset['native']['state'] == 'playing'
     assert reset['native']['equalizer']['settings'] == record['saved_custom']
     assert persisted(root) == {**record, 'revision': record['revision'] + 2,
-                               'settings': record['saved_custom']}
+                               'settings': record['saved_custom'], 'preset': {'kind': 'saved'}}
     assert reopened('complete')['ok']
     report = {'ok': True, 'actualWebView': True, 'inputOnly': True, 'confirmedGain': -3.5,
               'samePlayingEntryAdvanced': True, 'nativeFlatReset': True,
               'persistedRevisionVerified': True, 'freshProcessResumedProcessing': True,
               'savedCustomPresetRecalledAfterRestart': True,
+              'sameCurvePresetIdentityPreserved': True,
               'toneProcessedPersistedAndReset': True}
     (root/'report.json').write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
     print(json.dumps(report))

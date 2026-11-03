@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   equalizerPresets,
   equalizerPreset,
+  equalizerPresetOption,
   equalizerChange,
   equalizerMessage,
 } from '../src/services/equalizer.ts';
@@ -50,4 +51,15 @@ test('saved-but-failed and missing adapters never appear as successfully enabled
   assert.match(equalizerMessage({ ...enabled, damaged: true }), /损坏/);
   assert.match(equalizerMessage({ ...enabled, status: 'configured' }), /等待音频处理/);
   assert.match(equalizerMessage({ ...enabled, status: 'processing' }), /已启用/);
+});
+
+test('equal curves retain the explicitly chosen preset instead of hiding a manual or built-in selection', () => {
+  const gains = Array(10).fill(0);
+  const manual = { kind: 'manual' } as const;
+  const builtIn = { kind: 'built_in', index: 0 } as const;
+  assert.equal(equalizerPresetOption(manual, gains, gains), -1);
+  assert.equal(equalizerPresetOption(builtIn, gains, gains), 0);
+  assert.equal(equalizerPresetOption({ kind: 'saved' }, gains, gains), -2);
+  assert.equal(equalizerPresetOption(null, gains, gains), -2);
+  assert.deepEqual(equalizerChange(view(), view().settings, builtIn).preset, builtIn);
 });

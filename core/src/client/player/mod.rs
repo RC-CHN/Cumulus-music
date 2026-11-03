@@ -198,6 +198,7 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
         equalizer: EqualizerView {
             revision: value.equalizer.preferences.revision.to_string(),
             settings: value.equalizer.preferences.settings,
+            preset: value.equalizer.preferences.preset,
             saved_custom: value.equalizer.preferences.saved_custom.map(|s| *s.gains()),
             status: value.equalizer.status,
             damaged: value.equalizer.damaged,
@@ -793,6 +794,7 @@ impl MusicClient {
             PlayerAction::Equalizer {
                 expected_revision,
                 settings,
+                preset,
             } => {
                 let revision = expected_revision
                     .parse::<u64>()
@@ -803,6 +805,7 @@ impl MusicClient {
                 PlaybackCommand::Equalizer {
                     expected_revision: revision,
                     settings,
+                    preset,
                 }
             }
             PlayerAction::SaveCustomEqualizer { expected_revision } => {

@@ -3,7 +3,9 @@
 mod support;
 use cumulus_core::{
     Error,
-    effects::equalizer::{EqualizerPreferences, EqualizerSettings, EqualizerStatus},
+    effects::equalizer::{
+        EqualizerPreferences, EqualizerPreset, EqualizerSettings, EqualizerStatus,
+    },
     playback::controller::PlaybackCommand as Cmd,
 };
 use serde_json::json;
@@ -18,6 +20,7 @@ fn change(revision: u64, gain: f32) -> Cmd {
     Cmd::Equalizer {
         expected_revision: revision,
         settings: curve(gain),
+        preset: None,
     }
 }
 
@@ -211,6 +214,7 @@ async fn flat_curve_keeps_overall_switch_but_bypasses_the_recovered_dsp() {
         .command(Cmd::Equalizer {
             expected_revision: 0,
             settings: flat,
+            preset: None,
         })
         .await
         .unwrap();
@@ -309,6 +313,7 @@ async fn tone_only_curve_is_applied_and_saved_preset_does_not_include_tone() {
         .command(Cmd::Equalizer {
             expected_revision: 0,
             settings: enhanced,
+            preset: None,
         })
         .await
         .unwrap();
@@ -336,5 +341,62 @@ async fn tone_only_curve_is_applied_and_saved_preset_does_not_include_tone() {
             json!({"enabled":true,"gains":[0,0,0,0,0,0,0,0,0,0],"bass_db":11})
         )
         .is_err()
+    );
+}
+
+#[tokio::test]
+async fn manual_flat_can_be_saved_and_identical_builtin_selected_without_touching_dsp() {
+    let f = Fixture::new();
+    f.device.equalizer_supported.store(true, Ordering::SeqCst);
+    let flat = EqualizerSettings::new(true, [0.0; 10]).unwrap();
+    let select = |expected_revision, preset| Cmd::Equalizer {
+        expected_revision,
+        settings: flat,
+        preset: Some(preset),
+    };
+    let none = EqualizerPreset::BuiltIn { index: 0 };
+    let first = f.command(select(0, none)).await.unwrap();
+    assert_eq!(first.equalizer.status, EqualizerStatus::Configured);
+
+    // A fresh apply would fail and clear the filter, even with equal gains.
+    f.device.equalizer_fail.store(true, Ordering::SeqCst);
+    let manual = f.command(select(1, EqualizerPreset::Manual)).await.unwrap();
+    assert_eq!(
+        manual.equalizer.preferences.preset,
+        Some(EqualizerPreset::Manual)
+    );
+    assert_eq!(manual.equalizer.status, EqualizerStatus::Configured);
+    assert!(
+        f.command(Cmd::SaveCustomEqualizer {
+            expected_revision: 1
+        })
+        .await
+        .is_err()
+    );
+    let saved = f
+        .command(Cmd::SaveCustomEqualizer {
+            expected_revision: 2,
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        saved.equalizer.preferences.preset,
+        Some(EqualizerPreset::Saved)
+    );
+    assert_eq!(saved.equalizer.preferences.revision, 3);
+    assert_eq!(saved.equalizer.preferences.saved_custom, Some(flat));
+    let builtin = f.command(select(3, none)).await.unwrap();
+    assert_eq!(builtin.equalizer.status, EqualizerStatus::Configured);
+    assert_eq!(builtin.equalizer.preferences.preset, Some(none));
+    assert_eq!(builtin.equalizer.preferences.saved_custom, Some(flat));
+    let reopened = f.another_player();
+    let recovered = reopened.command(&f.token(), Cmd::Snapshot).await.unwrap();
+    assert_eq!(
+        recovered.equalizer.preferences,
+        builtin.equalizer.preferences
+    );
+    assert_eq!(
+        EqualizerPreferences::read(&f.store, "other").unwrap(),
+        EqualizerPreferences::default()
     );
 }

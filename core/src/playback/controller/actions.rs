@@ -164,7 +164,11 @@ impl Actor {
             PlaybackCommand::Equalizer {
                 expected_revision,
                 settings,
-            } => self.equalizer_change(expected_revision, settings).await,
+                preset,
+            } => {
+                self.equalizer_change(expected_revision, settings, preset)
+                    .await
+            }
             PlaybackCommand::SaveCustomEqualizer { expected_revision } => {
                 self.equalizer_save_custom(expected_revision)
             }

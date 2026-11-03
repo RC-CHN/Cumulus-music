@@ -1,5 +1,5 @@
 import { equalizerPresets } from '../data/equalizer-presets.ts';
-import type { EqualizerView, EqualizerSettings, PlayerAction } from './player.ts';
+import type { EqualizerView, EqualizerSettings, EqualizerPreset, PlayerAction } from './player.ts';
 export { equalizerPresets };
 export const equalizerLabels = ['31', '63', '125', '250', '500', '1k', '2k', '4k', '8k', '16k'];
 export function equalizerPreset(gains: readonly number[]): number {
@@ -8,12 +8,24 @@ export function equalizerPreset(gains: readonly number[]): number {
       p.gains.length === gains.length && p.gains.every((g, i) => Math.abs(g - gains[i]!) < 0.00001),
   );
 }
+export function equalizerPresetOption(
+  preset: EqualizerPreset | null | undefined,
+  gains: readonly number[],
+  saved?: readonly number[] | null,
+) {
+  if (preset?.kind === 'built_in') return preset.index;
+  if (preset?.kind === 'manual') return -1;
+  if (preset?.kind === 'saved') return -2;
+  if (saved?.every((gain, i) => Math.fround(gain) === Math.fround(gains[i]!))) return -2;
+  return equalizerPreset(gains);
+}
 export function equalizerTone(settings?: EqualizerSettings) {
   return { bass_db: settings?.bass_db ?? 0, treble_db: settings?.treble_db ?? 0 };
 }
 export function equalizerChange(
   view: EqualizerView,
   settings: EqualizerSettings,
+  preset?: EqualizerPreset,
 ): Extract<PlayerAction, { kind: 'equalizer' }> {
   const tone = equalizerTone(settings);
   if (
@@ -26,6 +38,7 @@ export function equalizerChange(
   return {
     kind: 'equalizer',
     expected_revision: view.revision,
+    ...(preset ? { preset } : {}),
     settings: {
       enabled: settings.enabled,
       gains: [...settings.gains],

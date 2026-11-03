@@ -5,7 +5,7 @@ mod host;
 mod preferences;
 use crate::{Error, Result};
 pub use host::EqualizerHost;
-pub use preferences::{EqualizerPreferences, EqualizerSnapshot, EqualizerStatus};
+pub use preferences::{EqualizerPreferences, EqualizerPreset, EqualizerSnapshot, EqualizerStatus};
 use serde::{Deserialize, Serialize};
 
 /// Official M/3091 sliders: ten dB values, each in [-12, 12]. Labels are rounded

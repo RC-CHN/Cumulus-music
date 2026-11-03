@@ -4,16 +4,18 @@ import type { PlayerModel } from '../composables/usePlayer';
 import {
   equalizerLabels,
   equalizerMessage,
-  equalizerPreset,
+  equalizerPresetOption,
   equalizerPresets,
   equalizerTone,
 } from '../services/equalizer';
+import type { EqualizerPreset } from '../services/player';
 import { failure } from '../services/contracts';
 import Icon from './Icon.vue';
 const props = defineProps<{ player: PlayerModel }>();
 const emit = defineEmits<{ close: [] }>();
 const { view, ready, equalizerDraft } = props.player;
-const { settings, draft, pending, blocked, error, stage, applyDraft, discard } = equalizerDraft;
+const { settings, preset, draft, pending, blocked, error, stage, applyDraft, discard } =
+  equalizerDraft;
 const current = computed(() => view.value?.equalizer);
 const dialog = ref<HTMLDialogElement>();
 const gains = computed(() => settings.value?.gains ?? Array<number>(10).fill(0));
@@ -28,16 +30,12 @@ const savedMessage = ref('');
 const disabled = computed(
   () => !ready.value || !current.value || current.value.damaged || commandPending.value,
 );
-const preset = computed(() => equalizerPreset(gains.value));
 const saved = computed(() => current.value?.saved_custom);
-const matchesSaved = computed(
-  () =>
-    saved.value?.every((gain, i) => Math.fround(gain) === Math.fround(gains.value[i]!)) ?? false,
+const displayedPreset = computed(() =>
+  equalizerPresetOption(preset.value, gains.value, saved.value),
 );
-const displayedPreset = computed(() => (matchesSaved.value ? -2 : preset.value));
 const canSave = computed(
-  () =>
-    !disabled.value && !pending.value && !draft.value && preset.value < 0 && !matchesSaved.value,
+  () => !disabled.value && !pending.value && !draft.value && displayedPreset.value === -1,
 );
 let focused: HTMLElement | null = null;
 const epoch = view.value?.epoch;
@@ -52,25 +50,30 @@ onMounted(() => {
   dialog.value?.showModal();
 });
 onUnmounted(() => focused?.focus());
-function change(enabled: boolean, values = gains.value, enhancement = tone.value) {
+function change(
+  enabled: boolean,
+  values = gains.value,
+  enhancement = tone.value,
+  selected?: EqualizerPreset,
+) {
   if (disabled.value) return;
   commandError.value = '';
   savedMessage.value = '';
-  stage({ enabled, gains: values, ...enhancement });
+  stage({ enabled, gains: values, ...enhancement }, selected);
 }
 function choose(event: Event) {
   const selected = Number((event.target as HTMLSelectElement).value);
   if (selected === -2 && saved.value) {
-    change(true, [...saved.value]);
+    change(true, [...saved.value], tone.value, { kind: 'saved' });
     return;
   }
   const p = equalizerPresets[selected];
-  if (p) change(true, [...p.gains]);
+  if (p) change(true, [...p.gains], tone.value, { kind: 'built_in', index: selected });
 }
 function slide(index: number, event: Event) {
   const values = [...gains.value];
   values[index] = Number((event.target as HTMLInputElement).value);
-  change(true, values);
+  change(true, values, tone.value, { kind: 'manual' });
 }
 function slideTone(key: (typeof toneBands)[number]['key'], event: Event) {
   const value = Number((event.target as HTMLInputElement).value);
@@ -132,7 +135,7 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
           :disabled="disabled"
           @change="choose"
         >
-          <option v-if="preset < 0 && !matchesSaved" :value="-1" disabled>未保存的自定义</option>
+          <option v-if="displayedPreset === -1" :value="-1" disabled>未保存的自定义</option>
           <option v-if="saved" :value="-2">已保存的自定义</option>
           <option v-for="(p, index) in equalizerPresets" :key="p.name" :value="index">
             {{ p.name }}
@@ -233,7 +236,12 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
     <footer>
       <small aria-live="polite">{{ savedMessage || '为当前账号保存，下次打开仍会保留。' }}</small>
       <button :disabled="!canSave" @click="saveCustom">保存自定义预设</button>
-      <button :disabled="disabled" @click="change(true, Array(10).fill(0))">恢复平直</button>
+      <button
+        :disabled="disabled"
+        @click="change(true, [...equalizerPresets[0].gains], tone, { kind: 'built_in', index: 0 })"
+      >
+        恢复平直
+      </button>
     </footer>
   </dialog>
 </template>

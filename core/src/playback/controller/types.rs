@@ -134,6 +134,7 @@ pub enum PlaybackCommand {
     Equalizer {
         expected_revision: u64,
         settings: crate::effects::equalizer::EqualizerSettings,
+        preset: Option<crate::effects::equalizer::EqualizerPreset>,
     },
     SaveCustomEqualizer {
         expected_revision: u64,
