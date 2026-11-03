@@ -111,7 +111,23 @@ fn fixtures(root: &Path, cue_only: bool) -> Result<(), Box<dyn std::error::Error
     if cue_only {
         return Ok(());
     }
-    let status = std::process::Command::new("ffmpeg")
+    #[cfg(target_os = "windows")]
+    let ffmpeg = {
+        // The Windows media action installs and exercises this executable in
+        // UCRT64. The packaged player runtime on PATH contains ffprobe only.
+        let runtime = std::env::var_os("MPV_DLL_DIR_CUMULUS")
+            .map(PathBuf::from)
+            .filter(|path| path.is_absolute())
+            .ok_or("local fixture generation needs the absolute Windows media runtime")?;
+        let executable = runtime.join("ffmpeg.exe");
+        if !executable.is_file() {
+            return Err("verified Windows media runtime has no ffmpeg.exe".into());
+        }
+        executable
+    };
+    #[cfg(not(target_os = "windows"))]
+    let ffmpeg = "ffmpeg";
+    let status = std::process::Command::new(ffmpeg)
         .args(["-v", "error", "-nostdin", "-i"])
         .arg(media.join("album.wav"))
         .args(["-t", "60", "-c:a", "flac"])
