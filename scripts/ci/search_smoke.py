@@ -11,6 +11,8 @@ def main():
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--runtime', type=Path)
+    parser.add_argument('--exact-fallback', action='store_true')
+    parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--screenshots', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
@@ -28,13 +30,23 @@ def main():
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
     source = Path(__file__).resolve().parents[2] / 'desktop/examples/search_ui_probe.js'
     script = root / 'search.js'
-    script.write_text(source.read_text(encoding='utf-8'), encoding='utf-8')
+    prefix = 'window.__cumulusSearchExactFallbackProof = true;\n' if args.exact_fallback else ''
+    script.write_text(prefix + source.read_text(encoding='utf-8'), encoding='utf-8')
+    if args.frontend_dist:
+        env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve(strict=True))
     env['CUMULUS_UX_SCRIPT'] = str(script)
     with (root / 'host.log').open('x', encoding='utf-8') as log:
         code = launch(args.binary.resolve(), env, log, root / 'first', args.screenshots)
     failed = root / 'first/failed.json'
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
+    if args.exact_fallback:
+        complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
+        assert complete['ok'] and complete['exactFallbackVerified'] and complete['stageCount'] == 3
+        assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
+        assert len(list((root / 'first').glob('ux_*.png'))) == (3 if args.screenshots else 0)
+        print(json.dumps(dict(ok=True, actualWebView=True, exactFallbackVerified=True)))
+        return
     verify(root, args.screenshots)
 
 def verify(root, capture):

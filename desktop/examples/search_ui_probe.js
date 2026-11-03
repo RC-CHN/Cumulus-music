@@ -184,6 +184,52 @@
       () => one(".track-row") && input()?.placeholder === "发现合成好声音",
       "startup",
     );
+    if (window.__cumulusSearchExactFallbackProof) {
+      await fixture("good");
+      await suggestions("保留原词");
+      assert(!one(".search-exact"), "ordinary suggestions replace exact fallback");
+      assert(panel().textContent.includes("保留原词 · 推荐结果"), "recommendations remain");
+      await capture("exact_fallback_hidden");
+      key(input(), "Enter");
+      await wait(() => !panel() && one(".search-heading-copy h1")?.textContent === "保留原词",
+        "raw Enter still submits the exact term");
+
+      const provides = one("#app").__vue_app__._context.provides;
+      const core = provides[Reflect.ownKeys(provides).find((k) =>
+        typeof k === "symbol" && k.description === "core-client")];
+      const read = core.searchDiscovery;
+      core.searchDiscovery = async (...args) => {
+        const result = await read(...args);
+        if (args[1].kind !== "suggestions") return result;
+        // Synthetic native response is unchanged apart from its empty suggestions list.
+        return { ...result, value: { ...result.value, suggestions: [] } };
+      };
+      try {
+        await home();
+        type("仅有推荐");
+        await wait(() => panel()?.textContent.includes("仅有推荐 · 推荐结果"),
+          "recommendation-only settled reply");
+        assert(one(".search-exact")?.textContent.trim() === "搜索“仅有推荐”" &&
+          !panel().textContent.includes("联想结果"), "empty suggestion group keeps exact fallback");
+        await capture("exact_fallback_with_recommendation");
+        click(one(".search-exact"));
+        await wait(() => !panel() && one(".search-heading-copy h1")?.textContent === "仅有推荐",
+          "exact fallback submits displayed text");
+      } finally {
+        core.searchDiscovery = read;
+      }
+
+      await fixture("empty");
+      await home();
+      type("没有匹配");
+      await wait(() => panel()?.textContent.includes("暂无建议"), "fully empty response");
+      assert(one(".search-exact")?.textContent.trim() === "搜索“没有匹配”",
+        "empty response retains exact fallback");
+      await capture("exact_fallback_empty");
+      await emit("complete", { ok: true, exactFallbackVerified: true, stageCount: count,
+        realMusicRequests: 0, realAccountWrites: 0 });
+      return;
+    }
     for (const [w, h, t] of [
       [1120, 760, "light"],
       [760, 540, "light"],

@@ -19,6 +19,7 @@ function parts(label: string, query: string) {
 </script>
 <template>
   <button
+    v-if="composing || pending || error || !suggestions.length"
     class="search-suggestion search-exact"
     data-search-choice
     :title="`搜索“${query}”`"
