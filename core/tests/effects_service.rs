@@ -1432,3 +1432,75 @@ async fn bound_parametric_clear_cannot_remove_a_newer_binding_or_release_rights(
             .start_acknowledged
     );
 }
+
+#[tokio::test]
+async fn native_activation_consumes_the_receipt_and_submits_the_exact_binding() {
+    use cumulus_core::{
+        account::profiles::ProfileRegistry,
+        client::{MusicClient, NativeParametricActivation, NativeParametricActivationAttempt},
+        effects::{authorization::LeasePhase, service::StandaloneParametricPreflight},
+        playback::controller::ParametricApplication,
+        protocol::http::ApiOrigin,
+    };
+    use std::sync::atomic::Ordering;
+
+    let temp = tempfile::tempdir().unwrap();
+    let registry = ProfileRegistry::open(temp.path(), ApiOrigin::Pc).unwrap();
+    let (bytes, _) = sample("first");
+    let api = Arc::new(ScriptApi::new(
+        pair(&sound(&bytes, URL), true).into_iter().chain([
+            auth(true),
+            json!({"code":200,"data":true}).into(),
+            auth(true),
+            nontrial_recycle(false),
+        ]),
+    ));
+    let session = world(api.clone(), registry.store());
+    let token = session.token().unwrap();
+    let epoch = token.generation.to_string();
+    let library =
+        EffectsLibrary::with_backend(session.clone(), Arc::new(Origin::new(bytes))).unwrap();
+    let StandaloneParametricPreflight::Ready(receipt) = library
+        .preflight_parametric_activation_for(&token, id(), RunOptions::default())
+        .await
+        .unwrap()
+    else {
+        panic!("fixture must have standalone PEQ");
+    };
+    let device = Arc::new(playback_support::Device::default());
+    device.parametric_supported.store(true, Ordering::SeqCst);
+    let audio = device.clone();
+    let client = MusicClient::with_session(session, registry)
+        .with_audio_factory(move || Ok(playback_support::audio_engine(audio.clone())));
+    let mut attempt = NativeParametricActivationAttempt::new(receipt);
+    let NativeParametricActivation::Configured(target) = client
+        .activate_native_effect_parametric(&epoch, &mut attempt)
+        .await
+        .unwrap()
+    else {
+        panic!("idle engine should acknowledge configuration, not PCM");
+    };
+    assert_eq!(attempt.submitted_target(), Some(target));
+    assert!(device.parametric_attached.load(Ordering::SeqCst));
+    assert_eq!(
+        client
+            .native_effect_registration_phase(&epoch, id())
+            .unwrap(),
+        Some(LeasePhase::Registered)
+    );
+    assert!(
+        client
+            .activate_native_effect_parametric(&epoch, &mut attempt)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        client
+            .clear_native_bound_parametric(&epoch, target)
+            .await
+            .unwrap(),
+        ParametricApplication::Cleared
+    );
+    assert!(!device.parametric_attached.load(Ordering::SeqCst));
+    assert_eq!(api.calls().len(), 6);
+}

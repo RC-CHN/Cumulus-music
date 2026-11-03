@@ -1,6 +1,6 @@
-//! Bind verified material to an already acknowledged registration. This does
-//! can explicitly register a preflighted non-trial plan, but does not release,
-//! start a trial, or hand a plan to the audio engine.
+//! Bind verified material to an acknowledged registration, or explicitly
+//! register a preflighted non-trial plan. This does not release rights, start
+//! a trial, or hand a plan to the audio engine.
 use super::{EffectAuthorizations, EffectLease, LeaseObservation, LeasePhase, TrialConsent};
 use crate::{
     Error, Result,
