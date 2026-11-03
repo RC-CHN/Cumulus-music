@@ -148,3 +148,53 @@ test('exit sends native Close while Play is pending and discards its late respon
   await pending;
   assert.equal(model.playback.value, undefined);
 });
+
+test(
+  'loss of one track’s cached rights keeps the offline list and other songs playable',
+  {
+    timeout: 3000,
+  },
+  async () => {
+    const statusReported = deferred<void>();
+    const plain = { ...song, id: '2', title: 'Synthetic plain song' };
+    const page = { items: [song, plain], hasMore: false };
+    let closes = 0;
+    let playingId = song.id;
+    const model = useColdOffline(
+      client({
+        coldOfflineOpen: async () => page,
+        coldOfflinePlay: async (id) => {
+          playingId = id;
+          return { phase: 'playing', playingId: id };
+        },
+        coldOfflineStatus: async () => {
+          if (playingId === plain.id) return { phase: 'playing', playingId };
+          statusReported.resolve();
+          return { ...idle, stopReason: 'cached_rights_unavailable' };
+        },
+        coldOfflineClose: async () => {
+          closes++;
+        },
+      }),
+      1,
+    );
+    model.setEligible(true);
+    try {
+      await model.open();
+      await model.play(song.id);
+      assert.equal(model.currentTitle.value, song.title);
+      await statusReported.promise;
+      await turn();
+      assert.equal(model.playback.value?.phase, 'idle');
+      assert.equal(model.currentTitle.value, '');
+      assert.match(model.error.value, /离线权益已失效/);
+      assert.equal(model.page.value, page);
+      assert.equal(closes, 0);
+      await model.play(plain.id);
+      assert.equal(model.currentTitle.value, plain.title);
+      assert.equal(model.error.value, '');
+    } finally {
+      model.setEligible(false);
+    }
+  },
+);

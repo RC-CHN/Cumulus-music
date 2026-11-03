@@ -31,6 +31,8 @@ pub struct ColdOfflinePlayerView {
     phase: Phase,
     playing_id: Option<String>,
     position: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stop_reason: Option<StopReason>,
 }
 #[derive(Serialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -38,6 +40,11 @@ enum Phase {
     #[default]
     Idle,
     Playing,
+}
+#[derive(Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum StopReason {
+    CachedRightsUnavailable,
 }
 struct Lease {
     focus: Arc<MediaFocus>,
@@ -67,6 +74,7 @@ struct Mode {
     next: Option<ColdOfflineCursor>,
     playing: Option<Playing>,
     failed: bool,
+    stop_reason: Option<StopReason>,
 }
 impl Drop for Mode {
     fn drop(&mut self) {
@@ -88,12 +96,25 @@ impl Mode {
             has_more: self.next.is_some(),
         })
     }
+    fn stop_for_cached_rights(&mut self) -> ColdOfflinePlayerView {
+        self.playing = None;
+        self.stop_reason = Some(StopReason::CachedRightsUnavailable);
+        self.idle()
+    }
+
+    fn idle(&self) -> ColdOfflinePlayerView {
+        ColdOfflinePlayerView {
+            stop_reason: self.stop_reason,
+            ..Default::default()
+        }
+    }
+
     fn poll(&mut self) -> Result<ColdOfflinePlayerView> {
         if self.failed {
             return Err(Error::Media("offline decoder stopped unexpectedly"));
         }
         let Some(active) = self.playing.as_mut() else {
-            return Ok(ColdOfflinePlayerView::default());
+            return Ok(self.idle());
         };
         if active
             .lease
@@ -105,12 +126,21 @@ impl Mode {
             return Ok(ColdOfflinePlayerView::default());
         }
         if let Some(entitlement) = &active.entitlement
-            && let Err(error) = self.grant.validate_entitlement(entitlement)
+            && self.grant.validate_entitlement(entitlement).is_err()
         {
-            self.playing = None;
-            return Err(error);
+            return Ok(self.stop_for_cached_rights());
         }
-        let snapshot = match active.engine.poll() {
+        let snapshot = active.engine.poll();
+        // The stream can revoke its own reads while engine.poll is running.
+        // Classify that stop before interpreting its decoder error or events.
+        if active
+            .entitlement
+            .as_ref()
+            .is_some_and(|rights| !rights.valid())
+        {
+            return Ok(self.stop_for_cached_rights());
+        }
+        let snapshot = match snapshot {
             Ok(value) => value,
             Err(error) => {
                 self.playing = None;
@@ -139,6 +169,7 @@ impl Mode {
             phase: Phase::Playing,
             playing_id: Some(active.id.clone()),
             position: snapshot.position.filter(|p| p.is_finite() && *p >= 0.0),
+            stop_reason: None,
         })
     }
 }
@@ -261,6 +292,7 @@ impl MusicClient {
                     next: None,
                     playing: None,
                     failed: false,
+                    stop_reason: None,
                 };
                 let page = mode.page(false)?;
                 life.check()?;
@@ -281,6 +313,7 @@ impl MusicClient {
             .run_current(|mode| {
                 mode.playing = None;
                 mode.failed = false;
+                mode.stop_reason = None;
                 Ok(ColdOfflinePlayerView::default())
             })
             .await
@@ -345,6 +378,7 @@ impl MusicClient {
                 lease.focus.check(revision, Owner::ColdOffline)?;
                 mode.playing = None;
                 mode.failed = false;
+                mode.stop_reason = None;
                 let life = mode.life.clone();
                 let focus = lease.focus.clone();
                 if let Some(rights) = &entitlement {

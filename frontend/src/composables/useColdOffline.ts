@@ -59,8 +59,15 @@ export function useColdOffline(core: ColdOfflineClient, pollAfter = 750) {
     if (page.value && eligible && !closing) timer = setTimeout(poll, pollAfter);
   }
   function sync(next: ColdOfflinePlayback) {
-    if (next.phase === 'idle') currentTitle.value = '';
-    else if (next.playingId !== playback.value?.playingId)
+    if (next.phase === 'idle') {
+      currentTitle.value = '';
+      if (
+        next.stopReason === 'cached_rights_unavailable' &&
+        next.stopReason !== playback.value?.stopReason
+      ) {
+        error.value = '当前歌曲的离线权益已失效，其他符合条件的歌曲仍可播放。';
+      }
+    } else if (next.playingId !== playback.value?.playingId)
       currentTitle.value =
         page.value?.items.find((item) => item.id === next.playingId)?.title ?? '';
     playback.value = next;

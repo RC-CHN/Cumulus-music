@@ -13,6 +13,7 @@ export interface ColdOfflinePage {
 export interface ColdOfflinePlayback {
   phase: 'idle' | 'playing';
   playingId: string | null;
+  stopReason?: 'cached_rights_unavailable';
 }
 
 export interface ColdOfflineClient {

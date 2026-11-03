@@ -474,6 +474,22 @@ async fn verify_cold_ncm(
         fn load(&mut self, _: LoadRequest, _: &Cancellation) -> Result<LoadedMedia> {
             panic!("cold offline may not load paths or URLs")
         }
+        fn load_pinned_audio(
+            &mut self,
+            mut file: File,
+            authority: Cancellation,
+            _: &Cancellation,
+        ) -> Result<LoadedMedia> {
+            authority.check()?;
+            let mut magic = [0; 4];
+            file.read_exact(&mut magic)?;
+            assert_eq!(&magic, b"fLaC");
+            Ok(LoadedMedia {
+                entry_id: 7,
+                duration: Some(1.0),
+                codec: Some("flac".into()),
+            })
+        }
         fn load_pinned_ncm(
             &mut self,
             file: File,
@@ -523,6 +539,7 @@ async fn verify_cold_ncm(
         }
     }
 
+    let plain_id = task["id"].as_str().unwrap().to_owned();
     let mut encoded = Vec::new();
     write_stream(
         &mut Cursor::new(audio),
@@ -602,14 +619,35 @@ async fn verify_cold_ncm(
     assert_eq!(serde_json::to_value(playing).unwrap()["phase"], "playing");
     assert_eq!(control.loaded.load(Ordering::SeqCst), 1);
     store.delete("1", "membership", "current").unwrap();
+    let expect_stopped = |view| {
+        let view = serde_json::to_value(view).unwrap();
+        assert_eq!(view["phase"], "idle");
+        assert_eq!(view["stopReason"], "cached_rights_unavailable");
+        assert!(view["playingId"].is_null());
+    };
+    // The foreground read and monitor may observe the cache change in either
+    // order. Both must leave the same usable offline mode and track outcome.
+    expect_stopped(client.cold_offline_status().await.unwrap());
     tokio::time::timeout(Duration::from_secs(3), control.stopped.notified())
         .await
         .unwrap();
-    assert_eq!(
-        serde_json::to_value(client.cold_offline_status().await.unwrap()).unwrap()["phase"],
-        "idle"
-    );
+    expect_stopped(client.cold_offline_status().await.unwrap());
     assert!(client.cold_offline_play(id.into()).await.is_err());
+    // The native monitor also stops an invalid track with no renderer read.
+    cached["data"]["redplus"]["expireTime"] = json!(201000);
+    store.put("1", "membership", "current", &cached).unwrap();
+    client.cold_offline_play(id.into()).await.unwrap();
+    store.delete("1", "membership", "current").unwrap();
+    tokio::time::timeout(Duration::from_secs(3), control.stopped.notified())
+        .await
+        .unwrap();
+    expect_stopped(client.cold_offline_status().await.unwrap());
+
+    let plain =
+        serde_json::to_value(client.cold_offline_play(plain_id.clone()).await.unwrap()).unwrap();
+    assert_eq!(plain["phase"], "playing");
+    assert_eq!(plain["playingId"], plain_id);
+    assert!(plain.get("stopReason").is_none());
     assert_eq!(client.account().unwrap().status, SessionStatus::Unknown);
     client.cold_offline_close().await.unwrap();
 }
