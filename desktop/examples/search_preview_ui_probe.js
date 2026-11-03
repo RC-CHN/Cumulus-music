@@ -10,6 +10,29 @@
   const pane=()=>one('.search-result-panel');
   const ready=()=>pane()?.getAttribute('aria-busy')==='false'&&!one('.search-results-enter-active,.search-results-leave-active,.page-enter-active,.page-leave-active');
   const pointer=async(x,y)=>{window.__searchPointerAck=false;await emit('search-pointer',{x,y});await wait(()=>window.__searchPointerAck,'pointer');};
+  // A hover match can arrive before WebKit starts painting its opacity transitions.
+  // Keep the native pointer and keyboard assertions; wait only for the rendered state.
+  async function waitControls(card, state) {
+    const mask = card.querySelector('.search-track-mask');
+    const actions = card.querySelector('.search-track-actions');
+    const deadline = performance.now() + 1600;
+    let observed;
+    do {
+      const style = getComputedStyle(actions);
+      observed = {
+        hover: card.matches(':hover'),
+        focus: card.matches(':focus-within'),
+        mask: Number(getComputedStyle(mask).opacity),
+        actions: Number(style.opacity),
+        hit: style.pointerEvents === 'auto',
+      };
+      if (state === 'idle' && !observed.hover && !observed.focus && observed.actions === 0 && !observed.hit) return;
+      if (state === 'hover' && observed.hover && observed.mask > .99 && observed.actions > .99 && observed.hit) return;
+      if (state === 'keyboard' && !observed.hover && observed.focus && observed.actions > .99 && observed.hit) return;
+      await sleep(30);
+    } while (performance.now() < deadline);
+    throw Error(state + ' preview controls did not settle: ' + JSON.stringify(observed));
+  }
   const source=Object.getOwnPropertyDescriptor(HTMLImageElement.prototype,'src');let images=0;
   Object.defineProperty(HTMLImageElement.prototype,'src',{...source,set(value){
     if(String(value).includes('/cumulus-preview-')){images++;value=String(value).includes('-bad')?'data:image/png;base64,aW52YWxpZA==':'data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160"><rect width="160" height="160" fill="#6c597b"/><circle cx="80" cy="80" r="52" fill="#e0a6b2"/></svg>');}
@@ -30,9 +53,9 @@
     for(const [w,h,t] of [[1120,760,'light'],[1120,760,'dark'],[760,540,'light'],[760,540,'dark']]){
       await emit('resize',{width:w,height:h});await wait(()=>innerWidth===w&&innerHeight===h,'resize');await pointer(innerWidth-3,75);await sleep(160);click(button('外观主题'));await wait(()=>one('.action-menu'),'theme');click(button(t==='dark'?'深色':'浅色'));await wait(()=>!one('.action-menu'),'theme applied');
       const input=one('[aria-label="搜索音乐"]');input.value='合成预览';input.dispatchEvent(new Event('input',{bubbles:true}));input.form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));await sleep(0);await wait(()=>ready()&&one('.search-track-card'),'preview ready');await sleep(200);await pointer(innerWidth-3,75);layout();assert(!one('.search-panel'),'submission closes discovery');await capture(`overview_${w}_${t}`);
-      const card=one('.search-track-card');card.scrollIntoView({block:'center'});document.activeElement?.blur();await pointer(innerWidth-3,75);await sleep(200);assert(Number(getComputedStyle(card.querySelector('.search-track-actions')).opacity)===0,'idle actions concealed');
-      const r=card.querySelector('.search-track-cover').getBoundingClientRect();await pointer(r.x+r.width/2,r.y+r.height/2);await wait(()=>card.matches(':hover'),'native hover');await sleep(180);assert(Number(getComputedStyle(card.querySelector('.search-track-mask')).opacity)>.99&&Number(getComputedStyle(card.querySelector('.search-track-actions')).opacity)>.99,'hover reveals controls');assert(card.querySelector('img')?.naturalWidth>0,'good cover decoded');assert(!all('.search-track-card')[1].querySelector('img'),'bad cover fallback');await capture(`hover_${w}_${t}`);
-      await pointer(innerWidth-3,75);const download=card.querySelector('.search-track-actions button');download.focus({preventScroll:true});await sleep(180);assert(Number(getComputedStyle(card.querySelector('.search-track-actions')).opacity)>.99,'keyboard reveals controls');const d=download.getBoundingClientRect();assert(document.elementFromPoint(d.x+d.width/2,d.y+d.height/2)?.closest('button')===download,'keyboard control hit target');await capture(`keyboard_${w}_${t}`);
+      const card=one('.search-track-card');card.scrollIntoView({block:'center'});document.activeElement?.blur();await pointer(innerWidth-3,75);await waitControls(card,'idle');
+      const r=card.querySelector('.search-track-cover').getBoundingClientRect();await pointer(r.x+r.width/2,r.y+r.height/2);await waitControls(card,'hover');assert(card.querySelector('img')?.naturalWidth>0,'good cover decoded');assert(!all('.search-track-card')[1].querySelector('img'),'bad cover fallback');await capture(`hover_${w}_${t}`);
+      await pointer(innerWidth-3,75);const download=card.querySelector('.search-track-actions button');download.focus({preventScroll:true});await waitControls(card,'keyboard');const d=download.getBoundingClientRect();assert(document.elementFromPoint(d.x+d.width/2,d.y+d.height/2)?.closest('button')===download,'keyboard control hit target');await capture(`keyboard_${w}_${t}`);
       const before=plays;download.dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));assert(plays===before,'action double click does not play');click(download);await wait(()=>one('.download-dialog[open]'),'download options');await capture(`download_${w}_${t}`);click(button('关闭下载对话框'));await wait(()=>!one('.download-dialog'),'download closed');assert(document.activeElement===download,'download returns exact focus');
       const more=card.querySelector('.search-track-actions button:last-child');click(more);await wait(()=>one('.song-action-menu'),'song operations');await capture(`more_${w}_${t}`);one('.song-action-menu').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));await wait(()=>!one('.song-action-menu'),'operations closed');assert(document.activeElement===more,'operations return exact focus');
       const link=button('查看全部歌单'),section=link.closest('.search-result-section');section.scrollIntoView({block:'start'});await sleep(200);const saved=pane().scrollTop;await capture(`playlist_preview_${w}_${t}`);click(link);await wait(()=>ready()&&one('[data-category="playlists"]')?.getAttribute('aria-selected')==='true','all playlists');assert(all('.search-result-card').length===30,'full category retains all records');await capture(`category_${w}_${t}`);await choose('all');assert(Math.abs(pane().scrollTop-saved)<2,'return restores preview position');layout();await capture(`return_${w}_${t}`);
