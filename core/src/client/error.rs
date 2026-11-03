@@ -385,6 +385,20 @@ impl From<Error> for ClientError {
                 Error::Transport(_) | Error::HttpStatus { .. } => {
                     ("network", "网络请求失败，请稍后重试", true)
                 }
+                Error::Service { endpoint, .. }
+                    if endpoint == "/api/song/enhance/player/url/v1" =>
+                {
+                    (
+                        "playback_source_unavailable",
+                        "当前歌曲暂无可用音源，请选择其他歌曲",
+                        false,
+                    )
+                }
+                Error::Response("no playback resource for requested track") => (
+                    "playback_source_unavailable",
+                    "当前歌曲暂无可用音源，请选择其他歌曲",
+                    false,
+                ),
                 Error::Service { .. } => ("service_rejected", "服务暂未允许此操作", false),
                 Error::Playback {
                     operation: "library" | "ABI",

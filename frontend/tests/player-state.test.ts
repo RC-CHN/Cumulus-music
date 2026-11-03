@@ -721,7 +721,8 @@ test('explicit retry after failed startup requests paused restore instead of rep
     },
     playerAction: async (_, action) => {
       calls.push(action.kind);
-      if (action.kind === 'startup') throw { code: 'network', message: 'lost startup reply' };
+      if (action.kind === 'startup')
+        throw { code: 'network', message: 'lost startup reply', retryable: true };
       return { ...state('2', '1', 'restored'), state: 'paused', queueLen: 2 };
     },
   });
@@ -752,6 +753,43 @@ test('retry repeats the failed selection rather than playing an older queue', as
   assert.equal(selections, 2);
   assert.equal(controls, 0);
   assert.equal(f.player.view.value?.playId, 'selected');
+  f.player.dispose();
+});
+
+test('unavailable online source is actionable without replaying the rejected selection', async () => {
+  let selections = 0;
+  const actions: PlayerAction[] = [];
+  const f = fixture({
+    playSelection: async () => {
+      if (++selections === 1)
+        throw {
+          code: 'playback_source_unavailable',
+          message: '当前歌曲暂无可用音源，请选择其他歌曲',
+          retryable: false,
+        };
+      return state('4', '1', 'other-song');
+    },
+    playerAction: async (_epoch, input) => {
+      actions.push(input);
+      return state('6', '1', 'other-song-refreshed');
+    },
+  });
+  await f.player.connect(account());
+  const selection = { kind: 'songs', ids: ['1'], index: 0, quality: 'standard' } as const;
+  f.emit({ ...state('2', '1', 'old-source'), state: 'error', error: 'generic native error' });
+  await f.player.select({ ...selection, ids: ['1'] });
+  assert.match(f.player.error.value, /暂无可用音源/);
+  assert.equal(f.player.canRetry.value, false);
+  await f.player.retry();
+  assert.equal(selections, 1);
+  assert.deepEqual(actions, []);
+
+  await f.player.select({ ...selection, ids: ['2'] });
+  assert.equal(f.player.view.value?.playId, 'other-song');
+  f.emit({ ...state('5', '1', 'other-song'), state: 'error', error: 'generic native error' });
+  assert.equal(f.player.canRetry.value, true);
+  await f.player.retry();
+  assert.deepEqual(actions, [{ kind: 'refresh' }]);
   f.player.dispose();
 });
 
@@ -792,7 +830,7 @@ test('retrying card preparation rereads its list before any playback command', a
   });
   await f.player.connect(account());
   await f.player.prepareSelection(async () => {
-    if (++reads === 1) throw { code: 'network', message: '读取失败' };
+    if (++reads === 1) throw { code: 'network', message: '读取失败', retryable: true };
     return { kind: 'songs', ids: ['1'], index: 0, quality: 'standard' };
   });
   assert.equal(calls, 0);

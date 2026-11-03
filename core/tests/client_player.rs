@@ -23,6 +23,7 @@ struct Backend {
     calls: Mutex<Vec<String>>,
     hold_id: AtomicU64,
     hold_url_id: AtomicU64,
+    deny_url_id: AtomicU64,
     deny_voice: std::sync::atomic::AtomicBool,
     started: Notify,
     release: Notify,
@@ -90,6 +91,12 @@ impl Api for Backend {
                     {
                         self.url_started.notify_one();
                         self.url_release.notified().await;
+                    }
+                    if ids[0].as_u64().or_else(|| ids[0].as_str()?.parse().ok())
+                        == Some(self.deny_url_id.load(Ordering::SeqCst))
+                    {
+                        return Ok(json!({"code":200,"data":[{"id":ids[0],"code":403,
+                            "url":"https://secret.invalid/denied?token=SECRET","md5":"SECRET"}]}));
                     }
                     json!({"code":200,"data":[{"id":ids[0],"code":if payload["level"]=="jymaster"&&self.quality_url_denied.load(Ordering::SeqCst)>0 {403}else{200},"url":"https://m1.music.126.net/a.mp3?key=SECRET","md5":"abc","expi":120,"level":"standard"}]})
                 }
@@ -167,6 +174,29 @@ mod voice_selection;
 mod queue_album;
 #[path = "client_player/source_control.rs"]
 mod source_control;
+
+#[tokio::test]
+async fn rejected_online_selection_projects_no_source_and_allows_a_different_song() {
+    use cumulus_core::{client::ClientError, playback::controller::PlaybackStatus};
+    let (_dir, api, _session, client, _) = fixture();
+    api.deny_url_id.store(1, Ordering::SeqCst);
+    let denied = client.play_selection("1", songs("1")).await.err().unwrap();
+    let denial = ClientError::from(denied);
+    assert_eq!(denial.code, "playback_source_unavailable");
+    assert!(!denial.retryable);
+    let stopped = client.player_snapshot("1").await.unwrap();
+    assert_eq!(stopped.state, PlaybackStatus::Error);
+    for public in [
+        serde_json::to_string(&denial).unwrap(),
+        serde_json::to_string(&stopped).unwrap(),
+    ] {
+        assert!(!public.contains("secret.invalid"));
+        assert!(!public.contains("SECRET"));
+    }
+    let playing = client.play_selection("1", songs("2")).await.unwrap();
+    assert_eq!(playing.state, PlaybackStatus::Playing);
+    assert!(playing.error.is_none());
+}
 
 #[tokio::test]
 async fn quality_menu_target_and_preference_revision_are_checked_before_requesting_a_url() {

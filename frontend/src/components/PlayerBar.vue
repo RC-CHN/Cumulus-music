@@ -31,7 +31,7 @@ const emit = defineEmits<{
   comments: [track: TrackView];
   member: [];
 }>();
-const { view, ready, busy, error, playing, loaded } = props.player;
+const { view, ready, busy, error, canRetry, playing, loaded } = props.player;
 const transportControls = ref<HTMLElement>();
 async function retryPlayback(event: MouseEvent) {
   const origin = event.currentTarget as HTMLButtonElement,
@@ -288,7 +288,8 @@ async function seek(event: Event) {
     <div class="player-feedback-stack">
       <div v-if="message" class="playback-message" role="status">
         <span>{{ message }}</span
-        ><button v-if="error || view?.error" class="text-button" @click="retryPlayback">重试</button
+        ><button v-if="canRetry" class="text-button" :disabled="busy" @click="retryPlayback">
+          重试</button
         ><span v-if="view?.timeline?.mode === 'trial'">试听片段</span>
       </div>
       <Transition

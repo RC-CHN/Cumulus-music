@@ -246,6 +246,37 @@ async fn old_account_results_and_expired_identity_cannot_cross_boundary() {
     assert_eq!(failure.code, "session_expired");
 }
 
+#[test]
+fn playback_rejection_is_safe_and_not_a_retryable_transport_failure() {
+    let endpoint = "/api/song/enhance/player/url/v1";
+    for error in [
+        Error::service(
+            endpoint,
+            json!(404),
+            json!({"url":"https://secret.invalid/signed","md5":"DO_NOT_EXPORT"}),
+        ),
+        Error::Response("no playback resource for requested track"),
+    ] {
+        let failure = ClientError::from(error);
+        assert_eq!(failure.code, "playback_source_unavailable");
+        assert!(!failure.retryable);
+        let wire = serde_json::to_string(&failure).unwrap();
+        assert!(!wire.contains(endpoint));
+        assert!(!wire.contains("secret.invalid"));
+        assert!(!wire.contains("DO_NOT_EXPORT"));
+    }
+    let expired = ClientError::from(Error::service(endpoint, json!(301), json!({})));
+    assert_eq!(expired.code, "session_expired");
+    let transport = ClientError::from(Error::Transport("https://secret.invalid/signed".into()));
+    assert_eq!(transport.code, "network");
+    assert!(transport.retryable);
+    assert!(
+        !serde_json::to_string(&transport)
+            .unwrap()
+            .contains("secret.invalid")
+    );
+}
+
 #[tokio::test]
 async fn like_recovery_view_is_bounded_local_and_account_scoped() {
     use cumulus_core::{account::resources::MutationPhase, client::dto::LikeRecoveryCommand};

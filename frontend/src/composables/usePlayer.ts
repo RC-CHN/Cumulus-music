@@ -1,5 +1,10 @@
 import { computed, ref, shallowRef } from 'vue';
-import { failure, type AccountView, type CoreClient } from '../services/contracts.ts';
+import {
+  failure,
+  type AccountView,
+  type CoreClient,
+  type CoreFailure,
+} from '../services/contracts.ts';
 import type {
   PlayerView,
   PlaySelection,
@@ -24,10 +29,12 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     queueBusy = ref(false),
     queueLoading = ref(false),
     queueEditing = ref(false),
-    error = ref(''),
     queueError = ref(''),
     queueEditError = ref(''),
     lyricError = ref('');
+  const reported = shallowRef<CoreFailure>();
+  const error = computed(() => reported.value?.message ?? '');
+  const canRetry = computed(() => reported.value?.retryable ?? !!view.value?.error);
   const queueOpen = ref(false),
     lyricsOpen = ref(false),
     lyricLoading = ref(false);
@@ -57,8 +64,9 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   );
   function handle(e: unknown) {
     const issue = failure(e);
-    if (issue.code !== 'stale') error.value = issue.message;
+    if (issue.code !== 'stale') reported.value = issue;
     if (['session_expired', 'profile_changed'].includes(issue.code)) onSessionChanged();
+    return issue;
   }
   function accept(next: PlayerView) {
     if (next.epoch !== epoch || (view.value && BigInt(next.revision) < BigInt(view.value.revision)))
@@ -95,7 +103,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     lyrics.value = undefined;
     lyricLoading.value = false;
     lyricError.value = '';
-    error.value = '';
+    reported.value = undefined;
     try {
       const stop = await core.watchPlayer(epoch, (event) => {
         if (version !== connection) return;
@@ -127,7 +135,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     const current = ++request;
     const captured = epoch;
     busy.value = true;
-    error.value = '';
+    reported.value = undefined;
     try {
       const next = await operation(captured);
       if (captured === epoch) accept(next);
@@ -135,8 +143,8 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       if (captured === epoch && current === request) return next;
     } catch (e) {
       if (current === request && captured === epoch) {
-        failedOperation = onRetry;
-        handle(e);
+        const issue = handle(e);
+        failedOperation = issue.code !== 'stale' && issue.retryable ? onRetry : undefined;
       }
     } finally {
       if (current === request) busy.value = false;
@@ -160,7 +168,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
         accept(result.playback);
         if (control === request) {
           failedOperation = undefined;
-          error.value = '';
+          reported.value = undefined;
         }
       }
       return result;
@@ -376,7 +384,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     request++;
     busy.value = false;
     failedOperation = undefined;
-    error.value = '';
+    reported.value = undefined;
     try {
       const next = await core.playerIntelligence(captured, command);
       if (captured !== epoch || session !== connection || !ready.value)
@@ -432,7 +440,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       session = connection,
       current = ++request;
     busy.value = true;
-    error.value = '';
+    reported.value = undefined;
     failedOperation = undefined;
     try {
       const next = await core.playSelection(captured, input);
@@ -454,7 +462,10 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       return core.playSelection(e, input);
     });
   const downloads = (ids: string[], index: number) => run((e) => core.playDownloads(e, ids, index));
-  const retry = () => (failedOperation ? run(failedOperation) : action({ kind: 'refresh' }));
+  function retry() {
+    if (reported.value && !reported.value.retryable) return;
+    return failedOperation ? run(failedOperation) : action({ kind: 'refresh' });
+  }
   async function loadQueue() {
     const current = ++queueRequest,
       captured = epoch;
@@ -585,6 +596,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     queueEditing,
     queueCurrent,
     error,
+    canRetry,
     queueError,
     queueEditError,
     lyricError,
