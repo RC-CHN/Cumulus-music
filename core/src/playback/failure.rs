@@ -24,7 +24,7 @@ impl PlaybackFailure {
             }
             Error::Response("no playback resource for requested track") => Self::SourceUnavailable,
             Error::Playback {
-                operation: "library" | "ABI",
+                operation: "library" | "library unavailable" | "ABI",
                 ..
             } => Self::Runtime,
             // MPV_ERROR_AO_INIT_FAILED; shared with managed output recovery.

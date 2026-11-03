@@ -334,6 +334,16 @@ fn playback_rejection_is_safe_and_not_a_retryable_transport_failure() {
     );
 }
 
+#[test]
+fn a_missing_libmpv_sdk_uses_the_installation_diagnostic() {
+    let failure = ClientError::from(Error::Playback {
+        operation: "library unavailable",
+        code: -1,
+    });
+    assert_eq!(failure.code, "audio_unavailable");
+    assert!(failure.retryable);
+}
+
 #[tokio::test]
 async fn like_recovery_view_is_bounded_local_and_account_scoped() {
     use cumulus_core::{account::resources::MutationPhase, client::dto::LikeRecoveryCommand};
