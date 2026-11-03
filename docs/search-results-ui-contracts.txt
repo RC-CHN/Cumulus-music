@@ -71,7 +71,13 @@ SearchResultsClient → desktop/search.rs search_results → MusicClient::search
   M2245 和 M3001 的综合页面没有续页，点区块进入分类后才有完整列表。
   M2245 对旧接口服务码 405 取 msg/message，M3001 传给综合空态标题。
   当前只在该接口的结构化服务码 405 使用有界纯文本；其它错误仍可重试。
-  v3 AB 方案仍未接入，官方该分支也不发送 cursor。
+  v3 由原生宿主读取 /api/rtrs/abt/front/expinfo/list {expNames:"PH-PC-searchHot"}，
+  只在精确 t1 使用 /api/search/pc/complex/page/v3，keyword/scene/needCorrect/channel/
+  bizQueryInfo 同旧版但无 cursor。分配结果按账号缓存，失败保留有效上次值，首次缺失
+  默认旧版；搜索分类不触发额外实验请求。不会在 v3 失败时静默重发旧接口。
+  v3 的 599 部分区块继续展示，空 599/405 显示限定服务说明；HTTP 状态不是业务码。
+  参考恢复 M/402：非 2xx 在业务码提取前抛出，故只有 HTTP 405 不进入业务说明分支。
+  v3 热点说明只展示有界标题和文字；任意动作链接、推广项和统计参数不下发/执行。
 单曲 /api/search/song/list/page：keyword、scene、needCorrect、channel、limit、offset；
   data.resources[].baseInfo.simpleSongData → TrackView。
 歌单 /api/v1/search/playlist/get：s、queryCorrect、limit、offset；result.playlists。
@@ -84,8 +90,10 @@ SearchResultsClient → desktop/search.rs search_results → MusicClient::search
   matchedLyric 保留兼容；纯文本三行预览、展开与复制见 search-lyrics-ui-contracts.txt。
 MV /api/search/mlog/get：keyword、scene、limit、offset、channel=suggest、os=pc、tag=MV；
   type=mv 的 baseInfo → CatalogVideoCard。实际读取出现总数46但resources为空。
-/api/search/pc/result/tab 已提供低层读取与只读验证；本次界面固定官方默认次序，
-  不声称算法排序、缓存回退和新分类动态注册已实现。
+/api/search/pc/result/tab {keyword} 在 v3 综合请求前读取；已知分类按服务顺序，
+  algTabs 优先于 defaultTabs。失败/无法映射时回落账号上次有效顺序或默认次序。
+  旧版保持固定次序（不额外请求未被消费的算法顺序）。前端按账号代次与搜索 ID
+  保留页签用于分类切换和返回，始终保留综合与当前分类入口。
 
 热搜词来源：SearchBox/view/searchRankCard.tsx 和恢复 M/623 按条目的 tabId
   （不是榜单本身的 ID）给 HOT_SEARCH_SONG#@# 设置 hotquery。M/2245 将来源传给
@@ -114,7 +122,7 @@ MV /api/search/mlog/get：keyword、scene、limit、offset、channel=suggest、o
   用户主页、缺radioId声音的直接播放仍待补齐；播放场景search的完整
   来源参数；当前复用歌曲播放入口不代表官方搜索试听分支全同态。
 - 歌手/用户/MV连续加载、分类与详情返回的位置恢复及默认旧版单行预览已专项实现。
-  其余分类加载方式、新版轮播、v3 实验分支和官方全部滚动分支仍待对照。
+  其余分类加载方式、新版轮播、v3 推广动作/纠正分段和官方全部滚动分支仍待对照。
 - 纠正提示分段样式、命中词着色与官方全部排布状态；歌词正文已补三行/展开/复制专项，
   连续加载及歌词表完整菜单仍待对照；单曲/歌词表标题命中已实现。
 - 热门解释/活动/运营和AB资源卡片，算法页签、追踪上下文来源、所有可用性标记。

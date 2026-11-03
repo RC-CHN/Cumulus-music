@@ -7,7 +7,7 @@ use crate::{
     protocol::api::identifier,
 };
 pub use api::{SearchCategory, SearchResultQuery};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 #[derive(Serialize)]
@@ -52,6 +52,16 @@ pub struct SearchSection {
     pub category: Option<SearchCategory>,
     pub items: Vec<SearchItem>,
 }
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchHotExplanation {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub picture_url: Option<String>,
+}
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchResultView {
@@ -65,32 +75,88 @@ pub struct SearchResultView {
     pub notice: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub empty_title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tabs: Option<Vec<SearchCategory>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hot_explanation: Option<SearchHotExplanation>,
 }
 impl MusicClient {
+    /// Enabled by the production desktop host. Test/research hosts opt in
+    /// explicitly; callers cannot choose a server experiment through IPC.
+    pub fn with_official_search_experiment(mut self) -> Self {
+        self.search.enabled = true;
+        self
+    }
+
     pub async fn search_results(
         &self,
         epoch: &str,
         query: SearchResultQuery,
     ) -> Result<AccountData<SearchResultView>> {
         let token = self.player_token(epoch)?;
+        let token = &token;
         let value = self
             .session
-            .run_for(&token, |api, uid| async move {
-                match api::request(api.as_ref(), &query).await {
-                    Ok(raw) => project(raw, query, &uid),
+            .run_for(token, |api, uid| async move {
+                let (endpoint, tabs, raw) = if query.category == SearchCategory::All {
+                    // Validate before any optional experiment or tab request.
+                    api::validate_query(&query)?;
+                    if self
+                        .search
+                        .enabled_for(&self.session, token, api.as_ref())
+                        .await?
+                    {
+                        let tabs = self
+                            .search
+                            .tabs_for(&self.session, token, api.as_ref(), &query.keyword)
+                            .await?;
+                        (
+                            api::v3::PATH,
+                            Some(tabs),
+                            api::v3::request(api.as_ref(), &query).await,
+                        )
+                    } else {
+                        (
+                            api::COMPREHENSIVE_PATH,
+                            None,
+                            api::request(api.as_ref(), &query).await,
+                        )
+                    }
+                } else {
+                    ("", None, api::request(api.as_ref(), &query).await)
+                };
+                let mut view = match raw {
+                    Ok(raw) => {
+                        let explanation = if tabs.is_some() {
+                            raw["data"]
+                                .get("hotExplanation")
+                                .and_then(|value| serde_json::from_value(value.clone()).ok())
+                        } else {
+                            None
+                        };
+                        let mut view = project(raw, query, &uid)?;
+                        view.hot_explanation = explanation;
+                        view
+                    }
                     Err(error) => match error.root() {
-                        Error::Service { endpoint, body, .. }
-                            if query.category == SearchCategory::All
-                                && endpoint == api::COMPREHENSIVE_PATH
-                                && error.is_service_code(405) =>
+                        Error::Service {
+                            endpoint: source,
+                            body,
+                            ..
+                        } if query.category == SearchCategory::All
+                            && source == endpoint
+                            && (error.is_service_code(405)
+                                || (endpoint == api::v3::PATH && error.is_service_code(599))) =>
                         {
                             let mut result = SearchResultView::empty(query);
                             result.empty_title = Some(empty_title(body));
-                            Ok(result)
+                            result
                         }
-                        _ => Err(error),
+                        _ => return Err(error),
                     },
-                }
+                };
+                view.tabs = tabs;
+                Ok(view)
             })
             .await?;
         Ok(AccountData {
@@ -181,6 +247,8 @@ impl SearchResultView {
             unavailable_count: 0,
             notice: None,
             empty_title: None,
+            tabs: None,
+            hot_explanation: None,
         }
     }
 }

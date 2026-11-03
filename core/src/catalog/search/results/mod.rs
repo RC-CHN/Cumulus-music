@@ -2,6 +2,7 @@
 use crate::{Error, Result, protocol::api::Api};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+pub(crate) mod v3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -90,7 +91,7 @@ pub async fn tabs(api: &dyn Api, keyword: &str) -> Result<Value> {
     )
     .await
 }
-pub async fn request(api: &dyn Api, q: &SearchResultQuery) -> Result<Value> {
+pub(crate) fn validate_query(q: &SearchResultQuery) -> Result<String> {
     let keyword = super::keyword(&q.keyword)?;
     if q.limit == 0
         || q.limit > 100
@@ -99,6 +100,10 @@ pub async fn request(api: &dyn Api, q: &SearchResultQuery) -> Result<Value> {
     {
         return Err(Error::InvalidInput("invalid search page"));
     }
+    Ok(keyword)
+}
+pub async fn request(api: &dyn Api, q: &SearchResultQuery) -> Result<Value> {
+    let keyword = validate_query(q)?;
     use SearchCategory::*;
     let legacy = matches!(q.category, Playlists | Artists | Albums | Users);
     let mut args = if legacy {

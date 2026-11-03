@@ -1,3 +1,4 @@
+pub(crate) mod experiment;
 mod lyrics;
 mod results;
 use super::{MusicClient, dto::AccountData};
