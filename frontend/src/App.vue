@@ -967,7 +967,7 @@ const currentOrigin = computed(() => {
 const playbackState = computed(() => player.view.value?.state);
 const pageKey = computed(() =>
   JSON.stringify({
-    account: [account.value.epoch, account.value.status],
+    account: page.value.kind === 'local' ? undefined : [account.value.epoch, account.value.status],
     page:
       page.value.kind === 'search'
         ? { kind: 'search', keyword: page.value.keyword }
@@ -1041,6 +1041,7 @@ const miniFmFocus = useMiniFmFocus(
 );
 let mounted = true;
 onMounted(async () => {
+  const localIdentity = music.primeLocalAccount();
   try {
     const stop = await core.onAccountChanged((next) => {
       if (
@@ -1127,6 +1128,7 @@ onMounted(async () => {
   } catch {
     /* The sidebar remains available when an event listener fails. */
   }
+  await localIdentity;
   if (mounted) await music.bootstrap();
 });
 onUnmounted(() => {
@@ -1178,12 +1180,9 @@ watch([() => account.value.epoch, () => account.value.status], () => {
   if (page.value.kind === 'mv') void loadMv(page.value.id, page.value.taskId);
   if (page.value.kind === 'comments') void comments.open(page.value.resource);
 });
-watch(
-  () => [account.value.epoch, account.value.status, initializing.value],
-  () => {
-    if (!initializing.value) void player.connect(account.value);
-  },
-);
+watch([() => account.value.epoch, music.accountReady], () => {
+  if (music.accountReady.value) void player.connect(account.value);
+});
 onUnmounted(() => local.dispose());
 onUnmounted(() => likeRecovery.dispose());
 onUnmounted(() => localMatching.dispose());
@@ -1513,13 +1512,9 @@ onUnmounted(() => {
         >
           <Transition name="page" mode="out-in" @after-enter="miniFmFocus.complete">
             <div class="page-view" :key="pageKey">
-              <div v-if="initializing" class="empty-state" role="status">
-                <span class="spinner" />
-                <p>正在连接你的音乐…</p>
-              </div>
               <LocalPage
                 ref="localPageRef"
-                v-else-if="page.kind === 'local'"
+                v-if="page.kind === 'local'"
                 :model="local"
                 :matching="localMatching"
                 :playable="player.ready.value"
@@ -1527,6 +1522,10 @@ onUnmounted(() => {
                 @play="playLocal"
                 @comments="(id, title) => openComments({ kind: 'track', id }, title)"
               />
+              <div v-else-if="initializing" class="empty-state" role="status">
+                <span class="spinner" />
+                <p>正在连接你的音乐…</p>
+              </div>
               <HistoryPage
                 v-else-if="page.kind === 'history'"
                 :model="recent"

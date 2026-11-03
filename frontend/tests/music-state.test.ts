@@ -242,6 +242,64 @@ test('navigation during restore cannot invalidate the initial identity response'
   assert.equal(music.page.value.kind, 'daily');
 });
 
+test('native local identity and navigation work while remote account restore is pending', async () => {
+  const restore = deferred<Awaited<ReturnType<CoreClient['restoreAccount']>>>();
+  let onlineReads = 0;
+  const guest = { epoch: '6', status: 'unknown' as const, nickname: null, avatarUrl: null };
+  const music = useMusic(
+    backend({
+      accountSnapshot: async () => guest,
+      restoreAccount: () => restore.promise,
+      dailySongs: async () => {
+        onlineReads++;
+        return data(page);
+      },
+    }),
+  );
+  await music.primeLocalAccount();
+  assert.equal(music.accountReady.value, true);
+  assert.equal(music.account.value.epoch, '6');
+  const pending = music.bootstrap();
+  music.navigate({ kind: 'search', keyword: 'blocked' });
+  assert.equal(music.page.value.kind, 'daily');
+  music.navigate({ kind: 'local' });
+  assert.equal(music.page.value.kind, 'local');
+  assert.equal(music.initializing.value, true);
+  music.back();
+  assert.equal(music.page.value.kind, 'daily');
+  music.navigate({ kind: 'local' });
+
+  restore.reject({ code: 'network', message: 'synthetic timeout' });
+  await pending;
+  assert.equal(music.page.value.kind, 'local');
+  assert.equal(music.account.value.epoch, '6');
+  assert.equal(music.accountReady.value, true);
+  assert.equal(music.initializing.value, false);
+  assert.equal(onlineReads, 0);
+});
+
+test('late local identity cannot replace the identity read for an account notification', async () => {
+  const initial = deferred<Awaited<ReturnType<CoreClient['accountSnapshot']>>>();
+  const current = {
+    epoch: '7',
+    status: 'authenticated' as const,
+    nickname: 'new',
+    avatarUrl: null,
+  };
+  let snapshots = 0;
+  const music = useMusic(
+    backend({
+      accountSnapshot: () => (++snapshots === 1 ? initial.promise : Promise.resolve(current)),
+    }),
+  );
+  const priming = music.primeLocalAccount();
+  await music.bootstrap(false);
+  initial.resolve({ epoch: '6', status: 'unknown', nickname: null, avatarUrl: null });
+  await priming;
+  assert.deepEqual(music.account.value, current);
+  assert.equal(music.accountReady.value, true);
+});
+
 test('an old account resource read cannot unlock or load over a newer account notification', async () => {
   const oldLikes = deferred<AccountData<string[]>>();
   const nextAccount = deferred<Awaited<ReturnType<CoreClient['accountSnapshot']>>>();

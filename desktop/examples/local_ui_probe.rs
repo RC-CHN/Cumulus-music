@@ -14,7 +14,10 @@ use std::{
     fs,
     io::Write,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 use tauri::{Listener, Manager, webview::PageLoadEvent};
 #[cfg(target_os = "linux")]
@@ -56,16 +59,27 @@ fn verify_locale(root: &Path, reopened: bool) {
     )
     .unwrap();
 }
-struct Offline;
+struct Offline {
+    hold: bool,
+    started: AtomicBool,
+    release: tokio::sync::Notify,
+}
 impl Api for Offline {
     fn request<'a>(&'a self, path: &'a str, _: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             assert_eq!(path, "/api/w/nuser/account/get");
+            if self.hold {
+                self.started.store(true, Ordering::Release);
+                self.release.notified().await;
+                return Err(cumulus_core::Error::Transport(
+                    "synthetic account restore timeout".into(),
+                ));
+            }
             Ok(json!({"code":301}))
         })
     }
 }
-fn fixtures(root: &Path) -> Result<(), Box<dyn std::error::Error>> {
+fn fixtures(root: &Path, cue_only: bool) -> Result<(), Box<dyn std::error::Error>> {
     let media = root.join("media");
     fs::create_dir(&media)?;
     let samples = 8000u32 * 120;
@@ -94,6 +108,9 @@ fn fixtures(root: &Path) -> Result<(), Box<dyn std::error::Error>> {
         media.join("album.lrc"),
         "[00:00]夜色渐深\n[00:35]沿着灯火向前\n[00:50]音乐陪你到天明\n",
     )?;
+    if cue_only {
+        return Ok(());
+    }
     let status = std::process::Command::new("ffmpeg")
         .args(["-v", "error", "-nostdin", "-i"])
         .arg(media.join("album.wav"))
@@ -119,16 +136,22 @@ fn main() {
     let root = PathBuf::from(std::env::var_os("CUMULUS_PROOF_DIR").expect("explicit proof root"));
     let reopen = std::env::var_os("CUMULUS_PROOF_REOPEN").is_some();
     let small = std::env::var_os("CUMULUS_PROOF_SMALL").is_some();
+    let cold = std::env::var_os("CUMULUS_LOCAL_COLD_START_PROOF").is_some();
+    assert!(
+        !cold || !reopen,
+        "cold-start proof requires a fresh directory"
+    );
     if !reopen {
         fs::create_dir(&root).expect("new proof root");
-        fixtures(&root).expect("generated local fixtures");
+        fixtures(&root, cold).expect("generated local fixtures");
     }
     let setup = root.clone();
     cumulus_desktop::configure(tauri::Builder::default()).setup(move|app|{
         #[cfg(target_os="linux")]
         verify_locale(&setup,reopen);
         let registry=ProfileRegistry::open(&setup.join("state"),ApiOrigin::Pc)?;
-        let session=Arc::new(AccountSession::new(Arc::new(Offline),Some(registry.store())));
+        let offline=Arc::new(Offline { hold:cold, started:AtomicBool::new(false), release:tokio::sync::Notify::new() });
+        let session=Arc::new(AccountSession::new(offline.clone(),Some(registry.store())));
         let client=MusicClient::with_session(session.clone(),registry).with_audio_factory(||Ok(Box::new(MpvEngine::open(MpvConfig{null_output:true,..Default::default()})?)));
         tauri::async_runtime::block_on(client.start_local_library())?;
         app.manage(client);
@@ -136,6 +159,18 @@ fn main() {
         app.add_capability(r#"{"identifier":"local-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
         let output=setup.clone();let handle=app.handle().clone();app.listen("local-proof",move|event|{
             let value:Value=serde_json::from_str(event.payload()).expect("proof JSON");let stage=value["stage"].as_str().unwrap_or("");
+            if cold {
+                if stage=="inspect_restore" {
+                    let started=offline.started.load(Ordering::Acquire);
+                    handle.get_webview_window("main").unwrap().eval(format!("window.__coldRestoreStarted={started};")).unwrap();
+                } else if stage=="release_restore" {
+                    offline.release.notify_one();
+                } else if ["local_cold_playing","complete","failed"].contains(&stage) {
+                    fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+                    if stage=="complete"||stage=="failed"{handle.exit(if stage=="complete"{0}else{1});}
+                }
+                return;
+            }
             if stage=="history_fault" {
                 let enabled=value["enabled"].as_bool().expect("fault switch");
                 let connection=rusqlite::Connection::open(output.join("state/core.sqlite3")).unwrap();
@@ -166,7 +201,7 @@ fn main() {
     }).on_page_load(move|webview,payload|{
         if payload.event()==PageLoadEvent::Finished {
             webview.eval(format!("window.__localProof={};",json!({"root":root,"reopen":reopen}))).unwrap();
-            webview.eval(include_str!("local_ui_probe.js")).unwrap();
+            webview.eval(if cold {include_str!("local_cold_start_probe.js")} else {include_str!("local_ui_probe.js")}).unwrap();
         }
     }).run(tauri::generate_context!()).expect("local UI proof");
 }

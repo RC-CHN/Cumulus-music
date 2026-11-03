@@ -223,7 +223,7 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/motion_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-motion-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/system_media_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-system-media-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/shortcuts_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-shortcuts-ui-linux
-          cargo build -p cumulus-desktop --example mini_ui_probe --features custom-protocol --locked
+          cargo build -p cumulus-desktop --example mini_ui_probe --example local_ui_probe --features custom-protocol --locked
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_intelligence_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-intelligence-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_fm_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-fm-linux
@@ -243,6 +243,7 @@ jobs:
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/cloud_delete_context_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-cloud-delete-context-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/cloud_local_delete_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-cloud-local-delete-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/local_resource_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-local-resource-linux
+          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/local_cold_start_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-cold-start-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-shortcuts-linux --shortcuts
           cargo build -p cumulus-desktop --example desktop_lyrics_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/desktop_lyrics_smoke.py --binary .build/target/debug/examples/desktop_lyrics_ui_probe --root .build/ci-desktop-lyrics-linux
@@ -385,7 +386,7 @@ jobs:
           python scripts/ci/keyboard_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-keyboard-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/motion_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-motion-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/shortcuts_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-shortcuts-ui-windows --runtime .build/package-stage/windows-x64/native
-          cargo build -p cumulus-desktop --example mini_ui_probe --features custom-protocol --locked
+          cargo build -p cumulus-desktop --example mini_ui_probe --example local_ui_probe --features custom-protocol --locked
           python scripts/ci/mini_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-mini-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/mini_intelligence_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-mini-intelligence-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/mini_fm_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-mini-fm-windows --runtime .build/package-stage/windows-x64/native
@@ -404,6 +405,7 @@ jobs:
           python scripts/ci/cloud_delete_context_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-cloud-delete-context-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/cloud_local_delete_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-cloud-local-delete-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/local_resource_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-local-resource-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/local_cold_start_smoke.py --binary .build/target/debug/examples/local_ui_probe.exe --root .build/ci-local-cold-start-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/mini_smoke.py --binary .build/target/debug/examples/mini_ui_probe.exe --root .build/ci-mini-shortcuts-windows --runtime .build/package-stage/windows-x64/native --shortcuts
           cargo build -p cumulus-desktop --example desktop_lyrics_ui_probe --features custom-protocol --locked
           python scripts/ci/desktop_lyrics_smoke.py --binary .build/target/debug/examples/desktop_lyrics_ui_probe.exe --root .build/ci-desktop-lyrics-windows --runtime .build/package-stage/windows-x64/native

@@ -66,6 +66,7 @@ export function useMusic(
   const result = shallowRef<TrackPage>();
   const loading = ref(false);
   const initializing = ref(true);
+  const accountReady = ref(false);
   const error = ref('');
   const notice = ref('');
   const likeNotice = ref('');
@@ -203,6 +204,18 @@ export function useMusic(
       if (current === request) loading.value = false;
     }
   }
+  async function primeLocalAccount() {
+    const current = accountRequest;
+    try {
+      const next = await core.accountSnapshot();
+      if (current !== accountRequest || accountReady.value) return;
+      account.value = next;
+      accountReady.value = true;
+    } catch {
+      // The library itself does not need an epoch; online bootstrap can
+      // still provide one for playback if this local snapshot failed.
+    }
+  }
   async function bootstrap(restoring = true) {
     const current = ++accountRequest;
     request++;
@@ -228,6 +241,7 @@ export function useMusic(
         notice.value = '';
       }
       account.value = next;
+      accountReady.value = true;
       if (signedIn.value) {
         await resources();
         if (current !== accountRequest) return;
@@ -240,7 +254,8 @@ export function useMusic(
     }
   }
   function navigate(next: Page) {
-    if (initializing.value) return;
+    const local = next.kind === 'local';
+    if (initializing.value && !local) return;
     navigation(() => {
       history.push(page.value);
       historyLength.value = history.length;
@@ -255,7 +270,7 @@ export function useMusic(
                 ? { ...next, collectionVisit: ++collectionVisit }
                 : next;
       void load();
-    });
+    }, local);
   }
   function back() {
     navigation(() => {
@@ -263,9 +278,9 @@ export function useMusic(
       historyLength.value = history.length;
       if (previous) {
         page.value = previous;
-        void load();
+        if (!initializing.value || previous.kind === 'local') void load();
       }
-    });
+    }, page.value.kind === 'local');
   }
   function replace(next: Page) {
     if (initializing.value) return;
@@ -287,12 +302,17 @@ export function useMusic(
       void load();
     });
   }
-  function navigation(commit: () => void) {
+  function navigation(commit: () => void, local = false) {
     const from = page.value,
       owner = account.value.epoch;
     let used = false;
     beforeNavigate(() => {
-      if (used || initializing.value || page.value !== from || account.value.epoch !== owner)
+      if (
+        used ||
+        (initializing.value && !local) ||
+        page.value !== from ||
+        account.value.epoch !== owner
+      )
         return;
       used = true;
       commit();
@@ -342,6 +362,8 @@ export function useMusic(
     result,
     loading,
     initializing,
+    accountReady,
+    primeLocalAccount,
     error,
     notice,
     likeNotice,

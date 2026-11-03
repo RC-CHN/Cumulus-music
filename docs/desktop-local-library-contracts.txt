@@ -55,6 +55,11 @@ useLocal管理迟到读取/分页变更/轮询/取消选择；LocalPage.vue负�
 注册、移除监视与扫描提交继续使用已有跨实例锁/事务。进度仅用于展示，不是已提交数量。
 播放器重开保留暂停、队列选择与位置，实际加载由libmpv完成；没有浏览器音频或模拟进度条。
 本地播放不走播放器URL接口；下载任务自己的账号、文件哈希与会员离线校验保持既有专用流程。
+桌面冷启动等待远端身份时，本地音乐入口、索引和界面可先使用；播放器用本机
+account_snapshot 的代次连接，不等待网络。在线入口仍保留启动门槛。同代次的
+连接超时不重建本地页面或重连播放器；实际账号代次变化仍沿用原有队列隔离。
+合成 WebView 入口 CUMULUS_LOCAL_COLD_START_PROOF=1 挂起 account/get，
+检查真实本地扫描和 mpv 时钟在请求未返回时开始，注入超时后继续同一页面和播放。
 NCM只在私有解码缓存生成普通音频，源NCM不修改；缓存损坏与中断恢复沿用原Rust实现。
 
 歌词
@@ -97,6 +102,11 @@ Linux编排：desktop/scripts/capture_local_proof.py；独立Xvfb与D-Bus、XTes
 已通过.build/ui-proof/local-20261026-h的正常窗口5个流程截图与最小窗口重开2个流程截图。
 独立媒体核验.build/local-native-media-report.json确认解码后的60秒FLAC等于生成的原FLAC，
 重开仍为4首游客队列、暂停位置12.296秒、监视根仍启用。没有远端账号读取或写入。
+
+冷启动回归另走 scripts/ci/local_cold_start_smoke.py（Linux、Windows smoke）：
+使用合成WAV/CUE、固定阻塞的合成账号读取和null输出。Linux Xvfb真实WebView验证：
+读取仍未结束时本地时钟已推进；注入传输超时后保留同一个本地页面并继续播放；
+未发送真实音乐请求。Windows CI编排已接入，本次没有在Windows本机执行。
 
 仍需继续的本地域及全目标分支
 本地与线上歌曲自动匹配/匹配进度/人工映射的后续实现与独立证据见desktop-local-matching-contracts.txt。

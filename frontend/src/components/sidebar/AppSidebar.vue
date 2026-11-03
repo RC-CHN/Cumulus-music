@@ -128,7 +128,7 @@ function refresh() {
           class="nav-item"
           :class="{ selected: selected(item.page) }"
           :aria-current="selected(item.page) ? 'page' : undefined"
-          :disabled="initializing"
+          :disabled="initializing && item.page.kind !== 'local'"
           @click="item.page.kind === 'rankings' ? emit('ranking') : emit('navigate', item.page)"
         >
           <Icon :name="item.icon" /><span>{{ item.title }}</span>
