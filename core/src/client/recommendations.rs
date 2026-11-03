@@ -47,6 +47,36 @@ pub(super) enum RecommendationSource {
     Style,
 }
 
+pub(super) fn daily_source(revision: &str) -> Value {
+    json!({"kind":"daily_recommendations","scene":"dailyRecommend",
+        "href":"/dailyRecommend","resourceType":"dailyRecommend",
+        "revision":revision,"trial_mode":35})
+}
+
+pub(super) fn daily_subset(ids: Vec<Value>, indices: Option<&[usize]>) -> Result<Vec<Value>> {
+    let Some(indices) = indices else {
+        return Ok(ids);
+    };
+    if indices.is_empty() || indices.len() > ids.len() {
+        return Err(Error::InvalidInput(
+            "invalid daily recommendation selection size",
+        ));
+    }
+    let mut selected = std::collections::HashSet::with_capacity(indices.len());
+    for &index in indices {
+        if index >= ids.len() || !selected.insert(index) {
+            return Err(Error::InvalidInput(
+                "invalid daily recommendation selection index",
+            ));
+        }
+    }
+    Ok(ids
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, id)| selected.contains(&index).then_some(id))
+        .collect())
+}
+
 impl MusicClient {
     fn recommendation_state(
         &self,

@@ -1,6 +1,9 @@
 //! Official playlist nextPlay/addToPlayList share the current-song insertion
 //! point (308.js playing/play); an empty queue starts playback (3085.js).
-use super::*;
+use super::{
+    super::recommendations::{RecommendationSource, daily_source, daily_subset},
+    *,
+};
 use crate::{
     catalog::{CatalogApi, details::CatalogQuery},
     membership::Quality,
@@ -23,6 +26,7 @@ const QUEUE_LIMIT: usize = 10_000;
 pub(super) enum QueueCollection {
     DailyRecommendations {
         revision: String,
+        indices: Option<Vec<usize>>,
         quality: Quality,
     },
     ArtistSongs {
@@ -162,21 +166,25 @@ impl MusicClient {
             return Err(Error::State(special_queue));
         }
         let (daily_ids, source_guard) = match &collection {
-            QueueCollection::DailyRecommendations { revision, .. } => {
+            QueueCollection::DailyRecommendations {
+                revision, indices, ..
+            } => {
                 let (ids, guard) = self.recommendation_selection(
-                    super::super::recommendations::RecommendationSource::Daily,
+                    RecommendationSource::Daily,
                     &token,
                     revision,
                     0,
                 )?;
-                (Some(ids), Some(guard))
+                (Some(daily_subset(ids, indices.as_deref())?), Some(guard))
             }
             _ => (None, None),
         };
         let focus = self.focus.snapshot()?;
         let attempt = self.player.selection.fetch_add(1, Ordering::AcqRel) + 1;
         let (resources, source, downloaded) = match collection {
-            QueueCollection::DailyRecommendations { revision, quality } => {
+            QueueCollection::DailyRecommendations {
+                revision, quality, ..
+            } => {
                 let mut resources = self
                     .online_queue_resources(
                         &token,
@@ -191,13 +199,7 @@ impl MusicClient {
                 for resource in &mut resources {
                     resource["trial_mode"] = json!(35);
                 }
-                (
-                    resources,
-                    json!({"kind":"daily_recommendations","scene":"dailyRecommend",
-                        "href":"/dailyRecommend","resourceType":"dailyRecommend",
-                        "revision":revision,"trial_mode":35}),
-                    false,
-                )
+                (resources, daily_source(&revision), false)
             }
             QueueCollection::Local {
                 mut query,

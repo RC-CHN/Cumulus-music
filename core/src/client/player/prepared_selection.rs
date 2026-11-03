@@ -112,6 +112,7 @@ impl MusicClient {
             selection,
             PlaySelection::Catalog { .. }
                 | PlaySelection::DailyRecommendations { .. }
+                | PlaySelection::DailyRecommendationsBatch { .. }
                 | PlaySelection::StyleRecommendations { .. }
                 | PlaySelection::Podcast { .. }
                 | PlaySelection::Voice { .. }

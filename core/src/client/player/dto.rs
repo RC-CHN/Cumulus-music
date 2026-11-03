@@ -180,6 +180,11 @@ pub enum PlaySelection {
         index: usize,
         quality: Quality,
     },
+    DailyRecommendationsBatch {
+        revision: String,
+        indices: Vec<usize>,
+        quality: Quality,
+    },
     Member {
         query: super::super::dto::MemberQuery,
         revision: String,
@@ -297,6 +302,8 @@ pub enum PlayerAction {
     },
     QueueDailyRecommendations {
         revision: String,
+        #[serde(default)]
+        indices: Option<Vec<usize>>,
         quality: Quality,
         expected_queue_revision: String,
     },

@@ -422,6 +422,7 @@ impl MusicClient {
         }
         if let PlayerAction::QueueDailyRecommendations {
             revision,
+            indices,
             quality,
             expected_queue_revision,
         } = action
@@ -434,7 +435,11 @@ impl MusicClient {
             return self
                 .queue_collection(
                     epoch,
-                    queue_playlist::QueueCollection::DailyRecommendations { revision, quality },
+                    queue_playlist::QueueCollection::DailyRecommendations {
+                        revision,
+                        indices,
+                        quality,
+                    },
                     expected_queue_revision,
                 )
                 .await;

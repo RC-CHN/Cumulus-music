@@ -4,6 +4,7 @@ use cumulus_core::playback::controller::PlaybackStatus;
 fn add(revision: String, queue_revision: &str) -> PlayerAction {
     PlayerAction::QueueDailyRecommendations {
         revision,
+        indices: None,
         quality: Quality::Standard,
         expected_queue_revision: queue_revision.into(),
     }
@@ -123,4 +124,85 @@ async fn refreshed_daily_snapshot_rejects_an_append_awaiting_track_details() {
     api.release.notify_one();
     assert!(matches!(pending.await.unwrap(), Err(Error::QueueChanged)));
     assert!(client.player_queue("1").await.unwrap().tracks.is_empty());
+}
+
+#[tokio::test]
+async fn selected_daily_append_validates_indices_and_keeps_official_order() {
+    let (_dir, api, _session, client, _) = fixture();
+    *api.daily_tracks.lock().unwrap() = Some(vec![
+        json!({"id":74,"name":"第一首"}),
+        json!({"id":73,"name":"未选择"}),
+        json!({"id":72,"name":"第三首"}),
+    ]);
+    let revision = daily_revision(&client).await;
+    let empty = client.player_snapshot("1").await.unwrap();
+    let select = |indices| PlayerAction::QueueDailyRecommendations {
+        revision: revision.clone(),
+        indices: Some(indices),
+        quality: Quality::Standard,
+        expected_queue_revision: empty.queue_revision.clone(),
+    };
+    let before = api.calls.lock().unwrap().len();
+    for invalid in [vec![], vec![0, 0], vec![3]] {
+        assert!(matches!(
+            client.player_action("1", select(invalid)).await,
+            Err(Error::InvalidInput(_))
+        ));
+    }
+    assert_eq!(api.calls.lock().unwrap().len(), before);
+    let value = client.player_action("1", select(vec![2, 0])).await.unwrap();
+    assert_eq!(value.track.unwrap().id, "74");
+    let queue = client.player_queue("1").await.unwrap();
+    assert_eq!(
+        queue
+            .tracks
+            .iter()
+            .map(|row| row.track.id.as_str())
+            .collect::<Vec<_>>(),
+        ["74", "72"]
+    );
+}
+
+#[tokio::test]
+async fn prepared_daily_batch_plays_the_first_selected_row_in_native_order() {
+    let (_dir, api, _session, client, _) = fixture();
+    *api.daily_tracks.lock().unwrap() = Some(vec![
+        json!({"id":74,"name":"未选择"}),
+        json!({"id":73,"name":"第一首选中"}),
+        json!({"id":72,"name":"第二首选中"}),
+    ]);
+    let revision = daily_revision(&client).await;
+    let initial = client.player_snapshot("1").await.unwrap();
+    let select = |revision, indices| PlaySelection::DailyRecommendationsBatch {
+        revision,
+        indices,
+        quality: Quality::Standard,
+    };
+    assert!(matches!(
+        client
+            .play_selection("1", select(revision.clone(), vec![]))
+            .await,
+        Err(Error::InvalidInput(_))
+    ));
+    let ticket = client
+        .prepare_play_selection("1", &initial.queue_revision, initial.play_id.as_deref())
+        .unwrap();
+    let played = client
+        .commit_prepared_selection("1", &ticket, select(revision, vec![2, 1]))
+        .await
+        .unwrap();
+    assert_eq!(played.track.unwrap().id, "73");
+    assert_eq!(played.state, PlaybackStatus::Playing);
+    assert_eq!(*api.trial.lock().unwrap(), Some(json!(35)));
+    assert_eq!(
+        client
+            .player_queue("1")
+            .await
+            .unwrap()
+            .tracks
+            .iter()
+            .map(|row| row.track.id.as_str())
+            .collect::<Vec<_>>(),
+        ["73", "72"]
+    );
 }

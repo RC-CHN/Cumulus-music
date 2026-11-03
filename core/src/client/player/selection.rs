@@ -1,4 +1,4 @@
-use super::super::recommendations::RecommendationSource;
+use super::super::recommendations::{RecommendationSource, daily_source, daily_subset};
 use super::{prepared_selection::PreparedSelection, *};
 use crate::{catalog::CatalogApi, playlist::PlaylistApi, protocol::api::identifier};
 use serde_json::{Value, json};
@@ -109,6 +109,17 @@ impl MusicClient {
                     *index,
                 )?;
                 (Some(ids), Some(guard))
+            }
+            PlaySelection::DailyRecommendationsBatch {
+                revision, indices, ..
+            } => {
+                let (ids, guard) = self.recommendation_selection(
+                    RecommendationSource::Daily,
+                    &token,
+                    revision,
+                    0,
+                )?;
+                (Some(daily_subset(ids, Some(indices))?), Some(guard))
             }
             _ => (None, None),
         };
@@ -392,9 +403,11 @@ impl MusicClient {
                     )),
                     PlaySelection::DailyRecommendations { revision, index, quality } => Ok((
                         recommendation_ids.ok_or(Error::StaleResponse)?, index, quality,
-                        json!({"kind":"daily_recommendations","scene":"dailyRecommend",
-                            "href":"/dailyRecommend","resourceType":"dailyRecommend",
-                            "revision":revision,"trial_mode":35}),
+                        daily_source(&revision),
+                    )),
+                    PlaySelection::DailyRecommendationsBatch { revision, quality, .. } => Ok((
+                        recommendation_ids.ok_or(Error::StaleResponse)?, 0, quality,
+                        daily_source(&revision),
                     )),
                     PlaySelection::Member {
                         query,

@@ -32,6 +32,7 @@ struct Backend {
     trial: Mutex<Option<Value>>,
     playlist_tracks: Mutex<Option<Vec<Value>>>,
     album_tracks: Mutex<Option<Vec<Value>>>,
+    daily_tracks: Mutex<Option<Vec<Value>>>,
     quality_trial_state: AtomicU64,
     quality_start_mode: AtomicU64,
     quality_writes: AtomicU64,
@@ -93,7 +94,18 @@ impl Api for Backend {
                 }
                 "/api/v3/discovery/recommend/songs" => {
                     assert_eq!(payload, json!({"limit":30}));
-                    json!({"code":200,"data":{"dailySongs":[{"id":74,"name":"日推乙"},{"id":73,"name":"日推甲"}]}})
+                    let tracks = self
+                        .daily_tracks
+                        .lock()
+                        .unwrap()
+                        .clone()
+                        .unwrap_or_else(|| {
+                            vec![
+                                json!({"id":74,"name":"日推乙"}),
+                                json!({"id":73,"name":"日推甲"}),
+                            ]
+                        });
+                    json!({"code":200,"data":{"dailySongs":tracks}})
                 }
                 "/api/v3/song/detail" => {
                     let ids: Vec<Value> =
