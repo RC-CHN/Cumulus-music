@@ -32,6 +32,8 @@ pub struct MpvEngine {
     events: VecDeque<EngineEvent>,
     entry: Option<i64>,
     null_output: bool,
+    pinned_authority: Option<Cancellation>,
+    pinned_demuxer: bool,
 }
 fn string(value: impl AsRef<[u8]>) -> Result<CString> {
     CString::new(value.as_ref()).map_err(|_| Error::InvalidInput("NUL in audio argument"))
@@ -130,6 +132,8 @@ impl MpvEngine {
             events: VecDeque::new(),
             entry: None,
             null_output: config.null_output,
+            pinned_authority: None,
+            pinned_demuxer: false,
         };
         for (key, value) in [
             ("config", "no"),
@@ -285,20 +289,81 @@ impl MpvEngine {
             }
         }
     }
+    /// Play an already-opened local audio handle using a one-shot native
+    /// stream. No source path or renderer-provided URL is accepted. The
+    /// authority predicate runs on decoder threads and must be fast, with
+    /// no re-entry into the playback host or engine.
+    pub fn load_pinned_audio(
+        &mut self,
+        mut file: std::fs::File,
+        authority: Cancellation,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        authority.check()?;
+        cancel.check()?;
+        let format = super::pinned_audio_format(&mut file)?;
+        self.stop()?;
+        self.pinned_demuxer = true;
+        let result = (|| {
+            self.control(&["set", "options/demuxer", "lavf"])?;
+            self.control(&["set", "options/demuxer-lavf-format", format])?;
+            let source = self.native.stage_pinned(file, authority.clone())?;
+            let media = self.load_source(source, 0.0, None, Duration::from_secs(25), cancel)?;
+            authority.check()?;
+            self.pinned_authority = Some(authority);
+            Ok(media)
+        })();
+        self.native.clear_staged_pinned();
+        if result.is_err() {
+            let _ = self.stop();
+        }
+        result
+    }
+
+    fn require_pinned_authority(&mut self) -> Result<()> {
+        if self
+            .pinned_authority
+            .as_ref()
+            .is_some_and(Cancellation::is_cancelled)
+        {
+            let _ = self.stop();
+            return Err(Error::Cancelled);
+        }
+        Ok(())
+    }
+
     fn load_inner(&mut self, request: LoadRequest, cancel: &Cancellation) -> Result<LoadedMedia> {
         request.validate()?;
         cancel.check()?;
         let source = Self::source(request.source)?;
-        let deadline = Instant::now() + request.timeout;
+        if self.pinned_demuxer {
+            self.stop()?;
+            self.control(&["set", "options/demuxer", ""])?;
+            self.control(&["set", "options/demuxer-lavf-format", ""])?;
+            self.pinned_demuxer = false;
+        }
+        self.load_source(source, request.start, request.end, request.timeout, cancel)
+    }
+
+    fn load_source(
+        &mut self,
+        source: CString,
+        start: f64,
+        end: Option<f64>,
+        timeout: Duration,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        cancel.check()?;
+        let deadline = Instant::now() + timeout;
         self.command(vec![string("stop")?], deadline, cancel)?;
         self.entry = None;
         self.drain()?;
         for (key, value) in [
             ("pause", "yes".into()),
-            ("options/start", request.start.to_string()),
+            ("options/start", start.to_string()),
             (
                 "options/end",
-                request.end.map(|n| n.to_string()).unwrap_or("none".into()),
+                end.map(|n| n.to_string()).unwrap_or("none".into()),
             ),
         ] {
             self.command(
@@ -453,10 +518,21 @@ impl AudioEngine for MpvEngine {
         }
         result
     }
+    fn load_pinned_audio(
+        &mut self,
+        file: std::fs::File,
+        authority: Cancellation,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        MpvEngine::load_pinned_audio(self, file, authority, cancel)
+    }
+
     fn pause(&mut self, paused: bool) -> Result<()> {
+        self.require_pinned_authority()?;
         self.control(&["set", "pause", if paused { "yes" } else { "no" }])
     }
     fn seek(&mut self, seconds: f64) -> Result<()> {
+        self.require_pinned_authority()?;
         if !seconds.is_finite() || seconds < 0.0 {
             return Err(Error::InvalidInput("invalid audio seek"));
         }
@@ -475,11 +551,14 @@ impl AudioEngine for MpvEngine {
         self.control(&["set", "speed", &value.to_string()])
     }
     fn stop(&mut self) -> Result<()> {
+        self.native.clear_staged_pinned();
         self.control(&["stop"])?;
+        self.pinned_authority = None;
         self.entry = None;
         Ok(())
     }
     fn poll(&mut self) -> Result<EngineSnapshot> {
+        self.require_pinned_authority()?;
         if let Some(loudness) = &self.loudness
             && loudness.stats()?.failed_blocks != 0
         {

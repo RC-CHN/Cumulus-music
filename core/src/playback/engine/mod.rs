@@ -15,6 +15,25 @@ pub use runtime::MpvRuntime;
 pub use types::*;
 pub use video::{MpvVideoEngine, VideoEngine};
 
+/// Select a bounded audio-only demuxer from the native handle, without trusting
+/// a filename extension or enabling playlist/container URL resolution.
+pub(crate) fn pinned_audio_format(file: &mut std::fs::File) -> Result<&'static str> {
+    use std::io::{Read, Seek, SeekFrom};
+    file.seek(SeekFrom::Start(0))?;
+    let mut magic = [0_u8; 12];
+    file.read_exact(&mut magic)?;
+    file.seek(SeekFrom::Start(0))?;
+    match &magic {
+        [b'f', b'L', b'a', b'C', ..] => Ok("flac"),
+        [b'R', b'I', b'F', b'F', _, _, _, _, b'W', b'A', b'V', b'E'] => Ok("wav"),
+        [b'I', b'D', b'3', ..] => Ok("mp3"),
+        [0xff, next, ..] if next & 0xe0 == 0xe0 && next & 0x06 != 0 => Ok("mp3"),
+        _ => Err(crate::Error::InvalidInput(
+            "unsupported pinned audio format",
+        )),
+    }
+}
+
 pub trait AudioEngine: Send {
     /// Device preference maintenance when no decoder load is holding the
     /// engine. Adapters throttle read-only discovery; plain engines do nothing.
@@ -54,6 +73,16 @@ pub trait AudioEngine: Send {
         Ok(None)
     }
     fn load(&mut self, request: LoadRequest, cancel: &Cancellation) -> Result<LoadedMedia>;
+    /// Native-only, already-opened and verified local audio; default engines
+    /// fail closed instead of reopening by path or using a URL.
+    fn load_pinned_audio(
+        &mut self,
+        _: std::fs::File,
+        _: Cancellation,
+        _: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        Err(crate::Error::State("pinned audio playback is unavailable"))
+    }
     fn pause(&mut self, paused: bool) -> Result<()>;
     fn seek(&mut self, seconds: f64) -> Result<()>;
     fn volume(&mut self, value: f64) -> Result<()>;

@@ -4,6 +4,7 @@
 use super::{EndReason, EngineEvent, MpvRuntime};
 mod devices;
 mod render;
+mod stream;
 use crate::{Error, Result};
 use std::{
     ffi::{CStr, CString, OsStr, c_char, c_int, c_ulong, c_void},
@@ -70,6 +71,7 @@ pub(super) struct Native {
     wait: Wait,
     version: u64,
     render: Option<render::Worker>,
+    streams: Option<Box<stream::Registry>>,
 }
 // SAFETY: libmpv documents a thread-safe client API. Native is exclusively
 // accessed through &mut self; no event pointer or library Symbol escapes it.
@@ -145,9 +147,46 @@ impl Native {
                 wait,
                 version,
                 render: None,
+                streams: None,
             })
         }
     }
+    pub fn stage_pinned(
+        &mut self,
+        file: std::fs::File,
+        authority: super::Cancellation,
+    ) -> Result<CString> {
+        if self.streams.is_none() {
+            let mut registry = Box::new(stream::Registry::default());
+            // SAFETY: The ABI matches libmpv stream_cb.h. The boxed registry
+            // stays live until this handle has finished terminating.
+            let status = unsafe {
+                let register = *self
+                    ._runtime
+                    .get::<stream::Register>(b"mpv_stream_cb_add_ro\0")
+                    .map_err(|_| failed("read-only stream API unavailable", -1))?;
+                register(
+                    self.handle.as_ptr(),
+                    stream::SCHEME.as_ptr(),
+                    (&mut *registry as *mut stream::Registry).cast(),
+                    stream::open,
+                )
+            };
+            check("register read-only stream", status)?;
+            self.streams = Some(registry);
+        }
+        self.streams
+            .as_ref()
+            .expect("registered stream")
+            .stage(file, authority)
+    }
+
+    pub fn clear_staged_pinned(&self) {
+        if let Some(streams) = &self.streams {
+            streams.clear();
+        }
+    }
+
     pub fn version(&self) -> u64 {
         self.version
     }
