@@ -69,3 +69,15 @@ beforeDevCommand/beforeBuildCommand 在工作区根运行，已改为 npm --pref
   报告与截图在 .build/local-package-85d0093-installed/。首帧不代表账号联网、
   实体音频输出或整个主流程通过。本机包仅对应 85d0093，未发布或移动版本标签；
   此后的均衡器独立激活及 NCM/AAC 冷离线修复以各自运行证据和后续 CI 为准。
+
+2026-11-03 Linux 包内本地播放（34f0948）
+  独立工作树使用锁定前端依赖和原发布打包命令，生成
+  .build/local-package-34f0948/.build/packages/linux-x64/ 下的 .deb、便携包及 manifest。
+  .deb SHA-256：948205f78e97d75db53b8fc26c157fd4d3a5b785d7e912f7751dfe0c75a5b9a8。
+  scripts/ci/installed_linux_smoke.py --verify-local-playback 校验并解包该 .deb，
+  在私有 Xvfb、D-Bus、HOME、无外网路由且没有物理声卡的环境下，通过实际 GTK
+  选择器导入合成 FLAC，用正式界面播放和暂停。只读核对该本地条目的队列与 SQLite
+  原生时钟（1.153→2.305 秒，暂停后稳定在 2.496 秒），核对该进程连接私有
+  PipeWire 空输出；未注入 WebView 脚本。报告和截图：
+  .build/local-package-34f0948-playback/。包包含独立 GEQ/低高音和冷启动 NCM/AAC
+  修复；包内本地播放用例本身是明文 FLAC。它不是新的发行版本，也不含后续音效总开关。
