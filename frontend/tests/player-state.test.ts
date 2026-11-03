@@ -995,23 +995,25 @@ test('a late failed refresh cannot become the retry of a newer native playback a
 });
 
 test('quality retry refreshes the failed decoder but repeats authorization before a reload', async () => {
-  for (const reload of [false, true]) {
+  for (const timing of ['authorization', 'snapshot', 'channel'] as const) {
+    const reload = timing !== 'authorization';
+    const failedReload: PlayerView = {
+      ...state('3', '1', 'new'),
+      entryId: 'old',
+      state: 'error',
+      requestedQuality: 'lossless',
+      error: '加载失败',
+    };
     const actions: PlayerAction[] = [];
     const f = fixture({
       // The invoke error can reach Vue before the playback-channel event.
-      playerSnapshot: async () =>
-        reload
-          ? {
-              ...state('3', '1', 'new'),
-              entryId: 'old',
-              state: 'error',
-              requestedQuality: 'lossless',
-              error: '加载失败',
-            }
-          : state('2', '1', 'old'),
+      playerSnapshot: async () => (reload ? failedReload : state('2', '1', 'old')),
       playerAction: async (_epoch, input) => {
         actions.push(input);
-        if (actions.length === 1) throw { code: 'playback', message: '加载失败', retryable: true };
+        if (actions.length === 1) {
+          if (timing === 'channel') f.emit(failedReload);
+          throw { code: 'playback', message: '加载失败', retryable: true };
+        }
         return state('4', '1', 'recovered');
       },
     });
@@ -1031,6 +1033,56 @@ test('quality retry refreshes the failed decoder but repeats authorization befor
     ]);
     f.player.dispose();
   }
+});
+
+test('a delayed quality error cannot replace feedback for a different native selection', async () => {
+  const finish = deferred<void>();
+  const f = fixture({
+    playerAction: async () => {
+      await finish.promise;
+      throw { code: 'network', message: 'old quality request failed', retryable: false };
+    },
+  });
+  await f.player.connect(account());
+  f.emit(state('2', '1', 'old'));
+  const pending = f.player.action({
+    kind: 'quality_for',
+    play_id: 'old',
+    expected_revision: '1',
+    level: 'lossless',
+  });
+  f.emit({ ...state('3', '1', 'replacement'), state: 'error', error: 'retry replacement' });
+  finish.resolve();
+  await pending;
+  assert.equal(f.player.error.value, '');
+  assert.equal(f.player.canRetry.value, true);
+  f.player.dispose();
+});
+
+test('quality retry does not resend authorization after its fresh read sees a replacement', async () => {
+  const actions: PlayerAction[] = [];
+  const f = fixture({
+    playerSnapshot: async () => state('3', '1', 'replacement'),
+    playerAction: async (_epoch, input) => {
+      actions.push(input);
+      throw { code: 'network', message: 'quality request failed', retryable: true };
+    },
+  });
+  await f.player.connect(account());
+  f.emit(state('2', '1', 'old'));
+  const command = {
+    kind: 'quality_for',
+    play_id: 'old',
+    expected_revision: '1',
+    level: 'lossless',
+  } as const;
+  await f.player.action(command);
+  assert.equal(f.player.canRetry.value, true);
+  await f.player.retry();
+  assert.deepEqual(actions, [command]);
+  assert.equal(f.player.view.value?.playId, 'replacement');
+  assert.equal(f.player.error.value, '');
+  f.player.dispose();
 });
 
 test('channel-only source denial does not offer or execute a refresh', async () => {

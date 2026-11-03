@@ -191,7 +191,11 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       if (version === connection) handle(e);
     }
   }
-  async function run(operation: PlaybackOperation, onRetry = operation, selectionScoped = false) {
+  async function run(
+    operation: PlaybackOperation,
+    onRetry = operation,
+    selectionScoped: boolean | ((initial?: PlayerView, current?: PlayerView) => boolean) = false,
+  ) {
     if (!ready.value) return;
     const current = ++request;
     const captured = epoch;
@@ -205,11 +209,17 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       if (captured === epoch && current === request) return next;
     } catch (e) {
       if (current === request && captured === epoch) {
-        const currentSelection = !selectionScoped || sameSelection(origin, view.value);
+        const currentSelection =
+          typeof selectionScoped === 'function'
+            ? selectionScoped(origin, view.value)
+            : !selectionScoped || sameSelection(origin, view.value);
         const issue = handle(e, currentSelection);
         failedOperation =
           currentSelection && issue.code !== 'stale'
-            ? { repeat: issue.retryable ? onRetry : undefined, selection: origin }
+            ? {
+                repeat: issue.retryable ? onRetry : undefined,
+                selection: selectionScoped ? view.value : undefined,
+              }
             : undefined;
       }
     } finally {
@@ -221,30 +231,37 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     if (input.kind === 'refresh_for') return run(invoke, invoke, true);
     if (input.kind !== 'quality_for') return run(invoke);
     const origin = view.value;
-    return run(invoke, async (e) => {
-      const intent = request;
-      await syncPlayback();
-      if (e !== epoch || intent !== request)
-        throw { code: 'stale', message: '播放请求已更新', retryable: false };
-      const current = view.value;
-      // Authorization errors leave the original player intact. If a newly
-      // authorized decoder failed, its entry already owns the chosen quality.
-      const failedReload =
-        origin?.entryId &&
-        current?.epoch === e &&
-        current.entryId === origin.entryId &&
-        current.playId &&
-        current.playId !== origin.playId &&
-        current.state === 'error' &&
-        current.requestedQuality === input.level;
-      return failedReload
-        ? core.playerAction(e, {
+    const failedReload = (initial?: PlayerView, current?: PlayerView) =>
+      !!initial?.entryId &&
+      current?.epoch === initial.epoch &&
+      current.queueRevision === initial.queueRevision &&
+      current.entryId === initial.entryId &&
+      !!current.playId &&
+      current.playId !== initial.playId &&
+      current.state === 'error' &&
+      current.requestedQuality === input.level;
+    return run(
+      invoke,
+      async (e) => {
+        const intent = request;
+        await syncPlayback();
+        if (e !== epoch || intent !== request)
+          throw { code: 'stale', message: '播放请求已更新', retryable: false };
+        const current = view.value;
+        // Authorization errors leave the original player intact. A newly
+        // authorized decoder failure has a new play ID for the same entry.
+        if (current?.playId && failedReload(origin, current))
+          return core.playerAction(e, {
             kind: 'refresh_for',
-            play_id: current.playId!,
+            play_id: current.playId,
             expected_queue_revision: current.queueRevision,
-          })
-        : invoke(e);
-    });
+          });
+        if (current?.playId !== input.play_id || !sameSelection(origin, current))
+          throw { code: 'stale', message: '播放请求已更新', retryable: false };
+        return invoke(e);
+      },
+      (initial, current) => sameSelection(initial, current) || failedReload(initial, current),
+    );
   }
   // Quota writes must never become the generic audio-error retry operation.
   // A closed trial dialog may leave a native operation running; its durable
