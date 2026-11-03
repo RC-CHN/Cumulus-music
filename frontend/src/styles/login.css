@@ -883,7 +883,8 @@ ol.sms-tips {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
-.qr-app-download[aria-disabled='true'] {
+.qr-app-download[aria-disabled='true'],
+.qr-captcha-action[aria-disabled='true'] {
   cursor: wait;
 }
 .login-status:empty {

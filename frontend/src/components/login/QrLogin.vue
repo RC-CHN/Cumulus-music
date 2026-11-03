@@ -16,6 +16,7 @@ let timer: ReturnType<typeof setTimeout> | undefined;
 let disposed = false;
 const frame = ref<HTMLElement>();
 const downloadButton = ref<HTMLButtonElement>();
+const captchaButton = ref<HTMLButtonElement>();
 function deactivate() {
   if (disposed) return;
   disposed = true;
@@ -27,7 +28,10 @@ function deactivate() {
 defineExpose({ deactivate });
 watch(status, async () => {
   const active = document.activeElement;
-  const owned = frame.value?.contains(active) || active === downloadButton.value;
+  const owned =
+    frame.value?.contains(active) ||
+    active === downloadButton.value ||
+    active === captchaButton.value;
   await nextTick();
   if (!disposed && owned && document.activeElement === document.body)
     frame.value?.focus({ preventScroll: true });
@@ -167,7 +171,14 @@ onBeforeUnmount(deactivate);
     <span v-else-if="status === 'creating'" class="spinner" />
     <button v-else class="primary" @click="begin">重新生成二维码</button>
   </div>
-  <button v-if="status === 'challenge'" class="primary" :disabled="captchaBusy" @click="captcha">
+  <button
+    v-if="status === 'challenge'"
+    ref="captchaButton"
+    type="button"
+    class="primary qr-captcha-action"
+    :aria-disabled="captchaBusy"
+    @click="captcha"
+  >
     {{ captchaBusy ? '请在验证窗口中完成操作…' : '打开安全验证' }}
   </button>
   <p v-if="status === 'waiting_scan'" class="login-status qr-scan-instructions">
