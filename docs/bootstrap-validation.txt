@@ -121,3 +121,16 @@ PipeWire 输出。原生时钟推进、暂停、定位后继续、倍速、CUE �
   空输出，无外网、账号、真实声卡或测试 IPC。证据在
   `.build/ordinary-770849f/report.json` 及同目录的播放、暂停和首帧截图。
   该普通二进制未打包，不作为该提交的发行包验收。
+
+2026-11-04 Linux 发行流程本机复验（dd4fd37）
+  用固定锁文件和 `scripts/ci/package.py --platform linux-x64` 构建 .deb、
+  便携包及清单，普通解码、均衡器 PCM、PEQ 和固定来源解码探针通过。
+  产物在 `.build/package-proof-dd4fd37/.build/packages/linux-x64/`；
+  .deb SHA-256 为 d7d99ba336ce91989c67bb3acf28267d222d38da2bb9c55a287373cbd8a9d0ad。
+  以 `installed_linux_smoke.py --verify-local-playback --verify-installed-equalizer`
+  校验并解出同一 .deb，通过正式 GTK 选择器导入合成 FLAC；播放期间用
+  键盘选择第一个非平直预设，核对本地持久化、进程映射的包内滤镜路径，
+  同一队列项的播放时钟继续推进，随后暂停并保持。报告及截图在
+  `.build/package-proof-dd4fd37-equalizer/`。这里使用私有 PipeWire 空输出、
+  无外网及无注入 IPC。包内交互不单独证明滤镜的 PCM 数值；该数值由
+  打包时的独立探针验证。此包没有发布，也不代表更新提交已打包。

@@ -156,7 +156,7 @@ def private_pipewire_stream(pid, env):
                item.get('info', {}).get('input-node-id') in sink for item in objects)
 
 
-def verify_playback(root, app, window, x, y, width, height, source, env, screenshot):
+def verify_playback(root, app, window, x, y, width, height, source, env, screenshot, packaged_filter=None):
     assert (width, height) == (1120, 760), 'local playback coordinates require the ordinary 1120x760 X11 layout'
     database = root/'state/core.sqlite3'
 
@@ -189,6 +189,16 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
         assert queue['current'] == item['entry_id'] == position['entry_id']
         return position
 
+    def preset_saved():
+        with closing(sqlite3.connect(database.as_uri()+'?mode=ro', uri=True, timeout=.5)) as db:
+            row = db.execute("SELECT value FROM state WHERE owner='local-guest' "
+                             "AND kind='equalizer-preferences-v1' AND key='current'").fetchone()
+        if row:
+            value = json.loads(row[0])
+            return (value['preset'] == {'kind': 'built_in', 'index': 1}
+                    and value['settings']['enabled'] and any(value['settings']['gains']))
+        return False
+
     with closing(Input(x, y)) as inputs:
         wait_for('installed main window focus', lambda: active_window() == window)
         inputs.click(62, 520)  # Local Music
@@ -215,6 +225,22 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
         assert next_position['entry_id'] == first['entry_id']
         wait_for('installed app linked to private PipeWire sink', lambda: private_pipewire_stream(app.pid, env), 6)
         screenshot('installed-local-playing.png')
+        if packaged_filter:
+            inputs.click(1049, 722)  # EQ in the playback footer.
+            time.sleep(.35)
+            for _ in range(3):  # Modal close -> master -> directory -> preset.
+                inputs.key('Tab')
+                time.sleep(.12)
+            inputs.key('Down')  # First non-flat preset from a clean profile.
+            wait_for('installed equalizer preset committed', preset_saved)
+            wait_for('installed audio filter mapped by the player',
+                     lambda: str(packaged_filter) in Path(f'/proc/{app.pid}/maps').read_text())
+            effected = wait_for('same track progresses with the installed preset',
+                                lambda: position('playing', next_position['seconds'] + .4))
+            assert effected['entry_id'] == first['entry_id']
+            screenshot('installed-local-equalizer.png')
+            inputs.key('Escape')
+            time.sleep(.35)
         inputs.click(559, 712)  # Pause.
         paused = wait_for('native paused position', lambda: position('paused', first['seconds']))
         assert paused['entry_id'] == first['entry_id'] and paused['paused']
@@ -228,8 +254,12 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
         assert held and held['entry_id'] == settled['entry_id']
         assert abs(held['seconds'] - settled['seconds']) < .05, 'clock changed after pause'
         screenshot('installed-local-paused.png')
-    return {'nativePositionAdvanced': True, 'pauseHeld': True, 'syntheticLocalSource': True,
+    report = {'nativePositionAdvanced': True, 'pauseHeld': True, 'syntheticLocalSource': True,
             'privatePipeWireNullSink': True, 'physicalAudioOutputVerified': False,
             'firstSeconds': first['seconds'], 'laterSeconds': next_position['seconds'],
             'pausedSeconds': held['seconds'],
             'sourceSha256': hashlib.sha256(source.read_bytes()).hexdigest()}
+    if packaged_filter:
+        report.update(equalizerPresetCommitted=True, installedFilterMapped=True,
+                      sameTrackAdvancedWithEqualizer=True)
+    return report
