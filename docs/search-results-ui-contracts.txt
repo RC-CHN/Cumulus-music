@@ -201,3 +201,10 @@ search_results_smoke.py --filtered-pagination 复用真实 Tauri WebView 和合�
 搜索 IPC。夹具在渲染端把前两页 MV 的投影清空，保留原生游标；确认空页仍有
 「加载更多」、未自动跳页，并通过 0、13、26 的连续读取显示第三页的有效 MV。
 该用例覆盖桌面游标及显示，不替代 Rust 投影测试。
+
+分类无结果提示
+恢复 SearchResults/components/artist.jsx、mv.tsx 将关键词和资源种类传给
+components/Empty/index.tsx 的 fall 提示。歌手、用户和 MV 分类结束且没有结果时，
+展示实际查询词与类型；长关键词保留原文并在 200px 内省略。服务说明优先，
+过滤的结果仍提示无法展示，能继续的页不冒充最终无匹配。--filtered-pagination
+也核对三种最终无结果状态和长关键词宽度。

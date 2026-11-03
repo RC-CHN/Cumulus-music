@@ -767,3 +767,12 @@
 .search-video-card:focus-within .search-result-art:has(.search-video-play-glyph) > .icon {
   opacity: 0;
 }
+
+.search-empty-keyword {
+  display: inline-block;
+  max-width: min(200px, 100%);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}

@@ -553,14 +553,14 @@ onBeforeUnmount(() => {
           </p>
           <div v-if="!count" class="empty-state">
             <Icon name="search" />
-            <p>
-              {{
-                explanation.emptyTitle ||
-                (view.more
-                  ? '这一页暂无可展示的结果'
-                  : `没有找到相关${selected.title === '综合' ? '内容' : selected.title}`)
-              }}
+            <p v-if="explanation.emptyTitle">{{ explanation.emptyTitle }}</p>
+            <p v-else-if="view.more">这一页暂无可展示的结果</p>
+            <p v-else-if="view.unavailableCount">暂无可展示的结果</p>
+            <p v-else-if="gridWaterfall" class="search-empty-category">
+              咱搜不到关于“<span class="search-empty-keyword">{{ matchKeyword }}</span
+              >”的任何{{ selected.title }}呀！
             </p>
+            <p v-else>没有找到相关{{ selected.title === '综合' ? '内容' : selected.title }}</p>
             <small>{{ view.more ? '可继续查看后续结果' : '试试其他关键词，或切换分类' }}</small>
           </div>
           <section

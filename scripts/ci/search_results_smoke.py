@@ -89,6 +89,7 @@ def main():
         first = root / 'first'
         complete = json.loads((first / 'complete.json').read_text(encoding='utf-8'))
         assert complete['ok'] and complete['searchFilteredPaginationVerified'] and complete['stageCount'] == 3
+        assert complete['searchCategoryEmptyVerified']
         assert complete['filteredMvReads'] == [[0, 13], [13, 13], [26, 13]]
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
         assert len(list(first.glob('ux_*.png'))) == (3 if args.screenshots else 0)

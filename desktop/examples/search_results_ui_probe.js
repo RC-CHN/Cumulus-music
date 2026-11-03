@@ -87,7 +87,18 @@
       await capture('filtered_mv_reaches_results');
       assert(reads()==='[[0,13],[13,13],[26,13]]','native cursors include filtered rows');
       core.searchResults=searchResults;
-      await emit('complete',{ok:true,searchFilteredPaginationVerified:true,stageCount:count,filteredMvReads,realMusicRequests:0,realAccountWrites:0});
+      await fixture('empty');
+      const emptyWord='合成空结果'.repeat(8);
+      await fresh(emptyWord);
+      for(const [category,label] of [['artists','歌手'],['users','用户'],['mvs','MV']]){
+        await choose(category);
+        const keyword=panel().querySelector('.search-empty-keyword');
+        assert(keyword?.textContent===emptyWord&&keyword.parentElement.textContent.includes('的任何'+label+'呀！'),
+          'terminal empty result identifies the effective query and category');
+        assert(keyword.clientWidth<=200&&keyword.scrollWidth>keyword.clientWidth&&!more(),
+          'long query is visually bounded and an exhausted search cannot continue');
+      }
+      await emit('complete',{ok:true,searchFilteredPaginationVerified:true,searchCategoryEmptyVerified:true,stageCount:count,filteredMvReads:filteredMvReads.slice(0,3),realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchSuggestionFocusProof){
