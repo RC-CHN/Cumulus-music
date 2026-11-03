@@ -65,6 +65,28 @@
       "desktop_entry": null
     },
     {
+      "id": "relation_statistics",
+      "official": [
+        "M/75:179–225",
+        "M/75:820–826"
+      ],
+      "rust": [
+        "core/src/listen_together/api.rs",
+        "core/src/client/together/statistics.rs"
+      ],
+      "evidence": [
+        "S",
+        "R"
+      ],
+      "boundary": "Only for the current two-member room. Read-only cumulative server statistics; no single-session count, share card or real dual-account verification.",
+      "desktop_entry": "一起听 → 共同收听累计记录; together_statistics(epoch, relationKey)",
+      "tests": [
+        "core/tests/client_together.rs",
+        "frontend/tests/together-state.test.ts",
+        "scripts/ci/queue_room_smoke.py"
+      ]
+    },
+    {
       "id": "shared_queue_commands",
       "official": [
         "M/3079",
