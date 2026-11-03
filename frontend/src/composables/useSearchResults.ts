@@ -112,6 +112,8 @@ export function useSearchResults(
         throw { code: 'unavailable', message: '暂时无法继续加载，请重新搜索' };
       const result = await core.searchResults(epoch, {
         ...previous.query,
+        keyword:
+          (previous.query.correct ? previous.correction : undefined) ?? previous.query.keyword,
         offset: previous.nextOffset,
       });
       if (current !== generation || account?.epoch !== epoch || result.epoch !== epoch) return;
@@ -139,6 +141,7 @@ export function useSearchResults(
       view.value = {
         ...next,
         query: previous.query,
+        correction: previous.query.correct ? (next.correction ?? previous.correction) : null,
         sections,
         more: next.more && added > 0,
         unavailableCount: previous.unavailableCount + next.unavailableCount,

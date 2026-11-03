@@ -102,6 +102,63 @@ async fn categories_use_official_shapes_and_only_public_card_fields_cross_ipc() 
     }
 }
 #[tokio::test]
+async fn corrections_are_valid_search_terms_and_cannot_override_an_opt_out() {
+    let (_root, api, _, client) = fixture();
+    let epoch = client.account().unwrap().epoch;
+    *api.reply.lock().unwrap() = json!({"code":200,"data":{"blocks":[
+        {"blockCode":"search_block_correction","resources":[
+            {"baseInfo":{"rewriteQuery":"合成"}},
+            {"baseInfo":{"rewriteQuery":"bad\nquery"}},
+            {"baseInfo":{"rewriteQuery":" 正确关键词 "}}
+        ]},
+        {"blockCode":"search_block_correction","resources":[
+            {"baseInfo":{"rewriteQuery":"后续建议"}}
+        ]}
+    ]}});
+    let mut q = query(C::All);
+    let view = client
+        .search_results(&epoch, q.clone())
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(view.correction.as_deref(), Some("正确关键词"));
+    q.correct = false;
+    let view = client.search_results(&epoch, q).await.unwrap().value;
+    assert!(view.correction.is_none());
+    assert_eq!(
+        api.calls.lock().unwrap().last().unwrap().1["needCorrect"],
+        false
+    );
+
+    *api.reply.lock().unwrap() = json!({"code":200,"data":{
+            "resources":[],"queryRewriteInfo":{"rewriteQuery":"bad\tquery"},
+            "queryRewrite":{"rewriteQuery":"合成"},
+        "searchQcReminder":{"correctQuery":" 另一关键词 "}
+    }});
+    let mut q = query(C::Songs);
+    assert_eq!(
+        client
+            .search_results(&epoch, q.clone())
+            .await
+            .unwrap()
+            .value
+            .correction
+            .as_deref(),
+        Some("另一关键词")
+    );
+    q.correct = false;
+    assert!(
+        client
+            .search_results(&epoch, q)
+            .await
+            .unwrap()
+            .value
+            .correction
+            .is_none()
+    );
+}
+
+#[tokio::test]
 async fn contradictory_empty_counts_stop_paging_and_malformed_results_are_errors() {
     let (_root, api, _, client) = fixture();
     let epoch = client.account().unwrap().epoch;

@@ -1596,6 +1596,7 @@ onUnmounted(() => {
                 :category="page.category"
                 :offset="page.offset"
                 :correct="page.correct"
+                :rewritten-keyword="page.rewrittenKeyword"
                 :liked="liked"
                 :busy-likes="busyLikes"
                 :playable="player.ready.value && !player.busy.value"
@@ -1604,8 +1605,9 @@ onUnmounted(() => {
                 :playback-state="playbackState"
                 :current-voice-id="currentVoiceId ?? undefined"
                 @navigate="
-                  (category, offset, correct) =>
-                    page.kind === 'search' && music.navigate({ ...page, category, offset, correct })
+                  (category, offset, correct, rewrittenKeyword) =>
+                    page.kind === 'search' &&
+                    music.navigate({ ...page, category, offset, correct, rewrittenKeyword })
                 "
                 @search="(keyword) => music.navigate({ kind: 'search', keyword })"
                 @open="openSearchItem"

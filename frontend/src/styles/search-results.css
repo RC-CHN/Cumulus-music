@@ -233,6 +233,7 @@
 }
 .search-correction {
   flex-shrink: 0;
+  overflow-wrap: anywhere;
 }
 .search-result-section .track-table {
   height: min(380px, 50vh);

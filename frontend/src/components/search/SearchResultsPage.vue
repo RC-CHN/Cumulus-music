@@ -27,6 +27,7 @@ const props = defineProps<{
   category?: SearchCategory;
   offset?: number;
   correct?: boolean;
+  rewrittenKeyword?: string;
   liked: Set<string>;
   busyLikes: Set<string>;
   playable: boolean;
@@ -38,7 +39,7 @@ const props = defineProps<{
   searchId?: number;
 }>();
 const emit = defineEmits<{
-  navigate: [category: SearchCategory, offset: number, correct: boolean];
+  navigate: [category: SearchCategory, offset: number, correct: boolean, rewrittenKeyword?: string];
   search: [keyword: string];
   open: [item: SearchItem];
   play: [tracks: TrackView[], index: number];
@@ -58,6 +59,16 @@ const model = useSearchResults(useCore(), () => emit('expired'), props.memory);
 const { view, loading, error, loadingMore, moreError } = model;
 const category = computed(() => props.category ?? 'all'),
   offset = computed(() => props.offset ?? 0);
+const rewrite = computed(() =>
+  props.correct === false
+    ? undefined
+    : (view.value?.correction ?? (category.value !== 'all' ? props.rewrittenKeyword : undefined)),
+);
+const requestKeyword = computed(() =>
+  category.value !== 'all' && props.correct !== false
+    ? (props.rewrittenKeyword ?? props.keyword)
+    : props.keyword,
+);
 const waterfall = computed(() => ['artists', 'users', 'mvs'].includes(category.value));
 const limit = computed(() => (waterfall.value ? 13 : 30));
 const selected = computed(() => searchCategories.find((c) => c.key === category.value)!);
@@ -110,11 +121,20 @@ async function open(item: SearchItem) {
   else emit('open', item);
 }
 function choose(key: SearchCategory, fromKeyboard = false) {
-  emit('navigate', key, 0, props.correct ?? true);
+  turn(key, 0);
   if (fromKeyboard)
     void nextTick(() =>
       tabs.value?.querySelector<HTMLButtonElement>(`[data-category="${key}"]`)?.focus(),
     );
+}
+function turn(key: SearchCategory, nextOffset: number) {
+  emit(
+    'navigate',
+    key,
+    nextOffset,
+    props.correct ?? true,
+    key === 'all' ? undefined : rewrite.value,
+  );
 }
 function tabKey(event: KeyboardEvent, index: number) {
   let next = index;
@@ -232,7 +252,7 @@ async function load(reuse = false) {
   activeCategory = category.value;
   await model.open(
     {
-      keyword: props.keyword,
+      keyword: requestKeyword.value,
       category: category.value,
       offset: offset.value,
       limit: limit.value,
@@ -271,6 +291,7 @@ watch(
     props.account.epoch,
     props.account.status,
     props.keyword,
+    requestKeyword.value,
     category.value,
     offset.value,
     props.correct,
@@ -351,9 +372,9 @@ onBeforeUnmount(() => {
         </button>
       </div>
     </div>
-    <div v-if="view?.correction" class="search-correction">
-      正在显示“{{ view.correction }}”的结果
-      <button class="text-button" @click="emit('navigate', category, 0, false)">
+    <div v-if="rewrite" class="search-correction">
+      正在显示“{{ rewrite }}”的结果
+      <button class="text-button" @click="emit('navigate', 'all', 0, false)">
         仍然搜索“{{ keyword }}”
       </button>
     </div>
@@ -535,14 +556,14 @@ onBeforeUnmount(() => {
             <button
               class="secondary"
               :disabled="offset === 0"
-              @click="emit('navigate', category, Math.max(0, offset - limit), correct ?? true)"
+              @click="turn(category, Math.max(0, offset - limit))"
             >
               上一页</button
             ><span>第 {{ Math.floor(offset / limit) + 1 }} 页</span
             ><button
               class="secondary"
               :disabled="!view.more"
-              @click="emit('navigate', category, view.nextOffset, correct ?? true)"
+              @click="turn(category, view.nextOffset)"
             >
               下一页
             </button>

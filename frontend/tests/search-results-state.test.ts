@@ -152,6 +152,27 @@ test('continuous loading preserves the first records and retries the same cursor
   assert.equal(model.view.value?.more, false);
   assert.equal(model.moreError.value, '');
 });
+test('continuous loading uses the latest confirmed rewrite and keeps it on later pages', async () => {
+  const calls: string[] = [];
+  const model = useSearchResults(
+    {
+      searchResults: async (_epoch, q) => {
+        calls.push(q.keyword);
+        const page = artistPage(q, [String(q.offset)]);
+        page.value.correction = q.offset === 0 ? '初次纠正' : q.offset === 2 ? '进一步纠正' : null;
+        return page;
+      },
+    },
+    () => assert.fail('expiry'),
+  );
+  model.connect(account);
+  await model.open(artistQuery);
+  await model.more();
+  await model.more();
+  assert.deepEqual(calls, ['合成', '初次纠正', '进一步纠正']);
+  assert.equal(model.view.value?.correction, '进一步纠正');
+  assert.equal(model.view.value?.sections[0]?.items.length, 3);
+});
 test('in-flight append is coalesced and its old-account error cannot expire a new search', async () => {
   const pending = deferred<AccountData<SearchResultView>>();
   let appends = 0;

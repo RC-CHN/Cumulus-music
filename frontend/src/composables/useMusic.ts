@@ -44,6 +44,7 @@ export type Page =
       category?: import('../services/search').SearchCategory;
       offset?: number;
       correct?: boolean;
+      rewrittenKeyword?: string;
       searchId?: number;
     };
 

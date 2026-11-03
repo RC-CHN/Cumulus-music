@@ -152,12 +152,7 @@ fn item(kind: &str, v: &Value, uid: &str, excerpt: &Value) -> Result<Option<Sear
 fn correction(v: &Value) -> Option<String> {
     ["rewriteQuery", "correctQuery", "query"]
         .into_iter()
-        .find_map(|key| {
-            v[key]
-                .as_str()
-                .filter(|s| !s.trim().is_empty())
-                .map(str::to_owned)
-        })
+        .find_map(|key| crate::catalog::search::keyword(v[key].as_str()?).ok())
 }
 fn project(raw: Value, query: SearchResultQuery, uid: &str) -> Result<SearchResultView> {
     use SearchCategory::*;
@@ -178,7 +173,13 @@ fn project(raw: Value, query: SearchResultQuery, uid: &str) -> Result<SearchResu
                 .ok_or(Error::Response("missing search block code"))?;
             let resources = array(block, "resources")?;
             if code == "search_block_correction" {
-                result.correction = resources.iter().find_map(|v| correction(&v["baseInfo"]));
+                if query.correct && result.correction.is_none() {
+                    result.correction = resources
+                        .iter()
+                        .take(100)
+                        .filter_map(|v| correction(&v["baseInfo"]))
+                        .find(|word| word != query.keyword.trim());
+                }
                 continue;
             }
             let category = match code {
@@ -257,8 +258,17 @@ fn project(raw: Value, query: SearchResultQuery, uid: &str) -> Result<SearchResu
         result.notice =
             Some("服务返回了结果数量，但本页没有可展示的内容。可重试或更换关键词。".into());
     }
-    result.correction = correction(&container["queryRewrite"])
-        .or_else(|| correction(&container["searchQcReminder"]));
+    if query.correct {
+        result.correction = [
+            &container["queryRewriteInfo"],
+            &raw["queryRewriteInfo"],
+            &container["queryRewrite"],
+            &container["searchQcReminder"],
+        ]
+        .into_iter()
+        .filter_map(correction)
+        .find(|word| word != query.keyword.trim());
+    }
     let mut section = SearchSection {
         id: query.category.title().into(),
         title: query.category.title().into(),

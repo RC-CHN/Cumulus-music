@@ -21,6 +21,7 @@ pub fn control(value: &Value) {
             "unavailable",
             "missing_song",
             "mixed_results",
+            "correction",
             "card_error",
             "cover",
             "cover_error",
@@ -187,6 +188,28 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
     ))
     .unwrap();
     let mut response = fixtures[category].clone();
+    if mode == "correction" {
+        let valid = match category {
+            "all" => args["keyword"] == "合成错词",
+            "songs" => args["keyword"] == "合成正词" && args["needCorrect"] == true,
+            "playlists" => args["s"] == "合成正词" && args["queryCorrect"] == true,
+            _ => false,
+        };
+        if !valid {
+            return Some(Err(Error::InvalidInput("wrong synthetic correction query")));
+        }
+        // Even a stale upstream reminder after opting out must not re-enable correction.
+        if category == "all" {
+            response["data"]["blocks"].as_array_mut().unwrap().insert(
+                0,
+                json!({"blockCode":"search_block_correction","resources":[{"baseInfo":{"keyword":"合成错词","rewriteQuery":"合成正词"}}]}),
+            );
+            if args["needCorrect"] == false {
+                response["data"]["blocks"][2]["resources"][0]["baseInfo"]["name"] =
+                    json!("按原词搜索结果");
+            }
+        }
+    }
     if mode == "mixed_results" && category == "all" {
         response["data"]["blocks"][0]["resources"]
             .as_array_mut()
