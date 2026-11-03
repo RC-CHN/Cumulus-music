@@ -11,6 +11,8 @@
   来自展开图标，不能用作关键词标签高度。本轮已纠正。
 - components/SearchBox/view/searchRankCard.tsx：17/600标题、16/20外距、12/20/14内距、
   三列、36高条目、先显示9条；官方另有播放/更多操作，当前尚未接入界面。
+  正常窗口按官方 `3n+1`、`3n+2`、`3n` 顺序放置，首行显示 1、4、7；
+  读屏和键盘仍沿 1 到 9 的排名顺序。社区窄窗保留两列和从左到右的排名顺序。
 - components/SearchBox/view/searchResultsItems.jsx：34高建议行、左内距38、匹配词突出。
 - components/SearchBox/view/title.jsx：13/600分区标题、高38、水平外距20。
 - pages/SearchResults/index.jsx、components/tab.jsx：22/600/32关键词标题、13号结果数、

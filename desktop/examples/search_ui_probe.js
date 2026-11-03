@@ -193,6 +193,18 @@
       await theme(w, h, t);
       await fixture("good");
       await home();
+      await wait(() => one(".search-chart-items button"), "rank layout loaded");
+      const rankCells = [...one(".search-chart-items").querySelectorAll("button")];
+      assert(rankCells.length === 9, "first nine ranked results");
+      const byPosition = [...rankCells].sort((left, right) => {
+        const a = left.getBoundingClientRect(), b = right.getBoundingClientRect();
+        return Math.abs(a.top - b.top) > 1 ? a.top - b.top : a.left - b.left;
+      });
+      assert(
+        byPosition.map((cell) => Number(cell.querySelector(".search-rank").textContent)).join(",") ===
+          (w === 1120 ? "1,4,7,2,5,8,3,6,9" : "1,2,3,4,5,6,7,8,9"),
+        "official rank positions at normal width and linear order in narrow windows",
+      );
       await capture(`home_${w}_${t}`);
       const history = one(".search-tags-section");
       click(button("展开搜索历史", history));

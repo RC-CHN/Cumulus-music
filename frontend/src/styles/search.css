@@ -207,6 +207,17 @@
   font-weight: 500;
   min-width: 0;
 }
+@media (min-width: 951px) {
+  .search-chart-items button:nth-child(3n + 1) {
+    order: 1;
+  }
+  .search-chart-items button:nth-child(3n + 2) {
+    order: 2;
+  }
+  .search-chart-items button:nth-child(3n) {
+    order: 3;
+  }
+}
 .search-chart-items button:hover,
 .search-chart-items button:focus-visible {
   background: var(--surface-hover);
@@ -220,6 +231,9 @@
 }
 .search-rank.leading {
   color: var(--accent);
+}
+.search-chart-items button:nth-child(-n + 3) .search-word-label {
+  font-weight: 600;
 }
 .search-word-label {
   overflow: hidden;
