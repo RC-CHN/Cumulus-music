@@ -49,6 +49,42 @@
     } finally { window.requestAnimationFrame=frames; }
   }
   try {
+    if(window.__cumulusSearchNextProof){
+      await wait(()=>one('.track-row'),'daily ready');
+      await fixture('good');
+      const invoke=(name,args={})=>window.__TAURI_INTERNALS__.invoke(name,args);
+      const {epoch}=await invoke('account_snapshot');
+      const player=()=>invoke('player_snapshot',{epoch});
+      const queue=()=>invoke('player_queue',{epoch});
+      async function playing(id){
+        for(let index=0;index<160;index++){
+          const state=await player();
+          if(state.track?.id===id&&state.state==='playing'&&state.position>.1)return state;
+          await sleep(70);
+        }
+        throw Error('native player did not advance on '+id);
+      }
+      await invoke('play_selection',{epoch,selection:{kind:'songs',ids:['91','92','3'],index:0,quality:'standard'}});
+      const original=await playing('91'), before=await queue();
+      await fresh('合成下一首');await choose('songs');
+      await fixture('result_play_trial');
+      click(one('.track-row[data-track-id="3"] .track-more'));
+      await wait(()=>one('.song-action-menu'),'search song menu');
+      click(button('下一首播放',one('.song-action-menu')));
+      await wait(()=>one('.track-action-feedback')?.textContent.trim()==='已设为下一首播放','queued search result');
+      const inserted=await queue(), active=await player();
+      assert(inserted.tracks.map(row=>row.track.id).join(',')==='91,3,92','existing result moves without duplicate');
+      assert(inserted.tracks.map(row=>row.entryId).join(',')===
+        [before.tracks[0],before.tracks[2],before.tracks[1]].map(row=>row.entryId).join(','),'preserved entry identities');
+      assert(active.playId===original.playId&&active.state==='playing','insertion leaves native playback running');
+      await capture('search_result_queued_without_interrupting');
+      click(button('下一首',one('.playerbar')));
+      const advanced=await playing('3');
+      assert(advanced.entryId===before.tracks[2].entryId&&advanced.playId!==original.playId,'advanced to the reordered entry');
+      await capture('search_next_uses_search_authorization');
+      await emit('complete',{ok:true,searchNextVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      return;
+    }
     if(window.__cumulusSearchPeopleCategoriesProof){
       await wait(()=>one('.track-row'),'daily ready');await fixture('good');await fresh('1');
       const card=kind=>one(`[data-result-key^="${kind}:"]`);
