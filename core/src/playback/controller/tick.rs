@@ -1,4 +1,8 @@
-use super::{Message, PlaybackStatus, PrefetchSnapshot, load::LoadOptions, state::Actor};
+use super::{
+    Message, PlaybackStatus, PrefetchSnapshot,
+    load::LoadOptions,
+    state::{Actor, SourceRetryPoint},
+};
 use crate::{
     Error, Result,
     account::SessionToken,
@@ -186,6 +190,7 @@ impl Actor {
                 matches!(event, EngineEvent::Ended { entry_id, reason: EndReason::Eof, .. }
                 if *entry_id == loaded.media.entry_id)
             });
+        let failed = failure.is_some();
         if let Some(failure) = failure {
             self.state = PlaybackStatus::Error;
             self.error = Some(failure);
@@ -225,7 +230,17 @@ impl Actor {
         } else {
             None
         };
-        if ended || self.last_save.elapsed() >= Duration::from_secs(1) {
+        if failed {
+            // Error ends active polling. Save the last accepted clock now and
+            // keep the previous transport intent for an explicit same-entry retry.
+            self.source_retry = self.position.map(|position| SourceRetryPoint {
+                item: loaded.item.clone(),
+                position,
+                paused: was_paused,
+                history: loaded.history.clone(),
+            });
+        }
+        if failed || ended || self.last_save.elapsed() >= Duration::from_secs(1) {
             self.save_position()?;
         }
         if ended && !self.queue.is_fm() && self.queue.advance(Step::Next, true)?.is_some() {

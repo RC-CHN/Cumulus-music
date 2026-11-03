@@ -141,6 +141,9 @@ async fn fatal_native_event_in_eof_batch_cannot_advance_or_reload_playback() {
             let failed = until(&f.player, |s| s.state == Status::Error).await;
             assert_eq!(failed.play_id, before.play_id);
             assert_eq!(failed.position, Some(12.0));
+            let saved = f.store.get("9", "playback", "position").unwrap().unwrap();
+            assert_eq!(saved["seconds"], 12.0);
+            assert_eq!(saved["state"], "error");
             assert_eq!(song(&failed), Some(1));
             if matches!(first, EngineEvent::Shutdown) {
                 assert!(matches!(failed.error, Some(PlaybackFailure::Engine)));
@@ -152,6 +155,32 @@ async fn fatal_native_event_in_eof_batch_cannot_advance_or_reload_playback() {
             assert_eq!(f.api.count(2), prefetched);
         }
     }
+}
+
+#[tokio::test]
+async fn retry_after_paused_stream_failure_keeps_position_and_transport() {
+    let f = Fixture::new();
+    f.command(replace(&[1, 2])).await.unwrap();
+    f.command(Cmd::Pause(true)).await.unwrap();
+    f.command(Cmd::Seek(37.0)).await.unwrap();
+    {
+        let mut native = f.device.state.lock().unwrap();
+        let entry_id = native.view.entry_id.unwrap();
+        // The decoder clock can disappear when its entry fails.
+        native.view.entry_id = None;
+        native.view.position = None;
+        native.view.events.push(EngineEvent::Ended {
+            entry_id,
+            reason: EndReason::Error,
+            error: -14,
+        });
+    }
+    until(&f.player, |s| s.state == Status::Error).await;
+    let retried = f.command(Cmd::RefreshSource).await.unwrap();
+    assert_eq!(retried.state, Status::Paused);
+    assert_eq!(retried.position, Some(37.0));
+    assert_eq!(song(&retried), Some(1));
+    assert!(f.device.state.lock().unwrap().view.paused);
 }
 
 #[tokio::test]
