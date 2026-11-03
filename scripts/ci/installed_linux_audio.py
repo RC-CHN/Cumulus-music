@@ -44,6 +44,9 @@ def isolated_audio(root, env):
         if name.startswith(('PIPEWIRE_', 'PULSE_', 'ALSA_', 'WIREPLUMBER_')):
             del env[name]
     env['GTK_USE_PORTAL'] = '0'
+    home = root/'home'
+    home.mkdir(mode=0o700)
+    env['HOME'] = str(home)
     with ExitStack() as stack:
         private = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix='cumulus-deb-audio-', dir='/tmp')))
         runtime = private/'runtime'
@@ -83,7 +86,7 @@ def isolated_audio(root, env):
             return 'window id #' in subprocess.check_output(['xprop', '-root', '_NET_SUPPORTING_WM_CHECK'], text=True, timeout=3)
 
         wait_for('private window manager', wm_ready)
-        media = private/'music'
+        media = private/'music_fixture'
         media.mkdir()
         source = media/'Synthetic.flac'
         subprocess.run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i',
@@ -196,7 +199,11 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
         inputs.key('l', 'Control_L')
         time.sleep(.35)
         for char in str(source.parent):
-            inputs.key({'/': 'slash', '-': 'minus', '_': 'underscore'}.get(char, char))
+            key, modifier = {
+                '/': ('slash', None), '-': ('minus', None), '_': ('minus', 'Shift_L')
+            }.get(char, (char, None))
+            inputs.key(key, modifier)
+        time.sleep(.5)  # GTK resolves the typed location before activation.
         inputs.key('Return')
         wait_for('installed main window focus after selection', lambda: active_window() == window)
         local_id = wait_for('generated FLAC indexed by the installed app', indexed)
