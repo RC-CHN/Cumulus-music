@@ -69,7 +69,7 @@
       return;
     }
     if(window.__cumulusSearchOriginalCorrectionProof){
-      await wait(()=>one('.track-row'),'daily ready');await fixture('correction');
+      await wait(()=>one('.track-row'),'daily ready');await fixture('correction_parts');
       const provides=one('#app').__vue_app__._context.provides;
       const core=provides[Reflect.ownKeys(provides).find(k=>typeof k==='symbol'&&k.description==='core-client')];
       const discovery=core.searchDiscovery;
@@ -86,12 +86,19 @@
         click(one('.search-suggestion[title="'+label+'"]'));
         await wait(()=>ready()&&one('.search-correction')?.textContent.includes('合成正词'),'corrected results');
         assert(input.value===label,'suggestion display text differs from canonical query');
+        const fragments=one('.search-heading-copy .search-correction-fragments');
+        assert(fragments&&[...fragments.children].map(node=>node.textContent.trim()).join('|')===
+          '正在显示合成正词。<b>仍查</b>|合成错词|。','native correction fragments retain their order and literal text');
+        assert(!fragments.querySelector('b')&&fragments.querySelectorAll('button').length===1&&
+          fragments.children[1].tagName==='BUTTON'&&one('.search-heading-copy h1').classList.contains('sr-only'),
+          'only the original word is interactive; plain text replaces the visible heading');
         await capture('correction_suggestion_label');
       }finally{core.searchDiscovery=discovery;}
       const {epoch}=await core.accountSnapshot();
       await core.searchHistory(epoch,{kind:'clear'});
       assert(!(await core.searchHistory(epoch,{kind:'read'})).value.length,'isolated native history empty');
       const original=button('仍然搜索“合成错词”');
+      assert(original?.tabIndex===0,'original query action is in the keyboard tab order');
       click(original);original.click();
       await wait(()=>ready()&&!one('.search-correction')&&one('.search-result-panel').textContent.includes('按原词搜索结果'),
         'original results with native correction disabled');
@@ -106,7 +113,7 @@
       click(button('返回上一页'));
       await wait(()=>ready()&&one('.search-correction')?.textContent.includes('合成正词')&&input.value===label,
         'Back restores prior corrected view and its display label');
-      await emit('complete',{ok:true,originalCorrectionVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      await emit('complete',{ok:true,originalCorrectionVerified:true,correctionPartsVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchCardMatchesProof){

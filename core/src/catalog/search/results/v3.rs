@@ -422,7 +422,13 @@ fn rewrite(resource: &Value) -> Option<Value> {
         .into_iter()
         .filter_map(|key| data[key].as_str())
         .find_map(|word| super::super::keyword(word).ok())?;
-    Some(json!({"baseInfo":{"rewriteQuery":word}}))
+    let mut base = json!({"rewriteQuery":word});
+    if let Some(parts) = super::correction_parts(data) {
+        base["searchQcReminder"] = json!({"qcReminders":parts.into_iter().map(|part|
+            json!({"qcReminderPart":part.text,"highLight":part.highlight})
+        ).collect::<Vec<_>>()});
+    }
+    Some(json!({"baseInfo":base}))
 }
 
 fn hot_explanation(block: &Value) -> Option<Value> {
@@ -579,7 +585,11 @@ mod tests {
     #[test]
     fn nested_resources_keep_safe_cards_and_exclude_untyped_actions() {
         let page = normalize(&json!({"blocks":[
-            {"blockCode":CORRECTION,"resources":[{"baseInfo":{"queryRewriteDTO":{"rewriteQuery":"原词"}}}]},
+            {"blockCode":CORRECTION,"resources":[{"baseInfo":{"queryRewriteDTO":{"rewriteQuery":"原词","searchQcReminder":{
+                "qcReminderChannel":"not public","qcReminders":[
+                    {"qcReminderPart":"仍查 "},{"qcReminderPart":"旧词","highLight":true,"action":"not public"}
+                ]
+            }}}}]},
             {"blockCode":HOT,"resources":[{"baseInfo":{"hotExplainModuleData":{
                 "title":"热点","text":"有趣","textAction":"orpheus://route/elsewhere",
                 "pictureUrl":"https://untrusted.invalid/image"}}}]},
@@ -598,6 +608,12 @@ mod tests {
         let data = &page["data"];
         let rows = data["blocks"].as_array().unwrap();
         assert_eq!(rows[0]["resources"][0]["baseInfo"]["rewriteQuery"], "原词");
+        assert_eq!(
+            rows[0]["resources"][0]["baseInfo"]["searchQcReminder"],
+            json!({"qcReminders":[
+                {"qcReminderPart":"仍查 ","highLight":false},{"qcReminderPart":"旧词","highLight":true}
+            ]})
+        );
         assert_eq!(
             data["hotExplanation"],
             json!({"title":"热点","text":"有趣"})

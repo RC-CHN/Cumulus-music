@@ -235,6 +235,19 @@
   flex-shrink: 0;
   overflow-wrap: anywhere;
 }
+.search-results-page .search-correction-fragments {
+  min-width: 0;
+  max-width: 100%;
+  line-height: 16px;
+  font-size: 13px;
+  margin: 0 0 4px;
+  white-space: pre-wrap;
+}
+.search-correction-fragments .text-button {
+  display: inline;
+  padding: 0;
+  font: inherit;
+}
 .search-result-section .track-table {
   height: min(380px, 50vh);
   min-height: 120px;

@@ -60,6 +60,7 @@ export interface SearchResultView {
   more: boolean;
   nextOffset: number;
   correction: string | null;
+  correctionParts?: { text: string; highlight: boolean }[];
   unavailableCount: number;
   emptyTitle?: string;
   notice: string | null;

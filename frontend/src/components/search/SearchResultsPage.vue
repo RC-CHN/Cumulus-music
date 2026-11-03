@@ -85,6 +85,9 @@ const rewrite = computed(() =>
     ? undefined
     : (view.value?.correction ?? (category.value !== 'all' ? props.rewrittenKeyword : undefined)),
 );
+const correctionParts = computed(() =>
+  rewrite.value && category.value === 'all' ? view.value?.correctionParts : undefined,
+);
 const requestKeyword = computed(() =>
   category.value !== 'all' && props.correct !== false
     ? (props.rewrittenKeyword ?? props.keyword)
@@ -337,7 +340,27 @@ onBeforeUnmount(() => {
 <template>
   <section class="search-results-page">
     <div class="search-heading-copy">
-      <h1 :aria-label="`搜索「${keyword}」`" :data-tooltip="keyword">{{ keyword }}</h1>
+      <h1
+        :class="{ 'sr-only': correctionParts }"
+        :aria-label="`搜索「${keyword}」`"
+        :data-tooltip="correctionParts ? undefined : keyword"
+      >
+        {{ keyword }}
+      </h1>
+      <div v-if="correctionParts" class="search-correction search-correction-fragments">
+        <template v-for="(part, index) in correctionParts" :key="index">
+          <button
+            v-if="part.highlight"
+            type="button"
+            class="text-button"
+            :aria-label="`仍然搜索“${keyword}”`"
+            @click="emit('searchOriginal', keyword)"
+          >
+            {{ part.text }}
+          </button>
+          <span v-else>{{ part.text }}</span>
+        </template>
+      </div>
       <p aria-live="polite">
         {{
           loading
@@ -395,7 +418,7 @@ onBeforeUnmount(() => {
         </button>
       </div>
     </div>
-    <div v-if="rewrite" class="search-correction">
+    <div v-if="rewrite && !correctionParts" class="search-correction">
       正在显示“{{ rewrite }}”的结果
       <button class="text-button" @click="emit('searchOriginal', keyword)">
         仍然搜索“{{ keyword }}”

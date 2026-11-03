@@ -110,7 +110,13 @@ async fn corrections_are_valid_search_terms_and_cannot_override_an_opt_out() {
         {"blockCode":"search_block_correction","resources":[
             {"baseInfo":{"rewriteQuery":"合成"}},
             {"baseInfo":{"rewriteQuery":"bad\nquery"}},
-            {"baseInfo":{"rewriteQuery":" 正确关键词 "}}
+            {"baseInfo":{"queryRewriteDTO":{"rewriteQuery":" 正确关键词 ","searchQcReminder":{
+                "qcReminderChannel":"never expose","qcReminders":[
+                    {"qcReminderPart":"更正为正确关键词，仍搜 "},
+                    {"qcReminderPart":"合成","highLight":true,"url":"do not expose"},
+                    {"qcReminderPart":"。","highLight":false}
+                ]
+            }}}}
         ]},
         {"blockCode":"search_block_correction","resources":[
             {"baseInfo":{"rewriteQuery":"后续建议"}}
@@ -123,9 +129,18 @@ async fn corrections_are_valid_search_terms_and_cannot_override_an_opt_out() {
         .unwrap()
         .value;
     assert_eq!(view.correction.as_deref(), Some("正确关键词"));
+    assert_eq!(
+        serde_json::to_value(&view).unwrap()["correctionParts"],
+        json!([
+            {"text":"更正为正确关键词，仍搜 ","highlight":false},
+            {"text":"合成","highlight":true},
+            {"text":"。","highlight":false}
+        ])
+    );
     q.correct = false;
     let view = client.search_results(&epoch, q).await.unwrap().value;
     assert!(view.correction.is_none());
+    assert!(view.correction_parts.is_none());
     assert_eq!(
         api.calls.lock().unwrap().last().unwrap().1["needCorrect"],
         false
@@ -159,6 +174,34 @@ async fn corrections_are_valid_search_terms_and_cannot_override_an_opt_out() {
     );
 }
 
+#[tokio::test]
+async fn unsafe_or_different_reminder_text_falls_back_without_dropping_the_rewrite() {
+    let (_root, api, _, client) = fixture();
+    let epoch = client.account().unwrap().epoch;
+    for parts in [
+        json!([{"qcReminderPart":"different","highLight":true}]),
+        json!([{"qcReminderPart":"合成","highLight":true},{"qcReminderPart":"https://private.invalid"}]),
+        json!([{"qcReminderPart":"合成","highLight":true},{"qcReminderPart":"bad\nline"}]),
+        json!([{"qcReminderPart":"合成","highLight":"true"}]),
+        Value::Array(vec![
+            json!({"qcReminderPart":"合成","highLight":true});
+            13
+        ]),
+    ] {
+        *api.reply.lock().unwrap() = json!({"code":200,"data":{"blocks":[
+            {"blockCode":"search_block_correction","resources":[{"baseInfo":{
+                "rewriteQuery":"正确关键词","searchQcReminder":{"qcReminders":parts}
+            }}]}
+        ]}});
+        let value = client
+            .search_results(&epoch, query(C::All))
+            .await
+            .unwrap()
+            .value;
+        assert_eq!(value.correction.as_deref(), Some("正确关键词"));
+        assert!(value.correction_parts.is_none());
+    }
+}
 #[tokio::test]
 async fn contradictory_empty_counts_stop_paging_and_malformed_results_are_errors() {
     let (_root, api, _, client) = fixture();

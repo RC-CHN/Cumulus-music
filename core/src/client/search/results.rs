@@ -6,7 +6,7 @@ use crate::{
     podcast::{Episode, Radio},
     protocol::api::identifier,
 };
-pub use api::{SearchCategory, SearchResultQuery};
+pub use api::{SearchCategory, SearchCorrectionPart, SearchResultQuery};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -71,6 +71,8 @@ pub struct SearchResultView {
     pub more: bool,
     pub next_offset: usize,
     pub correction: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correction_parts: Option<Vec<SearchCorrectionPart>>,
     pub unavailable_count: usize,
     pub notice: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -244,6 +246,7 @@ impl SearchResultView {
             total: None,
             more: false,
             correction: None,
+            correction_parts: None,
             unavailable_count: 0,
             notice: None,
             empty_title: None,
@@ -280,11 +283,20 @@ fn project(raw: Value, query: SearchResultQuery, uid: &str) -> Result<SearchResu
             let resources = array(block, "resources")?;
             if code == "search_block_correction" {
                 if query.correct && result.correction.is_none() {
-                    result.correction = resources
-                        .iter()
-                        .take(100)
-                        .filter_map(|v| correction(&v["baseInfo"]))
-                        .find(|word| word != query.keyword.trim());
+                    let candidate = resources.iter().take(100).find_map(|value| {
+                        let base = &value["baseInfo"];
+                        let dto = base.get("queryRewriteDTO").unwrap_or(base);
+                        let word = correction(dto).filter(|word| word != query.keyword.trim())?;
+                        Some((word, dto))
+                    });
+                    if let Some((word, dto)) = candidate {
+                        result.correction = Some(word);
+                        result.correction_parts = api::correction_parts(dto).filter(|parts| {
+                            parts.iter().any(|part| {
+                                part.highlight && part.text.trim() == query.keyword.trim()
+                            })
+                        });
+                    }
                 }
                 continue;
             }

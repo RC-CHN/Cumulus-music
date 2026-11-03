@@ -36,6 +36,7 @@ pub fn control(value: &Value) {
             "highlight",
             "short_pages",
             "correction",
+            "correction_parts",
             "card_error",
             "cover",
             "cover_error",
@@ -332,7 +333,7 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
             response["data"]["resources"][0]["lyrics"] = json!("A+B 原歌词");
         }
     }
-    if mode == "correction" {
+    if matches!(mode.as_str(), "correction" | "correction_parts") {
         let valid = match category {
             "all" => args["keyword"] == "合成错词",
             "songs" => args["keyword"] == "合成正词" && args["needCorrect"] == true,
@@ -344,9 +345,18 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
         }
         // Even a stale upstream reminder after opting out must not re-enable correction.
         if category == "all" {
+            let rewrite = if mode == "correction_parts" {
+                json!({"queryRewriteDTO":{"keyword":"合成错词","rewriteQuery":"合成正词","searchQcReminder":{"qcReminders":[
+                    {"qcReminderPart":"正在显示合成正词。<b>仍查</b> "},
+                    {"qcReminderPart":"合成错词","highLight":true},
+                    {"qcReminderPart":"。","highLight":false}
+                ]}}})
+            } else {
+                json!({"keyword":"合成错词","rewriteQuery":"合成正词"})
+            };
             response["data"]["blocks"].as_array_mut().unwrap().insert(
                 0,
-                json!({"blockCode":"search_block_correction","resources":[{"baseInfo":{"keyword":"合成错词","rewriteQuery":"合成正词"}}]}),
+                json!({"blockCode":"search_block_correction","resources":[{"baseInfo":rewrite}]}),
             );
             response["data"]["blocks"][2]["resources"][0]["baseInfo"]["name"] =
                 if args["needCorrect"] == false {

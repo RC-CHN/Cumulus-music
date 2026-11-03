@@ -64,6 +64,8 @@ def main():
                 'cardTitleMatchesVerified' if args.card_matches else 'voiceDirectVerified')
         stages = 3 if args.voice_direct else 2
         assert complete['ok'] and complete[flag] and complete['stageCount'] == stages
+        if args.correction_original:
+            assert complete['correctionPartsVerified']
         if args.voice_direct:
             assert complete['preparedTicketFenceVerified'] and complete['searchSongNamespaceVerified']
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0

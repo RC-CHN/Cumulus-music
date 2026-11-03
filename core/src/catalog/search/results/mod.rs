@@ -4,6 +4,48 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 pub(crate) mod v3;
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchCorrectionPart {
+    pub text: String,
+    pub highlight: bool,
+}
+
+/// Only the recovered reminder fragments cross into presentation, never its channel or actions.
+pub(crate) fn correction_parts(data: &Value) -> Option<Vec<SearchCorrectionPart>> {
+    let rows = data["searchQcReminder"]["qcReminders"].as_array()?;
+    if rows.is_empty() || rows.len() > 12 {
+        return None;
+    }
+    let mut total = 0;
+    let mut parts = Vec::with_capacity(rows.len());
+    for row in rows {
+        let text = row["qcReminderPart"].as_str()?;
+        let length = text.chars().count();
+        total += length;
+        if length == 0
+            || length > 256
+            || total > 512
+            || text.contains("://")
+            || text.chars().any(char::is_control)
+        {
+            return None;
+        }
+        let highlight = match row.get("highLight") {
+            None => false,
+            Some(value) => value.as_bool()?,
+        };
+        if highlight && text.trim().is_empty() {
+            return None;
+        }
+        parts.push(SearchCorrectionPart {
+            text: text.into(),
+            highlight,
+        });
+    }
+    (parts.iter().filter(|part| part.highlight).count() == 1).then_some(parts)
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SearchCategory {
