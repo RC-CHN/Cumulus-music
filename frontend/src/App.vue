@@ -2475,6 +2475,9 @@ onUnmounted(() => {
                       v-if="page.kind === 'style_recommendations'"
                       :epoch="account.epoch"
                       :applied="result?.styleTags"
+                      :revision="result?.revision"
+                      @refreshed="music.load()"
+                      @expired="music.bootstrap(false)"
                     />
                     <button
                       class="icon-button"

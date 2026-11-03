@@ -267,6 +267,12 @@ export function createTauriClient(): CoreClient {
     dailySongs: () => invoke('daily_songs'),
     styleRecommendations: (epoch) => invoke('style_recommendations', { epoch }),
     styleRecommendationCategories: (epoch) => invoke('style_recommendation_categories', { epoch }),
+    styleTagOperations: (epoch) => invoke('style_tag_operations', { epoch }),
+    saveStyleTag: (epoch, id, expectedRevision, categoryId, tagId) =>
+      invoke('save_style_tag', { epoch, id, expectedRevision, categoryId, tagId }),
+    reconcileStyleTag: (epoch, id) => invoke('reconcile_style_tag', { epoch, id }),
+    acceptCurrentStyleTag: (epoch, id, observedRevision) =>
+      invoke('accept_current_style_tag', { epoch, id, observedRevision }),
     likedIds: () => invoke('liked_ids'),
     setLiked: (epoch, id, liked) => invoke('set_liked', { epoch, id, liked }),
     likeRecovery: (epoch, offset) => invoke('like_recovery', { epoch, offset }),

@@ -49,6 +49,20 @@ export interface StyleCategory {
   name: string;
   tags: { id: string; name: string }[];
 }
+export interface StyleTagOperation {
+  id: string;
+  expectedRevision: string;
+  categoryId: string;
+  tagId: string;
+  phase:
+    | 'pending'
+    | 'unchanged'
+    | 'confirmed'
+    | 'rejected'
+    | 'uncertain'
+    | 'accepted_current_state';
+  observed: { categoryId: string; tagIds: string[]; revision: string } | null;
+}
 
 /** UI-facing use cases; no Tauri types or raw HTTP API in this interface. */
 export interface CoreClient
@@ -117,6 +131,20 @@ export interface CoreClient
   dailySongs(): Promise<AccountData<TrackPage>>;
   styleRecommendations(epoch: string): Promise<AccountData<TrackPage>>;
   styleRecommendationCategories(epoch: string): Promise<AccountData<StyleCategory[]>>;
+  styleTagOperations(epoch: string): Promise<AccountData<StyleTagOperation[]>>;
+  saveStyleTag(
+    epoch: string,
+    id: string,
+    expectedRevision: string,
+    categoryId: string,
+    tagId: string,
+  ): Promise<AccountData<StyleTagOperation>>;
+  reconcileStyleTag(epoch: string, id: string): Promise<AccountData<StyleTagOperation>>;
+  acceptCurrentStyleTag(
+    epoch: string,
+    id: string,
+    observedRevision: string,
+  ): Promise<AccountData<StyleTagOperation>>;
   likedIds(): Promise<AccountData<string[]>>;
   setLiked(epoch: string, id: string, liked: boolean): Promise<AccountData<LikeResult>>;
 }
