@@ -56,7 +56,7 @@ fn validate_quality_target(
     Ok(())
 }
 
-type EngineFactory = Arc<dyn Fn() -> Result<Box<dyn AudioEngine>> + Send + Sync>;
+pub(super) type EngineFactory = Arc<dyn Fn() -> Result<Box<dyn AudioEngine>> + Send + Sync>;
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum NativeTransportPolicy {
     Ordinary,
@@ -68,7 +68,7 @@ pub(super) struct PlayerHost {
     relay_enabled: bool,
     session: Arc<AccountSession>,
     store: Arc<StateStore>,
-    factory: EngineFactory,
+    pub(super) factory: EngineFactory,
     output: Arc<crate::playback::output::OutputRuntime>,
     inspector: OnceCell<Arc<Mutex<Box<dyn AudioEngine>>>>,
     pub(super) controller: OnceCell<Arc<PlaybackController>>,

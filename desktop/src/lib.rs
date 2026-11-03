@@ -8,6 +8,7 @@ pub mod captcha;
 mod catalog;
 mod clipboard;
 mod cloud;
+mod cold_offline;
 mod collections;
 mod commands;
 mod comments;
@@ -86,6 +87,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
             }
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 if window.label() == "main" {
+                    cold_offline::close(window.app_handle());
                     desktop_lyrics::dismiss(window.app_handle(), None);
                     mini::dismiss(window.app_handle(), None, false);
                     lifecycle::stop(window.app_handle());
@@ -163,6 +165,12 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 return true;
             }
             let handler: fn(tauri::ipc::Invoke<R>) -> bool = tauri::generate_handler![
+                cold_offline::cold_offline_open,
+                cold_offline::cold_offline_next,
+                cold_offline::cold_offline_play,
+                cold_offline::cold_offline_stop,
+                cold_offline::cold_offline_status,
+                cold_offline::cold_offline_close,
                 clipboard::copy_text,
                 mini::commands::mini_enter,
                 desktop_lyrics::settings::desktop_lyric_settings,

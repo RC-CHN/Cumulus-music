@@ -9,6 +9,7 @@ use crate::{
     download::service::{DownloadOrigin, DownloadTask, TASKS},
     media::open_regular,
     membership::Quality,
+    playback::engine::pinned_audio_format,
     storage::StateStore,
 };
 use serde::Serialize;
@@ -61,14 +62,14 @@ pub struct ColdOfflineAudioRow {
 }
 
 /// Kept by the native host; never serialize a database cursor to the renderer.
-pub struct ColdOfflineCursor<'a> {
-    grant: &'a ColdOfflineGrant,
+pub struct ColdOfflineCursor {
+    grant: uuid::Uuid,
     after: String,
 }
 
-pub struct ColdOfflineAudioPage<'a> {
+pub struct ColdOfflineAudioPage {
     pub rows: Vec<ColdOfflineAudioRow>,
-    pub next: Option<ColdOfflineCursor<'a>>,
+    pub next: Option<ColdOfflineCursor>,
 }
 
 struct Eligible {
@@ -148,17 +149,17 @@ fn text(value: &Value) -> String {
         .collect()
 }
 
-pub(crate) fn list_plain_audio<'a>(
-    grant: &'a ColdOfflineGrant,
+pub(crate) fn list_plain_audio(
+    grant: uuid::Uuid,
     store: &StateStore,
     owner: &str,
-    after: Option<&ColdOfflineCursor<'_>>,
+    after: Option<&ColdOfflineCursor>,
     limit: usize,
-) -> Result<ColdOfflineAudioPage<'a>> {
+) -> Result<ColdOfflineAudioPage> {
     if !(1..=PAGE_LIMIT).contains(&limit) {
         return Err(Error::InvalidInput("invalid cold offline page size"));
     }
-    if after.is_some_and(|cursor| !std::ptr::eq(cursor.grant, grant)) {
+    if after.is_some_and(|cursor| cursor.grant != grant) {
         return Err(Error::StaleResponse);
     }
     let records = store.transaction(|tx| {
@@ -189,7 +190,11 @@ pub(crate) fn list_plain_audio<'a>(
             ) => continue,
             Err(error) => return Err(error),
         };
-        if !unchanged(store, owner, &id, &raw, &item.ledger_id, &item.ledger)? {
+        if open_regular(&item.path)
+            .and_then(|mut file| pinned_audio_format(&mut file))
+            .is_err()
+            || !unchanged(store, owner, &id, &raw, &item.ledger_id, &item.ledger)?
+        {
             continue;
         }
         let song = item.task.song.as_ref().unwrap_or(&Value::Null);
@@ -242,6 +247,7 @@ pub(crate) fn open_plain_audio(
         ..
     } = eligible(store, owner, task_id, &raw)?;
     let mut file = open_regular(&path)?;
+    pinned_audio_format(&mut file)?;
     let before = file.metadata()?;
     if before.len() != record.integrity.bytes {
         return Err(Error::Media("cold offline file changed"));

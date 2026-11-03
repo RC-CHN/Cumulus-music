@@ -262,9 +262,15 @@ async fn native_plain_selection_opens_owned_published_bytes_and_rechecks_integri
         .store()
         .put("1", "download_tasks_v1", &id, &task)
         .unwrap();
-    fs::write(row.path.as_ref().unwrap(), b"tampered").unwrap();
+    let media = row.path.as_ref().unwrap();
+    let mut tampered = fs::read(media).unwrap();
+    *tampered.last_mut().unwrap() ^= 1;
+    fs::write(media, tampered).unwrap();
     assert_eq!(grant.list_plain_audio(None, 1).unwrap().rows.len(), 1);
     assert!(grant.open_plain_audio(&id).is_err());
+    fs::write(media, b"not a supported audio header").unwrap();
+    assert!(grant.list_plain_audio(None, 1).unwrap().rows.is_empty());
+    fs::write(media, FLAC).unwrap();
 
     let store = registry.store();
     let path = std::path::Path::new(row.path.as_ref().unwrap())

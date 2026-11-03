@@ -19,6 +19,7 @@ pub struct ColdOfflineGrant {
     registry: Arc<ProfileRegistry>,
     online: Arc<AccountSession>,
     generation: u64,
+    cursor_id: Uuid,
     credentials: Arc<Credentials>,
     binding: Binding,
     revoked: AtomicBool,
@@ -93,6 +94,7 @@ impl ProfileRegistry {
             registry: self.clone(),
             online,
             generation: snapshot.token.generation,
+            cursor_id: Uuid::new_v4(),
             credentials,
             binding,
             revoked: AtomicBool::new(false),
@@ -117,12 +119,12 @@ impl ColdOfflineGrant {
     /// the open path repeats eligibility checks and verifies the bytes.
     pub fn list_plain_audio(
         &self,
-        after: Option<&crate::download::offline::ColdOfflineCursor<'_>>,
+        after: Option<&crate::download::offline::ColdOfflineCursor>,
         limit: usize,
-    ) -> Result<crate::download::offline::ColdOfflineAudioPage<'_>> {
+    ) -> Result<crate::download::offline::ColdOfflineAudioPage> {
         self.require()?;
         let page = crate::download::offline::list_plain_audio(
-            self,
+            self.cursor_id,
             &self.registry.store,
             &self.binding.uid,
             after,

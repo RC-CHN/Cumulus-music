@@ -37,8 +37,8 @@ impl MusicClient {
 
     pub async fn restore_account(&self) -> Result<AccountView> {
         match self.session.refresh().await {
-            Ok(_) => (),
-            Err(error) if error.is_service_code(301) => (),
+            Ok(_) => self.cold_offline_close().await?,
+            Err(error) if error.is_service_code(301) => self.cold_offline_close().await?,
             Err(Error::LoginDeferred) => (),
             Err(error) => return Err(error),
         }

@@ -7,12 +7,16 @@ use crate::{
     mv::playback::VideoCommand,
     playback::{controller::PlaybackCommand, engine::*},
 };
-use std::sync::{Arc, Mutex, atomic::Ordering};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicU64, Ordering},
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Owner {
     Audio,
     Video,
+    ColdOffline,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct FocusSnapshot {
@@ -32,8 +36,29 @@ struct State {
 pub(super) struct MediaFocus {
     state: Mutex<State>,
     handoff: tokio::sync::Mutex<()>,
+    cold_allowed: AtomicU64,
 }
 impl MediaFocus {
+    pub fn cold_is_current(&self, lease: u64) -> bool {
+        self.cold_allowed.load(Ordering::Acquire) == lease
+    }
+    pub fn release_cold(&self, lease: u64) {
+        if let Ok(mut state) = self.state.lock()
+            && state.generation == lease
+            && state.allowed == Some(Owner::ColdOffline)
+        {
+            self.cold_allowed.store(0, Ordering::Release);
+            state.allowed = None;
+        }
+    }
+    pub fn start_cold(&self, lease: u64, start: impl FnOnce() -> Result<()>) -> Result<()> {
+        let state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
+        if state.generation != lease || state.allowed != Some(Owner::ColdOffline) {
+            return Err(Error::StaleResponse);
+        }
+        start()
+    }
+
     pub fn snapshot(&self) -> Result<FocusSnapshot> {
         let state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
         Ok(FocusSnapshot {
@@ -49,7 +74,7 @@ impl MediaFocus {
     }
     pub fn automatic_audio_generation(&self) -> Result<Option<u64>> {
         let state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
-        Ok((state.allowed != Some(Owner::Video)).then_some(state.generation))
+        Ok((matches!(state.allowed, None | Some(Owner::Audio))).then_some(state.generation))
     }
     pub fn check(&self, lease: u64, owner: Owner) -> Result<()> {
         let state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
@@ -68,9 +93,11 @@ impl MusicClient {
                 .generation
                 .checked_add(1)
                 .ok_or(Error::State("media focus generation exhausted"))?;
+            self.focus.cold_allowed.store(0, Ordering::Release);
             state.allowed = None;
         }
         let _handoff = self.focus.handoff.lock().await;
+        self.cold_offline_close().await?;
         self.player.selection.fetch_add(1, Ordering::AcqRel);
         self.mv.retire_stale(&token).await?;
         if let Some(controller) = self.player.controller.get() {
@@ -114,7 +141,7 @@ impl MusicClient {
             let mut state = self.focus.state.lock().map_err(|_| Error::LockPoisoned)?;
             if expected.is_some_and(|expected| match expected {
                 ExpectedFocus::Automatic(g) => {
-                    g != state.generation || state.allowed == Some(Owner::Video)
+                    g != state.generation || !matches!(state.allowed, None | Some(Owner::Audio))
                 }
                 ExpectedFocus::Native(value) => {
                     value.generation != state.generation || value.owner != state.allowed
@@ -126,6 +153,7 @@ impl MusicClient {
                 .generation
                 .checked_add(1)
                 .ok_or(Error::State("media focus generation exhausted"))?;
+            self.focus.cold_allowed.store(0, Ordering::Release);
             state.allowed = None;
             state.generation
         };
@@ -143,7 +171,19 @@ impl MusicClient {
         // Account replacement waits for old MV output to stop, including when
         // a concurrent snapshot is constructing the next account's controller.
         self.mv.retire_stale(token).await?;
+        if owner != Owner::ColdOffline {
+            self.cold_offline.stop_engine().await?;
+        }
         match owner {
+            Owner::ColdOffline => {
+                self.player.selection.fetch_add(1, Ordering::AcqRel);
+                if let Some(controller) = self.player.controller.get() {
+                    controller.command(token, PlaybackCommand::Suspend).await?;
+                }
+                if let Some(controller) = self.mv.existing(token)? {
+                    controller.command(token, VideoCommand::Suspend).await?;
+                }
+            }
             Owner::Audio => {
                 if let Some(controller) = self.mv.existing(token)? {
                     controller.command(token, VideoCommand::Suspend).await?;
@@ -162,6 +202,9 @@ impl MusicClient {
             return Err(Error::StaleResponse);
         }
         state.allowed = Some(owner);
+        if owner == Owner::ColdOffline {
+            self.focus.cold_allowed.store(lease, Ordering::Release);
+        }
         Ok(lease)
     }
 }

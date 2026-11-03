@@ -7,6 +7,8 @@ mod auth;
 pub use auth::LoginCaptchaProvider;
 mod catalog;
 mod cloud;
+mod cold_offline;
+pub use cold_offline::{ColdOfflinePageView, ColdOfflinePlayerView};
 mod collections;
 mod comments;
 mod content;
@@ -65,6 +67,7 @@ pub struct MusicClient {
     player: player::PlayerHost,
     output: Arc<crate::playback::output::OutputRuntime>,
     downloads: downloads::DownloadHost,
+    cold_offline: Arc<cold_offline::Host>,
     cloud: cloud::CloudHost,
     mv: mv::MvHost,
     focus: Arc<focus::MediaFocus>,
@@ -193,6 +196,7 @@ impl MusicClient {
             scene_fm: scene_fm::SceneFmHost::default(),
             local: local::LocalHost::new(registry.store()),
             cloud: cloud::CloudHost::new(session.clone()),
+            cold_offline: Arc::default(),
             downloads: downloads::DownloadHost::new(session.clone(), registry.store()),
             player: player::PlayerHost::new(
                 session.clone(),

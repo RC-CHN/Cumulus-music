@@ -17,6 +17,19 @@ impl From<Error> for ClientError {
             ("session_expired", "登录已失效，请重新登录", false)
         } else {
             match error.root() {
+                Error::State(
+                    "no verified cold offline profile"
+                    | "cold offline mode requires the active native profile",
+                ) => (
+                    "cold_offline_profile",
+                    "这台设备没有可用的离线账号，请联网验证账号后再试",
+                    false,
+                ),
+                Error::InvalidInput("unsupported pinned audio format") => (
+                    "cold_offline_format",
+                    "这首下载的音频格式暂不支持离线播放",
+                    false,
+                ),
                 Error::State("intelligence requires playable liked tracks") => (
                     "intelligence_empty",
                     "我喜欢的音乐中暂无可用于心动模式的歌曲",
