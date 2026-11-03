@@ -90,3 +90,12 @@
   分别发生 7 次和 6 次合成读取，每端点一次，原生时钟推进并停止。旧版为
   5 次；旧下载分支保留原有账本/摘要/断开探针传输后的本地解码校验。
   私有合成报告：.build/bounded-search-v3-read-Ra3ptX/{v3,control,legacy,download}/run/report.json。
+
+  2026-11-03 真实账号的限量验证：先通过上述合成用例，再使用此前明确授权的
+  独立会话副本只运行一次 --live-search-experiment。服务实际分到 v3；账号、
+  分流、页签、v3 综合、单曲、歌曲详情和 standard 音源各读一次。综合得到
+  9 个可展示区块，单曲页得到 6 首；选中同一首后 libmpv 时钟推进并停止。
+  没有真实账号资源写入、刷新或旧版综合回退。仅保留匿名计数报告
+  .build/bounded-search-v3-live-summary.json，临时会话、WebView 数据和日志已删除。
+  该结果验证真实 API 与 Linux 原生播放的衔接，仍是独立固定 WebView 与 null
+  输出，不能替代生产 Vue 布局、Windows 原生环境或实体声卡听感。
