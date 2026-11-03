@@ -16,6 +16,8 @@ fn sound(id: u64) -> Value {
     };
     json!({"id":id,"name":name,"subTitle":subtitle,"soundType":3,
         "coverUrl":"https://example.invalid/cover-sentinel",
+        "lightImg":"https://p1.music.126.net/cumulus-proof-artwork-light.png?token=private-sentinel",
+        "darkImg":"http://p1.music.126.net/cumulus-proof-artwork-dark.png#private-sentinel",
         "soundMaterialList":[{"link":"https://example.invalid/material-sentinel"}]})
 }
 

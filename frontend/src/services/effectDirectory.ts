@@ -4,6 +4,8 @@ export interface EffectCatalogueItem {
   id: number;
   name: string;
   subtitle: string;
+  light_artwork?: string;
+  dark_artwork?: string;
 }
 
 export type EffectAccess = 'allowed' | 'trial' | 'unavailable' | 'unknown';

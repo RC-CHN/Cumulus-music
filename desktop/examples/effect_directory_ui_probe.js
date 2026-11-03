@@ -24,6 +24,26 @@
   };
   const dialog = () => one('.effect-directory[open]');
   const text = () => dialog()?.textContent ?? '';
+  const artworkLoaded = () => (one('.effect-directory-card img')?.naturalWidth ?? 0) > 0;
+  const seenArtwork = [];
+  const artwork = (value) => {
+    if (typeof value !== 'string' || !value.includes('/cumulus-proof-artwork-')) return value;
+    seenArtwork.push(value);
+    const color = value.includes('-dark.png') ? '#274a66' : '#855748';
+    return 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="124" height="110"><rect width="124" height="110" fill="${color}"/></svg>`);
+  };
+  const imageSource = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+  Object.defineProperty(HTMLImageElement.prototype, 'src', {
+    ...imageSource, set(value) { imageSource.set.call(this, artwork(value)); },
+  });
+  const attribute = Element.prototype.setAttribute;
+  Element.prototype.setAttribute = function (name, value) {
+    return attribute.call(this, name, this instanceof HTMLImageElement && name === 'src' ? artwork(value) : value);
+  };
+  async function theme(value) {
+    window.dispatchEvent(new StorageEvent('storage', { key: 'cumulus.appearance.v1', newValue: value }));
+    await wait(() => document.documentElement.dataset.theme === value, 'appearance switched');
+  }
   async function capture(name) {
     await sleep(160);
     const bounds = dialog().getBoundingClientRect();
@@ -42,18 +62,24 @@
     assert(account?.status === 'authenticated', 'synthetic account not restored');
     await emit('resize', { width: 760, height: 540 });
     await wait(() => innerWidth === 760 && innerHeight === 540, 'compact window size');
+    await theme('dark');
     click(await wait(() => { const node = one('.equalizer-toggle'); return node && !node.disabled && node; }, 'EQ launcher'));
     const opener = button(await wait(() => one('.equalizer-dialog[open]'), 'EQ dialog'), '音效目录');
     click(opener);
     await wait(() => text().includes('合成空间音效'), 'featured list');
     click(one('.effect-directory-card'));
     await wait(() => text().includes('当前账号拥有试用权益'), 'read-only trial rights');
+    await wait(artworkLoaded, 'dark artwork displayed');
     await capture('01_trial');
+    await theme('light');
+    await wait(() => seenArtwork.some((url) => url.endsWith('-light.png')) &&
+      artworkLoaded(), 'light artwork displayed');
+    await capture('02_light_artwork');
     click(button(dialog(), '官方精选音效'));
     await wait(() => text().includes('合成均衡音效'), 'recommended list');
     click(one('.effect-directory-card'));
     await wait(() => text().includes('暂未确认当前账号的权益'), 'uncertain rights');
-    await capture('02_unknown');
+    await capture('03_unknown');
     const retry = button(dialog(), '重新查询权益');
     const bounds = retry.getBoundingClientRect();
     assert(retry.contains(document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)),
@@ -61,14 +87,18 @@
     click(retry);
     assert(document.activeElement === one('.effect-directory-card'), 'retry retains focus inside directory');
     await wait(() => text().includes('当前账号没有使用权益'), 'unavailable rights');
-    await capture('03_unavailable');
+    await capture('04_unavailable');
     click(button(dialog(), '更多音效'));
     await wait(() => text().includes('此分类暂无音效'), 'empty group');
-    await capture('04_empty');
+    await capture('05_empty');
     click(button(dialog(), '关闭音效目录'));
     await wait(() => !dialog() && document.activeElement === opener, 'return focus to equalizer');
-    await emit('complete', { ok: true, stageCount: 4 });
+    assert(seenArtwork.some((url) => url.endsWith('-dark.png')) && seenArtwork.every((url) =>
+      /^https:\/\/p1\.music\.126\.net\/cumulus-proof-artwork-(light|dark)\.png$/.test(url)), 'only sanitized artwork reached WebView');
+    await emit('complete', { ok: true, stageCount: 5, artworkVerified: true });
   } catch (error) {
-    await emit('failed', { message: String(error), body: document.body.innerText.slice(0, 2000) });
+    const image = one('.effect-directory-card img');
+    await emit('failed', { message: String(error), body: document.body.innerText.slice(0, 2000),
+      seenArtwork, image: image && { complete: image.complete, naturalWidth: image.naturalWidth, inline: image.src.startsWith('data:') } });
   }
 })();

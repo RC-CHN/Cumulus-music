@@ -13,6 +13,10 @@ pub struct EffectDirectoryRow {
     pub id: EffectId,
     pub name: String,
     pub subtitle: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub light_artwork: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dark_artwork: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -45,6 +49,8 @@ impl From<Sound> for EffectDirectoryRow {
             id: sound.id,
             name: text(&sound.name),
             subtitle: text(&sound.subtitle),
+            light_artwork: crate::protocol::artwork::original(&sound.native_record()["lightImg"]),
+            dark_artwork: crate::protocol::artwork::original(&sound.native_record()["darkImg"]),
         }
     }
 }

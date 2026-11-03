@@ -2,6 +2,7 @@
 import { onMounted, onUnmounted, ref, watch } from 'vue';
 import { failure, type AccountView } from '../services/contracts';
 import { useCore } from '../services/core';
+import { useAppearance } from '../composables/useAppearance';
 import type {
   EffectCatalogueItem,
   EffectCatalogueKind,
@@ -12,6 +13,8 @@ import Icon from './Icon.vue';
 const props = defineProps<{ account: AccountView }>();
 const emit = defineEmits<{ close: []; login: [] }>();
 const core = useCore();
+const { effective: appearance } = useAppearance();
+const failedArtwork = ref(new Set<string>());
 const dialog = ref<HTMLDialogElement>();
 const categories = [
   ['highly_recommended', '强推荐'],
@@ -35,6 +38,11 @@ const detailError = ref('');
 let listRequest = 0;
 let detailRequest = 0;
 let previousFocus: HTMLElement | null = null;
+
+function artworkFor(item: EffectCatalogueItem) {
+  const url = appearance.value === 'dark' ? item.dark_artwork : item.light_artwork;
+  return url && !failedArtwork.value.has(url) ? url : undefined;
+}
 
 async function load(category: EffectCatalogueKind) {
   if (props.account.status !== 'authenticated') return;
@@ -152,11 +160,21 @@ onUnmounted(() => {
           <li v-for="item in items" :key="item.id">
             <button
               class="effect-directory-card"
+              :class="{ 'with-artwork': artworkFor(item) }"
               :aria-pressed="selected?.id === item.id"
               type="button"
               @click="inspect(item)"
             >
-              <Icon name="music" />
+              <img
+                v-if="artworkFor(item)"
+                :key="artworkFor(item)"
+                :src="artworkFor(item)"
+                loading="lazy"
+                referrerpolicy="no-referrer"
+                alt=""
+                @error="failedArtwork.add(($event.currentTarget as HTMLImageElement).src)"
+              />
+              <Icon v-else name="music" />
               <strong>{{ item.name || '未命名音效' }}</strong>
               <span v-if="item.subtitle">{{ item.subtitle }}</span>
             </button>
@@ -238,6 +256,8 @@ onUnmounted(() => {
   list-style: none;
 }
 .effect-directory-card {
+  position: relative;
+  isolation: isolate;
   display: flex;
   width: 100%;
   min-height: 110px;
@@ -251,6 +271,28 @@ onUnmounted(() => {
   background: var(--surface-alt);
   border: 1px solid var(--line);
   border-radius: 8px;
+}
+.effect-directory-card img,
+.effect-directory-card.with-artwork::before {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+.effect-directory-card img {
+  z-index: -2;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.effect-directory-card.with-artwork::before {
+  content: '';
+  z-index: -1;
+  background: linear-gradient(transparent, #000b);
+}
+.effect-directory-card.with-artwork,
+.effect-directory-card.with-artwork span {
+  color: #fff;
 }
 .effect-directory-card[aria-pressed='true'] {
   border-color: var(--accent);

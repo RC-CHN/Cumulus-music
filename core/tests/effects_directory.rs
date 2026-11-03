@@ -17,6 +17,9 @@ use support::{ScriptApi, gate};
 fn sound() -> Value {
     json!({"id":200,"name":"Synthetic","subTitle":"Spatial","soundType":3,
         "coverUrl":"https://example.invalid/secret",
+        "lightImg":"http://p1.music.126.net/cover.jpg?token=private#secret",
+        "darkImg":"https://music.126.net.example.invalid/dark.jpg",
+        "lightGif":"https://p1.music.126.net/animation.gif?token=private",
         "vipAuthRespItem":{"authResult":{"canUse":true}},
         "soundMaterialList":[{"link":"https://example.invalid/private-material"}]})
 }
@@ -63,7 +66,7 @@ async fn one_catalogue_request_and_explicit_pc_detail_project_no_native_fields()
     assert_eq!(api.calls().len(), 1);
     assert_eq!(
         serde_json::to_value(rows).unwrap(),
-        json!([{"id":200,"name":"Synthetic","subtitle":"Spatial"}])
+        json!([{"id":200,"name":"Synthetic","subtitle":"Spatial","light_artwork":"https://p1.music.126.net/cover.jpg"}])
     );
     let view = library
         .directory_detail_for(&token, EffectId::new(200).unwrap())
@@ -71,7 +74,7 @@ async fn one_catalogue_request_and_explicit_pc_detail_project_no_native_fields()
         .unwrap();
     assert_eq!(
         serde_json::to_value(view).unwrap(),
-        json!({"id":200,"name":"Synthetic","subtitle":"Spatial","access":"trial"})
+        json!({"id":200,"name":"Synthetic","subtitle":"Spatial","light_artwork":"https://p1.music.126.net/cover.jpg","access":"trial"})
     );
     let calls = api.calls();
     assert_eq!(

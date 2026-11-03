@@ -4,26 +4,7 @@ use super::dto::{
 use crate::{Error, Result, protocol::api::identifier};
 use serde_json::Value;
 
-/// Only public image CDNs. Never pass arbitrary service-controlled URLs to a
-/// WebView; artwork requests carry no account credentials or signed queries.
-pub(super) fn artwork(value: &Value) -> Option<String> {
-    let mut url = url::Url::parse(value.as_str()?).ok()?;
-    let host = url.host_str()?;
-    if !["music.126.net", "music.163.com"]
-        .iter()
-        .any(|suffix| host.ends_with(&format!(".{suffix}")))
-        || !["http", "https"].contains(&url.scheme())
-        || !url.username().is_empty()
-        || url.password().is_some()
-        || url.port().is_some()
-    {
-        return None;
-    }
-    url.set_scheme("https").ok()?;
-    url.set_query(Some("param=320y320"));
-    url.set_fragment(None);
-    Some(url.into())
-}
+pub(super) use crate::protocol::artwork::square as artwork;
 pub(super) fn string(value: &Value) -> String {
     value.as_str().unwrap_or_default().into()
 }
