@@ -451,3 +451,109 @@ test('lyric append follows raw continuation, preserves distinct occurrences, and
   assert.equal(result.more, false);
   assert.match(result.notice ?? '', /浏览上限/);
 });
+
+function songPage(q: SearchResultQuery, ids: string[], nextOffset: number, more = true) {
+  const response = view(q);
+  response.value.more = more;
+  response.value.nextOffset = nextOffset;
+  response.value.sections = [
+    {
+      id: 'songs',
+      title: '单曲',
+      category: 'songs',
+      items: ids.map((id) => ({
+        kind: 'song',
+        track: {
+          id,
+          name: id,
+          artists: [],
+          album: '',
+          coverUrl: null,
+          durationMs: 0,
+          fee: 0,
+          missing: false,
+          local: false,
+        },
+        excerpt: [],
+        excerptTruncated: false,
+      })),
+    },
+  ];
+  return response;
+}
+
+test('song waterfall retains its prefix and exact cursor through retry and numbered fallback', async () => {
+  const calls: [number, number][] = [];
+  let fail = true;
+  const model = useSearchResults(
+    {
+      searchResults: async (_epoch, q) => {
+        calls.push([q.offset, q.limit]);
+        if (q.limit === 30) return songPage(q, ['20'], 30, false);
+        if (q.offset === 0) return songPage(q, ['1', '2'], 10);
+        if (q.offset === 10) {
+          if (fail) throw { code: 'network', message: '网络暂不可用' };
+          // Raw cursor advances even when this page repeats previous results.
+          return songPage(q, ['1', '2'], 20);
+        }
+        return songPage(q, ['2', '3', '4'], 30, false);
+      },
+    },
+    () => assert.fail('no expiry'),
+  );
+  const songs = { ...query, category: 'songs' as const, limit: 10 };
+  const ids = () =>
+    model.view.value?.sections[0]?.items.map((item) => item.kind === 'song' && item.track.id);
+  const position = { top: 0, tracks: 48, focus: 'song-row:3:2', focusAction: 'album' };
+  model.connect(account);
+  await model.open(songs, true, 1);
+  model.savePosition(position);
+  await model.more();
+  assert.deepEqual(ids(), ['1', '2']);
+  assert.equal(model.moreError.value, '网络暂不可用');
+  await model.open({ ...songs, limit: 30 }, true, 1);
+  assert.deepEqual(ids(), ['20']);
+  await model.open(songs, true, 1);
+  assert.deepEqual(ids(), ['1', '2']);
+  assert.deepEqual(model.position.value, position);
+  assert.equal(model.moreError.value, '网络暂不可用');
+  fail = false;
+  await model.more();
+  assert.deepEqual(ids(), ['1', '2']);
+  assert.equal(model.view.value?.more, true);
+  await model.more();
+  assert.deepEqual(ids(), ['1', '2', '3', '4']);
+  assert.deepEqual(calls, [
+    [0, 10],
+    [10, 10],
+    [0, 30],
+    [10, 10],
+    [20, 10],
+  ]);
+  assert.equal(model.view.value?.more, false);
+});
+
+test('song waterfall bounds the loaded playback selection and stops at the cap', async () => {
+  let requests = 0;
+  const model = useSearchResults(
+    {
+      searchResults: async (_epoch, q) => {
+        requests++;
+        return songPage(
+          q,
+          Array.from({ length: 10 }, (_, i) => String(q.offset + i + 1)),
+          q.offset + 10,
+        );
+      },
+    },
+    () => assert.fail('no expiry'),
+  );
+  model.connect(account);
+  await model.open({ ...query, category: 'songs', limit: 10 });
+  for (let i = 0; i < 52; i++) await model.more();
+  const result = model.view.value!;
+  assert.equal(requests, 50);
+  assert.equal(result.sections[0]?.items.length, 500);
+  assert.equal(result.more, false);
+  assert.match(result.notice ?? '', /单曲结果已达到本次连续浏览上限/);
+});

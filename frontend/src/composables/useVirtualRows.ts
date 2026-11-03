@@ -43,6 +43,13 @@ export function useVirtualRows(
     if (container.value) container.value.scrollTop = 0;
     range.value = rowWindow(count(), getRowHeight(), height, 0, undefined, buffer);
   }
+  function restore(top: number) {
+    const element = container.value;
+    if (!element || !Number.isFinite(top)) return;
+    element.scrollTop = Math.max(0, top);
+    height = element.clientHeight;
+    update();
+  }
   function center(index: number) {
     const element = container.value;
     if (!element) return false;
@@ -99,6 +106,7 @@ export function useVirtualRows(
     end: computed(() => range.value.end),
     onScroll,
     reset,
+    restore,
     center,
   };
 }

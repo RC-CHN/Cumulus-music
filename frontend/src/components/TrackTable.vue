@@ -30,6 +30,7 @@ const {
   end,
   onScroll,
   reset,
+  restore: restoreScroll,
   center,
 } = useVirtualRows(() => props.tracks.length, rowHeight);
 const rows = computed(() => props.tracks.slice(start.value, end.value));
@@ -61,7 +62,7 @@ async function locate() {
     ?.querySelector<HTMLElement>(`[aria-rowindex="${index + 2}"]`)
     ?.focus({ preventScroll: true });
 }
-defineExpose({ locate });
+defineExpose({ locate, restoreScroll });
 </script>
 <template>
   <div class="track-table" role="table" :aria-rowcount="tracks.length + 1">

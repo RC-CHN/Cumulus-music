@@ -15,7 +15,7 @@ import {
   type SearchSection,
 } from '../../services/search';
 import { useLyricWindow } from '../../composables/useLyricWindow';
-import { useSearchResults } from '../../composables/useSearchResults';
+import { SEARCH_PLAYBACK_ROW_LIMIT, useSearchResults } from '../../composables/useSearchResults';
 import { useMotion } from '../../composables/useMotion';
 import { createPageTransition } from '../../services/pageTransition';
 import { useCore } from '../../services/core';
@@ -98,9 +98,13 @@ const matchKeyword = computed(() =>
   category.value === 'all' ? props.keyword : (rewrite.value ?? requestKeyword.value),
 );
 const lyrics = computed(() => category.value === 'lyrics');
+const songWaterfall = computed(() => category.value === 'songs' && props.pagination === undefined);
+const firstNumberedSongPage: SearchPageStep = { offset: 0, number: 1, previous: undefined };
 const gridWaterfall = computed(() => ['artists', 'users', 'mvs'].includes(category.value));
-const waterfall = computed(() => lyrics.value || gridWaterfall.value);
-const limit = computed(() => (lyrics.value ? 10 : gridWaterfall.value ? 13 : 30));
+const waterfall = computed(() => lyrics.value || gridWaterfall.value || songWaterfall.value);
+const limit = computed(() =>
+  lyrics.value || songWaterfall.value ? 10 : gridWaterfall.value ? 13 : 30,
+);
 const visibleTabs = computed(() => displayedSearchCategories(model.tabs.value, category.value));
 const selected = computed(() => visibleTabs.value.find((c) => c.key === category.value)!);
 const tracks = (section: SearchSection) =>
@@ -145,6 +149,7 @@ const panel = ref<HTMLElement>(),
   tabs = ref<HTMLElement>();
 const moreButton = ref<HTMLButtonElement>(),
   moreFooter = ref<HTMLElement>();
+const searchSongTables = ref<InstanceType<typeof TrackTable>[]>([]);
 const lyricBody = ref<HTMLElement>();
 const lyricItems = computed(() =>
   lyrics.value ? (view.value?.sections[0]?.items.filter((item) => item.kind === 'song') ?? []) : [],
@@ -208,26 +213,33 @@ let restoring = false,
 let scrollDeadline: ReturnType<typeof setTimeout> | undefined;
 let activeCategory = '';
 let observer: ResizeObserver | undefined;
+function trackFocusKey(row?: HTMLElement | null) {
+  return row?.dataset.trackId
+    ? `song-row:${row.getAttribute('aria-rowindex')}:${row.dataset.trackId}`
+    : undefined;
+}
 function checkpoint(focus = false) {
   if (!panel.value || restoring || loading.value) return;
-  const card =
-    focus && document.activeElement instanceof Element
-      ? document.activeElement.closest<HTMLElement>('[data-result-key]')
+  const active =
+    focus && document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
+  const card = active?.closest<HTMLElement>('[data-result-key]');
+  const row =
+    activeCategory === 'songs'
+      ? active?.closest<HTMLElement>('.track-row[data-track-id]')
       : undefined;
+  const key = card?.dataset.resultKey ?? trackFocusKey(row);
   model.savePosition({
     top: panel.value.scrollTop,
     tracks: panel.value.querySelector('.track-scroll')?.scrollTop ?? 0,
-    focus: card?.dataset.resultKey,
-    focusAction:
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement.dataset.resultAction
-        : undefined,
+    focus: key,
+    focusAction: active?.dataset.resultAction,
     expandedLyrics: [...expandedLyrics.value],
     lyricAnchor: activeCategory === 'lyrics' ? lyricWindow.anchor() : undefined,
   });
 }
-function maybeMore() {
-  const element = panel.value;
+function maybeMore(songScroll?: HTMLElement) {
+  const element = songWaterfall.value ? songScroll : panel.value;
+  if (songWaterfall.value && (!element || element.scrollTop <= 0)) return;
   // An append updates the model before Vue paints the new spacer. Do not
   // treat the previous page's bottom as the end of the newly loaded list.
   if (
@@ -243,19 +255,31 @@ function maybeMore() {
     element &&
     view.value?.more &&
     !moreError.value &&
-    element.scrollHeight - element.scrollTop - element.clientHeight < (lyrics.value ? 60 : 180)
+    element.scrollHeight - element.scrollTop - element.clientHeight <
+      (lyrics.value || songWaterfall.value ? 60 : 180)
   )
     void model.more();
 }
-function scroll() {
+function scroll(event: Event) {
   checkpoint();
   if (lyrics.value) lyricWindow.schedule();
+  const target = event.target;
+  const songScroll =
+    songWaterfall.value &&
+    !restoring &&
+    target instanceof HTMLElement &&
+    target.classList.contains('track-scroll')
+      ? target
+      : undefined;
+  if (songWaterfall.value && !songScroll) return;
+  const generation = loadGeneration;
   if (!frame) {
     const update = () => {
       cancelAnimationFrame(frame);
       clearTimeout(scrollDeadline);
       frame = 0;
-      maybeMore();
+      if (generation === loadGeneration && (!songScroll || panel.value?.contains(songScroll)))
+        maybeMore(songScroll);
     };
     frame = requestAnimationFrame(update);
     scrollDeadline = setTimeout(update, 64);
@@ -299,13 +323,16 @@ async function restore() {
     const index = Number(position.focus.split(':')[1]);
     if (Number.isInteger(index)) lyricWindow.focus(index);
   }
-  const inner = panel.value.querySelector('.track-scroll');
-  if (inner) inner.scrollTop = position.tracks;
+  if (category.value === 'songs') searchSongTables.value[0]?.restoreScroll(position.tracks);
   await waitForViewportFrames(2);
   if (generation !== loadGeneration || !panel.value) return;
   if (position.focus) {
-    const card = [...panel.value.querySelectorAll<HTMLElement>('[data-result-key]')].find(
-      (n) => n.dataset.resultKey === position.focus,
+    const card = [
+      ...panel.value.querySelectorAll<HTMLElement>('[data-result-key], .track-row[data-track-id]'),
+    ].find(
+      (node) =>
+        node.dataset.resultKey === position.focus ||
+        (category.value === 'songs' && trackFocusKey(node) === position.focus),
     );
     const controls = [
       ...(card?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? []),
@@ -321,6 +348,9 @@ async function restore() {
 }
 async function load(reuse = false) {
   restoring = true;
+  cancelAnimationFrame(frame);
+  clearTimeout(scrollDeadline);
+  frame = 0;
   const generation = ++loadGeneration;
   activeCategory = category.value;
   await model.open(
@@ -349,11 +379,11 @@ watch(
   },
   { flush: 'post' },
 );
-watch(lyricWindow.height, maybeMore, { flush: 'post' });
+watch(lyricWindow.height, () => maybeMore(), { flush: 'post' });
 watch(
   () => view.value,
   () => {
-    if (!restoring) void nextTick(maybeMore);
+    if (!restoring) void nextTick(() => maybeMore());
   },
 );
 watch(
@@ -369,6 +399,7 @@ watch(
     requestKeyword.value,
     category.value,
     offset.value,
+    limit.value,
     props.correct,
     props.channel,
     props.searchId,
@@ -442,8 +473,12 @@ onBeforeUnmount(() => {
         </button>
       </div>
       <div v-if="category === 'songs'" class="search-result-actions">
+        <span id="search-song-batch-scope" class="sr-only">
+          {{ songWaterfall ? '仅限本次已加载的单曲' : '仅限当前页的单曲' }}
+        </span>
         <button
           class="primary"
+          aria-describedby="search-song-batch-scope"
           :disabled="!playable || !songs.some((t) => !t.missing)"
           @click="
             emit(
@@ -457,6 +492,7 @@ onBeforeUnmount(() => {
           <Icon name="play" />播放全部</button
         ><button
           class="secondary"
+          aria-describedby="search-song-batch-scope"
           :disabled="!songs.some((t) => !t.missing)"
           @click="
             emit(
@@ -485,7 +521,7 @@ onBeforeUnmount(() => {
       @after-enter="restore"
     >
       <div
-        :key="`${searchId}:${keyword}:${category}:${offset}:${correct}`"
+        :key="`${searchId}:${keyword}:${category}:${offset}:${limit}:${correct}`"
         id="search-result-panel"
         ref="panel"
         role="tabpanel"
@@ -648,6 +684,7 @@ onBeforeUnmount(() => {
             </div>
             <TrackTable
               v-else-if="section.items.some((i) => i.kind === 'song')"
+              ref="searchSongTables"
               :tracks="tracks(section)"
               :match-keyword="matchKeyword"
               :liked="liked"
@@ -706,7 +743,7 @@ onBeforeUnmount(() => {
             </button>
           </nav>
           <div
-            v-if="waterfall && count"
+            v-if="waterfall && (count || (songWaterfall && view.more))"
             ref="moreFooter"
             class="search-load-more"
             :aria-busy="loadingMore"
@@ -723,6 +760,13 @@ onBeforeUnmount(() => {
               {{ loadingMore ? '正在加载更多…' : moreError ? '重试加载更多' : '加载更多' }}
             </button>
             <span v-else>没有更多可显示的结果</span>
+            <button
+              v-if="songWaterfall && (moreError || count >= SEARCH_PLAYBACK_ROW_LIMIT)"
+              class="text-button"
+              @click="turn(category, firstNumberedSongPage)"
+            >
+              使用分页查看
+            </button>
           </div>
         </template>
       </div>

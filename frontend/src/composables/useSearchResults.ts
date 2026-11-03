@@ -14,8 +14,8 @@ import type {
   SearchResultsClient,
 } from '../services/search.ts';
 
-// Keep a lyric visit within the native search playback selection and renderer memory limits.
-const LYRIC_ROW_LIMIT = 500;
+// Keep a song/lyric visit within the native playback selection and renderer limits.
+export const SEARCH_PLAYBACK_ROW_LIMIT = 500;
 const LYRIC_TEXT_LIMIT = 2 * 1024 * 1024;
 const lyricSize = (item: SearchResultView['sections'][number]['items'][number]) =>
   item.kind === 'song' ? item.excerpt.reduce((size, line) => size + line.length + 1, 0) : 0;
@@ -142,9 +142,16 @@ export function useSearchResults(
         throw { code: 'unavailable', message: '搜索结果未更新，请重试' };
       let added = 0;
       const lyrics = previous.query.category === 'lyrics';
+      const songs = previous.query.category === 'songs';
+      let songRows = songs
+        ? previous.sections.reduce((sum, section) => sum + section.items.length, 0)
+        : 0;
+      const songKeys = new Set(
+        songs ? previous.sections.flatMap((section) => section.items.map(searchCardKey)) : [],
+      );
       let lyricRows = 0,
         lyricUnits = 0,
-        lyricLimit = false;
+        capped = false;
       if (lyrics)
         for (const section of previous.sections)
           for (const item of section.items) {
@@ -163,13 +170,23 @@ export function useSearchResults(
           const key = searchCardKey(item);
           if (lyrics) {
             const size = lyricSize(item);
-            if (lyricRows >= LYRIC_ROW_LIMIT || lyricUnits + size > LYRIC_TEXT_LIMIT) {
-              lyricLimit = true;
+            if (lyricRows >= SEARCH_PLAYBACK_ROW_LIMIT || lyricUnits + size > LYRIC_TEXT_LIMIT) {
+              capped = true;
               break;
             }
             // Two lyric hits may refer to the same song but have different excerpts.
             lyricRows++;
             lyricUnits += size;
+            section.items.push(item);
+            added++;
+          } else if (songs) {
+            if (songKeys.has(key)) continue;
+            if (songRows >= SEARCH_PLAYBACK_ROW_LIMIT) {
+              capped = true;
+              break;
+            }
+            songKeys.add(key);
+            songRows++;
             section.items.push(item);
             added++;
           } else if (!seen.has(key)) {
@@ -178,20 +195,28 @@ export function useSearchResults(
             added++;
           }
         }
-        if (lyricLimit) break;
+        if (capped) break;
       }
-      lyricLimit ||= lyrics && next.more && lyricRows === LYRIC_ROW_LIMIT;
+      capped ||=
+        next.more &&
+        (lyrics
+          ? lyricRows === SEARCH_PLAYBACK_ROW_LIMIT
+          : songs && songRows === SEARCH_PLAYBACK_ROW_LIMIT);
       view.value = {
         ...next,
         query: previous.query,
         correction: previous.query.correct ? (next.correction ?? previous.correction) : null,
         sections,
-        more: next.more && added > 0 && !lyricLimit,
+        more: next.more && (added > 0 || songs) && !capped,
         unavailableCount: previous.unavailableCount + next.unavailableCount,
-        notice: lyricLimit
-          ? '歌词结果已达到本次浏览上限，可更换关键词继续查找。'
+        notice: capped
+          ? lyrics
+            ? '歌词结果已达到本次浏览上限，可更换关键词继续查找。'
+            : '单曲结果已达到本次连续浏览上限，可使用分页查看或更换关键词。'
           : !added && next.more
-            ? '没有更多可显示的结果，已保留当前内容'
+            ? songs
+              ? '这一批没有新的单曲，可以继续加载。'
+              : '没有更多可显示的结果，已保留当前内容'
             : next.notice,
       };
       save();
