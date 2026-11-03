@@ -101,7 +101,10 @@
     }
     await search();
     await stage("search");
-    await click(() => one(`${songPanel} ${songRow} .track-play`), "search play control");
+    if (window.__mainFlowHttpsEof)
+      await click(() => one(".search-result-actions .primary"), "search play all for the EOF queue");
+    else
+      await click(() => one(`${songPanel} ${songRow} .track-play`), "search play control");
     if (window.__mainFlowHttpsRetry) {
       const retry = () => button("重试", one(".playback-message"));
       const openFailure = () => state() === "error" &&
