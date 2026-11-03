@@ -54,6 +54,28 @@ async fn prepared_ticket_is_current_single_use_and_cannot_override_an_intervenin
 }
 
 #[tokio::test]
+async fn speed_preference_preserves_prepared_selection_and_applies_to_the_next_track() {
+    let (_dir, _api, _session, client, _count) = fixture();
+    let first = client.play_selection("1", songs("1")).await.unwrap();
+    let ticket = client
+        .prepare_play_selection("1", &first.queue_revision, first.play_id.as_deref())
+        .unwrap();
+    let changed = client
+        .player_action("1", PlayerAction::Speed { value: 1.5 })
+        .await
+        .unwrap();
+    assert_eq!(changed.play_id, first.play_id);
+    assert_eq!(changed.queue_revision, first.queue_revision);
+    assert_eq!(changed.speed, 1.5);
+    let next = client
+        .commit_prepared_selection("1", &ticket, songs("2"))
+        .await
+        .unwrap();
+    assert_eq!(next.track.as_ref().unwrap().id, "2");
+    assert_eq!(next.speed, 1.5);
+}
+
+#[tokio::test]
 async fn prepared_selection_cannot_replace_a_newer_pending_native_intent() {
     let (_dir, api, _session, client, _count) = fixture();
     let view = client.player_snapshot("1").await.unwrap();

@@ -116,6 +116,7 @@ impl Actor {
                 | PlaybackCommand::Queue
                 | PlaybackCommand::SyncQueue
                 | PlaybackCommand::Volume(_)
+                | PlaybackCommand::Speed(_)
                 | PlaybackCommand::Equalizer { .. }
                 | PlaybackCommand::SaveCustomEqualizer { .. }
                 | PlaybackCommand::RetryEqualizer
