@@ -101,3 +101,89 @@ async fn style_tag_intent_requires_fresh_preference_and_can_accept_observed_mism
     assert_eq!(accepted.value.phase, StyleTagPhase::AcceptedCurrentState);
     assert_eq!(api.style_tag_writes.load(Ordering::SeqCst), 1);
 }
+
+#[tokio::test]
+async fn style_tag_intent_reads_old_receipt_and_tracks_legacy_writer_without_replay() {
+    let (dir, api, _session, client, _) = fixture();
+    api.style_tag_state.store(1, Ordering::SeqCst);
+    let revision = revision(&client).await;
+    assert!(client.style_tag_operations("1").unwrap().value.is_empty());
+    // A separate connection uses the original storage API and no client index.
+    let older = ProfileRegistry::open(dir.path(), ApiOrigin::Pc).unwrap();
+    let store = older.store();
+    let insert = |id: &str, phase: &str| {
+        store
+            .put(
+                "9",
+                "style-tag-intents-v1",
+                id,
+                &json!({
+                    "id": id, "expectedRevision": revision,
+                    "categoryId": "7", "tagId": "2", "phase": phase, "observed": null
+                }),
+            )
+            .unwrap();
+    };
+    let old_id = uuid::Uuid::new_v4().to_string();
+    insert(&old_id, "confirmed");
+    for _ in 0..20 {
+        insert(&uuid::Uuid::new_v4().to_string(), "confirmed");
+    }
+    let active_id = uuid::Uuid::new_v4().to_string();
+    insert(&active_id, "pending");
+
+    let active = client.style_tag_operations("1").unwrap().value;
+    assert_eq!(active.len(), 1);
+    assert_eq!(active[0].id, active_id);
+    let receipts = client.style_tag_receipts("1", Some(&old_id)).unwrap().value;
+    assert_eq!(receipts.len(), 2);
+    assert_eq!(receipts[0].id, active_id);
+    assert_eq!(receipts[1].id, old_id);
+    assert_eq!(receipts[1].phase, StyleTagPhase::Confirmed);
+    assert_eq!(
+        client
+            .style_tag_receipts("1", Some(&active_id))
+            .unwrap()
+            .value
+            .len(),
+        1
+    );
+    assert!(matches!(
+        client
+            .save_style_tag("1", &uuid::Uuid::new_v4().to_string(), &revision, "7", "2")
+            .await,
+        Err(Error::MutationUncertain)
+    ));
+    let old = client
+        .save_style_tag("1", &old_id, &revision, "7", "2")
+        .await
+        .unwrap();
+    assert_eq!(old.value.phase, StyleTagPhase::Confirmed);
+    insert(&active_id, "accepted_current_state");
+    assert!(client.style_tag_operations("1").unwrap().value.is_empty());
+    assert_eq!(api.style_tag_writes.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn style_tag_intent_fails_closed_for_unrecognized_persisted_phase() {
+    let (dir, api, _session, client, _) = fixture();
+    let older = ProfileRegistry::open(dir.path(), ApiOrigin::Pc).unwrap();
+    let id = uuid::Uuid::new_v4().to_string();
+    older
+        .store()
+        .put(
+            "9",
+            "style-tag-intents-v1",
+            &id,
+            &json!({"phase":"unknown"}),
+        )
+        .unwrap();
+    assert!(client.style_tag_operations("1").is_err());
+    assert!(
+        client
+            .save_style_tag("1", &uuid::Uuid::new_v4().to_string(), "style-1", "7", "2")
+            .await
+            .is_err()
+    );
+    assert_eq!(api.style_tag_writes.load(Ordering::SeqCst), 0);
+}

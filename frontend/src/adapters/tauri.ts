@@ -270,7 +270,7 @@ export function createTauriClient(): CoreClient {
     seededStyleRecommendations: (epoch, seed) =>
       invoke('seeded_style_recommendations', { epoch, seed }),
     styleRecommendationCategories: (epoch) => invoke('style_recommendation_categories', { epoch }),
-    styleTagOperations: (epoch) => invoke('style_tag_operations', { epoch }),
+    styleTagOperations: (epoch, id) => invoke('style_tag_operations', { epoch, id }),
     saveStyleTag: (epoch, id, expectedRevision, categoryId, tagId) =>
       invoke('save_style_tag', { epoch, id, expectedRevision, categoryId, tagId }),
     reconcileStyleTag: (epoch, id) => invoke('reconcile_style_tag', { epoch, id }),

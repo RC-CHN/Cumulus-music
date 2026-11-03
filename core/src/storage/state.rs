@@ -11,6 +11,13 @@ use std::{
     time::Duration,
 };
 
+// SQLite maintains this index on the original journal rows even for writes
+// from clients that predate bounded receipt reads. Unknown/corrupt phases are
+// included so they cannot silently unblock a new save.
+const STYLE_TAG_UNRESOLVED: &str = "kind='style-tag-intents-v1' AND
+    (CASE WHEN json_valid(value) THEN coalesce(json_extract(value, '$.phase'), '') ELSE '' END)
+    NOT IN ('unchanged','confirmed','rejected','accepted_current_state')";
+
 pub struct StateStore {
     directory: PathBuf,
     connection: Mutex<Connection>,
@@ -56,6 +63,10 @@ impl StateStore {
                owner TEXT NOT NULL, kind TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,
                PRIMARY KEY(owner,kind,key));",
         )?;
+        connection.execute_batch(&format!(
+            "CREATE INDEX IF NOT EXISTS style_tag_unresolved_v1 ON state(owner,key)
+             WHERE {STYLE_TAG_UNRESOLVED};"
+        ))?;
         Ok(Self {
             directory,
             connection: Mutex::new(connection),
@@ -124,6 +135,24 @@ impl StateStore {
 }
 
 impl StateTransaction<'_> {
+    pub(crate) fn unresolved_style_tag(&self, owner: &str) -> Result<Option<(String, Value)>> {
+        let mut statement = self.connection.prepare_cached(&format!(
+            "SELECT key,value FROM state INDEXED BY style_tag_unresolved_v1
+             WHERE owner=? AND {STYLE_TAG_UNRESOLVED} ORDER BY key LIMIT 2"
+        ))?;
+        let mut rows = statement.query([owner])?;
+        let first = rows
+            .next()?
+            .map(|row| Ok::<_, Error>((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+            .transpose()?;
+        if rows.next()?.is_some() {
+            return Err(Error::State("multiple unresolved style tag intents"));
+        }
+        first
+            .map(|(key, value)| Ok((key, serde_json::from_str(&value)?)))
+            .transpose()
+    }
+
     pub(crate) fn change_stamp(&self) -> Result<(i64, i64)> {
         Ok(self.connection.query_row(
             "SELECT data_version,total_changes() FROM pragma_data_version",

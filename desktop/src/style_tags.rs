@@ -19,8 +19,11 @@ pub async fn style_recommendation_categories(
 pub fn style_tag_operations(
     client: tauri::State<'_, MusicClient>,
     epoch: String,
+    id: Option<String>,
 ) -> Result<AccountData<Vec<StyleTagOperation>>, ClientError> {
-    client.style_tag_operations(&epoch).map_err(Into::into)
+    client
+        .style_tag_receipts(&epoch, id.as_deref())
+        .map_err(Into::into)
 }
 
 #[tauri::command]

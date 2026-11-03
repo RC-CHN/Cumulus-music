@@ -107,32 +107,61 @@ impl MusicClient {
         Ok((owner, lock))
     }
 
-    fn stored_style_tags(&self, token: &SessionToken) -> Result<Vec<StyleTagOperation>> {
-        self.session.with_token(token, |owner| {
-            self.registry
-                .store()
-                .values(owner, JOURNAL)?
-                .into_iter()
-                .map(|(key, value)| {
-                    let op: StyleTagOperation = serde_json::from_value(value)?;
-                    validate_id(&key)?;
-                    if op.id != key || !valid_key(&op.category_id) || !valid_key(&op.tag_id) {
-                        return Err(Error::State("invalid style tag journal record"));
-                    }
-                    Ok(op)
-                })
-                .collect()
-        })
+    fn decode_style_tag(key: &str, value: Value) -> Result<StyleTagOperation> {
+        validate_id(key)?;
+        let op: StyleTagOperation = serde_json::from_value(value)?;
+        if op.id != key
+            || !valid_key(&op.expected_revision)
+            || !valid_key(&op.category_id)
+            || !valid_key(&op.tag_id)
+        {
+            return Err(Error::State("invalid style tag journal record"));
+        }
+        Ok(op)
     }
 
     pub fn style_tag_operations(&self, epoch: &str) -> Result<AccountData<Vec<StyleTagOperation>>> {
+        self.style_tag_receipts(epoch, None)
+    }
+
+    /// The existing list now contains only the unresolved operation and the
+    /// exact requested receipt, even if that receipt is arbitrarily old.
+    pub fn style_tag_receipts(
+        &self,
+        epoch: &str,
+        id: Option<&str>,
+    ) -> Result<AccountData<Vec<StyleTagOperation>>> {
+        if let Some(id) = id {
+            validate_id(id)?;
+        }
         let token = self.player_token(epoch)?;
-        let value = self.stored_style_tags(&token)?;
-        self.session.with_token(&token, |_| {
+        self.session.with_token(&token, |owner| {
+            let value = self.registry.store().transaction(|tx| {
+                let mut items = Vec::with_capacity(2);
+                if let Some((key, value)) = tx.unresolved_style_tag(owner)? {
+                    items.push(Self::decode_style_tag(&key, value)?);
+                }
+                if let Some(id) = id.filter(|id| items.first().is_none_or(|op| op.id != *id))
+                    && let Some(value) = tx.get(owner, JOURNAL, id)?
+                {
+                    items.push(Self::decode_style_tag(id, value)?);
+                }
+                Ok(items)
+            })?;
             Ok(AccountData {
                 epoch: epoch.into(),
                 value,
             })
+        })
+    }
+
+    fn style_tag_by_id(&self, token: &SessionToken, id: &str) -> Result<Option<StyleTagOperation>> {
+        self.session.with_token(token, |owner| {
+            self.registry
+                .store()
+                .get(owner, JOURNAL, id)?
+                .map(|value| Self::decode_style_tag(id, value))
+                .transpose()
         })
     }
 
@@ -198,8 +227,7 @@ impl MusicClient {
         }
         let token = self.player_token(epoch)?;
         let (owner, _lock) = self.style_tag_lock(&token)?;
-        let prior = self.stored_style_tags(&token)?;
-        if let Some(op) = prior.iter().find(|op| op.id == id) {
+        if let Some(op) = self.style_tag_by_id(&token, id)? {
             if op.expected_revision != expected_revision
                 || op.category_id != category_id
                 || op.tag_id != tag_id
@@ -209,11 +237,19 @@ impl MusicClient {
             return self.session.with_token(&token, |_| {
                 Ok(AccountData {
                     epoch: epoch.into(),
-                    value: op.clone(),
+                    value: op,
                 })
             });
         }
-        if prior.iter().any(|op| op.phase.unresolved()) {
+        let has_unresolved = self.session.with_token(&token, |owner| {
+            self.registry.store().transaction(|tx| {
+                tx.unresolved_style_tag(owner)?
+                    .map(|(key, value)| Self::decode_style_tag(&key, value))
+                    .transpose()
+                    .map(|op| op.is_some())
+            })
+        })?;
+        if has_unresolved {
             return Err(Error::MutationUncertain);
         }
         let displayed = self.session.with_token(&token, |_| {
@@ -324,9 +360,7 @@ impl MusicClient {
         let token = self.player_token(epoch)?;
         let (_owner, _lock) = self.style_tag_lock(&token)?;
         let op = self
-            .stored_style_tags(&token)?
-            .into_iter()
-            .find(|op| op.id == id)
+            .style_tag_by_id(&token, id)?
             .ok_or(Error::State("no style tag intent to reconcile"))?;
         if !op.phase.unresolved() {
             return self.session.with_token(&token, |_| {

@@ -91,17 +91,18 @@ async function readOperations() {
   const epoch = props.epoch;
   readingOperations.value = true;
   try {
-    const reply = await core.styleTagOperations(epoch);
+    const reply = await core.styleTagOperations(epoch, attempted.value);
     if (run !== dialogRun || epoch !== props.epoch || reply.epoch !== epoch) return;
     operationsKnown.value = true;
     const recovered = reply.value.find((value) => value.id === attempted.value);
     const active = reply.value.find(
       (value) => value.phase === 'pending' || value.phase === 'uncertain',
     );
-    if (active || recovered) publish(active ?? recovered!, !!recovered);
-    else if (attempted.value)
+    if (recovered) publish(recovered, true);
+    if (active && active.id !== recovered?.id) publish(active);
+    if (!active && !recovered && attempted.value)
       feedback.value = '尚未找到本次保存的回执。请稍后查看保存状态，避免重复提交。';
-    else if (unresolved.value) operation.value = undefined;
+    else if (!active && !recovered && unresolved.value) operation.value = undefined;
   } catch (issue) {
     if (run === dialogRun && epoch === props.epoch) {
       operationsKnown.value = false;

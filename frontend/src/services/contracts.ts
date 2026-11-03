@@ -141,7 +141,7 @@ export interface CoreClient
   styleHomeSeeds(epoch: string): Promise<AccountData<StyleSeedPage>>;
   seededStyleRecommendations(epoch: string, seed: StyleSeedHandle): Promise<AccountData<TrackPage>>;
   styleRecommendationCategories(epoch: string): Promise<AccountData<StyleCategory[]>>;
-  styleTagOperations(epoch: string): Promise<AccountData<StyleTagOperation[]>>;
+  styleTagOperations(epoch: string, id?: string): Promise<AccountData<StyleTagOperation[]>>;
   saveStyleTag(
     epoch: string,
     id: string,
