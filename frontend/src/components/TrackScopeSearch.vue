@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import Icon from '../Icon.vue';
+import Icon from './Icon.vue';
+
+defineProps<{ label: string; clearLabel: string }>();
 
 const keyword = defineModel<string>({ required: true });
 const field = ref<HTMLInputElement>();
@@ -19,18 +21,18 @@ function escape(event: KeyboardEvent) {
 </script>
 
 <template>
-  <div class="playlist-track-search" :class="{ 'has-keyword': keyword }">
+  <div class="track-scope-search" :class="{ 'has-keyword': keyword }">
     <Icon name="search" aria-hidden="true" />
     <input
       ref="field"
       v-model="keyword"
       type="search"
-      aria-label="搜索歌单歌曲"
+      :aria-label="label"
       placeholder="搜索"
       maxlength="128"
       @keydown.esc="escape"
     />
-    <button v-if="keyword" type="button" aria-label="清空歌单搜索" @click="clear">
+    <button v-if="keyword" type="button" :aria-label="clearLabel" @click="clear">
       <Icon name="close" aria-hidden="true" />
     </button>
   </div>

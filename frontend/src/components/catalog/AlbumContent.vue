@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import BoundedPanelTransition from '../BoundedPanelTransition.vue';
-import { computed, useId } from 'vue';
+import { computed, ref, useId } from 'vue';
 import type { AccountView, TrackView } from '../../services/contracts';
 import type { AlbumCard, CatalogResource } from '../../services/catalog';
 import type { TrackMenuRequest, TrackPlayGesture } from '../../services/trackMenu';
 import type { CatalogSession } from '../../composables/useCatalogSession';
 import type { AlbumTab } from '../../services/catalogNavigation';
 import TrackTable from '../TrackTable.vue';
+import TrackScopeSearch from '../TrackScopeSearch.vue';
+import { filterTrackScope } from '../../services/trackScopeSearch';
 import CommentsPage from '../CommentsPage.vue';
 const props = defineProps<{
   album: AlbumCard;
@@ -30,6 +32,13 @@ const emit = defineEmits<{
 type Tab = AlbumTab;
 const selected = props.model.albumTab;
 const comments = props.model.comments;
+const keyword = ref('');
+const filtered = computed(() => filterTrackScope(props.tracks, keyword.value));
+function play(index: number, gesture?: TrackPlayGesture) {
+  const positions = filtered.value.positions;
+  const sourceIndex = positions === null ? index : positions[index];
+  if (sourceIndex !== undefined) emit('play', sourceIndex, gesture);
+}
 const tabs = computed<{ key: Tab; label: string; count?: number }[]>(() => [
   { key: 'songs', label: '歌曲', count: props.album.trackCount },
   { key: 'comments', label: '评论', count: comments.page.value?.total },
@@ -55,21 +64,30 @@ function keydown(event: KeyboardEvent, index: number) {
 </script>
 <template>
   <div class="album-content">
-    <nav class="catalog-tabs album-tabs" role="tablist" aria-label="专辑内容">
-      <button
-        v-for="(tab, index) in tabs"
-        :id="`${id}-${tab.key}`"
-        :key="tab.key"
-        role="tab"
-        :aria-selected="selected === tab.key"
-        :aria-controls="`${id}-panel`"
-        :tabindex="selected === tab.key ? 0 : -1"
-        @click="select(tab.key)"
-        @keydown="keydown($event, index)"
-      >
-        {{ tab.label }}<small v-if="tab.count != null">{{ tab.count }}</small>
-      </button>
-    </nav>
+    <div class="album-tabbar">
+      <nav class="catalog-tabs album-tabs" role="tablist" aria-label="专辑内容">
+        <button
+          v-for="(tab, index) in tabs"
+          :id="`${id}-${tab.key}`"
+          :key="tab.key"
+          role="tab"
+          :aria-selected="selected === tab.key"
+          :aria-controls="`${id}-panel`"
+          :tabindex="selected === tab.key ? 0 : -1"
+          @click="select(tab.key)"
+          @keydown="keydown($event, index)"
+        >
+          {{ tab.label }}<small v-if="tab.count != null">{{ tab.count }}</small>
+        </button>
+      </nav>
+      <TrackScopeSearch
+        v-if="selected === 'songs'"
+        v-model="keyword"
+        class="album-track-search"
+        label="搜索专辑歌曲"
+        clear-label="清空专辑搜索"
+      />
+    </div>
     <BoundedPanelTransition
       name="catalog-tab"
       @enter="emit('enter', $event)"
@@ -110,21 +128,27 @@ function keydown(event: KeyboardEvent, index: number) {
           role="tabpanel"
           :aria-labelledby="`${id}-songs`"
         >
+          <p v-if="filtered.positions !== null" class="playlist-track-match" role="status">
+            {{ filtered.tracks.length }} 首匹配歌曲
+          </p>
           <TrackTable
-            v-if="tracks.length"
+            v-if="filtered.tracks.length"
             navigable
-            :tracks="tracks"
+            :tracks="filtered.tracks"
+            :match-keyword="filtered.positions !== null ? keyword : undefined"
             :liked="liked"
             :busy="busyLikes"
             :playable="playable"
             :current-id="currentId"
-            @play="(index, gesture) => emit('play', index, gesture)"
+            @play="play"
             @like="emit('like', $event)"
             @more="emit('more', $event)"
             @artist="emit('open', { kind: 'artist', id: $event })"
             @album="emit('open', { kind: 'album', id: $event })"
           />
-          <p v-else class="empty-state">暂无歌曲</p>
+          <p v-else class="empty-state">
+            {{ filtered.positions === null ? '暂无歌曲' : '没有找到匹配的歌曲' }}
+          </p>
         </div>
       </KeepAlive>
     </BoundedPanelTransition>

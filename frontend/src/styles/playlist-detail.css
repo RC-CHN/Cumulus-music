@@ -381,7 +381,7 @@ button.playlist-subscriber-card:hover strong {
   justify-content: center;
   gap: 16px;
 }
-.playlist-track-search {
+.track-scope-search {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -396,18 +396,18 @@ button.playlist-subscriber-card:hover strong {
   color: var(--text-secondary);
   transition: width 200ms ease;
 }
-.playlist-track-search:is(:focus-within, .has-keyword) {
+.track-scope-search:is(:focus-within, .has-keyword) {
   width: 178px;
 }
-.playlist-track-search:focus-within {
+.track-scope-search:focus-within {
   border-color: var(--accent);
 }
-.playlist-track-search .icon {
+.track-scope-search .icon {
   flex: none;
   width: 16px;
   height: 16px;
 }
-.playlist-track-search input {
+.track-scope-search input {
   flex: 1;
   width: 0;
   min-height: 32px;
@@ -417,13 +417,13 @@ button.playlist-subscriber-card:hover strong {
   color: var(--text);
   font: inherit;
 }
-.playlist-track-search input:focus-visible {
+.track-scope-search input:focus-visible {
   outline: none;
 }
-.playlist-track-search input::-webkit-search-cancel-button {
+.track-scope-search input::-webkit-search-cancel-button {
   appearance: none;
 }
-.playlist-track-search button {
+.track-scope-search button {
   display: grid;
   flex: 0 0 24px;
   min-height: 24px;
@@ -431,14 +431,14 @@ button.playlist-subscriber-card:hover strong {
   padding: 0;
   border-radius: 4px;
 }
-.playlist-track-search button:hover {
+.track-scope-search button:hover {
   color: var(--accent);
 }
-:root[data-motion='reduced'] .playlist-track-search {
+:root[data-motion='reduced'] .track-scope-search {
   transition: none;
 }
 @media (prefers-reduced-motion: reduce) {
-  .playlist-track-search {
+  .track-scope-search {
     transition: none;
   }
 }

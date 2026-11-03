@@ -50,12 +50,52 @@
     click(one('[data-catalog-tab="albums"]')); await wait(() => all('.catalog-card').length > index, 'albums');
     click(all('.catalog-card')[index]); await wait(() => one('.album-tabs'), 'album'); await sleep(400);
   }
+  async function verifyAlbumSearch() {
+    const field = () => one('[aria-label="搜索专辑歌曲"]');
+    const matches = () => one('[data-album-panel="songs"] [role="status"]');
+    const setKeyword = value => {
+      field().value = value;
+      field().dispatchEvent(new InputEvent('input', { bubbles: true }));
+    };
+    const tableRows = () => all('[data-album-panel="songs"] .track-row');
+    field().focus();
+    setKeyword('合成歌曲 3');
+    await wait(() => tableRows().length === 1 && tableRows()[0].dataset.trackId === '3' &&
+      matches()?.textContent.includes('1 首匹配歌曲'), 'album search matches exact source track');
+    assert(tableRows()[0].querySelector('mark'), 'matching album title is highlighted');
+    await select('details');
+    assert(!field(), 'album search is absent outside songs');
+    await select('songs');
+    assert(field()?.value === '合成歌曲 3' && tableRows()[0]?.dataset.trackId === '3',
+      'album search persists across album tabs');
+
+    click(tableRows()[0].querySelector('.track-play'));
+    await wait(playing, 'filtered row starts native album playback');
+    const invoke = (command, args) => window.__TAURI_INTERNALS__.invoke(command, args);
+    const { epoch } = await invoke('account_snapshot');
+    const player = await invoke('player_snapshot', { epoch });
+    const queue = await invoke('player_queue', { epoch });
+    assert(player.track?.id === '3' && player.origin?.kind === 'album' && player.origin.id === '8',
+      'filtered index maps to source album track');
+    assert(queue.tracks.map(row => row.track.id).join(',') === '1,2,3,4,5,6,7,8,9,10,11',
+      'filtered row preserves full native album queue');
+    click(one('[aria-label="停止播放"]'));
+    await wait(() => one('.playerbar').dataset.state !== 'playing', 'stop filtered playback');
+
+    setKeyword('不存在的合成词');
+    await wait(() => one('[data-album-panel="songs"] .empty-state')?.textContent.includes('没有找到匹配的歌曲'),
+      'album search has explicit no match');
+    click(one('[aria-label="清空专辑搜索"]'));
+    await wait(() => !field().value && document.activeElement === field() &&
+      !matches() && tableRows().length > 1, 'album clear restores the list and field focus');
+  }
   try {
     await wait(() => one('.track-credit-links button'), 'initial ready');
     for (const [index, [width, height, color]] of [[1120, 760, 'light'], [760, 540, 'light'], [760, 540, 'dark'], [1120, 760, 'dark']].entries()) {
       await emit('resize', { width, height }); await wait(() => innerWidth === width && innerHeight === height, 'resize');
       click(one('[aria-label="外观主题"]')); await wait(() => one('.action-menu'), 'theme menu'); click(button(color === 'light' ? '浅色' : '深色')); await wait(() => document.documentElement.dataset.theme === color, 'theme');
       await openAlbum();
+      if (index === 1) await verifyAlbumSearch();
       one('.catalog-page').scrollTop = 0;
       assert(all('.album-actions > button').map(n => n.textContent.trim()).join('|') === '播放全部|收藏|下载', 'header action order');
       await capture(`songs_${width}_${color}`);
@@ -121,7 +161,7 @@
     assert(one('[aria-label="评论内容"]').value === '', 'another album inherited draft');
     click(button('播放全部', one('.album-actions'))); await wait(playing, 'native playback from comments');
     await capture('comments_playing_other_album', true);
-    await emit('complete', { ok: true, stageCount, realMusicRequests: 0, playbackVerified: true, decoder: 'libmpv', audioOutput: 'null', draftIsolation: true, mediaSubstitution: 'exact synthetic CDN URL to generated PCM' });
+    await emit('complete', { ok: true, stageCount, realMusicRequests: 0, albumSearch: true, playbackVerified: true, decoder: 'libmpv', audioOutput: 'null', draftIsolation: true, mediaSubstitution: 'exact synthetic CDN URL to generated PCM' });
   } catch (error) {
     await emit('failed', { ok: false, stageCount, error: String(error), stack: error.stack });
   }

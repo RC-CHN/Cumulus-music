@@ -1,8 +1,8 @@
 import type { TrackView } from './contracts.ts';
 import { searchLiteral } from './searchMatch.ts';
 
-/** Match the visible song metadata without disturbing source playlist positions. */
-export function filterPlaylistTracks(tracks: TrackView[], keyword: string) {
+/** Match the visible song metadata without disturbing source collection positions. */
+export function filterTrackScope(tracks: TrackView[], keyword: string) {
   const query = searchLiteral(keyword);
   if (!query) return { tracks, positions: null };
   const match = new RegExp(query, 'iu');

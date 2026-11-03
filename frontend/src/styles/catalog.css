@@ -568,9 +568,18 @@
   border: 1px solid var(--line);
   background: var(--surface);
 }
+.album-tabbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0 16px;
+  margin: 0 0 8px;
+  border-bottom: 1px solid var(--line);
+}
 .album-tabs {
   gap: 24px;
-  margin: 0 0 8px;
+  margin: 0;
+  border-bottom: 0;
 }
 .album-tabs button {
   font-size: 16px;

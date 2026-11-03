@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { TrackView } from '../src/services/contracts.ts';
-import { filterPlaylistTracks } from '../src/services/playlistTrackSearch.ts';
+import { filterTrackScope } from '../src/services/trackScopeSearch.ts';
 
 function song(id: string, name: string, artists: string[] = [], album = ''): TrackView {
   return {
@@ -25,9 +25,9 @@ test('playlist keyword matches literal visible metadata and keeps source row pos
     { ...song('3', '[b] unavailable'), missing: true },
     song('7', 'album target', [], '录音 [b]'),
   ];
-  const filtered = filterPlaylistTracks(tracks, ' [b] ');
+  const filtered = filterTrackScope(tracks, ' [b] ');
   assert.deepEqual(filtered.positions, [1, 2, 4]);
   assert.deepEqual(filtered.tracks, [tracks[1], tracks[2], tracks[4]]);
-  assert.deepEqual(filterPlaylistTracks(tracks, '.*').positions, []);
-  assert.equal(filterPlaylistTracks(tracks, ' ').tracks, tracks);
+  assert.deepEqual(filterTrackScope(tracks, '.*').positions, []);
+  assert.equal(filterTrackScope(tracks, ' ').tracks, tracks);
 });

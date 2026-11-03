@@ -66,6 +66,7 @@ def main():
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--runtime', type=Path)
+    parser.add_argument('--frontend-dist', type=Path, help='Local synthetic frontend comparison')
     parser.add_argument('--screenshots', action='store_true', help='local Linux GTK captures; not required in CI')
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--navigation', action='store_true', help='cross-resource tab history, comment draft and native play identity')
@@ -84,6 +85,8 @@ def main():
     root.mkdir(parents=True, exist_ok=False)
     env = {k: v for k, v in os.environ.items() if not k.startswith('CUMULUS_')}
     env['CUMULUS_PROOF_DIR'] = str(root / 'run')
+    if args.frontend_dist:
+        env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve())
     if args.artist or args.navigation:
         env['CUMULUS_ARTIST_PROOF'] = '1'
         source = 'catalog_navigation_ui_probe.js' if args.navigation else 'artist_ui_probe.js'
@@ -171,6 +174,7 @@ def main():
         return
     if args.album:
         assert complete['ok'] and complete['stageCount'] == 30 and complete['playbackVerified']
+        assert complete['albumSearch'] is True
         assert complete['realMusicRequests'] == 0 and complete['draftIsolation']
         assert complete['decoder'] == 'libmpv' and complete['audioOutput'] == 'null'
         stages = [json.loads(path.read_text(encoding='utf-8')) for path in sorted(output.glob('ux_*.json'))]

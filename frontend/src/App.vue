@@ -34,8 +34,8 @@ import PlaylistCreatorPage from './components/playlist/PlaylistCreatorPage.vue';
 import { usePlaylistCreator } from './composables/usePlaylistCreator';
 import { usePlaylistTagBrowse } from './composables/usePlaylistTagBrowse';
 import PlaylistSubscribers from './components/playlist/PlaylistSubscribers.vue';
-import { filterPlaylistTracks } from './services/playlistTrackSearch';
-import PlaylistTrackSearch from './components/playlist/PlaylistTrackSearch.vue';
+import { filterTrackScope } from './services/trackScopeSearch';
+import TrackScopeSearch from './components/TrackScopeSearch.vue';
 import { usePlaylistSubscribers } from './composables/usePlaylistSubscribers';
 import { usePlaylistCommentTab } from './composables/usePlaylistCommentTab';
 import PlaylistEditorPage from './components/playlist/PlaylistEditorPage.vue';
@@ -1042,7 +1042,7 @@ function showPlaylistSubscribers() {
 }
 const playlistKeyword = ref('');
 const playlistTrackSearch = computed(() =>
-  filterPlaylistTracks(
+  filterTrackScope(
     result.value?.tracks ?? [],
     page.value.kind === 'playlist' && result.value?.playlist?.id === page.value.id
       ? playlistKeyword.value
@@ -2265,9 +2265,12 @@ onUnmounted(() => {
                       }}</small>
                     </button>
                   </template>
-                  <PlaylistTrackSearch
+                  <TrackScopeSearch
                     v-if="result?.playlist && playlistSongsActive"
                     v-model="playlistKeyword"
+                    class="playlist-track-search"
+                    label="搜索歌单歌曲"
+                    clear-label="清空歌单搜索"
                   />
                   <button
                     v-if="playlistLocateIndex !== undefined"
