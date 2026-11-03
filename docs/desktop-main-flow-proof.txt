@@ -176,3 +176,8 @@ Cumulus 桌面主流程验收
   新账号并确认当前配置已保存。原生 PC EAPI 闭合夹具校验扫码、身份
   回读和后续业务请求，全程同一 WebView。Linux 共 17 个检查点、
   16 张截图；未访问真实服务。见 synthetic-qr-main-flow-plan.txt。
+
+  随后以同一 Rust 状态、新建 WebView 存储启动第二个进程。
+  合成账号无需重新扫码即可经身份回读自动恢复，「我的歌单」只显示
+  原基线歌单。Linux 合计 18 个检查点、17 张截图，见
+  .build/main-flow-reopen-current 指向的 run/report.json。

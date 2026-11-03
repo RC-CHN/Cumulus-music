@@ -51,7 +51,7 @@ unshare -Urn 仅启用回环，再在私有 D-Bus 和 Xvfb/Openbox 内运行；W
 闭合夹具限制应用请求，不据此声称 OS 断网。将游客检查点与认证后检查点分开，
 后者断言采用的 epoch 一致，记录两次扫码轮询且无自动重试。已有下载后夹具断开、
 本地解码、哈希和清理判据继续强制。此验收不验证真实登录、真实账号写入、上游
-音源或物理声卡；若需证明已保存会话重开，另在同一合成状态启动第二个进程。
+音源或物理声卡；重开阶段在同一 Rust 状态启动第二个进程，并使用新 OS/WebView 存储。
 
 
 本机结果：Linux 在无外网命名空间内完成 17 个检查点和 16 张截图，
@@ -59,5 +59,13 @@ unshare -Urn 仅启用回环，再在私有 D-Bus 和 Xvfb/Openbox 内运行；W
 再保存并采用代次 1。此后全部业务检查点均使用代次 1。媒体服务断开后
 无媒体或业务 API 请求；原生后台另尝试三次接续实验读取，均由闭合
 传输拒绝并单独计数，未影响 libmpv 本地播放及清理。证据见
-.build/main-flow-qr-current 指向的 run/report.json。未验证真实扫码、
-重启恢复、Windows 实机或实体音频输出。
+.build/main-flow-qr-current 指向的 run/report.json。未验证真实扫码、Windows 实机或实体音频输出。
+
+
+后续重开证据：退出扫码主流程后，在同一闭合网络环境启动新进程，
+保留 Rust 状态目录，换用全新 WebView 数据目录和 XDG/APPDATA 目录。
+不调用手动恢复，不允许生成二维码或再次签发 Cookie；闭合传输仅接受
+原会话 Cookie，经身份回读后允许读取白名单资源。桌面自动恢复，
+从「我的歌单」看到且仅看到原有基线私密歌单。两个进程共 18 个
+检查点、17 张截图。报告见 .build/main-flow-reopen-current 指向的
+run/report.json；重开截图为 run/run/reopen/ux_reopened.png。

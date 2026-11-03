@@ -34,7 +34,22 @@ struct Progress {
     offline_business_attempts: u64,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    Qr,
+    Reopen,
+}
+impl Mode {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Qr => "qr",
+            Self::Reopen => "reopen",
+        }
+    }
+}
+
 pub struct Wire {
+    mode: Mode,
     service: Arc<Service>,
     progress: Mutex<Progress>,
     confirmation: Notify,
@@ -49,7 +64,16 @@ impl TokenProvider for NoToken {
 
 impl Wire {
     pub fn new(service: Arc<Service>) -> Self {
+        Self::with_mode(service, Mode::Qr)
+    }
+
+    pub fn reopen(service: Arc<Service>) -> Self {
+        Self::with_mode(service, Mode::Reopen)
+    }
+
+    fn with_mode(service: Arc<Service>, mode: Mode) -> Self {
         Self {
+            mode,
             service,
             progress: Mutex::new(Progress::default()),
             confirmation: Notify::new(),
@@ -65,6 +89,9 @@ impl Wire {
     }
 
     pub fn approve(&self) -> Result<()> {
+        if self.mode != Mode::Qr {
+            return Err(Error::State("synthetic reopen does not allow QR approval"));
+        }
         let mut progress = self.progress.lock().map_err(|_| Error::LockPoisoned)?;
         if progress.tickets != 1 || !(1..=2).contains(&progress.polls) || progress.approved {
             return Err(Error::State("synthetic QR is not awaiting approval"));
@@ -77,6 +104,7 @@ impl Wire {
     pub fn facts(&self) -> Value {
         let progress = self.progress.lock().expect("synthetic QR state");
         json!({
+            "mode": self.mode.label(),
             "guestIdentityReads": progress.guest_identity_reads,
             "tickets": progress.tickets,
             "polls": progress.polls,
@@ -168,6 +196,39 @@ impl HttpBackend for Wire {
                 (Some(COOKIE), None) => true,
                 _ => return Err(Error::Response("unexpected synthetic session")),
             };
+            if self.mode == Mode::Reopen {
+                if matches!(path.as_str(), TICKET | POLL) {
+                    return Err(Error::State("synthetic reopen does not allow QR"));
+                }
+                if !matches!(
+                    path.as_str(),
+                    ACCOUNT
+                        | "/api/rtrs/abt/front/expinfo/list"
+                        | "/api/relay/setting/show"
+                        | "/api/song/like/get"
+                        | "/api/user/playlist"
+                        | "/api/v3/discovery/recommend/songs"
+                ) {
+                    return Err(Error::Response(
+                        "synthetic reopen allows only bootstrap reads",
+                    ));
+                }
+                if authenticated && path == ACCOUNT {
+                    let body = self.service.request(ACCOUNT, data, false).await?;
+                    if body["code"] != 200 || body["profile"]["userId"] != 2 {
+                        return Err(Error::Response("synthetic reopen identity mismatch"));
+                    }
+                    let mut progress = self.progress.lock().map_err(|_| Error::LockPoisoned)?;
+                    progress.authorized = true;
+                    progress.authenticated_identity_reads += 1;
+                    return reply(body, false);
+                }
+                if !authenticated && path != ACCOUNT {
+                    return Err(Error::State(
+                        "synthetic reopen requires the persisted session",
+                    ));
+                }
+            }
             match path.as_str() {
                 ACCOUNT if !authenticated => {
                     let mut progress = self.progress.lock().map_err(|_| Error::LockPoisoned)?;

@@ -135,17 +135,30 @@ fn main() {
     // SAFETY: precedes WebView and worker creation.
     unsafe { cumulus_desktop::prepare_graphics() };
     let root = PathBuf::from(std::env::var_os("CUMULUS_PROOF_DIR").expect("new proof root"));
-    fs::create_dir(&root).expect("proof root must not exist");
+    let reopen = std::env::var("CUMULUS_PROOF_REOPEN").as_deref() == Ok("1");
+    if reopen {
+        let completed: Value = serde_json::from_slice(
+            &fs::read(root.join("first/complete.json")).expect("previous proof completed"),
+        )
+        .expect("previous completion record");
+        assert_eq!(completed["ok"], true);
+    } else {
+        fs::create_dir(&root).expect("proof root must not exist");
+    }
     let root = root.canonicalize().expect("absolute proof root");
-    let out = root.join("first");
+    let out = root.join(if reopen { "reopen" } else { "first" });
     fs::create_dir(&out).unwrap();
     let downloads = root.join("media");
-    fs::create_dir(&downloads).unwrap();
-    fs::write(downloads.join("unrelated.txt"), SENTINEL).unwrap();
-    let path = serde_json::to_string(&downloads).unwrap();
     let seed = root.join("synthetic.flac");
-    fs::write(&seed, fixture::media::DATA).unwrap();
+    if !reopen {
+        fs::create_dir(&downloads).unwrap();
+        fs::write(downloads.join("unrelated.txt"), SENTINEL).unwrap();
+        fs::write(&seed, fixture::media::DATA).unwrap();
+    }
+    let path = serde_json::to_string(&downloads).unwrap();
     let mut context = tauri::generate_context!();
+    let window_config = context.config().app.windows[0].clone();
+    context.config_mut().app.windows[0].create = false;
     use tauri::utils::config::Csp;
     let security = &mut context.config_mut().app.security;
     let Some(Csp::Policy(policy)) = security.csp.take() else {
@@ -158,7 +171,11 @@ fn main() {
         .setup(move |app| {
             let store = Arc::new(StateStore::open(root.join("state"))?);
             let fixture = Arc::new(fixture::Service::new(store.clone()));
-            let wire = Arc::new(wire::Wire::new(fixture.clone()));
+            let wire = Arc::new(if reopen {
+                wire::Wire::reopen(fixture.clone())
+            } else {
+                wire::Wire::new(fixture.clone())
+            });
             let audio_path = downloads.clone();
             let audio_fixture = fixture.clone();
             let checkpoint_seed = seed.clone();
@@ -176,11 +193,11 @@ fn main() {
             app.manage(client);
             app.add_capability(r#"{"identifier":"synthetic-main-flow-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
             let handle = app.handle().clone();
-            let window = app.get_webview_window("main").unwrap();
-            window.set_size(tauri::LogicalSize::new(1120.0,760.0))?;
+            let webview_storage = out.join("webview");
             app.listen("ux-proof", move |event| {
                 let Ok(mut value) = serde_json::from_str::<Value>(event.payload()) else { return };
                 let Some(stage) = value["stage"].as_str().map(str::to_owned) else { return };
+                if reopen && !["ux_reopened", "failed"].contains(&stage.as_str()) { return; }
                 if stage == "approve_login" {
                     if wire.approve().is_err() {
                         fs::write(out.join("failed.json"), br#"{"stage":"approve_login","ok":false}"#).unwrap();
@@ -207,14 +224,14 @@ fn main() {
                     handle.get_webview_window("main").unwrap().eval("window.__mainFlowOffline=true;").unwrap();
                     return;
                 }
-                if !["ux_guest","ux_qr_pending","ux_login_adopted","ux_recovered","ux_daily","ux_search","ux_playback","ux_playlist_created","ux_playlist_edited","ux_playlist_song_added","ux_playlist_song_removed","ux_playlist_cleaned","ux_download_paused","ux_download_complete","ux_local_offline_playback","ux_download_disposed","complete","failed"].contains(&stage.as_str()) { return; }
+                if !["ux_reopened","ux_guest","ux_qr_pending","ux_login_adopted","ux_recovered","ux_daily","ux_search","ux_playback","ux_playlist_created","ux_playlist_edited","ux_playlist_song_added","ux_playlist_song_removed","ux_playlist_cleaned","ux_download_paused","ux_download_complete","ux_local_offline_playback","ux_download_disposed","complete","failed"].contains(&stage.as_str()) { return; }
                 let client = handle.state::<MusicClient>();
                 let account = client.account().unwrap();
                 value["authenticated"] = json!(account.status == SessionStatus::Authenticated);
                 value["nativeEpoch"] = json!(account.epoch);
                 value["wire"] = wire.facts();
                 let audit = match stage.as_str() {
-                    "ux_login_adopted" => client.saved_accounts(&account.epoch).and_then(|records| {
+                    "ux_login_adopted" | "ux_reopened" => client.saved_accounts(&account.epoch).and_then(|records| {
                         if records.value.len() != 1 || !records.value[0].current || !records.value[0].auto_login {
                             return Err(Error::State("synthetic profile was not saved and adopted"));
                         }
@@ -251,16 +268,28 @@ fn main() {
                     let out = out.clone();
                     let handshake = value["captureHandshake"].as_bool() == Some(true);
                     tauri::async_runtime::spawn(async move {
-                        capture_ack::acknowledge(&handle, &out, &stage, handshake).await;
+                        if capture_ack::acknowledge(&handle, &out, &stage, handshake).await
+                            && stage == "ux_reopened"
+                        {
+                            handle.exit(0);
+                        }
                     });
                 }
             });
+            tauri::WebviewWindowBuilder::from_config(app, &window_config)?
+                .data_directory(webview_storage)
+                .inner_size(1120.0, 760.0)
+                .build()?;
             Ok(())
         })
         .on_page_load(move |webview, payload| {
             if payload.event()==PageLoadEvent::Finished {
                 webview.eval(format!("window.__mainFlowDownloadPath={path};")).unwrap();
-                let source = include_str!("main_flow_ui_probe.js");
+                let source = if reopen {
+                    include_str!("main_flow_reopen_probe.js")
+                } else {
+                    include_str!("main_flow_ui_probe.js")
+                };
                 if std::env::var("CUMULUS_PROOF_CAPTURE_ACK").as_deref() == Ok("1") {
                     webview.eval(capture_ack::script(source)).unwrap();
                 } else {

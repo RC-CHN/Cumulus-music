@@ -128,12 +128,38 @@ def main():
     assert sorted(row for row in playlist if row[1] != 'tracks') == [('2', kind, 'confirmed') for kind in ('create', 'delete', 'metadata')]
     assert not leftovers
     assert disposal_journal == [('2', proof['id'], 'delete', 'complete')]
-    screenshots = len(list(output.glob('ux_*.png')))
-    assert screenshots == (len(STAGES) - 1 if args.screenshots else 0)
-    report = dict(ok=True, actualWebView=True, actualLibmpv=True, stages=len(STAGES), screenshots=screenshots, sqliteVerified=True,
+    # New process, same native state, entirely fresh OS/WebView storage.
+    reopen_logs = root/'reopen-logs'
+    reopen_logs.mkdir()
+    reopen_env = {**env, 'CUMULUS_PROOF_REOPEN': '1'}
+    for key in ('XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR',
+                'APPDATA', 'LOCALAPPDATA'):
+        profile = root/'reopen-os-profile'/key
+        profile.mkdir(parents=True, mode=0o700)
+        reopen_env[key] = str(profile)
+    reopened_output = root/'run/reopen'
+    with (reopen_logs/'host.log').open('x', encoding='utf-8') as log:
+        reopen_code = launch(args.binary.resolve(), reopen_env, log, reopened_output, args.screenshots)
+    failed = reopened_output/'failed.json'
+    assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
+    assert reopen_code == 0
+    reopened = json.loads((reopened_output/'ux_reopened.json').read_text(encoding='utf-8'))
+    assert reopened['ok'] and reopened['authenticated'] and reopened['status'] == 'authenticated'
+    assert reopened['nativeEpoch'] == reopened['epoch']
+    assert reopened['baselineCount'] == 1 and reopened['baselineOwned']
+    assert reopened['audit'] == {'savedCurrentProfile': True}
+    assert reopened['wire']['mode'] == 'reopen' and reopened['wire']['authorized']
+    assert reopened['wire']['tickets'] == reopened['wire']['polls'] == 0
+    assert not reopened['wire']['approved'] and reopened['wire']['authenticatedIdentityReads'] >= 1
+    assert reopened['fixture']['calls']['/api/user/playlist'] >= 1
+    assert reopened['fixture']['mediaTransfers'] == reopened['fixture']['sourceLoads'] == 0
+    screenshots = sum(len(list(folder.glob('ux_*.png'))) for folder in (output, reopened_output))
+    assert screenshots == (len(STAGES) if args.screenshots else 0)
+    report = dict(ok=True, actualWebView=True, actualLibmpv=True, stages=len(STAGES)+1, screenshots=screenshots, sqliteVerified=True,
                   realMusicRequests=0, realAccountWrites=0, syntheticOfflinePlayback=True, nativeDownloadDisposal=True, downloadIntegrityCheckpoint=True,
                   pausedPartialAndVerifiedRangeResume=True, playlistMembershipReadback=True,
                   syntheticQrAdoption=True, savedCurrentSyntheticProfile=True,
+                  freshProcessRestoredSyntheticProfile=True, processLifetimes=2,
                   rejectedOfflineRelayExperimentAttempts=stages['complete']['wire']['offlineRelayExperimentAttempts'])
     (root/'report.json').write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
     print(json.dumps(report))
