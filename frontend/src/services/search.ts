@@ -36,7 +36,7 @@ export interface SearchResultQuery {
   channel?: SearchChannel;
 }
 export type SearchItem =
-  | { kind: 'song'; track: TrackView; excerpt: string[]; excerptTruncated?: boolean }
+  | { kind: 'song'; track: TrackView; excerpt: string[]; excerptTruncated?: boolean; mvId?: string }
   | { kind: 'playlist'; playlist: PlaylistView; recommendation?: string }
   | { kind: 'artist'; artist: ArtistCard }
   | { kind: 'album'; album: AlbumCard }

@@ -71,6 +71,7 @@ const emit = defineEmits<{
   like: [track: TrackView];
   artist: [id: string];
   album: [id: string];
+  mv: [id: string];
   expired: [];
   playCard: [item: SearchItem];
   queueCard: [request: SearchQueueRequest];
@@ -684,26 +685,30 @@ onBeforeUnmount(() => {
               class="search-track-preview"
             >
               <SearchTrackCard
-                v-for="(track, index) in tracks(section).slice(0, 6)"
-                :key="`${track.id}:${index}`"
-                :track="track"
+                v-for="(item, index) in section.items
+                  .filter((item) => item.kind === 'song')
+                  .slice(0, 6)"
+                :key="`${item.track.id}:${index}`"
+                :track="item.track"
+                :mv-id="item.mvId"
                 :match-keyword="matchKeyword"
                 :playable="playable"
-                :current="track.id === currentId"
+                :current="item.track.id === currentId"
                 :playing="playbackState === 'playing' || playbackState === 'buffering'"
-                :liked="liked.has(track.id)"
-                :busy-like="busyLikes.has(track.id)"
-                @play="playTrack(track, true)"
-                @like="emit('like', track)"
+                :liked="liked.has(item.track.id)"
+                :busy-like="busyLikes.has(item.track.id)"
+                @play="playTrack(item.track, true)"
+                @like="emit('like', item.track)"
                 @more="
                   (event) =>
                     showTrackMenu({
-                      track,
+                      track: item.track,
                       event,
-                      play: () => playTrack(track),
+                      play: () => playTrack(item.track),
                     })
                 "
-                @download="emit('downloadTrack', track)"
+                @download="emit('downloadTrack', item.track)"
+                @mv="emit('mv', $event)"
                 @artist="emit('artist', $event)"
               />
             </div>

@@ -256,24 +256,45 @@
       trigger.focus({preventScroll:true});
       await wait(()=>document.activeElement===trigger&&Number(getComputedStyle(cue).opacity)>.9,'MV cue visible at focus');
       assert(placeholder&&Number(getComputedStyle(placeholder).opacity)===0,'Play cue does not overlap the empty-cover icon');
-      await capture('search_mv_play_target');
-      click(trigger);
       const invoke=(name,args={})=>window.__TAURI_INTERNALS__.invoke(name,args);
       const {epoch}=await invoke('account_snapshot');
-      let native;
-      for(let i=0;i<170;i++){
-        const view=await invoke('video_snapshot',{epoch});
-        if(view.id==='601'&&view.state==='playing'&&view.position>.15&&Number(one('.video-canvas')?.dataset.renderedFrames)>1){native=view;break;}
-        await sleep(70);
+      async function nativeVideo(label){
+        let native;
+        for(let i=0;i<170;i++){
+          const view=await invoke('video_snapshot',{epoch});
+          if(view.id==='601'&&view.state==='playing'&&view.position>.15&&Number(one('.video-canvas')?.dataset.renderedFrames)>1){native=view;break;}
+          await sleep(70);
+        }
+        assert(native&&native.actualResolution===480,label+' reached advancing native video playback');
+        const canvas=one('.video-canvas');
+        const pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+        assert(pixels.some((value,index)=>index%4!==3&&value>20),'decoded frame reaches the canvas');
       }
-      assert(native&&native.actualResolution===480,'search card reached advancing native video playback');
-      const canvas=one('.video-canvas');
-      const pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
-      assert(pixels.some((value,index)=>index%4!==3&&value>20),'decoded frame reaches the canvas');
+      await capture('search_mv_play_target');
+      click(trigger);
+      await nativeVideo('category card');
+      await capture('search_mv_category_native_frame');
+      click(button('关闭视频'));
+      click(button('返回上一页'));
+      await wait(()=>ready()&&one('[data-category="mvs"]')?.getAttribute('aria-selected')==='true','return to MV category');
+      click(button('返回上一页'));
+      await wait(()=>ready()&&one('[data-category="all"]')?.getAttribute('aria-selected')==='true','return to comprehensive song cards');
+      const songCard=one('.search-track-card[data-result-key="song:1"]');
+      const badge=songCard?.querySelector('.search-track-mv');
+      assert(badge?.getAttribute('aria-label')?.startsWith('播放 MV 合成单曲 1')&&!badge.disabled&&badge.tabIndex===0,
+        'song MV badge is independently keyboard accessible');
+      assert(!one('.search-track-card[data-result-key="song:2"] .search-track-mv')&&
+        !one('.search-track-card[data-result-key="song:3"] .search-track-mv'),'rights-restricted and invalid direct MV targets have no badge');
+      badge.scrollIntoView({block:'nearest'});
+      badge.focus({preventScroll:true});
+      assert(document.activeElement===badge,'song badge receives keyboard focus');
+      await capture('search_song_mv_badge');
+      click(badge);
+      await nativeVideo('song badge');
       await capture('search_mv_native_frame');
       click(button('关闭视频'));
       click(button('返回上一页'));
-      await wait(()=>ready()&&one('[data-category="mvs"]')?.getAttribute('aria-selected')==='true','return to MV results');
+      await wait(()=>ready()&&one('[data-category="all"]')?.getAttribute('aria-selected')==='true','return to comprehensive after MV');
       await fixture('unavailable');await fresh('合成不可播放视频');await choose('mvs');
       const invalid=one('.search-video-card');
       assert(invalid?.querySelector('.search-card-open')?.disabled&&!invalid.querySelector('.search-video-play-glyph'),
@@ -606,6 +627,7 @@
       await wait(()=>tabs()==='all,mvs,songs'&&one('#search-result-panel').textContent.includes('综合 V3 合成歌曲'),'v3 tab order and projected song');
       assert(one('#search-result-panel').textContent.includes('合成热点内容'),'hot explanation');
       assert(!document.querySelector('[href*="example.invalid/private"]'),'no raw action');
+      assert(one('.search-track-mv')?.getAttribute('aria-label')==='播放 MV 综合 V3 合成歌曲','v3 extInfo MV projected to song badge');
       await capture('v3_comprehensive');
       key(one('[data-category="all"]'),'ArrowRight');
       await wait(()=>ready()&&one('[data-category="mvs"]')?.getAttribute('aria-selected')==='true','dynamic arrow navigation');

@@ -6,6 +6,7 @@ import Icon from '../Icon.vue';
 import SearchMatchText from './SearchMatchText.vue';
 const props = defineProps<{
   track: TrackView;
+  mvId?: string;
   matchKeyword: string;
   playable: boolean;
   current: boolean;
@@ -19,6 +20,7 @@ const emit = defineEmits<{
   more: [event: MouseEvent | KeyboardEvent];
   download: [];
   artist: [id: string];
+  mv: [id: string];
 }>();
 const failedCover = ref(false);
 watch(
@@ -62,6 +64,15 @@ watch(
       </p>
       <div class="search-track-credit">
         <span v-if="track.fee === 1" class="vip-tag">VIP</span>
+        <button
+          v-if="mvId"
+          class="search-track-mv"
+          :aria-label="`播放 MV ${track.name}`"
+          @click.stop="emit('mv', mvId)"
+          @dblclick.stop
+        >
+          MV <Icon name="play" />
+        </button>
         <span class="ellipsis" :data-tooltip="track.artists.join(' / ')">
           <template v-if="track.artistRefs?.length">
             <template v-for="(artist, i) in track.artistRefs" :key="i">

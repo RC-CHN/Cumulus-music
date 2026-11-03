@@ -147,7 +147,16 @@ fn credits(out: &mut Fields, input: &Value, key: &str) {
 }
 
 fn song(v: &Value) -> Fields {
-    let mut out = fields(v, &["id", "name", "dt", "duration", "fee"], &[]);
+    let mut out = fields(
+        v,
+        &[
+            "id", "name", "dt", "duration", "fee", "mv", "mvid", "st", "status",
+        ],
+        &[],
+    );
+    nested(&mut out, v, "privilege", |value| {
+        fields(value, &["st"], &[])
+    });
     for key in ["ar", "artists"] {
         credits(&mut out, v, key);
     }

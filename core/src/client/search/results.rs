@@ -15,6 +15,8 @@ use serde_json::Value;
 pub enum SearchItem {
     Song {
         track: TrackView,
+        #[serde(rename = "mvId", skip_serializing_if = "Option::is_none")]
+        mv_id: Option<String>,
         excerpt: Vec<String>,
         #[serde(rename = "excerptTruncated")]
         excerpt_truncated: bool,
@@ -195,6 +197,24 @@ fn voice_listener_count(value: &Value) -> Option<u64> {
         first
     })
 }
+fn song_mv(value: &Value) -> Option<String> {
+    if [&value["st"], &value["status"], &value["privilege"]["st"]]
+        .into_iter()
+        .any(|status| {
+            status
+                .as_i64()
+                .or_else(|| status.as_str().and_then(|text| text.parse().ok()))
+                .is_some_and(|status| status < 0)
+        })
+    {
+        return None;
+    }
+    ["mv", "mvid"]
+        .into_iter()
+        .filter_map(|key| identifier(&value[key]).ok())
+        .find(|id| id.len() <= 32)
+}
+
 fn item(
     kind: &str,
     v: &Value,
@@ -207,6 +227,7 @@ fn item(
             let (excerpt, excerpt_truncated) = super::lyrics::project(excerpt);
             SearchItem::Song {
                 track: mapping::track(v)?,
+                mv_id: comprehensive.then(|| song_mv(v)).flatten(),
                 excerpt,
                 excerpt_truncated,
             }

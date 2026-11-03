@@ -96,6 +96,25 @@
 .search-track-credit button:hover {
   color: var(--text);
 }
+.search-track-credit .search-track-mv {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 1px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  padding: 0 2px;
+  font-size: 10px;
+  line-height: 12px;
+  color: var(--accent);
+}
+.search-track-credit .search-track-mv:hover {
+  background: var(--surface-hover);
+}
+.search-track-mv svg {
+  width: 8px;
+  height: 8px;
+}
 .search-track-actions {
   position: absolute;
   right: 18px;

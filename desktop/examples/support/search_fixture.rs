@@ -265,7 +265,7 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
             {
                 Some(json!({"code":200,"data":{"blocks":[
                     {"blockCode":"search_block_hot_result_hot_explain","resources":[{"baseInfo":{"hotExplainModuleData":{"title":"热点说明","text":"合成热点内容","textAction":"https://example.invalid/private"}}}]},
-                    {"blockCode":"search_block_song","resources":[{"type":"song","baseInfo":{"simpleSongData":{"id":1,"name":"综合 V3 合成歌曲","dt":60000,"ar":[],"al":{"id":1,"name":"合成专辑"}}}}]}
+                    {"blockCode":"search_block_song","resources":[{"type":"song","baseInfo":{"simpleSongData":{"id":1,"name":"综合 V3 合成歌曲","dt":60000,"ar":[],"al":{"id":1,"name":"合成专辑"}}},"extInfo":{"mv":601}}]}
                 ]}}))
             }
             _ => None,
@@ -324,6 +324,20 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
     ))
     .unwrap();
     let mut response = fixtures[category].clone();
+    if super::search_mv_fixture::enabled() && category == "all" {
+        let rows = response["data"]["blocks"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|block| block["blockCode"] == "search_block_song")
+            .unwrap()["resources"]
+            .as_array_mut()
+            .unwrap();
+        rows[0]["baseInfo"]["mv"] = json!(601);
+        rows[1]["baseInfo"]["mvid"] = json!("601");
+        rows[1]["baseInfo"]["privilege"] = json!({"st": -200});
+        rows[2]["baseInfo"]["mv"] = json!("https://synthetic.invalid/private");
+    }
     if mode == "album_artist_search" && matches!(category, "all" | "albums") {
         let album = if category == "all" {
             &mut response["data"]["blocks"]
