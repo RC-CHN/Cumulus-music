@@ -112,7 +112,7 @@ impl Api for Backend {
                         ("cue", 13)
                     };
                     let mut data = support::allocation(object, doc);
-                    if object != "cover" {
+                    if object != "cover" && mode != 1 {
                         data["bucket"] = json!("yyimgs");
                         if mode == 2 {
                             data["docId"] = json!(0);

@@ -53,6 +53,7 @@ impl MusicClient {
                                     .as_ref()
                                     .is_none_or(|error| error.kind != "encoding_failed")
                                 && !v.blocked_text()
+                                && !v.unresolved_nos_boundary()
                                 && !active.contains(&v.id)
                         })
                         .map(|v| v.id)

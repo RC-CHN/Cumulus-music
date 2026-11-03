@@ -97,6 +97,8 @@ pub struct AttachmentView {
     pub bytes: u64,
     pub total: u64,
     pub transfer: Option<NosStatus>,
+    #[serde(skip)]
+    pub(crate) unresolved_nos_boundary: bool,
     pub error: Option<UploadIssue>,
 }
 #[derive(Clone, Debug, Serialize)]
@@ -163,6 +165,10 @@ impl Attachment {
     }
 }
 impl CloudView {
+    pub(crate) fn unresolved_nos_boundary(&self) -> bool {
+        matches!(&self.transfer, Some(CloudTransfer::Nos(v)) if v.unresolved_boundary)
+            || self.attachments.iter().any(|a| a.unresolved_nos_boundary)
+    }
     pub(crate) fn blocked_text(&self) -> bool {
         self.attachments.iter().any(|a| {
             a.phase == AttachmentPhase::Allocated

@@ -467,3 +467,180 @@ async fn unresolved_attachment_allocation_cannot_be_omitted() {
             .all(|(p, _)| p != support::META)
     );
 }
+
+async fn stopped_upload(client: &MusicClient, error: &str) -> CloudUploadView {
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let page = client
+                .cloud_page("1", query(CloudTab::Uploading), false)
+                .await
+                .unwrap();
+            if let Some(row) = page
+                .uploads
+                .into_iter()
+                .find(|row| !row.enabled && !row.running && row.error.as_deref() == Some(error))
+            {
+                return row;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn lost_nos_boundary_is_still_unresolved_after_reopen_and_can_only_stop_locally() {
+    for (key, lost_chunk) in [("audio", 0), ("lyric", 2)] {
+        let f = Fixture::new(0);
+        let mut input = f.input();
+        if key == "lyric" {
+            f.api.text_attachment_mode.store(1, Ordering::SeqCst);
+            let lyric = f.root.path().join("fixture.lrc");
+            std::fs::write(&lyric, b"[00:01]x\n").unwrap();
+            input.lyric = Some(lyric);
+        }
+        let object = f.objects.object(key);
+        object
+            .state
+            .lock()
+            .unwrap()
+            .faults
+            .extend((0..lost_chunk).map(|_| None));
+        object.fault(support::nos::Fault::LostReply);
+        let gate = support::nos::Gate::new();
+        *object.gate.lock().unwrap() = Some(gate.clone());
+        let client = f.client();
+        let id = client
+            .cloud_command("1", CloudCommand::Upload { files: vec![input] })
+            .await
+            .unwrap()
+            .accepted
+            .pop()
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(3), gate.entered.notified())
+            .await
+            .unwrap();
+        let page = client
+            .cloud_page("1", query(CloudTab::Uploading), false)
+            .await
+            .unwrap();
+        assert!(page.uploads[0].running);
+        assert_ne!(page.uploads[0].label, "无法核对上传结果");
+        gate.release.add_permits(1);
+        let row = stopped_upload(&client, "nos_boundary_unverified").await;
+        assert_eq!(row.id, id);
+        assert_eq!(row.label, "无法核对上传结果");
+        assert_eq!(object.calls().len(), lost_chunk + 1);
+        assert_eq!(object.calls().last().unwrap().complete, key == "lyric");
+        let calls = f.api.calls.lock().unwrap().clone();
+        let object_calls = f.objects.calls();
+        drop(client);
+
+        let client = f.client();
+        let row = stopped_upload(&client, "nos_boundary_unverified").await;
+        assert!(!row.can_resume && !row.can_renew && !row.can_reconcile);
+        assert!(row.can_cancel);
+        if key == "lyric" {
+            assert_eq!(
+                row.attachments[0].transfer,
+                Some(cumulus_core::cloud::nos::NosStatus::Paused)
+            );
+        }
+        assert!(matches!(
+            manager(&f).resume(&id),
+            Err(Error::MutationUncertain)
+        ));
+        let result = client
+            .cloud_command(
+                "1",
+                CloudCommand::Resume {
+                    ids: vec![id.clone()],
+                    retry_rejected: true,
+                },
+            )
+            .await
+            .unwrap();
+        assert!(result.accepted.is_empty());
+        assert_eq!(result.failed.len(), 1);
+        let bulk = client
+            .cloud_command(
+                "1",
+                CloudCommand::ResumeAll {
+                    retry_rejected: true,
+                },
+            )
+            .await
+            .unwrap();
+        assert!(bulk.accepted.is_empty() && bulk.failed.is_empty());
+        assert!(matches!(
+            client
+                .cloud_command("1", CloudCommand::Renew { id: id.clone() })
+                .await,
+            Err(Error::MutationUncertain)
+        ));
+        assert_eq!(
+            client
+                .cloud_command("1", CloudCommand::Cancel { ids: vec![id] })
+                .await
+                .unwrap()
+                .accepted
+                .len(),
+            1
+        );
+        let history = client
+            .cloud_page("1", query(CloudTab::History), false)
+            .await
+            .unwrap();
+        assert_eq!(history.uploads[0].phase, CloudPhase::Cancelled);
+        assert!(history.uploads[0].error.is_none());
+        assert_eq!(*f.api.calls.lock().unwrap(), calls);
+        assert_eq!(f.objects.calls(), object_calls);
+    }
+}
+
+#[tokio::test]
+async fn lost_middle_nos_ack_still_queries_offset_before_explicit_resume() {
+    let f = Fixture::new(0);
+    let object = f.objects.object("audio");
+    object.state.lock().unwrap().faults.push_back(None);
+    object.fault(support::nos::Fault::LostReply);
+    let client = f.client();
+    let id = client
+        .cloud_command(
+            "1",
+            CloudCommand::Upload {
+                files: vec![f.input()],
+            },
+        )
+        .await
+        .unwrap()
+        .accepted
+        .pop()
+        .unwrap();
+    let row = stopped_upload(&client, "network").await;
+    assert!(row.can_resume);
+    assert_eq!(object.calls().len(), 2);
+    assert_eq!(
+        client
+            .cloud_command(
+                "1",
+                CloudCommand::Resume {
+                    ids: vec![id],
+                    retry_rejected: false
+                }
+            )
+            .await
+            .unwrap()
+            .accepted
+            .len(),
+        1
+    );
+    wait_done(&client).await;
+    let calls = object.calls();
+    assert_eq!(calls.len(), 4);
+    assert!(calls[2].query);
+    assert!(!calls[3].query);
+    assert_eq!(calls[3].offset, 6);
+    assert_eq!(object.state.lock().unwrap().data, support::DATA);
+}

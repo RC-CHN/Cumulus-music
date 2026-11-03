@@ -197,7 +197,12 @@ impl UploadScheduler {
         })
     }
     pub fn start(&self, id: &str, retry_rejected: bool) -> Result<UploadSchedule> {
-        let task = self.uploads.get(id)?;
+        let _lock = self.uploads.lock(id)?;
+        let record = self.uploads.read(id)?;
+        let task = self.uploads.view(&record)?;
+        if task.unresolved_nos_boundary() {
+            return Err(Error::MutationUncertain);
+        }
         if task.blocked_text() {
             return Err(Error::State(
                 "blocked text attachment requires explicit omission",
@@ -207,7 +212,7 @@ impl UploadScheduler {
             return Err(Error::State("cloud task removal is pending"));
         }
         if task.requested == Some(UploadControl::Pause) {
-            self.uploads.resume(id)?;
+            self.uploads.resume_locked(&record)?;
         }
         if matches!(task.phase, CloudPhase::Complete | CloudPhase::Cancelled)
             || task.requested == Some(UploadControl::Cancel)

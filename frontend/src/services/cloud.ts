@@ -210,6 +210,8 @@ export function cloudIssue(code: string | null): string {
       {
         encoding_failed: '云端转码暂未成功，可重新检查转码状态',
         write_outcome_unknown: '服务端结果尚未确认，请先核对',
+        nos_boundary_unverified:
+          '服务端未确认首片或末片，无法核对或继续上传。可以停止本地任务；服务端对象不会被删除。',
         source_changed: '本地文件已变化，请重新选择文件',
         file_unavailable: '本地文件无法读取，请检查位置与权限',
         network: '网络请求失败，请稍后继续',

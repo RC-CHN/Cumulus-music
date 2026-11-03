@@ -28,7 +28,7 @@ export function taskProgress(task: CloudUpload) {
     percent: total ? (bytes / total) * 100 : 0,
     processing,
     label:
-      task.label === '等待核对'
+      task.label === '等待核对' || task.label === '无法核对上传结果'
         ? task.label
         : task.removalPending
           ? '正在移除'

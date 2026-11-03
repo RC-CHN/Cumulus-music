@@ -183,6 +183,8 @@ pub struct NosView {
     pub bytes: u64,
     pub total: u64,
     pub pending: bool,
+    #[serde(skip)]
+    pub(crate) unresolved_boundary: bool,
     pub renewal: Option<NosRenewal>,
     pub requested: Option<NosControl>,
     pub error: Option<String>,
@@ -219,6 +221,11 @@ pub(super) struct Job {
     pub error: Option<String>,
 }
 impl Job {
+    pub(super) fn unresolved_boundary(&self) -> bool {
+        self.pending
+            .as_ref()
+            .is_some_and(|p| self.context.is_empty() || p.complete)
+    }
     pub fn view(&self, requested: Option<NosControl>) -> NosView {
         NosView {
             id: self.id.clone(),
@@ -227,6 +234,7 @@ impl Job {
             bytes: self.offset,
             total: self.source.bytes,
             pending: self.pending.is_some(),
+            unresolved_boundary: self.unresolved_boundary(),
             renewal: self.renewal.as_ref().map(|r| r.status),
             requested,
             error: self.error.clone(),

@@ -125,6 +125,12 @@ test('progress combines acknowledged audio and attachments and separates process
   task.removalPending = true;
   task.label = '等待核对';
   assert.equal(taskProgress(task).label, '等待核对');
+  task.removalPending = false;
+  task.phase = 'attachments_uploading';
+  task.enabled = false;
+  task.error = 'nos_boundary_unverified';
+  task.label = '无法核对上传结果';
+  assert.equal(taskProgress(task).label, '无法核对上传结果');
 });
 test('cloud song filters, order and page survive task/history navigation without filtering the task scope', async () => {
   const model = useCloud({

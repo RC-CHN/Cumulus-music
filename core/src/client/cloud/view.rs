@@ -101,8 +101,10 @@ fn upload(task: CloudView, entries: &HashMap<String, UploadSchedule>) -> CloudUp
         .error
         .as_ref()
         .is_some_and(|e| e.kind == "write_outcome_unknown")
-        || matches!(&task.transfer,Some(CloudTransfer::Oss(v)) if matches!(v.pending,Some(OssPending::Initiate|OssPending::Put|OssPending::Complete|OssPending::Abort)))
-        || matches!(&task.transfer,Some(CloudTransfer::Nos(v)) if v.status==crate::cloud::nos::NosStatus::Ambiguous);
+        || matches!(&task.transfer,Some(CloudTransfer::Oss(v)) if matches!(v.pending,Some(OssPending::Initiate|OssPending::Put|OssPending::Complete|OssPending::Abort)));
+    // An active chunk also has durable intent. It is not a failed outcome
+    // until its worker has stopped without an acknowledgement.
+    let unresolved_nos = !terminal && !running && task.unresolved_nos_boundary();
     let pending = matches!(
         task.phase,
         CloudPhase::AllocationPending
@@ -128,11 +130,12 @@ fn upload(task: CloudView, entries: &HashMap<String, UploadSchedule>) -> CloudUp
         Some(CloudTransfer::Oss(v)) => v.error.clone(),
         _ => None,
     };
-    let error = state
-        .and_then(|s| s.error.clone())
+    let error = unresolved_nos
+        .then(|| "nos_boundary_unverified".to_owned())
+        .or_else(|| state.and_then(|s| s.error.clone()))
         .or_else(|| task.error.as_ref().map(|e| e.kind.clone()))
         .or(child_error)
-        .filter(|error| !(running && error == "write_outcome_unknown"));
+        .filter(|error| !terminal && !(running && error == "write_outcome_unknown"));
     let encoding_failed =
         task.phase == CloudPhase::Failed && error.as_deref() == Some("encoding_failed");
     let label = if terminal {
@@ -141,6 +144,8 @@ fn upload(task: CloudView, entries: &HashMap<String, UploadSchedule>) -> CloudUp
         } else {
             "已取消"
         }
+    } else if unresolved_nos && !cancelling && !removing {
+        "无法核对上传结果"
     } else if (unknown || reconcile) && !running {
         "等待核对"
     } else if removing {
@@ -164,7 +169,15 @@ fn upload(task: CloudView, entries: &HashMap<String, UploadSchedule>) -> CloudUp
     };
     let blocked_text = task.blocked_text();
     let omittable_attachment = state
-        .filter(|s| !s.enabled && !s.running && !s.hidden && !s.removing && !unknown && !cancelling)
+        .filter(|s| {
+            !s.enabled
+                && !s.running
+                && !s.hidden
+                && !s.removing
+                && !unknown
+                && !unresolved_nos
+                && !cancelling
+        })
         .and_then(|s| {
             task.omittable_text
                 .map(|attachment| CloudAttachmentOmission {
@@ -194,6 +207,7 @@ fn upload(task: CloudView, entries: &HashMap<String, UploadSchedule>) -> CloudUp
             && !encoding_failed
             && !terminal
             && !unknown
+            && !unresolved_nos
             && !pending
             && !reconcile
             && !removing
@@ -211,7 +225,7 @@ fn upload(task: CloudView, entries: &HashMap<String, UploadSchedule>) -> CloudUp
             && !cancelling
             && task.song_id.is_some(),
         can_reconcile: reconcile && !running,
-        can_renew: renew && !running && !removing,
+        can_renew: renew && !unresolved_nos && !running && !removing && !cancelling,
         can_dismiss: terminal,
         attachments: task.attachments,
         omittable_attachment,

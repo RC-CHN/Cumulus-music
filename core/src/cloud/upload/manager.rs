@@ -143,6 +143,7 @@ impl CloudUploads {
                 phase: a.phase,
                 bytes: child.as_ref().map_or(0, |c| c.bytes),
                 total: a.source.bytes,
+                unresolved_nos_boundary: child.as_ref().is_some_and(|c| c.unresolved_boundary),
                 transfer: child.map(|c| c.status),
                 error: if a.phase == AttachmentPhase::Omitted {
                     None

@@ -34,11 +34,7 @@ impl NosUploads {
             if matches!(error, Error::StaleResponse | Error::Storage(_)) {
                 return Err(error);
             }
-            let ambiguous = matches!(error, Error::MutationUncertain)
-                || job
-                    .pending
-                    .as_ref()
-                    .is_some_and(|p| job.context.is_empty() || p.complete);
+            let ambiguous = matches!(error, Error::MutationUncertain) || job.unresolved_boundary();
             job.status = if ambiguous {
                 NosStatus::Ambiguous
             } else {
@@ -69,15 +65,11 @@ impl NosUploads {
         self.view(&job)
     }
     async fn advance(&self, job: &mut Job, options: &NosRunOptions) -> Result<()> {
-        let reader = job.source.open_async().await?;
-        self.guard()?;
-        if job
-            .pending
-            .as_ref()
-            .is_some_and(|p| job.context.is_empty() || p.complete)
-        {
+        if job.unresolved_boundary() {
             return Err(Error::MutationUncertain);
         }
+        let reader = job.source.open_async().await?;
+        self.guard()?;
         let mut renewed = false;
         if !job.context.is_empty() {
             match self.send(job, None, &mut renewed).await {

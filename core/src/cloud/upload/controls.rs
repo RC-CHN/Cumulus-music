@@ -118,7 +118,11 @@ impl CloudUploads {
     pub fn resume(&self, id: &str) -> Result<CloudView> {
         let _lock = self.lock(id)?;
         let task = self.read(id)?;
-        if task.uncertain() {
+        self.resume_locked(&task)
+    }
+    pub(super) fn resume_locked(&self, task: &Task) -> Result<CloudView> {
+        let id = &task.id;
+        if task.uncertain() || self.view(task)?.unresolved_nos_boundary() {
             return Err(Error::MutationUncertain);
         }
         if matches!(task.phase, CloudPhase::Complete | CloudPhase::Cancelled)
@@ -150,7 +154,7 @@ impl CloudUploads {
                 tx.delete(&self.owner, CONTROL, id)
             })
         })?;
-        self.view(&task)
+        self.view(task)
     }
     pub async fn renew_token(&self, id: &str) -> Result<CloudView> {
         let _lock = self.lock(id)?;
@@ -169,6 +173,9 @@ impl CloudUploads {
                 .ok_or(Error::State("no unfinished attachment transfer"))?,
             _ => return Err(Error::State("no current NOS transfer to renew")),
         };
+        if self.nos.get(&child)?.unresolved_boundary {
+            return Err(Error::MutationUncertain);
+        }
         self.nos.renew_token(&child).await?;
         self.view(&task)
     }
