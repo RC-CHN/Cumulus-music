@@ -225,6 +225,9 @@ pub enum PlaySelection {
         #[serde(default)]
         query: Option<crate::client::dto::CloudQuery>,
     },
+    SearchResultVoice {
+        id: String,
+    },
     SearchResultTrack {
         id: String,
         quality: Quality,

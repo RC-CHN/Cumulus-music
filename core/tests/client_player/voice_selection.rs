@@ -66,3 +66,65 @@ async fn late_voice_selection_cannot_replace_a_newer_song_and_denied_program_can
     );
     client.player_action("1", PlayerAction::Stop).await.unwrap();
 }
+
+#[tokio::test]
+async fn search_voice_plays_one_episode_after_current_without_colliding_with_catalog_media() {
+    let (dir, api, _session, client, _) = fixture();
+    client
+        .play_selection(
+            "1",
+            PlaySelection::Songs {
+                ids: ["181", "2"].map(str::to_owned).to_vec(),
+                index: 0,
+                quality: Quality::Standard,
+            },
+        )
+        .await
+        .unwrap();
+    let baseline = client.player_queue("1").await.unwrap();
+    api.calls.lock().unwrap().clear();
+    let playing = client
+        .play_selection("1", PlaySelection::SearchResultVoice { id: "81".into() })
+        .await
+        .unwrap();
+    assert_eq!(playing.track.as_ref().unwrap().id, "181");
+    assert_eq!(
+        playing.track.as_ref().unwrap().voice_id.as_deref(),
+        Some("81")
+    );
+    assert_eq!(playing.resource_kind, Some(PlayerResourceKind::Voice));
+    let queue = client.player_queue("1").await.unwrap();
+    assert_eq!(queue.tracks.len(), 3);
+    assert_eq!(queue.tracks[0].entry_id, baseline.tracks[0].entry_id);
+    assert_eq!(queue.tracks[0].track.voice_id, None);
+    assert_eq!(queue.tracks[2].entry_id, baseline.tracks[1].entry_id);
+    assert_eq!(queue.current.as_ref(), Some(&queue.tracks[1].entry_id));
+    let persisted = cumulus_core::playback::PlaybackQueue::new(
+        Some(Arc::new(
+            cumulus_core::storage::StateStore::open(dir.path()).unwrap(),
+        )),
+        "9",
+    )
+    .unwrap()
+    .snapshot();
+    assert_eq!(
+        persisted.items[1].source,
+        json!({"kind":"voice","id":"81","scene":"search","pldScene":"audio"})
+    );
+    let calls = api.calls.lock().unwrap().clone();
+    assert!(calls.iter().any(|path| path == "/api/dj/program/detail"));
+    assert!(calls.iter().any(|path| path == "/api/dj/play/url/check"));
+    assert!(
+        !calls
+            .iter()
+            .any(|path| path == "/api/dj/program/byradio" || path == "/api/v3/song/detail")
+    );
+
+    client.player_action("1", PlayerAction::Next).await.unwrap();
+    let replayed = client
+        .play_selection("1", PlaySelection::SearchResultVoice { id: "81".into() })
+        .await
+        .unwrap();
+    assert_eq!(replayed.entry_id, playing.entry_id);
+    assert_eq!(client.player_queue("1").await.unwrap().tracks.len(), 3);
+}

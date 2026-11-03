@@ -192,7 +192,8 @@ impl MusicClient {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum RetainedRow {
     Catalog,
-    Search,
+    SearchSong,
+    SearchVoice,
 }
 
 pub(super) struct QueueClickSnapshot {
@@ -292,16 +293,27 @@ impl MusicClient {
             attempt,
             ..
         } = snapshot;
-        let id = resource["id"]
+        let identity = if policy == RetainedRow::SearchVoice {
+            "voice_id"
+        } else {
+            "id"
+        };
+        let id = resource[identity]
             .as_str()
-            .ok_or(Error::State("selected song has no identifier"))?;
-        let existing = queue
-            .items
-            .iter()
-            .position(|entry| entry.visible_in_queue() && online_song(&entry.resource, id));
+            .ok_or(Error::State("selected resource has no identifier"))?;
+        let existing = queue.items.iter().position(|entry| {
+            entry.visible_in_queue()
+                && if policy == RetainedRow::SearchVoice {
+                    super::identity::kind(&entry.resource) == super::PlayerResourceKind::Voice
+                        && entry.resource["voice_id"].as_str() == Some(id)
+                } else {
+                    online_song(&entry.resource, id)
+                }
+        });
+        let search = policy != RetainedRow::Catalog;
         let entry = if let Some(index) = existing {
             let entry = &mut queue.items[index];
-            let rebind = policy == RetainedRow::Search && entry.source != source;
+            let rebind = search && entry.source != source;
             if rebind || entry.resource["missing"] == true {
                 entry.resource = resource;
                 entry.source = source;
@@ -323,7 +335,7 @@ impl MusicClient {
                 resource,
                 source,
             };
-            if policy == RetainedRow::Search {
+            if search {
                 insert_after_current(&mut queue, entry);
             } else {
                 queue.order.push(entry_id.clone());

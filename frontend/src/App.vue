@@ -10,7 +10,9 @@ import type { SearchItem } from './services/search';
 import {
   searchCardIsCurrent,
   searchCardSelection,
+  searchVoiceSelection,
   searchCurrentSongId,
+  searchCurrentVoiceId,
 } from './services/searchCards';
 import { catalogResourceSelection, type AlbumCardRequest } from './services/catalogCards';
 import AlbumActions from './components/catalog/AlbumActions.vue';
@@ -360,11 +362,11 @@ function playSearchChart(keywords: string[]) {
 }
 function playSearchCard(item: SearchItem) {
   const view = player.view.value;
-  if (
-    searchCardIsCurrent(item, view?.origin, view?.track?.voiceId ?? undefined) &&
-    player.loaded.value
-  ) {
+  if (searchCardIsCurrent(item, view?.origin, searchCurrentVoiceId(view)) && player.loaded.value) {
     void player.toggleSource();
+  } else if (item.kind === 'voice') {
+    const selection = searchVoiceSelection(item);
+    if (selection) void player.select(selection);
   } else {
     const quality = view?.qualityPreferences.quality ?? 'standard';
     void player.prepareSelection((epoch) => searchCardSelection(core, epoch, item, quality));
@@ -2168,7 +2170,7 @@ onUnmounted(() => {
                 :current-id="currentSearchSongId"
                 :playback-origin="currentOrigin"
                 :playback-state="playbackState"
-                :current-voice-id="currentVoiceId ?? undefined"
+                :current-voice-id="searchCurrentVoiceId(player.view.value)"
                 @navigate="
                   (category, pagination, correct, rewrittenKeyword) =>
                     page.kind === 'search' &&

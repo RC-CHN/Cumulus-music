@@ -36,6 +36,9 @@ export function searchCardCanPlay(item: SearchItem): boolean {
 export function searchCurrentSongId(view?: Pick<PlayerView, 'resourceKind' | 'track'>) {
   return view?.resourceKind === 'catalog' ? view.track?.id : undefined;
 }
+export function searchCurrentVoiceId(view?: Pick<PlayerView, 'resourceKind' | 'track'>) {
+  return view?.resourceKind === 'voice' ? (view.track?.voiceId ?? undefined) : undefined;
+}
 export function searchCardIsCurrent(
   item: SearchItem,
   origin?: PlayerOrigin | null,
@@ -45,11 +48,17 @@ export function searchCardIsCurrent(
   if (!origin || !['playlist', 'album', 'artist', 'podcast'].includes(item.kind)) return false;
   return searchCardKey(item) === `${origin.kind}:${origin.id}`;
 }
+/** A search episode always resolves its own native details, regardless of parent radio. */
+export function searchVoiceSelection(item: Extract<SearchItem, { kind: 'voice' }>) {
+  return item.voice.unavailable
+    ? undefined
+    : { kind: 'search_result_voice' as const, id: item.voice.id };
+}
 /** Prepare from the existing account-bound catalog/radio snapshots, not search metadata. */
 export async function searchCardSelection(
   core: Pick<CoreClient, 'catalogPage' | 'podcastPage'>,
   epoch: string,
-  item: SearchItem,
+  item: Exclude<SearchItem, { kind: 'voice' }>,
   quality: Quality,
 ): Promise<PlaySelection> {
   if (!searchCardCanPlay(item)) throw { code: 'unavailable', message: '此内容暂不可播放' };
@@ -63,28 +72,15 @@ export async function searchCardSelection(
       quality,
     );
   }
-  if (item.kind === 'voice' && !item.voice.radioId) return { kind: 'voice', id: item.voice.id };
-  if (item.kind === 'podcast' || item.kind === 'voice') {
-    const scope = {
-      kind: 'radio' as const,
-      id: item.kind === 'podcast' ? item.podcast.id : item.voice.radioId!,
-      ascending: true,
-    };
+  if (item.kind === 'podcast') {
+    const scope = { kind: 'radio' as const, id: item.podcast.id, ascending: true };
     const view = await core.podcastPage(
       epoch,
       { scope, keyword: '', offset: 0, limit: 100, revision: null },
       true,
     );
     if (view.epoch !== epoch) throw { code: 'stale', message: '账号已切换' };
-    if (item.kind === 'voice') {
-      const episode = view.episodes.find((candidate) => candidate.id === item.voice.id);
-      // The radio page may omit this episode (for example, beyond its first 100).
-      // Let native resolve exactly the clicked episode; never substitute its neighbour.
-      if (!episode) return { kind: 'voice', id: item.voice.id };
-      if (episode.unavailable) throw { code: 'unavailable', message: '此内容暂不可播放' };
-    }
-    const id =
-      item.kind === 'voice' ? item.voice.id : view.episodes.find((e) => !e.unavailable)?.id;
+    const id = view.episodes.find((episode) => !episode.unavailable)?.id;
     if (!id) throw { code: 'unavailable', message: '暂无可播放声音' };
     return { kind: 'podcast', scope, revision: view.revision, start_id: id };
   }

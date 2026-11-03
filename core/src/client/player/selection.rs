@@ -79,7 +79,12 @@ impl MusicClient {
                 };
                 (input, keep_queue.then_some(RetainedRow::Catalog))
             }
-            input @ PlaySelection::SearchResultTrack { .. } => (input, Some(RetainedRow::Search)),
+            input @ PlaySelection::SearchResultTrack { .. } => {
+                (input, Some(RetainedRow::SearchSong))
+            }
+            input @ PlaySelection::SearchResultVoice { .. } => {
+                (input, Some(RetainedRow::SearchVoice))
+            }
             input => (input, None),
         };
         if !matches!(
@@ -217,7 +222,7 @@ impl MusicClient {
                 self.session.check_generation(&token)?;
                 return project(&state, &token);
             }
-            PlaySelection::Voice { id } => {
+            PlaySelection::Voice { id } | PlaySelection::SearchResultVoice { id } => {
                 let id = identifier(&json!(id))?;
                 let resource = self
                     .session
@@ -231,6 +236,22 @@ impl MusicClient {
                         Ok(resource)
                     })
                     .await?;
+                if let Some(snapshot) = preserve {
+                    let state = self
+                        .play_retained_queue_row(
+                            &token,
+                            snapshot,
+                            (
+                                resource,
+                                json!({"kind":"voice","id":id,"scene":"search","pldScene":"audio"}),
+                            ),
+                            lease.ok_or(Error::StaleResponse)?,
+                            RetainedRow::SearchVoice,
+                        )
+                        .await?;
+                    self.session.with_token(&token, |_| Ok(()))?;
+                    return project(&state, &token);
+                }
                 let state = self
                     .submit_selection(
                         &token,
@@ -486,7 +507,8 @@ impl MusicClient {
                     | PlaySelection::History { .. }
                     | PlaySelection::Local { .. }
                     | PlaySelection::Podcast { .. }
-                    | PlaySelection::Voice { .. } => {
+                    | PlaySelection::Voice { .. }
+                    | PlaySelection::SearchResultVoice { .. } => {
                         unreachable!("cloud handled before song detail requests")
                     }
                     PlaySelection::SearchResultTrack { id, quality, .. } => Ok((

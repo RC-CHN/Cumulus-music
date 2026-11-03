@@ -57,13 +57,17 @@ Rust PlayerView.origin仅投影已知playlist/album/artist/podcast的公开资�
 停止后重新选择。共享异步焦点修复和原生失败重试详见card-source-ui-contracts.txt，
 新增37态为该专项，不将它称作原56态的全部菜单/布局覆盖。上列未完成差异继续保留。
 
-无所属播客的声音
-官方 M3095（hybrid_41）:1201–1218、1230–1257 按声音 ID 响应双击和封面播放，
-不会因缺少所属播客标识而隐藏播放。Cumulus 保留已核对的播客队列；所属播客缺失、
-或已核对的首页不含该声音时，只用声音 ID 走现有原生节目详情和权限校验。
-旧账号/已标记不可用的结果仍拒绝；不猜播客链接、不替换为邻近节目。
-可用 search_results_smoke.py --voice-direct 在实际 WebView 验证无播客标识的声音
-播放及暂停，测试服务完全合成。
+搜索声音只播放所选单集
+官方 M/3095:1201–1218、1230–1257 对声音卡片使用 voice 和 assignedPlayId，
+不传播单列表或 needFetchAudio。综合页 PC recommend.jsx:537–556 将 Scene.search
+传给 VoiceCard；其 index.jsx:200–218、290–298 默认不请求附近声音。M/3085:399–411
+在没有 needFetchAudio 时只处理本单集，显式播放的普通队列不清空。
+Cumulus 无论是否有所属播单，只用声音 ID 解析该单集的原生节目详情和授权，
+不为播放单集读取播单，不替换成邻近节目；明确点击播客卡片播放仍选择播单。
+新单集放在当前项之后；已有单集按节目 ID 复用，不与同音源 ID 的普通歌曲混淆。
+搜索双击也沿用社区的普通保留队列策略；编译分类行的双击数据没有明示 Scene.search，
+未断言官方在所有双击偏好和特殊播放模式下的行为相同。旧账号和不可用节目仍拒绝。
+search_results_smoke.py --voice-direct 可验证无所属播单的单集播放及暂停。
 
 声音卡片的直接下载
 官方 SearchResults/components/recommend.jsx:537–556 复用 VoiceCard，
