@@ -40,6 +40,7 @@ const paths: Record<string, string> = {
   repeatOne: 'm17 2 4 4-4 4M3 11V8a2 2 0 0 1 2-2h16M7 22l-4-4 4-4m14-1v3a2 2 0 0 1-2 2H3m8-8 2-1v6',
   shuffle: 'M3 5h3l12 14h3m-4-4 4 4-4 3M3 19h3l12-14h3m-4-3 4 3-4 4',
   list: 'M8 5h13M8 12h13M8 19h8M3 5h.01M3 12h.01M3 19h.01',
+  'list-add': 'M3 5h16M3 11h16M3 17h8m6-4v8m-4-4h8',
   volume: 'M11 4 5 9H2v6h3l6 5zM15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14',
   muted: 'M11 4 5 9H2v6h3l6 5zM16 9l6 6m0-6-6 6',
   up: 'm5 15 7-7 7 7',

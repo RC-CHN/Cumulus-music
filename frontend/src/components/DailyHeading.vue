@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, shallowRef, watch } from 'vue';
 
-const props = defineProps<{ birthday?: boolean; nickname?: string | null }>();
+const props = defineProps<{ birthday?: boolean; nickname?: string | null; compact?: boolean }>();
 // The date is local and updates if a native read changes birthday presentation.
 const today = shallowRef(new Date());
 watch(
@@ -25,15 +25,18 @@ const description = computed(() => {
 </script>
 
 <template>
-  <div class="daily-heading-copy" :class="{ 'daily-birthday': birthday }">
-    <h1 :aria-label="title">
+  <div
+    class="daily-heading-copy"
+    :class="{ 'daily-birthday': birthday, 'daily-heading-compact': compact }"
+  >
+    <component :is="compact ? 'div' : 'h1'" class="daily-heading-title" :aria-label="title">
       <time :datetime="date" :aria-label="`${month}月${day}日`">
         <span class="daily-day">{{ day }}</span>
         <span class="daily-month"><span class="daily-date-divider">/</span>{{ month }}</span>
       </time>
       <span class="daily-title">{{ title }}</span>
-    </h1>
-    <p class="daily-description">{{ description }}</p>
+    </component>
+    <p v-if="!compact" class="daily-description">{{ description }}</p>
   </div>
 </template>
 
@@ -59,14 +62,28 @@ const description = computed(() => {
   color: var(--accent);
 }
 
-h1,
+.daily-heading-title,
 time {
   display: flex;
   align-items: center;
 }
-h1 {
+.daily-heading-title {
   height: 48px;
   letter-spacing: 0;
+}
+.daily-heading-compact {
+  padding: 0;
+  background: none;
+}
+.daily-heading-compact .daily-heading-title,
+.daily-heading-compact .daily-day {
+  height: auto;
+}
+.daily-heading-compact .daily-day,
+.daily-heading-compact .daily-month,
+.daily-heading-compact .daily-title {
+  font-size: 13px;
+  line-height: 20px;
 }
 h1:focus-visible {
   outline: 2px solid var(--accent);

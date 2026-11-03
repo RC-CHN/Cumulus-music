@@ -794,6 +794,74 @@ const dailyMenuItems = computed(() => [
 ]);
 let dailyMenuRevision: string | null | undefined;
 let restoreDailyMenu = false;
+const recommendationScrollScope = computed(() => {
+  const kind = music.page.value.kind;
+  const revision = music.result.value?.revision;
+  return revision && (kind === 'daily' || kind === 'style_recommendations')
+    ? `${music.account.value.epoch}:${kind}:${revision}`
+    : undefined;
+});
+const scrolledRecommendation = ref<string>();
+const recommendationStickyVisible = computed(
+  () =>
+    !!recommendationScrollScope.value &&
+    scrolledRecommendation.value === recommendationScrollScope.value,
+);
+watch(recommendationScrollScope, () => (scrolledRecommendation.value = undefined));
+function recommendationScrollEdge(scope: string, scrolled: boolean, overflow: number) {
+  if (scope !== recommendationScrollScope.value) return;
+  const active = document.activeElement;
+  const current = music.page.value.kind;
+  if (scrolled) {
+    const heading = document.querySelector<HTMLElement>('.page-view .page-heading');
+    const actions = document.querySelector<HTMLElement>('.page-view .track-actions');
+    const height = (element: HTMLElement | null) => {
+      if (!element) return 0;
+      const style = getComputedStyle(element);
+      return (
+        element.offsetHeight +
+        (parseFloat(style.marginTop) || 0) +
+        (parseFloat(style.marginBottom) || 0)
+      );
+    };
+    // Short lists must still overflow once the compact bar makes the table taller.
+    if (overflow <= height(heading) + height(actions) - 44) return;
+    scrolledRecommendation.value = scope;
+    if (active instanceof HTMLElement && active.closest('.track-actions,.page-heading-actions')) {
+      const target = active.matches('.style-queue-all')
+        ? '添加全部推荐歌曲至播放列表'
+        : '播放全部推荐歌曲';
+      void nextTick(() => {
+        if (
+          recommendationScrollScope.value === scope &&
+          (document.activeElement === document.body || document.activeElement === active)
+        )
+          document
+            .querySelector<HTMLElement>(
+              `.recommendation-sticky [aria-label="${target}"]:not(:disabled)`,
+            )
+            ?.focus({ preventScroll: true });
+      });
+    }
+    return;
+  }
+  const restore =
+    active instanceof HTMLElement && active.closest('.recommendation-sticky')
+      ? active.getAttribute('aria-label') === '播放全部推荐歌曲'
+        ? '.track-actions .primary'
+        : current === 'daily'
+          ? '.daily-more .menu-trigger'
+          : '.style-queue-all'
+      : undefined;
+  scrolledRecommendation.value = undefined;
+  if (restore)
+    void nextTick(() => {
+      if (recommendationScrollScope.value === scope && document.activeElement === document.body)
+        document
+          .querySelector<HTMLElement>(`.page-view ${restore}:not(:disabled)`)
+          ?.focus({ preventScroll: true });
+    });
+}
 watch([music.page, () => music.account.value.epoch], ([next], [previous]) => {
   dailyQueueMessage.value = '';
   restoreDailyMenu = next.kind === 'daily' && previous.kind === 'daily_batch';
@@ -825,17 +893,28 @@ async function dailyMenuAction(key: string) {
   )
     return;
   if (key === 'batch') return music.navigate({ kind: 'daily_batch' });
-  if (key !== 'queue' || !canQueueDaily.value) return;
+  if (key === 'queue') await queueRecommendations();
+}
+async function queueRecommendations() {
+  const currentPage = music.page.value;
+  const epoch = music.account.value.epoch;
+  const revision = music.result.value?.revision;
+  const style = currentPage.kind === 'style_recommendations';
+  if ((!style && currentPage.kind !== 'daily') || !revision || !canQueueDaily.value) return;
   const visible = () => music.page.value === currentPage && music.account.value.epoch === epoch;
   const starts = !player.view.value?.queueLen && !player.view.value?.track;
   dailyQueueFailed.value = false;
   dailyQueueMessage.value = '正在添加至播放列表…';
   try {
-    const state = await player.queueDaily(revision);
+    const state = await (style
+      ? player.queueStyleRecommendations(revision)
+      : player.queueDaily(revision));
     if (!visible()) return;
     if (!state) throw { message: '播放状态已变化，请重试' };
     if (starts && state.state === 'error') throw { message: '歌曲未能播放，请重试' };
-    dailyQueueMessage.value = starts ? '已开始播放每日推荐' : '已添加全部至播放列表';
+    dailyQueueMessage.value = starts
+      ? `已开始播放${style ? '风格推荐' : '每日推荐'}`
+      : '已添加全部至播放列表';
   } catch (error) {
     if (!visible()) return;
     const issue = failure(error);
@@ -2356,6 +2435,7 @@ onUnmounted(() => {
                 />
                 <div
                   v-else
+                  v-show="!recommendationStickyVisible"
                   class="page-heading"
                   :class="{ 'daily-heading': page.kind === 'daily' }"
                 >
@@ -2499,6 +2579,7 @@ onUnmounted(() => {
                 </div>
                 <div
                   v-if="page.kind === 'daily' || (result?.tracks.length && !result.playlist)"
+                  v-show="!recommendationStickyVisible"
                   class="track-actions"
                   :class="{ 'daily-track-actions': page.kind === 'daily' }"
                 >
@@ -2526,6 +2607,15 @@ onUnmounted(() => {
                   >
                     <Icon v-if="page.kind === 'daily'" name="download" />
                     {{ page.kind === 'daily' ? '下载' : '下载当前歌曲列表' }}
+                  </button>
+                  <button
+                    v-if="page.kind === 'style_recommendations'"
+                    class="secondary style-queue-all"
+                    type="button"
+                    :disabled="!result?.revision || !canQueueDaily"
+                    @click="queueRecommendations"
+                  >
+                    <Icon name="list-add" />添加全部至播放列表
                   </button>
                   <ActionMenu
                     v-if="page.kind === 'daily'"
@@ -2556,7 +2646,7 @@ onUnmounted(() => {
                   </nav>
                 </div>
                 <p
-                  v-if="page.kind === 'daily' && dailyQueueMessage"
+                  v-if="recommendationScrollScope && dailyQueueMessage"
                   class="batch-operation-feedback"
                   :class="{ failed: dailyQueueFailed }"
                   role="status"
@@ -2592,10 +2682,44 @@ onUnmounted(() => {
                       {{ result.total }} 首，可继续加载）</template
                     >
                   </p>
+                  <div
+                    v-if="recommendationStickyVisible"
+                    class="recommendation-sticky"
+                    role="group"
+                    :aria-label="page.kind === 'daily' ? '每日推荐快捷操作' : '风格推荐快捷操作'"
+                  >
+                    <DailyHeading
+                      v-if="page.kind === 'daily'"
+                      compact
+                      :birthday="result.daily?.birthdayToday"
+                    />
+                    <span v-else>风格推荐</span>
+                    <button
+                      class="icon-button"
+                      type="button"
+                      aria-label="播放全部推荐歌曲"
+                      :disabled="!player.ready.value || player.busy.value || loading"
+                      @click="play(0)"
+                    >
+                      <Icon name="play" />
+                    </button>
+                    <button
+                      class="icon-button"
+                      type="button"
+                      aria-label="添加全部推荐歌曲至播放列表"
+                      :disabled="!canQueueDaily"
+                      @click="queueRecommendations"
+                    >
+                      <Icon name="list-add" />
+                    </button>
+                  </div>
                   <TrackTable
                     v-if="playlistTrackSearch.tracks.length"
+                    :key="recommendationScrollScope"
                     ref="playlistTrackTable"
                     :locate-index="playlistLocateIndex"
+                    :scroll-scope="recommendationScrollScope"
+                    @scroll-edge="recommendationScrollEdge"
                     navigable
                     @artist="(id) => openCatalog({ kind: 'artist', id })"
                     @album="(id) => openCatalog({ kind: 'album', id })"

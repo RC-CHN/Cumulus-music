@@ -13,6 +13,7 @@ const props = defineProps<{
   currentId?: string;
   navigable?: boolean;
   locateIndex?: number;
+  scrollScope?: string;
 }>();
 const emit = defineEmits<{
   like: [track: TrackView];
@@ -20,6 +21,7 @@ const emit = defineEmits<{
   more: [request: TrackMenuRequest];
   artist: [id: string];
   album: [id: string];
+  scrollEdge: [scope: string, scrolled: boolean, overflow: number];
 }>();
 const rowHeight = 56;
 const {
@@ -31,6 +33,15 @@ const {
   center,
 } = useVirtualRows(() => props.tracks.length, rowHeight);
 const rows = computed(() => props.tracks.slice(start.value, end.value));
+let wasScrolled = false;
+function scroll() {
+  onScroll();
+  const node = scroller.value;
+  const scrolled = (node?.scrollTop ?? 0) > 0;
+  if (node && props.scrollScope && scrolled !== wasScrolled)
+    emit('scrollEdge', props.scrollScope, scrolled, node.scrollHeight - node.clientHeight);
+  wasScrolled = scrolled;
+}
 watch(
   () => props.tracks,
   (_now, previous) => {
@@ -58,7 +69,7 @@ defineExpose({ locate });
       <span>#</span><span role="columnheader">歌曲 / 歌手</span><span role="columnheader">专辑</span
       ><span role="columnheader">喜欢</span><span role="columnheader">时长</span>
     </div>
-    <div ref="scroller" class="track-scroll" @scroll.passive="onScroll">
+    <div ref="scroller" class="track-scroll" @scroll.passive="scroll">
       <div :style="{ height: `${start * rowHeight}px` }" aria-hidden="true" />
       <TrackRow
         v-for="(track, index) in rows"

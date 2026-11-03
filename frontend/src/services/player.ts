@@ -274,6 +274,12 @@ export type PlayerAction =
   | { kind: 'queue_downloads'; task_ids: string[]; expected_queue_revision: string }
   | { kind: 'queue_playlist'; id: string; quality: Quality; expected_queue_revision: string }
   | {
+      kind: 'queue_style_recommendations';
+      revision: string;
+      quality: Quality;
+      expected_queue_revision: string;
+    }
+  | {
       kind: 'queue_daily_recommendations';
       revision: string;
       indices?: number[];

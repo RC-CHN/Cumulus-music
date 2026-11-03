@@ -102,6 +102,31 @@
   width: 20px;
   height: 20px;
 }
+.recommendation-sticky {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  font-weight: 600;
+}
+.recommendation-sticky > :first-child {
+  margin-inline-end: auto;
+}
+.recommendation-sticky > button {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: 8px;
+  background: var(--surface-alt);
+}
+.style-queue-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
 .eyebrow {
   color: var(--accent);
   font-size: 11px;

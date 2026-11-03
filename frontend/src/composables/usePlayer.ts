@@ -253,6 +253,13 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       quality: view.value?.qualityPreferences.quality ?? 'standard',
     });
   }
+  function queueStyleRecommendations(revision: string) {
+    return queueAction({
+      kind: 'queue_style_recommendations',
+      revision,
+      quality: view.value?.qualityPreferences.quality ?? 'standard',
+    });
+  }
   function queueAlbum(id: string, selection?: { ids: string[]; revision: string }) {
     const quality = view.value?.qualityPreferences.quality ?? 'standard';
     return queueAction(
@@ -303,6 +310,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
             | 'queue_local'
             | 'queue_playlist'
             | 'queue_daily_recommendations'
+            | 'queue_style_recommendations'
             | 'queue_playlist_batch'
             | 'queue_cloud_batch'
             | 'queue_album_batch'
@@ -679,6 +687,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     queueLocal,
     queueAlbum,
     queueDaily,
+    queueStyleRecommendations,
     queueArtistSongs,
     queueDownloads,
     queueCloud,
