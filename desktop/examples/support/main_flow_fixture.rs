@@ -20,11 +20,35 @@ use std::{
 const ORIGINAL: u64 = 41;
 const CREATED: u64 = 42;
 pub const SOURCE: &str = media::URL;
+const HTTPS_HOST: &str = "cumulus-local-fixture.music.126.net";
+const HTTPS_SOURCE: &str = "https://cumulus-local-fixture.music.126.net/synthetic/audio.m4a";
+
+/// The real URL path is test-only and fail-closed outside the loopback fixture.
+pub fn ordinary_https() -> bool {
+    if std::env::var("CUMULUS_MAIN_FLOW_HTTPS_PROOF").as_deref() != Ok("1") {
+        return false;
+    }
+    use std::net::{Ipv4Addr, SocketAddr, ToSocketAddrs};
+    assert!(cfg!(target_os = "linux"));
+    assert_eq!(
+        std::fs::read_to_string("/etc/hosts").unwrap(),
+        format!("127.0.0.1 {HTTPS_HOST}\n")
+    );
+    assert_eq!(
+        (HTTPS_HOST, 443)
+            .to_socket_addrs()
+            .unwrap()
+            .collect::<Vec<_>>(),
+        [SocketAddr::from((Ipv4Addr::LOCALHOST, 443))]
+    );
+    true
+}
 
 pub struct Service {
     pub media: media::Media,
     calls: Mutex<BTreeMap<String, u64>>,
     playlist: Mutex<Option<Value>>,
+    ordinary_https: bool,
     offline: AtomicBool,
     local_loads: AtomicUsize,
     source_loads: AtomicUsize,
@@ -32,15 +56,23 @@ pub struct Service {
 }
 
 impl Service {
-    pub fn new(store: Arc<StateStore>) -> Self {
+    pub fn new(store: Arc<StateStore>, ordinary_https: bool) -> Self {
         Self {
             media: media::Media::new(store),
+            ordinary_https,
             calls: Default::default(),
             playlist: Default::default(),
             offline: Default::default(),
             local_loads: Default::default(),
             source_loads: Default::default(),
             offline_media_attempts: Default::default(),
+        }
+    }
+    fn playback_url(&self) -> &'static str {
+        if self.ordinary_https {
+            HTTPS_SOURCE
+        } else {
+            SOURCE
         }
     }
     pub fn offline(&self) {
@@ -53,7 +85,7 @@ impl Service {
         let media = self.media.facts();
         json!({"calls":*self.calls.lock().unwrap(), "disposablePresent":self.playlist.lock().unwrap().is_some(),
             "offline":self.offline.load(Ordering::Acquire), "mediaTransfers":media["count"], "mediaRequests":media["requests"],
-            "sourceLoads":self.source_loads.load(Ordering::Acquire), "localLoads":self.local_loads.load(Ordering::Acquire),
+            "ordinaryHttps":self.ordinary_https, "sourceLoads":self.source_loads.load(Ordering::Acquire), "localLoads":self.local_loads.load(Ordering::Acquire),
             "offlineMediaAttempts":self.offline_media_attempts.load(Ordering::Acquire)})
     }
 }
@@ -99,7 +131,7 @@ impl Api for Service {
                 "/api/v3/song/detail" => json!({"code":200,"songs":[song()]}),
                 "/api/song/lyric/v1" => json!({"code":200,"lrc":{"lyric":"[00:00.00]合成测试"}}),
                 "/api/song/enhance/player/url/v1" => {
-                    json!({"code":200,"data":[{"id":1,"url":SOURCE,"code":200,"md5":"synthetic","level":"standard","expi":120}]})
+                    json!({"code":200,"data":[{"id":1,"url":self.playback_url(),"code":200,"md5":"synthetic","level":"standard","expi":120}]})
                 }
                 "/api/song/enhance/download/url/v1" => {
                     json!({"code":200,"data":{"id":1,"url":SOURCE,"code":200,"type":"flac","size":media::DATA.len(),"md5":media::MD5,"level":"lossless"}})
@@ -242,8 +274,10 @@ impl AudioEngine for Audio {
     fn load(&mut self, mut request: LoadRequest, cancel: &Cancellation) -> Result<LoadedMedia> {
         let offline = self.fixture.offline.load(Ordering::Acquire);
         let local = match &request.source {
-            MediaInput::Url(url) if !offline && url.as_str() == SOURCE => {
-                request.source = MediaInput::File(self.seed.clone());
+            MediaInput::Url(url) if !offline && url.as_str() == self.fixture.playback_url() => {
+                if !self.fixture.ordinary_https {
+                    request.source = MediaInput::File(self.seed.clone());
+                }
                 false
             }
             MediaInput::File(path)
@@ -261,6 +295,10 @@ impl AudioEngine for Audio {
             }
         };
         let loaded = self.inner.load(request, cancel)?;
+        if self.fixture.ordinary_https && !local && loaded.codec.as_deref() != Some("aac") {
+            let _ = self.inner.stop();
+            return Err(Error::State("ordinary HTTPS fixture must decode AAC"));
+        }
         let counter = if local {
             &self.fixture.local_loads
         } else {

@@ -20,12 +20,15 @@ def main():
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--runtime', type=Path)
+    parser.add_argument('--ordinary-https', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--screenshots', action='store_true', help='optional isolated Linux GTK screenshots')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
     env['CUMULUS_PROOF_DIR'] = str(root/'run')
+    if args.ordinary_https:
+        env['CUMULUS_MAIN_FLOW_HTTPS_PROOF'] = '1'
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
     for key in ('XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR',
@@ -62,6 +65,8 @@ def main():
     assert stages['search']['fixture']['calls']['/api/search/song/list/page'] >= 1
     assert stages['playback']['nativeProgress'] and stages['playback']['paused']
     assert stages['playback']['fixture']['sourceLoads'] == 1
+    assert stages['playback']['fixture']['ordinaryHttps'] == args.ordinary_https
+    assert stages['playback']['resumedSameEntry'] == args.ordinary_https
     assert stages['playback']['fixture']['calls']['/api/song/enhance/player/url/v1'] >= 1
     assert stages['playlist_created']['fixture']['disposablePresent']
     assert stages['playlist_edited']['fixture']['calls']['/api/batch'] == 1
@@ -156,6 +161,7 @@ def main():
     screenshots = sum(len(list(folder.glob('ux_*.png'))) for folder in (output, reopened_output))
     assert screenshots == (len(STAGES) if args.screenshots else 0)
     report = dict(ok=True, actualWebView=True, actualLibmpv=True, stages=len(STAGES)+1, screenshots=screenshots, sqliteVerified=True,
+                  ordinaryHttpsPlayback=args.ordinary_https, resumedSameHttpsEntry=args.ordinary_https,
                   realMusicRequests=0, realAccountWrites=0, syntheticOfflinePlayback=True, nativeDownloadDisposal=True, downloadIntegrityCheckpoint=True,
                   pausedPartialAndVerifiedRangeResume=True, playlistMembershipReadback=True,
                   syntheticQrAdoption=True, savedCurrentSyntheticProfile=True,

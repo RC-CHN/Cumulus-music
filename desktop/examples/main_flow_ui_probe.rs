@@ -135,6 +135,7 @@ fn main() {
     // SAFETY: precedes WebView and worker creation.
     unsafe { cumulus_desktop::prepare_graphics() };
     let root = PathBuf::from(std::env::var_os("CUMULUS_PROOF_DIR").expect("new proof root"));
+    let ordinary_https = fixture::ordinary_https();
     let reopen = std::env::var("CUMULUS_PROOF_REOPEN").as_deref() == Ok("1");
     if reopen {
         let completed: Value = serde_json::from_slice(
@@ -170,7 +171,7 @@ fn main() {
     cumulus_desktop::configure(tauri::Builder::default())
         .setup(move |app| {
             let store = Arc::new(StateStore::open(root.join("state"))?);
-            let fixture = Arc::new(fixture::Service::new(store.clone()));
+            let fixture = Arc::new(fixture::Service::new(store.clone(), ordinary_https));
             let wire = Arc::new(if reopen {
                 wire::Wire::reopen(fixture.clone())
             } else {
@@ -284,7 +285,7 @@ fn main() {
         })
         .on_page_load(move |webview, payload| {
             if payload.event()==PageLoadEvent::Finished {
-                webview.eval(format!("window.__mainFlowDownloadPath={path};")).unwrap();
+                webview.eval(format!("window.__mainFlowDownloadPath={path};window.__mainFlowOrdinaryHttps={ordinary_https};")).unwrap();
                 let source = if reopen {
                     include_str!("main_flow_reopen_probe.js")
                 } else {

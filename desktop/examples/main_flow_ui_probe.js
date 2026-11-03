@@ -105,7 +105,21 @@
     await wait(() => state() === "playing" && one(".playerbar")?.dataset.trackId === "1" && position() >= .1, "native playback clock");
     await click(() => button("暂停", one(".playerbar")), "pause");
     await wait(() => state() === "paused", "native paused");
-    await stage("playback", { nativeProgress: true, paused: true, output: "null" });
+    const playId = one(".playerbar")?.dataset.playId;
+    let resumedSameEntry = false;
+    if (window.__mainFlowOrdinaryHttps) {
+      const pausedPosition = position();
+      check(playId && Number.isFinite(pausedPosition), "paused HTTPS entry");
+      await sleep(100);
+      check(Math.abs(position() - pausedPosition) < .05, "HTTPS clock remains paused");
+      await click(() => button("播放", one(".playerbar")), "resume online playback");
+      await wait(() => state() === "playing" && one(".playerbar")?.dataset.playId === playId &&
+        position() > pausedPosition + .08, "same native HTTPS clock resumed");
+      resumedSameEntry = true;
+      await click(() => button("暂停", one(".playerbar")), "pause resumed online playback");
+      await wait(() => state() === "paused", "resumed native entry paused");
+    }
+    await stage("playback", { nativeProgress: true, paused: true, resumedSameEntry, output: "null" });
     await click(() => button("停止播放", one(".playerbar")), "stop online playback");
     await wait(() => state() === "idle", "online player stopped");
 
