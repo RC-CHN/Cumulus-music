@@ -29,6 +29,8 @@ import AppSidebar from './components/sidebar/AppSidebar.vue';
 import { libraryView } from './services/playlistLibrary';
 import DailyHeading from './components/DailyHeading.vue';
 import PlaylistHero from './components/playlist/PlaylistHero.vue';
+import PlaylistSubscribers from './components/playlist/PlaylistSubscribers.vue';
+import { usePlaylistSubscribers } from './composables/usePlaylistSubscribers';
 import PlaylistEditorPage from './components/playlist/PlaylistEditorPage.vue';
 import { playlistMenuItems, type PlaylistMenuScene } from './services/playlistMenu';
 import PlaylistActions from './components/playlist/PlaylistActions.vue';
@@ -902,6 +904,14 @@ const {
   historyLength,
   signedIn,
 } = music;
+const subscribers = usePlaylistSubscribers(
+  core,
+  () => account.value.epoch,
+  () =>
+    page.value.kind === 'playlist' && result.value?.playlist?.id === page.value.id
+      ? page.value.id
+      : null,
+);
 const loginOpen = ref(false);
 const coldOffline = useColdOffline(core);
 const coldOfflineEligible = computed(
@@ -1999,13 +2009,16 @@ onUnmounted(() => {
                   class="playlist-toolbar"
                   :class="{ 'playlist-content-nav': !!result?.playlist }"
                 >
-                  <span
+                  <button
                     v-if="result?.playlist"
-                    class="playlist-current-section"
-                    aria-current="page"
+                    type="button"
+                    class="text-button playlist-section"
+                    :class="{ 'playlist-current-section': !subscribers.open.value }"
+                    :aria-pressed="!subscribers.open.value"
+                    @click="subscribers.hide"
                   >
                     歌曲 <small>{{ result.total }}</small>
-                  </span>
+                  </button>
                   <template v-if="result?.playlist">
                     <button
                       class="text-button"
@@ -2018,6 +2031,18 @@ onUnmounted(() => {
                       "
                     >
                       评论
+                    </button>
+                    <button
+                      type="button"
+                      class="text-button playlist-section"
+                      :class="{ 'playlist-current-section': subscribers.open.value }"
+                      :aria-pressed="subscribers.open.value"
+                      @click="subscribers.show"
+                    >
+                      收藏者
+                      <small v-if="result.playlist.subscribedCount">{{
+                        result.playlist.subscribedCount
+                      }}</small>
                     </button>
                   </template>
                   <button
@@ -2045,6 +2070,10 @@ onUnmounted(() => {
                   <span class="spinner" />
                   <p>正在加载歌曲…</p>
                 </div>
+                <PlaylistSubscribers
+                  v-else-if="result?.playlist && subscribers.open.value"
+                  :model="subscribers"
+                />
                 <template v-else-if="result">
                   <div v-if="result.tracks.length && !result.playlist" class="track-actions">
                     <button

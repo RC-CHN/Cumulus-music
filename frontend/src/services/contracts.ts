@@ -95,6 +95,11 @@ export interface CoreClient
   pollQr(operationId: string): Promise<QrStatus>;
   cancelQr(operationId: string): Promise<void>;
   playlists(): Promise<AccountData<PlaylistView[]>>;
+  playlistSubscribers(
+    epoch: string,
+    id: string,
+    offset: number,
+  ): Promise<AccountData<PlaylistSubscribersPage>>;
   playlistPage(id: string, page: PageRequest): Promise<AccountData<TrackPage>>;
   searchSongs(keyword: string, page: PageRequest): Promise<AccountData<TrackPage>>;
   dailySongs(): Promise<AccountData<TrackPage>>;
@@ -124,7 +129,14 @@ export interface PageRequest {
   limit: number;
   revision?: string | null;
 }
+export interface PlaylistSubscribersPage {
+  subscribers: { nickname: string; avatarUrl: string | null; signature: string }[];
+  previousOffset: number | null;
+  nextOffset: number | null;
+}
+
 export interface PlaylistView {
+  subscribedCount?: number | null;
   id: string;
   name: string;
   coverUrl: string | null;

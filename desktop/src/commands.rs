@@ -150,6 +150,19 @@ pub async fn account_playlists(
     client.playlists().await.map_err(Into::into)
 }
 #[tauri::command]
+pub async fn playlist_subscribers(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    id: String,
+    offset: u32,
+) -> Result<AccountData<PlaylistSubscribersPage>, ClientError> {
+    client
+        .playlist_subscribers(&epoch, &id, offset)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn playlist_page(
     client: tauri::State<'_, MusicClient>,
     id: String,

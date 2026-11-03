@@ -27,7 +27,7 @@ fn song(id: &Value) -> Value {
     json!({"id":id,"name":"曲目","ar":[{"id":"9007199254740993","name":"歌手"}],"al":{"id":"56","name":"专辑","picUrl":"http://p1.music.126.net/cover.jpg?token=DO_NOT_EXPORT"},"dt":240123,"fee":1,"url":"https://private/signed?MUSIC_U=DO_NOT_EXPORT","cookie":"DO_NOT_EXPORT"})
 }
 fn playlist() -> Value {
-    json!({"id":"7","userId":"9","name":"喜欢的音乐","specialType":5,"privacy":10,"creator":{"nickname":"用户"},"trackCount":999,"coverImgUrl":"http://p2.music.126.net/a.jpg","trackIds":[{"id":"1"},{"id":"2","v":-1},{"id":"3"},{"id":"4"}]})
+    json!({"id":"7","userId":"9","name":"喜欢的音乐","specialType":5,"privacy":10,"creator":{"nickname":"用户"},"trackCount":999,"subscribedCount":25,"coverImgUrl":"http://p2.music.126.net/a.jpg","trackIds":[{"id":"1"},{"id":"2","v":-1},{"id":"3"},{"id":"4"}]})
 }
 impl Api for Backend {
     fn request<'a>(&'a self, path: &'a str, payload: Value, _cache: bool) -> ApiFuture<'a, Value> {
@@ -45,6 +45,15 @@ impl Api for Backend {
                 }
                 "/api/user/playlist" => json!({"code":200,"playlist":[playlist()],"more":false}),
                 "/api/v6/playlist/detail" => json!({"code":200,"playlist":playlist()}),
+                "/api/playlist/subscribers" => match payload["offset"].as_u64() {
+                    Some(0) => {
+                        json!({"code":200,"subscribers":[{"userId":81,"nickname":"收藏者甲","signature":"签名","avatarUrl":"http://p1.music.126.net/a.jpg?secret=DO_NOT_EXPORT","token":"DO_NOT_EXPORT"}],"more":true,"total":25})
+                    }
+                    Some(24) => {
+                        json!({"code":200,"subscribers":[{"userId":82,"nickName":"收藏者乙","avatarUrl":"https://foreign.invalid/private"}],"more":false,"total":25})
+                    }
+                    _ => json!({"code":200,"subscribers":[],"more":true}),
+                },
                 "/api/v3/song/detail" => {
                     let c: Vec<Value> =
                         serde_json::from_str(payload["c"].as_str().unwrap()).unwrap();
@@ -356,4 +365,55 @@ async fn like_recovery_view_is_bounded_local_and_account_scoped() {
     );
     session.detach().unwrap();
     assert!(client.like_recovery(&epoch, 0).is_err());
+}
+
+#[tokio::test]
+async fn playlist_subscribers_are_epoch_bound_paged_and_safe_to_render() {
+    let dir = tempfile::tempdir().unwrap();
+    let backend = Arc::new(Backend::default());
+    let (client, _) = client(dir.path(), backend.clone());
+    let epoch = client.restore_account().await.unwrap().epoch;
+    assert_eq!(
+        client.playlists().await.unwrap().value[0].subscribed_count,
+        Some(25)
+    );
+    assert!(matches!(
+        client.playlist_subscribers("0", "7", 0).await,
+        Err(Error::StaleResponse)
+    ));
+    assert!(matches!(
+        client.playlist_subscribers(&epoch, "7", 1).await,
+        Err(Error::InvalidInput(_))
+    ));
+    let first = client.playlist_subscribers(&epoch, "7", 0).await.unwrap();
+    assert_eq!(first.epoch, epoch);
+    assert_eq!(first.value.next_offset, Some(24));
+    assert_eq!(first.value.previous_offset, None);
+    assert_eq!(
+        serde_json::to_value(&first.value.subscribers[0]).unwrap(),
+        json!({
+            "nickname": "收藏者甲",
+            "signature": "签名",
+            "avatarUrl": "https://p1.music.126.net/a.jpg?param=320y320",
+        })
+    );
+    let second = client.playlist_subscribers(&epoch, "7", 24).await.unwrap();
+    assert_eq!(second.value.next_offset, None);
+    assert_eq!(second.value.previous_offset, Some(0));
+    assert_eq!(second.value.subscribers[0].avatar_url, None);
+    assert_eq!(second.value.subscribers[0].nickname, "收藏者乙");
+    assert!(matches!(
+        client.playlist_subscribers(&epoch, "7", 48).await,
+        Err(Error::Response(_))
+    ));
+    let requests = backend.requests.lock().unwrap();
+    let payloads: Vec<_> = requests
+        .iter()
+        .filter(|(path, _)| path == "/api/playlist/subscribers")
+        .map(|(_, payload)| payload.clone())
+        .collect();
+    assert_eq!(
+        payloads,
+        [0, 24, 48].map(|offset| json!({"id":"7","limit":24,"offset":offset}))
+    );
 }

@@ -35,6 +35,77 @@ impl MusicClient {
         })
     }
 
+    pub async fn playlist_subscribers(
+        &self,
+        epoch: &str,
+        id: &str,
+        offset: u32,
+    ) -> Result<AccountData<PlaylistSubscribersPage>> {
+        const LIMIT: u32 = 24;
+        let token = self.player_token(epoch)?;
+        let id = identifier(&json!(id))?;
+        let next = offset
+            .checked_add(LIMIT)
+            .filter(|_| offset.is_multiple_of(LIMIT))
+            .ok_or(Error::InvalidInput("invalid subscriber offset"))?;
+        let value = self
+            .session
+            .run_for(&token, |api, _| async move {
+                let response = api
+                    .call(
+                        "/api/playlist/subscribers",
+                        json!({"id":id,"limit":LIMIT,"offset":offset}),
+                        false,
+                        &[200],
+                    )
+                    .await?;
+                let rows = response["subscribers"]
+                    .as_array()
+                    .filter(|rows| rows.len() <= LIMIT as usize)
+                    .ok_or(Error::Response("invalid playlist subscriber page"))?;
+                let more = response["more"]
+                    .as_bool()
+                    .ok_or(Error::Response("missing playlist subscriber pagination"))?;
+                if more && rows.is_empty() {
+                    return Err(Error::Response(
+                        "empty playlist subscriber page with more results",
+                    ));
+                }
+                let subscribers = rows
+                    .iter()
+                    .map(|row| {
+                        let nickname = ["nickname", "nickName", "userName"]
+                            .iter()
+                            .filter_map(|key| row[*key].as_str())
+                            .find(|name| !name.trim().is_empty())
+                            .ok_or(Error::Response("missing playlist subscriber name"))?;
+                        Ok(PlaylistSubscriberView {
+                            nickname: nickname.chars().take(128).collect(),
+                            avatar_url: mapping::artwork(&row["avatarUrl"]),
+                            signature: row["signature"]
+                                .as_str()
+                                .unwrap_or_default()
+                                .chars()
+                                .take(512)
+                                .collect(),
+                        })
+                    })
+                    .collect::<Result<_>>()?;
+                Ok(PlaylistSubscribersPage {
+                    subscribers,
+                    previous_offset: offset.checked_sub(LIMIT),
+                    next_offset: more.then_some(next),
+                })
+            })
+            .await?;
+        self.session.with_token(&token, |_| {
+            Ok(AccountData {
+                epoch: epoch.into(),
+                value,
+            })
+        })
+    }
+
     pub async fn playlist_page(
         &self,
         id: &str,

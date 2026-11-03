@@ -37,6 +37,9 @@ pub(super) fn playlist(value: &Value, uid: &str) -> Result<PlaylistView> {
         description: string(&value["description"]),
         creator: string(&value["creator"]["nickname"]),
         track_count: value["trackCount"].as_u64().unwrap_or(0) as usize,
+        subscribed_count: value["subscribedCount"]
+            .as_u64()
+            .filter(|n| *n <= 9_007_199_254_740_991),
         owned,
         favorite: owned && value["specialType"].as_i64() == Some(5),
         private: value["privacy"].as_i64() == Some(10),

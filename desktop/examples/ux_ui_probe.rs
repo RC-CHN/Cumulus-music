@@ -70,10 +70,16 @@ fn song(id: u64) -> Value {
     }
     json!({"id":id,"name":format!("合成歌曲 {id} · A quiet afternoon"),"ar":[{"name":"Cumulus"}],"al":{"name":"界面体验验证"},"dt":if id==1 {6_000_000} else {235_000},"fee":id%3})
 }
+fn subscribers_proof() -> bool {
+    std::env::var_os("CUMULUS_PLAYLIST_SUBSCRIBERS_UI_PROOF").is_some()
+}
+
+static SUBSCRIBER_OFFSETS: std::sync::Mutex<Vec<u64>> = std::sync::Mutex::new(Vec::new());
+
 fn playlist(id: u64) -> Value {
     intelligence_start_fixture::playlist(playlist_editor_fixture::decorate(
         playlist_layout_fixture::decorate(
-            json!({"id":id,"userId":if id<20 {2} else {3},"name":if id==1 {"我喜欢的音乐".into()} else if id==2 {"午后散步 · 一份用来检查较长名称与编辑入口的歌单".into()} else {format!("合成歌单 {id}")},"creator":{"userId":if id<20 {2} else {3},"nickname":"Cumulus"},"specialType":if id==1 {5} else {0},"privacy":10,"trackCount":40,"description":"沿着熟悉的小路，留一点时间给音乐。这是一段较长的合成简介，用来检查窄窗口里的文字、封面和操作入口。","tags":["轻音乐"],"trackIds":(1..=40).map(|id|json!({"id":id,"v":0})).collect::<Vec<_>>()}),
+            json!({"id":id,"userId":if id<20 {2} else {3},"name":if id==1 {"我喜欢的音乐".into()} else if id==2 {"午后散步 · 一份用来检查较长名称与编辑入口的歌单".into()} else {format!("合成歌单 {id}")},"creator":{"userId":if id<20 {2} else {3},"nickname":"Cumulus"},"specialType":if id==1 {5} else {0},"privacy":10,"trackCount":40,"subscribedCount":if subscribers_proof() {Some(25)} else {None},"description":"沿着熟悉的小路，留一点时间给音乐。这是一段较长的合成简介，用来检查窄窗口里的文字、封面和操作入口。","tags":["轻音乐"],"trackIds":(1..=40).map(|id|json!({"id":id,"v":0})).collect::<Vec<_>>()}),
             id,
         ),
         id,
@@ -173,6 +179,24 @@ impl Api for Library {
                         json!({"code":500})
                     } else {
                         json!({"code":200,"playlist":playlist(id)})
+                    }
+                }
+                "/api/playlist/subscribers" if subscribers_proof() => {
+                    assert_eq!(args["id"], "2");
+                    assert_eq!(args["limit"], 24);
+                    let offset = args["offset"].as_u64().unwrap();
+                    let mut calls = SUBSCRIBER_OFFSETS.lock().unwrap();
+                    calls.push(offset);
+                    match offset {
+                        0 => json!({"code":200,"more":true,"total":25,"subscribers":
+                            (1..=24).map(|index| json!({"nickname":format!("合成收藏者 {index}")})).collect::<Vec<_>>()}),
+                        24 if calls.iter().filter(|n| **n == 24).count() == 1 => {
+                            json!({"code":500})
+                        }
+                        24 => {
+                            json!({"code":200,"more":false,"total":25,"subscribers":[{"nickname":"合成收藏者 25","signature":"合成签名"}]})
+                        }
+                        _ => panic!("unexpected synthetic subscriber offset"),
                     }
                 }
                 "/api/v3/song/detail" => {
@@ -305,6 +329,7 @@ fn main() {
             let mut value:Value=serde_json::from_str(event.payload()).unwrap();
             if intelligence_start_fixture::enabled() {value["syntheticIntelligenceStart"]=intelligence_start_fixture::report();}
             if search_fixture::enabled() { value["syntheticSearchCalls"]=json!(search_fixture::calls()); }
+            if subscribers_proof() { value["subscriberOffsets"]=json!(*SUBSCRIBER_OFFSETS.lock().unwrap()); }
             let stage=value["stage"].as_str().unwrap_or("");
             if card_source_proof && stage=="card-source-fixture" {
                 let id=value["id"].as_u64().expect("synthetic card control id");

@@ -100,9 +100,26 @@ pub struct PlaylistView {
     pub description: String,
     pub creator: String,
     pub track_count: usize,
+    pub subscribed_count: Option<u64>,
     pub owned: bool,
     pub favorite: bool,
     pub private: bool,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaylistSubscriberView {
+    pub nickname: String,
+    pub avatar_url: Option<String>,
+    pub signature: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaylistSubscribersPage {
+    pub subscribers: Vec<PlaylistSubscriberView>,
+    pub previous_offset: Option<u32>,
+    pub next_offset: Option<u32>,
 }
 
 #[derive(Clone, Serialize)]
