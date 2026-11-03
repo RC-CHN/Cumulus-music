@@ -20,6 +20,7 @@ def main():
     mode.add_argument('--search-next', action='store_true')
     mode.add_argument('--song-waterfall', action='store_true')
     mode.add_argument('--voice-queue', action='store_true')
+    mode.add_argument('--mv-play', action='store_true')
     parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--screenshots', action='store_true')
     args = parser.parse_args()
@@ -49,6 +50,9 @@ def main():
         prefix = 'window.__cumulusSearchSongWaterfallProof = true;\n'
     if args.voice_queue:
         prefix = 'window.__cumulusSearchVoiceQueueProof = true;\n'
+    if args.mv_play:
+        prefix = 'window.__cumulusSearchMvProof = true;\n'
+        env['CUMULUS_SEARCH_MV_PROOF'] = '1'
     if args.correction_original:
         prefix = 'window.__cumulusSearchOriginalCorrectionProof = true;\n'
     if args.card_matches:
@@ -66,6 +70,22 @@ def main():
     failed = root / 'first/failed.json'
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
+    if args.mv_play:
+        first = root / 'first'
+        complete = json.loads((first / 'complete.json').read_text(encoding='utf-8'))
+        assert complete['ok'] and complete['searchMvVerified'] and complete['stageCount'] == 3
+        assert not json.loads((first / 'ux_01_search_mv_play_target.json').read_text(encoding='utf-8'))['searchMvCalls']
+        played = json.loads((first / 'ux_02_search_mv_native_frame.json').read_text(encoding='utf-8'))['searchMvCalls']
+        details = [call for call in played if call['path'] == '/api/mlog/detail/v1']
+        assert details and all(call['args'] == {'id': '601', 'type': '2'} for call in details)
+        assert [call for call in played if call not in details] == [
+            {'path': '/api/song/enhance/play/mv/url', 'args': {'id': '601', 'r': 480}},
+        ]
+        assert complete['searchMvCalls'] == played
+        assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
+        assert len(list(first.glob('ux_*.png'))) == (3 if args.screenshots else 0)
+        print(json.dumps(dict(ok=True, actualWebView=True, actualNativeVideo=True, stageCount=3)))
+        return
     if args.voice_queue:
         complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
         assert complete['ok'] and complete['voiceQueueVerified'] and complete['stageCount'] == 3

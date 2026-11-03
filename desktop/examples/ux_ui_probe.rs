@@ -50,6 +50,8 @@ mod queue_collection_fixture;
 mod relay_fixture;
 #[path = "support/search_fixture.rs"]
 mod search_fixture;
+#[path = "support/search_mv_fixture.rs"]
+mod search_mv_fixture;
 #[allow(dead_code)]
 #[path = "support/settings_fixture.rs"]
 mod settings_fixture;
@@ -120,6 +122,9 @@ fn playlist(id: u64) -> Value {
 impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, args: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(response) = search_mv_fixture::response(path, &args) {
+                return response;
+            }
             if let Some(response) = daily_history_fixture::response(path, &args).await {
                 return response;
             }
@@ -396,6 +401,10 @@ fn main() {
         let mut client=MusicClient::with_session(session,registry);
         if daily_history_fixture::enabled() { client=client.with_official_daily_experiment(); }
         if search_fixture::v3_enabled() { client=client.with_official_search_experiment(); }
+        if search_mv_fixture::enabled() {
+            let path=search_mv_fixture::create(&root)?;
+            client=client.with_video_factory(Arc::new(move || Ok(Box::new(search_mv_fixture::NativeVideo::open(path.clone())?))));
+        }
         if download_page.is_some() { client=client.with_download_backend(Arc::new(download_page_fixture::NoNetwork))
             .with_video_factory(Arc::new(|| Ok(Box::new(cumulus_core::playback::engine::MpvVideoEngine::open(cumulus_core::playback::engine::MpvConfig {null_output:true,..Default::default()},640,360)?)))); }
         if let Some(fixture)=transfer.as_ref() { client=client.with_playlist_cover_backend(fixture.clone()); }
@@ -444,6 +453,7 @@ fn main() {
                 value["audioRankDetails"] = json!(search_fixture::audio_rank_details());
                 if let Some(calls) = search_fixture::voice_queue_calls() { value["voiceQueueCalls"] = json!(calls); }
             }
+            if search_mv_fixture::enabled() { value["searchMvCalls"]=json!(search_mv_fixture::calls()); }
             if subscribers_proof() { value["subscriberOffsets"]=json!(*SUBSCRIBER_OFFSETS.lock().unwrap()); }
             if playlist_tag_browse_proof() {
                 value["playlistTagCalls"] = json!(*PLAYLIST_TAG_CALLS.lock().unwrap());

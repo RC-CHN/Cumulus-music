@@ -308,6 +308,7 @@ jobs:
           python scripts/ci/search_results_smoke.py --v3 --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-v3-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_results_smoke.py --voice-direct --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-voice-direct-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_results_smoke.py --voice-queue --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-voice-queue-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/search_results_smoke.py --mv-play --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-mv-play-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_results_smoke.py --search-next --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-next-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_results_smoke.py --song-waterfall --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-song-waterfall-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_results_smoke.py --card-matches --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-card-matches-windows --runtime .build/package-stage/windows-x64/native
@@ -525,6 +526,7 @@ jobs:
           python3 scripts/ci/main_flow_https_smoke.py --eof-next --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-linux
           python3 scripts/ci/main_flow_https_smoke.py --retry-once --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-retry-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/native_smoke.py --binary .build/target/debug/examples/native_audio_probe --report .build/ci-native-audio-loudness-linux.json --filter-library .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
+          CUMULUS_PROOF_EFFECT_FILTER="$PWD/.build/package-stage/linux-x64/native/libcumulus_audio_filter.so" cargo test -p cumulus-core --lib --locked native_reserved_geq_preserves_loudness_and_peq_instances -- --ignored
           cargo build -p cumulus-desktop --example equalizer_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/equalizer_live_smoke.py --binary .build/target/debug/examples/equalizer_ui_probe --root .build/ci-equalizer-live-linux --filter-library .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
           cargo build -p cumulus-desktop --example loudness_ui_probe --features custom-protocol --locked
@@ -580,6 +582,7 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --v3 --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-v3-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --voice-direct --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-voice-direct-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --voice-queue --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-voice-queue-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --mv-play --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-mv-play-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --search-next --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-next-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --song-waterfall --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-song-waterfall-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --card-matches --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-card-matches-linux

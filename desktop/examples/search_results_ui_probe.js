@@ -50,6 +50,42 @@
     } finally { window.requestAnimationFrame=frames; }
   }
   try {
+    if(window.__cumulusSearchMvProof){
+      await wait(()=>one('.track-row'),'daily ready');
+      await fixture('good');await fresh('合成 MV');await choose('mvs');
+      const card=one('[data-result-key="mv:601"]');
+      const trigger=button('播放 MV 合成 MV 1',card);
+      const cue=card?.querySelector('.search-video-play-glyph');
+      assert(trigger&&!trigger.disabled&&trigger.tabIndex===0&&cue?.getAttribute('aria-hidden')==='true'&&
+        !card.querySelector('.search-card-play'),'one enabled card activation target and decorative cue');
+      trigger.focus({preventScroll:true});
+      await wait(()=>document.activeElement===trigger&&Number(getComputedStyle(cue).opacity)>.9,'MV cue visible at focus');
+      await capture('search_mv_play_target');
+      click(trigger);
+      const invoke=(name,args={})=>window.__TAURI_INTERNALS__.invoke(name,args);
+      const {epoch}=await invoke('account_snapshot');
+      let native;
+      for(let i=0;i<170;i++){
+        const view=await invoke('video_snapshot',{epoch});
+        if(view.id==='601'&&view.state==='playing'&&view.position>.15&&Number(one('.video-canvas')?.dataset.renderedFrames)>1){native=view;break;}
+        await sleep(70);
+      }
+      assert(native&&native.actualResolution===480,'search card reached advancing native video playback');
+      const canvas=one('.video-canvas');
+      const pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+      assert(pixels.some((value,index)=>index%4!==3&&value>20),'decoded frame reaches the canvas');
+      await capture('search_mv_native_frame');
+      click(button('关闭视频'));
+      click(button('返回上一页'));
+      await wait(()=>ready()&&one('[data-category="mvs"]')?.getAttribute('aria-selected')==='true','return to MV results');
+      await fixture('unavailable');await fresh('合成不可播放视频');await choose('mvs');
+      const invalid=one('.search-video-card');
+      assert(invalid?.querySelector('.search-card-open')?.disabled&&!invalid.querySelector('.search-video-play-glyph'),
+        'opaque non-MV result stays disabled with no Play cue');
+      await capture('search_non_mv_target_disabled');
+      await emit('complete',{ok:true,searchMvVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      return;
+    }
     if(window.__cumulusSearchVoiceQueueProof){
       await wait(()=>one('.track-row'),'daily ready');
       await fixture('voice_queue');
