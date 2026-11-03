@@ -1,7 +1,7 @@
 //! Native assignment for M/244's PH-PC-Blacklist recommendation split.
 use super::MusicClient;
 use crate::{
-    Result,
+    Error, Result,
     account::{SessionToken, login_policy::AB_PATH},
     catalog::DailyRecommendationEndpoint,
 };
@@ -39,6 +39,20 @@ fn assignment(value: &Value) -> Option<bool> {
         Some(row) => row["expGroupName"].as_str().map(|group| group == "t1"),
         // M/147 replaces absent assignments with the built-in empty group.
         None => Some(false),
+    }
+}
+
+fn retain_after_lookup_failure(error: &Error) -> bool {
+    match error.root() {
+        Error::RequestNotSent(inner) => retain_after_lookup_failure(inner),
+        Error::CredentialChanged
+        | Error::StaleResponse
+        | Error::Cancelled
+        | Error::LoginDeferred
+        | Error::Storage(_)
+        | Error::Io(_)
+        | Error::LockPoisoned => false,
+        _ => true,
     }
 }
 
@@ -83,11 +97,11 @@ impl MusicClient {
                             api.call(AB_PATH, json!({"expNames":NAME}), false, &[200]),
                         )
                         .await;
-                        Ok(result
-                            .ok()
-                            .and_then(Result::ok)
-                            .as_ref()
-                            .and_then(assignment))
+                        match result {
+                            Ok(Ok(value)) => Ok(assignment(&value)),
+                            Ok(Err(error)) if !retain_after_lookup_failure(&error) => Err(error),
+                            _ => Ok(None),
+                        }
                     })
                     .await?;
                 let updated = Assignment {
@@ -111,7 +125,6 @@ impl MusicClient {
 mod tests {
     use super::*;
     use crate::{
-        Error,
         account::{AccountSession, profiles::ProfileRegistry},
         protocol::{
             api::{Api, ApiFuture},
@@ -158,6 +171,7 @@ mod tests {
                 Err(Error::Transport("synthetic failure".into())),
                 Ok(json!({"code":200,"data":[]})),
                 Ok(json!({"code":200,"data":[{"expName":NAME,"expGroupName":"c"}]})),
+                Err(Error::RequestNotSent(Box::new(Error::CredentialChanged))),
             ])),
         });
         let session = Arc::new(AccountSession::new(api.clone(), Some(store.clone())));
@@ -173,7 +187,7 @@ mod tests {
             client.daily_recommendation_endpoint(&first).await.unwrap(),
             DailyRecommendationEndpoint::V3
         );
-        assert_eq!(api.responses.lock().unwrap().len(), 4);
+        assert_eq!(api.responses.lock().unwrap().len(), 5);
         let client = client.with_official_daily_experiment();
         for _ in 0..2 {
             assert_eq!(
@@ -181,7 +195,7 @@ mod tests {
                 DailyRecommendationEndpoint::V3
             );
         }
-        assert_eq!(api.responses.lock().unwrap().len(), 3);
+        assert_eq!(api.responses.lock().unwrap().len(), 4);
         store
             .put("1", CACHE, NAME, &json!({"attempted_at":0,"v3":true}))
             .unwrap();
@@ -202,6 +216,17 @@ mod tests {
         assert_eq!(
             client.daily_recommendation_endpoint(&third).await.unwrap(),
             DailyRecommendationEndpoint::V1
+        );
+        store
+            .put("3", CACHE, NAME, &json!({"attempted_at":0,"v3":false}))
+            .unwrap();
+        assert!(matches!(
+            client.daily_recommendation_endpoint(&third).await,
+            Err(Error::RequestNotSent(error)) if matches!(*error, Error::CredentialChanged)
+        ));
+        assert_eq!(
+            store.get("3", CACHE, NAME).unwrap().unwrap(),
+            json!({"attempted_at":0,"v3":false})
         );
         assert!(api.responses.lock().unwrap().is_empty());
     }
