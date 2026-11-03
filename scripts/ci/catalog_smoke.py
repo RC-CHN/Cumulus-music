@@ -136,7 +136,7 @@ def main():
     assert returncode == 0, f'catalog probe exited {returncode}'
     complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
     if args.artist_batch:
-        assert complete['ok'] and complete['artistBatchVerified'] and not complete['writesSubmitted']
+        assert complete['ok'] and complete['artistBatchVerified'] and complete['selectedPlayback'] and not complete['writesSubmitted']
         for name in ('ux_artist_batch_selected', 'ux_artist_batch_download'):
             assert json.loads((output / f'{name}.json').read_text(encoding='utf-8'))['count'] == 2
         assert not args.screenshots or captures == 2

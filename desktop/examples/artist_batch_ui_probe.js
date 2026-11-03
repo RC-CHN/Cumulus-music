@@ -31,7 +31,7 @@
       return wait(() => one('dialog.artist-track-batch[open]'), 'batch dialog');
     }
     let batch = await open();
-    if (!button('添加到歌单', batch).disabled || !button('下载所选歌曲', batch).disabled)
+    if (['播放所选歌曲', '添加到歌单', '下载所选歌曲'].some((name) => !button(name, batch).disabled))
       throw Error('empty selection allowed an operation');
     const rows = batch.querySelectorAll('[data-batch-index]');
     if (rows.length < 3 || rows.length > 20) throw Error('bounded loaded track selection');
@@ -65,7 +65,26 @@
     const after = await invoke('player_snapshot', { epoch });
     if (after.playId !== before.playId || after.queueRevision !== before.queueRevision)
       throw Error('batch preparation changed native playback');
-    await emit('complete', { ok: true, artistBatchVerified: true, writesSubmitted: false });
+    const baseline = await invoke('play_selection', {
+      epoch, selection: { kind: 'songs', ids: ['5', '7'], index: 0, quality: 'standard' },
+    });
+    if (baseline.queueLen !== 2) throw Error('distinct playback baseline');
+    batch = await open();
+    // Select in reverse click order: playback follows the displayed track order.
+    for (const index of [2, 0]) batch.querySelector(`[data-batch-index="${index}"] input`).click();
+    (await wait(() => {
+      const action = button('播放所选歌曲', batch);
+      return action && !action.disabled && action;
+    }, 'selected play action')).click();
+    await wait(async () => {
+      if (one('.playerbar')?.dataset.state !== 'playing') return false;
+      const queue = await invoke('player_queue', { epoch });
+      return queue.tracks.map((entry) => entry.track.id).join(',') === '1,3' &&
+        queue.current === queue.tracks[0].entryId;
+    }, 'native playback starts at the first of exactly two selected songs');
+    await emit('complete', {
+      ok: true, artistBatchVerified: true, selectedPlayback: true, writesSubmitted: false,
+    });
   } catch (error) {
     await emit('failed', { error: String(error?.message ?? error) });
   }

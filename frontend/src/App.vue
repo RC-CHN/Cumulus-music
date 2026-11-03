@@ -427,7 +427,7 @@ function playSearchResults(tracks: TrackView[], index: number, context: SearchRe
     quality: player.view.value?.qualityPreferences.quality ?? 'standard',
   });
 }
-function playRankingSongs(tracks: TrackView[], index: number) {
+function playOnlineSongs(tracks: TrackView[], index: number) {
   if (!tracks[index] || tracks[index].missing) return;
   void player.select({
     kind: 'songs',
@@ -1979,6 +1979,7 @@ onUnmounted(() => {
                 "
                 @back="backFromPage"
                 @play="playCatalog"
+                @play-tracks="playOnlineSongs"
                 @collect-tracks="(tracks) => (playlistDialog = { kind: 'tracks', tracks })"
                 @like="music.like"
                 @more="(request) => trackActions?.show(request)"
@@ -2038,7 +2039,7 @@ onUnmounted(() => {
                 @navigate="openRanking"
                 @playlist="(id) => music.navigate({ kind: 'playlist', id })"
                 @play-playlist="playRankingPlaylist"
-                @play="playRankingSongs"
+                @play="playOnlineSongs"
                 @play-album="playAlbum"
                 @like="music.like"
                 @more="(request) => trackActions?.show(request)"

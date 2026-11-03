@@ -43,6 +43,7 @@ const emit = defineEmits<{
   more: [request: TrackMenuRequest];
   download: [tracks: TrackView[]];
   collectTracks: [tracks: TrackView[]];
+  playTracks: [tracks: TrackView[], index: number];
   mv: [id: string];
   expired: [];
   artistTab: [tab: ArtistTab];
@@ -84,7 +85,9 @@ const {
 } = props.model;
 const artistBatch = ref<TrackView[]>();
 const artistBatchAnchor = ref<HTMLElement>();
-let batchHandoff: { epoch: string; kind: 'collect' | 'download'; tracks: TrackView[] } | undefined;
+let batchHandoff:
+  | { epoch: string; kind: 'play' | 'collect' | 'download'; tracks: TrackView[] }
+  | undefined;
 function openArtistBatch() {
   if (tab.value !== 'all' || !props.model.valid()) return;
   const usable = new Map(
@@ -94,7 +97,7 @@ function openArtistBatch() {
   );
   if (usable.size) artistBatch.value = [...usable.values()];
 }
-function artistBatchChoose(kind: 'collect' | 'download', selected: TrackView[]) {
+function artistBatchChoose(kind: 'play' | 'collect' | 'download', selected: TrackView[]) {
   if (!artistBatch.value || !props.model.valid() || tab.value !== 'all') return;
   batchHandoff = { epoch: props.account.epoch, kind, tracks: selected };
   artistBatch.value = undefined;
@@ -110,7 +113,8 @@ function finishArtistBatch() {
   )
     return;
   if (handoff.kind === 'collect') emit('collectTracks', handoff.tracks);
-  else emit('download', handoff.tracks);
+  else if (handoff.kind === 'download') emit('download', handoff.tracks);
+  else if (props.playable && !props.playBusy) emit('playTracks', handoff.tracks, 0);
 }
 watch(
   [tab, () => props.account.epoch],
@@ -487,6 +491,7 @@ defineExpose({ checkpoint: () => checkpoint(), resourceKey: `${resource.kind}:${
         :tracks="artistBatch"
         :liked="liked"
         :current-id="currentId"
+        :playable="playable && !playBusy"
         @close="artistBatch = undefined"
         @choose="artistBatchChoose"
       />

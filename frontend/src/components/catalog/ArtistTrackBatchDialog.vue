@@ -9,10 +9,11 @@ const props = defineProps<{
   tracks: TrackView[];
   liked: Set<string>;
   currentId?: string;
+  playable: boolean;
 }>();
 const emit = defineEmits<{
   close: [];
-  choose: [kind: 'collect' | 'download', tracks: TrackView[]];
+  choose: [kind: 'play' | 'collect' | 'download', tracks: TrackView[]];
 }>();
 const dialog = ref<HTMLDialogElement>();
 const title = useId();
@@ -35,8 +36,9 @@ function all(force?: boolean) {
     force || selected.value.size !== ids.value.length ? new Set(ids.value) : new Set();
   anchor = -1;
 }
-function choose(kind: 'collect' | 'download') {
-  if (chosen.value.length) emit('choose', kind, chosen.value);
+function choose(kind: 'play' | 'collect' | 'download') {
+  if (chosen.value.length && (kind !== 'play' || props.playable))
+    emit('choose', kind, chosen.value);
 }
 onMounted(() => dialog.value?.showModal());
 </script>
@@ -73,10 +75,23 @@ onMounted(() => dialog.value?.showModal());
     />
     <footer>
       <span role="status">已选 {{ chosen.length }} 首</span>
+      <button
+        type="button"
+        class="primary"
+        :disabled="!chosen.length || !playable"
+        @click="choose('play')"
+      >
+        播放所选歌曲
+      </button>
       <button type="button" class="secondary" :disabled="!chosen.length" @click="choose('collect')">
         添加到歌单
       </button>
-      <button type="button" class="primary" :disabled="!chosen.length" @click="choose('download')">
+      <button
+        type="button"
+        class="secondary"
+        :disabled="!chosen.length"
+        @click="choose('download')"
+      >
         下载所选歌曲
       </button>
     </footer>
