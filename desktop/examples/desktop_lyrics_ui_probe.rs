@@ -18,7 +18,7 @@ mod settings_fixture;
 mod shortcut_foreground;
 use cumulus_core::{
     account::{AccountSession, profiles::ProfileRegistry},
-    client::MusicClient,
+    client::{MusicClient, dto::LocalCommand},
     protocol::http::ApiOrigin,
 };
 use serde_json::{Value, json};
@@ -70,6 +70,21 @@ fn main() {
     let root = PathBuf::from(std::env::var_os("CUMULUS_PROOF_DIR").expect("isolated proof root"));
     fs::create_dir_all(&root).unwrap();
     let reopened = std::env::var_os("CUMULUS_PROOF_REOPEN").is_some();
+    let embedded = std::env::var_os("CUMULUS_EMBEDDED_LYRIC_PROOF").is_some();
+    assert!(
+        !embedded || !reopened,
+        "embedded proof requires a new local library"
+    );
+    let embedded_dir = embedded.then(|| {
+        let directory = root.join("embedded-media");
+        fs::create_dir(&directory).expect("new synthetic media directory");
+        fs::write(
+            directory.join("embedded.flac"),
+            include_bytes!("../../core/tests/fixtures/tag_audio/seed.flac"),
+        )
+        .expect("write frozen synthetic tagged FLAC");
+        directory
+    });
     let output = root.join(if reopened { "reopen" } else { "first" });
     fs::create_dir(&output).expect("new proof directory");
     let block = Arc::new(AtomicBool::new(false));
@@ -98,9 +113,15 @@ fn main() {
         let session=Arc::new(AccountSession::new(api.clone(),Some(registry.store())));
         let count=Arc::new(AtomicUsize::new(0));
         let factory_count=count.clone(); let wave=relay_fixture::wave(&root)?;
+        let audio_directory=embedded_dir.clone();
         let client=MusicClient::with_session(session.clone(),registry).with_audio_factory(move || {
             factory_count.fetch_add(1,Ordering::AcqRel);
-            Ok(Box::new(relay_fixture::NativeAudio::open(wave.clone())?))
+            let audio = relay_fixture::NativeAudio::open(wave.clone())?;
+            let audio = match &audio_directory {
+                Some(directory) => audio.allow_download_directory(directory.clone()),
+                None => audio,
+            };
+            Ok(Box::new(audio))
         });
         app.manage(client);
         app.add_capability(r#"{"identifier":"desktop-lyric-proof","windows":["main","desktop-lyrics-*"],"permissions":["core:event:allow-emit"]}"#)?;
@@ -145,6 +166,20 @@ fn main() {
                 }
                 "hold" => { api.held.store(value["enabled"]==true, Ordering::Release); if value["enabled"]!=true {api.resume.notify_waiters();} ack(json!({"ok":true})); }
                 "offline" => { api.offline.store(value["enabled"]==true, Ordering::Release); ack(json!({"ok":true})); }
+                "index_embedded" => {
+                    let directory=embedded_dir.as_ref().expect("embedded proof only").clone();
+                    let handle=handle.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let result=handle.state::<MusicClient>().local_command(LocalCommand::Watch {
+                            path: directory.to_string_lossy().into_owned(),
+                        }).await;
+                        let answer=match result {
+                            Ok(()) => json!({"ok":true}),
+                            Err(_) => json!({"error":"synthetic media could not be indexed"}),
+                        };
+                        handle.get_webview_window("main").unwrap().eval(format!("window.__lyricAck[{id}]={answer};")).unwrap();
+                    });
+                }
                 "stats" => ack(json!({"requests":api.lyrics.load(Ordering::Acquire),"pending":api.pending.load(Ordering::Acquire),"factoryCount":count.load(Ordering::Acquire)})),
                 "storage" => {
                     let sql=rusqlite::Connection::open(root.join("state/core.sqlite3")).unwrap();
@@ -199,7 +234,9 @@ fn main() {
     }).on_page_load(|view,payload| {
         if view.label()=="main" && payload.event()==PageLoadEvent::Finished {
             view.eval(format!("window.__lyricProofReopen={};", std::env::var_os("CUMULUS_PROOF_REOPEN").is_some())).unwrap();
-            view.eval(if std::env::var_os("CUMULUS_FONT_PROOF").is_some() {
+            view.eval(if std::env::var_os("CUMULUS_EMBEDDED_LYRIC_PROOF").is_some() {
+                include_str!("embedded_lyrics_ui_probe.js")
+            } else if std::env::var_os("CUMULUS_FONT_PROOF").is_some() {
                 include_str!("fonts_ui_probe.js")
             } else { include_str!("desktop_lyrics_ui_probe.js") }).unwrap();
         }

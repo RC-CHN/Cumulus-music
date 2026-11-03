@@ -12,12 +12,15 @@ def main():
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--screenshots', action='store_true')
+    parser.add_argument('--embedded', action='store_true', help='Frozen local FLAC in both lyric surfaces')
     args = parser.parse_args()
     root = args.root.resolve()
     assert not root.exists(), 'new proof root required'
     root.mkdir(parents=True)
     env = {k: v for k, v in os.environ.items() if not k.startswith('CUMULUS_')}
     env['CUMULUS_PROOF_DIR'] = str(root)
+    if args.embedded:
+        env['CUMULUS_EMBEDDED_LYRIC_PROOF'] = '1'
     for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'),
                       ('XDG_CACHE_HOME', 'cache'), ('XDG_RUNTIME_DIR', 'runtime'),
                       ('APPDATA', 'roaming'), ('LOCALAPPDATA', 'local')]:
@@ -27,7 +30,7 @@ def main():
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
     total = 0
-    for phase in ['first', 'reopen']:
+    for phase in (['first'] if args.embedded else ['first', 'reopen']):
         if phase == 'reopen':
             env['CUMULUS_PROOF_REOPEN'] = '1'
         output = root / phase
@@ -38,7 +41,23 @@ def main():
         assert code == 0, f'lyric probe exit {code}'
         complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
         assert complete['ok'] and complete['realMusicRequests'] == 0
-        assert complete['factoryCount'] == 2 and complete['mainVisible']
+        assert complete['mainVisible']
+        if args.embedded:
+            stages = [json.loads(p.read_text(encoding='utf-8')) for p in sorted(output.glob('ux_*.json'))]
+            assert [stage['surface'] for stage in stages] == ['main', 'lyric']
+            assert stages[0]['timedLine'] and stages[0]['nativeClockAdvanced'] and stages[1]['paintedRow']
+            assert all(stage['fromEmbedded'] and not stage['fromSidecar'] and not stage['overflow']
+                       and stage['lyricRequests'] == 0 for stage in stages)
+            assert stages[0]['playId'] == stages[1]['playId']
+            assert all(stage['nativePlayer']['state'] == 'paused' and
+                       stage['nativePlayer']['playId'] == stage['playId'] for stage in stages)
+            assert complete['stageCount'] == 2 and complete['lyricRequests'] == 0
+            assert len(complete['lyricWindows']) == 1 and complete['factoryCount'] in (1, 2)
+            total += len(stages)
+            if args.screenshots:
+                assert len(list(output.glob('ux_*.png'))) == len(stages)
+            continue
+        assert complete['factoryCount'] == 2
         native = json.loads((output / 'native-input.json').read_text(encoding='utf-8'))
         assert native['regions']
         assert native['keys'] == ([] if phase == 'reopen' else ['d', 'd'])
@@ -51,8 +70,11 @@ def main():
             assert len(list(output.glob('ux_*.png'))) == len(states)
         total += len(states)
     report = dict(ok=True, states=total, screenshots=total if args.screenshots else 0,
-                  actualWebViews=2, audioFactoryCount=2, playbackEngines=1, deviceInspectors=1, realMusicRequests=0,
+                  actualWebViews=2, audioFactoryCount=complete['factoryCount'], playbackEngines=1,
+                  deviceInspectors=complete['factoryCount'] - 1, realMusicRequests=0,
                   physicalAudioOutputVerified=False, physicalDisplayVerified=False)
+    if args.embedded:
+        report.update(embeddedLyrics=True, format='FLAC', sameNativePlayback=True)
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report))
 
