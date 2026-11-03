@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { rowWindow } from '../src/services/virtualWindow.ts';
+import { centeredRowTop, rowWindow } from '../src/services/virtualWindow.ts';
 
 test('large lists stay bounded and cover forward, reverse and jump scrolling', () => {
   let previous;
@@ -25,4 +25,20 @@ test('resize, shrinking queues, empty lists and negative elastic scroll are vali
   assert.deepEqual(rowWindow(0, 62, 500, 0, previous), { start: 0, end: 0 });
   assert.deepEqual(rowWindow(3, 62, 500, 0, previous), { start: 0, end: 3 });
   assert.deepEqual(rowWindow(3, 62, 500, -100), { start: 0, end: 3 });
+});
+
+test('a centered jump brings an unmounted playing row into the bounded window', () => {
+  const count = 1000;
+  const height = 56;
+  const viewport = 280;
+  const initial = rowWindow(count, height, viewport, 0);
+  assert.ok(initial.end < 700);
+  const top = centeredRowTop(700, count, height, viewport);
+  assert.equal(top, 700 * height + height / 2 - viewport / 2);
+  const jumped = rowWindow(count, height, viewport, top!, initial);
+  assert.ok(jumped.start <= 700 && jumped.end > 700);
+  assert.ok(jumped.end - jumped.start <= 22);
+  assert.equal(centeredRowTop(0, count, height, viewport), 0);
+  assert.equal(centeredRowTop(999, count, height, viewport), count * height - viewport);
+  assert.equal(centeredRowTop(1000, count, height, viewport), null);
 });

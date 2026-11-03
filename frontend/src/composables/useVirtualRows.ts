@@ -1,5 +1,5 @@
 import { computed, onUnmounted, ref, shallowRef, watch } from 'vue';
-import { rowWindow } from '../services/virtualWindow';
+import { centeredRowTop, rowWindow } from '../services/virtualWindow';
 
 /** Native passive scrolling; Vue only receives changes to the buffered row range. */
 export function useVirtualRows(
@@ -30,6 +30,17 @@ export function useVirtualRows(
   function reset() {
     if (container.value) container.value.scrollTop = 0;
     range.value = rowWindow(count(), getRowHeight(), height, 0, undefined, buffer);
+  }
+  function center(index: number) {
+    const element = container.value;
+    if (!element) return false;
+    const top = centeredRowTop(index, count(), getRowHeight(), element.clientHeight);
+    if (top === null) return false;
+    element.scrollTop = top;
+    height = element.clientHeight;
+    if (frame !== undefined) cancelAnimationFrame(frame);
+    update();
+    return true;
   }
   watch(
     container,
@@ -77,5 +88,6 @@ export function useVirtualRows(
     end: computed(() => range.value.end),
     onScroll,
     reset,
+    center,
   };
 }

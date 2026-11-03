@@ -26,3 +26,10 @@ export function rowWindow(
     return previous;
   return { start: Math.max(0, first - buffer), end: Math.min(count, last + buffer) };
 }
+
+/** Center a row when possible, without scrolling past either edge. */
+export function centeredRowTop(index: number, count: number, height: number, viewport: number) {
+  if (!Number.isInteger(index) || index < 0 || index >= count || height <= 0 || viewport <= 0)
+    return null;
+  return Math.max(0, Math.min((index + 0.5) * height - viewport / 2, count * height - viewport));
+}

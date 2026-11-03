@@ -1009,6 +1009,32 @@ watch(
 );
 // Stable scalar dependencies keep playback clock ticks out of the page tree.
 const currentTrackId = computed(() => player.view.value?.track?.id);
+const playlistTrackTable = ref<InstanceType<typeof TrackTable>>();
+const locatableSongId = computed(() => {
+  const current = player.view.value;
+  if (
+    current?.playId &&
+    current.track &&
+    !current.track.voiceId &&
+    !current.track.local &&
+    (current.resourceKind === 'catalog' || current.resourceKind === 'downloaded')
+  )
+    return current.track.id;
+});
+const playlistLocateIndex = computed(() => {
+  const id = locatableSongId.value;
+  if (
+    !id ||
+    page.value.kind !== 'playlist' ||
+    result.value?.playlist?.id !== page.value.id ||
+    subscribers.open.value
+  )
+    return undefined;
+  const index = playlistTrackSearch.value.tracks.findIndex(
+    (track) => track.id === id && !track.missing && !track.local,
+  );
+  return index >= 0 ? index : undefined;
+});
 const currentPlaylistId = computed(() =>
   player.view.value?.origin?.kind === 'playlist' ? player.view.value.origin.id : undefined,
 );
@@ -2101,6 +2127,14 @@ onUnmounted(() => {
                     @keydown.escape.stop="playlistKeyword = ''"
                   />
                   <button
+                    v-if="playlistLocateIndex !== undefined"
+                    type="button"
+                    class="text-button playlist-locate"
+                    @click="playlistTrackTable?.locate()"
+                  >
+                    定位当前歌曲
+                  </button>
+                  <button
                     v-if="
                       playlistManager.operations.value.length +
                       playlistManager.coverOperations.value.length
@@ -2169,6 +2203,8 @@ onUnmounted(() => {
                   </p>
                   <TrackTable
                     v-if="playlistTrackSearch.tracks.length"
+                    ref="playlistTrackTable"
+                    :locate-index="playlistLocateIndex"
                     navigable
                     @artist="(id) => openCatalog({ kind: 'artist', id })"
                     @album="(id) => openCatalog({ kind: 'album', id })"

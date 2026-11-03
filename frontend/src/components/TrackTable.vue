@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { TrackMenuRequest, TrackPlayGesture } from '../services/trackMenu';
-import { computed, watch } from 'vue';
+import { computed, nextTick, watch } from 'vue';
 import { useVirtualRows } from '../composables/useVirtualRows';
 import type { TrackView } from '../services/contracts';
 import TrackRow from './TrackRow.vue';
@@ -12,6 +12,7 @@ const props = defineProps<{
   playable?: boolean;
   currentId?: string;
   navigable?: boolean;
+  locateIndex?: number;
 }>();
 const emit = defineEmits<{
   like: [track: TrackView];
@@ -27,6 +28,7 @@ const {
   end,
   onScroll,
   reset,
+  center,
 } = useVirtualRows(() => props.tracks.length, rowHeight);
 const rows = computed(() => props.tracks.slice(start.value, end.value));
 watch(
@@ -37,6 +39,18 @@ watch(
     }
   },
 );
+async function locate() {
+  const index = props.locateIndex;
+  if (index === undefined || index < 0) return;
+  const target = props.tracks[index];
+  if (!target || !center(index)) return;
+  await nextTick();
+  if (index !== props.locateIndex || props.tracks[index] !== target) return;
+  scroller.value
+    ?.querySelector<HTMLElement>(`[aria-rowindex="${index + 2}"]`)
+    ?.focus({ preventScroll: true });
+}
+defineExpose({ locate });
 </script>
 <template>
   <div class="track-table" role="table" :aria-rowcount="tracks.length + 1">
@@ -58,8 +72,10 @@ watch(
           playable,
           navigable,
           matchKeyword,
+          locateIndex !== undefined,
         ]"
         :track="track"
+        :tabindex="locateIndex !== undefined ? -1 : undefined"
         :match-keyword="matchKeyword"
         :index="start + index"
         :current-id="currentId"

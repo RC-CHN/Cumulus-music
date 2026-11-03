@@ -359,3 +359,10 @@
   color: var(--text-secondary);
   font-size: 13px;
 }
+.playlist-content-nav > .playlist-locate {
+  white-space: nowrap;
+}
+.track-row[tabindex='-1']:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
