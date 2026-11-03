@@ -25,6 +25,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
+    parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--screenshots', action='store_true')
     parser.add_argument('--table', action='store_true', help='Verify column resizing, voice sort cycles and operation feedback')
@@ -42,6 +43,8 @@ def main():
     root.mkdir(parents=True, exist_ok=False)
     env = {k: v for k, v in os.environ.items() if not k.startswith('CUMULUS_')}
     env.update(CUMULUS_PROOF_DIR=str(root), CUMULUS_MOTION_PROOF='1', CUMULUS_DOWNLOAD_PAGE_UI_PROOF='1')
+    if args.frontend_dist:
+        env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve(strict=True))
     if args.seed_delay_ms:
         env['CUMULUS_DOWNLOAD_SEED_DELAY_MS'] = str(args.seed_delay_ms)
     for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'), ('XDG_CACHE_HOME', 'cache'), ('XDG_RUNTIME_DIR', 'runtime'), ('APPDATA', 'roaming'), ('LOCALAPPDATA', 'local')]:
@@ -63,6 +66,7 @@ def main():
     assert result['syntheticNativeRecords'] == 146
     assert len(list((root / 'first').glob('ux_*.json'))) == result['stageCount'] == expected
     if not any([args.table, args.batch, args.navigation, args.menu]):
+        assert result['tabWithoutFramesVerified']
         for width in [1120, 760]:
             paths = list((root / 'first').glob(f'ux_*_mv_continuous_{width}.json'))
             assert len(paths) == 1, 'one complete MV viewport sweep per width'

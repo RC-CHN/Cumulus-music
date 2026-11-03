@@ -48,7 +48,15 @@
     }
     const field=one('.download-search input');field.focus();input(field,'单曲 119');await wait(()=>ready()&&all('[data-download-index]').length===1,'search filtering');assert(first().textContent.includes('119'),'search result');await capture('search_found');
     input(field,'不匹配的下载');await wait(()=>one('.empty-state')?.textContent.includes('没有找到'),'search empty');await capture('search_empty');click(button('清空下载搜索'));await wait(()=>ready()&&first(),'clear search');assert(document.activeElement===field,'clear search focus');await capture('search_clear');
-    await select('voice');tab('voice').focus();key(tab('voice'),'ArrowRight');await wait(()=>tab('mv').getAttribute('aria-selected')==='true'&&one('.download-mv-card'),'keyboard tab');assert(document.activeElement===tab('mv'),'roving tabs');await capture('keyboard_tabs');
+    await select('voice');tab('voice').focus();
+    const nativeFrame=window.requestAnimationFrame;let withheld=0;
+    try{
+      window.requestAnimationFrame=()=>-(++withheld);
+      key(tab('voice'),'ArrowRight');
+      await wait(()=>tab('mv').getAttribute('aria-selected')==='true'&&ready()&&one('.download-mv-card'),'keyboard tab with no compositor frames');
+    }finally{window.requestAnimationFrame=nativeFrame;}
+    assert(withheld>=2||document.documentElement.dataset.motion==='reduced','download transitions observed stalled frames');
+    assert(document.activeElement===tab('mv'),'roving tabs');await capture('keyboard_tabs');
     await select('song');const pageScroll=one('.download-scroll');pageScroll.scrollTop=pageScroll.scrollHeight;pageScroll.dispatchEvent(new Event('scroll'));await wait(()=>!one('.download-continuation'),'continuous full prefix');const pageIds=new Set();for(let top=0;top<=pageScroll.scrollHeight;top+=pageScroll.clientHeight){pageScroll.scrollTop=top;pageScroll.dispatchEvent(new Event('scroll'));await sleep(70);all('[data-download-index]').forEach(n=>pageIds.add(n.dataset.downloadTask));}assert(pageIds.size===120,'all continuous records reachable');await capture('continuous_inventory');pageScroll.scrollTop=0;pageScroll.dispatchEvent(new Event('scroll'));await wait(()=>first(),'first after inventory');
     const scroller=one('.download-scroll');first().focus({preventScroll:true});scroller.scrollTop=scroller.scrollHeight;scroller.dispatchEvent(new Event('scroll'));await wait(()=>!one('[data-download-index="0"]'),'virtual recycle');assert(document.activeElement===scroller,'recycled focus body');await capture('virtual_focus');key(scroller,'Home');await wait(()=>document.activeElement===first(),'keyboard home');
     click(button('更多下载操作'));await wait(()=>one('.action-menu')?.style.visibility==='visible','page menu');await capture('more_menu');click(button('批量操作',one('.action-menu')));await wait(()=>one('.download-batch-page [aria-label="全选下载"]'),'complete batch ready');assert(document.activeElement===one('.download-batch-page .batch-done'),'batch entry focus');click(one('[aria-label="全选下载"]'));await wait(()=>one('.download-batch-page .batch-select-label').textContent.includes('120'),'selects whole category');await capture('batch_selection');click(one('.download-batch-page .batch-done'));await wait(()=>!one('.download-batch-page')&&document.activeElement===button('更多下载操作'),'batch return focus');
@@ -123,6 +131,6 @@
     const canvas=one('.video-canvas');let nonBlack=0;
     await wait(()=>{const px=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;nonBlack=0;for(let i=0;i<px.length;i+=4)if(px[i]+px[i+1]+px[i+2]>20)nonBlack++;return nonBlack>=100;},'nonblank decoded video frame');
     await fixture('verify_local_mv');const videoBefore=await client.videoSnapshot((await client.accountSnapshot()).epoch);click(button('重新读取MV资料'));await wait(()=>button('重新读取MV资料')&&!button('重新读取MV资料').disabled,'detail retry');const videoAfter=await client.videoSnapshot(videoBefore.epoch);assert(videoAfter.playId===videoBefore.playId,'detail retry does not restart local video');await capture('mv_offline_playback',{nonBlackPixels:nonBlack,frames:Number(canvas.dataset.renderedFrames),local:videoAfter.local,id:videoAfter.id,retryKeptPlayId:videoAfter.playId===videoBefore.playId});
-    await emit('complete',{ok:true,downloadPageUi:true,stageCount:count,realMusicRequests:0,realAccountWrites:0,syntheticNativeRecords:146,physicalPointerVerified:false});
+    await emit('complete',{ok:true,downloadPageUi:true,stageCount:count,realMusicRequests:0,realAccountWrites:0,syntheticNativeRecords:146,physicalPointerVerified:false,tabWithoutFramesVerified:true});
   }catch(error){const failedAt=stage;await capture('failure_state').catch(()=>{});await emit('failed',{stageCount:count,step:failedAt,message:String(error),stack:error.stack,coverage:window.__downloadCoverage});}
 })();

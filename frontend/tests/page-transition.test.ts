@@ -79,11 +79,17 @@ test('cancelled page transition cannot complete over a newer one', () => {
   assert.equal(current, 1);
 });
 
-test('reduced motion skips page frames and timers', () => {
+test('reduced motion completes after the current patch without frames or timers', async () => {
   const { hooks, element, target, frames, deadlines } = setup(true);
   let ended = 0;
   hooks.enter(target, () => ended++);
+  assert.equal(ended, 0);
+  await Promise.resolve();
+  assert.equal(ended, 1);
+  hooks.leave(target, () => assert.fail('cancelled reduced-motion transition'));
+  hooks.cancel(target);
   hooks.leave(target, () => ended++);
+  await Promise.resolve();
   assert.equal(ended, 2);
   assert.equal(frames.size + deadlines.size + element.classes.size, 0);
 });

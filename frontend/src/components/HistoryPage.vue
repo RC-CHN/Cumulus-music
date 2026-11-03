@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BoundedPanelTransition from './BoundedPanelTransition.vue';
 import { computed, ref, shallowRef, watch } from 'vue';
 import Icon from './Icon.vue';
 import ModalTransition from './ModalTransition.vue';
@@ -250,7 +251,7 @@ function keyboard(event: KeyboardEvent) {
       </div>
       <p v-if="latest" class="history-outcome" role="status">{{ historyOutcome(latest) }}</p>
     </div>
-    <Transition name="catalog-tab" mode="out-in">
+    <BoundedPanelTransition name="catalog-tab">
       <div :key="kind" class="history-content">
         <div
           v-if="entries.length"
@@ -357,7 +358,7 @@ function keyboard(event: KeyboardEvent) {
           }}
         </p>
       </div>
-    </Transition>
+    </BoundedPanelTransition>
     <p class="history-note muted">
       {{ page?.remoteIncluded ? '本机与多端记录已合并，按最近播放排序' : '显示本机播放记录'
       }}<template v-if="page?.remoteIncluded && page.remoteFetchedAt">

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BoundedPanelTransition from './BoundedPanelTransition.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import type { TrackMenuRequest, TrackPlayGesture } from '../services/trackMenu';
 import type { AccountView, TrackView } from '../services/contracts';
@@ -332,10 +333,9 @@ defineExpose({ checkpoint: () => checkpoint(), resourceKey: `${resource.kind}:${
         @open="emit('open', $event)"
         @expired="expire"
       />
-      <Transition
+      <BoundedPanelTransition
         v-else
         name="catalog-tab"
-        mode="out-in"
         @enter="restore"
         @before-leave="($event as HTMLElement).inert = true"
         @before-enter="($event as HTMLElement).inert = false"
@@ -430,7 +430,7 @@ defineExpose({ checkpoint: () => checkpoint(), resourceKey: `${resource.kind}:${
             {{ list.loadingMore.value ? '正在加载…' : '加载更多' }}
           </button>
         </div>
-      </Transition>
+      </BoundedPanelTransition>
     </template>
   </section>
 </template>

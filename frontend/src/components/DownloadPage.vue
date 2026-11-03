@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BoundedPanelTransition from './BoundedPanelTransition.vue';
 import { computed, nextTick, ref, watch } from 'vue';
 import type { DownloadModel } from '../composables/useDownloads';
 import { downloadPlaybackReady } from '../services/downloads';
@@ -138,7 +139,7 @@ function play(task?: DownloadTask) {
       @open="model.open()"
       @settings="emit('dialog', { kind: 'settings' })"
     />
-    <Transition name="download-section" mode="out-in">
+    <BoundedPanelTransition name="download-section">
       <div
         :key="section"
         id="download-content"
@@ -240,6 +241,6 @@ function play(task?: DownloadTask) {
           "
         />
       </div>
-    </Transition>
+    </BoundedPanelTransition>
   </section>
 </template>

@@ -38,7 +38,16 @@ export function createPageTransition(
   function animate(element: Element, done: End, phase: Phase) {
     cancel(element);
     if (reduced()) {
-      done();
+      // For out-in, finish after Vue commits the placeholder. Re-entering
+      // the component update from a synchronous leave can leave it mounted
+      // on the old branch even though no animation was requested.
+      const cleanup = () => pending.delete(element);
+      pending.set(element, cleanup);
+      queueMicrotask(() => {
+        if (pending.get(element) !== cleanup) return;
+        cleanup();
+        done();
+      });
       return;
     }
 

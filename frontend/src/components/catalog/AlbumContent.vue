@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BoundedPanelTransition from '../BoundedPanelTransition.vue';
 import { computed, useId } from 'vue';
 import type { AccountView, TrackView } from '../../services/contracts';
 import type { AlbumCard, CatalogResource } from '../../services/catalog';
@@ -69,9 +70,8 @@ function keydown(event: KeyboardEvent, index: number) {
         {{ tab.label }}<small v-if="tab.count != null">{{ tab.count }}</small>
       </button>
     </nav>
-    <Transition
+    <BoundedPanelTransition
       name="catalog-tab"
-      mode="out-in"
       @enter="emit('enter', $event)"
       @before-leave="($event as HTMLElement).inert = true"
       @before-enter="($event as HTMLElement).inert = false"
@@ -127,6 +127,6 @@ function keydown(event: KeyboardEvent, index: number) {
           <p v-else class="empty-state">暂无歌曲</p>
         </div>
       </KeepAlive>
-    </Transition>
+    </BoundedPanelTransition>
   </div>
 </template>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BoundedPanelTransition from './BoundedPanelTransition.vue';
 import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from 'vue';
 import type { AccountView } from '../services/contracts';
 import type { CatalogResource } from '../services/catalog';
@@ -262,7 +263,7 @@ onBeforeUnmount(() => {
     <p v-if="model.loading.value" role="status" class="muted">
       {{ keyword && !visibleCount ? '正在继续查找…' : '正在加载…' }}
     </p>
-    <Transition name="catalog-tab" mode="out-in" @after-enter="viewport.restore">
+    <BoundedPanelTransition name="catalog-tab" @after-enter="viewport.restore">
       <div
         :key="model.scope.value"
         :id="panelId"
@@ -303,7 +304,7 @@ onBeforeUnmount(() => {
           }}
         </p>
       </div>
-    </Transition>
+    </BoundedPanelTransition>
     <button
       v-if="model.next.value"
       class="load-more"

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BoundedPanelTransition from '../BoundedPanelTransition.vue';
 import { computed, nextTick, ref, watch } from 'vue';
 import type { PlaylistView } from '../../services/contracts';
 import type { MenuItem } from '../../services/menu';
@@ -72,7 +73,7 @@ defineExpose({ section });
         </button>
       </div>
     </header>
-    <Transition name="library-mode" mode="out-in">
+    <BoundedPanelTransition name="library-mode">
       <div
         :key="`${mode}:${current}`"
         :class="['library-items', mode === 'grid' ? 'playlist-grid' : 'library-table']"
@@ -113,7 +114,7 @@ defineExpose({ section });
           </template>
         </div>
       </div>
-    </Transition>
+    </BoundedPanelTransition>
     <nav v-if="total > 1" class="library-pagination" :aria-label="`${title}分页`">
       <button
         class="icon-button"
