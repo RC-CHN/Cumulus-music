@@ -275,6 +275,16 @@ impl From<Error> for ClientError {
                     "服务端未返回可修改的设置值，请刷新后重试",
                     true,
                 ),
+                Error::State("local queue requires ordinary playback") => (
+                    "local_queue_mode",
+                    "请先退出一起听或心动模式，再添加本地音乐",
+                    false,
+                ),
+                Error::State("local queue exceeds insertion limit") => (
+                    "local_queue_limit",
+                    "播放列表最多 10000 首，请缩小筛选范围",
+                    false,
+                ),
                 Error::State("FM queue requires its coordinator") => {
                     ("fm_queue", "FM队列随推荐更新，请使用上一首或下一首", false)
                 }

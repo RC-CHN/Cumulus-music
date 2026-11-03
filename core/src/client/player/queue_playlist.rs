@@ -31,6 +31,10 @@ pub(super) enum QueueCollection {
         selection: Option<(Vec<String>, String)>,
     },
     Downloads(Vec<String>),
+    Local {
+        query: crate::library::catalog::LocalQuery,
+        revision: String,
+    },
     Cloud {
         ids: Vec<String>,
         revision: String,
@@ -126,9 +130,43 @@ impl MusicClient {
         if before.fm {
             return Err(Error::State("FM queue requires its coordinator"));
         }
+        let local = matches!(collection, QueueCollection::Local { .. });
+        if local && (queue.intelligence.is_some() || self.together_attached(&token, None)?) {
+            return Err(Error::State("local queue requires ordinary playback"));
+        }
         let focus = self.focus.snapshot()?;
         let attempt = self.player.selection.fetch_add(1, Ordering::AcqRel) + 1;
         let (resources, source, downloaded) = match collection {
+            QueueCollection::Local {
+                mut query,
+                revision,
+            } => {
+                query.revision = Some(revision.clone());
+                let context = self.local.context().await?;
+                let (resources, _) = tokio::task::spawn_blocking(move || {
+                    context.library.catalog(&query)?.queue(None)
+                })
+                .await
+                .map_err(|_| Error::State("local selection worker stopped"))??;
+                let already_included = queue.selected().is_some_and(|entry| {
+                    let key = resource_key(&entry.resource, false);
+                    key.is_some_and(|key| {
+                        resources
+                            .iter()
+                            .any(|item| resource_key(item, false) == Some(key))
+                    })
+                });
+                if resources.len()
+                    > QUEUE_LIMIT - usize::from(queue.current.is_some() && !already_included)
+                {
+                    return Err(Error::State("local queue exceeds insertion limit"));
+                }
+                (
+                    resources,
+                    json!({"kind":"local","revision":revision}),
+                    false,
+                )
+            }
             QueueCollection::Album { id, quality } => {
                 self.session.with_token(&token, |_| Ok(()))?;
                 let id = identifier(&json!(id))?;
@@ -203,6 +241,19 @@ impl MusicClient {
         if self.player.selection.load(Ordering::Acquire) != attempt {
             return Err(Error::StaleResponse);
         }
+        let _local_room = if local {
+            let gate = self
+                .together
+                .gate
+                .try_lock()
+                .map_err(|_| Error::MutationBusy)?;
+            if self.together_attached(&token, None)? {
+                return Err(Error::State("local queue requires ordinary playback"));
+            }
+            Some(gate)
+        } else {
+            None
+        };
         if start {
             self.claim_native_media(&token, super::super::focus::Owner::Audio, focus)
                 .await?;
@@ -210,19 +261,28 @@ impl MusicClient {
                 return Err(Error::StaleResponse);
             }
         }
-        let value = controller
-            .command(
-                &token,
-                PlaybackCommand::UpdateQueue(QueueUpdate {
-                    expected: before.fence(),
-                    queue,
-                    transport: start.then_some(QueueTransport {
-                        position: None,
-                        paused: false,
-                    }),
-                }),
-            )
-            .await?;
+        let expected = before.fence();
+        let command = PlaybackCommand::UpdateQueue(QueueUpdate {
+            expected: expected.clone(),
+            queue,
+            transport: start.then_some(QueueTransport {
+                position: None,
+                paused: false,
+            }),
+        });
+        let value = if local {
+            let selection = self.player.selection.clone();
+            controller
+                .command_guarded(
+                    &token,
+                    command,
+                    expected,
+                    Cancellation::new(move || selection.load(Ordering::Acquire) == attempt),
+                )
+                .await?
+        } else {
+            controller.command(&token, command).await?
+        };
         self.session.check_generation(&token)?;
         self.together_signal(&token, None);
         project(&value, &token)
@@ -264,7 +324,14 @@ fn insert_collection(
             Some(
                 existing
                     .get(&id)
-                    .map(|e| (*e).clone())
+                    .map(|e| {
+                        let mut entry = (*e).clone();
+                        if id.0 == PlayerResourceKind::Local && entry.resource != resource {
+                            entry.resource = resource.clone();
+                            entry.source = source.clone();
+                        }
+                        entry
+                    })
                     .unwrap_or_else(|| QueueEntry {
                         entry_id: uuid::Uuid::new_v4().to_string(),
                         resource,

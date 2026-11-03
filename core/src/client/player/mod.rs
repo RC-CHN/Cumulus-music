@@ -350,6 +350,20 @@ impl MusicClient {
                 .next_play(epoch, id, quality, expected_queue_revision)
                 .await;
         }
+        if let PlayerAction::QueueLocal {
+            query,
+            revision,
+            expected_queue_revision,
+        } = action
+        {
+            return self
+                .queue_collection(
+                    epoch,
+                    queue_playlist::QueueCollection::Local { query, revision },
+                    expected_queue_revision,
+                )
+                .await;
+        }
         if let PlayerAction::QueueDownloads {
             task_ids,
             expected_queue_revision,
@@ -771,6 +785,7 @@ impl MusicClient {
             | PlayerAction::QueuePlaylist { .. }
             | PlayerAction::QueueAlbum { .. }
             | PlayerAction::QueueDownloads { .. }
+            | PlayerAction::QueueLocal { .. }
             | PlayerAction::QueuePlaylistBatch { .. }
             | PlayerAction::QueueCloudBatch { .. } => {
                 unreachable!("handled before user transport commands")

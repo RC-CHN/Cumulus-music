@@ -137,6 +137,12 @@ fn main() {
     let reopen = std::env::var_os("CUMULUS_PROOF_REOPEN").is_some();
     let small = std::env::var_os("CUMULUS_PROOF_SMALL").is_some();
     let cold = std::env::var_os("CUMULUS_LOCAL_COLD_START_PROOF").is_some();
+    let queue = std::env::var_os("CUMULUS_LOCAL_QUEUE_PROOF").is_some();
+    assert!(
+        !queue || (!cold && !reopen),
+        "queue proof needs a fresh profile"
+    );
+
     assert!(
         !cold || !reopen,
         "cold-start proof requires a fresh directory"
@@ -159,6 +165,13 @@ fn main() {
         app.add_capability(r#"{"identifier":"local-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
         let output=setup.clone();let handle=app.handle().clone();app.listen("local-proof",move|event|{
             let value:Value=serde_json::from_str(event.payload()).expect("proof JSON");let stage=value["stage"].as_str().unwrap_or("");
+            if queue {
+                if ["local_queue_started", "complete", "failed"].contains(&stage) {
+                    fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+                    if stage=="complete"||stage=="failed"{handle.exit(if stage=="complete"{0}else{1});}
+                }
+                return;
+            }
             if cold {
                 if stage=="inspect_restore" {
                     let started=offline.started.load(Ordering::Acquire);
@@ -201,7 +214,9 @@ fn main() {
     }).on_page_load(move|webview,payload|{
         if payload.event()==PageLoadEvent::Finished {
             webview.eval(format!("window.__localProof={};",json!({"root":root,"reopen":reopen}))).unwrap();
-            webview.eval(if cold {include_str!("local_cold_start_probe.js")} else {include_str!("local_ui_probe.js")}).unwrap();
+            webview.eval(if cold {include_str!("local_cold_start_probe.js")} else if queue {
+                include_str!("local_queue_ui_probe.js")
+            } else {include_str!("local_ui_probe.js")}).unwrap();
         }
     }).run(tauri::generate_context!()).expect("local UI proof");
 }

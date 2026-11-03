@@ -18,6 +18,7 @@ import type {
 } from '../services/player.ts';
 import { useCore } from '../services/core.ts';
 import type { CloudQuery } from '../services/cloud.ts';
+import type { LocalQuery } from '../services/local.ts';
 import { useEqualizerDraft } from './useEqualizerDraft.ts';
 
 export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => void = () => {}) {
@@ -206,6 +207,9 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
         : { kind: 'queue_playlist', id, quality },
     );
   }
+  function queueLocal(query: LocalQuery, revision: string) {
+    return queueAction({ kind: 'queue_local', query, revision });
+  }
   function queueCloud(ids: string[], revision: string, query?: CloudQuery) {
     return queueAction({
       kind: 'queue_cloud_batch',
@@ -261,6 +265,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
         {
           kind:
             | 'queue_downloads'
+            | 'queue_local'
             | 'queue_playlist'
             | 'queue_playlist_batch'
             | 'queue_cloud_batch'
@@ -620,6 +625,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   }
   return {
     queuePlaylist,
+    queueLocal,
     queueAlbum,
     queueDownloads,
     queueCloud,

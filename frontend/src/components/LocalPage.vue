@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, nextTick } from 'vue';
 import Icon from './Icon.vue';
+import ActionMenu from './ActionMenu.vue';
+import { failure } from '../services/contracts';
 import LocalMatchDialog from './LocalMatchDialog.vue';
 import type { LocalMatchingModel } from '../composables/useLocalMatching';
 import type { LocalModel } from '../composables/useLocal';
@@ -11,6 +13,8 @@ const props = defineProps<{
   model: LocalModel;
   matching: LocalMatchingModel;
   playable: boolean;
+  queueable: boolean;
+  queueLocal: (query: LocalQuery, revision: string) => Promise<unknown>;
   currentId?: string;
 }>();
 const emit = defineEmits<{
@@ -27,6 +31,43 @@ const readLocked = computed(() => loading.value || !!readError.value || !view.va
 const canPlay = computed(
   () => props.playable && !busy.value && !readLocked.value && !!view.value?.playable,
 );
+const adding = ref(false);
+const queueNotice = ref('');
+const queueError = ref('');
+const canAdd = computed(
+  () =>
+    props.queueable &&
+    !busy.value &&
+    !readLocked.value &&
+    !adding.value &&
+    keyword.value === query.value.keyword &&
+    !!view.value?.playable &&
+    view.value.playable <= 10000,
+);
+const queueMenu = computed(() => [
+  {
+    key: 'queue_all',
+    label: '添加全部至播放列表',
+    icon: 'plus' as const,
+    disabled: !canAdd.value,
+    hint: (view.value?.playable ?? 0) > 10000 ? '请缩小筛选范围至 10000 首以内' : undefined,
+  },
+]);
+async function addAll(key: string) {
+  if (key !== 'queue_all' || !canAdd.value || !view.value) return;
+  const captured = { ...query.value };
+  const revision = view.value.revision;
+  adding.value = true;
+  queueNotice.value = queueError.value = '';
+  try {
+    if ((await props.queueLocal(captured, revision)) && ownsVisit())
+      queueNotice.value = '已添加至播放列表';
+  } catch (issue) {
+    if (ownsVisit()) queueError.value = failure(issue).message;
+  } finally {
+    adding.value = false;
+  }
+}
 defineExpose({ checkpoint: search.flush });
 async function runAction(action: () => Promise<void>) {
   const origin = document.activeElement;
@@ -144,6 +185,7 @@ function status(root: LocalRoot) {
       >
         重新扫描
       </button>
+      <ActionMenu variant="song" label="更多本地音乐操作" :items="queueMenu" @select="addAll" />
       <form class="local-search" @submit.prevent="search.flush">
         <input
           ref="searchInput"
@@ -168,6 +210,10 @@ function status(root: LocalRoot) {
         </button>
       </form>
     </div>
+    <p v-if="adding || queueNotice" class="notice" role="status">
+      {{ adding ? '正在添加本地音乐…' : queueNotice }}
+    </p>
+    <p v-if="queueError" class="error-state" role="alert">{{ queueError }}</p>
     <div v-if="matching.view.value?.job" class="local-match-progress" role="status">
       <span
         >{{

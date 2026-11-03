@@ -1742,6 +1742,13 @@ onUnmounted(() => {
                 :model="local"
                 :matching="localMatching"
                 :playable="player.ready.value"
+                :queueable="
+                  player.ready.value &&
+                  !player.busy.value &&
+                  !player.queueBusy.value &&
+                  !player.view.value?.fm
+                "
+                :queue-local="player.queueLocal"
                 :current-id="currentLocalId"
                 @play="playLocal"
                 @comments="(id, title) => openComments({ kind: 'track', id }, title)"

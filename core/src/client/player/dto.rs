@@ -253,6 +253,11 @@ pub enum PlayerAction {
         expected_room_id: Option<String>,
         edit: QueueEdit,
     },
+    QueueLocal {
+        query: crate::library::catalog::LocalQuery,
+        revision: String,
+        expected_queue_revision: String,
+    },
     QueueDownloads {
         task_ids: Vec<String>,
         expected_queue_revision: String,

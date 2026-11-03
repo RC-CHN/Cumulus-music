@@ -683,3 +683,102 @@ async fn guest_history_replays_current_files_and_rejects_changed_fingerprints() 
             .is_err()
     );
 }
+
+#[tokio::test]
+async fn guest_adds_the_complete_local_filter_after_the_current_song_without_reloading_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let media = dir.path().join("media");
+    std::fs::create_dir(&media).unwrap();
+    for name in ["Current", "Match A", "Match B", "Match C", "Other"] {
+        std::fs::write(media.join(format!("{name}.wav")), b"fixture").unwrap();
+    }
+    let (_session, client, library) = client(&dir.path().join("state"), Arc::new(Probe::default()));
+    library.scan(&media).unwrap();
+    let page = client.local_page(LocalQuery::default()).await.unwrap();
+    let initial = client.player_snapshot("0").await.unwrap();
+    let first = client
+        .player_action(
+            "0",
+            PlayerAction::QueueLocal {
+                query: LocalQuery {
+                    keyword: "Current".into(),
+                    ..Default::default()
+                },
+                revision: page.revision.clone(),
+                expected_queue_revision: initial.queue_revision,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(first.queue_len, 1);
+    assert_eq!(first.track.as_ref().unwrap().name, "Current");
+    assert!(
+        first.play_id.is_some(),
+        "empty queue starts native playback"
+    );
+    let paused = client
+        .player_action("0", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    let query = LocalQuery {
+        keyword: "Match".into(),
+        limit: 1,
+        descending: false,
+        ..Default::default()
+    };
+    assert_eq!(
+        client.local_page(query.clone()).await.unwrap().tracks.len(),
+        1
+    );
+    let added = client
+        .player_action(
+            "0",
+            PlayerAction::QueueLocal {
+                query: query.clone(),
+                revision: page.revision.clone(),
+                expected_queue_revision: paused.queue_revision.clone(),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(added.queue_len, 4);
+    assert_eq!(added.play_id, paused.play_id);
+    assert_eq!(added.entry_id, paused.entry_id);
+    assert_eq!(added.state, paused.state);
+    assert_eq!(added.position, paused.position);
+    let queue = client.player_queue("0").await.unwrap();
+    let names = queue
+        .tracks
+        .iter()
+        .map(|entry| entry.track.name.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(names, ["Current", "Match A", "Match B", "Match C"]);
+    assert!(queue.tracks.iter().all(|entry| entry.track.local));
+    assert!(matches!(
+        client
+            .player_action(
+                "0",
+                PlayerAction::QueueLocal {
+                    query: query.clone(),
+                    revision: page.revision.clone(),
+                    expected_queue_revision: paused.queue_revision,
+                }
+            )
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    assert!(matches!(
+        client
+            .player_action(
+                "0",
+                PlayerAction::QueueLocal {
+                    query,
+                    revision: "expired-index".into(),
+                    expected_queue_revision: added.queue_revision,
+                }
+            )
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    assert_eq!(client.player_queue("0").await.unwrap().tracks.len(), 4);
+}

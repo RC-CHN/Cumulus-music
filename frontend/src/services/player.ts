@@ -250,6 +250,12 @@ export type PlayerAction =
       quality: Quality;
       expected_queue_revision: string;
     }
+  | {
+      kind: 'queue_local';
+      query: import('./local').LocalQuery;
+      revision: string;
+      expected_queue_revision: string;
+    }
   | { kind: 'queue_downloads'; task_ids: string[]; expected_queue_revision: string }
   | { kind: 'queue_playlist'; id: string; quality: Quality; expected_queue_revision: string }
   | { kind: 'queue_album'; id: string; quality: Quality; expected_queue_revision: string }

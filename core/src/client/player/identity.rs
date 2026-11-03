@@ -25,6 +25,7 @@ pub(super) fn collection_key(
     let field = match (downloaded, kind) {
         (true, PlayerResourceKind::Downloaded) => "download_task_id",
         (false, PlayerResourceKind::Catalog) => "id",
+        (false, PlayerResourceKind::Local) => "local_id",
         (false, PlayerResourceKind::Cloud) => "cloud_song_id",
         _ => return None,
     };
