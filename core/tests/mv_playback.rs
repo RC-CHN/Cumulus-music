@@ -186,6 +186,66 @@ async fn eof_uses_native_entry_and_replay_starts_at_zero() {
     assert_eq!(view.position, Some(0.0));
     f.player.command(&token, Cmd::Stop).await.unwrap();
 }
+
+#[tokio::test]
+async fn fatal_video_events_do_not_complete_the_bookmark_or_reload_output() {
+    for fatal in [
+        EngineEvent::Shutdown,
+        EngineEvent::Ended {
+            entry_id: 1,
+            reason: EndReason::Error,
+            error: -14,
+        },
+    ] {
+        for reverse in [false, true] {
+            let f = Fixture::new();
+            let token = f.session.token().unwrap();
+            f.player.command(&token, open("123")).await.unwrap();
+            let before = until(&f.player, Status::Playing).await;
+            f.player
+                .command(&token, Cmd::Seek { seconds: 31.25 })
+                .await
+                .unwrap();
+            let mut events = vec![
+                fatal.clone(),
+                EngineEvent::Ended {
+                    entry_id: 1,
+                    reason: EndReason::Eof,
+                    error: 0,
+                },
+                EngineEvent::OutputReload { entry_id: 1 },
+            ];
+            if reverse {
+                events.reverse();
+            }
+            let device = f.last();
+            device.lock().unwrap().events = events;
+            let failed = until(&f.player, Status::Error).await;
+            assert_eq!(failed.play_id, before.play_id);
+            assert_eq!(failed.position, Some(31.25));
+            assert!(failed.paused && device.lock().unwrap().stopped);
+            assert_eq!(f.devices.lock().unwrap().len(), 1);
+            assert_eq!(
+                f.api
+                    .calls
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .filter(|path| { path.as_str() == "/api/song/enhance/play/mv/url" })
+                    .count(),
+                1
+            );
+            let checkpoint = MvService::new(f.session.clone())
+                .unwrap()
+                .position_for(&token, &json!(123))
+                .unwrap()
+                .unwrap();
+            assert!(!checkpoint.completed);
+            assert_eq!(checkpoint.position_ms, 31_250);
+        }
+    }
+}
+
 #[tokio::test]
 async fn account_switch_revokes_frames_and_stops_native_engine_without_cross_account_position() {
     let f = Fixture::new();

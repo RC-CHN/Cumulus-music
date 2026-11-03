@@ -239,6 +239,28 @@ impl Actor {
         let snapshot = device(engine, |e| e.poll()).await?;
         self.view.position = snapshot.position.or(self.view.position);
         self.view.duration = snapshot.duration.or(self.view.duration);
+        // The engine can report shutdown and a prior EOF or output failure in
+        // one poll. Do not checkpoint completion or start another decoder in
+        // response to that batch. Stale entry errors are unrelated.
+        if snapshot.events.contains(&EngineEvent::Shutdown) {
+            return Err(Error::Playback {
+                operation: "video engine shutdown",
+                code: -1,
+            });
+        }
+        if let Some(error) = snapshot.events.iter().rev().find_map(|event| match event {
+            EngineEvent::Ended {
+                entry_id,
+                reason: EndReason::Error | EndReason::Redirect | EndReason::Unknown(_),
+                error,
+            } if Some(*entry_id) == self.entry => Some(*error),
+            _ => None,
+        }) {
+            return Err(Error::Playback {
+                operation: "video playback",
+                code: error,
+            });
+        }
         if snapshot.events.iter().any(|event| {
             matches!(event, EngineEvent::OutputReload { entry_id } if Some(*entry_id) == self.entry)
         }) {
@@ -274,27 +296,15 @@ impl Actor {
                 VideoStatus::Playing
             };
         }
-        for event in snapshot.events {
-            if let EngineEvent::Ended {
-                entry_id,
-                reason,
-                error,
-            } = event
-                && self.entry == Some(entry_id)
-            {
-                if reason == EndReason::Eof {
-                    self.view.status = VideoStatus::Ended;
-                    self.view.paused = true;
-                    self.view.position = self.view.duration;
-                    self.wants_play = false;
-                    self.checkpoint(true)?;
-                } else if reason == EndReason::Error {
-                    return Err(Error::Playback {
-                        operation: "video playback",
-                        code: error,
-                    });
-                }
-            }
+        if snapshot.events.iter().any(|event| {
+            matches!(event, EngineEvent::Ended { entry_id, reason: EndReason::Eof, .. }
+                if Some(*entry_id) == self.entry)
+        }) {
+            self.view.status = VideoStatus::Ended;
+            self.view.paused = true;
+            self.view.position = self.view.duration;
+            self.wants_play = false;
+            self.checkpoint(true)?;
         }
         if self.checkpoint_at.elapsed() > Duration::from_secs(2)
             && matches!(self.view.status, VideoStatus::Playing | VideoStatus::Paused)

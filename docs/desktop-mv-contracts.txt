@@ -29,6 +29,9 @@ frontend/src/services/mv.ts：类型、二进制解码；adapters/tauri.ts：集
 useMv.ts：账号/页面/选择/控制代次、状态轮询、缓存错误展示；
 MvCollection/MvPlayer/VideoCanvas.vue：卡片、详情/小窗/全屏、画面消费。
 MV位图真实来自libmpv；Canvas不模拟媒体时钟或业务状态。
+同批原生事件中，引擎关闭或当前条目致命错误先于 EOF 和输出重载，释放解码器，
+不把原进度标为完成、不自动重取播放地址。MV 控制器测试覆盖两种事件顺序，
+核对仍可读取原断点，以及孤立 EOF 和可恢复输出事件不受影响。
 
 正式IPC与字段（参数对象外层camelCase，带kind的动作字段snake_case）
 mv_page(epoch,query,refresh)
