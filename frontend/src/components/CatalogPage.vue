@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
-import type { TrackMenuRequest } from '../services/trackMenu';
+import type { TrackMenuRequest, TrackPlayGesture } from '../services/trackMenu';
 import type { AccountView, TrackView } from '../services/contracts';
 import type { ArtistTab, CatalogResource, CatalogSelectionPage } from '../services/catalog';
 import type { AlbumCard, ArtistCard } from '../services/catalog';
@@ -32,7 +32,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
   open: [resource: CatalogResource];
-  play: [pages: CatalogSelectionPage[], index: number];
+  play: [pages: CatalogSelectionPage[], index: number, gesture?: TrackPlayGesture];
   like: [track: TrackView];
   more: [request: TrackMenuRequest];
   download: [tracks: TrackView[]];
@@ -191,8 +191,9 @@ function playHot() {
   if (index >= 0 && detail.view.value)
     emit('play', [{ query: detail.view.value.query, revision: detail.view.value.revision }], index);
 }
-function play(index: number) {
-  if (tracks.value[index] && !tracks.value[index].missing) emit('play', selections.value, index);
+function play(index: number, gesture?: TrackPlayGesture) {
+  if (tracks.value[index] && !tracks.value[index].missing)
+    emit('play', selections.value, index, gesture);
 }
 defineExpose({ checkpoint: () => checkpoint(), resourceKey: `${resource.kind}:${resource.id}` });
 </script>

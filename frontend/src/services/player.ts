@@ -133,7 +133,16 @@ export type QueueEdit =
   | { kind: 'remove' | 'reorder'; entry_ids: string[] }
   | { kind: 'clear' };
 export type SearchResultPlayback = 'track' | 'song_tab_all' | 'comprehensive_all';
+export type SongRowDoubleClickSelection =
+  | {
+      kind: 'catalog';
+      pages: import('./catalog').CatalogSelectionPage[];
+      index: number;
+      quality: Quality;
+    }
+  | { kind: 'playlist'; id: string; start_id: string; revision: string | null; quality: Quality };
 export type PlaySelection =
+  | { kind: 'song_row_double_click'; selection: SongRowDoubleClickSelection }
   | { kind: 'voice'; id: string }
   | { kind: 'downloads'; query: import('./downloads').DownloadQuery; start_id: string | null }
   | { kind: 'playlist_batch'; id: string; ids: string[]; revision: string; quality: Quality }

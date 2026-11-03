@@ -57,7 +57,12 @@ import type { AlbumCard, CatalogResource, CatalogSelectionPage } from './service
 import PlayerBar from './components/PlayerBar.vue';
 import { useIntelligence } from './composables/useIntelligence';
 import QueuePanel from './components/QueuePanel.vue';
-import type { QueueCollectionView, SearchResultPlayback } from './services/player';
+import type { TrackPlayGesture } from './services/trackMenu';
+import type {
+  QueueCollectionView,
+  SearchResultPlayback,
+  SongRowDoubleClickSelection,
+} from './services/player';
 import LyricsPanel from './components/LyricsPanel.vue';
 import PlaylistDialog from './components/PlaylistDialog.vue';
 import PlaylistCollectDialog from './components/PlaylistCollectDialog.vue';
@@ -332,13 +337,16 @@ function searchCardComments(item: SearchItem) {
   else if (item.kind === 'mv' && item.mv.mvId)
     openComments({ kind: 'mv', id: item.mv.mvId }, item.mv.title);
 }
-function playCatalog(pages: CatalogSelectionPage[], index: number) {
-  void player.select({
+function playCatalog(pages: CatalogSelectionPage[], index: number, gesture?: TrackPlayGesture) {
+  const selection: SongRowDoubleClickSelection = {
     kind: 'catalog',
     pages,
     index,
     quality: player.view.value?.qualityPreferences.quality ?? 'standard',
-  });
+  };
+  void player.select(
+    gesture === 'double_click' ? { kind: 'song_row_double_click', selection } : selection,
+  );
 }
 function playAlbumCard(album: AlbumCard) {
   playResourceCard({ kind: 'album', id: album.id });
@@ -1310,19 +1318,22 @@ watch(
         !!playlistActions.value?.downloadOpen,
     ),
 );
-function play(index = 0) {
+function play(index = 0, gesture?: TrackPlayGesture) {
   const tracks = result.value?.tracks;
   if (!tracks?.[index] || tracks[index].missing) return;
   const quality = player.view.value?.qualityPreferences.quality ?? 'standard';
-  if (page.value.kind === 'playlist')
-    void player.select({
+  if (page.value.kind === 'playlist') {
+    const selection: SongRowDoubleClickSelection = {
       kind: 'playlist',
       id: page.value.id,
       start_id: tracks[index].id,
       revision: result.value?.revision ?? null,
       quality,
-    });
-  else void player.select({ kind: 'songs', ids: tracks.map((t) => t.id), index, quality });
+    };
+    void player.select(
+      gesture === 'double_click' ? { kind: 'song_row_double_click', selection } : selection,
+    );
+  } else void player.select({ kind: 'songs', ids: tracks.map((t) => t.id), index, quality });
 }
 const shortcutKeys = useLocalShortcuts((error) => {
   notice.value = error.message;

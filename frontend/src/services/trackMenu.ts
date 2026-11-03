@@ -1,5 +1,7 @@
 import type { TrackView } from './contracts';
 
+export type TrackPlayGesture = 'double_click';
+
 // UI-only request: playback retains the originating list and its ordering.
 export interface TrackMenuRequest {
   track: TrackView;

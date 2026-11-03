@@ -19,6 +19,7 @@ import SettingsConfirm from './settings/SettingsConfirm.vue';
 import ModalTransition from './ModalTransition.vue';
 import Icon from './Icon.vue';
 import RelaySettings from './settings/RelaySettings.vue';
+import QueueClickPreferences from './settings/QueueClickPreferences.vue';
 import PlaybackStartup from './settings/PlaybackStartup.vue';
 import AudioOutput from './settings/AudioOutput.vue';
 import LoudnessBalance from './settings/LoudnessBalance.vue';
@@ -247,6 +248,7 @@ function accept(op: SettingsOperation) {
         </div>
       </section>
       <PlaybackStartup :account="account" />
+      <QueueClickPreferences :account="account" />
       <AudioOutput :account="account" />
       <LoudnessBalance :model="player" :epoch="account.epoch" />
       <WindowBehavior :account="account" />

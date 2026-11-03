@@ -2,7 +2,7 @@
 import { computed, useId } from 'vue';
 import type { AccountView, TrackView } from '../../services/contracts';
 import type { AlbumCard, CatalogResource } from '../../services/catalog';
-import type { TrackMenuRequest } from '../../services/trackMenu';
+import type { TrackMenuRequest, TrackPlayGesture } from '../../services/trackMenu';
 import type { CatalogSession } from '../../composables/useCatalogSession';
 import type { AlbumTab } from '../../services/catalogNavigation';
 import TrackTable from '../TrackTable.vue';
@@ -18,7 +18,7 @@ const props = defineProps<{
   currentId?: string;
 }>();
 const emit = defineEmits<{
-  play: [index: number];
+  play: [index: number, gesture?: TrackPlayGesture];
   like: [track: TrackView];
   more: [request: TrackMenuRequest];
   open: [resource: CatalogResource];
@@ -118,7 +118,7 @@ function keydown(event: KeyboardEvent, index: number) {
             :busy="busyLikes"
             :playable="playable"
             :current-id="currentId"
-            @play="emit('play', $event)"
+            @play="(index, gesture) => emit('play', index, gesture)"
             @like="emit('like', $event)"
             @more="emit('more', $event)"
             @artist="emit('open', { kind: 'artist', id: $event })"

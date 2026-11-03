@@ -29,6 +29,7 @@ import type { LoginDeviceRemovalClient } from './loginDeviceRemoval';
 import type { AccountDetailClient } from './accountDetail';
 import type { AccountAvatarClient } from './accountAvatar';
 import type { AccountProfileEditClient } from './accountProfileEdit';
+import type { QueueClickPreferencesClient } from './queueClickPreferences';
 import type { StartupPreferencesClient } from './startup';
 import type { WindowPreferencesClient, WindowLifecycleClient } from './window';
 import type { SystemMediaClient } from './systemMedia';
@@ -78,6 +79,7 @@ export interface CoreClient
     LoginDeviceRemovalClient,
     AccountProfileEditClient,
     StartupPreferencesClient,
+    QueueClickPreferencesClient,
     OutputClient,
     WindowPreferencesClient,
     SystemMediaClient,

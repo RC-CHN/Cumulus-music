@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { TrackMenuRequest } from '../services/trackMenu';
+import type { TrackMenuRequest, TrackPlayGesture } from '../services/trackMenu';
 import { computed, watch } from 'vue';
 import { useVirtualRows } from '../composables/useVirtualRows';
 import type { TrackView } from '../services/contracts';
@@ -15,7 +15,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
   like: [track: TrackView];
-  play: [index: number];
+  play: [index: number, gesture?: TrackPlayGesture];
   more: [request: TrackMenuRequest];
   artist: [id: string];
   album: [id: string];
@@ -67,7 +67,7 @@ watch(
         :busy="busy.has(track.id)"
         :playable="playable"
         :navigable="navigable"
-        @play="emit('play', $event)"
+        @play="(index, gesture) => emit('play', index, gesture)"
         @like="emit('like', $event)"
         @more="emit('more', $event)"
         @artist="emit('artist', $event)"

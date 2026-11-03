@@ -53,6 +53,9 @@ export function createTauriClient(): CoreClient {
       listen<WindowLifecycleView>('cumulus:window-lifecycle', (event) => handler(event.payload)),
     outputSettings: (epoch, refresh) => invoke('output_settings', { epoch, refresh }),
     outputCommand: (epoch, command) => invoke('output_command', { epoch, command }),
+    queueClickPreferences: (epoch) => invoke('queue_click_preferences', { epoch }),
+    queueClickPreferencesCommand: (epoch, command) =>
+      invoke('queue_click_preferences_command', { epoch, command }),
     startupPreferences: (epoch) => invoke('startup_preferences', { epoch }),
     startupPreferencesCommand: (epoch, command) =>
       invoke('startup_preferences_command', { epoch, command }),

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import SearchMatchText from './search/SearchMatchText.vue';
-import type { TrackMenuRequest } from '../services/trackMenu';
+import type { TrackMenuRequest, TrackPlayGesture } from '../services/trackMenu';
 import type { TrackView } from '../services/contracts';
 import { artworkAt } from '../services/artwork';
 import Icon from './Icon.vue';
@@ -16,7 +16,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
   like: [track: TrackView];
-  play: [index: number];
+  play: [index: number, gesture?: TrackPlayGesture];
   more: [request: TrackMenuRequest];
   artist: [id: string];
   album: [id: string];
@@ -39,7 +39,7 @@ function duration(ms: number) {
       current: !track.missing && !track.local && track.id === currentId,
       striped: index % 2 === 0,
     }"
-    @dblclick="!track.missing && playable && emit('play', index)"
+    @dblclick="!track.missing && playable && emit('play', index, 'double_click')"
     @contextmenu.prevent.stop="more"
     @keydown.shift.f10.prevent.stop="more"
     role="row"
