@@ -137,6 +137,15 @@ impl RequestContext {
             token_provider,
         })
     }
+    /// Policy consumers may read only a snapshot published by the native PC
+    /// configuration center, never a fixed context or response header directly.
+    pub(crate) fn pc_snapshot(&self) -> Result<Option<super::mconfig::Snapshot>> {
+        match &self.config {
+            Configuration::Pc { service, .. } => service.snapshot().map(Some),
+            Configuration::Fixed(_) => Ok(None),
+        }
+    }
+
     pub fn metadata_headers(&self) -> Result<BTreeMap<String, String>> {
         match &self.config {
             Configuration::Fixed(_) => Ok(BTreeMap::new()),

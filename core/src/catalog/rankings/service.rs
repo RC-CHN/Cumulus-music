@@ -14,13 +14,56 @@ pub struct SavedRanking {
     pub fetched_at: u64,
     pub page: RankingPage,
 }
+const DEFAULT_HOURS: f64 = 3.0;
+const MS_PER_HOUR: f64 = 3_600_000.0;
+const MAX_EXACT_MS: f64 = 9_007_199_254_740_991.0;
+
 impl SavedRanking {
-    /// Official M460 -> M32.n: default three HOURS, minus the smaller of 5%
-    /// or three seconds. A backwards local clock forces revalidation here.
+    /// The official fallback when no verified custom PC value is available.
     pub fn fresh_at(&self, now: u64) -> bool {
+        self.fresh_at_with_choice_hours(now, None)
+    }
+
+    /// Official M400 -> M460 -> M32.n: hours minus the smaller of 5% or
+    /// three seconds. Reject nonsensical/non-exact-range values and backwards clocks.
+    pub(crate) fn fresh_at_with_choice_hours(&self, now: u64, hours: Option<f64>) -> bool {
+        let ttl = hours
+            .map(|hours| hours * MS_PER_HOUR)
+            .filter(|ms| *ms > 0.0 && *ms <= MAX_EXACT_MS)
+            .unwrap_or(DEFAULT_HOURS * MS_PER_HOUR);
         matches!(self.query, RankingQuery::Home)
-            && now >= self.fetched_at
-            && now - self.fetched_at <= 10_797_000
+            && now
+                .checked_sub(self.fetched_at)
+                .is_some_and(|age| age as f64 <= (0.95 * ttl).max(ttl - 3_000.0))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn home_ttl_uses_inclusive_official_cutoff_and_bounds() {
+        let mut saved = SavedRanking {
+            query: RankingQuery::Home,
+            fetched_at: 1_000,
+            page: RankingPage::Home { groups: vec![] },
+        };
+        for (hours, last_fresh_ms) in [
+            (None, 10_797_000),
+            (Some(2.0), 7_197_000),
+            (Some(0.01), 34_200),
+            (Some(0.0), 10_797_000),
+            (Some(-1.0), 10_797_000),
+            (Some(f64::INFINITY), 10_797_000),
+            (Some(1e30), 10_797_000),
+        ] {
+            assert!(saved.fresh_at_with_choice_hours(saved.fetched_at + last_fresh_ms, hours));
+            assert!(!saved.fresh_at_with_choice_hours(saved.fetched_at + last_fresh_ms + 1, hours));
+            assert!(!saved.fresh_at_with_choice_hours(saved.fetched_at - 1, hours));
+        }
+        saved.query = RankingQuery::SongSales;
+        assert!(!saved.fresh_at_with_choice_hours(saved.fetched_at, Some(2.0)));
     }
 }
 pub struct Rankings {

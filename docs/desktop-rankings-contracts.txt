@@ -28,9 +28,16 @@ desktop/src/rankings.rs 只转发上述命令，不包含协议或业务判断�
 query 标签：home、album_sales{year}、album_year{year}、song_sales、album{id}。
 refresh=false 只读本地缓存；不存在时返回错误。refresh=true 执行真实服务读取并提交缓存。
 view 包括 fetchedAt、cached、fresh、page；前端先显示缓存，再按 fresh 决定刷新。
-首页 fresh 使用 10,797,000 毫秒，与官方默认三小时的阈值一致；时钟倒退视为失效。
+首页按恢复的 hybrid_app/400.js:203–220 读取已验证 PC MConfig 的
+preload#cacheValidateTime.choice.common（单位小时；不是同对象的 home 或 fmPlay）。
+460.js:11–34 记录当前用户与刷新时间，排行榜忽略会员变化；32.js:189–194 的有效
+边界为 age <= max(0.95 * ttlMs, ttlMs - 3000)，包含等号。
+本地只接受换算后在 JS 安全整数毫秒范围内的正有限 JSON 数值；缺失、零、负数、
+非数值、越界或配置不可读时使用默认三小时，即 10,797,000 毫秒。时钟倒退视为
+失效。读取现有原生 PC 快照不新增请求、不传配置到前端；当前配置可重新判定同一已
+缓存页面，无需改写原抓取时间。没有把 Web 配置或任意固定请求上下文当作 PC 配置，
+也未实测当前服务对具体账号下发的自定义时长。
 销售榜和专辑详情每次进入都刷新，持久缓存用于立即显示和读取失败时保留内容。
-首页服务下发的自定义缓存时长尚未接入配置宿主，当前采用官方默认值。
 
 接口与数据规则
 首页并发读取：

@@ -65,9 +65,10 @@ pub(super) fn album_order(id: &str, songs: &[Value]) -> Result<(Vec<Value>, Stri
     let revision = hex::encode(Sha256::digest(serde_json::to_vec(&json!([id, ids]))?));
     Ok((ids, revision))
 }
-fn project(saved: SavedRanking, cached: bool) -> Result<RankingView> {
-    let fresh = saved.fresh_at(
+fn project(saved: SavedRanking, cached: bool, choice_hours: Option<f64>) -> Result<RankingView> {
+    let fresh = saved.fresh_at_with_choice_hours(
         (time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000).max(0) as u64,
+        choice_hours,
     );
     let page = match saved.page {
         RankingPage::Home { mut groups } => {
@@ -177,11 +178,24 @@ impl MusicClient {
                 .cached_for(&token, &query)?
                 .ok_or(Error::State("ranking page is not cached"))?
         };
+        let choice_hours = if matches!(query, RankingQuery::Home) {
+            self.auth
+                .context
+                .as_ref()
+                .and_then(|context| context.pc_snapshot().ok().flatten())
+                .and_then(|snapshot| snapshot.data)
+                .and_then(|data| data["preload#cacheValidateTime"]["choice"]["common"].as_f64())
+        } else {
+            None
+        };
         self.session.with_token(&token, |_| {
             Ok(AccountData {
                 epoch: epoch.into(),
-                value: project(saved, !refresh)?,
+                value: project(saved, !refresh, choice_hours)?,
             })
         })
     }
 }
+
+#[cfg(test)]
+mod tests;
