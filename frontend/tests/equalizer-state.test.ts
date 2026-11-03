@@ -6,6 +6,7 @@ import {
   equalizerPresetOption,
   equalizerChange,
   equalizerMessage,
+  equalizerLauncher,
 } from '../src/services/equalizer.ts';
 import type { EqualizerView } from '../src/services/player.ts';
 const view = (): EqualizerView => ({
@@ -62,4 +63,26 @@ test('equal curves retain the explicitly chosen preset instead of hiding a manua
   assert.equal(equalizerPresetOption({ kind: 'saved' }, gains, gains), -2);
   assert.equal(equalizerPresetOption(null, gains, gains), -2);
   assert.deepEqual(equalizerChange(view(), view().settings, builtIn).preset, builtIn);
+});
+
+test('launcher never marks unavailable, damaged, flat or disabled processing as applied', () => {
+  const base = view();
+  const active = { ...base, settings: { enabled: true, gains: [3, ...Array(9).fill(0)] } };
+  assert.equal(equalizerLauncher({ ...active, status: 'processing' }).state, 'processing');
+  assert.equal(equalizerLauncher({ ...active, status: 'configured' }).state, 'configured');
+  assert.equal(equalizerLauncher({ ...active, status: 'pending' }).state, 'pending');
+  assert.equal(equalizerLauncher({ ...active, status: 'unavailable' }).state, 'problem');
+  assert.equal(equalizerLauncher({ ...active, status: 'failed' }).state, 'problem');
+  assert.equal(equalizerLauncher({ ...base, damaged: true }).state, 'problem');
+  assert.equal(equalizerLauncher({ ...base, status: 'processing' }).state, 'off');
+  const flat = {
+    ...base,
+    status: 'processing',
+    settings: { ...base.settings, enabled: true },
+  } as const;
+  assert.equal(equalizerLauncher(flat).state, 'flat');
+  assert.equal(
+    equalizerLauncher({ ...flat, settings: { ...flat.settings, bass_db: 6 } }).state,
+    'processing',
+  );
 });

@@ -204,6 +204,23 @@ input[type='range'] {
   width: 27px;
   height: 30px;
 }
+.player-tools .equalizer-toggle {
+  position: relative;
+}
+.equalizer-marker {
+  position: absolute;
+  top: 1px;
+  right: 0;
+  font-size: 11px;
+  line-height: 1;
+  pointer-events: none;
+}
+.equalizer-toggle[data-equalizer-state='processing'] .equalizer-marker {
+  color: var(--accent);
+}
+.equalizer-toggle[data-equalizer-state='problem'] .equalizer-marker {
+  color: var(--warning);
+}
 .player-tools .icon {
   width: 19px;
   height: 19px;

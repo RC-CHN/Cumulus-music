@@ -61,3 +61,19 @@ export function equalizerMessage(view: EqualizerView): string {
     return '当前为平直曲线';
   return view.status === 'configured' ? '均衡器已配置，等待音频处理' : '均衡器已启用';
 }
+
+export function equalizerLauncher(view?: EqualizerView) {
+  if (!view) return { state: 'loading', label: '正在读取均衡器设置' };
+  if (view.damaged) return { state: 'problem', label: equalizerMessage(view) };
+  if (!view.settings.enabled) return { state: 'off', label: '均衡器已关闭' };
+  if (view.status === 'failed' || view.status === 'unavailable')
+    return { state: 'problem', label: equalizerMessage(view) };
+  if (view.status === 'pending') return { state: 'pending', label: equalizerMessage(view) };
+  if (
+    view.settings.gains.every((gain) => gain === 0) &&
+    Object.values(equalizerTone(view.settings)).every((gain) => gain === 0)
+  )
+    return { state: 'flat', label: '均衡器已开启，当前为平直曲线' };
+  if (view.status === 'configured') return { state: 'configured', label: equalizerMessage(view) };
+  return { state: 'processing', label: '均衡器已应用' };
+}

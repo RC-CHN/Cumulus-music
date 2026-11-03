@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, nextTick, watch } from 'vue';
+import { computed, ref, nextTick, useId, watch } from 'vue';
 import type { PlayerModel } from '../composables/usePlayer';
 import type { IntelligenceModel } from '../composables/useIntelligence';
 import { currentCatalogDownload, time } from '../services/player';
@@ -13,6 +13,7 @@ import PlaybackQuality from './PlaybackQuality.vue';
 import PlaybackVolume from './PlaybackVolume.vue';
 import PlaybackMode from './PlaybackMode.vue';
 import { artistLabel } from '../services/artistLabel';
+import { equalizerLauncher } from '../services/equalizer';
 const equalizerOpen = ref(false);
 const props = withDefaults(
   defineProps<{
@@ -34,6 +35,8 @@ const emit = defineEmits<{
   member: [];
 }>();
 const { view, ready, busy, error, canRetry, playing, loaded } = props.player;
+const equalizerDescription = useId();
+const equalizerEntry = computed(() => equalizerLauncher(view.value?.equalizer));
 const currentDownload = computed(() =>
   props.downloadsAllowed ? currentCatalogDownload(view.value) : undefined,
 );
@@ -303,12 +306,27 @@ async function seek(event: Event) {
       <button
         class="icon-button equalizer-toggle"
         aria-label="均衡器"
-        :aria-pressed="view?.equalizer?.settings.enabled ?? false"
+        aria-haspopup="dialog"
+        :aria-describedby="equalizerDescription"
+        :data-equalizer-state="equalizerEntry.state"
+        :title="equalizerEntry.label"
         :disabled="!ready"
         @click="equalizerOpen = true"
       >
-        EQ
+        EQ<span
+          v-if="equalizerEntry.state === 'problem'"
+          class="equalizer-marker"
+          aria-hidden="true"
+          >!</span
+        >
+        <span
+          v-else-if="equalizerEntry.state === 'processing'"
+          class="equalizer-marker"
+          aria-hidden="true"
+          >•</span
+        >
       </button>
+      <span :id="equalizerDescription" class="sr-only">{{ equalizerEntry.label }}</span>
       <button
         class="queue-toggle icon-button"
         aria-label="播放队列"
