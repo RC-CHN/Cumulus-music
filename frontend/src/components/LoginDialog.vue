@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import LoginStepTransition from './login/LoginStepTransition.vue';
 import type { LoginMode, PhoneEntryStep } from '../services/auth';
 import type { LoginIdentity } from '../services/loginIdentity';
 import { useCore } from '../services/core';
@@ -157,7 +158,7 @@ onBeforeUnmount(deactivate);
       <button :aria-pressed="mode.startsWith('phone')" @click="phone">手机</button>
       <button :aria-pressed="mode === 'email'" @click="select('email')">邮箱</button>
     </nav>
-    <Transition name="tab" mode="out-in" @after-enter="entered">
+    <LoginStepTransition name="tab" @after-enter="entered">
       <div :key="mode" ref="panel" class="login-panel" tabindex="-1">
         <QrLogin v-if="mode === 'qr'" ref="flow" @authorized="emit('authorized')" />
         <div v-else-if="mode === 'phone_help'" class="phone-password-help" tabindex="-1">
@@ -182,7 +183,7 @@ onBeforeUnmount(deactivate);
           @phone-stage="phoneStage = $event"
         />
       </div>
-    </Transition>
+    </LoginStepTransition>
     <button
       v-if="
         !safety && mode !== 'phone_help' && phoneStage !== 'nickname' && phoneStage !== 'recovery'

@@ -21,6 +21,7 @@ fn main() {
     let output = root.join("first");
     fs::create_dir(&output).unwrap();
     let service = Arc::new(fixture::Service::default());
+    let stall_frames = std::env::var_os("CUMULUS_PROOF_LOGIN_STALL_FRAMES").is_some();
     let legacy = std::env::var_os("CUMULUS_PROOF_LEGACY_REUSE").is_some();
     let active_epoch = Arc::new(Mutex::new(None::<String>));
     cumulus_desktop::configure(tauri::Builder::default()).setup(move|app|{
@@ -51,6 +52,6 @@ fn main() {
                 handle.get_webview_window("main").unwrap().eval(format!("window.__CUMULUS_PROOF_ACK__={};",json!(stage))).unwrap();
             } else {let h=handle.clone();let o=output.clone();tauri::async_runtime::spawn(async move{capture_ack::acknowledge(&h,&o,&stage,value["captureHandshake"]==true).await;});}
         });Ok(())
-    }).on_page_load(move|webview,payload|{if payload.event()==PageLoadEvent::Finished {webview.eval(format!("window.__reuseLegacy={legacy};")).unwrap();webview.eval(capture_ack::script(include_str!("reuse_login_ui_probe.js"))).unwrap();}})
+    }).on_page_load(move|webview,payload|{if payload.event()==PageLoadEvent::Finished {webview.eval(format!("window.__reuseLegacy={legacy};window.__loginStallFrames={stall_frames};")).unwrap();webview.eval(capture_ack::script(include_str!("reuse_login_ui_probe.js"))).unwrap();}})
     .run(tauri::generate_context!()).expect("reuse login proof");
 }

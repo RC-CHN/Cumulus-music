@@ -1,5 +1,9 @@
 // Real production Vue/IPC/native state machine; fixture control never hits a server.
 (async()=>{
+ // Do not deliver any JavaScript animation frames in the regression run.
+ const stallFrames = window.__loginStallFrames === true;
+ let blockedFrames = 0;
+ if (stallFrames) window.requestAnimationFrame = () => ++blockedFrames;
  const invoke=(command,args={})=>window.__TAURI_INTERNALS__.invoke(command,args);
  const sleep=ms=>new Promise(r=>setTimeout(r,ms));
  const assert=(v,message)=>{if(!v)throw Error(message);};
@@ -9,8 +13,8 @@
  const wait=async(fn,name)=>{const end=performance.now()+24000;while(performance.now()<end){if(await fn())return;await sleep(40);}throw Error(name);};
  const emit=(stage,data={})=>invoke('plugin:event|emit',{event:'ux-proof',payload:{stage,...data}});
  const focusEvents=[];document.addEventListener('focusin',event=>{const n=event.target;focusEvents.push({tag:n.tagName,id:n.id,className:n.className,label:n.getAttribute('aria-label')});if(focusEvents.length>30)focusEvents.shift();});
- const settle=async()=>{await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));await wait(()=>!document.getAnimations().some(a=>Number.isFinite(a.effect?.getComputedTiming().endTime)&&(a.pending||a.playState==='running'))&&!document.querySelector('.reuse-step-enter-active,.reuse-step-leave-active')&&all('.reuse-choice,.reuse-consent,.reuse-nickname,.reuse-failed,.reuse-loading').every(n=>Number(getComputedStyle(n).opacity)>=.999),'finite animations and out-in steps fully settled');await sleep(100);};
- async function click(node){await wait(()=>node?.isConnected&&!node.disabled&&!node.closest('[inert]'),'enabled control');node.scrollIntoView({block:'nearest'});await settle();node.focus({preventScroll:true});const r=node.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);assert(hit===node||node.contains(hit),'pointer hit');node.click();await sleep(0);}
+ const settle=async()=>{if(!stallFrames)await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));await wait(()=>!document.getAnimations().some(a=>Number.isFinite(a.effect?.getComputedTiming().endTime)&&(a.pending||a.playState==='running'))&&!document.querySelector('.modal-enter-active,.modal-leave-active,.tab-enter-active,.tab-leave-active,.reuse-step-enter-active,.reuse-step-leave-active')&&all('.reuse-choice,.reuse-consent,.reuse-nickname,.reuse-failed,.reuse-loading').every(n=>Number(getComputedStyle(n).opacity)>=.999),'finite animations and out-in steps fully settled');await sleep(100);};
+ async function click(node){await wait(()=>node?.isConnected&&!node.disabled&&!node.closest('[inert]'),'enabled control');await settle();node.scrollIntoView({block:'center'});await sleep(0);node.focus({preventScroll:true});const r=node.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);assert(hit===node||node.contains(hit),`pointer hit ${node.tagName}.${node.className} at ${Math.round(r.x+r.width/2)},${Math.round(r.y+r.height/2)} got ${hit?.tagName}.${hit?.className}`);node.click();await sleep(0);}
  async function fill(label,value){await wait(()=>all(`[aria-label="${label}"]`).some(n=>!n.disabled),'editable '+label);const input=all(`[aria-label="${label}"]`).find(n=>!n.disabled);input.focus();input.value=value;input.dispatchEvent(new Event('input',{bubbles:true}));await sleep(0);return input;}
  let sequence=0,count=0,last='boot';
  async function mode(value){const id=++sequence;await invoke('plugin:event|emit',{event:'reuse-login-fixture',payload:{id,mode:value}});await wait(()=>window.__reuseFixtureAck===id,'fixture acknowledgement');return window.__reuseFixtureSnapshot;}
@@ -41,6 +45,7 @@
  async function close(){await click(button('关闭登录'));await wait(()=>!one('dialog[open]'),'dialog closed');await settle();}
  async function logged(name){await wait(()=>!one('dialog')&&one('.account-button').textContent.includes(name),'authenticated '+name);await settle();}
  try {
+  if (stallFrames) assert(document.documentElement.dataset.motion === 'full', 'frame-stall proof must exercise full motion');
   await wait(()=>one('.account-button')&&!one('.account-button').disabled&&one('.welcome'),'guest bootstrap');await theme('light');await resize(1120,760);
   await mode('read-failed');await enter();await ready('read_failed');await stage('read_failed_light',{expectGuest:true,rememberEpoch:true});
   await mode('normal');await click(button('重试'));await ready();await stage('choice_light',{expectGuest:true,preserveEpoch:true});assert(document.activeElement===one('.reuse-options button'),'loaded account focus');
@@ -73,6 +78,6 @@
   await enter();await nickname();await mode('register-sms-invalid');await fill('注册昵称','错误证明昵称');await click(button('完成注册'));await ready('nickname');assert(one('.verification-error')?.textContent.includes('验证码错误')&&button('重新短信登录')&&button('完成注册').disabled,'invalid SMS uses fresh login rather than repeat registration');await stage('invalid_sms_nickname_light',{expectNickname:'注册账号',preserveEpoch:true});await click(button('重新短信登录'));await wait(()=>one('[aria-label="登录手机号"]')&&idle(),'number page restored');await settle();await click(one('.login-submit'));await wait(()=>one('[aria-label="短信验证码"]')&&idle(),'invalid SMS restart');await stage('invalid_sms_restart_light',{expectNickname:'注册账号',preserveEpoch:true});await close();await stage('invalid_sms_closed_light',{expectNickname:'注册账号',preserveEpoch:true});
   await mode('normal');await enter();await nickname();const heldDraft=await fill('注册昵称','迟到推荐草稿');await mode('hold-hint');await click(button('换一个推荐昵称'));await wait(async()=>Boolean((await mode('read')).pending),'held nickname recommendation');await stage('nickname_hint_inflight_light',{expectNickname:'注册账号',preserveEpoch:true});
   await close();await wait(async()=>(await mode('read')).dropped===5,'cancelled nickname recommendation future dropped');assert(heldDraft.value==='','cancelled nickname scrubbed from retained DOM');await openNumber();await mode('release');await settle();assert(!panel()&&one('.phone-sms-login')?.dataset.phoneStep==='number'&&!one('[aria-label="注册昵称"]')&&heldDraft.value==='','late recommendation cannot repopulate replacement candidate');await stage('nickname_hint_cancelled_light',{expectNickname:'注册账号',preserveEpoch:true});await close();
-  await emit('complete',{ok:true,stageCount:count,realMusicRequests:0,preserveEpoch:true});
+  await emit('complete',{ok:true,stageCount:count,blockedFrames,realMusicRequests:0,preserveEpoch:true});
  }catch(error){await emit('failed',{last,error:String(error),stack:error.stack,phase:phase()??null,focusEvents,focusedElement:{tag:document.activeElement?.tagName,className:document.activeElement?.className,label:document.activeElement?.getAttribute('aria-label')},body:document.body.innerText.slice(-1600),panel:panel()?.outerHTML??null});}
 })();

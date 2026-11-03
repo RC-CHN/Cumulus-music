@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import LoginStepTransition from './LoginStepTransition.vue';
 import type { LoginModel } from '../../composables/useLogin';
 import { useNicknameDraft } from '../../composables/useNicknameDraft';
 import type { LoginCommand } from '../../services/auth';
@@ -170,7 +171,7 @@ onBeforeUnmount(() => {
     <button type="button" class="reuse-back" aria-label="返回登录" @click="emit('back')">
       <Icon name="back" />
     </button>
-    <Transition name="reuse-step" mode="out-in" @before-leave="leaving" @after-enter="focusStep">
+    <LoginStepTransition name="reuse-step" @before-leave="leaving" @after-enter="focusStep">
       <div v-if="phase === 'loading'" key="loading" class="reuse-loading" role="status">
         <span class="device-spinner" aria-hidden="true" /><span>正在读取关联账号…</span>
       </div>
@@ -342,6 +343,6 @@ onBeforeUnmount(() => {
           取消
         </button>
       </div>
-    </Transition>
+    </LoginStepTransition>
   </section>
 </template>

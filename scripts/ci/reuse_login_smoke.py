@@ -9,9 +9,11 @@ from window_manager import launch
 
 
 def main():
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--binary',type=Path,required=True);p.add_argument('--root',type=Path,required=True);p.add_argument('--runtime',type=Path);p.add_argument('--legacy',action='store_true');p.add_argument('--screenshots',action='store_true');args=p.parse_args()
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--binary',type=Path,required=True);p.add_argument('--root',type=Path,required=True);p.add_argument('--runtime',type=Path);p.add_argument('--legacy',action='store_true');p.add_argument('--screenshots',action='store_true');p.add_argument('--stall-frames',action='store_true');args=p.parse_args()
+    if args.stall_frames and args.screenshots:p.error('--stall-frames cannot use the frame-synchronized screenshot capture')
     root=args.root.resolve();root.mkdir(parents=True,exist_ok=False)
     env={k:v for k,v in os.environ.items() if not k.startswith('CUMULUS_')};env['CUMULUS_PROOF_DIR']=str(root/'run')
+    if args.stall_frames:env['CUMULUS_PROOF_LOGIN_STALL_FRAMES']='1'
     if args.legacy:env['CUMULUS_PROOF_LEGACY_REUSE']='1'
     for key,name in [('XDG_DATA_HOME','data'),('XDG_CONFIG_HOME','config'),('XDG_CACHE_HOME','cache'),('APPDATA','roaming'),('LOCALAPPDATA','local')]:
         folder=root/'os-profile'/name;folder.mkdir(parents=True,mode=0o700);env[key]=str(folder)
@@ -21,6 +23,7 @@ def main():
     failed=output/'failed.json';assert not failed.exists(),failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code==0,code
     complete=json.loads((output/'complete.json').read_text(encoding='utf-8'));assert complete['ok']
+    assert (complete['blockedFrames'] > 0) == args.stall_frames
     states=[json.loads(f.read_text(encoding='utf-8'))for f in sorted(output.glob('ux_*.json'))];assert len(states)==complete['stageCount']==41
     assert all(s['focusValid']and s['focused']and not s['overflow']and s['realMusicRequests']==0 for s in states)
     by={s['stage'].split('_',2)[2]:s for s in states}
@@ -67,7 +70,7 @@ def main():
     assert complete['fixture']['paths'][register]==5 and complete['fixture']['paths'][confirm]==4
     if args.screenshots:assert len(list(output.glob('ux_*.png')))==41
     audit=Path(__file__).resolve().parents[2]/'desktop/examples/audit_reuse_probe.py';subprocess.run([sys.executable,str(audit),str(root/'run')],check=True)
-    result=dict(ok=True,actualWebView=True,states=41,screenshots=41 if args.screenshots else 0,realMusicRequests=0,realAccountWrites=0,legacy=args.legacy)
+    result=dict(ok=True,actualWebView=True,states=41,screenshots=41 if args.screenshots else 0,realMusicRequests=0,realAccountWrites=0,legacy=args.legacy,blockedFrames=complete['blockedFrames'])
     (root/'report.json').write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8');print(json.dumps(result))
 
 

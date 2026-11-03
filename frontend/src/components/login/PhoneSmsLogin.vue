@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, toRefs, watch } from 'vue';
+import LoginStepTransition from './LoginStepTransition.vue';
 import type { LoginModel } from '../../composables/useLogin';
 import { useControlFocus } from '../../composables/useControlFocus';
 import { useNicknameDraft } from '../../composables/useNicknameDraft';
@@ -321,7 +322,7 @@ onBeforeUnmount(() => {
     >
       <Icon name="back" />
     </button>
-    <Transition name="reuse-step" mode="out-in" @before-leave="leaving" @after-enter="focusStep">
+    <LoginStepTransition name="reuse-step" @before-leave="leaving" @after-enter="focusStep">
       <div v-if="group === 'number'" key="number" class="phone-entry-content">
         <form class="credential-form" novalidate @submit.prevent="startNumber">
           <div class="login-phone">
@@ -503,6 +504,6 @@ onBeforeUnmount(() => {
         <p v-if="error" class="verification-error" role="alert">{{ error }}</p>
         <button type="button" class="reuse-cancel" @click="startOver">重新短信登录</button>
       </div>
-    </Transition>
+    </LoginStepTransition>
   </section>
 </template>

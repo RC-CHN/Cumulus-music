@@ -1,5 +1,9 @@
 // Production Vue/IPC/native phone flow; only HTTP and host clock are synthetic.
 (async () => {
+  // Do not deliver any JavaScript animation frames in the regression run.
+  const stallFrames = window.__loginStallFrames === true;
+  let blockedFrames = 0;
+  if (stallFrames) window.requestAnimationFrame = () => ++blockedFrames;
   const invoke = (command, args = {}) => window.__TAURI_INTERNALS__.invoke(command, args);
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   const assert = (value, message) => { if (!value) throw Error(message); };
@@ -8,8 +12,8 @@
   const button = text => all('button').find(node => node.textContent.trim() === text || node.getAttribute('aria-label') === text);
   const wait = async (check, message) => { const end = performance.now() + 24000; while (performance.now() < end) { if (await check()) return; await sleep(40); } throw Error(message); };
   async function settle() {
-    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    await wait(() => !document.querySelector('.tab-enter-active,.tab-leave-active,.reuse-step-enter-active,.reuse-step-leave-active') && !document.getAnimations().some(a => Number.isFinite(a.effect?.getComputedTiming().endTime) && (a.pending || a.playState === 'running')), 'finite transitions');
+    if (!stallFrames) await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    await wait(() => !document.querySelector('.modal-enter-active,.modal-leave-active,.tab-enter-active,.tab-leave-active,.reuse-step-enter-active,.reuse-step-leave-active') && !document.getAnimations().some(a => Number.isFinite(a.effect?.getComputedTiming().endTime) && (a.pending || a.playState === 'running')), 'finite transitions');
     await sleep(60);
   }
   function visible(node) { const r = node?.getBoundingClientRect(); return !!r && r.width > 0 && r.height > 0 && r.left >= 0 && r.right <= innerWidth + 1 && r.top >= 0 && r.bottom <= innerHeight + 1; }
@@ -68,6 +72,7 @@
   async function close() { await click(button('关闭登录')); await wait(() => !one('dialog[open]'), 'dialog closed'); await settle(); }
   async function logged() { await wait(() => !one('dialog') && one('.account-button').textContent.includes('注册账号'), 'native identity committed'); current = '注册账号'; await settle(); }
   try {
+    if (stallFrames) assert(document.documentElement.dataset.motion === 'full', 'frame-stall proof must exercise full motion');
     await wait(() => one('.welcome') && one('.account-button') && !one('.account-button').disabled, 'guest bootstrap'); await theme('light'); await resize(1120, 760);
     await click(one('.account-button')); await wait(() => one('.login-methods'), 'initial modal'); await click(button('邮箱'));
     await fill('登录邮箱', 'alice@example.test'); await fill('登录密码', 'fixture-password'); await click(one('[aria-label="同意登录协议"]')); await click(one('.login-submit'));
@@ -117,7 +122,7 @@
     await nickname(); const heldDraft = await fill('注册昵称', '挂起昵称'); await mode('hold-hint'); await click(button('换一个推荐昵称')); await wait(async () => (await mode('read')).pending, 'held nickname recommendation'); await stage('nickname_hint_inflight_dark');
     await close(); await wait(async () => (await mode('read')).dropped === 3, 'cancelled recommendation future dropped'); assert(heldDraft.value === '', 'cancelled draft scrubbed from retained DOM');
     await open(); await mode('release'); await settle(); assert(phase() === 'number' && panel()?.dataset.phoneStep === 'number' && !one('[aria-label="注册昵称"]'), 'late recommendation cannot repopulate replacement candidate'); await stage('nickname_hint_cancelled_dark'); await close();
-    await emit('complete', { ok: true, stageCount: count, expectNickname: current, preserveEpoch: true, realMusicRequests: 0, phoneEntry: true });
+    await emit('complete', { ok: true, stageCount: count, blockedFrames, expectNickname: current, preserveEpoch: true, realMusicRequests: 0, phoneEntry: true });
   } catch (error) {
     await emit('failed', { last, error: String(error), stack: error.stack, body: document.body.innerText.slice(-2000), panel: panel()?.outerHTML ?? null, focusedElement: document.activeElement?.outerHTML });
   }

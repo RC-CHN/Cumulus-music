@@ -54,3 +54,15 @@ PCM并交给libmpv/null。检查原生暂停位置/播放ID在修改设置期间
 .build/motion-ux-regression、motion-settings-regression：34+22状态回归。
 .build/motion-native-final.json：GUI初始化后的原生媒体验证；全量检查与限制详见
 ui-ux-validation.txt。本机通过不替代精确提交自己的Windows CI或完整目标验收。
+
+登录方法与短信子步骤
+扫码、手机、邮箱等登录方法的替换，及手机普通/复用短信流程内的步骤替换，
+沿用原 CSS 与顺序（旧视图离开后才进入下一视图）。正常完成以容器 transform
+的 transitionend 为准；如果没有动画帧或完成事件，则每个进出阶段以 320ms
+计时回调收尾，减少动态效果时立即完成。原有焦点接管、禁用离场视图与清理输入的
+钩子仍在原阶段执行，未修改登录状态机或 IPC。
+phone_entry_smoke.py 与 reuse_login_smoke.py 支持 --stall-frames：在合成
+WebView 内拦住 JS 动画帧并保留完整动态设置，沿实际控件/IPC走完步骤和返回，
+检查输入焦点、离场清理和请求计数。该模式不使用依赖帧同步的截图流程。
+Linux/Xvfb 的真实 WebView 上，普通手机 42 态、复用 41 态分别通过正常和停帧模式；
+本轮没有调用真实账号或服务，也未验证 Windows 的视觉效果。
