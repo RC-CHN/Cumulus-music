@@ -389,6 +389,7 @@ fn main() {
         let download_page=download_page_fixture::enabled().then(||Arc::new(download_page_fixture::Fixture::new(session.clone(),proof_store.clone(),root.clone())));
         let fixture_session=session.clone();
         let mut client=MusicClient::with_session(session,registry);
+        if daily_history_fixture::enabled() { client=client.with_official_daily_experiment(); }
         if search_fixture::v3_enabled() { client=client.with_official_search_experiment(); }
         if download_page.is_some() { client=client.with_download_backend(Arc::new(download_page_fixture::NoNetwork))
             .with_video_factory(Arc::new(|| Ok(Box::new(cumulus_core::playback::engine::MpvVideoEngine::open(cumulus_core::playback::engine::MpvConfig {null_output:true,..Default::default()},640,360)?)))); }

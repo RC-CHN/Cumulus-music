@@ -49,6 +49,11 @@
     await sleep(500);
     one('[aria-label="返回上一页"]').click();
     await wait(() => one('.daily-heading') && one('.daily-history-entry') && one('.track-row'), 'returned to daily');
+    const cached = await wait(() => [...document.querySelectorAll('.notice')].find((node) =>
+      node.textContent.includes('本账号上次加载的列表')), 'same-account daily cache visible after outage');
+    await emit('ux_05_daily_cached');
+    cached.querySelector('button').click();
+    await wait(() => !cached.isConnected && one('.track-row'), 'retry returns fresh daily recommendations');
     const style = one('.daily-style-entry');
     const styleBounds = style.getBoundingClientRect();
     if (!style.contains(document.elementFromPoint(styleBounds.x + styleBounds.width / 2, styleBounds.y + styleBounds.height / 2)))
@@ -77,7 +82,7 @@
     await wait(() => tags.textContent.includes('此分类暂无标签。'), 'style category changes without a write');
     tags.querySelector('[aria-label="关闭风格标签"]').click();
     await wait(() => !one('.style-tag-browser[open]') && document.activeElement === tagEntry, 'style tag focus restored');
-    await emit('complete', { ok: true, stageCount: 4, dailyPlayback: true, stylePlayback: true });
+    await emit('complete', { ok: true, stageCount: 5, dailyPlayback: true, dailyCache: true, stylePlayback: true });
   } catch (error) {
     await emit('failed', { message: String(error), body: document.body.innerText.slice(-2200) });
   }

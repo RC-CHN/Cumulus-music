@@ -35,19 +35,27 @@ def main():
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0
     complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
-    assert complete['ok'] and complete['stageCount'] == 4 and complete['dailyPlayback'] and complete['stylePlayback']
+    assert complete['ok'] and complete['stageCount'] == 5 and complete['dailyPlayback'] and complete['stylePlayback']
+    assert complete['dailyCache']
     prefix = '/api/discovery/recommend/songs/history/'
     calls = [call for call in complete['dailyHistoryCalls'] if call['path'].startswith(prefix)]
     assert calls == [
         {'path': prefix + 'recent', 'args': {}},
         {'path': prefix + 'detail', 'args': {'date': '2026-10-26'}},
     ]
+    daily = [call for call in complete['dailyHistoryCalls'] if call['path'] in (
+        '/api/rtrs/abt/front/expinfo/list', '/api/v1/discovery/recommend/songs',
+        '/api/v3/discovery/recommend/songs')]
+    assert daily == [
+        {'path': '/api/rtrs/abt/front/expinfo/list', 'args': {'expNames': 'PH-PC-Blacklist'}},
+        *[{'path': '/api/v1/discovery/recommend/songs', 'args': {'limit': 30}}] * 3,
+    ]
     assert complete['styleRecommendationCalls'] == [
         {'path': '/api/homepage/category/daily/song/list',
          'args': {'source': '', 'categoryId': '', 'tagId': '', 'songId': ''}},
         {'path': '/api/homepage/daily/song/config/get', 'args': {'limit': 20}},
     ]
-    assert len(list(output.glob('ux_*.png'))) == (4 if args.screenshots else 0)
+    assert len(list(output.glob('ux_*.png'))) == (5 if args.screenshots else 0)
     print(json.dumps({'ok': True, 'actualWebView': True, 'historyReads': len(calls),
                       'styleReads': 2, 'dailyPlayback': True, 'stylePlayback': True,
                       'realAccountWrites': 0}))
