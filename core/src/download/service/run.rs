@@ -6,7 +6,7 @@ use super::{
 };
 use crate::{
     Error, Result,
-    download::transfer::{RunOptions, TransferStatus},
+    download::transfer::{FINAL_INTEGRITY_MISMATCH, RunOptions, TransferStatus},
     storage::OperationLock,
 };
 use std::sync::{Arc, atomic::AtomicBool};
@@ -128,6 +128,16 @@ impl DownloadService {
                 } else {
                     None
                 };
+                // The transfer journal commits its failure before the task
+                // journal. If that second write was interrupted, recover the
+                // original failure before requesting a replacement source.
+                let integrity_error = Error::Media(FINAL_INTEGRITY_MISMATCH);
+                if raw.as_ref().is_some_and(|r| {
+                    r.status == TransferStatus::Error
+                        && r.last_error.as_deref() == Some(&integrity_error.to_string())
+                }) {
+                    return Err(integrity_error);
+                }
                 if raw
                     .as_ref()
                     .is_some_and(|r| r.status == TransferStatus::Publishing)

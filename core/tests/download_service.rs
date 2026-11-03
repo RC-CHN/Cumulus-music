@@ -233,6 +233,44 @@ async fn direct_run_and_pause_cannot_replace_a_corrupt_partial_before_restart() 
 }
 
 #[tokio::test]
+async fn raw_integrity_error_recovers_when_the_task_failure_write_was_interrupted() {
+    let root = tempfile::tempdir().unwrap();
+    let (s, _, store, api, b) = setup(root.path(), FLAC.into(), "flac");
+    let task = s
+        .create(&json!(123), target(root.path(), "result.flac"), raw())
+        .unwrap();
+    b.audio.settings.lock().unwrap().data[0] ^= 0x20;
+    let db = rusqlite::Connection::open(store.directory().join("core.sqlite3")).unwrap();
+    db.execute_batch("CREATE TRIGGER fail_task_error BEFORE INSERT ON state WHEN NEW.kind='download_tasks_v1' AND json_extract(NEW.value,'$.status')='error' BEGIN SELECT RAISE(ABORT,'interrupted task failure commit'); END;").unwrap();
+    assert!(matches!(
+        s.run(&task.id, Run::default()).await,
+        Err(Error::Storage(_))
+    ));
+    assert_ne!(s.get(&task.id).unwrap().status, Status::Error);
+    assert_eq!(api.count("download/url"), 1);
+    assert_eq!(b.audio.calls().len(), 1);
+    db.execute_batch("DROP TRIGGER fail_task_error").unwrap();
+
+    let result = DownloadScheduler::new(s.clone(), 3)
+        .unwrap()
+        .run_pending()
+        .await
+        .unwrap();
+    assert_eq!(result.len(), 1);
+    assert_eq!(result[0].status, Status::Error);
+    assert_eq!(api.count("download/url"), 1);
+    assert_eq!(b.audio.calls().len(), 1);
+    assert!(s.enqueue(&task.id).is_err());
+
+    b.audio.settings.lock().unwrap().data = FLAC.to_vec();
+    s.restart_transfer(&task.id).unwrap();
+    let done = s.run(&task.id, Run::default()).await.unwrap();
+    assert_eq!(done.status, Status::Complete);
+    assert_eq!(b.audio.calls()[1].offset, 0);
+    assert_eq!(fs::read(done.target.unwrap()).unwrap(), FLAC);
+}
+
+#[tokio::test]
 async fn cover_failure_reuses_verified_raw_media_and_raw_mode_skips_postprocessing() {
     let root = tempfile::tempdir().unwrap();
     let (s, _, _, api, b) = setup(root.path(), FLAC.into(), "flac");
