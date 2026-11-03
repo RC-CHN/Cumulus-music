@@ -31,6 +31,7 @@ const OBSERVATION_BUDGET: Duration = Duration::from_secs(5);
 /// Native-only proof of a particular registration observation and prepared
 /// material. It is not serializable, a DSP receipt, or a perpetual permission.
 pub struct BoundParametric {
+    target: BoundParametricTarget,
     prepared: Box<PreparedParametric>,
     library: EffectsLibrary,
     operation: String,
@@ -40,7 +41,15 @@ pub struct BoundParametric {
     retired: AtomicBool,
 }
 
+/// Opaque identity for conditionally removing this exact local binding.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BoundParametricTarget(uuid::Uuid);
+
 impl BoundParametric {
+    pub fn target(&self) -> BoundParametricTarget {
+        self.target
+    }
+
     pub fn effect(&self) -> EffectId {
         self.prepared.effect()
     }
@@ -189,6 +198,7 @@ impl EffectAuthorizations {
         // immutable source receipt before publishing a native binding.
         library.prepared_parametric_for(token, &prepared)?;
         Ok(BoundParametric {
+            target: BoundParametricTarget(uuid::Uuid::new_v4()),
             prepared,
             library: library.clone(),
             operation: observation.lease.operation,

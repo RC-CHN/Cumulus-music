@@ -3,7 +3,10 @@ use crate::{
     Result,
     download::transfer::RunOptions,
     effects::{
-        authorization::{ActiveParametricObservation, BoundParametric, EffectAuthorizations},
+        authorization::{
+            ActiveParametricObservation, BoundParametric, BoundParametricTarget,
+            EffectAuthorizations,
+        },
         catalog::{CatalogueKind, EffectId},
         device_directory::EffectDeviceRow,
         directory::{EffectDirectoryDetail, EffectDirectoryRow},
@@ -70,6 +73,24 @@ impl MusicClient {
             .controller()
             .await?
             .apply_bound_parametric(&token, binding)
+            .await?;
+        self.session.check_generation(&token)?;
+        Ok(result)
+    }
+
+    /// Native host only: detach exactly the mounted or deferred binding.
+    /// Registration cleanup is a separate explicit, journalled operation.
+    pub async fn clear_native_bound_parametric(
+        &self,
+        epoch: &str,
+        target: BoundParametricTarget,
+    ) -> Result<crate::playback::controller::ParametricApplication> {
+        let token = self.player_token(epoch)?;
+        let result = self
+            .player
+            .controller()
+            .await?
+            .clear_bound_parametric(&token, target)
             .await?;
         self.session.check_generation(&token)?;
         Ok(result)

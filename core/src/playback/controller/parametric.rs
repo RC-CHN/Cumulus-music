@@ -3,7 +3,7 @@ use crate::{
     Error, Result,
     account::SessionToken,
     effects::{
-        authorization::{ActiveParametricObservation, BoundParametric},
+        authorization::{ActiveParametricObservation, BoundParametric, BoundParametricTarget},
         parametric::ParametricPlan,
     },
     playback::engine::{AudioEngine, Cancellation},
@@ -34,6 +34,7 @@ pub(super) struct ObserveRequest {
 enum Selection {
     Plain(Option<Box<ParametricPlan>>),
     Bound(Arc<BoundParametric>),
+    ClearBound(BoundParametricTarget),
 }
 
 #[derive(Default)]
@@ -65,6 +66,16 @@ impl PlaybackController {
         binding: BoundParametric,
     ) -> Result<ParametricApplication> {
         self.request_parametric(token, Selection::Bound(Arc::new(binding)))
+            .await
+    }
+
+    /// Remove only the exact bound component, without sending a server stop.
+    pub async fn clear_bound_parametric(
+        &self,
+        token: &SessionToken,
+        target: BoundParametricTarget,
+    ) -> Result<ParametricApplication> {
+        self.request_parametric(token, Selection::ClearBound(target))
             .await
     }
 
@@ -144,6 +155,9 @@ impl Actor {
             return Err(Error::StaleResponse);
         }
         self.session.check_generation(token)?;
+        if let Selection::ClearBound(target) = selection {
+            return self.parametric_clear_bound(target).await;
+        }
         if let Selection::Bound(binding) = &selection {
             binding.with_current(&self.session, token, |_| Ok(()))?;
         }
@@ -154,6 +168,31 @@ impl Actor {
             return Ok(ParametricApplication::DeferredUntilLoaded);
         }
         self.parametric_apply_selection(selection).await
+    }
+
+    async fn parametric_clear_bound(
+        &mut self,
+        target: BoundParametricTarget,
+    ) -> Result<ParametricApplication> {
+        if matches!(&self.parametric.deferred, Some(Selection::Bound(binding)) if binding.target() == target)
+        {
+            self.parametric.deferred = None;
+            return Ok(ParametricApplication::Cleared);
+        }
+        if !self
+            .parametric
+            .applied
+            .as_ref()
+            .is_some_and(|binding| binding.target() == target)
+        {
+            return Err(Error::StaleResponse);
+        }
+        // A loader can own the engine mutex. Do not claim detachment or
+        // supersede a newer deferred selection while that lock is held.
+        if self.pending.is_some() || self.parametric.deferred.is_some() {
+            return Err(Error::MutationBusy);
+        }
+        self.parametric_apply(None).await
     }
 
     pub(super) async fn parametric_apply_deferred(&mut self) -> Result<()> {
@@ -169,6 +208,7 @@ impl Actor {
     ) -> Result<ParametricApplication> {
         match selection {
             Selection::Plain(plan) => self.parametric_apply(plan.map(|plan| *plan)).await,
+            Selection::ClearBound(_) => unreachable!("clear never enters the deferred queue"),
             Selection::Bound(binding) => {
                 let (session, token, checked) =
                     (self.session.clone(), self.token.clone(), binding.clone());
