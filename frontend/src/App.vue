@@ -12,6 +12,7 @@ import {
   searchCardSelection,
   searchMvPlaybackTarget,
   searchVoiceSelection,
+  type SearchQueueRequest,
   searchCurrentSongId,
   searchCurrentVoiceId,
 } from './services/searchCards';
@@ -373,6 +374,24 @@ function playSearchCard(item: SearchItem) {
     const quality = view?.qualityPreferences.quality ?? 'standard';
     void player.prepareSelection((epoch) => searchCardSelection(core, epoch, item, quality));
   }
+}
+const searchCollectionQueueable = computed(
+  () =>
+    signedIn.value &&
+    player.ready.value &&
+    !player.busy.value &&
+    !player.queueBusy.value &&
+    !player.view.value?.fm,
+);
+function queueSearchCard({ item, anchor }: SearchQueueRequest) {
+  if (
+    page.value.kind !== 'search' ||
+    !searchCollectionQueueable.value ||
+    (item.kind === 'playlist' && item.playlist.trackCount <= 0)
+  )
+    return;
+  if (item.kind === 'album') albumAction({ album: item.album, action: 'next', anchor });
+  else playlistActions.value?.show(item.playlist, 'next');
 }
 function searchCardComments(item: SearchItem) {
   if (item.kind === 'playlist')
@@ -2169,6 +2188,7 @@ onUnmounted(() => {
                 :liked="liked"
                 :busy-likes="busyLikes"
                 :playable="player.ready.value && !player.busy.value"
+                :queueable="searchCollectionQueueable"
                 :current-id="currentSearchSongId"
                 :playback-origin="currentOrigin"
                 :playback-state="playbackState"
@@ -2192,6 +2212,7 @@ onUnmounted(() => {
                 @play="playSearchResults"
                 @play-track="playSearchTrack"
                 @play-card="playSearchCard"
+                @queue-card="queueSearchCard"
                 @download-track="(track) => (downloadDialog = { kind: 'start', tracks: [track] })"
                 @card-comments="searchCardComments"
                 @card-download="

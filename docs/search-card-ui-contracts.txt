@@ -115,3 +115,11 @@ UserName/index.tsx:39–54 发起 user 类型的内部详情动作。Cumulus 将
 `search_results_smoke.py --playlist-creator` 在 Linux WebView 实测综合页和歌单分类
 入口、原生资料及公开歌单读取、返回原作者按钮、身份不匹配不出现入口，以及整卡
 仍打开歌单详情。使用合成资料，保留两个截图；两平台 CI 配置同一用例。
+
+搜索歌单/专辑菜单的「下一首播放」
+PC recommend.jsx 的综合卡片复用 PlaylistCard 与 AlbumCard；恢复 M/622:167–182、
+454–470 在普通资源菜单提供下一首播放，M/3085:297–311、568–584 区分非空队列
+插入与空队列开始播放。搜索歌单与专辑菜单接入既有 PlaylistActions / AlbumActions，
+交由原生 QueuePlaylist / QueueAlbum 解析歌曲并检查队列版本；已有当前曲目时
+保留其播放状态及位置，空队列沿用原生启动逻辑。FM 禁用普通队列入口。
+播放和查看详情仍独立；不把相同行为扩展到歌手、播客或通用视频。

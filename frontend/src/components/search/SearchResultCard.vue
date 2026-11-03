@@ -9,10 +9,12 @@ import ActionMenu from '../ActionMenu.vue';
 import type { MenuItem } from '../../services/menu';
 import {
   searchCardCanPlay,
+  searchCardCanQueue,
   searchCardKey,
   searchMvPlaybackTarget,
   searchPlaylistCreator,
   searchVideoCoverStats,
+  type SearchQueueRequest,
 } from '../../services/searchCards';
 import { usePlaybackTriggerFocus } from '../../composables/usePlaybackTriggerFocus';
 const props = defineProps<{
@@ -20,6 +22,7 @@ const props = defineProps<{
   category: SearchCategory;
   matchKeyword: string;
   playable: boolean;
+  queueable: boolean;
   current: boolean;
   playing: boolean;
 }>();
@@ -27,6 +30,7 @@ const emit = defineEmits<{
   open: [item: SearchItem];
   creator: [id: string];
   play: [item: SearchItem];
+  queue: [request: SearchQueueRequest];
   comments: [item: SearchItem];
   download: [item: SearchItem];
 }>();
@@ -61,6 +65,9 @@ function contextMenu(event: MouseEvent | KeyboardEvent) {
 }
 const failedCover = ref(false);
 const canPlay = computed(() => searchCardCanPlay(props.item));
+const canQueue = computed(
+  () => props.queueable && (props.item.kind !== 'playlist' || props.item.playlist.trackCount > 0),
+);
 const playlistCreator = computed(() => searchPlaylistCreator(props.item));
 const canPlayMv = computed(() => !!searchMvPlaybackTarget(props.item));
 const videoStats = computed(() => searchVideoCoverStats(props.item));
@@ -95,6 +102,9 @@ const items = computed<MenuItem[]>(() => [
     icon: props.item.kind === 'mv' ? 'play' : 'forward',
     disabled: unavailable.value,
   },
+  ...(searchCardCanQueue(props.item)
+    ? [{ key: 'next', label: '下一首播放', icon: 'next', disabled: !canQueue.value }]
+    : []),
   ...(['playlist', 'album', 'voice', 'mv'].includes(props.item.kind)
     ? [
         {
@@ -123,7 +133,14 @@ function action(key: string) {
       element.value?.querySelector<HTMLElement>('.search-card-play'),
     );
   else if (key === 'open' && !unavailable.value) emit('open', props.item);
-  else if (key === 'comments') emit('comments', props.item);
+  else if (key === 'next' && canQueue.value && searchCardCanQueue(props.item)) {
+    const active = document.activeElement;
+    const anchor =
+      active instanceof HTMLElement && element.value?.contains(active)
+        ? active
+        : (element.value?.querySelector<HTMLElement>('.search-card-open') ?? null);
+    emit('queue', { item: props.item, anchor });
+  } else if (key === 'comments') emit('comments', props.item);
   else if (key === 'download' && props.item.kind === 'voice' && !props.item.voice.unavailable)
     emit('download', props.item);
 }

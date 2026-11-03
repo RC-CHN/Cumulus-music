@@ -25,7 +25,7 @@ import SearchLyricExtra from './SearchLyricExtra.vue';
 import { waitForViewportFrames } from '../../services/viewportLayout';
 import Icon from '../Icon.vue';
 import SearchResultCard from './SearchResultCard.vue';
-import { searchCardIsCurrent } from '../../services/searchCards';
+import { searchCardIsCurrent, type SearchQueueRequest } from '../../services/searchCards';
 import type { PlayerOrigin, PlaybackStatus, SearchResultPlayback } from '../../services/player';
 const motion = useMotion();
 const panelTransition = createPageTransition(() => motion.reduced.value, undefined, {
@@ -44,6 +44,7 @@ const props = defineProps<{
   liked: Set<string>;
   busyLikes: Set<string>;
   playable: boolean;
+  queueable: boolean;
   currentId?: string;
   playbackOrigin?: PlayerOrigin | null;
   playbackState?: PlaybackStatus;
@@ -72,6 +73,7 @@ const emit = defineEmits<{
   album: [id: string];
   expired: [];
   playCard: [item: SearchItem];
+  queueCard: [request: SearchQueueRequest];
   cardComments: [item: SearchItem];
   cardDownload: [item: SearchItem];
 }>();
@@ -714,11 +716,13 @@ onBeforeUnmount(() => {
                 :category="category"
                 :match-keyword="matchKeyword"
                 :playable="playable"
+                :queueable="queueable"
                 :current="searchCardIsCurrent(item, playbackOrigin, currentVoiceId)"
                 :playing="playbackState === 'playing' || playbackState === 'buffering'"
                 @open="open"
                 @creator="emit('creator', $event)"
                 @play="emit('playCard', $event)"
+                @queue="emit('queueCard', $event)"
                 @comments="emit('cardComments', $event)"
                 @download="emit('cardDownload', $event)"
               />

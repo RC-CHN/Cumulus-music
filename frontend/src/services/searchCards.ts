@@ -68,6 +68,16 @@ export function searchVideoCoverStats(item: SearchItem) {
       .join('，'),
   };
 }
+export type SearchQueueCollection = Extract<SearchItem, { kind: 'playlist' | 'album' }>;
+export interface SearchQueueRequest {
+  item: SearchQueueCollection;
+  anchor: HTMLElement | null;
+}
+
+/** Ordinary search playlist/album menus use existing native collection queue operations. */
+export function searchCardCanQueue(item: SearchItem): item is SearchQueueCollection {
+  return item.kind === 'playlist' || item.kind === 'album';
+}
 export function searchCardCanPlay(item: SearchItem): boolean {
   return (
     ['playlist', 'album', 'artist'].includes(item.kind) ||
