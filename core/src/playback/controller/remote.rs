@@ -142,7 +142,7 @@ impl Actor {
             // engine failure; the together inbox retains recovery responsibility.
             let _ = self.stop(false).await;
             self.state = PlaybackStatus::Error;
-            self.error = Some(error.to_string());
+            self.record_failure(&error);
             return Err(error);
         }
         self.position = Some(value.position);

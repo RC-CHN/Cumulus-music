@@ -66,7 +66,7 @@ pub struct PlaybackSnapshot {
     pub queue_len: usize,
     /// Public list count excludes a retained current decoder outside the list.
     pub visible_queue_len: usize,
-    pub error: Option<String>,
+    pub error: Option<crate::playback::failure::PlaybackFailure>,
     /// Local persistence diagnostic; must not be presented as an audio failure.
     pub history_error: Option<String>,
     pub prefetch: PrefetchSnapshot,

@@ -34,7 +34,9 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     lyricError = ref('');
   const reported = shallowRef<CoreFailure>();
   const error = computed(() => reported.value?.message ?? '');
-  const canRetry = computed(() => reported.value?.retryable ?? !!view.value?.error);
+  const canRetry = computed(
+    () => reported.value?.retryable ?? view.value?.errorRetryable ?? !!view.value?.error,
+  );
   const queueOpen = ref(false),
     lyricsOpen = ref(false),
     lyricLoading = ref(false);
@@ -500,7 +502,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     });
   const downloads = (ids: string[], index: number) => run((e) => core.playDownloads(e, ids, index));
   function retry() {
-    if (reported.value && !reported.value.retryable) return;
+    if ((reported.value?.retryable ?? view.value?.errorRetryable) === false) return;
     return failedOperation ? run(failedOperation) : action({ kind: 'refresh' });
   }
   async function loadQueue() {

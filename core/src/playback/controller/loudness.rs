@@ -129,7 +129,7 @@ impl Actor {
                 self.loudness.status = LoudnessStatus::Failed;
                 if !matches!(error.root(), Error::Cancelled | Error::StaleResponse) {
                     self.state = PlaybackStatus::Error;
-                    self.error = Some(error.to_string());
+                    self.record_failure(&error);
                 }
                 return Err(error);
             }

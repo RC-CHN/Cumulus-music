@@ -137,13 +137,17 @@ impl Api for Backend {
         })
     }
 }
-fn fixture() -> (
+type PlayerFixture = (
     tempfile::TempDir,
     Arc<Backend>,
     Arc<AccountSession>,
     Arc<MusicClient>,
     Arc<AtomicU64>,
-) {
+);
+fn fixture() -> PlayerFixture {
+    fixture_with_device(Arc::new(support::Device::default()))
+}
+fn fixture_with_device(device: Arc<support::Device>) -> PlayerFixture {
     let dir = tempfile::tempdir().unwrap();
     let api = Arc::new(Backend::default());
     let registry = ProfileRegistry::open(dir.path(), ApiOrigin::Pc).unwrap();
@@ -156,7 +160,7 @@ fn fixture() -> (
     let client =
         MusicClient::with_session(session.clone(), registry).with_audio_factory(move || {
             calls.fetch_add(1, Ordering::SeqCst);
-            Ok(support::audio_engine(Arc::new(support::Device::default())))
+            Ok(support::audio_engine(device.clone()))
         });
     (dir, api, session, Arc::new(client), count)
 }
@@ -190,6 +194,8 @@ async fn rejected_online_selection_projects_no_source_and_allows_a_different_son
     assert!(!denial.retryable);
     let stopped = client.player_snapshot("1").await.unwrap();
     assert_eq!(stopped.state, PlaybackStatus::Error);
+    assert_eq!(stopped.error, Some(denial.message));
+    assert_eq!(stopped.error_retryable, Some(false));
     for public in [
         serde_json::to_string(&denial).unwrap(),
         serde_json::to_string(&stopped).unwrap(),
@@ -200,6 +206,40 @@ async fn rejected_online_selection_projects_no_source_and_allows_a_different_son
     let playing = client.play_selection("1", songs("2")).await.unwrap();
     assert_eq!(playing.state, PlaybackStatus::Playing);
     assert!(playing.error.is_none());
+}
+
+#[tokio::test]
+async fn authorized_media_and_output_failures_keep_distinct_action_and_snapshot_diagnostics() {
+    use cumulus_core::{client::ClientError, playback::controller::PlaybackStatus};
+    let device = Arc::new(support::Device::default());
+    let (_dir, api, _session, client, _) = fixture_with_device(device.clone());
+    for (code, public) in [(-15, "audio_open_failed"), (-14, "audio_output_failed")] {
+        device.load_failure_code.store(code, Ordering::SeqCst);
+        let error = client.play_selection("1", songs("1")).await.err().unwrap();
+        let diagnostic = ClientError::from(error);
+        assert_eq!(diagnostic.code, public);
+        assert!(diagnostic.retryable);
+        let state = client.player_snapshot("1").await.unwrap();
+        assert_eq!(state.state, PlaybackStatus::Error);
+        assert_eq!(state.error, Some(diagnostic.message));
+        assert_eq!(state.error_retryable, Some(true));
+        assert!(
+            !serde_json::to_string(&state)
+                .unwrap()
+                .contains("secret.invalid")
+        );
+    }
+    assert!(
+        api.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|call| call.ends_with("/player/url/v1"))
+    );
+    device.load_failure_code.store(0, Ordering::SeqCst);
+    let playing = client.play_selection("1", songs("2")).await.unwrap();
+    assert_eq!(playing.state, PlaybackStatus::Playing);
+    assert_eq!(playing.error_retryable, None);
 }
 
 #[tokio::test]

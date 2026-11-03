@@ -66,7 +66,7 @@ pub(super) struct Actor {
     pub state: PlaybackStatus,
     pub play_id: Option<String>,
     pub position: Option<f64>,
-    pub error: Option<String>,
+    pub error: Option<crate::playback::failure::PlaybackFailure>,
     pub history_error: Option<String>,
     pub reset: bool,
     pub loaded: Option<Loaded>,
@@ -83,6 +83,10 @@ pub(super) struct Actor {
     pub last_save: Instant,
 }
 impl Actor {
+    pub(super) fn record_failure(&mut self, error: &Error) {
+        self.error = Some(crate::playback::failure::PlaybackFailure::from_error(error));
+    }
+
     pub fn new(
         session: Arc<AccountSession>,
         store: Arc<StateStore>,
@@ -209,7 +213,7 @@ impl Actor {
             mode: self.queue.mode(),
             queue_len: self.queue.len(),
             visible_queue_len: self.queue.visible_len(),
-            error: self.error.clone(),
+            error: self.error,
             history_error: self.history_error.clone(),
             prefetch: self.prefetch.clone(),
             position_reset: self.reset,
@@ -364,7 +368,7 @@ impl Actor {
                 _ = interval.tick() => {
                     if let Err(error) = self.tick().await {
                         let _ = self.stop(false).await;
-                        self.error = Some(error.to_string());
+                        self.record_failure(&error);
                         self.state = PlaybackStatus::Error;
                     }
                 },

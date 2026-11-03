@@ -107,7 +107,7 @@ impl Actor {
                 self.equalizer.status = EqualizerStatus::Failed;
                 if !matches!(error.root(), Error::Cancelled | Error::StaleResponse) {
                     self.state = PlaybackStatus::Error;
-                    self.error = Some(error.to_string());
+                    self.record_failure(&error);
                 }
                 return Err(error);
             }

@@ -343,7 +343,7 @@ impl Actor {
         self.relay_hint = relay_hint;
         if let Some(options) = options {
             if let Err(error) = self.begin(options, request.id, Some(request.reply)).await {
-                self.error = Some(error.to_string());
+                self.record_failure(&error);
             }
         } else {
             let result = self.sync_queue().await;
@@ -412,7 +412,7 @@ impl Actor {
         if let Err(error) = self.save_position() {
             let _ = self.stop(false).await;
             self.state = PlaybackStatus::Error;
-            self.error = Some(error.to_string());
+            self.record_failure(&error);
             return Err(error);
         }
         Ok(())

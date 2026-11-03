@@ -896,6 +896,37 @@ test('unavailable online source is actionable without replaying the rejected sel
   f.player.dispose();
 });
 
+test('channel-only source denial does not offer or execute a refresh', async () => {
+  const actions: PlayerAction[] = [];
+  const f = fixture({
+    playerAction: async (_epoch, input) => {
+      actions.push(input);
+      return state('4', '1', 'playing');
+    },
+  });
+  await f.player.connect(account());
+  f.emit({
+    ...state('2', '1', 'denied'),
+    state: 'error',
+    error: '当前歌曲暂无可用音源，请选择其他歌曲',
+    errorRetryable: false,
+  });
+  assert.equal(f.player.canRetry.value, false);
+  await f.player.retry();
+  assert.deepEqual(actions, []);
+
+  f.emit({
+    ...state('3', '1', 'denied'),
+    state: 'error',
+    error: '无法打开音频输出',
+    errorRetryable: true,
+  });
+  assert.equal(f.player.canRetry.value, true);
+  await f.player.retry();
+  assert.deepEqual(actions, [{ kind: 'refresh' }]);
+  f.player.dispose();
+});
+
 test('prepared card playback cannot start after an account change or newer playback request', async () => {
   let calls = 0;
   const f = fixture({

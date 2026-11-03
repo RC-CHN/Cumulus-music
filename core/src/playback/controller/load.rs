@@ -205,7 +205,7 @@ impl Actor {
             let pending = self.pending.take();
             let _ = self.stop(false).await;
             self.state = PlaybackStatus::Error;
-            self.error = Some(error.to_string());
+            self.record_failure(&error);
             if let Some(reply) = pending.and_then(|p| p.reply) {
                 self.reply(reply, Err(error));
             }
@@ -302,7 +302,7 @@ impl Actor {
                 if let Err(error) = &saved {
                     let _ = self.stop(false).await;
                     self.state = PlaybackStatus::Error;
-                    self.error = Some(error.to_string());
+                    self.record_failure(error);
                 }
                 if let Some(reply) = pending.reply {
                     self.reply(reply, saved);
@@ -317,7 +317,7 @@ impl Actor {
                 })
                 .await;
                 self.state = PlaybackStatus::Error;
-                self.error = Some(error.to_string());
+                self.record_failure(&error);
                 self.loaded = None;
                 self.loudness_forget_track();
                 if let Some(reply) = pending.reply {

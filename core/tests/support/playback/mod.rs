@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 use std::{
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicI32, AtomicU8, AtomicU64, Ordering},
     },
     time::Duration,
 };
@@ -114,6 +114,7 @@ pub struct Device {
     pub equalizer_clears: AtomicU64,
     pub state: Mutex<DeviceState>,
     pub hold_load: AtomicBool,
+    pub load_failure_code: AtomicI32,
     pub fail_seek: AtomicBool,
     pub pause_event: Mutex<Option<EngineEvent>>,
     pub fail_unpause: AtomicBool,
@@ -153,6 +154,7 @@ impl Default for Device {
                 pauses: vec![],
             }),
             hold_load: AtomicBool::new(false),
+            load_failure_code: AtomicI32::new(0),
             fail_seek: AtomicBool::new(false),
             pause_event: Mutex::new(None),
             fail_unpause: AtomicBool::new(false),
@@ -217,6 +219,13 @@ impl AudioEngine for Engine {
         cancel.check()?;
         let mut state = self.0.state.lock().unwrap();
         state.loads += 1;
+        let code = self.0.load_failure_code.load(Ordering::SeqCst);
+        if code != 0 {
+            return Err(Error::Playback {
+                operation: "load ended",
+                code,
+            });
+        }
         let entry_id = state.loads as i64;
         state.bounds.push((request.start, request.end));
         state.view.entry_id = Some(entry_id);

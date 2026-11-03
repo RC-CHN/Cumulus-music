@@ -37,6 +37,7 @@ pub struct PlayerView {
     pub mode: PlaybackMode,
     pub queue_len: usize,
     pub error: Option<&'static str>,
+    pub error_retryable: Option<bool>,
     pub history_warning: Option<&'static str>,
     pub position_reset: bool,
 }

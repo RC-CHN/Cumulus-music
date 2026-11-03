@@ -225,7 +225,7 @@ impl Actor {
         };
         // The resource was authorized before interrupting the old track.
         if let Err(error) = self.begin(options, ready.id, Some(ready.reply)).await {
-            self.error = Some(error.to_string());
+            self.record_failure(&error);
         }
     }
 }

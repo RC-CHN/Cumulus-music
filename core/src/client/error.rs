@@ -1,4 +1,4 @@
-use crate::Error;
+use crate::{Error, playback::failure::PlaybackFailure};
 use serde::Serialize;
 
 /// Stable, deliberately bounded public errors. No transport strings, response
@@ -400,35 +400,60 @@ impl From<Error> for ClientError {
                 Error::Transport(_) | Error::HttpStatus { .. } => {
                     ("network", "网络请求失败，请稍后重试", true)
                 }
-                Error::Service { endpoint, .. }
-                    if endpoint == "/api/song/enhance/player/url/v1" =>
-                {
-                    (
-                        "playback_source_unavailable",
-                        "当前歌曲暂无可用音源，请选择其他歌曲",
-                        false,
-                    )
+                Error::Playback { .. }
+                | Error::Service { .. }
+                | Error::Response("no playback resource for requested track") => {
+                    if let Some(failure) = PlaybackFailure::classify(&error) {
+                        return Self::from(failure);
+                    }
+                    ("service_rejected", "服务暂未允许此操作", false)
                 }
-                Error::Response("no playback resource for requested track") => (
-                    "playback_source_unavailable",
-                    "当前歌曲暂无可用音源，请选择其他歌曲",
-                    false,
-                ),
-                Error::Service { .. } => ("service_rejected", "服务暂未允许此操作", false),
-                Error::Playback {
-                    operation: "library" | "ABI",
-                    ..
-                } => (
-                    "audio_unavailable",
-                    "无法加载音频组件，请检查 libmpv 安装",
-                    true,
-                ),
-                Error::Playback { .. } => ("playback_failed", "音频加载或播放失败，请重试", true),
                 Error::Storage(_) | Error::Io(_) => {
                     ("storage", "无法读写本地数据，请检查空间与权限", true)
                 }
                 _ => ("unavailable", "暂时无法完成此操作", true),
             }
+        };
+        Self {
+            code,
+            message,
+            retryable,
+        }
+    }
+}
+
+impl From<PlaybackFailure> for ClientError {
+    fn from(failure: PlaybackFailure) -> Self {
+        let (code, message, retryable) = match failure {
+            PlaybackFailure::SourceUnavailable => (
+                "playback_source_unavailable",
+                "当前歌曲暂无可用音源，请选择其他歌曲",
+                false,
+            ),
+            PlaybackFailure::SessionExpired => ("session_expired", "登录已失效，请重新登录", false),
+            PlaybackFailure::Network => ("network", "网络请求失败，请稍后重试", true),
+            PlaybackFailure::Runtime => (
+                "audio_unavailable",
+                "无法加载音频组件，请检查 libmpv 安装",
+                true,
+            ),
+            PlaybackFailure::Output => (
+                "audio_output_failed",
+                "无法打开音频输出，请检查系统声音或切换输出设备",
+                true,
+            ),
+            PlaybackFailure::OpenMedia => (
+                "audio_open_failed",
+                "音源已选定，但无法打开或解码，请刷新音源或重新选择歌曲",
+                true,
+            ),
+            PlaybackFailure::Engine => ("playback_failed", "音频加载或播放失败，请重试", true),
+            PlaybackFailure::Storage => ("storage", "无法读写本地数据，请检查空间与权限", true),
+            PlaybackFailure::Other => (
+                "playback_failed",
+                "播放失败，请刷新音源或重新选择歌曲",
+                true,
+            ),
         };
         Self {
             code,

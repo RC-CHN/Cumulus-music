@@ -5,6 +5,7 @@ use crate::{
     playback::{
         PlaybackQueue, Step,
         engine::{EndReason, EngineEvent},
+        failure::PlaybackFailure,
     },
 };
 use serde_json::Value;
@@ -151,13 +152,16 @@ impl Actor {
                     }
                     EndReason::Error | EndReason::Redirect | EndReason::Unknown(_) => {
                         self.state = PlaybackStatus::Error;
-                        self.error = Some(format!("decoder or network error ({error})"));
+                        self.error = Some(PlaybackFailure::from_error(&Error::Playback {
+                            operation: "stream ended",
+                            code: error,
+                        }));
                     }
                     _ => (),
                 },
                 EngineEvent::Shutdown => {
                     self.state = PlaybackStatus::Error;
-                    self.error = Some("audio engine shut down".into());
+                    self.error = Some(PlaybackFailure::Engine);
                 }
                 _ => (),
             }

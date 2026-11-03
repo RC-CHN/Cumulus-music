@@ -237,8 +237,10 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
         queue_len: value.visible_queue_len,
         error: value
             .error
-            .as_ref()
-            .map(|_| "播放失败，请刷新音源或重新选择歌曲"),
+            .map(|error| super::ClientError::from(error).message),
+        error_retryable: value
+            .error
+            .map(|error| super::ClientError::from(error).retryable),
         position_reset: value.position_reset,
         history_warning: value.history_error.as_ref().map(|_| "最近播放暂未保存"),
     })
