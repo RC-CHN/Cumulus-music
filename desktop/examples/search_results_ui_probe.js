@@ -628,15 +628,21 @@
       assert(one('#search-result-panel').textContent.includes('合成热点内容'),'hot explanation');
       assert(!document.querySelector('[href*="example.invalid/private"]'),'no raw action');
       assert(one('.search-track-mv')?.getAttribute('aria-label')==='播放 MV 综合 V3 合成歌曲','v3 extInfo MV projected to song badge');
-      const cards=all('.search-track-card');
-      const hints=cards.map((card)=>card.querySelector('.search-track-hint'));
-      assert(hints.length===2&&hints[0]?.dataset.tooltip==='🎵合成歌词片段'&&
-        hints[0]?.querySelector('mark')?.textContent==='合成'&&
-        hints[1]?.textContent.trim()==='前缀合成 V3别名'&&
-        hints[1]?.querySelector('mark')?.textContent==='合成 V3',
-        'v3 displays UTF-16 lyric match and plain alias fallback with extInfo precedence');
-      assert(cards.every((card)=>Math.abs(card.getBoundingClientRect().height-84)<1),'match hints keep 84px cards');
+      const verifyHints=()=>{
+        const cards=all('.search-track-card');
+        const hints=cards.map((card)=>card.querySelector('.search-track-hint'));
+        assert(hints.length===2&&hints[0]?.dataset.tooltip==='🎵合成歌词片段'&&
+          hints[0]?.querySelector('mark')?.textContent==='合成'&&
+          hints[1]?.textContent.trim()==='前缀合成 V3别名'&&
+          hints[1]?.querySelector('mark')?.textContent==='合成 V3',
+          'v3 displays UTF-16 lyric match and plain alias fallback with extInfo precedence');
+        assert(cards.every((card)=>Math.abs(card.getBoundingClientRect().height-84)<1),'match hints keep 84px cards');
+      };
+      verifyHints();
       await capture('v3_comprehensive');
+      await theme(760,540,'dark');
+      verifyHints();
+      await capture('v3_track_hints_small_dark');
       key(one('[data-category="all"]'),'ArrowRight');
       await wait(()=>ready()&&one('[data-category="mvs"]')?.getAttribute('aria-selected')==='true','dynamic arrow navigation');
       assert(tabs()==='all,mvs,songs','category preserves service order');

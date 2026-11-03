@@ -69,5 +69,9 @@ Lyric/index.tsx 及 M/123:98–112 用 UTF-16 下标 [first, second) 标出匹�
 Rust 校验边界和长度，拒绝控制字符、链接、无效范围及拆开的 UTF-16 代理对；
 无效歌词可回退到有效别名。Vue 只接收文本及高亮位，使用文本节点展示，不插入
 服务端 HTML。歌词优先，别名使用已有搜索词高亮；固定 84px 卡片高度。
-没有新增接口、播放分支或关键词请求；完整算法标签、不同实验分桶和 Windows 实机
-视觉仍未验证。可复跑 `search_results_smoke.py --v3 --screenshots` 合成桌面验证。
+当前在响应带有效标签时显示；没有查询官方独立的 PH-PC-search-result=t1 分桶，
+也不把现有 PH-PC-searchHot 分桶当成相同实验。没有新增接口、播放分支或关键词
+请求；完整算法标签和 Windows 实机视觉仍未验证。可复跑 `search_results_smoke.py --v3 --screenshots` 合成桌面验证。
+Linux 实际 WebView 的四个 V3 检查点及截图通过；760×540 深色窗与宽窗均验证
+歌词 UTF-16 高亮、别名回退和 84px 卡片高度。另有十项 Rust 搜索接口回归，
+其中综合标签用例验证无效、越界和私密字段不会进入显示结果。
