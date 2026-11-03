@@ -761,6 +761,72 @@ async fn output_recovery_reloads_same_source_at_current_clock_without_advancing_
 }
 
 #[tokio::test]
+async fn explicit_retry_after_failed_output_reload_recovers_clock_and_pause() {
+    let f = Fixture::new();
+    f.command(replace(&[1])).await.unwrap();
+    f.command(Cmd::Seek(42.5)).await.unwrap();
+    let before = f.command(Cmd::Pause(true)).await.unwrap();
+    let queue = f.player.queue(&f.token()).await.unwrap();
+    f.device.load_failure_code.store(-15, Ordering::SeqCst);
+    f.device
+        .state
+        .lock()
+        .unwrap()
+        .view
+        .events
+        .push(EngineEvent::OutputReload { entry_id: 1 });
+    let failed = until(&f.player, |s| s.state == Status::Error).await;
+    assert_eq!(failed.selected, before.selected);
+    assert_eq!(
+        f.api.count(1),
+        1,
+        "output recovery only reuses the current authorization"
+    );
+    assert_eq!(f.device.state.lock().unwrap().loads, 2);
+    f.device.load_failure_code.store(0, Ordering::SeqCst);
+
+    let restored = f.command(Cmd::RefreshSource).await.unwrap();
+    assert_eq!(restored.state, Status::Paused);
+    assert_eq!(restored.position, Some(42.5));
+    assert_eq!(restored.selected, before.selected);
+    assert_eq!(f.player.queue(&f.token()).await.unwrap(), queue);
+    assert_eq!(f.api.count(1), 2, "only the explicit retry reauthorizes");
+    let device = f.device.state.lock().unwrap();
+    assert_eq!(device.loads, 3);
+    assert_eq!(device.view.position, Some(42.5));
+    assert_eq!(device.pauses.iter().filter(|p| !**p).count(), 1);
+}
+
+#[tokio::test]
+async fn repeated_source_refresh_keeps_clock_but_replacement_does_not_inherit_it() {
+    let f = Fixture::new();
+    f.command(replace(&[1])).await.unwrap();
+    f.command(Cmd::Seek(39.0)).await.unwrap();
+    f.api.hold.store(1, Ordering::SeqCst);
+    let pending = f.start(Cmd::RefreshSource);
+    tokio::time::timeout(std::time::Duration::from_secs(5), f.api.started.notified())
+        .await
+        .unwrap();
+    f.command(Cmd::Pause(true)).await.unwrap();
+    f.api.hold.store(0, Ordering::SeqCst);
+    let restored = f.command(Cmd::RefreshSource).await.unwrap();
+    assert_eq!(restored.state, Status::Paused);
+    assert_eq!(restored.position, Some(39.0));
+    assert!(matches!(
+        root(&pending.await.unwrap().err().unwrap()),
+        Error::Cancelled
+    ));
+
+    f.device.load_failure_code.store(-15, Ordering::SeqCst);
+    assert!(f.command(Cmd::RefreshSource).await.is_err());
+    f.device.load_failure_code.store(0, Ordering::SeqCst);
+    let replaced = f.command(replace(&[2])).await.unwrap();
+    assert_eq!(song(&replaced), Some(2));
+    assert_eq!(replaced.state, Status::Playing);
+    assert_eq!(replaced.position, Some(0.0));
+}
+
+#[tokio::test]
 async fn native_clock_and_cache_are_entry_scoped_and_capped_at_the_authorized_preview() {
     let f = Fixture::new();
     f.api.trial.store(true, Ordering::SeqCst);

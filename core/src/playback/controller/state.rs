@@ -39,6 +39,14 @@ pub(super) struct Pending {
     pub reply: Option<Response>,
     pub paused: bool,
 }
+/// Last accepted clock while refreshing the same queue entry. It is never
+/// projected as a running decoder or reused for a different selection.
+pub(super) struct SourceRetryPoint {
+    pub item: QueueEntry,
+    pub position: f64,
+    pub paused: bool,
+    pub history: crate::history::playback::Checkpoint,
+}
 pub(super) struct Actor {
     pub startup_pending: bool,
     pub startup_autoplay: bool,
@@ -72,6 +80,7 @@ pub(super) struct Actor {
     pub history_error: Option<String>,
     pub reset: bool,
     pub loaded: Option<Loaded>,
+    pub source_retry: Option<SourceRetryPoint>,
     pub deferred_events: Vec<EngineEvent>,
     pub pending: Option<Pending>,
     pub load_task: Option<JoinHandle<()>>,
@@ -136,6 +145,7 @@ impl Actor {
             history_error: None,
             reset: false,
             loaded: None,
+            source_retry: None,
             deferred_events: Vec::new(),
             pending: None,
             load_task: None,
@@ -281,6 +291,7 @@ impl Actor {
         .await;
         let parametric = self.parametric_reset().await;
         self.loaded = None;
+        self.source_retry = None;
         self.loudness_forget_track();
         self.play_id = None;
         self.position = None;

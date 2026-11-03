@@ -320,11 +320,20 @@ impl Actor {
                         .or_else(|| item.resource["id"].as_u64().map(|n| n.to_string()));
                     match self.resolver.invalidate(id.as_deref()) {
                         Ok(()) => {
+                            let retry = self
+                                .source_retry
+                                .as_ref()
+                                .filter(|retry| retry.item == item);
+                            let position =
+                                self.position.or_else(|| retry.map(|retry| retry.position));
                             options = Some(LoadOptions {
                                 paused: self.state == PlaybackStatus::Paused
-                                    || self.pending.as_ref().is_some_and(|p| p.paused),
-                                position: self.position,
+                                    || self.pending.as_ref().is_some_and(|p| p.paused)
+                                    || (self.pending.is_none()
+                                        && retry.is_some_and(|retry| retry.paused)),
+                                position,
                                 recover: true,
+                                retain_source_retry: position.is_some(),
                                 ..Default::default()
                             });
                             Ok(())
@@ -367,6 +376,9 @@ impl Actor {
             // A pause accepted during remote/ordinary decoding must determine
             // its first presentation state, rather than fail and later autoplay.
             pending.paused = paused;
+            if let Some(retry) = &mut self.source_retry {
+                retry.paused = paused;
+            }
             return Ok(());
         }
         self.require_loaded()?;

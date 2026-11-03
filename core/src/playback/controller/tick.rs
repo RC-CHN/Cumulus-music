@@ -71,6 +71,13 @@ impl Actor {
     }
     pub async fn sync_queue(&mut self) -> Result<()> {
         self.queue.reload()?;
+        if self
+            .source_retry
+            .as_ref()
+            .is_some_and(|retry| self.queue.selected().as_ref() != Some(&retry.item))
+        {
+            self.source_retry = None;
+        }
         let before_item = self
             .loaded
             .as_ref()
@@ -168,6 +175,7 @@ impl Actor {
                 paused: self.state == PlaybackStatus::Paused,
                 position,
                 recover: true,
+                retain_source_retry: position.is_some(),
                 source: Some(loaded.source.clone()),
                 ..Default::default()
             };

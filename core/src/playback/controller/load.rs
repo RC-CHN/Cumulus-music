@@ -1,6 +1,6 @@
 use super::{
     Message, PlaybackStatus, Response,
-    state::{Actor, Loaded, Pending},
+    state::{Actor, Loaded, Pending, SourceRetryPoint},
 };
 use crate::{
     Error, Result,
@@ -17,6 +17,7 @@ pub(super) struct LoadOptions {
     pub paused: bool,
     pub position: Option<f64>,
     pub recover: bool,
+    pub retain_source_retry: bool,
     pub relative: bool,
     pub restart_at_end: bool,
     pub source: Option<Arc<ResolvedSource>>,
@@ -87,11 +88,26 @@ impl Actor {
                 options.recover && options.position.is_some() && l.item.entry_id == item.entry_id
             })
             .map(|l| l.history.clone())
+            .or_else(|| {
+                self.source_retry
+                    .as_ref()
+                    .filter(|retry| options.retain_source_retry && retry.item == item)
+                    .map(|retry| retry.history.clone())
+            })
             .unwrap_or_default();
         if history.played_at.is_none() {
             self.history_error = None;
         }
         self.cancel_load().await?;
+        self.source_retry = options
+            .position
+            .filter(|_| options.retain_source_retry)
+            .map(|position| SourceRetryPoint {
+                item: item.clone(),
+                position,
+                paused: options.paused,
+                history: history.clone(),
+            });
         self.loaded = None;
         self.loudness_forget_track();
         self.position = None;
@@ -291,6 +307,7 @@ impl Actor {
         };
         match result {
             Ok(prepared) => {
+                self.source_retry = None;
                 self.position = Some(prepared.position);
                 self.reset = prepared.reset;
                 self.state = if pending.paused {
