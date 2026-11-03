@@ -216,5 +216,6 @@ Cumulus 桌面主流程验收
   这段长度让暂停恢复测试不受原一秒夹具的自然结束干扰。若 Openbox 安装在
   系统 PATH 之外，使用 --openbox-directory <包含 openbox 的目录>。
   main-flow 的下载仍经过原有封闭传输替身。
-  --preflight 独立验证命名空间和 TLS 限制，不能代替桌面运行。该模式未取代
-  必需 CI 的现有 Linux 主流程；也不验证真实 CDN、账号操作或物理输出。
+  --preflight 独立验证命名空间和 TLS 限制，不能代替桌面运行。Linux 必需 CI
+  跑此模式；Windows 必需 CI 保留合成源路径。两者均未验证真实 CDN、账号操作
+  或物理输出。

@@ -474,7 +474,7 @@ jobs:
       - name: Linux native dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev patchelf libmpv-dev ffmpeg xvfb dbus-x11 python3-gi gir1.2-gtk-3.0 libxtst6 openbox
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev patchelf libmpv-dev ffmpeg xvfb dbus-x11 python3-gi gir1.2-gtk-3.0 libxtst6 openbox iproute2 openssl
           sudo locale-gen en_US.UTF-8
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
@@ -517,7 +517,7 @@ jobs:
           cargo build -p cumulus-desktop --example native_audio_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/native_smoke.py --binary .build/target/debug/examples/native_audio_probe --report .build/ci-native-audio-linux.json
           cargo build -p cumulus-desktop --example main_flow_ui_probe --features custom-protocol --locked
-          CUMULUS_TEST_WINDOW_MANAGER=openbox LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/main_flow_smoke.py --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-linux
+          python3 scripts/ci/main_flow_https_smoke.py --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/native_smoke.py --binary .build/target/debug/examples/native_audio_probe --report .build/ci-native-audio-loudness-linux.json --filter-library .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
           cargo build -p cumulus-desktop --example equalizer_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/equalizer_live_smoke.py --binary .build/target/debug/examples/equalizer_ui_probe --root .build/ci-equalizer-live-linux --filter-library .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
