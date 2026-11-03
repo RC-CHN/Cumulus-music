@@ -98,7 +98,8 @@ typedef void (WIN *Reset)(void *);
 typedef unsigned char (WIN *Process)(void *, float *, uint8_t *, uint32_t *);
 
 int main(int argc, char **argv) {
-    if (argc != 2) return 2;
+    int trace = argc == 3 && strcmp(argv[2], "--state") == 0;
+    if (argc != 2 && !trace) return 2;
     const struct rlimit cpu = {2, 2}, memory = {128 * 1024 * 1024, 128 * 1024 * 1024},
         core = {0, 0};
     if (setrlimit(RLIMIT_CPU, &cpu) || setrlimit(RLIMIT_AS, &memory)
@@ -154,6 +155,14 @@ int main(int argc, char **argv) {
         uint32_t out[2] = {valid, end};
         if (fwrite(out, 4, 2, stdout) != 2
             || fwrite(samples, 4, samples_per_block, stdout) != samples_per_block) return 15;
+        if (trace) {
+            static const size_t scalars[] = {0x28, 0x38, 0x40, 0x48, 0x50, 0x60, 0x70, 0x78, 0xb0};
+            static const size_t indices[] = {0x58, 0x68, 0x6c, 0x88, 0x8c, 0xa0, 0xa4, 0xa8, 0xb8, 0xbc, 0xc0};
+            for (size_t i = 0; i < sizeof scalars / sizeof *scalars; ++i)
+                if (fwrite(object + scalars[i], 8, 1, stdout) != 1) return 18;
+            for (size_t i = 0; i < sizeof indices / sizeof *indices; ++i)
+                if (fwrite(object + indices[i], 4, 1, stdout) != 1) return 18;
+        }
     }
     if (fgetc(stdin) != EOF) return 16;
     ((Reset)(image + 0x63ac0))(object);
