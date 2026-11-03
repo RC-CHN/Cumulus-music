@@ -95,3 +95,10 @@ Rust持久化与恢复
 - scripts/ci/cloud_task_smoke.py及desktop/examples/cloud_task_probe.js使用实际production
   WebView、IPC、Rust worker/SQLite/ffprobe；服务/对象存储及OS目录启动器显式替换。
   实际native目录验证仍执行。不是线上服务、物理声卡或Windows实机视觉通过证明。
+
+任务恢复状态
+- 上传任务从原生状态读取“取消待确认”“正在保存”“等待核对”“无法核对上传结果”。
+  字节、暂停标记或页面阶段不能代替这些状态；前端不在这些状态旁显示传输进度条。
+  取消只有原生日志确认后才进入历史，正在保存也不代表已发布。
+- 合成桌面探针替换两次任务读取的显示状态，验证 WebView 不会把取消待确认或正在保存
+  当成暂停、转码或传输百分比；随后恢复原生读取并完成原合成上传。无真实账号写入。

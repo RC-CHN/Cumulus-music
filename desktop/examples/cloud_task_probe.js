@@ -286,8 +286,11 @@
   }
   try {
     await wait(
-      () => document.querySelector(".track-row .track-play:not(:disabled)"),
-      "startup",
+      () =>
+        [...document.querySelectorAll("button")].some(
+          (b) => b.textContent.trim() === "音乐云盘" && !b.disabled,
+        ),
+      "cloud navigation ready",
     );
     const provides =
       document.querySelector("#app").__vue_app__._context.provides;
@@ -312,18 +315,7 @@
       );
       directoryChecks++;
     };
-    document
-      .querySelector(".track-row")
-      .dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
-    await wait(
-      () => document.querySelector(".playerbar")?.dataset.state === "playing",
-      "native player",
-    );
     epoch = (await invoke("account_snapshot")).epoch;
-    await invoke("player_action", {
-      epoch,
-      action: { kind: "pause", paused: true },
-    });
     await resize(1120, 760);
     await theme("light");
     [...document.querySelectorAll("button")]
@@ -421,6 +413,36 @@
       "source files retained",
     );
     await snapshot("new_task_retained_light");
+    // Model the DTO from the native journal without dispatching a second
+    // cancellation or publication in this test's real synthetic workflow.
+    const readCloudPage = client.cloudPage;
+    try {
+      for (const [phase, label, running] of [
+        ["audio_uploading", "取消待确认", false],
+        ["publication_pending", "正在保存", true],
+      ]) {
+        client.cloudPage = async (...args) => {
+          const value = await readCloudPage.call(client, ...args);
+          return {
+            ...value,
+            uploads: value.uploads.map((task) =>
+              task.id === late
+                ? { ...task, phase, label, running, canResume: false }
+                : task,
+            ),
+          };
+        };
+        await refresh(1);
+        const progress = rows()[0].querySelector(".cloud-task-progress");
+        assert(
+          progress.textContent.trim() === label && !progress.querySelector("progress"),
+          label + " is not replaced with a fallback status or transfer meter",
+        );
+      }
+    } finally {
+      client.cloudPage = readCloudPage;
+    }
+    await refresh(1);
     click(
       `开始上传 ${rows()[0].querySelector("strong").textContent}`,
       rows()[0],

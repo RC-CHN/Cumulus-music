@@ -132,6 +132,39 @@ test('progress combines acknowledged audio and attachments and separates process
   task.label = '无法核对上传结果';
   assert.equal(taskProgress(task).label, '无法核对上传结果');
 });
+test('journal cancellation and publication are distinct from transfer progress and paused work', () => {
+  const cancelling = taskProgress({
+    ...row(),
+    phase: 'audio_uploading',
+    bytes: 75,
+    label: '取消待确认',
+    canResume: false,
+  });
+  assert.equal(cancelling.label, '取消待确认');
+  assert.equal(cancelling.showProgress, false);
+
+  const publication = {
+    ...row(),
+    phase: 'publication_pending',
+    bytes: 100,
+    enabled: true,
+  } as const;
+  const saving = taskProgress({ ...publication, running: true, label: '正在保存' });
+  assert.equal(saving.label, '正在保存');
+  assert.equal(saving.showProgress, false);
+  const uncertain = taskProgress({
+    ...publication,
+    enabled: false,
+    label: '等待核对',
+    canReconcile: true,
+  });
+  assert.equal(uncertain.label, '等待核对');
+  assert.equal(uncertain.showProgress, false);
+  assert.equal(
+    taskProgress({ ...row(), phase: 'audio_uploading', enabled: true }).showProgress,
+    true,
+  );
+});
 test('cloud song filters, order and page survive task/history navigation without filtering the task scope', async () => {
   const model = useCloud({
     cloudPage: async (e: string, q: any) => ({ ...page(e), total: 405, offset: q.offset }),

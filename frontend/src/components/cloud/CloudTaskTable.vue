@@ -210,7 +210,7 @@ async function directory(task: CloudUpload) {
           <td>
             <div class="cloud-task-progress" :title="progressTitle(task)">
               <progress
-                v-if="!processing(task) && !task.error"
+                v-if="taskProgress(task).showProgress"
                 :value="taskProgress(task).bytes"
                 :max="taskProgress(task).total || 1"
                 :aria-label="`${task.title} 上传进度`"
