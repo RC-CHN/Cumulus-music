@@ -694,6 +694,14 @@
 .search-album-credit-separator {
   flex: none;
 }
+.search-playlist-credit > .search-playlist-recommendation,
+.search-playlist-credit > .search-playlist-creator-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .search-playlist-creator,
 .search-album-artist {
   position: relative;

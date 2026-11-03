@@ -93,6 +93,21 @@ async fn categories_use_official_shapes_and_only_public_card_fields_cross_ipc() 
             assert_eq!(args["keyword"], "合成");
             assert_eq!(args["scene"], "normal");
         }
+        if matches!(category, C::All | C::Playlists) {
+            let projected = serde_json::to_value(&view).unwrap();
+            let playlist = projected["sections"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .flat_map(|section| section["items"].as_array().unwrap())
+                .find(|item| item["kind"] == "playlist")
+                .unwrap();
+            if category == C::All {
+                assert_eq!(playlist["recommendation"], "合成 推荐理由");
+            } else {
+                assert!(playlist.get("recommendation").is_none());
+            }
+        }
         if category == C::Songs {
             assert!(view.more);
             assert_eq!(view.next_offset, 3);

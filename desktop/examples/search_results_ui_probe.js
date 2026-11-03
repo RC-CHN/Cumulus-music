@@ -502,8 +502,15 @@
         const marks=[...title.querySelectorAll('mark.search-match-text')];
         assert(marks.length===(expected?1:0)&&(!expected||marks[0].textContent==='合成'),
           'exact card title mark: '+kind);
-        assert(!title.closest('.search-result-card').querySelector('.search-result-sub mark'),
-          'subtitle remains plain: '+kind);
+        const subtitle=title.closest('.search-result-card').querySelector('.search-result-sub');
+        const recommendation=subtitle?.querySelector('.search-playlist-recommendation');
+        const comprehensive=one('[data-category="all"]')?.getAttribute('aria-selected')==='true';
+        if(kind==='playlist'&&comprehensive){
+          assert(recommendation?.textContent.includes('合成 推荐理由')&&!recommendation.querySelector('em'),
+            'comprehensive playlist shows the bounded plain recommendation');
+          const reasonMark=recommendation.querySelector('mark');
+          assert(expected?reasonMark?.textContent==='合成':!reasonMark,'only matched recommendation text is marked');
+        } else assert(!recommendation&&!subtitle?.querySelector('mark'),'other subtitles remain plain: '+kind);
       };
       for(const kind of ['playlist','podcast','voice','mv'])check(kind,true);
       await capture('comprehensive_card_title_matches');

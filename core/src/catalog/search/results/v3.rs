@@ -168,6 +168,7 @@ fn playlist(v: &Value) -> Fields {
             "name",
             "title",
             "description",
+            "recommendText",
             "privacy",
             "specialType",
             "updateTime",
@@ -611,7 +612,7 @@ mod tests {
             ]},
             {"blockCode":"search_block_playlist","resources":[{"baseInfo":{
                 "playCount":88,"pubPlaylistData":{"id":34,"creator":{"userId":12},"playCount":13}
-            }}]},
+            },"extInfo":{"recommendText":"合成推荐理由"}}]},
             {"blockCode":"search_block_video","resources":[{"type":"mv","baseInfo":{"squareFeedDto":{
                 "id":17,"resource":{"mlogBaseData":{"text":"影片","duration":90},"data":{"url":"secret"}}
             }}}]}
@@ -633,6 +634,10 @@ mod tests {
         assert_eq!(rows[1]["resources"].as_array().unwrap().len(), 1);
         assert_eq!(rows[1]["resources"][0]["baseInfo"]["id"], 12);
         assert_eq!(rows[2]["resources"][0]["baseInfo"]["playCount"], 88);
+        assert_eq!(
+            rows[2]["resources"][0]["baseInfo"]["recommendText"],
+            "合成推荐理由"
+        );
         assert_eq!(
             rows[3]["resources"][0]["baseInfo"]["resource"]["mlogBaseData"]["text"],
             "影片"

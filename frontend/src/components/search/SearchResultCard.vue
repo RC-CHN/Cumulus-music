@@ -162,6 +162,11 @@ const unavailable = computed(() =>
       ? !canPlayMv.value
       : props.item.kind === 'user' && props.item.user.unavailable,
 );
+const playlistRecommendation = computed(() =>
+  props.category === 'all' && props.item.kind === 'playlist'
+    ? props.item.recommendation
+    : undefined,
+);
 const voiceDuration = computed(() => {
   const ms = props.item.kind === 'voice' ? props.item.voice.durationMs : 0;
   return Number.isFinite(ms) && ms > 0 ? time(ms / 1000) : '';
@@ -361,11 +366,12 @@ watch(
       </template>
     </span>
     <span
-      v-else-if="item.kind === 'playlist' && playlistCreator"
+      v-else-if="item.kind === 'playlist' && (playlistCreator || playlistRecommendation)"
       class="search-result-sub search-playlist-credit"
     >
-      <span>{{ item.playlist.trackCount }} 首 ·</span>
+      <span v-if="!playlistRecommendation">{{ item.playlist.trackCount }} 首 ·</span>
       <button
+        v-if="playlistCreator"
         type="button"
         class="search-playlist-creator"
         data-result-action="creator"
@@ -376,6 +382,13 @@ watch(
       >
         {{ playlistCreator.name }}
       </button>
+      <span v-else-if="item.playlist.creator" class="search-playlist-creator-text">{{
+        item.playlist.creator
+      }}</span>
+      <span v-if="playlistRecommendation" class="search-playlist-recommendation">
+        <span v-if="playlistCreator || item.playlist.creator" aria-hidden="true">· </span>
+        <SearchMatchText :text="playlistRecommendation" :keyword="matchKeyword" />
+      </span>
     </span>
     <span v-else-if="unavailable && !canPlay" class="search-result-sub">{{
       item.kind === 'user' ? '此账号当前不可用' : '暂不可打开'

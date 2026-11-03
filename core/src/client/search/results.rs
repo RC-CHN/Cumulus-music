@@ -21,6 +21,8 @@ pub enum SearchItem {
     },
     Playlist {
         playlist: PlaylistView,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        recommendation: Option<String>,
     },
     Artist {
         artist: ArtistCard,
@@ -179,7 +181,13 @@ pub(super) fn clean(s: &str) -> String {
         .replace("<b>", "")
         .replace("</b>", "")
 }
-fn item(kind: &str, v: &Value, uid: &str, excerpt: &Value) -> Result<Option<SearchItem>> {
+fn item(
+    kind: &str,
+    v: &Value,
+    uid: &str,
+    excerpt: &Value,
+    comprehensive: bool,
+) -> Result<Option<SearchItem>> {
     Ok(Some(match kind {
         "song" => {
             let (excerpt, excerpt_truncated) = super::lyrics::project(excerpt);
@@ -191,6 +199,19 @@ fn item(kind: &str, v: &Value, uid: &str, excerpt: &Value) -> Result<Option<Sear
         }
         "playlist" => SearchItem::Playlist {
             playlist: mapping::playlist(v, uid)?,
+            recommendation: comprehensive
+                .then(|| v["recommendText"].as_str())
+                .flatten()
+                .map(|value| {
+                    clean(value)
+                        .split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                        .chars()
+                        .take(160)
+                        .collect::<String>()
+                })
+                .filter(|value| !value.is_empty()),
         },
         "artist" => SearchItem::Artist {
             artist: cards::artist(v)?,
@@ -331,6 +352,7 @@ fn project(raw: Value, query: SearchResultQuery, uid: &str) -> Result<SearchResu
                     &resource["baseInfo"],
                     uid,
                     &Value::Null,
+                    true,
                 ) {
                     Ok(Some(item)) => section.items.push(item),
                     // A card can be unsupported or malformed independently of
@@ -418,7 +440,7 @@ fn project(raw: Value, query: SearchResultQuery, uid: &str) -> Result<SearchResu
         } else {
             &Value::Null
         };
-        match item(kind, base, uid, lyric) {
+        match item(kind, base, uid, lyric, false) {
             Ok(Some(item)) => section.items.push(item),
             Ok(None) | Err(_) => result.unavailable_count += 1,
         }
