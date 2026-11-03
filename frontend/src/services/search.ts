@@ -16,6 +16,16 @@ export const searchCategories = [
   { key: 'users', title: '用户', unit: '位用户' },
 ] as const;
 export type SearchCategory = (typeof searchCategories)[number]['key'];
+export function displayedSearchCategories(
+  ordered: readonly SearchCategory[] | undefined,
+  current: SearchCategory,
+) {
+  if (!ordered) return searchCategories;
+  // The comprehensive route stays accessible even if the service omits it.
+  const keys = new Set<SearchCategory>(ordered.includes('all') ? ordered : ['all', ...ordered]);
+  keys.add(current);
+  return [...keys].flatMap((key) => searchCategories.filter((tab) => tab.key === key));
+}
 export type SearchChannel = 'hotquery';
 export interface SearchResultQuery {
   keyword: string;
@@ -43,6 +53,8 @@ export interface SearchSection {
 }
 export interface SearchResultView {
   query: SearchResultQuery;
+  tabs?: SearchCategory[];
+  hotExplanation?: { title?: string; text?: string; pictureUrl?: string };
   sections: SearchSection[];
   total: number | null;
   more: boolean;
@@ -51,6 +63,21 @@ export interface SearchResultView {
   unavailableCount: number;
   emptyTitle?: string;
   notice: string | null;
+}
+export function searchExplanation(
+  view: SearchResultView | undefined,
+  category: SearchCategory,
+  hasResults: boolean,
+) {
+  const hot = category === 'all' ? view?.hotExplanation : undefined;
+  const title = hot?.title?.trim();
+  const text = hot?.text?.trim();
+  const emptyTitle = hasResults ? undefined : title || view?.emptyTitle;
+  const notice = view?.notice !== emptyTitle ? view?.notice : undefined;
+  const lines = [...new Set([title, text])].filter(
+    (line): line is string => !!line && line !== emptyTitle && line !== notice,
+  );
+  return { emptyTitle, notice, lines };
 }
 export interface SearchResultsClient {
   searchResults(epoch: string, query: SearchResultQuery): Promise<AccountData<SearchResultView>>;

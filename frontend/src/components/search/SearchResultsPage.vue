@@ -7,7 +7,8 @@ import SearchCardGrid from './SearchCardGrid.vue';
 import SearchTrackCard from './SearchTrackCard.vue';
 import type { AccountView, TrackView } from '../../services/contracts';
 import {
-  searchCategories,
+  displayedSearchCategories,
+  searchExplanation,
   type SearchCategory,
   type SearchChannel,
   type SearchItem,
@@ -93,13 +94,19 @@ const matchKeyword = computed(() =>
 );
 const waterfall = computed(() => ['artists', 'users', 'mvs'].includes(category.value));
 const limit = computed(() => (waterfall.value ? 13 : 30));
-const selected = computed(() => searchCategories.find((c) => c.key === category.value)!);
+const visibleTabs = computed(() => displayedSearchCategories(model.tabs.value, category.value));
+const selected = computed(() => visibleTabs.value.find((c) => c.key === category.value)!);
 const tracks = (section: SearchSection) =>
   section.items.flatMap((i) => (i.kind === 'song' ? [i.track] : []));
+function bestMatch(section: SearchSection) {
+  return ['search_block_best_match:', 'search_block_hot_result_core_resources:'].some((prefix) =>
+    section.id.startsWith(prefix),
+  );
+}
 function previewItems(section: SearchSection) {
   const items = section.items.filter((i) => i.kind !== 'song');
   if (category.value !== 'all') return items;
-  if (section.id.startsWith('search_block_best_match:')) return items.slice(0, 2);
+  if (bestMatch(section)) return items.slice(0, 2);
   return section.category && !['voices', 'all'].includes(section.category)
     ? items.slice(0, 6)
     : items;
@@ -107,7 +114,7 @@ function previewItems(section: SearchSection) {
 function oneRowPreview(section: SearchSection) {
   return (
     category.value === 'all' &&
-    !section.id.startsWith('search_block_best_match:') &&
+    !bestMatch(section) &&
     ['playlists', 'artists', 'albums', 'podcasts', 'mvs', 'users'].includes(section.category ?? '')
   );
 }
@@ -121,6 +128,7 @@ function playPreview(section: SearchSection, index: number) {
 }
 const songs = computed(() => view.value?.sections.flatMap(tracks) ?? []);
 const count = computed(() => view.value?.sections.reduce((n, s) => n + s.items.length, 0) ?? 0);
+const explanation = computed(() => searchExplanation(view.value, category.value, count.value > 0));
 const expandedLyrics = ref(new Set<string>());
 function toggleLyric(key: string) {
   const next = new Set(expandedLyrics.value);
@@ -153,15 +161,15 @@ function turn(key: SearchCategory, pagination?: SearchPageStep) {
   );
 }
 function tabKey(event: KeyboardEvent, index: number) {
+  const categories = visibleTabs.value;
   let next = index;
-  if (event.key === 'ArrowRight') next = (index + 1) % searchCategories.length;
-  else if (event.key === 'ArrowLeft')
-    next = (index + searchCategories.length - 1) % searchCategories.length;
+  if (event.key === 'ArrowRight') next = (index + 1) % categories.length;
+  else if (event.key === 'ArrowLeft') next = (index + categories.length - 1) % categories.length;
   else if (event.key === 'Home') next = 0;
-  else if (event.key === 'End') next = searchCategories.length - 1;
+  else if (event.key === 'End') next = categories.length - 1;
   else return;
   event.preventDefault();
-  choose(searchCategories[next]!.key, true);
+  choose(categories[next]!.key, true);
 }
 let restoring = false,
   loadGeneration = 0,
@@ -344,7 +352,7 @@ onBeforeUnmount(() => {
     <div class="search-results-toolbar">
       <div ref="tabs" class="search-result-tabs" role="tablist" aria-label="搜索结果分类">
         <button
-          v-for="(tab, i) in searchCategories"
+          v-for="(tab, i) in visibleTabs"
           :id="`search-tab-${tab.key}`"
           :key="tab.key"
           role="tab"
@@ -419,7 +427,12 @@ onBeforeUnmount(() => {
           <button class="secondary" @click="load()">重新加载</button>
         </div>
         <template v-else-if="view">
-          <p v-if="view.notice" class="search-result-notice" role="status">{{ view.notice }}</p>
+          <p v-if="explanation.notice" class="search-result-notice" role="status">
+            {{ explanation.notice }}
+          </p>
+          <div v-if="explanation.lines.length" class="search-result-notice" role="status">
+            <p v-for="line in explanation.lines" :key="line">{{ line }}</p>
+          </div>
           <p v-if="view.unavailableCount" class="search-result-notice">
             有 {{ view.unavailableCount }} 项结果暂无法展示。
           </p>
@@ -427,7 +440,7 @@ onBeforeUnmount(() => {
             <Icon name="search" />
             <p>
               {{
-                view.emptyTitle ||
+                explanation.emptyTitle ||
                 `没有找到相关${selected.title === '综合' ? '内容' : selected.title}`
               }}
             </p>
@@ -439,10 +452,10 @@ onBeforeUnmount(() => {
             class="search-result-section"
             :class="{
               'search-result-tracks': section.items.some((i) => i.kind === 'song'),
-              'search-best-section': section.id.startsWith('search_block_best_match:'),
+              'search-best-section': bestMatch(section),
             }"
           >
-            <header v-if="category === 'all' && !section.id.startsWith('search_block_best_match:')">
+            <header v-if="category === 'all' && !bestMatch(section)">
               <h2>
                 <button
                   v-if="section.category"

@@ -8,6 +8,7 @@ import {
   type SearchViewportMemory,
 } from '../services/searchViewport.ts';
 import type {
+  SearchCategory,
   SearchResultQuery,
   SearchResultView,
   SearchResultsClient,
@@ -19,6 +20,7 @@ export function useSearchResults(
   memory: SearchViewportMemory = createSearchViewportMemory(),
 ) {
   const view = shallowRef<SearchResultView>(),
+    tabs = shallowRef<readonly SearchCategory[]>(),
     loading = ref(false),
     error = ref(''),
     loadingMore = ref(false),
@@ -32,6 +34,7 @@ export function useSearchResults(
     account = next;
     memory.connect(next);
     view.value = undefined;
+    tabs.value = undefined;
     error.value = '';
     loading.value = false;
     loadingMore.value = false;
@@ -64,11 +67,13 @@ export function useSearchResults(
       current = ++generation;
     activeKey = memory.key(query, session);
     const cached = reuse ? memory.get(activeKey, epoch) : undefined;
+    tabs.value = memory.getTabs(session, epoch);
     loadingMore.value = false;
     moreError.value = cached?.moreError ?? '';
     position.value = cached?.position ?? { top: 0, tracks: 0 };
     if (cached) {
       view.value = cached.view;
+      if (!tabs.value && query.category === 'all') tabs.value = cached.view.tabs;
       error.value = '';
       loading.value = false;
       return;
@@ -80,6 +85,14 @@ export function useSearchResults(
       const result = await core.searchResults(epoch, query);
       if (current === generation && account?.epoch === epoch && result.epoch === epoch) {
         view.value = result.value;
+        if (
+          query.category === 'all' &&
+          result.value.query.category === 'all' &&
+          result.value.tabs
+        ) {
+          memory.setTabs(session, result.value.tabs, epoch);
+          tabs.value = result.value.tabs;
+        }
         save();
       }
     } catch (e) {
@@ -88,6 +101,7 @@ export function useSearchResults(
       error.value = issue.message;
       if (issue.code === 'session_expired' || issue.code === 'profile_changed') {
         memory.clear();
+        tabs.value = undefined;
         expired();
       }
     } finally {
@@ -155,6 +169,7 @@ export function useSearchResults(
       save();
       if (issue.code === 'session_expired' || issue.code === 'profile_changed') {
         memory.clear();
+        tabs.value = undefined;
         expired();
       }
     } finally {
@@ -165,11 +180,13 @@ export function useSearchResults(
     generation++;
     account = undefined;
     view.value = undefined;
+    tabs.value = undefined;
     loading.value = false;
     loadingMore.value = false;
   }
   return {
     view,
+    tabs,
     loading,
     error,
     loadingMore,

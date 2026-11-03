@@ -2,10 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { useSearchResults } from '../src/composables/useSearchResults.ts';
 import { createSearchViewportMemory } from '../src/services/searchViewport.ts';
-import type {
-  SearchResultQuery,
-  SearchResultView,
-  SearchResultsClient,
+import {
+  displayedSearchCategories,
+  searchExplanation,
+  type SearchResultQuery,
+  type SearchResultView,
+  type SearchResultsClient,
 } from '../src/services/search.ts';
 import type { AccountData, AccountView } from '../src/services/contracts.ts';
 const account: AccountView = {
@@ -301,4 +303,101 @@ test('hot search channel survives continuation and does not share an ordinary re
     ],
   );
   assert.equal(model.view.value?.query.channel, undefined);
+});
+
+test('comprehensive tabs retain server order through category navigation, remount and Back', async () => {
+  const memory = createSearchViewportMemory();
+  let calls = 0;
+  const api: SearchResultsClient = {
+    searchResults: async (epoch, q) => {
+      calls++;
+      const reply = view(q);
+      // A category response must not override the comprehensive route.
+      reply.value.tabs = q.category === 'all' ? ['users', 'songs', 'albums'] : ['mvs'];
+      return { ...reply, epoch };
+    },
+  };
+  const first = useSearchResults(api, () => {}, memory);
+  first.connect(account);
+  await first.open(query, true, 7);
+  await first.open(artistQuery, true, 7);
+  assert.deepEqual(first.tabs.value, ['users', 'songs', 'albums']);
+  assert.deepEqual(
+    displayedSearchCategories(first.tabs.value, 'artists').map((tab) => tab.key),
+    ['all', 'users', 'songs', 'albums', 'artists'],
+  );
+  first.dispose();
+
+  const second = useSearchResults(api, () => {}, memory);
+  second.connect(account);
+  await second.open(artistQuery, true, 7);
+  assert.deepEqual(second.tabs.value, ['users', 'songs', 'albums']);
+  await second.open(query, true, 7);
+  assert.deepEqual(
+    displayedSearchCategories(second.tabs.value, 'all').map((tab) => tab.key),
+    ['all', 'users', 'songs', 'albums'],
+  );
+  assert.equal(calls, 2);
+
+  await second.open(artistQuery, true, 8);
+  assert.equal(second.tabs.value, undefined);
+  assert.equal(displayedSearchCategories(second.tabs.value, 'artists').length, 10);
+  second.connect({ ...account, epoch: '2' });
+  await second.open(artistQuery, true, 7);
+  assert.equal(second.tabs.value, undefined);
+  assert.equal(memory.getTabs(7, '1'), undefined);
+});
+
+test('a superseded comprehensive reply cannot populate another route or its Back memory', async () => {
+  const memory = createSearchViewportMemory();
+  const pending = deferred<AccountData<SearchResultView>>();
+  const model = useSearchResults(
+    {
+      searchResults: async (_epoch, q) => (q.category === 'all' ? pending.promise : view(q)),
+    },
+    () => {},
+    memory,
+  );
+  model.connect(account);
+  const obsolete = model.open(query, true, 9);
+  await model.open(artistQuery, true, 10);
+  pending.resolve({ ...view(query), value: { ...view(query).value, tabs: ['users'] } });
+  await obsolete;
+  assert.equal(model.tabs.value, undefined);
+  assert.equal(memory.getTabs(9, account.epoch), undefined);
+});
+
+test('server tab order preserves comprehensive position and handles duplicate keys', () => {
+  assert.deepEqual(
+    displayedSearchCategories(['users', 'all', 'users', 'songs'], 'songs').map((tab) => tab.key),
+    ['users', 'all', 'songs'],
+  );
+  assert.deepEqual(
+    displayedSearchCategories([], 'mvs').map((tab) => tab.key),
+    ['all', 'mvs'],
+  );
+});
+
+test('hot search explanation is all-only and does not repeat empty-state or notice text', () => {
+  const result = {
+    ...view(query).value,
+    hotExplanation: { title: '  暂无单曲 ', text: '官方解释', pictureUrl: 'https://unused' },
+    notice: '官方解释',
+    emptyTitle: '空结果',
+  };
+  assert.deepEqual(searchExplanation(result, 'all', false), {
+    emptyTitle: '暂无单曲',
+    notice: '官方解释',
+    lines: [],
+  });
+  assert.deepEqual(searchExplanation(result, 'all', true), {
+    emptyTitle: undefined,
+    notice: '官方解释',
+    lines: ['暂无单曲'],
+  });
+  assert.deepEqual(searchExplanation(result, 'songs', false), {
+    emptyTitle: '空结果',
+    notice: '官方解释',
+    lines: [],
+  });
 });
