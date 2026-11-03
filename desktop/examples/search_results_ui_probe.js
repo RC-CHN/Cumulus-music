@@ -383,6 +383,9 @@
       assert(selected.entryId===queue.tracks[29].entryId&&
         deep.tracks.map(row=>row.entryId).sort().join(',')===queue.tracks.map(row=>row.entryId).sort().join(','),'deep row keeps all active queue entries');
       await capture('song_deep_result_keeps_queue');
+      click(button('返回上一页'));
+      await wait(()=>one('[data-category="all"]')?.getAttribute('aria-selected')==='true'&&ready(),'reselecting current songs did not add a Back step');
+
       await emit('complete',{ok:true,songWaterfallVerified:true,stageCount:count,songReads,realMusicRequests:0,realAccountWrites:0});
       return;
     }
