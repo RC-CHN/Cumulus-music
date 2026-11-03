@@ -303,6 +303,7 @@ jobs:
           python scripts/ci/search_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_results_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-results-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_results_smoke.py --v3 --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-v3-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/search_results_smoke.py --voice-direct --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-voice-direct-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_cards_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-cards-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_preview_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-preview-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_lyrics_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-lyrics-windows --runtime .build/package-stage/windows-x64/native
@@ -558,6 +559,7 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-results-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --v3 --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-v3-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --voice-direct --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-voice-direct-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_cards_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-cards-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_preview_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-preview-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_lyrics_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-lyrics-linux
