@@ -110,6 +110,7 @@ export interface CoreClient
   playlistPage(id: string, page: PageRequest): Promise<AccountData<TrackPage>>;
   searchSongs(keyword: string, page: PageRequest): Promise<AccountData<TrackPage>>;
   dailySongs(): Promise<AccountData<TrackPage>>;
+  styleRecommendations(epoch: string): Promise<AccountData<TrackPage>>;
   likedIds(): Promise<AccountData<string[]>>;
   setLiked(epoch: string, id: string, liked: boolean): Promise<AccountData<LikeResult>>;
 }

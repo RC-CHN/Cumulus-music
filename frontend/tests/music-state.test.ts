@@ -72,6 +72,7 @@ function backend(overrides: Partial<CoreClient> = {}): CoreClient {
     playlists: async () => data([]),
     likedIds: async () => data([]),
     dailySongs: async () => data(page),
+    styleRecommendations: async () => data(page),
     playlistPage: async () => data(page),
     searchSongs: async () => data(page),
     setLiked: async (_epoch, id, liked) => data({ id, phase: 'confirmed', observed: liked }),

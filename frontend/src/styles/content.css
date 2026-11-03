@@ -26,7 +26,8 @@
   align-items: center;
   gap: 8px;
 }
-.daily-history-entry {
+.daily-history-entry,
+.daily-style-entry {
   white-space: nowrap;
 }
 .daily-history-badge {

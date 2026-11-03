@@ -31,6 +31,7 @@ export type Page =
   | { kind: 'podcasts' }
   | { kind: 'local' }
   | { kind: 'daily' }
+  | { kind: 'style_recommendations' }
   | { kind: 'library' }
   | { kind: 'downloads'; downloadVisit?: number; initialTab?: 'active' }
   | { kind: 'cloud' }
@@ -192,11 +193,13 @@ export function useMusic(
       const data =
         target.kind === 'daily'
           ? await core.dailySongs()
-          : await core.playlistPage(target.id, {
-              offset,
-              limit: 100,
-              revision: more ? result.value?.revision : null,
-            });
+          : target.kind === 'style_recommendations'
+            ? await core.styleRecommendations(account.value.epoch)
+            : await core.playlistPage(target.id, {
+                offset,
+                limit: 100,
+                revision: more ? result.value?.revision : null,
+              });
       if (current !== request) return;
       const value = accept(data);
       if (!value) return;

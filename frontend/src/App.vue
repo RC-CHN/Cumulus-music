@@ -777,6 +777,13 @@ function openDailyHistory() {
   void member.open({ kind: 'history', date: null });
   music.navigate({ kind: 'member' });
 }
+function openStyleRecommendations() {
+  if (!signedIn.value) {
+    loginOpen.value = true;
+    return;
+  }
+  music.navigate({ kind: 'style_recommendations' });
+}
 function backFromPage() {
   if (batchTarget.value) batchPage.value?.requestLeave();
   else if (downloadBatch.value) downloadBatchPage.value?.requestLeave();
@@ -1258,11 +1265,13 @@ const playingLikeBusy = computed(() => {
 const title = computed(() =>
   page.value.kind === 'daily'
     ? '每日推荐'
-    : page.value.kind === 'library'
-      ? '我的歌单'
-      : page.value.kind === 'search'
-        ? `搜索「${page.value.keyword}」`
-        : (result.value?.playlist?.name ?? '歌单'),
+    : page.value.kind === 'style_recommendations'
+      ? '风格推荐'
+      : page.value.kind === 'library'
+        ? '我的歌单'
+        : page.value.kind === 'search'
+          ? `搜索「${page.value.keyword}」`
+          : (result.value?.playlist?.name ?? '歌单'),
 );
 async function authorized() {
   loginOpen.value = false;
@@ -2225,7 +2234,9 @@ onUnmounted(() => {
                     <p class="muted">
                       {{
                         result
-                          ? `找到 ${result.total} 首歌曲`
+                          ? page.kind === 'style_recommendations'
+                            ? '定制您今日的专属好音乐'
+                            : `找到 ${result.total} 首歌曲`
                           : error
                             ? '加载失败，可以重试'
                             : page.kind === 'playlist'
@@ -2235,6 +2246,14 @@ onUnmounted(() => {
                     </p>
                   </div>
                   <div class="page-heading-actions">
+                    <button
+                      v-if="page.kind === 'daily'"
+                      class="text-button daily-style-entry"
+                      type="button"
+                      @click="openStyleRecommendations"
+                    >
+                      风格推荐
+                    </button>
                     <button
                       v-if="page.kind === 'daily'"
                       class="text-button daily-history-entry"
