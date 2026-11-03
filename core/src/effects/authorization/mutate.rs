@@ -1,11 +1,11 @@
 use super::{
     EffectAuthorizations, EffectLease, LeaseObservation, LeasePhase, ReleaseRetry, TrialConsent,
-    parametric::{current_non_trial, known_non_trial, registered_non_trial},
+    parametric::{current_non_trial, registered_non_trial},
 };
 use crate::{
     Error, Result,
     account::SessionToken,
-    effects::{api::EffectsApi, catalog::EffectId},
+    effects::{api::EffectsApi, catalog::EffectId, rights::known_non_trial},
 };
 
 impl EffectAuthorizations {

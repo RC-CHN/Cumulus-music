@@ -19,6 +19,22 @@ pub enum ParametricPreparation {
     Prepared(Box<PreparedParametric>),
 }
 
+/// Read-only eligibility for the supported standalone component. Ready
+/// is a material receipt, not a lease or an audio-engine activation receipt.
+pub enum StandaloneParametricPreflight {
+    Pending { bytes: u64 },
+    Unsupported,
+    Ready(Box<StandaloneParametric>),
+}
+
+pub struct StandaloneParametric(PreparedParametric);
+
+impl StandaloneParametric {
+    pub fn effect(&self) -> EffectId {
+        self.0.effect()
+    }
+}
+
 /// Native provenance for one component, never a serializable preset or lease.
 pub struct PreparedParametric {
     session: Weak<AccountSession>,
@@ -35,6 +51,9 @@ impl PreparedParametric {
     }
     pub fn enabled(&self) -> bool {
         self.plan.enabled()
+    }
+    pub(in crate::effects) fn is_standalone(&self) -> bool {
+        self.enabled() && self.additional_sections.is_empty()
     }
     /// Other sections dispatched by EFB760, including sections that turn a
     /// node off. No claim is made that they are playable or that PEQ suffices.
@@ -53,12 +72,60 @@ impl EffectsLibrary {
         effect: EffectId,
         options: RunOptions,
     ) -> Result<ParametricPreparation> {
+        self.prepare_parametric_with_rights(token, effect, options, false)
+            .await
+    }
+
+    /// Accept only a fresh non-trial material containing an enabled PEQ and
+    /// no other routed component. Even an explicit off section is excluded.
+    pub async fn preflight_parametric_activation_for(
+        &self,
+        token: &SessionToken,
+        effect: EffectId,
+        options: RunOptions,
+    ) -> Result<StandaloneParametricPreflight> {
+        let prepared = self
+            .prepare_parametric_with_rights(token, effect, options, true)
+            .await?;
+        match prepared {
+            ParametricPreparation::Pending { bytes } => {
+                Ok(StandaloneParametricPreflight::Pending { bytes })
+            }
+            ParametricPreparation::Prepared(prepared) if prepared.is_standalone() => {
+                self.prepared_parametric_for(token, &prepared)?;
+                Ok(StandaloneParametricPreflight::Ready(Box::new(
+                    StandaloneParametric(*prepared),
+                )))
+            }
+            _ => Ok(StandaloneParametricPreflight::Unsupported),
+        }
+    }
+
+    /// Revalidate the opaque receipt before a subsequent native step.
+    /// No registration or fresh server authorization is implied.
+    pub fn validate_parametric_preflight_for(
+        &self,
+        token: &SessionToken,
+        preflight: &StandaloneParametric,
+    ) -> Result<()> {
+        self.with_prepared_parametric_for(token, &preflight.0, |_| Ok(()))
+    }
+
+    async fn prepare_parametric_with_rights(
+        &self,
+        token: &SessionToken,
+        effect: EffectId,
+        options: RunOptions,
+        require_non_trial: bool,
+    ) -> Result<ParametricPreparation> {
         if effect.interests_type() != 127 {
             return Err(Error::InvalidInput(
                 "special effects require their own material source",
             ));
         }
-        let outcome = self.acquire_for(token, effect, options).await?;
+        let outcome = self
+            .acquire_with_rights(token, effect, options, require_non_trial)
+            .await?;
         let result = if let Some(material) = outcome.material {
             let routing = route_sections(&material.parameters)?;
             if let Some(section) = routing

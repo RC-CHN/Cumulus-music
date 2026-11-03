@@ -7,7 +7,10 @@ use crate::{
         catalog::{CatalogueKind, EffectId},
         device_directory::EffectDeviceRow,
         directory::{EffectDirectoryDetail, EffectDirectoryRow},
-        service::{EffectsLibrary, ParametricPreparation, PreparedParametric},
+        service::{
+            EffectsLibrary, ParametricPreparation, PreparedParametric,
+            StandaloneParametricPreflight,
+        },
     },
 };
 
@@ -23,6 +26,20 @@ impl MusicClient {
         let token = self.player_token(epoch)?;
         EffectsLibrary::new(self.session.clone())?
             .prepare_parametric_for(&token, id, options)
+            .await
+    }
+
+    /// Native-only read of whether an official catalogue ID can be
+    /// represented by the supported standalone PEQ plan.
+    pub async fn preflight_native_effect_parametric(
+        &self,
+        epoch: &str,
+        id: EffectId,
+        options: RunOptions,
+    ) -> Result<StandaloneParametricPreflight> {
+        let token = self.player_token(epoch)?;
+        EffectsLibrary::new(self.session.clone())?
+            .preflight_parametric_activation_for(&token, id, options)
             .await
     }
 

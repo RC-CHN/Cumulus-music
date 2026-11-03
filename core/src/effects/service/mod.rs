@@ -17,7 +17,9 @@ use crate::{
     download::transfer::{MediaBackend, ReqwestMediaBackend, TransferManager},
     storage::{OperationLock, StateStore},
 };
-pub use parametric::{ParametricPreparation, PreparedParametric};
+pub use parametric::{
+    ParametricPreparation, PreparedParametric, StandaloneParametric, StandaloneParametricPreflight,
+};
 pub use records::{MaterialHandle, MaterialOutcome, MaterialPhase, VerifiedMaterial};
 use std::{sync::Arc, time::Duration};
 const CATALOGUES: &str = "effects-catalogues-v1";

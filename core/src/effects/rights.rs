@@ -34,6 +34,10 @@ impl Authorization {
         matches!(self.can_use_type, Some(50 | 51))
     }
 }
+/// Known non-trial types from the guarded registration/binding evidence.
+pub(super) fn known_non_trial(value: Option<u32>) -> bool {
+    matches!(value, Some(10..=12))
+}
 #[derive(Clone, Copy, Debug, Default)]
 pub struct HostRights {
     pub anonymous: bool,

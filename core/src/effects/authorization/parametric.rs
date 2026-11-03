@@ -7,6 +7,7 @@ use crate::{
     effects::{
         api::EffectsApi,
         catalog::EffectId,
+        rights::known_non_trial,
         service::{EffectsLibrary, PreparedParametric},
     },
 };
@@ -135,11 +136,6 @@ impl BoundParametric {
     }
 }
 
-pub(super) fn known_non_trial(value: Option<u32>) -> bool {
-    // Confirmed non-trial kinds from the existing guarded activation proof.
-    matches!(value, Some(10..=12))
-}
-
 pub(super) fn registered_non_trial(lease: &EffectLease) -> bool {
     lease.phase == LeasePhase::Registered
         && lease.start_acknowledged
@@ -174,7 +170,7 @@ impl EffectAuthorizations {
         let owner = self.owner(token)?;
         let _lock = self.lock(&owner)?;
         library.prepared_parametric_for(token, &prepared)?;
-        if !prepared.enabled() || !prepared.additional_sections().is_empty() {
+        if !prepared.is_standalone() {
             return Err(Error::State(
                 "effect is not a standalone enabled PEQ material",
             ));

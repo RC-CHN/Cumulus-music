@@ -8,7 +8,7 @@ use crate::{
     download::transfer::{
         CreateTransfer, RunOptions, TransferDirective, TransferJob, TransferStatus,
     },
-    effects::{api::EffectsApi, catalog::EffectId},
+    effects::{api::EffectsApi, catalog::EffectId, rights::known_non_trial},
 };
 use std::sync::Arc;
 
@@ -19,7 +19,18 @@ impl EffectsLibrary {
         &self,
         token: &SessionToken,
         effect: EffectId,
+        options: RunOptions,
+    ) -> Result<MaterialOutcome> {
+        self.acquire_with_rights(token, effect, options, false)
+            .await
+    }
+
+    pub(super) async fn acquire_with_rights(
+        &self,
+        token: &SessionToken,
+        effect: EffectId,
         mut options: RunOptions,
+        require_non_trial: bool,
     ) -> Result<MaterialOutcome> {
         if options.byte_budget == Some(0) {
             return Err(Error::InvalidInput("material byte budget must be positive"));
@@ -43,6 +54,11 @@ impl EffectsLibrary {
             .await?
             .filter(|auth| auth.can_use)
             .ok_or(Error::State("effect material is not authorized"))?;
+        if require_non_trial && !known_non_trial(authorization.can_use_type) {
+            return Err(Error::State(
+                "effect material requires confirmed non-trial rights",
+            ));
+        }
         let descriptor = sound
             .parameter_material()?
             .ok_or(Error::Response("sound has no parameter material"))?;

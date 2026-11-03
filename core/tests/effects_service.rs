@@ -851,6 +851,84 @@ async fn prepared_parametric_comes_only_from_verified_owned_material_and_never_r
     );
 }
 
+#[tokio::test]
+async fn standalone_activation_preflight_rejects_unproven_rights_before_transfer() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = Arc::new(StateStore::open(temp.path()).unwrap());
+    let (bytes, _) = sample("first");
+    let official = sound(&bytes, URL);
+    let api = Arc::new(ScriptApi::new([
+        detail(&official),
+        json!({"code":200,"data":[{"interestsId":300,"interestsType":127,
+            "authResp":{"authResult":{"canUse":true,"canUseType":50}}}]})
+        .into(),
+    ]));
+    let session = world(api.clone(), store);
+    let token = session.token().unwrap();
+    let origin = Arc::new(Origin::new(bytes));
+    let library = EffectsLibrary::with_backend(session, origin.clone()).unwrap();
+
+    assert!(matches!(
+        library
+            .preflight_parametric_activation_for(&token, id(), RunOptions::default())
+            .await,
+        Err(Error::State(
+            "effect material requires confirmed non-trial rights"
+        ))
+    ));
+    assert_eq!(api.calls().len(), 2);
+    assert!(origin.calls().is_empty());
+}
+
+#[tokio::test]
+async fn standalone_activation_preflight_returns_only_enabled_receipts_owned_by_the_session() {
+    use cumulus_core::effects::service::StandaloneParametricPreflight;
+    for name in ["first", "replacement"] {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Arc::new(StateStore::open(temp.path()).unwrap());
+        let (bytes, _) = sample(name);
+        let official = sound(&bytes, URL);
+        let api = Arc::new(ScriptApi::new(pair(&official, true)));
+        let session = world(api.clone(), store.clone());
+        let token = session.token().unwrap();
+        let library =
+            EffectsLibrary::with_backend(session.clone(), Arc::new(Origin::new(bytes))).unwrap();
+        let result = library
+            .preflight_parametric_activation_for(&token, id(), RunOptions::default())
+            .await
+            .unwrap();
+        if name == "first" {
+            let StandaloneParametricPreflight::Ready(receipt) = result else {
+                panic!("verified standalone PEQ must be eligible for the next native step");
+            };
+            assert_eq!(receipt.effect(), id());
+            library
+                .validate_parametric_preflight_for(&token, &receipt)
+                .unwrap();
+            let replacement = world(api.clone(), store);
+            let other =
+                EffectsLibrary::with_backend(replacement, Arc::new(Origin::new(Vec::new())))
+                    .unwrap();
+            assert!(matches!(
+                other.validate_parametric_preflight_for(&token, &receipt),
+                Err(Error::StaleResponse)
+            ));
+        } else {
+            assert!(matches!(result, StandaloneParametricPreflight::Unsupported));
+        }
+        assert_eq!(
+            api.calls()
+                .iter()
+                .map(|call| call.path.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "/api/usertool/home/sound/info",
+                "/api/vipauth/app/interests/auth/query"
+            ]
+        );
+    }
+}
+
 fn nontrial_recycle(value: bool) -> Reply {
     json!({"code":200,"data":{"127":[{"interestsId":300,"canRecycle":value}]}}).into()
 }
