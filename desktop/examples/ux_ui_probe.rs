@@ -260,7 +260,7 @@ impl Api for Library {
                             json!({"code":500})
                         }
                         24 => {
-                            json!({"code":200,"more":false,"total":25,"subscribers":[{"nickname":"合成收藏者 25","signature":"合成签名"}]})
+                            json!({"code":200,"more":false,"total":25,"subscribers":[{"userId":3,"nickname":"合成收藏者 25","signature":"合成签名"}]})
                         }
                         _ => panic!("unexpected synthetic subscriber offset"),
                     }

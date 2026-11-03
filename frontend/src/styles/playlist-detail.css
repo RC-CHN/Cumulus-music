@@ -314,6 +314,8 @@
   color: var(--muted);
 }
 .playlist-subscribers {
+  min-height: 0;
+  overflow: auto;
   padding-top: 12px;
 }
 .playlist-subscriber-grid {
@@ -323,13 +325,18 @@
   padding: 0;
   list-style: none;
 }
-.playlist-subscriber-grid li {
+.playlist-subscriber-card {
+  width: 100%;
+  padding: 0;
   display: grid;
   justify-items: center;
   min-width: 0;
   gap: 6px;
 }
-.playlist-subscriber-grid :is(strong, span) {
+button.playlist-subscriber-card:hover strong {
+  color: var(--accent);
+}
+.playlist-subscriber-card > :is(strong, .muted) {
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;

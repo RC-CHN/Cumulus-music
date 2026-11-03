@@ -39,32 +39,62 @@
     await wait(() => one('.playlist-hero') && count('.track-row'), 'playlist tracks');
     const hero = one('.playlist-hero');
     const sections = [...document.querySelectorAll('.playlist-section')];
-    const [songs, subscribers] = sections;
+    const [songs] = sections;
+    const subscribers = sections.find((section) => section.textContent.trim().startsWith('收藏者'));
     assert(subscribers.textContent.includes('25'), 'authoritative tab count');
     assert(songs.getAttribute('aria-pressed') === 'true', 'songs selected');
     await emit('ux_01_tracks');
     click(subscribers);
     await wait(() => count('.playlist-subscriber-grid li') === 24, 'first collector page');
-    assert(one('.playlist-hero') === hero && !count('.track-row'), 'same hero, collector rows only');
+    assert(
+      one('.playlist-hero') === hero && !count('.track-row'),
+      'same hero, collector rows only',
+    );
     assert(document.activeElement === subscribers, 'tab focus');
     assert(subscribers.getAttribute('aria-pressed') === 'true', 'collectors selected');
     const grid = one('.playlist-subscriber-grid');
-    assert(getComputedStyle(grid).gridTemplateColumns.split(/\s+/).length === 3, 'three-column grid');
+    const firstPage = one('.playlist-subscribers');
+    assert(!grid.querySelector('button'), 'missing IDs are display-only');
+    firstPage.scrollTop = firstPage.scrollHeight;
+    assert(firstPage.scrollTop > 0, 'collector rows and pagination are reachable by scrolling');
+    firstPage.scrollTop = 0;
+    assert(
+      getComputedStyle(grid).gridTemplateColumns.split(/\s+/).length === 3,
+      'three-column grid',
+    );
     assert(grid.scrollWidth <= grid.clientWidth, 'collector grid stays in its column');
     await emit('ux_02_collectors');
     click(button('下一页'));
     await wait(() => one('.playlist-subscribers [role="alert"]'), 'failed page');
     assert(count('.playlist-subscriber-grid li') === 24, 'preserved page after failure');
     click(button('重试', one('.playlist-subscribers')));
-    await wait(() => one('.playlist-subscriber-grid')?.textContent.includes('合成收藏者 25'), 'retry page');
+    await wait(
+      () => one('.playlist-subscriber-grid')?.textContent.includes('合成收藏者 25'),
+      'retry page',
+    );
     assert(count('.playlist-subscriber-grid li') === 1, 'only second page rendered');
     assert(button('下一页').disabled, 'last page');
     await emit('ux_03_retried');
+    click(button('查看合成收藏者 25的主页'));
+    await wait(
+      () => one('.playlist-creator-page h1')?.textContent === '合成作者 3',
+      'opened the subscriber profile',
+    );
+    await emit('ux_04_profile');
+    click(button('返回上一页'));
+    await wait(
+      () => document.activeElement === button('查看合成收藏者 25的主页'),
+      'restored focus to the subscriber card',
+    );
+    assert(count('.playlist-subscriber-grid li') === 1, 'restored the second page');
+    await emit('ux_05_profile_back');
+    const restoredSongs = [...document.querySelectorAll('.playlist-section')][0];
+    const restoredHero = one('.playlist-hero');
     click(button('上一页'));
     await wait(() => count('.playlist-subscriber-grid li') === 24, 'previous page');
-    click(songs);
+    click(restoredSongs);
     await wait(() => count('.track-row') && !one('.playlist-subscribers'), 'return to tracks');
-    assert(one('.playlist-hero') === hero, 'hero still mounted');
+    assert(one('.playlist-hero') === restoredHero, 'hero still mounted');
     await emit('complete', { ok: true });
   } catch (error) {
     await emit('failed', { message: String(error) });

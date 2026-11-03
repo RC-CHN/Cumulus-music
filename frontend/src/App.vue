@@ -961,6 +961,61 @@ const playlistPanelId = () =>
     ? page.value.id
     : null;
 const subscribers = usePlaylistSubscribers(core, () => account.value.epoch, playlistPanelId);
+let subscriberReturnSerial = 0;
+type SubscriberFocus = { row: number; scrollTop: number };
+let subscriberReturn:
+  | {
+      token: number;
+      epoch: string;
+      playlistId: string;
+      page: NonNullable<typeof subscribers.value.value>;
+      focus: SubscriberFocus;
+    }
+  | undefined;
+const subscriberFocus = shallowRef<SubscriberFocus>();
+watch(
+  [() => account.value.epoch, () => account.value.status],
+  () => {
+    subscriberReturn = undefined;
+    subscriberFocus.value = undefined;
+  },
+  { flush: 'sync' },
+);
+watch(
+  [playlistPanelId, () => page.value],
+  ([id, route]) => {
+    subscriberFocus.value = undefined;
+    if (
+      id &&
+      route.kind === 'playlist' &&
+      subscriberReturn?.token === route.subscriberReturn &&
+      subscriberReturn?.epoch === account.value.epoch &&
+      subscriberReturn.playlistId === id
+    ) {
+      const saved = subscriberReturn;
+      subscriberReturn = undefined;
+      subscriberFocus.value = saved.focus;
+      subscribers.restore(saved.page);
+    }
+  },
+  { flush: 'sync' },
+);
+function openSubscriber(id: string, focus: SubscriberFocus) {
+  const playlistId = playlistPanelId();
+  const current = subscribers.value.value;
+  if (
+    !signedIn.value ||
+    !playlistId ||
+    !subscribers.open.value ||
+    subscribers.busy.value ||
+    !current ||
+    current.subscribers[focus.row]?.userId !== id
+  )
+    return;
+  const token = ++subscriberReturnSerial;
+  subscriberReturn = { token, epoch: account.value.epoch, playlistId, page: current, focus };
+  music.openSubscriberProfile(id, token);
+}
 const playlistComments = usePlaylistCommentTab(
   core,
   () => account.value,
@@ -2261,6 +2316,9 @@ onUnmounted(() => {
                 <PlaylistSubscribers
                   v-else-if="result?.playlist && subscribers.open.value"
                   :model="subscribers"
+                  :restore-focus="subscriberFocus"
+                  @profile="openSubscriber"
+                  @restored="subscriberFocus = undefined"
                 />
                 <template v-else-if="result">
                   <div v-if="result.tracks.length && !result.playlist" class="track-actions">

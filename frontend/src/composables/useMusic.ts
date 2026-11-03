@@ -37,7 +37,7 @@ export type Page =
   | { kind: 'mvs' }
   | { kind: 'mv'; id: string; taskId?: string }
   | { kind: 'comments'; resource: CommentResource; title: string }
-  | { kind: 'playlist'; id: string }
+  | { kind: 'playlist'; id: string; subscriberReturn?: number }
   | { kind: 'playlist_tag'; tag: string }
   | { kind: 'playlist_creator'; id: string }
   | {
@@ -269,11 +269,15 @@ export function useMusic(
       if (current === accountRequest) initializing.value = false;
     }
   }
-  function navigate(next: Page) {
+  function navigate(next: Page, subscriberReturn?: number) {
     const local = next.kind === 'local';
     if (initializing.value && !local) return;
     navigation(() => {
-      history.push(page.value);
+      history.push(
+        page.value.kind === 'playlist' && subscriberReturn !== undefined
+          ? { ...page.value, subscriberReturn }
+          : page.value,
+      );
       historyLength.value = history.length;
       page.value =
         next.kind === 'search' && next.searchId === undefined
@@ -392,7 +396,9 @@ export function useMusic(
     refreshLikes,
     load,
     bootstrap,
-    navigate,
+    navigate: (next: Page) => navigate(next),
+    openSubscriberProfile: (id: string, token: number) =>
+      navigate({ kind: 'playlist_creator', id }, token),
     back,
     like,
   };

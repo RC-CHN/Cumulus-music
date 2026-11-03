@@ -80,6 +80,7 @@ impl MusicClient {
                             .find(|name| !name.trim().is_empty())
                             .ok_or(Error::Response("missing playlist subscriber name"))?;
                         Ok(PlaylistSubscriberView {
+                            user_id: identifier(&row["userId"]).ok(),
                             nickname: nickname.chars().take(128).collect(),
                             avatar_url: mapping::artwork(&row["avatarUrl"]),
                             signature: row["signature"]

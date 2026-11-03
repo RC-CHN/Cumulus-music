@@ -94,7 +94,7 @@ impl Api for Backend {
                         json!({"code":200,"subscribers":[{"userId":81,"nickname":"收藏者甲","signature":"签名","avatarUrl":"http://p1.music.126.net/a.jpg?secret=DO_NOT_EXPORT","token":"DO_NOT_EXPORT"}],"more":true,"total":25})
                     }
                     Some(24) => {
-                        json!({"code":200,"subscribers":[{"userId":82,"nickName":"收藏者乙","avatarUrl":"https://foreign.invalid/private"}],"more":false,"total":25})
+                        json!({"code":200,"subscribers":[{"userId":"bad/path","nickName":"收藏者乙","avatarUrl":"https://foreign.invalid/private"}],"more":false,"total":25})
                     }
                     _ => json!({"code":200,"subscribers":[],"more":true}),
                 },
@@ -436,6 +436,7 @@ async fn playlist_subscribers_are_epoch_bound_paged_and_safe_to_render() {
     assert_eq!(
         serde_json::to_value(&first.value.subscribers[0]).unwrap(),
         json!({
+            "userId": "81",
             "nickname": "收藏者甲",
             "signature": "签名",
             "avatarUrl": "https://p1.music.126.net/a.jpg?param=320y320",
@@ -445,6 +446,7 @@ async fn playlist_subscribers_are_epoch_bound_paged_and_safe_to_render() {
     assert_eq!(second.value.next_offset, None);
     assert_eq!(second.value.previous_offset, Some(0));
     assert_eq!(second.value.subscribers[0].avatar_url, None);
+    assert_eq!(second.value.subscribers[0].user_id, None);
     assert_eq!(second.value.subscribers[0].nickname, "收藏者乙");
     assert!(matches!(
         client.playlist_subscribers(&epoch, "7", 48).await,

@@ -150,7 +150,12 @@ export interface PlaylistTagPage {
 }
 
 export interface PlaylistSubscribersPage {
-  subscribers: { nickname: string; avatarUrl: string | null; signature: string }[];
+  subscribers: {
+    userId: string | null;
+    nickname: string;
+    avatarUrl: string | null;
+    signature: string;
+  }[];
   previousOffset: number | null;
   nextOffset: number | null;
 }

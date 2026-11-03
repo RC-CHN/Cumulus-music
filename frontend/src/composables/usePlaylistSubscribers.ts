@@ -60,6 +60,12 @@ export function usePlaylistSubscribers(
     hasPrevious,
     show,
     hide,
+    restore(page: PlaylistSubscribersPage) {
+      if (!playlistId()) return;
+      hide();
+      open.value = true;
+      value.value = page;
+    },
     retry: () => read(requestedOffset.value),
     next: () => {
       const offset = value.value?.nextOffset;
