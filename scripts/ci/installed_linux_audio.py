@@ -94,7 +94,7 @@ def isolated_audio(root, env):
         media.mkdir()
         source = media/'Synthetic.flac'
         subprocess.run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i',
-                        'sine=frequency=440:sample_rate=48000:duration=30',
+                        'sine=frequency=440:sample_rate=48000:duration=45',
                         '-metadata', f'title={TITLE}', source], check=True, timeout=20)
         yield source
 
@@ -224,14 +224,15 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
         assert queue['current'] == item['entry_id'] == position['entry_id']
         return position
 
-    def preset_saved():
+    def preset_saved(bypassed=False):
         with closing(sqlite3.connect(database.as_uri()+'?mode=ro', uri=True, timeout=.5)) as db:
             row = db.execute("SELECT value FROM state WHERE owner='local-guest' "
                              "AND kind='equalizer-preferences-v1' AND key='current'").fetchone()
         if row:
             value = json.loads(row[0])
             return (value['preset'] == {'kind': 'built_in', 'index': 1}
-                    and value['settings']['enabled'] and any(value['settings']['gains']))
+                    and value['settings']['enabled'] and any(value['settings']['gains'])
+                    and value['settings'].get('master_bypassed', False) is bypassed)
         return False
 
     with closing(Input(x, y)) as inputs:
@@ -284,6 +285,27 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
                 monitor['equalized'] = sink_tone(env)
                 assert monitor['equalized']['amplitude440Hz'] > baseline['amplitude440Hz'] * 1.05, (
                     'installed preset did not increase the 440 Hz tone')
+                for _ in range(2):  # Preset -> directory -> master switch.
+                    inputs.key('Tab', 'Shift_L')
+                    time.sleep(.12)
+                inputs.key('space')
+                wait_for('installed master bypass committed', lambda: preset_saved(True))
+                bypassed = wait_for('same track progresses while effects are bypassed',
+                                    lambda: position('playing', effected['seconds'] + .4))
+                assert bypassed['entry_id'] == first['entry_id']
+                monitor['bypassed'] = sink_tone(env)
+                assert math.isclose(monitor['bypassed']['amplitude440Hz'],
+                                    baseline['amplitude440Hz'], rel_tol=.03), (
+                    'installed master bypass did not restore the original 440 Hz tone')
+                inputs.key('space')
+                wait_for('installed master reactivation committed', preset_saved)
+                restored = wait_for('same track progresses with the restored preset',
+                                    lambda: position('playing', bypassed['seconds'] + .4))
+                assert restored['entry_id'] == first['entry_id']
+                monitor['restored'] = sink_tone(env)
+                assert math.isclose(monitor['restored']['amplitude440Hz'],
+                                    monitor['equalized']['amplitude440Hz'], rel_tol=.03), (
+                    'reactivating the installed preset did not restore the equalized 440 Hz tone')
             inputs.key('Escape')
             time.sleep(.35)
         inputs.click(559, 712)  # Pause.
@@ -309,6 +331,9 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
             'sourceSha256': hashlib.sha256(source.read_bytes()).hexdigest()}
     if verify_monitor_pcm:
         report['privateSinkMonitorPcm'] = monitor
+        if packaged_filter:
+            report['masterBypassRestoredUnfilteredPcm'] = True
+            report['masterReactivationRestoredEqualizedPcm'] = True
     if packaged_filter:
         report.update(equalizerPresetCommitted=True, installedFilterMapped=True,
                       sameTrackAdvancedWithEqualizer=True)
