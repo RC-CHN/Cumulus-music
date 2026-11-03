@@ -113,9 +113,9 @@
     await wait(() => document.documentElement.dataset.theme === value, "theme");
     await settle();
   }
-  async function refresh() {
+  async function refresh(completed = ready) {
     click(button("刷新收藏列表"));
-    await wait(ready, "refresh");
+    await wait(completed, "refresh completion");
     await settle();
   }
   async function retry() {
@@ -659,7 +659,9 @@
     );
     await capture("purchased_empty_light");
     await mode("fail_purchase");
-    await refresh();
+    // The old empty response is still visible before Vue publishes this
+    // refresh's loading state. Wait for the new error, not the old idle DOM.
+    await refresh(() => ready() && one(".catalog-error"));
     assert(
       one(".catalog-error") && !one(".collections-page .empty-state"),
       "error not empty",
