@@ -935,6 +935,65 @@ test('unavailable online source is actionable without replaying the rejected sel
   f.player.dispose();
 });
 
+test('a stale footer retry cannot refresh a replacement failed source', async () => {
+  const actions: PlayerAction[] = [];
+  const f = fixture({
+    playerAction: async (_epoch, input) => {
+      actions.push(input);
+      return state('5', '1', 'recovered');
+    },
+  });
+  await f.player.connect(account());
+  f.emit({ ...state('2', '1', 'failed-a'), state: 'error', error: 'decoder error' });
+  const oldKey = f.player.retryKey.value;
+  f.emit({ ...state('3', '1', 'failed-a'), state: 'error', error: 'decoder error', position: 3 });
+  assert.equal(f.player.retryKey.value, oldKey);
+  f.emit({ ...state('4', '1', 'failed-b'), state: 'error', error: 'decoder error' });
+  await f.player.retry(oldKey);
+  assert.deepEqual(actions, []);
+  await f.player.retry(f.player.retryKey.value);
+  assert.deepEqual(actions, [
+    { kind: 'refresh_for', play_id: 'failed-b', expected_queue_revision: '1' },
+  ]);
+  f.player.dispose();
+});
+
+test('a late failed refresh cannot become the retry of a newer native playback attempt', async () => {
+  for (const sameEntry of [false, true]) {
+    const finish = deferred<void>();
+    const actions: PlayerAction[] = [];
+    const f = fixture({
+      playerAction: async (_epoch, input) => {
+        actions.push(input);
+        if (actions.length === 1) {
+          await finish.promise;
+          throw { code: 'network', message: 'late failed refresh', retryable: true };
+        }
+        return state('5', '1', 'recovered');
+      },
+    });
+    await f.player.connect(account());
+    f.emit({ ...state('2', '1', 'failed-a'), state: 'error', error: 'decoder error' });
+    const first = f.player.retry(f.player.retryKey.value);
+    f.emit({
+      ...state('4', '1', 'failed-b'),
+      entryId: sameEntry ? 'failed-a' : 'failed-b',
+      state: 'error',
+      error: 'new decoder error',
+    });
+    finish.resolve();
+    await first;
+    assert.equal(f.player.error.value, '');
+    assert.equal(f.player.canRetry.value, true);
+    await f.player.retry(f.player.retryKey.value);
+    assert.deepEqual(actions, [
+      { kind: 'refresh_for', play_id: 'failed-a', expected_queue_revision: '1' },
+      { kind: 'refresh_for', play_id: 'failed-b', expected_queue_revision: '1' },
+    ]);
+    f.player.dispose();
+  }
+});
+
 test('quality retry refreshes the failed decoder but repeats authorization before a reload', async () => {
   for (const reload of [false, true]) {
     const actions: PlayerAction[] = [];

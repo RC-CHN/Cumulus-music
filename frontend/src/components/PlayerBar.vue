@@ -56,9 +56,11 @@ async function retryPlayback(event: MouseEvent) {
   const origin = event.currentTarget as HTMLButtonElement,
     owner = view.value?.epoch,
     host = transportControls.value,
-    feedback = origin.closest('.playback-message');
+    feedback = origin.closest('.playback-message'),
+    key = origin.dataset.retryKey;
+  if (!key || key !== props.player.retryKey.value) return;
   if (document.activeElement === origin) host?.focus({ preventScroll: true });
-  if (ready.value) await props.player.retry();
+  if (ready.value) await props.player.retry(key);
   else emit('retry');
   await nextTick();
   if (owner === view.value?.epoch && document.activeElement === host) {
@@ -435,7 +437,13 @@ async function seek(event: Event) {
     <div class="player-feedback-stack">
       <div v-if="message" class="playback-message" role="status">
         <span>{{ message }}</span
-        ><button v-if="canRetry" class="text-button" :disabled="busy" @click="retryPlayback">
+        ><button
+          v-if="canRetry"
+          class="text-button"
+          :disabled="busy"
+          :data-retry-key="player.retryKey.value"
+          @click="retryPlayback"
+        >
           重试</button
         ><span v-if="view?.timeline?.mode === 'trial' && !outsideTrial">试听片段</span>
       </div>

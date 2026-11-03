@@ -41,6 +41,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     queueEditError = ref(''),
     lyricError = ref('');
   const reported = shallowRef<CoreFailure>();
+  const reportedRevision = ref(0);
   const error = computed(() => reported.value?.message ?? '');
   const canRetry = computed(
     () => reported.value?.retryable ?? view.value?.errorRetryable ?? !!view.value?.error,
@@ -75,6 +76,22 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       playing.value ? 'pause' : current?.state,
     ]);
   });
+  // A footer click must match the failure the button actually displays.
+  // Playback ticks do not change this key.
+  const retryKey = computed(() => {
+    const current = view.value;
+    return JSON.stringify([
+      epoch,
+      ready.value,
+      current?.playId,
+      current?.entryId,
+      current?.queueRevision,
+      current?.state,
+      current?.error,
+      current?.errorRetryable,
+      reported.value ? reportedRevision.value : null,
+    ]);
+  });
   const restorable = computed(
     () => !!(view.value?.queueLen || view.value?.track) && view.value?.state === 'idle',
   );
@@ -87,7 +104,10 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   );
   function handle(e: unknown, present = true) {
     const issue = failure(e);
-    if (present && issue.code !== 'stale') reported.value = issue;
+    if (present && issue.code !== 'stale') {
+      reportedRevision.value++;
+      reported.value = issue;
+    }
     if (['session_expired', 'profile_changed'].includes(issue.code)) onSessionChanged();
     return issue;
   }
@@ -198,6 +218,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   }
   function action(input: PlayerAction) {
     const invoke = (e: string) => core.playerAction(e, input);
+    if (input.kind === 'refresh_for') return run(invoke, invoke, true);
     if (input.kind !== 'quality_for') return run(invoke);
     const origin = view.value;
     return run(invoke, async (e) => {
@@ -617,8 +638,8 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     });
   const downloads = (ids: string[], index: number) =>
     runSelection((e) => core.playDownloads(e, ids, index));
-  function retry() {
-    if (!canRetry.value) return;
+  function retry(displayedKey = retryKey.value) {
+    if (!canRetry.value || busy.value || displayedKey !== retryKey.value) return;
     const failed = failedOperation;
     if (failed?.repeat) return run(failed.repeat, failed.repeat, !!failed.selection);
     const current = view.value;
@@ -792,6 +813,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     selectForPage,
     downloads,
     retry,
+    retryKey,
     loadQueue,
     editQueue,
     toggleQueue,
