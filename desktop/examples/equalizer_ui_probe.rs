@@ -56,6 +56,8 @@ fn media(root: &Path) -> std::io::Result<()> {
     file.flush()
 }
 fn main() {
+    // SAFETY: before GTK/WebView initialization and worker creation.
+    unsafe { cumulus_desktop::prepare_graphics() };
     let root = PathBuf::from(std::env::var_os("CUMULUS_PROOF_DIR").expect("explicit proof root"));
     let reopen = std::env::var_os("CUMULUS_PROOF_REOPEN").is_some();
     let missing = std::env::var_os("CUMULUS_PROOF_MISSING").is_some();

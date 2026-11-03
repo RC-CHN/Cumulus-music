@@ -8,7 +8,7 @@
  const ranges=()=>all('.equalizer-band input');
  const gains=()=>ranges().map(n=>Number(n.value));
  const enabled=()=>el('[aria-label="启用均衡器"]')?.getAttribute('aria-checked')==='true';
- const settled=()=>el('.equalizer-dialog')&&!el('[aria-label="均衡器预设"]')?.disabled&&el('.equalizer-status')?.dataset.status!=='pending';
+ const settled=()=>el('.equalizer-dialog')&&!el('[aria-label="均衡器预设"]')?.disabled&&el('.equalizer-status')?.dataset.status!=='pending'&&el('.equalizer-dialog').dataset.draftState==='settled';
  const pop=[-1.5,-1,0,1.79,4,3.79,1.79,.5,-1,1];
  let epoch='',step='bootstrap';
  async function stage(name,expect){await wait(settled,'settle');await sleep(450);const dialog=el('.equalizer-dialog'),r=dialog.getBoundingClientRect();const overflow=document.documentElement.scrollWidth>innerWidth||dialog.scrollWidth>dialog.clientWidth+1||r.top<0||r.bottom>innerHeight+1;if(overflow)throw Error('equalizer_layout_overflow');window.__eqAck='';await report(name,{epoch,expect,gains:gains(),enabled:enabled(),status:el('.equalizer-status').dataset.status,width:innerWidth,height:innerHeight,overflow});await wait(()=>window.__eqAck===name,'native_ack');await sleep(1000);}
@@ -32,7 +32,7 @@
     await toggle();await close();await click(el('[aria-label^="播放本地歌曲"]'));await wait(()=>el('.playerbar [aria-label="暂停"]')&&Number(el('[aria-label="播放进度"]')?.value)>.2,'ordinary_recovery');await open();await stage('eq_disabled_recovery',{enabled:false,gains:pop});
    }else{
     await close();await click(el('[aria-label^="播放本地歌曲"]'));await wait(()=>el('.playerbar [aria-label="暂停"]')&&Number(el('[aria-label="播放进度"]')?.value)>.2,'actual_playback');await open();await wait(()=>el('.equalizer-status').dataset.status==='processing','actual_dsp');await stage('eq_enabled',{enabled:true,gains:pop});
-    step='slider';const revision=el('.equalizer-dialog').dataset.revision,n=ranges()[4];n.value='-3.5';n.dispatchEvent(new Event('input',{bubbles:true}));n.dispatchEvent(new Event('change',{bubbles:true}));await wait(()=>settled()&&el('.equalizer-dialog').dataset.revision!==revision,'slider_commit');const custom=[...pop];custom[4]=-3.5;await stage('eq_custom',{enabled:true,gains:custom});
+    step='slider';const revision=el('.equalizer-dialog').dataset.revision,n=ranges()[4];for(const value of ['-1','-2','-3.5']){n.value=value;n.dispatchEvent(new Event('input',{bubbles:true}));}await wait(()=>settled()&&el('.equalizer-dialog').dataset.revision!==revision&&el('.equalizer-status').dataset.status==='processing','input_only_slider_processed');const custom=[...pop];custom[4]=-3.5;await stage('eq_custom',{enabled:true,gains:custom});
     step='off';await toggle();await stage('eq_off',{enabled:false,gains:custom});await toggle();
     step='reset';await click(byText('恢复平直'));await wait(()=>settled()&&gains().every(n=>n===0),'flat_reset');await preset(1);
     step='seek';await close();const seek=el('[aria-label="播放进度"]');seek.value='12';seek.dispatchEvent(new Event('change',{bubbles:true}));await wait(()=>Number(seek.value)>=11&&!el('.playerbar [aria-label="暂停"]')?.disabled,'seek');await click(el('.playerbar [aria-label="暂停"]'));await wait(()=>el('.playerbar [aria-label="播放"]'),'pause');await open();await stage('eq_saved',{enabled:true,gains:pop});

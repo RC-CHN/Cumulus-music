@@ -10,7 +10,8 @@ pub const MAX_ID: u32 = 16_777_215;
 #[derive(Clone, Copy, Debug, Default, Serialize)]
 pub struct EqualizerStats {
     pub revision: u64,
-    /// Highest revision observed by any mono instance, not an all-channel fence.
+    /// Highest revision that produced samples in any mono instance.
+    /// This is not an all-channel fence.
     pub observed_revision: u64,
     pub instances_created: u64,
     pub active_instances: u64,

@@ -8,7 +8,10 @@ export function equalizerPreset(gains: readonly number[]): number {
       p.gains.length === gains.length && p.gains.every((g, i) => Math.abs(g - gains[i]!) < 0.00001),
   );
 }
-export function equalizerChange(view: EqualizerView, settings: EqualizerSettings): PlayerAction {
+export function equalizerChange(
+  view: EqualizerView,
+  settings: EqualizerSettings,
+): Extract<PlayerAction, { kind: 'equalizer' }> {
   if (
     view.damaged ||
     settings.gains.length !== 10 ||
@@ -28,5 +31,6 @@ export function equalizerMessage(view: EqualizerView): string {
   if (view.status === 'unavailable') return '均衡器组件未就绪，设置已保存。';
   if (view.status === 'pending') return '设置已保存，正在等待播放器应用…';
   if (!view.settings.enabled) return '均衡器已关闭';
-  return view.settings.gains.every((g) => g === 0) ? '当前为平直曲线' : '均衡器已启用';
+  if (view.settings.gains.every((g) => g === 0)) return '当前为平直曲线';
+  return view.status === 'configured' ? '均衡器已配置，等待音频处理' : '均衡器已启用';
 }

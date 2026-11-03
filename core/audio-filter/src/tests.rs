@@ -169,6 +169,26 @@ fn hot_changes_bypass_and_reactivation_preserve_recovered_transitions() {
     );
 }
 #[test]
+fn activating_new_settings_does_not_count_as_processing_them() {
+    let config = Config::new(true, [0.0; 10]);
+    let mut instance = Instance::new(config.0, 48_000);
+    assert_eq!(config.stats().observed_revision, 0);
+    instance.process(&input(256), false);
+    let first = config.stats();
+    assert_eq!(first.observed_revision, first.revision);
+    config.set(true, [3.0; 10]);
+    instance.reset();
+    let paused = config.stats();
+    assert!(paused.revision > first.revision);
+    assert_eq!(paused.observed_revision, first.revision);
+    assert_eq!(paused.processed_samples, first.processed_samples);
+    instance.process(&input(256), false);
+    let resumed = config.stats();
+    assert_eq!(resumed.observed_revision, resumed.revision);
+    assert_eq!(resumed.processed_samples, first.processed_samples + 256);
+}
+
+#[test]
 fn configuration_isolation_revocation_and_no_id_reuse() {
     let a = Config::new(true, [7.0; 10]);
     let b = Config::new(true, [-5.0; 10]);

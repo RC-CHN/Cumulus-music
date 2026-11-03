@@ -48,5 +48,6 @@ test('saved-but-failed and missing adapters never appear as successfully enabled
   assert.match(equalizerMessage({ ...enabled, status: 'unavailable' }), /未就绪/);
   assert.match(equalizerMessage({ ...enabled, status: 'pending' }), /等待/);
   assert.match(equalizerMessage({ ...enabled, damaged: true }), /损坏/);
+  assert.match(equalizerMessage({ ...enabled, status: 'configured' }), /等待音频处理/);
   assert.match(equalizerMessage({ ...enabled, status: 'processing' }), /已启用/);
 });

@@ -34,7 +34,7 @@ attach成功仅代表配置和过滤器已提交；播放前processed_samples=0�
 解码后FFmpeg为每个声道创建一个mono实例，各自拥有GraphicEq历史和2048帧对齐缓冲。
 每块拷入独立planar缓冲再处理/拷出，可安全处理in-place输入输出和非2048帧的尾块。
 没有输入/输出文件预处理、临时重编码、Python进程或用音量变化伪装DSP。
-对外状态区分revision与observed_revision；后者只表示至少一个实例已看到该配置，
+对外状态区分revision与observed_revision；后者只在至少一个实例用该配置成功输出采样后推进，
 不是所有声道的采样级屏障。processed_samples按声道累加，不等于立体声帧数。
 instances_created/active_instances能够区分实例重建和仍在播放；failed_blocks保留失败。
 

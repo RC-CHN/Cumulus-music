@@ -105,9 +105,6 @@ impl Processor {
                 }
             }
             self.revision = config.revision;
-            control
-                .observed
-                .fetch_max(config.revision, Ordering::Relaxed);
         }
         true
     }
@@ -161,6 +158,7 @@ impl Processor {
             }
             if let Some(c) = &self.control {
                 c.processed.fetch_add(count as u64, Ordering::Relaxed);
+                c.observed.fetch_max(self.revision, Ordering::Release);
             }
         }
     }

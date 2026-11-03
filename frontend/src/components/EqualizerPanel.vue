@@ -2,21 +2,24 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import type { PlayerModel } from '../composables/usePlayer';
 import {
-  equalizerChange,
   equalizerLabels,
   equalizerMessage,
   equalizerPreset,
   equalizerPresets,
 } from '../services/equalizer';
+import { failure } from '../services/contracts';
 import Icon from './Icon.vue';
 const props = defineProps<{ player: PlayerModel }>();
 const emit = defineEmits<{ close: [] }>();
-const { view, busy, error, ready } = props.player;
+const { view, ready, equalizerDraft } = props.player;
+const { settings, draft, pending, blocked, error, stage, applyDraft, discard } = equalizerDraft;
 const current = computed(() => view.value?.equalizer);
 const dialog = ref<HTMLDialogElement>();
-const gains = ref<number[]>(Array(10).fill(0));
+const gains = computed(() => settings.value?.gains ?? Array<number>(10).fill(0));
+const commandPending = ref(false);
+const commandError = ref('');
 const disabled = computed(
-  () => busy.value || !ready.value || !current.value || current.value.damaged,
+  () => !ready.value || !current.value || current.value.damaged || commandPending.value,
 );
 const preset = computed(() => equalizerPreset(gains.value));
 let focused: HTMLElement | null = null;
@@ -27,27 +30,36 @@ watch(
     if (next !== epoch) emit('close');
   },
 );
-watch(
-  () => current.value?.revision,
-  () => {
-    gains.value = [...(current.value?.settings.gains ?? Array(10).fill(0))];
-  },
-  { immediate: true },
-);
 onMounted(() => {
   focused = document.activeElement as HTMLElement;
   dialog.value?.showModal();
 });
 onUnmounted(() => focused?.focus());
-async function commit(enabled: boolean, values = gains.value) {
-  if (disabled.value || !current.value) return;
-  await props.player.action(equalizerChange(current.value, { enabled, gains: values }));
-  if (view.value?.epoch === epoch)
-    gains.value = [...(current.value?.settings.gains ?? Array(10).fill(0))];
+function change(enabled: boolean, values = gains.value) {
+  if (disabled.value) return;
+  commandError.value = '';
+  stage({ enabled, gains: values });
 }
 function choose(event: Event) {
   const p = equalizerPresets[Number((event.target as HTMLSelectElement).value)];
-  if (p) void commit(true, [...p.gains]);
+  if (p) change(true, [...p.gains]);
+}
+function slide(index: number, event: Event) {
+  const values = [...gains.value];
+  values[index] = Number((event.target as HTMLInputElement).value);
+  change(true, values);
+}
+async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
+  if (!ready.value || pending.value || commandPending.value || draft.value) return;
+  commandPending.value = true;
+  commandError.value = '';
+  try {
+    await props.player.configureEqualizer({ kind });
+  } catch (issue) {
+    if (view.value?.epoch === epoch) commandError.value = failure(issue).message;
+  } finally {
+    commandPending.value = false;
+  }
 }
 </script>
 <template>
@@ -56,6 +68,7 @@ function choose(event: Event) {
     class="equalizer-dialog"
     aria-label="均衡器"
     :data-revision="current?.revision"
+    :data-draft-state="blocked ? 'blocked' : draft ? 'queued' : 'settled'"
     @cancel.prevent="emit('close')"
   >
     <header>
@@ -78,11 +91,11 @@ function choose(event: Event) {
         class="equalizer-switch"
         role="switch"
         aria-label="启用均衡器"
-        :aria-checked="current?.settings.enabled ?? false"
+        :aria-checked="settings?.enabled ?? false"
         :disabled="disabled"
-        @click="commit(!current?.settings.enabled)"
+        @click="change(!settings?.enabled)"
       >
-        <span></span>{{ current?.settings.enabled ? '开启' : '关闭' }}
+        <span></span>{{ settings?.enabled ? '开启' : '关闭' }}
       </button>
     </div>
     <div class="equalizer-grid">
@@ -102,33 +115,47 @@ function choose(event: Event) {
             :aria-valuetext="`${gains[index]} 分贝`"
             :value="gains[index]"
             :disabled="disabled"
-            @input="gains[index] = Number(($event.target as HTMLInputElement).value)"
-            @change="commit(true)"
+            @input="slide(index, $event)"
+            @change="slide(index, $event)"
         /></span>
         <span>{{ label }}</span>
       </label>
     </div>
     <div class="equalizer-status" role="status" :data-status="current?.status">
-      <span>{{ current ? equalizerMessage(current) : '正在读取设置…' }}</span>
+      <span>{{
+        blocked
+          ? '草稿尚未确认保存'
+          : pending || draft
+            ? '正在应用当前调整…'
+            : current
+              ? equalizerMessage(current)
+              : '正在读取设置…'
+      }}</span>
       <button
         v-if="current?.damaged"
-        :disabled="busy"
-        @click="player.action({ kind: 'repair_equalizer' })"
+        :disabled="!ready || pending || commandPending || !!draft"
+        @click="maintain('repair_equalizer')"
       >
         修复设置
       </button>
       <button
         v-else-if="current && ['failed', 'unavailable'].includes(current.status)"
-        :disabled="busy"
-        @click="player.action({ kind: 'retry_equalizer' })"
+        :disabled="!ready || pending || commandPending || !!draft"
+        @click="maintain('retry_equalizer')"
       >
         重新应用
       </button>
     </div>
-    <p v-if="error" class="equalizer-error" role="alert">{{ error }}</p>
+    <p v-if="error || commandError" class="equalizer-error" role="alert">
+      {{ error || commandError }}
+    </p>
+    <div v-if="blocked" class="equalizer-status">
+      <button :disabled="!ready || pending" @click="applyDraft">读取当前设置并应用草稿</button>
+      <button :disabled="pending" @click="discard">舍弃草稿</button>
+    </div>
     <footer>
       <small>为当前账号保存，下次打开仍会保留。</small
-      ><button :disabled="disabled" @click="commit(true, Array(10).fill(0))">恢复平直</button>
+      ><button :disabled="disabled" @click="change(true, Array(10).fill(0))">恢复平直</button>
     </footer>
   </dialog>
 </template>

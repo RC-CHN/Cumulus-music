@@ -13,6 +13,7 @@ import type {
 } from '../services/player.ts';
 import { useCore } from '../services/core.ts';
 import type { CloudQuery } from '../services/cloud.ts';
+import { useEqualizerDraft } from './useEqualizerDraft.ts';
 
 export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => void = () => {}) {
   const view = shallowRef<PlayerView>();
@@ -280,6 +281,31 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       throw e;
     }
   }
+  async function configureEqualizer(
+    input: Extract<PlayerAction, { kind: 'equalizer' | 'retry_equalizer' | 'repair_equalizer' }>,
+  ) {
+    const captured = epoch,
+      session = connection;
+    if (!ready.value) throw { code: 'stale', message: '播放器尚未连接', retryable: false };
+    try {
+      const next = await core.playerAction(captured, input);
+      if (captured !== epoch || session !== connection || !ready.value)
+        throw { code: 'stale', message: '账号或播放器连接已变化', retryable: false };
+      accept(next);
+      return next;
+    } catch (issue) {
+      if (
+        captured === epoch &&
+        session === connection &&
+        ['session_expired', 'profile_changed'].includes(failure(issue).code)
+      )
+        onSessionChanged();
+      throw issue;
+    }
+  }
+  // The draft belongs to the player connection, so closing the EQ dialog
+  // cannot discard its last coalesced slider position.
+  const equalizerDraft = useEqualizerDraft(() => view.value, configureEqualizer, syncPlayback);
   // Volume uses absolute, repeatable values and its own feedback. It must not
   // supersede a pending transport request or become the audio-error retry.
   async function configureVolume(value: number) {
@@ -530,6 +556,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     updateLyrics((e, id) => core.lyricPreferences(e, id, value));
   const offset = (gain: number) => updateLyrics((e, id) => core.lyricOffset(e, id, gain));
   function dispose() {
+    equalizerDraft.reset();
     connection++;
     request++;
     lyricRequest++;
@@ -570,6 +597,8 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     action,
     qualityTrial,
     configureLoudness,
+    configureEqualizer,
+    equalizerDraft,
     configureVolume,
     configureMode,
     intelligence,

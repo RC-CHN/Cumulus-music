@@ -169,7 +169,7 @@ pub unsafe extern "C" fn cumulus_geq_stats_v1(id: u32, out: *mut EqualizerStats)
         };
         let value = EqualizerStats {
             revision: config.revision,
-            observed_revision: control.observed.load(Ordering::Relaxed),
+            observed_revision: control.observed.load(Ordering::Acquire),
             instances_created: control.created.load(Ordering::Relaxed),
             active_instances: control.active.load(Ordering::Relaxed),
             processed_samples: control.processed.load(Ordering::Relaxed),
