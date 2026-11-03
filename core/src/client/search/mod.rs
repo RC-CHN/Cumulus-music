@@ -1,6 +1,7 @@
 pub(crate) mod experiment;
 mod lyrics;
 mod results;
+mod track_hint;
 use super::{MusicClient, dto::AccountData};
 use crate::{
     Error, Result,

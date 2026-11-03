@@ -455,3 +455,38 @@ async fn only_comprehensive_service_405_becomes_a_bounded_empty_explanation() {
             .is_none()
     );
 }
+
+#[tokio::test]
+async fn comprehensive_song_hints_project_only_safe_lyric_matches_or_aliases() {
+    let (_root, api, _, client) = fixture();
+    let epoch = client.account().unwrap().epoch;
+    *api.reply.lock().unwrap() = json!({"code":200,"data":{"blocks":[{
+        "blockCode":"search_block_song","resources":[
+            {"type":"song","baseInfo":{"id":1,"name":"有歌词","newSongExt":{"songAlias":"不要展示"}},
+             "extInfo":{"lyrics":{"txt":"🎵合成歌词","range":[{"first":2,"second":4}],
+             "url":"https://private.invalid/PRIVATE"}}},
+            {"type":"song","baseInfo":{"id":2,"name":"坏匹配范围","newSongExt":{"songAlias":"旧别名"}},
+             "extInfo":{"songAlias":"新<em>合成</em>别名","lyrics":{"txt":"🎵合成","range":[{"first":1,"second":4}]}}},
+            {"type":"song","baseInfo":{"id":3,"name":"无公开匹配","extInfo":{"songAlias":"https://private.invalid/PRIVATE"}}},
+            {"type":"song","baseInfo":{"id":4,"name":"混乱范围","extInfo":{"lyrics":{
+                "txt":"合成歌词","range":[{"first":1,"second":3},{"first":0,"second":2}]}}}}
+        ]
+    }]}});
+    let view = client
+        .search_results(&epoch, query(C::All))
+        .await
+        .unwrap()
+        .value;
+    let projected = serde_json::to_value(&view).unwrap();
+    let rows = &projected["sections"][0]["items"];
+    assert_eq!(
+        rows[0]["hint"],
+        json!({"kind":"lyric","parts":[
+        {"text":"🎵","highlight":false},{"text":"合成","highlight":true},{"text":"歌词","highlight":false}]})
+    );
+    assert_eq!(rows[1]["hint"], json!({"kind":"alias","text":"新合成别名"}));
+    assert!(rows[2].get("hint").is_none());
+    assert!(rows[3].get("hint").is_none());
+    assert!(!projected.to_string().contains("PRIVATE"));
+    assert_eq!(api.calls.lock().unwrap().len(), 1);
+}

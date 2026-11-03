@@ -60,3 +60,14 @@ TrackMvTag/index.tsx:55–75、92–125 从歌曲读取 mvid，并独立打开�
 /api/song/enhance/play/mv/url；搜索卡片只接收 ID，不接收地址，也不触发歌曲播放。
 --mv-play 同时验证分类 MV 卡片与单曲内 MV 入口的原生解码，--v3 验证综合扩展
 字段被投影。以上使用合成数据，真实服务与 Windows 实机视觉未在本轮复验。
+
+综合单曲的歌词命中与别名
+官方 TrackCard/index.tsx:423–454、537–543、736–741 的实验版标签先呈现一行
+歌词命中，再回退到 songAlias；恢复 M/21:544–579 合并 newSongExt 和 extInfo，
+Lyric/index.tsx 及 M/123:98–112 用 UTF-16 下标 [first, second) 标出匹配片段。
+综合结果在 v1/v3 保留这两个明确的元数据，不以普通曲目别名或关键词推断歌词。
+Rust 校验边界和长度，拒绝控制字符、链接、无效范围及拆开的 UTF-16 代理对；
+无效歌词可回退到有效别名。Vue 只接收文本及高亮位，使用文本节点展示，不插入
+服务端 HTML。歌词优先，别名使用已有搜索词高亮；固定 84px 卡片高度。
+没有新增接口、播放分支或关键词请求；完整算法标签、不同实验分桶和 Windows 实机
+视觉仍未验证。可复跑 `search_results_smoke.py --v3 --screenshots` 合成桌面验证。

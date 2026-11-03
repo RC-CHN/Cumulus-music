@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import type { TrackView } from '../../services/contracts';
+import type { SearchTrackHint } from '../../services/search';
 import { artworkAt } from '../../services/artwork';
 import Icon from '../Icon.vue';
 import SearchMatchText from './SearchMatchText.vue';
 const props = defineProps<{
   track: TrackView;
   mvId?: string;
+  hint?: SearchTrackHint;
   matchKeyword: string;
   playable: boolean;
   current: boolean;
@@ -22,6 +24,11 @@ const emit = defineEmits<{
   artist: [id: string];
   mv: [id: string];
 }>();
+const hintText = computed(() =>
+  props.hint?.kind === 'lyric'
+    ? props.hint.parts.map((part) => part.text).join('')
+    : props.hint?.text,
+);
 const failedCover = ref(false);
 watch(
   () => props.track.coverUrl,
@@ -91,6 +98,16 @@ watch(
           <template v-else>未知歌手</template>
         </span>
       </div>
+      <p v-if="hint" class="search-track-hint ellipsis" :data-tooltip="hintText">
+        <template v-if="hint.kind === 'lyric'">
+          <Icon name="list" />
+          <template v-for="(part, i) in hint.parts" :key="i">
+            <mark v-if="part.highlight" class="search-track-hint-match">{{ part.text }}</mark
+            ><template v-else>{{ part.text }}</template>
+          </template>
+        </template>
+        <SearchMatchText v-else :text="hint.text" :keyword="matchKeyword" />
+      </p>
     </div>
     <div class="search-track-actions">
       <button

@@ -35,8 +35,18 @@ export interface SearchResultQuery {
   correct: boolean;
   channel?: SearchChannel;
 }
+export type SearchTrackHint =
+  | { kind: 'lyric'; parts: { text: string; highlight: boolean }[] }
+  | { kind: 'alias'; text: string };
 export type SearchItem =
-  | { kind: 'song'; track: TrackView; excerpt: string[]; excerptTruncated?: boolean; mvId?: string }
+  | {
+      kind: 'song';
+      track: TrackView;
+      excerpt: string[];
+      excerptTruncated?: boolean;
+      mvId?: string;
+      hint?: SearchTrackHint;
+    }
   | { kind: 'playlist'; playlist: PlaylistView; recommendation?: string }
   | { kind: 'artist'; artist: ArtistCard }
   | { kind: 'album'; album: AlbumCard }

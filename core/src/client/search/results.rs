@@ -1,4 +1,5 @@
 //! Whitelisted presentation models for recovered PC result pages.
+use super::track_hint::{self, TrackHint};
 use crate::{
     Error, Result,
     catalog::search::results as api,
@@ -17,6 +18,8 @@ pub enum SearchItem {
         track: TrackView,
         #[serde(rename = "mvId", skip_serializing_if = "Option::is_none")]
         mv_id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        hint: Option<TrackHint>,
         excerpt: Vec<String>,
         #[serde(rename = "excerptTruncated")]
         excerpt_truncated: bool,
@@ -220,14 +223,15 @@ fn item(
     v: &Value,
     uid: &str,
     excerpt: &Value,
-    comprehensive: bool,
+    comprehensive: Option<&Value>,
 ) -> Result<Option<SearchItem>> {
     Ok(Some(match kind {
         "song" => {
             let (excerpt, excerpt_truncated) = super::lyrics::project(excerpt);
             SearchItem::Song {
                 track: mapping::track(v)?,
-                mv_id: comprehensive.then(|| song_mv(v)).flatten(),
+                mv_id: comprehensive.and_then(|_| song_mv(v)),
+                hint: comprehensive.and_then(|resource| track_hint::project(v, resource)),
                 excerpt,
                 excerpt_truncated,
             }
@@ -235,8 +239,7 @@ fn item(
         "playlist" => SearchItem::Playlist {
             playlist: mapping::playlist(v, uid)?,
             recommendation: comprehensive
-                .then(|| v["recommendText"].as_str())
-                .flatten()
+                .and_then(|_| v["recommendText"].as_str())
                 .map(|value| {
                     clean(value)
                         .split_whitespace()
@@ -388,7 +391,7 @@ fn project(raw: Value, query: SearchResultQuery, uid: &str) -> Result<SearchResu
                     &resource["baseInfo"],
                     uid,
                     &Value::Null,
-                    true,
+                    Some(resource),
                 ) {
                     Ok(Some(item)) => section.items.push(item),
                     // A card can be unsupported or malformed independently of
@@ -476,7 +479,7 @@ fn project(raw: Value, query: SearchResultQuery, uid: &str) -> Result<SearchResu
         } else {
             &Value::Null
         };
-        match item(kind, base, uid, lyric, false) {
+        match item(kind, base, uid, lyric, None) {
             Ok(Some(item)) => section.items.push(item),
             Ok(None) | Err(_) => result.unavailable_count += 1,
         }

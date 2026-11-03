@@ -146,6 +146,38 @@ fn credits(out: &mut Fields, input: &Value, key: &str) {
     });
 }
 
+fn song_tag(value: &Value) -> Fields {
+    let mut tag = Fields::new();
+    if let Some(alias) = value.get("songAlias") {
+        tag.insert(
+            "songAlias".into(),
+            alias
+                .as_str()
+                .filter(|text| text.len() <= 1024)
+                .map_or(Value::Null, |text| json!(text)),
+        );
+    }
+    if value.get("lyrics").is_some() {
+        // Preserve a supplied invalid override without retaining arbitrary fields.
+        tag.insert("lyrics".into(), Value::Null);
+    }
+    if let (Some(txt), Some(range)) = (
+        value["lyrics"]["txt"].as_str(),
+        value["lyrics"]["range"].as_array(),
+    ) && txt.len() <= 1024
+        && range.len() <= 16
+    {
+        // Keep original text positions intact; client projection validates
+        // UTF-16 ranges before this information crosses the desktop boundary.
+        let range = range
+            .iter()
+            .map(|row| json!({"first": row["first"].as_u64(), "second": row["second"].as_u64()}))
+            .collect::<Vec<_>>();
+        tag.insert("lyrics".into(), json!({"txt":txt,"range":range}));
+    }
+    tag
+}
+
 fn song(v: &Value) -> Fields {
     let mut out = fields(
         v,
@@ -154,6 +186,8 @@ fn song(v: &Value) -> Fields {
         ],
         &[],
     );
+    nested(&mut out, v, "newSongExt", song_tag);
+    nested(&mut out, v, "extInfo", song_tag);
     nested(&mut out, v, "privilege", |value| {
         fields(value, &["st"], &[])
     });
@@ -397,6 +431,9 @@ impl Kind {
         fields.extend(whitelist(base));
         if mixed || matches!(self, Self::Song | Self::Playlist) {
             fields.extend(whitelist(&v["extInfo"]));
+            if matches!(self, Self::Song) {
+                nested(&mut fields, v, "extInfo", song_tag);
+            }
         }
         if matches!(self, Self::Playlist) {
             for (target, alternatives) in [

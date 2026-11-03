@@ -265,7 +265,8 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
             {
                 Some(json!({"code":200,"data":{"blocks":[
                     {"blockCode":"search_block_hot_result_hot_explain","resources":[{"baseInfo":{"hotExplainModuleData":{"title":"热点说明","text":"合成热点内容","textAction":"https://example.invalid/private"}}}]},
-                    {"blockCode":"search_block_song","resources":[{"type":"song","baseInfo":{"simpleSongData":{"id":1,"name":"综合 V3 合成歌曲","dt":60000,"ar":[],"al":{"id":1,"name":"合成专辑"}}},"extInfo":{"mv":601}}]}
+                    {"blockCode":"search_block_song","resources":[{"type":"song","baseInfo":{"simpleSongData":{"id":1,"name":"综合 V3 合成歌曲","dt":60000,"ar":[],"al":{"id":1,"name":"合成专辑"},"newSongExt":{"songAlias":"歌词存在时隐藏别名"}}},"extInfo":{"mv":601,"lyrics":{"txt":"🎵合成歌词片段","range":[{"first":2,"second":4}]}}},
+                    {"type":"song","baseInfo":{"simpleSongData":{"id":2,"name":"合成备用曲目","newSongExt":{"songAlias":"不会展示的旧别名"}}},"extInfo":{"songAlias":"前缀<em>合成 V3</em>别名","lyrics":{"txt":"🎵合成","range":[{"first":1,"second":4}]}}}]}
                 ]}}))
             }
             _ => None,
