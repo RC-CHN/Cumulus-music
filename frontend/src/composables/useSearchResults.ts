@@ -31,6 +31,7 @@ export function useSearchResults(
     error = ref(''),
     loadingMore = ref(false),
     moreError = ref(''),
+    manualMore = ref(false),
     position = shallowRef<SearchPosition>({ top: 0, tracks: 0 });
   let activeKey = '';
   let generation = 0,
@@ -45,15 +46,11 @@ export function useSearchResults(
     loading.value = false;
     loadingMore.value = false;
     moreError.value = '';
+    manualMore.value = false;
   }
   function savePosition(next: SearchPosition) {
     position.value = next;
-    if (view.value)
-      memory.set(
-        activeKey,
-        { view: view.value, position: next, moreError: moreError.value },
-        account?.epoch ?? '',
-      );
+    save();
   }
   function save() {
     if (view.value)
@@ -63,6 +60,7 @@ export function useSearchResults(
           view: view.value,
           position: position.value,
           moreError: moreError.value,
+          manualMore: manualMore.value,
         },
         account?.epoch ?? '',
       );
@@ -76,6 +74,7 @@ export function useSearchResults(
     tabs.value = memory.getTabs(session, epoch);
     loadingMore.value = false;
     moreError.value = cached?.moreError ?? '';
+    manualMore.value = cached?.manualMore ?? false;
     position.value = cached?.position ?? { top: 0, tracks: 0 };
     if (cached) {
       view.value = cached.view;
@@ -206,23 +205,25 @@ export function useSearchResults(
         (lyrics
           ? lyricRows === SEARCH_PLAYBACK_ROW_LIMIT
           : songs && songRows === SEARCH_PLAYBACK_ROW_LIMIT);
+      const more = next.more && !capped;
+      // The server cursor can advance past duplicate or unrenderable rows.
+      // Require a click when nothing was added to avoid a scroll-triggered loop.
+      manualMore.value = more && added === 0;
       view.value = {
         ...next,
         query: previous.query,
         correction: previous.query.correct ? (next.correction ?? previous.correction) : null,
         sections,
-        more: next.more && (added > 0 || songs || filteredPage) && !capped,
+        more,
         unavailableCount: previous.unavailableCount + next.unavailableCount,
         notice: capped
           ? lyrics
             ? '歌词结果已达到本次浏览上限，可更换关键词继续查找。'
             : '单曲结果已达到本次连续浏览上限，可使用分页查看或更换关键词。'
-          : !added && next.more
+          : manualMore.value
             ? filteredPage
               ? '这一批结果暂无法展示，可以继续加载。'
-              : songs
-                ? '这一批没有新的单曲，可以继续加载。'
-                : '没有更多可显示的结果，已保留当前内容'
+              : '这一批没有新的结果，可以继续加载。'
             : next.notice,
       };
       save();
@@ -247,6 +248,7 @@ export function useSearchResults(
     tabs.value = undefined;
     loading.value = false;
     loadingMore.value = false;
+    manualMore.value = false;
   }
   return {
     view,
@@ -255,6 +257,7 @@ export function useSearchResults(
     error,
     loadingMore,
     moreError,
+    manualMore,
     position,
     connect,
     open,

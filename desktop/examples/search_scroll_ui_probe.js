@@ -40,12 +40,28 @@
       await choose('songs');const inner=one('.track-scroll');inner.scrollTop=560;await sleep(150);const songTop=inner.scrollTop;await choose('playlists');await choose('songs');assert(Math.abs(one('.track-scroll').scrollTop-songTop)<2,'song viewport restored');await capture(`song_return_${width}_${theme}`);
     }
     await fixture('scroll_error');await submit();await choose('artists');pane().scrollTop=pane().scrollHeight;await wait(()=>button('重试加载更多'),'append error');assert(loaded()===13,'failed append preserves records');await capture('append_error');await choose('users');await choose('artists');assert(button('重试加载更多')&&loaded()===13,'return preserves explicit retry');await capture('error_return');const requests=calls.length;await sleep(600);assert(calls.length===requests,'no automatic error loop');await fixture('scroll');const retry=button('重试加载更多');click(retry);await wait(()=>loaded()>13,'append retry');assert(document.activeElement===retry&&retry.isConnected,'retry preserves button focus');await capture('append_retry');
-    await fixture('scroll_duplicates');await submit();await choose('users');held=false;holdQuery=q=>q.category==='users'&&q.offset===13;pane().scrollTop=pane().scrollHeight;await wait(()=>held&&button('正在加载更多…'),'duplicate loading');click(button('正在加载更多…'));release();await wait(()=>pane().textContent.includes('没有更多可显示'),'duplicate stop');assert(document.activeElement===one('.search-load-more'),'exhausted list retains footer focus');const footer=one('.search-load-more'),box=footer.getBoundingClientRect(),area=pane().getBoundingClientRect();assert(box.top>=area.top-1&&box.bottom<=area.bottom+1,'focused footer remains inside scroll viewport');const style=getComputedStyle(footer);assert(style.outlineWidth==='2px'&&style.outlineOffset==='-2px'&&style.outlineColor===getComputedStyle(one('.search-result-tabs [aria-selected="true"]'),'::after').backgroundColor,'footer uses inset theme focus ring');assert(loaded()===13&&!button('加载更多'),'duplicate records stop automatic requests');await capture('duplicate_stop');
+    await fixture('scroll_duplicates');await submit();await choose('users');
+    held=false;holdQuery=q=>q.category==='users'&&q.offset===13;pane().scrollTop=pane().scrollHeight;
+    await wait(()=>held&&button('正在加载更多…'),'duplicate loading');release();
+    await wait(()=>pane().textContent.includes('这一批没有新的结果，可以继续加载。')&&button('加载更多'),'duplicate pause');
+    assert(loaded()===13,'duplicate records retain only the original cards');
+    pane().dispatchEvent(new Event('scroll'));
+    await choose('artists');await choose('users');
+    assert(calls.filter(q=>q.category==='users'&&q.keyword==='连续浏览 '+serial).map(q=>q.offset).join(',')==='0,13',
+      'duplicate batch stays paused on scroll and return');
+    click(button('加载更多'));
+    await wait(()=>loaded()===26&&pane().textContent.includes('没有更多可显示'),'manual continuation reaches distinct users');
+    assert(document.activeElement===one('.search-load-more'),'exhausted list retains footer focus');
+    const footer=one('.search-load-more'),box=footer.getBoundingClientRect(),area=pane().getBoundingClientRect();
+    assert(box.top>=area.top-1&&box.bottom<=area.bottom+1,'focused footer remains inside scroll viewport');
+    const style=getComputedStyle(footer);
+    assert(style.outlineWidth==='2px'&&style.outlineOffset==='-2px'&&style.outlineColor===getComputedStyle(one('.search-result-tabs [aria-selected="true"]'),'::after').backgroundColor,'footer uses inset theme focus ring');
+    await capture('duplicate_continuation');
     await fixture('scroll');await submit();held=false;holdQuery=q=>q.category==='mvs'&&q.offset===0;click(one('[data-category="mvs"]'));await wait(()=>held,'hold old category');await choose('artists');release();await sleep(250);assert(one('[data-category="artists"]').getAttribute('aria-selected')==='true'&&grid().classList.contains('search-person-grid'),'late category ignored');await capture('late_category');
     await choose('mvs');await append();await capture('mv_waterfall');
     await choose('artists');while(loaded()<104)await append();
     const visibleIndex=()=>Number(all('[data-grid-index]').find(n=>n.getBoundingClientRect().bottom>pane().getBoundingClientRect().top)?.dataset.gridIndex);
     const anchor=visibleIndex();await capture('before_resize');await emit('resize',{width:1120,height:760});await wait(()=>innerWidth===1120,'live resize');await sleep(350);assert(Math.abs(visibleIndex()-anchor)<=4,'resize preserves visible item');await capture('after_resize');
-    await emit('complete',{ok:true,stageCount:count,scrollRestored:true,virtualKeyboard:true,responseTimingInjected:true,realMusicRequests:0,realAccountWrites:0});
+    await emit('complete',{ok:true,stageCount:count,scrollRestored:true,virtualKeyboard:true,duplicateContinuation:true,responseTimingInjected:true,realMusicRequests:0,realAccountWrites:0});
   }catch(e){await emit('failed',{step,message:String(e),stack:e?.stack,stageCount:count,requests:calls.slice(-15),loaded:loaded(),scrollTop:pane()?.scrollTop,active:document.activeElement?.outerHTML,body:document.body.innerText.slice(0,2500)});}
 })();

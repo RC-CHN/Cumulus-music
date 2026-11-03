@@ -14,6 +14,7 @@ interface Snapshot {
   view: SearchResultView;
   position: SearchPosition;
   moreError: string;
+  manualMore: boolean;
 }
 /** Application-owned, account-isolated browsing memory; never persisted to disk. */
 export function createSearchViewportMemory(capacity = 16) {

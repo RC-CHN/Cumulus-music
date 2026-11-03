@@ -78,7 +78,7 @@ const emit = defineEmits<{
   cardDownload: [item: SearchItem];
 }>();
 const model = useSearchResults(useCore(), () => emit('expired'), props.memory);
-const { view, loading, error, loadingMore, moreError } = model;
+const { view, loading, error, loadingMore, moreError, manualMore } = model;
 const category = computed(() => props.category ?? 'all'),
   offset = computed(() => props.pagination?.offset ?? 0);
 const nextPage = computed(() =>
@@ -260,6 +260,7 @@ function maybeMore(songScroll?: HTMLElement) {
     element &&
     view.value?.more &&
     !moreError.value &&
+    !manualMore.value &&
     element.scrollHeight - element.scrollTop - element.clientHeight <
       (lyrics.value || songWaterfall.value ? 60 : 180)
   )

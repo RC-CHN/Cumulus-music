@@ -223,17 +223,33 @@ test('filtered search pages retain the native cursor and permit reaching later v
   assert.equal(model.view.value?.sections[0]?.items[0]?.kind, 'artist');
   assert.equal(model.view.value?.more, false);
 });
-test('repeated pages stop automatic loading without losing visible records', async () => {
+test('duplicate cards pause automatic loading but retain manual continuation across back navigation', async () => {
+  const requests: number[] = [];
   const model = useSearchResults(
-    { searchResults: async (_e, q) => artistPage(q, ['1', '2']) },
+    {
+      searchResults: async (_e, q) => {
+        requests.push(q.offset);
+        return q.offset === 4 ? artistPage(q, ['3'], false) : artistPage(q, ['1', '2']);
+      },
+    },
     () => {},
   );
   model.connect(account);
-  await model.open(artistQuery);
+  await model.open(artistQuery, true, 1);
   await model.more();
   assert.equal(model.view.value?.sections[0]?.items.length, 2);
+  assert.equal(model.view.value?.more, true);
+  assert.equal(model.manualMore.value, true);
+  assert.match(model.view.value!.notice!, /可以继续加载/);
+  await model.open(query, true, 1);
+  assert.equal(model.manualMore.value, false);
+  await model.open(artistQuery, true, 1);
+  assert.equal(model.manualMore.value, true);
+  await model.more();
+  assert.deepEqual(requests, [0, 2, 0, 4]);
+  assert.equal(model.view.value?.sections[0]?.items.length, 3);
   assert.equal(model.view.value?.more, false);
-  assert.match(model.view.value!.notice!, /没有更多/);
+  assert.equal(model.manualMore.value, false);
 });
 test('return navigation restores account-owned results, scroll and retry state; new searches refresh', async () => {
   const memory = createSearchViewportMemory();

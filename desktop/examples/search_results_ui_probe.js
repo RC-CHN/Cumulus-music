@@ -7,11 +7,11 @@
   const click=n=>{assert(n&&!n.disabled,'missing/disabled control '+n?.textContent);n.focus({preventScroll:true});n.click();};
   const emit=(stage,data={})=>window.__TAURI_INTERNALS__.invoke('plugin:event|emit',{event:'ux-proof',payload:{stage,...data}});
   const key=(n,k)=>n.dispatchEvent(new KeyboardEvent('keydown',{key:k,bubbles:true,cancelable:true}));
-  let count=0,step='startup',holdCategory,held=false,release,gate;
+  let count=0,step='startup',holdCategory,holdKeyword,held=false,release,gate;
   const songReads=[], filteredMvReads=[];
   const fetch=window.fetch;
-  window.fetch=async function(url,options){const query=String(url).endsWith('/search_results')?JSON.parse(options.body).query:null;if(window.__cumulusSearchSongWaterfallProof&&query?.category==='songs')songReads.push([query.offset,query.limit]);if(window.__cumulusSearchFilteredPaginationProof&&query?.category==='mvs')filteredMvReads.push([query.offset,query.limit]);const delayed=query?.category===holdCategory?gate:null;const response=await fetch.call(window,url,options);if(delayed){held=true;await delayed;}return response;};
-  const hold=category=>{held=false;holdCategory=category;gate=new Promise(r=>{const timer=setTimeout(r,10000);release=()=>{clearTimeout(timer);holdCategory=undefined;gate=undefined;r();};});};
+  window.fetch=async function(url,options){const query=String(url).endsWith('/search_results')?JSON.parse(options.body).query:null;if(window.__cumulusSearchSongWaterfallProof&&query?.category==='songs')songReads.push([query.offset,query.limit]);if(window.__cumulusSearchFilteredPaginationProof&&query?.category==='mvs')filteredMvReads.push([query.offset,query.limit]);const delayed=query?.category===holdCategory&&(!holdKeyword||query?.keyword===holdKeyword)?gate:null;const response=await fetch.call(window,url,options);if(delayed){held=true;await delayed;}return response;};
+  const hold=(category,keyword)=>{held=false;holdCategory=category;holdKeyword=keyword;gate=new Promise(r=>{const timer=setTimeout(r,10000);release=()=>{clearTimeout(timer);holdCategory=undefined;gate=undefined;r();};});};
   const fixture=async mode=>{window.__searchFixtureAck=false;await emit('search-fixture',{mode});await wait(()=>window.__searchFixtureAck,'fixture acknowledgement');};
   const ready=()=>one('#search-result-panel')?.getAttribute('aria-busy')==='false' && !one('.search-results-leave-active');
   async function choose(category){click(one(`[data-category="${category}"]`));await wait(()=>one(`[data-category="${category}"]`)?.getAttribute('aria-selected')==='true'&&ready()&&(one('.search-result-section')||one('.search-result-panel .empty-state')),'category '+category);await sleep(180);}
@@ -693,6 +693,15 @@
     assert(document.activeElement===retryPanel,'successful retry keeps focus in the results panel');
     await capture('recovered');
     hold('all');submit('合成延迟结果');await wait(()=>held,'held response');await capture('loading');await choose('songs');release();await sleep(220);assert(one('[data-category="songs"]').getAttribute('aria-selected')==='true'&&one('.search-result-actions'),'late result ignored');await capture('late_result');
+    step='keyword_race';
+    const oldKeyword='合成迟到关键词', newKeyword='合成新关键词';
+    hold('all',oldKeyword);submit(oldKeyword);await wait(()=>held,'hold old keyword with populated response');
+    await fixture('empty');await fresh(newKeyword);
+    await wait(()=>one('#search-result-panel .empty-state')&&!one('.search-result-section'),'new keyword is empty');
+    release();await sleep(350);
+    assert(one('.search-results-page h1')?.textContent===newKeyword&&one('#search-result-panel .empty-state')&&!one('.search-result-section'),
+      'old keyword cannot replace newer results in the same category');
+    await fixture('good');await fresh('合成延迟结果');await choose('songs');
     step='category_without_frames';
     const songTab=one('[data-category="songs"]');songTab.focus();
     const motion=window.__motionProof;
@@ -746,6 +755,6 @@
     await fresh('合成搜索结果');
     await wait(()=>one('.search-result-section')&&!one('#search-result-panel')?.textContent.includes('部分结果暂不可展示'),'next search clears explanation');
     await fixture('expired');click(one('[data-category="albums"]'));await wait(()=>button('重新登录')&&!one('.search-results-page'),'expired account');await capture('expired');
-    await emit('complete',{ok:true,stageCount:count,responseTimingInjected:true,shortPageOffsetsVerified:true,searchResultPlaybackVerified:true,searchMatchHighlightVerified:true,searchServiceEmptyVerified:true,searchCategoryWithoutFramesVerified:true,searchProfileWithoutFramesVerified:profileWithoutFrames,realMusicRequests:0,realAccountWrites:0});
+    await emit('complete',{ok:true,stageCount:count,responseTimingInjected:true,shortPageOffsetsVerified:true,searchResultPlaybackVerified:true,searchMatchHighlightVerified:true,searchServiceEmptyVerified:true,searchCategoryWithoutFramesVerified:true,searchKeywordRaceVerified:true,searchProfileWithoutFramesVerified:profileWithoutFrames,realMusicRequests:0,realAccountWrites:0});
   }catch(error){await emit('failed',{step,message:String(error),stack:error?.stack,stageCount:count,body:document.body.innerText.slice(0,3500)});}
 })();

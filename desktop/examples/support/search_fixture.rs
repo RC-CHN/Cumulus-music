@@ -529,12 +529,14 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
         33
     } else if mode.starts_with("song_waterfall") {
         30
+    } else if mode == "scroll_duplicates" {
+        39
     } else if mode.starts_with("scroll") {
         600
     } else {
         60
     };
-    let start = if mode == "scroll_duplicates" {
+    let start = if mode == "scroll_duplicates" && offset == 13 {
         0
     } else {
         offset

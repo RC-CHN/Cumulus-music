@@ -200,6 +200,7 @@ def verify(root, capture, v3=False):
     assert complete['ok'] and complete['responseTimingInjected'] and complete['shortPageOffsetsVerified']
     assert complete['searchResultPlaybackVerified'] and complete['searchMatchHighlightVerified']
     assert complete['searchCategoryWithoutFramesVerified'] and complete['searchServiceEmptyVerified']
+    assert complete['searchKeywordRaceVerified']
     before_profile = json.loads((root / 'first/ux_01_all_1120_light.json').read_text(encoding='utf-8'))
     assert before_profile['searchProfileCalls'] == []
     assert complete['searchProfileWithoutFramesVerified']
