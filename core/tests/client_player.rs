@@ -1798,6 +1798,81 @@ async fn style_recommendation_playback_preserves_snapshot_order_scene_and_offici
 }
 
 #[tokio::test]
+async fn style_recommendation_append_rebinds_upcoming_tracks_and_preserves_current() {
+    let device = Arc::new(support::Device::default());
+    let (dir, api, _session, client, _) = fixture_with_device(device.clone());
+    client
+        .play_selection(
+            "1",
+            PlaySelection::Songs {
+                ids: ["1", "71", "2"].into_iter().map(str::to_owned).collect(),
+                index: 0,
+                quality: Quality::Standard,
+            },
+        )
+        .await
+        .unwrap();
+    let paused = client
+        .player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    let daily_revision = client.daily_songs().await.unwrap().value.revision.unwrap();
+    let style_revision = client
+        .style_recommendations("1")
+        .await
+        .unwrap()
+        .value
+        .revision
+        .unwrap();
+    let action = |revision: &str| {
+        serde_json::from_value::<PlayerAction>(json!({
+            "kind": "queue_style_recommendations",
+            "revision": revision,
+            "quality": "standard",
+            "expected_queue_revision": paused.queue_revision
+        }))
+        .unwrap()
+    };
+    let before = api.calls.lock().unwrap().len();
+    assert!(matches!(
+        client.player_action("1", action(&daily_revision)).await,
+        Err(Error::QueueChanged)
+    ));
+    assert_eq!(api.calls.lock().unwrap().len(), before);
+    let after = client
+        .player_action("1", action(&style_revision))
+        .await
+        .unwrap();
+    assert_eq!(after.state, paused.state);
+    assert_eq!(after.play_id, paused.play_id);
+    assert_eq!(after.position, paused.position);
+    assert_eq!(device.state.lock().unwrap().loads, 1);
+    let stored = ProfileRegistry::open(dir.path(), ApiOrigin::Pc)
+        .unwrap()
+        .store()
+        .get("9", "playback", "queue")
+        .unwrap()
+        .unwrap();
+    let items = stored["items"].as_array().unwrap();
+    assert_eq!(
+        items
+            .iter()
+            .map(|item| item["resource"]["id"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        ["1", "72", "71", "2"]
+    );
+    for item in &items[1..3] {
+        assert_eq!(item["resource"]["trial_mode"], 35);
+        assert_eq!(
+            item["source"],
+            json!({"kind":"style_recommendations","scene":"styleRecommend",
+            "href":"/styleRecommend","resourceType":"dailyRecommend",
+            "revision":style_revision,"trial_mode":35})
+        );
+    }
+}
+
+#[tokio::test]
 async fn style_recommendation_refresh_during_song_details_cannot_replace_queue() {
     let (_dir, api, _session, client, _count) = fixture();
     let revision = client

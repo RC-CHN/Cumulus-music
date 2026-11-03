@@ -53,6 +53,13 @@ pub(super) fn daily_source(revision: &str) -> Value {
         "revision":revision,"trial_mode":35})
 }
 
+pub(super) fn style_source(revision: &str) -> Value {
+    // Official M/3126 uses the dailyRecommend resource and trial mode (M/91: 35).
+    json!({"kind":"style_recommendations","scene":"styleRecommend",
+        "href":"/styleRecommend","resourceType":"dailyRecommend",
+        "revision":revision,"trial_mode":35})
+}
+
 pub(super) fn daily_subset(ids: Vec<Value>, indices: Option<&[usize]>) -> Result<Vec<Value>> {
     let Some(indices) = indices else {
         return Ok(ids);

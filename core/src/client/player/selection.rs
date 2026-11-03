@@ -1,4 +1,6 @@
-use super::super::recommendations::{RecommendationSource, daily_source, daily_subset};
+use super::super::recommendations::{
+    RecommendationSource, daily_source, daily_subset, style_source,
+};
 use super::{prepared_selection::PreparedSelection, *};
 use crate::{catalog::CatalogApi, playlist::PlaylistApi, protocol::api::identifier};
 use serde_json::{Value, json};
@@ -396,10 +398,7 @@ impl MusicClient {
                         recommendation_ids.ok_or(Error::StaleResponse)?,
                         index,
                         quality,
-                        // M/3126 explicitly chooses dailyRecommend (M/91: 35).
-                        json!({"kind":"style_recommendations","scene":"styleRecommend",
-                            "href":"/styleRecommend","resourceType":"dailyRecommend",
-                            "revision":revision,"trial_mode":35}),
+                        style_source(&revision),
                     )),
                     PlaySelection::DailyRecommendations { revision, index, quality } => Ok((
                         recommendation_ids.ok_or(Error::StaleResponse)?, index, quality,

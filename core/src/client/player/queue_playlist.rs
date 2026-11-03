@@ -1,7 +1,7 @@
 //! Official playlist nextPlay/addToPlayList share the current-song insertion
 //! point (308.js playing/play); an empty queue starts playback (3085.js).
 use super::{
-    super::recommendations::{RecommendationSource, daily_source, daily_subset},
+    super::recommendations::{RecommendationSource, daily_source, daily_subset, style_source},
     *,
 };
 use crate::{
@@ -27,6 +27,10 @@ pub(super) enum QueueCollection {
     DailyRecommendations {
         revision: String,
         indices: Option<Vec<usize>>,
+        quality: Quality,
+    },
+    StyleRecommendations {
+        revision: String,
         quality: Quality,
     },
     ArtistSongs {
@@ -149,12 +153,15 @@ impl MusicClient {
             return Err(Error::State("FM queue requires its coordinator"));
         }
         let daily = matches!(collection, QueueCollection::DailyRecommendations { .. });
+        let style = matches!(collection, QueueCollection::StyleRecommendations { .. });
         let local = matches!(collection, QueueCollection::Local { .. });
         let artist = matches!(collection, QueueCollection::ArtistSongs { .. });
         let album_batch = matches!(collection, QueueCollection::AlbumBatch { .. });
-        let ordinary = daily || local || artist || album_batch;
+        let ordinary = daily || style || local || artist || album_batch;
         let special_queue = if daily {
             "daily recommendations require ordinary playback"
+        } else if style {
+            "style recommendations require ordinary playback"
         } else if artist {
             "artist songs require ordinary playback"
         } else if album_batch {
@@ -165,7 +172,7 @@ impl MusicClient {
         if ordinary && (queue.intelligence.is_some() || self.together_attached(&token, None)?) {
             return Err(Error::State(special_queue));
         }
-        let (daily_ids, source_guard) = match &collection {
+        let (recommendation_ids, source_guard) = match &collection {
             QueueCollection::DailyRecommendations {
                 revision, indices, ..
             } => {
@@ -177,6 +184,15 @@ impl MusicClient {
                 )?;
                 (Some(daily_subset(ids, indices.as_deref())?), Some(guard))
             }
+            QueueCollection::StyleRecommendations { revision, .. } => {
+                let (ids, guard) = self.recommendation_selection(
+                    RecommendationSource::Style,
+                    &token,
+                    revision,
+                    0,
+                )?;
+                (Some(ids), Some(guard))
+            }
             _ => (None, None),
         };
         let focus = self.focus.snapshot()?;
@@ -184,22 +200,28 @@ impl MusicClient {
         let (resources, source, downloaded) = match collection {
             QueueCollection::DailyRecommendations {
                 revision, quality, ..
-            } => {
+            }
+            | QueueCollection::StyleRecommendations { revision, quality } => {
                 let mut resources = self
                     .online_queue_resources(
                         &token,
-                        &daily_ids.ok_or(Error::StaleResponse)?,
+                        &recommendation_ids.ok_or(Error::StaleResponse)?,
                         quality,
                         attempt,
                     )
                     .await?;
                 if resources.is_empty() {
-                    return Err(Error::State("daily recommendations have no online tracks"));
+                    return Err(Error::State("recommendations have no online tracks"));
                 }
                 for resource in &mut resources {
                     resource["trial_mode"] = json!(35);
                 }
-                (resources, daily_source(&revision), false)
+                let source = if style {
+                    style_source(&revision)
+                } else {
+                    daily_source(&revision)
+                };
+                (resources, source, false)
             }
             QueueCollection::Local {
                 mut query,
@@ -436,7 +458,10 @@ fn insert_collection(
     source: Value,
     downloaded: bool,
 ) -> QueueSnapshot {
-    let bind_daily_origin = source["kind"] == "daily_recommendations";
+    let bind_recommendation_origin = matches!(
+        source["kind"].as_str(),
+        Some("daily_recommendations" | "style_recommendations")
+    );
     let current = queue
         .items
         .iter()
@@ -464,7 +489,7 @@ fn insert_collection(
                     .get(&id)
                     .map(|e| {
                         let mut entry = (*e).clone();
-                        if bind_daily_origin
+                        if bind_recommendation_origin
                             || id.0 == PlayerResourceKind::Local && entry.resource != resource
                         {
                             entry.resource = resource.clone();
