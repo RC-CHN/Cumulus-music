@@ -1,5 +1,6 @@
 """Verify history and style shortcuts from Daily Recommendations in a real WebView."""
 import argparse
+from datetime import datetime
 import json
 import os
 from pathlib import Path
@@ -13,11 +14,19 @@ def main():
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--screenshots', action='store_true')
+    parser.add_argument('--birthday', action='store_true', help='seed only the synthetic profile birthday')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
-    script = Path(__file__).resolve().parents[2] / 'desktop/examples/daily_history_ui_probe.js'
+    source = Path(__file__).resolve().parents[2] / 'desktop/examples/daily_history_ui_probe.js'
+    script = root / 'daily-history.js'
+    script.write_text(f'window.__cumulusDailyBirthdayProof = {str(args.birthday).lower()};\n'
+                      + source.read_text(encoding='utf-8'), encoding='utf-8')
+    if args.birthday:
+        today = datetime.now()
+        birth = datetime(2000, today.month, today.day, 12)
+        env['CUMULUS_DAILY_BIRTHDAY_FIXTURE'] = str(int(birth.timestamp() * 1000))
     env.update(CUMULUS_PROOF_DIR=str(root), CUMULUS_UX_SCRIPT=str(script),
                CUMULUS_MOTION_PROOF='1', CUMULUS_DAILY_HISTORY_PROOF='1',
                CUMULUS_STYLE_RECOMMENDATIONS_PROOF='1')
@@ -36,7 +45,7 @@ def main():
     assert code == 0
     complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
     assert complete['ok'] and complete['stageCount'] == 5 and complete['dailyPlayback'] and complete['stylePlayback']
-    assert complete['dailyCache']
+    assert complete['dailyCache'] and complete['dailyBirthday'] is args.birthday
     prefix = '/api/discovery/recommend/songs/history/'
     calls = [call for call in complete['dailyHistoryCalls'] if call['path'].startswith(prefix)]
     assert calls == [
@@ -58,6 +67,7 @@ def main():
     assert len(list(output.glob('ux_*.png'))) == (5 if args.screenshots else 0)
     print(json.dumps({'ok': True, 'actualWebView': True, 'historyReads': len(calls),
                       'styleReads': 2, 'dailyPlayback': True, 'stylePlayback': True,
+                      'dailyBirthday': args.birthday,
                       'realAccountWrites': 0}))
 
 

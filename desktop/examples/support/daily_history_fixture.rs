@@ -17,6 +17,15 @@ pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
     if !enabled() {
         return None;
     }
+    if path == "/api/w/nuser/account/get"
+        && let Some(birthday) = std::env::var("CUMULUS_DAILY_BIRTHDAY_FIXTURE")
+            .ok()
+            .and_then(|value| value.parse::<i64>().ok())
+    {
+        return Some(Ok(json!({"code":200,"profile":{
+            "userId":2,"nickname":"界面体验验证","birthday":birthday
+        }})));
+    }
     if matches!(
         path,
         "/api/v1/discovery/recommend/songs" | "/api/v3/discovery/recommend/songs"

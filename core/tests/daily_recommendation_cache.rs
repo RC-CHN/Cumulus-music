@@ -1,3 +1,4 @@
+use chrono::{Datelike, Local, TimeZone};
 use cumulus_core::{
     Error, Result,
     account::{AccountSession, profiles::ProfileRegistry},
@@ -50,15 +51,19 @@ fn client(
     owner: u64,
     requests: impl IntoIterator<Item = Reply>,
 ) -> (MusicClient, Arc<Script>) {
+    client_with_profile(root, json!({"userId":owner}), requests)
+}
+
+fn client_with_profile(
+    root: &Path,
+    profile: Value,
+    requests: impl IntoIterator<Item = Reply>,
+) -> (MusicClient, Arc<Script>) {
     let registry = ProfileRegistry::open(root, ApiOrigin::Pc).unwrap();
     let api = Arc::new(Script(Mutex::new(requests.into_iter().collect())));
     let session = Arc::new(AccountSession::new(api.clone(), Some(registry.store())));
     session
-        .adopt(
-            api.clone(),
-            json!({"userId":owner}),
-            &session.token().unwrap(),
-        )
+        .adopt(api.clone(), profile, &session.token().unwrap())
         .unwrap();
     (
         MusicClient::with_session(session, registry).with_official_daily_experiment(),
@@ -158,4 +163,37 @@ async fn daily_cache_survives_reopen_but_never_replaces_empty_fresh_results_or_p
         Err(Error::Transport(_))
     ));
     assert!(other_wire.0.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn daily_only_exposes_the_birthday_bit_for_fresh_and_cached_results() {
+    let root = tempfile::tempdir().unwrap();
+    let now = Local::now();
+    let birthday = Local
+        .with_ymd_and_hms(2000, now.month(), now.day(), 12, 0, 0)
+        .single()
+        .unwrap()
+        .timestamp_millis();
+    let (client, wire) = client_with_profile(
+        root.path(),
+        json!({"userId":1,"nickname":"Synthetic","birthday":birthday}),
+        [
+            (ASSIGN, Ok(json!({"code":200,"data":[]}))),
+            (
+                V1,
+                Ok(json!({"code":200,"recommend":[{"id":19,"name":"Synthetic track"}]})),
+            ),
+            (V1, Err(Error::Transport("offline".into()))),
+        ],
+    );
+    let account = serde_json::to_value(client.account().unwrap()).unwrap();
+    assert!(account.get("birthday").is_none() && account.get("birthdayToday").is_none());
+    for cached in [false, true] {
+        let page = serde_json::to_value(client.daily_songs().await.unwrap().value).unwrap();
+        assert_eq!(page["daily"]["birthdayToday"], true);
+        assert_eq!(page["daily"]["cached"], cached);
+        assert!(page["daily"].get("birthday").is_none());
+        assert!(!page.to_string().contains(&birthday.to_string()));
+    }
+    assert!(wire.0.lock().unwrap().is_empty());
 }

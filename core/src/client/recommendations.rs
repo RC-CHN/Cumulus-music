@@ -6,12 +6,28 @@ use super::{
 use crate::{
     Error, Result, account::SessionToken, catalog::CatalogApi, playback::engine::Cancellation,
 };
+use chrono::{DateTime, Datelike, Local, TimeZone};
 use serde_json::{Value, json};
 
 const CACHE_KIND: &str = "daily-recommendations";
 const CACHE_KEY: &str = "tracks-v1";
 const MAX_CACHE_BYTES: usize = 256 * 1024;
 const MAX_TRACKS: usize = 500;
+
+/// Use the same OS time zone for the historical birth date and today's date.
+/// A February 29 birthday is only marked on an actual February 29.
+fn birthday_today<Tz: TimeZone>(birthday_ms: Option<i64>, now: DateTime<Tz>) -> bool {
+    // Keep arbitrary profile values away from Chrono's representational edges.
+    const FIRST_COMMON_ERA_MILLIS: i64 = -62_135_596_800_000;
+    let Some(birthday) = birthday_ms
+        .filter(|ms| *ms != 0 && (FIRST_COMMON_ERA_MILLIS..=now.timestamp_millis()).contains(ms))
+        .and_then(|ms| now.timezone().timestamp_millis_opt(ms).single())
+    else {
+        return false;
+    };
+    let (birthday, today) = (birthday.date_naive(), now.date_naive());
+    birthday <= today && birthday.month() == today.month() && birthday.day() == today.day()
+}
 
 #[derive(Default)]
 pub(super) struct RecommendationSnapshot {
@@ -66,16 +82,11 @@ impl MusicClient {
             .session
             .run_for(&token, |api, _| async move {
                 let reply = CatalogApi::new(api).daily_for(endpoint).await?;
-                let mut value = track_page(&reply.songs)?;
-                value.daily = Some(DailyRecommendationState {
-                    cached: false,
-                    show_free_tag: reply.show_free_tag,
-                });
-                Ok(value)
+                Ok((track_page(&reply.songs)?, reply.show_free_tag))
             })
             .await;
-        let value = match fresh {
-            Ok(value) => value,
+        let (mut value, cached, show_free_tag) = match fresh {
+            Ok((value, show_free_tag)) => (value, false, show_free_tag),
             Err(error) if can_use_daily_cache(&error) => {
                 let cached = self.session.with_token(&token, |owner| {
                     Ok(self
@@ -87,15 +98,22 @@ impl MusicClient {
                         .and_then(|value| track_page(value.as_array()?).ok())
                         .filter(|page| !page.tracks.is_empty()))
                 })?;
-                let mut value = cached.ok_or(error)?;
-                value.daily = Some(DailyRecommendationState {
-                    cached: true,
-                    show_free_tag: true,
-                });
-                value
+                (cached.ok_or(error)?, true, true)
             }
             Err(error) => return Err(error),
         };
+        let profile = self.session.snapshot()?;
+        if profile.token != token {
+            return Err(Error::StaleResponse);
+        }
+        let birthday = profile
+            .profile
+            .and_then(|profile| profile["birthday"].as_i64());
+        value.daily = Some(DailyRecommendationState {
+            cached,
+            show_free_tag,
+            birthday_today: birthday_today(birthday, Local::now()),
+        });
         self.publish_recommendation(source, request, token, value)
     }
 
@@ -253,5 +271,48 @@ fn can_use_daily_cache(error: &Error) -> bool {
             .into_iter()
             .any(|code| error.is_service_code(code)),
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod birthday_tests {
+    use super::birthday_today;
+    use chrono::{FixedOffset, TimeZone, Utc};
+
+    #[test]
+    fn compares_the_two_local_calendar_dates_instead_of_utc_or_month_indices() {
+        let tz = FixedOffset::east_opt(8 * 3600).unwrap();
+        let birthday = Utc
+            .with_ymd_and_hms(2000, 11, 3, 17, 0, 0)
+            .unwrap()
+            .timestamp_millis();
+        let today = tz.with_ymd_and_hms(2026, 11, 4, 12, 0, 0).unwrap();
+        assert!(birthday_today(Some(birthday), today));
+        assert!(!birthday_today(Some(birthday), today.with_timezone(&Utc)));
+        let previous_day = tz.with_ymd_and_hms(2026, 11, 3, 23, 59, 0).unwrap();
+        assert!(!birthday_today(Some(birthday), previous_day));
+        let wrong_month = tz.with_ymd_and_hms(2026, 10, 4, 12, 0, 0).unwrap();
+        assert!(!birthday_today(Some(birthday), wrong_month));
+    }
+
+    #[test]
+    fn missing_unset_invalid_and_future_dates_do_not_trigger_a_greeting() {
+        let now = Utc.with_ymd_and_hms(2026, 2, 28, 12, 0, 0).unwrap();
+        let future = Utc
+            .with_ymd_and_hms(2027, 2, 28, 12, 0, 0)
+            .unwrap()
+            .timestamp_millis();
+        for value in [None, Some(0), Some(i64::MIN), Some(i64::MAX), Some(future)] {
+            assert!(!birthday_today(value, now));
+        }
+        let leap = Utc
+            .with_ymd_and_hms(2000, 2, 29, 12, 0, 0)
+            .unwrap()
+            .timestamp_millis();
+        assert!(!birthday_today(Some(leap), now));
+        assert!(birthday_today(
+            Some(leap),
+            Utc.with_ymd_and_hms(2028, 2, 29, 12, 0, 0).unwrap()
+        ));
     }
 }

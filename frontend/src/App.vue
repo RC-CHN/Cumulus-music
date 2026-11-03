@@ -2274,7 +2274,11 @@ onUnmounted(() => {
                   class="page-heading"
                   :class="{ 'daily-heading': page.kind === 'daily' }"
                 >
-                  <DailyHeading v-if="page.kind === 'daily'" />
+                  <DailyHeading
+                    v-if="page.kind === 'daily'"
+                    :birthday="account.status === 'authenticated' && result?.daily?.birthdayToday"
+                    :nickname="account.nickname"
+                  />
 
                   <div v-else>
                     <h1>{{ title }}</h1>

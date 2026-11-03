@@ -189,6 +189,7 @@ pub struct DailyRecommendationState {
     pub cached: bool,
     /// Recovered presentation flag; never an entitlement decision.
     pub show_free_tag: bool,
+    pub birthday_today: bool,
 }
 
 #[derive(Clone, Deserialize)]

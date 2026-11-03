@@ -13,8 +13,18 @@
     }
     throw new Error(message);
   };
+  const birthday = window.__cumulusDailyBirthdayProof === true;
+  function dailyHeadingMatches() {
+    const heading = one('.daily-heading-copy');
+    return heading?.classList.contains('daily-birthday') === birthday &&
+      heading.querySelector('h1').getAttribute('aria-label') === (birthday ? '生日特别推荐' : '每日推荐') &&
+      heading.querySelector('.daily-description').textContent.trim() === (birthday
+        ? '亲爱的界面体验验证，祝您生日快乐🎂'
+        : '根据你的音乐口味生成，每天 6:00 更新');
+  }
   try {
     await wait(() => one('.daily-heading') && one('.track-row'), 'daily page ready');
+    await wait(dailyHeadingMatches, 'birthday or normal heading from native daily data');
     await emit('resize', { width: 760, height: 540 });
     await wait(() => innerWidth === 760 && innerHeight === 540, 'compact window');
     const shortcut = await wait(() => one('.daily-history-entry'), 'history shortcut');
@@ -30,7 +40,9 @@
     await sleep(200);
     await emit('ux_01_daily_history_shortcut');
     const invoke = (name, args = {}) => window.__TAURI_INTERNALS__.invoke(name, args);
-    const { epoch } = await invoke('account_snapshot');
+    const account = await invoke('account_snapshot');
+    if ('birthday' in account || 'birthdayToday' in account) throw new Error('birthday leaked into AccountView');
+    const { epoch } = account;
     await wait(() => !playAll.disabled, 'daily play available');
     playAll.click();
     await wait(() => one('.playerbar')?.dataset.trackId === '1' &&
@@ -51,6 +63,7 @@
     await wait(() => one('.daily-heading') && one('.daily-history-entry') && one('.track-row'), 'returned to daily');
     const cached = await wait(() => [...document.querySelectorAll('.notice')].find((node) =>
       node.textContent.includes('本账号上次加载的列表')), 'same-account daily cache visible after outage');
+    await wait(dailyHeadingMatches, 'same birthday policy on cached daily');
     await emit('ux_05_daily_cached');
     const retry = cached.querySelector('button');
     retry.focus();
@@ -87,7 +100,7 @@
     await wait(() => tags.textContent.includes('此分类暂无标签。'), 'style category changes without a write');
     tags.querySelector('[aria-label="关闭风格标签"]').click();
     await wait(() => !one('.style-tag-browser[open]') && document.activeElement === tagEntry, 'style tag focus restored');
-    await emit('complete', { ok: true, stageCount: 5, dailyPlayback: true, dailyCache: true, stylePlayback: true });
+    await emit('complete', { ok: true, stageCount: 5, dailyPlayback: true, dailyCache: true, dailyBirthday: birthday, stylePlayback: true });
   } catch (error) {
     await emit('failed', { message: String(error), body: document.body.innerText.slice(-2200) });
   }
