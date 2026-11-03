@@ -64,7 +64,7 @@ def main():
     assert complete['ok'] and complete['stageCount'] == count
     if not args.baseline:
         assert complete['speeds'] == [2, 1.5, 1.25, 1, .75, .5, .25, 3, 4]
-        assert complete['resumedFromSeek']
+        assert complete['resumedFromSeek'] and complete['speedFailureIsolated']
         assert abs(complete['resumedPosition'] - 10 - complete['resumeElapsed'] * 1.25) < .35
         assert complete['realMusicRequests'] == complete['accountWrites'] == 0
         stages = [json.loads(p.read_text(encoding='utf-8')) for p in sorted((root / 'first').glob('ux_*.json'))]

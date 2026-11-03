@@ -460,14 +460,14 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   // The draft belongs to the player connection, so closing the EQ dialog
   // cannot discard its last coalesced slider position.
   const equalizerDraft = useEqualizerDraft(() => view.value, configureEqualizer, syncPlayback);
-  // Volume uses absolute, repeatable values and its own feedback. It must not
-  // supersede a pending transport request or become the audio-error retry.
-  async function configureVolume(value: number) {
+  // Absolute playback preferences have their own feedback. Saving one must
+  // not supersede an in-flight transport or become the audio-error retry.
+  async function configurePreference(input: Extract<PlayerAction, { kind: 'volume' | 'speed' }>) {
     const captured = epoch,
       session = connection;
     if (!ready.value) throw { code: 'stale', message: '播放器尚未连接', retryable: false };
     try {
-      const next = await core.playerAction(captured, { kind: 'volume', value });
+      const next = await core.playerAction(captured, input);
       if (captured !== epoch || session !== connection || !ready.value)
         throw { code: 'stale', message: '账号或播放器连接已变化', retryable: false };
       accept(next);
@@ -482,6 +482,8 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       throw e;
     }
   }
+  const configureVolume = (value: number) => configurePreference({ kind: 'volume', value });
+  const configureSpeed = (value: number) => configurePreference({ kind: 'speed', value });
   async function configureMode(
     mode: import('../services/player').PlaybackMode,
     queueRevision: string,
@@ -818,6 +820,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     configureEqualizer,
     equalizerDraft,
     configureVolume,
+    configureSpeed,
     configureMode,
     intelligence,
     syncPlayback,

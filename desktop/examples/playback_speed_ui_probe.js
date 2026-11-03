@@ -80,6 +80,29 @@
     click(one('.playerbar [aria-label="暂停"]'));await wait(()=>bar().dataset.state==='paused','native pause');
     const seek=one('.playerbar [aria-label="播放进度"]');seek.value='10';seek.dispatchEvent(new Event('change',{bubbles:true}));
     await wait(()=>Math.abs(Number(bar().dataset.position)-10)<.2&&!button().disabled,'native seek');
+    const provides=one('#app').__vue_app__._context.provides;
+    const core=provides[Reflect.ownKeys(provides).find(key=>typeof key==='symbol'&&key.description==='core-client')];
+    const playerAction=core.playerAction;
+    let failedSpeedWrites=0;
+    core.playerAction=async (epoch,action)=>{
+      if(action.kind==='speed'){
+        failedSpeedWrites++;
+        throw {code:'storage',message:'合成倍速保存失败',retryable:true};
+      }
+      return playerAction(epoch,action);
+    };
+    try {
+      await open();
+      click([...panel().querySelectorAll('button')].find(n=>n.textContent.trim()==='1.5×'));
+      await wait(()=>!one('.speed-action-menu')&&one('[data-speed-save-state="failed"]'),'speed-specific error after failed write');
+      assert(failedSpeedWrites===1&&Number(bar().dataset.speed)===1&&bar().dataset.state==='paused'&&
+        !one('.playback-message button'),'failed speed does not change native playback or offer an audio retry');
+      await open();
+      assert(panel().textContent.includes('合成倍速保存失败'),'failure is visible in the speed menu');
+    } finally { core.playerAction=playerAction; }
+    await choose(1.5);
+    await wait(()=>one('[data-speed-save-state="idle"]'),'successful explicit speed selection clears failure');
+    await choose(1);
     for(const [width,height,theme] of [[1120,760,'light'],[760,540,'light'],[760,540,'dark'],[1120,760,'dark']]) {
       await resize(width,height);await appearance(theme);
       if(Number(bar().dataset.speed)!==1)await choose(1);
@@ -116,6 +139,6 @@
     const resumedPosition=Number(bar().dataset.position);
     assert(Math.abs(resumedPosition-10-elapsed*1.25)<.35,'resumed native clock differs from requested seek');
     click(one('.playerbar [aria-label="暂停"]'));await wait(()=>bar().dataset.state==='paused','final pause');
-    await emit('complete',{ok:true,stageCount:count,speeds,resumedPosition,resumeElapsed:elapsed,resumedFromSeek:true,realMusicRequests:0,accountWrites:0});
+    await emit('complete',{ok:true,stageCount:count,speeds,resumedPosition,resumeElapsed:elapsed,resumedFromSeek:true,speedFailureIsolated:true,realMusicRequests:0,accountWrites:0});
   } catch(error) {await emit('failed',{ok:false,error:String(error),stageCount:count,width:innerWidth,height:innerHeight,ratio:devicePixelRatio});}
 })();

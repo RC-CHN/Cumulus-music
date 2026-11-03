@@ -280,6 +280,52 @@ test('a late volume save cannot restore state after account replacement', async 
   assert.equal(f.player.view.value?.volume, 100);
   f.player.dispose();
 });
+test('speed preference failures stay independent of transport and native source retry', async () => {
+  const loading = deferred<PlayerView>();
+  const actions: PlayerAction[] = [];
+  const f = fixture({
+    playerAction: async (_epoch, input) => {
+      actions.push(input);
+      if (input.kind === 'play') return loading.promise;
+      if (input.kind === 'speed')
+        throw { code: 'storage', message: 'speed preference failed', retryable: true };
+      return state('4', '1', 'recovered');
+    },
+  });
+  await f.player.connect(account());
+  const playing = f.player.action({ kind: 'play' });
+  await assert.rejects(f.player.configureSpeed(1.5), { code: 'storage' });
+  assert.equal(f.player.busy.value, true);
+  assert.equal(f.player.error.value, '');
+  loading.resolve(state('2', '1', 'first'));
+  await playing;
+  f.emit({ ...state('3', '1', 'first'), state: 'error', error: 'audio source failure' });
+  await assert.rejects(f.player.configureSpeed(2), { code: 'storage' });
+  assert.equal(f.player.error.value, '');
+  await f.player.retry();
+  assert.deepEqual(actions, [
+    { kind: 'play' },
+    { kind: 'speed', value: 1.5 },
+    { kind: 'speed', value: 2 },
+    { kind: 'refresh_for', play_id: 'first', expected_queue_revision: '1' },
+  ]);
+  f.player.dispose();
+});
+
+test('a delayed speed preference cannot replace the new account', async () => {
+  const saved = deferred<PlayerView>();
+  const f = fixture({ playerAction: () => saved.promise });
+  await f.player.connect(account());
+  const pending = f.player.configureSpeed(1.5);
+  const stale = assert.rejects(pending, { code: 'stale' });
+  await f.player.connect(account('2'));
+  saved.resolve({ ...state('99', '1'), speed: 1.5 });
+  await stale;
+  assert.equal(f.player.view.value?.epoch, '2');
+  assert.equal(f.player.view.value?.speed, 1);
+  f.player.dispose();
+});
+
 test('mode changes keep pending transport and its feedback independent', async () => {
   const loading = deferred<PlayerView>();
   const calls: import('../src/services/player.ts').PlayerAction[] = [];
