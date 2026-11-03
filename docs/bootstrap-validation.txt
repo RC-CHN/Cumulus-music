@@ -134,3 +134,11 @@ PipeWire 输出。原生时钟推进、暂停、定位后继续、倍速、CUE �
   `.build/package-proof-dd4fd37-equalizer/`。这里使用私有 PipeWire 空输出、
   无外网及无注入 IPC。包内交互不单独证明滤镜的 PCM 数值；该数值由
   打包时的独立探针验证。此包没有发布，也不代表更新提交已打包。
+
+2026-11-04 Linux 已安装包输出采样复验（同一 dd4fd37 .deb）
+  给既有隔离命令加 `--verify-monitor-pcm`，通过本机 parec 读取私有 PipeWire
+  空输出的 monitor。正式应用普通播放时 440 Hz 振幅为 2895.643，包内均衡器
+  第一个非平直预设应用后为 4862.401；暂停后采样 RMS 为 0。每态仅分析固定
+  长度合成 PCM，报告仅保存汇总，不保留录音。原来的包校验、图形、时钟、暂停
+  和滤镜映射检查仍通过。报告在 `.build/installed-monitor-pcm-parec/report.json`。
+  此处验证音频样本到达隔离的系统音频服务器；不验证实体声卡或扬声器。

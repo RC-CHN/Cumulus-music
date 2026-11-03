@@ -46,7 +46,7 @@ def own_window(pid):
     return None
 
 
-def observe(binary, root, verify_local_playback=False, packaged_filter=None):
+def observe(binary, root, verify_local_playback=False, packaged_filter=None, verify_monitor_pcm=False):
     import gi
     gi.require_version('Gdk', '3.0')
     gi.require_version('GdkX11', '3.0')
@@ -94,7 +94,7 @@ def observe(binary, root, verify_local_playback=False, packaged_filter=None):
                                             capture = Gdk.pixbuf_get_from_window(screen, x, y, width, height)
                                             assert capture is not None
                                             assert capture.savev(str(root/name), 'png', [], [])
-                                        playback = verify_playback(root, app, window, x, y, width, height, source, env, screenshot, packaged_filter)
+                                        playback = verify_playback(root, app, window, x, y, width, height, source, env, screenshot, packaged_filter, verify_monitor_pcm)
                                     return width, height, playback
                 time.sleep(.2)
             raise AssertionError('packaged app never painted a normal window')
@@ -120,7 +120,11 @@ def main():
                         help='exercise synthetic audio via X11 and a private PipeWire null sink')
     parser.add_argument('--verify-installed-equalizer', action='store_true',
                         help='also exercise an EQ preset and the Debian package filter while playing')
+    parser.add_argument('--verify-monitor-pcm', action='store_true',
+                        help='measure the synthetic tone and pause silence at the private sink')
     args = parser.parse_args()
+    if args.verify_monitor_pcm and not args.verify_local_playback:
+        parser.error('--verify-monitor-pcm needs --verify-local-playback')
     if bool(args.packages) != bool(args.filter):
         parser.error('--filter is required with --packages and must be omitted with --binary')
     if args.verify_installed_equalizer and not (args.packages and args.verify_local_playback):
@@ -132,7 +136,8 @@ def main():
         binary = args.binary.resolve(strict=True)
         assert binary.is_file() and os.access(binary, os.X_OK), 'expected a built executable'
         binary_hash = digest(binary)
-        width, height, playback = observe(binary, root, args.verify_local_playback)
+        width, height, playback = observe(binary, root, args.verify_local_playback,
+                                         verify_monitor_pcm=args.verify_monitor_pcm)
         assert digest(binary) == binary_hash, 'executable changed during the probe'
         result = dict(ok=True, commit=args.commit, ordinaryBinary=True, binarySha256=binary_hash)
     else:
@@ -151,7 +156,8 @@ def main():
             assert packaged_filter.is_file() and not packaged_filter.is_symlink()
             assert digest(packaged_filter) == digest(args.filter)
             width, height, playback = observe(executable, root, args.verify_local_playback,
-                                              packaged_filter if args.verify_installed_equalizer else None)
+                                              packaged_filter if args.verify_installed_equalizer else None,
+                                              args.verify_monitor_pcm)
         result = dict(ok=True, commit=args.commit, archiveVerified=True, installedFilterMatchesPortable=True)
     result.update(ordinaryWindowPainted=True, noExternalNetwork=True, width=width, height=height)
     if playback is not None:

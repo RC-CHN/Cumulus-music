@@ -3,11 +3,15 @@ from contextlib import ExitStack, closing, contextmanager
 import ctypes as c
 import hashlib
 import json
+import math
+import os
 from pathlib import Path
 import re
+import select
 import shutil
 import sqlite3
 import subprocess
+import struct
 import tempfile
 import time
 
@@ -156,7 +160,38 @@ def private_pipewire_stream(pid, env):
                item.get('info', {}).get('input-node-id') in sink for item in objects)
 
 
-def verify_playback(root, app, window, x, y, width, height, source, env, screenshot, packaged_filter=None):
+def sink_tone(env):
+    """Capture one second from the private sink without retaining raw PCM."""
+    assert shutil.which('parec'), 'monitor proof requires parec from the PulseAudio utilities'
+    expected_bytes = 48000 * 2
+    raw = bytearray()
+    deadline = time.monotonic() + 8
+    process = subprocess.Popen(
+        ['parec', '--device=cumulus_private.monitor', '--rate=48000',
+         '--channels=1', '--format=s16le', '--raw'],
+        env=env, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    try:
+        with process.stdout as stream:
+            while len(raw) < expected_bytes:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0 or not select.select([stream], [], [], remaining)[0]:
+                    raise AssertionError('private sink monitor did not produce a full capture')
+                chunk = os.read(stream.fileno(), expected_bytes - len(raw))
+                if not chunk:
+                    raise AssertionError('private sink monitor closed before a full capture')
+                raw.extend(chunk)
+    finally:
+        stop(process)
+    # Analyze the central half second, omitting the stream's startup transient.
+    pcm = tuple(value for (value,) in struct.iter_unpack('<h', raw[24000:72000]))
+    rms = math.sqrt(math.fsum(value * value for value in pcm) / len(pcm))
+    omega = math.tau * 440 / 48000
+    sine = math.fsum(value * math.sin(omega * index) for index, value in enumerate(pcm))
+    cosine = math.fsum(value * math.cos(omega * index) for index, value in enumerate(pcm))
+    return {'rms': round(rms, 3), 'amplitude440Hz': round(2 * math.hypot(sine, cosine) / len(pcm), 3)}
+
+
+def verify_playback(root, app, window, x, y, width, height, source, env, screenshot, packaged_filter=None, verify_monitor_pcm=False):
     assert (width, height) == (1120, 760), 'local playback coordinates require the ordinary 1120x760 X11 layout'
     database = root/'state/core.sqlite3'
 
@@ -225,6 +260,12 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
         assert next_position['entry_id'] == first['entry_id']
         wait_for('installed app linked to private PipeWire sink', lambda: private_pipewire_stream(app.pid, env), 6)
         screenshot('installed-local-playing.png')
+        monitor = {}
+        if verify_monitor_pcm:
+            monitor['playing'] = sink_tone(env)
+            baseline = monitor['playing']
+            assert baseline['rms'] > 50
+            assert baseline['amplitude440Hz'] > baseline['rms'] * 1.3, 'private sink did not receive the 440 Hz fixture'
         if packaged_filter:
             inputs.click(1049, 722)  # EQ in the playback footer.
             time.sleep(.35)
@@ -239,6 +280,10 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
                                 lambda: position('playing', next_position['seconds'] + .4))
             assert effected['entry_id'] == first['entry_id']
             screenshot('installed-local-equalizer.png')
+            if verify_monitor_pcm:
+                monitor['equalized'] = sink_tone(env)
+                assert monitor['equalized']['amplitude440Hz'] > baseline['amplitude440Hz'] * 1.05, (
+                    'installed preset did not increase the 440 Hz tone')
             inputs.key('Escape')
             time.sleep(.35)
         inputs.click(559, 712)  # Pause.
@@ -254,11 +299,16 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
         assert held and held['entry_id'] == settled['entry_id']
         assert abs(held['seconds'] - settled['seconds']) < .05, 'clock changed after pause'
         screenshot('installed-local-paused.png')
+        if verify_monitor_pcm:
+            monitor['paused'] = sink_tone(env)
+            assert monitor['paused']['rms'] < baseline['rms'] * .01, 'private sink was not silent after pause'
     report = {'nativePositionAdvanced': True, 'pauseHeld': True, 'syntheticLocalSource': True,
             'privatePipeWireNullSink': True, 'physicalAudioOutputVerified': False,
             'firstSeconds': first['seconds'], 'laterSeconds': next_position['seconds'],
             'pausedSeconds': held['seconds'],
             'sourceSha256': hashlib.sha256(source.read_bytes()).hexdigest()}
+    if verify_monitor_pcm:
+        report['privateSinkMonitorPcm'] = monitor
     if packaged_filter:
         report.update(equalizerPresetCommitted=True, installedFilterMapped=True,
                       sameTrackAdvancedWithEqualizer=True)
