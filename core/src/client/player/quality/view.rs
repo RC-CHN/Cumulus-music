@@ -42,8 +42,8 @@ pub(super) fn project(
     song: &str,
     current: &PlaybackSnapshot,
     information: &QualityInformation,
-    trials: Vec<crate::playback::quality::trials::QualityTrial>,
-    trials_damaged: bool,
+    (trials, trials_damaged): (Vec<crate::playback::quality::trials::QualityTrial>, bool),
+    experiments: QualityExperiments,
 ) -> Result<QualityDetailsView> {
     let trial = current
         .timeline
@@ -53,7 +53,7 @@ pub(super) fn project(
         privilege: information.privilege.as_ref(),
         subscriber: information.subscriber,
         use_rights: &information.use_rights,
-        experiments: QualityExperiments::default(),
+        experiments,
         trial,
     };
     let choices: Vec<_> = [

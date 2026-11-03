@@ -1,3 +1,4 @@
+mod config;
 mod trial;
 mod view;
 use super::{MusicClient, PlaybackCommand, PlaybackSnapshot};
@@ -84,8 +85,8 @@ impl MusicClient {
             &song,
             &latest,
             &information,
-            records,
-            damaged,
+            (records, damaged),
+            config::experiments(self.auth.context.as_deref()),
         )
     }
 }
