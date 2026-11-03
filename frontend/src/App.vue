@@ -309,6 +309,17 @@ function openRanking(
 function openCatalog(resource: CatalogResource) {
   music.navigate({ kind: 'catalog', resource });
 }
+const searchBox = ref<InstanceType<typeof SearchBox>>();
+function searchOriginal(keyword: string) {
+  if (
+    page.value.kind !== 'search' ||
+    page.value.correct === false ||
+    page.value.keyword !== keyword
+  )
+    return;
+  if (searchBox.value?.commitOriginal(keyword) !== keyword) return;
+  music.navigate({ kind: 'search', keyword, correct: false });
+}
 function openSearchItem(item: SearchItem) {
   if (item.kind === 'artist') openCatalog({ kind: 'artist', id: item.artist.id });
   else if (item.kind === 'album') openCatalog({ kind: 'album', id: item.album.id });
@@ -1666,6 +1677,7 @@ onUnmounted(() => {
         <Icon name="back" />
       </button>
       <SearchBox
+        ref="searchBox"
         :account="account"
         :page-key="navigationKey"
         :keyword="page.kind === 'search' ? page.keyword : undefined"
@@ -1911,6 +1923,7 @@ onUnmounted(() => {
                     })
                 "
                 @search="(keyword) => music.navigate({ kind: 'search', keyword })"
+                @search-original="searchOriginal"
                 @open="openSearchItem"
                 @play="playSearchResults"
                 @play-card="playSearchCard"

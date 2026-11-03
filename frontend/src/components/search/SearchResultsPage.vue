@@ -58,6 +58,7 @@ const emit = defineEmits<{
     rewrittenKeyword?: string,
   ];
   search: [keyword: string];
+  searchOriginal: [keyword: string];
   open: [item: SearchItem];
   play: [tracks: TrackView[], index: number, context: SearchResultPlayback];
   togglePlayback: [];
@@ -396,7 +397,7 @@ onBeforeUnmount(() => {
     </div>
     <div v-if="rewrite" class="search-correction">
       正在显示“{{ rewrite }}”的结果
-      <button class="text-button" @click="emit('navigate', 'all', undefined, false)">
+      <button class="text-button" @click="emit('searchOriginal', keyword)">
         仍然搜索“{{ keyword }}”
       </button>
     </div>

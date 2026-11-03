@@ -143,3 +143,9 @@ scripts/ci/search_results_smoke.py --v3 用封闭合成服务在真实 Tauri Web
 综合使用原词，分类使用生效词，保持完整提示文字和独立卡片操作。副标题不加标记；
 未把相同规则扩展到未经该批证据确认的其他类型。search_results_smoke.py --card-matches
 可验证综合与分类的命中、不匹配文本及提示文字。
+
+按原词重新搜索
+官方 SearchResults/index.jsx:82–99 将“仍然搜索”的原词放回输入框，记入搜索历史，
+再关闭本次纠正。Cumulus 复用顶栏搜索历史提交，独立打开无纠正的综合结果；Back
+恢复此前的纠正和建议显示标签。search_results_smoke.py --correction-original 验证
+上述原词、原生本机搜索历史和返回。

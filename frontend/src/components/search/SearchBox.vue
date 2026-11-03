@@ -25,6 +25,7 @@ const emit = defineEmits<{
   expired: [];
 }>();
 const model = useSearchBox(undefined, () => emit('expired'));
+defineExpose({ commitOriginal: (keyword: string) => model.submit(keyword) });
 const {
   query,
   open,

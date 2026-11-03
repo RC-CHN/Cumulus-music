@@ -49,6 +49,47 @@
     } finally { window.requestAnimationFrame=frames; }
   }
   try {
+    if(window.__cumulusSearchOriginalCorrectionProof){
+      await wait(()=>one('.track-row'),'daily ready');await fixture('correction');
+      const provides=one('#app').__vue_app__._context.provides;
+      const core=provides[Reflect.ownKeys(provides).find(k=>typeof k==='symbol'&&k.description==='core-client')];
+      const discovery=core.searchDiscovery;
+      const input=one('[aria-label="搜索音乐"]');
+      const label='显示标签 · 合成错词';
+      core.searchDiscovery=async(...args)=>{
+        const result=await discovery(...args);
+        if(args[1].kind!=='suggestions')return result;
+        return {...result,value:{...result.value,suggestions:[{keyword:'合成错词',label,tag:null}]}};
+      };
+      try{
+        input.focus();input.click();input.value='显示';input.dispatchEvent(new Event('input',{bubbles:true}));
+        await wait(()=>one('.search-suggestion[title="'+label+'"]'),'synthetic display label suggestion');
+        click(one('.search-suggestion[title="'+label+'"]'));
+        await wait(()=>ready()&&one('.search-correction')?.textContent.includes('合成正词'),'corrected results');
+        assert(input.value===label,'suggestion display text differs from canonical query');
+        await capture('correction_suggestion_label');
+      }finally{core.searchDiscovery=discovery;}
+      const {epoch}=await core.accountSnapshot();
+      await core.searchHistory(epoch,{kind:'clear'});
+      assert(!(await core.searchHistory(epoch,{kind:'read'})).value.length,'isolated native history empty');
+      const original=button('仍然搜索“合成错词”');
+      click(original);original.click();
+      await wait(()=>ready()&&!one('.search-correction')&&one('.search-result-panel').textContent.includes('按原词搜索结果'),
+        'original results with native correction disabled');
+      assert(input.value==='合成错词','input switches to the exact original term');
+      let remembered=false;
+      for(let i=0;i<80;i++){
+        if((await core.searchHistory(epoch,{kind:'read'})).value[0]==='合成错词'){remembered=true;break;}
+        await sleep(50);
+      }
+      assert(remembered,'native history remembers the explicit original search');
+      await capture('correction_original_remembered');
+      click(button('返回上一页'));
+      await wait(()=>ready()&&one('.search-correction')?.textContent.includes('合成正词')&&input.value===label,
+        'Back restores prior corrected view and its display label');
+      await emit('complete',{ok:true,originalCorrectionVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      return;
+    }
     if(window.__cumulusSearchCardMatchesProof){
       await wait(()=>one('.track-row'),'daily ready');
       await fixture('good');await fresh('合成');
