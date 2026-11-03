@@ -1,0 +1,53 @@
+合成扫码接入单窗口主流程：实施计划
+
+现有 desktop/examples/main_flow_ui_probe.rs 使用闭合 Api 夹具和真实 Vue/Tauri/
+MusicClient/libmpv，但夹具的 account/get 直接返回身份，未验证游客扫码和会话采用。
+保留现有歌单、媒体、SQLite 完整性及清理断言。本计划尚未接线或执行。
+
+宿主和传输
+- 让现有 Service 继续承担业务状态和 MediaBackend；新增测试专用 HttpBackend
+  包装它。先校验固定 PC origin、WireRoute::Eapi；从表单取 params，以
+  protocol::wire::eapi::unwrap 取得 path、payload，核对 path 与 URL 的
+  /eapi/ → /api/ 映射。拒绝未知端点、重定向和任何其他来源，不设网络回退。
+- 使用 MusicClient::open_with_request_context（core/src/client/mod.rs:119–180），
+  后端同时用于启动传输和新登录候选。仅注入 with_login_providers 不够：
+  core/src/account/profiles.rs:251–326 在采用时会把候选客户端换入会话。
+  状态核对可另用 StateStore::open(root/state)，不要读取候选 Cookie 或刷新令牌。
+- 默认 open_with_http_backend 走 VerifiedCompatibility，PC 创建、删歌单、
+  操作曲目和符合三字段的元数据 batch 走 WEAPI；随机密钥无法在本夹具解密
+  （core/src/protocol/http/origin.rs:84–145、protocol/wire/weapi.rs）。
+  给 open_with_request_context 传入固定 OFFICIAL_WINDOWS_USER_AGENT、合成
+  非空 client_sign、固定 os_version 和 RequestContext::new({}, PC origin,
+  拒绝实际调用的 TokenProvider)，选择 OfficialPcPlaylists。其范围只覆盖
+  create/manipulate/delete/order 和精确三个子请求的 metadata batch。固定
+  空配置不需要反作弊令牌（protocol/http/client.rs:300–322、
+  protocol/context.rs:171–213）。此合成配置不证明真实 MConfig、易盾或设备身份。
+- Frontend EAPI 把顶层字段转换为字符串（protocol/http/request.rs:215–233、
+  protocol/wire/serialization.rs:172–185）。按线上形态校验 privacy="10"、
+  imme="true"；trackIds 和三个批量子请求仍是 JSON 文本。可只在适配层把必要
+  字段还原给原 Service，保留对合成账号、歌曲、私密目标和写入次数的限制。
+
+扫码和采用
+1. 无合成会话 Cookie 的 /api/w/nuser/account/get 返回 301；正式 Vue 显示游客。
+   由账户按钮打开真实二维码界面，调用 /api/login/qrcode/unikey，返回固定
+   测试用 unikey。Legacy 最小模式 type="3"；若启用官方登录策略并用两个
+   t1 分桶，则 JSK 使用 type="5"、fromPage="JSK" 和空 x-login-chain-id，
+   poll 另带 secureCaptcha=""（account/login/protocol.rs、account/qr.rs:112–201）。
+2. /api/login/qrcode/client/login 核对同一合成 key：第一次返回 802。
+   确认 Vue 显示 .qr-confirmation 且仍为原游客代次后，以测试专用事件放行
+   第二次轮询；若请求已到，可用有界等待。仅第二次返回 803 并用
+   desktop/examples/support/auth.rs:17 的 reply 生成固定合成会话，不需真扫描。
+3. 803 不直接算登录成功：core/src/account/login/qr.rs:69–91 用候选客户端
+   请求 /api/w/nuser/account/get，核对合成 Cookie 后返回 userId=2；随后候选、
+   注册表选择和账号视图一起提交。验证新认证代次和固定昵称，可用 saved_accounts
+   核对一项当前记录；后续推荐、搜索、播放、歌单和下载请求必须带该合成 Cookie。
+   只记录布尔、端点和次数，禁止输出请求体、票据、Cookie、RT 或完整授权 URL。
+
+执行边界
+在隔离工作树构建正式 frontend dist 与 main_flow_ui_probe（custom-protocol），
+复用 scripts/ci/main_flow_smoke.py 的新私有状态目录和媒体/账本断言。Linux 通过
+unshare -Urn 仅启用回环，再在私有 D-Bus 和 Xvfb/Openbox 内运行；Windows 由
+闭合夹具限制应用请求，不据此声称 OS 断网。将游客检查点与认证后检查点分开，
+后者断言采用的 epoch 一致，记录两次扫码轮询且无自动重试。已有下载后夹具断开、
+本地解码、哈希和清理判据继续强制。此验收不验证真实登录、真实账号写入、上游
+音源或物理声卡；若需证明已保存会话重开，另在同一合成状态启动第二个进程。
