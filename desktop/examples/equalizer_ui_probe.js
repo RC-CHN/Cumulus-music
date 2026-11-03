@@ -76,7 +76,40 @@
     await preset(1);
     await wait(()=>el('[aria-label="均衡器预设"]').value==='1','explicit equal built-in remains selected');
     await stage('eq_same_curve_builtin',{enabled:true,gains:pop});
-    step='slider';const revision=el('.equalizer-dialog').dataset.revision,n=ranges()[4];for(const value of ['-1','-2','-3.5']){n.value=value;n.dispatchEvent(new Event('input',{bubbles:true}));}await wait(()=>settled()&&el('.equalizer-dialog').dataset.revision!==revision&&el('.equalizer-status').dataset.status==='processing','input_only_slider_processed');await stage('eq_custom',{enabled:true,gains:custom});
+    step='slider_pending';
+    const revision=el('.equalizer-dialog').dataset.revision,n=ranges()[4];
+    const provides=el('#app').__vue_app__._context.provides;
+    const core=provides[Reflect.ownKeys(provides).find(key=>typeof key==='symbol'&&key.description==='core-client')];
+    const playerAction=core.playerAction;
+    const requests=[], acknowledgements=[];
+    let release;
+    const gate=new Promise(resolve=>{release=resolve;});
+    core.playerAction=async (owner,command)=>{
+      if(command.kind!=='equalizer')return playerAction(owner,command);
+      const index=requests.push({gain:command.settings.gains[4],revision:command.expected_revision})-1;
+      const result=await playerAction(owner,command);
+      acknowledgements[index]={gain:result.equalizer.settings.gains[4],revision:result.equalizer.revision};
+      if(index===0)await gate;
+      return result;
+    };
+    const input=value=>{n.value=value;n.dispatchEvent(new Event('input',{bubbles:true}));};
+    try{
+      input('-1');
+      await wait(()=>acknowledgements[0]?.gain===-1,'first real native gain acknowledged');
+      input('-2');input('-3.5');
+      await sleep(250);
+      if(requests.length!==1||n.value!=='-3.5')throw Error('latest draft must remain visible with only one write in flight');
+      await close();
+      if(requests.length!==1)throw Error('dialog closure must not flush a competing write');
+      release();
+      await wait(()=>acknowledgements[1]?.gain===-3.5,'latest closed-dialog gain acknowledged');
+      await open();
+      await wait(()=>settled()&&el('.equalizer-status').dataset.status==='processing','latest input reaches native DSP');
+      if(requests.length!==2||requests[0].revision!==revision||requests[1].revision!==acknowledgements[0].revision||
+        requests[0].gain!==-1||requests[1].gain!==-3.5||gains()[4]!==-3.5)
+        throw Error('rapid input must preserve the final gain and native revision order');
+    }finally{release();core.playerAction=playerAction;}
+    await stage('eq_custom',{enabled:true,gains:custom});
     step='save_custom';const beforeSave=el('.equalizer-dialog').dataset.revision;await click(byText('保存自定义预设'));
     await wait(()=>{
       const error=el('.equalizer-error');if(error)throw Error(error.textContent.trim());
