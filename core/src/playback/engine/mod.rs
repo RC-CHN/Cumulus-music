@@ -101,6 +101,16 @@ pub trait AudioEngine: Send {
     fn observe_loudness(&mut self) -> Result<Option<crate::effects::loudness::abi::LoudnessStats>> {
         Ok(None)
     }
+    /// Explicit native PEQ component; false means the engine has no adapter.
+    fn apply_parametric_component(
+        &mut self,
+        _: crate::effects::parametric::ParametricPlan,
+    ) -> Result<bool> {
+        Ok(false)
+    }
+    fn clear_parametric_component(&mut self) -> Result<()> {
+        Ok(())
+    }
     fn load(&mut self, request: LoadRequest, cancel: &Cancellation) -> Result<LoadedMedia>;
     /// Native-only, already-opened and verified local audio; default engines
     /// fail closed instead of reopening by path or using a URL.

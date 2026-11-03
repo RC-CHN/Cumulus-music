@@ -251,6 +251,15 @@ impl Actor {
                     }
                     return;
                 }
+                if let Err(error) = self.parametric_apply_deferred().await {
+                    let _ = self.stop(false).await;
+                    self.state = PlaybackStatus::Error;
+                    self.record_failure(&error);
+                    if let Some(reply) = pending.reply {
+                        let _ = reply.send(Err(error));
+                    }
+                    return;
+                }
                 let target = prepared.timeline.to_media(prepared.position);
                 let prefs = self.prefs;
                 let paused = pending.paused;
@@ -317,6 +326,7 @@ impl Actor {
                     stopped.and(cleared)
                 })
                 .await;
+                let _ = self.parametric_reset().await;
                 self.state = PlaybackStatus::Error;
                 self.record_failure(&error);
                 self.loaded = None;

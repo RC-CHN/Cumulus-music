@@ -46,6 +46,7 @@ pub(super) struct Actor {
     pub relay_hint: crate::relay::publisher::player::Hint,
     pub equalizer: crate::effects::equalizer::EqualizerSnapshot,
     pub equalizer_initialized: bool,
+    pub parametric: super::parametric::State,
     pub loudness: crate::effects::loudness::LoudnessSnapshot,
     pub loudness_initialized: bool,
     pub session: Arc<AccountSession>,
@@ -109,6 +110,7 @@ impl Actor {
             relay_hint: Default::default(),
             equalizer: Default::default(),
             equalizer_initialized: false,
+            parametric: Default::default(),
             loudness: Default::default(),
             loudness_initialized: false,
             session,
@@ -277,6 +279,7 @@ impl Actor {
             stopped.and(cleared)
         })
         .await;
+        let parametric = self.parametric_reset().await;
         self.loaded = None;
         self.loudness_forget_track();
         self.play_id = None;
@@ -284,7 +287,7 @@ impl Actor {
         self.buffered_through = None;
         self.state = PlaybackStatus::Idle;
         self.reset = false;
-        result.and(saved)
+        result.and(parametric).and(saved)
     }
     pub fn save_position(&mut self) -> Result<()> {
         let (Some(loaded), Some(seconds)) = (&self.loaded, self.position) else {
@@ -348,6 +351,7 @@ impl Actor {
             tokio::select! {
                 message = receiver.recv() => match message {
                     Some(Message::Request(request)) => self.request(request).await,
+                    Some(Message::Parametric(request)) => self.parametric_request(*request).await,
                     Some(Message::Cancel(id)) => {
                         if self.pending.as_ref().is_some_and(|p| p.id == id) {
                             let _ = self.stop(false).await;

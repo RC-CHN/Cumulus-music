@@ -522,6 +522,20 @@ impl AudioEngine for MpvEngine {
         // neither unpauses nor reloads a file, and is not activation evidence.
         self.control(&["set", "audio-device", id])
     }
+    fn apply_parametric_component(
+        &mut self,
+        plan: crate::effects::parametric::ParametricPlan,
+    ) -> Result<bool> {
+        self.detach_parametric_equalizer()?;
+        let Some(path) = self.equalizer_library.clone() else {
+            return Ok(false);
+        };
+        self.attach_parametric_equalizer(&path, plan)?;
+        Ok(true)
+    }
+    fn clear_parametric_component(&mut self) -> Result<()> {
+        self.detach_parametric_equalizer()
+    }
     fn apply_equalizer(
         &mut self,
         settings: crate::effects::equalizer::EqualizerSettings,

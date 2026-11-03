@@ -104,6 +104,10 @@ pub struct Device {
     pub loudness_clear_fail: AtomicBool,
     pub loudness: Mutex<Option<cumulus_core::effects::loudness::LoudnessSettings>>,
     pub loudness_at_unpause: Mutex<Vec<Option<cumulus_core::effects::loudness::LoudnessSettings>>>,
+    pub parametric_supported: AtomicBool,
+    pub parametric_attached: AtomicBool,
+    pub parametric_clear_fail: AtomicBool,
+    pub parametric_at_unpause: Mutex<Vec<bool>>,
     pub equalizer_supported: AtomicBool,
     pub equalizer_fail: AtomicBool,
     pub equalizer_hold: AtomicBool,
@@ -128,6 +132,10 @@ impl Default for Device {
             loudness_clear_fail: AtomicBool::new(false),
             loudness: Mutex::new(None),
             loudness_at_unpause: Mutex::new(Vec::new()),
+            parametric_supported: AtomicBool::new(false),
+            parametric_attached: AtomicBool::new(false),
+            parametric_clear_fail: AtomicBool::new(false),
+            parametric_at_unpause: Mutex::new(Vec::new()),
             equalizer_supported: AtomicBool::new(false),
             equalizer_fail: AtomicBool::new(false),
             equalizer_hold: AtomicBool::new(false),
@@ -169,6 +177,24 @@ pub fn audio_engine(device: Arc<Device>) -> Box<dyn AudioEngine> {
     Box::new(Engine(device))
 }
 impl AudioEngine for Engine {
+    fn apply_parametric_component(
+        &mut self,
+        plan: cumulus_core::effects::parametric::ParametricPlan,
+    ) -> Result<bool> {
+        if !self.0.parametric_supported.load(Ordering::SeqCst) {
+            return Ok(false);
+        }
+        assert!(plan.enabled());
+        self.0.parametric_attached.store(true, Ordering::SeqCst);
+        Ok(true)
+    }
+    fn clear_parametric_component(&mut self) -> Result<()> {
+        if self.0.parametric_clear_fail.load(Ordering::SeqCst) {
+            return Err(Error::State("injected parametric cleanup failure"));
+        }
+        self.0.parametric_attached.store(false, Ordering::SeqCst);
+        Ok(())
+    }
     fn apply_loudness(
         &mut self,
         settings: cumulus_core::effects::loudness::LoudnessSettings,
@@ -245,6 +271,11 @@ impl AudioEngine for Engine {
             return Err(Error::State("injected native unpause failure"));
         }
         if !paused {
+            self.0
+                .parametric_at_unpause
+                .lock()
+                .unwrap()
+                .push(self.0.parametric_attached.load(Ordering::SeqCst));
             self.0
                 .loudness_at_unpause
                 .lock()

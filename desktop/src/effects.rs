@@ -36,7 +36,7 @@ pub fn configure_native_audio(
             ..Default::default()
         })?;
         Ok(Box::new(match &path {
-            Some(path) => engine.with_equalizer_library(path.clone()),
+            Some(path) => engine.with_effects_library(path.clone()),
             None => engine,
         }))
     })

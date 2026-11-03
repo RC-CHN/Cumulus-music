@@ -6,6 +6,8 @@ mod history;
 mod intelligence;
 mod load;
 mod loudness;
+mod parametric;
+pub use parametric::ParametricApplication;
 mod quality;
 mod remote;
 mod startup;
@@ -45,6 +47,7 @@ struct Request {
 }
 enum Message {
     Request(Request),
+    Parametric(Box<parametric::Request>),
     Cancel(String),
     Shutdown,
     Loading(u64),

@@ -754,3 +754,96 @@ async fn native_clock_and_cache_are_entry_scoped_and_capped_at_the_authorized_pr
     assert_eq!(seek.buffered_through, None);
     assert_eq!(f.command(Cmd::Next).await.unwrap().buffered_through, None);
 }
+
+fn synthetic_peq() -> cumulus_core::effects::parametric::ParametricPlan {
+    cumulus_core::effects::parametric::ParametricPlan::from_material(&json!({
+        "aev2":{"peq":{"on":true,"gain":-2,"f":[{"band":1,"type":6,"freq":440,"gain":-4,"q":0.7}]}}
+    }))
+    .unwrap()
+    .unwrap()
+}
+
+#[tokio::test]
+async fn native_parametric_selection_does_not_wait_for_decode_and_cannot_follow_a_new_owner() {
+    use cumulus_core::playback::controller::ParametricApplication as App;
+    use std::time::Duration;
+
+    let f = Fixture::new();
+    f.device.parametric_supported.store(true, Ordering::SeqCst);
+    f.device.hold_load.store(true, Ordering::SeqCst);
+    let playing = f.start(replace(&[1, 2]));
+    tokio::time::timeout(Duration::from_secs(4), f.device.started.notified())
+        .await
+        .unwrap();
+    let original = f.token();
+    let deferred = tokio::time::timeout(
+        Duration::from_secs(4),
+        f.player
+            .set_parametric_component(&original, Some(synthetic_peq())),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(deferred, App::DeferredUntilLoaded);
+    assert!(!f.device.parametric_attached.load(Ordering::SeqCst));
+    f.device.hold_load.store(false, Ordering::SeqCst);
+    assert_eq!(playing.await.unwrap().unwrap().state, Status::Playing);
+    assert_eq!(*f.device.parametric_at_unpause.lock().unwrap(), [true]);
+
+    f.command(Cmd::Next).await.unwrap();
+    assert_eq!(
+        *f.device.parametric_at_unpause.lock().unwrap(),
+        [true, true]
+    );
+
+    f.session
+        .adopt(f.api.clone(), json!({"userId":10}), &original)
+        .unwrap();
+    assert!(matches!(
+        f.player
+            .set_parametric_component(&original, Some(synthetic_peq()))
+            .await,
+        Err(Error::StaleResponse)
+    ));
+    assert!(!f.device.parametric_attached.load(Ordering::SeqCst));
+    f.command(replace(&[3])).await.unwrap();
+    assert_eq!(
+        *f.device.parametric_at_unpause.lock().unwrap(),
+        [true, true, false]
+    );
+}
+
+#[tokio::test]
+async fn native_parametric_cleanup_failure_stops_and_fences_future_unpause() {
+    use cumulus_core::playback::controller::ParametricApplication as App;
+
+    let f = Fixture::new();
+    f.device.parametric_supported.store(true, Ordering::SeqCst);
+    f.command(replace(&[1])).await.unwrap();
+    assert_eq!(
+        f.player
+            .set_parametric_component(&f.token(), Some(synthetic_peq()))
+            .await
+            .unwrap(),
+        App::Configured
+    );
+    f.device.parametric_clear_fail.store(true, Ordering::SeqCst);
+    assert!(
+        f.player
+            .set_parametric_component(&f.token(), None)
+            .await
+            .is_err()
+    );
+    assert!(f.device.state.lock().unwrap().view.entry_id.is_none());
+    assert!(f.command(replace(&[2])).await.is_err());
+    assert_eq!(*f.device.parametric_at_unpause.lock().unwrap(), [false]);
+    f.device
+        .parametric_clear_fail
+        .store(false, Ordering::SeqCst);
+    f.command(replace(&[2])).await.unwrap();
+    assert_eq!(
+        *f.device.parametric_at_unpause.lock().unwrap(),
+        [false, false]
+    );
+    assert!(!f.device.parametric_attached.load(Ordering::SeqCst));
+}

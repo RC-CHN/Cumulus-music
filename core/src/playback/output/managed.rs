@@ -301,6 +301,15 @@ impl<E: AudioEngine + ?Sized> AudioEngine for ManagedOutput<E> {
         }
         Ok(value)
     }
+    fn apply_parametric_component(
+        &mut self,
+        plan: crate::effects::parametric::ParametricPlan,
+    ) -> Result<bool> {
+        self.inner.apply_parametric_component(plan)
+    }
+    fn clear_parametric_component(&mut self) -> Result<()> {
+        self.inner.clear_parametric_component()
+    }
     fn apply_equalizer(
         &mut self,
         value: crate::effects::equalizer::EqualizerSettings,

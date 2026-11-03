@@ -29,6 +29,7 @@ impl Actor {
     pub async fn rebind(&mut self) -> Result<()> {
         let token = self.session.token()?;
         if token == self.token && self.bound {
+            self.parametric_retry_reset().await?;
             self.quality_sync()?;
             self.equalizer_sync().await?;
             return self.loudness_sync().await;
@@ -37,6 +38,8 @@ impl Actor {
             && self.startup_autoplay
             && self.session.is_initial_restore(&self.token, &token)?;
         let stopped = self.stop(false).await;
+        // Never bind a new owner while the old native component may be live.
+        self.parametric_reset().await?;
         let owner = token.uid.as_deref().unwrap_or("local-guest");
         // Clear the previous account even if the new account's database is
         // corrupt. An unbound actor retries loading; it cannot write a fallback.

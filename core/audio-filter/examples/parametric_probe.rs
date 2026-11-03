@@ -53,8 +53,9 @@ fn main() -> Result<()> {
         let mut engine = MpvEngine::open(MpvConfig {
             null_output: true,
             ..Default::default()
-        })?;
-        engine.attach_parametric_equalizer(Path::new(&library), plan)?;
+        })?
+        .with_effects_library(Path::new(&library).to_path_buf());
+        assert!(engine.apply_parametric_component(plan)?);
         assert_eq!(engine.parametric_equalizer_stats()?.processed_samples, 0);
         engine.load(
             LoadRequest::new(MediaInput::File(file.clone())),
@@ -82,7 +83,7 @@ fn main() -> Result<()> {
             std::thread::sleep(Duration::from_millis(20));
         }
         engine.pause(true)?;
-        engine.detach_parametric_equalizer()?;
+        engine.clear_parametric_component()?;
         assert!(engine.parametric_equalizer_stats().is_err());
         assert!(engine.poll()?.paused);
         engine.stop()?;

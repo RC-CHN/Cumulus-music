@@ -289,6 +289,24 @@ impl MusicClient {
         self.session.check_generation(&token)?;
         Ok(token)
     }
+    /// Trusted native host only. The caller must supply a validated component
+    /// whose use is authorized; this method neither acquires nor activates
+    /// upstream rights and is not available through renderer IPC.
+    pub async fn set_native_parametric_component(
+        &self,
+        epoch: &str,
+        plan: Option<crate::effects::parametric::ParametricPlan>,
+    ) -> Result<crate::playback::controller::ParametricApplication> {
+        let token = self.player_token(epoch)?;
+        let outcome = self
+            .player
+            .controller()
+            .await?
+            .set_parametric_component(&token, plan)
+            .await?;
+        self.session.check_generation(&token)?;
+        Ok(outcome)
+    }
     pub async fn subscribe_playback(&self, epoch: &str) -> Result<PlaybackSubscription> {
         let token = self.player_token(epoch)?;
         let controller = self.player.controller().await?;
