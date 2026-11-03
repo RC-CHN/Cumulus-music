@@ -118,7 +118,7 @@ pub fn encode_component(text: &str) -> String {
     out
 }
 
-fn decode_component(text: &str) -> Result<String> {
+pub(crate) fn decode_component(text: &str) -> Result<String> {
     let mut out = Vec::new();
     let mut bytes = text.bytes();
     while let Some(c) = bytes.next() {

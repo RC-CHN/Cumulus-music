@@ -121,6 +121,8 @@ pub struct CommentAuthor {
 pub struct CommentReply {
     pub id: Option<String>,
     pub content: Option<String>,
+    #[serde(default)]
+    pub rich_content: Value,
     pub author: Option<CommentAuthor>,
     pub status: Option<i64>,
 }
@@ -184,6 +186,7 @@ impl Comment {
                             .map(identifier)
                             .transpose()?,
                         content: r["content"].as_str().map(str::to_owned),
+                        rich_content: r["richContent"].clone(),
                         author: author(&r["user"])?,
                         status: r["status"].as_i64(),
                     })

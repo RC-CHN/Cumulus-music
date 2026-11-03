@@ -28,12 +28,18 @@ impl Library {
 fn comment(id: u64, parent: u64) -> Value {
     let mut value = json!({"commentId":id,"parentCommentId":parent.to_string(),"content":format!("合成评论 {id}：一段用于检查读取恢复与阅读位置的内容。\n第二行文本。"),"time":1700000000000_u64-id,"timeStr":"合成评论时间","liked":false,"likedCount":id%99,"user":{"userId":3,"nickname":if id==101 {"LongSyntheticListenerWithoutSpaces".repeat(4)}else{format!("合成听友 {id}")}},"beReplied":[]});
     if id == 101 {
+        let emoji = cumulus_core::protocol::wire::serialization::encode_component(
+            r#"{"text":"[大笑]","url":"never-render-fixture-private"}"#,
+        );
+        value["richContent"] = json!(format!(
+            r#"提到<song id="private-song-key">合成曲目</song><c0m_cvt j="{emoji}" href="private-attribute"/>"#
+        ));
         value["user"]["avatarUrl"] =
             json!("https://p1.music.126.net/cumulus-synthetic-missing.png");
     }
     if id == 102 {
         value["user"]["avatarUrl"] = json!("https://p1.music.126.net/cumulus-synthetic-cover.png");
-        value["beReplied"] = json!([{"beRepliedCommentId":99,"content":"这是一条合成的原评论。","user":{"userId":4,"nickname":"被回复的听友"}}]);
+        value["beReplied"] = json!([{"beRepliedCommentId":99,"content":"这是一条合成的原评论。","richContent":"引用<song id=\"private-reply-key\">合成引用曲目</song>","user":{"userId":4,"nickname":"被回复的听友"}}]);
     }
     value
 }

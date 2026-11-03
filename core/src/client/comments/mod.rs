@@ -1,5 +1,6 @@
 mod floor;
 mod resource;
+mod text;
 mod writes;
 use super::{MusicClient, dto::AccountData, mapping};
 pub use crate::comments::{
@@ -79,7 +80,8 @@ fn comment(value: Comment, uid: &str) -> CommentView {
     CommentView {
         id: value.id,
         parent_id: value.parent_id,
-        content: value.content,
+        content: text::project(&value.rich_content, Some(&value.content), value.status)
+            .unwrap_or_else(|| "该评论已删除".into()),
         time: value.time,
         time_text: value.time_text,
         liked: value.liked,
@@ -91,7 +93,7 @@ fn comment(value: Comment, uid: &str) -> CommentView {
             .into_iter()
             .map(|r| CommentReplyView {
                 id: r.id,
-                content: r.content,
+                content: text::project(&r.rich_content, r.content.as_deref(), r.status),
                 author: r.author.map(author),
             })
             .collect(),
