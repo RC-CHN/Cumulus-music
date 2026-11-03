@@ -22,6 +22,11 @@ pub enum SearchItem {
         hint: Option<TrackHint>,
         #[serde(skip_serializing_if = "std::ops::Not::not")]
         explicit: bool,
+        #[serde(
+            rename = "originalRecording",
+            skip_serializing_if = "std::ops::Not::not"
+        )]
+        original_recording: bool,
         #[serde(skip_serializing_if = "Vec::is_empty")]
         reasons: Vec<reason::ReasonTag>,
         excerpt: Vec<String>,
@@ -264,6 +269,7 @@ fn item(
                 hint,
                 reasons,
                 explicit: comprehensive.is_some() && explicit_song(v),
+                original_recording: v["originCoverType"].as_f64() == Some(1.0),
                 excerpt,
                 excerpt_truncated,
             }

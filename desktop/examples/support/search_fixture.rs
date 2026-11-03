@@ -291,8 +291,8 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
             {
                 Some(json!({"code":200,"data":{"blocks":[
                     {"blockCode":"search_block_hot_result_hot_explain","resources":[{"baseInfo":{"hotExplainModuleData":{"title":"热点说明","text":"合成热点内容","textAction":"https://example.invalid/private"}}}]},
-                    {"blockCode":"search_block_song","resources":[{"type":"song","baseInfo":{"simpleSongData":{"id":1,"name":"综合 V3 合成歌曲","mark":1048576,"dt":60000,"ar":[],"al":{"id":1,"name":"合成专辑"},"newSongExt":{"songAlias":"歌词存在时隐藏别名"}}},"extInfo":{"mv":601,"lyrics":{"txt":"🎵合成歌词片段","range":[{"first":2,"second":4}]}}},
-                    {"type":"song","baseInfo":{"simpleSongData":{"id":2,"name":"合成备用曲目","mark":1,"album":{"mark":1048576},"newSongExt":{"songAlias":"不会展示的旧别名"}}},"extInfo":{"songAlias":"前缀<em>合成 V3</em>别名","lyrics":{"txt":"🎵合成","range":[{"first":1,"second":4}]}}},
+                    {"blockCode":"search_block_song","resources":[{"type":"song","baseInfo":{"simpleSongData":{"id":1,"name":"综合 V3 合成歌曲","mark":1048576,"originCoverType":1,"dt":60000,"ar":[],"al":{"id":1,"name":"合成专辑"},"newSongExt":{"songAlias":"歌词存在时隐藏别名"}}},"extInfo":{"mv":601,"lyrics":{"txt":"🎵合成歌词片段","range":[{"first":2,"second":4}]}}},
+                    {"type":"song","baseInfo":{"simpleSongData":{"id":2,"name":"合成备用曲目","mark":1,"originCoverType":"1","album":{"mark":1048576},"newSongExt":{"songAlias":"不会展示的旧别名"}}},"extInfo":{"songAlias":"前缀<em>合成 V3</em>别名","lyrics":{"txt":"🎵合成","range":[{"first":1,"second":4}]}}},
                     {"type":"song","baseInfo":{"simpleSongData":{"id":3,"name":"合成标签曲目"}},"extInfo":{"algClickableTags":[
                         {"text":"合成推荐","clickable":true,"reasonType":1,"reasonId":"reason-41","resourceId":3},
                         {"text":"合成城市","clickable":true,"reasonType":5,"url":"https://example.invalid/private?chartCode=city-chart&targetId=77&targetType=4"},
@@ -356,6 +356,13 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
     ))
     .unwrap();
     let mut response = fixtures[category].clone();
+    if v3_enabled() && category == "songs" && args["keyword"] == "合成 V3" {
+        response["data"]["resources"][0]["baseInfo"]["simpleSongData"]["originCoverType"] =
+            json!(1);
+        response["data"]["resources"][1]["baseInfo"]["simpleSongData"]["originCoverType"] =
+            json!(2);
+    }
+
     if super::search_mv_fixture::enabled() && category == "all" {
         let rows = response["data"]["blocks"]
             .as_array_mut()

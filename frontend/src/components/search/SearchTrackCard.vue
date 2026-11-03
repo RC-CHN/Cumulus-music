@@ -10,6 +10,7 @@ const props = defineProps<{
   mvId?: string;
   hint?: SearchTrackHint;
   explicit?: boolean;
+  originalRecording?: boolean;
   reasons?: SearchReasonTag[];
   matchKeyword: string;
   playable: boolean;
@@ -88,6 +89,7 @@ watch(
         >
           MV <Icon name="play" />
         </button>
+        <span v-if="originalRecording" class="search-original-tag">原唱</span>
         <span class="ellipsis" :data-tooltip="track.artists.join(' / ')">
           <template v-if="track.artistRefs?.length">
             <template v-for="(artist, i) in track.artistRefs" :key="i">

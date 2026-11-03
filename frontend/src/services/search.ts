@@ -52,6 +52,7 @@ export type SearchItem =
       mvId?: string;
       hint?: SearchTrackHint;
       explicit?: boolean;
+      originalRecording?: boolean;
       reasons?: SearchReasonTag[];
     }
   | { kind: 'playlist'; playlist: PlaylistView; recommendation?: string }

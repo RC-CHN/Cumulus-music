@@ -7,6 +7,7 @@ import Icon from './Icon.vue';
 const props = defineProps<{
   track: TrackView;
   matchKeyword?: string;
+  originalRecording?: boolean;
   index: number;
   liked: boolean;
   busy: boolean;
@@ -74,6 +75,7 @@ function duration(ms: number) {
           <SearchMatchText v-if="matchKeyword" :text="track.name" :keyword="matchKeyword" />
           <template v-else>{{ track.name }}</template>
           <span v-if="track.fee === 1" class="vip-tag">VIP</span>
+          <span v-if="originalRecording" class="search-original-tag">原唱</span>
         </div>
         <small
           v-if="navigable && track.artistRefs?.length"

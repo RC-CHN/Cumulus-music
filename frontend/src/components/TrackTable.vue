@@ -7,6 +7,7 @@ import TrackRow from './TrackRow.vue';
 const props = defineProps<{
   tracks: TrackView[];
   matchKeyword?: string;
+  originalRecordings?: ReadonlySet<string>;
   liked: Set<string>;
   busy: Set<string>;
   playable?: boolean;
@@ -84,11 +85,13 @@ defineExpose({ locate, restoreScroll });
           playable,
           navigable,
           matchKeyword,
+          originalRecordings?.has(track.id),
           locateIndex !== undefined,
         ]"
         :track="track"
         :tabindex="locateIndex !== undefined ? -1 : undefined"
         :match-keyword="matchKeyword"
+        :original-recording="originalRecordings?.has(track.id)"
         :index="start + index"
         :current-id="currentId"
         :liked="liked.has(track.id)"

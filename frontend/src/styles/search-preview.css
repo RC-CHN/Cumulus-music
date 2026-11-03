@@ -104,6 +104,19 @@
 .search-track-credit .vip-tag {
   flex-shrink: 0;
 }
+.search-original-tag {
+  display: inline-block;
+  flex-shrink: 0;
+  padding: 0 2px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  color: var(--text-secondary);
+  font-size: 10px;
+  line-height: 12px;
+}
+.track-title .search-original-tag {
+  margin-inline-start: 5px;
+}
 .search-track-credit button {
   font: inherit;
   color: inherit;

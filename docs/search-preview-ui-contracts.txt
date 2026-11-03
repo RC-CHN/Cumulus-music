@@ -105,3 +105,12 @@ Linux 实际 WebView 的四个 V3 检查点及截图通过；760×540 深色窗�
   验证两条实际 Tauri 路由、窄窗标签命中、返回焦点、筛选及原生播放（队列仅含
   返回的城市歌曲）。报告：.build/goal-search-reasons-playback-ui/audit.json。
   不使用真实账号，未验证上游个性化分桶和 Windows 实机。
+
+综合及单曲分类的原唱标签
+- 官方 M/21:126、573 保留 originCoverType；TrackCard/index.tsx:337–351 和
+  TrackViewer/common/TrackTitleCell.tsx:559–570 仅在数字值严格等于 1 时显示
+  “原唱”，单曲表的这一标签仅用于搜索。Cumulus 在 Rust 中投影为布尔值，
+  不暴露原始数字或接受字符串替代；综合卡片与单曲分类虚拟行都消费该字段。
+- 标签是只读信息，不增加请求、不推断版权、播放权限或收藏行为。Rust 搜索回归
+  核对数字/字符串与脱敏；V3 合成 WebView 同时检查窄窗综合卡片和单曲表，
+  其中翻唱值不显示此标签。当前不以此项声称其他音质或权益标签已补齐。

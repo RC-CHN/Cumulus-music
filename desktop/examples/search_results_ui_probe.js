@@ -641,6 +641,9 @@
           Math.abs(explicit.getBoundingClientRect().width-12)<1&&
           !cards[1]?.querySelector('.search-track-explicit'),
           'v3 projects direct explicit mark and honors nonzero unflagged song over album fallback');
+        assert(cards[0]?.querySelector('.search-original-tag')?.textContent==='原唱'&&
+          !cards[1]?.querySelector('.search-original-tag'),
+          'only numeric original recording value shows original badge');
         assert(cards.every((card)=>Math.abs(card.getBoundingClientRect().height-84)<1),'match hints keep 84px cards');
       };
       verifyHints();
@@ -689,7 +692,15 @@
       const queue=await invoke('player_queue',{epoch});
       assert(player.track?.id==='19'&&queue.tracks.length===1&&queue.tracks[0]?.track.id==='19','reason plays the displayed chart song, not a playlist ID');
       await capture('v3_city_tag');
-      await emit('complete',{ok:true,v3Verified:true,v3TrackHintsVerified:true,v3ExplicitVerified:true,v3ReasonRoutesVerified:true,v3ReasonPlaybackVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      click(button('返回上一页'));
+      await wait(()=>ready()&&one('[data-category="all"]')?.getAttribute('aria-selected')==='true','Back from chart');
+      await choose('songs');
+      const songRows=all('#search-result-panel .track-row');
+      assert(songRows[0]?.querySelector('.search-original-tag')?.textContent==='原唱'&&
+        !songRows[1]?.querySelector('.search-original-tag'),'song category honors original vs cover');
+      await capture('v3_original_recording_category');
+
+      await emit('complete',{ok:true,v3Verified:true,v3TrackHintsVerified:true,v3ExplicitVerified:true,v3ReasonRoutesVerified:true,v3ReasonPlaybackVerified:true,v3OriginalRecordingVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     await wait(()=>one('.track-row'),'daily ready');submit('合成搜索结果');await wait(()=>one('.search-results-page')&&ready(),'search entry');

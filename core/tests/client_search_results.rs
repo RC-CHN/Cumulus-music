@@ -492,13 +492,13 @@ async fn comprehensive_song_hints_project_only_safe_lyric_matches_or_aliases() {
 }
 
 #[tokio::test]
-async fn comprehensive_song_explicit_badge_respects_official_mark_precedence() {
+async fn comprehensive_song_badges_respect_official_numeric_values() {
     let (_root, api, _, client) = fixture();
     let epoch = client.account().unwrap().epoch;
     *api.reply.lock().unwrap() = json!({"code":200,"data":{"blocks":[{
         "blockCode":"search_block_song","resources":[
-            {"type":"song","baseInfo":{"id":1,"name":"歌曲标记","mark":1048576}},
-            {"type":"song","baseInfo":{"id":2,"name":"专辑回退","mark":0,"album":{"mark":1048576}}},
+            {"type":"song","baseInfo":{"id":1,"name":"歌曲标记","mark":1048576,"originCoverType":1}},
+            {"type":"song","baseInfo":{"id":2,"name":"专辑回退","mark":0,"originCoverType":"1","album":{"mark":1048576}}},
             {"type":"song","baseInfo":{"id":3,"name":"歌曲标记优先","mark":1,"album":{"mark":1048576}}},
             {"type":"song","baseInfo":{"id":4,"name":"不可信标记","mark":"1048576","al":{"mark":1048576},"explicit":true}}
         ]
@@ -510,6 +510,9 @@ async fn comprehensive_song_explicit_badge_respects_official_mark_precedence() {
         .value;
     let projected = serde_json::to_value(&view).unwrap();
     let rows = &projected["sections"][0]["items"];
+    assert_eq!(rows[0]["originalRecording"], true);
+    assert!(rows[1].get("originalRecording").is_none());
+    assert!(!projected.to_string().contains("originCoverType"));
     assert_eq!(rows[0]["explicit"], true);
     assert_eq!(rows[1]["explicit"], true);
     assert!(rows[2].get("explicit").is_none());

@@ -115,6 +115,18 @@ const visibleTabs = computed(() => displayedSearchCategories(model.tabs.value, c
 const selected = computed(() => visibleTabs.value.find((c) => c.key === category.value)!);
 const tracks = (section: SearchSection) =>
   section.items.flatMap((i) => (i.kind === 'song' ? [i.track] : []));
+const originalRecordings = computed(
+  () =>
+    new Set(
+      category.value === 'songs'
+        ? (view.value?.sections.flatMap((section) =>
+            section.items.flatMap((item) =>
+              item.kind === 'song' && item.originalRecording ? [item.track.id] : [],
+            ),
+          ) ?? [])
+        : [],
+    ),
+);
 function bestMatch(section: SearchSection) {
   return ['search_block_best_match:', 'search_block_hot_result_core_resources:'].some((prefix) =>
     section.id.startsWith(prefix),
@@ -695,6 +707,7 @@ onBeforeUnmount(() => {
                 :mv-id="item.mvId"
                 :hint="item.hint"
                 :explicit="item.explicit"
+                :original-recording="item.originalRecording"
                 :reasons="item.reasons"
                 @reason="(label, target) => emit('reason', label, target)"
                 :match-keyword="matchKeyword"
@@ -722,6 +735,7 @@ onBeforeUnmount(() => {
               v-else-if="section.items.some((i) => i.kind === 'song')"
               ref="searchSongTables"
               :tracks="tracks(section)"
+              :original-recordings="originalRecordings"
               :match-keyword="matchKeyword"
               :liked="liked"
               :busy="busyLikes"

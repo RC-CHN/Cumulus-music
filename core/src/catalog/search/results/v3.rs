@@ -185,7 +185,17 @@ fn song(v: &Value) -> Fields {
     let mut out = fields(
         v,
         &[
-            "id", "name", "dt", "duration", "fee", "mv", "mvid", "st", "status", "mark",
+            "id",
+            "name",
+            "dt",
+            "duration",
+            "fee",
+            "mv",
+            "mvid",
+            "st",
+            "status",
+            "mark",
+            "originCoverType",
         ],
         &[],
     );
