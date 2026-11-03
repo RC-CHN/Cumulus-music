@@ -110,6 +110,9 @@ playlist_comment_tab_smoke.py 在 Linux/Xvfb 的真实 WebView 以合成接口�
 无日期时不显示占位文本。作者展示没有引入未接通的个人主页动作。
 合成数据在 Linux/Xvfb 真实 WebView 通过 38 态布局回归，含大、小窗口的 24px
 默认头像、日期分支和缺失态；未向 CDN 请求真实头像，也未验证 Windows 视觉。
+在合并后的前端再次运行 38 态并保存 38 张合成截图，报告：
+`.build/playlist-layout-capture-cLpRFTSU/run/audit.json`。其中
+`first/ux_31_subscribed_760_dark.png` 可核对窄窗深色更新日期和作者占位。
 
 尚未一致的部分
 可点的用户主页、标签入口等仍未接通。
