@@ -3,6 +3,7 @@ import { computed, ref, useId, watch } from 'vue';
 import type { SearchCategory, SearchItem } from '../../services/search';
 import { artworkAt } from '../../services/artwork';
 import { time } from '../../services/player';
+import { playlistCoverCount } from '../../services/playlistHeader';
 import Icon from '../Icon.vue';
 import SearchMatchText from './SearchMatchText.vue';
 import ActionMenu from '../ActionMenu.vue';
@@ -75,6 +76,12 @@ const playlistCreator = computed(() => searchPlaylistCreator(props.item));
 const canPlayMv = computed(() => !!searchMvPlaybackTarget(props.item));
 const videoStats = computed(() => searchVideoCoverStats(props.item));
 const videoStatsId = useId();
+const playlistCountId = useId();
+const playlistCount = computed(() =>
+  props.category === 'all' && props.item.kind === 'playlist'
+    ? playlistCoverCount(props.item.playlist.playCount, props.item.playlist.private)
+    : null,
+);
 const markedTitle = computed(
   () =>
     ['playlist', 'podcast', 'voice', 'mv'].includes(props.item.kind) ||
@@ -268,7 +275,7 @@ watch(
       class="search-card-open"
       :disabled="unavailable"
       :aria-label="`${item.kind === 'user' ? '查看用户主页' : item.kind === 'mv' ? '播放 MV' : '查看'} ${card.name}`"
-      :aria-describedby="videoStats ? videoStatsId : undefined"
+      :aria-describedby="videoStats ? videoStatsId : playlistCount ? playlistCountId : undefined"
       :data-tooltip="[card.name, card.sub].filter(Boolean).join(' · ')"
       @click="action('open')"
     />
@@ -287,6 +294,12 @@ watch(
       <span v-if="canPlayMv" class="search-video-play-glyph" aria-hidden="true">
         <Icon name="play" />
       </span>
+      <template v-if="playlistCount">
+        <span class="search-playlist-count" aria-hidden="true">
+          <Icon name="play" />{{ playlistCount.text }}
+        </span>
+        <span :id="playlistCountId" class="sr-only">{{ playlistCount.label }}</span>
+      </template>
       <template v-if="videoStats">
         <span v-if="videoStats.count" class="search-video-count" aria-hidden="true">
           {{ videoStats.count }}

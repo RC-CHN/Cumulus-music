@@ -538,6 +538,30 @@
 .search-video-card:focus-within .search-video-play-glyph {
   opacity: 1;
 }
+.search-playlist-count {
+  position: absolute;
+  inset-block-start: 12px;
+  inset-inline-end: 10px;
+  max-inline-size: calc(100% - 20px);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 4px;
+  color: #fff;
+  background: #0009;
+  border-radius: 4px;
+  font-size: 15px;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  pointer-events: none;
+}
+.search-playlist-count > .icon {
+  flex: none;
+  width: 12px;
+  height: 12px;
+}
 .search-video-count,
 .search-video-duration {
   position: absolute;
