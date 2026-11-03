@@ -11,6 +11,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
+    parser.add_argument('--runtime', type=Path)
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
@@ -24,6 +25,8 @@ def main():
         env[key] = str(folder)
     env['CUMULUS_UX_SCRIPT'] = str(Path(__file__).resolve().parents[2] /
                                   'desktop/examples/playlist_subscribers_ui_probe.js')
+    if args.runtime:
+        env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
     output = root / 'first'
     with (root / 'first.log').open('x', encoding='utf-8') as log:
         code = launch(args.binary.resolve(), env, log, output, False)
