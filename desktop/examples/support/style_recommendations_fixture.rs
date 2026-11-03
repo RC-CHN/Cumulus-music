@@ -31,10 +31,7 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
         )));
     }
     Some(Ok(json!({"code":200,"data":{
-        "dailySongs":[
-            {"id":71,"name":"合成风格歌曲 71","ar":[{"id":9,"name":"合成风格歌手"}],"al":{"id":7,"name":"合成风格专辑"},"dt":190000},
-            {"id":72,"name":"合成风格歌曲 72","ar":[{"id":9,"name":"合成风格歌手"}],"al":{"id":7,"name":"合成风格专辑"},"dt":200000}
-        ],
+        "dailySongs":(71..=90).map(|id| json!({"id":id,"name":format!("合成风格歌曲 {id}"),"ar":[{"id":9,"name":"合成风格歌手"}],"al":{"id":7,"name":"合成风格专辑"},"dt":190000})).collect::<Vec<_>>(),
         "tags":{"privateSentinel":"synthetic-style-tag-sentinel"}
     }})))
 }

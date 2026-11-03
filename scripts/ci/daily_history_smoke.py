@@ -47,7 +47,8 @@ def main():
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0
     complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
-    assert complete['ok'] and complete['stageCount'] == 9 and complete['dailyPlayback'] and complete['stylePlayback']
+    assert complete['ok'] and complete['stageCount'] == 11 and complete['dailyPlayback'] and complete['stylePlayback']
+    assert complete['stickyRecommendations']
     assert complete['dailyBatch']
     assert complete['dailyCache'] and complete['dailyBirthday'] is args.birthday
     prefix = '/api/discovery/recommend/songs/history/'
@@ -68,11 +69,12 @@ def main():
          'args': {'source': '', 'categoryId': '', 'tagId': '', 'songId': ''}},
         {'path': '/api/homepage/daily/song/config/get', 'args': {'limit': 20}},
     ]
-    assert len(list(output.glob('ux_*.png'))) == (9 if args.screenshots else 0)
+    assert len(list(output.glob('ux_*.png'))) == (11 if args.screenshots else 0)
     print(json.dumps({'ok': True, 'actualWebView': True, 'historyReads': len(calls),
                       'styleReads': 2, 'dailyPlayback': True, 'stylePlayback': True,
                       'dailyBirthday': args.birthday,
                       'dailyBatch': True,
+                      'stickyRecommendations': True,
                       'realAccountWrites': 0}))
 
 

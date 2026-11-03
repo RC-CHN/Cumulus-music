@@ -81,16 +81,36 @@
       heading.textContent.trim() === '风格推荐') && one('.track-row')?.textContent.includes('合成风格歌曲 71'), 'style recommendations loaded');
     await sleep(250);
     await emit('ux_03_style_recommendations');
-    await wait(() => one('.track-actions .primary:not(:disabled)'), 'style play available');
-    one('.track-actions .primary').click();
+    const sticky = () => one('.recommendation-sticky');
+    const queueIds = async () => (await invoke('player_queue', { epoch })).tracks.map((entry) => entry.track.id);
+    async function scrollRecommendations(label) {
+      if (sticky()) throw new Error('recommendation toolbar visible at the top');
+      const scroller = one('.track-table .track-scroll');
+      scroller.scrollTop = 175;
+      await wait(() => sticky()?.getAttribute('aria-label') === label &&
+        !one('.page-heading')?.getClientRects().length && !one('.track-actions')?.getClientRects().length,
+      'recommendation toolbar replaces the full controls at list scroll');
+      return scroller;
+    }
+    const inline = await wait(() => one('.style-queue-all:not(:disabled)'), 'style inline append available');
+    inline.click();
+    await wait(() => one('.batch-operation-feedback')?.textContent.includes('已添加全部'), 'style inline append confirmed');
+    const withStyle = await queueIds();
+    if (withStyle.length !== 60 || withStyle.filter((id) => Number(id) >= 71).join(',') !== Array.from({length:20}, (_, i) => i + 71).join(','))
+      throw new Error('style inline append lost daily queue or style order');
+    const styleScroll = await scrollRecommendations('风格推荐快捷操作');
+    await emit('ux_10_style_sticky');
+    sticky().querySelector('[aria-label="播放全部推荐歌曲"]').click();
     let player;
     for (let i = 0; i < 150; i++) {
       player = await invoke('player_snapshot', { epoch });
       if (player.track?.id === '71' && player.state === 'playing' && player.position > 0.15) break;
       await sleep(65);
     }
-    if (player?.track?.id !== '71' || player.queueLen !== 2 || player.state !== 'playing' || player.position <= 0.15)
+    if (player?.track?.id !== '71' || player.queueLen !== 20 || player.state !== 'playing' || player.position <= 0.15)
       throw new Error('style songs did not reach ordinary native playback');
+    styleScroll.scrollTop = 0;
+    await wait(() => !sticky(), 'style toolbar hides at list start');
     const tagEntry = one('.style-tags-entry');
     tagEntry.click();
     const tags = await wait(() => one('.style-tag-browser[open]')?.textContent.includes('合成轻音乐') && one('.style-tag-browser'), 'style tags loaded');
@@ -104,6 +124,15 @@
     bar().querySelector('[aria-label="暂停"]').click();
     await wait(() => bar().dataset.state === 'paused', 'pause style song before daily append');
     const paused = await invoke('player_snapshot', { epoch });
+    const stylePausedScroll = await scrollRecommendations('风格推荐快捷操作');
+    sticky().querySelector('[aria-label="添加全部推荐歌曲至播放列表"]').click();
+    await sleep(0);
+    await wait(() => one('.batch-operation-feedback')?.textContent.includes('已添加全部'), 'sticky style append confirmed');
+    if ((await invoke('player_snapshot', { epoch })).playId !== paused.playId)
+      throw new Error('sticky style append replaced paused entry');
+    sticky().querySelector('[aria-label="添加全部推荐歌曲至播放列表"]').focus();
+    stylePausedScroll.scrollTop = 0;
+    await wait(() => !sticky() && document.activeElement === inline, 'style toolbar hides and restores inline action focus');
     one('[aria-label="返回上一页"]').click();
     const trigger = () => one('.daily-track-actions [aria-label="每日推荐更多操作"]');
     async function menu() {
@@ -125,8 +154,18 @@
     const appended = await invoke('player_snapshot', { epoch });
     const all = (await invoke('player_queue', { epoch })).tracks.map((entry) => entry.track.id);
     if (appended.playId !== paused.playId || appended.state !== 'paused' || Math.abs(appended.position - paused.position) > .05 ||
-        all.length !== 42 || all.slice(0, 4).join(',') !== '71,1,2,3' || all.at(-1) !== '72')
+        all.length !== 60 || all.slice(0, 4).join(',') !== '71,1,2,3' || all.at(-1) !== '90')
       throw new Error('append all did not preserve paused playback and order');
+    const dailyScroll = await scrollRecommendations('每日推荐快捷操作');
+    if (birthday && !sticky().textContent.includes('生日特别推荐')) throw new Error('sticky title lost birthday variant');
+    await emit('ux_11_daily_sticky');
+    sticky().querySelector('[aria-label="添加全部推荐歌曲至播放列表"]').click();
+    await sleep(0);
+    await wait(() => one('.batch-operation-feedback')?.textContent.includes('已添加全部'), 'sticky daily append confirmed');
+    if ((await invoke('player_snapshot', { epoch })).playId !== paused.playId) throw new Error('sticky daily append replaced paused entry');
+    sticky().querySelector('[aria-label="添加全部推荐歌曲至播放列表"]').focus();
+    dailyScroll.scrollTop = 0;
+    await wait(() => !sticky() && document.activeElement === trigger(), 'daily toolbar hides and restores menu focus');
     list = await menu();
     list.querySelector('[data-menu-key="batch"]').click();
     const batch = await wait(() => one('.daily-batch-page [data-batch-index="2"]')?.closest('.daily-batch-page'), 'daily batch route');
@@ -167,7 +206,7 @@
     await wait(() => bar().dataset.trackId === '1' && bar().dataset.state === 'playing', 'append all starts empty queue');
     if ((await invoke('player_queue', { epoch })).tracks.length !== 40) throw new Error('empty queue did not load all daily tracks');
     await emit('ux_09_daily_empty_queue');
-    await emit('complete', { ok: true, stageCount: 9, dailyPlayback: true, dailyCache: true, dailyBirthday: birthday, stylePlayback: true, dailyBatch: true });
+    await emit('complete', { ok: true, stageCount: 11, dailyPlayback: true, dailyCache: true, dailyBirthday: birthday, stylePlayback: true, dailyBatch: true, stickyRecommendations: true });
   } catch (error) {
     await emit('failed', { message: String(error), body: document.body.innerText.slice(-2200) });
   }
