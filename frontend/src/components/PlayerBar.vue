@@ -2,7 +2,7 @@
 import { computed, ref, nextTick, watch } from 'vue';
 import type { PlayerModel } from '../composables/usePlayer';
 import type { IntelligenceModel } from '../composables/useIntelligence';
-import { time } from '../services/player';
+import { currentCatalogDownload, time } from '../services/player';
 import type { PlayerAction } from '../services/player';
 import type { TrackView } from '../services/contracts';
 import Icon from './Icon.vue';
@@ -22,6 +22,7 @@ const props = withDefaults(
     togetherActive?: boolean;
     intelligence?: IntelligenceModel;
     likedPlaylistId?: string | null;
+    downloadsAllowed?: boolean;
   }>(),
   { togetherActive: false },
 );
@@ -29,9 +30,17 @@ const emit = defineEmits<{
   like: [track: TrackView];
   retry: [];
   comments: [track: TrackView];
+  download: [epoch: string, playId: string, trackId: string];
   member: [];
 }>();
 const { view, ready, busy, error, canRetry, playing, loaded } = props.player;
+const currentDownload = computed(() =>
+  props.downloadsAllowed ? currentCatalogDownload(view.value) : undefined,
+);
+function downloadCurrent() {
+  const selection = currentDownload.value;
+  if (selection) emit('download', selection.epoch, selection.playId, selection.track.id);
+}
 const transportControls = ref<HTMLElement>();
 async function retryPlayback(event: MouseEvent) {
   const origin = event.currentTarget as HTMLButtonElement,
@@ -201,6 +210,16 @@ async function seek(event: Event) {
         @click="emit('like', view.track)"
       >
         <Icon name="heart" />
+      </button>
+      <button
+        v-if="currentDownload"
+        type="button"
+        class="icon-button player-current-download"
+        aria-label="下载当前歌曲"
+        title="下载当前歌曲"
+        @click="downloadCurrent"
+      >
+        <Icon name="download" />
       </button>
     </div>
     <div class="player-center">

@@ -78,6 +78,23 @@ export interface PlayerView {
   historyWarning: string | null;
   positionReset: boolean;
 }
+
+/** Only ordinary catalog songs use the generic song-download dialog. */
+export function currentCatalogDownload(view?: PlayerView) {
+  const track = view?.track;
+  const playId = view?.playId;
+  if (
+    view?.resourceKind !== 'catalog' ||
+    !playId ||
+    !track ||
+    track.local ||
+    track.missing ||
+    track.voiceId
+  )
+    return undefined;
+  return { epoch: view.epoch, playId, track };
+}
+
 export interface PlayerOrigin {
   kind: 'playlist' | 'album' | 'artist' | 'podcast';
   id: string;

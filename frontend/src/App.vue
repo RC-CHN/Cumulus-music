@@ -63,10 +63,11 @@ import PlayerBar from './components/PlayerBar.vue';
 import { useIntelligence } from './composables/useIntelligence';
 import QueuePanel from './components/QueuePanel.vue';
 import type { TrackMenuRequest, TrackPlayGesture } from './services/trackMenu';
-import type {
-  QueueCollectionView,
-  SearchResultPlayback,
-  SongRowDoubleClickSelection,
+import {
+  currentCatalogDownload,
+  type QueueCollectionView,
+  type SearchResultPlayback,
+  type SongRowDoubleClickSelection,
 } from './services/player';
 import LyricsPanel from './components/LyricsPanel.vue';
 import PlaylistDialog from './components/PlaylistDialog.vue';
@@ -750,6 +751,20 @@ function backFromPage() {
   else music.back();
 }
 const downloadDialog = ref<DownloadDialogTarget>();
+function openCurrentDownload(epoch: string, playId: string, trackId: string) {
+  const current = currentCatalogDownload(player.view.value);
+  if (
+    !signedIn.value ||
+    downloadDialog.value ||
+    epoch !== account.value.epoch ||
+    current?.epoch !== epoch ||
+    current.playId !== playId ||
+    current.track.id !== trackId
+  )
+    return;
+  downloadDialog.value = { kind: 'start', tracks: [current.track] };
+}
+
 function downloadReturnFocus() {
   return (
     document.querySelector<HTMLElement>('.download-mv-cover[tabindex="0"]') ??
@@ -2309,10 +2324,12 @@ onUnmounted(() => {
       :liked-playlist-id="signedIn ? favorite?.id : null"
       :liked="playingLikes"
       :like-busy="playingLikeBusy"
+      :downloads-allowed="signedIn"
       :together-active="together.view.value?.attached ?? false"
       @like="likePlaying"
       @retry="player.connect(account)"
       @comments="trackComments"
+      @download="openCurrentDownload"
       @member="music.navigate({ kind: 'member' })"
     />
     <ModalTransition
