@@ -18,7 +18,7 @@
     const metadata=all('.vinyl-info h1, .vinyl-info p, .vinyl-info small');
     const credits=all('.vinyl-credits .vinyl-credit, .vinyl-album .vinyl-credit');
     const hintTargets=[one('.vinyl-info h1'), ...credits];
-    const controls=all('.playerbar button:not(:disabled), .playerbar input:not(:disabled), .playerbar select:not(:disabled), .lyric-tools button:not(:disabled), [aria-label="收起播放详情"]').filter(n=>rect(n).width>0 && rect(n).height>0);
+    const controls=all('.playerbar button:not(:disabled), .playerbar input:not(:disabled), .playerbar select:not(:disabled), .lyric-tools button:not(:disabled), .lyric-browse-time:not(:disabled), [aria-label="收起播放详情"]').filter(n=>rect(n).width>0 && rect(n).height>0);
     const player=rect(one('.playerbar'));
     const row={label,width:innerWidth,height:innerHeight,theme:document.documentElement.dataset.theme,
       panel:rect(panel),body:rect(body),info:rect(one('.vinyl-info')),record:rect(record),player,
@@ -90,6 +90,23 @@
     await wait(()=>!resume()&&atCurrent(),'playing browse resumes after inactivity');
     click(one('.playerbar [aria-label="暂停"]'));
     await wait(()=>one('.playerbar').dataset.state==='paused','pause after lyric follow test');
+    const identity=one('.playerbar').dataset.playId;
+    const lyric=one('.lyric-line[data-line="7"]');
+    const marker=()=>one('.lyric-browse-time');
+    scroller.dispatchEvent(new WheelEvent('wheel',{bubbles:true,deltaY:500}));
+    await wait(()=>scroller.parentElement.classList.contains('browsing'),'timeline browsing');
+    lyric.scrollIntoView({block:'center',behavior:'instant'});
+    await wait(()=>marker()?.textContent.trim()==='00:07' && lyric.classList.contains('browsed'),'centered lyric timeline');
+    assert(hit(marker()) && one('.playerbar').dataset.state==='paused','timeline is reachable without changing playback');
+    await capture('lyric_timeline');
+    click(marker());
+    await wait(()=>{
+      const bar=one('.playerbar');
+      return bar.dataset.state==='playing'&&bar.dataset.playId===identity&&
+        Number(bar.dataset.position)>=7&&Number(bar.dataset.position)<9&&!marker();
+    },'timeline seeks and resumes same entry');
+    click(one('.playerbar [aria-label="暂停"]'));
+    await wait(()=>one('.playerbar').dataset.state==='paused','pause after timeline test');
   }
   try {
     await wait(()=>all('.track-row').length>2,'daily');
@@ -117,6 +134,6 @@
     assert(document.activeElement===one('[aria-label="歌词"]'),'detail close focus lost');
     const passed=checks.every(row=>Object.entries(row).every(([key,value])=>key==='label'||value===true));
     assert(window.__playerLayoutBaseline||passed,JSON.stringify(checks.filter(row=>Object.values(row).includes(false))));
-    await emit('complete',{ok:true,layoutPassed:passed,checks,stageCount,realMusicRequests:0,accountWrites:0,focusRestored:true,lyricFollowVerified:!window.__playerLayoutBaseline});
+    await emit('complete',{ok:true,layoutPassed:passed,checks,stageCount,realMusicRequests:0,accountWrites:0,focusRestored:true,lyricFollowVerified:!window.__playerLayoutBaseline,lyricTimelineVerified:!window.__playerLayoutBaseline});
   } catch(error) {await emit('failed',{ok:false,error:String(error),stageCount,checks});}
 })();

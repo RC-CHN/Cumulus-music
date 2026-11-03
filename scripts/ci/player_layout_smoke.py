@@ -40,15 +40,16 @@ def main():
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
     complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
-    assert complete['ok'] and complete['stageCount'] == 20 and complete['focusRestored']
+    expected = 20 if args.baseline else 21
+    assert complete['ok'] and complete['stageCount'] == expected and complete['focusRestored']
     assert complete['realMusicRequests'] == complete['accountWrites'] == 0
     assert complete['nativePlayer']['state'] == 'paused' and complete['nativePlayer']['position'] > 0
-    assert args.baseline or (complete['layoutPassed'] and complete['lyricFollowVerified'])
+    assert args.baseline or (complete['layoutPassed'] and complete['lyricFollowVerified'] and complete['lyricTimelineVerified'])
     stages = list((root / 'first').glob('ux_*.json'))
-    assert len(stages) == 20
+    assert len(stages) == expected
     if args.screenshots:
-        assert len(list((root / 'first').glob('ux_*.png'))) == 20
-    report = dict(complete, actualWebView=True, screenshots=20 if args.screenshots else 0,
+        assert len(list((root / 'first').glob('ux_*.png'))) == expected
+    report = dict(complete, actualWebView=True, screenshots=expected if args.screenshots else 0,
                   physicalDisplayVerified=False, physicalAudioOutputVerified=False)
     (root / 'audit.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps({k: report[k] for k in ['ok', 'layoutPassed', 'stageCount', 'screenshots']}))

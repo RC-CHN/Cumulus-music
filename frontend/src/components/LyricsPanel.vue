@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import type { PlayerModel } from '../composables/usePlayer';
-import type { PlayerView } from '../services/player';
+import { time, type PlayerView } from '../services/player';
 import Icon from './Icon.vue';
 import DesktopLyricToggle from './DesktopLyricToggle.vue';
 import ActionMenu from './ActionMenu.vue';
@@ -27,6 +27,15 @@ const wordMode = ref(true);
 const motion = useMotion();
 const manual = ref(false);
 const resumeButton = ref<HTMLButtonElement>();
+const browseButton = ref<HTMLButtonElement>();
+const browsedIndex = ref<number>();
+const browsingLine = computed(() =>
+  browsedIndex.value === undefined ? undefined : lines.value[browsedIndex.value],
+);
+const browsingTime = computed(() => {
+  const seconds = browsingLine.value?.time;
+  return seconds === undefined ? undefined : time(seconds);
+});
 const lyricFollowDelay = 5000;
 let lyricFollowTimer: ReturnType<typeof setTimeout> | undefined;
 const timedWords = computed(() => wordMode.value && (lyrics.value?.wordLines.length ?? 0) > 0);
@@ -73,6 +82,45 @@ function seekLine(line: (typeof lines.value)[number]) {
   if (line.target && line.time !== undefined && seekable(line))
     void props.player.seekDisplayed(line.target, line.time);
 }
+// The manual marker selects the row spanning the center of the lyric viewport.
+function selectBrowsedLine() {
+  const scroller = container.value;
+  if (!manual.value || lyricFollowTimer === undefined || !scroller) return;
+  const rect = scroller.getBoundingClientRect();
+  const middle = rect.top + rect.height / 2;
+  let lo = 0;
+  let hi = lines.value.length;
+  while (lo < hi) {
+    const index = Math.floor((lo + hi) / 2);
+    const row = scroller.children[index + 1]; // first child is scroll padding
+    if (!row) return;
+    if (row.getBoundingClientRect().bottom < middle) lo = index + 1;
+    else hi = index;
+  }
+  browsedIndex.value = lines.value[lo]?.time === undefined ? undefined : lo;
+}
+async function playBrowsedLine() {
+  const line = browsingLine.value;
+  const target = line?.target;
+  if (!line || !target?.playId || line.time === undefined || !seekable(line)) return;
+  const result = await props.player.seekDisplayed(target, line.time);
+  const current = view.value;
+  if (
+    !result ||
+    current?.epoch !== target.epoch ||
+    current.playId !== target.playId ||
+    current.queueRevision !== target.queueRevision
+  )
+    return;
+  followLyrics();
+  if (current.state === 'paused')
+    await props.player.action({
+      kind: 'pause_for',
+      play_id: target.playId,
+      expected_queue_revision: target.queueRevision,
+      paused: false,
+    });
+}
 async function scroll() {
   await nextTick();
   if (manual.value) return;
@@ -85,8 +133,17 @@ function cancelLyricFollowTimer() {
   if (lyricFollowTimer !== undefined) clearTimeout(lyricFollowTimer);
   lyricFollowTimer = undefined;
 }
+function clearBrowsedLine() {
+  const focused = browseButton.value === document.activeElement;
+  browsedIndex.value = undefined;
+  if (focused)
+    void nextTick(() => {
+      if (document.activeElement === document.body) container.value?.focus({ preventScroll: true });
+    });
+}
 function followLyrics() {
   const focused = resumeButton.value === document.activeElement;
+  clearBrowsedLine();
   cancelLyricFollowTimer();
   manual.value = false;
   void scroll();
@@ -102,7 +159,9 @@ function pauseLyricFollow(event: Event) {
   lyricFollowTimer = setTimeout(() => {
     lyricFollowTimer = undefined;
     if (view.value?.state === 'playing') followLyrics();
+    else clearBrowsedLine();
   }, lyricFollowDelay);
+  void nextTick(selectBrowsedLine);
 }
 watch(motion.reduced, (reduced) => {
   if (reduced && !manual.value) void scroll();
@@ -111,6 +170,13 @@ watch(active, () => {
   if (!manual.value) void scroll();
 });
 watch([currentEpoch, currentPlayId], followLyrics);
+watch(lines, () => void nextTick(selectBrowsedLine));
+watch(container, (scroller, _previous, onCleanup) => {
+  if (!scroller) return;
+  const observer = new ResizeObserver(selectBrowsedLine);
+  observer.observe(scroller);
+  onCleanup(() => observer.disconnect());
+});
 watch(
   () => view.value?.state,
   (state) => {
@@ -244,42 +310,56 @@ function aligned(rows: { time?: number; lyric: string }[] | undefined, index: nu
           <div v-if="!lines.length" class="empty-state">
             {{ lyrics.displayType === 'pure' ? '纯音乐，请欣赏' : '暂无歌词' }}
           </div>
-          <div
-            v-else
-            ref="container"
-            class="lyric-scroll"
-            tabindex="-1"
-            @wheel.passive="pauseLyricFollow"
-            @touchmove.passive="pauseLyricFollow"
-          >
-            <div class="lyric-padding" />
-            <button
-              v-for="(line, index) in lines"
-              :key="`${line.target?.epoch}:${line.target?.playId}:${index}`"
-              class="lyric-line"
-              :class="{ current: index === active }"
-              :data-line="index"
-              :disabled="!seekable(line)"
-              @click="seekLine(line)"
+          <div v-else class="lyric-scroll-shell" :class="{ browsing: manual }">
+            <div
+              ref="container"
+              class="lyric-scroll"
+              tabindex="-1"
+              @wheel.passive="pauseLyricFollow"
+              @touchmove.passive="pauseLyricFollow"
+              @scroll.passive="selectBrowsedLine"
             >
-              <span v-if="timedWords && lyrics.wordLines[index]?.words.length" class="word-line"
-                ><span
-                  v-for="(word, wi) in lyrics.wordLines[index]?.words"
-                  :key="wi"
-                  class="timed-word"
-                  :style="{ '--word-progress': wordProgress(word) }"
-                  >{{ word.text }}</span
-                ></span
+              <div class="lyric-padding" />
+              <button
+                v-for="(line, index) in lines"
+                :key="`${line.target?.epoch}:${line.target?.playId}:${index}`"
+                class="lyric-line"
+                :class="{ current: index === active, browsed: index === browsedIndex }"
+                :data-line="index"
+                :disabled="!seekable(line)"
+                @click="seekLine(line)"
               >
-              <span v-else>{{ line.lyric || '♪' }}</span>
-              <small
-                v-if="lyrics.preferences.translationEnable && aligned(lyrics.translation, index)"
-                >{{ aligned(lyrics.translation, index) }}</small
-              ><small v-if="lyrics.preferences.romaEnable && aligned(lyrics.romanization, index)">{{
-                aligned(lyrics.romanization, index)
-              }}</small>
+                <span v-if="timedWords && lyrics.wordLines[index]?.words.length" class="word-line"
+                  ><span
+                    v-for="(word, wi) in lyrics.wordLines[index]?.words"
+                    :key="wi"
+                    class="timed-word"
+                    :style="{ '--word-progress': wordProgress(word) }"
+                    >{{ word.text }}</span
+                  ></span
+                >
+                <span v-else>{{ line.lyric || '♪' }}</span>
+                <small
+                  v-if="lyrics.preferences.translationEnable && aligned(lyrics.translation, index)"
+                  >{{ aligned(lyrics.translation, index) }}</small
+                ><small
+                  v-if="lyrics.preferences.romaEnable && aligned(lyrics.romanization, index)"
+                  >{{ aligned(lyrics.romanization, index) }}</small
+                >
+              </button>
+              <div class="lyric-padding" />
+            </div>
+            <button
+              v-if="browsingLine && browsingTime"
+              ref="browseButton"
+              type="button"
+              class="lyric-browse-time"
+              :aria-label="`从歌词时间 ${browsingTime} 播放`"
+              :disabled="!seekable(browsingLine)"
+              @click="playBrowsedLine"
+            >
+              <Icon name="play" />{{ browsingTime }}
             </button>
-            <div class="lyric-padding" />
           </div>
         </template>
         <div class="lyric-tools">
