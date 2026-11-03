@@ -23,7 +23,12 @@ fn main() {
         .manage(cumulus_desktop::LoginDocumentBrowser::with_launcher(move |document| browser.open_document(document)))
         .manage(cumulus_desktop::captcha::CaptchaProviderOverride::new(service.clone()))
         .setup(move |app| {
-            let profile = cumulus_desktop::native_profile(&root.join("state"))?;
+            // Account UI proofs must contain only frozen, synthetic context.
+            // Production native_profile persists real hardware observations;
+            // failure artifacts recursively include this proof's state folder.
+            let profile = cumulus_core::protocol::http::ClientProfile::windows_compatibility(
+                cumulus_core::identity::WINDOWS_COMPATIBILITY_DESCRIPTION,
+            )?;
             let windows_declaration = profile.user_agent == cumulus_core::protocol::http::OFFICIAL_WINDOWS_USER_AGENT;
             let native_client_sign = profile.client_sign.is_some();
             let client = MusicClient::open_with_native_profile(&root.join("state"), None, profile.clone(), Some(service.clone()))?;
@@ -64,6 +69,7 @@ fn main() {
                 value["nativeCaptchaProvider"] = json!(true);
                 value["windowsDeclaration"] = json!(windows_declaration);
                 value["nativeClientSignPresent"] = json!(native_client_sign);
+                value["syntheticDeviceContext"] = json!(true);
                 let correct = value["expectNickname"].as_str().is_none_or(|name|account.nickname.as_deref()==Some(name))
                     && (!value["expectGuest"].as_bool().unwrap_or(false) || account.status!=cumulus_core::account::SessionStatus::Authenticated);
                 if !correct { value["nativeMismatch"] = json!(true); }

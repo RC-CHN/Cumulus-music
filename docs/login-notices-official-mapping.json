@@ -164,7 +164,10 @@
     "localDesktopCaptures": 23,
     "realRequests": 0,
     "windowsRuntime": "pending CI; no local Windows runtime proof",
-    "completeAccountSdk": false
+    "completeAccountSdk": false,
+    "latestRegression": "docs/nickname-editor-validation.txt",
+    "accountProofDeviceContext": "Fixed Windows declaration; no clientSign or real hardware collection; identity SQLite forbidden",
+    "defaultProfileRuntimeEvidence": "Historical private native_profile proof; separate from current synthetic public CI account proof"
   },
   "realChallengeProof": false,
   "yesPlayMusicUsed": false

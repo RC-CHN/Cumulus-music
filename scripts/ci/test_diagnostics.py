@@ -1,14 +1,115 @@
 import os
 from pathlib import Path
 import re
+import sqlite3
 import tarfile
 import tempfile
+import traceback
 import unittest
 
 from diagnostics import archive
 
 
 class ProofArchive(unittest.TestCase):
+    def core_database(self, build, relative, entries):
+        path = build / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        database = sqlite3.connect(path)
+        try:
+            database.execute('CREATE TABLE state (owner TEXT, kind TEXT, key TEXT, value TEXT)')
+            database.executemany('INSERT INTO state VALUES (?, ?, ?, ?)', entries)
+            database.commit()
+        finally:
+            database.close()
+        return path
+
+    def test_synthetic_account_credentials_and_recovery_databases_are_preserved(self):
+        with tempfile.TemporaryDirectory() as directory:
+            build = Path(directory)
+            path = self.core_database(build, 'ci-login-notice-linux/run/state/core.sqlite3', [
+                ('transport', 'saved-profiles-v1', 'synthetic', '{"uid":"synthetic-account"}'),
+                ('account', 'phone-registration-v1', 'recovery', '{"status":"synthetic-pending"}'),
+                ('device', 'synthetic-only', 'marker', '{"synthetic":true}'),
+                ('transport', 'identity', 'marker', '{"synthetic":true}'),
+            ])
+            session = self.core_database(build, 'ci-login-notice-linux/run/state/sessions/synthetic/core.sqlite3', [
+                ('transport', 'credentials', 'session', '{"cookies":["synthetic-cookie"]}'),
+            ])
+            self.core_database(build, 'private-session/core.sqlite3', [
+                ('device', 'identity', 'last_observed', '{"private":"excluded-synthetic-sentinel"}'),
+            ])
+            contents = {path.relative_to(build).as_posix(): path.read_bytes(),
+                        session.relative_to(build).as_posix(): session.read_bytes()}
+            target = build / 'diagnostics/proofs.tar.gz'
+            self.assertEqual(archive(build, target), 1)
+            with tarfile.open(target) as saved:
+                for relative, content in contents.items():
+                    self.assertEqual(saved.extractfile(relative).read(), content)
+                self.assertNotIn('private-session/core.sqlite3', saved.getnames())
+
+    def test_device_identity_database_refuses_archive_before_tar_creation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            build = Path(directory)
+            sentinel = 'synthetic-private-device-facts-must-not-be-reported'
+            self.core_database(build, 'ci-login-notice-linux/run/state/core.sqlite3', [
+                ('device', 'identity', 'last_observed', '{"facts":"' + sentinel + '"}'),
+            ])
+            target = build / 'diagnostics/proofs.tar.gz'
+            with self.assertRaisesRegex(ValueError, 'device identity records') as rejected:
+                archive(build, target)
+            self.assertNotIn(sentinel, ''.join(traceback.format_exception(rejected.exception)))
+            self.assertFalse(target.exists())
+            self.assertFalse(target.parent.exists())
+
+    def test_identity_committed_only_in_wal_also_refuses_archive(self):
+        with tempfile.TemporaryDirectory() as directory:
+            build = Path(directory)
+            path = self.core_database(build, 'ci-login-notice-windows/run/state/core.sqlite3', [])
+            database = sqlite3.connect(path)
+            try:
+                self.assertEqual(database.execute('PRAGMA journal_mode = WAL').fetchone(), ('wal',))
+                database.execute('PRAGMA wal_autocheckpoint = 0')
+                database.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+                sentinel = 'synthetic-device-facts-in-uncheckpointed-wal'
+                database.execute('INSERT INTO state VALUES (?, ?, ?, ?)',
+                                 ('device', 'identity', 'last_observed', sentinel))
+                database.commit()
+                self.assertTrue(Path(str(path) + '-wal').is_file())
+                target = build / 'diagnostics/proofs.tar.gz'
+                with self.assertRaisesRegex(ValueError, 'device identity records') as rejected:
+                    archive(build, target)
+                self.assertNotIn(sentinel, ''.join(traceback.format_exception(rejected.exception)))
+                self.assertFalse(target.exists())
+            finally:
+                database.close()
+
+    def test_unverifiable_core_database_refuses_archive_without_database_text(self):
+        for condition in ('corrupt', 'missing-state', 'missing-owner', 'directory'):
+            with self.subTest(condition=condition), tempfile.TemporaryDirectory() as directory:
+                build = Path(directory)
+                path = build / 'ci-login-notice-linux/run/state/core.sqlite3'
+                path.parent.mkdir(parents=True)
+                sentinel = 'synthetic-unverifiable-database-value-must-not-be-reported'
+                if condition == 'corrupt':
+                    path.write_bytes(('not a SQLite database: ' + sentinel).encode())
+                elif condition == 'directory':
+                    path.mkdir()
+                else:
+                    database = sqlite3.connect(path)
+                    try:
+                        table = 'unrelated' if condition == 'missing-state' else 'state'
+                        database.execute(f'CREATE TABLE {table} (value TEXT)')
+                        database.execute(f'INSERT INTO {table} VALUES (?)', (sentinel,))
+                        database.commit()
+                    finally:
+                        database.close()
+                target = build / 'diagnostics/proofs.tar.gz'
+                with self.assertRaisesRegex(ValueError, 'could not be verified') as rejected:
+                    archive(build, target)
+                self.assertNotIn(sentinel, ''.join(traceback.format_exception(rejected.exception)))
+                self.assertFalse(target.exists())
+                self.assertFalse(target.parent.exists())
+
     def test_preserves_fixture_names_and_excludes_unrelated_build_data(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

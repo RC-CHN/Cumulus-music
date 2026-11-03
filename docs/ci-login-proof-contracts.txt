@@ -20,3 +20,14 @@ Linux成功，Windows的WebView合并step在account_login_smoke.py读取failed.j
 少量不经--root的原生输出使用明确文件名与Linux/Windows平台闭集。
 合成测试从workflow独立推导预期，检查全部证明根目录能归档，近似private/research目录不能混入；
 保留特殊文件名和空证据集测试。CI工具共50项通过。
+
+2026-11-03 合成证明数据库的硬件隔离
+发现真实路径：login_notice_ui_probe调用native_profile(root/state)，IdentityService在
+state表(device,identity,last_observed)保存parts和持久ID；递归归档会包含该core.sqlite3。
+只投影布尔值并不足以防止数据库进入failure artifact。当前测试上下文已固定为Windows声明且无
+clientSign，不再执行真实collector；driver要求每个账号证明数据库都没有device/identity行。
+归档前还逐个只读验证core.sqlite3（包括WAL快照）；存在设备身份或无法核验时拒绝创建tar，
+不读取/输出identity value，也不静默删证据后继续归档。正常合成账号/凭据/恢复记录保留。
+原main run41577057367已停止且最终cancelled，gate failure，只有frontend-dist产物，
+未出现任何diagnostics-*。这是针对确切数据隔离错误的停止，不是超时重跑或绕过CI；
+后续必须用修复提交重新验证，不能引用这轮部分job成功作完整CI通过。

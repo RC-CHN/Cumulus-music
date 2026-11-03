@@ -3,9 +3,15 @@
 upload-artifact rejects colons even on Linux; our filter path-escaping fixtures
 intentionally contain them. A tar preserves these names without renaming proof
 inputs or losing the rest of a failed job's evidence.
+
+Every selected core.sqlite3 must be verifiable and contain no device identity
+records. Refuse the archive instead of silently removing leaked proof data.
 """
+from contextlib import closing
 from pathlib import Path, PurePosixPath
 import shlex
+import sqlite3
+import stat
 import tarfile
 
 
@@ -64,8 +70,50 @@ def proof_paths(build):
     return sorted(build / name for name in names if (build / name).exists())
 
 
+def verify_core_database(path, mode):
+    """Reject device facts without reading or reporting an identity value.
+
+    Use a read-only SQLite snapshot, including committed WAL records. Immutable
+    mode would ignore a WAL and could incorrectly approve a leaking database.
+    """
+    if not stat.S_ISREG(mode):
+        raise ValueError('Refusing diagnostics archive: proof core.sqlite3 could not be verified.')
+    try:
+        with closing(sqlite3.connect(path.resolve().as_uri() + '?mode=ro', uri=True)) as database:
+            database.execute('PRAGMA query_only = ON')
+            database.execute('BEGIN')
+            if database.execute('PRAGMA quick_check').fetchall() != [('ok',)]:
+                raise sqlite3.DatabaseError()
+            identity = database.execute(
+                'SELECT 1 FROM state WHERE owner = ? AND kind = ? LIMIT 1',
+                ('device', 'identity'),
+            ).fetchone()
+    except (OSError, ValueError, sqlite3.Error):
+        # SQLite errors can contain database-controlled text. Suppress both the
+        # original message and its traceback chain rather than exposing values.
+        raise ValueError('Refusing diagnostics archive: proof core.sqlite3 could not be verified.') from None
+    if identity is not None:
+        raise ValueError('Refusing diagnostics archive: proof core.sqlite3 contains device identity records.')
+
+
+def verify_proof_databases(paths):
+    """Walk exactly the archived roots; preserve tar's non-dereferenced links."""
+    try:
+        for path in paths:
+            mode = path.lstat().st_mode
+            if path.name == 'core.sqlite3':
+                verify_core_database(path, mode)
+            elif stat.S_ISDIR(mode):
+                # Unlike rglob, an unreadable directory must not silently hide
+                # an unverified core database from this pre-archive check.
+                verify_proof_databases(path.iterdir())
+    except (OSError, RecursionError):
+        raise ValueError('Refusing diagnostics archive: proof databases could not be verified.') from None
+
+
 def archive(build: Path, destination: Path):
     paths = proof_paths(build)
+    verify_proof_databases(paths)
     destination.parent.mkdir(parents=True, exist_ok=True)
     with tarfile.open(destination, 'w:gz', dereference=False) as output:
         for path in paths:

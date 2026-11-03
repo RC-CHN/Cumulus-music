@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sqlite3
 import time
 from window_manager import launch
 
@@ -101,7 +102,7 @@ def main():
     paths = sorted(output.glob('ux_*.json'))
     states = [json.loads(path.read_text(encoding='utf-8')) for path in paths]
     assert complete['ok'] and complete['loginNotices'] and complete['windowsDeclaration']
-    assert isinstance(complete['nativeClientSignPresent'], bool)
+    assert complete['syntheticDeviceContext'] and complete['nativeClientSignPresent'] is False
     assert complete['stageCount'] == len(states) == len(STAGES)
     assert [state['stage'].split('_', 2)[2] for state in states] == STAGES
     by_name = dict(zip(STAGES, states))
@@ -110,6 +111,7 @@ def main():
         assert state['focusVisible'], f"focus outside visible content: {state['stage']}"
         assert all(control['hit'] for control in state['controls'])
         assert state['realMusicRequests'] == 0 and state['nativeCaptchaProvider']
+        assert state['syntheticDeviceContext'] and state['nativeClientSignPresent'] is False
         assert state['windowsDeclaration'] and isinstance(state['nativeClientSignPresent'], bool)
         assert state['fixture']['unexpectedRequests'] == 0
         assert state['passwordLength'] == 0
@@ -199,10 +201,20 @@ def main():
         assert len(list(output.glob('ux_*.png'))) == len(states)
         assert len(list(output.glob('ux_*.captured'))) == len(states)
         assert all(path.with_suffix('.png').stat().st_size > 0 for path in paths)
+    # A projection containing only booleans is insufficient: the recursive
+    # failure archive also includes native SQLite state. Never persist actual
+    # installation hardware facts anywhere under an account UI proof root.
+    for database in (root / 'run' / 'state').rglob('core.sqlite3'):
+        with sqlite3.connect(database.resolve().as_uri() + '?mode=ro', uri=True) as connection:
+            assert connection.execute(
+                'SELECT 1 FROM state WHERE owner=? AND kind=? LIMIT 1',
+                ('device', 'identity'),
+            ).fetchone() is None, 'hardware identity must stay outside synthetic account proofs'
     report = dict(ok=True, states=len(states), screenshots=len(states) if args.screenshots else 0,
                   actualWebView=True, nativeCaptchaProvider=True, realMusicRequests=0,
                   realAccountWrites=0, oldAccountRetainedUntilIdentity=True, noPasswordReplay=True,
-                  windowsDeclaration=True, nativeClientSignPresent=complete['nativeClientSignPresent'])
+                  windowsDeclaration=True, nativeClientSignPresent=False, syntheticDeviceContext=True,
+                  persistedHardwareIdentity=False)
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report))
 

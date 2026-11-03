@@ -61,3 +61,12 @@ RN内部动作未恢复，正式页面明确要求在官方客户端处理后只
 Windows硬件采集、Windows运行/视觉、其他DPI及全账号SDK状态没有本轮实机证据。
 此前main的Windows账号探针失败已补就绪等待和诊断归档，新CI通过前不称Windows已修复。
 真实RT的发放已有另一独立记录；本批合成测试不证明真实成对轮换，也不改变一起听双账号边界。
+
+2026-11-03 后续测试隔离修正
+上述历史私有GUI证明实际调用native_profile，会在proof state写入设备identity记录。
+虽然JSON只给签名存在与否，这个SQLite仍可能随失败归档递归上传，不能只靠DTO保证隔离。
+因此停止main CI41577057367；最终为cancelled，gate没有通过，artifact仅frontend-dist，
+没有diagnostics上传。当前账号探针改用固定Windows声明、无clientSign，不调用真实collector；
+login_notice_smoke另只读检查所有proof core.sqlite3不含device/identity记录。
+归档器也在创建tar前拒绝任何含身份记录或无法核验的core.sqlite3，不删除字段伪称原证据。
+正式客户端默认兼容和真实设备派生不受此测试改动影响；最新集中回归见nickname-editor-validation.txt。

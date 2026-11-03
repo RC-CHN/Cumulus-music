@@ -56,7 +56,12 @@ passed in the Linux workspace batch (305 programs, 1621 passed, no failures or
 ignored tests), alongside strict all-target Clippy, format and native build.
 The final WebView batch and its precise scope are recorded separately; the
 construction tests do not prove actual Windows startup or WebView behavior.
-The final 23-state Linux WebView probe also constructs native_profile with the
-override unset and checks the official Windows declaration; the physical desktop
-run uses the same native path. It records only signature presence, not facts or
-signature bytes. See login-notices-validation.txt for screenshots and boundaries.
+A prior private Linux desktop proof constructed native_profile with the override
+unset and recorded declaration/signature-presence booleans. Its actual hardware
+state stays private in .build. Production identity code is unchanged by the
+subsequent account-proof isolation fix.
+Current public account UI probes use a fixed Windows declaration with no
+clientSign and never call the real hardware collector. They are account/UI
+proofs, not additional default-profile runtime evidence. Construction tests
+cover the default selection with synthetic facts; private physical evidence
+and the exact separation are recorded in nickname-editor-validation.txt.
