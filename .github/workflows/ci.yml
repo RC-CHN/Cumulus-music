@@ -90,7 +90,7 @@ jobs:
       - name: Linux native dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev patchelf libmpv-dev ffmpeg xvfb dbus-x11 python3-gi gir1.2-gtk-3.0 libxtst6 openbox x11-utils iproute2
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev patchelf libmpv-dev ffmpeg xvfb dbus-x11 python3-gi gir1.2-gtk-3.0 libxtst6 openbox x11-utils iproute2 pipewire pipewire-pulse wireplumber pulseaudio-utils
           sudo locale-gen en_US.UTF-8
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
@@ -130,9 +130,9 @@ jobs:
           LIBGL_ALWAYS_SOFTWARE: '1'
         run: |
           xvfb-run -a dbus-run-session -- python3 scripts/ci/graphics_smoke.py --binary .build/target/release/cumulus --root .build/ci-graphics-linux
-      - name: Start the extracted Debian application
+      - name: Verify playback and EQ in the extracted Debian application
         run: |
-          sudo unshare --net --fork runuser -u "$(id -un)" -- xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- env GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 WEBKIT_DISABLE_DMABUF_RENDERER=1 LIBGL_ALWAYS_SOFTWARE=1 /usr/bin/python3 scripts/ci/installed_linux_smoke.py --packages .build/packages/linux-x64 --filter .build/package-stage/linux-x64/native/libcumulus_audio_filter.so --commit "$GITHUB_SHA" --root .build/ci-installed-linux
+          sudo unshare --net --fork runuser -u "$(id -un)" -- xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' dbus-run-session -- env GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 WEBKIT_DISABLE_DMABUF_RENDERER=1 LIBGL_ALWAYS_SOFTWARE=1 /usr/bin/python3 scripts/ci/installed_linux_smoke.py --packages .build/packages/linux-x64 --filter .build/package-stage/linux-x64/native/libcumulus_audio_filter.so --commit "$GITHUB_SHA" --root .build/ci-installed-linux --verify-local-playback --verify-installed-equalizer --verify-monitor-pcm
       - name: Archive synthetic failure diagnostics
         if: failure()
         run: python scripts/ci/diagnostics.py
