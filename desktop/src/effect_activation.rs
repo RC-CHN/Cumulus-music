@@ -184,6 +184,13 @@ impl State {
                 _ => {}
             }
         }
+        let active_id = match self.work.as_ref() {
+            Some((id, Work::Submitted { .. })) => Some(*id),
+            _ => client
+                .native_effect_pending(epoch)?
+                .first()
+                .map(|entry| entry.id),
+        };
         client.validate_player_epoch(epoch)?;
         Ok(View {
             id,
@@ -193,10 +200,7 @@ impl State {
             can_stop: release.is_some(),
             release,
             stop_needs_retry: stop_needs_retry(registration),
-            active_id: self
-                .work
-                .as_ref()
-                .and_then(|(id, work)| matches!(work, Work::Submitted { .. }).then_some(*id)),
+            active_id,
             issue: self
                 .issue
                 .filter(|(owner, _)| *owner == id)
@@ -294,6 +298,7 @@ pub async fn effect_peq_prepare<R: tauri::Runtime>(
         || client
             .native_effect_registration_phase(&epoch, id)?
             .is_some_and(LeasePhase::needs_release)
+        || !client.native_effect_pending(&epoch)?.is_empty()
     {
         return Err(Error::MutationBusy.into());
     }
@@ -336,6 +341,13 @@ pub async fn effect_peq_activate<R: tauri::Runtime>(
     if !matches!(&state.work, Some((owner, Work::Prepared { ticket, .. })) if *owner == id && ticket == &attempt)
     {
         return Err(Error::StaleResponse.into());
+    }
+    if client
+        .native_effect_pending(&epoch)?
+        .iter()
+        .any(|entry| entry.id != id)
+    {
+        return Err(Error::MutationBusy.into());
     }
     host.check_adapter()?;
     let Some((_, Work::Prepared { attempt, .. })) = state.work.take() else {

@@ -80,7 +80,7 @@ def main():
     assert not before['stop_acknowledged']
 
     reopened = run('reopen', sources / 'effect_peq_reopen_ui_probe.js')
-    assert reopened['reopenedFromLocalList']
+    assert reopened['reopenedFromLocalList'] and reopened['otherEffectBlocked']
     reopened_trace = reopened['nativePeq']
     assert reopened_trace['processId'] != initial_trace['processId']
     assert reopened_trace['starts'] == reopened_trace['attaches'] == reopened_trace['materialGets'] == 0
