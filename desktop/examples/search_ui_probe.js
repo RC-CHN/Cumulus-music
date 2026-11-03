@@ -184,6 +184,51 @@
       () => one(".track-row") && input()?.placeholder === "发现合成好声音",
       "startup",
     );
+    if (window.__cumulusSearchSuggestionMatchesProof) {
+      await fixture("good");
+      const provides = one("#app").__vue_app__._context.provides;
+      const core = provides[Reflect.ownKeys(provides).find((k) =>
+        typeof k === "symbol" && k.description === "core-client")];
+      const read = core.searchDiscovery;
+      const label = "İ A+B 和 a+b <plain>";
+      const noMatch = "aab 不匹配";
+      core.searchDiscovery = async (...args) => {
+        const result = await read(...args);
+        if (args[1].kind !== "suggestions") return result;
+        return { ...result, value: { ...result.value, suggestions: [
+          { keyword: "合成精确词", label, tag: null },
+          { keyword: "合成另一个词", label: noMatch, tag: null },
+        ] } };
+      };
+      try {
+        input().focus();
+        input().click();
+        type("A+B");
+        await wait(() => panel()?.textContent.includes(label), "synthetic suggestion labels");
+        const row = one(".search-suggestion[title='" + label + "']");
+        const unmatched = one(".search-suggestion[title='" + noMatch + "']");
+        assert(row.textContent.trim() === label && !row.querySelector("plain"),
+          "suggestion keeps its exact text without treating markup as HTML");
+        const marks = [...row.querySelectorAll("mark.search-match-text")];
+        assert(marks.map((mark) => mark.textContent).join("|") === "A+B|a+b",
+          "both literal hits retain original offsets after İ");
+        assert(unmatched && !unmatched.querySelector("mark"), "no empty or regex wildcard mark");
+        assert(getComputedStyle(marks[0]).color === getComputedStyle(marks[1]).color,
+          "both hits use the same color");
+        await capture("suggestion_literal_matches");
+        key(input(), "ArrowDown");
+        assert(document.activeElement === row, "highlight markup leaves keyboard navigation intact");
+        click(row);
+        await wait(() => !panel() && one(".search-heading-copy h1")?.textContent === "合成精确词",
+          "selection submits the canonical keyword");
+        assert(input().value === label, "selected input preserves the display label");
+      } finally {
+        core.searchDiscovery = read;
+      }
+      await emit("complete", { ok: true, suggestionMatchesVerified: true, stageCount: count,
+        realMusicRequests: 0, realAccountWrites: 0 });
+      return;
+    }
     if (window.__cumulusSearchExactFallbackProof) {
       await fixture("good");
       await suggestions("保留原词");

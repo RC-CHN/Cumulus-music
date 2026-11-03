@@ -247,6 +247,7 @@
   flex-shrink: 0;
 }
 .search-suggestion {
+  --search-match-color: var(--accent);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -265,10 +266,6 @@
 .search-suggestion:hover,
 .search-suggestion:focus-visible {
   background: var(--surface-hover);
-}
-.search-suggestion mark {
-  color: var(--accent);
-  background: transparent;
 }
 .search-exact {
   padding-left: 20px;

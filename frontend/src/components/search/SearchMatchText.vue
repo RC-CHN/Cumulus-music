@@ -14,7 +14,7 @@ const parts = computed(() => splitSearchMatch(props.text, props.keyword));
 
 <style scoped>
 .search-match-text {
-  color: var(--link);
+  color: var(--search-match-color, var(--link));
   background: transparent;
 }
 @media (forced-colors: active) {

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { SearchWord } from '../../services/search';
+import SearchMatchText from './SearchMatchText.vue';
 defineProps<{
   query: string;
   title: string;
@@ -10,12 +11,6 @@ defineProps<{
   error?: string;
 }>();
 const emit = defineEmits<{ select: [keyword: string, display?: string]; retry: [] }>();
-function parts(label: string, query: string) {
-  const at = label.toLocaleLowerCase().indexOf(query.toLocaleLowerCase());
-  return at < 0
-    ? [label, '', '']
-    : [label.slice(0, at), label.slice(at, at + query.length), label.slice(at + query.length)];
-}
 </script>
 <template>
   <button
@@ -52,9 +47,7 @@ function parts(label: string, query: string) {
         :title="word.label"
         @click="emit('select', word.keyword, word.label)"
       >
-        <span
-          >{{ parts(word.label, query)[0] }}<mark>{{ parts(word.label, query)[1] }}</mark
-          >{{ parts(word.label, query)[2] }}</span
+        <span><SearchMatchText :text="word.label" :keyword="query" /></span
         ><small v-if="word.tag" class="search-word-tag">{{ word.tag }}</small>
       </button>
     </section>
