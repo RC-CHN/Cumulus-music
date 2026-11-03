@@ -53,6 +53,15 @@ beforeDevCommand/beforeBuildCommand 在工作区根运行，已改为 npm --pref
 本次未登录、未导入个人文件、未验收声卡或安装包，也不替代其他
 平台和真实账号业务流程的验收。
 
+2026-11-04 本机 Wayland 系统输出复验（eb9c061）
+用当前 KDE Wayland 会话、非 C 系统 locale 和独立 XDG 数据目录运行
+`scripts/ci/native_smoke.py --auto --binary .build/target-main-integration/debug/examples/native_audio_probe --report .build/current-muted-hardware.json`。
+该示例在实际 WebView 初始化后，以零音量解码合成 WAV；libmpv 报告
+PipeWire 输出。原生时钟推进、暂停、定位后继续、倍速、CUE 边界和
+三次重新打开解码器通过。复验期间 PipeWire 图中观察到活动的 mpv
+音频流连到 ALSA 输出节点。未访问账号或网络，未验证有声听感；
+这项证据针对系统输出和桌面初始化，不替代正式页面交互或发行包测试。
+
   普通 Linux 构建 54a677d 再验：在无外网 Xvfb/Openbox、非 C locale
   和私有 PipeWire 虚拟输出启动；用系统鼠标、键盘及 GTK 文件选择器
   导入合成 FLAC，播放进度推进、打开均衡器、关闭并暂停。无注入测试
