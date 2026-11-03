@@ -11,10 +11,11 @@ const props = defineProps<{
   liked: Set<string>;
   currentId?: string;
   playable: boolean;
+  queueable: boolean;
 }>();
 const emit = defineEmits<{
   close: [];
-  choose: [kind: 'play' | 'collect' | 'download', tracks: TrackView[]];
+  choose: [kind: 'play' | 'collect' | 'download' | 'queue', tracks: TrackView[]];
 }>();
 const dialog = ref<HTMLDialogElement>();
 const title = useId();
@@ -37,9 +38,10 @@ function all(force?: boolean) {
     force || selected.value.size !== ids.value.length ? new Set(ids.value) : new Set();
   anchor = -1;
 }
-function choose(kind: 'play' | 'collect' | 'download') {
-  if (chosen.value.length && (kind !== 'play' || props.playable))
-    emit('choose', kind, chosen.value);
+function choose(kind: 'play' | 'collect' | 'download' | 'queue') {
+  if (!chosen.value.length || (kind === 'play' && !props.playable)) return;
+  if (kind === 'queue' && (props.scope !== 'album' || !props.queueable)) return;
+  emit('choose', kind, chosen.value);
 }
 onMounted(() => dialog.value?.showModal());
 </script>
@@ -87,6 +89,15 @@ onMounted(() => dialog.value?.showModal());
         @click="choose('play')"
       >
         播放所选歌曲
+      </button>
+      <button
+        v-if="scope === 'album'"
+        type="button"
+        class="secondary"
+        :disabled="!chosen.length || !queueable"
+        @click="choose('queue')"
+      >
+        添加所选至播放列表
       </button>
       <button type="button" class="secondary" :disabled="!chosen.length" @click="choose('collect')">
         添加到歌单

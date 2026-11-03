@@ -25,6 +25,12 @@ pub(super) enum QueueCollection {
         pages: Vec<super::super::catalog::CatalogSelectionPage>,
         quality: Quality,
     },
+    AlbumBatch {
+        id: String,
+        ids: Vec<String>,
+        revision: String,
+        quality: Quality,
+    },
     Album {
         id: String,
         quality: Quality,
@@ -136,9 +142,12 @@ impl MusicClient {
         }
         let local = matches!(collection, QueueCollection::Local { .. });
         let artist = matches!(collection, QueueCollection::ArtistSongs { .. });
-        let ordinary = local || artist;
+        let album_batch = matches!(collection, QueueCollection::AlbumBatch { .. });
+        let ordinary = local || artist || album_batch;
         let special_queue = if artist {
             "artist songs require ordinary playback"
+        } else if album_batch {
+            "album batch requires ordinary playback"
         } else {
             "local queue requires ordinary playback"
         };
@@ -194,6 +203,46 @@ impl MusicClient {
                     .await?;
                 if resources.is_empty() {
                     return Err(Error::State("artist has no online tracks"));
+                }
+                for resource in &mut resources {
+                    resource["trial_mode"] = json!(-1);
+                }
+                (resources, source, false)
+            }
+            QueueCollection::AlbumBatch {
+                id,
+                ids,
+                revision,
+                quality,
+            } => {
+                if ids.is_empty() || ids.len() > QUEUE_LIMIT {
+                    return Err(Error::InvalidInput("invalid album batch size"));
+                }
+                let id = identifier(&json!(id))?;
+                let mut wanted = ids
+                    .iter()
+                    .map(|id| identifier(&json!(id)).map(Value::from))
+                    .collect::<Result<HashSet<_>>>()?;
+                if wanted.len() != ids.len() {
+                    return Err(Error::InvalidInput("duplicate album selection"));
+                }
+                let page = super::super::catalog::CatalogSelectionPage {
+                    query: CatalogQuery::Album { id },
+                    revision,
+                };
+                let (loaded, _, source) = self.catalog_song_selection(&token, &[page], 0).await?;
+                let selected = loaded
+                    .into_iter()
+                    .filter(|id| wanted.remove(id))
+                    .collect::<Vec<_>>();
+                if !wanted.is_empty() {
+                    return Err(Error::QueueChanged);
+                }
+                let mut resources = self
+                    .online_queue_resources(&token, &selected, quality, attempt)
+                    .await?;
+                if resources.len() != selected.len() {
+                    return Err(Error::State("selected album songs are unavailable"));
                 }
                 for resource in &mut resources {
                     resource["trial_mode"] = json!(-1);

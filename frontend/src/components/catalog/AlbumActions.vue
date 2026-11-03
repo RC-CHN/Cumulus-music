@@ -76,7 +76,7 @@ async function execute() {
   try {
     if (target.action === 'next' || target.action === 'queue') {
       const starts = !props.player.view.value?.queueLen && !props.player.view.value?.track;
-      const result = await props.player.queueAlbum(target.album.id);
+      const result = await props.player.queueAlbum(target.album.id, target.selection);
       if (!result) throw { code: 'playback_changed', message: '播放状态已变化，请重试' };
       if (current === sequence)
         feedback(

@@ -54,7 +54,7 @@
     let batch = await open();
     if (!onDetail() || !batch.querySelector('h2')?.textContent.includes('专辑'))
       throw Error('album header must retain its selected tab and album scope');
-    for (const action of ['播放所选歌曲', '添加到歌单', '下载所选歌曲']) {
+    for (const action of ['播放所选歌曲', '添加所选至播放列表', '添加到歌单', '下载所选歌曲']) {
       if (!button(action, batch)?.disabled) throw Error('empty selection must disable actions');
     }
     const rows = [...batch.querySelectorAll('[data-batch-index]')];
@@ -115,6 +115,37 @@
     }, 'album add-all paused baseline advances');
     const paused = await invoke('player_action', { epoch, action: { kind: 'pause', paused: true } });
     const original = await invoke('player_queue', { epoch });
+    const { value: albumPage } = await invoke('catalog_page', {
+      epoch, query: { kind: 'album', id: '7' }, refresh: false,
+    });
+    for (const [revision, ids] of [['stale', ['1']], [albumPage.revision, ['91']]]) {
+      let rejected = false;
+      try {
+        await invoke('player_action', { epoch, action: {
+          kind: 'queue_album_batch', quality: 'standard', expected_queue_revision: paused.queueRevision,
+          id: '7', revision, ids,
+        } });
+      } catch {
+        rejected = true;
+      }
+      if (!rejected || (await invoke('player_queue', { epoch })).revision !== original.revision)
+        throw Error('stale or foreign selected album row changed the native queue');
+    }
+    batch = await open();
+    for (const i of [4, 0]) click(batch.querySelector(`[data-batch-index="${i}"] input`));
+    const selectedQueue = await wait(() => {
+      const item = button('添加所选至播放列表', batch);
+      return item && !item.disabled && item;
+    }, 'album selected queue action');
+    await capture('ux_album_batch_queue_selection');
+    click(selectedQueue);
+    const onlySelected = await wait(() => matchesQueue(['91', '3', '1', '5', '92']),
+      'only selected album songs inserted in album order');
+    const stillPaused = await invoke('player_snapshot', { epoch });
+    if (stillPaused.playId !== paused.playId || stillPaused.state !== 'paused' ||
+        stillPaused.position !== paused.position || onlySelected.current !== original.current ||
+        onlySelected.tracks[2].entryId !== original.tracks[2].entryId)
+      throw Error('selected album queue changed paused transport or duplicate identity');
     const add = await showAddAll();
     await sleep(450);
     window.__CUMULUS_ALBUM_CAPTURE_ACK__ = '';
@@ -142,7 +173,7 @@
     await wait(() => one('.album-action-feedback')?.textContent.includes('已开始播放'),
       'empty queue feedback');
     await emit('complete', {
-      ok: true, albumBatchVerified: true, albumQueueVerified: true, writesSubmitted: false,
+      ok: true, albumBatchVerified: true, albumQueueVerified: true, albumSelectedQueueVerified: true, writesSubmitted: false,
     });
   } catch (error) {
     await emit('failed', { error: String(error?.message ?? error) });

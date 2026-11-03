@@ -295,6 +295,13 @@ pub enum PlayerAction {
         quality: Quality,
         expected_queue_revision: String,
     },
+    QueueAlbumBatch {
+        id: String,
+        ids: Vec<String>,
+        revision: String,
+        quality: Quality,
+        expected_queue_revision: String,
+    },
     QueueAlbum {
         id: String,
         quality: Quality,

@@ -14,6 +14,7 @@ export interface AlbumCardRequest {
   album: AlbumCard;
   action: AlbumCardAction;
   anchor: HTMLElement | null;
+  selection?: { ids: string[]; revision: string };
 }
 
 /** Official AlbumCard keeps the primary artist first when present in the list. */

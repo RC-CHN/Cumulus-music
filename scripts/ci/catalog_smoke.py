@@ -139,10 +139,13 @@ def main():
     complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
     if args.album_batch:
         assert complete['ok'] and complete['albumBatchVerified'] and complete['albumQueueVerified'] and not complete['writesSubmitted']
-        for name in ('ux_album_batch_selection', 'ux_album_batch_download', 'ux_album_queue_menu'):
+        assert complete['albumSelectedQueueVerified']
+        for name in ('ux_album_batch_selection', 'ux_album_batch_download',
+                     'ux_album_batch_queue_selection', 'ux_album_queue_menu'):
             assert json.loads((output / f'{name}.json').read_text(encoding='utf-8'))['activeAlbumTab'] == 'detail'
-        assert not args.screenshots or captures == 3
-        print(json.dumps(dict(ok=True, actualWebView=True, albumBatchVerified=True, albumQueueVerified=True)))
+        assert not args.screenshots or captures == 4
+        print(json.dumps(dict(ok=True, actualWebView=True, albumBatchVerified=True,
+                              albumQueueVerified=True, albumSelectedQueueVerified=True)))
         return
     if args.artist_batch:
         assert complete['ok'] and complete['artistBatchVerified'] and complete['selectedPlayback'] and not complete['writesSubmitted']

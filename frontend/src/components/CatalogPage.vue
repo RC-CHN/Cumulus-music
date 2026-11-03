@@ -86,11 +86,12 @@ const {
 } = props.model;
 const batchTracks = ref<TrackView[]>();
 let batchOrigin: HTMLElement | null = null;
+let batchAlbumRevision: string | undefined;
 const batchAllowed = () =>
   props.model.valid() && (resource.kind === 'album' || tab.value === 'all');
 const artistBatchAnchor = ref<HTMLElement>();
 let batchHandoff:
-  | { epoch: string; kind: 'play' | 'collect' | 'download'; tracks: TrackView[] }
+  | { epoch: string; kind: 'play' | 'collect' | 'download' | 'queue'; tracks: TrackView[] }
   | undefined;
 function openTrackBatch(origin: HTMLElement | null) {
   if (!batchAllowed()) return;
@@ -101,6 +102,7 @@ function openTrackBatch(origin: HTMLElement | null) {
   );
   if (usable.size) {
     batchOrigin = origin;
+    batchAlbumRevision = resource.kind === 'album' ? detail.view.value?.revision : undefined;
     batchTracks.value = [...usable.values()];
   }
 }
@@ -125,7 +127,7 @@ async function artistSongsAction(key: string) {
     if (current()) artistQueueNotice.value = '暂时无法添加，请确认当前歌曲列表和播放状态后重试。';
   }
 }
-function chooseTrackBatch(kind: 'play' | 'collect' | 'download', selected: TrackView[]) {
+function chooseTrackBatch(kind: 'play' | 'collect' | 'download' | 'queue', selected: TrackView[]) {
   if (!batchTracks.value || !batchAllowed()) return;
   batchHandoff = { epoch: props.account.epoch, kind, tracks: selected };
   batchTracks.value = undefined;
@@ -133,9 +135,20 @@ function chooseTrackBatch(kind: 'play' | 'collect' | 'download', selected: Track
 function finishTrackBatch() {
   const handoff = batchHandoff;
   batchHandoff = undefined;
+  const origin = batchOrigin;
+  const revision = batchAlbumRevision;
   batchOrigin = null;
+  batchAlbumRevision = undefined;
   if (!handoff || handoff.epoch !== props.account.epoch || !batchAllowed()) return;
-  if (handoff.kind === 'collect') emit('collectTracks', handoff.tracks);
+  if (handoff.kind === 'queue') {
+    if (resource.kind === 'album' && props.queueable && album.value && revision)
+      emit('albumAction', {
+        action: 'queue',
+        album: album.value,
+        anchor: origin,
+        selection: { ids: handoff.tracks.map((track) => track.id), revision },
+      });
+  } else if (handoff.kind === 'collect') emit('collectTracks', handoff.tracks);
   else if (handoff.kind === 'download') emit('download', handoff.tracks);
   else if (props.playable && !props.playBusy) emit('playTracks', handoff.tracks, 0);
 }
@@ -527,6 +540,7 @@ defineExpose({ checkpoint: () => checkpoint(), resourceKey: `${resource.kind}:${
         :liked="liked"
         :current-id="currentId"
         :playable="playable && !playBusy"
+        :queueable="queueable && !!batchAlbumRevision"
         @close="batchTracks = undefined"
         @choose="chooseTrackBatch"
       />

@@ -245,12 +245,13 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       quality: view.value?.qualityPreferences.quality ?? 'standard',
     });
   }
-  function queueAlbum(id: string) {
-    return queueAction({
-      kind: 'queue_album',
-      id,
-      quality: view.value?.qualityPreferences.quality ?? 'standard',
-    });
+  function queueAlbum(id: string, selection?: { ids: string[]; revision: string }) {
+    const quality = view.value?.qualityPreferences.quality ?? 'standard';
+    return queueAction(
+      selection
+        ? { kind: 'queue_album_batch', id, quality, ...selection }
+        : { kind: 'queue_album', id, quality },
+    );
   }
   // A toolbar may first read multiple catalog pages. Capture the user's player
   // intent before that read, so its late result cannot target a newer queue.
@@ -295,6 +296,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
             | 'queue_playlist'
             | 'queue_playlist_batch'
             | 'queue_cloud_batch'
+            | 'queue_album_batch'
             | 'queue_album'
             | 'queue_artist_songs';
         }
