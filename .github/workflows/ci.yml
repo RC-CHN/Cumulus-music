@@ -438,6 +438,10 @@ jobs:
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-relay-publication-windows --runtime .build/package-stage/windows-x64/native --relay-publication
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-relay-recovery-windows --runtime .build/package-stage/windows-x64/native --relay-recovery
           python scripts/ci/graphics_smoke.py --binary .build/target/release/cumulus.exe --root .build/ci-graphics-windows
+      - name: Launch the extracted Windows portable ZIP
+        shell: pwsh
+        run: |
+          python scripts/ci/windows_zip_smoke.py --packages .build/packages/windows-x64 --commit "$env:GITHUB_SHA" --root .build/ci-windows-zip
       - name: Archive synthetic failure diagnostics
         if: failure()
         run: python scripts/ci/diagnostics.py

@@ -69,3 +69,10 @@ probe把规范目录（带Windows扩展路径前缀）直接拼接“/menu-moved
 目录的分隔符。产品路径/文件身份检查不变，未把移动失败改为任意错误通过。
 依据：https://learn.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation
 这是与日志/源码相符的定位，修正后的Windows实际移动仍须新精确提交CI确认。
+
+Windows 便携 ZIP 启动门槛
+CI 在上传 Windows 包前以当次包清单核对 commit、run/attempt、ZIP 长度和 SHA-256；
+检查 ZIP 版本根目录与内部 runtime 清单，复制同目录的普通 cumulus.exe、ffprobe、
+C DSP DLL 和声明的 DLL 依赖至新临时目录。以现有 graphics_smoke 启动其中的可执行文件，
+PATH 仅包含该目录和 Windows 系统路径，不沿用打包暂存目录 DLL 设置。
+该检查覆盖发行 ZIP 的实际启动和相邻运行时布局；不验证 NSIS 安装过程或物理音频输出。
