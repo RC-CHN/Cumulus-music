@@ -747,7 +747,7 @@ input[type='range'] {
   width: 100%;
   text-align: left;
   padding: 15px 8px;
-  font-size: 22px;
+  font-size: calc(var(--lyric-base-size, 22px) + var(--lyric-font-gain, 0px));
   line-height: 1.6;
   color: var(--muted);
   transition: color 0.2s;
@@ -797,6 +797,52 @@ input[type='range'] {
   min-width: 35px;
   text-align: center;
 }
+.lyric-font-control {
+  position: relative;
+}
+.lyric-font-popover {
+  position: absolute;
+  z-index: 5;
+  bottom: calc(100% + 4px);
+  left: calc(50% - 24px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 48px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 4px 12px #0002;
+}
+.lyric-font-popover .icon-button {
+  width: 38px;
+  height: 28px;
+  padding: 0;
+}
+.lyric-font-slider {
+  position: relative;
+  width: 46px;
+  height: 72px;
+}
+.lyric-font-slider input {
+  position: absolute;
+  top: 26px;
+  left: -21px;
+  width: 72px;
+  height: 20px;
+  margin: 0;
+  transform: rotate(-90deg);
+  accent-color: var(--accent);
+}
+.lyric-font-slider output {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
 .lyric-cache-note {
   font-size: 11px;
   color: var(--muted);
@@ -812,7 +858,7 @@ input[type='range'] {
     gap: 25px;
   }
   .lyric-line {
-    font-size: 19px;
+    --lyric-base-size: 19px;
   }
   .now-playing > .like-button {
     display: none;

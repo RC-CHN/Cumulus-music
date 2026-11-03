@@ -108,12 +108,39 @@
     click(one('.playerbar [aria-label="暂停"]'));
     await wait(()=>one('.playerbar').dataset.state==='paused','pause after timeline test');
   }
+  async function verifyLyricFont() {
+    const control=()=>one('[aria-label="调整歌词字号"]');
+    const popup=()=>one('.lyric-font-popover');
+    const gain=()=>parseFloat(getComputedStyle(one('.lyric-line')).fontSize);
+    const initial=gain();
+    const playId=one('.playerbar').dataset.playId;
+    click(control());
+    await wait(()=>popup()&&document.activeElement===popup().querySelector('input'),'font slider focus');
+    const slider=popup().querySelector('input');
+    const plus=popup().querySelector('[aria-label="增大歌词字号"]');
+    const minus=popup().querySelector('[aria-label="减小歌词字号"]');
+    click(plus);
+    await wait(()=>gain()===initial+1,'font increment affects lyric size');
+    slider.value='4';slider.dispatchEvent(new Event('input',{bubbles:true}));
+    await wait(()=>gain()===initial+4&&plus.getAttribute('aria-disabled')==='true','font gain is bounded');
+    assert(hit(slider)&&hit(minus),'font controls are reachable');
+    await capture('lyric_font');
+    click(minus);
+    await wait(()=>gain()===initial+3,'font decrement');
+    minus.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+    await wait(()=>!popup()&&document.activeElement===control(),'font Escape closes only popover');
+    click(one('[aria-label="收起播放详情"]'));
+    await wait(()=>!one('.lyrics-panel'),'font preference unmount');
+    click(one('[aria-label="歌词"]'));
+    await wait(()=>one('.lyric-line.current')&&gain()===initial+3,'saved font gain restored');
+    assert(one('.playerbar').dataset.playId===playId&&one('.playerbar').dataset.state==='paused','font preference does not alter native playback');
+  }
   try {
     await wait(()=>all('.track-row').length>2,'daily');
     await wait(()=>one('[aria-label="列表循环"]') && !one('[aria-label="列表循环"]').disabled,'native player ready');
     assert(one('.track-row').textContent.includes('沿着海岸'),'long fixture missing');
     await play(0);
-    if(!window.__playerLayoutBaseline) await verifyLyricFollow();
+    if(!window.__playerLayoutBaseline) { await verifyLyricFollow(); await verifyLyricFont(); }
     for(const [width,height,theme] of [[1120,760,'light'],[760,540,'light'],[760,540,'dark'],[1120,760,'dark']]) {
       await emit('resize',{width,height});await wait(()=>innerWidth===width&&innerHeight===height,'resize');await appearance(theme);
       const suffix=`${width}_${theme}`;
@@ -134,6 +161,6 @@
     assert(document.activeElement===one('[aria-label="歌词"]'),'detail close focus lost');
     const passed=checks.every(row=>Object.entries(row).every(([key,value])=>key==='label'||value===true));
     assert(window.__playerLayoutBaseline||passed,JSON.stringify(checks.filter(row=>Object.values(row).includes(false))));
-    await emit('complete',{ok:true,layoutPassed:passed,checks,stageCount,realMusicRequests:0,accountWrites:0,focusRestored:true,lyricFollowVerified:!window.__playerLayoutBaseline,lyricTimelineVerified:!window.__playerLayoutBaseline});
+    await emit('complete',{ok:true,layoutPassed:passed,checks,stageCount,realMusicRequests:0,accountWrites:0,focusRestored:true,lyricFollowVerified:!window.__playerLayoutBaseline,lyricTimelineVerified:!window.__playerLayoutBaseline,lyricFontVerified:!window.__playerLayoutBaseline});
   } catch(error) {await emit('failed',{ok:false,error:String(error),stageCount,checks});}
 })();

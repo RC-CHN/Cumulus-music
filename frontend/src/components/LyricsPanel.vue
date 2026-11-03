@@ -4,6 +4,7 @@ import type { PlayerModel } from '../composables/usePlayer';
 import { time, type PlayerView } from '../services/player';
 import Icon from './Icon.vue';
 import DesktopLyricToggle from './DesktopLyricToggle.vue';
+import LyricFontSize from './LyricFontSize.vue';
 import ActionMenu from './ActionMenu.vue';
 import { useMotion } from '../composables/useMotion';
 import type { CatalogResource } from '../services/catalog';
@@ -24,6 +25,23 @@ const container = ref<HTMLElement>(),
 const metadata = computed(() => playbackMetadata(view.value?.track));
 const source = computed(() => playbackSource(view.value));
 const wordMode = ref(true);
+const lyricFontKey = 'cumulus.playback.lyric-font-gain.v1';
+const lyricFontGain = ref(0);
+try {
+  const saved = Number(localStorage.getItem(lyricFontKey));
+  if (Number.isInteger(saved) && saved >= -4 && saved <= 4) lyricFontGain.value = saved;
+} catch {
+  // Session-only sizing remains available when WebView storage is denied.
+}
+watch(lyricFontGain, (value) => {
+  try {
+    localStorage.setItem(lyricFontKey, String(value));
+  } catch {
+    // Keep the active view usable without persistence.
+  }
+  if (manual.value) void nextTick(selectBrowsedLine);
+  else void scroll();
+});
 const motion = useMotion();
 const manual = ref(false);
 const resumeButton = ref<HTMLButtonElement>();
@@ -214,6 +232,7 @@ function aligned(rows: { time?: number; lyric: string }[] | undefined, index: nu
 <template>
   <section
     class="lyrics-panel"
+    :style="{ '--lyric-font-gain': `${lyricFontGain}px` }"
     aria-label="播放详情与歌词"
     @keydown.esc.stop="player.lyricsOpen.value = false"
   >
@@ -364,6 +383,7 @@ function aligned(rows: { time?: number; lyric: string }[] | undefined, index: nu
         </template>
         <div class="lyric-tools">
           <template v-if="lyrics">
+            <LyricFontSize v-if="lines.length" v-model="lyricFontGain" />
             <button
               class="text-button"
               :aria-pressed="lyrics.preferences.translationEnable"
