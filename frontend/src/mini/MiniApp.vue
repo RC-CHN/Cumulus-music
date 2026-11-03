@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BoundedPanelTransition from '../components/BoundedPanelTransition.vue';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import Icon from '../components/Icon.vue';
 import { useLocalShortcuts } from '../composables/useLocalShortcuts';
@@ -483,7 +484,7 @@ onUnmounted(() => {
         :aria-label="modeName"
         @click="modes.mode.cycle"
       >
-        <Transition name="mini-mode-glyph" mode="out-in">
+        <BoundedPanelTransition name="mini-mode-glyph">
           <span
             :key="modes.mode.displayFamily.value + ':' + modes.mode.value.value"
             class="mini-mode-glyph"
@@ -496,7 +497,7 @@ onUnmounted(() => {
               "
             />
           </span>
-        </Transition>
+        </BoundedPanelTransition>
       </button>
       <button
         :disabled="busy || !media?.canPrevious"

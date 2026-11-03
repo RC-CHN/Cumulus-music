@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BoundedPanelTransition from './BoundedPanelTransition.vue';
 import { computed, ref, watch } from 'vue';
 import type { PlayerModel } from '../composables/usePlayer';
 import { usePlaybackMode } from '../composables/usePlaybackMode';
@@ -79,7 +80,7 @@ function enter(event: FocusEvent) {
       :disabled="!player.ready.value"
       @click="model.cycle"
     >
-      <Transition name="mode-glyph" mode="out-in">
+      <BoundedPanelTransition name="mode-glyph">
         <span
           class="mode-glyph"
           :key="model.displayFamily.value + ':' + model.value.value"
@@ -87,7 +88,7 @@ function enter(event: FocusEvent) {
         >
           <Icon :name="modeIcon(model.value.value, model.displayFamily.value)" />
         </span>
-      </Transition>
+      </BoundedPanelTransition>
     </button>
     <MenuTransition>
       <span v-if="model.issue.value && !dismissed" class="mode-feedback">

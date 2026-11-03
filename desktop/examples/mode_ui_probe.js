@@ -16,6 +16,19 @@
  async function fixture(kind){window.__modeFixtureAck=null;await emit('mode-fixture',{kind});await wait(()=>window.__modeFixtureAck===kind,'mode fixture');}
  async function settled(mode){await wait(()=>bar().dataset.mode===mode&&trigger().getAttribute('aria-busy')==='false','native mode '+mode);}
  async function cycle(mode){click(trigger());await settled(mode);}
+ async function cycleWithoutFrames(mode){
+  const initial=one('.mode-glyph svg')?.innerHTML;
+  const frame=window.requestAnimationFrame;let withheld=0;
+  try{
+   window.requestAnimationFrame=()=>-(++withheld);
+   await cycle(mode);
+   await wait(()=>{
+    const icon=one('.mode-glyph svg');
+    return !!icon&&icon.innerHTML!==initial&&!one('.mode-glyph-enter-active,.mode-glyph-leave-active')&&getComputedStyle(icon.parentElement).opacity==='1';
+   },'mode glyph with no compositor frames');
+   assert(withheld>=2||document.documentElement.dataset.motion==='reduced','mode transitions observed stalled frames');
+  }finally{window.requestAnimationFrame=frame;}
+ }
  async function reach(mode){for(let i=0;i<4&&bar().dataset.mode!==mode;i++){const old=bar().dataset.mode;click(trigger());await wait(()=>bar().dataset.mode!==old&&trigger().getAttribute('aria-busy')==='false','cycle reaches next');}assert(bar().dataset.mode===mode,'bounded cycle');}
  async function prepare(){
   await wait(()=>['idle','paused','playing','ended'].includes(bar().dataset.state)&&(bar().dataset.trackId?!one('.playerbar .play-toggle').disabled:!!one('.track-row .track-play:not(:disabled)')),'native transport controls settled');
@@ -41,7 +54,7 @@
    for(const [w,h,theme] of [[1120,760,'light'],[760,540,'light'],[760,540,'dark'],[1120,760,'dark']]){
     await emit('resize',{width:w,height:h});await sleep(240);if(innerWidth!==w||innerHeight!==h)await emit('resize',{width:w*w/innerWidth,height:h*h/innerHeight});await wait(()=>innerWidth===w&&innerHeight===h,'resize');click(one('[aria-label="外观主题"]'));await wait(()=>one('.action-menu'),'theme menu');click(button(theme==='dark'?'深色':'浅色'));await wait(()=>document.documentElement.dataset.theme===theme&&!one('.action-menu'),'theme applied');
     await reach('order_loop');const suffix=`${w}_${theme}`;
-    for(const [mode,label] of [['single_loop','single'],['random','random'],['sequential','sequential'],['order_loop','loop']]){await cycle(mode);await capture(`${label}_${suffix}`);}
+    for(const [mode,label] of [['single_loop','single'],['random','random'],['sequential','sequential'],['order_loop','loop']]){if(w===1120&&theme==='light'&&mode==='single_loop')await cycleWithoutFrames(mode);else await cycle(mode);await capture(`${label}_${suffix}`);}
     await fixture('reject');click(trigger());await wait(()=>feedback()?.querySelector('[role="alert"]')&&trigger().getAttribute('aria-busy')==='false','local mode error');assert(bar().dataset.mode==='order_loop','failed mode preserves actual');await capture(`failed_${suffix}`);
     const retry=button('重试切换');retry.focus();key(retry,'Escape');await wait(()=>!one('.mode-feedback'),'Escape removes feedback');assert(document.activeElement===trigger(),'Escape focus');await capture(`closed_${suffix}`);one('[aria-label="外观主题"]').focus();trigger().focus();await wait(()=>feedback(),'external focus reopens retained feedback');await capture(`reopened_${suffix}`);
     await fixture('allow');click(button('重试切换'));await settled('single_loop');await wait(()=>!one('.mode-feedback'),'retry feedback removed');assert(document.activeElement===trigger(),'retry focus restored');await capture(`retried_${suffix}`);await reach('order_loop');
