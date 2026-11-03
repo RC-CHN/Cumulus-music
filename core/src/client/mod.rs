@@ -19,6 +19,7 @@ mod focus;
 mod history;
 mod likes;
 mod local;
+mod login_device_removal;
 mod login_devices;
 mod mapping;
 mod media_preferences;
@@ -72,6 +73,7 @@ pub struct MusicClient {
     scene_fm: scene_fm::SceneFmHost,
     playlist_cover: playlist_cover::CoverHost,
     account_avatar: account_avatar::AvatarHost,
+    login_device_rows: login_devices::DeviceRows,
 }
 
 impl MusicClient {
@@ -181,6 +183,7 @@ impl MusicClient {
         Self {
             playlist_cover: playlist_cover::CoverHost::default(),
             account_avatar: account_avatar::AvatarHost::default(),
+            login_device_rows: login_devices::DeviceRows::default(),
             together: together::TogetherHost::default(),
             scene_fm: scene_fm::SceneFmHost::default(),
             local: local::LocalHost::new(registry.store()),

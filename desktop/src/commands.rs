@@ -83,6 +83,33 @@ pub async fn account_login_devices(
 ) -> Result<AccountData<LoginDevicesView>, ClientError> {
     client.login_devices(&epoch).await.map_err(Into::into)
 }
+
+#[tauri::command]
+pub fn account_login_device_removal(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> Result<AccountData<Option<LoginDeviceRemovalView>>, ClientError> {
+    client.login_device_removal(&epoch).map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn account_login_device_removal_command<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    command: LoginDeviceRemovalCommand,
+) -> Result<AccountData<LoginDeviceRemovalView>, ClientError> {
+    let result = client
+        .login_device_removal_command(&epoch, command)
+        .await
+        .map_err(Into::into);
+    // A fresh authenticated read can invalidate the session during the flow.
+    if client.account().is_ok_and(|account| account.epoch != epoch) {
+        crate::auth::publish(&window, &client);
+    }
+    result
+}
+
 #[tauri::command]
 pub async fn restore_account<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,

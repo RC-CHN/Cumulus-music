@@ -35,6 +35,7 @@ fn main() {
     let baseline = std::env::var_os("CUMULUS_PROOF_BASELINE").is_some();
     let account_detail = std::env::var_os("CUMULUS_PROOF_ACCOUNT_DETAIL").is_some();
     let profile_edit = std::env::var_os("CUMULUS_PROOF_PROFILE_EDIT").is_some();
+    let device_removal = std::env::var_os("CUMULUS_PROOF_DEVICE_REMOVAL").is_some();
     let browser_service = service.clone();
     cumulus_desktop::configure(tauri::Builder::default())
         .manage(cumulus_desktop::LoginDocumentBrowser::with_launcher(move |document| browser_service.open_document(document)))
@@ -76,6 +77,9 @@ fn main() {
                 value["fixture"] = service.snapshot();
                 value["savedAccounts"] = serde_json::to_value(client.saved_accounts(&account.epoch).unwrap()).unwrap();
                 value["realMusicRequests"] = json!(0);
+                if device_removal {
+                    value["nativeRemoval"] = serde_json::to_value(client.login_device_removal(&account.epoch).ok()).unwrap();
+                }
                 let correct = value["expectNickname"].as_str().is_none_or(|name| account.nickname.as_deref() == Some(name))
                     && (!value["expectGuest"].as_bool().unwrap_or(false) || account.status != cumulus_core::account::SessionStatus::Authenticated);
                 if !correct { value["nativeMismatch"] = json!(true); }
@@ -100,6 +104,7 @@ fn main() {
                 webview.eval(format!("window.__accountDetailProof={account_detail};")).unwrap();
                 webview.eval(format!("window.__profileEditProof={profile_edit};")).unwrap();
                 webview.eval(format!("window.__accountAvatarProof={avatar};")).unwrap();
+                webview.eval(format!("window.__deviceRemovalProof={device_removal};")).unwrap();
                 let script = if std::env::var("CUMULUS_PROOF_LOGIN_ENTRY").as_deref() == Ok("1") {
                     include_str!("login_entry_ui_probe.js")
                 } else {

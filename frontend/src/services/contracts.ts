@@ -24,6 +24,7 @@ import type { CatalogClient } from './catalog';
 import type { CollectionClient } from './collections';
 import type { HistoryClient } from './history';
 import type { SettingsClient } from './settings';
+import type { LoginDeviceRemovalClient } from './loginDeviceRemoval';
 import type { AccountDetailClient } from './accountDetail';
 import type { AccountAvatarClient } from './accountAvatar';
 import type { AccountProfileEditClient } from './accountProfileEdit';
@@ -72,6 +73,7 @@ export interface CoreClient
     SettingsClient,
     AccountDetailClient,
     AccountAvatarClient,
+    LoginDeviceRemovalClient,
     AccountProfileEditClient,
     StartupPreferencesClient,
     OutputClient,

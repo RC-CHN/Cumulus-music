@@ -85,6 +85,9 @@ export function createTauriClient(): CoreClient {
       invoke('account_profile_edit_command', { epoch, command }),
     accountBindingQr: (epoch) => invoke('account_binding_qr', { epoch }),
     accountLoginDevices: (epoch) => invoke('account_login_devices', { epoch }),
+    accountLoginDeviceRemoval: (epoch) => invoke('account_login_device_removal', { epoch }),
+    accountLoginDeviceRemovalCommand: (epoch, command) =>
+      invoke('account_login_device_removal_command', { epoch, command }),
     relayView: (epoch, refresh) => invoke('relay_view', { epoch, refresh }),
     relayPublicationView: (epoch, requested) =>
       invoke('relay_publication_view', { epoch, requested }),

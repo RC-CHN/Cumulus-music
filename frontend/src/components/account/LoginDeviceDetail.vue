@@ -2,8 +2,8 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { accountDate, type LoginDevice } from '../../services/accountDetail';
 import Icon from '../Icon.vue';
-const props = defineProps<{ device: LoginDevice }>();
-const emit = defineEmits<{ close: [] }>();
+const props = defineProps<{ device: LoginDevice; canRemove?: boolean }>();
+const emit = defineEmits<{ close: []; remove: [] }>();
 const dialog = ref<HTMLDialogElement>();
 const fields = computed(() => [
   { label: '设备名称', text: props.device.name },
@@ -38,5 +38,15 @@ onBeforeUnmount(() => {
         <dd>{{ field.text || '未提供' }}</dd>
       </div>
     </dl>
+    <footer v-if="!device.current && canRemove">
+      <button
+        type="button"
+        class="primary"
+        data-testid="login-device-remove-open"
+        @click="emit('remove')"
+      >
+        移除该设备
+      </button>
+    </footer>
   </dialog>
 </template>

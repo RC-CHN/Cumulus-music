@@ -118,8 +118,8 @@
   async function stage(name, extra = {}) {
     last = name;
     await settle();
-    const dialog = one("dialog[open]"),
-      focus = document.activeElement;
+    const focus = document.activeElement,
+      dialog = (window.__deviceRemovalProof && focus?.closest("dialog[open]")) || one("dialog[open]");
     const controls = dialog
       ? [...dialog.querySelectorAll("button,input,select")]
           .filter(
@@ -427,12 +427,98 @@
     await stage("avatar_reconciled_dark", { expectNickname });
     await emit("complete", { ok: true, accountAvatar: true, stageCount: count, expectNickname });
   }
+  async function deviceRemoval() {
+    const expectNickname = "邮箱验证账号";
+    const test = (id) => one(`[data-testid="${id}"]`);
+    const phase = () => one(".login-device-removal-dialog")?.dataset.removalPhase;
+    const cards = () => all(".login-device-card", one(".login-devices-page"));
+    const closeRemoval = async () => {
+      click(test("login-device-removal-close"));
+      await wait(() => !one(".login-device-removal-dialog"), "device removal closed");
+      await settle();
+    };
+    async function begin(expected) {
+      click(cards().find((card) => card.textContent.includes("旧设备")));
+      await wait(() => test("login-device-remove-open"), "old-device detail");
+      await settle();
+      click(test("login-device-remove-open"));
+      await wait(() => phase() === "confirm", "removal confirmation");
+      await settle();
+      click(test("login-device-remove-confirm"));
+      await wait(() => phase() === expected, `device removal ${expected}`);
+    }
+    await open();
+    await email();
+    await logged();
+    click(button("打开设置"));
+    await wait(() => test("account-devices-open"), "device settings entry");
+    await settle();
+    click(test("account-devices-open"));
+    await wait(() => cards().length === 2, "device list");
+    await settle();
+    click(cards().find((card) => card.textContent.includes("测试桌面")));
+    await wait(() => one(".login-device-detail"), "current device detail");
+    assert(!test("login-device-remove-open"), "current device has no removal action");
+    await stage("device_removal_current_light", { expectNickname });
+    click(button("关闭设备详情"));
+    await wait(() => !one(".login-device-detail"), "current detail closed");
+    await settle();
+
+    await mode("device_removal_unbound");
+    await begin("needs_binding");
+    await settle();
+    click(test("login-device-removal-binding"));
+    await wait(() => one(".account-binding-qr-dialog svg[data-account-binding-qr]"), "binding QR");
+    await stage("device_removal_binding_light", { expectNickname });
+    click(button("关闭扫码设置"));
+    await wait(() => !one(".account-binding-qr-dialog"), "binding QR closed");
+    await settle();
+    await closeRemoval();
+    await wait(() => cards().length === 2, "fresh device handles");
+    await settle();
+
+    await mode("device_removal_sms");
+    await begin("needs_sms");
+    await stage("device_removal_sms_offer_light", { expectNickname });
+    click(test("login-device-removal-send"));
+    await wait(() => phase() === "sms_ready", "SMS acknowledgement");
+    await stage("device_removal_sms_ready_light", { expectNickname });
+
+    await theme("dark");
+    await resize(880, 670);
+    await mode("device_removal_drop");
+    const code = test("login-device-removal-code");
+    code.focus();
+    code.value = "001234";
+    code.dispatchEvent(new Event("input", { bubbles: true }));
+    await wait(() => !test("login-device-removal-submit")?.disabled, "SMS submit enabled");
+    click(test("login-device-removal-submit"));
+    await wait(() => phase() === "recovery_required", "lost kickoff acknowledgement");
+    assert(!one(".login-device-removal-dialog").textContent.includes("001234"), "OTP not displayed after submit");
+    await stage("device_removal_recovery_dark", { expectNickname });
+    await closeRemoval();
+    click(test("login-device-removal-resume"));
+    await wait(() => phase() === "recovery_required", "recover saved outcome");
+    await settle();
+    click(test("login-device-removal-reconcile"));
+    await wait(() => phase() === "observed_absent", "read-only absence observation");
+    await wait(() => cards().length === 1, "fresh device list after observation");
+    await stage("device_removal_observed_dark", { expectNickname });
+    await closeRemoval();
+    await wait(() => cards().length === 1 && test("login-device-removal-result"), "updated device list and result");
+    assert(!one(".login-devices-page").innerHTML.includes("fixture-private-key"), "no server device key");
+    await emit("complete", { ok: true, deviceRemoval: true, stageCount: count, expectNickname });
+  }
   try {
     await wait(() => ready() && one(".welcome"), "guest bootstrap");
     await theme("light");
     await resize(1120, 760);
     if (window.__accountAvatarProof) {
       await accountAvatar();
+      return;
+    }
+    if (window.__deviceRemovalProof) {
+      await deviceRemoval();
       return;
     }
     if (window.__profileEditProof) {

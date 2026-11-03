@@ -1,0 +1,131 @@
+.login-device-removal-dialog {
+  box-sizing: border-box;
+  width: 376px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px);
+  padding: 24px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--surface-raised);
+  color: var(--text);
+  box-shadow: 0 18px 70px #0004;
+}
+.login-device-removal-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+.login-device-removal-dialog::backdrop {
+  background: transparent;
+}
+.login-device-removal-dialog header {
+  position: relative;
+  flex: none;
+  text-align: center;
+}
+.login-device-removal-dialog header button {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+}
+.login-device-removal-dialog h2 {
+  margin: 0;
+  padding: 0 30px;
+  font-size: 18px;
+  line-height: 26px;
+}
+.login-device-removal-body {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 2px;
+  margin-top: 14px;
+  text-align: center;
+}
+.login-device-removal-body p {
+  margin: 12px 0;
+  font-size: 14px;
+  line-height: 20px;
+}
+.login-device-removal-target {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.login-device-removal-body .login-device-removal-progress {
+  color: var(--text-secondary);
+}
+.login-device-removal-body .login-device-removal-error {
+  color: var(--danger);
+}
+.login-device-removal-dialog footer {
+  flex: none;
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+.login-device-removal-dialog footer button {
+  min-width: 90px;
+}
+.login-device-sms-title,
+.login-device-sms-hint {
+  text-align: left;
+}
+.login-device-sms-title {
+  font-weight: 500;
+}
+.login-device-sms-input {
+  display: flex;
+  align-items: stretch;
+  height: 40px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: var(--surface);
+}
+.login-device-sms-input:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.login-device-sms-input input {
+  min-width: 0;
+  flex: 1;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  outline: 0;
+  font: inherit;
+}
+.login-device-sms-input button {
+  flex: none;
+  margin: 7px 0;
+  padding: 0 10px;
+  border-left: 1px solid var(--line);
+  color: var(--accent);
+  font-size: 13px;
+}
+.login-device-sms-input button:disabled,
+.login-device-removal-body .login-device-sms-hint {
+  color: var(--text-secondary);
+}
+.login-device-removal-body .login-device-sms-hint {
+  font-size: 12px;
+}
+.login-device-removal-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin: 0 0 14px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.login-device-removal-banner p {
+  margin: 0;
+}
+
+.login-device-detail footer {
+  display: flex;
+  justify-content: center;
+  margin-top: 24px;
+}

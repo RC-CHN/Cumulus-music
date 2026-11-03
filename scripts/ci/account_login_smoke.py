@@ -18,8 +18,9 @@ def main():
     parser.add_argument('--account-detail', action='store_true')
     parser.add_argument('--profile-edit', action='store_true')
     parser.add_argument('--account-avatar', action='store_true')
+    parser.add_argument('--device-removal', action='store_true')
     args = parser.parse_args()
-    if sum((args.baseline, args.account_detail, args.profile_edit, args.account_avatar)) > 1:
+    if sum((args.baseline, args.account_detail, args.profile_edit, args.account_avatar, args.device_removal)) > 1:
         parser.error('choose one proof mode')
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
@@ -33,6 +34,8 @@ def main():
         env['CUMULUS_PROOF_PROFILE_EDIT'] = '1'
     if args.account_avatar:
         env['CUMULUS_PROOF_ACCOUNT_AVATAR'] = '1'
+    if args.device_removal:
+        env['CUMULUS_PROOF_DEVICE_REMOVAL'] = '1'
     for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'), ('XDG_CACHE_HOME', 'cache'),
                       ('XDG_RUNTIME_DIR', 'runtime'), ('APPDATA', 'roaming'), ('LOCALAPPDATA', 'local')]:
         path = root/'os-profile'/name
@@ -49,7 +52,7 @@ def main():
     complete = json.loads((output/'complete.json').read_text(encoding='utf-8'))
     states = [json.loads(path.read_text(encoding='utf-8')) for path in sorted(output.glob('ux_*.json'))]
     assert complete['ok'] and len(states) == complete['stageCount']
-    assert len(states) == (4 if args.account_avatar else 5 if args.profile_edit else 6 if args.account_detail else 2 if args.baseline else 28)
+    assert len(states) == (4 if args.account_avatar else 5 if args.profile_edit else 6 if args.account_detail or args.device_removal else 2 if args.baseline else 28)
     for state in states:
         assert not state['overflow']
         if not args.baseline:
@@ -77,6 +80,54 @@ def main():
             assert owner == '2' and task['phase'] == 'confirmed'
             assert not task['source'] and not task['encoded']
         assert not list((root/'run/state').glob('account-avatar-*.jpg'))
+    elif args.device_removal:
+        assert complete['deviceRemoval']
+        rows = {state['stage'].split('_', 2)[2]: state for state in states}
+        kickoff = '/api/middle/user/security/device/kickoff'
+        sms = '/api/sms/captcha/safe/sent'
+        listing = '/api/middle/user/device/list'
+        assert [row['theme'] for row in states] == ['light'] * 4 + ['dark'] * 2
+        assert [(row['width'], row['height']) for row in states[-2:]] == [(880, 670)] * 2
+        assert all(row['nativeAccount']['nickname'] == '邮箱验证账号' for row in [*states, complete])
+        for name in ['device_removal_current_light', 'device_removal_binding_light']:
+            assert rows[name]['fixture']['paths'].get(kickoff, 0) == 0
+            assert rows[name]['fixture']['paths'].get(sms, 0) == 0
+        assert rows['device_removal_binding_light']['nativeRemoval']['value']['phase'] == 'needs_binding'
+        offer = rows['device_removal_sms_offer_light']
+        assert offer['nativeRemoval']['value']['phase'] == 'needs_sms'
+        assert offer['fixture']['paths'][kickoff] == 1
+        assert offer['fixture']['paths'].get(sms, 0) == 0
+        assert rows['device_removal_sms_ready_light']['nativeRemoval']['value']['phase'] == 'sms_ready'
+        assert rows['device_removal_sms_ready_light']['fixture']['paths'][sms] == 1
+        unknown = rows['device_removal_recovery_dark']
+        assert unknown['nativeRemoval']['value']['phase'] == 'recovery_required'
+        assert unknown['fixture']['deviceRemoved']
+        assert unknown['fixture']['paths'][kickoff] == 2
+        observed = rows['device_removal_observed_dark']
+        assert observed['nativeRemoval']['value']['phase'] == 'observed_absent'
+        assert observed['nativeRemoval']['value']['observedPresent'] is False
+        # One explicit native reconciliation read, one UI list refresh after confirmed absence.
+        assert observed['fixture']['paths'][listing] == unknown['fixture']['paths'][listing] + 2
+        assert complete['fixture']['paths'][kickoff] == 2
+        assert complete['fixture']['paths'][sms] == 1
+        for value in [*states, complete]:
+            output_json = json.dumps(value, ensure_ascii=False)
+            assert all(marker not in output_json for marker in (
+                'fixture-private-key', '1234567890', 'fixture-device-binding-private', '"001234"'
+            ))
+        database = root/'run/state/core.sqlite3'
+        with closing(sqlite3.connect(database.as_uri()+'?mode=ro', uri=True)) as state:
+            journal = state.execute(
+                'SELECT owner,key,value FROM state WHERE kind=?',
+                ('login-device-removal-v1',),
+            ).fetchall()
+        assert len(journal) == 1
+        owner, key, raw = journal[0]
+        assert owner == '2' and key == 'active'
+        assert json.loads(raw)['phase'] == 'observed_absent'
+        assert all(marker not in raw for marker in (
+            'fixture-private-key', '1234567890', 'fixture-device-binding-private', '"001234"'
+        ))
     elif args.profile_edit:
         assert complete['profileEdit']
         paths = complete['fixture']['paths']
@@ -139,6 +190,7 @@ def main():
         assert len(list(output.glob('ux_*.png'))) == len(states)
     report = dict(ok=True, baseline=args.baseline, accountDetail=args.account_detail, profileEdit=args.profile_edit,
                   accountAvatar=args.account_avatar,
+                  deviceRemoval=args.device_removal,
                   states=len(states), screenshots=len(states) if args.screenshots else 0,
                   actualWebView=True, realMusicRequests=0, realAccountWrites=0)
     (root/'report.json').write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8')

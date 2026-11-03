@@ -20,6 +20,7 @@ const focus = useControlFocus(
   () => props.epoch,
   () => heading.value,
 );
+defineExpose({ focusAnchor: () => heading.value ?? null });
 onMounted(async () => {
   await nextTick();
   const current = document.activeElement;
@@ -68,6 +69,7 @@ onBeforeUnmount(() => {
       </button>
     </header>
     <div class="account-read-scroll" tabindex="0" :aria-label="title">
+      <slot name="before" />
       <p v-if="state === 'loading'" class="account-read-status" role="status">
         <span class="spinner" aria-hidden="true" />正在读取{{
           kind === 'profile' ? '个人资料' : '登录设备'

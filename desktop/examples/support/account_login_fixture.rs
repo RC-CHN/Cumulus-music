@@ -10,7 +10,10 @@ use cumulus_core::{
     },
 };
 use serde_json::{Value, json};
-use std::{collections::BTreeMap, sync::Mutex};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Mutex,
+};
 use tokio::sync::oneshot;
 
 #[derive(Default)]
@@ -22,6 +25,7 @@ pub struct Service {
     completed: Mutex<u64>,
     browser_documents: Mutex<Vec<cumulus_core::account::login::presentation::LoginDocument>>,
     profiles: Mutex<BTreeMap<u64, Value>>,
+    removed_devices: Mutex<BTreeSet<u64>>,
     avatar_proof: bool,
     avatars: Mutex<Avatars>,
 }
@@ -61,7 +65,7 @@ impl Service {
     }
     pub fn snapshot(&self) -> Value {
         let avatars = self.avatars.lock().unwrap();
-        json!({"paths":*self.paths.lock().unwrap(),"pending":self.held.lock().unwrap().is_some(),"completed":*self.completed.lock().unwrap(),"browserDocuments":*self.browser_documents.lock().unwrap(),"avatarChunks":avatars.chunks,"avatarObjects":avatars.objects.len()})
+        json!({"paths":*self.paths.lock().unwrap(),"pending":self.held.lock().unwrap().is_some(),"completed":*self.completed.lock().unwrap(),"browserDocuments":*self.browser_documents.lock().unwrap(),"avatarChunks":avatars.chunks,"avatarObjects":avatars.objects.len(),"deviceRemoved":self.removed_devices.lock().unwrap().contains(&2)})
     }
 }
 impl HttpBackend for Service {
@@ -125,6 +129,8 @@ impl HttpBackend for Service {
             if path.starts_with("/api/w/v1/user/detail/")
                 || path.starts_with("/api/w/v1/user/bindings/")
                 || path == "/api/middle/user/device/list"
+                || path == "/api/middle/user/security/device/kickoff"
+                || path == "/api/sms/captcha/safe/sent"
                 || path == "/api/user/profile/update"
             {
                 let uid = plan
@@ -138,6 +144,54 @@ impl HttpBackend for Service {
                     .and_then(|id| id.parse::<u64>().ok())
                     .filter(|id| matches!(id, 2 | 5))
                     .ok_or(Error::Response("fixture account security owner"))?;
+                if matches!(
+                    path.as_str(),
+                    "/api/middle/user/security/device/kickoff" | "/api/sms/captcha/safe/sent"
+                ) {
+                    if uid != 2
+                        || !matches!(mode.as_str(), "device_removal_sms" | "device_removal_drop")
+                    {
+                        return Err(Error::Response(
+                            "fixture device mutation is not authorized by this scenario",
+                        ));
+                    }
+                    let fields = data
+                        .as_object()
+                        .ok_or(Error::Response("fixture device mutation fields"))?;
+                    if path == "/api/sms/captcha/safe/sent" {
+                        if mode != "device_removal_sms"
+                            || data["ctCode"] != "1242"
+                            || fields
+                                .keys()
+                                .any(|key| !matches!(key.as_str(), "header" | "ctCode"))
+                        {
+                            return Err(Error::Response("fixture device SMS scope"));
+                        }
+                        return Ok(auth::reply(json!({"code":200}), None));
+                    }
+                    if data["deviceKey"] != "fixture-private-key-a"
+                        || fields
+                            .keys()
+                            .any(|key| !matches!(key.as_str(), "header" | "deviceKey" | "captcha"))
+                    {
+                        return Err(Error::Response("fixture device kickoff scope"));
+                    }
+                    if mode == "device_removal_sms" && !fields.contains_key("captcha") {
+                        return Ok(auth::reply(json!({"code":401}), None));
+                    }
+                    if mode == "device_removal_drop"
+                        && data["captcha"] == "001234"
+                        && self.paths.lock().unwrap().get("/api/sms/captcha/safe/sent") == Some(&1)
+                        && self.removed_devices.lock().unwrap().insert(uid)
+                    {
+                        return Err(Error::Transport(
+                            "synthetic device removal reply lost".into(),
+                        ));
+                    }
+                    return Err(Error::Response(
+                        "fixture device kickoff repeated or invalid",
+                    ));
+                }
                 if path == "/api/user/profile/update" {
                     let data = data
                         .as_object()
@@ -179,10 +233,12 @@ impl HttpBackend for Service {
                     let rows = if mode == "devices_empty" || uid == 5 {
                         json!([])
                     } else {
-                        json!([
-                            {"deviceKey":"fixture-private-key-a","deviceName":"旧设备","status":0,"region":"上海"},
-                            {"deviceKey":"fixture-private-key-b","deviceName":"测试桌面","status":"1","ifLoginDevice":true,"loginPlace":"杭州","lastActiveTime":1700000000000_u64,"os":"Windows"}
-                        ])
+                        let mut rows = Vec::new();
+                        if !self.removed_devices.lock().unwrap().contains(&uid) {
+                            rows.push(json!({"deviceKey":"fixture-private-key-a","deviceName":"旧设备","status":0,"region":"上海"}));
+                        }
+                        rows.push(json!({"deviceKey":"fixture-private-key-b","deviceName":"测试桌面","status":"1","ifLoginDevice":true,"loginPlace":"杭州","lastActiveTime":1700000000000_u64,"os":"Windows"}));
+                        json!(rows)
                     };
                     return Ok(auth::reply(
                         json!({"code":200,"data":{"userDeviceList":rows,"userDeviceLimitInfoDTO":{"currentNum":1,"deviceLimit":3}}}),
@@ -230,6 +286,17 @@ impl HttpBackend for Service {
                         }}),
                         None,
                     ));
+                }
+                if path.contains("/bindings/") && mode.starts_with("device_removal_") {
+                    let bindings = if mode == "device_removal_unbound" {
+                        json!([])
+                    } else {
+                        json!([{"type":1,"tokenJsonStr":json!({
+                            "cellphone":"1234567890","countrycode":"1242",
+                            "access_token":"fixture-device-binding-private"
+                        }).to_string()}])
+                    };
+                    return Ok(auth::reply(json!({"code":200,"bindings":bindings}), None));
                 }
                 return Ok(auth::reply(
                     json!({"code":200,"bindings":[{"type":0,"tokenJsonStr":"{\"email\":\"private-fixture@example.test\",\"password\":\"fixture-do-not-export\"}"}]}),
