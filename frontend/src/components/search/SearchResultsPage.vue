@@ -14,6 +14,8 @@ import {
   type SearchSection,
 } from '../../services/search';
 import { useSearchResults } from '../../composables/useSearchResults';
+import { useMotion } from '../../composables/useMotion';
+import { createPageTransition } from '../../services/pageTransition';
 import { useCore } from '../../services/core';
 import TrackTable from '../TrackTable.vue';
 import TrackRow from '../TrackRow.vue';
@@ -23,6 +25,12 @@ import Icon from '../Icon.vue';
 import SearchResultCard from './SearchResultCard.vue';
 import { searchCardIsCurrent } from '../../services/searchCards';
 import type { PlayerOrigin, PlaybackStatus, SearchResultPlayback } from '../../services/player';
+const motion = useMotion();
+const panelTransition = createPageTransition(() => motion.reduced.value, undefined, {
+  name: 'search-results',
+  deadlineMs: 320,
+});
+onBeforeUnmount(panelTransition.dispose);
 const props = defineProps<{
   account: AccountView;
   keyword: string;
@@ -395,7 +403,15 @@ onBeforeUnmount(() => {
         仍然搜索“{{ keyword }}”
       </button>
     </div>
-    <Transition name="search-results" mode="out-in" @after-enter="restore">
+    <Transition
+      :css="false"
+      mode="out-in"
+      @enter="panelTransition.enter"
+      @leave="panelTransition.leave"
+      @enter-cancelled="panelTransition.cancel"
+      @leave-cancelled="panelTransition.cancel"
+      @after-enter="restore"
+    >
       <div
         :key="`${searchId}:${keyword}:${category}:${offset}:${correct}`"
         id="search-result-panel"

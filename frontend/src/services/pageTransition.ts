@@ -15,11 +15,20 @@ const browserClock: PageTransitionClock = {
   cancelDeadline: (id) => window.clearTimeout(id),
 };
 
-// Existing page transitions are at most 220ms. The deadline also covers a
-// compositor that stops delivering frames before the transition can start.
-const maxPageTransitionMs = 450;
+interface PageTransitionSpec {
+  name: string;
+  deadlineMs: number;
+}
 
-export function createPageTransition(reduced: () => boolean, clock = browserClock) {
+// The deadline also covers a compositor that stops delivering frames before
+// a transition can start. It is independent of the CSS duration and rAF.
+const pageTransition = { name: 'page', deadlineMs: 450 };
+
+export function createPageTransition(
+  reduced: () => boolean,
+  clock = browserClock,
+  spec: PageTransitionSpec = pageTransition,
+) {
   const pending = new Map<Element, End>();
 
   function cancel(element: Element) {
@@ -33,9 +42,9 @@ export function createPageTransition(reduced: () => boolean, clock = browserCloc
       return;
     }
 
-    const from = `page-${phase}-from`;
-    const active = `page-${phase}-active`;
-    const to = `page-${phase}-to`;
+    const from = `${spec.name}-${phase}-from`;
+    const active = `${spec.name}-${phase}-active`;
+    const to = `${spec.name}-${phase}-to`;
     let frame: number | undefined;
     let timer: number | undefined;
     let started = false;
@@ -69,7 +78,7 @@ export function createPageTransition(reduced: () => boolean, clock = browserCloc
     element.addEventListener('transitionend', transitioned);
     // Flush the starting style before applying the destination on a frame.
     void element.getBoundingClientRect();
-    timer = clock.deadline(finish, maxPageTransitionMs);
+    timer = clock.deadline(finish, spec.deadlineMs);
     frame = clock.frame(() => {
       if (pending.get(element) !== cleanup) return;
       started = true;
