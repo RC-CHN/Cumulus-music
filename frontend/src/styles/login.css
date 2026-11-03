@@ -848,6 +848,28 @@ ol.sms-tips {
   width: 194px;
   height: 194px;
 }
+.qr-expired {
+  align-self: stretch;
+  justify-self: stretch;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  border-radius: inherit;
+  background: var(--surface-alt);
+  color: var(--text);
+  font-size: 14px;
+}
+.qr-expired > p {
+  margin: 0;
+}
+.qr-expired > .primary {
+  width: 100px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+  border-radius: 80px;
+}
 .qr-confirmation {
   display: flex;
   flex-direction: column;

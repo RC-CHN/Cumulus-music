@@ -49,7 +49,7 @@ const labels: Record<QrStatus, string> = {
   waiting_scan: '',
   waiting_confirmation: '扫码成功，请在手机上确认',
   authorized: '登录成功',
-  expired: '二维码已过期',
+  expired: '',
   challenge: '请完成安全验证后继续扫码登录',
   cancelled: '已取消',
   error: '暂时无法登录',
@@ -169,6 +169,10 @@ onBeforeUnmount(deactivate);
       <path :d="path" fill="#111" />
     </svg>
     <span v-else-if="status === 'creating'" class="spinner" />
+    <div v-else-if="status === 'expired'" class="qr-expired">
+      <p role="status">二维码已失效</p>
+      <button type="button" class="primary" @click="begin">点击重试</button>
+    </div>
     <button v-else class="primary" @click="begin">重新生成二维码</button>
   </div>
   <button
@@ -195,7 +199,7 @@ onBeforeUnmount(deactivate);
     </button>
     扫码登录
   </p>
-  <p v-else class="login-status" role="status">
+  <p v-else-if="status !== 'expired'" class="login-status" role="status">
     {{ error || (status === 'waiting_confirmation' ? '' : labels[status]) }}
   </p>
   <p v-if="status === 'waiting_scan' && documentError" class="login-status" role="alert">

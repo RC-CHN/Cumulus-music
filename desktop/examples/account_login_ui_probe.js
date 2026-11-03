@@ -907,12 +907,13 @@
     await stage("qr_scanned_small_dark", { expectGuest: true });
     await mode("qr_expired");
     await wait(
-      () => one(".login-status")?.textContent.includes("已过期"),
+      () => one(".qr-expired [role='status']")?.textContent === "二维码已失效" &&
+        button("点击重试")?.closest(".qr-frame") && !one('.qr-frame svg[role="img"]'),
       "QR expired",
     );
     await stage("qr_expired_small_dark", { expectGuest: true });
     await mode("normal");
-    click(button("重新生成二维码"));
+    click(button("点击重试"));
     await wait(() => one('.qr-frame svg[role="img"]'), "QR regenerated");
     await theme("light");
     await stage("qr_retry_small_light", { expectGuest: true });
