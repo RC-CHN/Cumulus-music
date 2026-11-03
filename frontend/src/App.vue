@@ -35,6 +35,7 @@ import { usePlaylistCreator } from './composables/usePlaylistCreator';
 import { usePlaylistTagBrowse } from './composables/usePlaylistTagBrowse';
 import PlaylistSubscribers from './components/playlist/PlaylistSubscribers.vue';
 import { filterPlaylistTracks } from './services/playlistTrackSearch';
+import PlaylistTrackSearch from './components/playlist/PlaylistTrackSearch.vue';
 import { usePlaylistSubscribers } from './composables/usePlaylistSubscribers';
 import { usePlaylistCommentTab } from './composables/usePlaylistCommentTab';
 import PlaylistEditorPage from './components/playlist/PlaylistEditorPage.vue';
@@ -2264,15 +2265,9 @@ onUnmounted(() => {
                       }}</small>
                     </button>
                   </template>
-                  <input
+                  <PlaylistTrackSearch
                     v-if="result?.playlist && playlistSongsActive"
                     v-model="playlistKeyword"
-                    class="playlist-track-search"
-                    type="search"
-                    aria-label="搜索歌单歌曲"
-                    placeholder="搜索歌单歌曲"
-                    maxlength="128"
-                    @keydown.escape.stop="playlistKeyword = ''"
                   />
                   <button
                     v-if="playlistLocateIndex !== undefined"

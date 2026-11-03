@@ -38,8 +38,44 @@
     input.value = id;
     input.dispatchEvent(new Event('input', { bubbles: true }));
     click(one('.playlist-dialog button.primary'));
-    await wait(() => one('.playlist-hero h1')?.textContent.includes(name) && one('.track-row'), 'playlist tracks');
+    await wait(() => one('.playlist-hero h1')?.textContent.includes(name) && one('.track-row') &&
+      !one('.playlist-dialog[open]') && !one('.playlist-hero').closest('[inert]'),
+      'playlist tracks and completed modal close');
   }
+  async function verifySearch() {
+    const frame = one('.playlist-track-search');
+    const field = frame?.querySelector('input');
+    assert(field, 'playlist search field');
+    const width = (expected) => Math.abs(frame.getBoundingClientRect().width - expected) < 1;
+    const clear = () => button('清空歌单搜索');
+    const type = (value, composing = false) => {
+      field.value = value;
+      field.dispatchEvent(new InputEvent('input', { bubbles: true, isComposing: composing }));
+    };
+    await wait(() => width(74), 'empty unfocused search is compact');
+    field.focus();
+    assert(document.activeElement === field, 'search field accepts focus');
+    await wait(() => width(178), 'focus expands the search field');
+    field.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+    type('合成歌曲 2 ·', true);
+    assert(!one('.playlist-track-match'), 'composition is not applied prematurely');
+    field.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }));
+    await wait(() => one('.playlist-track-match')?.textContent.includes('1 首匹配歌曲') &&
+      one('.track-row')?.textContent.includes('合成歌曲 2 ·'), 'committed keyword filters exact song');
+    songs().focus();
+    await wait(() => width(178), 'nonempty search remains expanded when blurred');
+    click(clear());
+    await wait(() => document.activeElement === field && !field.value &&
+      !one('.playlist-track-match') && !clear(), 'clear restores input focus and all songs');
+    type('合成歌曲 3 ·');
+    await wait(() => one('.playlist-track-match'), 'keyboard clear setup');
+    field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await wait(() => !field.value && !one('.playlist-track-match') && document.activeElement === field,
+      'Escape clears without losing focus');
+    songs().focus();
+    await wait(() => width(74), 'empty search collapses on blur');
+  }
+
   async function verifyComment(needle, total, hero) {
     click(commentTab());
     await wait(() => pane()?.textContent.includes(needle), 'embedded playlist comment');
@@ -57,7 +93,8 @@
     await openPlaylist('2', '午后散步');
     const first = one('.playlist-hero');
     assert(!pane() && !commentTab().querySelector('small'), 'no speculative initial count');
-    await emit('ux_01_tracks');
+    await verifySearch();
+    await emit('ux_01_tracks', { compactSearch: true });
     await verifyComment('第一张合成歌单的评论', '12', first);
     await emit('ux_02_comments');
     click(collectors());

@@ -11,12 +11,15 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
+    parser.add_argument('--frontend-dist', type=Path, help='Local synthetic frontend comparison')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
     env.update(CUMULUS_PROOF_DIR=str(root), CUMULUS_MOTION_PROOF='1',
                CUMULUS_PLAYLIST_COMMENT_TAB_PROOF='1', CUMULUS_PLAYLIST_SUBSCRIBERS_UI_PROOF='1')
+    if args.frontend_dist:
+        env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve())
     for key in ('XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR',
                 'APPDATA', 'LOCALAPPDATA'):
         folder = root / 'os-profile' / key
@@ -35,6 +38,7 @@ def main():
         return json.loads((output / f'{stage}.json').read_text(encoding='utf-8'))
 
     assert read('ux_01_tracks')['playlistCommentThreads'] == []
+    assert read('ux_01_tracks')['compactSearch'] is True
     assert read('ux_02_comments')['playlistCommentThreads'] == ['A_PL_0_2']
     assert read('ux_03_tracks_again')['playlistCommentThreads'] == ['A_PL_0_2']
     assert read('ux_01_tracks')['playlistCommentDetails'] == read('ux_03_tracks_again')['playlistCommentDetails'] == [2]
