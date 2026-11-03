@@ -211,7 +211,10 @@ Cumulus 桌面主流程验收
   dbus-run-session 和 Openbox。sudo 仅建立私有挂载和网络空间并回到当前用户。
   仅开启回环接口，隔离 hosts、DNS 和 CA 路径；证书/密钥在临时目录生成并
   清理，不归档。TLS 服务检查精确主机和路径，不接受 Cookie、授权头、路径
-  或非零起点范围变体，只允许一次合成音频 GET。使用仓库固定 AAC/M4A 夹具，
-  并核对 SHA256。main-flow 的下载仍经过原有封闭传输替身。
+  或非零起点范围变体，只允许一次合成音频 GET。固定夹具 playback-12s.m4a
+  是 ffmpeg 8.0.1 生成的 12 秒 440Hz 单声道正弦波，脚本核对长度和 SHA-256。
+  这段长度让暂停恢复测试不受原一秒夹具的自然结束干扰。若 Openbox 安装在
+  系统 PATH 之外，使用 --openbox-directory <包含 openbox 的目录>。
+  main-flow 的下载仍经过原有封闭传输替身。
   --preflight 独立验证命名空间和 TLS 限制，不能代替桌面运行。该模式未取代
   必需 CI 的现有 Linux 主流程；也不验证真实 CDN、账号操作或物理输出。

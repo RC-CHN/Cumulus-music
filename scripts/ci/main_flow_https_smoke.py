@@ -10,7 +10,6 @@ import json
 import os
 from pathlib import Path
 import pwd
-import re
 import ssl
 import subprocess
 import tempfile
@@ -19,9 +18,9 @@ import threading
 SCRIPT = Path(__file__).resolve()
 HOST = 'cumulus-local-fixture.music.126.net'
 ROUTE = '/synthetic/audio.m4a'
-SIZE = 6327
-SHA256 = 'd0cb4a728564e1f14f6444bb9b50b14d73bdb3c6267453f7567843ee439463ee'
-FIXTURE = SCRIPT.parents[2]/'core/tests/fixtures/tag_audio/seed.m4a'
+SIZE = 39106
+SHA256 = '883d4ab2f3e6900f47a892c4941e3a6ae8aab577258aeca6fc7a1fe1d001d520'
+FIXTURE = SCRIPT.parents[2]/'core/tests/fixtures/tag_audio/playback-12s.m4a'
 
 
 def verify_isolation(directory):
@@ -66,7 +65,7 @@ def ordinary_https(args, directory):
             ranges = self.headers.get_all('Range', [])
             # A short, fast-start file fits one whole GET. FFmpeg may express
             # that exact same request as bytes=0-.
-            if ranges and (len(ranges) != 1 or not re.fullmatch(r'bytes=0-(?:6326)?', ranges[0])):
+            if ranges and ranges not in (['bytes=0-'], [f'bytes=0-{SIZE - 1}']):
                 return self.send_error(403)
             self.send_response(206 if ranges else 200)
             self.send_header('Accept-Ranges', 'bytes')
@@ -128,6 +127,8 @@ def ordinary_https(args, directory):
         finally:
             server.shutdown()
             thread.join(timeout=2)
+            if not args.preflight and args.root.exists():
+                (args.root/'https-requests.json').write_text(json.dumps(counters)+'\n')
     assert counters == dict(gets=1, rejected=0)
     report = dict(syntheticOnly=True, loopbackOnly=True, verifiedFixture=True,
                   exactRouteRejected=5, ordinaryHttpsWebView=not args.preflight, localMediaGets=1)
