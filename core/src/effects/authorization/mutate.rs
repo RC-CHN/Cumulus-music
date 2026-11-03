@@ -1,5 +1,6 @@
 use super::{
     EffectAuthorizations, EffectLease, LeaseObservation, LeasePhase, ReleaseRetry, TrialConsent,
+    parametric::{current_non_trial, known_non_trial, registered_non_trial},
 };
 use crate::{
     Error, Result,
@@ -28,7 +29,12 @@ impl EffectAuthorizations {
         }
         if let Some(lease) = self.get(&owner, effect)? {
             if lease.phase == LeasePhase::Registered {
-                return self.observe_locked(token, &owner, lease).await;
+                if trial == TrialConsent::KnownNonTrial && !registered_non_trial(&lease) {
+                    return Err(Error::State(
+                        "no acknowledged non-trial effect registration",
+                    ));
+                }
+                return self.observe_begin(token, &owner, lease, trial).await;
             }
             if lease.phase.needs_release() {
                 return Err(Error::MutationUncertain);
@@ -42,6 +48,11 @@ impl EffectAuthorizations {
             .await?
             .filter(|auth| auth.can_use)
             .ok_or(Error::State("effect registration is not authorized"))?;
+        if trial == TrialConsent::KnownNonTrial && !known_non_trial(authorization.can_use_type) {
+            return Err(Error::State(
+                "effect registration requires confirmed non-trial rights",
+            ));
+        }
         if authorization.is_trial() && trial != TrialConsent::ExplicitStart {
             return Err(Error::State(
                 "starting an effect trial requires an explicit action",
@@ -62,7 +73,23 @@ impl EffectAuthorizations {
         self.session
             .with_token(token, |_| self.save(&owner, &lease))?;
         self.send(token, &owner, &mut lease, true).await?;
-        self.observe_locked(token, &owner, lease).await
+        self.observe_begin(token, &owner, lease, trial).await
+    }
+
+    async fn observe_begin(
+        &self,
+        token: &SessionToken,
+        owner: &str,
+        lease: EffectLease,
+        trial: TrialConsent,
+    ) -> Result<LeaseObservation> {
+        let mut observation = self.observe_locked(token, owner, lease).await?;
+        if trial == TrialConsent::KnownNonTrial && !current_non_trial(&observation.lease) {
+            // Preserve the receipt and release path even when the fresh rights
+            // observation does not permit this client to use the registration.
+            observation.can_use = false;
+        }
+        Ok(observation)
     }
 
     pub async fn release_for(

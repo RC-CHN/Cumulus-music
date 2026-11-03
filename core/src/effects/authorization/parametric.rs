@@ -135,19 +135,19 @@ impl BoundParametric {
     }
 }
 
-fn known_non_trial(value: Option<u32>) -> bool {
+pub(super) fn known_non_trial(value: Option<u32>) -> bool {
     // Confirmed non-trial kinds from the existing guarded activation proof.
     matches!(value, Some(10..=12))
 }
 
-fn registered_non_trial(lease: &EffectLease) -> bool {
+pub(super) fn registered_non_trial(lease: &EffectLease) -> bool {
     lease.phase == LeasePhase::Registered
         && lease.start_acknowledged
         && !lease.stop_acknowledged
         && known_non_trial(lease.registration_use_type)
 }
 
-fn current_non_trial(lease: &EffectLease) -> bool {
+pub(super) fn current_non_trial(lease: &EffectLease) -> bool {
     registered_non_trial(lease)
         && lease.last_error.is_none()
         && lease.recyclable == Some(false)

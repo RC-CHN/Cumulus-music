@@ -160,7 +160,7 @@ async fn run(profile: &Path, root: &Path, effect: EffectId) -> Result<Value> {
     let mut service = EffectAuthorizations::new(account.clone())?;
     let operation = async {
         let registered = service
-            .begin_for(&account.token()?, effect, TrialConsent::DoNotStart)
+            .begin_for(&account.token()?, effect, TrialConsent::KnownNonTrial)
             .await?;
         if !registered.can_use || !registered.lease.start_acknowledged {
             return Err(Error::State(

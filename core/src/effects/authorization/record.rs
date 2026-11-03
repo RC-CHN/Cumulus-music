@@ -82,6 +82,9 @@ impl EffectLease {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TrialConsent {
     DoNotStart,
+    /// Require an observed non-trial use type (10, 11, or 12). This is the
+    /// registration policy for clients that can only bind non-trial material.
+    KnownNonTrial,
     ExplicitStart,
 }
 

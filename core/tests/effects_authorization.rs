@@ -161,6 +161,66 @@ async fn start_reuse_reopen_release_and_new_selection_are_persistent() {
     assert_eq!(writes(&api).len(), 2);
 }
 #[tokio::test]
+async fn strict_non_trial_registration_rejects_unproven_types_before_journaling() {
+    for kind in [Value::Null, json!("11"), json!(99), json!(50), json!(51)] {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Arc::new(StateStore::open(temp.path()).unwrap());
+        let api = Arc::new(ScriptApi::new([json!({
+            "code": 200,
+            "data": [{"interestsId": 300, "authResp": {
+                "authResult": {"canUse": true, "canUseType": kind}
+            }}]
+        })
+        .into()]));
+        let session = world(api.clone(), store);
+        let token = session.token().unwrap();
+        let service = EffectAuthorizations::new(session).unwrap();
+        assert!(matches!(
+            service
+                .begin_for(&token, id(), TrialConsent::KnownNonTrial)
+                .await,
+            Err(Error::State(
+                "effect registration requires confirmed non-trial rights"
+            ))
+        ));
+        assert_eq!(api.calls().len(), 1);
+        assert!(writes(&api).is_empty());
+        assert!(service.record_for(&token, id()).unwrap().is_none());
+    }
+}
+
+#[tokio::test]
+async fn strict_non_trial_observation_preserves_receipt_when_rights_change() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = Arc::new(StateStore::open(temp.path()).unwrap());
+    let api = Arc::new(ScriptApi::new([
+        auth(true, 10),
+        ack(),
+        auth(true, 50),
+        recycle(false),
+        auth(true, 12),
+        recycle(false),
+    ]));
+    let session = world(api.clone(), store);
+    let token = session.token().unwrap();
+    let service = EffectAuthorizations::new(session).unwrap();
+    let changed = service
+        .begin_for(&token, id(), TrialConsent::KnownNonTrial)
+        .await
+        .unwrap();
+    assert!(changed.lease.start_acknowledged);
+    assert_eq!(changed.lease.registration_use_type, Some(10));
+    assert!(!changed.can_use);
+    let current = service
+        .begin_for(&token, id(), TrialConsent::KnownNonTrial)
+        .await
+        .unwrap();
+    assert_eq!(current.lease.operation, changed.lease.operation);
+    assert!(current.can_use);
+    assert_eq!(writes(&api), ["/api/vipauth/app/interests/auth/set"]);
+}
+
+#[tokio::test]
 async fn trials_require_explicit_action_and_denial_never_sends_registration() {
     for kind in [50, 51] {
         let temp = tempfile::tempdir().unwrap();
