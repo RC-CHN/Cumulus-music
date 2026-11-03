@@ -166,7 +166,31 @@
       assert(retained.playId===paused.playId&&retained.queueRevision===paused.queueRevision&&retained.state==='paused',
         'stale commit does not replace the paused episode');
       await capture('voice_without_radio_paused');
-      await emit('complete',{ok:true,voiceDirectVerified:true,preparedTicketFenceVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      assert(retained.resourceKind==='voice'&&retained.track?.id==='1',
+        'fixture episode uses the same backing media ID as catalog song 1');
+      await choose('all');
+      const song=one('[data-result-key="song:1"] .search-track-cover');
+      assert(song&&!song.closest('.search-track-card').classList.contains('current')&&
+        song.getAttribute('aria-label').startsWith('播放 '),'episode is not the current catalog song');
+      click(song);
+      let catalog;
+      for(let i=0;i<180;i++){
+        const view=await invoke('player_snapshot',{epoch});
+        if(view.resourceKind==='catalog'&&view.track?.id==='1'&&view.state==='playing'){
+          catalog=view;break;
+        }
+        await sleep(70);
+      }
+      assert(catalog&&catalog.playId!==paused.playId,'catalog click replaces the colliding episode');
+      await wait(()=>song.getAttribute('aria-label').startsWith('暂停 '),'matching catalog song offers pause');
+      click(song);
+      await wait(()=>one('.playerbar').dataset.state==='paused','same catalog song pauses');
+      const catalogPaused=await invoke('player_snapshot',{epoch});
+      assert(catalogPaused.playId===catalog.playId&&catalogPaused.queueRevision===catalog.queueRevision,
+        'same catalog song pauses without replacing its entry');
+      await capture('catalog_song_not_episode');
+      await emit('complete',{ok:true,voiceDirectVerified:true,preparedTicketFenceVerified:true,
+        searchSongNamespaceVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchV3Proof){

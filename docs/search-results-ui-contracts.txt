@@ -156,3 +156,9 @@ scripts/ci/search_results_smoke.py --v3 用封闭合成服务在真实 Tauri Web
 专辑数，UserCard/index.jsx:175–184 只标记昵称，签名保持原文。Cumulus 仅在对应
 专门分类采用此表现，综合卡片保持原表现。search_results_smoke.py --people-categories
 可核对标记、计数、签名以及原有可用导航。
+
+歌曲与声音的播放身份
+搜索歌曲只在原生 resourceKind 为 catalog 且歌曲 ID 相同时标记当前并切换暂停。
+声音的音源 ID 可能与歌曲 ID 重合，云盘、本地和已下载条目也各有自己的身份。
+--voice-direct 的合成 WebView 用声音 401 的音源 ID 1 对照歌曲 1：点击歌曲应新开
+原生歌曲条目，再点同一歌曲才暂停且不重建条目。

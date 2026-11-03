@@ -1,5 +1,5 @@
 import type { CoreClient } from './contracts.ts';
-import type { PlaySelection, PlayerOrigin, Quality } from './player.ts';
+import type { PlaySelection, PlayerOrigin, PlayerView, Quality } from './player.ts';
 import type { SearchItem } from './search.ts';
 import { catalogResourceSelection } from './catalogCards.ts';
 
@@ -31,6 +31,10 @@ export function searchCardCanPlay(item: SearchItem): boolean {
     (item.kind === 'podcast' && !item.podcast.unavailable) ||
     (item.kind === 'voice' && !item.voice.unavailable)
   );
+}
+/** Search songs share catalog identity, never a backing media ID in another namespace. */
+export function searchCurrentSongId(view?: Pick<PlayerView, 'resourceKind' | 'track'>) {
+  return view?.resourceKind === 'catalog' ? view.track?.id : undefined;
 }
 export function searchCardIsCurrent(
   item: SearchItem,

@@ -7,7 +7,11 @@ import { createSearchViewportMemory } from './services/searchViewport';
 import { createCollectionViewportMemory } from './services/collectionViewport';
 import ContentTooltip from './components/ContentTooltip.vue';
 import type { SearchItem } from './services/search';
-import { searchCardIsCurrent, searchCardSelection } from './services/searchCards';
+import {
+  searchCardIsCurrent,
+  searchCardSelection,
+  searchCurrentSongId,
+} from './services/searchCards';
 import { catalogResourceSelection, type AlbumCardRequest } from './services/catalogCards';
 import AlbumActions from './components/catalog/AlbumActions.vue';
 import ArtistActions from './components/catalog/ArtistActions.vue';
@@ -1165,6 +1169,7 @@ watch(
 );
 // Stable scalar dependencies keep playback clock ticks out of the page tree.
 const currentTrackId = computed(() => player.view.value?.track?.id);
+const currentSearchSongId = computed(() => searchCurrentSongId(player.view.value));
 const playlistTrackTable = ref<InstanceType<typeof TrackTable>>();
 const locatableSongId = computed(() => {
   const current = player.view.value;
@@ -1939,7 +1944,7 @@ onUnmounted(() => {
                 :liked="liked"
                 :busy-likes="busyLikes"
                 :playable="player.ready.value && !player.busy.value"
-                :current-id="currentTrackId"
+                :current-id="currentSearchSongId"
                 :playback-origin="currentOrigin"
                 :playback-state="playbackState"
                 :current-voice-id="currentVoiceId ?? undefined"

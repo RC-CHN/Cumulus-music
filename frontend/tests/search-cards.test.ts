@@ -1,7 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { searchCardSelection, searchCardIsCurrent } from '../src/services/searchCards.ts';
-import type { CoreClient } from '../src/services/contracts.ts';
+import {
+  searchCardSelection,
+  searchCardIsCurrent,
+  searchCurrentSongId,
+} from '../src/services/searchCards.ts';
+import type { CoreClient, TrackView } from '../src/services/contracts.ts';
 import type { SearchItem } from '../src/services/search.ts';
 const artist = { kind: 'artist', artist: { id: '12' } } as SearchItem;
 const voice = {
@@ -100,4 +104,22 @@ test('voice results use exact native episode lookup when radio context is absent
   await assert.rejects(searchCardSelection(blocked, '1', voice, 'standard'), {
     code: 'unavailable',
   });
+});
+
+test('only a current catalog song supplies a search song highlight or toggle ID', () => {
+  const track: TrackView = {
+    id: '1',
+    name: 'Shared media ID',
+    artists: [],
+    album: '',
+    coverUrl: null,
+    durationMs: 1000,
+    fee: 0,
+    missing: false,
+    local: false,
+  };
+  assert.equal(searchCurrentSongId({ resourceKind: 'catalog', track }), '1');
+  for (const resourceKind of ['voice', 'cloud', 'local', 'downloaded', null, undefined] as const)
+    assert.equal(searchCurrentSongId({ resourceKind, track }), undefined);
+  assert.equal(searchCurrentSongId({ resourceKind: 'catalog', track: null }), undefined);
 });

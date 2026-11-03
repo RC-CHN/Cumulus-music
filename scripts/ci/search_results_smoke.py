@@ -62,11 +62,12 @@ def main():
         flag = ('peopleCategoriesVerified' if args.people_categories else
                 'originalCorrectionVerified' if args.correction_original else
                 'cardTitleMatchesVerified' if args.card_matches else 'voiceDirectVerified')
-        assert complete['ok'] and complete[flag] and complete['stageCount'] == 2
+        stages = 3 if args.voice_direct else 2
+        assert complete['ok'] and complete[flag] and complete['stageCount'] == stages
         if args.voice_direct:
-            assert complete['preparedTicketFenceVerified']
+            assert complete['preparedTicketFenceVerified'] and complete['searchSongNamespaceVerified']
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
-        assert len(list((root / 'first').glob('ux_*.png'))) == (2 if args.screenshots else 0)
+        assert len(list((root / 'first').glob('ux_*.png'))) == (stages if args.screenshots else 0)
         print(json.dumps(dict(complete, actualWebView=True)))
         return
     verify(root, args.screenshots, args.v3)
