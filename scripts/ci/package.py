@@ -14,6 +14,7 @@ import sys
 import tarfile
 import zipfile
 
+from native_receipts import verify_pinned
 from release_guard import check_versions, git
 from windows_media import copy_provenance
 
@@ -149,13 +150,7 @@ def main():
         pinned = run([pinned_probe], env=env, stdout=subprocess.PIPE, stderr=log,
                      text=True, encoding="utf-8", timeout=60)
     pinned_report = json.loads(pinned.stdout)
-    assert pinned_report["remote_requests"] == 0 and all(
-        pinned_report[name] is True for name in (
-            "ok", "null_output", "plain_flac", "ncm_flac", "plain_aac_m4a",
-            "ncm_aac_m4a", "external_references_denied",
-            "pinned_handle_survived_path_replacement", "ordinary_load_restored",
-        )
-    ), "packaged pinned audio verification missing"
+    verify_pinned(pinned_report)
     pinned_probe.unlink()
     (portable / "runtime-manifest.json").write_text(json.dumps({
         "version": version, "commit": sha, "platform": args.platform, "dlls": dlls,

@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 
+from native_receipts import verify_pinned
 from release_guard import VERSION, check_release, git
 
 PLATFORMS = ("linux-x64", "windows-x64")
@@ -63,6 +64,11 @@ def validate_manifest(directory, version, sha, platform, run_id, attempt):
     assert manifest["version"] == version and manifest["commit"] == sha and manifest["platform"] == platform, "artifact provenance mismatch"
     assert str(manifest["ciRun"]) == str(run_id) and str(manifest["ciAttempt"]) == str(attempt), "artifact is from a different CI attempt"
     assert manifest["nativePlayback"]["ok"] is True and manifest["nativePlayback"]["remote_requests"] == 0, "packaged media verification missing"
+    equalizer = manifest.get("equalizerPlayback")
+    assert isinstance(equalizer, dict) and equalizer.get("ok") is True and (
+        equalizer.get("remote_requests") == 0
+    ), "packaged equalizer verification missing"
+    verify_pinned(manifest.get("pinnedPlayback"))
     prefix = f"Cumulus-{version}-{platform}"
     expected = {prefix + ".deb", prefix + ".tar.gz"} if platform == "linux-x64" else {prefix + ".zip", prefix + "-setup.exe"}
     assert {row["name"] for row in manifest["assets"]} == expected and len(manifest["assets"]) == 2, "unexpected release assets"

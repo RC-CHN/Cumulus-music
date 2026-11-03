@@ -5,6 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
+from native_receipts import PINNED_CHECKS
 from publish import validate_manifest, validate_run
 
 
@@ -30,8 +31,22 @@ class PublishGate(unittest.TestCase):
             for name in names:
                 (directory / name).write_bytes(b"synthetic package")
             manifest = {"version": "0.1.0", "commit": "abc", "platform": "linux-x64", "ciRun": "12", "ciAttempt": "2", "nativePlayback": {"ok": True, "remote_requests": 0}, "assets": [{"name": name, "bytes": 17, "sha256": hashlib.sha256(b"synthetic package").hexdigest()} for name in names]}
-            (directory / "manifest-linux-x64.json").write_text(json.dumps(manifest))
+            manifest["equalizerPlayback"] = {"ok": True, "remote_requests": 0}
+            manifest["pinnedPlayback"] = dict.fromkeys(PINNED_CHECKS, True) | {"remote_requests": 0}
+            manifest_path = directory / "manifest-linux-x64.json"
+            manifest_path.write_text(json.dumps(manifest))
             self.assertEqual(len(validate_manifest(directory, "0.1.0", "abc", "linux-x64", 12, 2)), 3)
+            for field, replacement, message in [
+                ("equalizerPlayback", None, "equalizer"),
+                ("pinnedPlayback", {"ok": True, "remote_requests": 0}, "pinned"),
+                ("pinnedPlayback", manifest["pinnedPlayback"] | {"ncm_aac_m4a": False}, "pinned"),
+                ("pinnedPlayback", manifest["pinnedPlayback"] | {"remote_requests": 1}, "pinned"),
+            ]:
+                with self.subTest(field=field, replacement=replacement):
+                    manifest_path.write_text(json.dumps(manifest | {field: replacement}))
+                    with self.assertRaisesRegex(AssertionError, message):
+                        validate_manifest(directory, "0.1.0", "abc", "linux-x64", 12, 2)
+            manifest_path.write_text(json.dumps(manifest))
             with self.assertRaisesRegex(AssertionError, "attempt"):
                 validate_manifest(directory, "0.1.0", "abc", "linux-x64", 12, 3)
             (directory / names[0]).write_bytes(b"modified package!")
