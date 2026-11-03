@@ -32,3 +32,12 @@ def verify_parametric(report):
         assert type(stats.get("revision")) is int and stats["revision"] > 0 and (
             stats.get("observed_revision") == stats["revision"]
         ), failure
+        bypass = case.get("bypassStats")
+        assert isinstance(bypass, dict) and bypass.get("active_instances") == 2 and (
+            bypass.get("instances_created") == stats.get("instances_created") == 2
+            and bypass.get("failed_blocks") == 0
+            and bypass.get("revision") == bypass.get("observed_revision") == stats["revision"] + 1
+        ), failure
+        assert type(bypass.get("processed_samples")) is int and (
+            bypass["processed_samples"] > stats["processed_samples"]
+        ), failure
