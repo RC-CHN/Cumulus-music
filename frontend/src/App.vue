@@ -2234,6 +2234,7 @@ onUnmounted(() => {
                   (label, target) => music.navigate({ kind: 'search_reason', label, target })
                 "
                 @open="openSearchItem"
+                @artist-action="artistAction"
                 @mv="openMv"
                 @creator="(id) => music.navigate({ kind: 'playlist_creator', id })"
                 @play="playSearchResults"

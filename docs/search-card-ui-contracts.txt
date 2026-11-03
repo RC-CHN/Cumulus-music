@@ -147,3 +147,13 @@ VideoCard/index.tsx:321–328 把 video.artists 交给 ArtistNames，按原顺�
 精确焦点返回，再验证整卡及单曲 MV 徽标继续通过原生解码播放。使用合成数据，
 不会访问真实账号或视频服务。Linux WebView 本次通过七个 MV 检查点及两个
 专辑署名回归检查点；保留的 MV 截图位于 .build/search-mv-artist-webview/first/。
+
+搜索歌手卡片的上下文菜单
+官方 ArtistCard/index.jsx:171–181 发出 artist 类型菜单动作；M622:656–715
+的普通歌手菜单提供“查看歌手”“收藏”“复制链接”，播放在头像的独立控件。
+综合与歌手分类共用该菜单；收藏复用现有歌手关注确认及账号代次检查，确认前
+不写入账号。复制通过既有原生剪贴板命令生成官方歌手地址，不使用服务端 URL。
+不把“我的关注”、歌手详情和新歌提醒的专用菜单混入搜索。
+`search_results_smoke.py --people-categories` 同时检查实际 WebView 的右键及
+键盘入口、复制反馈、收藏确认与取消后的焦点恢复；使用隔离剪贴板和合成账号。
+Linux WebView 通过四个检查点，记录与截图在 .build/search-artist-context-final/first/。

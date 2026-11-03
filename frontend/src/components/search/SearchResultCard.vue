@@ -8,6 +8,7 @@ import Icon from '../Icon.vue';
 import SearchMatchText from './SearchMatchText.vue';
 import ActionMenu from '../ActionMenu.vue';
 import type { MenuItem } from '../../services/menu';
+import { artistCardMenu, type ArtistCardRequest } from '../../services/artistCards';
 import {
   searchAlbumCredits,
   searchCardCanPlay,
@@ -33,6 +34,7 @@ const emit = defineEmits<{
   open: [item: SearchItem];
   creator: [id: string];
   artist: [id: string];
+  artistAction: [request: ArtistCardRequest];
   play: [item: SearchItem];
   queue: [request: SearchQueueRequest];
   comments: [item: SearchItem];
@@ -92,54 +94,63 @@ const markedTitle = computed(
     (props.item.kind === 'artist' && props.category === 'artists') ||
     (props.item.kind === 'user' && props.category === 'users'),
 );
-const items = computed<MenuItem[]>(() => [
-  ...(canPlay.value
-    ? [
-        {
-          key: 'play',
-          label: props.current && props.playing ? '暂停' : '播放',
-          icon: props.current && props.playing ? 'pause' : 'play',
-          disabled: !props.playable,
-        },
-      ]
-    : []),
-  {
-    key: 'open',
-    label:
-      props.item.kind === 'voice'
-        ? '查看所属播客'
-        : props.item.kind === 'user'
-          ? '查看用户信息'
-          : props.item.kind === 'mv'
-            ? '播放 MV'
-            : '查看详情',
-    icon: props.item.kind === 'mv' ? 'play' : 'forward',
-    disabled: unavailable.value,
-  },
-  ...(searchCardCanQueue(props.item)
-    ? [{ key: 'next', label: '下一首播放', icon: 'next', disabled: !canQueue.value }]
-    : []),
-  ...(['playlist', 'album', 'voice', 'mv'].includes(props.item.kind)
-    ? [
-        {
-          key: 'comments',
-          label: '查看评论',
-          icon: 'comment',
-          disabled: props.item.kind === 'mv' && unavailable.value,
-        },
-      ]
-    : []),
-  ...(props.item.kind === 'voice'
-    ? [
-        {
-          key: 'download',
-          label: '下载声音',
-          icon: 'download',
-          disabled: props.item.voice.unavailable,
-        },
-      ]
-    : []),
-]);
+const items = computed<MenuItem[]>(() => {
+  if (props.item.kind === 'artist') return artistCardMenu();
+  return [
+    ...(canPlay.value
+      ? [
+          {
+            key: 'play',
+            label: props.current && props.playing ? '暂停' : '播放',
+            icon: props.current && props.playing ? 'pause' : 'play',
+            disabled: !props.playable,
+          },
+        ]
+      : []),
+    {
+      key: 'open',
+      label:
+        props.item.kind === 'voice'
+          ? '查看所属播客'
+          : props.item.kind === 'user'
+            ? '查看用户信息'
+            : props.item.kind === 'mv'
+              ? '播放 MV'
+              : '查看详情',
+      icon: props.item.kind === 'mv' ? 'play' : 'forward',
+      disabled: unavailable.value,
+    },
+    ...(searchCardCanQueue(props.item)
+      ? [{ key: 'next', label: '下一首播放', icon: 'next', disabled: !canQueue.value }]
+      : []),
+    ...(['playlist', 'album', 'voice', 'mv'].includes(props.item.kind)
+      ? [
+          {
+            key: 'comments',
+            label: '查看评论',
+            icon: 'comment',
+            disabled: props.item.kind === 'mv' && unavailable.value,
+          },
+        ]
+      : []),
+    ...(props.item.kind === 'voice'
+      ? [
+          {
+            key: 'download',
+            label: '下载声音',
+            icon: 'download',
+            disabled: props.item.voice.unavailable,
+          },
+        ]
+      : []),
+  ];
+});
+function actionAnchor() {
+  const active = document.activeElement;
+  return active instanceof HTMLElement && element.value?.contains(active)
+    ? active
+    : (element.value?.querySelector<HTMLElement>('.search-card-open') ?? null);
+}
 function action(key: string) {
   if (key === 'play' && canPlay.value && props.playable)
     playbackFocus.start(
@@ -147,13 +158,10 @@ function action(key: string) {
       element.value?.querySelector<HTMLElement>('.search-card-play'),
     );
   else if (key === 'open' && !unavailable.value) emit('open', props.item);
-  else if (key === 'next' && canQueue.value && searchCardCanQueue(props.item)) {
-    const active = document.activeElement;
-    const anchor =
-      active instanceof HTMLElement && element.value?.contains(active)
-        ? active
-        : (element.value?.querySelector<HTMLElement>('.search-card-open') ?? null);
-    emit('queue', { item: props.item, anchor });
+  else if (props.item.kind === 'artist' && (key === 'collect' || key === 'copy')) {
+    emit('artistAction', { artist: props.item.artist, action: key, anchor: actionAnchor() });
+  } else if (key === 'next' && canQueue.value && searchCardCanQueue(props.item)) {
+    emit('queue', { item: props.item, anchor: actionAnchor() });
   } else if (key === 'comments') emit('comments', props.item);
   else if (key === 'download' && props.item.kind === 'voice' && !props.item.voice.unavailable)
     emit('download', props.item);

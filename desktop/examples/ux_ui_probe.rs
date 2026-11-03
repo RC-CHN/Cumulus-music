@@ -185,6 +185,7 @@ impl Api for Library {
                 && matches!(
                     path,
                     "/api/artist/v3/detail"
+                        | "/api/artist/detail/dynamic"
                         | "/api/album/v3/detail"
                         | "/api/album/privilege"
                         | "/api/album/detail/dynamic"

@@ -71,7 +71,9 @@ async function copy() {
 }
 defineExpose({ show, close });
 const fallback = () =>
-  document.querySelector<HTMLElement>('.collections-page h1,.catalog-heading h1');
+  document.querySelector<HTMLElement>(
+    '.search-results-page [role="tab"][aria-selected="true"],.collections-page h1,.catalog-heading h1',
+  );
 </script>
 <template>
   <ModalTransition :return-focus="() => request?.anchor ?? null" :fallback-focus="fallback">

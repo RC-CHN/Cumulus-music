@@ -467,8 +467,35 @@
     if(window.__cumulusSearchPeopleCategoriesProof){
       await wait(()=>one('.track-row'),'daily ready');await fixture('good');await fresh('1');
       const card=kind=>one(`[data-result-key^="${kind}:"]`);
+      const menu=()=>one('.action-menu[role="menu"]:not([inert])');
+      const membership=()=>one('.artist-membership-dialog[open]:not([inert])');
+      async function artistMenu(keyboard){
+        const row=card('artist'), opener=row.querySelector('.search-card-open');
+        opener.scrollIntoView({block:'nearest'});
+        if(keyboard){
+          opener.focus({preventScroll:true});
+          opener.dispatchEvent(new KeyboardEvent('keydown',{key:'F10',shiftKey:true,bubbles:true,cancelable:true}));
+        }else{
+          const rect=opener.getBoundingClientRect();
+          const x=rect.x+rect.width/2,y=rect.y+rect.height/2;
+          const hit=document.elementFromPoint(x,y);
+          assert(row.contains(hit),'artist card is hit at the context menu pointer');
+          hit.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,button:2,clientX:x,clientY:y}));
+        }
+        await wait(()=>menu()?.contains(document.activeElement),'artist context menu has focus');
+        assert([...menu().querySelectorAll('button')].map(n=>n.textContent.trim()).join(',')==='查看歌手,收藏,复制链接',
+          'artist menu matches the recovered actions, with playback separate');
+        assert(row.querySelector('.search-card-play:not(:disabled)'),'artist avatar retains an independent play control');
+        return opener;
+      }
       assert(card('artist').textContent.includes('合成别名')&&!card('artist').querySelector('mark')&&
         !card('user').querySelector('mark'),'comprehensive keeps its separate people presentation');
+      const comprehensiveArtist=await artistMenu(false);
+      await capture('artist_search_context_menu');
+      click(button('复制链接',menu()));
+      await wait(()=>one('.artist-action-feedback')?.textContent.includes('链接已复制'),'search artist uses the native clipboard flow');
+      click(button('关闭',one('.artist-action-feedback')));
+      await wait(()=>document.activeElement===comprehensiveArtist,'copy feedback returns to the original artist card');
       for(const [kind,category,subtitle] of [['artist','artists','专辑：12'],
         ['user','users','愿每一首歌，都能留下属于此刻的记忆。']]){
         await choose(category);
@@ -479,8 +506,17 @@
           'category keeps official secondary text plain: '+kind);
         assert(!row.querySelector('.search-card-open').disabled,'catalog action remains available');
         await capture(kind+'_category_presentation');
+        if(kind==='artist'){
+          const artist=await artistMenu(true);
+          click(button('收藏',menu()));
+          await wait(()=>membership()?.querySelector('.album-membership-name')?.textContent.trim()===title.textContent.trim()&&
+            button('确认',membership())&&!button('确认',membership()).disabled,'artist menu opens account-bound follow confirmation');
+          await capture('artist_search_collect_confirmation');
+          click(button('取消',membership()));
+          await wait(()=>!membership()&&document.activeElement===artist,'cancel returns to the exact category card');
+        }
       }
-      await emit('complete',{ok:true,peopleCategoriesVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      await emit('complete',{ok:true,peopleCategoriesVerified:true,searchArtistMenuVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchOriginalCorrectionProof){
