@@ -17,8 +17,9 @@ def main():
     parser.add_argument('--baseline', action='store_true')
     parser.add_argument('--account-detail', action='store_true')
     parser.add_argument('--profile-edit', action='store_true')
+    parser.add_argument('--account-avatar', action='store_true')
     args = parser.parse_args()
-    if sum((args.baseline, args.account_detail, args.profile_edit)) > 1:
+    if sum((args.baseline, args.account_detail, args.profile_edit, args.account_avatar)) > 1:
         parser.error('choose one proof mode')
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
@@ -30,6 +31,8 @@ def main():
         env['CUMULUS_PROOF_ACCOUNT_DETAIL'] = '1'
     if args.profile_edit:
         env['CUMULUS_PROOF_PROFILE_EDIT'] = '1'
+    if args.account_avatar:
+        env['CUMULUS_PROOF_ACCOUNT_AVATAR'] = '1'
     for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'), ('XDG_CACHE_HOME', 'cache'),
                       ('XDG_RUNTIME_DIR', 'runtime'), ('APPDATA', 'roaming'), ('LOCALAPPDATA', 'local')]:
         path = root/'os-profile'/name
@@ -46,14 +49,35 @@ def main():
     complete = json.loads((output/'complete.json').read_text(encoding='utf-8'))
     states = [json.loads(path.read_text(encoding='utf-8')) for path in sorted(output.glob('ux_*.json'))]
     assert complete['ok'] and len(states) == complete['stageCount']
-    assert len(states) == (5 if args.profile_edit else 6 if args.account_detail else 2 if args.baseline else 28)
+    assert len(states) == (4 if args.account_avatar else 5 if args.profile_edit else 6 if args.account_detail else 2 if args.baseline else 28)
     for state in states:
         assert not state['overflow']
         if not args.baseline:
             assert state['focused'] and state['focusValid']
         assert all(control['hit'] for control in state['controls'])
         assert state['realMusicRequests'] == 0
-    if args.profile_edit:
+    if args.account_avatar:
+        assert complete['accountAvatar']
+        by_name = {state['stage'].split('_', 2)[2]: state for state in states}
+        paths = complete['fixture']['paths']
+        assert complete['fixture']['avatarObjects'] == 2 and complete['fixture']['avatarChunks'] >= 2
+        assert paths['/api/nos/token/alloc'] == paths['/api/user/avatar/upload/v1'] == 2
+        assert paths.get('/api/user/profile/update', 0) == 0
+        before = by_name['avatar_recovery_dark']['fixture']['paths']
+        assert before['/api/user/avatar/upload/v1'] == 2
+        assert paths['/api/w/v1/user/detail/2'] > before['/api/w/v1/user/detail/2']
+        database = root/'run/state/core.sqlite3'
+        with closing(sqlite3.connect(database.as_uri()+'?mode=ro', uri=True)) as state:
+            rows = state.execute(
+                'SELECT owner,value FROM state WHERE kind=?', ('account-avatar-v1',),
+            ).fetchall()
+        assert len(rows) == 2
+        for owner, raw in rows:
+            task = json.loads(raw)
+            assert owner == '2' and task['phase'] == 'confirmed'
+            assert not task['source'] and not task['encoded']
+        assert not list((root/'run/state').glob('account-avatar-*.jpg'))
+    elif args.profile_edit:
         assert complete['profileEdit']
         paths = complete['fixture']['paths']
         by_name = {state['stage'].split('_', 2)[2]: state for state in states}
@@ -114,6 +138,7 @@ def main():
     if args.screenshots:
         assert len(list(output.glob('ux_*.png'))) == len(states)
     report = dict(ok=True, baseline=args.baseline, accountDetail=args.account_detail, profileEdit=args.profile_edit,
+                  accountAvatar=args.account_avatar,
                   states=len(states), screenshots=len(states) if args.screenshots else 0,
                   actualWebView=True, realMusicRequests=0, realAccountWrites=0)
     (root/'report.json').write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8')

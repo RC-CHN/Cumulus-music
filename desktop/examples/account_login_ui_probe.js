@@ -374,10 +374,67 @@
     await stage("profile_edit_reconciled_dark", { expectNickname });
     await emit("complete", { ok: true, profileEdit: true, stageCount: count, expectNickname });
   }
+  async function accountAvatar() {
+    const expectNickname = "邮箱验证账号";
+    const test = (id) => one(`[data-testid="${id}"]`);
+    const dialog = () => one(".account-avatar-dialog");
+    const signature = () => test("profile-edit-signature");
+    const retained = "未提交的简介草稿";
+    await open();
+    await email();
+    await logged();
+    click(button("打开设置"));
+    await wait(() => test("account-profile-open"), "profile entry");
+    await settle();
+    click(test("account-profile-open"));
+    await wait(() => test("account-profile-edit-open"), "profile details");
+    await settle();
+    click(test("account-profile-edit-open"));
+    await wait(() => signature() && test("account-avatar-open")?.getAttribute("aria-disabled") === "false", "avatar editor available");
+    await settle();
+    signature().value = retained;
+    signature().dispatchEvent(new Event("input", { bubbles: true }));
+    async function crop() {
+      click(test("account-avatar-open"));
+      await wait(() => test("account-avatar-crop")?.dataset.crop && !test("account-avatar-save")?.disabled, "avatar crop ready");
+      await settle();
+      const input = test("account-avatar-zoom");
+      assert(input, "zoom control");
+      const previous = test("account-avatar-crop").dataset.crop;
+      input.value = input.max;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      await wait(() => test("account-avatar-crop").dataset.crop !== previous, "crop reacts to zoom");
+    }
+    async function confirmed() {
+      await wait(() => !dialog() && signature()?.value === retained &&
+        test("account-avatar-open")?.getAttribute("aria-disabled") === "false", "avatar confirmed and text draft retained");
+    }
+    await crop();
+    await stage("avatar_crop_light", { expectNickname });
+    click(test("account-avatar-save"));
+    await confirmed();
+    await stage("avatar_confirmed_light", { expectNickname });
+    await theme("dark");
+    await resize(880, 670);
+    await mode("avatar_ack_lost");
+    await crop();
+    click(test("account-avatar-save"));
+    await wait(() => dialog()?.dataset.avatarPhase === "binding" && !test("account-avatar-reconcile")?.disabled, "avatar readback only");
+    await stage("avatar_recovery_dark", { expectNickname });
+    await mode("normal");
+    click(test("account-avatar-reconcile"));
+    await confirmed();
+    await stage("avatar_reconciled_dark", { expectNickname });
+    await emit("complete", { ok: true, accountAvatar: true, stageCount: count, expectNickname });
+  }
   try {
     await wait(() => ready() && one(".welcome"), "guest bootstrap");
     await theme("light");
     await resize(1120, 760);
+    if (window.__accountAvatarProof) {
+      await accountAvatar();
+      return;
+    }
     if (window.__profileEditProof) {
       await profileEdit();
       return;

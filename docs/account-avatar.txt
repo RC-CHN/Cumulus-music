@@ -1,0 +1,51 @@
+Cumulus 个人资料头像更新
+
+入口：设置 → 账号 → 查看个人资料 → 编辑个人信息 → 替换图片。
+独立保存头像，不提交表单里的昵称或简介。编辑器回读最新资料并保留
+用户已经改动但尚未保存的字段。原生文件选择只允许图片，WebView 不收文件路径。
+
+官方 PC 3.1.42.205594：
+  MainView.jsx:286–299、M3101:188–213、M2167:99–104/140–176:
+  JPEG/PNG/BMP/GIF，输入不超过 5 MiB，宽高均至少 320px。
+  方形裁剪按圆形预览；200px 是视口，不是输出像素。
+  M2131:31–47：按选定原始像素裁剪，编码 JPEG。
+  M2167:324–346、M15:3648：先 IMAGE / yyimgs 对象上传，再 POST
+  /api/user/avatar/upload/v1 {imgid: docId, url: CDN对象地址}。
+  M3101:519–521 直接用响应 url 更新宿主头像；业务 405 为频率限制，
+  533 要求绑定手机号，不把同号 HTTP 状态推断成这些业务码。
+
+实现：
+  avatar::AvatarEditor 复用有界解码、裁剪、预览和 NOS 对象校验。
+  原版从 Canvas Blob 推导的文件名与扩展可能为空；当前复用已实现的
+  PC HTTPS POST /api/nos/token/alloc，payload 为
+  {filename:"avatar.jpg",ext:"jpg",type:"image",bucket:"yyimgs"}。
+  上传有已验证偏移和对象摘要；绑定时保留原 docId JSON 类型；
+  URL 固定在原版候选 p5/p6 的 p5，只从核验后的对象路径构造。
+  Cookie、NOS token、授权 URL 与源文件路径均保留在原生。
+  头像替换前，detail 必须返回可识别的当前头像；没有可信基线会阻止绑定。
+  上传后再次读同 UID 的详情；已观察到他端更改时阻止覆盖。官方
+  写入参数没有服务端版本条件，无法锁住读后写前的其他客户端操作。
+  绑定之前持久化 Binding；丢回包、崩溃和迟到响应不能自动重放。
+  只在详情精确等于本次对象地址或同次确认返回的安全地址时标为确认，
+  不推断 avatarImgId 等于 docId。若无法确认，可读取后明确采用当前头像，
+  这不会宣称本次绑定成功。放弃未提交任务也不会删除服务端对象。
+  核对后只更新账号头像字段，账号代次不变；本机账号摘要写入或
+  缓存清理失败时，独立重试本地收尾，不覆盖已核对的结果。
+
+IPC：account_avatar_tasks / account_avatar_image / pick_account_avatar /
+  account_avatar_command。主窗口门禁、当前账号 epoch 和任务 ID 都要核对，
+  IPC 不接受任意文件路径、目标 UID、CDN 地址或 NOS 凭据。
+  图片预览为原生裁剪辅助数据；会话状态切换时关闭编辑并忽略迟到结果。
+
+验证：
+  core/tests/account_avatar.rs 检查 JPEG 实际裁剪尺寸、分片和绑定参数、
+  丢回包与断开、切号、频率限制/需绑手机，以及他端更新后的保护。
+  前端测试覆盖保留原裁剪、取消、无效图片、迟到回包及只读恢复。
+  Linux 实际 WebView 与 KDE/XWayland 125% 本机桌面验证了裁剪缩放、
+  正常绑定、丢回包和核对后的恢复。两次显式操作各分配/绑定一次，
+  恢复没有追加上传或绑定，也没有提交未保存的简介。SQLite 确认两个
+  任务都已结算并清理本地裁剪缓存。浅色与深色截图见
+  .build/avatar-desktop-final/contact.jpg，接口计数和数据库核验由
+  scripts/ci/account_login_smoke.py --account-avatar 执行。
+  验证用合成图片、文件选择替身、接口及 NOS 替身；WebView 测试 CSP
+  不访问头像 CDN。未用真实账号改头像，未实测上游头像写入或 Windows 桌面。

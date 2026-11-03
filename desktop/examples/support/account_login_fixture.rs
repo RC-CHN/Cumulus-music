@@ -2,6 +2,7 @@
 use super::auth;
 use cumulus_core::{
     Error,
+    cloud::nos::{NosBackend, NosMethod, NosNode, NosRequest},
     protocol::{
         api::ApiFuture,
         http::{HttpBackend, HttpReply, RequestPlan},
@@ -21,8 +22,23 @@ pub struct Service {
     completed: Mutex<u64>,
     browser_documents: Mutex<Vec<cumulus_core::account::login::presentation::LoginDocument>>,
     profiles: Mutex<BTreeMap<u64, Value>>,
+    avatar_proof: bool,
+    avatars: Mutex<Avatars>,
+}
+#[derive(Default)]
+struct Avatars {
+    current: Option<String>,
+    allocated: u64,
+    chunks: u64,
+    objects: BTreeMap<String, Vec<u8>>,
 }
 impl Service {
+    pub fn new(avatar_proof: bool) -> Self {
+        Self {
+            avatar_proof,
+            ..Self::default()
+        }
+    }
     pub fn open_document(
         &self,
         document: cumulus_core::account::login::presentation::LoginDocument,
@@ -44,7 +60,8 @@ impl Service {
         }
     }
     pub fn snapshot(&self) -> Value {
-        json!({"paths":*self.paths.lock().unwrap(),"pending":self.held.lock().unwrap().is_some(),"completed":*self.completed.lock().unwrap(),"browserDocuments":*self.browser_documents.lock().unwrap()})
+        let avatars = self.avatars.lock().unwrap();
+        json!({"paths":*self.paths.lock().unwrap(),"pending":self.held.lock().unwrap().is_some(),"completed":*self.completed.lock().unwrap(),"browserDocuments":*self.browser_documents.lock().unwrap(),"avatarChunks":avatars.chunks,"avatarObjects":avatars.objects.len()})
     }
 }
 impl HttpBackend for Service {
@@ -59,6 +76,52 @@ impl HttpBackend for Service {
             let (path, data) = eapi::unwrap(params)?;
             *self.paths.lock().unwrap().entry(path.clone()).or_default() += 1;
             let mode = self.mode.lock().unwrap().clone();
+            if self.avatar_proof && path == "/api/nos/token/alloc" {
+                if data["filename"] != "avatar.jpg"
+                    || data["ext"] != "jpg"
+                    || data["type"] != "image"
+                    || data["bucket"] != "yyimgs"
+                {
+                    return Err(Error::Response("avatar fixture allocation"));
+                }
+                let mut avatars = self.avatars.lock().unwrap();
+                avatars.allocated += 1;
+                return Ok(auth::reply(
+                    json!({"code":200,"result":{
+                        "docId":10_000+avatars.allocated,
+                        "objectKey":format!("avatar-proof-{}.jpg", avatars.allocated),
+                        "token":"avatar-proof-scope","bucket":"yyimgs"
+                    }}),
+                    None,
+                ));
+            }
+            if self.avatar_proof && path == "/api/user/avatar/upload/v1" {
+                let id = data["imgid"]
+                    .as_u64()
+                    .or_else(|| data["imgid"].as_str()?.parse().ok())
+                    .filter(|id| (10_001..=10_002).contains(id))
+                    .ok_or(Error::Response("avatar fixture document"))?;
+                let filename = format!("avatar-proof-{}.jpg", id - 10_000);
+                let url = format!("https://p5.music.126.net/{filename}");
+                let mut avatars = self.avatars.lock().unwrap();
+                if data["url"] != url
+                    || !avatars
+                        .objects
+                        .get(&format!("/yyimgs/{filename}"))
+                        .is_some_and(|bytes| bytes.starts_with(&[0xff, 0xd8]))
+                {
+                    return Err(Error::Response(
+                        "avatar fixture binding before uploaded JPEG",
+                    ));
+                }
+                avatars.current = Some(url.clone());
+                if mode == "avatar_ack_lost" {
+                    return Err(Error::Transport(
+                        "synthetic avatar acknowledgement lost".into(),
+                    ));
+                }
+                return Ok(auth::reply(json!({"code":200,"url":url}), None));
+            }
             if path.starts_with("/api/w/v1/user/detail/")
                 || path.starts_with("/api/w/v1/user/bindings/")
                 || path == "/api/middle/user/device/list"
@@ -149,10 +212,20 @@ impl HttpBackend for Service {
                                 "另一个账号的资料"
                             })
                         });
+                    let avatar = self.avatar_proof.then(|| {
+                        self.avatars
+                            .lock()
+                            .unwrap()
+                            .current
+                            .clone()
+                            .unwrap_or_else(|| {
+                                "https://p5.music.126.net/avatar-proof-baseline.jpg".into()
+                            })
+                    });
                     return Ok(auth::reply(
                         json!({"code":200,"level":7,"profile":{
                             "userId":uid,"nickname":auth::nickname(uid),
-                            "signature":signature,
+                            "signature":signature,"avatarUrl":avatar,
                             "birthday":946684800000_i64,"gender":1,"province":330000,"city":330100
                         }}),
                         None,
@@ -240,4 +313,64 @@ impl HttpBackend for Service {
             self.base.post(plan).await
         })
     }
+}
+
+impl NosBackend for Service {
+    fn discover<'a>(&'a self, bucket: &'a str) -> ApiFuture<'a, NosNode> {
+        Box::pin(async move {
+            if !self.avatar_proof || bucket != "yyimgs" {
+                return Err(Error::Response("unexpected avatar NOS discovery"));
+            }
+            NosNode::parse("https://nosup-avatar-proof.127.net")
+        })
+    }
+
+    fn request(&self, request: NosRequest) -> ApiFuture<'_, Value> {
+        Box::pin(async move {
+            let url =
+                tauri::Url::parse(request.url()).map_err(|_| Error::Response("avatar NOS URL"))?;
+            if !self.avatar_proof
+                || url.host_str() != Some("nosup-avatar-proof.127.net")
+                || request.scoped_token() != "avatar-proof-scope"
+                || request.content_type() != "image/jpeg"
+            {
+                return Err(Error::Response("avatar NOS scope"));
+            }
+            let mut avatars = self.avatars.lock().unwrap();
+            if request.method() == NosMethod::Chunk {
+                let offset = url
+                    .query_pairs()
+                    .find(|(key, _)| key == "offset")
+                    .and_then(|(_, value)| value.parse::<usize>().ok());
+                let object = avatars.objects.entry(url.path().into()).or_default();
+                if offset != Some(object.len()) {
+                    return Err(Error::Response("avatar NOS offset"));
+                }
+                object.extend_from_slice(request.body());
+                avatars.chunks += 1;
+            }
+            let offset = avatars.objects.get(url.path()).map_or(0, Vec::len);
+            Ok(json!({"offset":offset,"context":"synthetic-avatar-context"}))
+        })
+    }
+}
+
+pub fn avatar_source() -> Vec<u8> {
+    let (width, height) = (480_u32, 360_u32);
+    let size = 54 + width * height * 3;
+    let mut bytes = b"BM".to_vec();
+    for n in [size, 0, 54, 40, width, height] {
+        bytes.extend(n.to_le_bytes());
+    }
+    bytes.extend(1_u16.to_le_bytes());
+    bytes.extend(24_u16.to_le_bytes());
+    for n in [0_u32, size - 54, 2835, 2835, 0, 0] {
+        bytes.extend(n.to_le_bytes());
+    }
+    for y in 0..height {
+        for x in 0..width {
+            bytes.extend([(x * 255 / width) as u8, (y * 255 / height) as u8, 145]);
+        }
+    }
+    bytes
 }

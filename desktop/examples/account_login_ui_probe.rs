@@ -17,7 +17,21 @@ fn main() {
     fs::create_dir(&root).expect("new proof root");
     let output = root.join("first");
     fs::create_dir(&output).unwrap();
-    let service = Arc::new(fixture::Service::default());
+    let avatar = std::env::var_os("CUMULUS_PROOF_ACCOUNT_AVATAR").is_some();
+    let service = Arc::new(fixture::Service::new(avatar));
+    let mut context = tauri::generate_context!();
+    if avatar {
+        use tauri::utils::config::Csp;
+        let security = &mut context.config_mut().app.security;
+        let Some(Csp::Policy(policy)) = security.csp.take() else {
+            panic!("expected application CSP");
+        };
+        // Fixture avatar URLs exercise the native correlation rule, but this
+        // WebView never fetches them from the real image CDN.
+        security.csp = Some(Csp::Policy(
+            policy.replace(" https://*.music.126.net https://*.music.163.com", ""),
+        ));
+    }
     let baseline = std::env::var_os("CUMULUS_PROOF_BASELINE").is_some();
     let account_detail = std::env::var_os("CUMULUS_PROOF_ACCOUNT_DETAIL").is_some();
     let profile_edit = std::env::var_os("CUMULUS_PROOF_PROFILE_EDIT").is_some();
@@ -25,7 +39,13 @@ fn main() {
     cumulus_desktop::configure(tauri::Builder::default())
         .manage(cumulus_desktop::LoginDocumentBrowser::with_launcher(move |document| browser_service.open_document(document)))
         .setup(move |app| {
-            let client = MusicClient::open_with_http_backend(&root.join("state"), None, service.clone())?;
+            let mut client = MusicClient::open_with_http_backend(&root.join("state"), None, service.clone())?;
+            if avatar {
+                let source = root.join("synthetic-avatar.bmp");
+                fs::write(&source, fixture::avatar_source())?;
+                app.manage(cumulus_desktop::AccountAvatarPicker::with_picker(move || Some(source.clone())));
+                client = client.with_account_avatar_backend(service.clone());
+            }
             let client = cumulus_desktop::renewal::configure(client, &cumulus_core::protocol::http::ClientProfile::default());
             app.manage(cumulus_desktop::configure_native_audio(client, &app.path().resource_dir()?, true));
             cumulus_desktop::renewal::start(app.handle());
@@ -79,6 +99,7 @@ fn main() {
                 webview.eval(format!("window.__accountLoginBaseline={baseline};")).unwrap();
                 webview.eval(format!("window.__accountDetailProof={account_detail};")).unwrap();
                 webview.eval(format!("window.__profileEditProof={profile_edit};")).unwrap();
+                webview.eval(format!("window.__accountAvatarProof={avatar};")).unwrap();
                 let script = if std::env::var("CUMULUS_PROOF_LOGIN_ENTRY").as_deref() == Ok("1") {
                     include_str!("login_entry_ui_probe.js")
                 } else {
@@ -87,6 +108,6 @@ fn main() {
                 webview.eval(capture_ack::script(script)).unwrap();
             }
         })
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("account/login proof");
 }
