@@ -1,0 +1,38 @@
+Main 功能分支整合（2026-11-03）
+
+范围
+同步原有功能主线，合入独立的音效材料路由以及已验证手机登录增量。
+保留所有原分支名称和工作树，不重写历史、不移动版本标签、不发布版本。
+本次合并不代表整个桌面/UI/全部专有DSP/真实RT等目标已经完成。
+
+历史整合
+- main从f8fe6e8快进到原功能主线5d76765，纳入累积的457条提交。
+- Windows诊断三条提交此前已cherry-pick；8f75f56补齐分支祖先关系。
+  冲突对照确认旧分支落后于当前MTA/运行时/CI实现，保留这些较新文件；合并树与5d76765一致。
+- 52bce82合入音效材料分派/参数计划：1395冻结原生对照向量、Rust专项测试及3个实际CLI流程通过。
+  这是材料解释/控制调用计划，不将其标成完整声音图或延迟DSP渲染。
+- bcc0742合入手机登录三条增量2df3446、ae17cca、94d5df0。
+  来源/接口/35态界面/持久化证据见phone-entry-contracts.txt及ui-ux-validation.txt。
+- 原生延迟DSP的未提交草稿留在shortcut-settings工作树，不作为通过功能混入main。
+
+整合后的验证
+- 固定Node v24.16.0、Rust/Cargo1.96.0和锁文件；main独立target目录验证，避免工作树构建缓存混用。
+- npm ci、format:check、567项前端测试、类型检查与生产构建通过。
+- cargo fmt --all --check、严格workspace/all-targets/custom-protocol Clippy通过。
+- 同一范围完整Rust测试：299个测试程序、1583 passed、0 failed、0 ignored，命令退出0。
+- CI工具47项单测、公开源审计及版本/唯一release提交检查通过。
+- 重新构建main正式cumulus与phone_entry/reuse原生宿主；用main自己的前端资源、核心及IPC重跑：
+  普通手机两协议各35态及各29库独立审计，手机号复用两协议各34态及独立持久化审计，全部退出0。
+  合计138张自动采集的整合窗口截图；不将它们写成138张人工视觉复核。
+- main前端21个资源与已逐张查看的KDE125%35张物理窗口截图所用资源逐字节相同。
+  整合后1984个源输入、21个资源、3个二进制的散列在上述GUI运行前后核对未变化。
+- 本地证据根main-integration-*、main-integrated-{phone,phone-legacy,reuse,reuse-legacy}均在.build/，
+  不纳入Git。正式可执行文件为.build/target-main-integration/debug/cumulus。
+- 所有分支引用通过git merge-base --is-ancestor核对，原有提交均可从main追溯。
+  尚未提交的延迟DSP草稿没有纳入；没有删除分支、清理用户数据或移动既有标签。
+
+边界
+上述登录宿主使用合成HTTP，不宣称本人真实注册/refreshToken下发或轮换通过。
+本机Linux验证不能代替Windows实机视觉/真实声卡；远端最终main提交仍由独立Linux、Windows、前端runner检查。
+旧5d76765的完整CI已成功，但不将其当作本次新整合SHA的CI结果；本次推送后以该SHA的检查为准。
+本轮不创建release标记/标签或发布版本；整体产品与UIUX目标保持继续。
