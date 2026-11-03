@@ -150,6 +150,7 @@ function toggleLyric(key: string) {
 }
 const panel = ref<HTMLElement>(),
   tabs = ref<HTMLElement>();
+const retryButton = ref<HTMLButtonElement>();
 const moreButton = ref<HTMLButtonElement>(),
   moreFooter = ref<HTMLElement>();
 const searchSongTables = ref<InstanceType<typeof TrackTable>[]>([]);
@@ -371,6 +372,23 @@ async function load(reuse = false) {
   );
   if (generation === loadGeneration) void restore();
 }
+async function retry() {
+  const owner = panel.value;
+  const owned = document.activeElement === retryButton.value;
+  if (owned) owner?.focus({ preventScroll: true });
+  const request = load();
+  const generation = loadGeneration;
+  await request;
+  await nextTick();
+  if (
+    owned &&
+    generation === loadGeneration &&
+    owner === panel.value &&
+    document.activeElement === owner &&
+    error.value
+  )
+    retryButton.value?.focus({ preventScroll: true });
+}
 watch(
   panel,
   (element) => {
@@ -539,7 +557,7 @@ onBeforeUnmount(() => {
         <div v-if="loading" class="empty-state" role="status">正在搜索…</div>
         <div v-else-if="error" class="empty-state">
           <p role="alert">{{ error }}</p>
-          <button class="secondary" @click="load()">重新加载</button>
+          <button ref="retryButton" type="button" class="secondary" @click="retry">重新加载</button>
         </div>
         <template v-else-if="view">
           <p v-if="explanation.notice" class="search-result-notice" role="status">

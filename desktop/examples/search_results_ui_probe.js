@@ -661,7 +661,14 @@
     await capture('correction_disabled');
     click(button('返回上一页'));await wait(()=>ready()&&one('[data-category="playlists"]').getAttribute('aria-selected')==='true'&&one('.search-correction')?.textContent.includes('合成正词'),'back restores corrected route');
     await fixture('empty');await fresh('合成空结果');await choose('lyrics');await capture('empty');assert(one('.search-result-panel').textContent.includes('没有找到'),'empty copy');
-    await fixture('result_error');await fresh('合成失败结果');await choose('albums');await capture('error');assert(button('重新加载'),'retry action');await fixture('good');click(button('重新加载'));await wait(()=>ready()&&one('.search-result-card'),'retry recovery');await capture('recovered');
+    await fixture('result_error');await fresh('合成失败结果');await choose('albums');await capture('error');
+    const retryPanel=one('#search-result-panel');
+    click(button('重新加载'));
+    await wait(()=>button('重新加载')&&document.activeElement===button('重新加载'),'a repeated failure restores retry focus');
+    await fixture('good');click(button('重新加载'));
+    await wait(()=>ready()&&one('.search-result-card'),'retry recovery');
+    assert(document.activeElement===retryPanel,'successful retry keeps focus in the results panel');
+    await capture('recovered');
     hold('all');submit('合成延迟结果');await wait(()=>held,'held response');await capture('loading');await choose('songs');release();await sleep(220);assert(one('[data-category="songs"]').getAttribute('aria-selected')==='true'&&one('.search-result-actions'),'late result ignored');await capture('late_result');
     step='category_without_frames';
     const songTab=one('[data-category="songs"]');songTab.focus();
