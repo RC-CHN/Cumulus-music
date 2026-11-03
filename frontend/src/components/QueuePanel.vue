@@ -41,12 +41,16 @@ let collectionRead = 0;
 const { queue, view, busy, queueError, queueLoading, queueEditing, queueEditError, queueCurrent } =
   props.player;
 const row = 64;
-const { container, start, end, onScroll } = useVirtualRows(
+const { container, start, end, onScroll, center } = useVirtualRows(
   () => queue.value?.tracks.length ?? 0,
   row,
 );
 const visible = computed(() => queue.value?.tracks.slice(start.value, end.value) ?? []);
 const currentEntry = computed(() => view.value?.entryId);
+const currentIndex = computed(() => {
+  if (!queueCurrent.value || !currentEntry.value) return -1;
+  return queue.value?.tracks.findIndex((item) => item.entryId === currentEntry.value) ?? -1;
+});
 const queueCount = computed(() =>
   queueCurrent.value ? queue.value!.tracks.length : (view.value?.queueLen ?? 0),
 );
@@ -137,13 +141,22 @@ onMounted(() => {
   focus = document.activeElement as HTMLElement;
   panel.value?.focus({ preventScroll: true });
 });
+let located: { element: HTMLElement; epoch: string; entry: string } | undefined;
 watch(
-  [container, currentEntry],
-  ([element, current]) => {
+  [container, () => view.value?.epoch, currentEntry, currentIndex],
+  ([element, epoch, entry, index]) => {
+    if (!element || !epoch || !entry) located = undefined;
     if (!element) return;
-    const index = queue.value?.tracks.findIndex((i) => i.entryId === current) ?? -1;
-    if (index >= 0) element.scrollTop = Math.max(0, index * row - (element.clientHeight - row) / 2);
-    onScroll();
+    // The player stream can publish the new entry before its queue rows.
+    // Center only once on the matching snapshot, not on later list edits.
+    if (
+      epoch &&
+      entry &&
+      index >= 0 &&
+      (located?.element !== element || located.epoch !== epoch || located.entry !== entry) &&
+      center(index)
+    )
+      located = { element, epoch, entry };
     if (document.activeElement === panel.value) element.focus({ preventScroll: true });
   },
   { flush: 'post' },

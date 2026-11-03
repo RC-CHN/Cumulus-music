@@ -12,6 +12,7 @@ def main():
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--frontend-dist', type=Path)
+    parser.add_argument('--locate', action='store_true', help='Verify current row after a delayed queue receipt')
     parser.add_argument('--screenshots', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
@@ -29,7 +30,8 @@ def main():
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
     if args.frontend_dist:
         env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve())
-    source = Path(__file__).resolve().parents[2] / 'desktop/examples/queue_ui_probe.js'
+    name = 'queue_locate_ui_probe.js' if args.locate else 'queue_ui_probe.js'
+    source = Path(__file__).resolve().parents[2] / 'desktop/examples' / name
     script = root / 'queue.js'
     script.write_text(source.read_text(encoding='utf-8'), encoding='utf-8')
     env['CUMULUS_UX_SCRIPT'] = str(script)
@@ -46,6 +48,16 @@ def main():
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'queue UI exited {code}'
     complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
+    if args.locate:
+        assert complete['ok'] and complete['sameEntryRefreshPreservedScroll']
+        waiting, located = [json.loads((root / 'first' / f'{stage}.json').read_text(encoding='utf-8'))
+                            for stage in ('ux_01_queue_waiting_rows', 'ux_02_queue_current_located')]
+        assert waiting['scrollTop'] < 10 < located['scrollTop'] and located['currentVisible']
+        assert located['nativePlayer']['playId'] == located['playId']
+        if args.screenshots:
+            assert len(list((root / 'first').glob('ux_*.png'))) == 2
+        print(json.dumps(dict(ok=True, actualWebView=True, delayedQueueLocated=True)))
+        return
     assert complete['ok'] and complete['queueUiVerified'] and complete['stageCount'] == len(labels)
     assert complete['realMusicRequests'] == complete['accountWrites'] == complete['syntheticMode']['skipWrites'] == 0
     for i, label in enumerate(labels, 1):

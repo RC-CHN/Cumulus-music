@@ -161,3 +161,9 @@ Cumulus 对当前普通在线歌曲提供「下载当前歌曲」：用账号代
 本地文件和无目录标识的署名仍显示文字。本项未复刻官方的来源链接。
 可选 catalog_smoke.py --playback-credit 用合成目录和 libmpv/null 检查两类目录跳转，
 确认打开目标前后原生 playId 和队列版本不变。
+
+播放列表定位
+官方 PlaylistContent.tsx:108–129、243–249 从当前曲目计算 scrollToIndex。Cumulus
+先核对账号及队列 revision，在对应的队列行到达后定位一次。旧队列未完成更新时不跳转，
+同一曲目的列表刷新不会抢走用户手动滚动或焦点。可用 queue_ui_smoke.py --locate
+在 WebView 延迟队列回包验证，原生队列及播放保持实际运行。
