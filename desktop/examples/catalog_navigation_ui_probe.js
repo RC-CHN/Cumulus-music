@@ -84,8 +84,14 @@
       const albumTop=grid.scrollTop;await capture(`albums40_${suffix}`);
       click(one('[data-catalog-key="album:46"]'));await wait(()=>one('.album-header')&&settled(),'album child');
       click(albumTab('details'));await wait(()=>one('.album-description')&&settled(),'album detail tab');await capture(`album_details_${suffix}`);
-      await mode('catalog-hold');await back();await albumsRestored(albumTop);
-      await wait(()=>document.activeElement?.dataset.catalogKey==='album:46','resource back focus restored after virtual render');
+      await mode('catalog-hold');
+      const frame=window.requestAnimationFrame;let withheld=0;
+      try {
+        if(suffix==='1120_light')window.requestAnimationFrame=()=>-(++withheld);
+        await back();await albumsRestored(albumTop);
+        await wait(()=>document.activeElement?.dataset.catalogKey==='album:46','resource back focus restored after virtual render');
+        if(suffix==='1120_light')assert(withheld>=2,'catalog restore encountered withheld frames');
+      } finally {window.requestAnimationFrame=frame;}
       assert(document.activeElement?.dataset.catalogKey==='album:46','resource back focus');await capture(`artist_return_${suffix}`);
       assert(one('[data-catalog-updating]'),'header read was not held');
       assert(one('.artist-actions button[aria-pressed]')?.disabled,'stale follow state remained writable');

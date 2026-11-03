@@ -12,9 +12,16 @@ export function useVirtualRows(
   const range = shallowRef(rowWindow(count(), getRowHeight(), 500, 0, undefined, buffer));
   let height = 500;
   let frame: number | undefined;
+  let deadline: ReturnType<typeof setTimeout> | undefined;
   let observer: ResizeObserver | undefined;
-  function update() {
+  function cancelUpdate() {
+    if (frame !== undefined) cancelAnimationFrame(frame);
+    if (deadline !== undefined) clearTimeout(deadline);
     frame = undefined;
+    deadline = undefined;
+  }
+  function update() {
+    cancelUpdate();
     range.value = rowWindow(
       count(),
       getRowHeight(),
@@ -25,9 +32,14 @@ export function useVirtualRows(
     );
   }
   function onScroll() {
-    frame ??= requestAnimationFrame(update);
+    if (frame !== undefined) return;
+    frame = requestAnimationFrame(update);
+    // Programmatic scroll restoration must also populate rows on WebViews
+    // that run timers while their compositor withholds animation frames.
+    deadline = setTimeout(update, 64);
   }
   function reset() {
+    cancelUpdate();
     if (container.value) container.value.scrollTop = 0;
     range.value = rowWindow(count(), getRowHeight(), height, 0, undefined, buffer);
   }
@@ -38,7 +50,6 @@ export function useVirtualRows(
     if (top === null) return false;
     element.scrollTop = top;
     height = element.clientHeight;
-    if (frame !== undefined) cancelAnimationFrame(frame);
     update();
     return true;
   }
@@ -80,7 +91,7 @@ export function useVirtualRows(
   );
   onUnmounted(() => {
     observer?.disconnect();
-    if (frame !== undefined) cancelAnimationFrame(frame);
+    cancelUpdate();
   });
   return {
     container,

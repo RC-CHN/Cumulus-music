@@ -11,6 +11,7 @@ import type { PlayerOrigin } from '../services/player';
 import type { AlbumTab, CatalogPanelKey } from '../services/catalogNavigation';
 import type { CatalogSession } from '../composables/useCatalogSession';
 import { usePageEntryFocus } from '../composables/usePageEntryFocus';
+import { waitForViewportFrames } from '../services/viewportLayout';
 import TrackTable from './TrackTable.vue';
 import CatalogCards from './catalog/CatalogCards.vue';
 import AlbumHeader from './catalog/AlbumHeader.vue';
@@ -119,51 +120,38 @@ function cancelRestore(event?: Event) {
   pendingRestore = undefined;
   restoring++;
 }
-function restore(element: Element) {
+async function restore(element: Element) {
   const owner = selectedPanel.value,
     saved = positions.get(owner),
     ticket = ++restoring;
   if (pendingRestore !== owner || !saved || panelKey(element) !== owner) return;
-  requestAnimationFrame(() =>
-    requestAnimationFrame(() => {
-      if (
-        !props.model.valid() ||
-        ticket !== restoring ||
-        pendingRestore !== owner ||
-        selectedPanel.value !== owner ||
-        !element.isConnected ||
-        panelKey(element) !== owner
-      )
-        return;
-      const inner = element.querySelector<HTMLElement>('.track-scroll,.catalog-card-scroll');
-      if (inner) {
-        inner.scrollTop = saved.inner;
-        inner.dispatchEvent(new Event('scroll'));
-      }
-      if (section.value) section.value.scrollTop = saved.outer;
-      const returnTarget = document.activeElement;
-      if (
-        saved.focus &&
-        (returnTarget === document.body || returnTarget?.classList.contains('back-button'))
-      )
-        requestAnimationFrame(() => {
-          // The scroll event updates the virtual range in this frame. Wait for
-          // Vue to commit those rows before looking up the original card.
-          void nextTick(() => {
-            if (
-              props.model.valid() &&
-              ticket === restoring &&
-              element.isConnected &&
-              document.activeElement === returnTarget
-            )
-              element
-                .querySelector<HTMLElement>(`[data-catalog-key="${CSS.escape(saved.focus!)}"]`)
-                ?.focus({ preventScroll: true });
-          });
-        });
-      pendingRestore = undefined;
-    }),
-  );
+  const valid = () =>
+    props.model.valid() &&
+    ticket === restoring &&
+    selectedPanel.value === owner &&
+    element.isConnected &&
+    panelKey(element) === owner;
+  await waitForViewportFrames(2);
+  if (!valid() || pendingRestore !== owner) return;
+  const inner = element.querySelector<HTMLElement>('.track-scroll,.catalog-card-scroll');
+  if (inner) {
+    inner.scrollTop = saved.inner;
+    inner.dispatchEvent(new Event('scroll'));
+  }
+  if (section.value) section.value.scrollTop = saved.outer;
+  const returnTarget = document.activeElement;
+  pendingRestore = undefined;
+  if (
+    !saved.focus ||
+    (returnTarget !== document.body && !returnTarget?.classList.contains('back-button'))
+  )
+    return;
+  await waitForViewportFrames();
+  await nextTick();
+  if (valid() && document.activeElement === returnTarget)
+    element
+      .querySelector<HTMLElement>(`[data-catalog-key="${CSS.escape(saved.focus)}"]`)
+      ?.focus({ preventScroll: true });
 }
 watch(
   selectedPanel,
