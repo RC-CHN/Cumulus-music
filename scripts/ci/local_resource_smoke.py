@@ -69,7 +69,9 @@ def main():
     assert states['local_directory_light']['directoryAccepted']
     if os.name != 'nt':
         opened = (root/'opened-directory').read_text(encoding='utf-8').splitlines()
-        assert len(opened) == 1 and Path(opened[0]).is_relative_to(root / 'menu-originals')
+        physical_source = Path(json.loads((root/'removal-path-1004.json').read_text(encoding='utf-8')))
+        assert physical_source.is_relative_to(root / 'menu-originals')
+        assert opened == [str(physical_source.parent)]
 
     assert states['composition_pending_light']['localSearch'] == 'zhong' and states['composition_pending_light']['imePending']
     assert states['composition_complete_dark']['localSearch'] == '合成' and states['composition_complete_dark']['imeCommitted']
