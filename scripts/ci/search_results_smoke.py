@@ -19,6 +19,7 @@ def main():
     mode.add_argument('--people-categories', action='store_true')
     mode.add_argument('--search-next', action='store_true')
     mode.add_argument('--song-waterfall', action='store_true')
+    mode.add_argument('--voice-queue', action='store_true')
     parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--screenshots', action='store_true')
     args = parser.parse_args()
@@ -46,6 +47,8 @@ def main():
         prefix = 'window.__cumulusSearchNextProof = true;\n'
     if args.song_waterfall:
         prefix = 'window.__cumulusSearchSongWaterfallProof = true;\n'
+    if args.voice_queue:
+        prefix = 'window.__cumulusSearchVoiceQueueProof = true;\n'
     if args.correction_original:
         prefix = 'window.__cumulusSearchOriginalCorrectionProof = true;\n'
     if args.card_matches:
@@ -63,6 +66,19 @@ def main():
     failed = root / 'first/failed.json'
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
+    if args.voice_queue:
+        complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
+        assert complete['ok'] and complete['voiceQueueVerified'] and complete['stageCount'] == 3
+        first = root / 'first'
+        played = json.loads((first / 'ux_01_search_episode_joins_ordinary_queue.json').read_text(encoding='utf-8'))
+        paused = json.loads((first / 'ux_02_search_episode_pauses_in_place.json').read_text(encoding='utf-8'))
+        assert set(played['voiceQueueCalls']) == {'/api/dj/program/detail'}
+        assert paused['voiceQueueCalls'] == played['voiceQueueCalls']
+        assert '/api/v6/dj/program/byradio' in complete['voiceQueueCalls']
+        assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
+        assert len(list((root / 'first').glob('ux_*.png'))) == (3 if args.screenshots else 0)
+        print(json.dumps(dict(ok=True, actualWebView=True, voiceQueueVerified=True, stageCount=3)))
+        return
     if args.song_waterfall:
         complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
         assert complete['ok'] and complete['songWaterfallVerified'] and complete['stageCount'] == 5

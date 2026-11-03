@@ -8,6 +8,7 @@ use std::sync::{
 static MODE: Mutex<String> = Mutex::new(String::new());
 static CALLS: AtomicUsize = AtomicUsize::new(0);
 static V3_CALLS: AtomicUsize = AtomicUsize::new(0);
+static VOICE_QUEUE_CALLS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_SEARCH_UI_PROOF").is_some()
 }
@@ -45,6 +46,7 @@ pub fn control(value: &Value) {
             "scroll_duplicates",
             "song_waterfall",
             "song_waterfall_error",
+            "voice_queue",
             "preview",
             "lyrics",
             "empty",
@@ -91,6 +93,10 @@ pub fn result_play_trial() -> Option<i64> {
 static AUDIO_RANK_DETAILS: std::sync::Mutex<Vec<u64>> = std::sync::Mutex::new(Vec::new());
 pub fn audio_rank_details() -> Vec<u64> {
     AUDIO_RANK_DETAILS.lock().unwrap().clone()
+}
+pub fn voice_queue_calls() -> Option<Vec<String>> {
+    (MODE.lock().unwrap().as_str() == "voice_queue")
+        .then(|| VOICE_QUEUE_CALLS.lock().unwrap().clone())
 }
 
 pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
@@ -196,6 +202,14 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
 }
 
 fn podcast_response(path: &str, args: &Value) -> Option<Result<Value>> {
+    if MODE.lock().unwrap().as_str() == "voice_queue"
+        && matches!(
+            path,
+            "/api/djradio/v3/get" | "/api/v6/dj/program/byradio" | "/api/dj/program/detail"
+        )
+    {
+        VOICE_QUEUE_CALLS.lock().unwrap().push(path.into());
+    }
     let number = |key: &str, fallback| {
         args[key]
             .as_str()

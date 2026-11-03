@@ -50,6 +50,50 @@
     } finally { window.requestAnimationFrame=frames; }
   }
   try {
+    if(window.__cumulusSearchVoiceQueueProof){
+      await wait(()=>one('.track-row'),'daily ready');
+      await fixture('voice_queue');
+      const invoke=(name,args={})=>window.__TAURI_INTERNALS__.invoke(name,args);
+      const {epoch}=await invoke('account_snapshot');
+      const readQueue=()=>invoke('player_queue',{epoch});
+      async function playing(match){
+        for(let i=0;i<180;i++){
+          const state=await invoke('player_snapshot',{epoch});
+          if(match(state)&&state.state==='playing'&&state.position>.15)return state;
+          await sleep(70);
+        }
+        throw Error('native playback did not advance');
+      }
+      await invoke('play_selection',{epoch,selection:{kind:'songs',ids:['1','2','3'],index:0,quality:'standard'}});
+      await playing(state=>state.resourceKind==='catalog'&&state.track?.id==='1');
+      const original=await readQueue();
+      await fresh('合成声音队列');await choose('voices');
+      const card=()=>one('[data-result-key="voice:401"]');
+      const play=()=>card()?.querySelector('.search-card-play');
+      assert(card()?.querySelector('.search-voice-radio'),'selected episode has a known parent radio');
+      click(play());
+      const voice=await playing(state=>state.track?.voiceId==='401');
+      const queue=await readQueue();
+      assert(voice.track.id==='1'&&voice.entryId!==original.tracks[0].entryId,'episode is distinct from catalog song with same media ID');
+      assert(queue.tracks.map(row=>row.track.voiceId??row.track.id).join(',')==='1,401,2,3','single episode joins existing queue');
+      assert(queue.tracks.filter(row=>!row.track.voiceId).map(row=>row.entryId).join(',')===
+        original.tracks.map(row=>row.entryId).join(','),'catalog entries preserve identity and order');
+      await capture('search_episode_joins_ordinary_queue');
+      await wait(()=>play()?.getAttribute('aria-label').startsWith('暂停 '),'current voice card offers pause');
+      click(play());
+      await wait(()=>one('.playerbar').dataset.state==='paused','same episode pauses from the card');
+      const paused=await invoke('player_snapshot',{epoch});
+      assert(paused.playId===voice.playId&&paused.queueRevision===voice.queueRevision,'pause keeps decoder and queue');
+      await capture('search_episode_pauses_in_place');
+      await choose('podcasts');
+      click(one('[data-result-key="podcast:301"] .search-card-play'));
+      await playing(state=>state.track?.voiceId==='401'&&state.origin?.kind==='podcast');
+      const radio=await readQueue();
+      assert(radio.tracks.map(row=>row.track.voiceId).join(',')==='401,402,403','explicit podcast card still plays its episode list');
+      await capture('search_podcast_keeps_explicit_radio_play');
+      await emit('complete',{ok:true,voiceQueueVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      return;
+    }
     if(window.__cumulusSearchSongWaterfallProof){
       await wait(()=>one('.track-row'),'daily ready');
       await emit('resize',{width:760,height:540});

@@ -68,6 +68,11 @@ Cumulus 无论是否有所属播单，只用声音 ID 解析该单集的原生�
 搜索双击也沿用社区的普通保留队列策略；编译分类行的双击数据没有明示 Scene.search，
 未断言官方在所有双击偏好和特殊播放模式下的行为相同。旧账号和不可用节目仍拒绝。
 search_results_smoke.py --voice-direct 可验证无所属播单的单集播放及暂停。
+search_results_smoke.py --voice-queue 用有父播客的单集复验：与同音源 ID 的普通
+歌曲分别保留，单集插入后保留原队列顺序和条目 ID，暂停不重建播放项或再读单集。
+单集分支只读取所选节目，不调用 /api/v6/dj/program/byradio；显式播放播客卡片
+仍读取该接口并载入节目列表。搜索高亮和暂停只匹配 voice 类型，已下载版本不
+被当成在线单集。该用例使用合成数据及原生音频输出测试路径，纳入两平台 CI。
 
 声音卡片的直接下载
 官方 SearchResults/components/recommend.jsx:537–556 复用 VoiceCard，

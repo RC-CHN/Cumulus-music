@@ -307,6 +307,7 @@ jobs:
           python scripts/ci/search_results_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-results-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_results_smoke.py --v3 --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-v3-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_results_smoke.py --voice-direct --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-voice-direct-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/search_results_smoke.py --voice-queue --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-voice-queue-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_results_smoke.py --search-next --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-next-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_results_smoke.py --song-waterfall --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-song-waterfall-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_results_smoke.py --card-matches --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-card-matches-windows --runtime .build/package-stage/windows-x64/native
@@ -578,6 +579,7 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-results-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --v3 --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-v3-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --voice-direct --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-voice-direct-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --voice-queue --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-voice-queue-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --search-next --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-next-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --song-waterfall --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-song-waterfall-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --card-matches --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-card-matches-linux
