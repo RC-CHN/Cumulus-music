@@ -18,11 +18,20 @@ def main():
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False, mode=0o700)
+    binary = args.binary.resolve(strict=True)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
     if args.runtime:
         runtime = args.runtime.resolve(strict=True)
         assert runtime.is_dir(), runtime
-        env['PATH'] = str(runtime) + os.pathsep + env.get('PATH', '')
+        if os.name == 'nt':
+            names = ('libmpv-2.dll', 'mpv-2.dll')
+            assert any((runtime / name).is_file() for name in names), 'requested runtime has no libmpv DLL'
+            # The trusted SDK loader prefers siblings and never uses PATH.
+            # Fail instead of silently testing an SDK outside the requested stage.
+            assert binary.parent == runtime or not any(
+                (binary.parent / name).is_file() for name in names
+            ), 'a libmpv DLL beside the probe would override the requested runtime'
+        env['MPV_DLL_DIR_CUMULUS'] = str(runtime)
     for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'),
                       ('XDG_CACHE_HOME', 'cache'), ('XDG_RUNTIME_DIR', 'runtime'),
                       ('APPDATA', 'roaming'), ('LOCALAPPDATA', 'local')]:
@@ -33,7 +42,7 @@ def main():
     mode = ('--synthetic-download' if args.download else
             f'--synthetic-search-{args.search_experiment}' if args.search_experiment else '--synthetic')
     with (root / 'host.log').open('x', encoding='utf-8') as log:
-        result = subprocess.run([str(args.binary.resolve()), mode, str(run)],
+        result = subprocess.run([str(binary), mode, str(run)],
                                 env=env, stdout=log, stderr=log, timeout=120, check=False)
     report = json.loads((run / 'report.json').read_text(encoding='utf-8'))
     assert result.returncode == 0 and report['ok'], report
