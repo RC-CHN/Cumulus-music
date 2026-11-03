@@ -292,3 +292,30 @@ async fn account_switch_drops_a_late_network_result_at_the_client_boundary() {
     api.release.notify_one();
     assert!(matches!(future.await.unwrap(), Err(Error::StaleResponse)));
 }
+
+#[tokio::test]
+async fn artist_profile_link_uses_public_account_id_and_native_viewer_identity() {
+    let (_root, api, _, client) = fixture();
+    for (account, projected, is_self) in [
+        (json!(9), json!("9"), true),
+        (json!("9007199254740993"), json!("9007199254740993"), false),
+        (json!("https://example.invalid/private"), Value::Null, false),
+    ] {
+        api.responses
+            .lock()
+            .unwrap()
+            .get_mut("/api/artist/v3/detail")
+            .unwrap()["artist"]["accountId"] = account;
+        let result = client
+            .catalog_page("1", CatalogQuery::Artist { id: "12".into() }, true)
+            .await
+            .unwrap()
+            .value
+            .unwrap();
+        let page = serde_json::to_value(result.page).unwrap();
+        assert_eq!(page["profileAccountId"], projected);
+        assert_eq!(page["isSelf"], is_self);
+        assert_eq!(page["artist"]["id"], "12");
+        assert!(!page.to_string().contains("example.invalid"));
+    }
+}

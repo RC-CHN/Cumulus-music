@@ -25,15 +25,21 @@ fn tracks(value: &Value) -> Result<Vec<TrackView>> {
         })
         .collect()
 }
-pub(super) fn page(saved: SavedCatalogPage, cached: bool) -> Result<CatalogView> {
+pub(super) fn page(saved: SavedCatalogPage, cached: bool, viewer: &str) -> Result<CatalogView> {
     let value = &saved.response;
     let more = value["more"].as_bool().unwrap_or(false);
     let page = match &saved.query {
-        CatalogQuery::Artist { .. } => CatalogPageView::Artist {
-            artist: cards::artist(&value["artist"])?,
-            tracks: tracks(&value["hotSongs"])?,
-            more,
-        },
+        CatalogQuery::Artist { .. } => {
+            let profile_account_id =
+                crate::protocol::api::identifier(&value["artist"]["accountId"]).ok();
+            CatalogPageView::Artist {
+                artist: cards::artist(&value["artist"])?,
+                is_self: profile_account_id.as_deref() == Some(viewer),
+                profile_account_id,
+                tracks: tracks(&value["hotSongs"])?,
+                more,
+            }
+        }
         CatalogQuery::ArtistDynamic { .. } => CatalogPageView::ArtistDynamic {
             followed: value["followed"]
                 .as_bool()

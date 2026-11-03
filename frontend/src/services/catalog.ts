@@ -62,7 +62,14 @@ export interface AlbumReadState {
   digitalAlbumTag: boolean | null;
 }
 export type CatalogPage =
-  | { kind: 'artist'; artist: ArtistCard; tracks: TrackView[]; more: boolean }
+  | {
+      kind: 'artist';
+      artist: ArtistCard;
+      profileAccountId?: string | null;
+      isSelf?: boolean;
+      tracks: TrackView[];
+      more: boolean;
+    }
   | { kind: 'artist_dynamic'; followed: boolean; onlineCount: number; videoCount: number | null }
   | { kind: 'artist_songs'; offset: number; total: number; more: boolean; tracks: TrackView[] }
   | { kind: 'artist_albums'; offset: number; total: number; more: boolean; albums: AlbumCard[] }

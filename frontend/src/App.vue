@@ -1947,6 +1947,7 @@ onUnmounted(() => {
                 :busy-likes="busyLikes"
                 :current-id="currentTrackId"
                 @open="openCatalog"
+                @profile="(id) => music.navigate({ kind: 'playlist_creator', id })"
                 @play-album="playAlbumCard"
                 @album-action="albumAction"
                 @play-artist="playResourceCard({ kind: 'artist', id: $event.id })"

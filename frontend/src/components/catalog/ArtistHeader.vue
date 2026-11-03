@@ -3,13 +3,15 @@ import type { ArtistCard } from '../../services/catalog';
 import Icon from '../Icon.vue';
 defineProps<{
   artist: ArtistCard;
+  profileAccountId?: string | null;
+  isSelf?: boolean;
   followed: boolean | null;
   followDisabled: boolean;
   playDisabled: boolean;
   refreshDisabled: boolean;
   refreshing: boolean;
 }>();
-const emit = defineEmits<{ play: []; follow: []; refresh: [] }>();
+const emit = defineEmits<{ play: []; follow: []; refresh: []; profile: [id: string] }>();
 </script>
 <template>
   <header class="catalog-header artist-header" :aria-busy="refreshing">
@@ -24,8 +26,16 @@ const emit = defineEmits<{ play: []; follow: []; refresh: [] }>();
     <div v-else class="catalog-cover artist catalog-placeholder"><Icon name="user" /></div>
     <div class="catalog-heading">
       <h1>{{ artist.name }}</h1>
-      <p v-if="artist.aliases.length" class="artist-alias muted">
-        {{ artist.aliases.join(' / ') }}
+      <p v-if="artist.aliases.length || profileAccountId" class="artist-alias muted">
+        <span v-if="artist.aliases.length">{{ artist.aliases.join(' / ') }}</span>
+        <button
+          v-if="profileAccountId"
+          class="text-button artist-profile-link"
+          type="button"
+          @click="emit('profile', profileAccountId)"
+        >
+          个人页
+        </button>
       </p>
       <div class="catalog-actions artist-actions">
         <button
@@ -37,6 +47,7 @@ const emit = defineEmits<{ play: []; follow: []; refresh: [] }>();
           <Icon name="play" />播放全部
         </button>
         <button
+          v-if="!isSelf"
           :disabled="followDisabled"
           :aria-pressed="followed ?? undefined"
           @click="emit('follow')"
@@ -59,3 +70,11 @@ const emit = defineEmits<{ play: []; follow: []; refresh: [] }>();
     </div>
   </header>
 </template>
+<style scoped>
+.artist-profile-link {
+  margin-inline-start: 8px;
+}
+.artist-profile-link:first-child {
+  margin-inline-start: 0;
+}
+</style>

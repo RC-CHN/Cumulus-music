@@ -22,6 +22,8 @@ pub struct CatalogView {
 pub enum CatalogPageView {
     Artist {
         artist: ArtistCard,
+        profile_account_id: Option<String>,
+        is_self: bool,
         tracks: Vec<TrackView>,
         more: bool,
     },

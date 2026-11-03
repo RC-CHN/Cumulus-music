@@ -34,6 +34,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
   open: [resource: CatalogResource];
+  profile: [id: string];
   play: [pages: CatalogSelectionPage[], index: number, gesture?: TrackPlayGesture];
   like: [track: TrackView];
   more: [request: TrackMenuRequest];
@@ -48,6 +49,10 @@ const emit = defineEmits<{
   playArtist: [artist: ArtistCard];
   artistAction: [request: ArtistCardRequest];
 }>();
+const artistProfile = computed(() => {
+  const page = props.model.detail.view.value?.page;
+  return page?.kind === 'artist' ? page : undefined;
+});
 const {
   resource,
   tab,
@@ -248,6 +253,8 @@ defineExpose({ checkpoint: () => checkpoint(), resourceKey: `${resource.kind}:${
       <ArtistHeader
         v-else-if="artist && tab !== 'all'"
         :artist="artist"
+        :profile-account-id="artistProfile?.profileAccountId"
+        :is-self="artistProfile?.isSelf"
         :followed="subscribed ?? null"
         :follow-disabled="
           subscribed == null ||
@@ -264,6 +271,7 @@ defineExpose({ checkpoint: () => checkpoint(), resourceKey: `${resource.kind}:${
           membership.busy.value
         "
         :refreshing="detail.loading.value || dynamic.loading.value"
+        @profile="emit('profile', $event)"
         @play="playHot"
         @follow="collect()"
         @refresh="refresh"

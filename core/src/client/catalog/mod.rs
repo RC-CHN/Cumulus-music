@@ -31,10 +31,12 @@ impl MusicClient {
         } else {
             service.cached_for(&token, &query)?
         };
-        self.session.with_token(&token, |_| {
+        self.session.with_token(&token, |viewer| {
             Ok(AccountData {
                 epoch: epoch.into(),
-                value: saved.map(|v| project::page(v, !refresh)).transpose()?,
+                value: saved
+                    .map(|v| project::page(v, !refresh, viewer))
+                    .transpose()?,
             })
         })
     }
