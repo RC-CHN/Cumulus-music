@@ -202,6 +202,11 @@ export function useSearchBox(core: CoreClient = useCore(), expired: () => void =
     void historyCommand({ kind: 'remember', keyword: value });
     return value;
   }
+  function submitInput() {
+    const channel = query.value.trim() ? ('typing' as const) : ('defaultquery' as const);
+    const keyword = submit();
+    return keyword ? { keyword, channel } : undefined;
+  }
   return {
     query,
     open,
@@ -222,6 +227,7 @@ export function useSearchBox(core: CoreClient = useCore(), expired: () => void =
     close,
     composition,
     submit,
+    submitInput,
     load,
     historyCommand,
     dispose,

@@ -97,6 +97,18 @@ impl SearchCategory {
 #[serde(rename_all = "snake_case")]
 pub enum SearchChannel {
     Hotquery,
+    Typing,
+    Defaultquery,
+}
+impl SearchChannel {
+    fn wire(channel: Option<Self>) -> &'static str {
+        match channel {
+            Some(Self::Hotquery) => "hotquery",
+            Some(Self::Typing) => "typing",
+            Some(Self::Defaultquery) => "defaultquery",
+            None => "suggest",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -155,10 +167,7 @@ pub async fn request(api: &dyn Api, q: &SearchResultQuery) -> Result<Value> {
     };
     args["limit"] = json!(q.limit);
     args["offset"] = json!(q.offset);
-    let channel = match q.channel {
-        Some(SearchChannel::Hotquery) => "hotquery",
-        None => "suggest",
-    };
+    let channel = SearchChannel::wire(q.channel);
     let path = match q.category {
         All => {
             args = json!({"keyword":keyword,"scene":"normal","needCorrect":q.correct,"channel":channel,"cursor":"{\"page\":0,\"ignoreBlocks\":[],\"traceId\":\"\"}","bizQueryInfo":""});

@@ -350,29 +350,36 @@ async fn lyrics_keep_full_returned_text_and_report_bounded_projection() {
 }
 
 #[tokio::test]
-async fn hotquery_is_forwarded_only_to_recovered_channel_aware_endpoints() {
+async fn channels_are_forwarded_only_to_recovered_channel_aware_endpoints() {
     use cumulus_core::catalog::search::results::SearchChannel;
     let (_root, api, _, client) = fixture();
     let epoch = client.account().unwrap().epoch;
     let payloads: Value =
         serde_json::from_str(include_str!("fixtures/search-results.json")).unwrap();
-    for category in C::ALL {
-        let key = serde_json::to_value(category).unwrap();
-        *api.reply.lock().unwrap() = payloads[key.as_str().unwrap()].clone();
-        let mut q = query(category);
-        q.channel = Some(SearchChannel::Hotquery);
-        let view = client.search_results(&epoch, q).await.unwrap().value;
-        assert_eq!(view.query.channel, Some(SearchChannel::Hotquery));
-        let calls = api.calls.lock().unwrap();
-        let (_, args) = calls.last().unwrap();
-        assert_eq!(
-            args["channel"],
-            if matches!(category, C::All | C::Songs | C::Mvs) {
-                json!("hotquery")
-            } else {
-                Value::Null
-            }
-        );
+    for (channel, wire) in [
+        (Some(SearchChannel::Hotquery), "hotquery"),
+        (Some(SearchChannel::Typing), "typing"),
+        (Some(SearchChannel::Defaultquery), "defaultquery"),
+        (None, "suggest"),
+    ] {
+        for category in C::ALL {
+            let key = serde_json::to_value(category).unwrap();
+            *api.reply.lock().unwrap() = payloads[key.as_str().unwrap()].clone();
+            let mut q = query(category);
+            q.channel = channel;
+            let view = client.search_results(&epoch, q).await.unwrap().value;
+            assert_eq!(view.query.channel, channel);
+            let calls = api.calls.lock().unwrap();
+            let (_, args) = calls.last().unwrap();
+            assert_eq!(
+                args["channel"],
+                if matches!(category, C::All | C::Songs | C::Mvs) {
+                    json!(wire)
+                } else {
+                    Value::Null
+                }
+            );
+        }
     }
     assert!(serde_json::from_value::<SearchResultQuery>(json!({
         "keyword":"合成", "category":"all", "offset":0, "limit":30, "correct":true, "channel":"foreign"

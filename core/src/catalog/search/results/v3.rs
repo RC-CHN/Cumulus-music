@@ -16,10 +16,7 @@ pub(crate) async fn request(api: &dyn Api, q: &SearchResultQuery) -> Result<Valu
         return Err(Error::InvalidInput("invalid comprehensive search page"));
     }
     let keyword = super::super::keyword(&q.keyword)?;
-    let channel = match q.channel {
-        Some(SearchChannel::Hotquery) => "hotquery",
-        None => "suggest",
-    };
+    let channel = SearchChannel::wire(q.channel);
     let payload = json!({
         "keyword": keyword, "scene": "normal", "needCorrect": q.correct,
         "channel": channel, "bizQueryInfo": "",
@@ -517,7 +514,7 @@ mod tests {
         }
     }
 
-    struct Wire(u16);
+    struct Wire(u16, &'static str);
     impl Api for Wire {
         fn request<'a>(
             &'a self,
@@ -530,7 +527,7 @@ mod tests {
                 assert!(!cache);
                 assert_eq!(
                     payload,
-                    json!({"keyword":"合成","scene":"normal","needCorrect":false,"channel":"hotquery","bizQueryInfo":""})
+                    json!({"keyword":"合成","scene":"normal","needCorrect":false,"channel":self.1,"bizQueryInfo":""})
                 );
                 let data = json!({"blocks":[{"blockCode":"search_block_song","resources":[
                     {"baseInfo":{"simpleSongData":{"id":71,"name":"歌","al":{"id":2,"picUrl":"https://p1.music.126.net/x?secret=omitted"}}},
@@ -551,9 +548,21 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn v3_forwards_search_input_origins_without_tracking_data() {
+        for (channel, wire) in [
+            (SearchChannel::Typing, "typing"),
+            (SearchChannel::Defaultquery, "defaultquery"),
+        ] {
+            let mut query = query();
+            query.channel = Some(channel);
+            request(&Wire(200, wire), &query).await.unwrap();
+        }
+    }
+
+    #[tokio::test]
     async fn exact_request_and_scoped_partial_business_result() {
         for code in [200, 599] {
-            let page = request(&Wire(code), &query()).await.unwrap();
+            let page = request(&Wire(code, "hotquery"), &query()).await.unwrap();
             let song = &page["data"]["blocks"][0]["resources"][0]["baseInfo"];
             assert_eq!(song["id"], 71);
             assert_eq!(song["dt"], 60000);
@@ -566,18 +575,18 @@ mod tests {
         }
         for (status, expected) in [(405, 405), (598, 599)] {
             assert!(matches!(
-                request(&Wire(status), &query()).await.unwrap_err(),
+                request(&Wire(status, "hotquery"), &query()).await.unwrap_err(),
                 Error::Service { endpoint, code, .. } if endpoint == PATH && code == expected
             ));
         }
         assert!(matches!(
-            request(&Wire(500), &query()).await.unwrap_err(),
+            request(&Wire(500, "hotquery"), &query()).await.unwrap_err(),
             Error::HttpStatus { status: 599, .. }
         ));
         let mut next = query();
         next.offset = 1;
         assert!(matches!(
-            request(&Wire(200), &next).await,
+            request(&Wire(200, "hotquery"), &next).await,
             Err(Error::InvalidInput(_))
         ));
     }

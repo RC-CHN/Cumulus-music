@@ -26,7 +26,7 @@ export function displayedSearchCategories(
   keys.add(current);
   return [...keys].flatMap((key) => searchCategories.filter((tab) => tab.key === key));
 }
-export type SearchChannel = 'hotquery';
+export type SearchChannel = 'hotquery' | 'typing' | 'defaultquery';
 export interface SearchResultQuery {
   keyword: string;
   category: SearchCategory;

@@ -90,10 +90,16 @@ function onFocus() {
 }
 function submit(word?: string, channel?: SearchChannel, display?: string) {
   if (composing.value || performance.now() - compositionEnded < 60) return;
-  const value = model.submit(word, display);
+  const fromInput = word === undefined ? model.submitInput() : undefined;
+  const value = word === undefined ? fromInput?.keyword : model.submit(word, display);
   if (value) {
     focusInput();
-    emit('search', value, channel, query.value !== value ? query.value : undefined);
+    emit(
+      'search',
+      value,
+      fromInput?.channel ?? channel,
+      query.value !== value ? query.value : undefined,
+    );
   }
 }
 function playChart(keywords: string[]) {

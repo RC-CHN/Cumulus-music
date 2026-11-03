@@ -153,3 +153,16 @@ test('a chosen label stays visible but history records only the real search term
     m.dispose();
   }
 });
+
+test('the search field distinguishes its rotating default from a typed keyword', async () => {
+  const m = fixture();
+  await m.connect(account());
+  m.input('  ');
+  assert.deepEqual(m.submitInput(), { keyword: '实际默认词', channel: 'defaultquery' });
+  assert.equal(m.query.value, '实际默认词');
+  m.input(' 实际默认词 ');
+  assert.deepEqual(m.submitInput(), { keyword: '实际默认词', channel: 'typing' });
+  m.composition(true);
+  assert.equal(m.submitInput(), undefined);
+  m.dispose();
+});

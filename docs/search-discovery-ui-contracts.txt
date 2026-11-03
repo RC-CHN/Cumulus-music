@@ -140,3 +140,10 @@ search_smoke.py --suggestion-matches 可验证重复命中、特殊符号和原�
 等待原生回读确认，保留删除失败及非最后一条的浮层状态；当前查询或页面已变化时，
 迟到回包不能关闭新浮层。焦点仍归原浮层时回到搜索输入框。独立验证：
 search_smoke.py --history-last。
+
+顶栏搜索来源
+官方 SearchBox/index.tsx:280–300、M623:1596–1600 区分输入词（typing）和空输入
+时提交轮换默认词（defaultquery）。Cumulus 从当前输入判断，默认词使用其真实关键词；
+输入与默认词同名仍属 typing。两种来源由原有搜索路由传给已有 channel 的结果端点，
+不扩大端点范围。榜单 hotquery 与其他入口现有行为保持；不获取或传递官方不透明的
+bizQueryInfo、追踪字段或链接。
