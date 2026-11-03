@@ -2,7 +2,14 @@ import type { CoreClient, ArtistReference } from './contracts.ts';
 import type { AlbumCard, CatalogResource } from './catalog.ts';
 import type { PlaySelection, Quality } from './player.ts';
 
-export type AlbumCardAction = 'next' | 'collect' | 'remove' | 'share' | 'copy' | 'download';
+export type AlbumCardAction =
+  | 'next'
+  | 'queue'
+  | 'collect'
+  | 'remove'
+  | 'share'
+  | 'copy'
+  | 'download';
 export interface AlbumCardRequest {
   album: AlbumCard;
   action: AlbumCardAction;

@@ -13,6 +13,7 @@ const props = defineProps<{
   playDisabled: boolean;
   downloadDisabled: boolean;
   batchDisabled: boolean;
+  queueDisabled: boolean;
   refreshDisabled: boolean;
   refreshing: boolean;
 }>();
@@ -22,6 +23,7 @@ const emit = defineEmits<{
   collect: [];
   download: [];
   batch: [origin: HTMLElement | null];
+  queue: [origin: HTMLElement | null];
   refresh: [];
 }>();
 const share = ref(false);
@@ -31,6 +33,7 @@ const shareReturnFocus = () =>
 function chooseAction(key: string) {
   if (key === 'share') share.value = true;
   if (key === 'batch') emit('batch', shareReturnFocus());
+  if (key === 'queue') emit('queue', shareReturnFocus());
   if (key === 'refresh') emit('refresh');
 }
 const credits = computed(() =>
@@ -112,6 +115,12 @@ const published = computed(() => {
           :items="[
             { key: 'share', label: '分享专辑', icon: 'share' },
             { key: 'batch', label: '批量操作', icon: 'list', disabled: batchDisabled },
+            {
+              key: 'queue',
+              label: '添加全部至播放列表',
+              icon: 'plus',
+              disabled: queueDisabled || batchDisabled,
+            },
             { key: 'refresh', label: '刷新详情', icon: 'refresh', disabled: refreshDisabled },
           ]"
           @select="chooseAction"

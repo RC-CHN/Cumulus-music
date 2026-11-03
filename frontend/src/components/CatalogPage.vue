@@ -104,6 +104,10 @@ function openTrackBatch(origin: HTMLElement | null) {
     batchTracks.value = [...usable.values()];
   }
 }
+function queueCurrentAlbum(anchor: HTMLElement | null) {
+  if (!props.queueable || !props.model.valid() || !album.value) return;
+  emit('albumAction', { action: 'queue', album: album.value, anchor });
+}
 const artistQueueNotice = ref('');
 async function artistSongsAction(key: string) {
   if (key === 'batch') {
@@ -303,6 +307,7 @@ defineExpose({ checkpoint: () => checkpoint(), resourceKey: `${resource.kind}:${
         "
         :play-disabled="!playable || playBusy || !tracks.some((t) => !t.missing)"
         :download-disabled="downloadBusy || !tracks.some((t) => !t.missing)"
+        :queue-disabled="!queueable"
         :batch-disabled="!tracks.some((track) => !track.missing && !track.local)"
         :refresh-disabled="detail.loading.value || membership.busy.value"
         :refreshing="detail.loading.value"
@@ -316,6 +321,7 @@ defineExpose({ checkpoint: () => checkpoint(), resourceKey: `${resource.kind}:${
           )
         "
         @batch="openTrackBatch"
+        @queue="queueCurrentAlbum"
         @refresh="refresh"
       />
       <ArtistHeader

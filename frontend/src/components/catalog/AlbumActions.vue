@@ -74,11 +74,18 @@ async function execute() {
   message.value = fromFeedback ? '正在处理…' : '';
   clearTimeout(timer);
   try {
-    if (target.action === 'next') {
+    if (target.action === 'next' || target.action === 'queue') {
       const starts = !props.player.view.value?.queueLen && !props.player.view.value?.track;
       const result = await props.player.queueAlbum(target.album.id);
       if (!result) throw { code: 'playback_changed', message: '播放状态已变化，请重试' };
-      if (current === sequence) feedback(starts ? '已开始播放' : '已设为下一首播放');
+      if (current === sequence)
+        feedback(
+          starts
+            ? '已开始播放'
+            : target.action === 'queue'
+              ? '已添加到播放列表'
+              : '已设为下一首播放',
+        );
     } else if (target.action === 'copy') {
       if (!/^\d+$/.test(target.album.id)) throw { code: 'invalid', message: '专辑链接暂不可用' };
       await core.copyText(`https://music.163.com/album?id=${target.album.id}`);

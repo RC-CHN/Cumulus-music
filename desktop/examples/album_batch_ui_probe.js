@@ -94,7 +94,56 @@
         queue.current === queue.tracks[0].entryId;
     }, 'native queue matches album selection');
     if (!onDetail() || modal()) throw Error('playback should not change the album tab');
-    await emit('complete', { ok: true, albumBatchVerified: true, writesSubmitted: false });
+    const allAlbumSongs = Array.from({ length: 11 }, (_, i) => String(i + 1));
+    const matchesQueue = async (ids) => {
+      const queue = await invoke('player_queue', { epoch });
+      return queue.tracks.map((entry) => entry.track.id).join(',') === ids.join(',') && queue;
+    };
+    async function showAddAll() {
+      click(more);
+      return wait(() => {
+        const item = button('添加全部至播放列表');
+        return item && !item.disabled && item;
+      }, 'album add-all action');
+    }
+    await invoke('play_selection', {
+      epoch, selection: { kind: 'songs', ids: ['91', '3', '1', '92'], index: 1, quality: 'standard' },
+    });
+    await wait(async () => {
+      const current = await invoke('player_snapshot', { epoch });
+      return current.track?.id === '3' && current.state === 'playing' && current.position > 0.2;
+    }, 'album add-all paused baseline advances');
+    const paused = await invoke('player_action', { epoch, action: { kind: 'pause', paused: true } });
+    const original = await invoke('player_queue', { epoch });
+    const add = await showAddAll();
+    await sleep(450);
+    window.__CUMULUS_ALBUM_CAPTURE_ACK__ = '';
+    await emit('ux_album_queue_menu', { activeAlbumTab: 'detail' });
+    await wait(() => window.__CUMULUS_ALBUM_CAPTURE_ACK__ === 'ux_album_queue_menu', 'menu capture');
+    click(add);
+    const inserted = await wait(() => matchesQueue([
+      '91', '3', ...allAlbumSongs.filter((id) => id !== '3'), '92',
+    ]), 'album added once after the current song');
+    await wait(() => one('.album-action-feedback')?.textContent.includes('已添加到播放列表'),
+      'append feedback');
+    const retained = await invoke('player_snapshot', { epoch });
+    if (!onDetail() || retained.state !== 'paused' || retained.playId !== paused.playId ||
+        retained.position !== paused.position || original.current !== inserted.current ||
+        inserted.tracks[2].entryId !== original.tracks[2].entryId)
+      throw Error('album add-all changed the paused song or replaced a duplicate entry');
+    await invoke('player_action', { epoch, action: { kind: 'clear' } });
+    await wait(() => one('.playerbar')?.dataset.state === 'idle', 'empty player view');
+    click(await showAddAll());
+    await wait(async () => {
+      const player = await invoke('player_snapshot', { epoch });
+      return player.state === 'playing' && player.track?.id === '1' &&
+        player.origin?.kind === 'album' && await matchesQueue(allAlbumSongs);
+    }, 'empty queue starts the first album song');
+    await wait(() => one('.album-action-feedback')?.textContent.includes('已开始播放'),
+      'empty queue feedback');
+    await emit('complete', {
+      ok: true, albumBatchVerified: true, albumQueueVerified: true, writesSubmitted: false,
+    });
   } catch (error) {
     await emit('failed', { error: String(error?.message ?? error) });
   }
