@@ -1,10 +1,10 @@
 import { nextTick, onBeforeUnmount, watch, type Ref } from 'vue';
 import type { DownloadModel } from './useDownloads';
-import { downloadViewportKey, type DownloadViewport } from '../services/downloadViewport';
+import { downloadViewportKey, type DownloadViewport } from '../services/downloadViewport.ts';
+import { waitForViewportFrames } from '../services/viewportLayout.ts';
 
 const rows = '[data-download-task],[data-download-mv]';
 const taskId = (row: HTMLElement) => row.dataset.downloadTask ?? row.dataset.downloadMv;
-const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 
 export function useDownloadViewport(
   root: Ref<HTMLElement | undefined>,
@@ -70,11 +70,10 @@ export function useDownloadViewport(
         saved.epoch === model.view.value?.epoch &&
         saved.query === key();
       // ResizeObserver establishes the actual column count before applying an anchor.
-      await frame();
-      await frame();
+      await waitForViewportFrames(2);
       await nextTick();
-      if (!valid()) return;
-      const el = scroller()!;
+      const el = scroller();
+      if (!valid() || !el) return;
       const items = model.view.value!.tasks;
       let index = items.findIndex((task) => task.id === saved.anchor);
       if (index < 0) index = Math.min(saved.index, items.length - 1);
@@ -86,10 +85,9 @@ export function useDownloadViewport(
       );
       el.dispatchEvent(new Event('scroll'));
       if (saved.growth.length === growth.value.length) growth.value = [...saved.growth];
-      await frame();
-      await frame();
+      await waitForViewportFrames(2);
       await nextTick();
-      if (!valid()) return;
+      if (!valid() || scroller() !== el) return;
       const candidates = [...el.querySelectorAll<HTMLElement>(rows)];
       const selected = candidates.find((row) => taskId(row) === saved.focus?.task);
       const controls = [
