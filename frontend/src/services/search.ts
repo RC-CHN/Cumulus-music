@@ -61,17 +61,21 @@ export interface SearchChart {
   id: string;
   name: string;
   items: SearchWord[];
+  needPlay?: boolean;
+  playKeywords?: string[] | null;
 }
 export type SearchDiscoveryQuery =
   | { kind: 'defaults' | 'charts' }
   | { kind: 'recommendations'; lastQuery: string }
   | { kind: 'chart'; id: string }
+  | { kind: 'chart_songs'; keywords: string[] }
   | { kind: 'suggestions'; keyword: string };
 export type SearchDiscovery =
   | { kind: 'defaults'; words: SearchWord[]; refreshMs: number }
   | { kind: 'recommendations'; words: SearchWord[] }
   | { kind: 'charts'; charts: SearchChart[] }
-  | { kind: 'chart'; id: string; items: SearchWord[] }
+  | { kind: 'chart'; id: string; items: SearchWord[]; playKeywords?: string[] | null }
+  | { kind: 'chart_songs'; ids: string[] }
   | { kind: 'suggestions'; title: string; recommended: SearchWord[]; suggestions: SearchWord[] };
 export type SearchHistoryCommand =
   | { kind: 'read' | 'clear' }

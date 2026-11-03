@@ -87,7 +87,9 @@ export function useSearchBox(core: CoreClient = useCore(), expired: () => void =
               void load({ kind: 'chart', id: chart.id }, 'chart:' + chart.id);
           break;
         case 'chart':
-          charts.value = charts.value.map((c) => (c.id === v.id ? { ...c, items: v.items } : c));
+          charts.value = charts.value.map((c) =>
+            c.id === v.id ? { ...c, items: v.items, playKeywords: v.playKeywords } : c,
+          );
           break;
         case 'suggestions':
           suggestionTitle.value = v.title;

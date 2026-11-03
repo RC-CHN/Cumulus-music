@@ -16,6 +16,7 @@ pub fn control(value: &Value) {
         [
             "good",
             "home_error",
+            "chart_play",
             "suggest_error",
             "result_error",
             "unavailable",
@@ -71,7 +72,9 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
     if let Some(result) = result_response(path, args) {
         return Some(result);
     }
-    if !enabled() || !path.starts_with("/api/search/") {
+    if !enabled()
+        || !(path.starts_with("/api/search/") || path == "/api/hot/search/relate/song/get")
+    {
         return None;
     }
     CALLS.fetch_add(1, Ordering::SeqCst);
@@ -92,6 +95,20 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
         (1..=count).map(|n|json!({"keyword":format!("合成推荐词{n}"),"toUserWord":format!("推荐词{n} · 非常长的标题用来检查省略显示")})).collect()
     };
     let data = match path {
+        "/api/hot/search/relate/song/get" if mode == "chart_play" => {
+            let expected = (1..=20)
+                .map(|n| format!("热搜关键词{n}"))
+                .collect::<Vec<_>>();
+            let received = args["keywords"]
+                .as_str()
+                .and_then(|s| serde_json::from_str::<Vec<String>>(s).ok());
+            if received.as_ref() != Some(&expected) {
+                return Some(Err(Error::InvalidInput(
+                    "wrong synthetic chart play keywords",
+                )));
+            }
+            json!({"songs":[{"song":{"id":178}},{"song":{"id":177}}]})
+        }
         "/api/search/default/keyword/get" => {
             json!({"refreshTime":60000,"keywords":[{"realkeyword":"合成默认关键词","showKeyword":"发现合成好声音"}]})
         }
@@ -106,7 +123,7 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
                 vec![]
             } else {
                 ids.iter()
-                    .map(|(id, name)| json!({"id":id,"name":name}))
+                    .map(|(id, name)| json!({"id":id,"name":name,"needPlay":mode=="chart_play" && *id=="HOT_SEARCH_SONG#@#"}))
                     .collect()
             };
             json!({"tabInfo":{"list":tabs},"items":{}})

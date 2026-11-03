@@ -17,6 +17,7 @@ pub enum SearchDiscoveryQuery {
     Recommendations { last_query: String },
     Charts,
     Chart { id: String },
+    ChartSongs { keywords: Vec<String> },
     Suggestions { keyword: String },
 }
 #[derive(Clone, Serialize)]
@@ -32,6 +33,8 @@ pub struct SearchChart {
     pub id: String,
     pub name: String,
     pub items: Vec<SearchWord>,
+    pub play_keywords: Option<Vec<String>>,
+    pub need_play: bool,
 }
 #[derive(Serialize)]
 #[serde(
@@ -53,6 +56,10 @@ pub enum SearchDiscovery {
     Chart {
         id: String,
         items: Vec<SearchWord>,
+        play_keywords: Option<Vec<String>>,
+    },
+    ChartSongs {
+        ids: Vec<String>,
     },
     Suggestions {
         title: String,
@@ -60,6 +67,8 @@ pub enum SearchDiscovery {
         suggestions: Vec<SearchWord>,
     },
 }
+pub(crate) const CHART_ITEM_LIMIT: usize = 20;
+
 pub fn keyword(value: &str) -> Result<String> {
     let value = value.trim();
     if value.is_empty() || value.chars().count() > 256 || value.chars().any(char::is_control) {
@@ -84,6 +93,19 @@ pub async fn discover(api: Arc<dyn Api>, query: SearchDiscoveryQuery) -> Result<
                 return Err(Error::InvalidInput("unknown search chart"));
             }
             ("/api/search/pc/chart/detail", json!({"id":id}))
+        }
+        SearchDiscoveryQuery::ChartSongs { keywords } => {
+            if keywords.is_empty() || keywords.len() > CHART_ITEM_LIMIT {
+                return Err(Error::InvalidInput("invalid search chart keywords"));
+            }
+            let words = keywords
+                .iter()
+                .map(|word| keyword(word))
+                .collect::<Result<Vec<_>>>()?;
+            (
+                "/api/hot/search/relate/song/get",
+                json!({"keywords":serde_json::to_string(&words)?}),
+            )
         }
         SearchDiscoveryQuery::Suggestions { keyword: text } => (
             "/api/search/pc/suggest/keyword/get",

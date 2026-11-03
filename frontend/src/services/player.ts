@@ -180,6 +180,7 @@ export type PlaySelection =
       quality: Quality;
     }
   | { kind: 'cloud_batch'; ids: string[]; revision: string; quality: Quality; query?: CloudQuery }
+  | { kind: 'search_chart'; ids: string[]; quality: Quality }
   | { kind: 'songs'; ids: string[]; index: number; quality: Quality }
   | {
       kind: 'playlist';

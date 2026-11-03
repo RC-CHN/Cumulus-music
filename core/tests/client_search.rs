@@ -42,10 +42,13 @@ impl Api for Backend {
                     json!({"operateWords":{"first":{"keyword":"运营词"}},"algWords":[{"keyword":"推荐词","toUserWord":"推荐显示","url":"https://private.invalid"}]})
                 }
                 "/api/search/pc/chart/list" => {
-                    json!({"tabInfo":{"list":[{"id":"HOT_SEARCH_SONG#@#","name":"热搜榜"},{"id":"unknown","name":"不可用分支"}]},"items":{"HOT_SEARCH_SONG#@#":[{"searchWord":"热词","toUserWord":"长标题","iconType":1,"url":"PRIVATE"}]}})
+                    json!({"tabInfo":{"list":[{"id":"HOT_SEARCH_SONG#@#","name":"热搜榜","needPlay":true},{"id":"unknown","name":"不可用分支"}]},"items":{"HOT_SEARCH_SONG#@#":[{"searchWord":"热词","realkeyword":"备用词","toUserWord":"长标题","iconType":1,"url":"PRIVATE"}]}})
                 }
                 "/api/search/pc/chart/detail" => {
                     json!({"itemList":[{"searchWord":"榜单补读","toUserWord":"榜单补读"}]})
+                }
+                "/api/hot/search/relate/song/get" => {
+                    json!({"songs":[{"song":{"id":88,"url":"PRIVATE"}},{"song":{"id":"67"}},{"song":{"id":88}}]})
                 }
                 "/api/search/pc/suggest/keyword/get" => {
                     json!({"recTitle":"猜你想搜","recs":[{"keyword":"推荐建议"}],"suggests":[{"keyword":"联想词","name":"显示名称","cookie":"PRIVATE"}]})
@@ -209,4 +212,46 @@ async fn malformed_search_is_not_an_empty_success_and_late_account_results_are_r
     session.detach().unwrap();
     api.release.notify_one();
     assert!(request.await.is_err());
+}
+
+#[tokio::test]
+async fn hot_chart_play_resolves_only_ordered_song_ids_for_exact_keywords() {
+    let (_r, api, session, client, _) = fixture();
+    let epoch = session.token().unwrap().generation.to_string();
+    let chart =
+        serde_json::to_value(client.search_discovery(&epoch, Q::Charts).await.unwrap()).unwrap();
+    assert_eq!(chart["value"]["charts"][0]["needPlay"], true);
+    assert_eq!(chart["value"]["charts"][0]["playKeywords"], json!(["热词"]));
+    let value = serde_json::to_value(
+        client
+            .search_discovery(
+                &epoch,
+                Q::ChartSongs {
+                    keywords: vec![" 热词 ".into(), "另一首".into(), "热词".into()],
+                },
+            )
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        value["value"],
+        json!({"kind":"chart_songs","ids":["88","67","88"]})
+    );
+    assert_eq!(
+        api.calls.lock().unwrap()[1],
+        (
+            "/api/hot/search/relate/song/get".into(),
+            json!({"keywords":"[\"热词\",\"另一首\",\"热词\"]"})
+        )
+    );
+    for keywords in [vec![], vec!["过量".into(); 21], vec!["无\n效".into()]] {
+        assert!(matches!(
+            client
+                .search_discovery(&epoch, Q::ChartSongs { keywords })
+                .await,
+            Err(Error::InvalidInput(_))
+        ));
+    }
+    assert_eq!(api.calls.lock().unwrap().len(), 2);
 }

@@ -1,4 +1,5 @@
 use super::*;
+use crate::protocol::api::identifier;
 use serde_json::Value;
 
 // M/623 filters the server list to these recovered chart kinds.
@@ -47,6 +48,12 @@ fn word(row: &Value) -> Option<SearchWord> {
 fn words(rows: &[Value], limit: usize) -> Vec<SearchWord> {
     rows.iter().filter_map(word).take(limit).collect()
 }
+fn chart_keywords(rows: &[Value]) -> Option<Vec<String>> {
+    if rows.is_empty() || rows.len() > CHART_ITEM_LIMIT {
+        return None;
+    }
+    rows.iter().map(|row| text(&row["searchWord"])).collect()
+}
 pub(super) fn discovery(query: SearchDiscoveryQuery, response: &Value) -> Result<SearchDiscovery> {
     let d = &response["data"];
     if !d.is_object() {
@@ -76,25 +83,48 @@ pub(super) fn discovery(query: SearchDiscoveryQuery, response: &Value) -> Result
                 let Some(name) = text(&row["name"]) else {
                     continue;
                 };
-                let items = if d["items"][id].is_null() {
-                    vec![]
+                let rows = if d["items"][id].is_null() {
+                    &[]
                 } else {
-                    words(array(&d["items"][id])?, 20)
+                    array(&d["items"][id])?
                 };
+                let need_play = row["needPlay"] == true;
+                let items = words(rows, CHART_ITEM_LIMIT);
                 if !charts.iter().any(|c: &SearchChart| c.id == id) {
                     charts.push(SearchChart {
                         id: id.into(),
                         name,
                         items,
+                        play_keywords: if need_play {
+                            chart_keywords(rows)
+                        } else {
+                            None
+                        },
+                        need_play,
                     });
                 }
             }
             SearchDiscovery::Charts { charts }
         }
-        SearchDiscoveryQuery::Chart { id } => SearchDiscovery::Chart {
-            id,
-            items: words(array(&d["itemList"])?, 20),
-        },
+        SearchDiscoveryQuery::Chart { id } => {
+            let rows = array(&d["itemList"])?;
+            SearchDiscovery::Chart {
+                id,
+                items: words(rows, CHART_ITEM_LIMIT),
+                play_keywords: chart_keywords(rows),
+            }
+        }
+        SearchDiscoveryQuery::ChartSongs { .. } => {
+            let rows = array(&d["songs"])?;
+            if rows.is_empty() || rows.len() > CHART_ITEM_LIMIT {
+                return Err(Error::Response("invalid search chart songs"));
+            }
+            let ids = rows
+                .iter()
+                .map(|row| identifier(&row["song"]["id"]))
+                .collect::<Result<Vec<_>>>()?;
+            SearchDiscovery::ChartSongs { ids }
+        }
         SearchDiscoveryQuery::Suggestions { .. } => SearchDiscovery::Suggestions {
             title: text(&d["recTitle"]).unwrap_or_else(|| "猜你想搜".into()),
             recommended: words(array(&d["recs"])?, 10),

@@ -9,8 +9,17 @@ import SearchTags from './SearchTags.vue';
 import SearchCharts from './SearchCharts.vue';
 import SearchSuggestions from './SearchSuggestions.vue';
 import SearchHistoryConfirm from './SearchHistoryConfirm.vue';
-const props = defineProps<{ account: AccountView; pageKey: string; keyword?: string }>();
-const emit = defineEmits<{ search: [keyword: string]; expired: [] }>();
+const props = defineProps<{
+  account: AccountView;
+  pageKey: string;
+  keyword?: string;
+  playable: boolean;
+}>();
+const emit = defineEmits<{
+  search: [keyword: string];
+  playChart: [keywords: string[]];
+  expired: [];
+}>();
 const model = useSearchBox(undefined, () => emit('expired'));
 const {
   query,
@@ -75,6 +84,12 @@ function submit(word?: string) {
     focusInput();
     emit('search', value);
   }
+}
+function playChart(keywords: string[]) {
+  if (!props.playable || !open.value || searching.value || composing.value) return;
+  model.close();
+  focusInput();
+  emit('playChart', keywords);
 }
 async function clear() {
   model.input('');
@@ -292,9 +307,11 @@ onUnmounted(() => {
             <p v-else-if="!charts.length" class="search-muted">暂无热搜榜</p>
             <SearchCharts
               :charts="charts"
+              :playable="playable"
               :pending="pending"
               :errors="errors"
               @select="submit"
+              @play="playChart"
               @retry="(id) => model.load({ kind: 'chart', id }, 'chart:' + id)"
             />
           </template>

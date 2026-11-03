@@ -300,6 +300,16 @@ function openSearchItem(item: SearchItem) {
     else music.notice.value = '此视频暂不可打开';
   }
 }
+function playSearchChart(keywords: string[]) {
+  if (account.value.status !== 'authenticated' || !player.ready.value || player.busy.value) return;
+  const quality = player.view.value?.qualityPreferences.quality ?? 'standard';
+  void player.prepareSelection(async (epoch) => {
+    const response = await core.searchDiscovery(epoch, { kind: 'chart_songs', keywords });
+    if (response.epoch !== epoch || response.value.kind !== 'chart_songs')
+      throw { code: 'stale', message: '热搜榜播放已失效', retryable: false };
+    return { kind: 'search_chart', ids: response.value.ids, quality };
+  });
+}
 function playSearchCard(item: SearchItem) {
   const view = player.view.value;
   if (
@@ -1423,6 +1433,8 @@ onUnmounted(() => {
         :account="account"
         :page-key="navigationKey"
         :keyword="page.kind === 'search' ? page.keyword : undefined"
+        :playable="player.ready.value && !player.busy.value"
+        @play-chart="playSearchChart"
         @search="(word) => music.navigate({ kind: 'search', keyword: word })"
         @expired="music.bootstrap(false)"
       />

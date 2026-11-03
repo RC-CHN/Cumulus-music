@@ -1,15 +1,37 @@
 <script setup lang="ts">
+import Icon from '../Icon.vue';
 import type { SearchChart } from '../../services/search';
 defineProps<{
   charts: SearchChart[];
+  playable: boolean;
   pending: Record<string, boolean>;
   errors: Record<string, string>;
 }>();
-const emit = defineEmits<{ select: [keyword: string]; retry: [id: string] }>();
+const emit = defineEmits<{
+  select: [keyword: string];
+  play: [keywords: string[]];
+  retry: [id: string];
+}>();
 </script>
 <template>
   <section v-for="chart in charts" :key="chart.id" class="search-chart">
-    <h3>{{ chart.name }}</h3>
+    <div class="search-chart-title">
+      <h3>{{ chart.name }}</h3>
+      <button
+        v-if="
+          chart.needPlay &&
+          chart.items.length &&
+          !pending['chart:' + chart.id] &&
+          !errors['chart:' + chart.id]
+        "
+        class="search-chart-play"
+        :aria-label="'播放' + chart.name"
+        :disabled="!playable || !chart.playKeywords?.length"
+        @click="chart.playKeywords?.length && emit('play', chart.playKeywords)"
+      >
+        <Icon name="play" />播放
+      </button>
+    </div>
     <p v-if="pending['chart:' + chart.id]" class="search-muted" role="status">正在加载榜单…</p>
     <div v-else-if="errors['chart:' + chart.id]" class="search-section-error" role="alert">
       <span>{{ errors['chart:' + chart.id] }}</span
@@ -31,3 +53,29 @@ const emit = defineEmits<{ select: [keyword: string]; retry: [id: string] }>();
     </div>
   </section>
 </template>
+
+<style scoped>
+.search-chart-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.search-chart-play {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 12px;
+}
+.search-chart-play:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+.search-chart-play svg {
+  width: 16px;
+  height: 16px;
+}
+</style>

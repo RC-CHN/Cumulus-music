@@ -362,6 +362,14 @@
       "late closed reply does not reopen",
     );
     await capture("closed_late_reply");
+    await fixture("chart_play");
+    await home();
+    await wait(() => button("播放热搜榜") && !button("播放热搜榜").disabled, "conditional hot chart play");
+    assert(!button("播放摇滚榜") && !button("播放ACG榜"), "only the advertised chart has Play");
+    click(button("播放热搜榜"));
+    await wait(() => !panel() && one(".playerbar")?.dataset.state === "playing" &&
+      one(".now-playing")?.textContent.includes("178"), "chart play selects first returned song");
+    assert(document.activeElement === input(), "chart play returns search focus");
     await fixture("expired");
     input().click();
     type("失效");
@@ -379,6 +387,7 @@
       stageCount: count,
       checks,
       responseTimingInjected: true,
+      conditionalChartPlayVerified: true,
       realMusicRequests: 0,
       realAccountWrites: 0,
       officialPixelMatchVerified: false,

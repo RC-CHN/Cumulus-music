@@ -179,6 +179,10 @@ pub enum PlaySelection {
         #[serde(default)]
         query: Option<crate::client::dto::CloudQuery>,
     },
+    SearchChart {
+        ids: Vec<String>,
+        quality: Quality,
+    },
     Songs {
         ids: Vec<String>,
         index: usize,

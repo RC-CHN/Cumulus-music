@@ -1369,3 +1369,28 @@ async fn stale_queue_confirmation_does_not_cancel_the_new_selection_in_flight() 
     );
     client.player_action("1", PlayerAction::Stop).await.unwrap();
 }
+
+#[tokio::test]
+async fn hot_search_selection_keeps_queue_order_and_requests_search_trial() {
+    let (_dir, api, _session, client, _) = fixture();
+    client
+        .play_selection(
+            "1",
+            PlaySelection::SearchChart {
+                ids: vec!["8".into(), "3".into()],
+                quality: Quality::Standard,
+            },
+        )
+        .await
+        .unwrap();
+    let queue = client.player_queue("1").await.unwrap();
+    assert_eq!(
+        queue
+            .tracks
+            .iter()
+            .map(|track| track.track.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["8", "3"]
+    );
+    assert_eq!(*api.trial.lock().unwrap(), Some(json!(42)));
+}
