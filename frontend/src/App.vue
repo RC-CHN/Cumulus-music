@@ -307,6 +307,8 @@ function openSearchItem(item: SearchItem) {
   if (item.kind === 'artist') openCatalog({ kind: 'artist', id: item.artist.id });
   else if (item.kind === 'album') openCatalog({ kind: 'album', id: item.album.id });
   else if (item.kind === 'playlist') music.navigate({ kind: 'playlist', id: item.playlist.id });
+  else if (item.kind === 'user' && !item.user.unavailable)
+    music.navigate({ kind: 'playlist_creator', id: item.user.id });
   else if (item.kind === 'podcast') openSceneRadio(item.podcast.id);
   else if (item.kind === 'voice') {
     if (item.voice.radioId) openSceneRadio(item.voice.radioId);

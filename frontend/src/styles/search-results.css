@@ -269,45 +269,6 @@
 .search-result-pagination button {
   padding: 8px 12px;
 }
-.search-user-dialog {
-  width: min(400px, calc(100vw - 40px));
-  max-height: calc(100dvh - 48px);
-  border-radius: 16px;
-  padding: 24px;
-  background: var(--surface);
-  color: var(--text);
-  border: 0;
-  box-shadow: var(--shadow);
-  overflow: auto;
-}
-.search-user-dialog::backdrop {
-  background: var(--overlay);
-  backdrop-filter: blur(3px);
-}
-.search-user-dialog header {
-  position: sticky;
-  top: 0;
-  background: var(--surface);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 12px;
-}
-.search-user-dialog h2 {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  font-size: 20px;
-  margin: 0;
-}
-.search-user-dialog .icon-button {
-  flex-shrink: 0;
-}
-.search-user-dialog p {
-  overflow-wrap: anywhere;
-  font-size: 13px;
-  line-height: 1.7;
-}
 .search-results-enter-active,
 .search-results-leave-active {
   transition:

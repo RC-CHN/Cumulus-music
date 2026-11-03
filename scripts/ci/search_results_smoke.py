@@ -30,6 +30,7 @@ def main():
     script = root / 'search-results.js'
     script.write_text(source.read_text(encoding='utf-8'), encoding='utf-8')
     env['CUMULUS_UX_SCRIPT'] = str(script)
+    env['CUMULUS_SEARCH_USER_PROFILE_PROOF'] = '1'
     with (root / 'host.log').open('x', encoding='utf-8') as log:
         code = launch(args.binary.resolve(), env, log, root / 'first', args.screenshots)
     failed = root / 'first/failed.json'
@@ -42,6 +43,13 @@ def verify(root, capture):
     assert complete['ok'] and complete['responseTimingInjected'] and complete['shortPageOffsetsVerified']
     assert complete['searchResultPlaybackVerified'] and complete['searchMatchHighlightVerified']
     assert complete['searchCategoryWithoutFramesVerified']
+    before_profile = json.loads((root / 'first/ux_01_all_1120_light.json').read_text(encoding='utf-8'))
+    assert before_profile['searchProfileCalls'] == []
+    assert complete['searchProfileWithoutFramesVerified']
+    assert complete['searchProfileCalls'] == [
+        {'all': True, 'userId': '501'},
+        {'uid': '501', 'offset': 0, 'limit': 1000},
+    ]
     assert complete['stageCount'] == 68 and complete['syntheticSearchCalls'] > 40
     assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
     assert len(list((root / 'first').glob('ux_*.json'))) == complete['stageCount']

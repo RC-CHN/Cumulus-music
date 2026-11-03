@@ -27,18 +27,51 @@
   async function theme(w,h,t){await emit('resize',{width:w,height:h});await wait(()=>innerWidth===w&&innerHeight===h,'window resize');click(button('外观主题'));await wait(()=>one('.action-menu'),'theme menu');click(button(t==='dark'?'深色':'浅色'));await wait(()=>!one('.action-menu')&&document.documentElement.dataset.theme===t,'theme');}
   const submit=word=>{const input=one('[aria-label="搜索音乐"]');input.value=word;input.dispatchEvent(new Event('input',{bubbles:true}));input.form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));};
   async function fresh(word){submit(word);await sleep(0);await wait(()=>one('.search-results-page h1')?.textContent===word&&one('[data-category="all"]')?.getAttribute('aria-selected')==='true'&&ready()&&!one('.page-leave-active,.page-enter-active'),'fresh search '+word);await sleep(200);}
+  let profileWithoutFrames=false;
+  async function userProfile(source, stall=false){
+    const searchCard=source.closest('[data-result-key]').dataset.resultKey;
+    const category=one('[data-category][aria-selected="true"]').dataset.category;
+    if(stall) source.scrollIntoView({block:'nearest'});
+    const position=one('.search-result-panel').scrollTop;
+    if(stall) assert(position>0,'comprehensive profile starts from a scrolled panel');
+    click(source);
+    await wait(()=>one('.playlist-creator-page h1')?.textContent==='合成用户主页 501'&&one('.playlist-creator-page [data-library-open="30"]'),'verified user home and public playlists');
+    assert(!one('.search-user-dialog'),'no legacy info modal');
+    if(!stall) return;
+    const frames=window.requestAnimationFrame;
+    let blocked=0;
+    window.requestAnimationFrame=()=>-(++blocked);
+    try {
+      click(button('返回上一页'));
+      await wait(()=>ready()&&one(`[data-category="${category}"]`)?.getAttribute('aria-selected')==='true'&&document.activeElement.closest('[data-result-key]')?.dataset.resultKey===searchCard&&Math.abs(one('.search-result-panel').scrollTop-position)<=1,'Back restores exact scroll and search card without frames');
+      assert(blocked>=2,'user-profile Back encountered frame stall');
+      profileWithoutFrames=true;
+    } finally { window.requestAnimationFrame=frames; }
+  }
   try {
     await wait(()=>one('.track-row'),'daily ready');submit('合成搜索结果');await wait(()=>one('.search-results-page')&&ready(),'search entry');
     for(const [w,h,t] of [[1120,760,'light'],[1120,760,'dark'],[760,540,'light'],[760,540,'dark']]){
       await theme(w,h,t);await fresh('合成搜索结果');
       for(const category of ['all','songs','playlists','artists','voices','podcasts','lyrics','albums','mvs','users']){
         await choose(category);await capture(`${category}_${w}_${t}`);
-        if(category==='all'){const p=one('.search-result-panel');p.scrollTop=p.scrollHeight;await capture(`all_bottom_${w}_${t}`);p.scrollTop=0;}
+        if(category==='all'){const p=one('.search-result-panel');p.scrollTop=p.scrollHeight;await capture(`all_bottom_${w}_${t}`);p.scrollTop=0;
+          if(w===1120&&t==='light'){
+            const source=button('查看用户主页 合成用户 1');
+            assert(source,'comprehensive user card exposes the same route');
+            await userProfile(source,true);
+          }
+        }
         if(category==='songs'){
           assert(button('播放全部')&&button('收藏全部'),'official actions');click(button('收藏全部'));await wait(()=>one('.playlist-dialog[open]'),'collection dialog');assert(one('.playlist-collect-dialog .sr-only')?.textContent.includes('30首'),'collection is explicit about current page');await capture(`collect_${w}_${t}`);click(button('关闭歌单操作'));await wait(()=>!one('.playlist-dialog'),'collect close');
         }
         if(category==='users'){
-          click(one('.search-card-open'));await wait(()=>one('.search-user-dialog[open]'),'user card details');await capture(`user_details_${w}_${t}`);click(button('关闭用户信息'));await wait(()=>!one('.search-user-dialog'),'user close');assert(document.activeElement.classList.contains('search-card-open'),'modal returns focus');
+          const source=button('查看用户主页 合成用户 1');
+          const unavailable=button('查看用户主页 合成用户 3');
+          assert(unavailable?.disabled&&unavailable.closest('[data-result-key]').textContent.includes('此账号当前不可用'),'unavailable user stays disabled');
+          await userProfile(source);
+          await capture(`user_details_${w}_${t}`);
+          click(button('返回上一页'));
+          await wait(()=>ready()&&one('[data-category="users"]')?.getAttribute('aria-selected')==='true'&&document.activeElement===button('查看用户主页 合成用户 1'),'user category Back restores source focus');
         }
       }
     }
@@ -112,6 +145,6 @@
     await choose('songs');click(one('.track-row[data-track-id="2"] .track-play'));
     await wait(()=>playingTrack(2),'song row uses search trial');
     await fixture('expired');click(one('[data-category="albums"]'));await wait(()=>button('重新登录')&&!one('.search-results-page'),'expired account');await capture('expired');
-    await emit('complete',{ok:true,stageCount:count,responseTimingInjected:true,shortPageOffsetsVerified:true,searchResultPlaybackVerified:true,searchMatchHighlightVerified:true,searchCategoryWithoutFramesVerified:true,realMusicRequests:0,realAccountWrites:0});
+    await emit('complete',{ok:true,stageCount:count,responseTimingInjected:true,shortPageOffsetsVerified:true,searchResultPlaybackVerified:true,searchMatchHighlightVerified:true,searchCategoryWithoutFramesVerified:true,searchProfileWithoutFramesVerified:profileWithoutFrames,realMusicRequests:0,realAccountWrites:0});
   }catch(error){await emit('failed',{step,message:String(error),stack:error?.stack,stageCount:count,body:document.body.innerText.slice(0,3500)});}
 })();

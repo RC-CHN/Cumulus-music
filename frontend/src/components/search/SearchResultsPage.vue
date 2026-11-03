@@ -20,7 +20,7 @@ import { useCore } from '../../services/core';
 import TrackTable from '../TrackTable.vue';
 import TrackRow from '../TrackRow.vue';
 import SearchLyricExtra from './SearchLyricExtra.vue';
-import ModalTransition from '../ModalTransition.vue';
+import { waitForViewportFrames } from '../../services/viewportLayout';
 import Icon from '../Icon.vue';
 import SearchResultCard from './SearchResultCard.vue';
 import { searchCardIsCurrent } from '../../services/searchCards';
@@ -132,15 +132,9 @@ const panel = ref<HTMLElement>(),
   tabs = ref<HTMLElement>();
 const moreButton = ref<HTMLButtonElement>(),
   moreFooter = ref<HTMLElement>();
-const user = ref<Extract<SearchItem, { kind: 'user' }>>(),
-  dialog = ref<HTMLDialogElement>();
-async function open(item: SearchItem) {
-  if (item.kind === 'user') {
-    user.value = item;
-    await nextTick();
-    dialog.value?.showModal();
-  } else if (item.kind === 'related') emit('search', item.keyword);
-  else emit('open', item);
+function open(item: SearchItem) {
+  if (item.kind === 'related') emit('search', item.keyword);
+  else if (item.kind !== 'user' || !item.user.unavailable) emit('open', item);
 }
 function choose(key: SearchCategory, fromKeyboard = false) {
   turn(key);
@@ -235,9 +229,7 @@ async function restore() {
   const generation = loadGeneration;
   expandedLyrics.value = new Set(model.position.value.expandedLyrics ?? []);
   await nextTick();
-  await new Promise<void>((resolve) =>
-    requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-  );
+  await waitForViewportFrames(2);
   if (
     generation !== loadGeneration ||
     !panel.value ||
@@ -248,9 +240,7 @@ async function restore() {
   panel.value.scrollTop = position.top;
   const inner = panel.value.querySelector('.track-scroll');
   if (inner) inner.scrollTop = position.tracks;
-  await new Promise<void>((resolve) =>
-    requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-  );
+  await waitForViewportFrames(2);
   if (generation !== loadGeneration || !panel.value) return;
   if (position.focus) {
     const card = [...panel.value.querySelectorAll<HTMLElement>('[data-result-key]')].find(
@@ -323,7 +313,6 @@ watch(
   ],
   () => {
     if (activeCategory) checkpoint();
-    user.value = undefined;
     void load(true);
   },
   { immediate: true },
@@ -631,23 +620,5 @@ onBeforeUnmount(() => {
         </template>
       </div>
     </Transition>
-    <ModalTransition
-      ><dialog
-        v-if="user"
-        ref="dialog"
-        class="search-user-dialog"
-        aria-labelledby="search-user-title"
-        @cancel.prevent="user = undefined"
-      >
-        <header>
-          <h2 id="search-user-title">{{ user.user.name }}</h2>
-          <button class="icon-button" aria-label="关闭用户信息" @click="user = undefined">
-            <Icon name="close" />
-          </button>
-        </header>
-        <p>{{ user.user.signature || '暂无简介' }}</p>
-        <p v-if="user.user.unavailable" class="muted">此账号当前不可用</p>
-      </dialog></ModalTransition
-    >
   </section>
 </template>

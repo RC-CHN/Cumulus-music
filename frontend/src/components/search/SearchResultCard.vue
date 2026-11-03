@@ -116,7 +116,7 @@ const unavailable = computed(() =>
     ? !props.item.voice.radioId
     : props.item.kind === 'mv'
       ? !props.item.mv.mvId
-      : false,
+      : props.item.kind === 'user' && props.item.user.unavailable,
 );
 const card = computed(() => {
   const i = props.item;
@@ -211,7 +211,7 @@ watch(
       type="button"
       class="search-card-open"
       :disabled="unavailable"
-      :aria-label="`${item.kind === 'user' ? '查看用户信息' : '查看'} ${card.name}`"
+      :aria-label="`${item.kind === 'user' ? '查看用户主页' : '查看'} ${card.name}`"
       :data-tooltip="[card.name, card.sub].filter(Boolean).join(' · ')"
       @click="emit('open', item)"
     />
@@ -249,7 +249,9 @@ watch(
     >
       {{ card.sub }}
     </button>
-    <span v-else-if="unavailable" class="search-result-sub">暂不可打开</span>
+    <span v-else-if="unavailable" class="search-result-sub">{{
+      item.kind === 'user' ? '此账号当前不可用' : '暂不可打开'
+    }}</span>
     <span v-else-if="card.sub" class="search-result-sub" :data-tooltip="card.sub">{{
       card.sub
     }}</span>

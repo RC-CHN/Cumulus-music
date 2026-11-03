@@ -408,6 +408,13 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
             })
             .collect()
     });
+    if category == "users" && std::env::var_os("CUMULUS_SEARCH_USER_PROFILE_PROOF").is_some() {
+        if let Some(rows) = container[key].as_array_mut() {
+            for row in rows.iter_mut().filter(|row| row["userId"] == 503) {
+                row["accountStatus"] = json!(30);
+            }
+        }
+    }
     if short_playlists {
         container[key][0]["name"] = json!(format!("合成分页 {offset}"));
         if offset == 18 {

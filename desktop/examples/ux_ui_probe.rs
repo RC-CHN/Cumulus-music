@@ -92,6 +92,7 @@ fn playlist_creator_proof() -> bool {
     std::env::var_os("CUMULUS_PLAYLIST_CREATOR_PROOF").is_some()
 }
 static PLAYLIST_CREATOR_CALLS: std::sync::Mutex<Vec<Value>> = std::sync::Mutex::new(Vec::new());
+static SEARCH_PROFILE_CALLS: std::sync::Mutex<Vec<Value>> = std::sync::Mutex::new(Vec::new());
 
 fn playlist(id: u64) -> Value {
     intelligence_start_fixture::playlist(playlist_editor_fixture::decorate(
@@ -164,6 +165,14 @@ impl Api for Library {
                 "/api/relay/setting/show" => json!({"code":200,"data":{"groups":[]}}),
                 "/api/w/nuser/account/get" => {
                     json!({"code":200,"profile":{"userId":2,"nickname":"界面体验验证"}})
+                }
+                "/api/w/v1/user/detail/501" if search_fixture::enabled() => {
+                    SEARCH_PROFILE_CALLS.lock().unwrap().push(args);
+                    json!({"code":200,"profile":{"userId":501,"nickname":"合成用户主页 501","signature":"合成公开主页签名"}})
+                }
+                "/api/user/playlist" if search_fixture::enabled() && args["uid"] == "501" => {
+                    SEARCH_PROFILE_CALLS.lock().unwrap().push(args);
+                    json!({"code":200,"more":false,"playlist":[{"id":30,"userId":501,"name":"合成公开歌单","privacy":0}]})
                 }
                 "/api/w/v1/user/detail/3" if playlist_creator_proof() => {
                     PLAYLIST_CREATOR_CALLS.lock().unwrap().push(args);
@@ -385,7 +394,10 @@ fn main() {
         app.listen("ux-proof",move |event| {
             let mut value:Value=serde_json::from_str(event.payload()).unwrap();
             if intelligence_start_fixture::enabled() {value["syntheticIntelligenceStart"]=intelligence_start_fixture::report();}
-            if search_fixture::enabled() { value["syntheticSearchCalls"]=json!(search_fixture::calls()); }
+            if search_fixture::enabled() {
+                value["syntheticSearchCalls"] = json!(search_fixture::calls());
+                value["searchProfileCalls"] = json!(*SEARCH_PROFILE_CALLS.lock().unwrap());
+            }
             if subscribers_proof() { value["subscriberOffsets"]=json!(*SUBSCRIBER_OFFSETS.lock().unwrap()); }
             if playlist_tag_browse_proof() {
                 value["playlistTagCalls"] = json!(*PLAYLIST_TAG_CALLS.lock().unwrap());
