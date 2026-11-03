@@ -97,6 +97,12 @@ impl Actor {
             self.reply(request.reply, Err(Error::QueueChanged));
             return;
         }
+        if let PlaybackCommand::RestoreFm(value) = &request.command
+            && value.expected != self.snapshot().fence()
+        {
+            self.reply(request.reply, Err(Error::QueueChanged));
+            return;
+        }
         if let PlaybackCommand::Intelligence(value) = &request.command
             && value.expected != self.snapshot().fence()
         {
@@ -168,6 +174,9 @@ impl Actor {
             PlaybackCommand::RepairQuality => self.quality_repair(),
             PlaybackCommand::UpdateQueue(value) => {
                 self.update_queue(value).await.map(|value| options = value)
+            }
+            PlaybackCommand::RestoreFm(value) => {
+                self.restore_fm(value).await.map(|value| options = value)
             }
             PlaybackCommand::Intelligence(value) => self
                 .intelligence(value.action)

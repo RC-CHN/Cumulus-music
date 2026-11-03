@@ -105,6 +105,11 @@ impl QueueSnapshot {
     }
 }
 
+pub(crate) enum FmRestoreOutcome {
+    AlreadyOrdinary,
+    Restored(Option<f64>),
+}
+
 pub struct PlaybackQueue {
     store: Option<Arc<StateStore>>,
     owner: String,

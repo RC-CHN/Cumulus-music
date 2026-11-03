@@ -77,6 +77,27 @@ impl Actor {
             Ok(None)
         }
     }
+    pub(super) async fn restore_fm(
+        &mut self,
+        input: super::FmRestore,
+    ) -> Result<Option<LoadOptions>> {
+        match self.queue.install_fm_restore(&input)? {
+            crate::playback::FmRestoreOutcome::AlreadyOrdinary => Ok(None),
+            crate::playback::FmRestoreOutcome::Restored(position) => {
+                if self.queue.selected().is_none() {
+                    self.stop(false).await?;
+                    return Ok(None);
+                }
+                Ok(Some(LoadOptions {
+                    paused: true,
+                    position,
+                    recover: true,
+                    ..Default::default()
+                }))
+            }
+        }
+    }
+
     pub(super) async fn apply_remote(
         &mut self,
         value: RemotePlayback,

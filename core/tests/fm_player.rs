@@ -215,6 +215,90 @@ async fn enter_uses_fm_trial_and_leave_restores_complete_normal_queue_position_p
 }
 
 #[tokio::test]
+async fn fm_exit_rejects_each_stale_backup_value_and_retries_from_the_current_receipt() {
+    use cumulus_core::playback::controller::FmRestore;
+    use serde_json::json;
+
+    let f = Native::new();
+    let token = f.domain.session.token().unwrap();
+    f.player
+        .command(&token, engine::replace(&[90, 91]))
+        .await
+        .unwrap();
+    f.player
+        .command(&token, PlaybackCommand::Seek(12.5))
+        .await
+        .unwrap();
+    f.enter(&[1, 2, 3, 4]).await;
+    let store = &f.domain.store;
+    let read = |key| store.get("9", "playback", key).unwrap();
+    let capture = || FmRestore {
+        expected: f.player.snapshot().fence(),
+        backup_queue: read("fm-backup-queue"),
+        backup_position: read("fm-backup-position"),
+    };
+    let old_queue = capture();
+    let mut updated_queue = old_queue.backup_queue.clone().unwrap();
+    // Model the file manager's transaction updating a saved resource without
+    // changing the current FM queue or the saved ordinary entry identity.
+    updated_queue["items"][0]["source"]["syntheticMovedReference"] = json!("new");
+    store
+        .put("9", "playback", "fm-backup-queue", &updated_queue)
+        .unwrap();
+    assert!(matches!(
+        f.player
+            .command(&token, PlaybackCommand::RestoreFm(old_queue))
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    assert!(f.player.snapshot().fm);
+    assert_eq!(read("fm-backup-queue"), Some(updated_queue.clone()));
+
+    let old_position = capture();
+    let mut updated_position = old_position.backup_position.clone().unwrap();
+    updated_position["position"] = json!(21.25);
+    store
+        .put("9", "playback", "fm-backup-position", &updated_position)
+        .unwrap();
+    assert!(matches!(
+        f.player
+            .command(&token, PlaybackCommand::RestoreFm(old_position))
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    assert!(f.player.snapshot().fm);
+    assert_eq!(read("fm-backup-queue"), Some(updated_queue.clone()));
+    assert_eq!(read("fm-backup-position"), Some(updated_position));
+
+    // Hold the decoder so the durable restore checkpoint is observed before
+    // any successful decode can independently write playback position.
+    f.device.hold_load.store(true, Ordering::SeqCst);
+    let restore = {
+        let host = f.host.clone();
+        let token = token.clone();
+        let intent = f.intent();
+        tokio::spawn(async move { host.leave_for(&token, intent).await })
+    };
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while f.player.snapshot().state != PlaybackStatus::Loading {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(read("queue"), Some(updated_queue));
+    assert_eq!(read("position").unwrap()["seconds"], 21.25);
+    assert!(read("fm-backup-queue").is_none());
+    assert!(read("fm-backup-position").is_none());
+    assert!(store.get("9", "fm-player-v1", "source").unwrap().is_none());
+    f.device.hold_load.store(false, Ordering::SeqCst);
+    let back = restore.await.unwrap().unwrap();
+    assert!(!back.fm);
+    assert_eq!(back.state, PlaybackStatus::Paused);
+    assert_eq!(back.position, Some(21.25));
+}
+
+#[tokio::test]
 async fn mode_switches_keep_the_original_backup_and_apply_zone_trial_context() {
     let f = Native::new();
     let token = f.domain.session.token().unwrap();

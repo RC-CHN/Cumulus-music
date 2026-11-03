@@ -223,49 +223,33 @@ impl Inner {
         intent: u64,
     ) -> Result<PlaybackSnapshot> {
         let _gate = self.gate.try_lock().map_err(|_| Error::MutationBusy)?;
-        let (view, actual) = self.controller.queue_with_state(token).await?;
+        let view = self
+            .controller
+            .command(token, PlaybackCommand::Snapshot)
+            .await?;
         self.guard(token, intent)?;
-        let saved = self.session.with_token(token, |uid| {
-            let queue: Option<QueueSnapshot> = self
-                .store
-                .get(uid, "playback", FM_BACKUP_QUEUE)?
-                .map(serde_json::from_value)
-                .transpose()?;
-            let position = self.store.get(uid, "playback", FM_BACKUP_POSITION)?;
-            Ok((queue, position))
-        })?;
-        let result = if source(&actual)?.is_some() || actual.items.is_empty() {
-            let queue = saved.0.ok_or(Error::State("FM has no previous queue"))?;
-            queue.validate()?;
-            let position = saved.1.and_then(|v| {
-                (v["entry_id"].as_str() == queue.current.as_deref())
-                    .then(|| v["position"].as_f64())
-                    .flatten()
-            });
-            self.controller
-                .command(
-                    token,
-                    PlaybackCommand::UpdateQueue(QueueUpdate {
-                        expected: view.fence(),
-                        queue,
-                        transport: Some(QueueTransport {
-                            position,
-                            paused: true,
-                        }),
-                    }),
-                )
-                .await?
-        } else {
-            view
-        };
-        self.session.with_token(token, |uid| {
+        let input = self.session.with_token(token, |uid| {
             self.store.transaction(|tx| {
-                tx.delete(uid, "playback", FM_BACKUP_QUEUE)?;
-                tx.delete(uid, "playback", FM_BACKUP_POSITION)?;
-                tx.delete(uid, "fm-player-v1", "failure")?;
-                tx.delete(uid, "fm-player-v1", "source")
+                Ok(crate::playback::controller::FmRestore {
+                    expected: view.fence(),
+                    backup_queue: tx.get(uid, "playback", FM_BACKUP_QUEUE)?,
+                    backup_position: tx.get(uid, "playback", FM_BACKUP_POSITION)?,
+                })
             })
         })?;
+        let intents = self.intents.clone();
+        let result = self
+            .controller
+            .command_guarded(
+                token,
+                PlaybackCommand::RestoreFm(input),
+                view.fence(),
+                crate::playback::engine::Cancellation::new(move || {
+                    intents.load(Ordering::Acquire) == intent
+                }),
+            )
+            .await?;
+        self.guard(token, intent)?;
         Ok(result)
     }
 }

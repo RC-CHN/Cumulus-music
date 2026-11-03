@@ -105,6 +105,13 @@ pub struct QueueUpdate {
     pub queue: QueueSnapshot,
     pub transport: Option<QueueTransport>,
 }
+/// Native FM exit receipt. Both values are read together; the queue writer
+/// compares them with the current SQLite rows before consuming the backup.
+pub struct FmRestore {
+    pub expected: PlaybackFence,
+    pub backup_queue: Option<Value>,
+    pub backup_position: Option<Value>,
+}
 /// Native callers must hold media ownership before an action that can start a
 /// seed or select the first restored track. Recommendation completion does not
 /// take ownership from later pause/stop/selection intents.
@@ -138,6 +145,7 @@ pub enum PlaybackCommand {
     RepairLoudness,
     RepairQuality,
     UpdateQueue(QueueUpdate),
+    RestoreFm(FmRestore),
     Intelligence(IntelligenceUpdate),
     ApplyRemote(RemotePlayback),
     Replace {

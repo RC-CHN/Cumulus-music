@@ -13,6 +13,6 @@ pub mod quality_preferences;
 mod queue;
 pub mod source;
 mod timeline;
-pub(crate) use queue::{FM_BACKUP_POSITION, FM_BACKUP_QUEUE, QueueResetPlan};
+pub(crate) use queue::{FM_BACKUP_POSITION, FM_BACKUP_QUEUE, FmRestoreOutcome, QueueResetPlan};
 pub use queue::{PlaybackMode, PlaybackQueue, QueueEntry, QueueSnapshot, Step};
 pub use timeline::{Timeline, TimelineMode, TimelineSnapshot};

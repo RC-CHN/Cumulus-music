@@ -1,7 +1,71 @@
 //! CAS-protected publication of queue, quality and coordinator ownership.
 use super::*;
+use crate::playback::controller::FmRestore;
+use serde_json::json;
+
+struct FmCommit<'a> {
+    expected: &'a FmRestore,
+    /// None means cleanup only; Some(None) removes the outgoing FM clock.
+    position: Option<Option<Value>>,
+}
 
 impl PlaybackQueue {
+    pub(crate) fn install_fm_restore(&mut self, input: &FmRestore) -> Result<FmRestoreOutcome> {
+        let restore =
+            crate::fm::player::source(&self.state)?.is_some() || self.state.items.is_empty();
+        let (candidate, position, checkpoint, intelligence) = if restore {
+            let raw = input
+                .backup_queue
+                .as_ref()
+                .ok_or(Error::State("FM has no previous queue"))?;
+            let queue = QueueSnapshot::load(Some(raw))?;
+            if queue.fm_source.is_some()
+                || queue.intelligence.is_some()
+                || queue.items.iter().any(|item| item.source["kind"] == "fm")
+            {
+                return Err(Error::State("invalid FM return queue"));
+            }
+            for item in &queue.items {
+                crate::playback::PlaybackConstraint::from_resource(&item.resource)?;
+            }
+            let position = input
+                .backup_position
+                .as_ref()
+                .filter(|value| {
+                    queue.current.is_some()
+                        && value["entry_id"].as_str() == queue.current.as_deref()
+                })
+                .and_then(|value| value["position"].as_f64());
+            if position.is_some_and(|position| !position.is_finite() || position < 0.0) {
+                return Err(Error::InvalidInput("invalid FM backup position"));
+            }
+            let checkpoint = position.map(|seconds| {
+                json!({
+                    "entry_id":queue.current, "seconds":seconds, "paused":true,
+                    "state":"paused", "timeline_version":1
+                })
+            });
+            (queue, position, Some(checkpoint), None)
+        } else {
+            (self.state.clone(), None, None, self.intelligence.clone())
+        };
+        self.commit_owned_with_fm(
+            candidate,
+            true,
+            None,
+            intelligence,
+            Some(FmCommit {
+                expected: input,
+                position: checkpoint,
+            }),
+        )?;
+        Ok(if restore {
+            FmRestoreOutcome::Restored(position)
+        } else {
+            FmRestoreOutcome::AlreadyOrdinary
+        })
+    }
+
     pub(super) fn commit(&mut self, candidate: QueueSnapshot) -> Result<()> {
         let release_fm = candidate.fm_source.is_none()
             && (candidate.items.iter().any(|e| e.source["kind"] != "fm")
@@ -40,6 +104,17 @@ impl PlaybackQueue {
         quality: Option<(&str, &QualityPreferences)>,
         intelligence: Option<Arc<crate::playback::intelligence::IntelligenceSession>>,
     ) -> Result<()> {
+        self.commit_owned_with_fm(candidate, release_fm, quality, intelligence, None)
+    }
+
+    fn commit_owned_with_fm(
+        &mut self,
+        candidate: QueueSnapshot,
+        release_fm: bool,
+        quality: Option<(&str, &QualityPreferences)>,
+        intelligence: Option<Arc<crate::playback::intelligence::IntelligenceSession>>,
+        fm: Option<FmCommit<'_>>,
+    ) -> Result<()> {
         candidate.validate()?;
         let unchanged_session = match (&intelligence, &self.intelligence) {
             (Some(a), Some(b)) => Arc::ptr_eq(a, b),
@@ -56,7 +131,7 @@ impl PlaybackQueue {
         } else if candidate.intelligence.is_some() {
             return Err(Error::State("missing intelligence state"));
         }
-        if (quality.is_some() || intelligence.is_some()) && self.store.is_none() {
+        if (quality.is_some() || intelligence.is_some() || fm.is_some()) && self.store.is_none() {
             return Err(Error::State("transition requires persistent queue"));
         }
         let revision = self.next_revision()?;
@@ -89,6 +164,20 @@ impl PlaybackQueue {
                 )? != self.intelligence_raw
                 {
                     return Err(Error::QueueChanged);
+                }
+                if let Some(fm) = &fm {
+                    if tx.get(&self.owner, "playback", FM_BACKUP_QUEUE)? != fm.expected.backup_queue
+                        || tx.get(&self.owner, "playback", FM_BACKUP_POSITION)?
+                            != fm.expected.backup_position
+                    {
+                        return Err(Error::QueueChanged);
+                    }
+                    if let Some(position) = &fm.position {
+                        match position {
+                            Some(value) => tx.put(&self.owner, "playback", "position", value)?,
+                            None => tx.delete(&self.owner, "playback", "position")?,
+                        }
+                    }
                 }
                 if let Some((expected, preference)) = quality {
                     QualityPreferences::replace_in(tx, &self.owner, expected, preference)?;
