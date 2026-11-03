@@ -39,6 +39,15 @@
     check(!one("[data-cold-offline-panel]"), "offline mode unexpectedly opened automatically");
     const unknown = await invoke("account_snapshot");
     check(unknown.status === "unknown", "launch must not authenticate the saved account");
+    step = "welcome reconnect";
+    const welcome = await wait(() => one(".welcome"), "unknown-account welcome");
+    check(welcome.querySelector("h1")?.textContent.trim() === "暂时无法确认登录状态",
+      "unknown account is distinguished from normal guest");
+    await click(() => one(".welcome button.primary"), "explicit welcome reconnect");
+    await wait(() => one(".welcome button.primary")?.textContent.trim() === "重新连接",
+      "failed reconnect returns to recovery");
+    check(!one(".login-dialog[open]"), "reconnect does not start a QR login");
+
 
     step = "explicit open";
     await click(() => button("下载管理"), "download navigation");
@@ -88,6 +97,7 @@
       unknownIdDenied: true,
       onlineLibraryDenied: true,
       stoppedAndClosed: true,
+      welcomeReconnectVerified: true,
     });
   } catch (error) {
     await emit("failed", { step, issue: error instanceof Error ? error.message : "proof failed" });

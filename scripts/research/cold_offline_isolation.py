@@ -186,10 +186,11 @@ def run(binary, root, seed_only, screenshot, ncm, ncm_aac):
     cold = json.loads((root / "cold.json").read_text(encoding="utf-8"))
     require(cold["stage"] == "complete" and cold["accountUnknown"] is True, "cold mode changed account state")
     require(cold["publishedIdMatched"] and cold["unknownIdDenied"] and cold["onlineLibraryDenied"]
-            and cold["stoppedAndClosed"], "cold scope or playback lifecycle proof missing")
+            and cold["stoppedAndClosed"] and cold["welcomeReconnectVerified"],
+            "cold scope, reconnect or playback lifecycle proof missing")
     require(cold["output"] == "null" and cold["nativePosition"] > cold["nativeStartPosition"] >= .12,
             "native playback progress missing")
-    require(cold["transport"]["accountAttempts"] >= 1
+    require(cold["transport"]["accountAttempts"] >= 2
             and cold["transport"]["otherHttpAttempts"] == 0
             and cold["transport"]["mediaAttempts"] == 0, "unexpected cold network path")
     require(cold["transport"]["pinnedLoads"] == (0 if ncm else 1)
