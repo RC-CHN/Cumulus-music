@@ -101,6 +101,7 @@ export function createTauriClient(): CoreClient {
     pickAccountAvatar: (epoch) => invoke('pick_account_avatar', { epoch }),
     accountAvatarCommand: (epoch, id, command) =>
       invoke('account_avatar_command', { epoch, id, command }),
+    accountProfileRegions: (epoch) => invoke('account_profile_regions', { epoch }),
     accountProfileEditPage: (epoch, refresh) =>
       invoke('account_profile_edit_page', { epoch, refresh }),
     accountProfileEditCommand: (epoch, command) =>

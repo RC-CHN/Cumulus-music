@@ -13,6 +13,7 @@ def main():
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--runtime', type=Path)
+    parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--screenshots', action='store_true')
     parser.add_argument('--baseline', action='store_true')
     parser.add_argument('--account-detail', action='store_true')
@@ -28,6 +29,8 @@ def main():
     root.mkdir(parents=True, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
     env['CUMULUS_PROOF_DIR'] = str(root/'run')
+    if args.frontend_dist:
+        env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve(strict=True))
     if args.baseline:
         env['CUMULUS_PROOF_BASELINE'] = '1'
     if args.account_detail:
@@ -182,7 +185,7 @@ def main():
             'fixture-private-key', '1234567890', 'fixture-device-binding-private', '"001234"'
         ))
     elif args.profile_edit:
-        assert complete['profileEdit']
+        assert complete['profileEdit'] and complete['profileRegionsVerified']
         paths = complete['fixture']['paths']
         by_name = {state['stage'].split('_', 2)[2]: state for state in states}
         qr_paths = by_name['binding_qr_light']['fixture']['paths']
@@ -190,6 +193,7 @@ def main():
         assert qr_paths['/api/w/v1/user/bindings/2'] == 1
         assert not any('bindaccount' in path for path in paths)
         assert paths['/api/user/profile/update'] == 2
+        assert paths['/api/lbs/region/code'] == 2
         assert by_name['profile_edit_saved_light']['fixture']['paths']['/api/user/profile/update'] == 1
         before = by_name['profile_edit_recovery_dark']['fixture']['paths']
         assert before['/api/user/profile/update'] == 2
@@ -200,6 +204,12 @@ def main():
                 'SELECT owner,key,value FROM state WHERE kind=?',
                 ('account-profile-edit-intents-v1',),
             ).fetchall()
+            region_cache = state.execute(
+                'SELECT owner,key,value FROM state WHERE kind=?',
+                ('account-profile-regions-v1',),
+            ).fetchall()
+        assert len(region_cache) == 1 and region_cache[0][:2] == ('2', 'current')
+        assert json.loads(region_cache[0][2])['version'] == 'fixture-2026'
         assert len(rows) == 2
         signatures = set()
         for owner, key, raw in rows:

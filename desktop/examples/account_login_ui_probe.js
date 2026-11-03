@@ -348,6 +348,11 @@
     async function edit(signature) {
       click(test("account-profile-edit-open"));
       await wait(() => state() === "ready" && test("profile-edit-signature"), "edit ready");
+      await wait(() =>
+        test("profile-edit-province")?.selectedOptions[0]?.textContent.includes("浙江省（合成）") &&
+        test("profile-edit-city")?.selectedOptions[0]?.textContent.includes("杭州市（合成）"),
+      "server region or validated cache selected");
+
       await settle();
       const field = test("profile-edit-signature");
       field.focus();
@@ -372,7 +377,7 @@
     click(test("profile-edit-reconcile"));
     await wait(() => hasSignature("桌面验证：回包丢失"), "read-only recovery applied");
     await stage("profile_edit_reconciled_dark", { expectNickname });
-    await emit("complete", { ok: true, profileEdit: true, stageCount: count, expectNickname });
+    await emit("complete", { ok: true, profileEdit: true, profileRegionsVerified: true, stageCount: count, expectNickname });
   }
   async function accountAvatar() {
     const expectNickname = "邮箱验证账号";

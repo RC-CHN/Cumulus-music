@@ -12,9 +12,8 @@ Cumulus 个人资料保存与网易云 App 扫码转交
   已占用、禁止（407）、无法确定分开；这些属于预检，未提交保存。
   简介最多 300 加权字符，可清空。性别只提交明确选择。
   生日是所选日期本地午夜的毫秒数，按该日期的 UTC 偏移换算，
-  不把未知值写成零。地区必须是 M591 内置表中的省市配对。
-  core/assets/account-regions.json 是 Rust 和 Vue 共用的地名表；
-  官方 M198 服务端更新尚未接入，静态表外的旧地区仍可保留。
+  不把未知值写成零。地区必须是当前已验证地区表中的省市配对；未改变的旧地区不提交。
+  core/assets/account-regions.json 是 Rust 和 Vue 共用的 M591 内置回退地名表。
 
   ProfileEditor 校验草稿和最近快照，再回读同 UID 的 detail 做比较。
   资料已变化时保留草稿，要求重新读取；无实际改动不发保存。
@@ -46,3 +45,14 @@ Cumulus 个人资料保存与网易云 App 扫码转交
   本机截图：.build/profile-write-desktop-verified/contact.jpg；
   WebView 与 SQLite 证据：.build/profile-write-webview-verified。
   未使用真实账号写入，也未用官方 App 扫码执行绑定变更。
+
+远端地区表：
+  来源：M15:1024 /api/lbs/region/code，M198:76–87、590–609，以及 M12
+  的 PC 加密封装。定义标 GET，官方符合加密条件时封装为 POST；当前
+  Rust 使用现有 PC EAPI POST，参数 {}。未验证官方非加密 GET 变体。
+  200 取 data.version 和 provinces[{id,name,type?,cities:{代码:名称}}]。
+  Native 只投影这些公开字段，拒绝空表、重复省份、零代码、畸形及超限字段。
+  account_profile_regions(epoch) 独立读取，不把地区请求失败当作资料读取失败。
+  成功缓存于当前账号 SQLite，读失败使用同账号上次有效表，未缓存时用 M591；
+  账号过期和迟到回执仍由代次保护。前端显示名称；新写入由 Rust 按同一表校验。
+  已记录的未确认提交可以继续只读核对，即使地区表后来变更，不自动重发。

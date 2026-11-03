@@ -1,7 +1,7 @@
 //! Durable profile updates. A write acknowledgement never replaces readback.
 mod patch;
 
-use super::{AccountProfile, SelfProfileView};
+use super::{AccountProfile, SelfProfileView, regions::RegionTable};
 use crate::{
     Error, Result,
     account::{AccountSession, SessionToken},
@@ -247,6 +247,13 @@ impl ProfileEditor {
             return Err(Error::MutationUncertain);
         }
         patch.validate_today()?;
+        if let Some(region) = patch.region
+            && !RegionTable::allows(&self.store, &uid, region)?
+        {
+            return Err(Error::InvalidInput(
+                "unknown profile province and city pair",
+            ));
+        }
         if page.snapshot.as_ref().map(|value| value.revision.as_str()) != Some(expected_revision) {
             return Err(Error::State("read current profile before editing"));
         }

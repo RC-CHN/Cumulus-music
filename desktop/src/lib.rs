@@ -231,6 +231,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 account_avatar::pick_account_avatar,
                 account_avatar::account_avatar_command,
                 commands::account_profile_edit_page,
+                commands::account_profile_regions,
                 commands::account_profile_edit_command,
                 commands::account_binding_qr,
                 commands::account_login_devices,

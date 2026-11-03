@@ -26,7 +26,7 @@ import type { CollectionClient } from './collections';
 import type { HistoryClient } from './history';
 import type { SettingsClient } from './settings';
 import type { LoginDeviceRemovalClient } from './loginDeviceRemoval';
-import type { AccountDetailClient } from './accountDetail';
+import type { AccountDetailClient, AccountRegionTable } from './accountDetail';
 import type { AccountAvatarClient } from './accountAvatar';
 import type { AccountProfileEditClient } from './accountProfileEdit';
 import type { QueueClickPreferencesClient } from './queueClickPreferences';
@@ -125,6 +125,7 @@ export interface CoreClient
   qrIdentityPending(operationId: string): Promise<boolean>;
   reconcileQr(operationId: string): Promise<void>;
   cancelQr(operationId: string): Promise<void>;
+  accountProfileRegions(epoch: string): Promise<AccountData<AccountRegionTable | null>>;
   playlists(): Promise<AccountData<PlaylistView[]>>;
   playlistCollectPage(
     epoch: string,

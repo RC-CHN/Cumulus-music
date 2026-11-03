@@ -6,6 +6,7 @@ use crate::{
         profile::{
             AccountProfile, SelfProfileDetailView,
             edit::{ProfileEditPage, ProfileEditPhase, ProfileEditor, ProfilePatch},
+            regions::RegionTable,
         },
     },
 };
@@ -42,6 +43,20 @@ impl MusicClient {
         let value = AccountProfile::new(self.session.clone())
             .read_for(&token)
             .await?;
+        self.session.with_token(&token, |_| {
+            Ok(AccountData {
+                epoch: epoch.into(),
+                value,
+            })
+        })
+    }
+
+    pub async fn account_profile_regions(
+        &self,
+        epoch: &str,
+    ) -> Result<AccountData<Option<RegionTable>>> {
+        let token = self.player_token(epoch)?;
+        let value = RegionTable::refresh_for(self.session.clone(), &token).await?;
         self.session.with_token(&token, |_| {
             Ok(AccountData {
                 epoch: epoch.into(),

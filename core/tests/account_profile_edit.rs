@@ -432,3 +432,90 @@ async fn preflight_transport_failure_is_known_unsent_without_journal_entry() {
             .is_empty()
     );
 }
+
+#[tokio::test]
+async fn refreshed_regions_allow_a_new_pair_and_survive_an_invalid_reply() {
+    use cumulus_core::{
+        account::profiles::ProfileRegistry, client::MusicClient, protocol::http::ApiOrigin,
+    };
+
+    let before = detail("Baseline", "old");
+    let mut after = before.clone();
+    after["profile"]["province"] = json!(990000);
+    after["profile"]["city"] = json!(990100);
+    let world = World::new([
+        before.clone().into(),
+        json!({"code":200,"data":{"version":"fixture-v1","provinces":[
+            {"id":990000,"name":"合成省份","cities":{"990100":"合成城市"},"private":"do-not-export"}
+        ]}})
+        .into(),
+        json!({"code":200,"data":{"version":"broken","provinces":[]}}).into(),
+        before.into(),
+        json!({"code":200}).into(),
+        after.into(),
+    ]);
+    let registry = ProfileRegistry::open(world.root.path(), ApiOrigin::Pc).unwrap();
+    let client = MusicClient::with_session(world.session.clone(), registry);
+    let epoch = world.token.generation.to_string();
+    let revision = world.baseline().await;
+    assert!(matches!(
+        client.account_profile_regions("0").await,
+        Err(Error::StaleResponse)
+    ));
+    let first = client
+        .account_profile_regions(&epoch)
+        .await
+        .unwrap()
+        .value
+        .unwrap();
+    assert_eq!(first.version, "fixture-v1");
+    assert!(
+        !serde_json::to_string(&first)
+            .unwrap()
+            .contains("do-not-export")
+    );
+    let cached = client
+        .account_profile_regions(&epoch)
+        .await
+        .unwrap()
+        .value
+        .unwrap();
+    assert_eq!(cached, first);
+    let invalid = ProfilePatch {
+        region: Some(ProfileRegion {
+            province: 990000,
+            city: 110100,
+        }),
+        ..Default::default()
+    };
+    assert!(matches!(
+        world
+            .editor
+            .change_for(&world.token, &id(), &revision, invalid)
+            .await,
+        Err(Error::InvalidInput(_))
+    ));
+    assert_eq!(world.writes(), 0);
+    let patch = ProfilePatch {
+        region: Some(ProfileRegion {
+            province: 990000,
+            city: 990100,
+        }),
+        ..Default::default()
+    };
+    let outcome = world
+        .editor
+        .change_for(&world.token, &id(), &revision, patch)
+        .await
+        .unwrap();
+    assert_eq!(outcome.phase, ProfileEditPhase::Confirmed);
+    assert_eq!(
+        outcome.observed.unwrap().profile.region_label.as_deref(),
+        Some("合成省份 · 合成城市")
+    );
+    let calls = world.api.calls();
+    assert_eq!(calls[1].path, "/api/lbs/region/code");
+    assert_eq!(calls[2].path, "/api/lbs/region/code");
+    assert_eq!(calls[1].payload, json!({}));
+    assert_eq!(calls[4].payload, json!({"province":990000,"city":990100}));
+}

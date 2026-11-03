@@ -118,7 +118,7 @@ watch(
 const fields = computed(() => {
   const profile = value.value?.profile;
   if (!profile) return [];
-  const region = accountRegion(profile.province, profile.city);
+  const region = profile.regionLabel ?? accountRegion(profile.province, profile.city);
   return [
     { key: 'nickname', label: '昵称', text: profile.nickname },
     { key: 'signature', label: '简介', text: profile.signature },

@@ -1,6 +1,7 @@
 //! Read-only account detail and bindings from the recovered PC host.
 pub mod avatar;
 pub mod edit;
+pub mod regions;
 use super::{AccountSession, SessionStatus, SessionToken};
 use crate::{Error, Result, protocol::api::identifier};
 use serde::{Deserialize, Serialize};
@@ -19,6 +20,8 @@ pub struct SelfProfileView {
     pub birthday: Option<i64>,
     pub province: Option<u32>,
     pub city: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub region_label: Option<String>,
     pub level: Option<u32>,
 }
 
@@ -79,7 +82,8 @@ impl AccountProfile {
     }
 
     pub async fn detail_for(&self, token: &SessionToken) -> Result<SelfProfileView> {
-        self.session
+        let mut profile = self
+            .session
             .run_for(token, |api, uid| async move {
                 // PC M15:1742–1756 and M100:63–82.
                 let response = api
@@ -92,7 +96,18 @@ impl AccountProfile {
                     .await?;
                 project_profile(&uid, &response["profile"], unsigned(&response["level"]))
             })
-            .await
+            .await?;
+        self.session.with_token(token, |uid| {
+            if let (Ok(store), Some(province), Some(city)) = (
+                self.session.persistent_store(),
+                profile.province,
+                profile.city,
+            ) {
+                profile.region_label =
+                    regions::RegionTable::cached_label(&store, uid, province, city)?;
+            }
+            Ok(profile)
+        })
     }
 
     pub async fn bindings_for(&self, token: &SessionToken) -> Result<Vec<AccountBindingView>> {
@@ -146,6 +161,7 @@ fn project_profile(uid: &str, profile: &Value, level: Option<u32>) -> Result<Sel
         birthday: profile["birthday"].as_i64().filter(|millis| *millis != 0),
         province: unsigned(&profile["province"]).filter(|code| *code != 0),
         city: unsigned(&profile["city"]).filter(|code| *code != 0),
+        region_label: None,
         level,
     })
 }

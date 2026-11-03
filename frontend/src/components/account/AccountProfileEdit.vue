@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
 import { useAccountProfileEdit } from '../../composables/useAccountProfileEdit';
 import {
   accountDate,
   accountGender,
   accountRegion,
   accountRegions,
+  type AccountRegionTable,
 } from '../../services/accountDetail';
 import { profileBirthdayToday, type ProfileEditSnapshot } from '../../services/accountProfileEdit';
 import { useCore } from '../../services/core';
+import { failure } from '../../services/contracts';
 import { nicknameLength } from '../../services/nickname';
 import Icon from '../Icon.vue';
 import '../../styles/account-profile-edit.css';
@@ -29,6 +31,22 @@ let afterDiscard: (() => void) | undefined;
 let afterSave: (() => void) | undefined;
 let dialogReturn: HTMLElement | undefined;
 
+const client = useCore();
+const regionTable = shallowRef<AccountRegionTable>();
+const provinces = computed(() => regionTable.value?.provinces ?? accountRegions);
+let active = true;
+async function refreshRegions() {
+  const epoch = props.epoch;
+  try {
+    const response = await client.accountProfileRegions(epoch);
+    if (active && props.active && props.epoch === epoch && response.epoch === epoch)
+      regionTable.value = response.value ?? undefined;
+  } catch (cause) {
+    if (!active || !props.active || props.epoch !== epoch) return;
+    if (['session_expired', 'profile_changed'].includes(failure(cause).code)) emit('expired');
+  }
+}
+
 const {
   draft,
   blocked,
@@ -48,7 +66,7 @@ const {
   acceptCurrent,
   refreshForAvatar,
 } = useAccountProfileEdit(
-  useCore(),
+  client,
   () => (props.active ? props.epoch : null),
   (snapshot, confirmed) => {
     const resume = afterSave;
@@ -76,7 +94,7 @@ const years = Array.from({ length: yearMax - 1919 }, (_, index) => yearMax - ind
 const date = computed(() => (draft.value?.birthday ?? '').split('-').map(Number));
 const days = computed(() => new Date(date.value[0] ?? 0, date.value[1] ?? 0, 0).getDate());
 const cities = computed(() =>
-  Object.entries(accountRegions.find(({ id }) => id === draft.value?.province)?.cities ?? {}),
+  Object.entries(provinces.value.find(({ id }) => id === draft.value?.province)?.cities ?? {}),
 );
 const observed = computed(() => blocked.value?.observed?.profile);
 const recoveryFields = computed(() => {
@@ -102,8 +120,8 @@ const recoveryFields = computed(() => {
     {
       key: 'region',
       label: '地区',
-      intended: region && accountRegion(region.province, region.city),
-      current: accountRegion(current?.province, current?.city),
+      intended: region && accountRegion(region.province, region.city, provinces.value),
+      current: accountRegion(current?.province, current?.city, provinces.value),
     },
   ].filter(({ intended }) => intended !== undefined);
 });
@@ -118,7 +136,7 @@ function setDate(part: 0 | 1 | 2, event: Event) {
 function setProvince(event: Event) {
   if (!draft.value) return;
   const province = Number((event.target as HTMLSelectElement).value);
-  const region = accountRegions.find(({ id }) => id === province);
+  const region = provinces.value.find(({ id }) => id === province);
   if (!region) return;
   draft.value.province = region.id;
   draft.value.city = Number(Object.keys(region.cities)[0]) || '';
@@ -176,9 +194,12 @@ async function recover(action: () => unknown) {
 }
 onMounted(() => {
   heading.value?.focus({ preventScroll: true });
-  void read();
+  void read().then(() => {
+    if (active && props.active) void refreshRegions();
+  });
 });
 onBeforeUnmount(() => {
+  active = false;
   afterDiscard = undefined;
   afterSave = undefined;
   dialog.value?.close();
@@ -400,13 +421,13 @@ defineExpose({
                   >
                     <option v-if="!draft.province" value="" disabled>选择省份或地区</option>
                     <option
-                      v-else-if="!accountRegions.some(({ id }) => id === draft?.province)"
+                      v-else-if="!provinces.some(({ id }) => id === draft?.province)"
                       :value="draft.province"
                       disabled
                     >
                       省份代码 {{ draft.province }}
                     </option>
-                    <option v-for="region in accountRegions" :key="region.id" :value="region.id">
+                    <option v-for="region in provinces" :key="region.id" :value="region.id">
                       {{ region.name }}
                     </option>
                   </select>

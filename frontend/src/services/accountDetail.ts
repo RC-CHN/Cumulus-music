@@ -1,16 +1,24 @@
 import type { AccountData } from './contracts';
 import regions from '../../../core/assets/account-regions.json' with { type: 'json' };
 
-export const accountRegions: readonly {
+export interface AccountProvince {
   id: number;
   name: string;
   type?: number;
   cities: Readonly<Record<string, string | undefined>>;
-}[] = regions;
-const regionIndex = new Map(accountRegions.map((region) => [region.id, region]));
+}
+export interface AccountRegionTable {
+  version: string;
+  provinces: AccountProvince[];
+}
+export const accountRegions: readonly AccountProvince[] = regions;
 
-export function accountRegion(province?: number | null, city?: number | null) {
-  const region = province ? regionIndex.get(province) : undefined;
+export function accountRegion(
+  province?: number | null,
+  city?: number | null,
+  provinces = accountRegions,
+) {
+  const region = province ? provinces.find(({ id }) => id === province) : undefined;
   const cityName = region && city ? region.cities[city] : undefined;
   if (cityName && (region?.type === 1 || region?.type === 2)) return cityName;
   return [
@@ -30,6 +38,7 @@ export interface SelfProfile {
   birthday?: number | null;
   province?: number | null;
   city?: number | null;
+  regionLabel?: string | null;
   level?: number | null;
 }
 export interface AccountBinding {

@@ -262,6 +262,7 @@ impl AvatarEditor {
                 birthday: None,
                 province: None,
                 city: None,
+                region_label: None,
                 level: None,
             };
             self.session

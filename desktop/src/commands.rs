@@ -35,6 +35,18 @@ pub fn account_binding_qr(
 }
 
 #[tauri::command]
+pub async fn account_profile_regions(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> Result<AccountData<Option<cumulus_core::account::profile::regions::RegionTable>>, ClientError>
+{
+    client
+        .account_profile_regions(&epoch)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn account_profile_edit_page<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,

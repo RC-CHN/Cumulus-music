@@ -85,6 +85,24 @@ impl HttpBackend for Service {
             let (path, data) = eapi::unwrap(params)?;
             *self.paths.lock().unwrap().entry(path.clone()).or_default() += 1;
             let mode = self.mode.lock().unwrap().clone();
+            if path == "/api/lbs/region/code" {
+                if data
+                    .as_object()
+                    .is_none_or(|fields| fields.keys().any(|key| key != "header"))
+                {
+                    return Err(Error::Response("fixture region request"));
+                }
+                return Ok(auth::reply(
+                    if mode == "profile_ack_lost" {
+                        json!({"code":200,"data":{"version":"broken","provinces":[]}})
+                    } else {
+                        json!({"code":200,"data":{"version":"fixture-2026","provinces":[{
+                            "id":330000,"name":"浙江省（合成）","cities":{"330100":"杭州市（合成）"}
+                        }]}})
+                    },
+                    None,
+                ));
+            }
             if mode.starts_with("active_switch_") {
                 let cookie = plan.headers.get("Cookie").map(String::as_str).unwrap_or("");
                 let has = |token: &str| cookie.split(';').any(|pair| pair.trim() == token);

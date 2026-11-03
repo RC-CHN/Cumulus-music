@@ -5,7 +5,6 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
-use std::{collections::BTreeMap, sync::OnceLock};
 use time::{Date, Month, OffsetDateTime, UtcOffset};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
@@ -38,26 +37,6 @@ pub struct ProfileBirthday {
 pub struct ProfileRegion {
     pub province: u32,
     pub city: u32,
-}
-
-#[derive(Deserialize)]
-struct Province {
-    id: u32,
-    cities: BTreeMap<u32, String>,
-}
-
-fn valid_region(region: ProfileRegion) -> Result<bool> {
-    static TABLE: OnceLock<Option<Vec<Province>>> = OnceLock::new();
-    // Official M591's bundled fallback; do not infer pairs from numeric prefix.
-    let table = TABLE
-        .get_or_init(|| {
-            serde_json::from_str(include_str!("../../../../assets/account-regions.json")).ok()
-        })
-        .as_ref()
-        .ok_or(Error::State("bundled profile regions are unavailable"))?;
-    Ok(table.iter().any(|province| {
-        province.id == region.province && province.cities.contains_key(&region.city)
-    }))
 }
 
 impl ProfileBirthday {
@@ -120,7 +99,7 @@ impl ProfilePatch {
             birthday.milliseconds()?;
         }
         if let Some(region) = self.region
-            && !valid_region(region)?
+            && (region.province == 0 || region.city == 0)
         {
             return Err(Error::InvalidInput(
                 "unknown profile province and city pair",

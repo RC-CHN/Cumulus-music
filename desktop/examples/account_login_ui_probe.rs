@@ -1,4 +1,6 @@
 //! Production account/login UI and IPC; synthetic HTTP, isolated native credentials.
+#[path = "support/assets.rs"]
+mod assets;
 #[path = "support/auth.rs"]
 mod auth;
 #[path = "support/capture_ack.rs"]
@@ -19,7 +21,7 @@ fn main() {
     fs::create_dir(&output).unwrap();
     let avatar = std::env::var_os("CUMULUS_PROOF_ACCOUNT_AVATAR").is_some();
     let service = Arc::new(fixture::Service::new(avatar));
-    let mut context = tauri::generate_context!();
+    let mut context = assets::context();
     if avatar {
         use tauri::utils::config::Csp;
         let security = &mut context.config_mut().app.security;
