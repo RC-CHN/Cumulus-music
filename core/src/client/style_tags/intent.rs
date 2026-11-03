@@ -7,6 +7,12 @@ use sha2::{Digest, Sha256};
 
 const JOURNAL: &str = "style-tag-intents-v1";
 
+#[derive(Clone, Copy)]
+enum ReadStylePreference {
+    Default,
+    AfterSave,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StylePreference {
@@ -130,10 +136,20 @@ impl MusicClient {
         })
     }
 
-    async fn read_style_preference(&self, token: &SessionToken) -> Result<StylePreference> {
+    async fn read_style_preference(
+        &self,
+        token: &SessionToken,
+        read: ReadStylePreference,
+    ) -> Result<StylePreference> {
         self.session
             .run_for(token, |api, _| async move {
-                let response = CatalogApi::new(api).default_style_recommendations().await?;
+                let catalog = CatalogApi::new(api);
+                let response = match read {
+                    ReadStylePreference::Default => catalog.default_style_recommendations().await?,
+                    ReadStylePreference::AfterSave => {
+                        catalog.style_recommendations_after_save().await?
+                    }
+                };
                 applied(response["data"].get("tags"))
                     .as_ref()
                     .map(StylePreference::from_category)
@@ -207,7 +223,10 @@ impl MusicClient {
             .style_tag_payload(&token, category_id, tag_id)
             .await
             .map_err(unsent)?;
-        let before = self.read_style_preference(&token).await.map_err(unsent)?;
+        let before = self
+            .read_style_preference(&token, ReadStylePreference::Default)
+            .await
+            .map_err(unsent)?;
         if before != displayed {
             return Err(Error::QueueChanged);
         }
@@ -239,7 +258,13 @@ impl MusicClient {
             match result {
                 Ok(_) => {
                     if let Ok(value) = self
-                        .observe_style_tag(&token, epoch, op.clone(), None)
+                        .observe_style_tag(
+                            &token,
+                            epoch,
+                            op.clone(),
+                            None,
+                            ReadStylePreference::AfterSave,
+                        )
                         .await
                     {
                         return Ok(value);
@@ -314,7 +339,8 @@ impl MusicClient {
         if accept.is_some() && op.observed.as_ref().map(|value| value.revision.as_str()) != accept {
             return Err(Error::State("reconcile style tag before acceptance"));
         }
-        self.observe_style_tag(&token, epoch, op, accept).await
+        self.observe_style_tag(&token, epoch, op, accept, ReadStylePreference::Default)
+            .await
     }
 
     async fn observe_style_tag(
@@ -323,8 +349,9 @@ impl MusicClient {
         epoch: &str,
         mut op: StyleTagOperation,
         accept: Option<&str>,
+        read: ReadStylePreference,
     ) -> Result<AccountData<StyleTagOperation>> {
-        let observed = self.read_style_preference(token).await?;
+        let observed = self.read_style_preference(token, read).await?;
         op.phase = if observed.matches(&op.category_id, &op.tag_id) {
             StyleTagPhase::Confirmed
         } else if accept == Some(observed.revision.as_str()) {

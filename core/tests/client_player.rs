@@ -37,6 +37,7 @@ struct Backend {
     style_tag_write_mode: AtomicU64,
     style_tag_writes: AtomicU64,
     style_tag_started: Notify,
+    style_tag_after_ack: std::sync::atomic::AtomicBool,
     quality_trial_state: AtomicU64,
     quality_start_mode: AtomicU64,
     quality_writes: AtomicU64,
@@ -90,10 +91,12 @@ impl Api for Backend {
                     json!({"code":200,"playlist":{"trackIds":self.playlist_tracks.lock().unwrap().clone().unwrap_or_else(|| (1..=205).map(|id|json!({"id":id})).collect::<Vec<_>>())}})
                 }
                 "/api/homepage/category/daily/song/list" => {
-                    assert_eq!(
-                        payload,
+                    let expected = if self.style_tag_after_ack.swap(false, Ordering::SeqCst) {
+                        json!({})
+                    } else {
                         json!({"source":"","categoryId":"","tagId":"","songId":""})
-                    );
+                    };
+                    assert_eq!(payload, expected);
                     assert!(!cache);
                     let mut response = json!({"code":200,"data":{"dailySongs":[{"id":72,"name":"风格乙"},{"id":71,"name":"风格甲"}]}});
                     match self.style_tag_state.load(Ordering::SeqCst) {
@@ -122,6 +125,7 @@ impl Api for Backend {
                         2 => {}
                         _ => self.style_tag_state.store(2, Ordering::SeqCst),
                     }
+                    self.style_tag_after_ack.store(true, Ordering::SeqCst);
                     json!({"code":200})
                 }
                 "/api/v3/discovery/recommend/songs" => {

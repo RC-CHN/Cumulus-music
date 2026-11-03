@@ -178,6 +178,18 @@ impl CatalogApi {
             .await
     }
 
+    /// M/3126 -> M/3014 dispatches the post-save recommendation read with data: {}.
+    pub(crate) async fn style_recommendations_after_save(&self) -> Result<Value> {
+        self.api
+            .call(
+                "/api/homepage/category/daily/song/list",
+                json!({}),
+                false,
+                &[200],
+            )
+            .await
+    }
+
     pub async fn album(&self, id: &Value) -> Result<Value> {
         self.api
             .call(
