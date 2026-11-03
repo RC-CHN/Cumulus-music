@@ -285,7 +285,8 @@ fn abi_rejects_unsupported_rate_invalid_token_and_null_arguments() {
     unsafe {
         let d = &*ladspa_descriptor(0);
         assert!(!ladspa_descriptor(1).is_null());
-        assert!(ladspa_descriptor(2).is_null());
+        assert!(!ladspa_descriptor(2).is_null());
+        assert!(ladspa_descriptor(3).is_null());
         assert!(d.instantiate.unwrap()(d, 7999).is_null());
         assert!(d.instantiate.unwrap()(d, 384001).is_null());
         assert_ne!(
@@ -397,4 +398,134 @@ fn extended_adapter_processes_geq_then_native_bass_treble_and_bypasses_independe
     );
     assert_eq!(config.stats().observed_revision, 2);
     assert_eq!(unsafe { cumulus_geq_update_v1(id, gains.as_ptr(), 0) }, -2);
+}
+
+#[test]
+fn parametric_fixed_frames_preserve_order_pcm_and_independent_channel_state() {
+    use cumulus_core::effects::{
+        dsp::ParametricEq,
+        material::PeqCall,
+        parametric::{ParametricPlan, PeqOperation},
+    };
+    let plan = ParametricPlan::from_calls(&[
+        PeqCall::Gain { value: -2.0 },
+        PeqCall::Band {
+            band: 1,
+            kind: 6,
+            gain: 7.0,
+            freq: 1000.0,
+            q: 1.2,
+            on: true,
+        },
+        PeqCall::Band {
+            band: 1,
+            kind: 6,
+            gain: -4.0,
+            freq: 440.0,
+            q: 0.7,
+            on: true,
+        },
+        PeqCall::On { value: true },
+    ])
+    .unwrap();
+    let operations = [
+        PeqOperation {
+            gain: -2.0,
+            ..Default::default()
+        },
+        PeqOperation {
+            opcode: 1,
+            band: 1,
+            kind: 6,
+            enabled: 1,
+            gain: 7.0,
+            frequency: 1000.0,
+            q: 1.2,
+        },
+        PeqOperation {
+            opcode: 1,
+            band: 1,
+            kind: 6,
+            enabled: 1,
+            gain: -4.0,
+            frequency: 440.0,
+            q: 0.7,
+        },
+        PeqOperation {
+            opcode: 2,
+            enabled: 1,
+            ..Default::default()
+        },
+    ];
+    let mut id = 0;
+    assert_eq!(
+        unsafe { cumulus_peq_create_v1(operations.as_ptr(), operations.len() as u32, &mut id) },
+        0
+    );
+    let config = Config(id);
+    for (rate, lengths) in [(44_100, [31, 4097, 1027]), (96_000, [13, 511, 4098])] {
+        let format = Format::new(rate as f32, 1, CAPACITY).unwrap();
+        let mut reference = ParametricEq::new(format, false, true).unwrap();
+        plan.apply(&mut reference).unwrap();
+        let mut block = PlanarBlock::new(format);
+        let mut instance = Instance::new_kind(id, rate, 2);
+        for len in lengths {
+            let pcm = input(len);
+            let mut expected = Vec::new();
+            for part in pcm.chunks(CAPACITY as usize) {
+                block.load_interleaved(part).unwrap();
+                reference.process(&mut block, part.len()).unwrap();
+                expected.extend_from_slice(&block.samples()[..part.len()]);
+            }
+            assert_ne!(expected, pcm);
+            assert_eq!(instance.process(&pcm, len % 2 != 0), expected);
+        }
+    }
+    let stats = config.stats();
+    assert_eq!(stats.instances_created, 2);
+    assert_eq!(stats.failed_blocks, 0);
+    assert_eq!(stats.processed_samples, 9_777);
+    assert_eq!(stats.observed_revision, stats.revision);
+}
+
+#[test]
+fn parametric_host_rejects_unrouted_material_and_invalid_native_plans() {
+    use cumulus_core::effects::parametric::{ParametricPlan, PeqOperation};
+    let legacy = serde_json::json!({"peq":{"on":true}});
+    assert!(ParametricPlan::from_material(&legacy).unwrap().is_none());
+    let disabled = serde_json::json!({"peq":{"on":true},"aev2":{"peq":{"on":false}}});
+    assert!(
+        !ParametricPlan::from_material(&disabled)
+            .unwrap()
+            .unwrap()
+            .enabled()
+    );
+    let mut id = 0;
+    let malformed = [PeqOperation {
+        opcode: 2,
+        enabled: 2,
+        ..Default::default()
+    }];
+    assert_ne!(
+        unsafe { cumulus_peq_create_v1(malformed.as_ptr(), 1, &mut id) },
+        0
+    );
+    let unsupported = [
+        PeqOperation {
+            opcode: 1,
+            band: 1,
+            kind: 27,
+            ..Default::default()
+        },
+        PeqOperation {
+            opcode: 2,
+            enabled: 1,
+            ..Default::default()
+        },
+    ];
+    assert_ne!(
+        unsafe { cumulus_peq_create_v1(unsupported.as_ptr(), 2, &mut id) },
+        0
+    );
+    assert_eq!(id, 0);
 }

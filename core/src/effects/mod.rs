@@ -13,5 +13,6 @@ mod filter_graph;
 pub mod loudness;
 pub mod material;
 pub mod ncae;
+pub mod parametric;
 pub mod rights;
 pub mod service;

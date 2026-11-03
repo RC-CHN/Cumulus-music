@@ -13,16 +13,22 @@ use std::{
 };
 
 #[derive(Clone, Copy)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "copy bounded PEQ plans without allocation in callbacks"
+)]
 pub(crate) enum Settings {
     Equalizer(EqualizerSettings),
     EqualizerTone(EqualizerSettings),
     Loudness(LoudnessSettings),
+    Parametric(cumulus_core::effects::parametric::ParametricPlan),
 }
 impl Settings {
     pub fn enabled(self) -> bool {
         match self {
             Self::Equalizer(settings) | Self::EqualizerTone(settings) => settings.enabled(),
             Self::Loudness(settings) => settings.enabled(),
+            Self::Parametric(plan) => plan.enabled(),
         }
     }
 }

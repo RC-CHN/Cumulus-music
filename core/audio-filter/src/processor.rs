@@ -1,6 +1,6 @@
 use crate::{
     control::{Control, registry},
-    processor_stage::Stage,
+    processor_stage::{Stage, StageKind},
 };
 use cumulus_core::effects::{
     dsp::{Format, PlanarBlock},
@@ -18,16 +18,19 @@ pub(crate) struct Processor {
 }
 impl Processor {
     pub fn new(rate: u64) -> Option<Self> {
-        Self::new_for(rate, false)
+        Self::new_for(rate, StageKind::Equalizer)
     }
     pub fn new_loudness(rate: u64) -> Option<Self> {
-        Self::new_for(rate, true)
+        Self::new_for(rate, StageKind::Loudness)
     }
-    fn new_for(rate: u64, loudness: bool) -> Option<Self> {
+    pub fn new_parametric(rate: u64) -> Option<Self> {
+        Self::new_for(rate, StageKind::Parametric)
+    }
+    fn new_for(rate: u64, kind: StageKind) -> Option<Self> {
         let format = Format::new(rate as f32, 1, abi::CAPACITY).ok()?;
         Some(Self {
             ports: [std::ptr::null_mut(); 3],
-            stage: Stage::new(format, loudness).ok()?,
+            stage: Stage::new(format, kind).ok()?,
             block: PlanarBlock::new(format),
             control: None,
             revision: 0,

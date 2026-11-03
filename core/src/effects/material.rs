@@ -14,7 +14,7 @@ pub use routing::{Component, ComponentSection, MaterialRouting, MaterialSchema, 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "call", rename_all = "lowercase")]
 pub enum PeqCall {
     Gain {

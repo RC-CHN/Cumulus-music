@@ -126,3 +126,21 @@ channels*capacity个float32。输出保留整块容量；生成音频文件时�
 合成 NCAE 由已恢复的 CEB6A0/CEB7E0 密钥流和 raw DEFLATE 封装，现代片段参数取
 公开冻结 PEQ type-slot 首块；Rust 解码、路由和渲染结果与原生首块 PCM 对照，
 另测旧片段拒绝以及已激活组件在缺失/显式关闭时的不同状态。
+
+固定帧原生 PEQ 播放桥
+ParametricPlan 从 EFB760 选择的 aev2.peq 构造，最多 11 个有序操作，保留重复槽位
+的实际覆盖顺序。宿主将定长 C 字段传入版本化 cumulus_peq_create_v1；回调不解析
+JSON，不持有素材路径，也不分配计划。每个 LADSPA 单声道实例独立维护历史，并按
+实际采样率验证系数；它按回调输入长度输出，同现有固定帧 host 相容。
+同一动态库保留既有 GEQ/响度描述符；PEQ 用独立配置 ID 和 cumulus_peq 描述符。
+原生 MpvEngine 可显式 attach/observe/detach；调用方负责单声道/立体声选择和效果顺序。
+此桥无 IPC 或桌面默认设置，不读取授权、素材 URL 或磁盘材料，也不启用整份预设。
+不会用同一回调承诺帧数不等的旋转/延迟效果或环绕 LFE 路由。
+
+复验：cargo test -p cumulus-audio-filter --lib --locked（实测 44.1/96 kHz 有界分块、
+原地缓冲、操作顺序、输出 PCM 及失败边界），原生播放器探针：
+  cargo build -p cumulus-audio-filter --lib --example parametric_probe --locked
+  parametric_probe /absolute/path/to/libcumulus_audio_filter.so
+该探针使用合成立体声和 libmpv null 输出；不代表真实声卡、Windows 分发或完整效果图。
+本轮 Linux 实测 15 项插件单元测试通过；libmpv 两个采样率各创建两个活跃单声道实例，
+观察到配置版本 1、实际样本处理和播放时钟前进，未报告失败块。暂停后成功移除 PEQ。

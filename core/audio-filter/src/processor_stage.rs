@@ -3,9 +3,16 @@ use cumulus_core::{
     Error, Result,
     effects::dsp::{
         BassTreble, BassTrebleSettings, Format, GraphicEq, LoudnessParameters, LoudnessStage,
-        PlanarBlock,
+        ParametricEq, PlanarBlock,
     },
 };
+
+#[derive(Clone, Copy)]
+pub(crate) enum StageKind {
+    Equalizer,
+    Loudness,
+    Parametric,
+}
 
 pub(crate) enum Stage {
     Equalizer {
@@ -14,21 +21,29 @@ pub(crate) enum Stage {
         use_tone: bool,
     },
     Loudness(LoudnessStage),
+    Parametric(ParametricEq),
 }
 impl Stage {
-    pub fn new(format: Format, loudness: bool) -> Result<Self> {
-        if loudness {
-            Ok(Self::Loudness(LoudnessStage::new(format)))
-        } else {
-            Ok(Self::Equalizer {
+    pub fn new(format: Format, kind: StageKind) -> Result<Self> {
+        match kind {
+            StageKind::Loudness => Ok(Self::Loudness(LoudnessStage::new(format))),
+            StageKind::Parametric => Ok(Self::Parametric(ParametricEq::new(format, false, true)?)),
+            StageKind::Equalizer => Ok(Self::Equalizer {
                 graphic: GraphicEq::new(format)?,
                 tone: BassTreble::new(format).ok(),
                 use_tone: false,
-            })
+            }),
         }
     }
     pub fn recreate(&self, format: Format) -> Result<Self> {
-        Self::new(format, matches!(self, Self::Loudness(_)))
+        Self::new(
+            format,
+            match self {
+                Self::Equalizer { .. } => StageKind::Equalizer,
+                Self::Loudness(_) => StageKind::Loudness,
+                Self::Parametric(_) => StageKind::Parametric,
+            },
+        )
     }
     pub fn configure(&mut self, settings: Settings) -> Result<()> {
         match (self, settings) {
@@ -78,6 +93,7 @@ impl Stage {
                 }
                 Ok(())
             }
+            (Self::Parametric(stage), Settings::Parametric(plan)) => plan.apply(stage),
             _ => Err(Error::State("filter configuration kind mismatch")),
         }
     }
@@ -95,6 +111,7 @@ impl Stage {
                 Ok(())
             }
             Self::Loudness(stage) => stage.process(block, frames),
+            Self::Parametric(stage) => stage.process(block, frames),
         }
     }
 }

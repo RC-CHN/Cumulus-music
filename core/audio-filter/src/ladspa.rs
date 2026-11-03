@@ -88,13 +88,28 @@ static LOUDNESS_DESCRIPTOR: Descriptor = Descriptor {
     instantiate: Some(instantiate_loudness),
     ..DESCRIPTOR
 };
+static PARAMETRIC_DESCRIPTOR: Descriptor = Descriptor {
+    unique_id: 0x43554f,
+    label: c"cumulus_peq".as_ptr(),
+    name: c"Cumulus recovered nine-slot PEQ".as_ptr(),
+    instantiate: Some(instantiate_parametric),
+    ..DESCRIPTOR
+};
 #[unsafe(no_mangle)]
 pub extern "C" fn ladspa_descriptor(index: c_ulong) -> *const Descriptor {
     match index {
         0 => &DESCRIPTOR,
         1 => &LOUDNESS_DESCRIPTOR,
+        2 => &PARAMETRIC_DESCRIPTOR,
         _ => std::ptr::null(),
     }
+}
+unsafe extern "C" fn instantiate_parametric(_: *const Descriptor, rate: c_ulong) -> *mut c_void {
+    #[allow(clippy::unnecessary_cast)]
+    contain(std::ptr::null_mut(), || {
+        Processor::new_parametric(rate as u64)
+            .map_or(std::ptr::null_mut(), |p| Box::into_raw(Box::new(p)).cast())
+    })
 }
 unsafe extern "C" fn instantiate_loudness(_: *const Descriptor, rate: c_ulong) -> *mut c_void {
     #[allow(clippy::unnecessary_cast)]

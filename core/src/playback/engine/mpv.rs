@@ -14,6 +14,7 @@ use std::{
     time::{Duration, Instant},
 };
 mod loudness;
+mod parametric;
 
 #[derive(Default)]
 pub struct MpvConfig {
@@ -30,6 +31,7 @@ pub struct MpvEngine {
     // owning adapter handle/library are released.
     equalizer: Option<crate::effects::equalizer::EqualizerHost>,
     loudness: Option<crate::effects::loudness::LoudnessHost>,
+    parametric: Option<crate::effects::parametric::ParametricHost>,
     equalizer_library: Option<PathBuf>,
     sequence: u64,
     events: VecDeque<EngineEvent>,
@@ -113,6 +115,7 @@ impl MpvEngine {
             native,
             equalizer: None,
             loudness: None,
+            parametric: None,
             equalizer_library: None,
             sequence: 0,
             events: VecDeque::new(),
@@ -649,6 +652,11 @@ impl AudioEngine for MpvEngine {
             return Err(Error::Media(
                 "equalizer processing failed; recreate the adapter",
             ));
+        }
+        if let Some(parametric) = &self.parametric
+            && parametric.stats()?.failed_blocks != 0
+        {
+            return Err(Error::Media("parametric equalizer processing failed"));
         }
         let events = self.drain()?;
         Ok(EngineSnapshot {
