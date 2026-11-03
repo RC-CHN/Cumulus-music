@@ -25,6 +25,7 @@ pub fn control(value: &Value) {
             "unavailable",
             "missing_song",
             "mixed_results",
+            "highlight",
             "short_pages",
             "correction",
             "card_error",
@@ -239,6 +240,22 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
             )));
         }
     }
+    if mode == "highlight" {
+        let track = match category {
+            "all" => Some(&mut response["data"]["blocks"][1]["resources"][0]["baseInfo"]),
+            "songs" => Some(&mut response["data"]["resources"][0]["baseInfo"]["simpleSongData"]),
+            "lyrics" => Some(&mut response["data"]["resources"][0]["song"]),
+            _ => None,
+        };
+        if let Some(track) = track {
+            track["name"] = json!("A+B 和 a+b <plain>");
+            track["ar"][0]["name"] = json!("歌手 A+B");
+            track["al"]["name"] = json!("a+b 专辑");
+        }
+        if category == "lyrics" {
+            response["data"]["resources"][0]["lyrics"] = json!("A+B 原歌词");
+        }
+    }
     if mode == "correction" {
         let valid = match category {
             "all" => args["keyword"] == "合成错词",
@@ -255,10 +272,15 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
                 0,
                 json!({"blockCode":"search_block_correction","resources":[{"baseInfo":{"keyword":"合成错词","rewriteQuery":"合成正词"}}]}),
             );
-            if args["needCorrect"] == false {
-                response["data"]["blocks"][2]["resources"][0]["baseInfo"]["name"] =
-                    json!("按原词搜索结果");
-            }
+            response["data"]["blocks"][2]["resources"][0]["baseInfo"]["name"] =
+                if args["needCorrect"] == false {
+                    json!("按原词搜索结果")
+                } else {
+                    json!("合成错词／合成正词")
+                };
+        } else if category == "songs" {
+            response["data"]["resources"][0]["baseInfo"]["simpleSongData"]["name"] =
+                json!("合成错词／合成正词");
         }
     }
     if mode == "mixed_results" && category == "all" {

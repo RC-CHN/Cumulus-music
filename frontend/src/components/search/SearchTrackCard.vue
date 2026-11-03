@@ -3,8 +3,10 @@ import { ref, watch } from 'vue';
 import type { TrackView } from '../../services/contracts';
 import { artworkAt } from '../../services/artwork';
 import Icon from '../Icon.vue';
+import SearchMatchText from './SearchMatchText.vue';
 const props = defineProps<{
   track: TrackView;
+  matchKeyword: string;
   playable: boolean;
   current: boolean;
   playing: boolean;
@@ -55,7 +57,9 @@ watch(
       <span class="search-track-mask"><Icon :name="current && playing ? 'pause' : 'play'" /></span>
     </button>
     <div class="search-track-copy">
-      <p class="search-track-title ellipsis" :data-tooltip="track.name">{{ track.name }}</p>
+      <p class="search-track-title ellipsis" :data-tooltip="track.name">
+        <SearchMatchText :text="track.name" :keyword="matchKeyword" />
+      </p>
       <div class="search-track-credit">
         <span v-if="track.fee === 1" class="vip-tag">VIP</span>
         <span class="ellipsis" :data-tooltip="track.artists.join(' / ')">
@@ -63,11 +67,17 @@ watch(
             <template v-for="(artist, i) in track.artistRefs" :key="i">
               <span v-if="i"> / </span
               ><button v-if="artist.id" @click.stop="emit('artist', artist.id)" @dblclick.stop>
-                {{ artist.name }}</button
-              ><span v-else>{{ artist.name }}</span>
+                <SearchMatchText :text="artist.name" :keyword="matchKeyword" />
+              </button>
+              <span v-else><SearchMatchText :text="artist.name" :keyword="matchKeyword" /></span>
             </template>
           </template>
-          <template v-else>{{ track.artists.join(' / ') || '未知歌手' }}</template>
+          <SearchMatchText
+            v-else-if="track.artists.length"
+            :text="track.artists.join(' / ')"
+            :keyword="matchKeyword"
+          />
+          <template v-else>未知歌手</template>
         </span>
       </div>
     </div>

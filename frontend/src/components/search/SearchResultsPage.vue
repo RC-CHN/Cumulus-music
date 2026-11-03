@@ -80,6 +80,9 @@ const requestKeyword = computed(() =>
     ? (props.rewrittenKeyword ?? props.keyword)
     : props.keyword,
 );
+const matchKeyword = computed(() =>
+  category.value === 'all' ? props.keyword : (rewrite.value ?? requestKeyword.value),
+);
 const waterfall = computed(() => ['artists', 'users', 'mvs'].includes(category.value));
 const limit = computed(() => (waterfall.value ? 13 : 30));
 const selected = computed(() => searchCategories.find((c) => c.key === category.value)!);
@@ -480,6 +483,7 @@ onBeforeUnmount(() => {
                 >
                   <TrackRow
                     :track="item.track"
+                    :match-keyword="matchKeyword"
                     :index="index"
                     :liked="liked.has(item.track.id)"
                     :busy="busyLikes.has(item.track.id)"
@@ -514,6 +518,7 @@ onBeforeUnmount(() => {
                 v-for="(track, index) in tracks(section).slice(0, 6)"
                 :key="`${track.id}:${index}`"
                 :track="track"
+                :match-keyword="matchKeyword"
                 :playable="playable"
                 :current="track.id === currentId"
                 :playing="playbackState === 'playing' || playbackState === 'buffering'"
@@ -536,6 +541,7 @@ onBeforeUnmount(() => {
             <TrackTable
               v-else-if="section.items.some((i) => i.kind === 'song')"
               :tracks="tracks(section)"
+              :match-keyword="matchKeyword"
               :liked="liked"
               :busy="busyLikes"
               :playable="playable"

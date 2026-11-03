@@ -58,10 +58,21 @@
     const partial=()=>one('.search-result-panel').textContent.includes('有 1 项结果暂无法展示');
     assert(partial()&&one('.search-track-card')&&!button('重新加载'),'comprehensive mixed results preserve valid cards');
     await choose('songs');assert(partial()&&one('.track-row')&&!button('重新加载'),'category mixed results preserve valid tracks');
+    await fixture('highlight');await fresh('A+B');
+    const matches=root=>[...root.querySelectorAll('mark.search-match-text')].map(n=>n.textContent).join('|');
+    const preview=one('.search-track-card');
+    assert(matches(preview)==='A+B|a+b|A+B'&&preview.textContent.includes('<plain>')&&!preview.querySelector('plain'),'literal comprehensive title and artist marks');
+    await choose('songs');assert(matches(one('.track-row'))==='A+B|a+b|A+B|a+b','song title, artist and album marks');
+    await choose('lyrics');
+    assert(matches(one('.search-lyric-result'))==='A+B|a+b|A+B|a+b'&&
+      one('.search-lyric-lines')?.textContent.includes('A+B 原歌词')&&!one('.search-lyric-lines mark'),
+      'lyric row labels marked while lyric body stays plain');
     await fixture('correction');await fresh('合成错词');
     assert(one('.search-correction')?.textContent.includes('合成正词'),'comprehensive shows rewritten term');
+    assert(matches(one('.search-track-card'))==='合成错词','comprehensive highlights original term');
     await capture('correction_all');
     await choose('songs');assert(one('.track-row')&&one('.search-correction')?.textContent.includes('合成正词'),'songs use rewritten term and retain original action');
+    assert(matches(one('.track-row'))==='合成正词','song category highlights rewritten term');
     await choose('playlists');click(button('下一页'));await wait(()=>ready()&&one('.search-result-card')&&one('.search-result-pagination')?.textContent.includes('第 2 页'),'corrected term carries to next page');
     await capture('correction_pagination');
     click(button('仍然搜索“合成错词”'));await wait(()=>ready()&&one('[data-category="all"]').getAttribute('aria-selected')==='true'&&!one('.search-correction')&&one('.search-result-panel').textContent.includes('按原词搜索结果'),'original term sent with correction disabled');
@@ -88,6 +99,6 @@
     await choose('songs');click(one('.track-row[data-track-id="2"] .track-play'));
     await wait(()=>playingTrack(2),'song row uses search trial');
     await fixture('expired');click(one('[data-category="albums"]'));await wait(()=>button('重新登录')&&!one('.search-results-page'),'expired account');await capture('expired');
-    await emit('complete',{ok:true,stageCount:count,responseTimingInjected:true,shortPageOffsetsVerified:true,searchResultPlaybackVerified:true,realMusicRequests:0,realAccountWrites:0});
+    await emit('complete',{ok:true,stageCount:count,responseTimingInjected:true,shortPageOffsetsVerified:true,searchResultPlaybackVerified:true,searchMatchHighlightVerified:true,realMusicRequests:0,realAccountWrites:0});
   }catch(error){await emit('failed',{step,message:String(error),stack:error?.stack,stageCount:count,body:document.body.innerText.slice(0,3500)});}
 })();

@@ -6,6 +6,7 @@ import type { TrackView } from '../services/contracts';
 import TrackRow from './TrackRow.vue';
 const props = defineProps<{
   tracks: TrackView[];
+  matchKeyword?: string;
   liked: Set<string>;
   busy: Set<string>;
   playable?: boolean;
@@ -56,8 +57,10 @@ watch(
           busy.has(track.id),
           playable,
           navigable,
+          matchKeyword,
         ]"
         :track="track"
+        :match-keyword="matchKeyword"
         :index="start + index"
         :current-id="currentId"
         :liked="liked.has(track.id)"

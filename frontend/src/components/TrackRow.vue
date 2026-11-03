@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import SearchMatchText from './search/SearchMatchText.vue';
 import type { TrackMenuRequest } from '../services/trackMenu';
 import type { TrackView } from '../services/contracts';
 import { artworkAt } from '../services/artwork';
 import Icon from './Icon.vue';
 const props = defineProps<{
   track: TrackView;
+  matchKeyword?: string;
   index: number;
   liked: boolean;
   busy: boolean;
@@ -68,7 +70,9 @@ function duration(ms: number) {
       /><span v-else class="track-art"><Icon name="music" /></span>
       <div>
         <div class="ellipsis" :data-tooltip="track.name">
-          {{ track.name }} <span v-if="track.fee === 1" class="vip-tag">VIP</span>
+          <SearchMatchText v-if="matchKeyword" :text="track.name" :keyword="matchKeyword" />
+          <template v-else>{{ track.name }}</template>
+          <span v-if="track.fee === 1" class="vip-tag">VIP</span>
         </div>
         <small
           v-if="navigable && track.artistRefs?.length"
@@ -77,13 +81,25 @@ function duration(ms: number) {
           ><template v-for="(artist, i) in track.artistRefs" :key="i"
             ><span v-if="i"> / </span
             ><button v-if="artist.id" @click.stop="emit('artist', artist.id)" @dblclick.stop>
-              {{ artist.name }}</button
-            ><span v-else>{{ artist.name }}</span></template
+              <SearchMatchText v-if="matchKeyword" :text="artist.name" :keyword="matchKeyword" />
+              <template v-else>{{ artist.name }}</template>
+            </button>
+            <span v-else>
+              <SearchMatchText v-if="matchKeyword" :text="artist.name" :keyword="matchKeyword" />
+              <template v-else>{{ artist.name }}</template>
+            </span></template
           ></small
         >
-        <small v-else class="ellipsis" :data-tooltip="track.artists.join(' / ')">{{
-          track.artists.join(' / ') || (track.local ? '本地文件' : '未知歌手')
-        }}</small>
+        <small v-else class="ellipsis" :data-tooltip="track.artists.join(' / ')">
+          <SearchMatchText
+            v-if="matchKeyword && track.artists.length"
+            :text="track.artists.join(' / ')"
+            :keyword="matchKeyword"
+          />
+          <template v-else>{{
+            track.artists.join(' / ') || (track.local ? '本地文件' : '未知歌手')
+          }}</template>
+        </small>
       </div>
     </div>
     <span class="track-album ellipsis" role="cell" :data-tooltip="track.album"
@@ -93,8 +109,11 @@ function duration(ms: number) {
         @click.stop="emit('album', track.albumId)"
         @dblclick.stop
       >
-        {{ track.album }}</button
-      ><template v-else>{{ track.album }}</template></span
+        <SearchMatchText v-if="matchKeyword" :text="track.album" :keyword="matchKeyword" />
+        <template v-else>{{ track.album }}</template>
+      </button>
+      <SearchMatchText v-else-if="matchKeyword" :text="track.album" :keyword="matchKeyword" />
+      <template v-else>{{ track.album }}</template></span
     >
     <span role="cell"
       ><button
