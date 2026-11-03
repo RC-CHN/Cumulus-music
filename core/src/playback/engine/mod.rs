@@ -39,13 +39,21 @@ pub(crate) fn pinned_audio_format(file: &mut std::fs::File) -> Result<&'static s
     }
 }
 
-pub(crate) fn pinned_ncm_format(info: &crate::media::ncm::NcmInfo) -> Result<&'static str> {
+pub(crate) fn pinned_ncm_format(
+    reader: &mut crate::media::ncm::NcmReader<impl std::io::Read + std::io::Seek>,
+) -> Result<&'static str> {
     use crate::media::ncm::AudioFormat;
-    match info.audio_format {
+    match reader.info().audio_format {
         Some(AudioFormat::Flac) => Ok("flac"),
         Some(AudioFormat::Mp3) => Ok("mp3"),
-        // MOV/M4A external references are outside the audio-only boundary.
-        Some(AudioFormat::M4a) | None => Err(crate::Error::InvalidInput(
+        Some(AudioFormat::M4a) => {
+            // Validate against the decrypted payload's coordinates. The
+            // underlying NCM header/cover cannot satisfy any BMFF offset.
+            let length = reader.info().audio_bytes;
+            bmff::validate_stream(reader, length)?;
+            Ok("mov")
+        }
+        None => Err(crate::Error::InvalidInput(
             "unsupported pinned NCM audio format",
         )),
     }

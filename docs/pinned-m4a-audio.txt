@@ -6,7 +6,10 @@ the self-contained url data reference, sample-description indices and chunk
 starts in the file's own mdat. It does not trust an M4A extension or a leading
 ftyp signature alone. Common iTunes metadata can be present. External data
 references, QuickTime aliases, fragments, unknown structures, other tracks
-and encrypted NCM/M4A are outside this subset.
+and other codecs are outside this subset. Strict NCM can carry this same AAC
+subset; structural validation runs over the bounded decrypted payload of the
+original handle, with no plaintext export. Cold-offline account and cached
+entitlement checks apply unchanged.
 
 The already-opened regular file supplies the only stream. Before forcing
 libavformat's MOV demuxer, libmpv disables access-references and autoload-files.

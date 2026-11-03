@@ -317,7 +317,7 @@ async fn native_plain_selection_opens_owned_published_bytes_and_rechecks_integri
         &path,
         &task,
         &ledger,
-        FLAC,
+        include_bytes!("fixtures/tag_audio/seed.m4a"),
     )
     .await;
     let first = grant.list_plain_audio(None, 1).unwrap();
@@ -537,14 +537,14 @@ async fn verify_cold_ncm(
         ) -> Result<LoadedMedia> {
             authority.check()?;
             let mut reader = NcmReader::new(file, HeaderPolicy::Strict)?;
-            let mut magic = [0; 4];
+            let mut magic = [0; 8];
             reader.read_exact(&mut magic)?;
-            assert_eq!(&magic, b"fLaC");
+            assert_eq!(&magic[4..], b"ftyp");
             self.0.loaded.fetch_add(1, Ordering::SeqCst);
             Ok(LoadedMedia {
                 entry_id: 7,
                 duration: Some(1.0),
-                codec: Some("flac".into()),
+                codec: Some("aac".into()),
             })
         }
         fn pause(&mut self, _: bool) -> Result<()> {

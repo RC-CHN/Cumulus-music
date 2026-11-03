@@ -571,8 +571,8 @@ impl AudioEngine for MpvEngine {
         authority.check()?;
         cancel.check()?;
         Self::check_regular(&file)?;
-        let reader = NcmReader::new(file, HeaderPolicy::Strict)?;
-        let format = super::pinned_ncm_format(reader.info())?;
+        let mut reader = NcmReader::new(file, HeaderPolicy::Strict)?;
+        let format = super::pinned_ncm_format(&mut reader)?;
         self.load_pinned(Box::new(reader), format, authority, cancel)
     }
 

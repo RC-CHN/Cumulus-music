@@ -16,12 +16,12 @@ struct Atom {
     data: Range<u64>,
 }
 
-struct Reader<'a> {
-    file: &'a mut File,
+struct Reader<'a, R> {
+    file: &'a mut R,
     remaining: usize,
 }
 
-impl Reader<'_> {
+impl<R: Read + Seek> Reader<'_, R> {
     fn at<const N: usize>(&mut self, data: &Range<u64>, offset: u64) -> Result<[u8; N]> {
         let start = data.start.checked_add(offset).ok_or(REJECT)?;
         if start.checked_add(N as u64).ok_or(REJECT)? > data.end {
@@ -324,6 +324,11 @@ fn one<'a>(boxes: &'a [Atom], kind: &[u8; 4]) -> Result<&'a Atom> {
 
 pub(super) fn validate(file: &mut File) -> Result<()> {
     let length = file.metadata()?.len();
+    validate_stream(file, length)
+}
+
+/// The declared length is the bounded logical stream, not the backing file.
+pub(super) fn validate_stream(file: &mut (impl Read + Seek), length: u64) -> Result<()> {
     let result = Reader {
         file,
         remaining: MAX_BOXES,

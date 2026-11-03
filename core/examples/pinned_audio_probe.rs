@@ -116,11 +116,53 @@ fn probe_m4a(engine: &mut dyn AudioEngine) {
         engine.load_pinned_audio(file, Cancellation::default(), &Cancellation::default()),
         Err(Error::InvalidInput("unsupported pinned audio format"))
     ));
+    let wrapped = |payload: &[u8]| {
+        let mut file = tempfile::tempfile().unwrap();
+        write_stream(
+            &mut Cursor::new(payload),
+            &mut file,
+            NcmWriteOptions {
+                metadata: None,
+                cover: &[],
+                audio_key: Some(b"synthetic audio key"),
+            },
+        )
+        .unwrap();
+        file
+    };
+    assert!(matches!(
+        engine.load_pinned_ncm(
+            wrapped(&malicious),
+            Cancellation::default(),
+            &Cancellation::default()
+        ),
+        Err(Error::InvalidInput("unsupported pinned audio format"))
+    ));
+    let authority = Cancellation::default();
+    let loaded = engine
+        .load_pinned_ncm(wrapped(seed), authority.clone(), &Cancellation::default())
+        .unwrap();
+    assert_eq!(loaded.codec.as_deref(), Some("aac"));
+    engine.seek(0.3).unwrap();
+    engine.pause(false).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while !engine.poll().unwrap().position.is_some_and(|p| p > 0.32) {
+        assert!(
+            Instant::now() < deadline,
+            "pinned NCM/M4A clock did not advance after seek"
+        );
+        thread::sleep(Duration::from_millis(15));
+    }
+    authority.cancel();
+    assert!(matches!(engine.poll(), Err(Error::Cancelled)));
+    assert!(engine.poll().unwrap().entry_id.is_none());
     assert_eq!(
         listener.accept().unwrap_err().kind(),
         std::io::ErrorKind::WouldBlock
     );
-    println!("pinned local AAC/M4A decoded; external URL dref refused without a connection");
+    println!(
+        "pinned plain and NCM AAC/M4A decoded; both external URL drefs refused without a connection"
+    );
 }
 
 fn probe_ncm(engine: &mut dyn AudioEngine, root: &std::path::Path, seed: &[u8]) {

@@ -178,8 +178,8 @@ fn text(value: &Value) -> String {
 
 fn check_format(file: &mut File, encrypted: bool) -> Result<()> {
     if encrypted {
-        let reader = NcmReader::new(file, HeaderPolicy::Strict)?;
-        pinned_ncm_format(reader.info())?;
+        let mut reader = NcmReader::new(file, HeaderPolicy::Strict)?;
+        pinned_ncm_format(&mut reader)?;
     } else {
         pinned_audio_format(file)?;
     }
