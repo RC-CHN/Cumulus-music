@@ -17,6 +17,7 @@
     throw Error(label);
   }
   const seeks = [];
+  let restoreBufferFixture = () => {};
   const fetch = window.fetch;
   window.fetch = function(url, options) {
     if (String(url).split('/').at(-1) === 'player_action' && typeof options?.body === 'string') {
@@ -55,6 +56,27 @@
         'trial marker absolute position');
     }
 
+    if (window.__trialBufferProof === true) {
+      // Adjust only the advisory field on the real Tauri player's channel.
+      // Its account/play id, clock, pause and seek replies remain native.
+      const callbacks = window.__TAURI_INTERNALS__.callbacks;
+      const get = callbacks.get;
+      callbacks.get = function(id) {
+        const callback = get.call(this, id);
+        if (!callback) return callback;
+        return (envelope) => {
+          const update = envelope?.message;
+          const view = update?.value;
+          if (update?.kind === 'state' && view?.epoch === epoch &&
+              view.playId === started.playId && view.timeline?.mode === 'trial') {
+            callback({ ...envelope, message: { ...update, value: { ...view, bufferedThrough: 60 } } });
+          } else {
+            callback(envelope);
+          }
+        };
+      };
+      restoreBufferFixture = () => { delete callbacks.get; };
+    }
     release(30);
     const inRange = await wait(async () => {
       const state = await read();
@@ -64,6 +86,27 @@
     assert(seeks.length === 1 && seeks[0] === 30, 'one fenced seek reaches IPC');
     await emit('ux_01_trial_inside', { bounds: [20, 40], total: 100, seekCount: seeks.length });
     await sleep(400);
+    if (window.__trialBufferProof === true) {
+      const segment = await wait(() => one('.seek-buffered'), 'buffered rail segment');
+      const rect = segment.getBoundingClientRect();
+      const left = (rect.left - lane.left) / lane.width;
+      const right = (rect.right - lane.left) / lane.width;
+      assert(Math.abs(left - .3) < .01 && Math.abs(right - .4) < .01 && rect.height > 0,
+        'cache starts at actual seek clock and clips at trial boundary');
+      assert(segment.parentElement.getAttribute('aria-hidden') === 'true' &&
+        getComputedStyle(segment).pointerEvents === 'none', 'cache does not intercept seek');
+      const rail = input();
+      rail.value = '34';
+      rail.dispatchEvent(new Event('input', { bubbles: true }));
+      await wait(() => !one('.seek-buffered'), 'draft hides cache');
+      rail.dispatchEvent(new Event('pointercancel', { bubbles: true }));
+      await wait(() => one('.seek-buffered'), 'cancel restores cache');
+      await emit('ux_03_trial_buffer', {
+        observedSpan: [left, right], injectedAdvisoryEnd: 60, seekCount: seeks.length,
+      });
+      restoreBufferFixture();
+      restoreBufferFixture = () => {};
+    }
 
     for (const candidate of [10, 70]) {
       release(candidate);
@@ -83,6 +126,7 @@
   } catch (error) {
     await emit('failed', { message: String(error?.message ?? error), seekCount: seeks.length });
   } finally {
+    restoreBufferFixture();
     window.fetch = fetch;
   }
 })();
