@@ -1,4 +1,4 @@
-"""Start the exact extracted Debian app, with no account or external network.
+"""Start a built executable or exact extracted Debian app with no external network.
 
 Optional playback needs a private 1280x900 Xvfb display, D-Bus session and a
 network namespace with no routes. Hide host sound devices, for example:
@@ -110,34 +110,45 @@ def observe(binary, root, verify_local_playback=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--packages', type=Path, required=True)
-    parser.add_argument('--filter', type=Path, required=True)
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument('--packages', type=Path, help='directory with Debian package and manifest')
+    source.add_argument('--binary', type=Path, help='ordinary unpackaged Cumulus executable')
+    parser.add_argument('--filter', type=Path, help='portable filter to compare in package mode')
     parser.add_argument('--commit', required=True)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--verify-local-playback', action='store_true',
                         help='exercise synthetic audio via X11 and a private PipeWire null sink')
     args = parser.parse_args()
+    if bool(args.packages) != bool(args.filter):
+        parser.error('--filter is required with --packages and must be omitted with --binary')
     require_isolation()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
-    manifest = json.loads((args.packages/'manifest-linux-x64.json').read_text(encoding='utf-8'))
-    assert manifest['commit'] == args.commit and manifest['platform'] == 'linux-x64'
-    name = f"Cumulus-{manifest['version']}-linux-x64.deb"
-    asset, = (row for row in manifest['assets'] if row['name'] == name)
-    deb = args.packages/name
-    assert deb.stat().st_size == asset['bytes'] and digest(deb) == asset['sha256']
-    with tempfile.TemporaryDirectory(prefix='cumulus-deb-proof-') as extracted:
-        subprocess.run(['dpkg-deb', '--extract', deb, extracted], check=True)
-        installed = Path(extracted)/'usr'
-        executable = installed/'bin/cumulus'
-        packaged_filter = installed/'lib/Cumulus/native/libcumulus_audio_filter.so'
-        assert executable.is_file() and not executable.is_symlink() and os.access(executable, os.X_OK)
-        assert packaged_filter.is_file() and not packaged_filter.is_symlink()
-        assert digest(packaged_filter) == digest(args.filter)
-        width, height, playback = observe(executable, root, args.verify_local_playback)
-    result = dict(ok=True, commit=args.commit, archiveVerified=True,
-                  installedFilterMatchesPortable=True, ordinaryWindowPainted=True,
-                  noExternalNetwork=True, width=width, height=height)
+    if args.binary:
+        binary = args.binary.resolve(strict=True)
+        assert binary.is_file() and os.access(binary, os.X_OK), 'expected a built executable'
+        binary_hash = digest(binary)
+        width, height, playback = observe(binary, root, args.verify_local_playback)
+        assert digest(binary) == binary_hash, 'executable changed during the probe'
+        result = dict(ok=True, commit=args.commit, ordinaryBinary=True, binarySha256=binary_hash)
+    else:
+        manifest = json.loads((args.packages/'manifest-linux-x64.json').read_text(encoding='utf-8'))
+        assert manifest['commit'] == args.commit and manifest['platform'] == 'linux-x64'
+        name = f"Cumulus-{manifest['version']}-linux-x64.deb"
+        asset, = (row for row in manifest['assets'] if row['name'] == name)
+        deb = args.packages/name
+        assert deb.stat().st_size == asset['bytes'] and digest(deb) == asset['sha256']
+        with tempfile.TemporaryDirectory(prefix='cumulus-deb-proof-') as extracted:
+            subprocess.run(['dpkg-deb', '--extract', deb, extracted], check=True)
+            installed = Path(extracted)/'usr'
+            executable = installed/'bin/cumulus'
+            packaged_filter = installed/'lib/Cumulus/native/libcumulus_audio_filter.so'
+            assert executable.is_file() and not executable.is_symlink() and os.access(executable, os.X_OK)
+            assert packaged_filter.is_file() and not packaged_filter.is_symlink()
+            assert digest(packaged_filter) == digest(args.filter)
+            width, height, playback = observe(executable, root, args.verify_local_playback)
+        result = dict(ok=True, commit=args.commit, archiveVerified=True, installedFilterMatchesPortable=True)
+    result.update(ordinaryWindowPainted=True, noExternalNetwork=True, width=width, height=height)
     if playback is not None:
         result['localPlayback'] = playback
     (root/'report.json').write_text(json.dumps(result, indent=2)+'\n', encoding='utf-8')
