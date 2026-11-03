@@ -61,6 +61,30 @@
     click(one('[aria-label="歌词"]'));
     await wait(()=>one('.lyric-line.current'),'lyrics loaded');
   }
+  async function verifyLyricModes() {
+    const roman=()=>one('[aria-label="音译歌词"]'), translation=()=>one('[aria-label="翻译歌词"]');
+    const pressed=node=>node?.getAttribute('aria-pressed')==='true';
+    const displayed=text=>one('.lyric-line.current small')?.textContent.includes(text);
+    const scroller=one('.lyric-scroll');
+    await wait(()=>roman()&&translation()&&displayed('合成翻译'),'initial auxiliary mode');
+    assert(pressed(translation())&&!pressed(roman())&&all('.lyric-line.current small').length===1,'legacy settings do not display two auxiliaries');
+    scroller.dispatchEvent(new WheelEvent('wheel',{bubbles:true,deltaY:500}));
+    scroller.scrollTop=scroller.scrollHeight;
+    await wait(()=>one('.lyric-scroll-shell.browsing'),'manual scroll before mode change');
+    click(roman());
+    await wait(()=>pressed(roman())&&!pressed(translation())&&displayed('synthetic roman')&&!one('.lyric-scroll-shell.browsing'),'romanization replaces translation and resumes follow');
+    click(roman());
+    await wait(()=>!pressed(roman())&&!one('.lyric-line.current small'),'original lyrics only');
+    click(translation());
+    await wait(()=>pressed(translation())&&displayed('合成翻译'),'restore translation');
+    const advance=one('[aria-label="歌词提前半秒"]'), delay=one('[aria-label="歌词延后半秒"]');
+    const offset=()=>advance.previousElementSibling.textContent.trim();
+    assert(offset()==='0.0s','initial lyric offset');
+    click(advance);
+    await wait(()=>offset()==='0.5s'&&advance.getAttribute('aria-disabled')==='false','advance half a second');
+    click(delay);
+    await wait(()=>offset()==='0.0s'&&delay.getAttribute('aria-disabled')==='false','restore lyric offset');
+  }
   async function verifyLyricFollow() {
     const scroller=one('.lyric-scroll');
     const resume=()=>all('.lyric-tools button').find(node=>node.textContent.trim()==='回到当前');
@@ -140,7 +164,7 @@
     await wait(()=>one('[aria-label="列表循环"]') && !one('[aria-label="列表循环"]').disabled,'native player ready');
     assert(one('.track-row').textContent.includes('沿着海岸'),'long fixture missing');
     await play(0);
-    if(!window.__playerLayoutBaseline) { await verifyLyricFollow(); await verifyLyricFont(); }
+    if(!window.__playerLayoutBaseline) { await verifyLyricModes(); await verifyLyricFollow(); await verifyLyricFont(); }
     for(const [width,height,theme] of [[1120,760,'light'],[760,540,'light'],[760,540,'dark'],[1120,760,'dark']]) {
       await emit('resize',{width,height});await wait(()=>innerWidth===width&&innerHeight===height,'resize');await appearance(theme);
       const suffix=`${width}_${theme}`;
@@ -153,6 +177,8 @@
       click(one('[aria-label="关闭播放队列"]'));await wait(()=>!one('.queue-panel'),'queue close');
     }
     await play(1);
+    if(!window.__playerLayoutBaseline)
+      assert(!one('[aria-label="翻译歌词"]')&&!one('[aria-label="音译歌词"]')&&one('[aria-label="歌词提前半秒"]'),'original-only song does not show auxiliary toggles');
     for(const [width,height,theme] of [[1120,760,'light'],[760,540,'light'],[760,540,'dark'],[1120,760,'dark']]) {
       await emit('resize',{width,height});await wait(()=>innerWidth===width&&innerHeight===height,'resize');await appearance(theme);
       await capture(`short_${width}_${theme}`);
@@ -161,6 +187,6 @@
     assert(document.activeElement===one('[aria-label="歌词"]'),'detail close focus lost');
     const passed=checks.every(row=>Object.entries(row).every(([key,value])=>key==='label'||value===true));
     assert(window.__playerLayoutBaseline||passed,JSON.stringify(checks.filter(row=>Object.values(row).includes(false))));
-    await emit('complete',{ok:true,layoutPassed:passed,checks,stageCount,realMusicRequests:0,accountWrites:0,focusRestored:true,lyricFollowVerified:!window.__playerLayoutBaseline,lyricTimelineVerified:!window.__playerLayoutBaseline,lyricFontVerified:!window.__playerLayoutBaseline});
+    await emit('complete',{ok:true,layoutPassed:passed,checks,stageCount,realMusicRequests:0,accountWrites:0,focusRestored:true,lyricFollowVerified:!window.__playerLayoutBaseline,lyricTimelineVerified:!window.__playerLayoutBaseline,lyricFontVerified:!window.__playerLayoutBaseline,lyricModesVerified:!window.__playerLayoutBaseline});
   } catch(error) {await emit('failed',{ok:false,error:String(error),stageCount,checks});}
 })();

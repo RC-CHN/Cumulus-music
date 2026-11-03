@@ -44,7 +44,7 @@ def main():
     assert complete['ok'] and complete['stageCount'] == expected and complete['focusRestored']
     assert complete['realMusicRequests'] == complete['accountWrites'] == 0
     assert complete['nativePlayer']['state'] == 'paused' and complete['nativePlayer']['position'] > 0
-    assert args.baseline or (complete['layoutPassed'] and complete['lyricFollowVerified'] and complete['lyricTimelineVerified'] and complete['lyricFontVerified'])
+    assert args.baseline or (complete['layoutPassed'] and complete['lyricFollowVerified'] and complete['lyricTimelineVerified'] and complete['lyricFontVerified'] and complete['lyricModesVerified'])
     stages = list((root / 'first').glob('ux_*.json'))
     assert len(stages) == expected
     if args.screenshots:

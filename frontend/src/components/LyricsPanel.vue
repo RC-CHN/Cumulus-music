@@ -57,6 +57,60 @@ const browsingTime = computed(() => {
 const lyricFollowDelay = 5000;
 let lyricFollowTimer: ReturnType<typeof setTimeout> | undefined;
 const timedWords = computed(() => wordMode.value && (lyrics.value?.wordLines.length ?? 0) > 0);
+type Auxiliary = 'translation' | 'romanization';
+const auxiliaries = [
+  { key: 'romanization', label: '音', name: '音译歌词' },
+  { key: 'translation', label: '译', name: '翻译歌词' },
+] as const;
+const auxiliaryText = computed(() => {
+  const current = lyrics.value;
+  function rows(kind: Auxiliary) {
+    if (!current) return [];
+    if (!timedWords.value) return current[kind].map((row) => row.lyric.trim());
+    const wordRows = kind === 'translation' ? current.wordTranslation : current.wordRomanization;
+    const byTime = new Map(
+      (wordRows.length ? wordRows : current[kind]).map((row) => [row.time, row.lyric.trim()]),
+    );
+    return current.wordLines.map((line) => byTime.get(line.time));
+  }
+  return { translation: rows('translation'), romanization: rows('romanization') };
+});
+const auxiliaryAvailable = computed(() => ({
+  translation: auxiliaryText.value.translation.some(Boolean),
+  romanization: auxiliaryText.value.romanization.some(Boolean),
+}));
+const activeAuxiliary = computed<Auxiliary | undefined>(() => {
+  const preferences = lyrics.value?.preferences;
+  if (preferences?.translationEnable && auxiliaryAvailable.value.translation) return 'translation';
+  if (preferences?.romaEnable && auxiliaryAvailable.value.romanization) return 'romanization';
+});
+const changingLyric = ref(false);
+async function changeLyric(operation: () => Promise<void>) {
+  const current = lyrics.value;
+  if (!current || changingLyric.value) return;
+  changingLyric.value = true;
+  try {
+    await operation();
+    if (
+      !lyricError.value &&
+      current.epoch === lyrics.value?.epoch &&
+      current.playId === lyrics.value.playId
+    )
+      followLyrics();
+  } finally {
+    changingLyric.value = false;
+  }
+}
+function toggleAuxiliary(kind: Auxiliary) {
+  if (!auxiliaryAvailable.value[kind]) return;
+  const next = activeAuxiliary.value === kind ? undefined : kind;
+  void changeLyric(() =>
+    props.player.preferences({
+      translationEnable: next === 'translation',
+      romaEnable: next === 'romanization',
+    }),
+  );
+}
 type LyricSeekTarget = Pick<PlayerView, 'epoch' | 'playId' | 'queueRevision'>;
 const currentEpoch = computed(() => view.value?.epoch);
 const currentPlayId = computed(() => view.value?.playId);
@@ -217,17 +271,9 @@ function wordProgress(word: { time: number; duration: number }) {
   const seconds = (view.value?.position ?? 0) + (lyrics.value?.offset ?? 0);
   return `${Math.min(100, Math.max(0, word.duration ? ((seconds - word.time) / word.duration) * 100 : seconds >= word.time ? 100 : 0))}%`;
 }
-function aligned(rows: { time?: number; lyric: string }[] | undefined, index: number) {
-  if (!timedWords.value) return rows?.[index]?.lyric;
-  const current = lyrics.value;
-  if (!current) return;
-  if (rows === current.translation && current.wordTranslation.length)
-    rows = current.wordTranslation;
-  if (rows === current.romanization && current.wordRomanization.length)
-    rows = current.wordRomanization;
-  const time = current.wordLines[index]?.time;
-  return rows?.find((l) => l.time === time)?.lyric;
-}
+const displayedAuxiliary = computed(() =>
+  activeAuxiliary.value ? auxiliaryText.value[activeAuxiliary.value] : [],
+);
 </script>
 <template>
   <section
@@ -358,13 +404,7 @@ function aligned(rows: { time?: number; lyric: string }[] | undefined, index: nu
                   ></span
                 >
                 <span v-else>{{ line.lyric || '♪' }}</span>
-                <small
-                  v-if="lyrics.preferences.translationEnable && aligned(lyrics.translation, index)"
-                  >{{ aligned(lyrics.translation, index) }}</small
-                ><small
-                  v-if="lyrics.preferences.romaEnable && aligned(lyrics.romanization, index)"
-                  >{{ aligned(lyrics.romanization, index) }}</small
-                >
+                <small v-if="displayedAuxiliary[index]">{{ displayedAuxiliary[index] }}</small>
               </button>
               <div class="lyric-padding" />
             </div>
@@ -384,51 +424,47 @@ function aligned(rows: { time?: number; lyric: string }[] | undefined, index: nu
         <div class="lyric-tools">
           <template v-if="lyrics">
             <LyricFontSize v-if="lines.length" v-model="lyricFontGain" />
+            <template v-if="lyrics.scrollable">
+              <button
+                class="icon-button"
+                aria-label="歌词延后半秒"
+                :aria-disabled="changingLyric"
+                @click="changeLyric(() => player.offset(-1))"
+              >
+                −
+              </button>
+              <small>{{ lyrics.offset.toFixed(1) }}s</small>
+              <button
+                class="icon-button"
+                aria-label="歌词提前半秒"
+                :aria-disabled="changingLyric"
+                @click="changeLyric(() => player.offset(1))"
+              >
+                +
+              </button>
+            </template>
+            <template v-for="auxiliary in auxiliaries" :key="auxiliary.key">
+              <button
+                v-if="auxiliaryAvailable[auxiliary.key]"
+                class="text-button"
+                :aria-label="auxiliary.name"
+                :title="auxiliary.name"
+                :aria-pressed="activeAuxiliary === auxiliary.key"
+                :aria-disabled="changingLyric"
+                @click="toggleAuxiliary(auxiliary.key)"
+              >
+                {{ auxiliary.label }}
+              </button>
+            </template>
             <button
-              class="text-button"
-              :aria-pressed="lyrics.preferences.translationEnable"
-              @click="
-                player.preferences({
-                  ...lyrics.preferences,
-                  translationEnable: !lyrics.preferences.translationEnable,
-                })
-              "
-            >
-              译</button
-            ><button
-              class="text-button"
-              :aria-pressed="lyrics.preferences.romaEnable"
-              @click="
-                player.preferences({
-                  ...lyrics.preferences,
-                  romaEnable: !lyrics.preferences.romaEnable,
-                })
-              "
-            >
-              音</button
-            ><button
               v-if="lyrics.wordLines.length"
               class="text-button"
               :aria-pressed="wordMode"
               @click="wordMode = !wordMode"
             >
-              逐字</button
-            ><button
-              class="icon-button"
-              aria-label="歌词延后半秒"
-              :disabled="!lyrics.scrollable"
-              @click="player.offset(-1)"
-            >
-              −</button
-            ><small>{{ lyrics.offset.toFixed(1) }}s</small
-            ><button
-              class="icon-button"
-              aria-label="歌词提前半秒"
-              :disabled="!lyrics.scrollable"
-              @click="player.offset(1)"
-            >
-              +</button
-            ><button v-if="manual" ref="resumeButton" class="text-button" @click="followLyrics">
+              逐字
+            </button>
+            <button v-if="manual" ref="resumeButton" class="text-button" @click="followLyrics">
               回到当前
             </button>
           </template>
