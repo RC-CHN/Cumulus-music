@@ -172,6 +172,7 @@ impl MusicClient {
                     });
                 }
                 Ok(TrackPage {
+                    daily: None,
                     revision: Some(revision),
                     more: page.offset.saturating_add(tracks.len()) < ids.len(),
                     tracks,
@@ -223,6 +224,7 @@ impl MusicClient {
                     None => return Err(Error::Response("missing search songs")),
                 };
                 Ok(TrackPage {
+                    daily: None,
                     revision: None,
                     more: page.offset.saturating_add(tracks.len()) < total,
                     tracks,

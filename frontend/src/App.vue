@@ -2285,6 +2285,21 @@ onUnmounted(() => {
                     </button>
                   </div>
                 </div>
+                <div
+                  v-if="page.kind === 'daily' && result?.daily?.cached"
+                  class="notice"
+                  role="status"
+                >
+                  <span>暂时无法获取今日推荐，正在显示本账号上次加载的列表。</span>
+                  <button
+                    type="button"
+                    class="text-button"
+                    :disabled="loading"
+                    @click="music.load()"
+                  >
+                    重试
+                  </button>
+                </div>
                 <div v-if="notice || music.likeNotice.value" class="notice" role="status">
                   {{ music.likeNotice.value || notice
                   }}<button class="text-button" @click="music.resources">刷新</button>

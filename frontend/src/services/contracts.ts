@@ -211,6 +211,7 @@ export interface TrackPage {
   offset: number;
   more: boolean;
   playlist: PlaylistView | null;
+  daily?: { cached: boolean; showFreeTag: boolean };
 }
 export type QrStatus =
   | 'idle'

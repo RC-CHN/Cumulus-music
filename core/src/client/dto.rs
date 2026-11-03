@@ -179,6 +179,16 @@ pub struct TrackPage {
     pub offset: usize,
     pub more: bool,
     pub playlist: Option<PlaylistView>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub daily: Option<DailyRecommendationState>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DailyRecommendationState {
+    pub cached: bool,
+    /// Recovered presentation flag; never an entitlement decision.
+    pub show_free_tag: bool,
 }
 
 #[derive(Clone, Deserialize)]

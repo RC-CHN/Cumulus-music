@@ -17,16 +17,23 @@ style_recommendations 绑定登录代次并返回标准 TrackPage，保留歌曲
 /styleRecommend。M/91 中 dailyRecommend 的试听枚举为 35；M/3126 明确选用
 该值，即使另有 styleRecommend 枚举 39，也不替换。
 
-每日推荐原入口仍读取 /api/v3/discovery/recommend/songs {limit:30}。官方
+每日推荐原入口读取 /api/v1/discovery/recommend/songs 或
+/api/v3/discovery/recommend/songs，均发 {limit:30}。官方
 dailyRecommend/views/Content.jsx 的播放全部和 TrackViewer 都带同一场景及
 试听模式。客户端以独立 daily 列表代次处理播放，按已展示顺序选曲；拒绝
 风格列表代次或过期列表。提交普通播放命令后，音源授权带 trialMode:35，
 队列来源保留 dailyRecommend 和 /dailyRecommend，服务端仍裁定权益。
 恢复代码 M/244（配合 M/15 的 ii/Ph 导出）表明，官方 PH-PC-Blacklist=t1
-用 v3、其余用 v1（旧包取顶层 recommend），二者均传 limit:30；请求失败
-尝试账号专属 dailyRecommend:<uid> 的已缓存列表及歌曲详情。当前仅走 v3，
-尚未迁移分流、持久缓存降级和 showFreeTag 状态。新播放快照只保存内存中的
-最新列表版本，不当作官方离线缓存。
+用 v3（data.dailySongs）、其余用 v1（顶层 recommend）。桌面原生按账号
+保存分组，并按 M/147 的 30 分钟间隔刷新；临时失败保留上次分组，初始默认
+空分组。日推业务失败不请求另一个接口。传输、限流、服务故障或无效列表形状
+可读取本账号最后一次非空成功列表；登录状态、凭据、过期代次和权限拒绝不回退。
+新空列表照常显示，不覆盖已有缓存。缓存只保存投影后的歌曲及顺序，不保存
+原始业务回包、音源或授权字段；恢复时重新投影，并建立当前代次的播放快照。
+IPC 的 daily.cached 驱动可重试提示；daily.showFreeTag 保留服务展示字段，
+缓存时按官方设为 true，不作为权益证据。官方是缓存有序 ID 后读本地曲目库，
+Cumulus 单行 SQLite 事务保存有序投影以提供相同的展示降级；需要播放时仍走
+现有曲目详情及音源授权，缓存不能使歌曲离线可播。
 
 从「每日推荐 → 风格推荐」进入；列表有加载、空结果、错误及刷新，下载沿用既有
 授权和确认入口。播放使用原生列表版本和位置，按 M/3126 带 styleRecommend 场景，
@@ -42,3 +49,7 @@ Cumulus 沿用这一分组，保留社区主题及独立刷新；宽度不足时
 
 核心测试和 daily_history_smoke.py 验证请求、账号/列表版本隔离、原生播放、
 标签分类/空态和关闭后的焦点；未执行真实服务请求。
+daily_recommendation_cache.rs 还复验重开、权限及账号边界。Linux 的同一桌面
+探针注入一次 v1 传输失败，从缓存进入可重试状态，再取回新列表；按线序确认
+只进行一次分组查询和三次 v1 读取。截图见
+`.build/daily-official-webview/first/ux_05_daily_cached.png`。

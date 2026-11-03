@@ -1,12 +1,17 @@
 use super::{
     MusicClient,
-    dto::{AccountData, TrackPage},
+    dto::{AccountData, DailyRecommendationState, TrackPage},
     mapping,
 };
 use crate::{
     Error, Result, account::SessionToken, catalog::CatalogApi, playback::engine::Cancellation,
 };
 use serde_json::{Value, json};
+
+const CACHE_KIND: &str = "daily-recommendations";
+const CACHE_KEY: &str = "tracks-v1";
+const MAX_CACHE_BYTES: usize = 256 * 1024;
+const MAX_TRACKS: usize = 500;
 
 #[derive(Default)]
 pub(super) struct RecommendationSnapshot {
@@ -51,14 +56,46 @@ impl MusicClient {
 
     pub async fn daily_songs(&self) -> Result<AccountData<TrackPage>> {
         let source = RecommendationSource::Daily;
+        let token = self.session.token()?;
+        if token.uid.is_none() {
+            return Err(Error::service("session", json!(301), Value::Null));
+        }
         let request = self.begin_recommendation(source)?;
-        let (token, value) = self
+        let endpoint = self.daily_recommendation_endpoint(&token).await?;
+        let fresh = self
             .session
-            .run(|api, _| async move {
-                let response = CatalogApi::new(api).daily().await?;
-                recommendation_tracks(&response, source)
+            .run_for(&token, |api, _| async move {
+                let reply = CatalogApi::new(api).daily_for(endpoint).await?;
+                let mut value = track_page(&reply.songs)?;
+                value.daily = Some(DailyRecommendationState {
+                    cached: false,
+                    show_free_tag: reply.show_free_tag,
+                });
+                Ok(value)
             })
-            .await?;
+            .await;
+        let value = match fresh {
+            Ok(value) => value,
+            Err(error) if can_use_daily_cache(&error) => {
+                let cached = self.session.with_token(&token, |owner| {
+                    Ok(self
+                        .registry
+                        .store()
+                        .get(owner, CACHE_KIND, CACHE_KEY)
+                        .ok()
+                        .flatten()
+                        .and_then(|value| track_page(value.as_array()?).ok())
+                        .filter(|page| !page.tracks.is_empty()))
+                })?;
+                let mut value = cached.ok_or(error)?;
+                value.daily = Some(DailyRecommendationState {
+                    cached: true,
+                    show_free_tag: true,
+                });
+                value
+            }
+            Err(error) => return Err(error),
+        };
         self.publish_recommendation(source, request, token, value)
     }
 
@@ -72,7 +109,7 @@ impl MusicClient {
             .session
             .run_for(&token, |api, _| async move {
                 let response = CatalogApi::new(api).default_style_recommendations().await?;
-                recommendation_tracks(&response, source)
+                style_tracks(&response)
             })
             .await?;
         self.publish_recommendation(source, request, token, value)
@@ -85,13 +122,30 @@ impl MusicClient {
         token: SessionToken,
         mut value: TrackPage,
     ) -> Result<AccountData<TrackPage>> {
-        self.session.with_token(&token, |_| {
+        self.session.with_token(&token, |owner| {
             let mut state = self
                 .recommendation_state(source)
                 .lock()
                 .map_err(|_| Error::LockPoisoned)?;
             if state.started != request {
                 return Err(Error::StaleResponse);
+            }
+            if value.daily.as_ref().is_some_and(|daily| !daily.cached) && !value.tracks.is_empty() {
+                let projected = Value::Array(
+                    value
+                        .tracks
+                        .iter()
+                        .map(mapping::projected_song_metadata)
+                        .collect(),
+                );
+                if serde_json::to_vec(&projected).is_ok_and(|bytes| bytes.len() <= MAX_CACHE_BYTES)
+                {
+                    // Cache is opportunistic; an unwritable cache cannot invalidate a fresh read.
+                    let _ = self
+                        .registry
+                        .store()
+                        .put(owner, CACHE_KIND, CACHE_KEY, &projected);
+                }
             }
             let revision = match source {
                 RecommendationSource::Daily => format!("daily-{request}"),
@@ -148,16 +202,22 @@ impl MusicClient {
     }
 }
 
-fn recommendation_tracks(response: &Value, source: RecommendationSource) -> Result<TrackPage> {
-    const MAX_TRACKS: usize = 500;
+fn style_tracks(response: &Value) -> Result<TrackPage> {
     let data = response["data"]
         .as_object()
         .ok_or(Error::Response("invalid recommendations"))?;
-    let rows = match (source, data.get("dailySongs")) {
-        (RecommendationSource::Style, None | Some(Value::Null)) => &[][..],
-        (_, Some(Value::Array(rows))) if rows.len() <= MAX_TRACKS => rows.as_slice(),
+    let rows = match data.get("dailySongs") {
+        None | Some(Value::Null) => &[][..],
+        Some(Value::Array(rows)) => rows.as_slice(),
         _ => return Err(Error::Response("invalid recommendation tracks")),
     };
+    track_page(rows)
+}
+
+fn track_page(rows: &[Value]) -> Result<TrackPage> {
+    if rows.len() > MAX_TRACKS {
+        return Err(Error::Response("too many recommendation tracks"));
+    }
     let mut ids = std::collections::HashSet::new();
     let tracks = rows
         .iter()
@@ -176,5 +236,22 @@ fn recommendation_tracks(response: &Value, source: RecommendationSource) -> Resu
         offset: 0,
         more: false,
         playlist: None,
+        daily: None,
     })
+}
+
+fn can_use_daily_cache(error: &Error) -> bool {
+    match error.root() {
+        Error::Transport(_) | Error::Response(_) => true,
+        Error::HttpStatus { status, .. } => {
+            matches!(status, 408 | 429 | 500..=599)
+                && ![301, 401, 403]
+                    .into_iter()
+                    .any(|code| error.is_service_code(code))
+        }
+        Error::Service { .. } => [408, 429, 500, 502, 503, 504]
+            .into_iter()
+            .any(|code| error.is_service_code(code)),
+        _ => false,
+    }
 }
