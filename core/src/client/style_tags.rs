@@ -50,6 +50,30 @@ fn rows(value: &Value, max: usize) -> Result<&[Value]> {
         .ok_or(Error::Response("invalid style tag list"))
 }
 
+fn category(value: &Value, max_tags: usize) -> Result<StyleCategory> {
+    let (id, name) = field(value, "categoryId", "categoryName")?;
+    let mut tag_ids = HashSet::new();
+    let tags = rows(&value["tagVOList"], max_tags)?
+        .iter()
+        .map(|tag| {
+            let (id, name) = field(tag, "tagId", "tagName")?;
+            if !tag_ids.insert(id.clone()) {
+                return Err(Error::Response("duplicate style tag"));
+            }
+            Ok(StyleTag { id, name })
+        })
+        .collect::<Result<_>>()?;
+    Ok(StyleCategory { id, name, tags })
+}
+
+/// Applied labels are optional presentation data. Invalid metadata must not
+/// suppress a valid recommendation list or advertise a preference we cannot verify.
+pub(super) fn applied(value: Option<&Value>) -> Option<StyleCategory> {
+    category(value?, 20)
+        .ok()
+        .filter(|group| !group.tags.is_empty())
+}
+
 impl MusicClient {
     pub async fn style_recommendation_categories(
         &self,
@@ -73,23 +97,12 @@ impl MusicClient {
                 let mut categories = HashSet::new();
                 rows(&response["data"]["categorys"], 64)?
                     .iter()
-                    .map(|category| {
-                        let (id, name) = field(category, "categoryId", "categoryName")?;
-                        if !categories.insert(id.clone()) {
+                    .map(|value| {
+                        let category = category(value, 256)?;
+                        if !categories.insert(category.id.clone()) {
                             return Err(Error::Response("duplicate style category"));
                         }
-                        let mut tag_ids = HashSet::new();
-                        let tags = rows(&category["tagVOList"], 256)?
-                            .iter()
-                            .map(|tag| {
-                                let (id, name) = field(tag, "tagId", "tagName")?;
-                                if !tag_ids.insert(id.clone()) {
-                                    return Err(Error::Response("duplicate style tag"));
-                                }
-                                Ok(StyleTag { id, name })
-                            })
-                            .collect::<Result<Vec<_>>>()?;
-                        Ok(StyleCategory { id, name, tags })
+                        Ok(category)
                     })
                     .collect::<Result<Vec<_>>>()
             })

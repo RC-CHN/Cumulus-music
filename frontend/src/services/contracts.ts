@@ -212,6 +212,7 @@ export interface TrackPage {
   more: boolean;
   playlist: PlaylistView | null;
   daily?: { cached: boolean; showFreeTag: boolean; birthdayToday?: boolean };
+  styleTags?: StyleCategory;
 }
 export type QrStatus =
   | 'idle'

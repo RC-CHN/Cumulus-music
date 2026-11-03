@@ -23,14 +23,17 @@ fn client(api: Arc<ScriptApi>, path: &std::path::Path) -> (Arc<MusicClient>, Arc
 }
 
 #[tokio::test]
-async fn exact_default_read_projects_only_ordered_tracks() {
+async fn exact_default_read_projects_ordered_tracks_and_applied_tags() {
     let root = tempfile::tempdir().unwrap();
     let api = Arc::new(ScriptApi::new([json!({"code":200,"data":{
         "dailySongs":[
             {"id":72,"name":"Song B","dt":2000,"ar":[{"name":"Artist"}],"al":{"name":"Album"},"url":"https://example.invalid/private"},
             {"id":"71","name":"Song A"}
         ],
-        "tags":{"private":"sentinel"}
+        "tags":{"categoryId":12,"categoryName":" Applied category ","private":"sentinel","tagVOList":[
+            {"tagId":7,"tagName":"First style","private":"sentinel"},
+            {"tagId":"8","tagName":"Second style","url":"https://example.invalid/private"}
+        ]}
     }}).into()]));
     let (client, _) = client(api.clone(), root.path());
     let data = client.style_recommendations("1").await.unwrap();
@@ -46,7 +49,16 @@ async fn exact_default_read_projects_only_ordered_tracks() {
     assert_eq!(tracks[0].artists, ["Artist"]);
     assert_eq!(tracks[0].album, "Album");
     assert_eq!(tracks[0].duration_ms, 2000);
-    let serialized = serde_json::to_string(&data).unwrap();
+    let view = serde_json::to_value(&data).unwrap();
+    assert_eq!(
+        view["value"]["styleTags"],
+        json!({
+            "id":"12","name":"Applied category","tags":[
+                {"id":"7","name":"First style"},{"id":"8","name":"Second style"}
+            ]
+        })
+    );
+    let serialized = view.to_string();
     assert!(!serialized.contains("sentinel") && !serialized.contains("example.invalid"));
     let calls = api.calls();
     assert_eq!(calls.len(), 1);
@@ -56,6 +68,43 @@ async fn exact_default_read_projects_only_ordered_tracks() {
         json!({"source":"","categoryId":"","tagId":"","songId":""})
     );
     assert!(!calls[0].cache);
+}
+
+#[tokio::test]
+async fn absent_or_invalid_style_tags_do_not_discard_tracks_or_trigger_another_read() {
+    let root = tempfile::tempdir().unwrap();
+    let responses = [
+        Value::Null,
+        json!({}),
+        json!({"categoryId":1,"categoryName":"Style","tagVOList":[]}),
+        json!({"categoryId":1,"categoryName":"Style","tagVOList":"invalid"}),
+        json!({"categoryId":1,"categoryName":"Style","tagVOList":[
+            {"tagId":2,"tagName":"Repeated"},{"tagId":"2","tagName":"Repeated"}
+        ]}),
+        json!({"categoryId":1,"categoryName":"Style","tagVOList":vec![Value::Null;21]}),
+    ];
+    let reads = responses.len();
+    let api = Arc::new(ScriptApi::new(responses.map(|tags| {
+        json!({"code":200,"data":{"dailySongs":[{"id":71}],"tags":tags}}).into()
+    })));
+    let (client, _) = client(api.clone(), root.path());
+    for _ in 0..reads {
+        let data = client.style_recommendations("1").await.unwrap();
+        assert_eq!(data.value.tracks[0].id, "71");
+        assert!(data.value.style_tags.is_none());
+        assert!(
+            serde_json::to_value(data).unwrap()["value"]
+                .get("styleTags")
+                .is_none()
+        );
+    }
+    let calls = api.calls();
+    assert_eq!(calls.len(), reads);
+    assert!(
+        calls
+            .iter()
+            .all(|call| call.path == "/api/homepage/category/daily/song/list")
+    );
 }
 
 #[tokio::test]
@@ -100,7 +149,9 @@ async fn prior_epoch_is_rejected_and_pending_result_does_not_cross_logout() {
     api.wait_for_calls(1).await;
     session.detach().unwrap();
     send.send(Ok(
-        json!({"code":200,"data":{"dailySongs":[{"id":71,"name":"Old account"}]}}),
+        json!({"code":200,"data":{"dailySongs":[{"id":71,"name":"Old account"}],"tags":{
+            "categoryId":"old","categoryName":"Old category","tagVOList":[{"tagId":"old","tagName":"Old account style"}]
+        }}}),
     ))
     .unwrap();
     assert!(matches!(reading.await.unwrap(), Err(Error::StaleResponse)));

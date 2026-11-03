@@ -2474,6 +2474,7 @@ onUnmounted(() => {
                     <StyleTagBrowser
                       v-if="page.kind === 'style_recommendations'"
                       :epoch="account.epoch"
+                      :applied="result?.styleTags"
                     />
                     <button
                       class="icon-button"

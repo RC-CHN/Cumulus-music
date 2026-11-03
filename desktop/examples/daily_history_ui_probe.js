@@ -113,11 +113,19 @@
     await wait(() => !sticky(), 'style toolbar hides at list start');
     const tagEntry = one('.style-tags-entry');
     tagEntry.click();
-    const tags = await wait(() => one('.style-tag-browser[open]')?.textContent.includes('合成轻音乐') && one('.style-tag-browser'), 'style tags loaded');
+    const tags = await wait(() => one('.style-tag-browser[open] .style-tag-current') &&
+      one('.style-tag-browser'), 'style tags loaded');
+    const applied = () => tags.querySelector('.style-tag-applied')?.textContent ?? '';
+    const active = tags.querySelector('nav button[aria-pressed="true"]');
+    if (active?.textContent.trim() !== '合成曲风' || !applied().includes('合成轻音乐') ||
+      applied().includes('合成节拍') || tags.querySelectorAll('.style-tag-current').length !== 1)
+      throw new Error('style browser distinguishes the applied tag from other catalog tags');
     await sleep(250);
     await emit('ux_04_style_tags');
     [...tags.querySelectorAll('nav button')].find((node) => node.textContent.trim() === '合成空分类').click();
     await wait(() => tags.textContent.includes('此分类暂无标签。'), 'style category changes without a write');
+    if (!applied().includes('合成轻音乐') || tags.querySelector('.style-tag-current'))
+      throw new Error('browsing a different category changes neither applied tags nor their identity');
     tags.querySelector('[aria-label="关闭风格标签"]').click();
     await wait(() => !one('.style-tag-browser[open]') && document.activeElement === tagEntry, 'style tag focus restored');
     const bar = () => one('.playerbar');

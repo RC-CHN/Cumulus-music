@@ -173,6 +173,7 @@ impl MusicClient {
                 }
                 Ok(TrackPage {
                     daily: None,
+                    style_tags: None,
                     revision: Some(revision),
                     more: page.offset.saturating_add(tracks.len()) < ids.len(),
                     tracks,
@@ -225,6 +226,7 @@ impl MusicClient {
                 };
                 Ok(TrackPage {
                     daily: None,
+                    style_tags: None,
                     revision: None,
                     more: page.offset.saturating_add(tracks.len()) < total,
                     tracks,

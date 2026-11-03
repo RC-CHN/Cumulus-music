@@ -181,6 +181,8 @@ pub struct TrackPage {
     pub playlist: Option<PlaylistView>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub daily: Option<DailyRecommendationState>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub style_tags: Option<super::style_tags::StyleCategory>,
 }
 
 #[derive(Serialize)]

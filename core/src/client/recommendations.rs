@@ -266,7 +266,9 @@ fn style_tracks(response: &Value) -> Result<TrackPage> {
         Some(Value::Array(rows)) => rows.as_slice(),
         _ => return Err(Error::Response("invalid recommendation tracks")),
     };
-    track_page(rows)
+    let mut page = track_page(rows)?;
+    page.style_tags = super::style_tags::applied(data.get("tags"));
+    Ok(page)
 }
 
 fn track_page(rows: &[Value]) -> Result<TrackPage> {
@@ -292,6 +294,7 @@ fn track_page(rows: &[Value]) -> Result<TrackPage> {
         more: false,
         playlist: None,
         daily: None,
+        style_tags: None,
     })
 }
 
