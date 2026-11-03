@@ -14,6 +14,7 @@ def main():
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--exact-fallback', action='store_true')
     mode.add_argument('--suggestion-matches', action='store_true')
+    mode.add_argument('--history-last', action='store_true')
     parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--screenshots', action='store_true')
     args = parser.parse_args()
@@ -35,6 +36,8 @@ def main():
     prefix = 'window.__cumulusSearchExactFallbackProof = true;\n' if args.exact_fallback else ''
     if args.suggestion_matches:
         prefix = 'window.__cumulusSearchSuggestionMatchesProof = true;\n'
+    if args.history_last:
+        prefix = 'window.__cumulusSearchHistoryLastProof = true;\n'
     script.write_text(prefix + source.read_text(encoding='utf-8'), encoding='utf-8')
     if args.frontend_dist:
         env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve(strict=True))
@@ -44,9 +47,10 @@ def main():
     failed = root / 'first/failed.json'
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
-    if args.exact_fallback or args.suggestion_matches:
+    if args.exact_fallback or args.suggestion_matches or args.history_last:
         complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
-        flag = 'suggestionMatchesVerified' if args.suggestion_matches else 'exactFallbackVerified'
+        flag = ('historyLastVerified' if args.history_last else
+                'suggestionMatchesVerified' if args.suggestion_matches else 'exactFallbackVerified')
         count = 1 if args.suggestion_matches else 3
         assert complete['ok'] and complete[flag] and complete['stageCount'] == count
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0

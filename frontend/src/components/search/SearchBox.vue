@@ -46,6 +46,12 @@ const host = ref<HTMLElement>(),
 const position = ref({ left: '0px', top: '0px', width: '779px', maxHeight: '622px' });
 const confirm = ref(false);
 let suppressFocus = false;
+let historyPanelGeneration = 0;
+watch(
+  [open, query, () => props.account.epoch, () => props.account.status, () => props.pageKey],
+  () => historyPanelGeneration++,
+  { flush: 'sync' },
+);
 let frame = 0,
   compositionEnded = 0;
 const historyWords = computed(() =>
@@ -112,13 +118,24 @@ function compositionEnd() {
 }
 async function removeHistory(word: string) {
   const at = history.value.indexOf(word);
+  if (at < 0) return;
+  const owner = panel.value;
+  const generation = historyPanelGeneration;
   await model.historyCommand({ kind: 'remove', keyword: word });
   await nextTick();
-  if (!errors.history && document.activeElement === document.body) {
+  if (!owner || panel.value !== owner || generation !== historyPanelGeneration || errors.history)
+    return;
+  if (!history.value.length) {
+    const active = document.activeElement;
+    model.close();
+    if (active === document.body || owner.contains(active)) focusInput();
+    return;
+  }
+  if (document.activeElement === document.body) {
     const choices = [
-      ...(panel.value?.querySelectorAll<HTMLButtonElement>(
+      ...owner.querySelectorAll<HTMLButtonElement>(
         '.search-tags-section:first-child button[data-search-choice]',
-      ) ?? []),
+      ),
     ].filter((n) => !n.closest('[inert]'));
     (choices[Math.min(at, choices.length - 1)] ?? input.value)?.focus();
   }

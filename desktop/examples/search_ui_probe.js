@@ -184,6 +184,61 @@
       () => one(".track-row") && input()?.placeholder === "发现合成好声音",
       "startup",
     );
+    if (window.__cumulusSearchHistoryLastProof) {
+      await fixture("good");
+      await home();
+      click(button("清空搜索历史"));
+      await wait(() => one(".search-history-confirm[open]"), "initial history confirmation");
+      click(button("确认清空搜索历史"));
+      await wait(() => !one(".search-history-confirm") && panel()?.textContent.includes("暂无搜索历史"),
+        "seed history cleared");
+      async function remember(word) {
+        await suggestions(word);
+        key(input(), "Enter");
+        await wait(() => !panel() && one(".search-heading-copy h1")?.textContent === word,
+          "search remembered");
+        await home();
+        await wait(() => button("删除搜索历史：" + word), "remembered tag visible");
+      }
+      await remember("第一条");
+      await remember("第二条");
+      click(button("删除搜索历史：第二条"));
+      await wait(() => panel() && !button("删除搜索历史：第二条"), "non-last deletion stays open");
+      assert(button("删除搜索历史：第一条"), "remaining tag stays available");
+      await capture("history_non_last_keeps_popup");
+      click(button("删除搜索历史：第一条"));
+      await wait(() => !panel(), "final deletion closes the popup");
+      assert(document.activeElement === input(), "last deletion returns owned focus to input");
+      await capture("history_last_dismisses_popup");
+
+      await remember("迟到删除");
+      const provides = one("#app").__vue_app__._context.provides;
+      const core = provides[Reflect.ownKeys(provides).find((k) =>
+        typeof k === "symbol" && k.description === "core-client")];
+      const read = core.searchHistory;
+      let finish;
+      core.searchHistory = async (...args) => {
+        const result = await read(...args);
+        if (args[1].kind === "remove") await new Promise((resolve) => { finish = resolve; });
+        return result;
+      };
+      try {
+        click(button("删除搜索历史：迟到删除"));
+        await wait(() => finish, "native delete succeeded while receipt is held");
+        await suggestions("保留输入");
+        finish();
+        await sleep(400);
+        assert(panel()?.textContent.includes("保留输入 · 联想结果 1") &&
+          document.activeElement === input(), "late removal does not dismiss later typing");
+        await capture("history_late_delete_keeps_suggestions");
+      } finally {
+        core.searchHistory = read;
+        finish?.();
+      }
+      await emit("complete", { ok: true, historyLastVerified: true, stageCount: count,
+        realMusicRequests: 0, realAccountWrites: 0 });
+      return;
+    }
     if (window.__cumulusSearchSuggestionMatchesProof) {
       await fixture("good");
       const provides = one("#app").__vue_app__._context.provides;

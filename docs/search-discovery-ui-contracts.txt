@@ -134,3 +134,9 @@ SearchBox/view/searchRankCard.tsx:235–237、300–398 把播客榜/听书榜�
 Cumulus 复用已有的有界字面匹配，保留原显示文本、浮层强调色和提交词；不在没有
 命中时输出空标记。未移植官方全量字形映射或分词规则。
 search_smoke.py --suggestion-matches 可验证重复命中、特殊符号和原样显示。
+
+删除最后一条搜索历史
+官方 SearchBox/view/history.jsx:173–182 单独删除至空时关闭当前搜索浮层。Cumulus
+等待原生回读确认，保留删除失败及非最后一条的浮层状态；当前查询或页面已变化时，
+迟到回包不能关闭新浮层。焦点仍归原浮层时回到搜索输入框。独立验证：
+search_smoke.py --history-last。
