@@ -850,3 +850,118 @@ async fn prepared_parametric_comes_only_from_verified_owned_material_and_never_r
         ]
     );
 }
+
+fn nontrial_recycle(value: bool) -> Reply {
+    json!({"code":200,"data":{"127":[{"interestsId":300,"canRecycle":value}]}}).into()
+}
+
+#[tokio::test]
+async fn ready_peq_binding_needs_existing_registration_and_is_revoked_by_new_observation() {
+    use cumulus_core::effects::{
+        authorization::{EffectAuthorizations, TrialConsent},
+        service::ParametricPreparation,
+    };
+    let temp = tempfile::tempdir().unwrap();
+    let store = Arc::new(StateStore::open(temp.path()).unwrap());
+    let (bytes, _) = sample("first");
+    let api = Arc::new(ScriptApi::new(
+        pair(&sound(&bytes, URL), true).into_iter().chain([
+            auth(true),
+            json!({"code":200,"data":true}).into(),
+            auth(true),
+            nontrial_recycle(false),
+            auth(true),
+            nontrial_recycle(false),
+            auth(true),
+            nontrial_recycle(true),
+        ]),
+    ));
+    let session = world(api.clone(), store);
+    let token = session.token().unwrap();
+    let library =
+        EffectsLibrary::with_backend(session.clone(), Arc::new(Origin::new(bytes))).unwrap();
+    let authorizations = EffectAuthorizations::new(session).unwrap();
+    let ParametricPreparation::Prepared(prepared) = library
+        .prepare_parametric_for(&token, id(), RunOptions::default())
+        .await
+        .unwrap()
+    else {
+        panic!("fixture has enabled PEQ");
+    };
+    // A successful material query is insufficient. Only this explicit
+    // fixture command may make the one synthetic registration write.
+    assert!(authorizations.record_for(&token, id()).unwrap().is_none());
+    authorizations
+        .begin_for(&token, id(), TrialConsent::DoNotStart)
+        .await
+        .unwrap();
+    let binding = authorizations
+        .bind_parametric_for(&library, &token, prepared)
+        .await
+        .unwrap();
+    assert_eq!(binding.effect(), id());
+    authorizations
+        .validate_bound_parametric_for(&library, &token, &binding)
+        .unwrap();
+    let revoked = authorizations.observe_for(&token, id()).await.unwrap();
+    assert!(!revoked.can_use);
+    assert!(matches!(
+        authorizations.validate_bound_parametric_for(&library, &token, &binding),
+        Err(Error::StaleResponse)
+    ));
+    assert_eq!(
+        api.calls()
+            .into_iter()
+            .filter(|call| call.path.ends_with("/set") || call.path.ends_with("/stop"))
+            .map(|call| call.path)
+            .collect::<Vec<_>>(),
+        ["/api/vipauth/app/interests/auth/set"]
+    );
+}
+
+#[tokio::test]
+async fn old_unclassified_registration_cannot_be_promoted_from_current_rights() {
+    use cumulus_core::effects::{
+        authorization::{EffectAuthorizations, TrialConsent},
+        service::ParametricPreparation,
+    };
+    let temp = tempfile::tempdir().unwrap();
+    let store = Arc::new(StateStore::open(temp.path()).unwrap());
+    let (bytes, _) = sample("first");
+    let api = Arc::new(ScriptApi::new(
+        pair(&sound(&bytes, URL), true).into_iter().chain([
+            auth(true),
+            json!({"code":200,"data":true}).into(),
+            auth(true),
+            nontrial_recycle(false),
+        ]),
+    ));
+    let session = world(api.clone(), store.clone());
+    let token = session.token().unwrap();
+    let library =
+        EffectsLibrary::with_backend(session.clone(), Arc::new(Origin::new(bytes))).unwrap();
+    let authorizations = EffectAuthorizations::new(session).unwrap();
+    let ParametricPreparation::Prepared(prepared) = library
+        .prepare_parametric_for(&token, id(), RunOptions::default())
+        .await
+        .unwrap()
+    else {
+        panic!("fixture has enabled PEQ");
+    };
+    authorizations
+        .begin_for(&token, id(), TrialConsent::DoNotStart)
+        .await
+        .unwrap();
+    let journal = "effect-authorizations-v1";
+    let mut old = store.get("1", journal, "300").unwrap().unwrap();
+    old.as_object_mut().unwrap().remove("registration_use_type");
+    store.put("1", journal, "300", &old).unwrap();
+    let calls = api.calls().len();
+    assert!(
+        authorizations
+            .bind_parametric_for(&library, &token, prepared)
+            .await
+            .is_err()
+    );
+    assert_eq!(api.calls().len(), calls);
+}

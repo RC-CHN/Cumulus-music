@@ -36,6 +36,10 @@ pub struct EffectLease {
     pub revision: u64,
     pub phase: LeasePhase,
     pub start_acknowledged: bool,
+    /// Immutable authorization kind read before sending this registration.
+    /// Older journals have no proof of the basis and remain unclassified.
+    #[serde(default)]
+    pub registration_use_type: Option<u32>,
     pub stop_acknowledged: bool,
     pub authorization: Option<Authorization>,
     pub recyclable: Option<bool>,

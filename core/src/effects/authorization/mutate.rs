@@ -53,6 +53,7 @@ impl EffectAuthorizations {
             revision: 1,
             phase: LeasePhase::Registering,
             start_acknowledged: false,
+            registration_use_type: authorization.can_use_type,
             stop_acknowledged: false,
             authorization: Some(authorization),
             recyclable: None,

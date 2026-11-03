@@ -110,6 +110,8 @@ impl EffectsLibrary {
         {
             return Err(Error::StaleResponse);
         }
+        let owner = self.owner(token)?;
+        let _lock = self.lock(&owner, &prepared.handle.lock_key())?;
         let record = self.record(token, &prepared.handle)?;
         if !record.is_some_and(|record| {
             record.phase == MaterialPhase::Ready

@@ -4,6 +4,8 @@
 //! rights changes. No guessed trial deadline or background write timer.
 mod mutate;
 mod observe;
+mod parametric;
+pub use parametric::BoundParametric;
 mod record;
 use crate::{
     Error, Result,
