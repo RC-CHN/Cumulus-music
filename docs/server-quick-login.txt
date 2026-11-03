@@ -30,3 +30,7 @@ M290:524–556 提供本机历史账号；Quick.jsx:214–229 在快捷登录前
 身份不符、取消和迟到；scripts/ci/account_login_smoke.py --quick-login
 在实际 Linux WebView 验证 7 个阶段。探针从两个合成账号的既有登录动作
 建立历史，验证同意协议、未支持挑战和只读恢复；不会访问真实服务。
+本机 KDE/XWayland 125% 复核同一流程的 7 张截图：
+.build/quick-login-desktop-final/contact.jpg。Linux 与 Windows CI
+独立运行合成探针；本机不把 Linux 结果作为 Windows 通过证据。
+主线合并后回归报告见 .build/quick-login-integrated-webview/report.json。

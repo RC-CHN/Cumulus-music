@@ -16,8 +16,8 @@ Cumulus 桌面主流程验收
   文件和引擎进度。不会加载真实账号或设备身份。
   最终 Linux WebView 10 阶段通过；测试运行产生 9 张截图，本机
   KDE/XWayland 125% 又复核 9 张。截图见
-  .build/main-flow-desktop-final/contact.jpg，完整计数与 SQLite
-  核对结果见 .build/main-flow-webview-final/report.json。
+  .build/main-flow-desktop-integrated/contact.jpg，完整计数与 SQLite
+  核对结果见 .build/main-flow-integrated-webview/report.json。
   Linux 和 Windows CI 有独立入口；本机未实跑 Windows。
   复跑：构建 cumulus-desktop 的 main_flow_ui_probe example（开启
   custom-protocol），用 scripts/ci/main_flow_smoke.py --binary <程序>
@@ -39,3 +39,8 @@ Cumulus 桌面主流程验收
   新建私密测试歌单，只清理本次创建的资源和文件；不要把账号凭据、
   可用二维码或授权 URL 留在截图和诊断里。若要宣称离线播放，
   下载后须阻断网络并独立核对文件解码。线上未验证的行为保持未验证。
+  本机已合成预演：独立网络命名空间无外部路由，唯一测试代理停止后，
+  已建立的隧道两端关闭，新连接也被拒绝。报告在
+  .build/main-flow-worktree/.build/main-flow-proxy/report.json。
+  尚未验证真实桌面各传输的代理接线、TLS 或宿主 Unix socket 隔离；
+  该报告不能作为真实服务硬离线的证据。

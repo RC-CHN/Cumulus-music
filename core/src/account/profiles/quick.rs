@@ -279,8 +279,8 @@ impl ProfileRegistry {
         let database = self
             .profile_path(&binding.saved.session_id)?
             .join("core.sqlite3");
-        if !Credentials::quick_login_credential(&database, self.origin(), &target)?
-            .is_some_and(|credential| credential.revision == binding.credential_revision)
+        if Credentials::quick_login_credential(&database, self.origin(), &target)?
+            .is_none_or(|credential| credential.revision != binding.credential_revision)
         {
             return Err(Error::CredentialChanged);
         }

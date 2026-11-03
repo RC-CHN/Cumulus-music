@@ -26,6 +26,7 @@
       const n = get();
       return n && !n.disabled && n.getAttribute("aria-disabled") !== "true" && n;
     }, label);
+    node.focus({ preventScroll: true });
     node.click();
   }
   function input(node, value, event = "input") {
