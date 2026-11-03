@@ -55,6 +55,13 @@ Cumulus 桌面主流程验收
   两轮均无账号资源写入，凭据副本已清理。脱敏记录：
   .build/main-flow-live-audio-first-summary.json 和
   .build/main-flow-live-audio-diagnostic-summary.json。
+  后续同回包监督复验（隔离研究提交 75784b5）通过上述八项读取：应用只
+  使用同一次授权返回的 CDN，独立校验证书后只建立一次媒体隧道。实际
+  媒体读取 HTTP 200，字节长度与 MD5 和授权回包一致。随后验收探针的
+  私有文件句柄解码入口拒绝了格式（decoder_unsupported），原生播放
+  时钟未推进。记录未识别媒体格式；该入口的格式限制不能用来判断生产
+  libmpv URL 路径是否也失败。无账号资源写入，凭据副本已清理，媒体
+  文件未保留。脱敏证据 .build/main-flow-live-supervised-summary.json。
   临时私密歌单编辑的隔离策略也新增了独立详情回读：完整字段一致才可
   计为编辑成功，应急清理不替代验收，未执行真实歌单修改。
   历史真实桌面目录 .build/ui-proof/ 下可检查 run-2-small 的账号
