@@ -113,6 +113,25 @@ impl ColdOfflineGrant {
         self.require()
     }
 
+    /// Bounded read-only page. No filesystem hash is performed at listing;
+    /// the open path repeats eligibility checks and verifies the bytes.
+    pub fn list_plain_audio(
+        &self,
+        after: Option<&crate::download::offline::ColdOfflineCursor<'_>>,
+        limit: usize,
+    ) -> Result<crate::download::offline::ColdOfflineAudioPage<'_>> {
+        self.require()?;
+        let page = crate::download::offline::list_plain_audio(
+            self,
+            &self.registry.store,
+            &self.binding.uid,
+            after,
+            limit,
+        )?;
+        self.require()?;
+        Ok(page)
+    }
+
     /// Blocking IO. The caller passes a task ID, never an owner or path; UI
     /// projection and decoder lifecycle are intentionally not connected yet.
     pub fn open_plain_audio(

@@ -12,6 +12,7 @@ use cumulus_core::{
     },
 };
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
@@ -227,6 +228,14 @@ async fn native_plain_selection_opens_owned_published_bytes_and_rechecks_integri
 
     let cold = MusicClient::open_with_http_backend(dir.path(), None, service.clone()).unwrap();
     let grant = cold.grant_cold_offline().unwrap();
+    let page = grant.list_plain_audio(None, 1).unwrap();
+    assert!(page.next.is_none());
+    assert_eq!(
+        serde_json::to_value(&page.rows).unwrap(),
+        json!([{
+            "id":id,"title":"Title","artist":"Artist","actualQuality":"lossless"
+        }])
+    );
     let audio = grant.open_plain_audio(&id).unwrap();
     assert_eq!(audio.quality(), Quality::Lossless);
     let mut bytes = Vec::new();
@@ -247,14 +256,82 @@ async fn native_plain_selection_opens_owned_published_bytes_and_rechecks_integri
         grant.open_plain_audio(&id),
         Err(Error::MutationBusy)
     ));
+    assert!(grant.list_plain_audio(None, 1).unwrap().rows.is_empty());
     task.as_object_mut().unwrap().remove("file_operation");
     registry
         .store()
         .put("1", "download_tasks_v1", &id, &task)
         .unwrap();
-    fs::write(row.path.unwrap(), b"tampered").unwrap();
+    fs::write(row.path.as_ref().unwrap(), b"tampered").unwrap();
+    assert_eq!(grant.list_plain_audio(None, 1).unwrap().rows.len(), 1);
     assert!(grant.open_plain_audio(&id).is_err());
+
+    let store = registry.store();
+    let path = std::path::Path::new(row.path.as_ref().unwrap())
+        .canonicalize()
+        .unwrap();
+    let ledger_key =
+        |path: &std::path::Path| hex::encode(Sha256::digest(path.to_str().unwrap().as_bytes()));
+    let ledger = store
+        .get("1", "offline_music_v1", &ledger_key(&path))
+        .unwrap()
+        .unwrap();
+    let insert = |owner: &str, key: &str, encrypted: bool, published: bool| {
+        let target = path.with_file_name(format!("{key}.flac"));
+        fs::write(&target, FLAC).unwrap();
+        let target = target.canonicalize().unwrap();
+        let record_id = ledger_key(&target);
+        let mut record = ledger.clone();
+        record["id"] = json!(record_id);
+        record["path"] = json!(target);
+        record["task_id"] = json!(key);
+        record["encrypted"] = json!(encrypted);
+        let mut record_task = task.clone();
+        record_task["id"] = json!(key);
+        record_task["target"] = json!(target);
+        record_task["encrypted"] = json!(encrypted);
+        store
+            .put(owner, "download_tasks_v1", key, &record_task)
+            .unwrap();
+        if published {
+            store
+                .put(owner, "offline_music_v1", &record_id, &record)
+                .unwrap();
+        }
+    };
+    insert("1", "extra-plain", false, true);
+    insert("1", "encrypted", true, true);
+    insert("1", "unpublished", false, false);
+    insert("2", "foreign-owned", false, true);
+    let first = grant.list_plain_audio(None, 1).unwrap();
+    let cursor = first.next.as_ref().unwrap();
+    let other_grant = cold.grant_cold_offline().unwrap();
+    assert!(matches!(
+        other_grant.list_plain_audio(Some(cursor), 1),
+        Err(Error::StaleResponse)
+    ));
+    let second = grant.list_plain_audio(Some(cursor), 1).unwrap();
+    let mut listed = [first.rows[0].id.as_str(), second.rows[0].id.as_str()];
+    listed.sort_unstable();
+    let mut expected = [id.as_str(), "extra-plain"];
+    expected.sort_unstable();
+    assert_eq!(listed, expected);
+    if let Some(next) = second.next.as_ref() {
+        assert!(
+            grant
+                .list_plain_audio(Some(next), 1)
+                .unwrap()
+                .rows
+                .is_empty()
+        );
+    }
+    assert!(grant.list_plain_audio(None, 65).is_err());
+    assert!(grant.list_plain_audio(None, 0).is_err());
     grant.revoke();
+    assert!(matches!(
+        grant.list_plain_audio(None, 1),
+        Err(Error::StaleResponse)
+    ));
     assert!(matches!(audio.file(), Err(Error::StaleResponse)));
     assert_eq!(service.calls.load(Ordering::SeqCst), 1);
 }
