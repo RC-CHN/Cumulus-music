@@ -82,8 +82,26 @@ def isolated_audio(root, env):
         wait_for('private Pulse socket', pulse_ready)
         subprocess.run(['pactl', 'load-module', 'module-null-sink', 'sink_name=cumulus_private'],
                        env=server_env, check=True, capture_output=True, timeout=5)
-        subprocess.run(['pactl', 'set-default-sink', 'cumulus_private'],
-                       env=server_env, check=True, timeout=5)
+        pactl_env = {**server_env, 'LC_ALL': 'C'}
+
+        def select_private_sink():
+            assert all(process.poll() is None for process in (core, pulse, policy)), (
+                'private audio service exited before selecting the sink')
+            selected = subprocess.run(['pactl', 'set-default-sink', 'cumulus_private'],
+                                      env=pactl_env, capture_output=True, text=True, timeout=3)
+            if selected.returncode == 0:
+                return True
+            # Pulse accepts commands before WirePlumber publishes the default
+            # metadata. Retry only that startup response in this private sink.
+            error = selected.stderr.strip()
+            if selected.returncode == 1 and error == 'Failure: Not supported':
+                return False
+            raise RuntimeError(f'cannot select private sink ({selected.returncode}): {error}')
+
+        wait_for('private sink selection (WirePlumber default metadata)', select_private_sink, 10)
+        actual_sink = subprocess.check_output(['pactl', 'get-default-sink'], env=pactl_env,
+                                              text=True, timeout=3).strip()
+        assert actual_sink == 'cumulus_private', f'wrong private default sink: {actual_sink}'
         wm = spawn('openbox', '--sm-disable', process_env=env)
 
         def wm_ready():
