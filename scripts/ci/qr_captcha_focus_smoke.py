@@ -11,6 +11,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--frontend-dist', type=Path)
+    parser.add_argument('--runtime', type=Path)
     parser.add_argument('--root', type=Path, required=True)
     args = parser.parse_args()
     root = args.root.resolve()
@@ -25,6 +26,8 @@ def main():
         folder = root / key
         folder.mkdir(mode=0o700)
         env[key] = str(folder)
+    if args.runtime:
+        env['PATH'] = str(args.runtime.resolve(strict=True)) + os.pathsep + env.get('PATH', '')
     output = root / 'first'
     with (root / 'host.log').open('x', encoding='utf-8') as log:
         code = launch(args.binary.resolve(strict=True), env, log, output, False)
