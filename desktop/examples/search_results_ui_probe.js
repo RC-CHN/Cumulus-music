@@ -49,6 +49,25 @@
     } finally { window.requestAnimationFrame=frames; }
   }
   try {
+    if(window.__cumulusSearchV3Proof){
+      await wait(()=>one('.track-row'),'daily ready');
+      await fresh('合成 V3');
+      const tabs=()=>all('[data-category][role="tab"]').map(node=>node.dataset.category).join(',');
+      await wait(()=>tabs()==='all,mvs,songs'&&one('#search-result-panel').textContent.includes('综合 V3 合成歌曲'),'v3 tab order and projected song');
+      assert(one('#search-result-panel').textContent.includes('合成热点内容'),'hot explanation');
+      assert(!document.querySelector('[href*="example.invalid/private"]'),'no raw action');
+      await capture('v3_comprehensive');
+      key(one('[data-category="all"]'),'ArrowRight');
+      await wait(()=>ready()&&one('[data-category="mvs"]')?.getAttribute('aria-selected')==='true','dynamic arrow navigation');
+      assert(tabs()==='all,mvs,songs','category preserves service order');
+      await capture('v3_category');
+      click(button('返回上一页'));
+      await wait(()=>ready()&&one('[data-category="all"]')?.getAttribute('aria-selected')==='true','Back restores comprehensive');
+      assert(tabs()==='all,mvs,songs'&&one('#search-result-panel').textContent.includes('合成热点内容'),'Back preserves search snapshot');
+      await capture('v3_back');
+      await emit('complete',{ok:true,v3Verified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      return;
+    }
     await wait(()=>one('.track-row'),'daily ready');submit('合成搜索结果');await wait(()=>one('.search-results-page')&&ready(),'search entry');
     for(const [w,h,t] of [[1120,760,'light'],[1120,760,'dark'],[760,540,'light'],[760,540,'dark']]){
       await theme(w,h,t);await fresh('合成搜索结果');

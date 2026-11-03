@@ -7,8 +7,15 @@ use std::sync::{
 };
 static MODE: Mutex<String> = Mutex::new(String::new());
 static CALLS: AtomicUsize = AtomicUsize::new(0);
+static V3_CALLS: AtomicUsize = AtomicUsize::new(0);
 pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_SEARCH_UI_PROOF").is_some()
+}
+pub fn v3_calls() -> usize {
+    V3_CALLS.load(Ordering::SeqCst)
+}
+pub fn v3_enabled() -> bool {
+    enabled() && std::env::var_os("CUMULUS_SEARCH_V3_PROOF").is_some()
 }
 pub fn control(value: &Value) {
     let mode = value["mode"].as_str().unwrap();
@@ -222,6 +229,44 @@ fn podcast_response(path: &str, args: &Value) -> Option<Result<Value>> {
 }
 
 fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
+    if v3_enabled() {
+        let response = match path {
+            "/api/rtrs/abt/front/expinfo/list"
+                if args == &json!({"expNames":"PH-PC-searchHot"}) =>
+            {
+                Some(json!({"code":200,"data":[{"expName":"PH-PC-searchHot","expGroupName":"t1"}]}))
+            }
+            "/api/search/pc/result/tab" if args == &json!({"keyword":"合成 V3"}) => Some(
+                json!({"code":200,"data":{"algTabs":[{"title":"综合"},{"title":"视频"},{"title":"单曲"}]}}),
+            ),
+            "/api/search/pc/complex/page/v3"
+                if args
+                    == &json!({"keyword":"合成 V3","scene":"normal","needCorrect":true,"channel":"suggest","bizQueryInfo":""}) =>
+            {
+                Some(json!({"code":200,"data":{"blocks":[
+                    {"blockCode":"search_block_hot_result_hot_explain","resources":[{"baseInfo":{"hotExplainModuleData":{"title":"热点说明","text":"合成热点内容","textAction":"https://example.invalid/private"}}}]},
+                    {"blockCode":"search_block_song","resources":[{"type":"song","baseInfo":{"simpleSongData":{"id":1,"name":"综合 V3 合成歌曲","dt":60000,"ar":[],"al":{"id":1,"name":"合成专辑"}}}}]}
+                ]}}))
+            }
+            _ => None,
+        };
+        if let Some(response) = response {
+            V3_CALLS.fetch_add(1, Ordering::SeqCst);
+            CALLS.fetch_add(1, Ordering::SeqCst);
+            return Some(Ok(response));
+        }
+        if matches!(
+            path,
+            "/api/rtrs/abt/front/expinfo/list"
+                | "/api/search/pc/result/tab"
+                | "/api/search/pc/complex/page/v3"
+                | "/api/search/pc/complex/page"
+        ) {
+            return Some(Err(Error::InvalidInput(
+                "unexpected synthetic search experiment request",
+            )));
+        }
+    }
     let category = match path {
         "/api/search/pc/complex/page" => "all",
         "/api/search/song/list/page" => "songs",

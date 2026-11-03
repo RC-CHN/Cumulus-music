@@ -130,3 +130,9 @@ MV /api/search/mlog/get：keyword、scene、limit、offset、channel=suggest、o
 
 验证范围与最新证据轮次见 ui-ux-validation.txt。不得把截图状态数量当成页面完成数，
 也不得把只读API成功、合成音频/null输出或隔离WebView当成物理桌面完整验收。
+
+v3 桌面验证
+scripts/ci/search_results_smoke.py --v3 用封闭合成服务在真实 Tauri WebView
+验证 t1 分配、页签和 v3 请求共三次，综合页绘制歌曲与热点说明，键盘切分类和
+返回恢复顺序。Linux Xvfb 三态截图保存在本机 .build/search-v3-webview/first/。
+这不验证真实账号当前实验分配、线上响应覆盖率或实机 Windows 显示。

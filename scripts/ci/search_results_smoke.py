@@ -11,6 +11,7 @@ def main():
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--runtime', type=Path)
+    parser.add_argument('--v3', action='store_true')
     parser.add_argument('--screenshots', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
@@ -28,7 +29,11 @@ def main():
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
     source = Path(__file__).resolve().parents[2] / 'desktop/examples/search_results_ui_probe.js'
     script = root / 'search-results.js'
-    script.write_text(source.read_text(encoding='utf-8'), encoding='utf-8')
+    prefix = ''
+    if args.v3:
+        env['CUMULUS_SEARCH_V3_PROOF'] = '1'
+        prefix = 'window.__cumulusSearchV3Proof = true;\n'
+    script.write_text(prefix + source.read_text(encoding='utf-8'), encoding='utf-8')
     env['CUMULUS_UX_SCRIPT'] = str(script)
     env['CUMULUS_SEARCH_USER_PROFILE_PROOF'] = '1'
     with (root / 'host.log').open('x', encoding='utf-8') as log:
@@ -36,10 +41,19 @@ def main():
     failed = root / 'first/failed.json'
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
-    verify(root, args.screenshots)
+    verify(root, args.screenshots, args.v3)
 
-def verify(root, capture):
+def verify(root, capture, v3=False):
     complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
+    if v3:
+        assert complete['ok'] and complete['v3Verified'] and complete['stageCount'] == 3
+        assert complete['syntheticV3Calls'] == 3 and complete['syntheticSearchCalls'] >= 4
+        assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
+        assert len(list((root / 'first').glob('ux_*.json'))) == 3
+        assert len(list((root / 'first').glob('ux_*.png'))) == (3 if capture else 0)
+        (root / 'audit.json').write_text(json.dumps(dict(complete, actualWebView=True), indent=2), encoding='utf-8')
+        print(json.dumps(complete))
+        return
     assert complete['ok'] and complete['responseTimingInjected'] and complete['shortPageOffsetsVerified']
     assert complete['searchResultPlaybackVerified'] and complete['searchMatchHighlightVerified']
     assert complete['searchCategoryWithoutFramesVerified'] and complete['searchServiceEmptyVerified']
