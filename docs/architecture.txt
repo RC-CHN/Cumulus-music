@@ -62,8 +62,9 @@ command 校验传入 DTO、调用核心并转换公开错误；不在 command �
 阻塞解码、文件工作和网络请求不得在 WebView/UI 线程中执行。
 get_app_info保留版本契约；MusicClient负责独立core装配、类型化展示DTO和公开错误。
 账号恢复/扫码、歌单/搜索/推荐/喜欢、选歌/播放/队列/歌词已通过类型化命令桥接。
-歌单管理6个、下载/文件/目录5个、云盘3个、MV10个、评论3个正式命令与账号/播放器命令共同注册；
-公开DTO与私有域记录分离。目前正式注册52个命令。
+歌单、下载/文件/目录、云盘、MV、评论等命令与账号/播放器命令共同注册；
+公开 DTO 与私有域记录分离。当前注册表以 desktop/src/lib.rs 的分组 handler 为准，
+不沿用早期迁移阶段的命令数量。
 library/matching负责官方元信息/匹配协议与持久批次，index/mapping保存账号隔离的版本关联。
 client/local/matching装配后台工作者和白名单DTO，两条local_match命令连接页面；
 useLocalMatching独立于设备级useLocal，切号只清在线关联视图，详细边界见desktop-local-matching-contracts.txt。
