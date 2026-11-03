@@ -27,6 +27,7 @@ def main():
     assert len(states)==complete['stageCount']==39
     assert all(not s['overflow'] and s['focusValid'] and s['focused'] and s['realMusicRequests']==0 for s in states)
     by_name={s['stage'].split('_',2)[2]:s for s in states}
+    assert by_name['binding_mobile_handoff']['fixture']['paths']==by_name['methods_light']['fixture']['paths']
     assert by_name['scan_inflight']['fixture']['pending']
     if not args.legacy:
         assert by_name['stopped_inflight']['fixture']['pending']

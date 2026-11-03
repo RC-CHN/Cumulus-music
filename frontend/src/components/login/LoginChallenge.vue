@@ -156,7 +156,8 @@ watch(
       "
     >
       <VerificationIdentity
-        v-if="selected === 'SECURITY_EMAIL'"
+        v-if="!selected || selected === 'SECURITY_EMAIL' || selected === 'BINDING_CELLPHONE'"
+        :class="{ 'binding-handoff-identity': selected === 'BINDING_CELLPHONE' }"
         :nickname="view.challenge.nickname"
         :avatar-url="view.challenge.avatarUrl"
       />
@@ -212,8 +213,8 @@ watch(
           @back="back"
         />
         <div v-else-if="selected === 'BINDING_CELLPHONE'" class="verification-handoff">
-          <p>如需通过绑定手机号验证，请前往手机端操作。</p>
-          <p class="muted">也可以返回选择其他验证方式。</p>
+          <p>如需使用此方式验证，建议先在手机端绑定手机号。</p>
+          <p>请前往手机端操作</p>
         </div>
         <p v-else-if="selected === 'WEICHAT_AUTH'" class="muted">
           当前客户端暂不支持微信验证，请选择其他验证方式。
@@ -241,6 +242,9 @@ watch(
           }}
         </button>
       </template>
+      <button v-if="!selected" class="verification-back" :disabled="busy" @click="emit('qr')">
+        选择其他登录方式
+      </button>
     </template>
     <QuestionVerification
       v-else-if="view?.status === 'security_question' || view?.question"

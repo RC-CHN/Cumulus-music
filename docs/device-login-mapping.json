@@ -8,6 +8,7 @@
     "ui-recovery/sources/packages/pc/src/pages/login/views/DoubleVerifyConfirm.tsx": "31381bc747c598bf2ba058cf4d46130edfc8332d2b0831258eaa898767e27f61",
     "ui-recovery/sources/packages/pc/src/pages/login/views/DoubleVerifyScan.tsx": "efedb5c7b78e37f9ab0fc802ac2c29894e3c8813003ec029839ba7e69d226e69",
     "ui-recovery/sources/packages/pc/src/pages/login/views/DoublVerifyeCellphoneBind.tsx": "5a0e0317bb6fb16a82a6806447acd043c0df1adada4f76a9f2a09011a703eda4",
+    "ui-recovery/sources/packages/pc/src/pages/login/views/LoginUserInfo.tsx": "490faa596e2f0c4925f05fb9caf491574b7e118b05d78f207115ddf8454651a7",
     "ui-recovery/sources/packages/pc/src/pages/login/views/pinCode.tsx": "c0eb25f547b4cc546faad65ec0a3828683dd7272c4925f935eb7e203a15f23bb"
   },
   "officialFirst": true,
@@ -61,7 +62,8 @@
       ],
       "ui": [
         "frontend/src/components/login/VerificationMethods.vue",
-        "frontend/src/components/login/LoginChallenge.vue"
+        "frontend/src/components/login/LoginChallenge.vue",
+        "frontend/src/components/login/VerificationIdentity.vue"
       ],
       "tests": [
         "desktop/examples/device_login_ui_probe.js",

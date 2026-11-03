@@ -148,7 +148,20 @@
   margin-top: 24px;
 }
 .verification-handoff {
-  margin-top: 40px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+.verification-handoff > p:first-child {
+  margin-top: 20px;
+}
+.verification-handoff > p + p {
+  margin-top: 5px;
+}
+.verification-identity.binding-handoff-identity {
+  margin-top: clamp(32px, calc(100vh - 510px), 88px);
+}
+.verification-choice {
+  margin-top: 20px;
 }
 .device-qr-frame {
   position: relative;
@@ -1036,6 +1049,7 @@ ol.sms-tips {
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   overflow: hidden;
+  overflow-wrap: anywhere;
 }
 @media (prefers-reduced-motion: reduce) {
   .email-description,

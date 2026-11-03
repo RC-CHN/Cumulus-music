@@ -58,8 +58,14 @@
   async function openChallenge() {
     await click(one('.account-button'));
     if(!one('.login-methods')){await wait(()=>one('.account-add'),'account chooser');await click(one('.account-add'));}
+    await enterDeviceChallenge();
+  }
+  async function enterDeviceChallenge() {
     await wait(()=>one('.login-methods'),'login dialog');await click(button('邮箱'));
-    await fill('登录邮箱','device@example.test');await fill('登录密码','fixture-password');await click(one('[aria-label="同意登录协议"]'));await click(one('.login-submit'));
+    await fill('登录邮箱','device@example.test');await fill('登录密码','fixture-password');
+    const consent=all('[aria-label="同意登录协议"]').find(n=>!n.disabled);
+    if(!consent.checked)await click(consent);
+    await click(one('.login-submit'));
     await wait(()=>button('获取验证方式'),'two factor challenge');await click(button('获取验证方式'));
     await wait(()=>one('[data-verification-method="DEVICE_SCAN"]'),'offered device methods');await settle();
   }
@@ -68,8 +74,20 @@
   async function logged() {await wait(()=>!one('dialog')&&one('.account-button').textContent.includes('邮箱验证账号'),'authenticated account');await settle();}
   try {
     await wait(()=>one('.account-button')&&!one('.account-button').disabled&&one('.welcome'),'guest bootstrap');
-    await theme('light');await resize(1120,760);await openChallenge();await stage('methods_light',{expectGuest:true});
-    await choose('BINDING_CELLPHONE');assert(one('.verification-handoff').textContent.includes('请前往手机端操作'),'official PC handoff');await stage('binding_mobile_handoff',{expectGuest:true});await back();assert(document.activeElement.dataset.verificationMethod==='BINDING_CELLPHONE','return to method focus');
+    await theme('light');await resize(1120,760);await openChallenge();
+    assert(one('.verification-identity-title')?.textContent==='用户昵称'&&one('.verification-identity-name')?.textContent.trim()==='设备验证账号','method list shows candidate identity');
+    await stage('methods_light',{expectGuest:true});
+    await theme('dark');await resize(760,540);await choose('BINDING_CELLPHONE');
+    const handoff=one('.verification-handoff'),bindingIdentity=one('.binding-handoff-identity');
+    assert(handoff?.textContent.includes('请前往手机端操作')&&!handoff.querySelector('button,a,input'),'official mobile-only handoff');
+    assert(bindingIdentity?.querySelector('.verification-identity-title')?.textContent==='用户昵称'&&bindingIdentity.querySelector('.verification-identity-name')?.textContent.trim()==='设备验证账号','handoff preserves candidate identity');
+    assert(one('#login-title')?.textContent==='登录安全验证'&&document.activeElement===one('.verification-back'),'handoff title and return focus');
+    const handoffDialog=one('dialog[open]');assert(handoffDialog.scrollHeight<=handoffDialog.clientHeight+1,'handoff fits short window');
+    await stage('binding_mobile_handoff',{expectGuest:true});await back();assert(document.activeElement.dataset.verificationMethod==='BINDING_CELLPHONE','return to method focus');
+    await click(button('选择其他登录方式'));
+    await wait(()=>one('#login-title')?.textContent==='扫码登录'&&one('.login-methods')&&!all('.verification-methods').length,'other login mode returns to normal login');
+    await enterDeviceChallenge();
+    await theme('light');await resize(1120,760);
     await choose('WEICHAT_AUTH');await stage('wechat_boundary',{expectGuest:true});await back();
     await mode('normal');await choose('DEVICE_CONFIRM');await stage('confirm_waiting_light',{expectGuest:true});
     await theme('dark');await resize(760,540);await stage('confirm_waiting_small_dark',{expectGuest:true});
