@@ -62,6 +62,12 @@ Cumulus 桌面主流程验收
   时钟未推进。记录未识别媒体格式；该入口的格式限制不能用来判断生产
   libmpv URL 路径是否也失败。无账号资源写入，凭据副本已清理，媒体
   文件未保留。脱敏证据 .build/main-flow-live-supervised-summary.json。
+  同一验收增加固定格式标签后复验（5cb11d9）：只在长度与 MD5
+  一致后检查最多 64 字节，本次为 `iso_bmff`，不据此推断内部编解码器。
+  单独在无外网的本机 TLS 环境用普通 libmpv URL 入口播放合成 ADTS AAC
+  与 AAC/MP4，两种的 libmpv 播放项均成功。该合成结果不等同于真实音源
+  在正式播放器上成功，也未验证物理声卡。脱敏记录：
+  .build/main-flow-live-supervised-format-summary.json。
   临时私密歌单编辑的隔离策略也新增了独立详情回读：完整字段一致才可
   计为编辑成功，应急清理不替代验收，未执行真实歌单修改。
   历史真实桌面目录 .build/ui-proof/ 下可检查 run-2-small 的账号
