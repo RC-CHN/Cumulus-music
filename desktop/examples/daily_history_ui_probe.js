@@ -18,6 +18,13 @@
     await emit('resize', { width: 760, height: 540 });
     await wait(() => innerWidth === 760 && innerHeight === 540, 'compact window');
     const shortcut = await wait(() => one('.daily-history-entry'), 'history shortcut');
+    const actions = one('.daily-track-actions');
+    const links = one('.daily-links');
+    const playAll = actions?.querySelector('.primary');
+    if (!actions?.contains(links) || !links.contains(shortcut) || !playAll ||
+        links.getBoundingClientRect().height !== 36 ||
+        links.getBoundingClientRect().left <= playAll.getBoundingClientRect().right)
+      throw new Error('daily shortcuts are not grouped at the right of playback controls');
     const bounds = shortcut.getBoundingClientRect();
     if (!shortcut.contains(document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2))) throw new Error('history shortcut clipped');
     await sleep(200);

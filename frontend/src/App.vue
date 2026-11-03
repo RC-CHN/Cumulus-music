@@ -2272,22 +2272,6 @@ onUnmounted(() => {
                       :epoch="account.epoch"
                     />
                     <button
-                      v-if="page.kind === 'daily'"
-                      class="text-button daily-style-entry"
-                      type="button"
-                      @click="openStyleRecommendations"
-                    >
-                      风格推荐
-                    </button>
-                    <button
-                      v-if="page.kind === 'daily'"
-                      class="text-button daily-history-entry"
-                      type="button"
-                      @click="openDailyHistory"
-                    >
-                      历史日推 <span class="daily-history-badge" aria-hidden="true">VIP</span>
-                    </button>
-                    <button
                       class="icon-button"
                       aria-label="刷新当前页面"
                       :disabled="loading"
@@ -2382,6 +2366,55 @@ onUnmounted(() => {
                     >{{ playlistManager.error.value }}</span
                   >
                 </div>
+                <div
+                  v-if="page.kind === 'daily' || (result?.tracks.length && !result.playlist)"
+                  class="track-actions"
+                  :class="{ 'daily-track-actions': page.kind === 'daily' }"
+                >
+                  <button
+                    class="primary"
+                    :disabled="!result?.tracks.length || !player.ready.value || player.busy.value"
+                    @click="play(0)"
+                  >
+                    <Icon name="play" />播放全部
+                  </button>
+                  <button
+                    class="download-button"
+                    aria-label="下载当前歌曲列表"
+                    title="下载当前歌曲列表"
+                    :disabled="
+                      downloads.busy.value || !result?.tracks.some((t) => !t.missing && !t.local)
+                    "
+                    @click="
+                      result &&
+                      (downloadDialog = {
+                        kind: 'start',
+                        tracks: result.tracks.filter((t) => !t.missing && !t.local),
+                      })
+                    "
+                  >
+                    <Icon v-if="page.kind === 'daily'" name="download" />
+                    {{ page.kind === 'daily' ? '下载' : '下载当前歌曲列表' }}
+                  </button>
+                  <span v-if="player.busy.value" class="muted" role="status">正在准备播放…</span>
+                  <nav v-if="page.kind === 'daily'" class="daily-links" aria-label="每日推荐入口">
+                    <button
+                      class="text-button daily-style-entry"
+                      type="button"
+                      @click="openStyleRecommendations"
+                    >
+                      风格推荐
+                    </button>
+                    <span class="daily-link-divider" aria-hidden="true"></span>
+                    <button
+                      class="text-button daily-history-entry"
+                      type="button"
+                      @click="openDailyHistory"
+                    >
+                      历史日推 <span class="daily-history-badge" aria-hidden="true">VIP</span>
+                    </button>
+                  </nav>
+                </div>
                 <div v-if="loading && !result" class="empty-state" role="status">
                   <span class="spinner" />
                   <p>正在加载歌曲…</p>
@@ -2400,32 +2433,6 @@ onUnmounted(() => {
                   @restored="subscriberFocus = undefined"
                 />
                 <template v-else-if="result">
-                  <div v-if="result.tracks.length && !result.playlist" class="track-actions">
-                    <button
-                      class="primary"
-                      :disabled="!player.ready.value || player.busy.value"
-                      @click="play(0)"
-                    >
-                      <Icon name="play" />{{ '播放全部' }}</button
-                    ><span v-if="player.busy.value" class="muted">正在准备播放…</span>
-                    <button
-                      class="download-button"
-                      aria-label="下载当前歌曲列表"
-                      title="下载当前歌曲列表"
-                      :disabled="
-                        downloads.busy.value || result.tracks.every((t) => t.missing || t.local)
-                      "
-                      @click="
-                        downloadDialog = {
-                          kind: 'start',
-                          tracks: result.tracks.filter((t) => !t.missing && !t.local),
-                        }
-                      "
-                    >
-                      <Icon v-if="page.kind === 'daily'" name="download" />
-                      {{ page.kind === 'daily' ? '下载' : '下载当前歌曲列表' }}
-                    </button>
-                  </div>
                   <p
                     v-if="playlistTrackSearch.positions !== null"
                     class="playlist-track-match"

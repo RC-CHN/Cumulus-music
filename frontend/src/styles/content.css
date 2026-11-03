@@ -29,16 +29,40 @@
 .daily-history-entry,
 .daily-style-entry {
   white-space: nowrap;
+  padding: 0;
+  color: var(--text-secondary);
 }
 .daily-history-badge {
   color: var(--accent);
   font-size: 10px;
 }
-.daily-heading ~ .track-actions {
+.daily-links {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 14px;
+  height: 36px;
+  margin-inline-start: auto;
+  padding-inline: 16px;
+  border: 1px solid var(--line);
+  border-radius: 80px;
+  background: var(--surface-alt);
+}
+.daily-links button {
+  height: 100%;
+}
+.daily-link-divider {
+  width: 1px;
+  height: 12px;
+  background: var(--line-strong);
+}
+.daily-heading ~ .daily-track-actions {
+  align-items: flex-end;
+  flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 20px;
 }
-.daily-heading ~ .track-actions > button {
+.daily-heading ~ .daily-track-actions > button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -51,13 +75,13 @@
   white-space: nowrap;
   flex-shrink: 0;
 }
-.daily-heading ~ .track-actions > .primary {
+.daily-heading ~ .daily-track-actions > .primary {
   width: 114px;
 }
-.daily-heading ~ .track-actions > .download-button {
+.daily-heading ~ .daily-track-actions > .download-button {
   width: 98px;
 }
-.daily-heading ~ .track-actions .icon {
+.daily-heading ~ .daily-track-actions .icon {
   width: 20px;
   height: 20px;
 }
