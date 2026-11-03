@@ -33,7 +33,7 @@ pub(super) fn pin(path: &Path, integrity: FileIntegrity) -> Result<DeleteSource>
 }
 pub(super) fn cue_sources(library: &crate::library::LocalLibrary) -> Result<BTreeSet<String>> {
     let mut found = BTreeSet::new();
-    for item in library.list(ListOptions {
+    for item in library.list_indexed(ListOptions {
         include_containers: true,
         include_missing: true,
         ..Default::default()

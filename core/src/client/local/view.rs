@@ -3,11 +3,8 @@ use crate::{
     client::dto::{ArtistReference, TrackView},
     library::{AudioMetadata, LibraryItem, LocalRevision, monitor::WatchRoot},
 };
-use sha2::{Digest, Sha256};
 pub(super) fn revision(revision: &LocalRevision) -> String {
-    hex::encode(Sha256::digest(
-        serde_json::to_vec(revision).expect("local revisions serialize"),
-    ))
+    revision.token()
 }
 pub(crate) fn track(id: String, metadata: &AudioMetadata, missing: bool) -> TrackView {
     TrackView {

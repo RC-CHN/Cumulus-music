@@ -36,10 +36,14 @@ pub async fn local_page(
     client.local_page(query).await.map_err(Into::into)
 }
 #[tauri::command]
-pub async fn local_command(
+pub async fn local_command<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,
     command: LocalCommand,
 ) -> Result<(), ClientError> {
+    if matches!(command, LocalCommand::HideTrack { .. }) && window.label() != "main" {
+        return Err(Error::InvalidInput("local list removal requires main window").into());
+    }
     client.local_command(command).await.map_err(Into::into)
 }
 #[tauri::command]

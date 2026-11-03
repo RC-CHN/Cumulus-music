@@ -1,4 +1,4 @@
-use super::{Index, LocalLibrary};
+use super::{HIDDEN, Index, LocalLibrary, OWNER};
 use crate::{
     Error, Result,
     library::{LibraryItem, ListOptions, LocalResource, LocalRevision, identity::fingerprint},
@@ -50,7 +50,20 @@ impl LocalLibrary {
             }))
     }
     pub fn list(&self, options: ListOptions<'_>) -> Result<Vec<LibraryItem>> {
-        let index = self.load()?;
+        self.list_with_visibility(options, false)
+    }
+
+    /// File-management safeguards must inspect even rows hidden in the local page.
+    pub(crate) fn list_indexed(&self, options: ListOptions<'_>) -> Result<Vec<LibraryItem>> {
+        self.list_with_visibility(options, true)
+    }
+
+    fn list_with_visibility(
+        &self,
+        options: ListOptions<'_>,
+        include_hidden: bool,
+    ) -> Result<Vec<LibraryItem>> {
+        let index = self.load_with_hidden(!include_hidden)?;
         let virtual_tracks = cue_items(&index, options.include_missing);
         let containers: HashSet<PathBuf> = cue_items(&index, false)
             .into_iter()
@@ -65,6 +78,7 @@ impl LocalLibrary {
             .chain(virtual_tracks)
         {
             if (options.include_missing || item.available())
+                && index.hidden.get(&item.id) != Some(&item.revision)
                 && fold(&serde_json::to_string(&item.metadata)?).contains(&query)
             {
                 items.push(item);
@@ -92,13 +106,43 @@ impl LocalLibrary {
             .filter(LibraryItem::available)
             .ok_or(Error::State("local track is not available"))
     }
+    /// Hide this exact indexed revision from lists without touching the file,
+    /// its CUE siblings, or resources that were already placed on a queue.
+    pub(crate) fn hide_revision(&self, id: &str, token: &str) -> Result<()> {
+        let _lock = self.lock()?;
+        let index = self.load()?;
+        let item = index
+            .files
+            .get(id)
+            .cloned()
+            .or_else(|| {
+                cue_items(&index, true)
+                    .into_iter()
+                    .find(|item| item.id == id)
+            })
+            .ok_or(Error::QueueChanged)?;
+        if item.revision.token() != token {
+            return Err(Error::QueueChanged);
+        }
+        self.store
+            .put(OWNER, HIDDEN, id, &serde_json::to_value(item.revision)?)
+    }
+
+    /// A user-requested rescan may restore list entries. Automatic monitoring
+    /// never clears this state.
+    pub(crate) fn restore_hidden(&self) -> Result<()> {
+        self.store.transaction(|tx| {
+            for id in tx.values(OWNER, HIDDEN)?.into_keys() {
+                tx.delete(OWNER, HIDDEN, &id)?;
+            }
+            Ok(())
+        })
+    }
+
     pub fn remove(&self, id: &str) -> Result<()> {
         let _lock = self.lock()?;
         let old = self.load()?;
-        let mut new = Index {
-            files: old.files.clone(),
-            cues: old.cues.clone(),
-        };
+        let mut new = old.clone();
         new.files.remove(id);
         for cue in new.cues.values_mut() {
             if cue.tracks.iter().any(|t| t.id == id) {

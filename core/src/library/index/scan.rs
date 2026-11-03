@@ -1,4 +1,4 @@
-use super::{Index, LocalLibrary};
+use super::LocalLibrary;
 use crate::{
     Error, Result,
     library::{
@@ -62,10 +62,7 @@ impl LocalLibrary {
             Ok(_) => return Err(Error::State("watch root reappeared; rescan")),
         }
         let old = self.load()?;
-        let mut new = Index {
-            files: old.files.clone(),
-            cues: old.cues.clone(),
-        };
+        let mut new = old.clone();
         let mut report = ScanReport {
             root_missing: true,
             ..Default::default()
@@ -126,10 +123,7 @@ impl LocalLibrary {
             processed,
         });
         let old = self.load()?;
-        let mut new = Index {
-            files: old.files.clone(),
-            cues: old.cues.clone(),
-        };
+        let mut new = old.clone();
         let mut seen = HashSet::new();
         let mut cue_seen = HashSet::new();
         let mut report = ScanReport::default();

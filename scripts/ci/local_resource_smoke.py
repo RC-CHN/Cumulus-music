@@ -10,7 +10,7 @@ LABELS = ['library_light', 'local_directory_menu_light', 'local_directory_light'
           'queue_before_light', 'downloads_before_dark', 'cloud_confirm_light', 'cloud_removed_dark',
           'downloads_removed_dark', 'library_removed_light', 'queue_reconciled_dark', 'cloud_keep_light',
           'download_kept_playback_dark', 'library_kept_light', 'read_failed_cached_dark',
-          'library_recovered_light', 'command_failure_persisted_dark', 'rescan_recovered_light']
+          'library_recovered_light', 'command_failure_persisted_dark', 'rescan_recovered_light', 'local_hidden_light', 'local_restored_light']
 
 
 def main():
@@ -65,6 +65,8 @@ def main():
         if args.screenshots:
             assert path.with_suffix('.png').is_file()
     assert states['library_light']['localCount'] == 3
+    assert states['local_hidden_light']['localCount'] == 1 and states['local_hidden_light']['staleHide']
+    assert states['local_restored_light']['localCount'] == 2
     assert states['local_directory_menu_light']['focusLabel'] == '打开文件所在目录'
     assert states['local_directory_light']['directoryRequests'] == 1
     assert states['local_directory_light']['directoryAccepted']
@@ -97,7 +99,7 @@ def main():
     report = dict(ok=True, states=len(LABELS), screenshots=len(LABELS) if args.screenshots else 0,
                   actualWebViews=1, deletedSyntheticFiles=1, remainingDownloads=2, remainingLocalTracks=2,
                   exactCloudDeleteRequests=2, queryOwnershipVerified=True, retainedCueIdentityVerified=True,
-                  localDirectoryActionVerified=True, nativeDirectoryLauncherIntercepted=os.name != 'nt',
+                  localDirectoryActionVerified=True, localIndexOnlyRemovalVerified=True, nativeDirectoryLauncherIntercepted=os.name != 'nt',
                   realAccountWrites=0, realMusicRequests=0, physicalAudioOutputVerified=False)
     (root/'report.json').write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
     print(json.dumps(report))

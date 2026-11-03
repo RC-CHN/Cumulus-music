@@ -95,3 +95,15 @@ typed IPC open_local_track_directory(id,revision) 仅主窗口可调用：前端
 物理音频目录，NCM 打开原文件目录；不会触发解密或打开缓存。不新增业务 HTTP。
 Linux 合成桌面用例通过系统启动入口的受控替身核对完整单参数路径，不打开文件管理器
 窗口；Windows 用例只核对拒绝过期引用和 UI 调度，不视作 Windows Explorer 验证。
+
+从本地列表删除
+官方恢复 M/556:939–942 把「从列表中删除」与 :977–993 的磁盘删除分开；
+async_localList.removeItem（M/2304，动作转录 :747–798）调用原生 deleteItemList，
+以 removebyid 标记目标，并在仅列表删除时保持 removefile=false。本实现只接通
+非物理删除：现有 local_command 新增 hide_track{id,revision}，仅主窗口可调用。
+Rust 以索引锁内的实际 ID 和版本核对，原子写入设备本地的隐藏版本记录；旧引用
+报 snapshot_changed。文件、同 CUE 的其他分段、原队列已持有的资源与下载记录
+保留，不触发线上 API。列表和匹配查询省略该版本；文件管理继续检查完整索引。
+定时监视及重启不撤销隐藏记录；检测到新的文件版本可重新出现，用户显式「重新扫描」
+会恢复原隐藏版本。这是 Cumulus 在持续监视下的可逆处理；不宣称还原官方原生
+重扫策略。本批不实现「从本地磁盘删除」。

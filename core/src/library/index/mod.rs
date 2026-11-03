@@ -5,7 +5,7 @@ mod relocate;
 mod scan;
 mod view;
 use super::{
-    LibraryItem,
+    LibraryItem, LocalRevision,
     probe::{AudioProbe, Ffprobe},
     records::CueRecord,
 };
@@ -19,6 +19,7 @@ use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 
 const OWNER: &str = "local";
 const FILES: &str = "library_files_v1";
+const HIDDEN: &str = "library_hidden_revisions_v1";
 const CUES: &str = "library_cues_v1";
 pub(crate) const MAPS: &str = "local_map_v1";
 
@@ -28,9 +29,11 @@ pub struct LocalLibrary {
     probe: Arc<dyn AudioProbe>,
     state_root: PathBuf,
 }
+#[derive(Clone)]
 struct Index {
     files: BTreeMap<String, LibraryItem>,
     cues: BTreeMap<String, CueRecord>,
+    hidden: BTreeMap<String, LocalRevision>,
 }
 
 impl LocalLibrary {
@@ -52,6 +55,10 @@ impl LocalLibrary {
         OperationLock::acquire(self.store.directory(), OWNER, "library-index")
     }
     fn load(&self) -> Result<Index> {
+        self.load_with_hidden(false)
+    }
+
+    fn load_with_hidden(&self, load_hidden: bool) -> Result<Index> {
         self.store.transaction(|tx| {
             let files = tx
                 .values(OWNER, FILES)?
@@ -63,7 +70,19 @@ impl LocalLibrary {
                 .into_iter()
                 .map(|(key, value)| Ok((key, serde_json::from_value(value)?)))
                 .collect::<Result<_>>()?;
-            Ok(Index { files, cues })
+            let hidden = if load_hidden {
+                tx.values(OWNER, HIDDEN)?
+                    .into_iter()
+                    .map(|(key, value)| Ok((key, serde_json::from_value(value)?)))
+                    .collect::<Result<_>>()?
+            } else {
+                BTreeMap::new()
+            };
+            Ok(Index {
+                files,
+                cues,
+                hidden,
+            })
         })
     }
     fn commit(&self, old: &Index, new: &Index, cancelled: &dyn Fn() -> bool) -> Result<()> {

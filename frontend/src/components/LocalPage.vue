@@ -75,24 +75,32 @@ const trackMenu = ref<InstanceType<typeof ActionMenu>>();
 const trackTarget = shallowRef<{ id: string; revision: string; queryKey: string }>();
 const openingDirectory = ref(false);
 const directoryError = ref('');
-const trackCurrent = computed(() => {
+const trackRow = computed(() => {
   const target = trackTarget.value;
-  return (
-    target &&
-    !readLocked.value &&
-    !busy.value &&
-    keyword.value === query.value.keyword &&
-    target.queryKey === localQueryKey(query.value) &&
-    view.value?.tracks.some(
-      (row) => row.track.id === target.id && row.revision === target.revision && !row.track.missing,
-    )
+  if (
+    !target ||
+    readLocked.value ||
+    busy.value ||
+    keyword.value !== query.value.keyword ||
+    target.queryKey !== localQueryKey(query.value)
+  )
+    return;
+  return view.value?.tracks.find(
+    (row) => row.track.id === target.id && row.revision === target.revision,
   );
 });
+const trackCurrent = computed(() => !!trackRow.value);
 const trackMenuItems = computed(() => [
   {
     key: 'directory',
     label: '打开文件所在目录',
     icon: 'list' as const,
+    disabled: !trackRow.value || openingDirectory.value || trackRow.value.track.missing,
+  },
+  {
+    key: 'hide_track',
+    label: '从列表中删除',
+    icon: 'trash' as const,
     disabled: !trackCurrent.value || openingDirectory.value,
   },
 ]);
@@ -115,7 +123,6 @@ function showTrackMenu(event: MouseEvent | KeyboardEvent, row: LocalTrack) {
   event.preventDefault();
   event.stopPropagation();
   if (
-    row.track.missing ||
     readLocked.value ||
     busy.value ||
     openingDirectory.value ||
@@ -144,14 +151,24 @@ function showTrackMenu(event: MouseEvent | KeyboardEvent, row: LocalTrack) {
 }
 async function trackAction(action: string) {
   const target = trackTarget.value;
-  if (
-    action !== 'directory' ||
-    !target ||
-    !trackCurrent.value ||
-    openingDirectory.value ||
-    !ownsVisit()
-  )
+  if (!target || !trackCurrent.value || openingDirectory.value || !ownsVisit()) return;
+  if (action === 'hide_track') {
+    await props.model.command({ kind: 'hide_track', id: target.id, revision: target.revision });
+    await nextTick();
+    if (
+      ownsVisit() &&
+      target.queryKey === localQueryKey(query.value) &&
+      document.activeElement === document.body
+    ) {
+      const sameRow = Array.from(
+        pageRoot.value?.querySelectorAll<HTMLElement>('[data-local-id]') ?? [],
+      ).find((row) => row.dataset.localId === target.id);
+      const fallback = sameRow?.querySelector<HTMLButtonElement>('[data-local-track-menu]');
+      (fallback ?? searchInput.value)?.focus({ preventScroll: true });
+    }
     return;
+  }
+  if (action !== 'directory' || trackRow.value?.track.missing) return;
   openingDirectory.value = true;
   directoryError.value = '';
   try {
@@ -674,7 +691,7 @@ function status(root: LocalRoot) {
                   data-local-track-menu
                   aria-haspopup="menu"
                   :aria-label="`更多操作 ${row.track.name}`"
-                  :disabled="row.track.missing || readLocked || busy"
+                  :disabled="readLocked || busy"
                   @click="showTrackMenu($event, row)"
                 >
                   <Icon name="more" />

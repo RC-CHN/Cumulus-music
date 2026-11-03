@@ -100,12 +100,7 @@ impl MusicClient {
         id: String,
         revision: String,
     ) -> Result<std::path::PathBuf> {
-        if [&id, &revision]
-            .iter()
-            .any(|value| value.len() != 64 || !value.bytes().all(|b| b.is_ascii_hexdigit()))
-        {
-            return Err(Error::InvalidInput("invalid local track reference"));
-        }
+        track_reference(&id, &revision)?;
         let context = self.local.context().await?;
         tokio::task::spawn_blocking(move || {
             let item = context.library.item(&id)?;
@@ -147,11 +142,28 @@ impl MusicClient {
                         .ok_or(Error::InvalidInput("unknown library root"))?;
                     context.monitor.watch(root.path)?;
                 }
-                LocalCommand::Rescan => context.monitor.rescan()?,
+                LocalCommand::Rescan => {
+                    context.library.restore_hidden()?;
+                    context.monitor.rescan()?;
+                }
+                LocalCommand::HideTrack { id, revision } => {
+                    track_reference(&id, &revision)?;
+                    context.library.hide_revision(&id, &revision)?;
+                }
             }
             Ok(())
         })
         .await
         .map_err(|_| Error::State("local library worker stopped"))?
     }
+}
+
+fn track_reference(id: &str, revision: &str) -> Result<()> {
+    if [id, revision]
+        .into_iter()
+        .any(|value| value.len() != 64 || !value.bytes().all(|b| b.is_ascii_hexdigit()))
+    {
+        return Err(Error::InvalidInput("invalid local track reference"));
+    }
+    Ok(())
 }

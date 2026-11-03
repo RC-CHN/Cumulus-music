@@ -50,6 +50,7 @@ pub enum LocalCommand {
     Disable { id: String },
     Enable { id: String },
     Rescan,
+    HideTrack { id: String, revision: String },
 }
 
 #[derive(Serialize)]

@@ -878,3 +878,75 @@ async fn local_track_directory_uses_current_index_and_original_cue_source() {
             .is_err()
     );
 }
+
+#[tokio::test]
+async fn remove_from_local_list_survives_monitor_and_keeps_cue_siblings_and_source() {
+    let root = tempfile::tempdir().unwrap();
+    let media = root.path().join("media");
+    let state = root.path().join("state");
+    std::fs::create_dir(&media).unwrap();
+    let source = media.join("album.wav");
+    std::fs::write(&source, "synthetic audio").unwrap();
+    std::fs::write(
+        media.join("album.cue"),
+        "FILE \"album.wav\" WAVE\nTRACK 01 AUDIO\nTITLE \"First\"\nINDEX 01 00:00:00\nTRACK 02 AUDIO\nTITLE \"Second\"\nINDEX 01 01:00:00\n",
+    )
+    .unwrap();
+    let probe = Arc::new(Probe::default());
+    let (_, music, library) = client(&state, probe.clone());
+    library.scan(&media).unwrap();
+    let before = music.local_page(LocalQuery::default()).await.unwrap();
+    let first = before
+        .tracks
+        .iter()
+        .find(|row| row.track.name == "First")
+        .unwrap();
+    let id = first.track.id.clone();
+    let revision = first.revision.clone();
+    assert!(matches!(
+        music
+            .local_command(LocalCommand::HideTrack {
+                id: id.clone(),
+                revision: "0".repeat(64)
+            })
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    assert_eq!(
+        music.local_page(LocalQuery::default()).await.unwrap().total,
+        2
+    );
+    music
+        .local_command(LocalCommand::HideTrack {
+            id: id.clone(),
+            revision,
+        })
+        .await
+        .unwrap();
+    library.scan(&media).unwrap();
+    drop(music);
+    let (_, reopened, _) = client(&state, probe);
+    let after = reopened.local_page(LocalQuery::default()).await.unwrap();
+    assert_ne!(after.revision, before.revision);
+    assert_eq!(
+        after
+            .tracks
+            .iter()
+            .map(|row| row.track.name.as_str())
+            .collect::<Vec<_>>(),
+        ["Second"]
+    );
+    assert_eq!(std::fs::read_to_string(&source).unwrap(), "synthetic audio");
+    // An already queued local resource can still resolve its original revision.
+    let saved = library.resource(&id).unwrap();
+    assert_eq!(saved.local_id, id);
+    reopened.local_command(LocalCommand::Rescan).await.unwrap();
+    assert_eq!(
+        reopened
+            .local_page(LocalQuery::default())
+            .await
+            .unwrap()
+            .total,
+        2
+    );
+}

@@ -886,6 +886,29 @@
     );
     await theme("light");
     await capture("rescan_recovered_light");
+    await wait(async () => (await originalLocal(localQuery)).roots.every((root) =>
+      !root.enabled || !["pending", "scanning"].includes(root.status)), "native scan idle");
+    let staleHide = false;
+    try {
+      await originalCommand({kind:"hide_track", id:indexedCue.track.id, revision:"0".repeat(64)});
+    } catch (error) { staleHide = error?.code === "snapshot_changed"; }
+    assert(staleHide && localRows().length === 2, "stale remove rejected");
+    const hideTrigger = localRows().find(row => row.dataset.localId === cue).querySelector("[data-local-track-menu]");
+    hideTrigger.focus();
+    hideTrigger.dispatchEvent(new KeyboardEvent("keydown", { key:"F10", shiftKey:true, bubbles:true, cancelable:true }));
+    await wait(localTrackMenu, "local row remove menu");
+    click("从列表中删除", localTrackMenu());
+    await wait(() => readyLocal() && localRows().length === 1 &&
+      local().textContent.includes("源文件仍保留") && document.activeElement === localField(),
+      "only local list row removed with focus fallback");
+    assert(!localRows().some(row => row.dataset.localId === cue), "CUE is removed from displayed list");
+    assert((await control("cloud-removal-file", {songId:"1004", action:"observe"})).exists,
+      "CUE physical source remains");
+    await capture("local_hidden_light", {staleHide});
+    click("重新扫描", local());
+    await wait(() => readyLocal() && localRows().some(row => row.dataset.localId === cue),
+      "explicit rescan restores local list row");
+    await capture("local_restored_light");
     const state = await control("cloud-state");
     assert(
       state.writes.length === 2 &&

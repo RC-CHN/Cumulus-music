@@ -99,6 +99,10 @@ export function useLocal(core: LocalClient = useCore()) {
   }
   async function command(input: LocalCommand) {
     if (busy.value || disposed) return;
+    const commandVisit = visit;
+    const commandQuery = localQueryKey(query.value);
+    const stillShowingCommand = () =>
+      visit === commandVisit && localQueryKey(query.value) === commandQuery;
     busy.value = true;
     error.value = '';
     notice.value = '';
@@ -110,10 +114,12 @@ export function useLocal(core: LocalClient = useCore()) {
       if (!disposed) {
         query.value.revision = null;
         await refresh(true);
+        if (input.kind === 'hide_track' && !disposed && !readError.value && stillShowingCommand())
+          notice.value = '已从列表中删除，源文件仍保留。重新扫描可恢复。';
       }
     } catch (e) {
-      if (!disposed)
-        error.value = `${{ watch: '添加目录', enable: '恢复扫描', disable: '暂停扫描', rescan: '重新扫描' }[input.kind]}：${failure(e).message}`;
+      if (!disposed && (input.kind !== 'hide_track' || stillShowingCommand()))
+        error.value = `${{ watch: '添加目录', enable: '恢复扫描', disable: '暂停扫描', rescan: '重新扫描', hide_track: '从列表中删除' }[input.kind]}：${failure(e).message}`;
     } finally {
       if (!disposed) {
         busy.value = false;

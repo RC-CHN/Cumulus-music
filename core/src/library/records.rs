@@ -1,5 +1,6 @@
 use super::{AudioMetadata, identity::FileFingerprint};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, path::PathBuf};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -16,6 +17,14 @@ pub enum LocalRevision {
         offset: f64,
         duration: f64,
     },
+}
+
+impl LocalRevision {
+    pub(crate) fn token(&self) -> String {
+        hex::encode(Sha256::digest(
+            serde_json::to_vec(self).expect("local revisions serialize"),
+        ))
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
