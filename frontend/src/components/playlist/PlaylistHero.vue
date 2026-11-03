@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { playlistDate } from '../../services/playlistHeader';
+import { playlistCoverCount, playlistDate } from '../../services/playlistHeader';
 import type { PlaylistView } from '../../services/contracts';
 import type { MenuItem } from '../../services/menu';
 import ActionMenu from '../ActionMenu.vue';
@@ -21,6 +21,9 @@ const props = defineProps<{
   intelligenceBusy?: boolean;
   intelligenceSeeded?: boolean;
 }>();
+const coverCount = computed(() =>
+  playlistCoverCount(props.playlist.playCount, props.playlist.private),
+);
 const date = computed(() => playlistDate(props.playlist.headerDate?.timestampMs));
 const failedAvatar = ref<string>();
 defineEmits<{
@@ -45,7 +48,18 @@ defineEmits<{
         referrerpolicy="no-referrer"
       />
       <template v-else><Icon name="music" /><span class="sr-only">暂无歌单封面</span></template>
-      <span v-if="playlist.private" class="playlist-privacy"><Icon name="lock" />私密</span>
+      <span v-if="playlist.private" class="playlist-privacy" role="img" aria-label="私密歌单">
+        <Icon name="lock" aria-hidden="true" />
+      </span>
+      <span
+        v-else-if="coverCount"
+        class="playlist-cover-count"
+        role="img"
+        :aria-label="coverCount.label"
+        :title="coverCount.label"
+      >
+        <Icon name="play" aria-hidden="true" />{{ coverCount.text }}
+      </span>
     </div>
     <div class="hero-copy">
       <div class="playlist-title">

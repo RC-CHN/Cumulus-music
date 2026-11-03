@@ -162,6 +162,7 @@ export interface PlaylistSubscribersPage {
 
 export interface PlaylistView {
   subscribedCount?: number | null;
+  playCount?: number | null;
   id: string;
   name: string;
   coverUrl: string | null;

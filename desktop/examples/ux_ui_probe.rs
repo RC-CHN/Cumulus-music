@@ -219,7 +219,14 @@ impl Api for Library {
                         playlist_layout_fixture::wait_for_release().await;
                         json!({"code":500})
                     } else {
-                        json!({"code":200,"playlist":playlist(id)})
+                        let mut value = playlist(id);
+                        if playlist_creator_proof() && matches!(id, 2 | 20) {
+                            value["playCount"] = json!(12600);
+                            if id == 20 {
+                                value["privacy"] = json!(0);
+                            }
+                        }
+                        json!({"code":200,"playlist":value})
                     }
                 }
                 "/api/v1/resource/comments/A_PL_0_2" | "/api/v1/resource/comments/A_PL_0_3"

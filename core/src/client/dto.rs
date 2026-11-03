@@ -107,6 +107,7 @@ pub struct PlaylistView {
     pub tags: Vec<String>,
     pub track_count: usize,
     pub subscribed_count: Option<u64>,
+    pub play_count: Option<u64>,
     pub owned: bool,
     pub favorite: bool,
     pub private: bool,

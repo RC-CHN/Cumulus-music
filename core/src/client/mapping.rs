@@ -32,6 +32,7 @@ pub(super) fn playlist(value: &Value, uid: &str) -> Result<PlaylistView> {
     let owner =
         identifier(&value["userId"]).or_else(|_| identifier(&value["creator"]["userId"]))?;
     let owned = owner == uid;
+    let privacy = value["privacy"].as_i64();
     let special_type = value["specialType"].as_i64();
     let (date_key, kind) = if special_type == Some(10) {
         ("updateTime", PlaylistHeaderDateKind::Updated)
@@ -58,9 +59,12 @@ pub(super) fn playlist(value: &Value, uid: &str) -> Result<PlaylistView> {
         subscribed_count: value["subscribedCount"]
             .as_u64()
             .filter(|n| *n <= 9_007_199_254_740_991),
+        play_count: value["playCount"]
+            .as_u64()
+            .filter(|count| privacy == Some(0) && (1..=9_007_199_254_740_991).contains(count)),
         owned,
         favorite: owned && special_type == Some(5),
-        private: value["privacy"].as_i64() == Some(10),
+        private: privacy == Some(10),
     })
 }
 
