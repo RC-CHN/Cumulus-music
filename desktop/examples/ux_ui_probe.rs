@@ -222,6 +222,15 @@ impl Api for Library {
                     collected["privacy"] = json!(0);
                     json!({"code":200,"more":false,"playlist":[created,playlist(21),collected]})
                 }
+                "/api/user/playlist/v2" => {
+                    let offset = args["offset"].as_u64().unwrap_or(0) * 10;
+                    let rows = (1..=24)
+                        .skip(offset as usize)
+                        .take(10)
+                        .map(playlist)
+                        .collect::<Vec<_>>();
+                    json!({"code":200,"more":offset+10<24,"playlist":rows})
+                }
                 "/api/user/playlist" => {
                     // One collected list exercises a menu whose reorder items
                     // are both disabled, without changing production state.

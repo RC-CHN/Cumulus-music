@@ -331,6 +331,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 player::lyric_offset,
                 playlists::playlist_editor,
                 playlists::playlist_tags,
+                playlists::playlist_collect_page,
                 playlists::playlist_order_view,
                 playlists::mutate_playlist,
                 playlists::reconcile_playlist,

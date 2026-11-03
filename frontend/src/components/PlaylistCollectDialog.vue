@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef } from 'vue';
 import type { PlaylistManager } from '../composables/usePlaylists';
 import { failure, type PlaylistView, type TrackView } from '../services/contracts';
 import { useCore } from '../services/core';
@@ -23,16 +23,33 @@ const nameInput = ref<HTMLInputElement>();
 const { busy, error, result } = props.manager;
 const interrupted = shallowRef<PlaylistMutationView>();
 const receipt = computed(() => result.value ?? interrupted.value);
-const lists = shallowRef(props.playlists);
-const loading = ref(false),
-  loadError = ref('');
+type Sort = 'default' | 'recently';
+const sortOptions = [
+  { value: 'default', label: '默认排序' },
+  { value: 'recently', label: '常用优先' },
+] as const;
+const preference = 'cumulus.playlist-collect-sort.v1';
+function rememberedSort(): Sort {
+  try {
+    return localStorage.getItem(preference) === 'recently' ? 'recently' : 'default';
+  } catch {
+    return 'default';
+  }
+}
+const sort = ref<Sort>(rememberedSort());
+function initial(rows: PlaylistView[]) {
+  return { rows, next: 0 as number | null, loading: false, error: '', top: 0 };
+}
+const bySort = reactive({
+  default: initial(props.playlists.filter((playlist) => playlist.owned && !playlist.favorite)),
+  recently: initial([]),
+});
+const current = computed(() => bySort[sort.value]);
 const creating = ref(false),
   name = ref(''),
   privateList = ref(true);
 const selected = ref(''),
-  created = ref(''),
-  scrollTop = ref(0);
-const own = computed(() => lists.value.filter((p) => p.owned && !p.favorite));
+  created = ref('');
 const pending = computed(() => !!receipt.value && playlistPending(receipt.value.phase));
 const invalid = computed(
   () => !name.value.trim() || /[@#]/.test(name.value) || playlistLength(name.value.trim()) > 40,
@@ -46,28 +63,67 @@ onMounted(() => {
   dialog.value?.showModal();
   void reload();
 });
-async function reload() {
-  if (loading.value) return;
-  const retry = dialog.value?.querySelector('.collect-load button');
-  const focused = retry && document.activeElement === retry;
-  loading.value = true;
+async function reload(automatic = false) {
+  const order = sort.value;
+  const state = bySort[order];
+  const page = state.next;
+  if (busy.value || pending.value || state.loading || page === null || (automatic && state.error))
+    return;
+  const focused = dialog.value?.querySelector('.collect-load button:focus, .collect-more:focus');
+  state.loading = true;
   try {
-    const response = await client.playlists();
+    const response = await client.playlistCollectPage(props.epoch, order, page);
     if (!alive || response.epoch !== props.epoch) return;
-    lists.value = response.value;
-    loadError.value = '';
-    if (focused) {
-      await nextTick();
-      dialog.value?.querySelector<HTMLElement>('.collect-list')?.focus({ preventScroll: true });
-    }
+    const rows = page === 0 ? [] : state.rows;
+    const known = new Set(rows.map((playlist) => playlist.id));
+    state.rows = [
+      ...rows,
+      ...response.value.playlists.filter((playlist) => !known.has(playlist.id)),
+    ];
+    state.next = response.value.nextPage;
+    state.error = '';
   } catch (e) {
     if (!alive) return;
     const issue = failure(e);
-    loadError.value = issue.message;
+    state.error = issue.message;
     if (['session_expired', 'profile_changed'].includes(issue.code)) emit('expired');
   } finally {
-    if (alive) loading.value = false;
+    if (alive) {
+      state.loading = false;
+      if (focused && order === sort.value) {
+        await nextTick();
+        if (alive && order === sort.value && document.activeElement === document.body)
+          dialog.value?.querySelector<HTMLElement>('.collect-list')?.focus({ preventScroll: true });
+      }
+    }
   }
+}
+function selectSort(order: Sort) {
+  if (order === sort.value || busy.value || pending.value) return;
+  sort.value = order;
+  try {
+    localStorage.setItem(preference, order);
+  } catch {
+    // A session still keeps its active sort when local preferences are unavailable.
+  }
+  if (current.value.next === 0 && !current.value.error) void reload();
+}
+function sortKey(event: KeyboardEvent) {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+  if (busy.value || pending.value) return;
+  event.preventDefault();
+  const next =
+    event.key === 'Home'
+      ? 'default'
+      : event.key === 'End'
+        ? 'recently'
+        : sort.value === 'default'
+          ? 'recently'
+          : 'default';
+  selectSort(next);
+  void nextTick(() =>
+    dialog.value?.querySelector<HTMLButtonElement>(`[data-collect-sort="${next}"]`)?.focus(),
+  );
 }
 function close() {
   if (!busy.value) emit('close');
@@ -78,11 +134,10 @@ function startCreate() {
   created.value = '';
   creating.value = true;
 }
-async function back() {
+function back() {
   if (busy.value || pending.value) return;
   props.manager.reset();
   creating.value = false;
-  await reload();
 }
 function entered() {
   if (creating.value) nameInput.value?.focus();
@@ -253,22 +308,53 @@ async function reconcile() {
         </footer>
       </form>
       <div v-else key="list" class="collect-body">
-        <div v-if="loadError || loading" class="collect-load" role="status">
-          <span>{{ loadError || '正在刷新歌单…' }}</span>
-          <button v-if="loadError" class="text-button" :aria-disabled="loading" @click="reload">
-            {{ loading ? '正在重试…' : '重试' }}
+        <div class="collect-sort-tabs" role="tablist" aria-label="收藏歌单排序" @keydown="sortKey">
+          <button
+            v-for="option in sortOptions"
+            :key="option.value"
+            role="tab"
+            type="button"
+            :data-collect-sort="option.value"
+            :aria-selected="sort === option.value"
+            :tabindex="sort === option.value ? 0 : -1"
+            :aria-disabled="busy || pending"
+            @click="selectSort(option.value)"
+          >
+            {{ option.label }}
+          </button>
+        </div>
+        <div v-if="current.error || current.loading" class="collect-load" role="status">
+          <span>{{ current.error || '正在刷新歌单…' }}</span>
+          <button
+            v-if="current.error"
+            class="text-button"
+            :aria-disabled="current.loading"
+            @click="reload()"
+          >
+            {{ current.loading ? '正在重试…' : '重试' }}
           </button>
         </div>
         <PlaylistCollectList
-          :playlists="own"
+          :key="sort"
+          :playlists="current.rows"
           :disabled="busy || pending"
           :selected-id="selected"
-          :scroll-top="scrollTop"
-          :loading="loading || !!loadError"
-          @scroll="scrollTop = $event"
+          :scroll-top="current.top"
+          :loading="current.loading || !!current.error || current.next !== null"
+          @scroll="current.top = $event"
+          @near-end="reload(true)"
           @select="collect"
           @create="startCreate"
         />
+        <button
+          v-if="current.next !== null && current.next !== 0 && !current.error"
+          type="button"
+          class="text-button collect-more"
+          :aria-disabled="current.loading || busy || pending"
+          @click="!busy && !pending && reload()"
+        >
+          {{ current.loading ? '正在加载…' : '加载更多歌单' }}
+        </button>
       </div>
     </BoundedPanelTransition>
     <p v-if="busy" class="collect-status" role="status">正在收藏，请稍候…</p>

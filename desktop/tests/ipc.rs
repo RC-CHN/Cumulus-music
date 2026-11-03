@@ -331,6 +331,10 @@ fn account_snapshot_and_stale_mutation_cross_registered_commands() {
         ("player_lyrics", json!({"epoch":"0","playId":"old"})),
         ("playlist_editor", json!({"epoch":"0","id":"10"})),
         ("playlist_tags", json!({"epoch":"0"})),
+        (
+            "playlist_collect_page",
+            json!({"epoch":"0","sort":"recently","page":0}),
+        ),
         ("playlist_order_view", json!({"epoch":"0"})),
         ("playlist_operations", json!({"epoch":"0"})),
         (

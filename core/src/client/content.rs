@@ -35,6 +35,67 @@ impl MusicClient {
         })
     }
 
+    /// M/3132's collector RPC uses page indexes, not item offsets. Only the
+    /// current account's editable targets are returned to the WebView.
+    pub async fn playlist_collect_page(
+        &self,
+        epoch: &str,
+        sort: PlaylistCollectSort,
+        page: u32,
+    ) -> Result<AccountData<PlaylistCollectPage>> {
+        const LIMIT: usize = 10;
+        const LAST_PAGE: u32 = 999;
+        if page > LAST_PAGE {
+            return Err(Error::InvalidInput("invalid playlist collection page"));
+        }
+        let token = self.player_token(epoch)?;
+        let value = self
+            .session
+            .run_for(&token, |api, uid| async move {
+                let response = api
+                    .call(
+                        "/api/user/playlist/v2",
+                        json!({"uid":uid,"offset":page,"limit":LIMIT,"sortType":sort.wire()}),
+                        false,
+                        &[200],
+                    )
+                    .await?;
+                let rows = match &response["playlist"] {
+                    Value::Null => &[][..],
+                    Value::Array(rows) if rows.len() <= LIMIT => rows.as_slice(),
+                    _ => return Err(Error::Response("invalid playlist collection page")),
+                };
+                let more = match &response["more"] {
+                    Value::Null => false,
+                    Value::Bool(more) => *more,
+                    _ => return Err(Error::Response("invalid playlist collection cursor")),
+                };
+                if more && (rows.is_empty() || page == LAST_PAGE) {
+                    return Err(Error::Response("invalid playlist collection continuation"));
+                }
+                let mut seen = std::collections::HashSet::with_capacity(rows.len());
+                let mut playlists = Vec::new();
+                for row in rows {
+                    let item = mapping::playlist(row, &uid)?;
+                    if !seen.insert(item.id.clone()) {
+                        return Err(Error::Response("duplicate playlist collection row"));
+                    }
+                    if item.owned && !item.favorite {
+                        playlists.push(item);
+                    }
+                }
+                Ok(PlaylistCollectPage {
+                    playlists,
+                    next_page: more.then_some(page + 1),
+                })
+            })
+            .await?;
+        Ok(AccountData {
+            epoch: token.generation.to_string(),
+            value,
+        })
+    }
+
     pub async fn playlist_subscribers(
         &self,
         epoch: &str,

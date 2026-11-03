@@ -11,16 +11,24 @@ const props = defineProps<{
   scrollTop: number;
   loading: boolean;
 }>();
-const emit = defineEmits<{ select: [id: string]; create: []; scroll: [top: number] }>();
-const { container, start, end, onScroll } = useVirtualRows(() => props.playlists.length + 1, 64, 5);
+const emit = defineEmits<{
+  select: [id: string];
+  create: [];
+  scroll: [top: number];
+  nearEnd: [];
+}>();
+const { container, start, end, onScroll, restore } = useVirtualRows(
+  () => props.playlists.length + 1,
+  64,
+  5,
+);
 const entries = computed(() => [null, ...props.playlists]);
 const active = ref(0);
 const broken = ref(new Set<string>());
 onMounted(() => {
   if (container.value) {
-    container.value.scrollTop = props.scrollTop;
+    restore(props.scrollTop);
     active.value = Math.min(props.playlists.length, Math.floor(props.scrollTop / 64));
-    onScroll();
   }
 });
 function scroll() {
@@ -34,13 +42,21 @@ function scroll() {
       host.focus({ preventScroll: true });
   }
   onScroll();
+  const host = container.value;
+  if (
+    host &&
+    props.playlists.length &&
+    host.scrollTop + host.clientHeight + 72 >= host.scrollHeight
+  )
+    emit('nearEnd');
 }
 async function move(event: KeyboardEvent) {
   if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key) || props.disabled) return;
   event.preventDefault();
   const host = container.value;
   if (!host) return;
-  const current = document.activeElement === host ? Math.floor(host.scrollTop / 64) : active.value;
+  const from = document.activeElement;
+  const current = from === host ? Math.floor(host.scrollTop / 64) : active.value;
   const index =
     event.key === 'Home'
       ? 0
@@ -54,9 +70,13 @@ async function move(event: KeyboardEvent) {
   if (index * 64 < host.scrollTop) host.scrollTop = index * 64;
   else if ((index + 1) * 64 > host.scrollTop + host.clientHeight)
     host.scrollTop = (index + 1) * 64 - host.clientHeight;
-  onScroll();
-  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  restore(host.scrollTop);
   await nextTick();
+  if (
+    !host.isConnected ||
+    (document.activeElement !== from && document.activeElement !== document.body)
+  )
+    return;
   host.querySelector<HTMLButtonElement>(`[data-index="${index}"]`)?.focus({ preventScroll: true });
 }
 </script>

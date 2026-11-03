@@ -1,7 +1,10 @@
 use cumulus_core::{
     Error,
     account::{AccountSession, profiles::ProfileRegistry},
-    client::{ClientError, MusicClient, dto::PageRequest},
+    client::{
+        ClientError, MusicClient,
+        dto::{PageRequest, PlaylistCollectSort},
+    },
     protocol::{
         api::{Api, ApiFuture},
         http::ApiOrigin,
@@ -63,6 +66,18 @@ impl Api for Backend {
                     }
                 }
                 "/api/user/playlist" => json!({"code":200,"playlist":[playlist()],"more":false}),
+                "/api/user/playlist/v2" => match payload["offset"].as_u64() {
+                    Some(0) => json!({"code":200,"more":true,"playlist":[
+                        playlist(),
+                        {"id":11,"userId":8,"name":"别人的歌单"},
+                        {"id":13,"userId":9,"name":"常用 13","cookie":"DO_NOT_EXPORT"},
+                        {"id":12,"userId":9,"name":"常用 12"}
+                    ]}),
+                    Some(1) => {
+                        json!({"code":200,"playlist":[{"id":14,"userId":8,"name":"仅收藏"}]})
+                    }
+                    _ => json!({"code":200,"playlist":[],"more":true}),
+                },
                 "/api/v6/playlist/detail" => {
                     let mut value = playlist();
                     value["id"] = payload["id"].clone();
@@ -423,6 +438,69 @@ async fn like_recovery_view_is_bounded_local_and_account_scoped() {
     );
     session.detach().unwrap();
     assert!(client.like_recovery(&epoch, 0).is_err());
+}
+
+#[tokio::test]
+async fn playlist_collection_sorts_on_the_service_and_filters_editable_targets() {
+    let dir = tempfile::tempdir().unwrap();
+    let backend = Arc::new(Backend::default());
+    let (client, _) = client(dir.path(), backend.clone());
+    let epoch = client.restore_account().await.unwrap().epoch;
+    let recent = PlaylistCollectSort::Recently;
+    assert!(matches!(
+        client.playlist_collect_page("0", recent, 0).await,
+        Err(Error::StaleResponse)
+    ));
+    assert!(matches!(
+        client.playlist_collect_page(&epoch, recent, 1000).await,
+        Err(Error::InvalidInput(_))
+    ));
+    let first = client
+        .playlist_collect_page(&epoch, recent, 0)
+        .await
+        .unwrap();
+    assert_eq!(first.epoch, epoch);
+    assert_eq!(first.value.next_page, Some(1));
+    assert_eq!(
+        first
+            .value
+            .playlists
+            .iter()
+            .map(|p| p.id.as_str())
+            .collect::<Vec<_>>(),
+        ["13", "12"]
+    );
+    assert!(
+        !serde_json::to_string(&first.value)
+            .unwrap()
+            .contains("DO_NOT_EXPORT")
+    );
+    let last = client
+        .playlist_collect_page(&epoch, recent, 1)
+        .await
+        .unwrap();
+    assert!(last.value.playlists.is_empty());
+    assert_eq!(last.value.next_page, None);
+    assert!(matches!(
+        client
+            .playlist_collect_page(&epoch, PlaylistCollectSort::Default, 2)
+            .await,
+        Err(Error::Response(_))
+    ));
+    let requests = backend.requests.lock().unwrap();
+    let payloads: Vec<_> = requests
+        .iter()
+        .filter(|(path, _)| path.ends_with("/playlist/v2"))
+        .map(|(_, payload)| payload.clone())
+        .collect();
+    assert_eq!(
+        payloads,
+        [
+            json!({"uid":"9","offset":0,"limit":10,"sortType":"recently"}),
+            json!({"uid":"9","offset":1,"limit":10,"sortType":"recently"}),
+            json!({"uid":"9","offset":2,"limit":10,"sortType":"default"}),
+        ]
+    );
 }
 
 #[tokio::test]

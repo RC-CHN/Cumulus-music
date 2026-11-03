@@ -59,7 +59,7 @@
   }
   const originalFetch = window.fetch;
   window.fetch = async function (url, options) {
-    if (String(url).endsWith("/account_playlists")) listCalls++;
+    if (String(url).endsWith("/playlist_collect_page")) listCalls++;
     return originalFetch.call(window, url, options);
   };
   function input(value) {
@@ -153,6 +153,17 @@
       "create focuses input",
     );
   }
+  async function readAll() {
+    for (let i = 0; i < 40; i++) {
+      await wait(() => !one(".collect-load"), "collection page settles");
+      const more = button("加载更多歌单", dialog());
+      if (!more) return;
+      const count = listCalls;
+      click(more);
+      await wait(() => listCalls > count, "next collection page");
+    }
+    assert(false, "collection reached terminal page");
+  }
   try {
     await wait(() => one(".track-more"), "daily");
     for (const [w, h, theme] of [
@@ -171,6 +182,18 @@
       const trigger = await open();
       await wait(() => !one(".collect-load"), "list read");
       await capture(`list_${w}_${theme}`);
+      if (w === 1120 && theme === "light") {
+        const tabs = dialog().querySelector('[role="tablist"]');
+        click(button("常用优先", tabs));
+        await wait(() => !one(".collect-load") && one('[data-playlist-id="19"]'), "recently sorted first");
+        const rows = all(".collect-row[data-playlist-id]");
+        assert(rows[0].dataset.playlistId === "19", "service recent order retained");
+        await capture("recently_sorted_light");
+        key(button("常用优先", tabs), "Home");
+        await wait(() => button("默认排序", tabs).getAttribute("aria-selected") === "true" &&
+          document.activeElement === button("默认排序", tabs), "keyboard restores default");
+      }
+      await readAll();
       key(list(), "End");
       await wait(
         () => document.activeElement?.dataset.playlistId === "19",
@@ -210,7 +233,7 @@
     }
     await fixture("many");
     let trigger = await open();
-    await wait(() => !one(".collect-load"), "many list");
+    await readAll();
     key(list(), "End");
     await wait(
       () => document.activeElement?.dataset.playlistId === "260",
@@ -322,6 +345,7 @@
       realAccountWrites: 0,
       creationRetryVerified: true,
       uncertainReadbackVerified: true,
+      sortedPaginationVerified: true,
     });
   } catch (error) {
     await emit("failed", {

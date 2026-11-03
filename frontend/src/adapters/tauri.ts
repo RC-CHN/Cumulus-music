@@ -272,6 +272,8 @@ export function createTauriClient(): CoreClient {
     reconcileQr: (operationId) => invoke('reconcile_qr', { operationId }),
     cancelQr: (operationId) => invoke('cancel_qr', { operationId }),
     playlists: () => invoke('account_playlists'),
+    playlistCollectPage: (epoch, sort, page) =>
+      invoke('playlist_collect_page', { epoch, sort, page }),
     playlistCreatorProfile: (epoch, uid) => invoke('playlist_creator_profile', { epoch, uid }),
     playlistTagPage: (epoch, query) => invoke('playlist_tag_page', { epoch, query }),
     playlistSubscribers: (epoch, id, offset) =>

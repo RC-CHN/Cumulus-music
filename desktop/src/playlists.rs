@@ -3,6 +3,18 @@ use cumulus_core::{
     playlist::PlaylistCommand,
 };
 #[tauri::command]
+pub async fn playlist_collect_page(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    sort: PlaylistCollectSort,
+    page: u32,
+) -> Result<AccountData<PlaylistCollectPage>, ClientError> {
+    client
+        .playlist_collect_page(&epoch, sort, page)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn playlist_tags(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

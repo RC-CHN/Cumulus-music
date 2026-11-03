@@ -14,6 +14,7 @@ struct State {
     writes: u64,
     creates: u64,
     hidden: Option<u64>,
+    sorted_pages: Vec<(String, usize)>,
 }
 fn state() -> &'static Mutex<State> {
     static STATE: OnceLock<Mutex<State>> = OnceLock::new();
@@ -31,7 +32,7 @@ pub fn control(value: &Value) {
 }
 pub fn report() -> Value {
     let s = state().lock().unwrap();
-    json!({"writes":s.writes,"creates":s.creates,"created":s.created.keys().collect::<Vec<_>>()})
+    json!({"writes":s.writes,"creates":s.creates,"created":s.created.keys().collect::<Vec<_>>(),"sortedPages":s.sorted_pages})
 }
 fn list(s: &State, id: u64) -> Value {
     let mut value = s
@@ -62,6 +63,7 @@ pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
         || !matches!(
             path,
             "/api/user/playlist"
+                | "/api/user/playlist/v2"
                 | "/api/v6/playlist/detail"
                 | "/api/playlist/create"
                 | "/api/v1/playlist/manipulate/tracks"
@@ -72,7 +74,7 @@ pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
     for _ in 0..400 {
         let held = {
             let s = state().lock().unwrap();
-            s.mode == "hold_list" && path == "/api/user/playlist"
+            s.mode == "hold_list" && path == "/api/user/playlist/v2"
                 || s.mode == "hold_add" && path == "/api/v1/playlist/manipulate/tracks"
         };
         if !held {
@@ -88,8 +90,18 @@ pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
             .unwrap()
     };
     Some(match path {
-        "/api/user/playlist" => {
-            if s.mode == "fail_list" {
+        "/api/user/playlist" | "/api/user/playlist/v2" => {
+            let sorted = path.ends_with("/v2");
+            let page = args["offset"].as_u64().unwrap_or(0) as usize;
+            if sorted {
+                let order = args["sortType"].as_str().unwrap();
+                assert!(matches!(order, "default" | "recently"));
+                assert_eq!(args["limit"], 10);
+                assert_eq!(args["uid"], "2");
+                assert_eq!(args.as_object().unwrap().len(), 4);
+                s.sorted_pages.push((order.into(), page));
+            }
+            if sorted && s.mode == "fail_list" {
                 return Some(Err(Error::Transport("合成歌单列表暂时不可用".into())));
             }
             let mut rows: Vec<_> = if s.mode == "empty" {
@@ -100,8 +112,11 @@ pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
                     .collect()
             };
             rows.extend(s.created.keys().map(|id| list(&s, *id)));
-            let offset = args["offset"].as_u64().unwrap_or(0) as usize;
+            if sorted && args["sortType"] == "recently" {
+                rows.reverse();
+            }
             let limit = args["limit"].as_u64().unwrap_or(1000) as usize;
+            let offset = if sorted { page * limit } else { page };
             Ok(
                 json!({"code":200,"more":offset+limit<rows.len(),"playlist":rows.into_iter().skip(offset).take(limit).collect::<Vec<_>>()}),
             )

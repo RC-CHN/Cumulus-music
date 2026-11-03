@@ -114,6 +114,28 @@ pub struct PlaylistView {
     pub private: bool,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlaylistCollectSort {
+    Default,
+    Recently,
+}
+impl PlaylistCollectSort {
+    pub(super) fn wire(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::Recently => "recently",
+        }
+    }
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaylistCollectPage {
+    pub playlists: Vec<PlaylistView>,
+    pub next_page: Option<u32>,
+}
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaylistHeaderDate {

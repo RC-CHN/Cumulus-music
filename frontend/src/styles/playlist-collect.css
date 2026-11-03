@@ -219,3 +219,47 @@
   font-size: 12px;
   line-height: 1.6;
 }
+
+/* SortTabs: 32px targets, 16px side padding and a 12px divider. */
+.collect-sort-tabs {
+  display: flex;
+  align-items: center;
+  flex: 0 0 32px;
+  padding: 0 26px;
+  color: var(--text-secondary);
+}
+.collect-sort-tabs button {
+  padding: 0 16px;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 32px;
+}
+.collect-sort-tabs button:first-child {
+  padding-left: 0;
+}
+.collect-sort-tabs button + button {
+  position: relative;
+}
+.collect-sort-tabs button + button::before {
+  content: '';
+  position: absolute;
+  top: 10px;
+  left: 0;
+  width: 1px;
+  height: 12px;
+  background: currentColor;
+  opacity: 0.25;
+}
+.collect-sort-tabs button:hover,
+.collect-sort-tabs button[aria-selected='true'] {
+  color: var(--text);
+}
+.collect-sort-tabs button[aria-selected='true'] {
+  font-weight: 500;
+  font-size: 14px;
+}
+.collect-more {
+  align-self: center;
+  flex-shrink: 0;
+  padding: 6px 10px;
+}

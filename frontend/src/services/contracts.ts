@@ -126,6 +126,11 @@ export interface CoreClient
   reconcileQr(operationId: string): Promise<void>;
   cancelQr(operationId: string): Promise<void>;
   playlists(): Promise<AccountData<PlaylistView[]>>;
+  playlistCollectPage(
+    epoch: string,
+    sort: 'default' | 'recently',
+    page: number,
+  ): Promise<AccountData<{ playlists: PlaylistView[]; nextPage: number | null }>>;
   playlistCreatorProfile(
     epoch: string,
     uid: string,

@@ -46,7 +46,11 @@ def verify(root, capture, stall_frames=False):
     complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
     assert (complete['blockedFrames'] > 0) == stall_frames
     assert complete['ok'] and complete['collectionUi'] and complete['creationRetryVerified'] and complete['uncertainReadbackVerified']
-    assert complete['stageCount'] == 28 and complete['maxRows'] <= 23
+    assert complete['sortedPaginationVerified']
+    pages = complete['syntheticCollection']['sortedPages']
+    assert pages[:3] == [['default', 0], ['recently', 0], ['default', 1]]
+    assert ['default', 25] in pages
+    assert complete['stageCount'] == 29 and complete['maxRows'] <= 23
     assert complete['syntheticCollection']['creates'] == 1 and complete['syntheticCollection']['writes'] == 4
     assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
     assert len(list((root / 'first').glob('ux_*.json'))) == complete['stageCount']
