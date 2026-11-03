@@ -63,6 +63,33 @@ class DraftValidation(unittest.TestCase):
                 publish.validate_tag(dict(tag, **change), "v0.1.0", "verified")
 
 
+class RequiredJobs(unittest.TestCase):
+    def test_release_refuses_without_successful_linux_webview_before_package_download(self):
+        repository = "owner/repo"
+        sha = "release-sha"
+        run = {"id": 12, "repository": {"full_name": repository},
+               "head_repository": {"full_name": repository}, "workflow_id": 42,
+               "path": ".github/workflows/ci.yml", "event": "push", "head_branch": "main",
+               "head_sha": sha, "status": "completed", "conclusion": "success", "run_attempt": 1}
+        jobs = [
+            {"name": name, "status": "completed", "conclusion": "success"}
+            for name in ("Frontend and release rules", "Native (linux-x64)",
+                         "Native (windows-x64)", "CI gate")
+        ]
+        for webview in ([], [{"name": "Linux WebView smoke", "status": "completed", "conclusion": "failure"}]):
+            with self.subTest(webview=webview), \
+                 patch.dict(os.environ, {"GITHUB_REPOSITORY": repository,
+                                         "GITHUB_REF": "refs/heads/main", "GITHUB_SHA": sha}), \
+                 patch("sys.argv", ["publish.py", "--version", "0.1.0", "--run-id", "12"]), \
+                 patch("publish.git", return_value=sha), \
+                 patch("publish.check_release", return_value=sha), \
+                 patch("publish.api", side_effect=[{"id": 42}, run, {"jobs": jobs + webview}]), \
+                 patch("publish.subprocess.run") as command:
+                with self.assertRaisesRegex(AssertionError, "required CI jobs"):
+                    publish.main()
+                command.assert_not_called()
+
+
 class ResumeFlow(unittest.TestCase):
     def test_recovery_only_publishes_existing_draft_and_preserves_target_ci(self):
         previous = Path.cwd()

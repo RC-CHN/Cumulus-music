@@ -9,7 +9,9 @@ import subprocess
 from release_guard import VERSION, check_release, git
 
 PLATFORMS = ("linux-x64", "windows-x64")
-REQUIRED_JOBS = {"Frontend and release rules", "Native (linux-x64)", "Native (windows-x64)", "CI gate"}
+REQUIRED_JOBS = {
+    "Frontend and release rules", "Native (linux-x64)", "Native (windows-x64)", "Linux WebView smoke", "CI gate",
+}
 
 
 def api(path, *args):
