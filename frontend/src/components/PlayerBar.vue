@@ -69,12 +69,13 @@ async function retryPlayback(event: MouseEvent) {
     target?.focus({ preventScroll: true });
   }
 }
-async function transport(event: MouseEvent, action: PlayerAction) {
+async function transport(event: MouseEvent, action: PlayerAction | (() => unknown)) {
   const origin = event.currentTarget as HTMLButtonElement,
     owner = view.value?.epoch,
     host = transportControls.value;
   if (document.activeElement === origin) host?.focus({ preventScroll: true });
-  await props.player.action(action);
+  if (typeof action === 'function') await action();
+  else await props.player.action(action);
   await nextTick();
   if (
     owner === view.value?.epoch &&
@@ -83,6 +84,10 @@ async function transport(event: MouseEvent, action: PlayerAction) {
     !origin.disabled
   )
     origin.focus({ preventScroll: true });
+}
+function primaryTransport(event: MouseEvent) {
+  const key = (event.currentTarget as HTMLButtonElement).dataset.primaryTransportKey;
+  return transport(event, () => props.player.togglePrimaryTransport(key));
 }
 const draft = ref<number>();
 const outsideTrial = ref(false);
@@ -301,7 +306,8 @@ async function seek(event: Event) {
           class="play-toggle"
           :aria-label="playing ? '暂停' : '播放'"
           :disabled="!ready || (!view?.queueLen && !view?.track) || pending"
-          @click="transport($event, playing ? { kind: 'pause', paused: true } : { kind: 'play' })"
+          :data-primary-transport-key="player.primaryTransportKey.value"
+          @click="primaryTransport"
         >
           <Icon :name="playing ? 'pause' : 'play'" />
         </button>

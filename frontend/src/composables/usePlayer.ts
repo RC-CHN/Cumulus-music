@@ -63,6 +63,18 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   const loaded = computed(() =>
     ['playing', 'paused', 'buffering'].includes(view.value?.state ?? ''),
   );
+  // Bind the rendered footer action to its selection, without letting
+  // harmless clock/buffer updates invalidate the button.
+  const primaryTransportKey = computed(() => {
+    const current = view.value;
+    return JSON.stringify([
+      current?.epoch,
+      current?.playId,
+      current?.queueRevision,
+      current?.fm,
+      playing.value ? 'pause' : current?.state,
+    ]);
+  });
   const restorable = computed(
     () => !!(view.value?.queueLen || view.value?.track) && view.value?.state === 'idle',
   );
@@ -493,6 +505,21 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       seconds,
     });
   }
+  function togglePrimaryTransport(displayedKey: string | undefined) {
+    const current = view.value;
+    if (
+      !current ||
+      !ready.value ||
+      busy.value ||
+      displayedKey !== primaryTransportKey.value ||
+      current.state === 'preparing' ||
+      current.state === 'loading'
+    )
+      return;
+    if (loaded.value && !current.fm) return toggleSource();
+    // An inactive selection needs a new load; FM play uses its coordinator.
+    return action(playing.value ? { kind: 'pause', paused: true } : { kind: 'play' });
+  }
   function toggleSource() {
     if (!ready.value || busy.value) return;
     const current = view.value;
@@ -724,6 +751,8 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     syncPlayback,
     select,
     toggleSource,
+    primaryTransportKey,
+    togglePrimaryTransport,
     seekDisplayed,
     togglePlaylist,
     selectForPage,

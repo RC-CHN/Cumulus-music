@@ -456,6 +456,40 @@ test('a pending source command rejects repeated card clicks and cannot publish i
   assert.equal(f.player.view.value?.state, 'playing');
   f.player.dispose();
 });
+test('footer transport rejects a stale rendered intent and fences the loaded ordinary track', async () => {
+  const calls: PlayerAction[] = [];
+  const f = fixture({
+    playerAction: async (_epoch, input) => {
+      calls.push(input);
+      return state('0');
+    },
+  });
+  await f.player.connect(account());
+  f.emit({ ...state('2', '1', 'old'), queueRevision: '8' });
+  const oldButton = f.player.primaryTransportKey.value;
+  const playing = { ...state('3', '1', 'current'), queueRevision: '9' };
+  f.emit(playing);
+  await f.player.togglePrimaryTransport(oldButton);
+  assert.deepEqual(calls, []);
+  const currentButton = f.player.primaryTransportKey.value;
+  f.emit({ ...playing, revision: '4', state: 'buffering', position: 24 });
+  await f.player.togglePrimaryTransport(currentButton);
+  f.emit({ ...playing, revision: '5', state: 'paused' });
+  await f.player.togglePrimaryTransport(currentButton);
+  await f.player.togglePrimaryTransport(f.player.primaryTransportKey.value);
+  f.emit({ ...playing, revision: '6', state: 'paused', fm: true });
+  await f.player.togglePrimaryTransport(f.player.primaryTransportKey.value);
+  f.emit({ ...playing, revision: '7', state: 'ended' });
+  await f.player.togglePrimaryTransport(f.player.primaryTransportKey.value);
+  assert.deepEqual(calls, [
+    { kind: 'pause_for', play_id: 'current', expected_queue_revision: '9', paused: true },
+    { kind: 'pause_for', play_id: 'current', expected_queue_revision: '9', paused: false },
+    { kind: 'play' },
+    { kind: 'play' },
+  ]);
+  f.player.dispose();
+});
+
 test('shared source transport binds album, artist and voice sessions without rereading their lists', async () => {
   const calls: PlayerAction[] = [];
   let selections = 0;
