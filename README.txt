@@ -28,8 +28,10 @@ docs/core-watchman-events-contracts.txt。原生Collection及真实WebView的38�
 两版本的原生指纹哈希、32项基础设备测量与插件/Canvas/WebGL已有实际窗口对照；
 Windows声明适配和本机派生身份已通过真实账号读取，浏览器引擎差异仍有反证。
 规则与边界见docs/core-watchman-measurements-contracts.txt及docs/windows-compatibility-research.txt。
-正式桌面默认启动原生Watchman；显式CUMULUS_DEVICE_IDENTITY=windows-local同时选择原生请求与
-采集上下文的Windows声明，仍保留真实WebKit渲染差异，不代表完整Windows模拟或全部403解决。
+正式桌面默认启动原生Watchman与Windows兼容映射；Linux沿用实际硬件事实和持久ID生成clientSign，
+仅采集不可用时回落为无硬件签名的Windows声明。Windows目前仅使用声明。可用
+CUMULUS_DEVICE_IDENTITY=native恢复原平台配置；其他显式选项及精确回落规则见
+docs/default-windows-compatibility.txt。仍保留真实WebKit渲染差异，不代表完整Windows模拟或全部403解决。
 原生clientSign组合、持久ID、设备记录CBC/尾段变换、PFDW解析/导入导出及Linux事实采集已迁移；
 账号候选保持同一上下文，真实只读、重开与正式桌面启动通过。显式启动选项及Windows边界见
 docs/core-device-identity-contracts.txt；设备身份不等于易盾SDK或服务权限。

@@ -112,7 +112,8 @@ Windows UA、osver、实际派生clientSign和原credential deviceId在发送前
 可复跑命令（需现有已授权PC会话及全新隔离证据目录）：
  .build/target/debug/examples/device_identity_read EXPLICIT_PC_PROFILE NEW_PRIVATE_ROOT --windows-compatible
 正式桌面原生请求可显式选CUMULUS_DEVICE_IDENTITY=windows-local；同数据目录沿用现有持久ID。
-未设置时行为保持原配置；local仍为实际平台请求配置。windows-local不是完整浏览器伪装开关，
+此处的历史实现未设置时行为保持原配置；现默认策略已更新，见default-windows-compatibility.txt。
+local仍为实际平台请求配置。windows-local不是完整浏览器伪装开关，
 此处描述当时单独原生配置阶段；后续正式桌面已默认启动Watchman，windows-local也会为采集器
 提供只读Windows声明。独立core宿主仍须显式提供测量源，不能用此开关制造浏览器环境。
 

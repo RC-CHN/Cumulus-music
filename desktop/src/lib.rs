@@ -1,5 +1,7 @@
 mod browser;
 pub use browser::LoginDocumentBrowser;
+/// Native host construction only; profiles never become renderer arguments.
+pub use identity::profile as native_profile;
 pub mod captcha;
 mod catalog;
 mod clipboard;

@@ -93,7 +93,8 @@ backend只供原生宿主/测试注入，WebView无法选择任意地址、硬�
 已有open/open_with_http_backend行为保持默认ClientProfile。profile校验在持久化/网络前完成。
 客户端使用的账号deviceId继续来自对应Credentials；不能用硬件ID覆盖它。
 
-正式桌面显式设置CUMULUS_DEVICE_IDENTITY=local时启用当前Linux事实；未设置则保持既有行为。
+历史正式桌面显式设置CUMULUS_DEVICE_IDENTITY=local时启用当前Linux事实；当时未设置保持既有行为。
+当前默认已改为Windows声明加Linux本机事实；精确回落与覆盖见default-windows-compatibility.txt。
 不认识的值或不支持的平台返回错误，不静默发送伪造Windows资料。界面设置开关尚未提供，
 这继承旧CLI的可选设备身份方式，不将启动选项当作完整设置页验收。
 例：CUMULUS_DEVICE_IDENTITY=local CUMULUS_DATA_DIR=PRIVATE_APP_DIR .build/target/debug/cumulus
