@@ -148,6 +148,10 @@
   background: var(--surface-hover);
 }
 .search-expand .icon {
+  width: 12px;
+  height: 12px;
+}
+.search-history-tags .search-expand .icon {
   width: 16px;
   height: 16px;
 }

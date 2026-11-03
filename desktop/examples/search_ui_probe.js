@@ -104,6 +104,16 @@
       const bounds = list.getBoundingClientRect();
       const toggle = list.querySelector('.search-expand');
       const folded = toggle?.getAttribute('aria-expanded') === 'false';
+      if (toggle) {
+        const buttonBounds = toggle.getBoundingClientRect();
+        const glyph = toggle.querySelector('svg').getBoundingClientRect();
+        const expected = history ? 16 : 12;
+        assert(Math.abs(buttonBounds.width - 24) < 1 && Math.abs(buttonBounds.height - 24) < 1,
+          'expand control keeps the 24px target');
+        assert(Math.abs(glyph.width - expected) < 1 && Math.abs(glyph.height - expected) < 1,
+          'history and recommendation expand glyphs use their own official sizes');
+      }
+
       const rowTops = new Set(visible.map(n => Math.round(n.getBoundingClientRect().top)));
       assert(visible.every(n => Math.abs(n.firstElementChild.getBoundingClientRect().height - 28) < 1), 'official 28px search tags');
       assert(parseFloat(getComputedStyle(list).rowGap) === (history ? 2 : 8), 'history/recommendation row spacing');
