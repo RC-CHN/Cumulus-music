@@ -21,6 +21,7 @@ struct State {
     attempt: Uuid,
     revision: Uuid,
     selected: Option<String>,
+    sidecar_key: Option<String>,
     view: LyricSnapshot,
     raw: Option<Value>,
 }
@@ -76,6 +77,7 @@ impl LyricsService {
                 attempt: Uuid::new_v4(),
                 revision: Uuid::new_v4(),
                 selected: None,
+                sidecar_key: None,
                 view: LyricSnapshot {
                     preferences,
                     ..Default::default()
@@ -125,6 +127,7 @@ impl LyricsService {
             state.attempt = Uuid::new_v4();
             state.revision = Uuid::new_v4();
             state.selected = None;
+            state.sidecar_key = None;
             state.view = LyricSnapshot {
                 preferences: state.view.preferences,
                 ..Default::default()
@@ -168,13 +171,23 @@ impl LyricsService {
         if !gain.is_finite() {
             return Err(Error::InvalidInput("lyric offset gain must be finite"));
         }
-        let key = self
-            .snapshot()?
-            .resource_key
-            .ok_or(Error::State("no selected lyrics"))?;
-        let _lock = self.resource_lock(&key)?;
+        let (key, sidecar_key) = self.with_state(|state, _| {
+            Ok((
+                state
+                    .view
+                    .resource_key
+                    .clone()
+                    .ok_or(Error::State("no selected lyrics"))?,
+                state.sidecar_key.clone(),
+            ))
+        })?;
+        let storage_key = sidecar_key.as_deref().unwrap_or(&key);
+        let _lock = self.resource_lock(storage_key)?;
         self.with_state(|state, uid| {
-            if state.view.resource_key.as_ref() != Some(&key) || state.view.is_loading {
+            if state.view.resource_key.as_ref() != Some(&key)
+                || state.sidecar_key != sidecar_key
+                || state.view.is_loading
+            {
                 return Err(Error::StaleResponse);
             }
             if !state.view.lyric.scrollable {
@@ -191,14 +204,14 @@ impl LyricsService {
             // Scrollable sources currently select LRC in M/370.
             raw["lrc"]["offset"] = json!(offset);
             let parsed = parse_lyrics(&raw)?;
-            if !key.starts_with("local:") {
-                let stored = cache::read(&self.store, uid, &key)?;
+            if !storage_key.starts_with("local:") {
+                let stored = cache::read(&self.store, uid, storage_key)?;
                 if stored.as_ref() != state.raw.as_ref() {
                     return Err(Error::State("lyric cache changed; clear and reload"));
                 }
             }
             self.store
-                .put(uid, cache::KIND, &key, &cache::record(&raw))?;
+                .put(uid, cache::KIND, storage_key, &cache::record(&raw))?;
             state.revision = Uuid::new_v4();
             state.raw = Some(raw);
             state.view.lyric = parsed;
@@ -228,6 +241,7 @@ impl LyricsService {
             state.attempt = Uuid::new_v4();
             state.revision = Uuid::new_v4();
             state.selected = Some(key.clone());
+            state.sidecar_key = None;
             state.view = LyricSnapshot {
                 is_loading: true,
                 preferences: state.view.preferences,
@@ -282,9 +296,20 @@ impl LyricsService {
             }
         };
         let mut present = raw["code"] == 200 && raw["noLyric"] == false;
-        if !present && let Some(path) = input.downloaded_audio {
-            let text = self.files.read(&path).await?.unwrap_or_default();
+        let mut sidecar_key = None;
+        if !present
+            && let Some(path) = input.downloaded_audio
+            && let Some(text) = self.files.read(&path).await?
+        {
+            let local = request::key(&LyricTarget::Local(path))?;
             raw = response::local_response(&text);
+            let old = self.with_state(|_, uid| cache::read(&self.store, uid, &local))?;
+            if let Some(old) = old
+                && old["lrc"]["lyric"] == raw["lrc"]["lyric"]
+            {
+                raw["lrc"]["offset"] = old["lrc"]["offset"].clone();
+            }
+            sidecar_key = Some(local);
             from_sidecar = true;
             present = true;
         }
@@ -305,6 +330,7 @@ impl LyricsService {
                     .put(uid, cache::KIND, &key, &cache::record(&value))?;
             }
             state.revision = Uuid::new_v4();
+            state.sidecar_key = sidecar_key;
             state.raw = present.then_some(raw);
             state.view = LyricSnapshot {
                 resource_key: present.then_some(key),

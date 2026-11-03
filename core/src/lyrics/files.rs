@@ -42,6 +42,47 @@ fn read_sidecar(path: PathBuf) -> Result<Option<String>> {
     if !file.metadata()?.is_file() {
         return Err(Error::InvalidInput("lyric sidecar must be a regular file"));
     }
+    decode_sidecar(file)
+}
+
+/// The downloaded fallback is admitted by its published task and must not
+/// open a redirected or special leaf in a user-chosen download directory.
+pub(crate) fn read_published_sidecar(audio: &Path) -> Result<Option<String>> {
+    let path = audio.with_extension("lrc");
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        // FILE_FLAG_OPEN_REPARSE_POINT: inspect the opened leaf, not its target.
+        options.custom_flags(0x0020_0000);
+    }
+    let file = match options.open(path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error.into()),
+    };
+    let metadata = file.metadata()?;
+    if !metadata.is_file() {
+        return Ok(None);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        // FILE_ATTRIBUTE_REPARSE_POINT.
+        if metadata.file_attributes() & 0x0400 != 0 {
+            return Ok(None);
+        }
+    }
+    decode_sidecar(file)
+}
+
+fn decode_sidecar(file: File) -> Result<Option<String>> {
     let mut bytes = Vec::new();
     file.take((LIMIT + 1) as u64).read_to_end(&mut bytes)?;
     if bytes.len() > LIMIT {

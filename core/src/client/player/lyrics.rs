@@ -1,6 +1,72 @@
 mod segment;
 use super::*;
-use crate::lyrics::{LyricDemand, LyricPreferences, LyricRequest, LyricSnapshot, LyricTarget};
+use crate::{
+    lyrics::{
+        LyricDemand, LyricPreferences, LyricRequest, LyricSnapshot, LyricTarget, files::LocalLyrics,
+    },
+    protocol::api::ApiFuture,
+};
+use std::path::{Path, PathBuf};
+
+#[derive(Clone, PartialEq, Eq)]
+struct DownloadLyricSource {
+    task_id: String,
+    song_id: String,
+    cloud: bool,
+    audio: PathBuf,
+}
+
+struct DownloadLyricFiles {
+    session: Arc<crate::account::AccountSession>,
+    token: SessionToken,
+    source: DownloadLyricSource,
+}
+
+impl LocalLyrics for DownloadLyricFiles {
+    fn read<'a>(&'a self, audio: &'a Path) -> ApiFuture<'a, Option<String>> {
+        Box::pin(async move {
+            if audio != self.source.audio {
+                return Ok(None);
+            }
+            let session = self.session.clone();
+            let token = self.token.clone();
+            let source = self.source.clone();
+            tokio::task::spawn_blocking(move || {
+                session.check_generation(&token)?;
+                let result = crate::download::service::DownloadService::new(session.clone())?
+                    .read_published_lyrics(
+                        &token,
+                        &source.task_id,
+                        &source.song_id,
+                        source.cloud,
+                        &source.audio,
+                    );
+                session.check_generation(&token)?;
+                // A missing, busy, unowned or unreadable optional sidecar is
+                // equivalent to no fallback, not a remote lyric failure.
+                match result {
+                    Err(Error::StaleResponse) => Err(Error::StaleResponse),
+                    other => Ok(other.unwrap_or_default()),
+                }
+            })
+            .await
+            .map_err(|_| Error::State("download lyric worker stopped"))?
+        })
+    }
+}
+
+pub(super) struct ActiveLyrics {
+    token: SessionToken,
+    download: Option<DownloadLyricSource>,
+    service: Arc<LyricsService>,
+}
+
+pub(super) struct LyricContext {
+    pub token: SessionToken,
+    pub service: Arc<LyricsService>,
+    pub target: LyricTarget,
+    pub downloaded_audio: Option<PathBuf>,
+}
 
 fn auxiliary(text: Option<&str>) -> Vec<crate::lyrics::LyricLine> {
     let text = text.unwrap_or_default();
@@ -13,13 +79,10 @@ fn auxiliary(text: Option<&str>) -> Vec<crate::lyrics::LyricLine> {
 }
 
 impl MusicClient {
-    pub(super) async fn lyric_context(
-        &self,
-        epoch: &str,
-        play_id: &str,
-    ) -> Result<(SessionToken, Arc<LyricsService>, LyricTarget)> {
+    pub(super) async fn lyric_context(&self, epoch: &str, play_id: &str) -> Result<LyricContext> {
         let token = self.player_token(epoch)?;
-        let view = self.player.controller().await?.snapshot();
+        let controller = self.player.controller().await?;
+        let view = controller.snapshot();
         if view.account != token || view.play_id.as_deref() != Some(play_id) {
             return Err(Error::StaleResponse);
         }
@@ -52,18 +115,53 @@ impl MusicClient {
                 LyricTarget::Song(id)
             }
         };
+        let download = match &target {
+            LyricTarget::Song(id) | LyricTarget::Cloud(id) => selected.resource["download_task_id"]
+                .as_str()
+                .zip(selected.resource["path"].as_str())
+                .map(|(task_id, path)| DownloadLyricSource {
+                    task_id: task_id.into(),
+                    song_id: id.clone(),
+                    cloud: matches!(target, LyricTarget::Cloud(_)),
+                    audio: path.into(),
+                }),
+            LyricTarget::Local(_) => None,
+        };
         let mut lyrics = self.player.lyrics.lock().map_err(|_| Error::LockPoisoned)?;
-        if lyrics.as_ref().is_none_or(|(old, _)| old != &token) {
-            *lyrics = Some((
-                token.clone(),
-                Arc::new(LyricsService::new(self.session.clone())?),
-            ));
+        let current = controller.snapshot();
+        if current.account != token || current.play_id.as_deref() != Some(play_id) {
+            return Err(Error::StaleResponse);
         }
-        Ok((
+        // The remote cache remains keyed by song/cloud ID. A downloaded
+        // sidecar must never be a cached UI document for a different source.
+        if lyrics
+            .as_ref()
+            .is_none_or(|old| old.token != token || old.download != download)
+        {
+            let service = if let Some(source) = &download {
+                LyricsService::with_files(
+                    self.session.clone(),
+                    Arc::new(DownloadLyricFiles {
+                        session: self.session.clone(),
+                        token: token.clone(),
+                        source: source.clone(),
+                    }),
+                )?
+            } else {
+                LyricsService::new(self.session.clone())?
+            };
+            *lyrics = Some(ActiveLyrics {
+                token: token.clone(),
+                download: download.clone(),
+                service: Arc::new(service),
+            });
+        }
+        Ok(LyricContext {
             token,
-            lyrics.as_ref().expect("initialized").1.clone(),
+            service: lyrics.as_ref().expect("initialized").service.clone(),
             target,
-        ))
+            downloaded_audio: download.map(|source| source.audio),
+        })
     }
     async fn lyric_result(
         &self,
@@ -104,7 +202,12 @@ impl MusicClient {
         Ok(result)
     }
     pub async fn player_lyrics(&self, epoch: &str, play_id: &str) -> Result<LyricsView> {
-        let (token, service, target) = self.lyric_context(epoch, play_id).await?;
+        let LyricContext {
+            token,
+            service,
+            target,
+            downloaded_audio,
+        } = self.lyric_context(epoch, play_id).await?;
         if matches!(target, LyricTarget::Local(_)) || service.snapshot()?.network_failed {
             service.clear()?;
         }
@@ -115,7 +218,7 @@ impl MusicClient {
                     detail_page: true,
                     ..Default::default()
                 },
-                downloaded_audio: None,
+                downloaded_audio,
                 track_mv: false,
             })
             .await?;
@@ -127,7 +230,12 @@ impl MusicClient {
         play_id: &str,
         observed: Option<&str>,
     ) -> Result<Option<(String, LyricsView, bool)>> {
-        let (token, service, target) = self.lyric_context(epoch, play_id).await?;
+        let LyricContext {
+            token,
+            service,
+            target,
+            ..
+        } = self.lyric_context(epoch, play_id).await?;
         let Some((revision, value)) = service.snapshot_if_changed(&target, observed)? else {
             return Ok(None);
         };
@@ -144,7 +252,12 @@ impl MusicClient {
         play_id: &str,
         preferences: LyricPreferences,
     ) -> Result<LyricsView> {
-        let (token, service, target) = self.lyric_context(epoch, play_id).await?;
+        let LyricContext {
+            token,
+            service,
+            target,
+            ..
+        } = self.lyric_context(epoch, play_id).await?;
         if service.snapshot()?.resource_key.as_deref() != Some(&target.resource_key()?) {
             return Err(Error::StaleResponse);
         }
@@ -152,7 +265,12 @@ impl MusicClient {
         self.lyric_result(&token, play_id, value).await
     }
     pub async fn lyric_offset(&self, epoch: &str, play_id: &str, gain: f64) -> Result<LyricsView> {
-        let (token, service, target) = self.lyric_context(epoch, play_id).await?;
+        let LyricContext {
+            token,
+            service,
+            target,
+            ..
+        } = self.lyric_context(epoch, play_id).await?;
         if service.snapshot()?.resource_key.as_deref() != Some(&target.resource_key()?) {
             return Err(Error::StaleResponse);
         }

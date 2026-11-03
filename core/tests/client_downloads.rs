@@ -97,6 +97,151 @@ fn options() -> DownloadOptions {
         ..Default::default()
     }
 }
+#[tokio::test]
+async fn downloaded_sidecar_fills_missing_lyrics_without_leaking_into_other_selections() {
+    use cumulus_core::playback::PlaybackQueue;
+
+    let f = Fixture::new();
+    let (id, completed) = f.completed().await;
+    let audio = PathBuf::from(completed.tasks[0].path.as_ref().unwrap());
+    let sidecar = audio.with_extension("lrc");
+    fs::write(&sidecar, "[00:01.00]本地附件歌词\n[00:02.00]第二行").unwrap();
+    *f.api.lyric.lock().unwrap() = Ok(json!({"code":200}));
+
+    let play = f
+        .client
+        .play_downloads("1", vec![id.clone()], 0)
+        .await
+        .unwrap();
+    let play_id = play.play_id.as_deref().unwrap();
+    let lyrics = f.client.player_lyrics("1", play_id).await.unwrap();
+    assert_eq!(lyrics.lines[0].lyric, "本地附件歌词");
+    assert_eq!(
+        f.client
+            .lyric_offset("1", play_id, 1.0)
+            .await
+            .unwrap()
+            .offset,
+        0.5
+    );
+
+    // A selection with the same song ID and local path but no published task
+    // provenance must not inherit the download service's sidecar document.
+    f.client
+        .player_action("1", PlayerAction::Stop)
+        .await
+        .unwrap();
+    PlaybackQueue::new(Some(f.store.clone()), "1")
+        .unwrap()
+        .replace(vec![json!({"id":"123","path":audio})], 0, json!(null))
+        .unwrap();
+    let other = f
+        .client
+        .player_action("1", PlayerAction::Play)
+        .await
+        .unwrap();
+    let other_id = other.play_id.as_deref().unwrap();
+    assert_ne!(other_id, play_id);
+    assert!(
+        f.client
+            .player_lyrics("1", other_id)
+            .await
+            .unwrap()
+            .lines
+            .is_empty()
+    );
+    assert!(matches!(
+        f.client.player_lyrics("1", play_id).await,
+        Err(Error::StaleResponse)
+    ));
+
+    let play = f
+        .client
+        .play_downloads("1", vec![id.clone()], 0)
+        .await
+        .unwrap();
+    let lyrics = f
+        .client
+        .player_lyrics("1", play.play_id.as_deref().unwrap())
+        .await
+        .unwrap();
+    assert_eq!(lyrics.lines[0].lyric, "本地附件歌词");
+    assert_eq!(lyrics.offset, 0.5);
+
+    #[cfg(unix)]
+    {
+        let unrelated = f.root.path().join("unrelated.txt");
+        fs::write(&unrelated, "[00:01]不得读取").unwrap();
+        fs::remove_file(&sidecar).unwrap();
+        std::os::unix::fs::symlink(unrelated, &sidecar).unwrap();
+        f.client
+            .player_action("1", PlayerAction::Stop)
+            .await
+            .unwrap();
+        // Re-enter through an unscoped selection so a fresh sidecar read
+        // cannot be satisfied by the previously authorized display snapshot.
+        PlaybackQueue::new(Some(f.store.clone()), "1")
+            .unwrap()
+            .replace(vec![json!({"id":"123","path":audio})], 0, json!(null))
+            .unwrap();
+        let other = f
+            .client
+            .player_action("1", PlayerAction::Play)
+            .await
+            .unwrap();
+        f.client
+            .player_lyrics("1", other.play_id.as_deref().unwrap())
+            .await
+            .unwrap();
+        let play = f
+            .client
+            .play_downloads("1", vec![id.clone()], 0)
+            .await
+            .unwrap();
+        assert!(
+            f.client
+                .player_lyrics("1", play.play_id.as_deref().unwrap())
+                .await
+                .unwrap()
+                .lines
+                .is_empty()
+        );
+        fs::remove_file(&sidecar).unwrap();
+        fs::write(&sidecar, "[00:01.00]本地附件歌词").unwrap();
+    }
+
+    f.client
+        .player_action("1", PlayerAction::Stop)
+        .await
+        .unwrap();
+    PlaybackQueue::new(Some(f.store.clone()), "1")
+        .unwrap()
+        .replace(vec![json!({"id":"123","path":audio})], 0, json!(null))
+        .unwrap();
+    let other = f
+        .client
+        .player_action("1", PlayerAction::Play)
+        .await
+        .unwrap();
+    f.client
+        .player_lyrics("1", other.play_id.as_deref().unwrap())
+        .await
+        .unwrap();
+
+    // Usable remote lyrics take precedence over the neighboring attachment.
+    *f.api.lyric.lock().unwrap() =
+        Ok(json!({"code":200,"lrc":{"version":1,"lyric":"[00:01]在线正文"}}));
+    let play = f.client.play_downloads("1", vec![id], 0).await.unwrap();
+    let lyrics = f
+        .client
+        .player_lyrics("1", play.play_id.as_deref().unwrap())
+        .await
+        .unwrap();
+    assert_eq!(lyrics.lines[0].lyric, "在线正文");
+    assert_eq!(lyrics.offset, 0.0);
+    assert_eq!(f.api.count("player/url"), 0);
+}
+
 async fn wait(
     client: &MusicClient,
     epoch: &str,

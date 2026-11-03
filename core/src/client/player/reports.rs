@@ -36,7 +36,12 @@ impl MusicClient {
         Reports::new(self.session.clone(), self.player_token(epoch)?)
     }
     pub async fn lyric_report_open(&self, epoch: &str, play_id: &str) -> Result<LyricReportView> {
-        let (token, service, target) = self.lyric_context(epoch, play_id).await?;
+        let super::lyrics::LyricContext {
+            token,
+            service,
+            target,
+            ..
+        } = self.lyric_context(epoch, play_id).await?;
         self.session.with_token(&token, |_| Ok(()))?;
         let state = self.player.controller().await?.snapshot();
         let selected = state.selected.as_ref().ok_or(Error::StaleResponse)?;

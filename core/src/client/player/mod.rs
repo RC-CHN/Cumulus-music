@@ -77,7 +77,7 @@ pub(super) struct PlayerHost {
     fm: OnceCell<Arc<crate::fm::player::FmPlayer>>,
     pub(super) selection: Arc<AtomicU64>,
     focus: Arc<super::focus::MediaFocus>,
-    lyrics: Mutex<Option<(SessionToken, Arc<LyricsService>)>>,
+    lyrics: Mutex<Option<lyrics::ActiveLyrics>>,
 }
 impl PlayerHost {
     pub fn new(

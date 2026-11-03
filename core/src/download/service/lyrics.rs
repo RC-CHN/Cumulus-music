@@ -10,6 +10,44 @@ use std::{
     io::{Seek, Write},
 };
 impl DownloadService {
+    pub(crate) fn read_published_lyrics(
+        &self,
+        token: &crate::account::SessionToken,
+        task_id: &str,
+        song_id: &str,
+        cloud: bool,
+        selected_audio: &std::path::Path,
+    ) -> Result<Option<String>> {
+        self.guard(token)?;
+        // Move/Delete take the same task lock. Do not read a replacement
+        // path after a file operation has started.
+        let _operation = self.lock(task_id)?;
+        let task = self.read(task_id)?;
+        if task.song_id != song_id
+            || task.origin.is_cloud() != cloud
+            || task.origin.is_mv()
+            || task.origin.is_voice()
+            || task.playback_target()? != selected_audio
+            || files::target(&task)? != selected_audio
+        {
+            return Ok(None);
+        }
+        let Some(record) = self.offline.record(token, selected_audio)? else {
+            return Ok(None);
+        };
+        if record.task_id != task.id
+            || record.song_id != task.song_id
+            || record.path != selected_audio
+            || Some(&record.integrity) != task.output_integrity.as_ref()
+            || record.encrypted != task.encrypted
+        {
+            return Ok(None);
+        }
+        let text = crate::lyrics::files::read_published_sidecar(selected_audio)?;
+        files::target(&task)?;
+        self.guard(token)?;
+        Ok(text)
+    }
     pub(super) async fn lyrics(
         &self,
         mut task: DownloadTask,
