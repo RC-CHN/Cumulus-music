@@ -48,6 +48,17 @@
         throw Error('credit navigation changed native playback');
       await emit(`ux_${kind}_opened`, { playing: true, title: expected });
     }
+    const profile = await wait(() => one('.artist-profile-link'), 'artist profile link');
+    profile.focus();
+    if (document.activeElement !== profile) throw Error('profile link cannot receive keyboard focus');
+    profile.click();
+    await wait(() => one('.playlist-creator-page h1')?.textContent === '合成歌手个人页',
+      'the artist account ID opens the public profile');
+    await sleep(300);
+    const profileState = await read();
+    if (profileState.state !== 'playing' || profileState.playId !== started.playId ||
+        profileState.queueRevision !== started.queueRevision) throw Error('profile changed native playback');
+    await emit('ux_artist_profile', { playing: true, title: '合成歌手个人页' });
     await sleep(400); // Older local probe hosts poll for the last screenshot.
     await emit('complete', { ok: true, samePlayback: true, syntheticCatalog: true });
   } catch (error) {

@@ -136,13 +136,13 @@ def main():
     if args.playback_credit:
         assert complete['ok'] and complete['samePlayback'] and complete['syntheticCatalog']
         states = [json.loads((output / f'ux_{stage}.json').read_text(encoding='utf-8'))
-                  for stage in ('album_credit', 'album_opened', 'artist_credit', 'artist_opened')]
-        assert [states[1]['title'], states[3]['title']] == ['测试专辑', '测试歌手']
+                  for stage in ('album_credit', 'album_opened', 'artist_credit', 'artist_opened', 'artist_profile')]
+        assert [states[i]['title'] for i in (1, 3, 4)] == ['测试专辑', '测试歌手', '合成歌手个人页']
         native = [state['nativePlayer'] for state in states]
         assert all(state['state'] == 'playing' for state in native)
         assert len({state['playId'] for state in native}) == 1
         assert len({state['queueRevision'] for state in native}) == 1
-        assert not args.screenshots or captures == 4
+        assert not args.screenshots or captures == 5
         print(json.dumps(dict(ok=True, actualWebView=True, samePlayback=True, screenshots=captures)))
         return
     if args.navigation:

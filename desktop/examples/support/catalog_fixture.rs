@@ -145,6 +145,9 @@ impl Api for Library {
                 "/api/w/nuser/account/get" => {
                     json!({"code":200,"profile":{"userId":2,"nickname":"目录界面验证"}})
                 }
+                "/api/w/v1/user/detail/501" if args["userId"] == "501" => {
+                    json!({"code":200,"profile":{"userId":501,"nickname":"合成歌手个人页"}})
+                }
                 "/api/user/playlist" => json!({"code":200,"more":false,"playlist":[]}),
                 "/api/song/like/get" => json!({"code":200,"ids":[3,7]}),
                 "/api/v3/discovery/recommend/songs" => {
@@ -162,6 +165,9 @@ impl Api for Library {
                     } else {
                         artist(n)
                     };
+                    if n == 12 {
+                        value["accountId"] = json!(501);
+                    }
                     if mode == "artist-long" {
                         value["name"] =
                             json!("长名称测试歌手 · An artist with a very long display name");
