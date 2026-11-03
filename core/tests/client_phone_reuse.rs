@@ -785,7 +785,7 @@ async fn known_rejection_and_proved_unsent_registration_release_only_their_own_i
             [
                 info(),
                 hint(),
-                json!({"code":200,"data":{"success":false}}).into(),
+                json!({"code":509}).into(),
                 authorized(),
                 identity(),
             ],
@@ -807,7 +807,7 @@ async fn known_rejection_and_proved_unsent_registration_release_only_their_own_i
                 .reuse
                 .unwrap()
                 .nickname_error
-                == Some(NicknameError::Rejected)
+                == Some(NicknameError::RateLimited)
         );
         assert_eq!(w.pending(), 0);
         assert_eq!(
@@ -815,6 +815,25 @@ async fn known_rejection_and_proved_unsent_registration_release_only_their_own_i
             LoginStatus::Authenticated
         );
         assert_eq!(w.count(REGISTER), 2);
+    }
+}
+#[tokio::test]
+async fn contradictory_or_unknown_registration_replies_keep_the_durable_fence() {
+    for jsk in [false, true] {
+        for response in [
+            json!({"code":200,"data":{"success":false}}),
+            json!({"code":200,"data":false}),
+            json!({"code":500}),
+            json!({"data":{}}),
+        ] {
+            let w = World::new(jsk, [info(), hint(), response.into()]).await;
+            let id = w.prepare().await;
+            let view = w.register(&id, None).await.unwrap();
+            assert!(view.reuse.unwrap().phase == Phase::RecoveryRequired);
+            assert_eq!(w.pending(), 1);
+            assert!(w.register(&id, None).await.is_err());
+            assert_eq!(w.count(REGISTER), 1);
+        }
     }
 }
 #[tokio::test]

@@ -249,3 +249,80 @@
     animation: none;
   }
 }
+.phone-sms-login:focus {
+  outline: none;
+}
+.phone-entry-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-secondary);
+}
+.phone-sms-login .verification-error {
+  text-align: left;
+  font-size: 12px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+.login-dialog:has(.phone-sms-login[data-phone-step='nickname']) {
+  width: 430px;
+  padding: 38px 34px 24px;
+}
+.login-dialog:has(.phone-sms-login[data-phone-step='nickname']) #login-title {
+  font-size: 20px;
+  line-height: 30px;
+}
+.phone-sms-login .reuse-loading,
+.phone-sms-login .reuse-failed {
+  min-height: 160px;
+  gap: 14px;
+}
+.phone-code-field {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+.credential-form .phone-code-field input {
+  padding-right: 34px;
+}
+.login-code .phone-input-clear {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  color: var(--text-secondary);
+}
+.phone-input-clear .icon {
+  width: 16px;
+  height: 16px;
+}
+.phone-sms-login .reuse-name-field input {
+  height: 36px;
+}
+.phone-sms-login .reuse-nickname {
+  width: 300px;
+  max-width: 100%;
+  margin-inline: auto;
+}
+.phone-sms-login .reuse-nickname .reuse-name-field {
+  margin-top: 30px;
+}
+.phone-sms-login .phone-nickname-error {
+  height: 16px;
+  margin-top: 14px;
+}
+.phone-sms-login .phone-nickname-error .verification-error {
+  margin: 0;
+  line-height: 16px;
+}
+.phone-sms-login .reuse-nickname .reuse-primary {
+  width: 100%;
+  margin-top: 50px;
+}
+.phone-sms-login .reuse-nickname .reuse-cancel {
+  width: 100%;
+}

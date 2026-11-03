@@ -62,6 +62,7 @@ impl MusicClient {
             email: flow.email_snapshot()?,
             question: flow.question_snapshot()?,
             reuse: flow.reuse_snapshot()?,
+            phone_entry: flow.phone_entry_snapshot()?,
         })
     }
 }

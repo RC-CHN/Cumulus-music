@@ -3,7 +3,7 @@
   const invoke = (command, args = {}) => window.__TAURI_INTERNALS__.invoke(command, args);
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const assert = (condition, message) => { if (!condition) throw Error(message); };
-  const all = (selector) => [...document.querySelectorAll(selector)].filter((node) => !node.closest('.tab-leave-active,.modal-leave-active'));
+  const all = (selector) => [...document.querySelectorAll(selector)].filter((node) => !node.closest('.tab-leave-active,.modal-leave-active,.reuse-step-leave-active'));
   const one = (selector) => all(selector)[0];
   const button = (label) => all('button').find((node) => node.textContent.trim() === label || node.getAttribute('aria-label') === label);
   const wait = async (fn, label) => {
@@ -124,13 +124,13 @@
     await resize(1120, 760); await theme('light');
     await mode('normal'); await click(button('《隐私政策》'));
     await wait(() => !one('.credential-error'), 'explicit document retry clears error');
-    await fill('登录手机号', '13800000000'); await fill('短信验证码', '123456');
-    await click(button('获取验证码')); assert(one('.login-consent-tip') && status() === 'ready', 'unchecked SMS is blocked');
+    await fill('登录手机号', '13800000000');
+    await click(one('.login-submit')); assert(one('.login-consent-tip') && status() === 'ready', 'unchecked SMS is blocked');
     await stage('sms_consent_required_light', { expectGuest: true });
-    await click(one('.login-submit')); assert(one('[aria-label="短信验证码"]').value === '123456', 'unchecked submission retains OTP');
+    await click(one('.login-submit')); assert(one('[aria-label="登录手机号"]').value === '13800000000' && !one('[aria-label="短信验证码"]'), 'unchecked number submission retains identifier without advancing');
     await stage('submit_consent_required_light', { expectGuest: true });
     await click(one('[aria-label="同意登录协议"]')); await fill('登录手机号', '1380000000');
-    await click(button('获取验证码')); assert(one('.credential-error')?.textContent.includes('11位'), 'strict China length');
+    await click(one('.login-submit')); assert(one('.credential-error')?.textContent.includes('11位'), 'strict China length');
     await stage('invalid_phone_light', { expectGuest: true });
     await click(one('[aria-label="国际区号"]')); await stage('country_picker_light', { expectGuest: true });
     one('[aria-label="搜索国家或地区"]').dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true, cancelable: true }));
@@ -143,7 +143,7 @@
     await country('US'); await country('CA');
     await stage('shared_calling_code_light', { expectGuest: true });
     await theme('dark'); await resize(760, 540); await country('MY');
-    await fill('登录手机号', '11111111'); await click(button('获取验证码'));
+    await fill('登录手机号', '11111111'); await click(one('.login-submit'));
     assert(one('.credential-error')?.textContent.includes('9或10位'), 'multiple official lengths');
     await stage('multiple_lengths_small_dark', { expectGuest: true });
     await click(one('[aria-label="国际区号"]'));
@@ -193,10 +193,10 @@
     assert(!one('[aria-label="同意登录协议"]').checked && one('[aria-label="登录手机号"]').value === '', 'new modal resets consent and identifier');
     await stage('saved_region_small_light', { expectNickname: '邮箱验证账号' });
     await country('CA'); await fill('登录手机号', '1111111111'); await click(one('[aria-label="同意登录协议"]'));
-    await click(button('获取验证码')); await wait(() => status() === 'code_sent', 'one explicit synthetic SMS');
+    await click(one('.login-submit')); await wait(() => one('[data-phone-phase="code_required"]'), 'one explicit synthetic SMS'); await settle();
     await wait(() => document.activeElement === one('[aria-label="短信验证码"]'), 'SMS completion returns focus to OTP rather than a legal link');
     await stage('region_sms_cooldown_small_light', { expectNickname: '邮箱验证账号' });
-    await tab('密码登录'); await tab('验证码登录');
+    await tab('密码登录'); await tab('验证码登录'); await click(one('.login-submit')); await wait(() => one('[data-phone-phase="code_required"]'), 'same phone code page'); await settle();
     assert(/秒后重发/.test(one('.login-code button').textContent) && one('.login-code button').disabled, 'cooldown survives country-aware mode switching');
     await stage('region_sms_return_small_light', { expectNickname: '邮箱验证账号' });
     await click(one('[aria-label="关闭登录"]')); await wait(() => !one('dialog'), 'closed');

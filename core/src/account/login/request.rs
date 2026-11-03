@@ -26,6 +26,12 @@ pub(super) fn phone_number(phone: &str, country: &str) -> Result<()> {
     }
     Ok(())
 }
+pub(super) fn sms_code(code: &str) -> Result<()> {
+    if !(4..=8).contains(&code.len()) || !code.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err(Error::InvalidInput("invalid SMS code"));
+    }
+    Ok(())
+}
 
 fn password_digest(password: &str) -> Result<String> {
     if password.is_empty() {

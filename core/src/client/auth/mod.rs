@@ -79,6 +79,15 @@ impl AuthHost {
     }
 }
 impl MusicClient {
+    /// Native host clock injection before exposing the client. No renderer
+    /// command can reset or advance verification-code cooldowns.
+    pub fn with_login_resend_clock(
+        mut self,
+        clock: Arc<dyn Fn() -> std::time::Instant + Send + Sync>,
+    ) -> Self {
+        self.auth.cooldown = Arc::new(ResendCooldown::with_clock(clock));
+        self
+    }
     /// Official original-device verification uses the local computer name.
     /// This native configuration is distinct from the renewal signature model.
     pub fn with_login_device_name(mut self, name: &str) -> Result<Self> {

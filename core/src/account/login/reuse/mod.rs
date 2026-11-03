@@ -3,9 +3,7 @@ mod model;
 mod registration;
 use super::{CredentialLogin, LoginStatus, request::LoginRequest, state::Operation};
 use crate::{Error, Result};
-pub use model::{
-    NicknameError, RegistrationBlocked, ReuseChoice, ReusePhase, ReuseVerificationView,
-};
+pub use model::{RegistrationBlocked, ReuseChoice, ReusePhase, ReuseVerificationView};
 use serde_json::{Value, json};
 
 pub(super) struct Attempt {
@@ -28,7 +26,7 @@ pub(super) async fn bounded<T>(
     }
 }
 pub(super) fn accepted(response: &Value) -> bool {
-    response["code"] == 200 && response["data"] != false && response["data"]["success"] != false
+    super::registration::accepted(response)
 }
 fn new_challenge(response: &Value) -> bool {
     matches!(

@@ -75,6 +75,7 @@ impl HttpBackend for Service {
                     (json!({"code":200,"unikey":"synthetic-ui-qr"}), None)
                 }
                 "/api/login/qrcode/client/login" => (json!({"code":801}), None),
+                "/api/cellphone/existence/check" => (json!({"code":200,"exist":1}), None),
                 "/api/w/login" | "/api/login" => {
                     if data["password"] != eapi::md5_hex(b"fixture-password") {
                         (json!({"code":502}), None)

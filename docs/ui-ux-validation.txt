@@ -4796,3 +4796,30 @@ sms为25态，sms-failure为4态；auth-jsk为16态及15库审计；saved为10�
 本机基础登录/账号截图，没有把其余自动回归的每一幅图都说成人工逐态对过。
 CAPTCHA探针也已按新协议门槛显式勾选，但本轮未重新打开在线官方SDK窗口；已有挑战入口
 由auth回归覆盖，不把这说成新增真人CAPTCHA或整个外部验证通过。
+
+2026-11-03 普通手机登录：独立验证码与普通注册
+- 官方Phone/Captchav2/Nicknamev2、M2992/2994/3138/363/15/48及共享Inner/Operate为主要依据。
+  恢复存在性检查、独立massagechange发送路由、老用户主登录、新用户SMS校验/昵称建议/查重/
+  force=false注册；8860 force=true仍单独处理，关闭不自动注册，保留用户remember选择。
+- 新增phone_entry_ui_probe使用生产Vue、main窗口IPC和原生状态机，只有HTTP与宿主冷却时钟为合成；
+  35态覆盖号码/协议/预检失败与取消、验证码错误/编辑清错/清空、两主题/短窗、昵称长度/重复/建议/
+  默认许可、250/509/503、明确默认/指定昵称注册、部分回执/完全丢失、挂起提交关闭和新SMS结清。
+  独立SQLite检查原账号不被未确认候选替代、无重复注册、remember保留、秘密不进公开阶段、输入不落盘。
+- 最终本机输入冻结1976文件、production dist21文件、正式cumulus与10个示例二进制均记录散列。
+  新旧协议分别 .build/phone-step-layout-gui、phone-step-layout-gui-legacy：各35态/35PNG及29库审计退出0。
+  .build/phone-step-layout-kde：KDE Wayland/XWayland实际会话、125%缩放，35态/35PNG和29库审计通过。
+  所有35张物理窗口图已在phone-step-layout-physical-gallery的6张联系表逐张查看。
+  采集只读取自有PID窗口；显示器刷新率只是环境信息，没有以此宣称帧率达标。
+- 最终同bundle回归均退出0：入口25、基础账号28、复用两协议各34、原设备两协议各39、
+  安全邮箱两协议各22、安全问题两协议各25、SMS25及发送失败4、保存账号10、JSK16（含重启/15库审计）、
+  旧主登录16（含重启/15库审计）、正式续期pump7及journal独立审计。
+  普通回归根为phone-step-layout-*；旧登录/续期根为device-login-phone-step-layout-{legacy-auth,renewal}-regression。
+- 发现并修复实际UI问题：SDK确认返回号码页后焦点落到body。新的输入组件在旧控制离场后接管原流程焦点，
+  异步候选重建结束归还手机号；常驻登录方式/关闭按钮保留其焦点。复用回归现在明确断言手机号输入得到焦点。
+  昵称页另按Operate采用与300px输入等宽的40px渐变按钮、36px输入、16px错误占位及50px主按钮间距；
+  300px是社区模态框的内容宽度，未假定官方原生宿主尺寸。失败提示不推动后续操作区域上下跳动。
+- 两个探针失败已如实保留：首次误把侧栏Logo当成登录框Logo；后来几何检查按“完成注册”文字定位，
+  忙时该文字会变为“正在处理…”，改用稳定的主按钮节点后重新完整验证。它们不计为生产功能缺陷或通过。
+  未通过的中间轮次根为phone-step-first-*、phone-step-final-reuse、phone-step-geometry-*。
+- 本批没有真实登录/短信/注册/续期/账号业务写入。35态、原生1578测试及合成RT不证明本人RT发放或成对轮换。
+  未完成SDK风险/升级/处罚、营销版式、其余昵称视觉统一、其它DPI和Windows实机视觉继续保留明确边界。

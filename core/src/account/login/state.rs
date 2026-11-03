@@ -19,6 +19,7 @@ pub(super) struct State {
     pub email: Option<super::email::Attempt>,
     pub question: Option<super::question::Attempt>,
     pub reuse: Option<super::reuse::Attempt>,
+    pub phone_entry: Option<super::phone_entry::Attempt>,
 }
 
 impl Default for State {
@@ -39,6 +40,7 @@ impl Default for State {
             email: None,
             question: None,
             reuse: None,
+            phone_entry: None,
         }
     }
 }
@@ -151,6 +153,9 @@ impl Drop for Operation<'_> {
                     ReusePhase::Hinting | ReusePhase::CheckingNickname => ReusePhase::Nickname,
                     _ => ReusePhase::RecoveryRequired,
                 };
+            }
+            if let Some(entry) = &mut state.phone_entry {
+                entry.interrupted();
             }
         }
     }

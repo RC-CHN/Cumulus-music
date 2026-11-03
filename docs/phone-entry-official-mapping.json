@@ -1,0 +1,95 @@
+{
+  "officialVersion": "3.1.42.205594",
+  "sources": {
+    "hybrid_app.chunk.1482700000000.js/363.js": "8b8122f09a875f50026599cca589ba3e1318e01e260b21f925adbdbc567206f0",
+    "hybrid_app.chunk.1482700000000.js/48.js": "d8c0a8a0c03aca1339bc38e61c8c9a943cd3f4db6e214492e10c3c114acba4db",
+    "hybrid_app.chunk.1482700000000.js/15.js": "8ec4bf8d343f6963860eb73bc59ca09f0dd1ae50db2608a6c5abc7d69a0b521a",
+    "hybrid_20.chunk.1482700000000.js/2992.js": "287d4036d1d6fa12b6ac6cda4f145eea0cd4892f1e0f2d9986368a96a94d82cb",
+    "hybrid_17.chunk.1482700000000.js/2994.js": "f6063ae6264ad61a5c00dc0b81a4b7a98e67012c3fba2c082a747602ec1932cd",
+    "references/ui-recovery/sources/packages/pc/src/pages/login/views/Phone.jsx": "08b48ac2f74c9e083173fa07f6d5682110c17d17d201ed6b007e83d2c22a3e17",
+    "references/ui-recovery/sources/packages/pc/src/pages/login/views/Captchav2.jsx": "b4d7afac80ff849ac995c7677a6da73386e29f05846ebc26b11783ff950383ce",
+    "references/ui-recovery/sources/packages/pc/src/pages/login/views/Nicknamev2.jsx": "447da11de72ffe25c314dbe4c5ce5bdc7fa099df41082178177f190eea881dad",
+    "hybrid_19.chunk.1482700000000.js/3138.js": "02677bdbb947009de508bf4d4d159f91a72f62dfc172d190d74c42679e245ed4",
+    "hybrid_app.chunk.1482700000000.js/278.js": "bbb9eb11512e83d9be00dba4c94497cd5b12572e7efc3c1e788e82bd2fa24967",
+    "references/ui-recovery/sources/packages/pc/src/pages/login/components/index.jsx": "d4c12ca4afd6d89f3a69fbf718586cc3600924301b5dae7fcf963aa9a58a9495",
+    "references/ui-recovery/sources/packages/pc/src/pages/login/components/Operate.jsx": "76152a9bc4dcb136a69f6f111547d945924b5a2e65ca50c85508220d150d98e0"
+  },
+  "mapping": [
+    {
+      "official": "M2992 existence, M363.d, Phone.onCheckCellphone",
+      "rust": "core/src/account/login/phone_entry/mod.rs",
+      "ui": "frontend/src/components/login/PhoneSmsLogin.vue",
+      "interface": "phone_start -> /api/cellphone/existence/check"
+    },
+    {
+      "official": "M363.b, M147 massagechange, Captchav2.handleGetCode",
+      "rust": [
+        "core/src/account/login_policy/sms.rs",
+        "core/src/account/session/policy.rs",
+        "core/src/account/login/phone_entry/mod.rs"
+      ],
+      "interface": "phone_resend -> plain or middle send; native immutable target + cooldown"
+    },
+    {
+      "official": "M2994.newUserRegist, M363.g",
+      "rust": "core/src/account/login/phone_entry/registration.rs",
+      "interface": "phone_code -> existing primary login OR /api/sms/captcha/verify"
+    },
+    {
+      "official": "M3138.p/d, M363.f, Nicknamev2",
+      "rust": [
+        "core/src/account/login/nickname.rs",
+        "core/src/account/login/registration.rs",
+        "core/src/account/login/phone_entry/registration.rs"
+      ],
+      "interface": "phone_register force=false; reuse_register force=true"
+    },
+    {
+      "official": "M48 serialization",
+      "frozen": "core/tests/fixtures/phone-entry-official.json",
+      "oracle": "desktop/tests/phone_entry_official.cjs",
+      "rustTest": "core/tests/client_phone_entry.rs"
+    },
+    {
+      "community": "Durable unknown write fence, bounded cancel, read-only receipt reconciliation",
+      "rust": [
+        "core/src/account/profiles/registration.rs",
+        "core/src/account/login/phone_entry/registration.rs"
+      ],
+      "test": [
+        "core/tests/client_phone_entry.rs",
+        "core/tests/client_phone_reuse.rs"
+      ],
+      "desktop": "desktop/examples/phone_entry_ui_probe.rs",
+      "desktopStatus": "35-state native WebView runs for both protocols and physical KDE125%, with independent persisted-state audit; synthetic HTTP only"
+    }
+  ],
+  "boundaries": [
+    "No YesPlayMusic used.",
+    "Official helper execution/frozen vectors do not execute full SDK.",
+    "Real phone signup/SMS delivery and refresh token issuance/rotation remain unverified.",
+    "Close cancels instead of original auto-register; remember choice retained instead of forced true.",
+    "Linux/Windows x86_64 only; no macOS support promise.",
+    "300px content width is the community modal layout; recovered Inner margins/Operate full width and36/40px controls are source evidence, not native-window pixel verification."
+  ],
+  "runtimeEvidence": {
+    "virtualWebView": {
+      "protocols": [
+        "jsk",
+        "legacy"
+      ],
+      "statesEach": 35,
+      "independentDatabasesEach": 29,
+      "http": "synthetic"
+    },
+    "physical": {
+      "session": "KDE/XWayland",
+      "scale": 1.25,
+      "states": 35,
+      "independentDatabases": 29,
+      "allScreenshotsViewed": true
+    },
+    "realAccountRegistrationProven": false,
+    "realRefreshTokenIssuanceOrRotationProven": false
+  }
+}

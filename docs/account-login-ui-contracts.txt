@@ -9,8 +9,9 @@
 - login/components/Operate.jsx：登录按钮40px、16px/500、圆角与红粉渐变。
 - switchAccount/index.tsx：标题22px，账号行80px，头像36px。
 本客户端保留Cumulus身份。地区选择、协议与找回密码基础流程已按新增官方证据恢复，
-见login-entry-contracts.txt及其mapping；官方营销AB素材、手机存在性检查后的独立captchav2
-入口和完整新用户注册仍须继续。未声称390px弹窗、所有平台DPI和官方截图像素一致。
+见login-entry-contracts.txt及其mapping；号码→独立Captchav2→普通新用户昵称注册已在
+phone-entry-contracts.txt专项接通。官方营销AB素材和其余SDK仍继续；
+未声称390px弹窗、所有平台DPI和官方截图像素一致。
 
 登录方式与输入生命周期
 LoginDialog持有本次模态框的phone/country/countryAlpha/email/remember/consent；没有写入localStorage。
@@ -116,3 +117,12 @@ Windows：同一脚本，传入.exe与--runtime，原生runner独立运行并纳
 接口/调用顺序、社区差异和证据边界见phone-reuse-login-contracts.txt。
 JSK和旧链各34态实际WebView及独立SQLite审计已通过，仅合成账号；本机截图与最终构建回归
 以ui-ux-validation.txt记录为准，不将本段扩大成真实注册、RT下发或全账号SDK完成。
+
+2026-11-03：普通手机登录/注册两段流程
+号码页先查存在性并按实际massagechange分组发送，独立验证码页锁定本次号码/区号；
+老用户进入已有主登录，新用户先校验SMS再进入无Logo昵称页，普通注册固定force=false。
+明确昵称、推荐、查重、默认许可及关闭/返回清理均由实际状态机驱动；注册响应不明不重发，
+有回执只读核对，无回执走新短信登录结清持久意图。当前账号与自动登录选择保持到明确采用。
+SDK确认页返回此号码页的焦点丢失已修复，实际复用流程回归检查焦点落在手机号输入。
+新旧协议各35态及独立审计、本机125%35张实际截图全部复核；详情见phone-entry-contracts.txt。
+不代表本人真实SMS/注册/RT或完整处罚/风险/升级SDK完成。
