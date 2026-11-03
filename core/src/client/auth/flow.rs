@@ -100,6 +100,26 @@ impl MusicClient {
             (*mode, flow.clone(), p.view.clone())
         };
         let state = flow.snapshot()?;
+        if flow.penalty_snapshot()?.is_some()
+            && !matches!(
+                &command,
+                LoginCommand::PenaltyCheck { .. } | LoginCommand::Reconcile
+            )
+        {
+            return Err(Error::State(
+                "finish or cancel the current account verification",
+            ));
+        }
+        if flow.security_qr_snapshot()?.is_some()
+            && !matches!(
+                &command,
+                LoginCommand::SecurityQrPoll { .. }
+                    | LoginCommand::SecurityQrRefresh { .. }
+                    | LoginCommand::Reconcile
+            )
+        {
+            return Err(Error::State("finish or cancel the current security QR"));
+        }
         let device = flow.device_snapshot()?;
         if device.as_ref().is_some_and(|v| {
             matches!(
@@ -208,6 +228,15 @@ impl MusicClient {
         let mut projection = None;
         let mut completed_device = false;
         match command {
+            LoginCommand::PenaltyCheck { verification_id } => {
+                flow.penalty_check(&verification_id).await?;
+            }
+            LoginCommand::SecurityQrPoll { verification_id } => {
+                flow.security_qr_poll(&verification_id, None).await?;
+            }
+            LoginCommand::SecurityQrRefresh { verification_id } => {
+                flow.security_qr_refresh(&verification_id).await?;
+            }
             LoginCommand::PhoneStart {
                 phone,
                 country_code,
@@ -460,7 +489,11 @@ impl MusicClient {
                     .await?;
             }
             LoginCommand::Reconcile => {
-                if flow.phone_entry_snapshot()?.is_some() {
+                if let Some(view) = flow.penalty_snapshot()? {
+                    flow.penalty_check(&view.id).await?;
+                } else if let Some(view) = flow.security_qr_snapshot()? {
+                    flow.security_qr_reconcile(&view.id).await?;
+                } else if flow.phone_entry_snapshot()?.is_some() {
                     flow.phone_entry_reconcile().await?;
                 } else if flow.reuse_snapshot()?.is_some() {
                     flow.reuse_reconcile().await?;

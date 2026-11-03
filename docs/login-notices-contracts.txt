@@ -1,0 +1,99 @@
+登录风险提示、设备安全二维码及账号处罚：官方来源与社区边界
+2026-11-03。实现本批账号分支，不表示全部账号SDK或完整桌面目标验收完成。
+
+官方来源
+官方3.1.42.205594手机回调M2992、邮箱回调M2993：304、8810、10004、8820分支。
+M3137的setSecurityQrcodeVerify/checkQRCodeLogin，M3087设备二维码页及RiskTip；
+references/ui-recovery/sources/packages/pc/src/pages/login/views/RiskTip.tsx
+提供清晰的结构、字号、间距对照。
+M2054 showLowerVersionTip调用async:update/checkUpdate，下载由M3131官方更新器处理。
+M1368的8831登录/验证入口、BaseVerifyHandler的penalty/status与PenaltyHandler回调。
+本批没有使用YesPlayMusic，也没有移植官方RN内部未恢复的实现。
+
+各错误码的真实含义
+304：固定“用户禁止登录”，不能断言永久封禁、期限或申诉条件。
+8810/10004：toast.type=1读toast.unikey/nickname，进入设备安全二维码；
+type=2进入版本提示；type=3读toast.title/content，进入风险说明页。
+没有toast或未知type仍是普通拒绝，不按统一“封号”处理。
+8820直接进入版本提示，不采用toast提供的跳转地址。
+风险页只显示普通文本段落、返回手机登录和关闭，不自动重放密码或发送验证码。
+原生notice仅投影kind/title/paragraphs：标题128字符、最多16段、每段512字符；
+畸形/控制字符（保留换行）/含完整URL的文本不通过此字段输出，未恢复字段不复制进前端。
+这比官方无界直接展示更严格；Vue不用v-html解释服务端内容。
+注册返回的挑战继续保持注册未决屏障，不切入这里的新登录二维码/处罚流程，也不重放原短信。
+
+设备安全二维码
+core/account/login/security_qr.rs沿同一个LoginCandidate保持Cookie和代次；
+toast.unikey只在原生QrLogin中保存，前端仅收SecurityQrView模块矩阵与状态/权限。
+有票时首屏直接用该票，纠错L；空票为Idle，挂载后只初次创建一次。
+POST /api/login/qrcode/unikey：type=3、刷新时lastUniKey为上一票；
+POST /api/login/qrcode/client/login：key/type=3/secureCaptcha?。
+即使原始凭据由JSK发起，这条恢复的设备页仍走旧QR type3，不额外变成JSK type5。
+800过期、801等待扫码、802已扫码待确认、8821显示挑战，用户点“打开安全验证”才调用
+原生验证码provider；803后account/get核对身份。
+前端按原生1000ms间隔以单个timeout轮询，不叠加在途请求；忙、验证码、终态和关闭时停轮询。
+完整授权URL、票据和验证码证明不进前端/普通日志；关闭清本机票据，不向其他设备发邀请。
+验证码由原生provider完成后用同票继续二维码轮询，不重放原账号密码。
+803与身份回读分开：先account/get成功并提交候选，才发布authenticated。
+已发轮询丢响应或身份读取失败均保留可能已授权的边界：只读核对，禁止盲目刷新/重poll。
+只有显式核对account/get返回301后，才允许用户手动取得新二维码；803后的首次自动身份读取
+即使返回301也保留核对入口，不自动重发旧授权。网络失败仍保留核对入口。
+候选取消、账号换代和future丢弃都拒绝迟到结果；原密码在进入此独立二维码流程时清除。
+官方某些空票/陈旧secureCaptcha状态没有重置，本实现按尝试隔离清理，不能称原客户端也如此。
+
+版本提示的社区差异
+官方“立即更新”调用官方更新器并关闭登录页，不是直接打开toast.url或固定官网下载地址。
+Cumulus不能安装网易官方PC包来升级自身：保留提示结构，提供“查看社区版本”和其他登录方式。
+固定native LoginDocument::ClientRelease只打开本仓库releases；不执行安装、支付或远端给定脚本。
+这个社区入口不能保证满足服务端对官方客户端的版本要求；产品明确说明这一点。
+设备二维码页底部固定APP下载地址才是 https://music.163.com/#/download；
+同样走原生有限枚举，不接受renderer任意URL。
+
+8831处罚模型与可恢复动作
+仅state精确等于PASSED表示某步骤通过；保留服务器步骤顺序和未知步骤，不解释为任意路由。
+未知步骤和版本字段仍只允许有界文本，含完整URL的数据拒绝，防止从显示字段泄漏授权链接。
+入口有未通过UPGRADE_VERSION时优先升级，保留其官方minVersion；否则进入身份/账号验证说明。
+官方SDK将身份、绑定手机、实名、弱密码、升级交给rn-account-verify路由；内部写接口及可能的
+原生委派未恢复。因此本批不伪造实名/绑定/改密码成功，也不暴露notify完成命令。
+musicTuP独立保存在原生上下文，普通DTO和日志没有它；PC fetch并无相应字段注入证据，
+所以不凭可选getter发明musicTuP请求头或参数。
+界面“已在官方端处理，核对状态”只执行POST /api/login/penalty/status {}；
+JSK适配器按原fetch附fromPage=JSK和既有登录链上下文。状态读取不是登录完成端点，不能安装RT。
+旧协议凭据入口返回8831时，核对请求使用登录JSK适配器及新的空上下文；不调用只允许刷新端点的
+生命周期适配器，也不从持久Cookie恢复MUSIC_TU或把musicTuP拼进请求头。
+M1368:8647确实设置needsGuardianToken/tokenKey；M1890:28–38将选项原样送RPC，但本版PC桥
+M290:196–228、265–285只取路径、方法、query/data/header，未传这两个Guardian选项。
+M402:346–355、395–405另按MConfig路径保护注入checkToken/X-antiCheatToken，这不是同一条链。
+因此不能仅凭SDK选项认定PC一定调用LoginGuardian。正式宿主使用RequestContext，尚无独立
+desktop LoginGuardian实现；本批不补造该调用或令牌。三模块哈希已列入官方映射。
+状态回包先判断第一个IDENTITY_VERIFY是否PASSED，再选服务器顺序中的首个未通过步骤。
+只有合法code200且明确步骤数组全部通过，才额外account/get核对候选身份。
+状态全部通过也不能由前端直接宣布登录；identity301须重新输入密码，不重放可能已过时的密码。
+状态读取和后续身份读取共用一个45秒期限及取消信号；关闭/替换尝试会丢弃挂起的身份读取，
+释放账号切换互斥并保留原账号，拒绝迟到身份。状态读取用时不会给身份读取再增加45秒。
+查询失败保留最近有效步骤；缺步骤/坏结构不按官方宽松默认空数组视作通过。
+原SDK的ignorePenalty仅避免循环开处罚页，不等于绕过处罚；本实现没有此类前端开关。
+通用2FA绑定或实名查询接口的存在不能作为处罚RN动作映射证据，相关内部写入仍列外部边界。
+
+分层和界面
+独立Rust负责原生票据、有限安全DTO、请求及账号发布；desktop负责固定文档和验证码provider；
+Vue只提交类型化命令，渲染文字/二维码矩阵，不直接调用官方业务API。
+风险页用恢复的80×90图形位置、19px标题及13px/26px段落结构，自绘社区图形不声称官方像素一致。
+安全页隐藏普通登录品牌/导航和重复状态，只保留一个模态框关闭；返回新手机登录不偷偷重放旧表单。
+处罚页面是根据已恢复调度和未恢复RN边界设计的社区页面，不能标成官方RN像素复刻。
+未知步骤显示普通用户说明，原始枚举不出现在页面文案。最长32步使用独立滚动列表，小窗口中
+保留返回、关闭及核对按钮；查询禁用按钮后恢复焦点，结果换成重新登录时将焦点移至该动作。
+安全二维码未决结果只显示核对入口，隐藏继续扫码及下载提示，避免鼓励重复授权。
+普通短轮询不替换二维码；验证调用超过500ms时显示等待反馈，暂时收起扫码引导，
+因此803后的身份读取等待不会继续要求扫码。关闭时清理该界面计时器。
+原生CaptchaProviderOverride只供可信宿主构造隔离测试，生产默认仍使用独立官方验证码窗口；
+前端不能安装provider或向IPC传入验证码证明。
+
+验证入口（本批最终结果见login-notices-validation.txt）
+ node desktop/tests/penalty_official.cjs
+ cargo test --locked -p cumulus-core --test client_login_notice --test login_security_qr --test login_penalty
+前端集中运行login-notices/security-qr/login-penalty/login-state测试及类型构建。
+真实WebView探针使用正式Vue/IPC与合成HTTP，统一检查普通/小窗口、浅/深色、焦点/命中、
+关闭取消、状态核对和受限文本；最终23态及28态账号回归通过，具体版本与证据见验证文档，
+不代替真实账号挑战通过。
+没有本批真人风险/处罚/设备验证样本；既有真实RT获取不扩大为这些挑战线上验收。

@@ -91,7 +91,11 @@ impl MusicClient {
             }
         };
         if let Some(flow) = credentials {
-            flow.submit_captcha(&proof).await?;
+            if let Some(view) = flow.security_qr_snapshot()? {
+                flow.security_qr_poll(&view.id, Some(&proof)).await?;
+            } else {
+                flow.submit_captcha(&proof).await?;
+            }
             drop(guard);
             let view = self.login_snapshot(id)?;
             if view.status == LoginStatus::Authenticated {

@@ -145,6 +145,15 @@ pub enum LoginCommand {
         nickname: Option<String>,
     },
     Reconcile,
+    PenaltyCheck {
+        verification_id: String,
+    },
+    SecurityQrPoll {
+        verification_id: String,
+    },
+    SecurityQrRefresh {
+        verification_id: String,
+    },
 }
 
 #[derive(Clone, Default, Serialize)]
@@ -188,6 +197,9 @@ pub struct LoginView {
     pub captcha_available: bool,
     pub retry_after_ms: u64,
     pub interrupted: bool,
+    pub notice: Option<crate::account::login::LoginNoticeView>,
+    pub penalty: Option<crate::account::login::penalty::PenaltyView>,
+    pub security_qr: Option<crate::account::login::SecurityQrView>,
     pub challenge: LoginChallengeView,
     pub device: Option<DeviceVerificationView>,
     pub sms: Option<SmsVerificationView>,

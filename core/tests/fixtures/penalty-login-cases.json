@@ -1,0 +1,121 @@
+{
+  "schema": 1,
+  "source": "hybrid_vendors_app_subApp.chunk.1482700000000.js/1368.js",
+  "sourceSha256": "49da1d26373042091a3123f8948f1ce7e9968ec185e57369156fc1c6a6700db3",
+  "scope": "Synthetic inputs and manually audited decisions; the optional offline oracle executes the original methods to verify these decisions.",
+  "cases": [
+    {
+      "name": "entry_upgrade_precedes_identity_but_status_checks_identity_first",
+      "steps": [
+        { "type": "BIND_PHONE", "state": "PENDING" },
+        { "type": "IDENTITY_VERIFY", "state": "PENDING", "minVersion": "1782977797967" },
+        { "type": "UPGRADE_VERSION", "state": "PENDING", "minVersion": 1782977798999 }
+      ],
+      "entryCurrent": 2,
+      "entryPhase": "upgrade_required",
+      "statusCurrent": 1,
+      "statusOutcome": "identity_pending"
+    },
+    {
+      "name": "passed_upgrade_does_not_block_identity",
+      "steps": [
+        { "type": "UPGRADE_VERSION", "state": "PASSED", "minVersion": "9.9.9" },
+        { "type": "IDENTITY_VERIFY", "state": "PENDING" }
+      ],
+      "entryCurrent": 1,
+      "entryPhase": "required",
+      "statusCurrent": 1,
+      "statusOutcome": "identity_pending"
+    },
+    {
+      "name": "entry_does_not_guess_missing_rn_dispatch",
+      "steps": [
+        { "type": "BIND_PHONE", "state": "PENDING" },
+        { "type": "REAL_NAME", "state": "PENDING" }
+      ],
+      "entryCurrent": null,
+      "entryPhase": "required",
+      "statusCurrent": 0,
+      "statusOutcome": "next_step"
+    },
+    {
+      "name": "status_preserves_server_order_after_identity",
+      "steps": [
+        { "type": "REAL_NAME", "state": "PENDING" },
+        { "type": "BIND_PHONE", "state": "PENDING" },
+        { "type": "IDENTITY_VERIFY", "state": "PASSED" }
+      ],
+      "entryCurrent": null,
+      "entryPhase": "required",
+      "statusCurrent": 0,
+      "statusOutcome": "next_step"
+    },
+    {
+      "name": "status_does_not_apply_entry_upgrade_priority",
+      "steps": [
+        { "type": "UPGRADE_WEAK_PASSWORD", "state": "PENDING" },
+        { "type": "IDENTITY_VERIFY", "state": "PASSED" },
+        { "type": "UPGRADE_VERSION", "state": "PENDING", "minVersion": "9.9.9" }
+      ],
+      "entryCurrent": 2,
+      "entryPhase": "upgrade_required",
+      "statusCurrent": 0,
+      "statusOutcome": "next_step"
+    },
+    {
+      "name": "unknown_step_is_a_bounded_external_boundary",
+      "steps": [
+        { "type": "IDENTITY_VERIFY", "state": "PASSED" },
+        { "type": "FUTURE_SECURITY_ACTION", "state": "WAITING" }
+      ],
+      "entryCurrent": null,
+      "entryPhase": "required",
+      "statusCurrent": 1,
+      "statusOutcome": "next_step"
+    },
+    {
+      "name": "passed_is_case_sensitive",
+      "steps": [
+        { "type": "IDENTITY_VERIFY", "state": "passed" },
+        { "type": "UPGRADE_VERSION", "state": "passed", "minVersion": "9.9.9" }
+      ],
+      "entryCurrent": 1,
+      "entryPhase": "upgrade_required",
+      "statusCurrent": 0,
+      "statusOutcome": "identity_pending"
+    },
+    {
+      "name": "status_checks_first_identity_then_first_pending",
+      "steps": [
+        { "type": "IDENTITY_VERIFY", "state": "PASSED" },
+        { "type": "IDENTITY_VERIFY", "state": "PENDING" }
+      ],
+      "entryCurrent": 1,
+      "entryPhase": "required",
+      "statusCurrent": 1,
+      "statusOutcome": "next_step"
+    },
+    {
+      "name": "explicit_empty_status_steps_are_complete_but_entry_is_not_authentication",
+      "steps": [],
+      "entryCurrent": null,
+      "entryPhase": "required",
+      "statusCurrent": null,
+      "statusOutcome": "all_passed"
+    },
+    {
+      "name": "all_passed_requires_identity_reconciliation",
+      "steps": [
+        { "type": "IDENTITY_VERIFY", "state": "PASSED" },
+        { "type": "BIND_PHONE", "state": "PASSED" },
+        { "type": "REAL_NAME", "state": "PASSED" },
+        { "type": "UPGRADE_WEAK_PASSWORD", "state": "PASSED" },
+        { "type": "UPGRADE_VERSION", "state": "PASSED" }
+      ],
+      "entryCurrent": null,
+      "entryPhase": "required",
+      "statusCurrent": null,
+      "statusOutcome": "all_passed"
+    }
+  ]
+}

@@ -103,6 +103,8 @@ mod tests {
             LoginDocument::Privacy.url(),
             LoginDocument::Children.url(),
             LoginDocument::EmailRecovery.url(),
+            LoginDocument::ClientRelease.url(),
+            LoginDocument::AppDownload.url(),
         ] {
             launch_with(script.as_os_str(), url).unwrap();
             assert_eq!(

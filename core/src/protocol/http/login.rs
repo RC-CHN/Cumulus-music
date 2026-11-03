@@ -129,5 +129,6 @@ pub(super) fn jsk_login_path(path: &str) -> bool {
             | "/api/login/cellphone/twice/question/verify"
             | "/api/login/cellphone/twice/used/user/get"
             | "/api/login/cellphone/twice/used/confirm"
+            | "/api/login/penalty/status"
     )
 }

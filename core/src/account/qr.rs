@@ -60,6 +60,18 @@ impl QrLogin {
     pub fn new(api: Arc<dyn Api>) -> Self {
         Self::with_protocol(api, LoginProtocol::Legacy)
     }
+    /// Native-only legacy security tickets supplied by an acknowledged login
+    /// response. Seeding renders/polls that ticket without requesting a new one.
+    pub(crate) fn with_seed_key(api: Arc<dyn Api>, key: Option<&str>) -> Result<Self> {
+        let qr = Self::new(api);
+        if let Some(key) = key.filter(|key| !key.is_empty()) {
+            validate_key(key)?;
+            let mut state = qr.lock()?;
+            state.key = Some(key.into());
+            state.status = QrStatus::WaitingScan;
+        }
+        Ok(qr)
+    }
     pub(crate) fn with_protocol(api: Arc<dyn Api>, protocol: LoginProtocol) -> Self {
         Self {
             api,
@@ -92,7 +104,7 @@ impl QrLogin {
         let (generation, old_key) = {
             let mut state = self.lock()?;
             state.generation = next_generation(state.generation)?;
-            let old_key = state.key.take();
+            let old_key = state.key.clone();
             state.status = QrStatus::Creating;
             state.challenge = None;
             state.polling = false;
@@ -123,6 +135,10 @@ impl QrLogin {
             state.status = QrStatus::Error;
             return Err(Error::Response("missing QR key"));
         };
+        if let Err(error) = validate_key(key) {
+            state.status = QrStatus::Error;
+            return Err(error);
+        }
         state.key = Some(key.into());
         state.status = QrStatus::WaitingScan;
         Ok(key.into())
@@ -195,4 +211,11 @@ impl QrLogin {
         }
         Ok(state.status)
     }
+}
+
+fn validate_key(key: &str) -> Result<()> {
+    if key.len() > 2048 || key.chars().any(char::is_control) {
+        return Err(Error::Response("invalid QR key"));
+    }
+    Ok(())
 }

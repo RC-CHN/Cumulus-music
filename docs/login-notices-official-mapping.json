@@ -1,0 +1,171 @@
+{
+  "schema": 1,
+  "officialVersion": "3.1.42.205594",
+  "sources": {
+    "2992": {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_20.chunk.1482700000000.js/2992.js",
+      "sha256": "287d4036d1d6fa12b6ac6cda4f145eea0cd4892f1e0f2d9986368a96a94d82cb"
+    },
+    "2993": {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_18.chunk.1482700000000.js/2993.js",
+      "sha256": "ddb20b2ae00f17b2f7e2c6d24cd08b7bd5e8e586e9c80f56aa8678b33ab88c79"
+    },
+    "3137": {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_28.chunk.1482700000000.js/3137.js",
+      "sha256": "3287dfcc56c1c0b7d0f6cefc701af0f16533234760ed1d7f7cd07c67cac19d43"
+    },
+    "3087": {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_43.chunk.1482700000000.js/3087.js",
+      "sha256": "d8b5e5797fbc9eedde345c16eada1eb6b4d950afb680482aec5fdc44c4b18041"
+    },
+    "2054": {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_20.chunk.1482700000000.js/2054.js",
+      "sha256": "82ce4092b679d10584cc10534ce9f267b2b5081bef738d3959a6660d6f9e630a"
+    },
+    "3131": {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_119.chunk.1482700000000.js/3131.js",
+      "sha256": "76bacb55f8b2a6a5742964a1b49c7b4daffba0f16445ebabffacabb506fdbcd2"
+    },
+    "1368": {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_vendors_app_subApp.chunk.1482700000000.js/1368.js",
+      "sha256": "49da1d26373042091a3123f8948f1ce7e9968ec185e57369156fc1c6a6700db3"
+    },
+    "1890": {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_vendors_app_subApp.chunk.1482700000000.js/1890.js",
+      "sha256": "ceceeb46891708c49a98f97185ac585e429b20ce056414570e0fe4b6a84c32f8"
+    },
+    "290": {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/290.js",
+      "sha256": "73e775eae2e4b1da2e97b70b9415e2e101ba876ea1f6b877bd7cc054c7a4ea9b"
+    },
+    "402": {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/402.js",
+      "sha256": "c759837f6de9c3f6b108edd1b9c22da8202d8cf7bb861f58454f7f4b9a054a37"
+    }
+  },
+  "contracts": [
+    {
+      "branch": "304",
+      "source": [
+        "2992",
+        "2993"
+      ],
+      "core": [
+        "account/login/challenge.rs",
+        "account/login/notice.rs"
+      ],
+      "ui": [
+        "LoginNotice.vue"
+      ],
+      "evidence": [
+        "core/tests/client_login_notice.rs",
+        "desktop/examples/login_notice_ui_probe.rs"
+      ],
+      "boundary": "No ban duration or appeal semantics recovered"
+    },
+    {
+      "branch": "risk toast type3",
+      "source": [
+        "2992",
+        "2993",
+        "3087"
+      ],
+      "core": [
+        "account/login/notice.rs"
+      ],
+      "ui": [
+        "LoginNotice.vue"
+      ],
+      "evidence": [
+        "core/tests/client_login_notice.rs",
+        "frontend/tests/login-notices.test.ts"
+      ],
+      "boundary": "Bounded plain text; no dynamic authorization URL"
+    },
+    {
+      "branch": "upgrade 8820/toast2",
+      "source": [
+        "2992",
+        "2993",
+        "2054",
+        "3131"
+      ],
+      "core": [
+        "account/login/notice.rs",
+        "account/login/presentation.rs"
+      ],
+      "ui": [
+        "LoginNotice.vue"
+      ],
+      "evidence": [
+        "core/tests/client_login_notice.rs"
+      ],
+      "boundary": "Community releases link replaces proprietary native updater; no promise it satisfies official version gate"
+    },
+    {
+      "branch": "security QR toast1",
+      "source": [
+        "2992",
+        "2993",
+        "3137",
+        "3087"
+      ],
+      "core": [
+        "account/login/security_qr.rs",
+        "account/qr.rs"
+      ],
+      "ui": [
+        "SecurityQrVerification.vue"
+      ],
+      "evidence": [
+        "core/tests/login_security_qr.rs",
+        "frontend/tests/security-qr.test.ts",
+        "desktop/examples/login_notice_ui_probe.rs"
+      ],
+      "boundary": "Legacy type3 in same candidate; raw key never exported; unknown completion only reads identity"
+    },
+    {
+      "branch": "8831 penalty",
+      "source": [
+        "1368",
+        "1890",
+        "290",
+        "402"
+      ],
+      "core": [
+        "account/login/penalty.rs",
+        "account/login/penalty_flow.rs"
+      ],
+      "ui": [
+        "PenaltyVerification.vue"
+      ],
+      "evidence": [
+        "core/tests/login_penalty.rs",
+        "core/tests/client_login_notice.rs",
+        "desktop/tests/penalty_official.cjs",
+        "desktop/examples/login_notice_ui_probe.rs"
+      ],
+      "boundary": "RN internal verification/bind/realname/password/version actions unavailable; status query does not replay credentials"
+    }
+  ],
+  "validation": {
+    "report": "docs/login-notices-validation.txt",
+    "linuxWorkspace": {
+      "programs": 305,
+      "passed": 1621,
+      "failed": 0,
+      "ignored": 0
+    },
+    "frontendPassed": 590,
+    "ciToolsPassed": 50,
+    "originalPenaltyScenarios": 10,
+    "noticeWebViewStates": 23,
+    "accountRegressionStates": 28,
+    "localDesktopCaptures": 23,
+    "realRequests": 0,
+    "windowsRuntime": "pending CI; no local Windows runtime proof",
+    "completeAccountSdk": false
+  },
+  "realChallengeProof": false,
+  "yesPlayMusicUsed": false
+}

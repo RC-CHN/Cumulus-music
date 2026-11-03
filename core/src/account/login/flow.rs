@@ -25,6 +25,7 @@ pub struct LoginSnapshot {
     pub captcha_available: bool,
     pub error_kind: Option<&'static str>,
     pub retry_after_ms: u64,
+    pub notice: Option<super::LoginNoticeView>,
 }
 
 pub struct CredentialLogin {
@@ -88,9 +89,14 @@ impl CredentialLogin {
             status: state.status,
             code: state.code,
             busy: state.busy,
-            captcha_available: state.status == LoginStatus::Captcha && state.pending.is_some(),
+            captcha_available: (state.status == LoginStatus::Captcha && state.pending.is_some())
+                || state
+                    .security_qr
+                    .as_ref()
+                    .is_some_and(|qr| qr.view().status == crate::account::QrStatus::Challenge),
             error_kind: state.error_kind,
             retry_after_ms: self.cooldown.remaining()?.as_millis().min(u64::MAX as u128) as u64,
+            notice: super::notice::project(state.status, state.challenge.as_ref()),
         })
     }
     /// Native-only challenge data; hosts must construct a safe UI DTO.
@@ -120,6 +126,12 @@ impl CredentialLogin {
         if let Some(entry) = &state.phone_entry {
             entry.cancel.send_replace(true);
         }
+        if let Some(penalty) = &mut state.penalty {
+            penalty.cancel();
+        }
+        if let Some(qr) = &state.security_qr {
+            qr.cancel()?;
+        }
         state.status = LoginStatus::Cancelled;
         state.pending = None;
         state.challenge = None;
@@ -132,6 +144,8 @@ impl CredentialLogin {
         state.question = None;
         state.reuse = None;
         state.phone_entry = None;
+        state.penalty = None;
+        state.security_qr = None;
         state.busy = false;
         Ok(())
     }
@@ -207,6 +221,47 @@ impl CredentialLogin {
                 if state.status.verification() {
                     state.verification = Some(state.status);
                 }
+                if request.path != "/api/w/register/cellphone"
+                    && matches!(
+                        state.status,
+                        LoginStatus::RiskNotice
+                            | LoginStatus::UpgradeRequired
+                            | LoginStatus::AccountDisabled
+                    )
+                {
+                    state.pending = None;
+                }
+                if request.path != "/api/w/register/cellphone"
+                    && state.status == LoginStatus::Penalty
+                {
+                    state.penalty = Some(super::penalty::Attempt::from_login_response(response)?);
+                    state.pending = None;
+                    state.verification = None;
+                    state.security_qr = None;
+                    state.device = None;
+                    state.sms = None;
+                    state.email = None;
+                    state.question = None;
+                    state.reuse = None;
+                    state.phone_entry = None;
+                }
+                if request.path != "/api/w/register/cellphone"
+                    && state.status == LoginStatus::SecurityQr
+                {
+                    state.security_qr = Some(super::security_qr::Attempt::from_response(
+                        response,
+                        self.candidate.api(),
+                    )?);
+                    state.pending = None;
+                    state.verification = None;
+                    state.penalty = None;
+                    state.device = None;
+                    state.sms = None;
+                    state.email = None;
+                    state.question = None;
+                    state.reuse = None;
+                    state.phone_entry = None;
+                }
                 if login && state.status != LoginStatus::Authorized {
                     // Keep the active cancellation handle while an acknowledged
                     // SMS step replays login or awaits account/get. Dropping it
@@ -243,6 +298,31 @@ impl CredentialLogin {
 
     pub(super) async fn verify_identity(&self, operation: &Operation<'_>) -> Result<()> {
         operation.check()?;
+        {
+            let state = operation.lock()?;
+            let challenge = state.challenge.as_ref().map(classify);
+            if state
+                .penalty
+                .as_ref()
+                .is_some_and(|a| a.view().phase != super::penalty::PenaltyPhase::StatusPassed)
+                || (challenge == Some(LoginStatus::Penalty) && state.penalty.is_none())
+            {
+                return Err(Error::State(
+                    "penalty status must be checked before identity",
+                ));
+            }
+            if matches!(
+                challenge,
+                Some(
+                    LoginStatus::RiskNotice
+                        | LoginStatus::UpgradeRequired
+                        | LoginStatus::AccountDisabled
+                )
+            ) || (challenge == Some(LoginStatus::SecurityQr) && state.security_qr.is_none())
+            {
+                return Err(Error::State("start a new login attempt"));
+            }
+        }
         let profile = self.candidate.api().account().await;
         let mut state = operation.lock()?;
         self.candidate.adopt(&self.session, &self.base, profile?)?;
@@ -257,6 +337,8 @@ impl CredentialLogin {
         state.question = None;
         state.reuse = None;
         state.phone_entry = None;
+        state.penalty = None;
+        state.security_qr = None;
         state.status = LoginStatus::Authenticated;
         Ok(())
     }
@@ -267,7 +349,14 @@ impl CredentialLogin {
         expected: Option<u64>,
         remember: Option<bool>,
     ) -> Result<Value> {
-        let operation = Operation::begin(&self.state, LoginStatus::Submitting, expected)?;
+        let operation =
+            Operation::begin_checked(&self.state, LoginStatus::Submitting, expected, |state| {
+                if state.penalty.is_some() || state.security_qr.is_some() {
+                    return Err(Error::State("start a new login attempt"));
+                }
+                Ok(())
+            })?;
+        operation.lock()?.challenge = None;
         let sms_phone = matches!(
             request.path,
             "/api/login/cellphone" | "/api/w/login/cellphone"
@@ -511,6 +600,11 @@ impl CredentialLogin {
         &self,
         operation: &Operation<'_>,
     ) -> Result<Option<Value>> {
+        if operation.lock()?.penalty.is_some() {
+            return Err(Error::State(
+                "penalty verification cannot replay credentials",
+            ));
+        }
         match self.verify_identity(operation).await {
             Ok(()) => Ok(None),
             Err(error) if error.is_service_code(301) => {
@@ -526,6 +620,13 @@ impl CredentialLogin {
         }
     }
     pub async fn reconcile(&self) -> Result<LoginSnapshot> {
+        if let Some(view) = self.penalty_snapshot()? {
+            self.penalty_check(&view.id).await?;
+            return self.snapshot();
+        }
+        if let Some(view) = self.security_qr_snapshot()? {
+            return self.security_qr_reconcile(&view.id).await;
+        }
         let operation = Operation::begin(&self.state, LoginStatus::CheckingIdentity, None)?;
         let result = self.verify_identity(&operation).await;
         operation.finish(result)?;

@@ -20,6 +20,8 @@ pub(super) struct State {
     pub question: Option<super::question::Attempt>,
     pub reuse: Option<super::reuse::Attempt>,
     pub phone_entry: Option<super::phone_entry::Attempt>,
+    pub penalty: Option<super::penalty::Attempt>,
+    pub security_qr: Option<super::security_qr::Attempt>,
 }
 
 impl Default for State {
@@ -41,6 +43,8 @@ impl Default for State {
             question: None,
             reuse: None,
             phone_entry: None,
+            penalty: None,
+            security_qr: None,
         }
     }
 }
@@ -156,6 +160,12 @@ impl Drop for Operation<'_> {
             }
             if let Some(entry) = &mut state.phone_entry {
                 entry.interrupted();
+            }
+            if let Some(penalty) = &mut state.penalty {
+                penalty.status_failed();
+            }
+            if let Some(qr) = &mut state.security_qr {
+                qr.interrupted();
             }
         }
     }

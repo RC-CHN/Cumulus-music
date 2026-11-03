@@ -48,6 +48,8 @@ pub enum LoginDocument {
     Privacy,
     Children,
     EmailRecovery,
+    ClientRelease,
+    AppDownload,
 }
 impl LoginDocument {
     pub fn url(self) -> &'static str {
@@ -56,6 +58,8 @@ impl LoginDocument {
             Self::Privacy => "http://st.music.163.com/official-terms/privacy",
             Self::Children => "http://st.music.163.com/official-terms/children",
             Self::EmailRecovery => "http://reg.163.com/getpasswd/RetakePassword.jsp",
+            Self::ClientRelease => "https://github.com/RC-CHN/Cumulus-music/releases",
+            Self::AppDownload => "https://music.163.com/#/download",
         }
     }
 }
