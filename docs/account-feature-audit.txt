@@ -234,7 +234,8 @@ SNS 独立恢复、有限无会话取证与原生窗口边界见 docs/sns-login-
 
 7. 登录设备管理：不等于现有“原设备验证”
 
-  后续实施：已接入只读设备列表与详情；移除、短信和未决回读仍待实现。
+  后续实施：已接入设备列表、详情、移除、显式短信验证和未决回读。
+  见 account-profile-devices.txt、login-device-removal.txt；以下保留原审计。
 
   官方 endpoint / 参数（M15:4962–4981；M12 默认 POST）：
     /api/middle/user/device/list {excStatus:9}

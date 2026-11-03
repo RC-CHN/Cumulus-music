@@ -21,6 +21,7 @@ export interface LoginDeviceRemovalView {
 
 export type LoginDeviceRemovalCommand =
   | { kind: 'begin'; device_id: string }
+  | { kind: 'resolve_begin'; device_id: string }
   | { kind: 'submit_sms'; operation_id: string; code: string }
   | { kind: 'send_sms' | 'reconcile' | 'cancel'; operation_id: string };
 

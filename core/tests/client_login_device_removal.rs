@@ -307,3 +307,42 @@ async fn failed_binding_read_cannot_leave_a_pending_removal() {
     assert_eq!(w.api.calls().last().unwrap().path, BINDINGS);
     assert_eq!(w.api.calls().len(), 3);
 }
+
+#[tokio::test]
+async fn resolve_unreceived_begin_fences_old_handle_without_any_http_call() {
+    let w = world([]).await;
+    let resolve = Command::ResolveBegin {
+        device_id: w.target.clone(),
+    };
+    assert_eq!(command(&w, resolve).await["phase"], "not_sent");
+    let result = w
+        .client
+        .login_device_removal_command(&w.epoch, begin(&w))
+        .await;
+    assert!(matches!(result, Err(Error::StaleResponse)));
+    assert!(
+        w.client
+            .login_device_removal(&w.epoch)
+            .unwrap()
+            .value
+            .is_none()
+    );
+    assert_eq!(w.api.calls().len(), 2);
+}
+
+#[tokio::test]
+async fn resolve_received_begin_preserves_the_persisted_recovery_without_replay() {
+    let w = world([
+        binding(),
+        list(true),
+        Reply::Ready(Err(Error::Transport("synthetic lost reply".into()))),
+    ])
+    .await;
+    assert_eq!(command(&w, begin(&w)).await["phase"], "recovery_required");
+    let calls = w.api.calls().len();
+    let resolve = Command::ResolveBegin {
+        device_id: w.target.clone(),
+    };
+    assert_eq!(command(&w, resolve).await["phase"], "recovery_required");
+    assert_eq!(w.api.calls().len(), calls);
+}

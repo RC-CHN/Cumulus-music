@@ -494,6 +494,7 @@
     await wait(() => !test("login-device-removal-submit")?.disabled, "SMS submit enabled");
     click(test("login-device-removal-submit"));
     await wait(() => phase() === "recovery_required", "lost kickoff acknowledgement");
+    assert(code.value === "" && !code.isConnected && !test("login-device-removal-code"), "OTP input scrubbed before removal");
     assert(!one(".login-device-removal-dialog").textContent.includes("001234"), "OTP not displayed after submit");
     await stage("device_removal_recovery_dark", { expectNickname });
     await closeRemoval();

@@ -31,10 +31,11 @@ const removal = useLoginDeviceRemoval(
   core,
   owner,
   () => {
-    result.value = '目标设备已不在最新设备列表中。';
+    result.value = '上次核对时，目标设备已不在列表中。';
     void refresh();
   },
   () => emit('expired'),
+  () => void refresh(),
 );
 const { canBegin, pending, readRequired, busy: removalBusy } = removal;
 const canRemove = computed(

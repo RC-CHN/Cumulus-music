@@ -28,10 +28,16 @@
   right: -8px;
 }
 .login-device-removal-dialog h2 {
-  margin: 0;
-  padding: 0 30px;
+  width: fit-content;
+  max-width: calc(100% - 60px);
+  margin: 0 auto;
   font-size: 18px;
   line-height: 26px;
+}
+.login-device-removal-dialog h2:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 3px;
 }
 .login-device-removal-body {
   min-height: 0;

@@ -32,7 +32,8 @@ Rust 与 IPC：
 
 当前边界：
   资料保存及绑定扫码转交见 account-profile-edit.txt；头像提交和移除
-  登录设备仍是独立业务。界面按恢复的页面结构重建，
+  登录设备分别见 account-avatar.txt 和 login-device-removal.txt。
+  界面按恢复的页面结构重建，
   合并绑定摘要、保留明确错误态，未声明与官方截图像素一致。
   合成接口和真实 WebView 验证不能证明当前服务端接受这些请求。
 

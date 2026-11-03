@@ -17,7 +17,7 @@ const initial: LoginDeviceRemovalView = {
   observedPresent: null,
 };
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
-function fixture(epoch: string, client: LoginDeviceRemovalClient) {
+function fixture(epoch: string, client: LoginDeviceRemovalClient, refreshDevices = () => {}) {
   const scope = effectScope();
   const owner = ref<string | null>(epoch);
   let absent = 0;
@@ -27,6 +27,7 @@ function fixture(epoch: string, client: LoginDeviceRemovalClient) {
       () => owner.value,
       () => absent++,
       () => {},
+      refreshDevices,
     ),
   )!;
   return { scope, owner, model, absent: () => absent };
@@ -65,6 +66,7 @@ test('lost removal receipt stays blocked across reopening and only absence from 
         status = { ...initial, phase: 'recovery_required' };
         throw new Error('synthetic lost receipt');
       }
+      if (command.kind === 'resolve_begin' && visible && status) return { epoch, value: status };
       assert.equal(command.kind, 'reconcile');
       status = status?.observedPresent
         ? { ...initial, phase: 'observed_absent', observedPresent: false }
@@ -91,7 +93,7 @@ test('lost removal receipt stays blocked across reopening and only absence from 
   await next.model.command({ kind: 'cancel', operation_id: id });
   await next.model.command({ kind: 'reconcile', operation_id: id });
   assert.equal(next.absent(), 1);
-  assert.deepEqual(actions, ['begin', 'reconcile', 'reconcile']);
+  assert.deepEqual(actions, ['begin', 'resolve_begin', 'reconcile', 'reconcile']);
   next.scope.stop();
 });
 
@@ -114,4 +116,31 @@ test('a result from the previous account cannot publish the removal notice', asy
   assert.equal(f.model.view.value, undefined);
   assert.equal(f.model.canBegin.value, true);
   f.scope.stop();
+});
+
+test('a lost pre-dispatch Begin is fenced only on explicit recovery and refreshes stale handles', async () => {
+  const actions: string[] = [];
+  let refreshes = 0;
+  const client: LoginDeviceRemovalClient = {
+    accountLoginDeviceRemoval: async (epoch) => ({ epoch, value: null }),
+    accountLoginDeviceRemovalCommand: async (epoch, command) => {
+      actions.push(command.kind);
+      if (command.kind === 'begin') throw new Error('synthetic lost dispatch');
+      assert.deepEqual(command, { kind: 'resolve_begin', device_id: id });
+      return { epoch, value: { ...initial, phase: 'not_sent' } };
+    },
+  };
+  const first = fixture('pre-dispatch', client);
+  await tick();
+  await first.model.command({ kind: 'begin', device_id: id });
+  first.scope.stop();
+  const next = fixture('pre-dispatch', client, () => refreshes++);
+  await tick();
+  assert.deepEqual(actions, ['begin']);
+  assert.equal(next.model.canBegin.value, false);
+  await next.model.read();
+  assert.deepEqual(actions, ['begin', 'resolve_begin']);
+  assert.equal(next.model.canBegin.value, true);
+  assert.equal(refreshes, 1);
+  next.scope.stop();
 });

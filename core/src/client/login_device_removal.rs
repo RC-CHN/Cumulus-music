@@ -32,6 +32,7 @@ fn preflight_error(error: Error) -> Error {
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum LoginDeviceRemovalCommand {
     Begin { device_id: String },
+    ResolveBegin { device_id: String },
     SendSms { operation_id: String },
     SubmitSms { operation_id: String, code: String },
     Reconcile { operation_id: String },
@@ -400,12 +401,38 @@ impl<'a> Removal<'a> {
         Ok(intent)
     }
 
-    async fn execute(&self, command: LoginDeviceRemovalCommand) -> Result<Intent> {
+    async fn execute(&self, command: LoginDeviceRemovalCommand) -> Result<LoginDeviceRemovalView> {
         let _lock = OperationLock::acquire(self.store.directory(), JOURNAL, &self.owner)?;
         let current = self.load()?;
         let (operation_id, command) = match command {
             LoginDeviceRemovalCommand::Begin { device_id } => {
-                return self.begin(device_id, current).await;
+                return self
+                    .begin(device_id, current)
+                    .await
+                    .map(|intent| intent.view());
+            }
+            LoginDeviceRemovalCommand::ResolveBegin { device_id } => {
+                if !hex_id(&device_id, 32) {
+                    return Err(Error::InvalidInput("invalid login device identifier"));
+                }
+                if let Some(intent) = current.filter(|intent| intent.id == device_id) {
+                    return Ok(intent.view());
+                }
+                // Held under the same lock as Begin. A later Begin for this
+                // handle cannot resolve it, and a new list mints new handles.
+                self.client.session.with_token(&self.token, |_| {
+                    self.client
+                        .login_device_rows
+                        .invalidate(&self.token, &device_id)
+                })?;
+                return Ok(LoginDeviceRemovalView {
+                    id: device_id,
+                    phase: LoginDeviceRemovalPhase::NotSent,
+                    phone_tail: None,
+                    resend_after_seconds: 0,
+                    sms_not_accepted: false,
+                    observed_present: None,
+                });
             }
             LoginDeviceRemovalCommand::SendSms { ref operation_id }
             | LoginDeviceRemovalCommand::SubmitSms {
@@ -453,9 +480,10 @@ impl<'a> Removal<'a> {
                     .session
                     .with_token(&self.token, |_| self.save(&intent))?;
             }
-            LoginDeviceRemovalCommand::Begin { .. } => unreachable!(),
+            LoginDeviceRemovalCommand::Begin { .. }
+            | LoginDeviceRemovalCommand::ResolveBegin { .. } => unreachable!(),
         }
-        Ok(intent)
+        Ok(intent.view())
     }
 }
 
@@ -480,11 +508,11 @@ impl MusicClient {
         command: LoginDeviceRemovalCommand,
     ) -> Result<AccountData<LoginDeviceRemovalView>> {
         let operation = Removal::new(self, epoch)?;
-        let intent = operation.execute(command).await?;
+        let value = operation.execute(command).await?;
         self.session.with_token(&operation.token, |_| {
             Ok(AccountData {
                 epoch: epoch.into(),
-                value: intent.view(),
+                value,
             })
         })
     }

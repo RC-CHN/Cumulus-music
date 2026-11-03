@@ -186,7 +186,7 @@ onBeforeUnmount(() => {
       <p v-else-if="phase === 'observed_absent'" role="status">目标设备已不在最新设备列表中。</p>
       <p v-else-if="phase === 'cancelled'" role="status">已取消本次短信验证。</p>
       <p v-else-if="phase === 'not_sent'">本次移除未提交。</p>
-      <p v-else-if="phase === 'read_required'">请先读取本次移除进度。</p>
+      <p v-else-if="phase === 'read_required'">请先核对本次移除请求是否已受理。</p>
       <p v-if="busy" class="login-device-removal-progress" role="status">正在处理，请稍候…</p>
       <p v-if="error" class="login-device-removal-error" role="alert">{{ error }}</p>
     </div>
@@ -255,7 +255,7 @@ onBeforeUnmount(() => {
           :disabled="busy"
           @click="focus.run($event, () => model.read())"
         >
-          重新读取
+          核对移除进度
         </button>
       </template>
     </footer>

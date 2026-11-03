@@ -18,6 +18,7 @@ export function useLoginDeviceRemoval(
   owner: () => string | null,
   absent: () => void,
   expired: () => void,
+  refreshDevices: () => void = () => {},
   now: () => number = () => performance.now(),
 ) {
   const view = shallowRef<LoginDeviceRemovalView>();
@@ -95,11 +96,29 @@ export function useLoginDeviceRemoval(
   function read(notify = true) {
     return run(async (epoch, active) => {
       try {
+        const id = notify ? unseen.value : undefined;
+        if (id) {
+          const response = await client.accountLoginDeviceRemovalCommand(epoch, {
+            kind: 'resolve_begin',
+            device_id: id,
+          });
+          if (!active()) return;
+          if (response.epoch !== epoch || response.value.id !== id) throw Error('receipt mismatch');
+          if (response.value.phase !== 'not_sent') {
+            accept(response.value, notify);
+            return;
+          }
+          // Native invalidated the old handle (or proved the write was not
+          // sent). Read the journal again in case another intent owns it.
+          if (unacknowledgedBegin?.id === id) unacknowledgedBegin = undefined;
+          unseen.value = undefined;
+          refreshDevices();
+        }
         const response = await client.accountLoginDeviceRemoval(epoch);
         if (!active()) return;
         if (response.epoch !== epoch) throw Error('owner mismatch');
         accept(response.value, notify);
-        if (unseen.value) error.value = '尚未取得移除回执，请稍后重新读取。';
+        if (unseen.value) error.value = '请核对本次移除请求是否已受理。';
       } catch (cause) {
         if (!active()) return;
         readRequired.value = true;
@@ -107,7 +126,7 @@ export function useLoginDeviceRemoval(
       }
     });
   }
-  function command(command: LoginDeviceRemovalCommand) {
+  function command(command: Exclude<LoginDeviceRemovalCommand, { kind: 'resolve_begin' }>) {
     const current = view.value;
     if (command.kind === 'begin') {
       if (!canBegin.value) return;
@@ -146,7 +165,10 @@ export function useLoginDeviceRemoval(
           if (unacknowledgedBegin?.id === command.device_id) unacknowledgedBegin = undefined;
         }
         readRequired.value = true;
-        fail(cause, '暂未确认操作结果，请先重新读取移除进度。');
+        if (command.kind === 'begin' && code === 'stale') {
+          refreshDevices();
+          fail(cause, '设备列表已过期，正在刷新。请读取移除进度后重新选择设备。');
+        } else fail(cause, '暂未确认操作结果，请先重新读取移除进度。');
       }
     });
   }

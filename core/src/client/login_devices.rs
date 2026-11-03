@@ -79,6 +79,14 @@ struct PublishedRows {
 pub(super) struct DeviceRows(Mutex<Option<PublishedRows>>);
 
 impl DeviceRows {
+    pub fn invalidate(&self, owner: &SessionToken, id: &str) -> Result<()> {
+        let mut list = self.0.lock().map_err(|_| Error::LockPoisoned)?;
+        if let Some(list) = list.as_mut().filter(|list| &list.owner == owner) {
+            list.rows.retain(|row| row.id != id);
+        }
+        Ok(())
+    }
+
     pub fn key_for(&self, owner: &SessionToken, id: &str) -> Result<String> {
         let list = self.0.lock().map_err(|_| Error::LockPoisoned)?;
         let list = list

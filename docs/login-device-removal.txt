@@ -29,6 +29,9 @@ deviceKey。当前设备缺失、不能唯一识别，或目标已过期、已�
 明确成功后刷新设备列表；回包丢失、无法确认结果或成功后目标仍存在时，
 保留未决记录。重新打开可显式核对，核对只读设备列表，不重发短信或移除
 请求。目标已不在最新列表才能显示该事实；这不能证明服务端已撤销所有会话。
+首次 IPC 回执丢失时，显式核对在与发送相同的原生互斥锁下检查回执。
+若尚无对应记录，作废该次短期句柄并刷新列表，保证迟到的旧命令不能发送。
+如果已有对应记录，只恢复其进度。作废句柄和读取回执不访问服务端。
 生产接线位于 core/src/client/login_device_removal.rs、
 desktop/src/commands.rs 和 frontend/src/components/account/LoginDevicesPage.vue。
 
@@ -37,3 +40,6 @@ Linux/Windows CI 均用实际 WebView、生产 IPC、隔离账号状态和合成
 绑定转交、显式短信、移除回包丢失和只读恢复。合并后的 Linux WebView
 探针 6 阶段通过，Windows 尚未实跑。没有发真实短信、移除真实设备或验证
 线上账号。
+最终构建也在本机 KDE/XWayland（125% 缩放）复核这 6 个状态；
+截图见 .build/device-removal-desktop-final/contact.jpg。探针直接验证
+退出短信状态时旧输入框已清空并移除，以及只读核对没有追加短信或移除请求。

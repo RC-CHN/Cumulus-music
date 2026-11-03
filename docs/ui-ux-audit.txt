@@ -1067,3 +1067,10 @@ MV | 下载卡片/艺人入口和本地 MV 在无在线详情时的播放已专�
   不能当全绿。source/边界及结果见nickname-editor-contracts.txt、nickname-editor-validation.txt。
 - 完整资料/头像最终提交、服务端quick及登录设备仍有明确功能缺口；SNS成功callback schema和
   Windows真实collector尚未闭合，见account-feature-audit.txt及对应恢复/计划文档，不据昵称专项称账号全部完成。
+
+2026-11-03 账号资料与登录设备
+- 资料读取、绑定摘要、编辑保存、头像及设备管理均接入正式设置入口；详见
+  account-profile-devices.txt、account-profile-edit.txt、account-avatar.txt 和 login-device-removal.txt。
+- 设备移除在本机 KDE/XWayland 125% 复核 6 态，包含当前设备、绑定二维码、显式短信、
+  丢回包核对和核对后的列表。验证码提交前清空；只读核对不重发。
+  设备移除和头像写入为合成服务验证，未操作真实账号。快捷登录、SNS 授权和全应用审计继续。
