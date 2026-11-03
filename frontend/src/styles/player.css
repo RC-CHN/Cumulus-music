@@ -162,10 +162,65 @@
   min-width: 31px;
   font-variant-numeric: tabular-nums;
 }
-.seek-control input {
+.seek-rail {
+  position: relative;
+  display: flex;
   flex: 1;
+  min-width: 0;
+}
+.seek-rail input {
+  flex: 1;
+  min-width: 0;
   width: 100%;
   height: 10px;
+}
+.seek-rail-trial input {
+  position: relative;
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
+  background: transparent;
+}
+.seek-rail-trial input::-webkit-slider-runnable-track {
+  height: 10px;
+  background: transparent;
+}
+.seek-rail-trial input::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 10px;
+  height: 10px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.trial-seek-track {
+  position: absolute;
+  top: 3px;
+  right: 5px;
+  left: 5px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+  pointer-events: none;
+}
+.trial-seek-track > span {
+  position: absolute;
+  inset-block: 0;
+  border-radius: inherit;
+}
+.trial-seek-window {
+  background: var(--text-secondary);
+}
+.trial-seek-played {
+  background: var(--accent);
+}
+.trial-seek-track :is(.trial-seek-start, .trial-seek-end) {
+  top: -1px;
+  bottom: -1px;
+  width: 2px;
+  transform: translateX(-50%);
+  background: var(--text);
 }
 input[type='range'] {
   accent-color: var(--accent);

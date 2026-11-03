@@ -64,7 +64,13 @@ use std::{fs, path::PathBuf, sync::Arc};
 use tauri::{Listener, Manager, webview::PageLoadEvent};
 
 struct Library;
+fn trial_seek_proof() -> bool {
+    std::env::var_os("CUMULUS_TRIAL_SEEK_PROOF").is_some()
+}
 fn song(id: u64) -> Value {
+    if id == 1 && trial_seek_proof() {
+        return json!({"id":1,"name":"合成试听歌曲","ar":[{"name":"Cumulus"}],"al":{"name":"界面体验验证"},"dt":100000,"fee":1});
+    }
     if id == 1 && std::env::var_os("CUMULUS_PLAYER_LAYOUT_PROOF").is_some() {
         return json!({"id":id,"name":"沿着海岸走到日落之后 · 用于窄窗口排版检查的长歌名（现场特别收录版本）".repeat(2),"ar":[{"name":"SyntheticArtistWithoutWordBreaks".repeat(4)}],"al":{"name":"合成专辑 · 一个很长很长的副标题与发行版本说明".repeat(4)},"dt":6_000_000,"fee":1});
     }
@@ -309,7 +315,11 @@ impl Api for Library {
                         return value;
                     }
                     let ids: Vec<Value> = serde_json::from_str(args["ids"].as_str().unwrap())?;
-                    json!({"code":200,"data":[{"id":ids[0],"url":"https://m1.music.126.net/cumulus-relay-fixture.wav","code":200,"md5":"fixture","level":"standard","expi":120}]})
+                    let mut row = json!({"id":ids[0],"url":"https://m1.music.126.net/cumulus-relay-fixture.wav","code":200,"md5":"fixture","level":"standard","expi":120});
+                    if trial_seek_proof() && (ids[0] == 1 || ids[0] == "1") {
+                        row["freeTrialInfo"] = json!({"start":20,"end":40});
+                    }
+                    json!({"code":200,"data":[row]})
                 }
                 "/api/song/lyric/v1" => {
                     let long = std::env::var_os("CUMULUS_PLAYER_LAYOUT_PROOF").is_some();

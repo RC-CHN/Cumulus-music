@@ -14,6 +14,7 @@ import PlaybackVolume from './PlaybackVolume.vue';
 import PlaybackMode from './PlaybackMode.vue';
 import { artistLabel } from '../services/artistLabel';
 import { equalizerLauncher } from '../services/equalizer';
+import { insidePlayableTrial, seekRail } from '../services/seekRail';
 const equalizerOpen = ref(false);
 const props = withDefaults(
   defineProps<{
@@ -78,13 +79,35 @@ async function transport(event: MouseEvent, action: PlayerAction) {
     origin.focus({ preventScroll: true });
 }
 const draft = ref<number>();
+const outsideTrial = ref(false);
+const rail = computed(() => seekRail(view.value?.timeline));
+const seekValue = computed(() => draft.value ?? view.value?.position ?? rail.value.min);
+const trialPlayed = computed(() => {
+  const { span, max } = rail.value;
+  return span ? Math.min(span.right, Math.max(span.left, (100 * seekValue.value) / max)) : 0;
+});
 // Replacing a playback session also replaces its slider. A late event from
 // the old input still carries its own identity, not the new song's view.
 const scrubKey = computed(() => {
   const current = view.value;
-  return JSON.stringify([current?.epoch, current?.playId, current?.queueRevision]);
+  const trial = current?.timeline?.mode === 'trial' ? current.timeline : undefined;
+  return JSON.stringify([
+    current?.epoch,
+    current?.playId,
+    current?.queueRevision,
+    trial?.start,
+    trial?.end,
+    trial?.total,
+  ]);
 });
-watch(scrubKey, () => (draft.value = undefined), { flush: 'sync' });
+watch(
+  scrubKey,
+  () => {
+    draft.value = undefined;
+    outsideTrial.value = false;
+  },
+  { flush: 'sync' },
+);
 const intelligenceNotice = ref<HTMLElement>();
 let cancelFocus: { epoch: string; control: Element | null } | undefined;
 function focusIntelligence(epoch: string, control: Element | null) {
@@ -130,17 +153,21 @@ const message = computed(
   () =>
     error.value ||
     view.value?.error ||
-    (pending.value
-      ? '正在准备音乐…'
-      : view.value?.state === 'buffering'
-        ? '正在缓冲…'
-        : view.value?.positionReset
-          ? '音源可播范围已变化，进度已重置'
-          : (view.value?.historyWarning ?? '')),
+    (outsideTrial.value
+      ? '只能在试听片段内调整播放进度'
+      : pending.value
+        ? '正在准备音乐…'
+        : view.value?.state === 'buffering'
+          ? '正在缓冲…'
+          : view.value?.positionReset
+            ? '音源可播范围已变化，进度已重置'
+            : (view.value?.historyWarning ?? '')),
 );
 function scrubInput(event: Event) {
   const input = event.currentTarget as HTMLInputElement;
-  if (input.dataset.scrubKey === scrubKey.value) draft.value = Number(input.value);
+  if (input.dataset.scrubKey !== scrubKey.value) return;
+  outsideTrial.value = false;
+  draft.value = Number(input.value);
 }
 function cancelScrub(event: Event) {
   const input = event.currentTarget as HTMLInputElement;
@@ -152,6 +179,13 @@ async function seek(event: Event) {
   const key = scrubKey.value;
   if (!current || input.dataset.scrubKey !== key) return;
   const seconds = Number(input.value);
+  if (!insidePlayableTrial(current.timeline, seconds)) {
+    outsideTrial.value = current.timeline?.mode === 'trial';
+    draft.value = undefined;
+    input.value = String(current.position ?? rail.value.min);
+    return;
+  }
+  outsideTrial.value = false;
   draft.value = seconds;
   await props.player.seekDisplayed(current, seconds);
   if (scrubKey.value === key && draft.value === seconds) draft.value = undefined;
@@ -273,21 +307,41 @@ async function seek(event: Event) {
         </button>
       </div>
       <div class="seek-control">
-        <time>{{ time(draft ?? view?.position) }}</time
-        ><input
-          :key="scrubKey"
-          :data-scrub-key="scrubKey"
-          aria-label="播放进度"
-          type="range"
-          :min="view?.timeline?.start ?? 0"
-          :max="view?.timeline?.end ?? 1"
-          step="0.1"
-          :value="draft ?? view?.position ?? 0"
-          :disabled="!loaded || !view?.timeline?.end || pending"
-          @input="scrubInput"
-          @pointercancel="cancelScrub"
-          @change="seek"
-        /><time>{{ time(view?.timeline?.total) }}</time>
+        <time>{{ time(draft ?? view?.position) }}</time>
+        <div class="seek-rail" :class="{ 'seek-rail-trial': rail.span }">
+          <div v-if="rail.span" class="trial-seek-track" aria-hidden="true">
+            <span
+              class="trial-seek-window"
+              :style="{ left: rail.span.left + '%', right: 100 - rail.span.right + '%' }"
+            />
+            <span
+              class="trial-seek-played"
+              :style="{ left: rail.span.left + '%', right: 100 - trialPlayed + '%' }"
+            />
+            <span class="trial-seek-start" :style="{ left: rail.span.left + '%' }" />
+            <span class="trial-seek-end" :style="{ left: rail.span.right + '%' }" />
+          </div>
+          <input
+            :key="scrubKey"
+            :data-scrub-key="scrubKey"
+            aria-label="播放进度"
+            :aria-valuetext="
+              rail.trial
+                ? `${time(seekValue)}，可试听 ${time(rail.trial.start)} 至 ${time(rail.trial.end)}`
+                : undefined
+            "
+            type="range"
+            :min="rail.min"
+            :max="rail.max"
+            step="0.1"
+            :value="seekValue"
+            :disabled="!loaded || !view?.timeline?.end || pending"
+            @input="scrubInput"
+            @pointercancel="cancelScrub"
+            @change="seek"
+          />
+        </div>
+        <time>{{ time(view?.timeline?.total) }}</time>
       </div>
     </div>
     <div class="player-tools">
@@ -350,7 +404,7 @@ async function seek(event: Event) {
         <span>{{ message }}</span
         ><button v-if="canRetry" class="text-button" :disabled="busy" @click="retryPlayback">
           重试</button
-        ><span v-if="view?.timeline?.mode === 'trial'">试听片段</span>
+        ><span v-if="view?.timeline?.mode === 'trial' && !outsideTrial">试听片段</span>
       </div>
       <Transition
         name="playback-feedback"
