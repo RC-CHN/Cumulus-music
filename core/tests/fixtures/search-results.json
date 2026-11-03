@@ -83,6 +83,7 @@
           "name": "合成歌单 1 · 夜间轻音乐与长标题",
           "recommendText": "<em>合成</em> 推荐理由",
           "playCount": 12345,
+          "privacy": 0,
           "userId": 2,
           "creator": {
             "userId": 2,
@@ -673,6 +674,7 @@
                 "name": "合成歌单 1 · 夜间轻音乐与长标题",
                 "recommendText": "<em>合成</em> 推荐理由",
                 "playCount": 12345,
+                "privacy": 0,
                 "userId": 2,
                 "creator": {
                   "userId": 2,
