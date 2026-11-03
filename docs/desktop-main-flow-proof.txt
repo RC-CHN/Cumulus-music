@@ -42,5 +42,10 @@ Cumulus 桌面主流程验收
   本机已合成预演：独立网络命名空间无外部路由，唯一测试代理停止后，
   已建立的隧道两端关闭，新连接也被拒绝。报告在
   .build/main-flow-worktree/.build/main-flow-proxy/report.json。
-  尚未验证真实桌面各传输的代理接线、TLS 或宿主 Unix socket 隔离；
-  该报告不能作为真实服务硬离线的证据。
+  本机 HTTPS 代理预演也已覆盖实际 Tauri WebView、Reqwest、libmpv、
+  MConfig、易盾和下载传输，证据见同目录 tls-c.json。隔离工作树又跑通
+  整个合成桌面流程：私有命名空间和 D-Bus 中完成合成下载；外部控制器
+  停止代理后，已有 TLS 见证收到 EOF，原生 HTTPS 探测被拒绝，随后仍能
+  用 libmpv 播放已下载文件。证据见同目录 isolation-verified/report.json。
+  该运行没有真实账号或外部网络。真实请求准入、真实会话与完整线上
+  往返仍未验证。

@@ -427,6 +427,97 @@
     await stage("avatar_reconciled_dark", { expectNickname });
     await emit("complete", { ok: true, accountAvatar: true, stageCount: count, expectNickname });
   }
+  async function activeSwitch() {
+    const source = "短信验证账号";
+    const target = "邮箱验证账号";
+    const test = (id) => one(`[data-testid="${id}"]`);
+    const eligibility = () => test("quick-login-eligibility")?.dataset.quickEligibilityState;
+    const phase = () => test("active-server-switch-panel")?.dataset.serverQuickPhase;
+    async function check() {
+      click(test("quick-login-eligibility-check"));
+      await wait(() => eligibility() === "ready", "explicit active switch eligibility");
+      assert(all('[data-quick-eligible="true"]').length === 2, "both saved records checked");
+      assert(all('[data-testid="active-server-switch-open"]').length === 1, "only the other account can be switched to");
+      assert(!test("server-quick-login-open"), "active picker has no guest exchange action");
+      await settle();
+    }
+    async function enterConsent() {
+      click(test("active-server-switch-open"));
+      await wait(() => phase() === "consent", "active switch consent");
+      const copy = test("active-server-switch-panel").textContent;
+      assert(copy.includes(source) && copy.includes(target), "consent names both source and target");
+      await settle();
+    }
+    async function exitAttempt() {
+      click(test("active-server-switch-cancel"));
+      await wait(() => !phase() && eligibility() === "idle", "returned to active picker");
+      assert(one(".account-button").textContent.includes(source), "original account remains active");
+      await settle();
+    }
+
+    await open();
+    await email();
+    await logged(target);
+    await chooser();
+    click(button("＋ 添加账号"));
+    await wait(() => one(".login-methods"), "second synthetic account");
+    await settle();
+    await tab("手机");
+    fill("登录手机号", "13800138000");
+    click(button("密码登录"));
+    await wait(
+      () => all('[aria-label="登录密码"]').length && status() === "ready" && !one(".tab-leave-active"),
+      "active source phone password ready",
+    );
+    await settle();
+    fill("登录密码", "fixture-password");
+    if (!one('[aria-label="同意登录协议"]').checked)
+      click(one('[aria-label="同意登录协议"]'));
+    click(one(".login-submit"));
+    await logged(source);
+    await chooser();
+    assert(eligibility() === "idle" && !test("active-server-switch-open"), "picker did not query eligibility on entry");
+    await stage("active_switch_idle_light", { expectNickname: source });
+
+    await mode("active_switch_verify");
+    await check();
+    await stage("active_switch_eligible_light", { expectNickname: source });
+    await enterConsent();
+    await stage("active_switch_consent_light", { expectNickname: source });
+    click(test("active-server-switch-consent"));
+    await wait(() => phase() === "verification_required", "unsupported switch verification");
+    assert(test("active-server-switch-alternate") && !test("active-server-switch-reconcile"), "unsupported switch does not replay");
+    await stage("active_switch_verification_light", { expectNickname: source });
+    await exitAttempt();
+
+    await mode("active_switch_hold");
+    await check();
+    await enterConsent();
+    click(test("active-server-switch-consent"));
+    await wait(() => phase() === "exchanging", "switch request held");
+    await wait(async () => {
+      await mode("inspect");
+      return window.__accountLoginPending === true;
+    }, "native switch reached synthetic backend");
+    await stage("active_switch_held_light", { expectNickname: source });
+    await exitAttempt();
+    await mode("release");
+    await stage("active_switch_cancelled_light", { expectNickname: source });
+
+    await theme("dark");
+    await resize(880, 670);
+    await mode("active_switch_interrupt");
+    await check();
+    await enterConsent();
+    click(test("active-server-switch-consent"));
+    await wait(() => phase() === "identity_required", "switch candidate has isolated receipt");
+    assert(!test("active-server-switch-consent"), "no switch replay after lost body");
+    await stage("active_switch_recovery_dark", { expectNickname: source });
+    click(test("active-server-switch-reconcile"));
+    await logged(target);
+    await stage("active_switch_adopted_dark", { expectNickname: target });
+    await emit("complete", { ok: true, activeSwitch: true, stageCount: count, expectNickname: target });
+  }
   async function quickLogin() {
     const expectNickname = "邮箱验证账号";
     const test = (id) => one(`[data-testid="${id}"]`);
@@ -597,6 +688,10 @@
     await wait(() => ready() && one(".welcome"), "guest bootstrap");
     await theme("light");
     await resize(1120, 760);
+    if (window.__activeSwitchProof) {
+      await activeSwitch();
+      return;
+    }
     if (window.__quickLoginProof) {
       await quickLogin();
       return;

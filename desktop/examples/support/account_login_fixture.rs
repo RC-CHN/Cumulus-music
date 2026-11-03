@@ -23,6 +23,7 @@ pub struct Service {
     paths: Mutex<BTreeMap<String, u64>>,
     held: Mutex<Option<oneshot::Sender<()>>>,
     completed: Mutex<u64>,
+    switch_identity_reads: Mutex<u64>,
     browser_documents: Mutex<Vec<cumulus_core::account::login::presentation::LoginDocument>>,
     profiles: Mutex<BTreeMap<u64, Value>>,
     removed_devices: Mutex<BTreeSet<u64>>,
@@ -59,13 +60,16 @@ impl Service {
             if let Some(sender) = self.held.lock().unwrap().take() {
                 let _ = sender.send(());
             }
-        } else {
+        } else if mode != "inspect" {
             *self.mode.lock().unwrap() = mode.into();
         }
     }
+    pub fn pending(&self) -> bool {
+        self.held.lock().unwrap().is_some()
+    }
     pub fn snapshot(&self) -> Value {
         let avatars = self.avatars.lock().unwrap();
-        json!({"paths":*self.paths.lock().unwrap(),"pending":self.held.lock().unwrap().is_some(),"completed":*self.completed.lock().unwrap(),"browserDocuments":*self.browser_documents.lock().unwrap(),"avatarChunks":avatars.chunks,"avatarObjects":avatars.objects.len(),"deviceRemoved":self.removed_devices.lock().unwrap().contains(&2)})
+        json!({"paths":*self.paths.lock().unwrap(),"pending":self.pending(),"completed":*self.completed.lock().unwrap(),"switchIdentityReads":*self.switch_identity_reads.lock().unwrap(),"browserDocuments":*self.browser_documents.lock().unwrap(),"avatarChunks":avatars.chunks,"avatarObjects":avatars.objects.len(),"deviceRemoved":self.removed_devices.lock().unwrap().contains(&2)})
     }
 }
 impl HttpBackend for Service {
@@ -80,6 +84,80 @@ impl HttpBackend for Service {
             let (path, data) = eapi::unwrap(params)?;
             *self.paths.lock().unwrap().entry(path.clone()).or_default() += 1;
             let mode = self.mode.lock().unwrap().clone();
+            if mode.starts_with("active_switch_") {
+                let cookie = plan.headers.get("Cookie").map(String::as_str).unwrap_or("");
+                let has = |token: &str| cookie.split(';').any(|pair| pair.trim() == token);
+                if matches!(
+                    path.as_str(),
+                    "/api/login/getquickloginlist" | "/api/login/switchuser"
+                ) {
+                    let rows: Value = serde_json::from_str(
+                        data["userInfoList"]
+                            .as_str()
+                            .ok_or(Error::Response("fixture switch history"))?,
+                    )?;
+                    if data["currentEnv"] != "{}"
+                        || data["fromPage"] != "JSK"
+                        || plan.headers.get("x-login-chain-id").map(String::as_str) != Some("")
+                        || rows.as_array().map(Vec::len) != Some(2)
+                        || rows[0]["userId"] != "5"
+                        || rows[0]["userProfile"]["userId"] != "5"
+                        || rows[0]["musicU"] != "fixture5"
+                        || rows[1]["userId"] != "2"
+                        || rows[1]["userProfile"]["userId"] != "2"
+                        || rows[1]["musicU"] != "fixture2"
+                        || !has("MUSIC_U=fixture5")
+                        || has("MUSIC_U=fixture2")
+                    {
+                        return Err(Error::Response("fixture active switch request contract"));
+                    }
+                    if path == "/api/login/getquickloginlist" {
+                        if data.get("targetUserId").is_some() || data.get("currentUserId").is_some()
+                        {
+                            return Err(Error::Response(
+                                "fixture eligibility contains exchange fields",
+                            ));
+                        }
+                        return Ok(auth::reply(json!({"code":200,"deleteUserIds":[]}), None));
+                    }
+                    if data["targetUserId"] != "2" || data["currentUserId"] != "5" {
+                        return Err(Error::Response("fixture switch target or source mismatch"));
+                    }
+                    if mode == "active_switch_verify" {
+                        return Ok(auth::reply(json!({"code":8830}), None));
+                    }
+                    if mode == "active_switch_hold" {
+                        let (sender, receiver) = oneshot::channel();
+                        *self.held.lock().unwrap() = Some(sender);
+                        receiver
+                            .await
+                            .map_err(|_| Error::Response("fixture switch release"))?;
+                        *self.completed.lock().unwrap() += 1;
+                        return Ok(auth::reply(json!({"code":200}), Some(2)));
+                    }
+                    if mode != "active_switch_interrupt" {
+                        return Err(Error::Response("unexpected fixture active switch"));
+                    }
+                    let mut reply = auth::reply(json!({"code":200}), None);
+                    reply.body_status = BodyStatus::Interrupted;
+                    reply.body.clear();
+                    reply.set_cookies =
+                        vec!["MUSIC_U=fixtureSwitch2; Path=/; Secure; HttpOnly".into()];
+                    return Ok(reply);
+                }
+                if path == "/api/w/nuser/account/get" && has("MUSIC_U=fixtureSwitch2") {
+                    if has("MUSIC_U=fixture5") || has("MUSIC_U=fixture2") {
+                        return Err(Error::Response(
+                            "fixture target identity mixed source credentials",
+                        ));
+                    }
+                    *self.switch_identity_reads.lock().unwrap() += 1;
+                    return Ok(auth::reply(
+                        json!({"code":200,"profile":{"userId":2,"nickname":auth::nickname(2)}}),
+                        None,
+                    ));
+                }
+            }
             if mode.starts_with("quick_") {
                 let cookie = plan.headers.get("Cookie").map(String::as_str).unwrap_or("");
                 if matches!(

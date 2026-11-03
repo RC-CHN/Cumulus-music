@@ -20,8 +20,9 @@ def main():
     parser.add_argument('--account-avatar', action='store_true')
     parser.add_argument('--device-removal', action='store_true')
     parser.add_argument('--quick-login', action='store_true')
+    parser.add_argument('--active-switch', action='store_true')
     args = parser.parse_args()
-    if sum((args.baseline, args.account_detail, args.profile_edit, args.account_avatar, args.device_removal, args.quick_login)) > 1:
+    if sum((args.baseline, args.account_detail, args.profile_edit, args.account_avatar, args.device_removal, args.quick_login, args.active_switch)) > 1:
         parser.error('choose one proof mode')
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
@@ -39,6 +40,8 @@ def main():
         env['CUMULUS_PROOF_DEVICE_REMOVAL'] = '1'
     if args.quick_login:
         env['CUMULUS_PROOF_QUICK_LOGIN'] = '1'
+    if args.active_switch:
+        env['CUMULUS_PROOF_ACTIVE_SWITCH'] = '1'
     for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'), ('XDG_CACHE_HOME', 'cache'),
                       ('XDG_RUNTIME_DIR', 'runtime'), ('APPDATA', 'roaming'), ('LOCALAPPDATA', 'local')]:
         path = root/'os-profile'/name
@@ -55,14 +58,42 @@ def main():
     complete = json.loads((output/'complete.json').read_text(encoding='utf-8'))
     states = [json.loads(path.read_text(encoding='utf-8')) for path in sorted(output.glob('ux_*.json'))]
     assert complete['ok'] and len(states) == complete['stageCount']
-    assert len(states) == (7 if args.quick_login else 4 if args.account_avatar else 5 if args.profile_edit else 6 if args.account_detail or args.device_removal else 2 if args.baseline else 28)
+    assert len(states) == (8 if args.active_switch else 7 if args.quick_login else 4 if args.account_avatar else 5 if args.profile_edit else 6 if args.account_detail or args.device_removal else 2 if args.baseline else 28)
     for state in states:
         assert not state['overflow']
         if not args.baseline:
             assert state['focused'] and state['focusValid']
         assert all(control['hit'] for control in state['controls'])
         assert state['realMusicRequests'] == 0
-    if args.quick_login:
+    if args.active_switch:
+        assert complete['activeSwitch']
+        rows = {row['stage'].split('_', 2)[2]: row for row in states}
+        eligibility = '/api/login/getquickloginlist'
+        switch = '/api/login/switchuser'
+        assert [row['theme'] for row in states] == ['light'] * 6 + ['dark'] * 2
+        assert [row['fixture']['paths'].get(eligibility, 0) for row in states] == [0, 1, 1, 2, 4, 4, 6, 6]
+        assert [row['fixture']['paths'].get(switch, 0) for row in states] == [0, 0, 0, 1, 2, 2, 3, 3]
+        assert all(row['nativeAccount']['status'] == 'authenticated' for row in states)
+        assert [row['nativeAccount']['nickname'] for row in states] == ['短信验证账号'] * 7 + ['邮箱验证账号']
+        source_epoch = states[0]['nativeAccount']['epoch']
+        assert all(row['nativeAccount']['epoch'] == source_epoch for row in states[:-1])
+        assert states[-1]['nativeAccount']['epoch'] != source_epoch
+        assert rows['active_switch_held_light']['fixture']['pending']
+        assert not rows['active_switch_cancelled_light']['fixture']['pending']
+        assert all(row['fixture']['switchIdentityReads'] == 0 for row in states[:-1])
+        assert states[-1]['fixture']['switchIdentityReads'] >= 1
+        assert complete['fixture']['paths'][switch] == 3 and complete['fixture']['completed'] == 0
+        first_saved = {row['nickname']: row for row in states[0]['savedAccounts']['value']}
+        last_saved = {row['nickname']: row for row in states[-1]['savedAccounts']['value']}
+        assert first_saved['短信验证账号']['id'] == last_saved['短信验证账号']['id']
+        assert first_saved['邮箱验证账号']['id'] != last_saved['邮箱验证账号']['id']
+        assert last_saved['邮箱验证账号']['current'] and not last_saved['短信验证账号']['current']
+        for row in [*states, complete]:
+            paths = row['fixture']['paths']
+            assert not any('/quicklogin' in path or '/sms/captcha/' in path or path == '/api/logout' for path in paths)
+            serialized = json.dumps(row, ensure_ascii=False)
+            assert all(marker not in serialized for marker in ('fixtureSwitch2', 'MUSIC_U=', 'userInfoList', 'fixture-refresh'))
+    elif args.quick_login:
         assert complete['quickLogin']
         rows = {row['stage'].split('_', 2)[2]: row for row in states}
         eligibility = '/api/login/getquickloginlist'
@@ -212,7 +243,7 @@ def main():
         assert len(list(output.glob('ux_*.png'))) == len(states)
     report = dict(ok=True, baseline=args.baseline, accountDetail=args.account_detail, profileEdit=args.profile_edit,
                   accountAvatar=args.account_avatar,
-                  deviceRemoval=args.device_removal, quickLogin=args.quick_login,
+                  deviceRemoval=args.device_removal, quickLogin=args.quick_login, activeSwitch=args.active_switch,
                   states=len(states), screenshots=len(states) if args.screenshots else 0,
                   actualWebView=True, realMusicRequests=0, realAccountWrites=0)
     (root/'report.json').write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8')

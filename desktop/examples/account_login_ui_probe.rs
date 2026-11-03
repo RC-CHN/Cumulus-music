@@ -35,6 +35,7 @@ fn main() {
     let baseline = std::env::var_os("CUMULUS_PROOF_BASELINE").is_some();
     let account_detail = std::env::var_os("CUMULUS_PROOF_ACCOUNT_DETAIL").is_some();
     let profile_edit = std::env::var_os("CUMULUS_PROOF_PROFILE_EDIT").is_some();
+    let active_switch = std::env::var_os("CUMULUS_PROOF_ACTIVE_SWITCH").is_some();
     let quick_login = std::env::var_os("CUMULUS_PROOF_QUICK_LOGIN").is_some();
     let device_removal = std::env::var_os("CUMULUS_PROOF_DEVICE_REMOVAL").is_some();
     let browser_service = service.clone();
@@ -58,7 +59,7 @@ fn main() {
             app.listen("account-login-fixture", move |event| {
                 let value: Value = serde_json::from_str(event.payload()).unwrap();
                 fixture.command(value["mode"].as_str().unwrap());
-                handle.get_webview_window("main").unwrap().eval(format!("window.__accountLoginAck={};", value["id"])).unwrap();
+                handle.get_webview_window("main").unwrap().eval(format!("window.__accountLoginPending={};window.__accountLoginAck={};", fixture.pending(), value["id"])).unwrap();
             });
             let handle = app.handle().clone();
             app.listen("ux-proof", move |event| {
@@ -107,6 +108,7 @@ fn main() {
                 webview.eval(format!("window.__accountAvatarProof={avatar};")).unwrap();
                 webview.eval(format!("window.__deviceRemovalProof={device_removal};")).unwrap();
                 webview.eval(format!("window.__quickLoginProof={quick_login};")).unwrap();
+                webview.eval(format!("window.__activeSwitchProof={active_switch};")).unwrap();
                 let script = if std::env::var("CUMULUS_PROOF_LOGIN_ENTRY").as_deref() == Ok("1") {
                     include_str!("login_entry_ui_probe.js")
                 } else {
