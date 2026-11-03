@@ -653,3 +653,98 @@ async fn success_envelope_without_positive_boolean_never_creates_a_write_receipt
         }
     }
 }
+
+#[tokio::test]
+async fn native_stop_requires_absence_and_the_exact_reviewed_registration() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Arc::new(StateStore::open(dir.path()).unwrap());
+    let api = Arc::new(ScriptApi::new(start().into_iter().chain([
+        auth(true, 11),
+        recycle(false),
+        Reply::Ready(Err(Error::Transport("lost stop receipt".into()))),
+        ack(),
+    ])));
+    let session = world(api.clone(), store.clone());
+    let token = session.token().unwrap();
+    let service = EffectAuthorizations::new(session).unwrap();
+    service
+        .begin_for(&token, id(), TrialConsent::KnownNonTrial)
+        .await
+        .unwrap();
+    let first = service
+        .native_release_receipt_for(&token, id())
+        .unwrap()
+        .unwrap();
+    assert_eq!(first.effect(), id());
+    assert_eq!(first.phase(), LeasePhase::Registered);
+    let native = service.acquire_bound_use_fence_for(&token).unwrap();
+    assert!(matches!(
+        service
+            .release_native_for(&token, &first, ReleaseRetry::Never)
+            .await,
+        Err(Error::MutationBusy)
+    ));
+    assert!(matches!(
+        service.release_for(&token, id(), ReleaseRetry::Never).await,
+        Err(Error::MutationBusy)
+    ));
+    assert_eq!(writes(&api).len(), 1);
+    drop(native);
+
+    service.observe_for(&token, id()).await.unwrap();
+    assert!(matches!(
+        service
+            .release_native_for(&token, &first, ReleaseRetry::Never)
+            .await,
+        Err(Error::StaleResponse)
+    ));
+    let current = service
+        .native_release_receipt_for(&token, id())
+        .unwrap()
+        .unwrap();
+    let other_session = world(api.clone(), store);
+    let other_token = other_session.token().unwrap();
+    let other = EffectAuthorizations::new(other_session).unwrap();
+    assert!(matches!(
+        other
+            .release_native_for(&other_token, &current, ReleaseRetry::Never)
+            .await,
+        Err(Error::StaleResponse)
+    ));
+    assert_eq!(writes(&api).len(), 1);
+    assert!(matches!(
+        service
+            .release_native_for(&token, &current, ReleaseRetry::Never)
+            .await,
+        Err(Error::MutationUncertain)
+    ));
+    let recovery = other
+        .native_release_receipt_for(&other_token, id())
+        .unwrap()
+        .unwrap();
+    assert_eq!(recovery.phase(), LeasePhase::StopUncertain);
+    assert!(matches!(
+        other
+            .release_native_for(&other_token, &recovery, ReleaseRetry::Never)
+            .await,
+        Err(Error::MutationUncertain)
+    ));
+    assert_eq!(writes(&api).len(), 2);
+    let released = other
+        .release_native_for(
+            &other_token,
+            &recovery,
+            ReleaseRetry::ExplicitAfterUnknownResult,
+        )
+        .await
+        .unwrap();
+    assert_eq!(released.phase, LeasePhase::Released);
+    assert!(released.stop_acknowledged);
+    assert_eq!(writes(&api).len(), 3);
+    assert!(
+        service
+            .native_release_receipt_for(&token, id())
+            .unwrap()
+            .is_none()
+    );
+}

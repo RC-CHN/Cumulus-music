@@ -5,7 +5,7 @@ use crate::{
     effects::{
         authorization::{
             ActiveParametricObservation, BoundParametric, BoundParametricTarget,
-            EffectAuthorizations, LeasePhase,
+            EffectAuthorizations, LeasePhase, NativeEffectReleaseReceipt, ReleaseRetry,
         },
         catalog::{CatalogueKind, EffectId},
         device_directory::EffectDeviceRow,
@@ -129,6 +129,32 @@ impl MusicClient {
         Ok(EffectAuthorizations::new(self.session.clone())?
             .record_for(&token, effect)?
             .map(|lease| lease.phase))
+    }
+
+    /// Review the exact durable registration before an explicit native stop.
+    pub fn native_effect_release_receipt(
+        &self,
+        epoch: &str,
+        id: EffectId,
+    ) -> Result<Option<NativeEffectReleaseReceipt>> {
+        let token = self.player_token(epoch)?;
+        EffectAuthorizations::new(self.session.clone())?.native_release_receipt_for(&token, id)
+    }
+
+    /// Submit an explicit remote stop only when no native binding is in use.
+    /// Callers must request exact local detach first when a target is known.
+    pub async fn release_native_effect(
+        &self,
+        epoch: &str,
+        receipt: &NativeEffectReleaseReceipt,
+        retry: ReleaseRetry,
+    ) -> Result<LeasePhase> {
+        let token = self.player_token(epoch)?;
+        let lease = EffectAuthorizations::new(self.session.clone())?
+            .release_native_for(&token, receipt, retry)
+            .await?;
+        self.session.check_generation(&token)?;
+        Ok(lease.phase)
     }
 
     /// Read and bind an already acknowledged standalone PEQ registration.

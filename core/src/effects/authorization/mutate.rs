@@ -8,6 +8,26 @@ use crate::{
     effects::{api::EffectsApi, catalog::EffectId, rights::known_non_trial},
 };
 
+/// Opaque receipt for a specific native non-trial registration revision.
+pub struct NativeEffectReleaseReceipt {
+    session: std::sync::Weak<crate::account::AccountSession>,
+    token: SessionToken,
+    effect: EffectId,
+    operation: String,
+    revision: u64,
+    phase: LeasePhase,
+}
+
+impl NativeEffectReleaseReceipt {
+    pub fn effect(&self) -> EffectId {
+        self.effect
+    }
+
+    pub fn phase(&self) -> LeasePhase {
+        self.phase
+    }
+}
+
 impl EffectAuthorizations {
     /// Prepare/download the effect before calling this. The returned result is
     /// a registered interest and current rights, not successful DSP activation.
@@ -105,6 +125,70 @@ impl EffectAuthorizations {
         Ok(observation)
     }
 
+    /// Read the durable cleanup identity without contacting the service.
+    pub fn native_release_receipt_for(
+        &self,
+        token: &SessionToken,
+        effect: EffectId,
+    ) -> Result<Option<NativeEffectReleaseReceipt>> {
+        Ok(self.record_for(token, effect)?.and_then(|lease| {
+            (lease.phase.needs_release() && known_non_trial(lease.registration_use_type)).then(
+                || NativeEffectReleaseReceipt {
+                    session: std::sync::Arc::downgrade(&self.session),
+                    token: token.clone(),
+                    effect,
+                    operation: lease.operation,
+                    revision: lease.revision,
+                    phase: lease.phase,
+                },
+            )
+        }))
+    }
+
+    /// Explicit stop of the exact observed native registration. All bound
+    /// actors, including other processes, must have confirmed local removal.
+    pub async fn release_native_for(
+        &self,
+        token: &SessionToken,
+        receipt: &NativeEffectReleaseReceipt,
+        retry: ReleaseRetry,
+    ) -> Result<EffectLease> {
+        if &receipt.token != token
+            || !receipt
+                .session
+                .upgrade()
+                .is_some_and(|session| std::sync::Arc::ptr_eq(&self.session, &session))
+        {
+            return Err(Error::StaleResponse);
+        }
+        let owner = self.owner(token)?;
+        let _activation = self.activation_lock_for(token)?;
+        let _unused = self.acquire_bound_use_fence_for(token)?;
+        let _lock = self.lock(&owner)?;
+        let lease = self
+            .get(&owner, receipt.effect)?
+            .filter(|lease| {
+                lease.operation == receipt.operation
+                    && lease.revision == receipt.revision
+                    && lease.phase == receipt.phase
+                    && known_non_trial(lease.registration_use_type)
+            })
+            .ok_or(Error::StaleResponse)?;
+        let result = self.release_locked(token, &owner, lease, retry).await;
+        if result.is_err() {
+            self.session.check_generation(token)?;
+            if self.get(&owner, receipt.effect)?.is_some_and(|lease| {
+                matches!(
+                    lease.phase,
+                    LeasePhase::Releasing | LeasePhase::StopUncertain
+                )
+            }) {
+                return Err(Error::MutationUncertain);
+            }
+        }
+        result
+    }
+
     pub async fn release_for(
         &self,
         token: &SessionToken,
@@ -112,10 +196,22 @@ impl EffectAuthorizations {
         retry: ReleaseRetry,
     ) -> Result<EffectLease> {
         let owner = self.owner(token)?;
+        let _activation = self.activation_lock_for(token)?;
+        let _unused = self.acquire_bound_use_fence_for(token)?;
         let _lock = self.lock(&owner)?;
-        let mut lease = self
+        let lease = self
             .get(&owner, effect)?
             .ok_or(Error::State("no owned effect authorization to release"))?;
+        self.release_locked(token, &owner, lease, retry).await
+    }
+
+    async fn release_locked(
+        &self,
+        token: &SessionToken,
+        owner: &str,
+        mut lease: EffectLease,
+        retry: ReleaseRetry,
+    ) -> Result<EffectLease> {
         if lease.phase == LeasePhase::Released {
             return Ok(lease);
         }
@@ -135,8 +231,8 @@ impl EffectAuthorizations {
         lease.last_error = None;
         lease.advance()?;
         self.session
-            .with_token(token, |_| self.save(&owner, &lease))?;
-        self.send(token, &owner, &mut lease, false).await?;
+            .with_token(token, |_| self.save(owner, &lease))?;
+        self.send(token, owner, &mut lease, false).await?;
         Ok(lease)
     }
 
