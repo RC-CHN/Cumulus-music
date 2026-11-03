@@ -373,7 +373,7 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
             creators(response["result"]["playlists"].as_array_mut().unwrap());
         }
     }
-    if matches!(mode, "hot_source" | "selection_source") {
+    if matches!(mode.as_str(), "hot_source" | "selection_source") {
         let keyword = args["keyword"].as_str().or_else(|| args["s"].as_str());
         let expected = match keyword {
             Some("合成热搜来源") => "hotquery",
