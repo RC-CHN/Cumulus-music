@@ -666,9 +666,13 @@ input[type='range'] {
   padding: 2px;
   overflow: auto;
 }
-.vinyl-album {
+.vinyl-album,
+.vinyl-source {
   display: flex;
   padding: 2px;
+}
+.vinyl-source > span:first-child {
+  flex: none;
 }
 .vinyl-credit {
   min-width: 0;

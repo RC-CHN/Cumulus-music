@@ -7,13 +7,22 @@ import DesktopLyricToggle from './DesktopLyricToggle.vue';
 import ActionMenu from './ActionMenu.vue';
 import { useMotion } from '../composables/useMotion';
 import type { CatalogResource } from '../services/catalog';
-import { playbackMetadata } from '../services/playbackMetadata';
+import {
+  playbackMetadata,
+  playbackSource,
+  type PlaybackSourceDestination,
+} from '../services/playbackMetadata';
 const props = defineProps<{ player: PlayerModel }>();
-const emit = defineEmits<{ report: []; catalog: [target: CatalogResource] }>();
+const emit = defineEmits<{
+  report: [];
+  catalog: [target: CatalogResource];
+  source: [target: PlaybackSourceDestination];
+}>();
 const { view, lyrics, lyricLoading, lyricError, loaded, busy } = props.player;
 const container = ref<HTMLElement>(),
   close = ref<HTMLButtonElement>();
 const metadata = computed(() => playbackMetadata(view.value?.track));
+const source = computed(() => playbackSource(view.value));
 const wordMode = ref(true);
 const motion = useMotion();
 const manual = ref(false);
@@ -162,6 +171,20 @@ function aligned(rows: { time?: number; lyric: string }[] | undefined, index: nu
           <span v-else class="vinyl-credit" :title="metadata.album.name">{{
             metadata.album.name
           }}</span>
+        </small>
+        <small v-if="source" class="vinyl-source">
+          <span>来源：</span>
+          <button
+            v-if="source.target"
+            type="button"
+            class="text-button vinyl-credit"
+            :aria-label="`查看播放来源：${source.name}`"
+            :title="source.name"
+            @click="emit('source', source.target)"
+          >
+            {{ source.name }}
+          </button>
+          <span v-else>{{ source.name }}</span>
         </small>
         <span v-if="view?.timeline?.mode === 'trial'" class="trial-badge">当前为试听片段</span>
       </div>

@@ -326,6 +326,28 @@ function openRanking(
 function openCatalog(resource: CatalogResource) {
   music.navigate({ kind: 'catalog', resource });
 }
+function openPlaybackSource(
+  target: import('./services/playbackMetadata').PlaybackSourceDestination,
+) {
+  player.lyricsOpen.value = false;
+  switch (target.kind) {
+    case 'playlist':
+      music.navigate({ kind: 'playlist', id: target.id });
+      break;
+    case 'album':
+    case 'artist':
+      openCatalog({ kind: target.kind, id: target.id });
+      break;
+    case 'podcast':
+      openSceneRadio(target.id);
+      break;
+    case 'local':
+    case 'cloud':
+    case 'downloads':
+      music.navigate({ kind: target.kind });
+      break;
+  }
+}
 const searchBox = ref<InstanceType<typeof SearchBox>>();
 function searchOriginal(keyword: string) {
   if (
@@ -2867,6 +2889,7 @@ onUnmounted(() => {
         v-if="player.lyricsOpen.value && currentTrackId"
         :player="player"
         @report="reportLyrics"
+        @source="openPlaybackSource"
         @catalog="
           (target) => {
             player.lyricsOpen.value = false;

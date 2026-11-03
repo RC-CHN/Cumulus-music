@@ -1,5 +1,6 @@
 import type { CatalogResource } from './catalog.ts';
 import type { TrackView } from './contracts.ts';
+import type { PlayerOrigin, PlayerView } from './player.ts';
 
 type MetadataTrack = Pick<TrackView, 'artists' | 'artistRefs' | 'album' | 'albumId' | 'local'>;
 
@@ -19,4 +20,36 @@ export function playbackMetadata(track: MetadataTrack | null | undefined) {
     artists: artists.length ? artists : [{ name: '未知歌手', target: null }],
     album: { name: album || '未知', target: album ? link('album', track?.albumId) : null },
   };
+}
+
+export type PlaybackSourceDestination = PlayerOrigin | { kind: 'local' | 'cloud' | 'downloads' };
+
+export function playbackSource(view: PlayerView | undefined): {
+  name: string;
+  target?: PlaybackSourceDestination;
+} | null {
+  if (!view?.track || view.fm) return null;
+  const { origin, track } = view;
+  if (origin && /^[0-9]*[1-9][0-9]*$/.test(origin.id)) {
+    const { kind, id } = origin;
+    const name =
+      kind === 'album'
+        ? (track.albumId === id && track.album.trim()) || '专辑'
+        : kind === 'artist'
+          ? track.artistRefs?.find((artist) => artist.id === id)?.name.trim() || '歌手'
+          : kind === 'playlist'
+            ? '歌单'
+            : '播客';
+    return { name, target: origin };
+  }
+  switch (view.resourceKind) {
+    case 'local':
+      return { name: '本地音乐', target: { kind: 'local' } };
+    case 'cloud':
+      return { name: '音乐云盘', target: { kind: 'cloud' } };
+    case 'downloaded':
+      return { name: '下载管理', target: { kind: 'downloads' } };
+    default:
+      return { name: '未知' };
+  }
 }

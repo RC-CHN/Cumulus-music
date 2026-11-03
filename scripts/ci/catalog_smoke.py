@@ -158,7 +158,7 @@ def main():
         print(json.dumps(dict(ok=True, actualWebView=True, artistBatchVerified=True, loadedQueueInsertion=True)))
         return
     if args.playback_credit:
-        assert complete['ok'] and complete['samePlayback'] and complete['syntheticCatalog']
+        assert complete['ok'] and complete['samePlayback'] and complete['sourceNavigation'] and complete['syntheticCatalog']
         states = [json.loads((output / f'ux_{stage}.json').read_text(encoding='utf-8'))
                   for stage in ('album_credit', 'album_opened', 'artist_credit', 'artist_opened', 'artist_profile')]
         assert [states[i]['title'] for i in (1, 3, 4)] == ['测试专辑', '测试歌手', '合成歌手个人页']
@@ -166,8 +166,16 @@ def main():
         assert all(state['state'] == 'playing' for state in native)
         assert len({state['playId'] for state in native}) == 1
         assert len({state['queueRevision'] for state in native}) == 1
-        assert not args.screenshots or captures == 5
-        print(json.dumps(dict(ok=True, actualWebView=True, samePlayback=True, screenshots=captures)))
+        before, after = [json.loads((output / f'ux_{stage}.json').read_text(encoding='utf-8'))
+                         for stage in ('album_source', 'album_source_opened')]
+        assert before['source'] == after['title'] == '测试专辑'
+        assert before['nativePlayer']['origin'] == after['nativePlayer']['origin']
+        assert before['nativePlayer']['origin']['kind'] == 'album'
+        for key in ('playId', 'queueRevision'):
+            assert before['nativePlayer'][key] == after['nativePlayer'][key]
+        assert not args.screenshots or captures == 7
+        print(json.dumps(dict(ok=True, actualWebView=True, samePlayback=True,
+                              sourceNavigation=True, screenshots=captures)))
         return
     if args.navigation:
         assert complete['ok'] and complete['navigation'] and complete['stageCount'] == 52
