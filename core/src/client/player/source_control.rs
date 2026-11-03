@@ -7,6 +7,7 @@ pub(super) fn validate(
     current: &PlaybackSnapshot,
     play_id: &str,
     queue_revision: &str,
+    refresh_failed: bool,
 ) -> Result<()> {
     let revision = queue_revision
         .parse::<u64>()
@@ -18,6 +19,13 @@ pub(super) fn validate(
     }
     if current.queue_revision != revision || current.play_id.as_deref() != Some(play_id) {
         return Err(Error::StaleResponse);
+    }
+    if refresh_failed {
+        return if current.state == PlaybackStatus::Error {
+            Ok(())
+        } else {
+            Err(Error::StaleResponse)
+        };
     }
     if !matches!(
         current.state,

@@ -392,6 +392,10 @@ pub enum PlayerAction {
     Stop,
     Restore,
     Refresh,
+    RefreshFor {
+        play_id: String,
+        expected_queue_revision: String,
+    },
     Quality {
         level: Quality,
     },

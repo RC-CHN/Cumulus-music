@@ -225,6 +225,7 @@ impl Actor {
         let options = LoadOptions {
             paused: self.state == PlaybackStatus::Paused,
             position: self.position,
+            retain_source_retry: self.position.is_some(),
             recover: true,
             source: Some(source),
             ..Default::default()

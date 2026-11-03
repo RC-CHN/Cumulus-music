@@ -196,7 +196,35 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       if (current === request) busy.value = false;
     }
   }
-  const action = (input: PlayerAction) => run((e) => core.playerAction(e, input));
+  function action(input: PlayerAction) {
+    const invoke = (e: string) => core.playerAction(e, input);
+    if (input.kind !== 'quality_for') return run(invoke);
+    const origin = view.value;
+    return run(invoke, async (e) => {
+      const intent = request;
+      await syncPlayback();
+      if (e !== epoch || intent !== request)
+        throw { code: 'stale', message: '播放请求已更新', retryable: false };
+      const current = view.value;
+      // Authorization errors leave the original player intact. If a newly
+      // authorized decoder failed, its entry already owns the chosen quality.
+      const failedReload =
+        origin?.entryId &&
+        current?.epoch === e &&
+        current.entryId === origin.entryId &&
+        current.playId &&
+        current.playId !== origin.playId &&
+        current.state === 'error' &&
+        current.requestedQuality === input.level;
+      return failedReload
+        ? core.playerAction(e, {
+            kind: 'refresh_for',
+            play_id: current.playId!,
+            expected_queue_revision: current.queueRevision,
+          })
+        : invoke(e);
+    });
+  }
   // Quota writes must never become the generic audio-error retry operation.
   // A closed trial dialog may leave a native operation running; its durable
   // result is still accepted for this connection, independently of that dialog.

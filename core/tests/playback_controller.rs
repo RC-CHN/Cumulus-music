@@ -466,6 +466,27 @@ async fn denied_quality_preserves_playback_and_authorized_downgrade_preserves_cl
 }
 
 #[tokio::test]
+async fn retry_after_quality_decoder_failure_preserves_paused_position() {
+    let f = Fixture::new();
+    f.command(replace(&[1])).await.unwrap();
+    f.command(Cmd::Seek(47.0)).await.unwrap();
+    f.command(Cmd::Pause(true)).await.unwrap();
+    f.device.load_failure_code.store(-15, Ordering::SeqCst);
+    assert!(f.command(Cmd::Quality(Quality::Lossless)).await.is_err());
+    let failed = f.command(Cmd::Snapshot).await.unwrap();
+    assert_eq!(failed.state, Status::Error);
+    assert_eq!(failed.requested_quality.as_deref(), Some("lossless"));
+
+    f.device.load_failure_code.store(0, Ordering::SeqCst);
+    let retried = f.command(Cmd::RefreshSource).await.unwrap();
+    assert_eq!(retried.state, Status::Paused);
+    assert_eq!(retried.position, Some(47.0));
+    assert_eq!(retried.requested_quality.as_deref(), Some("lossless"));
+    assert_eq!(song(&retried), Some(1));
+    assert!(f.device.state.lock().unwrap().view.paused);
+}
+
+#[tokio::test]
 async fn explicit_new_queue_keeps_its_quality_until_the_preference_changes_again() {
     let f = Fixture::new();
     f.command(replace(&[1, 2])).await.unwrap();

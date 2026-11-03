@@ -933,6 +933,45 @@ test('unavailable online source is actionable without replaying the rejected sel
   f.player.dispose();
 });
 
+test('quality retry refreshes the failed decoder but repeats authorization before a reload', async () => {
+  for (const reload of [false, true]) {
+    const actions: PlayerAction[] = [];
+    const f = fixture({
+      // The invoke error can reach Vue before the playback-channel event.
+      playerSnapshot: async () =>
+        reload
+          ? {
+              ...state('3', '1', 'new'),
+              entryId: 'old',
+              state: 'error',
+              requestedQuality: 'lossless',
+              error: '加载失败',
+            }
+          : state('2', '1', 'old'),
+      playerAction: async (_epoch, input) => {
+        actions.push(input);
+        if (actions.length === 1) throw { code: 'playback', message: '加载失败', retryable: true };
+        return state('4', '1', 'recovered');
+      },
+    });
+    await f.player.connect(account());
+    f.emit(state('2', '1', 'old'));
+    const command = {
+      kind: 'quality_for',
+      play_id: 'old',
+      expected_revision: '1',
+      level: 'lossless',
+    } as const;
+    await f.player.action(command);
+    await f.player.retry();
+    assert.deepEqual(actions, [
+      command,
+      reload ? { kind: 'refresh_for', play_id: 'new', expected_queue_revision: '1' } : command,
+    ]);
+    f.player.dispose();
+  }
+});
+
 test('channel-only source denial does not offer or execute a refresh', async () => {
   const actions: PlayerAction[] = [];
   const f = fixture({

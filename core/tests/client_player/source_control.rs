@@ -234,3 +234,39 @@ async fn old_seek_does_not_seek_the_replacement_and_current_seek_preserves_playb
     assert!(seek.position.unwrap() >= 35.0);
     assert_eq!(api.calls.lock().unwrap().len(), before);
 }
+
+#[tokio::test]
+async fn failed_source_refresh_is_fenced_to_the_error_entry() {
+    let (_dir, api, _, client, _) = fixture();
+    let device = Arc::new(support::Device::default());
+    let engine_device = device.clone();
+    let client = Arc::try_unwrap(client)
+        .ok()
+        .expect("test owns the unused client")
+        .with_audio_factory(move || Ok(support::audio_engine(engine_device.clone())));
+    let playing = client.play_selection("1", songs("1")).await.unwrap();
+    let request = |view: &PlayerView| PlayerAction::RefreshFor {
+        play_id: view.play_id.clone().unwrap(),
+        expected_queue_revision: view.queue_revision.clone(),
+    };
+    assert!(client.player_action("1", request(&playing)).await.is_err());
+    client
+        .player_action("1", pause(&playing, true))
+        .await
+        .unwrap();
+    device.load_failure_code.store(-15, Ordering::SeqCst);
+    assert!(
+        client
+            .player_action("1", PlayerAction::Refresh)
+            .await
+            .is_err()
+    );
+    let failed = client.player_snapshot("1").await.unwrap();
+    assert_eq!(failed.state, PlaybackStatus::Error);
+    device.load_failure_code.store(0, Ordering::SeqCst);
+    let retried = client.player_action("1", request(&failed)).await.unwrap();
+    assert_eq!(retried.state, PlaybackStatus::Paused);
+    let calls = api.calls.lock().unwrap().len();
+    assert!(client.player_action("1", request(&failed)).await.is_err());
+    assert_eq!(api.calls.lock().unwrap().len(), calls);
+}
