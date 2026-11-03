@@ -135,6 +135,14 @@ PipeWire 输出。原生时钟推进、暂停、定位后继续、倍速、CUE �
   无外网及无注入 IPC。包内交互不单独证明滤镜的 PCM 数值；该数值由
   打包时的独立探针验证。此包没有发布，也不代表更新提交已打包。
 
+2026-11-04 便携包与已安装版本共存
+  旧 dd4fd37 便携包在另有 Debian 版的机器上加载了 /usr/lib/Cumulus
+  中的滤镜，未加载便携包相邻的滤镜，包内验证失败。修复后用普通调试
+  程序构造隔离的便携夹具，保留机器上旧版不动：相邻滤镜成功映射；
+  440 Hz 测试音振幅从 2895.643 升至 4862.398，暂停后 RMS 为零。
+  报告在 `.build/portable-precedence-development-playback/report.json`。
+  该夹具是本地开发构建；正式 tar.gz 另由 Linux CI 从当次清单校验并复跑。
+
 2026-11-04 Linux 已安装包输出采样复验（同一 dd4fd37 .deb）
   给既有隔离命令加 `--verify-monitor-pcm`，通过本机 parec 读取私有 PipeWire
   空输出的 monitor。正式应用普通播放时 440 Hz 振幅为 2895.643，包内均衡器
