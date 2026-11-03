@@ -416,6 +416,29 @@
     await wait(() => !panel() && one(".playerbar")?.dataset.state === "playing" &&
       one(".now-playing")?.textContent.includes("178"), "chart play selects first returned song");
     assert(document.activeElement === input(), "chart play returns search focus");
+    await fixture("audio_ranks");
+    await home();
+    const row=(label)=>one(`.search-chart-items button[title^="${label}"]`);
+    await wait(()=>row("合成播客榜条目")&&row("合成听书榜条目"),"both audio ranks ready");
+    for(const name of ["外链不可打开","无目标不可打开","重复编号不可打开"])
+      assert(row(name)?.disabled&&row(name).textContent.includes("暂不可打开"),"unsafe audio row disabled: "+name);
+    assert(!button("播放播客榜")&&!button("播放听书榜"),"audio ranks never send song-play commands");
+    click(row("合成播客榜条目"));
+    await wait(()=>!panel()&&one(".podcast-cover h2")?.textContent==="合成播客 301","podcast rank opens actual detail");
+    assert(!input().value && one(".now-playing")?.textContent.includes("178"), "podcast rank neither submits a keyword nor changes playback");
+    await capture("podcast_rank_detail");
+    await home();
+    click(row("合成播客榜条目"));
+    await wait(()=>!panel(),"same podcast closes search");
+    assert(one(".podcast-cover h2")?.textContent==="合成播客 301", "same target retains the current detail");
+    click(button("返回上一页"));
+    await wait(()=>ready("合成推荐词1", "all", ".search-track-card"),"audio rank Back restores search");
+    await home();
+    click(row("合成听书榜条目"));
+    await wait(()=>!panel()&&one(".podcast-cover h2")?.textContent==="合成播客 302","audiobook rank opens its own detail");
+    await capture("audiobook_rank_detail");
+    click(button("返回上一页"));
+    await wait(()=>ready("合成推荐词1", "all", ".search-track-card"),"audiobook Back restores search");
     await fixture("expired");
     input().click();
     type("失效");
@@ -437,6 +460,7 @@
       hotqueryChannelVerified: true,
       searchDisplayLabelVerified: true,
       cyclicSuggestionsVerified: true,
+      audioRankNavigationVerified: true,
       realMusicRequests: 0,
       realAccountWrites: 0,
       officialPixelMatchVerified: false,

@@ -21,6 +21,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   search: [keyword: string, channel?: SearchChannel, displayKeyword?: string];
   playChart: [keywords: string[]];
+  radio: [id: string];
   expired: [];
 }>();
 const model = useSearchBox(undefined, () => emit('expired'));
@@ -93,6 +94,12 @@ function playChart(keywords: string[]) {
   model.close();
   focusInput();
   emit('playChart', keywords);
+}
+function openChartRadio(id: string) {
+  if (!open.value || searching.value || composing.value) return;
+  model.close();
+  focusInput();
+  emit('radio', id);
 }
 async function clear() {
   model.input('');
@@ -337,6 +344,7 @@ onUnmounted(() => {
               :errors="errors"
               @select="submit"
               @play="playChart"
+              @radio="openChartRadio"
               @retry="(id) => model.load({ kind: 'chart', id }, 'chart:' + id)"
             />
           </template>

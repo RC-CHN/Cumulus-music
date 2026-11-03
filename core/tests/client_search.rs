@@ -26,7 +26,7 @@ struct Backend {
 impl Api for Backend {
     fn request<'a>(&'a self, path: &'a str, args: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
-            self.calls.lock().unwrap().push((path.into(), args));
+            self.calls.lock().unwrap().push((path.into(), args.clone()));
             if self.hold.load(Ordering::SeqCst) {
                 self.started.notify_one();
                 self.release.notified().await;
@@ -42,7 +42,14 @@ impl Api for Backend {
                     json!({"operateWords":{"first":{"keyword":"运营词"}},"algWords":[{"keyword":"推荐词","toUserWord":"推荐显示","url":"https://private.invalid"}]})
                 }
                 "/api/search/pc/chart/list" => {
-                    json!({"tabInfo":{"list":[{"id":"HOT_SEARCH_SONG#@#","name":"热搜榜","needPlay":true},{"id":"unknown","name":"不可用分支"}]},"items":{"HOT_SEARCH_SONG#@#":[{"searchWord":"热词","realkeyword":"备用词","toUserWord":"长标题","iconType":1,"tabId":"HOT_SEARCH_SONG#@#","url":"PRIVATE"},{"searchWord":"普通榜词","tabId":"HOT_SEARCH_STYLE_ROCK#@#"}]}})
+                    json!({"tabInfo":{"list":[{"id":"HOT_SEARCH_SONG#@#","name":"热搜榜","needPlay":true},{"id":"HOT_SEARCH_DJ#@#","name":"播客榜","needPlay":true},{"id":"unknown","name":"不可用分支"}]},"items":{"HOT_SEARCH_DJ#@#":[{"toUserWord":"合成播客","url":"orpheus://audio/detail?id=301&proof=PRIVATE"}],"HOT_SEARCH_SONG#@#":[{"searchWord":"热词","realkeyword":"备用词","toUserWord":"长标题","iconType":1,"tabId":"HOT_SEARCH_SONG#@#","url":"PRIVATE"},{"searchWord":"普通榜词","tabId":"HOT_SEARCH_STYLE_ROCK#@#"}]}})
+                }
+                "/api/search/pc/chart/detail" if args["id"] == "HOT_SEARCH_DJ_VOICE_BOOK#@#" => {
+                    json!({"itemList":[
+                        {"toUserWord":"合成有声书","url":"orpheus://audio/detail?id=302&proof=PRIVATE"},
+                        {"toUserWord":"外部链接","url":"https://private.invalid/?id=303"},
+                        {"toUserWord":"重复参数","url":"orpheus://audio/detail?id=304&id=305"},
+                        {"toUserWord":"非法编号","url":"orpheus://audio/detail?id=../304"}]})
                 }
                 "/api/search/pc/chart/detail" => {
                     json!({"itemList":[{"searchWord":"榜单补读","toUserWord":"榜单补读"}]})
@@ -108,7 +115,7 @@ async fn official_pc_search_shapes_remain_typed_and_do_not_expose_tracking_or_ur
     assert_eq!(values[0]["value"]["words"][0]["keyword"], "实际词");
     assert_eq!(values[0]["value"]["refreshMs"], 2000);
     assert_eq!(values[1]["value"]["words"].as_array().unwrap().len(), 2);
-    assert_eq!(values[2]["value"]["charts"].as_array().unwrap().len(), 1);
+    assert_eq!(values[2]["value"]["charts"].as_array().unwrap().len(), 2);
     assert_eq!(values[4]["value"]["suggestions"][0]["label"], "显示名称");
     let encoded = serde_json::to_string(&values).unwrap();
     assert!(
@@ -261,4 +268,49 @@ async fn hot_chart_play_resolves_only_ordered_song_ids_for_exact_keywords() {
         ));
     }
     assert_eq!(api.calls.lock().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn audio_chart_rows_only_export_valid_internal_radio_ids() {
+    let (_r, _api, session, client, _store) = fixture();
+    let epoch = session.token().unwrap().generation.to_string();
+    let list = serde_json::to_value(
+        client
+            .search_discovery(&epoch, Q::Charts)
+            .await
+            .unwrap()
+            .value,
+    )
+    .unwrap();
+    let audio = &list["charts"][1];
+    assert_eq!(audio["audio"], true);
+    assert_eq!(audio["needPlay"], false);
+    assert!(audio["playKeywords"].is_null());
+    assert_eq!(audio["items"][0]["radioId"], "301");
+    assert!(list["charts"][0]["items"][0]["radioId"].is_null());
+    let detail = serde_json::to_value(
+        client
+            .search_discovery(
+                &epoch,
+                Q::Chart {
+                    id: "HOT_SEARCH_DJ_VOICE_BOOK#@#".into(),
+                },
+            )
+            .await
+            .unwrap()
+            .value,
+    )
+    .unwrap();
+    assert_eq!(detail["items"][0]["radioId"], "302");
+    assert_eq!(detail["items"].as_array().unwrap().len(), 4);
+    for row in &detail["items"].as_array().unwrap()[1..] {
+        assert!(row["radioId"].is_null());
+    }
+    assert!(detail["playKeywords"].is_null());
+    let encoded = serde_json::to_string(&(list, detail)).unwrap();
+    assert!(
+        !encoded.contains("PRIVATE")
+            && !encoded.contains("orpheus://")
+            && !encoded.contains("private.invalid")
+    );
 }

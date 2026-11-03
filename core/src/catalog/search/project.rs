@@ -46,12 +46,30 @@ fn word(row: &Value) -> Option<SearchWord> {
         label,
         tag: word_tag(row),
         channel: None,
+        radio_id: None,
     })
 }
 fn words(rows: &[Value], limit: usize) -> Vec<SearchWord> {
     rows.iter().filter_map(word).take(limit).collect()
 }
-fn chart_words(rows: &[Value]) -> Vec<SearchWord> {
+fn audio_chart(id: &str) -> bool {
+    matches!(id, "HOT_SEARCH_DJ#@#" | "HOT_SEARCH_DJ_VOICE_BOOK#@#")
+}
+
+fn chart_radio_id(value: &Value) -> Option<String> {
+    let raw = value
+        .as_str()
+        .filter(|url| url.len() <= 2048 && url.starts_with("orpheus://"))?;
+    let url = url::Url::parse(raw).ok()?;
+    let mut pairs = url.query_pairs();
+    let (_, id) = pairs.find(|(key, _)| key == "id")?;
+    if id.len() > 32 || pairs.any(|(key, _)| key == "id") {
+        return None;
+    }
+    identifier(&Value::String(id.into_owned())).ok()
+}
+
+fn chart_words(rows: &[Value], audio: bool) -> Vec<SearchWord> {
     rows.iter()
         .filter_map(|row| {
             let keyword = ["searchWord", "keyword", "toUserWord", "name"]
@@ -62,8 +80,9 @@ fn chart_words(rows: &[Value]) -> Vec<SearchWord> {
                 keyword,
                 label,
                 tag: word_tag(row),
-                channel: (row["tabId"] == "HOT_SEARCH_SONG#@#")
+                channel: (!audio && row["tabId"] == "HOT_SEARCH_SONG#@#")
                     .then_some(results::SearchChannel::Hotquery),
+                radio_id: audio.then(|| chart_radio_id(&row["url"])).flatten(),
             })
         })
         .take(CHART_ITEM_LIMIT)
@@ -110,8 +129,9 @@ pub(super) fn discovery(query: SearchDiscoveryQuery, response: &Value) -> Result
                 } else {
                     array(&d["items"][id])?
                 };
-                let need_play = row["needPlay"] == true;
-                let items = chart_words(rows);
+                let audio = audio_chart(id);
+                let need_play = !audio && row["needPlay"] == true;
+                let items = chart_words(rows, audio);
                 if !charts.iter().any(|c: &SearchChart| c.id == id) {
                     charts.push(SearchChart {
                         id: id.into(),
@@ -123,6 +143,7 @@ pub(super) fn discovery(query: SearchDiscoveryQuery, response: &Value) -> Result
                             None
                         },
                         need_play,
+                        audio,
                     });
                 }
             }
@@ -130,10 +151,11 @@ pub(super) fn discovery(query: SearchDiscoveryQuery, response: &Value) -> Result
         }
         SearchDiscoveryQuery::Chart { id } => {
             let rows = array(&d["itemList"])?;
+            let audio = audio_chart(&id);
             SearchDiscovery::Chart {
                 id,
-                items: chart_words(rows),
-                play_keywords: chart_keywords(rows),
+                items: chart_words(rows, audio),
+                play_keywords: (!audio).then(|| chart_keywords(rows)).flatten(),
             }
         }
         SearchDiscoveryQuery::ChartSongs { .. } => {

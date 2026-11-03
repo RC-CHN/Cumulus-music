@@ -28,6 +28,8 @@ pub struct SearchWord {
     pub tag: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub channel: Option<results::SearchChannel>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub radio_id: Option<String>,
 }
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -37,6 +39,7 @@ pub struct SearchChart {
     pub items: Vec<SearchWord>,
     pub play_keywords: Option<Vec<String>>,
     pub need_play: bool,
+    pub audio: bool,
 }
 #[derive(Serialize)]
 #[serde(

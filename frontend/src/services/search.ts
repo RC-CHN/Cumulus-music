@@ -59,12 +59,14 @@ export interface SearchWord {
   label: string;
   tag: string | null;
   channel?: SearchChannel;
+  radioId?: string;
 }
 export interface SearchChart {
   id: string;
   name: string;
   items: SearchWord[];
   needPlay?: boolean;
+  audio?: boolean;
   playKeywords?: string[] | null;
 }
 export type SearchDiscoveryQuery =

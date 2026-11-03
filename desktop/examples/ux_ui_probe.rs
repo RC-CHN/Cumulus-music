@@ -397,6 +397,7 @@ fn main() {
             if search_fixture::enabled() {
                 value["syntheticSearchCalls"] = json!(search_fixture::calls());
                 value["searchProfileCalls"] = json!(*SEARCH_PROFILE_CALLS.lock().unwrap());
+                value["audioRankDetails"] = json!(search_fixture::audio_rank_details());
             }
             if subscribers_proof() { value["subscriberOffsets"]=json!(*SUBSCRIBER_OFFSETS.lock().unwrap()); }
             if playlist_tag_browse_proof() {

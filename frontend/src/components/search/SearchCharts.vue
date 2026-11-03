@@ -10,6 +10,7 @@ defineProps<{
 const emit = defineEmits<{
   select: [keyword: string, channel: SearchChannel | undefined, display: string];
   play: [keywords: string[]];
+  radio: [id: string];
   retry: [id: string];
 }>();
 </script>
@@ -43,12 +44,18 @@ const emit = defineEmits<{
         v-for="(word, i) in chart.items.slice(0, 9)"
         :key="i"
         data-search-choice
-        :title="word.label"
-        @click="emit('select', word.keyword, word.channel, word.label)"
+        :title="chart.audio && !word.radioId ? `${word.label} · 暂不可打开` : word.label"
+        :disabled="chart.audio && !word.radioId"
+        @click="
+          chart.audio
+            ? word.radioId && emit('radio', word.radioId)
+            : emit('select', word.keyword, word.channel, word.label)
+        "
       >
         <span class="search-rank" :class="{ leading: i < 3 }">{{ i + 1 }}</span
         ><span class="search-word-label">{{ word.label }}</span
-        ><small v-if="word.tag" class="search-word-tag">{{ word.tag }}</small>
+        ><small v-if="chart.audio && !word.radioId" class="search-word-tag">暂不可打开</small>
+        <small v-else-if="word.tag" class="search-word-tag">{{ word.tag }}</small>
       </button>
     </div>
   </section>

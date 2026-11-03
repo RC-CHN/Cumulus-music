@@ -279,6 +279,11 @@ function openSceneRadio(id: string) {
   podcasts.navigate({ kind: 'radio', id, ascending: true });
   music.navigate({ kind: 'podcasts' });
 }
+function openSearchChartRadio(id: string) {
+  const scope = podcasts.query.value.scope;
+  if (page.value.kind === 'podcasts' && scope.kind === 'radio' && scope.id === id) return;
+  openSceneRadio(id);
+}
 const fm = useFm(undefined, () => {
   void music.bootstrap(false);
 });
@@ -1609,6 +1614,7 @@ onUnmounted(() => {
         :display-keyword="page.kind === 'search' ? page.displayKeyword : undefined"
         :playable="player.ready.value && !player.busy.value"
         @play-chart="playSearchChart"
+        @radio="openSearchChartRadio"
         @search="
           (word, channel, displayKeyword) =>
             music.navigate({ kind: 'search', keyword: word, channel, displayKeyword })

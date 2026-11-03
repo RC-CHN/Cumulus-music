@@ -18,6 +18,7 @@ pub fn control(value: &Value) {
             "home_error",
             "chart_play",
             "hot_source",
+            "audio_ranks",
             "suggest_error",
             "result_error",
             "result_play_trial",
@@ -77,6 +78,11 @@ pub fn result_play_trial() -> Option<i64> {
         _ => None,
     }
 }
+static AUDIO_RANK_DETAILS: std::sync::Mutex<Vec<u64>> = std::sync::Mutex::new(Vec::new());
+pub fn audio_rank_details() -> Vec<u64> {
+    AUDIO_RANK_DETAILS.lock().unwrap().clone()
+}
+
 pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
     if enabled()
         && let Some(result) = podcast_response(path, args)
@@ -127,6 +133,22 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
             json!({"refreshTime":60000,"keywords":[{"realkeyword":"合成默认关键词","showKeyword":"发现合成好声音"}]})
         }
         "/api/search/pc/rcmd/keyword/get" => json!({"operateWords":{},"algWords":words(18)}),
+        "/api/search/pc/chart/list" if mode == "audio_ranks" => {
+            json!({"tabInfo":{"list":[
+                {"id":"HOT_SEARCH_DJ#@#","name":"播客榜"},
+                {"id":"HOT_SEARCH_DJ_VOICE_BOOK#@#","name":"听书榜"}]},
+                "items":{"HOT_SEARCH_DJ#@#":[
+                    {"toUserWord":"合成播客榜条目","url":"orpheus://audio/detail?id=301&private=omit"},
+                    {"toUserWord":"外链不可打开","url":"https://synthetic.invalid/?id=999"},
+                    {"toUserWord":"无目标不可打开"}]}})
+        }
+        "/api/search/pc/chart/detail" if mode == "audio_ranks" => {
+            if args["id"] != "HOT_SEARCH_DJ_VOICE_BOOK#@#" {
+                return Some(Err(Error::InvalidInput("unexpected synthetic audio chart")));
+            }
+            json!({"itemList":[{"toUserWord":"合成听书榜条目","url":"orpheus://audio/detail?id=302"},
+                {"toUserWord":"重复编号不可打开","url":"orpheus://audio/detail?id=999&id=1000"}]})
+        }
         "/api/search/pc/chart/list" => {
             let ids = [
                 ("HOT_SEARCH_SONG#@#", "热搜榜"),
@@ -178,7 +200,11 @@ fn podcast_response(path: &str, args: &Value) -> Option<Result<Value>> {
             if card_failed() {
                 return Some(Err(Error::Transport("合成播客读取失败".into())));
             }
-            json!({"code":200,"data":radio(number("id",301))})
+            let id = number("id", 301);
+            if MODE.lock().unwrap().as_str() == "audio_ranks" {
+                AUDIO_RANK_DETAILS.lock().unwrap().push(id);
+            }
+            json!({"code":200,"data":radio(id)})
         }
         "/api/v6/dj/program/byradio" => {
             json!({"code":200,"data":{"programs":(401..=403).map(|id|program(id,number("radioId",301))).collect::<Vec<_>>(),"count":3,"more":false,"asc":args["asc"]}})
