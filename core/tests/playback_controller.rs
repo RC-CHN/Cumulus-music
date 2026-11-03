@@ -150,6 +150,33 @@ async fn rapid_replacement_cancels_resolving_owner_and_cannot_publish_old_song()
 }
 
 #[tokio::test]
+async fn refreshing_a_pending_source_does_not_discard_an_accepted_pause() {
+    let f = Fixture::new();
+    f.api.hold.store(1, Ordering::SeqCst);
+    let old = f.start(replace(&[1]));
+    tokio::time::timeout(std::time::Duration::from_secs(5), f.api.started.notified())
+        .await
+        .expect("first source request started");
+    assert_eq!(
+        f.command(Cmd::Pause(true)).await.unwrap().state,
+        Status::Preparing
+    );
+
+    f.api.hold.store(0, Ordering::SeqCst);
+    let refreshed = f.command(Cmd::RefreshSource).await.unwrap();
+    assert_eq!(refreshed.state, Status::Paused);
+    assert_eq!(song(&refreshed), Some(1));
+    let Err(cancelled) = old.await.unwrap() else {
+        panic!("old load must not complete after refresh");
+    };
+    assert!(matches!(root(&cancelled), Error::Cancelled));
+    assert_eq!(f.api.count(1), 2, "refresh resolves a fresh source");
+    let device = f.device.state.lock().unwrap();
+    assert_eq!(device.loads, 1);
+    assert!(!device.pauses.contains(&false));
+}
+
+#[tokio::test]
 async fn clearing_a_queue_during_decode_cancels_before_unpause() {
     let f = Fixture::new();
     f.device.hold_load.store(true, Ordering::SeqCst);

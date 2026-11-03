@@ -321,7 +321,8 @@ impl Actor {
                     match self.resolver.invalidate(id.as_deref()) {
                         Ok(()) => {
                             options = Some(LoadOptions {
-                                paused: self.state == PlaybackStatus::Paused,
+                                paused: self.state == PlaybackStatus::Paused
+                                    || self.pending.as_ref().is_some_and(|p| p.paused),
                                 position: self.position,
                                 recover: true,
                                 ..Default::default()
