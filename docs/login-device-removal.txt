@@ -1,0 +1,39 @@
+登录设备移除：PC 3.1.42.205594 恢复证据与实现边界
+
+源码位于 references/netease-3.1.42.205594-analysis/recovered-js/modules/。
+模块路径、SHA-256 与行号索引见 docs/account-feature-audit.txt 第 2、7 节。
+M15（hybrid_app.chunk.1482700000000.js/15.js）4962–4981 声明接口，
+M12 281–291 给出默认 POST；M3122（hybrid_144.chunk.1482700000000.js/3122.js）
+14–80、126–177、304、326–384 给出列表、绑定提示、短信和移除后刷新行为。
+恢复的 pages/loginDevice/index.tsx:150–159、184–199 隐藏当前设备的移除
+入口，并要求用户二次确认。这里的设备管理与候选登录的原设备验证是独立流程。
+
+  POST /api/middle/user/device/list {excStatus:9}
+    读 data.userDeviceList；status=1 表示登录设备，ifLoginDevice 标明当前
+    设备。历史行也可作为目标；当前设备不能移除。
+  POST /api/middle/user/security/device/kickoff {deviceKey,captcha?}
+    二次确认后发送，首次不附验证码。明确业务码 401 转短信验证；裸 HTTP
+    401 或其他未决回复不能当成短信挑战。captcha 是此接口的短信验证码，
+    不是图形挑战 proof；不另调用通用短信验码接口。
+  POST /api/sms/captcha/safe/sent {ctCode}
+    用户显式点发送才调用；ctCode 取自实际绑定手机的国家码。M100
+    179–185 对应 /api/w/v1/user/bindings/{uid} {userId}，原生从 type=1 的
+    tokenJsonStr 读取绑定。明确无手机绑定时只引导至本地生成的固定绑定
+    二维码；格式错误不能当成未绑定。重发等待 60 秒。
+
+前端只传设备列表发放的短期不透明 ID；原生按当前账号和新列表解析
+deviceKey。当前设备缺失、不能唯一识别，或目标已过期、已变成当前设备，
+都不能继续写入。SQLite 意图在请求前保存，记录目标摘要、阶段、短信冷却
+和尾号，不记录原始设备键、完整号码、绑定凭据或验证码。
+
+明确成功后刷新设备列表；回包丢失、无法确认结果或成功后目标仍存在时，
+保留未决记录。重新打开可显式核对，核对只读设备列表，不重发短信或移除
+请求。目标已不在最新列表才能显示该事实；这不能证明服务端已撤销所有会话。
+生产接线位于 core/src/client/login_device_removal.rs、
+desktop/src/commands.rs 和 frontend/src/components/account/LoginDevicesPage.vue。
+
+Linux/Windows CI 均用实际 WebView、生产 IPC、隔离账号状态和合成 HTTP。
+运行 scripts/ci/account_login_smoke.py --device-removal 可验当前设备保护、
+绑定转交、显式短信、移除回包丢失和只读恢复。合并后的 Linux WebView
+探针 6 阶段通过，Windows 尚未实跑。没有发真实短信、移除真实设备或验证
+线上账号。
