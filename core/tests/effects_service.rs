@@ -764,3 +764,89 @@ async fn cached_material_still_honors_caller_cancellation_and_pause() {
         Some(MaterialPhase::Pending)
     );
 }
+
+#[tokio::test]
+async fn prepared_parametric_comes_only_from_verified_owned_material_and_never_registers() {
+    use cumulus_core::effects::service::ParametricPreparation;
+    let temp = tempfile::tempdir().unwrap();
+    let store = Arc::new(StateStore::open(temp.path()).unwrap());
+    let (bytes, _) = sample("first");
+    let official = sound(&bytes, URL);
+    let api = Arc::new(ScriptApi::new(
+        [pair(&official, true), pair(&official, true)]
+            .into_iter()
+            .flatten(),
+    ));
+    let session = world(api.clone(), store.clone());
+    let token = session.token().unwrap();
+    let library =
+        EffectsLibrary::with_backend(session.clone(), Arc::new(Origin::new(bytes))).unwrap();
+    assert!(matches!(
+        library
+            .prepare_parametric_for(
+                &token,
+                id(),
+                RunOptions {
+                    byte_budget: Some(17),
+                    ..Default::default()
+                }
+            )
+            .await
+            .unwrap(),
+        ParametricPreparation::Pending { bytes: 17 }
+    ));
+    let ParametricPreparation::Prepared(prepared) = library
+        .prepare_parametric_for(&token, id(), RunOptions::default())
+        .await
+        .unwrap()
+    else {
+        panic!("verified official branch fixture must expose its PEQ component");
+    };
+    assert_eq!(prepared.effect(), id());
+    assert!(prepared.enabled());
+    assert!(prepared.additional_sections().is_empty());
+    assert!(
+        library
+            .prepared_parametric_for(&token, &prepared)
+            .unwrap()
+            .enabled()
+    );
+    let same_uid_session = world(api.clone(), store.clone());
+    assert_eq!(same_uid_session.token().unwrap(), token);
+    let other_library =
+        EffectsLibrary::with_backend(same_uid_session, Arc::new(Origin::new(Vec::new()))).unwrap();
+    assert!(matches!(
+        other_library.prepared_parametric_for(&token, &prepared),
+        Err(Error::StaleResponse)
+    ));
+
+    session
+        .adopt(api.clone(), json!({"userId":2}), &token)
+        .unwrap();
+    assert!(matches!(
+        library.prepared_parametric_for(&session.token().unwrap(), &prepared),
+        Err(Error::StaleResponse)
+    ));
+    assert!(
+        library
+            .prepare_parametric_for(
+                &session.token().unwrap(),
+                EffectId::new(200).unwrap(),
+                RunOptions::default()
+            )
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        api.calls()
+            .iter()
+            .map(|call| call.path.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "/api/usertool/home/sound/info",
+            "/api/vipauth/app/interests/auth/query",
+            "/api/usertool/home/sound/info",
+            "/api/vipauth/app/interests/auth/query",
+        ]
+    );
+}

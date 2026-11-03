@@ -1,14 +1,29 @@
 use super::MusicClient;
 use crate::{
     Result,
+    download::transfer::RunOptions,
     effects::{
         catalog::{CatalogueKind, EffectId},
         directory::{EffectDirectoryDetail, EffectDirectoryRow},
-        service::EffectsLibrary,
+        service::{EffectsLibrary, ParametricPreparation},
     },
 };
 
 impl MusicClient {
+    /// Native-only preparation of one verified PEQ component. This does not
+    /// register an effect, acquire a trial, or apply anything to playback.
+    pub async fn prepare_native_effect_parametric(
+        &self,
+        epoch: &str,
+        id: EffectId,
+        options: RunOptions,
+    ) -> Result<ParametricPreparation> {
+        let token = self.player_token(epoch)?;
+        EffectsLibrary::new(self.session.clone())?
+            .prepare_parametric_for(&token, id, options)
+            .await
+    }
+
     pub async fn effect_catalogue(
         &self,
         epoch: &str,

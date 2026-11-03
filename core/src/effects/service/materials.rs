@@ -194,7 +194,11 @@ impl EffectsLibrary {
     ) -> Result<Option<MaterialPhase>> {
         Ok(self.record(token, handle)?.map(|record| record.phase))
     }
-    fn record(&self, token: &SessionToken, handle: &MaterialHandle) -> Result<Option<Record>> {
+    pub(super) fn record(
+        &self,
+        token: &SessionToken,
+        handle: &MaterialHandle,
+    ) -> Result<Option<Record>> {
         self.session.with_token(token, |owner| {
             let record: Option<Record> = self
                 .store

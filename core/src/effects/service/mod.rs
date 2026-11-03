@@ -4,6 +4,7 @@
 //! activation lifecycle and is not silently started here.
 mod files;
 mod materials;
+mod parametric;
 mod records;
 
 use super::{
@@ -16,6 +17,7 @@ use crate::{
     download::transfer::{MediaBackend, ReqwestMediaBackend, TransferManager},
     storage::{OperationLock, StateStore},
 };
+pub use parametric::{ParametricPreparation, PreparedParametric};
 pub use records::{MaterialHandle, MaterialOutcome, MaterialPhase, VerifiedMaterial};
 use std::{sync::Arc, time::Duration};
 const CATALOGUES: &str = "effects-catalogues-v1";
