@@ -137,12 +137,21 @@
     bottom();
     await wait(() => row(52), 'deep visible lyric rows');
     const chosen = row(52).querySelector('.track-play');
-    chosen.click();
     const { epoch } = await invoke('account_snapshot');
+    await invoke('play_selection', {
+      epoch, selection: { kind: 'songs', ids: ['91', '92'], index: 0, quality: 'standard' },
+    });
+    const baseline = await invoke('player_queue', { epoch });
+    chosen.click();
     await wait(async () => {
       const native = await invoke('player_snapshot', { epoch });
-      return native.state === 'playing' && native.track?.id === '53' && native.queueLen === 60;
-    }, 'native playback uses the clicked absolute row');
+      return native.state === 'playing' && native.track?.id === '53' && native.queueLen === 3;
+    }, 'native playback inserts the clicked absolute row');
+    const queue = await invoke('player_queue', { epoch });
+    assert(queue.tracks.map(({track}) => track.id).join(',') === '91,53,92' &&
+      queue.tracks[0].entryId === baseline.tracks[0].entryId &&
+      queue.tracks[2].entryId === baseline.tracks[1].entryId &&
+      queue.current === queue.tracks[1].entryId, 'deep lyric playback preserves the native queue');
     await fixture('scroll');
     await search('合成重复歌词命中');
     for (let count = 20; count <= 120; count += 10) {

@@ -1,7 +1,7 @@
 use super::super::recommendations::{
     RecommendationSource, daily_source, daily_subset, style_source,
 };
-use super::{prepared_selection::PreparedSelection, *};
+use super::{prepared_selection::PreparedSelection, queue_click::RetainedRow, *};
 use crate::{catalog::CatalogApi, playlist::PlaylistApi, protocol::api::identifier};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -52,7 +52,7 @@ impl MusicClient {
         prepared: Option<PreparedSelection>,
     ) -> Result<PlayerView> {
         let token = self.player_token(epoch)?;
-        let (input, keep_queue) = match input {
+        let (input, retained) = match input {
             PlaySelection::SongRowDoubleClick { selection } => {
                 let keep_queue = !self.replace_queue_on_double_click(&token)?;
                 let input = match selection {
@@ -77,9 +77,10 @@ impl MusicClient {
                         quality,
                     },
                 };
-                (input, keep_queue)
+                (input, keep_queue.then_some(RetainedRow::Catalog))
             }
-            input => (input, false),
+            input @ PlaySelection::SearchResultTrack { .. } => (input, Some(RetainedRow::Search)),
+            input => (input, None),
         };
         if !matches!(
             input,
@@ -125,7 +126,7 @@ impl MusicClient {
             }
             _ => (None, None),
         };
-        let preserve = if keep_queue {
+        let preserve = if retained.is_some() {
             Some(self.queue_click_snapshot(&token).await?)
         } else {
             None
@@ -145,6 +146,22 @@ impl MusicClient {
                 self.player.selection.fetch_add(1, Ordering::AcqRel) + 1,
             )
         };
+        if let (
+            PlaySelection::SearchResultTrack {
+                id,
+                toggle_current: true,
+                ..
+            },
+            Some(snapshot),
+            Some(lease),
+        ) = (&input, &preserve, lease)
+            && let Some(state) = self
+                .toggle_retained_search_track(&token, snapshot, id, lease)
+                .await?
+        {
+            self.session.with_token(&token, |_| Ok(()))?;
+            return project(&state, &token);
+        }
         let input = match input {
             PlaySelection::Downloads { query, start_id } => {
                 let (resources, index) = self.download_selection(epoch, query, start_id).await?;
@@ -472,6 +489,12 @@ impl MusicClient {
                     | PlaySelection::Voice { .. } => {
                         unreachable!("cloud handled before song detail requests")
                     }
+                    PlaySelection::SearchResultTrack { id, quality, .. } => Ok((
+                        vec![json!(identifier(&json!(id))?)],
+                        0,
+                        quality,
+                        json!({"kind":"songs","scene":"search","trial_mode":42}),
+                    )),
                     PlaySelection::SearchResults {
                         ids,
                         index,
@@ -487,8 +510,6 @@ impl MusicClient {
                             .collect::<Result<Vec<_>>>()?;
                         // Recovered M/91 search trial and PC result action contexts.
                         let source = match context {
-                            SearchResultPlayback::Track =>
-                                json!({"kind":"songs","scene":"search","trial_mode":42}),
                             SearchResultPlayback::SongTabAll =>
                                 json!({"kind":"songs","scene":"search","pldScene":"searchSongTab","trial_mode":42}),
                             SearchResultPlayback::ComprehensiveAll =>
@@ -584,7 +605,7 @@ impl MusicClient {
                 }
             })
             .await?;
-        let (ids, index) = if keep_queue {
+        let (ids, index) = if retained.is_some() {
             let id = ids
                 .get(index)
                 .ok_or(Error::State("selected song is unavailable"))?;
@@ -619,7 +640,7 @@ impl MusicClient {
         if resources.get(index).is_none_or(|v| v["missing"] == true) {
             return Err(Error::State("selected song is unavailable"));
         }
-        let state = if let Some(snapshot) = preserve {
+        let state = if let (Some(snapshot), Some(retained)) = (preserve, retained) {
             let lease = lease.ok_or(Error::StaleResponse)?;
             if self.player.selection.load(Ordering::Acquire) != attempt {
                 return Err(Error::StaleResponse);
@@ -628,7 +649,7 @@ impl MusicClient {
             let resource = resources
                 .pop()
                 .ok_or(Error::State("selected song is unavailable"))?;
-            self.play_retained_queue_row(&token, snapshot, (resource, source), lease)
+            self.play_retained_queue_row(&token, snapshot, (resource, source), lease, retained)
                 .await?
         } else {
             self.submit_selection_with_source(

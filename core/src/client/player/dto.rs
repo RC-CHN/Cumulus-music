@@ -124,7 +124,6 @@ pub struct QueueCollectionView {
 #[derive(Clone, Copy, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SearchResultPlayback {
-    Track,
     SongTabAll,
     ComprehensiveAll,
 }
@@ -225,6 +224,11 @@ pub enum PlaySelection {
         quality: Quality,
         #[serde(default)]
         query: Option<crate::client::dto::CloudQuery>,
+    },
+    SearchResultTrack {
+        id: String,
+        quality: Quality,
+        toggle_current: bool,
     },
     SearchResults {
         ids: Vec<String>,

@@ -9,7 +9,7 @@ use crate::{
     client::dto::AccountData,
     playback::{
         QueueEntry, QueueSnapshot,
-        controller::{QueueTransport, QueueUpdate},
+        controller::{PlaybackFence, PlaybackStatus, QueueTransport, QueueUpdate},
     },
     storage::StateStore,
 };
@@ -189,6 +189,12 @@ impl MusicClient {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum RetainedRow {
+    Catalog,
+    Search,
+}
+
 pub(super) struct QueueClickSnapshot {
     pub(super) focus: FocusSnapshot,
     pub(super) attempt: u64,
@@ -226,12 +232,51 @@ impl MusicClient {
         })
     }
 
+    pub(super) async fn toggle_retained_search_track(
+        &self,
+        token: &SessionToken,
+        snapshot: &QueueClickSnapshot,
+        id: &str,
+        lease: u64,
+    ) -> Result<Option<PlaybackSnapshot>> {
+        let before = &snapshot.before;
+        if !before
+            .selected
+            .as_ref()
+            .is_some_and(|entry| online_song(&entry.resource, id))
+            || !matches!(
+                before.state,
+                PlaybackStatus::Playing | PlaybackStatus::Paused | PlaybackStatus::Buffering
+            )
+        {
+            return Ok(None);
+        }
+        let _room = self
+            .together
+            .gate
+            .try_lock()
+            .map_err(|_| Error::MutationBusy)?;
+        if self.together_attached(token, None)? {
+            return Err(Error::State("queue click requires an ordinary queue"));
+        }
+        self.submit_retained_row(
+            token,
+            PlaybackCommand::Pause(!before.paused),
+            before.fence(),
+            snapshot.attempt,
+            lease,
+        )
+        .await
+        .map(Some)
+    }
+
     pub(super) async fn play_retained_queue_row(
         &self,
         token: &SessionToken,
         snapshot: QueueClickSnapshot,
         (resource, source): (Value, Value),
         lease: u64,
+        policy: RetainedRow,
     ) -> Result<PlaybackSnapshot> {
         let _room = self
             .together
@@ -256,22 +301,34 @@ impl MusicClient {
             .position(|entry| entry.visible_in_queue() && online_song(&entry.resource, id));
         let entry = if let Some(index) = existing {
             let entry = &mut queue.items[index];
-            if entry.resource["missing"] == true {
+            let rebind = policy == RetainedRow::Search && entry.source != source;
+            if rebind || entry.resource["missing"] == true {
                 entry.resource = resource;
                 entry.source = source;
             }
-            entry.entry_id.clone()
+            let id = entry.entry_id.clone();
+            if rebind && queue.current.as_ref() != Some(&id) {
+                queue.order.retain(|entry_id| entry_id != &id);
+                let entry = queue.items.remove(index);
+                insert_after_current(&mut queue, entry);
+            }
+            id
         } else {
             if queue.items.len() >= 50_000 {
                 return Err(Error::InvalidInput("playback queue is full"));
             }
             let entry_id = uuid::Uuid::new_v4().simple().to_string();
-            queue.order.push(entry_id.clone());
-            queue.items.push(QueueEntry {
+            let entry = QueueEntry {
                 entry_id: entry_id.clone(),
                 resource,
                 source,
-            });
+            };
+            if policy == RetainedRow::Search {
+                insert_after_current(&mut queue, entry);
+            } else {
+                queue.order.push(entry_id.clone());
+                queue.items.push(entry);
+            }
             entry_id
         };
         let expected = before.fence();
@@ -291,6 +348,18 @@ impl MusicClient {
                 }),
             })
         };
+        self.submit_retained_row(token, command, expected, attempt, lease)
+            .await
+    }
+
+    async fn submit_retained_row(
+        &self,
+        token: &SessionToken,
+        command: PlaybackCommand,
+        expected: PlaybackFence,
+        attempt: u64,
+        lease: u64,
+    ) -> Result<PlaybackSnapshot> {
         let selection = self.player.selection.clone();
         let focus = self.focus.clone();
         self.player
@@ -307,4 +376,19 @@ impl MusicClient {
             )
             .await
     }
+}
+
+fn insert_after_current(queue: &mut QueueSnapshot, entry: QueueEntry) {
+    let order_next = queue
+        .order
+        .iter()
+        .position(|id| Some(id) == queue.current.as_ref())
+        .map_or(0, |index| index + 1);
+    let display_next = queue
+        .items
+        .iter()
+        .position(|item| Some(&item.entry_id) == queue.current.as_ref())
+        .map_or(0, |index| index + 1);
+    queue.order.insert(order_next, entry.entry_id.clone());
+    queue.items.insert(display_next, entry);
 }

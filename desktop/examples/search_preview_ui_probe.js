@@ -62,9 +62,23 @@
       button('查看全部MV').closest('.search-result-section').scrollIntoView({block:'start'});await capture(`video_preview_${w}_${t}`);
     }
     await emit('resize',{width:1120,height:760});await wait(()=>innerWidth===1120,'wide preview');await sleep(250);const grid=button('查看全部歌单').closest('.search-result-section').querySelector('[data-preview]');grid.scrollIntoView({block:'center'});const last=[...grid.querySelectorAll('.search-card-open')].at(-1);last.focus({preventScroll:true});await capture('before_resize');await emit('resize',{width:760,height:540});await wait(()=>innerWidth===760,'narrow preview');await sleep(250);assert(!last.isConnected&&grid.contains(document.activeElement),'resize preserves focus in visible preview');const focused=document.activeElement.getBoundingClientRect(),viewport=pane().getBoundingClientRect();assert(focused.top>=viewport.top-1&&focused.bottom<=viewport.bottom+1,'resized preview focus is fully visible');await capture('after_resize');
-    const card=one('.search-track-card');card.scrollIntoView({block:'center'});click(card.querySelector('.search-track-cover'));await wait(()=>card.classList.contains('current')&&card.querySelector('.search-track-cover').getAttribute('aria-label').startsWith('暂停'),'play preview');const epoch=(await invoke('account_snapshot')).epoch;const playing=await invoke('player_queue',{epoch});assert(playing.tracks.length===9,'playback keeps complete returned list');await capture('playing');click(card.querySelector('.search-track-cover'));await wait(()=>card.querySelector('.search-track-cover').getAttribute('aria-label').startsWith('播放'),'pause preview');await capture('paused');
+    const epoch=(await invoke('account_snapshot')).epoch;
+    await invoke('play_selection',{epoch,selection:{kind:'songs',ids:['91','92'],index:0,quality:'standard'}});
+    const baseline=await invoke('player_queue',{epoch});
+    const card=one('.search-track-card');card.scrollIntoView({block:'center'});
+    click(card.querySelector('.search-track-cover'));
+    await wait(()=>card.classList.contains('current')&&card.querySelector('.search-track-cover').getAttribute('aria-label').startsWith('暂停'),'play preview');
+    const playing=await invoke('player_queue',{epoch});
+    assert(playing.tracks.length===3&&playing.tracks[0].entryId===baseline.tracks[0].entryId&&
+      playing.tracks[2].entryId===baseline.tracks[1].entryId&&playing.current===playing.tracks[1].entryId,
+    'one preview inserts after current and retains both baseline entries');
+    await capture('playing');
+    click(card.querySelector('.search-track-cover'));
+    await wait(()=>card.querySelector('.search-track-cover').getAttribute('aria-label').startsWith('播放'),'pause preview');
+    assert((await invoke('player_queue',{epoch})).revision===playing.revision,'pause leaves queue intact');
+    await capture('paused');
     const like=all('.search-track-card')[1].querySelector('.like-button');like.scrollIntoView({block:'nearest'});click(like);await wait(()=>like.getAttribute('aria-pressed')==='true'&&!like.disabled,'liked feedback');await capture('liked');click(like);await wait(()=>like.getAttribute('aria-pressed')==='false'&&!like.disabled,'unliked feedback');await capture('unliked');
-    click(button('播放全部搜索单曲'));await wait(()=>one('.search-track-card.current .search-track-cover')?.getAttribute('aria-label').startsWith('暂停'),'play all preview');await capture('play_all');
+    click(button('播放全部搜索单曲'));await wait(()=>one('.search-track-card.current .search-track-cover')?.getAttribute('aria-label').startsWith('暂停'),'play all preview');const allQueue=await invoke('player_queue',{epoch});assert(allQueue.tracks.length===9&&!allQueue.tracks.some(row=>baseline.tracks.some(old=>old.entryId===row.entryId)),'explicit Play All replaces the baseline');await capture('play_all');
     assert(images>0,'image outcome injection used');await emit('complete',{ok:true,stageCount:count,previewLayouts:true,nativePointer:true,songControls:true,coverOutcomeInjected:true,realMusicRequests:0,realAccountWrites:0});
   }catch(e){await emit('failed',{step,stageCount:count,message:String(e),stack:e?.stack,body:document.body.innerText.slice(0,2600)});}
 })();

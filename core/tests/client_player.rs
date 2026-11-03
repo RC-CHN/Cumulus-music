@@ -1573,17 +1573,88 @@ async fn hot_search_selection_keeps_queue_order_and_requests_search_trial() {
 }
 
 #[tokio::test]
+async fn single_search_result_keeps_queue_and_uses_search_trial() {
+    use cumulus_core::playback::controller::PlaybackStatus;
+
+    let (_dir, api, _session, client, _) = fixture();
+    client
+        .play_selection(
+            "1",
+            PlaySelection::Songs {
+                ids: ["1", "2", "3"].map(str::to_owned).to_vec(),
+                index: 0,
+                quality: Quality::Standard,
+            },
+        )
+        .await
+        .unwrap();
+    let baseline = client.player_queue("1").await.unwrap();
+    let entry_ids: Vec<_> = baseline
+        .tracks
+        .iter()
+        .map(|row| row.entry_id.clone())
+        .collect();
+    let select = |id: &str, toggle_current| PlaySelection::SearchResultTrack {
+        id: id.into(),
+        quality: Quality::Standard,
+        toggle_current,
+    };
+
+    let playing = client.play_selection("1", select("4", true)).await.unwrap();
+    assert_eq!(playing.track.unwrap().id, "4");
+    assert_eq!(*api.trial.lock().unwrap(), Some(json!(42)));
+    let queue = client.player_queue("1").await.unwrap();
+    assert_eq!(
+        queue
+            .tracks
+            .iter()
+            .map(|row| row.track.id.as_str())
+            .collect::<Vec<_>>(),
+        ["1", "4", "2", "3"]
+    );
+    assert_eq!(queue.current.as_ref(), Some(&queue.tracks[1].entry_id));
+    let detail_calls = || {
+        api.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|path| path.as_str() == "/api/v3/song/detail")
+            .count()
+    };
+    let calls = detail_calls();
+    let paused = client.play_selection("1", select("4", true)).await.unwrap();
+    assert_eq!(paused.state, PlaybackStatus::Paused);
+    assert_eq!(paused.play_id, playing.play_id);
+    assert_eq!(paused.queue_revision, playing.queue_revision);
+    assert_eq!(detail_calls(), calls);
+
+    let reused = client
+        .play_selection("1", select("3", false))
+        .await
+        .unwrap();
+    assert_eq!(reused.track.unwrap().id, "3");
+    assert_eq!(*api.trial.lock().unwrap(), Some(json!(42)));
+    let queue = client.player_queue("1").await.unwrap();
+    assert_eq!(
+        queue
+            .tracks
+            .iter()
+            .map(|row| row.track.id.as_str())
+            .collect::<Vec<_>>(),
+        ["1", "4", "3", "2"]
+    );
+    assert_eq!(queue.current.as_ref(), Some(&entry_ids[2]));
+    assert_eq!(queue.tracks[0].entry_id, entry_ids[0]);
+    assert_eq!(queue.tracks[3].entry_id, entry_ids[1]);
+}
+
+#[tokio::test]
 async fn search_result_actions_keep_selected_index_and_use_the_recovered_trial_context() {
     let (dir, api, _session, client, _) = fixture();
     let store = ProfileRegistry::open(dir.path(), ApiOrigin::Pc)
         .unwrap()
         .store();
     let contexts = [
-        (
-            SearchResultPlayback::Track,
-            42,
-            json!({"kind":"songs","scene":"search","trial_mode":42}),
-        ),
         (
             SearchResultPlayback::SongTabAll,
             42,

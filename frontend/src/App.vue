@@ -424,6 +424,15 @@ function catalogMembershipChanged(epoch: string, resource: CatalogResource) {
 function playRankingPlaylist(id: string) {
   void player.togglePlaylist(id);
 }
+function playSearchTrack(track: TrackView, toggleCurrent: boolean) {
+  if (track.missing) return;
+  void player.select({
+    kind: 'search_result_track',
+    id: track.id,
+    toggle_current: toggleCurrent,
+    quality: player.view.value?.qualityPreferences.quality ?? 'standard',
+  });
+}
 function playSearchResults(tracks: TrackView[], index: number, context: SearchResultPlayback) {
   if (!tracks[index] || tracks[index].missing) return;
   void player.select({
@@ -2139,8 +2148,8 @@ onUnmounted(() => {
                 @search-original="searchOriginal"
                 @open="openSearchItem"
                 @play="playSearchResults"
+                @play-track="playSearchTrack"
                 @play-card="playSearchCard"
-                @toggle-playback="player.action({ kind: 'pause', paused: player.playing.value })"
                 @download-track="(track) => (downloadDialog = { kind: 'start', tracks: [track] })"
                 @card-comments="searchCardComments"
                 @card-download="

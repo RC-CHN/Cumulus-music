@@ -161,7 +161,7 @@ export type QueueEdit =
   | { kind: 'select'; entry_id: string }
   | { kind: 'remove' | 'reorder'; entry_ids: string[] }
   | { kind: 'clear' };
-export type SearchResultPlayback = 'track' | 'song_tab_all' | 'comprehensive_all';
+export type SearchResultPlayback = 'song_tab_all' | 'comprehensive_all';
 export type SongRowDoubleClickSelection =
   | {
       kind: 'catalog';
@@ -219,6 +219,7 @@ export type PlaySelection =
       quality: Quality;
     }
   | { kind: 'cloud_batch'; ids: string[]; revision: string; quality: Quality; query?: CloudQuery }
+  | { kind: 'search_result_track'; id: string; quality: Quality; toggle_current: boolean }
   | {
       kind: 'search_results';
       ids: string[];

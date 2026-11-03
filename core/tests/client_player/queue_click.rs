@@ -191,7 +191,7 @@ async fn device_setting_reopens_fences_edits_and_damaged_state_cannot_clear_the_
 fn row_double_click_does_not_accept_explicit_or_excluded_selection_variants() {
     for selection in [
         json!({"kind":"songs","ids":["1"],"index":0,"quality":"standard"}),
-        json!({"kind":"search_results","ids":["1"],"index":0,"quality":"standard","context":"track"}),
+        json!({"kind":"search_result_track","id":"1","quality":"standard","toggle_current":true}),
         json!({"kind":"playlist","id":"7","quality":"standard"}),
         json!({"kind":"playlist","id":"7","start_id":"1","quality":"standard","replace_queue":false}),
     ] {

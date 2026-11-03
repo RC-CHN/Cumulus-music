@@ -62,7 +62,7 @@ const emit = defineEmits<{
   searchOriginal: [keyword: string];
   open: [item: SearchItem];
   play: [tracks: TrackView[], index: number, context: SearchResultPlayback];
-  togglePlayback: [];
+  playTrack: [track: TrackView, toggleCurrent: boolean];
   downloadTrack: [track: TrackView];
   collect: [tracks: TrackView[]];
   more: [request: TrackMenuRequest];
@@ -125,13 +125,8 @@ function oneRowPreview(section: SearchSection) {
     ['playlists', 'artists', 'albums', 'podcasts', 'mvs', 'users'].includes(section.category ?? '')
   );
 }
-function playPreview(section: SearchSection, index: number) {
-  if (
-    tracks(section)[index]?.id === props.currentId &&
-    ['playing', 'buffering', 'paused'].includes(props.playbackState ?? '')
-  )
-    emit('togglePlayback');
-  else emit('play', tracks(section), index, 'track');
+function playTrack(track: TrackView | undefined, toggleCurrent = false) {
+  if (track && !track.missing) emit('playTrack', track, toggleCurrent);
 }
 const songs = computed(() => view.value?.sections.flatMap(tracks) ?? []);
 const count = computed(() => view.value?.sections.reduce((n, s) => n + s.items.length, 0) ?? 0);
@@ -600,7 +595,7 @@ onBeforeUnmount(() => {
                     :current-id="currentId"
                     :playable="playable"
                     navigable
-                    @play="emit('play', tracks(section), $event, 'track')"
+                    @play="(_index, gesture) => playTrack(item.track, gesture === 'double_click')"
                     @like="emit('like', $event)"
                     @more="emit('more', $event)"
                     @artist="emit('artist', $event)"
@@ -634,14 +629,14 @@ onBeforeUnmount(() => {
                 :playing="playbackState === 'playing' || playbackState === 'buffering'"
                 :liked="liked.has(track.id)"
                 :busy-like="busyLikes.has(track.id)"
-                @play="playPreview(section, index)"
+                @play="playTrack(track, true)"
                 @like="emit('like', track)"
                 @more="
                   (event) =>
                     emit('more', {
                       track,
                       event,
-                      play: () => emit('play', tracks(section), index, 'track'),
+                      play: () => playTrack(track),
                     })
                 "
                 @download="emit('downloadTrack', track)"
@@ -657,7 +652,9 @@ onBeforeUnmount(() => {
               :playable="playable"
               :current-id="currentId"
               navigable
-              @play="emit('play', tracks(section), $event, 'track')"
+              @play="
+                (index, gesture) => playTrack(tracks(section)[index], gesture === 'double_click')
+              "
               @like="emit('like', $event)"
               @more="emit('more', $event)"
               @artist="emit('artist', $event)"
