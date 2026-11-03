@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
     sync::{Arc, Mutex},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 #[derive(Debug, Clone)]
@@ -34,6 +34,7 @@ pub struct MusicHttpClient {
     backend: Arc<dyn HttpBackend>,
     gate: tokio::sync::Mutex<()>,
     last_response: Mutex<Option<ResponseInfo>>,
+    server_clock: Mutex<Option<(u64, Instant)>>,
     registration_user: Mutex<Option<String>>,
 }
 
@@ -98,8 +99,29 @@ impl MusicHttpClient {
             backend,
             gate: tokio::sync::Mutex::new(()),
             last_response: Mutex::new(None),
+            server_clock: Mutex::new(None),
             registration_user: Mutex::new(None),
         })
+    }
+
+    fn observe_server_date(&self, header: Option<&str>) {
+        use time::{OffsetDateTime, format_description::well_known::Rfc2822};
+
+        // M47 ignores dates before this cutoff. Advance the latest accepted
+        // header with a monotonic clock rather than depending on wall-clock edits.
+        let Some(server_ms) = header
+            .filter(|value| value.len() <= 64)
+            .and_then(|value| OffsetDateTime::parse(value, &Rfc2822).ok())
+            .and_then(|date| u64::try_from(date.unix_timestamp_nanos() / 1_000_000).ok())
+            .filter(|ms| *ms > 1_740_000_000_000)
+        else {
+            return;
+        };
+        let anchor = Instant::now();
+        if let Ok(mut clock) = self.server_clock.lock() {
+            let floor = clock.map_or(0, |(ms, at)| advance_server_clock(ms, at, anchor));
+            *clock = Some((server_ms.max(floor), anchor));
+        }
     }
 
     pub fn response_info(&self) -> Result<Option<ResponseInfo>> {
@@ -494,6 +516,9 @@ impl MusicHttpClient {
         if let Some(context) = &self.context {
             context.observe_response(response.metadata.clone());
         }
+        if (200..300).contains(&response.status) {
+            self.observe_server_date(response.metadata.get("date").map(String::as_str));
+        }
         *self.last_response.lock().map_err(|_| Error::LockPoisoned)? = Some(ResponseInfo {
             status: response.status,
             bytes: response.body.len(),
@@ -511,7 +536,20 @@ impl MusicHttpClient {
     }
 }
 
+fn advance_server_clock(ms: u64, at: Instant, now: Instant) -> u64 {
+    ms.saturating_add(
+        u64::try_from(now.saturating_duration_since(at).as_millis()).unwrap_or(u64::MAX),
+    )
+}
+
 impl Api for MusicHttpClient {
+    fn observed_server_time_ms(&self) -> Option<u64> {
+        self.server_clock
+            .lock()
+            .ok()?
+            .map(|(ms, at)| advance_server_clock(ms, at, Instant::now()))
+    }
+
     fn local_device_id(&self) -> Result<Option<String>> {
         self.credentials.device_id().map(Some)
     }

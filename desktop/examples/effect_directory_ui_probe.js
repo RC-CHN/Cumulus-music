@@ -67,8 +67,8 @@
     const opener = button(await wait(() => one('.equalizer-dialog[open]'), 'EQ dialog'), '音效目录');
     click(opener);
     await wait(() => text().includes('合成空间音效'), 'featured list');
-    assert(one('[data-effect-membership="svip"]')?.textContent.trim() === 'SVIP',
-      'featured card shows its catalogue tier');
+    assert(one('[data-effect-membership="svip"][data-effect-limited-free]')?.textContent.trim() === 'SVIP 限免',
+      'future catalogue trial shows the limited-free tier');
     click(one('.effect-directory-card'));
     await wait(() => text().includes('当前账号拥有试用权益'), 'read-only trial rights');
     await wait(artworkLoaded, 'dark artwork displayed');
@@ -77,12 +77,15 @@
     await wait(() => seenArtwork.some((url) => url.endsWith('-light.png')) &&
       artworkLoaded(), 'light artwork displayed');
     await capture('02_light_artwork');
+    await wait(() => one('[data-effect-membership="svip"]')?.textContent.trim() === 'SVIP',
+      'catalogue trial badge expires without a new request');
+    assert(text().includes('当前账号拥有试用权益'), 'expiry does not rewrite fresh rights readback');
     click(button(dialog(), '官方精选音效'));
     await wait(() => text().includes('合成未标识音效'), 'recommended list');
     const cards = [...dialog().querySelectorAll('.effect-directory-card')];
     assert(cards[0].querySelector('[data-effect-membership="vip"]')?.textContent.trim() === 'VIP' &&
       !cards[1].querySelector('[data-effect-membership]') && !text().includes('限免'),
-      'only known tiers get decorative badges; catalogue trial metadata does not change presentation');
+      'only known tiers get decorative badges; elapsed trial does not show limited-free');
     click(one('.effect-directory-card'));
     await wait(() => text().includes('暂未确认当前账号的权益'), 'uncertain rights');
     await capture('03_unknown');
@@ -116,7 +119,7 @@
     await wait(() => !dialog() && document.activeElement === opener, 'return focus to equalizer');
     assert(seenArtwork.some((url) => url.endsWith('-dark.png')) && seenArtwork.every((url) =>
       /^https:\/\/p1\.music\.126\.net\/cumulus-proof-artwork-(light|dark)\.png$/.test(url)), 'only sanitized artwork reached WebView');
-    await emit('complete', { ok: true, stageCount: 7, artworkVerified: true, devicesVerified: true });
+    await emit('complete', { ok: true, stageCount: 7, artworkVerified: true, devicesVerified: true, limitedFreeExpiryVerified: true });
   } catch (error) {
     const image = one('.effect-directory-card img');
     await emit('failed', { message: String(error), body: document.body.innerText.slice(0, 2000),

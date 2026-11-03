@@ -5,6 +5,7 @@ export interface EffectCatalogueItem {
   name: string;
   subtitle: string;
   membership?: 'vip' | 'svip';
+  trial_remaining_ms?: number;
   light_artwork?: string;
   dark_artwork?: string;
 }

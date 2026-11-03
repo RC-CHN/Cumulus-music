@@ -15,6 +15,12 @@ pub trait Api: Send + Sync + std::any::Any {
         Ok(None)
     }
 
+    /// Best available native service clock, for informational time windows.
+    /// Fixture and other transports can leave this unavailable.
+    fn observed_server_time_ms(&self) -> Option<u64> {
+        None
+    }
+
     fn call<'a>(
         &'a self,
         path: &'a str,

@@ -81,8 +81,14 @@ Linux 跨进程合成验证：effect_peq_restart_smoke.py 启动两个不同 PID
 恢复 AudioEffectCard.tsx:166–209 和 AudioCardNew.tsx:131–173 使用
 vipAuthRespItem.interestsVipType：6 显示 VIP，15 显示 SVIP。目录卡片仅展示
 这两种已知等级；该标识不说明当前账号的权益，详情仍通过原有新鲜权限请求判定。
-本次不显示限免或倒计时：官方限免变体另使用 trialDto.expireTime 和 dateSync，
-当前目录未接入该时钟。合成 WebView 验收覆盖两种等级、未知等级无标识及原请求次序。
+官方 AudioEffectCard.tsx:166–209、AudioCardNew.tsx:131–173 在 trialStatus 为真且
+trialDto.expireTime 尚未到达时给 VIP/SVIP 标加限免字样。LimitFreeVipNewIcon.tsx
+只展示徽标，没有数字倒计时。Rust 仅投影安全的剩余毫秒数，不投影材料或授权回包。
+已验证的 HTTP Date 按 M/402 与 M/47 的日期同步证据用于该展示：拒绝过早日期和失败响应，
+会话内由单调时钟前推；缺日期时使用本机时钟。没有实现官方跨进程时钟存储、会员接口
+时间校准或遥测。WebView 使用单一到期定时器切回原会员标，切组和关闭释放定时器，
+不重发目录或权限请求。试用/普通权益仍取显式详情读取，显示不授予或撤销权益。
+合成 WebView 核对未到期、自动到期、到期不改原权限、已到期和未知等级不显示限免。
 
 等待播放器挂载
 原生返回 deferred 时，当前可见控件在 5 秒预算内最多读取 8 次本机精确绑定状态，

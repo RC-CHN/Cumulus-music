@@ -8,6 +8,7 @@ use super::{
 };
 use crate::{Error, Result, account::SessionToken};
 use serde::Serialize;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct EffectDirectoryRow {
@@ -17,6 +18,8 @@ pub struct EffectDirectoryRow {
     /// Catalogue presentation only; never a fresh access decision.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub membership: Option<RequiredMembership>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trial_remaining_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub light_artwork: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -39,8 +42,8 @@ pub struct EffectDirectoryDetail {
     pub access: EffectDirectoryAccess,
 }
 
-impl From<Sound> for EffectDirectoryRow {
-    fn from(sound: Sound) -> Self {
+impl EffectDirectoryRow {
+    fn from_sound(sound: Sound, now_ms: Option<u64>) -> Self {
         fn text(value: &str) -> String {
             value
                 .trim()
@@ -49,11 +52,23 @@ impl From<Sound> for EffectDirectoryRow {
                 .take(512)
                 .collect()
         }
+        let auth = sound.catalogue_authorization();
+        let membership = tier(auth.as_ref());
+        let trial = &sound.native_record()["vipAuthRespItem"]["authResult"]["trialDto"];
+        let trial_remaining_ms = match (membership, auth, now_ms) {
+            (Some(_), Some(auth), Some(now)) if auth.catalogue_trial_active => trial["expireTime"]
+                .as_u64()
+                .filter(|time| *time <= 8_640_000_000_000_000)
+                .and_then(|time| time.checked_sub(now))
+                .filter(|left| *left > 0),
+            _ => None,
+        };
         Self {
             id: sound.id,
             name: text(&sound.name),
             subtitle: text(&sound.subtitle),
-            membership: tier(sound.catalogue_authorization().as_ref()),
+            membership,
+            trial_remaining_ms,
             light_artwork: crate::protocol::artwork::original(&sound.native_record()["lightImg"]),
             dark_artwork: crate::protocol::artwork::original(&sound.native_record()["darkImg"]),
         }
@@ -61,16 +76,27 @@ impl From<Sound> for EffectDirectoryRow {
 }
 
 impl EffectsLibrary {
+    async fn directory_time_for(&self, token: &SessionToken) -> Result<Option<u64>> {
+        self.session
+            .run_for(token, |api, _| async move {
+                Ok(api.observed_server_time_ms().or_else(|| {
+                    let elapsed = SystemTime::now().duration_since(UNIX_EPOCH).ok()?;
+                    u64::try_from(elapsed.as_millis()).ok()
+                }))
+            })
+            .await
+    }
+
     pub async fn directory_for(
         &self,
         token: &SessionToken,
         kind: CatalogueKind,
     ) -> Result<Vec<EffectDirectoryRow>> {
-        let rows = self
-            .catalogue_for(token, kind, true)
-            .await?
+        let rows = self.catalogue_for(token, kind, true).await?;
+        let now = self.directory_time_for(token).await?;
+        let rows = rows
             .into_iter()
-            .map(EffectDirectoryRow::from)
+            .map(|sound| EffectDirectoryRow::from_sound(sound, now))
             .collect();
         self.session.with_token(token, |_| Ok(rows))
     }
@@ -117,7 +143,7 @@ impl EffectsLibrary {
             }
             Err(error) => return Err(error),
         };
-        let effect = sound.into();
+        let effect = EffectDirectoryRow::from_sound(sound, self.directory_time_for(token).await?);
         self.session.with_token(token, |_| {
             Ok(Some(EffectDirectoryDetail { effect, access }))
         })

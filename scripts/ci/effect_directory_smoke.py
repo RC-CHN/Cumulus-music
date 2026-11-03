@@ -38,6 +38,7 @@ def main():
     assert code == 0
     complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
     assert complete['ok'] and complete['stageCount'] == 7 and complete['artworkVerified'] and complete['devicesVerified']
+    assert complete['limitedFreeExpiryVerified']
     catalogue = '/api/usertool/sound/queryAllSound'
     detail = '/api/usertool/home/sound/info'
     rights = '/api/vipauth/app/interests/auth/query'
@@ -54,7 +55,7 @@ def main():
     ]
     assert len(list(output.glob('ux_*.png'))) == (7 if args.screenshots else 0)
     print(json.dumps({'ok': True, 'actualWebView': True, 'syntheticReadCalls': len(calls),
-                      'realAccountWrites': 0}))
+                      'realAccountWrites': 0, 'limitedFreeExpiryVerified': True}))
 
 
 if __name__ == '__main__':

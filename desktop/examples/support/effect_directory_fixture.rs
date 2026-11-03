@@ -15,9 +15,18 @@ fn sound(id: u64) -> Value {
         301 => ("合成未标识音效", "未知会员等级", 99),
         _ => unreachable!("validated effect fixture ID"),
     };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+    let expires = if id == 300 {
+        now.saturating_sub(1)
+    } else {
+        now + 5_000
+    };
     json!({"id":id,"name":name,"subTitle":subtitle,"soundType":3,
         "coverUrl":"https://example.invalid/cover-sentinel",
-        "vipAuthRespItem":{"interestsVipType":tier,"authResult":{"trialDto":{"trialStatus":1,"expireTime":4000000000000_u64}}},
+        "vipAuthRespItem":{"interestsVipType":tier,"authResult":{"trialDto":{"trialStatus":1,"expireTime":expires}}},
         "lightImg":"https://p1.music.126.net/cumulus-proof-artwork-light.png?token=private-sentinel",
         "darkImg":"http://p1.music.126.net/cumulus-proof-artwork-dark.png#private-sentinel",
         "soundMaterialList":[{"link":"https://example.invalid/material-sentinel"}]})

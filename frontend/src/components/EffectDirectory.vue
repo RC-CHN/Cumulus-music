@@ -34,6 +34,37 @@ const accessLabels: Record<EffectAccess, string> = {
 type Category = EffectCatalogueKind | 'devices';
 const kind = ref<Category>('highly_recommended');
 const items = ref<EffectCatalogueItem[]>([]);
+const trialEffects = ref(new Set<number>());
+let trialTimer: ReturnType<typeof setTimeout> | undefined;
+
+function clearTrials() {
+  clearTimeout(trialTimer);
+  trialTimer = undefined;
+  trialEffects.value = new Set();
+}
+
+function scheduleTrials(rows: EffectCatalogueItem[]) {
+  const receivedAt = performance.now();
+  const expiry = new Map<number, number>();
+  for (const row of rows) {
+    const remaining = row.trial_remaining_ms;
+    if (row.membership && remaining && Number.isSafeInteger(remaining) && remaining > 0)
+      expiry.set(row.id, receivedAt + remaining);
+  }
+  function update() {
+    const now = performance.now();
+    let next = Infinity;
+    for (const [id, deadline] of expiry) {
+      if (deadline <= now) expiry.delete(id);
+      else next = Math.min(next, deadline);
+    }
+    trialEffects.value = new Set(expiry.keys());
+    trialTimer = expiry.size
+      ? setTimeout(update, Math.min(2_147_483_647, Math.ceil(next - now)))
+      : undefined;
+  }
+  update();
+}
 const selected = ref<EffectCatalogueItem>();
 const access = ref<EffectAccess>();
 const browsing = ref(!props.initialManagementOnly);
@@ -66,6 +97,7 @@ async function load(category: Category) {
   detailRequest++;
   kind.value = category;
   items.value = [];
+  clearTrials();
   selected.value = undefined;
   recoveryOnly.value = false;
   access.value = undefined;
@@ -79,7 +111,10 @@ async function load(category: Category) {
   loading.value = true;
   try {
     const rows = await core.effectCatalogue(epoch, category);
-    if (current()) items.value = rows;
+    if (current()) {
+      items.value = rows;
+      scheduleTrials(rows);
+    }
   } catch (issue) {
     if (current()) listError.value = failure(issue).message;
   } finally {
@@ -172,6 +207,7 @@ onMounted(() => {
   void refreshPending();
 });
 onUnmounted(() => {
+  clearTrials();
   listRequest++;
   detailRequest++;
   pendingRequest++;
@@ -286,7 +322,9 @@ onUnmounted(() => {
                     v-if="item.membership"
                     class="effect-card-membership"
                     :data-effect-membership="item.membership"
-                    >{{ item.membership === 'svip' ? 'SVIP' : 'VIP' }}</span
+                    :data-effect-limited-free="trialEffects.has(item.id) || undefined"
+                    >{{ item.membership === 'svip' ? 'SVIP' : 'VIP'
+                    }}{{ trialEffects.has(item.id) ? ' 限免' : '' }}</span
                   >
                 </strong>
                 <span v-if="item.subtitle">{{ item.subtitle }}</span>

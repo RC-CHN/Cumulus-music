@@ -786,3 +786,40 @@ async fn uplink_polling_only_accepts_a_truthy_business_acknowledgement_for_refre
         );
     }
 }
+
+#[tokio::test]
+async fn server_clock_observes_valid_https_dates_without_regressing_or_using_failures() {
+    let (_root, creds) = credentials();
+    let dated = |date: &str, status| {
+        let mut response = reply(json!({"code":200}));
+        response.status = status;
+        response.metadata.insert("date".into(), date.into());
+        Reply::Ready(response)
+    };
+    let api = client(
+        creds,
+        Arc::new(Backend::new([
+            dated("Wed, 01 Jan 2020 00:00:00 GMT", 200),
+            dated("Thu, 01 Jan 2026 00:00:00 GMT", 200),
+            dated("Fri, 02 Jan 2026 00:00:00 GMT", 503),
+            dated("Wed, 31 Dec 2025 00:00:00 GMT", 200),
+        ])),
+        RequestOptions::default(),
+        None,
+    );
+    let read = || api.request("/api/w/nuser/account/get", json!({}), false);
+    assert_eq!(api.observed_server_time_ms(), None);
+    read().await.unwrap();
+    assert_eq!(api.observed_server_time_ms(), None);
+    read().await.unwrap();
+    let accepted = api.observed_server_time_ms().unwrap();
+    const JAN_1: u64 = 1_767_225_600_000;
+    assert!((JAN_1..JAN_1 + 86_400_000).contains(&accepted));
+    assert!(matches!(
+        read().await,
+        Err(Error::HttpStatus { status: 503, .. })
+    ));
+    read().await.unwrap();
+    let advanced = api.observed_server_time_ms().unwrap();
+    assert!((accepted..JAN_1 + 86_400_000).contains(&advanced));
+}
