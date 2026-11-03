@@ -22,7 +22,8 @@ hybrid_app.chunk.1482700000000.js：
 没有同状态官方运行截图，未声称像素一致或原有所有资源的拖放完整复刻。
 
 正式交互与模块
-- QueuePanel：单击标题选择，双击/Enter实际播放；独立播放图标保留单击播放入口。
+- QueuePanel：单击标题选择；双击已加载的当前条目暂停或继续，双击其他条目选曲。
+  Enter 和独立播放图标保留显式选曲入口。
   当前播放标识与选中状态分开。不可播放的失效资料仍可选择/移出，不伪造可播放性。
 - useQueueSelection、queueSelection：按entryId保存选择及锚点；同一首录音的不同
   队列实例不能混成trackId。Ctrl切换、Shift连续、Ctrl+Shift减去、Ctrl/Meta+A完整
@@ -51,7 +52,7 @@ IPC、接口及持久化
 提交：CoreClient.playerAction(epoch, {
   kind:"queue_for", expected_queue_revision:displayed.revision,
   edit:{kind:"remove",entry_ids:[...]} 或 {kind:"reorder",entry_ids:[完整新顺序]}
-}) → 本地player_action。双击/Enter/播放图标走同一封装的select/entry_id。
+}) → 本地player_action。双击当前条目走 pause_for；其余选曲走 select/entry_id。
 使用既有独立Rust状态机、账号/代次、PlaybackFence、队列CAS与SQLite事务；没有
 新增HTTP接口、签名或前端凭据。原生要求reorder保留所有身份且恰好出现一次，
 remove拒绝未知身份；失败不能形成一半删除或一半排序。拖动捕获原QueueView后，
@@ -67,10 +68,11 @@ remove拒绝未知身份；失败不能形成一半删除或一半排序。拖�
 需先构建production前端及custom-protocol ux_ui_probe。Linux/Windows独立CI均接入。
 前端7项有意义用例覆盖选择/缺失锚点、稳定块、无变化、不合法输入，以及全部63个
 非空子集×7个边界的排列/相对顺序约束。不是Rust迁移新增业务测试数。
-24态真实WebView脚本覆盖选择/范围/折叠、组拖预览与原生排序、三种取消/版本替换、
+真实WebView脚本覆盖选择/范围/折叠、组拖预览与原生排序、三种取消/版本替换、
 SQL失败保留选择/焦点、批量移除、跨虚拟窗口全选/边缘滚动、两尺寸两主题、真实
 原生选曲与替换队列。每态核对Rust队列顺序/计数、暂停10秒及音频会话身份；
-仅双击/显式播放/替换改变会话。HTTP/账号/音源为合成，libmpv使用null输出。
+本用例验证选择其他条目或替换队列新建会话、双击当前条目保留会话。
+HTTP/账号/音源为合成，libmpv使用null输出。
 截图、本机125%和失败记录见ui-ux-validation.txt，不能把截图称为物理鼠标输入或
 真实扬声器听感。Windows结果必须跟精确提交完整CI，不能用Linux替代。
 
@@ -106,3 +108,5 @@ SQL失败保留选择/焦点、批量移除、跨虚拟窗口全选/边缘滚动
 playId 和队列版本绑定的 pause_for，保留已有解码器、播放位置及队列。已停止的
 条目、其他条目以及独立播放键/Enter 仍走原本的选择流程。相同歌曲在不同队列
 条目时按条目身份判断，不误切换另一条；FM 队列限制不变。
+Linux WebView 全套 25 态通过，新增步骤从 10 秒继续并等待原生时钟推进，再
+双击暂停。核对同一 playId、entryId、队列版本和焦点；其他条目仍打开新播放项。

@@ -17,7 +17,7 @@ LABELS = ['single_selected', 'control_selected', 'shift_range', 'subtract_range'
           'selection_cleared', 'autoscroll_preview', 'autoscroll_cancelled']
 LABELS += [f'selection_{width}_{theme}' for width, theme in
            [(1120, 'light'), (760, 'light'), (760, 'dark'), (1120, 'dark')]]
-LABELS += ['double_click_played', 'explicit_played', 'queue_replaced']
+LABELS += ['double_click_played', 'current_double_click_toggled', 'explicit_played', 'queue_replaced']
 
 
 def main():
@@ -68,6 +68,8 @@ def main():
             assert '38' in row['selectionText'] and len(row['selection']) < 38
         if label == 'group_preview':
             assert row['dragging'] == len(row['selection']) == 2 and row['marker']
+        if label == 'current_double_click_toggled':
+            assert row['currentTransportPreserved']
         if args.screenshots:
             assert path.with_suffix('.png').is_file()
     assert len(set(phases.values())) == 4
