@@ -17,6 +17,7 @@ import time
 
 
 TITLE = 'Synthetic Playback Check'
+MONITOR_TONES = (60, 440, 10000)
 
 
 def stop(process):
@@ -93,8 +94,12 @@ def isolated_audio(root, env):
         media = private/'music_fixture'
         media.mkdir()
         source = media/'Synthetic.flac'
+        # Keep 440 Hz dominant for the GEQ proof, with quieter test tones in
+        # the bass and treble shelves. All three remain below clipping.
+        fixture = '+'.join(f'{gain}*sin(2*PI*{frequency}*t)'
+                           for frequency, gain in zip(MONITOR_TONES, (.02, .10, .02)))
         subprocess.run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i',
-                        'sine=frequency=440:sample_rate=48000:duration=45',
+                        f'aevalsrc={fixture}:s=48000:d=45',
                         '-metadata', f'title={TITLE}', source], check=True, timeout=20)
         yield source
 
@@ -185,10 +190,13 @@ def sink_tone(env):
     # Analyze the central half second, omitting the stream's startup transient.
     pcm = tuple(value for (value,) in struct.iter_unpack('<h', raw[24000:72000]))
     rms = math.sqrt(math.fsum(value * value for value in pcm) / len(pcm))
-    omega = math.tau * 440 / 48000
-    sine = math.fsum(value * math.sin(omega * index) for index, value in enumerate(pcm))
-    cosine = math.fsum(value * math.cos(omega * index) for index, value in enumerate(pcm))
-    return {'rms': round(rms, 3), 'amplitude440Hz': round(2 * math.hypot(sine, cosine) / len(pcm), 3)}
+    result = {'rms': round(rms, 3)}
+    for frequency in MONITOR_TONES:
+        omega = math.tau * frequency / 48000
+        sine = math.fsum(value * math.sin(omega * index) for index, value in enumerate(pcm))
+        cosine = math.fsum(value * math.cos(omega * index) for index, value in enumerate(pcm))
+        result[f'amplitude{frequency}Hz'] = round(2 * math.hypot(sine, cosine) / len(pcm), 3)
+    return result
 
 
 def verify_playback(root, app, window, x, y, width, height, source, env, screenshot, packaged_filter=None, verify_monitor_pcm=False):
@@ -224,15 +232,20 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
         assert queue['current'] == item['entry_id'] == position['entry_id']
         return position
 
-    def preset_saved(bypassed=False):
+    def preset_saved(bypassed=False, enabled=True, boost_bass=False, boost_treble=False):
         with closing(sqlite3.connect(database.as_uri()+'?mode=ro', uri=True, timeout=.5)) as db:
             row = db.execute("SELECT value FROM state WHERE owner='local-guest' "
                              "AND kind='equalizer-preferences-v1' AND key='current'").fetchone()
         if row:
             value = json.loads(row[0])
+            settings = value['settings']
+            bass, treble = settings.get('bass_db', 0), settings.get('treble_db', 0)
             return (value['preset'] == {'kind': 'built_in', 'index': 1}
-                    and value['settings']['enabled'] and any(value['settings']['gains'])
-                    and value['settings'].get('master_bypassed', False) is bypassed)
+                    and settings['enabled'] is enabled and any(settings['gains'])
+                    and (bass >= 6 if boost_bass else bass == 0)
+                    and (treble >= 6 if boost_treble else treble == 0)
+                    and settings.get('tone_enabled', False) is (boost_bass or boost_treble)
+                    and settings.get('master_bypassed', False) is bypassed)
         return False
 
     def committed_progress(label):
@@ -323,6 +336,25 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
                 assert math.isclose(monitor['restored']['amplitude440Hz'],
                                     monitor['equalized']['amplitude440Hz'], rel_tol=.03), (
                     'reactivating the installed preset did not restore the equalized 440 Hz tone')
+                inputs.click(790, 188)  # Turn off the ten-band GEQ, not the master.
+                wait_for('installed GEQ disabled', lambda: preset_saved(enabled=False))
+                inputs.click(440, 563)  # Boost bass near the slider's upper limit.
+                wait_for('installed bass adjustment committed', lambda: preset_saved(enabled=False, boost_bass=True))
+                inputs.click(665, 563)  # Boost treble near the slider's upper limit.
+                wait_for('installed treble adjustment committed',
+                         lambda: preset_saved(enabled=False, boost_bass=True, boost_treble=True))
+                tone = capture_tone('toneOnly', committed_progress('installed bass and treble'))
+                for frequency in (60, 10000):
+                    key = f'amplitude{frequency}Hz'
+                    assert baseline[key] > 25 and tone[key] > baseline[key] * 1.5, (
+                        f'installed tone controls did not increase {frequency} Hz with GEQ off')
+                inputs.click(789, 563)  # Reset bass and treble.
+                wait_for('installed tone reset committed', lambda: preset_saved(enabled=False))
+                reset = capture_tone('toneReset', committed_progress('installed tone reset'))
+                for frequency in MONITOR_TONES:
+                    key = f'amplitude{frequency}Hz'
+                    assert math.isclose(reset[key], baseline[key], rel_tol=.03), (
+                        f'installed tone reset did not restore the original {frequency} Hz tone')
             inputs.key('Escape')
             time.sleep(.35)
         inputs.click(559, 712)  # Pause.
@@ -351,6 +383,7 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
         if packaged_filter:
             report['masterBypassRestoredUnfilteredPcm'] = True
             report['masterReactivationRestoredEqualizedPcm'] = True
+            report['independentToneAndResetVerifiedInPcm'] = True
     if packaged_filter:
         report.update(equalizerPresetCommitted=True, installedFilterMapped=True,
                       sameTrackAdvancedWithEqualizer=True)
