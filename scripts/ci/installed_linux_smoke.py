@@ -1,5 +1,14 @@
-"""Start the exact extracted Debian app, with no account or external network."""
+"""Start the exact extracted Debian app, with no account or external network.
+
+Optional playback needs a private 1280x900 Xvfb display, D-Bus session and a
+network namespace with no routes. Hide host sound devices, for example:
+  xvfb-run -a -s '-screen 0 1280x900x24' bwrap --unshare-user --unshare-net \
+    --die-with-parent --bind / / --dev /dev --proc /proc -- dbus-run-session -- \
+    /usr/bin/python3 scripts/ci/installed_linux_smoke.py [package arguments] \
+    --verify-local-playback
+"""
 import argparse
+from contextlib import nullcontext
 import hashlib
 import json
 import os
@@ -37,7 +46,7 @@ def own_window(pid):
     return None
 
 
-def observe(binary, root):
+def observe(binary, root, verify_local_playback=False):
     import gi
     gi.require_version('Gdk', '3.0')
     gi.require_version('GdkX11', '3.0')
@@ -54,7 +63,12 @@ def observe(binary, root):
     display = Gdk.Display.get_default()
     assert display is not None, 'private Xvfb display missing'
     screen = Gdk.get_default_root_window()
-    with (root/'host.log').open('xb') as log:
+    if verify_local_playback:
+        from installed_linux_audio import isolated_audio, verify_playback
+        audio = isolated_audio(root, env)
+    else:
+        audio = nullcontext()
+    with audio as source, (root/'host.log').open('xb') as log:
         app = subprocess.Popen([binary], env=env, stdout=log, stderr=log)
         try:
             deadline = time.monotonic() + 60
@@ -74,7 +88,14 @@ def observe(binary, root):
                                           for col in range(3, width-3, 13))
                                 if len({pixels[index:index+3] for index in points}) >= 30:
                                     assert image.savev(str(root/'installed-window.png'), 'png', [], [])
-                                    return width, height
+                                    playback = None
+                                    if source is not None:
+                                        def screenshot(name):
+                                            capture = Gdk.pixbuf_get_from_window(screen, x, y, width, height)
+                                            assert capture is not None
+                                            assert capture.savev(str(root/name), 'png', [], [])
+                                        playback = verify_playback(root, app, window, x, y, width, height, source, env, screenshot)
+                                    return width, height, playback
                 time.sleep(.2)
             raise AssertionError('packaged app never painted a normal window')
         finally:
@@ -93,6 +114,8 @@ def main():
     parser.add_argument('--filter', type=Path, required=True)
     parser.add_argument('--commit', required=True)
     parser.add_argument('--root', type=Path, required=True)
+    parser.add_argument('--verify-local-playback', action='store_true',
+                        help='exercise synthetic audio via X11 and a private PipeWire null sink')
     args = parser.parse_args()
     require_isolation()
     root = args.root.resolve()
@@ -111,10 +134,12 @@ def main():
         assert executable.is_file() and not executable.is_symlink() and os.access(executable, os.X_OK)
         assert packaged_filter.is_file() and not packaged_filter.is_symlink()
         assert digest(packaged_filter) == digest(args.filter)
-        width, height = observe(executable, root)
+        width, height, playback = observe(executable, root, args.verify_local_playback)
     result = dict(ok=True, commit=args.commit, archiveVerified=True,
                   installedFilterMatchesPortable=True, ordinaryWindowPainted=True,
                   noExternalNetwork=True, width=width, height=height)
+    if playback is not None:
+        result['localPlayback'] = playback
     (root/'report.json').write_text(json.dumps(result, indent=2)+'\n', encoding='utf-8')
     print(json.dumps(result))
 
