@@ -231,7 +231,7 @@ Cumulus 桌面主流程验收
   和一个成功 GET。无真实 CDN、账号或物理音频输出请求。既有 CI 正常 HTTPS
   模式不启用此故障注入。
 
-双曲普通 HTTPS 的自然曲终推进（Linux，可选）
+双曲普通 HTTPS 的自然曲终推进（Linux 必需 CI）
 
   同一 main_flow_https_smoke.py 命令加 --eof-next（不可与 --retry-once
   合用）。搜索结果含两首固定合成歌曲，第一首用原路径，第二首用独立精确路径。
@@ -239,5 +239,8 @@ Cumulus 桌面主流程验收
   保留第一首原生播放项直至实际 libmpv EOF，不发手动切歌。随后验证第二首
   使用新播放项 ID、原生时钟推进，暂停、恢复、停止均走正式控件。
   隔离服务器按顺序各允许一次 GET，第一首播放回执之前拒绝第二首。报告保留
-  读取次序、授权和加载次数，未加入现行默认 CI 模式。命名空间预检不替代
-  实际桌面验证。
+  读取次序、授权和加载次数。实际 Linux WebView 运行见
+  `.build/https-eof-exact/{run/report.json,https-receipt.json}` 与
+  `run/first/ux_https_before_eof.png`；报告确认两条路径各一次 GET、顺序 1→2。
+  此构建也分别复验了单曲正常和显式重试模式。Windows CI 仍走独立合成路径；
+  该测试不证明真实 CDN 或声卡输出。
