@@ -64,6 +64,21 @@ impl From<Error> for ClientError {
                     "请先恢复音乐播放，再退出心动模式",
                     true,
                 ),
+                Error::State("queue click settings are damaged") => (
+                    "queue_click_settings_damaged",
+                    "双击播放设置损坏，请先在设置中修复",
+                    false,
+                ),
+                Error::State("queue click requires an ordinary queue") => (
+                    "queue_click_special_queue",
+                    "请先退出当前播放模式，或使用显式播放操作",
+                    false,
+                ),
+                Error::State("queue click settings changed") => (
+                    "queue_click_settings_changed",
+                    "双击播放设置已变化，请重新读取",
+                    false,
+                ),
                 Error::LoginDeferred => ("login_check", "请求未通过登录校验，请稍后重试", true),
                 Error::State("CAPTCHA timed out") => {
                     ("captcha_timeout", "验证码已超时，请重新打开验证", true)

@@ -40,6 +40,35 @@ impl MusicClient {
     }
     pub async fn play_selection(&self, epoch: &str, input: PlaySelection) -> Result<PlayerView> {
         let token = self.player_token(epoch)?;
+        let (input, keep_queue) = match input {
+            PlaySelection::SongRowDoubleClick { selection } => {
+                let keep_queue = !self.replace_queue_on_double_click(&token)?;
+                let input = match selection {
+                    SongRowSelection::Catalog {
+                        pages,
+                        index,
+                        quality,
+                    } => PlaySelection::Catalog {
+                        pages,
+                        index,
+                        quality,
+                    },
+                    SongRowSelection::Playlist {
+                        id,
+                        start_id,
+                        revision,
+                        quality,
+                    } => PlaySelection::Playlist {
+                        id,
+                        start_id: Some(start_id),
+                        revision,
+                        quality,
+                    },
+                };
+                (input, keep_queue)
+            }
+            input => (input, false),
+        };
         if !matches!(
             input,
             PlaySelection::Local { .. }
@@ -48,10 +77,24 @@ impl MusicClient {
         ) {
             self.session.with_token(&token, |_| Ok(()))?;
         }
-        let lease = self
-            .claim_media(&token, super::super::focus::Owner::Audio)
-            .await?;
-        let attempt = self.player.selection.fetch_add(1, Ordering::AcqRel) + 1;
+        let preserve = if keep_queue {
+            Some(self.queue_click_snapshot(&token).await?)
+        } else {
+            None
+        };
+        use super::super::focus::Owner;
+        let (lease, attempt) = if let Some(snapshot) = &preserve {
+            let lease = self
+                .claim_native_media(&token, Owner::Audio, snapshot.focus)
+                .await?;
+            (lease, snapshot.attempt)
+        } else {
+            let lease = self.claim_media(&token, Owner::Audio).await?;
+            (
+                lease,
+                self.player.selection.fetch_add(1, Ordering::AcqRel) + 1,
+            )
+        };
         let input = match input {
             PlaySelection::Downloads { query, start_id } => {
                 let (resources, index) = self.download_selection(epoch, query, start_id).await?;
@@ -362,7 +405,8 @@ impl MusicClient {
                         quality,
                         json!({"kind":"mv_related","mvId":mv_id,"scene":"video"}),
                     )),
-                    PlaySelection::Cloud { .. }
+                    PlaySelection::SongRowDoubleClick { .. }
+                    | PlaySelection::Cloud { .. }
                     | PlaySelection::CloudBatch { .. }
                     | PlaySelection::Downloads { .. }
                     | PlaySelection::History { .. }
@@ -483,6 +527,14 @@ impl MusicClient {
                 }
             })
             .await?;
+        let (ids, index) = if keep_queue {
+            let id = ids
+                .get(index)
+                .ok_or(Error::State("selected song is unavailable"))?;
+            (vec![id.clone()], 0)
+        } else {
+            (ids, index)
+        };
         let mut resources = Vec::with_capacity(ids.len());
         for chunk in ids.chunks(100) {
             if self.player.selection.load(Ordering::Acquire) != attempt {
@@ -515,16 +567,24 @@ impl MusicClient {
             return Err(Error::StaleResponse);
         }
         self.focus.check(lease, super::super::focus::Owner::Audio)?;
-        let state = controller
-            .command(
-                &token,
-                PlaybackCommand::Replace {
-                    resources,
-                    index,
-                    source,
-                },
-            )
-            .await?;
+        let state = if let Some(snapshot) = preserve {
+            let resource = resources
+                .pop()
+                .ok_or(Error::State("selected song is unavailable"))?;
+            self.play_retained_queue_row(&token, snapshot, (resource, source), lease)
+                .await?
+        } else {
+            controller
+                .command(
+                    &token,
+                    PlaybackCommand::Replace {
+                        resources,
+                        index,
+                        source,
+                    },
+                )
+                .await?
+        };
         self.session.with_token(&token, |_| Ok(()))?;
         project(&state, &token)
     }

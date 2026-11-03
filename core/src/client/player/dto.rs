@@ -126,7 +126,26 @@ pub enum SearchResultPlayback {
 
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum SongRowSelection {
+    Catalog {
+        pages: Vec<super::super::catalog::CatalogSelectionPage>,
+        index: usize,
+        quality: Quality,
+    },
+    Playlist {
+        id: String,
+        start_id: String,
+        revision: Option<String>,
+        quality: Quality,
+    },
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PlaySelection {
+    SongRowDoubleClick {
+        selection: SongRowSelection,
+    },
     Voice {
         id: String,
     },

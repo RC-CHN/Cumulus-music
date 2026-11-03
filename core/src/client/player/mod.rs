@@ -9,6 +9,7 @@ mod output;
 mod playlist_batch;
 mod preferences;
 mod quality;
+mod queue_click;
 mod queue_collection;
 mod queue_edit;
 mod queue_playlist;
@@ -37,6 +38,7 @@ pub use quality::{
     QualityChoiceView, QualityDetailsView, QualityTrialCommand, QualityTrialOutcome,
     QualityTrialView,
 };
+pub use queue_click::{QueueClickPreferencesCommand, QueueClickPreferencesView};
 pub use reports::LyricReportView;
 use std::sync::{Arc, Mutex, atomic::AtomicU64};
 use tokio::sync::{OnceCell, watch};

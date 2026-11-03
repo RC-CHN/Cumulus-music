@@ -170,6 +170,9 @@ fn songs(id: &str) -> PlaySelection {
 #[path = "client_player/voice_selection.rs"]
 mod voice_selection;
 
+#[path = "client_player/queue_click.rs"]
+mod queue_click;
+
 #[path = "client_player/queue_album.rs"]
 mod queue_album;
 #[path = "client_player/source_control.rs"]
