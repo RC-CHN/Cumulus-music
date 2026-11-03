@@ -769,6 +769,14 @@ function downloadBatchLeft() {
     ?.focus({ preventScroll: true });
 }
 const catalogDetailPage = ref<InstanceType<typeof CatalogPage>>();
+function openDailyHistory() {
+  if (!signedIn.value) {
+    loginOpen.value = true;
+    return;
+  }
+  void member.open({ kind: 'history', date: null });
+  music.navigate({ kind: 'member' });
+}
 function backFromPage() {
   if (batchTarget.value) batchPage.value?.requestLeave();
   else if (downloadBatch.value) downloadBatchPage.value?.requestLeave();
@@ -2226,14 +2234,24 @@ onUnmounted(() => {
                       }}
                     </p>
                   </div>
-                  <button
-                    class="icon-button"
-                    aria-label="刷新当前页面"
-                    :disabled="loading"
-                    @click="music.load()"
-                  >
-                    <Icon name="refresh" />
-                  </button>
+                  <div class="page-heading-actions">
+                    <button
+                      v-if="page.kind === 'daily'"
+                      class="text-button daily-history-entry"
+                      type="button"
+                      @click="openDailyHistory"
+                    >
+                      历史日推 <span class="daily-history-badge" aria-hidden="true">VIP</span>
+                    </button>
+                    <button
+                      class="icon-button"
+                      aria-label="刷新当前页面"
+                      :disabled="loading"
+                      @click="music.load()"
+                    >
+                      <Icon name="refresh" />
+                    </button>
+                  </div>
                 </div>
                 <div v-if="notice || music.likeNotice.value" class="notice" role="status">
                   {{ music.likeNotice.value || notice

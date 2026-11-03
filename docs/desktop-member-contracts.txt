@@ -143,3 +143,9 @@ CUMULUS_MEMBER_PROFILE=<existing-PC-profile> GDK_BACKEND=x11 WEBKIT_DISABLE_COMP
 小窗口追加--small；同目录重开追加--reopen。链接场景另用新目录，加CUMULUS_MEMBER_LINKS=1、--small与--screenshots 4。
 python3 desktop/examples/audit_member_probe.py <proof-root> [--reopen|--links]
 独立审计输出用新文件创建，不覆盖原始证据；操作只读API白名单且不点击外部活动、支付或领取按钮。
+
+每日推荐入口（官方 dailyRecommend/views/Content.jsx:72–81、260–263）：
+主窗口的「历史日推」直接打开历史标签。未登录进入现有登录流程；已登录由
+原会员服务读取可用日期和对应曲目，界面沿用无权限、空数据和重试状态。
+官方的收银台分支不自动触发。daily_history_smoke.py 用合成账号验证窄窗入口、
+日期与曲目读取和返回每日推荐，未访问真实服务。

@@ -20,6 +20,19 @@
 .daily-heading {
   margin-bottom: 20px;
 }
+.page-heading-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+.daily-history-entry {
+  white-space: nowrap;
+}
+.daily-history-badge {
+  color: var(--accent);
+  font-size: 10px;
+}
 .daily-heading ~ .track-actions {
   gap: 12px;
   margin-bottom: 20px;
