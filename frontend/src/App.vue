@@ -28,6 +28,7 @@ import PlaylistLibraryPage from './components/playlist/PlaylistLibraryPage.vue';
 import AppSidebar from './components/sidebar/AppSidebar.vue';
 import { libraryView } from './services/playlistLibrary';
 import DailyHeading from './components/DailyHeading.vue';
+import StyleTagBrowser from './components/StyleTagBrowser.vue';
 import PlaylistHero from './components/playlist/PlaylistHero.vue';
 import PlaylistTagBrowse from './components/playlist/PlaylistTagBrowse.vue';
 import PlaylistCreatorPage from './components/playlist/PlaylistCreatorPage.vue';
@@ -1534,7 +1535,19 @@ watch(
 function showVisibleTrackActions(request: TrackMenuRequest) {
   const playlist = result.value?.playlist;
   if (!playlist) {
-    trackActions.value?.show(request);
+    const snapshot = result.value;
+    if (page.value.kind !== 'style_recommendations' || !snapshot) {
+      trackActions.value?.show(request);
+      return;
+    }
+    trackActions.value?.show({
+      ...request,
+      play: () => {
+        if (page.value.kind !== 'style_recommendations' || result.value !== snapshot) return;
+        const index = snapshot.tracks.indexOf(request.track);
+        if (index >= 0) play(index);
+      },
+    });
     return;
   }
   const epoch = account.value.epoch;
@@ -1565,7 +1578,10 @@ function play(index = 0, gesture?: TrackPlayGesture) {
   const tracks = result.value?.tracks;
   if (!tracks?.[index] || tracks[index].missing) return;
   const quality = player.view.value?.qualityPreferences.quality ?? 'standard';
-  if (page.value.kind === 'playlist') {
+  if (page.value.kind === 'style_recommendations') {
+    const revision = result.value?.revision;
+    if (revision) void player.select({ kind: 'style_recommendations', revision, index, quality });
+  } else if (page.value.kind === 'playlist') {
     const selection: SongRowDoubleClickSelection = {
       kind: 'playlist',
       id: page.value.id,
@@ -2246,6 +2262,10 @@ onUnmounted(() => {
                     </p>
                   </div>
                   <div class="page-heading-actions">
+                    <StyleTagBrowser
+                      v-if="page.kind === 'style_recommendations'"
+                      :epoch="account.epoch"
+                    />
                     <button
                       v-if="page.kind === 'daily'"
                       class="text-button daily-style-entry"

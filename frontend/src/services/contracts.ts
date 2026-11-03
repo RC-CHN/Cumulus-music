@@ -44,6 +44,11 @@ export interface AppInfo {
   coreVersion: string;
   protocolVersion: number;
 }
+export interface StyleCategory {
+  id: string;
+  name: string;
+  tags: { id: string; name: string }[];
+}
 
 /** UI-facing use cases; no Tauri types or raw HTTP API in this interface. */
 export interface CoreClient
@@ -111,6 +116,7 @@ export interface CoreClient
   searchSongs(keyword: string, page: PageRequest): Promise<AccountData<TrackPage>>;
   dailySongs(): Promise<AccountData<TrackPage>>;
   styleRecommendations(epoch: string): Promise<AccountData<TrackPage>>;
+  styleRecommendationCategories(epoch: string): Promise<AccountData<StyleCategory[]>>;
   likedIds(): Promise<AccountData<string[]>>;
   setLiked(epoch: string, id: string, liked: boolean): Promise<AccountData<LikeResult>>;
 }

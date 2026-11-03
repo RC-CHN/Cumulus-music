@@ -266,6 +266,7 @@ export function createTauriClient(): CoreClient {
     searchSongs: (keyword, page) => invoke('search_songs', { keyword, page }),
     dailySongs: () => invoke('daily_songs'),
     styleRecommendations: (epoch) => invoke('style_recommendations', { epoch }),
+    styleRecommendationCategories: (epoch) => invoke('style_recommendation_categories', { epoch }),
     likedIds: () => invoke('liked_ids'),
     setLiked: (epoch, id, liked) => invoke('set_liked', { epoch, id, liked }),
     likeRecovery: (epoch, offset) => invoke('like_recovery', { epoch, offset }),
