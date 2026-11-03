@@ -16,6 +16,8 @@
     await sleep(500);
     const panel=one('.lyrics-panel'), body=one('.lyrics-body'), record=one('.vinyl-record'), scroller=one('.lyric-scroll');
     const metadata=all('.vinyl-info h1, .vinyl-info p, .vinyl-info small');
+    const credits=all('.vinyl-credits .vinyl-credit, .vinyl-album .vinyl-credit');
+    const hintTargets=[one('.vinyl-info h1'), ...credits];
     const controls=all('.playerbar button:not(:disabled), .playerbar input:not(:disabled), .playerbar select:not(:disabled), .lyric-tools button:not(:disabled), [aria-label="收起播放详情"]').filter(n=>rect(n).width>0 && rect(n).height>0);
     const player=rect(one('.playerbar'));
     const row={label,width:innerWidth,height:innerHeight,theme:document.documentElement.dataset.theme,
@@ -36,7 +38,7 @@
       lyricControlsHit:covered || row.controls.every(n=>n.hit),
       playerSeparated:rect(panel).bottom<=player.y+1,
       queueBounded:!covered || row.queue.rendered<40,
-      metadataHints:metadata.every(node=>node.title===node.textContent.trim()),
+      metadataHints:credits.length>=2 && hintTargets.every(node=>node && node.title===node.textContent.trim()),
       playerHints:all('.now-copy .ellipsis').every(node=>node.title===node.textContent.trim()),
       queueHints:all('.queue-song .ellipsis').every(node=>node.title===node.textContent.trim()),
     };
