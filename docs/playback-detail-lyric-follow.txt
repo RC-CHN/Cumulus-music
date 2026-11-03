@@ -1,0 +1,21 @@
+播放详情：手动浏览后恢复歌词跟随
+
+官方依据：references/ui-recovery/sources/packages/pc/src/pages/vinyl-page/
+views/TrackPage/components/TrackLyric/LyricDisplay/LyricDisplayInner.tsx；SHA-256
+23c9038e999ed64df36192dc9851e13fa959ab8e9a596c688fed38878dce9339。
+223–239 行在计时到期后只对 Playing 自动滚回，暂停保留浏览位置；
+456–478 行在纵向滚轮手势后重置 5000ms；503–524 行进入播放态时立即
+回到当前行。未参考其他客户端。
+
+Cumulus 的 LyricsPanel 在纵向滚轮或触摸浏览后暂停跟随，下一次手势
+重置五秒计时；到期时若正在播放，按当前播放时钟滚回当前歌词行。
+暂停时保留浏览位置，开始播放后立即恢复跟随。显式「回到当前」无需
+等待，并把已移除按钮的焦点交给歌词区域；新歌曲、账号切换和关页取消
+旧定时器。减少动态效果继续使用瞬时滚动。无新 IPC、网络请求或播放
+命令；仍使用现有的时间标签、逐字时钟和显式定位命令。触摸回退与
+显式按钮是社区适配，本轮没有复刻官方的选中行时间轴或划词交互。
+
+player_layout_smoke.py 通过 Tauri WebView、原生 libmpv 和合成音频
+验证暂停五秒不回跳、重新播放立即跟随、连续滚动重置等待且安静五秒
+自动跟随。既有两主题两尺寸的布局检查继续运行。无真实账号、实体
+声卡或 Windows 实机验证。

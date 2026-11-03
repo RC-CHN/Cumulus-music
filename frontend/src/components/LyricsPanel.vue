@@ -26,6 +26,9 @@ const source = computed(() => playbackSource(view.value));
 const wordMode = ref(true);
 const motion = useMotion();
 const manual = ref(false);
+const resumeButton = ref<HTMLButtonElement>();
+const lyricFollowDelay = 5000;
+let lyricFollowTimer: ReturnType<typeof setTimeout> | undefined;
 const timedWords = computed(() => wordMode.value && (lyrics.value?.wordLines.length ?? 0) > 0);
 type LyricSeekTarget = Pick<PlayerView, 'epoch' | 'playId' | 'queueRevision'>;
 const currentEpoch = computed(() => view.value?.epoch);
@@ -72,10 +75,34 @@ function seekLine(line: (typeof lines.value)[number]) {
 }
 async function scroll() {
   await nextTick();
+  if (manual.value) return;
   container.value?.querySelector('.lyric-line.current')?.scrollIntoView({
     block: 'center',
     behavior: motion.reduced.value ? 'instant' : 'smooth',
   });
+}
+function cancelLyricFollowTimer() {
+  if (lyricFollowTimer !== undefined) clearTimeout(lyricFollowTimer);
+  lyricFollowTimer = undefined;
+}
+function followLyrics() {
+  const focused = resumeButton.value === document.activeElement;
+  cancelLyricFollowTimer();
+  manual.value = false;
+  void scroll();
+  if (focused)
+    void nextTick(() => {
+      if (document.activeElement === document.body) container.value?.focus({ preventScroll: true });
+    });
+}
+function pauseLyricFollow(event: Event) {
+  if (!lyrics.value?.scrollable || (event instanceof WheelEvent && !event.deltaY)) return;
+  manual.value = true;
+  cancelLyricFollowTimer();
+  lyricFollowTimer = setTimeout(() => {
+    lyricFollowTimer = undefined;
+    if (view.value?.state === 'playing') followLyrics();
+  }, lyricFollowDelay);
 }
 watch(motion.reduced, (reduced) => {
   if (reduced && !manual.value) void scroll();
@@ -83,9 +110,12 @@ watch(motion.reduced, (reduced) => {
 watch(active, () => {
   if (!manual.value) void scroll();
 });
+watch([currentEpoch, currentPlayId], followLyrics);
 watch(
-  () => view.value?.playId,
-  () => (manual.value = false),
+  () => view.value?.state,
+  (state) => {
+    if (state === 'playing' && manual.value) followLyrics();
+  },
 );
 let previous: HTMLElement | null = null;
 let previousEpoch: string | undefined;
@@ -96,6 +126,7 @@ onMounted(() => {
   void scroll();
 });
 onUnmounted(() => {
+  cancelLyricFollowTimer();
   if (view.value?.epoch === previousEpoch && previous?.isConnected) previous.focus();
 });
 function wordProgress(word: { time: number; duration: number }) {
@@ -217,8 +248,9 @@ function aligned(rows: { time?: number; lyric: string }[] | undefined, index: nu
             v-else
             ref="container"
             class="lyric-scroll"
-            @wheel.passive="manual = true"
-            @touchmove.passive="manual = true"
+            tabindex="-1"
+            @wheel.passive="pauseLyricFollow"
+            @touchmove.passive="pauseLyricFollow"
           >
             <div class="lyric-padding" />
             <button
@@ -296,14 +328,7 @@ function aligned(rows: { time?: number; lyric: string }[] | undefined, index: nu
               @click="player.offset(1)"
             >
               +</button
-            ><button
-              v-if="manual"
-              class="text-button"
-              @click="
-                manual = false;
-                scroll();
-              "
-            >
+            ><button v-if="manual" ref="resumeButton" class="text-button" @click="followLyrics">
               回到当前
             </button>
           </template>

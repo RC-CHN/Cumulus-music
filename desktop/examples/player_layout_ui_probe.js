@@ -61,11 +61,42 @@
     click(one('[aria-label="歌词"]'));
     await wait(()=>one('.lyric-line.current'),'lyrics loaded');
   }
+  async function verifyLyricFollow() {
+    const scroller=one('.lyric-scroll');
+    const resume=()=>all('.lyric-tools button').find(node=>node.textContent.trim()==='回到当前');
+    const atCurrent=()=>{
+      const current=one('.lyric-line.current');
+      if(!current) return false;
+      const a=rect(current), b=rect(scroller);
+      return Math.abs((a.y+a.bottom)-(b.y+b.bottom))<16;
+    };
+    const browse=()=>{
+      scroller.dispatchEvent(new WheelEvent('wheel',{bubbles:true,deltaY:500}));
+      scroller.scrollTop=scroller.scrollHeight;
+      assert(resume() || !atCurrent(),'manual browsing moved away');
+    };
+    browse();
+    await wait(()=>resume()&&!atCurrent(),'paused manual browse');
+    await sleep(5200);
+    assert(resume()&&!atCurrent(),'paused browse did not snap back after idle');
+    click(one('.playerbar [aria-label="播放"]'));
+    await wait(()=>one('.playerbar').dataset.state==='playing'&&!resume()&&atCurrent(),'resume follows current line');
+    browse();
+    await wait(()=>resume()&&!atCurrent(),'playing manual browse');
+    await sleep(2800);
+    browse();
+    await sleep(2900);
+    assert(resume()&&!atCurrent(),'second gesture restarted idle deadline');
+    await wait(()=>!resume()&&atCurrent(),'playing browse resumes after inactivity');
+    click(one('.playerbar [aria-label="暂停"]'));
+    await wait(()=>one('.playerbar').dataset.state==='paused','pause after lyric follow test');
+  }
   try {
     await wait(()=>all('.track-row').length>2,'daily');
     await wait(()=>one('[aria-label="列表循环"]') && !one('[aria-label="列表循环"]').disabled,'native player ready');
     assert(one('.track-row').textContent.includes('沿着海岸'),'long fixture missing');
     await play(0);
+    if(!window.__playerLayoutBaseline) await verifyLyricFollow();
     for(const [width,height,theme] of [[1120,760,'light'],[760,540,'light'],[760,540,'dark'],[1120,760,'dark']]) {
       await emit('resize',{width,height});await wait(()=>innerWidth===width&&innerHeight===height,'resize');await appearance(theme);
       const suffix=`${width}_${theme}`;
@@ -86,6 +117,6 @@
     assert(document.activeElement===one('[aria-label="歌词"]'),'detail close focus lost');
     const passed=checks.every(row=>Object.entries(row).every(([key,value])=>key==='label'||value===true));
     assert(window.__playerLayoutBaseline||passed,JSON.stringify(checks.filter(row=>Object.values(row).includes(false))));
-    await emit('complete',{ok:true,layoutPassed:passed,checks,stageCount,realMusicRequests:0,accountWrites:0,focusRestored:true});
+    await emit('complete',{ok:true,layoutPassed:passed,checks,stageCount,realMusicRequests:0,accountWrites:0,focusRestored:true,lyricFollowVerified:!window.__playerLayoutBaseline});
   } catch(error) {await emit('failed',{ok:false,error:String(error),stageCount,checks});}
 })();

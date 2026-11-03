@@ -43,7 +43,7 @@ def main():
     assert complete['ok'] and complete['stageCount'] == 20 and complete['focusRestored']
     assert complete['realMusicRequests'] == complete['accountWrites'] == 0
     assert complete['nativePlayer']['state'] == 'paused' and complete['nativePlayer']['position'] > 0
-    assert args.baseline or complete['layoutPassed']
+    assert args.baseline or (complete['layoutPassed'] and complete['lyricFollowVerified'])
     stages = list((root / 'first').glob('ux_*.json'))
     assert len(stages) == 20
     if args.screenshots:
