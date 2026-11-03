@@ -164,7 +164,15 @@
     await wait(()=>one('[aria-label="列表循环"]') && !one('[aria-label="列表循环"]').disabled,'native player ready');
     assert(one('.track-row').textContent.includes('沿着海岸'),'long fixture missing');
     await play(0);
-    if(!window.__playerLayoutBaseline) { await verifyLyricModes(); await verifyLyricFollow(); await verifyLyricFont(); }
+    if(!window.__playerLayoutBaseline) {
+      const mark=()=>one('.seek-chorus');
+      await wait(()=>mark(),'chorus metadata appears on the playing track');
+      assert(Math.abs(parseFloat(mark().style.left)-400/30)<.01&&!mark().classList.contains('reached'),'chorus marker uses full track clock');
+      await verifyLyricModes();
+      await verifyLyricFollow();
+      await wait(()=>mark()?.classList.contains('reached'),'chorus marker reflects passed progress');
+      await verifyLyricFont();
+    }
     for(const [width,height,theme] of [[1120,760,'light'],[760,540,'light'],[760,540,'dark'],[1120,760,'dark']]) {
       await emit('resize',{width,height});await wait(()=>innerWidth===width&&innerHeight===height,'resize');await appearance(theme);
       const suffix=`${width}_${theme}`;
@@ -179,6 +187,7 @@
     await play(1);
     if(!window.__playerLayoutBaseline)
       assert(!one('[aria-label="翻译歌词"]')&&!one('[aria-label="音译歌词"]')&&one('[aria-label="歌词提前半秒"]'),'original-only song does not show auxiliary toggles');
+    if(!window.__playerLayoutBaseline) assert(!one('.seek-chorus'),'replacement song does not reuse previous marker');
     for(const [width,height,theme] of [[1120,760,'light'],[760,540,'light'],[760,540,'dark'],[1120,760,'dark']]) {
       await emit('resize',{width,height});await wait(()=>innerWidth===width&&innerHeight===height,'resize');await appearance(theme);
       await capture(`short_${width}_${theme}`);
@@ -187,6 +196,6 @@
     assert(document.activeElement===one('[aria-label="歌词"]'),'detail close focus lost');
     const passed=checks.every(row=>Object.entries(row).every(([key,value])=>key==='label'||value===true));
     assert(window.__playerLayoutBaseline||passed,JSON.stringify(checks.filter(row=>Object.values(row).includes(false))));
-    await emit('complete',{ok:true,layoutPassed:passed,checks,stageCount,realMusicRequests:0,accountWrites:0,focusRestored:true,lyricFollowVerified:!window.__playerLayoutBaseline,lyricTimelineVerified:!window.__playerLayoutBaseline,lyricFontVerified:!window.__playerLayoutBaseline,lyricModesVerified:!window.__playerLayoutBaseline});
+    await emit('complete',{ok:true,layoutPassed:passed,checks,stageCount,realMusicRequests:0,accountWrites:0,focusRestored:true,lyricFollowVerified:!window.__playerLayoutBaseline,lyricTimelineVerified:!window.__playerLayoutBaseline,lyricFontVerified:!window.__playerLayoutBaseline,lyricModesVerified:!window.__playerLayoutBaseline,chorusMarkerVerified:!window.__playerLayoutBaseline});
   } catch(error) {await emit('failed',{ok:false,error:String(error),stageCount,checks});}
 })();

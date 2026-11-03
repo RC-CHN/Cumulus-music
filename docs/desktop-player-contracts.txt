@@ -186,3 +186,17 @@ catalog_smoke.py --playback-credit 额外核对无来源普通选曲和专辑来
 先核对账号及队列 revision，在对应的队列行到达后定位一次。旧队列未完成更新时不跳转，
 同一曲目的列表刷新不会抢走用户手动滚动或焦点。可用 queue_ui_smoke.py --locate
 在 WebView 延迟队列回包验证，原生队列及播放保持实际运行。
+
+进度条副歌标记
+--------------
+官方 ChorusMark.tsx / PlayProgress.tsx：按 startTime 毫秒定位，播放越过标记
+后高亮；已知试听只标记在试听结束前的点。M/15 xg、M/86 h 和 M/1384
+fetchCurPlayingTrackListChorusMap 的证据对应 /api/song/chorus，请求 ids 是
+JSON 编码数组，响应 data 为带 id、startTime 的行。社区版先接通当前已载入
+在线歌曲（含同资源类型的 FM 歌曲）的单条查询，不预取整队，不将本地文件、
+CUE、云盘、下载和播客的 ID 发送到这个接口。Rust 在 HTTP 前后核对账号代次、
+播放标识与歌曲，5 秒超时；Tauri 仅返回可选秒数。切歌立即清除旧点，空结果、
+超时或错误不打断音频。试听标记是只读提示，不能扩大可定位范围。
+本批不实现副歌动效、按试验分组的尺寸变化或原客户端队列缓存策略。
+player_layout_smoke 通过正式前端/IPC 和合成 API 检查标记比例、经过后高亮及
+切歌清除；试听边界另外用纯几何测试验证。

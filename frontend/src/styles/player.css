@@ -218,6 +218,18 @@
 .trial-seek-played {
   background: var(--accent);
 }
+.trial-seek-track .seek-chorus {
+  top: 0;
+  bottom: auto;
+  width: 4px;
+  height: 4px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: var(--text-secondary);
+}
+.trial-seek-track .seek-chorus.reached {
+  background: white;
+}
 .trial-seek-track :is(.trial-seek-start, .trial-seek-end) {
   top: -1px;
   bottom: -1px;

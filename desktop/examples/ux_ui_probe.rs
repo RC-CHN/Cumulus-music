@@ -374,6 +374,19 @@ impl Api for Library {
                     }
                     response
                 }
+                "/api/song/chorus" if std::env::var_os("CUMULUS_PLAYER_LAYOUT_PROOF").is_some() => {
+                    match args["ids"].as_str() {
+                        Some("[1]" | "[\"1\"]") => {
+                            json!({"code":200,"data":[{"id":1,"startTime":4000}]})
+                        }
+                        Some("[2]" | "[\"2\"]") => json!({"code":200,"data":[]}),
+                        _ => {
+                            return Err(cumulus_core::Error::InvalidInput(
+                                "wrong chorus fixture ids",
+                            ));
+                        }
+                    }
+                }
                 _ => {
                     return Err(cumulus_core::Error::Response(
                         "unsupported UX fixture endpoint",

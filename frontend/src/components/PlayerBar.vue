@@ -15,6 +15,7 @@ import PlaybackMode from './PlaybackMode.vue';
 import { artistLabel } from '../services/artistLabel';
 import { effectLauncher, equalizerLauncher } from '../services/equalizer';
 import { bufferedSeekSpan, insidePlayableTrial, seekRail } from '../services/seekRail';
+import { usePlaybackChorus } from '../composables/usePlaybackChorus';
 const equalizerOpen = ref(false);
 const effectManagementOnOpen = ref(false);
 const props = withDefaults(
@@ -39,6 +40,7 @@ const emit = defineEmits<{
   login: [];
 }>();
 const { view, ready, busy, error, canRetry, playing, loaded } = props.player;
+const chorusMarker = usePlaybackChorus(view, loaded);
 const equalizerDescription = useId();
 const equalizerEntry = computed(() => equalizerLauncher(view.value?.equalizer));
 const effectEntry = computed(() =>
@@ -358,6 +360,12 @@ async function seek(event: Event) {
                 left: (rail.span?.left ?? 0) + '%',
                 right: 100 - seekPlayed + '%',
               }"
+            />
+            <span
+              v-if="chorusMarker != null"
+              class="seek-chorus"
+              :class="{ reached: seekPlayed >= chorusMarker }"
+              :style="{ left: chorusMarker + '%' }"
             />
             <template v-if="rail.span">
               <span class="trial-seek-start" :style="{ left: rail.span.left + '%' }" />

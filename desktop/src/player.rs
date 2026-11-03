@@ -211,6 +211,17 @@ pub async fn player_queue_collection(
         .map_err(Into::into)
 }
 #[tauri::command]
+pub async fn player_chorus(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    play_id: String,
+) -> Result<Option<f64>, ClientError> {
+    client
+        .player_chorus(&epoch, &play_id)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn player_lyrics(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

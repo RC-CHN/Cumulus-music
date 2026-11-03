@@ -1,3 +1,4 @@
+mod chorus;
 mod dto;
 mod identity;
 mod intelligence;

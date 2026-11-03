@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Timeline } from '../src/services/player.ts';
-import { bufferedSeekSpan, insidePlayableTrial, seekRail } from '../src/services/seekRail.ts';
+import {
+  bufferedSeekSpan,
+  chorusMarkerPercent,
+  insidePlayableTrial,
+  seekRail,
+} from '../src/services/seekRail.ts';
 
 const trial: Timeline = {
   mode: 'trial',
@@ -51,4 +56,18 @@ test('native buffering appears ahead of the clock and never beyond the authorize
     assert.equal(bufferedSeekSpan(full, 20, unknown), null);
   assert.equal(bufferedSeekSpan({ ...full, end: null }, 20, 30), null);
   assert.equal(bufferedSeekSpan(trial, 40, 60), null);
+});
+
+test('chorus metadata annotates the visible clock without expanding trial authorization', () => {
+  const full: Timeline = { ...trial, mode: 'full', start: 0, end: 100 };
+  assert.equal(chorusMarkerPercent(full, 45), 45);
+  assert.equal(chorusMarkerPercent(trial, 10), 10);
+  assert.equal(insidePlayableTrial(trial, 10), false);
+  assert.equal(chorusMarkerPercent(trial, 40), null);
+  assert.equal(chorusMarkerPercent({ ...trial, total: null }, 25), 25);
+  assert.equal(chorusMarkerPercent({ ...trial, total: null }, 10), null);
+  for (const bad of [null, 0, -1, 100, 101, Infinity, NaN])
+    assert.equal(chorusMarkerPercent(full, bad), null);
+  assert.equal(chorusMarkerPercent({ ...full, mode: 'cue' }, 45), null);
+  assert.equal(chorusMarkerPercent({ ...full, end: null }, 45), null);
 });

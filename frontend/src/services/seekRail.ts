@@ -31,6 +31,27 @@ export function insidePlayableTrial(
   return !!trial && seconds >= trial.start && seconds <= trial.end;
 }
 
+/** Optional metadata marker; it never alters the authorization or seek range. */
+export function chorusMarkerPercent(
+  timeline: Timeline | null | undefined,
+  seconds: number | null | undefined,
+): number | null {
+  if (!timeline || timeline.mode === 'cue' || seconds == null || !Number.isFinite(seconds))
+    return null;
+  const { min, max, trial } = seekRail(timeline);
+  if (
+    timeline.end == null ||
+    !Number.isFinite(max) ||
+    max <= min ||
+    seconds <= 0 ||
+    seconds < min ||
+    seconds >= max ||
+    (trial && seconds >= trial.end)
+  )
+    return null;
+  return (100 * (seconds - min)) / (max - min);
+}
+
 /** Render only native buffered-ahead data on the currently authorized clock. */
 export function bufferedSeekSpan(
   timeline: Timeline | null | undefined,
