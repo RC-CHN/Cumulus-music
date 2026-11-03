@@ -41,7 +41,7 @@ def packet_audio(channels, length, peaks, cuts):
     return commands, samples
 
 
-def run(child, image, rate, samples, commands):
+def run(child, image, rate, samples, commands, *, queue=False):
     channels = len(samples)
     packet = bytearray(struct.pack("<4I", rate, channels, CAPACITY, len(commands)))
     offset = 0
@@ -51,16 +51,26 @@ def run(child, image, rate, samples, commands):
             block = channel[offset:offset + valid] + [0.0] * (CAPACITY - valid)
             packet.extend(struct.pack(f"<{CAPACITY}f", *block))
         offset += valid
-    result = subprocess.run([child, image, "--state"], input=packet, capture_output=True,
+    mode = "--queue-state" if queue else "--state"
+    result = subprocess.run([child, image, mode], input=packet, capture_output=True,
                             check=True, timeout=5).stdout
-    row = 8 + 4 * channels * CAPACITY + TRACE.size
+    queue_size = 4 + 16 * 12 if queue else 0
+    row = 8 + 4 * channels * CAPACITY + TRACE.size + queue_size
     assert len(result) == row * len(commands)
     values = [[] for _ in range(channels)]
     trace = []
     for index, (valid_input, end_input) in enumerate(commands):
         start = index * row
         valid, end = struct.unpack_from("<2I", result, start)
-        state = dict(zip(SCALARS + INDICES, TRACE.unpack_from(result, start + row - TRACE.size)))
+        state_offset = start + row - TRACE.size - queue_size
+        state = dict(zip(SCALARS + INDICES, TRACE.unpack_from(result, state_offset)))
+        if queue:
+            queue_offset = state_offset + TRACE.size
+            state["sentinel"] = struct.unpack_from("<i", result, queue_offset)[0]
+            state["queuedEvents"] = [
+                struct.unpack_from("<id", result, queue_offset + 4 + j * 12)
+                for j in range(min(16, state["eventCount"]))
+            ]
         assert valid <= CAPACITY and end in (0, 1)
         trace.append({"inputFrames": valid_input, "inputEnd": end_input, "outputFrames": valid,
                       "outputEnd": end, **state})

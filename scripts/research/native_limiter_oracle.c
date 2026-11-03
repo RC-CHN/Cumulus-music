@@ -2,6 +2,7 @@
 /* Linux x86-64 research child; invoke through original_limiter_oracle.py only.
  * No Windows imports, process initialization, or codec; memory seams only. */
 #include <math.h>
+#include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,6 +10,7 @@
 #include <sys/mman.h>
 #include <sys/resource.h>
 #include <unistd.h>
+#include <ucontext.h>
 
 #define WIN __attribute__((ms_abi))
 #define IMAGE 0x180000000ULL
@@ -18,13 +20,39 @@
 #define MAX_CHANNELS 2
 #define MAX_BLOCKS 256
 
-static struct { void *p; size_t n; } allocations[8];
+static struct { void *p; size_t n; void *mapping; size_t map_size; } allocations[8];
+static int guard_ring;
+static uintptr_t ring_start;
+
+static void trap(int signal, siginfo_t *info, void *context) {
+    ucontext_t *state = context;
+    if (signal == SIGSEGV && ring_start
+        && (uintptr_t)info->si_addr == ring_start - 8
+        && (uintptr_t)state->uc_mcontext.gregs[REG_RIP] == IMAGE + 0x64327) {
+        static const char message[] = "original limiter read ring[-1] at RVA 0x64327\n";
+        if (write(STDERR_FILENO, message, sizeof message - 1) != sizeof message - 1) _Exit(82);
+        _Exit(81);
+    }
+    _Exit(82);
+}
 
 static void WIN *zero_alloc(size_t count, size_t width) {
     if (!count || !width || count > 1048576 / width) _Exit(20);
     for (size_t i = 0; i < 8; ++i) {
         if (allocations[i].p) continue;
-        allocations[i].p = calloc(count, width);
+        if (guard_ring && i == 1 && width == 8) {
+            const size_t page = 4096;
+            size_t size = page + ((count * width + page - 1) / page) * page;
+            unsigned char *map = mmap(NULL, size, PROT_READ | PROT_WRITE,
+                MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+            if (map == MAP_FAILED || mprotect(map, page, PROT_NONE)) _Exit(21);
+            allocations[i].p = map + page;
+            allocations[i].mapping = map;
+            allocations[i].map_size = size;
+            ring_start = (uintptr_t)(map + page);
+        } else {
+            allocations[i].p = calloc(count, width);
+        }
         if (!allocations[i].p) _Exit(21);
         allocations[i].n = count * width;
         return allocations[i].p;
@@ -37,7 +65,14 @@ static void WIN zero_free(void **slot) {
     if (!p) return;
     for (size_t i = 0; i < 8; ++i) {
         if (allocations[i].p != p) continue;
-        free(p);
+        if (allocations[i].mapping) {
+            if (munmap(allocations[i].mapping, allocations[i].map_size)) _Exit(23);
+            allocations[i].mapping = NULL;
+            allocations[i].map_size = 0;
+            ring_start = 0;
+        } else {
+            free(p);
+        }
         allocations[i].p = NULL;
         allocations[i].n = 0;
         *slot = NULL;
@@ -98,8 +133,14 @@ typedef void (WIN *Reset)(void *);
 typedef unsigned char (WIN *Process)(void *, float *, uint8_t *, uint32_t *);
 
 int main(int argc, char **argv) {
-    int trace = argc == 3 && strcmp(argv[2], "--state") == 0;
-    if (argc != 2 && !trace) return 2;
+    int queue_trace = argc == 3 && strcmp(argv[2], "--queue-state") == 0;
+    guard_ring = argc == 3 && strcmp(argv[2], "--guard-ring") == 0;
+    int trace = queue_trace || (argc == 3 && strcmp(argv[2], "--state") == 0);
+    if (guard_ring) {
+        struct sigaction action = {.sa_sigaction = trap, .sa_flags = SA_SIGINFO};
+        if (sigemptyset(&action.sa_mask) || sigaction(SIGSEGV, &action, NULL)) return 2;
+    }
+    if (argc != 2 && !trace && !guard_ring) return 2;
     const struct rlimit cpu = {2, 2}, memory = {128 * 1024 * 1024, 128 * 1024 * 1024},
         core = {0, 0};
     if (setrlimit(RLIMIT_CPU, &cpu) || setrlimit(RLIMIT_AS, &memory)
@@ -162,6 +203,27 @@ int main(int argc, char **argv) {
                 if (fwrite(object + scalars[i], 8, 1, stdout) != 1) return 18;
             for (size_t i = 0; i < sizeof indices / sizeof *indices; ++i)
                 if (fwrite(object + indices[i], 4, 1, stdout) != 1) return 18;
+        }
+        if (queue_trace) {
+            uint32_t size, head, count;
+            int32_t *slots;
+            double *slopes;
+            memcpy(&size, object + 0x88, 4);
+            memcpy(&head, object + 0xb8, 4);
+            memcpy(&count, object + 0xbc, 4);
+            memcpy(&slots, object + 0x90, sizeof slots);
+            memcpy(&slopes, object + 0x98, sizeof slopes);
+            if (!size || size > 4096 || head >= size || count > size
+                || !owned(slots, size * sizeof *slots)
+                || !owned(slopes, size * sizeof *slopes)) return 19;
+            if (fwrite(slots + (head + count) % size, 4, 1, stdout) != 1) return 18;
+            for (uint32_t i = 0; i < 16; ++i) {
+                uint32_t at = (head + i) % size;
+                int32_t slot = i < count ? slots[at] : -1;
+                double slope = i < count ? slopes[at] : 0.0;
+                if (fwrite(&slot, 4, 1, stdout) != 1 || fwrite(&slope, 8, 1, stdout) != 1)
+                    return 18;
+            }
         }
     }
     if (fgetc(stdin) != EOF) return 16;
