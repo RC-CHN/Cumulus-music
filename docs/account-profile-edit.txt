@@ -1,0 +1,48 @@
+Cumulus 个人资料保存与网易云 App 扫码转交
+
+入口：设置 → 账号 → 查看个人资料。编辑个人信息打开账号专属草稿，
+绑定账号中的“扫码设置”打开单独对话框。
+
+保存协议和边界：
+  官方 PC 3.1.42.205594：M15:3649、M3101:917–941、
+  pages/user-detail-edit/views/MainView.jsx:129–187。
+  POST /api/user/profile/update，只发实际变化的 nickname、signature、
+  gender、birthday、province、city。读取和目标 UID 由原生会话决定。
+  昵称按 M32 加权 UTF-16 规则，改变时 POST /api/nickname/duplicated，
+  已占用、禁止（407）、无法确定分开；这些属于预检，未提交保存。
+  简介最多 300 加权字符，可清空。性别只提交明确选择。
+  生日是所选日期本地午夜的毫秒数，按该日期的 UTC 偏移换算，
+  不把未知值写成零。地区必须是 M591 内置表中的省市配对。
+  core/assets/account-regions.json 是 Rust 和 Vue 共用的地名表；
+  官方 M198 服务端更新尚未接入，静态表外的旧地区仍可保留。
+
+  ProfileEditor 校验草稿和最近快照，再回读同 UID 的 detail 做比较。
+  资料已变化时保留草稿，要求重新读取；无实际改动不发保存。
+  按账号串行，在首次发送前持久化 UUID、期望版本和实际字段。
+  HTTP 或业务 200 只是确认收到请求；成功界面需要所有提交字段
+  在同 UID 详情回读中一致。确认后更新该会话的资料和已保存账号摘要。
+  超时、回包丢失、不完整回读或中断留待核对，不自动重发。
+  “重新核对”只读详情；若结果不匹配，可以在确认后采用当前服务器
+  版本，这不会声称原保存成功。未知结果阻止下一次保存。
+  前端只经 account_profile_edit_page / account_profile_edit_command；
+  原生账号代次检查覆盖读取、保存和回读，IPC 没有任意 UID/URL 参数。
+
+固定扫码转交：
+  官方 M3153:186–190 和 M3047:16–29：固定内容
+  orpheus://settings/bindaccount，纠错级别 L，二维码为 180px。
+  原生仅返回矩阵，由 WebView 本地绘制。没有动态登录票据、Cookie
+  转发、网络读取、轮询、自动确认或远端写入。具体变更在官方 App 完成；
+  返回后可手动刷新绑定摘要。头像上传、直接解绑/改密、登录设备移除
+  属于其他流程，不能以这张码算作已验证的远端业务。
+
+验证：
+  core/tests/account_profile_edit.rs 和 account_binding_qr.rs 覆盖字段、
+  明确未发送、丢回包和取消、持久化、回读不匹配、账号切换及二维码零网络。
+  frontend/tests/account-profile-edit.test.ts 验证草稿、资料版本冲突、
+  迟到回包和已有未决操作。Windows/Linux CI 配置相同的合成流程。
+  Linux 实际 WebView 及 KDE/XWayland 125% 桌面通过五个状态：
+  扫码框、浅色编辑和保存、深色未决及只读核对。复查 SQLite 确认两次
+  显式写入各有一个确认记录，核对只读，没有第三次写入。
+  本机截图：.build/profile-write-desktop-verified/contact.jpg；
+  WebView 与 SQLite 证据：.build/profile-write-webview-verified。
+  未使用真实账号写入，也未用官方 App 扫码执行绑定变更。

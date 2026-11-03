@@ -20,6 +20,7 @@ pub struct Service {
     held: Mutex<Option<oneshot::Sender<()>>>,
     completed: Mutex<u64>,
     browser_documents: Mutex<Vec<cumulus_core::account::login::presentation::LoginDocument>>,
+    profiles: Mutex<BTreeMap<u64, Value>>,
 }
 impl Service {
     pub fn open_document(
@@ -61,6 +62,7 @@ impl HttpBackend for Service {
             if path.starts_with("/api/w/v1/user/detail/")
                 || path.starts_with("/api/w/v1/user/bindings/")
                 || path == "/api/middle/user/device/list"
+                || path == "/api/user/profile/update"
             {
                 let uid = plan
                     .headers
@@ -73,6 +75,29 @@ impl HttpBackend for Service {
                     .and_then(|id| id.parse::<u64>().ok())
                     .filter(|id| matches!(id, 2 | 5))
                     .ok_or(Error::Response("fixture account security owner"))?;
+                if path == "/api/user/profile/update" {
+                    let data = data
+                        .as_object()
+                        .ok_or(Error::Response("fixture profile patch"))?;
+                    if data
+                        .keys()
+                        .any(|key| !matches!(key.as_str(), "header" | "signature"))
+                    {
+                        return Err(Error::Response("unexpected fixture profile patch field"));
+                    }
+                    let signature = data
+                        .get("signature")
+                        .and_then(Value::as_str)
+                        .filter(|value| matches!(*value, "桌面验证：已保存" | "桌面验证：回包丢失"))
+                        .ok_or(Error::Response("fixture signature value"))?;
+                    self.profiles.lock().unwrap().insert(uid, json!(signature));
+                    if mode == "profile_ack_lost" {
+                        return Err(Error::Transport(
+                            "synthetic write acknowledged remotely only".into(),
+                        ));
+                    }
+                    return Ok(auth::reply(json!({"code":"200"}), None));
+                }
                 if path == "/api/middle/user/device/list" {
                     if data["excStatus"] != "9" && data["excStatus"] != 9 {
                         return Err(Error::Response("fixture device scope"));
@@ -111,10 +136,23 @@ impl HttpBackend for Service {
                     if data["all"] != true && data["all"] != "true" {
                         return Err(Error::Response("fixture profile detail options"));
                     }
+                    let signature = self
+                        .profiles
+                        .lock()
+                        .unwrap()
+                        .get(&uid)
+                        .cloned()
+                        .unwrap_or_else(|| {
+                            json!(if uid == 2 {
+                                "这是合成的账号资料"
+                            } else {
+                                "另一个账号的资料"
+                            })
+                        });
                     return Ok(auth::reply(
                         json!({"code":200,"level":7,"profile":{
                             "userId":uid,"nickname":auth::nickname(uid),
-                            "signature":if uid == 2 {"这是合成的账号资料"} else {"另一个账号的资料"},
+                            "signature":signature,
                             "birthday":946684800000_i64,"gender":1,"province":330000,"city":330100
                         }}),
                         None,

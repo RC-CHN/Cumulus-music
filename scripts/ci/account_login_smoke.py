@@ -2,6 +2,8 @@
 import argparse
 import json
 import os
+import sqlite3
+from contextlib import closing
 from pathlib import Path
 from window_manager import launch
 
@@ -14,9 +16,10 @@ def main():
     parser.add_argument('--screenshots', action='store_true')
     parser.add_argument('--baseline', action='store_true')
     parser.add_argument('--account-detail', action='store_true')
+    parser.add_argument('--profile-edit', action='store_true')
     args = parser.parse_args()
-    if args.baseline and args.account_detail:
-        parser.error('--baseline and --account-detail cannot be combined')
+    if sum((args.baseline, args.account_detail, args.profile_edit)) > 1:
+        parser.error('choose one proof mode')
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
@@ -25,6 +28,8 @@ def main():
         env['CUMULUS_PROOF_BASELINE'] = '1'
     if args.account_detail:
         env['CUMULUS_PROOF_ACCOUNT_DETAIL'] = '1'
+    if args.profile_edit:
+        env['CUMULUS_PROOF_PROFILE_EDIT'] = '1'
     for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'), ('XDG_CACHE_HOME', 'cache'),
                       ('XDG_RUNTIME_DIR', 'runtime'), ('APPDATA', 'roaming'), ('LOCALAPPDATA', 'local')]:
         path = root/'os-profile'/name
@@ -41,14 +46,43 @@ def main():
     complete = json.loads((output/'complete.json').read_text(encoding='utf-8'))
     states = [json.loads(path.read_text(encoding='utf-8')) for path in sorted(output.glob('ux_*.json'))]
     assert complete['ok'] and len(states) == complete['stageCount']
-    assert len(states) == (6 if args.account_detail else 2 if args.baseline else 28)
+    assert len(states) == (5 if args.profile_edit else 6 if args.account_detail else 2 if args.baseline else 28)
     for state in states:
         assert not state['overflow']
         if not args.baseline:
             assert state['focused'] and state['focusValid']
         assert all(control['hit'] for control in state['controls'])
         assert state['realMusicRequests'] == 0
-    if args.account_detail:
+    if args.profile_edit:
+        assert complete['profileEdit']
+        paths = complete['fixture']['paths']
+        by_name = {state['stage'].split('_', 2)[2]: state for state in states}
+        qr_paths = by_name['binding_qr_light']['fixture']['paths']
+        assert qr_paths['/api/w/v1/user/detail/2'] == 1
+        assert qr_paths['/api/w/v1/user/bindings/2'] == 1
+        assert not any('bindaccount' in path for path in paths)
+        assert paths['/api/user/profile/update'] == 2
+        assert by_name['profile_edit_saved_light']['fixture']['paths']['/api/user/profile/update'] == 1
+        before = by_name['profile_edit_recovery_dark']['fixture']['paths']
+        assert before['/api/user/profile/update'] == 2
+        assert paths['/api/w/v1/user/detail/2'] > before['/api/w/v1/user/detail/2']
+        database = root/'run/state/core.sqlite3'
+        with closing(sqlite3.connect(database.as_uri()+'?mode=ro', uri=True)) as state:
+            rows = state.execute(
+                'SELECT owner,key,value FROM state WHERE kind=?',
+                ('account-profile-edit-intents-v1',),
+            ).fetchall()
+        assert len(rows) == 2
+        signatures = set()
+        for owner, key, raw in rows:
+            intent = json.loads(raw)
+            assert owner == '2' and intent['id'] == key and intent['phase'] == 'confirmed'
+            assert set(intent['submitted']) == {'signature'}
+            signature = intent['submitted']['signature']
+            assert intent['observed']['profile']['signature'] == signature
+            signatures.add(signature)
+        assert signatures == {'桌面验证：已保存', '桌面验证：回包丢失'}
+    elif args.account_detail:
         assert complete['accountDetail']
         by_name = {state['stage'].split('_', 2)[2]: state for state in states}
         assert by_name['devices_loading_light']['fixture']['pending']
@@ -79,7 +113,7 @@ def main():
         assert paths.get('/api/login') == 3  # Wrong, cancelled inflight, explicit successful retry.
     if args.screenshots:
         assert len(list(output.glob('ux_*.png'))) == len(states)
-    report = dict(ok=True, baseline=args.baseline, accountDetail=args.account_detail,
+    report = dict(ok=True, baseline=args.baseline, accountDetail=args.account_detail, profileEdit=args.profile_edit,
                   states=len(states), screenshots=len(states) if args.screenshots else 0,
                   actualWebView=True, realMusicRequests=0, realAccountWrites=0)
     (root/'report.json').write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8')

@@ -248,6 +248,7 @@ jobs:
           cargo build -p cumulus-desktop --example account_login_ui_probe --features custom-protocol --locked
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/account_login_smoke.py --binary .build/target/debug/examples/account_login_ui_probe --root .build/ci-account-login-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/account_login_smoke.py --binary .build/target/debug/examples/account_login_ui_probe --root .build/ci-account-detail-linux --account-detail
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/account_login_smoke.py --binary .build/target/debug/examples/account_login_ui_probe --root .build/ci-profile-edit-linux --profile-edit
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/login_entry_smoke.py --binary .build/target/debug/examples/account_login_ui_probe --root .build/ci-login-entry-linux
           cargo build -p cumulus-desktop --example login_notice_ui_probe --features custom-protocol --locked
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/login_notice_smoke.py --binary .build/target/debug/examples/login_notice_ui_probe --root .build/ci-login-notice-linux
@@ -402,6 +403,7 @@ jobs:
           cargo build -p cumulus-desktop --example account_login_ui_probe --features custom-protocol --locked
           python scripts/ci/account_login_smoke.py --binary .build/target/debug/examples/account_login_ui_probe.exe --root .build/ci-account-login-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/account_login_smoke.py --binary .build/target/debug/examples/account_login_ui_probe.exe --root .build/ci-account-detail-windows --account-detail --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/account_login_smoke.py --binary .build/target/debug/examples/account_login_ui_probe.exe --root .build/ci-profile-edit-windows --profile-edit --runtime .build/package-stage/windows-x64/native
           python scripts/ci/login_entry_smoke.py --binary .build/target/debug/examples/account_login_ui_probe.exe --root .build/ci-login-entry-windows --runtime .build/package-stage/windows-x64/native
           cargo build -p cumulus-desktop --example login_notice_ui_probe --features custom-protocol --locked
           python scripts/ci/login_notice_smoke.py --binary .build/target/debug/examples/login_notice_ui_probe.exe --root .build/ci-login-notice-windows --runtime .build/package-stage/windows-x64/native

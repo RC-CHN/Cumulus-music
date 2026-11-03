@@ -324,10 +324,64 @@
     await stage("devices_empty_dark", { expectNickname });
     await emit("complete", { ok: true, accountDetail: true, stageCount: count, expectNickname });
   }
+  async function profileEdit() {
+    const expectNickname = "邮箱验证账号";
+    const test = (id) => one(`[data-testid="${id}"]`);
+    const state = () => one(".account-profile-edit-page")?.dataset.profileEditState;
+    const hasSignature = (text) =>
+      one('[data-profile-field="signature"]')?.textContent.includes(text);
+    await open();
+    await email();
+    await logged();
+    click(button("打开设置"));
+    await wait(() => test("account-profile-open"), "profile entry");
+    await settle();
+    click(test("account-profile-open"));
+    await wait(() => hasSignature("这是合成的账号资料"), "profile ready");
+    await settle();
+    click(test("account-binding-qr-open"));
+    await wait(() => one("svg[data-account-binding-qr]"), "local binding QR");
+    await stage("binding_qr_light", { expectNickname });
+    click(button("关闭扫码设置"));
+    await wait(() => !one(".account-binding-qr-dialog"), "binding QR closed");
+    await settle();
+    async function edit(signature) {
+      click(test("account-profile-edit-open"));
+      await wait(() => state() === "ready" && test("profile-edit-signature"), "edit ready");
+      await settle();
+      const field = test("profile-edit-signature");
+      field.focus();
+      field.value = signature;
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+      await wait(() => !test("profile-edit-save")?.disabled, "valid edit");
+      await settle();
+    }
+    await edit("桌面验证：已保存");
+    await stage("profile_edit_dirty_light", { expectNickname });
+    click(test("profile-edit-save"));
+    await wait(() => hasSignature("桌面验证：已保存"), "profile readback applied");
+    await stage("profile_edit_saved_light", { expectNickname });
+    await theme("dark");
+    await resize(880, 670);
+    await mode("profile_ack_lost");
+    await edit("桌面验证：回包丢失");
+    click(test("profile-edit-save"));
+    await wait(() => state() === "recovery", "uncertain write recovery");
+    await stage("profile_edit_recovery_dark", { expectNickname });
+    await mode("normal");
+    click(test("profile-edit-reconcile"));
+    await wait(() => hasSignature("桌面验证：回包丢失"), "read-only recovery applied");
+    await stage("profile_edit_reconciled_dark", { expectNickname });
+    await emit("complete", { ok: true, profileEdit: true, stageCount: count, expectNickname });
+  }
   try {
     await wait(() => ready() && one(".welcome"), "guest bootstrap");
     await theme("light");
     await resize(1120, 760);
+    if (window.__profileEditProof) {
+      await profileEdit();
+      return;
+    }
     if (window.__accountDetailProof) {
       await accountDetail();
       return;

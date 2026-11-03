@@ -123,8 +123,9 @@ SNS 独立恢复、有限无会话取证与原生窗口边界见 docs/sns-login-
 
 4. 完整账号资料读取与编辑：已有原始 profile，不等于完整产品入口
 
-  后续实施：只读部分已接线，详见 account-profile-devices.txt；本节其余
-  未实现叙述对应原始审计，资料保存、头像与写入恢复仍未完成。
+  后续实施：读取、资料保存及写入核对已接线，详见
+  account-profile-devices.txt、account-profile-edit.txt。以下保留原审计；
+  头像上传仍是独立缺口。
 
   官方读取：
     POST /api/w/nuser/account/get {}（M15:1741；现有 Rust 已实现）。
@@ -164,7 +165,8 @@ SNS 独立恢复、有限无会话取证与原生窗口边界见 docs/sns-login-
     跨账户迟到回包和保存元数据同步；真实既有账号修改只在明确授权后验证并记录恢复。
 
 5. 绑定详情与管理入口：读取可接，远端 URL/账户 token 不能照搬到前端
-  后续实施：已接入只读绑定摘要；固定二维码转交及远端变更仍待实现。
+  后续实施：已接入只读绑定摘要和固定二维码转交。实际绑定变更在
+  网易云音乐 App 内完成，Cumulus 没有直接解绑或改密命令。
 
   官方读取：POST /api/w/v1/user/bindings/{uid}，payload {userId:uid}
     （M15:3642–3644；M100:179–185；hybrid_182.chunk.1482700000000.js/2988.js:15–35）。
