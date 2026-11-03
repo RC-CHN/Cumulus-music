@@ -26,6 +26,7 @@ pub fn control(value: &Value) {
             "home_error",
             "chart_play",
             "hot_source",
+            "selection_source",
             "audio_ranks",
             "suggest_error",
             "result_error",
@@ -372,12 +373,15 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
             creators(response["result"]["playlists"].as_array_mut().unwrap());
         }
     }
-    if mode == "hot_source" {
+    if matches!(mode, "hot_source" | "selection_source") {
         let keyword = args["keyword"].as_str().or_else(|| args["s"].as_str());
         let expected = match keyword {
             Some("合成热搜来源") => "hotquery",
             Some("合成普通来源") => "suggest",
+            Some("合成输入来源") if mode == "selection_source" => "history",
             Some("合成输入来源") => "typing",
+            Some("合成推荐词1") => "history",
+            Some("合成输入推荐来源推荐") => "rec_query",
             Some("合成默认关键词") => "defaultquery",
             _ => return Some(Err(Error::InvalidInput("wrong synthetic chart keyword"))),
         };

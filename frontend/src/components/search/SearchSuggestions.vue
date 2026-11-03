@@ -12,7 +12,7 @@ const props = defineProps<{
   error?: string;
 }>();
 const emit = defineEmits<{
-  select: [keyword: string, display?: string];
+  select: [keyword: string, display?: string, channel?: 'rec_query'];
   retry: [];
   restoreInputFocus: [];
 }>();
@@ -59,7 +59,14 @@ watch(showExact, (show) => {
         data-search-suggestion
         class="search-suggestion"
         :title="word.label"
-        @click="emit('select', word.keyword, word.label)"
+        @click="
+          emit(
+            'select',
+            word.keyword,
+            word.label,
+            group.id === 'recommendations' ? 'rec_query' : undefined,
+          )
+        "
       >
         <span><SearchMatchText :text="word.label" :keyword="query" /></span
         ><small v-if="word.tag" class="search-word-tag">{{ word.tag }}</small>

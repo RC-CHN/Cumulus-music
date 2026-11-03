@@ -360,6 +360,8 @@ async fn channels_are_forwarded_only_to_recovered_channel_aware_endpoints() {
         (Some(SearchChannel::Hotquery), "hotquery"),
         (Some(SearchChannel::Typing), "typing"),
         (Some(SearchChannel::Defaultquery), "defaultquery"),
+        (Some(SearchChannel::History), "history"),
+        (Some(SearchChannel::RecQuery), "rec_query"),
         (None, "suggest"),
     ] {
         for category in C::ALL {

@@ -552,6 +552,8 @@ mod tests {
         for (channel, wire) in [
             (SearchChannel::Typing, "typing"),
             (SearchChannel::Defaultquery, "defaultquery"),
+            (SearchChannel::History, "history"),
+            (SearchChannel::RecQuery, "rec_query"),
         ] {
             let mut query = query();
             query.channel = Some(channel);

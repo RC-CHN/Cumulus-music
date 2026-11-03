@@ -320,7 +320,7 @@ onUnmounted(() => {
             :pending="!!pending.suggestions"
             :composing="composing"
             :error="errors.suggestions"
-            @select="(word, display) => submit(word, undefined, display)"
+            @select="(word, display, channel) => submit(word, channel, display)"
             @restore-input-focus="focusInput"
             @retry="model.load({ kind: 'suggestions', keyword: query.trim() })"
           />
@@ -331,7 +331,7 @@ onUnmounted(() => {
               history
               :busy="pending.history"
               :empty-label="pending.history || errors.history ? '' : '暂无搜索历史'"
-              @select="(word, display) => submit(word, undefined, display)"
+              @select="(word, display) => submit(word, 'history', display)"
               @remove="removeHistory"
               @clear="confirm = true"
             />
@@ -345,7 +345,7 @@ onUnmounted(() => {
               v-if="recommendations.length"
               title="猜你喜欢"
               :words="recommendations"
-              @select="(word, display) => submit(word, undefined, display)"
+              @select="(word, display) => submit(word, 'history', display)"
             />
             <p v-if="pending.recommendations" role="status" class="search-muted">正在加载推荐词…</p>
             <div v-if="errors.recommendations" class="search-section-error" role="alert">

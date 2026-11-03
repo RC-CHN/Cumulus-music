@@ -557,7 +557,15 @@
     click(one('[data-category="songs"]'));
     await wait(() => ready("合成默认关键词", "songs", ".track-row"), "category keeps the defaultquery channel");
 
-    await fixture("good");
+    await fixture("selection_source");
+    await home();
+    await wait(() => one('.search-history-tags button[title="合成输入来源"]'), "previously submitted history keyword");
+    click(one('.search-history-tags button[title="合成输入来源"]'));
+    await wait(() => ready("合成输入来源", "all", ".search-track-card"), "history selection sends native history channel");
+    input().focus(); input().click(); type("合成输入推荐来源");
+    await wait(() => one('.search-suggestion[title="合成输入推荐来源 · 推荐结果"]'), "recommended input suggestion");
+    click(one('.search-suggestion[title="合成输入推荐来源 · 推荐结果"]'));
+    await wait(() => ready("合成输入推荐来源推荐", "all", ".search-track-card"), "recommended suggestion sends native rec_query channel");
     await home();
     const homeRecommendation = one(".search-tags-section:not(.search-history-tags) button[data-search-choice]");
     assert(homeRecommendation, "home recommendation is available");
@@ -616,6 +624,7 @@
       conditionalChartPlayVerified: true,
       hotqueryChannelVerified: true,
       searchInputChannelVerified: true,
+      searchSelectionChannelsVerified: true,
       searchDisplayLabelVerified: true,
       cyclicSuggestionsVerified: true,
       audioRankNavigationVerified: true,

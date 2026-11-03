@@ -99,6 +99,8 @@ pub enum SearchChannel {
     Hotquery,
     Typing,
     Defaultquery,
+    History,
+    RecQuery,
 }
 impl SearchChannel {
     fn wire(channel: Option<Self>) -> &'static str {
@@ -106,6 +108,8 @@ impl SearchChannel {
             Some(Self::Hotquery) => "hotquery",
             Some(Self::Typing) => "typing",
             Some(Self::Defaultquery) => "defaultquery",
+            Some(Self::History) => "history",
+            Some(Self::RecQuery) => "rec_query",
             None => "suggest",
         }
     }
