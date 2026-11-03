@@ -7,7 +7,7 @@ cold-offline-binding-v1。绑定选中会话槽、选择修订、此前验证的
 队列时不发放。普通凭据修订发生变化后也拒绝旧绑定，直到重新确认账号。
 这是一条保守的本地规则，不是服务端离线登录许可。
 
-MusicClient::grant_cold_offline 为原生宿主显式入口，不注册 IPC。
+MusicClient::grant_cold_offline 为原生显式入口，不直接注册 IPC。
 许可只对尚未验证的在线会话、同一原生凭据槽、仍为当前选择的账号有效，
 不采用账号、不构造 SessionToken、不会解锁在线 API。切换、在线恢复成功、
 退出、明确撤销、删除或已知 301 使原许可失效；301 的匹配绑定也会持久清除，
@@ -22,9 +22,8 @@ ColdOfflineGrant::open_plain_audio 只接收已有下载任务 ID。检查账号
 
 官方恢复 M23（PC 3.1.42.205594 hybrid_app.chunk.1482700000000.js/23.js）
 559–603 证明下载完成、加密及歌曲/声音权益检查，不证明断网冷启动的
-身份采用。这个基础层不改变 NCM 权益，不增加下载任务、游客/在线队列、
-离线列表 UI 或播放/启动接线；后续需要独立的本地解码器生命周期、脱敏
-列表以及全进程无网络的冷启动 WebView 验收。
+身份采用。这个基础层不改变 NCM 权益、下载任务或游客/在线队列。下文另述
+桌面接线与全进程无网络的冷启动 WebView 验收。
 
 原生离线列表
 
@@ -42,3 +41,45 @@ id、title、artist、actualQuality。列表核对已完成普通歌曲、当前
 并在许可撤销、账号恢复/切换、窗口退出时停止解码、移除源和关闭句柄。
 需以真实 Linux/Windows libmpv 验证回调 ABI、生命周期、取消与定位后，
 再接入只读面板。现有列表和句柄本身不构成桌面离线播放验收。
+
+桌面接线
+  主窗口在线恢复结束且身份仍未验证时，从「下载管理」显式打开「离线下载」。
+  本机此前须成功验证并保留同一活动账号槽；关闭自动登录、切换、退出、
+  明确会话失效或重新在线确认均不能沿用旧许可。应用不把离线身份设为已登录。
+  主窗口 IPC cold_offline_open/next/play/stop/status/close 只接受播放任务 ID，
+  列表只交付 ID、标题、艺人和实际音质，游标保留在核心。未验证账号不能由
+  这套命令读取在线资源、启动下载、改动文件或修改既有队列。
+  列表检查发布账本和可识别音频头。打开时重新核对同一任务及账本、读取
+  实际句柄并验证完整 SHA-256。当前允许 FLAC、WAV 和 MP3 的音频专用
+  demux；其他容器、NCM、视频和播客不进入此入口，原有在线下载及本地库
+  行为仍由各自用例处理。媒体改名或路径替换不使解码器重新打开原路径。
+
+  播放走现有原生引擎工厂的独立实例，继承当前有效播放器音量，不启动
+  账号队列、历史、接续、重授权或下载调度。媒体焦点在普通音频、MV 和
+  离线解码之间互斥；停止、离开、媒体切换和账号失效均释放独立解码器。
+  内部 libmpv 只读流为一次性、固定大小的文件读取/定位回调，禁止外部路径
+  和嵌套媒体容器。撤销允许后停止新读取；宿主定期核对许可并收掉引擎，
+  不依赖前端仍在轮询。绑定及游标都不进入 WebView。
+  效果、普通队列设置和加密权益没有从此独立入口改写。
+
+验证入口
+  core/examples/pinned_audio_probe.rs：实际 libmpv/null，替换磁盘路径后仍
+  读原文件句柄，观察 FLAC 时钟、定位、撤销和后续普通路径加载恢复。
+  core/tests/cold_offline.rs：合成账号、文件、发布账本，覆盖选中槽、301、
+  字段白名单、分页、文件操作、无效格式及文件篡改。
+  desktop/examples/cold_offline_ui_probe.rs 和
+  scripts/research/cold_offline_isolation.py：Linux 两个隔离进程，先用生产
+  下载器发布合成 FLAC，再在从启动前就没有网络出口的环境打开正式 Vue
+  页面与 Tauri IPC，通过 libmpv/null 播放并停止退出。独立核对两轮 SQLite
+  内容、请求计数、只读流计数、引擎音频输出和时钟。该证据不代表真实
+  账号下载、扬声器听感或 Windows 原生运行。
+
+  Linux 本机复跑命令（需要 bubblewrap、Xvfb、D-Bus 和 libmpv）：
+    npm --prefix frontend run build
+    cargo build --offline --locked -p cumulus-desktop --features custom-protocol --example cold_offline_ui_probe
+    GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/research/cold_offline_isolation.py --binary .build/target/debug/examples/cold_offline_ui_probe --root .build/NEW-COLD-PROOF --screenshot
+  本轮 Linux 通过：.build/cold-offline-proof-screenshot-final/。
+  两个进程均仅有 loopback、无主路由、无宿主代理；一次被替身拒绝的账号
+  读取，没有其他 HTTP 或媒体请求。确切下载任务从单个已校验句柄解码，
+  实际时钟推进后显式停止和退出，账号保持 Unknown，两个 SQLite 的逻辑
+  记录逐项不变。截图只包含合成音乐资料。
