@@ -19,7 +19,11 @@
     if(page) { assert(all('.playlist-editor-actions > button, .playlist-editor-actions .menu-trigger').every(hittable),'editor footer controls must be visible and hittable');return; }
     assert(editorActions().every(action => action.x >= dialog.x + 12 && action.right <= dialog.right - 12 && action.y >= dialog.y && action.bottom <= dialog.bottom - 12), 'editor actions clipped inside dialog or missing bottom inset');
   }
-  const equalizerBands = () => all('.equalizer-band').map(node => ({ value: rect(node.querySelector('output')), slider: rect(node.querySelector('input')), label: rect(node.lastElementChild) }));
+  const equalizerBands = () => all('.equalizer-band').map(node => ({
+    value: rect(node.querySelector('output')),
+    slider: rect(node.querySelector('input')),
+    label: rect(node.querySelector('.equalizer-band-frequency')),
+  }));
   const trackActions = () => all('.track-more').map(node => {
     const range = document.createRange(); range.selectNodeContents(node);
     const glyph = range.getBoundingClientRect();
@@ -31,14 +35,16 @@
     overflow: document.documentElement.scrollWidth > innerWidth,
     background: getComputedStyle(document.documentElement).backgroundColor, trackActions: trackActions(),
     focused: document.activeElement?.getAttribute('aria-label'), editorActions: editorActions(), equalizerBands: equalizerBands(),
-    dialogs: all('dialog[open]').map(node => ({ title: node.querySelector('h2')?.textContent, ...rect(node) })) });
+    dialogBounds: all('dialog[open]').map(node => ({ title: node.querySelector('h2')?.textContent, ...rect(node) })) });
   let stageCount = 0;
   async function capture(label) {
     await sleep(500);
     assert(!facts().overflow, `horizontal document overflow: ${label}`);
     assert(all('dialog[open], .action-menu, .window-controls').every(visible), `clipped dialog/menu/window controls: ${label}`);
     assert(trackActions().every(({ button, row, duration, glyph }) => glyph.x >= button.x - 1 && glyph.right <= button.right + 1 && button.right <= row.right + 1 && duration.right <= button.x), `track action glyph clipped or overlaps duration: ${label}`);
-    assert(equalizerBands().every(({ value, slider, label }) => Math.abs((value.x + value.right - slider.x - slider.right) / 2) < 1 && value.bottom < slider.y && slider.bottom < label.y), `equalizer labels overlap or lose column alignment: ${label}`);
+    const bands = equalizerBands();
+    if (one('.equalizer-dialog[open]')) assert(bands.length === 10, 'expected ten equalizer bands');
+    assert(bands.every(({ value, slider, label }) => label.width > 0 && Math.abs((value.x + value.right - slider.x - slider.right) / 2) < 1 && value.bottom < slider.y && slider.bottom < label.y), `equalizer labels overlap or lose column alignment: ${label}`);
     await emit(`ux_${String(++stageCount).padStart(2, '0')}_${label}`, facts());
     await sleep(1300);
   }

@@ -15,6 +15,7 @@ def main():
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--runtime', type=Path)
+    parser.add_argument('--frontend-dist', type=Path, help='use a local production frontend snapshot and current probe script')
     parser.add_argument('--screenshots', action='store_true', help='optional local Linux GTK captures')
     args = parser.parse_args()
     root = args.root.resolve()
@@ -23,6 +24,9 @@ def main():
     env = {k: v for k, v in os.environ.items() if not k.startswith('CUMULUS_')}
     env['CUMULUS_PROOF_DIR'] = str(root)
     env['CUMULUS_COVER_LAYOUT_PROOF'] = '1'
+    if args.frontend_dist:
+        env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve(strict=True))
+        env['CUMULUS_UX_SCRIPT'] = str(Path(__file__).resolve().parents[2] / 'desktop/examples/ux_ui_probe.js')
     for variable, directory in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'),
                                 ('XDG_CACHE_HOME', 'cache'), ('APPDATA', 'roaming'),
                                 ('LOCALAPPDATA', 'local')]:

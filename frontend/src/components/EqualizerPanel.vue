@@ -234,7 +234,7 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
               @input="slide(index, $event)"
               @change="slide(index, $event)"
           /></span>
-          <span>{{ label }}</span>
+          <span class="equalizer-band-frequency">{{ label }}</span>
           <span class="equalizer-band-value" aria-hidden="true">
             {{ equalizerGainLabel(gains[index]!) }} dB
           </span>
