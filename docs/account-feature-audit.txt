@@ -123,6 +123,9 @@ SNS 独立恢复、有限无会话取证与原生窗口边界见 docs/sns-login-
 
 4. 完整账号资料读取与编辑：已有原始 profile，不等于完整产品入口
 
+  后续实施：只读部分已接线，详见 account-profile-devices.txt；本节其余
+  未实现叙述对应原始审计，资料保存、头像与写入恢复仍未完成。
+
   官方读取：
     POST /api/w/nuser/account/get {}（M15:1741；现有 Rust 已实现）。
     POST /api/w/v1/user/detail/{uid}，host 调用参数 {all:true,userId:uid}
@@ -161,6 +164,7 @@ SNS 独立恢复、有限无会话取证与原生窗口边界见 docs/sns-login-
     跨账户迟到回包和保存元数据同步；真实既有账号修改只在明确授权后验证并记录恢复。
 
 5. 绑定详情与管理入口：读取可接，远端 URL/账户 token 不能照搬到前端
+  后续实施：已接入只读绑定摘要；固定二维码转交及远端变更仍待实现。
 
   官方读取：POST /api/w/v1/user/bindings/{uid}，payload {userId:uid}
     （M15:3642–3644；M100:179–185；hybrid_182.chunk.1482700000000.js/2988.js:15–35）。
@@ -224,6 +228,8 @@ SNS 独立恢复、有限无会话取证与原生窗口边界见 docs/sns-login-
     405/533与服务错误、upload成功但final bind未知、回读确认/重启恢复与临时文件清理。
 
 7. 登录设备管理：不等于现有“原设备验证”
+
+  后续实施：已接入只读设备列表与详情；移除、短信和未决回读仍待实现。
 
   官方 endpoint / 参数（M15:4962–4981；M12 默认 POST）：
     /api/middle/user/device/list {excStatus:9}

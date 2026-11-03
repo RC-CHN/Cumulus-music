@@ -13,13 +13,18 @@ def main():
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--screenshots', action='store_true')
     parser.add_argument('--baseline', action='store_true')
+    parser.add_argument('--account-detail', action='store_true')
     args = parser.parse_args()
+    if args.baseline and args.account_detail:
+        parser.error('--baseline and --account-detail cannot be combined')
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
     env['CUMULUS_PROOF_DIR'] = str(root/'run')
     if args.baseline:
         env['CUMULUS_PROOF_BASELINE'] = '1'
+    if args.account_detail:
+        env['CUMULUS_PROOF_ACCOUNT_DETAIL'] = '1'
     for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'), ('XDG_CACHE_HOME', 'cache'),
                       ('XDG_RUNTIME_DIR', 'runtime'), ('APPDATA', 'roaming'), ('LOCALAPPDATA', 'local')]:
         path = root/'os-profile'/name
@@ -36,14 +41,24 @@ def main():
     complete = json.loads((output/'complete.json').read_text(encoding='utf-8'))
     states = [json.loads(path.read_text(encoding='utf-8')) for path in sorted(output.glob('ux_*.json'))]
     assert complete['ok'] and len(states) == complete['stageCount']
-    assert len(states) == (2 if args.baseline else 28)
+    assert len(states) == (6 if args.account_detail else 2 if args.baseline else 28)
     for state in states:
         assert not state['overflow']
         if not args.baseline:
             assert state['focused'] and state['focusValid']
         assert all(control['hit'] for control in state['controls'])
         assert state['realMusicRequests'] == 0
-    if not args.baseline:
+    if args.account_detail:
+        assert complete['accountDetail']
+        by_name = {state['stage'].split('_', 2)[2]: state for state in states}
+        assert by_name['devices_loading_light']['fixture']['pending']
+        assert by_name['devices_ready_light']['fixture']['completed'] == 1
+        paths = complete['fixture']['paths']
+        assert paths['/api/w/v1/user/detail/2'] == 1
+        assert paths['/api/w/v1/user/bindings/2'] == 1
+        assert paths['/api/middle/user/device/list'] == 3
+        assert not any(path.endswith(('/kickoff', '/profile/update')) for path in paths)
+    elif not args.baseline:
         by_name = {state['stage'].split('_',2)[2]: state for state in states}
         assert complete['accountLogin']
         assert by_name['email_inflight_small_dark']['fixture']['pending']
@@ -64,7 +79,8 @@ def main():
         assert paths.get('/api/login') == 3  # Wrong, cancelled inflight, explicit successful retry.
     if args.screenshots:
         assert len(list(output.glob('ux_*.png'))) == len(states)
-    report = dict(ok=True, baseline=args.baseline, states=len(states), screenshots=len(states) if args.screenshots else 0,
+    report = dict(ok=True, baseline=args.baseline, accountDetail=args.account_detail,
+                  states=len(states), screenshots=len(states) if args.screenshots else 0,
                   actualWebView=True, realMusicRequests=0, realAccountWrites=0)
     (root/'report.json').write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8')
     print(json.dumps(report))

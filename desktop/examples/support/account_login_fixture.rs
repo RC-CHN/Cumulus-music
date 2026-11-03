@@ -58,6 +58,73 @@ impl HttpBackend for Service {
             let (path, data) = eapi::unwrap(params)?;
             *self.paths.lock().unwrap().entry(path.clone()).or_default() += 1;
             let mode = self.mode.lock().unwrap().clone();
+            if path.starts_with("/api/w/v1/user/detail/")
+                || path.starts_with("/api/w/v1/user/bindings/")
+                || path == "/api/middle/user/device/list"
+            {
+                let uid = plan
+                    .headers
+                    .get("Cookie")
+                    .and_then(|cookies| {
+                        cookies
+                            .split(';')
+                            .find_map(|cookie| cookie.trim().strip_prefix("MUSIC_U=fixture"))
+                    })
+                    .and_then(|id| id.parse::<u64>().ok())
+                    .filter(|id| matches!(id, 2 | 5))
+                    .ok_or(Error::Response("fixture account security owner"))?;
+                if path == "/api/middle/user/device/list" {
+                    if data["excStatus"] != "9" && data["excStatus"] != 9 {
+                        return Err(Error::Response("fixture device scope"));
+                    }
+                    if mode == "devices_failed" {
+                        return Ok(auth::reply(json!({"code":500}), None));
+                    }
+                    if mode == "devices_hold" {
+                        let (sender, receiver) = oneshot::channel();
+                        *self.held.lock().unwrap() = Some(sender);
+                        receiver
+                            .await
+                            .map_err(|_| Error::Response("fixture release"))?;
+                        *self.completed.lock().unwrap() += 1;
+                    }
+                    let rows = if mode == "devices_empty" || uid == 5 {
+                        json!([])
+                    } else {
+                        json!([
+                            {"deviceKey":"fixture-private-key-a","deviceName":"旧设备","status":0,"region":"上海"},
+                            {"deviceKey":"fixture-private-key-b","deviceName":"测试桌面","status":"1","ifLoginDevice":true,"loginPlace":"杭州","lastActiveTime":1700000000000_u64,"os":"Windows"}
+                        ])
+                    };
+                    return Ok(auth::reply(
+                        json!({"code":200,"data":{"userDeviceList":rows,"userDeviceLimitInfoDTO":{"currentNum":1,"deviceLimit":3}}}),
+                        None,
+                    ));
+                }
+                let uid_text = uid.to_string();
+                if !path.ends_with(&format!("/{uid}"))
+                    || (data["userId"] != uid_text && data["userId"] != uid)
+                {
+                    return Err(Error::Response("fixture profile owner mismatch"));
+                }
+                if path.contains("/detail/") {
+                    if data["all"] != true && data["all"] != "true" {
+                        return Err(Error::Response("fixture profile detail options"));
+                    }
+                    return Ok(auth::reply(
+                        json!({"code":200,"level":7,"profile":{
+                            "userId":uid,"nickname":auth::nickname(uid),
+                            "signature":if uid == 2 {"这是合成的账号资料"} else {"另一个账号的资料"},
+                            "birthday":946684800000_i64,"gender":1,"province":330000,"city":330100
+                        }}),
+                        None,
+                    ));
+                }
+                return Ok(auth::reply(
+                    json!({"code":200,"bindings":[{"type":0,"tokenJsonStr":"{\"email\":\"private-fixture@example.test\",\"password\":\"fixture-do-not-export\"}"}]}),
+                    None,
+                ));
+            }
             if mode == "bootstrap_slow"
                 && matches!(path.as_str(), "/api/user/playlist" | "/api/song/like/get")
             {

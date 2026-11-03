@@ -262,10 +262,76 @@
       click(one('[aria-label="同意登录协议"]'));
     click(one(".login-submit"));
   }
+  async function accountDetail() {
+    const expectNickname = "邮箱验证账号";
+    const profile = ".account-profile-page";
+    const devices = ".login-devices-page";
+    const page = (selector) =>
+      all(selector).find((node) => !node.closest(".page-leave-active"));
+    const state = (selector) =>
+      page(selector)?.querySelector("[data-account-read-state]")?.dataset
+        .accountReadState ?? page(selector)?.dataset.accountReadState;
+    const settingsEntry = (kind) => one(`[data-testid="account-${kind}-open"]`);
+    const back = async (kind) => {
+      click(one(".back-button"));
+      await wait(() => settingsEntry(kind), "settings restored");
+      await settle();
+    };
+    await open();
+    await email();
+    await logged();
+    click(button("打开设置"));
+    await wait(() => settingsEntry("profile"), "profile entry");
+    await settle();
+    click(settingsEntry("profile"));
+    await wait(
+      () => page(profile)?.textContent.includes("这是合成的账号资料"),
+      "profile data",
+    );
+    const profileText = page(profile).textContent;
+    assert(profileText.includes("浙江省 · 杭州市"), "recovered region label");
+    assert(profileText.includes("p***@e***") && !profileText.includes("private-fixture"), "masked email");
+    await stage("profile_ready_light", { expectNickname });
+    await back("devices");
+
+    await mode("devices_hold");
+    click(settingsEntry("devices"));
+    await wait(() => state(devices) === "loading", "device loading");
+    await stage("devices_loading_light", { expectNickname });
+    await mode("release");
+    await wait(() => all(".login-device-card", page(devices)).length === 2, "device rows");
+    const cards = all(".login-device-card", page(devices));
+    assert(cards[0].textContent.includes("测试桌面"), "current device pinned");
+    assert(!page(devices).innerHTML.includes("fixture-private-key"), "device key excluded");
+    await stage("devices_ready_light", { expectNickname });
+    click(cards[0]);
+    await wait(() => one(".login-device-detail")?.textContent.includes("杭州"), "device detail");
+    await stage("device_detail_light", { expectNickname });
+    click(button("关闭设备详情"));
+    await wait(() => !one(".login-device-detail"), "device dialog closed");
+    await settle();
+    await back("devices");
+
+    await theme("dark");
+    await resize(880, 670);
+    await mode("devices_failed");
+    click(settingsEntry("devices"));
+    await wait(() => state(devices) === "error", "device error");
+    await stage("devices_error_dark", { expectNickname });
+    await mode("devices_empty");
+    click(one('[data-testid="account-devices-retry"]'));
+    await wait(() => state(devices) === "empty", "confirmed empty");
+    await stage("devices_empty_dark", { expectNickname });
+    await emit("complete", { ok: true, accountDetail: true, stageCount: count, expectNickname });
+  }
   try {
     await wait(() => ready() && one(".welcome"), "guest bootstrap");
     await theme("light");
     await resize(1120, 760);
+    if (window.__accountDetailProof) {
+      await accountDetail();
+      return;
+    }
     await open();
     await wait(() => one('.qr-frame svg[role="img"]'), "QR created");
     await stage("qr_waiting_light", { expectGuest: true });

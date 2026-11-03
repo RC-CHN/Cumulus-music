@@ -19,6 +19,7 @@ fn main() {
     fs::create_dir(&output).unwrap();
     let service = Arc::new(fixture::Service::default());
     let baseline = std::env::var_os("CUMULUS_PROOF_BASELINE").is_some();
+    let account_detail = std::env::var_os("CUMULUS_PROOF_ACCOUNT_DETAIL").is_some();
     let browser_service = service.clone();
     cumulus_desktop::configure(tauri::Builder::default())
         .manage(cumulus_desktop::LoginDocumentBrowser::with_launcher(move |document| browser_service.open_document(document)))
@@ -75,6 +76,7 @@ fn main() {
         .on_page_load(move |webview, payload| {
             if payload.event() == PageLoadEvent::Finished {
                 webview.eval(format!("window.__accountLoginBaseline={baseline};")).unwrap();
+                webview.eval(format!("window.__accountDetailProof={account_detail};")).unwrap();
                 let script = if std::env::var("CUMULUS_PROOF_LOGIN_ENTRY").as_deref() == Ok("1") {
                     include_str!("login_entry_ui_probe.js")
                 } else {

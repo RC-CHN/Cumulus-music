@@ -1,0 +1,56 @@
+Cumulus 账号资料、绑定及登录设备读取
+
+入口：设置 → 账号 → 个人资料 / 登录设备管理。两页独立加载，
+返回设置不提交资料，打开设备卡片只显示详情。未登录不会请求这些接口。
+
+官方来源与网络契约：
+  PC 3.1.42.205594 M15:1742–1756、M100:63–82
+    POST /api/w/v1/user/detail/{uid} {all:true,userId:uid}
+    读 profile 与 level；profile.userId 必须与原生会话 UID 相同。
+  PC M15:3642–3644、M100:179–185、pages/bind/views/index.js:260–339
+    POST /api/w/v1/user/bindings/{uid} {userId:uid}
+    读 bindings[]，按 type 投影。0 邮箱，1 手机，2 微博，5 QQ，10 微信。
+    原始 tokenJsonStr、第三方身份 ID 和跳转 URL 不传给 WebView。
+  PC M15:4962–4981、M3122:14–80/304、pages/loginDevice/index.tsx
+    POST /api/middle/user/device/list {excStatus:9}
+    读 data.userDeviceList 与可选 userDeviceLimitInfoDTO；
+    当前设备优先，status 1/“1”归已登录，未知字段不填默认值。
+    WebView 只收到本次响应生成的行 ID，不得到原始 deviceKey。
+  地区显示使用 M591 的静态回退表：31 个省级分组、472 个城市映射。
+    源文件 SHA-256 7c07d9246b81e74422479a3d99c8972fbcf0c58e259cfa1b4abc337ee1a41351。
+    只移植地名和代码；未知值显示原代码，暂未移植 M198 的地区表文件与服务器更新。
+
+Rust 与 IPC：
+  account::profile::AccountProfile 提供快照、资料、绑定及合并读取。
+  本客户端在个人资料页显式串行读取资料和绑定；官方分别按页面读取。
+  client::MusicClient::account_profile_detail / login_devices 获取当前 epoch 的
+  SessionToken；每次请求完成核对账号代次，返回前再次核对。
+  desktop 主窗口只暴露 account_profile_detail / account_login_devices，
+  参数为当前 epoch；不接受目标 UID、设备键或任意业务路径。
+  响应外壳为 {epoch,value}。读取不新增持久状态，也不改账号资料。
+  缺失必需结构、归属不符及服务错误返回错误；成功的空数组才是空列表。
+
+当前边界：
+  资料保存、头像提交、绑定/解绑转交与移除登录设备仍是独立业务，
+  两个只读页面不展示未接线的修改按钮。界面按恢复的页面结构重建，
+  合并绑定摘要、保留明确错误态，未声明与官方截图像素一致。
+  合成接口和真实 WebView 验证不能证明当前服务端接受这些请求。
+
+验证：
+  core/tests/account_profile.rs、client_login_devices.rs 覆盖官方请求形状、
+  服务错误/空响应区分、账号切换、坏数据、敏感字段裁剪。
+  frontend/tests/account-detail.test.ts 检查代次、防迟到、错误/空态和地区显示。
+  实际 Linux WebKitGTK 与本机 KDE/XWayland（125% 缩放）均通过六个状态：
+  资料含地区与掩码、设备加载、设备列表、本机设备详情、深色错误、重试后的空结果。
+  本机窗口只抓取验证进程；截图使用合成账号。两套证据可分别在
+  .build/account-detail-webview 和 .build/account-detail-physical 查看。
+  Linux/Windows CI 均配置同一合成用例；本机没有实际 Windows 桌面实测。
+
+  可执行真实只读验证：
+    cargo run -p cumulus-core --locked --example account_security_read -- \
+      --isolated-profile-copy <已关闭的私有会话副本目录>
+  不传参数直接跳过。示例只打开临时工作副本，网络发送限定为本文三个
+  接口及初次 account/get；只输出数量和固定状态。凭据作用域保持原样。
+  2026-11-03：授权 PC 会话隔离副本恢复认证成功，资料、绑定、设备三项
+  都返回并通过投影；4 次请求、0 次远端写入、没有发送续期。验证后删除
+  输入副本，结果留在 references/account-security-read-20261103/result.json。
