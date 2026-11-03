@@ -212,3 +212,17 @@ fn real_process_boundary_handles_timeout_failure_and_output_limits() {
     helper("printf 'not JSON'");
     assert!(matches!(probe.inspect(&source), Err(Error::Media(_))));
 }
+
+#[cfg(windows)]
+#[test]
+fn ffprobe_does_not_accept_a_name_or_relative_windows_path() {
+    use std::time::Duration;
+    for path in ["ffprobe.exe", "tools/ffprobe.exe"] {
+        assert!(matches!(
+            Ffprobe::new(PathBuf::from(path), Duration::from_secs(1)),
+            Err(cumulus_core::Error::InvalidInput(_))
+        ));
+    }
+    let trusted = tempfile::tempdir().unwrap().path().join("ffprobe.exe");
+    assert!(Ffprobe::new(trusted, Duration::from_secs(1)).is_ok());
+}

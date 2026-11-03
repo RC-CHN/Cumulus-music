@@ -2,6 +2,8 @@
 mod cover;
 pub mod integrity;
 pub mod ncm;
+#[cfg(windows)]
+pub(crate) mod runtime;
 pub mod tags;
 pub use cover::{CoverInfo, validate_cover};
 

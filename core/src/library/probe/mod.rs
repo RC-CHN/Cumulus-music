@@ -19,23 +19,21 @@ pub trait AudioProbe: Send + Sync {
 }
 
 pub struct Ffprobe {
-    executable: PathBuf,
+    executable: Option<PathBuf>,
     timeout: Duration,
 }
 impl Default for Ffprobe {
     fn default() -> Self {
-        // Packaged hosts may ship the tool beside their executable. Resolve
-        // that trusted installation path explicitly; never depend on the CWD.
-        let name = if cfg!(windows) {
-            "ffprobe.exe"
-        } else {
-            "ffprobe"
-        };
-        let executable = std::env::current_exe()
-            .ok()
-            .and_then(|path| path.parent().map(|parent| parent.join(name)))
-            .filter(|path| path.is_file())
-            .unwrap_or_else(|| PathBuf::from(name));
+        #[cfg(windows)]
+        let executable = crate::media::runtime::windows_tool(&["ffprobe.exe"]);
+        #[cfg(not(windows))]
+        let executable = Some(
+            std::env::current_exe()
+                .ok()
+                .and_then(|path| path.parent().map(|parent| parent.join("ffprobe")))
+                .filter(|path| path.is_file())
+                .unwrap_or_else(|| PathBuf::from("ffprobe")),
+        );
         Self {
             executable,
             timeout: Duration::from_secs(30),
@@ -50,8 +48,14 @@ impl Ffprobe {
         {
             return Err(Error::InvalidInput("invalid media probe configuration"));
         }
+        #[cfg(windows)]
+        if !executable.is_absolute() {
+            return Err(Error::InvalidInput(
+                "ffprobe requires an absolute Windows path",
+            ));
+        }
         Ok(Self {
-            executable,
+            executable: Some(executable),
             timeout,
         })
     }
@@ -66,7 +70,11 @@ impl AudioProbe for Ffprobe {
         {
             return inspect_ncm(&path);
         }
-        let value = process::run(&self.executable, &path, self.timeout)?;
+        let executable = self
+            .executable
+            .as_deref()
+            .ok_or(Error::State("audio metadata probe unavailable"))?;
+        let value = process::run(executable, &path, self.timeout)?;
         parse_ffprobe_response(&path, &value)
     }
 }

@@ -10,19 +10,6 @@ use std::{
 #[path = "ffi/com.rs"]
 mod com;
 
-#[cfg(windows)]
-fn windows_sdk(
-    sibling: Option<&std::path::Path>,
-    configured: Option<&std::path::Path>,
-) -> Option<std::path::PathBuf> {
-    [sibling, configured]
-        .into_iter()
-        .flatten()
-        .filter(|directory| directory.is_absolute())
-        .flat_map(|directory| ["libmpv-2.dll", "mpv-2.dll"].map(|name| directory.join(name)))
-        .find(|candidate| candidate.is_file())
-}
-
 /// Load only from the chosen Windows DLL's directory and System32. Neither the
 /// working directory nor PATH is an implicit source for the SDK or its imports.
 unsafe fn load(path: &OsStr) -> Result<Library> {
@@ -89,13 +76,8 @@ impl MpvRuntime {
         };
         #[cfg(windows)]
         {
-            let executable = std::env::current_exe().ok();
-            let configured = std::env::var_os("MPV_DLL_DIR_CUMULUS").map(std::path::PathBuf::from);
-            let path = windows_sdk(
-                executable.as_deref().and_then(std::path::Path::parent),
-                configured.as_deref(),
-            )
-            .ok_or_else(missing)?;
+            let path = crate::media::runtime::windows_tool(&["libmpv-2.dll", "mpv-2.dll"])
+                .ok_or_else(missing)?;
             // SAFETY: only the trusted locations documented above are accepted.
             unsafe { Self::open(path.as_os_str()) }
         }
@@ -160,23 +142,9 @@ impl MpvRuntime {
 #[cfg(all(test, windows))]
 mod tests {
     use super::*;
-    use std::{fs, path::Path};
 
     #[test]
-    fn default_sdk_uses_only_absolute_explicit_directories_and_prefers_package() {
-        let temp = tempfile::tempdir().unwrap();
-        let package = temp.path().join("program");
-        let fixture = temp.path().join("runtime-音频");
-        fs::create_dir(&package).unwrap();
-        fs::create_dir(&fixture).unwrap();
-        let runtime = fixture.join("libmpv-2.dll");
-        fs::write(&runtime, b"candidate only, never loaded").unwrap();
-        assert_eq!(windows_sdk(Some(&package), Some(&fixture)), Some(runtime));
-        assert!(windows_sdk(Some(&package), Some(Path::new("runtime"))).is_none());
-        let sibling = package.join("libmpv-2.dll");
-        fs::write(&sibling, b"candidate only, never loaded").unwrap();
-        assert_eq!(windows_sdk(Some(&package), Some(&fixture)), Some(sibling));
-
+    fn windows_sdk_rejects_an_unqualified_name_before_loading() {
         // SAFETY: an unqualified name is rejected before Windows loading.
         assert!(matches!(
             unsafe { MpvRuntime::open(OsStr::new("libmpv-2.dll")) },

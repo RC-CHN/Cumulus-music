@@ -219,3 +219,10 @@ without the explicit override; it must fail to find libmpv. The same probe
 must pass with the verified runtime directory explicitly selected. Packaging
 and device diagnostics clear that override to exercise their sibling DLLs.
 After packaging, Windows WebView probes explicitly use the staged runtime.
+
+Local metadata inspection uses the same trusted runtime directory for ffprobe.
+On Windows, explicit probe paths also must be absolute. The probe starts with
+the executable directory as its working directory and does not inherit PATH,
+so a missing executable or runtime dependency cannot trigger a lookup in the
+application's launch directory or PATH. Local NCM metadata does not use
+ffprobe. Unix keeps its existing system executable lookup.

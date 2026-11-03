@@ -38,8 +38,20 @@ pub(super) fn run(executable: &Path, path: &Path, timeout: Duration) -> Result<V
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        // A metadata scan must not open a console window for every file.
-        command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        // The child must not fall back to the host launch CWD or PATH for
+        // DLLs. System directories are still part of Windows's loader search.
+        if !executable.is_absolute() {
+            return Err(Error::InvalidInput(
+                "ffprobe requires an absolute Windows path",
+            ));
+        }
+        let directory = executable
+            .parent()
+            .ok_or(Error::InvalidInput("ffprobe has no executable directory"))?;
+        command
+            .current_dir(directory)
+            .env_remove("PATH")
+            .creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
     command.args([
         "-v",
