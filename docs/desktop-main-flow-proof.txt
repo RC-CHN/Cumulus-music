@@ -73,6 +73,14 @@ Cumulus 桌面主流程验收
   再用 `scripts/research/main_flow_local_tls_audio.py --binary <构建产物>`。
   Linux 下由 unshare/bwrap 创建仅有回环的环境，使用仓库已有的合成音频；
   检查文件哈希、拒绝带 Cookie 的请求、原生 AAC 解码、进度、暂停及停止。
+  真实音源的独立解码随后通过（隔离研究提交 0f3ea10、e0347b4）：
+  同一桌面会话完成八项只读请求，一次 CDN 下载通过长度和 MD5 校验；
+  窗口退出并关闭转发后，监督端把匿名文件句柄转成只读密封副本，
+  交给无账号、无外网的第二进程。普通 libmpv URL 路径只发出一次
+  回环 HTTPS GET，解码时钟推进，暂停和停止通过。此项使用空输出，
+  界面没有接收第二进程的播放控制，不能替代正式窗口播放或实机听感。
+  未写入账号资源，凭据副本已清理，无具名音频文件保留。脱敏记录：
+  .build/main-flow-live-supervised-native-decode-summary.json。
   临时私密歌单编辑的隔离策略也新增了独立详情回读：完整字段一致才可
   计为编辑成功，应急清理不替代验收，未执行真实歌单修改。
   历史真实桌面目录 .build/ui-proof/ 下可检查 run-2-small 的账号
