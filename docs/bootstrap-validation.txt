@@ -59,3 +59,13 @@ beforeDevCommand/beforeBuildCommand 在工作区根运行，已改为 npm --pref
   IPC。证据 .build/latest-ordinary-current 指向的 run/ 目录，
   equalizer.png 显示播放中的十段、低音和高音入口。该截图只证明
   普通窗口和控件可用，音效 PCM 对照、实体声卡及线上播放分别验收。
+
+2026-11-03 Linux 本机安装包基线（85d0093）
+  锁文件前端构建与 scripts/ci/package.py --platform linux-x64 成功，生成 .deb、
+  便携 tar.gz 和固定 commit/哈希的 manifest。打包器对同一音效库运行原生媒体
+  与均衡器探针。产物在 .build/local-package-85d0093/.build/packages/linux-x64/。
+  scripts/ci/installed_linux_smoke.py 从该 .deb 提取正式程序，核对包摘要、内置
+  音效库与便携版逐字节相同；在无外网路由的 Linux Xvfb 中显示 1120×760 首帧。
+  报告与截图在 .build/local-package-85d0093-installed/。首帧不代表账号联网、
+  实体音频输出或整个主流程通过。本机包仅对应 85d0093，未发布或移动版本标签；
+  此后的均衡器独立激活及 NCM/AAC 冷离线修复以各自运行证据和后续 CI 为准。
