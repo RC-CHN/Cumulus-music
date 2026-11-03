@@ -163,3 +163,30 @@ Windows 音频输出或官方权益激活已验证。
 节点时保持干声；None、停止和所有者变更仍立即卸载。旧 v1 插件缺可选 bypass 符号时，
 控制器报告失败并清除旧节点。重新启用带参数的材料仍建立新节点，避免继承省略的频段。
 每个 LADSPA 声道在自己的下一个处理块读取新配置；本桥不承诺跨声道同一采样点切换。
+
+组合原生节点：热插入 GEQ 会重建已有 PEQ 实例
+恢复的 1AA50 节点顺序为响度(18) → GEQ/BT(48/50) → ExtraPEQ(70)，
+见 core-effects-material-routing.txt。现有 MPV 宿主将 GEQ 和 PEQ 分别追加，
+因此仅当可信宿主先挂载 PEQ 再开启 GEQ 时会逆序；桌面尚未向用户开放 PEQ 绑定。
+本轮不改变播放实现。
+
+隔离基线 6da786b，Linux x86_64 系统 libmpv2 0.41.0-2ubuntu4，项目自己的
+libcumulus_audio_filter.so，合成立体声 48 kHz PCM WAV，libmpv null 输出。
+复现步骤：用 MpvEngine::attach_parametric_equalizer 先装上启用的九段 PEQ
+组件（增益 −2 dB，slot 1/type 6、440 Hz、−4 dB、Q 0.7）；正常加载 WAV，
+取消暂停。等待时钟 >0.15 秒且 PEQ 两个活跃实例、处理 >1024 样本、失败块 0，
+并记录 instances_created=2。随后尝试在活动链表中把新增的 10 段 +2 dB GEQ
+插到 PEQ 前面：只挂 PEQ 时用 af pre；同时挂响度时试验用单次 af set 提交
+「响度、GEQ、PEQ」，原有节点的标签、名称、参数及控制 ID 不改。
+读取 mpv 的 af 属性，GEQ 确实在 PEQ 前；但试验在后续处理时首次核对
+PEQ instances_created 即观察到 4（期望 2），因此未通过原生实例保留断言。
+本次失败不足以分别确认两种有/无响度排列，更不证明其他 libmpv 版本的行为。
+
+mpv 的 filters/f_output_chain.c 中 mp_output_chain_update_filters 可以匹配
+并保留未改的外层滤镜对象；这并不保证下层 libavfilter/LADSPA 的运行实例不变。
+不能仅因 af 属性正确或源码复用 wrapper 就把热插入称作无重建。
+下一步若实现，应先在首次安装 PEQ 前建立已旁路的 GEQ 节点，让后续 GEQ 开关
+只更新原控制句柄，不改 af 列表。需要分别证明未开 GEQ 时仍透传、开关只推进
+配置版本且保留 PEQ/响度实例计数和播放时钟，以及缺库、配置失败、卸载、账号
+变化和重载时不会保留陈旧音效或悄悄改变顺序；再考虑接入受授权的 native 宿主。
+无账号请求、真实声卡或 Windows 验证。
