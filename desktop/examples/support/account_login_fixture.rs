@@ -5,7 +5,7 @@ use cumulus_core::{
     cloud::nos::{NosBackend, NosMethod, NosNode, NosRequest},
     protocol::{
         api::ApiFuture,
-        http::{HttpBackend, HttpReply, RequestPlan},
+        http::{BodyStatus, HttpBackend, HttpReply, RequestPlan},
         wire::eapi,
     },
 };
@@ -80,6 +80,68 @@ impl HttpBackend for Service {
             let (path, data) = eapi::unwrap(params)?;
             *self.paths.lock().unwrap().entry(path.clone()).or_default() += 1;
             let mode = self.mode.lock().unwrap().clone();
+            if mode.starts_with("quick_") {
+                let cookie = plan.headers.get("Cookie").map(String::as_str).unwrap_or("");
+                if matches!(
+                    path.as_str(),
+                    "/api/login/getquickloginlist" | "/api/login/quicklogin"
+                ) {
+                    let rows: Value = serde_json::from_str(
+                        data["userInfoList"]
+                            .as_str()
+                            .ok_or(Error::Response("fixture quick history"))?,
+                    )?;
+                    if data["currentEnv"] != "{}"
+                        || data["fromPage"] != "JSK"
+                        || plan.headers.get("x-login-chain-id").map(String::as_str) != Some("")
+                        || rows.as_array().map(Vec::len) != Some(1)
+                        || rows[0]["userId"] != "2"
+                        || rows[0]["userProfile"]["userId"] != "2"
+                        || rows[0]["musicU"] != "fixture2"
+                    {
+                        return Err(Error::Response("fixture quick request contract"));
+                    }
+                    if path == "/api/login/getquickloginlist" {
+                        if data.get("targetUserId").is_some() || data.get("currentUserId").is_some()
+                        {
+                            return Err(Error::Response(
+                                "fixture eligibility contains exchange fields",
+                            ));
+                        }
+                        return Ok(auth::reply(json!({"code":200,"deleteUserIds":[]}), None));
+                    }
+                    if data["targetUserId"] != "2"
+                        || data["currentUserId"] != ""
+                        || cookie
+                            .split(';')
+                            .any(|pair| pair.trim().starts_with("MUSIC_U="))
+                    {
+                        return Err(Error::Response("fixture exchange was not guest scoped"));
+                    }
+                    if mode == "quick_verify" {
+                        return Ok(auth::reply(json!({"code":8830}), None));
+                    }
+                    if mode != "quick_interrupt" {
+                        return Err(Error::Response("unexpected fixture quick exchange"));
+                    }
+                    let mut reply = auth::reply(json!({"code":200}), None);
+                    reply.body_status = BodyStatus::Interrupted;
+                    reply.body.clear();
+                    reply.set_cookies =
+                        vec!["MUSIC_U=fixtureQuick2; Path=/; Secure; HttpOnly".into()];
+                    return Ok(reply);
+                }
+                if path == "/api/w/nuser/account/get"
+                    && cookie
+                        .split(';')
+                        .any(|pair| pair.trim() == "MUSIC_U=fixtureQuick2")
+                {
+                    return Ok(auth::reply(
+                        json!({"code":200,"profile":{"userId":2,"nickname":auth::nickname(2)}}),
+                        None,
+                    ));
+                }
+            }
             if self.avatar_proof && path == "/api/nos/token/alloc" {
                 if data["filename"] != "avatar.jpg"
                     || data["ext"] != "jpg"

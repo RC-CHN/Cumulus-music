@@ -427,6 +427,89 @@
     await stage("avatar_reconciled_dark", { expectNickname });
     await emit("complete", { ok: true, accountAvatar: true, stageCount: count, expectNickname });
   }
+  async function quickLogin() {
+    const expectNickname = "邮箱验证账号";
+    const test = (id) => one(`[data-testid="${id}"]`);
+    const eligibility = () => test("quick-login-eligibility")?.dataset.quickEligibilityState;
+    const phase = () => test("server-quick-login-panel")?.dataset.serverQuickPhase;
+    async function check() {
+      click(test("quick-login-eligibility-check"));
+      await wait(() => eligibility() === "ready", "explicit quick eligibility");
+      assert(one('[data-quick-eligible="true"]'), "synthetic account eligible");
+      await settle();
+    }
+    async function enterConsent() {
+      click(test("server-quick-login-open"));
+      await wait(() => phase() === "consent", "explicit quick login consent");
+      await settle();
+    }
+    await open();
+    await email();
+    await logged(expectNickname);
+    await mode("quick_eligibility");
+    await chooser();
+    assert(eligibility() === "idle", "authenticated picker did not check automatically");
+    await check();
+    assert(!test("server-quick-login-open"), "authenticated picker has no server switch");
+    await stage("quick_authenticated_eligibility_light", { expectNickname });
+    // Sign out a different synthetic account: local logout clears only the
+    // active store, leaving the target as genuine dormant saved history.
+    click(button("＋ 添加账号"));
+    await wait(() => one(".login-methods"), "alternate account login");
+    await settle();
+    await tab("手机");
+    fill("登录手机号", "13800138000");
+    click(button("密码登录"));
+    await wait(
+      () => all('[aria-label="登录密码"]').length && status() === "ready" && !one(".tab-leave-active"),
+      "alternate phone password ready",
+    );
+    await settle();
+    fill("登录密码", "fixture-password");
+    if (!one('[aria-label="同意登录协议"]').checked)
+      click(one('[aria-label="同意登录协议"]'));
+    click(one(".login-submit"));
+    await logged("短信验证账号");
+    await chooser();
+    click(button("退出登录"));
+    await wait(() => one(".logout-option input"), "local logout confirmation");
+    await settle();
+    click(one(".logout-option input"));
+    click(button("确认退出"));
+    await wait(() => !one("dialog") && one(".welcome") && ready(), "local logout preserved history");
+    await settle();
+
+    await open();
+    click(one(".login-accounts"));
+    await wait(() => one(".saved-account") && eligibility() === "idle", "guest picker ready");
+    await stage("quick_guest_idle_light", { expectGuest: true });
+    await check();
+    await stage("quick_guest_eligible_light", { expectGuest: true });
+    await enterConsent();
+    await stage("quick_guest_consent_light", { expectGuest: true });
+    await mode("quick_verify");
+    click(test("server-quick-login-consent"));
+    await wait(() => phase() === "verification_required", "unsupported quick verification");
+    assert(test("server-quick-login-alternate") && !test("server-quick-login-reconcile"), "unsupported challenge has alternate login only");
+    await stage("quick_guest_verification_light", { expectGuest: true });
+    click(test("server-quick-login-cancel"));
+    await wait(() => !phase() && eligibility() === "idle", "previous attempt cancelled");
+    await settle();
+
+    await theme("dark");
+    await resize(880, 670);
+    await mode("quick_interrupt");
+    await check();
+    await enterConsent();
+    click(test("server-quick-login-consent"));
+    await wait(() => phase() === "identity_required", "interrupted body retained fresh receipt");
+    assert(!test("server-quick-login-consent"), "no replay after interrupted reply");
+    await stage("quick_guest_recovery_dark", { expectGuest: true });
+    click(test("server-quick-login-reconcile"));
+    await logged(expectNickname);
+    await stage("quick_guest_adopted_dark", { expectNickname });
+    await emit("complete", { ok: true, quickLogin: true, stageCount: count, expectNickname });
+  }
   async function deviceRemoval() {
     const expectNickname = "邮箱验证账号";
     const test = (id) => one(`[data-testid="${id}"]`);
@@ -514,6 +597,10 @@
     await wait(() => ready() && one(".welcome"), "guest bootstrap");
     await theme("light");
     await resize(1120, 760);
+    if (window.__quickLoginProof) {
+      await quickLogin();
+      return;
+    }
     if (window.__accountAvatarProof) {
       await accountAvatar();
       return;

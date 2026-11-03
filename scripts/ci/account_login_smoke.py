@@ -19,8 +19,9 @@ def main():
     parser.add_argument('--profile-edit', action='store_true')
     parser.add_argument('--account-avatar', action='store_true')
     parser.add_argument('--device-removal', action='store_true')
+    parser.add_argument('--quick-login', action='store_true')
     args = parser.parse_args()
-    if sum((args.baseline, args.account_detail, args.profile_edit, args.account_avatar, args.device_removal)) > 1:
+    if sum((args.baseline, args.account_detail, args.profile_edit, args.account_avatar, args.device_removal, args.quick_login)) > 1:
         parser.error('choose one proof mode')
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
@@ -36,6 +37,8 @@ def main():
         env['CUMULUS_PROOF_ACCOUNT_AVATAR'] = '1'
     if args.device_removal:
         env['CUMULUS_PROOF_DEVICE_REMOVAL'] = '1'
+    if args.quick_login:
+        env['CUMULUS_PROOF_QUICK_LOGIN'] = '1'
     for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'), ('XDG_CACHE_HOME', 'cache'),
                       ('XDG_RUNTIME_DIR', 'runtime'), ('APPDATA', 'roaming'), ('LOCALAPPDATA', 'local')]:
         path = root/'os-profile'/name
@@ -52,14 +55,33 @@ def main():
     complete = json.loads((output/'complete.json').read_text(encoding='utf-8'))
     states = [json.loads(path.read_text(encoding='utf-8')) for path in sorted(output.glob('ux_*.json'))]
     assert complete['ok'] and len(states) == complete['stageCount']
-    assert len(states) == (4 if args.account_avatar else 5 if args.profile_edit else 6 if args.account_detail or args.device_removal else 2 if args.baseline else 28)
+    assert len(states) == (7 if args.quick_login else 4 if args.account_avatar else 5 if args.profile_edit else 6 if args.account_detail or args.device_removal else 2 if args.baseline else 28)
     for state in states:
         assert not state['overflow']
         if not args.baseline:
             assert state['focused'] and state['focusValid']
         assert all(control['hit'] for control in state['controls'])
         assert state['realMusicRequests'] == 0
-    if args.account_avatar:
+    if args.quick_login:
+        assert complete['quickLogin']
+        rows = {row['stage'].split('_', 2)[2]: row for row in states}
+        eligibility = '/api/login/getquickloginlist'
+        exchange = '/api/login/quicklogin'
+        identity = '/api/w/nuser/account/get'
+        assert [row['theme'] for row in states] == ['light'] * 5 + ['dark'] * 2
+        assert [row['fixture']['paths'].get(eligibility, 0) for row in states] == [1, 1, 2, 2, 3, 5, 5]
+        assert [row['fixture']['paths'].get(exchange, 0) for row in states] == [0, 0, 0, 0, 1, 2, 2]
+        before = rows['quick_guest_recovery_dark']['fixture']['paths']
+        after = rows['quick_guest_adopted_dark']['fixture']['paths']
+        assert after[identity] > before[identity]
+        assert [row['nativeAccount']['status'] for row in states] == ['authenticated'] + ['signed_out'] * 5 + ['authenticated']
+        assert complete['fixture']['paths'].get(exchange) == 2
+        for row in [*states, complete]:
+            paths = row['fixture']['paths']
+            assert not any('/switchuser' in path or '/sms/captcha/' in path or path == '/api/logout' for path in paths)
+            serialized = json.dumps(row, ensure_ascii=False)
+            assert all(marker not in serialized for marker in ('fixtureQuick2', 'MUSIC_U=', 'userInfoList', 'fixture-refresh'))
+    elif args.account_avatar:
         assert complete['accountAvatar']
         by_name = {state['stage'].split('_', 2)[2]: state for state in states}
         paths = complete['fixture']['paths']
@@ -190,7 +212,7 @@ def main():
         assert len(list(output.glob('ux_*.png'))) == len(states)
     report = dict(ok=True, baseline=args.baseline, accountDetail=args.account_detail, profileEdit=args.profile_edit,
                   accountAvatar=args.account_avatar,
-                  deviceRemoval=args.device_removal,
+                  deviceRemoval=args.device_removal, quickLogin=args.quick_login,
                   states=len(states), screenshots=len(states) if args.screenshots else 0,
                   actualWebView=True, realMusicRequests=0, realAccountWrites=0)
     (root/'report.json').write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8')
