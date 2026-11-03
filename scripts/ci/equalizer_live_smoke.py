@@ -1,4 +1,4 @@
-"""Exercise live equalizer controls and durable state in two production WebViews."""
+"""Exercise live EQ, durable state and missing-plugin recovery in production WebViews."""
 import argparse
 import json
 import os
@@ -31,6 +31,36 @@ def persisted(root):
     return json.loads(rows[0][1])
 
 
+def fresh_profile(root, env):
+    isolated = {**env, 'CUMULUS_PROOF_DIR': str(root/'run')}
+    for key in ('XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'APPDATA', 'LOCALAPPDATA'):
+        directory = root/'os-profile'/key
+        directory.mkdir(parents=True, mode=0o700)
+        isolated[key] = str(directory)
+    return isolated
+
+
+def verify_missing_plugin(binary, env, root, filename):
+    absent = root/'absent'/filename
+    assert not absent.exists()
+    read = run(binary, {**fresh_profile(root, env), 'CUMULUS_PROOF_MISSING': '1',
+                        'CUMULUS_AUDIO_FILTER': str(absent)}, root)
+    missing = read('eq_missing')
+    assert missing['status'] == missing['native']['equalizer']['status'] == 'failed'
+    assert missing['native']['equalizer']['settings']['enabled'] is True
+    recovered = read('eq_disabled_recovery')['native']
+    complete = read('complete')
+    assert recovered['equalizer']['settings']['enabled'] is False
+    assert recovered['equalizer']['status'] in ('configured', 'off', 'unavailable')
+    assert recovered['state'] == complete['native']['state'] == 'playing'
+    assert recovered['entryId'] and recovered['entryId'] == complete['native']['entryId']
+    assert complete['native']['position'] > recovered['position'] > 0.2
+    assert complete['ok'] and complete['missing'] and complete['networkRequests'] == 0
+    saved = persisted(root)
+    assert saved['settings'] == recovered['equalizer']['settings']
+    assert saved['revision'] == int(recovered['equalizer']['revision'])
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
@@ -41,14 +71,10 @@ def main():
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
-    env['CUMULUS_PROOF_DIR'] = str(root/'run')
     env['CUMULUS_AUDIO_FILTER'] = str(args.filter_library.resolve(strict=True))
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
-    for key in ('XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'APPDATA', 'LOCALAPPDATA'):
-        directory = root/'os-profile'/key
-        directory.mkdir(parents=True, mode=0o700)
-        env[key] = str(directory)
+    env = fresh_profile(root, env)
     binary = args.binary.resolve(strict=True)
     read = run(binary, env, root)
     custom = read('eq_custom')
@@ -161,6 +187,7 @@ def main():
     assert persisted(root) == {**record, 'revision': record['revision'] + 3,
                                'settings': reset_settings, 'preset': {'kind': 'saved'}}
     assert reopened('complete')['ok']
+    verify_missing_plugin(binary, env, root/'missing-plugin', args.filter_library.name)
     report = {'ok': True, 'actualWebView': True, 'inputOnly': True, 'confirmedGain': -3.5,
               'samePlayingEntryAdvanced': True, 'nativeFlatReset': True,
               'persistedRevisionVerified': True, 'freshProcessResumedProcessing': True,
@@ -168,7 +195,8 @@ def main():
               'sameCurvePresetIdentityPreserved': True,
               'toneProcessedPersistedAndReset': True,
               'toneProcessedWithGeqDisabled': True,
-              'masterBypassRetainedAndRestored': True}
+              'masterBypassRetainedAndRestored': True,
+              'missingPluginRecoveredWithoutEq': True}
     (root/'report.json').write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
     print(json.dumps(report))
 
