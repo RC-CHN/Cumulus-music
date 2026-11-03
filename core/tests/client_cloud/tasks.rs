@@ -301,24 +301,35 @@ async fn blocked_text_omission_is_scoped_durable_and_never_resumes_the_upload() 
         expected_revision,
     };
     for (attachment, file) in [(AttachmentKind::Lyric, lyric), (AttachmentKind::Cue, cue)] {
-        let choice = tokio::time::timeout(Duration::from_secs(3), async {
-            loop {
-                let mut row = client
-                    .cloud_page("1", query(CloudTab::Uploading), false)
-                    .await
-                    .unwrap()
-                    .uploads
-                    .pop()
-                    .unwrap();
-                if let Some(choice) = row.omittable_attachment.take() {
-                    assert!(!row.can_resume);
-                    return choice;
-                }
-                tokio::time::sleep(Duration::from_millis(10)).await;
+        // Let the background worker flush both the task and its separate
+        // schedule record without competing with a tight SQLite read loop.
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+        let choice = loop {
+            let mut row = client
+                .cloud_page("1", query(CloudTab::Uploading), false)
+                .await
+                .unwrap()
+                .uploads
+                .pop()
+                .unwrap();
+            if let Some(choice) = row.omittable_attachment.take() {
+                assert!(!row.can_resume);
+                break choice;
             }
-        })
-        .await
-        .unwrap();
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "waiting for {attachment:?} omission: phase={:?}, enabled={}, running={}, error={:?}, attachments={:?}",
+                row.phase,
+                row.enabled,
+                row.running,
+                row.error,
+                row.attachments
+                    .iter()
+                    .map(|a| (a.kind, a.phase))
+                    .collect::<Vec<_>>()
+            );
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        };
         assert_eq!(choice.attachment, attachment);
         let before = f.api.calls.lock().unwrap().len();
         let objects = f.objects.calls();
