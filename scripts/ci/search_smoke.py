@@ -63,6 +63,7 @@ def verify(root, capture):
     complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
     assert complete['ok'] and complete['responseTimingInjected'] and complete['conditionalChartPlayVerified']
     assert complete['hotqueryChannelVerified'] and complete['searchDisplayLabelVerified']
+    assert complete['searchInputChannelVerified']
     assert complete['cyclicSuggestionsVerified'] and complete['audioRankNavigationVerified']
     assert complete['audioRankDetails'] == [301, 302]
     assert complete['stageCount'] == 51 and complete['syntheticSearchCalls'] > 30

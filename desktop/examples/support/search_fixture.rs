@@ -260,7 +260,7 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
             ),
             "/api/search/pc/complex/page/v3"
                 if args
-                    == &json!({"keyword":"合成 V3","scene":"normal","needCorrect":true,"channel":"suggest","bizQueryInfo":""}) =>
+                    == &json!({"keyword":"合成 V3","scene":"normal","needCorrect":true,"channel":"typing","bizQueryInfo":""}) =>
             {
                 Some(json!({"code":200,"data":{"blocks":[
                     {"blockCode":"search_block_hot_result_hot_explain","resources":[{"baseInfo":{"hotExplainModuleData":{"title":"热点说明","text":"合成热点内容","textAction":"https://example.invalid/private"}}}]},
@@ -377,6 +377,8 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
         let expected = match keyword {
             Some("合成热搜来源") => "hotquery",
             Some("合成普通来源") => "suggest",
+            Some("合成输入来源") => "typing",
+            Some("合成默认关键词") => "defaultquery",
             _ => return Some(Err(Error::InvalidInput("wrong synthetic chart keyword"))),
         };
         if (matches!(category, "all" | "songs" | "mvs") && args["channel"] != expected)

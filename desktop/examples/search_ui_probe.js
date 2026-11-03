@@ -546,6 +546,17 @@
     await wait(() => all(".search-chart-items button").length >= 2, "unmarked source chart row");
     click(all(".search-chart-items button")[1]);
     await wait(() => ready("合成普通来源", "all", ".search-track-card"), "unmarked source defaults");
+    type("合成输入来源");
+    click(button("开始搜索"));
+    await wait(() => ready("合成输入来源", "all", ".search-track-card"), "typed input uses typing channel on the native request");
+    type("");
+    assert(input().placeholder === "发现合成好声音", "default display phrase is shown on empty input");
+    input().focus();
+    key(input(), "Enter");
+    await wait(() => ready("合成默认关键词", "all", ".search-track-card"), "default submit uses the real keyword and defaultquery native channel");
+    click(one('[data-category="songs"]'));
+    await wait(() => ready("合成默认关键词", "songs", ".track-row"), "category keeps the defaultquery channel");
+
     await fixture("good");
     await home();
     const homeRecommendation = one(".search-tags-section:not(.search-history-tags) button[data-search-choice]");
@@ -604,6 +615,7 @@
       responseTimingInjected: true,
       conditionalChartPlayVerified: true,
       hotqueryChannelVerified: true,
+      searchInputChannelVerified: true,
       searchDisplayLabelVerified: true,
       cyclicSuggestionsVerified: true,
       audioRankNavigationVerified: true,
