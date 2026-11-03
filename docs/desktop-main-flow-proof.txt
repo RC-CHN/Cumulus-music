@@ -68,6 +68,11 @@ Cumulus 桌面主流程验收
   与 AAC/MP4，两种的 libmpv 播放项均成功。该合成结果不等同于真实音源
   在正式播放器上成功，也未验证物理声卡。脱敏记录：
   .build/main-flow-live-supervised-format-summary.json。
+  可复现的合成 AAC/MP4 验证：构建
+  `cargo build --locked -p cumulus-core --example local_tls_audio_probe`，
+  再用 `scripts/research/main_flow_local_tls_audio.py --binary <构建产物>`。
+  Linux 下由 unshare/bwrap 创建仅有回环的环境，使用仓库已有的合成音频；
+  检查文件哈希、拒绝带 Cookie 的请求、原生 AAC 解码、进度、暂停及停止。
   临时私密歌单编辑的隔离策略也新增了独立详情回读：完整字段一致才可
   计为编辑成功，应急清理不替代验收，未执行真实歌单修改。
   历史真实桌面目录 .build/ui-proof/ 下可检查 run-2-small 的账号
