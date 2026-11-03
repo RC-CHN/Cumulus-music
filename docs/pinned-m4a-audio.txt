@@ -14,9 +14,13 @@ entitlement checks apply unchanged.
 The already-opened regular file supplies the only stream. Before forcing
 libavformat's MOV demuxer, libmpv disables access-references and autoload-files.
 FFmpeg aliases and absolute paths are disabled, and the nested FFmpeg protocol
-allowlist names only the private custom stream. If setting a libmpv
-option fails, the load is refused. The scoped options are restored before a subsequent ordinary load or
-different pinned format. This is independent of box admission: accepting the
+allowlist names only the private custom stream. If setting those libmpv
+options fails, the load is refused. They are restored before a subsequent
+ordinary load or different pinned format. The forced demuxer and format
+belong only to the pinned playlist entry, via named loadfile options. This
+keeps libmpv's native format default intact for the next ordinary item:
+v0.37 treats an explicitly empty format as a failed demuxer lookup.
+This is independent of box admission: accepting the
 structure alone cannot enforce what a different decoder attempts to open.
 The decoder remains native code; this is not process isolation.
 

@@ -36,7 +36,6 @@ pub struct MpvEngine {
     entry: Option<i64>,
     null_output: bool,
     pinned_authority: Option<Cancellation>,
-    pinned_demuxer: bool,
     pinned_bmff_options: bool,
 }
 fn string(value: impl AsRef<[u8]>) -> Result<CString> {
@@ -120,7 +119,6 @@ impl MpvEngine {
             entry: None,
             null_output: config.null_output,
             pinned_authority: None,
-            pinned_demuxer: false,
             pinned_bmff_options: false,
         };
         for (key, value) in [
@@ -178,6 +176,14 @@ impl MpvEngine {
         cancel.check()?;
         let sequence = self.sequence()?;
         self.native.command(sequence, &args)?;
+        self.await_command(sequence, deadline, cancel)
+    }
+    fn await_command(
+        &mut self,
+        sequence: u64,
+        deadline: Instant,
+        cancel: &Cancellation,
+    ) -> Result<()> {
         while Instant::now() < deadline {
             cancel.check()?;
             match self.native.event(0.05)? {
@@ -312,10 +318,7 @@ impl MpvEngine {
         cancel.check()?;
         self.stop()?;
         self.restore_bmff_options()?;
-        self.pinned_demuxer = true;
         let result = (|| {
-            self.control(&["set", "options/demuxer", "lavf"])?;
-            self.control(&["set", "options/demuxer-lavf-format", format])?;
             if format == "mov" {
                 // libmpv replaces AVFormatContext.io_open with a deny-all
                 // callback; FFmpeg must not accept aliases either.
@@ -329,7 +332,16 @@ impl MpvEngine {
                 ])?;
             }
             let source = self.native.stage_pinned(reader, authority.clone())?;
-            let media = self.load_source(source, 0.0, None, Duration::from_secs(25), cancel)?;
+            // Use file-local demuxer settings so ordinary playback gets the
+            // real defaults back. mpv 0.37 rejects an empty lavf format.
+            let media = self.load_source(
+                source,
+                Some(&string(format)?),
+                0.0,
+                None,
+                Duration::from_secs(25),
+                cancel,
+            )?;
             if format == "mov" && media.codec.as_deref() != Some("aac") {
                 return Err(Error::InvalidInput("unsupported pinned audio format"));
             }
@@ -370,19 +382,24 @@ impl MpvEngine {
         request.validate()?;
         cancel.check()?;
         let source = Self::source(request.source)?;
-        if self.pinned_demuxer {
+        if self.pinned_bmff_options || self.pinned_authority.is_some() {
             self.stop()?;
             self.restore_bmff_options()?;
-            self.control(&["set", "options/demuxer", ""])?;
-            self.control(&["set", "options/demuxer-lavf-format", ""])?;
-            self.pinned_demuxer = false;
         }
-        self.load_source(source, request.start, request.end, request.timeout, cancel)
+        self.load_source(
+            source,
+            None,
+            request.start,
+            request.end,
+            request.timeout,
+            cancel,
+        )
     }
 
     fn load_source(
         &mut self,
         source: CString,
+        forced_demuxer: Option<&CStr>,
         start: f64,
         end: Option<f64>,
         timeout: Duration,
@@ -407,11 +424,18 @@ impl MpvEngine {
                 cancel,
             )?;
         }
-        self.command(
-            vec![string("loadfile")?, source, string("replace")?],
-            deadline,
-            cancel,
-        )?;
+        if let Some(format) = forced_demuxer {
+            cancel.check()?;
+            let sequence = self.sequence()?;
+            self.native.load_with_demuxer(sequence, &source, format)?;
+            self.await_command(sequence, deadline, cancel)?;
+        } else {
+            self.command(
+                vec![string("loadfile")?, source, string("replace")?],
+                deadline,
+                cancel,
+            )?;
+        }
         let mut entry = None;
         while Instant::now() < deadline {
             cancel.check()?;

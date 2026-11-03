@@ -3,6 +3,7 @@
 //! Every borrowed event is copied before another mpv_wait_event call.
 use super::{EndReason, EngineEvent, MpvRuntime};
 mod devices;
+mod node;
 mod render;
 mod stream;
 use crate::{Error, Result};
@@ -36,6 +37,7 @@ type Create = unsafe extern "C" fn() -> Handle;
 type Initialize = unsafe extern "C" fn(Handle) -> c_int;
 type OptionString = unsafe extern "C" fn(Handle, *const c_char, *const c_char) -> c_int;
 type Command = unsafe extern "C" fn(Handle, u64, *const *const c_char) -> c_int;
+type CommandNode = unsafe extern "C" fn(Handle, u64, *mut node::Node) -> c_int;
 type Property = unsafe extern "C" fn(Handle, *const c_char) -> *mut c_char;
 type PropertyAsync = unsafe extern "C" fn(Handle, u64, *const c_char, c_int) -> c_int;
 type Free = unsafe extern "C" fn(*mut c_void);
@@ -220,6 +222,55 @@ impl Native {
         check("command", unsafe {
             (self.command)(self.handle.as_ptr(), sequence, pointers.as_ptr())
         })
+    }
+    pub fn load_with_demuxer(&mut self, sequence: u64, source: &CStr, format: &CStr) -> Result<()> {
+        use node::{List, MAP, Node, STRING, Value};
+        fn string(value: &CStr) -> Node {
+            Node {
+                value: Value {
+                    string: value.as_ptr().cast_mut(),
+                },
+                format: STRING,
+            }
+        }
+        fn map(list: &mut List) -> Node {
+            Node {
+                value: Value { list },
+                format: MAP,
+            }
+        }
+
+        // Named options work on both sides of mpv 0.38, when loadfile gained
+        // a positional index before its options argument.
+        let mut option_keys = [c"demuxer", c"demuxer-lavf-format"].map(|s| s.as_ptr().cast_mut());
+        let mut option_values = [string(c"lavf"), string(format)];
+        let mut options = List {
+            num: 2,
+            values: option_values.as_mut_ptr(),
+            keys: option_keys.as_mut_ptr(),
+        };
+        let mut keys = [c"name", c"url", c"flags", c"options"].map(|s| s.as_ptr().cast_mut());
+        let mut values = [
+            string(c"loadfile"),
+            string(source),
+            string(c"replace"),
+            map(&mut options),
+        ];
+        let mut args = List {
+            num: 4,
+            values: values.as_mut_ptr(),
+            keys: keys.as_mut_ptr(),
+        };
+        // SAFETY: mpv copies the documented input node before returning and
+        // does not mutate any strings. All maps, arrays, and strings are live.
+        let result = unsafe {
+            let command = *self
+                ._runtime
+                .get::<CommandNode>(b"mpv_command_node_async\0")
+                .map_err(|_| failed("load with demuxer", -1))?;
+            command(self.handle.as_ptr(), sequence, &mut map(&mut args))
+        };
+        check("load with demuxer", result)
     }
     pub fn property(&mut self, name: &CStr) -> Option<String> {
         // SAFETY: property strings are allocated by mpv and freed exactly once

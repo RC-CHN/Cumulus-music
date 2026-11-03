@@ -7,10 +7,9 @@ use std::{
     slice,
 };
 
-const STRING: c_int = 1;
-const NODE: c_int = 6;
-const ARRAY: c_int = 7;
-const MAP: c_int = 8;
+#[cfg(test)]
+use super::node::Value;
+use super::node::{ARRAY, List, MAP, NODE, Node, STRING};
 
 #[cfg(test)]
 #[path = "devices_tests.rs"]
@@ -21,26 +20,6 @@ struct Property {
     name: *const c_char,
     format: c_int,
     data: *mut c_void,
-}
-#[repr(C)]
-union Value {
-    string: *mut c_char,
-    flag: c_int,
-    int64: i64,
-    double_: f64,
-    list: *mut List,
-    bytes: *mut c_void,
-}
-#[repr(C)]
-struct Node {
-    value: Value,
-    format: c_int,
-}
-#[repr(C)]
-struct List {
-    num: c_int,
-    values: *mut Node,
-    keys: *mut *mut c_char,
 }
 fn malformed() -> Error {
     Error::Media("invalid native audio device list")
