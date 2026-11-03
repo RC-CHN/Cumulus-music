@@ -106,28 +106,43 @@ impl ProfileRegistry {
         session: &AccountSession,
         client: &Arc<MusicHttpClient>,
     ) -> Result<()> {
+        self.record_current_for(session, client, &session.token()?)
+    }
+
+    pub(crate) fn record_current_for(
+        &self,
+        session: &AccountSession,
+        client: &Arc<MusicHttpClient>,
+        expected: &SessionToken,
+    ) -> Result<()> {
         let Some(selection) = self.selection()? else {
             return Ok(());
         };
         if client.credentials().store().directory() != self.profile_path(&selection.session_id)? {
             return Ok(());
         }
-        let snapshot = session.snapshot()?;
-        session.require_api(&snapshot.token, &(client.clone() as Arc<dyn Api>))?;
-        let profile = snapshot
-            .profile
-            .ok_or(Error::State("no verified account profile"))?;
-        let record =
-            SavedProfile::from_verified(&selection.session_id, &profile, selection.auto_login)?;
-        session.with_token(&snapshot.token, |uid| {
-            self.store.transaction(|tx| {
-                removal::available(tx, &selection.session_id)?;
-                if tx.get(OWNER, super::KIND, "active")? != Some(serde_json::to_value(&selection)?)
-                {
-                    return Err(Error::StaleResponse);
-                }
-                tx.put(OWNER, KIND, uid, &serde_json::to_value(record)?)
-            })
-        })
+        session.with_verified_profile(
+            expected,
+            &(client.clone() as Arc<dyn Api>),
+            |uid, profile| {
+                let record = serde_json::to_value(SavedProfile::from_verified(
+                    &selection.session_id,
+                    profile,
+                    selection.auto_login,
+                )?)?;
+                self.store.transaction(|tx| {
+                    removal::available(tx, &selection.session_id)?;
+                    if tx.get(OWNER, super::KIND, "active")?
+                        != Some(serde_json::to_value(&selection)?)
+                    {
+                        return Err(Error::StaleResponse);
+                    }
+                    if tx.get(OWNER, KIND, uid)?.as_ref() == Some(&record) {
+                        return Ok(());
+                    }
+                    tx.put(OWNER, KIND, uid, &record)
+                })
+            },
+        )
     }
 }

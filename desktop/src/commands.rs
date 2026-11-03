@@ -3,6 +3,7 @@ use cumulus_core::{
     account::QrStatus,
     client::{ClientError, MusicClient, dto::*},
 };
+use tauri::Emitter;
 
 /// Transport adapter only: business decisions belong to cumulus-core.
 #[tauri::command]
@@ -23,6 +24,56 @@ pub async fn account_profile_detail(
         .account_profile_detail(&epoch)
         .await
         .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn account_binding_qr(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> Result<AccountData<AccountBindingQrView>, ClientError> {
+    client.account_binding_qr(&epoch).map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn account_profile_edit_page<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    refresh: bool,
+) -> Result<AccountData<cumulus_core::account::profile::edit::ProfileEditPage>, ClientError> {
+    let result = client
+        .account_profile_edit_page(&epoch, refresh)
+        .await
+        .map_err(Into::into);
+    publish_profile(&window, &client, &epoch);
+    result
+}
+
+#[tauri::command]
+pub async fn account_profile_edit_command<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    command: AccountProfileEditCommand,
+) -> Result<AccountData<cumulus_core::account::profile::edit::ProfileEditPage>, ClientError> {
+    let result = client
+        .account_profile_edit_command(&epoch, command)
+        .await
+        .map_err(Into::into);
+    publish_profile(&window, &client, &epoch);
+    result
+}
+
+fn publish_profile<R: tauri::Runtime>(
+    window: &tauri::WebviewWindow<R>,
+    client: &MusicClient,
+    epoch: &str,
+) {
+    if let Ok(account) = client.account()
+        && account.epoch == epoch
+    {
+        let _ = window.emit("cumulus:account-changed", account);
+    }
 }
 
 #[tauri::command]

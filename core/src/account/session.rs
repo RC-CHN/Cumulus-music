@@ -195,6 +195,29 @@ impl AccountSession {
         Ok(())
     }
 
+    pub(crate) fn with_verified_profile<T>(
+        &self,
+        expected: &SessionToken,
+        api: &Arc<dyn Api>,
+        operation: impl FnOnce(&str, &Value) -> Result<T>,
+    ) -> Result<T> {
+        let state = self.lock()?;
+        state.require(expected)?;
+        if !Arc::ptr_eq(&state.api, api) {
+            return Err(Error::StaleResponse);
+        }
+        operation(
+            state
+                .uid
+                .as_deref()
+                .ok_or(Error::State("no authenticated account"))?,
+            state
+                .profile
+                .as_ref()
+                .ok_or(Error::State("no verified account profile"))?,
+        )
+    }
+
     pub(crate) fn commit_refreshed_profile(
         &self,
         expected: &SessionToken,
@@ -214,6 +237,53 @@ impl AccountSession {
         if let Some(store) = &self.store {
             store.put(&uid, "account", "profile", &profile)?;
         }
+        state.profile = Some(profile);
+        Ok(())
+    }
+
+    /// Publish a verified same-UID profile projection with its journal update.
+    /// Absent detail fields leave the existing account/get metadata intact.
+    pub(crate) fn commit_profile_edit(
+        &self,
+        expected: &SessionToken,
+        api: &Arc<dyn Api>,
+        verified: &super::profile::SelfProfileView,
+        record: impl FnOnce(&mut StateTransaction<'_>, &str) -> Result<()>,
+    ) -> Result<()> {
+        let mut state = self.lock()?;
+        state.require(expected)?;
+        if !Arc::ptr_eq(&state.api, api)
+            || state.status != SessionStatus::Authenticated
+            || state.uid.as_deref() != Some(verified.uid.as_str())
+        {
+            return Err(Error::StaleResponse);
+        }
+        let mut profile = state
+            .profile
+            .clone()
+            .ok_or(Error::State("missing authenticated profile"))?;
+        let fields = profile
+            .as_object_mut()
+            .ok_or(Error::State("invalid authenticated profile"))?;
+        for (key, value) in [
+            ("nickname", json!(verified.nickname)),
+            ("avatarUrl", json!(verified.avatar_url)),
+            ("signature", json!(verified.signature)),
+            ("gender", json!(verified.gender)),
+            ("birthday", json!(verified.birthday)),
+        ] {
+            if !value.is_null() {
+                fields.insert(key.into(), value);
+            }
+        }
+        if let (Some(province), Some(city)) = (verified.province, verified.city) {
+            fields.insert("province".into(), json!(province));
+            fields.insert("city".into(), json!(city));
+        }
+        self.persistent_store()?.transaction(|tx| {
+            tx.put(&verified.uid, "account", "profile", &profile)?;
+            record(tx, &verified.uid)
+        })?;
         state.profile = Some(profile);
         Ok(())
     }

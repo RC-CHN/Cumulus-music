@@ -11,7 +11,7 @@ pub(super) fn short_text(value: &Value) -> Option<String> {
 }
 
 impl MusicClient {
-    pub(super) fn native_account_client(&self) -> Result<Option<Arc<MusicHttpClient>>> {
+    pub(in crate::client) fn native_account_client(&self) -> Result<Option<Arc<MusicHttpClient>>> {
         let token = self.session.token()?;
         let api: Arc<dyn std::any::Any + Send + Sync> = self.session.native_api(&token)?;
         Ok(api.downcast::<MusicHttpClient>().ok())

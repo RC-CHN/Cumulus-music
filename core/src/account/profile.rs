@@ -1,11 +1,12 @@
 //! Read-only account detail and bindings from the recovered PC host.
+pub mod edit;
 use super::{AccountSession, SessionStatus, SessionToken};
 use crate::{Error, Result, protocol::api::identifier};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::sync::Arc;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SelfProfileView {
     pub uid: String,

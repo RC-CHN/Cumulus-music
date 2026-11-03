@@ -118,6 +118,7 @@ const albumActions = ref<InstanceType<typeof AlbumActions>>();
 const artistActions = ref<InstanceType<typeof ArtistActions>>();
 const collectionsPageRef = ref<InstanceType<typeof CollectionsPage>>();
 const playlistLibraryState = ref(libraryView());
+const settingsPage = ref<InstanceType<typeof SettingsPage>>();
 const music = useMusic(undefined, (commit) => {
   const proceed = () => {
     catalogDetailPage.value?.checkpoint();
@@ -144,6 +145,7 @@ const music = useMusic(undefined, (commit) => {
       closePlaylistEditor(false);
       proceed();
     });
+  else if (settingsPage.value) settingsPage.value.requestLeave(proceed);
   else proceed();
 });
 const catalogWorkspace = useCatalogWorkspace(
@@ -1045,8 +1047,12 @@ onMounted(async () => {
         next.epoch !== account.value.epoch ||
         next.status !== account.value.status ||
         next.canSignOut !== account.value.canSignOut
-      )
+      ) {
         void music.bootstrap(false);
+      } else {
+        account.value.nickname = next.nickname;
+        account.value.avatarUrl = next.avatarUrl;
+      }
     });
     if (mounted) accountListener = stop;
     else stop();
@@ -1533,6 +1539,7 @@ onUnmounted(() => {
               <SettingsPage
                 :player="player"
                 v-else-if="page.kind === 'settings'"
+                ref="settingsPage"
                 :model="settings"
                 :relay="relay"
                 :publication="publication"

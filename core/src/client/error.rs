@@ -68,6 +68,26 @@ impl From<Error> for ClientError {
                     "请求准备未完成，修改尚未提交，请稍后重试",
                     true,
                 ),
+                Error::InvalidInput("profile nickname is already in use") => {
+                    ("profile_nickname_taken", "昵称已被使用，请换一个", false)
+                }
+                Error::InvalidInput("profile nickname is prohibited") => (
+                    "profile_nickname_prohibited",
+                    "昵称未通过校验，请换一个",
+                    false,
+                ),
+                Error::Response("nickname availability is unknown") => (
+                    "profile_nickname_unknown",
+                    "暂时无法核对昵称，请稍后重试",
+                    true,
+                ),
+                Error::State("account profile changed" | "read current profile before editing") => {
+                    (
+                        "account_profile_stale",
+                        "资料已变化，请重新读取并核对修改",
+                        true,
+                    )
+                }
                 Error::InvalidInput("comment must contain 1 to 1000 UTF-16 units") => {
                     ("comment_text", "请输入不超过 1000 字符的评论内容", false)
                 }

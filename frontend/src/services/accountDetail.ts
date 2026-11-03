@@ -1,12 +1,17 @@
 import type { AccountData } from './contracts';
-import regions from './account-regions.json' with { type: 'json' };
+import regions from '../../../core/assets/account-regions.json' with { type: 'json' };
 
-const regionIndex = new Map(regions.map((region) => [region.id, region]));
+export const accountRegions: readonly {
+  id: number;
+  name: string;
+  type?: number;
+  cities: Readonly<Record<string, string | undefined>>;
+}[] = regions;
+const regionIndex = new Map(accountRegions.map((region) => [region.id, region]));
 
 export function accountRegion(province?: number | null, city?: number | null) {
   const region = province ? regionIndex.get(province) : undefined;
-  const cityName =
-    region && city ? (region.cities as Record<string, string | undefined>)[city] : undefined;
+  const cityName = region && city ? region.cities[city] : undefined;
   if (cityName && (region?.type === 1 || region?.type === 2)) return cityName;
   return [
     province ? (region?.name ?? `省份代码 ${province}`) : '',
@@ -54,9 +59,13 @@ export interface LoginDevicesView {
   devices: LoginDevice[];
   limits?: { currentNum?: number | null; deviceLimit?: number | null } | null;
 }
+export interface AccountBindingQrView {
+  modules: boolean[][];
+}
 export interface AccountDetailClient {
   accountProfileDetail(epoch: string): Promise<AccountData<AccountProfileDetail>>;
   accountLoginDevices(epoch: string): Promise<AccountData<LoginDevicesView>>;
+  accountBindingQr(epoch: string): Promise<AccountData<AccountBindingQrView>>;
 }
 
 export function accountDate(value: number | null | undefined, time = false): string | null {

@@ -1,3 +1,4 @@
+pub use super::account_binding_qr::AccountBindingQrView;
 pub use super::collections::{CollectionPageView, CollectionView, FollowCard, FollowUser};
 pub use super::downloads::{
     DownloadCategory, DownloadCommand, DownloadFailure, DownloadJobView, DownloadQuery,
@@ -199,6 +200,7 @@ pub use crate::catalog::details::CatalogQuery;
 
 pub use super::mini_preferences::{MiniPreferencesCommand, MiniPreferencesView};
 
+pub use super::account_profile::AccountProfileEditCommand;
 pub use super::auth::LoginPresentation;
 pub use super::desktop_lyric_preferences::{
     DesktopLyricPreferencesCommand, DesktopLyricPreferencesView,

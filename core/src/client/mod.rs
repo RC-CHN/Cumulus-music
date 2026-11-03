@@ -1,5 +1,6 @@
 //! Host-independent UI use cases. Native records and credentials never cross
 //! this boundary; account epochs also reject delayed frontend results.
+mod account_binding_qr;
 mod account_profile;
 mod auth;
 pub use auth::LoginCaptchaProvider;

@@ -49,6 +49,12 @@ const emit = defineEmits<{
   expired: [];
 }>();
 const settingsScroll = ref<HTMLElement>();
+const profilePage = ref<InstanceType<typeof AccountProfilePage>>();
+function requestLeave(commit: () => void) {
+  if (profilePage.value) profilePage.value.requestLeave(commit);
+  else commit();
+}
+defineExpose({ requestLeave });
 let detailOrigin: HTMLElement | undefined;
 let detailScroll = 0;
 function openDetail(kind: 'profile' | 'devices', event: MouseEvent) {
@@ -165,6 +171,7 @@ function accept(op: SettingsOperation) {
 <template>
   <AccountProfilePage
     v-if="accountDetail === 'profile'"
+    ref="profilePage"
     :account="account"
     @back="emit('back')"
     @expired="emit('expired')"
