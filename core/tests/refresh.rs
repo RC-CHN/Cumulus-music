@@ -245,17 +245,22 @@ async fn acknowledged_pair_rotation_and_same_identity_commit_daily_clock_and_ski
 
 #[tokio::test]
 async fn incomplete_response_headers_and_unrelated_cookie_changes_cannot_claim_rotation() {
-    for mode in 0..3 {
+    for mode in 0..5 {
         let mut response = reply(json!({"code":200}));
         if mode == 0 {
             response.set_cookies = vec!["MUSIC_U=changed-alone; Path=/; Secure".into()];
-        } else {
+        } else if mode < 3 {
             response.refresh_token = Some("changed-refresh".into());
             response.set_cookies = vec![if mode == 1 {
                 "unrelated=changed; Path=/; Secure".into()
             } else {
                 "MUSIC_U=wrong-path; Path=/elsewhere; Secure".into()
             }];
+        } else {
+            response.refresh_token = Some(String::new());
+            if mode == 3 {
+                response.set_cookies = vec!["MUSIC_U=empty-rt-header; Path=/; Secure".into()];
+            }
         }
         let world = World::new([HttpResponse::Ready(Ok(response))], true).await;
         let tokens = Tokens::valid();
@@ -271,6 +276,11 @@ async fn incomplete_response_headers_and_unrelated_cookie_changes_cannot_claim_r
         assert_eq!(
             world.credentials.login_credentials().unwrap().rotation,
             before.rotation
+        );
+        assert_eq!(
+            world.credentials.login_credentials().unwrap().refresh_token,
+            before.refresh_token,
+            "an incomplete refresh response must retain the previous RT"
         );
         assert_eq!(
             world

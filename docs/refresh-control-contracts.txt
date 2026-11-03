@@ -1,0 +1,78 @@
+refreshToken：解包原实现逐项对照及真实实验
+2026-11-03。仅覆盖账号续期，不表示全部账号或整个桌面目标完成。
+
+官方顺序
+M/1368 LoginInfoManager.subscribeForegroundChange 订阅 APP_BECOME_ACTIVE，调用 refreshToken。
+外层 M/34 要求应用初始化及 PH-PC-loginJsk、PH-PC-newLoginBenefit 双 t1。
+内部 checkAB("login-token-jsk") 通过 PC M/290.jskConfig 的 enableTokenJsk=true；
+这不是服务器发放RT的充分条件，也不是到期时间判断。
+refreshToken 依次检查内部开关、getTokenRefreshTime、getCurrentEnv、时间间隔、MUSIC_U、RT；
+生产间隔86400000毫秒，官方 isTest 环境才用120000毫秒。社区产品不开放此测试开关。
+prepareAndSaveLoginInfo 给 updateLoginInfo 传 Date.now()，登录与成功续期共用时间基准。
+时钟回退或小于24小时间隔跳过，不取设备令牌也不请求刷新；缺任一凭据也跳过。
+然后取 getDeviceInfo/getYdDeviceToken、构造 model/os/deviceId/token/refreshToken/userId 签名。
+设备型号首个逗号换为点、清除低位空白再 encodeURIComponent，空型号为 unknown；
+os 优先 getCurrentEnv.clientType，再用设备os。UTF-16排序及MD5常量见既有 signature.rs。
+POST /api/login/token/refresh/v1 传 refreshToken/clientUserId/ydDeviceToken/_scver/_sign，
+PC fetch 追加 fromPage=JSK、x-login-chain-id，并沿既有 M/402 请求上下文处理 guardian。
+官方 PC 没有 SEND_YD_TOKEN 生产者，5000ms等待后为字符串空值；不是伪造有效设备令牌。
+code200还须同次 Set-Cookie 中 MUSIC_U 和 x-refresh-token 均非空才 updateTokenInfo。
+缺任一项立即返回，保留旧RT，不更新上次成功时间。无头200不能证明轮换成功或签名失败。
+官方没有解析RT本体的过期时间，也没有客户端“等服务器过期才开始请求”的判断。
+真实服务器是否只在某个到期窗口发放新凭据属于未知服务端行为。
+
+本次代码修正
+此前 Rust 已有官方触发、24小时间隔、签名及完整回执判断，但续期只返回 RT 时会先保存该半对RT，
+随后因缺完整轮换回执返回需核对。现 credentials.rs 在刷新路径只有同次有效、未过期且实际适用
+当前刷新域/路径的 MUSIC_U 才接受RT。无配套Cookie、其它Cookie或错误路径Cookie均保留原RT。
+空 x-refresh-token 按官方 value||"" 视为缺失，不因空头丢弃已经到达的Cookie或制造成功回执。
+浏览器语义的Cookie更新仍保存供只读身份核对，不能算轮换成功；普通登录接收RT的规则不变。
+原实现对照确认其在缺头时不会推进时间；Rust也不在普通恢复、身份读取或失败后重置起算时间。
+真实本次无头响应原本就没有覆盖RT；修复是处理完整矩阵差异，不宣称已定位本次无头的根因。
+
+执行原函数，而非重新写一个JS刷新算法
+desktop/tests/refresh_control_official.cjs 用AST定位并执行解包 M/1368 的完整 refreshToken 方法，
+及原 getTokenRefreshTime/getLoginInfo/updateTokenInfo/updateLoginInfoToStorage/前台订阅/签名方法。
+只替换网络、原生存储、设备与时钟依赖；日志静默，输入全部为 synthetic，不加载真人凭据。
+16组冻结结果覆盖开关、登录当天、24小时边界/回拨、缺时间、缺U/RT、完整回执、
+无头200/单头、业务拒绝/传输中断、型号fallback、环境失败fallback及非空设备令牌。
+core/tests/refresh_official_control.rs 对照原调用次数、提供器次数、完整业务字段/签名、
+结果、旧RT保留及成功时间；AB关闭用原结果和既有原生双实验链验证。
+测试使用完整合成 userInfo.account.id；不是对原生PC桥整体bootstrap的证明。
+M/290 getLoginInfo 片段只返回 tokenInfo；Rust使用已回读的同账号UID，不发送 undefined 身份。
+原生路径令牌链另有正式宿主测试；该离线刷新对照不能替代真人WebView guardian或到期轮换。
+
+主动保留的社区差异
+Rust用秒存时间，与JS毫秒相比边界最多不足1秒；不开放生产isTest/force IPC。
+Rust对设备ID、Cookie域/路径、已回读身份和账号代次严格绑定；不复刻原日志中的秘密输出。
+RT/轮换回执原子提交，成功后核对同一身份；官方刷新函数没有这套额外只读身份核对。
+未知写入持久化pending，重启只核对，不照搬原SDK下次前台事件再发同一未知刷新。
+无头200的 ReauthenticationRequired 是本地未取得完整回执，不能据此说原会话已被服务端注销。
+实验双t1继续控制产品自动触发，不因本次旧链也拿到RT而替用户打开实验配置。
+301处理是 /api/middle/account/token/refresh 的另一状态机，其5秒抑制和失败阈值不能与
+此处24小时定期续期混用；已按原方法单独对照，见login-interception-contracts.txt。
+
+真实观察与边界
+2026-11-03 本人新扫码：旧 type=3 登录响应同时下发U/RT，Rust落盘及新进程身份恢复通过。
+正常检查双实验仍false，零刷新。显式底层诊断一次返回HTTP200/code200但无新U/RT，
+保留旧凭据和pending；随后只读身份有效，零重发。真实轮换仍待到期场景/外部条件验证。
+不将上述情况推断为签名失败或风控；也不将合成对照当作真实服务器轮换通过。
+本次私有原始登录探针保存凭据和头存在布尔，没有额外保存成功正文；不补造历史回包。
+没有真实业务资源变更、支付、邀请或公开发布。未使用YesPlayMusic。
+
+执行（仓库根，原材料仅用于显式本地离线对照，不进入公开CI）
+ node desktop/tests/refresh_control_official.cjs /private/refresh-control.json
+ node desktop/tests/renewal_timing_official.cjs
+ node desktop/tests/renewal_official.cjs
+ cargo test --locked -p cumulus-core --test refresh_official_control --test refresh --test login_refresh_timing --test client_renewal --test http
+公开CI只读取冻结的合成 core/tests/fixtures/refresh-control-official.json，不请求真实网易服务。
+
+真人授权的新登录诊断（只在本人明确要求时运行；不是自动CI）
+ cargo run --locked -p cumulus-core --example qr_login_read -- /private/new-proof-directory
+显示生成的login-qr.png供本人确认；最多300秒，已授权/过期/挑战/失败后停止。
+ cargo run --locked -p cumulus-core --example qr_login_read -- /private/proof-directory --check-existing
+新进程恢复并执行正常产品续期门槛检查，不强制周期或分组。仅许可身份/实验/刷新端点。
+ --rotate-once 是显式诊断SDK底层而非产品自动策略；保留24小时/未决门槛，每份探针至多一次。
+结果只有凭据存在/变化布尔及状态；Cookie/RT/签名只在原生内存与私有库。请求结果不明不重发。
+Linux使用与desktop相同的windows-local选项，Windows无本地collector时只用声明的兼容描述；
+本工具没有正式WebView guardian采集，不将其称为所有平台的完整桌面登录证据。

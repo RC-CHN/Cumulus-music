@@ -237,7 +237,6 @@ impl Credentials {
             }
             record.cookies = store.iter_unexpired().cloned().collect();
             if let Some(token) = refresh_token {
-                record.refresh_token = Some(token.into());
                 let refresh_url = self.origin.request_url(
                     crate::protocol::http::WireRoute::Eapi,
                     "/api/login/token/refresh/v1",
@@ -248,7 +247,7 @@ impl Credentials {
                     .map(|(_, value)| value);
                 // M/1368 requires both MUSIC_U and x-refresh-token in this
                 // acknowledged response, not merely any changed Cookie.
-                if set_cookies.iter().any(|value| {
+                let paired = set_cookies.iter().any(|value| {
                     Cookie::parse(value.as_str(), url).is_ok_and(|cookie| {
                         cookie.name() == "MUSIC_U"
                             && !cookie.value().is_empty()
@@ -256,7 +255,16 @@ impl Credentials {
                             && cookie.matches(&refresh_url)
                             && effective_token.as_deref() == Some(cookie.value())
                     })
-                }) {
+                });
+                // M/1368 refreshToken returns before updateTokenInfo when
+                // either header is missing. A lone refresh header must not
+                // replace the previous RT with an unconfirmed half-pair.
+                // Browser Cookie updates still remain available to reconcile.
+                if url.path() == refresh_url.path() && !paired {
+                    return Ok(());
+                }
+                record.refresh_token = Some(token.into());
+                if paired {
                     record.login_rotation = Some(Uuid::new_v4().simple().to_string());
                 }
             }

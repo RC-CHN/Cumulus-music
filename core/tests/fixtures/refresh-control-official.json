@@ -1,0 +1,808 @@
+{
+  "schema": 1,
+  "source": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_vendors_app_subApp.chunk.1482700000000.js/1368.js",
+  "sha256": "49da1d26373042091a3123f8948f1ce7e9968ec185e57369156fc1c6a6700db3",
+  "scope": "Full recovered refreshToken and storage/foreground methods with synthetic platform dependencies; no network or whole SDK bootstrap",
+  "cases": [
+    {
+      "name": "ab_off",
+      "input": {
+        "enabled": false,
+        "lastMs": 1729913600000,
+        "nowMs": 1730000000000,
+        "musicU": "synthetic-old-u",
+        "refreshToken": "synthetic-old-rt",
+        "device": {
+          "deviceName": "Desk,Model,2",
+          "deviceDisplayName": "Fallback",
+          "deviceId": "synthetic-device",
+          "os": "os-fallback"
+        },
+        "env": {
+          "clientType": "pc"
+        },
+        "ydToken": "",
+        "code": 200,
+        "newMusicU": "synthetic-new-u",
+        "newRefreshToken": "synthetic-new-rt",
+        "name": "ab_off"
+      },
+      "expected": {
+        "outcome": "policy_disabled",
+        "calls": [],
+        "deviceReads": 0,
+        "tokenReads": 0,
+        "updates": [],
+        "writes": [],
+        "events": []
+      }
+    },
+    {
+      "name": "new_login",
+      "input": {
+        "enabled": true,
+        "lastMs": 1730000000000,
+        "nowMs": 1730000000000,
+        "musicU": "synthetic-old-u",
+        "refreshToken": "synthetic-old-rt",
+        "device": {
+          "deviceName": "Desk,Model,2",
+          "deviceDisplayName": "Fallback",
+          "deviceId": "synthetic-device",
+          "os": "os-fallback"
+        },
+        "env": {
+          "clientType": "pc"
+        },
+        "ydToken": "",
+        "code": 200,
+        "newMusicU": "synthetic-new-u",
+        "newRefreshToken": "synthetic-new-rt",
+        "name": "new_login"
+      },
+      "expected": {
+        "outcome": "not_due",
+        "calls": [],
+        "deviceReads": 0,
+        "tokenReads": 0,
+        "updates": [],
+        "writes": [],
+        "events": []
+      }
+    },
+    {
+      "name": "before_day",
+      "input": {
+        "enabled": true,
+        "lastMs": 1729913601000,
+        "nowMs": 1730000000000,
+        "musicU": "synthetic-old-u",
+        "refreshToken": "synthetic-old-rt",
+        "device": {
+          "deviceName": "Desk,Model,2",
+          "deviceDisplayName": "Fallback",
+          "deviceId": "synthetic-device",
+          "os": "os-fallback"
+        },
+        "env": {
+          "clientType": "pc"
+        },
+        "ydToken": "",
+        "code": 200,
+        "newMusicU": "synthetic-new-u",
+        "newRefreshToken": "synthetic-new-rt",
+        "name": "before_day"
+      },
+      "expected": {
+        "outcome": "not_due",
+        "calls": [],
+        "deviceReads": 0,
+        "tokenReads": 0,
+        "updates": [],
+        "writes": [],
+        "events": []
+      }
+    },
+    {
+      "name": "clock_backwards",
+      "input": {
+        "enabled": true,
+        "lastMs": 1730000001000,
+        "nowMs": 1730000000000,
+        "musicU": "synthetic-old-u",
+        "refreshToken": "synthetic-old-rt",
+        "device": {
+          "deviceName": "Desk,Model,2",
+          "deviceDisplayName": "Fallback",
+          "deviceId": "synthetic-device",
+          "os": "os-fallback"
+        },
+        "env": {
+          "clientType": "pc"
+        },
+        "ydToken": "",
+        "code": 200,
+        "newMusicU": "synthetic-new-u",
+        "newRefreshToken": "synthetic-new-rt",
+        "name": "clock_backwards"
+      },
+      "expected": {
+        "outcome": "not_due",
+        "calls": [],
+        "deviceReads": 0,
+        "tokenReads": 0,
+        "updates": [],
+        "writes": [],
+        "events": []
+      }
+    },
+    {
+      "name": "day_boundary",
+      "input": {
+        "enabled": true,
+        "lastMs": 1729913600000,
+        "nowMs": 1730000000000,
+        "musicU": "synthetic-old-u",
+        "refreshToken": "synthetic-old-rt",
+        "device": {
+          "deviceName": "Desk,Model,2",
+          "deviceDisplayName": "Fallback",
+          "deviceId": "synthetic-device",
+          "os": "os-fallback"
+        },
+        "env": {
+          "clientType": "pc"
+        },
+        "ydToken": "",
+        "code": 200,
+        "newMusicU": "synthetic-new-u",
+        "newRefreshToken": "synthetic-new-rt",
+        "name": "day_boundary"
+      },
+      "expected": {
+        "outcome": "refreshed",
+        "calls": [
+          {
+            "path": "/api/login/token/refresh/v1",
+            "payload": {
+              "refreshToken": "synthetic-old-rt",
+              "clientUserId": 123,
+              "ydDeviceToken": "",
+              "_scver": "1",
+              "_sign": "4bb82da636686629e384500fa3149df2"
+            },
+            "method": "POST",
+            "options": {}
+          }
+        ],
+        "deviceReads": 1,
+        "tokenReads": 1,
+        "updates": [
+          {
+            "value": {
+              "tokenInfo": {
+                "MUSIC_U": "synthetic-new-u",
+                "MUSIC_A": "",
+                "refreshToken": "synthetic-new-rt"
+              }
+            },
+            "type": "refreshToken"
+          }
+        ],
+        "writes": [
+          {
+            "key": "jsk_token_last_refresh_time",
+            "value": "1730000000000"
+          }
+        ],
+        "events": [
+          {
+            "type": "TOKEN_UPDATED",
+            "payload": {
+              "tokenInfo": {
+                "MUSIC_U": "synthetic-new-u",
+                "MUSIC_A": "",
+                "refreshToken": "synthetic-new-rt"
+              },
+              "updateLocal": true
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "missing_login_time",
+      "input": {
+        "enabled": true,
+        "lastMs": 0,
+        "nowMs": 1730000000000,
+        "musicU": "synthetic-old-u",
+        "refreshToken": "synthetic-old-rt",
+        "device": {
+          "deviceName": "Desk,Model,2",
+          "deviceDisplayName": "Fallback",
+          "deviceId": "synthetic-device",
+          "os": "os-fallback"
+        },
+        "env": {
+          "clientType": "pc"
+        },
+        "ydToken": "",
+        "code": 200,
+        "newMusicU": "synthetic-new-u",
+        "newRefreshToken": "synthetic-new-rt",
+        "name": "missing_login_time"
+      },
+      "expected": {
+        "outcome": "refreshed",
+        "calls": [
+          {
+            "path": "/api/login/token/refresh/v1",
+            "payload": {
+              "refreshToken": "synthetic-old-rt",
+              "clientUserId": 123,
+              "ydDeviceToken": "",
+              "_scver": "1",
+              "_sign": "4bb82da636686629e384500fa3149df2"
+            },
+            "method": "POST",
+            "options": {}
+          }
+        ],
+        "deviceReads": 1,
+        "tokenReads": 1,
+        "updates": [
+          {
+            "value": {
+              "tokenInfo": {
+                "MUSIC_U": "synthetic-new-u",
+                "MUSIC_A": "",
+                "refreshToken": "synthetic-new-rt"
+              }
+            },
+            "type": "refreshToken"
+          }
+        ],
+        "writes": [
+          {
+            "key": "jsk_token_last_refresh_time",
+            "value": "1730000000000"
+          }
+        ],
+        "events": [
+          {
+            "type": "TOKEN_UPDATED",
+            "payload": {
+              "tokenInfo": {
+                "MUSIC_U": "synthetic-new-u",
+                "MUSIC_A": "",
+                "refreshToken": "synthetic-new-rt"
+              },
+              "updateLocal": true
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "missing_music_u",
+      "input": {
+        "enabled": true,
+        "lastMs": 1729913600000,
+        "nowMs": 1730000000000,
+        "musicU": "",
+        "refreshToken": "synthetic-old-rt",
+        "device": {
+          "deviceName": "Desk,Model,2",
+          "deviceDisplayName": "Fallback",
+          "deviceId": "synthetic-device",
+          "os": "os-fallback"
+        },
+        "env": {
+          "clientType": "pc"
+        },
+        "ydToken": "",
+        "code": 200,
+        "newMusicU": "synthetic-new-u",
+        "newRefreshToken": "synthetic-new-rt",
+        "name": "missing_music_u"
+      },
+      "expected": {
+        "outcome": "missing_credentials",
+        "calls": [],
+        "deviceReads": 0,
+        "tokenReads": 0,
+        "updates": [],
+        "writes": [],
+        "events": []
+      }
+    },
+    {
+      "name": "missing_refresh_token",
+      "input": {
+        "enabled": true,
+        "lastMs": 1729913600000,
+        "nowMs": 1730000000000,
+        "musicU": "synthetic-old-u",
+        "refreshToken": "",
+        "device": {
+          "deviceName": "Desk,Model,2",
+          "deviceDisplayName": "Fallback",
+          "deviceId": "synthetic-device",
+          "os": "os-fallback"
+        },
+        "env": {
+          "clientType": "pc"
+        },
+        "ydToken": "",
+        "code": 200,
+        "newMusicU": "synthetic-new-u",
+        "newRefreshToken": "synthetic-new-rt",
+        "name": "missing_refresh_token"
+      },
+      "expected": {
+        "outcome": "missing_credentials",
+        "calls": [],
+        "deviceReads": 0,
+        "tokenReads": 0,
+        "updates": [],
+        "writes": [],
+        "events": []
+      }
+    },
+    {
+      "name": "success_without_either_header",
+      "input": {
+        "enabled": true,
+        "lastMs": 1729913600000,
+        "nowMs": 1730000000000,
+        "musicU": "synthetic-old-u",
+        "refreshToken": "synthetic-old-rt",
+        "device": {
+          "deviceName": "Desk,Model,2",
+          "deviceDisplayName": "Fallback",
+          "deviceId": "synthetic-device",
+          "os": "os-fallback"
+        },
+        "env": {
+          "clientType": "pc"
+        },
+        "ydToken": "",
+        "code": 200,
+        "newMusicU": "",
+        "newRefreshToken": "",
+        "name": "success_without_either_header"
+      },
+      "expected": {
+        "outcome": "missing_pair",
+        "calls": [
+          {
+            "path": "/api/login/token/refresh/v1",
+            "payload": {
+              "refreshToken": "synthetic-old-rt",
+              "clientUserId": 123,
+              "ydDeviceToken": "",
+              "_scver": "1",
+              "_sign": "4bb82da636686629e384500fa3149df2"
+            },
+            "method": "POST",
+            "options": {}
+          }
+        ],
+        "deviceReads": 1,
+        "tokenReads": 1,
+        "updates": [],
+        "writes": [],
+        "events": []
+      }
+    },
+    {
+      "name": "refresh_header_alone",
+      "input": {
+        "enabled": true,
+        "lastMs": 1729913600000,
+        "nowMs": 1730000000000,
+        "musicU": "synthetic-old-u",
+        "refreshToken": "synthetic-old-rt",
+        "device": {
+          "deviceName": "Desk,Model,2",
+          "deviceDisplayName": "Fallback",
+          "deviceId": "synthetic-device",
+          "os": "os-fallback"
+        },
+        "env": {
+          "clientType": "pc"
+        },
+        "ydToken": "",
+        "code": 200,
+        "newMusicU": "",
+        "newRefreshToken": "synthetic-new-rt",
+        "name": "refresh_header_alone"
+      },
+      "expected": {
+        "outcome": "missing_pair",
+        "calls": [
+          {
+            "path": "/api/login/token/refresh/v1",
+            "payload": {
+              "refreshToken": "synthetic-old-rt",
+              "clientUserId": 123,
+              "ydDeviceToken": "",
+              "_scver": "1",
+              "_sign": "4bb82da636686629e384500fa3149df2"
+            },
+            "method": "POST",
+            "options": {}
+          }
+        ],
+        "deviceReads": 1,
+        "tokenReads": 1,
+        "updates": [],
+        "writes": [],
+        "events": []
+      }
+    },
+    {
+      "name": "music_u_alone",
+      "input": {
+        "enabled": true,
+        "lastMs": 1729913600000,
+        "nowMs": 1730000000000,
+        "musicU": "synthetic-old-u",
+        "refreshToken": "synthetic-old-rt",
+        "device": {
+          "deviceName": "Desk,Model,2",
+          "deviceDisplayName": "Fallback",
+          "deviceId": "synthetic-device",
+          "os": "os-fallback"
+        },
+        "env": {
+          "clientType": "pc"
+        },
+        "ydToken": "",
+        "code": 200,
+        "newMusicU": "synthetic-new-u",
+        "newRefreshToken": "",
+        "name": "music_u_alone"
+      },
+      "expected": {
+        "outcome": "missing_pair",
+        "calls": [
+          {
+            "path": "/api/login/token/refresh/v1",
+            "payload": {
+              "refreshToken": "synthetic-old-rt",
+              "clientUserId": 123,
+              "ydDeviceToken": "",
+              "_scver": "1",
+              "_sign": "4bb82da636686629e384500fa3149df2"
+            },
+            "method": "POST",
+            "options": {}
+          }
+        ],
+        "deviceReads": 1,
+        "tokenReads": 1,
+        "updates": [],
+        "writes": [],
+        "events": []
+      }
+    },
+    {
+      "name": "business_rejection",
+      "input": {
+        "enabled": true,
+        "lastMs": 1729913600000,
+        "nowMs": 1730000000000,
+        "musicU": "synthetic-old-u",
+        "refreshToken": "synthetic-old-rt",
+        "device": {
+          "deviceName": "Desk,Model,2",
+          "deviceDisplayName": "Fallback",
+          "deviceId": "synthetic-device",
+          "os": "os-fallback"
+        },
+        "env": {
+          "clientType": "pc"
+        },
+        "ydToken": "",
+        "code": 500,
+        "newMusicU": "synthetic-new-u",
+        "newRefreshToken": "synthetic-new-rt",
+        "name": "business_rejection"
+      },
+      "expected": {
+        "outcome": "request_failed",
+        "calls": [
+          {
+            "path": "/api/login/token/refresh/v1",
+            "payload": {
+              "refreshToken": "synthetic-old-rt",
+              "clientUserId": 123,
+              "ydDeviceToken": "",
+              "_scver": "1",
+              "_sign": "4bb82da636686629e384500fa3149df2"
+            },
+            "method": "POST",
+            "options": {}
+          }
+        ],
+        "deviceReads": 1,
+        "tokenReads": 1,
+        "updates": [],
+        "writes": [],
+        "events": []
+      }
+    },
+    {
+      "name": "transport_error",
+      "input": {
+        "enabled": true,
+        "lastMs": 1729913600000,
+        "nowMs": 1730000000000,
+        "musicU": "synthetic-old-u",
+        "refreshToken": "synthetic-old-rt",
+        "device": {
+          "deviceName": "Desk,Model,2",
+          "deviceDisplayName": "Fallback",
+          "deviceId": "synthetic-device",
+          "os": "os-fallback"
+        },
+        "env": {
+          "clientType": "pc"
+        },
+        "ydToken": "",
+        "code": 200,
+        "newMusicU": "synthetic-new-u",
+        "newRefreshToken": "synthetic-new-rt",
+        "name": "transport_error",
+        "transportError": true
+      },
+      "expected": {
+        "outcome": "request_failed",
+        "calls": [
+          {
+            "path": "/api/login/token/refresh/v1",
+            "payload": {
+              "refreshToken": "synthetic-old-rt",
+              "clientUserId": 123,
+              "ydDeviceToken": "",
+              "_scver": "1",
+              "_sign": "4bb82da636686629e384500fa3149df2"
+            },
+            "method": "POST",
+            "options": {}
+          }
+        ],
+        "deviceReads": 1,
+        "tokenReads": 1,
+        "updates": [],
+        "writes": [],
+        "events": []
+      }
+    },
+    {
+      "name": "device_name_fallback",
+      "input": {
+        "enabled": true,
+        "lastMs": 1729913600000,
+        "nowMs": 1730000000000,
+        "musicU": "synthetic-old-u",
+        "refreshToken": "synthetic-old-rt",
+        "device": {
+          "deviceName": "",
+          "deviceDisplayName": "模型 A",
+          "deviceId": "synthetic-device",
+          "os": "os-fallback"
+        },
+        "env": {
+          "clientType": "pc"
+        },
+        "ydToken": "",
+        "code": 200,
+        "newMusicU": "synthetic-new-u",
+        "newRefreshToken": "synthetic-new-rt",
+        "name": "device_name_fallback"
+      },
+      "expected": {
+        "outcome": "refreshed",
+        "calls": [
+          {
+            "path": "/api/login/token/refresh/v1",
+            "payload": {
+              "refreshToken": "synthetic-old-rt",
+              "clientUserId": 123,
+              "ydDeviceToken": "",
+              "_scver": "1",
+              "_sign": "c59031bf0fb6701443794d2556fa86e3"
+            },
+            "method": "POST",
+            "options": {}
+          }
+        ],
+        "deviceReads": 1,
+        "tokenReads": 1,
+        "updates": [
+          {
+            "value": {
+              "tokenInfo": {
+                "MUSIC_U": "synthetic-new-u",
+                "MUSIC_A": "",
+                "refreshToken": "synthetic-new-rt"
+              }
+            },
+            "type": "refreshToken"
+          }
+        ],
+        "writes": [
+          {
+            "key": "jsk_token_last_refresh_time",
+            "value": "1730000000000"
+          }
+        ],
+        "events": [
+          {
+            "type": "TOKEN_UPDATED",
+            "payload": {
+              "tokenInfo": {
+                "MUSIC_U": "synthetic-new-u",
+                "MUSIC_A": "",
+                "refreshToken": "synthetic-new-rt"
+              },
+              "updateLocal": true
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "env_failure_os_fallback",
+      "input": {
+        "enabled": true,
+        "lastMs": 1729913600000,
+        "nowMs": 1730000000000,
+        "musicU": "synthetic-old-u",
+        "refreshToken": "synthetic-old-rt",
+        "device": {
+          "deviceName": "Desk,Model,2",
+          "deviceDisplayName": "Fallback",
+          "deviceId": "synthetic-device",
+          "os": "os-fallback"
+        },
+        "env": {
+          "clientType": "pc"
+        },
+        "ydToken": "",
+        "code": 200,
+        "newMusicU": "synthetic-new-u",
+        "newRefreshToken": "synthetic-new-rt",
+        "name": "env_failure_os_fallback",
+        "envError": true
+      },
+      "expected": {
+        "outcome": "refreshed",
+        "calls": [
+          {
+            "path": "/api/login/token/refresh/v1",
+            "payload": {
+              "refreshToken": "synthetic-old-rt",
+              "clientUserId": 123,
+              "ydDeviceToken": "",
+              "_scver": "1",
+              "_sign": "225153e69e30160a67ab177602e126db"
+            },
+            "method": "POST",
+            "options": {}
+          }
+        ],
+        "deviceReads": 1,
+        "tokenReads": 1,
+        "updates": [
+          {
+            "value": {
+              "tokenInfo": {
+                "MUSIC_U": "synthetic-new-u",
+                "MUSIC_A": "",
+                "refreshToken": "synthetic-new-rt"
+              }
+            },
+            "type": "refreshToken"
+          }
+        ],
+        "writes": [
+          {
+            "key": "jsk_token_last_refresh_time",
+            "value": "1730000000000"
+          }
+        ],
+        "events": [
+          {
+            "type": "TOKEN_UPDATED",
+            "payload": {
+              "tokenInfo": {
+                "MUSIC_U": "synthetic-new-u",
+                "MUSIC_A": "",
+                "refreshToken": "synthetic-new-rt"
+              },
+              "updateLocal": true
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "device_token_preserved",
+      "input": {
+        "enabled": true,
+        "lastMs": 1729913600000,
+        "nowMs": 1730000000000,
+        "musicU": "synthetic-old-u",
+        "refreshToken": "synthetic-old-rt",
+        "device": {
+          "deviceName": "Desk,Model,2",
+          "deviceDisplayName": "Fallback",
+          "deviceId": "synthetic-device",
+          "os": "os-fallback"
+        },
+        "env": {
+          "clientType": "pc"
+        },
+        "ydToken": "synthetic-provider-token",
+        "code": 200,
+        "newMusicU": "synthetic-new-u",
+        "newRefreshToken": "synthetic-new-rt",
+        "name": "device_token_preserved"
+      },
+      "expected": {
+        "outcome": "refreshed",
+        "calls": [
+          {
+            "path": "/api/login/token/refresh/v1",
+            "payload": {
+              "refreshToken": "synthetic-old-rt",
+              "clientUserId": 123,
+              "ydDeviceToken": "synthetic-provider-token",
+              "_scver": "1",
+              "_sign": "4bb82da636686629e384500fa3149df2"
+            },
+            "method": "POST",
+            "options": {}
+          }
+        ],
+        "deviceReads": 1,
+        "tokenReads": 1,
+        "updates": [
+          {
+            "value": {
+              "tokenInfo": {
+                "MUSIC_U": "synthetic-new-u",
+                "MUSIC_A": "",
+                "refreshToken": "synthetic-new-rt"
+              }
+            },
+            "type": "refreshToken"
+          }
+        ],
+        "writes": [
+          {
+            "key": "jsk_token_last_refresh_time",
+            "value": "1730000000000"
+          }
+        ],
+        "events": [
+          {
+            "type": "TOKEN_UPDATED",
+            "payload": {
+              "tokenInfo": {
+                "MUSIC_U": "synthetic-new-u",
+                "MUSIC_A": "",
+                "refreshToken": "synthetic-new-rt"
+              },
+              "updateLocal": true
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

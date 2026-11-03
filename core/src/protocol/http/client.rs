@@ -293,7 +293,8 @@ impl MusicHttpClient {
         });
         let acknowledged = (200..300).contains(&response.status) && login_path && authorized;
         let refresh = if acknowledged {
-            response.refresh_token.as_deref()
+            // The SDK treats an empty header as absent (`value || ""`).
+            response.refresh_token.as_deref().filter(|s| !s.is_empty())
         } else {
             None
         };
