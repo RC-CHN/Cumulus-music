@@ -251,7 +251,7 @@ function key(event: KeyboardEvent) {
       {{
         error ||
         view?.error ||
-        (rows.length && view?.lyrics?.info.fromSidecar
+        (rows.length && (view?.lyrics?.info.fromSidecar || view?.lyrics?.info.fromEmbedded)
           ? '正在显示本地歌词'
           : rows.length && view?.lyrics?.info.fromCache
             ? '正在显示缓存歌词'

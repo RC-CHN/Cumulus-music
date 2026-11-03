@@ -5,7 +5,7 @@ mod types;
 pub use types::*;
 
 use super::{
-    files::{LocalLyrics, SidecarLyrics},
+    files::{LibraryLyrics, LocalLyricSource, LocalLyrics},
     parse_lyrics, response,
 };
 use crate::{
@@ -54,7 +54,7 @@ impl Drop for Loading<'_> {
 
 impl LyricsService {
     pub fn new(session: Arc<AccountSession>) -> Result<Self> {
-        Self::with_files(session, Arc::new(SidecarLyrics))
+        Self::with_files(session, Arc::new(LibraryLyrics))
     }
     pub fn with_files(session: Arc<AccountSession>, files: Arc<dyn LocalLyrics>) -> Result<Self> {
         let snapshot = session.snapshot()?;
@@ -256,12 +256,19 @@ impl LyricsService {
         };
         let mut network_failed = false;
         let mut from_sidecar = false;
+        let mut from_embedded = false;
         let mut from_cache = false;
         let mut cache_value = None;
         let mut raw = match &input.target {
             LyricTarget::Local(path) => {
-                from_sidecar = true;
-                let text = self.files.read(path).await?.unwrap_or_default();
+                let local = self.files.read_local(path).await?;
+                let text = if let Some((text, source)) = local {
+                    from_sidecar = source == LocalLyricSource::Sidecar;
+                    from_embedded = source == LocalLyricSource::Embedded;
+                    text
+                } else {
+                    String::new()
+                };
                 let mut raw = response::local_response(&text);
                 // Preserve a local user offset only if the source text is unchanged.
                 if let Some(old) = &cached
@@ -339,6 +346,7 @@ impl LyricsService {
                 network_failed,
                 from_cache,
                 from_sidecar,
+                from_embedded,
                 preferences: state.view.preferences,
                 lyric: parsed,
             };

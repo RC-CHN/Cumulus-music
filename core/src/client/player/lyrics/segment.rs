@@ -191,6 +191,7 @@ mod tests {
             network_failed: false,
             from_cache: false,
             from_sidecar: false,
+            from_embedded: false,
         }
     }
     #[test]

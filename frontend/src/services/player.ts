@@ -318,6 +318,7 @@ export interface LyricsView {
   networkFailed: boolean;
   fromCache: boolean;
   fromSidecar?: boolean;
+  fromEmbedded?: boolean;
 }
 export type PlayerUpdate =
   | { kind: 'state'; value: PlayerView }

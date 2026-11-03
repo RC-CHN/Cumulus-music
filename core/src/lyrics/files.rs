@@ -1,5 +1,4 @@
-//! Local lyric source boundary. A tag-aware library adapter can implement this
-//! trait; the default adapter reads a neighboring .lrc on a blocking worker.
+//! Local library lyric lookup and the separate published download boundary.
 use crate::{Error, Result, protocol::api::ApiFuture};
 use std::{
     fs::File,
@@ -7,8 +6,26 @@ use std::{
     path::{Path, PathBuf},
 };
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LocalLyricSource {
+    Sidecar,
+    Embedded,
+}
+
 pub trait LocalLyrics: Send + Sync {
     fn read<'a>(&'a self, audio: &'a Path) -> ApiFuture<'a, Option<String>>;
+
+    fn read_local<'a>(
+        &'a self,
+        audio: &'a Path,
+    ) -> ApiFuture<'a, Option<(String, LocalLyricSource)>> {
+        Box::pin(async move {
+            Ok(self
+                .read(audio)
+                .await?
+                .map(|text| (text, LocalLyricSource::Sidecar)))
+        })
+    }
 }
 
 pub struct SidecarLyrics;
@@ -21,6 +38,37 @@ impl LocalLyrics for SidecarLyrics {
             tokio::task::spawn_blocking(move || read_sidecar(path))
                 .await
                 .map_err(|_| Error::State("lyric file worker stopped"))?
+        })
+    }
+}
+
+/// Read embedded metadata only for a local-library selection. The ordinary
+/// sidecar method remains available to the separately guarded download path.
+pub(crate) struct LibraryLyrics;
+
+impl LocalLyrics for LibraryLyrics {
+    fn read<'a>(&'a self, audio: &'a Path) -> ApiFuture<'a, Option<String>> {
+        SidecarLyrics.read(audio)
+    }
+
+    fn read_local<'a>(
+        &'a self,
+        audio: &'a Path,
+    ) -> ApiFuture<'a, Option<(String, LocalLyricSource)>> {
+        Box::pin(async move {
+            if let Some(text) = self
+                .read(audio)
+                .await?
+                .filter(|text| !text.trim().is_empty())
+            {
+                return Ok(Some((text, LocalLyricSource::Sidecar)));
+            }
+            let audio = audio.to_owned();
+            tokio::task::spawn_blocking(move || {
+                super::embedded::read(&audio, LIMIT).map(|text| (text, LocalLyricSource::Embedded))
+            })
+            .await
+            .map_err(|_| Error::State("embedded lyric worker stopped"))
         })
     }
 }

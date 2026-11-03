@@ -100,6 +100,7 @@ export interface DesktopLyricView {
       networkFailed: boolean;
       fromCache: boolean;
       fromSidecar?: boolean;
+      fromEmbedded?: boolean;
       fetchFailed: boolean;
     };
     frame: {

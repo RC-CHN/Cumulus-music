@@ -142,9 +142,12 @@ function aligned(rows: { time?: number; lyric: string }[] | undefined, index: nu
           {{ lyricError }}<button class="text-button" @click="player.loadLyrics">重新加载</button>
         </div>
         <template v-else-if="lyrics">
-          <div v-if="lyrics.fromSidecar || lyrics.networkFailed" class="lyric-cache-note">
+          <div
+            v-if="lyrics.fromSidecar || lyrics.fromEmbedded || lyrics.networkFailed"
+            class="lyric-cache-note"
+          >
             {{
-              lyrics.fromSidecar
+              lyrics.fromSidecar || lyrics.fromEmbedded
                 ? '正在显示本地歌词'
                 : lyrics.fromCache
                   ? '网络暂不可用，正在显示缓存歌词'

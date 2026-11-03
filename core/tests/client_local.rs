@@ -380,6 +380,44 @@ async fn guest_full_queue_pagination_search_groups_and_account_isolation() {
 }
 
 #[tokio::test]
+async fn local_play_selection_publishes_embedded_lyrics_to_both_views() {
+    use cumulus_core::preferences::desktop_lyrics::Appearance;
+
+    let dir = tempfile::tempdir().unwrap();
+    let media = dir.path().join("media");
+    std::fs::create_dir(&media).unwrap();
+    std::fs::write(
+        media.join("track.flac"),
+        include_bytes!("fixtures/tag_audio/seed.flac"),
+    )
+    .unwrap();
+    let (_, client, library) = client(&dir.path().join("state"), Arc::new(Probe::default()));
+    library.scan(&media).unwrap();
+    let page = client.local_page(LocalQuery::default()).await.unwrap();
+    let play = client
+        .play_selection(
+            "0",
+            PlaySelection::Local {
+                query: LocalQuery::default(),
+                revision: page.revision,
+                start_id: Some(page.tracks[0].track.id.clone()),
+            },
+        )
+        .await
+        .unwrap();
+    let play_id = play.play_id.unwrap();
+    let detail = client.player_lyrics("0", &play_id).await.unwrap();
+    assert!(detail.from_embedded && !detail.from_sidecar);
+    assert_eq!(detail.lines[0].lyric, "保留歌词");
+    let document = client.desktop_lyric_document("0", &play_id).await.unwrap();
+    let desktop = client
+        .desktop_lyric_frame(&document, &Appearance::default())
+        .unwrap();
+    assert!(desktop.info.from_embedded && !desktop.info.from_sidecar);
+    assert_eq!(desktop.frame.lines[0].text, "保留歌词");
+}
+
+#[tokio::test]
 async fn cue_selection_native_bounds_sidecar_clock_offset_and_reopen() {
     let dir = tempfile::tempdir().unwrap();
     let media = dir.path().join("media");

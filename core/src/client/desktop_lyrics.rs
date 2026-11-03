@@ -28,6 +28,7 @@ pub struct DesktopLyricInfo {
     pub network_failed: bool,
     pub from_cache: bool,
     pub from_sidecar: bool,
+    pub from_embedded: bool,
     pub fetch_failed: bool,
 }
 #[derive(Clone, Debug, Serialize)]
@@ -70,6 +71,7 @@ impl DesktopLyricDocument {
             network_failed: value.network_failed,
             from_cache: value.from_cache,
             from_sidecar: value.from_sidecar,
+            from_embedded: value.from_embedded,
             fetch_failed: failed,
         };
     }
@@ -115,6 +117,7 @@ impl MusicClient {
                 network_failed: value.network_failed,
                 from_cache: value.from_cache,
                 from_sidecar: value.from_sidecar,
+                from_embedded: value.from_embedded,
                 fetch_failed: failed,
             },
         };

@@ -235,6 +235,46 @@ async fn local_utf16_sidecar_and_download_fallback_do_not_need_remote_write() {
 }
 
 #[tokio::test]
+async fn local_lyric_tags_are_read_without_network_and_never_used_as_download_fallback() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = Arc::new(StateStore::open(tmp.path().join("state")).unwrap());
+    let (_, api, service) = setup(store, [json!({"code":200}).into()]).await;
+    let fixtures: [(&str, &[u8]); 3] = [
+        ("mp3", include_bytes!("fixtures/tag_audio/seed.mp3")),
+        ("flac", include_bytes!("fixtures/tag_audio/seed.flac")),
+        ("m4a", include_bytes!("fixtures/tag_audio/seed.m4a")),
+    ];
+    for (ext, bytes) in fixtures {
+        let audio = tmp.path().join(format!("测试.{ext}"));
+        std::fs::write(&audio, bytes).unwrap();
+        let input = request(LyricTarget::Local(audio.clone()));
+        let tag = service.fetch(input.clone()).await.unwrap();
+        assert!(tag.from_embedded && !tag.from_sidecar, "{ext}");
+        assert!(tag.lyric.scrollable);
+        assert_eq!(tag.lyric.lyric_lines[0].lyric, "保留歌词");
+        assert_eq!(tag.lyric.lyric_lines[0].time, Some(0.0));
+        std::fs::write(audio.with_extension("lrc"), "[00:02]Sidecar").unwrap();
+        service.clear().unwrap();
+        let sidecar = service.fetch(input.clone()).await.unwrap();
+        assert!(sidecar.from_sidecar && !sidecar.from_embedded);
+        assert_eq!(sidecar.lyric.lyric_lines[0].lyric, "Sidecar");
+        std::fs::write(audio.with_extension("lrc"), "  ").unwrap();
+        service.clear().unwrap();
+        assert!(service.fetch(input).await.unwrap().from_embedded);
+        assert_eq!(std::fs::read(audio).unwrap(), bytes);
+    }
+    assert_eq!(api.calls().len(), 1);
+    let audio = tmp.path().join("测试.flac");
+    std::fs::remove_file(audio.with_extension("lrc")).unwrap();
+    let mut download = song("1");
+    download.downloaded_audio = Some(audio);
+    let missing = service.fetch(download).await.unwrap();
+    assert!(!missing.from_embedded && !missing.from_sidecar);
+    assert!(missing.lyric.lyric_lines.is_empty());
+    assert_eq!(api.calls().len(), 2);
+}
+
+#[tokio::test]
 async fn persistence_failure_and_auth_expiry_do_not_publish_success() {
     let tmp = tempfile::tempdir().unwrap();
     let store = Arc::new(StateStore::open(tmp.path()).unwrap());

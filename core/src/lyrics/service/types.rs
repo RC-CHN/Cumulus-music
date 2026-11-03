@@ -61,6 +61,7 @@ pub struct LyricSnapshot {
     pub network_failed: bool,
     pub from_cache: bool,
     pub from_sidecar: bool,
+    pub from_embedded: bool,
     pub preferences: LyricPreferences,
     pub lyric: ParsedLyrics,
 }

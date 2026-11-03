@@ -385,4 +385,5 @@ pub struct LyricsView {
     pub network_failed: bool,
     pub from_cache: bool,
     pub from_sidecar: bool,
+    pub from_embedded: bool,
 }

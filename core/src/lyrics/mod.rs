@@ -1,6 +1,7 @@
 //! Official M/370 lyric parsing and presentation, with finite playback clocks.
 //! Network fetching stays in CatalogApi; this domain also accepts local lyrics.
 mod credits;
+mod embedded;
 pub mod files;
 mod format;
 mod lrc;
