@@ -37,16 +37,22 @@ def main():
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0
     complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
-    assert complete['ok'] and complete['stageCount'] == 5 and complete['artworkVerified']
+    assert complete['ok'] and complete['stageCount'] == 7 and complete['artworkVerified'] and complete['devicesVerified']
     catalogue = '/api/usertool/sound/queryAllSound'
     detail = '/api/usertool/home/sound/info'
     rights = '/api/vipauth/app/interests/auth/query'
+    brands = '/api/usertool/home/soundeffect/devicebrand/list'
+    models = '/api/usertool/home/soundeffect/devicesound/list'
     calls = complete['effectDirectoryCalls']
     assert [call['path'] for call in calls] == [
         catalogue, detail, rights, catalogue, detail, rights, detail, rights, catalogue,
+        brands, models, models,
     ]
     assert [call['args']['exposeType'] for call in calls if call['path'] == catalogue] == [5, 6, 7]
-    assert len(list(output.glob('ux_*.png'))) == (5 if args.screenshots else 0)
+    assert [call['args'] for call in calls if call['path'] in (brands, models)] == [
+        {}, {'deviceManagerId': 4100}, {'deviceManagerId': 4200},
+    ]
+    assert len(list(output.glob('ux_*.png'))) == (7 if args.screenshots else 0)
     print(json.dumps({'ok': True, 'actualWebView': True, 'syntheticReadCalls': len(calls),
                       'realAccountWrites': 0}))
 

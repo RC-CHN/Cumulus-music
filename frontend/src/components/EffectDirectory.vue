@@ -9,6 +9,7 @@ import type {
   EffectAccess,
 } from '../services/effectDirectory';
 import Icon from './Icon.vue';
+import EffectDeviceDirectory from './EffectDeviceDirectory.vue';
 
 const props = defineProps<{ account: AccountView }>();
 const emit = defineEmits<{ close: []; login: [] }>();
@@ -20,6 +21,7 @@ const categories = [
   ['highly_recommended', '强推荐'],
   ['recommended', '官方精选音效'],
   ['more', '更多音效'],
+  ['devices', '耳机音效'],
 ] as const;
 const accessLabels: Record<EffectAccess, string> = {
   allowed: '当前账号拥有使用权益',
@@ -27,7 +29,8 @@ const accessLabels: Record<EffectAccess, string> = {
   unavailable: '当前账号没有使用权益',
   unknown: '暂未确认当前账号的权益',
 };
-const kind = ref<EffectCatalogueKind>('highly_recommended');
+type Category = EffectCatalogueKind | 'devices';
+const kind = ref<Category>('highly_recommended');
 const items = ref<EffectCatalogueItem[]>([]);
 const selected = ref<EffectCatalogueItem>();
 const access = ref<EffectAccess>();
@@ -44,7 +47,7 @@ function artworkFor(item: EffectCatalogueItem) {
   return url && !failedArtwork.value.has(url) ? url : undefined;
 }
 
-async function load(category: EffectCatalogueKind) {
+async function load(category: Category) {
   if (props.account.status !== 'authenticated') return;
   const epoch = props.account.epoch;
   const request = ++listRequest;
@@ -60,6 +63,10 @@ async function load(category: EffectCatalogueKind) {
   checking.value = false;
   detailError.value = '';
   listError.value = '';
+  if (category === 'devices') {
+    loading.value = false;
+    return;
+  }
   loading.value = true;
   try {
     const rows = await core.effectCatalogue(epoch, category);
@@ -150,7 +157,10 @@ onUnmounted(() => {
             {{ label }}
           </button>
         </nav>
-        <div v-if="loading" role="status" class="effect-directory-message">正在读取音效目录…</div>
+        <EffectDeviceDirectory v-if="kind === 'devices'" :account="account" />
+        <div v-else-if="loading" role="status" class="effect-directory-message">
+          正在读取音效目录…
+        </div>
         <div v-else-if="listError" class="effect-directory-message">
           <p role="alert">{{ listError }}</p>
           <button type="button" @click="load(kind)">重试目录</button>

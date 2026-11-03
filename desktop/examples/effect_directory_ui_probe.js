@@ -91,11 +91,26 @@
     click(button(dialog(), '更多音效'));
     await wait(() => text().includes('此分类暂无音效'), 'empty group');
     await capture('05_empty');
+    click(button(dialog(), '耳机音效'));
+    const selects = () => [...dialog().querySelectorAll('.effect-device-directory select')];
+    const select = (node, value) => {
+      node.value = String(value);
+      assert(node.value === String(value), 'missing device option');
+      node.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    await wait(() => selects()[0]?.textContent.includes('合成耳机品牌'), 'brands loaded');
+    select(selects()[0], 4100);
+    await wait(() => selects()[1]?.textContent.includes('合成耳机乙'), 'brand-specific models');
+    select(selects()[1], 4102);
+    await capture('06_headphones');
+    select(selects()[0], 4200);
+    await wait(() => text().includes('此品牌暂无耳机型号。') && selects().length === 1, 'empty brand clears old models');
+    await capture('07_empty_headphones');
     click(button(dialog(), '关闭音效目录'));
     await wait(() => !dialog() && document.activeElement === opener, 'return focus to equalizer');
     assert(seenArtwork.some((url) => url.endsWith('-dark.png')) && seenArtwork.every((url) =>
       /^https:\/\/p1\.music\.126\.net\/cumulus-proof-artwork-(light|dark)\.png$/.test(url)), 'only sanitized artwork reached WebView');
-    await emit('complete', { ok: true, stageCount: 5, artworkVerified: true });
+    await emit('complete', { ok: true, stageCount: 7, artworkVerified: true, devicesVerified: true });
   } catch (error) {
     const image = one('.effect-directory-card img');
     await emit('failed', { message: String(error), body: document.body.innerText.slice(0, 2000),

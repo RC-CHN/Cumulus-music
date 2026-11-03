@@ -10,10 +10,17 @@ export interface EffectCatalogueItem {
 
 export type EffectAccess = 'allowed' | 'trial' | 'unavailable' | 'unknown';
 
+export interface EffectDeviceChoice {
+  id: number;
+  name: string;
+}
+
 export interface EffectDirectoryClient {
   effectCatalogue(epoch: string, kind: EffectCatalogueKind): Promise<EffectCatalogueItem[]>;
   effectDetail(
     epoch: string,
     id: number,
   ): Promise<(EffectCatalogueItem & { access: EffectAccess }) | null>;
+  effectDeviceBrands(epoch: string): Promise<EffectDeviceChoice[]>;
+  effectDeviceModels(epoch: string, brand: number): Promise<EffectDeviceChoice[]>;
 }

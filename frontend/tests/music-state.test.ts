@@ -47,6 +47,8 @@ function backend(overrides: Partial<CoreClient> = {}): CoreClient {
     playSelection: unused,
     effectCatalogue: unused,
     effectDetail: unused,
+    effectDeviceBrands: unused,
+    effectDeviceModels: unused,
     preparePlaySelection: unused,
     commitPreparedSelection: unused,
     playerAction: unused,

@@ -89,10 +89,11 @@ PipeWire 使用独立空输出。后续加入的音效总开关另有真实 WebV
   集成不代替双账号实时 IM/RTC；双账号验证按既定范围暂排除。
 - 音效：core/src/effects、core/audio-filter、desktop/src/effects.rs、
   frontend/src/components/EqualizerPanel.vue。docs/desktop-equalizer-contracts.txt、
-  docs/core-effects-compose.txt、docs/core-effects-spatial.txt。
+  docs/core-effects-compose.txt、docs/core-effects-spatial.txt、docs/effects-directory-desktop.txt。
   桌面 GEQ、独立低高音、总开关和重启恢复有实际 Linux WebView/libmpv/
   虚拟输出证据；响度与总开关相互独立。NCAE 的 PEQ 路由及非 44.1 kHz
   旋转核心各有独立 PCM 对照；后者用 Linux SoXR 与五组冻结原厂样本核对。
+  音效分组、权益及耳机品牌/型号有只读桌面入口；不应用设备调音或启动试用。
   完整官方音效图、桌面旋转播放及 Windows SoXR 分发尚未验收。
 
 可复查的验收入口（各自使用新目录）
