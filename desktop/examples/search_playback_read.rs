@@ -3,7 +3,7 @@ use cumulus_core::{
     Error, Result,
     account::{AccountSession, credentials::Credentials, profiles::ProfileRegistry},
     client::{
-        MusicClient,
+        ClientError, MusicClient,
         dto::{PlaySelection, PlayerAction, SearchCategory, SearchItem, SearchResultQuery},
     },
     membership::Quality,
@@ -232,7 +232,15 @@ async fn verify(client: &MusicClient) -> std::result::Result<Facts, &'static str
         )
         .await;
     let observation = async {
-        attempted.map_err(|_| "native_selection")?;
+        attempted.map_err(|error| match ClientError::from(error).code {
+            "playback_source_unavailable" => "no_authorized_source",
+            "audio_open_failed" => "authorized_media_open",
+            "audio_output_failed" => "native_audio_output",
+            "audio_unavailable" => "native_audio_runtime",
+            "network" => "source_request_network",
+            "session_expired" => "source_session_expired",
+            _ => "native_selection",
+        })?;
         let deadline = Instant::now() + Duration::from_secs(15);
         let mut first = None;
         loop {
