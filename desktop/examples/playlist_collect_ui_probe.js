@@ -45,6 +45,18 @@
     count = 0,
     maxRows = 0,
     listCalls = 0;
+  let blockedFrames = 0;
+  async function withBlockedFrames(action) {
+    if (!window.__playlistStallFrames) return action();
+    assert(document.documentElement.dataset.motion === "full", "frame-stall proof requires full motion");
+    const request = window.requestAnimationFrame;
+    window.requestAnimationFrame = () => -(++blockedFrames);
+    try {
+      return await action();
+    } finally {
+      window.requestAnimationFrame = request;
+    }
+  }
   const originalFetch = window.fetch;
   window.fetch = async function (url, options) {
     if (String(url).endsWith("/account_playlists")) listCalls++;
@@ -127,13 +139,15 @@
   async function create() {
     list().scrollTop = 0;
     await sleep(90);
-    click(button("创建新歌单", dialog()));
-    await wait(
-      () =>
-        one(".collect-create") &&
-        !one(".collect-step-enter-active,.collect-step-leave-active"),
-      "create form",
-    );
+    await withBlockedFrames(async () => {
+      click(button("创建新歌单", dialog()));
+      await wait(
+        () =>
+          one(".collect-create") &&
+          !one(".collect-step-enter-active,.collect-step-leave-active"),
+        "create form",
+      );
+    });
     assert(
       document.activeElement === one('[aria-label="歌单名称"]'),
       "create focuses input",
@@ -175,13 +189,16 @@
       assert(button("创建并收藏", dialog()).disabled, "long name disabled");
       await capture(`create_${w}_${theme}`);
       input("保留的草稿");
-      click(button("返回收藏歌单列表", dialog()));
-      await wait(
-        () =>
-          list() &&
-          !one(".collect-step-enter-active,.collect-step-leave-active"),
-        "back list",
-      );
+      await withBlockedFrames(async () => {
+        click(button("返回收藏歌单列表", dialog()));
+        await wait(
+          () =>
+            list() &&
+            !one(".collect-step-enter-active,.collect-step-leave-active"),
+          "back list",
+        );
+      });
+      assert(document.activeElement === list(), "return focuses playlist list");
       await create();
       assert(
         one('[aria-label="歌单名称"]').value === "保留的草稿",
@@ -300,6 +317,7 @@
       collectionUi: true,
       stageCount: count,
       maxRows,
+      blockedFrames,
       realMusicRequests: 0,
       realAccountWrites: 0,
       creationRetryVerified: true,

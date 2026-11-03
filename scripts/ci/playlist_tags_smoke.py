@@ -13,6 +13,7 @@ def main():
     parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--screenshots', action='store_true')
+    parser.add_argument('--stall-frames', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
@@ -31,7 +32,8 @@ def main():
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
     source = Path(__file__).resolve().parents[2] / 'desktop/examples/playlist_tags_ui_probe.js'
     script = root / 'playlist-tags.js'
-    script.write_text(source.read_text(encoding='utf-8'), encoding='utf-8')
+    setup = 'window.__playlistStallFrames = true;\n' if args.stall_frames else ''
+    script.write_text(setup + source.read_text(encoding='utf-8'), encoding='utf-8')
     env['CUMULUS_UX_SCRIPT'] = str(script)
     with (root / 'host.log').open('x', encoding='utf-8') as log:
         code = launch(args.binary.resolve(), env, log, root / 'first', args.screenshots)
@@ -39,6 +41,7 @@ def main():
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
     complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
+    assert (complete['blockedFrames'] > 0) == args.stall_frames
     expected = 43
     assert complete['ok'] and complete['stageCount'] == expected
     assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0

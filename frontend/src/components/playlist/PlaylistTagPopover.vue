@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, useId, watch } from 'vue';
+import BoundedPanelTransition from '../BoundedPanelTransition.vue';
 import { useTagPopover } from '../../composables/useTagPopover';
 const props = defineProps<{
   anchor: HTMLElement | undefined;
@@ -120,8 +121,8 @@ function key(event: KeyboardEvent) {
         </button>
       </div>
       <div class="tag-catalogue-scroll">
-        <Transition name="tab" mode="out-in"
-          ><section
+        <BoundedPanelTransition name="tab">
+          <section
             :id="paneId"
             :key="category"
             role="tabpanel"
@@ -139,8 +140,8 @@ function key(event: KeyboardEvent) {
             >
               {{ tag.name }}
             </button>
-          </section></Transition
-        >
+          </section>
+        </BoundedPanelTransition>
       </div>
     </template>
     <p class="tag-limit" role="status">

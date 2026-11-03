@@ -15,6 +15,19 @@
  async function open(){click(button('选择标签'));await wait(()=>one('.tag-picker'),'tag popup');await sleep(250);}
  async function closed(){await wait(()=>!one('.tag-picker'),'popover closed');}
  async function leave(){click(button('取消编辑歌单'));await sleep(100);if(one('.playlist-editor-confirm'))click(button('放弃修改并离开'));await wait(()=>!one('.playlist-editor-page'),'editor closed');}
+ let blockedFrames=0;
+ async function switchCategory(keyName, choice, message) {
+  const request=window.requestAnimationFrame;
+  if(window.__playlistStallFrames){
+   assert(document.documentElement.dataset.motion==='full','frame-stall proof requires full motion');
+   window.requestAnimationFrame=()=>-(++blockedFrames);
+  }
+  try {
+   const active=one('[role="tab"][aria-selected="true"]');active.focus();key(active,keyName);
+   await wait(()=>button(choice,one('.tag-picker'))&&!one('.tag-category-pane.tab-enter-active,.tag-category-pane.tab-leave-active'),message);
+   assert(document.activeElement===one('[role="tab"][aria-selected="true"]'),'new category retains keyboard focus');
+  } finally {window.requestAnimationFrame=request;}
+ }
  let stageCount=0;const checks=[];
  async function capture(label){await sleep(250);const popup=one('.tag-picker');let state={label,noOverflow:document.documentElement.scrollWidth<=innerWidth,footerHit:true,chromeClear:true,sourceWidth:true,sourceHeight:true,bodyContained:true};if(popup){const box=rect(popup),foot=[...popup.querySelectorAll('footer button')],scroll=one('.tag-catalogue-scroll');state.footerHit=foot.every(hit);state.footerConsistent=foot.every(n=>rect(n).height===36&&rect(n).width===240);state.anchorNearContent=box.x>=Math.min(rect(one('.playlist-editor-fields')).x,innerWidth-574-8);state.chromeClear=box.y>=79&&box.bottom<=rect(one('.playerbar')).y-7;state.sourceWidth=box.width===574;state.sourceHeight=box.height===Math.min(374,innerHeight-168);state.bodyContained=!scroll||scroll.scrollWidth<=scroll.clientWidth+1;}assert(Object.entries(state).every(([k,v])=>k==='label'||v),JSON.stringify(state));checks.push(state);await emit(`ux_${String(++stageCount).padStart(2,'0')}_${label}`,{width:innerWidth,height:innerHeight,theme:document.documentElement.dataset.theme,checks:state,popup:popup&&rect(popup),selected:picked()});await sleep(850);}
  try{
@@ -24,8 +37,8 @@
    const suffix=width+'_'+theme;await open();assert(all('.tag-category-tabs [role="tab"]').length===5,'five categories');assert(document.activeElement?.getAttribute('role')==='tab','open focuses category');assert(one('.playlist-editor-body').scrollTop>0&&getComputedStyle(one('.playlist-editor-body')).paddingBottom==='252px','official opening padding and scroll');await capture('open_'+suffix);
    const scroller=one('.tag-catalogue-scroll');assert(scroller.scrollHeight>scroller.clientHeight,'long catalogue fixture');scroller.scrollTop=10000;await sleep(100);assert(hit(button('风格标签 40',one('.tag-picker'))),'last tag reachable');await capture('scroll_'+suffix);scroller.scrollTop=0;
    click(button('摇滚',one('.tag-picker')));await sleep(100);click(button('古典',one('.tag-picker')));await sleep(100);assert(button('爵士',one('.tag-picker')).disabled&&picked().length===3,'three tag cap');await capture('limit_'+suffix);
-   const tab=one('[role="tab"][aria-selected="true"]');tab.focus();key(tab,'ArrowRight');await wait(()=>one('[role="tab"][aria-selected="true"]')?.textContent.trim()==='语种'&&button('语种标签 01',one('.tag-picker')),'arrow switches category');assert(button('语种标签 01',one('.tag-picker')).disabled,'selection limit spans categories');await capture('category_'+suffix);
-   key(document.activeElement,'End');await wait(()=>button('一段用来检查完整名称提示的很长标签',one('.tag-picker')),'last category');const long=button('一段用来检查完整名称提示的很长标签',one('.tag-picker'));assert(long.title===long.textContent.trim()&&long.scrollWidth>long.clientWidth,'long label has complete title');await capture('long_label_'+suffix);
+   await switchCategory('ArrowRight','语种标签 01','arrow switches category');assert(one('[role="tab"][aria-selected="true"]').textContent.trim()==='语种','language category selected');assert(button('语种标签 01',one('.tag-picker')).disabled,'selection limit spans categories');await capture('category_'+suffix);
+   await switchCategory('End','一段用来检查完整名称提示的很长标签','last category');const long=button('一段用来检查完整名称提示的很长标签',one('.tag-picker'));assert(long.title===long.textContent.trim()&&long.scrollWidth>long.clientWidth,'long label has complete title');await capture('long_label_'+suffix);
    click(button('取消标签选择'));await closed();assert(String(picked())==='轻音乐'&&button('保存修改').disabled,'cancel reverts opening selection');assert(document.activeElement===button('选择标签'),'cancel restores trigger');await capture('cancelled_'+suffix);
    await open();click(button('摇滚',one('.tag-picker')));click(button('完成选择'));await closed();assert(picked().includes('摇滚')&&!button('保存修改').disabled,'confirm retains draft selection');await capture('confirmed_'+suffix);
    await open();click(button('摇滚',one('.tag-picker')));key(document.activeElement,'Escape');await closed();assert(String(picked())==='轻音乐'&&document.activeElement===button('选择标签'),'Escape retains choices and returns focus');await capture('escape_'+suffix);
@@ -34,6 +47,6 @@
   }
   await mode('hold_tags');await edit();await open();assert(one('.tag-catalogue-state')?.textContent.includes('正在加载'),'loading state');await capture('loading');await mode('fail_tags');await wait(()=>one('.tag-catalogue-state[role="alert"]'),'error state');await capture('failed');await mode('rich_tags');click(button('重新加载标签'));await wait(()=>one('.tag-category-tabs'),'retry loaded');await capture('recovered');click(button('完成选择'));await closed();await leave();
   await mode('empty_tags');await edit();await open();await wait(()=>one('.tag-catalogue-state')?.textContent.includes('暂时没有'),'empty state');await capture('empty');await mode('rich_tags');click(button('重新加载标签'));await wait(()=>one('.tag-category-tabs'),'reload empty catalogue');await capture('reloaded');await emit('resize',{width:760,height:540});await wait(()=>innerWidth===760&&innerHeight===540,'resize while open');await capture('resized_open');await emit('resize',{width:1120,height:760});await wait(()=>innerWidth===1120&&innerHeight===760,'expand while open');await capture('expanded_open');click(button('完成选择'));await closed();await leave();
-  await emit('complete',{ok:true,stageCount,checks,realMusicRequests:0,realAccountWrites:0,cancelReverts:true,confirmRetains:true,keyboardVerified:true,catalogueStatesVerified:true,openingScrollVerified:true});
+  await emit('complete',{ok:true,stageCount,blockedFrames,checks,realMusicRequests:0,realAccountWrites:0,cancelReverts:true,confirmRetains:true,keyboardVerified:true,catalogueStatesVerified:true,openingScrollVerified:true});
  }catch(error){await emit('failed',{message:String(error),stack:error?.stack,stageCount,active:document.activeElement?.outerHTML.slice(0,500)});}
 })();

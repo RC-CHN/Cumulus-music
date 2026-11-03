@@ -4,6 +4,7 @@ import type { PlaylistManager } from '../composables/usePlaylists';
 import { failure, type PlaylistView, type TrackView } from '../services/contracts';
 import { useCore } from '../services/core';
 import { playlistLength, playlistPending, type PlaylistMutationView } from '../services/playlists';
+import BoundedPanelTransition from './BoundedPanelTransition.vue';
 import Icon from './Icon.vue';
 import PlaylistCollectList from './PlaylistCollectList.vue';
 import '../styles/playlist-collect.css';
@@ -207,7 +208,7 @@ async function reconcile() {
         核对结果
       </button>
     </div>
-    <Transition name="collect-step" mode="out-in" @after-enter="entered">
+    <BoundedPanelTransition name="collect-step" @after-enter="entered">
       <form v-if="creating" key="create" class="collect-create" @submit.prevent="submit">
         <fieldset :disabled="busy || pending || !!created">
           <label
@@ -269,7 +270,7 @@ async function reconcile() {
           @create="startCreate"
         />
       </div>
-    </Transition>
+    </BoundedPanelTransition>
     <p v-if="busy" class="collect-status" role="status">正在收藏，请稍候…</p>
   </dialog>
 </template>
