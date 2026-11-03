@@ -194,7 +194,11 @@
     click(one('[aria-label="均衡器"]')); await wait(() => one('.equalizer-dialog'), 'equalizer'); await capture('equalizer_dark');
     await emit('resize', { width: 760, height: 540 }); await wait(() => innerWidth === 760, 'small equalizer');
     await capture('equalizer_small');
-    assert(visible(button('恢复平直')), 'small equalizer footer clipped');
+    const reset = button('恢复平直'), panel = one('.equalizer-dialog[open]'), body = panel.querySelector('.equalizer-body');
+    assert(all('.equalizer-dialog footer button').every(hittable), 'small equalizer footer clipped');
+    body.scrollTop = body.scrollHeight;
+    await sleep(50);
+    assert(hittable(reset) && hittable(panel.querySelector('header button')), 'small equalizer actions moved out of reach when scrolling');
     click(one('[aria-label="关闭均衡器"]')); await wait(() => !one('.equalizer-dialog'), 'close equalizer');
     assert(document.activeElement === one('[aria-label="均衡器"]'), 'equalizer focus restoration');
     click(one('[aria-label="均衡器"]')); await wait(() => one('.equalizer-dialog'), 'reopen small equalizer'); await capture('equalizer_small_reopened');

@@ -167,129 +167,137 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
         <Icon name="close" />
       </button>
     </header>
-    <div class="equalizer-master">
-      <button
-        class="equalizer-switch"
-        type="button"
-        role="switch"
-        aria-label="启用均衡器和低高音增强"
-        :aria-checked="!!settings && !settings.master_bypassed"
-        :disabled="disabled"
-        @click="toggleMaster"
-      >
-        <span></span>{{ settings?.master_bypassed ? '音效已暂停' : '音效总开关' }}
-      </button>
-      <small v-if="settings?.master_bypassed">调整预设或增益会重新开启音效。</small>
-    </div>
-    <div class="equalizer-controls">
-      <label
-        >预设
-        <select
-          aria-label="均衡器预设"
-          :value="displayedPreset"
+    <div class="equalizer-body">
+      <div class="equalizer-master">
+        <button
+          class="equalizer-switch"
+          type="button"
+          role="switch"
+          aria-label="启用均衡器和低高音增强"
+          :aria-checked="!!settings && !settings.master_bypassed"
           :disabled="disabled"
-          @change="choose"
+          @click="toggleMaster"
         >
-          <option v-if="displayedPreset === -1" :value="-1" disabled>未保存的自定义</option>
-          <option v-if="saved" :value="-2">已保存的自定义</option>
-          <option v-for="(p, index) in equalizerPresets" :key="p.name" :value="index">
-            {{ p.name }}
-          </option>
-        </select></label
-      >
-      <button
-        class="equalizer-switch"
-        role="switch"
-        aria-label="启用均衡器"
-        :aria-checked="settings?.enabled ?? false"
-        :disabled="disabled"
-        @click="toggleGeq"
-      >
-        <span></span>{{ settings?.enabled ? '开启' : '关闭' }}
-      </button>
-    </div>
-    <div class="equalizer-grid">
-      <div class="equalizer-scale" aria-hidden="true">
-        <span>+12 dB</span><span>0</span><span>−12 dB</span>
+          <span></span>{{ settings?.master_bypassed ? '音效已暂停' : '音效总开关' }}
+        </button>
+        <small v-if="settings?.master_bypassed">调整预设或增益会重新开启音效。</small>
       </div>
-      <label v-for="(label, index) in equalizerLabels" :key="label" class="equalizer-band">
-        <output>{{ Number(gains[index]!.toFixed(2)) }}</output>
-        <span class="equalizer-slider"
-          ><input
-            type="range"
-            min="-12"
-            max="12"
-            step="0.01"
-            aria-orientation="vertical"
-            :aria-label="`${label} Hz 增益`"
-            :aria-valuetext="`${gains[index]} 分贝`"
-            :value="gains[index]"
+      <div class="equalizer-controls">
+        <label
+          >预设
+          <select
+            aria-label="均衡器预设"
+            :value="displayedPreset"
             :disabled="disabled"
-            @input="slide(index, $event)"
-            @change="slide(index, $event)"
-        /></span>
-        <span>{{ label }}</span>
-      </label>
-    </div>
-    <fieldset class="equalizer-tone" :disabled="disabled">
-      <legend>增强音效</legend>
-      <small v-if="storedToneBypassed" class="equalizer-tone-note">低音和高音增强已旁路</small>
-      <label v-for="{ key, label } in toneBands" :key="key">
-        <span>{{ label }}</span>
-        <input
-          type="range"
-          min="-10"
-          max="10"
-          step="1"
-          :aria-label="label + '增益'"
-          :aria-valuetext="tone[key] + ' 分贝'"
-          :value="tone[key]"
-          @input="slideTone(key, $event)"
-          @change="slideTone(key, $event)"
-        />
-        <output>{{ tone[key] }} dB</output>
-      </label>
-      <button
-        type="button"
-        :disabled="!tone.bass_db && !tone.treble_db"
-        @click="
-          change(settings?.enabled ?? false, gains, { bass_db: 0, treble_db: 0 }, undefined, false)
-        "
-      >
-        重置低音和高音
-      </button>
-    </fieldset>
-    <div class="equalizer-status" role="status" :data-status="current?.status">
-      <span>{{
-        blocked
-          ? '草稿尚未确认保存'
-          : pending || draft
-            ? '正在应用当前调整…'
-            : current
-              ? equalizerMessage(current)
-              : '正在读取设置…'
-      }}</span>
-      <button
-        v-if="current?.damaged"
-        :disabled="!ready || pending || commandPending || !!draft"
-        @click="maintain('repair_equalizer')"
-      >
-        修复设置
-      </button>
-      <button
-        v-else-if="current && equalizerCanRetry(current)"
-        :disabled="!ready || pending || commandPending || !!draft"
-        @click="maintain('retry_equalizer')"
-      >
-        重新应用
-      </button>
-    </div>
-    <p v-if="error || commandError" class="equalizer-error" role="alert">
-      {{ error || commandError }}
-    </p>
-    <div v-if="blocked" class="equalizer-status">
-      <button :disabled="!ready || pending" @click="applyDraft">读取当前设置并应用草稿</button>
-      <button :disabled="pending" @click="discard">舍弃草稿</button>
+            @change="choose"
+          >
+            <option v-if="displayedPreset === -1" :value="-1" disabled>未保存的自定义</option>
+            <option v-if="saved" :value="-2">已保存的自定义</option>
+            <option v-for="(p, index) in equalizerPresets" :key="p.name" :value="index">
+              {{ p.name }}
+            </option>
+          </select></label
+        >
+        <button
+          class="equalizer-switch"
+          role="switch"
+          aria-label="启用均衡器"
+          :aria-checked="settings?.enabled ?? false"
+          :disabled="disabled"
+          @click="toggleGeq"
+        >
+          <span></span>{{ settings?.enabled ? '开启' : '关闭' }}
+        </button>
+      </div>
+      <div class="equalizer-grid">
+        <div class="equalizer-scale" aria-hidden="true">
+          <span>+12 dB</span><span>0</span><span>−12 dB</span>
+        </div>
+        <label v-for="(label, index) in equalizerLabels" :key="label" class="equalizer-band">
+          <output>{{ Number(gains[index]!.toFixed(2)) }}</output>
+          <span class="equalizer-slider"
+            ><input
+              type="range"
+              min="-12"
+              max="12"
+              step="0.01"
+              aria-orientation="vertical"
+              :aria-label="`${label} Hz 增益`"
+              :aria-valuetext="`${gains[index]} 分贝`"
+              :value="gains[index]"
+              :disabled="disabled"
+              @input="slide(index, $event)"
+              @change="slide(index, $event)"
+          /></span>
+          <span>{{ label }}</span>
+        </label>
+      </div>
+      <fieldset class="equalizer-tone" :disabled="disabled">
+        <legend>增强音效</legend>
+        <small v-if="storedToneBypassed" class="equalizer-tone-note">低音和高音增强已旁路</small>
+        <label v-for="{ key, label } in toneBands" :key="key">
+          <span>{{ label }}</span>
+          <input
+            type="range"
+            min="-10"
+            max="10"
+            step="1"
+            :aria-label="label + '增益'"
+            :aria-valuetext="tone[key] + ' 分贝'"
+            :value="tone[key]"
+            @input="slideTone(key, $event)"
+            @change="slideTone(key, $event)"
+          />
+          <output>{{ tone[key] }} dB</output>
+        </label>
+        <button
+          type="button"
+          :disabled="!tone.bass_db && !tone.treble_db"
+          @click="
+            change(
+              settings?.enabled ?? false,
+              gains,
+              { bass_db: 0, treble_db: 0 },
+              undefined,
+              false,
+            )
+          "
+        >
+          重置低音和高音
+        </button>
+      </fieldset>
+      <div class="equalizer-status" role="status" :data-status="current?.status">
+        <span>{{
+          blocked
+            ? '草稿尚未确认保存'
+            : pending || draft
+              ? '正在应用当前调整…'
+              : current
+                ? equalizerMessage(current)
+                : '正在读取设置…'
+        }}</span>
+        <button
+          v-if="current?.damaged"
+          :disabled="!ready || pending || commandPending || !!draft"
+          @click="maintain('repair_equalizer')"
+        >
+          修复设置
+        </button>
+        <button
+          v-else-if="current && equalizerCanRetry(current)"
+          :disabled="!ready || pending || commandPending || !!draft"
+          @click="maintain('retry_equalizer')"
+        >
+          重新应用
+        </button>
+      </div>
+      <p v-if="error || commandError" class="equalizer-error" role="alert">
+        {{ error || commandError }}
+      </p>
+      <div v-if="blocked" class="equalizer-status">
+        <button :disabled="!ready || pending" @click="applyDraft">读取当前设置并应用草稿</button>
+        <button :disabled="pending" @click="discard">舍弃草稿</button>
+      </div>
     </div>
     <footer>
       <small aria-live="polite">{{ savedMessage || '为当前账号保存，下次打开仍会保留。' }}</small>
@@ -308,13 +316,26 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
   width: 628px;
   max-width: calc(100vw - 32px);
   max-height: calc(100dvh - 32px);
-  overflow: auto;
+  overflow: hidden;
   padding: 26px 30px 24px;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--surface-raised);
   color: var(--text);
   box-shadow: 0 18px 70px #0003;
+}
+/* Keep close and reset available while the controls scroll on short windows. */
+.equalizer-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+.equalizer-dialog > header,
+.equalizer-dialog > footer {
+  flex: none;
+}
+.equalizer-body {
+  min-height: 0;
+  overflow-y: auto;
 }
 .equalizer-master {
   display: flex;
@@ -360,6 +381,10 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
 @media (max-width: 640px) {
   .equalizer-tone {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .equalizer-dialog footer {
+    flex-wrap: wrap;
+    gap: 8px;
   }
 }
 header,
