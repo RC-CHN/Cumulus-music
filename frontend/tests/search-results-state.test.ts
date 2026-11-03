@@ -196,6 +196,33 @@ test('in-flight append is coalesced and its old-account error cannot expire a ne
   assert.equal(model.moreError.value, '');
   assert.equal(model.view.value, undefined);
 });
+test('filtered search pages retain the native cursor and permit reaching later visible results', async () => {
+  const requests: number[] = [];
+  const model = useSearchResults(
+    {
+      searchResults: async (_epoch, q) => {
+        requests.push(q.offset);
+        if (q.offset === 4) return artistPage(q, ['5'], false);
+        const filtered = artistPage(q, []);
+        filtered.value.unavailableCount = 2;
+        return filtered;
+      },
+    },
+    () => assert.fail('no expiry'),
+  );
+  model.connect(account);
+  await model.open(artistQuery);
+  assert.equal(model.view.value?.more, true);
+  await model.more();
+  assert.equal(model.view.value?.more, true);
+  assert.equal(model.view.value?.nextOffset, 4);
+  assert.match(model.view.value?.notice ?? '', /可以继续加载/);
+  await model.more();
+  assert.deepEqual(requests, [0, 2, 4]);
+  assert.equal(model.view.value?.unavailableCount, 4);
+  assert.equal(model.view.value?.sections[0]?.items[0]?.kind, 'artist');
+  assert.equal(model.view.value?.more, false);
+});
 test('repeated pages stop automatic loading without losing visible records', async () => {
   const model = useSearchResults(
     { searchResults: async (_e, q) => artistPage(q, ['1', '2']) },

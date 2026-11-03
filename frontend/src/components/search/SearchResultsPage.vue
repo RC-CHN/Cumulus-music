@@ -255,6 +255,7 @@ function maybeMore(songScroll?: HTMLElement) {
   if (
     !restoring &&
     waterfall.value &&
+    count.value > 0 &&
     element &&
     view.value?.more &&
     !moreError.value &&
@@ -555,10 +556,12 @@ onBeforeUnmount(() => {
             <p>
               {{
                 explanation.emptyTitle ||
-                `没有找到相关${selected.title === '综合' ? '内容' : selected.title}`
+                (view.more
+                  ? '这一页暂无可展示的结果'
+                  : `没有找到相关${selected.title === '综合' ? '内容' : selected.title}`)
               }}
             </p>
-            <small>试试其他关键词，或切换分类</small>
+            <small>{{ view.more ? '可继续查看后续结果' : '试试其他关键词，或切换分类' }}</small>
           </div>
           <section
             v-for="section in view.sections"
@@ -750,7 +753,7 @@ onBeforeUnmount(() => {
             </button>
           </nav>
           <div
-            v-if="waterfall && (count || (songWaterfall && view.more))"
+            v-if="waterfall && (count || view.more)"
             ref="moreFooter"
             class="search-load-more"
             :aria-busy="loadingMore"

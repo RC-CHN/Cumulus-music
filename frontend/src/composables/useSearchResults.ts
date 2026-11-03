@@ -158,6 +158,10 @@ export function useSearchResults(
             lyricRows++;
             lyricUnits += lyricSize(item);
           }
+      // The native cursor counts raw rows, including ones it cannot safely expose.
+      // An entirely filtered page is not the same as a repeated visible page.
+      const filteredPage =
+        next.unavailableCount > 0 && next.sections.every((section) => !section.items.length);
       const sections = previous.sections.map((s) => ({ ...s, items: [...s.items] }));
       for (const incoming of next.sections) {
         let section = sections.find((s) => s.id === incoming.id);
@@ -207,16 +211,18 @@ export function useSearchResults(
         query: previous.query,
         correction: previous.query.correct ? (next.correction ?? previous.correction) : null,
         sections,
-        more: next.more && (added > 0 || songs) && !capped,
+        more: next.more && (added > 0 || songs || filteredPage) && !capped,
         unavailableCount: previous.unavailableCount + next.unavailableCount,
         notice: capped
           ? lyrics
             ? '歌词结果已达到本次浏览上限，可更换关键词继续查找。'
             : '单曲结果已达到本次连续浏览上限，可使用分页查看或更换关键词。'
           : !added && next.more
-            ? songs
-              ? '这一批没有新的单曲，可以继续加载。'
-              : '没有更多可显示的结果，已保留当前内容'
+            ? filteredPage
+              ? '这一批结果暂无法展示，可以继续加载。'
+              : songs
+                ? '这一批没有新的单曲，可以继续加载。'
+                : '没有更多可显示的结果，已保留当前内容'
             : next.notice,
       };
       save();
