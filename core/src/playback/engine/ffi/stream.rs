@@ -1,11 +1,13 @@
 //! libmpv read-only stream callback ABI (mpv/stream_cb.h, client API 1.108+).
 //! The native handle owns the registration until mpv_terminate_destroy returns.
 use super::Handle;
-use crate::{Error, Result, playback::engine::Cancellation};
+use crate::{
+    Error, Result,
+    playback::engine::{Cancellation, PinnedReader},
+};
 use std::{
     ffi::{CStr, CString, c_char, c_int, c_void},
-    fs::File,
-    io::{Read, Seek, SeekFrom},
+    io::SeekFrom,
     panic::{AssertUnwindSafe, catch_unwind},
     sync::{
         Mutex,
@@ -50,7 +52,7 @@ struct Stream {
 }
 
 struct Input {
-    file: File,
+    reader: Box<dyn PinnedReader>,
     scratch: Box<[u8]>,
 }
 
@@ -61,13 +63,18 @@ impl Stream {
 }
 
 impl Registry {
-    pub(super) fn stage(&self, file: File, authority: Cancellation) -> Result<CString> {
-        let metadata = file.metadata()?;
-        let size = i64::try_from(metadata.len())
+    pub(super) fn stage(
+        &self,
+        mut reader: Box<dyn PinnedReader>,
+        authority: Cancellation,
+    ) -> Result<CString> {
+        let size = i64::try_from(reader.seek(SeekFrom::End(0))?)
             .map_err(|_| Error::InvalidInput("pinned audio is too large"))?;
-        if !metadata.is_file() || size == 0 {
-            return Err(Error::InvalidInput("pinned audio requires a regular file"));
+        if size == 0 {
+            return Err(Error::InvalidInput("pinned audio is empty"));
         }
+        reader.rewind()?;
+        authority.check()?;
         let uri = CString::new(format!("cumuluspinned://{}", uuid::Uuid::new_v4().simple()))
             .expect("generated URI");
         let mut slot = self.0.lock().map_err(|_| Error::LockPoisoned)?;
@@ -75,7 +82,7 @@ impl Registry {
             uri: uri.clone(),
             stream: Stream {
                 input: Mutex::new(Input {
-                    file,
+                    reader,
                     scratch: vec![0; MAX_READ].into_boxed_slice(),
                 }),
                 size,
@@ -152,13 +159,13 @@ unsafe extern "C" fn read(cookie: *mut c_void, dst: *mut c_char, len: u64) -> i6
             return Some(0);
         }
         let mut input = stream.input.lock().ok()?;
-        let Input { file, scratch } = &mut *input;
-        let position = file.stream_position().ok()?;
+        let Input { reader, scratch } = &mut *input;
+        let position = reader.stream_position().ok()?;
         let remaining = u64::try_from(stream.size).ok()?.saturating_sub(position);
         let bound = len.min(remaining).min(MAX_READ as u64) as usize;
         let mut count = None;
         for _ in 0..4 {
-            match file.read(&mut scratch[..bound]) {
+            match reader.read(&mut scratch[..bound]) {
                 Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
                 value => {
                     count = Some(value.ok()?);
@@ -192,7 +199,7 @@ unsafe extern "C" fn seek(cookie: *mut c_void, pos: i64) -> i64 {
                 .input
                 .lock()
                 .ok()?
-                .file
+                .reader
                 .seek(SeekFrom::Start(pos as u64))
                 .ok()?,
         )

@@ -153,7 +153,7 @@ impl Native {
     }
     pub fn stage_pinned(
         &mut self,
-        file: std::fs::File,
+        input: Box<dyn super::PinnedReader>,
         authority: super::Cancellation,
     ) -> Result<CString> {
         if self.streams.is_none() {
@@ -178,7 +178,7 @@ impl Native {
         self.streams
             .as_ref()
             .expect("registered stream")
-            .stage(file, authority)
+            .stage(input, authority)
     }
 
     pub fn clear_staged_pinned(&self) {

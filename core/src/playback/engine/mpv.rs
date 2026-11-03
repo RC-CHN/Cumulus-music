@@ -1,9 +1,12 @@
 use super::{
     AudioEngine, Cancellation, EndReason, EngineEvent, EngineSnapshot, LoadRequest, LoadedMedia,
-    MediaInput, OutputDevices,
+    MediaInput, OutputDevices, PinnedReader,
     ffi::{Native, Received},
 };
-use crate::{Error, Result};
+use crate::{
+    Error, Result,
+    media::ncm::{AudioFormat, HeaderPolicy, NcmReader},
+};
 use std::{
     collections::VecDeque,
     ffi::{CStr, CString, OsStr},
@@ -301,13 +304,33 @@ impl MpvEngine {
     ) -> Result<LoadedMedia> {
         authority.check()?;
         cancel.check()?;
+        Self::check_regular(&file)?;
         let format = super::pinned_audio_format(&mut file)?;
+        self.load_pinned(Box::new(file), format, authority, cancel)
+    }
+
+    fn check_regular(file: &std::fs::File) -> Result<()> {
+        if !file.metadata()?.is_file() {
+            return Err(Error::InvalidInput("pinned audio requires a regular file"));
+        }
+        Ok(())
+    }
+
+    fn load_pinned(
+        &mut self,
+        reader: Box<dyn PinnedReader>,
+        format: &'static str,
+        authority: Cancellation,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        authority.check()?;
+        cancel.check()?;
         self.stop()?;
         self.pinned_demuxer = true;
         let result = (|| {
             self.control(&["set", "options/demuxer", "lavf"])?;
             self.control(&["set", "options/demuxer-lavf-format", format])?;
-            let source = self.native.stage_pinned(file, authority.clone())?;
+            let source = self.native.stage_pinned(reader, authority.clone())?;
             let media = self.load_source(source, 0.0, None, Duration::from_secs(25), cancel)?;
             authority.check()?;
             self.pinned_authority = Some(authority);
@@ -525,6 +548,28 @@ impl AudioEngine for MpvEngine {
         cancel: &Cancellation,
     ) -> Result<LoadedMedia> {
         MpvEngine::load_pinned_audio(self, file, authority, cancel)
+    }
+
+    fn load_pinned_ncm(
+        &mut self,
+        file: std::fs::File,
+        authority: Cancellation,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        authority.check()?;
+        cancel.check()?;
+        Self::check_regular(&file)?;
+        let reader = NcmReader::new(file, HeaderPolicy::Strict)?;
+        let format = match reader.info().audio_format {
+            Some(AudioFormat::Flac) => "flac",
+            Some(AudioFormat::Mp3) => "mp3",
+            // MOV/M4A external references are outside this transport's
+            // audio-only, no secondary input boundary.
+            Some(AudioFormat::M4a) | None => {
+                return Err(Error::InvalidInput("unsupported pinned NCM audio format"));
+            }
+        };
+        self.load_pinned(Box::new(reader), format, authority, cancel)
     }
 
     fn pause(&mut self, paused: bool) -> Result<()> {

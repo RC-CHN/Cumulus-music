@@ -34,6 +34,10 @@ pub(crate) fn pinned_audio_format(file: &mut std::fs::File) -> Result<&'static s
     }
 }
 
+// The private stream source can only be staged by the native engine.
+trait PinnedReader: std::io::Read + std::io::Seek + Send {}
+impl<T: std::io::Read + std::io::Seek + Send> PinnedReader for T {}
+
 pub trait AudioEngine: Send {
     /// Device preference maintenance when no decoder load is holding the
     /// engine. Adapters throttle read-only discovery; plain engines do nothing.
@@ -82,6 +86,16 @@ pub trait AudioEngine: Send {
         _: &Cancellation,
     ) -> Result<LoadedMedia> {
         Err(crate::Error::State("pinned audio playback is unavailable"))
+    }
+    /// Native transport for verified NCM. The caller must check publication
+    /// integrity and cached rights and include expiry in the authority.
+    fn load_pinned_ncm(
+        &mut self,
+        _: std::fs::File,
+        _: Cancellation,
+        _: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        Err(crate::Error::State("pinned NCM playback is unavailable"))
     }
     fn pause(&mut self, paused: bool) -> Result<()>;
     fn seek(&mut self, seconds: f64) -> Result<()>;
