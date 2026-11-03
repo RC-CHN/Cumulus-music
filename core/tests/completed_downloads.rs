@@ -287,6 +287,146 @@ async fn move_and_copy_update_task_lyrics_offline_library_mappings_and_queues_wi
 }
 
 #[tokio::test]
+async fn move_and_delete_reconcile_the_suspended_intelligence_ordinary_queue() {
+    use cumulus_core::{
+        catalog::intelligence::{IntelligenceRequest, IntelligenceStart},
+        playback::intelligence::{IntelligenceContext, IntelligencePhase},
+    };
+
+    for action in [FileAction::Move, FileAction::Delete] {
+        let f = Fixture::new(false).await;
+        let library = f.library();
+        let media = f.source.parent().unwrap();
+        fs::write(
+            media.join("download.cue"),
+            "FILE \"input.flac\" WAVE\n TRACK 01 AUDIO\n INDEX 01 00:00:00\n",
+        )
+        .unwrap();
+        library.scan(media).unwrap();
+        let old_id = file_id(&f.source).unwrap();
+        let local = serde_json::to_value(library.resource(&old_id).unwrap()).unwrap();
+        let mut stale = local.clone();
+        stale["local_revision"]["fingerprint"]["bytes"] = json!(99);
+        let cue_id = library
+            .list(Default::default())
+            .unwrap()
+            .into_iter()
+            .find(|item| item.id != old_id)
+            .unwrap()
+            .id;
+        let cue = serde_json::to_value(library.resource(&cue_id).unwrap()).unwrap();
+        let alias = media.join("..").join("media").join("input.flac");
+        let mut queue = PlaybackQueue::new(Some(f.store.clone()), "1").unwrap();
+        queue
+            .replace(
+                vec![
+                    local,
+                    json!({"id":123,"path":alias,"download_task_id":f.task.id}),
+                    stale,
+                    cue,
+                    json!({"id":777}),
+                ],
+                0,
+                json!({"kind":"synthetic-ordinary"}),
+            )
+            .unwrap();
+        queue.set_mode(PlaybackMode::Random).unwrap();
+        let backup = queue.snapshot();
+        queue
+            .replace(
+                vec![json!({"id":7})],
+                0,
+                json!({"kind":"playlist","id":"31"}),
+            )
+            .unwrap();
+        queue.set_mode(PlaybackMode::OrderLoop).unwrap();
+        let fallback = queue.snapshot();
+        let mut current = fallback.clone();
+        let context = IntelligenceContext {
+            id: uuid::Uuid::new_v4().to_string(),
+            phase: IntelligencePhase::Seeded,
+        };
+        current.intelligence = Some(context.clone());
+        let request = IntelligenceRequest {
+            playlist_id: "31".into(),
+            song_id: "7".into(),
+            start_music_id: "7".into(),
+            count: 1,
+            start: IntelligenceStart::PlayOne,
+        };
+        let revision = uuid::Uuid::new_v4().to_string();
+        let kind = "playback-intelligence-v1";
+        let saved = json!({
+            "schema":1,"revision":revision,"context":context,"request":request,
+            "seed_entry_id":current.current,"last_mode":backup.mode,
+            "backup":backup,"fallback":fallback,"recommendations":{},"failure":null,
+        });
+        let active = serde_json::to_value(&current).unwrap();
+        let position = json!({"entry_id":current.current,"position":12.0});
+        f.store.put("1", "playback", "queue", &active).unwrap();
+        f.store.put("1", "playback", "position", &position).unwrap();
+        f.store.put("1", kind, "session", &saved).unwrap();
+        // An identical orphan record under another owner is not an active backup.
+        f.store.put("2", kind, "session", &saved).unwrap();
+        queue.reload().unwrap();
+        assert_eq!(queue.intelligence_session().unwrap().backup, backup);
+
+        let calls = f.api.calls.lock().unwrap().len();
+        let files = f.files();
+        let target = f.target();
+        let operation = files
+            .start(
+                &f.task.id,
+                action,
+                (action == FileAction::Move).then(|| target.clone()),
+            )
+            .unwrap();
+        assert_eq!(
+            files.resume(&operation.id).unwrap().phase,
+            FilePhase::Complete
+        );
+        assert_eq!(f.api.calls.lock().unwrap().len(), calls);
+        assert_eq!(f.store.get("1", "playback", "queue").unwrap(), Some(active));
+        assert_eq!(
+            f.store.get("1", "playback", "position").unwrap(),
+            Some(position)
+        );
+        assert_eq!(f.store.get("2", kind, "session").unwrap(), Some(saved));
+
+        queue.reload().unwrap();
+        let restored = queue.intelligence_session().unwrap();
+        assert_ne!(restored.revision, revision);
+        assert_eq!(restored.context, context);
+        assert_eq!(restored.fallback, fallback);
+        assert_eq!(restored.backup.mode, backup.mode);
+        let remaining = &restored.backup;
+        if action == FileAction::Move {
+            assert_eq!(remaining.current, backup.current);
+            assert_eq!(remaining.items.len(), 3);
+            let new = library.resource(&file_id(&target).unwrap()).unwrap();
+            assert_eq!(
+                remaining.items[0].resource,
+                serde_json::to_value(new).unwrap()
+            );
+            assert_eq!(remaining.items[1].resource["path"], json!(target));
+            assert_eq!(remaining.items[1].resource["download_task_id"], f.task.id);
+            assert_eq!(remaining.items[2], backup.items[4]);
+            let expected = backup
+                .order
+                .iter()
+                .filter(|id| *id != &backup.items[2].entry_id && *id != &backup.items[3].entry_id)
+                .cloned()
+                .collect::<Vec<_>>();
+            assert_eq!(remaining.order, expected);
+        } else {
+            assert_eq!(remaining.items, vec![backup.items[4].clone()]);
+            assert_eq!(remaining.order, vec![backup.items[4].entry_id.clone()]);
+            assert_eq!(remaining.current, Some(backup.items[4].entry_id.clone()));
+        }
+    }
+}
+
+#[tokio::test]
 async fn physical_delete_removes_only_owned_audio_and_lyric_and_advances_current() {
     let f = Fixture::new(true).await;
     let library = f.library();

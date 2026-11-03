@@ -7,7 +7,7 @@ use crate::{
         identity::{FileFingerprint, path_id},
         records::CueRecord,
     },
-    playback::QueueSnapshot,
+    playback::{QueueSnapshot, intelligence},
     storage::StateTransaction,
 };
 use serde_json::{Value, json};
@@ -71,6 +71,14 @@ pub(crate) fn relocate_download(
             tx.put(&row.owner, CUES, &row.key, &serde_json::to_value(cue)?)?;
         }
     }
+    let relocation = Relocation {
+        old,
+        new: new.as_ref().map(|(path, _)| *path),
+        old_id: &old_id,
+        old_item: old_item.as_ref(),
+        new_item: new_item.as_ref(),
+        cue_ids: &cue_ids,
+    };
     for row in tx.rows("playback")? {
         let position_key = match row.key.as_str() {
             "queue" => "position",
@@ -79,12 +87,70 @@ pub(crate) fn relocate_download(
         };
         let mut queue: QueueSnapshot = serde_json::from_value(row.value)?;
         queue.validate()?;
+        if row.key == "queue" && queue.intelligence.is_some() {
+            reconcile_intelligence_backup(tx, &row.owner, &queue, &relocation)?;
+        }
+        if let Some(selected_removed) = relocation.reconcile(&mut queue)? {
+            if selected_removed {
+                tx.delete(&row.owner, "playback", position_key)?;
+            }
+            tx.put(
+                &row.owner,
+                "playback",
+                &row.key,
+                &serde_json::to_value(queue)?,
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn reconcile_intelligence_backup(
+    tx: &mut StateTransaction<'_>,
+    owner: &str,
+    active: &QueueSnapshot,
+    relocation: &Relocation<'_>,
+) -> Result<()> {
+    let mut session: intelligence::IntelligenceSession = serde_json::from_value(
+        tx.get(owner, intelligence::KIND, intelligence::KEY)?
+            .ok_or(Error::State("missing intelligence session"))?,
+    )?;
+    session.validate(active)?;
+    if relocation.reconcile(&mut session.backup)?.is_some() {
+        // The active queue/position and fallback belong to the coordinator.
+        // Only the suspended ordinary snapshot changes; its raw record CAS
+        // makes the edit visible to in-memory PlaybackQueue owners on reload.
+        session.revision = uuid::Uuid::new_v4().to_string();
+        session.validate(active)?;
+        tx.put(
+            owner,
+            intelligence::KIND,
+            intelligence::KEY,
+            &serde_json::to_value(session)?,
+        )?;
+    }
+    Ok(())
+}
+
+struct Relocation<'a> {
+    old: &'a Path,
+    new: Option<&'a Path>,
+    old_id: &'a str,
+    old_item: Option<&'a LibraryItem>,
+    new_item: Option<&'a LibraryItem>,
+    cue_ids: &'a HashSet<String>,
+}
+
+impl Relocation<'_> {
+    /// `None` means no reference matched; otherwise returns whether the
+    /// selected entry disappeared. Only current/FM queues persist a position.
+    fn reconcile(&self, queue: &mut QueueSnapshot) -> Result<Option<bool>> {
         let mut removed = HashSet::new();
         let mut changed = false;
         for entry in &mut queue.items {
             let resource = &mut entry.resource;
             let local_id = resource.get("local_id").and_then(Value::as_str);
-            if local_id.is_some_and(|id| cue_ids.contains(id)) {
+            if local_id.is_some_and(|id| self.cue_ids.contains(id)) {
                 removed.insert(entry.entry_id.clone());
                 changed = true;
                 continue;
@@ -94,17 +160,19 @@ pub(crate) fn relocate_download(
                 .and_then(Value::as_str)
                 .is_some_and(|value| {
                     let path = Path::new(value);
-                    path == old
+                    path == self.old
                         || (path.is_absolute()
-                            && path.canonicalize().is_ok_and(|resolved| resolved == old))
+                            && path
+                                .canonicalize()
+                                .is_ok_and(|resolved| resolved == self.old))
                 });
-            if local_id != Some(old_id.as_str()) && !path_match {
+            if local_id != Some(self.old_id) && !path_match {
                 continue;
             }
             changed = true;
-            if let Some((path, _)) = &new {
+            if let Some(path) = self.new {
                 if local_id.is_some() {
-                    if let (Some(old), Some(new)) = (&old_item, &new_item)
+                    if let (Some(old), Some(new)) = (self.old_item, self.new_item)
                         && resource.get("local_revision")
                             == Some(&serde_json::to_value(&old.revision)?)
                     {
@@ -123,13 +191,13 @@ pub(crate) fn relocate_download(
             }
         }
         if !changed {
-            continue;
+            return Ok(None);
         }
-        if queue
+        let selected_removed = queue
             .current
             .as_ref()
-            .is_some_and(|id| removed.contains(id))
-        {
+            .is_some_and(|id| removed.contains(id));
+        if selected_removed {
             let index = queue
                 .order
                 .iter()
@@ -140,17 +208,10 @@ pub(crate) fn relocate_download(
                 .chain(&queue.order[..index])
                 .find(|id| !removed.contains(*id))
                 .cloned();
-            tx.delete(&row.owner, "playback", position_key)?;
         }
         queue.items.retain(|e| !removed.contains(&e.entry_id));
         queue.order.retain(|id| !removed.contains(id));
         queue.validate()?;
-        tx.put(
-            &row.owner,
-            "playback",
-            &row.key,
-            &serde_json::to_value(queue)?,
-        )?;
+        Ok(Some(selected_removed))
     }
-    Ok(())
 }
