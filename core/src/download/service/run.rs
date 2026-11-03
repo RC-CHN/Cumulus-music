@@ -146,9 +146,9 @@ impl DownloadService {
                     {
                         // A cloud original usually has no MD5. Reauthorizing on
                         // every resume would discard its valid partial bytes.
-                        // Reuse the persisted URL/validators until HTTP rejects
-                        // it; the existing 401/403/404/410 path then renews once.
-                        self.resume_cloud(&mut task, existing, gate)?;
+                        // Recheck ownership, then reuse the persisted URL and
+                        // validators until HTTP rejects it.
+                        self.resume_cloud(&mut task, existing, gate).await?;
                     } else if task.origin.is_mv()
                         && let Some(existing) = &raw
                     {

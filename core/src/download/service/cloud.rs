@@ -7,15 +7,38 @@ use crate::{
 };
 use serde_json::{Value, json};
 
+async fn current_original(
+    cloud: &CloudApi,
+    id: &str,
+    file_name: &str,
+    file_size: u64,
+) -> Result<CloudEntry> {
+    let entry = cloud
+        .snapshot()
+        .await?
+        .items
+        .into_iter()
+        .find(|v| v.song_id == id)
+        .ok_or(Error::State("cloud download is no longer in this account"))?;
+    if entry.file_name != file_name || entry.file_size != file_size {
+        return Err(Error::State("cloud original changed in this account"));
+    }
+    Ok(entry)
+}
+
 impl DownloadService {
-    pub(super) fn resume_cloud(
+    pub(super) async fn resume_cloud(
         &self,
         task: &mut DownloadTask,
         raw: &crate::download::transfer::TransferJob,
         gate: &Control,
     ) -> Result<()> {
         gate.require()?;
-        let DownloadOrigin::Cloud { file_size, .. } = task.origin else {
+        let DownloadOrigin::Cloud {
+            file_name,
+            file_size,
+        } = &task.origin
+        else {
             return Err(Error::State("cloud origin missing"));
         };
         let resource = task
@@ -27,7 +50,7 @@ impl DownloadService {
             || task.options.cover
             || task.encrypted
             || resource["origin"] != "cloud"
-            || resource["size"].as_u64() != Some(file_size)
+            || resource["size"].as_u64() != Some(*file_size)
             || resource["id"].as_str() != Some(&task.song_id)
             || raw.resource_id.as_ref() != Some(&task.song_id)
             || resource["url"]
@@ -36,10 +59,19 @@ impl DownloadService {
                 .transpose()?
                 .as_ref()
                 != Some(&raw.resource.url)
-            || raw.resource.size != Some(file_size)
+            || raw.resource.size != Some(*file_size)
         {
             return Err(Error::State("cloud original authorization changed"));
         }
+        let id = &task.song_id;
+        self.session
+            .run_for(&gate.token, |api, _| async move {
+                current_original(&CloudApi::new(api), id, file_name, *file_size)
+                    .await
+                    .map(|_| ())
+            })
+            .await?;
+        gate.require()?;
         task.status = DownloadStatus::Downloading;
         self.save_current(&gate.token, task)
     }
@@ -115,16 +147,8 @@ impl DownloadService {
             .session
             .run_for(&gate.token, |api, _| async move {
                 let cloud = CloudApi::new(api);
-                let entry = cloud
-                    .snapshot()
-                    .await?
-                    .items
-                    .into_iter()
-                    .find(|v| v.song_id == id)
-                    .ok_or(Error::State("cloud download is no longer in this account"))?;
-                if entry.file_name != *file_name || entry.file_size != *file_size {
-                    return Err(Error::State("cloud original changed before authorization"));
-                }
+                let entry = current_original(&cloud, &id, file_name, *file_size).await?;
+                gate.require()?;
                 let response = cloud.download(&json!(id)).await?;
                 Ok((entry, response))
             })

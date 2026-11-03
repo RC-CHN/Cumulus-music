@@ -233,13 +233,59 @@ async fn paused_cloud_without_server_md5_reopens_and_resumes_at_the_persisted_by
     assert_eq!(paused.bytes, 117);
     let reopened = f.reopen();
     reopened.enqueue(&task.id).unwrap();
+    let before_lists = f.api.count(LIST);
     let done = reopened.run(&task.id, Run::default()).await.unwrap();
+    assert_eq!(f.api.count(LIST), before_lists + 1);
     assert_eq!(done.status, Status::Complete);
     assert_eq!(fs::read(done.target.unwrap()).unwrap(), AUDIO);
     assert_eq!(f.api.count(DOWNLOAD), 1);
     let calls = f.media.audio.calls();
     assert_eq!(calls[1].offset, 117);
     assert_eq!(calls[1].if_range.as_deref(), Some("\"fixture-v1\""));
+}
+
+#[tokio::test]
+async fn paused_cloud_resume_checks_current_ownership_before_using_the_saved_media_url() {
+    for changed in ["removed", "name", "size"] {
+        let f = Fixture::new();
+        let task = f.create(false).await;
+        let paused = f
+            .service
+            .run(
+                &task.id,
+                Run {
+                    byte_budget: Some(117),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(paused.status, Status::Paused);
+        assert_eq!(paused.bytes, 117);
+        let before_lists = f.api.count(LIST);
+        let before_media = f.media.audio.calls().len();
+        {
+            let mut rows = f.api.rows.lock().unwrap();
+            match changed {
+                "removed" => rows.clear(),
+                "name" => rows[0]["fileName"] = json!("replacement.flac"),
+                _ => rows[0]["fileSize"] = json!(AUDIO.len() + 1),
+            }
+        }
+        let reopened = f.reopen();
+        reopened.enqueue(&task.id).unwrap();
+        assert!(matches!(
+            reopened.run(&task.id, Run::default()).await,
+            Err(Error::State(_))
+        ));
+        let saved = reopened.get(&task.id).unwrap();
+        assert_eq!(saved.status, Status::Error);
+        assert_eq!(saved.bytes, 117);
+        assert!(!saved.target.unwrap().exists());
+        assert_eq!(f.api.count(LIST), before_lists + 1);
+        assert_eq!(f.api.count(DOWNLOAD), 1);
+        assert_eq!(f.media.audio.calls().len(), before_media);
+    }
 }
 
 #[tokio::test]
@@ -372,11 +418,14 @@ async fn publication_commit_failure_recovers_cloud_task_and_offline_record_witho
             .is_empty()
     );
     let media_calls = f.media.audio.calls().len();
+    let list_calls = f.api.count(LIST);
+    f.api.rows.lock().unwrap().clear();
     db.execute_batch("DROP TRIGGER fail_complete;").unwrap();
     let done = f.reopen().run(&task.id, Run::default()).await.unwrap();
     assert_eq!(done.status, Status::Complete);
     assert!(done.origin.is_cloud());
     assert_eq!(f.api.count(DOWNLOAD), 1);
+    assert_eq!(f.api.count(LIST), list_calls);
     assert_eq!(f.media.audio.calls().len(), media_calls);
 }
 
