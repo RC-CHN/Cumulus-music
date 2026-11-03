@@ -12,6 +12,7 @@ import {
   historyPending,
   historyTabs,
   historyTime,
+  selectedHistoryPlayback,
   type HistoryAction,
   type HistoryCommand,
   type HistoryEntry,
@@ -46,6 +47,11 @@ const allSelected = computed(
   () => entries.value.length > 0 && entries.value.every((e) => selected.value.has(e.id)),
 );
 const listKind = computed(() => kind.value === 'song' || kind.value === 'voice');
+const selectedForPlayback = computed(() =>
+  page.value?.kind === kind.value
+    ? selectedHistoryPlayback(kind.value, entries.value, selected.value)
+    : [],
+);
 const label = computed(() => historyTabs.find((t) => t.kind === kind.value)?.label ?? '记录');
 const activeOperations = computed(() => page.value?.operations.filter(historyPending) ?? []);
 const latest = computed(() => page.value?.operations.find((op) => !historyPending(op)));
@@ -92,6 +98,18 @@ function play(entry?: HistoryEntry) {
     chosen.map((e) => e.id),
     index,
   );
+}
+function playSelected() {
+  const snapshot = page.value;
+  if (
+    !snapshot ||
+    !props.playable ||
+    loading.value ||
+    busy.value ||
+    !selectedForPlayback.value.length
+  )
+    return;
+  emit('play', snapshot.kind, snapshot.revision, selectedForPlayback.value, 0);
 }
 function remove(action: HistoryAction) {
   if (!page.value || !canMutate.value) return;
@@ -174,6 +192,14 @@ function keyboard(event: KeyboardEvent) {
         @click="play()"
       >
         <Icon name="play" />播放全部
+      </button>
+      <button
+        v-if="listKind"
+        class="secondary history-play-selected"
+        :disabled="!playable || loading || busy || !selectedForPlayback.length"
+        @click="playSelected"
+      >
+        <Icon name="play" />播放选中
       </button>
       <label class="history-search"
         ><Icon name="search" /><input

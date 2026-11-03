@@ -245,3 +245,11 @@ history-ui-front-{format,tests,build}-final.log（侧栏改动后另有format/te
 原有编辑按钮/菜单/嵌套弹窗焦点/主题持久化/小窗口与行尾布局29状态再验通过：
 .build/history-ux-regression-final；与新24状态合计53个UIUX状态，本轮均为实际生产WebView。
 这29状态使用只读合成账号；测试脚本不是正式业务实现。
+
+最近播放：播放选中
+- 官方恢复证据：packages/pc/src/pages/history-playlist/components/HistoryPlayBatchTrack.tsx:55–79
+  和 HistoryPlayBatchVoice.tsx:55–78 将所选内容以 Action.play/Scene.history 交给播放器。
+- Cumulus 在歌曲、声音标签提供“播放选中”，按当前可见列表的快照顺序提交已勾选且可播放
+  的记录 ID（不是点击勾选的顺序，也不是媒体 ID）。没有可播放选项时按钮禁用。
+- 沿用已有 History 播放命令，原生校验账号、快照版本、顺序与可播放性。此动作不会提交历史
+  删除或同步变更；队列仍遵循 Cumulus 原有历史播放语义。

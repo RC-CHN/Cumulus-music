@@ -138,6 +138,20 @@ export function historyLabel(entry: HistoryEntry) {
       };
   }
 }
+/** The native history selection expects IDs in the current snapshot's order. */
+export function selectedHistoryPlayback(
+  kind: HistoryKind,
+  entries: readonly HistoryEntry[],
+  selected: ReadonlySet<string>,
+): string[] {
+  if (kind !== 'song' && kind !== 'voice') return [];
+  return entries
+    .filter(
+      (entry) =>
+        entry.resource.kind === kind && selected.has(entry.id) && historyLabel(entry).available,
+    )
+    .map((entry) => entry.id);
+}
 export function historyTime(value: number, now = new Date()) {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime()) || value <= 0)

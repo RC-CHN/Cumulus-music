@@ -4,6 +4,8 @@ import { useHistory } from '../src/composables/useHistory.ts';
 import {
   historyTime,
   historyOutcome,
+  selectedHistoryPlayback,
+  type HistoryEntry,
   type HistoryClient,
   type HistoryCommand,
   type HistoryKind,
@@ -240,4 +242,68 @@ test('local history remains reachable before login and after a guest 301', async
     assert.equal(model.page.value?.canSync, false);
     assert.equal(model.canMutate.value, true);
   }
+});
+
+test('selected history playback uses visible snapshot order and excludes unavailable or other-kind rows', () => {
+  const row = (id: string, resource: HistoryEntry['resource']): HistoryEntry => ({
+    id,
+    resource,
+    playedAt: 1,
+    device: '',
+    origin: 'local',
+    playProgress: null,
+    listened: null,
+  });
+  const song = (id: string, missing = false) =>
+    row(id, {
+      kind: 'song',
+      track: {
+        id: 'track-' + id,
+        name: id,
+        artists: [],
+        album: '',
+        coverUrl: null,
+        durationMs: 1000,
+        fee: 0,
+        local: true,
+        missing,
+      },
+    });
+  const voice = (id: string, unavailable = false) =>
+    row(id, {
+      kind: 'voice',
+      voice: {
+        id: 'episode-' + id,
+        name: id,
+        coverUrl: null,
+        creator: '',
+        radioId: null,
+        radioName: '',
+        durationMs: 1000,
+        feeType: 0,
+        liked: false,
+        unavailable,
+      },
+    });
+  const rows = [
+    song('recent'),
+    song('missing', true),
+    song('unchecked'),
+    song('old'),
+    voice('voice-recent'),
+    voice('voice-missing', true),
+    voice('voice-old'),
+  ];
+  const selected = new Set([
+    'old',
+    'hidden',
+    'missing',
+    'recent',
+    'voice-old',
+    'voice-missing',
+    'voice-recent',
+  ]);
+  assert.deepEqual(selectedHistoryPlayback('song', rows, selected), ['recent', 'old']);
+  assert.deepEqual(selectedHistoryPlayback('voice', rows, selected), ['voice-recent', 'voice-old']);
+  assert.deepEqual(selectedHistoryPlayback('playlist', rows, selected), []);
 });
