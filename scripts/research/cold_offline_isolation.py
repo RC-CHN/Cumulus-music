@@ -44,7 +44,7 @@ def child(phase):
     os.execv("/probe", ["/probe", f"--{phase}", "/proof"])
 
 
-def sandbox(binary, root, phase, screenshot):
+def sandbox(binary, root, phase, screenshot, ncm):
     display = os.environ.get("DISPLAY", "")
     require(re.fullmatch(r":[0-9]+(?:\.0)?", display), "run under an independent Xvfb display")
     socket_file = "/tmp/.X11-unix/X" + display.split(":")[1].split(".")[0]
@@ -70,6 +70,7 @@ def sandbox(binary, root, phase, screenshot):
         "--setenv", "XAUTHORITY", "/xauth", "--setenv", "LANG", "en_US.UTF-8",
         "--setenv", "GDK_BACKEND", "x11", "--setenv", "LIBGL_ALWAYS_SOFTWARE", "1",
         *(["--setenv", "CUMULUS_COLD_SCREENSHOT", "1"] if screenshot else []),
+        *(["--setenv", "CUMULUS_COLD_NCM", "1"] if ncm else []),
         "--chdir", "/proof",
         "--", "/usr/bin/dbus-run-session", "--", "/usr/bin/python3", "/worker.py", "--child", phase,
     ]
@@ -129,7 +130,14 @@ def launch(command, log, deadline, capture_root):
             process.wait()
 
 
-def run(binary, root, seed_only, screenshot):
+def ncm_media(root):
+    files = [path for path in (root / "media").rglob("*") if path.is_file()]
+    require(len(files) == 1 and files[0].suffix == ".ncm" and not files[0].is_symlink(),
+            "expected only a published NCM, with no durable plaintext output")
+    return (files[0].relative_to(root), files[0].read_bytes())
+
+
+def run(binary, root, seed_only, screenshot, ncm):
     root.mkdir(mode=0o700)
     root = root.resolve()
     uid, gid = os.getuid(), os.getgid()
@@ -137,10 +145,11 @@ def run(binary, root, seed_only, screenshot):
     (root / "group").write_text(f"probe:x:{gid}:\n", encoding="utf-8")
     phases = (("seed", 20),) if seed_only else (("seed", 20), ("cold", 45))
     seed_rows = None
+    seed_ncm = None
     for phase, deadline in phases:
         with (root / f"{phase}.log").open("wb") as log:
             capture = screenshot and phase == "cold"
-            result = launch(sandbox(binary, root, phase, capture), log, deadline, root if capture else None)
+            result = launch(sandbox(binary, root, phase, capture, ncm), log, deadline, root if capture else None)
         require(result == 0, f"{phase} process failed; see {phase}.log and {phase}.json")
         namespace = json.loads((root / f"sandbox-{phase}.json").read_text(encoding="utf-8"))
         require(namespace == {
@@ -148,8 +157,24 @@ def run(binary, root, seed_only, screenshot):
         }, "missing verified startup isolation")
         if phase == "seed":
             seed_rows = state_rows(root)
+            if ncm:
+                seed_ncm = ncm_media(root)
     seed = json.loads((root / "seed.json").read_text(encoding="utf-8"))
     require(seed["published"] is True and seed["mediaTransfers"] >= 1, "seed was not downloaded and published")
+    require(seed["ncm"] is ncm, "unexpected seed container")
+    if ncm:
+        rows = [row for database in seed_rows.values() for row in database]
+        ledger = [json.loads(value) for owner, kind, _, value in rows
+                  if owner == "2" and kind == "offline_music_v1"
+                  and json.loads(value)["task_id"] == seed["id"]]
+        cached = [json.loads(value) for owner, kind, key, value in rows
+                  if owner == "2" and kind == "membership" and key == "current"]
+        require(len(ledger) == 1 and ledger[0]["encrypted"]
+                and ledger[0]["privilege"]["fee"] == 1 and ledger[0]["privilege"]["payed"] == 0
+                and ledger[0]["quality"] == "lossless", "expected a paid lossless NCM ledger")
+        require(len(cached) == 1 and cached[0]["data"]["userId"] == 2
+                and cached[0]["data"]["associator"]["expireTime"] > cached[0]["server_ms"],
+                "active cached vinyl entitlement missing")
     if seed_only:
         print("cold-offline seed proof passed: production publication inside no-egress namespace")
         return
@@ -162,9 +187,16 @@ def run(binary, root, seed_only, screenshot):
     require(cold["transport"]["accountAttempts"] >= 1
             and cold["transport"]["otherHttpAttempts"] == 0
             and cold["transport"]["mediaAttempts"] == 0, "unexpected cold network path")
-    require(cold["transport"]["pinnedLoads"] == 1 and cold["transport"]["ordinaryLoads"] == 0
+    require(cold["transport"]["pinnedLoads"] == (0 if ncm else 1)
+            and cold["transport"]["pinnedNcmLoads"] == (1 if ncm else 0)
+            and cold["transport"]["ordinaryLoads"] == 0
             and cold["transport"]["observedNullAudio"], "native pinned/null output evidence missing")
     require(state_rows(root) == seed_rows, "cold launch changed durable account/download/player state")
+    if ncm:
+        require(ncm_media(root) == seed_ncm, "cold playback modified the published NCM")
+        require(not any(path.suffix.lower() in (".flac", ".mp3", ".wav")
+                        for path in (root / "state").rglob("*") if path.is_file()),
+                "cold playback created a durable plaintext audio copy")
     (root / "storage-audit.json").write_text(json.dumps({
         "unchanged": True, "databases": len(seed_rows),
     }), encoding="utf-8")
@@ -177,6 +209,7 @@ if __name__ == "__main__":
     parser.add_argument("--root", type=Path)
     parser.add_argument("--child", choices=("seed", "cold"))
     parser.add_argument("--seed-only", action="store_true")
+    parser.add_argument("--ncm", action="store_true", help="publish and play a synthetic NCM requiring cached rights")
     parser.add_argument("--screenshot", action="store_true", help="capture the synthetic panel on private Xvfb")
     args = parser.parse_args()
     if args.child:
@@ -184,4 +217,4 @@ if __name__ == "__main__":
     else:
         require(args.binary and args.binary.is_file() and args.root and not args.root.exists(),
                 "require an existing probe binary and a new proof directory")
-        run(args.binary.resolve(), args.root, args.seed_only, args.screenshot)
+        run(args.binary.resolve(), args.root, args.seed_only, args.screenshot, args.ncm)

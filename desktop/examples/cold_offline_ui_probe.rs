@@ -16,7 +16,9 @@ fn main() {
         .expect("existing isolated proof root");
     if args[0] == "--seed" {
         assert!(!root.join("state").exists(), "proof state must be new");
-        let value = tauri::async_runtime::block_on(fixture::seed(&root)).expect("synthetic seed");
+        let ncm = std::env::var("CUMULUS_COLD_NCM").as_deref() == Ok("1");
+        let value =
+            tauri::async_runtime::block_on(fixture::seed(&root, ncm)).expect("synthetic seed");
         fs::write(root.join("seed.json"), serde_json::to_vec(&value).unwrap()).unwrap();
         return;
     }

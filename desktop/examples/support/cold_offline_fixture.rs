@@ -10,7 +10,8 @@ use cumulus_core::{
         MusicClient,
         dto::{DownloadCommand, DownloadQuery, DownloadTab},
     },
-    download::service::DownloadOptions,
+    download::service::{DownloadOptions, OutputContainer},
+    media::ncm::{HeaderPolicy, NcmReader},
     protocol::{
         api::{Api, ApiFuture},
         http::{
@@ -19,7 +20,12 @@ use cumulus_core::{
     },
 };
 use serde_json::{Value, json};
-use std::{path::Path, sync::Arc, time::Duration};
+use std::{
+    io::Read,
+    path::Path,
+    sync::Arc,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
 #[cfg(feature = "custom-protocol")]
 use cumulus_core::download::transfer::{MediaBackend, MediaReply, MediaRequest};
@@ -39,6 +45,7 @@ pub struct Offline {
     other: AtomicUsize,
     media: AtomicUsize,
     pinned: AtomicUsize,
+    pinned_ncm: AtomicUsize,
     ordinary_loads: AtomicUsize,
     observed_null: AtomicBool,
 }
@@ -50,6 +57,7 @@ impl Offline {
             "otherHttpAttempts":self.other.load(Ordering::Acquire),
             "mediaAttempts":self.media.load(Ordering::Acquire),
             "pinnedLoads":self.pinned.load(Ordering::Acquire),
+            "pinnedNcmLoads":self.pinned_ncm.load(Ordering::Acquire),
             "ordinaryLoads":self.ordinary_loads.load(Ordering::Acquire),
             "observedNullAudio":self.observed_null.load(Ordering::Acquire),
         })
@@ -83,7 +91,9 @@ impl MediaBackend for Offline {
     }
 }
 
-struct Seed;
+struct Seed {
+    ncm: bool,
+}
 impl HttpBackend for Seed {
     fn post(&self, plan: RequestPlan) -> ApiFuture<'_, HttpReply> {
         Box::pin(async move {
@@ -105,16 +115,29 @@ impl HttpBackend for Seed {
     }
 }
 impl Api for Seed {
-    fn request<'a>(&'a self, path: &'a str, _: Value, _: bool) -> ApiFuture<'a, Value> {
+    fn request<'a>(&'a self, path: &'a str, params: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             match path {
                 "/api/v3/song/detail" => Ok(json!({"code":200,"songs":[{
                     "id":SONG,"name":TITLE,"ar":[{"name":"Cumulus"}],"al":{"name":"合成专辑"},
-                    "dt":1000,"fee":0
+                    "dt":1000,"fee":u8::from(self.ncm),
+                    "privilege":{"fee":u8::from(self.ncm),"flag":0,"payed":0}
                 }]})),
                 "/api/song/enhance/download/url/v1" => Ok(json!({"code":200,"data":{
-                    "id":SONG,"url":media::URL,"code":200,"type":"flac","size":media::DATA.len(),"level":"lossless"
+                    "id":SONG,"url":media::URL,"code":200,"type":"flac","size":media::DATA.len(),"level":"lossless",
+                    "fee":u8::from(self.ncm),"payed":0
                 }})),
+                "/api/music-vip-membership/client/vip/info" if self.ncm => {
+                    if params != json!({"userId":OWNER.to_string()}) {
+                        return Err(Error::Response("unexpected seed membership owner"));
+                    }
+                    let now = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .map_err(|_| Error::State("proof clock precedes epoch"))?
+                        .as_millis() as u64;
+                    Ok(json!({"code":200,"data":{"now":now,"userId":OWNER,
+                        "associator":{"expireTime":now+300_000,"vipLevel":1}}}))
+                }
                 _ => Err(Error::Response(
                     "unexpected synthetic download seed endpoint",
                 )),
@@ -123,9 +146,9 @@ impl Api for Seed {
     }
 }
 
-pub async fn seed(root: &Path) -> Result<Value> {
+pub async fn seed(root: &Path, ncm: bool) -> Result<Value> {
     let registry = ProfileRegistry::open(&root.join("state"), ApiOrigin::Pc)?;
-    let seed = Arc::new(Seed);
+    let seed = Arc::new(Seed { ncm });
     let session = Arc::new(AccountSession::new(seed.clone(), Some(registry.store())));
     let candidate = registry.candidate_with_backend(
         ClientProfile::default(),
@@ -174,6 +197,11 @@ pub async fn seed(root: &Path) -> Result<Value> {
                     tags: false,
                     cover: false,
                     lyrics: false,
+                    container: if ncm {
+                        OutputContainer::Ncm
+                    } else {
+                        OutputContainer::Audio
+                    },
                     ..Default::default()
                 },
             },
@@ -210,12 +238,23 @@ pub async fn seed(root: &Path) -> Result<Value> {
         .path
         .ok_or(Error::State("synthetic download has no published path"))?;
     let path = Path::new(&path).canonicalize()?;
-    if !path.starts_with(media_dir.canonicalize()?) || std::fs::read(path)? != media::DATA {
+    if !path.starts_with(media_dir.canonicalize()?) {
+        return Err(Error::State("synthetic publication escaped media root"));
+    }
+    let decoded = if ncm {
+        let mut reader = NcmReader::open(&path, HeaderPolicy::Strict)?;
+        let mut decoded = Vec::new();
+        reader.read_to_end(&mut decoded)?;
+        decoded
+    } else {
+        std::fs::read(path)?
+    };
+    if decoded != media::DATA {
         return Err(Error::State(
-            "synthetic published bytes do not match fixture",
+            "synthetic published audio does not match fixture",
         ));
     }
-    Ok(json!({"published":true,"id":id,"title":TITLE,"mediaTransfers":media::requests()}))
+    Ok(json!({"published":true,"id":id,"title":TITLE,"mediaTransfers":media::requests(),"ncm":ncm}))
 }
 
 #[cfg(feature = "custom-protocol")]
@@ -256,6 +295,17 @@ mod cold_audio {
         ) -> Result<LoadedMedia> {
             let loaded = self.engine.load_pinned_audio(file, authority, cancel)?;
             self.facts.pinned.fetch_add(1, Ordering::AcqRel);
+            Ok(loaded)
+        }
+
+        fn load_pinned_ncm(
+            &mut self,
+            file: std::fs::File,
+            authority: Cancellation,
+            cancel: &Cancellation,
+        ) -> Result<LoadedMedia> {
+            let loaded = self.engine.load_pinned_ncm(file, authority, cancel)?;
+            self.facts.pinned_ncm.fetch_add(1, Ordering::AcqRel);
             Ok(loaded)
         }
 
