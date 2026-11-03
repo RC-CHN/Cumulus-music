@@ -1,0 +1,280 @@
+账号功能当前源码覆盖审计与下一批实施入口
+======================================
+
+日期：2026-11-03。基线 HEAD：aa57a96d7b1f180349653bb80e9ed0f367b229d3。
+审计同时读取本批已冻结的 Nickname 共享 UI 源码；本文没有修改业务、运行测试/构建、
+读取真实账户会话或发出业务网络请求。只新增此文档。源码位置以本次读取为准。
+SNS 独立恢复、有限无会话取证与原生窗口边界见 docs/sns-login-recovery.txt，不在此重复。
+
+结论：全账号功能目标尚未闭合。已有账户认证、资料原始读取、本机保存账户切换/移除、
+退出、续期、登录安全校验与部分设置；服务端快捷登录/切换、完整资料/绑定详情的产品化、
+已有账户资料编辑、头像最终提交和登录设备管理仍有明确接线/状态/UI缺口。
+“可信 native 可手写 path 发请求”与“有完整账号功能”分开记账。
+
+1. 覆盖层级与通用能力核对
+
+  已有资料读取，不应误列“资料从未迁移”：
+    core/src/protocol/api.rs:31–40 的 Api::account() 请求
+    /api/w/nuser/account/get {}，检查 profile.userId，返回整个 profile clone。
+    core/src/account/session.rs:35–39、247–253、323–373 持有、刷新、持久保存该 Value。
+    core/src/client/auth/qr.rs:11–50 的 account()/restore_account() 已消费它；
+    desktop/src/commands.rs:14–24 提供 account_snapshot/restore_account。
+    当前 safe AccountView 只投影 epoch/status/nickname/avatarUrl/canSignOut/loginNotice
+    （core/src/client/dto.rs:72–79），不表示 core 只读到这些原始字段。
+
+  通用 native API 存在：
+    core/src/protocol/api.rs:9–27 的 Api::request/call，
+    core/src/protocol/http/client.rs:365–373 的 MusicHttpClient 实现，
+    允许编译内可信调用者提供 path/payload。它不是未信任前端的 API 透传接口。
+    已检查精确 endpoint 字符串和 format!/动态 user 路径：本文目标 endpoint
+    没有隐藏在 generic action 或另一 typed API 中的当前调用。
+    core/src/account/api.rs:23–136 的 AccountApi 已有收藏/喜欢与 settings，
+    不是账号 detail/bindings/profile editor/device management 的实现。
+
+  没有遗漏一个当前通用 model/action CLI：
+    Cargo.toml:1–3 的 workspace 只有 core、core/audio-filter、desktop；
+    core/Cargo.toml 没有产品 CLI target，desktop/src/main.rs:3–4 直接启动桌面应用。
+    core/examples/account_read.rs:27–50 仅接 --profile/--origin/--import-legacy；
+    88–141 读取身份、会员、歌单/收藏/settings，不包含本文 detail/bindings/device/quick 接口。
+    它是已有只读验证入口，不是任意 model/API action CLI，也不能因存在而算 UI 功能。
+
+  历史 references/recovered-client 也须分层：
+    cumulus_core/api.py:41–56、167–184 有 native 通用 transport/call/account；
+    cumulus_core/__main__.py:90–108、309–310 有 typed account/login/logout，
+    account 输出认证状态/昵称。未发现本文目标的通用 model/action runtime 或 CLI 命令。
+    scripts/render_netease_product.py:1–5、18–21、85–87、111–121 明示从静态 AST
+    生成模型动作卡/API catalog/native-contracts；这些不是运行时业务引擎。
+    Python 历史读取/写入或接口探测不能替代当前 Rust、IPC、真实 WebView 验收。
+
+  IPC/UI：desktop/src/lib.rs:157–182 有 main-window 门禁与 typed 账号命令；
+    frontend/src/adapters/tauri.ts:90–103 是现有账号调用，75/83–84 是 settings。
+    没有面向 renderer 的任意 path/payload 调用；后续也不应通过它补功能。
+
+2. 官方证据定位与 HTTP 方法
+
+  M 前缀：references/netease-3.1.42.205594-analysis/recovered-js/modules/
+  可读 UI 前缀：references/ui-recovery/sources/packages/pc/src/
+
+  M15 = hybrid_app.chunk.1482700000000.js/15.js
+    SHA256 8ec4bf8d343f6963860eb73bc59ca09f0dd1ae50db2608a6c5abc7d69a0b521a
+  M12 = hybrid_app.chunk.1482700000000.js/12.js
+    SHA256 da570de13fd15b094bc6898cebb51273b2ee0e2b1d9ab39398a61717db732176
+    281–291 API 工厂的默认 method=POST；M15 下列接口未单独覆盖该默认值。
+    URL 中 /get、detail 等字样不是 HTTP GET 的证据。JSK M1368 的显式 GET/POST
+    要分别记录；当前 Rust 还会按已选 EAPI/WEAPI/native 路由构造实际传输。
+  M100 = hybrid_app.chunk.1482700000000.js/100.js
+    SHA256 e051884e37bd68f5e4838664abd85e405e8e761a138d51b7d71b02739b824936
+    63–82 host detail 参数/404；179–185 bindings helper。
+  M3101 = hybrid_79.chunk.1482700000000.js/3101.js
+    SHA256 49d5ae58da3d5eea831055e06a0249fd343a6fbdc28595e93ffabeaf762ac630
+  M2167 = hybrid_16.chunk.1482700000000.js/2167.js
+    SHA256 b632f6561eb022188d77d36fb422f59f12fe98c9307da37ded03d3c46f8baf16
+  M3118 = hybrid_5.chunk.1482700000000.js/3118.js
+    SHA256 f338f33039e34a9c229676d8914ca6bb651444ecbd213af4fb172a9b6ec67442
+  M3122 = hybrid_144.chunk.1482700000000.js/3122.js
+    SHA256 02410fa7496426dea6dc9968a63dc90894ef86e87861967375a22dd80d4c073b
+  M1368、M198 的路径/SHA 见 docs/sns-login-recovery.txt:28–49。
+    本文直接引用这些文件的当前行号，不把其平台选项声明视为 PC 桥已消费。
+
+3. 服务端快捷登录/切换：本机恢复已实现，SDK 语义尚未接
+
+  官方 endpoint / 必要参数：
+    POST /api/login/getquickloginlist
+      {currentEnv:"{}",userInfoList:JSON.stringify([{userId,userProfile,musicU},...])}
+    POST /api/login/quicklogin 或 POST /api/login/switchuser
+      {currentEnv:"{}",userInfoList:JSON.stringify(上述列表),targetUserId,currentUserId}
+    来源：M15:2032–2034；M1368:4350–4375、4381–4398、4455–4482。
+    userId/currentUserId 转字符串；musicU 来源 native 历史会话，不能由前端提交。
+    getquickloginlist 的 deleteUserIds/vipInfo 由服务端返回；目标必须仍在验证后的列表。
+    M1368:4269–4307 合并当前 MUSIC_U 账户，按 lastUsedDate 降序，保留最多3条。
+
+  不要混合两版 currentEnv：
+    JSK 上述路径实传 "{}"；legacy M2995（hybrid_29.chunk.1482700000000.js/2995.js:126–140）、
+    M3025（hybrid_221.chunk.1482700000000.js/3025.js:131–143）传带 preGetedMobile/deviceId/osType/
+    yidunDeviceToken/appVersion 的 JSON，且参数集合未必带 currentUserId。
+    应按明确协议预选，不能失败后猜测换另一版重放登录写请求。
+
+  当前真正已有：
+    core/src/account/profiles/saved.rs:50–99 打开隔离保存会话；
+    core/src/client/auth/view.rs:19–38 返回 registry 的安全元数据；
+    core/src/client/auth/flow.rs:9–40 对 SavedAccount 建 Legacy candidate；
+    core/src/account/login/flow.rs:299–342、622–633 只读候选身份后采用；
+    frontend/src/components/AccountDialog.vue:70–75 发 begin(saved_account)+reconcile；
+    desktop/src/auth.rs:41–83、87–105 已有 begin/command/cancel/list/remove。
+    此链有实际账户切换价值，不能称“切换未实现”；它没有调用上述三个服务端接口。
+    SavedAccountView（core/src/client/auth/dto.rs:214–220）也不含原始会话。
+
+  明确缺口：
+    native 历史列表到官方 quicklist 参数的适配、服务端有效性/VIP 状态投影、
+    服务端 quick/switch 的凭据完成路径、候选身份采用与结果未决恢复、typed IPC/UI选择。
+    core/src/protocol/http/login.rs 的 jsk_login_path/completes_login 尚无这些路径；
+    不能通过普通 Api::call 发成功就遗漏 RT/凭据 receipt 或提前切换当前账号。
+    快速登录开关是本机历史保留策略（可读 pages/setting/views/Account.jsx:241–259），
+    当前只有登录时 remember/保存记录 autoLogin 展示，没有独立修改现有记录的开关。
+    这个本机设置不应伪装成远端隐私写接口。
+
+  可实施/验收：
+    先增加 native quicklist 读取与安全账户状态；保留当前本机恢复入口的明确语义。
+    服务端删除指示只能影响本次提交的已知历史记录，错误/畸形响应不能清空本机账号库。
+    显式 quick/switch 后真实 receipt+account/get 才采用；取消/过期/断网/迟到保持旧账号，
+    实际 MusicClient gate 可释放，新登录可开始，不自动重放 login 或注销旧账户。
+    合成用例覆盖失效目标、unknown code、缺 RT、identity301、部分历史失效和多账户隔离。
+    真实双账户往返需要两份明确授权的有效会话；没有时不能称双账户线上验证通过。
+
+4. 完整账号资料读取与编辑：已有原始 profile，不等于完整产品入口
+
+  官方读取：
+    POST /api/w/nuser/account/get {}（M15:1741；现有 Rust 已实现）。
+    POST /api/w/v1/user/detail/{uid}，host 调用参数 {all:true,userId:uid}
+      （M15:1742–1756、M100:63–82）；响应含 profile，host 还消费 level 等字段。
+      M198:1232–1288 的 getHostUserDetail 会刷新头像/性别/地区/签名/生日/昵称等。
+    当前没有 detail/{uid} 专用 Rust 调用；但 account/get 中已有的 profile 字段
+    可直接用于 typed self-profile 投影，不能为了“迁移”重复发无必要请求。
+    detail 是补齐实际所需字段/权威回读的来源；缺字段要显示未知，不造默认值。
+
+  官方写入：POST /api/user/profile/update，传修改字段 patch：
+    nickname、signature、gender、birthday、province、city。
+    M15:3649；M3101:917–941；可读 pages/user-detail-edit/views/MainView.jsx:129–187。
+    region 的 province/city 成对处理；生日由本地年月日转毫秒 timestamp
+    （M3101:179–185、265–291），不能当 Unix 秒或任意 UTC 日偏移。
+    UI 提供 gender=1/2（M3101:73–97）；不是把服务端未知值自动改成1的理由。
+    简介 maxCount/maxLength=300、用加权长度函数 J.j（M3101:673–688）。
+    昵称 trim、加权4–30、汉字/字母/数字/-/_、duplicated/407 分支见可读
+    pages/user-detail-edit/components/NickName.jsx:38–74。
+    原 UI 保存成功接受 numeric/string200，然后 host detail 回读；并非只改本地显示。
+
+  当前覆盖与缺口：
+    core/src/account/login/nickname.rs:19–38、registration.rs:12–31 已有注册昵称校验、
+    hint/duplicated 请求；本批 frontend 的 NicknameEditor/useNicknameDraft 是注册共享 UI。
+    这些是可复用基础，不构成修改已有账号昵称/签名/生日/地区的服务。
+    AccountView 和 SettingsPage.vue:204–220 仅昵称/管理登录账号与消息隐私入口；
+    core/src/account/settings/types.rs:7–25 仅7个通知/隐私键，不能把 profile patch
+    塞进 account_settings_command，绕过它原有白名单/核对状态。
+    缺 typed SelfProfileView、编辑 patch、fresh baseline/revision、持久写意图、
+    提交/结果未决/回读核对、同 UID 的 session 与保存账户昵称/头像更新，以及 IPC/UI。
+
+  可实施/验收：
+    读取/写入目标从 native 当前 session.uid 派生，不信任前端任意 UID。
+    先显示 fresh/缓存/缺失/错误状态，再显式保存；不把空缺生日/地区/性别写为默认值。
+    写入前持久化意图；无回包不自动再提交 patch；成功/失败均按实际服务码与回读判定。
+    检查昵称检查迟到、字段清空、配对地区、闰日/时区、拒绝/部分变化/断网恢复、
+    跨账户迟到回包和保存元数据同步；真实既有账号修改只在明确授权后验证并记录恢复。
+
+5. 绑定详情与管理入口：读取可接，远端 URL/账户 token 不能照搬到前端
+
+  官方读取：POST /api/w/v1/user/bindings/{uid}，payload {userId:uid}
+    （M15:3642–3644；M100:179–185；hybrid_182.chunk.1482700000000.js/2988.js:15–35）。
+    可读 pages/setting/views/Account.jsx:203–228 根据已绑 type 与服务端 url 跳转；
+    pages/bind/views/index.js:260–339 解析 tokenJsonStr 显示绑定详情：
+      type0 email；type1 cellphone/countrycode/hasPassword；type2 微博 name；
+      type5 QQ nickname/openid；type10 微信 nickname/unionid（明确不用 openid）。
+    原数据还含 access_token，不能整体 Serialize 到 IPC。
+    原 helper 出错回 []，Cumulus 应保留读取错误/未知，避免误显示“均未绑定”。
+
+  官方管理行为的边界：
+    可读 pages/bind/views/index.js:341–345、360–462 的更换/解绑等操作统一显示
+    固定 QR orpheus://settings/bindaccount；不是已恢复的每个 provider 解绑 REST。
+    海外账号修改密码也用这个 QR（pages/setting/views/Account.jsx:195–200、234–239）。
+    设置页可能打开 bindings[].url，但完整授权 URL 不能交普通 renderer；
+    未来须由 native 验证目的地/受限动作，不能增加任意 open-url IPC。
+    SNS 登录/2FA、SDK注册后的绑号与抢绑另见 sns-login-recovery.txt，勿与设置QR混为一项。
+
+  当前：没有 bindings endpoint 的专用 Rust/IPC/UI。登录回包/私有 profile/注册流程
+    中可能已见部分绑定信息，不能据此声称有 fresh 完整绑定管理页。
+    现有登录 BINDING_CELLPHONE 提示是登录验证转交，不是账号设置页。
+  可实施/验收：
+    增加有界 native bindings 解析与只含 provider/已绑定/昵称/掩码/能力的 safe view；
+    原始 tokenJsonStr、access_token、openid/unionid、完整 url 保持 native。
+    未知 provider、坏 JSON、缺字段/错误与空列表分开显示；切号/取消时拒绝旧响应。
+    固定绑定设置 QR 可按官方行为实现，并提供用户回读确认；不承诺 Cumulus 已执行
+    远端更换/解绑/改密。需要成功 native 授权/URS/RN 的分支继续按证据保留外部边界。
+
+6. 头像：已有 NOS 与裁剪，缺头像自己的最终绑定与恢复状态
+
+  官方链：本地选图/裁剪 → yyimgs NOS → POST /api/user/avatar/upload/v1 {imgid,url}。
+    M15:3648；M2167:324–338 用 IMAGE、bucket=yyimgs，imgid=docId，
+    url 的原式为 https://p${Math.ceil(2*Math.random()+4)}.music.126.net/{objectKey}；
+    M3101:519–521 接 code200 后取 response.url。
+    M3101:188–213 给出 <=5MiB、jpeg/png/bmp/gif、两边至少320像素；
+    M2167:345–346 有405修改频次限制、533未绑手机禁止修改资料。
+    最终头像替换当场发生，独立于资料“保存”按钮
+    （可读 pages/user-detail-edit/views/MainView.jsx:286–299）。
+    NOS 申请 M3118:269–319：POST /api/nos/token/alloc，
+    filename/ext/type/bucket/local/nos_product；可选 encryptFlag。M2167 原调用还显式
+    protocol=http/host=music.163.com/isBackend=false；这不是携带凭据向任意HTTP地址请求的授权，
+    后续应记录现有 Rust 安全传输适配与官方旧调用的区别，不伪称已实测完全同路。
+    返回 data/result 的 bucket/objectKey/token/docId，再走对象上传。
+
+  已有可复用 Rust：
+    core/src/cloud/allocation.rs:84–132 的 allocate_playlist_cover 已发
+    /api/nos/token/alloc，type=image/bucket=yyimgs，读取分配字段；
+    core/src/cloud/nos/* 已实现对象 token 与账户传输隔离、传输/续传状态；
+    core/src/playlist/cover/image.rs:50–126 有有界解码/方向/方形裁剪/JPEG/预览；
+    core/src/playlist/cover/run.rs:20–88 有上传状态机，
+    core/src/client/playlist_cover.rs 与 desktop/src/playlist_cover.rs 有文件选择/预览/命令。
+    不能把这些已迁移底层误记为“没有图片上传”；同样不能把歌单封面能力称头像功能。
+
+  缺口/验收：
+    native 头像用途 adapter、头像约束/裁剪 UI、自己的持久 task/一次 final bind/身份回读，
+    safe 当前头像与 saved-account 元数据同步；无 /api/user/avatar/upload/v1 当前调用。
+    不能伪造一个 playlistId 来复用歌单权限校验/绑定，也不能直接开放任意 bucket/final URL。
+    allocation/upload/final bind 是不同副作用阶段；断网后记录可能遗留对象，
+    无成功证据不重新分配/重复绑定，不能承诺取消即删除已上传对象。
+    验收覆盖图片边界/非图片/缩放裁剪、账号切换/迟到、NOS token 不泄露、
+    405/533与服务错误、upload成功但final bind未知、回读确认/重启恢复与临时文件清理。
+
+7. 登录设备管理：不等于现有“原设备验证”
+
+  官方 endpoint / 参数（M15:4962–4981；M12 默认 POST）：
+    /api/middle/user/device/list {excStatus:9}
+    /api/middle/user/security/device/kickoff {deviceKey,captcha?}
+    /api/sms/captcha/safe/sent {ctCode}
+    excStatus=9 是 M3122:304 的实际实参；本审计不猜测它的位含义。
+  返回/状态：M3122:14–80 读 data.userDeviceList/userDeviceLimitInfoDTO，
+    deviceKey/deviceName/loginPlace或region/loginType/lastActiveTime/os/ifLoginDevice/status；
+    status 字符串化为1算登录设备，当前设备排首，curLoginDeviceId取 ifLoginDevice 项。
+    userDeviceLimitInfoDTO 含额度/当前数量/规则/会员显示信息，不能凭缺失值承诺设备数为0。
+    kickoff200→刷新列表；401→needCaptchaVerify（这里是短信验证码，非图形验证码 proof）。
+    无手机号绑定时只显示固定 bindaccount QR；有绑定则从私有 tokenJsonStr 取
+    手机尾号/国家码，短信界面60秒重发（M3122:126–177、326–384）。
+    可读 pages/loginDevice/index.tsx:150–159 隐藏本机移除按钮，184–199 二次确认。
+    移除效果的原文是“再次登录需要重新安全验证”，不能扩写成已远端立即清除所有媒体会话。
+
+  当前已有但不同的功能：
+    core/src/account/login/device/model.rs:63–69、mod.rs 处理
+    /api/login/origin-device/{apply,scan-apply} 的登录确认/扫码验证；
+    desktop/src/login_device.rs 为登录验证挑选原生设备名称，
+    frontend 的 DeviceVerification.vue 是单个候选登录的验证面板。
+    本机 hardware/deviceId 测量也不是服务端登录设备列表。
+    当前未见 list/kickoff/safe-sent 的 typed API/action、CLI、IPC 或账号管理 UI。
+    历史 Python netease_live_audit.py:100 传 {}，netease_extended_audit.py:42 传
+    {excStatus:0}；它们只是探测，不是官方9参数的完整管理流程，也非现Rust验收。
+
+  可实施/验收：
+    先做 fresh/错误/空/未知分明的列表与详情；有界解析/渲染，保留未知 status/os，
+    native 用 opaque row id 映射 deviceKey，renderer 不指定任意目标键。
+    native 与 UI 同时禁止删除当前设备；显式确认才发 kickoff，401时转短信阶段，
+    不把 LoginCaptcha 的图形 proof 错接到 captcha 字段；重发/输入/提交都受当前账户栅栏约束。
+    写前持久意图，ack后回读；断网/超时标结果未决，仅允许回读，不自动重复踢设备。
+    覆盖当前设备缺失/重复、坏shape、非200/401、无绑定转交、限频/过期验证码、
+    切号/关闭/迟到、回读仍存在、他端修改与重新打开恢复。
+    真实移除会改变账户安全资源，必须另有明确授权；未执行不能写真实设备管理通过。
+
+8. 已完成范围、外部条件与实施顺序
+
+  本文没有否定这些现有入口：account/get身份读取、二维码/手机号/邮箱登录、
+  本机候选切换与移除、local/remote logout、续期及登录安全验证、7项消息隐私设置。
+  core/src/client/auth/lifecycle.rs:5–32 与 account/refresh/lifecycle.rs:127–148
+  已接退出；profiles/removal.rs:31–99 明确仅移除本机保存会话，不销毁远端账号。
+  手机忘记密码/邮箱固定恢复页已有，真实改密与账号销毁不能从名字相近的路由推断。
+
+  下一批建议按可独立交付的功能推进：
+    A. self-profile safe读取/详情与 bindings safe读取/固定设置QR；设备只读列表/详情。
+    B. profile显式编辑与核对；设备显式移除/短信/未知结果恢复。
+    C. 头像用途adapter、完整上传绑定/回读/清理UI；服务端quicklist/quick/switch状态机。
+    D. SNS/后继条件按独立文档推进；不为了填满入口而伪造URS、实名或任意URL。
+  这些源代码、DTO与合成HTTP/真实WebView流程可继续实施，不能整体归为“缺外部条件”。
+  真正外部条件是有效授权账户、双账户/设备条件、远端策略、有效SMS/URS/实名证明，
+  以及写资源线上验收的明确授权；缺它们时只限制对应线上验收，不替代可做的功能接线。
+  全部新状态需经过 core→MusicClient→typed IPC→正式 Vue/WebView；不能以原始API成功、
+  编译通过、静态动作卡或历史Python记录标记全账号闭合。

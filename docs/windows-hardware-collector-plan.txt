@@ -1,0 +1,195 @@
+Windows 真实本机硬件 collector：下一批实施方案与证据边界
+2026-11-03；状态：仅方案，尚未实现，尚未进行 Windows 设备实采或互操作验收。
+
+本文件不改变当前默认配置。当前 Windows 默认/windows-local 只声明官方兼容 UA/osver，
+不调用 Linux collector、不补造 clientSign。后续工作要增加的是 Windows 本机事实来源，
+不能把本方案、Windows 编译成功、Linux 合成测试或现有声明映射称为 Windows 采集完成。
+本轮仅阅读恢复材料、Rust 源码、锁定 Windows crate 源码和 Microsoft API 文档；
+没有执行官方 DLL 或硬件采集程序，没有运行构建/测试，也没有访问真实账号。
+
+1. 已有官方字段和字节证据
+
+主要依据为 cloudmusic.dll x64 3.1.42.205594，SHA256：
+557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493。
+以下为静态恢复证据，不表示已执行官方 DLL 或取得同机 Windows 指纹对照。
+
+- CEDF80：按 mask 低四位处理 MAC、磁盘、主板/BIOS 序列、持久 ID；正常宿主 mask=15。
+  后续启用项在已有累计输出非空时先加 @，空项仍可保留分隔符。
+  来源：protocol/core-more/regions/00cedf80.asm；已有 Rust composition.rs 已承接该规则。
+- CF2A00：直接连接 MAC 与磁盘，不插入额外分隔符。
+  CF42E0：调用 WideCharToMultiByte(codePage=0, flags=0)，即 CP_ACP；摘要不含末尾 NUL。
+  CF1940/CF1C80：first=lower_hex(MD5(hardwareBytes||hostBytes))，
+  persistentID=first||lower_hex(MD5(ASCII(first)))。主板序列不参与这个摘要。
+- CEF5E0：MAC 候选过滤全 FF 和零地址特征；先调用 CF0130，结果为空再进 CEFD10。
+  CF0130 包含注册表 NetworkCards、Description/ServiceName、virtual/1394 过滤链。
+  CEFD10 使用 GetAdaptersInfo，并有 gethostname/gethostbyname 与 IPv4 匹配。
+  因而“取 API 返回的第一块非空网卡”或 Linux 的物理/up 排序都不是已证实的完整官方顺序。
+- CEF440 -> CF4930：先后尝试 CF5BA0、CF5650、CF5E50、CF5900 等磁盘分支。
+  CF5E50 中已有可用于最小只读实现的证据：PhysicalDrive 路径，CreateFileW 请求访问权 0、
+  share=3、OPEN_EXISTING，然后 DeviceIoControl(0x2d1400，即 IOCTL_STORAGE_QUERY_PROPERTY)。
+  返回 descriptor 的 +0x18 作为 SerialNumberOffset；相应路径有序列号十六进制解码、
+  成对字节次序处理、字符检查与原文回退，不能只拿 offset 后的原始文本就声称逐字节一致。
+  其他分支出现 SMART/ATA/SCSI IOCTL 和读写访问权请求，首批不照搬这些权限与兼容路径。
+- CEEFF0：Win32_BaseBoard.SerialNumber 优先，空结果使用 Win32_BIOS.SerialNumber；
+  D00510/CFDC10 构造查询。字符串清理应以恢复的规则为准，不能默认为任意 Unicode 空白规则。
+- CF9C10(type=0) -> D01400：主机说明来源是 Win32_ComputerSystemProduct 的 Vendor/Name，
+  并非机器 hostname。机型判断另取 Win32_SystemEnclosure.ChassisTypes。
+  WMI 失败时 CFD2D0 读取 HKLM\HARDWARE\DESCRIPTION\System\BIOS 下的
+  SystemManufacturer/SystemProductName，D01F40 另有 SetupAPI 机型路径。
+  “主机:”和两种机型描述在 DLL 内是 GBK 窄字节常量；失败可能得到整个空说明。
+  WMI 文本到窄字节的完整转换、SAFEARRAY/机型异常分支仍须恢复并以 Windows 对照确认。
+- 副设备文件的硬件绑定字节另走 CF1510(codePage=3，即 CP_THREAD_ACP)，
+  不能把它与上述 CP_ACP 摘要路径合并。本方案不实现副文件绑定或自动修复。
+
+恢复文件均位于 references/netease-3.1.42.205594-analysis/ 下：
+protocol/core-more/regions/{00cedf80,00cef5e0,00cef440,00ceeff0}.asm；
+protocol/cache-encoding/regions/{00cf0130,00cefd10}.asm；
+protocol/device-fingerprint/regions/{00cf4930,00cf5e50,00cf42e0,00cf2a00,00cf9c10}.asm；
+protocol/device-storage-codec/regions/{00d01400,00d020b0,00d01f40,00cfd2d0}.asm。
+已有说明：references/recovered-client/docs/product/08-protocol-signatures.txt 第十一节、
+11-device-identity.txt 第三/四节，以及 docs/core-device-identity-contracts.txt。
+references 只作本地研究依据，不应随新增实现提交原始解包材料。
+
+2. Linux 适配策略不能当作 Windows 证据
+
+core/src/identity/facts.rs 当前只提供 collect_linux_identity(/sys)：
+MAC 优先物理、其次 up、最后接口名；磁盘按受限设备名排序选可读序列；主板缺失时取
+product_serial；占位词过滤、Unicode 空白清理、整段 GBK 编码及 chassis 类型集合都是该适配器
+的具体策略。不能把这些排序、fallback 和编码无条件用于 Windows，再称之为官方 WMI/SCSI。
+特别不能将 Windows 上不存在的 /sys、磁盘型号、卷序列号、MachineGuid、用户名或随机值
+充当 MAC、物理磁盘序列、主板序列。
+
+3. 建议的最小实现范围
+
+建议把 Win32/COM 适配留在 desktop 的原生平台层，例如 desktop/src/identity/windows/，
+只向独立 core 交付 HardwareFacts::from_encoded 接受的真实字段和已确认窄字节。
+core 保留组合、摘要、校验和 IdentityService 事务，不引入 Tauri、WebView 或脚本子进程。
+现有 Linux collector 的位置不要求为此批顺便重构。
+若未来 core CLI 也需要独立 Windows 自动采集，应另安排低依赖共享适配层或 core 的 Windows
+目标依赖；desktop 已依赖 Windows crate 并不等于 core 已有可直接使用的同名依赖。
+
+首批可以实现以下实际 API 子集，并明确标记“Windows 原生部分采集”，不承诺全分支等价：
+
+- MAC：GetAdaptersInfo 可取得真实本机 adapter 地址。先冻结明确、稳定的选择策略，检查
+  AddressLength=6，格式化为大写冒号分隔；保留官方已确认的无效地址过滤。
+  首批不调用 DNS，也不把这个策略说成已完成 CF0130/CEFD10 的完整优先级复刻。
+  若改用 GetAdaptersAddresses，它是 Microsoft 推荐的较新接口，但这是已记录的适配选择，
+  不构成官方旧实现恰好使用该 API 的证据。接口 MAC 是操作系统当前暴露值，可能属于虚拟接口
+  或启用了 Wi-Fi 地址随机化，不能自动称为永久出厂物理地址。
+- 磁盘：仅支持 CF5E50 已见的存储属性只读分支。使用固定、本机 PhysicalDrive 路径和有上限的
+  索引枚举，请求访问权 0，不提权，不发送改变设备状态的 IOCTL。
+  先查询 descriptor header，再校验并限制 Size 后分配；SerialNumberOffset=0 表示缺失。
+  offset、返回字节数、descriptor 长度与 NUL 终止都必须受检，单字段仍限制为最多512字符。
+  序列号规范化先从官方分支生成无私人信息的冻结对照向量；未覆盖/有歧义的编码分支保留为空，
+  不借助磁盘型号或卷标补齐。设备不支持、无序列号和拒绝访问是可能结果，不能保证普通用户
+  在每种控制器/虚拟机上都能读取成功。SMART/ATA/SCSI 兼容回退留到独立批次。
+- 主板：固定查询本机 ROOT\CIMV2 的 BaseBoard.SerialNumber，再按明确的空值语义读 BIOS。
+  只接收确认的 BSTR 文本；VT_NULL、VT_EMPTY、错误类型、超长值与占位值不造替代值。
+  OEM 占位词的额外剔除如采用，须标成 Cumulus 的严格化策略，不冒充恢复的原生规则。
+- 主机说明：可先取得真实 Vendor、Name、ChassisTypes；但字节拼接、机型选择和窄编码尚未
+  完成对照前，不将这些值塞入猜测的 GBK/UTF-8 文本。说明字段可以暂缺。
+  注册表可只读获取已确认的厂家/产品名；无法确认机型时不默认标成“台式电脑”。
+  SetupAPI 机型回退不是首批完整支持范围。
+
+首批的完成标准是事实来源、规范化和缺失语义可审计，不是四段字符串看起来非空。
+所有字段都缺失时保留不可用结果，不能生成示例 MAC、示例磁盘或声称已完成本机签名。
+
+4. 字节、已有 ID 与首次派生必须分别处理
+
+HardwareFacts/DeviceIdentity 不实现 Debug 或 Serialize；源信息只记录适配器版本、可用性和
+必要的非秘密接口/设备索引。完整 MAC/序列/派生 ID 不进 IPC、界面、常规日志或公开 CI artifact。
+原生 bytes 与用于 clientSign 的规范化文本应分别持有，不能对窄字节先 lossy 转成 UTF-8 再摘要。
+Windows 的 CP_ACP 不能硬编码为936；也不能为了让结果“像官方”修改进程/系统 locale。
+代码页替代字符、无法表示的文字及 UTF-8 ACP 场景要有明确处理规则和合成对照，
+严格拒绝有损转换如不同于原生 flags=0 的行为，必须明确记录差异。
+
+已有合法 persistent_id：继续由 IdentityService 在同一 BEGIN IMMEDIATE 事务中优先使用；
+硬件、代码页、选择策略或 collector 升级只更新观察字段，不能自动重新派生第四段。
+已有 ID 无效、数据库损坏、事务/持久化失败仍应报错，不得伪装成“无硬件”而轮换或降级。
+账号凭据 deviceId 始终归 Credentials 管理，不由本机硬件 ID 覆盖；不自动读取或写入官方
+COMMON_APPDATA、安装目录、isc.dat/isc_chat.dat，也不改变 Cookie 作用域。
+
+首次创建：现有 HardwareFacts::from_encoded 只要求前三段至少一项非空；但摘要不含 board。
+因此“仅 board 非空，MAC/磁盘皆空，且 host_bytes 也为空”会使 hardware_bytes||host_bytes
+为空，跨机器得到同一个确定性 ID。这个碰撞前提不能省略为“任何 board-only 都必然同 ID”：
+host_bytes 非空时摘要输入不再为空，但同型号主机说明本身仍不保证单机唯一。
+建议新增仅供原生构造使用的首次派生质量策略，至少拒绝空摘要输入；更保守的 Windows 默认
+可要求首次创建具有真实 MAC 或磁盘输入。后者是新增策略，不是已证实的官方额外判定。
+该检查必须放在事务内“确实不存在既有 ID”的分支，避免先查后写竞态；不能把同样条件用于
+否定一个已经合法持久化的 ID。可保留原 resolve 接口行为，另用类型化构造选项约束新适配器。
+
+若先用缺主机说明/缺盘序列的子集创建 ID，后续补齐字段也必须保留这个首次 ID。
+所以追求同机官方 ID 逐字节对照时，应先完成序列/主机字节规则，或在单独离线探针中研究；
+不要为了赶默认开启而先写不完整 ID，再在以后自动旋转“修正”。
+
+5. COM、超时与持久化边界
+
+使用一个原生工作线程采集；线程自行 CoInitializeEx(COINIT_MULTITHREADED)，在同一线程
+释放所有 COM 接口/BSTR/VARIANT/SAFEARRAY 后再 CoUninitialize，不改 GUI 线程已有 STA。
+现有 core 播放器 Mta 使用租约只维持 MTA 生命周期，不是该工作线程的 CoInitializeEx guard。
+不在库内随意调用进程范围 CoInitializeSecurity；需要的身份/认证设置限定在本地 WMI proxy，
+例如 CoSetProxyBlanket，不为采集修改整个应用的 COM 安全默认值。
+只使用固定 ROOT\CIMV2 与固定 SELECT 查询；不暴露任意 namespace、机器名、账号或查询字符串。
+
+WMI 使用半同步、仅向前枚举，Next 采用有限毫秒数、有限对象数和总 deadline。
+须同时检查 HRESULT 与返回对象数：WBEM_S_FALSE 仍可能带最后一批对象，不能直接丢弃。
+字符串和 ChassisTypes 的实际 VARIANT/SAFEARRAY 类型、维度、上下界均要检查，
+不能把 union 指针当字符串，或只照某个反汇编偏移强转。
+
+ConnectServer 默认可能无限等待；WBEM_FLAG_CONNECT_USE_MAX_WAIT 也只保证不超过两分钟，
+不是一个适合 GUI 启动的短超时。调用方应另有明确的短 deadline、一次启动最多一次采集，
+超时只接收声明配置或返回严格模式错误，不连续新建重试线程。
+工作线程只产生内存中的事实，不持有 StateStore。只有主线程在当前启动仍有效、结果按时被接纳
+之后才调用 IdentityService。这防止迟到的采集结果暗中创建 ID、更新观察或触发账号初始化。
+丢弃线程句柄/接收超时不等于取消底层 WMI 调用，不能将其宣称为已经硬终止。
+若必须保证内核/COM 卡死也被强制终止，应另设计同程序的受限原生 helper 进程和 JobObject，
+不借用 Python/PowerShell；这不是当前最小线程方案已经具备的能力。
+
+Win32 IOCTL 如使用 overlapped I/O，CancelIoEx 只提出取消请求，不保证操作已完成。
+OVERLAPPED、缓冲区和句柄必须活到实际完成，不能在调用方超时后释放仍被驱动使用的内存。
+RAII 应分别处理 HANDLE、HKEY、COM/VARIANT 的真实释放函数和失败哨兵，不使用一个通用
+CloseHandle 包装所有资源。缓冲区对齐、长度/整数转换、链表指针范围/循环和枚举数量都需有界。
+
+6. 可复用依赖和下一批接线
+
+desktop/Cargo.toml 已固定 windows=0.61.3，另有 windows-sys=0.61；Cargo.lock 已有对应版本。
+可复用 windows 的类型化 COM/Win32 包装，新增目标专属 features：
+Win32_NetworkManagement_IpHelper、Win32_Storage_FileSystem、Win32_System_IO、
+Win32_System_Ioctl、Win32_System_Com、Win32_System_Ole、Win32_System_Variant、
+Win32_System_Wmi；采用已确认注册表分支时再加 Win32_System_Registry。
+Win32_Foundation、Win32_Globalization 已在该 windows 依赖启用。
+若使用 GetAdaptersAddresses，还需该绑定要求的 Win32_NetworkManagement_Ndis 与
+Win32_Networking_WinSock。不能把 windows-sys 的某个 feature 当成已为 windows 同时启用。
+本方案不需要新增 WMI 脚本依赖或执行系统命令。
+
+后续接线仍从 desktop/src/identity.rs 原生启动配置进入：
+先采集/接纳实际事实，再由 core 事务解析持久 ID，最后构造 ClientProfile，之后才初始化账号。
+计划启用后的默认/windows-local 可使用 Windows 声明加真实 Windows facts，native 继续恢复旧
+平台默认；local 在 Windows 的新语义、缺硬件/超时的默认回落与显式严格错误需要另写契约。
+任何回落都只能包住已分类的采集不可用，不得捕获 StateStore/既有 ID/持久化错误。
+这些行为目前未修改，仍以 docs/default-windows-compatibility.txt 的现有边界为准。
+
+下一批应先冻结静态字段/规范化向量，再实现合成 Win32/WMI adapter 边界测试：
+多网卡与缺失字段、descriptor 越界/截断/无 NUL、歧义序列、错误 VARIANT/SAFEARRAY、有限枚举、
+超时/迟到结果不落盘、已有 ID 保留、首次空种子拒绝、事务失败不轮换和账号 deviceId 不变。
+随后在独立 Windows runner 做真实 API 的离线验证，输出只含可用性/一致性布尔；虚拟设备结果
+不当作实体硬件覆盖。最后才安排真实 Windows 桌面启动与 COM/媒体共存验证，仍不需要账号请求。
+当前文件没有上述实现、测试或 Windows 实机结果，不能写为功能已经验证通过。
+
+Microsoft 主文档核对（只支持 API 语义，不能替代网易字段选择的本地恢复证据）：
+GetAdaptersInfo / IP_ADAPTER_INFO：
+https://learn.microsoft.com/en-us/windows/win32/api/iphlpapi/nf-iphlpapi-getadaptersinfo
+https://learn.microsoft.com/en-us/windows/win32/api/iptypes/ns-iptypes-ip_adapter_info
+IOCTL_STORAGE_QUERY_PROPERTY / STORAGE_DEVICE_DESCRIPTOR：
+https://learn.microsoft.com/en-us/windows/win32/api/winioctl/ni-winioctl-ioctl_storage_query_property
+https://learn.microsoft.com/en-us/windows/win32/api/winioctl/ns-winioctl-storage_device_descriptor
+Win32_BaseBoard：
+https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-baseboard
+WideCharToMultiByte：
+https://learn.microsoft.com/en-us/windows/win32/api/stringapiset/nf-stringapiset-widechartomultibyte
+ConnectServer flags / IEnumWbemClassObject::Next：
+https://learn.microsoft.com/en-us/windows/win32/api/wbemcli/ne-wbemcli-wbem_connect_options
+https://learn.microsoft.com/en-us/windows/win32/api/wbemcli/nf-wbemcli-ienumwbemclassobject-next
+CoInitializeSecurity / CancelIoEx：
+https://learn.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-coinitializesecurity
+https://learn.microsoft.com/en-us/windows/win32/api/ioapiset/nf-ioapiset-cancelioex

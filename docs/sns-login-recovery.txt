@@ -1,0 +1,312 @@
+Cumulus SNS 登录恢复契约与后续实现边界
+====================================
+
+记录日期：2026-11-03。对象：官方 PC 3.1.42.205594 的 JSK 0.0.39。
+性质：源码审计、有限无会话入口读取与下一批实现设计；本文件不代表 SNS 功能完成。
+本批没有修改业务代码、运行测试或构建，没有执行第三方登录、授权确认、绑定或注册。
+没有使用 YesPlayMusic。历史 recovered-client 的动作卡仅辅助定位，结论回到官方模块。
+
+1. 已恢复的端到端链路与尚未取得的部分
+
+  已恢复：PC 登录入口 → JSK loginWithThirdParty → nm.sns.snsBindDetailInfo
+  → 独立 sns 窗口 → 官方 Hosted 授权入口 → 父窗口收到桌面授权结果
+  → M290 返回 token/desktopLoginSnsParam → POST /api/login/sns
+  → 通用登录响应、注册/绑定分支、凭据保存与后续验证。
+
+  已用无 Cookie 请求确认 Hosted 入口的三个第三方重定向、公开应用 ID、
+  精确 redirect_uri，以及无授权上下文时回调落到 /back/sns 的错误行为。
+
+  未取得：成功授权后的远端回调 HTML/JS、desktopLoginSnsParam 完整字段模式、
+  回调与初始 state/临时 Cookie 的完整绑定规则、成功回调的真实 frame 层级。
+  不能把 provider 回跳 URL 的 OAuth code 直接当成 M290 返回的桌面 code。
+  不能把任意 postMessage、URL 中自报 origin，或前端提交的 JSON 当成原生凭据。
+
+2. 证据索引（路径均相对仓库根；SHA256 为文件字节摘要）
+
+  下文 M 前缀：references/netease-3.1.42.205594-analysis/recovered-js/modules/
+
+  M1368 = hybrid_vendors_app_subApp.chunk.1482700000000.js/1368.js
+    SHA256 49da1d26373042091a3123f8948f1ce7e9968ec185e57369156fc1c6a6700db3
+    1359–1362 provider/type；2862–2925 授权响应凭据；3310–3340 NEED_REGISTER；
+    3933–3995 分派与 SNS 请求；4004–4074 Apple/CITD；4108–4125 token 要求；
+    4592–4630 第三方 initProfile；4699–4777 bind-and-login/bindingcellphone；
+    4819–4901 手机冲突判断；4917–4980 bindPhoneByType；5016–5046 强制换绑；
+    2013–2068 URS token/号码存在性；5189–5233 额外实名条件；
+    7002–7097 第三方 2FA；8550–8554 RPC；8641–8655 PC fetch；
+    8739–8752 PC provider 适配；9392–9403 公共 loginWithThirdParty。
+
+  M290 = hybrid_app.chunk.1482700000000.js/290.js
+    SHA256 73e775eae2e4b1da2e97b70b9415e2e101ba876ea1f6b877bd7cc054c7a4ea9b
+    196–228/265–285 HTTP 选项白名单；491–522 PC 占位原生方法；
+    692–758 snsBindDetailInfo。
+
+  M3143 = hybrid_67.chunk.1482700000000.js/3143.js
+    SHA256 078c9fb440610dccc295fb1b6f1d98090fab3531227e554a772c0dd679f3b265
+    105–130 名称映射；139–170 路由/Hosted URL；172–224 Cookie/OSX 回调；
+    237–305 父消息消费；365–376 监听；414–421 iframe。
+
+  M198 = hybrid_app.chunk.1482700000000.js/198.js
+    SHA256 17a0c5464f32e1c83e00d7f2c1209315e4ad5f132790cb73d20f4b9e34b89874
+    634–643 host/handleDesktopLoginSnsParam 转发 host/snsAuthResult。
+
+  M3144 = hybrid_186.chunk.1482700000000.js/3144.js
+    SHA256 a2a13aef790e08881929a90a7aa181549ca0b0b474766a81547c2c6bceffbdd5
+    52–142 legacy page:sns/login（profile 已有/未注册分流）。
+
+  M318 = hybrid_app.chunk.1482700000000.js/318.js
+    SHA256 126b952da5a5681f8f74a07f583a67b309eb3c760485a0ba8a446a82f9329873
+    14–20 domain/apiDomain/os；35–40 历史 appkey 表。
+  M18 = hybrid_app.chunk.1482700000000.js/18.js
+    SHA256 7453138af8b0fb12720e1fccaa8f9f347e8f39e4ee2652818f6afda699b49b01
+    28–29 native os；55–58 配置合并；89–90 PC apiDomain 初始化。
+  M841 = hybrid_app.chunk.1482700000000.js/841.js
+    SHA256 ea471a6f533de5ba516dc17926ac441fa9338d478aa6d04bcf1ce9be472a1f11
+    8–16 构建配置；不提供另一个 SNS appkey 表。
+
+  M1890 = hybrid_vendors_app_subApp.chunk.1482700000000.js/1890.js
+    SHA256 ceceeb46891708c49a98f97185ac585e429b20ce056414570e0fe4b6a84c32f8
+    28–48 Network/nativeRequest RPC 传参。
+  M402 = hybrid_app.chunk.1482700000000.js/402.js
+    SHA256 c759837f6de9c3f6b108edd1b9c22da8202d8cf7bb861f58454f7f4b9a054a37
+    346–355 MConfig yidun#paths；395–405 独立 checkToken/X-antiCheatToken。
+
+  可读父页：references/ui-recovery/sources/packages/pc/src/pages/sns/index.js
+    SHA256 cb3547f674bd21d15c5ab2755f1873570051e1e9f6305eea3d41dd41d68c68c0
+    103–132 路由与 URL；163–185 OSX；207–315 消息分派；399–409 监听；
+    412–417 preLogout；440–446 iframe。
+  可读入口：references/ui-recovery/sources/packages/pc/src/pages/login/components/Other.jsx
+    SHA256 91638f9fdfa5a7329b2bd7e00e8440f8429e7f13f20c79fb4402f2960b4c7595
+    123–174 provider/同意条款/JSK marker/窗口；187–205 Apple 原生分支。
+  历史动作卡：references/recovered-client/docs/product/models/page_sns.txt:54–142，
+    host.txt:411–435；不作为成功回调 HTML 的替代品。
+
+3. provider、type 与 appKey 是三种不同事实
+
+  SDK 名称       SNS 登录 type    第三方 2FA 名称/type    M290 窗口 snsType
+  weixin         10               WECHAT / "10"          "10"
+  qq             5                QQ / "5"               "5"
+  sina           2                WEIBO / "2"            "2"
+  apple          16               APPLE / "16"           未恢复可用 PC URS 生产链
+  citd           408              无此 2FA 映射           PC getGovVerify 是占位
+  email          另走 emailLoginParams，不是上述 Hosted SNS OAuth 的一种。
+
+  M318 的历史 appkey 表：2=301575942，3=03ad47fcf2bf26510b07d7f6d83d72f3，
+  4=bdca2813745d42888b03ea165e274133，6=801281164，8=yx239b74da211341979c340fb49b1fb16b。
+  M3143 的旧名称对应：2 微博、3 豆瓣、4 人人网、6 腾讯微博、8 易信、5 QQ、10 微信。
+  这些是制品中公开的应用标识，不是账户凭据或应用 secret。
+  Hosted URL 构造器没有 appkey 参数，也没有读取该表；不得给微信/QQ 臆造其条目，
+  不得据此开启已无完整登录生产链的历史 provider。
+
+4. PC Hosted URL 与 M290 的真实契约
+
+  入口是 GET https://music.163.com/api/sns/authorize/，参数：
+    snsType     数字字符串：微信 10、QQ 5、微博 2。
+    clientType  APP_CONF.os；制品默认 pc，M18 会读取 native os 更新。
+    schema      字面量 "*"；它不是可由普通前端改写的自定义回调地址。
+    checkToken  从 sns 路由取得，默认空字符串。
+    musicTu     从 sns 路由取得，默认空字符串；不等于自行添加 musicTuP 头。
+    callbackType 路由有值才添加；M290 固定 "login"。
+
+  M290 构造 sns/{encodeURIComponent(JSON.stringify({snsType,callbackType:"login",from}))}，
+  from 默认 login；2FA 调用传 doubleVerifyAuth。from 用于本地父页分派，
+  getUrl 没有把 from 加入 Hosted 查询。不能任意补入 redirect_uri/appkey/state。
+  Other.jsx 的 JSK 入口另设置官方域 Cookie fromPage=jsk，退出时 M290 删除它；
+  它是固定分流标记，未来只能写入本次隔离授权窗口，不能改当前账户 Cookie jar。
+
+  窗口 850×530/isSpecialWindow。M290 订阅共享 action，并 skip(1)：
+    host/snsAuthResult 或 host/handleDesktopLoginSnsParam → 首次结果完成；
+    app/modalClose 且尚未完成 → sns_window_closed；
+    120000 ms 尚未完成 → sns_auth_timeout。
+  finally 清计时器、退订、删除 fromPage。失败统一回 {error:{code:-1,message:"sns_auth_cancelled"}}。
+  成功返回 {desktopLoginSnsParam:对象, token:对象.code}。token 必须非空（M1368:4117–4121）。
+  回调对象其它必需字段/类型/最大长度没有在这些消费者中定义。
+
+  父页是本地 React 页面，远端 Hosted 页在 iframe。它直接读取 event.data，
+  没有检查 event.origin、event.source 或一个固定的 data.type（207–210/399–400）。
+  JSK 回调满足 data.desktopLoginSnsParam && callbackType==="login" 时，
+  发 host/handleDesktopLoginSnsParam，payload 包一层 desktopLoginSnsParam；
+  M198 再转 host/snsAuthResult；M290 同时接受这两个 action。
+  这两者是本地应用 action 名，不是已恢复的远端 postMessage.type。
+  legacy 回调是 code=200/account/profile/bindings/token 等账户响应，走 page:sns/login；
+  code702 走验证；10004 走风险提示。不能拿 legacy 响应结构替代 JSK 桌面 code。
+
+5. 本次有限官方入口读取（无真实登录）
+
+  私有证据目录：references/sns-login-recovery/20261103-no-session/。
+  未使用本机 Cookie/账户/refresh token；没有 Cookie 容器，自动重定向关闭。
+  请求 UA=Mozilla/5.0，Accept=text/html,application/xhtml+xml；没有 fromPage Cookie。
+  三个初始请求均为上述 Hosted URL，callbackType=login，checkToken/musicTu 为空。
+  每个响应均 302/空 body/临时 Set-Cookie NMTID；没有访问 Location 的第三方域。
+
+  provider  Location 域/路径                     公开应用 ID          redirect_uri
+  weixin    open.weixin.qq.com/connect/qrconnect  wxe280063f5fb2528a    https://music.163.com/back/weichat
+  qq        graph.qq.com/oauth2.0/authorize       100495085             https://music.163.com/back/qq
+  sina      api.weibo.com/oauth2/authorize        301575942             http://music.163.com/back/weibo
+
+  所有 response_type=code。微信 scope=snsapi_login，lang=zh_CN。
+  微博 scope=friendships_groups_read,statuses_to_me_read,follow_app_official_microblog。
+  QQ 未带 scope。各 Location 另有 schema/musicTu/state/checkToken；state 是未公开的
+  本次临时值，不能把它的长度/值写死，也不能声称它等于 Cumulus attempt id。
+  回调拼写 weichat 是实得结果，不能自行改为 wechat。
+
+  原始响应 metadata 文件 SHA256（内含临时 Cookie/Location，仅私有，不提交）：
+    weixin.json e67a83cad3f0e1ce836b3f2ca605ce1f2dbc234ed0ff264daa206960e8f9e673
+    qq.json     39c8da5890392f450f2069c798e547695abec35ff380266cdffe7331a3d5f283
+    sina.json   cae16d0ed4fde8e67e0f54bd50c6eeaa657067c34ca96a862c6619194cdc8568
+  3 个空 body SHA256 均 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855。
+
+  之后各一次 GET 上表 callback，全部使用 HTTPS、没有查询/Cookie/code/state。
+  三者仍 302/空 body，Location 为 http://music.163.com/back/sns，查询字段只有
+  key/message/code（原值仅私有）。没有跟随这些 HTTP Location 或原查询。
+  metadata SHA256：
+    weixin-callback.json 1f5368dd31b719e0fda65638fc7dc2bcde59f4d16c72aa7878368a53121a5c0b
+    qq-callback.json     2659def2657b64174938002abc3048639de0368e891c88cf25bb8fdd02913989
+    sina-callback.json   08ed5c0390dfd3fcd8aa386323cd25dde66dfcbf518388373d35bfa927147a7c
+
+  共享 GET https://music.163.com/back/sns 仍无查询/Cookie；HTTP200，
+  application/json;charset=UTF-8，58 字节，业务 {code:400,msg:"参数错误",message:"参数错误"}。
+  没有 HTML/引用脚本/postMessage/desktopLoginSnsParam，因此没有追加静态 JS 请求。
+    back-sns.body SHA256 b5483e52d6395aa37386dbcb54ecd726dda9f038fc763d37041e4e4d8753cc65
+    back-sns.json SHA256 765220825686bd84ed3c2845f7d3d22b75ab27e6baec646a94385a3457af163c
+  总计 3 个初始 GET + 3 个精确 callback GET + 1 个共享 callback GET；均未自动跟随。
+  这些结果锁定无授权上下文行为，不证明有效授权后同一分支/成功 schema/票据可用性。
+  微博 redirect_uri 是 HTTP，其余空态还会降级 HTTP；不能静默携带凭据跟随，
+  也不能把一次 HTTPS 空态可达当成成功流程已支持 HTTPS。
+
+6. SDK 消费与注册/绑定后继
+
+  普通 SNS：POST /api/login/sns
+    {type:10|5|2,tokenJsonStr:nativeResult.token,
+     desktopLoginSnsParam?:nativeResult.desktopLoginSnsParam}。
+  此处 tokenJsonStr 是 M290 从桌面对象.code 得到的值，不能前端代填、不能凭名字
+  擅自 JSON.stringify OAuth 原始 token。响应回通用 handleLoginResponse。
+  M1368:2887–2900 从 Set-Cookie 读 MUSIC_U/MUSIC_A，从 x-refresh-token 读 RT，
+  body 取 account/profile/bindings；本机必须继续使用真实凭据回包与 candidate 身份核对。
+
+  body.code=200 且第三方无 profile：NEED_REGISTER；保存私有 registration 上下文，
+  包含 externalUser/loginType/ursToken/hasAccount/canSkipSetNickname/canSkipBindPhone 等。
+  不能因为 code200、收到 token、绑定成功或昵称提交完成就采用未注册 candidate。
+  显式昵称/注册操作：GET /api/activate/initProfile，字段
+    nickname, avatarUrl, signature, gender, anoniToken,
+    isSkipBindPhone, isSkipSetNickname, allowDefaultNickname。
+  externalUser 可提供头像/签名/性别回落；跳过能力必须由当前 native 注册上下文限定。
+  官方先私存登录信息；Cumulus 仍须延续注册 guard，完整 profile/身份通过才切当前账号。
+
+  第三方绑定专用后继（不可混用普通 2FA 或处罚 RN 路由）：
+    GET /api/cellphone/existence/check {ursToken}
+    GET /api/user/bindingcellphone/v1 {ursToken}
+    GET /api/user/sns/bind-and-login {ursToken,phone,regionCode}
+    GET /api/user/replacecellphone/v4 {ursToken,phone}（强制换绑，需要单独明确用户选择）
+  bindPhone：exist=-1 走直接绑定；已有号码且 !hasAccount && !hasSnsBinded 才 bind-and-login；
+  已有本方账号报 BIND_CONFLICT_CAN_GRAB；否则 BIND_CONFLICT_CANT_BIND，不能自动抢绑。
+  PHONE_BIND_SUCCESS 仅表示该动作结果，之后仍可能要 initProfile/身份核对。
+
+  真正生产条件缺口：bindPhoneByType(sms) 要求 sn 返回非空 result.token。
+  但 M290.verifySms 只有 {result:{success:true,ursToken:""}}；sn 不接受空值，
+  并且与普通手机号登录接受 token||ursToken||null 的宽松分支不同。
+  M290.getOnePassToken/getGovVerify/createAndSaveCellphoneAccount 也仅回 code200 占位。
+  因此 SDK 方法/REST 路径已恢复不等于 PC 已有可用 URS/一键登录/国家认证生产链。
+  必须恢复有效 native URS provider，或另以官方 PC 实际可执行链路取证；禁止伪造 token。
+
+  第三方 2FA 复用 provider，但 from=doubleVerifyAuth：
+    登录 scene=0：POST /api/login/2fa/sns/check
+    非登录 scene：POST /api/user/auth/sns/check
+    字段 {scene,type:"10"|"5"|"2",tokenJsonStr,desktopLoginSnsParam?}。
+  Apple 改用 /api/login/2fa/urs/sns/check 或 /api/user/auth/urs/sns/check，{scene,ursToken}。
+  只允许服务器本次已提供的方法；不能把本地列举能力当成此账户获准使用。
+  scene=1 的 QQ/WEIBO 后续可能要求实名（M1368:5189–5233）；不适用于所有登录 scene。
+  未恢复 RN 实名内部动作时必须显示外部处理/取消/重新登录边界。
+
+  Apple /api/user/urs/sns/login 要 token+ursToken；legacy UI 调 App.loginFromApple。
+  CITD /api/login/citd 要 certPwdData 或 idCardAuthData。只见接口/原生 schema 或
+  code200 占位不能声称 Linux/Windows 已有这些生产者。下一批先限微信/QQ/微博。
+
+7. PC HTTP 桥选项的明确边界
+
+  M1368 PcPlatform.fetch 总加 fromPage=JSK，method/data/query、expandSetCookies，
+  并声明 needsGuardianToken=true/tokenKey=checkToken；挑战时可带 attempt-local x-music-tu。
+  M1890 保留选项，但 M290 HTTP normalizer/request builder 仅消费
+  path/method/query/data/header，丢弃 Guardian flags。M402 的 MConfig 路径匹配
+  另行取得 checkToken/X-antiCheatToken，不能当成消费上述选项的等价证据。
+  后续 SNS 接线不能因为 M1368 标记就补造官方 PC 强制 Guardian 调用，
+  不能从持久 Cookie 恢复 MUSIC_TU，也不能把 musicTu 与处罚 musicTuP 混同。
+
+8. 下一批原生 host 与状态机设计（设计要求，未实现/未验证）
+
+  core：新增 attempt-local ThirdPartyAttempt 与 native-only provider trait。
+    私有持有 provider、候选会话、原 account generation、一次性交换状态、临时 code/对象；
+    敏感对象不 Debug/Serialize。前端只见 opaque operation/verification id、provider、
+    有界 phase/message/allowed actions；既不接收完整授权 URL，也不能传票据/Cookie/RT。
+  desktop：实现受限 native 授权窗口；普通 renderer 只发“开始 provider/取消”，
+    生产者只能在可信 native setup 安装；任何测试 provider 也不能从 IPC 装载。
+    每 attempt 新隔离数据目录/临时 Cookie jar；不导入当前或保存账户会话，
+    只保留这次 Hosted 302 所设的临时状态到该授权窗口，结束即销毁。
+    850×530 为官方起点，仍需 Linux/Windows 小窗/缩放/关闭/焦点的真实 WebView 验证。
+
+  remote 窗口无业务 IPC：保持 desktop/src/lib.rs:157–161 的 main-label 拒绝门，
+  不给 provider 页面音乐库/文件/播放器/账户命令能力，不把远端页面塞进 main WebView。
+  不照抄父页 preLogout，不提前清理旧账户或发送 /api/logout。
+  仅 native 构造固定 Hosted URL；不接受来自前端的地址、redirect_uri 或任意 schema。
+  禁止弹出任意新窗口/外部 scheme、下载或调用系统浏览器来携带授权票据；
+  允许的第三方导航域必须来自冻结的官方重定向与后续实际资源证据，不能匹配宽泛子串。
+
+  回调接收必须证明：本次拥有的 native 窗口 + 活跃 attempt + 原 generation，
+  正确 provider + HTTPS 官方精确 callback 文档 + 当前导航/frame + 一次性完成。
+  OAuth state 绑定须由冻结协议确定；不能给 Hosted URL 私加自定义 state 并假设服务支持。
+  优先让 callback 成为主文档并使用有原生 frame/source 归属的结果捕获适配器；
+  该拓扑是否兼容最终 parent.postMessage，须成功回调原文证明后决定。
+  若保留 iframe，必须核对浏览器给出的 event.origin、event.source 为本次拥有的 iframe
+  窗口，并证明 remote frame 无法绕过该父检查直接调用 native 结果桥。
+  只验证 label、data.type、JS 自报 URL、可被 provider 页面读到的 nonce，都不够。
+
+  已检查锁定依赖 Wry 0.55.1 的本地源码（Cargo.lock:5989–5990）：
+    src/lib.rs:990 Windows initialization script 不保证仅主 frame；
+    src/lib.rs:1137 Linux iframe IPC 的 request URL 用主 frame URL。
+    SHA256 b62771e8fd3a0cb4afc681a4c0812a2d883946995fc46570712375b22fe96972
+  因而“注入全 frame JS + 看 IPC URL 是 music.163.com”不是安全捕获方案。
+  现有 CAPTCHA 的受控本地页/custom protocol 不能直接当成远端 SNS 来源证明。
+  若平台不能提供必要 frame 证明，需专用 native adapter；不能以宽松 postMessage 补位。
+
+  状态：Ready → Opening → AwaitingAuthorization（原生 120 秒有界）
+    → NativeCallbackValidated → Exchanging（原生一次 POST /api/login/sns）
+    → CheckingIdentity → Authenticated；或进入现有 typed Challenge/Notice/Penalty/SecurityQR。
+  200 缺 profile：RegistrationRequired → 显式 Bind/InitProfile → CheckingIdentity；
+    不可提前 Authenticated，不借普通 Reconcile 绕过注册 guard。
+  错误与关闭：Cancelled / TimedOut / UnsupportedCallback / RecoveryRequired。
+    120 秒是官方授权等待上限，不虚称整个绑定/注册也必须在该时间内完成；
+    HTTP/身份核对仍需 core 自己的有界 deadline/cancel，覆盖整段并释放在途 gate。
+
+  native 回调通过也仅产生可交换的一次性候选票据，不等于登录完成。
+  真正授权回包必须沿 core 原生 credentials/refresh receipt 边界观察，并读取候选
+  account/get、核对完整 profile/uid 与 generation，再原子采用并广播 safe AccountView。
+  POST 已发后断网/超时/取消，可能远端已消费 code：标为结果未决，保留旧账号，
+  仅允许候选身份回读/取消/显式全新授权；不自动重放 code、密码、注册、绑定或抢绑。
+  关闭窗口、切方法、换账号、超时同时取消 provider 等待/HTTP/身份 future；
+  迟到消息/响应不能采用身份，不能阻止下一次 begin_login。
+
+9. 当前明确缺口与完成标准
+
+  core/src/client/auth/dto.rs:18–22/28–157 没有 SNS 登录模式或 native provider 动作；
+  core/src/protocol/http/login.rs:40–133 没有上述 SNS/注册完成路径的凭据白名单；
+  desktop/src/auth.rs:41–83 只有现有 begin/command/cancel，没有 SNS producer；
+  frontend/src/components/LoginDialog.vue:156–158 仅 QR/手机/邮箱；
+  frontend/src/components/login/LoginChallenge.vue:218–219 对 WEICHAT_AUTH 明示暂不支持。
+  不能只添加 URL/按钮而绕过 credential completion、challenge context、注册 guard。
+
+  可立即开展的下一批工作：有限 provider enum/DTO、attempt 与取消状态、native host 隔离、
+  固定 URL 构造、合成 callback 拒绝矩阵、真正 /api/login/sns wire/receipt/candidate 接线，
+  复用通用风险与安全校验、注册界面共享昵称状态（不自动写账号资源）。
+  生产 enable 前仍要取得成功 callback 原文和字段/来源/frame 证据，处理实际 HTTP 降级，
+  并在 Windows/Linux 验证真实授权窗、取消、迟到、cookie 隔离和旧账号保持。
+  有效授权、有效 URS token、账户要求的手机/实名等条件应逐支取得明确在线授权再测；
+  无这些条件时可以验证合成契约，不能称真实第三方授权/绑定/注册通过。
+
+  下一批有意义的合成验证：
+    wrong origin/source/provider/window/generation、伪造 type、自报 URL、frame 混淆均拒绝；
+    空/超长/deep payload、重复回调、超时/close/cancel 后迟到消息不采用；
+    native exchange 回码/challenge/无 profile/缺 RT/身份301/未知结果保持旧账号；
+    挂住身份后 cancel 释放 MusicClient 实际 gate、新登录可开始；
+    registration guard、显式绑定/抢绑、状态未知不自动重试写操作；
+    JSON/日志/前端事件中没有 code/desktopLoginSnsParam/完整授权 URL/Cookie/RT。
+
+  本文件完成的是恢复契约与待实现边界。没有成功授权 fixture，也没有 SNS 功能验证结论。
