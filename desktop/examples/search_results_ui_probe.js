@@ -56,10 +56,12 @@
       const card=one('[data-result-key="mv:601"]');
       const trigger=button('播放 MV 合成 MV 1',card);
       const cue=card?.querySelector('.search-video-play-glyph');
+      const placeholder=card?.querySelector('.search-result-art > .icon');
       assert(trigger&&!trigger.disabled&&trigger.tabIndex===0&&cue?.getAttribute('aria-hidden')==='true'&&
         !card.querySelector('.search-card-play'),'one enabled card activation target and decorative cue');
       trigger.focus({preventScroll:true});
       await wait(()=>document.activeElement===trigger&&Number(getComputedStyle(cue).opacity)>.9,'MV cue visible at focus');
+      assert(placeholder&&Number(getComputedStyle(placeholder).opacity)===0,'Play cue does not overlap the empty-cover icon');
       await capture('search_mv_play_target');
       click(trigger);
       const invoke=(name,args={})=>window.__TAURI_INTERNALS__.invoke(name,args);

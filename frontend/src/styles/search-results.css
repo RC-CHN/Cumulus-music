@@ -558,7 +558,8 @@
     opacity 180ms,
     transform 180ms;
 }
-.search-card-play .icon {
+.search-card-play .icon,
+.search-video-play-glyph .icon {
   width: 23px;
   height: 23px;
 }
@@ -699,6 +700,8 @@
 }
 .search-result-card:hover .search-result-art:has(.search-card-play) > .icon,
 .search-result-card:focus-within .search-result-art:has(.search-card-play) > .icon,
-.search-card-current .search-result-art:has(.search-card-play) > .icon {
+.search-card-current .search-result-art:has(.search-card-play) > .icon,
+.search-video-card:hover .search-result-art:has(.search-video-play-glyph) > .icon,
+.search-video-card:focus-within .search-result-art:has(.search-video-play-glyph) > .icon {
   opacity: 0;
 }
