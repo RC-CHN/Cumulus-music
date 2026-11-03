@@ -44,6 +44,82 @@ async fn reported_seek_and_checkpoint_use_measured_native_clock_instead_of_reque
     );
     f.player.command(&token, Cmd::Stop).await.unwrap();
 }
+
+#[tokio::test]
+async fn stale_decoder_clock_cannot_replace_video_position_or_transport() {
+    let f = Fixture::new();
+    let token = f.session.token().unwrap();
+    f.player.command(&token, open("123")).await.unwrap();
+    until(&f.player, Status::Playing).await;
+    f.player
+        .command(&token, Cmd::Seek { seconds: 20.0 })
+        .await
+        .unwrap();
+    let device = f.last();
+    {
+        let mut native = device.lock().unwrap();
+        native.entry_id = Some(999);
+        native.position = 90.0;
+        native.paused = true;
+    }
+    let revision = f.player.snapshot().unwrap().revision;
+    tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        loop {
+            if f.player.snapshot().unwrap().revision > revision {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let view = f.player.snapshot().unwrap();
+    assert_eq!(view.status, Status::Playing);
+    assert_eq!(view.position, Some(20.0));
+    assert!(matches!(
+        f.player.command(&token, Cmd::Seek { seconds: 45.0 }).await,
+        Err(Error::StaleResponse)
+    ));
+    assert_eq!(f.player.snapshot().unwrap().position, Some(20.0));
+    let paused = f
+        .player
+        .command(&token, Cmd::Pause { paused: true })
+        .await
+        .unwrap();
+    assert_eq!(paused.status, Status::Paused);
+    assert_eq!(paused.position, Some(20.0));
+}
+
+#[tokio::test]
+async fn shutdown_observed_during_pause_reaches_the_video_controller() {
+    let f = Fixture::new();
+    let token = f.session.token().unwrap();
+    f.player.command(&token, open("123")).await.unwrap();
+    let playing = until(&f.player, Status::Playing).await;
+    let device = f.last();
+    device.lock().unwrap().pause_events = vec![
+        EngineEvent::Ended {
+            entry_id: 1,
+            reason: EndReason::Eof,
+            error: 0,
+        },
+        EngineEvent::Shutdown,
+    ];
+    f.player
+        .command(&token, Cmd::Pause { paused: true })
+        .await
+        .unwrap();
+    let failed = until(&f.player, Status::Error).await;
+    assert_eq!(failed.play_id, playing.play_id);
+    assert!(device.lock().unwrap().stopped);
+    let saved = MvService::new(f.session.clone())
+        .unwrap()
+        .position_for(&token, &json!(123))
+        .unwrap()
+        .unwrap();
+    assert!(!saved.completed);
+    assert_eq!(f.devices.lock().unwrap().len(), 1);
+}
 #[tokio::test]
 async fn stop_revokes_playback_and_frames_even_when_checkpoint_storage_fails() {
     let f = Fixture::new();

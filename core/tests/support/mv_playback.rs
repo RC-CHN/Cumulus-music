@@ -52,6 +52,7 @@ impl Api for Server {
     }
 }
 pub struct Device {
+    pub entry_id: Option<i64>,
     pub position: f64,
     pub seek_landing: Option<f64>,
     pub paused: bool,
@@ -66,6 +67,7 @@ pub struct Device {
     pub hold_stop: Arc<AtomicBool>,
     pub stop_started: Arc<tokio::sync::Notify>,
     pub events: Vec<EngineEvent>,
+    pub pause_events: Vec<EngineEvent>,
     width: u32,
     height: u32,
 }
@@ -99,7 +101,10 @@ impl AudioEngine for Fake {
         })
     }
     fn pause(&mut self, p: bool) -> Result<()> {
-        self.0.lock().unwrap().paused = p;
+        let mut device = self.0.lock().unwrap();
+        device.paused = p;
+        let events = std::mem::take(&mut device.pause_events);
+        device.events.extend(events);
         Ok(())
     }
     fn seek(&mut self, s: f64) -> Result<()> {
@@ -134,7 +139,7 @@ impl AudioEngine for Fake {
     fn poll(&mut self) -> Result<EngineSnapshot> {
         let mut d = self.0.lock().unwrap();
         Ok(EngineSnapshot {
-            entry_id: Some(1),
+            entry_id: d.entry_id,
             position: Some(d.position),
             duration: Some(120.0),
             buffered_through: None,
@@ -200,6 +205,7 @@ impl Fixture {
         let started = load_started.clone();
         let factory: VideoEngineFactory = Arc::new(move || {
             let device = Arc::new(Mutex::new(Device {
+                entry_id: Some(1),
                 position: 0.0,
                 seek_landing: None,
                 paused: true,
@@ -214,6 +220,7 @@ impl Fixture {
                 hold_stop: Arc::new(AtomicBool::new(false)),
                 stop_started: Arc::new(tokio::sync::Notify::new()),
                 events: vec![],
+                pause_events: vec![],
                 width: 128,
                 height: 72,
             }));

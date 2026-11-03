@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     mv::MvService,
-    playback::engine::{EndReason, EngineEvent},
+    playback::engine::{EndReason, EngineEvent, EngineSnapshot},
     protocol::api::identifier,
 };
 use serde_json::json;
@@ -17,6 +17,7 @@ pub(super) struct Actor {
     pub(super) pending: Option<tokio::task::JoinHandle<()>>,
     pub(super) engine: Option<Engine>,
     pub(super) entry: Option<i64>,
+    deferred_events: Vec<EngineEvent>,
     pub view: VideoSnapshot,
     pub(super) checkpoint_at: Instant,
     pub(super) wants_play: bool,
@@ -80,6 +81,7 @@ impl Actor {
             pending: None,
             engine: None,
             entry: None,
+            deferred_events: Vec::new(),
             view,
             checkpoint_at: Instant::now(),
             wants_play: false,
@@ -125,6 +127,7 @@ impl Actor {
             device(engine, |e| e.stop()).await?;
         }
         self.entry = None;
+        self.deferred_events.clear();
         Ok(())
     }
     pub(super) async fn open(&mut self, load: resolve::Load, play: bool) -> Result<()> {
@@ -232,23 +235,41 @@ impl Actor {
             Some((self.view.play_id.clone(), engine));
         self.checkpoint(false)
     }
+    fn owns_snapshot(&self, snapshot: &EngineSnapshot) -> bool {
+        self.entry.is_some() && snapshot.entry_id == self.entry
+    }
+
+    pub(super) fn record_transport_poll(&mut self, snapshot: EngineSnapshot) -> bool {
+        let current = self.owns_snapshot(&snapshot);
+        if current {
+            self.view.position = snapshot.position.or(self.view.position);
+        }
+        self.deferred_events.extend(snapshot.events);
+        current
+    }
+
     async fn tick(&mut self) -> Result<()> {
         let Some(engine) = self.engine.clone() else {
             return self.sync_local().await;
         };
         let snapshot = device(engine, |e| e.poll()).await?;
-        self.view.position = snapshot.position.or(self.view.position);
-        self.view.duration = snapshot.duration.or(self.view.duration);
+        let current = self.owns_snapshot(&snapshot);
+        if current {
+            self.view.position = snapshot.position.or(self.view.position);
+            self.view.duration = snapshot.duration.or(self.view.duration);
+        }
+        let mut events = std::mem::take(&mut self.deferred_events);
+        events.extend(snapshot.events);
         // The engine can report shutdown and a prior EOF or output failure in
         // one poll. Do not checkpoint completion or start another decoder in
         // response to that batch. Stale entry errors are unrelated.
-        if snapshot.events.contains(&EngineEvent::Shutdown) {
+        if events.contains(&EngineEvent::Shutdown) {
             return Err(Error::Playback {
                 operation: "video engine shutdown",
                 code: -1,
             });
         }
-        if let Some(error) = snapshot.events.iter().rev().find_map(|event| match event {
+        if let Some(error) = events.iter().rev().find_map(|event| match event {
             EngineEvent::Ended {
                 entry_id,
                 reason: EndReason::Error | EndReason::Redirect | EndReason::Unknown(_),
@@ -261,7 +282,7 @@ impl Actor {
                 code: error,
             });
         }
-        if snapshot.events.iter().any(|event| {
+        if events.iter().any(|event| {
             matches!(event, EngineEvent::OutputReload { entry_id } if Some(*entry_id) == self.entry)
         }) {
             // Keep user transport intent, even if the failed output reports
@@ -275,7 +296,9 @@ impl Actor {
                 remote: false,
             }, self.wants_play).await;
         }
-        self.view.buffering = snapshot.buffering;
+        if current {
+            self.view.buffering = snapshot.buffering;
+        }
         if let Some(volume) = snapshot
             .volume
             .filter(|v| v.is_finite() && (0.0..=100.0).contains(v))
@@ -288,7 +311,7 @@ impl Actor {
         {
             self.view.speed = speed;
         }
-        if matches!(self.view.status, VideoStatus::Playing | VideoStatus::Paused) {
+        if current && matches!(self.view.status, VideoStatus::Playing | VideoStatus::Paused) {
             self.view.paused = snapshot.paused;
             self.view.status = if snapshot.paused {
                 VideoStatus::Paused
@@ -296,7 +319,7 @@ impl Actor {
                 VideoStatus::Playing
             };
         }
-        if snapshot.events.iter().any(|event| {
+        if events.iter().any(|event| {
             matches!(event, EngineEvent::Ended { entry_id, reason: EndReason::Eof, .. }
                 if Some(*entry_id) == self.entry)
         }) {

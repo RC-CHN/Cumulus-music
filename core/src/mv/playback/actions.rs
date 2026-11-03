@@ -114,7 +114,9 @@ impl Actor {
                     e.poll()
                 })
                 .await?;
-                self.view.position = observed.position.or(self.view.position);
+                if !self.record_transport_poll(observed) {
+                    return Err(Error::StaleResponse);
+                }
                 self.view.seek_revision = self.view.control_revision;
                 self.checkpoint(false)
             }
@@ -172,7 +174,7 @@ impl Actor {
                 e.poll()
             })
             .await?;
-            self.view.position = observed.position.or(self.view.position);
+            self.record_transport_poll(observed);
             self.view.status = if paused {
                 VideoStatus::Paused
             } else {
