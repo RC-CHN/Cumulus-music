@@ -120,6 +120,19 @@ impl StateStore {
         })
     }
 
+    /// Read several keys from one committed snapshot without reserving SQLite's
+    /// write lock. The closure receives only the read methods of StateTransaction.
+    pub(crate) fn read_snapshot<T>(
+        &self,
+        operation: impl FnOnce(&StateTransaction<'_>) -> Result<T>,
+    ) -> Result<T> {
+        let mut connection = self.connection.lock().map_err(|_| Error::LockPoisoned)?;
+        let tx = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+        let value = operation(&StateTransaction { connection: &tx })?;
+        tx.commit()?;
+        Ok(value)
+    }
+
     /// The closure must only access the supplied transaction. The connection
     /// lock and BEGIN IMMEDIATE cover the complete operation across writers.
     pub fn transaction<T>(

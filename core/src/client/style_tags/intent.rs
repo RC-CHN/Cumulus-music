@@ -136,7 +136,7 @@ impl MusicClient {
         }
         let token = self.player_token(epoch)?;
         self.session.with_token(&token, |owner| {
-            let value = self.registry.store().transaction(|tx| {
+            let value = self.registry.store().read_snapshot(|tx| {
                 let mut items = Vec::with_capacity(2);
                 if let Some((key, value)) = tx.unresolved_style_tag(owner)? {
                     items.push(Self::decode_style_tag(&key, value)?);
@@ -242,7 +242,7 @@ impl MusicClient {
             });
         }
         let has_unresolved = self.session.with_token(&token, |owner| {
-            self.registry.store().transaction(|tx| {
+            self.registry.store().read_snapshot(|tx| {
                 tx.unresolved_style_tag(owner)?
                     .map(|(key, value)| Self::decode_style_tag(&key, value))
                     .transpose()

@@ -187,3 +187,37 @@ async fn style_tag_intent_fails_closed_for_unrecognized_persisted_phase() {
     );
     assert_eq!(api.style_tag_writes.load(Ordering::SeqCst), 0);
 }
+
+#[tokio::test]
+async fn style_receipt_status_reads_committed_state_during_another_writer() {
+    let (dir, _api, _session, client, _) = fixture();
+    let id = uuid::Uuid::new_v4().to_string();
+    let mut writer = rusqlite::Connection::open(dir.path().join("core.sqlite3")).unwrap();
+    let transaction = writer
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .unwrap();
+    transaction
+        .execute(
+            "INSERT INTO state(owner,kind,key,value) VALUES('9','style-tag-intents-v1',?1,?2)",
+            rusqlite::params![
+                id,
+                json!({"id":id,"expectedRevision":"prior","categoryId":"7",
+                    "tagId":"2","phase":"pending","observed":null})
+                .to_string()
+            ],
+        )
+        .unwrap();
+
+    assert!(
+        client
+            .style_tag_receipts("1", Some(&id))
+            .unwrap()
+            .value
+            .is_empty()
+    );
+    transaction.commit().unwrap();
+    let receipts = client.style_tag_receipts("1", Some(&id)).unwrap().value;
+    assert_eq!(receipts.len(), 1);
+    assert_eq!(receipts[0].id, id);
+    assert_eq!(receipts[0].phase, StyleTagPhase::Pending);
+}
