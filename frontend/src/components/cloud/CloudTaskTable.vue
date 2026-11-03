@@ -3,7 +3,13 @@ import { computed, nextTick, ref, onMounted, onBeforeUnmount } from 'vue';
 import Icon from '../Icon.vue';
 import ActionMenu from '../ActionMenu.vue';
 import { taskProgress, uploadRowMenu } from '../../services/cloudTasks';
-import { cloudIssue, cloudBytes, type CloudUpload, type CloudCommand } from '../../services/cloud';
+import {
+  cloudIssue,
+  cloudBytes,
+  cloudTextAttachmentLabel,
+  type CloudUpload,
+  type CloudCommand,
+} from '../../services/cloud';
 import { failure } from '../../services/contracts';
 import { useCore } from '../../services/core';
 const props = defineProps<{
@@ -13,6 +19,7 @@ const props = defineProps<{
   epoch: string;
 }>();
 const emit = defineEmits<{
+  omit: [row: CloudUpload, origin: HTMLElement];
   remove: [row: CloudUpload, origin: HTMLElement | undefined];
   command: [command: CloudCommand, event?: MouseEvent];
   expired: [];
@@ -146,6 +153,15 @@ async function directory(task: CloudUpload) {
                 }}</small>
               </div>
               <div class="cloud-task-actions">
+                <button
+                  v-if="task.omittableAttachment"
+                  class="text-button"
+                  :disabled="disabled"
+                  data-testid="cloud-omit-attachment"
+                  @click="emit('omit', task, $event.currentTarget as HTMLElement)"
+                >
+                  省略{{ cloudTextAttachmentLabel(task.omittableAttachment.attachment) }}
+                </button>
                 <button
                   v-if="task.canPause && !processing(task)"
                   class="icon-button"

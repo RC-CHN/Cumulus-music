@@ -46,6 +46,7 @@ struct Backend {
     gate: Mutex<Option<Arc<support::nos::Gate>>>,
     allocation_gate: Mutex<Option<Arc<support::nos::Gate>>>,
     full: AtomicBool,
+    text_attachment_mode: std::sync::atomic::AtomicUsize,
     encoding_mode: std::sync::atomic::AtomicUsize,
     delete_mode: std::sync::atomic::AtomicUsize,
     change_on_list: std::sync::atomic::AtomicUsize,
@@ -99,6 +100,25 @@ impl Api for Backend {
                         gate.release.acquire().await.unwrap().forget();
                     }
                     json!({"code":200,"data":support::allocation("audio",1)})
+                }
+                support::ATTACH => {
+                    let mode = self.text_attachment_mode.load(Ordering::SeqCst);
+                    let name = payload["filename"].as_str().unwrap();
+                    let (object, doc) = if name.ends_with(".png") {
+                        ("cover", 11)
+                    } else if name.ends_with(".lrc") {
+                        ("lyric", 12)
+                    } else {
+                        ("cue", 13)
+                    };
+                    let mut data = support::allocation(object, doc);
+                    if object != "cover" {
+                        data["bucket"] = json!("yyimgs");
+                        if mode == 2 {
+                            data["docId"] = json!(0);
+                        }
+                    }
+                    json!({"code":200,"data":data})
                 }
                 support::META => {
                     json!({"code":200,"songId":700,"exists":self.encoding_mode.load(Ordering::Acquire)==0,"waitTime":0,"privateCloud":{"songId":700}})

@@ -8,10 +8,11 @@ export interface CloudTaskTarget {
   retry?: boolean;
 }
 export function taskProgress(task: CloudUpload) {
-  const total = task.total + task.attachments.reduce((n, a) => n + a.total, 0),
+  const attachments = task.attachments.filter((a) => a.phase !== 'omitted');
+  const total = task.total + attachments.reduce((n, a) => n + a.total, 0),
     bytes = Math.min(
       total,
-      task.bytes + task.attachments.reduce((n, a) => n + Math.min(a.bytes, a.total), 0),
+      task.bytes + attachments.reduce((n, a) => n + Math.min(a.bytes, a.total), 0),
     ),
     processing = [
       'metadata_pending',

@@ -52,6 +52,7 @@ impl MusicClient {
                                 && v.error
                                     .as_ref()
                                     .is_none_or(|error| error.kind != "encoding_failed")
+                                && !v.blocked_text()
                                 && !active.contains(&v.id)
                         })
                         .map(|v| v.id)
@@ -116,6 +117,18 @@ impl MusicClient {
             CloudCommand::Renew { id } => {
                 context.uploads.renew_token(&id).await?;
                 result.accepted.push(id);
+            }
+            CloudCommand::OmitTextAttachment {
+                id,
+                attachment,
+                expected_revision,
+            } => {
+                context
+                    .scheduler
+                    .omit_text_attachment(&id, attachment, &expected_revision)?;
+                context.guard()?;
+                result.accepted.push(id);
+                return Ok(result);
             }
             CloudCommand::ReconcileUpload { id } => {
                 if context.uploads.get(&id)?.phase == CloudPhase::PublicationPending {

@@ -57,6 +57,13 @@ export interface CloudResource {
   localAvailable: boolean;
   localIssue?: string | null;
 }
+export interface CloudAttachmentOmission {
+  attachment: 'lyric' | 'cue';
+  revision: string;
+}
+export function cloudTextAttachmentLabel(attachment: CloudAttachmentOmission['attachment']) {
+  return attachment === 'lyric' ? '歌词' : 'CUE 曲目表';
+}
 export interface CloudUpload {
   id: string;
   title: string;
@@ -80,6 +87,7 @@ export interface CloudUpload {
   canRemove?: boolean;
   canRetryRemove?: boolean;
   canRetryEncoding?: boolean;
+  omittableAttachment?: CloudAttachmentOmission | null;
   attachments: { kind: string; phase: string; bytes: number; total: number }[];
 }
 export interface CloudDelete {
@@ -153,6 +161,12 @@ export type CloudCommand =
   | { kind: 'resume'; ids: string[]; retry_rejected: boolean }
   | { kind: 'remove_uploads'; ids: string[]; retry: boolean }
   | { kind: 'renew' | 'reconcile_upload' | 'reconcile_delete' | 'retry_encoding'; id: string }
+  | {
+      kind: 'omit_text_attachment';
+      id: string;
+      attachment: CloudAttachmentOmission['attachment'];
+      expected_revision: string;
+    }
   | { kind: 'delete'; ids: string[]; revision: string };
 export interface CloudResult {
   epoch: string;

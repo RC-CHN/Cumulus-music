@@ -55,6 +55,7 @@ pub enum AttachmentPhase {
     Allocated,
     Uploading,
     Uploaded,
+    Omitted,
     Rejected,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -129,6 +130,7 @@ pub struct CloudView {
     pub requested: Option<UploadControl>,
     pub error: Option<UploadIssue>,
     pub attachments: Vec<AttachmentView>,
+    pub(crate) omittable_text: Option<AttachmentKind>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 pub(super) struct Decision {
@@ -143,6 +145,32 @@ pub(super) struct Attachment {
     pub phase: AttachmentPhase,
     pub allocation: Option<Value>,
     pub error: Option<UploadIssue>,
+}
+pub(super) const TEXT_BUCKET_ERROR: &str = "image_only_bucket_for_text";
+
+impl Attachment {
+    pub(super) fn incompatible_text(&self) -> bool {
+        matches!(self.kind, AttachmentKind::Lyric | AttachmentKind::Cue)
+            && self
+                .error
+                .as_ref()
+                .is_some_and(|e| e.kind == TEXT_BUCKET_ERROR)
+            && self
+                .allocation
+                .as_ref()
+                .and_then(|v| NosAllocation::parse(v).ok())
+                .is_some_and(|a| a.bucket() == "yyimgs")
+    }
+}
+impl CloudView {
+    pub(crate) fn blocked_text(&self) -> bool {
+        self.attachments.iter().any(|a| {
+            a.phase == AttachmentPhase::Allocated
+                && a.error
+                    .as_ref()
+                    .is_some_and(|e| e.kind == TEXT_BUCKET_ERROR)
+        })
+    }
 }
 // Native persistence only: allocation/decision/response fields contain private
 // credentials and upload tickets. Never derive Debug or expose this over IPC.
@@ -198,6 +226,9 @@ impl Task {
             if kinds.contains(&attachment.kind) || attachment.source.bytes > 4 * 1024 * 1024 {
                 return Err(Error::State("invalid persisted cloud attachments"));
             }
+            if attachment.phase == AttachmentPhase::Omitted && !attachment.incompatible_text() {
+                return Err(Error::State("invalid omitted cloud attachment"));
+            }
             kinds.push(attachment.kind);
         }
         if let Some(decision) = &self.decision
@@ -218,6 +249,24 @@ impl Task {
                 .attachments
                 .iter()
                 .any(|a| a.phase == AttachmentPhase::AllocationPending)
+    }
+    pub(super) fn omittable_text(&self) -> Option<AttachmentKind> {
+        if self.phase != CloudPhase::AttachmentsUploading || self.uncertain() {
+            return None;
+        }
+        let mut candidate = None;
+        for attachment in &self.attachments {
+            match attachment.phase {
+                AttachmentPhase::Queued | AttachmentPhase::Uploaded | AttachmentPhase::Omitted => {}
+                AttachmentPhase::Allocated
+                    if candidate.is_none() && attachment.incompatible_text() =>
+                {
+                    candidate = Some(attachment.kind);
+                }
+                _ => return None,
+            }
+        }
+        candidate
     }
     pub fn child_id(&self, kind: Option<AttachmentKind>) -> String {
         format!(

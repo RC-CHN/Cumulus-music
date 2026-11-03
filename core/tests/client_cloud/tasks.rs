@@ -270,3 +270,200 @@ async fn encoding_retry_only_rechecks_the_known_song_then_publishes_once_even_if
         2
     );
 }
+
+#[tokio::test]
+async fn blocked_text_omission_is_scoped_durable_and_never_resumes_the_upload() {
+    use cumulus_core::cloud::AttachmentKind;
+    let f = Fixture::new(0);
+    let mut input = f.input();
+    let cover = f.root.path().join("cover.png");
+    image::RgbaImage::from_pixel(1, 1, image::Rgba([2, 4, 6, 255]))
+        .save(&cover)
+        .unwrap();
+    input.cover = Some(cover);
+    let lyric = f.root.path().join("input.lrc");
+    let cue = f.root.path().join("input.cue");
+    std::fs::write(&lyric, b"[00:01.00]Line").unwrap();
+    std::fs::write(&cue, b"FILE \"input.flac\" WAVE\n").unwrap();
+    input.lyric = Some(lyric.clone());
+    input.cue = Some(cue.clone());
+    let mut client = f.client();
+    let id = client
+        .cloud_command("1", CloudCommand::Upload { files: vec![input] })
+        .await
+        .unwrap()
+        .accepted
+        .pop()
+        .unwrap();
+    let command = |attachment, expected_revision| CloudCommand::OmitTextAttachment {
+        id: id.clone(),
+        attachment,
+        expected_revision,
+    };
+    for (attachment, file) in [(AttachmentKind::Lyric, lyric), (AttachmentKind::Cue, cue)] {
+        let choice = tokio::time::timeout(Duration::from_secs(3), async {
+            loop {
+                let mut row = client
+                    .cloud_page("1", query(CloudTab::Uploading), false)
+                    .await
+                    .unwrap()
+                    .uploads
+                    .pop()
+                    .unwrap();
+                if let Some(choice) = row.omittable_attachment.take() {
+                    assert!(!row.can_resume);
+                    return choice;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(choice.attachment, attachment);
+        let before = f.api.calls.lock().unwrap().len();
+        let objects = f.objects.calls();
+        assert!(matches!(
+            client
+                .cloud_command("1", command(AttachmentKind::Cover, choice.revision.clone()))
+                .await,
+            Err(Error::StaleResponse)
+        ));
+        assert!(matches!(
+            client
+                .cloud_command("1", command(attachment, "0".into()))
+                .await,
+            Err(Error::StaleResponse)
+        ));
+        let resume = || CloudCommand::Resume {
+            ids: vec![id.clone()],
+            retry_rejected: true,
+        };
+        assert_eq!(
+            client
+                .cloud_command("1", resume())
+                .await
+                .unwrap()
+                .failed
+                .len(),
+            1
+        );
+        assert_eq!(
+            client
+                .cloud_command("1", command(attachment, choice.revision.clone()))
+                .await
+                .unwrap()
+                .accepted,
+            vec![id.clone()]
+        );
+        assert!(matches!(
+            client
+                .cloud_command("1", command(attachment, choice.revision))
+                .await,
+            Err(Error::StaleResponse)
+        ));
+        assert!(file.exists());
+        std::fs::remove_file(file).unwrap();
+        drop(client);
+        client = f.client();
+        let mut page = client
+            .cloud_page("1", query(CloudTab::Uploading), false)
+            .await
+            .unwrap();
+        let row = page.uploads.pop().unwrap();
+        assert!(row.can_resume);
+        assert!(!row.enabled && !row.running && row.omittable_attachment.is_none());
+        assert_eq!(
+            row.attachments
+                .iter()
+                .find(|a| a.kind == attachment)
+                .unwrap()
+                .phase,
+            AttachmentPhase::Omitted
+        );
+        assert_eq!(row.attachments[0].phase, AttachmentPhase::Uploaded);
+        assert_eq!(f.api.calls.lock().unwrap().len(), before);
+        assert_eq!(f.objects.calls(), objects);
+        assert_eq!(
+            client.cloud_command("1", resume()).await.unwrap().accepted,
+            vec![id.clone()]
+        );
+    }
+    let _ = wait_done(&client).await;
+    let calls = f.api.calls.lock().unwrap();
+    for path in [
+        support::CHECK,
+        support::ALLOC,
+        support::META,
+        support::PUBLISH,
+    ] {
+        assert_eq!(calls.iter().filter(|(p, _)| p == path).count(), 1, "{path}");
+    }
+    assert_eq!(
+        calls.iter().filter(|(p, _)| p == support::ATTACH).count(),
+        3
+    );
+    let (_, payload) = calls.iter().find(|(p, _)| p == support::META).unwrap();
+    assert_eq!(payload["coverid"], "11");
+    assert!(payload.get("lyricid").is_none());
+    assert!(payload.get("lyrictype").is_none());
+    assert!(payload.get("cueid").is_none());
+}
+
+#[tokio::test]
+async fn unresolved_attachment_allocation_cannot_be_omitted() {
+    use cumulus_core::cloud::AttachmentKind;
+    let f = Fixture::new(0);
+    f.api.text_attachment_mode.store(2, Ordering::SeqCst);
+    let mut input = f.input();
+    let lyric = f.root.path().join("input.lrc");
+    std::fs::write(&lyric, b"[00:01.00]Line").unwrap();
+    input.lyric = Some(lyric);
+    let client = f.client();
+    let id = client
+        .cloud_command("1", CloudCommand::Upload { files: vec![input] })
+        .await
+        .unwrap()
+        .accepted
+        .pop()
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            let row = client
+                .cloud_page("1", query(CloudTab::Uploading), false)
+                .await
+                .unwrap()
+                .uploads
+                .pop()
+                .unwrap();
+            if !row.running && row.attachments[0].phase == AttachmentPhase::AllocationPending {
+                assert!(row.omittable_attachment.is_none());
+                assert!(!row.can_resume);
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(matches!(
+        client
+            .cloud_command(
+                "1",
+                CloudCommand::OmitTextAttachment {
+                    id,
+                    attachment: AttachmentKind::Lyric,
+                    expected_revision: "1".into()
+                }
+            )
+            .await,
+        Err(Error::MutationUncertain)
+    ));
+    assert!(
+        f.api
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|(p, _)| p != support::META)
+    );
+}

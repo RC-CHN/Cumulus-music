@@ -137,8 +137,72 @@ impl UploadScheduler {
         }
         Ok(())
     }
+    /// Record only a local omission, without starting or enabling any work.
+    pub(crate) fn omit_text_attachment(
+        &self,
+        id: &str,
+        kind: AttachmentKind,
+        expected: &str,
+    ) -> Result<()> {
+        use manager::{CONTROL, JOBS};
+        let _task_lock = self.uploads.lock(id)?;
+        let task = self.uploads.read(id)?;
+        if task.uncertain() {
+            return Err(Error::MutationUncertain);
+        }
+        if task.omittable_text() != Some(kind)
+            || self.uploads.nos.find(&task.child_id(Some(kind)))?.is_some()
+        {
+            return Err(Error::StaleResponse);
+        }
+        self.uploads.session.with_token(&self.uploads.token, |_| {
+            self.uploads.store.transaction(|tx| {
+                let owner = &self.uploads.owner;
+                let mut current: Task =
+                    serde_json::from_value(tx.get(owner, JOBS, id)?.ok_or(Error::StaleResponse)?)?;
+                current.validate()?;
+                let mut state: UploadSchedule = serde_json::from_value(
+                    tx.get(owner, SCHEDULE, id)?.ok_or(Error::StaleResponse)?,
+                )?;
+                let control: Option<UploadControl> = tx
+                    .get(owner, CONTROL, id)?
+                    .map(serde_json::from_value)
+                    .transpose()?;
+                if current.id != id
+                    || current.omittable_text() != Some(kind)
+                    || state.id != id
+                    || state.revision.to_string() != expected
+                    || state.enabled
+                    || state.running
+                    || state.hidden
+                    || state.removing
+                    || control == Some(UploadControl::Cancel)
+                {
+                    return Err(Error::StaleResponse);
+                }
+                let attachment = current
+                    .attachments
+                    .iter_mut()
+                    .find(|a| a.kind == kind)
+                    .ok_or(Error::StaleResponse)?;
+                attachment.phase = AttachmentPhase::Omitted;
+                state.revision = state
+                    .revision
+                    .checked_add(1)
+                    .ok_or(Error::State("cloud schedule exhausted"))?;
+                state.error = None;
+                tx.put(owner, JOBS, id, &serde_json::to_value(current)?)?;
+                tx.put(owner, SCHEDULE, id, &serde_json::to_value(state)?)
+            })
+        })
+    }
     pub fn start(&self, id: &str, retry_rejected: bool) -> Result<UploadSchedule> {
         let task = self.uploads.get(id)?;
+        if task.blocked_text() {
+            return Err(Error::State(
+                "blocked text attachment requires explicit omission",
+            ));
+        }
         if self.entry(id)?.is_some_and(|entry| entry.removing) {
             return Err(Error::State("cloud task removal is pending"));
         }

@@ -131,8 +131,12 @@ impl CloudUploads {
             _ => None,
         };
         let mut attachments = Vec::new();
+        let mut omittable_text = task.omittable_text();
         for a in &task.attachments {
             let child = self.nos.find(&task.child_id(Some(a.kind)))?;
+            if omittable_text == Some(a.kind) && child.is_some() {
+                omittable_text = None;
+            }
             attachments.push(AttachmentView {
                 kind: a.kind,
                 source: a.source.path.clone(),
@@ -140,7 +144,11 @@ impl CloudUploads {
                 bytes: child.as_ref().map_or(0, |c| c.bytes),
                 total: a.source.bytes,
                 transfer: child.map(|c| c.status),
-                error: a.error.clone(),
+                error: if a.phase == AttachmentPhase::Omitted {
+                    None
+                } else {
+                    a.error.clone()
+                },
             });
         }
         let deduplicated = task.decision.as_ref().is_some_and(|d| !d.need_upload);
@@ -167,6 +175,7 @@ impl CloudUploads {
                 task.error.clone()
             },
             attachments,
+            omittable_text,
         })
     }
     pub fn get(&self, id: &str) -> Result<CloudView> {
@@ -325,7 +334,10 @@ impl CloudUploads {
     pub(super) async fn verify_inputs(&self, task: &Task) -> Result<()> {
         task.source.open_async().await?;
         for a in &task.attachments {
-            if a.phase != AttachmentPhase::Uploaded {
+            if !matches!(
+                a.phase,
+                AttachmentPhase::Uploaded | AttachmentPhase::Omitted
+            ) {
                 a.source.open_async().await?;
             }
         }

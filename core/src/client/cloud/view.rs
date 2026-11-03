@@ -162,6 +162,16 @@ fn upload(task: CloudView, entries: &HashMap<String, UploadSchedule>) -> CloudUp
             _ => "正在上传",
         }
     };
+    let blocked_text = task.blocked_text();
+    let omittable_attachment = state
+        .filter(|s| !s.enabled && !s.running && !s.hidden && !s.removing && !unknown && !cancelling)
+        .and_then(|s| {
+            task.omittable_text
+                .map(|attachment| CloudAttachmentOmission {
+                    attachment,
+                    revision: s.revision.to_string(),
+                })
+        });
     CloudUploadView {
         id: task.id,
         title: task.title,
@@ -180,7 +190,8 @@ fn upload(task: CloudView, entries: &HashMap<String, UploadSchedule>) -> CloudUp
         enabled,
         running,
         error,
-        can_resume: !encoding_failed
+        can_resume: !blocked_text
+            && !encoding_failed
             && !terminal
             && !unknown
             && !pending
@@ -203,6 +214,7 @@ fn upload(task: CloudView, entries: &HashMap<String, UploadSchedule>) -> CloudUp
         can_renew: renew && !running && !removing,
         can_dismiss: terminal,
         attachments: task.attachments,
+        omittable_attachment,
     }
 }
 

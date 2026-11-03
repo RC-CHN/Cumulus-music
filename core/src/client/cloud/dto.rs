@@ -90,6 +90,13 @@ pub struct CloudUploadView {
     pub can_retry_remove: bool,
     pub can_retry_encoding: bool,
     pub attachments: Vec<AttachmentView>,
+    pub omittable_attachment: Option<CloudAttachmentOmission>,
+}
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudAttachmentOmission {
+    pub attachment: crate::cloud::AttachmentKind,
+    pub revision: String,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -178,6 +185,11 @@ pub enum CloudCommand {
     },
     Renew {
         id: String,
+    },
+    OmitTextAttachment {
+        id: String,
+        attachment: crate::cloud::AttachmentKind,
+        expected_revision: String,
     },
     RetryEncoding {
         id: String,

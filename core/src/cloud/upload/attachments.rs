@@ -71,7 +71,10 @@ impl CloudUploads {
             if self.halt(task).await? {
                 return Ok(false);
             }
-            if task.attachments[index].phase == AttachmentPhase::Uploaded {
+            if matches!(
+                task.attachments[index].phase,
+                AttachmentPhase::Uploaded | AttachmentPhase::Omitted
+            ) {
                 continue;
             }
             if task.attachments[index].phase == AttachmentPhase::AllocationPending {
@@ -123,8 +126,7 @@ impl CloudUploads {
                     .ok_or(Error::State("missing attachment allocation"))?,
             )?;
             if a.kind != AttachmentKind::Cover && allocation.bucket() == "yyimgs" {
-                task.attachments[index].error =
-                    Some(UploadIssue::new("image_only_bucket_for_text"));
+                task.attachments[index].error = Some(UploadIssue::new(types::TEXT_BUCKET_ERROR));
                 self.save(task)?;
                 return Err(Error::State(
                     "service did not allocate text attachment storage",

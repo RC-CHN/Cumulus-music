@@ -244,3 +244,17 @@ test('command receipts and errors do not reopen task feedback after changing the
     model.dispose();
   }
 });
+
+test('omitted text does not reduce upload completion for retained attachments', () => {
+  const task = row();
+  task.bytes = task.total;
+  task.attachments = [
+    { kind: 'cover', phase: 'uploaded', bytes: 30, total: 30 },
+    { kind: 'lyric', phase: 'omitted', bytes: 0, total: 50 },
+    { kind: 'cue', phase: 'queued', bytes: 0, total: 20 },
+  ];
+  assert.equal(taskProgress(task).total, 150);
+  assert.equal(taskProgress(task).bytes, 130);
+  task.attachments[2] = { kind: 'cue', phase: 'uploaded', bytes: 20, total: 20 };
+  assert.equal(taskProgress(task).percent, 100);
+});

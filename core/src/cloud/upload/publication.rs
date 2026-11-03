@@ -26,6 +26,7 @@ impl CloudUploads {
                 let attachments = input
                     .attachments
                     .iter()
+                    .filter(|a| a.phase != AttachmentPhase::Omitted)
                     .map(|a| {
                         if a.phase != AttachmentPhase::Uploaded {
                             return Err(Error::State("attachment was not acknowledged"));

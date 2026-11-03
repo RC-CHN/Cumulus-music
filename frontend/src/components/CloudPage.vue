@@ -10,6 +10,7 @@ import { cloudSongColumns } from '../services/cloudSongs';
 import CloudTaskTable from './cloud/CloudTaskTable.vue';
 import CloudTasksToolbar from './cloud/CloudTasksToolbar.vue';
 import CloudTaskRemoveDialog from './cloud/CloudTaskRemoveDialog.vue';
+import CloudAttachmentOmissionDialog from './cloud/CloudAttachmentOmissionDialog.vue';
 import { cloudTaskTarget, type CloudTaskTarget } from '../services/cloudTasks';
 import CloudUploadDialog from './CloudUploadDialog.vue';
 import CloudDeleteDialog from './CloudDeleteDialog.vue';
@@ -25,6 +26,7 @@ import {
   deletionMessage,
   nextCloudSort,
   type CloudUpload,
+  type CloudAttachmentOmission,
   type CloudTrack,
   type CloudQuery,
   type CloudCommand,
@@ -67,7 +69,8 @@ const keyword = ref(query.value.keyword),
   selected = ref(new Set<string>()),
   uploadOpen = ref(false),
   deletion = ref<CloudDeleteTarget>(),
-  taskRemoval = ref<CloudTaskTarget>();
+  taskRemoval = ref<CloudTaskTarget>(),
+  omission = ref<{ epoch: string; id: string; title: string; choice: CloudAttachmentOmission }>();
 const tracks = computed(() => view.value?.tracks ?? []),
   uploads = computed(() => view.value?.uploads ?? []);
 const ids = computed(() =>
@@ -148,7 +151,8 @@ watch(
     !!deletion.value ||
     !!collecting.value ||
     rowDialogOpen.value ||
-    !!taskRemoval.value,
+    !!taskRemoval.value ||
+    !!omission.value,
   (value) => emit('dialog', value),
 );
 watch(
@@ -158,6 +162,7 @@ watch(
     uploadOpen.value = false;
     deletion.value = undefined;
     taskRemoval.value = undefined;
+    omission.value = undefined;
     collecting.value = undefined;
     dialogReturn.value = undefined;
     rowMenu.value?.close();
@@ -304,6 +309,17 @@ function removeTask(task: CloudUpload, origin: HTMLElement | undefined) {
     cloudTaskTarget(props.model.accountEpoch.value, [task], false, query.value.tab === 'history'),
     origin,
   );
+}
+function omitAttachment(task: CloudUpload, origin: HTMLElement) {
+  if (busy.value || !task.omittableAttachment || taskRemoval.value || omission.value) return;
+  dialogOwner.value = props.model.accountEpoch.value;
+  dialogReturn.value = origin;
+  omission.value = {
+    epoch: dialogOwner.value,
+    id: task.id,
+    title: task.title || task.fileName,
+    choice: { ...task.omittableAttachment },
+  };
 }
 async function taskCommand(command: CloudCommand, event?: MouseEvent) {
   const owner = props.model.accountEpoch.value,
@@ -525,8 +541,9 @@ async function taskCommand(command: CloudCommand, event?: MouseEvent) {
         :rows="uploads"
         :offset="view.offset"
         :epoch="model.accountEpoch.value"
-        :disabled="busy || !!taskRemoval"
+        :disabled="busy || !!taskRemoval || !!omission"
         @remove="removeTask"
+        @omit="omitAttachment"
         @command="taskCommand"
         @expired="emit('expired')"
       />
@@ -577,6 +594,18 @@ async function taskCommand(command: CloudCommand, event?: MouseEvent) {
         </button>
       </div>
     </details>
+    <ModalTransition
+      :restore-focus="dialogOwner === model.accountEpoch.value"
+      :fallback-focus="fallbackFocus"
+      :return-focus="() => dialogReturn ?? null"
+    >
+      <CloudAttachmentOmissionDialog
+        v-if="omission"
+        :model="model"
+        :target="omission"
+        @close="omission = undefined"
+      />
+    </ModalTransition>
     <ModalTransition
       :restore-focus="dialogOwner === model.accountEpoch.value"
       :fallback-focus="fallbackFocus"
