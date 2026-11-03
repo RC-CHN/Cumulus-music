@@ -1,0 +1,37 @@
+固定只读搜索到播放桌面探针
+
+  构建示例需要生产前端 dist 供 Tauri 生成上下文，但运行时替换为固定的本地
+  静态页。启动真实 WebView 后只开放一个无参数、单次调用的 IPC，不注册
+  正式应用的账号、续期、写操作和事件插件，也不接受外部脚本或关键词。
+  这证明当前 Rust 搜索投影和原生播放接线，不能当成真实 Vue 搜索界面验收。
+
+  npm --prefix frontend ci
+  npm --prefix frontend run build
+  cargo build --offline --locked -p cumulus-desktop --example search_playback_read --features custom-protocol
+
+  Linux 合成验证（新目录不得已存在；保留系统 locale，桌面初始化后只设 LC_NUMERIC）：
+  LC_ALL=en_US.UTF-8 xvfb-run -a python3 scripts/ci/search_playback_read_smoke.py \
+    --binary .build/target/debug/examples/search_playback_read --root .build/NEW_SYNTHETIC_PROOF
+
+  真实验证需要现有明确授权的 PC 会话副本；不操作原库，不接受有 SQLite sidecar
+  或符号链接的目录/数据库文件。已关闭的一致性副本放在私有目录。
+  LC_ALL=en_US.UTF-8 .build/target/debug/examples/search_playback_read \
+    --live "$CLOSED_PC_PROFILE_COPY" "$NEW_PRIVATE_PROOF"
+
+  live 启动会实际联网：账号身份、综合、单曲、歌曲详情、音源授权各最多一次，
+  只播放固定公开搜索的首个可辨识单曲，标准音质，无自动换曲、重试或续期。
+  原生播放器只接受官方音乐 CDN 的初始 HTTPS 地址；媒体网络不受 API 路径
+  白名单覆盖，不能把探针视作网络沙盒。读取会在私有副本保存服务 Cookie 更新，
+  不会修改提供的副本或账号资源。失败仅给出静态阶段名；不要自动重试。
+  真实和合成均用 mpv null 输出检查同一曲目的时钟前进和停止，不代表声卡听感。
+  report.json 仅含阶段、计数及布尔结果；credential-copy、local-state、
+  WebView 目录和日志一律保留私有，不归档或提交。
+
+  2026-11-03 授权账号只读观察（Linux WebView 初始化后）：综合 11 个区块，
+  单曲页 6 首。账号身份、综合、单曲、歌曲详情、音源授权各读取一次；同一首
+  的原生播放时钟前进，随后停止。mpv 使用 null 输出，未执行远端账号写入。
+  临时凭据副本已清理。未复跑真实请求。
+
+  公开 CI 不启动真实模式。全目标编译可检查示例；合成驱动只接受二进制与
+  输出目录，只以 --synthetic 启动，不接受会话。二进制也拒绝在设有 CI
+  环境变量时使用 --live。
