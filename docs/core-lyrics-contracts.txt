@@ -47,7 +47,10 @@ IPC 的 fromEmbedded 与 fromSidecar 分开。不访问网络或修改音频，�
 不含二进制 SYLT、其他格式内嵌或 NCM 内嵌。下载回退仍只读取受保护的 .lrc。
 Rust 的 lyric_service 使用独立生成的三种音频验证优先级、未访问网络和未改写音频；
 client_local 从真实本地库选择流程验证详情 DTO 与桌面歌词帧。后者使用合成播放引擎，
-不等同于 Tauri 窗口实测。
+另以 desktop_lyrics_smoke.py --embedded 启动真实 Tauri 双窗口与 libmpv：
+Linux Xvfb 实测本地索引、播放时钟、暂停后同一 playId、详情行和桌面歌词行，
+无旁挂文件和在线歌词请求。两张合成截图保存在本机 .build/embedded-lyric-webview-proof/first/；
+CI 在 Linux/Windows 单独运行该用例。音频为 null 输出，物理声卡与实机屏幕未验证。
 
 行为
 LRC 存在且为 JS 真值时优先，空对象也占用 LRC 来源；不能擅自用 YRC 覆盖。
