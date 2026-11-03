@@ -90,7 +90,8 @@ client/downloads装配账号绑定上下文、三路调度和持久文件任务�
 歌单操作在账号命名空间先持久化before与sending，远端结果不明时只读核对，不自动重发。
 播放推送使用Tauri Channel，每窗口单订阅，账号代次校验、迟到订阅/解除和窗口销毁清理。
 不自动读取references会话。
-当前只允许本地 main 窗口。目录选择注册tauri-plugin-dialog，只有原生命令使用其能力；
+业务主命令限于本地 main 窗口；由宿主登记的 mini 与桌面歌词窗口各有独立命令
+白名单。目录选择注册 tauri-plugin-dialog，只有原生命令使用其能力；
 未向WebView授权直接文件/目录选择/shell/HTTP插件调用。打开目录使用平台程序的直接argv。
 
 frontend/
