@@ -67,19 +67,21 @@
     await click(() => button("每日推荐"), "daily navigation");
     await wait(() => one(".daily-heading-copy") && one(".track-row")?.textContent.includes("合成主流程歌曲"), "daily result");
     await stage("daily");
+    const songPanel = '[aria-labelledby="search-tab-songs"]';
+    const songRow = '[data-track-id="1"]';
     async function search() {
       input(one(".searchbox input"), "合成主流程歌曲");
       one(".searchbox").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
       await wait(() => one(".search-heading-copy h1")?.textContent === "合成主流程歌曲", "search title");
       await click(() => one('[data-category="songs"]'), "song results tab");
-      await wait(() => one(".search-result-panel")?.getAttribute("aria-busy") === "false" &&
-        one(".search-result-panel .track-row")?.textContent.includes("合成主流程歌曲"),
+      await wait(() => one(songPanel)?.getAttribute("aria-busy") === "false" &&
+        one(`${songPanel} ${songRow}`)?.textContent.includes("合成主流程歌曲"),
       "search song result");
     }
     await search();
     await stage("search");
-    await click(() => one(".track-play"), "search play control");
-    await wait(() => state() === "playing" && position() >= .1, "native playback clock");
+    await click(() => one(`${songPanel} ${songRow} .track-play`), "search play control");
+    await wait(() => state() === "playing" && one(".playerbar")?.dataset.trackId === "1" && position() >= .1, "native playback clock");
     await click(() => button("暂停", one(".playerbar")), "pause");
     await wait(() => state() === "paused", "native paused");
     await stage("playback", { nativeProgress: true, paused: true, output: "null" });
@@ -121,15 +123,29 @@
     await click(() => one(".download-dialog button.primary"), "save isolated download settings");
     await wait(() => !one(".download-dialog"), "settings saved");
     await search();
-    await click(() => one(".track-more"), "song menu");
+    await click(() => one(`${songPanel} ${songRow} .track-more`), "song menu");
     await click(() => button("下载", one(".song-action-menu")), "download song");
     await click(() => one(".download-dialog button.primary"), "submit download");
+    await click(() => button("下载管理"), "download queue navigation");
+    await click(() => one("#download-tab-active"), "active download tab");
+    await emit("wait_download_prefix");
+    await wait(() => window.__mainFlowPrefixWaiting && one(".download-progress"), "partial download barrier");
+    await click(() => button("全部暂停"), "pause active download");
+    const active = { tab: "active", keyword: "", sort: "completed", descending: true, offset: 0, limit: 100 };
+    const partial = await wait(async () => {
+      const result = await invoke("downloads", { epoch, query: active });
+      return one(".download-progress-status")?.textContent.trim() === "已暂停" &&
+        result.tasks.find(task => task.status === "paused" && task.bytes > 0 && task.bytes < task.total);
+    }, "paused task retains a partial transfer");
+    await stage("download_paused", { taskId: partial.id, bytes: partial.bytes });
+    await wait(() => window.__mainFlowPauseVerified === true, "native partial file checkpoint");
+    await click(() => button("全部下载"), "resume paused download");
     const query = { tab: "completed", keyword: "", sort: "completed", descending: true, offset: 0, limit: 100 };
     const file = await wait(async () => {
       const result = await invoke("downloads", { epoch, query });
       return result.tasks.find(t => !t.cleanupPending);
     }, "published download");
-    check(file.bytes > 0 && file.completedMs && !file.encrypted, "download file readback");
+    check(file.id === partial.id && file.bytes > partial.bytes && file.completedMs && !file.encrypted, "download resumed same task");
     await click(() => one("#download-tab-song"), "completed downloads");
     await wait(() => one('.download-row button[aria-label^="播放下载"]'), "download playback control");
     await stage("download_complete", { bytes: file.bytes });

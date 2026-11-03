@@ -11,7 +11,7 @@ from window_manager import launch
 
 STAGES = (
     'recovered', 'daily', 'search', 'playback', 'playlist_created', 'playlist_edited',
-    'playlist_cleaned', 'download_complete', 'local_offline_playback', 'download_disposed', 'complete',
+    'playlist_cleaned', 'download_paused', 'download_complete', 'local_offline_playback', 'download_disposed', 'complete',
 )
 
 
@@ -55,8 +55,16 @@ def main():
     assert cleaned['fullBaselineRestored'] and not cleaned['fixture']['disposablePresent']
     assert cleaned['fixture']['calls']['/api/playlist/create'] == 1
     assert cleaned['fixture']['calls']['/api/playlist/delete'] == 1
+    paused = stages['download_paused']
+    assert paused['fixture']['mediaRequests'] == [[0, False]]
+    assert paused['bytes'] > 0 and paused['audit'] == {
+        'id': paused['taskId'], 'prefixBytes': paused['bytes'], 'prefixVerified': True,
+    }
     downloaded = stages['download_complete']
-    assert downloaded['bytes'] > 0 and downloaded['fixture']['mediaTransfers'] == 1
+    assert downloaded['bytes'] > paused['bytes'] and downloaded['fixture']['mediaTransfers'] == 2
+    assert downloaded['fixture']['mediaRequests'] == [[0, False], [paused['bytes'], False]]
+    assert downloaded['audit']['id'] == paused['taskId']
+    assert downloaded['fixture']['calls']['/api/song/enhance/download/url/v1'] == 2
     proof = downloaded['audit']
     assert proof['file'] == proof['taskIntegrity'] == proof['ledgerIntegrity']
     assert proof['file']['bytes'] == downloaded['bytes'] and len(proof['file']['sha256']) == 64
@@ -102,7 +110,8 @@ def main():
     screenshots = len(list(output.glob('ux_*.png')))
     assert screenshots == (len(STAGES) - 1 if args.screenshots else 0)
     report = dict(ok=True, actualWebView=True, actualLibmpv=True, stages=len(STAGES), screenshots=screenshots, sqliteVerified=True,
-                  realMusicRequests=0, realAccountWrites=0, syntheticOfflinePlayback=True, nativeDownloadDisposal=True, downloadIntegrityCheckpoint=True)
+                  realMusicRequests=0, realAccountWrites=0, syntheticOfflinePlayback=True, nativeDownloadDisposal=True, downloadIntegrityCheckpoint=True,
+                  pausedPartialAndVerifiedRangeResume=True)
     (root/'report.json').write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
     print(json.dumps(report))
 

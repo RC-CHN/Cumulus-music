@@ -63,6 +63,36 @@ fn checkpoint(store: &StateStore, media: &Path, seed: &Path) -> Result<Value> {
         "source":source}))
 }
 
+fn paused(store: &StateStore, id: &Value) -> Result<Value> {
+    let (tasks, transfers) = store.transaction(|tx| {
+        Ok((
+            tx.values(OWNER, TASKS)?,
+            tx.values(OWNER, "media_transfers_v1")?,
+        ))
+    })?;
+    let (Some((task_id, task)), Some((_, transfer))) =
+        (tasks.first_key_value(), transfers.first_key_value())
+    else {
+        return Err(Error::State("missing paused task and transfer"));
+    };
+    let path = transfer["part"]
+        .as_str()
+        .ok_or(Error::State("missing partial path"))?;
+    if tasks.len() != 1
+        || transfers.len() != 1
+        || id.as_str() != Some(task_id.as_str())
+        || task["status"] != "paused"
+        || transfer["status"] != "paused"
+        || transfer["bytes"] != fixture::media::PREFIX
+        || fs::metadata(path)?.len() != fixture::media::PREFIX as u64
+        || fs::read(path)? != fixture::media::DATA[..fixture::media::PREFIX]
+        || !store.values(OWNER, LEDGER)?.is_empty()
+    {
+        return Err(Error::State("synthetic pause checkpoint mismatch"));
+    }
+    Ok(json!({"id":id,"prefixBytes":fixture::media::PREFIX,"prefixVerified":true}))
+}
+
 fn disposed(store: &StateStore, media: &Path, checkpoint: &Value) -> Result<Value> {
     let relative = checkpoint["relative"]
         .as_str()
@@ -124,9 +154,9 @@ fn main() {
     ));
     cumulus_desktop::configure(tauri::Builder::default())
         .setup(move |app| {
-            let fixture = Arc::new(fixture::Service::default());
             let registry = ProfileRegistry::open(&root.join("state"), ApiOrigin::Pc)?;
             let store = registry.store();
+            let fixture = Arc::new(fixture::Service::new(store.clone()));
             let session = Arc::new(AccountSession::new(fixture.clone(), Some(store.clone())));
             let audio_path = downloads.clone();
             let audio_fixture = fixture.clone();
@@ -142,15 +172,30 @@ fn main() {
             app.listen("ux-proof", move |event| {
                 let Ok(mut value) = serde_json::from_str::<Value>(event.payload()) else { return };
                 let Some(stage) = value["stage"].as_str().map(str::to_owned) else { return };
+                if stage == "wait_download_prefix" {
+                    let fixture = fixture.clone();
+                    let handle = handle.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(12);
+                        while !fixture.media.prefix_waiting() && std::time::Instant::now() < deadline {
+                            tokio::time::sleep(std::time::Duration::from_millis(15)).await;
+                        }
+                        if fixture.media.prefix_waiting() {
+                            handle.get_webview_window("main").unwrap().eval("window.__mainFlowPrefixWaiting=true;").unwrap();
+                        }
+                    });
+                    return;
+                }
                 if stage == "disconnect" {
                     fixture.offline();
                     handle.get_webview_window("main").unwrap().eval("window.__mainFlowOffline=true;").unwrap();
                     return;
                 }
-                if !["ux_recovered","ux_daily","ux_search","ux_playback","ux_playlist_created","ux_playlist_edited","ux_playlist_cleaned","ux_download_complete","ux_local_offline_playback","ux_download_disposed","complete","failed"].contains(&stage.as_str()) { return; }
+                if !["ux_recovered","ux_daily","ux_search","ux_playback","ux_playlist_created","ux_playlist_edited","ux_playlist_cleaned","ux_download_paused","ux_download_complete","ux_local_offline_playback","ux_download_disposed","complete","failed"].contains(&stage.as_str()) { return; }
                 let client = handle.state::<MusicClient>();
                 value["authenticated"] = json!(client.account().is_ok_and(|v| v.status == cumulus_core::account::SessionStatus::Authenticated));
                 let audit = match stage.as_str() {
+                    "ux_download_paused" => paused(&store, &value["taskId"]),
                     "ux_download_complete" => checkpoint(&store, &downloads, &checkpoint_seed),
                     "ux_download_disposed" => fs::read(out.join("ux_download_complete.json"))
                         .map_err(Error::from).and_then(|bytes| Ok(serde_json::from_slice::<Value>(&bytes)?))
@@ -166,6 +211,7 @@ fn main() {
                 value["fixture"] = fixture.facts();
                 fs::write(out.join(format!("{stage}.json")), serde_json::to_vec_pretty(&value).unwrap()).unwrap();
                 let acknowledgement = match stage.as_str() {
+                    "ux_download_paused" => Some("window.__mainFlowPauseVerified=true;"),
                     "ux_download_complete" => Some("window.__mainFlowDownloadVerified=true;"),
                     "ux_download_disposed" => Some("window.__mainFlowDownloadDisposed=true;"),
                     _ => None,

@@ -1,10 +1,11 @@
 //! Closed synthetic fixture: no transport fallback, immutable baseline playlist.
-#[path = "cloud_batch_media.rs"]
+#[path = "main_flow_media.rs"]
 pub mod media;
 use cumulus_core::{
     Error, Result,
     playback::engine::*,
     protocol::api::{Api, ApiFuture},
+    storage::StateStore,
 };
 use serde_json::{Value, json};
 use std::{
@@ -20,8 +21,8 @@ const ORIGINAL: u64 = 41;
 const CREATED: u64 = 42;
 pub const SOURCE: &str = media::URL;
 
-#[derive(Default)]
 pub struct Service {
+    pub media: media::Media,
     calls: Mutex<BTreeMap<String, u64>>,
     playlist: Mutex<Option<Value>>,
     offline: AtomicBool,
@@ -31,12 +32,24 @@ pub struct Service {
 }
 
 impl Service {
+    pub fn new(store: Arc<StateStore>) -> Self {
+        Self {
+            media: media::Media::new(store),
+            calls: Default::default(),
+            playlist: Default::default(),
+            offline: Default::default(),
+            local_loads: Default::default(),
+            source_loads: Default::default(),
+            offline_media_attempts: Default::default(),
+        }
+    }
     pub fn offline(&self) {
         self.offline.store(true, Ordering::Release);
     }
     pub fn facts(&self) -> Value {
+        let media = self.media.facts();
         json!({"calls":*self.calls.lock().unwrap(), "disposablePresent":self.playlist.lock().unwrap().is_some(),
-            "offline":self.offline.load(Ordering::Acquire), "mediaTransfers":media::requests(),
+            "offline":self.offline.load(Ordering::Acquire), "mediaTransfers":media["count"], "mediaRequests":media["requests"],
             "sourceLoads":self.source_loads.load(Ordering::Acquire), "localLoads":self.local_loads.load(Ordering::Acquire),
             "offlineMediaAttempts":self.offline_media_attempts.load(Ordering::Acquire)})
     }
@@ -86,7 +99,7 @@ impl Api for Service {
                     json!({"code":200,"data":[{"id":1,"url":SOURCE,"code":200,"md5":"synthetic","level":"standard","expi":120}]})
                 }
                 "/api/song/enhance/download/url/v1" => {
-                    json!({"code":200,"data":{"id":1,"url":SOURCE,"code":200,"type":"flac","size":media::DATA.len(),"level":"lossless"}})
+                    json!({"code":200,"data":{"id":1,"url":SOURCE,"code":200,"type":"flac","size":media::DATA.len(),"md5":media::MD5,"level":"lossless"}})
                 }
                 "/api/v6/playlist/detail" => {
                     let list = match identifier(&p["id"]) {
@@ -247,7 +260,7 @@ impl cumulus_core::download::transfer::MediaBackend for Service {
                 self.offline_media_attempts.fetch_add(1, Ordering::AcqRel);
                 return Err(Error::Transport("synthetic media is disconnected".into()));
             }
-            media::Backend.get(request).await
+            self.media.get(request)
         })
     }
 }
