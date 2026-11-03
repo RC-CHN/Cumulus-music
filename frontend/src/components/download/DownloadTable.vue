@@ -6,7 +6,7 @@ import type {
   DownloadSort,
   DownloadControl,
 } from '../../services/downloads';
-import { bytesLabel, downloadStatus } from '../../services/downloads';
+import { bytesLabel, downloadPlaybackReady, downloadStatus } from '../../services/downloads';
 import { downloadDate, downloadSection, downloadTableColumns } from '../../services/downloadPage';
 import { useVirtualRows } from '../../composables/useVirtualRows';
 import DownloadTrackTitle from './DownloadTrackTitle.vue';
@@ -117,7 +117,8 @@ async function key(event: KeyboardEvent, index: number) {
   if (!task) return;
   if (event.key === 'Enter' || event.key === ' ') {
     event.preventDefault();
-    if (!active.value && props.playable && event.key === 'Enter') emit('play', task);
+    if (!active.value && props.playable && downloadPlaybackReady(task) && event.key === 'Enter')
+      emit('play', task);
     return;
   }
   if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
@@ -217,7 +218,7 @@ async function key(event: KeyboardEvent, index: number) {
         @keydown.self="key($event, start + i)"
         @keydown="menu?.show($event, task)"
         @contextmenu="menu?.show($event, task)"
-        @dblclick="!active && playable && emit('play', task)"
+        @dblclick="!active && playable && downloadPlaybackReady(task) && emit('play', task)"
       >
         <span role="cell" class="download-index"
           ><span class="download-index-number">{{
@@ -226,7 +227,7 @@ async function key(event: KeyboardEvent, index: number) {
           ><button
             v-if="!active"
             class="icon-button download-index-play"
-            :disabled="!playable"
+            :disabled="!playable || !downloadPlaybackReady(task)"
             :aria-label="`播放下载 ${task.track.name}`"
             @click.stop="emit('play', task)"
             @dblclick.stop

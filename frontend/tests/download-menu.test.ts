@@ -75,3 +75,9 @@ test('a read failure locks destructive and playback choices, FM only locks inser
   assert.equal(items.find((i) => i.key === 'next')?.disabled, true);
   assert.equal(items.find((i) => i.key === 'play')?.disabled, false);
 });
+
+test('a completed row with no published path cannot play or enter the queue', () => {
+  const actions = downloadMenuItems({ ...task, path: null }, state);
+  for (const key of ['play', 'next'])
+    assert.equal(actions.find((item) => item.key === key)?.disabled, true);
+});

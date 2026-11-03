@@ -1,4 +1,4 @@
-import type { DownloadTask } from './downloads.ts';
+import { downloadPlaybackReady, type DownloadTask } from './downloads.ts';
 import type { MenuItem } from './menu.ts';
 import { songLink } from './trackMenu.ts';
 
@@ -24,8 +24,18 @@ export function downloadMenuItems(task: DownloadTask, state: DownloadMenuState):
   const link = !voice && songLink(task.track);
   const filesBlocked = blocked || task.cleanupPending;
   return [
-    { key: 'play', label: '播放', icon: 'play', disabled: blocked || !state.playable },
-    { key: 'next', label: '下一首播放', icon: 'next', disabled: blocked || !state.queueable },
+    {
+      key: 'play',
+      label: '播放',
+      icon: 'play',
+      disabled: blocked || !state.playable || !downloadPlaybackReady(task),
+    },
+    {
+      key: 'next',
+      label: '下一首播放',
+      icon: 'next',
+      disabled: blocked || !state.queueable || !downloadPlaybackReady(task),
+    },
     ...(!voice || task.track.voiceId
       ? [{ key: 'comments', label: '查看评论', icon: 'comment', disabled: state.locked }]
       : []),

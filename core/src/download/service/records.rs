@@ -1,10 +1,11 @@
 use super::files::{Artifact, Identity};
 use crate::{
-    download::transfer::TransferIntegrity, media::integrity::FileIntegrity, membership::Quality,
+    Error, Result, download::transfer::TransferIntegrity, media::integrity::FileIntegrity,
+    membership::Quality,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -152,4 +153,18 @@ pub struct DownloadTask {
     pub(in crate::download) prepared: Option<Artifact>,
     pub(in crate::download) cover: Option<Artifact>,
     pub(in crate::download) lyric: Option<Artifact>,
+}
+
+impl DownloadTask {
+    pub(crate) fn playback_target(&self) -> Result<&Path> {
+        if self.status != DownloadStatus::Complete {
+            return Err(Error::State("download is not complete"));
+        }
+        if self.file_operation.is_some() {
+            return Err(Error::MutationBusy);
+        }
+        self.target
+            .as_deref()
+            .ok_or(Error::State("download target missing"))
+    }
 }

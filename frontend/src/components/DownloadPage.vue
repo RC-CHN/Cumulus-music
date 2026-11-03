@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue';
 import type { DownloadModel } from '../composables/useDownloads';
+import { downloadPlaybackReady } from '../services/downloads';
 import type { DownloadDialogTarget, DownloadTask, DownloadQuery } from '../services/downloads';
 import type { PlaySelection } from '../services/player';
 import {
@@ -105,13 +106,14 @@ const canPlay = computed(
     !locked.value &&
     !props.preparing &&
     props.playable &&
-    tasks.value.some((t) => t.source !== 'mv'),
+    tasks.value.some((t) => t.source !== 'mv' && downloadPlaybackReady(t)),
 );
 function changeSection(value: DownloadSection) {
   if (value === section.value) return;
   props.model.filter(downloadSectionQuery(value));
 }
 function play(task?: DownloadTask) {
+  if (task && !downloadPlaybackReady(task)) return;
   if (task?.source === 'mv') {
     emit('playMv', task);
     return;

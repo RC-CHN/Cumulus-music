@@ -182,3 +182,7 @@ export function bytesLabel(bytes: number | null): string {
 export function accountCanDownload(account: AccountView) {
   return account.status === 'authenticated';
 }
+
+export function downloadPlaybackReady(task: DownloadTask): boolean {
+  return task.status === 'complete' && !!task.path && !task.fileOperation;
+}

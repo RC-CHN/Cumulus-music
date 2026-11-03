@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, ref, shallowRef } from 'vue';
 import type { AccountView, PlaylistView } from '../../services/contracts';
 import { failure } from '../../services/contracts';
-import type { DownloadQuery } from '../../services/downloads';
+import { downloadPlaybackReady, type DownloadQuery } from '../../services/downloads';
 import type { BatchCategory } from '../../services/downloadBatch';
 import type { DownloadModel } from '../../composables/useDownloads';
 import type { PlaylistManager } from '../../composables/usePlaylists';
@@ -50,6 +50,7 @@ const locked = computed(
     !!error.value,
 );
 const usable = computed(() => chosen.value.length > 0 && !locked.value);
+const playableSelection = computed(() => usable.value && chosen.value.every(downloadPlaybackReady));
 const collectable = computed(() =>
   chosen.value.map((t) => t.track).filter((t) => !t.local && !t.missing),
 );
@@ -82,7 +83,7 @@ function withinLimit() {
   return false;
 }
 async function play(queue: boolean) {
-  if (!usable.value || !withinLimit()) return;
+  if (!playableSelection.value || !withinLimit()) return;
   const ids = chosen.value.map((t) => t.id);
   acting.value = true;
   failed.value = false;
@@ -176,7 +177,7 @@ defineExpose({ requestLeave });
           class="primary batch-play"
           aria-label="播放所选下载"
           title="播放所选下载"
-          :disabled="!usable || !player.ready.value || player.busy.value"
+          :disabled="!playableSelection || !player.ready.value || player.busy.value"
           @click="play(false)"
         >
           <Icon name="play" />
@@ -185,7 +186,7 @@ defineExpose({ requestLeave });
           class="batch-queue"
           :title="player.view.value?.fm ? '私人漫游期间请先切换到普通播放队列' : undefined"
           :disabled="
-            !usable ||
+            !playableSelection ||
             !player.ready.value ||
             player.queueBusy.value ||
             player.busy.value ||

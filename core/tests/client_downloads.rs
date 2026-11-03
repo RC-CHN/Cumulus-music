@@ -1027,3 +1027,85 @@ async fn batch_file_delete_reports_partial_completion_and_does_not_follow_a_chan
     assert!(!other_path.exists());
     assert_eq!(fs::read(path).unwrap(), b"replacement data");
 }
+
+#[tokio::test]
+async fn file_operations_block_direct_and_queued_download_playback_but_not_other_downloads() {
+    use cumulus_core::{
+        library::LocalLibrary,
+        playback::{QueueSnapshot, source::SourceResolver},
+    };
+    let f = Fixture::new();
+    let (id, _) = f.completed().await;
+    f.client
+        .play_downloads("1", vec![id.clone()], 0)
+        .await
+        .unwrap();
+    f.client
+        .player_action("1", PlayerAction::Stop)
+        .await
+        .unwrap();
+    let before: QueueSnapshot =
+        serde_json::from_value(f.store.get("1", "playback", "queue").unwrap().unwrap()).unwrap();
+    let resource = &before.items[0].resource;
+    let mut task = f.store.get("1", "download_tasks_v1", &id).unwrap().unwrap();
+    let original = task.clone();
+    task["file_operation"] = json!("synthetic-move-journal");
+    f.store.put("1", "download_tasks_v1", &id, &task).unwrap();
+    assert!(matches!(
+        f.client.play_downloads("1", vec![id.clone()], 0).await,
+        Err(Error::MutationBusy)
+    ));
+    let resolver = SourceResolver::new(
+        f.session.clone(),
+        Some(Arc::new(LocalLibrary::new(f.store.clone()).unwrap())),
+    );
+    assert!(matches!(
+        resolver
+            .resolve(resource, &f.session.token().unwrap())
+            .await,
+        Err(Error::MutationBusy)
+    ));
+    // A different displayed record is being moved; the available original
+    // must still start when playing the whole filtered results.
+    let blocked_id = "synthetic-other-download";
+    task["id"] = json!(blocked_id);
+    f.store
+        .put("1", "download_tasks_v1", blocked_id, &task)
+        .unwrap();
+    let mut ready = original;
+    // A completed audio file can still be playable while sidecar cleanup is
+    // pending; the independently verified ledger remains authoritative.
+    ready["cleanup_pending"] = json!(true);
+    f.store.put("1", "download_tasks_v1", &id, &ready).unwrap();
+    let query = DownloadQuery {
+        tab: DownloadTab::Completed,
+        category: DownloadCategory::Song,
+        ..Default::default()
+    };
+    assert!(matches!(
+        f.client
+            .play_selection(
+                "1",
+                PlaySelection::Downloads {
+                    query: query.clone(),
+                    start_id: Some(blocked_id.into())
+                }
+            )
+            .await,
+        Err(Error::StaleResponse)
+    ));
+    let playing = f
+        .client
+        .play_selection(
+            "1",
+            PlaySelection::Downloads {
+                query,
+                start_id: None,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(playing.queue_len, 1);
+    assert_eq!(playing.actual_quality.as_deref(), Some("lossless"));
+    assert_eq!(f.api.count("player/url"), 0);
+}

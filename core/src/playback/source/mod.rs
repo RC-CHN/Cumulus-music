@@ -168,20 +168,19 @@ impl SourceResolver {
         // selection, queue advance and restore, including encrypted membership.
         let mut quality = None;
         let mut downloaded_gain = None;
+        let mut download_recheck = None;
         if let Some(id) = resource.get("download_task_id") {
             let id = id
                 .as_str()
                 .ok_or(Error::InvalidInput("invalid download task reference"))?;
-            let task =
-                crate::download::service::DownloadService::new(self.session.clone())?.get(id)?;
+            let service = crate::download::service::DownloadService::new(self.session.clone())?;
+            let task = service.get(id)?;
             let path = std::path::Path::new(
                 resource["path"]
                     .as_str()
                     .ok_or(Error::InvalidInput("invalid downloaded path"))?,
             );
-            if task.status != crate::download::service::DownloadStatus::Complete
-                || task.target.as_deref() != Some(path)
-            {
+            if task.playback_target()? != path {
                 return Err(Error::State("download reference changed"));
             }
             let check = crate::download::offline::OfflineLibrary::new(self.session.clone())?
@@ -195,6 +194,12 @@ impl SourceResolver {
             } else {
                 Some(check.record.quality.as_str().to_owned())
             };
+            download_recheck = Some((
+                service,
+                id.to_owned(),
+                path.to_owned(),
+                task.output_integrity,
+            ));
             downloaded_gain = task
                 .resource
                 .as_ref()
@@ -263,6 +268,12 @@ impl SourceResolver {
         })
         .await
         .map_err(|_| Error::State("local source worker failed"))??;
+        if let Some((service, id, path, integrity)) = download_recheck {
+            let latest = service.get(&id)?;
+            if latest.playback_target()? != path || latest.output_integrity != integrity {
+                return Err(Error::State("download reference changed"));
+            }
+        }
         if let Some(quality) = quality {
             source.info["resource_info"] = json!({"level": quality});
         }

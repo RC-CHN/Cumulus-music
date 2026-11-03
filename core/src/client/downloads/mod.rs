@@ -248,8 +248,7 @@ impl MusicClient {
             for id in ids {
                 let task=context.service.get(&id)?;
                 if task.origin.is_mv(){return Err(Error::State("MV downloads require the video player"));}
-                if task.status!=crate::download::service::DownloadStatus::Complete{return Err(Error::State("download is not complete"));}
-                let path=task.target.ok_or(Error::State("download target missing"))?;
+                let path=task.playback_target()?;
                 let metadata = task.song.as_ref().ok_or(Error::State("download metadata missing"))?;
                 let track=super::mapping::track(metadata)?;
                 resources.push(serde_json::json!({"id":task.song_id,"cloud_song_id":if task.origin.is_cloud(){Some(task.song_id.clone())}else{None},"download_task_id":task.id,"path":path,"dt":track.duration_ms,
@@ -304,7 +303,7 @@ impl MusicClient {
         let ids: Vec<_> = view
             .tasks
             .into_iter()
-            .filter(|t| t.source != "mv")
+            .filter(|t| t.source != "mv" && t.file_operation.is_none() && t.path.is_some())
             .map(|t| t.id)
             .collect();
         let index = match start_id {
