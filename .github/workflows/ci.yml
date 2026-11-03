@@ -577,7 +577,7 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --correction-original --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-correction-original-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --people-categories --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-people-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/effect_directory_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-effect-directory-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/daily_history_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-daily-history-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/daily_history_smoke.py --birthday --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-daily-history-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_cards_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-cards-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_preview_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-preview-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_lyrics_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-lyrics-linux
