@@ -131,6 +131,40 @@
   white-space: nowrap;
   flex: 1;
 }
+.local-folder-row {
+  display: flex;
+  align-items: center;
+  padding-inline-start: calc(var(--folder-depth) * 9px);
+}
+.local-groups .local-folder-toggle,
+.local-folder-spacer {
+  flex: 0 0 24px;
+}
+.local-groups .local-folder-toggle {
+  display: grid;
+  width: 24px;
+  min-height: 32px;
+  place-items: center;
+  padding: 0;
+}
+.local-folder-toggle .icon {
+  width: 14px;
+  height: 14px;
+}
+.local-folder-toggle[aria-expanded='false'] .icon {
+  transform: rotate(-90deg);
+}
+.local-groups .local-folder-select {
+  flex: 1;
+  min-width: 0;
+  padding-inline: 4px;
+  gap: 4px;
+}
+.local-folder-select .icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
 .local-tracks {
   flex: 1;
   min-width: 0;

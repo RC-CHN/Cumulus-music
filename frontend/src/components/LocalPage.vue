@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, computed, nextTick } from 'vue';
+import { ref, computed, nextTick, shallowRef, watch } from 'vue';
 import Icon from './Icon.vue';
 import ActionMenu from './ActionMenu.vue';
 import { failure } from '../services/contracts';
 import LocalMatchDialog from './LocalMatchDialog.vue';
+import LocalFolderGroups from './LocalFolderGroups.vue';
 import type { LocalMatchingModel } from '../composables/useLocalMatching';
 import type { LocalModel } from '../composables/useLocal';
 import { useLocalSearch } from '../composables/useLocalSearch';
@@ -27,6 +28,37 @@ const { keyword } = search;
 const searchInput = ref<HTMLInputElement>();
 const pageRoot = ref<HTMLElement>();
 const ownsVisit = props.model.captureVisit();
+const expandedFolders = shallowRef(new Set<string>());
+let folderFocus: string | undefined;
+function selectFolder(key: string) {
+  if (
+    document.activeElement instanceof HTMLElement &&
+    document.activeElement.dataset.localFolderKey === key
+  )
+    folderFocus = key;
+  props.model.filter({ groupKey: key });
+}
+watch(
+  [view, readError, query],
+  () => {
+    if (folderFocus === undefined) return;
+    const key = folderFocus;
+    if (query.value.group !== 'folder' || query.value.groupKey !== key) {
+      folderFocus = undefined;
+      return;
+    }
+    if (!view.value && !readError.value) return;
+    folderFocus = undefined;
+    if (!ownsVisit() || document.activeElement !== document.body) return;
+    const target =
+      Array.from(
+        pageRoot.value?.querySelectorAll<HTMLButtonElement>('[data-local-folder-key]') ?? [],
+      ).find((node) => node.dataset.localFolderKey === key) ?? searchInput.value;
+    target?.focus({ preventScroll: true });
+    target?.scrollIntoView({ block: 'nearest' });
+  },
+  { flush: 'post' },
+);
 const readLocked = computed(() => loading.value || !!readError.value || !view.value);
 const canPlay = computed(
   () => props.playable && !busy.value && !readLocked.value && !!view.value?.playable,
@@ -335,17 +367,28 @@ function status(root: LocalRoot) {
     <div v-else class="local-browser">
       <aside v-if="query.group !== 'list'" class="local-groups" aria-label="本地分组">
         <button :aria-pressed="query.groupKey === null" @click="model.filter({ groupKey: null })">
-          全部</button
-        ><button
-          v-for="group in view?.groups"
-          :key="group.key"
-          :aria-pressed="query.groupKey === group.key"
-          :title="group.name"
-          @click="model.filter({ groupKey: group.key })"
-        >
-          <span>{{ group.name }}</span
-          ><small>{{ group.count }}</small>
+          全部
         </button>
+        <LocalFolderGroups
+          v-if="query.group === 'folder'"
+          v-model:expanded="expandedFolders"
+          :groups="view?.groups ?? []"
+          :selected="query.groupKey"
+          :searching="!!query.keyword.trim()"
+          @select="selectFolder"
+        />
+        <template v-else>
+          <button
+            v-for="group in view?.groups"
+            :key="group.key"
+            :aria-pressed="query.groupKey === group.key"
+            :title="group.name"
+            @click="model.filter({ groupKey: group.key })"
+          >
+            <span>{{ group.name }}</span
+            ><small>{{ group.count }}</small>
+          </button>
+        </template>
       </aside>
       <div class="local-tracks">
         <table>

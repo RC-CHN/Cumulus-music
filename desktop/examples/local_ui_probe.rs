@@ -150,6 +150,15 @@ fn main() {
     if !reopen {
         fs::create_dir(&root).expect("new proof root");
         fixtures(&root, cold).expect("generated local fixtures");
+        if queue {
+            let media = root.join("media");
+            fs::create_dir(media.join("Bonus")).expect("synthetic nested directory");
+            fs::copy(
+                media.join("雨声.wav"),
+                media.join("Bonus").join("Bonus Track.wav"),
+            )
+            .expect("synthetic nested audio file");
+        }
     }
     let setup = root.clone();
     cumulus_desktop::configure(tauri::Builder::default()).setup(move|app|{

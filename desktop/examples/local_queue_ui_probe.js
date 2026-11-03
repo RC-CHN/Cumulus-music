@@ -44,7 +44,29 @@
     click(button('本地音乐'));
     await wait(() => one('.local-page'), 'local page');
     await invoke('local_command', { command: { kind: 'watch', path: window.__localProof.root + '/media' } });
-    await wait(() => document.querySelectorAll('.local-tracks tbody tr').length === 4, 'native file scan');
+    const trackRows = () => [...document.querySelectorAll('.local-tracks tbody tr')];
+    await wait(() => trackRows().length === 5, 'native file scan');
+    click(button('文件夹'));
+    const toggle = () => one('.local-folder-toggle');
+    const nested = () => [...document.querySelectorAll('[data-local-folder-key]')]
+      .find(node => node.title.endsWith('Bonus'));
+    await wait(() => toggle() && trackRows().length === 5, 'folder groups');
+    assert(toggle().getAttribute('aria-expanded') === 'false' && !nested(), 'nested folder starts collapsed');
+    click(toggle());
+    assert(document.activeElement === toggle(), 'disclosure retains focus');
+    await wait(() => nested() && toggle().getAttribute('aria-expanded') === 'true', 'nested folder expanded');
+    assert(trackRows().length === 5, 'disclosure does not filter songs');
+    click(nested());
+    await wait(() => nested()?.getAttribute('aria-pressed') === 'true' &&
+      document.activeElement === nested() && trackRows().length === 1 &&
+      trackRows()[0].textContent.includes('Bonus Track'), 'exact nested folder and restored focus');
+    click(toggle());
+    await wait(() => !nested() && toggle()?.getAttribute('aria-expanded') === 'false', 'nested folder collapsed');
+    assert(trackRows().length === 1, 'collapse retains the selected folder query');
+    await filter('Bonus', 1);
+    await wait(() => nested() && !toggle(), 'search presents a flat folder result');
+    click(button('歌曲'));
+    await wait(() => trackRows().length === 5, 'songs tab resets folder filter');
     await filter('夜行 · 下篇', 1);
     await add();
     await wait(() => one('.playerbar [aria-label="暂停"]') && Number(one('[aria-label="播放进度"]')?.value) > 0.1, 'empty queue starts native CUE');
@@ -64,7 +86,7 @@
       after.state === before.state && Math.abs(after.position - before.position) < 0.05, 'retain paused playback');
     assert(document.documentElement.scrollWidth <= innerWidth &&
       one('.local-page').scrollWidth <= one('.local-page').clientWidth + 1, 'no horizontal clipping');
-    await emit('complete', { ok: true, queue: names, retainedPlayback: true, realMusicRequests: 0, audioOutput: 'null', width: innerWidth });
+    await emit('complete', { ok: true, queue: names, retainedPlayback: true, folderTree: true, realMusicRequests: 0, audioOutput: 'null', width: innerWidth });
   } catch (error) {
     await emit('failed', { message: String(error) });
   }
