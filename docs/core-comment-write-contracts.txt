@@ -161,3 +161,10 @@ python3 desktop/examples/audit_comment_edit_probe.py COMPLETED_PROOF_ROOT
 楼层真实只读另用comment_floor_roundtrip，参数PC_PROFILE NEW_PRIVATE_ROOT TRACK_ID COMMENT_ID；
 必须显式传入已获授权的独立PC会话，不自动寻找references会话。
 Python仅用于离线独立审计与截图驱动，不是Rust核心业务的运行依赖。
+
+评论表情输入
+官方 TextArea/emojiList.jsx 的 60 个表情名称按原顺序分两页（32 / 28）。
+TextArea/index.jsx 以 [名称] 替换光标选区，并把光标放在表情后。Cumulus
+使用系统字形预览，未复用官方贴图，也不发送单独的表情图片 ID 或请求。
+普通发布和回复沿用原有 UTF-16 字数检查和提交日志。桌面合成探针核对两页、
+Esc 返回焦点、选区替换与光标，并确认发布 IPC/Rust 请求和重开回读保留原始 token。

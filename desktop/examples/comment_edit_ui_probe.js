@@ -24,7 +24,7 @@
   const card = id => el(`[data-group="page"] [data-comment-id="${id}"]`);
   const current = id => el(`[data-group="current"] [data-comment-id="${id}"]`);
   const pending = () => el('.comment-write-pending');
-  const ready = () => el('.comment-compose-footer button') && !el('[aria-label="评论内容"]').disabled;
+  const ready = () => el('.comment-compose-footer button.primary') && !el('[aria-label="评论内容"]').disabled;
   const stage = async (name, detail = {}) => {
     await sleep(350);
     const dialog = el('dialog'), rect = dialog?.getBoundingClientRect();
@@ -36,7 +36,7 @@
       currentIds: all('[data-group="current"] .comment-card').map(n => n.dataset.commentId)});
     await wait(() => window.__editAck === name, 'native_ack'); await sleep(850);
   };
-  const publish = async value => {fill(value); await sleep(80); await click(el('.comment-compose-footer button'));};
+  const publish = async value => {fill(value); await sleep(80); await click(el('.comment-compose-footer button.primary'));};
   const confirmed = async id => wait(() => ready() && !pending() && current(id), 'confirmed_' + id);
   let step = 'boot';
   try {
@@ -48,7 +48,7 @@
     if (window.__editProof.reopen) {
       step = 'reopen_pending';
       await wait(() => pending()?.textContent.includes('丢失回包后保留责任'), 'pending_restored');
-      if (!el('.comment-compose-footer button').disabled) throw Error('pending_allows_new_publish');
+      if (!el('.comment-compose-footer button.primary').disabled) throw Error('pending_allows_new_publish');
       await stage('edit_reopen_pending');
       await click(button('核对提交结果', pending()));
       await wait(() => button('核对提交结果', pending()) && !button('核对提交结果', pending()).disabled, 'read_only_reconcile');
@@ -73,13 +73,13 @@
       await stage('edit_reopen_deleted');
     } else {
       step = 'text_validation';
-      if (!el('.comment-compose-footer button').disabled) throw Error('empty_submission_enabled');
+      if (!el('.comment-compose-footer button.primary').disabled) throw Error('empty_submission_enabled');
       await stage('edit_composer');
       fill('🎵'.repeat(500) + 'a'); await sleep(80);
-      if (!el('.comment-compose-footer button').disabled || !el('.overlength')?.textContent.includes('1001')) throw Error('utf16_bound');
+      if (!el('.comment-compose-footer button.primary').disabled || !el('.overlength')?.textContent.includes('1001')) throw Error('utf16_bound');
       await stage('edit_unicode_limit', {utf16Length: draft().length});
       fill('  \n\t'); await sleep(80);
-      if (!el('.comment-compose-footer button').disabled) throw Error('whitespace_submission_enabled');
+      if (!el('.comment-compose-footer button.primary').disabled) throw Error('whitespace_submission_enabled');
       fill('');
       step = 'floor';
       await click(button('查看回复', card('102')));
@@ -92,7 +92,25 @@
       await wait(() => all('.comment-floor-panel .comment-card').length === 21, 'floor_back');
       await click(button('收起回复'));
       step = 'publish';
-      await publish(' 第一条评论 🎵\n保留原始空白 '); await confirmed('9000');
+      const field = el('[aria-label="评论内容"]');
+      const trigger = el('.emoji-trigger');
+      fill(' 第一条评论 🎵替换\n保留原始空白 ');
+      await sleep(80);
+      const insertAt = draft().indexOf('替换');
+      field.focus(); field.setSelectionRange(insertAt, insertAt + 2);
+      await click(trigger);
+      await wait(() => all('.emoji-option').length === 32, 'emoji_first_page');
+      await click(el('[aria-label="表情第 2 页"]'));
+      await wait(() => all('.emoji-option').length === 28 && el('.emoji-option[aria-label="便便"]'), 'emoji_second_page');
+      document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true}));
+      await wait(() => !el('.emoji-picker') && document.activeElement === trigger, 'emoji_escape_focus');
+      await click(trigger);
+      await click(el('.emoji-option[aria-label="大笑"]'));
+      await wait(() => draft() === ' 第一条评论 🎵[大笑]\n保留原始空白 ' && document.activeElement === field, 'emoji_insertion_focus');
+      if (field.selectionStart !== insertAt + '[大笑]'.length || field.selectionEnd !== field.selectionStart)
+        throw Error('emoji_insertion_caret');
+      await stage('edit_emoji_inserted', {caret: field.selectionStart});
+      await click(el('.comment-compose-footer button.primary')); await confirmed('9000');
       if (draft() !== '') throw Error('confirmed_draft_not_cleared');
       await stage('edit_published');
       step = 'reply';
@@ -126,7 +144,7 @@
       step = 'response_loss';
       await publish('丢失回包后保留责任');
       await wait(() => pending()?.querySelector('[data-write-phase="uncertain"]') && !button('核对提交结果', pending()).disabled, 'uncertain_write');
-      if (!el('.comment-compose-footer button').disabled) throw Error('uncertain_duplicate_allowed');
+      if (!el('.comment-compose-footer button.primary').disabled) throw Error('uncertain_duplicate_allowed');
       await click(button('刷新操作记录'));
       await stage('edit_uncertain');
     }

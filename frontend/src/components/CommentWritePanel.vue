@@ -9,6 +9,7 @@ import {
   type CommentWrite,
 } from '../services/commentWrites';
 import Icon from './Icon.vue';
+import CommentEmojiPicker from './CommentEmojiPicker.vue';
 const props = defineProps<{ model: CommentWritesModel; sticky?: boolean }>();
 const { draft, reply, busy, loading, pending, operations, error, message, validText } = props.model;
 const panel = ref<HTMLElement>(),
@@ -39,6 +40,16 @@ function focus() {
     block: 'nearest',
     behavior: useMotion().reduced.value ? 'instant' : 'smooth',
   });
+}
+async function insertEmoji(token: string) {
+  const field = input.value;
+  if (!field || busy.value || pending.value.length) return;
+  const start = field.selectionStart;
+  draft.value = draft.value.slice(0, start) + token + draft.value.slice(field.selectionEnd);
+  await nextTick();
+  if (input.value !== field || field.disabled) return;
+  field.focus({ preventScroll: true });
+  field.setSelectionRange(start + token.length, start + token.length);
 }
 async function confirm() {
   const action = confirmation.value;
@@ -85,6 +96,7 @@ defineExpose({ requestDelete, focus, panel });
         @keydown.meta.enter.prevent="model.publish"
       ></textarea>
       <div class="comment-compose-footer">
+        <CommentEmojiPicker :disabled="busy || !!pending.length" @select="insertEmoji" />
         <span :class="{ overlength: draft.length > 1000 }" aria-live="polite"
           >{{ draft.length }} / 1000</span
         ><button class="primary" :disabled="busy || loading || !!pending.length || !validText">

@@ -27,7 +27,7 @@ def main():
     if args.frontend_dist:
         env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve())
     reports = []
-    for phase, count in [('first', 11), ('reopen', 6)]:
+    for phase, count in [('first', 12), ('reopen', 6)]:
         if phase == 'reopen':
             env['CUMULUS_PROOF_REOPEN'] = '1'
         output = root / 'run' / phase
@@ -57,7 +57,7 @@ def main():
         '/api/resource/comments/add', '/api/resource/comments/delete',
     ]
     assert all(call['payload']['threadId'] == 'R_SO_4_123' for call in writes)
-    assert writes[0]['payload'] == {'threadId': 'R_SO_4_123', 'content': ' 第一条评论 🎵\n保留原始空白 ',
+    assert writes[0]['payload'] == {'threadId': 'R_SO_4_123', 'content': ' 第一条评论 🎵[大笑]\n保留原始空白 ',
                                   'resourceType': '0', 'resourceId': '0', 'expressionPicId': '-1', 'bubbleId': '-1'}
     assert writes[1]['payload'] == {'threadId': 'R_SO_4_123', 'commentId': '102',
                                   'content': '回复：也想去看看海。', 'resourceType': '0', 'resourceId': '0'}
@@ -66,10 +66,10 @@ def main():
     rows = reopened['fixture']['rows']
     assert rows['101']['content'] == '自己的原评论，保留不动。'
     assert rows['102']['content'] == '听到这里，想起了夏天的海风。'
-    assert rows['9000']['content'] == ' 第一条评论 🎵\n保留原始空白 '
+    assert rows['9000']['content'] == ' 第一条评论 🎵[大笑]\n保留原始空白 '
     assert rows['9002']['content'] == '丢失回包后保留责任'
     assert '9001' not in rows and '9003' not in rows
-    audit = {'ok': True, 'actualWebView': True, 'states': 17, 'processRestartVerified': True,
+    audit = {'ok': True, 'actualWebView': True, 'states': 18, 'processRestartVerified': True,
              'syntheticWrites': 8, 'realAccountWrites': 0, 'realMusicRequests': 0,
              'automaticResend': False, 'screenshots': 0}
     (root / 'audit.json').write_text(json.dumps(audit, indent=2) + '\n', encoding='utf-8')
