@@ -25,6 +25,9 @@ export function equalizerTone(settings?: EqualizerSettings) {
 export function equalizerToneEnabled(settings?: EqualizerSettings) {
   return settings?.tone_enabled ?? settings?.enabled ?? false;
 }
+function activeGeq(settings: EqualizerSettings) {
+  return settings.enabled && settings.gains.some((gain) => gain !== 0);
+}
 function activeTone(settings: EqualizerSettings) {
   return (
     equalizerToneEnabled(settings) && Object.values(equalizerTone(settings)).some((g) => g !== 0)
@@ -67,8 +70,10 @@ export function equalizerMessage(view: EqualizerView): string {
   const tone = activeTone(view.settings);
   if (!view.settings.enabled && !tone) return '均衡器已关闭';
   if (!tone && view.settings.gains.every((g) => g === 0)) return '当前为平直曲线';
-  if (view.status === 'configured') return '均衡器已配置，等待音频处理';
-  return view.settings.enabled ? '均衡器已启用' : '低音和高音增强已启用';
+  const toneOnly = tone && !activeGeq(view.settings);
+  if (view.status === 'configured')
+    return toneOnly ? '低音和高音增强已配置，等待音频处理' : '均衡器已配置，等待音频处理';
+  return toneOnly ? '低音和高音增强已应用' : '均衡器已启用';
 }
 
 export function equalizerLauncher(view?: EqualizerView) {
@@ -84,6 +89,6 @@ export function equalizerLauncher(view?: EqualizerView) {
   if (view.status === 'configured') return { state: 'configured', label: equalizerMessage(view) };
   return {
     state: 'processing',
-    label: view.settings.enabled ? '均衡器已应用' : '低音和高音增强已应用',
+    label: activeGeq(view.settings) ? '均衡器已应用' : equalizerMessage(view),
   };
 }

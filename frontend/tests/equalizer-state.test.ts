@@ -96,10 +96,20 @@ test('a tone-only setting does not enable a saved curve and reports native DSP s
     equalizerLauncher({ ...base, settings: { enabled: false, gains, bass_db: 6 } }).state,
     'off',
   );
-  assert.equal(
-    equalizerLauncher({ ...base, settings: toneOnly, status: 'processing' }).state,
-    'processing',
-  );
+  for (const settings of [toneOnly, { ...toneOnly, enabled: true, gains: Array(10).fill(0) }]) {
+    const configured = { ...base, settings, status: 'configured' } as const;
+    const processing = { ...base, settings, status: 'processing' } as const;
+    assert.deepEqual(equalizerLauncher(configured), {
+      state: 'configured',
+      label: '低音和高音增强已配置，等待音频处理',
+    });
+    assert.deepEqual(equalizerLauncher(processing), {
+      state: 'processing',
+      label: '低音和高音增强已应用',
+    });
+    assert.equal(equalizerMessage(configured), '低音和高音增强已配置，等待音频处理');
+    assert.equal(equalizerMessage(processing), '低音和高音增强已应用');
+  }
   assert.equal(
     equalizerLauncher({ ...base, settings: toneOnly, status: 'unavailable' }).state,
     'problem',
