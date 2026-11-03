@@ -1,0 +1,15 @@
+每日推荐 → 风格推荐（只读默认入口）
+
+官方 3.1.42.205594 恢复证据：
+hybrid_81/3126.js:264–275 固定默认 source/categoryId/tagId/songId 全为空串；
+hybrid_app/15.js:1806–1828 读取 /api/homepage/category/daily/song/list，
+读取 data.dailySongs 和 data.tags；48.js 保留空查询值，12.js 将 API URL
+查询参数合入请求参数。客户端使用原有原生会话协议发送一次请求。
+
+style_recommendations 绑定登录代次并返回标准 TrackPage，保留歌曲顺序，接收
+至多 500 项。缺失或 null dailySongs 在有效 data 对象内视为空列表；类型错误、
+重复身份或超限不发布部分结果。只投影歌曲常规展示字段，不返回原始 tags、
+播放地址或授权材料。当前未接入标签切换/保存、类别和配置读取、逐项来源绑定播放。
+
+style_recommendations 核心测试与 ux_ui_probe 的合成开关验证请求形状、账户隔离、
+列表投影和无写入；未执行真实服务请求。

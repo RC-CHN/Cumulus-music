@@ -265,6 +265,50 @@ impl MusicClient {
         })
     }
 
+    pub async fn style_recommendations(&self, epoch: &str) -> Result<AccountData<TrackPage>> {
+        let token = self.player_token(epoch)?;
+        let value = self
+            .session
+            .run_for(&token, |api, _| async move {
+                const MAX_TRACKS: usize = 500;
+                let response = CatalogApi::new(api).default_style_recommendations().await?;
+                let data = response["data"]
+                    .as_object()
+                    .ok_or(Error::Response("invalid style recommendations"))?;
+                let rows = match data.get("dailySongs") {
+                    None | Some(Value::Null) => &[][..],
+                    Some(Value::Array(rows)) if rows.len() <= MAX_TRACKS => rows.as_slice(),
+                    Some(_) => return Err(Error::Response("invalid style recommendation tracks")),
+                };
+                let mut ids = std::collections::HashSet::new();
+                let tracks = rows
+                    .iter()
+                    .map(|row| {
+                        let track = mapping::track(row)?;
+                        if !ids.insert(track.id.clone()) {
+                            return Err(Error::Response("duplicate style recommendation track"));
+                        }
+                        Ok(track)
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+                Ok(TrackPage {
+                    revision: None,
+                    total: tracks.len(),
+                    tracks,
+                    offset: 0,
+                    more: false,
+                    playlist: None,
+                })
+            })
+            .await?;
+        self.session.with_token(&token, |_| {
+            Ok(AccountData {
+                epoch: epoch.into(),
+                value,
+            })
+        })
+    }
+
     pub async fn liked_ids(&self) -> Result<AccountData<Vec<String>>> {
         let token = self.session.token()?;
         let value = AccountResources::new(self.session.clone())?

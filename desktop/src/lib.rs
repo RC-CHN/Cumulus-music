@@ -240,6 +240,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 search::search_results,
                 search::search_history,
                 commands::daily_songs,
+                commands::style_recommendations,
                 rankings::ranking_page,
                 catalog::catalog_page,
                 collections::collection_page,

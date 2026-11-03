@@ -120,6 +120,18 @@ impl CatalogApi {
             .await
     }
 
+    /// M/3126 daily-entry defaults. M/12 folds the query into the API payload.
+    pub async fn default_style_recommendations(&self) -> Result<Value> {
+        self.api
+            .call(
+                "/api/homepage/category/daily/song/list",
+                json!({"source":"","categoryId":"","tagId":"","songId":""}),
+                false,
+                &[200],
+            )
+            .await
+    }
+
     pub async fn album(&self, id: &Value) -> Result<Value> {
         self.api
             .call(

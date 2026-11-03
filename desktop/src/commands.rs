@@ -212,6 +212,17 @@ pub async fn daily_songs(
     client.daily_songs().await.map_err(Into::into)
 }
 #[tauri::command]
+pub async fn style_recommendations(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> Result<AccountData<TrackPage>, ClientError> {
+    client
+        .style_recommendations(&epoch)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn liked_ids(
     client: tauri::State<'_, MusicClient>,
 ) -> Result<AccountData<Vec<String>>, ClientError> {
