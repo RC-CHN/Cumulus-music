@@ -23,6 +23,7 @@ pub const SOURCE: &str = media::URL;
 #[cfg(target_os = "linux")]
 const HTTPS_HOST: &str = "cumulus-local-fixture.music.126.net";
 const HTTPS_SOURCE: &str = "https://cumulus-local-fixture.music.126.net/synthetic/audio.m4a";
+const HTTPS_NEXT_SOURCE: &str = "https://cumulus-local-fixture.music.126.net/synthetic/next.m4a";
 const HTTPS_RETRY_SOURCE: &str =
     "https://cumulus-local-fixture.music.126.net/synthetic/audio.m4a?proof-retry=2";
 
@@ -62,6 +63,7 @@ pub struct Service {
     playlist: Mutex<Option<Value>>,
     ordinary_https: bool,
     retry_https: bool,
+    eof_https: bool,
     source_authorizations: AtomicUsize,
     source_load_attempts: AtomicUsize,
     offline: AtomicBool,
@@ -71,11 +73,17 @@ pub struct Service {
 }
 
 impl Service {
-    pub fn new(store: Arc<StateStore>, ordinary_https: bool, retry_https: bool) -> Self {
+    pub fn new(
+        store: Arc<StateStore>,
+        ordinary_https: bool,
+        retry_https: bool,
+        eof_https: bool,
+    ) -> Self {
         Self {
             media: media::Media::new(store),
             ordinary_https,
             retry_https,
+            eof_https,
             source_authorizations: Default::default(),
             source_load_attempts: Default::default(),
             calls: Default::default(),
@@ -86,6 +94,13 @@ impl Service {
             offline_media_attempts: Default::default(),
         }
     }
+    fn first_search_song(&self) -> Value {
+        let mut first = song();
+        if self.eof_https {
+            first["dt"] = json!(12000);
+        }
+        first
+    }
     fn playback_url(&self) -> &'static str {
         if self.ordinary_https {
             HTTPS_SOURCE
@@ -93,8 +108,15 @@ impl Service {
             SOURCE
         }
     }
-    fn authorize_playback(&self) -> Result<&'static str> {
+    fn authorize_playback(&self, id: u64) -> Result<&'static str> {
         let attempt = self.source_authorizations.fetch_add(1, Ordering::AcqRel);
+        if self.eof_https {
+            return match id {
+                1 => Ok(HTTPS_SOURCE),
+                2 => Ok(HTTPS_NEXT_SOURCE),
+                _ => Err(Error::InvalidInput("unexpected synthetic playback ID")),
+            };
+        }
         if !self.retry_https || attempt == 0 {
             Ok(self.playback_url())
         } else if attempt == 1 {
@@ -107,9 +129,15 @@ impl Service {
     }
     fn admits_playback(&self, url: &str) -> bool {
         url == self.playback_url()
+            || (self.eof_https && url == HTTPS_NEXT_SOURCE)
             || (self.retry_https
                 && url == HTTPS_RETRY_SOURCE
                 && self.source_authorizations.load(Ordering::Acquire) == 2)
+    }
+    pub fn second_source_prefetched(&self) -> bool {
+        self.eof_https
+            && self.source_authorizations.load(Ordering::Acquire) == 2
+            && self.source_load_attempts.load(Ordering::Acquire) == 1
     }
     pub fn offline(&self) {
         self.offline.store(true, Ordering::Release);
@@ -121,7 +149,7 @@ impl Service {
         let media = self.media.facts();
         json!({"calls":*self.calls.lock().unwrap(), "disposablePresent":self.playlist.lock().unwrap().is_some(),
             "offline":self.offline.load(Ordering::Acquire), "mediaTransfers":media["count"], "mediaRequests":media["requests"],
-            "ordinaryHttps":self.ordinary_https, "retryHttps":self.retry_https,
+            "ordinaryHttps":self.ordinary_https, "retryHttps":self.retry_https, "eofHttps":self.eof_https,
             "sourceAuthorizations":self.source_authorizations.load(Ordering::Acquire),
             "sourceLoadAttempts":self.source_load_attempts.load(Ordering::Acquire), "sourceLoads":self.source_loads.load(Ordering::Acquire), "localLoads":self.local_loads.load(Ordering::Acquire),
             "offlineMediaAttempts":self.offline_media_attempts.load(Ordering::Acquire)})
@@ -129,6 +157,9 @@ impl Service {
 }
 fn song() -> Value {
     json!({"id":1,"name":"合成主流程歌曲","ar":[{"name":"Cumulus"}],"al":{"name":"合成专辑"},"dt":1000,"fee":0})
+}
+fn eof_song() -> Value {
+    json!({"id":2,"name":"合成曲终下一首","ar":[{"name":"Cumulus"}],"al":{"name":"合成专辑"},"dt":12000,"fee":0})
 }
 fn playlist(id: u64, name: &str) -> Value {
     json!({"id":id,"name":name,"userId":2,"creator":{"userId":2,"nickname":"合成主流程账号"},
@@ -164,12 +195,53 @@ impl Api for Service {
                     json!({"code":200,"data":{"blocks":[{"blockCode":"search_block_song","resources":[{"type":"song","baseInfo":song()}]}],"hasMore":false}})
                 }
                 "/api/search/song/list/page" => {
-                    json!({"code":200,"data":{"resources":[{"type":"song","baseInfo":{"simpleSongData":song()}}],"totalCount":1,"hasMore":false}})
+                    let mut rows = vec![
+                        json!({"type":"song","baseInfo":{"simpleSongData":self.first_search_song()}}),
+                    ];
+                    if self.eof_https {
+                        rows.push(json!({"type":"song","baseInfo":{"simpleSongData":eof_song()}}));
+                    }
+                    json!({"code":200,"data":{"totalCount":rows.len(),"resources":rows,"hasMore":false}})
                 }
-                "/api/v3/song/detail" => json!({"code":200,"songs":[song()]}),
+                "/api/v3/song/detail" => {
+                    if self.eof_https {
+                        let packed = p["c"]
+                            .as_str()
+                            .ok_or(Error::InvalidInput("missing synthetic song IDs"))?;
+                        let ids: Vec<Value> = serde_json::from_str(packed)?;
+                        let songs = ids
+                            .iter()
+                            .map(|row| match identifier(&row["id"]) {
+                                Some(1) => Ok(self.first_search_song()),
+                                Some(2) => Ok(eof_song()),
+                                _ => Err(Error::InvalidInput("unexpected synthetic song ID")),
+                            })
+                            .collect::<Result<Vec<_>>>()?;
+                        json!({"code":200,"songs":songs})
+                    } else {
+                        json!({"code":200,"songs":[song()]})
+                    }
+                }
                 "/api/song/lyric/v1" => json!({"code":200,"lrc":{"lyric":"[00:00.00]合成测试"}}),
                 "/api/song/enhance/player/url/v1" => {
-                    json!({"code":200,"data":[{"id":1,"url":self.authorize_playback()? ,"code":200,"md5":"synthetic","level":"standard","expi":120}]})
+                    let id = if self.eof_https {
+                        let packed = p["ids"]
+                            .as_str()
+                            .ok_or(Error::InvalidInput("missing synthetic authorization ID"))?;
+                        let ids: Vec<Value> = serde_json::from_str(packed)?;
+                        match ids.as_slice() {
+                            [only] => identifier(only)
+                                .ok_or(Error::InvalidInput("invalid synthetic authorization ID"))?,
+                            _ => {
+                                return Err(Error::InvalidInput(
+                                    "unexpected synthetic authorization batch",
+                                ));
+                            }
+                        }
+                    } else {
+                        1
+                    };
+                    json!({"code":200,"data":[{"id":id,"url":self.authorize_playback(id)?,"code":200,"md5":"synthetic","level":"standard","expi":120}]})
                 }
                 "/api/song/enhance/download/url/v1" => {
                     json!({"code":200,"data":{"id":1,"url":SOURCE,"code":200,"type":"flac","size":media::DATA.len(),"md5":media::MD5,"level":"lossless"}})

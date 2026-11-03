@@ -21,15 +21,19 @@ def main():
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--ordinary-https', action='store_true', help=argparse.SUPPRESS)
-    parser.add_argument('--https-retry-once', action='store_true', help=argparse.SUPPRESS)
+    special = parser.add_mutually_exclusive_group()
+    special.add_argument('--https-retry-once', action='store_true', help=argparse.SUPPRESS)
+    special.add_argument('--https-eof-next', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--screenshots', action='store_true', help='optional isolated Linux GTK screenshots')
     args = parser.parse_args()
-    if args.https_retry_once and not args.ordinary_https:
-        parser.error('--https-retry-once requires --ordinary-https')
+    if (args.https_retry_once or args.https_eof_next) and not args.ordinary_https:
+        parser.error('HTTPS playback scenarios require --ordinary-https')
     stage_names = STAGES
-    if args.https_retry_once:
+    expected_source_loads = 2 if args.https_eof_next else 1
+    if args.https_retry_once or args.https_eof_next:
         position = STAGES.index('playback')
-        stage_names = STAGES[:position] + ('https_failure',) + STAGES[position:]
+        checkpoint = 'https_failure' if args.https_retry_once else 'https_before_eof'
+        stage_names = STAGES[:position] + (checkpoint,) + STAGES[position:]
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
@@ -38,6 +42,8 @@ def main():
         env['CUMULUS_MAIN_FLOW_HTTPS_PROOF'] = '1'
     if args.https_retry_once:
         env['CUMULUS_MAIN_FLOW_HTTPS_RETRY'] = '1'
+    if args.https_eof_next:
+        env['CUMULUS_MAIN_FLOW_HTTPS_EOF'] = '1'
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
     for key in ('XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR',
@@ -73,7 +79,7 @@ def main():
     assert stages['daily']['fixture']['calls']['/api/v3/discovery/recommend/songs'] >= 1
     assert stages['search']['fixture']['calls']['/api/search/song/list/page'] >= 1
     assert stages['playback']['nativeProgress'] and stages['playback']['paused']
-    assert stages['playback']['fixture']['sourceLoads'] == 1
+    assert stages['playback']['fixture']['sourceLoads'] == expected_source_loads
     assert stages['playback']['fixture']['ordinaryHttps'] == args.ordinary_https
     assert stages['playback']['resumedSameEntry'] == args.ordinary_https
     if args.https_retry_once:
@@ -83,6 +89,14 @@ def main():
         assert failed['fixture']['sourceAuthorizations'] == failed['fixture']['sourceLoadAttempts'] == 1
         assert failed['fixture']['sourceLoads'] == 0
         assert stages['playback']['fixture']['sourceAuthorizations'] == stages['playback']['fixture']['sourceLoadAttempts'] == 2
+    if args.https_eof_next:
+        before = stages['https_before_eof']
+        assert before['firstTrackPlaying'] and before['fixture']['eofHttps']
+        assert before['fixture']['sourceLoads'] == before['fixture']['sourceLoadAttempts'] == 1
+        assert before['fixture']['sourceAuthorizations'] == 2
+        assert stages['playback']['advancedByEof']
+        assert stages['playback']['fixture']['sourceLoadAttempts'] == 2
+        assert stages['playback']['fixture']['sourceAuthorizations'] == 2
     assert stages['playback']['fixture']['calls']['/api/song/enhance/player/url/v1'] >= 1
     assert stages['playlist_created']['fixture']['disposablePresent']
     assert stages['playlist_edited']['fixture']['calls']['/api/batch'] == 1
@@ -118,7 +132,7 @@ def main():
     assert (media/'unrelated.txt').read_bytes() == b'unrelated synthetic file\n'
     offline = stages['local_offline_playback']
     assert offline['nativeProgress'] and offline['fixture']['offline']
-    assert offline['fixture']['sourceLoads'] == 1 and offline['fixture']['localLoads'] == 1
+    assert offline['fixture']['sourceLoads'] == expected_source_loads and offline['fixture']['localLoads'] == 1
     assert offline['fixture']['mediaTransfers'] == downloaded['fixture']['mediaTransfers']
     assert offline['fixture']['calls']['/api/song/enhance/player/url/v1'] == downloaded['fixture']['calls']['/api/song/enhance/player/url/v1']
     disposal = stages['download_disposed']
@@ -130,7 +144,7 @@ def main():
         assert stage['wire']['offlineBusinessAttempts'] == 0
         assert stage['fixture']['calls'] == downloaded['fixture']['calls']
         assert stage['fixture']['mediaTransfers'] == downloaded['fixture']['mediaTransfers']
-        assert stage['fixture']['sourceLoads'] == 1 and stage['fixture']['localLoads'] == 1
+        assert stage['fixture']['sourceLoads'] == expected_source_loads and stage['fixture']['localLoads'] == 1
     assert stages['complete']['ok'] and stages['complete']['allInOneWebView']
     database = root/'run/state/core.sqlite3'
     with closing(sqlite3.connect(database.as_uri()+'?mode=ro', uri=True)) as state:
@@ -184,6 +198,8 @@ def main():
                   syntheticQrAdoption=True, savedCurrentSyntheticProfile=True,
                   freshProcessRestoredSyntheticProfile=True, processLifetimes=2,
                   rejectedOfflineRelayExperimentAttempts=stages['complete']['wire']['offlineRelayExperimentAttempts'])
+    if args.https_eof_next:
+        report['nativeHttpsEofAdvanced'] = True
     (root/'report.json').write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
     print(json.dumps(report))
 

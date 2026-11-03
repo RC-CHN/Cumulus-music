@@ -118,6 +118,20 @@
       await wait(() => !one(".playback-message"), "retry clears playback feedback");
     }
     await wait(() => state() === "playing" && one(".playerbar")?.dataset.trackId === "1" && position() >= .1, "native playback clock");
+    let advancedByEof = false;
+    if (window.__mainFlowHttpsEof) {
+      const firstId = one(".playerbar")?.dataset.playId;
+      check(firstId, "first native HTTPS entry");
+      await emit("wait_https_prefetch");
+      await wait(() => window.__mainFlowHttpsPrefetched, "next authorization prefetched without loading");
+      check(state() === "playing" && one(".playerbar")?.dataset.playId === firstId, "prefetch retained first entry");
+      await stage("https_before_eof", { firstTrackPlaying: true });
+      await wait(() => window.__mainFlowBeforeEofRecorded, "first native HTTPS receipt");
+      await wait(() => state() === "playing" && one(".playerbar")?.dataset.trackId === "2" &&
+        one(".playerbar")?.dataset.playId && one(".playerbar").dataset.playId !== firstId &&
+        position() >= .1, "native EOF advances to next HTTPS entry");
+      advancedByEof = true;
+    }
     await click(() => button("暂停", one(".playerbar")), "pause");
     await wait(() => state() === "paused", "native paused");
     const playId = one(".playerbar")?.dataset.playId;
@@ -134,7 +148,7 @@
       await click(() => button("暂停", one(".playerbar")), "pause resumed online playback");
       await wait(() => state() === "paused", "resumed native entry paused");
     }
-    await stage("playback", { nativeProgress: true, paused: true, resumedSameEntry, output: "null" });
+    await stage("playback", { nativeProgress: true, paused: true, resumedSameEntry, advancedByEof, output: "null" });
     await click(() => button("停止播放", one(".playerbar")), "stop online playback");
     await wait(() => state() === "idle", "online player stopped");
 

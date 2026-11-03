@@ -19,6 +19,7 @@ SCRIPT = Path(__file__).resolve()
 HOST = 'cumulus-local-fixture.music.126.net'
 ROUTE = '/synthetic/audio.m4a'
 RETRY_ROUTE = ROUTE + '?proof-retry=2'
+NEXT_ROUTE = '/synthetic/next.m4a'
 SIZE = 39106
 SHA256 = '883d4ab2f3e6900f47a892c4941e3a6ae8aab577258aeca6fc7a1fe1d001d520'
 FIXTURE = SCRIPT.parents[2]/'core/tests/fixtures/tag_audio/playback-12s.m4a'
@@ -43,6 +44,8 @@ def ordinary_https(args, directory):
         payload = source.read(SIZE + 1)
     assert len(payload) == SIZE and hashlib.sha256(payload).hexdigest() == SHA256
     counters = dict(gets=0, failedGets=0, rejected=0)
+    eof_gets = []
+    routes = (ROUTE, NEXT_ROUTE) if args.eof_next else (ROUTE, RETRY_ROUTE) if args.retry_once else (ROUTE,)
 
     class Handler(http.server.BaseHTTPRequestHandler):
         def log_message(self, *_):
@@ -56,11 +59,11 @@ def ordinary_https(args, directory):
 
         def serve(self, body):
             if (
-                self.path not in ((ROUTE, RETRY_ROUTE) if args.retry_once else (ROUTE,))
+                self.path not in routes
                 or self.headers.get_all('Host') != [HOST]
                 or not ipaddress.ip_address(self.client_address[0]).is_loopback
                 or any(name in self.headers for name in ('Cookie', 'Authorization', 'Proxy-Authorization'))
-                or (body and counters['gets'])
+                or (body and not args.eof_next and counters['gets'])
             ):
                 return self.send_error(403)
             ranges = self.headers.get_all('Range', [])
@@ -68,6 +71,15 @@ def ordinary_https(args, directory):
             # that exact same request as bytes=0-.
             if ranges and ranges not in (['bytes=0-'], [f'bytes=0-{SIZE - 1}']):
                 return self.send_error(403)
+            if args.eof_next and body:
+                expected = ROUTE if not eof_gets else NEXT_ROUTE if len(eof_gets) == 1 else None
+                if self.path != expected:
+                    return self.send_error(403)
+                if self.path == NEXT_ROUTE and not args.preflight:
+                    # Never serve second-track media before the actual first
+                    # playing checkpoint, even if authorization prefetched it.
+                    if not (args.root/'run/first/ux_https_before_eof.json').is_file():
+                        return self.send_error(403)
             if args.retry_once and self.path == ROUTE:
                 if counters['failedGets'] or not body:
                     return self.send_error(403)
@@ -88,6 +100,8 @@ def ordinary_https(args, directory):
             if body:
                 self.wfile.write(payload)
                 counters['gets'] += 1
+                if args.eof_next:
+                    eof_gets.append(self.path)
 
         def do_GET(self):
             self.serve(True)
@@ -103,13 +117,16 @@ def ordinary_https(args, directory):
         thread.start()
         try:
             trust = ssl.create_default_context(cafile=directory/'cert')
-            for route, headers in (
+            refused_routes = [
                 ('/wrong.m4a', {}),
                 (ROUTE + '?different=1', {}),
                 (ROUTE, {'Cookie': 'synthetic=denied'}),
                 (ROUTE, {'Host': 'other.invalid'}),
                 (ROUTE, {'Range': 'bytes=1-'}),
-            ):
+            ]
+            if args.eof_next:
+                refused_routes.append((NEXT_ROUTE, {}))
+            for route, headers in refused_routes:
                 connection = http.client.HTTPSConnection(HOST, context=trust, timeout=2)
                 try:
                     connection.request('GET', route, headers=headers)
@@ -117,11 +134,16 @@ def ordinary_https(args, directory):
                     assert denied.status == 403 and denied.read() == b''
                 finally:
                     connection.close()
-            assert counters == dict(gets=0, failedGets=0, rejected=5)
+            assert counters == dict(gets=0, failedGets=0, rejected=len(refused_routes))
             counters['rejected'] = 0
             if args.preflight:
                 # Exercise the permitted HTTPS byte path without a desktop build.
-                cases = [(ROUTE, 503, b''), (RETRY_ROUTE, 206, payload)] if args.retry_once else [(ROUTE, 206, payload)]
+                if args.retry_once:
+                    cases = [(ROUTE, 503, b''), (RETRY_ROUTE, 206, payload)]
+                elif args.eof_next:
+                    cases = [(ROUTE, 206, payload), (NEXT_ROUTE, 206, payload)]
+                else:
+                    cases = [(ROUTE, 206, payload)]
                 for route, status, expected in cases:
                     connection = http.client.HTTPSConnection(HOST, context=trust, timeout=2)
                     try:
@@ -136,17 +158,23 @@ def ordinary_https(args, directory):
                     str(SCRIPT.with_name('main_flow_smoke.py')), '--ordinary-https',
                     '--binary', str(args.binary), '--root', str(args.root),
                     *(['--https-retry-once'] if args.retry_once else []),
+                    *(['--https-eof-next'] if args.eof_next else []),
                     *(['--screenshots'] if args.screenshots else []),
                 ], check=True, timeout=360)
         finally:
             server.shutdown()
             thread.join(timeout=2)
             if not args.preflight and args.root.exists():
-                (args.root/'https-requests.json').write_text(json.dumps(counters)+'\n')
-    assert counters == dict(gets=1, failedGets=int(args.retry_once), rejected=0)
+                observed = {**counters, 'orderedTracks': [1 if route == ROUTE else 2 for route in eof_gets]} if args.eof_next else counters
+                (args.root/'https-requests.json').write_text(json.dumps(observed)+'\n')
+    assert counters == dict(gets=2 if args.eof_next else 1, failedGets=int(args.retry_once), rejected=0)
+    if args.eof_next:
+        assert eof_gets == [ROUTE, NEXT_ROUTE]
     report = dict(syntheticOnly=True, loopbackOnly=True, verifiedFixture=True,
-                  exactRouteRejected=5, ordinaryHttpsWebView=not args.preflight, localMediaGets=1,
+                  exactRouteRejected=len(refused_routes), ordinaryHttpsWebView=not args.preflight, localMediaGets=counters['gets'],
                   localMediaFailedGets=counters['failedGets'], explicitRetryMode=args.retry_once)
+    if args.eof_next:
+        report['orderedTrackGets'] = [1, 2]
     if not args.preflight:
         (args.root/'https-receipt.json').write_text(json.dumps(report, indent=2)+'\n')
     print(json.dumps(report))
@@ -196,6 +224,7 @@ def outer(args):
             '/usr/bin/python3', str(SCRIPT), '--isolated', str(directory),
             *(['--preflight'] if args.preflight else ['--binary', str(args.binary), '--root', str(args.root)]),
             *(['--retry-once'] if args.retry_once else []),
+            *(['--eof-next'] if args.eof_next else []),
             *(['--screenshots'] if args.screenshots else []),
         ], check=True, timeout=390)
 
@@ -206,7 +235,9 @@ if __name__ == '__main__':
     parser.add_argument('--root', type=lambda path: Path(path).resolve())
     parser.add_argument('--screenshots', action='store_true')
     parser.add_argument('--openbox-directory', type=lambda path: Path(path).resolve())
-    parser.add_argument('--retry-once', action='store_true', help='fail the first authorized HTTPS GET and require an explicit UI retry')
+    special = parser.add_mutually_exclusive_group()
+    special.add_argument('--retry-once', action='store_true', help='fail the first authorized HTTPS GET and require an explicit UI retry')
+    special.add_argument('--eof-next', action='store_true', help='exercise real EOF into a second authorized HTTPS track')
     parser.add_argument('--preflight', action='store_true', help='verify only TLS and namespace policy')
     parser.add_argument('--isolated', type=Path, help=argparse.SUPPRESS)
     arguments = parser.parse_args()
