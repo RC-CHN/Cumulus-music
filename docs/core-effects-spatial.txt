@@ -184,3 +184,14 @@ core/tests/effects_rotation_resampled.rs 默认使用注入转换器测试异常
 发行包或完整效果图验证。手动命令：
   CUMULUS_PROOF_SOXR_LIBRARY=/absolute/trusted/libsoxr.so.0 cargo test --locked \
     -p cumulus-core --test effects_rotation_resampled -- --ignored --nocapture
+
+可选 Linux 本地 48/96 kHz 材料渲染
+effect_spatial_render material-resampled RESPONSES.bin MATERIAL.ncae 48000 /absolute/trusted/libsoxr.so.0
+读取和输出指定采样率的双声道交错 f32le；只接受 48000 或 96000 Hz。
+44.1 kHz 的 material-stage 保留原参数和流程。调用者显式提供可信 SoXR
+0.1.3 动态库和响应表，不自动查找、下载或打包；拒绝 SOXR_ 环境覆盖。
+共享的 Linux SoXR C ABI 适配器也用于冻结原厂对照，保留单次反向转换结束语义，
+没有强制补齐或截短 PCM。新增同一渲染入口的可选对照重放冻结 continuous 行：
+4109 帧输入分别比较 48000 Hz 的 4109 帧和 96000 Hz 的 3825 帧有效输出，
+并核对关闭时逐字节透传。仍仅渲染被选中的 Rotate3D 组件，不是 SE/完整音效图，
+不进入桌面实时播放器、Windows DLL 分发或物理声卡。

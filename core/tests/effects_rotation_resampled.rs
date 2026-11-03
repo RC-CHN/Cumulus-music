@@ -7,9 +7,9 @@ use std::{io::Read, sync::OnceLock};
 struct Tables {
     responses_b64: String,
 }
-fn responses() -> RotationResponses {
+fn response_bytes() -> &'static [u8] {
     static BYTES: OnceLock<Vec<u8>> = OnceLock::new();
-    let bytes = BYTES.get_or_init(|| {
+    BYTES.get_or_init(|| {
         let stream = flate2::read::GzDecoder::new(
             &include_bytes!("fixtures/effects-spatial-official.json.gz")[..],
         );
@@ -17,8 +17,10 @@ fn responses() -> RotationResponses {
         stream.take(32 * 1024 * 1024).read_to_end(&mut raw).unwrap();
         let tables: Tables = serde_json::from_slice(&raw).unwrap();
         STANDARD.decode(&tables.responses_b64).unwrap()
-    });
-    RotationResponses::from_le_bytes(bytes).unwrap()
+    })
+}
+fn responses() -> RotationResponses {
+    RotationResponses::from_le_bytes(response_bytes()).unwrap()
 }
 
 struct InvalidConverter;
@@ -132,154 +134,17 @@ fn a_disable_edge_caps_drain_and_forwards_buffered_input_before_new_dry_frames()
 }
 
 #[cfg(target_os = "linux")]
-mod host_proof {
-    use super::*;
-    use libloading::Library;
-    use std::{
-        ffi::{CStr, c_char, c_ulong, c_void},
-        path::Path,
-        sync::Arc,
-    };
+#[path = "../examples/support/effects_rotation_material.rs"]
+mod material;
+#[cfg(target_os = "linux")]
+#[path = "../examples/support/effects_soxr_linux.rs"]
+mod soxr;
 
-    // This test adapter is not a product loader. It only accepts an explicitly
-    // selected trusted system library implementing the Linux SoXR C ABI.
-    #[repr(C)]
-    struct Io {
-        input: i32,
-        output: i32,
-        scale: f64,
-        engine: *const c_void,
-        flags: c_ulong,
-    }
-    type Create = unsafe extern "C" fn(
-        f64,
-        f64,
-        u32,
-        *mut *const c_char,
-        *const Io,
-        *const c_void,
-        *const c_void,
-    ) -> *mut c_void;
-    type Process = unsafe extern "C" fn(
-        *mut c_void,
-        *const c_void,
-        usize,
-        *mut usize,
-        *mut c_void,
-        usize,
-        *mut usize,
-    ) -> *const c_char;
-    type Clear = unsafe extern "C" fn(*mut c_void) -> *const c_char;
-    type Delete = unsafe extern "C" fn(*mut c_void);
-    struct Host {
-        _library: Library,
-        create: Create,
-        process: Process,
-        clear: Clear,
-        delete: Delete,
-    }
-    impl Host {
-        fn open(path: &Path) -> Self {
-            assert!(path.is_absolute() && path.is_file());
-            // SAFETY: opt-in test path names the trusted system SoXR C library.
-            unsafe {
-                let library = Library::new(path).unwrap();
-                let version = library
-                    .get::<unsafe extern "C" fn() -> *const c_char>(b"soxr_version\0")
-                    .unwrap();
-                assert_eq!(CStr::from_ptr(version()).to_bytes(), b"libsoxr-0.1.3");
-                Self {
-                    create: *library.get(b"soxr_create\0").unwrap(),
-                    process: *library.get(b"soxr_process\0").unwrap(),
-                    clear: *library.get(b"soxr_clear\0").unwrap(),
-                    delete: *library.get(b"soxr_delete\0").unwrap(),
-                    _library: library,
-                }
-            }
-        }
-    }
-    struct Converter {
-        host: Arc<Host>,
-        handle: *mut c_void,
-    }
-    impl Converter {
-        fn new(host: Arc<Host>, rate: RotationRateConversion) -> Result<Self> {
-            let spec = Io {
-                input: 4,
-                output: 4,
-                scale: 1.0,
-                engine: std::ptr::null(),
-                flags: 0,
-            };
-            let mut error = std::ptr::null();
-            // SAFETY: parameters and output error pointer follow the pinned ABI.
-            let handle = unsafe {
-                (host.create)(
-                    f64::from(rate.input_rate()),
-                    f64::from(rate.output_rate()),
-                    2,
-                    &mut error,
-                    &spec,
-                    std::ptr::null(),
-                    std::ptr::null(),
-                )
-            };
-            if handle.is_null() || !error.is_null() {
-                return Err(Error::Media("SoXR fixture initialization failed"));
-            }
-            Ok(Self { host, handle })
-        }
-    }
-    impl RotationRateConverter for Converter {
-        fn process(
-            &mut self,
-            input: Option<[&[f32]; 2]>,
-            [l, r]: [&mut [f32]; 2],
-        ) -> Result<usize> {
-            let (samples, frames) = if let Some([l, r]) = input {
-                assert_eq!(l.len(), r.len());
-                (Some([l.as_ptr(), r.as_ptr()]), l.len())
-            } else {
-                (None, 0)
-            };
-            assert_eq!(l.len(), r.len());
-            let mut out = [l.as_mut_ptr(), r.as_mut_ptr()];
-            let mut done = 0;
-            // SAFETY: both split planes span the lengths supplied and the
-            // exclusive converter stays live through this synchronous call.
-            let error = unsafe {
-                (self.host.process)(
-                    self.handle,
-                    samples
-                        .as_ref()
-                        .map_or(std::ptr::null(), |p| p.as_ptr().cast()),
-                    frames,
-                    std::ptr::null_mut(),
-                    out.as_mut_ptr().cast(),
-                    l.len(),
-                    &mut done,
-                )
-            };
-            if !error.is_null() {
-                return Err(Error::Media("SoXR fixture conversion failed"));
-            }
-            Ok(done)
-        }
-        fn clear(&mut self) -> Result<()> {
-            // SAFETY: live exclusively owned native converter.
-            if unsafe { (self.host.clear)(self.handle) }.is_null() {
-                Ok(())
-            } else {
-                Err(Error::Media("SoXR fixture clear failed"))
-            }
-        }
-    }
-    impl Drop for Converter {
-        fn drop(&mut self) {
-            // SAFETY: owned live handle; host library retained until after this call.
-            unsafe { (self.host.delete)(self.handle) };
-        }
-    }
+#[cfg(target_os = "linux")]
+mod host_proof {
+    use super::soxr::{Converter, Host};
+    use super::*;
+    use std::{path::Path, sync::Arc};
 
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase")]
@@ -302,11 +167,92 @@ mod host_proof {
     }
     #[test]
     #[ignore = "requires explicit trusted Linux libsoxr 0.1.3"]
+    fn material_renderer_matches_frozen_48000_and_96000_pcm() {
+        let library =
+            std::env::var_os("CUMULUS_PROOF_SOXR_LIBRARY").expect("trusted library path required");
+        // SAFETY: opt-in fixture path explicitly selects a trusted SoXR library.
+        let host = Arc::new(unsafe { Host::open(Path::new(&library)) }.unwrap());
+        let stream = flate2::read::GzDecoder::new(
+            &include_bytes!("fixtures/effects-rotation-soxr-official.json.gz")[..],
+        );
+        let mut raw = Vec::new();
+        stream.take(4 * 1024 * 1024).read_to_end(&mut raw).unwrap();
+        let corpus: Corpus = serde_json::from_slice(&raw).unwrap();
+        let enabled = serde_json::json!({"aev2":{"rotate":{"on":true,"velocity":40.0}}});
+        let bypassed = serde_json::json!({"aev2":{"rotate":{"on":false}}});
+        let mut counts = Vec::new();
+        for row in corpus
+            .rows
+            .into_iter()
+            .filter(|row| row.case == "continuous")
+        {
+            let input = STANDARD.decode(row.input_b64).unwrap();
+            let cap = row.capacity as usize;
+            let mut interleaved = Vec::new();
+            for block in input[12..].chunks_exact(12 + cap * 8) {
+                let count = word(&block[..4]) as usize;
+                for i in 0..count {
+                    interleaved.extend_from_slice(&block[12 + i * 4..16 + i * 4]);
+                    interleaved.extend_from_slice(&block[12 + (cap + i) * 4..16 + (cap + i) * 4]);
+                }
+            }
+            let output = material::render_resampled(
+                &enabled,
+                response_bytes(),
+                &interleaved,
+                row.rate,
+                host.clone(),
+            )
+            .unwrap();
+            let expected = STANDARD.decode(row.pcm_b64).unwrap();
+            assert_eq!(output.len(), expected.len());
+            let mut offset = 0;
+            for frames in row.valid {
+                for frame in 0..frames {
+                    for channel in 0..2 {
+                        let source = offset + (channel * frames + frame) * 4;
+                        let index = offset + (frame * 2 + channel) * 4;
+                        let diff = (f32::from_bits(word(&expected[source..source + 4]))
+                            - f32::from_bits(word(&output[index..index + 4])))
+                        .abs();
+                        assert!(
+                            diff <= 3e-6,
+                            "{} Hz output sample {}: {}",
+                            row.rate,
+                            index / 4,
+                            diff
+                        );
+                    }
+                }
+                offset += frames * 8;
+            }
+            counts.push((row.rate, output.len() / 8));
+            assert_eq!(
+                material::render_resampled(
+                    &bypassed,
+                    response_bytes(),
+                    &interleaved,
+                    row.rate,
+                    host.clone()
+                )
+                .unwrap(),
+                interleaved
+            );
+            assert_eq!(
+                material::render(&bypassed, response_bytes(), &interleaved).unwrap(),
+                interleaved
+            );
+        }
+        assert_eq!(counts, [(48_000, 4109), (96_000, 3825)]);
+    }
+
+    #[test]
+    #[ignore = "requires explicit trusted Linux libsoxr 0.1.3"]
     fn host_soxr_stage_matches_frozen_original_frames_end_phase_and_pcm() {
         let library =
             std::env::var_os("CUMULUS_PROOF_SOXR_LIBRARY").expect("trusted library path required");
-        assert!(!std::env::vars_os().any(|(key, _)| key.to_string_lossy().starts_with("SOXR_")));
-        let host = Arc::new(Host::open(Path::new(&library)));
+        // SAFETY: opt-in fixture path explicitly selects a trusted SoXR library.
+        let host = Arc::new(unsafe { Host::open(Path::new(&library)) }.unwrap());
         let stream = flate2::read::GzDecoder::new(
             &include_bytes!("fixtures/effects-rotation-soxr-official.json.gz")[..],
         );
