@@ -1,6 +1,7 @@
 import { nextTick, onMounted, onScopeDispose, watch, type Ref } from 'vue';
 import type { useRankings } from './useRankings';
 import type { RankingUiState } from '../services/rankings';
+import { waitForViewportAnimations, waitForViewportFrames } from '../services/viewportLayout.ts';
 
 /** A history entry owns its reading position; refreshes never replay a focus move. */
 export function useRankingViewport(
@@ -10,7 +11,8 @@ export function useRankingViewport(
   const owns = model.captureVisit();
   let lastFocus: RankingUiState['focus'] = null;
   let scroll: HTMLElement | null = null;
-  let restored = false,
+  let alive = true,
+    restored = false,
     restoring = false,
     userMoved = false;
   let initialFocus: Element | null = null;
@@ -37,59 +39,53 @@ export function useRankingViewport(
     });
   }
   async function restore() {
-    const saved = model.restoration.value;
-    if (!root.value || restoring || restored) return;
+    const saved = model.restoration.value,
+      element = root.value;
+    if (!alive || !element || !owns() || restoring || restored) return;
     restoring = true;
-    await nextTick();
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    const page = root.value?.closest('.page-view');
-    await Promise.all(
-      (page?.getAnimations() ?? [])
-        .filter((animation) => {
-          const end = animation.effect?.getComputedTiming().endTime;
-          return (
-            typeof end === 'number' &&
-            Number.isFinite(end) &&
-            (animation.playState === 'running' || animation.pending)
-          );
-        })
-        .map((animation) => animation.finished.catch(() => {})),
-    );
-    restoring = false;
-    if (!owns() || !root.value?.isConnected || !scroll) return;
-    const contentReady = !!model.view.value || !!model.error.value;
-    restored = contentReady;
-    if (saved && contentReady && !userMoved) scroll.scrollTop = saved.scrollTop;
-    else if (!saved && !userMoved) scroll.scrollTop = 0;
-    if (
-      document.activeElement !== document.body &&
-      document.activeElement !== initialFocus &&
-      document.activeElement !== managedFocus
-    )
-      return;
-    const selector =
-      saved?.focus?.kind === 'card'
-        ? '[data-rank-id]'
-        : saved?.focus?.kind === 'song'
-          ? '[data-sale-song-id]'
-          : '[data-sale-id]';
-    const target = [...root.value.querySelectorAll<HTMLElement>(selector)].find(
-      (node) =>
-        (node.dataset.rankId ?? node.dataset.saleId ?? node.dataset.saleSongId) ===
-        saved?.focus?.id,
-    );
-    const control =
-      target &&
-      [...target.querySelectorAll<HTMLElement>('button:not(:disabled)')].find(
-        (node) => node.dataset.rankAction === saved?.focus?.action,
+    const valid = () => alive && owns() && root.value === element && element.isConnected;
+    try {
+      await nextTick();
+      await waitForViewportFrames();
+      if (!valid()) return;
+      await waitForViewportAnimations(element.closest('.page-view'), false);
+      if (!valid() || !scroll) return;
+      const contentReady = !!model.view.value || !!model.error.value;
+      restored = contentReady;
+      if (saved && contentReady && !userMoved) scroll.scrollTop = saved.scrollTop;
+      else if (!saved && !userMoved) scroll.scrollTop = 0;
+      if (
+        document.activeElement !== document.body &&
+        document.activeElement !== initialFocus &&
+        document.activeElement !== managedFocus
+      )
+        return;
+      const selector =
+        saved?.focus?.kind === 'card'
+          ? '[data-rank-id]'
+          : saved?.focus?.kind === 'song'
+            ? '[data-sale-song-id]'
+            : '[data-sale-id]';
+      const target = [...element.querySelectorAll<HTMLElement>(selector)].find(
+        (node) =>
+          (node.dataset.rankId ?? node.dataset.saleId ?? node.dataset.saleSongId) ===
+          saved?.focus?.id,
       );
-    const focus =
-      control ??
-      target?.querySelector<HTMLElement>('button:not(:disabled)') ??
-      root.value.querySelector<HTMLElement>('h1');
-    focus?.focus({ preventScroll: true });
-    managedFocus = focus ?? null;
-    lastFocus = saved?.focus ?? null;
+      const control =
+        target &&
+        [...target.querySelectorAll<HTMLElement>('button:not(:disabled)')].find(
+          (node) => node.dataset.rankAction === saved?.focus?.action,
+        );
+      const focus =
+        control ??
+        target?.querySelector<HTMLElement>('button:not(:disabled)') ??
+        element.querySelector<HTMLElement>('h1');
+      focus?.focus({ preventScroll: true });
+      managedFocus = focus ?? null;
+      lastFocus = saved?.focus ?? null;
+    } finally {
+      restoring = false;
+    }
   }
   onMounted(() => {
     scroll = root.value?.closest<HTMLElement>('.main-content') ?? null;
@@ -100,6 +96,7 @@ export function useRankingViewport(
   });
   watch([model.view, model.error], () => void restore(), { flush: 'post' });
   onScopeDispose(() => {
+    alive = false;
     scroll?.removeEventListener('wheel', moved);
     scroll?.removeEventListener('touchmove', moved);
   });

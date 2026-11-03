@@ -3,6 +3,8 @@ import test, { type TestContext } from 'node:test';
 import { createRenderer, defineComponent, h, nextTick, ref, shallowRef } from 'vue';
 import { useCollectionViewport } from '../src/composables/useCollectionViewport.ts';
 import { useDownloadViewport } from '../src/composables/useDownloadViewport.ts';
+import { useRankingViewport } from '../src/composables/useRankingViewport.ts';
+import type { useRankings } from '../src/composables/useRankings.ts';
 import type { DownloadModel } from '../src/composables/useDownloads.ts';
 import { downloadViewportKey } from '../src/services/downloadViewport.ts';
 import type { DownloadQuery } from '../src/services/downloads.ts';
@@ -224,4 +226,95 @@ test('collection restore survives missing frames and an unfinished finite animat
   await settle();
   assert.equal(scroll.scrollTop, 240);
   assert.equal(f.frames.size, 0);
+});
+
+function rankingFixture(t: TestContext) {
+  const f = setup(t);
+  const control = f.focusTarget({ rankAction: 'play' });
+  const card = {
+    dataset: { rankId: 'chart' },
+    querySelectorAll: () => [control],
+  };
+  const scroll = Object.assign(new EventTarget(), { scrollTop: 0 });
+  let finish!: () => void;
+  const finished = new Promise<void>((resolve) => (finish = resolve));
+  const root = shallowRef({
+    isConnected: true,
+    querySelectorAll: () => [card],
+    querySelector: () => undefined,
+    closest: (selector: string) =>
+      selector === '.main-content'
+        ? scroll
+        : {
+            getAnimations: (options: GetAnimationsOptions) => {
+              assert.equal(options.subtree, false);
+              return [
+                {
+                  playState: 'running',
+                  effect: { getComputedTiming: () => ({ endTime: 180 }) },
+                  finished,
+                },
+              ];
+            },
+          },
+  } as unknown as HTMLElement);
+  let owner = true;
+  f.mount(() =>
+    useRankingViewport(
+      {
+        captureVisit: () => () => owner,
+        restoration: ref({ scrollTop: 180, focus: { kind: 'card', id: 'chart', action: 'play' } }),
+        view: ref({}),
+        error: ref(''),
+      } as unknown as ReturnType<typeof useRankings>,
+      root,
+    ),
+  );
+  return { ...f, control, scroll, finish, leave: () => (owner = false) };
+}
+
+test('ranking viewport restores the saved action after a normal frame and animation', async (t) => {
+  const f = rankingFixture(t);
+  await settle();
+  f.emitFrame();
+  await settle();
+  assert.equal(f.scroll.scrollTop, 0);
+  f.finish();
+  await settle();
+  assert.equal(f.scroll.scrollTop, 180);
+  assert.equal(f.doc.activeElement, f.control);
+  assert.equal(f.frames.size, 0);
+});
+
+test('ranking viewport restores when neither the frame nor the animation completes', async (t) => {
+  const f = rankingFixture(t);
+  await settle();
+  t.mock.timers.tick(65);
+  await settle();
+  assert.equal(f.scroll.scrollTop, 0);
+  t.mock.timers.tick(451);
+  await settle();
+  assert.equal(f.scroll.scrollTop, 180);
+  assert.equal(f.doc.activeElement, f.control);
+  assert.equal(f.frames.size, 0);
+});
+
+test('ranking deadline does not override deliberate scroll, focus or a departed visit', async (t) => {
+  for (const departed of [false, true]) {
+    await t.test(departed ? 'departed visit' : 'deliberate input', async (sub) => {
+      const f = rankingFixture(sub);
+      await settle();
+      sub.mock.timers.tick(65);
+      await settle();
+      f.doc.activeElement = f.other;
+      if (departed) f.leave();
+      else f.scroll.dispatchEvent(new Event('wheel'));
+      f.scroll.scrollTop = 25;
+      sub.mock.timers.tick(451);
+      await settle();
+      assert.equal(f.scroll.scrollTop, 25);
+      assert.equal(f.doc.activeElement, f.other);
+      assert.equal(f.frames.size, 0);
+    });
+  }
 });

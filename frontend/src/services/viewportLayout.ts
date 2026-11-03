@@ -28,8 +28,11 @@ export function waitForViewportFrames(count: 1 | 2 = 1): Promise<void> {
 }
 
 /** Wait for finite entry animations without relying on their finished promises. */
-export async function waitForViewportAnimations(element: Element | null | undefined) {
-  const animations = (element?.getAnimations({ subtree: true }) ?? []).filter((animation) => {
+export async function waitForViewportAnimations(
+  element: Element | null | undefined,
+  subtree = true,
+) {
+  const animations = (element?.getAnimations({ subtree }) ?? []).filter((animation) => {
     const end = animation.effect?.getComputedTiming().endTime;
     return (
       typeof end === 'number' &&
