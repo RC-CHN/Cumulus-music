@@ -8,9 +8,9 @@
   const emit=(stage,data={})=>window.__TAURI_INTERNALS__.invoke('plugin:event|emit',{event:'ux-proof',payload:{stage,...data}});
   const key=(n,k)=>n.dispatchEvent(new KeyboardEvent('keydown',{key:k,bubbles:true,cancelable:true}));
   let count=0,step='startup',holdCategory,held=false,release,gate;
-  const songReads=[];
+  const songReads=[], filteredMvReads=[];
   const fetch=window.fetch;
-  window.fetch=async function(url,options){const query=String(url).endsWith('/search_results')?JSON.parse(options.body).query:null;if(window.__cumulusSearchSongWaterfallProof&&query?.category==='songs')songReads.push([query.offset,query.limit]);const delayed=query?.category===holdCategory?gate:null;const response=await fetch.call(window,url,options);if(delayed){held=true;await delayed;}return response;};
+  window.fetch=async function(url,options){const query=String(url).endsWith('/search_results')?JSON.parse(options.body).query:null;if(window.__cumulusSearchSongWaterfallProof&&query?.category==='songs')songReads.push([query.offset,query.limit]);if(window.__cumulusSearchFilteredPaginationProof&&query?.category==='mvs')filteredMvReads.push([query.offset,query.limit]);const delayed=query?.category===holdCategory?gate:null;const response=await fetch.call(window,url,options);if(delayed){held=true;await delayed;}return response;};
   const hold=category=>{held=false;holdCategory=category;gate=new Promise(r=>{const timer=setTimeout(r,10000);release=()=>{clearTimeout(timer);holdCategory=undefined;gate=undefined;r();};});};
   const fixture=async mode=>{window.__searchFixtureAck=false;await emit('search-fixture',{mode});await wait(()=>window.__searchFixtureAck,'fixture acknowledgement');};
   const ready=()=>one('#search-result-panel')?.getAttribute('aria-busy')==='false' && !one('.search-results-leave-active');
@@ -50,6 +50,46 @@
     } finally { window.requestAnimationFrame=frames; }
   }
   try {
+    if(window.__cumulusSearchFilteredPaginationProof){
+      await wait(()=>one('.track-row'),'daily ready');
+      const provides=one('#app').__vue_app__._context.provides;
+      const core=provides[Reflect.ownKeys(provides).find(k=>typeof k==='symbol'&&k.description==='core-client')];
+      const searchResults=core.searchResults;
+      // Preserve the native fixture's real IPC cursor, but model its projection
+      // filtering all rows on two pages without rebuilding the shared host.
+      core.searchResults=async(...args)=>{
+        const result=await searchResults(...args);
+        const query=args[1];
+        if(query.category!=='mvs'||query.offset>=26)return result;
+        const consumed=result.value.nextOffset-query.offset;
+        assert(consumed===13&&result.value.more,'native fixture supplies an advancing cursor');
+        return {...result,value:{...result.value,sections:[],unavailableCount:consumed}};
+      };
+      await fresh('合成过滤结果');
+      await choose('mvs');
+      const panel=()=>one('#search-result-panel');
+      const more=()=>button('加载更多',panel());
+      const reads=()=>JSON.stringify(filteredMvReads);
+      assert(more()&&panel().querySelector('.empty-state')?.textContent.includes('这一页暂无可展示的结果')&&
+        !panel().querySelector('.search-result-card'),'filtered first page keeps a visible continuation');
+      await capture('filtered_mv_first_page');
+      assert(reads()==='[[0,13]]','empty first page does not auto-advance');
+      click(more());
+      await wait(()=>more()&&panel().textContent.includes('这一批结果暂无法展示，可以继续加载。'),
+        'filtered append still offers continuation');
+      assert(!panel().querySelector('.search-result-card'),'filtered append has no visible cards');
+      await capture('filtered_mv_next_page');
+      assert(reads()==='[[0,13],[13,13]]','filtered append consumes exactly one native cursor');
+      click(more());
+      await wait(()=>panel().querySelector('.search-result-card[data-result-key^="mv:"]'),
+        'valid MVs appear after the filtered pages');
+      assert(!panel().querySelector('.empty-state'),'visible MVs replace the empty state');
+      await capture('filtered_mv_reaches_results');
+      assert(reads()==='[[0,13],[13,13],[26,13]]','native cursors include filtered rows');
+      core.searchResults=searchResults;
+      await emit('complete',{ok:true,searchFilteredPaginationVerified:true,stageCount:count,filteredMvReads,realMusicRequests:0,realAccountWrites:0});
+      return;
+    }
     if(window.__cumulusSearchSuggestionFocusProof){
       await wait(()=>one('.track-row'),'daily ready');
       const provides=one('#app').__vue_app__._context.provides;

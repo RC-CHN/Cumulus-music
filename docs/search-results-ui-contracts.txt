@@ -195,3 +195,9 @@ searchQcReminder.qcReminders，按 SearchResults/index.jsx:421–446 在标题�
 原词搜索及历史流程，不执行服务端动作；关闭纠正后不显示旧提醒。分类页保留既有
 通用提示和纠正词行为。--correction-original 验证原生提示顺序、文本不可执行、
 键盘可操作的原词按钮、关闭纠正和 Back 恢复。
+
+过滤页仍可继续搜索
+search_results_smoke.py --filtered-pagination 复用真实 Tauri WebView 和合成
+搜索 IPC。夹具在渲染端把前两页 MV 的投影清空，保留原生游标；确认空页仍有
+「加载更多」、未自动跳页，并通过 0、13、26 的连续读取显示第三页的有效 MV。
+该用例覆盖桌面游标及显示，不替代 Rust 投影测试。
