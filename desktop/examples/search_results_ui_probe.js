@@ -114,10 +114,24 @@
     await fixture('empty');await fresh('合成空结果');await choose('lyrics');await capture('empty');assert(one('.search-result-panel').textContent.includes('没有找到'),'empty copy');
     await fixture('result_error');await fresh('合成失败结果');await choose('albums');await capture('error');assert(button('重新加载'),'retry action');await fixture('good');click(button('重新加载'));await wait(()=>ready()&&one('.search-result-card'),'retry recovery');await capture('recovered');
     hold('all');submit('合成延迟结果');await wait(()=>held,'held response');await capture('loading');await choose('songs');release();await sleep(220);assert(one('[data-category="songs"]').getAttribute('aria-selected')==='true'&&one('.search-result-actions'),'late result ignored');await capture('late_result');
+    step='category_without_frames';
     const songTab=one('[data-category="songs"]');songTab.focus();
-    const frames=window.requestAnimationFrame;let withheldFrames=0;
+    const motion=window.__motionProof;
+    assert(motion,'isolated motion fixture');
+    const systemReduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const frames=window.requestAnimationFrame;
+    const withheld=new Set();
+    let frameCount=0;
     try {
-      window.requestAnimationFrame=()=>-(++withheldFrames);
+      // Some runners disable animations by default. Exercise the actual
+      // animated branch deliberately, without changing the saved preference.
+      motion.system(false);
+      assert(document.documentElement.dataset.motion==='full','full motion fixture applied');
+      window.requestAnimationFrame=()=>{
+        for(const phase of ['leave','enter'])
+          if(one(`.search-results-${phase}-active`))withheld.add(phase);
+        return -(++frameCount);
+      };
       key(songTab,'ArrowRight');
       await wait(()=>{
         const panel=one('.search-result-panel');
@@ -125,8 +139,11 @@
           !one('.search-results-enter-active,.search-results-leave-active')&&
           getComputedStyle(panel).opacity==='1';
       },'keyboard tab switch with compositor frames withheld');
-    } finally { window.requestAnimationFrame=frames; }
-    assert(withheldFrames>=2,'both transitions encountered withheld frames');
+      assert(withheld.has('leave')&&withheld.has('enter'),`withheld category transition phases: ${[...withheld]}`);
+    } finally {
+      window.requestAnimationFrame=frames;
+      motion.system(systemReduced);
+    }
     assert(document.activeElement.dataset.category==='playlists','keyboard focus follows');await capture('keyboard_tabs');
     await choose('songs');
     const album=one('.track-album[data-tooltip]');assert(album&&!album.hasAttribute('title'),'native title replaced');album.dispatchEvent(new PointerEvent('pointerover',{bubbles:true}));await wait(()=>one('.content-tooltip')&&getComputedStyle(one('.content-tooltip')).visibility==='visible','content tooltip');await capture('content_tooltip');
