@@ -81,3 +81,14 @@ beforeDevCommand/beforeBuildCommand 在工作区根运行，已改为 npm --pref
   PipeWire 空输出；未注入 WebView 脚本。报告和截图：
   .build/local-package-34f0948-playback/。包包含独立 GEQ/低高音和冷启动 NCM/AAC
   修复；包内本地播放用例本身是明文 FLAC。它不是新的发行版本，也不含后续音效总开关。
+
+2026-11-03 Linux 包含音效总开关的本机包（f9847ac）
+  以独立工作树的锁定依赖生成 .deb、便携 tar.gz 和 manifest，路径
+  .build/local-package-f9847ac/.build/packages/linux-x64/。
+  .deb SHA-256：c7f7f2f1da8e0553cfe5965e57b45cd0dd497d4f050aa2fb12bf69c9f1f2628f。
+  打包器验证普通解码、均衡器和 pinned FLAC/AAC（包括 NCM、拒绝外部引用）。
+  再以 --verify-local-playback 启动从同一 .deb 解出的正式程序；本地导入合成
+  FLAC 后原生时钟从 1.153 走到 2.363 秒，暂停稳定在 2.624 秒，连接私有
+  PipeWire 空输出。报告、播放和暂停截图在 .build/local-package-f9847ac-playback/。
+  该包含音效总开关及 NCM/AAC 冷启动修复，不含后续缓冲进度和云盘附件恢复；
+  本机产物不代替 CI 或新的 GitHub Release。
