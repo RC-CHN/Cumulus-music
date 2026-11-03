@@ -636,6 +636,11 @@
           hints[1]?.textContent.trim()==='前缀合成 V3别名'&&
           hints[1]?.querySelector('mark')?.textContent==='合成 V3',
           'v3 displays UTF-16 lyric match and plain alias fallback with extInfo precedence');
+        const explicit=cards[0]?.querySelector('.search-track-explicit');
+        assert(explicit?.textContent==='E'&&explicit.getAttribute('aria-label')==='含成人内容'&&
+          Math.abs(explicit.getBoundingClientRect().width-12)<1&&
+          !cards[1]?.querySelector('.search-track-explicit'),
+          'v3 projects direct explicit mark and honors nonzero unflagged song over album fallback');
         assert(cards.every((card)=>Math.abs(card.getBoundingClientRect().height-84)<1),'match hints keep 84px cards');
       };
       verifyHints();
@@ -651,7 +656,7 @@
       await wait(()=>ready()&&one('[data-category="all"]')?.getAttribute('aria-selected')==='true','Back restores comprehensive');
       assert(tabs()==='all,mvs,songs'&&one('#search-result-panel').textContent.includes('合成热点内容'),'Back preserves search snapshot');
       await capture('v3_back');
-      await emit('complete',{ok:true,v3Verified:true,v3TrackHintsVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      await emit('complete',{ok:true,v3Verified:true,v3TrackHintsVerified:true,v3ExplicitVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     await wait(()=>one('.track-row'),'daily ready');submit('合成搜索结果');await wait(()=>one('.search-results-page')&&ready(),'search entry');

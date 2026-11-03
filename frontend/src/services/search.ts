@@ -46,6 +46,7 @@ export type SearchItem =
       excerptTruncated?: boolean;
       mvId?: string;
       hint?: SearchTrackHint;
+      explicit?: boolean;
     }
   | { kind: 'playlist'; playlist: PlaylistView; recommendation?: string }
   | { kind: 'artist'; artist: ArtistCard }

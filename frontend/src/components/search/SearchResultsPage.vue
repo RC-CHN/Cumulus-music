@@ -692,6 +692,7 @@ onBeforeUnmount(() => {
                 :track="item.track"
                 :mv-id="item.mvId"
                 :hint="item.hint"
+                :explicit="item.explicit"
                 :match-keyword="matchKeyword"
                 :playable="playable"
                 :current="item.track.id === currentId"

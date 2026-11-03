@@ -490,3 +490,34 @@ async fn comprehensive_song_hints_project_only_safe_lyric_matches_or_aliases() {
     assert!(!projected.to_string().contains("PRIVATE"));
     assert_eq!(api.calls.lock().unwrap().len(), 1);
 }
+
+#[tokio::test]
+async fn comprehensive_song_explicit_badge_respects_official_mark_precedence() {
+    let (_root, api, _, client) = fixture();
+    let epoch = client.account().unwrap().epoch;
+    *api.reply.lock().unwrap() = json!({"code":200,"data":{"blocks":[{
+        "blockCode":"search_block_song","resources":[
+            {"type":"song","baseInfo":{"id":1,"name":"歌曲标记","mark":1048576}},
+            {"type":"song","baseInfo":{"id":2,"name":"专辑回退","mark":0,"album":{"mark":1048576}}},
+            {"type":"song","baseInfo":{"id":3,"name":"歌曲标记优先","mark":1,"album":{"mark":1048576}}},
+            {"type":"song","baseInfo":{"id":4,"name":"不可信标记","mark":"1048576","al":{"mark":1048576},"explicit":true}}
+        ]
+    }]}});
+    let view = client
+        .search_results(&epoch, query(C::All))
+        .await
+        .unwrap()
+        .value;
+    let projected = serde_json::to_value(&view).unwrap();
+    let rows = &projected["sections"][0]["items"];
+    assert_eq!(rows[0]["explicit"], true);
+    assert_eq!(rows[1]["explicit"], true);
+    assert!(rows[2].get("explicit").is_none());
+    assert!(rows[3].get("explicit").is_none());
+    assert!(
+        rows.as_array()
+            .unwrap()
+            .iter()
+            .all(|row| row.get("mark").is_none())
+    );
+}

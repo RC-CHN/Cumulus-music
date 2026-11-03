@@ -20,6 +20,8 @@ pub enum SearchItem {
         mv_id: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         hint: Option<TrackHint>,
+        #[serde(skip_serializing_if = "std::ops::Not::not")]
+        explicit: bool,
         excerpt: Vec<String>,
         #[serde(rename = "excerptTruncated")]
         excerpt_truncated: bool,
@@ -218,6 +220,22 @@ fn song_mv(value: &Value) -> Option<String> {
         .find(|id| id.len() <= 32)
 }
 
+/// M/21 considers a nonzero song mark authoritative; otherwise only the
+/// full album (not the compact al object) provides the explicit marker.
+fn explicit_song(value: &Value) -> bool {
+    const EXPLICIT: u64 = 1 << 20;
+    let integer_mark = |mark: &Value| {
+        mark.as_u64()
+            .or_else(|| mark.as_i64().map(|mark| mark as u64))
+    };
+    match &value["mark"] {
+        mark if mark.as_f64().is_some_and(|value| value != 0.0) => {
+            integer_mark(mark).is_some_and(|mark| mark & EXPLICIT != 0)
+        }
+        _ => integer_mark(&value["album"]["mark"]).is_some_and(|mark| mark & EXPLICIT != 0),
+    }
+}
+
 fn item(
     kind: &str,
     v: &Value,
@@ -232,6 +250,7 @@ fn item(
                 track: mapping::track(v)?,
                 mv_id: comprehensive.and_then(|_| song_mv(v)),
                 hint: comprehensive.and_then(|resource| track_hint::project(v, resource)),
+                explicit: comprehensive.is_some() && explicit_song(v),
                 excerpt,
                 excerpt_truncated,
             }

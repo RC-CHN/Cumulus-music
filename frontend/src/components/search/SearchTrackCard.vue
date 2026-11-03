@@ -9,6 +9,7 @@ const props = defineProps<{
   track: TrackView;
   mvId?: string;
   hint?: SearchTrackHint;
+  explicit?: boolean;
   matchKeyword: string;
   playable: boolean;
   current: boolean;
@@ -66,8 +67,13 @@ watch(
       <span class="search-track-mask"><Icon :name="current && playing ? 'pause' : 'play'" /></span>
     </button>
     <div class="search-track-copy">
-      <p class="search-track-title ellipsis" :data-tooltip="track.name">
-        <SearchMatchText :text="track.name" :keyword="matchKeyword" />
+      <p class="search-track-title">
+        <span class="ellipsis" :data-tooltip="track.name">
+          <SearchMatchText :text="track.name" :keyword="matchKeyword" />
+        </span>
+        <span v-if="explicit" class="search-track-explicit" role="img" aria-label="含成人内容"
+          >E</span
+        >
       </p>
       <div class="search-track-credit">
         <span v-if="track.fee === 1" class="vip-tag">VIP</span>

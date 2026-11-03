@@ -182,7 +182,7 @@ fn song(v: &Value) -> Fields {
     let mut out = fields(
         v,
         &[
-            "id", "name", "dt", "duration", "fee", "mv", "mvid", "st", "status",
+            "id", "name", "dt", "duration", "fee", "mv", "mvid", "st", "status", "mark",
         ],
         &[],
     );
@@ -196,7 +196,7 @@ fn song(v: &Value) -> Fields {
     }
     for key in ["al", "album"] {
         nested(&mut out, v, key, |album| {
-            fields(album, &["id", "albumId", "name"], &["picUrl"])
+            fields(album, &["id", "albumId", "name", "mark"], &["picUrl"])
         });
     }
     out
