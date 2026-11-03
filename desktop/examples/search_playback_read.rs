@@ -1,4 +1,9 @@
 //! Fixed search-to-decode proof with a standalone WebView and one private IPC.
+#[path = "support/search_download_read.rs"]
+mod download_read;
+#[path = "support/search_download_transport.rs"]
+mod download_transport;
+
 use cumulus_core::{
     Error, Result,
     account::{AccountSession, credentials::Credentials, profiles::ProfileRegistry},
@@ -68,49 +73,78 @@ const ASSETS: &[(&str, &[u8])] = &[
 ];
 
 struct Reads {
+    download: Option<Arc<download_transport::Gate>>,
     live: Option<MusicHttpClient>,
     calls: Mutex<BTreeMap<&'static str, u8>>,
 }
 impl Api for Reads {
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(gate) = &self.download {
+                gate.check_api()?;
+                match path {
+                    DETAIL => gate.detail(&payload)?,
+                    download_transport::PATH => gate.allow_download(&payload)?,
+                    _ => (),
+                }
+            }
             let label = match path {
                 ACCOUNT => "account",
                 ALL if payload["keyword"] == WORD => "comprehensive",
                 SONGS if payload["keyword"] == WORD && payload["offset"] == 0 => "songs",
                 DETAIL => "song_detail",
                 SOURCE => "audio_source",
+                download_transport::PATH if self.download.is_some() => "download_source",
                 _ => return Err(Error::InvalidInput("outside fixed proof reads")),
             };
             {
                 let mut calls = self.calls.lock().map_err(|_| Error::LockPoisoned)?;
                 let count = calls.entry(label).or_default();
-                if *count != 0 {
+                let limit = if path == DETAIL && self.download.is_some() {
+                    2
+                } else {
+                    1
+                };
+                if *count >= limit {
                     return Err(Error::InvalidInput(
                         "proof does not repeat a service request",
                     ));
                 }
                 *count += 1;
             }
-            if let Some(client) = &self.live {
-                return client.request(path, payload, cache).await;
+            let response = if let Some(client) = &self.live {
+                client.request(path, payload, cache).await?
+            } else {
+                let song = || json!({"id":1,"name":"Fixture","dt":1500,"fee":0,"ar":[],"al":{"name":"Fixture"}});
+                match path {
+                    ACCOUNT => json!({"code":200,"profile":{"userId":2,"nickname":"Fixture"}}),
+                    ALL => {
+                        json!({"code":200,"data":{"blocks":[{"blockCode":"search_block_song","resources":[{"type":"song","baseInfo":song()}]}]}})
+                    }
+                    SONGS => {
+                        json!({"code":200,"data":{"resources":[{"baseInfo":{"simpleSongData":song()}}],"totalCount":1}})
+                    }
+                    DETAIL => {
+                        json!({"code":200,"songs":[song()],"privileges":[{"id":1,"fee":0,"st":0,"dl":128000}]})
+                    }
+                    SOURCE => {
+                        json!({"code":200,"data":[{"id":1,"url":FIXTURE_URL,"code":200,"md5":"synthetic","level":"standard","expi":120}]})
+                    }
+                    download_transport::PATH => {
+                        json!({"code":200,"data":{"id":1,"url":download_transport::URL,"code":200,"type":"flac","size":SEED.len(),"md5":download_transport::MD5,"level":"standard"}})
+                    }
+                    _ => return Err(Error::InvalidInput("outside fixed proof reads")),
+                }
+            };
+            if let Some(gate) = &self.download {
+                match path {
+                    ACCOUNT => gate.identity(&response)?,
+                    DETAIL => gate.record_detail(&response)?,
+                    download_transport::PATH => gate.receipt(&response)?,
+                    _ => (),
+                }
             }
-            let song =
-                || json!({"id":1,"name":"Fixture","dt":1500,"ar":[],"al":{"name":"Fixture"}});
-            Ok(match path {
-                ACCOUNT => json!({"code":200,"profile":{"userId":2,"nickname":"Fixture"}}),
-                ALL => {
-                    json!({"code":200,"data":{"blocks":[{"blockCode":"search_block_song","resources":[{"type":"song","baseInfo":song()}]}]}})
-                }
-                SONGS => {
-                    json!({"code":200,"data":{"resources":[{"baseInfo":{"simpleSongData":song()}}],"totalCount":1}})
-                }
-                DETAIL => json!({"code":200,"songs":[song()]}),
-                SOURCE => {
-                    json!({"code":200,"data":[{"id":1,"url":FIXTURE_URL,"code":200,"md5":"synthetic","level":"standard","expi":120}]})
-                }
-                _ => return Err(Error::InvalidInput("outside fixed proof reads")),
-            })
+            Ok(response)
         })
     }
 }
@@ -118,6 +152,7 @@ impl Api for Reads {
 struct Audio {
     engine: MpvEngine,
     fixture: Option<PathBuf>,
+    offline_files: Option<(PathBuf, Arc<download_transport::Gate>)>,
 }
 fn allowed_audio(input: &str) -> bool {
     tauri::Url::parse(input).is_ok_and(|url| {
@@ -132,6 +167,21 @@ fn allowed_audio(input: &str) -> bool {
 }
 impl AudioEngine for Audio {
     fn load(&mut self, mut request: LoadRequest, cancel: &Cancellation) -> Result<LoadedMedia> {
+        if let Some((root, gate)) = &self.offline_files
+            && gate.facts()?.1
+        {
+            let MediaInput::File(file) = &request.source else {
+                return Err(Error::InvalidInput("offline proof requires a file"));
+            };
+            let canonical = file.canonicalize()?;
+            if canonical.parent() != Some(root.as_path()) || !canonical.is_file() {
+                return Err(Error::InvalidInput(
+                    "offline proof source escaped download directory",
+                ));
+            }
+            request.source = MediaInput::File(canonical);
+            return self.engine.load(request, cancel);
+        }
         match (&self.fixture, &request.source) {
             (Some(file), MediaInput::Url(url)) if url.as_str() == FIXTURE_URL => {
                 request.source = MediaInput::File(file.clone());
@@ -165,7 +215,14 @@ impl AudioEngine for Audio {
     }
 }
 
+struct DownloadProof {
+    gate: Arc<download_transport::Gate>,
+    directory: PathBuf,
+    store: Arc<StateStore>,
+}
+
 struct Proof {
+    download: Option<DownloadProof>,
     client: MusicClient,
     reads: Arc<Reads>,
     started: AtomicBool,
@@ -180,9 +237,12 @@ struct Facts {
     songs: usize,
     clock_advanced: bool,
     stopped: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    download: Option<download_read::DownloadFacts>,
 }
 
-async fn verify(client: &MusicClient) -> std::result::Result<Facts, &'static str> {
+async fn verify(proof: &Proof) -> std::result::Result<Facts, &'static str> {
+    let client = &proof.client;
     let account = client.restore_account().await.map_err(|_| "account_read")?;
     if account.status != cumulus_core::account::SessionStatus::Authenticated {
         return Err("session_not_authenticated");
@@ -221,6 +281,12 @@ async fn verify(client: &MusicClient) -> std::result::Result<Facts, &'static str
         })
         .collect();
     let song = songs.first().ok_or("no_concrete_song")?;
+    if let Some(download) = &proof.download {
+        download
+            .gate
+            .choose(&song.id)
+            .map_err(|_| "download_selection")?;
+    }
     let attempted = client
         .play_selection(
             &epoch,
@@ -274,11 +340,31 @@ async fn verify(client: &MusicClient) -> std::result::Result<Facts, &'static str
     if !stop.is_ok_and(|view| view.state == PlaybackStatus::Idle) {
         return Err("native_stop");
     }
+    let download = if let Some(download) = &proof.download {
+        let owner = download.gate.owner().map_err(|_| "download_owner")?;
+        let facts = download_read::verify_download(
+            client,
+            &epoch,
+            &song.id,
+            &download.directory,
+            &download.store,
+            &owner,
+            || async { download.gate.cutoff() },
+        )
+        .await?;
+        if download.gate.facts().map_err(|_| "download_gate")? != (1, true, 0) {
+            return Err("offline_proof_attempted_network");
+        }
+        Some(facts)
+    } else {
+        None
+    };
     Ok(Facts {
         comprehensive_sections: all.sections.len(),
         songs: songs.len(),
         clock_advanced: true,
         stopped: true,
+        download,
     })
 }
 
@@ -290,7 +376,7 @@ async fn run_search_playback_read(
     if window.label() != LABEL || proof.started.swap(true, Ordering::AcqRel) {
         return Err("fixed proof already invoked or unavailable");
     }
-    let outcome = tokio::time::timeout(Duration::from_secs(100), verify(&proof.client))
+    let outcome = tokio::time::timeout(Duration::from_secs(100), verify(&proof))
         .await
         .unwrap_or(Err("deadline"));
     let calls = proof
@@ -339,12 +425,17 @@ fn main() {
     // SAFETY: first action, before GTK and native workers.
     unsafe { cumulus_desktop::prepare_graphics() };
     let mut args = std::env::args_os().skip(1);
-    let source = match args.next().as_deref().and_then(std::ffi::OsStr::to_str) {
-        Some("--synthetic") => None,
-        Some("--live") => Some(PathBuf::from(
-            args.next().expect("closed authorized PC profile copy"),
-        )),
-        _ => panic!("expected --synthetic NEW_ROOT or --live CLOSED_PC_PROFILE_COPY NEW_ROOT"),
+    let mode = args.next().expect("proof mode");
+    let (source, with_download) = match mode.to_str() {
+        Some("--synthetic") => (None, false),
+        Some("--synthetic-download") => (None, true),
+        Some("--live" | "--live-download") => (
+            Some(PathBuf::from(
+                args.next().expect("closed authorized PC profile copy"),
+            )),
+            mode == "--live-download",
+        ),
+        _ => panic!("expected a fixed synthetic or live proof mode"),
     };
     assert!(
         source.is_none() || std::env::var_os("CI").is_none(),
@@ -392,8 +483,12 @@ fn main() {
                 None
             };
             let synthetic = live.is_none();
+            let gate = with_download
+                .then(|| download_transport::Gate::new(!synthetic).map(Arc::new))
+                .transpose()?;
             let reads = Arc::new(Reads {
                 live,
+                download: gate.clone(),
                 calls: Mutex::default(),
             });
             let registry = ProfileRegistry::open(&root.join("local-state"), ApiOrigin::Pc)?;
@@ -405,6 +500,20 @@ fn main() {
             } else {
                 None
             };
+            let download = if let Some(gate) = gate {
+                let directory = root.join("downloaded");
+                private_directory_builder().create(&directory)?;
+                Some(DownloadProof {
+                    gate,
+                    directory,
+                    store: registry.store(),
+                })
+            } else {
+                None
+            };
+            let offline_files = download
+                .as_ref()
+                .map(|proof| (proof.directory.clone(), proof.gate.clone()));
             let client =
                 MusicClient::with_session(session, registry).with_audio_factory(move || {
                     Ok(Box::new(Audio {
@@ -413,11 +522,18 @@ fn main() {
                             ..Default::default()
                         })?,
                         fixture: fixture.clone(),
+                        offline_files: offline_files.clone(),
                     }))
                 });
+            let client = if let Some(proof) = &download {
+                client.with_download_backend(proof.gate.clone())
+            } else {
+                client
+            };
             let webview_path = root.join("webview");
             app.manage(Proof {
                 client,
+                download,
                 reads,
                 started: AtomicBool::new(false),
                 root,

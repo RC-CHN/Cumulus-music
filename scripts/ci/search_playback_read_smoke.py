@@ -10,6 +10,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
+    parser.add_argument('--download', action='store_true', help='verify one synthetic download and local playback')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False, mode=0o700)
@@ -21,15 +22,26 @@ def main():
         path.mkdir(mode=0o700)
         env[key] = str(path)
     run = root / 'run'
+    mode = '--synthetic-download' if args.download else '--synthetic'
     with (root / 'host.log').open('x', encoding='utf-8') as log:
-        result = subprocess.run([str(args.binary.resolve()), '--synthetic', str(run)],
+        result = subprocess.run([str(args.binary.resolve()), mode, str(run)],
                                 env=env, stdout=log, stderr=log, timeout=120, check=False)
     report = json.loads((run / 'report.json').read_text(encoding='utf-8'))
     assert result.returncode == 0 and report['ok'], report
     assert report['synthetic'] and report['actualWebView'] and report['nullOutput']
     assert report['realAccountWrites'] == 0
-    assert report['reads'] == dict(account=1, comprehensive=1, songs=1, song_detail=1, audio_source=1)
-    assert report['facts'] == dict(comprehensiveSections=1, songs=1, clockAdvanced=True, stopped=True)
+    reads = dict(account=1, comprehensive=1, songs=1, song_detail=1, audio_source=1)
+    facts = dict(comprehensiveSections=1, songs=1, clockAdvanced=True, stopped=True)
+    if args.download:
+        reads.update(song_detail=2, download_source=1)
+        seed = Path(__file__).resolve().parents[2]/'core/tests/fixtures/tag_audio/seed.flac'
+        facts['download'] = dict(publishedBytes=seed.stat().st_size, plain=True,
+                                 receiptIntegrityVerified=True, publishedLedgerVerified=True,
+                                 transportCutoffConfirmed=True, offlineNativeProgress=True, stopped=True)
+        files = list((run/'downloaded').glob('*.flac'))
+        assert len(files) == 1 and files[0].read_bytes() == seed.read_bytes()
+    assert report['reads'] == reads
+    assert report['facts'] == facts
     print(json.dumps(report))
 
 
