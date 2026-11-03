@@ -1,8 +1,5 @@
 //! Synthetic selection and published download. Cold launch gets a different
 //! transport object that cannot issue either an HTTP or media request.
-#[path = "cloud_batch_media.rs"]
-mod media;
-
 use cumulus_core::{
     Error, Result,
     account::{AccountSession, profiles::ProfileRegistry},
@@ -10,8 +7,12 @@ use cumulus_core::{
         MusicClient,
         dto::{DownloadCommand, DownloadQuery, DownloadTab},
     },
-    download::service::{DownloadOptions, OutputContainer},
+    download::{
+        service::{DownloadOptions, OutputContainer},
+        transfer::{MediaBackend, MediaBody, MediaReply, MediaRequest},
+    },
     media::ncm::{HeaderPolicy, NcmReader},
+    membership::Quality,
     protocol::{
         api::{Api, ApiFuture},
         http::{
@@ -21,16 +22,18 @@ use cumulus_core::{
 };
 use serde_json::{Value, json};
 use std::{
+    collections::BTreeMap,
     io::Read,
     path::Path,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 #[cfg(feature = "custom-protocol")]
-use cumulus_core::download::transfer::{MediaBackend, MediaReply, MediaRequest};
-#[cfg(feature = "custom-protocol")]
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{OnceLock, atomic::AtomicBool};
 
 pub const TITLE: &str = "合成冷离线下载";
 #[cfg(feature = "custom-protocol")]
@@ -48,6 +51,7 @@ pub struct Offline {
     pinned_ncm: AtomicUsize,
     ordinary_loads: AtomicUsize,
     observed_null: AtomicBool,
+    pinned_codec: OnceLock<&'static str>,
 }
 #[cfg(feature = "custom-protocol")]
 impl Offline {
@@ -60,6 +64,7 @@ impl Offline {
             "pinnedNcmLoads":self.pinned_ncm.load(Ordering::Acquire),
             "ordinaryLoads":self.ordinary_loads.load(Ordering::Acquire),
             "observedNullAudio":self.observed_null.load(Ordering::Acquire),
+            "pinnedCodec":self.pinned_codec.get(),
         })
     }
 }
@@ -91,8 +96,83 @@ impl MediaBackend for Offline {
     }
 }
 
+#[derive(Clone, Copy)]
+pub enum SeedFormat {
+    Flac,
+    NcmFlac,
+    NcmAac,
+}
+
+impl SeedFormat {
+    fn encrypted(self) -> bool {
+        !matches!(self, Self::Flac)
+    }
+
+    fn media(self) -> (&'static str, &'static [u8], &'static str, Quality) {
+        match self {
+            Self::Flac | Self::NcmFlac => (
+                "https://m1.music.126.net/cumulus-cloud-batch-fixture.flac",
+                include_bytes!("../../../core/tests/fixtures/tag_audio/seed.flac"),
+                "flac",
+                Quality::Lossless,
+            ),
+            Self::NcmAac => (
+                "https://m1.music.126.net/cumulus-cold-offline-fixture.m4a",
+                include_bytes!("../../../core/tests/fixtures/tag_audio/seed.m4a"),
+                "m4a",
+                Quality::Standard,
+            ),
+        }
+    }
+}
+
 struct Seed {
-    ncm: bool,
+    format: SeedFormat,
+    requests: AtomicUsize,
+}
+
+struct SeedBody {
+    data: &'static [u8],
+    offset: usize,
+}
+
+impl MediaBody for SeedBody {
+    fn read<'a>(&'a mut self, buffer: &'a mut [u8]) -> ApiFuture<'a, usize> {
+        Box::pin(async move {
+            let size = buffer.len().min(self.data.len() - self.offset);
+            buffer[..size].copy_from_slice(&self.data[self.offset..self.offset + size]);
+            self.offset += size;
+            Ok(size)
+        })
+    }
+}
+
+impl MediaBackend for Seed {
+    fn get(&self, request: MediaRequest) -> ApiFuture<'_, MediaReply> {
+        Box::pin(async move {
+            let (url, data, _, _) = self.format.media();
+            if request.url.as_str() != url || request.offset >= data.len() as u64 {
+                return Err(Error::State("cold-offline seed forbids remote media"));
+            }
+            self.requests.fetch_add(1, Ordering::AcqRel);
+            let offset = request.offset as usize;
+            let mut headers = BTreeMap::from([
+                ("content-length".into(), (data.len() - offset).to_string()),
+                ("etag".into(), "\"synthetic-cold-download\"".into()),
+            ]);
+            if offset > 0 {
+                headers.insert(
+                    "content-range".into(),
+                    format!("bytes {offset}-{}/{}", data.len() - 1, data.len()),
+                );
+            }
+            Ok(MediaReply {
+                status: if offset == 0 { 200 } else { 206 },
+                headers,
+                body: Box::new(SeedBody { data, offset }),
+            })
+        })
+    }
 }
 impl HttpBackend for Seed {
     fn post(&self, plan: RequestPlan) -> ApiFuture<'_, HttpReply> {
@@ -117,17 +197,19 @@ impl HttpBackend for Seed {
 impl Api for Seed {
     fn request<'a>(&'a self, path: &'a str, params: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            let (url, bytes, suffix, quality) = self.format.media();
+            let ncm = self.format.encrypted();
             match path {
                 "/api/v3/song/detail" => Ok(json!({"code":200,"songs":[{
                     "id":SONG,"name":TITLE,"ar":[{"name":"Cumulus"}],"al":{"name":"合成专辑"},
-                    "dt":1000,"fee":u8::from(self.ncm),
-                    "privilege":{"fee":u8::from(self.ncm),"flag":0,"payed":0}
+                    "dt":1000,"fee":u8::from(ncm),
+                    "privilege":{"fee":u8::from(ncm),"flag":0,"payed":0}
                 }]})),
                 "/api/song/enhance/download/url/v1" => Ok(json!({"code":200,"data":{
-                    "id":SONG,"url":media::URL,"code":200,"type":"flac","size":media::DATA.len(),"level":"lossless",
-                    "fee":u8::from(self.ncm),"payed":0
+                    "id":SONG,"url":url,"code":200,"type":suffix,"size":bytes.len(),"level":quality.as_str(),
+                    "fee":u8::from(ncm),"payed":0
                 }})),
-                "/api/music-vip-membership/client/vip/info" if self.ncm => {
+                "/api/music-vip-membership/client/vip/info" if ncm => {
                     if params != json!({"userId":OWNER.to_string()}) {
                         return Err(Error::Response("unexpected seed membership owner"));
                     }
@@ -146,9 +228,14 @@ impl Api for Seed {
     }
 }
 
-pub async fn seed(root: &Path, ncm: bool) -> Result<Value> {
+pub async fn seed(root: &Path, format: SeedFormat) -> Result<Value> {
+    let ncm = format.encrypted();
+    let (_, bytes, suffix, quality) = format.media();
     let registry = ProfileRegistry::open(&root.join("state"), ApiOrigin::Pc)?;
-    let seed = Arc::new(Seed { ncm });
+    let seed = Arc::new(Seed {
+        format,
+        requests: AtomicUsize::new(0),
+    });
     let session = Arc::new(AccountSession::new(seed.clone(), Some(registry.store())));
     let candidate = registry.candidate_with_backend(
         ClientProfile::default(),
@@ -170,10 +257,9 @@ pub async fn seed(root: &Path, ncm: bool) -> Result<Value> {
         .await?;
     // Use the normal downloader against the bounded in-memory catalog without
     // replacing the saved native selection in the registry.
-    session.adopt(seed, json!({"userId":OWNER}), &session.token()?)?;
+    session.adopt(seed.clone(), json!({"userId":OWNER}), &session.token()?)?;
     let epoch = session.token()?.generation.to_string();
-    let client = MusicClient::with_session(session, registry)
-        .with_download_backend(Arc::new(media::Backend));
+    let client = MusicClient::with_session(session, registry).with_download_backend(seed.clone());
     let media_dir = root.join("media");
     client
         .download_command(
@@ -249,12 +335,14 @@ pub async fn seed(root: &Path, ncm: bool) -> Result<Value> {
     } else {
         std::fs::read(path)?
     };
-    if decoded != media::DATA {
+    if decoded != bytes {
         return Err(Error::State(
             "synthetic published audio does not match fixture",
         ));
     }
-    Ok(json!({"published":true,"id":id,"title":TITLE,"mediaTransfers":media::requests(),"ncm":ncm}))
+    Ok(
+        json!({"published":true,"id":id,"title":TITLE,"mediaTransfers":seed.requests.load(Ordering::Acquire),"ncm":ncm,"format":suffix,"quality":quality.as_str()}),
+    )
 }
 
 #[cfg(feature = "custom-protocol")]
@@ -268,6 +356,19 @@ mod cold_audio {
     }
 
     impl Audio {
+        fn record_codec(&self, loaded: &LoadedMedia) -> Result<()> {
+            let codec = match loaded.codec.as_deref() {
+                Some("flac") => "flac",
+                Some("aac") => "aac",
+                _ => return Err(Error::State("unexpected native fixture codec")),
+            };
+            self.facts
+                .pinned_codec
+                .set(codec)
+                .map_err(|_| Error::State("fixture already decoded"))?;
+            Ok(())
+        }
+
         pub fn open(facts: Arc<Offline>) -> Result<Self> {
             Ok(Self {
                 engine: MpvEngine::open(MpvConfig {
@@ -294,6 +395,7 @@ mod cold_audio {
             cancel: &Cancellation,
         ) -> Result<LoadedMedia> {
             let loaded = self.engine.load_pinned_audio(file, authority, cancel)?;
+            self.record_codec(&loaded)?;
             self.facts.pinned.fetch_add(1, Ordering::AcqRel);
             Ok(loaded)
         }
@@ -305,6 +407,7 @@ mod cold_audio {
             cancel: &Cancellation,
         ) -> Result<LoadedMedia> {
             let loaded = self.engine.load_pinned_ncm(file, authority, cancel)?;
+            self.record_codec(&loaded)?;
             self.facts.pinned_ncm.fetch_add(1, Ordering::AcqRel);
             Ok(loaded)
         }

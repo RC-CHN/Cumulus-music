@@ -122,3 +122,11 @@ Unknown；两个 SQLite 的逻辑内容及 NCM 文件不变，未发现持久明
 这证明格式和外层 NCM 封装是分开的步骤，不代表所有真实 Vivid 或 NCM 文件均可播放。
 新增合成检查覆盖同账号缓存权益下的 NCM/AAC 准入和撤销、实际 libmpv/null 解码定位
 及时间推进、对加密外部引用的拒绝。未验证真实账号、声卡或 Windows 运行。
+
+Linux NCM/AAC 桌面复验：同一脚本改用 --ncm-aac --screenshot，先经正式下载器发布
+需要缓存黑胶权益的合成 standard AAC/M4A NCM；重新启动后，在正式 Vue 下载页面
+经 Tauri IPC 选中同一任务。libmpv/null 报告 AAC、一次加密句柄打开、无普通路径打开，
+时钟由 0.249 秒推进至 0.292 秒，随后停止并关闭。两进程均无外网路由；冷进程唯一
+账号读取被拒绝，其他 HTTP 与媒体请求为零。已发布的 NCM、SQLite 逻辑记录均不变，
+没有持久明文副本。旧 --ncm（FLAC）与不带格式参数的明文 FLAC 同批通过。
+合成证据与截图：.build/cold-ncm-aac-webview-HIebOC/{aac,ncm-flac,plain}/。

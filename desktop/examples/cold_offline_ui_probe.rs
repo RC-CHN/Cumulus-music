@@ -17,8 +17,15 @@ fn main() {
     if args[0] == "--seed" {
         assert!(!root.join("state").exists(), "proof state must be new");
         let ncm = std::env::var("CUMULUS_COLD_NCM").as_deref() == Ok("1");
+        let aac = std::env::var("CUMULUS_COLD_NCM_AAC").as_deref() == Ok("1");
+        let format = match (ncm, aac) {
+            (false, false) => fixture::SeedFormat::Flac,
+            (true, false) => fixture::SeedFormat::NcmFlac,
+            (true, true) => fixture::SeedFormat::NcmAac,
+            (false, true) => panic!("AAC fixture requires NCM mode"),
+        };
         let value =
-            tauri::async_runtime::block_on(fixture::seed(&root, ncm)).expect("synthetic seed");
+            tauri::async_runtime::block_on(fixture::seed(&root, format)).expect("synthetic seed");
         fs::write(root.join("seed.json"), serde_json::to_vec(&value).unwrap()).unwrap();
         return;
     }
