@@ -519,10 +519,19 @@
       assert(playlistBadge?.textContent.includes('万')&&document.getElementById(description)?.textContent==='播放次数：12,345',
         'comprehensive shows compact count with exact accessible count');
       assert(!all('[data-result-key^="playlist:"]')[1]?.querySelector('.search-playlist-count'),'missing count shows no badge');
+      const voiceFooter=()=>one('[data-result-key^="voice:"] .search-voice-footer');
+      const checkVoiceListens=()=>{
+        const footer=voiceFooter();
+        assert(footer?.querySelector('.search-voice-listens')?.textContent.includes('播放：1.2万')&&
+          footer.querySelector('.search-voice-duration')&&footer.querySelector('button.search-voice-radio'),
+          'voice footer retains duration, listen count and parent link');
+      };
+      checkVoiceListens();
       await capture('comprehensive_card_title_matches');
       for(const [category,kind] of [['playlists','playlist'],['podcasts','podcast'],['voices','voice'],['mvs','mv']]){
         await choose(category);check(kind,true);
         if(kind==='playlist')assert(!playlistCard()?.querySelector('.search-playlist-count'),'dedicated playlist results retain their layout');
+        if(kind==='voice')checkVoiceListens();
       }
       await capture('mv_category_card_title_matches');
       await fresh('不匹配结果');

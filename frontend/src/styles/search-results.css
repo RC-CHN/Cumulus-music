@@ -687,7 +687,8 @@
   font-size: 12px;
   line-height: 17px;
 }
-.search-voice-duration {
+.search-voice-duration,
+.search-voice-listens {
   flex: none;
   font-variant-numeric: tabular-nums;
 }

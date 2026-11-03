@@ -249,6 +249,7 @@
           "baseInfo": {
             "id": 401,
             "name": "合成声音 1 · 一段温柔的故事",
+            "listenerCount": 12345,
             "radio": {
               "id": 301,
               "name": "合成播客 1",
@@ -1023,6 +1024,8 @@
               "baseInfo": {
                 "id": 401,
                 "name": "合成声音 1 · 一段温柔的故事",
+                "listenerCount": 0,
+                "adjustedPlayCount": 12345,
                 "radio": {
                   "id": 301,
                   "name": "合成播客 1",

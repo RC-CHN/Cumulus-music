@@ -93,6 +93,17 @@ async fn categories_use_official_shapes_and_only_public_card_fields_cross_ipc() 
             assert_eq!(args["keyword"], "合成");
             assert_eq!(args["scene"], "normal");
         }
+        if matches!(category, C::All | C::Voices) {
+            let projected = serde_json::to_value(&view).unwrap();
+            let voice = projected["sections"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .flat_map(|section| section["items"].as_array().unwrap())
+                .find(|item| item["kind"] == "voice")
+                .unwrap();
+            assert_eq!(voice["listenerCount"], 12345);
+        }
         if matches!(category, C::All | C::Playlists) {
             let projected = serde_json::to_value(&view).unwrap();
             let playlist = projected["sections"]

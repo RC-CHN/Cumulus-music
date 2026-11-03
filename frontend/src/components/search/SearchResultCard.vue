@@ -174,6 +174,16 @@ const playlistRecommendation = computed(() =>
     ? props.item.recommendation
     : undefined,
 );
+const compactVoiceCount = new Intl.NumberFormat('zh-CN', {
+  notation: 'compact',
+  maximumFractionDigits: 1,
+});
+const voiceListens = computed(() => {
+  const count = props.item.kind === 'voice' ? props.item.listenerCount : undefined;
+  return count !== undefined && Number.isSafeInteger(count) && count >= 0
+    ? compactVoiceCount.format(count)
+    : undefined;
+});
 const voiceDuration = computed(() => {
   const ms = props.item.kind === 'voice' ? props.item.voice.durationMs : 0;
   return Number.isFinite(ms) && ms > 0 ? time(ms / 1000) : '';
@@ -328,6 +338,9 @@ watch(
     <template v-if="item.kind === 'voice'">
       <span class="search-voice-footer">
         <span v-if="voiceDuration" class="search-voice-duration">{{ voiceDuration }}</span>
+        <span v-if="voiceListens !== undefined" class="search-voice-listens"
+          >播放：{{ voiceListens }}</span
+        >
         <button
           v-if="item.voice.radioId"
           type="button"

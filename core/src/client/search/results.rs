@@ -32,6 +32,8 @@ pub enum SearchItem {
     },
     Voice {
         voice: EpisodeView,
+        #[serde(rename = "listenerCount", skip_serializing_if = "Option::is_none")]
+        listener_count: Option<u64>,
     },
     Podcast {
         podcast: PodcastCard,
@@ -181,6 +183,18 @@ pub(super) fn clean(s: &str) -> String {
         .replace("<b>", "")
         .replace("</b>", "")
 }
+fn voice_listener_count(value: &Value) -> Option<u64> {
+    let mut valid = ["listenerCount", "playCount", "adjustedPlayCount"]
+        .into_iter()
+        .filter_map(|key| value[key].as_u64())
+        .filter(|count| *count <= (1 << 53) - 1);
+    let first = valid.next()?;
+    Some(if first == 0 {
+        valid.find(|count| *count > 0).unwrap_or(0)
+    } else {
+        first
+    })
+}
 fn item(
     kind: &str,
     v: &Value,
@@ -221,6 +235,7 @@ fn item(
         },
         "voice" => SearchItem::Voice {
             voice: view::episode(&Episode::from_official(v)?, &[]),
+            listener_count: voice_listener_count(v),
         },
         "voicelist" => SearchItem::Podcast {
             podcast: view::card(&Radio::from_official(v)?),

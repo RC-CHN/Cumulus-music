@@ -225,3 +225,8 @@ components/Empty/index.tsx 的 fall 提示。歌手、用户和 MV 分类结束�
 官方 recommend.jsx:600–649 使用歌单卡片，PlaylistCard/index.tsx:979–983、1170–1179
 在普通封面的右上角显示播放量。综合结果复用已有已知公有歌单播放量及中文缩写格式；
 读屏关联原始计数，缺失、无效或私密歌单不显示。专门歌单分类的布局不变。
+
+搜索声音播放量：VoiceCard/index.jsx:360–368 在时长与播单入口之间显示 listenerCount。
+恢复 M21:949 的计数字段按 listenerCount、playCount、adjustedPlayCount 取值。
+综合与声音分类保留明确且可安全表示的计数（含零），显示中文缩写；缺失不补成零，
+不修改播单打开、播放或下载动作。

@@ -40,7 +40,7 @@ export type SearchItem =
   | { kind: 'playlist'; playlist: PlaylistView; recommendation?: string }
   | { kind: 'artist'; artist: ArtistCard }
   | { kind: 'album'; album: AlbumCard }
-  | { kind: 'voice'; voice: EpisodeView }
+  | { kind: 'voice'; voice: EpisodeView; listenerCount?: number }
   | { kind: 'podcast'; podcast: PodcastCard }
   | { kind: 'mv'; mv: CatalogVideoCard }
   | { kind: 'user'; user: FollowUser }
