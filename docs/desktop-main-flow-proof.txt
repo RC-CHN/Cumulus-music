@@ -100,3 +100,11 @@ Cumulus 桌面主流程验收
   SQLite 业务记录不变均已验证。这不是一次真实服务端到端往返；
   其他媒体与加密权益边界见
   cold-offline-foundation.txt。
+
+  Linux 合成桌面后续验收在同一 WebView 延长至 11 阶段，保留 10 张截图。
+  删除前独立重算成品 SHA-256，与任务和离线账本比对，并核对原始传输摘要。
+  断开合成 API/媒体传输后实际解码，随后通过播放条停止，再从下载菜单
+  确认删除本次合成文件。成品、任务、传输记录及离线账本已清除，原生删除
+  日志为 complete，同目录未管理文件及原歌单基线不变。断开后无新增 API
+  或媒体尝试。私有报告 .build/main-flow-disposal-proof-final/report.json；
+  未验证真实服务、物理声卡或 Windows。

@@ -1,5 +1,6 @@
 """Single production WebView flow with closed synthetic API/media backends."""
 import argparse
+import hashlib
 import json
 import os
 import sqlite3
@@ -10,7 +11,7 @@ from window_manager import launch
 
 STAGES = (
     'recovered', 'daily', 'search', 'playback', 'playlist_created', 'playlist_edited',
-    'playlist_cleaned', 'download_complete', 'local_offline_playback', 'complete',
+    'playlist_cleaned', 'download_complete', 'local_offline_playback', 'download_disposed', 'complete',
 )
 
 
@@ -56,33 +57,52 @@ def main():
     assert cleaned['fixture']['calls']['/api/playlist/delete'] == 1
     downloaded = stages['download_complete']
     assert downloaded['bytes'] > 0 and downloaded['fixture']['mediaTransfers'] == 1
-    files = list((root/'run/media').rglob('*.flac'))
-    assert len(files) == 1 and files[0].stat().st_size == downloaded['bytes']
-    seed_size = (root/'run/synthetic.flac').stat().st_size
+    proof = downloaded['audit']
+    assert proof['file'] == proof['taskIntegrity'] == proof['ledgerIntegrity']
+    assert proof['file']['bytes'] == downloaded['bytes'] and len(proof['file']['sha256']) == 64
+    seed = (root/'run/synthetic.flac').read_bytes()
+    assert proof['source'] == {'bytes': len(seed), 'sha256': hashlib.sha256(seed).hexdigest()}
+    media = (root/'run/media').resolve()
+    target = (media/proof['relative']).resolve()
+    assert target.parent == media and target.suffix.lower() == '.flac'
+    assert not os.path.lexists(media/proof['relative'])
+    assert {path.relative_to(media).as_posix() for path in media.rglob('*') if path.is_file()} == {'unrelated.txt'}
+    assert (media/'unrelated.txt').read_bytes() == b'unrelated synthetic file\n'
     offline = stages['local_offline_playback']
     assert offline['nativeProgress'] and offline['fixture']['offline']
     assert offline['fixture']['sourceLoads'] == 1 and offline['fixture']['localLoads'] == 1
     assert offline['fixture']['mediaTransfers'] == downloaded['fixture']['mediaTransfers']
     assert offline['fixture']['calls']['/api/song/enhance/player/url/v1'] == downloaded['fixture']['calls']['/api/song/enhance/player/url/v1']
+    disposal = stages['download_disposed']
+    assert disposal['stoppedBeforeDelete']
+    assert disposal['audit'] == {'id': proof['id'], 'fileAbsent': True, 'ledgerAbsent': True, 'sentinelUnchanged': True}
+    for stage in (offline, disposal, stages['complete']):
+        assert stage['fixture']['offline'] and not stage['fixture']['disposablePresent']
+        assert stage['fixture']['offlineMediaAttempts'] == 0
+        assert stage['fixture']['calls'] == downloaded['fixture']['calls']
+        assert stage['fixture']['mediaTransfers'] == downloaded['fixture']['mediaTransfers']
+        assert stage['fixture']['sourceLoads'] == 1 and stage['fixture']['localLoads'] == 1
     assert stages['complete']['ok'] and stages['complete']['allInOneWebView']
     database = root/'run/state/core.sqlite3'
     with closing(sqlite3.connect(database.as_uri()+'?mode=ro', uri=True)) as state:
         playlist = state.execute(
             "SELECT owner,json_extract(value,'$.command.kind'),json_extract(value,'$.phase') "
             "FROM state WHERE kind='playlist-mutations'").fetchall()
-        download = state.execute(
-            "SELECT owner,json_extract(value,'$.status'),json_extract(value,'$.raw_integrity.bytes'),"
-            "json_extract(value,'$.output_integrity.bytes'),json_extract(value,'$.cleanup_pending'),"
-            "json_extract(value,'$.target') FROM state WHERE kind='download_tasks_v1'").fetchall()
+        leftovers = state.execute(
+            "SELECT kind FROM state WHERE kind IN ('download_tasks_v1','offline_music_v1','media_transfers_v1')"
+        ).fetchall()
+        disposal_journal = state.execute(
+            "SELECT owner,json_extract(value,'$.task_id'),json_extract(value,'$.action'),"
+            "json_extract(value,'$.phase') FROM state WHERE kind='download_file_operations_v1'"
+        ).fetchall()
         assert state.execute("SELECT 1 FROM state WHERE owner='device' AND kind='identity'").fetchone() is None
     assert sorted(playlist) == [('2', kind, 'confirmed') for kind in ('create', 'delete', 'metadata')]
-    assert len(download) == 1
-    assert download[0][:5] == ('2', 'complete', seed_size, downloaded['bytes'], 0)
-    assert Path(download[0][5]).resolve() == files[0].resolve()
+    assert not leftovers
+    assert disposal_journal == [('2', proof['id'], 'delete', 'complete')]
     screenshots = len(list(output.glob('ux_*.png')))
     assert screenshots == (len(STAGES) - 1 if args.screenshots else 0)
     report = dict(ok=True, actualWebView=True, actualLibmpv=True, stages=len(STAGES), screenshots=screenshots, sqliteVerified=True,
-                  realMusicRequests=0, realAccountWrites=0, syntheticOfflinePlayback=True)
+                  realMusicRequests=0, realAccountWrites=0, syntheticOfflinePlayback=True, nativeDownloadDisposal=True, downloadIntegrityCheckpoint=True)
     (root/'report.json').write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
     print(json.dumps(report))
 

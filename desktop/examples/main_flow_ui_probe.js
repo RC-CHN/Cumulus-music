@@ -133,11 +133,29 @@
     await click(() => one("#download-tab-song"), "completed downloads");
     await wait(() => one('.download-row button[aria-label^="播放下载"]'), "download playback control");
     await stage("download_complete", { bytes: file.bytes });
+    await wait(() => window.__mainFlowDownloadVerified === true, "native file hash and ledger checkpoint");
     await emit("disconnect");
     await wait(() => window.__mainFlowOffline === true, "native offline acknowledgement");
     await click(() => one('.download-row button[aria-label^="播放下载"]'), "play downloaded file");
     await wait(() => state() === "playing" && position() >= .1, "offline local playback clock");
     await stage("local_offline_playback", { nativeProgress: true, output: "null" });
+    await click(() => button("停止播放", one(".playerbar")), "stop offline playback");
+    await wait(() => state() === "idle", "offline player stopped before disposal");
+    const manage = () => {
+      const rows = all(".download-row[data-download-index]");
+      return rows.length === 1 && rows[0].textContent.includes("合成主流程歌曲") &&
+        rows[0].querySelector('[data-download-action="manage"]');
+    };
+    await click(manage, "manage exact synthetic download");
+    await click(() => button("删除下载", one('.action-menu[aria-label="下载资源操作"]')), "delete synthetic download");
+    await click(() => button("确认删除本地文件"), "confirm exact local disposal");
+    await wait(async () => {
+      const result = await invoke("downloads", { epoch, query });
+      return !one(".download-dialog") && !result.tasks.some(t => t.id === file.id) &&
+        result.operations.length === 0 && result.jobs.some(job => !job.running && !job.error);
+    }, "native disposal completed");
+    await stage("download_disposed", { stoppedBeforeDelete: true });
+    await wait(() => window.__mainFlowDownloadDisposed === true, "native disposal ledger checkpoint");
     await stage("complete", { ok: true, allInOneWebView: true });
   } catch (error) {
     await emit("failed", { ok: false, last, playerState: state(), playbackMessage: one(".playback-message")?.textContent?.trim(), reason: String(error?.message ?? error) });

@@ -27,6 +27,7 @@ pub struct Service {
     offline: AtomicBool,
     local_loads: AtomicUsize,
     source_loads: AtomicUsize,
+    offline_media_attempts: AtomicUsize,
 }
 
 impl Service {
@@ -36,7 +37,8 @@ impl Service {
     pub fn facts(&self) -> Value {
         json!({"calls":*self.calls.lock().unwrap(), "disposablePresent":self.playlist.lock().unwrap().is_some(),
             "offline":self.offline.load(Ordering::Acquire), "mediaTransfers":media::requests(),
-            "sourceLoads":self.source_loads.load(Ordering::Acquire), "localLoads":self.local_loads.load(Ordering::Acquire)})
+            "sourceLoads":self.source_loads.load(Ordering::Acquire), "localLoads":self.local_loads.load(Ordering::Acquire),
+            "offlineMediaAttempts":self.offline_media_attempts.load(Ordering::Acquire)})
     }
 }
 fn song() -> Value {
@@ -242,6 +244,7 @@ impl cumulus_core::download::transfer::MediaBackend for Service {
     ) -> ApiFuture<'_, cumulus_core::download::transfer::MediaReply> {
         Box::pin(async move {
             if self.offline.load(Ordering::Acquire) {
+                self.offline_media_attempts.fetch_add(1, Ordering::AcqRel);
                 return Err(Error::Transport("synthetic media is disconnected".into()));
             }
             media::Backend.get(request).await
