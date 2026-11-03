@@ -1,6 +1,12 @@
 账号会话续期：官方依据、Rust 核心、桌面触发及验证
 2026-10-27；本文件只覆盖 JSK 定期续期，不代表完整目标或全部账号分支完成。
 
+2026-11-03最新补充：本人新扫码已实际取得并保存U/RT，新进程恢复通过；历史只读检查的
+MissingCredentials不再代表这份新会话。正常产品检查仍因双实验false停止；显式一次底层续期
+返回200但无新凭据对，原登录仍有效，不能宣布真实轮换通过或签名失败。
+已按完整原refreshToken方法执行16组离线对照，并修正“续期仅RT头覆盖旧RT”的差异。
+逐项规则、主动保留的恢复差异及线上证据边界见refresh-control-contracts.txt。
+
 官方证据
 官方 3.1.42.205594 的 hybrid_app M/290 login.jskConfig 明确启用 enableTokenJsk；
 vendor M/1368 PcPlatformAdapter.checkAB 将 login-token-jsk 映射到这个值。

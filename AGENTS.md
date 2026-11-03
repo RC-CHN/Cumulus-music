@@ -17,6 +17,7 @@
 
 ## 验证
 
+- 按功能批次集中验证：先累计完成一批实现和文档，再统一运行相关检查与回归。中途只为排错或明确风险做定向验证；没有新的相关变更或失败时，不重复运行已通过的检查。集中推送触发 CI，避免每个小改动单独重复整套验证；仍须满足以下必需检查及发布门槛。
 - 使用仓库固定的 Rust/Node 版本和锁文件。Rust：`cargo fmt --all --check`、`cargo clippy --workspace --all-targets --features cumulus-desktop/custom-protocol --locked -- -D warnings`、`cargo test --workspace --all-targets --features cumulus-desktop/custom-protocol --locked`。
 - 前端：`npm --prefix frontend ci`，再运行 `format:check`、`test` 和 `build`。
 - Linux、Windows 的测试及发行构建分配到独立 runner 并行执行；前端检查独立执行。所有必需 job 汇总到 `CI gate`，不能通过忽略失败或 `continue-on-error` 发布。

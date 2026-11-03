@@ -69,7 +69,9 @@ refreshToken与自动续期
 成功必须同时收到新的MUSIC_U和refreshToken。未知刷新结果进入持久化恢复，只读核对而不重放。
 界面展示missing_credentials/refreshed/not_due/recovery_required等公开状态，无秘密值。
 参见desktop-session-renewal-contracts.txt和refresh-token-issuance-evidence.txt。
-上次真实会话检查缺refreshToken；不能用合成续期成功宣称此账号已经实现真实自动轮换。
+历史真实会话检查缺refreshToken；2026-11-03本人新扫码已取得并保存真实RT，新进程恢复通过。
+正常续期双实验仍关闭；一次显式底层诊断200但无新凭据对，不能宣称真实自动轮换通过。
+详见refresh-control-contracts.txt与refresh-token-issuance-evidence.txt。
 
 2026-11-02账号初始化与关闭后焦点
 登录/账号对话框关闭动画结束后仍按原入口恢复焦点；若资源初始化暂时禁用该入口，
