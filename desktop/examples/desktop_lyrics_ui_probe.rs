@@ -83,6 +83,8 @@ fn main() {
             include_bytes!("../../core/tests/fixtures/tag_audio/seed.flac"),
         )
         .expect("write frozen synthetic tagged FLAC");
+        fs::write(directory.join("embedded.lrc"), [0xff, 0xfe, 0x20])
+            .expect("write synthetic truncated UTF-16 sidecar");
         directory
     });
     let output = root.join(if reopened { "reopen" } else { "first" });
