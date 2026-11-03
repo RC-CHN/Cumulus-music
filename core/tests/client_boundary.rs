@@ -44,7 +44,27 @@ impl Api for Backend {
                     json!({"code":200,"profile":{"userId":9,"nickname":"用户","avatarUrl":"https://p1.music.126.net/a.jpg?secret=DO_NOT_EXPORT","token":"DO_NOT_EXPORT"}})
                 }
                 "/api/user/playlist" => json!({"code":200,"playlist":[playlist()],"more":false}),
-                "/api/v6/playlist/detail" => json!({"code":200,"playlist":playlist()}),
+                "/api/v6/playlist/detail" => {
+                    let mut value = playlist();
+                    value["id"] = payload["id"].clone();
+                    value["creator"]["avatarUrl"] =
+                        json!("http://p1.music.126.net/author.jpg?token=DO_NOT_EXPORT");
+                    value["createTime"] = json!(1705320000000_u64);
+                    value["updateTime"] = json!(1707998400000_u64);
+                    match payload["id"].as_str() {
+                        Some("8") => {
+                            value["specialType"] = json!(10);
+                            value["creator"]["avatarUrl"] =
+                                json!("https://foreign.invalid/private");
+                        }
+                        Some("9") => {
+                            value["specialType"] = json!(10);
+                            value["updateTime"] = json!(0);
+                        }
+                        _ => {}
+                    }
+                    json!({"code":200,"playlist":value})
+                }
                 "/api/playlist/subscribers" => match payload["offset"].as_u64() {
                     Some(0) => {
                         json!({"code":200,"subscribers":[{"userId":81,"nickname":"收藏者甲","signature":"签名","avatarUrl":"http://p1.music.126.net/a.jpg?secret=DO_NOT_EXPORT","token":"DO_NOT_EXPORT"}],"more":true,"total":25})
@@ -415,5 +435,57 @@ async fn playlist_subscribers_are_epoch_bound_paged_and_safe_to_render() {
     assert_eq!(
         payloads,
         [0, 24, 48].map(|offset| json!({"id":"7","limit":24,"offset":offset}))
+    );
+}
+
+#[tokio::test]
+async fn playlist_header_projects_only_the_official_date_and_public_creator_artwork() {
+    let dir = tempfile::tempdir().unwrap();
+    let backend = Arc::new(Backend::default());
+    let (client, _) = client(dir.path(), backend);
+    client.restore_account().await.unwrap();
+    let header = |value: Option<cumulus_core::client::dto::PlaylistView>| {
+        serde_json::to_value(value.unwrap()).unwrap()
+    };
+    let ordinary = header(
+        client
+            .playlist_page("7", PageRequest::default())
+            .await
+            .unwrap()
+            .value
+            .playlist,
+    );
+    assert_eq!(
+        ordinary["headerDate"],
+        json!({"kind":"created","timestampMs":1705320000000_u64})
+    );
+    assert_eq!(
+        ordinary["creatorAvatarUrl"],
+        "https://p1.music.126.net/author.jpg?param=320y320"
+    );
+    let updated = header(
+        client
+            .playlist_page("8", PageRequest::default())
+            .await
+            .unwrap()
+            .value
+            .playlist,
+    );
+    assert_eq!(
+        updated["headerDate"],
+        json!({"kind":"updated","timestampMs":1707998400000_u64})
+    );
+    assert!(updated["creatorAvatarUrl"].is_null());
+    let missing = header(
+        client
+            .playlist_page("9", PageRequest::default())
+            .await
+            .unwrap()
+            .value
+            .playlist,
+    );
+    assert!(
+        missing["headerDate"].is_null(),
+        "special playlists never fall back to createTime"
     );
 }

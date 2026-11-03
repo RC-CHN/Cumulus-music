@@ -1,4 +1,6 @@
-use super::dto::{ArtistReference, PlaylistView, TrackView};
+use super::dto::{
+    ArtistReference, PlaylistHeaderDate, PlaylistHeaderDateKind, PlaylistView, TrackView,
+};
 use crate::{Error, Result, protocol::api::identifier};
 use serde_json::Value;
 
@@ -30,18 +32,30 @@ pub(super) fn playlist(value: &Value, uid: &str) -> Result<PlaylistView> {
     let owner =
         identifier(&value["userId"]).or_else(|_| identifier(&value["creator"]["userId"]))?;
     let owned = owner == uid;
+    let special_type = value["specialType"].as_i64();
+    let (date_key, kind) = if special_type == Some(10) {
+        ("updateTime", PlaylistHeaderDateKind::Updated)
+    } else {
+        ("createTime", PlaylistHeaderDateKind::Created)
+    };
+    let header_date = value[date_key]
+        .as_u64()
+        .filter(|time| (1..=8_640_000_000_000_000).contains(time))
+        .map(|timestamp_ms| PlaylistHeaderDate { kind, timestamp_ms });
     Ok(PlaylistView {
         id: identifier(&value["id"])?,
         name: string(&value["name"]),
         cover_url: artwork(&value["coverImgUrl"]),
         description: string(&value["description"]),
         creator: string(&value["creator"]["nickname"]),
+        creator_avatar_url: artwork(&value["creator"]["avatarUrl"]),
+        header_date,
         track_count: value["trackCount"].as_u64().unwrap_or(0) as usize,
         subscribed_count: value["subscribedCount"]
             .as_u64()
             .filter(|n| *n <= 9_007_199_254_740_991),
         owned,
-        favorite: owned && value["specialType"].as_i64() == Some(5),
+        favorite: owned && special_type == Some(5),
         private: value["privacy"].as_i64() == Some(10),
     })
 }

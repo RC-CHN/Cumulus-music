@@ -99,11 +99,27 @@ pub struct PlaylistView {
     pub cover_url: Option<String>,
     pub description: String,
     pub creator: String,
+    pub creator_avatar_url: Option<String>,
+    pub header_date: Option<PlaylistHeaderDate>,
     pub track_count: usize,
     pub subscribed_count: Option<u64>,
     pub owned: bool,
     pub favorite: bool,
     pub private: bool,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaylistHeaderDate {
+    pub kind: PlaylistHeaderDateKind,
+    pub timestamp_ms: u64,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlaylistHeaderDateKind {
+    Created,
+    Updated,
 }
 
 #[derive(Clone, Serialize)]

@@ -142,6 +142,8 @@ export interface PlaylistView {
   coverUrl: string | null;
   description: string;
   creator: string;
+  creatorAvatarUrl?: string | null;
+  headerDate?: { kind: 'created' | 'updated'; timestampMs: number } | null;
   trackCount: number;
   owned: boolean;
   favorite: boolean;

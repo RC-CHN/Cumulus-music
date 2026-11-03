@@ -1,11 +1,13 @@
 <script setup lang="ts">
+import { computed, ref } from 'vue';
+import { playlistDate } from '../../services/playlistHeader';
 import type { PlaylistView } from '../../services/contracts';
 import type { MenuItem } from '../../services/menu';
 import ActionMenu from '../ActionMenu.vue';
 import Icon from '../Icon.vue';
 import PlaylistDescription from './PlaylistDescription.vue';
 
-defineProps<{
+const props = defineProps<{
   playlist: PlaylistView;
   total: number;
   playable: boolean;
@@ -19,6 +21,8 @@ defineProps<{
   intelligenceBusy?: boolean;
   intelligenceSeeded?: boolean;
 }>();
+const date = computed(() => playlistDate(props.playlist.headerDate?.timestampMs));
+const failedAvatar = ref<string>();
 defineEmits<{
   edit: [];
   play: [];
@@ -58,7 +62,21 @@ defineEmits<{
       <div class="playlist-summary">
         <PlaylistDescription :text="playlist.description" />
         <div class="playlist-credits">
-          <span class="ellipsis" :title="playlist.creator">{{ playlist.creator }}</span>
+          <span v-if="playlist.creator" class="playlist-creator">
+            <img
+              v-if="playlist.creatorAvatarUrl && playlist.creatorAvatarUrl !== failedAvatar"
+              :src="playlist.creatorAvatarUrl"
+              alt=""
+              referrerpolicy="no-referrer"
+              @error="failedAvatar = playlist.creatorAvatarUrl"
+            />
+            <Icon v-else name="user" aria-hidden="true" />
+            <span class="ellipsis" :title="playlist.creator">{{ playlist.creator }}</span>
+          </span>
+          <span v-if="date" class="playlist-header-date">
+            <time :datetime="date">{{ date }}</time
+            >{{ playlist.headerDate?.kind === 'updated' ? '更新' : '创建' }}
+          </span>
           <span class="playlist-total">{{ total }} 首歌曲</span>
         </div>
         <div class="playlist-actions" :aria-busy="preparing">

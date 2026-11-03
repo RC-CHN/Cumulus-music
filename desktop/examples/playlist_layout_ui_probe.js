@@ -82,6 +82,13 @@
         for(const [id,label] of [[3,'short'],[4,'empty'],[1,'favorite'],[20,'subscribed'],[25,'unlisted']]) {
           await openId(id);await capture(`${label}_${width}_${value}`);
           if(id===3) assert(!button('展开歌单简介'),'short description needs no expander');
+          const portrait=one('.playlist-creator svg');
+          assert(portrait&&rect(portrait).width===24&&rect(portrait).height===24,'creator placeholder remains 24px');
+          const headerDate=one('.playlist-header-date'),date=headerDate?.querySelector('time');
+          if(id===3||id===20) {
+            assert(/^2024-0[12]-\d{2}$/.test(date?.dateTime??''),'valid header calendar date');
+            assert(headerDate.textContent.endsWith(id===20?'更新':'创建'),'correct timestamp suffix');
+          } else assert(!headerDate,'missing timestamp omitted');
           if(id===4) assert(!one('.playlist-description')&&button('播放全部').disabled&&button('下载当前歌曲列表').disabled,'empty playlist actions');
           if(id===1) assert(!one('.playlist-edit'),'favorite has no editor');
           if(id===20||id===25) {

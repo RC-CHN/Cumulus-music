@@ -22,7 +22,15 @@ pub fn decorate(mut playlist: Value, id: u64) -> Value {
             playlist["creator"]["nickname"] =
                 json!("合成用户的很长很长的名字，用于检查作者信息边界");
         }
-        3 => playlist["description"] = json!("一段简短的介绍。"),
+        3 => {
+            playlist["description"] = json!("一段简短的介绍。");
+            playlist["createTime"] = json!(1705320000000_u64);
+        }
+        20 => {
+            playlist["specialType"] = json!(10);
+            playlist["createTime"] = json!(1705320000000_u64);
+            playlist["updateTime"] = json!(1707998400000_u64);
+        }
         4 => {
             playlist["description"] = json!("");
             playlist["trackCount"] = json!(0);
