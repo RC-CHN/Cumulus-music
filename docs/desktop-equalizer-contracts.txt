@@ -86,3 +86,11 @@ rust-core-validation.txt。没有新增账号或网络请求，不能替代实�
   且没有重复写设置。Linux 合成媒体/null 验收通过，测试进程无外网路由：
   .build/equalizer-grouped-proof/report.json。平直状态的处理标签不证明 PCM 变化；
   逐样本证据仍使用独立 DSP 对照。该次未在 Windows 或物理声卡运行。
+
+已保存的自定义预设
+官方 Equalizer.tsx:362–376、M3091:1449–1465 保存独立的一份十段自定义曲线；
+M342:2028–2051 通过 updateSetting 保存该槽，切换内置曲线后仍可选择它。
+Cumulus 对已确认、非内置的当前曲线提供显式保存。save_custom_equalizer 只携带显示的
+当前设置 revision；原生在当前账号命名空间事务内核对 revision 后复制已确认的十段增益。
+保存不改变活动曲线 revision、播放或滤镜。普通调节保留该槽；再选自定义时走已有原生
+曲线 CAS，并正常开启均衡器。旧记录没有此可选字段时照常读取；未新增远端调用。

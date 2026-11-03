@@ -84,7 +84,7 @@ fn main() {
         let handle=app.handle().clone();
         app.listen("equalizer-proof",move|event|{
             let value:Value=serde_json::from_str(event.payload()).unwrap();let stage=value["stage"].as_str().unwrap_or("").to_owned();
-            if !["eq_initial","eq_enabled","eq_custom","eq_off","eq_reenabled","eq_flat","eq_saved","eq_reopened","eq_reopened_playing","eq_missing","eq_disabled_recovery","complete","failed"].contains(&stage.as_str()) {return;}
+            if !["eq_initial","eq_enabled","eq_custom","eq_custom_saved","eq_custom_built_in","eq_custom_recalled","eq_off","eq_reenabled","eq_flat","eq_saved","eq_reopened","eq_reopened_playing","eq_reopened_custom_recalled","eq_missing","eq_disabled_recovery","complete","failed"].contains(&stage.as_str()) {return;}
             let handle=handle.clone();let output=output.clone();
             tauri::async_runtime::spawn(async move {
                 let client=handle.state::<MusicClient>();

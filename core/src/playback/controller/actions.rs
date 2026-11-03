@@ -55,6 +55,7 @@ impl Actor {
                 | PlaybackCommand::Volume(_)
                 | PlaybackCommand::Speed(_)
                 | PlaybackCommand::Equalizer { .. }
+                | PlaybackCommand::SaveCustomEqualizer { .. }
                 | PlaybackCommand::RetryEqualizer
                 | PlaybackCommand::RepairEqualizer
                 | PlaybackCommand::Loudness { .. }
@@ -116,6 +117,7 @@ impl Actor {
                 | PlaybackCommand::SyncQueue
                 | PlaybackCommand::Volume(_)
                 | PlaybackCommand::Equalizer { .. }
+                | PlaybackCommand::SaveCustomEqualizer { .. }
                 | PlaybackCommand::RetryEqualizer
                 | PlaybackCommand::RepairEqualizer
                 | PlaybackCommand::Loudness { .. }
@@ -163,6 +165,9 @@ impl Actor {
                 expected_revision,
                 settings,
             } => self.equalizer_change(expected_revision, settings).await,
+            PlaybackCommand::SaveCustomEqualizer { expected_revision } => {
+                self.equalizer_save_custom(expected_revision)
+            }
             PlaybackCommand::RetryEqualizer => self.equalizer_retry().await,
             PlaybackCommand::RepairEqualizer => self.equalizer_repair().await,
             PlaybackCommand::Loudness {

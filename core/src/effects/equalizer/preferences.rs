@@ -8,6 +8,8 @@ const KIND: &str = "equalizer-preferences-v1";
 pub struct EqualizerPreferences {
     pub revision: u64,
     pub settings: EqualizerSettings,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub saved_custom: Option<EqualizerSettings>,
 }
 impl EqualizerPreferences {
     pub fn read(store: &StateStore, owner: &str) -> Result<Self> {
@@ -41,9 +43,29 @@ impl EqualizerPreferences {
                     .checked_add(1)
                     .ok_or(Error::State("equalizer revision exhausted"))?,
                 settings,
+                saved_custom: current.saved_custom,
             };
             tx.put(owner, KIND, "current", &serde_json::to_value(next)?)?;
             Ok(next)
+        })
+    }
+    /// Copy the acknowledged curve without changing the active settings or DSP revision.
+    pub fn save_custom(store: &StateStore, owner: &str, expected: u64) -> Result<Self> {
+        store.transaction(|tx| {
+            let mut current: Self = tx
+                .get(owner, KIND, "current")?
+                .map(serde_json::from_value)
+                .transpose()?
+                .unwrap_or_default();
+            if current.revision != expected {
+                return Err(Error::State("equalizer settings changed"));
+            }
+            let custom = Some(EqualizerSettings::new(true, *current.settings.gains())?);
+            if current.saved_custom != custom {
+                current.saved_custom = custom;
+                tx.put(owner, KIND, "current", &serde_json::to_value(current)?)?;
+            }
+            Ok(current)
         })
     }
     /// Explicit local repair only. Keep the corrupt value in the same account
@@ -61,6 +83,7 @@ impl EqualizerPreferences {
             let next = Self {
                 revision: 1,
                 settings: EqualizerSettings::default(),
+                saved_custom: None,
             };
             tx.put(owner, KIND, "current", &serde_json::to_value(next)?)?;
             Ok(next)

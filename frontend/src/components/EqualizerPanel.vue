@@ -18,10 +18,21 @@ const dialog = ref<HTMLDialogElement>();
 const gains = computed(() => settings.value?.gains ?? Array<number>(10).fill(0));
 const commandPending = ref(false);
 const commandError = ref('');
+const savedMessage = ref('');
 const disabled = computed(
   () => !ready.value || !current.value || current.value.damaged || commandPending.value,
 );
 const preset = computed(() => equalizerPreset(gains.value));
+const saved = computed(() => current.value?.saved_custom);
+const matchesSaved = computed(
+  () =>
+    saved.value?.every((gain, i) => Math.fround(gain) === Math.fround(gains.value[i]!)) ?? false,
+);
+const displayedPreset = computed(() => (matchesSaved.value ? -2 : preset.value));
+const canSave = computed(
+  () =>
+    !disabled.value && !pending.value && !draft.value && preset.value < 0 && !matchesSaved.value,
+);
 let focused: HTMLElement | null = null;
 const epoch = view.value?.epoch;
 watch(
@@ -38,16 +49,40 @@ onUnmounted(() => focused?.focus());
 function change(enabled: boolean, values = gains.value) {
   if (disabled.value) return;
   commandError.value = '';
+  savedMessage.value = '';
   stage({ enabled, gains: values });
 }
 function choose(event: Event) {
-  const p = equalizerPresets[Number((event.target as HTMLSelectElement).value)];
+  const selected = Number((event.target as HTMLSelectElement).value);
+  if (selected === -2 && saved.value) {
+    change(true, [...saved.value]);
+    return;
+  }
+  const p = equalizerPresets[selected];
   if (p) change(true, [...p.gains]);
 }
 function slide(index: number, event: Event) {
   const values = [...gains.value];
   values[index] = Number((event.target as HTMLInputElement).value);
   change(true, values);
+}
+async function saveCustom() {
+  const expected = current.value;
+  if (!canSave.value || !expected) return;
+  commandPending.value = true;
+  commandError.value = '';
+  savedMessage.value = '';
+  try {
+    const next = await props.player.configureEqualizer({
+      kind: 'save_custom_equalizer',
+      expected_revision: expected.revision,
+    });
+    if (next.epoch === epoch) savedMessage.value = '已保存自定义预设';
+  } catch (issue) {
+    if (view.value?.epoch === epoch) commandError.value = failure(issue).message;
+  } finally {
+    commandPending.value = false;
+  }
 }
 async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
   if (!ready.value || pending.value || commandPending.value || draft.value) return;
@@ -80,8 +115,14 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
     <div class="equalizer-controls">
       <label
         >预设
-        <select aria-label="均衡器预设" :value="preset" :disabled="disabled" @change="choose">
-          <option v-if="preset < 0" :value="-1" disabled>自定义</option>
+        <select
+          aria-label="均衡器预设"
+          :value="displayedPreset"
+          :disabled="disabled"
+          @change="choose"
+        >
+          <option v-if="preset < 0 && !matchesSaved" :value="-1" disabled>未保存的自定义</option>
+          <option v-if="saved" :value="-2">已保存的自定义</option>
           <option v-for="(p, index) in equalizerPresets" :key="p.name" :value="index">
             {{ p.name }}
           </option>
@@ -154,8 +195,9 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
       <button :disabled="pending" @click="discard">舍弃草稿</button>
     </div>
     <footer>
-      <small>为当前账号保存，下次打开仍会保留。</small
-      ><button :disabled="disabled" @click="change(true, Array(10).fill(0))">恢复平直</button>
+      <small aria-live="polite">{{ savedMessage || '为当前账号保存，下次打开仍会保留。' }}</small>
+      <button :disabled="!canSave" @click="saveCustom">保存自定义预设</button>
+      <button :disabled="disabled" @click="change(true, Array(10).fill(0))">恢复平直</button>
     </footer>
   </dialog>
 </template>

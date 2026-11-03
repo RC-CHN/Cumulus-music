@@ -59,6 +59,18 @@ def main():
     after = custom['native']
     assert before['state'] == after['state'] == 'playing'
     assert before['entryId'] == after['entryId'] and after['position'] > before['position']
+    custom_saved = read('eq_custom_saved')['native']
+    built_in = read('eq_custom_built_in')['native']
+    recalled = read('eq_custom_recalled')['native']
+    custom_gains = native['settings']['gains']
+    assert custom_saved['equalizer']['revision'] == native['revision']
+    assert custom_saved['equalizer']['settings'] == native['settings']
+    assert built_in['equalizer']['settings'] != native['settings']
+    assert recalled['equalizer']['settings'] == native['settings']
+    assert recalled['equalizer']['status'] == 'processing'
+    for stage in (custom_saved, built_in, recalled):
+        assert stage['equalizer']['saved_custom'] == custom_gains
+        assert stage['entryId'] == before['entryId'] and stage['state'] == 'playing'
     off = read('eq_off')['native']
     reenabled = read('eq_reenabled')['native']
     flat = read('eq_flat')['native']
@@ -79,7 +91,8 @@ def main():
     assert read('complete')['ok']
     record = persisted(root)
     assert record == {'revision': int(saved['equalizer']['revision']),
-                      'settings': saved['equalizer']['settings']}
+                      'settings': saved['equalizer']['settings'],
+                      'saved_custom': native['settings']}
 
     reopened = run(binary, env, root, reopen=True)
     restored = reopened('eq_reopened')['native']
@@ -90,10 +103,20 @@ def main():
     for stage in (restored, resumed):
         assert stage['equalizer']['settings'] == record['settings']
         assert int(stage['equalizer']['revision']) == record['revision']
-    assert persisted(root) == record and reopened('complete')['ok']
+        assert stage['equalizer']['saved_custom'] == custom_gains
+    recalled_reopen = reopened('eq_reopened_custom_recalled')['native']
+    assert recalled_reopen['state'] == 'playing' and recalled_reopen['entryId'] == resumed['entryId']
+    assert recalled_reopen['equalizer']['status'] == 'processing'
+    assert recalled_reopen['equalizer']['saved_custom'] == custom_gains
+    assert recalled_reopen['equalizer']['settings'] == record['saved_custom']
+    assert int(recalled_reopen['equalizer']['revision']) == record['revision'] + 1
+    assert persisted(root) == {**record, 'revision': record['revision'] + 1,
+                               'settings': record['saved_custom']}
+    assert reopened('complete')['ok']
     report = {'ok': True, 'actualWebView': True, 'inputOnly': True, 'confirmedGain': -3.5,
               'samePlayingEntryAdvanced': True, 'nativeFlatReset': True,
-              'persistedRevisionVerified': True, 'freshProcessResumedProcessing': True}
+              'persistedRevisionVerified': True, 'freshProcessResumedProcessing': True,
+              'savedCustomPresetRecalledAfterRestart': True}
     (root/'report.json').write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
     print(json.dumps(report))
 

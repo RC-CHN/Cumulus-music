@@ -302,7 +302,10 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     }
   }
   async function configureEqualizer(
-    input: Extract<PlayerAction, { kind: 'equalizer' | 'retry_equalizer' | 'repair_equalizer' }>,
+    input: Extract<
+      PlayerAction,
+      { kind: 'equalizer' | 'save_custom_equalizer' | 'retry_equalizer' | 'repair_equalizer' }
+    >,
   ) {
     const captured = epoch,
       session = connection;

@@ -198,6 +198,7 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
         equalizer: EqualizerView {
             revision: value.equalizer.preferences.revision.to_string(),
             settings: value.equalizer.preferences.settings,
+            saved_custom: value.equalizer.preferences.saved_custom.map(|s| *s.gains()),
             status: value.equalizer.status,
             damaged: value.equalizer.damaged,
         },
@@ -522,6 +523,7 @@ impl MusicClient {
         let local_effect = matches!(
             action,
             PlayerAction::Equalizer { .. }
+                | PlayerAction::SaveCustomEqualizer { .. }
                 | PlayerAction::RetryEqualizer
                 | PlayerAction::RepairEqualizer
                 | PlayerAction::Loudness { .. }
@@ -566,6 +568,7 @@ impl MusicClient {
                 | PlayerAction::Speed { .. }
                 | PlayerAction::Mode { .. }
                 | PlayerAction::Equalizer { .. }
+                | PlayerAction::SaveCustomEqualizer { .. }
                 | PlayerAction::RetryEqualizer
                 | PlayerAction::RepairEqualizer
                 | PlayerAction::Loudness { .. }
@@ -783,6 +786,17 @@ impl MusicClient {
                 PlaybackCommand::Equalizer {
                     expected_revision: revision,
                     settings,
+                }
+            }
+            PlayerAction::SaveCustomEqualizer { expected_revision } => {
+                let revision = expected_revision
+                    .parse::<u64>()
+                    .map_err(|_| Error::InvalidInput("invalid equalizer revision"))?;
+                if revision.to_string() != expected_revision {
+                    return Err(Error::InvalidInput("invalid equalizer revision"));
+                }
+                PlaybackCommand::SaveCustomEqualizer {
+                    expected_revision: revision,
                 }
             }
             PlayerAction::RetryEqualizer => PlaybackCommand::RetryEqualizer,

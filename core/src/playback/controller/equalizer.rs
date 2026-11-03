@@ -13,13 +13,14 @@ impl Actor {
             Ok(preferences) => {
                 if !self.equalizer_initialized
                     || self.equalizer.damaged
-                    || preferences != self.equalizer.preferences
+                    || preferences.revision != self.equalizer.preferences.revision
+                    || preferences.settings != self.equalizer.preferences.settings
                 {
-                    self.equalizer.preferences = preferences;
                     self.equalizer.status = EqualizerStatus::Pending;
-                    self.equalizer_initialized = true;
-                    self.equalizer.damaged = false;
                 }
+                self.equalizer.preferences = preferences;
+                self.equalizer_initialized = true;
+                self.equalizer.damaged = false;
             }
             Err(Error::Json(_)) => {
                 if !self.equalizer.damaged {
@@ -52,6 +53,15 @@ impl Actor {
         if self.pending.is_none() {
             self.equalizer_apply().await?;
         }
+        Ok(())
+    }
+    pub(super) fn equalizer_save_custom(&mut self, expected: u64) -> Result<()> {
+        let preferences = self.session.with_local_owner(&self.token, |owner| {
+            EqualizerPreferences::save_custom(&self.store, owner, expected)
+        })?;
+        // This command owns only the saved slot. If another controller changed
+        // the active settings, normal preference sync owns applying that change.
+        self.equalizer.preferences.saved_custom = preferences.saved_custom;
         Ok(())
     }
     pub(super) async fn equalizer_retry(&mut self) -> Result<()> {

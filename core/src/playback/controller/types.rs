@@ -135,6 +135,9 @@ pub enum PlaybackCommand {
         expected_revision: u64,
         settings: crate::effects::equalizer::EqualizerSettings,
     },
+    SaveCustomEqualizer {
+        expected_revision: u64,
+    },
     RetryEqualizer,
     RepairEqualizer,
     Loudness {

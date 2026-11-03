@@ -122,6 +122,7 @@ export interface EqualizerSettings {
 export interface EqualizerView {
   revision: string;
   settings: EqualizerSettings;
+  saved_custom?: number[] | null;
   status: 'pending' | 'unavailable' | 'configured' | 'processing' | 'failed';
   damaged: boolean;
 }
@@ -254,6 +255,7 @@ export type PlayerAction =
   | { kind: 'retry_loudness' | 'repair_loudness' }
   | { kind: 'repair_quality' }
   | { kind: 'equalizer'; expected_revision: string; settings: EqualizerSettings }
+  | { kind: 'save_custom_equalizer'; expected_revision: string }
   | { kind: 'retry_equalizer' | 'repair_equalizer' }
   | { kind: 'play' | 'next' | 'previous' | 'stop' | 'restore' | 'startup' | 'refresh' | 'clear' }
   | { kind: 'pause'; paused: boolean }

@@ -217,3 +217,82 @@ async fn flat_curve_keeps_overall_switch_but_bypasses_the_recovered_dsp() {
     assert!(view.equalizer.preferences.settings.enabled());
     assert!(!f.device.equalizer.lock().unwrap().unwrap().enabled());
 }
+
+#[tokio::test]
+async fn saved_custom_curve_is_account_owned_revision_guarded_and_separate_from_active_audio() {
+    let f = Fixture::new();
+    f.device.equalizer_supported.store(true, Ordering::SeqCst);
+    let active = f.command(change(0, 4.0)).await.unwrap();
+    f.device.equalizer_fail.store(true, Ordering::SeqCst);
+    let saved = f
+        .command(Cmd::SaveCustomEqualizer {
+            expected_revision: 1,
+        })
+        .await
+        .unwrap();
+    assert_eq!(saved.control_revision, active.control_revision);
+    assert_eq!(saved.equalizer.preferences.revision, 1);
+    assert_eq!(saved.equalizer.preferences.settings, curve(4.0));
+    assert_eq!(saved.equalizer.preferences.saved_custom, Some(curve(4.0)));
+    assert_eq!(saved.equalizer.status, EqualizerStatus::Configured);
+    assert_eq!(*f.device.equalizer.lock().unwrap(), Some(curve(4.0)));
+
+    f.device.equalizer_fail.store(false, Ordering::SeqCst);
+    f.command(change(1, -3.0)).await.unwrap();
+    let err = f
+        .command(Cmd::SaveCustomEqualizer {
+            expected_revision: 1,
+        })
+        .await
+        .err()
+        .unwrap();
+    assert!(matches!(
+        root(&err),
+        Error::State("equalizer settings changed")
+    ));
+    let reopened = f
+        .another_player()
+        .command(&f.token(), Cmd::Snapshot)
+        .await
+        .unwrap();
+    assert_eq!(reopened.equalizer.preferences.settings, curve(-3.0));
+    assert_eq!(
+        reopened.equalizer.preferences.saved_custom,
+        Some(curve(4.0))
+    );
+    assert_eq!(
+        EqualizerPreferences::read(&f.store, "other")
+            .unwrap()
+            .saved_custom,
+        None
+    );
+    let old = f.token();
+    f.session
+        .adopt(f.api.clone(), json!({"userId":10}), &old)
+        .unwrap();
+    let new_owner = f.command(Cmd::Snapshot).await.unwrap();
+    assert_eq!(new_owner.account.uid.as_deref(), Some("10"));
+    assert_eq!(new_owner.equalizer.preferences.saved_custom, None);
+    assert_eq!(
+        EqualizerPreferences::read(&f.store, "9")
+            .unwrap()
+            .saved_custom,
+        Some(curve(4.0))
+    );
+    assert!(f.api.calls.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn peer_replacing_the_same_active_curve_still_reapplies_its_new_revision() {
+    let f = Fixture::new();
+    f.device.equalizer_supported.store(true, Ordering::SeqCst);
+    f.command(change(0, 4.0)).await.unwrap();
+    let peer = f.another_player();
+    peer.command(&f.token(), change(1, 4.0)).await.unwrap();
+
+    f.device.equalizer_fail.store(true, Ordering::SeqCst);
+    let synced = f.command(Cmd::Snapshot).await.unwrap();
+    assert_eq!(synced.equalizer.preferences.revision, 2);
+    assert_eq!(synced.equalizer.preferences.settings, curve(4.0));
+    assert_eq!(synced.equalizer.status, EqualizerStatus::Failed);
+}
