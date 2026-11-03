@@ -826,3 +826,55 @@ async fn guest_adds_the_complete_local_filter_after_the_current_song_without_rel
     ));
     assert_eq!(client.player_queue("0").await.unwrap().tracks.len(), 4);
 }
+
+#[tokio::test]
+async fn local_track_directory_uses_current_index_and_original_cue_source() {
+    let root = tempfile::tempdir().unwrap();
+    let media = root.path().join("media");
+    std::fs::create_dir_all(media.join("sources")).unwrap();
+    let source = media.join("sources/album.wav");
+    std::fs::write(&source, "synthetic audio").unwrap();
+    std::fs::write(media.join("ordinary.wav"), "ordinary synthetic audio").unwrap();
+    std::fs::write(
+        media.join("album.cue"),
+        "FILE \"sources/album.wav\" WAVE\nTRACK 01 AUDIO\nTITLE \"Cue track\"\nINDEX 01 00:00:00\n",
+    )
+    .unwrap();
+    let (_, client, library) = client(&root.path().join("state"), Arc::new(Probe::default()));
+    library.scan(&media).unwrap();
+    let page = client.local_page(LocalQuery::default()).await.unwrap();
+    let cue = page.tracks.iter().find(|row| row.cue).unwrap();
+    let ordinary = page
+        .tracks
+        .iter()
+        .find(|row| row.track.name == "ordinary")
+        .unwrap();
+    for (row, expected) in [(cue, media.join("sources")), (ordinary, media.clone())] {
+        assert_eq!(
+            client
+                .local_track_directory(row.track.id.clone(), row.revision.clone())
+                .await
+                .unwrap(),
+            expected.canonicalize().unwrap()
+        );
+        assert!(
+            client
+                .local_track_directory(row.track.id.clone(), "0".repeat(64))
+                .await
+                .is_err()
+        );
+    }
+    assert!(
+        client
+            .local_track_directory(media.to_string_lossy().into_owned(), cue.revision.clone())
+            .await
+            .is_err()
+    );
+    std::fs::write(source, "different source bytes").unwrap();
+    assert!(
+        client
+            .local_track_directory(cue.track.id.clone(), cue.revision.clone())
+            .await
+            .is_err()
+    );
+}

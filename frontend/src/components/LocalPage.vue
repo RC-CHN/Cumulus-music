@@ -14,6 +14,7 @@ import {
   type LocalGroup,
   type LocalQuery,
   type LocalSort,
+  type LocalTrack,
   type LocalRoot,
 } from '../services/local';
 import { time } from '../services/player';
@@ -70,6 +71,102 @@ const readLocked = computed(() => loading.value || !!readError.value || !view.va
 const canPlay = computed(
   () => props.playable && !busy.value && !readLocked.value && !!view.value?.playable,
 );
+const trackMenu = ref<InstanceType<typeof ActionMenu>>();
+const trackTarget = shallowRef<{ id: string; revision: string; queryKey: string }>();
+const openingDirectory = ref(false);
+const directoryError = ref('');
+const trackCurrent = computed(() => {
+  const target = trackTarget.value;
+  return (
+    target &&
+    !readLocked.value &&
+    !busy.value &&
+    keyword.value === query.value.keyword &&
+    target.queryKey === localQueryKey(query.value) &&
+    view.value?.tracks.some(
+      (row) => row.track.id === target.id && row.revision === target.revision && !row.track.missing,
+    )
+  );
+});
+const trackMenuItems = computed(() => [
+  {
+    key: 'directory',
+    label: '打开文件所在目录',
+    icon: 'list' as const,
+    disabled: !trackCurrent.value || openingDirectory.value,
+  },
+]);
+watch(trackCurrent, (current) => {
+  if (!current) trackMenu.value?.close(trackMenu.value.containsFocus());
+});
+watch(
+  () => localQueryKey(query.value),
+  () => {
+    trackTarget.value = undefined;
+    directoryError.value = '';
+  },
+);
+function showTrackMenu(event: MouseEvent | KeyboardEvent, row: LocalTrack) {
+  if (
+    event instanceof KeyboardEvent &&
+    !(event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10'))
+  )
+    return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (
+    row.track.missing ||
+    readLocked.value ||
+    busy.value ||
+    openingDirectory.value ||
+    keyword.value !== query.value.keyword ||
+    !ownsVisit()
+  )
+    return;
+  const trigger = (event.currentTarget as HTMLElement)
+    .closest('tr')
+    ?.querySelector<HTMLButtonElement>('[data-local-track-menu]');
+  if (!trigger) return;
+  trackTarget.value = {
+    id: row.track.id,
+    revision: row.revision,
+    queryKey: localQueryKey(query.value),
+  };
+  directoryError.value = '';
+  trigger.focus({ preventScroll: true });
+  const bounds = trigger.getBoundingClientRect();
+  const pointer = event instanceof MouseEvent && event.type === 'contextmenu' && event.button === 2;
+  void trackMenu.value?.showAt(
+    pointer ? event.clientX : bounds.left,
+    pointer ? event.clientY : bounds.bottom,
+    trigger,
+  );
+}
+async function trackAction(action: string) {
+  const target = trackTarget.value;
+  if (
+    action !== 'directory' ||
+    !target ||
+    !trackCurrent.value ||
+    openingDirectory.value ||
+    !ownsVisit()
+  )
+    return;
+  openingDirectory.value = true;
+  directoryError.value = '';
+  try {
+    await props.model.openTrackDirectory(target.id, target.revision);
+  } catch {
+    if (
+      ownsVisit() &&
+      trackTarget.value === target &&
+      target.queryKey === localQueryKey(query.value)
+    )
+      directoryError.value = '无法打开文件所在目录，请检查文件或重新扫描后重试。';
+  } finally {
+    openingDirectory.value = false;
+  }
+}
 const adding = ref(false);
 const queueNotice = ref('');
 const queueError = ref('');
@@ -320,6 +417,7 @@ function status(root: LocalRoot) {
     <p v-if="adding || queueNotice" class="notice" role="status">
       {{ adding ? '正在添加本地音乐…' : queueNotice }}
     </p>
+    <p v-if="directoryError" class="error-state" role="alert">{{ directoryError }}</p>
     <p v-if="queueError" class="error-state" role="alert">{{ queueError }}</p>
     <div v-if="matching.view.value?.job" class="local-match-progress" role="status">
       <span
@@ -498,6 +596,7 @@ function status(root: LocalRoot) {
               <th><button @click="sort('format')">格式</button></th>
               <th><button @click="sort('duration')">时长</button></th>
               <th v-if="matching.ready.value">线上关联</th>
+              <th class="local-track-actions" aria-label="操作" />
             </tr>
           </thead>
           <tbody>
@@ -507,6 +606,8 @@ function status(root: LocalRoot) {
               :data-local-id="row.track.id"
               :class="{ current: currentId === row.track.id, unavailable: row.track.missing }"
               @dblclick="!row.track.missing && play(row.track.id)"
+              @contextmenu="showTrackMenu($event, row)"
+              @keydown="showTrackMenu($event, row)"
             >
               <td>
                 <button
@@ -566,12 +667,33 @@ function status(root: LocalRoot) {
                   <Icon name="comment" />
                 </button>
               </td>
+              <td class="local-track-actions" @dblclick.stop>
+                <button
+                  class="icon-button"
+                  type="button"
+                  data-local-track-menu
+                  aria-haspopup="menu"
+                  :aria-label="`更多操作 ${row.track.name}`"
+                  :disabled="row.track.missing || readLocked || busy"
+                  @click="showTrackMenu($event, row)"
+                >
+                  <Icon name="more" />
+                </button>
+              </td>
             </tr>
           </tbody>
         </table>
         <p v-if="!view?.tracks.length" class="empty-state">没有匹配的本地音乐</p>
       </div>
     </div>
+    <ActionMenu
+      ref="trackMenu"
+      label="本地歌曲操作"
+      variant="song"
+      context-only
+      :items="trackMenuItems"
+      @select="trackAction"
+    />
     <footer v-if="view?.total" class="local-pagination">
       <button
         class="text-button"

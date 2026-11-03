@@ -24,6 +24,7 @@ function fixture() {
     },
     localCommand: async () => {},
     pickLocalDirectory: async () => null,
+    openLocalTrackDirectory: async () => {},
   });
   model.show(true);
   const scope = effectScope();

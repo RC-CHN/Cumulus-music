@@ -480,6 +480,30 @@
     );
     await theme("light");
     await capture("library_light");
+    const indexedCue = (await originalLocal(localQuery)).tracks.find((row) => row.cue);
+    const cueTrigger = localRows()
+      .find((row) => row.dataset.localId === indexedCue.track.id)
+      .querySelector("[data-local-track-menu]");
+    let directoryRequests = 0, directoryAccepted = false;
+    const openDirectory = client.openLocalTrackDirectory.bind(client);
+    client.openLocalTrackDirectory = async (id, revision) => {
+      directoryRequests++;
+      assert(id === indexedCue.track.id && revision === indexedCue.revision, "opaque current CUE identity");
+      let rejected = false;
+      try { await openDirectory(id, "0".repeat(64)); } catch (error) { rejected = error?.code === "snapshot_changed"; }
+      assert(rejected, "stale revision rejected by native command");
+      if (window.__localDirectoryLauncherProof) await openDirectory(id, revision);
+      directoryAccepted = true;
+    };
+    cueTrigger.focus();
+    cueTrigger.dispatchEvent(new KeyboardEvent("keydown", { key: "F10", shiftKey: true, bubbles: true, cancelable: true }));
+    await wait(() => shown('[role="menu"][aria-label="本地歌曲操作"]'), "local track keyboard menu");
+    click("打开文件所在目录", shown('[role="menu"][aria-label="本地歌曲操作"]'));
+    await wait(() => directoryAccepted, "local indexed directory dispatched");
+    await wait(() => document.activeElement === cueTrigger, "local directory returns to row menu trigger");
+    assert(directoryRequests === 1, "local directory accepted once");
+    client.openLocalTrackDirectory = openDirectory;
+    await capture("local_directory_light", { directoryRequests, directoryAccepted });
     const composingField = localField();
     composingField.focus();
     composingField.dispatchEvent(

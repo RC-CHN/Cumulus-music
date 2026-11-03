@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from window_manager import launch
 
-LABELS = ['library_light', 'composition_pending_light', 'composition_complete_dark', 'search_live_dark', 'search_returned_light', 'query_pending_dark',
+LABELS = ['library_light', 'local_directory_light', 'composition_pending_light', 'composition_complete_dark', 'search_live_dark', 'search_returned_light', 'query_pending_dark',
           'query_latest_light', 'query_failed_dark', 'query_empty_light', 'group_cleared_dark',
           'queue_before_light', 'downloads_before_dark', 'cloud_confirm_light', 'cloud_removed_dark',
           'downloads_removed_dark', 'library_removed_light', 'queue_reconciled_dark', 'cloud_keep_light',
@@ -18,6 +18,7 @@ def main():
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--runtime', type=Path)
+    parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--screenshots', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
@@ -30,8 +31,23 @@ def main():
         path = root/'os-profile'/name
         path.mkdir(parents=True, mode=0o700)
         env[key] = str(path)
+    if args.frontend_dist:
+        env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve())
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve())+os.pathsep+env.get('PATH', '')
+    if os.name != 'nt':
+        launcher = root / 'test-launcher'
+        launcher.mkdir()
+        shim = launcher / 'xdg-open'
+        shim.write_text('#!/bin/sh\n[ "$#" -eq 1 ] && [ -d "$1" ] || exit 1\nprintf "%s\\n" "$1" >> "$LOCAL_RESOURCE_DIRECTORY_LOG"\n', encoding='utf-8')
+        shim.chmod(0o700)
+        env['LOCAL_RESOURCE_DIRECTORY_LOG'] = str(root / 'opened-directory')
+        env['PATH'] = str(launcher) + os.pathsep + env.get('PATH', '')
+    source = Path(env['CUMULUS_MINI_SCRIPT']).read_text(encoding='utf-8')
+    script = root / 'local-resource.js'
+    script.write_text(f'window.__localDirectoryLauncherProof = {json.dumps(os.name != "nt")};\n' + source, encoding='utf-8')
+    env['CUMULUS_MINI_SCRIPT'] = str(script)
+
     with (root/'host.log').open('x', encoding='utf-8') as log:
         code = launch(args.binary.resolve(), env, log, root/'first', args.screenshots)
     failed = root/'first/failed.json'
@@ -49,6 +65,12 @@ def main():
         if args.screenshots:
             assert path.with_suffix('.png').is_file()
     assert states['library_light']['localCount'] == 3
+    assert states['local_directory_light']['directoryRequests'] == 1
+    assert states['local_directory_light']['directoryAccepted']
+    if os.name != 'nt':
+        opened = (root/'opened-directory').read_text(encoding='utf-8').splitlines()
+        assert len(opened) == 1 and Path(opened[0]).is_relative_to(root / 'menu-originals')
+
     assert states['composition_pending_light']['localSearch'] == 'zhong' and states['composition_pending_light']['imePending']
     assert states['composition_complete_dark']['localSearch'] == '合成' and states['composition_complete_dark']['imeCommitted']
     assert states['search_live_dark']['localSearch'] == '006' and states['search_live_dark']['localCount'] == 1
@@ -72,6 +94,7 @@ def main():
     report = dict(ok=True, states=len(LABELS), screenshots=len(LABELS) if args.screenshots else 0,
                   actualWebViews=1, deletedSyntheticFiles=1, remainingDownloads=2, remainingLocalTracks=2,
                   exactCloudDeleteRequests=2, queryOwnershipVerified=True, retainedCueIdentityVerified=True,
+                  localDirectoryActionVerified=True, nativeDirectoryLauncherIntercepted=os.name != 'nt',
                   realAccountWrites=0, realMusicRequests=0, physicalAudioOutputVerified=False)
     (root/'report.json').write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
     print(json.dumps(report))

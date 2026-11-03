@@ -373,3 +373,14 @@
     padding: 16px;
   }
 }
+
+.local-tracks th.local-track-actions,
+.local-tracks td.local-track-actions {
+  width: 38px;
+  padding-inline: 3px;
+  text-align: center;
+}
+.local-track-actions .icon-button {
+  width: 28px;
+  height: 28px;
+}

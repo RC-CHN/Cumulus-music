@@ -91,4 +91,5 @@ export interface LocalClient {
   localPage(query: LocalQuery): Promise<LocalPage>;
   localCommand(command: LocalCommand): Promise<void>;
   pickLocalDirectory(): Promise<string | null>;
+  openLocalTrackDirectory(id: string, revision: string): Promise<void>;
 }

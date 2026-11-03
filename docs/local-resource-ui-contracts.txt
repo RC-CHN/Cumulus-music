@@ -83,3 +83,15 @@ desktop/examples/local_resource_probe.js + scripts/ci/local_resource_smoke.py �
 登记；脚本存在、类型检查或编译成功均不单独算桌面流程通过。
 不新增真实账号写入、支付、公开内容或邀请。不声称官方完整窗口像素一致。
 Windows 结果取决于本批精确提交的完整 CI；macOS 不在支持范围。
+
+本地歌曲所在目录
+官方恢复 hybrid_app.chunk.1482700000000.js/556.js:779–805 在 Scene.local 资源
+菜单提供「打开文件所在目录」。本地行右键、Shift+F10 或更多按钮进入同一个菜单。
+关闭菜单后返回原按钮；旧查询或行记录已变化时撤下动作。无法打开保留独立错误提示，
+不会重试播放或自动扫描。更多按钮和焦点处理是 Cumulus 的键盘适配。
+typed IPC open_local_track_directory(id,revision) 仅主窗口可调用：前端只交还
+当前索引的 ID 及版本，不提供目录路径；设备本地库不依赖账号联网。Rust 重新查询
+记录并核对文件、CUE 及其音源指纹，再从已索引的规范路径计算父目录。CUE 打开
+物理音频目录，NCM 打开原文件目录；不会触发解密或打开缓存。不新增业务 HTTP。
+Linux 合成桌面用例通过系统启动入口的受控替身核对完整单参数路径，不打开文件管理器
+窗口；Windows 用例只核对拒绝过期引用和 UI 调度，不视作 Windows Explorer 验证。

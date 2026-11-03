@@ -158,6 +158,8 @@ export function useLocal(core: LocalClient = useCore()) {
     page,
     command,
     choose,
+    openTrackDirectory: (id: string, revision: string) =>
+      core.openLocalTrackDirectory(id, revision),
     captureVisit,
     dispose,
   };

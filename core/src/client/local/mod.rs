@@ -93,6 +93,38 @@ impl MusicClient {
         .await
         .map_err(|_| Error::State("local library worker stopped"))?
     }
+    /// Resolve a current indexed file for a native file-manager request. CUE
+    /// resolves its physical audio source; NCM resolves the original, not cache.
+    pub async fn local_track_directory(
+        &self,
+        id: String,
+        revision: String,
+    ) -> Result<std::path::PathBuf> {
+        if [&id, &revision]
+            .iter()
+            .any(|value| value.len() != 64 || !value.bytes().all(|b| b.is_ascii_hexdigit()))
+        {
+            return Err(Error::InvalidInput("invalid local track reference"));
+        }
+        let context = self.local.context().await?;
+        tokio::task::spawn_blocking(move || {
+            let item = context.library.item(&id)?;
+            if view::revision(&item.revision) != revision {
+                return Err(Error::QueueChanged);
+            }
+            LocalLibrary::check_current(&item)?;
+            if item.path.canonicalize()? != item.path {
+                return Err(Error::QueueChanged);
+            }
+            let parent = item
+                .path
+                .parent()
+                .ok_or(Error::State("local source has no parent directory"))?;
+            Ok(parent.to_path_buf())
+        })
+        .await
+        .map_err(|_| Error::State("local library worker stopped"))?
+    }
     pub async fn local_command(&self, command: LocalCommand) -> Result<()> {
         let context = self.local.context().await?;
         tokio::task::spawn_blocking(move || {

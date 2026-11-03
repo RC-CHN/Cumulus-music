@@ -43,6 +43,22 @@ pub async fn local_command(
     client.local_command(command).await.map_err(Into::into)
 }
 #[tauri::command]
+pub async fn open_local_track_directory<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    id: String,
+    revision: String,
+) -> Result<(), ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("local directory action requires main window").into());
+    }
+    let path = client.local_track_directory(id, revision).await?;
+    crate::file_manager::open_directory(path)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn pick_local_directory<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
 ) -> Result<Option<String>, ClientError> {
