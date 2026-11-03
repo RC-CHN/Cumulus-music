@@ -353,6 +353,11 @@
       scrollEnd();
       await wait(()=>loaded()===30,'second scroll appends the third chunk');
       assert(JSON.stringify(songReads)===JSON.stringify([[0,10],[10,10],[0,30],[10,10],[20,10]]),'only the expected cursor reads: '+JSON.stringify(songReads));
+      const loadedPanel=table(), loadedTop=scroll().scrollTop, completedReads=songReads.length;
+      click(one('[data-category="songs"]'));
+      await sleep(400);
+      assert(table()===loadedPanel&&loaded()===30&&songReads.length===completedReads&&
+        Math.abs(scroll().scrollTop-loadedTop)<=1,'current songs tab retains loaded rows and scroll without another read');
       await capture('song_append_retains_thirty');
       const invoke=(name,args={})=>window.__TAURI_INTERNALS__.invoke(name,args);
       const {epoch}=await invoke('account_snapshot');
@@ -618,6 +623,9 @@
     assert(onPage(1,0),'first short page');
     click(button('下一页'));await wait(()=>onPage(2,18),'second short page');
     assert(one('.search-result-panel').textContent.includes('有 1 项结果暂无法展示'),'short page keeps valid rows and counts malformed records');
+    const numberedPanel=one('#search-result-panel');
+    click(one('[data-category="playlists"]'));await sleep(400);
+    assert(onPage(2,18)&&one('#search-result-panel')===numberedPanel,'current playlist tab retains the second page');
     await capture('playlists_page_two');
     click(button('下一页'));await wait(()=>onPage(3,29),'third short page consumes malformed record');
     assert(button('下一页').disabled,'last short page cannot advance');

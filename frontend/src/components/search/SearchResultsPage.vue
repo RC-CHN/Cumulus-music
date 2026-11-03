@@ -184,7 +184,7 @@ function open(item: SearchItem) {
   else if (item.kind !== 'user' || !item.user.unavailable) emit('open', item);
 }
 function choose(key: SearchCategory, fromKeyboard = false) {
-  turn(key);
+  if (key !== category.value) turn(key);
   if (fromKeyboard)
     void nextTick(() =>
       tabs.value?.querySelector<HTMLButtonElement>(`[data-category="${key}"]`)?.focus(),
