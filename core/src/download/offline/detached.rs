@@ -5,7 +5,7 @@ use crate::{
     Error, Result,
     account::SessionToken,
     membership::{OfflineAccess, OfflineSource, offline_access},
-    playback::QueueSnapshot,
+    playback::{FM_BACKUP_QUEUE, QueueSnapshot, intelligence},
     storage::StateTransaction,
 };
 use serde_json::json;
@@ -15,11 +15,40 @@ pub(crate) fn detach_download_queue(
     owner: &str,
     record: &OfflineRecord,
 ) -> Result<()> {
-    let Some(value) = tx.get(owner, "playback", "queue")? else {
-        return Ok(());
-    };
-    let mut queue: QueueSnapshot = serde_json::from_value(value)?;
-    queue.validate()?;
+    for key in ["queue", FM_BACKUP_QUEUE] {
+        let Some(value) = tx.get(owner, "playback", key)? else {
+            continue;
+        };
+        let mut queue = QueueSnapshot::load(Some(&value))?;
+        if key == "queue" && queue.intelligence.is_some() {
+            let mut session: intelligence::IntelligenceSession = serde_json::from_value(
+                tx.get(owner, intelligence::KIND, intelligence::KEY)?
+                    .ok_or(Error::State("missing intelligence session"))?,
+            )?;
+            session.validate(&queue)?;
+            if detach_queue_entries(&mut session.backup, owner, record)? {
+                session.revision = uuid::Uuid::new_v4().to_string();
+                session.validate(&queue)?;
+                tx.put(
+                    owner,
+                    intelligence::KIND,
+                    intelligence::KEY,
+                    &serde_json::to_value(session)?,
+                )?;
+            }
+        }
+        if detach_queue_entries(&mut queue, owner, record)? {
+            tx.put(owner, "playback", key, &serde_json::to_value(queue)?)?;
+        }
+    }
+    Ok(())
+}
+
+fn detach_queue_entries(
+    queue: &mut QueueSnapshot,
+    owner: &str,
+    record: &OfflineRecord,
+) -> Result<bool> {
     let mut changed = false;
     for entry in &mut queue.items {
         if entry.resource["download_task_id"].as_str() == Some(record.task_id.as_str())
@@ -36,10 +65,7 @@ pub(crate) fn detach_download_queue(
             changed = true;
         }
     }
-    if changed {
-        tx.put(owner, "playback", "queue", &serde_json::to_value(queue)?)?;
-    }
-    Ok(())
+    Ok(changed)
 }
 impl OfflineLibrary {
     fn detached_access(

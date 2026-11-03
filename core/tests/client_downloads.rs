@@ -530,6 +530,116 @@ async fn forget_keeps_queue_playable_with_account_integrity_and_membership_guard
 }
 
 #[tokio::test]
+async fn forgetting_a_download_keeps_suspended_ordinary_queues_playable() {
+    use cumulus_core::{
+        catalog::intelligence::{IntelligenceRequest, IntelligenceStart},
+        library::LocalLibrary,
+        playback::{
+            PlaybackQueue, QueueSnapshot,
+            intelligence::{IntelligenceContext, IntelligencePhase},
+            source::SourceResolver,
+        },
+    };
+    for intelligence in [false, true] {
+        let f = Fixture::new();
+        let (task, _) = f.completed().await;
+        f.client
+            .play_downloads("1", vec![task.clone()], 0)
+            .await
+            .unwrap();
+        f.client
+            .player_action("1", PlayerAction::Stop)
+            .await
+            .unwrap();
+        let before = f.store.get("1", "playback", "queue").unwrap().unwrap();
+        let backup: QueueSnapshot = serde_json::from_value(before.clone()).unwrap();
+        let mut fallback = backup.clone();
+        fallback.items[0].resource = json!({"id":7,"dt":120000});
+        fallback.items[0].source = json!({"kind":"playlist","id":"31"});
+        let mut current = fallback.clone();
+        let session_key = "playback-intelligence-v1";
+        let fm_key = "fm-backup-queue";
+        let old_revision = uuid::Uuid::new_v4().to_string();
+        if intelligence {
+            let context = IntelligenceContext {
+                id: uuid::Uuid::new_v4().to_string(),
+                phase: IntelligencePhase::Seeded,
+            };
+            let request = IntelligenceRequest {
+                playlist_id: "31".into(),
+                song_id: "7".into(),
+                start_music_id: "7".into(),
+                count: 1,
+                start: IntelligenceStart::PlayOne,
+            };
+            current.intelligence = Some(context.clone());
+            f.store
+                .put(
+                    "1",
+                    session_key,
+                    "session",
+                    &json!({
+                        "schema":1,"revision":old_revision,"context":context,"request":request,
+                        "seed_entry_id":current.current,"last_mode":backup.mode,
+                        "backup":backup,"fallback":fallback,"recommendations":{},"failure":null,
+                    }),
+                )
+                .unwrap();
+        } else {
+            f.store.put("1", "playback", fm_key, &before).unwrap();
+        }
+        f.store.put("2", "playback", fm_key, &before).unwrap();
+        let active = serde_json::to_value(current).unwrap();
+        f.store.put("1", "playback", "queue", &active).unwrap();
+        assert!(PlaybackQueue::new(Some(f.store.clone()), "1").is_ok());
+        f.client
+            .download_command(
+                "1",
+                DownloadCommand::File {
+                    task_id: task,
+                    action: FileAction::Forget,
+                    target: None,
+                },
+            )
+            .await
+            .unwrap();
+        wait(&f.client, "1", DownloadTab::Completed, |v| {
+            v.completed_count == 0 && v.jobs.iter().all(|j| !j.running)
+        })
+        .await;
+        assert_eq!(f.store.get("1", "playback", "queue").unwrap(), Some(active));
+        assert_eq!(f.store.get("2", "playback", fm_key).unwrap(), Some(before));
+        let after: QueueSnapshot = if intelligence {
+            let queue = PlaybackQueue::new(Some(f.store.clone()), "1").unwrap();
+            let session = queue.intelligence_session().unwrap();
+            assert_ne!(session.revision, old_revision);
+            assert_eq!(session.fallback, fallback);
+            session.backup.clone()
+        } else {
+            serde_json::from_value(f.store.get("1", "playback", fm_key).unwrap().unwrap()).unwrap()
+        };
+        assert_eq!(after.current, backup.current);
+        assert_eq!(after.order, backup.order);
+        let resource = &after.items[0].resource;
+        assert!(resource.get("download_task_id").is_none());
+        assert_eq!(resource["download_ledger_owner"], "1");
+        let resolver = SourceResolver::new(
+            f.session.clone(),
+            Some(Arc::new(LocalLibrary::new(f.store.clone()).unwrap())),
+        );
+        assert_eq!(
+            resolver
+                .resolve(resource, &f.session.token().unwrap())
+                .await
+                .unwrap()
+                .actual_quality(),
+            Some("lossless")
+        );
+        assert_eq!(f.api.count("player/url"), 0);
+    }
+}
+
+#[tokio::test]
 async fn bulk_cancel_covers_tasks_outside_visible_page_and_removes_owned_temporary_files() {
     use cumulus_core::download::service::{DownloadAction, DownloadService};
     let f = Fixture::new();
