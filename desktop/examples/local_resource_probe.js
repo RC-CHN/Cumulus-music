@@ -238,7 +238,7 @@
       active = document.activeElement;
     const buttons = all(
       "button",
-      modal ?? q ?? l ?? d ?? cloud() ?? document,
+      modal ?? localTrackMenu() ?? q ?? l ?? d ?? cloud() ?? document,
     ).filter((node) => node.getBoundingClientRect().width > 0);
     return {
       captureTitle: "Cumulus",
@@ -497,8 +497,10 @@
     };
     cueTrigger.focus();
     cueTrigger.dispatchEvent(new KeyboardEvent("keydown", { key: "F10", shiftKey: true, bubbles: true, cancelable: true }));
-    await wait(() => shown('[role="menu"][aria-label="本地歌曲操作"]'), "local track keyboard menu");
-    click("打开文件所在目录", shown('[role="menu"][aria-label="本地歌曲操作"]'));
+    await wait(localTrackMenu, "local track keyboard menu");
+    await wait(() => document.activeElement?.closest('[aria-label="本地歌曲操作"]'), "local track menu focus");
+    await capture("local_directory_menu_light");
+    click("打开文件所在目录", localTrackMenu());
     await wait(() => directoryAccepted, "local indexed directory dispatched");
     await wait(() => document.activeElement === cueTrigger, "local directory returns to row menu trigger");
     assert(directoryRequests === 1, "local directory accepted once");

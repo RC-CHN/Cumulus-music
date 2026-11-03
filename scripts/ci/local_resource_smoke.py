@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from window_manager import launch
 
-LABELS = ['library_light', 'local_directory_light', 'composition_pending_light', 'composition_complete_dark', 'search_live_dark', 'search_returned_light', 'query_pending_dark',
+LABELS = ['library_light', 'local_directory_menu_light', 'local_directory_light', 'composition_pending_light', 'composition_complete_dark', 'search_live_dark', 'search_returned_light', 'query_pending_dark',
           'query_latest_light', 'query_failed_dark', 'query_empty_light', 'group_cleared_dark',
           'queue_before_light', 'downloads_before_dark', 'cloud_confirm_light', 'cloud_removed_dark',
           'downloads_removed_dark', 'library_removed_light', 'queue_reconciled_dark', 'cloud_keep_light',
@@ -65,6 +65,7 @@ def main():
         if args.screenshots:
             assert path.with_suffix('.png').is_file()
     assert states['library_light']['localCount'] == 3
+    assert states['local_directory_menu_light']['focusLabel'] == '打开文件所在目录'
     assert states['local_directory_light']['directoryRequests'] == 1
     assert states['local_directory_light']['directoryAccepted']
     if os.name != 'nt':
