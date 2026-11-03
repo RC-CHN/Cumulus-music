@@ -148,3 +148,9 @@ Cumulus 桌面主流程验收
   日志为 complete，同目录未管理文件及原歌单基线不变。断开后无新增 API
   或媒体尝试。私有报告 .build/main-flow-disposal-proof-final/report.json；
   未验证真实服务、物理声卡或 Windows。
+
+  Windows 后续合成主流程通过：运行 41612199578 的作业 125836615316
+  在提交 527c424 上报告 11 个检查点、实际 WebView 和 libmpv、
+  SQLite 核对、下载完整性、离线播放及原生删除均通过，真实请求和
+  写入均为零。该作业后来在独立音质探针失败，因此此证据只覆盖
+  上述主流程检查点，不代表完整 Windows CI 或真实服务验收通过。
