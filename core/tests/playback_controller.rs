@@ -847,3 +847,39 @@ async fn native_parametric_cleanup_failure_stops_and_fences_future_unpause() {
     );
     assert!(!f.device.parametric_attached.load(Ordering::SeqCst));
 }
+
+#[tokio::test]
+async fn native_parametric_explicit_off_bypasses_but_hard_clear_detaches() {
+    use cumulus_core::{
+        effects::parametric::ParametricPlan, playback::controller::ParametricApplication as App,
+    };
+
+    let f = Fixture::new();
+    f.device.parametric_supported.store(true, Ordering::SeqCst);
+    f.command(replace(&[1])).await.unwrap();
+    let token = f.token();
+    f.player
+        .set_parametric_component(&token, Some(synthetic_peq()))
+        .await
+        .unwrap();
+    let off = ParametricPlan::from_material(&json!({"aev2":{"peq":{"on":false}}}))
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        f.player
+            .set_parametric_component(&token, Some(off))
+            .await
+            .unwrap(),
+        App::BypassConfigured
+    );
+    assert!(f.device.parametric_attached.load(Ordering::SeqCst));
+    assert!(f.device.parametric_bypassed.load(Ordering::SeqCst));
+    assert_eq!(
+        f.player
+            .set_parametric_component(&token, None)
+            .await
+            .unwrap(),
+        App::Cleared
+    );
+    assert!(!f.device.parametric_attached.load(Ordering::SeqCst));
+}

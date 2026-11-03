@@ -108,6 +108,11 @@ pub trait AudioEngine: Send {
     ) -> Result<bool> {
         Ok(false)
     }
+    /// Run the existing PEQ component's native transition to dry.
+    /// Engines without an attached component are already dry.
+    fn bypass_parametric_component(&mut self) -> Result<()> {
+        Ok(())
+    }
     fn clear_parametric_component(&mut self) -> Result<()> {
         Ok(())
     }

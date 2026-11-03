@@ -529,3 +529,54 @@ fn parametric_host_rejects_unrouted_material_and_invalid_native_plans() {
     );
     assert_eq!(id, 0);
 }
+
+#[test]
+fn parametric_bypass_keeps_wet_history_for_the_recovered_transition_then_goes_dry() {
+    use cumulus_core::effects::{
+        dsp::ParametricEq,
+        parametric::{ParametricPlan, PeqOperation},
+    };
+
+    let operations = [
+        PeqOperation {
+            gain: -8.0,
+            ..Default::default()
+        },
+        PeqOperation {
+            opcode: 2,
+            enabled: 1,
+            ..Default::default()
+        },
+    ];
+    let mut id = 0;
+    assert_eq!(
+        unsafe { cumulus_peq_create_v1(operations.as_ptr(), 2, &mut id) },
+        0
+    );
+    let config = Config(id);
+    let format = Format::new(44_100.0, 1, CAPACITY).unwrap();
+    let mut reference = ParametricEq::new(format, false, true).unwrap();
+    ParametricPlan::from_operations(&operations)
+        .unwrap()
+        .apply(&mut reference)
+        .unwrap();
+    let mut instance = Instance::new_kind(id, 44_100, 2);
+    let mut block = PlanarBlock::new(format);
+    let pcm = input(CAPACITY as usize);
+    block.load_interleaved(&pcm).unwrap();
+    reference.process(&mut block, pcm.len()).unwrap();
+    assert_eq!(instance.process(&pcm, true), block.samples());
+
+    assert_eq!(cumulus_peq_bypass_v1(id), 0);
+    reference.set_bypass(true).unwrap();
+    block.load_interleaved(&pcm).unwrap();
+    reference.process(&mut block, pcm.len()).unwrap();
+    let transition = instance.process(&pcm, false);
+    assert_eq!(transition, block.samples());
+    assert_ne!(transition, pcm);
+    assert_eq!(instance.process(&pcm, true), pcm);
+    let stats = config.stats();
+    assert_eq!(stats.instances_created, 1);
+    assert_eq!(stats.observed_revision, 2);
+    assert_eq!(stats.failed_blocks, 0);
+}

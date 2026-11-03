@@ -257,6 +257,9 @@ impl<E: AudioEngine + ?Sized> AudioEngine for Focused<E> {
     ) -> Result<bool> {
         self.inner.apply_parametric_component(plan)
     }
+    fn bypass_parametric_component(&mut self) -> Result<()> {
+        self.inner.bypass_parametric_component()
+    }
     fn clear_parametric_component(&mut self) -> Result<()> {
         self.inner.clear_parametric_component()
     }

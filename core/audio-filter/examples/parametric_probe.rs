@@ -63,7 +63,7 @@ fn main() -> Result<()> {
         )?;
         engine.pause(false)?;
         let deadline = Instant::now() + Duration::from_secs(6);
-        loop {
+        let wet = loop {
             let view = engine.poll()?;
             let stats = engine.parametric_equalizer_stats()?;
             if view.position.is_some_and(|position| position > 0.15)
@@ -72,8 +72,7 @@ fn main() -> Result<()> {
             {
                 assert_eq!(stats.failed_blocks, 0);
                 assert_eq!(stats.observed_revision, stats.revision);
-                stages.push(json!({"sourceSampleRate":rate,"stats":stats}));
-                break;
+                break stats;
             }
             if Instant::now() >= deadline {
                 return Err(Error::State(
@@ -81,7 +80,25 @@ fn main() -> Result<()> {
                 ));
             }
             std::thread::sleep(Duration::from_millis(20));
-        }
+        };
+        engine.bypass_parametric_component()?;
+        let deadline = Instant::now() + Duration::from_secs(6);
+        let dry = loop {
+            engine.poll()?;
+            let stats = engine.parametric_equalizer_stats()?;
+            if stats.observed_revision > wet.observed_revision {
+                assert_eq!(stats.observed_revision, stats.revision);
+                assert_eq!(stats.instances_created, wet.instances_created);
+                assert_eq!(stats.active_instances, wet.active_instances);
+                assert_eq!(stats.failed_blocks, 0);
+                break stats;
+            }
+            if Instant::now() >= deadline {
+                return Err(Error::State("native stereo PEQ bypass was not observed"));
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        };
+        stages.push(json!({"sourceSampleRate":rate,"stats":wet,"bypassStats":dry}));
         engine.pause(true)?;
         engine.clear_parametric_component()?;
         assert!(engine.parametric_equalizer_stats().is_err());

@@ -10,6 +10,7 @@ use tokio::sync::oneshot;
 pub enum ParametricApplication {
     Cleared,
     Configured,
+    BypassConfigured,
     DeferredUntilLoaded,
 }
 
@@ -40,7 +41,7 @@ impl PlaybackController {
         self.sender
             .send(Message::Parametric(Box::new(Request {
                 token: token.clone(),
-                plan: plan.filter(|plan| plan.enabled()),
+                plan,
                 reply,
             })))
             .map_err(|_| Error::State("player is closed"))?;
@@ -97,9 +98,13 @@ impl Actor {
         };
         // Conservative bookkeeping: the native operation may have attached
         // before a generation change or an engine error was observed.
-        self.parametric.possibly_attached = true;
+        let enabled = plan.enabled();
+        self.parametric.possibly_attached |= enabled;
         let result = super::engine(self.engine.clone(), self.guard(), move |engine| {
-            if engine.apply_parametric_component(plan)? {
+            if !enabled {
+                engine.bypass_parametric_component()?;
+                Ok(ParametricApplication::BypassConfigured)
+            } else if engine.apply_parametric_component(plan)? {
                 Ok(ParametricApplication::Configured)
             } else {
                 Err(Error::State("parametric audio processing is unavailable"))

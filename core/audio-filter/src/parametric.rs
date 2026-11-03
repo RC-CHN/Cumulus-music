@@ -1,7 +1,18 @@
-use crate::control::{Settings, contain, create_configuration};
+use crate::control::{Settings, contain, create_configuration, update_configuration};
+use cumulus_core::effects::material::PeqCall;
 use cumulus_core::effects::parametric::{
     ABI_VERSION, MAX_OPERATIONS, ParametricPlan, PeqOperation,
 };
+
+#[unsafe(no_mangle)]
+pub extern "C" fn cumulus_peq_bypass_v1(id: u32) -> i32 {
+    contain(-1, || {
+        let Ok(plan) = ParametricPlan::from_calls(&[PeqCall::On { value: false }]) else {
+            return -2;
+        };
+        update_configuration(id, Settings::Parametric(plan))
+    })
+}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn cumulus_peq_version() -> u32 {

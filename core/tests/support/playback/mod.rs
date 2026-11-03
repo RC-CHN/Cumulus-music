@@ -106,6 +106,7 @@ pub struct Device {
     pub loudness_at_unpause: Mutex<Vec<Option<cumulus_core::effects::loudness::LoudnessSettings>>>,
     pub parametric_supported: AtomicBool,
     pub parametric_attached: AtomicBool,
+    pub parametric_bypassed: AtomicBool,
     pub parametric_clear_fail: AtomicBool,
     pub parametric_at_unpause: Mutex<Vec<bool>>,
     pub equalizer_supported: AtomicBool,
@@ -134,6 +135,7 @@ impl Default for Device {
             loudness_at_unpause: Mutex::new(Vec::new()),
             parametric_supported: AtomicBool::new(false),
             parametric_attached: AtomicBool::new(false),
+            parametric_bypassed: AtomicBool::new(false),
             parametric_clear_fail: AtomicBool::new(false),
             parametric_at_unpause: Mutex::new(Vec::new()),
             equalizer_supported: AtomicBool::new(false),
@@ -185,8 +187,15 @@ impl AudioEngine for Engine {
             return Ok(false);
         }
         assert!(plan.enabled());
+        self.0.parametric_bypassed.store(false, Ordering::SeqCst);
         self.0.parametric_attached.store(true, Ordering::SeqCst);
         Ok(true)
+    }
+    fn bypass_parametric_component(&mut self) -> Result<()> {
+        if self.0.parametric_attached.load(Ordering::SeqCst) {
+            self.0.parametric_bypassed.store(true, Ordering::SeqCst);
+        }
+        Ok(())
     }
     fn clear_parametric_component(&mut self) -> Result<()> {
         if self.0.parametric_clear_fail.load(Ordering::SeqCst) {

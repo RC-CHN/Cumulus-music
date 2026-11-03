@@ -3,6 +3,7 @@ use crate::{Error, Result, effects::equalizer::abi};
 use libloading::Library;
 use std::path::{Path, PathBuf};
 
+type Bypass = unsafe extern "C" fn(u32) -> i32;
 type Create = unsafe extern "C" fn(*const PeqOperation, u32, *mut u32) -> i32;
 
 /// Owns one immutable material component, independent of GEQ/loudness.
@@ -11,6 +12,7 @@ pub struct ParametricHost {
     path: PathBuf,
     id: u32,
     stats: abi::Stats,
+    bypass: Option<Bypass>,
     release: abi::Release,
 }
 fn status(code: i32) -> Result<()> {
@@ -52,6 +54,11 @@ impl ParametricHost {
             let release = *library
                 .get::<abi::Release>(b"cumulus_geq_release_v1\0")
                 .map_err(|_| Error::State("PEQ ABI missing"))?;
+            // Existing v1 libraries can still play an enabled PEQ component.
+            let bypass = library
+                .get::<Bypass>(b"cumulus_peq_bypass_v1\0")
+                .ok()
+                .map(|f| *f);
             let (operations, count) = plan.operations();
             let mut id = 0;
             status(create(operations.as_ptr(), count, &mut id))?;
@@ -63,9 +70,16 @@ impl ParametricHost {
                 path,
                 id,
                 stats,
+                bypass,
                 release,
             })
         }
+    }
+
+    pub fn bypass(&self) -> Result<()> {
+        let bypass = self.bypass.ok_or(Error::State("PEQ bypass ABI missing"))?;
+        // SAFETY: optional symbol belongs to our retained, version-checked library.
+        status(unsafe { bypass(self.id) })
     }
 
     pub fn stats(&self) -> Result<abi::EqualizerStats> {

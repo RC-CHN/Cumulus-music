@@ -526,12 +526,22 @@ impl AudioEngine for MpvEngine {
         &mut self,
         plan: crate::effects::parametric::ParametricPlan,
     ) -> Result<bool> {
+        if !plan.enabled() {
+            self.bypass_parametric_component()?;
+            return Ok(true);
+        }
         self.detach_parametric_equalizer()?;
         let Some(path) = self.equalizer_library.clone() else {
             return Ok(false);
         };
         self.attach_parametric_equalizer(&path, plan)?;
         Ok(true)
+    }
+    fn bypass_parametric_component(&mut self) -> Result<()> {
+        if let Some(host) = &self.parametric {
+            host.bypass()?;
+        }
+        Ok(())
     }
     fn clear_parametric_component(&mut self) -> Result<()> {
         self.detach_parametric_equalizer()
