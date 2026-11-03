@@ -21,7 +21,7 @@ import ArtistHeader from './catalog/ArtistHeader.vue';
 import ArtistTabs from './catalog/ArtistTabs.vue';
 import ActionMenu from './ActionMenu.vue';
 import ModalTransition from './ModalTransition.vue';
-import ArtistTrackBatchDialog from './catalog/ArtistTrackBatchDialog.vue';
+import CatalogTrackBatchDialog from './catalog/CatalogTrackBatchDialog.vue';
 const props = defineProps<{
   model: CatalogSession;
   account: AccountView;
@@ -84,24 +84,30 @@ const {
   refresh,
   collect,
 } = props.model;
-const artistBatch = ref<TrackView[]>();
+const batchTracks = ref<TrackView[]>();
+let batchOrigin: HTMLElement | null = null;
+const batchAllowed = () =>
+  props.model.valid() && (resource.kind === 'album' || tab.value === 'all');
 const artistBatchAnchor = ref<HTMLElement>();
 let batchHandoff:
   | { epoch: string; kind: 'play' | 'collect' | 'download'; tracks: TrackView[] }
   | undefined;
-function openArtistBatch() {
-  if (tab.value !== 'all' || !props.model.valid()) return;
+function openTrackBatch(origin: HTMLElement | null) {
+  if (!batchAllowed()) return;
   const usable = new Map(
     tracks.value
       .filter((track) => !track.missing && !track.local)
       .map((track) => [track.id, track]),
   );
-  if (usable.size) artistBatch.value = [...usable.values()];
+  if (usable.size) {
+    batchOrigin = origin;
+    batchTracks.value = [...usable.values()];
+  }
 }
 const artistQueueNotice = ref('');
 async function artistSongsAction(key: string) {
   if (key === 'batch') {
-    openArtistBatch();
+    openTrackBatch(artistBatchAnchor.value?.querySelector('button') ?? null);
     return;
   }
   if (key !== 'queue' || !props.queueable || tab.value !== 'all' || !props.model.valid()) return;
@@ -115,30 +121,25 @@ async function artistSongsAction(key: string) {
     if (current()) artistQueueNotice.value = '暂时无法添加，请确认当前歌曲列表和播放状态后重试。';
   }
 }
-function artistBatchChoose(kind: 'play' | 'collect' | 'download', selected: TrackView[]) {
-  if (!artistBatch.value || !props.model.valid() || tab.value !== 'all') return;
+function chooseTrackBatch(kind: 'play' | 'collect' | 'download', selected: TrackView[]) {
+  if (!batchTracks.value || !batchAllowed()) return;
   batchHandoff = { epoch: props.account.epoch, kind, tracks: selected };
-  artistBatch.value = undefined;
+  batchTracks.value = undefined;
 }
-function finishArtistBatch() {
+function finishTrackBatch() {
   const handoff = batchHandoff;
   batchHandoff = undefined;
-  if (
-    !handoff ||
-    handoff.epoch !== props.account.epoch ||
-    !props.model.valid() ||
-    tab.value !== 'all'
-  )
-    return;
+  batchOrigin = null;
+  if (!handoff || handoff.epoch !== props.account.epoch || !batchAllowed()) return;
   if (handoff.kind === 'collect') emit('collectTracks', handoff.tracks);
   else if (handoff.kind === 'download') emit('download', handoff.tracks);
   else if (props.playable && !props.playBusy) emit('playTracks', handoff.tracks, 0);
 }
 watch(
-  [tab, () => props.account.epoch],
+  [tab, albumTab, () => props.account.epoch],
   () => {
     batchHandoff = undefined;
-    artistBatch.value = undefined;
+    batchTracks.value = undefined;
     artistQueueNotice.value = '';
   },
   { flush: 'sync' },
@@ -302,6 +303,7 @@ defineExpose({ checkpoint: () => checkpoint(), resourceKey: `${resource.kind}:${
         "
         :play-disabled="!playable || playBusy || !tracks.some((t) => !t.missing)"
         :download-disabled="downloadBusy || !tracks.some((t) => !t.missing)"
+        :batch-disabled="!tracks.some((track) => !track.missing && !track.local)"
         :refresh-disabled="detail.loading.value || membership.busy.value"
         :refreshing="detail.loading.value"
         @open="emit('open', $event)"
@@ -313,6 +315,7 @@ defineExpose({ checkpoint: () => checkpoint(), resourceKey: `${resource.kind}:${
             tracks.filter((t) => !t.missing),
           )
         "
+        @batch="openTrackBatch"
         @refresh="refresh"
       />
       <ArtistHeader
@@ -510,18 +513,16 @@ defineExpose({ checkpoint: () => checkpoint(), resourceKey: `${resource.kind}:${
         </div>
       </BoundedPanelTransition>
     </template>
-    <ModalTransition
-      :return-focus="() => artistBatchAnchor?.querySelector('button') ?? null"
-      @left="finishArtistBatch"
-    >
-      <ArtistTrackBatchDialog
-        v-if="artistBatch"
-        :tracks="artistBatch"
+    <ModalTransition :return-focus="() => batchOrigin" @left="finishTrackBatch">
+      <CatalogTrackBatchDialog
+        v-if="batchTracks"
+        :tracks="batchTracks"
+        :scope="resource.kind"
         :liked="liked"
         :current-id="currentId"
         :playable="playable && !playBusy"
-        @close="artistBatch = undefined"
-        @choose="artistBatchChoose"
+        @close="batchTracks = undefined"
+        @choose="chooseTrackBatch"
       />
     </ModalTransition>
   </section>

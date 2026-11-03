@@ -70,6 +70,7 @@ def main():
     parser.add_argument('--screenshots', action='store_true', help='local Linux GTK captures; not required in CI')
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--artist-batch', action='store_true')
+    mode.add_argument('--album-batch', action='store_true')
     mode.add_argument('--playback-credit', action='store_true', help='open current album and artist while playing')
     mode.add_argument('--navigation', action='store_true', help='cross-resource tab history, comment draft and native play identity')
     mode.add_argument('--artist', action='store_true', help='artist header, tab prefixes, viewport return and native playback')
@@ -97,11 +98,12 @@ def main():
         env['CUMULUS_UX_SCRIPT'] = str(Path(__file__).resolve().parents[2] / 'desktop/examples' / source)
         if args.screenshots:
             env['CUMULUS_PROOF_CAPTURE_ACK'] = '1'
-    if args.album:
+    if args.album or args.album_batch:
         env['CUMULUS_ALBUM_PROOF'] = '1'
         if args.screenshots:
             env['CUMULUS_PROOF_CAPTURE_ACK'] = '1'
-        env['CUMULUS_UX_SCRIPT'] = str(Path(__file__).resolve().parents[2] / 'desktop/examples/album_ui_probe.js')
+        source = 'album_batch_ui_probe.js' if args.album_batch else 'album_ui_probe.js'
+        env['CUMULUS_UX_SCRIPT'] = str(Path(__file__).resolve().parents[2] / 'desktop/examples' / source)
     if args.layout:
         env['CUMULUS_UX_SCRIPT'] = str(Path(__file__).resolve().parents[2] / 'desktop/examples/catalog_layout_ui_probe.js')
     if args.relay_publication:
@@ -135,6 +137,13 @@ def main():
         raise AssertionError((output / 'failed.json').read_text(encoding='utf-8'))
     assert returncode == 0, f'catalog probe exited {returncode}'
     complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
+    if args.album_batch:
+        assert complete['ok'] and complete['albumBatchVerified'] and not complete['writesSubmitted']
+        for name in ('ux_album_batch_selection', 'ux_album_batch_download'):
+            assert json.loads((output / f'{name}.json').read_text(encoding='utf-8'))['activeAlbumTab'] == 'detail'
+        assert not args.screenshots or captures == 2
+        print(json.dumps(dict(ok=True, actualWebView=True, albumBatchVerified=True)))
+        return
     if args.artist_batch:
         assert complete['ok'] and complete['artistBatchVerified'] and complete['selectedPlayback'] and not complete['writesSubmitted']
         assert complete['loadedQueueInsertion']

@@ -12,6 +12,7 @@ const props = defineProps<{
   collectDisabled: boolean;
   playDisabled: boolean;
   downloadDisabled: boolean;
+  batchDisabled: boolean;
   refreshDisabled: boolean;
   refreshing: boolean;
 }>();
@@ -20,12 +21,18 @@ const emit = defineEmits<{
   play: [];
   collect: [];
   download: [];
+  batch: [origin: HTMLElement | null];
   refresh: [];
 }>();
 const share = ref(false);
 const actions = ref<HTMLDivElement>();
 const shareReturnFocus = () =>
   actions.value?.querySelector<HTMLButtonElement>('.menu-trigger') ?? null;
+function chooseAction(key: string) {
+  if (key === 'share') share.value = true;
+  if (key === 'batch') emit('batch', shareReturnFocus());
+  if (key === 'refresh') emit('refresh');
+}
 const credits = computed(() =>
   props.album.artists.length
     ? props.album.artists
@@ -104,9 +111,10 @@ const published = computed(() => {
           :class="{ 'catalog-refreshing': refreshing }"
           :items="[
             { key: 'share', label: '分享专辑', icon: 'share' },
+            { key: 'batch', label: '批量操作', icon: 'list', disabled: batchDisabled },
             { key: 'refresh', label: '刷新详情', icon: 'refresh', disabled: refreshDisabled },
           ]"
-          @select="$event === 'share' ? (share = true) : emit('refresh')"
+          @select="chooseAction"
         />
       </div>
     </div>

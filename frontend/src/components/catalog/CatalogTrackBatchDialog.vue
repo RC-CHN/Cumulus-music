@@ -7,6 +7,7 @@ import Icon from '../Icon.vue';
 
 const props = defineProps<{
   tracks: TrackView[];
+  scope: 'artist' | 'album';
   liked: Set<string>;
   currentId?: string;
   playable: boolean;
@@ -46,12 +47,13 @@ onMounted(() => dialog.value?.showModal());
 <template>
   <dialog
     ref="dialog"
-    class="artist-track-batch"
+    class="catalog-track-batch"
+    :class="`${scope}-track-batch`"
     :aria-labelledby="title"
     @cancel.prevent="emit('close')"
   >
     <header>
-      <h2 :id="title">批量操作歌手歌曲</h2>
+      <h2 :id="title">批量操作{{ scope === 'artist' ? '歌手' : '专辑' }}歌曲</h2>
       <button
         type="button"
         class="icon-button"
@@ -62,7 +64,10 @@ onMounted(() => dialog.value?.showModal());
         <Icon name="close" />
       </button>
     </header>
-    <p class="muted">从当前已加载且可用的 {{ tracks.length }} 首歌曲中选择。</p>
+    <p class="muted">
+      从{{ scope === 'artist' ? '当前已加载且可用的' : '此专辑可用的' }}
+      {{ tracks.length }} 首歌曲中选择。
+    </p>
     <PlaylistBatchTable
       :tracks="tracks"
       :selected="selected"
@@ -99,7 +104,7 @@ onMounted(() => dialog.value?.showModal());
 </template>
 
 <style scoped>
-.artist-track-batch[open] {
+.catalog-track-batch[open] {
   display: flex;
   flex-direction: column;
   width: min(730px, calc(100vw - 30px));
@@ -111,18 +116,18 @@ onMounted(() => dialog.value?.showModal());
   border: 1px solid var(--line);
   border-radius: 14px;
 }
-.artist-track-batch::backdrop {
+.catalog-track-batch::backdrop {
   background: #0006;
 }
-.artist-track-batch header,
-.artist-track-batch footer {
+.catalog-track-batch header,
+.catalog-track-batch footer {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
 }
-.artist-track-batch header h2,
-.artist-track-batch footer span {
+.catalog-track-batch header h2,
+.catalog-track-batch footer span {
   flex: 1;
 }
 </style>
