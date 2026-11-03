@@ -120,15 +120,21 @@ impl Actor {
             .loaded
             .as_ref()
             .ok_or(Error::State("active playback missing media"))?;
+        // Native clock and pause/cache flags describe only the reported entry.
+        // End events are checked separately, including after the entry closes.
+        let current_entry = view.entry_id == Some(loaded.media.entry_id);
+        let current_position = view.position.filter(|_| current_entry);
         let was_paused = self.state == PlaybackStatus::Paused;
         if events.iter().any(|event| {
             matches!(event, EngineEvent::OutputReload { entry_id } if *entry_id == loaded.media.entry_id)
         }) {
-            let observed = view.position.map(|p| loaded.timeline.from_media(p)).transpose()?;
-            let position = if was_paused { match (self.position, observed) {
-                (Some(accepted), Some(observed)) => Some(accepted.max(observed)),
-                _ => self.position.or(observed),
-            } } else { observed.or(self.position) };
+            let observed = current_position
+                .map(|p| loaded.timeline.from_media(p))
+                .transpose()?;
+            let position = match (was_paused, self.position, observed) {
+                (true, Some(accepted), Some(observed)) => Some(accepted.max(observed)),
+                _ => observed.or(self.position),
+            };
             let options = LoadOptions {
                 paused: self.state == PlaybackStatus::Paused,
                 position,
@@ -166,10 +172,12 @@ impl Actor {
                 _ => (),
             }
         }
-        if matches!(
-            self.state,
-            PlaybackStatus::Playing | PlaybackStatus::Buffering
-        ) {
+        if current_entry
+            && matches!(
+                self.state,
+                PlaybackStatus::Playing | PlaybackStatus::Buffering
+            )
+        {
             self.state = if view.paused {
                 PlaybackStatus::Paused
             } else if view.buffering {
@@ -180,24 +188,23 @@ impl Actor {
         }
         if ended {
             self.position = loaded.timeline.display_end();
-        } else if let Some(position) = view.position {
+        } else if let Some(position) = current_position {
             // A paused libmpv clock can include queued output latency, which
-            // changes again when speed changes. An accepted paused seek is the
-            // logical position must not rewind its UI or durable restore. Keep
+            // changes again when speed changes. Keep an accepted paused seek
+            // from rewinding the UI or durable restore. Accept
             // forward observations, including Together preview/progress clocks.
             let observed = loaded.timeline.from_media(position)?;
             if !was_paused || !view.paused || !self.position.is_some_and(|p| observed < p) {
                 self.position = Some(observed);
             }
         }
-        self.buffered_through =
-            if !ended && view.position.is_some() && view.entry_id == Some(loaded.media.entry_id) {
-                view.buffered_through
-                    .and_then(|time| loaded.timeline.from_media(time).ok())
-                    .filter(|end| self.position.is_some_and(|position| *end > position))
-            } else {
-                None
-            };
+        self.buffered_through = if !ended && current_position.is_some() {
+            view.buffered_through
+                .and_then(|time| loaded.timeline.from_media(time).ok())
+                .filter(|end| self.position.is_some_and(|position| *end > position))
+        } else {
+            None
+        };
         if ended || self.last_save.elapsed() >= Duration::from_secs(1) {
             self.save_position()?;
         }

@@ -715,7 +715,7 @@ async fn output_recovery_reloads_same_source_at_current_clock_without_advancing_
 }
 
 #[tokio::test]
-async fn cache_observation_is_entry_scoped_and_capped_at_the_authorized_preview() {
+async fn native_clock_and_cache_are_entry_scoped_and_capped_at_the_authorized_preview() {
     let f = Fixture::new();
     f.api.trial.store(true, Ordering::SeqCst);
     f.device.state.lock().unwrap().duration = 20.0;
@@ -730,11 +730,22 @@ async fn cache_observation_is_entry_scoped_and_capped_at_the_authorized_preview(
     f.device.state.lock().unwrap().view.buffered_through = Some(200.0);
     until(&f.player, |s| s.buffered_through == Some(50.0)).await;
 
-    f.device.state.lock().unwrap().view.entry_id = Some(999);
-    until(&f.player, |s| s.buffered_through.is_none()).await;
+    {
+        let mut state = f.device.state.lock().unwrap();
+        state.view.entry_id = Some(999);
+        state.view.position = Some(17.0);
+        state.view.paused = true;
+    }
+    let stale = until(&f.player, |s| s.buffered_through.is_none()).await;
+    assert_eq!(stale.position, Some(32.0));
+    assert_eq!(stale.state, Status::Playing);
+    let paused = f.command(Cmd::Pause(true)).await.unwrap();
+    assert_eq!(paused.position, Some(32.0));
+    assert_eq!(paused.state, Status::Paused);
     {
         let mut state = f.device.state.lock().unwrap();
         state.view.entry_id = Some(1);
+        state.view.position = Some(2.0);
         state.view.buffered_through = Some(14.0);
     }
     until(&f.player, |s| s.buffered_through == Some(44.0)).await;

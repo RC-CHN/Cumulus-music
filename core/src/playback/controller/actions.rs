@@ -379,13 +379,12 @@ impl Actor {
         // Poll consumes native events even when we only need the clock.
         // The regular tick still owns their handling for this load.
         self.deferred_events.extend(view.events);
-        if let Some(position) = view.position {
-            let observed = self
-                .loaded
-                .as_ref()
-                .expect("checked")
-                .timeline
-                .from_media(position)?;
+        let loaded = self.loaded.as_ref().expect("checked");
+        if let Some(position) = view
+            .position
+            .filter(|_| view.entry_id == Some(loaded.media.entry_id))
+        {
+            let observed = loaded.timeline.from_media(position)?;
             if !preserve_position || !self.position.is_some_and(|p| observed < p) {
                 self.position = Some(observed);
             }
