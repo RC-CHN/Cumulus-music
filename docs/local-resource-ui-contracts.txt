@@ -116,3 +116,9 @@ Rust 以索引锁内的实际 ID 和版本核对，原子写入设备本地的�
 宽度仅作为 WebView 界面偏好保存，不改变目录、搜索、选中分组或播放资源。
 Linux WebView 合成回归 30 项通过，另保存 30 张截图；窄窗焦点回到已选分组，
 拉宽恢复拖动后记录的宽度。Windows WebView2 仍由跨平台 CI 分开验证。
+
+本地歌曲键盘操作
+  官方 XTableViewer/Row.tsx handleHotKey 在本地歌曲行把 Delete/Backspace
+  交给 removeFromLocalList，并过滤长按重复。Cumulus 接到同一个版本校验与列表
+  隐藏动作，不删除磁盘文件，不改变已有队列。输入框、IME 和组合键不拦截，
+  屏蔽长按重复；待查询、失败或行已替换时不能执行。行消失后仍遵守既有焦点回退。

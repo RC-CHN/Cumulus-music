@@ -66,6 +66,7 @@ def main():
             assert path.with_suffix('.png').is_file()
     assert states['library_light']['localCount'] == 3
     assert states['local_hidden_light']['localCount'] == 1 and states['local_hidden_light']['staleHide']
+    assert states['local_hidden_light']['keyboardHide']
     assert states['local_restored_light']['localCount'] == 2
     assert states['local_directory_menu_light']['focusLabel'] == '打开文件所在目录'
     assert states['local_directory_light']['directoryRequests'] == 1

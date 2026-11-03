@@ -173,6 +173,33 @@ function showTrackMenu(event: MouseEvent | KeyboardEvent, row: LocalTrack) {
     trigger,
   );
 }
+function handleTrackKey(event: KeyboardEvent, row: LocalTrack) {
+  if (event.key !== 'Delete' && event.key !== 'Backspace') {
+    showTrackMenu(event, row);
+    return;
+  }
+  if (
+    event.defaultPrevented ||
+    event.isComposing ||
+    event.altKey ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.shiftKey ||
+    !(event.target instanceof HTMLElement) ||
+    event.target.isContentEditable ||
+    event.target.closest('input, textarea, select, [role="textbox"]')
+  )
+    return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (event.repeat || openingDirectory.value || !ownsVisit()) return;
+  trackTarget.value = {
+    id: row.track.id,
+    revision: row.revision,
+    queryKey: localQueryKey(query.value),
+  };
+  void trackAction('hide_track');
+}
 async function trackAction(action: string) {
   const target = trackTarget.value;
   if (!target || !trackCurrent.value || openingDirectory.value || !ownsVisit()) return;
@@ -667,7 +694,7 @@ function status(root: LocalRoot) {
               :class="{ current: currentId === row.track.id, unavailable: row.track.missing }"
               @dblclick="!row.track.missing && play(row.track.id)"
               @contextmenu="showTrackMenu($event, row)"
-              @keydown="showTrackMenu($event, row)"
+              @keydown="handleTrackKey($event, row)"
             >
               <td>
                 <button
@@ -732,6 +759,7 @@ function status(root: LocalRoot) {
                   class="icon-button"
                   type="button"
                   data-local-track-menu
+                  aria-keyshortcuts="Delete Backspace"
                   aria-haspopup="menu"
                   :aria-label="`更多操作 ${row.track.name}`"
                   :disabled="readLocked || busy"

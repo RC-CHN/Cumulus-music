@@ -51,6 +51,7 @@
     originalSelect;
   let readMode = "normal",
     commandFails = false,
+    hideCommands = 0,
     held = [],
     localCalls = [],
     selections = [],
@@ -418,6 +419,7 @@
       return value;
     };
     client.localCommand = async (command) => {
+      if (command.kind === "hide_track") hideCommands++;
       if (commandFails && command.kind === "rescan")
         throw { code: "io", message: "合成扫描失败" };
       return originalCommand(command);
@@ -931,17 +933,34 @@
     } catch (error) { staleHide = error?.code === "snapshot_changed"; }
     assert(staleHide && localRows().length === 2, "stale remove rejected");
     const hideTrigger = localRows().find(row => row.dataset.localId === cue).querySelector("[data-local-track-menu]");
+    const removeKey = (element, key, modifiers = {}) => {
+      const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...modifiers });
+      element.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    localField().focus();
+    assert(!removeKey(localField(), "Backspace"), "text field retains native editing");
+    const editor = document.createElement("span");
+    editor.contentEditable = "true";
+    hideTrigger.closest("td").appendChild(editor);
+    editor.focus();
+    assert(!removeKey(editor, "Delete"), "row editor retains native editing");
+    editor.remove();
     hideTrigger.focus();
-    hideTrigger.dispatchEvent(new KeyboardEvent("keydown", { key:"F10", shiftKey:true, bubbles:true, cancelable:true }));
-    await wait(localTrackMenu, "local row remove menu");
-    click("从列表中删除", localTrackMenu());
+    assert(removeKey(hideTrigger, "Delete", { repeat:true }), "repeated row key is consumed");
+    assert(!removeKey(hideTrigger, "Backspace", { ctrlKey:true }), "modified key not intercepted");
+    assert(!removeKey(hideTrigger, "Backspace", { isComposing:true }), "composition key not intercepted");
+    assert(hideCommands === 0, "repeat, modifiers and editing do not hide a row");
+    assert(removeKey(hideTrigger, "Backspace"), "plain row Backspace consumed");
+    removeKey(hideTrigger, "Backspace", { repeat:true });
     await wait(() => readyLocal() && localRows().length === 1 &&
       local().textContent.includes("源文件仍保留") && document.activeElement === localField(),
       "only local list row removed with focus fallback");
     assert(!localRows().some(row => row.dataset.localId === cue), "CUE is removed from displayed list");
     assert((await control("cloud-removal-file", {songId:"1004", action:"observe"})).exists,
       "CUE physical source remains");
-    await capture("local_hidden_light", {staleHide});
+    assert(hideCommands === 1, "one native list-only hide");
+    await capture("local_hidden_light", {staleHide, keyboardHide:hideCommands === 1});
     click("重新扫描", local());
     await wait(() => readyLocal() && localRows().some(row => row.dataset.localId === cue),
       "explicit rescan restores local list row");
