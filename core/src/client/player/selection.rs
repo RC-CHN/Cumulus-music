@@ -86,6 +86,15 @@ impl MusicClient {
         ) {
             self.session.with_token(&token, |_| Ok(()))?;
         }
+        let (style_ids, source_guard) = match &input {
+            PlaySelection::StyleRecommendations {
+                revision, index, ..
+            } => {
+                let (ids, guard) = self.style_selection(&token, revision, *index)?;
+                (Some(ids), Some(guard))
+            }
+            _ => (None, None),
+        };
         let preserve = if keep_queue {
             Some(self.queue_click_snapshot(&token).await?)
         } else {
@@ -351,6 +360,19 @@ impl MusicClient {
                             .await?;
                         Ok((ids, index, quality, source))
                     }
+                    PlaySelection::StyleRecommendations {
+                        revision,
+                        index,
+                        quality,
+                    } => Ok((
+                        style_ids.ok_or(Error::StaleResponse)?,
+                        index,
+                        quality,
+                        // M/3126 explicitly chooses dailyRecommend (M/91: 35).
+                        json!({"kind":"style_recommendations","scene":"styleRecommend",
+                            "href":"/styleRecommend","resourceType":"dailyRecommend",
+                            "revision":revision,"trial_mode":35}),
+                    )),
                     PlaySelection::Member {
                         query,
                         revision,
@@ -574,7 +596,7 @@ impl MusicClient {
             self.play_retained_queue_row(&token, snapshot, (resource, source), lease)
                 .await?
         } else {
-            self.submit_selection(
+            self.submit_selection_with_source(
                 &token,
                 PlaybackCommand::Replace {
                     resources,
@@ -584,6 +606,7 @@ impl MusicClient {
                 attempt,
                 lease,
                 prepared.as_ref(),
+                source_guard,
             )
             .await?
         };

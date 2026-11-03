@@ -170,6 +170,11 @@ pub enum PlaySelection {
         index: usize,
         quality: Quality,
     },
+    StyleRecommendations {
+        revision: String,
+        index: usize,
+        quality: Quality,
+    },
     Member {
         query: super::super::dto::MemberQuery,
         revision: String,

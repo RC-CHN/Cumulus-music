@@ -111,6 +111,7 @@ impl MusicClient {
         if !matches!(
             selection,
             PlaySelection::Catalog { .. }
+                | PlaySelection::StyleRecommendations { .. }
                 | PlaySelection::Podcast { .. }
                 | PlaySelection::Voice { .. }
                 | PlaySelection::Playlist { .. }
@@ -138,13 +139,52 @@ impl MusicClient {
         lease: Option<u64>,
         prepared: Option<&PreparedSelection>,
     ) -> Result<PlaybackSnapshot> {
+        self.submit_selection_with_source(token, command, attempt, lease, prepared, None)
+            .await
+    }
+
+    pub(super) async fn submit_selection_with_source(
+        &self,
+        token: &SessionToken,
+        command: PlaybackCommand,
+        attempt: u64,
+        lease: Option<u64>,
+        prepared: Option<&PreparedSelection>,
+        source_guard: Option<Cancellation>,
+    ) -> Result<PlaybackSnapshot> {
+        let check_source = || {
+            if source_guard
+                .as_ref()
+                .is_some_and(Cancellation::is_cancelled)
+            {
+                return Err(Error::QueueChanged);
+            }
+            Ok(())
+        };
+        check_source()?;
         let controller = self.player.controller().await?;
         let Some(prepared) = prepared else {
             if self.player.selection.load(Ordering::Acquire) != attempt {
                 return Err(Error::StaleResponse);
             }
-            self.focus
-                .check(lease.ok_or(Error::StaleResponse)?, Owner::Audio)?;
+            let lease = lease.ok_or(Error::StaleResponse)?;
+            self.focus.check(lease, Owner::Audio)?;
+            if let Some(source) = source_guard {
+                let focus = self.focus.clone();
+                let selection = self.player.selection.clone();
+                return controller
+                    .command_guarded(
+                        token,
+                        command,
+                        controller.snapshot().fence(),
+                        Cancellation::new(move || {
+                            !source.is_cancelled()
+                                && selection.load(Ordering::Acquire) == attempt
+                                && focus.check(lease, Owner::Audio).is_ok()
+                        }),
+                    )
+                    .await;
+            }
             return controller.command(token, command).await;
         };
 
@@ -157,6 +197,7 @@ impl MusicClient {
                 .lock()
                 .map_err(|_| Error::LockPoisoned)?;
             prepared.check(self, &current)?;
+            check_source()?;
             self.reserve_prepared_audio(token, prepared.focus, || {
                 if controller.snapshot().fence() != prepared.fence {
                     return Err(Error::StaleResponse);
@@ -189,7 +230,10 @@ impl MusicClient {
                 command,
                 prepared.fence.clone(),
                 Cancellation::new(move || {
-                    selection.load(Ordering::Acquire) == reserved
+                    source_guard
+                        .as_ref()
+                        .is_none_or(|source| !source.is_cancelled())
+                        && selection.load(Ordering::Acquire) == reserved
                         && preparations.load(Ordering::Acquire) == generation
                         && issued.elapsed() < TICKET_LIFETIME
                         && focus.check(lease, Owner::Audio).is_ok()

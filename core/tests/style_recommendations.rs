@@ -37,7 +37,7 @@ async fn exact_default_read_projects_only_ordered_tracks() {
     assert_eq!(data.epoch, "1");
     assert_eq!(data.value.total, 2);
     assert_eq!(data.value.offset, 0);
-    assert!(!data.value.more && data.value.revision.is_none() && data.value.playlist.is_none());
+    assert!(!data.value.more && data.value.revision.is_some() && data.value.playlist.is_none());
     let tracks = &data.value.tracks;
     assert_eq!(
         tracks.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(),

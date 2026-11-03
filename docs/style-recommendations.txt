@@ -9,7 +9,13 @@ hybrid_app/15.js:1806–1828 读取 /api/homepage/category/daily/song/list，
 style_recommendations 绑定登录代次并返回标准 TrackPage，保留歌曲顺序，接收
 至多 500 项。缺失或 null dailySongs 在有效 data 对象内视为空列表；类型错误、
 重复身份或超限不发布部分结果。只投影歌曲常规展示字段，不返回原始 tags、
-播放地址或授权材料。当前未接入标签切换/保存、类别和配置读取、逐项来源绑定播放。
+播放地址或授权材料。标签切换/保存、类别和配置读取未接入。
+
+播放采用当前账号最新列表的原生快照。页面提交列表代次和行号，不提交歌曲 ID；
+换账号、列表更新、无效行号、旧播放票据均拒绝。按官方 M/3126 的 listData
+顺序播放，来源场景为 styleRecommend，资源类型 dailyRecommend，返回入口
+/styleRecommend。M/91 中 dailyRecommend 的试听枚举为 35；M/3126 明确选用
+该值，即使另有 styleRecommend 枚举 39，也不替换。
 
 从「每日推荐 → 风格推荐」进入；列表有加载、空结果、错误及刷新，普通播放和下载
 沿用现有歌曲授权与确认入口。官方 M/3126 的 styleRecommend 播放来源与场景试听

@@ -84,6 +84,13 @@ impl Api for Backend {
                 "/api/v6/playlist/detail" => {
                     json!({"code":200,"playlist":{"trackIds":self.playlist_tracks.lock().unwrap().clone().unwrap_or_else(|| (1..=205).map(|id|json!({"id":id})).collect::<Vec<_>>())}})
                 }
+                "/api/homepage/category/daily/song/list" => {
+                    assert_eq!(
+                        payload,
+                        json!({"source":"","categoryId":"","tagId":"","songId":""})
+                    );
+                    json!({"code":200,"data":{"dailySongs":[{"id":72,"name":"风格乙"},{"id":71,"name":"风格甲"}]}})
+                }
                 "/api/v3/song/detail" => {
                     let ids: Vec<Value> =
                         serde_json::from_str(payload["c"].as_str().unwrap()).unwrap();
@@ -1658,4 +1665,113 @@ async fn loaded_trial_reads_and_caches_standard_assignment_without_reusing_anoth
         QualityAccess::Allowed
     );
     assert_eq!(assignment_calls(), 2);
+}
+
+#[tokio::test]
+async fn style_recommendation_playback_preserves_snapshot_order_scene_and_official_trial() {
+    let (dir, api, _session, client, _count) = fixture();
+    let stale = client
+        .style_recommendations("1")
+        .await
+        .unwrap()
+        .value
+        .revision
+        .unwrap();
+    let revision = client
+        .style_recommendations("1")
+        .await
+        .unwrap()
+        .value
+        .revision
+        .unwrap();
+    assert_ne!(revision, stale);
+    let select = |revision, index| PlaySelection::StyleRecommendations {
+        revision,
+        index,
+        quality: Quality::Standard,
+    };
+    assert!(matches!(
+        client.play_selection("1", select(stale, 0)).await,
+        Err(Error::QueueChanged)
+    ));
+    assert!(matches!(
+        client
+            .play_selection("1", select(revision.clone(), 2))
+            .await,
+        Err(Error::InvalidInput(_))
+    ));
+    assert!(
+        !api.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|p| p == "/api/v3/song/detail")
+    );
+    let view = client.player_snapshot("1").await.unwrap();
+    let ticket = client
+        .prepare_play_selection("1", &view.queue_revision, view.play_id.as_deref())
+        .unwrap();
+    let state = client
+        .commit_prepared_selection("1", &ticket, select(revision.clone(), 1))
+        .await
+        .unwrap();
+    assert_eq!(state.track.unwrap().id, "71");
+    assert_eq!(state.queue_len, 2);
+    assert_eq!(*api.trial.lock().unwrap(), Some(json!(35)));
+    let stored = ProfileRegistry::open(dir.path(), ApiOrigin::Pc)
+        .unwrap()
+        .store()
+        .get("9", "playback", "queue")
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored["items"][0]["resource"]["id"], "72");
+    assert_eq!(stored["items"][1]["resource"]["id"], "71");
+    assert_eq!(
+        stored["items"][0]["source"],
+        json!({"kind":"style_recommendations","scene":"styleRecommend",
+        "href":"/styleRecommend","resourceType":"dailyRecommend","revision":revision,"trial_mode":35})
+    );
+    client.player_action("1", PlayerAction::Stop).await.unwrap();
+}
+
+#[tokio::test]
+async fn style_recommendation_refresh_during_song_details_cannot_replace_queue() {
+    let (_dir, api, _session, client, _count) = fixture();
+    let revision = client
+        .style_recommendations("1")
+        .await
+        .unwrap()
+        .value
+        .revision
+        .unwrap();
+    api.hold_id.store(72, Ordering::SeqCst);
+    let playing = {
+        let client = client.clone();
+        tokio::spawn(async move {
+            client
+                .play_selection(
+                    "1",
+                    PlaySelection::StyleRecommendations {
+                        revision,
+                        index: 0,
+                        quality: Quality::Standard,
+                    },
+                )
+                .await
+        })
+    };
+    tokio::time::timeout(std::time::Duration::from_secs(5), api.started.notified())
+        .await
+        .unwrap();
+    client.style_recommendations("1").await.unwrap();
+    api.release.notify_one();
+    assert!(matches!(playing.await.unwrap(), Err(Error::QueueChanged)));
+    assert!(client.player_queue("1").await.unwrap().tracks.is_empty());
+    assert!(
+        !api.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|p| p == "/api/song/enhance/player/url/v1")
+    );
 }
