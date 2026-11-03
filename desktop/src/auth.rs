@@ -134,6 +134,40 @@ pub async fn server_quick_login_command<R: tauri::Runtime>(
     Ok(result)
 }
 #[tauri::command]
+pub async fn begin_active_server_switch(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    saved_id: String,
+    consent: bool,
+) -> Result<AccountData<ServerQuickLoginOperationView>, ClientError> {
+    client
+        .begin_active_server_switch(&epoch, &saved_id, consent)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn active_server_switch_command<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    id: String,
+    command: ServerQuickLoginCommand,
+) -> Result<AccountData<ServerQuickLoginOperationView>, ClientError> {
+    let started_current = client.account().is_ok_and(|account| account.epoch == epoch);
+    let result = client
+        .active_server_switch_command(&epoch, &id, command)
+        .await
+        .map_err(Into::into);
+    // A local cleanup error after adoption does not roll back the new
+    // account. Publish the actual epoch even in that case.
+    if started_current && client.account().is_ok_and(|account| account.epoch != epoch) {
+        publish(&window, &client);
+    }
+    result
+}
+
+#[tauri::command]
 pub async fn remove_saved_account<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,

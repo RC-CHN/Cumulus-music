@@ -1,5 +1,4 @@
-//! One-shot guest JSK quick login. Active-session switch is a different wire
-//! transaction and is deliberately not guessed here.
+//! One-shot JSK exchanges with fresh, target-bound receipt stores.
 use super::{History, PATH, ProfileRegistry, QuickSavedTarget};
 use crate::{
     Error, Result,
@@ -11,13 +10,14 @@ use crate::{
     protocol::{
         api::{Api, identifier},
         context::RequestContext,
-        http::{ApiOrigin, ClientProfile, HttpBackend, RequestOptions, WireRoute},
+        http::{ApiOrigin, ClientProfile, HttpBackend, MusicHttpClient, RequestOptions, WireRoute},
     },
     storage::OperationLock,
 };
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::{
+    any::Any,
     future::Future,
     sync::{Arc, Mutex, MutexGuard},
 };
@@ -65,10 +65,19 @@ struct State {
     status: Option<LoginStatus>,
 }
 
+const SWITCH_PATH: &str = "/api/login/switchuser";
+
+struct ActiveSource {
+    api: Arc<MusicHttpClient>,
+    revision: String,
+    music_u: String,
+}
+
 pub struct ServerQuickLogin {
     session: Arc<AccountSession>,
     base: SessionToken,
     source: Arc<dyn Api>,
+    active: Option<ActiveSource>,
     candidate: LoginCandidate,
     state: Mutex<State>,
     cancelled: watch::Sender<bool>,
@@ -83,20 +92,90 @@ impl ProfileRegistry {
         transport: QuickLoginTransport,
     ) -> Result<ServerQuickLogin> {
         if expected.uid.is_some() {
-            return Err(Error::State(
-                "active account switch needs a separate native transport",
-            ));
+            return Err(Error::State("server quick login requires a guest session"));
         }
+        self.begin_quick_exchange_for(session, expected, saved_id, transport)
+            .await
+    }
+
+    /// Active switch keeps the current credential store untouched. The
+    /// selected target must be a different validated saved account.
+    pub async fn begin_active_server_switch_for(
+        self: &Arc<Self>,
+        session: Arc<AccountSession>,
+        expected: &SessionToken,
+        saved_id: &str,
+        transport: QuickLoginTransport,
+    ) -> Result<ServerQuickLogin> {
+        if expected.uid.is_none() {
+            return Err(Error::State("server switch requires an active account"));
+        }
+        self.begin_quick_exchange_for(session, expected, saved_id, transport)
+            .await
+    }
+
+    async fn begin_quick_exchange_for(
+        self: &Arc<Self>,
+        session: Arc<AccountSession>,
+        expected: &SessionToken,
+        saved_id: &str,
+        transport: QuickLoginTransport,
+    ) -> Result<ServerQuickLogin> {
         if !super::super::id(saved_id) {
             return Err(Error::InvalidInput("invalid saved account identifier"));
         }
         let source = session.native_api(expected)?;
         // M1368:4455–4482 revalidates the history at the actual login action.
         let (mut history, eligibility) = self.checked_quick_history(&session, expected).await?;
+        let (active, device_id) = if expected.uid.is_some() {
+            let current =
+                history
+                    .entries
+                    .iter()
+                    .find(|entry| entry.current)
+                    .ok_or(Error::State(
+                        "active account is not in the saved JSK history",
+                    ))?;
+            if history
+                .selection
+                .as_ref()
+                .map(|value| value.session_id.as_str())
+                != Some(current.saved.session_id.as_str())
+            {
+                return Err(Error::StaleResponse);
+            }
+            let source: Arc<dyn Any + Send + Sync> = source.clone();
+            let api = source
+                .downcast::<MusicHttpClient>()
+                .map_err(|_| Error::State("native JSK switch source unavailable"))?;
+            let url = ApiOrigin::Pc.request_url(WireRoute::Eapi, SWITCH_PATH)?;
+            let snapshot = api.credentials().request_credentials(&url)?;
+            let music_u = snapshot
+                .unique_music_u()
+                .ok_or(Error::State(
+                    "active account has no unique scoped switch credential",
+                ))?
+                .to_owned();
+            if snapshot.revision != current.credential.revision
+                || music_u != current.credential.music_u
+            {
+                return Err(Error::CredentialChanged);
+            }
+            (
+                Some(ActiveSource {
+                    api,
+                    revision: snapshot.revision,
+                    music_u,
+                }),
+                Some(snapshot.device_id),
+            )
+        } else {
+            (None, None)
+        };
         if !eligibility
             .accounts
             .iter()
-            .any(|row| row.id == saved_id && row.eligible)
+            .any(|row| row.id == saved_id && row.eligible && !row.current)
         {
             return Err(Error::State(
                 "saved account is not eligible for server quick login",
@@ -131,12 +210,13 @@ impl ProfileRegistry {
             credential_revision: target.credential.revision.clone(),
         };
         let registry = self.clone();
+        let current_uid = expected.uid.clone().unwrap_or_default();
         let (candidate, request) = tokio::task::spawn_blocking(move || {
             let target = ApiOrigin::Pc.request_url(WireRoute::Eapi, PATH)?;
             registry.check_quick_history(&history, &target)?;
             let mut payload = registry.quick_payload(&history)?;
             payload["targetUserId"] = json!(numeric_target);
-            payload["currentUserId"] = json!("");
+            payload["currentUserId"] = json!(current_uid);
             let mut candidate = registry.candidate_with_backend(
                 transport.profile,
                 transport.options,
@@ -145,6 +225,9 @@ impl ProfileRegistry {
             )?;
             if candidate.expected != history.selection {
                 return Err(Error::StaleResponse);
+            }
+            if let Some(device_id) = device_id {
+                candidate.credentials().seed_switch_device(&device_id)?;
             }
             candidate.remember(binding.saved.auto_login);
             candidate.expected_uid = Some(binding.saved.uid.clone());
@@ -159,6 +242,7 @@ impl ProfileRegistry {
             session,
             base: expected.clone(),
             source,
+            active,
             candidate,
             cancelled,
             state: Mutex::new(State {
@@ -207,7 +291,7 @@ impl ServerQuickLogin {
         if *cancelled.borrow() {
             return Err(Error::Cancelled);
         }
-        self.session.require_api(&self.base, &self.source)?;
+        self.check_source()?;
         tokio::select! {
             biased;
             _ = cancelled.changed() => Err(Error::Cancelled),
@@ -223,7 +307,7 @@ impl ServerQuickLogin {
                 drop(state);
                 return self.snapshot();
             }
-            let guard = self.guest_lock()?;
+            let guard = self.exchange_lock()?;
             let request = state
                 .request
                 .take()
@@ -251,7 +335,20 @@ impl ServerQuickLogin {
         }
         let client = self.candidate.client();
         let response = self
-            .scoped(client.request_jsk_guest_quick(request.payload))
+            .scoped(async {
+                match &self.active {
+                    Some(source) => {
+                        client
+                            .request_jsk_active_switch(
+                                &source.api,
+                                &source.revision,
+                                request.payload,
+                            )
+                            .await
+                    }
+                    None => client.request_jsk_guest_quick(request.payload).await,
+                }
+            })
             .await;
         let receipt = self.fresh_receipt()?;
         let read_now = {
@@ -259,7 +356,7 @@ impl ServerQuickLogin {
             if state.phase != ServerQuickLoginPhase::Exchanging {
                 return Err(Error::Cancelled);
             }
-            self.session.require_api(&self.base, &self.source)?;
+            self.check_source()?;
             match response.map(normalize_code) {
                 Ok(value)
                     if value["code"] == 200
@@ -315,7 +412,7 @@ impl ServerQuickLogin {
                 drop(state);
                 return self.snapshot();
             }
-            let guard = self.guest_lock()?;
+            let guard = self.exchange_lock()?;
             state.phase = ServerQuickLoginPhase::CheckingIdentity;
             guard
         };
@@ -341,7 +438,7 @@ impl ServerQuickLogin {
         if state.phase != ServerQuickLoginPhase::CheckingIdentity {
             return Err(Error::Cancelled);
         }
-        self.session.require_api(&self.base, &self.source)?;
+        self.check_source()?;
         if self.fresh_receipt()? != before {
             state.receipt = None;
             state.phase = ServerQuickLoginPhase::ResultUnknown;
@@ -368,28 +465,47 @@ impl ServerQuickLogin {
         Ok(())
     }
 
-    fn guest_lock(&self) -> Result<OperationLock> {
+    fn check_source(&self) -> Result<()> {
+        self.session.require_api(&self.base, &self.source)?;
+        if let Some(source) = &self.active {
+            let target = ApiOrigin::Pc.request_url(WireRoute::Eapi, SWITCH_PATH)?;
+            let snapshot = source.api.credentials().request_credentials(&target)?;
+            if snapshot.revision != source.revision
+                || snapshot.unique_music_u() != Some(source.music_u.as_str())
+            {
+                return Err(Error::CredentialChanged);
+            }
+        }
+        Ok(())
+    }
+
+    fn exchange_lock(&self) -> Result<OperationLock> {
         OperationLock::acquire(
             self.candidate.registry.store.directory(),
             "server-quick-login-v1",
-            "guest",
+            "account",
         )
     }
 
     fn fresh_receipt(&self) -> Result<Option<String>> {
         let credentials = self.candidate.credentials();
-        let refresh_scope = credentials.login_credentials()?.token;
+        let refresh = ApiOrigin::Pc.request_url(WireRoute::Eapi, "/api/login/token/refresh/v1")?;
         let target = ApiOrigin::Pc.request_url(WireRoute::Eapi, "/api/w/nuser/account/get")?;
-        let mut actual = credentials
-            .request_credentials(&target)?
-            .cookies
-            .into_iter()
-            .filter_map(|(name, value)| (name == "MUSIC_U").then_some(value));
-        let token = actual.next();
-        if token != refresh_scope || actual.next().is_some() {
+        let refresh_scope = credentials.request_credentials(&refresh)?;
+        let identity_scope = credentials.request_credentials(&target)?;
+        let Some(token) = identity_scope.unique_music_u() else {
+            return Ok(None);
+        };
+        if identity_scope.revision != refresh_scope.revision
+            || refresh_scope.unique_music_u() != Some(token)
+            || self
+                .active
+                .as_ref()
+                .is_some_and(|source| token == source.music_u)
+        {
             return Ok(None);
         }
-        Ok(token)
+        Ok(Some(token.to_owned()))
     }
 
     fn clear_unselected(&self) {

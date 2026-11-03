@@ -11,7 +11,7 @@ interface Operation {
 
 export function useServerQuickLogin(
   client: ServerQuickLoginClient,
-  guestEpoch: () => string | null,
+  ownerEpoch: () => string | null,
   authorized: () => void,
 ) {
   const view = shallowRef<ServerQuickLoginOperationView>();
@@ -43,7 +43,7 @@ export function useServerQuickLogin(
     void client.serverQuickLoginCommand(target.epoch, target.id, 'cancel').catch(() => {});
   }
   function active(request: number, epoch: string) {
-    return !disposed && request === serial && guestEpoch() === epoch;
+    return !disposed && request === serial && ownerEpoch() === epoch;
   }
   function accept(target: Operation, value: ServerQuickLoginOperationView) {
     if (value.operationId !== target.id) throw Error('operation mismatch');
@@ -55,7 +55,7 @@ export function useServerQuickLogin(
     }
   }
   async function start(savedId: string, consent: boolean) {
-    const epoch = guestEpoch();
+    const epoch = ownerEpoch();
     if (!consent || !epoch || disposed || pending.value || operation || problem.value) return;
     const request = ++serial;
     pending.value = 'preparing';

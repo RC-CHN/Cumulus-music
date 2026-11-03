@@ -128,6 +128,23 @@ impl World {
             .await
             .unwrap()
     }
+
+    async fn active_attempt(&self, index: usize) -> ServerQuickLogin {
+        self.registry
+            .begin_active_server_switch_for(
+                self.session.clone(),
+                &self.session.token().unwrap(),
+                &self.ids[index],
+                QuickLoginTransport {
+                    profile: Default::default(),
+                    options: Default::default(),
+                    context: None,
+                    backend: self.backend.clone(),
+                },
+            )
+            .await
+            .unwrap()
+    }
 }
 
 #[tokio::test]
@@ -696,4 +713,393 @@ async fn regular_login_supersedes_inflight_quick_preflight_without_an_exchange()
     ));
     assert!(world.client.login_snapshot(&normal.operation_id).is_ok());
     assert_eq!(world.backend.calls().len(), 2);
+}
+
+#[tokio::test]
+async fn active_switch_borrows_exact_source_wire_scope_and_isolates_the_receipt() {
+    let world = World::new(
+        2,
+        [
+            json!({"code":200}).into(),
+            HttpResponse::Ready(Ok(issued_quick_reply())),
+            json!({"code":200,"profile":{"userId":1,"nickname":"Verified target"}}).into(),
+        ],
+    )
+    .await;
+    let old = world.registry.current(Default::default()).unwrap().unwrap();
+    let old_revision = old.credentials.login_credentials().unwrap().revision;
+    let attempt = world.active_attempt(0).await;
+    assert_eq!(
+        attempt.execute().await.unwrap().phase,
+        ServerQuickLoginPhase::Authenticated
+    );
+    assert_eq!(
+        attempt.execute().await.unwrap().phase,
+        ServerQuickLoginPhase::Authenticated
+    );
+    let calls = world.backend.calls();
+    assert_eq!(calls.len(), 5);
+    let exchange = &calls[3];
+    assert_eq!(exchange.path, "/api/login/switchuser");
+    assert_eq!(exchange.payload["fromPage"], "JSK");
+    assert_eq!(exchange.payload["currentEnv"], "{}");
+    assert_eq!(exchange.payload["currentUserId"], "2");
+    assert_eq!(exchange.payload["targetUserId"], "1");
+    assert!(
+        exchange
+            .cookie
+            .as_deref()
+            .unwrap()
+            .contains("MUSIC_U=history-token-2")
+    );
+    assert!(
+        !exchange
+            .cookie
+            .as_deref()
+            .unwrap()
+            .contains("history-token-1")
+    );
+    let history: Vec<Value> =
+        serde_json::from_str(exchange.payload["userInfoList"].as_str().unwrap()).unwrap();
+    assert_eq!(
+        history
+            .iter()
+            .map(|row| row["userId"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        ["2", "1"]
+    );
+    assert_eq!(calls[4].path, "/api/w/nuser/account/get");
+    assert!(
+        calls[4]
+            .cookie
+            .as_deref()
+            .unwrap()
+            .contains("MUSIC_U=fresh-target")
+    );
+    assert!(
+        !calls[4]
+            .cookie
+            .as_deref()
+            .unwrap()
+            .contains("history-token-2")
+    );
+    let switched = world.registry.current(Default::default()).unwrap().unwrap();
+    assert_ne!(switched.selection.session_id, world.ids[0]);
+    assert_ne!(switched.selection.session_id, world.ids[1]);
+    assert_eq!(
+        switched.credentials.device_id().unwrap(),
+        old.credentials.device_id().unwrap()
+    );
+    let credentials = switched.credentials.login_credentials().unwrap();
+    assert_eq!(
+        credentials.refresh_token.as_deref(),
+        Some("fresh-target-rt")
+    );
+    assert_eq!(credentials.token.as_deref(), Some("fresh-target"));
+    let old_credentials = old.credentials.login_credentials().unwrap();
+    assert_eq!(old_credentials.revision, old_revision);
+    assert_eq!(old_credentials.token.as_deref(), Some("history-token-2"));
+    assert!(old_credentials.refresh_token.is_none());
+    assert_eq!(world.session.token().unwrap().uid.as_deref(), Some("1"));
+}
+
+#[tokio::test]
+async fn active_switch_source_cookie_echo_is_not_a_fresh_receipt() {
+    let mut echo = issued_quick_reply();
+    echo.set_cookies = vec!["MUSIC_U=history-token-2; Path=/; Secure".into()];
+    let world = World::new(
+        2,
+        [json!({"code":200}).into(), HttpResponse::Ready(Ok(echo))],
+    )
+    .await;
+    let selection = world.registry.selection().unwrap();
+    let attempt = world.active_attempt(0).await;
+    let outcome = attempt.execute().await.unwrap();
+    assert_eq!(outcome.phase, ServerQuickLoginPhase::ResultUnknown);
+    assert!(!outcome.can_reconcile);
+    assert_eq!(attempt.reconcile().await.unwrap(), outcome);
+    assert_eq!(world.backend.calls().len(), 4);
+    assert_eq!(world.registry.selection().unwrap(), selection);
+    assert_eq!(world.session.token().unwrap().uid.as_deref(), Some("2"));
+}
+
+#[tokio::test]
+async fn active_switch_lost_body_can_only_reconcile_the_new_candidate() {
+    let mut interrupted = issued_quick_reply();
+    interrupted.body_status = BodyStatus::Interrupted;
+    let world = World::new(
+        2,
+        [
+            json!({"code":200}).into(),
+            HttpResponse::Ready(Ok(interrupted)),
+            json!({"code":200,"profile":{"userId":1}}).into(),
+        ],
+    )
+    .await;
+    let original = world.session.token().unwrap();
+    let attempt = world.active_attempt(0).await;
+    let unresolved = attempt.execute().await.unwrap();
+    assert_eq!(unresolved.phase, ServerQuickLoginPhase::IdentityRequired);
+    assert_eq!(world.session.token().unwrap(), original);
+    assert_eq!(attempt.execute().await.unwrap(), unresolved);
+    assert_eq!(
+        attempt.reconcile().await.unwrap().phase,
+        ServerQuickLoginPhase::Authenticated
+    );
+    assert_eq!(
+        world
+            .backend
+            .calls()
+            .iter()
+            .filter(|call| call.path == "/api/login/switchuser")
+            .count(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn active_switch_source_credential_change_fences_late_receipt() {
+    let (pending, release) = gate();
+    let world = World::new(2, [json!({"code":200}).into(), pending]).await;
+    let original = world.registry.current(Default::default()).unwrap().unwrap();
+    let attempt = Arc::new(world.active_attempt(0).await);
+    let job = {
+        let attempt = attempt.clone();
+        tokio::spawn(async move { attempt.execute().await })
+    };
+    world.backend.wait(4).await;
+    original.credentials.clear().unwrap();
+    assert!(release.send(Ok(issued_quick_reply())).is_ok());
+    assert!(matches!(job.await.unwrap(), Err(Error::CredentialChanged)));
+    assert_eq!(world.session.token().unwrap().uid.as_deref(), Some("2"));
+    assert_eq!(
+        world.registry.selection().unwrap().unwrap(),
+        original.selection
+    );
+    assert_eq!(world.backend.calls().len(), 4);
+}
+
+#[tokio::test]
+async fn cancelled_active_switch_cannot_adopt_late_target_identity() {
+    let (pending, release) = gate();
+    let world = World::new(
+        2,
+        [
+            json!({"code":200}).into(),
+            HttpResponse::Ready(Ok(issued_quick_reply())),
+            pending,
+        ],
+    )
+    .await;
+    let original = world.registry.current(Default::default()).unwrap().unwrap();
+    let revision = original.credentials.login_credentials().unwrap().revision;
+    let attempt = Arc::new(world.active_attempt(0).await);
+    let job = {
+        let attempt = attempt.clone();
+        tokio::spawn(async move { attempt.execute().await })
+    };
+    world.backend.wait(5).await;
+    attempt.cancel().unwrap();
+    assert!(matches!(job.await.unwrap(), Err(Error::Cancelled)));
+    assert!(
+        release
+            .send(Ok(reply(json!({"code":200,"profile":{"userId":1}}))))
+            .is_err()
+    );
+    assert_eq!(world.session.token().unwrap().uid.as_deref(), Some("2"));
+    assert_eq!(
+        world.registry.selection().unwrap().unwrap(),
+        original.selection
+    );
+    assert_eq!(
+        original.credentials.login_credentials().unwrap().revision,
+        revision
+    );
+}
+
+#[tokio::test]
+async fn client_active_switch_is_explicit_and_advances_epoch_without_guest_fallback() {
+    let world = World::new(
+        2,
+        [
+            json!({"code":200}).into(),
+            HttpResponse::Ready(Ok(issued_quick_reply())),
+            json!({"code":200,"profile":{"userId":1}}).into(),
+            json!({"code":200}).into(),
+        ],
+    )
+    .await;
+    let epoch = world.epoch();
+    assert!(
+        world
+            .client
+            .begin_active_server_switch(&epoch, &world.ids[0], false)
+            .await
+            .is_err()
+    );
+    assert_eq!(world.backend.calls().len(), 2);
+    let started = world
+        .client
+        .begin_active_server_switch(&epoch, &world.ids[0], true)
+        .await
+        .unwrap();
+    let id = &started.value.operation_id;
+    assert_eq!(started.epoch, epoch);
+    assert!(matches!(
+        world
+            .client
+            .server_quick_login_command(&epoch, id, ServerQuickLoginCommand::Execute)
+            .await,
+        Err(Error::StaleResponse)
+    ));
+    let accepted = world
+        .client
+        .active_server_switch_command(&epoch, id, ServerQuickLoginCommand::Execute)
+        .await
+        .unwrap();
+    assert_eq!(accepted.epoch, epoch);
+    assert_eq!(
+        accepted.value.state.phase,
+        ServerQuickLoginPhase::Authenticated
+    );
+    assert_eq!(world.session.token().unwrap().uid.as_deref(), Some("1"));
+    assert_ne!(world.epoch(), epoch);
+    assert!(matches!(
+        world
+            .client
+            .active_server_switch_command(&epoch, id, ServerQuickLoginCommand::Execute)
+            .await,
+        Err(Error::StaleResponse)
+    ));
+    // A completed attempt may be replaced at the new account epoch.
+    let ready = world
+        .client
+        .begin_active_server_switch(&world.epoch(), &world.ids[1], true)
+        .await
+        .unwrap();
+    assert_eq!(ready.value.state.phase, ServerQuickLoginPhase::Ready);
+    let calls = world.backend.calls();
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|call| call.path == "/api/login/switchuser")
+            .count(),
+        1
+    );
+    assert!(
+        !calls
+            .iter()
+            .any(|call| call.path == "/api/login/quicklogin")
+    );
+}
+
+#[tokio::test]
+async fn client_active_switch_rechecks_together_gate_but_allows_cancel() {
+    let world = World::new(2, [json!({"code":200}).into()]).await;
+    let epoch = world.epoch();
+    let started = world
+        .client
+        .begin_active_server_switch(&epoch, &world.ids[0], true)
+        .await
+        .unwrap();
+    world
+        .registry
+        .store()
+        .put(
+            "2",
+            "listen-together-operations-v1",
+            "uncertain",
+            &json!({
+                "id":"uncertain","intent":{"kind":"create","refer":"fixture"},
+                "phase":"uncertain","acknowledged":false,"created_room":null,"observed_room":null
+            }),
+        )
+        .unwrap();
+    let id = &started.value.operation_id;
+    assert!(matches!(
+        world
+            .client
+            .active_server_switch_command(&epoch, id, ServerQuickLoginCommand::Execute)
+            .await,
+        Err(Error::State("leave together before switching accounts"))
+    ));
+    assert!(matches!(
+        world
+            .client
+            .begin_active_server_switch(&epoch, &world.ids[0], true)
+            .await,
+        Err(Error::State("leave together before switching accounts"))
+    ));
+    assert_eq!(
+        world
+            .client
+            .active_server_switch_command(&epoch, id, ServerQuickLoginCommand::Cancel)
+            .await
+            .unwrap()
+            .value
+            .state
+            .phase,
+        ServerQuickLoginPhase::Cancelled
+    );
+    assert_eq!(world.epoch(), epoch);
+    assert_eq!(world.backend.calls().len(), 3);
+}
+
+#[tokio::test]
+async fn active_switch_rejects_ambiguous_refresh_scope_even_when_identity_cookie_is_unique() {
+    let mut ambiguous = issued_quick_reply();
+    ambiguous.set_cookies.extend([
+        "MUSIC_U=history-token-2; Path=/eapi/login/token/refresh; Secure".into(),
+        "MUSIC_U=fresh-target; Path=/eapi/login/token/refresh/v1; Secure".into(),
+    ]);
+    let world = World::new(
+        2,
+        [
+            json!({"code":200}).into(),
+            HttpResponse::Ready(Ok(ambiguous)),
+        ],
+    )
+    .await;
+    let selection = world.registry.selection().unwrap();
+    let attempt = world.active_attempt(0).await;
+    let outcome = attempt.execute().await.unwrap();
+    assert_eq!(outcome.phase, ServerQuickLoginPhase::ResultUnknown);
+    assert!(!outcome.can_reconcile);
+    assert_eq!(attempt.reconcile().await.unwrap(), outcome);
+    assert_eq!(world.backend.calls().len(), 4);
+    assert_eq!(world.registry.selection().unwrap(), selection);
+    assert_eq!(world.session.token().unwrap().uid.as_deref(), Some("2"));
+}
+
+#[tokio::test]
+async fn active_switch_dispatch_serializes_native_source_requests_and_cancel_releases_gate() {
+    let (switch, held) = gate();
+    let world = World::new(
+        2,
+        [
+            json!({"code":200}).into(),
+            switch,
+            json!({"code":200,"profile":{"userId":2}}).into(),
+        ],
+    )
+    .await;
+    let attempt = Arc::new(world.active_attempt(0).await);
+    let switch = {
+        let attempt = attempt.clone();
+        tokio::spawn(async move { attempt.execute().await })
+    };
+    world.backend.wait(4).await;
+    let mut ordinary = Box::pin(world.session.refresh());
+    std::future::poll_fn(|cx| {
+        assert!(ordinary.as_mut().poll(cx).is_pending());
+        std::task::Poll::Ready(())
+    })
+    .await;
+    assert_eq!(world.backend.calls().len(), 4);
+    attempt.cancel().unwrap();
+    assert!(matches!(switch.await.unwrap(), Err(Error::Cancelled)));
+    assert!(held.send(Ok(issued_quick_reply())).is_err());
+    assert_eq!(ordinary.await.unwrap()["userId"], 2);
+    assert_eq!(world.backend.calls().len(), 5);
+    assert_eq!(world.session.token().unwrap().uid.as_deref(), Some("2"));
 }

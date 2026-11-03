@@ -2,37 +2,64 @@
 import { computed, nextTick, ref, watch } from 'vue';
 import type { useServerQuickLogin } from '../../composables/useServerQuickLogin';
 
-const props = defineProps<{ name: string; model: ReturnType<typeof useServerQuickLogin> }>();
+const props = defineProps<{
+  name: string;
+  currentName: string | null;
+  mode: 'guest' | 'active';
+  model: ReturnType<typeof useServerQuickLogin>;
+}>();
 const emit = defineEmits<{ consent: []; back: []; alternate: [] }>();
 const { view, pending, cancelling, problem, canRead } = props.model;
 const panel = ref<HTMLElement>();
 const back = ref<HTMLButtonElement>();
+const activeSwitch = computed(() => props.mode === 'active');
+const testPrefix = computed(() =>
+  activeSwitch.value ? 'active-server-switch' : 'server-quick-login',
+);
 const state = computed(() => {
   if (cancelling.value) return 'cancelling';
   if (pending.value) return pending.value;
   if (problem.value) return problem.value;
   return view.value?.phase ?? 'consent';
 });
-const message = computed(
-  () =>
-    ({
+const message = computed(() => {
+  if (activeSwitch.value) {
+    return {
       consent: '',
-      preparing: '正在重新核对该账号的快捷登录资格…',
-      ready: '尚未取得登录回执。可以返回账号列表，或使用其他登录方式。',
-      exchanging: '正在向服务提交快捷登录…',
-      checking_identity: '正在核对登录身份…',
-      reconciling: '正在核对登录状态…',
-      identity_required: '已取得登录回执，身份尚未确认。可以继续核对。',
-      result_unknown: '未能确认登录结果。可以返回或改用其他登录方式。',
-      verification_required: '此次快捷登录需要额外验证。请改用其他登录方式。',
-      rejected: '服务未通过这次快捷登录。可以返回或改用其他登录方式。',
-      authenticated: '登录已确认，正在打开账号…',
-      cancelled: '已退出本次快捷登录。',
-      preflight: '暂时无法准备快捷登录。请返回并重新核对资格，或改用其他登录方式。',
-      read_required: '尚未确认登录结果。请先核对登录状态。',
-      cancelling: '正在退出本次快捷登录…',
-    })[state.value],
-);
+      preparing: '正在重新核对目标账号的切换资格…',
+      ready: '尚未取得切换回执，仍在使用当前账号。',
+      exchanging: '正在向服务提交账号切换…',
+      checking_identity: '正在核对目标账号身份…',
+      reconciling: '正在核对账号切换结果…',
+      identity_required: '已取得切换回执，目标身份尚未确认。核对完成前，仍在使用当前账号。',
+      result_unknown: '未能确认切换结果，仍在使用当前账号。',
+      verification_required: '此次切换需要额外验证，仍在使用当前账号。可返回账号列表。',
+      rejected: '服务未通过这次切换，仍在使用当前账号。',
+      authenticated: '切换已确认，正在打开目标账号…',
+      cancelled: '已退出本次切换，仍在使用当前账号。',
+      preflight: '暂时无法准备服务端切换。请返回并重新核对资格。',
+      read_required: '尚未确认切换结果，仍在使用当前账号。可以核对切换状态。',
+      cancelling: '正在退出本次切换…',
+    }[state.value];
+  }
+  return {
+    consent: '',
+    preparing: '正在重新核对该账号的快捷登录资格…',
+    ready: '尚未取得登录回执。可以返回账号列表，或使用其他登录方式。',
+    exchanging: '正在向服务提交快捷登录…',
+    checking_identity: '正在核对登录身份…',
+    reconciling: '正在核对登录状态…',
+    identity_required: '已取得登录回执，身份尚未确认。可以继续核对。',
+    result_unknown: '未能确认登录结果。可以返回或改用其他登录方式。',
+    verification_required: '此次快捷登录需要额外验证。请改用其他登录方式。',
+    rejected: '服务未通过这次快捷登录。可以返回或改用其他登录方式。',
+    authenticated: '登录已确认，正在打开账号…',
+    cancelled: '已退出本次快捷登录。',
+    preflight: '暂时无法准备快捷登录。请返回并重新核对资格，或改用其他登录方式。',
+    read_required: '尚未确认登录结果。请先核对登录状态。',
+    cancelling: '正在退出本次快捷登录…',
+  }[state.value];
+});
 const alternate = computed(() =>
   [
     'ready',
@@ -65,15 +92,20 @@ watch(state, async () => {
     ref="panel"
     class="account-server-quick"
     tabindex="-1"
-    aria-label="快捷登录进度"
-    data-testid="server-quick-login-panel"
+    :aria-label="activeSwitch ? '账号切换进度' : '快捷登录进度'"
+    :data-testid="`${testPrefix}-panel`"
     :data-server-quick-phase="state"
     :aria-busy="!!pending || cancelling"
   >
-    <p class="account-server-quick-target">{{ name }}</p>
+    <p v-if="activeSwitch">当前账号：{{ currentName || '未提供昵称' }}</p>
+    <p class="account-server-quick-target">{{ activeSwitch ? `目标账号：${name}` : name }}</p>
     <template v-if="state === 'consent'">
       <p id="server-quick-login-consent-note">
-        将向网易云音乐服务提交最多 3 个本机保存账号的登录资料，尝试登录所选账号。
+        {{
+          activeSwitch
+            ? '将向网易云音乐服务提交最多 3 个本机保存账号的登录资料，尝试切换到目标账号。'
+            : '将向网易云音乐服务提交最多 3 个本机保存账号的登录资料，尝试登录所选账号。'
+        }}
       </p>
     </template>
     <p v-else :role="problem ? 'alert' : 'status'">{{ message }}</p>
@@ -83,37 +115,45 @@ watch(state, async () => {
         class="secondary"
         ref="back"
         data-confirmation-cancel
-        data-testid="server-quick-login-cancel"
+        :data-testid="`${testPrefix}-cancel`"
         :disabled="cancelling || state === 'authenticated'"
         @click="emit('back')"
       >
-        {{ state === 'consent' ? '取消' : pending ? '取消登录' : '返回账号列表' }}
+        {{
+          state === 'consent'
+            ? '取消'
+            : pending
+              ? activeSwitch
+                ? '取消切换'
+                : '取消登录'
+              : '返回账号列表'
+        }}
       </button>
       <button
         v-if="state === 'consent'"
         type="button"
         class="primary"
-        data-testid="server-quick-login-consent"
+        :data-testid="`${testPrefix}-consent`"
         aria-describedby="server-quick-login-consent-note"
         @click="emit('consent')"
       >
-        同意并快捷登录
+        {{ activeSwitch ? '同意并切换账号' : '同意并快捷登录' }}
       </button>
       <button
         v-else-if="canRead && !pending"
         type="button"
         class="primary"
-        data-testid="server-quick-login-reconcile"
+        :data-testid="`${testPrefix}-reconcile`"
         :disabled="cancelling"
         @click="model.reconcile"
       >
-        核对登录状态
+        {{ activeSwitch ? '核对切换状态' : '核对登录状态' }}
       </button>
       <button
         v-else-if="alternate"
         type="button"
         class="primary"
-        data-testid="server-quick-login-alternate"
+        :data-testid="`${testPrefix}-alternate`"
         @click="emit('alternate')"
       >
         其他登录方式

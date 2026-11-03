@@ -68,6 +68,18 @@ pub struct RequestCredentials {
     pub revision: String,
 }
 
+impl RequestCredentials {
+    pub(crate) fn unique_music_u(&self) -> Option<&str> {
+        let mut values = self
+            .cookies
+            .iter()
+            .filter_map(|(name, value)| (name == "MUSIC_U").then_some(value.as_str()));
+        values
+            .next()
+            .filter(|value| !value.is_empty() && values.next().is_none())
+    }
+}
+
 /// One saved authorization token scoped to the official eligibility request.
 /// This type is deliberately not serializable or printable.
 pub(super) struct QuickLoginCredential {
@@ -77,6 +89,20 @@ pub(super) struct QuickLoginCredential {
 }
 
 impl Credentials {
+    pub(super) fn seed_switch_device(&self, device_id: &str) -> Result<()> {
+        self.change(|record| {
+            if !record.cookies.is_empty()
+                || record.refresh_token.is_some()
+                || record.login_notice.is_some()
+                || record.queue_reset.is_some()
+            {
+                return Err(Error::State("server switch requires a fresh candidate"));
+            }
+            record.device_id = device_id.into();
+            Ok(())
+        })
+    }
+
     pub(super) fn quick_login_credential(
         database: &Path,
         origin: ApiOrigin,

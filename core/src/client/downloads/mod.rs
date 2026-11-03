@@ -160,6 +160,23 @@ impl Host {
     }
 }
 impl MusicClient {
+    pub(super) fn retire_account_downloads(&self, previous: &SessionToken) -> Result<()> {
+        let host = &self.downloads.inner;
+        {
+            let worker = host.worker.lock().map_err(|_| Error::LockPoisoned)?;
+            if let Some(worker) = worker.as_ref().filter(|worker| &worker.token == previous) {
+                // Let the previous scheduler observe its stop/epoch fence.
+                // Do not abort a task in the middle of file recovery.
+                worker.scheduler.stop();
+                worker.notify.notify_one();
+            }
+        }
+        let jobs = host.jobs.lock().map_err(|_| Error::LockPoisoned)?;
+        for job in jobs.values().filter(|job| &job.token == previous) {
+            job.stop.store(true, Ordering::Release);
+        }
+        Ok(())
+    }
     pub(in crate::client) async fn cloud_removal_downloads(
         &self,
         epoch: &str,

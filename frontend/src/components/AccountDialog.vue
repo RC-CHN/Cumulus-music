@@ -22,15 +22,26 @@ const dialog = ref<HTMLDialogElement>();
 const saved = useSavedAccounts(core, props.account.epoch);
 const { accounts, loading, removing } = saved;
 const quick = useQuickLoginEligibility(core, () => props.account.epoch);
-const quickTarget = shallowRef<{ id: string; name: string }>();
+const quickTarget = shallowRef<{ id: string; name: string; mode: 'guest' | 'active' }>();
 const isQuickGuest = computed(
   () =>
     props.account.status === 'signed_out' ||
     (props.account.status === 'unknown' && props.account.canSignOut === false),
 );
 const guestEpoch = () => (isQuickGuest.value ? props.account.epoch : null);
-const exchange = useServerQuickLogin(core, guestEpoch, () => emit('changed'));
-const { cancelling: cancellingQuick } = exchange;
+const activeEpoch = () => (props.account.status === 'authenticated' ? props.account.epoch : null);
+const quickLogin = useServerQuickLogin(core, guestEpoch, () => emit('changed'));
+const activeSwitch = useServerQuickLogin(
+  {
+    beginServerQuickLogin: (epoch, id, consent) => core.beginActiveServerSwitch(epoch, id, consent),
+    serverQuickLoginCommand: (epoch, id, command) =>
+      core.activeServerSwitchCommand(epoch, id, command),
+  },
+  activeEpoch,
+  () => emit('changed'),
+);
+const exchange = computed(() => (quickTarget.value?.mode === 'active' ? activeSwitch : quickLogin));
+const cancellingQuick = computed(() => exchange.value.cancelling.value);
 const { view: eligibility, state: eligibilityState, busy: checkingEligibility } = quick;
 const quickRows = computed(() => {
   const rows = eligibility.value?.accounts ?? [];
@@ -62,7 +73,8 @@ function deactivate() {
   model.dispose();
   saved.dispose();
   quick.dispose();
-  exchange.dispose();
+  quickLogin.dispose();
+  activeSwitch.dispose();
 }
 function login() {
   deactivate();
@@ -77,15 +89,16 @@ useConfirmationFocus(
   ),
 );
 async function leaveQuick(after?: () => void) {
-  const started = exchange.pending.value || exchange.view.value || exchange.problem.value;
-  if (!quickTarget.value || !(await exchange.cancel()) || !alive) return;
+  const flow = exchange.value;
+  const started = flow.pending.value || flow.view.value || flow.problem.value;
+  if (!quickTarget.value || !(await flow.cancel()) || !alive) return;
   if (started) quick.reset();
   quickTarget.value = undefined;
   after?.();
 }
 function showQuick(row: { id: string; name: string; eligible: boolean; current: boolean }) {
   if (
-    !guestEpoch() ||
+    (!guestEpoch() && !activeEpoch()) ||
     !row.eligible ||
     row.current ||
     busy.value ||
@@ -96,11 +109,11 @@ function showQuick(row: { id: string; name: string; eligible: boolean; current: 
     return;
   if (!accounts.value.some((item) => item.id === row.id && !item.removalPending && !item.current))
     return;
-  quickTarget.value = { id: row.id, name: row.name };
+  quickTarget.value = { id: row.id, name: row.name, mode: activeEpoch() ? 'active' : 'guest' };
 }
 function startQuick() {
   const target = quickTarget.value;
-  if (target) return exchange.start(target.id, true);
+  if (target) return exchange.value.start(target.id, true);
 }
 function close() {
   if (quickTarget.value) {
@@ -192,7 +205,9 @@ onBeforeUnmount(deactivate);
     <h2 id="account-dialog-title">
       {{
         quickTarget
-          ? '服务端快捷登录'
+          ? quickTarget.mode === 'active'
+            ? '服务端切换账号'
+            : '服务端快捷登录'
           : removal
             ? '确认移除账号'
             : confirm
@@ -203,6 +218,8 @@ onBeforeUnmount(deactivate);
     <ServerQuickLoginPanel
       v-if="quickTarget"
       :name="quickTarget.name"
+      :current-name="account.nickname"
+      :mode="quickTarget.mode"
       :model="exchange"
       @consent="startQuick"
       @back="leaveQuick()"
@@ -243,7 +260,13 @@ onBeforeUnmount(deactivate);
         @login="login"
       />
       <h3 class="account-picker-local-heading">本机保存的账号</h3>
-      <p class="muted account-picker-local-help">选择账号可尝试用本机记录恢复登录。</p>
+      <p class="muted account-picker-local-help">
+        {{
+          account.status === 'authenticated'
+            ? '选择账号可尝试用本机记录切换。'
+            : '选择账号可尝试用本机记录恢复登录。'
+        }}
+      </p>
       <p v-if="loading" role="status">正在读取账号…</p>
       <p v-else-if="!accounts.length" class="muted">暂无已保存账号</p>
       <div class="saved-account-list">
@@ -283,7 +306,9 @@ onBeforeUnmount(deactivate);
         :data-quick-eligibility-state="eligibilityState"
         aria-labelledby="account-quick-eligibility-title"
       >
-        <h3 id="account-quick-eligibility-title">服务端快捷登录资格</h3>
+        <h3 id="account-quick-eligibility-title">
+          {{ account.status === 'authenticated' ? '服务端切换资格' : '服务端快捷登录资格' }}
+        </h3>
         <p id="account-quick-eligibility-help">
           向网易云音乐服务核对最多 3 个本机账号记录。此操作不会切换或移除账号。
         </p>
@@ -302,12 +327,18 @@ onBeforeUnmount(deactivate);
                 ? '重新核对'
                 : eligibilityState === 'error'
                   ? '重试核对'
-                  : '核对快捷登录资格'
+                  : account.status === 'authenticated'
+                    ? '核对切换资格'
+                    : '核对快捷登录资格'
           }}
         </button>
         <p v-if="eligibilityState === 'loading'" role="status">正在向服务核对…</p>
         <p v-else-if="eligibilityState === 'error'" role="alert">
-          暂时无法核对快捷登录资格，本机记录未改变。
+          {{
+            account.status === 'authenticated'
+              ? '暂时无法核对切换资格，本机记录未改变。'
+              : '暂时无法核对快捷登录资格，本机记录未改变。'
+          }}
         </p>
         <template v-else-if="eligibilityState === 'ready' && eligibility">
           <p role="status">
@@ -326,20 +357,24 @@ onBeforeUnmount(deactivate);
               <span>{{ item.eligible ? '符合条件' : '不符合条件' }}</span>
               <button
                 v-if="
-                  isQuickGuest &&
+                  (isQuickGuest || account.status === 'authenticated') &&
                   item.eligible &&
                   !item.current &&
                   accounts.some((saved) => saved.id === item.id && !saved.removalPending)
                 "
                 type="button"
                 class="secondary"
-                data-testid="server-quick-login-open"
+                :data-testid="
+                  account.status === 'authenticated'
+                    ? 'active-server-switch-open'
+                    : 'server-quick-login-open'
+                "
                 :data-confirmation-entry="`quick:${item.id}`"
                 :disabled="busy || leaving || removing || checkingEligibility"
-                :aria-label="`快捷登录 ${item.name}`"
+                :aria-label="`${account.status === 'authenticated' ? '通过服务切换到' : '快捷登录'} ${item.name}`"
                 @click="showQuick(item)"
               >
-                快捷登录
+                {{ account.status === 'authenticated' ? '服务端切换' : '快捷登录' }}
               </button>
             </li>
           </ul>

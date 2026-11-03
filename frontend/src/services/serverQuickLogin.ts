@@ -33,3 +33,16 @@ export interface ServerQuickLoginClient {
     command: ServerQuickLoginCommand,
   ): Promise<AccountData<ServerQuickLoginOperationView>>;
 }
+
+export interface ActiveServerSwitchClient {
+  beginActiveServerSwitch(
+    epoch: string,
+    savedId: string,
+    consent: boolean,
+  ): Promise<AccountData<ServerQuickLoginOperationView>>;
+  activeServerSwitchCommand(
+    epoch: string,
+    id: string,
+    command: ServerQuickLoginCommand,
+  ): Promise<AccountData<ServerQuickLoginOperationView>>;
+}

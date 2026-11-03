@@ -31,7 +31,9 @@ fn allow_quick_replacement(previous: Option<&PendingLogin>) -> Result<()> {
     }) = previous
         && !matches!(
             flow.snapshot()?.phase,
-            ServerQuickLoginPhase::Ready | ServerQuickLoginPhase::Cancelled
+            ServerQuickLoginPhase::Ready
+                | ServerQuickLoginPhase::Cancelled
+                | ServerQuickLoginPhase::Authenticated
         )
     {
         return Err(Error::State("cancel the previous server quick login first"));
@@ -54,14 +56,40 @@ impl MusicClient {
         saved_id: &str,
         consent: bool,
     ) -> Result<AccountData<ServerQuickLoginOperationView>> {
+        self.begin_server_exchange(epoch, saved_id, consent, false)
+            .await
+    }
+
+    pub async fn begin_active_server_switch(
+        &self,
+        epoch: &str,
+        saved_id: &str,
+        consent: bool,
+    ) -> Result<AccountData<ServerQuickLoginOperationView>> {
+        self.begin_server_exchange(epoch, saved_id, consent, true)
+            .await
+    }
+
+    async fn begin_server_exchange(
+        &self,
+        epoch: &str,
+        saved_id: &str,
+        consent: bool,
+        active: bool,
+    ) -> Result<AccountData<ServerQuickLoginOperationView>> {
         if !consent {
             return Err(Error::InvalidInput("server quick login requires consent"));
         }
         let base = self.auth_token(epoch)?;
-        if base.uid.is_some() {
-            return Err(Error::State(
-                "server quick login is only available when signed out",
-            ));
+        if base.uid.is_some() != active {
+            return Err(Error::State(if active {
+                "server switch requires an active account"
+            } else {
+                "server quick login is only available when signed out"
+            }));
+        }
+        if active {
+            self.check_account_transition()?;
         }
         let previous_id = {
             let pending = self.auth.pending.lock().map_err(|_| Error::LockPoisoned)?;
@@ -74,23 +102,26 @@ impl MusicClient {
         };
         // Don't hold the account transition gate during a read-only preflight.
         // A regular login may supersede this before the native attempt exists.
-        let flow = Arc::new(
+        let transport = QuickLoginTransport {
+            profile: self.auth.profile.clone(),
+            options: self.auth.options,
+            context: self.auth.context.clone(),
+            backend,
+        };
+        let flow = Arc::new(if active {
             self.registry
-                .begin_guest_server_quick_for(
-                    self.session.clone(),
-                    &base,
-                    saved_id,
-                    QuickLoginTransport {
-                        profile: self.auth.profile.clone(),
-                        options: self.auth.options,
-                        context: self.auth.context.clone(),
-                        backend,
-                    },
-                )
-                .await?,
-        );
+                .begin_active_server_switch_for(self.session.clone(), &base, saved_id, transport)
+                .await?
+        } else {
+            self.registry
+                .begin_guest_server_quick_for(self.session.clone(), &base, saved_id, transport)
+                .await?
+        });
         let _transition = self.together.gate.lock().await;
         self.session.check_generation(&base)?;
+        if active {
+            self.check_account_transition()?;
+        }
         let mut pending = self.auth.pending.lock().map_err(|_| Error::LockPoisoned)?;
         if pending.as_ref().map(|attempt| &attempt.id) != previous_id.as_ref() {
             return Err(Error::StaleResponse);
@@ -122,8 +153,28 @@ impl MusicClient {
         id: &str,
         command: ServerQuickLoginCommand,
     ) -> Result<AccountData<ServerQuickLoginOperationView>> {
+        self.server_exchange_command(epoch, id, command, false)
+            .await
+    }
+
+    pub async fn active_server_switch_command(
+        &self,
+        epoch: &str,
+        id: &str,
+        command: ServerQuickLoginCommand,
+    ) -> Result<AccountData<ServerQuickLoginOperationView>> {
+        self.server_exchange_command(epoch, id, command, true).await
+    }
+
+    async fn server_exchange_command(
+        &self,
+        epoch: &str,
+        id: &str,
+        command: ServerQuickLoginCommand,
+        active: bool,
+    ) -> Result<AccountData<ServerQuickLoginOperationView>> {
         let base = self.auth_token(epoch)?;
-        if base.uid.is_some() {
+        if base.uid.is_some() != active {
             return Err(Error::StaleResponse);
         }
         if id.len() != 32
@@ -133,12 +184,15 @@ impl MusicClient {
         {
             return Err(Error::InvalidInput("invalid server quick login operation"));
         }
-        let _transition = if matches!(command, ServerQuickLoginCommand::Cancel) {
+        let transition = if matches!(command, ServerQuickLoginCommand::Cancel) {
             None
         } else {
             Some(self.together.gate.lock().await)
         };
         self.session.check_generation(&base)?;
+        if active && transition.is_some() {
+            self.check_account_transition()?;
+        }
         let flow = {
             let pending = self.auth.pending.lock().map_err(|_| Error::LockPoisoned)?;
             match pending.as_ref().filter(|attempt| attempt.id == id) {
@@ -165,10 +219,19 @@ impl MusicClient {
                 cancelled_view()
             }
         };
-        if state.phase != ServerQuickLoginPhase::Authenticated {
+        if state.phase == ServerQuickLoginPhase::Authenticated {
+            if active {
+                // Account adoption has already advanced the epoch. Retire the
+                // old account's work before publishing the new account.
+                let downloads = self.retire_account_downloads(&base);
+                let media = self.suspend_account_media().await;
+                downloads?;
+                media?;
+            }
+        } else {
             self.session.check_generation(&base)?;
         }
-        // The response belongs to the old guest UI. The desktop separately
+        // The response belongs to the originating UI. The desktop separately
         // publishes the actual new authenticated account and epoch.
         Ok(AccountData {
             epoch: epoch.into(),

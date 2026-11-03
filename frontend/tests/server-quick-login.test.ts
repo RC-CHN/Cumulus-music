@@ -92,3 +92,39 @@ test('verification-required is terminal for this exchange and leaves only cancel
   assert.equal(await model.cancel(), true);
   assert.deepEqual(calls, ['execute', 'cancel']);
 });
+
+test('cancelling an active switch fences a late completion from the old attempt', async () => {
+  const activeEpoch = 'active-owner';
+  const calls: string[] = [];
+  const response = (phase: ServerQuickLoginPhase) => ({
+    ...result(phase),
+    epoch: activeEpoch,
+  });
+  let finish!: (value: ReturnType<typeof response>) => void;
+  let executeStarted!: () => void;
+  const started = new Promise<void>((resolve) => (executeStarted = resolve));
+  const model = useServerQuickLogin(
+    {
+      beginServerQuickLogin: async (owner, savedId, consent) => {
+        assert.deepEqual([owner, savedId, consent], [activeEpoch, 'other-account', true]);
+        return response('ready');
+      },
+      serverQuickLoginCommand: async (owner, _id, command) => {
+        assert.equal(owner, activeEpoch);
+        calls.push(command);
+        if (command === 'cancel') return response('cancelled');
+        executeStarted();
+        return new Promise((resolve) => (finish = resolve));
+      },
+    },
+    () => activeEpoch,
+    () => assert.fail('a late cancelled switch must not replace the active account'),
+  );
+  const switching = model.start('other-account', true);
+  await started;
+  assert.equal(await model.cancel(), true);
+  finish(response('authenticated'));
+  await switching;
+  assert.equal(model.view.value, undefined);
+  assert.deepEqual(calls, ['execute', 'cancel']);
+});

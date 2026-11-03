@@ -119,6 +119,10 @@ export function createTauriClient(): CoreClient {
       invoke('begin_server_quick_login', { epoch, savedId, consent }),
     serverQuickLoginCommand: (epoch, id, command) =>
       invoke('server_quick_login_command', { epoch, id, command }),
+    beginActiveServerSwitch: (epoch, savedId, consent) =>
+      invoke('begin_active_server_switch', { epoch, savedId, consent }),
+    activeServerSwitchCommand: (epoch, id, command) =>
+      invoke('active_server_switch_command', { epoch, id, command }),
     removeSavedAccount: (epoch, id) => invoke('remove_saved_account', { epoch, id }),
     logoutAccount: (epoch, remote) => invoke('logout_account', { epoch, remote }),
     onTogetherCloseError: (epoch, handler) =>

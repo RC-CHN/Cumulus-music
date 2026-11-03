@@ -183,6 +183,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 auth::quick_login_eligibility,
                 auth::begin_server_quick_login,
                 auth::server_quick_login_command,
+                auth::begin_active_server_switch,
+                auth::active_server_switch_command,
                 auth::remove_saved_account,
                 auth::logout_account,
                 renewal::session_renewal,

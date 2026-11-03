@@ -44,6 +44,22 @@ enum Jsk {
     Login,
     QuickEligibility,
     GuestQuickExchange,
+    ActiveSwitchExchange,
+}
+
+impl Jsk {
+    fn quick_exchange(self) -> bool {
+        matches!(self, Self::GuestQuickExchange | Self::ActiveSwitchExchange)
+    }
+}
+
+#[derive(Clone, Copy)]
+enum RequestBinding<'a> {
+    Login(&'a super::JskLoginContext),
+    Switch {
+        source: &'a MusicHttpClient,
+        revision: &'a str,
+    },
 }
 
 impl MusicHttpClient {
@@ -129,8 +145,15 @@ impl MusicHttpClient {
         if self.credentials.origin() != super::ApiOrigin::Pc {
             return Err(Error::InvalidInput("JSK login requires the PC origin"));
         }
-        self.execute(path, payload, false, None, Jsk::Login, Some(context))
-            .await
+        self.execute(
+            path,
+            payload,
+            false,
+            None,
+            Jsk::Login,
+            Some(RequestBinding::Login(context)),
+        )
+        .await
     }
 
     pub(crate) async fn request_jsk_quick_eligibility(
@@ -177,6 +200,35 @@ impl MusicHttpClient {
         .await
     }
 
+    pub(crate) async fn request_jsk_active_switch(
+        &self,
+        source: &Self,
+        revision: &str,
+        payload: Value,
+    ) -> Result<Value> {
+        if std::ptr::eq(self, source)
+            || self.credentials.origin() != super::ApiOrigin::Pc
+            || source.credentials.origin() != super::ApiOrigin::Pc
+        {
+            return Err(Error::InvalidInput(
+                "JSK switch requires separate PC source and candidate",
+            ));
+        }
+        let candidate = self.credentials.login_credentials()?;
+        if candidate.token.is_some() || candidate.refresh_token.is_some() {
+            return Err(Error::State("server switch requires a fresh candidate"));
+        }
+        self.execute(
+            "/api/login/switchuser",
+            payload,
+            false,
+            Some(&candidate.revision),
+            Jsk::ActiveSwitchExchange,
+            Some(RequestBinding::Switch { source, revision }),
+        )
+        .await
+    }
+
     async fn execute(
         &self,
         path: &str,
@@ -184,7 +236,7 @@ impl MusicHttpClient {
         cache: bool,
         expected: Option<&str>,
         jsk: Jsk,
-        login_context: Option<&super::JskLoginContext>,
+        binding: Option<RequestBinding<'_>>,
     ) -> Result<Value> {
         if jsk != Jsk::None {
             let allowed = match jsk {
@@ -195,6 +247,7 @@ impl MusicHttpClient {
                 ),
                 Jsk::QuickEligibility => path == "/api/login/getquickloginlist",
                 Jsk::GuestQuickExchange => path == "/api/login/quicklogin",
+                Jsk::ActiveSwitchExchange => path == "/api/login/switchuser",
                 Jsk::None => false,
             };
             if !allowed {
@@ -230,13 +283,28 @@ impl MusicHttpClient {
         if expected.is_some_and(|revision| revision != snapshot.revision) {
             return Err(Error::CredentialChanged);
         }
+        // M402 sends same-origin request credentials. An active switch borrows
+        // the source's scoped wire snapshot, never its mutable credential sink.
+        let (wire, source_snapshot) =
+            if let Some(RequestBinding::Switch { source, revision }) = binding {
+                let scoped = source.credentials.request_credentials(&target)?;
+                if scoped.revision != revision
+                    || scoped.device_id != snapshot.device_id
+                    || scoped.unique_music_u().is_none()
+                {
+                    return Err(Error::CredentialChanged);
+                }
+                (source, Some(scoped))
+            } else {
+                (self, None)
+            };
         let mut extra_headers = BTreeMap::new();
         if origin == super::ApiOrigin::Pc
-            && self.options.routing == RoutingPolicy::OfficialPcPlaylists
+            && wire.options.routing == RoutingPolicy::OfficialPcPlaylists
             && super::origin::official_pc_playlist(path, &payload)
         {
             let prepared = async {
-                self.context
+                wire.context
                     .as_ref()
                     .ok_or(Error::State("official PC playlist requires native context"))?
                     .prepare_configured(path, &payload)
@@ -247,7 +315,7 @@ impl MusicHttpClient {
             payload = prepared.payload;
             extra_headers = prepared.headers;
         } else if route == WireRoute::Eapi
-            && let Some(context) = &self.context
+            && let Some(context) = &wire.context
         {
             let prepared = context.prepare(path, &payload).await.map_err(|error| {
                 if expected.is_some()
@@ -261,7 +329,7 @@ impl MusicHttpClient {
             })?;
             payload = prepared.payload;
             extra_headers = prepared.headers;
-        } else if let Some(context) = &self.context {
+        } else if let Some(context) = &wire.context {
             extra_headers = context.metadata_headers()?;
         }
         if self.credentials.request_credentials(&target)?.revision != snapshot.revision {
@@ -272,7 +340,7 @@ impl MusicHttpClient {
             // header through M/402. M/290 getCurrentEnv supplies no chain ID;
             // preserve the empty value instead of fabricating a native chain.
             extra_headers.insert("x-login-chain-id".into(), String::new());
-            if let Some(context) = login_context
+            if let Some(RequestBinding::Login(context)) = binding
                 && let Some(ticket) = context.ticket()?
             {
                 extra_headers.insert("x-music-tu".into(), ticket);
@@ -285,8 +353,8 @@ impl MusicHttpClient {
             origin,
             path,
             payload,
-            credentials: &snapshot,
-            profile: &self.profile,
+            credentials: source_snapshot.as_ref().unwrap_or(&snapshot),
+            profile: &wire.profile,
             extra_headers: &extra_headers,
             options: RequestOptions {
                 cache,
@@ -297,7 +365,7 @@ impl MusicHttpClient {
                 } else {
                     RoutingPolicy::VerifiedCompatibility
                 },
-                ..self.options
+                ..wire.options
             },
         })?;
         if let Some(value) = mconfig_header {
@@ -305,7 +373,32 @@ impl MusicHttpClient {
         }
         let response_url = plan.url.clone();
         let encrypted_response = plan.decrypt_response;
-        let response = self.backend.post(plan).await?;
+        let check_wire_source = || -> Result<()> {
+            if let Some(source) = &source_snapshot {
+                let current = wire.credentials.request_credentials(&target)?;
+                if current.revision != source.revision
+                    || current.unique_music_u() != source.unique_music_u()
+                {
+                    return Err(Error::CredentialChanged);
+                }
+            }
+            Ok(())
+        };
+        let response = {
+            // The candidate gate above is always taken first. The separate
+            // source gate fences ordinary source HTTP rotations during
+            // dispatch; take it after token preparation, which may await a
+            // provider. Neither gate leases another process's store writes.
+            let _source_gate = if source_snapshot.is_some() {
+                Some(wire.gate.lock().await)
+            } else {
+                None
+            };
+            check_wire_source()?;
+            let response = wire.backend.post(plan).await?;
+            check_wire_source()?;
+            response
+        };
         if (300..400).contains(&response.status) {
             return Err(Error::Transport("API redirect rejected".into()));
         }
@@ -331,10 +424,10 @@ impl MusicHttpClient {
                 Err(_) => Err(Error::Response("API returned non-JSON data")),
             }
         };
-        let login_path = jsk == Jsk::GuestQuickExchange
-            || super::login::completes_login(path, &response.set_cookies);
+        let login_path =
+            jsk.quick_exchange() || super::login::completes_login(path, &response.set_cookies);
         let authorized = parsed.as_ref().is_ok_and(|v| {
-            (if jsk == Jsk::GuestQuickExchange {
+            (if jsk.quick_exchange() {
                 crate::error::code_matches(&v["code"], 200)
             } else {
                 [Some(200), Some(803)].contains(&v["code"].as_i64())
@@ -355,12 +448,12 @@ impl MusicHttpClient {
         // M/1368 prepareAndSaveLoginInfo supplies Date.now() for a completed
         // JSK login. Do not reset this on resource reads, legacy requests or
         // refresh itself. Commit it atomically with the candidate credentials.
-        let last_login_at = (acknowledged && matches!(jsk, Jsk::Login | Jsk::GuestQuickExchange))
+        let last_login_at = (acknowledged && (jsk == Jsk::Login || jsk.quick_exchange()))
             .then(|| SystemTime::now().duration_since(UNIX_EPOCH).ok())
             .flatten()
             .map(|time| time.as_secs());
         if jsk != Jsk::QuickEligibility
-            && (jsk != Jsk::GuestQuickExchange || (200..300).contains(&response.status))
+            && (!jsk.quick_exchange() || (200..300).contains(&response.status))
         {
             self.credentials.record_login_response(
                 &response_url,
@@ -394,7 +487,7 @@ impl MusicHttpClient {
             && parsed
                 .as_ref()
                 .is_ok_and(|value| matches!(value["code"].as_i64(), Some(8830 | 8860 | 8831)))
-            && let Some(context) = login_context
+            && let Some(RequestBinding::Login(context)) = binding
         {
             context.observe_challenge(&response.set_cookies)?;
         }
