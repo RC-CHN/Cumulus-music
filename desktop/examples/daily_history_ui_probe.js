@@ -29,6 +29,17 @@
     if (!shortcut.contains(document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2))) throw new Error('history shortcut clipped');
     await sleep(200);
     await emit('ux_01_daily_history_shortcut');
+    const invoke = (name, args = {}) => window.__TAURI_INTERNALS__.invoke(name, args);
+    const { epoch } = await invoke('account_snapshot');
+    await wait(() => !playAll.disabled, 'daily play available');
+    playAll.click();
+    await wait(() => one('.playerbar')?.dataset.trackId === '1' &&
+      one('.playerbar')?.dataset.state === 'playing', 'daily source selected through the toolbar');
+    const dailyPlayer = await invoke('player_snapshot', { epoch });
+    if (dailyPlayer.track?.id !== '1' || dailyPlayer.queueLen < 2 || dailyPlayer.state !== 'playing')
+      throw new Error('daily source did not reach native queue and playback');
+    one('.playerbar [aria-label="停止播放"]').click();
+    await wait(() => one('.playerbar')?.dataset.state === 'idle', 'daily playback stopped');
     shortcut.click();
     await wait(() => one('.member-page')?.getAttribute('aria-busy') === 'false' &&
       one('.member-page .track-row')?.textContent.includes('合成历史日推单曲'), 'selected history loaded');
@@ -47,8 +58,6 @@
       heading.textContent.trim() === '风格推荐') && one('.track-row')?.textContent.includes('合成风格歌曲 71'), 'style recommendations loaded');
     await sleep(250);
     await emit('ux_03_style_recommendations');
-    const invoke = (name, args = {}) => window.__TAURI_INTERNALS__.invoke(name, args);
-    const { epoch } = await invoke('account_snapshot');
     await wait(() => one('.track-actions .primary:not(:disabled)'), 'style play available');
     one('.track-actions .primary').click();
     let player;
@@ -68,7 +77,7 @@
     await wait(() => tags.textContent.includes('此分类暂无标签。'), 'style category changes without a write');
     tags.querySelector('[aria-label="关闭风格标签"]').click();
     await wait(() => !one('.style-tag-browser[open]') && document.activeElement === tagEntry, 'style tag focus restored');
-    await emit('complete', { ok: true, stageCount: 4, stylePlayback: true });
+    await emit('complete', { ok: true, stageCount: 4, dailyPlayback: true, stylePlayback: true });
   } catch (error) {
     await emit('failed', { message: String(error), body: document.body.innerText.slice(-2200) });
   }

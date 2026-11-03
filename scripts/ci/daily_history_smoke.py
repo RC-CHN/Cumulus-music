@@ -35,7 +35,7 @@ def main():
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0
     complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
-    assert complete['ok'] and complete['stageCount'] == 4 and complete['stylePlayback']
+    assert complete['ok'] and complete['stageCount'] == 4 and complete['dailyPlayback'] and complete['stylePlayback']
     prefix = '/api/discovery/recommend/songs/history/'
     calls = [call for call in complete['dailyHistoryCalls'] if call['path'].startswith(prefix)]
     assert calls == [
@@ -49,7 +49,8 @@ def main():
     ]
     assert len(list(output.glob('ux_*.png'))) == (4 if args.screenshots else 0)
     print(json.dumps({'ok': True, 'actualWebView': True, 'historyReads': len(calls),
-                      'styleReads': 2, 'stylePlayback': True, 'realAccountWrites': 0}))
+                      'styleReads': 2, 'dailyPlayback': True, 'stylePlayback': True,
+                      'realAccountWrites': 0}))
 
 
 if __name__ == '__main__':
