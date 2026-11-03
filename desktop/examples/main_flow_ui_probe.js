@@ -71,7 +71,15 @@
     last = "login_adopted";
     await emit("approve_login");
     const account = await wait(async () => {
-      const view = await invoke("account_snapshot");
+      let view;
+      try {
+        view = await invoke("account_snapshot");
+      } catch (error) {
+        // The read can straddle guest→authenticated adoption; let the next
+        // observation confirm the new epoch without replaying approval.
+        if (error?.code === "stale") return false;
+        throw error;
+      }
       return view.status === "authenticated" && view.epoch !== guest.epoch &&
         view.nickname === "合成主流程账号" && one(".account-button")?.title === view.nickname &&
         !one(".login-dialog[open]") && view;
