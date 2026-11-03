@@ -182,4 +182,4 @@ fn same_media(a: Option<&QueueEntry>, b: Option<&QueueEntry>) -> bool {
     a.zip(b)
         .is_some_and(|(a, b)| a.entry_id == b.entry_id && a.resource == b.resource)
 }
-pub(crate) use plan::transition;
+pub(crate) use plan::{ordinary_after_deleted_selection, transition};

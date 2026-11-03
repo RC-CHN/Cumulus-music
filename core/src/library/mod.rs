@@ -9,8 +9,8 @@ pub mod monitor;
 pub mod probe;
 mod records;
 mod types;
-pub(crate) use index::relocate_download;
 pub use index::{LocalLibrary, LocalMapping, MappingSource};
+pub(crate) use index::{delete_completed_download, relocate_download};
 pub use records::{
     LibraryItem, ListOptions, LocalResource, LocalRevision, LocalSegment, LocalSource, ScanIssue,
     ScanProgress, ScanReport, ScanStage,

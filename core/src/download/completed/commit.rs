@@ -5,7 +5,7 @@ use crate::{
         offline::OfflineRecord,
         service::{DownloadDestination, LyricsStatus, TASK_CONTROL, files::Artifact},
     },
-    library::{identity::fingerprint, relocate_download},
+    library::{delete_completed_download, identity::fingerprint, relocate_download},
 };
 use execute::current_destination;
 
@@ -87,14 +87,12 @@ impl CompletedDownloads {
                     tx.delete(&self.owner, "media_transfers_v1", &op.task_id)?;
                     tx.delete(&self.owner, TASK_CONTROL, &op.task_id)?;
                     if op.action == FileAction::Delete {
-                        relocate_download(
+                        delete_completed_download(
                             tx,
                             op.task
                                 .target
                                 .as_deref()
                                 .ok_or(Error::State("missing target"))?,
-                            None,
-                            None,
                         )?;
                     }
                 }

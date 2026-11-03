@@ -19,6 +19,20 @@ pub(crate) fn relocate_download(
     new: Option<(&Path, FileFingerprint)>,
     expected: Option<&FileFingerprint>,
 ) -> Result<()> {
+    reconcile_download(tx, old, new, expected, false)
+}
+
+pub(crate) fn delete_completed_download(tx: &mut StateTransaction<'_>, old: &Path) -> Result<()> {
+    reconcile_download(tx, old, None, None, true)
+}
+
+fn reconcile_download(
+    tx: &mut StateTransaction<'_>,
+    old: &Path,
+    new: Option<(&Path, FileFingerprint)>,
+    expected: Option<&FileFingerprint>,
+    completed_delete: bool,
+) -> Result<()> {
     let old_id = path_id(old)?;
     let old_item: Option<LibraryItem> = tx
         .get(OWNER, FILES, &old_id)?
@@ -78,6 +92,7 @@ pub(crate) fn relocate_download(
         old_item: old_item.as_ref(),
         new_item: new_item.as_ref(),
         cue_ids: &cue_ids,
+        completed_delete,
     };
     for row in tx.rows("playback")? {
         let position_key = match row.key.as_str() {
@@ -87,10 +102,13 @@ pub(crate) fn relocate_download(
         };
         let mut queue: QueueSnapshot = serde_json::from_value(row.value)?;
         queue.validate()?;
-        if row.key == "queue" && queue.intelligence.is_some() {
-            reconcile_intelligence_backup(tx, &row.owner, &queue, &relocation)?;
-        }
-        if let Some(selected_removed) = relocation.reconcile(&mut queue)? {
+        let updated = if row.key == "queue" && queue.intelligence.is_some() {
+            reconcile_intelligence_queue(tx, &row.owner, &mut queue, &relocation)?
+        } else {
+            relocation.reconcile(&mut queue)?
+        };
+        if let Some(selected_removed) = updated {
+            queue.validate()?;
             if selected_removed {
                 tx.delete(&row.owner, "playback", position_key)?;
             }
@@ -105,21 +123,26 @@ pub(crate) fn relocate_download(
     Ok(())
 }
 
-fn reconcile_intelligence_backup(
+fn reconcile_intelligence_queue(
     tx: &mut StateTransaction<'_>,
     owner: &str,
-    active: &QueueSnapshot,
+    active: &mut QueueSnapshot,
     relocation: &Relocation<'_>,
-) -> Result<()> {
+) -> Result<Option<bool>> {
     let mut session: intelligence::IntelligenceSession = serde_json::from_value(
         tx.get(owner, intelligence::KIND, intelligence::KEY)?
             .ok_or(Error::State("missing intelligence session"))?,
     )?;
     session.validate(active)?;
-    if relocation.reconcile(&mut session.backup)?.is_some() {
-        // The active queue/position and fallback belong to the coordinator.
-        // Only the suspended ordinary snapshot changes; its raw record CAS
-        // makes the edit visible to in-memory PlaybackQueue owners on reload.
+    let backup_changed = relocation.reconcile(&mut session.backup)?.is_some();
+    let active_changed = relocation.reconcile(active)?;
+    if relocation.completed_delete && active_changed == Some(true) && active.items.is_empty() {
+        // There is no live intelligence selection to keep. Filter the fallback
+        // before exiting so an identical downloaded seed cannot be restored.
+        relocation.reconcile(&mut session.fallback)?;
+        *active = intelligence::ordinary_after_deleted_selection(session)?;
+        tx.delete(owner, intelligence::KIND, intelligence::KEY)?;
+    } else if backup_changed {
         session.revision = uuid::Uuid::new_v4().to_string();
         session.validate(active)?;
         tx.put(
@@ -129,7 +152,7 @@ fn reconcile_intelligence_backup(
             &serde_json::to_value(session)?,
         )?;
     }
-    Ok(())
+    Ok(active_changed)
 }
 
 struct Relocation<'a> {
@@ -139,9 +162,21 @@ struct Relocation<'a> {
     old_item: Option<&'a LibraryItem>,
     new_item: Option<&'a LibraryItem>,
     cue_ids: &'a HashSet<String>,
+    completed_delete: bool,
 }
 
 impl Relocation<'_> {
+    fn path_matches(&self, value: Option<&Value>) -> bool {
+        value.and_then(Value::as_str).is_some_and(|value| {
+            let path = Path::new(value);
+            path == self.old
+                || (path.is_absolute()
+                    && path
+                        .canonicalize()
+                        .is_ok_and(|resolved| resolved == self.old))
+        })
+    }
+
     /// `None` means no reference matched; otherwise returns whether the
     /// selected entry disappeared. Only current/FM queues persist a position.
     fn reconcile(&self, queue: &mut QueueSnapshot) -> Result<Option<bool>> {
@@ -155,18 +190,14 @@ impl Relocation<'_> {
                 changed = true;
                 continue;
             }
-            let path_match = resource
-                .get("path")
-                .and_then(Value::as_str)
-                .is_some_and(|value| {
-                    let path = Path::new(value);
-                    path == self.old
-                        || (path.is_absolute()
-                            && path
-                                .canonicalize()
-                                .is_ok_and(|resolved| resolved == self.old))
-                });
-            if local_id != Some(self.old_id) && !path_match {
+            let path_match = self.path_matches(resource.get("path"));
+            let ledger_match = self.completed_delete
+                && self.path_matches(
+                    resource
+                        .get("download_ledger")
+                        .and_then(|value| value.get("path")),
+                );
+            if local_id != Some(self.old_id) && !path_match && !ledger_match {
                 continue;
             }
             changed = true;
@@ -211,7 +242,6 @@ impl Relocation<'_> {
         }
         queue.items.retain(|e| !removed.contains(&e.entry_id));
         queue.order.retain(|id| !removed.contains(id));
-        queue.validate()?;
         Ok(Some(selected_removed))
     }
 }

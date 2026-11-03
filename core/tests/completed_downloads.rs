@@ -1,3 +1,6 @@
+#[allow(dead_code)]
+#[path = "support/playback/mod.rs"]
+mod playback_fixture;
 mod support;
 use cumulus_core::{
     Error, Result,
@@ -545,6 +548,194 @@ async fn moved_inline_intelligence_downloads_resolve_from_the_new_publication() 
         assert!(resolver.resolve(&entry.resource, &token).await.is_err());
     }
     assert_eq!(f.api.calls.lock().unwrap().len(), calls);
+}
+
+#[tokio::test]
+async fn deleting_the_last_intelligence_track_retires_the_session_without_autoplay() {
+    use cumulus_core::{
+        catalog::intelligence::{IntelligenceRequest, IntelligenceStart},
+        playback::{
+            QueueSnapshot,
+            controller::{IntelligenceUpdate, PlaybackCommand, PlaybackController, PlaybackStatus},
+            intelligence::{IntelligenceAction, IntelligenceContext, IntelligencePhase},
+            source::SourceResolver,
+        },
+    };
+
+    // The same owned file may occur in the active seed, ordinary backup and
+    // liked fallback. Exercise ordinary preference, fallback, and empty exit.
+    for (ordinary, liked, paused) in [
+        (true, true, true),
+        (false, true, false),
+        (false, false, false),
+    ] {
+        let f = Fixture::new(false).await;
+        let token = f.session.token().unwrap();
+        let offline = OfflineLibrary::new(f.session.clone()).unwrap();
+        let published = offline.records(&token).unwrap().pop().unwrap();
+        let download = json!({
+            "id":"123","path":published.path,"download_ledger_owner":"1","download_ledger":published,
+        });
+        let mut queue = PlaybackQueue::new(Some(f.store.clone()), "1").unwrap();
+        let mut resources = vec![download.clone()];
+        if liked {
+            resources.push(json!({"id":"777"}));
+        }
+        queue
+            .replace(resources, 0, json!({"kind":"playlist","id":"31"}))
+            .unwrap();
+        let mut fallback = queue.snapshot();
+        // A mismatching outer path cannot make an embedded reference to the
+        // deleted source survive into the restored liked queue.
+        fallback.items[0].resource["path"] = json!(f.root.path().join("stale-alias.flac"));
+        let mut resources = vec![download.clone()];
+        if ordinary {
+            resources.push(json!({"id":"999"}));
+        }
+        queue.replace(resources, 0, json!(null)).unwrap();
+        queue.set_mode(PlaybackMode::Sequential).unwrap();
+        let backup = queue.snapshot();
+        let context = IntelligenceContext {
+            id: uuid::Uuid::new_v4().to_string(),
+            phase: IntelligencePhase::Seeded,
+        };
+        let mut seed = fallback.items[0].clone();
+        seed.resource = download;
+        let active = QueueSnapshot {
+            order: vec![seed.entry_id.clone()],
+            current: Some(seed.entry_id.clone()),
+            items: vec![seed],
+            intelligence: Some(context.clone()),
+            ..Default::default()
+        };
+        let request = IntelligenceRequest {
+            playlist_id: "31".into(),
+            song_id: "123".into(),
+            start_music_id: "123".into(),
+            count: fallback.items.len(),
+            start: IntelligenceStart::PlayOne,
+        };
+        f.store
+            .put(
+                "1",
+                "playback",
+                "queue",
+                &serde_json::to_value(&active).unwrap(),
+            )
+            .unwrap();
+        f.store.put("1", "playback-intelligence-v1", "session", &json!({
+            "schema":1,"revision":uuid::Uuid::new_v4().to_string(),"context":context,"request":request,
+            "seed_entry_id":active.current,"last_mode":backup.mode,
+            "backup":backup,"fallback":fallback,"recommendations":{},"failure":null,
+        })).unwrap();
+
+        let resolver = Arc::new(SourceResolver::new(
+            f.session.clone(),
+            Some(Arc::new(f.library())),
+        ));
+        let device = Arc::new(playback_fixture::Device::default());
+        let player = PlaybackController::start(
+            f.session.clone(),
+            f.store.clone(),
+            resolver,
+            playback_fixture::audio_engine(device.clone()),
+        )
+        .unwrap();
+        let mut playing = player.command(&token, PlaybackCommand::Play).await.unwrap();
+        assert_eq!(playing.state, PlaybackStatus::Playing);
+        if paused {
+            playing = player
+                .command(&token, PlaybackCommand::Pause(true))
+                .await
+                .unwrap();
+            assert_eq!(playing.state, PlaybackStatus::Paused);
+        }
+        let (initial_loads, initial_stops) = {
+            let state = device.state.lock().unwrap();
+            (state.loads, state.stops)
+        };
+        f.store
+            .put(
+                "1",
+                "playback",
+                "position",
+                &json!({
+                    "entry_id": active.current, "seconds": 1.0, "state": "paused",
+                }),
+            )
+            .unwrap();
+        let initial_calls = f.api.calls.lock().unwrap().len();
+
+        let files = f.files();
+        let op = files.start(&f.task.id, FileAction::Delete, None).unwrap();
+        assert_eq!(files.resume(&op.id).unwrap().phase, FilePhase::Complete);
+        assert!(!f.source.exists());
+        assert!(offline.records(&token).unwrap().is_empty());
+        assert!(
+            f.store
+                .get("1", "playback-intelligence-v1", "session")
+                .unwrap()
+                .is_none()
+        );
+        assert!(f.store.get("1", "playback", "position").unwrap().is_none());
+
+        let stopped = player
+            .command(&token, PlaybackCommand::SyncQueue)
+            .await
+            .unwrap();
+        assert_eq!(stopped.state, PlaybackStatus::Idle);
+        assert!(
+            stopped.selected.is_none()
+                && stopped.play_id.is_none()
+                && stopped.intelligence.is_none()
+        );
+        let restored = player.queue(&token).await.unwrap();
+        assert_eq!(restored.mode, PlaybackMode::Sequential);
+        assert!(restored.current.is_none());
+        let expected = if ordinary {
+            vec![json!("999")]
+        } else if liked {
+            vec![json!("777")]
+        } else {
+            vec![]
+        };
+        assert_eq!(
+            restored
+                .items
+                .iter()
+                .map(|e| e.resource["id"].clone())
+                .collect::<Vec<_>>(),
+            expected
+        );
+        assert!(
+            !serde_json::to_string(&restored)
+                .unwrap()
+                .contains("download_ledger")
+        );
+        let late = player
+            .command(
+                &token,
+                PlaybackCommand::Intelligence(IntelligenceUpdate {
+                    expected: playing.fence(),
+                    action: IntelligenceAction::Complete {
+                        session_id: context.id,
+                        resources: vec![json!({"id":"678"})],
+                        recommendations: Default::default(),
+                    },
+                }),
+            )
+            .await;
+        assert!(matches!(
+            late,
+            Err(Error::QueueChanged | Error::StaleResponse)
+        ));
+        assert_eq!(player.queue(&token).await.unwrap(), restored);
+        assert_eq!(files.resume(&op.id).unwrap().phase, FilePhase::Complete);
+        let state = device.state.lock().unwrap();
+        assert_eq!(state.loads, initial_loads);
+        assert!(state.stops > initial_stops);
+        assert_eq!(f.api.calls.lock().unwrap().len(), initial_calls);
+    }
 }
 
 #[tokio::test]

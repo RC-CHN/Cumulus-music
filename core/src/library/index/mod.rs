@@ -14,7 +14,7 @@ use crate::{
     storage::{OperationLock, StateStore},
 };
 pub use mapping::{LocalMapping, MappingSource};
-pub(crate) use relocate::relocate_download;
+pub(crate) use relocate::{delete_completed_download, relocate_download};
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 
 const OWNER: &str = "local";

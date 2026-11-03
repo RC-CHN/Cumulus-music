@@ -81,29 +81,7 @@ pub(crate) fn transition(
             } else {
                 &session.backup
             };
-            let liked: HashSet<_> = session
-                .fallback
-                .items
-                .iter()
-                .filter_map(|e| resource_id(&e.resource).ok())
-                .collect();
-            let mut base = base.clone();
-            base.items.retain(|e| {
-                e.source[RETAINED] != true
-                    || resource_id(&e.resource)
-                        .ok()
-                        .is_some_and(|id| liked.contains(&id))
-            });
-            for entry in &mut base.items {
-                if let Some(source) = entry.source.as_object_mut() {
-                    source.remove(RETAINED);
-                }
-            }
-            let ids: HashSet<_> = base.items.iter().map(|e| e.entry_id.clone()).collect();
-            base.order.retain(|id| ids.contains(id));
-            if base.current.as_ref().is_some_and(|id| !ids.contains(id)) {
-                base.current = base.order.first().cloned();
-            }
+            let base = ordinary_restore_base(base.clone(), &session.fallback);
             let mut queue = restore_current(&base, current, retain_missing_current);
             let randomize = mode == PlaybackMode::Random
                 && (base.mode != PlaybackMode::Random || queue.items.len() != base.items.len());
@@ -124,6 +102,54 @@ pub(crate) fn transition(
             })
         }
     }
+}
+
+/// Community safety behavior: a physical Delete is not a play intent.
+/// Keep ordinary rows, but leave selection empty so neither actor reload
+/// nor startup restore can implicitly open another source.
+pub(crate) fn ordinary_after_deleted_selection(
+    session: IntelligenceSession,
+) -> Result<QueueSnapshot> {
+    let mut queue = ordinary_restore_base(session.backup, &session.fallback);
+    if queue.items.is_empty() {
+        queue = session.fallback;
+    }
+    if session.last_mode != PlaybackMode::Random || queue.mode != PlaybackMode::Random {
+        queue.order = queue.items.iter().map(|e| e.entry_id.clone()).collect();
+        if session.last_mode == PlaybackMode::Random {
+            use rand::seq::SliceRandom;
+            queue.order.shuffle(&mut rand::rng());
+        }
+    }
+    queue.current = None;
+    queue.mode = session.last_mode;
+    ordinary(&queue)?;
+    Ok(queue)
+}
+
+fn ordinary_restore_base(mut base: QueueSnapshot, fallback: &QueueSnapshot) -> QueueSnapshot {
+    let liked: HashSet<_> = fallback
+        .items
+        .iter()
+        .filter_map(|e| resource_id(&e.resource).ok())
+        .collect();
+    base.items.retain(|e| {
+        e.source[RETAINED] != true
+            || resource_id(&e.resource)
+                .ok()
+                .is_some_and(|id| liked.contains(&id))
+    });
+    for entry in &mut base.items {
+        if let Some(source) = entry.source.as_object_mut() {
+            source.remove(RETAINED);
+        }
+    }
+    let ids: HashSet<_> = base.items.iter().map(|e| e.entry_id.clone()).collect();
+    base.order.retain(|id| ids.contains(id));
+    if base.current.as_ref().is_some_and(|id| !ids.contains(id)) {
+        base.current = base.order.first().cloned();
+    }
+    base
 }
 
 fn require<'a>(
