@@ -227,8 +227,8 @@ fn main() {
                     handle.get_webview_window("main").unwrap().eval("window.__mainFlowOffline=true;").unwrap();
                     return;
                 }
-                if !(retry_https && stage == "ux_https_failure")
-                    && !["ux_reopened","ux_guest","ux_qr_pending","ux_login_adopted","ux_recovered","ux_daily","ux_search","ux_playback","ux_playlist_created","ux_playlist_edited","ux_playlist_song_added","ux_playlist_song_removed","ux_playlist_cleaned","ux_download_paused","ux_download_complete","ux_local_offline_playback","ux_download_disposed","complete","failed"].contains(&stage.as_str()) { return; }
+                let ordinary_stage = ["ux_reopened","ux_guest","ux_qr_pending","ux_login_adopted","ux_recovered","ux_daily","ux_search","ux_playback","ux_playlist_created","ux_playlist_edited","ux_playlist_song_added","ux_playlist_song_removed","ux_playlist_cleaned","ux_download_paused","ux_download_complete","ux_local_offline_playback","ux_download_disposed","complete","failed"].contains(&stage.as_str());
+                if !(ordinary_stage || retry_https && stage == "ux_https_failure") { return; }
                 let client = handle.state::<MusicClient>();
                 let account = client.account().unwrap();
                 value["authenticated"] = json!(account.status == SessionStatus::Authenticated);
