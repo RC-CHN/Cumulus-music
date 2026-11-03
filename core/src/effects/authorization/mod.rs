@@ -3,7 +3,7 @@
 //! Hosts apply/disable the DSP separately and schedule reads on restore or
 //! rights changes. No guessed trial deadline or background write timer.
 mod mutate;
-pub use mutate::NativeEffectReleaseReceipt;
+pub use mutate::{NativeEffectReleaseReceipt, PendingNativeEffectRegistration};
 mod observe;
 mod parametric;
 pub use parametric::{ActiveParametricObservation, BoundParametric, BoundParametricTarget};

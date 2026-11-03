@@ -3,7 +3,9 @@ use cumulus_core::{
     Error, Result,
     client::{ClientError, MusicClient, NativeParametricActivationAttempt},
     effects::{
-        authorization::{LeasePhase, NativeEffectReleaseReceipt, ReleaseRetry},
+        authorization::{
+            LeasePhase, NativeEffectReleaseReceipt, PendingNativeEffectRegistration, ReleaseRetry,
+        },
         catalog::EffectId,
         material::PeqCall,
         parametric::{ParametricHost, ParametricPlan},
@@ -225,6 +227,16 @@ fn authorize<R: tauri::Runtime>(
         ));
     }
     client.validate_player_epoch(epoch)
+}
+
+#[tauri::command]
+pub async fn effect_peq_pending<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> std::result::Result<Vec<PendingNativeEffectRegistration>, ClientError> {
+    authorize(&window, &client, &epoch)?;
+    client.native_effect_pending(&epoch).map_err(Into::into)
 }
 
 #[tauri::command]

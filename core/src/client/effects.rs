@@ -5,7 +5,8 @@ use crate::{
     effects::{
         authorization::{
             ActiveParametricObservation, BoundParametric, BoundParametricTarget,
-            EffectAuthorizations, LeasePhase, NativeEffectReleaseReceipt, ReleaseRetry,
+            EffectAuthorizations, LeasePhase, NativeEffectReleaseReceipt,
+            PendingNativeEffectRegistration, ReleaseRetry,
         },
         catalog::{CatalogueKind, EffectId},
         device_directory::EffectDeviceRow,
@@ -144,6 +145,15 @@ impl MusicClient {
         Ok(EffectAuthorizations::new(self.session.clone())?
             .record_for(&token, effect)?
             .map(|lease| lease.phase))
+    }
+
+    /// Local-only list of pending native cleanup after restart.
+    pub fn native_effect_pending(
+        &self,
+        epoch: &str,
+    ) -> Result<Vec<PendingNativeEffectRegistration>> {
+        let token = self.player_token(epoch)?;
+        EffectAuthorizations::new(self.session.clone())?.native_pending_for(&token)
     }
 
     /// Review the exact durable registration before an explicit native stop.

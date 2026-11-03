@@ -28,6 +28,18 @@ impl NativeEffectReleaseReceipt {
     }
 }
 
+/// Local restart recovery projection. The actual release still needs
+/// a separately acquired, exact native receipt.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct PendingNativeEffectRegistration {
+    pub id: EffectId,
+    pub phase: LeasePhase,
+}
+
+fn native_release_pending(lease: &EffectLease) -> bool {
+    lease.phase.needs_release() && known_non_trial(lease.registration_use_type)
+}
+
 impl EffectAuthorizations {
     /// Prepare/download the effect before calling this. The returned result is
     /// a registered interest and current rights, not successful DSP activation.
@@ -125,6 +137,26 @@ impl EffectAuthorizations {
         Ok(observation)
     }
 
+    /// Discover local obligations only. No receipt, rights read, or phase
+    /// transition is produced, including for interrupted write intents.
+    pub fn native_pending_for(
+        &self,
+        token: &SessionToken,
+    ) -> Result<Vec<PendingNativeEffectRegistration>> {
+        let mut pending: Vec<_> = self
+            .records_for(token)?
+            .into_iter()
+            .filter(native_release_pending)
+            .map(|lease| PendingNativeEffectRegistration {
+                id: lease.effect,
+                phase: lease.phase,
+            })
+            .collect();
+        pending.sort_unstable_by_key(|entry| entry.id.value());
+        self.session.check_generation(token)?;
+        Ok(pending)
+    }
+
     /// Read the durable cleanup identity without contacting the service.
     pub fn native_release_receipt_for(
         &self,
@@ -132,16 +164,14 @@ impl EffectAuthorizations {
         effect: EffectId,
     ) -> Result<Option<NativeEffectReleaseReceipt>> {
         Ok(self.record_for(token, effect)?.and_then(|lease| {
-            (lease.phase.needs_release() && known_non_trial(lease.registration_use_type)).then(
-                || NativeEffectReleaseReceipt {
-                    session: std::sync::Arc::downgrade(&self.session),
-                    token: token.clone(),
-                    effect,
-                    operation: lease.operation,
-                    revision: lease.revision,
-                    phase: lease.phase,
-                },
-            )
+            native_release_pending(&lease).then(|| NativeEffectReleaseReceipt {
+                session: std::sync::Arc::downgrade(&self.session),
+                token: token.clone(),
+                effect,
+                operation: lease.operation,
+                revision: lease.revision,
+                phase: lease.phase,
+            })
         }))
     }
 

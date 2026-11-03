@@ -200,6 +200,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 renewal::session_renewal,
                 renewal::renew_session,
                 commands::get_app_info,
+                effect_activation::effect_peq_pending,
                 effect_activation::effect_peq_status,
                 effect_activation::effect_peq_reconcile,
                 effect_activation::effect_peq_prepare,

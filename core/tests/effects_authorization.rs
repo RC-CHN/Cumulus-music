@@ -748,3 +748,62 @@ async fn native_stop_requires_absence_and_the_exact_reviewed_registration() {
             .is_none()
     );
 }
+
+#[test]
+fn native_pending_list_only_projects_current_account_cleanup_without_rewriting_intents() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = Arc::new(StateStore::open(temp.path()).unwrap());
+    let api = Arc::new(ScriptApi::new([]));
+    for (owner, id, phase, basis) in [
+        ("1", 900, "releasing", Some(11)),
+        ("1", 300, "registering", Some(10)),
+        ("1", 400, "registered", Some(50)),
+        ("1", 500, "registered", None),
+        ("1", 600, "released", Some(11)),
+        ("2", 700, "stop_uncertain", Some(12)),
+    ] {
+        store
+            .put(
+                owner,
+                "effect-authorizations-v1",
+                &id.to_string(),
+                &json!({
+                    "effect": id, "operation": format!("{id:032x}"), "revision": 1,
+                    "phase": phase, "registration_use_type": basis,
+                    "start_acknowledged": matches!(phase, "registered" | "releasing" | "released"),
+                    "stop_acknowledged": phase == "released",
+                    "authorization": null, "recyclable": null, "last_error": null,
+                }),
+            )
+            .unwrap();
+    }
+    let session = world(api.clone(), store.clone());
+    let token = session.token().unwrap();
+    let service = EffectAuthorizations::new(session.clone()).unwrap();
+    let old_values = store.values("1", "effect-authorizations-v1").unwrap();
+    assert_eq!(
+        serde_json::to_value(service.native_pending_for(&token).unwrap()).unwrap(),
+        json!([{"id":300,"phase":"registering"},{"id":900,"phase":"releasing"}])
+    );
+    assert_eq!(
+        store.values("1", "effect-authorizations-v1").unwrap(),
+        old_values
+    );
+    session
+        .adopt(api.clone(), json!({"userId":2}), &token)
+        .unwrap();
+    assert!(matches!(
+        service.native_pending_for(&token),
+        Err(Error::StaleResponse)
+    ));
+    assert_eq!(
+        serde_json::to_value(
+            service
+                .native_pending_for(&session.token().unwrap())
+                .unwrap()
+        )
+        .unwrap(),
+        json!([{"id":700,"phase":"stop_uncertain"}])
+    );
+    assert!(api.calls().is_empty());
+}
