@@ -44,6 +44,14 @@ export interface AppInfo {
   coreVersion: string;
   protocolVersion: number;
 }
+export interface StyleSeedHandle {
+  revision: string;
+  id: string;
+}
+export interface StyleSeedPage {
+  revision: string;
+  cards: { id: string; title: string; coverUrl: string | null }[];
+}
 export interface StyleCategory {
   id: string;
   name: string;
@@ -130,6 +138,8 @@ export interface CoreClient
   searchSongs(keyword: string, page: PageRequest): Promise<AccountData<TrackPage>>;
   dailySongs(): Promise<AccountData<TrackPage>>;
   styleRecommendations(epoch: string): Promise<AccountData<TrackPage>>;
+  styleHomeSeeds(epoch: string): Promise<AccountData<StyleSeedPage>>;
+  seededStyleRecommendations(epoch: string, seed: StyleSeedHandle): Promise<AccountData<TrackPage>>;
   styleRecommendationCategories(epoch: string): Promise<AccountData<StyleCategory[]>>;
   styleTagOperations(epoch: string): Promise<AccountData<StyleTagOperation[]>>;
   saveStyleTag(

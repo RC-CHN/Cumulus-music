@@ -4,6 +4,7 @@ import type {
   AccountView,
   CoreClient,
   PlaylistView,
+  StyleSeedHandle,
   TrackPage,
   TrackView,
 } from '../services/contracts.ts';
@@ -32,7 +33,7 @@ export type Page =
   | { kind: 'local' }
   | { kind: 'daily' }
   | { kind: 'daily_batch' }
-  | { kind: 'style_recommendations' }
+  | { kind: 'style_recommendations'; seed?: StyleSeedHandle }
   | { kind: 'library' }
   | { kind: 'downloads'; downloadVisit?: number; initialTab?: 'active' }
   | { kind: 'cloud' }
@@ -198,7 +199,9 @@ export function useMusic(
         target.kind === 'daily' || target.kind === 'daily_batch'
           ? await core.dailySongs()
           : target.kind === 'style_recommendations'
-            ? await core.styleRecommendations(account.value.epoch)
+            ? target.seed
+              ? await core.seededStyleRecommendations(account.value.epoch, target.seed)
+              : await core.styleRecommendations(account.value.epoch)
             : await core.playlistPage(target.id, {
                 offset,
                 limit: 100,
@@ -262,7 +265,8 @@ export function useMusic(
             'search',
             'daily_batch',
             'mv',
-          ].includes(page.value.kind)
+          ].includes(page.value.kind) ||
+          (page.value.kind === 'style_recommendations' && page.value.seed)
         )
           page.value = { kind: 'daily' };
         playlistError.value = '';

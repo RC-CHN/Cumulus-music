@@ -2,6 +2,7 @@ use super::{
     MusicClient,
     dto::{AccountData, DailyRecommendationState, TrackPage},
     mapping,
+    style_home::StyleSeedHandle,
 };
 use crate::{
     Error, Result, account::SessionToken, catalog::CatalogApi, playback::engine::Cancellation,
@@ -46,6 +47,17 @@ struct Snapshot {
 pub(super) enum RecommendationSource {
     Daily,
     Style,
+    SeededStyle,
+}
+
+impl RecommendationSource {
+    pub(super) fn style_for_revision(revision: &str) -> Self {
+        if revision.starts_with("seeded-style-") {
+            Self::SeededStyle
+        } else {
+            Self::Style
+        }
+    }
 }
 
 pub(super) fn daily_source(revision: &str) -> Value {
@@ -93,6 +105,7 @@ impl MusicClient {
         match source {
             RecommendationSource::Daily => &self.daily_recommendations,
             RecommendationSource::Style => &self.style_recommendations,
+            RecommendationSource::SeededStyle => &self.seeded_style_recommendations,
         }
     }
 
@@ -152,7 +165,7 @@ impl MusicClient {
             show_free_tag,
             birthday_today: birthday_today(birthday, Local::now()),
         });
-        self.publish_recommendation(source, request, token, value)
+        self.publish_recommendation(source, request, token, value, None)
     }
 
     pub async fn style_recommendations(&self, epoch: &str) -> Result<AccountData<TrackPage>> {
@@ -168,7 +181,30 @@ impl MusicClient {
                 style_tracks(&response)
             })
             .await?;
-        self.publish_recommendation(source, request, token, value)
+        self.publish_recommendation(source, request, token, value, None)
+    }
+
+    pub async fn seeded_style_recommendations(
+        &self,
+        epoch: &str,
+        handle: StyleSeedHandle,
+    ) -> Result<AccountData<TrackPage>> {
+        let token = self.player_token(epoch)?;
+        let source = RecommendationSource::SeededStyle;
+        let (request, seed) = self.session.with_token(&token, |_| {
+            let seed = self.style_seed(&token, &handle)?;
+            Ok((self.begin_recommendation(source)?, seed))
+        })?;
+        let value = self
+            .session
+            .run_for(&token, |api, _| async move {
+                let response = CatalogApi::new(api)
+                    .seeded_style_recommendations(seed.request())
+                    .await?;
+                style_tracks(&response)
+            })
+            .await?;
+        self.publish_recommendation(source, request, token, value, Some(&handle))
     }
 
     fn publish_recommendation(
@@ -177,8 +213,12 @@ impl MusicClient {
         request: u64,
         token: SessionToken,
         mut value: TrackPage,
+        seed: Option<&StyleSeedHandle>,
     ) -> Result<AccountData<TrackPage>> {
         self.session.with_token(&token, |owner| {
+            if let Some(handle) = seed {
+                self.style_seed(&token, handle)?;
+            }
             let mut state = self
                 .recommendation_state(source)
                 .lock()
@@ -206,15 +246,20 @@ impl MusicClient {
             let revision = match source {
                 RecommendationSource::Daily => format!("daily-{request}"),
                 RecommendationSource::Style => format!("style-{request}"),
+                RecommendationSource::SeededStyle => format!("seeded-style-{request}"),
             };
             state.latest = Some(Snapshot {
                 token: token.clone(),
                 revision: revision.clone(),
                 ids: value.tracks.iter().map(|row| json!(row.id)).collect(),
-                style_preference: value
-                    .style_tags
-                    .as_ref()
-                    .map(super::style_tags::StylePreference::from_category),
+                style_preference: if matches!(source, RecommendationSource::Style) {
+                    value
+                        .style_tags
+                        .as_ref()
+                        .map(super::style_tags::StylePreference::from_category)
+                } else {
+                    None
+                },
             });
             value.revision = Some(revision);
             Ok(AccountData {

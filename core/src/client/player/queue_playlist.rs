@@ -186,7 +186,7 @@ impl MusicClient {
             }
             QueueCollection::StyleRecommendations { revision, .. } => {
                 let (ids, guard) = self.recommendation_selection(
-                    RecommendationSource::Style,
+                    RecommendationSource::style_for_revision(revision),
                     &token,
                     revision,
                     0,

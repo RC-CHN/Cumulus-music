@@ -95,7 +95,7 @@ impl MusicClient {
                 revision, index, ..
             } => {
                 let (ids, guard) = self.recommendation_selection(
-                    RecommendationSource::Style,
+                    RecommendationSource::style_for_revision(revision),
                     &token,
                     revision,
                     *index,

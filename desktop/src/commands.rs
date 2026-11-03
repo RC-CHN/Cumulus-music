@@ -223,6 +223,26 @@ pub async fn style_recommendations(
 }
 
 #[tauri::command]
+pub async fn style_home_seeds(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> Result<AccountData<cumulus_core::client::style_home::StyleSeedPage>, ClientError> {
+    client.style_home_seeds(&epoch).await.map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn seeded_style_recommendations(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    seed: cumulus_core::client::style_home::StyleSeedHandle,
+) -> Result<AccountData<TrackPage>, ClientError> {
+    client
+        .seeded_style_recommendations(&epoch, seed)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn liked_ids(
     client: tauri::State<'_, MusicClient>,
 ) -> Result<AccountData<Vec<String>>, ClientError> {

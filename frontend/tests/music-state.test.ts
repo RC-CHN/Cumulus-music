@@ -73,6 +73,8 @@ function backend(overrides: Partial<CoreClient> = {}): CoreClient {
     likedIds: async () => data([]),
     dailySongs: async () => data(page),
     styleRecommendations: async () => data(page),
+    styleHomeSeeds: unused,
+    seededStyleRecommendations: unused,
     styleRecommendationCategories: async () => data([]),
     styleTagOperations: async () => data([]),
     saveStyleTag: unused,
@@ -602,4 +604,51 @@ test('old resource failures cannot replace the new account library or loading st
   assert.equal(music.account.value.status, 'authenticated');
   assert.equal(music.resourcesLoading.value, false);
   assert.equal(music.playlistError.value, '');
+});
+
+test('seeded style routes keep the opaque seed scoped to one account and do not fall back', async () => {
+  let epoch = '1';
+  const calls: unknown[] = [];
+  const pending = deferred<AccountData<TrackPage>>();
+  const music = useMusic(
+    backend({
+      accountSnapshot: async () => ({
+        epoch,
+        status: 'authenticated',
+        nickname: 'synthetic',
+        avatarUrl: null,
+      }),
+      styleRecommendations: async (owner) => {
+        calls.push(['default', owner]);
+        return data(page, owner);
+      },
+      seededStyleRecommendations: async (owner, seed) => {
+        calls.push(['seeded', owner, seed]);
+        return pending.promise;
+      },
+      playlists: async () => data([], epoch),
+      dailySongs: async () => data(page, epoch),
+    }),
+  );
+  await music.bootstrap(false);
+  music.navigate({ kind: 'style_recommendations' });
+  await Promise.resolve();
+  const seed = { revision: 'seed-list', id: 'seed-card' };
+  music.navigate({ kind: 'style_recommendations', seed });
+  assert.deepEqual(calls, [
+    ['default', '1'],
+    ['seeded', '1', seed],
+  ]);
+  assert.equal(music.result.value, undefined);
+
+  epoch = '2';
+  await music.bootstrap(false);
+  pending.resolve(data({ ...page, revision: 'seeded-style-1' }));
+  await Promise.resolve();
+  assert.deepEqual(music.page.value, { kind: 'daily' });
+  assert.equal(music.result.value?.revision, null);
+  assert.deepEqual(calls, [
+    ['default', '1'],
+    ['seeded', '1', seed],
+  ]);
 });

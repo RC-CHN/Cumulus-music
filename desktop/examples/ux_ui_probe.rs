@@ -53,6 +53,8 @@ mod search_fixture;
 #[allow(dead_code)]
 #[path = "support/settings_fixture.rs"]
 mod settings_fixture;
+#[path = "support/style_home_fixture.rs"]
+mod style_home_fixture;
 #[path = "support/style_recommendations_fixture.rs"]
 mod style_recommendations_fixture;
 #[path = "support/volume_fixture.rs"]
@@ -119,6 +121,9 @@ impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, args: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             if let Some(response) = daily_history_fixture::response(path, &args).await {
+                return response;
+            }
+            if let Some(response) = style_home_fixture::response(path, &args) {
                 return response;
             }
             if let Some(response) = style_recommendations_fixture::response(path, &args) {
@@ -430,6 +435,7 @@ fn main() {
             if intelligence_start_fixture::enabled() {value["syntheticIntelligenceStart"]=intelligence_start_fixture::report();}
             if effect_directory_fixture::enabled() {value["effectDirectoryCalls"]=json!(effect_directory_fixture::calls());}
             if daily_history_fixture::enabled() {value["dailyHistoryCalls"]=json!(daily_history_fixture::calls());}
+            if style_home_fixture::enabled() {value["styleHomeCalls"]=json!(style_home_fixture::calls());}
             if style_recommendations_fixture::enabled() {value["styleRecommendationCalls"]=json!(style_recommendations_fixture::calls());}
             if search_fixture::enabled() {
                 value["syntheticSearchCalls"] = json!(search_fixture::calls());

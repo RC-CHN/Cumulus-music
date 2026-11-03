@@ -46,6 +46,7 @@ mod scene_fm;
 mod search;
 mod settings;
 mod shortcut_preferences;
+pub mod style_home;
 pub mod style_tags;
 mod together;
 mod window;
@@ -86,6 +87,8 @@ pub struct MusicClient {
     login_device_rows: login_devices::DeviceRows,
     search: search::experiment::SearchHost,
     daily_recommendations: Arc<std::sync::Mutex<recommendations::RecommendationSnapshot>>,
+    style_home: style_home::StyleHome,
+    seeded_style_recommendations: Arc<std::sync::Mutex<recommendations::RecommendationSnapshot>>,
     style_recommendations: Arc<std::sync::Mutex<recommendations::RecommendationSnapshot>>,
     quality_experiment: quality_experiment::QualityExperiment,
     daily_experiment: daily_experiment::DailyExperiment,
@@ -212,6 +215,8 @@ impl MusicClient {
             login_device_rows: login_devices::DeviceRows::default(),
             search: search::experiment::SearchHost::default(),
             daily_recommendations: Default::default(),
+            style_home: Default::default(),
+            seeded_style_recommendations: Default::default(),
             style_recommendations: Default::default(),
             quality_experiment: quality_experiment::QualityExperiment::default(),
             daily_experiment: daily_experiment::DailyExperiment::default(),

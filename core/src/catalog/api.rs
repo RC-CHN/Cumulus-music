@@ -166,6 +166,28 @@ impl CatalogApi {
         })
     }
 
+    pub(crate) async fn daily_mix(&self, client_time: &str) -> Result<Value> {
+        self.api
+            .call(
+                "/api/pc/daily/rcmd/block",
+                json!({"clientTime":client_time}),
+                false,
+                &[200],
+            )
+            .await
+    }
+
+    pub(crate) async fn seeded_style_recommendations(&self, data: Value) -> Result<Value> {
+        self.api
+            .call(
+                "/api/homepage/category/daily/song/list",
+                data,
+                false,
+                &[200],
+            )
+            .await
+    }
+
     /// M/3126 daily-entry defaults. M/12 folds the query into the API payload.
     pub async fn default_style_recommendations(&self) -> Result<Value> {
         self.api

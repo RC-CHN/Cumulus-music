@@ -35,6 +35,7 @@ import DailyHeading from './components/DailyHeading.vue';
 import DailyBatchPage from './components/DailyBatchPage.vue';
 import ActionMenu from './components/ActionMenu.vue';
 import StyleTagBrowser from './components/StyleTagBrowser.vue';
+import StyleHomeBrowser from './components/StyleHomeBrowser.vue';
 import PlaylistHero from './components/playlist/PlaylistHero.vue';
 import PlaylistTagBrowse from './components/playlist/PlaylistTagBrowse.vue';
 import PlaylistCreatorPage from './components/playlist/PlaylistCreatorPage.vue';
@@ -119,7 +120,12 @@ import { rankingQueryKey, type RankingQuery } from './services/rankings';
 import { useTogether } from './composables/useTogether';
 import { usePodcasts } from './composables/usePodcasts';
 import type { PodcastScope } from './services/podcast';
-import { failure, type PlaylistView, type TrackView } from './services/contracts';
+import {
+  failure,
+  type PlaylistView,
+  type StyleSeedHandle,
+  type TrackView,
+} from './services/contracts';
 import { useLocal } from './composables/useLocal';
 import { useLocalMatching } from './composables/useLocalMatching';
 import type { LocalQuery } from './services/local';
@@ -886,9 +892,30 @@ function restoreDailyMenuFocus() {
   if (document.activeElement === document.body) trigger.focus({ preventScroll: true });
 }
 watch([music.page, music.result], () => void nextTick(restoreDailyMenuFocus), { flush: 'post' });
+const styleHomeBrowser = ref<InstanceType<typeof StyleHomeBrowser>>();
+const styleHomeHeading = ref<HTMLHeadingElement>();
+let styleHomeFocus: 'entry' | 'heading' | undefined;
+watch(
+  () => music.page.value,
+  (next, prior) => {
+    styleHomeFocus =
+      next.kind === 'style_recommendations' && prior.kind === 'style_recommendations'
+        ? next.seed
+          ? 'heading'
+          : prior.seed
+            ? 'entry'
+            : undefined
+        : undefined;
+  },
+);
 function mainPageEntered() {
   miniFmFocus.complete();
   restoreDailyMenuFocus();
+  const focus = styleHomeFocus;
+  styleHomeFocus = undefined;
+  if (document.activeElement !== document.body) return;
+  if (focus === 'entry') styleHomeBrowser.value?.focus();
+  if (focus === 'heading') styleHomeHeading.value?.focus({ preventScroll: true });
 }
 async function dailyMenuAction(key: string) {
   const currentPage = music.page.value;
@@ -968,6 +995,14 @@ function openStyleRecommendations() {
     return;
   }
   music.navigate({ kind: 'style_recommendations' });
+}
+function openHomeStyle(seed: StyleSeedHandle) {
+  if (
+    music.signedIn.value &&
+    music.page.value.kind === 'style_recommendations' &&
+    !music.page.value.seed
+  )
+    music.navigate({ kind: 'style_recommendations', seed });
 }
 function backFromPage() {
   if (batchTarget.value) batchPage.value?.requestLeave();
@@ -1452,7 +1487,9 @@ const title = computed(() =>
   page.value.kind === 'daily'
     ? '每日推荐'
     : page.value.kind === 'style_recommendations'
-      ? '风格推荐'
+      ? page.value.seed
+        ? '首页风格推荐'
+        : '风格推荐'
       : page.value.kind === 'library'
         ? '我的歌单'
         : page.value.kind === 'search'
@@ -2455,12 +2492,22 @@ onUnmounted(() => {
                   />
 
                   <div v-else>
-                    <h1>{{ title }}</h1>
+                    <h1
+                      v-if="page.kind === 'style_recommendations' && page.seed"
+                      ref="styleHomeHeading"
+                      tabindex="-1"
+                    >
+                      {{ title }}
+                    </h1>
+                    <h1 v-else>{{ title }}</h1>
                     <p class="muted">
                       {{
                         result
                           ? page.kind === 'style_recommendations'
-                            ? '定制您今日的专属好音乐'
+                            ? page.seed
+                              ? result.styleTags?.tags.map((tag) => tag.name).join(' · ') ||
+                                '来自首页的风格推荐'
+                              : '定制您今日的专属好音乐'
                             : `找到 ${result.total} 首歌曲`
                           : error
                             ? '加载失败，可以重试'
@@ -2471,8 +2518,15 @@ onUnmounted(() => {
                     </p>
                   </div>
                   <div class="page-heading-actions">
+                    <StyleHomeBrowser
+                      v-if="page.kind === 'style_recommendations' && !page.seed"
+                      ref="styleHomeBrowser"
+                      :epoch="account.epoch"
+                      @open="openHomeStyle"
+                      @expired="music.bootstrap(false)"
+                    />
                     <StyleTagBrowser
-                      v-if="page.kind === 'style_recommendations'"
+                      v-if="page.kind === 'style_recommendations' && !page.seed"
                       :epoch="account.epoch"
                       :applied="result?.styleTags"
                       :revision="result?.revision"

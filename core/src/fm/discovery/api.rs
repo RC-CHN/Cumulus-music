@@ -1,5 +1,5 @@
 use super::*;
-use crate::protocol::api::Api;
+use crate::{catalog::CatalogApi, protocol::api::Api};
 use serde_json::json;
 pub struct FmDiscoveryApi {
     api: Arc<dyn Api>,
@@ -22,14 +22,8 @@ impl FmDiscoveryApi {
                     now.minute(),
                     now.second()
                 );
-                let features = self
-                    .api
-                    .call(
-                        "/api/pc/daily/rcmd/block",
-                        json!({"clientTime":client_time}),
-                        false,
-                        &[200],
-                    )
+                let features = CatalogApi::new(self.api.clone())
+                    .daily_mix(&client_time)
                     .await?;
                 let tabs = self
                     .api
