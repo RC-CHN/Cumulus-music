@@ -1,5 +1,5 @@
 use super::{
-    Format, PlanarBlock, ffi,
+    Format, PlanarBlock, ROTATION_KERNEL_RATE, ffi,
     state::{State, status},
 };
 use crate::{Error, Result};
@@ -98,7 +98,7 @@ impl RotationKernel {
         Ok(Self {
             state,
             _responses: responses,
-            format: Format::new(44100.0, 2, 256)?,
+            format: Format::new(ROTATION_KERNEL_RATE as f32, 2, 256)?,
             failed: false,
         })
     }
@@ -166,7 +166,10 @@ pub struct RotationStage {
 
 impl RotationStage {
     pub fn new(format: Format, responses: RotationResponses) -> Result<Self> {
-        if format.rate() != 44100.0 || format.channels() != 2 || format.capacity() < 256 {
+        if format.rate() != ROTATION_KERNEL_RATE as f32
+            || format.channels() != 2
+            || format.capacity() < 256
+        {
             return Err(Error::InvalidInput(
                 "rotation requires 44.1kHz stereo and capacity >=256",
             ));

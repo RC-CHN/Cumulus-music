@@ -119,3 +119,24 @@ kernel/stage/internal/sidechain四模式另保留有界探针二进制协议，�
 原研究尚未恢复的完整SE环境声/混响、整机效果图及情绪推理边界保留，不能以两个组件替代。
 跨平台构建配置沿用统一cc/Rust边界；没有本批Windows/macOS/ARM实际验证。
 一起听、接续、其余业务页面与最终全范围审计仍属完整目标；不以本批验收宣告整体完成。
+
+旋转非 44.1 kHz：已核对转换配置与容量，未接入 PCM
+neaudioeffects.dll SHA256 同上。RVA 23480 对非 44100 Hz 初始化两组转换：
+23680–23699 输入采样率→44100，236D2–236EB 44100→输入采样率。
+RVA 34AE 跳到 78770，调用 779C0 建立输入/输出 datatype 4（双声道平面 f32）、
+scale=1、无自定义引擎/flags；随后调用 770A0（SoXR create），quality/runtime 均为 NULL。
+RVA 788C0 调用 775C0（SoXR delay），计算输出帧容量：
+先按 binary64 除法算输出/输入采样率，再乘输入帧，依次加输出帧延迟、1、0.5 后截断。
+
+本机离线 oracle 将核对哈希的 PE 映射到原地址，仅执行原始 78770/779C0/788C0
+及其跳板。770A0/775C0 两入口由受限合成替身捕获配置或返回已指定延迟；不运行
+SoXR PCM、DLL 初始化、导入、系统 API 或网络。128 行公开合成向量
+core/tests/fixtures/effects-rotation-rate-official.tsv（SHA256
+06001ff431a802efcaec0fc942f895c7e44397a0138873035c0e535e5e80438c）
+覆盖 8 kHz–384 kHz、双方向和整数/分数延迟；Rust RotationRatePlan 独立对照。
+4096 输入帧、有限非负延迟和 u32 输出容量限制属于 Rust 边界。
+
+官方映像的版本字符串是 libsoxr-0.1.3；本机 libsoxr 的版本号相同，但这不能证明构建、
+算法分派或样本结果相同。23860/238F0 的转换及 FIFO 和排空生命周期仍未验证 PCM；
+不加载系统 SoXR 来声称
+与捆绑版本等效。RotationStage 仍只接受 44.1 kHz 双声道；此批不改变播放器或发行包。
