@@ -61,6 +61,7 @@ const emit = defineEmits<{
   search: [keyword: string];
   searchOriginal: [keyword: string];
   open: [item: SearchItem];
+  creator: [id: string];
   play: [tracks: TrackView[], index: number, context: SearchResultPlayback];
   playTrack: [track: TrackView, toggleCurrent: boolean];
   downloadTrack: [track: TrackView];
@@ -716,6 +717,7 @@ onBeforeUnmount(() => {
                 :current="searchCardIsCurrent(item, playbackOrigin, currentVoiceId)"
                 :playing="playbackState === 'playing' || playbackState === 'buffering'"
                 @open="open"
+                @creator="emit('creator', $event)"
                 @play="emit('playCard', $event)"
                 @comments="emit('cardComments', $event)"
                 @download="emit('cardDownload', $event)"

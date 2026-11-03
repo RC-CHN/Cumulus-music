@@ -31,6 +31,13 @@ export function searchCardKey(item: SearchItem): string {
       return `user:${item.user.id}`;
   }
 }
+/** Only the native-verified creator may be used; playlist IDs are a separate namespace. */
+export function searchPlaylistCreator(item: SearchItem) {
+  if (item.kind !== 'playlist') return null;
+  const { creatorId: id, creator } = item.playlist;
+  const name = creator.trim();
+  return name && id && /^\d*[1-9]\d*$/.test(id) ? { id, name } : null;
+}
 /** Only a native-projected MV identity can open the video player. */
 export function searchMvPlaybackTarget(item: SearchItem): string | null {
   return item.kind === 'mv' && item.mv.kind === 'mv' ? item.mv.mvId : null;

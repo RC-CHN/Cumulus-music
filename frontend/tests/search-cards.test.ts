@@ -5,6 +5,7 @@ import {
   searchCardIsCurrent,
   searchCardCanPlay,
   searchMvPlaybackTarget,
+  searchPlaylistCreator,
   searchVideoCoverStats,
   searchCurrentSongId,
   searchCurrentVoiceId,
@@ -177,4 +178,36 @@ test('video cover stats show known duration and a compact count with exact acces
     null,
   );
   assert.equal(searchVideoCoverStats(voice), null);
+});
+
+test('search playlist credits navigate only to a native-verified creator identity', () => {
+  const item: SearchItem = {
+    kind: 'playlist',
+    playlist: {
+      id: '777',
+      name: 'Synthetic playlist',
+      coverUrl: null,
+      description: '',
+      creator: ' Synthetic creator ',
+      creatorId: '9007199254740993',
+      trackCount: 3,
+      owned: false,
+      favorite: false,
+      private: false,
+    },
+  };
+  assert.deepEqual(searchPlaylistCreator(item), {
+    id: '9007199254740993',
+    name: 'Synthetic creator',
+  });
+  for (const id of [null, undefined, '0', 'name-only', 'https://invalid.example/123'])
+    assert.equal(
+      searchPlaylistCreator({ ...item, playlist: { ...item.playlist, creatorId: id } }),
+      null,
+    );
+  assert.equal(
+    searchPlaylistCreator({ ...item, playlist: { ...item.playlist, creator: ' ' } }),
+    null,
+  );
+  assert.equal(searchPlaylistCreator(podcast), null);
 });

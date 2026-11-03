@@ -2188,6 +2188,7 @@ onUnmounted(() => {
                 @search="(keyword) => music.navigate({ kind: 'search', keyword })"
                 @search-original="searchOriginal"
                 @open="openSearchItem"
+                @creator="(id) => music.navigate({ kind: 'playlist_creator', id })"
                 @play="playSearchResults"
                 @play-track="playSearchTrack"
                 @play-card="playSearchCard"

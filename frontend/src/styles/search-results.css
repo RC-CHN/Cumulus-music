@@ -683,6 +683,35 @@
 .search-voice-radio:hover {
   color: var(--accent);
 }
+.search-playlist-credit {
+  display: flex;
+  gap: 4px;
+  align-items: baseline;
+  min-width: 0;
+}
+.search-playlist-credit > span {
+  flex: none;
+}
+.search-playlist-creator {
+  position: relative;
+  z-index: 2;
+  min-width: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  pointer-events: auto;
+}
+.search-playlist-creator:hover,
+.search-playlist-creator:focus-visible {
+  color: var(--accent);
+}
+.search-playlist-creator:focus-visible {
+  outline-offset: -2px;
+}
 .search-card-unavailable .search-result-art,
 .search-card-unavailable .search-result-name,
 .search-card-unavailable .search-result-sub {

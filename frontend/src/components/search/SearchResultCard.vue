@@ -11,6 +11,7 @@ import {
   searchCardCanPlay,
   searchCardKey,
   searchMvPlaybackTarget,
+  searchPlaylistCreator,
   searchVideoCoverStats,
 } from '../../services/searchCards';
 import { usePlaybackTriggerFocus } from '../../composables/usePlaybackTriggerFocus';
@@ -24,6 +25,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
   open: [item: SearchItem];
+  creator: [id: string];
   play: [item: SearchItem];
   comments: [item: SearchItem];
   download: [item: SearchItem];
@@ -59,6 +61,7 @@ function contextMenu(event: MouseEvent | KeyboardEvent) {
 }
 const failedCover = ref(false);
 const canPlay = computed(() => searchCardCanPlay(props.item));
+const playlistCreator = computed(() => searchPlaylistCreator(props.item));
 const canPlayMv = computed(() => !!searchMvPlaybackTarget(props.item));
 const videoStats = computed(() => searchVideoCoverStats(props.item));
 const videoStatsId = useId();
@@ -167,7 +170,7 @@ const card = computed(() => {
       return {
         name: i.playlist.name,
         cover: i.playlist.coverUrl,
-        sub: `${i.playlist.trackCount} 首 · ${i.playlist.creator}`,
+        sub: [`${i.playlist.trackCount} 首`, i.playlist.creator.trim()].filter(Boolean).join(' · '),
         round: false,
       };
     case 'album':
@@ -317,6 +320,23 @@ watch(
         <Icon name="download" />
       </button>
     </template>
+    <span
+      v-else-if="item.kind === 'playlist' && playlistCreator"
+      class="search-result-sub search-playlist-credit"
+    >
+      <span>{{ item.playlist.trackCount }} 首 ·</span>
+      <button
+        type="button"
+        class="search-playlist-creator"
+        data-result-action="creator"
+        :aria-label="`查看创建者 ${playlistCreator.name} 的主页`"
+        :data-tooltip="playlistCreator.name"
+        @click.stop="emit('creator', playlistCreator.id)"
+        @dblclick.stop
+      >
+        {{ playlistCreator.name }}
+      </button>
+    </span>
     <span v-else-if="unavailable && !canPlay" class="search-result-sub">{{
       item.kind === 'user' ? '此账号当前不可用' : '暂不可打开'
     }}</span>
