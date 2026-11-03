@@ -169,6 +169,18 @@
     }, 'reopened country menu scrolls to the current region');
     assert(document.getElementById(one('[aria-label="搜索国家或地区"]').getAttribute('aria-activedescendant'))?.dataset.country === 'MY', 'current region owns keyboard focus');
     await stage('country_picker_small_dark', { expectGuest: true });
+    await fill('搜索国家或地区', '香港');
+    const regionSearch = one('[aria-label="搜索国家或地区"]');
+    await wait(() => document.getElementById(regionSearch.getAttribute('aria-activedescendant'))?.dataset.country === 'HK', 'another region is highlighted');
+    assert(!regionSearch.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true, cancelable: true })), 'composing Enter suppresses the browser form default');
+    await sleep(0);
+    assert(one('.login-country-menu') && (await invoke('login_presentation')).selectedCountry === 'MY', 'IME Enter does not persist the highlighted region');
+    const legacyCompositionEscape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    Object.defineProperty(legacyCompositionEscape, 'keyCode', { value: 229 });
+    assert(!regionSearch.dispatchEvent(legacyCompositionEscape), 'composing Escape suppresses dialog cancellation');
+    await sleep(0);
+    assert(one('dialog[open]') && one('.login-country-menu'), 'IME Escape keeps the region picker and login modal open');
+
     await fill('搜索国家或地区', '不存在的地区'); await stage('country_empty_small_dark', { expectGuest: true });
     one('[aria-label="搜索国家或地区"]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
     await wait(() => !one('.login-country-menu'), 'Escape closes only menu');

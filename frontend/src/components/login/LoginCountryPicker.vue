@@ -65,6 +65,12 @@ function choose(row: LoginCountry) {
   close(true);
 }
 function key(event: KeyboardEvent) {
+  if (event.isComposing || event.keyCode === 229) {
+    // The IME owns these keys. Suppress browser form submission or dialog
+    // cancellation when WebKit also reports the underlying Enter or Escape.
+    if (event.key === 'Enter' || event.key === 'Escape') event.preventDefault();
+    return;
+  }
   if (event.key === 'Escape') {
     event.preventDefault();
     event.stopPropagation();
