@@ -63,3 +63,15 @@
   单集 ID 交给原生播放；明确不可用的节目仍拒绝。Linux WebView
   专项用合成结果验证没有所属播客链接仍可直接播放，再在原卡片
   暂停同一个原生播放条目。Linux 和 Windows CI 均配置复跑。
+
+后续原生与桌面复验：
+
+  卡片预读已补原生所有权凭据，覆盖上文仅依赖界面状态的时间窗。
+  `search_results_smoke.py --voice-direct` 在 Linux WebView 从单集卡片
+  播放、暂停；暂停前的凭据在播放 ID 和队列版本均未变化的情况下
+  仍被 IPC 拒绝，当前原生条目保持暂停。两张本机截图保存在
+  `.build/prepared-native-voice-fence-webview/first/`，无真实业务请求。
+
+  搜索弹层按官方联想分组处理：有普通联想时隐藏原词兜底行，
+  推荐独立，回车仍可提交原词。完整 Linux 弹层回归验证 51 个状态，
+  合成查询 114 次；截图在 `.build/exact-fallback-full-search-webview/first/`。
