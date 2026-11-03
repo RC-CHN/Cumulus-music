@@ -36,8 +36,9 @@ IPC只投影公开名称、数字资源ID、署名和白名单图片。原始Coo
   已加载时走绑定playId/queueRevision的PauseFor，暂停/继续不重建队列。停止后
   重新选择资源。相同数字ID的云盘/本地/声音不当作当前线上单曲。
 - 声音：PodcastApi::episode -> /api/dj/program/detail{id:节目ID}。展示节目名称/
-  封面、所属播单和主播文字；播单跳实际PodcastScope::Radio。官方主播用户主页
-  仍未实现，本轮保持文字，没有伪造可点击入口或用歌手主页代替。
+  封面、所属播单和主播；播单跳实际 PodcastScope::Radio。主播按 M/21 的 dj/creator
+  用户投影使用有效 userId，点击进入已有公开个人资料页；没有有效 ID 时显示文字。
+  不将播单、节目或歌手 ID 当作用户 ID。
   新PlaySelection::Voice只选这一集，重新取得episode.playback_resource和节目
   download_metadata作为队列显示元数据，初始level沿用既有节目standard策略。
   节目ID和mainTrackId分开；SourceResolver再次核对节目主媒体，调用

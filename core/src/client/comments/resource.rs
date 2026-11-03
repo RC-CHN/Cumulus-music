@@ -21,6 +21,8 @@ pub enum CommentResourceCard {
     },
     Voice {
         episode: EpisodeView,
+        #[serde(rename = "creatorAccountId")]
+        creator_account_id: Option<String>,
     },
     Mv {
         id: String,
@@ -63,7 +65,15 @@ impl Saved {
                 CommentResourceCard::Track { track }
             }
             (ResourceKind::Voice, Payload::Voice(value)) if value.id == resource.id => {
+                // M/21 normalizes the selected dj/creator through its user model;
+                // the route is a user account ID, never a podcast or artist ID.
+                let creator = if value.raw["dj"].is_object() {
+                    &value.raw["dj"]
+                } else {
+                    &value.raw["creator"]
+                };
                 CommentResourceCard::Voice {
+                    creator_account_id: crate::protocol::api::identifier(&creator["userId"]).ok(),
                     episode: episode(&value, &[]),
                 }
             }

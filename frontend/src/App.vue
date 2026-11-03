@@ -505,6 +505,8 @@ function playCommentResource(card: CommentResourceCard) {
 function openCommentResource(destination: CommentResourceDestination) {
   if (destination.kind === 'radio') openSceneRadio(destination.id);
   else if (destination.kind === 'mv') openMv(destination.id);
+  else if (destination.kind === 'user')
+    music.navigate({ kind: 'playlist_creator', id: destination.id });
   else openCatalog({ kind: destination.kind, id: destination.id });
 }
 const mv = useMv(undefined, () => {

@@ -92,6 +92,14 @@ impl Api for Library {
                 });
             }
             match path {
+                "/api/w/v1/user/detail/3" if args["userId"] == "3" => {
+                    return Ok(
+                        json!({"code":200,"profile":{"userId":3,"nickname":"合成主播主页"}}),
+                    );
+                }
+                "/api/user/playlist" if args["uid"] == "3" => {
+                    return Ok(json!({"code":200,"playlist":[],"more":false}));
+                }
                 "/api/my/podcast/page/list" => {
                     return Ok(
                         json!({"code":200,"data":{"radioIdList":[71],"myPodcastVOList":[radio()]}}),

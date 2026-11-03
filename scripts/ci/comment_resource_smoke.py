@@ -35,7 +35,7 @@ def main():
     assert complete['ok'] and complete['commentResources']
     states = {value['stage'].split('_', 2)[2]: value for path in sorted(output.glob('ux_*.json'))
               if (value := json.loads(path.read_text(encoding='utf-8')))}
-    assert len(states) == complete['stageCount'] == 28
+    assert len(states) == complete['stageCount'] == 29
     assert states['track_initial_light']['countFont'] == '16px'
     for state in states.values():
         assert state['visible'] and state['focused'] and state['focusValid'] and not state['overflow']
@@ -57,9 +57,10 @@ def main():
     playing,paused=states['voice_playing_dark']['playback'],states['voice_paused_dark']['playback']
     assert playing['track']['id'] == '181' and playing['track']['voiceId'] == '81' and playing['resourceKind'] == 'voice'
     assert (playing['playId'],playing['entryId'],playing['queueRevision']) == (paused['playId'],paused['entryId'],paused['queueRevision'])
+    assert states['creator_return_dark']['resourceId'] == '81'
     assert states['radio_return_dark']['resourceId'] == states['small_voice_light']['resourceId'] == '81'
-    if args.screenshots: assert len(list(output.glob('ux_*.png'))) == 28
-    report=dict(ok=True,states=28,screenshots=28 if args.screenshots else 0,metadataRecoveryVerified=True,resourceNavigationVerified=True,nativeVoicePlaybackVerified=True,realMusicRequests=0,realAccountWrites=0,physicalAudioOutputVerified=False,videoPlaybackVerified=False)
+    if args.screenshots: assert len(list(output.glob('ux_*.png'))) == 29
+    report=dict(ok=True,states=29,screenshots=29 if args.screenshots else 0,metadataRecoveryVerified=True,resourceNavigationVerified=True,nativeVoicePlaybackVerified=True,realMusicRequests=0,realAccountWrites=0,physicalAudioOutputVerified=False,videoPlaybackVerified=False)
     (root/'report.json').write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8');print(json.dumps(report))
 
 

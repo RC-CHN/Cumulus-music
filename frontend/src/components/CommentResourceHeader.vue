@@ -143,7 +143,16 @@ const retry = useCommentReadFocus(
               >
                 {{ card.episode.radioName }}</button
               ><span v-else>{{ card.episode.radioName }}</span></span
-            ><span v-if="card.episode.creator">主播：{{ card.episode.creator }}</span></template
+            ><span v-if="card.episode.creator"
+              >主播：<button
+                v-if="card.creatorAccountId"
+                class="text-button"
+                type="button"
+                @click="emit('open', { kind: 'user', id: card.creatorAccountId })"
+              >
+                {{ card.episode.creator }}</button
+              ><span v-else>{{ card.episode.creator }}</span></span
+            ></template
           >
           <span v-else-if="artists.length"
             >歌手：<template v-for="(artist, index) in artists" :key="index"

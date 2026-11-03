@@ -5,7 +5,7 @@ import type { PlayerView, PlaySelection } from './player';
 
 export type CommentResourceCard =
   | { kind: 'track'; track: TrackView }
-  | { kind: 'voice'; episode: EpisodeView }
+  | { kind: 'voice'; episode: EpisodeView; creatorAccountId?: string | null }
   | { kind: 'mv'; id: string; title: string; coverUrl: string | null; artists: ArtistReference[] };
 export interface CommentResourceView {
   resource: CommentResource;
@@ -19,7 +19,10 @@ export interface CommentResourceClient {
     refresh: boolean,
   ): Promise<AccountData<CommentResourceView>>;
 }
-export type CommentResourceDestination = { kind: 'album' | 'artist' | 'radio' | 'mv'; id: string };
+export type CommentResourceDestination = {
+  kind: 'album' | 'artist' | 'radio' | 'mv' | 'user';
+  id: string;
+};
 export function commentResourceId(card: CommentResourceCard): string {
   return card.kind === 'track' ? card.track.id : card.kind === 'voice' ? card.episode.id : card.id;
 }

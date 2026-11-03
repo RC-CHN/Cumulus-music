@@ -103,6 +103,11 @@ async fn official_card_kinds_project_only_public_metadata_and_persist_per_accoun
             data["value"]["card"]["kind"],
             serde_json::to_value(r.kind).unwrap()
         );
+        if r.kind == ResourceKind::Voice {
+            assert_eq!(data["value"]["card"]["creatorAccountId"], "3");
+        } else {
+            assert!(data["value"]["card"].get("creatorAccountId").is_none());
+        }
     }
     let calls = api.calls.lock().unwrap().clone();
     assert_eq!(calls.len(), 3);
