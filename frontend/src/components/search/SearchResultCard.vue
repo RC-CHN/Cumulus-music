@@ -15,6 +15,7 @@ import {
   searchCardKey,
   searchMvPlaybackTarget,
   searchPlaylistCreator,
+  searchVideoCredits,
   searchVideoCoverStats,
   type SearchQueueRequest,
 } from '../../services/searchCards';
@@ -72,6 +73,9 @@ const canQueue = computed(
   () => props.queueable && (props.item.kind !== 'playlist' || props.item.playlist.trackCount > 0),
 );
 const albumArtists = computed(() => searchAlbumCredits(props.item));
+const cardArtists = computed(() =>
+  props.item.kind === 'mv' ? searchVideoCredits(props.item) : albumArtists.value,
+);
 const playlistCreator = computed(() => searchPlaylistCreator(props.item));
 const canPlayMv = computed(() => !!searchMvPlaybackTarget(props.item));
 const videoStats = computed(() => searchVideoCoverStats(props.item));
@@ -371,13 +375,13 @@ watch(
         <Icon name="download" />
       </button>
     </template>
-    <span v-else-if="albumArtists.length" class="search-result-sub search-album-credit">
-      <template v-for="(artist, index) in albumArtists" :key="index">
-        <span v-if="index" class="search-album-credit-separator" aria-hidden="true">/</span>
+    <span v-else-if="cardArtists.length" class="search-result-sub search-card-credit">
+      <template v-for="(artist, index) in cardArtists" :key="index">
+        <span v-if="index" class="search-card-credit-separator" aria-hidden="true">/</span>
         <button
           v-if="artist.id"
           type="button"
-          class="search-album-artist"
+          class="search-card-artist"
           :data-result-action="`artist:${artist.id}:${index}`"
           :aria-label="`查看歌手 ${artist.name}`"
           :data-tooltip="artist.name"
@@ -386,7 +390,7 @@ watch(
         >
           <SearchMatchText :text="artist.name" :keyword="matchKeyword" />
         </button>
-        <span v-else class="search-album-artist-text">
+        <span v-else class="search-card-artist-text">
           <SearchMatchText :text="artist.name" :keyword="matchKeyword" />
         </span>
       </template>

@@ -154,10 +154,10 @@
         if(category!=='all')await choose(category);
         const target=artist();
         assert(card()?.querySelector('.search-card-open')&&card().querySelector('.search-card-play'),'album details and playback are independent');
-        assert([...card().querySelectorAll('.search-album-artist')].map(node=>node.textContent.trim()).join(',')==='合成主艺人,合成合作艺人',
+        assert([...card().querySelectorAll('.search-card-artist')].map(node=>node.textContent.trim()).join(',')==='合成主艺人,合成合作艺人',
           'primary and credited artists are independent controls in order');
         assert(target?.getAttribute('aria-label')==='查看歌手 合成合作艺人'&&
-          card().querySelector('.search-album-artist-text')?.textContent.trim()==='合成未标识艺人',
+          card().querySelector('.search-card-artist-text')?.textContent.trim()==='合成未标识艺人',
           'credit without native identity is plain text');
         click(target);
         await wait(()=>one('.artist-header h1')?.textContent.trim()==='相似歌手 101'&&one('.track-row'),
@@ -244,10 +244,28 @@
         const description=card.querySelector('.search-card-open')?.getAttribute('aria-describedby');
         assert(document.getElementById(description)?.textContent.trim()==='播放次数：12,345，时长：04:00','play target describes full metadata');
       }
-      checkMvMetadata(one('[data-result-key="mv:601"]'));
+      const mvCard=()=>one('[data-result-key="mv:601"]');
+      async function checkMvArtist(category){
+        checkMvMetadata(mvCard());
+        const artist=()=>mvCard()?.querySelector('[data-result-action="artist:100:0"]');
+        const target=artist();
+        assert(target?.getAttribute('aria-label')==='查看歌手 合成歌手','MV has an independent artist control');
+        target.scrollIntoView({block:'nearest'});
+        const rect=target.getBoundingClientRect();
+        assert(rect.width>0&&target.contains(document.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2)),
+          'card playback overlay does not intercept artist');
+        click(target);
+        await wait(()=>one('.artist-header h1')?.textContent.trim()==='相似歌手 100'&&one('.track-row'),
+          'MV credit opens its native artist details');
+        click(button('返回上一页'));
+        await wait(()=>ready()&&one(`[data-category="${category}"]`)?.getAttribute('aria-selected')==='true'&&
+          document.activeElement===artist(),'Back restores the exact MV artist credit');
+        await capture('search_mv_artist_'+category);
+      }
+      await checkMvArtist('all');
       await choose('mvs');
-      const card=one('[data-result-key="mv:601"]');
-      checkMvMetadata(card);
+      await checkMvArtist('mvs');
+      const card=mvCard();
       const trigger=button('播放 MV 合成 MV 1',card);
       const cue=card?.querySelector('.search-video-play-glyph');
       const placeholder=card?.querySelector('.search-result-art > .icon');
@@ -300,7 +318,7 @@
       assert(invalid?.querySelector('.search-card-open')?.disabled&&!invalid.querySelector('.search-video-play-glyph'),
         'opaque non-MV result stays disabled with no Play cue');
       await capture('search_non_mv_target_disabled');
-      await emit('complete',{ok:true,searchMvVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      await emit('complete',{ok:true,searchMvVerified:true,searchMvArtistVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchVoiceQueueProof){

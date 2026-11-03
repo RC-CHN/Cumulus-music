@@ -136,3 +136,14 @@ PC recommend.jsx 的综合卡片复用 PlaylistCard 与 AlbumCard；恢复 M/622
 `search_results_smoke.py --album-artist` 在综合页和专辑分类页验证主歌手排序、
 合作歌手进入相应原生详情、无标识署名不可点击及返回焦点。Linux 留存两张截图；
 两平台 CI 使用同一合成用例。
+
+搜索 MV 署名的歌手入口
+官方 SearchResults/components/mv.tsx 和 recommend.jsx 都复用 VideoCard；
+VideoCard/index.tsx:321–328 把 video.artists 交给 ArtistNames，按原顺序显示
+并高亮搜索词。Cumulus 综合及 MV 分类卡片通过既有目录接口打开明确的歌手 ID，
+无有效 ID 的署名保留为普通文本。署名控件独立于整卡播放，不触发视频授权或
+修改播放器队列。缺少可用 MV 标识的卡片仍显示不可打开状态。
+`search_results_smoke.py --mv-play` 验证两处署名的实际指针命中、歌手详情和
+精确焦点返回，再验证整卡及单曲 MV 徽标继续通过原生解码播放。使用合成数据，
+不会访问真实账号或视频服务。Linux WebView 本次通过七个 MV 检查点及两个
+专辑署名回归检查点；保留的 MV 截图位于 .build/search-mv-artist-webview/first/。

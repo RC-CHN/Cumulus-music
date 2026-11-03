@@ -1,4 +1,4 @@
-import type { CoreClient } from './contracts.ts';
+import type { ArtistReference, CoreClient } from './contracts.ts';
 import {
   time,
   type PlaySelection,
@@ -34,12 +34,17 @@ export function searchCardKey(item: SearchItem): string {
 const positiveResourceId = (id: string | null | undefined): id is string =>
   !!id && /^\d*[1-9]\d*$/.test(id);
 
-export function searchAlbumCredits(item: SearchItem) {
-  if (item.kind !== 'album') return [];
-  return albumCredits(item.album).flatMap(({ name, id }) => {
+function linkedCredits(artists: ArtistReference[]) {
+  return artists.flatMap(({ name, id }) => {
     const label = name.trim();
     return label ? [{ name: label, id: positiveResourceId(id) ? id : null }] : [];
   });
+}
+export function searchAlbumCredits(item: SearchItem) {
+  return item.kind === 'album' ? linkedCredits(albumCredits(item.album)) : [];
+}
+export function searchVideoCredits(item: SearchItem) {
+  return item.kind === 'mv' && searchMvPlaybackTarget(item) ? linkedCredits(item.mv.artists) : [];
 }
 /** Only the native-verified creator may be used; playlist IDs are a separate namespace. */
 export function searchPlaylistCreator(item: SearchItem) {

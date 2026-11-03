@@ -8,6 +8,7 @@ import {
   searchMvPlaybackTarget,
   searchPlaylistCreator,
   searchVideoCoverStats,
+  searchVideoCredits,
   searchCurrentSongId,
   searchCurrentVoiceId,
   searchVoiceSelection,
@@ -179,6 +180,34 @@ test('video cover stats show known duration and a compact count with exact acces
     null,
   );
   assert.equal(searchVideoCoverStats(voice), null);
+});
+
+test('MV credits keep unidentified artists as text without inventing identities', () => {
+  const item: SearchItem = {
+    kind: 'mv',
+    mv: {
+      id: '606',
+      kind: 'mv',
+      title: 'Synthetic MV',
+      description: '',
+      artists: [
+        { id: '12', name: '主唱' },
+        { id: null, name: ' 合作艺人 ' },
+        { id: '0', name: '乐团' },
+        { id: '606', name: ' ' },
+      ],
+      coverUrl: null,
+      durationMs: 240000,
+      playCount: 0,
+      mvId: '606',
+    },
+  };
+  assert.deepEqual(searchVideoCredits(item), [
+    { id: '12', name: '主唱' },
+    { id: null, name: '合作艺人' },
+    { id: null, name: '乐团' },
+  ]);
+  assert.deepEqual(searchVideoCredits({ ...item, mv: { ...item.mv, mvId: null } }), []);
 });
 
 test('search playlist credits navigate only to a native-verified creator identity', () => {

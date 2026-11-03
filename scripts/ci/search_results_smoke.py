@@ -133,10 +133,12 @@ def main():
     if args.mv_play:
         first = root / 'first'
         complete = json.loads((first / 'complete.json').read_text(encoding='utf-8'))
-        assert complete['ok'] and complete['searchMvVerified'] and complete['stageCount'] == 5
-        assert not json.loads((first / 'ux_01_search_mv_play_target.json').read_text(encoding='utf-8'))['searchMvCalls']
-        played = json.loads((first / 'ux_04_search_mv_native_frame.json').read_text(encoding='utf-8'))['searchMvCalls']
-        category = json.loads((first / 'ux_02_search_mv_category_native_frame.json').read_text(encoding='utf-8'))['searchMvCalls']
+        assert complete['ok'] and complete['searchMvVerified'] and complete['searchMvArtistVerified']
+        assert complete['stageCount'] == 7
+        for prefix, name in enumerate(('artist_all', 'artist_mvs', 'play_target'), start=1):
+            assert not json.loads((first / f'ux_{prefix:02}_search_mv_{name}.json').read_text(encoding='utf-8'))['searchMvCalls']
+        played = json.loads((first / 'ux_06_search_mv_native_frame.json').read_text(encoding='utf-8'))['searchMvCalls']
+        category = json.loads((first / 'ux_04_search_mv_category_native_frame.json').read_text(encoding='utf-8'))['searchMvCalls']
         assert played[:len(category)] == category
         details = [call for call in played if call['path'] == '/api/mlog/detail/v1']
         assert details and all(call['args'] == {'id': '601', 'type': '2'} for call in details)
@@ -145,8 +147,8 @@ def main():
         assert [call for call in played if call not in details] == [expected, expected]
         assert complete['searchMvCalls'] == played
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
-        assert len(list(first.glob('ux_*.png'))) == (5 if args.screenshots else 0)
-        print(json.dumps(dict(ok=True, actualWebView=True, actualNativeVideo=True, stageCount=5)))
+        assert len(list(first.glob('ux_*.png'))) == (7 if args.screenshots else 0)
+        print(json.dumps(dict(ok=True, actualWebView=True, actualNativeVideo=True, searchMvArtistVerified=True, stageCount=7)))
         return
     if args.voice_queue:
         complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))

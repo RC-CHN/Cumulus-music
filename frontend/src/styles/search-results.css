@@ -709,14 +709,14 @@
   color: var(--accent);
 }
 .search-playlist-credit,
-.search-album-credit {
+.search-card-credit {
   display: flex;
   gap: 4px;
   align-items: baseline;
   min-width: 0;
 }
 .search-playlist-credit > span,
-.search-album-credit-separator {
+.search-card-credit-separator {
   flex: none;
 }
 .search-playlist-credit > .search-playlist-recommendation,
@@ -728,7 +728,7 @@
   text-overflow: ellipsis;
 }
 .search-playlist-creator,
-.search-album-artist {
+.search-card-artist {
   position: relative;
   z-index: 2;
   min-width: 0;
@@ -741,19 +741,19 @@
   overflow: hidden;
   pointer-events: auto;
 }
-.search-album-artist-text {
+.search-card-artist-text {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .search-playlist-creator:hover,
 .search-playlist-creator:focus-visible,
-.search-album-artist:hover,
-.search-album-artist:focus-visible {
+.search-card-artist:hover,
+.search-card-artist:focus-visible {
   color: var(--accent);
 }
 .search-playlist-creator:focus-visible,
-.search-album-artist:focus-visible {
+.search-card-artist:focus-visible {
   outline-offset: -2px;
 }
 .search-card-unavailable .search-result-art,
