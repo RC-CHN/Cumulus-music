@@ -17,6 +17,10 @@ def main():
     root.mkdir(parents=True, exist_ok=False)
     run = root / 'run'
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
+    # This is the verified fixture generator, independent of the packaged
+    # libmpv/ffprobe runtime selected by the Windows packaging step.
+    if (ffmpeg := os.environ.get('CUMULUS_LOCAL_FIXTURE_FFMPEG')):
+        env['CUMULUS_LOCAL_FIXTURE_FFMPEG'] = ffmpeg
     env.update(CUMULUS_PROOF_DIR=str(run), CUMULUS_LOCAL_QUEUE_PROOF='1')
     if args.small:
         env['CUMULUS_PROOF_SMALL'] = '1'
