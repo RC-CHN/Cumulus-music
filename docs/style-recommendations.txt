@@ -17,6 +17,17 @@ style_recommendations 绑定登录代次并返回标准 TrackPage，保留歌曲
 /styleRecommend。M/91 中 dailyRecommend 的试听枚举为 35；M/3126 明确选用
 该值，即使另有 styleRecommend 枚举 39，也不替换。
 
+每日推荐原入口仍读取 /api/v3/discovery/recommend/songs {limit:30}。官方
+dailyRecommend/views/Content.jsx 的播放全部和 TrackViewer 都带同一场景及
+试听模式。客户端以独立 daily 列表代次处理播放，按已展示顺序选曲；拒绝
+风格列表代次或过期列表。提交普通播放命令后，音源授权带 trialMode:35，
+队列来源保留 dailyRecommend 和 /dailyRecommend，服务端仍裁定权益。
+恢复代码 M/244（配合 M/15 的 ii/Ph 导出）表明，官方 PH-PC-Blacklist=t1
+用 v3、其余用 v1（旧包取顶层 recommend），二者均传 limit:30；请求失败
+尝试账号专属 dailyRecommend:<uid> 的已缓存列表及歌曲详情。当前仅走 v3，
+尚未迁移分流、持久缓存降级和 showFreeTag 状态。新播放快照只保存内存中的
+最新列表版本，不当作官方离线缓存。
+
 从「每日推荐 → 风格推荐」进入；列表有加载、空结果、错误及刷新，下载沿用既有
 授权和确认入口。播放使用原生列表版本和位置，按 M/3126 带 styleRecommend 场景，
 服务端仍裁定实际试听。浏览风格标签按 M/3014 和 M/2177 发 config/get {limit:20}，

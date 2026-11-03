@@ -39,12 +39,12 @@ mod playlists;
 mod podcast;
 mod quality_experiment;
 mod rankings;
+mod recommendations;
 mod relay;
 mod scene_fm;
 mod search;
 mod settings;
 mod shortcut_preferences;
-mod style_recommendations;
 pub mod style_tags;
 mod together;
 mod window;
@@ -84,7 +84,8 @@ pub struct MusicClient {
     account_avatar: account_avatar::AvatarHost,
     login_device_rows: login_devices::DeviceRows,
     search: search::experiment::SearchHost,
-    style_recommendations: Arc<std::sync::Mutex<style_recommendations::StyleRecommendations>>,
+    daily_recommendations: Arc<std::sync::Mutex<recommendations::RecommendationSnapshot>>,
+    style_recommendations: Arc<std::sync::Mutex<recommendations::RecommendationSnapshot>>,
     quality_experiment: quality_experiment::QualityExperiment,
 }
 
@@ -208,6 +209,7 @@ impl MusicClient {
             account_avatar: account_avatar::AvatarHost::default(),
             login_device_rows: login_devices::DeviceRows::default(),
             search: search::experiment::SearchHost::default(),
+            daily_recommendations: Default::default(),
             style_recommendations: Default::default(),
             quality_experiment: quality_experiment::QualityExperiment::default(),
             together: together::TogetherHost::default(),

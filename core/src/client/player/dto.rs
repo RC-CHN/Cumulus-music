@@ -175,6 +175,11 @@ pub enum PlaySelection {
         index: usize,
         quality: Quality,
     },
+    DailyRecommendations {
+        revision: String,
+        index: usize,
+        quality: Quality,
+    },
     Member {
         query: super::super::dto::MemberQuery,
         revision: String,

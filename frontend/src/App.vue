@@ -1541,14 +1541,15 @@ function showVisibleTrackActions(request: TrackMenuRequest) {
   const playlist = result.value?.playlist;
   if (!playlist) {
     const snapshot = result.value;
-    if (page.value.kind !== 'style_recommendations' || !snapshot) {
+    const kind = page.value.kind;
+    if ((kind !== 'daily' && kind !== 'style_recommendations') || !snapshot) {
       trackActions.value?.show(request);
       return;
     }
     trackActions.value?.show({
       ...request,
       play: () => {
-        if (page.value.kind !== 'style_recommendations' || result.value !== snapshot) return;
+        if (page.value.kind !== kind || result.value !== snapshot) return;
         const index = snapshot.tracks.indexOf(request.track);
         if (index >= 0) play(index);
       },
@@ -1583,9 +1584,12 @@ function play(index = 0, gesture?: TrackPlayGesture) {
   const tracks = result.value?.tracks;
   if (!tracks?.[index] || tracks[index].missing) return;
   const quality = player.view.value?.qualityPreferences.quality ?? 'standard';
-  if (page.value.kind === 'style_recommendations') {
+  if (page.value.kind === 'daily' || page.value.kind === 'style_recommendations') {
     const revision = result.value?.revision;
-    if (revision) void player.select({ kind: 'style_recommendations', revision, index, quality });
+    if (revision) {
+      const kind = page.value.kind === 'daily' ? 'daily_recommendations' : 'style_recommendations';
+      void player.select({ kind, revision, index, quality });
+    }
   } else if (page.value.kind === 'playlist') {
     const selection: SongRowDoubleClickSelection = {
       kind: 'playlist',

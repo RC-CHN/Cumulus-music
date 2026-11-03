@@ -1,3 +1,4 @@
+use super::super::recommendations::RecommendationSource;
 use super::{prepared_selection::PreparedSelection, *};
 use crate::{catalog::CatalogApi, playlist::PlaylistApi, protocol::api::identifier};
 use serde_json::{Value, json};
@@ -86,11 +87,27 @@ impl MusicClient {
         ) {
             self.session.with_token(&token, |_| Ok(()))?;
         }
-        let (style_ids, source_guard) = match &input {
+        let (recommendation_ids, source_guard) = match &input {
             PlaySelection::StyleRecommendations {
                 revision, index, ..
             } => {
-                let (ids, guard) = self.style_selection(&token, revision, *index)?;
+                let (ids, guard) = self.recommendation_selection(
+                    RecommendationSource::Style,
+                    &token,
+                    revision,
+                    *index,
+                )?;
+                (Some(ids), Some(guard))
+            }
+            PlaySelection::DailyRecommendations {
+                revision, index, ..
+            } => {
+                let (ids, guard) = self.recommendation_selection(
+                    RecommendationSource::Daily,
+                    &token,
+                    revision,
+                    *index,
+                )?;
                 (Some(ids), Some(guard))
             }
             _ => (None, None),
@@ -365,12 +382,18 @@ impl MusicClient {
                         index,
                         quality,
                     } => Ok((
-                        style_ids.ok_or(Error::StaleResponse)?,
+                        recommendation_ids.ok_or(Error::StaleResponse)?,
                         index,
                         quality,
                         // M/3126 explicitly chooses dailyRecommend (M/91: 35).
                         json!({"kind":"style_recommendations","scene":"styleRecommend",
                             "href":"/styleRecommend","resourceType":"dailyRecommend",
+                            "revision":revision,"trial_mode":35}),
+                    )),
+                    PlaySelection::DailyRecommendations { revision, index, quality } => Ok((
+                        recommendation_ids.ok_or(Error::StaleResponse)?, index, quality,
+                        json!({"kind":"daily_recommendations","scene":"dailyRecommend",
+                            "href":"/dailyRecommend","resourceType":"dailyRecommend",
                             "revision":revision,"trial_mode":35}),
                     )),
                     PlaySelection::Member {

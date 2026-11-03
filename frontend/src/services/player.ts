@@ -228,7 +228,12 @@ export type PlaySelection =
     }
   | { kind: 'search_chart'; ids: string[]; quality: Quality }
   | { kind: 'songs'; ids: string[]; index: number; quality: Quality }
-  | { kind: 'style_recommendations'; revision: string; index: number; quality: Quality }
+  | {
+      kind: 'daily_recommendations' | 'style_recommendations';
+      revision: string;
+      index: number;
+      quality: Quality;
+    }
   | {
       kind: 'playlist';
       id: string;

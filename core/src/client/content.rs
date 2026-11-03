@@ -238,33 +238,6 @@ impl MusicClient {
         })
     }
 
-    pub async fn daily_songs(&self) -> Result<AccountData<TrackPage>> {
-        let (token, value) = self
-            .session
-            .run(|api, _| async move {
-                let response = CatalogApi::new(api).daily().await?;
-                let tracks = response["data"]["dailySongs"]
-                    .as_array()
-                    .ok_or(Error::Response("missing daily songs"))?
-                    .iter()
-                    .map(mapping::track)
-                    .collect::<Result<Vec<_>>>()?;
-                Ok(TrackPage {
-                    revision: None,
-                    total: tracks.len(),
-                    tracks,
-                    offset: 0,
-                    more: false,
-                    playlist: None,
-                })
-            })
-            .await?;
-        Ok(AccountData {
-            epoch: token.generation.to_string(),
-            value,
-        })
-    }
-
     pub async fn liked_ids(&self) -> Result<AccountData<Vec<String>>> {
         let token = self.session.token()?;
         let value = AccountResources::new(self.session.clone())?

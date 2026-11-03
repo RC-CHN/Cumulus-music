@@ -91,6 +91,10 @@ impl Api for Backend {
                     );
                     json!({"code":200,"data":{"dailySongs":[{"id":72,"name":"风格乙"},{"id":71,"name":"风格甲"}]}})
                 }
+                "/api/v3/discovery/recommend/songs" => {
+                    assert_eq!(payload, json!({"limit":30}));
+                    json!({"code":200,"data":{"dailySongs":[{"id":74,"name":"日推乙"},{"id":73,"name":"日推甲"}]}})
+                }
                 "/api/v3/song/detail" => {
                     let ids: Vec<Value> =
                         serde_json::from_str(payload["c"].as_str().unwrap()).unwrap();
@@ -1665,6 +1669,51 @@ async fn loaded_trial_reads_and_caches_standard_assignment_without_reusing_anoth
         QualityAccess::Allowed
     );
     assert_eq!(assignment_calls(), 2);
+}
+
+#[tokio::test]
+async fn daily_recommendations_keep_distinct_snapshot_and_official_playback_source() {
+    let (dir, api, _session, client, _count) = fixture();
+    let style = client
+        .style_recommendations("1")
+        .await
+        .unwrap()
+        .value
+        .revision
+        .unwrap();
+    let stale = client.daily_songs().await.unwrap().value.revision.unwrap();
+    let current = client.daily_songs().await.unwrap().value.revision.unwrap();
+    let select = |revision, index| PlaySelection::DailyRecommendations {
+        revision,
+        index,
+        quality: Quality::Standard,
+    };
+    for wrong in [style, stale] {
+        assert!(matches!(
+            client.play_selection("1", select(wrong, 0)).await,
+            Err(Error::QueueChanged)
+        ));
+    }
+    let state = client
+        .play_selection("1", select(current.clone(), 1))
+        .await
+        .unwrap();
+    assert_eq!(state.track.unwrap().id, "73");
+    assert_eq!(state.queue_len, 2);
+    assert_eq!(*api.trial.lock().unwrap(), Some(json!(35)));
+    let stored = ProfileRegistry::open(dir.path(), ApiOrigin::Pc)
+        .unwrap()
+        .store()
+        .get("9", "playback", "queue")
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored["items"][0]["resource"]["id"], "74");
+    assert_eq!(stored["items"][1]["resource"]["id"], "73");
+    assert_eq!(
+        stored["items"][1]["source"],
+        json!({"kind":"daily_recommendations","scene":"dailyRecommend","href":"/dailyRecommend","resourceType":"dailyRecommend","revision":current,"trial_mode":35})
+    );
+    client.player_action("1", PlayerAction::Stop).await.unwrap();
 }
 
 #[tokio::test]

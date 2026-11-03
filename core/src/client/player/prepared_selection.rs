@@ -111,6 +111,7 @@ impl MusicClient {
         if !matches!(
             selection,
             PlaySelection::Catalog { .. }
+                | PlaySelection::DailyRecommendations { .. }
                 | PlaySelection::StyleRecommendations { .. }
                 | PlaySelection::Podcast { .. }
                 | PlaySelection::Voice { .. }
