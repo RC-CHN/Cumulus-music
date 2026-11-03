@@ -23,7 +23,7 @@
   const ipcCalls=[];const originalFetch=window.fetch;
   window.fetch=async function(url,options){
     const command=String(url).split('/').at(-1);
-    if(['catalog_page','play_selection','player_action'].includes(command)) {const body=JSON.parse(options.body);ipcCalls.push({command,query:body.query,selection:body.selection,action:body.action});}
+    if(['catalog_page','play_selection','prepare_play_selection','commit_prepared_selection','player_action'].includes(command)) {const body=JSON.parse(options.body);ipcCalls.push({command,query:body.query,selection:body.selection,action:body.action});}
     return originalFetch.call(window,url,options);
   };
   const ready=()=>one('#search-result-panel')?.getAttribute('aria-busy')==='false' && !one('.search-results-leave-active');

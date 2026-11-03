@@ -406,6 +406,16 @@ export interface PlayerClient {
   playerIntelligenceEligibility(epoch: string, revision: string): Promise<IntelligenceEligibility>;
   watchPlayer(epoch: string, update: (event: PlayerUpdate) => void): Promise<() => void>;
   playSelection(epoch: string, selection: PlaySelection): Promise<PlayerView>;
+  preparePlaySelection(
+    epoch: string,
+    expectedQueueRevision: string,
+    expectedPlayId: string | null,
+  ): Promise<string>;
+  commitPreparedSelection(
+    epoch: string,
+    ticket: string,
+    selection: PlaySelection,
+  ): Promise<PlayerView>;
   playerAction(epoch: string, action: PlayerAction): Promise<PlayerView>;
   playerQualityDetails(epoch: string, playId: string): Promise<QualityDetailsView>;
   playerQualityTrial(epoch: string, command: QualityTrialCommand): Promise<QualityTrialOutcome>;

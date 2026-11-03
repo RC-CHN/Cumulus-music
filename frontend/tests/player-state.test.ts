@@ -9,6 +9,7 @@ import {
   type LyricsView,
   type PlayerClient,
   type PlayerAction,
+  type PlaySelection,
 } from '../src/services/player.ts';
 function deferred<T>() {
   let resolve!: (v: T) => void;
@@ -577,6 +578,8 @@ function fixture(overrides: Partial<PlayerClient> = {}) {
       return () => stopped++;
     },
     playSelection: async () => state(),
+    preparePlaySelection: async () => 'ticket',
+    commitPreparedSelection: async () => state(),
     playerAction: async () => state(),
     playerQualityDetails: async () => {
       throw Error('unexpected quality metadata read');
@@ -930,7 +933,7 @@ test('channel-only source denial does not offer or execute a refresh', async () 
 test('prepared card playback cannot start after an account change or newer playback request', async () => {
   let calls = 0;
   const f = fixture({
-    playSelection: async () => {
+    commitPreparedSelection: async () => {
       calls++;
       return state('2');
     },
@@ -961,7 +964,7 @@ test('a pending card read cannot select over a newer native track or queue', asy
     const pending = deferred<PlaySelection>();
     let selections = 0;
     const f = fixture({
-      playSelection: async () => {
+      commitPreparedSelection: async () => {
         selections++;
         return state('4', '1', 'unexpected');
       },
@@ -969,6 +972,7 @@ test('a pending card read cannot select over a newer native track or queue', asy
     await f.player.connect(account());
     f.emit(state('2', '1', 'source'));
     const reading = f.player.prepareSelection(() => pending.promise);
+    await turn();
     f.emit(update);
     pending.resolve({ kind: 'songs', ids: ['1'], index: 0, quality: 'standard' });
     await reading;
@@ -977,6 +981,44 @@ test('a pending card read cannot select over a newer native track or queue', asy
     assert.equal(f.player.error.value, '');
     f.player.dispose();
   }
+});
+
+test('a late native preparation ticket never starts an obsolete card read', async () => {
+  const ticket = deferred<string>();
+  const f = fixture({ preparePlaySelection: () => ticket.promise });
+  await f.player.connect(account());
+  f.emit(state('2', '1', 'source'));
+  const reading = f.player.prepareSelection(async () => {
+    assert.fail('obsolete preparation should not read a card');
+  });
+  f.emit(state('3', '1', 'replacement'));
+  ticket.resolve('stale-ticket');
+  await reading;
+  assert.equal(f.player.view.value?.playId, 'replacement');
+  assert.equal(f.player.canRetry.value, false);
+  f.player.dispose();
+});
+
+test('native rejection of a prepared card before a new stream event is silent and cannot retry', async () => {
+  const f = fixture({
+    commitPreparedSelection: async () => {
+      throw { code: 'stale', message: 'a newer native intent owns playback' };
+    },
+    playSelection: async () => assert.fail('prepared playback must not fall back to direct IPC'),
+  });
+  await f.player.connect(account());
+  f.emit(state('2', '1', 'source'));
+  await f.player.prepareSelection(async () => ({
+    kind: 'songs',
+    ids: ['1'],
+    index: 0,
+    quality: 'standard',
+  }));
+  assert.equal(f.player.view.value?.playId, 'source');
+  assert.equal(f.player.error.value, '');
+  assert.equal(f.player.canRetry.value, false);
+  await f.player.retry();
+  f.player.dispose();
 });
 
 test('a newer native track makes a failed unguarded selection and any late reply non-retryable', async () => {
@@ -1021,8 +1063,14 @@ test('a newer native track makes a failed unguarded selection and any late reply
 test('retrying card preparation rereads its list before any playback command', async () => {
   let reads = 0,
     calls = 0;
+  let tickets = 0;
   const f = fixture({
-    playSelection: async () => {
+    preparePlaySelection: async (epoch, revision, playId) => {
+      assert.deepEqual([epoch, revision, playId], ['1', '1', null]);
+      return `ticket-${++tickets}`;
+    },
+    commitPreparedSelection: async (_epoch, ticket) => {
+      assert.equal(ticket, 'ticket-2');
       calls++;
       return state('2');
     },
@@ -1036,6 +1084,7 @@ test('retrying card preparation rereads its list before any playback command', a
   assert.equal(f.player.error.value, '读取失败');
   await f.player.retry();
   assert.equal(reads, 2);
+  assert.equal(tickets, 2);
   assert.equal(calls, 1);
   assert.equal(f.player.error.value, '');
   f.player.dispose();

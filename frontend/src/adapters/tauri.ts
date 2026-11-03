@@ -228,6 +228,10 @@ export function createTauriClient(): CoreClient {
       };
     },
     playSelection: (epoch, selection) => invoke('play_selection', { epoch, selection }),
+    preparePlaySelection: (epoch, expectedQueueRevision, expectedPlayId) =>
+      invoke('prepare_play_selection', { epoch, expectedQueueRevision, expectedPlayId }),
+    commitPreparedSelection: (epoch, ticket, selection) =>
+      invoke('commit_prepared_selection', { epoch, ticket, selection }),
     playerAction: (epoch, action) => invoke('player_action', { epoch, action }),
     playerQualityDetails: (epoch, playId) => invoke('player_quality_details', { epoch, playId }),
     playerQualityTrial: (epoch, command) => invoke('player_quality_trial', { epoch, command }),

@@ -515,16 +515,22 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       if (current === request) busy.value = false;
     }
   }
-  // Card playback reads its authoritative list before selecting it. A delayed
-  // read must not start audio after account replacement or a newer operation.
+  // Acquire native ownership before reading the card's list. The renderer check
+  // avoids redundant reads; native also sees newer intent before events arrive.
   const prepareSelection = (prepare: (epoch: string) => Promise<PlaySelection>) =>
     runSelection(async (e) => {
       const captured = request,
         origin = view.value;
+      const requireCurrent = () => {
+        if (captured !== request || e !== epoch || !sameSelection(origin, view.value))
+          throw { code: 'stale', message: '播放请求已更新' };
+      };
+      if (!origin || origin.epoch !== e) throw { code: 'stale', message: '播放状态尚未就绪' };
+      const ticket = await core.preparePlaySelection(e, origin.queueRevision, origin.playId);
+      requireCurrent();
       const input = await prepare(e);
-      if (captured !== request || e !== epoch || !sameSelection(origin, view.value))
-        throw { code: 'stale', message: '播放请求已更新' };
-      return core.playSelection(e, input);
+      requireCurrent();
+      return core.commitPreparedSelection(e, ticket, input);
     });
   const downloads = (ids: string[], index: number) =>
     runSelection((e) => core.playDownloads(e, ids, index));

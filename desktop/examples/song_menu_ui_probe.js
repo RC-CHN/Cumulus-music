@@ -62,6 +62,8 @@
     }
     if (
       String(url).endsWith("/play_selection") ||
+      String(url).endsWith("/prepare_play_selection") ||
+      String(url).endsWith("/commit_prepared_selection") ||
       String(url).endsWith("/player_action")
     )
       playerCalls++;

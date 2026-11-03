@@ -14,7 +14,7 @@
       copies++; if(holdCopy)await sleep(650);
       if(failCopy)return new Response(JSON.stringify('synthetic clipboard refusal'),{headers:{'Content-Type':'application/json','Tauri-Response':'error'}});
     }
-    if(path.endsWith('/play_selection')||path.endsWith('/player_action'))playCalls++;
+    if(['/play_selection','/prepare_play_selection','/commit_prepared_selection','/player_action'].some(command=>path.endsWith(command)))playCalls++;
     return fetch.call(window,url,options);
   };
   const button=(name,root=document)=>[...root.querySelectorAll('button')].find(n=>n.getAttribute('aria-label')===name||n.textContent.trim()===name);

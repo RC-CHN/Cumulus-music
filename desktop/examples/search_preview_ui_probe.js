@@ -16,7 +16,7 @@
     source.set.call(this,value);
   }});
   let count=0,step='startup',plays=0;
-  const fetch=window.fetch;window.fetch=async function(url,options){if(String(url).endsWith('/play_selection')||String(url).endsWith('/player_action'))plays++;return fetch.call(window,url,options);};
+  const fetch=window.fetch;window.fetch=async function(url,options){if(['/play_selection','/prepare_play_selection','/commit_prepared_selection','/player_action'].some(command=>String(url).endsWith(command)))plays++;return fetch.call(window,url,options);};
   async function choose(key){click(one(`[data-category="${key}"]`));await sleep(0);await wait(()=>ready()&&one(`[data-category="${key}"]`)?.getAttribute('aria-selected')==='true','category '+key);await sleep(200);}
   async function capture(label){step=label;await wait(()=>all('dialog,.search-result-panel').every(n=>n.getAnimations().every(a=>a.playState!=='running'&&!a.pending)),'animations');await sleep(180);assert(document.documentElement.scrollWidth<=innerWidth&&pane().scrollWidth<=pane().clientWidth+1,'horizontal containment');assert(!one('button button'),'no nested controls');await emit(`ux_${String(++count).padStart(2,'0')}_${label}`,{width:innerWidth,height:innerHeight,theme:document.documentElement.dataset.theme,renderedSongs:all('.search-track-card').length});await sleep(420);}
   function layout(){
