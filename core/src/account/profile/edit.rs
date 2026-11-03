@@ -405,8 +405,12 @@ impl ProfileEditor {
             store_operation(tx, uid, &op)
         };
         if confirmed || accept {
+            let mut verified = snapshot.profile.clone();
+            // Avatar saves have their own independent journal. This detail
+            // reply may have started before one of them completed.
+            verified.avatar_url = None;
             self.session
-                .commit_profile_edit(token, &api, &snapshot.profile, persist)?;
+                .commit_profile_edit(token, &api, &verified, persist)?;
         } else {
             self.session
                 .with_token(token, |uid| self.store.transaction(|tx| persist(tx, uid)))?;

@@ -200,6 +200,7 @@ pub use crate::catalog::details::CatalogQuery;
 
 pub use super::mini_preferences::{MiniPreferencesCommand, MiniPreferencesView};
 
+pub use super::account_avatar::AccountAvatarCommand;
 pub use super::account_profile::AccountProfileEditCommand;
 pub use super::auth::LoginPresentation;
 pub use super::desktop_lyric_preferences::{
@@ -207,3 +208,4 @@ pub use super::desktop_lyric_preferences::{
 };
 pub use super::player::LyricReportView;
 pub use crate::account::login::presentation::{LoginCountry, LoginDocument};
+pub use crate::account::profile::avatar::{AvatarImage, AvatarTaskView};

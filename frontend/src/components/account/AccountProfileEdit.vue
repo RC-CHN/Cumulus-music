@@ -13,7 +13,7 @@ import { nicknameLength } from '../../services/nickname';
 import Icon from '../Icon.vue';
 import '../../styles/account-profile-edit.css';
 
-const props = defineProps<{ epoch: string; active: boolean }>();
+const props = defineProps<{ epoch: string; active: boolean; avatarBusy?: boolean }>();
 const emit = defineEmits<{
   close: [];
   saved: [snapshot: ProfileEditSnapshot, confirmed: boolean];
@@ -46,6 +46,7 @@ const {
   save,
   reconcile,
   acceptCurrent,
+  refreshForAvatar,
 } = useAccountProfileEdit(
   useCore(),
   () => (props.active ? props.epoch : null),
@@ -123,7 +124,7 @@ function setProvince(event: Event) {
   draft.value.city = Number(Object.keys(region.cities)[0]) || '';
 }
 async function requestLeave(commit: () => void) {
-  if (busy.value || prompt.value) return;
+  if (busy.value || prompt.value || props.avatarBusy) return;
   if (!changes.value?.dirty || recovery.value) {
     commit();
     return;
@@ -153,7 +154,7 @@ function discard() {
   resume?.();
 }
 async function saveDraft(leave = false) {
-  if (!canSave.value) return;
+  if (!canSave.value || props.avatarBusy) return;
   if (leave) {
     afterSave = afterDiscard;
     afterDiscard = undefined;
@@ -186,7 +187,11 @@ onBeforeUnmount(() => {
     root.value.hidden = true;
   }
 });
-defineExpose({ requestLeave });
+defineExpose({
+  requestLeave,
+  refreshForAvatar,
+  avatarAvailable: computed(() => !busy.value && !loading.value),
+});
 </script>
 
 <template>
@@ -435,7 +440,7 @@ defineExpose({ requestLeave });
               type="submit"
               class="primary"
               data-testid="profile-edit-save"
-              :disabled="!canSave"
+              :disabled="!canSave || avatarBusy"
             >
               {{ busy ? '正在保存…' : '保存' }}
             </button>
@@ -476,7 +481,7 @@ defineExpose({ requestLeave });
           type="button"
           class="primary"
           data-testid="profile-edit-save-and-leave"
-          :disabled="!canSave"
+          :disabled="!canSave || avatarBusy"
           @click="saveDraft(true)"
         >
           保存

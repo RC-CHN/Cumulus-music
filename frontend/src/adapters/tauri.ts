@@ -74,6 +74,11 @@ export function createTauriClient(): CoreClient {
     historyPage: (epoch, kind, refresh) => invoke('history_page', { epoch, kind, refresh }),
     accountSettingsPage: (epoch, refresh) => invoke('account_settings_page', { epoch, refresh }),
     accountProfileDetail: (epoch) => invoke('account_profile_detail', { epoch }),
+    accountAvatarTasks: (epoch) => invoke('account_avatar_tasks', { epoch }),
+    accountAvatarImage: (epoch, id) => invoke('account_avatar_image', { epoch, id }),
+    pickAccountAvatar: (epoch) => invoke('pick_account_avatar', { epoch }),
+    accountAvatarCommand: (epoch, id, command) =>
+      invoke('account_avatar_command', { epoch, id, command }),
     accountProfileEditPage: (epoch, refresh) =>
       invoke('account_profile_edit_page', { epoch, refresh }),
     accountProfileEditCommand: (epoch, command) =>

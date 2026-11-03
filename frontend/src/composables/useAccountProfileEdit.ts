@@ -142,6 +142,7 @@ export function useAccountProfileEdit(
           notice.value = '已读取当前资料，请核对草稿后再保存。';
         }
         refreshRequired.value = false;
+        return page.value.snapshot;
       } else if (!page.value?.snapshot && !blocked.value && !unseen.value) {
         error.value = '暂未读取到个人资料，请重试。';
       }
@@ -236,6 +237,10 @@ export function useAccountProfileEdit(
     if (op?.observed)
       return command({ kind: 'accept_current', id: op.id, expectedRevision: op.observed.revision });
   }
+  function refreshForAvatar() {
+    refreshRequired.value = true;
+    return read();
+  }
   onScopeDispose(() => {
     disposed = true;
     baseline.value = undefined;
@@ -259,5 +264,6 @@ export function useAccountProfileEdit(
     save,
     reconcile,
     acceptCurrent,
+    refreshForAvatar,
   };
 }

@@ -7,6 +7,7 @@ mod run;
 mod types;
 use crate::{Error, Result};
 pub use image::{CoverCrop, CoverImage, inspect_image};
+pub(crate) use image::{INPUT_LIMIT, OUTPUT_LIMIT, crop as crop_square_image};
 pub use manager::PlaylistCovers;
 pub use types::{CoverPhase, CoverTaskView};
 

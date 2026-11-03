@@ -36,7 +36,8 @@ impl World {
             .adopt(
                 api.clone(),
                 json!({
-                    "userId":7,"nickname":"Baseline","accountOnly":"preserve-this"
+                    "userId":7,"nickname":"Baseline","accountOnly":"preserve-this",
+                    "avatarUrl":"https://p5.music.126.net/current-avatar.jpg"
                 }),
                 &session.token().unwrap(),
             )
@@ -157,6 +158,10 @@ async fn exact_changed_fields_and_verified_same_uid_metadata() {
     let profile = snapshot.profile.unwrap();
     assert_eq!(profile["nickname"], "新昵称");
     assert_eq!(profile["accountOnly"], "preserve-this");
+    assert_eq!(
+        profile["avatarUrl"],
+        "https://p5.music.126.net/current-avatar.jpg"
+    );
     assert!(!serde_json::to_string(&op).unwrap().contains("secret"));
     let reopened = StateStore::open(world.root.path()).unwrap();
     assert_eq!(

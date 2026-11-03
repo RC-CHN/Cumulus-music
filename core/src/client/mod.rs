@@ -1,5 +1,6 @@
 //! Host-independent UI use cases. Native records and credentials never cross
 //! this boundary; account epochs also reject delayed frontend results.
+mod account_avatar;
 mod account_binding_qr;
 mod account_profile;
 mod auth;
@@ -70,6 +71,7 @@ pub struct MusicClient {
     together: together::TogetherHost,
     scene_fm: scene_fm::SceneFmHost,
     playlist_cover: playlist_cover::CoverHost,
+    account_avatar: account_avatar::AvatarHost,
 }
 
 impl MusicClient {
@@ -178,6 +180,7 @@ impl MusicClient {
         let output = crate::playback::output::OutputRuntime::new(registry.store());
         Self {
             playlist_cover: playlist_cover::CoverHost::default(),
+            account_avatar: account_avatar::AvatarHost::default(),
             together: together::TogetherHost::default(),
             scene_fm: scene_fm::SceneFmHost::default(),
             local: local::LocalHost::new(registry.store()),

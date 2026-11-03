@@ -156,7 +156,7 @@
   .profile-edit-content {
     grid-template-columns: minmax(0, 1fr) 92px;
   }
-  .profile-edit-content > .account-profile-avatar {
+  .account-avatar-entry .account-profile-avatar {
     width: 92px;
     height: 92px;
   }
@@ -165,7 +165,7 @@
   .profile-edit-content {
     grid-template-columns: minmax(0, 1fr);
   }
-  .profile-edit-content > .account-profile-avatar {
+  .account-avatar-entry {
     grid-row: 1;
   }
   .profile-edit-field {
@@ -174,4 +174,40 @@
   .profile-edit-actions {
     margin-left: 52px;
   }
+}
+
+.account-avatar-trigger {
+  position: relative;
+  padding: 0;
+  border: 0;
+}
+.account-avatar-trigger[aria-disabled='true'] {
+  cursor: default;
+}
+.account-avatar-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 50%;
+  background: #000b;
+  color: #fff;
+  font-size: clamp(12px, 1.5vw, 16px);
+  opacity: 0;
+}
+.account-avatar-trigger:is(:hover, :focus-visible) .account-avatar-overlay {
+  opacity: 1;
+}
+.account-avatar-overlay > .icon {
+  width: 18px;
+  height: 18px;
+}
+.account-avatar-entry > p {
+  margin: 8px 0 0;
+  color: var(--text-secondary);
+  text-align: center;
+  font-size: 13px;
 }

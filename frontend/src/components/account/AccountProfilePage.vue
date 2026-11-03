@@ -7,9 +7,14 @@ import {
   accountRegion,
   bindingLabel,
 } from '../../services/accountDetail';
+import { useAccountAvatar } from '../../composables/useAccountAvatar';
+import { useControlFocus } from '../../composables/useControlFocus';
+import type { AvatarTask } from '../../services/accountAvatar';
 import { useAccountRead } from '../../composables/useAccountRead';
 import { useCore } from '../../services/core';
 import type { ProfileEditSnapshot } from '../../services/accountProfileEdit';
+import AccountAvatarDialog from './AccountAvatarDialog.vue';
+import ModalTransition from '../ModalTransition.vue';
 import AccountProfileEdit from './AccountProfileEdit.vue';
 import AccountBindingQrDialog from './AccountBindingQrDialog.vue';
 import AccountReadLayout from './AccountReadLayout.vue';
@@ -31,9 +36,41 @@ const editTrigger = ref<HTMLButtonElement>();
 let editOwner: string | undefined;
 const bindingQrOpen = ref(false);
 const savedNotice = ref('');
+const avatarNotice = ref('');
+const avatarTrigger = ref<HTMLButtonElement>();
+const avatarOwner = () =>
+  props.account.status === 'authenticated' && editOpen.value ? props.account.epoch : null;
+const avatarFocus = useControlFocus(avatarOwner, () => avatarTrigger.value);
+const avatar = useAccountAvatar(
+  core,
+  avatarOwner,
+  (task, observedNow) => void adoptAvatar(task, observedNow),
+  () => emit('expired'),
+);
+const { busy: avatarBusy, open: avatarOpen } = avatar;
+function startAvatar() {
+  if (!editor.value?.avatarAvailable) return;
+  avatarNotice.value = '';
+  return avatar.start();
+}
+async function adoptAvatar(task: AvatarTask, observedNow: boolean) {
+  const owner = avatarOwner();
+  if (!owner || owner !== editOwner) return;
+  if (observedNow && value.value && task.observedRevision)
+    value.value = {
+      ...value.value,
+      profile: { ...value.value.profile, avatarUrl: task.observedAvatarUrl },
+    };
+  avatarNotice.value = task.phase === 'confirmed' ? '头像已更新。' : '已采用当前头像。';
+  const snapshot = await editor.value?.refreshForAvatar();
+  if (owner !== avatarOwner() || !snapshot || value.value?.profile.uid !== snapshot.profile.uid)
+    return;
+  value.value = { ...value.value, profile: snapshot.profile };
+}
 function openEdit() {
   if (props.account.status !== 'authenticated') return;
   savedNotice.value = '';
+  avatarNotice.value = '';
   editOwner = props.account.epoch;
   editOpen.value = true;
 }
@@ -58,16 +95,18 @@ function acceptEdit(snapshot: ProfileEditSnapshot, confirmed: boolean) {
   }
 }
 function requestLeave(commit: () => void) {
+  if (avatarOpen.value || avatarBusy.value) return;
   if (editor.value) void editor.value.requestLeave(commit);
   else commit();
 }
 watch(
-  () => [props.account.epoch, props.account.status] as const,
+  [() => props.account.epoch, () => props.account.status],
   () => {
     editOwner = undefined;
     editOpen.value = false;
     bindingQrOpen.value = false;
     savedNotice.value = '';
+    avatarNotice.value = '';
   },
   { flush: 'sync' },
 );
@@ -97,20 +136,34 @@ const fields = computed(() => {
     ref="editor"
     :epoch="account.epoch"
     :active="account.status === 'authenticated'"
+    :avatar-busy="avatarBusy || avatarOpen"
     @close="closeEdit"
     @saved="acceptEdit"
     @expired="emit('expired')"
   >
     <template #avatar>
-      <div class="account-profile-avatar" role="img" aria-label="当前账号头像">
-        <img
-          v-if="value?.profile.avatarUrl && !avatarFailed"
-          :src="value.profile.avatarUrl"
-          alt=""
-          referrerpolicy="no-referrer"
-          @error="avatarFailed = true"
-        />
-        <Icon v-else name="user" />
+      <div class="account-avatar-entry">
+        <button
+          ref="avatarTrigger"
+          type="button"
+          class="account-profile-avatar account-avatar-trigger"
+          data-testid="account-avatar-open"
+          aria-label="替换头像"
+          :aria-busy="avatarBusy"
+          :aria-disabled="avatarBusy || !editor?.avatarAvailable"
+          @click="avatarFocus.run($event, startAvatar)"
+        >
+          <img
+            v-if="value?.profile.avatarUrl && !avatarFailed"
+            :src="value.profile.avatarUrl"
+            alt=""
+            referrerpolicy="no-referrer"
+            @error="avatarFailed = true"
+          />
+          <Icon v-else name="user" />
+          <span class="account-avatar-overlay"><Icon name="edit" />替换图片</span>
+        </button>
+        <p v-if="avatarNotice" role="status">{{ avatarNotice }}</p>
       </div>
     </template>
   </AccountProfileEdit>
@@ -194,6 +247,9 @@ const fields = computed(() => {
       </section>
     </template>
   </AccountReadLayout>
+  <ModalTransition :return-focus="() => avatarTrigger ?? null">
+    <AccountAvatarDialog v-if="avatarOpen" :model="avatar" :epoch="account.epoch" />
+  </ModalTransition>
   <AccountBindingQrDialog
     v-if="bindingQrOpen && account.status === 'authenticated'"
     :epoch="account.epoch"

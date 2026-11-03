@@ -1,4 +1,5 @@
 //! Read-only account detail and bindings from the recovered PC host.
+pub mod avatar;
 pub mod edit;
 use super::{AccountSession, SessionStatus, SessionToken};
 use crate::{Error, Result, protocol::api::identifier};

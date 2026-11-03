@@ -6,8 +6,8 @@ use base64::{Engine, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Serialize};
 use std::io::Cursor;
 
-pub(super) const INPUT_LIMIT: usize = 5 * 1024 * 1024;
-pub(super) const OUTPUT_LIMIT: usize = 16 * 1024 * 1024;
+pub(crate) const INPUT_LIMIT: usize = 5 * 1024 * 1024;
+pub(crate) const OUTPUT_LIMIT: usize = 16 * 1024 * 1024;
 
 /// Integer pixels in the oriented original, matching onCropComplete's second
 /// argument. 200x200 is the official viewport, not an output resize request.
@@ -28,7 +28,7 @@ impl CoverCrop {
             size,
         }
     }
-    pub(super) fn validate(self, width: u32, height: u32) -> Result<()> {
+    pub(crate) fn validate(self, width: u32, height: u32) -> Result<()> {
         if self.size == 0
             || self.x.checked_add(self.size).is_none_or(|v| v > width)
             || self.y.checked_add(self.size).is_none_or(|v| v > height)
@@ -120,7 +120,7 @@ pub fn inspect_image(data: &[u8]) -> Result<CoverImage> {
         preview: format!("data:image/jpeg;base64,{}", STANDARD.encode(preview)),
     })
 }
-pub(super) fn crop(data: &[u8], crop: CoverCrop) -> Result<Vec<u8>> {
+pub(crate) fn crop(data: &[u8], crop: CoverCrop) -> Result<Vec<u8>> {
     let image = decode(data)?;
     crop.validate(image.width(), image.height())?;
     jpeg(image.crop_imm(crop.x, crop.y, crop.size, crop.size))

@@ -1,3 +1,5 @@
+mod account_avatar;
+pub use account_avatar::AccountAvatarPicker;
 mod browser;
 pub use browser::LoginDocumentBrowser;
 /// Native host construction only; profiles never become renderer arguments.
@@ -197,6 +199,10 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 local::local_match_command,
                 commands::account_snapshot,
                 commands::account_profile_detail,
+                account_avatar::account_avatar_tasks,
+                account_avatar::account_avatar_image,
+                account_avatar::pick_account_avatar,
+                account_avatar::account_avatar_command,
                 commands::account_profile_edit_page,
                 commands::account_profile_edit_command,
                 commands::account_binding_qr,

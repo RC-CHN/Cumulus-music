@@ -25,6 +25,7 @@ import type { CollectionClient } from './collections';
 import type { HistoryClient } from './history';
 import type { SettingsClient } from './settings';
 import type { AccountDetailClient } from './accountDetail';
+import type { AccountAvatarClient } from './accountAvatar';
 import type { AccountProfileEditClient } from './accountProfileEdit';
 import type { StartupPreferencesClient } from './startup';
 import type { WindowPreferencesClient, WindowLifecycleClient } from './window';
@@ -70,6 +71,7 @@ export interface CoreClient
     HistoryClient,
     SettingsClient,
     AccountDetailClient,
+    AccountAvatarClient,
     AccountProfileEditClient,
     StartupPreferencesClient,
     OutputClient,

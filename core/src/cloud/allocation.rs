@@ -87,6 +87,13 @@ impl CloudApi {
             .await
     }
 
+    /// M2167 uses IMAGE/yyimgs for account avatars too. The fixed JPEG
+    /// filename is a native transport adaptation of the canvas Blob upload.
+    pub(crate) async fn allocate_avatar(&self) -> Result<Value> {
+        self.allocate_image_or_text("avatar.jpg", AttachmentKind::Cover, Some("yyimgs"))
+            .await
+    }
+
     async fn allocate_image_or_text(
         &self,
         file_name: &str,
