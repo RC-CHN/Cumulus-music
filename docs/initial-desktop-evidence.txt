@@ -21,8 +21,10 @@ docs/releases/0.1.0.txt；之后的 main 不属于这个包。下一版本必须
 系统依赖、Linux/Windows 发行构建及校验见 docs/releasing.txt。
 无 WebView 的 core 构建、职责与数据流见 docs/architecture.txt。
 普通 Linux 客户端启动、原生文件选择和播放证据见 docs/bootstrap-validation.txt。
-本机 34f0948 的 .deb 已核对摘要并从包内正式窗口导入、播放、暂停合成 FLAC；
-PipeWire 使用独立空输出。后续加入的音效总开关另有真实 WebView 证据；
+本机 dd4fd37 的 .deb 已核对摘要并从包内正式窗口导入、播放、暂停合成 FLAC。
+播放中选择均衡器预设后，同一曲目的时钟继续推进；已核对持久化和进程映射的
+包内滤镜。该用例使用独立 PipeWire 空输出；打包时另有滤镜 PCM 数值对照。
+Windows 的便携 ZIP 核验与解包启动已接入 CI，NSIS 安装后仍须单独验收。
 这些记录不代替目标提交的两端 CI 或正式发布。
 主线 4417bec 已在 Linux 重新构建桌面探针并复跑 18 个合成主流程检查点、
 17 张截图；实测 libmpv、下载断点及离线播放。报告在本机
@@ -134,6 +136,7 @@ PipeWire 使用独立空输出。后续加入的音效总开关另有真实 WebV
    已通过 Linux 18 个检查点；不得把单独的真实只读播放算成真实整链。
 2. 核对 docs/ui-ux-audit.txt 中官方来源和未对齐状态；窗口截图、键盘与
    焦点、原生请求和播放时钟分别验收，不能用一个截图代替交互。
-3. 在目标 SHA 上检查 Linux/Windows 产物及全部必需 CI job，并核对各自
-   WebView 和原生媒体证据。未验证的 Windows 实机设备、真实服务挑战、
-   专有能力和历史旧版证据继续标明，不把旧包当作当前版本完成。
+3. 在目标 SHA 上检查 Linux/Windows 产物及全部必需 CI job，并分别核对普通
+   程序、包内运行库和原生媒体证据。Windows ZIP 启动与 NSIS 安装后的媒体
+   验收是两项检查。未验证的 Windows 实机设备、真实服务挑战、专有能力和
+   历史旧版证据继续标明，不把旧包当作当前版本完成。
