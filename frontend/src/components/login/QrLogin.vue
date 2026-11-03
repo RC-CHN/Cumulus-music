@@ -11,6 +11,8 @@ const error = ref('');
 const documentError = ref('');
 const openingDocument = ref(false);
 const captchaBusy = ref(false);
+const recovery = ref<'checking' | 'read_failed' | 'identity' | null>(null);
+const reconciling = ref(false);
 let generation = 0;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let disposed = false;
@@ -26,7 +28,7 @@ function deactivate() {
   qr.value = undefined;
 }
 defineExpose({ deactivate });
-watch(status, async () => {
+watch([status, recovery], async () => {
   const active = document.activeElement;
   const owned =
     frame.value?.contains(active) ||
@@ -64,6 +66,8 @@ async function cancel(id: string) {
 async function begin() {
   const current = ++generation;
   captchaBusy.value = false;
+  recovery.value = null;
+  reconciling.value = false;
   clearTimeout(timer);
   error.value = '';
   documentError.value = '';
@@ -105,11 +109,12 @@ async function poll(current: number) {
     if (!disposed && current === generation) {
       error.value = failure(e).message;
       status.value = 'error';
+      await checkIdentityPending();
     }
   }
 }
 async function captcha() {
-  if (!qr.value || captchaBusy.value || status.value !== 'challenge') return;
+  if (!qr.value || captchaBusy.value || recovery.value || status.value !== 'challenge') return;
   const current = generation;
   captchaBusy.value = true;
   error.value = '';
@@ -122,9 +127,42 @@ async function captcha() {
     else if (next.value === 'waiting_scan' || next.value === 'waiting_confirmation')
       timer = setTimeout(() => poll(current), qr.value?.pollAfterMs ?? 2000);
   } catch (e) {
-    if (!disposed && current === generation) error.value = failure(e).message;
+    if (!disposed && current === generation) {
+      error.value = failure(e).message;
+      await checkIdentityPending();
+    }
   } finally {
     if (!disposed && current === generation) captchaBusy.value = false;
+  }
+}
+async function checkIdentityPending() {
+  const id = qr.value?.operationId;
+  if (!id || disposed || recovery.value === 'checking' || recovery.value === 'identity') return;
+  const current = generation;
+  recovery.value = 'checking';
+  try {
+    const pending = await core.qrIdentityPending(id);
+    if (!disposed && current === generation) {
+      recovery.value = pending ? 'identity' : null;
+      if (pending) error.value = '';
+    }
+  } catch {
+    if (!disposed && current === generation) recovery.value = 'read_failed';
+  }
+}
+async function reconcile() {
+  const id = qr.value?.operationId;
+  if (!id || disposed || recovery.value !== 'identity' || reconciling.value) return;
+  const current = generation;
+  reconciling.value = true;
+  error.value = '';
+  try {
+    await core.reconcileQr(id);
+    if (!disposed && current === generation) emit('authorized');
+  } catch (issue) {
+    if (!disposed && current === generation) error.value = failure(issue).message;
+  } finally {
+    if (!disposed && current === generation) reconciling.value = false;
   }
 }
 async function openDownload() {
@@ -147,9 +185,27 @@ onMounted(() => {
 onBeforeUnmount(deactivate);
 </script>
 <template>
-  <div ref="frame" class="qr-frame" tabindex="-1" :aria-busy="status === 'creating'">
+  <div
+    ref="frame"
+    class="qr-frame"
+    tabindex="-1"
+    :aria-busy="status === 'creating' || recovery === 'checking' || reconciling"
+  >
+    <div v-if="recovery" class="qr-confirmation" :data-qr-recovery="recovery">
+      <p v-if="recovery === 'checking'" role="status">正在读取二维码状态…</p>
+      <template v-else-if="recovery === 'read_failed'">
+        <p role="status">暂时无法确认二维码状态</p>
+        <button type="button" class="primary" @click="checkIdentityPending">核对二维码状态</button>
+      </template>
+      <template v-else>
+        <p role="status">手机已确认，请核对登录状态</p>
+        <button type="button" class="primary" :aria-disabled="reconciling" @click="reconcile">
+          {{ reconciling ? '正在核对…' : '核对登录状态' }}
+        </button>
+      </template>
+    </div>
     <div
-      v-if="status === 'waiting_confirmation'"
+      v-else-if="status === 'waiting_confirmation'"
       class="qr-confirmation"
       aria-label="扫码成功"
       role="status"
@@ -176,7 +232,7 @@ onBeforeUnmount(deactivate);
     <button v-else class="primary" @click="begin">重新生成二维码</button>
   </div>
   <button
-    v-if="status === 'challenge'"
+    v-if="status === 'challenge' && (!recovery || recovery === 'checking')"
     ref="captchaButton"
     type="button"
     class="primary qr-captcha-action"
@@ -199,7 +255,10 @@ onBeforeUnmount(deactivate);
     </button>
     扫码登录
   </p>
-  <p v-else-if="status !== 'expired'" class="login-status" role="status">
+  <p v-else-if="recovery === 'identity' && error" class="login-status" role="alert">
+    {{ error }}
+  </p>
+  <p v-else-if="!recovery && status !== 'expired'" class="login-status" role="status">
     {{ error || (status === 'waiting_confirmation' ? '' : labels[status]) }}
   </p>
   <p v-if="status === 'waiting_scan' && documentError" class="login-status" role="alert">

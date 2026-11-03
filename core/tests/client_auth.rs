@@ -204,6 +204,78 @@ async fn qr_captcha_keeps_original_key_and_adopts_only_after_identity_read() {
     assert_eq!(calls[4].path, "/api/w/nuser/account/get");
 }
 
+#[tokio::test]
+async fn qr_reconciliation_after_803_uses_only_candidate_identity_after_poll_or_captcha() {
+    for captcha in [false, true] {
+        let mut replies = vec![json!({"code":200,"unikey":"synthetic-qr-recovery"}).into()];
+        if captcha {
+            replies.push(json!({"code":8821}).into());
+        }
+        let mut authorization = reply(json!({"code":803}));
+        authorization.set_cookies = vec!["MUSIC_U=synthetic-qr; Path=/; Secure; HttpOnly".into()];
+        replies.extend([
+            HttpResponse::Ready(Ok(authorization)),
+            json!({"code":301}).into(),
+            json!({"code":301}).into(),
+            identity(2),
+        ]);
+        let w = World::new(replies).await;
+        let before = w.epoch();
+        let qr = w.client.begin_qr().await.unwrap();
+        let id = &qr.operation_id;
+        let initial = w.http.calls().len();
+        assert!(!w.client.qr_identity_pending(id).unwrap());
+        assert!(w.client.reconcile_qr(id).await.is_err());
+        assert_eq!(w.http.calls().len(), initial);
+        let error = if captcha {
+            assert_eq!(
+                w.client.poll_qr(id).await.unwrap(),
+                cumulus_core::account::QrStatus::Challenge
+            );
+            assert!(w.client.reconcile_qr(id).await.is_err());
+            w.client
+                .solve_login_captcha(id, &Proof("synthetic-qr-proof"))
+                .await
+                .err()
+                .expect("candidate identity read must fail")
+        } else {
+            w.client.poll_qr(id).await.unwrap_err()
+        };
+        assert!(error.is_service_code(301));
+        assert_eq!(w.epoch(), before);
+        assert!(w.registry().selection().unwrap().is_none());
+        let before_recovery = w.http.calls().len();
+        assert!(w.client.qr_identity_pending(id).unwrap());
+        assert_eq!(w.http.calls().len(), before_recovery);
+        assert!(
+            w.client
+                .reconcile_qr(id)
+                .await
+                .unwrap_err()
+                .is_service_code(301)
+        );
+        assert!(w.client.qr_identity_pending(id).unwrap());
+        assert_eq!(w.epoch(), before);
+        w.client.reconcile_qr(id).await.unwrap();
+        assert_ne!(w.epoch(), before);
+        assert_eq!(
+            w.client.account().unwrap().nickname.as_deref(),
+            Some("账号2")
+        );
+        assert!(w.registry().selection().unwrap().is_some());
+        assert!(w.client.reconcile_qr(id).await.is_err());
+        let calls = w.http.calls();
+        assert_eq!(calls.len(), before_recovery + 2);
+        assert!(calls[before_recovery..].iter().all(|call| {
+            call.path == "/api/w/nuser/account/get"
+                && call
+                    .cookie
+                    .as_deref()
+                    .is_some_and(|cookie| cookie.contains("MUSIC_U=synthetic-qr"))
+        }));
+    }
+}
+
 #[tokio::test(start_paused = true)]
 async fn captcha_timeout_drops_window_provider_and_preserves_retryable_challenge() {
     let w = World::new([json!({"code":8821}).into()]).await;

@@ -237,6 +237,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 commands::restore_account,
                 commands::begin_qr,
                 commands::poll_qr,
+                commands::qr_identity_pending,
+                commands::reconcile_qr,
                 commands::cancel_qr,
                 commands::account_playlists,
                 commands::playlist_page,

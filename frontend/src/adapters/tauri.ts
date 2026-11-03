@@ -264,6 +264,8 @@ export function createTauriClient(): CoreClient {
     restoreAccount: () => invoke('restore_account'),
     beginQr: () => invoke('begin_qr'),
     pollQr: (operationId) => invoke('poll_qr', { operationId }),
+    qrIdentityPending: (operationId) => invoke('qr_identity_pending', { operationId }),
+    reconcileQr: (operationId) => invoke('reconcile_qr', { operationId }),
     cancelQr: (operationId) => invoke('cancel_qr', { operationId }),
     playlists: () => invoke('account_playlists'),
     playlistCreatorProfile: (epoch, uid) => invoke('playlist_creator_profile', { epoch, uid }),

@@ -90,9 +90,27 @@ impl QrAuthentication {
         .await;
         operation.finish(result)
     }
-    /// Recover a lost authorization response by identity read, never by replay.
+    /// An acknowledged 803 is distinct from the account having been adopted.
+    pub fn identity_pending(&self) -> Result<bool> {
+        self.session.check_generation(&self.base)?;
+        let state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
+        if state.busy {
+            return Err(Error::State("login operation is already pending"));
+        }
+        Ok(state.status != LoginStatus::Cancelled
+            && state.status != LoginStatus::Authenticated
+            && self.qr.snapshot()?.status == QrStatus::Authorized)
+    }
+    /// Retry the identity read after an acknowledged 803, never replay QR polling.
     pub async fn reconcile(&self) -> Result<()> {
-        let operation = Operation::begin(&self.state, LoginStatus::CheckingIdentity, None)?;
+        self.session.check_generation(&self.base)?;
+        let operation =
+            Operation::begin_checked(&self.state, LoginStatus::CheckingIdentity, None, |_| {
+                if self.qr.snapshot()?.status != QrStatus::Authorized {
+                    return Err(Error::State("QR authorization has not been confirmed"));
+                }
+                Ok(())
+            })?;
         let result = self.identity(&operation).await;
         operation.finish(result)
     }

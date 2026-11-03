@@ -23,6 +23,7 @@
     });
     core.pollQr = async () => nextPoll;
     core.cancelQr = async () => {};
+    core.qrIdentityPending = async () => false;
     core.solveLoginCaptcha = () => {
       opens++;
       return new Promise((resolve, reject) => { reply = { resolve, reject }; });

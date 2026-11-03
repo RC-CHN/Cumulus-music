@@ -122,6 +122,8 @@ export interface CoreClient
   restoreAccount(): Promise<AccountView>;
   beginQr(): Promise<QrView>;
   pollQr(operationId: string): Promise<QrStatus>;
+  qrIdentityPending(operationId: string): Promise<boolean>;
+  reconcileQr(operationId: string): Promise<void>;
   cancelQr(operationId: string): Promise<void>;
   playlists(): Promise<AccountData<PlaylistView[]>>;
   playlistCreatorProfile(

@@ -121,6 +121,18 @@ impl MusicClient {
         Ok(status)
     }
 
+    pub fn qr_identity_pending(&self, id: &str) -> Result<bool> {
+        self.qr_flow(id)?.identity_pending()
+    }
+
+    pub async fn reconcile_qr(&self, id: &str) -> Result<()> {
+        let _gate = self.together.gate.lock().await;
+        self.check_account_transition()?;
+        self.qr_flow(id)?.reconcile().await?;
+        self.qr_flow(id)?;
+        self.suspend_account_media().await
+    }
+
     pub fn cancel_qr(&self, id: &str) -> Result<()> {
         {
             let slot = self.auth.pending.lock().map_err(|_| Error::LockPoisoned)?;

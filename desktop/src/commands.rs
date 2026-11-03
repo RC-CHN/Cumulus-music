@@ -134,6 +134,25 @@ pub async fn poll_qr<R: tauri::Runtime>(
     result
 }
 #[tauri::command]
+pub fn qr_identity_pending(
+    client: tauri::State<'_, MusicClient>,
+    operation_id: String,
+) -> Result<bool, ClientError> {
+    client
+        .qr_identity_pending(&operation_id)
+        .map_err(Into::into)
+}
+#[tauri::command]
+pub async fn reconcile_qr<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    operation_id: String,
+) -> Result<(), ClientError> {
+    let result = client.reconcile_qr(&operation_id).await.map_err(Into::into);
+    crate::auth::publish(&window, &client);
+    result
+}
+#[tauri::command]
 pub fn cancel_qr<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,
