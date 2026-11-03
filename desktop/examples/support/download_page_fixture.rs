@@ -5,8 +5,8 @@ use cumulus_core::{
     client::{MusicClient, dto::DownloadCommand},
     download::{
         service::{
-            DownloadDestination, DownloadOptions, DownloadOrigin, DownloadPhase, DownloadService,
-            DownloadStatus,
+            DownloadDestination, DownloadOptions, DownloadOrigin, DownloadPhase,
+            DownloadRunOptions, DownloadService, DownloadStatus,
         },
         transfer::{MediaBackend, MediaBody, MediaReply, MediaRequest},
     },
@@ -18,7 +18,7 @@ use std::{
     path::PathBuf,
     sync::{
         Arc, Mutex, OnceLock,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
 };
 
@@ -26,6 +26,7 @@ pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_DOWNLOAD_PAGE_UI_PROOF").is_some()
 }
 static DATA: OnceLock<Arc<Vec<u8>>> = OnceLock::new();
+static SEED_LYRIC_FAILURE: AtomicBool = AtomicBool::new(false);
 static CHUNK: AtomicUsize = AtomicUsize::new(512);
 static MV_DETAIL: AtomicUsize = AtomicUsize::new(0);
 static MV_STREAM: AtomicUsize = AtomicUsize::new(0);
@@ -42,6 +43,13 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
         return Some(Err(Error::State(
             "offline MV must not request a streaming URL",
         )));
+    }
+    if enabled()
+        && path == "/api/song/lyric/v1"
+        && (args["id"] == 1 || args["id"] == "1")
+        && SEED_LYRIC_FAILURE.load(Ordering::Relaxed)
+    {
+        return Some(Err(Error::Transport("synthetic lyric read failed".into())));
     }
     if !enabled() || path != "/api/song/enhance/download/url/v1" {
         return None;
@@ -154,6 +162,8 @@ impl Fixture {
                 let token = self.session.token()?;
                 DATA.set(Arc::new(std::fs::read(&wave)?)).unwrap();
                 let mut saved = vec![];
+                let lyric_repair =
+                    std::env::var_os("CUMULUS_DOWNLOAD_LYRIC_REPAIR_PROOF").is_some();
                 for i in 1..=146_u64 {
                     let path = media.join(format!(
                         "synthetic-{i}.{}",
@@ -165,7 +175,7 @@ impl Fixture {
                         DownloadOptions {
                             tags: false,
                             cover: false,
-                            lyrics: false,
+                            lyrics: lyric_repair && i == 1,
                             ..Default::default()
                         },
                     )?;
@@ -212,6 +222,30 @@ impl Fixture {
                             json!([{"id":17,"name":"Artist 17"},{"name":"无标识艺人"}]);
                     }
                     task.created_ms = 1700000000000 + i * 1000;
+                    if lyric_repair && i == 1 {
+                        // Create a real publication receipt and fail only the
+                        // sidecar request. A hand-seeded Complete row cannot
+                        // satisfy the repair worker's file identity checks.
+                        self.store.put(
+                            "2",
+                            "download_tasks_v1",
+                            &task.id,
+                            &serde_json::to_value(&task)?,
+                        )?;
+                        let previous_chunk = CHUNK.swap(usize::MAX, Ordering::Relaxed);
+                        SEED_LYRIC_FAILURE.store(true, Ordering::Relaxed);
+                        let published = service.run(&task.id, DownloadRunOptions::default()).await;
+                        SEED_LYRIC_FAILURE.store(false, Ordering::Relaxed);
+                        CHUNK.store(previous_chunk, Ordering::Relaxed);
+                        let mut task = published?;
+                        task.completed_ms = Some(1700000000000 + (150 - i) * 1000);
+                        let value = serde_json::to_value(&task)?;
+                        assert_eq!(value["lyrics_status"], "error");
+                        assert_eq!(value["cleanup_pending"], true);
+                        self.store.put("2", "download_tasks_v1", &task.id, &value)?;
+                        saved.push((task.id, value));
+                        continue;
+                    }
                     task.resource = Some(json!({"size":18_000_000,"level":"lossless","r":1080}));
                     task.bytes = 9_000_000;
                     if i <= 141 {
@@ -278,7 +312,7 @@ impl Fixture {
                 }
                 *self.records.lock().unwrap() = saved;
             }
-            "prepare_lyric_repair" | "verify_lyric_repair" => {
+            "assert_lyric_repair_pending" | "verify_lyric_repair" => {
                 let id = value["id"]
                     .as_str()
                     .ok_or(Error::InvalidInput("missing fixture task"))?;
@@ -290,7 +324,7 @@ impl Fixture {
                     .find(|(key, _)| key == id)
                     .map(|(_, record)| record.clone())
                     .ok_or(Error::InvalidInput("not a seeded fixture task"))?;
-                let mut row = self
+                let row = self
                     .store
                     .get("2", "download_tasks_v1", id)?
                     .ok_or(Error::InvalidInput("missing seeded fixture task"))?;
@@ -303,16 +337,16 @@ impl Fixture {
                         .ok_or(Error::State("missing seeded audio target"))?,
                 );
                 assert!(target.starts_with(self.root.join("media").canonicalize()?));
-                if mode == "prepare_lyric_repair" {
+                if mode == "assert_lyric_repair_pending" {
                     assert!(!target.with_extension("lrc").exists());
-                    row["options"]["lyrics"] = json!(true);
-                    row["lyrics_status"] = json!("error");
-                    row["cleanup_pending"] = json!(true);
-                    self.store.put("2", "download_tasks_v1", id, &row)?;
+                    assert_eq!(row["options"]["lyrics"], true);
+                    assert_eq!(row["lyrics_status"], "error");
+                    assert_eq!(row["cleanup_pending"], true);
                 } else {
                     assert_eq!(row["lyrics_status"], "complete");
                     assert_eq!(row["cleanup_pending"], false);
                     assert_eq!(row["output_integrity"], seed["output_integrity"]);
+                    assert_eq!(row["authorization_count"], seed["authorization_count"]);
                     assert_eq!(
                         serde_json::to_value(cumulus_core::media::integrity::inspect_file(
                             &target
@@ -322,6 +356,15 @@ impl Fixture {
                     assert!(
                         std::fs::read_to_string(target.with_extension("lrc"))?.contains("合成歌词")
                     );
+                    if let Some((_, record)) = self
+                        .records
+                        .lock()
+                        .unwrap()
+                        .iter_mut()
+                        .find(|(key, _)| key == id)
+                    {
+                        *record = row;
+                    }
                 }
             }
             "read_error" => {

@@ -55,6 +55,8 @@ def main():
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
     script = 'mv_replay_ui_probe.js' if args.mv_replay else 'download_menu_ui_probe.js' if args.menu else 'download_navigation_ui_probe.js' if args.navigation else 'download_batch_ui_probe.js' if args.batch else 'download_table_ui_probe.js' if args.table else 'download_page_ui_probe.js'
+    if script == 'download_page_ui_probe.js':
+        env['CUMULUS_DOWNLOAD_LYRIC_REPAIR_PROOF'] = '1'
     env['CUMULUS_UX_SCRIPT'] = str(Path(__file__).resolve().parents[2] / 'desktop/examples' / script)
     with (root / 'first.log').open('x', encoding='utf-8') as log:
         status = launch(args.binary.resolve(), env, log, root / 'first', args.screenshots)

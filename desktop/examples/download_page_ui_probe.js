@@ -33,13 +33,14 @@
     await wait(()=>one('.track-row'),'initial page');await fixture('seed');click(button('下载管理'));await wait(()=>first()&&ready(),'download records');
     await select('song');
     const lyricTaskId=first().dataset.downloadTask;
-    await fixture('prepare_lyric_repair',{id:lyricTaskId});
-    await select('voice');
-    await select('song');
+    await fixture('assert_lyric_repair_pending',{id:lyricTaskId});
     const lyricRow=()=>all('[data-download-task]').find(n=>n.dataset.downloadTask===lyricTaskId);
     await wait(()=>button('重试歌词',lyricRow()??document)&&ready(),'completed audio exposes lyric-only recovery');
     click(button('重试歌词',lyricRow()));
-    await wait(()=>lyricRow()&&!button('重试歌词',lyricRow())&&ready(),'lyric recovery settles on the completed row');
+    await wait(()=>lyricRow()&&!button('重试歌词',lyricRow())&&ready(),'lyric recovery settles on the completed row').catch(error=>{
+      const warnings=all('.download-page .form-warning').map(n=>n.textContent.trim()).join(' / ');
+      throw Error(warnings ? `${error.message}: ${warnings}` : error.message);
+    });
     await fixture('verify_lyric_repair',{id:lyricTaskId});
     for(const [w,h,theme] of [[1120,760,'light'],[1120,760,'dark'],[760,540,'light'],[760,540,'dark']]) {
       await emit('resize',{width:w,height:h});await wait(()=>innerWidth===w&&innerHeight===h,'window resize');click(button('外观主题'));await wait(()=>one('.action-menu'),'theme menu');click(button(theme==='dark'?'深色':'浅色'));await wait(()=>!one('.action-menu'),'theme applied');
