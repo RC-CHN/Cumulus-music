@@ -143,6 +143,14 @@ PipeWire 输出。原生时钟推进、暂停、定位后继续、倍速、CUE �
   报告在 `.build/portable-precedence-development-playback/report.json`。
   该夹具是本地开发构建；正式 tar.gz 另由 Linux CI 从当次清单校验并复跑。
 
+  发行打包流程的本机复验（1f44be9）：从同一清单校验并启动 .deb 与
+  便携 tar.gz 的普通程序，两者均加载各自的滤镜并通过 PCM、暂停及
+  同曲进度检查；便携复验时系统仍保留旧 Debian 版。两者 440 Hz
+  振幅均由约 2896 升至 4862，暂停后为零。产物在
+  `.build/package-proof-1f44be9/.build/packages/linux-x64/`；
+  报告在 `.build/package-proof-1f44be9-{deb,portable}-pcm/report.json`。
+  这是无外网、私有空输出的正式包验证；未发布，未复验物理声卡。
+
 2026-11-04 Linux 已安装包输出采样复验（同一 dd4fd37 .deb）
   给既有隔离命令加 `--verify-monitor-pcm`，通过本机 parec 读取私有 PipeWire
   空输出的 monitor。正式应用普通播放时 440 Hz 振幅为 2895.643，包内均衡器
