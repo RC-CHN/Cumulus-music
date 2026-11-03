@@ -52,8 +52,17 @@
   try {
     if(window.__cumulusSearchMvProof){
       await wait(()=>one('.track-row'),'daily ready');
-      await fixture('good');await fresh('合成 MV');await choose('mvs');
+      await fixture('good');await fresh('合成 MV');
+      function checkMvMetadata(card){
+        assert(card?.querySelector('.search-video-count')?.textContent.trim()==='1.2万'&&
+          card?.querySelector('.search-video-duration')?.textContent.trim()==='04:00','MV badges display available source metadata');
+        const description=card.querySelector('.search-card-open')?.getAttribute('aria-describedby');
+        assert(document.getElementById(description)?.textContent.trim()==='播放次数：12,345，时长：04:00','play target describes full metadata');
+      }
+      checkMvMetadata(one('[data-result-key="mv:601"]'));
+      await choose('mvs');
       const card=one('[data-result-key="mv:601"]');
+      checkMvMetadata(card);
       const trigger=button('播放 MV 合成 MV 1',card);
       const cue=card?.querySelector('.search-video-play-glyph');
       const placeholder=card?.querySelector('.search-result-art > .icon');
