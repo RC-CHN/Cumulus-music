@@ -292,6 +292,11 @@ pub enum PlayerAction {
     Seek {
         seconds: f64,
     },
+    SeekFor {
+        play_id: String,
+        expected_queue_revision: String,
+        seconds: f64,
+    },
     Volume {
         value: f64,
     },

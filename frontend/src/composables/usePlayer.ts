@@ -402,6 +402,28 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     }
   }
   const select = (input: PlaySelection) => run((e) => core.playSelection(e, input));
+  function seekDisplayed(
+    target: Pick<PlayerView, 'epoch' | 'playId' | 'queueRevision'>,
+    seconds: number,
+  ) {
+    const current = view.value;
+    if (
+      !ready.value ||
+      busy.value ||
+      !loaded.value ||
+      !target.playId ||
+      target.epoch !== current?.epoch ||
+      target.playId !== current.playId ||
+      target.queueRevision !== current.queueRevision
+    )
+      return;
+    return action({
+      kind: 'seek_for',
+      play_id: target.playId,
+      expected_queue_revision: target.queueRevision,
+      seconds,
+    });
+  }
   function toggleSource() {
     if (!ready.value || busy.value) return;
     const current = view.value;
@@ -617,6 +639,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     syncPlayback,
     select,
     toggleSource,
+    seekDisplayed,
     togglePlaylist,
     selectForPage,
     downloads,

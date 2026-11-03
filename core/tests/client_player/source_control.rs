@@ -207,3 +207,30 @@ async fn rejected_old_source_control_does_not_cancel_a_newer_pending_selection()
     assert_eq!(loaded.state, PlaybackStatus::Playing);
     client.player_action("1", PlayerAction::Stop).await.unwrap();
 }
+
+#[tokio::test]
+async fn old_seek_does_not_seek_the_replacement_and_current_seek_preserves_playback() {
+    let (_dir, api, _, client, _) = fixture();
+    let first = client.play_selection("1", songs("1")).await.unwrap();
+    let second = client.play_selection("1", songs("2")).await.unwrap();
+    let request = |view: &PlayerView| PlayerAction::SeekFor {
+        play_id: view.play_id.clone().unwrap(),
+        expected_queue_revision: view.queue_revision.clone(),
+        seconds: 35.0,
+    };
+    let before = api.calls.lock().unwrap().len();
+    assert!(matches!(
+        client.player_action("1", request(&first)).await,
+        Err(Error::StaleResponse)
+    ));
+    let untouched = client.player_snapshot("1").await.unwrap();
+    assert_eq!(untouched.play_id, second.play_id);
+    assert!(untouched.position.unwrap() < 5.0);
+
+    let seek = client.player_action("1", request(&second)).await.unwrap();
+    assert_eq!(seek.play_id, second.play_id);
+    assert_eq!(seek.queue_revision, second.queue_revision);
+    assert_eq!(seek.state, PlaybackStatus::Playing);
+    assert!(seek.position.unwrap() >= 35.0);
+    assert_eq!(api.calls.lock().unwrap().len(), before);
+}

@@ -1173,3 +1173,27 @@ test('a cloud toolbar preparation preserves query/quality but cannot target a ne
     f.player.dispose();
   }
 });
+
+test('a displayed seek cannot target a replacement song or account', async () => {
+  const actions: PlayerAction[] = [];
+  const f = fixture({
+    playerAction: async (_epoch, action) => {
+      actions.push(action);
+      return state('5', '1', 'second');
+    },
+  });
+  await f.player.connect(account());
+  const first = { ...state('2', '1', 'first'), queueRevision: '6' };
+  const second = { ...state('3', '1', 'second'), queueRevision: '7' };
+  f.emit(first);
+  f.emit(second);
+  await f.player.seekDisplayed(first, 35);
+  await f.player.seekDisplayed({ ...second, epoch: '0' }, 35);
+  await f.player.seekDisplayed({ ...second, queueRevision: '6' }, 35);
+  assert.deepEqual(actions, []);
+  await f.player.seekDisplayed(second, 12);
+  assert.deepEqual(actions, [
+    { kind: 'seek_for', play_id: 'second', expected_queue_revision: '7', seconds: 12 },
+  ]);
+  f.player.dispose();
+});

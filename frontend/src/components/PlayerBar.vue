@@ -66,6 +66,13 @@ async function transport(event: MouseEvent, action: PlayerAction) {
     origin.focus({ preventScroll: true });
 }
 const draft = ref<number>();
+// Replacing a playback session also replaces its slider. A late event from
+// the old input still carries its own identity, not the new song's view.
+const scrubKey = computed(() => {
+  const current = view.value;
+  return JSON.stringify([current?.epoch, current?.playId, current?.queueRevision]);
+});
+watch(scrubKey, () => (draft.value = undefined), { flush: 'sync' });
 const intelligenceNotice = ref<HTMLElement>();
 let cancelFocus: { epoch: string; control: Element | null } | undefined;
 function focusIntelligence(epoch: string, control: Element | null) {
@@ -119,10 +126,23 @@ const message = computed(
           ? '音源可播范围已变化，进度已重置'
           : (view.value?.historyWarning ?? '')),
 );
+function scrubInput(event: Event) {
+  const input = event.currentTarget as HTMLInputElement;
+  if (input.dataset.scrubKey === scrubKey.value) draft.value = Number(input.value);
+}
+function cancelScrub(event: Event) {
+  const input = event.currentTarget as HTMLInputElement;
+  if (input.dataset.scrubKey === scrubKey.value) draft.value = undefined;
+}
 async function seek(event: Event) {
-  const seconds = Number((event.target as HTMLInputElement).value);
-  await props.player.action({ kind: 'seek', seconds });
-  draft.value = undefined;
+  const input = event.currentTarget as HTMLInputElement;
+  const current = view.value;
+  const key = scrubKey.value;
+  if (!current || input.dataset.scrubKey !== key) return;
+  const seconds = Number(input.value);
+  draft.value = seconds;
+  await props.player.seekDisplayed(current, seconds);
+  if (scrubKey.value === key && draft.value === seconds) draft.value = undefined;
 }
 </script>
 <template>
@@ -233,6 +253,8 @@ async function seek(event: Event) {
       <div class="seek-control">
         <time>{{ time(draft ?? view?.position) }}</time
         ><input
+          :key="scrubKey"
+          :data-scrub-key="scrubKey"
           aria-label="播放进度"
           type="range"
           :min="view?.timeline?.start ?? 0"
@@ -240,7 +262,8 @@ async function seek(event: Event) {
           step="0.1"
           :value="draft ?? view?.position ?? 0"
           :disabled="!loaded || !view?.timeline?.end || pending"
-          @input="draft = Number(($event.target as HTMLInputElement).value)"
+          @input="scrubInput"
+          @pointercancel="cancelScrub"
           @change="seek"
         /><time>{{ time(view?.timeline?.total) }}</time>
       </div>

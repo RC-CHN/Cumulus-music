@@ -85,6 +85,9 @@ Snapshot是原生类型，包含账号Token和资源Value，必须另映射UI；
 位置事务同时比较完整已提交队列和已加载项；竞争变更不能重新写入已删除资源的进度。
 position记录entry_id、seconds、paused、state、timeline_version=1；preferences保存volume/speed。
 音量/速度持久化失败回滚引擎偏好；进度持久化失败停止播放并公开错误。
+底栏进度手势绑定该次播放 ID、队列修订与账号代次；原生入口和控制器执行前都检查同一播放，
+切歌后旧进度控件的事件不能定位新歌曲。恢复的 PlayBar/PlayProgress.tsx
+第 573–581、609–613、715–724 行分别提供拖动与播放资源隔离依据。
 重开只恢复队列/偏好，显式Restore加载后仍暂停；显式Play才开始播放。
 普通播放失败不会循环重试或悄悄切换音源。RefreshSource显式废弃授权缓存后重取，
 尽可能保留位置/暂停；Quality先授权候选音质，拒绝时当前播放不变，成功后才更新队列并重载。

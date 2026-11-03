@@ -233,6 +233,7 @@ export type PlayerAction =
   | { kind: 'pause'; paused: boolean }
   | { kind: 'pause_for'; play_id: string; expected_queue_revision: string; paused: boolean }
   | { kind: 'seek'; seconds: number }
+  | { kind: 'seek_for'; play_id: string; expected_queue_revision: string; seconds: number }
   | { kind: 'volume' | 'speed'; value: number }
   | { kind: 'quality'; level: Quality }
   | { kind: 'quality_for'; level: Quality; play_id: string; expected_revision: string }

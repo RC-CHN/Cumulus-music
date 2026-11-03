@@ -447,6 +447,21 @@ impl MusicClient {
                     Some((play_id, expected_queue_revision)),
                 )
             }
+            PlayerAction::SeekFor {
+                play_id,
+                expected_queue_revision,
+                seconds,
+            } => {
+                if native.is_some() {
+                    return Err(Error::InvalidInput(
+                        "source control used as native media command",
+                    ));
+                }
+                (
+                    PlayerAction::Seek { seconds },
+                    Some((play_id, expected_queue_revision)),
+                )
+            }
             other => (other, None),
         };
         let (mut action, displayed_queue, clear_room) = match action {
@@ -785,7 +800,7 @@ impl MusicClient {
             }
             PlayerAction::Play => PlaybackCommand::Play,
             PlayerAction::Pause { paused } => PlaybackCommand::Pause(paused),
-            PlayerAction::PauseFor { .. } => {
+            PlayerAction::PauseFor { .. } | PlayerAction::SeekFor { .. } => {
                 unreachable!("source control normalized before generic action")
             }
             PlayerAction::Seek { seconds } => PlaybackCommand::Seek(seconds),
