@@ -22,6 +22,10 @@ Cumulus 桌面主流程验收
   复跑：构建 cumulus-desktop 的 main_flow_ui_probe example（开启
   custom-protocol），用 scripts/ci/main_flow_smoke.py --binary <程序>
   --root <新目录>；Linux 可在 Openbox/Xvfb 和私有 D-Bus 下加 --screenshots。
+  当前构建复跑发现：身份刚恢复时，前端仍在读取歌单和推荐，侧栏显示
+  可点击但会忽略导航。现在主导航在该阶段禁用，完成后立即可用。
+  修复后用同一探针通过 10 阶段，保留 9 张截图及 SQLite 核对报告
+  （.build/main-flow-startup-fixed/）。下载菜单另通过 33 个桌面状态。
 
 真实服务证据与剩余边界
   当前真实服务证据来自独立的授权测试，不能合并计为一次完整
@@ -32,6 +36,9 @@ Cumulus 桌面主流程验收
   查询词为公开艺人名，零资源写入，凭据副本在运行后删除。只记录分类
   成功标记，不在公开记录保留响应数据。它验证当前 Rust 搜索请求和
   类型化结果，与合成 WebView 的交互证据分开；没有取得播放源或试听。
+  同轮另用固定只读桌面探针取得一个真实音源，验证 libmpv 时钟前进并
+  正常停止。该探针不运行生产 Vue 或正式账号宿主，声道输出为 null。
+  五条请求的计数、无账号写入及复跑方法见 search-playback-read-proof.txt。
   历史真实桌面目录 .build/ui-proof/ 下可检查 run-2-small 的账号
   恢复/推荐/歌单/搜索，player-6-small 的播放控制，
   playlist-3-small 的临时私密歌单与原始顺序恢复，

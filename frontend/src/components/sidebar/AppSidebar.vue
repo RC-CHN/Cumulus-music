@@ -12,6 +12,7 @@ const props = defineProps<{
   page: Page;
   playlists: PlaylistView[];
   historyKind: HistoryKind;
+  initializing: boolean;
   loading: boolean;
   error: string;
   playingId?: string;
@@ -106,7 +107,7 @@ function refresh() {
 </script>
 <template>
   <aside class="sidebar" aria-label="主导航">
-    <button class="brand" @click="emit('navigate', { kind: 'daily' })">
+    <button class="brand" :disabled="initializing" @click="emit('navigate', { kind: 'daily' })">
       <span class="brand-mark">C</span><span>Cumulus<small>云间音乐</small></span>
     </button>
     <div ref="scroller" class="sidebar-scroll" tabindex="-1">
@@ -127,6 +128,7 @@ function refresh() {
           class="nav-item"
           :class="{ selected: selected(item.page) }"
           :aria-current="selected(item.page) ? 'page' : undefined"
+          :disabled="initializing"
           @click="item.page.kind === 'rankings' ? emit('ranking') : emit('navigate', item.page)"
         >
           <Icon :name="item.icon" /><span>{{ item.title }}</span>

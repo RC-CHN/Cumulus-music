@@ -1377,6 +1377,7 @@ onUnmounted(() => {
       :page="page"
       :playlists="playlists"
       :history-kind="recent.kind.value"
+      :initializing="initializing"
       :loading="music.resourcesLoading.value"
       :error="music.playlistError.value"
       :playing-id="libraryPlaying ? currentPlaylistId : undefined"
