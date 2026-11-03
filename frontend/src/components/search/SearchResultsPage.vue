@@ -125,6 +125,9 @@ function oneRowPreview(section: SearchSection) {
     ['playlists', 'artists', 'albums', 'podcasts', 'mvs', 'users'].includes(section.category ?? '')
   );
 }
+function showTrackMenu(request: TrackMenuRequest) {
+  emit('more', { ...request, nextOrigin: 'search' });
+}
 function playTrack(track: TrackView | undefined, toggleCurrent = false) {
   if (track && !track.missing) emit('playTrack', track, toggleCurrent);
 }
@@ -597,7 +600,7 @@ onBeforeUnmount(() => {
                     navigable
                     @play="(_index, gesture) => playTrack(item.track, gesture === 'double_click')"
                     @like="emit('like', $event)"
-                    @more="emit('more', $event)"
+                    @more="showTrackMenu"
                     @artist="emit('artist', $event)"
                     @album="emit('album', $event)"
                   />
@@ -633,7 +636,7 @@ onBeforeUnmount(() => {
                 @like="emit('like', track)"
                 @more="
                   (event) =>
-                    emit('more', {
+                    showTrackMenu({
                       track,
                       event,
                       play: () => playTrack(track),
@@ -656,7 +659,7 @@ onBeforeUnmount(() => {
                 (index, gesture) => playTrack(tracks(section)[index], gesture === 'double_click')
               "
               @like="emit('like', $event)"
-              @more="emit('more', $event)"
+              @more="showTrackMenu"
               @artist="emit('artist', $event)"
               @album="emit('album', $event)"
             />

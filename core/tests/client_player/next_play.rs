@@ -188,3 +188,92 @@ async fn delayed_next_cannot_override_newer_transport_or_replacement_account() {
     assert!(matches!(request.await.unwrap(), Err(Error::StaleResponse)));
     assert!(client.player_queue("2").await.unwrap().tracks.is_empty());
 }
+
+fn search_next(id: &str, revision: &str) -> PlayerAction {
+    PlayerAction::SearchNextPlay {
+        id: id.into(),
+        quality: Quality::Lossless,
+        expected_queue_revision: revision.into(),
+    }
+}
+
+#[tokio::test]
+async fn search_next_starts_empty_queue_with_search_trial() {
+    let (_dir, api, _, client, _) = fixture();
+    let initial = client.player_snapshot("1").await.unwrap();
+    let playing = client
+        .player_action("1", search_next("11", &initial.queue_revision))
+        .await
+        .unwrap();
+    assert_eq!(playing.track.unwrap().id, "11");
+    assert_eq!(playing.state, PlaybackStatus::Playing);
+    assert_eq!(*api.trial.lock().unwrap(), Some(json!(42)));
+    assert_eq!(client.player_queue("1").await.unwrap().tracks.len(), 1);
+}
+
+#[tokio::test]
+async fn search_next_rebinds_existing_song_preserving_queue_identity_and_uses_trial_on_advance() {
+    let (dir, api, _, client, _) = fixture();
+    client
+        .play_selection(
+            "1",
+            PlaySelection::Songs {
+                ids: ["1", "2", "3"].map(str::to_owned).to_vec(),
+                index: 0,
+                quality: Quality::Standard,
+            },
+        )
+        .await
+        .unwrap();
+    let paused = client
+        .player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    let baseline = client.player_queue("1").await.unwrap();
+
+    let same = client
+        .player_action("1", search_next("1", &paused.queue_revision))
+        .await
+        .unwrap();
+    assert_eq!(same.play_id, paused.play_id);
+    assert_eq!(same.queue_revision, paused.queue_revision);
+    let queued = client
+        .player_action("1", search_next("3", &paused.queue_revision))
+        .await
+        .unwrap();
+    assert_eq!(queued.state, PlaybackStatus::Paused);
+    assert_eq!(queued.play_id, paused.play_id);
+    assert_eq!(queued.position, paused.position);
+    let queue = client.player_queue("1").await.unwrap();
+    assert_eq!(
+        queue
+            .tracks
+            .iter()
+            .map(|row| (row.track.id.as_str(), row.entry_id.as_str()))
+            .collect::<Vec<_>>(),
+        [
+            ("1", baseline.tracks[0].entry_id.as_str()),
+            ("3", baseline.tracks[2].entry_id.as_str()),
+            ("2", baseline.tracks[1].entry_id.as_str())
+        ]
+    );
+    let saved = cumulus_core::playback::PlaybackQueue::new(
+        Some(Arc::new(
+            cumulus_core::storage::StateStore::open(dir.path()).unwrap(),
+        )),
+        "9",
+    )
+    .unwrap()
+    .snapshot();
+    assert_eq!(
+        saved.items[1].source,
+        json!({"kind":"songs","scene":"search","trial_mode":42})
+    );
+    assert_eq!(saved.items[1].resource["trial_mode"], 42);
+    assert_eq!(saved.items[1].resource["level"], "standard");
+    assert!(saved.items[2].resource.get("trial_mode").is_none());
+
+    let following = client.player_action("1", PlayerAction::Next).await.unwrap();
+    assert_eq!(following.track.unwrap().id, "3");
+    assert_eq!(*api.trial.lock().unwrap(), Some(json!(42)));
+}

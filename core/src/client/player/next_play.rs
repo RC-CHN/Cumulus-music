@@ -10,8 +10,17 @@ use crate::{
     },
     protocol::api::identifier,
 };
-use serde_json::json;
+use serde_json::{Value, json};
 use std::sync::atomic::Ordering;
+
+pub(super) enum NextPlayOrigin {
+    Song,
+    Search,
+}
+
+pub(super) fn search_track_source() -> Value {
+    json!({"kind":"songs","scene":"search","trial_mode":42})
+}
 
 impl MusicClient {
     pub(super) async fn next_play(
@@ -20,6 +29,7 @@ impl MusicClient {
         id: String,
         quality: Quality,
         expected_revision: String,
+        origin: NextPlayOrigin,
     ) -> Result<PlayerView> {
         let token = self.player_token(epoch)?;
         self.session.with_token(&token, |_| Ok(()))?;
@@ -65,11 +75,15 @@ impl MusicClient {
             .iter()
             .find(|e| super::identity::online_song(&e.resource, &id))
             .cloned();
-        let entry = existing.unwrap_or_else(|| QueueEntry {
+        let mut entry = existing.unwrap_or_else(|| QueueEntry {
             entry_id: uuid::Uuid::new_v4().to_string(),
             resource,
             source: json!({"kind":"songs"}),
         });
+        if matches!(origin, NextPlayOrigin::Search) {
+            entry.source = search_track_source();
+            entry.resource["trial_mode"] = entry.source["trial_mode"].clone();
+        }
         let removed: Vec<_> = queue
             .items
             .iter()

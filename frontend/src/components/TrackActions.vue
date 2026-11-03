@@ -167,7 +167,7 @@ async function select(key: string) {
     if (!view) return;
     const attempt = sequence;
     const next = await props.player.action({
-      kind: 'next_play',
+      kind: input.nextOrigin === 'search' ? 'search_next_play' : 'next_play',
       id: track.id,
       quality: view.qualityPreferences.quality,
       expected_queue_revision: view.queueRevision,

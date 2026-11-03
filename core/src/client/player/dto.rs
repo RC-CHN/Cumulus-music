@@ -338,6 +338,11 @@ pub enum PlayerAction {
         quality: Quality,
         expected_queue_revision: String,
     },
+    SearchNextPlay {
+        id: String,
+        quality: Quality,
+        expected_queue_revision: String,
+    },
     Startup,
     Equalizer {
         expected_revision: String,

@@ -493,7 +493,7 @@ impl MusicClient {
                         vec![json!(identifier(&json!(id))?)],
                         0,
                         quality,
-                        json!({"kind":"songs","scene":"search","trial_mode":42}),
+                        super::next_play::search_track_source(),
                     )),
                     PlaySelection::SearchResults {
                         ids,

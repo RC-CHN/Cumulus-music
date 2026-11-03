@@ -365,14 +365,24 @@ impl MusicClient {
                 .player_mode_for(epoch, mode, &expected_queue_revision, fm)
                 .await;
         }
+        let next_origin = if matches!(action, PlayerAction::SearchNextPlay { .. }) {
+            next_play::NextPlayOrigin::Search
+        } else {
+            next_play::NextPlayOrigin::Song
+        };
         if let PlayerAction::NextPlay {
+            id,
+            quality,
+            expected_queue_revision,
+        }
+        | PlayerAction::SearchNextPlay {
             id,
             quality,
             expected_queue_revision,
         } = action
         {
             return self
-                .next_play(epoch, id, quality, expected_queue_revision)
+                .next_play(epoch, id, quality, expected_queue_revision, next_origin)
                 .await;
         }
         if let PlayerAction::QueueLocal {
@@ -895,6 +905,7 @@ impl MusicClient {
         let command = match action {
             PlayerAction::Startup => unreachable!("handled before user transport commands"),
             PlayerAction::NextPlay { .. }
+            | PlayerAction::SearchNextPlay { .. }
             | PlayerAction::QueuePlaylist { .. }
             | PlayerAction::QueueAlbum { .. }
             | PlayerAction::QueueAlbumBatch { .. }
