@@ -40,6 +40,8 @@
       await sleep(65);
     }
     assert(account?.status === 'authenticated', 'synthetic account not restored');
+    await emit('resize', { width: 760, height: 540 });
+    await wait(() => innerWidth === 760 && innerHeight === 540, 'compact window size');
     click(await wait(() => { const node = one('.equalizer-toggle'); return node && !node.disabled && node; }, 'EQ launcher'));
     const opener = button(await wait(() => one('.equalizer-dialog[open]'), 'EQ dialog'), '音效目录');
     click(opener);
@@ -52,7 +54,11 @@
     click(one('.effect-directory-card'));
     await wait(() => text().includes('暂未确认当前账号的权益'), 'uncertain rights');
     await capture('02_unknown');
-    click(button(dialog(), '重新查询权益'));
+    const retry = button(dialog(), '重新查询权益');
+    const bounds = retry.getBoundingClientRect();
+    assert(retry.contains(document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)),
+      'retry must be visible and hit-testable');
+    click(retry);
     assert(document.activeElement === one('.effect-directory-card'), 'retry retains focus inside directory');
     await wait(() => text().includes('当前账号没有使用权益'), 'unavailable rights');
     await capture('03_unavailable');

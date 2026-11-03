@@ -260,7 +260,7 @@ onUnmounted(() => {
 }
 .effect-directory-detail {
   flex: none;
-  max-height: 35%;
+  max-height: min(140px, 35dvh);
   overflow-y: auto;
   border-top: 1px solid var(--line);
   margin-top: 14px;
