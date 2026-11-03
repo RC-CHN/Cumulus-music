@@ -66,7 +66,7 @@ def proof_paths(build):
         names.update(report + suffix for suffix in
                      ('.json', '.log', '.failure.json', '.progress.jsonl', '.pcm'))
     for platform in ('linux-x64', 'windows-x64'):
-        names.update(f'ci-{probe}-roundtrip-{platform}.log' for probe in ('engine', 'equalizer'))
+        names.update(f'ci-{probe}-roundtrip-{platform}.log' for probe in ('engine', 'equalizer', 'pinned-audio'))
     return sorted(build / name for name in names if (build / name).exists())
 
 

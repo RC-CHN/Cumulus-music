@@ -86,7 +86,7 @@ def main():
     native.mkdir()
     suffix = ".exe" if windows else ""
     filter_name = "cumulus_audio_filter.dll" if windows else "libcumulus_audio_filter.so"
-    run(["cargo", "build", "--release", "--locked", "-p", "cumulus-core", "-p", "cumulus-audio-filter", "--lib", "--example", "engine_roundtrip", "--example", "player_probe"])
+    run(["cargo", "build", "--release", "--locked", "-p", "cumulus-core", "-p", "cumulus-audio-filter", "--lib", "--example", "engine_roundtrip", "--example", "player_probe", "--example", "pinned_audio_probe"])
     shutil.copy2(target / "release" / filter_name, native / filter_name)
     dlls = windows_media(native, Path(os.environ["CUMULUS_MSYS2_ROOT"])) if windows else []
     config = {"build": {"beforeBuildCommand": ""}, "bundle": {"active": True,
@@ -113,7 +113,7 @@ def main():
     # MSYS2 from PATH, so a missing bundled DLL cannot be masked by the runner.
     env = os.environ.copy()
     if windows:
-        env = {key: value for key, value in env.items() if key.upper() != "MPV_DLL_DIR_CUMULUS"}
+        env = {key: value for key, value in env.items() if key.upper() not in ("MPV_DLL_DIR_CUMULUS", "PATH")}
         system = Path(os.environ["SystemRoot"])
         env["PATH"] = os.pathsep.join(map(str, [portable, system / "System32", system]))
     probe = portable / f"engine_roundtrip{suffix}"
@@ -138,9 +138,28 @@ def main():
     eq_report = json.loads(eq.stdout)
     assert eq_report["ok"] and eq_report["remote_requests"] == 0
     eq_probe.unlink()
+
+    # Cargo's all-targets tests compile an example without running main.
+    # Run the pinned decoder beside the exact portable Windows DLL closure;
+    # Linux uses the system libmpv required by the Debian package.
+    pinned_probe = portable / f"pinned_audio_probe{suffix}"
+    shutil.copy2(target / "release/examples" / pinned_probe.name, pinned_probe)
+    pinned_log = ROOT / ".build" / f"ci-pinned-audio-roundtrip-{args.platform}.log"
+    with pinned_log.open("x", encoding="utf-8") as log:
+        pinned = run([pinned_probe], env=env, stdout=subprocess.PIPE, stderr=log,
+                     text=True, encoding="utf-8", timeout=60)
+    pinned_report = json.loads(pinned.stdout)
+    assert pinned_report["remote_requests"] == 0 and all(
+        pinned_report[name] is True for name in (
+            "ok", "null_output", "plain_flac", "ncm_flac", "plain_aac_m4a",
+            "ncm_aac_m4a", "external_references_denied",
+            "pinned_handle_survived_path_replacement", "ordinary_load_restored",
+        )
+    ), "packaged pinned audio verification missing"
+    pinned_probe.unlink()
     (portable / "runtime-manifest.json").write_text(json.dumps({
         "version": version, "commit": sha, "platform": args.platform, "dlls": dlls,
-        "nativePlayback": media_report, "equalizerPlayback": eq_report,
+        "nativePlayback": media_report, "equalizerPlayback": eq_report, "pinnedPlayback": pinned_report,
     }, indent=2), encoding="utf-8")
     archive_base = f"Cumulus-{version}-{args.platform}"
     if windows:
@@ -157,7 +176,7 @@ def main():
     assert git("rev-parse", "HEAD") == sha and not git("status", "--porcelain", "--untracked-files=normal"), "source changed during packaging"
     manifest = {"version": version, "commit": sha, "platform": args.platform,
         "ciRun": os.environ.get("GITHUB_RUN_ID"), "ciAttempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
-        "nativePlayback": media_report, "equalizerPlayback": eq_report,
+        "nativePlayback": media_report, "equalizerPlayback": eq_report, "pinnedPlayback": pinned_report,
         "assets": [{"name": p.name, "bytes": p.stat().st_size, "sha256": digest(p)} for p in sorted(output.iterdir())]}
     (output / f"manifest-{args.platform}.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     if windows and (github_env := os.environ.get("GITHUB_ENV")):

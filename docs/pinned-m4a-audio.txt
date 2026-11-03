@@ -30,3 +30,13 @@ https://ffmpeg.org/ffmpeg-formats.html#mov_002fmp4_002f3gp_002f3g2_002fmj2
 The test fixture is a synthetic tone; ordinary MP4 and real CDN files may
 contain layouts outside the supported subset. Null output does not verify
 soundcard output. Linux native verification does not replace Windows testing.
+
+Required Linux and Windows package CI explicitly runs pinned_audio_probe,
+since compiling examples with cargo test --all-targets does not execute their
+main functions. Windows runs beside the exact portable DLLs with the runtime
+override and inherited PATH removed; Linux uses the Debian package's system
+libmpv dependency. The synthetic native probe uses Unicode/spaced filenames,
+checks FLAC and AAC/M4A both plain and NCM, and tests external-reference
+rejection against a loopback listener only. It emits a bounded pinnedPlayback
+receipt with no paths or media data. This adds no bwrap dependency and does
+not claim Windows cold Vue or OS network isolation.

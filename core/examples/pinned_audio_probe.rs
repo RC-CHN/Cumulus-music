@@ -14,11 +14,12 @@ use std::{
 
 fn main() {
     let root = tempfile::tempdir().unwrap();
+    eprintln!("pinned audio: FLAC start");
     let seed = include_bytes!("../tests/fixtures/tag_audio/seed.flac");
-    let path = root.path().join("fixture.flac");
+    let path = root.path().join("fixture 音频.flac");
     fs::write(&path, seed).unwrap();
     let opened = File::open(&path).unwrap();
-    let moved = root.path().join("moved.flac");
+    let moved = root.path().join("moved 音频.flac");
     fs::rename(&path, &moved).unwrap();
     fs::write(&path, b"invalid audio replacement").unwrap();
 
@@ -57,7 +58,9 @@ fn main() {
         ),
         Err(Error::InvalidInput(_))
     ));
+    eprintln!("pinned audio: strict NCM/FLAC start");
     probe_ncm(engine.as_mut(), root.path(), seed);
+    eprintln!("pinned audio: plain and NCM AAC/M4A start");
     probe_m4a(engine.as_mut());
 
     let next = engine
@@ -68,7 +71,21 @@ fn main() {
         .unwrap();
     assert_eq!(next.codec.as_deref(), Some("flac"));
     engine.stop().unwrap();
-    println!("pinned FLAC decoded, position advanced, revocation stopped, ordinary load restored");
+    println!(
+        "{}",
+        serde_json::json!({
+            "ok": true,
+            "null_output": true,
+            "remote_requests": 0,
+            "plain_flac": true,
+            "ncm_flac": true,
+            "plain_aac_m4a": true,
+            "ncm_aac_m4a": true,
+            "external_references_denied": true,
+            "pinned_handle_survived_path_replacement": true,
+            "ordinary_load_restored": true,
+        })
+    );
 }
 
 fn probe_m4a(engine: &mut dyn AudioEngine) {
@@ -160,13 +177,13 @@ fn probe_m4a(engine: &mut dyn AudioEngine) {
         listener.accept().unwrap_err().kind(),
         std::io::ErrorKind::WouldBlock
     );
-    println!(
+    eprintln!(
         "pinned plain and NCM AAC/M4A decoded; both external URL drefs refused without a connection"
     );
 }
 
 fn probe_ncm(engine: &mut dyn AudioEngine, root: &std::path::Path, seed: &[u8]) {
-    let path = root.join("fixture.ncm");
+    let path = root.join("fixture 音频.ncm");
     let mut container = Vec::new();
     write_stream(
         &mut Cursor::new(seed),
@@ -180,7 +197,7 @@ fn probe_ncm(engine: &mut dyn AudioEngine, root: &std::path::Path, seed: &[u8]) 
     .unwrap();
     fs::write(&path, &container).unwrap();
     let pinned = File::open(&path).unwrap();
-    let moved = root.join("moved.ncm");
+    let moved = root.join("moved 音频.ncm");
     fs::rename(&path, &moved).unwrap();
     // Same path and bytes except a header field covered by the CRC.
     container[9] ^= 1;
@@ -223,7 +240,7 @@ fn probe_ncm(engine: &mut dyn AudioEngine, root: &std::path::Path, seed: &[u8]) 
         ),
         Err(Error::Cancelled)
     ));
-    println!(
+    eprintln!(
         "pinned strict NCM/FLAC decoded and sought, revoked authority stopped it, bad CRC rejected"
     );
 }
