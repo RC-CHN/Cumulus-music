@@ -60,15 +60,30 @@ export function equalizerChange(
     },
   };
 }
+function equalizerOff(settings: EqualizerSettings) {
+  return !settings.enabled && !activeTone(settings);
+}
+
+export function equalizerCanRetry(view: EqualizerView): boolean {
+  return (
+    view.status === 'failed' ||
+    (view.status === 'unavailable' &&
+      !view.settings.master_bypassed &&
+      !equalizerOff(view.settings))
+  );
+}
+
 export function equalizerMessage(view: EqualizerView): string {
   if (view.damaged) return '本地均衡器设置损坏，请修复后重试。';
   if (view.status === 'failed' && view.settings.master_bypassed)
     return '设置已保存，但未能确认音效已暂停。可重新应用。';
+  if (view.status === 'failed' && equalizerOff(view.settings))
+    return '设置已保存，但未能确认均衡器已关闭。可重新应用。';
   if (view.status === 'failed')
     return activeTone(view.settings)
       ? '设置已保存，但音效未能应用。可重新应用或重置低音和高音。'
       : '设置已保存，但均衡器未能应用。可重新应用，或关闭后继续播放。';
-  if (view.status === 'unavailable' && !view.settings.master_bypassed)
+  if (view.status === 'unavailable' && equalizerCanRetry(view))
     return '均衡器组件未就绪，设置已保存。';
   if (view.status === 'pending') return '设置已保存，正在等待播放器应用…';
   if (view.settings.master_bypassed) return '均衡器和低高音增强已暂停，设置已保留';
@@ -83,17 +98,13 @@ export function equalizerMessage(view: EqualizerView): string {
 
 export function equalizerLauncher(view?: EqualizerView) {
   if (!view) return { state: 'loading', label: '正在读取均衡器设置' };
-  if (view.damaged) return { state: 'problem', label: equalizerMessage(view) };
-  if (view.settings.master_bypassed)
-    return {
-      state: view.status === 'failed' ? 'problem' : view.status === 'pending' ? 'pending' : 'off',
-      label: equalizerMessage(view),
-    };
-  const tone = activeTone(view.settings);
-  if (!view.settings.enabled && !tone) return { state: 'off', label: '均衡器已关闭' };
-  if (view.status === 'failed' || view.status === 'unavailable')
+  if (view.damaged || view.status === 'failed')
     return { state: 'problem', label: equalizerMessage(view) };
   if (view.status === 'pending') return { state: 'pending', label: equalizerMessage(view) };
+  if (view.settings.master_bypassed || equalizerOff(view.settings))
+    return { state: 'off', label: equalizerMessage(view) };
+  if (view.status === 'unavailable') return { state: 'problem', label: equalizerMessage(view) };
+  const tone = activeTone(view.settings);
   if (!tone && view.settings.gains.every((gain) => gain === 0))
     return { state: 'flat', label: '均衡器已开启，当前为平直曲线' };
   if (view.status === 'configured') return { state: 'configured', label: equalizerMessage(view) };

@@ -6,6 +6,7 @@ import {
   equalizerPresetOption,
   equalizerChange,
   equalizerMessage,
+  equalizerCanRetry,
   equalizerLauncher,
 } from '../src/services/equalizer.ts';
 import type { EqualizerView } from '../src/services/player.ts';
@@ -152,4 +153,21 @@ test('master bypass preserves both stages and suppresses stale processing marker
     }).state,
     'processing',
   );
+});
+
+test('a requested EQ disable is not reported as applied while pending or failed', () => {
+  const settings = { enabled: false, gains: [3, ...Array(9).fill(0)] };
+  const base = { ...view(), settings };
+  const pending = { ...base, status: 'pending' } as const;
+  const failed = { ...base, status: 'failed' } as const;
+  const unavailable = { ...base, status: 'unavailable' } as const;
+  assert.equal(equalizerLauncher(pending).state, 'pending');
+  assert.deepEqual(equalizerLauncher(failed), {
+    state: 'problem',
+    label: '设置已保存，但未能确认均衡器已关闭。可重新应用。',
+  });
+  assert.equal(equalizerCanRetry(failed), true);
+  assert.deepEqual(equalizerLauncher(unavailable), { state: 'off', label: '均衡器已关闭' });
+  assert.equal(equalizerMessage(unavailable), '均衡器已关闭');
+  assert.equal(equalizerCanRetry(unavailable), false);
 });

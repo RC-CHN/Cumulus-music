@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import type { PlayerModel } from '../composables/usePlayer';
 import {
+  equalizerCanRetry,
   equalizerLabels,
   equalizerMessage,
   equalizerPresetOption,
@@ -276,10 +277,7 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
         修复设置
       </button>
       <button
-        v-else-if="
-          current?.status === 'failed' ||
-          (current?.status === 'unavailable' && !current.settings.master_bypassed)
-        "
+        v-else-if="current && equalizerCanRetry(current)"
         :disabled="!ready || pending || commandPending || !!draft"
         @click="maintain('retry_equalizer')"
       >

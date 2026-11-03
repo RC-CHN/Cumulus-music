@@ -536,3 +536,33 @@ async fn master_bypass_preserves_the_mixed_preset_and_loudness_across_restart() 
     assert_eq!(resumed.loudness.preferences, loudness.preferences);
     assert_eq!(*device.equalizer.lock().unwrap(), Some(mixed));
 }
+
+#[tokio::test]
+async fn an_unconfirmed_disable_persists_the_dry_request_and_can_be_retried() {
+    let f = Fixture::new();
+    f.device.equalizer_supported.store(true, Ordering::SeqCst);
+    let enabled = f.command(change(0, 4.0)).await.unwrap();
+    assert_eq!(enabled.equalizer.status, EqualizerStatus::Configured);
+    let disabled = EqualizerSettings::new(false, *curve(4.0).gains()).unwrap();
+    f.device.equalizer_fail.store(true, Ordering::SeqCst);
+    let failed = f
+        .command(Cmd::Equalizer {
+            expected_revision: enabled.equalizer.preferences.revision,
+            settings: disabled,
+            preset: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(failed.equalizer.status, EqualizerStatus::Failed);
+    assert_eq!(failed.equalizer.preferences.settings, disabled);
+    assert_eq!(
+        EqualizerPreferences::read(&f.store, "9").unwrap().settings,
+        disabled
+    );
+    assert!(f.device.equalizer.lock().unwrap().is_none());
+    f.device.equalizer_fail.store(false, Ordering::SeqCst);
+    let retried = f.command(Cmd::RetryEqualizer).await.unwrap();
+    assert_eq!(retried.equalizer.status, EqualizerStatus::Configured);
+    assert_eq!(retried.equalizer.preferences, failed.equalizer.preferences);
+    assert!(!f.device.equalizer.lock().unwrap().unwrap().enabled());
+}
