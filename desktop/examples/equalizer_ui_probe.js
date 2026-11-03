@@ -103,5 +103,12 @@
    }
   }
   await report('complete',{ok:true,epoch,reopened:window.__eqProof.reopen,missing:window.__eqProof.missing,networkRequests:0,remoteMutations:0,audioOutput:'null'});
- }catch(e){await report('failed',{ok:false,step,error:e instanceof Error?e.message:'equalizer_ui_failure'});}
+ }catch(e){
+   const dialog=el('.equalizer-dialog');
+   await report('failed',{ok:false,step,...(epoch?{epoch}:{}),
+     error:e instanceof Error?e.message:'equalizer_ui_failure',
+     equalizer:dialog?{revision:dialog.dataset.revision,draftState:dialog.dataset.draftState,
+       status:el('.equalizer-status')?.dataset.status,tone:tone(),enabled:enabled(),
+       error:el('.equalizer-error')?.textContent.trim()}:null});
+ }
 })();
