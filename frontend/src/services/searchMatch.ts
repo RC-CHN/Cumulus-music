@@ -5,9 +5,8 @@ interface SearchTextPart {
 
 /** Preserve the displayed text, including the exact Unicode offsets of each match. */
 export function splitSearchMatch(text: string, keyword: string): SearchTextPart[] {
-  const query = keyword.trim().replace(/\s+/g, ' ');
-  if (!query || query.length > 512) return [{ text, match: false }];
-  const literal = query.replace(/[.*+?^$(){}|[\]\\]/g, '\\$&');
+  const literal = searchLiteral(keyword);
+  if (!literal) return [{ text, match: false }];
   const pattern = new RegExp(literal, 'giu');
   const parts: SearchTextPart[] = [];
   let at = 0;
@@ -20,4 +19,10 @@ export function splitSearchMatch(text: string, keyword: string): SearchTextPart[
   }
   if (at < text.length || !parts.length) parts.push({ text: text.slice(at), match: false });
   return parts;
+}
+
+export function searchLiteral(keyword: string) {
+  const query = keyword.trim().replace(/\s+/g, ' ');
+  if (!query || query.length > 512) return null;
+  return query.replace(/[.*+?^$(){}|[\]\\]/g, '\\$&');
 }

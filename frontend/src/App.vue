@@ -30,6 +30,7 @@ import { libraryView } from './services/playlistLibrary';
 import DailyHeading from './components/DailyHeading.vue';
 import PlaylistHero from './components/playlist/PlaylistHero.vue';
 import PlaylistSubscribers from './components/playlist/PlaylistSubscribers.vue';
+import { filterPlaylistTracks } from './services/playlistTrackSearch';
 import { usePlaylistSubscribers } from './composables/usePlaylistSubscribers';
 import PlaylistEditorPage from './components/playlist/PlaylistEditorPage.vue';
 import { playlistMenuItems, type PlaylistMenuScene } from './services/playlistMenu';
@@ -61,7 +62,7 @@ import type { AlbumCard, CatalogResource, CatalogSelectionPage } from './service
 import PlayerBar from './components/PlayerBar.vue';
 import { useIntelligence } from './composables/useIntelligence';
 import QueuePanel from './components/QueuePanel.vue';
-import type { TrackPlayGesture } from './services/trackMenu';
+import type { TrackMenuRequest, TrackPlayGesture } from './services/trackMenu';
 import type {
   QueueCollectionView,
   SearchResultPlayback,
@@ -912,6 +913,20 @@ const subscribers = usePlaylistSubscribers(
       ? page.value.id
       : null,
 );
+const playlistKeyword = ref('');
+const playlistTrackSearch = computed(() =>
+  filterPlaylistTracks(
+    result.value?.tracks ?? [],
+    page.value.kind === 'playlist' && result.value?.playlist?.id === page.value.id
+      ? playlistKeyword.value
+      : '',
+  ),
+);
+watch(
+  [() => account.value.epoch, () => (page.value.kind === 'playlist' ? page.value.id : null)],
+  () => (playlistKeyword.value = ''),
+  { flush: 'sync' },
+);
 const loginOpen = ref(false);
 const coldOffline = useColdOffline(core);
 const coldOfflineEligible = computed(
@@ -1333,6 +1348,36 @@ watch(
         !!playlistActions.value?.downloadOpen,
     ),
 );
+function showVisibleTrackActions(request: TrackMenuRequest) {
+  const playlist = result.value?.playlist;
+  if (!playlist) {
+    trackActions.value?.show(request);
+    return;
+  }
+  const epoch = account.value.epoch;
+  trackActions.value?.show(
+    {
+      ...request,
+      play: () => {
+        if (
+          account.value.epoch !== epoch ||
+          page.value.kind !== 'playlist' ||
+          page.value.id !== playlist.id ||
+          result.value?.playlist?.id !== playlist.id
+        )
+          return;
+        const index = result.value.tracks.indexOf(request.track);
+        if (index >= 0) play(index);
+      },
+    },
+    playlist,
+  );
+}
+function playVisibleTrack(index: number, gesture?: TrackPlayGesture) {
+  const positions = playlistTrackSearch.value.positions;
+  const sourceIndex = positions === null ? index : positions[index];
+  if (sourceIndex !== undefined) play(sourceIndex, gesture);
+}
 function play(index = 0, gesture?: TrackPlayGesture) {
   const tracks = result.value?.tracks;
   if (!tracks?.[index] || tracks[index].missing) return;
@@ -2045,6 +2090,16 @@ onUnmounted(() => {
                       }}</small>
                     </button>
                   </template>
+                  <input
+                    v-if="result?.playlist && !subscribers.open.value"
+                    v-model="playlistKeyword"
+                    class="playlist-track-search"
+                    type="search"
+                    aria-label="搜索歌单歌曲"
+                    placeholder="搜索歌单歌曲"
+                    maxlength="128"
+                    @keydown.escape.stop="playlistKeyword = ''"
+                  />
                   <button
                     v-if="
                       playlistManager.operations.value.length +
@@ -2101,21 +2156,41 @@ onUnmounted(() => {
                       {{ page.kind === 'daily' ? '下载' : '下载当前歌曲列表' }}
                     </button>
                   </div>
+                  <p
+                    v-if="playlistTrackSearch.positions !== null"
+                    class="playlist-track-match"
+                    role="status"
+                  >
+                    {{ playlistTrackSearch.tracks.length }} 首匹配歌曲
+                    <template v-if="result.more"
+                      >（已搜索 {{ result.tracks.length }} /
+                      {{ result.total }} 首，可继续加载）</template
+                    >
+                  </p>
                   <TrackTable
-                    v-if="result.tracks.length"
+                    v-if="playlistTrackSearch.tracks.length"
                     navigable
                     @artist="(id) => openCatalog({ kind: 'artist', id })"
                     @album="(id) => openCatalog({ kind: 'album', id })"
-                    :tracks="result.tracks"
+                    :tracks="playlistTrackSearch.tracks"
+                    :match-keyword="
+                      playlistTrackSearch.positions !== null ? playlistKeyword : undefined
+                    "
                     :liked="liked"
                     :busy="busyLikes"
                     :playable="player.ready.value"
                     :current-id="currentTrackId"
-                    @play="play"
+                    @play="playVisibleTrack"
                     @like="music.like"
-                    @more="(request) => trackActions?.show(request, result?.playlist ?? undefined)"
+                    @more="showVisibleTrackActions"
                   />
-                  <div v-else class="empty-state">这里还没有歌曲</div>
+                  <div v-else class="empty-state">
+                    {{
+                      playlistTrackSearch.positions === null
+                        ? '这里还没有歌曲'
+                        : '没有找到匹配的歌曲'
+                    }}
+                  </div>
                   <button
                     v-if="result.more"
                     class="load-more"

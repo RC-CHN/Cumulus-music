@@ -342,3 +342,20 @@
   justify-content: center;
   gap: 16px;
 }
+.playlist-track-search {
+  width: min(100%, 186px);
+  min-width: 0;
+  min-height: 34px;
+  margin-inline-start: auto;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+.playlist-track-match {
+  margin: 0 0 10px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
