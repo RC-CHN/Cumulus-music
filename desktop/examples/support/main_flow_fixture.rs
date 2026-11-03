@@ -20,16 +20,27 @@ use std::{
 const ORIGINAL: u64 = 41;
 const CREATED: u64 = 42;
 pub const SOURCE: &str = media::URL;
+#[cfg(target_os = "linux")]
 const HTTPS_HOST: &str = "cumulus-local-fixture.music.126.net";
 const HTTPS_SOURCE: &str = "https://cumulus-local-fixture.music.126.net/synthetic/audio.m4a";
 
 /// The real URL path is test-only and fail-closed outside the loopback fixture.
 pub fn ordinary_https() -> bool {
-    if std::env::var("CUMULUS_MAIN_FLOW_HTTPS_PROOF").as_deref() != Ok("1") {
-        return false;
+    let enabled = std::env::var("CUMULUS_MAIN_FLOW_HTTPS_PROOF").as_deref() == Ok("1");
+    if enabled {
+        verify_ordinary_https_isolation();
     }
+    enabled
+}
+
+#[cfg(not(target_os = "linux"))]
+fn verify_ordinary_https_isolation() {
+    panic!("ordinary HTTPS proof requires Linux namespaces");
+}
+
+#[cfg(target_os = "linux")]
+fn verify_ordinary_https_isolation() {
     use std::net::{Ipv4Addr, SocketAddr, ToSocketAddrs};
-    assert!(cfg!(target_os = "linux"));
     assert_eq!(
         std::fs::read_to_string("/etc/hosts").unwrap(),
         format!("127.0.0.1 {HTTPS_HOST}\n")
@@ -41,7 +52,6 @@ pub fn ordinary_https() -> bool {
             .collect::<Vec<_>>(),
         [SocketAddr::from((Ipv4Addr::LOCALHOST, 443))]
     );
-    true
 }
 
 pub struct Service {
