@@ -22,3 +22,9 @@ account/session.rs:275）派生 DailyRecommendationState.birthdayToday，
 日期比较、闰日和无效资料由 core 测试覆盖；daily_history_smoke.py --birthday
 用原生合成账号读取验证窄窗祝福、普通状态不受影响、缓存回退及播放入口。生日标记
 仅用于呈现，不影响歌曲、缓存权限或播放权益。
+
+Linux 两种实际 WebView 模式均通过组合回归，截图分别在
+`.build/daily-birthday-combined-plain/first/` 和
+`.build/daily-birthday-combined-birthday/first/`。缓存重试等待期间保留歌曲行和
+键盘焦点，成功后焦点回到标题；失效会话仍清除缓存展示。Linux 必需 CI 使用
+生日合成资料，Windows 保留普通分支。
