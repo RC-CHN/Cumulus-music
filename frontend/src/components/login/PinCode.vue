@@ -64,9 +64,9 @@ function paste(event: ClipboardEvent) {
   const value = event.clipboardData?.getData('text').replace(/\s/g, '') ?? '';
   if (!/^[0-9]{1,6}$/.test(value)) return;
   completed = false;
-  digits.value = [...value.padEnd(6, ' ')].map((c) => (c === ' ' ? '' : c));
+  digits.value = [...value, ...digits.value.slice(value.length)];
   emit('edit');
-  if (value.length === 6) publish();
+  if (digits.value.every(Boolean)) publish();
   else void nextTick(() => focus(value.length));
 }
 defineExpose({ clear, focus });

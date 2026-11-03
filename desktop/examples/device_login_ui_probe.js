@@ -76,7 +76,9 @@
     await pinDigit(0,'1');assert(document.activeElement===pins()[1],'typing advances PIN focus');await pinDigit(1,'2');
     pins()[2].dispatchEvent(new KeyboardEvent('keydown',{key:'Backspace',bubbles:true,cancelable:true}));await sleep(0);assert(pinLength()===1&&document.activeElement===pins()[1],'backspace deletes previous empty slot');
     pins()[1].dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true,cancelable:true}));assert(document.activeElement===pins()[0],'PIN arrow navigation');
-    await pinDigit(0,'x');assert(pinLength()===0,'non-digit rejected');for(let i=0;i<3;i++)await pinDigit(i,'0');await pastePin('12x456');assert(pinLength()===3,'invalid paste does not submit or replace');await stage('pin_partial_keyboard',{expectGuest:true});
+    await pinDigit(0,'x');assert(pinLength()===0,'non-digit rejected');for(let i=0;i<3;i++)await pinDigit(i,'0');await pastePin('12x456');assert(pins().map(n=>n.value).join('')==='000','invalid paste does not submit or replace');
+    await pastePin('12');assert(pinLength()===3&&pins()[2].value==='0'&&document.activeElement===pins()[2],'short paste replaces only prefix and keeps remaining digits');
+    await stage('pin_partial_keyboard',{expectGuest:true});
     await mode('poll_slow');await wait(()=>one('.device-verification[aria-busy="true"]'),'background read pending');await pastePin('000000');assert(pinLength()===0&&pins().every(n=>n.disabled),'completed code cleared while waiting for read');await stage('pin_waits_for_read',{expectGuest:true});
     await wait(()=>one('.verification-error')?.textContent.trim(),'incorrect confirmation code');assert(pinLength()===0,'submitted secret cleared');await stage('confirm_rejected_code',{expectGuest:true});
     const retiredPin=pins()[0];await pinDigit(0,'2');assert(!one('.verification-error')?.textContent.trim(),'editing clears wrong-code message');await stage('pin_error_edit',{expectGuest:true});
@@ -89,7 +91,9 @@
     await mode('rejected');await theme('dark');await resize(1120,760);await choose('DEVICE_SCAN');await wait(()=>phase()==='rejected','original device rejected');assert(button('刷新原设备二维码')&&!document.body.innerText.includes('错误次数'),'scan rejection uses QR expiry instead of PIN error');await stage('scan_rejected_dark',{expectGuest:true});await back();
     await mode('confirm_status');await choose('DEVICE_CONFIRM');await wait(()=>phase()==='code_required','status alone requires code');await stage('confirm_status_is_not_login',{expectGuest:true});
     await mode('business_false');await pastePin('123456');await wait(()=>one('.verification-error')?.textContent.trim(),'business rejection inside HTTP200');await stage('confirm_business_rejected',{expectGuest:true});
-    await mode('normal');await pastePin('123456');await logged();await stage('confirmed_account',{expectNickname:'邮箱验证账号',rememberEpoch:true});
+    await mode('normal');for(let i=3;i<6;i++)await pinDigit(i,String(i+1));await pastePin('123');
+    assert(pinLength()===0,'short paste completing the current code scrubs the fields');
+    await logged();await stage('confirmed_account',{expectNickname:'邮箱验证账号',rememberEpoch:true});
     await openChallenge();await mode('start_lost');await choose('DEVICE_SCAN');await wait(()=>phase()==='recovery_required','unknown start');await stage('start_unknown',{expectNickname:'邮箱验证账号'});await back();await stage('start_unknown_stopped',{expectNickname:'邮箱验证账号'});
     await mode('poll_error');await choose('DEVICE_SCAN');await wait(()=>phase()==='error','poll read failed');await stage('poll_read_failed',{expectNickname:'邮箱验证账号'});
     await mode('normal');await click(button('重新检查验证状态'));await wait(()=>phase()==='waiting','explicit status retry');await stage('poll_read_recovered',{expectNickname:'邮箱验证账号'});
