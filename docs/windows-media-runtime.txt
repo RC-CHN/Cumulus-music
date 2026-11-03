@@ -259,3 +259,18 @@ capture showing the synthetic tone; playback position alone is not that
 evidence. Keep installation, profile and registry changes confined to the
 disposable environment. No exact NSIS installation or Windows audio endpoint
 was available for this audit, so this plan does not add a required CI step.
+
+The opt-in installer/layout portion is available as:
+  python scripts/ci/windows_nsis_smoke.py --disposable-runner --packages PATH --commit FULL_SHA --ci-run RUN_ID --ci-attempt ATTEMPT --root NEW_DIRECTORY
+
+Use the authenticated packages-windows-x64 artifact from that exact CI run
+and attempt. The diagnostic checks both archive hashes, installs and
+uninstalls in a private directory, compares the installed media files with
+the portable runtime, runs installed ffprobe against generated PCM, and
+launches the installed binary's graphics-only startup from a separate
+working directory. Logs and a bounded JSON receipt go under NEW_DIRECTORY.
+The current-user uninstall registration and installed runtime files must
+be absent afterward. This script assumes an offline disposable Windows
+runner with WebView2 already present; it does not configure network
+isolation. Windows execution and ordinary installed GUI playback are still
+unverified by this diagnostic and it is not a release or CI gate.

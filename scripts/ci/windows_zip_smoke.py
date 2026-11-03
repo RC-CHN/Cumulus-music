@@ -18,14 +18,16 @@ DEVICE_NAMES = {'con', 'prn', 'aux', 'nul', *(f'com{i}' for i in range(1, 10)),
                 *(f'lpt{i}' for i in range(1, 10))}
 
 
-def portable_runtime(packages, commit, temporary):
+def portable_runtime(packages, commit, temporary, *, ci_run=None, ci_attempt=None):
     manifest = json.loads((packages / f'manifest-{PLATFORM}.json').read_text(encoding='utf-8'))
     version = manifest['version']
     assert re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version), 'invalid package version'
     assert manifest['commit'] == commit and manifest['platform'] == PLATFORM, 'wrong package provenance'
-    for key, env in [('ciRun', 'GITHUB_RUN_ID'), ('ciAttempt', 'GITHUB_RUN_ATTEMPT')]:
-        if env in os.environ:
-            assert manifest[key] == os.environ[env], f'wrong package {key}'
+    for key, explicit, env in [('ciRun', ci_run, 'GITHUB_RUN_ID'),
+                               ('ciAttempt', ci_attempt, 'GITHUB_RUN_ATTEMPT')]:
+        expected = explicit if explicit is not None else os.environ.get(env)
+        if expected is not None:
+            assert manifest[key] == expected, f'wrong package {key}'
     top = f'Cumulus-{version}-{PLATFORM}'
     name = f'{top}.zip'
     assets = [asset for asset in manifest['assets'] if asset['name'] == name]
