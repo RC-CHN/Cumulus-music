@@ -1613,7 +1613,7 @@ onUnmounted(() => {
                 :account="account"
                 :keyword="page.keyword"
                 :category="page.category"
-                :offset="page.offset"
+                :pagination="page.pagination"
                 :correct="page.correct"
                 :rewritten-keyword="page.rewrittenKeyword"
                 :liked="liked"
@@ -1624,9 +1624,9 @@ onUnmounted(() => {
                 :playback-state="playbackState"
                 :current-voice-id="currentVoiceId ?? undefined"
                 @navigate="
-                  (category, offset, correct, rewrittenKeyword) =>
+                  (category, pagination, correct, rewrittenKeyword) =>
                     page.kind === 'search' &&
-                    music.navigate({ ...page, category, offset, correct, rewrittenKeyword })
+                    music.navigate({ ...page, category, pagination, correct, rewrittenKeyword })
                 "
                 @search="(keyword) => music.navigate({ kind: 'search', keyword })"
                 @open="openSearchItem"

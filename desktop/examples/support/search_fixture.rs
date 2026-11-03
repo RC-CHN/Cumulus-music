@@ -21,6 +21,7 @@ pub fn control(value: &Value) {
             "unavailable",
             "missing_song",
             "mixed_results",
+            "short_pages",
             "correction",
             "card_error",
             "cover",
@@ -279,7 +280,24 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
     let rows = container[key].as_array().unwrap();
     let offset = args["offset"].as_u64().unwrap_or(0) as usize;
     let limit = args["limit"].as_u64().unwrap_or(30) as usize;
-    let total = if mode.starts_with("scroll") { 600 } else { 60 };
+    let short_playlists = mode == "short_pages" && category == "playlists";
+    let limit = if short_playlists {
+        match offset {
+            0 => 18,
+            18 => 11,
+            29 => 4,
+            _ => return Some(Err(Error::InvalidInput("unexpected synthetic page offset"))),
+        }
+    } else {
+        limit
+    };
+    let total = if short_playlists {
+        33
+    } else if mode.starts_with("scroll") {
+        600
+    } else {
+        60
+    };
     let start = if mode == "scroll_duplicates" {
         0
     } else {
@@ -318,6 +336,12 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
             })
             .collect()
     });
+    if short_playlists {
+        container[key][0]["name"] = json!(format!("合成分页 {offset}"));
+        if offset == 18 {
+            container[key][1] = json!({"name":"无法展示的歌单"});
+        }
+    }
     if mode == "mixed_results" && category == "songs" {
         container[key][0] = json!({"baseInfo":{"simpleSongData":{"name":"不可展示的合成结果"}}});
     }

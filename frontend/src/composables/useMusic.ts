@@ -42,7 +42,7 @@ export type Page =
       kind: 'search';
       keyword: string;
       category?: import('../services/search').SearchCategory;
-      offset?: number;
+      pagination?: import('../services/searchPagination').SearchPageStep;
       correct?: boolean;
       rewrittenKeyword?: string;
       searchId?: number;

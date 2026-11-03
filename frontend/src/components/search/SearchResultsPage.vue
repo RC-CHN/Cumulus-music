@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { TrackMenuRequest } from '../../services/trackMenu';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { advanceSearchPage, type SearchPageStep } from '../../services/searchPagination';
 import type { SearchViewportMemory } from '../../services/searchViewport';
 import SearchCardGrid from './SearchCardGrid.vue';
 import SearchTrackCard from './SearchTrackCard.vue';
@@ -25,7 +26,7 @@ const props = defineProps<{
   account: AccountView;
   keyword: string;
   category?: SearchCategory;
-  offset?: number;
+  pagination?: SearchPageStep;
   correct?: boolean;
   rewrittenKeyword?: string;
   liked: Set<string>;
@@ -39,7 +40,12 @@ const props = defineProps<{
   searchId?: number;
 }>();
 const emit = defineEmits<{
-  navigate: [category: SearchCategory, offset: number, correct: boolean, rewrittenKeyword?: string];
+  navigate: [
+    category: SearchCategory,
+    pagination: SearchPageStep | undefined,
+    correct: boolean,
+    rewrittenKeyword?: string,
+  ];
   search: [keyword: string];
   open: [item: SearchItem];
   play: [tracks: TrackView[], index: number];
@@ -58,7 +64,10 @@ const emit = defineEmits<{
 const model = useSearchResults(useCore(), () => emit('expired'), props.memory);
 const { view, loading, error, loadingMore, moreError } = model;
 const category = computed(() => props.category ?? 'all'),
-  offset = computed(() => props.offset ?? 0);
+  offset = computed(() => props.pagination?.offset ?? 0);
+const nextPage = computed(() =>
+  view.value?.more ? advanceSearchPage(props.pagination, view.value.nextOffset) : undefined,
+);
 const rewrite = computed(() =>
   props.correct === false
     ? undefined
@@ -121,17 +130,17 @@ async function open(item: SearchItem) {
   else emit('open', item);
 }
 function choose(key: SearchCategory, fromKeyboard = false) {
-  turn(key, 0);
+  turn(key);
   if (fromKeyboard)
     void nextTick(() =>
       tabs.value?.querySelector<HTMLButtonElement>(`[data-category="${key}"]`)?.focus(),
     );
 }
-function turn(key: SearchCategory, nextOffset: number) {
+function turn(key: SearchCategory, pagination?: SearchPageStep) {
   emit(
     'navigate',
     key,
-    nextOffset,
+    pagination,
     props.correct ?? true,
     key === 'all' ? undefined : rewrite.value,
   );
@@ -374,7 +383,7 @@ onBeforeUnmount(() => {
     </div>
     <div v-if="rewrite" class="search-correction">
       正在显示“{{ rewrite }}”的结果
-      <button class="text-button" @click="emit('navigate', 'all', 0, false)">
+      <button class="text-button" @click="emit('navigate', 'all', undefined, false)">
         仍然搜索“{{ keyword }}”
       </button>
     </div>
@@ -556,14 +565,14 @@ onBeforeUnmount(() => {
             <button
               class="secondary"
               :disabled="offset === 0"
-              @click="turn(category, Math.max(0, offset - limit))"
+              @click="turn(category, pagination?.previous)"
             >
               上一页</button
-            ><span>第 {{ Math.floor(offset / limit) + 1 }} 页</span
+            ><span>第 {{ pagination?.number ?? 1 }} 页</span
             ><button
               class="secondary"
-              :disabled="!view.more"
-              @click="turn(category, view.nextOffset)"
+              :disabled="!nextPage"
+              @click="nextPage && turn(category, nextPage)"
             >
               下一页
             </button>

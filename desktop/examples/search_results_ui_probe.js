@@ -42,8 +42,18 @@
         }
       }
     }
-    await choose('playlists');const p=one('.search-result-panel');p.scrollTop=p.scrollHeight;click(button('下一页'));await wait(()=>ready()&&one('.search-result-pagination').textContent.includes('第 2 页'),'next page');await capture('playlists_page_two');
-    click(button('上一页'));await wait(()=>ready()&&one('.search-result-pagination').textContent.includes('第 1 页'),'previous page');
+    await fixture('short_pages');await fresh('合成短分页');await choose('playlists');
+    const onPage=(number,offset)=>ready()&&one('.search-result-pagination')?.textContent.includes(`第 ${number} 页`)&&one('.search-result-card')?.textContent.includes(`合成分页 ${offset}`);
+    assert(onPage(1,0),'first short page');
+    click(button('下一页'));await wait(()=>onPage(2,18),'second short page');
+    assert(one('.search-result-panel').textContent.includes('有 1 项结果暂无法展示'),'short page keeps valid rows and counts malformed records');
+    await capture('playlists_page_two');
+    click(button('下一页'));await wait(()=>onPage(3,29),'third short page consumes malformed record');
+    assert(button('下一页').disabled,'last short page cannot advance');
+    click(button('上一页'));await wait(()=>onPage(2,18),'previous returns to actual offset 18');
+    click(button('返回上一页'));await wait(()=>onPage(3,29),'app back restores third page');
+    click(button('上一页'));await wait(()=>onPage(2,18),'previous still available after app back');
+    click(button('上一页'));await wait(()=>onPage(1,0),'first page restored');
     await fixture('mixed_results');await fresh('合成混合结果');
     const partial=()=>one('.search-result-panel').textContent.includes('有 1 项结果暂无法展示');
     assert(partial()&&one('.search-track-card')&&!button('重新加载'),'comprehensive mixed results preserve valid cards');
@@ -67,6 +77,6 @@
     await fixture('unavailable');await fresh('合成不可用结果');await choose('voices');assert(!one('.search-result-card .search-card-play')&&one('.search-result-card').textContent.includes('暂不可打开'),'missing radio target disabled');await capture('voice_unavailable');await choose('mvs');assert(one('.search-card-open').disabled,'non-MV target disabled');await capture('mv_unavailable');await fixture('good');
     await choose('songs');click(button('播放全部'));await wait(()=>one('.now-playing')?.textContent.includes('界面')||button('暂停'),'play selection');await capture('play');
     await fixture('expired');click(one('[data-category="albums"]'));await wait(()=>button('重新登录')&&!one('.search-results-page'),'expired account');await capture('expired');
-    await emit('complete',{ok:true,stageCount:count,responseTimingInjected:true,realMusicRequests:0,realAccountWrites:0});
+    await emit('complete',{ok:true,stageCount:count,responseTimingInjected:true,shortPageOffsetsVerified:true,realMusicRequests:0,realAccountWrites:0});
   }catch(error){await emit('failed',{step,message:String(error),stack:error?.stack,stageCount:count,body:document.body.innerText.slice(0,3500)});}
 })();
