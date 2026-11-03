@@ -168,3 +168,19 @@ core/tests/fixtures/effects-rotation-soxr-official.json.gz，SHA256
   python3 scripts/research/rotation_soxr_replay.py /path/to/neaudioeffects.dll
 当前仍未接入非 44.1 kHz Rust 播放、未验证 Windows 宿主及库加载分发；
 冻结的这些输出供下一步实现做对照。
+
+非 44.1 kHz：Rust 外层组件
+ResampledRotationStage 接收两个由原生宿主按 RotationRatePlan 构造的平面 f32
+转换器。普通输入、空非结束调用和 NULL 结束调用明确分开；沿用实际原厂的
+入口/出口缓冲区容量、256 帧内核、禁用时转发残留输入、单次有限排空后清状态。
+显式 reset 清两转换器、FIFO 和卷积历史，保留相位；禁用和末端内部 flush 清相位。
+超界或非有限转换输出使实例失败，调用方必须重建。格式或非有限输入在状态改变前拒绝。
+组件不自动加载系统库，也不进入桌面音效图。
+
+core/tests/effects_rotation_resampled.rs 默认使用注入转换器测试异常、排空调用顺序、
+上限和干湿数据先后。Linux 可选的可信原生库证明使用 libsoxr-0.1.3 执行五组已冻结
+原厂输入，有效帧、结束位和相位逐块完全相同；18454 个 PCM 样本最大绝对差
+1.1920929e-7。没有实际声卡、Windows 库装载、
+发行包或完整效果图验证。手动命令：
+  CUMULUS_PROOF_SOXR_LIBRARY=/absolute/trusted/libsoxr.so.0 cargo test --locked \
+    -p cumulus-core --test effects_rotation_resampled -- --ignored --nocapture

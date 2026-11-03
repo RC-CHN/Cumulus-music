@@ -116,6 +116,11 @@ impl RotationKernel {
         // A numerical failure is deliberately not cleared by this partial reset.
     }
 
+    pub(super) fn clear_phase(&mut self) {
+        // SAFETY: initialized and exclusively owned rotation state.
+        unsafe { ffi::netease_rotate_clear_phase(self.state.pointer()) };
+    }
+
     pub fn phase(&self) -> f32 {
         // SAFETY: read-only field accessor of initialized live state.
         unsafe { ffi::netease_rotate_phase(self.state.const_pointer()) }

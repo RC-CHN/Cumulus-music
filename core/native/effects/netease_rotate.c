@@ -61,6 +61,7 @@ int netease_rotate_init(NeteaseRotate *s,const float *tables,size_t count,float 
 void netease_rotate_reset(NeteaseRotate *s) {
     memset(s->overlap,0,sizeof(s->overlap));s->warm=0;
 }
+void netease_rotate_clear_phase(NeteaseRotate *s){s->phase=0;}
 float netease_rotate_phase(const NeteaseRotate *s){return s->phase;}
 const float *netease_rotate_response(const NeteaseRotate *s){return s->response[0];}
 

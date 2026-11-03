@@ -11,6 +11,7 @@ mod loudness;
 mod parametric;
 mod rotation;
 mod rotation_rate;
+mod rotation_resampled;
 mod state;
 
 pub use block::{Format, PlanarBlock};
@@ -22,3 +23,4 @@ pub use loudness::{LoudnessParameters, LoudnessStage};
 pub use parametric::{ParametricBand, ParametricEq};
 pub use rotation::{RotationKernel, RotationResponses, RotationResult, RotationStage};
 pub use rotation_rate::{ROTATION_KERNEL_RATE, RotationRateConversion, RotationRatePlan};
+pub use rotation_resampled::{ResampledRotationStage, RotationRateConverter};

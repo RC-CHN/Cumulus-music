@@ -8,6 +8,7 @@ unsafe extern "C" {
         phase: f32,
     ) -> i32;
     pub fn netease_rotate_period(state: *mut c_void, seconds: f32) -> i32;
+    pub fn netease_rotate_clear_phase(state: *mut c_void);
     pub fn netease_rotate_reset(state: *mut c_void);
     pub fn netease_rotate_process(state: *mut c_void, data: *mut f32, valid: *mut u32) -> i32;
     pub fn netease_rotate_phase(state: *const c_void) -> f32;
