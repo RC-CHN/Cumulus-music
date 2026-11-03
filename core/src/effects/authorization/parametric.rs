@@ -15,6 +15,7 @@ use std::sync::Arc;
 /// material. It is not serializable, a DSP receipt, or a perpetual permission.
 pub struct BoundParametric {
     prepared: Box<PreparedParametric>,
+    library: EffectsLibrary,
     operation: String,
     revision: u64,
 }
@@ -22,6 +23,20 @@ pub struct BoundParametric {
 impl BoundParametric {
     pub fn effect(&self) -> EffectId {
         self.prepared.effect()
+    }
+
+    pub(crate) fn with_current<T>(
+        &self,
+        session: &Arc<crate::account::AccountSession>,
+        token: &SessionToken,
+        action: impl FnOnce(crate::effects::parametric::ParametricPlan) -> Result<T>,
+    ) -> Result<T> {
+        EffectAuthorizations::new(session.clone())?.with_validated(
+            &self.library,
+            token,
+            self,
+            action,
+        )
     }
 }
 
@@ -84,6 +99,7 @@ impl EffectAuthorizations {
         library.prepared_parametric_for(token, &prepared)?;
         Ok(BoundParametric {
             prepared,
+            library: library.clone(),
             operation: observation.lease.operation,
             revision: observation.lease.revision,
         })
@@ -99,6 +115,16 @@ impl EffectAuthorizations {
         token: &SessionToken,
         binding: &BoundParametric,
     ) -> Result<()> {
+        self.with_validated(library, token, binding, |_| Ok(()))
+    }
+
+    fn with_validated<T>(
+        &self,
+        library: &EffectsLibrary,
+        token: &SessionToken,
+        binding: &BoundParametric,
+        action: impl FnOnce(crate::effects::parametric::ParametricPlan) -> Result<T>,
+    ) -> Result<T> {
         if !Arc::ptr_eq(&self.session, &library.session) {
             return Err(Error::StaleResponse);
         }
@@ -112,7 +138,6 @@ impl EffectAuthorizations {
         }) {
             return Err(Error::StaleResponse);
         }
-        library.prepared_parametric_for(token, &binding.prepared)?;
-        Ok(())
+        library.with_prepared_parametric_for(token, &binding.prepared, action)
     }
 }

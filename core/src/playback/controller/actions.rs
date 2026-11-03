@@ -371,11 +371,12 @@ impl Actor {
         }
         self.require_loaded()?;
         let preserve_position = paused && self.state == PlaybackStatus::Paused;
-        let view = super::engine(self.engine.clone(), self.guard(), move |engine| {
-            engine.pause(paused)?;
-            engine.poll()
-        })
-        .await?;
+        let view = self
+            .parametric_transport(paused, self.guard(), move |engine| {
+                engine.pause(paused)?;
+                engine.poll()
+            })
+            .await?;
         // Poll consumes native events even when we only need the clock.
         // The regular tick still owns their handling for this load.
         self.deferred_events.extend(view.events);

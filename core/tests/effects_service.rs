@@ -965,3 +965,107 @@ async fn old_unclassified_registration_cannot_be_promoted_from_current_rights() 
     );
     assert_eq!(api.calls().len(), calls);
 }
+
+#[allow(dead_code)]
+#[path = "support/playback/mod.rs"]
+mod playback_support;
+
+#[tokio::test]
+async fn supervised_peq_is_detached_after_local_rights_revocation_without_stopping_music() {
+    use cumulus_core::{
+        effects::{
+            authorization::{EffectAuthorizations, TrialConsent},
+            service::ParametricPreparation,
+        },
+        playback::{
+            controller::{ParametricApplication, PlaybackController, PlaybackStatus},
+            source::SourceResolver,
+        },
+    };
+    use std::{sync::atomic::Ordering, time::Duration};
+
+    let temp = tempfile::tempdir().unwrap();
+    let store = Arc::new(StateStore::open(temp.path()).unwrap());
+    let (bytes, _) = sample("first");
+    let api = Arc::new(ScriptApi::new(pair(&sound(&bytes, URL), true).into_iter().chain([
+        auth(true),
+        json!({"code":200,"data":true}).into(),
+        auth(true),
+        nontrial_recycle(false),
+        auth(true),
+        nontrial_recycle(false),
+        json!({"code":200,"data":[{"id":1,"code":200,"url":"https://m1.music.126.net/fixture.mp3","md5":"abcd","expi":10,"level":"standard"}]}).into(),
+        auth(true),
+        nontrial_recycle(true),
+    ])));
+    let session = world(api.clone(), store.clone());
+    let token = session.token().unwrap();
+    let library =
+        EffectsLibrary::with_backend(session.clone(), Arc::new(Origin::new(bytes))).unwrap();
+    let authorizations = EffectAuthorizations::new(session.clone()).unwrap();
+    let ParametricPreparation::Prepared(prepared) = library
+        .prepare_parametric_for(&token, id(), RunOptions::default())
+        .await
+        .unwrap()
+    else {
+        panic!("fixture has standalone PEQ");
+    };
+    authorizations
+        .begin_for(&token, id(), TrialConsent::DoNotStart)
+        .await
+        .unwrap();
+    let binding = authorizations
+        .bind_parametric_for(&library, &token, prepared)
+        .await
+        .unwrap();
+    let device = Arc::new(playback_support::Device::default());
+    device.parametric_supported.store(true, Ordering::SeqCst);
+    let player = PlaybackController::start(
+        session.clone(),
+        store,
+        Arc::new(SourceResolver::new(session, None)),
+        playback_support::audio_engine(device.clone()),
+    )
+    .unwrap();
+
+    assert_eq!(
+        player
+            .command(&token, playback_support::replace(&[1]))
+            .await
+            .unwrap()
+            .state,
+        PlaybackStatus::Playing
+    );
+    assert_eq!(
+        player
+            .apply_bound_parametric(&token, binding)
+            .await
+            .unwrap(),
+        ParametricApplication::Configured
+    );
+    assert!(device.parametric_attached.load(Ordering::SeqCst));
+    let before = device.state.lock().unwrap().stops;
+    assert!(
+        !authorizations
+            .observe_for(&token, id())
+            .await
+            .unwrap()
+            .can_use
+    );
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while device.parametric_attached.load(Ordering::SeqCst) {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(player.snapshot().state, PlaybackStatus::Playing);
+    assert_eq!(device.state.lock().unwrap().stops, before);
+    assert_eq!(
+        api.calls()
+            .iter()
+            .filter(|call| call.path.ends_with("/set") || call.path.ends_with("/stop"))
+            .count(),
+        1
+    );
+}

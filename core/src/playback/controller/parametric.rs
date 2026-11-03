@@ -1,8 +1,11 @@
 use super::{Message, PlaybackController, state::Actor};
 use crate::{
-    Error, Result, account::SessionToken, effects::parametric::ParametricPlan,
-    playback::engine::Cancellation,
+    Error, Result,
+    account::SessionToken,
+    effects::{authorization::BoundParametric, parametric::ParametricPlan},
+    playback::engine::{AudioEngine, Cancellation},
 };
+use std::sync::Arc;
 use tokio::sync::oneshot;
 
 /// Configuration acknowledgement, not a claim of observed PCM processing.
@@ -16,14 +19,19 @@ pub enum ParametricApplication {
 
 pub(super) struct Request {
     token: SessionToken,
-    plan: Option<ParametricPlan>,
+    selection: Selection,
     reply: oneshot::Sender<Result<ParametricApplication>>,
+}
+
+enum Selection {
+    Plain(Option<Box<ParametricPlan>>),
+    Bound(Arc<BoundParametric>),
 }
 
 #[derive(Default)]
 pub(super) struct State {
-    // Outer Option distinguishes an explicit deferred Clear from no request.
-    deferred: Option<Option<ParametricPlan>>,
+    deferred: Option<Selection>,
+    applied: Option<Arc<BoundParametric>>,
     possibly_attached: bool,
     detach_required: bool,
 }
@@ -37,11 +45,31 @@ impl PlaybackController {
         token: &SessionToken,
         plan: Option<ParametricPlan>,
     ) -> Result<ParametricApplication> {
+        self.request_parametric(token, Selection::Plain(plan.map(Box::new)))
+            .await
+    }
+
+    /// Apply an opaque, already registered component with runtime local
+    /// journal supervision. No registration or rights requests are made here.
+    pub async fn apply_bound_parametric(
+        &self,
+        token: &SessionToken,
+        binding: BoundParametric,
+    ) -> Result<ParametricApplication> {
+        self.request_parametric(token, Selection::Bound(Arc::new(binding)))
+            .await
+    }
+
+    async fn request_parametric(
+        &self,
+        token: &SessionToken,
+        selection: Selection,
+    ) -> Result<ParametricApplication> {
         let (reply, result) = oneshot::channel();
         self.sender
             .send(Message::Parametric(Box::new(Request {
                 token: token.clone(),
-                plan,
+                selection,
                 reply,
             })))
             .map_err(|_| Error::State("player is closed"))?;
@@ -54,34 +82,67 @@ impl Actor {
         if request.reply.is_closed() {
             return;
         }
-        let result = self.parametric_change(&request.token, request.plan).await;
+        let result = self
+            .parametric_change(&request.token, request.selection)
+            .await;
         let _ = request.reply.send(result);
     }
 
     async fn parametric_change(
         &mut self,
         token: &SessionToken,
-        plan: Option<ParametricPlan>,
+        selection: Selection,
     ) -> Result<ParametricApplication> {
         self.rebind().await?;
         if !self.bound || token != &self.token {
             return Err(Error::StaleResponse);
         }
         self.session.check_generation(token)?;
+        if let Selection::Bound(binding) = &selection {
+            binding.with_current(&self.session, token, |_| Ok(()))?;
+        }
         if self.pending.is_some() {
             // Do not wait on the engine mutex held by a decoder. The latest
             // request will run in loaded(), before its first unpause.
-            self.parametric.deferred = Some(plan);
+            self.parametric.deferred = Some(selection);
             return Ok(ParametricApplication::DeferredUntilLoaded);
         }
-        self.parametric_apply(plan).await
+        self.parametric_apply_selection(selection).await
     }
 
     pub(super) async fn parametric_apply_deferred(&mut self) -> Result<()> {
-        if let Some(plan) = self.parametric.deferred.take() {
-            self.parametric_apply(plan).await?;
+        if let Some(selection) = self.parametric.deferred.take() {
+            self.parametric_apply_selection(selection).await?;
         }
-        Ok(())
+        self.parametric_supervise().await
+    }
+
+    async fn parametric_apply_selection(
+        &mut self,
+        selection: Selection,
+    ) -> Result<ParametricApplication> {
+        match selection {
+            Selection::Plain(plan) => self.parametric_apply(plan.map(|plan| *plan)).await,
+            Selection::Bound(binding) => {
+                let (session, token, checked) =
+                    (self.session.clone(), self.token.clone(), binding.clone());
+                self.parametric.possibly_attached = true;
+                let result = super::engine(self.engine.clone(), self.guard(), move |engine| {
+                    checked.with_current(&session, &token, |plan| {
+                        if engine.apply_parametric_component(plan)? {
+                            Ok(ParametricApplication::Configured)
+                        } else {
+                            Err(Error::State("parametric audio processing is unavailable"))
+                        }
+                    })
+                })
+                .await;
+                if result.is_ok() {
+                    self.parametric.applied = Some(binding);
+                }
+                self.parametric_cleanup_after_failure(result).await
+            }
+        }
     }
 
     async fn parametric_apply(
@@ -111,6 +172,16 @@ impl Actor {
             }
         })
         .await;
+        if enabled && result.is_ok() {
+            self.parametric.applied = None;
+        }
+        self.parametric_cleanup_after_failure(result).await
+    }
+
+    async fn parametric_cleanup_after_failure(
+        &mut self,
+        result: Result<ParametricApplication>,
+    ) -> Result<ParametricApplication> {
         if result.is_err()
             && let Err(cleanup) = self.parametric_reset().await
         {
@@ -122,6 +193,47 @@ impl Actor {
         result
     }
 
+    pub(super) async fn parametric_supervise(&mut self) -> Result<()> {
+        // The load worker already stopped old audio and loads paused; avoid
+        // waiting on its engine lock. loaded() checks again before unpause.
+        if self.pending.is_none()
+            && self.parametric.applied.as_ref().is_some_and(|binding| {
+                binding
+                    .with_current(&self.session, &self.token, |_| Ok(()))
+                    .is_err()
+            })
+            && let Err(error) = self.parametric_reset().await
+        {
+            let _ = self.stop(false).await;
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    /// Hold the local binding fences across a native resume. This closes the
+    /// gap between an actor tick/request check and the actual engine command.
+    pub(super) async fn parametric_transport<T: Send + 'static>(
+        &self,
+        paused: bool,
+        cancel: Cancellation,
+        operation: impl FnOnce(&mut dyn AudioEngine) -> Result<T> + Send + 'static,
+    ) -> Result<T> {
+        let binding = if paused {
+            None
+        } else {
+            self.parametric.applied.clone()
+        };
+        let (session, token) = (self.session.clone(), self.token.clone());
+        super::engine(self.engine.clone(), cancel, move |engine| {
+            if let Some(binding) = binding {
+                binding.with_current(&session, &token, |_| operation(engine))
+            } else {
+                operation(engine)
+            }
+        })
+        .await
+    }
+
     pub(super) async fn parametric_retry_reset(&mut self) -> Result<()> {
         if self.parametric.detach_required {
             self.parametric_reset().await?;
@@ -131,6 +243,7 @@ impl Actor {
 
     pub(super) async fn parametric_reset(&mut self) -> Result<()> {
         self.parametric.deferred = None;
+        self.parametric.applied = None;
         if self.parametric.possibly_attached {
             self.parametric.detach_required = true;
             super::engine(self.engine.clone(), Cancellation::default(), |engine| {

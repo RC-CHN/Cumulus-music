@@ -102,6 +102,15 @@ impl EffectsLibrary {
         token: &SessionToken,
         prepared: &PreparedParametric,
     ) -> Result<ParametricPlan> {
+        self.with_prepared_parametric_for(token, prepared, Ok)
+    }
+
+    pub(in crate::effects) fn with_prepared_parametric_for<T>(
+        &self,
+        token: &SessionToken,
+        prepared: &PreparedParametric,
+        action: impl FnOnce(ParametricPlan) -> Result<T>,
+    ) -> Result<T> {
         if token != &prepared.token
             || !prepared
                 .session
@@ -122,6 +131,6 @@ impl EffectsLibrary {
             ));
         }
         self.session.check_generation(token)?;
-        Ok(prepared.plan)
+        action(prepared.plan)
     }
 }

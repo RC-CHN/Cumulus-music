@@ -129,14 +129,15 @@ impl Actor {
             .expect("checked")
             .timeline
             .to_media(value.position)?;
-        let result = super::engine(self.engine.clone(), self.guard(), move |engine| {
-            if value.paused {
-                engine.pause(true)?;
-            }
-            engine.seek(position)?;
-            engine.pause(value.paused)
-        })
-        .await;
+        let result = self
+            .parametric_transport(value.paused, self.guard(), move |engine| {
+                if value.paused {
+                    engine.pause(true)?;
+                }
+                engine.seek(position)?;
+                engine.pause(value.paused)
+            })
+            .await;
         if let Err(error) = result {
             // Never present a partly applied command as success. Stop after an
             // engine failure; the together inbox retains recovery responsibility.

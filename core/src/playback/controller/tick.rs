@@ -30,6 +30,7 @@ impl Actor {
         let token = self.session.token()?;
         if token == self.token && self.bound {
             self.parametric_retry_reset().await?;
+            self.parametric_supervise().await?;
             self.quality_sync()?;
             self.equalizer_sync().await?;
             return self.loudness_sync().await;

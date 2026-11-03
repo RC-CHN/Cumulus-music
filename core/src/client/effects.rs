@@ -3,10 +3,11 @@ use crate::{
     Result,
     download::transfer::RunOptions,
     effects::{
+        authorization::{BoundParametric, EffectAuthorizations},
         catalog::{CatalogueKind, EffectId},
         device_directory::EffectDeviceRow,
         directory::{EffectDirectoryDetail, EffectDirectoryRow},
-        service::{EffectsLibrary, ParametricPreparation},
+        service::{EffectsLibrary, ParametricPreparation, PreparedParametric},
     },
 };
 
@@ -23,6 +24,38 @@ impl MusicClient {
         EffectsLibrary::new(self.session.clone())?
             .prepare_parametric_for(&token, id, options)
             .await
+    }
+
+    /// Read and bind an already acknowledged standalone PEQ registration.
+    /// This never starts registration or a trial.
+    pub async fn bind_native_effect_parametric(
+        &self,
+        epoch: &str,
+        prepared: Box<PreparedParametric>,
+    ) -> Result<BoundParametric> {
+        let token = self.player_token(epoch)?;
+        let library = EffectsLibrary::new(self.session.clone())?;
+        EffectAuthorizations::new(self.session.clone())?
+            .bind_parametric_for(&library, &token, prepared)
+            .await
+    }
+
+    /// Native host only: a sealed already-registered binding, supervised by
+    /// the playback actor. No remote write or refresh is started here.
+    pub async fn apply_native_bound_parametric(
+        &self,
+        epoch: &str,
+        binding: BoundParametric,
+    ) -> Result<crate::playback::controller::ParametricApplication> {
+        let token = self.player_token(epoch)?;
+        let result = self
+            .player
+            .controller()
+            .await?
+            .apply_bound_parametric(&token, binding)
+            .await?;
+        self.session.check_generation(&token)?;
+        Ok(result)
     }
 
     pub async fn effect_catalogue(

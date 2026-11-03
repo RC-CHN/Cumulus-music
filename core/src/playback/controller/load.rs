@@ -266,19 +266,16 @@ impl Actor {
                 match target {
                     Ok(target) => {
                         let initial = prepared.timeline.snapshot().media_start;
-                        let result = super::engine(
-                            self.engine.clone(),
-                            self.cancel.clone(),
-                            move |engine| {
+                        let result = self
+                            .parametric_transport(paused, self.cancel.clone(), move |engine| {
                                 if (target - initial).abs() > f64::EPSILON {
                                     engine.seek(target)?;
                                 }
                                 engine.volume(prefs.volume)?;
                                 engine.speed(prefs.speed)?;
                                 engine.pause(paused)
-                            },
-                        )
-                        .await;
+                            })
+                            .await;
                         result.and_then(|_| {
                             self.queue.reload()?;
                             if self.queue.selected().as_ref() != Some(&prepared.item) {
