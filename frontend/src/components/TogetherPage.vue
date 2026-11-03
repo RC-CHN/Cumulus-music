@@ -9,12 +9,14 @@ const scroll = ref(0),
   leave = ref<string>();
 const trackList = ref<HTMLElement>();
 const failedAvatars = ref(new Set<string>());
+const rowHeight = 58;
+const maxViewport = rowHeight * 8;
 const trackCount = computed(() => view.value?.tracks.length ?? 0);
-const maxScroll = computed(() => Math.max(0, trackCount.value * 58 - 464));
+const maxScroll = computed(() => Math.max(0, trackCount.value * rowHeight - maxViewport));
 const start = computed(() =>
-  Math.max(0, Math.floor(Math.min(scroll.value, maxScroll.value) / 58) - 3),
+  Math.max(0, Math.floor(Math.min(scroll.value, maxScroll.value) / rowHeight) - 3),
 );
-const end = computed(() => Math.min(view.value?.tracks.length ?? 0, start.value + 18));
+const end = computed(() => Math.min(trackCount.value, start.value + 18));
 const rows = computed(() => view.value?.tracks.slice(start.value, end.value) ?? []);
 watch(
   [() => view.value?.room?.id, maxScroll],
@@ -250,7 +252,7 @@ async function exit() {
           class="together-tracks"
           @scroll="scroll = ($event.target as HTMLElement).scrollTop"
         >
-          <div :style="{ height: `${start * 58}px` }" aria-hidden="true" />
+          <div :style="{ height: `${start * rowHeight}px` }" aria-hidden="true" />
           <div
             v-for="(track, index) in rows"
             :key="track.id"
@@ -289,7 +291,7 @@ async function exit() {
               <Icon name="close" />
             </button>
           </div>
-          <div :style="{ height: `${(view.tracks.length - end) * 58}px` }" aria-hidden="true" />
+          <div :style="{ height: `${(trackCount - end) * rowHeight}px` }" aria-hidden="true" />
         </div>
       </section>
     </template>

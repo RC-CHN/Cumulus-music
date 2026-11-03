@@ -50,9 +50,21 @@
       await wait(()=>list().scrollTop>2000&&Number(one('.together-number')?.textContent)>30,'scrolled virtual shared queue');
       assert(all('.together-track').length<=18,'shared queue DOM stays bounded');
       expanded=false;
-      click(refresh());
-      await wait(()=>list()?.scrollTop===0&&all('.together-track').length===3&&
-        Number(one('.together-number')?.textContent)===1,'short replacement restores the visible shared rows');
+      let firstShortPaint;
+      const observer=new MutationObserver(()=>{
+        if(!one('.together-queue h2 small')?.textContent.includes('3 首'))return;
+        observer.disconnect();
+        firstShortPaint=all('.together-track').length===3&&Number(one('.together-number')?.textContent)===1;
+      });
+      observer.observe(one('.together-queue'),{childList:true,subtree:true,characterData:true});
+      try{
+        click(refresh());
+        await wait(()=>firstShortPaint!==undefined,'short replacement rendered');
+        assert(firstShortPaint,'short queue immediately has its visible rows');
+        await wait(()=>list()?.scrollTop===0,'short queue resets scroll position');
+      }finally{
+        observer.disconnect();
+      }
     }finally{
       client.togetherView=original;
     }
