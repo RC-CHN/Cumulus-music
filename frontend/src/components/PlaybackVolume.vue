@@ -34,6 +34,7 @@ function focus(event: FocusEvent) {
   show();
 }
 function keydown(event: KeyboardEvent) {
+  if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
   if (event.key === 'Escape' && opened.value) {
     event.preventDefault();
     event.stopPropagation();

@@ -45,6 +45,8 @@
     assert(!(await miniKey('Space',false,'button')),'button Space must remain native button activation');
     assert(await miniKey('KeyP'),'configured mini pause'); await wait(async()=>!(await read()).media.playing,'mini pause');
     const previousVolume=(await read()).media.volume;
+    await mini(`document.querySelector('.volume-trigger').focus();return true;`);
+    await wait(()=>mini(`return !!document.querySelector('[aria-label="音量"][aria-orientation="vertical"]');`),'mini volume keyboard popover');
     assert(await miniKey('ArrowDown',true,'[aria-label="音量"]'),'modified range key consumed');
     await wait(async()=>(await read()).media.volume<previousVolume,'mini volume');
     assert(!(await miniKey('ArrowDown',false,'[aria-label="音量"]')),'plain range key intercepted');
