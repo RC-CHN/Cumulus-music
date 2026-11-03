@@ -168,7 +168,8 @@
       assert(data.pageFm, "handoff opens actual FM page");
     } else {
       data = await mini(facts);
-      assert(!data.overflow && data.focusInside, "contained focus");
+      assert(!data.overflow, "dialog viewport overflow");
+      assert(data.focusInside, "focus left dialog: " + data.active);
       assert(
         data.controls.every(
           (n) =>
@@ -380,12 +381,19 @@
     );
     await capture("submitted_dark");
     await show();
+    await wait(
+      () =>
+        mini(
+          "const n=document.querySelector('.mini-feedback[open] .mini-feedback-submit:not(:disabled)');if(!n)return false;n.focus({preventScroll:true});return document.activeElement===n;",
+        ),
+      "enabled submit owns focus before track switch",
+    );
     await invoke("player_action", { epoch, action: { kind: "next" } });
     await prepare();
     await wait(
       () =>
         mini(
-          "return document.querySelector('.mini-feedback')?.textContent.includes('当前歌曲已切换');",
+          "const d=document.querySelector('.mini-feedback[open]');return d?.textContent.includes('当前歌曲已切换')&&document.activeElement===d.querySelector('footer button');",
         ),
       "old popup",
     );

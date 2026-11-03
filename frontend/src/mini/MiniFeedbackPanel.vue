@@ -11,10 +11,23 @@ onMounted(() => {
   cancel.value?.focus();
 });
 watch(
-  [props.model.writing, props.model.reading, props.model.loadingReasons, props.model.needsRead],
+  [
+    props.model.writing,
+    props.model.reading,
+    props.model.loadingReasons,
+    props.model.needsRead,
+    props.model.sameEntry,
+    props.model.canSubmit,
+  ],
   async () => {
     const element = dialog.value;
-    if (!element || !element.contains(document.activeElement)) return;
+    if (!element?.open || !element.contains(document.activeElement)) return;
+    if (!props.model.sameEntry.value && !props.model.writing.value) {
+      // Switching tracks can remove the reread button or disable the focused
+      // submission control even when the dialog already needed a reread.
+      cancel.value?.focus({ preventScroll: true });
+      return;
+    }
     element.focus({ preventScroll: true });
     await nextTick();
     if (
