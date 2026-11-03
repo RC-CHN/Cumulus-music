@@ -116,6 +116,7 @@ def main():
         env['CUMULUS_COLLECTION_PROOF'] = '1'
     if args.history:
         env['CUMULUS_HISTORY_PROOF'] = '1'
+        env['CUMULUS_UX_SCRIPT'] = str(Path(__file__).resolve().parents[2] / 'desktop/examples/history_ui_probe.js')
     if args.settings:
         env['CUMULUS_SETTINGS_PROOF'] = '1'
     if args.relay:
@@ -250,7 +251,7 @@ def main():
         (root / 'audit.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
         print(json.dumps(result))
         return
-    count = 14 if args.relay_recovery else 20 if args.relay_publication else 19 if args.relay else 22 if args.settings else 21 if args.relay_settings else 24 if args.history else 18
+    count = 14 if args.relay_recovery else 20 if args.relay_publication else 19 if args.relay else 22 if args.settings else 21 if args.relay_settings else 26 if args.history else 18
     assert complete['ok'] and complete['stageCount'] == count and complete['realMusicRequests'] == 0
     if args.screenshots:
         assert captures == count, 'missing WebView screenshots'
@@ -258,7 +259,7 @@ def main():
         checks = complete['focusChecks']
         assert len(checks) == (7 if args.settings else 15 if args.relay_settings else 4)
         assert all(row['passed'] for row in checks), checks
-    assert complete['playbackVerified'] == args.relay
+    assert complete['playbackVerified'] == (args.relay or args.history)
     if args.relay_recovery:
         assert complete['syntheticRelayPulls'] == 2 and complete['syntheticQueueApplications'] == 2
         assert complete['decoder'] == 'libmpv' and complete['audioOutput'] == 'null'
@@ -348,12 +349,15 @@ def main():
     elif args.history:
         assert all(v['rows'] <= 35 and v['footerBottom'] <= v['mainBottom'] + 1 for v in stages)
         assert {v['scope'] for v in stages} == {'歌曲', '播客', '有声书', '声音', '歌单', '专辑'}
+        for kind in ('catalog', 'voice'):
+            stage = next(v for v in stages if v['stage'].endswith(f'_selected_{kind}_playback'))
+            assert stage['batchTracks'] == ['2', '3'] and stage['playbackKind'] == kind
     else:
         assert all(v['cards'] <= 30 for v in stages)
     if not args.collections and not args.history and not args.settings and not args.relay and not args.relay_settings:
         assert all(v['rows'] <= 30 for v in stages)
     result = {'ok': True, 'actualWebView': True, 'states': count,
-                      'realMusicRequests': 0, 'playbackVerified': args.relay,
+                      'realMusicRequests': 0, 'playbackVerified': args.relay or args.history,
                       'collections': args.collections, 'history': args.history, 'settings': args.settings,
                       'relay': args.relay, 'relaySettings': args.relay_settings, 'physicalAudioOutputVerified': False,
                       'screenshots': captures}

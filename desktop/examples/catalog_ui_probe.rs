@@ -114,7 +114,7 @@ fn main() {
         let publisher=Arc::new(cumulus_core::relay::publisher::RelayPublisher::new(session.clone())?);
         let client=MusicClient::with_session(session.clone(),registry);
         let client=if relay_publication {client.with_relay_publication()}else{client};
-        let client=if (relays || interactive) && !is_live {let wave=relay_fixture::wave(&root)?;client.with_audio_factory(move||Ok(Box::new(relay_fixture::NativeAudio::open(wave.clone())?)))}else{cumulus_desktop::configure_native_audio(client,&app.path().resource_dir()?,true)};
+        let client=if (relays || interactive || histories) && !is_live {let wave=relay_fixture::wave(&root)?;client.with_audio_factory(move||Ok(Box::new(relay_fixture::NativeAudio::open(wave.clone())?)))}else{cumulus_desktop::configure_native_audio(client,&app.path().resource_dir()?,true)};
         app.manage(client);
         app.add_capability(r#"{"identifier":"ux-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
         let handle=app.handle().clone();

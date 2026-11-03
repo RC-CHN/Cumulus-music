@@ -9,7 +9,7 @@
   const input=(node,value)=>{node.value=value;node.dispatchEvent(new Event('input',{bubbles:true}));};
   const ready=()=>one('.history-page')?.getAttribute('aria-busy')==='false';
   let stageCount=0;
-  async function capture(name){
+  async function capture(name,extra={}){
     await sleep(400);
     assert(document.documentElement.scrollWidth<=innerWidth,'horizontal overflow');
     const page=one('.history-page').getBoundingClientRect(),main=one('.main-content').getBoundingClientRect();
@@ -20,7 +20,7 @@
       const b=action.getBoundingClientRect(),cell=action.parentElement.getBoundingClientRect();
       assert(b.left>=cell.left-1&&b.right<=cell.right+1,'action outside cell');
     }}
-    await emit(`ux_${String(++stageCount).padStart(2,'0')}_${name}`,{width:innerWidth,height:innerHeight,theme:document.documentElement.dataset.theme,rows:rows.length,total:one('.history-table')?.getAttribute('aria-rowcount'),pageBottom:page.bottom,mainBottom:main.bottom,footerBottom:note.bottom,scope:one('[aria-label="播放记录类型"] [aria-current]')?.textContent.trim(),dialog:!!one('dialog[open]')});await sleep(900);
+    await emit(`ux_${String(++stageCount).padStart(2,'0')}_${name}`,{width:innerWidth,height:innerHeight,theme:document.documentElement.dataset.theme,rows:rows.length,total:one('.history-table')?.getAttribute('aria-rowcount'),pageBottom:page.bottom,mainBottom:main.bottom,footerBottom:note.bottom,scope:one('[aria-label="播放记录类型"] [aria-current]')?.textContent.trim(),dialog:!!one('dialog[open]'),...extra});await sleep(900);
   }
   async function theme(value){click(one('[aria-label="外观主题"]'));await wait(()=>button(value),'theme menu');click(button(value));await wait(()=>document.documentElement.dataset.theme===(value==='深色'?'dark':'light'),'theme changed');}
   async function tab(label){click(all('[aria-label="播放记录类型"] button').find(n=>n.textContent.trim()===label));await wait(()=>ready()&&one('[aria-label="播放记录类型"] [aria-current]')?.textContent.trim()===label,'history tab '+label);await sleep(250);}
@@ -50,6 +50,29 @@
     const nav=one('.sidebar-scroll');for(const item of all('.sidebar .nav-item')){item.scrollIntoView({block:'nearest'});await sleep(15);const a=item.getBoundingClientRect(),b=nav.getBoundingClientRect();assert(a.top>=b.top-1&&a.bottom<=b.bottom+1,'sidebar item unreachable at minimum height');}nav.scrollTop=0;await capture('small_navigation');
     await theme('浅色');await capture('small_light');await tab('有声书');await capture('book_small');
     await emit('fixture',{mode:'empty'});click(one('[aria-label="刷新播放记录"]'));await wait(()=>ready()&&one('.history-content .empty-state'),'empty history');await capture('empty');
-    await emit('complete',{ok:true,stageCount,realMusicRequests:0,playbackVerified:false});
+    await emit('fixture',{mode:'normal'});
+    const invoke=(name,args={})=>window.__TAURI_INTERNALS__.invoke(name,args);
+    const {epoch}=await invoke('account_snapshot');
+    for(const [label,kind] of [['歌曲','catalog'],['声音','voice']]){
+      await tab(label);
+      const play=one('.history-play-selected');
+      assert(play?.disabled,'no history selection');
+      for(const id of [3,2])click(one(`input[aria-label="选择 合成记录 ${id}"]`));
+      await wait(()=>!play.disabled,"selected history action enabled");
+      click(play);
+      let player;
+      for(let i=0;i<120;i++){
+        const state=await invoke('player_snapshot',{epoch});
+        if(state.resourceKind===kind&&(state.track?.voiceId??state.track?.id)==='2'&&state.state==='playing'&&state.position>.15){player=state;break;}
+        await sleep(100);
+      }
+      assert(player,'selected history '+kind+' did not advance');
+      const queue=await invoke('player_queue',{epoch});
+      const batchTracks=queue.tracks.map(row=>row.track.voiceId??row.track.id);
+      assert(batchTracks.join(',')==='2,3','selected history queue follows displayed order');
+      await capture('selected_'+kind+'_playback',{batchTracks,playbackKind:player.resourceKind});
+    }
+    await invoke('player_action',{epoch,action:{kind:'stop'}});
+    await emit('complete',{ok:true,stageCount,realMusicRequests:0,playbackVerified:true});
   }catch(error){await emit('failed',{ok:false,error:String(error),stageCount});}
 })();

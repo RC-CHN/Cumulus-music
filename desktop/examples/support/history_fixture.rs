@@ -108,6 +108,26 @@ impl Api for Library {
                     json!({"code":200,"data":{"list":rows}})
                 });
             }
+            if path == "/api/dj/user/setting/resumeplay/get" && args["radioId"] == "8" {
+                return Ok(json!({"code":200,"data":{"resumePlayValue":0}}));
+            }
+            if matches!(path, "/api/dj/program/detail" | "/api/dj/play/url/check") {
+                let key = if path.ends_with("/detail") {
+                    "id"
+                } else {
+                    "voiceId"
+                };
+                let id = args[key]
+                    .as_u64()
+                    .or_else(|| args[key].as_str()?.parse().ok())
+                    .filter(|id| (1..=100).contains(id))
+                    .ok_or(Error::Response("unknown history fixture episode"))?;
+                return Ok(if key == "id" {
+                    json!({"code":200,"program":resource("VOICE",id)["pubDJProgramData"]})
+                } else {
+                    json!({"code":200,"data":{"voiceId":id,"songId":id+1000,"canPlay":true}})
+                });
+            }
             self.base.request(path, args, cache).await
         })
     }
