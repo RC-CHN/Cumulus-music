@@ -878,6 +878,14 @@ ol.sms-tips {
   margin: 8px 0;
   color: var(--text-secondary);
 }
+.qr-app-download {
+  color: var(--link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.qr-app-download[aria-disabled='true'] {
+  cursor: wait;
+}
 .login-status:empty {
   min-height: 0;
   margin: 0;

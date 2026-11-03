@@ -8,11 +8,14 @@ const core = useCore();
 const qr = ref<QrView>();
 const status = ref<QrStatus>('creating');
 const error = ref('');
+const documentError = ref('');
+const openingDocument = ref(false);
 const captchaBusy = ref(false);
 let generation = 0;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let disposed = false;
 const frame = ref<HTMLElement>();
+const downloadButton = ref<HTMLButtonElement>();
 function deactivate() {
   if (disposed) return;
   disposed = true;
@@ -23,7 +26,8 @@ function deactivate() {
 }
 defineExpose({ deactivate });
 watch(status, async () => {
-  const owned = frame.value?.contains(document.activeElement);
+  const active = document.activeElement;
+  const owned = frame.value?.contains(active) || active === downloadButton.value;
   await nextTick();
   if (!disposed && owned && document.activeElement === document.body)
     frame.value?.focus({ preventScroll: true });
@@ -38,7 +42,7 @@ const size = computed(() => (qr.value?.modules.length ?? 21) + 8);
 const labels: Record<QrStatus, string> = {
   idle: '扫码登录',
   creating: '正在生成二维码…',
-  waiting_scan: '使用网易云音乐 App 扫码登录',
+  waiting_scan: '',
   waiting_confirmation: '扫码成功，请在手机上确认',
   authorized: '登录成功',
   expired: '二维码已过期',
@@ -58,6 +62,8 @@ async function begin() {
   captchaBusy.value = false;
   clearTimeout(timer);
   error.value = '';
+  documentError.value = '';
+  openingDocument.value = false;
   status.value = 'creating';
   const old = qr.value;
   qr.value = undefined;
@@ -117,6 +123,20 @@ async function captcha() {
     if (!disposed && current === generation) captchaBusy.value = false;
   }
 }
+async function openDownload() {
+  if (disposed || openingDocument.value || status.value !== 'waiting_scan') return;
+  const current = generation;
+  documentError.value = '';
+  openingDocument.value = true;
+  try {
+    await core.openLoginDocument('app_download');
+  } catch {
+    if (!disposed && current === generation && status.value === 'waiting_scan')
+      documentError.value = '浏览器未能打开，请检查默认浏览器后重试';
+  } finally {
+    if (!disposed && current === generation) openingDocument.value = false;
+  }
+}
 onMounted(() => {
   void begin();
 });
@@ -150,7 +170,24 @@ onBeforeUnmount(deactivate);
   <button v-if="status === 'challenge'" class="primary" :disabled="captchaBusy" @click="captcha">
     {{ captchaBusy ? '请在验证窗口中完成操作…' : '打开安全验证' }}
   </button>
-  <p class="login-status" role="status">
+  <p v-if="status === 'waiting_scan'" class="login-status qr-scan-instructions">
+    使用
+    <button
+      ref="downloadButton"
+      type="button"
+      class="qr-app-download"
+      aria-label="下载网易云音乐 App"
+      :aria-disabled="openingDocument"
+      @click="openDownload"
+    >
+      网易云音乐 App
+    </button>
+    扫码登录
+  </p>
+  <p v-else class="login-status" role="status">
     {{ error || (status === 'waiting_confirmation' ? '' : labels[status]) }}
+  </p>
+  <p v-if="status === 'waiting_scan' && documentError" class="login-status" role="alert">
+    {{ documentError }}
   </p>
 </template>

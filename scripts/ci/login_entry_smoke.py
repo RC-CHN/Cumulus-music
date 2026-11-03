@@ -48,7 +48,7 @@ def main():
     assert by['sms_consent_required_light']['consentRequired']
     assert by['submit_consent_required_light']['otpLength'] == 0
     assert by['email_consent_required_small_dark']['passwordLength'] > 0
-    assert done['fixture']['browserDocuments'] == ['service', 'privacy', 'children', 'privacy', 'privacy', 'email_recovery']
+    assert done['fixture']['browserDocuments'] == ['app_download', 'app_download', 'service', 'privacy', 'children', 'privacy', 'privacy', 'email_recovery']
     assert '浏览器未能打开' in by['legal_launch_failed_light']['validation']
     assert by['country_tail_keyboard_light']['countryScrollTop'] > 0
     for name in ['country_picker_light', 'country_tail_keyboard_light', 'country_picker_small_dark']:

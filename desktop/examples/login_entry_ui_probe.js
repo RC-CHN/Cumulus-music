@@ -107,6 +107,20 @@
     await wait(() => one('.account-button') && !one('.account-button').disabled && one('.welcome'), 'guest bootstrap');
     await theme('light'); await resize(1120, 760);
     await click(one('.account-button')); await wait(() => one('.login-methods'), 'login modal');
+    const qr = () => one('.qr-frame svg[role="img"]');
+    const app = () => button('下载网易云音乐 App');
+    await wait(() => qr() && app(), 'ordinary QR instructions and app action');
+    const originalQr = qr();
+    await mode('browser_failed'); await click(app());
+    await wait(() => one('.login-status[role="alert"]')?.textContent.includes('浏览器未能打开'), 'QR browser error visible');
+    assert(qr() === originalQr && document.activeElement === app(), 'browser failure keeps the current QR and action focus');
+    await mode('normal'); await click(app());
+    await wait(() => app()?.getAttribute('aria-disabled') === 'false' && !one('.login-status[role="alert"]'), 'explicit QR browser retry');
+    assert(qr() === originalQr, 'opening app download does not regenerate QR');
+    await mode('qr_scanned');
+    await wait(() => one('.qr-confirmation') && !app() && document.activeElement === one('.qr-frame'), 'polling continues, scan removes app action and preserves focus');
+    await mode('normal');
+
     await tab('手机'); await wait(() => !one('[aria-label="国际区号"]').disabled, 'country metadata');
     assert(!one('[aria-label="同意登录协议"]').checked, 'consent defaults unchecked');
     await stage('phone_default_light', { expectGuest: true });
