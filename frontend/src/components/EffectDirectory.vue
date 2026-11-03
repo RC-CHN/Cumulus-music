@@ -10,6 +10,7 @@ import type {
 } from '../services/effectDirectory';
 import Icon from './Icon.vue';
 import EffectDeviceDirectory from './EffectDeviceDirectory.vue';
+import EffectParametricControls from './EffectParametricControls.vue';
 
 const props = defineProps<{ account: AccountView }>();
 const emit = defineEmits<{ close: []; login: [] }>();
@@ -140,7 +141,9 @@ onUnmounted(() => {
       </button>
     </header>
     <div class="effect-directory-body">
-      <p class="effect-directory-note">查看音效介绍和账号权益。当前目录不启用整套音效或试用。</p>
+      <p class="effect-directory-note">
+        查看音效介绍和账号权益。可验证的独立参数均衡组件可以单独配置。
+      </p>
       <div v-if="account.status !== 'authenticated'" class="effect-directory-message">
         <p>登录后可查询音效目录和账号权益。</p>
         <button class="primary" type="button" @click="emit('login')">登录</button>
@@ -207,6 +210,12 @@ onUnmounted(() => {
       <button v-if="access === 'unknown' && !checking" type="button" @click="retryRights">
         重新查询权益
       </button>
+      <EffectParametricControls
+        :key="`${account.epoch}:${selected.id}`"
+        :epoch="account.epoch"
+        :effect-id="selected.id"
+        :allowed="access === 'allowed'"
+      />
     </section>
   </dialog>
 </template>
@@ -312,7 +321,7 @@ onUnmounted(() => {
 }
 .effect-directory-detail {
   flex: none;
-  max-height: min(140px, 35dvh);
+  max-height: min(210px, 40dvh);
   overflow-y: auto;
   border-top: 1px solid var(--line);
   margin-top: 14px;

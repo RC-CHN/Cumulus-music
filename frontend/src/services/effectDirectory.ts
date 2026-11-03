@@ -15,12 +15,53 @@ export interface EffectDeviceChoice {
   name: string;
 }
 
+export type EffectPeqPhase =
+  | 'idle'
+  | 'preparing'
+  | 'prepared'
+  | 'unsupported'
+  | 'configured'
+  | 'deferred'
+  | 'recovery_required';
+
+export type EffectRegistration =
+  | 'registering'
+  | 'registered'
+  | 'start_uncertain'
+  | 'start_rejected'
+  | 'releasing'
+  | 'released'
+  | 'stop_uncertain'
+  | 'stop_rejected';
+
+export interface EffectPeqView {
+  id: number;
+  phase: EffectPeqPhase;
+  attempt: string | null;
+  release: string | null;
+  registration: EffectRegistration | null;
+  canStop: boolean;
+  stopNeedsRetry: boolean;
+  activeId?: number | null;
+  issue?: string | null;
+}
+
 export interface EffectDirectoryClient {
   effectCatalogue(epoch: string, kind: EffectCatalogueKind): Promise<EffectCatalogueItem[]>;
   effectDetail(
     epoch: string,
     id: number,
   ): Promise<(EffectCatalogueItem & { access: EffectAccess }) | null>;
+  effectPeqStatus(epoch: string, id: number): Promise<EffectPeqView>;
+  effectPeqPrepare(epoch: string, id: number): Promise<EffectPeqView>;
+  effectPeqActivate(epoch: string, id: number, attempt: string): Promise<EffectPeqView>;
+  effectPeqStop(
+    epoch: string,
+    id: number,
+    release: string,
+    retryUnknown: boolean,
+  ): Promise<EffectPeqView>;
+  effectPeqReconcile(epoch: string, id: number): Promise<EffectPeqView>;
   effectDeviceBrands(epoch: string): Promise<EffectDeviceChoice[]>;
   effectDeviceModels(epoch: string, brand: number): Promise<EffectDeviceChoice[]>;
 }
