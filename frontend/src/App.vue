@@ -1979,6 +1979,7 @@ onUnmounted(() => {
                 "
                 @back="backFromPage"
                 @play="playCatalog"
+                @collect-tracks="(tracks) => (playlistDialog = { kind: 'tracks', tracks })"
                 @like="music.like"
                 @more="(request) => trackActions?.show(request)"
                 @download="(tracks) => (downloadDialog = { kind: 'start', tracks })"

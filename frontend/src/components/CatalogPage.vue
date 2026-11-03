@@ -19,6 +19,9 @@ import AlbumContent from './catalog/AlbumContent.vue';
 import Icon from './Icon.vue';
 import ArtistHeader from './catalog/ArtistHeader.vue';
 import ArtistTabs from './catalog/ArtistTabs.vue';
+import ActionMenu from './ActionMenu.vue';
+import ModalTransition from './ModalTransition.vue';
+import ArtistTrackBatchDialog from './catalog/ArtistTrackBatchDialog.vue';
 const props = defineProps<{
   model: CatalogSession;
   account: AccountView;
@@ -39,6 +42,7 @@ const emit = defineEmits<{
   like: [track: TrackView];
   more: [request: TrackMenuRequest];
   download: [tracks: TrackView[]];
+  collectTracks: [tracks: TrackView[]];
   mv: [id: string];
   expired: [];
   artistTab: [tab: ArtistTab];
@@ -78,6 +82,44 @@ const {
   refresh,
   collect,
 } = props.model;
+const artistBatch = ref<TrackView[]>();
+const artistBatchAnchor = ref<HTMLElement>();
+let batchHandoff: { epoch: string; kind: 'collect' | 'download'; tracks: TrackView[] } | undefined;
+function openArtistBatch() {
+  if (tab.value !== 'all' || !props.model.valid()) return;
+  const usable = new Map(
+    tracks.value
+      .filter((track) => !track.missing && !track.local)
+      .map((track) => [track.id, track]),
+  );
+  if (usable.size) artistBatch.value = [...usable.values()];
+}
+function artistBatchChoose(kind: 'collect' | 'download', selected: TrackView[]) {
+  if (!artistBatch.value || !props.model.valid() || tab.value !== 'all') return;
+  batchHandoff = { epoch: props.account.epoch, kind, tracks: selected };
+  artistBatch.value = undefined;
+}
+function finishArtistBatch() {
+  const handoff = batchHandoff;
+  batchHandoff = undefined;
+  if (
+    !handoff ||
+    handoff.epoch !== props.account.epoch ||
+    !props.model.valid() ||
+    tab.value !== 'all'
+  )
+    return;
+  if (handoff.kind === 'collect') emit('collectTracks', handoff.tracks);
+  else emit('download', handoff.tracks);
+}
+watch(
+  [tab, () => props.account.epoch],
+  () => {
+    batchHandoff = undefined;
+    artistBatch.value = undefined;
+  },
+  { flush: 'sync' },
+);
 const expire = () => emit('expired');
 const section = ref<HTMLElement>(),
   panel = ref<HTMLElement>();
@@ -375,6 +417,14 @@ defineExpose({ checkpoint: () => checkpoint(), resourceKey: `${resource.kind}:${
               >
                 下载当前歌曲列表
               </button>
+              <span v-if="tab === 'all'" ref="artistBatchAnchor">
+                <ActionMenu
+                  label="更多歌手歌曲操作"
+                  :items="[{ key: 'batch', label: '批量操作', icon: 'list' }]"
+                  :disabled="!tracks.some((track) => !track.missing && !track.local)"
+                  @select="openArtistBatch"
+                />
+              </span>
               <span class="muted"
                 >{{ tracks.length }} 首<span v-if="tab === 'all' && artist">
                   / {{ artist.songCount }} 首</span
@@ -428,5 +478,18 @@ defineExpose({ checkpoint: () => checkpoint(), resourceKey: `${resource.kind}:${
         </div>
       </BoundedPanelTransition>
     </template>
+    <ModalTransition
+      :return-focus="() => artistBatchAnchor?.querySelector('button') ?? null"
+      @left="finishArtistBatch"
+    >
+      <ArtistTrackBatchDialog
+        v-if="artistBatch"
+        :tracks="artistBatch"
+        :liked="liked"
+        :current-id="currentId"
+        @close="artistBatch = undefined"
+        @choose="artistBatchChoose"
+      />
+    </ModalTransition>
   </section>
 </template>

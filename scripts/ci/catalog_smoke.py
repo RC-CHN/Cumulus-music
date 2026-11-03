@@ -69,6 +69,7 @@ def main():
     parser.add_argument('--frontend-dist', type=Path, help='Local synthetic frontend comparison')
     parser.add_argument('--screenshots', action='store_true', help='local Linux GTK captures; not required in CI')
     mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--artist-batch', action='store_true')
     mode.add_argument('--playback-credit', action='store_true', help='open current album and artist while playing')
     mode.add_argument('--navigation', action='store_true', help='cross-resource tab history, comment draft and native play identity')
     mode.add_argument('--artist', action='store_true', help='artist header, tab prefixes, viewport return and native playback')
@@ -88,9 +89,10 @@ def main():
     env['CUMULUS_PROOF_DIR'] = str(root / 'run')
     if args.frontend_dist:
         env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve())
-    if args.artist or args.navigation or args.playback_credit:
+    if args.artist or args.navigation or args.playback_credit or args.artist_batch:
         env['CUMULUS_ARTIST_PROOF'] = '1'
-        source = ('playback_credit_ui_probe.js' if args.playback_credit else
+        source = ('artist_batch_ui_probe.js' if args.artist_batch else
+                  'playback_credit_ui_probe.js' if args.playback_credit else
                   'catalog_navigation_ui_probe.js' if args.navigation else 'artist_ui_probe.js')
         env['CUMULUS_UX_SCRIPT'] = str(Path(__file__).resolve().parents[2] / 'desktop/examples' / source)
         if args.screenshots:
@@ -133,6 +135,13 @@ def main():
         raise AssertionError((output / 'failed.json').read_text(encoding='utf-8'))
     assert returncode == 0, f'catalog probe exited {returncode}'
     complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
+    if args.artist_batch:
+        assert complete['ok'] and complete['artistBatchVerified'] and not complete['writesSubmitted']
+        for name in ('ux_artist_batch_selected', 'ux_artist_batch_download'):
+            assert json.loads((output / f'{name}.json').read_text(encoding='utf-8'))['count'] == 2
+        assert not args.screenshots or captures == 2
+        print(json.dumps(dict(ok=True, actualWebView=True, artistBatchVerified=True)))
+        return
     if args.playback_credit:
         assert complete['ok'] and complete['samePlayback'] and complete['syntheticCatalog']
         states = [json.loads((output / f'ux_{stage}.json').read_text(encoding='utf-8'))
