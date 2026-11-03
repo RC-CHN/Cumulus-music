@@ -33,6 +33,7 @@ function value(): TogetherView {
 }
 function client(extra: Partial<TogetherClient> = {}): TogetherClient {
   return {
+    togetherStatistics: async (epoch) => ({ epoch, value: { listenCount: 0, totalSeconds: 0 } }),
     togetherView: async (epoch) => ({ epoch, value: value() }),
     togetherCommand: async (epoch) => ({ epoch, value: value() }),
     ...extra,
@@ -48,11 +49,12 @@ function held<T>() {
 test('message connection failures do not retry writes until explicit reconnect', async () => {
   let calls = 0;
   const failed = value();
-  failed.room = { id: 'room', role: 'waiting', members: [] };
+  failed.room = { id: 'room', role: 'waiting', members: [], relationKey: null };
   failed.attached = true;
   failed.connection = { state: 'failed', message: '消息连接失败', received: 1, attempt: 4 };
   const m = useTogether(
     client({
+      togetherStatistics: async (epoch) => ({ epoch, value: { listenCount: 0, totalSeconds: 0 } }),
       togetherView: async (epoch) => ({ epoch, value: failed }),
       togetherCommand: async (epoch, command) => {
         calls++;
@@ -89,7 +91,7 @@ test('together account generations discard late rooms and command results', asyn
   const request = m.command({ kind: 'create' });
   m.connect(account('2'));
   const old = value();
-  old.room = { id: 'private-old-room', role: 'waiting', members: [] };
+  old.room = { id: 'private-old-room', role: 'waiting', members: [], relationKey: null };
   read.resolve({ epoch: '1', value: old });
   write.resolve({ epoch: '1', value: old });
   await request;
@@ -109,6 +111,7 @@ test('unknown write is read from disk and is never automatically repeated', asyn
         dirty = true;
         throw { code: 'network', message: 'offline' };
       },
+      togetherStatistics: async (epoch) => ({ epoch, value: { listenCount: 0, totalSeconds: 0 } }),
       togetherView: async (epoch) => {
         const v = value();
         if (dirty)
@@ -154,7 +157,7 @@ test('a failed background response cannot replace a newer explicit operation res
       togetherView: async (e) => (slow ? delayed.promise : { epoch: e, value: value() }),
       togetherCommand: async (epoch) => {
         const v = value();
-        v.room = { id: 'new', role: 'waiting', members: [] };
+        v.room = { id: 'new', role: 'waiting', members: [], relationKey: null };
         return { epoch, value: v };
       },
     }),
@@ -230,4 +233,36 @@ test('close failure survives page refresh and releases both late and current acc
   assert.equal(m.closeError.value, '');
   assert.equal(stoppedOld, 1);
   assert.equal(stoppedCurrent, 1);
+});
+
+test('relation statistics are read only for a visible pair and discard a late previous pair', async () => {
+  const previous = held<AccountData<{ listenCount: number; totalSeconds: number }>>();
+  const requests: string[] = [];
+  const room = value();
+  room.room = { id: 'room', role: 'together_owner', members: [], relationKey: 'first' };
+  const model = useTogether(
+    client({
+      togetherView: async (epoch) => ({ epoch, value: { ...room, room: { ...room.room! } } }),
+      togetherStatistics: async (epoch, relationKey) => {
+        requests.push(relationKey);
+        if (relationKey === 'first') return previous.promise;
+        return { epoch, value: { listenCount: 12, totalSeconds: 3661 } };
+      },
+    }),
+  );
+  model.connect(account());
+  await model.load();
+  assert.deepEqual(requests, []);
+  model.show(true);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(requests, ['first']);
+  room.room.relationKey = 'second';
+  await model.load();
+  assert.deepEqual(model.statistics.value, { listenCount: 12, totalSeconds: 3661 });
+  previous.resolve({ epoch: '1', value: { listenCount: 99, totalSeconds: 3 } });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(model.statistics.value, { listenCount: 12, totalSeconds: 3661 });
+  model.show(false);
+  assert.equal(model.statistics.value, undefined);
+  model.dispose();
 });

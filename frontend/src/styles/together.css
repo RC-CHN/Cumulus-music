@@ -253,3 +253,17 @@
     display: none;
   }
 }
+
+.together-statistics {
+  margin: 12px 0;
+  color: var(--muted);
+}
+
+.together-statistics p {
+  margin: 4px 0;
+}
+
+.together-statistics strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}

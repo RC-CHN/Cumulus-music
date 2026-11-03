@@ -151,6 +151,8 @@ export function createTauriClient(): CoreClient {
         if (event.payload.epoch === epoch) handler(event.payload.message);
       }),
     togetherView: (epoch, refresh) => invoke('together_view', { epoch, refresh }),
+    togetherStatistics: (epoch, relationKey) =>
+      invoke('together_statistics', { epoch, relationKey }),
     togetherCommand: (epoch, command) => invoke('together_command', { epoch, command }),
     podcastPage: (epoch, query, refresh) => invoke('podcast_page', { epoch, query, refresh }),
     sceneFmView: (epoch, refresh) => invoke('scene_fm_view', { epoch, refresh }),

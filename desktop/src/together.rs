@@ -80,3 +80,15 @@ pub async fn together_command(
         .await
         .map_err(Into::into)
 }
+
+#[tauri::command]
+pub async fn together_statistics(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    relation_key: String,
+) -> Result<AccountData<TogetherStatisticsView>, ClientError> {
+    client
+        .together_statistics(&epoch, &relation_key)
+        .await
+        .map_err(Into::into)
+}

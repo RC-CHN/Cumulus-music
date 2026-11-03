@@ -16,6 +16,13 @@ pub struct TogetherRoomView {
     pub id: String,
     pub role: RoomRole,
     pub members: Vec<TogetherMemberView>,
+    pub relation_key: Option<String>,
+}
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TogetherStatisticsView {
+    pub listen_count: u64,
+    pub total_seconds: u64,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]

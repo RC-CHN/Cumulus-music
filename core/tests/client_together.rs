@@ -52,6 +52,10 @@ pub(crate) struct Backend {
     pub(crate) end_release: tokio::sync::Notify,
     pub(crate) common: Mutex<Option<Vec<Value>>>,
     pub(crate) shell: AtomicBool,
+    pub(crate) fail_statistics: AtomicBool,
+    pub(crate) hold_statistics: AtomicBool,
+    pub(crate) statistics_started: tokio::sync::Notify,
+    pub(crate) statistics_release: tokio::sync::Notify,
     hold_privilege: AtomicBool,
     privilege_started: tokio::sync::Notify,
     privilege_release: tokio::sync::Notify,
@@ -89,6 +93,12 @@ impl Api for Backend {
                 self.privilege_started.notify_one();
                 self.privilege_release.notified().await;
             }
+            if path == "/api/listen/together/relation/statistics/get/v2"
+                && self.hold_statistics.load(Ordering::SeqCst)
+            {
+                self.statistics_started.notify_one();
+                self.statistics_release.notified().await;
+            }
             let mut state = self.state.lock().unwrap();
             Ok(match path {
                 "/api/v3/song/detail" => {
@@ -106,6 +116,13 @@ impl Api for Backend {
                     assert!(!state.inside);
                     state.inside = true;
                     json!({"code":200,"data":{"type":"NEW_ROOM","roomInfo":room()}})
+                }
+                "/api/listen/together/relation/statistics/get/v2" => {
+                    if self.fail_statistics.swap(false, Ordering::SeqCst) {
+                        return Err(Error::Transport("synthetic statistics failure".into()));
+                    }
+                    assert_eq!(p["roomUserIds"], r#"["1","2"]"#);
+                    json!({"code":200,"data":{"listenCount":12,"totalConnectionTime":3661,"privateExtra":"SECRET"}})
                 }
                 "/api/listen/together/sync/playlist/get" => {
                     json!({"code":200,"data":{"playlist":state.playlist,"playCommand":state.play}})

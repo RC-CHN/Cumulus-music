@@ -8,6 +8,11 @@ export interface TogetherRoom {
   id: string;
   role: 'waiting' | 'together_owner' | 'together';
   members: TogetherMember[];
+  relationKey: string | null;
+}
+export interface TogetherStatistics {
+  listenCount: number;
+  totalSeconds: number;
 }
 export interface TogetherOperation {
   id: string;
@@ -63,5 +68,6 @@ export type TogetherCommand =
 export interface TogetherClient {
   onTogetherCloseError?(epoch: string, handler: (message: string) => void): Promise<() => void>;
   togetherView(epoch: string, refresh: boolean): Promise<AccountData<TogetherView>>;
+  togetherStatistics(epoch: string, relationKey: string): Promise<AccountData<TogetherStatistics>>;
   togetherCommand(epoch: string, command: TogetherCommand): Promise<AccountData<TogetherView>>;
 }

@@ -98,6 +98,7 @@ pub(super) async fn project(
                 Ok::<_, Error>(TogetherRoomView {
                     id: r.room_id.clone(),
                     role: r.role_for(owner)?,
+                    relation_key: super::statistics::relation(r, owner).map(|(key, _)| key),
                     members: r
                         .members
                         .iter()

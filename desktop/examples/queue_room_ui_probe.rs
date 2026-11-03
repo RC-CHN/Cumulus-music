@@ -63,6 +63,7 @@ fn main() {
                         "hold_end"=>{api.end_started.store(false,Ordering::SeqCst);api.hold_end.store(true,Ordering::SeqCst);},
                         "release_end"=>{api.hold_end.store(false,Ordering::SeqCst);api.end_release.notify_one();},
                         "lose_end"=>api.drop_end.store(true,Ordering::SeqCst),
+                        "fail_statistics"=>api.fail_statistics.store(true,Ordering::SeqCst),
                         "peer"=>{
                             api.state.lock().unwrap().peer=true;
                             let message=RoomMessage::from_attachment(&json!({"content":{"type":20002,"content":{"roomId":"test-room"}}}).to_string()).unwrap().unwrap();
@@ -83,6 +84,8 @@ fn main() {
                     .collect::<Vec<_>>();
                 value["endRequests"]=json!(end_counts.len());
                 value["endShareCounts"]=json!(end_counts);
+                value["statisticsRequests"]=json!(api.calls.lock().unwrap().iter()
+                    .filter(|(path,_)|path.ends_with("statistics/get/v2")).count());
                 value["endStarted"]=json!(api.end_started.load(Ordering::SeqCst));
                 value["imClosed"]=json!(im.closed.load(Ordering::SeqCst));
                 fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();

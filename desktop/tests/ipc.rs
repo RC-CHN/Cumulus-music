@@ -232,6 +232,10 @@ fn account_snapshot_and_stale_mutation_cross_registered_commands() {
         ),
         ("together_view", json!({"epoch":"0","refresh":false})),
         (
+            "together_statistics",
+            json!({"epoch":"0","relationKey":"unknown"}),
+        ),
+        (
             "together_command",
             json!({"epoch":"0","command":{"kind":"create"}}),
         ),

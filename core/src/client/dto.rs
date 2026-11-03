@@ -62,7 +62,8 @@ pub use super::shortcut_preferences::{
     ShortcutEdit, ShortcutSettingsCommand, ShortcutSettingsView,
 };
 pub use super::together::{
-    TogetherCommand, TogetherMemberView, TogetherOperationView, TogetherRoomView, TogetherView,
+    TogetherCommand, TogetherMemberView, TogetherOperationView, TogetherRoomView,
+    TogetherStatisticsView, TogetherView,
 };
 pub use super::window::{WindowPreferencesCommand, WindowPreferencesView};
 pub use crate::account::collections::CollectionQuery;

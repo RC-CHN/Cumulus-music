@@ -4,7 +4,27 @@ import type { TogetherModel } from '../composables/useTogether';
 import { time } from '../services/player';
 import Icon from './Icon.vue';
 const props = defineProps<{ model: TogetherModel }>();
-const { view, loading, busy, error, closeError, notice } = props.model;
+const {
+  view,
+  loading,
+  busy,
+  error,
+  closeError,
+  notice,
+  statistics,
+  statisticsLoading,
+  statisticsError,
+} = props.model;
+function companionDuration(seconds: number) {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor(seconds / 60) % 60;
+  const remainder = seconds % 60;
+  return hours
+    ? `${hours} 小时 ${minutes} 分钟`
+    : minutes
+      ? `${minutes} 分钟 ${remainder} 秒`
+      : `${remainder} 秒`;
+}
 const scroll = ref(0),
   leave = ref<string>();
 const trackList = ref<HTMLElement>();
@@ -165,6 +185,21 @@ async function exit() {
               : '创建房间后，可用底部播放条控制播放，共享当前歌曲队列。'
           }}
         </p>
+        <div
+          v-if="view.room?.relationKey && !ending"
+          class="together-statistics"
+          aria-live="polite"
+        >
+          <p v-if="statistics">
+            累计一起听了 <strong>{{ statistics.listenCount }}</strong> 首歌，陪伴彼此
+            <strong>{{ companionDuration(statistics.totalSeconds) }}</strong>
+          </p>
+          <p v-if="statisticsLoading">正在读取共同收听记录…</p>
+          <p v-if="statisticsError">
+            {{ statistics ? '共同收听记录未能更新。' : '暂时无法读取共同收听记录。' }}
+            <button class="text-button" @click="model.retryStatistics()">重试</button>
+          </p>
+        </div>
         <div class="together-actions">
           <button
             v-if="!view.room && !view.localRecovery"

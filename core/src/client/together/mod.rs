@@ -7,6 +7,7 @@ mod queue_policy;
 mod runtime;
 mod selection;
 mod shared;
+mod statistics;
 mod view;
 use super::{
     ClientError, MusicClient,

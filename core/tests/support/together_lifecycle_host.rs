@@ -355,3 +355,55 @@ async fn waiting_timeout_and_empty_queue_exit_also_restore_local_settings() {
         assert_eq!(endings(&api), 1);
     }
 }
+
+#[tokio::test]
+async fn relation_statistics_fence_the_member_pair_before_and_after_the_read() {
+    let root = tempfile::tempdir().unwrap();
+    let api = Arc::new(Backend::default());
+    api.state.lock().unwrap().inside = true;
+    let (_, client) = world(root.path(), api.clone());
+    let client = client.with_audio_factory(|| Err(Error::State("audio device must stay unopened")));
+    let waiting = client
+        .together_view("1", true)
+        .await
+        .unwrap()
+        .value
+        .room
+        .unwrap();
+    assert!(waiting.relation_key.is_none());
+    assert!(client.together_statistics("1", "unknown").await.is_err());
+    api.state.lock().unwrap().peer = true;
+    let joined = client
+        .together_view("1", true)
+        .await
+        .unwrap()
+        .value
+        .room
+        .unwrap();
+    let key = joined.relation_key.unwrap();
+    assert!(client.together_statistics("0", &key).await.is_err());
+    let data = client.together_statistics("1", &key).await.unwrap();
+    assert_eq!(
+        serde_json::to_value(data.value).unwrap(),
+        json!({"listenCount":12,"totalSeconds":3661})
+    );
+    api.hold_statistics.store(true, Ordering::SeqCst);
+    let reply = client.together_statistics("1", &key);
+    let replace = async {
+        api.statistics_started.notified().await;
+        api.state.lock().unwrap().peer = false;
+        client.together_view("1", true).await.unwrap();
+        api.statistics_release.notify_one();
+    };
+    let (reply, ()) = tokio::join!(reply, replace);
+    assert!(reply.is_err());
+    assert_eq!(
+        api.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(path, _)| path.ends_with("statistics/get/v2"))
+            .count(),
+        2
+    );
+}

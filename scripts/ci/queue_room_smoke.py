@@ -37,7 +37,7 @@ def main():
                [(1120, 'light'), (760, 'light'), (760, 'dark'), (1120, 'dark')]
                for stage in ['list', 'confirm', 'cancel']]
     labels += ['clear_failed', 'failure_cancelled', 'end_pending', 'end_confirmed',
-               'peer_confirmation', 'end_uncertain', 'pending_page', 'reconciled_page',
+               'statistics_failed', 'statistics_ready', 'peer_confirmation', 'end_uncertain', 'pending_page', 'reconciled_page',
                'reopened_empty']
     with (root / 'host.log').open('x', encoding='utf-8') as log:
         status = launch(args.binary.resolve(), env, log, root / 'first', args.screenshots)
@@ -50,6 +50,7 @@ def main():
     assert complete['virtualQueueShrinkVerified']
     assert final['clean'] and complete['endRequests'] == 2 and complete['imClosed'] == 2
     assert complete['endShareCounts'] == [1, 1]
+    assert complete['statisticsRequests'] == 2
     assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
     assert complete['fixtureApi'] and complete['fixtureIm'] and complete['fixtureAudio']
     assert not complete['realPeerVerified'] and not complete['physicalAudioOutputVerified']
@@ -66,6 +67,8 @@ def main():
             assert abs(native['position'] - 12) < .1 and len(queue['tracks']) == 3
         assert row['endRequests'] == (0 if i <= labels.index('end_pending')
                                      else 1 if i <= labels.index('end_uncertain') else 2)
+        if label in ['statistics_failed', 'statistics_ready']:
+            assert row['statisticsRequests'] == (1 if label == 'statistics_failed' else 2)
         if label.startswith('confirm_') or label in ['clear_failed', 'peer_confirmation']:
             assert row['warning'] and queue['clearContext']['roomId'] == 'test-room'
         if label == 'end_pending':
@@ -84,6 +87,7 @@ def main():
     report = dict(ok=True, states=len(labels), actualWebView=True,
                   screenshots=len(labels) if args.screenshots else 0,
                   syntheticEndRequests=2, endShareCounts=complete['endShareCounts'],
+                  syntheticStatisticsRequests=complete['statisticsRequests'],
                   realMusicRequests=0, realAccountWrites=0,
                   fixtureApi=True, fixtureIm=True, fixtureAudio=True, realPeerVerified=False,
                   physicalDisplayVerified=False, physicalAudioOutputVerified=False)

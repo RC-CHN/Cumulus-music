@@ -1,7 +1,12 @@
 import { ref, shallowRef } from 'vue';
 import { useCore } from '../services/core.ts';
 import { failure, type AccountView } from '../services/contracts.ts';
-import type { TogetherClient, TogetherCommand, TogetherView } from '../services/together.ts';
+import type {
+  TogetherClient,
+  TogetherCommand,
+  TogetherStatistics,
+  TogetherView,
+} from '../services/together.ts';
 export function useTogether(
   core: TogetherClient = useCore(),
   expired: () => void = () => {},
@@ -13,7 +18,12 @@ export function useTogether(
     busy = ref(false),
     error = ref(''),
     closeError = ref(''),
-    notice = ref('');
+    notice = ref(''),
+    statistics = shallowRef<TogetherStatistics>(),
+    statisticsLoading = ref(false),
+    statisticsError = ref(false);
+  let statisticsKey: string | null = null;
+  let statisticsRequest = 0;
   let generation = 0,
     request = 0,
     visible = false,
@@ -39,6 +49,49 @@ export function useTogether(
       expired();
     }
   }
+  function clearStatistics() {
+    statisticsKey = null;
+    statisticsRequest++;
+    statistics.value = undefined;
+    statisticsLoading.value = statisticsError.value = false;
+  }
+  function eligibleRelation() {
+    const current = view.value;
+    return visible &&
+      current &&
+      !current.ending &&
+      !current.pending.some((op) => op.action === 'end')
+      ? current.room?.relationKey
+      : null;
+  }
+  async function readStatistics(refresh = false) {
+    const key = eligibleRelation();
+    if (!key) {
+      if (statisticsKey) clearStatistics();
+      return;
+    }
+    if (key === statisticsKey && (!refresh || statisticsLoading.value)) return;
+    if (key !== statisticsKey) clearStatistics();
+    statisticsKey = key;
+    const n = ++statisticsRequest;
+    const e = epoch.value;
+    const current = () =>
+      n === statisticsRequest && e === epoch.value && key === eligibleRelation();
+    statisticsLoading.value = true;
+    statisticsError.value = false;
+    try {
+      const result = await core.togetherStatistics(e, key);
+      if (current() && result.epoch === e) statistics.value = result.value;
+    } catch {
+      if (current()) statisticsError.value = true;
+    } finally {
+      if (current()) statisticsLoading.value = false;
+    }
+  }
+  function acceptView(value: TogetherView, refresh = false) {
+    view.value = value;
+    void readStatistics(refresh);
+  }
   function dispose() {
     unlisten?.();
     unlisten = undefined;
@@ -48,6 +101,7 @@ export function useTogether(
     request++;
     epoch.value = '';
     view.value = undefined;
+    clearStatistics();
     loading.value = false;
     busy.value = false;
   }
@@ -77,7 +131,10 @@ export function useTogether(
   function show(value: boolean) {
     visible = value;
     if (value) void load(true);
-    else schedule();
+    else {
+      clearStatistics();
+      schedule();
+    }
   }
   async function load(refresh = false, quiet = false) {
     if (!epoch.value || busy.value) return;
@@ -92,7 +149,7 @@ export function useTogether(
     try {
       const result = await core.togetherView(e, refresh);
       if (valid(g, e, n) && result.epoch === e) {
-        view.value = result.value;
+        acceptView(result.value, refresh);
         return result.value;
       }
     } catch (value) {
@@ -101,7 +158,7 @@ export function useTogether(
         if (refresh) {
           try {
             const local = await core.togetherView(e, false);
-            if (valid(g, e, n) && local.epoch === e) view.value = local.value;
+            if (valid(g, e, n) && local.epoch === e) acceptView(local.value);
           } catch {}
         }
       }
@@ -130,7 +187,7 @@ export function useTogether(
     try {
       const result = await core.togetherCommand(e, command);
       if (valid(g, e, n) && result.epoch === e) {
-        view.value = result.value;
+        acceptView(result.value);
         closeError.value = '';
         notice.value =
           command.kind === 'end'
@@ -146,7 +203,7 @@ export function useTogether(
         issue(value);
         try {
           const local = await core.togetherView(e, false);
-          if (valid(g, e, n) && local.epoch === e) view.value = local.value;
+          if (valid(g, e, n) && local.epoch === e) acceptView(local.value);
         } catch {}
       }
     } finally {
@@ -164,6 +221,10 @@ export function useTogether(
     error,
     closeError,
     notice,
+    statistics,
+    statisticsLoading,
+    statisticsError,
+    retryStatistics: () => readStatistics(true),
     connect,
     show,
     dispose,

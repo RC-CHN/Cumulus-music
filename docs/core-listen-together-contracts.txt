@@ -127,7 +127,7 @@ tick_for 接收宿主统一毫秒时钟，20秒空闲心跳；无曲目时延后
   songId转trackId，不可播用户/outerId转字符串；只查共同权限，不扩大任一账号权益。
 /api/listen/together/privilege/change/report {roomId}
 /api/listen/together/relation/statistics/get/v2 {roomId,roomUserIds:JSON.stringify([...])}
-  以上三个接口只有原生适配；双方权限/统计/权益变化链路仍未验收。
+  双方权限、权益变化和真实服务的双端验收见对应边界；累计统计的桌面接入见文末。
 候选好友、显式邀请/接收界面、消息路由/表情、赠送等其余恢复动作继续；没有执行支付或发信。
 
 八、真实原生验证与清理
@@ -165,3 +165,16 @@ core/tests/together_service.rs：10项，房间完整流程、丢回包重开、
 Linux SDK 登录/入房/入房通知/清理/同进程重开已实测；本文件中历史批次的无SDK连接结论
 仅描述当时范围。随后桌面消息连接/重连/退出清理增量已完成，见 desktop-listen-together-im.txt
 及 desktop-listen-together-im-mapping.json；播放业务消息及 RTC 仍未完成，realtimeReady 保持 false。
+
+共同收听累计记录
+- 官方 M/75:179–225、820–826 在两人关系建立时读取
+  /api/listen/together/relation/statistics/get/v2，发送 roomId 与
+  roomUserIds=JSON.stringify([当前账号ID, 对方ID])，并读取 listenCount 和
+  totalConnectionTime（秒）。本机无双人成员关系时不发起请求。
+- Cumulus 在一起听页显示两人的累计历史，并提供独立重试；不会把单次会话、
+  当前队列、播放进度或等待时间当成累计记录。恢复材料在结束/分享信息中使用
+  这些数据；本页展示是社区适配，未恢复官方分享卡及逐首会话计数。
+- 入口 together_statistics(epoch, relationKey) 只接受由当前房间状态产生的
+  成员关系校验键。原生从当前账号、房间和成员生成请求，在结果返回后重新验证
+  账号/成员/退出边界。失败不会阻塞队列、房间控制或普通播放；不持久化旧记录，
+  不访问邀请、分享或写接口。桌面回归使用合成房间和同一账号的合成对方。
