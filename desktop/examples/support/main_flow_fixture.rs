@@ -1,0 +1,250 @@
+//! Closed synthetic fixture: no transport fallback, immutable baseline playlist.
+#[path = "cloud_batch_media.rs"]
+pub mod media;
+use cumulus_core::{
+    Error, Result,
+    playback::engine::*,
+    protocol::api::{Api, ApiFuture},
+};
+use serde_json::{Value, json};
+use std::{
+    collections::BTreeMap,
+    path::PathBuf,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+    },
+};
+
+const ORIGINAL: u64 = 41;
+const CREATED: u64 = 42;
+pub const SOURCE: &str = media::URL;
+
+#[derive(Default)]
+pub struct Service {
+    calls: Mutex<BTreeMap<String, u64>>,
+    playlist: Mutex<Option<Value>>,
+    offline: AtomicBool,
+    local_loads: AtomicUsize,
+    source_loads: AtomicUsize,
+}
+
+impl Service {
+    pub fn offline(&self) {
+        self.offline.store(true, Ordering::Release);
+    }
+    pub fn facts(&self) -> Value {
+        json!({"calls":*self.calls.lock().unwrap(), "disposablePresent":self.playlist.lock().unwrap().is_some(),
+            "offline":self.offline.load(Ordering::Acquire), "mediaTransfers":media::requests(),
+            "sourceLoads":self.source_loads.load(Ordering::Acquire), "localLoads":self.local_loads.load(Ordering::Acquire)})
+    }
+}
+fn song() -> Value {
+    json!({"id":1,"name":"合成主流程歌曲","ar":[{"name":"Cumulus"}],"al":{"name":"合成专辑"},"dt":1000,"fee":0})
+}
+fn playlist(id: u64, name: &str) -> Value {
+    json!({"id":id,"name":name,"userId":2,"creator":{"userId":2,"nickname":"合成主流程账号"},
+        "privacy":10,"specialType":0,"trackCount":0,"trackIds":[],"description":"","tags":[]})
+}
+fn identifier(value: &Value) -> Option<u64> {
+    value.as_u64().or_else(|| value.as_str()?.parse().ok())
+}
+impl Api for Service {
+    fn request<'a>(&'a self, path: &'a str, p: Value, _: bool) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            *self.calls.lock().unwrap().entry(path.into()).or_default() += 1;
+            if self.offline.load(Ordering::Acquire) {
+                return Err(Error::Transport("synthetic API is disconnected".into()));
+            }
+            Ok(match path {
+                "/api/w/nuser/account/get" => {
+                    json!({"code":200,"profile":{"userId":2,"nickname":"合成主流程账号"}})
+                }
+                "/api/rtrs/abt/front/expinfo/list" => json!({"code":200,"data":[]}),
+                "/api/relay/setting/show" => json!({"code":200,"data":{"groups":[]}}),
+                "/api/song/like/get" => json!({"code":200,"ids":[]}),
+                "/api/user/playlist" => {
+                    let mut lists = vec![playlist(ORIGINAL, "合成基线歌单")];
+                    lists.extend(self.playlist.lock().unwrap().clone());
+                    json!({"code":200,"playlist":lists,"more":false})
+                }
+                "/api/v3/discovery/recommend/songs" => {
+                    json!({"code":200,"data":{"dailySongs":[song()]}})
+                }
+                "/api/search/default/keyword/get" => json!({"code":200,"data":{}}),
+                "/api/search/pc/complex/page" => {
+                    json!({"code":200,"data":{"blocks":[{"blockCode":"search_block_song","resources":[{"type":"song","baseInfo":song()}]}],"hasMore":false}})
+                }
+                "/api/search/song/list/page" => {
+                    json!({"code":200,"data":{"resources":[{"type":"song","baseInfo":{"simpleSongData":song()}}],"totalCount":1,"hasMore":false}})
+                }
+                "/api/v3/song/detail" => json!({"code":200,"songs":[song()]}),
+                "/api/song/lyric/v1" => json!({"code":200,"lrc":{"lyric":"[00:00.00]合成测试"}}),
+                "/api/song/enhance/player/url/v1" => {
+                    json!({"code":200,"data":[{"id":1,"url":SOURCE,"code":200,"md5":"synthetic","level":"standard","expi":120}]})
+                }
+                "/api/song/enhance/download/url/v1" => {
+                    json!({"code":200,"data":{"id":1,"url":SOURCE,"code":200,"type":"flac","size":media::DATA.len(),"level":"lossless"}})
+                }
+                "/api/v6/playlist/detail" => {
+                    let list = match identifier(&p["id"]) {
+                        Some(ORIGINAL) => Some(playlist(ORIGINAL, "合成基线歌单")),
+                        Some(CREATED) => self.playlist.lock().unwrap().clone(),
+                        _ => None,
+                    };
+                    if let Some(list) = list {
+                        json!({"code":200,"playlist":list})
+                    } else {
+                        json!({"code":404})
+                    }
+                }
+                "/api/playlist/catalogue" => {
+                    json!({"code":200,"categories":{"0":"风格"},"sub":[{"name":"电子","category":0}]})
+                }
+                "/api/playlist/create" => {
+                    let mut state = self.playlist.lock().unwrap();
+                    if state.is_some()
+                        || p["name"] != "Cumulus Synthetic Flow"
+                        || p["privacy"] != 10
+                        || identifier(&p["uid"]) != Some(2)
+                    {
+                        return Err(Error::InvalidInput(
+                            "only one named private synthetic playlist may be created",
+                        ));
+                    }
+                    let list = playlist(CREATED, "Cumulus Synthetic Flow");
+                    *state = Some(list.clone());
+                    json!({"code":200,"id":CREATED,"playlist":list})
+                }
+                "/api/batch" => {
+                    let mut state = self.playlist.lock().unwrap();
+                    let list = state
+                        .as_mut()
+                        .ok_or(Error::State("missing disposable playlist"))?;
+                    let mut result = json!({"code":200});
+                    for (path, field, key) in [
+                        ("/api/playlist/update/name", "name", "name"),
+                        ("/api/playlist/desc/update", "desc", "description"),
+                        ("/api/playlist/tags/update", "tags", "tags"),
+                    ] {
+                        let value: Value = serde_json::from_str(
+                            p[path]
+                                .as_str()
+                                .ok_or(Error::Response("missing synthetic batch field"))?,
+                        )?;
+                        if identifier(&value["id"]) != Some(CREATED) {
+                            return Err(Error::InvalidInput("cannot edit baseline playlist"));
+                        }
+                        list[key] = if key == "tags" {
+                            json!(
+                                value[field]
+                                    .as_str()
+                                    .unwrap_or("")
+                                    .split(';')
+                                    .filter(|v| !v.is_empty())
+                                    .collect::<Vec<_>>()
+                            )
+                        } else {
+                            value[field].clone()
+                        };
+                        result[path] = json!({"code":200});
+                    }
+                    result
+                }
+                "/api/playlist/delete" => {
+                    if identifier(&p["pid"]) != Some(CREATED)
+                        || self.playlist.lock().unwrap().take().is_none()
+                    {
+                        return Err(Error::InvalidInput("cannot delete baseline playlist"));
+                    }
+                    json!({"code":200})
+                }
+                _ => return Err(Error::Response("endpoint not in closed main-flow fixture")),
+            })
+        })
+    }
+}
+
+pub struct Audio {
+    inner: MpvEngine,
+    seed: PathBuf,
+    downloads: PathBuf,
+    fixture: Arc<Service>,
+}
+impl Audio {
+    pub fn open(seed: PathBuf, downloads: PathBuf, fixture: Arc<Service>) -> Result<Self> {
+        Ok(Self {
+            inner: MpvEngine::open(MpvConfig {
+                null_output: true,
+                ..Default::default()
+            })?,
+            seed,
+            downloads,
+            fixture,
+        })
+    }
+}
+impl AudioEngine for Audio {
+    fn load(&mut self, mut request: LoadRequest, cancel: &Cancellation) -> Result<LoadedMedia> {
+        let offline = self.fixture.offline.load(Ordering::Acquire);
+        let local = match &request.source {
+            MediaInput::Url(url) if !offline && url.as_str() == SOURCE => {
+                request.source = MediaInput::File(self.seed.clone());
+                false
+            }
+            MediaInput::File(path)
+                if offline
+                    && path
+                        .canonicalize()?
+                        .starts_with(self.downloads.canonicalize()?) =>
+            {
+                true
+            }
+            _ => {
+                return Err(Error::InvalidInput(
+                    "main flow proof refused non-fixture audio",
+                ));
+            }
+        };
+        let loaded = self.inner.load(request, cancel)?;
+        let counter = if local {
+            &self.fixture.local_loads
+        } else {
+            &self.fixture.source_loads
+        };
+        counter.fetch_add(1, Ordering::Release);
+        Ok(loaded)
+    }
+    fn pause(&mut self, v: bool) -> Result<()> {
+        self.inner.pause(v)
+    }
+    fn seek(&mut self, v: f64) -> Result<()> {
+        self.inner.seek(v)
+    }
+    fn volume(&mut self, v: f64) -> Result<()> {
+        self.inner.volume(v)
+    }
+    fn speed(&mut self, v: f64) -> Result<()> {
+        self.inner.speed(v)
+    }
+    fn stop(&mut self) -> Result<()> {
+        self.inner.stop()
+    }
+    fn poll(&mut self) -> Result<EngineSnapshot> {
+        self.inner.poll()
+    }
+}
+
+impl cumulus_core::download::transfer::MediaBackend for Service {
+    fn get(
+        &self,
+        request: cumulus_core::download::transfer::MediaRequest,
+    ) -> ApiFuture<'_, cumulus_core::download::transfer::MediaReply> {
+        Box::pin(async move {
+            if self.offline.load(Ordering::Acquire) {
+                return Err(Error::Transport("synthetic media is disconnected".into()));
+            }
+            media::Backend.get(request).await
+        })
+    }
+}

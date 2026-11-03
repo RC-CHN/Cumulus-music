@@ -158,6 +158,8 @@ jobs:
         run: |
           cargo build -p cumulus-desktop --example native_audio_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/native_smoke.py --binary .build/target/debug/examples/native_audio_probe --report .build/ci-native-audio-linux.json
+          cargo build -p cumulus-desktop --example main_flow_ui_probe --features custom-protocol --locked
+          CUMULUS_TEST_WINDOW_MANAGER=openbox LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/main_flow_smoke.py --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/native_smoke.py --binary .build/target/debug/examples/native_audio_probe --report .build/ci-native-audio-loudness-linux.json --filter-library .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
           cargo build -p cumulus-desktop --example loudness_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/loudness_ui_smoke.py --binary .build/target/debug/examples/loudness_ui_probe --root .build/ci-loudness-ui-linux --filter-library .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
@@ -315,6 +317,8 @@ jobs:
         run: |
           cargo build -p cumulus-desktop --example native_audio_probe --features custom-protocol --locked
           python scripts/ci/native_smoke.py --binary .build/target/debug/examples/native_audio_probe.exe --report .build/ci-native-audio-windows.json --runtime .build/package-stage/windows-x64/native
+          cargo build -p cumulus-desktop --example main_flow_ui_probe --features custom-protocol --locked
+          python scripts/ci/main_flow_smoke.py --binary .build/target/debug/examples/main_flow_ui_probe.exe --root .build/ci-main-flow-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/native_smoke.py --binary .build/target/debug/examples/native_audio_probe.exe --report .build/ci-native-audio-loudness-windows.json --runtime .build/package-stage/windows-x64/native --filter-library .build/package-stage/windows-x64/native/cumulus_audio_filter.dll
           cargo build -p cumulus-desktop --example loudness_ui_probe --features custom-protocol --locked
           python scripts/ci/loudness_ui_smoke.py --binary .build/target/debug/examples/loudness_ui_probe.exe --root .build/ci-loudness-ui-windows --runtime .build/package-stage/windows-x64/native --filter-library .build/package-stage/windows-x64/native/cumulus_audio_filter.dll

@@ -1,0 +1,41 @@
+Cumulus 桌面主流程验收
+
+单进程桌面合成验收
+  测试入口 desktop/examples/main_flow_ui_probe.rs 使用应用实际打包的
+  Vue、Tauri IPC、MusicClient、播放器与 SQLite。只在测试入口注入
+  封闭的账号/API/媒体替身，正式产品没有替换源或凭据开关。
+  由登录态恢复出发，依次进入每日推荐、搜索，使用实际 libmpv 播放
+  并暂停；创建、编辑和删除一张固定合成歌单；下载一首合成 FLAC，
+  切断替身 API 和媒体传输后从完成列表播放本地文件。
+
+  这一条链证明正式桌面和原生业务在同一进程内可以串接。替身中
+  在线音源交给 libmpv 前替换为合成文件，解码走真实引擎，输出为
+  null。离线阶段验证替身禁止网络、没有新增音源请求和传输，且
+  从下载文件真实解码。它不证明上游 CDN、真实会员权益或声卡输出。
+  验证脚本独立核对原始歌单集合、合成歌单回执、下载任务、实际
+  文件和引擎进度。不会加载真实账号或设备身份。
+  最终 Linux WebView 10 阶段通过；测试运行产生 9 张截图，本机
+  KDE/XWayland 125% 又复核 9 张。截图见
+  .build/main-flow-desktop-final/contact.jpg，完整计数与 SQLite
+  核对结果见 .build/main-flow-webview-final/report.json。
+  Linux 和 Windows CI 有独立入口；本机未实跑 Windows。
+  复跑：构建 cumulus-desktop 的 main_flow_ui_probe example（开启
+  custom-protocol），用 scripts/ci/main_flow_smoke.py --binary <程序>
+  --root <新目录>；Linux 可在 Openbox/Xvfb 和私有 D-Bus 下加 --screenshots。
+
+真实服务证据与剩余边界
+  当前真实服务证据来自独立的授权测试，不能合并计为一次完整
+  运行。11 月 3 日扫码、凭据下发和重开身份见
+  refresh-token-issuance-evidence.txt；它是原生探针，不是桌面扫码。
+  历史真实桌面目录 .build/ui-proof/ 下可检查 run-2-small 的账号
+  恢复/推荐/歌单/搜索，player-6-small 的播放控制，
+  playlist-3-small 的临时私密歌单与原始顺序恢复，
+  download-20261026-e-small 的下载、实际本地播放及清理；
+  local-20261026-h 单独覆盖本地导入、CUE/NCM 与重开。
+  历史 desktop/examples/ui_probe.js 的下载模式会提前结束，不能靠
+  组合环境开关把这些旧探针称为一条完整流程。
+
+  仍需在当前构建做一次真实桌面顺序验收。用授权会话副本；只编辑
+  新建私密测试歌单，只清理本次创建的资源和文件；不要把账号凭据、
+  可用二维码或授权 URL 留在截图和诊断里。若要宣称离线播放，
+  下载后须阻断网络并独立核对文件解码。线上未验证的行为保持未验证。
