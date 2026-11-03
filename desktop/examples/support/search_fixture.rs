@@ -243,6 +243,11 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
     if mode == "expired" {
         return Some(Ok(json!({"code":301})));
     }
+    if category == "all" && args["keyword"] == "合成搜索受限" {
+        return Some(Ok(json!({
+            "code":405,"msg":"部分结果暂不可展示","ignored":"synthetic private field"
+        })));
+    }
     if mode == "result_error" {
         return Some(Err(Error::Transport("合成搜索服务暂不可用".into())));
     }

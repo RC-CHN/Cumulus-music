@@ -67,7 +67,11 @@ recovered-client/docs/product/models/page_searchResults.txt：页签、分类、
 SearchResultsClient → desktop/search.rs search_results → MusicClient::search_results
   → catalog/search/results → 白名单展示 DTO；前端无 Cookie、签名或资源 action URL。
 综合 /api/search/pc/complex/page：keyword、scene=normal、needCorrect、channel=suggest、
-  初始cursor、bizQueryInfo空；读取data.blocks。尚未实现综合cursor续页/v3 AB方案。
+  旧接口始终发送第 0 页 cursor，bizQueryInfo 为空，读取 data.blocks；
+  M2245 和 M3001 的综合页面没有续页，点区块进入分类后才有完整列表。
+  M2245 对旧接口服务码 405 取 msg/message，M3001 传给综合空态标题。
+  当前只在该接口的结构化服务码 405 使用有界纯文本；其它错误仍可重试。
+  v3 AB 方案仍未接入，官方该分支也不发送 cursor。
 单曲 /api/search/song/list/page：keyword、scene、needCorrect、channel、limit、offset；
   data.resources[].baseInfo.simpleSongData → TrackView。
 歌单 /api/v1/search/playlist/get：s、queryCorrect、limit、offset；result.playlists。
@@ -110,7 +114,7 @@ MV /api/search/mlog/get：keyword、scene、limit、offset、channel=suggest、o
   用户主页、缺radioId声音的直接播放仍待补齐；播放场景search的完整
   来源参数；当前复用歌曲播放入口不代表官方搜索试听分支全同态。
 - 歌手/用户/MV连续加载、分类与详情返回的位置恢复及默认旧版单行预览已专项实现。
-  其余分类加载方式、新版轮播、综合cursor和官方全部滚动分支仍待对照。
+  其余分类加载方式、新版轮播、v3 实验分支和官方全部滚动分支仍待对照。
 - 纠正提示分段样式、命中词着色与官方全部排布状态；歌词正文已补三行/展开/复制专项，
   连续加载及歌词表完整菜单仍待对照；单曲/歌词表标题命中已实现。
 - 热门解释/活动/运营和AB资源卡片，算法页签、追踪上下文来源、所有可用性标记。

@@ -63,6 +63,8 @@ pub struct SearchResultView {
     pub correction: Option<String>,
     pub unavailable_count: usize,
     pub notice: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub empty_title: Option<String>,
 }
 impl MusicClient {
     pub async fn search_results(
@@ -74,8 +76,21 @@ impl MusicClient {
         let value = self
             .session
             .run_for(&token, |api, uid| async move {
-                let raw = api::request(api.as_ref(), &query).await?;
-                project(raw, query, &uid)
+                match api::request(api.as_ref(), &query).await {
+                    Ok(raw) => project(raw, query, &uid),
+                    Err(error) => match error.root() {
+                        Error::Service { endpoint, body, .. }
+                            if query.category == SearchCategory::All
+                                && endpoint == api::COMPREHENSIVE_PATH
+                                && error.is_service_code(405) =>
+                        {
+                            let mut result = SearchResultView::empty(query);
+                            result.empty_title = Some(empty_title(body));
+                            Ok(result)
+                        }
+                        _ => Err(error),
+                    },
+                }
             })
             .await?;
         Ok(AccountData {
@@ -154,18 +169,41 @@ fn correction(v: &Value) -> Option<String> {
         .into_iter()
         .find_map(|key| crate::catalog::search::keyword(v[key].as_str()?).ok())
 }
+impl SearchResultView {
+    fn empty(query: SearchResultQuery) -> Self {
+        Self {
+            next_offset: query.offset,
+            query,
+            sections: vec![],
+            total: None,
+            more: false,
+            correction: None,
+            unavailable_count: 0,
+            notice: None,
+            empty_title: None,
+        }
+    }
+}
+
+fn empty_title(body: &Value) -> String {
+    ["msg", "message"]
+        .into_iter()
+        .filter_map(|key| body[key].as_str())
+        .map(str::trim)
+        .find(|text| !text.is_empty() && !text.contains("://"))
+        .map(|text| {
+            text.chars()
+                .filter(|c| !c.is_control())
+                .take(160)
+                .collect::<String>()
+        })
+        .filter(|text| !text.trim().is_empty())
+        .unwrap_or_else(|| "暂无可展示的综合搜索结果".into())
+}
+
 fn project(raw: Value, query: SearchResultQuery, uid: &str) -> Result<SearchResultView> {
     use SearchCategory::*;
-    let mut result = SearchResultView {
-        query: query.clone(),
-        sections: vec![],
-        total: None,
-        more: false,
-        next_offset: query.offset,
-        correction: None,
-        unavailable_count: 0,
-        notice: None,
-    };
+    let mut result = SearchResultView::empty(query.clone());
     if query.category == All {
         for (index, block) in array(&raw["data"], "blocks")?.iter().take(50).enumerate() {
             let code = block["blockCode"]

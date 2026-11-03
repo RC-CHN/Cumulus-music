@@ -335,3 +335,45 @@ async fn hotquery_is_forwarded_only_to_recovered_channel_aware_endpoints() {
         "keyword":"合成", "category":"all", "offset":0, "limit":30, "correct":true, "channel":"foreign"
     })).is_err());
 }
+
+#[tokio::test]
+async fn only_comprehensive_service_405_becomes_a_bounded_empty_explanation() {
+    let (_root, api, _, client) = fixture();
+    let epoch = client.account().unwrap().epoch;
+    *api.reply.lock().unwrap() = json!({
+        "code":405, "msg":"该词暂无可展示的结果", "message":"备用文案",
+        "private":{"credential":"not for frontend"}
+    });
+    let view = client
+        .search_results(&epoch, query(C::All))
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(view.empty_title.as_deref(), Some("该词暂无可展示的结果"));
+    assert!(view.sections.is_empty() && !view.more && view.next_offset == 0);
+    assert!(!serde_json::to_string(&view).unwrap().contains("credential"));
+    assert!(
+        client
+            .search_results(&epoch, query(C::Songs))
+            .await
+            .is_err()
+    );
+    *api.reply.lock().unwrap() =
+        json!({"code":405,"msg":"https://example.invalid/private","message":"字".repeat(200)});
+    let limited = client
+        .search_results(&epoch, query(C::All))
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(limited.empty_title.unwrap(), "字".repeat(160));
+    *api.reply.lock().unwrap() = json!({"code":200,"data":{"blocks":[]}});
+    assert!(
+        client
+            .search_results(&epoch, query(C::All))
+            .await
+            .unwrap()
+            .value
+            .empty_title
+            .is_none()
+    );
+}

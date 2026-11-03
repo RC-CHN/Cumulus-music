@@ -49,6 +49,7 @@ export interface SearchResultView {
   nextOffset: number;
   correction: string | null;
   unavailableCount: number;
+  emptyTitle?: string;
   notice: string | null;
 }
 export interface SearchResultsClient {

@@ -161,7 +161,12 @@
     await wait(()=>playingTrack(3),'lyric row uses search trial');
     await choose('songs');click(one('.track-row[data-track-id="2"] .track-play'));
     await wait(()=>playingTrack(2),'song row uses search trial');
+    await fresh('合成搜索受限');
+    await wait(()=>one('#search-result-panel .empty-state p')?.textContent==='部分结果暂不可展示'&&!button('重新加载'),'service explanation without generic retry');
+    await capture('service_empty');
+    await fresh('合成搜索结果');
+    await wait(()=>one('.search-result-section')&&!one('#search-result-panel')?.textContent.includes('部分结果暂不可展示'),'next search clears explanation');
     await fixture('expired');click(one('[data-category="albums"]'));await wait(()=>button('重新登录')&&!one('.search-results-page'),'expired account');await capture('expired');
-    await emit('complete',{ok:true,stageCount:count,responseTimingInjected:true,shortPageOffsetsVerified:true,searchResultPlaybackVerified:true,searchMatchHighlightVerified:true,searchCategoryWithoutFramesVerified:true,searchProfileWithoutFramesVerified:profileWithoutFrames,realMusicRequests:0,realAccountWrites:0});
+    await emit('complete',{ok:true,stageCount:count,responseTimingInjected:true,shortPageOffsetsVerified:true,searchResultPlaybackVerified:true,searchMatchHighlightVerified:true,searchServiceEmptyVerified:true,searchCategoryWithoutFramesVerified:true,searchProfileWithoutFramesVerified:profileWithoutFrames,realMusicRequests:0,realAccountWrites:0});
   }catch(error){await emit('failed',{step,message:String(error),stack:error?.stack,stageCount:count,body:document.body.innerText.slice(0,3500)});}
 })();

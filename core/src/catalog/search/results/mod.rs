@@ -67,9 +67,10 @@ pub struct SearchResultQuery {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub channel: Option<SearchChannel>,
 }
+pub const COMPREHENSIVE_PATH: &str = "/api/search/pc/complex/page";
 pub const READ_PATHS: &[&str] = &[
     "/api/search/pc/result/tab",
-    "/api/search/pc/complex/page",
+    COMPREHENSIVE_PATH,
     "/api/search/song/list/page",
     "/api/v1/search/playlist/get",
     "/api/v1/search/artist/get",
@@ -114,7 +115,7 @@ pub async fn request(api: &dyn Api, q: &SearchResultQuery) -> Result<Value> {
     let path = match q.category {
         All => {
             args = json!({"keyword":keyword,"scene":"normal","needCorrect":q.correct,"channel":channel,"cursor":"{\"page\":0,\"ignoreBlocks\":[],\"traceId\":\"\"}","bizQueryInfo":""});
-            READ_PATHS[1]
+            COMPREHENSIVE_PATH
         }
         Songs => {
             args["needCorrect"] = json!(q.correct);

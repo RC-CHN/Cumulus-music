@@ -42,7 +42,7 @@ def verify(root, capture):
     complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
     assert complete['ok'] and complete['responseTimingInjected'] and complete['shortPageOffsetsVerified']
     assert complete['searchResultPlaybackVerified'] and complete['searchMatchHighlightVerified']
-    assert complete['searchCategoryWithoutFramesVerified']
+    assert complete['searchCategoryWithoutFramesVerified'] and complete['searchServiceEmptyVerified']
     before_profile = json.loads((root / 'first/ux_01_all_1120_light.json').read_text(encoding='utf-8'))
     assert before_profile['searchProfileCalls'] == []
     assert complete['searchProfileWithoutFramesVerified']
@@ -50,7 +50,7 @@ def verify(root, capture):
         {'all': True, 'userId': '501'},
         {'uid': '501', 'offset': 0, 'limit': 1000},
     ]
-    assert complete['stageCount'] == 68 and complete['syntheticSearchCalls'] > 40
+    assert complete['stageCount'] == 69 and complete['syntheticSearchCalls'] > 40
     assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
     assert len(list((root / 'first').glob('ux_*.json'))) == complete['stageCount']
     if capture:

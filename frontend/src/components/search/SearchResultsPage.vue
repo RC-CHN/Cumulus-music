@@ -425,7 +425,12 @@ onBeforeUnmount(() => {
           </p>
           <div v-if="!count" class="empty-state">
             <Icon name="search" />
-            <p>没有找到相关{{ selected.title === '综合' ? '内容' : selected.title }}</p>
+            <p>
+              {{
+                view.emptyTitle ||
+                `没有找到相关${selected.title === '综合' ? '内容' : selected.title}`
+              }}
+            </p>
             <small>试试其他关键词，或切换分类</small>
           </div>
           <section
