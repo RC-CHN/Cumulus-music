@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, nextTick, shallowRef, watch } from 'vue';
+import { ref, computed, nextTick, shallowRef, useId, watch } from 'vue';
 import Icon from './Icon.vue';
 import ActionMenu from './ActionMenu.vue';
 import { failure } from '../services/contracts';
@@ -7,6 +7,7 @@ import LocalMatchDialog from './LocalMatchDialog.vue';
 import LocalFolderGroups from './LocalFolderGroups.vue';
 import type { LocalMatchingModel } from '../composables/useLocalMatching';
 import type { LocalModel } from '../composables/useLocal';
+import { useLocalGroupWidth } from '../composables/useLocalGroupWidth';
 import { useLocalSearch } from '../composables/useLocalSearch';
 import {
   localGroupQuery,
@@ -35,7 +36,30 @@ const search = useLocalSearch(props.model);
 const { keyword } = search;
 const searchInput = ref<HTMLInputElement>();
 const pageRoot = ref<HTMLElement>();
+const browser = ref<HTMLElement>();
+const groupSeparator = ref<HTMLElement>();
+const groupsId = useId();
+const {
+  width: groupsWidth,
+  minimum: groupsMin,
+  maximum: groupsMax,
+  enabled: canResizeGroups,
+  key: resizeGroupsKey,
+  start: resizeGroupsStart,
+} = useLocalGroupWidth(browser, () => query.value.group !== 'list');
 const ownsVisit = props.model.captureVisit();
+watch(canResizeGroups, async (enabled) => {
+  const separator = groupSeparator.value;
+  if (enabled || !separator || document.activeElement !== separator) return;
+  await nextTick();
+  const active = document.activeElement;
+  if (!ownsVisit() || canResizeGroups.value || (active !== separator && active !== document.body))
+    return;
+  const selected = browser.value?.querySelector<HTMLButtonElement>(
+    '.local-groups button[aria-pressed="true"]',
+  );
+  (selected ?? searchInput.value)?.focus({ preventScroll: true });
+});
 const expandedFolders = shallowRef(new Set<string>());
 let folderFocus: string | undefined;
 function selectFolder(key: string) {
@@ -554,10 +578,12 @@ function status(root: LocalRoot) {
       <p>选择音乐目录，支持 CUE 分轨和 NCM 文件。</p>
       <button class="primary" :disabled="busy" @click="model.choose">选择音乐目录</button>
     </div>
-    <div v-else class="local-browser">
+    <div v-else ref="browser" class="local-browser">
       <aside
         v-if="query.group !== 'list'"
         class="local-groups"
+        :id="groupsId"
+        :style="{ width: groupsWidth + 'px' }"
         aria-label="本地分组"
         @contextmenu="openGroupMenu"
         @keydown="openGroupMenu"
@@ -598,6 +624,23 @@ function status(root: LocalRoot) {
           @select="groupAction"
         />
       </aside>
+      <div
+        v-if="query.group !== 'list'"
+        ref="groupSeparator"
+        class="local-group-split"
+        :class="{ 'local-group-split-active': canResizeGroups }"
+        :role="canResizeGroups ? 'separator' : undefined"
+        :aria-hidden="canResizeGroups ? undefined : true"
+        :tabindex="canResizeGroups ? 0 : undefined"
+        :aria-label="canResizeGroups ? '调整本地分组宽度' : undefined"
+        :aria-controls="canResizeGroups ? groupsId : undefined"
+        :aria-orientation="canResizeGroups ? 'vertical' : undefined"
+        :aria-valuemin="canResizeGroups ? groupsMin : undefined"
+        :aria-valuemax="canResizeGroups ? groupsMax : undefined"
+        :aria-valuenow="canResizeGroups ? groupsWidth : undefined"
+        @pointerdown="resizeGroupsStart"
+        @keydown="resizeGroupsKey"
+      />
       <div class="local-tracks">
         <table>
           <thead>

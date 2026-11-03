@@ -100,16 +100,27 @@
 }
 .local-browser {
   display: flex;
-  gap: 20px;
   min-width: 0;
 }
 .local-groups {
-  flex: 0 0 160px;
+  flex: none;
   min-width: 0;
   max-height: 460px;
   overflow: auto;
   border-right: 1px solid var(--line);
   padding-right: 10px;
+}
+.local-group-split {
+  flex: 0 0 20px;
+}
+.local-group-split-active {
+  cursor: ew-resize;
+  touch-action: none;
+}
+.local-group-split-active:hover,
+.local-group-split-active:focus-visible {
+  background: linear-gradient(var(--accent), var(--accent)) center / 2px 100% no-repeat;
+  outline: none;
 }
 .local-groups button {
   display: flex;
@@ -242,9 +253,6 @@
   color: var(--muted);
 }
 @media (max-width: 900px) {
-  .local-groups {
-    flex-basis: 120px;
-  }
   .local-tracks th:nth-child(4),
   .local-tracks td:nth-child(4) {
     display: none;

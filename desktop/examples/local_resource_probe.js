@@ -647,6 +647,43 @@
     assert(localField().value === "", "old debounce cannot restore search");
     await theme("dark");
     await capture("group_cleared_dark");
+    await resize(1120, 760);
+    const separator = () => local().querySelector('[role="separator"][aria-label="调整本地分组宽度"]');
+    const groupWidth = () => Math.round(local().querySelector(".local-groups").getBoundingClientRect().width);
+    const press = (key) => separator().dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+    const pointer = (target, type, x) => target.dispatchEvent(new PointerEvent(type, {
+      pointerId: 91, pointerType: "mouse", isPrimary: true, button: 0, clientX: x, bubbles: true, cancelable: true,
+    }));
+    await wait(() => separator() && groupWidth() === 155, "wide group layout starts at recovered width");
+    separator().focus();
+    press("End");
+    const maxWidth = Number(separator().getAttribute("aria-valuemax"));
+    await wait(() => groupWidth() === maxWidth, "keyboard grows group list to its bound");
+    assert(local().querySelector(".local-tracks").getBoundingClientRect().width >= 459, "song table keeps its recovered minimum");
+    press("Home");
+    await wait(() => groupWidth() === 155, "keyboard restores minimum");
+    const x = separator().getBoundingClientRect().left + 4;
+    pointer(separator(), "pointerdown", x);
+    pointer(document, "pointermove", x + 40);
+    pointer(document, "pointerup", x + 40);
+    await wait(() => groupWidth() === 195, "pointer commits group width");
+    pointer(separator(), "pointerdown", x + 40);
+    pointer(document, "pointermove", x + 72);
+    await wait(() => groupWidth() === 227, "pointer previews group width");
+    press("Escape");
+    await wait(() => groupWidth() === 195, "escape cancels group width preview");
+    await capture("group_resized_dark", { groupWidth: groupWidth(), groupWidthMaximum: maxWidth });
+    await resize(760, 620);
+    await wait(() => !separator() && groupWidth() === 120, "compact group view keeps room for the table");
+    await wait(
+      () => document.activeElement === local().querySelector('.local-groups button[aria-pressed="true"]'),
+      "compact layout restores group focus",
+    );
+    await capture("group_compact_dark", { groupWidth: groupWidth() });
+    await resize(1120, 760);
+    await wait(() => separator() && groupWidth() === 195, "preferred width survives compact view");
+    await resize(900, 620);
+
     click("歌曲", local());
     await wait(
       () =>

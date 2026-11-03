@@ -6,7 +6,7 @@ from pathlib import Path
 from window_manager import launch
 
 LABELS = ['library_light', 'local_directory_menu_light', 'local_directory_light', 'composition_pending_light', 'composition_complete_dark', 'search_live_dark', 'search_returned_light', 'query_pending_dark',
-          'query_latest_light', 'query_failed_dark', 'query_empty_light', 'group_cleared_dark',
+          'query_latest_light', 'query_failed_dark', 'query_empty_light', 'group_cleared_dark', 'group_resized_dark', 'group_compact_dark',
           'queue_before_light', 'downloads_before_dark', 'cloud_confirm_light', 'cloud_removed_dark',
           'downloads_removed_dark', 'library_removed_light', 'queue_reconciled_dark', 'cloud_keep_light',
           'download_kept_playback_dark', 'library_kept_light', 'read_failed_cached_dark',
@@ -85,6 +85,9 @@ def main():
     assert states['query_failed_dark']['readError'] and states['query_failed_dark']['localCount'] == 0
     assert states['query_empty_light']['localEmpty'] == '没有匹配的本地音乐' and not states['query_empty_light'].get('readError')
     assert states['group_cleared_dark']['localSearch'] == '' and states['group_cleared_dark']['group'] == '歌手'
+    assert states['group_resized_dark']['groupWidth'] == 195
+    assert states['group_resized_dark']['groupWidthMaximum'] >= 227
+    assert states['group_compact_dark']['groupWidth'] == 120 and states['group_compact_dark']['focusLabel'] == '全部'
     assert len(states['queue_before_light']['queueEntries']) == 3
     assert len(states['downloads_before_dark']['downloadIds']) == 1
     assert states['downloads_removed_dark']['downloadIds'] == [] and states['downloads_removed_dark']['downloadSearch'] == '006'
@@ -99,7 +102,7 @@ def main():
     report = dict(ok=True, states=len(LABELS), screenshots=len(LABELS) if args.screenshots else 0,
                   actualWebViews=1, deletedSyntheticFiles=1, remainingDownloads=2, remainingLocalTracks=2,
                   exactCloudDeleteRequests=2, queryOwnershipVerified=True, retainedCueIdentityVerified=True,
-                  localDirectoryActionVerified=True, localIndexOnlyRemovalVerified=True, nativeDirectoryLauncherIntercepted=os.name != 'nt',
+                  localDirectoryActionVerified=True, localIndexOnlyRemovalVerified=True, localGroupResizeVerified=True, nativeDirectoryLauncherIntercepted=os.name != 'nt',
                   realAccountWrites=0, realMusicRequests=0, physicalAudioOutputVerified=False)
     (root/'report.json').write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
     print(json.dumps(report))
