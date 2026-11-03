@@ -774,6 +774,28 @@ function downloadBatchLeft() {
     ?.focus({ preventScroll: true });
 }
 const catalogDetailPage = ref<InstanceType<typeof CatalogPage>>();
+async function retryDailyCache(event: MouseEvent) {
+  const trigger = event.currentTarget;
+  if (!(trigger instanceof HTMLButtonElement)) return;
+  const ownsFocus = document.activeElement === trigger;
+  const epoch = music.account.value.epoch;
+  const currentPage = music.page.value;
+  const heading = trigger.closest('.main-content')?.querySelector<HTMLElement>('.daily-heading h1');
+  await music.retryDailyCache();
+  await nextTick();
+  if (
+    ownsFocus &&
+    !trigger.isConnected &&
+    heading?.isConnected &&
+    document.activeElement === document.body &&
+    music.account.value.epoch === epoch &&
+    music.page.value === currentPage &&
+    music.signedIn.value
+  ) {
+    heading.tabIndex = -1;
+    heading.focus({ preventScroll: true });
+  }
+}
 function openDailyHistory() {
   if (!signedIn.value) {
     loginOpen.value = true;
@@ -2289,15 +2311,16 @@ onUnmounted(() => {
                   v-if="page.kind === 'daily' && result?.daily?.cached"
                   class="notice"
                   role="status"
+                  :aria-busy="loading"
                 >
                   <span>暂时无法获取今日推荐，正在显示本账号上次加载的列表。</span>
                   <button
                     type="button"
                     class="text-button"
-                    :disabled="loading"
-                    @click="music.load()"
+                    :aria-disabled="loading"
+                    @click="retryDailyCache"
                   >
-                    重试
+                    {{ loading ? '正在重试…' : '重试' }}
                   </button>
                 </div>
                 <div v-if="notice || music.likeNotice.value" class="notice" role="status">

@@ -97,6 +97,7 @@ export function useMusic(
     error.value = issue.message;
     if (issue.code === 'session_expired' || issue.code === 'profile_changed') {
       request++;
+      loading.value = false;
       resourceRequest++;
       resourcesLoading.value = false;
       account.value = { ...account.value, status: 'expired', nickname: null, avatarUrl: null };
@@ -158,13 +159,15 @@ export function useMusic(
       if (revision === likeRevision && account.value.epoch === epoch) handleLike(error);
     }
   }
-  async function load(more = false) {
+  async function load(more = false, retainDailyCache = false) {
     const current = ++request;
     error.value = '';
     loading.value = true;
     const target = page.value;
+    const keepingCache =
+      retainDailyCache && signedIn.value && target.kind === 'daily' && result.value?.daily?.cached;
     const offset = more ? (result.value?.tracks.length ?? 0) : 0;
-    if (!more) result.value = undefined;
+    if (!more && !keepingCache) result.value = undefined;
     try {
       if (
         !signedIn.value ||
@@ -202,16 +205,26 @@ export function useMusic(
               });
       if (current !== request) return;
       const value = accept(data);
-      if (!value) return;
+      if (!value) {
+        if (keepingCache) result.value = undefined;
+        return;
+      }
       result.value =
         more && result.value
           ? { ...value, tracks: [...result.value.tracks, ...value.tracks] }
           : value;
     } catch (e) {
-      if (current === request) handle(e);
+      if (current === request) {
+        if (keepingCache) result.value = undefined;
+        handle(e);
+      }
     } finally {
       if (current === request) loading.value = false;
     }
+  }
+  function retryDailyCache() {
+    if (!loading.value && page.value.kind === 'daily' && result.value?.daily?.cached)
+      return load(false, true);
   }
   async function primeLocalAccount() {
     const current = accountRequest;
@@ -398,6 +411,7 @@ export function useMusic(
     resources,
     refreshLikes,
     load,
+    retryDailyCache,
     bootstrap,
     navigate: (next: Page) => navigate(next),
     openSubscriberProfile: (id: string, token: number) =>

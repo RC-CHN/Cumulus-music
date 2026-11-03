@@ -118,7 +118,7 @@ fn playlist(id: u64) -> Value {
 impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, args: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
-            if let Some(response) = daily_history_fixture::response(path, &args) {
+            if let Some(response) = daily_history_fixture::response(path, &args).await {
                 return response;
             }
             if let Some(response) = style_recommendations_fixture::response(path, &args) {

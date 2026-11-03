@@ -13,7 +13,7 @@ pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_DAILY_HISTORY_PROOF").is_some()
 }
 
-pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
+pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
     if !enabled() {
         return None;
     }
@@ -27,8 +27,12 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
                 "wrong daily endpoint or arguments",
             )));
         }
-        if DAILY.fetch_add(1, Ordering::Relaxed) == 1 {
+        let attempt = DAILY.fetch_add(1, Ordering::Relaxed);
+        if attempt == 1 {
             return Some(Err(Error::Transport("synthetic daily read outage".into())));
+        }
+        if attempt == 2 {
+            tokio::time::sleep(std::time::Duration::from_millis(450)).await;
         }
         return Some(Ok(
             json!({"code":200,"recommend":(1..=40).map(super::song).collect::<Vec<_>>() }),

@@ -84,6 +84,27 @@ function backend(overrides: Partial<CoreClient> = {}): CoreClient {
   };
 }
 
+test('daily cache retry keeps the visible rows while pending and clears them on a hard failure', async () => {
+  const pending = deferred<AccountData<TrackPage>>();
+  const cached: TrackPage = { ...page, daily: { cached: true, showFreeTag: true } };
+  let reads = 0;
+  const music = useMusic(
+    backend({
+      dailySongs: () => (++reads === 1 ? Promise.resolve(data(cached)) : pending.promise),
+    }),
+  );
+  await music.bootstrap();
+  const retry = music.retryDailyCache();
+  assert.equal(music.loading.value, true);
+  assert.equal(music.result.value, cached);
+  assert.equal(music.retryDailyCache(), undefined);
+  pending.reject({ code: 'session_expired', message: '请重新登录' });
+  await retry;
+  assert.equal(music.account.value.status, 'expired');
+  assert.equal(music.result.value, undefined);
+  assert.equal(music.loading.value, false);
+});
+
 test('collection tab replacement keeps its visit while new navigation gets an independent history entry', async () => {
   const music = useMusic(backend());
   await music.bootstrap();

@@ -52,8 +52,13 @@
     const cached = await wait(() => [...document.querySelectorAll('.notice')].find((node) =>
       node.textContent.includes('本账号上次加载的列表')), 'same-account daily cache visible after outage');
     await emit('ux_05_daily_cached');
-    cached.querySelector('button').click();
-    await wait(() => !cached.isConnected && one('.track-row'), 'retry returns fresh daily recommendations');
+    const retry = cached.querySelector('button');
+    retry.focus();
+    retry.click();
+    await wait(() => cached.getAttribute('aria-busy') === 'true' && one('.track-row') &&
+      document.activeElement === retry, 'retry keeps cached rows and keyboard focus while pending');
+    await wait(() => !cached.isConnected && one('.track-row') &&
+      document.activeElement === one('.daily-heading h1'), 'retry returns fresh recommendations and restores focus');
     const style = one('.daily-style-entry');
     const styleBounds = style.getBoundingClientRect();
     if (!style.contains(document.elementFromPoint(styleBounds.x + styleBounds.width / 2, styleBounds.y + styleBounds.height / 2)))
