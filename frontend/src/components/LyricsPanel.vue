@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import type { PlayerModel } from '../composables/usePlayer';
+import type { PlayerView } from '../services/player';
 import Icon from './Icon.vue';
 import DesktopLyricToggle from './DesktopLyricToggle.vue';
 import ActionMenu from './ActionMenu.vue';
@@ -8,21 +9,30 @@ import { useMotion } from '../composables/useMotion';
 import { artistLabel } from '../services/artistLabel';
 const props = defineProps<{ player: PlayerModel }>();
 const emit = defineEmits<{ report: [] }>();
-const { view, lyrics, lyricLoading, lyricError, loaded } = props.player;
+const { view, lyrics, lyricLoading, lyricError, loaded, busy } = props.player;
 const container = ref<HTMLElement>(),
   close = ref<HTMLButtonElement>();
 const wordMode = ref(true);
 const motion = useMotion();
 const manual = ref(false);
 const timedWords = computed(() => wordMode.value && (lyrics.value?.wordLines.length ?? 0) > 0);
-const lines = computed(() =>
-  timedWords.value
-    ? lyrics.value!.wordLines.map((l) => ({
-        time: l.time - (lyrics.value?.offset ?? 0),
-        lyric: l.text,
-      }))
-    : (lyrics.value?.lines ?? []),
-);
+type LyricSeekTarget = Pick<PlayerView, 'epoch' | 'playId' | 'queueRevision'>;
+const currentEpoch = computed(() => view.value?.epoch);
+const currentPlayId = computed(() => view.value?.playId);
+const currentQueueRevision = computed(() => view.value?.queueRevision);
+const lines = computed(() => {
+  const document = lyrics.value;
+  if (!document) return [];
+  const revision = currentQueueRevision.value;
+  const target: LyricSeekTarget | undefined =
+    document.epoch === currentEpoch.value && document.playId === currentPlayId.value && revision
+      ? { epoch: document.epoch, playId: document.playId, queueRevision: revision }
+      : undefined;
+  const rows = timedWords.value
+    ? document.wordLines.map((l) => ({ time: l.time - document.offset, lyric: l.text }))
+    : document.lines;
+  return rows.map((row) => ({ ...row, target }));
+});
 const active = computed(() => {
   let found = -1,
     latest = -Infinity;
@@ -34,13 +44,20 @@ const active = computed(() => {
   });
   return found;
 });
-function seekable(time: number | undefined) {
+function seekable(line: (typeof lines.value)[number]) {
+  const time = line.time;
   return (
+    !!line.target &&
+    !busy.value &&
     loaded.value &&
     time !== undefined &&
     time >= (view.value?.timeline?.start ?? 0) &&
     time <= (view.value?.timeline?.end ?? Infinity)
   );
+}
+function seekLine(line: (typeof lines.value)[number]) {
+  if (line.target && line.time !== undefined && seekable(line))
+    void props.player.seekDisplayed(line.target, line.time);
 }
 async function scroll() {
   await nextTick();
@@ -149,14 +166,12 @@ function aligned(rows: { time?: number; lyric: string }[] | undefined, index: nu
             <div class="lyric-padding" />
             <button
               v-for="(line, index) in lines"
-              :key="index"
+              :key="`${line.target?.epoch}:${line.target?.playId}:${index}`"
               class="lyric-line"
               :class="{ current: index === active }"
               :data-line="index"
-              :disabled="!seekable(line.time)"
-              @click="
-                line.time !== undefined && player.action({ kind: 'seek', seconds: line.time })
-              "
+              :disabled="!seekable(line)"
+              @click="seekLine(line)"
             >
               <span v-if="timedWords && lyrics.wordLines[index]?.words.length" class="word-line"
                 ><span
