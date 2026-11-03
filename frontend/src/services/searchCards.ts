@@ -29,7 +29,7 @@ export function searchCardCanPlay(item: SearchItem): boolean {
   return (
     ['playlist', 'album', 'artist'].includes(item.kind) ||
     (item.kind === 'podcast' && !item.podcast.unavailable) ||
-    (item.kind === 'voice' && !!item.voice.radioId && !item.voice.unavailable)
+    (item.kind === 'voice' && !item.voice.unavailable)
   );
 }
 export function searchCardIsCurrent(
@@ -59,6 +59,7 @@ export async function searchCardSelection(
       quality,
     );
   }
+  if (item.kind === 'voice' && !item.voice.radioId) return { kind: 'voice', id: item.voice.id };
   if (item.kind === 'podcast' || item.kind === 'voice') {
     const scope = {
       kind: 'radio' as const,
@@ -71,6 +72,13 @@ export async function searchCardSelection(
       true,
     );
     if (view.epoch !== epoch) throw { code: 'stale', message: '账号已切换' };
+    if (item.kind === 'voice') {
+      const episode = view.episodes.find((candidate) => candidate.id === item.voice.id);
+      // The radio page may omit this episode (for example, beyond its first 100).
+      // Let native resolve exactly the clicked episode; never substitute its neighbour.
+      if (!episode) return { kind: 'voice', id: item.voice.id };
+      if (episode.unavailable) throw { code: 'unavailable', message: '此内容暂不可播放' };
+    }
     const id =
       item.kind === 'voice' ? item.voice.id : view.episodes.find((e) => !e.unavailable)?.id;
     if (!id) throw { code: 'unavailable', message: '暂无可播放声音' };

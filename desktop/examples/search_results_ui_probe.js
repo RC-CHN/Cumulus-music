@@ -49,6 +49,31 @@
     } finally { window.requestAnimationFrame=frames; }
   }
   try {
+    if(window.__cumulusSearchVoiceDirectProof){
+      await wait(()=>one('.track-row'),'daily ready');
+      await fixture('unavailable');await fresh('合成无所属播客的声音');await choose('voices');
+      const card=one('[data-result-key="voice:401"]');
+      const play=card?.querySelector('.search-card-play');
+      assert(play&&!card.querySelector('.search-voice-radio'),'episode play is independent of the parent radio link');
+      const invoke=(name,args={})=>window.__TAURI_INTERNALS__.invoke(name,args);
+      const {epoch}=await invoke('account_snapshot');
+      click(play);
+      let first;
+      for(let i=0;i<200;i++){
+        const view=await invoke('player_snapshot',{epoch});
+        if(view.track?.voiceId==='401'&&view.state==='playing'&&view.position>.2){first=view;break;}
+        await sleep(70);
+      }
+      assert(first,'standalone episode reached actual native playback');
+      await capture('voice_without_radio_playing');
+      click(card.querySelector('.search-card-play'));
+      await wait(()=>one('.playerbar').dataset.state==='paused','same episode pauses from the search card');
+      const paused=await invoke('player_snapshot',{epoch});
+      assert(paused.playId===first.playId&&paused.queueLen===1,'same episode and single-entry native queue');
+      await capture('voice_without_radio_paused');
+      await emit('complete',{ok:true,voiceDirectVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      return;
+    }
     if(window.__cumulusSearchV3Proof){
       await wait(()=>one('.track-row'),'daily ready');
       await fresh('合成 V3');
@@ -167,7 +192,7 @@
     await choose('songs');
     const album=one('.track-album[data-tooltip]');assert(album&&!album.hasAttribute('title'),'native title replaced');album.dispatchEvent(new PointerEvent('pointerover',{bubbles:true}));await wait(()=>one('.content-tooltip')&&getComputedStyle(one('.content-tooltip')).visibility==='visible','content tooltip');await capture('content_tooltip');
     await choose('artists');assert(!one('.content-tooltip'),'route clears tooltip');await capture('tooltip_cleared');
-    await fixture('unavailable');await fresh('合成不可用结果');await choose('voices');assert(!one('.search-result-card .search-card-play')&&one('.search-result-card').textContent.includes('暂不可打开'),'missing radio target disabled');await capture('voice_unavailable');await choose('mvs');assert(one('.search-card-open').disabled,'non-MV target disabled');await capture('mv_unavailable');await fixture('good');
+    await fixture('unavailable');await fresh('合成不可用结果');await choose('voices');assert(one('.search-result-card .search-card-play')&&!one('.search-voice-radio'),'missing radio does not disable episode playback');await capture('voice_unavailable');await choose('mvs');assert(one('.search-card-open').disabled,'non-MV target disabled');await capture('mv_unavailable');await fixture('good');
     await choose('all');
     const playingTrack=id=>one('.playerbar')?.dataset.state==='playing'&&one('.now-playing')?.textContent.includes('合成歌曲 '+id+' ·');
     await fixture('result_play_default');click(button('播放全部搜索单曲'));

@@ -249,7 +249,7 @@ watch(
     >
       {{ card.sub }}
     </button>
-    <span v-else-if="unavailable" class="search-result-sub">{{
+    <span v-else-if="unavailable && !canPlay" class="search-result-sub">{{
       item.kind === 'user' ? '此账号当前不可用' : '暂不可打开'
     }}</span>
     <span v-else-if="card.sub" class="search-result-sub" :data-tooltip="card.sub">{{

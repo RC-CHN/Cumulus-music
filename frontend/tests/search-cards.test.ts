@@ -30,7 +30,7 @@ test('cards select authoritative catalog and radio revisions, not cached search 
     },
     podcastPage: async (...args: unknown[]) => {
       calls.push(args);
-      return { epoch: '1', revision: 'radio-fresh', episodes: [] };
+      return { epoch: '1', revision: 'radio-fresh', episodes: [{ id: '21', unavailable: false }] };
     },
   } as unknown as CoreClient;
   assert.deepEqual(await searchCardSelection(core, '1', artist, 'lossless'), {
@@ -58,4 +58,46 @@ test('missing catalog data and stale radio snapshots cannot become playback sele
   } as unknown as CoreClient;
   await assert.rejects(searchCardSelection(core, '1', artist, 'standard'), { code: 'unavailable' });
   await assert.rejects(searchCardSelection(core, '1', voice, 'standard'), { code: 'stale' });
+});
+
+test('voice results use exact native episode lookup when radio context is absent or incomplete', async () => {
+  let radioReads = 0;
+  const core = {
+    podcastPage: async () => {
+      radioReads++;
+      return { epoch: '1', revision: 'fresh', episodes: [{ id: '20', unavailable: false }] };
+    },
+  } as unknown as CoreClient;
+  if (voice.kind !== 'voice') throw Error('voice fixture');
+  const standalone = { ...voice, voice: { ...voice.voice, radioId: null } };
+  assert.deepEqual(await searchCardSelection(core, '1', standalone, 'standard'), {
+    kind: 'voice',
+    id: '21',
+  });
+  assert.equal(radioReads, 0);
+  assert.deepEqual(await searchCardSelection(core, '1', voice, 'standard'), {
+    kind: 'voice',
+    id: '21',
+  });
+  assert.equal(radioReads, 1);
+  await assert.rejects(
+    searchCardSelection(
+      core,
+      '1',
+      { ...standalone, voice: { ...standalone.voice, unavailable: true } },
+      'standard',
+    ),
+    { code: 'unavailable' },
+  );
+  assert.equal(radioReads, 1);
+  const blocked = {
+    podcastPage: async () => ({
+      epoch: '1',
+      revision: 'fresh',
+      episodes: [{ id: '21', unavailable: true }],
+    }),
+  } as unknown as CoreClient;
+  await assert.rejects(searchCardSelection(blocked, '1', voice, 'standard'), {
+    code: 'unavailable',
+  });
 });
