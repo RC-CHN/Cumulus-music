@@ -52,3 +52,10 @@ beforeDevCommand/beforeBuildCommand 在工作区根运行，已改为 npm --pref
 `local-after-click.png` 是进入本地音乐后的实际窗口。
 本次未登录、未导入个人文件、未验收声卡或安装包，也不替代其他
 平台和真实账号业务流程的验收。
+
+  普通 Linux 构建 54a677d 再验：在无外网 Xvfb/Openbox、非 C locale
+  和私有 PipeWire 虚拟输出启动；用系统鼠标、键盘及 GTK 文件选择器
+  导入合成 FLAC，播放进度推进、打开均衡器、关闭并暂停。无注入测试
+  IPC。证据 .build/latest-ordinary-current 指向的 run/ 目录，
+  equalizer.png 显示播放中的十段、低音和高音入口。该截图只证明
+  普通窗口和控件可用，音效 PCM 对照、实体声卡及线上播放分别验收。
