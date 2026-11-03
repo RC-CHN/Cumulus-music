@@ -88,6 +88,11 @@
     await wait(() => phase('recovery_required') && enabled(action('stop')), 'open recovery without catalogue detail');
     assert(!action('prepare') && !action('activate'), 'recovery-only view never prepares or activates');
 
+    if (window.__cumulusPeqExitUncertain) {
+      await emit('complete', { ok: true, stageCount: 3, leftStopUncertain: true });
+      return;
+    }
+
     stage = 'reconcile';
     click(action('status'));
     await sleep(0);

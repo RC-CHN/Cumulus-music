@@ -56,6 +56,34 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
         return None;
     }
     let mut trace = TRACE.lock().unwrap();
+    // The reopened process has no simulated active lease in memory. Allow
+    // only the ordinary empty catalogue and one explicit compensating stop.
+    if std::env::var_os("CUMULUS_PROOF_REOPEN").is_some() {
+        let data = match path {
+            "/api/usertool/sound/queryAllSound" if args == &json!({"exposeType":5}) => json!([]),
+            "/api/vipauth/app/interests/auth/stop"
+                if args == &json!({"interestsType":127,"interestsId":"300","type":1})
+                    && trace.stops == 0
+                    && trace.starts == 0
+                    && !trace.native_attached =>
+            {
+                trace.stops += 1;
+                json!(true)
+            }
+            _ if path.starts_with("/api/vipauth/app/interests/")
+                || path.starts_with("/api/usertool/home/sound")
+                || path.starts_with("/api/usertool/sound/") =>
+            {
+                trace.calls.push(json!({"path":path,"result":"unexpected"}));
+                return Some(Err(Error::Response(
+                    "unapproved reopened synthetic PEQ route",
+                )));
+            }
+            _ => return None,
+        };
+        trace.calls.push(json!({"path":path,"result":"ack"}));
+        return Some(Ok(json!({"code":200,"data":data})));
+    }
     let data = match path {
         "/api/usertool/sound/queryAllSound" if args == &json!({"exposeType":5}) => {
             json!([sound()])
@@ -123,7 +151,11 @@ impl MediaBody for Body {
 impl MediaBackend for Material {
     fn get(&self, request: MediaRequest) -> ApiFuture<'_, MediaReply> {
         Box::pin(async move {
-            if request.url.as_str() != URL || request.offset != 0 || request.if_range.is_some() {
+            if std::env::var_os("CUMULUS_PROOF_REOPEN").is_some()
+                || request.url.as_str() != URL
+                || request.offset != 0
+                || request.if_range.is_some()
+            {
                 return Err(Error::Response("unapproved synthetic PEQ material"));
             }
             let mut trace = TRACE.lock().unwrap();
@@ -215,6 +247,7 @@ impl AudioEngine for Audio {
 pub fn report() -> Value {
     let trace = TRACE.lock().unwrap();
     json!({
+        "processId":std::process::id(),
         "calls":trace.calls,
         "materialGets":trace.material_gets,
         "starts":trace.starts,
