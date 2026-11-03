@@ -21,14 +21,16 @@ docs/releases/0.1.0.txt；之后的 main 不属于这个包。下一版本必须
 系统依赖、Linux/Windows 发行构建及校验见 docs/releasing.txt。
 无 WebView 的 core 构建、职责与数据流见 docs/architecture.txt。
 普通 Linux 客户端启动、原生文件选择和播放证据见 docs/bootstrap-validation.txt。
-本机 dd4fd37 的 .deb 已核对摘要并从包内正式窗口导入、播放、暂停合成 FLAC。
-播放中选择均衡器预设后，同一曲目的时钟继续推进；已核对持久化和进程映射的
-包内滤镜。该用例使用独立 PipeWire 空输出；打包时另有滤镜 PCM 数值对照。
-Windows 的便携 ZIP 核验与解包启动已接入 CI，NSIS 安装后仍须单独验收。
+本机 1f44be9 的 .deb 和便携 tar.gz 均核对摘要并从包内正式窗口导入、
+播放、暂停合成 FLAC。选择均衡器预设后，同一曲目的时钟继续推进；
+核对持久化、进程映射的各自滤镜及独立 PipeWire 空输出的 PCM。
+两个包的 440 Hz 分量均提高约 4.5 dB，暂停后为零。
+Windows 的便携 ZIP 核验与解包启动已接入 CI；独立 NSIS 诊断已实现，
+实际安装运行与安装后的正式界面播放仍须单独验收。
 这些记录不代替目标提交的两端 CI 或正式发布。
-主线 4417bec 已在 Linux 重新构建桌面探针并复跑 18 个合成主流程检查点、
-17 张截图；实测 libmpv、下载断点及离线播放。报告在本机
-`.build/entry-clock-main-flow/report.json`，与正式发行包分开记录。
+主线 737fd6a 已在 Linux 重新构建桌面探针并复跑 19 个合成主流程检查点、
+18 张截图；实测 libmpv、HTTPS 自动换曲、下载断点及离线播放。报告在本机
+`.build/reconnect-main-eof/report.json`，与正式发行包分开记录。
 
 功能、入口和证据
 ----------------
