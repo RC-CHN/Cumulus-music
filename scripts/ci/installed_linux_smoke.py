@@ -1,4 +1,4 @@
-"""Start a built executable or exact extracted Debian app with no external network.
+"""Start a built executable or exact extracted Linux package with no external network.
 
 Optional playback needs a private 1280x900 Xvfb display, D-Bus session and a
 network namespace with no routes. Hide host sound devices, for example:
@@ -14,7 +14,9 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
+import tarfile
 import tempfile
 import time
 
@@ -30,6 +32,23 @@ def require_isolation():
     for family in ('-4', '-6'):
         routes = subprocess.check_output(['ip', family, '-j', 'route', 'show', 'table', 'main'])
         assert json.loads(routes) == [], 'probe requires no external routes'
+
+
+def unpack_portable(archive, directory, prefix):
+    """Copy only the executable and its adjacent filter from the verified tar."""
+    with tarfile.open(archive, 'r:gz') as package:
+        members = package.getmembers()
+        for filename in ('cumulus', 'libcumulus_audio_filter.so'):
+            member, = (row for row in members if row.name == f'{prefix}/{filename}')
+            assert member.isfile() and member.size > 0
+            if filename == 'cumulus':
+                assert member.mode & 0o111, 'portable executable is not marked executable'
+            destination = directory / filename
+            with package.extractfile(member) as stream, destination.open('xb') as output:
+                shutil.copyfileobj(stream, output)
+            if filename == 'cumulus':
+                destination.chmod(0o700)
+    return directory / 'cumulus', directory / 'libcumulus_audio_filter.so'
 
 
 def own_window(pid):
@@ -111,20 +130,23 @@ def observe(binary, root, verify_local_playback=False, packaged_filter=None, ver
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     source = parser.add_mutually_exclusive_group(required=True)
-    source.add_argument('--packages', type=Path, help='directory with Debian package and manifest')
+    source.add_argument('--packages', type=Path, help='directory with Linux packages and manifest')
     source.add_argument('--binary', type=Path, help='ordinary unpackaged Cumulus executable')
     parser.add_argument('--filter', type=Path, help='portable filter to compare in package mode')
     parser.add_argument('--commit', required=True)
     parser.add_argument('--root', type=Path, required=True)
+    parser.add_argument('--portable', action='store_true', help='verify the portable tar.gz instead of the Debian package')
     parser.add_argument('--verify-local-playback', action='store_true',
                         help='exercise synthetic audio via X11 and a private PipeWire null sink')
     parser.add_argument('--verify-installed-equalizer', action='store_true',
-                        help='also exercise an EQ preset and the Debian package filter while playing')
+                        help='also exercise an EQ preset and the package filter while playing')
     parser.add_argument('--verify-monitor-pcm', action='store_true',
                         help='measure the synthetic tone and pause silence at the private sink')
     args = parser.parse_args()
     if args.verify_monitor_pcm and not args.verify_local_playback:
         parser.error('--verify-monitor-pcm needs --verify-local-playback')
+    if args.portable and not args.packages:
+        parser.error('--portable needs --packages')
     if bool(args.packages) != bool(args.filter):
         parser.error('--filter is required with --packages and must be omitted with --binary')
     if args.verify_installed_equalizer and not (args.packages and args.verify_local_playback):
@@ -143,22 +165,29 @@ def main():
     else:
         manifest = json.loads((args.packages/'manifest-linux-x64.json').read_text(encoding='utf-8'))
         assert manifest['commit'] == args.commit and manifest['platform'] == 'linux-x64'
-        name = f"Cumulus-{manifest['version']}-linux-x64.deb"
+        version = manifest['version']
+        assert re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version), 'invalid package version'
+        prefix = f'Cumulus-{version}-linux-x64'
+        name = prefix + ('.tar.gz' if args.portable else '.deb')
         asset, = (row for row in manifest['assets'] if row['name'] == name)
-        deb = args.packages/name
-        assert deb.stat().st_size == asset['bytes'] and digest(deb) == asset['sha256']
-        with tempfile.TemporaryDirectory(prefix='cumulus-deb-proof-') as extracted:
-            subprocess.run(['dpkg-deb', '--extract', deb, extracted], check=True)
-            installed = Path(extracted)/'usr'
-            executable = installed/'bin/cumulus'
-            packaged_filter = installed/'lib/Cumulus/native/libcumulus_audio_filter.so'
+        archive = args.packages/name
+        assert archive.stat().st_size == asset['bytes'] and digest(archive) == asset['sha256']
+        with tempfile.TemporaryDirectory(prefix='cumulus-package-proof-') as extracted:
+            directory = Path(extracted)
+            if args.portable:
+                executable, packaged_filter = unpack_portable(archive, directory, prefix)
+            else:
+                subprocess.run(['dpkg-deb', '--extract', archive, extracted], check=True)
+                executable = directory/'usr/bin/cumulus'
+                packaged_filter = directory/'usr/lib/Cumulus/native/libcumulus_audio_filter.so'
             assert executable.is_file() and not executable.is_symlink() and os.access(executable, os.X_OK)
             assert packaged_filter.is_file() and not packaged_filter.is_symlink()
             assert digest(packaged_filter) == digest(args.filter)
             width, height, playback = observe(executable, root, args.verify_local_playback,
                                               packaged_filter if args.verify_installed_equalizer else None,
                                               args.verify_monitor_pcm)
-        result = dict(ok=True, commit=args.commit, archiveVerified=True, installedFilterMatchesPortable=True)
+        result = dict(ok=True, commit=args.commit, archiveVerified=True, package=name,
+                      installedFilterMatchesPortable=True)
     result.update(ordinaryWindowPainted=True, noExternalNetwork=True, width=width, height=height)
     if playback is not None:
         result['localPlayback'] = playback

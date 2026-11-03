@@ -20,13 +20,25 @@ pub(super) fn library(resources: &Path) -> Option<PathBuf> {
     } else {
         "libcumulus_audio_filter.so"
     };
-    let bundled = resources.join("native").join(filename);
-    if bundled.is_file() {
-        return Some(bundled);
-    }
-    let sibling = std::env::current_exe().ok()?.parent()?.join(filename);
-    sibling.is_file().then_some(sibling)
+    let executable = std::env::current_exe().ok();
+    resolve_library(resources, executable.as_deref(), filename)
 }
+
+fn resolve_library(resources: &Path, executable: Option<&Path>, filename: &str) -> Option<PathBuf> {
+    // The portable package ships a sibling. On Linux Tauri may fall back
+    // to /usr/lib/Cumulus for a portable executable, which can belong to a
+    // different Debian installation. Prefer this executable's own filter.
+    if let Some(sibling) = executable
+        .and_then(Path::parent)
+        .map(|directory| directory.join(filename))
+        .filter(|candidate| candidate.is_file())
+    {
+        return Some(sibling);
+    }
+    let bundled = resources.join("native").join(filename);
+    bundled.is_file().then_some(bundled)
+}
+
 /// Native launch/package paths only; no IPC accepts a dynamic-library path.
 /// null_output is used by native desktop verification, never a UI setting.
 pub fn configure_native_audio(
@@ -89,4 +101,33 @@ pub async fn effect_device_models(
         .effect_device_models(&epoch, brand)
         .await
         .map_err(Into::into)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn portable_filter_wins_over_a_separate_installation() {
+        let temporary = tempfile::tempdir().unwrap();
+        let portable = temporary.path().join("portable");
+        let resources = temporary.path().join("installed");
+        std::fs::create_dir_all(&portable).unwrap();
+        std::fs::create_dir_all(resources.join("native")).unwrap();
+        let filename = "synthetic-filter";
+        let executable = portable.join("cumulus");
+        let sibling = portable.join(filename);
+        let bundled = resources.join("native").join(filename);
+        std::fs::write(&bundled, b"installed version").unwrap();
+        std::fs::write(&sibling, b"portable version").unwrap();
+        assert_eq!(
+            resolve_library(&resources, Some(&executable), filename),
+            Some(sibling.clone())
+        );
+        std::fs::remove_file(sibling).unwrap();
+        assert_eq!(
+            resolve_library(&resources, Some(&executable), filename),
+            Some(bundled)
+        );
+    }
 }
