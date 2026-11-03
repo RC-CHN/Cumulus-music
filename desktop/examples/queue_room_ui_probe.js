@@ -31,6 +31,32 @@
     if(peer){await fixture('peer');await wait(async()=>{const v=await room();return v.sharedPhase==='applied'&&v.room.members.length===2;},'synthetic peer joined');}
     await wait(async()=>{const q=await client.playerQueue(epoch);return !q.clearContext.issue;},'clear policy ready');
   }
+  async function checkQueueShrink(){
+    const nativeView=await room(), original=client.togetherView;
+    assert(nativeView.tracks.length===3,'native queue baseline for the renderer fixture');
+    let expanded=true;
+    client.togetherView=async(...args)=>{
+      const result=await original(...args);
+      return expanded?{...result,value:{...result.value,tracks:Array.from({length:80},(_,i)=>({
+        ...nativeView.tracks[0],id:String(1000+i),name:'合成共享队列 '+(i+1),
+      }))}}:result;
+    };
+    try{
+      const list=()=>one('.together-tracks');
+      const refresh=()=>button('刷新一起听');
+      click(refresh());
+      await wait(()=>one('.together-queue h2 small')?.textContent.includes('80')&&!refresh().disabled,'long shared queue');
+      list().scrollTop=list().scrollHeight;
+      await wait(()=>list().scrollTop>2000&&Number(one('.together-number')?.textContent)>30,'scrolled virtual shared queue');
+      assert(all('.together-track').length<=18,'shared queue DOM stays bounded');
+      expanded=false;
+      click(refresh());
+      await wait(()=>list()?.scrollTop===0&&all('.together-track').length===3&&
+        Number(one('.together-number')?.textContent)===1,'short replacement restores the visible shared rows');
+    }finally{
+      client.togetherView=original;
+    }
+  }
   async function capture(label,empty=false){
     last=label;await sleep(330);await wait(()=>!one('.queue-panel-enter-active,.modal-enter-active,.modal-leave-active'),'motion settled');
     const p=panel(),d=modal(),r=p&&rect(p),dr=d&&rect(d);
@@ -51,6 +77,7 @@
     await fixture('observe_room');click(button('确认清空',modal()));await wait(()=>button('确认清空',modal())?.disabled&&modal().textContent.includes('播放列表已变化'),'room change rejected');assert(!one('.queue-clear-together'),'old consent is not rewritten for a new room');await capture('room_changed');await cancel();await capture('unattached_room');
     click(button('查看一起听状态',panel()));await wait(()=>!panel()&&one('.together-page')&&button('继续本机控制'),'observed room page');await capture('observed_room');click(button('退出房间'));await wait(()=>one('.together-leave'),'captured exit');await capture('exit_confirmation');await fixture('replace_room');await wait(()=>button('确认退出')?.disabled&&one('.together-leave').textContent.includes('房间已变化'),'changed exit is disabled');await capture('exit_room_changed');click(button('继续收听'));await fixture('erase_room');click(button('刷新一起听'));await wait(()=>button('创建房间')&&!button('创建房间').disabled,'room absent');
     await create();await wait(()=>bar().dataset.speed==='1','room forces normal speed');
+    await checkQueueShrink();
     for(const [width,height,value] of [[1120,760,'light'],[760,540,'light'],[760,540,'dark'],[1120,760,'dark']]){
       await resize(width,height);await theme(value);await openQueue();await wait(()=>!button('清空',panel()).disabled,'clear available');await capture(`list_${width}_${value}`);await openClear(true);await capture(`confirm_${width}_${value}`);await cancel();await capture(`cancel_${width}_${value}`);await closeQueue();
     }
@@ -59,6 +86,6 @@
     await fixture('release_end');await wait(()=>one('.queue-clear-completion')?.textContent.includes('已恢复本机播放设置')&&bar().dataset.speed==='1.25'&&button('顺序播放',bar()),'confirmed room restoration');await capture('end_confirmed',true);await closeQueue();
     await prepare();await create(true);await openQueue();await openClear(true);await capture('peer_confirmation');await fixture('lose_end');click(button('确认清空',modal()));await wait(async()=>{const v=await room();return !one('.queue-clear-dialog')&&v.pending.some(op=>op.action==='end')&&v.syncError&&one('.queue-clear-completion')?.textContent.includes('尚未完成');},'lost end acknowledged as pending');await capture('end_uncertain',true);
     click(button('查看一起听状态',panel()));await wait(()=>!panel()&&button('核对状态')&&document.activeElement===button('核对状态'),'read-only recovery page focuses its action');assert(button('退出房间').disabled&&one('.together-room h2').textContent.includes('正在结束'),'pending exit has consistent title and controls');assert(hit(button('核对状态')),'reconciliation action is visible and reachable');assert(one('.together-queue h2').textContent.includes('上次同步')&&all('.together-track-title').every(n=>n.textContent.includes('Song')),'pending exit retains confirmed song metadata');await capture('pending_page',true);click(button('核对状态'));await wait(async()=>{const v=await room();return !v.room&&!v.attached&&!v.localRecovery&&!v.pending.length&&button('创建房间')&&!button('创建房间').disabled;},'end reconciled');await capture('reconciled_page',true);await openQueue();await wait(()=>one('.queue-empty'),'confirmed empty');await capture('reopened_empty',true);
-    await emit('complete',{ok:true,stageCount:count,queueRoomUi:true,realMusicRequests:0,realAccountWrites:0,fixtureApi:true,fixtureIm:true,fixtureAudio:true,realPeerVerified:false,physicalAudioOutputVerified:false});
+    await emit('complete',{ok:true,stageCount:count,queueRoomUi:true,virtualQueueShrinkVerified:true,realMusicRequests:0,realAccountWrites:0,fixtureApi:true,fixtureIm:true,fixtureAudio:true,realPeerVerified:false,physicalAudioOutputVerified:false});
   }catch(error){await emit('failed',{ok:false,error:String(error),last,stageCount:count,focusTrace,body:document.body.textContent.slice(-2200),active:document.activeElement?.outerHTML.slice(0,600)});}
 })();

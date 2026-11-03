@@ -47,6 +47,7 @@ def main():
     complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
     final = json.loads((root / 'first/host-final.json').read_text(encoding='utf-8'))
     assert complete['ok'] and complete['queueRoomUi'] and complete['stageCount'] == len(labels)
+    assert complete['virtualQueueShrinkVerified']
     assert final['clean'] and complete['endRequests'] == 2 and complete['imClosed'] == 2
     assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
     assert complete['fixtureApi'] and complete['fixtureIm'] and complete['fixtureAudio']

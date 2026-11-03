@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import type { TogetherModel } from '../composables/useTogether';
 import { time } from '../services/player';
 import Icon from './Icon.vue';
@@ -7,10 +7,23 @@ const props = defineProps<{ model: TogetherModel }>();
 const { view, loading, busy, error, closeError, notice } = props.model;
 const scroll = ref(0),
   leave = ref<string>();
+const trackList = ref<HTMLElement>();
 const failedAvatars = ref(new Set<string>());
-const start = computed(() => Math.max(0, Math.floor(scroll.value / 58) - 3));
+const trackCount = computed(() => view.value?.tracks.length ?? 0);
+const maxScroll = computed(() => Math.max(0, trackCount.value * 58 - 464));
+const start = computed(() =>
+  Math.max(0, Math.floor(Math.min(scroll.value, maxScroll.value) / 58) - 3),
+);
 const end = computed(() => Math.min(view.value?.tracks.length ?? 0, start.value + 18));
 const rows = computed(() => view.value?.tracks.slice(start.value, end.value) ?? []);
+watch(
+  [() => view.value?.room?.id, maxScroll],
+  ([room, max], [previousRoom]) => {
+    scroll.value = room === previousRoom ? Math.min(scroll.value, max) : 0;
+    if (trackList.value) trackList.value.scrollTop = scroll.value;
+  },
+  { flush: 'post' },
+);
 const labels: Record<string, string> = {
   create: '创建房间',
   accept: '加入房间',
@@ -233,6 +246,7 @@ async function exit() {
         </p>
         <div
           v-else
+          ref="trackList"
           class="together-tracks"
           @scroll="scroll = ($event.target as HTMLElement).scrollTop"
         >
