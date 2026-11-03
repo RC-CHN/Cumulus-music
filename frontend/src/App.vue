@@ -2263,6 +2263,7 @@ onUnmounted(() => {
                 :busy-likes="busyLikes"
                 :playable="player.ready.value && !player.busy.value"
                 @play="playOnlineSongs"
+                @download="(tracks) => (downloadDialog = { kind: 'start', tracks })"
                 @like="music.like"
                 @more="(request) => trackActions?.show(request)"
                 @artist="(id) => openCatalog({ kind: 'artist', id })"

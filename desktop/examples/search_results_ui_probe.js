@@ -681,10 +681,37 @@
       filter.value='不匹配';
       filter.dispatchEvent(new Event('input',{bubbles:true}));
       await wait(()=>one('.search-reason-page')?.textContent.includes('没有匹配的歌曲'),'reason page filter');
+      const reasonPage=one('.search-reason-page');
+      const download=()=>one('.download-dialog[open]');
+      const batch=()=>one('.reason-track-batch[open]');
+      const batchButton=button('批量操作',reasonPage);
+      click(button('下载',reasonPage));
+      await wait(()=>download()?.querySelector('.download-selection')?.textContent.includes('合成城市曲目'),
+        'reason download-all opens confirmation for the source list even with a filter');
+      click(button('关闭下载对话框',download()));
+      await wait(()=>!download()&&document.activeElement===button('下载',reasonPage),
+        'download-all cancellation restores page focus');
+      click(batchButton);
+      await wait(()=>batch()?.querySelector('[aria-label="选择 合成城市曲目"]'),'reason batch shows source rows');
+      assert(button('播放所选歌曲',batch())?.disabled&&button('下载所选歌曲',batch())?.disabled&&
+        !button('添加到歌单',batch()),'reason batch only exposes the two recovered actions');
+      click(batch().querySelector('[aria-label="选择 合成城市曲目"]'));
+      await wait(()=>batch()?.querySelector('footer [role="status"]')?.textContent.includes('已选 1 首'),
+        'select the reason song');
+      await capture('v3_reason_batch');
+      click(button('下载所选歌曲',batch()));
+      await wait(()=>!batch()&&download()?.querySelector('.download-selection')?.textContent.includes('合成城市曲目'),
+        'reason batch hands selected track to existing confirmation');
+      click(button('关闭下载对话框',download()));
+      await wait(()=>!download()&&document.activeElement===batchButton,'batch download restores batch entry focus');
       filter.value='';
       filter.dispatchEvent(new Event('input',{bubbles:true}));
       await wait(()=>one('.search-reason-page .track-row'),'reason rows return');
-      click(button('播放全部',one('.search-reason-page')));
+      click(batchButton);
+      await wait(()=>batch()?.querySelector('[aria-label="全选歌曲"]'),'reopen reason batch');
+      click(batch().querySelector('[aria-label="全选歌曲"]'));
+      await wait(()=>!button('播放所选歌曲',batch())?.disabled,'batch select all enables playback');
+      click(button('播放所选歌曲',batch()));
       await wait(()=>one('.playerbar').dataset.state==='playing','reason selection starts native playback');
       const invoke=(name,args)=>window.__TAURI_INTERNALS__.invoke(name,args);
       const {epoch}=await invoke('account_snapshot');
@@ -705,7 +732,7 @@
         'original label remains visible beside the long narrow title');
       await capture('v3_original_recording_category');
 
-      await emit('complete',{ok:true,v3Verified:true,v3TrackHintsVerified:true,v3ExplicitVerified:true,v3ReasonRoutesVerified:true,v3ReasonPlaybackVerified:true,v3OriginalRecordingVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      await emit('complete',{ok:true,v3Verified:true,v3TrackHintsVerified:true,v3ExplicitVerified:true,v3ReasonRoutesVerified:true,v3ReasonPlaybackVerified:true,v3ReasonBatchVerified:true,v3OriginalRecordingVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     await wait(()=>one('.track-row'),'daily ready');submit('合成搜索结果');await wait(()=>one('.search-results-page')&&ready(),'search entry');

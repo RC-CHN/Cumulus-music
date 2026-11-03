@@ -7,11 +7,12 @@ import Icon from '../Icon.vue';
 
 const props = defineProps<{
   tracks: TrackView[];
-  scope: 'artist' | 'album';
+  scope: 'artist' | 'album' | 'reason';
   liked: Set<string>;
   currentId?: string;
   playable: boolean;
   queueable: boolean;
+  playbackLimit?: number;
 }>();
 const emit = defineEmits<{
   close: [];
@@ -22,6 +23,7 @@ const title = useId();
 const ids = computed(() => props.tracks.map((track) => track.id));
 const selected = ref(new Set<string>());
 const chosen = computed(() => props.tracks.filter((track) => selected.value.has(track.id)));
+const scopeLabel = computed(() => ({ artist: '歌手', album: '专辑', reason: '推荐' })[props.scope]);
 let anchor = -1;
 function toggle(index: number, range: boolean) {
   selected.value = toggleBatchSelection(ids.value, selected.value, index, anchor, range);
@@ -41,7 +43,14 @@ function all(force?: boolean) {
 function choose(kind: 'play' | 'collect' | 'download' | 'queue') {
   if (!chosen.value.length || (kind === 'play' && !props.playable)) return;
   if (kind === 'queue' && (props.scope !== 'album' || !props.queueable)) return;
-  emit('choose', kind, chosen.value);
+  if (kind === 'collect' && props.scope === 'reason') return;
+  emit(
+    'choose',
+    kind,
+    kind === 'play'
+      ? chosen.value.slice(0, props.playbackLimit ?? chosen.value.length)
+      : chosen.value,
+  );
 }
 onMounted(() => dialog.value?.showModal());
 </script>
@@ -55,7 +64,7 @@ onMounted(() => dialog.value?.showModal());
     @cancel.prevent="emit('close')"
   >
     <header>
-      <h2 :id="title">批量操作{{ scope === 'artist' ? '歌手' : '专辑' }}歌曲</h2>
+      <h2 :id="title">批量操作{{ scopeLabel }}歌曲</h2>
       <button
         type="button"
         class="icon-button"
@@ -67,7 +76,7 @@ onMounted(() => dialog.value?.showModal());
       </button>
     </header>
     <p class="muted">
-      从{{ scope === 'artist' ? '当前已加载且可用的' : '此专辑可用的' }}
+      从{{ scope === 'album' ? '此专辑可用的' : '当前已加载且可用的' }}
       {{ tracks.length }} 首歌曲中选择。
     </p>
     <PlaylistBatchTable
@@ -88,7 +97,11 @@ onMounted(() => dialog.value?.showModal());
         :disabled="!chosen.length || !playable"
         @click="choose('play')"
       >
-        播放所选歌曲
+        {{
+          playbackLimit && chosen.length > playbackLimit
+            ? `播放所选的前 ${playbackLimit} 首`
+            : '播放所选歌曲'
+        }}
       </button>
       <button
         v-if="scope === 'album'"
@@ -99,7 +112,13 @@ onMounted(() => dialog.value?.showModal());
       >
         添加所选至播放列表
       </button>
-      <button type="button" class="secondary" :disabled="!chosen.length" @click="choose('collect')">
+      <button
+        v-if="scope !== 'reason'"
+        type="button"
+        class="secondary"
+        :disabled="!chosen.length"
+        @click="choose('collect')"
+      >
         添加到歌单
       </button>
       <button

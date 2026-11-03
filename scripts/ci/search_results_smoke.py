@@ -193,13 +193,14 @@ def verify(root, capture, v3=False):
     if v3:
         assert all(complete[key] for key in (
             'ok', 'v3Verified', 'v3TrackHintsVerified', 'v3ExplicitVerified',
-            'v3ReasonRoutesVerified', 'v3ReasonPlaybackVerified', 'v3OriginalRecordingVerified',
+            'v3ReasonRoutesVerified', 'v3ReasonPlaybackVerified', 'v3ReasonBatchVerified',
+            'v3OriginalRecordingVerified',
         ))
-        assert complete['stageCount'] == 7
+        assert complete['stageCount'] == 8
         assert complete['syntheticV3Calls'] == 3 and complete['syntheticSearchCalls'] >= 4
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
-        assert len(list((root / 'first').glob('ux_*.json'))) == 7
-        assert len(list((root / 'first').glob('ux_*.png'))) == (7 if capture else 0)
+        assert len(list((root / 'first').glob('ux_*.json'))) == 8
+        assert len(list((root / 'first').glob('ux_*.png'))) == (8 if capture else 0)
         (root / 'audit.json').write_text(json.dumps(dict(complete, actualWebView=True), indent=2), encoding='utf-8')
         print(json.dumps(complete))
         return

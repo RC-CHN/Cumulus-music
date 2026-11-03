@@ -5,6 +5,9 @@ import { useCore } from '../../services/core';
 import type { SearchReasonPage, SearchReasonTarget } from '../../services/search';
 import type { TrackMenuRequest } from '../../services/trackMenu';
 import TrackTable from '../TrackTable.vue';
+import ModalTransition from '../ModalTransition.vue';
+import Icon from '../Icon.vue';
+import CatalogTrackBatchDialog from '../catalog/CatalogTrackBatchDialog.vue';
 import { usePageEntryFocus } from '../../composables/usePageEntryFocus';
 
 const props = defineProps<{
@@ -17,6 +20,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
   play: [tracks: TrackView[], index: number];
+  download: [tracks: TrackView[]];
   like: [track: TrackView];
   more: [request: TrackMenuRequest];
   artist: [id: string];
@@ -30,6 +34,15 @@ const error = ref('');
 const keyword = ref('');
 const retry = ref(0);
 const root = ref<HTMLElement>();
+const batchButton = ref<HTMLElement>();
+const batchOpen = ref(false);
+type BatchChoice = {
+  result: SearchReasonPage;
+  epoch: string;
+  kind: 'play' | 'download';
+  tracks: TrackView[];
+};
+let batchChoice: BatchChoice | undefined;
 usePageEntryFocus(
   root,
   () => !loading.value,
@@ -46,10 +59,33 @@ const tracks = computed(() => {
   );
 });
 const queueLimit = 500;
+const usableTracks = computed(() =>
+  (result.value?.tracks ?? []).filter((track) => !track.missing && !track.local),
+);
 function play(index: number) {
   const start = Math.floor(index / queueLimit) * queueLimit;
   emit('play', tracks.value.slice(start, start + queueLimit), index - start);
 }
+function chooseBatch(kind: string, tracks: TrackView[]) {
+  if (!batchOpen.value || !result.value || (kind !== 'play' && kind !== 'download')) return;
+  batchChoice = { result: result.value, epoch: props.epoch, kind, tracks };
+  batchOpen.value = false;
+}
+function finishBatch() {
+  const choice = batchChoice;
+  batchChoice = undefined;
+  if (!choice || choice.epoch !== props.epoch || choice.result !== result.value) return;
+  if (choice.kind === 'download') emit('download', choice.tracks);
+  else if (props.playable) emit('play', choice.tracks, 0);
+}
+watch(
+  () => [props.epoch, props.target] as const,
+  () => {
+    batchChoice = undefined;
+    batchOpen.value = false;
+  },
+  { flush: 'sync' },
+);
 watch(
   () => [props.epoch, props.target, retry.value] as const,
   async ([epoch, target], _, invalidate) => {
@@ -90,16 +126,38 @@ watch(
       <button type="button" class="secondary" @click="retry++">重试</button>
     </div>
     <template v-else-if="result">
-      <div class="search-reason-tools">
-        <span>歌曲 · {{ tracks.length }}</span>
+      <div class="search-reason-actions">
+        <button
+          type="button"
+          class="primary"
+          :disabled="!usableTracks.length || !playable"
+          @click="emit('play', usableTracks.slice(0, queueLimit), 0)"
+        >
+          <Icon name="play" />
+          {{ usableTracks.length > queueLimit ? '播放前 500 首' : '播放全部' }}
+        </button>
         <button
           type="button"
           class="secondary"
-          :disabled="!tracks.length || !playable"
-          @click="play(0)"
+          :disabled="!usableTracks.length"
+          @click="emit('download', usableTracks)"
         >
-          {{ tracks.length > queueLimit ? '播放前 500 首' : '播放全部' }}
+          <Icon name="download" />
+          下载
         </button>
+        <button
+          ref="batchButton"
+          type="button"
+          class="secondary"
+          :disabled="!usableTracks.length"
+          @click="batchOpen = true"
+        >
+          <Icon name="list" />
+          批量操作
+        </button>
+      </div>
+      <div class="search-reason-tools">
+        <span>歌曲 · {{ result.tracks.length }}</span>
         <input
           v-model="keyword"
           type="search"
@@ -122,6 +180,19 @@ watch(
       />
       <p v-else role="status">{{ keyword ? '没有匹配的歌曲' : '没有可展示的推荐歌曲' }}</p>
     </template>
+    <ModalTransition :return-focus="() => batchButton ?? null" @left="finishBatch">
+      <CatalogTrackBatchDialog
+        v-if="batchOpen"
+        :tracks="usableTracks"
+        scope="reason"
+        :liked="liked"
+        :playable="playable"
+        :queueable="false"
+        :playback-limit="queueLimit"
+        @close="batchOpen = false"
+        @choose="chooseBatch"
+      />
+    </ModalTransition>
   </section>
 </template>
 <style scoped>
@@ -131,6 +202,19 @@ watch(
   min-height: 0;
   height: 100%;
   overflow: auto;
+}
+.search-reason-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.search-reason-actions > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  border-radius: 8px;
 }
 .search-reason-tools {
   display: flex;
