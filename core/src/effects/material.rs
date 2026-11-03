@@ -162,6 +162,22 @@ pub fn apply_peq(stage: &mut ParametricEq, calls: &[PeqCall]) -> Result<()> {
     Ok(())
 }
 
+/// Apply only the PEQ section dispatched by EFB760. An absent or mistyped
+/// section leaves this component untouched; an explicit off section still
+/// executes the native bypass transition. This does not apply other effects.
+pub fn apply_routed_peq(stage: &mut ParametricEq, material: &Value) -> Result<bool> {
+    let routing = route_sections(material)?;
+    let Some(selected) = routing
+        .sections
+        .iter()
+        .find(|section| section.component == Component::Peq)
+    else {
+        return Ok(false);
+    };
+    apply_peq(stage, &peq_calls(selected.section)?)?;
+    Ok(true)
+}
+
 pub fn peq_sections(material: &Value) -> Result<Vec<(&'static str, &Value)>> {
     let material = object(material)?;
     let mut result = Vec::new();

@@ -48,6 +48,28 @@ pub fn render_peq_material(
         .ok_or(Error::InvalidInput("missing requested PEQ fragment"))?
         .1;
     let calls = peq_calls(fragment)?;
+    render_peq_pcm(bytes, |stage| apply_peq(stage, &calls))
+}
+
+/// Decode a local NCAE and use EFB760 routing, never an arbitrary fragment.
+pub fn render_routed_ncae_peq(path: impl AsRef<std::path::Path>, bytes: &[u8]) -> Result<Vec<f32>> {
+    use cumulus_core::effects::{material::apply_routed_peq, ncae};
+    let decoded = ncae::open(path, ncae::Limits::default())?;
+    let material = serde_json::from_slice(&decoded.plain)?;
+    render_peq_pcm(bytes, |stage| {
+        if !apply_routed_peq(stage, &material)? {
+            return Err(Error::InvalidInput(
+                "material does not dispatch a PEQ section",
+            ));
+        }
+        Ok(())
+    })
+}
+
+fn render_peq_pcm(
+    bytes: &[u8],
+    configure: impl FnOnce(&mut ParametricEq) -> Result<()>,
+) -> Result<Vec<f32>> {
     let mut input = Cursor::new(bytes);
     let (rate, channels, capacity, blocks) = (
         u32_value(&mut input)?,
@@ -60,7 +82,7 @@ pub fn render_peq_material(
         return Err(Error::InvalidInput("oversized material probe output"));
     }
     let mut stage = ParametricEq::new(format, false, true)?;
-    apply_peq(&mut stage, &calls)?;
+    configure(&mut stage)?;
     let mut output = Vec::new();
     let mut block = PlanarBlock::new(format);
     for _ in 0..blocks {

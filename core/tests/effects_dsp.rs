@@ -294,3 +294,92 @@ fn non_finite_output_is_silenced_and_failed_stage_requires_recreation() {
         .join()
         .unwrap();
 }
+
+#[test]
+fn routed_ncae_peq_renders_the_official_modern_section_to_frozen_pcm() {
+    let files: Value =
+        serde_json::from_str(include_str!("fixtures/effects-routed-peq-synthetic.json")).unwrap();
+    let fixture = corpus().vectors.iter().find(|v| v.mode == "peq").unwrap();
+    assert_eq!(fixture.label, "type-slot");
+    let official_input = STANDARD.decode(&fixture.input_b64).unwrap();
+    let expected = STANDARD.decode(&fixture.output_b64).unwrap();
+    // First block of the frozen official PEQ stream: copy its audio and
+    // format, while giving the parameter setup to the NCAE route instead.
+    let mut input = official_input[..12].to_vec();
+    input.extend(1u32.to_le_bytes());
+    input.extend(&official_input[24..28]);
+    input.extend(&official_input[220..324]);
+    assert_ne!(&official_input[220..324], &expected[..104]);
+
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join("synthetic.ncae");
+    std::fs::write(
+        &path,
+        hex::decode(files["modern"].as_str().unwrap()).unwrap(),
+    )
+    .unwrap();
+    let actual = wire::render_routed_ncae_peq(&path, &input).unwrap();
+    assert_eq!(actual.len(), 26);
+    for (actual, expected) in actual.into_iter().zip(expected[..104].chunks_exact(4)) {
+        let expected = f32::from_le_bytes(expected.try_into().unwrap());
+        if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
+            assert_eq!(actual.to_bits(), expected.to_bits());
+        } else {
+            assert!((actual - expected).abs() <= 2e-6);
+        }
+    }
+
+    std::fs::write(
+        &path,
+        hex::decode(files["legacy"].as_str().unwrap()).unwrap(),
+    )
+    .unwrap();
+    assert!(matches!(
+        wire::render_routed_ncae_peq(&path, &input),
+        Err(cumulus_core::Error::InvalidInput(
+            "material does not dispatch a PEQ section"
+        ))
+    ));
+}
+
+#[test]
+fn an_absent_routed_peq_keeps_live_history_while_explicit_off_reaches_bypass() {
+    let format = Format::new(48000.0, 2, 13).unwrap();
+    let mut current = ParametricEq::new(format, false, true).unwrap();
+    let mut reference = ParametricEq::new(format, false, true).unwrap();
+    let enabled = json!({"aev2":{"peq":{"on":true,"gain":6}}});
+    for stage in [&mut current, &mut reference] {
+        assert!(material::apply_routed_peq(stage, &enabled).unwrap());
+        stage.process(&mut input_block(format), 13).unwrap();
+    }
+    assert!(
+        !material::apply_routed_peq(
+            &mut current,
+            &json!({
+                "peq":{"on":true,"gain":-24},"aev2":{"peq":[]}
+            })
+        )
+        .unwrap()
+    );
+    assert!(!material::apply_routed_peq(&mut current, &json!({"aev2":{}})).unwrap());
+    let (mut a, mut b) = (input_block(format), input_block(format));
+    current.process(&mut a, 13).unwrap();
+    reference.process(&mut b, 13).unwrap();
+    assert_eq!(a.samples(), b.samples());
+    assert_ne!(a.samples(), input_block(format).samples());
+    assert!(
+        material::apply_routed_peq(
+            &mut current,
+            &json!({
+                "aev2":{"peq":{"on":false,"gain":1e100}}
+            })
+        )
+        .unwrap()
+    );
+    // Consume the native edge transition, then verify the following block
+    // is dry; a missing section above did not trigger this transition.
+    current.process(&mut input_block(format), 13).unwrap();
+    let mut dry = input_block(format);
+    current.process(&mut dry, 13).unwrap();
+    assert_eq!(dry.samples(), input_block(format).samples());
+}

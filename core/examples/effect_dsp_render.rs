@@ -6,7 +6,7 @@ use std::io::{Read, Write};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mode = std::env::args().nth(1).ok_or(
-        "supply coeff, peq-coeff, biquad, bt, geq-outer, peq or material-{route,eq,bt,peq,rotate,stereo,cmp,limiter,dly,alc,spspatial}",
+        "supply coeff, peq-coeff, biquad, bt, geq-outer, peq or material-{route,eq,bt,peq,rotate,stereo,cmp,limiter,dly,alc,spspatial}; for NCAE PEQ use material-render-active-peq PATH",
     )?;
     let mut input = Vec::new();
     std::io::stdin()
@@ -15,7 +15,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if input.len() > 16 * 1024 * 1024 {
         return Err("input too large".into());
     }
-    let result = if mode == "material-render" {
+    let result = if mode == "material-render-active-peq" {
+        let path = std::env::args_os()
+            .nth(2)
+            .ok_or("material-render-active-peq requires an NCAE path")?;
+        if std::env::args_os().nth(3).is_some() {
+            return Err("material-render-active-peq does not accept a section override".into());
+        }
+        wire::render_routed_ncae_peq(path, &input)?
+    } else if mode == "material-render" {
         let path = std::env::args_os()
             .nth(2)
             .ok_or("material-render requires an NCAE path")?;

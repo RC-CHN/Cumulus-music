@@ -115,3 +115,14 @@ channels*capacity个float32。输出保留整块容量；生成音频文件时�
 
 后续增量：十段GEQ已通过core/audio-filter接入MpvEngine实际PCM链，
 详见core-equalizer-playback.txt；其他节点、完整图与音效UI仍待接入。
+
+按官方材料分派选择 PEQ
+`effect_dsp_render material-render-active-peq INPUT.ncae` 使用 EFB760 整份材料分派
+和 EFC380 的 PEQ 调用，然后只渲染该 PEQ 组件。旧式顶层 peq 不派发；空或错型
+现代片段不回退到顶层。缺失组件时工具报错，不输出部分 PCM；显式 on=false
+仍触发组件原生旁路过渡。底层 apply_routed_peq 在缺失组件时不修改已有 PEQ 状态，
+此调用只执行分派，不执行整图 begin/reset；原片段诊断模式保留。命令不渲染混响、
+空间音效或整份预设。
+合成 NCAE 由已恢复的 CEB6A0/CEB7E0 密钥流和 raw DEFLATE 封装，现代片段参数取
+公开冻结 PEQ type-slot 首块；Rust 解码、路由和渲染结果与原生首块 PCM 对照，
+另测旧片段拒绝以及已激活组件在缺失/显式关闭时的不同状态。
