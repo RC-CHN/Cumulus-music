@@ -587,6 +587,7 @@ onBeforeUnmount(() => {
             >
               <SearchResultCard
                 :item="item"
+                :category="category"
                 :match-keyword="matchKeyword"
                 :playable="playable"
                 :current="searchCardIsCurrent(item, playbackOrigin, currentVoiceId)"

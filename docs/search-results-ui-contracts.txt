@@ -149,3 +149,10 @@ scripts/ci/search_results_smoke.py --v3 用封闭合成服务在真实 Tauri Web
 再关闭本次纠正。Cumulus 复用顶栏搜索历史提交，独立打开无纠正的综合结果；Back
 恢复此前的纠正和建议显示标签。search_results_smoke.py --correction-original 验证
 上述原词、原生本机搜索历史和返回。
+
+歌手与用户分类卡片
+官方 SearchResults/components/artist.jsx:46–63 给分类卡片传生效关键词，
+并为歌手开启 AlbumSize；components/ArtistCard/index.jsx:220–232 标记姓名并显示
+专辑数，UserCard/index.jsx:175–184 只标记昵称，签名保持原文。Cumulus 仅在对应
+专门分类采用此表现，综合卡片保持原表现。search_results_smoke.py --people-categories
+可核对标记、计数、签名以及原有可用导航。

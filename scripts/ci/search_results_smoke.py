@@ -16,6 +16,7 @@ def main():
     mode.add_argument('--voice-direct', action='store_true')
     mode.add_argument('--card-matches', action='store_true')
     mode.add_argument('--correction-original', action='store_true')
+    mode.add_argument('--people-categories', action='store_true')
     parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--screenshots', action='store_true')
     args = parser.parse_args()
@@ -37,6 +38,8 @@ def main():
     prefix = ''
     if args.frontend_dist:
         env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve(strict=True))
+    if args.people_categories:
+        prefix = 'window.__cumulusSearchPeopleCategoriesProof = true;\n'
     if args.correction_original:
         prefix = 'window.__cumulusSearchOriginalCorrectionProof = true;\n'
     if args.card_matches:
@@ -54,9 +57,10 @@ def main():
     failed = root / 'first/failed.json'
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
-    if args.voice_direct or args.card_matches or args.correction_original:
+    if args.voice_direct or args.card_matches or args.correction_original or args.people_categories:
         complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
-        flag = ('originalCorrectionVerified' if args.correction_original else
+        flag = ('peopleCategoriesVerified' if args.people_categories else
+                'originalCorrectionVerified' if args.correction_original else
                 'cardTitleMatchesVerified' if args.card_matches else 'voiceDirectVerified')
         assert complete['ok'] and complete[flag] and complete['stageCount'] == 2
         if args.voice_direct:

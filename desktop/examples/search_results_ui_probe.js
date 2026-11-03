@@ -49,6 +49,25 @@
     } finally { window.requestAnimationFrame=frames; }
   }
   try {
+    if(window.__cumulusSearchPeopleCategoriesProof){
+      await wait(()=>one('.track-row'),'daily ready');await fixture('good');await fresh('1');
+      const card=kind=>one(`[data-result-key^="${kind}:"]`);
+      assert(card('artist').textContent.includes('合成别名')&&!card('artist').querySelector('mark')&&
+        !card('user').querySelector('mark'),'comprehensive keeps its separate people presentation');
+      for(const [kind,category,subtitle] of [['artist','artists','专辑：12'],
+        ['user','users','愿每一首歌，都能留下属于此刻的记忆。']]){
+        await choose(category);
+        const row=card(kind), title=row.querySelector('.search-result-name'), sub=row.querySelector('.search-result-sub');
+        assert(title.querySelector('mark')?.textContent==='1'&&title.textContent.trim()===title.dataset.tooltip,
+          'category marks the displayed name without changing it: '+kind);
+        assert(sub?.textContent.trim()===subtitle&&!sub.querySelector('mark'),
+          'category keeps official secondary text plain: '+kind);
+        assert(!row.querySelector('.search-card-open').disabled,'catalog action remains available');
+        await capture(kind+'_category_presentation');
+      }
+      await emit('complete',{ok:true,peopleCategoriesVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      return;
+    }
     if(window.__cumulusSearchOriginalCorrectionProof){
       await wait(()=>one('.track-row'),'daily ready');await fixture('correction');
       const provides=one('#app').__vue_app__._context.provides;

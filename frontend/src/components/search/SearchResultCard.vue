@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import type { SearchItem } from '../../services/search';
+import type { SearchCategory, SearchItem } from '../../services/search';
 import { artworkAt } from '../../services/artwork';
 import Icon from '../Icon.vue';
 import SearchMatchText from './SearchMatchText.vue';
@@ -10,6 +10,7 @@ import { searchCardCanPlay, searchCardKey } from '../../services/searchCards';
 import { usePlaybackTriggerFocus } from '../../composables/usePlaybackTriggerFocus';
 const props = defineProps<{
   item: SearchItem;
+  category: SearchCategory;
   matchKeyword: string;
   playable: boolean;
   current: boolean;
@@ -52,8 +53,11 @@ function contextMenu(event: MouseEvent | KeyboardEvent) {
 }
 const failedCover = ref(false);
 const canPlay = computed(() => searchCardCanPlay(props.item));
-const markedTitle = computed(() =>
-  ['playlist', 'podcast', 'voice', 'mv'].includes(props.item.kind),
+const markedTitle = computed(
+  () =>
+    ['playlist', 'podcast', 'voice', 'mv'].includes(props.item.kind) ||
+    (props.item.kind === 'artist' && props.category === 'artists') ||
+    (props.item.kind === 'user' && props.category === 'users'),
 );
 const items = computed<MenuItem[]>(() => [
   ...(canPlay.value
@@ -130,7 +134,10 @@ const card = computed(() => {
       return {
         name: i.artist.name,
         cover: i.artist.coverUrl,
-        sub: i.artist.aliases.join(' / ') || `${i.artist.songCount} 首歌曲`,
+        sub:
+          props.category === 'artists'
+            ? `专辑：${i.artist.albumCount}`
+            : i.artist.aliases.join(' / ') || `${i.artist.songCount} 首歌曲`,
         round: true,
       };
     case 'user':
