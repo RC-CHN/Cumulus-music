@@ -20,6 +20,7 @@ function samePreset(a?: EqualizerPreset | null, b?: EqualizerPreset | null) {
 
 function same(a: EqualizerSettings, b: EqualizerSettings) {
   return (
+    !!a.master_bypassed === !!b.master_bypassed &&
     a.enabled === b.enabled &&
     equalizerToneEnabled(a) === equalizerToneEnabled(b) &&
     (a.bass_db ?? 0) === (b.bass_db ?? 0) &&

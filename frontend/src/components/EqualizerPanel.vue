@@ -62,11 +62,37 @@ function change(
   enhancement = tone.value,
   selected?: EqualizerPreset,
   toneEnabled = equalizerToneEnabled(settings.value),
+  keepBypass = false,
 ) {
   if (disabled.value) return;
   commandError.value = '';
   savedMessage.value = '';
-  stage({ enabled, gains: values, ...enhancement, tone_enabled: toneEnabled }, selected);
+  stage(
+    {
+      enabled,
+      gains: values,
+      ...enhancement,
+      tone_enabled: toneEnabled,
+      master_bypassed: keepBypass,
+    },
+    selected,
+  );
+}
+function toggleMaster() {
+  if (disabled.value || !settings.value) return;
+  commandError.value = '';
+  savedMessage.value = '';
+  stage({ ...settings.value, master_bypassed: !settings.value.master_bypassed });
+}
+function toggleGeq() {
+  change(
+    !settings.value?.enabled,
+    gains.value,
+    tone.value,
+    undefined,
+    equalizerToneEnabled(settings.value),
+    settings.value?.master_bypassed,
+  );
 }
 function choose(event: Event) {
   const selected = Number((event.target as HTMLSelectElement).value);
@@ -140,6 +166,20 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
         <Icon name="close" />
       </button>
     </header>
+    <div class="equalizer-master">
+      <button
+        class="equalizer-switch"
+        type="button"
+        role="switch"
+        aria-label="启用均衡器和低高音增强"
+        :aria-checked="!!settings && !settings.master_bypassed"
+        :disabled="disabled"
+        @click="toggleMaster"
+      >
+        <span></span>{{ settings?.master_bypassed ? '音效已暂停' : '音效总开关' }}
+      </button>
+      <small v-if="settings?.master_bypassed">调整预设或增益会重新开启音效。</small>
+    </div>
     <div class="equalizer-controls">
       <label
         >预设
@@ -162,7 +202,7 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
         aria-label="启用均衡器"
         :aria-checked="settings?.enabled ?? false"
         :disabled="disabled"
-        @click="change(!settings?.enabled)"
+        @click="toggleGeq"
       >
         <span></span>{{ settings?.enabled ? '开启' : '关闭' }}
       </button>
@@ -236,7 +276,10 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
         修复设置
       </button>
       <button
-        v-else-if="current && ['failed', 'unavailable'].includes(current.status)"
+        v-else-if="
+          current?.status === 'failed' ||
+          (current?.status === 'unavailable' && !current.settings.master_bypassed)
+        "
         :disabled="!ready || pending || commandPending || !!draft"
         @click="maintain('retry_equalizer')"
       >
@@ -274,6 +317,16 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
   background: var(--surface-raised);
   color: var(--text);
   box-shadow: 0 18px 70px #0003;
+}
+.equalizer-master {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-bottom: 10px;
+}
+.equalizer-master small {
+  color: var(--text-secondary);
 }
 .equalizer-dialog::backdrop {
   background: #0004;

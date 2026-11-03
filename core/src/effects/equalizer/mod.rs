@@ -22,6 +22,8 @@ pub struct EqualizerSettings {
     // Missing values are old records whose single switch gated both stages.
     #[serde(skip_serializing_if = "Option::is_none")]
     tone_enabled: Option<bool>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    master_bypassed: bool,
 }
 
 fn is_zero(value: &i8) -> bool {
@@ -37,6 +39,8 @@ struct RawSettings {
     treble_db: i8,
     #[serde(default)]
     tone_enabled: Option<bool>,
+    #[serde(default)]
+    master_bypassed: bool,
 }
 impl TryFrom<RawSettings> for EqualizerSettings {
     type Error = Error;
@@ -44,6 +48,7 @@ impl TryFrom<RawSettings> for EqualizerSettings {
         let mut settings = Self::new(raw.enabled, raw.gains)?
             .with_tone(raw.bass_db.into(), raw.treble_db.into())?;
         settings.tone_enabled = raw.tone_enabled;
+        settings.master_bypassed = raw.master_bypassed;
         Ok(settings)
     }
 }
@@ -63,6 +68,7 @@ impl EqualizerSettings {
             bass_db: 0,
             treble_db: 0,
             tone_enabled: None,
+            master_bypassed: false,
         })
     }
     pub fn enabled(self) -> bool {
@@ -84,7 +90,7 @@ impl EqualizerSettings {
         (self.bass_db.into(), self.treble_db.into())
     }
     pub fn geq_active(self) -> bool {
-        self.enabled && self.gains.iter().any(|g| *g != 0.0)
+        !self.master_bypassed && self.enabled && self.gains.iter().any(|g| *g != 0.0)
     }
     pub fn tone_enabled(self) -> bool {
         self.tone_enabled.unwrap_or(self.enabled)
@@ -94,13 +100,14 @@ impl EqualizerSettings {
         self
     }
     pub(crate) fn same_parameters(self, other: Self) -> bool {
-        self.enabled == other.enabled
+        self.master_bypassed == other.master_bypassed
+            && self.enabled == other.enabled
             && self.gains == other.gains
             && self.tone() == other.tone()
             && self.tone_enabled() == other.tone_enabled()
     }
     pub fn tone_active(self) -> bool {
-        self.tone_enabled() && self.tone() != (0, 0)
+        !self.master_bypassed && self.tone_enabled() && self.tone() != (0, 0)
     }
     /// M/3091 switches GEQ and bass/treble separately. The v2 DSP ABI
     /// still takes one overall bit; pass zero gains for each bypassed stage.
@@ -114,6 +121,7 @@ impl EqualizerSettings {
             bass_db: if tone { self.bass_db } else { 0 },
             treble_db: if tone { self.treble_db } else { 0 },
             tone_enabled: None,
+            master_bypassed: false,
         }
     }
 }

@@ -12,10 +12,17 @@
   const input=el('[aria-label="'+label+'"]');input.value=String(value);input.dispatchEvent(new Event('input',{bubbles:true}));
  }
  const enabled=()=>el('[aria-label="启用均衡器"]')?.getAttribute('aria-checked')==='true';
+ const master=()=>el('[aria-label="启用均衡器和低高音增强"]');
+ async function toggleMaster(on){
+   const revision=el('.equalizer-dialog').dataset.revision;
+   await click(master());
+   await wait(()=>settled()&&el('.equalizer-dialog').dataset.revision!==revision&&
+     master().getAttribute('aria-checked')===String(on),'master_commit');
+ }
  const settled=()=>el('.equalizer-dialog')&&!el('[aria-label="均衡器预设"]')?.disabled&&el('.equalizer-status')?.dataset.status!=='pending'&&el('.equalizer-dialog').dataset.draftState==='settled';
  const pop=[-1.5,-1,0,1.79,4,3.79,1.79,.5,-1,1],custom=[...pop];custom[4]=-3.5;
  let epoch='',step='bootstrap';
- async function stage(name,expect){await wait(settled,'settle');await sleep(450);checkLauncher(({eq_initial:'off',eq_enabled:'processing',eq_off:'off',eq_independent_tone:'processing',eq_flat:'flat',eq_missing:'problem'})[name]);const dialog=el('.equalizer-dialog'),r=dialog.getBoundingClientRect();const overflow=document.documentElement.scrollWidth>innerWidth||dialog.scrollWidth>dialog.clientWidth+1||r.top<0||r.bottom>innerHeight+1;if(overflow)throw Error('equalizer_layout_overflow');window.__eqAck='';await report(name,{epoch,expect,gains:gains(),enabled:enabled(),tone:tone(),status:el('.equalizer-status').dataset.status,width:innerWidth,height:innerHeight,overflow});await wait(()=>window.__eqAck===name,'native_ack');await sleep(1000);}
+ async function stage(name,expect){await wait(settled,'settle');await sleep(450);checkLauncher(({eq_initial:'off',eq_enabled:'processing',eq_off:'off',eq_independent_tone:'processing',eq_flat:'flat',eq_master_bypassed:'off',eq_master_saved:'off',eq_reopened:'off',eq_master_edited:'processing',eq_missing:'problem'})[name]);const dialog=el('.equalizer-dialog'),r=dialog.getBoundingClientRect();const overflow=document.documentElement.scrollWidth>innerWidth||dialog.scrollWidth>dialog.clientWidth+1||r.top<0||r.bottom>innerHeight+1;if(overflow)throw Error('equalizer_layout_overflow');window.__eqAck='';await report(name,{epoch,expect,gains:gains(),enabled:enabled(),tone:tone(),status:el('.equalizer-status').dataset.status,width:innerWidth,height:innerHeight,overflow});await wait(()=>window.__eqAck===name,'native_ack');await sleep(1000);}
  async function preset(index){const revision=el('.equalizer-dialog').dataset.revision;const n=el('[aria-label="均衡器预设"]');await wait(()=>!n.disabled,'preset_ready');n.value=String(index);n.dispatchEvent(new Event('change',{bubbles:true}));await wait(()=>settled()&&el('.equalizer-dialog').dataset.revision!==revision,'preset_commit');}
  async function toggle(){const revision=el('.equalizer-dialog').dataset.revision;await click(el('[aria-label="启用均衡器"]'));await wait(()=>settled()&&el('.equalizer-dialog').dataset.revision!==revision,'toggle_commit');}
  const launcher=()=>el('button[aria-label="均衡器"]');
@@ -34,7 +41,7 @@
   await click(byText('本地音乐'));await wait(()=>all('.local-tracks tbody tr').length===1,'local_fixture');
   if(window.__eqProof.reopen){
    step='reopened';await wait(()=>el('.playerbar [aria-label="播放"]')&&Number(el('[aria-label="播放进度"]')?.value)>=11,'restored_pause');
-   await open();await stage('eq_reopened',{enabled:true,gains:pop});await close();
+   await open();await stage('eq_reopened',{enabled:true,gains:pop});await toggleMaster(true);await close();
    await click(el('.playerbar [aria-label="播放"]'));await wait(()=>Number(el('[aria-label="播放进度"]')?.value)>12.2,'restored_playing');await open();
    await wait(()=>el('.equalizer-status')?.dataset.status==='processing','restored_dsp');await stage('eq_reopened_playing',{enabled:true,gains:pop});
    step='reopened_custom';await wait(()=>el('[aria-label="均衡器预设"] option[value="-2"]'),'saved custom available after reopening');
@@ -87,7 +94,12 @@
     toneInput('低音增益',6);toneInput('高音增益',-3);
     await wait(()=>settled()&&el('.equalizer-dialog').dataset.revision!==beforeTone&&el('.equalizer-status').dataset.status==='processing','both tone gains reach native processing');
     await stage('eq_tone',{enabled:true,gains:pop});
+    step='master_bypass';await toggleMaster(false);await stage('eq_master_bypassed',{enabled:true,gains:pop});
+    step='master_edit';await preset(1);
+    await wait(()=>master().getAttribute('aria-checked')==='true'&&el('.equalizer-status').dataset.status==='processing','preset edit reactivates bypassed effect');
+    await stage('eq_master_edited',{enabled:true,gains:pop});
     step='seek';await close();const seek=el('[aria-label="播放进度"]');seek.value='12';seek.dispatchEvent(new Event('change',{bubbles:true}));await wait(()=>Number(seek.value)>=11&&!el('.playerbar [aria-label="暂停"]')?.disabled,'seek');await click(el('.playerbar [aria-label="暂停"]'));await wait(()=>el('.playerbar [aria-label="播放"]'),'pause');await open();await stage('eq_saved',{enabled:true,gains:pop});
+    step='save_bypass';await toggleMaster(false);await stage('eq_master_saved',{enabled:true,gains:pop});
    }
   }
   await report('complete',{ok:true,epoch,reopened:window.__eqProof.reopen,missing:window.__eqProof.missing,networkRequests:0,remoteMutations:0,audioOutput:'null'});

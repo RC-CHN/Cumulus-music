@@ -118,3 +118,38 @@ test('a tone-only setting does not enable a saved curve and reports native DSP s
   assert.deepEqual(equalizerChange(base, flat).settings, flat);
   assert.equal(equalizerLauncher({ ...base, settings: flat, status: 'processing' }).state, 'flat');
 });
+
+test('master bypass preserves both stages and suppresses stale processing markers', () => {
+  const base = view();
+  const preset = { kind: 'built_in', index: 1 } as const;
+  const settings = {
+    enabled: true,
+    gains: [3, ...Array(9).fill(0)],
+    tone_enabled: true,
+    bass_db: 6,
+    master_bypassed: true,
+  };
+  assert.deepEqual(equalizerChange(base, settings, preset), {
+    kind: 'equalizer',
+    expected_revision: base.revision,
+    preset,
+    settings,
+  });
+  assert.deepEqual(equalizerLauncher({ ...base, settings, status: 'processing' }), {
+    state: 'off',
+    label: '均衡器和低高音增强已暂停，设置已保留',
+  });
+  assert.equal(equalizerLauncher({ ...base, settings, status: 'pending' }).state, 'pending');
+  assert.deepEqual(equalizerLauncher({ ...base, settings, status: 'failed' }), {
+    state: 'problem',
+    label: '设置已保存，但未能确认音效已暂停。可重新应用。',
+  });
+  assert.equal(
+    equalizerLauncher({
+      ...base,
+      settings: { ...settings, master_bypassed: false },
+      status: 'processing',
+    }).state,
+    'processing',
+  );
+});

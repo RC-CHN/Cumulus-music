@@ -475,3 +475,64 @@ async fn migrated_bypass_and_independent_tone_reach_only_the_requested_dsp_stage
         .unwrap();
     assert_eq!(*device.equalizer.lock().unwrap(), Some(curve(4.0)));
 }
+
+#[tokio::test]
+async fn master_bypass_preserves_the_mixed_preset_and_loudness_across_restart() {
+    let f = Fixture::new();
+    f.device.equalizer_supported.store(true, Ordering::SeqCst);
+    f.device.loudness_supported.store(true, Ordering::SeqCst);
+    let loudness = f
+        .command(Cmd::Loudness {
+            expected_revision: "initial".into(),
+            enabled: true,
+        })
+        .await
+        .unwrap()
+        .loudness;
+    f.api.gains.lock().unwrap().insert(1, json!(-12));
+    f.command(replace(&[1])).await.unwrap();
+    let live_loudness = *f.device.loudness.lock().unwrap();
+    assert_eq!(live_loudness.unwrap().gain_db(), -12.0);
+    let preset = Some(EqualizerPreset::BuiltIn { index: 1 });
+    let mixed = curve(4.0).with_tone(6, -3).unwrap();
+    let write = |expected_revision, settings| Cmd::Equalizer {
+        expected_revision,
+        settings,
+        preset,
+    };
+    let active = f.command(write(0, mixed)).await.unwrap();
+    let mut wire = serde_json::to_value(mixed).unwrap();
+    wire["master_bypassed"] = json!(true);
+    let bypassed = serde_json::from_value(wire.clone()).unwrap();
+    let off = f.command(write(1, bypassed)).await.unwrap();
+    assert_eq!(off.control_revision, active.control_revision);
+    assert_eq!(off.equalizer.preferences.settings, bypassed);
+    assert_eq!(off.equalizer.preferences.preset, preset);
+    assert_eq!(off.loudness.preferences, loudness.preferences);
+    assert_eq!(*f.device.loudness.lock().unwrap(), live_loudness);
+    assert_eq!(
+        *f.device.equalizer.lock().unwrap(),
+        Some(EqualizerSettings::default())
+    );
+
+    let device = std::sync::Arc::new(Device::default());
+    device.equalizer_supported.store(true, Ordering::SeqCst);
+    let reopened = cumulus_core::playback::controller::PlaybackController::start(
+        f.session.clone(),
+        f.store.clone(),
+        f.resolver.clone(),
+        audio_engine(device.clone()),
+    )
+    .unwrap();
+    let snapshot = reopened.command(&f.token(), Cmd::Snapshot).await.unwrap();
+    assert_eq!(snapshot.equalizer.preferences, off.equalizer.preferences);
+    assert_eq!(snapshot.loudness.preferences, loudness.preferences);
+    assert_eq!(
+        *device.equalizer.lock().unwrap(),
+        Some(EqualizerSettings::default())
+    );
+    let resumed = reopened.command(&f.token(), write(2, mixed)).await.unwrap();
+    assert_eq!(resumed.equalizer.preferences.preset, preset);
+    assert_eq!(resumed.loudness.preferences, loudness.preferences);
+    assert_eq!(*device.equalizer.lock().unwrap(), Some(mixed));
+}
