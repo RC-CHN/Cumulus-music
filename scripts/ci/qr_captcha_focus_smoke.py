@@ -1,4 +1,4 @@
-"""Exercise ordinary QR verification focus in a real WebView with injected replies."""
+"""Exercise ordinary QR verification focus or identity recovery in a real WebView."""
 import argparse
 import json
 import os
@@ -11,13 +11,15 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--frontend-dist', type=Path)
+    parser.add_argument('--identity-recovery', action='store_true')
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--root', type=Path, required=True)
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
-    script = Path(__file__).resolve().parents[2] / 'desktop/examples/qr_captcha_focus_ui_probe.js'
+    name = 'qr_identity_recovery_ui_probe.js' if args.identity_recovery else 'qr_captcha_focus_ui_probe.js'
+    script = Path(__file__).resolve().parents[2] / 'desktop/examples' / name
     env.update(CUMULUS_PROOF_DIR=str(root), CUMULUS_UX_SCRIPT=str(script), CUMULUS_MOTION_PROOF='1')
     if args.frontend_dist:
         env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve(strict=True))
@@ -35,9 +37,15 @@ def main():
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
     result = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
-    assert result['ok'] and result['qrCaptchaFocusVerified'] and result['syntheticQrAndCaptcha']
-    assert result['opens'] == 3
-    print(json.dumps(dict(ok=True, actualWebView=True, syntheticQrAndCaptcha=True, opens=3)))
+    if args.identity_recovery:
+        assert result['ok'] and result['qrIdentityRecoveryVerified'] and result['injectedCoreClient']
+        assert result['counts'] == dict(begins=1, polls=1, reads=2, reconciles=2)
+        print(json.dumps(dict(ok=True, actualWebView=True, qrIdentityRecoveryVerified=True,
+                              injectedCoreClient=True, counts=result['counts'])))
+    else:
+        assert result['ok'] and result['qrCaptchaFocusVerified'] and result['syntheticQrAndCaptcha']
+        assert result['opens'] == 3
+        print(json.dumps(dict(ok=True, actualWebView=True, syntheticQrAndCaptcha=True, opens=3)))
 
 
 if __name__ == '__main__':
