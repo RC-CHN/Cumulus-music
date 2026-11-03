@@ -122,10 +122,27 @@ function choose(event: Event) {
   const p = equalizerPresets[selected];
   if (p) change(true, [...p.gains], tone.value, { kind: 'built_in', index: selected });
 }
-function slide(index: number, event: Event) {
+function changeBand(index: number, value: number) {
   const values = [...gains.value];
-  values[index] = Number((event.target as HTMLInputElement).value);
+  values[index] = value;
   change(true, values, tone.value, { kind: 'manual' });
+}
+function slide(index: number, event: Event) {
+  changeBand(index, Number((event.target as HTMLInputElement).value));
+}
+function nudgeBand(index: number, event: KeyboardEvent) {
+  if (disabled.value || event.altKey || event.ctrlKey || event.metaKey) return;
+  const delta =
+    event.key === 'ArrowUp' || event.key === 'ArrowRight'
+      ? 1
+      : event.key === 'ArrowDown' || event.key === 'ArrowLeft'
+        ? -1
+        : 0;
+  if (!delta) return;
+  event.preventDefault();
+  const currentGain = Number(gains.value[index]!.toFixed(2));
+  const gain = Math.max(-12, Math.min(12, Number((currentGain + delta).toFixed(2))));
+  if (gain !== currentGain) changeBand(index, gain);
 }
 function slideTone(key: (typeof toneBands)[number]['key'], event: Event) {
   const value = Number((event.target as HTMLInputElement).value);
@@ -247,6 +264,7 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
               :disabled="disabled"
               @input="slide(index, $event)"
               @change="slide(index, $event)"
+              @keydown="nudgeBand(index, $event)"
           /></span>
           <span class="equalizer-band-frequency">{{ label }}</span>
           <span class="equalizer-band-value" aria-hidden="true">

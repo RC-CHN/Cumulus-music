@@ -82,6 +82,11 @@ def main():
     assert custom['status'] == native['status'] == 'processing'
     assert native['settings']['enabled'] and native['settings']['gains'][4] == -3.5
     before = read('eq_enabled')['native']
+    keyboard = read('eq_keyboard_gain')['native']
+    assert keyboard['state'] == 'playing' and keyboard['entryId'] == before['entryId']
+    assert abs(keyboard['equalizer']['settings']['gains'][3] - 2.79) < 1e-6
+    assert keyboard['equalizer']['preset'] == {'kind': 'manual'}
+    assert keyboard['position'] > before['position']
     after = custom['native']
     assert before['state'] == after['state'] == 'playing'
     assert before['entryId'] == after['entryId'] and after['position'] > before['position']

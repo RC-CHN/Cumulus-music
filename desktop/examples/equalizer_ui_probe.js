@@ -66,7 +66,14 @@
       return document.activeElement===focusedGain&&label?.getBoundingClientRect().width>0&&
         label.textContent.trim()==='1.79 dB'&&focusedGain.getAttribute('aria-valuetext')==='1.79 分贝';
     },'focused equalizer gain is visible and announced');
+    step='keyboard_gain';
+    const keyboardRevision=el('.equalizer-dialog').dataset.revision;
+    focusedGain.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowUp',bubbles:true,cancelable:true}));
+    await wait(()=>settled()&&el('.equalizer-dialog').dataset.revision!==keyboardRevision&&
+      focusedGain.getAttribute('aria-valuetext')==='2.79 分贝','keyboard gain acknowledged');
+    await stage('eq_keyboard_gain',{enabled:true,gains:pop.map((gain,index)=>index===3?2.79:gain)});
     focusedGain.blur();
+    await preset(1);
     step='same_curve_identity';const sameRevision=el('.equalizer-dialog').dataset.revision,sameBand=ranges()[4];
     for(const gain of [3,pop[4]]){sameBand.value=String(gain);sameBand.dispatchEvent(new Event('input',{bubbles:true}));}
     await wait(()=>settled()&&el('.equalizer-dialog').dataset.revision!==sameRevision&&el('[aria-label="均衡器预设"]').value==='-1'&&!byText('保存自定义预设').disabled,'manual equal to built-in');

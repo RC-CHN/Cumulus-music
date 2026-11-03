@@ -35,9 +35,11 @@ IPC与桌面
 core/src/client/player/{dto,mod}.rs扩展既有player_action：equalizer、retry_equalizer、
 repair_equalizer；PlayerView只投影设置、revision、状态与damaged。
 前端不持有动态库路径、配置ID、Cookie、签名或授权URL。
-desktop/src/effects.rs按原生环境变量CUMULUS_AUDIO_FILTER、资源目录native/、可执行文件
-同目录寻找平台动态库。缺库明确显示不可用，未启用时普通播放不要求装载插件。
-Tauri资源打包和分发配置尚未完成；Windows/macOS的路径分支尚未实际运行验证。
+desktop/src/effects.rs依次检查原生环境变量 CUMULUS_AUDIO_FILTER、可执行文件
+同目录、资源目录 native/。便携版优先加载自己的库，避免被同机安装的 Debian
+包覆盖。缺库明确显示不可用，未启用时普通播放不要求装载插件。
+Linux Debian 与便携包已在隔离 PipeWire 下核对随包库和 PCM；
+Windows ZIP 由独立 runner 构建和验证，不以 Linux 结果推断 Windows 输出。
 默认音频播放器的歌曲、本地与播客共用此工厂；独立MV播放器尚未接此账号设置。
 
 界面
@@ -150,3 +152,6 @@ GEQ 关闭且没有低高音处理时，播放器仍可能正在应用设置，�
 官方 Equalizer.tsx:224–249 的 Slider 及桌面组件 M/3 的 renderHandle 在键盘
 聚焦手柄时显示当前增益。Cumulus 在聚焦或指针悬停频段时展示对应 dB 值，
 辅助技术也使用相同的两位以内小数，避免浮点回读尾数。未改变输入或保存精度。
+社区键盘交互：十段滑杆用方向键以 1 dB 调节，避免逐次按键只能移动 0.01 dB；
+指针微调仍为 0.01 dB，预设精度和持久化精度不变。真实 WebView 探针核对
+1.79→2.79 dB 的可读值、原生回读和同一曲目继续播放。
