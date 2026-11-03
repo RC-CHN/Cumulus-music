@@ -93,6 +93,7 @@ pub struct DownloadTaskView {
     pub created_ms: u64,
     pub completed_ms: Option<u64>,
     pub cleanup_pending: bool,
+    pub needs_transfer_restart: bool,
     pub file_operation: Option<String>,
     pub lyrics_status: LyricsStatus,
     pub error: Option<&'static str>,
@@ -131,6 +132,9 @@ pub enum TaskControl {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum DownloadCommand {
+    RestartFailedTransfer {
+        task_id: String,
+    },
     DeleteFiles {
         task_ids: Vec<String>,
     },

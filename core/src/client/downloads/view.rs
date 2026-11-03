@@ -130,7 +130,11 @@ impl Host {
                 .and_then(|r| r["level"].as_str())
                 .and_then(|s| crate::membership::Quality::parse(s).ok())
                 .map(|q| q.as_str().to_owned());
-            let error = task_error(&task);
+            let needs_transfer_restart = task.needs_transfer_restart()
+                && raw
+                    .as_ref()
+                    .is_some_and(|r| r.status == crate::download::transfer::TransferStatus::Error);
+            let error = task_error(&task, needs_transfer_restart);
             values.push(DownloadTaskView {
                 id: task.id,
                 source: if task.origin.is_cloud() {
@@ -169,6 +173,7 @@ impl Host {
                 created_ms: task.created_ms,
                 completed_ms: task.completed_ms,
                 cleanup_pending: task.cleanup_pending,
+                needs_transfer_restart,
                 file_operation: task.file_operation,
                 lyrics_status: task.lyrics_status,
                 error,
@@ -216,9 +221,12 @@ impl Host {
         })
     }
 }
-fn task_error(task: &DownloadTask) -> Option<&'static str> {
+fn task_error(task: &DownloadTask, needs_transfer_restart: bool) -> Option<&'static str> {
     if task.cleanup_pending {
         return Some("音频已保留，歌词或临时文件仍需完成处理");
+    }
+    if needs_transfer_restart {
+        return Some("文件校验失败，需要从头下载");
     }
     if task.status == DownloadStatus::Paused || task.last_error.is_none() {
         return None;

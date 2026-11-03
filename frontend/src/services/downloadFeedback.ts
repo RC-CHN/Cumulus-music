@@ -9,6 +9,8 @@ const control: Record<DownloadControl, string> = {
 /** Retain the operation's meaning even if its result arrives on another tab. */
 export function downloadCommandLabel(command: DownloadCommand): string {
   switch (command.kind) {
+    case 'restart_failed_transfer':
+      return '从头下载';
     case 'start':
       return `下载歌曲（${command.song_ids.length}首）`;
     case 'start_voice':

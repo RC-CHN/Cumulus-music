@@ -215,7 +215,11 @@ impl TransferManager {
                 .is_some_and(|m| *m != integrity.md5)
             || was_publishing && job.integrity.as_ref() != Some(&integrity)
         {
-            return Err(Error::Media("final transfer integrity mismatch"));
+            return Err(Error::Media(if was_publishing {
+                "prepared transfer integrity mismatch"
+            } else {
+                super::FINAL_INTEGRITY_MISMATCH
+            }));
         }
         if options.control.checkpoint()? == TransferDirective::Pause {
             if !was_publishing {

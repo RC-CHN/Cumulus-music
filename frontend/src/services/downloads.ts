@@ -59,6 +59,7 @@ export interface DownloadTask {
   createdMs: number;
   completedMs: number | null;
   cleanupPending: boolean;
+  needsTransferRestart?: boolean;
   fileOperation: string | null;
   lyricsStatus: 'pending' | 'prepared' | 'empty' | 'conflict' | 'complete' | 'error' | 'missing';
   error: string | null;
@@ -120,6 +121,7 @@ export interface DownloadsView {
 }
 export type DownloadControl = 'pause' | 'resume' | 'cancel' | 'repair';
 export type DownloadCommand =
+  | { kind: 'restart_failed_transfer'; task_id: string }
   | { kind: 'delete_files'; task_ids: string[] }
   | { kind: 'start_voice'; voice_ids: string[]; options: DownloadOptions }
   | { kind: 'start_mv'; id: string; resolution: number }
@@ -155,6 +157,7 @@ export type DownloadDialogTarget =
   | { kind: 'settings' }
   | { kind: 'file'; task: DownloadTask; action?: import('./downloadMenu').DownloadFileAction }
   | { kind: 'cancel'; task: DownloadTask }
+  | { kind: 'restart'; task: DownloadTask }
   | { kind: 'clear' };
 export function downloadStatus(task: DownloadTask): string {
   if (task.error) return task.error;

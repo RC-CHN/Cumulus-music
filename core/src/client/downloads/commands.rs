@@ -219,6 +219,7 @@ fn execute(context: &Context, command: DownloadCommand) -> Result<DownloadResult
                 .filter(|t| match action {
                     TaskControl::Resume => {
                         matches!(t.status, DownloadStatus::Paused | DownloadStatus::Error)
+                            && !t.needs_transfer_restart()
                     }
                     TaskControl::Pause => matches!(
                         t.status,
@@ -286,6 +287,12 @@ fn execute(context: &Context, command: DownloadCommand) -> Result<DownloadResult
                     }),
                 }
             }
+        }
+        DownloadCommand::RestartFailedTransfer { task_id } => {
+            context
+                .service
+                .restart_failed_transfer_for(&context.token, &task_id)?;
+            result.accepted.push(task_id);
         }
         DownloadCommand::Preferences { options } => {
             context.session.with_token(&context.token, |_| {

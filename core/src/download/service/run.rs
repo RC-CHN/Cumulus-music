@@ -210,10 +210,29 @@ impl DownloadService {
     /// Explicitly discard a failed partial representation before requeueing.
     /// A prepared/published file cannot be reset by this operation.
     pub fn restart_transfer(&self, id: &str) -> Result<DownloadTask> {
-        let token = self.session.token()?;
-        self.guard(&token)?;
+        self.restart_transfer_for(&self.session.token()?, id, false)
+    }
+    pub(crate) fn restart_failed_transfer_for(
+        &self,
+        token: &crate::account::SessionToken,
+        id: &str,
+    ) -> Result<DownloadTask> {
+        self.restart_transfer_for(token, id, true)
+    }
+    fn restart_transfer_for(
+        &self,
+        token: &crate::account::SessionToken,
+        id: &str,
+        failed_integrity_only: bool,
+    ) -> Result<DownloadTask> {
+        let _directory = crate::download::directory::gate::lock(&self.store, &self.owner)?;
+        crate::download::directory::gate::require(&self.store, &self.owner, None)?;
+        self.guard(token)?;
         let _lock = self.lock(id)?;
         let mut task = self.read(id)?;
+        if failed_integrity_only && !task.needs_transfer_restart() {
+            return Err(Error::State("download no longer needs an explicit restart"));
+        }
         if !matches!(
             task.phase,
             DownloadPhase::Authorize | DownloadPhase::Transfer
@@ -223,13 +242,21 @@ impl DownloadService {
         ) {
             return Err(Error::State("download is past raw transfer"));
         }
-        self.transfer.restart(id)?;
-        task.bytes = 0;
-        task.raw_integrity = None;
-        task.status = DownloadStatus::Queued;
-        task.last_error = None;
-        task.service_code = None;
-        self.session.with_token(&token, |_| {
+        self.session.with_token(token, |_| {
+            let control: Option<DownloadAction> = self
+                .store
+                .get(&self.owner, CONTROL, id)?
+                .map(serde_json::from_value)
+                .transpose()?;
+            if control == Some(DownloadAction::Cancel) {
+                return Err(Error::State("download cancellation already requested"));
+            }
+            self.transfer.restart(id)?;
+            task.bytes = 0;
+            task.raw_integrity = None;
+            task.status = DownloadStatus::Queued;
+            task.last_error = None;
+            task.service_code = None;
             self.store.transaction(|tx| {
                 tx.delete(&self.owner, CONTROL, id)?;
                 tx.put(

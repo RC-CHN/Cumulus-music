@@ -14,7 +14,11 @@ export function downloadMenuItems(task: DownloadTask, state: DownloadMenuState):
     return [
       {
         key: 'control',
-        label: ['paused', 'error'].includes(task.status) ? '继续下载' : '暂停下载',
+        label: task.needsTransferRestart
+          ? '从头下载'
+          : ['paused', 'error'].includes(task.status)
+            ? '继续下载'
+            : '暂停下载',
         icon: ['paused', 'error'].includes(task.status) ? 'download' : 'pause',
         disabled: blocked,
       },

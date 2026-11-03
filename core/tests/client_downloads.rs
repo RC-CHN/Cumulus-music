@@ -1505,3 +1505,71 @@ async fn forgotten_sidecar_requires_a_completed_receipt_and_still_verified_audio
     );
     assert_eq!(f.api.count("player/url"), 0);
 }
+
+#[tokio::test]
+async fn corrupt_download_requires_one_explicit_restart_before_redownloading_from_zero() {
+    let f = Fixture::new();
+    f.backend.audio.settings.lock().unwrap().data[0] ^= 0x20;
+    let id = f.start().await;
+    let failed = wait(&f.client, "1", DownloadTab::Active, |v| {
+        v.tasks.first().is_some_and(|t| t.needs_transfer_restart)
+    })
+    .await;
+    assert_eq!(failed.tasks[0].status, DownloadStatus::Error);
+    assert_eq!(failed.tasks[0].error, Some("文件校验失败，需要从头下载"));
+    let authorized = f.api.count("/download/url/");
+    assert_eq!(authorized, 1);
+    assert_eq!(f.backend.audio.calls().len(), 1);
+    let retry = f
+        .client
+        .download_command(
+            "1",
+            DownloadCommand::Control {
+                task_ids: vec![id.clone()],
+                action: TaskControl::Resume,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(retry.accepted.is_empty());
+    assert_eq!(retry.failed.len(), 1);
+    let bulk = f
+        .client
+        .download_command(
+            "1",
+            DownloadCommand::All {
+                action: TaskControl::Resume,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(bulk.accepted.is_empty() && bulk.failed.is_empty());
+    assert_eq!(f.api.count("/download/url/"), authorized);
+    assert_eq!(f.backend.audio.calls().len(), 1);
+
+    f.backend.audio.settings.lock().unwrap().data = FLAC.to_vec();
+    let command = || DownloadCommand::RestartFailedTransfer {
+        task_id: id.clone(),
+    };
+    let restarted = f.client.download_command("1", command()).await.unwrap();
+    assert_eq!(restarted.accepted, vec![id.clone()]);
+    let done = wait(&f.client, "1", DownloadTab::Completed, |v| {
+        v.tasks.first().is_some_and(|t| !t.cleanup_pending)
+    })
+    .await;
+    assert!(!done.tasks[0].needs_transfer_restart);
+    assert_eq!(
+        fs::read(done.tasks[0].path.as_ref().unwrap()).unwrap(),
+        FLAC
+    );
+    let calls = f.backend.audio.calls();
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[1].offset, 0);
+    assert!(calls[1].if_range.is_none());
+    assert!(f.client.download_command("1", command()).await.is_err());
+    assert_eq!(f.backend.audio.calls().len(), 2);
+    assert_eq!(
+        fs::read(done.tasks[0].path.as_ref().unwrap()).unwrap(),
+        FLAC
+    );
+}

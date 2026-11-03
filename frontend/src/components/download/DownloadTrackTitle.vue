@@ -15,6 +15,9 @@ const emit = defineEmits<{
   control: [action: DownloadControl];
   manage: [event: MouseEvent | KeyboardEvent];
 }>();
+const controlLabel = computed(() =>
+  props.task.needsTransferRestart ? '从头下载' : resume.value ? '继续下载' : '暂停下载',
+);
 const resume = computed(() => ['paused', 'error'].includes(props.task.status));
 const quality = computed(() =>
   props.task.source === 'cloud'
@@ -60,8 +63,8 @@ const quality = computed(() =>
         ><button
           class="icon-button"
           :disabled="locked || !!task.fileOperation || task.status === 'cancelling'"
-          :aria-label="`${resume ? '继续下载' : '暂停下载'} ${task.track.name}`"
-          :data-tooltip="resume ? '开始下载' : '暂停'"
+          :aria-label="`${controlLabel} ${task.track.name}`"
+          :data-tooltip="task.needsTransferRestart ? controlLabel : resume ? '开始下载' : '暂停'"
           @click="emit('control', resume ? 'resume' : 'pause')"
         >
           <Icon :name="resume ? 'download' : 'pause'" />

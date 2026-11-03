@@ -276,6 +276,11 @@ impl DownloadService {
         ) {
             return Err(Error::State("terminal task cannot be queued"));
         }
+        if task.needs_transfer_restart() {
+            return Err(Error::State(
+                "download integrity failure requires an explicit restart",
+            ));
+        }
         task.status = DownloadStatus::Queued;
         task.last_error = None;
         task.service_code = None;

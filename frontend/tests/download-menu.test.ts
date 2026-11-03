@@ -58,6 +58,10 @@ test('live status and file recovery control permitted actions', () => {
 test('paused and failed tasks resume, running tasks pause and cancellation cannot be repeated', () => {
   for (const status of ['paused', 'error'] as const)
     assert.equal(downloadMenuItems({ ...task, status }, state)[0]?.label, '继续下载');
+  assert.equal(
+    downloadMenuItems({ ...task, status: 'error', needsTransferRestart: true }, state)[0]?.label,
+    '从头下载',
+  );
   assert.equal(downloadMenuItems({ ...task, status: 'downloading' }, state)[0]?.label, '暂停下载');
   assert.equal(
     downloadMenuItems({ ...task, status: 'cancelling' }, state).every((i) => i.disabled),

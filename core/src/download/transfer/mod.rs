@@ -2,6 +2,7 @@
 //! a lower-level service; authorization/tagging/scheduling belong above it.
 mod backend;
 mod control;
+pub(in crate::download) const FINAL_INTEGRITY_MISMATCH: &str = "final transfer integrity mismatch";
 mod files;
 mod headers;
 mod manager;

@@ -237,7 +237,10 @@ function play(task?: DownloadTask) {
           @cancel="emit('dialog', { kind: 'cancel', task: $event })"
           @sort="filter(nextDownloadSort(query, $event), `[data-download-sort='${$event}']`)"
           @control="
-            (task, action) => model.command({ kind: 'control', task_ids: [task.id], action })
+            (task, action) =>
+              action === 'resume' && task.needsTransferRestart
+                ? emit('dialog', { kind: 'restart', task })
+                : model.command({ kind: 'control', task_ids: [task.id], action })
           "
         />
       </div>

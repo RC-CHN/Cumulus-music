@@ -156,6 +156,15 @@ pub struct DownloadTask {
 }
 
 impl DownloadTask {
+    pub(crate) fn needs_transfer_restart(&self) -> bool {
+        matches!(self.status, DownloadStatus::Error | DownloadStatus::Paused)
+            && self.phase == DownloadPhase::Transfer
+            && self.file_operation.is_none()
+            && self.last_error.as_ref().is_some_and(|error| {
+                *error
+                    == Error::Media(crate::download::transfer::FINAL_INTEGRITY_MISMATCH).to_string()
+            })
+    }
     pub(crate) fn playback_target(&self) -> Result<&Path> {
         if self.status != DownloadStatus::Complete {
             return Err(Error::State("download is not complete"));

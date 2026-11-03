@@ -23,8 +23,7 @@ const rename = ref(''),
 const confirmation = ref<'delete' | 'forget' | 'move' | 'rename' | undefined>(
   props.target.kind === 'file' ? props.target.action : undefined,
 );
-const original =
-  props.target.kind === 'file' || props.target.kind === 'cancel' ? props.target.task : undefined;
+const original = 'task' in props.target ? props.target.task : undefined;
 const owner = view.value?.epoch;
 const live = computed(() =>
   view.value?.epoch === owner ? view.value?.tasks.find((t) => t.id === original?.id) : undefined,
@@ -36,7 +35,9 @@ const stale = computed(
     (!live.value ||
       (props.target.kind === 'cancel'
         ? ['complete', 'cancelled'].includes(live.value.status)
-        : live.value.status !== 'complete' || live.value.path !== original.path)),
+        : props.target.kind === 'restart'
+          ? !live.value.needsTransferRestart
+          : live.value.status !== 'complete' || live.value.path !== original.path)),
 );
 const blocked = computed(
   () =>
@@ -48,26 +49,28 @@ const blocked = computed(
     !!task.value?.fileOperation,
 );
 const title = computed(() =>
-  props.target.kind === 'voice'
-    ? `下载 ${props.target.tracks.length} 个单集`
-    : props.target.kind === 'cloud'
-      ? `下载 ${props.target.tracks.length} 首云盘原文件`
-      : props.target.kind === 'start'
-        ? `下载 ${props.target.tracks.length} 首歌曲`
-        : props.target.kind === 'settings'
-          ? '音质与下载'
-          : props.target.kind === 'cancel'
-            ? '删除下载任务'
-            : props.target.kind === 'clear'
-              ? '清空正在下载'
-              : confirmation.value
-                ? {
-                    rename: '重命名下载文件',
-                    move: '移动下载文件',
-                    delete: '删除下载文件',
-                    forget: '移出下载列表',
-                  }[confirmation.value]
-                : '管理下载',
+  props.target.kind === 'restart'
+    ? '从头下载'
+    : props.target.kind === 'voice'
+      ? `下载 ${props.target.tracks.length} 个单集`
+      : props.target.kind === 'cloud'
+        ? `下载 ${props.target.tracks.length} 首云盘原文件`
+        : props.target.kind === 'start'
+          ? `下载 ${props.target.tracks.length} 首歌曲`
+          : props.target.kind === 'settings'
+            ? '音质与下载'
+            : props.target.kind === 'cancel'
+              ? '删除下载任务'
+              : props.target.kind === 'clear'
+                ? '清空正在下载'
+                : confirmation.value
+                  ? {
+                      rename: '重命名下载文件',
+                      move: '移动下载文件',
+                      delete: '删除下载文件',
+                      forget: '移出下载列表',
+                    }[confirmation.value]
+                  : '管理下载',
 );
 let focus: HTMLElement | null = null;
 onMounted(() => {
@@ -335,6 +338,20 @@ async function fileAction() {
         </button>
       </footer>
     </form>
+    <template v-else-if="target.kind === 'restart'">
+      <p>「{{ task?.track.name }}」的下载内容未通过校验。</p>
+      <p class="muted">继续会丢弃本任务的临时字节，并从头下载。已完成的文件会保留。</p>
+      <footer>
+        <button class="text-button" :disabled="busy" @click="close">返回</button>
+        <button
+          class="primary"
+          :disabled="blocked"
+          @click="perform({ kind: 'restart_failed_transfer', task_id: target.task.id })"
+        >
+          确认从头下载
+        </button>
+      </footer>
+    </template>
     <template v-else-if="target.kind === 'cancel'">
       <p>确定将该资源从列表中删除？</p>
       <p>{{ task?.track.name }}</p>
