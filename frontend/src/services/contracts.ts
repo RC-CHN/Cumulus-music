@@ -4,6 +4,7 @@ import type { LikeRecoveryClient } from './likeRecovery';
 import type { PlayerClient } from './player';
 import type { PlaylistClient } from './playlists';
 import type { PlaylistCoverClient } from './playlistCover';
+import type { ColdOfflineClient } from './coldOffline';
 import type { DownloadClient } from './downloads';
 import type { CloudClient } from './cloud';
 import type { MvClient } from './mv';
@@ -52,6 +53,7 @@ export interface CoreClient
     PlaylistClient,
     PlaylistCoverClient,
     DownloadClient,
+    ColdOfflineClient,
     CloudClient,
     MvClient,
     CommentClient,

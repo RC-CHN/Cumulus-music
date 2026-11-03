@@ -62,6 +62,8 @@ import LyricsPanel from './components/LyricsPanel.vue';
 import PlaylistDialog from './components/PlaylistDialog.vue';
 import PlaylistCollectDialog from './components/PlaylistCollectDialog.vue';
 import DownloadPage from './components/DownloadPage.vue';
+import ColdOfflinePage from './components/download/ColdOfflinePage.vue';
+import { useColdOffline } from './composables/useColdOffline';
 import DownloadBatchPage from './components/download/DownloadBatchPage.vue';
 import type { BatchCategory } from './services/downloadBatch';
 import type { DownloadQuery } from './services/downloads';
@@ -871,6 +873,19 @@ const {
   signedIn,
 } = music;
 const loginOpen = ref(false);
+const coldOffline = useColdOffline(core);
+const coldOfflineEligible = computed(
+  () =>
+    music.accountReady.value &&
+    !initializing.value &&
+    !loginOpen.value &&
+    account.value.status === 'unknown' &&
+    page.value.kind === 'downloads',
+);
+watch(coldOfflineEligible, coldOffline.setEligible, { flush: 'sync' });
+watch(() => account.value.epoch, coldOffline.leave, { flush: 'sync' });
+onUnmounted(coldOffline.leave);
+
 const lyricReport = useLyricReport(
   () => account.value.epoch,
   createLyricReportClient(),
@@ -1553,6 +1568,11 @@ onUnmounted(() => {
                 "
                 @back="historyLength ? music.back() : music.replace({ kind: 'settings' })"
                 @expired="music.bootstrap(false)"
+              />
+              <ColdOfflinePage
+                v-else-if="coldOfflineEligible"
+                :model="coldOffline"
+                @retry="music.bootstrap()"
               />
               <AccountWelcome
                 v-else-if="!signedIn"
