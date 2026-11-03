@@ -7,7 +7,7 @@ import {
   type Quality,
 } from './player.ts';
 import type { SearchItem } from './search.ts';
-import { catalogResourceSelection } from './catalogCards.ts';
+import { albumCredits, catalogResourceSelection } from './catalogCards.ts';
 
 export function searchCardKey(item: SearchItem): string {
   switch (item.kind) {
@@ -31,12 +31,22 @@ export function searchCardKey(item: SearchItem): string {
       return `user:${item.user.id}`;
   }
 }
+const positiveResourceId = (id: string | null | undefined): id is string =>
+  !!id && /^\d*[1-9]\d*$/.test(id);
+
+export function searchAlbumCredits(item: SearchItem) {
+  if (item.kind !== 'album') return [];
+  return albumCredits(item.album).flatMap(({ name, id }) => {
+    const label = name.trim();
+    return label ? [{ name: label, id: positiveResourceId(id) ? id : null }] : [];
+  });
+}
 /** Only the native-verified creator may be used; playlist IDs are a separate namespace. */
 export function searchPlaylistCreator(item: SearchItem) {
   if (item.kind !== 'playlist') return null;
   const { creatorId: id, creator } = item.playlist;
   const name = creator.trim();
-  return name && id && /^\d*[1-9]\d*$/.test(id) ? { id, name } : null;
+  return name && positiveResourceId(id) ? { id, name } : null;
 }
 /** Only a native-projected MV identity can open the video player. */
 export function searchMvPlaybackTarget(item: SearchItem): string | null {

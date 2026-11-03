@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   searchCardSelection,
+  searchAlbumCredits,
   searchCardIsCurrent,
   searchCardCanPlay,
   searchMvPlaybackTarget,
@@ -210,4 +211,34 @@ test('search playlist credits navigate only to a native-verified creator identit
     null,
   );
   assert.equal(searchPlaylistCreator(podcast), null);
+});
+
+test('album search credits put the primary artist first and preserve names without navigable IDs', () => {
+  const lead = { id: '9007199254740993', name: ' Primary credit ' };
+  const item: SearchItem = {
+    kind: 'album',
+    album: {
+      id: '777',
+      name: 'Synthetic album',
+      artists: [{ id: '0', name: 'Text only' }, lead, { id: '8', name: 'Guest' }],
+      primaryArtist: lead,
+      aliases: [],
+      translations: [],
+      description: '',
+      coverUrl: null,
+      trackCount: 2,
+      publishedAt: null,
+      subscribed: null,
+      explicit: false,
+    },
+  };
+  assert.deepEqual(searchAlbumCredits(item), [
+    { id: lead.id, name: 'Primary credit' },
+    { id: null, name: 'Text only' },
+    { id: '8', name: 'Guest' },
+  ]);
+  assert.deepEqual(searchAlbumCredits({ ...item, album: { ...item.album, artists: [] } }), [
+    { id: lead.id, name: 'Primary credit' },
+  ]);
+  assert.deepEqual(searchAlbumCredits(podcast), []);
 });

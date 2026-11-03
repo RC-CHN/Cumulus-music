@@ -8,6 +8,7 @@ import SearchMatchText from './SearchMatchText.vue';
 import ActionMenu from '../ActionMenu.vue';
 import type { MenuItem } from '../../services/menu';
 import {
+  searchAlbumCredits,
   searchCardCanPlay,
   searchCardCanQueue,
   searchCardKey,
@@ -29,6 +30,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   open: [item: SearchItem];
   creator: [id: string];
+  artist: [id: string];
   play: [item: SearchItem];
   queue: [request: SearchQueueRequest];
   comments: [item: SearchItem];
@@ -68,6 +70,7 @@ const canPlay = computed(() => searchCardCanPlay(props.item));
 const canQueue = computed(
   () => props.queueable && (props.item.kind !== 'playlist' || props.item.playlist.trackCount > 0),
 );
+const albumArtists = computed(() => searchAlbumCredits(props.item));
 const playlistCreator = computed(() => searchPlaylistCreator(props.item));
 const canPlayMv = computed(() => !!searchMvPlaybackTarget(props.item));
 const videoStats = computed(() => searchVideoCoverStats(props.item));
@@ -194,7 +197,7 @@ const card = computed(() => {
       return {
         name: i.album.name,
         cover: i.album.coverUrl,
-        sub: i.album.artists.map((a) => a.name).join(' / '),
+        sub: albumArtists.value.map((artist) => artist.name).join(' / '),
         round: false,
       };
     case 'podcast':
@@ -337,6 +340,26 @@ watch(
         <Icon name="download" />
       </button>
     </template>
+    <span v-else-if="albumArtists.length" class="search-result-sub search-album-credit">
+      <template v-for="(artist, index) in albumArtists" :key="index">
+        <span v-if="index" class="search-album-credit-separator" aria-hidden="true">/</span>
+        <button
+          v-if="artist.id"
+          type="button"
+          class="search-album-artist"
+          :data-result-action="`artist:${artist.id}:${index}`"
+          :aria-label="`查看歌手 ${artist.name}`"
+          :data-tooltip="artist.name"
+          @click.stop="emit('artist', artist.id)"
+          @dblclick.stop
+        >
+          <SearchMatchText :text="artist.name" :keyword="matchKeyword" />
+        </button>
+        <span v-else class="search-album-artist-text">
+          <SearchMatchText :text="artist.name" :keyword="matchKeyword" />
+        </span>
+      </template>
+    </span>
     <span
       v-else-if="item.kind === 'playlist' && playlistCreator"
       class="search-result-sub search-playlist-credit"

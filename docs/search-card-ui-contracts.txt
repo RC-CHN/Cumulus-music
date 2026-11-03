@@ -126,3 +126,10 @@ PC recommend.jsx 的综合卡片复用 PlaylistCard 与 AlbumCard；恢复 M/622
 `search_results_smoke.py --collection-next` 从搜索综合页歌单及专辑分类页
 用键盘打开菜单，实际向已暂停的原生队列分别插入 40、11 首。核对服务顺序、
 原队列条目 ID、暂停状态与位置以及菜单焦点返回；保留两张合成 WebView 截图。
+
+搜索专辑署名的歌手入口
+官方 recommend.jsx:793–818 使用 AlbumCard；AlbumCard/index.tsx:360–380、
+482–487 将主歌手置于已有署名前，并通过 ArtistNames/index.tsx:42–65 打开
+独立歌手页。恢复 M/3095:494–507 的最佳匹配专辑也沿用署名入口。Cumulus 复用
+专辑署名排序，保留无有效 ID 的署名文字，不从专辑 ID 或姓名猜歌手 ID。每个有
+效歌手链接与专辑详情、播放互不覆盖，返回恢复到原专辑的对应歌手控件。

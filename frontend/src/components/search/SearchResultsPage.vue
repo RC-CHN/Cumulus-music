@@ -721,6 +721,7 @@ onBeforeUnmount(() => {
                 :playing="playbackState === 'playing' || playbackState === 'buffering'"
                 @open="open"
                 @creator="emit('creator', $event)"
+                @artist="emit('artist', $event)"
                 @play="emit('playCard', $event)"
                 @queue="emit('queueCard', $event)"
                 @comments="emit('cardComments', $event)"

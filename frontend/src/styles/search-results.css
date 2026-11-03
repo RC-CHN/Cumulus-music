@@ -683,16 +683,19 @@
 .search-voice-radio:hover {
   color: var(--accent);
 }
-.search-playlist-credit {
+.search-playlist-credit,
+.search-album-credit {
   display: flex;
   gap: 4px;
   align-items: baseline;
   min-width: 0;
 }
-.search-playlist-credit > span {
+.search-playlist-credit > span,
+.search-album-credit-separator {
   flex: none;
 }
-.search-playlist-creator {
+.search-playlist-creator,
+.search-album-artist {
   position: relative;
   z-index: 2;
   min-width: 0;
@@ -705,11 +708,19 @@
   overflow: hidden;
   pointer-events: auto;
 }
+.search-album-artist-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .search-playlist-creator:hover,
-.search-playlist-creator:focus-visible {
+.search-playlist-creator:focus-visible,
+.search-album-artist:hover,
+.search-album-artist:focus-visible {
   color: var(--accent);
 }
-.search-playlist-creator:focus-visible {
+.search-playlist-creator:focus-visible,
+.search-album-artist:focus-visible {
   outline-offset: -2px;
 }
 .search-card-unavailable .search-result-art,
