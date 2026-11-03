@@ -538,6 +538,28 @@
 .search-video-card:focus-within .search-video-play-glyph {
   opacity: 1;
 }
+.search-video-count,
+.search-video-duration {
+  position: absolute;
+  inset-inline-end: 6px;
+  max-inline-size: calc(100% - 12px);
+  padding: 1px 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: 4px;
+  color: #fff;
+  background: #0009;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 14px;
+}
+.search-video-count {
+  top: 5px;
+}
+.search-video-duration {
+  bottom: 5px;
+}
 .search-card-play {
   position: absolute;
   z-index: 2;

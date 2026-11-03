@@ -5,6 +5,7 @@ import {
   searchCardIsCurrent,
   searchCardCanPlay,
   searchMvPlaybackTarget,
+  searchVideoCoverStats,
   searchCurrentSongId,
   searchCurrentVoiceId,
   searchVoiceSelection,
@@ -138,4 +139,42 @@ test('search videos open the native MV target only, separate from audio selectio
   assert.equal(searchMvPlaybackTarget({ ...mv, mv: { ...mv.mv, mvId: null } }), null);
   assert.equal(searchMvPlaybackTarget({ ...mv, mv: { ...mv.mv, kind: 'video' } }), null);
   assert.equal(searchMvPlaybackTarget(voice), null);
+});
+
+test('video cover stats show known duration and a compact count with exact accessible context', () => {
+  const mv: SearchItem = {
+    kind: 'mv',
+    mv: {
+      id: '606',
+      kind: 'mv',
+      title: 'Synthetic MV',
+      description: '',
+      artists: [],
+      coverUrl: null,
+      durationMs: 240999,
+      playCount: 12345,
+      mvId: '606',
+    },
+  };
+  assert.deepEqual(searchVideoCoverStats(mv), {
+    duration: '04:00',
+    count: '1.2万',
+    description: '播放次数：12,345，时长：04:00',
+  });
+  assert.deepEqual(
+    searchVideoCoverStats({ ...mv, mv: { ...mv.mv, playCount: 0, durationMs: 79000 } }),
+    {
+      duration: '01:19',
+      count: null,
+      description: '时长：01:19',
+    },
+  );
+  assert.equal(
+    searchVideoCoverStats({
+      ...mv,
+      mv: { ...mv.mv, durationMs: Number.NaN, playCount: Number.MAX_SAFE_INTEGER + 1 },
+    }),
+    null,
+  );
+  assert.equal(searchVideoCoverStats(voice), null);
 });

@@ -1,5 +1,11 @@
 import type { CoreClient } from './contracts.ts';
-import type { PlaySelection, PlayerOrigin, PlayerView, Quality } from './player.ts';
+import {
+  time,
+  type PlaySelection,
+  type PlayerOrigin,
+  type PlayerView,
+  type Quality,
+} from './player.ts';
 import type { SearchItem } from './search.ts';
 import { catalogResourceSelection } from './catalogCards.ts';
 
@@ -28,6 +34,32 @@ export function searchCardKey(item: SearchItem): string {
 /** Only a native-projected MV identity can open the video player. */
 export function searchMvPlaybackTarget(item: SearchItem): string | null {
   return item.kind === 'mv' && item.mv.kind === 'mv' ? item.mv.mvId : null;
+}
+const compactVideoCount = new Intl.NumberFormat('zh-CN', {
+  notation: 'compact',
+  maximumFractionDigits: 1,
+});
+const fullVideoCount = new Intl.NumberFormat('zh-CN');
+
+/** Missing/zero values are not evidence of the video's duration or popularity. */
+export function searchVideoCoverStats(item: SearchItem) {
+  if (item.kind !== 'mv') return null;
+  const { durationMs, playCount } = item.mv;
+  const duration =
+    Number.isSafeInteger(durationMs) && durationMs > 0 ? time(durationMs / 1000) : null;
+  const count =
+    Number.isSafeInteger(playCount) && playCount > 0 ? compactVideoCount.format(playCount) : null;
+  if (!duration && !count) return null;
+  return {
+    duration,
+    count,
+    description: [
+      count && `播放次数：${fullVideoCount.format(playCount)}`,
+      duration && `时长：${duration}`,
+    ]
+      .filter(Boolean)
+      .join('，'),
+  };
 }
 export function searchCardCanPlay(item: SearchItem): boolean {
   return (
