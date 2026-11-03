@@ -202,3 +202,20 @@ all three 44100/48000/96000 Hz PCM cases have zero absolute error, and the live
 control/detach checks still pass. Evidence is .build/volume-pcm-{stdout,stderr}.log
 and volume-pcm-checked.json. This is not a Windows success claim; the corrected
 native output channel still requires a fresh Windows CI result.
+
+Windows SDK search policy
+-------------------------
+The application loads libmpv by absolute path from the executable directory.
+Outside an installation, a trusted native launcher may set
+MPV_DLL_DIR_CUMULUS to an absolute runtime directory. It is never a renderer
+parameter. The loader resolves dependencies only from the selected DLL's
+directory and System32; it never uses the working directory or PATH for libmpv.
+If the bundled DLL exists but cannot load, the failure is reported without
+falling through to a different copy. Unix library search is unchanged.
+
+The shared Windows runtime check deliberately runs an unpackaged PCM probe
+with both PATH and its working directory pointing at the real runtime and
+without the explicit override; it must fail to find libmpv. The same probe
+must pass with the verified runtime directory explicitly selected. Packaging
+and device diagnostics clear that override to exercise their sibling DLLs.
+After packaging, Windows WebView probes explicitly use the staged runtime.

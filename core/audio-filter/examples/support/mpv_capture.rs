@@ -61,20 +61,10 @@ pub fn capture(input: &Path, output: &Path, graph: &str, rate: u32, channels: us
     if output.exists() {
         return Err(Error::InvalidInput("PCM proof output already exists"));
     }
-    let names: &[&str] = if cfg!(target_os = "windows") {
-        &["libmpv-2.dll", "mpv-2.dll"]
-    } else if cfg!(target_os = "macos") {
-        &["libmpv.2.dylib", "libmpv.dylib"]
-    } else {
-        &["libmpv.so.2"]
-    };
     // SAFETY: same documented libmpv ABI as the production wrapper. All symbols
     // and the handle remain library-owned. Event pointers are read before wait.
     unsafe {
-        let library = names
-            .iter()
-            .find_map(|n| MpvRuntime::open(n.as_ref()).ok())
-            .ok_or(Error::State("libmpv unavailable"))?;
+        let library = MpvRuntime::open_default()?;
         let create = *library
             .get::<Create>(b"mpv_create\0")
             .map_err(|_| Error::State("mpv ABI"))?;

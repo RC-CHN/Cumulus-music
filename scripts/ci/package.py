@@ -113,6 +113,7 @@ def main():
     # MSYS2 from PATH, so a missing bundled DLL cannot be masked by the runner.
     env = os.environ.copy()
     if windows:
+        env = {key: value for key, value in env.items() if key.upper() != "MPV_DLL_DIR_CUMULUS"}
         system = Path(os.environ["SystemRoot"])
         env["PATH"] = os.pathsep.join(map(str, [portable, system / "System32", system]))
     probe = portable / f"engine_roundtrip{suffix}"
@@ -159,6 +160,11 @@ def main():
         "nativePlayback": media_report, "equalizerPlayback": eq_report,
         "assets": [{"name": p.name, "bytes": p.stat().st_size, "sha256": digest(p)} for p in sorted(output.iterdir())]}
     (output / f"manifest-{args.platform}.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    if windows and (github_env := os.environ.get("GITHUB_ENV")):
+        # Later WebView examples are not beside the release DLLs. Use the exact
+        # stage copied into the package, rather than the MSYS2 installation.
+        with open(github_env, "a", encoding="utf-8") as stream:
+            stream.write(f"MPV_DLL_DIR_CUMULUS={native}\n")
     print(json.dumps({"ok": True, "version": version, "platform": args.platform, "commit": sha}))
 
 

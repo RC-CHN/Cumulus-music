@@ -25,7 +25,7 @@ if __name__ == '__main__':
     windows_media(native, msys)
     executable = native / 'engine_roundtrip.exe'
     shutil.copy2(Path(os.environ.get('CARGO_TARGET_DIR', '.build/target')) / 'debug/examples/engine_roundtrip.exe', executable)
-    env = os.environ.copy()
+    env = {key: value for key, value in os.environ.items() if key.upper() != 'MPV_DLL_DIR_CUMULUS'}
     # os.environ is case-insensitive on Windows; its dict copy is not.
     system = Path(os.environ['SystemRoot'])
     env['PATH'] = os.pathsep.join(map(str, [native, system / 'System32', system]))

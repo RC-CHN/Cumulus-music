@@ -9,7 +9,7 @@ use crate::{
 };
 use std::{
     collections::VecDeque,
-    ffi::{CStr, CString, OsStr},
+    ffi::{CStr, CString},
     path::PathBuf,
     time::{Duration, Instant},
 };
@@ -109,24 +109,7 @@ impl MpvEngine {
         Ok((engine, frames))
     }
     fn open_mode(config: MpvConfig, video: bool) -> Result<Self> {
-        let native = if let Some(path) = config.library {
-            Native::open(path.as_os_str())?
-        } else {
-            let names: &[&str] = if cfg!(target_os = "windows") {
-                &["libmpv-2.dll", "mpv-2.dll"]
-            } else if cfg!(target_os = "macos") {
-                &["libmpv.2.dylib", "libmpv.dylib"]
-            } else {
-                &["libmpv.so.2", "libmpv.so.1"]
-            };
-            names
-                .iter()
-                .find_map(|name| Native::open(OsStr::new(name)).ok())
-                .ok_or(Error::Playback {
-                    operation: "library unavailable",
-                    code: -1,
-                })?
-        };
+        let native = Native::open(config.library.as_deref())?;
         let mut engine = Self {
             native,
             equalizer: None,

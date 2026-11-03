@@ -7,7 +7,7 @@ mod render;
 mod stream;
 use crate::{Error, Result};
 use std::{
-    ffi::{CStr, CString, OsStr, c_char, c_int, c_ulong, c_void},
+    ffi::{CStr, CString, c_char, c_int, c_ulong, c_void},
     ptr::NonNull,
 };
 
@@ -90,11 +90,14 @@ fn check(operation: &'static str, code: i32) -> Result<()> {
 }
 
 impl Native {
-    pub fn open(path: &OsStr) -> Result<Self> {
+    pub fn open(path: Option<&std::path::Path>) -> Result<Self> {
         // SAFETY: native host selects a trusted system/bundled libmpv. The
         // resolved symbols use documented C signatures and stay library-owned.
         unsafe {
-            let library = MpvRuntime::open(path)?;
+            let library = match path {
+                Some(path) => MpvRuntime::open(path.as_os_str()),
+                None => MpvRuntime::open_default(),
+            }?;
             let version = *library
                 .get::<Version>(b"mpv_client_api_version\0")
                 .map_err(|_| failed("ABI", -1))?;
