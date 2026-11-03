@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, toRefs, watch } fr
 import { useCore } from '../../services/core';
 import { useLogin } from '../../composables/useLogin';
 import { useControlFocus } from '../../composables/useControlFocus';
-import { loginMessage, type LoginMode } from '../../services/auth';
+import { loginMessage, type LoginMode, type PhoneEntryStep } from '../../services/auth';
 import type { LoginIdentity } from '../../services/loginIdentity';
 import {
   phoneError,
@@ -14,6 +14,7 @@ import LoginChallenge from './LoginChallenge.vue';
 import LoginCountryPicker from './LoginCountryPicker.vue';
 import LoginEmailInput from './LoginEmailInput.vue';
 import LoginConsent from './LoginConsent.vue';
+import PhoneSmsLogin from './PhoneSmsLogin.vue';
 import { reuseTitle } from '../../services/phoneReuse';
 const props = defineProps<{
   epoch: string;
@@ -31,13 +32,14 @@ const emit = defineEmits<{
   country: [value: LoginCountry];
   retryCountries: [];
   forgot: [];
+  phoneStage: [value: PhoneEntryStep];
 }>();
 const core = useCore();
 const model = useLogin(core, () => emit('authorized'));
-const { view, busy, error, seconds } = model;
+const { view, busy, error } = model;
 const { phone, country, email, remember } = toRefs(props.identity);
-const password = ref(''),
-  code = ref('');
+const password = ref('');
+const phoneFlow = ref<{ clearSecrets: () => void }>();
 const root = ref<HTMLElement>();
 const phoneInput = ref<HTMLInputElement>(),
   passwordInput = ref<HTMLInputElement>();
@@ -56,7 +58,7 @@ function deactivate() {
   if (!active) return;
   active = false;
   password.value = '';
-  code.value = '';
+  phoneFlow.value?.clearSecrets();
   challenge.value?.clearSecrets();
   if (root.value) {
     root.value.inert = true;
@@ -125,7 +127,7 @@ watch(
           : null,
       );
     }
-    if (questionActive.value || reuseActive.value) return;
+    if (questionActive.value || reuseActive.value || phoneActive.value) return;
     const owned = root.value?.contains(document.activeElement);
     await nextTick();
     if (!active || !owned || !root.value) return;
@@ -138,11 +140,9 @@ watch(
     )
       return;
     const preferred =
-      props.mode === 'phone_sms' && view.value?.status === 'code_sent'
-        ? '[aria-label="短信验证码"]:not(:disabled)'
-        : view.value?.status === 'rejected' && view.value.code === 502
-          ? '[aria-label="登录密码"]:not(:disabled)'
-          : null;
+      view.value?.status === 'rejected' && view.value.code === 502
+        ? '[aria-label="登录密码"]:not(:disabled)'
+        : null;
     const target =
       (preferred ? root.value.querySelector<HTMLElement>(preferred) : null) ??
       root.value.querySelector<HTMLElement>('input:not(:disabled),button:not(:disabled)');
@@ -151,6 +151,9 @@ watch(
 );
 const initial = computed(
   () => !!view.value && ['ready', 'code_sent', 'rejected'].includes(view.value.status),
+);
+const phoneActive = computed(
+  () => props.mode === 'phone_sms' && (initial.value || !view.value || !!view.value.phoneEntry),
 );
 const disabled = computed(
   () =>
@@ -172,7 +175,7 @@ watch(
     if (value) consentRequired.value = false;
   },
 );
-watch([phone, country, email, password, code], () => {
+watch([phone, country, email, password], () => {
   validation.value = '';
 });
 function agreed() {
@@ -185,10 +188,6 @@ function validPhone() {
   validation.value = phoneError(props.countries, phone.value.trim(), country.value);
   if (validation.value) phoneInput.value?.focus({ preventScroll: true });
   return !validation.value;
-}
-async function sendSms() {
-  if (!active || disabled.value || seconds.value > 0 || !agreed() || !validPhone()) return;
-  await model.run({ kind: 'send_sms', phone: phone.value.trim(), country_code: country.value });
 }
 async function openDocument(kind: LoginDocument) {
   if (!active || openingDocument.value) return;
@@ -207,7 +206,7 @@ async function openDocument(kind: LoginDocument) {
 }
 async function start() {
   password.value = '';
-  code.value = '';
+  phoneFlow.value?.clearSecrets();
   await model.start(props.epoch, props.mode);
 }
 watch(
@@ -221,7 +220,7 @@ onMounted(() => {
 });
 onBeforeUnmount(deactivate);
 async function submit() {
-  if (!active || disabled.value || !agreed()) return;
+  if (!active || disabled.value || props.mode === 'phone_sms' || !agreed()) return;
   if (props.mode !== 'email' && !validPhone()) return;
   if (
     props.mode === 'email' &&
@@ -231,20 +230,14 @@ async function submit() {
     root.value?.querySelector<HTMLInputElement>('[aria-label="登录邮箱"]')?.focus();
     return;
   }
-  if (props.mode !== 'phone_sms' && !password.value) {
+  if (!password.value) {
     validation.value = '请输入密码';
     passwordInput.value?.focus();
     return;
   }
-  if (props.mode === 'phone_sms' && !/^[0-9]{4,8}$/.test(code.value)) {
-    validation.value = '请输入4至8位短信验证码';
-    root.value?.querySelector<HTMLInputElement>('[aria-label="短信验证码"]')?.focus();
-    return;
-  }
-  const secret = password.value,
-    otp = code.value;
+  const secret = password.value;
   password.value = '';
-  code.value = '';
+  phoneFlow.value?.clearSecrets();
   if (view.value?.status === 'rejected') await model.start(props.epoch, props.mode);
   if (!active) return;
   if (props.mode === 'email')
@@ -262,19 +255,25 @@ async function submit() {
       password: secret,
       remember: remember.value,
     });
-  else
-    await model.run({
-      kind: 'phone_sms',
-      phone: phone.value.trim(),
-      country_code: country.value,
-      code: otp,
-      remember: remember.value,
-    });
 }
 </script>
 <template>
   <div ref="root" class="login-flow" tabindex="-1" :aria-busy="busy">
-    <form v-if="initial || !view" class="credential-form" novalidate @submit.prevent="submit">
+    <PhoneSmsLogin
+      v-if="phoneActive"
+      ref="phoneFlow"
+      :epoch="epoch"
+      :model="model"
+      :identity="identity"
+      :countries="countries"
+      :country-loading="countryLoading"
+      :country-error="countryError"
+      @country="emit('country', $event)"
+      @retry-countries="emit('retryCountries')"
+      @password="emit('mode', 'phone_password')"
+      @stage="emit('phoneStage', $event)"
+    />
+    <form v-else-if="initial || !view" class="credential-form" novalidate @submit.prevent="submit">
       <LoginEmailInput
         v-if="mode === 'email'"
         v-model="email"
@@ -309,7 +308,7 @@ async function submit() {
           重新加载
         </button>
       </p>
-      <label v-if="mode !== 'phone_sms'"
+      <label
         ><span class="sr-only">密码</span
         ><input
           ref="passwordInput"
@@ -322,34 +321,11 @@ async function submit() {
           required
           :disabled="disabled"
       /></label>
-      <label v-else
-        ><span class="sr-only">验证码</span
-        ><span class="login-code"
-          ><input
-            v-model="code"
-            aria-label="短信验证码"
-            placeholder="请输入验证码"
-            inputmode="numeric"
-            autocomplete="one-time-code"
-            pattern="[0-9]{4,8}"
-            maxlength="8"
-            required
-            :disabled="disabled"
-          /><button
-            type="button"
-            :disabled="disabled || seconds > 0 || !countries.length"
-            @click="sendSms"
-          >
-            {{ seconds ? `${seconds} 秒后重发` : '获取验证码' }}
-          </button></span
-        ></label
-      >
       <div class="login-options">
         <p v-if="formError" class="credential-error" role="alert">{{ formError }}</p>
         <label v-else><input v-model="remember" type="checkbox" :disabled="busy" />自动登录</label>
         <div class="login-option-links">
           <button
-            v-if="mode !== 'phone_sms'"
             type="button"
             :disabled="busy || openingDocument"
             @click="mode === 'email' ? openDocument('email_recovery') : emit('forgot')"
@@ -361,9 +337,9 @@ async function submit() {
             v-if="mode !== 'email'"
             type="button"
             :disabled="busy"
-            @click="emit('mode', mode === 'phone_sms' ? 'phone_password' : 'phone_sms')"
+            @click="emit('mode', 'phone_sms')"
           >
-            {{ mode === 'phone_sms' ? '密码登录' : '验证码登录' }}
+            验证码登录
           </button>
         </div>
       </div>
@@ -395,6 +371,7 @@ async function submit() {
     />
     <p class="login-status" role="status" :data-login-status="view?.status">
       {{
+        phoneActive ||
         deviceActive ||
         smsActive ||
         emailActive ||
@@ -409,6 +386,7 @@ async function submit() {
     <button
       v-if="
         !busy &&
+        !phoneActive &&
         !deviceActive &&
         !smsActive &&
         !emailActive &&

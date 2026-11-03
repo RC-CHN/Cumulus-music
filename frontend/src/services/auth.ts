@@ -16,6 +16,7 @@ export type LoginStatus =
   | 'captcha'
   | 'two_factor'
   | 'phone_reuse'
+  | 'phone_entry'
   | 'security_question'
   | 'security_qr'
   | 'upgrade_required'
@@ -33,6 +34,7 @@ export interface LoginAnswer {
   tag?: string | null;
 }
 export interface LoginView {
+  phoneEntry?: PhoneEntryView | null;
   device?: DeviceVerificationView | null;
   sms?: SmsVerificationView | null;
   email?: EmailVerificationView | null;
@@ -58,6 +60,10 @@ export interface LoginView {
   };
 }
 export type LoginCommand =
+  | { kind: 'phone_start'; phone: string; country_code: string }
+  | { kind: 'phone_retry' | 'phone_resend' | 'phone_nickname_hint'; entry_id: string }
+  | { kind: 'phone_code'; entry_id: string; code: string; remember: boolean }
+  | { kind: 'phone_register'; entry_id: string; nickname: string | null }
   | { kind: 'sms_start'; direction: 'uplink' | 'downlink' }
   | { kind: 'sms_refresh' | 'sms_check' | 'sms_stop'; verification_id: string }
   | { kind: 'device_start'; method: 'confirm' | 'scan' }
@@ -93,6 +99,40 @@ export type LoginCommand =
       verification_id: string;
     }
   | { kind: 'reuse_register'; verification_id: string; nickname: string | null };
+export type PhoneEntryStep = 'number' | 'code' | 'nickname' | 'recovery';
+export interface PhoneEntryView {
+  id: string;
+  phase:
+    | 'checking_account'
+    | 'check_failed'
+    | 'sending_code'
+    | 'code_required'
+    | 'verifying'
+    | 'nickname'
+    | 'hinting'
+    | 'checking_nickname'
+    | 'registering'
+    | 'recovery_required';
+  code: number | null;
+  newUser: boolean;
+  canSkipNickname: boolean;
+  suggestedNickname: string | null;
+  nicknameError: ReuseVerificationView['nicknameError'];
+  issue:
+    | 'check_failed'
+    | 'send_failed'
+    | 'send_unconfirmed'
+    | 'cooldown'
+    | 'daily_limit'
+    | 'five_per_day'
+    | 'code_invalid'
+    | 'verification_unconfirmed'
+    | 'login_rejected'
+    | 'login_unconfirmed'
+    | null;
+  registrationBlocked: boolean;
+  canReconcile: boolean;
+}
 export interface ReuseVerificationView {
   id: string;
   phase:
@@ -238,6 +278,7 @@ export function loginMessage(view: LoginView | undefined): string {
       : '此步骤需要额外验证，请改用扫码登录',
     two_factor: '请选择安全验证方式',
     phone_reuse: '需要确认此手机号关联的账号',
+    phone_entry: '',
     security_question: '请回答账号安全问题',
     security_qr: '此账号需要原设备安全验证，当前尚未接入，请在官方 App 完成验证后重新扫码',
     upgrade_required: '服务要求更新登录组件，请暂时使用官方 App',

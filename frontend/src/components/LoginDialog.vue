@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
-import type { LoginMode } from '../services/auth';
+import type { LoginMode, PhoneEntryStep } from '../services/auth';
 import type { LoginIdentity } from '../services/loginIdentity';
 import { useCore } from '../services/core';
 import {
@@ -17,6 +17,7 @@ const dialog = ref<HTMLDialogElement>();
 const core = useCore();
 const mode = ref<'qr' | 'phone_help' | Exclude<LoginMode, 'saved_account'>>('qr');
 const safety = ref<string | null>(null);
+const phoneStage = ref<PhoneEntryStep>('number');
 const identity = reactive<LoginIdentity>({
   phone: '',
   country: '86',
@@ -71,6 +72,7 @@ function select(value: typeof mode.value) {
   if (closing || mode.value === value) return;
   deactivate();
   safety.value = null;
+  phoneStage.value = 'number';
   mode.value = value;
 }
 function phone() {
@@ -101,9 +103,15 @@ const title = computed(() =>
       ? '扫码登录'
       : mode.value === 'email'
         ? '邮箱登录'
-        : mode.value === 'phone_help'
-          ? '忘记密码'
-          : '手机登录',
+        : mode.value === 'phone_sms' && phoneStage.value === 'nickname'
+          ? '希望大家怎么称呼你呢？'
+          : mode.value === 'phone_sms' && phoneStage.value === 'recovery'
+            ? '核对登录状态'
+            : mode.value === 'phone_sms' && phoneStage.value === 'code'
+              ? '验证码登录'
+              : mode.value === 'phone_help'
+                ? '忘记密码'
+                : '手机登录',
 );
 let focused: HTMLElement | null = null;
 watch(
@@ -131,9 +139,20 @@ onBeforeUnmount(deactivate);
     >
       ‹ 其他登录方式
     </button>
-    <div v-if="!safety" class="brand-mark">C</div>
+    <div
+      v-if="!safety && phoneStage !== 'nickname' && phoneStage !== 'recovery'"
+      class="brand-mark"
+    >
+      C
+    </div>
     <h2 id="login-title">{{ title }}</h2>
-    <nav v-if="!safety && mode !== 'phone_help'" class="login-methods" aria-label="登录方式">
+    <nav
+      v-if="
+        !safety && mode !== 'phone_help' && phoneStage !== 'nickname' && phoneStage !== 'recovery'
+      "
+      class="login-methods"
+      aria-label="登录方式"
+    >
       <button :aria-pressed="mode === 'qr'" @click="select('qr')">扫码</button>
       <button :aria-pressed="mode.startsWith('phone')" @click="phone">手机</button>
       <button :aria-pressed="mode === 'email'" @click="select('email')">邮箱</button>
@@ -160,11 +179,14 @@ onBeforeUnmount(deactivate);
           @authorized="emit('authorized')"
           @qr="select('qr')"
           @safety="safety = $event"
+          @phone-stage="phoneStage = $event"
         />
       </div>
     </Transition>
     <button
-      v-if="!safety && mode !== 'phone_help'"
+      v-if="
+        !safety && mode !== 'phone_help' && phoneStage !== 'nickname' && phoneStage !== 'recovery'
+      "
       class="login-accounts"
       @click="close('accounts')"
     >

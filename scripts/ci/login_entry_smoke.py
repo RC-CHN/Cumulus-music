@@ -46,7 +46,7 @@ def main():
         assert paths.get('/api/sms/captcha/sent', 0) == 0
         assert paths.get('/api/login', 0) == paths.get('/api/login/cellphone', 0) == 0
     assert by['sms_consent_required_light']['consentRequired']
-    assert by['submit_consent_required_light']['otpLength'] == 6
+    assert by['submit_consent_required_light']['otpLength'] == 0
     assert by['email_consent_required_small_dark']['passwordLength'] > 0
     assert done['fixture']['browserDocuments'] == ['service', 'privacy', 'children', 'privacy', 'privacy', 'email_recovery']
     assert '浏览器未能打开' in by['legal_launch_failed_light']['validation']

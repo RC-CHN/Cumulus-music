@@ -269,7 +269,6 @@
     await tab("手机");
     await country("HK");
     fill("登录手机号", "51234567");
-    fill("短信验证码", "123456");
     click(one('.login-options input[type="checkbox"]'));
     click(button("密码登录"));
     await sleep(0);
@@ -327,7 +326,7 @@
     );
     await wait(
       () =>
-        all('[aria-label="短信验证码"]').length &&
+        all('[aria-label="登录手机号"]').length &&
         status() === "ready" &&
         !one(".tab-leave-active"),
       "SMS mode",
@@ -335,7 +334,7 @@
     await settle();
     assert(
       one('[aria-label="登录手机号"]').value === "51234567" &&
-        one('[aria-label="短信验证码"]').value === "",
+        !one('[aria-label="短信验证码"]'),
       "identifier retained and OTP discarded",
     );
     await stage("phone_sms_light", { expectGuest: true });
@@ -350,10 +349,15 @@
     await country("CN");
     fill("登录手机号", "13800138000");
     click(one('[aria-label="同意登录协议"]'));
-    click(button("获取验证码"));
-    await wait(() => status() === "code_sent", "SMS sent once");
+    click(one(".login-submit"));
+    await wait(() => one('[data-phone-phase="code_required"]'), "SMS sent once");
+    await settle();
     await stage("sms_cooldown_small_dark", { expectGuest: true });
+    fill("短信验证码", "123456");
+    const outgoingCode = one('[aria-label="短信验证码"]');
     click(button("密码登录"));
+    await sleep(0);
+    assert(outgoingCode.value === "", "outgoing OTP cleared before animation");
     await wait(
       () =>
         all('[aria-label="登录密码"]').length &&
@@ -365,11 +369,14 @@
     click(button("验证码登录"));
     await wait(
       () =>
-        all('[aria-label="短信验证码"]').length &&
+        all('[aria-label="登录手机号"]').length &&
         status() === "ready" &&
         !one(".tab-leave-active"),
       "SMS return",
     );
+    await settle();
+    click(one(".login-submit"));
+    await wait(() => one('[data-phone-phase="code_required"]'), "same phone code page restored");
     await settle();
     assert(
       button("获取验证码") === undefined &&
@@ -549,6 +556,10 @@
     await settle();
     await tab("手机");
     fill("登录手机号", "13800138000");
+    click(one('[aria-label="同意登录协议"]'));
+    click(one(".login-submit"));
+    await wait(() => one('[data-phone-phase="code_required"]'), "SMS code page");
+    await settle();
     fill("短信验证码", "123456");
     click(one('.login-options input[type="checkbox"]'));
     if (!one('[aria-label="同意登录协议"]').checked)
