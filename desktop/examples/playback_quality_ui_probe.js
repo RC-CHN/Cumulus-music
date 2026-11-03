@@ -25,7 +25,7 @@
         rows:items.map(n=>({label:n.textContent.trim(),checked:n.getAttribute('aria-checked')==='true',focused:n===document.activeElement,hit:hit(n),...rect(n)}))}:null,
       expectedTrack,trackId:bar().dataset.trackId,requested:bar().dataset.requestedQuality,actual:bar().dataset.quality,preferred:bar().dataset.preferredQuality,
       damaged:bar().dataset.qualityPreferencesDamaged==='true',position:Number(bar().dataset.position),state:bar().dataset.state,
-      message:one('.playback-message')?.textContent.trim()??'',documentContained:document.documentElement.scrollWidth<=innerWidth,paintSamples:[]};
+      message:one('.playback-message')?.textContent.trim()??'',retryVisible:!!one('.playback-message button'),documentContained:document.documentElement.scrollWidth<=innerWidth,paintSamples:[]};
     assert(row.trackId===expectedTrack,'selected song identity');
     assert(row.documentContained&&row.trigger.hit,'quality trigger overflow/obstruction');
     assert(row.trigger.description==='当前标准','accessible current quality');
@@ -124,9 +124,11 @@
       }
       await fixture('grant-vivid');await fixture('deny');const oldPlay=bar().dataset.playId;
       await open();click(row('臻音全景声'));
-      await wait(()=>one('.playback-message button')&&!one('.quality-action-menu'),'denied authorization');
-      assert(bar().dataset.playId===oldPlay&&bar().dataset.preferredQuality==='lossless','denial preserves previous audio and preference');await capture('authorization_denied');
-      await fixture('allow');click(one('.playback-message button'));await wait(()=>bar().dataset.preferredQuality==='vivid'&&!one('.playback-message'),'explicit retry');await capture('authorization_retried');
+      await wait(()=>one('.playback-message')?.textContent.includes('暂无可用音源')&&!one('.quality-action-menu'),'visible denial of the requested audio source');
+      assert(!one('.playback-message button'),'unavailable source must not expose a generic Retry action');
+      assert(bar().dataset.playId===oldPlay&&bar().dataset.requestedQuality==='lossless'&&bar().dataset.preferredQuality==='lossless','denial preserves previous audio, request and preference');await capture('authorization_denied');
+      await fixture('allow');
+      await choose('臻音全景声','vivid');await capture('authorization_reselected');
       await fixture('damage');await wait(()=>bar().dataset.qualityPreferencesDamaged==='true','damaged preferences');await open();await capture('damaged_preferences');
       click(row('重置音质偏好'));await wait(()=>bar().dataset.qualityPreferencesDamaged==='false'&&!one('.quality-action-menu'),'explicit repair');await capture('repaired_preferences');
       await open();await capture('repaired_menu');await choose('无损','lossless');await capture('saved_preference');

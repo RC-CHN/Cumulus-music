@@ -26,6 +26,19 @@ def verify(stages, reopened=False):
             if not row['damaged']:
                 selected=[r for r in row['popup']['rows'] if r['checked']]
                 assert len(selected) == 1 and selected[0]['label'].startswith('标准')
+    if not reopened:
+        denied, = [row for row in stages if row['stage'].endswith('_authorization_denied')]
+        reselected, = [row for row in stages if row['stage'].endswith('_authorization_reselected')]
+        assert '暂无可用音源' in denied['message'] and not denied['retryVisible']
+        assert denied['requested'] == denied['preferred'] == 'lossless'
+        assert reselected['requested'] == reselected['preferred'] == 'vivid'
+        assert not reselected['message']
+        assert denied['syntheticQuality']['denied'] and not reselected['syntheticQuality']['denied']
+        for row, expected in [(denied, 1), (reselected, 2)]:
+            # Successful selection may also prefetch the next queued song.
+            vivid = [req for req in row['syntheticQuality']['requests']
+                     if req['quality'] == 'vivid' and str(req['id']) == row['trackId']]
+            assert len(vivid) == expected
     return {'ok': True, 'actualWebView': True, 'states': len(stages), 'reopened': reopened,
             'realMusicRequests': 0, 'realAccountWrites': 0, 'physicalAudioOutputVerified': False}
 
