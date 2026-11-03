@@ -95,6 +95,7 @@ export interface CoreClient
   pollQr(operationId: string): Promise<QrStatus>;
   cancelQr(operationId: string): Promise<void>;
   playlists(): Promise<AccountData<PlaylistView[]>>;
+  playlistTagPage(epoch: string, query: PlaylistTagQuery): Promise<AccountData<PlaylistTagPage>>;
   playlistSubscribers(
     epoch: string,
     id: string,
@@ -129,6 +130,12 @@ export interface PageRequest {
   limit: number;
   revision?: string | null;
 }
+export type PlaylistTagQuery = { kind: 'category'; tag: string } | { kind: 'items'; ids: string[] };
+export interface PlaylistTagPage {
+  items: { id: string; name: string; coverUrl: string | null }[];
+  remainingIds: string[];
+}
+
 export interface PlaylistSubscribersPage {
   subscribers: { nickname: string; avatarUrl: string | null; signature: string }[];
   previousOffset: number | null;
@@ -143,6 +150,7 @@ export interface PlaylistView {
   description: string;
   creator: string;
   creatorAvatarUrl?: string | null;
+  tags?: string[];
   headerDate?: { kind: 'created' | 'updated'; timestampMs: number } | null;
   trackCount: number;
   owned: boolean;

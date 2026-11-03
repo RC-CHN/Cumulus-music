@@ -114,8 +114,20 @@ playlist_comment_tab_smoke.py 在 Linux/Xvfb 的真实 WebView 以合成接口�
 `.build/playlist-layout-capture-cLpRFTSU/run/audit.json`。其中
 `first/ux_31_subscribed_760_dark.png` 可核对窄窗深色更新日期和作者占位。
 
+标签导航
+playlist/views/Common.jsx:549–562 将歌单标签链接到 /choice/playlist/:cat；
+choice/playlist/views/PagePlaylistSquare.tsx:169–179 读取该分类。恢复的
+hybrid_40/2306.js:1100–1160 首读 24 个并保留 playlistIds，后续以 24 个 ID 为一组；
+hybrid_app/15.js:3366–3376 确认 /api/playlist/category/list 与 /api/playlist/list/get，
+两个读取均使用 newStyle:true。Cumulus 的标签打开歌单广场分类，结果可进入歌单，
+返回保留已读页与对应卡片焦点；分页使用明确按钮，每页最多 24 张卡。读取只在进入
+分类或显式翻页时进行，失败可重试；账号或分类变化不接收迟到结果。
+仅接普通分类列表，不包含推荐分组、精品推荐块、完整分类切换条或官方连续滚动。
+Linux/Xvfb 真实 WebView 用合成夹具验证标签导航、24 张首屏卡、续页顺序、打开
+歌单后原页原卡焦点恢复，期间分类和续页请求各一次。未用真实服务或 Windows 视觉。
+
 尚未一致的部分
-可点的用户主页、标签入口等仍未接通。
+可点的用户主页仍未接通。
 详情菜单仅暴露已有编辑/排序，
 没有冒充官方完整菜单；封面公开遮罩、用户挂件和 VIP 特例、筛选/排序/批量操作、
 官方紧凑实验和完整主题皮肤仍要继续核对。真实封面图和 Windows/DPI 的视觉结果也需

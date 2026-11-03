@@ -30,6 +30,7 @@ defineEmits<{
   subscribe: [];
   action: [key: string];
   intelligence: [];
+  tag: [tag: string];
 }>();
 </script>
 
@@ -73,6 +74,15 @@ defineEmits<{
             <Icon v-else name="user" aria-hidden="true" />
             <span class="ellipsis" :title="playlist.creator">{{ playlist.creator }}</span>
           </span>
+          <div v-if="playlist.tags?.length" class="playlist-hero-tags">
+            <span>标签：</span>
+            <template v-for="(tag, index) in playlist.tags" :key="tag">
+              <span v-if="index" aria-hidden="true"> / </span>
+              <button type="button" class="text-button" @click="$emit('tag', tag)">
+                {{ tag }}
+              </button>
+            </template>
+          </div>
           <span v-if="date" class="playlist-header-date">
             <time :datetime="date">{{ date }}</time
             >{{ playlist.headerDate?.kind === 'updated' ? '更新' : '创建' }}

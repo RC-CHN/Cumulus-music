@@ -32,6 +32,7 @@ mod mv;
 pub mod native_media;
 mod player;
 mod playlist_cover;
+mod playlist_tags_browse;
 mod playlists;
 mod podcast;
 mod rankings;

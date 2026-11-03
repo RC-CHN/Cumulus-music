@@ -65,6 +65,11 @@ impl Api for Backend {
                     }
                     json!({"code":200,"playlist":value})
                 }
+                "/api/playlist/category/list" => json!({"code":200,
+                    "playlists":[{"id":1,"name":"分类歌单","coverImgUrl":"http://p1.music.126.net/a.jpg?secret=DO_NOT_EXPORT"}],
+                    "playlistIds":(1..=26).collect::<Vec<_>>() }),
+                "/api/playlist/list/get" => json!({"code":200,
+                    "playlists":[{"id":26,"name":"第二页乙"},{"id":25,"name":"第二页甲"}]}),
                 "/api/playlist/subscribers" => match payload["offset"].as_u64() {
                     Some(0) => {
                         json!({"code":200,"subscribers":[{"userId":81,"nickname":"收藏者甲","signature":"签名","avatarUrl":"http://p1.music.126.net/a.jpg?secret=DO_NOT_EXPORT","token":"DO_NOT_EXPORT"}],"more":true,"total":25})
@@ -488,4 +493,77 @@ async fn playlist_header_projects_only_the_official_date_and_public_creator_artw
         missing["headerDate"].is_null(),
         "special playlists never fall back to createTime"
     );
+}
+
+#[tokio::test]
+async fn playlist_tag_browse_uses_official_first_and_continuation_reads() {
+    use cumulus_core::client::dto::PlaylistTagQuery;
+    let dir = tempfile::tempdir().unwrap();
+    let backend = Arc::new(Backend::default());
+    let (client, _) = client(dir.path(), backend.clone());
+    let epoch = client.restore_account().await.unwrap().epoch;
+    assert!(
+        client
+            .playlist_tag_page(
+                "0",
+                PlaylistTagQuery::Category {
+                    tag: "轻音乐".into()
+                }
+            )
+            .await
+            .is_err()
+    );
+    let first = client
+        .playlist_tag_page(
+            &epoch,
+            PlaylistTagQuery::Category {
+                tag: "轻音乐".into(),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(first.epoch, epoch);
+    assert_eq!(first.value.remaining_ids, ["25", "26"]);
+    assert_eq!(
+        first.value.items[0].cover_url.as_deref(),
+        Some("https://p1.music.126.net/a.jpg?param=320y320")
+    );
+    let second = client
+        .playlist_tag_page(
+            &epoch,
+            PlaylistTagQuery::Items {
+                ids: first.value.remaining_ids,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        second
+            .value
+            .items
+            .iter()
+            .map(|row| row.id.as_str())
+            .collect::<Vec<_>>(),
+        ["25", "26"]
+    );
+    assert!(
+        client
+            .playlist_tag_page(
+                &epoch,
+                PlaylistTagQuery::Items {
+                    ids: vec!["25".into()]
+                }
+            )
+            .await
+            .is_err()
+    );
+    let calls = backend.requests.lock().unwrap();
+    assert!(calls.contains(&(
+        "/api/playlist/category/list".into(),
+        json!({"cat":"轻音乐","limit":24,"newStyle":true})
+    )));
+    assert!(calls.contains(&(
+        "/api/playlist/list/get".into(),
+        json!({"ids":["25","26"],"newStyle":true})
+    )));
 }

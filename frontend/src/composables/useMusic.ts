@@ -38,6 +38,7 @@ export type Page =
   | { kind: 'mv'; id: string; taskId?: string }
   | { kind: 'comments'; resource: CommentResource; title: string }
   | { kind: 'playlist'; id: string }
+  | { kind: 'playlist_tag'; tag: string }
   | {
       kind: 'search';
       keyword: string;
@@ -167,6 +168,7 @@ export function useMusic(
         !signedIn.value ||
         target.kind === 'search' ||
         target.kind === 'library' ||
+        target.kind === 'playlist_tag' ||
         target.kind === 'history' ||
         target.kind === 'settings' ||
         target.kind === 'local' ||
@@ -231,7 +233,11 @@ export function useMusic(
       if (next.epoch !== account.value.epoch) {
         history.length = 0;
         historyLength.value = 0;
-        if (['playlist', 'comments', 'catalog', 'search', 'mv'].includes(page.value.kind))
+        if (
+          ['playlist', 'playlist_tag', 'comments', 'catalog', 'search', 'mv'].includes(
+            page.value.kind,
+          )
+        )
           page.value = { kind: 'daily' };
         playlistError.value = '';
         libraryError.value = '';

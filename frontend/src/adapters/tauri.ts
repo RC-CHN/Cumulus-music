@@ -250,6 +250,7 @@ export function createTauriClient(): CoreClient {
     pollQr: (operationId) => invoke('poll_qr', { operationId }),
     cancelQr: (operationId) => invoke('cancel_qr', { operationId }),
     playlists: () => invoke('account_playlists'),
+    playlistTagPage: (epoch, query) => invoke('playlist_tag_page', { epoch, query }),
     playlistSubscribers: (epoch, id, offset) =>
       invoke('playlist_subscribers', { epoch, id, offset }),
     playlistPage: (id, page) => invoke('playlist_page', { id, page }),

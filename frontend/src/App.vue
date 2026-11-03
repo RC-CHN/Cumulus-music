@@ -29,6 +29,8 @@ import AppSidebar from './components/sidebar/AppSidebar.vue';
 import { libraryView } from './services/playlistLibrary';
 import DailyHeading from './components/DailyHeading.vue';
 import PlaylistHero from './components/playlist/PlaylistHero.vue';
+import PlaylistTagBrowse from './components/playlist/PlaylistTagBrowse.vue';
+import { usePlaylistTagBrowse } from './composables/usePlaylistTagBrowse';
 import PlaylistSubscribers from './components/playlist/PlaylistSubscribers.vue';
 import { filterPlaylistTracks } from './services/playlistTrackSearch';
 import { usePlaylistSubscribers } from './composables/usePlaylistSubscribers';
@@ -921,6 +923,18 @@ const {
   historyLength,
   signedIn,
 } = music;
+const playlistTagBrowse = usePlaylistTagBrowse(core);
+watch(
+  [
+    () => account.value.epoch,
+    () => account.value.status,
+    () => (page.value.kind === 'playlist_tag' ? page.value.tag : null),
+  ],
+  ([epoch, status, tag]) => {
+    void playlistTagBrowse.enter(status === 'authenticated' ? epoch : '', tag);
+  },
+  { immediate: true, flush: 'sync' },
+);
 const playlistPanelId = () =>
   page.value.kind === 'playlist' && result.value?.playlist?.id === page.value.id
     ? page.value.id
@@ -1939,6 +1953,12 @@ onUnmounted(() => {
                 @comments="(id, title) => openComments({ kind: 'voice', id }, title)"
                 @download="(tracks) => (downloadDialog = { kind: 'voice', tracks })"
               />
+              <PlaylistTagBrowse
+                v-else-if="page.kind === 'playlist_tag'"
+                :tag="page.tag"
+                :model="playlistTagBrowse"
+                @open="(id) => music.navigate({ kind: 'playlist', id })"
+              />
               <CommentsPage
                 v-else-if="page.kind === 'comments'"
                 :model="comments"
@@ -2055,6 +2075,7 @@ onUnmounted(() => {
                   :busy="playlistManager.busy.value"
                   :items="playlistMenu(result.playlist, 'detail')"
                   @edit="editPlaylist(result.playlist.id)"
+                  @tag="(tag) => music.navigate({ kind: 'playlist_tag', tag })"
                   @play="play(result.tracks.findIndex((track) => !track.missing))"
                   @download="
                     downloadDialog = {

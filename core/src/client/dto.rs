@@ -35,6 +35,7 @@ pub use super::player::{
     StartupPreferencesCommand, StartupPreferencesView,
 };
 pub use super::playlist_cover::{CoverCommand, CoverOutcome};
+pub use super::playlist_tags_browse::{PlaylistTagPage, PlaylistTagQuery};
 pub use super::playlists::{PlaylistEditor, PlaylistMutationView, PlaylistOrderView, PlaylistTag};
 pub use super::podcast::{
     EpisodeView, PodcastCard, PodcastCommand, PodcastMutationView, PodcastPage, PodcastQuery,
@@ -101,6 +102,7 @@ pub struct PlaylistView {
     pub creator: String,
     pub creator_avatar_url: Option<String>,
     pub header_date: Option<PlaylistHeaderDate>,
+    pub tags: Vec<String>,
     pub track_count: usize,
     pub subscribed_count: Option<u64>,
     pub owned: bool,

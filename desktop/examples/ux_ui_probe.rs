@@ -83,6 +83,11 @@ fn playlist_comments_proof() -> bool {
 static PLAYLIST_COMMENT_THREADS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
 static PLAYLIST_COMMENT_DETAILS: std::sync::Mutex<Vec<u64>> = std::sync::Mutex::new(Vec::new());
 
+fn playlist_tag_browse_proof() -> bool {
+    std::env::var_os("CUMULUS_PLAYLIST_TAG_BROWSE_PROOF").is_some()
+}
+static PLAYLIST_TAG_CALLS: std::sync::Mutex<Vec<Value>> = std::sync::Mutex::new(Vec::new());
+
 fn playlist(id: u64) -> Value {
     intelligence_start_fixture::playlist(playlist_editor_fixture::decorate(
         playlist_layout_fixture::decorate(
@@ -206,6 +211,15 @@ impl Api for Library {
                         "content":content,"time":1700000000000_u64,"liked":false,"likedCount":0,
                         "user":{"userId":3,"nickname":"合成听友"},"beReplied":[]}],
                         "hotComments":[],"topComments":[],"more":false,"total":if second {8}else{12}})
+                }
+                "/api/playlist/category/list" if playlist_tag_browse_proof() => {
+                    PLAYLIST_TAG_CALLS.lock().unwrap().push(args);
+                    json!({"code":200,"playlists":(100..124).map(|id| json!({"id":id,"name":format!("分类合成歌单 {id}")})).collect::<Vec<_>>(),
+                        "playlistIds":(100..124).chain([3,4]).collect::<Vec<_>>()})
+                }
+                "/api/playlist/list/get" if playlist_tag_browse_proof() => {
+                    PLAYLIST_TAG_CALLS.lock().unwrap().push(args);
+                    json!({"code":200,"playlists":[{"id":4,"name":"分类续页乙"},{"id":3,"name":"分类续页甲"}]})
                 }
                 "/api/playlist/subscribers" if subscribers_proof() => {
                     assert_eq!(args["id"], "2");
@@ -356,6 +370,9 @@ fn main() {
             if intelligence_start_fixture::enabled() {value["syntheticIntelligenceStart"]=intelligence_start_fixture::report();}
             if search_fixture::enabled() { value["syntheticSearchCalls"]=json!(search_fixture::calls()); }
             if subscribers_proof() { value["subscriberOffsets"]=json!(*SUBSCRIBER_OFFSETS.lock().unwrap()); }
+            if playlist_tag_browse_proof() {
+                value["playlistTagCalls"] = json!(*PLAYLIST_TAG_CALLS.lock().unwrap());
+            }
             if playlist_comments_proof() {
                 value["playlistCommentThreads"]=json!(*PLAYLIST_COMMENT_THREADS.lock().unwrap());
                 value["playlistCommentDetails"]=json!(*PLAYLIST_COMMENT_DETAILS.lock().unwrap());

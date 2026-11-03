@@ -50,6 +50,7 @@ pub(super) fn playlist(value: &Value, uid: &str) -> Result<PlaylistView> {
         creator: string(&value["creator"]["nickname"]),
         creator_avatar_url: artwork(&value["creator"]["avatarUrl"]),
         header_date,
+        tags: super::playlist_tags_browse::header_tags(&value["tags"]),
         track_count: value["trackCount"].as_u64().unwrap_or(0) as usize,
         subscribed_count: value["subscribedCount"]
             .as_u64()
