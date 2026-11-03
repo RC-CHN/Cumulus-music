@@ -1325,6 +1325,15 @@ async fn active_peq_observation_keeps_playing_during_reads_and_detaches_on_remot
 
 #[tokio::test]
 async fn bound_parametric_clear_cannot_remove_a_newer_binding_or_release_rights() {
+    exercise_bound_parametric_clear(false).await;
+}
+
+#[tokio::test]
+async fn failed_bound_detach_retains_its_target_and_exclusive_use_fence() {
+    exercise_bound_parametric_clear(true).await;
+}
+
+async fn exercise_bound_parametric_clear(inject_failure: bool) {
     use cumulus_core::{
         effects::{
             authorization::{EffectAuthorizations, TrialConsent},
@@ -1415,14 +1424,31 @@ async fn bound_parametric_clear_cannot_remove_a_newer_binding_or_release_rights(
         Err(Error::StaleResponse)
     ));
     assert!(device.parametric_attached.load(Ordering::SeqCst));
+    assert!(matches!(
+        authorization.acquire_bound_use_fence_for(&token),
+        Err(Error::MutationBusy)
+    ));
     let calls = api.calls().len();
+    if inject_failure {
+        device.parametric_clear_fail.store(true, Ordering::SeqCst);
+        assert!(player.clear_bound_parametric(&token, target).await.is_err());
+        assert!(device.parametric_attached.load(Ordering::SeqCst));
+        assert!(matches!(
+            authorization.acquire_bound_use_fence_for(&token),
+            Err(Error::MutationBusy)
+        ));
+        device.parametric_clear_fail.store(false, Ordering::SeqCst);
+    }
     assert_eq!(
         player.clear_bound_parametric(&token, target).await.unwrap(),
         ParametricApplication::Cleared,
     );
     assert!(!device.parametric_attached.load(Ordering::SeqCst));
-    assert_eq!(player.snapshot().play_id, playing.play_id);
-    assert_eq!(player.snapshot().state, PlaybackStatus::Playing);
+    assert!(authorization.acquire_bound_use_fence_for(&token).is_ok());
+    if !inject_failure {
+        assert_eq!(player.snapshot().play_id, playing.play_id);
+        assert_eq!(player.snapshot().state, PlaybackStatus::Playing);
+    }
     assert_eq!(api.calls().len(), calls);
     assert!(
         authorization

@@ -11,6 +11,7 @@ use crate::{
         rights::known_non_trial,
         service::{EffectsLibrary, PreparedParametric, StandaloneParametric},
     },
+    storage::OperationLock,
 };
 use std::{
     sync::{
@@ -164,6 +165,14 @@ pub(super) fn current_non_trial(lease: &EffectLease) -> bool {
 }
 
 impl EffectAuthorizations {
+    /// Exclusive absence/use fence for all native bindings owned by this
+    /// profile account. A release coordinator must hold it across its exact
+    /// durable lease check and stop. Contention does not prove occupancy.
+    pub fn acquire_bound_use_fence_for(&self, token: &SessionToken) -> Result<OperationLock> {
+        let owner = self.owner(token)?;
+        OperationLock::acquire(self.store.directory(), "effect-native-bound-use", &owner)
+    }
+
     /// Explicit native registration from an opaque standalone preflight.
     /// The material is rechecked under the authorization lock at the durable
     /// write-intent boundary. A positive post-write observation is reused as

@@ -3,12 +3,16 @@ use crate::{
     Error, Result,
     account::SessionToken,
     effects::{
-        authorization::{ActiveParametricObservation, BoundParametric, BoundParametricTarget},
+        authorization::{
+            ActiveParametricObservation, BoundParametric, BoundParametricTarget,
+            EffectAuthorizations,
+        },
         parametric::ParametricPlan,
     },
     playback::engine::{AudioEngine, Cancellation},
+    storage::OperationLock,
 };
-use std::sync::Arc;
+use std::{collections::VecDeque, sync::Arc};
 use tokio::sync::oneshot;
 
 /// Configuration acknowledgement, not a claim of observed PCM processing.
@@ -41,8 +45,50 @@ enum Selection {
 pub(super) struct State {
     deferred: Option<Selection>,
     applied: Option<Arc<BoundParametric>>,
+    // A failed replacement may leave either the previous or attempted node.
+    installing: Option<Arc<BoundParametric>>,
+    bound_use: Option<OperationLock>,
+    cleared: VecDeque<(SessionToken, BoundParametricTarget)>,
     possibly_attached: bool,
     detach_required: bool,
+}
+
+impl State {
+    fn record_clear(&mut self, token: &SessionToken, binding: &BoundParametric) {
+        const MAX_RECENT_DETACHES: usize = 8;
+        binding.retire();
+        if self.cleared.len() == MAX_RECENT_DETACHES {
+            self.cleared.pop_front();
+        }
+        self.cleared.push_back((token.clone(), binding.target()));
+    }
+
+    fn clear_deferred(&mut self, token: &SessionToken) {
+        if let Some(Selection::Bound(binding)) = self.deferred.take() {
+            self.record_clear(token, &binding);
+        }
+    }
+
+    fn release_unused_fence(&mut self) {
+        if self.applied.is_none()
+            && self.installing.is_none()
+            && !matches!(self.deferred, Some(Selection::Bound(_)))
+        {
+            self.bound_use = None;
+        }
+    }
+}
+
+impl Drop for State {
+    fn drop(&mut self) {
+        if (self.applied.is_some() || self.installing.is_some())
+            && let Some(fence) = self.bound_use.take()
+        {
+            // Aborted or failed shutdown can leave an engine worker alive.
+            // Keep the OS fence until process exit instead of claiming absence.
+            std::mem::forget(fence);
+        }
+    }
 }
 
 impl PlaybackController {
@@ -159,12 +205,25 @@ impl Actor {
             return self.parametric_clear_bound(target).await;
         }
         if let Selection::Bound(binding) = &selection {
+            let fence = if self.parametric.bound_use.is_none() {
+                Some(
+                    EffectAuthorizations::new(self.session.clone())?
+                        .acquire_bound_use_fence_for(token)?,
+                )
+            } else {
+                None
+            };
             binding.with_current(&self.session, token, |_| Ok(()))?;
+            if let Some(fence) = fence {
+                self.parametric.bound_use = Some(fence);
+            }
         }
         if self.pending.is_some() {
             // Do not wait on the engine mutex held by a decoder. The latest
             // request will run in loaded(), before its first unpause.
+            self.parametric.clear_deferred(token);
             self.parametric.deferred = Some(selection);
+            self.parametric.release_unused_fence();
             return Ok(ParametricApplication::DeferredUntilLoaded);
         }
         self.parametric_apply_selection(selection).await
@@ -176,7 +235,16 @@ impl Actor {
     ) -> Result<ParametricApplication> {
         if matches!(&self.parametric.deferred, Some(Selection::Bound(binding)) if binding.target() == target)
         {
-            self.parametric.deferred = None;
+            self.parametric.clear_deferred(&self.token);
+            self.parametric.release_unused_fence();
+            return Ok(ParametricApplication::Cleared);
+        }
+        if self
+            .parametric
+            .cleared
+            .iter()
+            .any(|(token, cleared)| token == &self.token && *cleared == target)
+        {
             return Ok(ParametricApplication::Cleared);
         }
         if !self
@@ -213,6 +281,7 @@ impl Actor {
                 let (session, token, checked) =
                     (self.session.clone(), self.token.clone(), binding.clone());
                 self.parametric.possibly_attached = true;
+                self.parametric.installing = Some(binding);
                 let result = super::engine(self.engine.clone(), self.guard(), move |engine| {
                     checked.with_current(&session, &token, |plan| {
                         if engine.apply_parametric_component(plan)? {
@@ -224,8 +293,8 @@ impl Actor {
                 })
                 .await;
                 if result.is_ok() {
-                    self.parametric_retire_applied();
-                    self.parametric.applied = Some(binding);
+                    self.parametric_record_applied_clear();
+                    self.parametric.applied = self.parametric.installing.take();
                 }
                 self.parametric_cleanup_after_failure(result).await
             }
@@ -260,7 +329,8 @@ impl Actor {
         })
         .await;
         if enabled && result.is_ok() {
-            self.parametric_retire_applied();
+            self.parametric_record_applied_clear();
+            self.parametric.release_unused_fence();
         }
         self.parametric_cleanup_after_failure(result).await
     }
@@ -328,15 +398,25 @@ impl Actor {
         Ok(())
     }
 
-    fn parametric_retire_applied(&mut self) {
+    fn parametric_record_applied_clear(&mut self) {
         if let Some(binding) = self.parametric.applied.take() {
-            binding.retire();
+            self.parametric.record_clear(&self.token, &binding);
         }
     }
 
     pub(super) async fn parametric_reset(&mut self) -> Result<()> {
-        self.parametric.deferred = None;
-        self.parametric_retire_applied();
+        self.parametric.clear_deferred(&self.token);
+        // Stop new observations/resume immediately, but keep the exact targets
+        // and their OS fence until native removal actually succeeds.
+        for binding in [
+            self.parametric.applied.as_ref(),
+            self.parametric.installing.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            binding.retire();
+        }
         if self.parametric.possibly_attached {
             self.parametric.detach_required = true;
             super::engine(self.engine.clone(), Cancellation::default(), |engine| {
@@ -346,6 +426,11 @@ impl Actor {
             self.parametric.possibly_attached = false;
             self.parametric.detach_required = false;
         }
+        self.parametric_record_applied_clear();
+        if let Some(binding) = self.parametric.installing.take() {
+            self.parametric.record_clear(&self.token, &binding);
+        }
+        self.parametric.release_unused_fence();
         Ok(())
     }
 }
