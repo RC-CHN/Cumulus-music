@@ -91,3 +91,29 @@
   未播放真实曲目。此证据验证正式程序到声卡的路由，不验证听感。
   报告与截图保存在 `.build/ordinary-host-pipewire-4417bec-v2/`；
   此本机检查不代替公开 CI 的合成音频测试。
+
+Linux 桌面批量复验（4d8e9d0，2026-11-04）：
+
+  播放：实际 Tauri WebView、libmpv 和隔离 HTTPS 音源通过 19 个
+  检查点。从搜索结果播放整组歌曲，暂停后接续原曲，曲终自动进入
+  第二首。服务器依序收到两次音源请求；下载续传及断网后的本地播放
+  同批通过。18 张截图，未访问真实业务服务。
+  运行 scripts/ci/main_flow_https_smoke.py --eof-next。
+
+  音效：以同一源码构建 cumulus-audio-filter。均衡器拖动经原生
+  确认 -3.5 dB，当前歌曲持续前进；低音和高音可在关闭十段均衡器
+  时单独使用，总旁路保留参数；自定义预设和处理状态重开后恢复。
+  响度 19 个检查点覆盖启停、重开、缺失和损坏，采用 null 音频输出。
+  旧暂存滤镜没有 V2 均衡器接口，不适用于本轮验证；用重新构建的
+  滤镜，两套脚本均通过。运行 scripts/ci/equalizer_live_smoke.py 和
+  scripts/ci/loudness_ui_smoke.py，传入本次构建的 --filter-library。
+
+  搜索：弹层 51 个状态（114 次合成查询），结果页 69 个状态
+  （73 次合成查询），均保留截图。核对联想、纠错、分类、翻页、
+  失败恢复和从结果触发播放。另通过 3 个原生播放检查点：单集直接
+  播放、原卡暂停，以及过时的播放准备凭据被拒绝。
+  运行 scripts/ci/search_smoke.py 与 scripts/ci/search_results_smoke.py，
+  后者另跑 --voice-direct。
+
+  本机截图和回执：.build/priority-exact-4d8e9d0-1793728972/。
+  本轮不验证实体扬声器听感、上游真实音源与搜索可用性或 Windows 实机。
