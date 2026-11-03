@@ -86,3 +86,8 @@ Linux Tauri 的普通与生日模式均验证九个状态，包括在暂停的�
 版本与队列版本，拒绝使用日推列表版本。按 styleRecommend 的原始顺序、
 trialMode:35 追加；当前播放不变，空队列从第一首启动。日推官方可将表内排序
 用于全部操作；本实现仍按当前列表的原始顺序，未新增官方排序行为。
+
+合并构建的 Linux Tauri 探针共验证 11 个状态：完整标题与紧凑条互斥、回到顶部
+恢复焦点、风格行内及两页滚动追加、暂停项保留、生日标题与既有日推批量回归。
+图在 `.build/sticky-search-final-webview/first/ux_10_style_sticky.png` 和
+`ux_11_daily_sticky.png`。本轮使用合成曲库、空音频输出，无真实账号写入。
