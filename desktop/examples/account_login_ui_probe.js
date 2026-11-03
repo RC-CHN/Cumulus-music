@@ -364,7 +364,11 @@
     await edit("桌面验证：已保存");
     await stage("profile_edit_dirty_light", { expectNickname });
     click(test("profile-edit-save"));
-    await wait(() => hasSignature("桌面验证：已保存"), "profile readback applied");
+    await wait(
+      () => hasSignature("桌面验证：已保存") &&
+        one('[data-profile-field="region"]')?.textContent.includes("杭州市（合成）"),
+      "profile readback uses cached region name",
+    );
     await stage("profile_edit_saved_light", { expectNickname });
     await theme("dark");
     await resize(880, 670);
