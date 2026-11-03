@@ -971,10 +971,12 @@ async fn old_unclassified_registration_cannot_be_promoted_from_current_rights() 
 mod playback_support;
 
 #[tokio::test]
-async fn supervised_peq_is_detached_after_local_rights_revocation_without_stopping_music() {
+async fn active_peq_observation_keeps_playing_during_reads_and_detaches_on_remote_revocation() {
     use cumulus_core::{
         effects::{
-            authorization::{EffectAuthorizations, TrialConsent},
+            authorization::{
+                ActiveParametricObservation as Observation, EffectAuthorizations, TrialConsent,
+            },
             service::ParametricPreparation,
         },
         playback::{
@@ -987,6 +989,7 @@ async fn supervised_peq_is_detached_after_local_rights_revocation_without_stoppi
     let temp = tempfile::tempdir().unwrap();
     let store = Arc::new(StateStore::open(temp.path()).unwrap());
     let (bytes, _) = sample("first");
+    let (held, release) = gate();
     let api = Arc::new(ScriptApi::new(pair(&sound(&bytes, URL), true).into_iter().chain([
         auth(true),
         json!({"code":200,"data":true}).into(),
@@ -995,6 +998,8 @@ async fn supervised_peq_is_detached_after_local_rights_revocation_without_stoppi
         auth(true),
         nontrial_recycle(false),
         json!({"code":200,"data":[{"id":1,"code":200,"url":"https://m1.music.126.net/fixture.mp3","md5":"abcd","expi":10,"level":"standard"}]}).into(),
+        held,
+        nontrial_recycle(false),
         auth(true),
         nontrial_recycle(true),
     ])));
@@ -1020,13 +1025,15 @@ async fn supervised_peq_is_detached_after_local_rights_revocation_without_stoppi
         .unwrap();
     let device = Arc::new(playback_support::Device::default());
     device.parametric_supported.store(true, Ordering::SeqCst);
-    let player = PlaybackController::start(
-        session.clone(),
-        store,
-        Arc::new(SourceResolver::new(session, None)),
-        playback_support::audio_engine(device.clone()),
-    )
-    .unwrap();
+    let player = Arc::new(
+        PlaybackController::start(
+            session.clone(),
+            store,
+            Arc::new(SourceResolver::new(session, None)),
+            playback_support::audio_engine(device.clone()),
+        )
+        .unwrap(),
+    );
 
     assert_eq!(
         player
@@ -1045,12 +1052,48 @@ async fn supervised_peq_is_detached_after_local_rights_revocation_without_stoppi
     );
     assert!(device.parametric_attached.load(Ordering::SeqCst));
     let before = device.state.lock().unwrap().stops;
-    assert!(
-        !authorizations
-            .observe_for(&token, id())
+    let revision = authorizations
+        .record_for(&token, id())
+        .unwrap()
+        .unwrap()
+        .revision;
+    let observing = tokio::spawn({
+        let (player, token) = (player.clone(), token.clone());
+        async move { player.observe_active_parametric(&token).await }
+    });
+    api.wait_for_calls(10).await;
+    assert!(matches!(
+        player.observe_active_parametric(&token).await,
+        Err(Error::MutationBusy)
+    ));
+    assert_eq!(
+        player
+            .command(
+                &token,
+                cumulus_core::playback::controller::PlaybackCommand::Snapshot
+            )
             .await
             .unwrap()
-            .can_use
+            .state,
+        PlaybackStatus::Playing
+    );
+    let Reply::Ready(positive) = auth(true) else {
+        unreachable!()
+    };
+    release.send(positive).unwrap();
+    assert_eq!(observing.await.unwrap().unwrap(), Observation::Confirmed);
+    assert_eq!(
+        authorizations
+            .record_for(&token, id())
+            .unwrap()
+            .unwrap()
+            .revision,
+        revision
+    );
+    assert!(device.parametric_attached.load(Ordering::SeqCst));
+    assert_eq!(
+        player.observe_active_parametric(&token).await.unwrap(),
+        Observation::Revoked
     );
     tokio::time::timeout(Duration::from_secs(3), async {
         while device.parametric_attached.load(Ordering::SeqCst) {
@@ -1061,6 +1104,14 @@ async fn supervised_peq_is_detached_after_local_rights_revocation_without_stoppi
     .unwrap();
     assert_eq!(player.snapshot().state, PlaybackStatus::Playing);
     assert_eq!(device.state.lock().unwrap().stops, before);
+    assert_eq!(
+        player.observe_active_parametric(&token).await.unwrap(),
+        Observation::NoActiveBinding
+    );
+    let lease = authorizations.record_for(&token, id()).unwrap().unwrap();
+    assert_eq!(lease.revision, revision + 1);
+    assert_eq!(lease.recyclable, Some(true));
+    assert_eq!(api.calls().len(), 13);
     assert_eq!(
         api.calls()
             .iter()

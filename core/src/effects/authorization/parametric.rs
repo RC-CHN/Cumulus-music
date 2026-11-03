@@ -5,11 +5,27 @@ use crate::{
     Error, Result,
     account::SessionToken,
     effects::{
+        api::EffectsApi,
         catalog::EffectId,
         service::{EffectsLibrary, PreparedParametric},
     },
 };
-use std::sync::Arc;
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
+};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ActiveParametricObservation {
+    NoActiveBinding,
+    Confirmed,
+    Revoked,
+}
+
+const OBSERVATION_BUDGET: Duration = Duration::from_secs(5);
 
 /// Native-only proof of a particular registration observation and prepared
 /// material. It is not serializable, a DSP receipt, or a perpetual permission.
@@ -18,11 +34,90 @@ pub struct BoundParametric {
     library: EffectsLibrary,
     operation: String,
     revision: u64,
+    observing: AtomicBool,
+    revoked: AtomicBool,
+    retired: AtomicBool,
 }
 
 impl BoundParametric {
     pub fn effect(&self) -> EffectId {
         self.prepared.effect()
+    }
+
+    pub(crate) fn retire(&self) {
+        self.retired.store(true, Ordering::Release);
+    }
+
+    pub(crate) async fn observe_active(
+        &self,
+        token: &SessionToken,
+    ) -> Result<ActiveParametricObservation> {
+        if self.observing.swap(true, Ordering::AcqRel) {
+            return Err(Error::MutationBusy);
+        }
+        struct Reset<'a>(&'a AtomicBool);
+        impl Drop for Reset<'_> {
+            fn drop(&mut self) {
+                self.0.store(false, Ordering::Release);
+            }
+        }
+        let _reset = Reset(&self.observing);
+        let session = &self.library.session;
+        self.with_current(session, token, |_| Ok(()))?;
+        let effect = self.effect();
+        let facts = tokio::time::timeout(OBSERVATION_BUDGET, async {
+            let authorization = session
+                .run_for(token, |api, _| async move {
+                    EffectsApi::new(api).authorization(effect).await
+                })
+                .await?;
+            let recyclable = session
+                .run_for(token, |api, _| async move {
+                    EffectsApi::new(api).recyclable(effect).await
+                })
+                .await?;
+            Ok::<_, Error>((authorization, recyclable))
+        })
+        .await
+        .unwrap_or(Err(Error::State("effect rights observation timed out")));
+        if facts.as_ref().is_ok_and(|(authorization, recyclable)| {
+            *recyclable == Some(false)
+                && authorization
+                    .as_ref()
+                    .is_some_and(|auth| auth.can_use && known_non_trial(auth.can_use_type))
+        }) {
+            // No durable revision change and no DSP reset on a positive
+            // observation. Recheck that neither owner nor lease changed.
+            self.with_current(session, token, |_| Ok(()))?;
+            return Ok(ActiveParametricObservation::Confirmed);
+        }
+
+        if self.retired.load(Ordering::Acquire) {
+            return Err(Error::StaleResponse);
+        }
+
+        // The active controller must fail closed even if a concurrent journal
+        // operation prevents persisting this exact observation.
+        self.revoked.store(true, Ordering::Release);
+        let authorizations = EffectAuthorizations::new(session.clone())?;
+        let owner = authorizations.owner(token)?;
+        let _lock = authorizations.lock(&owner)?;
+        let mut lease = authorizations.matching_lease(&owner, self)?;
+        match &facts {
+            Ok((authorization, recyclable)) => {
+                lease.authorization = authorization.clone();
+                lease.recyclable = *recyclable;
+                lease.last_error = None;
+            }
+            Err(_) => {
+                lease.authorization = None;
+                lease.recyclable = None;
+                lease.last_error = Some("active effect rights observation failed".into());
+            }
+        }
+        lease.advance()?;
+        session.with_token(token, |_| authorizations.save(&owner, &lease))?;
+        facts.map(|_| ActiveParametricObservation::Revoked)
     }
 
     pub(crate) fn with_current<T>(
@@ -102,6 +197,9 @@ impl EffectAuthorizations {
             library: library.clone(),
             operation: observation.lease.operation,
             revision: observation.lease.revision,
+            observing: AtomicBool::new(false),
+            revoked: AtomicBool::new(false),
+            retired: AtomicBool::new(false),
         })
     }
 
@@ -130,14 +228,20 @@ impl EffectAuthorizations {
         }
         let owner = self.owner(token)?;
         let _lock = self.lock(&owner)?;
-        let lease = self.get(&owner, binding.effect())?;
-        if !lease.is_some_and(|lease| {
-            lease.operation == binding.operation
-                && lease.revision == binding.revision
-                && current_non_trial(&lease)
-        }) {
+        if binding.revoked.load(Ordering::Acquire) || binding.retired.load(Ordering::Acquire) {
             return Err(Error::StaleResponse);
         }
+        self.matching_lease(&owner, binding)?;
         library.with_prepared_parametric_for(token, &binding.prepared, action)
+    }
+
+    fn matching_lease(&self, owner: &str, binding: &BoundParametric) -> Result<EffectLease> {
+        self.get(owner, binding.effect())?
+            .filter(|lease| {
+                lease.operation == binding.operation
+                    && lease.revision == binding.revision
+                    && current_non_trial(lease)
+            })
+            .ok_or(Error::StaleResponse)
     }
 }

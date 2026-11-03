@@ -48,6 +48,7 @@ struct Request {
 enum Message {
     Request(Request),
     Parametric(Box<parametric::Request>),
+    ObserveParametric(parametric::ObserveRequest),
     Cancel(String),
     Shutdown,
     Loading(u64),

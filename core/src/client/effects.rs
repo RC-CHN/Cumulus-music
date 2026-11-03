@@ -3,7 +3,7 @@ use crate::{
     Result,
     download::transfer::RunOptions,
     effects::{
-        authorization::{BoundParametric, EffectAuthorizations},
+        authorization::{ActiveParametricObservation, BoundParametric, EffectAuthorizations},
         catalog::{CatalogueKind, EffectId},
         device_directory::EffectDeviceRow,
         directory::{EffectDirectoryDetail, EffectDirectoryRow},
@@ -53,6 +53,22 @@ impl MusicClient {
             .controller()
             .await?
             .apply_bound_parametric(&token, binding)
+            .await?;
+        self.session.check_generation(&token)?;
+        Ok(result)
+    }
+
+    /// Trusted native host trigger for a bounded read of the active binding.
+    pub async fn observe_native_bound_parametric(
+        &self,
+        epoch: &str,
+    ) -> Result<ActiveParametricObservation> {
+        let token = self.player_token(epoch)?;
+        let result = self
+            .player
+            .controller()
+            .await?
+            .observe_active_parametric(&token)
             .await?;
         self.session.check_generation(&token)?;
         Ok(result)

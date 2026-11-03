@@ -5,7 +5,7 @@
 mod mutate;
 mod observe;
 mod parametric;
-pub use parametric::BoundParametric;
+pub use parametric::{ActiveParametricObservation, BoundParametric};
 mod record;
 use crate::{
     Error, Result,

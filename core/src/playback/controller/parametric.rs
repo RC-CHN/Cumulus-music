@@ -2,7 +2,10 @@ use super::{Message, PlaybackController, state::Actor};
 use crate::{
     Error, Result,
     account::SessionToken,
-    effects::{authorization::BoundParametric, parametric::ParametricPlan},
+    effects::{
+        authorization::{ActiveParametricObservation, BoundParametric},
+        parametric::ParametricPlan,
+    },
     playback::engine::{AudioEngine, Cancellation},
 };
 use std::sync::Arc;
@@ -21,6 +24,11 @@ pub(super) struct Request {
     token: SessionToken,
     selection: Selection,
     reply: oneshot::Sender<Result<ParametricApplication>>,
+}
+
+pub(super) struct ObserveRequest {
+    token: SessionToken,
+    reply: oneshot::Sender<Result<ActiveParametricObservation>>,
 }
 
 enum Selection {
@@ -60,6 +68,22 @@ impl PlaybackController {
             .await
     }
 
+    /// Explicit bounded server observation of the active bound component.
+    /// No caller-selected ID or automatic registration/release.
+    pub async fn observe_active_parametric(
+        &self,
+        token: &SessionToken,
+    ) -> Result<ActiveParametricObservation> {
+        let (reply, result) = oneshot::channel();
+        self.sender
+            .send(Message::ObserveParametric(ObserveRequest {
+                token: token.clone(),
+                reply,
+            }))
+            .map_err(|_| Error::State("player is closed"))?;
+        result.await.map_err(|_| Error::Cancelled)?
+    }
+
     async fn request_parametric(
         &self,
         token: &SessionToken,
@@ -78,6 +102,28 @@ impl PlaybackController {
 }
 
 impl Actor {
+    pub(super) async fn parametric_observe(&mut self, request: ObserveRequest) {
+        if request.reply.is_closed() {
+            return;
+        }
+        if let Err(error) = self.rebind().await {
+            let _ = request.reply.send(Err(error));
+        } else if request.token != self.token {
+            let _ = request.reply.send(Err(Error::StaleResponse));
+        } else if let Some(binding) = self.parametric.applied.clone() {
+            // The bounded task does not hold the actor or audio lock. Once
+            // dispatched it can mark a denial even if the requester drops.
+            tokio::spawn(async move {
+                let outcome = binding.observe_active(&request.token).await;
+                let _ = request.reply.send(outcome);
+            });
+        } else {
+            let _ = request
+                .reply
+                .send(Ok(ActiveParametricObservation::NoActiveBinding));
+        }
+    }
+
     pub(super) async fn parametric_request(&mut self, request: Request) {
         if request.reply.is_closed() {
             return;
@@ -138,6 +184,7 @@ impl Actor {
                 })
                 .await;
                 if result.is_ok() {
+                    self.parametric_retire_applied();
                     self.parametric.applied = Some(binding);
                 }
                 self.parametric_cleanup_after_failure(result).await
@@ -173,7 +220,7 @@ impl Actor {
         })
         .await;
         if enabled && result.is_ok() {
-            self.parametric.applied = None;
+            self.parametric_retire_applied();
         }
         self.parametric_cleanup_after_failure(result).await
     }
@@ -241,9 +288,15 @@ impl Actor {
         Ok(())
     }
 
+    fn parametric_retire_applied(&mut self) {
+        if let Some(binding) = self.parametric.applied.take() {
+            binding.retire();
+        }
+    }
+
     pub(super) async fn parametric_reset(&mut self) -> Result<()> {
         self.parametric.deferred = None;
-        self.parametric.applied = None;
+        self.parametric_retire_applied();
         if self.parametric.possibly_attached {
             self.parametric.detach_required = true;
             super::engine(self.engine.clone(), Cancellation::default(), |engine| {
