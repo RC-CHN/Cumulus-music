@@ -7,7 +7,7 @@ mod intelligence;
 mod load;
 mod loudness;
 mod parametric;
-pub use parametric::ParametricApplication;
+pub use parametric::{ParametricApplication, ParametricBindingStatus};
 mod quality;
 mod remote;
 mod startup;
@@ -49,6 +49,7 @@ enum Message {
     Request(Request),
     Parametric(Box<parametric::Request>),
     ObserveParametric(parametric::ObserveRequest),
+    InspectParametric(parametric::InspectRequest),
     Cancel(String),
     Shutdown,
     Loading(u64),

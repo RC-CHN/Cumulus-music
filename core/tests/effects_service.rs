@@ -1465,7 +1465,7 @@ async fn native_activation_consumes_the_receipt_and_submits_the_exact_binding() 
         account::profiles::ProfileRegistry,
         client::{MusicClient, NativeParametricActivation, NativeParametricActivationAttempt},
         effects::{authorization::LeasePhase, service::StandaloneParametricPreflight},
-        playback::controller::ParametricApplication,
+        playback::controller::{ParametricApplication, ParametricBindingStatus},
         protocol::http::ApiOrigin,
     };
     use std::sync::atomic::Ordering;
@@ -1507,6 +1507,13 @@ async fn native_activation_consumes_the_receipt_and_submits_the_exact_binding() 
         panic!("idle engine should acknowledge configuration, not PCM");
     };
     assert_eq!(attempt.submitted_target(), Some(target));
+    assert_eq!(
+        client
+            .inspect_native_bound_parametric(&epoch, target)
+            .await
+            .unwrap(),
+        ParametricBindingStatus::Configured
+    );
     assert!(device.parametric_attached.load(Ordering::SeqCst));
     assert_eq!(
         client
@@ -1528,5 +1535,12 @@ async fn native_activation_consumes_the_receipt_and_submits_the_exact_binding() 
         ParametricApplication::Cleared
     );
     assert!(!device.parametric_attached.load(Ordering::SeqCst));
+    assert_eq!(
+        client
+            .inspect_native_bound_parametric(&epoch, target)
+            .await
+            .unwrap(),
+        ParametricBindingStatus::Absent
+    );
     assert_eq!(api.calls().len(), 6);
 }

@@ -15,7 +15,7 @@ use crate::{
             StandaloneParametricPreflight,
         },
     },
-    playback::controller::ParametricApplication,
+    playback::controller::{ParametricApplication, ParametricBindingStatus},
 };
 
 /// Host-owned one-shot request. Keep it across the await: once the actor
@@ -205,6 +205,23 @@ impl MusicClient {
             .await?;
         self.session.check_generation(&token)?;
         Ok(result)
+    }
+
+    /// Read the local actor state of an exact target without observing the server.
+    pub async fn inspect_native_bound_parametric(
+        &self,
+        epoch: &str,
+        target: BoundParametricTarget,
+    ) -> Result<ParametricBindingStatus> {
+        let token = self.player_token(epoch)?;
+        let status = self
+            .player
+            .controller()
+            .await?
+            .inspect_bound_parametric(&token, target)
+            .await?;
+        self.session.check_generation(&token)?;
+        Ok(status)
     }
 
     /// Trusted native host trigger for a bounded read of the active binding.

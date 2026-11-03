@@ -1,9 +1,7 @@
 //! Native-only state for a single explicit standalone PEQ selection.
 use cumulus_core::{
     Error, Result,
-    client::{
-        ClientError, MusicClient, NativeParametricActivation, NativeParametricActivationAttempt,
-    },
+    client::{ClientError, MusicClient, NativeParametricActivationAttempt},
     effects::{
         authorization::{LeasePhase, NativeEffectReleaseReceipt, ReleaseRetry},
         catalog::EffectId,
@@ -11,7 +9,7 @@ use cumulus_core::{
         parametric::{ParametricHost, ParametricPlan},
         service::StandaloneParametricPreflight,
     },
-    playback::controller::ParametricApplication,
+    playback::controller::{ParametricApplication, ParametricBindingStatus},
 };
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -78,7 +76,6 @@ enum Work {
     },
     Submitted {
         attempt: NativeParametricActivationAttempt,
-        acknowledgement: Option<NativeParametricActivation>,
     },
 }
 
@@ -128,7 +125,7 @@ impl State {
         Ok(())
     }
 
-    fn view(
+    async fn view(
         &mut self,
         client: &MusicClient,
         epoch: &str,
@@ -168,12 +165,17 @@ impl State {
                     phase = Phase::Prepared;
                     attempt_ticket = Some(ticket.clone());
                 }
-                Work::Submitted {
-                    acknowledgement, ..
-                } if registration == Some(LeasePhase::Registered) => {
-                    phase = match acknowledgement {
-                        Some(NativeParametricActivation::Configured(_)) => Phase::Configured,
-                        Some(NativeParametricActivation::DeferredUntilLoaded(_)) => Phase::Deferred,
+                Work::Submitted { attempt, .. } if registration == Some(LeasePhase::Registered) => {
+                    phase = match attempt.submitted_target() {
+                        Some(target) => match client
+                            .inspect_native_bound_parametric(epoch, target)
+                            .await?
+                        {
+                            ParametricBindingStatus::Configured => Phase::Configured,
+                            ParametricBindingStatus::Deferred => Phase::Deferred,
+                            ParametricBindingStatus::Absent
+                            | ParametricBindingStatus::DetachRequired => Phase::RecoveryRequired,
+                        },
                         None => Phase::RecoveryRequired,
                     };
                 }
@@ -212,7 +214,11 @@ fn stop_needs_retry(phase: Option<LeasePhase>) -> bool {
     )
 }
 
-fn authorize(window: &tauri::WebviewWindow, client: &MusicClient, epoch: &str) -> Result<()> {
+fn authorize<R: tauri::Runtime>(
+    window: &tauri::WebviewWindow<R>,
+    client: &MusicClient,
+    epoch: &str,
+) -> Result<()> {
     if window.label() != "main" {
         return Err(Error::InvalidInput(
             "PEQ activation is restricted to the main window",
@@ -222,8 +228,8 @@ fn authorize(window: &tauri::WebviewWindow, client: &MusicClient, epoch: &str) -
 }
 
 #[tauri::command]
-pub async fn effect_peq_status(
-    window: tauri::WebviewWindow,
+pub async fn effect_peq_status<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,
     host: tauri::State<'_, Host>,
     epoch: String,
@@ -232,14 +238,17 @@ pub async fn effect_peq_status(
     authorize(&window, &client, &epoch)?;
     let mut state = host.state.try_lock().map_err(|_| Error::MutationBusy)?;
     state.select_epoch(&epoch);
-    state.view(&client, &epoch, id, false).map_err(Into::into)
+    state
+        .view(&client, &epoch, id, false)
+        .await
+        .map_err(Into::into)
 }
 
 /// Reissue a cleanup receipt from local durable state; never contacts the
 /// server or promotes a deferred application to configured.
 #[tauri::command]
-pub async fn effect_peq_reconcile(
-    window: tauri::WebviewWindow,
+pub async fn effect_peq_reconcile<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,
     host: tauri::State<'_, Host>,
     epoch: String,
@@ -248,12 +257,15 @@ pub async fn effect_peq_reconcile(
     authorize(&window, &client, &epoch)?;
     let mut state = host.state.try_lock().map_err(|_| Error::MutationBusy)?;
     state.select_epoch(&epoch);
-    state.view(&client, &epoch, id, true).map_err(Into::into)
+    state
+        .view(&client, &epoch, id, true)
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]
-pub async fn effect_peq_prepare(
-    window: tauri::WebviewWindow,
+pub async fn effect_peq_prepare<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,
     host: tauri::State<'_, Host>,
     epoch: String,
@@ -291,12 +303,15 @@ pub async fn effect_peq_prepare(
             },
         },
     ));
-    state.view(&client, &epoch, id, false).map_err(Into::into)
+    state
+        .view(&client, &epoch, id, false)
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]
-pub async fn effect_peq_activate(
-    window: tauri::WebviewWindow,
+pub async fn effect_peq_activate<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,
     host: tauri::State<'_, Host>,
     epoch: String,
@@ -316,18 +331,8 @@ pub async fn effect_peq_activate(
     };
     state.issue = None;
     state.release = None;
-    let work = state.work.insert((
-        id,
-        Work::Submitted {
-            attempt,
-            acknowledgement: None,
-        },
-    ));
-    let Work::Submitted {
-        attempt,
-        acknowledgement,
-    } = &mut work.1
-    else {
+    let work = state.work.insert((id, Work::Submitted { attempt }));
+    let Work::Submitted { attempt } = &mut work.1 else {
         unreachable!("submitted state was just installed");
     };
     let result = client
@@ -335,7 +340,7 @@ pub async fn effect_peq_activate(
         .await;
     client.validate_player_epoch(&epoch)?;
     match result {
-        Ok(receipt) => *acknowledgement = Some(receipt),
+        Ok(_) => (),
         Err(error) => {
             if attempt.submitted_target().is_none()
                 && !client
@@ -348,12 +353,15 @@ pub async fn effect_peq_activate(
             state.note(id, error);
         }
     }
-    state.view(&client, &epoch, id, true).map_err(Into::into)
+    state
+        .view(&client, &epoch, id, true)
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]
-pub async fn effect_peq_stop(
-    window: tauri::WebviewWindow,
+pub async fn effect_peq_stop<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,
     host: tauri::State<'_, Host>,
     epoch: String,
@@ -378,36 +386,30 @@ pub async fn effect_peq_stop(
         _ => None,
     });
     if let Some(target) = target {
-        if let Some((
-            _,
-            Work::Submitted {
-                acknowledgement, ..
-            },
-        )) = &mut state.work
-        {
-            // A canceled command cannot keep asserting the old apply receipt
-            // while the actor may already have detached that exact target.
-            *acknowledgement = None;
-        }
         let detach = client.clear_native_bound_parametric(&epoch, target).await;
         client.validate_player_epoch(&epoch)?;
         let failure = match detach {
             Ok(ParametricApplication::Cleared) => None,
             Ok(_) => Some(Error::State("PEQ detach was not confirmed")),
+            Err(Error::StaleResponse)
+                if client
+                    .inspect_native_bound_parametric(&epoch, target)
+                    .await?
+                    == ParametricBindingStatus::Absent =>
+            {
+                // A submission may have been rejected before mount. Only
+                // proceed to the core's independent cross-process absence
+                // fence; a stale target by itself proves nothing.
+                None
+            }
             Err(error) => Some(error),
         };
         if let Some(error) = failure {
-            if let Some((
-                _,
-                Work::Submitted {
-                    acknowledgement, ..
-                },
-            )) = &mut state.work
-            {
-                *acknowledgement = None;
-            }
             state.note(id, error);
-            return state.view(&client, &epoch, id, true).map_err(Into::into);
+            return state
+                .view(&client, &epoch, id, true)
+                .await
+                .map_err(Into::into);
         }
     }
     if state.work.as_ref().is_some_and(|(owner, _)| *owner == id) {
@@ -426,5 +428,8 @@ pub async fn effect_peq_stop(
     if let Err(error) = result {
         state.note(id, error);
     }
-    state.view(&client, &epoch, id, true).map_err(Into::into)
+    state
+        .view(&client, &epoch, id, true)
+        .await
+        .map_err(Into::into)
 }

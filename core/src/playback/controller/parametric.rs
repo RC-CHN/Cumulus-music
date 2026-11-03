@@ -24,6 +24,21 @@ pub enum ParametricApplication {
     DeferredUntilLoaded,
 }
 
+/// Actor-local status of a specific registration binding; not a PCM receipt.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ParametricBindingStatus {
+    Absent,
+    Deferred,
+    Configured,
+    DetachRequired,
+}
+
+pub(super) struct InspectRequest {
+    token: SessionToken,
+    target: BoundParametricTarget,
+    reply: oneshot::Sender<Result<ParametricBindingStatus>>,
+}
+
 pub(super) struct Request {
     token: SessionToken,
     selection: Selection,
@@ -125,6 +140,22 @@ impl PlaybackController {
             .await
     }
 
+    pub async fn inspect_bound_parametric(
+        &self,
+        token: &SessionToken,
+        target: BoundParametricTarget,
+    ) -> Result<ParametricBindingStatus> {
+        let (reply, result) = oneshot::channel();
+        self.sender
+            .send(Message::InspectParametric(InspectRequest {
+                token: token.clone(),
+                target,
+                reply,
+            }))
+            .map_err(|_| Error::State("player is closed"))?;
+        result.await.map_err(|_| Error::Cancelled)?
+    }
+
     /// Explicit bounded server observation of the active bound component.
     /// No caller-selected ID or automatic registration/release.
     pub async fn observe_active_parametric(
@@ -159,6 +190,33 @@ impl PlaybackController {
 }
 
 impl Actor {
+    pub(super) fn parametric_inspect(&self, request: InspectRequest) {
+        let result = self.session.check_generation(&request.token).map(|_| {
+            use ParametricBindingStatus as Status;
+            let target = request.target;
+            if request.token != self.token {
+                return Status::Absent;
+            }
+            if matches!(&self.parametric.deferred, Some(Selection::Bound(binding)) if binding.target() == target) {
+                return Status::Deferred;
+            }
+            if let Some(binding) = self.parametric.applied.as_ref().filter(|b| b.target() == target) {
+                return if !self.parametric.detach_required
+                    && binding.with_current(&self.session, &request.token, |_| Ok(())).is_ok()
+                {
+                    Status::Configured
+                } else {
+                    Status::DetachRequired
+                };
+            }
+            if self.parametric.installing.as_ref().is_some_and(|b| b.target() == target) {
+                return Status::DetachRequired;
+            }
+            Status::Absent
+        });
+        let _ = request.reply.send(result);
+    }
+
     pub(super) async fn parametric_observe(&mut self, request: ObserveRequest) {
         if request.reply.is_closed() {
             return;
