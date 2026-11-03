@@ -31,7 +31,28 @@
     await sleep(500);
     one('[aria-label="返回上一页"]').click();
     await wait(() => one('.daily-heading') && one('.daily-history-entry') && one('.track-row'), 'returned to daily');
-    await emit('complete', { ok: true, stageCount: 2 });
+    const style = one('.daily-style-entry');
+    const styleBounds = style.getBoundingClientRect();
+    if (!style.contains(document.elementFromPoint(styleBounds.x + styleBounds.width / 2, styleBounds.y + styleBounds.height / 2)))
+      throw new Error('style shortcut clipped');
+    style.click();
+    await wait(() => [...document.querySelectorAll('.page-heading h1')].some((heading) =>
+      heading.textContent.trim() === '风格推荐') && one('.track-row')?.textContent.includes('合成风格歌曲 71'), 'style recommendations loaded');
+    await sleep(250);
+    await emit('ux_03_style_recommendations');
+    const invoke = (name, args = {}) => window.__TAURI_INTERNALS__.invoke(name, args);
+    const { epoch } = await invoke('account_snapshot');
+    await wait(() => one('.track-actions .primary:not(:disabled)'), 'style play available');
+    one('.track-actions .primary').click();
+    let player;
+    for (let i = 0; i < 150; i++) {
+      player = await invoke('player_snapshot', { epoch });
+      if (player.track?.id === '71' && player.state === 'playing' && player.position > 0.15) break;
+      await sleep(65);
+    }
+    if (player?.track?.id !== '71' || player.queueLen !== 2 || player.state !== 'playing' || player.position <= 0.15)
+      throw new Error('style songs did not reach ordinary native playback');
+    await emit('complete', { ok: true, stageCount: 3, stylePlayback: true });
   } catch (error) {
     await emit('failed', { message: String(error), body: document.body.innerText.slice(-2200) });
   }

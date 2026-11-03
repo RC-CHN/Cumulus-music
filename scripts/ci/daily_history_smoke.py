@@ -1,4 +1,4 @@
-"""Verify the daily history shortcut in a real WebView with synthetic reads."""
+"""Verify history and style shortcuts from Daily Recommendations in a real WebView."""
 import argparse
 import json
 import os
@@ -19,7 +19,8 @@ def main():
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
     script = Path(__file__).resolve().parents[2] / 'desktop/examples/daily_history_ui_probe.js'
     env.update(CUMULUS_PROOF_DIR=str(root), CUMULUS_UX_SCRIPT=str(script),
-               CUMULUS_MOTION_PROOF='1', CUMULUS_DAILY_HISTORY_PROOF='1')
+               CUMULUS_MOTION_PROOF='1', CUMULUS_DAILY_HISTORY_PROOF='1',
+               CUMULUS_STYLE_RECOMMENDATIONS_PROOF='1')
     for key in ('XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR',
                 'APPDATA', 'LOCALAPPDATA'):
         profile = root / 'profile' / key
@@ -34,16 +35,17 @@ def main():
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0
     complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
-    assert complete['ok'] and complete['stageCount'] == 2
+    assert complete['ok'] and complete['stageCount'] == 3 and complete['stylePlayback']
     prefix = '/api/discovery/recommend/songs/history/'
     calls = [call for call in complete['dailyHistoryCalls'] if call['path'].startswith(prefix)]
     assert calls == [
         {'path': prefix + 'recent', 'args': {}},
         {'path': prefix + 'detail', 'args': {'date': '2026-10-26'}},
     ]
-    assert len(list(output.glob('ux_*.png'))) == (2 if args.screenshots else 0)
+    assert len(complete['styleRecommendationCalls']) == 1
+    assert len(list(output.glob('ux_*.png'))) == (3 if args.screenshots else 0)
     print(json.dumps({'ok': True, 'actualWebView': True, 'historyReads': len(calls),
-                      'realAccountWrites': 0}))
+                      'styleReads': 1, 'stylePlayback': True, 'realAccountWrites': 0}))
 
 
 if __name__ == '__main__':
