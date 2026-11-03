@@ -342,6 +342,45 @@ async fn native_plain_selection_opens_owned_published_bytes_and_rechecks_integri
                 .is_empty()
         );
     }
+    // The new local-data-only M4A subset is selectable through the real
+    // cold-offline grant and published integrity checks, independent of extension.
+    let m4a = include_bytes!("fixtures/tag_audio/seed.m4a");
+    let target = path.with_file_name("published-aac.m4a");
+    fs::write(&target, m4a).unwrap();
+    let target = target.canonicalize().unwrap();
+    let key = "published-aac";
+    let record_id = ledger_key(&target);
+    let integrity = json!({"sha256":hex::encode(Sha256::digest(m4a)), "bytes":m4a.len()});
+    let mut m4a_task = task.clone();
+    m4a_task["id"] = json!(key);
+    m4a_task["target"] = json!(target);
+    m4a_task["output_integrity"] = integrity.clone();
+    let mut m4a_record = ledger.clone();
+    m4a_record["id"] = json!(record_id);
+    m4a_record["path"] = json!(target);
+    m4a_record["task_id"] = json!(key);
+    m4a_record["integrity"] = integrity;
+    store.put("1", "download_tasks_v1", key, &m4a_task).unwrap();
+    store
+        .put("1", "offline_music_v1", &record_id, &m4a_record)
+        .unwrap();
+    assert!(
+        grant
+            .list_plain_audio(None, 64)
+            .unwrap()
+            .rows
+            .iter()
+            .any(|row| row.id == key)
+    );
+    let mut opened = Vec::new();
+    grant
+        .open_plain_audio(key)
+        .unwrap()
+        .file()
+        .unwrap()
+        .read_to_end(&mut opened)
+        .unwrap();
+    assert_eq!(opened, m4a);
     assert!(grant.list_plain_audio(None, 65).is_err());
     assert!(grant.list_plain_audio(None, 0).is_err());
     grant.revoke();

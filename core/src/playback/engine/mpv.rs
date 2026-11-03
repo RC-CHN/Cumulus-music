@@ -37,6 +37,7 @@ pub struct MpvEngine {
     null_output: bool,
     pinned_authority: Option<Cancellation>,
     pinned_demuxer: bool,
+    pinned_bmff_options: bool,
 }
 fn string(value: impl AsRef<[u8]>) -> Result<CString> {
     CString::new(value.as_ref()).map_err(|_| Error::InvalidInput("NUL in audio argument"))
@@ -137,6 +138,7 @@ impl MpvEngine {
             null_output: config.null_output,
             pinned_authority: None,
             pinned_demuxer: false,
+            pinned_bmff_options: false,
         };
         for (key, value) in [
             ("config", "no"),
@@ -326,12 +328,28 @@ impl MpvEngine {
         authority.check()?;
         cancel.check()?;
         self.stop()?;
+        self.restore_bmff_options()?;
         self.pinned_demuxer = true;
         let result = (|| {
             self.control(&["set", "options/demuxer", "lavf"])?;
             self.control(&["set", "options/demuxer-lavf-format", format])?;
+            if format == "mov" {
+                // libmpv replaces AVFormatContext.io_open with a deny-all
+                // callback; FFmpeg must not accept aliases either.
+                self.pinned_bmff_options = true;
+                self.control(&["set", "options/access-references", "no"])?;
+                self.control(&["set", "options/autoload-files", "no"])?;
+                self.control(&[
+                    "set",
+                    "options/demuxer-lavf-o",
+                    "enable_drefs=0,use_absolute_path=0,protocol_whitelist=cumuluspinned",
+                ])?;
+            }
             let source = self.native.stage_pinned(reader, authority.clone())?;
             let media = self.load_source(source, 0.0, None, Duration::from_secs(25), cancel)?;
+            if format == "mov" && media.codec.as_deref() != Some("aac") {
+                return Err(Error::InvalidInput("unsupported pinned audio format"));
+            }
             authority.check()?;
             self.pinned_authority = Some(authority);
             Ok(media)
@@ -341,6 +359,16 @@ impl MpvEngine {
             let _ = self.stop();
         }
         result
+    }
+
+    fn restore_bmff_options(&mut self) -> Result<()> {
+        if self.pinned_bmff_options {
+            self.control(&["set", "options/access-references", "yes"])?;
+            self.control(&["set", "options/autoload-files", "yes"])?;
+            self.control(&["set", "options/demuxer-lavf-o", ""])?;
+            self.pinned_bmff_options = false;
+        }
+        Ok(())
     }
 
     fn require_pinned_authority(&mut self) -> Result<()> {
@@ -361,6 +389,7 @@ impl MpvEngine {
         let source = Self::source(request.source)?;
         if self.pinned_demuxer {
             self.stop()?;
+            self.restore_bmff_options()?;
             self.control(&["set", "options/demuxer", ""])?;
             self.control(&["set", "options/demuxer-lavf-format", ""])?;
             self.pinned_demuxer = false;

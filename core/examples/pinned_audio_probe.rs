@@ -6,7 +6,8 @@ use cumulus_core::{
 };
 use std::{
     fs::{self, File},
-    io::Cursor,
+    io::{Cursor, Write},
+    net::TcpListener,
     thread,
     time::{Duration, Instant},
 };
@@ -57,6 +58,7 @@ fn main() {
         Err(Error::InvalidInput(_))
     ));
     probe_ncm(engine.as_mut(), root.path(), seed);
+    probe_m4a(engine.as_mut());
 
     let next = engine
         .load(
@@ -67,6 +69,58 @@ fn main() {
     assert_eq!(next.codec.as_deref(), Some("flac"));
     engine.stop().unwrap();
     println!("pinned FLAC decoded, position advanced, revocation stopped, ordinary load restored");
+}
+
+fn probe_m4a(engine: &mut dyn AudioEngine) {
+    let seed = include_bytes!("../tests/fixtures/tag_audio/seed.m4a");
+    let mut file = tempfile::tempfile().unwrap();
+    file.write_all(seed).unwrap();
+    let authority = Cancellation::default();
+    let loaded = engine
+        .load_pinned_audio(file, authority.clone(), &Cancellation::default())
+        .unwrap();
+    assert_eq!(loaded.codec.as_deref(), Some("aac"));
+    engine.pause(false).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while !engine.poll().unwrap().position.is_some_and(|p| p > 0.12) {
+        assert!(
+            Instant::now() < deadline,
+            "pinned M4A clock did not advance"
+        );
+        thread::sleep(Duration::from_millis(15));
+    }
+    authority.cancel();
+    assert!(matches!(engine.poll(), Err(Error::Cancelled)));
+    assert!(engine.poll().unwrap().entry_id.is_none());
+
+    // Replace the local dref entry with an external URL, preserving all
+    // ancestor box lengths. No listener connection may result from the load.
+    let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let url = format!("http://{}/forbidden\0", listener.local_addr().unwrap());
+    let mut malicious = seed.to_vec();
+    let box_offset = |tag: &[u8; 4]| seed.windows(4).position(|value| value == tag).unwrap() - 4;
+    for tag in [
+        b"moov", b"trak", b"mdia", b"minf", b"dinf", b"dref", b"url ",
+    ] {
+        let offset = box_offset(tag);
+        let size = u32::from_be_bytes(seed[offset..offset + 4].try_into().unwrap());
+        malicious[offset..offset + 4].copy_from_slice(&(size + url.len() as u32).to_be_bytes());
+    }
+    let atom = box_offset(b"url ");
+    malicious[atom + 11] = 0;
+    malicious.splice(atom + 12..atom + 12, url.bytes());
+    let mut file = tempfile::tempfile().unwrap();
+    file.write_all(&malicious).unwrap();
+    assert!(matches!(
+        engine.load_pinned_audio(file, Cancellation::default(), &Cancellation::default()),
+        Err(Error::InvalidInput("unsupported pinned audio format"))
+    ));
+    assert_eq!(
+        listener.accept().unwrap_err().kind(),
+        std::io::ErrorKind::WouldBlock
+    );
+    println!("pinned local AAC/M4A decoded; external URL dref refused without a connection");
 }
 
 fn probe_ncm(engine: &mut dyn AudioEngine, root: &std::path::Path, seed: &[u8]) {

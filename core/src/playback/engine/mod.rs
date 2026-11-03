@@ -1,5 +1,6 @@
 //! Synchronous native audio boundary. Hosts/controllers run it on an audio or
 //! blocking worker, never the WebView thread. No shell or Python process.
+mod bmff;
 mod ffi;
 mod frames;
 mod mpv;
@@ -28,6 +29,10 @@ pub(crate) fn pinned_audio_format(file: &mut std::fs::File) -> Result<&'static s
         [b'R', b'I', b'F', b'F', _, _, _, _, b'W', b'A', b'V', b'E'] => Ok("wav"),
         [b'I', b'D', b'3', ..] => Ok("mp3"),
         [0xff, next, ..] if next & 0xe0 == 0xe0 && next & 0x06 != 0 => Ok("mp3"),
+        [_, _, _, _, b'f', b't', b'y', b'p', ..] => {
+            bmff::validate(file)?;
+            Ok("mov")
+        }
         _ => Err(crate::Error::InvalidInput(
             "unsupported pinned audio format",
         )),

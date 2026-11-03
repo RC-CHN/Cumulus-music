@@ -1,0 +1,29 @@
+Cold offline M4A support
+
+Pinned playback admits a bounded subset of self-contained, unfragmented ISO
+BMFF files with one clear MPEG-4 AAC audio track. It checks the box hierarchy,
+the self-contained url data reference, sample-description indices and chunk
+starts in the file's own mdat. It does not trust an M4A extension or a leading
+ftyp signature alone. Common iTunes metadata can be present. External data
+references, QuickTime aliases, fragments, unknown structures, other tracks
+and encrypted NCM/M4A are outside this subset.
+
+The already-opened regular file supplies the only stream. Before forcing
+libavformat's MOV demuxer, libmpv disables access-references and autoload-files.
+FFmpeg aliases and absolute paths are disabled, and the nested FFmpeg protocol
+allowlist names only the private custom stream. If setting a libmpv
+option fails, the load is refused. The scoped options are restored before a subsequent ordinary load or
+different pinned format. This is independent of box admission: accepting the
+structure alone cannot enforce what a different decoder attempts to open.
+The decoder remains native code; this is not process isolation.
+
+The libmpv v0.37.0 and v0.40.0 demux_lavf.c source shows the denied AVFormatContext
+io_open callback when references are disabled:
+https://github.com/mpv-player/mpv/blob/v0.37.0/demux/demux_lavf.c
+https://github.com/mpv-player/mpv/blob/v0.40.0/demux/demux_lavf.c
+FFmpeg documents enable_drefs and use_absolute_path in its MOV demuxer options:
+https://ffmpeg.org/ffmpeg-formats.html#mov_002fmp4_002f3gp_002f3g2_002fmj2
+
+The test fixture is a synthetic tone; ordinary MP4 and real CDN files may
+contain layouts outside the supported subset. Null output does not verify
+soundcard output. Linux native verification does not replace Windows testing.
