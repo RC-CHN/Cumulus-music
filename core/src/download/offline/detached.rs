@@ -113,7 +113,7 @@ fn detach_queue_entries(
     Ok(changed)
 }
 impl OfflineLibrary {
-    fn detached_access(
+    pub(in crate::download) fn detached_access(
         &self,
         token: &SessionToken,
         record: &OfflineRecord,

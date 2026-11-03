@@ -8,3 +8,4 @@ pub(crate) use cold::{list_audio, open_audio};
 pub(crate) use detached::{detach_download_queue, move_inline_download_queue};
 pub use records::{OfflineCheck, OfflineRecord, PublishedDownload};
 pub use service::OfflineLibrary;
+pub(in crate::download) use service::verify as verify_detached_audio;

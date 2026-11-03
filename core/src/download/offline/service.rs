@@ -213,7 +213,7 @@ pub(super) fn path_id(path: &Path) -> Result<String> {
             .as_bytes(),
     )))
 }
-pub(super) fn verify(record: &OfflineRecord) -> Result<()> {
+pub(in crate::download) fn verify(record: &OfflineRecord) -> Result<()> {
     record.integrity.validate()?;
     if inspect_file(&record.path)? != record.integrity {
         return Err(Error::Media(

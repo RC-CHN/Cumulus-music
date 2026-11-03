@@ -1,19 +1,29 @@
 mod segment;
 use super::*;
 use crate::{
+    download::{completed::CompletedDownloads, offline::OfflineRecord},
     lyrics::{
         LyricDemand, LyricPreferences, LyricRequest, LyricSnapshot, LyricTarget, files::LocalLyrics,
     },
+    playback::QueueEntry,
     protocol::api::ApiFuture,
 };
 use std::path::{Path, PathBuf};
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq)]
+struct ForgottenLyricSelection {
+    record: OfflineRecord,
+    entry: QueueEntry,
+    play_id: String,
+}
+
+#[derive(Clone, PartialEq)]
 struct DownloadLyricSource {
     task_id: String,
     song_id: String,
     cloud: bool,
     audio: PathBuf,
+    forgotten: Option<ForgottenLyricSelection>,
 }
 
 struct DownloadLyricFiles {
@@ -33,14 +43,23 @@ impl LocalLyrics for DownloadLyricFiles {
             let source = self.source.clone();
             tokio::task::spawn_blocking(move || {
                 session.check_generation(&token)?;
-                let result = crate::download::service::DownloadService::new(session.clone())?
-                    .read_published_lyrics(
-                        &token,
-                        &source.task_id,
-                        &source.song_id,
-                        source.cloud,
-                        &source.audio,
-                    );
+                let result =
+                    if let Some(forgotten) = &source.forgotten {
+                        require_current_entry(&session, &token, &forgotten.entry)?;
+                        let result = CompletedDownloads::new(session.clone())?
+                            .read_forgotten_lyrics(&token, &forgotten.record, source.cloud);
+                        require_current_entry(&session, &token, &forgotten.entry)?;
+                        result
+                    } else {
+                        crate::download::service::DownloadService::new(session.clone())?
+                            .read_published_lyrics(
+                                &token,
+                                &source.task_id,
+                                &source.song_id,
+                                source.cloud,
+                                &source.audio,
+                            )
+                    };
                 session.check_generation(&token)?;
                 // A missing, busy, unowned or unreadable optional sidecar is
                 // equivalent to no fallback, not a remote lyric failure.
@@ -55,6 +74,26 @@ impl LocalLyrics for DownloadLyricFiles {
     }
 }
 
+fn require_current_entry(
+    session: &crate::account::AccountSession,
+    token: &SessionToken,
+    expected: &QueueEntry,
+) -> Result<()> {
+    let store = session.persistent_store()?;
+    session.with_token(token, |owner| {
+        let value = store
+            .get(owner, "playback", "queue")?
+            .ok_or(Error::StaleResponse)?;
+        let queue: crate::playback::QueueSnapshot = serde_json::from_value(value)?;
+        if queue.current.as_ref() != Some(&expected.entry_id)
+            || !queue.items.iter().any(|entry| entry == expected)
+        {
+            return Err(Error::StaleResponse);
+        }
+        Ok(())
+    })
+}
+
 pub(super) struct ActiveLyrics {
     token: SessionToken,
     download: Option<DownloadLyricSource>,
@@ -66,6 +105,7 @@ pub(super) struct LyricContext {
     pub service: Arc<LyricsService>,
     pub target: LyricTarget,
     pub downloaded_audio: Option<PathBuf>,
+    forgotten_entry: Option<QueueEntry>,
 }
 
 fn auxiliary(text: Option<&str>) -> Vec<crate::lyrics::LyricLine> {
@@ -116,15 +156,42 @@ impl MusicClient {
             }
         };
         let download = match &target {
-            LyricTarget::Song(id) | LyricTarget::Cloud(id) => selected.resource["download_task_id"]
-                .as_str()
-                .zip(selected.resource["path"].as_str())
-                .map(|(task_id, path)| DownloadLyricSource {
-                    task_id: task_id.into(),
-                    song_id: id.clone(),
-                    cloud: matches!(target, LyricTarget::Cloud(_)),
-                    audio: path.into(),
-                }),
+            LyricTarget::Song(id) | LyricTarget::Cloud(id) => {
+                let cloud = matches!(target, LyricTarget::Cloud(_));
+                selected.resource["path"].as_str().and_then(|path| {
+                    let (task_id, forgotten) = match selected.resource.get("download_task_id") {
+                        Some(task) => (task.as_str()?.to_owned(), None),
+                        None => {
+                            let owner = token.uid.as_deref()?;
+                            if selected.resource["download_ledger_owner"].as_str() != Some(owner) {
+                                return None;
+                            }
+                            let record: OfflineRecord = serde_json::from_value(
+                                selected.resource.get("download_ledger")?.clone(),
+                            )
+                            .ok()?;
+                            if record.path != Path::new(path) || record.song_id != *id {
+                                return None;
+                            }
+                            (
+                                record.task_id.clone(),
+                                Some(ForgottenLyricSelection {
+                                    record,
+                                    entry: selected.clone(),
+                                    play_id: play_id.to_owned(),
+                                }),
+                            )
+                        }
+                    };
+                    Some(DownloadLyricSource {
+                        task_id,
+                        song_id: id.clone(),
+                        cloud,
+                        audio: path.into(),
+                        forgotten,
+                    })
+                })
+            }
             LyricTarget::Local(_) => None,
         };
         let mut lyrics = self.player.lyrics.lock().map_err(|_| Error::LockPoisoned)?;
@@ -160,6 +227,12 @@ impl MusicClient {
             token,
             service: lyrics.as_ref().expect("initialized").service.clone(),
             target,
+            forgotten_entry: download.as_ref().and_then(|source| {
+                source
+                    .forgotten
+                    .as_ref()
+                    .map(|selection| selection.entry.clone())
+            }),
             downloaded_audio: download.map(|source| source.audio),
         })
     }
@@ -168,11 +241,22 @@ impl MusicClient {
         token: &SessionToken,
         play_id: &str,
         value: LyricSnapshot,
+        forgotten_entry: Option<&QueueEntry>,
     ) -> Result<LyricsView> {
         self.session.check_generation(token)?;
         let player = self.player.controller().await?.snapshot();
         if player.account != *token || player.play_id.as_deref() != Some(play_id) {
             return Err(Error::StaleResponse);
+        }
+        if value.from_sidecar
+            && let Some(expected) = forgotten_entry
+        {
+            // A completed operation may have updated SQLite before the actor
+            // has observed the new queue. Never return that detached document.
+            if player.selected.as_ref() != Some(expected) {
+                return Err(Error::StaleResponse);
+            }
+            require_current_entry(&self.session, token, expected)?;
         }
         let lyric = value.lyric;
         let mut result = LyricsView {
@@ -209,6 +293,7 @@ impl MusicClient {
             service,
             target,
             downloaded_audio,
+            forgotten_entry,
         } = self.lyric_context(epoch, play_id).await?;
         if matches!(target, LyricTarget::Local(_)) || service.snapshot()?.network_failed {
             service.clear()?;
@@ -224,7 +309,8 @@ impl MusicClient {
                 track_mv: false,
             })
             .await?;
-        self.lyric_result(&token, play_id, value).await
+        self.lyric_result(&token, play_id, value, forgotten_entry.as_ref())
+            .await
     }
     pub(in crate::client) async fn cached_player_lyrics(
         &self,
@@ -236,6 +322,7 @@ impl MusicClient {
             token,
             service,
             target,
+            forgotten_entry,
             ..
         } = self.lyric_context(epoch, play_id).await?;
         let Some((revision, value)) = service.snapshot_if_changed(&target, observed)? else {
@@ -244,7 +331,8 @@ impl MusicClient {
         let failed = value.is_lyric_fetch_failed;
         Ok(Some((
             revision,
-            self.lyric_result(&token, play_id, value).await?,
+            self.lyric_result(&token, play_id, value, forgotten_entry.as_ref())
+                .await?,
             failed,
         )))
     }
@@ -258,25 +346,29 @@ impl MusicClient {
             token,
             service,
             target,
+            forgotten_entry,
             ..
         } = self.lyric_context(epoch, play_id).await?;
         if service.snapshot()?.resource_key.as_deref() != Some(&target.resource_key()?) {
             return Err(Error::StaleResponse);
         }
         let value = service.set_preferences(preferences)?;
-        self.lyric_result(&token, play_id, value).await
+        self.lyric_result(&token, play_id, value, forgotten_entry.as_ref())
+            .await
     }
     pub async fn lyric_offset(&self, epoch: &str, play_id: &str, gain: f64) -> Result<LyricsView> {
         let LyricContext {
             token,
             service,
             target,
+            forgotten_entry,
             ..
         } = self.lyric_context(epoch, play_id).await?;
         if service.snapshot()?.resource_key.as_deref() != Some(&target.resource_key()?) {
             return Err(Error::StaleResponse);
         }
         let value = service.adjust_offset(gain)?;
-        self.lyric_result(&token, play_id, value).await
+        self.lyric_result(&token, play_id, value, forgotten_entry.as_ref())
+            .await
     }
 }

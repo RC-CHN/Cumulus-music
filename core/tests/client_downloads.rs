@@ -1364,3 +1364,144 @@ async fn file_operations_block_direct_and_queued_download_playback_but_not_other
     assert_eq!(playing.actual_quality.as_deref(), Some("lossless"));
     assert_eq!(f.api.count("player/url"), 0);
 }
+
+#[tokio::test]
+async fn forgotten_sidecar_requires_a_completed_receipt_and_still_verified_audio() {
+    use cumulus_core::{
+        download::{
+            completed::{CompletedDownloads, FilePhase},
+            offline::OfflineLibrary,
+        },
+        playback::PlaybackQueue,
+    };
+
+    let f = Fixture::new();
+    let (id, completed) = f.completed().await;
+    let audio = PathBuf::from(completed.tasks[0].path.as_ref().unwrap());
+    let sidecar = audio.with_extension("lrc");
+    fs::write(&sidecar, "[00:01]保留的歌词").unwrap();
+    *f.api.lyric.lock().unwrap() = Ok(json!({"code":200}));
+    let token = f.session.token().unwrap();
+    let published = OfflineLibrary::new(f.session.clone())
+        .unwrap()
+        .record(&token, &audio)
+        .unwrap()
+        .unwrap();
+
+    // The same native inline ledger also appears in intelligence before
+    // Forget. A live publication by itself cannot satisfy this reader.
+    PlaybackQueue::new(Some(f.store.clone()), "1")
+        .unwrap()
+        .replace(
+            vec![json!({
+                "id":"123","path":audio,"download_ledger_owner":"1","download_ledger":published,
+            })],
+            0,
+            json!(null),
+        )
+        .unwrap();
+    let inline = f
+        .client
+        .player_action("1", PlayerAction::Play)
+        .await
+        .unwrap();
+    assert!(
+        f.client
+            .player_lyrics("1", inline.play_id.as_deref().unwrap())
+            .await
+            .unwrap()
+            .lines
+            .is_empty()
+    );
+
+    f.client
+        .play_downloads("1", vec![id.clone()], 0)
+        .await
+        .unwrap();
+    f.client
+        .player_action("1", PlayerAction::Stop)
+        .await
+        .unwrap();
+    let files = CompletedDownloads::new(f.session.clone()).unwrap();
+    let op = files.start(&id, FileAction::Forget, None).unwrap();
+    assert_eq!(files.resume(&op.id).unwrap().phase, FilePhase::Complete);
+    assert!(audio.exists() && sidecar.exists());
+    assert!(
+        OfflineLibrary::new(f.session.clone())
+            .unwrap()
+            .record(&token, &audio)
+            .unwrap()
+            .is_none()
+    );
+    let play = f
+        .client
+        .player_action("1", PlayerAction::Play)
+        .await
+        .unwrap();
+    let play_id = play.play_id.as_deref().unwrap();
+    let found = f.client.player_lyrics("1", play_id).await.unwrap();
+    assert_eq!(found.lines[0].lyric, "保留的歌词");
+    assert_eq!(
+        f.client
+            .lyric_offset("1", play_id, 1.0)
+            .await
+            .unwrap()
+            .offset,
+        0.5
+    );
+
+    // Without the receipt, the exact same bytes still support legacy detached
+    // playback, but cannot authorize an additional file read.
+    let kind = "download_file_operations_v1";
+    let receipt = f.store.get("1", kind, &op.id).unwrap().unwrap();
+    f.store.delete("1", kind, &op.id).unwrap();
+    f.client
+        .player_action("1", PlayerAction::Stop)
+        .await
+        .unwrap();
+    let replay = f
+        .client
+        .player_action("1", PlayerAction::Play)
+        .await
+        .unwrap();
+    let replay_id = replay.play_id.as_deref().unwrap();
+    assert_ne!(replay_id, play_id);
+    assert!(
+        f.client
+            .player_lyrics("1", replay_id)
+            .await
+            .unwrap()
+            .lines
+            .is_empty()
+    );
+    assert!(matches!(
+        f.client.player_lyrics("1", play_id).await,
+        Err(Error::StaleResponse)
+    ));
+
+    // A live decoder can still hold the old media while the path changes.
+    // Same length and inode are insufficient: verify SHA before sibling read.
+    f.store.put("1", kind, &op.id, &receipt).unwrap();
+    f.client
+        .player_action("1", PlayerAction::Stop)
+        .await
+        .unwrap();
+    let current = f
+        .client
+        .player_action("1", PlayerAction::Play)
+        .await
+        .unwrap();
+    let mut replacement = fs::read(&audio).unwrap();
+    *replacement.last_mut().unwrap() ^= 1;
+    fs::write(&audio, replacement).unwrap();
+    fs::write(&sidecar, "[00:01]不能读取的替换附件").unwrap();
+    assert!(
+        f.client
+            .player_lyrics("1", current.play_id.as_deref().unwrap())
+            .await
+            .unwrap()
+            .lines
+            .is_empty()
+    );
+    assert_eq!(f.api.count("player/url"), 0);
+}

@@ -60,7 +60,7 @@ impl PublishedDownload {
         }
         Ok(())
     }
-    pub(super) fn record(&self, path: PathBuf, id: String) -> Result<OfflineRecord> {
+    pub(in crate::download) fn record(&self, path: PathBuf, id: String) -> Result<OfflineRecord> {
         let mut privilege = match self.song.get("privilege") {
             None | Some(Value::Null) => serde_json::Map::new(),
             Some(Value::Object(p)) => p.clone(),

@@ -3,6 +3,7 @@
 mod commit;
 mod execute;
 pub(crate) mod fs;
+mod lyrics;
 mod prepare;
 mod types;
 mod working;
