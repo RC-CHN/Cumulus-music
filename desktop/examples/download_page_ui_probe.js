@@ -34,7 +34,8 @@
     await select('song');
     const lyricTaskId=first().dataset.downloadTask;
     await fixture('prepare_lyric_repair',{id:lyricTaskId});
-    click(button('刷新状态'));
+    await select('voice');
+    await select('song');
     const lyricRow=()=>all('[data-download-task]').find(n=>n.dataset.downloadTask===lyricTaskId);
     await wait(()=>button('重试歌词',lyricRow()??document)&&ready(),'completed audio exposes lyric-only recovery');
     click(button('重试歌词',lyricRow()));
