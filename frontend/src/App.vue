@@ -30,6 +30,8 @@ import { libraryView } from './services/playlistLibrary';
 import DailyHeading from './components/DailyHeading.vue';
 import PlaylistHero from './components/playlist/PlaylistHero.vue';
 import PlaylistTagBrowse from './components/playlist/PlaylistTagBrowse.vue';
+import PlaylistCreatorPage from './components/playlist/PlaylistCreatorPage.vue';
+import { usePlaylistCreator } from './composables/usePlaylistCreator';
 import { usePlaylistTagBrowse } from './composables/usePlaylistTagBrowse';
 import PlaylistSubscribers from './components/playlist/PlaylistSubscribers.vue';
 import { filterPlaylistTracks } from './services/playlistTrackSearch';
@@ -923,6 +925,18 @@ const {
   historyLength,
   signedIn,
 } = music;
+const playlistCreator = usePlaylistCreator(core);
+watch(
+  [
+    () => account.value.epoch,
+    () => account.value.status,
+    () => (page.value.kind === 'playlist_creator' ? page.value.id : null),
+  ],
+  ([epoch, status, uid]) => {
+    void playlistCreator.enter(status === 'authenticated' ? epoch : '', uid);
+  },
+  { immediate: true, flush: 'sync' },
+);
 const playlistTagBrowse = usePlaylistTagBrowse(core);
 watch(
   [
@@ -1953,6 +1967,11 @@ onUnmounted(() => {
                 @comments="(id, title) => openComments({ kind: 'voice', id }, title)"
                 @download="(tracks) => (downloadDialog = { kind: 'voice', tracks })"
               />
+              <PlaylistCreatorPage
+                v-else-if="page.kind === 'playlist_creator'"
+                :model="playlistCreator"
+                @open="(id) => music.navigate({ kind: 'playlist', id })"
+              />
               <PlaylistTagBrowse
                 v-else-if="page.kind === 'playlist_tag'"
                 :tag="page.tag"
@@ -2076,6 +2095,7 @@ onUnmounted(() => {
                   :items="playlistMenu(result.playlist, 'detail')"
                   @edit="editPlaylist(result.playlist.id)"
                   @tag="(tag) => music.navigate({ kind: 'playlist_tag', tag })"
+                  @creator="(id) => music.navigate({ kind: 'playlist_creator', id })"
                   @play="play(result.tracks.findIndex((track) => !track.missing))"
                   @download="
                     downloadDialog = {

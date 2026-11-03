@@ -15,6 +15,7 @@ const props = withDefaults(
     playable?: boolean;
     current?: boolean;
     playing?: boolean;
+    openOnly?: boolean;
   }>(),
   { layout: 'grid', index: 1, playable: false, current: false, playing: false },
 );
@@ -113,7 +114,7 @@ function keyboard(event: KeyboardEvent) {
       }}</span>
     </template>
     <button
-      v-else
+      v-else-if="!openOnly"
       class="library-card-play"
       :aria-label="`${current && playing ? '暂停' : '播放'}歌单：${playlist.name}`"
       :disabled="!playable || !playlist.trackCount"

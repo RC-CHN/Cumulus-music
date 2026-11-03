@@ -391,3 +391,11 @@
   padding: 0 2px;
   font: inherit;
 }
+
+button.playlist-creator {
+  font: inherit;
+  padding: 0;
+}
+button.playlist-creator:hover .ellipsis {
+  text-decoration: underline;
+}

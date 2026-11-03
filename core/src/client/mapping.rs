@@ -48,6 +48,9 @@ pub(super) fn playlist(value: &Value, uid: &str) -> Result<PlaylistView> {
         cover_url: artwork(&value["coverImgUrl"]),
         description: string(&value["description"]),
         creator: string(&value["creator"]["nickname"]),
+        creator_id: identifier(&value["creator"]["userId"])
+            .ok()
+            .filter(|id| id == &owner),
         creator_avatar_url: artwork(&value["creator"]["avatarUrl"]),
         header_date,
         tags: super::playlist_tags_browse::header_tags(&value["tags"]),

@@ -88,6 +88,11 @@ fn playlist_tag_browse_proof() -> bool {
 }
 static PLAYLIST_TAG_CALLS: std::sync::Mutex<Vec<Value>> = std::sync::Mutex::new(Vec::new());
 
+fn playlist_creator_proof() -> bool {
+    std::env::var_os("CUMULUS_PLAYLIST_CREATOR_PROOF").is_some()
+}
+static PLAYLIST_CREATOR_CALLS: std::sync::Mutex<Vec<Value>> = std::sync::Mutex::new(Vec::new());
+
 fn playlist(id: u64) -> Value {
     intelligence_start_fixture::playlist(playlist_editor_fixture::decorate(
         playlist_layout_fixture::decorate(
@@ -159,6 +164,18 @@ impl Api for Library {
                 "/api/relay/setting/show" => json!({"code":200,"data":{"groups":[]}}),
                 "/api/w/nuser/account/get" => {
                     json!({"code":200,"profile":{"userId":2,"nickname":"界面体验验证"}})
+                }
+                "/api/w/v1/user/detail/3" if playlist_creator_proof() => {
+                    PLAYLIST_CREATOR_CALLS.lock().unwrap().push(args);
+                    json!({"code":200,"profile":{"userId":3,"nickname":"合成作者 3","signature":"合成签名"}})
+                }
+                "/api/user/playlist" if playlist_creator_proof() && args["uid"] == "3" => {
+                    PLAYLIST_CREATOR_CALLS.lock().unwrap().push(args);
+                    let mut created = playlist(20);
+                    created["privacy"] = json!(0);
+                    let mut collected = playlist(2);
+                    collected["privacy"] = json!(0);
+                    json!({"code":200,"more":false,"playlist":[created,playlist(21),collected]})
                 }
                 "/api/user/playlist" => {
                     // One collected list exercises a menu whose reorder items
@@ -372,6 +389,9 @@ fn main() {
             if subscribers_proof() { value["subscriberOffsets"]=json!(*SUBSCRIBER_OFFSETS.lock().unwrap()); }
             if playlist_tag_browse_proof() {
                 value["playlistTagCalls"] = json!(*PLAYLIST_TAG_CALLS.lock().unwrap());
+            }
+            if playlist_creator_proof() {
+                value["playlistCreatorCalls"] = json!(*PLAYLIST_CREATOR_CALLS.lock().unwrap());
             }
             if playlist_comments_proof() {
                 value["playlistCommentThreads"]=json!(*PLAYLIST_COMMENT_THREADS.lock().unwrap());

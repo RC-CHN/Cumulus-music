@@ -1,0 +1,41 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { usePlaylistCreator } from '../src/composables/usePlaylistCreator.ts';
+import type { AccountData, PlaylistCreatorProfile } from '../src/services/contracts.ts';
+
+const profile = (id: string): PlaylistCreatorProfile => ({
+  id,
+  nickname: id,
+  avatarUrl: null,
+  signature: '',
+  created: [],
+  collected: [],
+});
+
+test('creator profile retains the selected group when returning, but rejects stale account results', async () => {
+  let release!: (value: AccountData<PlaylistCreatorProfile>) => void;
+  const reads: string[] = [];
+  const model = usePlaylistCreator({
+    playlistCreatorProfile: (epoch, id) => {
+      reads.push(`${epoch}:${id}`);
+      if (id === '8')
+        return new Promise((resolve) => {
+          release = resolve;
+        });
+      return Promise.resolve({ epoch, value: profile(id) });
+    },
+  });
+  await model.enter('old', '7');
+  model.select('collected');
+  model.enter('old', null);
+  await model.enter('old', '7');
+  assert.equal(model.group.value, 'collected');
+  assert.deepEqual(reads, ['old:7']);
+  const delayed = model.enter('old', '8');
+  await model.enter('new', '7');
+  release({ epoch: 'old', value: profile('8') });
+  await delayed;
+  assert.equal(model.profile.value?.id, '7');
+  assert.equal(model.group.value, 'created');
+  assert.deepEqual(reads, ['old:7', 'old:8', 'new:7']);
+});

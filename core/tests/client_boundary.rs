@@ -43,6 +43,25 @@ impl Api for Backend {
                 "/api/w/nuser/account/get" => {
                     json!({"code":200,"profile":{"userId":9,"nickname":"用户","avatarUrl":"https://p1.music.126.net/a.jpg?secret=DO_NOT_EXPORT","token":"DO_NOT_EXPORT"}})
                 }
+                "/api/w/v1/user/detail/81" => {
+                    json!({"code":200,"profile":{"userId":81,"nickname":"公开作者","signature":"签名","token":"DO_NOT_EXPORT","avatarUrl":"http://p1.music.126.net/user.png?secret=DO_NOT_EXPORT"}})
+                }
+                "/api/w/v1/user/detail/82" => json!({"code":404}),
+                "/api/w/v1/user/detail/83" => {
+                    json!({"code":200,"profile":{"userId":81,"nickname":"不匹配用户"}})
+                }
+                "/api/user/playlist" if payload["uid"] == "81" => {
+                    if payload["offset"] == 0 {
+                        json!({"code":200,"more":true,"playlist":[
+                            {"id":901,"userId":81,"name":"公开创建","privacy":0},
+                            {"id":903,"userId":81,"name":"DO_NOT_EXPORT","privacy":10}]})
+                    } else {
+                        assert_eq!(payload["offset"], 1000);
+                        json!({"code":200,"more":false,"playlist":[
+                            {"id":902,"userId":80,"name":"公开收藏","privacy":0},
+                            {"id":904,"userId":81,"name":"DO_NOT_EXPORT"}]})
+                    }
+                }
                 "/api/user/playlist" => json!({"code":200,"playlist":[playlist()],"more":false}),
                 "/api/v6/playlist/detail" => {
                     let mut value = playlist();
@@ -566,4 +585,71 @@ async fn playlist_tag_browse_uses_official_first_and_continuation_reads() {
         "/api/playlist/list/get".into(),
         json!({"ids":["25","26"],"newStyle":true})
     )));
+}
+
+#[tokio::test]
+async fn playlist_creator_profile_checks_identity_and_only_projects_public_playlists() {
+    let dir = tempfile::tempdir().unwrap();
+    let backend = Arc::new(Backend::default());
+    let (client, _) = client(dir.path(), backend.clone());
+    let epoch = client.restore_account().await.unwrap().epoch;
+    assert!(client.playlist_creator_profile("0", "81").await.is_err());
+    assert!(
+        client
+            .playlist_creator_profile(&epoch, "bad/id")
+            .await
+            .is_err()
+    );
+    let value = client.playlist_creator_profile(&epoch, "81").await.unwrap();
+    assert_eq!(value.epoch, epoch);
+    let view = value.value.unwrap();
+    assert_eq!(view.id, "81");
+    assert_eq!(view.nickname, "公开作者");
+    assert_eq!(
+        view.avatar_url.as_deref(),
+        Some("https://p1.music.126.net/user.png?param=320y320")
+    );
+    assert_eq!(
+        view.created
+            .iter()
+            .map(|row| row.id.as_str())
+            .collect::<Vec<_>>(),
+        ["901"]
+    );
+    assert_eq!(
+        view.collected
+            .iter()
+            .map(|row| row.id.as_str())
+            .collect::<Vec<_>>(),
+        ["902"]
+    );
+    assert!(
+        !serde_json::to_string(&view)
+            .unwrap()
+            .contains("DO_NOT_EXPORT")
+    );
+    assert!(
+        client
+            .playlist_creator_profile(&epoch, "82")
+            .await
+            .unwrap()
+            .value
+            .is_none()
+    );
+    assert!(client.playlist_creator_profile(&epoch, "83").await.is_err());
+    let calls = backend.requests.lock().unwrap();
+    assert!(calls.contains(&(
+        "/api/w/v1/user/detail/81".into(),
+        json!({"all":true,"userId":"81"})
+    )));
+    let list_reads: Vec<_> = calls
+        .iter()
+        .filter(|(path, _)| path == "/api/user/playlist")
+        .collect();
+    assert_eq!(list_reads.len(), 2);
+    assert_eq!(list_reads[0].1, json!({"uid":"81","offset":0,"limit":1000}));
+    assert_eq!(
+        list_reads[1].1,
+        json!({"uid":"81","offset":1000,"limit":1000})
+    );
 }

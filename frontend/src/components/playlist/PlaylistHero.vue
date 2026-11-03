@@ -31,6 +31,7 @@ defineEmits<{
   action: [key: string];
   intelligence: [];
   tag: [tag: string];
+  creator: [id: string];
 }>();
 </script>
 
@@ -63,7 +64,14 @@ defineEmits<{
       <div class="playlist-summary">
         <PlaylistDescription :text="playlist.description" />
         <div class="playlist-credits">
-          <span v-if="playlist.creator" class="playlist-creator">
+          <component
+            :is="playlist.creatorId ? 'button' : 'span'"
+            v-if="playlist.creator"
+            class="playlist-creator"
+            :type="playlist.creatorId ? 'button' : undefined"
+            :aria-label="playlist.creatorId ? `查看作者主页：${playlist.creator}` : undefined"
+            @click="playlist.creatorId && $emit('creator', playlist.creatorId)"
+          >
             <img
               v-if="playlist.creatorAvatarUrl && playlist.creatorAvatarUrl !== failedAvatar"
               :src="playlist.creatorAvatarUrl"
@@ -73,7 +81,7 @@ defineEmits<{
             />
             <Icon v-else name="user" aria-hidden="true" />
             <span class="ellipsis" :title="playlist.creator">{{ playlist.creator }}</span>
-          </span>
+          </component>
           <div v-if="playlist.tags?.length" class="playlist-hero-tags">
             <span>标签：</span>
             <template v-for="(tag, index) in playlist.tags" :key="tag">
