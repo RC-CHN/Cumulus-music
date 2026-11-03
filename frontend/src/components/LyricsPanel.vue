@@ -6,12 +6,14 @@ import Icon from './Icon.vue';
 import DesktopLyricToggle from './DesktopLyricToggle.vue';
 import ActionMenu from './ActionMenu.vue';
 import { useMotion } from '../composables/useMotion';
-import { artistLabel } from '../services/artistLabel';
+import type { CatalogResource } from '../services/catalog';
+import { playbackMetadata } from '../services/playbackMetadata';
 const props = defineProps<{ player: PlayerModel }>();
-const emit = defineEmits<{ report: [] }>();
+const emit = defineEmits<{ report: []; catalog: [target: CatalogResource] }>();
 const { view, lyrics, lyricLoading, lyricError, loaded, busy } = props.player;
 const container = ref<HTMLElement>(),
   close = ref<HTMLButtonElement>();
+const metadata = computed(() => playbackMetadata(view.value?.track));
 const wordMode = ref(true);
 const motion = useMotion();
 const manual = ref(false);
@@ -130,9 +132,38 @@ function aligned(rows: { time?: number; lyric: string }[] | undefined, index: nu
           /><Icon v-else name="music" />
         </div>
         <h1 :title="view?.track?.name">{{ view?.track?.name }}</h1>
-        <p :title="artistLabel(view?.track)">{{ artistLabel(view?.track) }}</p>
-        <small :title="view?.track?.album">{{ view?.track?.album }}</small
-        ><span v-if="view?.timeline?.mode === 'trial'" class="trial-badge">当前为试听片段</span>
+        <p v-if="view?.track" class="vinyl-credits" aria-label="歌手">
+          <template v-for="(artist, index) in metadata.artists" :key="index">
+            <span v-if="index > 0" aria-hidden="true"> / </span>
+            <button
+              v-if="artist.target"
+              type="button"
+              class="text-button vinyl-credit"
+              :aria-label="`查看歌手：${artist.name}`"
+              :title="artist.name"
+              @click="emit('catalog', artist.target)"
+            >
+              {{ artist.name }}
+            </button>
+            <span v-else class="vinyl-credit" :title="artist.name">{{ artist.name }}</span>
+          </template>
+        </p>
+        <small v-if="view?.track" class="vinyl-album">
+          <button
+            v-if="metadata.album.target"
+            type="button"
+            class="text-button vinyl-credit"
+            :aria-label="`查看专辑：${metadata.album.name}`"
+            :title="metadata.album.name"
+            @click="emit('catalog', metadata.album.target)"
+          >
+            {{ metadata.album.name }}
+          </button>
+          <span v-else class="vinyl-credit" :title="metadata.album.name">{{
+            metadata.album.name
+          }}</span>
+        </small>
+        <span v-if="view?.timeline?.mode === 'trial'" class="trial-badge">当前为试听片段</span>
       </div>
       <div class="lyrics-column">
         <div v-if="lyricLoading" class="empty-state" role="status">

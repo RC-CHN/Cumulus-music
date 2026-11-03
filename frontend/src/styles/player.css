@@ -656,6 +656,26 @@ input[type='range'] {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.vinyl-info .vinyl-credits {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px 5px;
+  max-height: 4.5em;
+  padding: 2px;
+  overflow: auto;
+}
+.vinyl-album {
+  display: flex;
+  padding: 2px;
+}
+.vinyl-credit {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .trial-badge {
   color: var(--accent);
   font-size: 11px;

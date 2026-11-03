@@ -2413,6 +2413,12 @@ onUnmounted(() => {
         v-if="player.lyricsOpen.value && currentTrackId"
         :player="player"
         @report="reportLyrics"
+        @catalog="
+          (target) => {
+            player.lyricsOpen.value = false;
+            openCatalog(target);
+          }
+        "
       />
     </Transition>
     <ModalTransition

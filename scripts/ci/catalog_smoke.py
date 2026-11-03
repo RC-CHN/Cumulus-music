@@ -69,6 +69,7 @@ def main():
     parser.add_argument('--frontend-dist', type=Path, help='Local synthetic frontend comparison')
     parser.add_argument('--screenshots', action='store_true', help='local Linux GTK captures; not required in CI')
     mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--playback-credit', action='store_true', help='open current album and artist while playing')
     mode.add_argument('--navigation', action='store_true', help='cross-resource tab history, comment draft and native play identity')
     mode.add_argument('--artist', action='store_true', help='artist header, tab prefixes, viewport return and native playback')
     mode.add_argument('--album', action='store_true', help='album-local tabs, draft retention, header actions and native null playback')
@@ -87,9 +88,10 @@ def main():
     env['CUMULUS_PROOF_DIR'] = str(root / 'run')
     if args.frontend_dist:
         env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve())
-    if args.artist or args.navigation:
+    if args.artist or args.navigation or args.playback_credit:
         env['CUMULUS_ARTIST_PROOF'] = '1'
-        source = 'catalog_navigation_ui_probe.js' if args.navigation else 'artist_ui_probe.js'
+        source = ('playback_credit_ui_probe.js' if args.playback_credit else
+                  'catalog_navigation_ui_probe.js' if args.navigation else 'artist_ui_probe.js')
         env['CUMULUS_UX_SCRIPT'] = str(Path(__file__).resolve().parents[2] / 'desktop/examples' / source)
         if args.screenshots:
             env['CUMULUS_PROOF_CAPTURE_ACK'] = '1'
@@ -131,6 +133,18 @@ def main():
         raise AssertionError((output / 'failed.json').read_text(encoding='utf-8'))
     assert returncode == 0, f'catalog probe exited {returncode}'
     complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
+    if args.playback_credit:
+        assert complete['ok'] and complete['samePlayback'] and complete['syntheticCatalog']
+        states = [json.loads((output / f'ux_{stage}.json').read_text(encoding='utf-8'))
+                  for stage in ('album_credit', 'album_opened', 'artist_credit', 'artist_opened')]
+        assert [states[1]['title'], states[3]['title']] == ['测试专辑', '测试歌手']
+        native = [state['nativePlayer'] for state in states]
+        assert all(state['state'] == 'playing' for state in native)
+        assert len({state['playId'] for state in native}) == 1
+        assert len({state['queueRevision'] for state in native}) == 1
+        assert not args.screenshots or captures == 4
+        print(json.dumps(dict(ok=True, actualWebView=True, samePlayback=True, screenshots=captures)))
+        return
     if args.navigation:
         assert complete['ok'] and complete['navigation'] and complete['stageCount'] == 52
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
