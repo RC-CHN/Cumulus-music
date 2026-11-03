@@ -84,13 +84,40 @@
     }
     // Voice double click uses the selected episode while its radio link stays independent.
     await choose('voices');const voice=all('.search-result-card')[1];voice.dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));await wait(()=>voice.classList.contains('search-card-current')&&voice.querySelector('.search-card-play').getAttribute('aria-label').startsWith('暂停'),'voice double click');await capture('voice_double_play');
-    click(voice.querySelector('.menu-trigger'));await wait(()=>one('.action-menu'),'voice menu');click(button('下载声音'));await wait(()=>one('.download-dialog[open]'),'voice download options');await capture('voice_download_options');
-    const close=one('.download-dialog button[aria-label^="关闭"]');click(close);await wait(()=>!one('.download-dialog'),'download cancel');
+    assert(voice.querySelector('.search-voice-duration')?.textContent==='06:00'&&
+      voice.querySelector('.search-voice-radio')?.textContent.trim()==='播单：合成播客 2',
+      'known episode duration and parent radio label');
+    const direct=voice.querySelector('.search-card-download');
+    await hover(voice);
+    await wait(()=>direct&&Number(getComputedStyle(direct).opacity)>.99,'direct voice download on hover');
+    click(voice.querySelector('.menu-trigger'));await wait(()=>one('.action-menu'),'voice menu');
+    assert(button('下载声音'),'context menu still exposes voice download');
+    one('.action-menu').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+    await wait(()=>!one('.action-menu'),'voice menu closes before direct action');
+    await pointer(innerWidth-3,75);direct.focus({preventScroll:true});
+    await wait(()=>document.activeElement===direct&&!voice.matches(':hover')&&Number(getComputedStyle(direct).opacity)>.99,
+      'keyboard reveals direct voice download');
+    const r=direct.getBoundingClientRect();
+    assert(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.closest('button')===direct,
+      'direct voice download has a real hit target');
+    const epoch=(await invoke('account_snapshot')).epoch;
+    const playing=await invoke('player_snapshot',{epoch});
+    direct.dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));
+    click(direct);await wait(()=>one('.download-dialog[open]'),'voice download options');
+    assert(one('.download-dialog h2')?.textContent.includes('下载 1 个单集')&&
+      one('.download-selection')?.title===voice.querySelector('.search-result-name').textContent.trim(),
+      'direct download targets exactly the selected voice');
+    await capture('voice_download_options');
+    const close=one('.download-dialog button[aria-label^="关闭"]');click(close);
+    await wait(()=>!one('.download-dialog')&&document.activeElement===direct,'download cancel restores focus');
+    const retained=await invoke('player_snapshot',{epoch});
+    assert(retained.playId===playing.playId&&retained.queueRevision===playing.queueRevision,
+      'direct download and double-click do not change playback');
     step='playback_read_error';await fixture('card_error');submit();await sleep(0);await choose('albums');click(one('.search-card-play'));await wait(()=>one('.playback-message')||document.body.innerText.includes('请重试')||button('重试'),'read failure feedback');await capture('playback_read_error');
     await fixture('good');click(button('重试'));await wait(()=>one('.search-card-current')?.querySelector('.search-card-play')?.getAttribute('aria-label').startsWith('暂停'),'playback retry');await capture('playback_recovered');
     await fixture('cover');submit();await sleep(0);await choose('playlists');await wait(()=>one('.search-result-art img')?.complete&&one('.search-result-art img').naturalWidth>0,'local artwork loaded');await hover(one('.search-result-card'));await capture('cover_loaded');
     await fixture('cover_error');submit();await sleep(0);await choose('artists');await choose('playlists');await wait(()=>!one('.search-result-art img'),'failed cover fallback');assert(one('.search-result-art > .icon'),'placeholder after error');await hover(one('.search-result-card'));await capture('cover_failed');
     assert(localImageAssignments>0,'image outcome injection exercised');
-    await emit('complete',{ok:true,stageCount:count,nativePointer:true,coverOutcomeInjected:true,keyboardContextMenu:true,voiceMenuDoubleClickSafe:true,realMusicRequests:0,realAccountWrites:0});
+    await emit('complete',{ok:true,stageCount:count,nativePointer:true,coverOutcomeInjected:true,keyboardContextMenu:true,voiceMenuDoubleClickSafe:true,directVoiceDownloadVerified:true,realMusicRequests:0,realAccountWrites:0});
   }catch(e){await emit('failed',{step,message:String(e),stack:e?.stack,stageCount:count,hoverState,ipcCalls:ipcCalls.slice(-18),body:document.body.innerText.slice(0,4000)});}
 })();

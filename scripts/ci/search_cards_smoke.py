@@ -11,6 +11,7 @@ def main():
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--runtime', type=Path)
+    parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--screenshots', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
@@ -24,6 +25,8 @@ def main():
         directory = root / 'os-profile' / name
         directory.mkdir(parents=True, mode=0o700)
         env[key] = str(directory)
+    if args.frontend_dist:
+        env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve(strict=True))
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
     source = Path(__file__).resolve().parents[2] / 'desktop/examples/search_cards_ui_probe.js'
@@ -41,6 +44,7 @@ def verify(root, capture):
     complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
     assert complete['ok'] and complete['nativePointer'] and complete['coverOutcomeInjected']
     assert complete['keyboardContextMenu'] and complete['voiceMenuDoubleClickSafe']
+    assert complete['directVoiceDownloadVerified']
     assert complete['stageCount'] == 56 and complete['syntheticSearchCalls'] > 20
     assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
     assert len(list((root / 'first').glob('ux_*.json'))) == complete['stageCount']

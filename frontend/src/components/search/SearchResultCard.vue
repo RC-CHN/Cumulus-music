@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import type { SearchCategory, SearchItem } from '../../services/search';
 import { artworkAt } from '../../services/artwork';
+import { time } from '../../services/player';
 import Icon from '../Icon.vue';
 import SearchMatchText from './SearchMatchText.vue';
 import ActionMenu from '../ActionMenu.vue';
@@ -110,7 +111,8 @@ function action(key: string) {
     );
   else if (key === 'open' && !unavailable.value) emit('open', props.item);
   else if (key === 'comments') emit('comments', props.item);
-  else if (key === 'download') emit('download', props.item);
+  else if (key === 'download' && props.item.kind === 'voice' && !props.item.voice.unavailable)
+    emit('download', props.item);
 }
 function doubleClick(event: MouseEvent) {
   if (
@@ -127,6 +129,10 @@ const unavailable = computed(() =>
       ? !props.item.mv.mvId
       : props.item.kind === 'user' && props.item.user.unavailable,
 );
+const voiceDuration = computed(() => {
+  const ms = props.item.kind === 'voice' ? props.item.voice.durationMs : 0;
+  return Number.isFinite(ms) && ms > 0 ? time(ms / 1000) : '';
+});
 const card = computed(() => {
   const i = props.item;
   switch (i.kind) {
@@ -255,15 +261,39 @@ watch(
       <SearchMatchText v-if="markedTitle" :text="card.name" :keyword="matchKeyword" />
       <template v-else>{{ card.name }}</template>
     </span>
-    <button
-      v-if="item.kind === 'voice' && item.voice.radioId"
-      class="search-voice-radio"
-      :data-tooltip="card.sub"
-      @click.stop="emit('open', item)"
-      @dblclick.stop
-    >
-      {{ card.sub }}
-    </button>
+    <template v-if="item.kind === 'voice'">
+      <span class="search-voice-footer">
+        <span v-if="voiceDuration" class="search-voice-duration">{{ voiceDuration }}</span>
+        <button
+          v-if="item.voice.radioId"
+          type="button"
+          class="search-voice-radio"
+          :data-tooltip="item.voice.radioName || '查看所属播客'"
+          @click.stop="emit('open', item)"
+          @dblclick.stop
+        >
+          {{ item.voice.radioName ? `播单：${item.voice.radioName}` : '查看所属播客' }}
+        </button>
+        <span v-else-if="item.voice.unavailable" class="search-result-sub">单集暂不可播放</span>
+        <span
+          v-else-if="item.voice.creator"
+          class="search-result-sub"
+          :data-tooltip="item.voice.creator"
+        >
+          {{ item.voice.creator }}
+        </span>
+      </span>
+      <button
+        type="button"
+        class="icon-button search-card-download"
+        :aria-label="`下载 ${card.name}`"
+        :disabled="item.voice.unavailable"
+        @click.stop="action('download')"
+        @dblclick.stop
+      >
+        <Icon name="download" />
+      </button>
+    </template>
     <span v-else-if="unavailable && !canPlay" class="search-result-sub">{{
       item.kind === 'user' ? '此账号当前不可用' : '暂不可打开'
     }}</span>
