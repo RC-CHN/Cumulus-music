@@ -129,6 +129,55 @@ async fn contradictory_empty_counts_stop_paging_and_malformed_results_are_errors
     assert_eq!(api.calls.lock().unwrap().len(), before);
 }
 #[tokio::test]
+async fn unusable_cards_do_not_drop_valid_siblings_or_shift_category_offsets() {
+    let (_root, api, _, client) = fixture();
+    let epoch = client.account().unwrap().epoch;
+    let song = |id| json!({"id":id,"name":"合成歌曲","ar":[],"al":{"name":"合成专辑"}});
+    *api.reply.lock().unwrap() = json!({"code":200,"data":{"resources":[
+        {"baseInfo":{"simpleSongData":song(11)}},
+        {"baseInfo":{"simpleSongData":{"name":"PRIVATE malformed row"}}},
+        {"baseInfo":{"simpleSongData":song(12)}}
+    ],"totalCount":10,"hasMore":true}});
+    let mut request = query(C::Songs);
+    request.offset = 4;
+    let page =
+        serde_json::to_value(client.search_results(&epoch, request).await.unwrap().value).unwrap();
+    assert_eq!(page["unavailableCount"], 1);
+    assert_eq!(page["nextOffset"], 7);
+    assert_eq!(page["more"], true);
+    assert_eq!(page["sections"][0]["items"][0]["track"]["id"], "11");
+    assert_eq!(page["sections"][0]["items"][1]["track"]["id"], "12");
+    assert!(!page.to_string().contains("PRIVATE"));
+
+    *api.reply.lock().unwrap() = json!({"code":200,"data":{"blocks":[
+        {"blockCode":"search_block_best_match","resources":[
+            {"type":"song","baseInfo":{"id":"invalid"}},
+            {"type":"song","baseInfo":song(13)},
+            {"type":"unsupported_fixture","baseInfo":{"secret":"PRIVATE"}}
+        ]},
+        {"blockCode":"search_block_song","resources":[{"type":"song","baseInfo":song(14)}]}
+    ]}});
+    let comprehensive = serde_json::to_value(
+        client
+            .search_results(&epoch, query(C::All))
+            .await
+            .unwrap()
+            .value,
+    )
+    .unwrap();
+    assert_eq!(comprehensive["unavailableCount"], 2);
+    assert_eq!(
+        comprehensive["sections"][0]["items"][0]["track"]["id"],
+        "13"
+    );
+    assert_eq!(
+        comprehensive["sections"][1]["items"][0]["track"]["id"],
+        "14"
+    );
+    assert!(!comprehensive.to_string().contains("PRIVATE"));
+}
+
+#[tokio::test]
 async fn result_from_replaced_account_is_rejected() {
     let (_root, api, session, client) = fixture();
     let epoch = client.account().unwrap().epoch;

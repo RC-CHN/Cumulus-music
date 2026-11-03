@@ -44,6 +44,10 @@
     }
     await choose('playlists');const p=one('.search-result-panel');p.scrollTop=p.scrollHeight;click(button('下一页'));await wait(()=>ready()&&one('.search-result-pagination').textContent.includes('第 2 页'),'next page');await capture('playlists_page_two');
     click(button('上一页'));await wait(()=>ready()&&one('.search-result-pagination').textContent.includes('第 1 页'),'previous page');
+    await fixture('mixed_results');await fresh('合成混合结果');
+    const partial=()=>one('.search-result-panel').textContent.includes('有 1 项结果暂无法展示');
+    assert(partial()&&one('.search-track-card')&&!button('重新加载'),'comprehensive mixed results preserve valid cards');
+    await choose('songs');assert(partial()&&one('.track-row')&&!button('重新加载'),'category mixed results preserve valid tracks');
     await fixture('empty');await fresh('合成空结果');await choose('lyrics');await capture('empty');assert(one('.search-result-panel').textContent.includes('没有找到'),'empty copy');
     await fixture('result_error');await fresh('合成失败结果');await choose('albums');await capture('error');assert(button('重新加载'),'retry action');await fixture('good');click(button('重新加载'));await wait(()=>ready()&&one('.search-result-card'),'retry recovery');await capture('recovered');
     hold('all');submit('合成延迟结果');await wait(()=>held,'held response');await capture('loading');await choose('songs');release();await sleep(220);assert(one('[data-category="songs"]').getAttribute('aria-selected')==='true'&&one('.search-result-actions'),'late result ignored');await capture('late_result');

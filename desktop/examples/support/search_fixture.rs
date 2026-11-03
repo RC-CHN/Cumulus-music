@@ -20,6 +20,7 @@ pub fn control(value: &Value) {
             "result_error",
             "unavailable",
             "missing_song",
+            "mixed_results",
             "card_error",
             "cover",
             "cover_error",
@@ -186,6 +187,15 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
     ))
     .unwrap();
     let mut response = fixtures[category].clone();
+    if mode == "mixed_results" && category == "all" {
+        response["data"]["blocks"][0]["resources"]
+            .as_array_mut()
+            .unwrap()
+            .insert(
+                0,
+                json!({"type":"song","baseInfo":{"name":"不可展示的合成结果"}}),
+            );
+    }
     if mode == "preview" && category == "all" {
         for block in response["data"]["blocks"].as_array_mut().unwrap() {
             let rows = block["resources"].as_array().unwrap();
@@ -285,6 +295,9 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
             })
             .collect()
     });
+    if mode == "mixed_results" && category == "songs" {
+        container[key][0] = json!({"baseInfo":{"simpleSongData":{"name":"不可展示的合成结果"}}});
+    }
     if mode == "lyrics" && category == "lyrics" {
         for (i, row) in container[key]
             .as_array_mut()

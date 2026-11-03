@@ -212,9 +212,11 @@ fn project(raw: Value, query: SearchResultQuery, uid: &str) -> Result<SearchResu
                     &resource["baseInfo"],
                     uid,
                     &Value::Null,
-                )? {
-                    Some(item) => section.items.push(item),
-                    None => result.unavailable_count += 1,
+                ) {
+                    Ok(Some(item)) => section.items.push(item),
+                    // A card can be unsupported or malformed independently of
+                    // the response envelope. Keep its valid siblings visible.
+                    Ok(None) | Err(_) => result.unavailable_count += 1,
                 }
             }
             if !section.items.is_empty() {
@@ -288,8 +290,9 @@ fn project(raw: Value, query: SearchResultQuery, uid: &str) -> Result<SearchResu
         } else {
             &Value::Null
         };
-        if let Some(item) = item(kind, base, uid, lyric)? {
-            section.items.push(item);
+        match item(kind, base, uid, lyric) {
+            Ok(Some(item)) => section.items.push(item),
+            Ok(None) | Err(_) => result.unavailable_count += 1,
         }
     }
     result.sections.push(section);
