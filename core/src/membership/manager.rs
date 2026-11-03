@@ -1,6 +1,6 @@
 use super::{
     MembershipApi, MembershipState,
-    clock::{MembershipClock, SystemMembershipClock},
+    clock::{ClockReading, MembershipClock, SystemMembershipClock},
     membership_state,
 };
 use crate::{
@@ -14,10 +14,38 @@ use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Serialize, Deserialize)]
-struct Record {
-    data: Value,
-    server_ms: f64,
+pub(super) struct Record {
+    pub(super) data: Value,
+    pub(super) server_ms: f64,
     wall: f64,
+}
+impl Record {
+    pub(super) fn restore(
+        mut self,
+        uid: &str,
+        clock: ClockReading,
+        rollback_tolerance: f64,
+    ) -> Result<Self> {
+        if !self.wall.is_finite() || !self.server_ms.is_finite() || self.server_ms <= 0.0 {
+            return Err(Error::Response("invalid stored membership clock"));
+        }
+        if let Some(id) = self.data.get("userId").filter(|v| !v.is_null())
+            && identifier(id)? != uid
+        {
+            return Err(Error::Response(
+                "stored membership belongs to another account",
+            ));
+        }
+        let elapsed = clock.wall_seconds - self.wall;
+        if elapsed < -rollback_tolerance {
+            return Err(Error::Response(
+                "clock moved backwards; refresh membership online",
+            ));
+        }
+        self.server_ms += elapsed.max(0.0) * 1000.0;
+        membership_state(&self.data, self.server_ms)?;
+        Ok(self)
+    }
 }
 struct Cached {
     record: Record,
@@ -132,31 +160,11 @@ impl MembershipManager {
         let (snapshot, baseline) = self.session.with_token(&token, |uid| {
             let mut state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
             if !state.as_ref().is_some_and(|cached| cached.token == token) {
-                let mut record: Record =
+                let record: Record =
                     serde_json::from_value(self.store.get(uid, "membership", "current")?.ok_or(
                         Error::Response("membership has not been refreshed for this account"),
                     )?)?;
-                if !record.wall.is_finite()
-                    || !record.server_ms.is_finite()
-                    || record.server_ms <= 0.0
-                {
-                    return Err(Error::Response("invalid stored membership clock"));
-                }
-                if let Some(id) = record.data.get("userId").filter(|v| !v.is_null())
-                    && identifier(id)? != uid
-                {
-                    return Err(Error::Response(
-                        "stored membership belongs to another account",
-                    ));
-                }
-                let elapsed = clock.wall_seconds - record.wall;
-                if elapsed < -5.0 {
-                    return Err(Error::Response(
-                        "clock moved backwards; refresh membership online",
-                    ));
-                }
-                record.server_ms += elapsed.max(0.0) * 1000.0;
-                membership_state(&record.data, record.server_ms)?;
+                let record = record.restore(uid, clock, 5.0)?;
                 *state = Some(Cached {
                     record,
                     anchor: clock.monotonic_seconds,

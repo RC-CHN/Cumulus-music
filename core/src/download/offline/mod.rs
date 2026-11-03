@@ -4,7 +4,7 @@ mod detached;
 mod records;
 mod service;
 pub use cold::{ColdOfflineAudio, ColdOfflineAudioPage, ColdOfflineAudioRow, ColdOfflineCursor};
-pub(crate) use cold::{list_plain_audio, open_plain_audio};
+pub(crate) use cold::{list_audio, open_audio};
 pub(crate) use detached::detach_download_queue;
 pub use records::{OfflineCheck, OfflineRecord, PublishedDownload};
 pub use service::OfflineLibrary;

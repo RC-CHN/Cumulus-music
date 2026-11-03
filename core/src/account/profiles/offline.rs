@@ -1,7 +1,10 @@
 //! Explicit native authorization for previously verified local resources.
 //! This does not authenticate AccountSession or authorize any online request.
 use super::*;
-use crate::account::SessionStatus;
+use crate::{
+    account::SessionStatus,
+    membership::{ColdEntitlement, ColdMembership},
+};
 
 const BINDING: &str = "cold-offline-binding-v1";
 
@@ -23,6 +26,7 @@ pub struct ColdOfflineGrant {
     credentials: Arc<Credentials>,
     binding: Binding,
     revoked: AtomicBool,
+    membership: ColdMembership,
 }
 
 pub(super) fn store_verified(
@@ -98,6 +102,7 @@ impl ProfileRegistry {
             credentials,
             binding,
             revoked: AtomicBool::new(false),
+            membership: ColdMembership::default(),
         };
         grant.require()?;
         Ok(grant)
@@ -122,34 +127,74 @@ impl ColdOfflineGrant {
         after: Option<&crate::download::offline::ColdOfflineCursor>,
         limit: usize,
     ) -> Result<crate::download::offline::ColdOfflineAudioPage> {
+        self.list_downloads(after, limit, None)
+    }
+
+    pub fn list_audio(
+        &self,
+        after: Option<&crate::download::offline::ColdOfflineCursor>,
+        limit: usize,
+    ) -> Result<crate::download::offline::ColdOfflineAudioPage> {
+        self.list_downloads(after, limit, Some(&self.membership))
+    }
+
+    fn list_downloads(
+        &self,
+        after: Option<&crate::download::offline::ColdOfflineCursor>,
+        limit: usize,
+        membership: Option<&ColdMembership>,
+    ) -> Result<crate::download::offline::ColdOfflineAudioPage> {
         self.require()?;
-        let page = crate::download::offline::list_plain_audio(
+        let page = crate::download::offline::list_audio(
             self.cursor_id,
             &self.registry.store,
             &self.binding.uid,
             after,
             limit,
+            membership,
         )?;
         self.require()?;
         Ok(page)
     }
 
-    /// Blocking IO. The caller passes a task ID, never an owner or path; UI
-    /// projection and decoder lifecycle are intentionally not connected yet.
+    /// Blocking IO. The caller passes a published task ID, never an owner or path.
     pub fn open_plain_audio(
         &self,
         task_id: &str,
     ) -> Result<crate::download::offline::ColdOfflineAudio<'_>> {
+        self.open_download(task_id, None)
+    }
+
+    pub fn open_audio(
+        &self,
+        task_id: &str,
+    ) -> Result<crate::download::offline::ColdOfflineAudio<'_>> {
+        self.open_download(task_id, Some(&self.membership))
+    }
+
+    fn open_download(
+        &self,
+        task_id: &str,
+        membership: Option<&ColdMembership>,
+    ) -> Result<crate::download::offline::ColdOfflineAudio<'_>> {
         self.require()?;
-        let (file, quality) = crate::download::offline::open_plain_audio(
+        let (file, quality, entitlement) = crate::download::offline::open_audio(
             &self.registry.store,
             &self.binding.uid,
             task_id,
+            membership,
         )?;
         self.require()?;
         Ok(crate::download::offline::ColdOfflineAudio::new(
-            self, file, quality,
+            self,
+            file,
+            quality,
+            entitlement,
         ))
+    }
+
+    pub(crate) fn validate_entitlement(&self, entitlement: &ColdEntitlement) -> Result<()> {
+        entitlement.validate(&self.registry.store, &self.binding.uid)
     }
 
     fn require(&self) -> Result<()> {

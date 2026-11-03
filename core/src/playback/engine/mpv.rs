@@ -5,7 +5,7 @@ use super::{
 };
 use crate::{
     Error, Result,
-    media::ncm::{AudioFormat, HeaderPolicy, NcmReader},
+    media::ncm::{HeaderPolicy, NcmReader},
 };
 use std::{
     collections::VecDeque,
@@ -560,15 +560,7 @@ impl AudioEngine for MpvEngine {
         cancel.check()?;
         Self::check_regular(&file)?;
         let reader = NcmReader::new(file, HeaderPolicy::Strict)?;
-        let format = match reader.info().audio_format {
-            Some(AudioFormat::Flac) => "flac",
-            Some(AudioFormat::Mp3) => "mp3",
-            // MOV/M4A external references are outside this transport's
-            // audio-only, no secondary input boundary.
-            Some(AudioFormat::M4a) | None => {
-                return Err(Error::InvalidInput("unsupported pinned NCM audio format"));
-            }
-        };
+        let format = super::pinned_ncm_format(reader.info())?;
         self.load_pinned(Box::new(reader), format, authority, cancel)
     }
 

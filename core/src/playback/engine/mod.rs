@@ -34,6 +34,18 @@ pub(crate) fn pinned_audio_format(file: &mut std::fs::File) -> Result<&'static s
     }
 }
 
+pub(crate) fn pinned_ncm_format(info: &crate::media::ncm::NcmInfo) -> Result<&'static str> {
+    use crate::media::ncm::AudioFormat;
+    match info.audio_format {
+        Some(AudioFormat::Flac) => Ok("flac"),
+        Some(AudioFormat::Mp3) => Ok("mp3"),
+        // MOV/M4A external references are outside the audio-only boundary.
+        Some(AudioFormat::M4a) | None => Err(crate::Error::InvalidInput(
+            "unsupported pinned NCM audio format",
+        )),
+    }
+}
+
 // The private stream source can only be staged by the native engine.
 trait PinnedReader: std::io::Read + std::io::Seek + Send {}
 impl<T: std::io::Read + std::io::Seek + Send> PinnedReader for T {}

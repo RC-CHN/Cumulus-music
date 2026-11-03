@@ -7,9 +7,12 @@ use crate::{
     Error, Result,
     account::profiles::ColdOfflineGrant,
     download::service::{DownloadOrigin, DownloadTask, TASKS},
-    media::open_regular,
-    membership::Quality,
-    playback::engine::pinned_audio_format,
+    media::{
+        ncm::{HeaderPolicy, NcmReader},
+        open_regular,
+    },
+    membership::{ColdEntitlement, ColdMembership, Quality},
+    playback::engine::{pinned_audio_format, pinned_ncm_format},
     storage::StateStore,
 };
 use serde::Serialize;
@@ -21,25 +24,40 @@ use std::{
     path::PathBuf,
 };
 
-/// Native handle to already-opened, verified plain audio. No file path or
+/// Native handle to already-opened, verified downloaded audio. No file path or
 /// account identity is exposed. A future host must stop decoding on revocation.
 pub struct ColdOfflineAudio<'a> {
     grant: &'a ColdOfflineGrant,
     file: File,
     quality: Quality,
+    entitlement: Option<ColdEntitlement>,
 }
 impl<'a> ColdOfflineAudio<'a> {
-    pub(crate) fn new(grant: &'a ColdOfflineGrant, file: File, quality: Quality) -> Self {
+    pub(crate) fn new(
+        grant: &'a ColdOfflineGrant,
+        file: File,
+        quality: Quality,
+        entitlement: Option<ColdEntitlement>,
+    ) -> Self {
         Self {
             grant,
             file,
             quality,
+            entitlement,
         }
     }
 
     pub fn file(&self) -> Result<&File> {
         self.grant.validate()?;
+        if let Some(entitlement) = &self.entitlement {
+            self.grant.validate_entitlement(entitlement)?;
+        }
         Ok(&self.file)
+    }
+
+    pub(crate) fn into_playback(self) -> Result<(File, Option<ColdEntitlement>)> {
+        self.file()?;
+        Ok((self.file, self.entitlement))
     }
 
     pub fn quality(&self) -> Quality {
@@ -88,16 +106,25 @@ fn valid_id(id: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
-fn eligible(store: &StateStore, owner: &str, task_id: &str, raw: &Value) -> Result<Eligible> {
+fn eligible(
+    store: &StateStore,
+    owner: &str,
+    task_id: &str,
+    raw: &Value,
+    include_encrypted: bool,
+) -> Result<Eligible> {
     if !valid_id(task_id) {
         return Err(Error::InvalidInput(
             "invalid cold offline download identifier",
         ));
     }
     let task: DownloadTask = serde_json::from_value(raw.clone())?;
-    if task.id != task_id || !matches!(task.origin, DownloadOrigin::Song) || task.encrypted {
+    if task.id != task_id
+        || !matches!(task.origin, DownloadOrigin::Song)
+        || (task.encrypted && !include_encrypted)
+    {
         return Err(Error::State(
-            "cold offline mode only supports plain downloaded songs",
+            "download is not an eligible cold offline song",
         ));
     }
     let path = task.playback_target()?.canonicalize()?;
@@ -110,7 +137,7 @@ fn eligible(store: &StateStore, owner: &str, task_id: &str, raw: &Value) -> Resu
         || record.path != path
         || record.task_id != task_id
         || record.song_id != task.song_id
-        || record.encrypted
+        || record.encrypted != task.encrypted
         || task.output_integrity.as_ref() != Some(&record.integrity)
     {
         return Err(Error::State("cold offline download ledger mismatch"));
@@ -149,12 +176,23 @@ fn text(value: &Value) -> String {
         .collect()
 }
 
-pub(crate) fn list_plain_audio(
+fn check_format(file: &mut File, encrypted: bool) -> Result<()> {
+    if encrypted {
+        let reader = NcmReader::new(file, HeaderPolicy::Strict)?;
+        pinned_ncm_format(reader.info())?;
+    } else {
+        pinned_audio_format(file)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn list_audio(
     grant: uuid::Uuid,
     store: &StateStore,
     owner: &str,
     after: Option<&ColdOfflineCursor>,
     limit: usize,
+    membership: Option<&ColdMembership>,
 ) -> Result<ColdOfflineAudioPage> {
     if !(1..=PAGE_LIMIT).contains(&limit) {
         return Err(Error::InvalidInput("invalid cold offline page size"));
@@ -177,7 +215,7 @@ pub(crate) fn list_plain_audio(
         let Some((id, raw)) = records.next() else {
             break;
         };
-        let item = eligible(store, owner, &id, &raw);
+        let item = eligible(store, owner, &id, &raw, membership.is_some());
         last = Some(id.clone());
         let item = match item {
             Ok(item) => item,
@@ -190,10 +228,25 @@ pub(crate) fn list_plain_audio(
             ) => continue,
             Err(error) => return Err(error),
         };
+        let entitlement = if item.record.encrypted {
+            let membership =
+                membership.ok_or(Error::State("encrypted offline rights unavailable"))?;
+            match membership.entitlement(store, owner, &item.record.privilege, item.record.quality)
+            {
+                Ok(entitlement) => Some(entitlement),
+                Err(
+                    Error::State(_) | Error::Response(_) | Error::InvalidInput(_) | Error::Json(_),
+                ) => continue,
+                Err(error) => return Err(error),
+            }
+        } else {
+            None
+        };
         if open_regular(&item.path)
-            .and_then(|mut file| pinned_audio_format(&mut file))
+            .and_then(|mut file| check_format(&mut file, item.record.encrypted))
             .is_err()
             || !unchanged(store, owner, &id, &raw, &item.ledger_id, &item.ledger)?
+            || entitlement.as_ref().is_some_and(|rights| !rights.valid())
         {
             continue;
         }
@@ -226,11 +279,12 @@ pub(crate) fn list_plain_audio(
     Ok(ColdOfflineAudioPage { rows, next })
 }
 
-pub(crate) fn open_plain_audio(
+pub(crate) fn open_audio(
     store: &StateStore,
     owner: &str,
     task_id: &str,
-) -> Result<(File, Quality)> {
+    membership: Option<&ColdMembership>,
+) -> Result<(File, Quality, Option<ColdEntitlement>)> {
     if !valid_id(task_id) {
         return Err(Error::InvalidInput(
             "invalid cold offline download identifier",
@@ -245,9 +299,17 @@ pub(crate) fn open_plain_audio(
         ledger,
         record,
         ..
-    } = eligible(store, owner, task_id, &raw)?;
+    } = eligible(store, owner, task_id, &raw, membership.is_some())?;
+    let entitlement = if record.encrypted {
+        Some(
+            membership
+                .ok_or(Error::State("encrypted offline rights unavailable"))?
+                .entitlement(store, owner, &record.privilege, record.quality)?,
+        )
+    } else {
+        None
+    };
     let mut file = open_regular(&path)?;
-    pinned_audio_format(&mut file)?;
     let before = file.metadata()?;
     if before.len() != record.integrity.bytes {
         return Err(Error::Media("cold offline file changed"));
@@ -266,8 +328,13 @@ pub(crate) fn open_plain_audio(
         return Err(Error::Media("cold offline file changed"));
     }
     file.seek(SeekFrom::Start(0))?;
+    check_format(&mut file, record.encrypted)?;
+    file.seek(SeekFrom::Start(0))?;
+    if let Some(entitlement) = &entitlement {
+        entitlement.validate(store, owner)?;
+    }
     if !unchanged(store, owner, task_id, &raw, &ledger_id, &ledger)? {
         return Err(Error::StaleResponse);
     }
-    Ok((file, record.quality))
+    Ok((file, record.quality, entitlement))
 }

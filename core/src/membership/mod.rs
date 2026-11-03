@@ -3,7 +3,9 @@
 mod api;
 pub mod center;
 pub mod clock;
+mod cold;
 mod manager;
+pub(crate) use cold::{ColdEntitlement, ColdMembership};
 mod offline;
 mod quality;
 mod state;

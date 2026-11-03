@@ -310,6 +310,16 @@ async fn native_plain_selection_opens_owned_published_bytes_and_rechecks_integri
     insert("1", "encrypted", true, true);
     insert("1", "unpublished", false, false);
     insert("2", "foreign-owned", false, true);
+    verify_cold_ncm(
+        dir.path(),
+        &store,
+        service.clone(),
+        &path,
+        &task,
+        &ledger,
+        FLAC,
+    )
+    .await;
     let first = grant.list_plain_audio(None, 1).unwrap();
     let cursor = first.next.as_ref().unwrap();
     let other_grant = cold.grant_cold_offline().unwrap();
@@ -431,5 +441,175 @@ async fn verify_exit_during_native_load(root: &std::path::Path, service: Arc<Syn
     assert_eq!(control.unpauses.load(Ordering::Acquire), 0);
     assert!(client.cold_offline_status().await.is_err());
     client.cold_offline_open().await.unwrap();
+    client.cold_offline_close().await.unwrap();
+}
+
+async fn verify_cold_ncm(
+    root: &std::path::Path,
+    store: &cumulus_core::storage::StateStore,
+    service: Arc<Synthetic>,
+    plain: &std::path::Path,
+    task: &serde_json::Value,
+    ledger: &serde_json::Value,
+    audio: &[u8],
+) {
+    use cumulus_core::{
+        Result,
+        media::ncm::{HeaderPolicy, NcmReader, NcmWriteOptions, write_stream},
+        playback::engine::{AudioEngine, Cancellation, EngineSnapshot, LoadRequest, LoadedMedia},
+    };
+    use std::{
+        fs::File,
+        io::{Cursor, Read},
+        time::{Duration, SystemTime, UNIX_EPOCH},
+    };
+
+    #[derive(Default)]
+    struct Control {
+        loaded: AtomicUsize,
+        stopped: tokio::sync::Notify,
+    }
+    struct TestEngine(Arc<Control>);
+    impl AudioEngine for TestEngine {
+        fn load(&mut self, _: LoadRequest, _: &Cancellation) -> Result<LoadedMedia> {
+            panic!("cold offline may not load paths or URLs")
+        }
+        fn load_pinned_ncm(
+            &mut self,
+            file: File,
+            authority: Cancellation,
+            _: &Cancellation,
+        ) -> Result<LoadedMedia> {
+            authority.check()?;
+            let mut reader = NcmReader::new(file, HeaderPolicy::Strict)?;
+            let mut magic = [0; 4];
+            reader.read_exact(&mut magic)?;
+            assert_eq!(&magic, b"fLaC");
+            self.0.loaded.fetch_add(1, Ordering::SeqCst);
+            Ok(LoadedMedia {
+                entry_id: 7,
+                duration: Some(1.0),
+                codec: Some("flac".into()),
+            })
+        }
+        fn pause(&mut self, _: bool) -> Result<()> {
+            Ok(())
+        }
+        fn seek(&mut self, _: f64) -> Result<()> {
+            Ok(())
+        }
+        fn volume(&mut self, _: f64) -> Result<()> {
+            Ok(())
+        }
+        fn speed(&mut self, _: f64) -> Result<()> {
+            Ok(())
+        }
+        fn stop(&mut self) -> Result<()> {
+            self.0.stopped.notify_one();
+            Ok(())
+        }
+        fn poll(&mut self) -> Result<EngineSnapshot> {
+            Ok(EngineSnapshot {
+                entry_id: Some(7),
+                position: Some(0.4),
+                duration: Some(1.0),
+                paused: false,
+                buffering: false,
+                volume: None,
+                speed: None,
+                audio_output: None,
+                events: vec![],
+            })
+        }
+    }
+
+    let mut encoded = Vec::new();
+    write_stream(
+        &mut Cursor::new(audio),
+        &mut encoded,
+        NcmWriteOptions {
+            // Container metadata is deliberately inconsistent with the ledger.
+            metadata: Some(&json!({"musicId":999,"fee":0,"level":"standard"})),
+            cover: &[],
+            audio_key: Some(b"synthetic cold ncm"),
+        },
+    )
+    .unwrap();
+    let id = "cold-ncm";
+    let path = plain.with_file_name("cold-test.ncm");
+    std::fs::write(&path, &encoded).unwrap();
+    let path = path.canonicalize().unwrap();
+    let ledger_id = hex::encode(Sha256::digest(path.to_str().unwrap().as_bytes()));
+    let integrity = json!({"sha256":hex::encode(Sha256::digest(&encoded)), "bytes":encoded.len()});
+    let mut task = task.clone();
+    task["id"] = json!(id);
+    task["target"] = json!(path);
+    task["encrypted"] = json!(true);
+    task["output_integrity"] = integrity.clone();
+    let mut ledger = ledger.clone();
+    ledger["id"] = json!(ledger_id);
+    ledger["task_id"] = json!(id);
+    ledger["path"] = json!(path);
+    ledger["encrypted"] = json!(true);
+    ledger["quality"] = json!("sky");
+    ledger["privilege"] = json!({"fee":1, "payed":2});
+    ledger["integrity"] = integrity;
+    store.put("1", "download_tasks_v1", id, &task).unwrap();
+    store
+        .put("1", "offline_music_v1", &ledger_id, &ledger)
+        .unwrap();
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs_f64();
+    let mut cached = json!({
+        "data":{"userId":1,"now":100000,"associator":{"expireTime":200000}},
+        "server_ms":100000,"wall":now
+    });
+    let control = Arc::new(Control::default());
+    let engine = control.clone();
+    let client = MusicClient::open_with_http_backend(root, None, service)
+        .unwrap()
+        .with_audio_factory(move || Ok(Box::new(TestEngine(engine.clone()))));
+    let contains = |value: serde_json::Value| {
+        value["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|row| row["id"] == id)
+    };
+    let page = client.cold_offline_open().await.unwrap();
+    assert!(!contains(serde_json::to_value(page).unwrap()));
+    assert!(client.cold_offline_play(id.into()).await.is_err());
+    client.cold_offline_close().await.unwrap();
+
+    store.put("1", "membership", "current", &cached).unwrap();
+    let page = client.cold_offline_open().await.unwrap();
+    assert!(
+        !contains(serde_json::to_value(page).unwrap()),
+        "actual Sky requires Plus"
+    );
+    assert!(client.cold_offline_play(id.into()).await.is_err());
+    assert_eq!(control.loaded.load(Ordering::SeqCst), 0);
+    client.cold_offline_close().await.unwrap();
+
+    cached["data"]["redplus"] = json!({"expireTime":200000});
+    store.put("1", "membership", "current", &cached).unwrap();
+    let page = client.cold_offline_open().await.unwrap();
+    assert!(contains(serde_json::to_value(page).unwrap()));
+    let playing = client.cold_offline_play(id.into()).await.unwrap();
+    assert_eq!(serde_json::to_value(playing).unwrap()["phase"], "playing");
+    assert_eq!(control.loaded.load(Ordering::SeqCst), 1);
+    store.delete("1", "membership", "current").unwrap();
+    tokio::time::timeout(Duration::from_secs(3), control.stopped.notified())
+        .await
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(client.cold_offline_status().await.unwrap()).unwrap()["phase"],
+        "idle"
+    );
+    assert!(client.cold_offline_play(id.into()).await.is_err());
+    assert_eq!(client.account().unwrap().status, SessionStatus::Unknown);
     client.cold_offline_close().await.unwrap();
 }

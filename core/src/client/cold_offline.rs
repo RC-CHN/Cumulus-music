@@ -7,6 +7,7 @@ use crate::{
     Error, Result,
     account::profiles::ColdOfflineGrant,
     download::offline::{ColdOfflineAudioRow, ColdOfflineCursor},
+    membership::ColdEntitlement,
     playback::engine::{AudioEngine, Cancellation, EndReason, EngineEvent},
 };
 use serde::Serialize;
@@ -52,6 +53,7 @@ struct Playing {
     lease: Lease,
     entry: i64,
     id: String,
+    entitlement: Option<ColdEntitlement>,
 }
 impl Drop for Playing {
     fn drop(&mut self) {
@@ -79,7 +81,7 @@ impl Mode {
         }
         let page = self
             .grant
-            .list_plain_audio(if next { self.next.as_ref() } else { None }, 32)?;
+            .list_audio(if next { self.next.as_ref() } else { None }, 32)?;
         self.next = page.next;
         Ok(ColdOfflinePageView {
             items: page.rows,
@@ -101,6 +103,12 @@ impl Mode {
         {
             self.playing = None;
             return Ok(ColdOfflinePlayerView::default());
+        }
+        if let Some(entitlement) = &active.entitlement
+            && let Err(error) = self.grant.validate_entitlement(entitlement)
+        {
+            self.playing = None;
+            return Err(error);
         }
         let snapshot = match active.engine.poll() {
             Ok(value) => value,
@@ -303,16 +311,12 @@ impl MusicClient {
     pub async fn cold_offline_play(&self, id: String) -> Result<ColdOfflinePlayerView> {
         let token = self.session.token()?;
         let task_id = id.clone();
-        let (grant, life, file) = self
+        let (grant, life, file, entitlement) = self
             .cold_offline
             .run_current(move |mode| {
-                let audio = mode.grant.open_plain_audio(&task_id)?;
+                let (file, entitlement) = mode.grant.open_audio(&task_id)?.into_playback()?;
                 mode.life.check()?;
-                Ok((
-                    mode.grant.clone(),
-                    mode.life.clone(),
-                    audio.file()?.try_clone()?,
-                ))
+                Ok((mode.grant.clone(), mode.life.clone(), file, entitlement))
             })
             .await?;
         // Snapshot before checking the mode so a newer focus claim cannot be
@@ -343,14 +347,26 @@ impl MusicClient {
                 mode.failed = false;
                 let life = mode.life.clone();
                 let focus = lease.focus.clone();
+                if let Some(rights) = &entitlement {
+                    mode.grant.validate_entitlement(rights)?;
+                }
+                let fast_rights = entitlement.clone();
                 let authority = Cancellation::new(move || {
-                    !life.is_cancelled() && focus.cold_is_current(revision)
+                    !life.is_cancelled()
+                        && focus.cold_is_current(revision)
+                        && fast_rights.as_ref().is_none_or(ColdEntitlement::valid)
                 });
                 let mut engine = factory()?;
                 if let Some(volume) = volume {
                     engine.volume(volume)?;
                 }
-                let media = engine.load_pinned_audio(file, authority.clone(), &authority)?;
+                let media = if let Some(rights) = &entitlement {
+                    let media = engine.load_pinned_ncm(file, authority.clone(), &authority)?;
+                    mode.grant.validate_entitlement(rights)?;
+                    media
+                } else {
+                    engine.load_pinned_audio(file, authority.clone(), &authority)?
+                };
                 mode.grant.validate()?;
                 lease.focus.start_cold(revision, || {
                     authority.check()?;
@@ -361,6 +377,7 @@ impl MusicClient {
                     lease,
                     entry: media.entry_id,
                     id,
+                    entitlement,
                 });
                 mode.poll()
             })

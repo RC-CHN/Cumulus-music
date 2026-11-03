@@ -32,7 +32,7 @@ function leave() {
   <section ref="root" class="cold-offline-page" aria-labelledby="cold-offline-heading">
     <h1 id="cold-offline-heading" ref="heading" tabindex="-1">离线下载</h1>
     <p v-if="!model.page.value">
-      暂时无法验证账号。你可以在此设备上查看和播放符合条件的已下载歌曲。
+      暂时无法验证账号。你可以在此设备上查看和播放符合条件的已下载歌曲。部分加密歌曲需要有效的本机缓存权益。
     </p>
     <div v-if="model.closeFailed.value" class="cold-offline-actions" role="alert">
       <p>无法确认离线模式已退出，请重试。</p>
