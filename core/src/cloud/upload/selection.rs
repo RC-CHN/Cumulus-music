@@ -5,6 +5,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+const MAX_INSPECTED: usize = 100_000;
+
 // M/3127 selectRootFileOrDir -> listFilesByEntries(recursive=true).
 // Enumeration only; create() subsequently probes and hashes each selected file.
 pub fn select_audio_sources(roots: &[PathBuf]) -> Result<Vec<PathBuf>> {
@@ -26,12 +28,12 @@ fn visit(
     files: &mut BTreeSet<PathBuf>,
     directories: &mut BTreeSet<PathBuf>,
 ) -> Result<()> {
-    *inspected += 1;
-    if depth > 64 || *inspected > 100_000 {
+    if depth > 64 || *inspected == MAX_INSPECTED {
         return Err(Error::InvalidInput(
             "cloud directory selection exceeds traversal limit",
         ));
     }
+    *inspected += 1;
     let metadata = fs::symlink_metadata(path)?;
     // Skip links and nonregular entries: do not follow cycles or silently scan
     // outside the chosen directory. Direct file selection remains available.
@@ -42,12 +44,10 @@ fn visit(
         if !directories.insert(path.canonicalize()?) {
             return Ok(());
         }
-        let mut children = fs::read_dir(path)?
-            .map(|entry| entry.map(|entry| entry.path()))
-            .collect::<std::io::Result<Vec<_>>>()?;
-        children.sort();
-        for child in children {
-            visit(&child, depth + 1, inspected, files, directories)?;
+        // Walk one child at a time so the visit/file limits also bound
+        // enumeration of wide directories. The output set sorts results.
+        for child in fs::read_dir(path)? {
+            visit(&child?.path(), depth + 1, inspected, files, directories)?;
         }
     } else if metadata.is_file()
         && path.extension().and_then(|s| s.to_str()).is_some_and(|s| {
@@ -67,4 +67,31 @@ fn visit(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn directory_walk_stops_at_shared_entry_budget() {
+        let root = tempfile::tempdir().unwrap();
+        // Unsupported entries still consume the enumeration budget.
+        fs::write(root.path().join("notes.txt"), b"not audio").unwrap();
+        fs::write(root.path().join("track.flac"), []).unwrap();
+        let mut files = BTreeSet::new();
+        let mut directories = BTreeSet::new();
+        let mut inspected = MAX_INSPECTED - 2;
+
+        let result = visit(root.path(), 0, &mut inspected, &mut files, &mut directories);
+
+        assert!(matches!(
+            result,
+            Err(Error::InvalidInput(
+                "cloud directory selection exceeds traversal limit"
+            ))
+        ));
+        assert_eq!(inspected, MAX_INSPECTED);
+        assert!(files.len() <= 1);
+    }
 }
