@@ -49,6 +49,9 @@ quality/mode/select/remove/reorder/clear；JSON变体字段保持snake_case，�
 拖动进度条在提交时发送逻辑秒数；范围限制为服务授权timeline.start..end，显示total。
 进度完全来自原生推送，拖动草稿仅用于交互，提交后回到原生事实。
 播放/暂停、上下首、停止、四模式、静音/音量、0.25..4倍速、11档音质均接到实际用例。
+底栏播放/暂停按钮绑定绘制时的账号代次、播放 ID、队列版本及动作意图，忽略过期点击。
+已加载的普通音频经 pause_for 再核对原生播放 ID 和队列版本后才暂停或继续，
+播放时钟的正常变化不使按钮失效；FM 和未加载的队列仍经各自启动流程。
 非输入/按钮焦点下空格播放暂停，原生表单控件保留其自身键盘行为。
 11档为64aac/standard/higher/exhigh/lossless/hires/dolby/jyeffect/jymaster/sky/vivid；
 实际音质必须取返回level，服务降级时界面另标“实际…”；会员身份不保证每首歌都有每档源。
