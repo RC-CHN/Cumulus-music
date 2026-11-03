@@ -229,12 +229,6 @@
   border-radius: 2px;
   background: var(--accent-fill);
 }
-.playlist-content-nav > [aria-label='歌单评论'] {
-  padding: 0;
-  font-size: 16px;
-  line-height: 25px;
-  color: var(--text-secondary);
-}
 @media (max-width: 950px) {
   .playlist-hero {
     gap: 18px;

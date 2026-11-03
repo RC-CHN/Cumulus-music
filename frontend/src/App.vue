@@ -32,6 +32,7 @@ import PlaylistHero from './components/playlist/PlaylistHero.vue';
 import PlaylistSubscribers from './components/playlist/PlaylistSubscribers.vue';
 import { filterPlaylistTracks } from './services/playlistTrackSearch';
 import { usePlaylistSubscribers } from './composables/usePlaylistSubscribers';
+import { usePlaylistCommentTab } from './composables/usePlaylistCommentTab';
 import PlaylistEditorPage from './components/playlist/PlaylistEditorPage.vue';
 import { playlistMenuItems, type PlaylistMenuScene } from './services/playlistMenu';
 import PlaylistActions from './components/playlist/PlaylistActions.vue';
@@ -920,14 +921,34 @@ const {
   historyLength,
   signedIn,
 } = music;
-const subscribers = usePlaylistSubscribers(
+const playlistPanelId = () =>
+  page.value.kind === 'playlist' && result.value?.playlist?.id === page.value.id
+    ? page.value.id
+    : null;
+const subscribers = usePlaylistSubscribers(core, () => account.value.epoch, playlistPanelId);
+const playlistComments = usePlaylistCommentTab(
   core,
-  () => account.value.epoch,
-  () =>
-    page.value.kind === 'playlist' && result.value?.playlist?.id === page.value.id
-      ? page.value.id
-      : null,
+  () => account.value,
+  playlistPanelId,
+  () => {
+    void music.bootstrap(false);
+  },
 );
+const playlistSongsActive = computed(
+  () => !subscribers.open.value && !playlistComments.active.value,
+);
+function showPlaylistSongs() {
+  subscribers.hide();
+  playlistComments.hide();
+}
+function showPlaylistComments() {
+  subscribers.hide();
+  void playlistComments.show();
+}
+function showPlaylistSubscribers() {
+  playlistComments.hide();
+  void subscribers.show();
+}
 const playlistKeyword = ref('');
 const playlistTrackSearch = computed(() =>
   filterPlaylistTracks(
@@ -1042,7 +1063,7 @@ const playlistLocateIndex = computed(() => {
     !id ||
     page.value.kind !== 'playlist' ||
     result.value?.playlist?.id !== page.value.id ||
-    subscribers.open.value
+    !playlistSongsActive.value
   )
     return undefined;
   const index = playlistTrackSearch.value.tracks.findIndex(
@@ -2099,31 +2120,32 @@ onUnmounted(() => {
                     v-if="result?.playlist"
                     type="button"
                     class="text-button playlist-section"
-                    :class="{ 'playlist-current-section': !subscribers.open.value }"
-                    :aria-pressed="!subscribers.open.value"
-                    @click="subscribers.hide"
+                    :class="{ 'playlist-current-section': playlistSongsActive }"
+                    :aria-pressed="playlistSongsActive"
+                    @click="showPlaylistSongs"
                   >
                     歌曲 <small>{{ result.total }}</small>
                   </button>
                   <template v-if="result?.playlist">
                     <button
-                      class="text-button"
+                      type="button"
+                      class="text-button playlist-section"
+                      :class="{ 'playlist-current-section': playlistComments.active.value }"
                       aria-label="歌单评论"
-                      @click="
-                        openComments(
-                          { kind: 'playlist', id: result.playlist.id },
-                          result.playlist.name,
-                        )
-                      "
+                      :aria-pressed="playlistComments.active.value"
+                      @click="showPlaylistComments"
                     >
                       评论
+                      <small v-if="playlistComments.count.value">{{
+                        playlistComments.count.value
+                      }}</small>
                     </button>
                     <button
                       type="button"
                       class="text-button playlist-section"
                       :class="{ 'playlist-current-section': subscribers.open.value }"
                       :aria-pressed="subscribers.open.value"
-                      @click="subscribers.show"
+                      @click="showPlaylistSubscribers"
                     >
                       收藏者
                       <small v-if="result.playlist.subscribedCount">{{
@@ -2132,7 +2154,7 @@ onUnmounted(() => {
                     </button>
                   </template>
                   <input
-                    v-if="result?.playlist && !subscribers.open.value"
+                    v-if="result?.playlist && playlistSongsActive"
                     v-model="playlistKeyword"
                     class="playlist-track-search"
                     type="search"
@@ -2174,6 +2196,12 @@ onUnmounted(() => {
                   <span class="spinner" />
                   <p>正在加载歌曲…</p>
                 </div>
+                <CommentsPage
+                  v-else-if="result?.playlist && playlistComments.active.value"
+                  :model="playlistComments.model"
+                  :title="result.playlist.name"
+                  embedded
+                />
                 <PlaylistSubscribers
                   v-else-if="result?.playlist && subscribers.open.value"
                   :model="subscribers"

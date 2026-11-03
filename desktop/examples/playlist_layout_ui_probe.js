@@ -109,8 +109,10 @@
       assert(!one('.page-heading').textContent.includes('正在'),'failed page must not keep announcing loading');
       await capture('read_failed');
       click(button('重试'));await wait(()=>one('.playlist-hero h1')?.textContent==='合成歌单 26','retry recovered');await capture('read_recovered');
-      click(button('歌单评论'));await wait(()=>one('.comments-page .error-state'),'comment error presentation');await capture('comments_failure');
-      click(button('返回上一页'));await wait(()=>one('.playlist-hero h1')?.textContent==='合成歌单 26','comments return');
+      const commentsHero=one('.playlist-hero');
+      click(button('歌单评论'));await wait(()=>one('.comments-embedded .error-state'),'comment error presentation');await capture('comments_failure');
+      click(one('.playlist-section'));await wait(()=>!one('.comments-embedded')&&one('.track-row'),'comments return');
+      assert(one('.playlist-hero')===commentsHero,'comments do not remount playlist header');
       await openId(5);assert(one('.track-play').disabled,'unavailable first track fixture');
       click(button('播放全部'));await wait(()=>one('.playerbar').dataset.state==='playing'&&Number(one('.playerbar').dataset.position)>.15,'header starts real synthetic audio');
       click(button('暂停'));await wait(()=>one('.playerbar').dataset.state==='paused','native paused');

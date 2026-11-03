@@ -113,7 +113,7 @@ export function useComments(core: CommentClient = useCore(), expired: () => void
       }
     }
   }
-  async function open(next: CommentResource) {
+  function reset(next?: CommentResource) {
     generation++;
     listing++;
     resource.value = next;
@@ -122,8 +122,12 @@ export function useComments(core: CommentClient = useCore(), expired: () => void
     history.value = [];
     retryTarget.value = undefined;
     busy.value = new Set();
+    loading.value = false;
     error.value = '';
     actionError.value = '';
+  }
+  async function open(next: CommentResource) {
+    reset(next);
     await load();
   }
   function apply(result: CommentOperation) {
@@ -206,6 +210,7 @@ export function useComments(core: CommentClient = useCore(), expired: () => void
       if (!loading.value && target) return load(target.query, target.navigation);
     },
     connect,
+    close: () => reset(),
     open,
     load,
     locate,

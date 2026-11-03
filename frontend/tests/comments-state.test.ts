@@ -1,5 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { ref } from 'vue';
+import { usePlaylistCommentTab } from '../src/composables/usePlaylistCommentTab.ts';
 import { useComments } from '../src/composables/useComments.ts';
 import {
   commentQuery,
@@ -198,4 +200,50 @@ test('changing resource revokes pending results and locate keeps IDs as strings'
   await model.locate('900719925474099312345');
   assert.equal(seen.at(-1)?.commentId, '900719925474099312345');
   assert.equal(model.busy.value.size, 0);
+});
+
+test('playlist comments open only on demand, retain the observed count, and discard retired reads', async () => {
+  const current = ref(account());
+  const id = ref<string | null>('7');
+  const reads: {
+    resource: CommentResource;
+    epoch: string;
+    wait: ReturnType<typeof deferred<AccountData<CommentPage>>>;
+  }[] = [];
+  const tab = usePlaylistCommentTab(
+    client({
+      commentsPage: (epoch, resource) => {
+        const wait = deferred<AccountData<CommentPage>>();
+        reads.push({ epoch, resource, wait });
+        return wait.promise;
+      },
+    }),
+    () => current.value,
+    () => id.value,
+    () => {},
+  );
+  assert.deepEqual(reads, []);
+  const retired = tab.show();
+  assert.equal(tab.show(), undefined);
+  assert.equal(reads.length, 1);
+  assert.deepEqual(reads[0]?.resource, { kind: 'playlist', id: '7' });
+  tab.hide();
+  const visible = tab.show();
+  reads[1]!.wait.resolve(envelope({ ...page(), resource: reads[1]!.resource, total: 9 }));
+  await visible;
+  reads[0]!.wait.resolve(envelope({ ...page(), resource: reads[0]!.resource, total: 73 }));
+  await retired;
+  assert.equal(tab.count.value, 9);
+  tab.hide();
+  assert.equal(tab.model.page.value, undefined);
+  assert.equal(tab.count.value, 9);
+  id.value = '8';
+  assert.equal(tab.count.value, null);
+  const switched = tab.show();
+  current.value = account('2');
+  reads[2]!.wait.resolve(envelope({ ...page(), resource: reads[2]!.resource }));
+  await switched;
+  assert.equal(tab.active.value, false);
+  assert.equal(tab.model.epoch.value, '2');
+  assert.equal(tab.model.page.value, undefined);
 });

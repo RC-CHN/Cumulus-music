@@ -76,6 +76,13 @@ fn subscribers_proof() -> bool {
 
 static SUBSCRIBER_OFFSETS: std::sync::Mutex<Vec<u64>> = std::sync::Mutex::new(Vec::new());
 
+fn playlist_comments_proof() -> bool {
+    std::env::var_os("CUMULUS_PLAYLIST_COMMENT_TAB_PROOF").is_some()
+}
+
+static PLAYLIST_COMMENT_THREADS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+static PLAYLIST_COMMENT_DETAILS: std::sync::Mutex<Vec<u64>> = std::sync::Mutex::new(Vec::new());
+
 fn playlist(id: u64) -> Value {
     intelligence_start_fixture::playlist(playlist_editor_fixture::decorate(
         playlist_layout_fixture::decorate(
@@ -168,6 +175,9 @@ impl Api for Library {
                         .and_then(|s| s.parse().ok())
                         .or_else(|| args["id"].as_u64())
                         .unwrap_or(2);
+                    if playlist_comments_proof() {
+                        PLAYLIST_COMMENT_DETAILS.lock().unwrap().push(id);
+                    }
                     playlist_editor_fixture::wait_while("hold_read").await;
                     if playlist_editor_fixture::fails_read(id) {
                         return Err(cumulus_core::Error::Response(
@@ -180,6 +190,22 @@ impl Api for Library {
                     } else {
                         json!({"code":200,"playlist":playlist(id)})
                     }
+                }
+                "/api/v1/resource/comments/A_PL_0_2" | "/api/v1/resource/comments/A_PL_0_3"
+                    if playlist_comments_proof() =>
+                {
+                    let thread = path.rsplit('/').next().unwrap();
+                    PLAYLIST_COMMENT_THREADS.lock().unwrap().push(thread.into());
+                    let second = thread == "A_PL_0_3";
+                    let content = if second {
+                        "第二张合成歌单的评论"
+                    } else {
+                        "第一张合成歌单的评论"
+                    };
+                    json!({"code":200,"comments":[{"commentId":if second {102}else{101},
+                        "content":content,"time":1700000000000_u64,"liked":false,"likedCount":0,
+                        "user":{"userId":3,"nickname":"合成听友"},"beReplied":[]}],
+                        "hotComments":[],"topComments":[],"more":false,"total":if second {8}else{12}})
                 }
                 "/api/playlist/subscribers" if subscribers_proof() => {
                     assert_eq!(args["id"], "2");
@@ -330,6 +356,10 @@ fn main() {
             if intelligence_start_fixture::enabled() {value["syntheticIntelligenceStart"]=intelligence_start_fixture::report();}
             if search_fixture::enabled() { value["syntheticSearchCalls"]=json!(search_fixture::calls()); }
             if subscribers_proof() { value["subscriberOffsets"]=json!(*SUBSCRIBER_OFFSETS.lock().unwrap()); }
+            if playlist_comments_proof() {
+                value["playlistCommentThreads"]=json!(*PLAYLIST_COMMENT_THREADS.lock().unwrap());
+                value["playlistCommentDetails"]=json!(*PLAYLIST_COMMENT_DETAILS.lock().unwrap());
+            }
             let stage=value["stage"].as_str().unwrap_or("");
             if card_source_proof && stage=="card-source-fixture" {
                 let id=value["id"].as_u64().expect("synthetic card control id");
