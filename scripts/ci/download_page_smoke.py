@@ -28,6 +28,7 @@ def main():
     parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--screenshots', action='store_true')
+    parser.add_argument('--mv-replay', action='store_true', help='Verify real local MV EOF and replay')
     parser.add_argument('--table', action='store_true', help='Verify column resizing, voice sort cycles and operation feedback')
     parser.add_argument('--batch', action='store_true', help='Verify full-category batch UI and real local file actions')
     parser.add_argument('--navigation', action='store_true', help='Verify download detail return, focus and resized anchors')
@@ -36,7 +37,7 @@ def main():
     args = parser.parse_args()
     if not 0 <= args.seed_delay_ms <= 30000:
         parser.error('seed delay must be between 0 and 30000 ms')
-    if sum([args.table, args.batch, args.navigation, args.menu]) > 1:
+    if sum([args.table, args.batch, args.navigation, args.menu, args.mv_replay]) > 1:
         parser.error('select a single proof')
     expected = 33 if args.menu else 24 if args.navigation else 53 if args.batch else 72 if args.table else 69
     root = args.root.resolve()
@@ -53,7 +54,7 @@ def main():
         env[key] = str(directory)
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
-    script = 'download_menu_ui_probe.js' if args.menu else 'download_navigation_ui_probe.js' if args.navigation else 'download_batch_ui_probe.js' if args.batch else 'download_table_ui_probe.js' if args.table else 'download_page_ui_probe.js'
+    script = 'mv_replay_ui_probe.js' if args.mv_replay else 'download_menu_ui_probe.js' if args.menu else 'download_navigation_ui_probe.js' if args.navigation else 'download_batch_ui_probe.js' if args.batch else 'download_table_ui_probe.js' if args.table else 'download_page_ui_probe.js'
     env['CUMULUS_UX_SCRIPT'] = str(Path(__file__).resolve().parents[2] / 'desktop/examples' / script)
     with (root / 'first.log').open('x', encoding='utf-8') as log:
         status = launch(args.binary.resolve(), env, log, root / 'first', args.screenshots)
@@ -61,6 +62,17 @@ def main():
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert status == 0, f'probe exit {status}'
     result = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
+    if args.mv_replay:
+        assert result['ok'] and result['nativeMvReplay'] and result['local'] and result['frames']
+        ended, restarted = [
+            json.loads((root / 'first' / f'{stage}.json').read_text(encoding='utf-8'))
+            for stage in ('ux_01_mv_ended', 'ux_02_mv_restarted')
+        ]
+        assert abs(ended['position'] - ended['duration']) < .1
+        assert 0 < restarted['position'] < 3 and restarted['duration'] == ended['duration']
+        assert not args.screenshots or len(list((root / 'first').glob('ux_*.png'))) == 2
+        print(json.dumps(dict(ok=True, nativeMvReplay=True, actualWebView=True)))
+        return
     assert result['ok'] and result['downloadMenuUi' if args.menu else 'downloadNavigationUi' if args.navigation else 'downloadBatchUi' if args.batch else 'downloadTableUi' if args.table else 'downloadPageUi']
     assert result['realMusicRequests'] == result['realAccountWrites'] == 0
     assert result['syntheticNativeRecords'] == 146

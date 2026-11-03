@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { useControlFocus } from '../composables/useControlFocus';
 import { usePageEntryFocus } from '../composables/usePageEntryFocus';
 import type { MvModel } from '../composables/useMv';
 import VideoCanvas from './VideoCanvas.vue';
@@ -35,6 +36,12 @@ const emit = defineEmits<{
 const { video, detail, detailLoading, error, videoError, videoReadError, notice, busy } =
   props.model;
 const root = ref<HTMLElement>();
+const transport = ref<HTMLButtonElement>();
+const replaying = ref(false);
+const replayFocus = useControlFocus(
+  () => JSON.stringify([video.value?.epoch, video.value?.id]),
+  () => transport.value,
+);
 usePageEntryFocus(
   root,
   () => !!detail.value || !!videoError.value || !!videoReadError.value,
@@ -55,11 +62,23 @@ const loaded = computed(
 const waiting = computed(
   () => !!video.value && ['resolving', 'loading', 'file_operation'].includes(video.value.state),
 );
-function toggle() {
+const ended = computed(() => video.value?.state === 'ended');
+const startsPlayback = computed(() => ended.value || !!video.value?.paused);
+function replay(event: Event) {
+  if (!ended.value || replaying.value) return;
+  return replayFocus.run(event, async () => {
+    replaying.value = true;
+    try {
+      await props.model.action({ kind: 'play' });
+    } finally {
+      replaying.value = false;
+    }
+  });
+}
+function toggle(event: Event) {
+  if (ended.value) return replay(event);
   void props.model.action(
-    video.value?.paused || video.value?.state === 'ended'
-      ? { kind: 'play' }
-      : { kind: 'pause', paused: true },
+    startsPlayback.value ? { kind: 'play' } : { kind: 'pause', paused: true },
   );
 }
 function key(event: KeyboardEvent) {
@@ -94,7 +113,7 @@ onUnmounted(() => window.removeEventListener('keydown', key, true));
           ×
         </button>
       </div>
-      <div v-if="waiting || video?.buffering" class="video-message" role="status">
+      <div v-if="waiting || (video?.buffering && !ended)" class="video-message" role="status">
         <template v-if="video?.state === 'file_operation'">
           正在处理本地视频文件，完成后恢复播放
           <button class="video-button" @click="emit('downloads')">查看文件操作</button>
@@ -108,6 +127,18 @@ onUnmounted(() => window.removeEventListener('keydown', key, true));
       >
         {{ videoError || videoReadError || video?.error
         }}<button class="video-button" @click="model.action({ kind: 'play' })">重试</button>
+      </div>
+      <div v-else-if="ended" class="mv-replay-overlay">
+        <button
+          class="video-button mv-replay"
+          type="button"
+          aria-label="重新播放 MV"
+          :disabled="replaying"
+          @click="replay"
+        >
+          <Icon name="repeat" aria-hidden="true" />
+          <span>重新播放</span>
+        </button>
       </div>
       <button
         v-else-if="video?.state === 'idle'"
@@ -154,12 +185,13 @@ onUnmounted(() => window.removeEventListener('keydown', key, true));
         />
         <div class="video-controls">
           <button
+            ref="transport"
             class="video-button"
-            :aria-label="video?.paused ? '播放MV' : '暂停MV'"
-            :disabled="!loaded && !waiting"
+            :aria-label="startsPlayback ? '播放MV' : '暂停MV'"
+            :disabled="replaying || (!loaded && !waiting)"
             @click="toggle"
           >
-            {{ video?.paused ? '▶' : 'Ⅱ' }}</button
+            {{ startsPlayback ? '▶' : 'Ⅱ' }}</button
           ><span class="video-time"
             >{{ videoTime(video?.position ?? null) }} /
             {{ videoTime(video?.duration ?? null) }}</span

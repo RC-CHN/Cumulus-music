@@ -184,6 +184,37 @@
   text-align: center;
   flex-wrap: wrap;
 }
+.mv-replay-overlay {
+  position: absolute;
+  inset: 40px 8px 50px;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+.mv-replay {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: #161616cf;
+  pointer-events: auto;
+}
+.mv-replay:hover,
+.mv-replay:focus-visible {
+  background: #363636f0;
+}
+.mv-replay .icon {
+  width: 28px;
+  height: 28px;
+}
+.mv-mini .mv-replay {
+  gap: 2px;
+  padding: 4px 10px;
+}
+.mv-mini .mv-replay .icon {
+  width: 19px;
+  height: 19px;
+}
 .video-bottom {
   position: absolute;
   bottom: 0;
