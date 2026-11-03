@@ -40,11 +40,13 @@ def main():
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
     complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
-    expected = 20 if args.baseline else 22
+    expected = 20 if args.baseline else 23
     assert complete['ok'] and complete['stageCount'] == expected and complete['focusRestored']
     assert complete['realMusicRequests'] == complete['accountWrites'] == 0
     assert complete['nativePlayer']['state'] == 'paused' and complete['nativePlayer']['position'] > 0
-    assert args.baseline or (complete['layoutPassed'] and complete['lyricFollowVerified'] and complete['lyricTimelineVerified'] and complete['lyricFontVerified'] and complete['lyricModesVerified'] and complete['chorusMarkerVerified'])
+    assert args.baseline or all(complete[key] for key in (
+        'layoutPassed', 'lyricFollowVerified', 'lyricTimelineVerified', 'lyricFontVerified',
+        'lyricModesVerified', 'chorusMarkerVerified', 'seekTimePreviewVerified'))
     stages = list((root / 'first').glob('ux_*.json'))
     assert len(stages) == expected
     if args.screenshots:

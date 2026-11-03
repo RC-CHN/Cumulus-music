@@ -102,9 +102,14 @@ function primaryTransport(event: MouseEvent) {
   return transport(event, () => props.player.togglePrimaryTransport(key));
 }
 const draft = ref<number>();
+const seekHovered = ref(false);
 const outsideTrial = ref(false);
 const rail = computed(() => seekRail(view.value?.timeline));
 const seekValue = computed(() => draft.value ?? view.value?.position ?? rail.value.min);
+const seekTotalText = computed(() => {
+  const total = view.value?.timeline?.total;
+  return total == null ? '—' : time(total);
+});
 const buffered = computed(() =>
   draft.value === undefined
     ? bufferedSeekSpan(view.value?.timeline, view.value?.position, view.value?.bufferedThrough)
@@ -205,6 +210,9 @@ function scrubInput(event: Event) {
 function cancelScrub(event: Event) {
   const input = event.currentTarget as HTMLInputElement;
   if (input.dataset.scrubKey === scrubKey.value) draft.value = undefined;
+}
+function showSeekTime(event: PointerEvent) {
+  if (event.pointerType !== 'touch') seekHovered.value = true;
 }
 async function seek(event: Event) {
   const input = event.currentTarget as HTMLInputElement;
@@ -342,7 +350,12 @@ async function seek(event: Event) {
       </div>
       <div class="seek-control">
         <time>{{ time(draft ?? view?.position) }}</time>
-        <div class="seek-rail" :class="{ 'seek-rail-layered': layeredSeek }">
+        <div
+          class="seek-rail"
+          :class="{ 'seek-rail-layered': layeredSeek }"
+          @pointerenter="showSeekTime"
+          @pointerleave="seekHovered = false"
+        >
           <div v-if="layeredSeek" class="trial-seek-track" aria-hidden="true">
             <span
               v-if="rail.span"
@@ -379,7 +392,7 @@ async function seek(event: Event) {
             :aria-valuetext="
               rail.trial
                 ? `${time(seekValue)}，可试听 ${time(rail.trial.start)} 至 ${time(rail.trial.end)}`
-                : undefined
+                : `${time(seekValue)} / ${seekTotalText}`
             "
             type="range"
             :min="rail.min"
@@ -391,6 +404,15 @@ async function seek(event: Event) {
             @pointercancel="cancelScrub"
             @change="seek"
           />
+          <span
+            v-if="loaded && layeredSeek"
+            class="seek-time-preview"
+            :class="{ visible: seekHovered || draft !== undefined }"
+            :style="{ '--seek-preview-position': seekPlayed + '%' }"
+            aria-hidden="true"
+          >
+            {{ time(seekValue) }} / {{ seekTotalText }}
+          </span>
         </div>
         <time>{{ time(view?.timeline?.total) }}</time>
       </div>

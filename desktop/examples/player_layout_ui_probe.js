@@ -85,6 +85,27 @@
     click(delay);
     await wait(()=>offset()==='0.0s'&&delay.getAttribute('aria-disabled')==='false','restore lyric offset');
   }
+  async function verifySeekTimePreview() {
+    const rail=one('.seek-rail'), input=rail.querySelector('input'), preview=rail.querySelector('.seek-time-preview');
+    const visibility=()=>getComputedStyle(preview).visibility;
+    const original=Number(one('.playerbar').dataset.position);
+    const timeText=seconds=>`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(Math.floor(seconds%60)).padStart(2,'0')}`;
+    assert(visibility()==='hidden','time preview idle is hidden');
+    rail.dispatchEvent(new PointerEvent('pointerenter',{pointerType:'mouse'}));
+    await wait(()=>visibility()==='visible'&&preview.textContent.trim()===`${timeText(original)} / 00:30`,'hover shows current and full time');
+    rail.dispatchEvent(new PointerEvent('pointerleave',{pointerType:'mouse'}));
+    await wait(()=>visibility()==='hidden','leaving the seek rail hides the hover preview');
+    input.value='29';
+    input.dispatchEvent(new Event('input',{bubbles:true}));
+    await wait(()=>visibility()==='visible'&&preview.textContent.trim()==='00:29 / 00:30','drag previews target before commit');
+    assert(input.getAttribute('aria-valuetext')==='00:29 / 00:30','accessible text follows the draft');
+    assert(Number(one('.playerbar').dataset.position)===original,'draft never seeks native playback');
+    assert(rect(preview).x>=rect(rail).x-.5&&rect(preview).right<=rect(rail).right+.5,'time preview stays inside rail near its end');
+    await capture('seek_time_preview');
+    input.dispatchEvent(new PointerEvent('pointercancel',{pointerType:'touch'}));
+    await wait(()=>visibility()==='hidden'&&Math.abs(Number(input.value)-original)<.11,'cancel clears the pending preview');
+    assert(Number(one('.playerbar').dataset.position)===original,'cancel leaves native playback untouched');
+  }
   async function verifyLyricFollow() {
     const scroller=one('.lyric-scroll');
     const resume=()=>all('.lyric-tools button').find(node=>node.textContent.trim()==='回到当前');
@@ -168,6 +189,7 @@
       const mark=()=>one('.seek-chorus');
       await wait(()=>mark(),'chorus metadata appears on the playing track');
       assert(Math.abs(parseFloat(mark().style.left)-400/30)<.01&&!mark().classList.contains('reached'),'chorus marker uses full track clock');
+      await verifySeekTimePreview();
       await verifyLyricModes();
       await verifyLyricFollow();
       await wait(()=>mark()?.classList.contains('reached'),'chorus marker reflects passed progress');
@@ -177,7 +199,15 @@
       await emit('resize',{width,height});await wait(()=>innerWidth===width&&innerHeight===height,'resize');await appearance(theme);
       const suffix=`${width}_${theme}`;
       one('.lyric-line.current').scrollIntoView({block:'center',behavior:'instant'});
+      const hoverNarrowDark=!window.__playerLayoutBaseline&&width===760&&theme==='dark';
+      if(hoverNarrowDark) {
+        one('.seek-rail').dispatchEvent(new PointerEvent('pointerenter',{pointerType:'mouse'}));
+        await wait(()=>getComputedStyle(one('.seek-time-preview')).visibility==='visible','narrow dark seek preview');
+        assert(inside(rect(one('.seek-time-preview')),{x:0,y:0,right:innerWidth,bottom:innerHeight}),'narrow seek preview stays inside window');
+      }
       await capture(`long_${suffix}`);
+      if(hoverNarrowDark)
+        one('.seek-rail').dispatchEvent(new PointerEvent('pointerleave',{pointerType:'mouse'}));
       const scroll=one('.lyric-scroll');scroll.dispatchEvent(new WheelEvent('wheel',{bubbles:true,deltaY:500}));scroll.scrollTop=scroll.scrollHeight;
       await capture(`lyrics_bottom_${suffix}`);
       click(one('[aria-label="播放队列"]'));await wait(()=>all('.queue-row').length,'queue');await capture(`queue_${suffix}`);
@@ -196,6 +226,6 @@
     assert(document.activeElement===one('[aria-label="歌词"]'),'detail close focus lost');
     const passed=checks.every(row=>Object.entries(row).every(([key,value])=>key==='label'||value===true));
     assert(window.__playerLayoutBaseline||passed,JSON.stringify(checks.filter(row=>Object.values(row).includes(false))));
-    await emit('complete',{ok:true,layoutPassed:passed,checks,stageCount,realMusicRequests:0,accountWrites:0,focusRestored:true,lyricFollowVerified:!window.__playerLayoutBaseline,lyricTimelineVerified:!window.__playerLayoutBaseline,lyricFontVerified:!window.__playerLayoutBaseline,lyricModesVerified:!window.__playerLayoutBaseline,chorusMarkerVerified:!window.__playerLayoutBaseline});
+    await emit('complete',{ok:true,layoutPassed:passed,checks,stageCount,realMusicRequests:0,accountWrites:0,focusRestored:true,lyricFollowVerified:!window.__playerLayoutBaseline,lyricTimelineVerified:!window.__playerLayoutBaseline,lyricFontVerified:!window.__playerLayoutBaseline,lyricModesVerified:!window.__playerLayoutBaseline,chorusMarkerVerified:!window.__playerLayoutBaseline,seekTimePreviewVerified:!window.__playerLayoutBaseline});
   } catch(error) {await emit('failed',{ok:false,error:String(error),stageCount,checks});}
 })();

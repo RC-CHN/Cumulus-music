@@ -194,6 +194,38 @@
   border-radius: 50%;
   background: var(--accent);
 }
+.seek-time-preview {
+  position: absolute;
+  z-index: 1;
+  bottom: calc(100% + 33px);
+  left: clamp(min(54px, 50%), var(--seek-preview-position), max(50%, calc(100% - 54px)));
+  width: min(108px, 100%);
+  padding: 4px 0;
+  transform: translateX(-50%);
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  text-align: center;
+  white-space: nowrap;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 2px 12px #0002;
+  transition: opacity 120ms ease;
+}
+.seek-time-preview.visible,
+.seek-rail input:focus-visible + .seek-time-preview {
+  visibility: visible;
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .seek-time-preview {
+    transition: none;
+  }
+}
 .trial-seek-track {
   position: absolute;
   top: 3px;
