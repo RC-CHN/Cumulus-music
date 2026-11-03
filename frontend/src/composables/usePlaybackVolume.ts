@@ -1,8 +1,14 @@
-import { computed, onScopeDispose, ref, watch } from 'vue';
-import type { PlayerModel } from './usePlayer';
+import { computed, onScopeDispose, ref, watch, type Ref } from 'vue';
 import { failure, type CoreFailure } from '../services/contracts.ts';
 
-export function usePlaybackVolume(player: PlayerModel) {
+export interface VolumeControls {
+  view: Readonly<Ref<{ epoch: string; volume: number; unmuteVolume?: number | null } | undefined>>;
+  ready: Readonly<Ref<boolean>>;
+  scope?: Readonly<Ref<string | undefined>>;
+  configureVolume(value: number): Promise<unknown>;
+}
+
+export function usePlaybackVolume(player: VolumeControls) {
   const pending = ref(false),
     dragging = ref(false),
     draft = ref<number>(),
@@ -21,7 +27,9 @@ export function usePlaybackVolume(player: PlayerModel) {
     draft.value = issue.value = undefined;
     restore = player.view.value?.unmuteVolume ?? 10;
   }
-  watch([() => player.view.value?.epoch, player.ready], reset, { flush: 'sync' });
+  watch([() => player.view.value?.epoch, player.ready, () => player.scope?.value], reset, {
+    flush: 'sync',
+  });
   watch(
     () => player.view.value?.unmuteVolume,
     (saved) => {

@@ -49,6 +49,8 @@ pub struct NativeMediaDetails {
     pub seek_end: Option<f64>,
     pub can_seek: bool,
     pub volume: f64,
+    /// The music controller's persisted value for an explicit unmute.
+    pub unmute_volume: Option<f64>,
     pub speed: f64,
     /// Absent for MV and coordinator-owned FM, whose queue mode is not editable.
     pub mode: Option<PlaybackMode>,
@@ -66,6 +68,7 @@ impl Default for NativeMediaDetails {
             seek_end: None,
             can_seek: false,
             volume: 100.0,
+            unmute_volume: None,
             speed: 1.0,
             mode: None,
         }
@@ -138,6 +141,7 @@ impl MusicClient {
                     ) && value.position.is_some();
                 }
                 result.volume = value.volume;
+                result.unmute_volume = Some(value.unmute_volume);
                 result.speed = value.speed;
                 result.mode = (!value.fm).then_some(value.mode);
             }

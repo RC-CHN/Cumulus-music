@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { nextTick, onMounted, onUnmounted, ref, useId, watch } from 'vue';
-import type { PlayerModel } from '../composables/usePlayer';
-import { usePlaybackVolume } from '../composables/usePlaybackVolume';
+import { usePlaybackVolume, type VolumeControls } from '../composables/usePlaybackVolume';
 import Icon from './Icon.vue';
 import MenuTransition from './MenuTransition.vue';
-const props = defineProps<{ player: PlayerModel }>();
+const props = defineProps<{ player: VolumeControls }>();
 const model = usePlaybackVolume(props.player);
 const opened = ref(false),
   root = ref<HTMLElement>(),
@@ -59,7 +58,11 @@ watch(model.issue, async (issue, previous) => {
   if (opened.value && !root.value?.contains(document.activeElement))
     slider.value?.focus({ preventScroll: true });
 });
-watch([() => props.player.view.value?.epoch, props.player.ready], () => close(), { flush: 'sync' });
+watch(
+  [() => props.player.view.value?.epoch, props.player.ready, () => props.player.scope?.value],
+  () => close(),
+  { flush: 'sync' },
+);
 onMounted(() => document.addEventListener('pointerdown', outside, true));
 onUnmounted(() => {
   clearTimeout(hide);

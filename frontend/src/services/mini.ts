@@ -37,6 +37,7 @@ export interface MiniMedia {
   seekEnd: number | null;
   canSeek: boolean;
   volume: number;
+  unmuteVolume?: number | null;
   mode: PlaybackMode | null;
   modeFamily: ModeFamily | null;
   fmModePending?: { mode: PlaybackMode; revision: string } | null;

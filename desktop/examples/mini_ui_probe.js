@@ -55,8 +55,21 @@
     await modeSettled('order_loop','ordinary');
     for(const [mode,name] of [['single_loop','single'],['random','random'],['sequential','sequential'],['order_loop','loop']])await cycle(mode,'ordinary','ordinary_'+name);
 
-    await mini(`const input=document.querySelector('[aria-label="音量"]');input.value='28';input.dispatchEvent(new Event('change',{bubbles:true}));return true;`);
+    await mini(`document.querySelector('.volume-trigger').focus();return true;`);
+    await wait(()=>mini(`return !!document.querySelector('[aria-label="音量"][aria-orientation="vertical"]');`),'vertical volume');
+    await mini(`const input=document.querySelector('[aria-label="音量"]');input.value='28';input.dispatchEvent(new Event('input',{bubbles:true}));return true;`);
     await wait(async()=>(await read()).media.volume===28,'volume');
+    await mini(`const trigger=document.querySelector('.volume-trigger');trigger.dispatchEvent(new WheelEvent('wheel',{bubbles:true,cancelable:true,deltaY:-1}));return true;`);
+    await wait(async()=>(await read()).media.volume===31,'wheel volume');
+    await clickMini('静音');
+    await wait(async()=>{const current=await read();return current.media.volume===0&&current.media.unmuteVolume===31;},'mute preserves last volume');
+    await capture('volume_muted');
+    await clickMini('取消静音');
+    await wait(async()=>(await read()).media.volume===31,'unmute restores last volume');
+    assert(await mini(`const n=document.querySelector('.volume-popover'),r=n.getBoundingClientRect();return r.left>=0&&r.top>=0&&r.right<=innerWidth&&r.bottom<=innerHeight;`),'volume popover clipped');
+    await mini(`const n=document.querySelector('[aria-label="音量"]');n.focus();n.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));return true;`);
+    await wait(()=>mini(`return !document.querySelector('.volume-popover')&&document.activeElement===document.querySelector('.volume-trigger');`),'volume escape restores focus');
+    assert((await read()).media.item.id===before.media.item.id,'volume did not switch tracks');
     await clickMini('喜欢'); await wait(async()=>(await read()).media.like?.observed===true,'like');
     await clickMini('播放队列'); await wait(async()=>(await mini(facts)).rows===30,'bounded queue');
     await capture('queue_first_page');
@@ -112,6 +125,6 @@
     assert(await mini(`try { await window.__TAURI_INTERNALS__.invoke('mini_action',{generation:${JSON.stringify(previousAccount.generation)},ticket:${JSON.stringify(previousAccount.ticket)},action:{kind:'toggle'}});return false;}catch{return true;}`),'old account controls were accepted');
     await capture('account_isolated');
     await clickMini('返回主窗口');
-    await emit({kind:'complete',stage:'complete',ok:true,stageCount,realMusicRequests:0,timeoutVerified:true,staleControlRejected:true,ipcIsolation:true,reloadFallback:true,sharedAudio:true,closePolicy:true,accountIsolation:true,ordinaryModeCycle:true,togetherModeCycle:true,roomModeTicketsRejected:true,twoAccountRealtimeVerified:false});
+    await emit({kind:'complete',stage:'complete',ok:true,stageCount,realMusicRequests:0,timeoutVerified:true,staleControlRejected:true,ipcIsolation:true,reloadFallback:true,sharedAudio:true,closePolicy:true,accountIsolation:true,ordinaryModeCycle:true,togetherModeCycle:true,roomModeTicketsRejected:true,twoAccountRealtimeVerified:false,volumeControlsVerified:true});
   } catch(e) { await emit({kind:'failed',stage:'failed',message:String(e)+'\n'+String(e?.stack||''),body:document.body.textContent,stageCount}); }
 })();

@@ -63,14 +63,17 @@ def main():
         return
     assert all(complete[k] for k in ['timeoutVerified', 'staleControlRejected', 'ipcIsolation',
                                     'reloadFallback', 'sharedAudio', 'closePolicy', 'accountIsolation',
-                                    'ordinaryModeCycle', 'togetherModeCycle', 'roomModeTicketsRejected'])
+                                    'ordinaryModeCycle', 'togetherModeCycle', 'roomModeTicketsRejected',
+                                    'volumeControlsVerified'])
     states = [json.loads(p.read_text(encoding='utf-8')) for p in sorted(output.glob('ux_*.json'))]
-    assert len(states) == complete['stageCount'] == 19
+    assert len(states) == complete['stageCount'] == 20
     assert all(v['factoryCount'] == 1 and not v['mainVisible'] and len(v['miniWindows']) == 1 for v in states)
     assert all(not v['overflow'] and v['width'] == 420 and v['height'] in [206, 516] for v in states)
     assert states[0]['nativePlayer']['playId'] == states[1]['nativePlayer']['playId']
     assert states[0]['nativePlayer']['state'] == states[1]['nativePlayer']['state'] == 'paused'
     by_name=lambda name:next(s for s in states if s['stage'].endswith('_'+name))
+    assert by_name('volume_muted')['nativePlayer']['volume'] == 0
+    assert by_name('volume_muted')['nativeMini']['unmuteVolume'] == 31
     assert by_name('queue_first_page')['rows']==30 and by_name('queue_second_page')['rows']==10
     assert by_name('dark_queue')['theme']==by_name('dark_compact')['theme']=='dark'
     assert states[0]['background']!=by_name('dark_queue')['background']

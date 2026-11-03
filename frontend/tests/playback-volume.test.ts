@@ -17,11 +17,13 @@ function fixture(save: (value: number, epoch: string) => Promise<void> = async (
   const view = shallowRef({ epoch: '1', volume: 70, unmuteVolume: 70 } as PlayerView);
   const ready = ref(true),
     busy = ref(false),
+    selection = ref('first'),
     calls: number[] = [];
   const player = {
     view,
     ready,
     busy,
+    scope: selection,
     configureVolume: async (value: number) => {
       const epoch = view.value.epoch;
       calls.push(value);
@@ -40,6 +42,7 @@ function fixture(save: (value: number, epoch: string) => Promise<void> = async (
     view,
     ready,
     busy,
+    selection,
     calls,
     model: scope.run(() => usePlaybackVolume(player))!,
     stop: () => scope.stop(),
@@ -66,6 +69,21 @@ test('volume input is bounded and unchanged/nonfinite values do not write', asyn
   f.model.wheel(0);
   await turn();
   assert.deepEqual(f.calls, [100, 97, 0]);
+  f.stop();
+});
+test('mini selection replacement discards the old slider draft and late error', async () => {
+  const saved = deferred();
+  const f = fixture(() => saved.promise);
+  f.model.begin();
+  f.model.set(12);
+  f.model.set(23);
+  f.selection.value = 'next';
+  saved.reject({ code: 'stale', message: 'late', retryable: false });
+  await turn();
+  assert.deepEqual(f.calls, [12]);
+  assert.equal(f.model.value.value, 70);
+  assert.equal(f.model.dragging.value, false);
+  assert.equal(f.model.issue.value, undefined);
   f.stop();
 });
 test('rapid drag updates serialize and coalesce to the latest absolute target without transport busy', async () => {

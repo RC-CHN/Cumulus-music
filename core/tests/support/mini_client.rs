@@ -251,6 +251,14 @@ async fn mini_seek_volume_and_mode_use_ordinary_validation_and_fences() {
         .unwrap();
     let current = f.client.mini_snapshot().unwrap();
     assert_eq!(current.view.volume, 12.0);
+    assert_eq!(current.view.unmute_volume, Some(12.0));
+    f.client
+        .mini_action(&current, Action::Volume { value: 0.0 })
+        .await
+        .unwrap();
+    let current = f.client.mini_snapshot().unwrap();
+    assert_eq!(current.view.volume, 0.0);
+    assert_eq!(current.view.unmute_volume, Some(12.0));
     f.client
         .mini_action(
             &current,

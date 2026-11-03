@@ -296,8 +296,25 @@
   height: 14px;
   color: var(--muted);
 }
-.mini-footer input {
+.mini-footer > input {
   width: 72px;
+}
+.mini-footer .volume-trigger {
+  width: 30px;
+  height: 30px;
+}
+.mini-footer .volume-popover {
+  left: auto;
+  right: -4px;
+  margin-left: 0;
+  bottom: 100%;
+}
+.mini-footer .volume-popover::before {
+  right: 14px;
+}
+.mini-footer .volume-popover.volume-error {
+  max-height: 150px;
+  overflow: auto;
 }
 .mini-queue {
   display: flex;

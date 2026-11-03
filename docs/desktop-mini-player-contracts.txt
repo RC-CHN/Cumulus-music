@@ -133,3 +133,19 @@ Windows 本轮代码仍须自己的 runner/实际窗口测试，不能拿 Linux 
   runner 验证。测试支持模块不链接到正式客户端，不能当成物理键盘或用户设备证明。
 - 平台依据（仅窗口权限，无第三方业务实现）：
   https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-allowsetforegroundwindow
+
+迷你播放器音量
+官方恢复 hybrid_app.chunk.1482700000000.js/385.js（SHA-256
+78ceaea3929e480480c77c0411c4f05cb46e5debca65fee87a13e34f41d4a944）
+的 PC mini 音量入口在鼠标悬停时打开上方纵向滑条，实时调节并显示百分比，
+滚轮每次增减 3%，点击图标调用 playing/switchMute。音乐迷你窗复用主播放条
+同一控件与原生绝对音量命令：用 mini 媒体票据校验当前目标，解除静音时采用
+原生快照的已保存音量。正在拖动时保留界面草稿，账号或曲目变化则清除旧草稿，
+不把迟到错误或排队的更新应用到新目标。音量失败在浮层显示，保留显式重试。
+新增键盘入口：方向键聚焦滑条，Escape 收起并回到图标。右侧紧凑布局约束
+浮层边界；MV 沿用独立水平音量控制，未找到 PC 官方迷你 MV 音量布局证据。
+本批不复刻 Windows 系统主音量诊断或灰度实验图标。
+
+mini_smoke.py 覆盖实际迷你 WebView 的 input 实时调节、滚轮、静音、恢复、
+浮层边界和 Escape；从 nativePlayer 与 nativeMini 核对同一播放项的状态。
+合成音频/null 输出不代表实体听感，不调用线上账号。

@@ -2,6 +2,7 @@
 import BoundedPanelTransition from '../components/BoundedPanelTransition.vue';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import Icon from '../components/Icon.vue';
+import PlaybackVolume from '../components/PlaybackVolume.vue';
 import { useLocalShortcuts } from '../composables/useLocalShortcuts';
 import { useMiniModes } from '../composables/useMiniModes';
 import { useMiniFeedback } from '../composables/useMiniFeedback';
@@ -20,6 +21,23 @@ import './mini.css';
 const client = createMiniClient(location.hash.slice('#mini='.length));
 const view = ref<MiniView | null>(null);
 const media = computed(() => view.value?.media);
+const musicVolumeView = computed(() =>
+  media.value?.item?.kind === 'music' ? media.value : undefined,
+);
+const musicVolume = {
+  view: musicVolumeView,
+  ready: computed(() => !!musicVolumeView.value),
+  scope: computed(() => musicVolumeView.value?.item?.id),
+  async configureVolume(value: number) {
+    const shown = view.value;
+    if (shown?.media.item?.kind !== 'music') return;
+    try {
+      await client.action(shown.ticket, { kind: 'volume', value });
+    } finally {
+      await refresh(true).catch(() => {});
+    }
+  },
+};
 const busy = ref(false);
 const error = ref('');
 const shortcuts = useLocalShortcuts((e) => {
@@ -609,17 +627,22 @@ onUnmounted(() => {
           media?.error ||
           (media?.state === 'loading' ? '正在加载…' : media?.item?.album || '云间音乐')
         }}</span
-      ><Icon :name="media?.volume === 0 ? 'muted' : 'volume'" /><input
-        aria-label="音量"
-        type="range"
-        min="0"
-        max="100"
-        :value="media?.volume ?? 100"
-        :disabled="busy || !media?.item"
-        @change="
-          perform({ kind: 'volume', value: Number(($event.target as HTMLInputElement).value) })
-        "
-      />
+      >
+      <PlaybackVolume v-if="musicVolumeView" :player="musicVolume" />
+      <template v-else>
+        <Icon :name="media?.volume === 0 ? 'muted' : 'volume'" />
+        <input
+          aria-label="音量"
+          type="range"
+          min="0"
+          max="100"
+          :value="media?.volume ?? 100"
+          :disabled="busy || !media?.item"
+          @change="
+            perform({ kind: 'volume', value: Number(($event.target as HTMLInputElement).value) })
+          "
+        />
+      </template>
     </footer>
     <Transition
       name="mini-mode-feedback"
