@@ -25,6 +25,10 @@ export function searchCardKey(item: SearchItem): string {
       return `user:${item.user.id}`;
   }
 }
+/** Only a native-projected MV identity can open the video player. */
+export function searchMvPlaybackTarget(item: SearchItem): string | null {
+  return item.kind === 'mv' && item.mv.kind === 'mv' ? item.mv.mvId : null;
+}
 export function searchCardCanPlay(item: SearchItem): boolean {
   return (
     ['playlist', 'album', 'artist'].includes(item.kind) ||

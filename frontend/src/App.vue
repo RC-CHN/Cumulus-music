@@ -10,6 +10,7 @@ import type { SearchItem } from './services/search';
 import {
   searchCardIsCurrent,
   searchCardSelection,
+  searchMvPlaybackTarget,
   searchVoiceSelection,
   searchCurrentSongId,
   searchCurrentVoiceId,
@@ -346,7 +347,8 @@ function openSearchItem(item: SearchItem) {
     if (item.voice.radioId) openSceneRadio(item.voice.radioId);
     else music.notice.value = '这条声音暂未提供所属播客';
   } else if (item.kind === 'mv') {
-    if (item.mv.mvId) openMv(item.mv.mvId);
+    const id = searchMvPlaybackTarget(item);
+    if (id) openMv(id);
     else music.notice.value = '此视频暂不可打开';
   }
 }

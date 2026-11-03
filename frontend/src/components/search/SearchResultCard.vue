@@ -7,7 +7,11 @@ import Icon from '../Icon.vue';
 import SearchMatchText from './SearchMatchText.vue';
 import ActionMenu from '../ActionMenu.vue';
 import type { MenuItem } from '../../services/menu';
-import { searchCardCanPlay, searchCardKey } from '../../services/searchCards';
+import {
+  searchCardCanPlay,
+  searchCardKey,
+  searchMvPlaybackTarget,
+} from '../../services/searchCards';
 import { usePlaybackTriggerFocus } from '../../composables/usePlaybackTriggerFocus';
 const props = defineProps<{
   item: SearchItem;
@@ -54,6 +58,7 @@ function contextMenu(event: MouseEvent | KeyboardEvent) {
 }
 const failedCover = ref(false);
 const canPlay = computed(() => searchCardCanPlay(props.item));
+const canPlayMv = computed(() => !!searchMvPlaybackTarget(props.item));
 const markedTitle = computed(
   () =>
     ['playlist', 'podcast', 'voice', 'mv'].includes(props.item.kind) ||
@@ -78,8 +83,10 @@ const items = computed<MenuItem[]>(() => [
         ? '查看所属播客'
         : props.item.kind === 'user'
           ? '查看用户信息'
-          : '查看详情',
-    icon: 'forward',
+          : props.item.kind === 'mv'
+            ? '播放 MV'
+            : '查看详情',
+    icon: props.item.kind === 'mv' ? 'play' : 'forward',
     disabled: unavailable.value,
   },
   ...(['playlist', 'album', 'voice', 'mv'].includes(props.item.kind)
@@ -126,7 +133,7 @@ const unavailable = computed(() =>
   props.item.kind === 'voice'
     ? !props.item.voice.radioId
     : props.item.kind === 'mv'
-      ? !props.item.mv.mvId
+      ? !canPlayMv.value
       : props.item.kind === 'user' && props.item.user.unavailable,
 );
 const voiceDuration = computed(() => {
@@ -229,9 +236,9 @@ watch(
       type="button"
       class="search-card-open"
       :disabled="unavailable"
-      :aria-label="`${item.kind === 'user' ? '查看用户主页' : '查看'} ${card.name}`"
+      :aria-label="`${item.kind === 'user' ? '查看用户主页' : item.kind === 'mv' ? '播放 MV' : '查看'} ${card.name}`"
       :data-tooltip="[card.name, card.sub].filter(Boolean).join(' · ')"
-      @click="emit('open', item)"
+      @click="action('open')"
     />
     <span v-if="item.kind !== 'related'" class="search-result-art">
       <img
@@ -244,7 +251,10 @@ watch(
         @error="failedCover = true"
       />
       <Icon v-else :name="card.round ? 'user' : 'music'" />
-      <span v-if="canPlay" class="search-card-mask" />
+      <span v-if="canPlay || canPlayMv" class="search-card-mask" aria-hidden="true" />
+      <span v-if="canPlayMv" class="search-video-play-glyph" aria-hidden="true">
+        <Icon name="play" />
+      </span>
       <button
         v-if="canPlay"
         type="button"

@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {
   searchCardSelection,
   searchCardIsCurrent,
+  searchCardCanPlay,
+  searchMvPlaybackTarget,
   searchCurrentSongId,
   searchCurrentVoiceId,
   searchVoiceSelection,
@@ -114,4 +116,26 @@ test('only a current catalog song supplies a search song highlight or toggle ID'
     ),
     false,
   );
+});
+
+test('search videos open the native MV target only, separate from audio selection', () => {
+  const mv: SearchItem = {
+    kind: 'mv',
+    mv: {
+      id: 'presentation-id',
+      kind: 'mv',
+      title: 'Synthetic MV',
+      description: '',
+      artists: [],
+      coverUrl: null,
+      durationMs: 30000,
+      playCount: 0,
+      mvId: '9007199254740993',
+    },
+  };
+  assert.equal(searchMvPlaybackTarget(mv), '9007199254740993');
+  assert.equal(searchCardCanPlay(mv), false);
+  assert.equal(searchMvPlaybackTarget({ ...mv, mv: { ...mv.mv, mvId: null } }), null);
+  assert.equal(searchMvPlaybackTarget({ ...mv, mv: { ...mv.mv, kind: 'video' } }), null);
+  assert.equal(searchMvPlaybackTarget(voice), null);
 });
