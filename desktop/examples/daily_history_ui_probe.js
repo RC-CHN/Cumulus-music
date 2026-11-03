@@ -52,7 +52,16 @@
     }
     if (player?.track?.id !== '71' || player.queueLen !== 2 || player.state !== 'playing' || player.position <= 0.15)
       throw new Error('style songs did not reach ordinary native playback');
-    await emit('complete', { ok: true, stageCount: 3, stylePlayback: true });
+    const tagEntry = one('.style-tags-entry');
+    tagEntry.click();
+    const tags = await wait(() => one('.style-tag-browser[open]')?.textContent.includes('合成轻音乐') && one('.style-tag-browser'), 'style tags loaded');
+    await sleep(250);
+    await emit('ux_04_style_tags');
+    [...tags.querySelectorAll('nav button')].find((node) => node.textContent.trim() === '合成空分类').click();
+    await wait(() => tags.textContent.includes('此分类暂无标签。'), 'style category changes without a write');
+    tags.querySelector('[aria-label="关闭风格标签"]').click();
+    await wait(() => !one('.style-tag-browser[open]') && document.activeElement === tagEntry, 'style tag focus restored');
+    await emit('complete', { ok: true, stageCount: 4, stylePlayback: true });
   } catch (error) {
     await emit('failed', { message: String(error), body: document.body.innerText.slice(-2200) });
   }

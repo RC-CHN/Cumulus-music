@@ -19,6 +19,12 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
         return None;
     }
     CALLS.lock().unwrap().push(json!({"path":path,"args":args}));
+    if path == "/api/homepage/daily/song/config/get" && *args == json!({"limit":20}) {
+        return Some(Ok(json!({"code":200,"data":{"categorys":[
+            {"categoryId":"c1","categoryName":"合成曲风","tagVOList":[{"tagId":"t1","tagName":"合成轻音乐"}]},
+            {"categoryId":"c2","categoryName":"合成空分类","tagVOList":[]}
+        ]}})));
+    }
     if path != PATH || args != &json!({"source":"","categoryId":"","tagId":"","songId":""}) {
         return Some(Err(Error::Response(
             "unexpected synthetic style recommendation request",
