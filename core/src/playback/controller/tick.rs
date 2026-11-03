@@ -110,12 +110,14 @@ impl Actor {
         self.equalizer_observe().await?;
         self.loudness_observe().await?;
         let view = super::engine(self.engine.clone(), self.guard(), |engine| engine.poll()).await?;
+        let mut events = std::mem::take(&mut self.deferred_events);
+        events.extend(view.events);
         let loaded = self
             .loaded
             .as_ref()
             .ok_or(Error::State("active playback missing media"))?;
         let was_paused = self.state == PlaybackStatus::Paused;
-        if view.events.iter().any(|event| {
+        if events.iter().any(|event| {
             matches!(event, EngineEvent::OutputReload { entry_id } if *entry_id == loaded.media.entry_id)
         }) {
             let observed = view.position.map(|p| loaded.timeline.from_media(p)).transpose()?;
@@ -133,7 +135,7 @@ impl Actor {
             return self.begin(options, uuid::Uuid::new_v4().simple().to_string(), None).await;
         }
         let mut ended = false;
-        for event in view.events {
+        for event in events {
             match event {
                 EngineEvent::Ended {
                     entry_id,
@@ -186,7 +188,12 @@ impl Actor {
         }
         if ended && !self.queue.is_fm() && self.queue.advance(Step::Next, true)?.is_some() {
             self.begin(
-                LoadOptions::default(),
+                LoadOptions {
+                    // EOF may have been drained by an explicit pause.
+                    // Carry the user's pause through the automatic step.
+                    paused: was_paused,
+                    ..Default::default()
+                },
                 uuid::Uuid::new_v4().simple().to_string(),
                 None,
             )

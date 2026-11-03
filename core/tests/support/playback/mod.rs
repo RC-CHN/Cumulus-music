@@ -115,6 +115,7 @@ pub struct Device {
     pub state: Mutex<DeviceState>,
     pub hold_load: AtomicBool,
     pub fail_seek: AtomicBool,
+    pub pause_event: Mutex<Option<EngineEvent>>,
     pub fail_unpause: AtomicBool,
     pub started: Notify,
 }
@@ -153,6 +154,7 @@ impl Default for Device {
             }),
             hold_load: AtomicBool::new(false),
             fail_seek: AtomicBool::new(false),
+            pause_event: Mutex::new(None),
             fail_unpause: AtomicBool::new(false),
             started: Notify::new(),
         }
@@ -246,6 +248,9 @@ impl AudioEngine for Engine {
         let mut state = self.0.state.lock().unwrap();
         state.pauses.push(paused);
         state.view.paused = paused;
+        if paused && let Some(event) = self.0.pause_event.lock().unwrap().take() {
+            state.view.events.push(event);
+        }
         Ok(())
     }
     fn seek(&mut self, seconds: f64) -> Result<()> {

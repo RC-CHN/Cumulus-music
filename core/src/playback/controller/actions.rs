@@ -357,6 +357,9 @@ impl Actor {
             engine.poll()
         })
         .await?;
+        // Poll consumes native events even when we only need the clock.
+        // The regular tick still owns their handling for this load.
+        self.deferred_events.extend(view.events);
         if let Some(position) = view.position {
             let observed = self
                 .loaded

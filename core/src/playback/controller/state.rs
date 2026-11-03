@@ -7,7 +7,7 @@ use crate::{
     account::{AccountSession, SessionToken},
     playback::{
         PlaybackQueue, QueueEntry, Timeline,
-        engine::{Cancellation, LoadedMedia},
+        engine::{Cancellation, EngineEvent, LoadedMedia},
         source::{ResolvedSource, SourceResolver},
     },
     storage::StateStore,
@@ -70,6 +70,7 @@ pub(super) struct Actor {
     pub history_error: Option<String>,
     pub reset: bool,
     pub loaded: Option<Loaded>,
+    pub deferred_events: Vec<EngineEvent>,
     pub pending: Option<Pending>,
     pub load_task: Option<JoinHandle<()>>,
     pub cancel: Cancellation,
@@ -127,6 +128,7 @@ impl Actor {
             history_error: None,
             reset: false,
             loaded: None,
+            deferred_events: Vec::new(),
             pending: None,
             load_task: None,
             cancel: Cancellation::default(),
@@ -233,6 +235,7 @@ impl Actor {
     }
     pub async fn cancel_load(&mut self) -> Result<()> {
         self.cancel.cancel();
+        self.deferred_events.clear();
         self.generation
             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| n.checked_add(1))
             .map_err(|_| Error::State("playback generation exhausted"))?;

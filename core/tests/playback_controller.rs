@@ -6,7 +6,7 @@ use cumulus_core::{
     playback::{
         PlaybackMode, PlaybackQueue, TimelineMode,
         controller::{PlaybackCommand as Cmd, PlaybackStatus as Status},
-        engine::EndReason,
+        engine::{EndReason, EngineEvent},
     },
 };
 use serde_json::{Value, json};
@@ -106,6 +106,30 @@ async fn eof_is_bound_to_native_entry_and_single_loop_differs_from_manual_next()
     let restored = f.command(Cmd::Restore).await.unwrap();
     assert_eq!(restored.position, Some(0.0));
     assert_eq!(restored.state, Status::Paused);
+}
+
+#[tokio::test]
+async fn pause_at_native_eof_advances_without_resuming_playback() {
+    let f = Fixture::new();
+    f.command(replace(&[1, 2])).await.unwrap();
+    let entry_id = f.device.state.lock().unwrap().view.entry_id.unwrap();
+    // Emit inside the engine pause operation so the control's own clock poll
+    // drains EOF before the actor's regular tick can see it.
+    *f.device.pause_event.lock().unwrap() = Some(EngineEvent::Ended {
+        entry_id,
+        reason: EndReason::Eof,
+        error: 0,
+    });
+    f.command(Cmd::Pause(true)).await.unwrap();
+    let next = until(&f.player, |view| {
+        view.state == Status::Paused && song(view) == Some(2)
+    })
+    .await;
+    assert_eq!(next.position, Some(0.0));
+    let device = f.device.state.lock().unwrap();
+    assert_eq!(device.loads, 2);
+    assert!(device.view.paused);
+    assert_eq!(device.pauses.iter().filter(|paused| !**paused).count(), 1);
 }
 
 #[tokio::test]
