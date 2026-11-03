@@ -8,11 +8,16 @@ export function equalizerPreset(gains: readonly number[]): number {
       p.gains.length === gains.length && p.gains.every((g, i) => Math.abs(g - gains[i]!) < 0.00001),
   );
 }
+export function equalizerTone(settings?: EqualizerSettings) {
+  return { bass_db: settings?.bass_db ?? 0, treble_db: settings?.treble_db ?? 0 };
+}
 export function equalizerChange(
   view: EqualizerView,
   settings: EqualizerSettings,
 ): Extract<PlayerAction, { kind: 'equalizer' }> {
+  const tone = equalizerTone(settings);
   if (
+    Object.values(tone).some((gain) => !Number.isInteger(gain) || Math.abs(gain) > 10) ||
     view.damaged ||
     settings.gains.length !== 10 ||
     settings.gains.some((g) => !Number.isFinite(g) || Math.abs(g) > 12)
@@ -21,7 +26,12 @@ export function equalizerChange(
   return {
     kind: 'equalizer',
     expected_revision: view.revision,
-    settings: { enabled: settings.enabled, gains: [...settings.gains] },
+    settings: {
+      enabled: settings.enabled,
+      gains: [...settings.gains],
+      ...(tone.bass_db !== 0 ? { bass_db: tone.bass_db } : {}),
+      ...(tone.treble_db !== 0 ? { treble_db: tone.treble_db } : {}),
+    },
   };
 }
 export function equalizerMessage(view: EqualizerView): string {
@@ -31,6 +41,10 @@ export function equalizerMessage(view: EqualizerView): string {
   if (view.status === 'unavailable') return '均衡器组件未就绪，设置已保存。';
   if (view.status === 'pending') return '设置已保存，正在等待播放器应用…';
   if (!view.settings.enabled) return '均衡器已关闭';
-  if (view.settings.gains.every((g) => g === 0)) return '当前为平直曲线';
+  if (
+    view.settings.gains.every((g) => g === 0) &&
+    Object.values(equalizerTone(view.settings)).every((g) => g === 0)
+  )
+    return '当前为平直曲线';
   return view.status === 'configured' ? '均衡器已配置，等待音频处理' : '均衡器已启用';
 }

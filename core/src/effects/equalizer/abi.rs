@@ -24,3 +24,8 @@ pub type Create = unsafe extern "C" fn(*const f32, u32, *mut u32) -> i32;
 pub type Update = unsafe extern "C" fn(u32, *const f32, u32) -> i32;
 pub type Stats = unsafe extern "C" fn(u32, *mut EqualizerStats) -> i32;
 pub type Release = unsafe extern "C" fn(u32) -> i32;
+
+/// Optional extended entry points. Version 1 symbols and descriptors remain
+/// compatible with existing ten-band-only hosts.
+pub type CreateTone = unsafe extern "C" fn(*const f32, u32, i32, i32, *mut u32) -> i32;
+pub type UpdateTone = unsafe extern "C" fn(u32, *const f32, u32, i32, i32) -> i32;

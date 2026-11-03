@@ -296,3 +296,45 @@ async fn peer_replacing_the_same_active_curve_still_reapplies_its_new_revision()
     assert_eq!(synced.equalizer.preferences.settings, curve(4.0));
     assert_eq!(synced.equalizer.status, EqualizerStatus::Failed);
 }
+
+#[tokio::test]
+async fn tone_only_curve_is_applied_and_saved_preset_does_not_include_tone() {
+    let f = Fixture::new();
+    f.device.equalizer_supported.store(true, Ordering::SeqCst);
+    let enhanced = EqualizerSettings::new(true, [0.0; 10])
+        .unwrap()
+        .with_tone(6, -3)
+        .unwrap();
+    let first = f
+        .command(Cmd::Equalizer {
+            expected_revision: 0,
+            settings: enhanced,
+        })
+        .await
+        .unwrap();
+    assert_eq!(first.equalizer.preferences.settings.tone(), (6, -3));
+    assert_eq!(*f.device.equalizer.lock().unwrap(), Some(enhanced));
+    let saved = f
+        .command(Cmd::SaveCustomEqualizer {
+            expected_revision: 1,
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        saved.equalizer.preferences.saved_custom.unwrap().tone(),
+        (0, 0)
+    );
+    assert_eq!(
+        EqualizerPreferences::read(&f.store, "9").unwrap().settings,
+        enhanced
+    );
+    let old: EqualizerSettings =
+        serde_json::from_value(json!({"enabled":true,"gains":[0,0,0,0,0,0,0,0,0,0]})).unwrap();
+    assert_eq!(old.tone(), (0, 0));
+    assert!(
+        serde_json::from_value::<EqualizerSettings>(
+            json!({"enabled":true,"gains":[0,0,0,0,0,0,0,0,0,0],"bass_db":11})
+        )
+        .is_err()
+    );
+}

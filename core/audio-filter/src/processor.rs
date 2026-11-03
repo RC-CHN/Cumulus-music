@@ -95,7 +95,10 @@ impl Processor {
             if self.stage.configure(config.settings).is_err() {
                 return false;
             }
-            if self.revision == 0 && !config.settings.enabled() {
+            if self.revision == 0
+                && (!config.settings.enabled()
+                    || matches!(config.settings, crate::control::Settings::EqualizerTone(_)))
+            {
                 // A new/seek-recreated instance starts disabled without a wet
                 // first block. Settle the recovered bypass edge on empty owned
                 // padding; later user toggles still use its native crossfade.

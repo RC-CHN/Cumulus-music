@@ -9,6 +9,8 @@ type Current = { epoch: string; equalizer: EqualizerView };
 function same(a: EqualizerSettings, b: EqualizerSettings) {
   return (
     a.enabled === b.enabled &&
+    (a.bass_db ?? 0) === (b.bass_db ?? 0) &&
+    (a.treble_db ?? 0) === (b.treble_db ?? 0) &&
     a.gains.length === b.gains.length &&
     a.gains.every((gain, i) => Math.fround(gain) === Math.fround(b.gains[i]!))
   );
@@ -56,7 +58,7 @@ export function useEqualizerDraft(
     const value = current();
     if (!value || value.equalizer.damaged || (settings.value && same(settings.value, next))) return;
     if (!draft.value) revision = value.equalizer.revision;
-    draft.value = { enabled: next.enabled, gains: [...next.gains] };
+    draft.value = { ...next, gains: [...next.gains] };
     schedule();
   }
 

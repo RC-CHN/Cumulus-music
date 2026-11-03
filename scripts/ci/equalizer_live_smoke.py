@@ -85,8 +85,15 @@ def main():
     assert all(b['position'] > a['position'] and
                int(b['equalizer']['revision']) > int(a['equalizer']['revision'])
                for a, b in zip(progression, progression[1:]))
+    tone = read('eq_tone')
+    tone_settings = tone['native']['equalizer']['settings']
+    assert tone['tone'] == [6, -3]
+    assert (tone_settings['bass_db'], tone_settings['treble_db']) == (6, -3)
+    assert tone['native']['equalizer']['status'] == 'processing'
+    assert tone['native']['entryId'] == before['entryId'] and tone['native']['state'] == 'playing'
     saved = read('eq_saved')['native']
-    assert saved['equalizer']['settings']['gains'][4] == 4
+    assert saved['equalizer']['settings'] == tone_settings
+    assert tone_settings['gains'][4] == 4
     assert saved['state'] == 'paused' and saved['position'] >= 11
     assert read('complete')['ok']
     record = persisted(root)
@@ -108,15 +115,22 @@ def main():
     assert recalled_reopen['state'] == 'playing' and recalled_reopen['entryId'] == resumed['entryId']
     assert recalled_reopen['equalizer']['status'] == 'processing'
     assert recalled_reopen['equalizer']['saved_custom'] == custom_gains
-    assert recalled_reopen['equalizer']['settings'] == record['saved_custom']
+    assert recalled_reopen['equalizer']['settings'] == {
+        **record['saved_custom'], 'bass_db': 6, 'treble_db': -3,
+    }
     assert int(recalled_reopen['equalizer']['revision']) == record['revision'] + 1
-    assert persisted(root) == {**record, 'revision': record['revision'] + 1,
+    reset = reopened('eq_reopened_tone_reset')
+    assert reset['tone'] == [0, 0]
+    assert reset['native']['entryId'] == resumed['entryId'] and reset['native']['state'] == 'playing'
+    assert reset['native']['equalizer']['settings'] == record['saved_custom']
+    assert persisted(root) == {**record, 'revision': record['revision'] + 2,
                                'settings': record['saved_custom']}
     assert reopened('complete')['ok']
     report = {'ok': True, 'actualWebView': True, 'inputOnly': True, 'confirmedGain': -3.5,
               'samePlayingEntryAdvanced': True, 'nativeFlatReset': True,
               'persistedRevisionVerified': True, 'freshProcessResumedProcessing': True,
-              'savedCustomPresetRecalledAfterRestart': True}
+              'savedCustomPresetRecalledAfterRestart': True,
+              'toneProcessedPersistedAndReset': True}
     (root/'report.json').write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
     print(json.dumps(report))
 

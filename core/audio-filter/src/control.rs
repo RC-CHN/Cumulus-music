@@ -15,12 +15,13 @@ use std::{
 #[derive(Clone, Copy)]
 pub(crate) enum Settings {
     Equalizer(EqualizerSettings),
+    EqualizerTone(EqualizerSettings),
     Loudness(LoudnessSettings),
 }
 impl Settings {
     pub fn enabled(self) -> bool {
         match self {
-            Self::Equalizer(settings) => settings.enabled(),
+            Self::Equalizer(settings) | Self::EqualizerTone(settings) => settings.enabled(),
             Self::Loudness(settings) => settings.enabled(),
         }
     }
@@ -132,6 +133,45 @@ pub unsafe extern "C" fn cumulus_geq_update_v1(id: u32, gains: *const f32, enabl
             return -2;
         };
         update_configuration(id, Settings::Equalizer(settings))
+    })
+}
+/// # Safety
+/// `gains` points to ten readable floats; `out` points to one writable u32.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cumulus_geq_create_v2(
+    gains: *const f32,
+    enabled: u32,
+    bass_db: i32,
+    treble_db: i32,
+    out: *mut u32,
+) -> i32 {
+    contain(-1, || {
+        let Some(settings) =
+            settings(gains, enabled).and_then(|eq| eq.with_tone(bass_db, treble_db).ok())
+        else {
+            return -2;
+        };
+        // SAFETY: forwarded output pointer has the same ABI contract.
+        unsafe { create_configuration(Settings::EqualizerTone(settings), out) }
+    })
+}
+/// # Safety
+/// `gains` points to ten readable floats; no pointer is retained.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn cumulus_geq_update_v2(
+    id: u32,
+    gains: *const f32,
+    enabled: u32,
+    bass_db: i32,
+    treble_db: i32,
+) -> i32 {
+    contain(-1, || {
+        let Some(settings) =
+            settings(gains, enabled).and_then(|eq| eq.with_tone(bass_db, treble_db).ok())
+        else {
+            return -2;
+        };
+        update_configuration(id, Settings::EqualizerTone(settings))
     })
 }
 pub(crate) fn update_configuration(id: u32, settings: Settings) -> i32 {

@@ -541,7 +541,7 @@ impl AudioEngine for MpvEngine {
         } else if settings.enabled() {
             self.attach_equalizer(&path, settings)?;
         }
-        Ok(true)
+        Ok(!settings.tone_active() || self.equalizer.as_ref().is_some_and(|h| h.supports_tone()))
     }
     fn clear_equalizer(&mut self) -> Result<()> {
         self.detach_equalizer()

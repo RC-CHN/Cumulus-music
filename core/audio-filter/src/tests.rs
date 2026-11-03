@@ -333,3 +333,68 @@ fn disabled_start_and_seek_reset_are_dry_from_the_first_sample() {
     assert_eq!(new_instance.process(&pcm, false), pcm);
     assert_eq!(c.stats().failed_blocks, 0);
 }
+
+#[test]
+fn extended_adapter_processes_geq_then_native_bass_treble_and_bypasses_independently() {
+    use cumulus_core::effects::dsp::{BassTreble, BassTrebleSettings};
+
+    let mut gains = [0.0; 10];
+    gains[3] = 5.0;
+    let mut id = 0;
+    // Invalid UI range is rejected before creating a live registry ID.
+    assert_eq!(
+        unsafe { cumulus_geq_create_v2(gains.as_ptr(), 1, 11, -2, &mut id) },
+        -2
+    );
+    assert_eq!(id, 0);
+    assert_eq!(
+        unsafe { cumulus_geq_create_v2(gains.as_ptr(), 1, 6, -3, &mut id) },
+        0
+    );
+    let config = Config(id);
+    let mut processor = Instance::new(id, 48_000);
+    let format = Format::new(48_000.0, 1, CAPACITY).unwrap();
+    let mut graphic = GraphicEq::new(format).unwrap();
+    let mut tone = BassTreble::new(format).unwrap();
+    let mut block = PlanarBlock::new(format);
+    graphic.set_gains(&gains).unwrap();
+    tone.configure(BassTrebleSettings {
+        bass_db: 6.0,
+        treble_db: -3.0,
+        ..Default::default()
+    })
+    .unwrap();
+    let input: Vec<f32> = (0..321)
+        .map(|i| ((i as f32 * 0.11).sin() + (i as f32 * 0.71).cos()) * 0.07)
+        .collect();
+
+    let mut expected = |graphic: &mut GraphicEq, tone: &mut BassTreble| {
+        block.samples_mut().fill(0.0);
+        block.samples_mut()[..input.len()].copy_from_slice(&input);
+        graphic.process(&mut block, input.len()).unwrap();
+        tone.process(&mut block, input.len()).unwrap();
+        block.samples()[..input.len()].to_vec()
+    };
+    assert_eq!(
+        processor.process(&input, false),
+        expected(&mut graphic, &mut tone)
+    );
+    assert_eq!(config.stats().observed_revision, 1);
+
+    // Resetting bass and treble leaves the GEQ and its history unchanged.
+    assert_eq!(
+        unsafe { cumulus_geq_update_v2(id, gains.as_ptr(), 1, 0, 0) },
+        0
+    );
+    tone.set_bypass(true).unwrap();
+    assert_eq!(
+        processor.process(&input, true),
+        expected(&mut graphic, &mut tone)
+    );
+    assert_eq!(
+        processor.process(&input, false),
+        expected(&mut graphic, &mut tone)
+    );
+    assert_eq!(config.stats().observed_revision, 2);
+    assert_eq!(unsafe { cumulus_geq_update_v1(id, gains.as_ptr(), 0) }, -2);
+}

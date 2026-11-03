@@ -1,11 +1,18 @@
 use crate::control::Settings;
 use cumulus_core::{
     Error, Result,
-    effects::dsp::{Format, GraphicEq, LoudnessParameters, LoudnessStage, PlanarBlock},
+    effects::dsp::{
+        BassTreble, BassTrebleSettings, Format, GraphicEq, LoudnessParameters, LoudnessStage,
+        PlanarBlock,
+    },
 };
 
 pub(crate) enum Stage {
-    Equalizer(GraphicEq),
+    Equalizer {
+        graphic: GraphicEq,
+        tone: Option<BassTreble>,
+        use_tone: bool,
+    },
     Loudness(LoudnessStage),
 }
 impl Stage {
@@ -13,7 +20,11 @@ impl Stage {
         if loudness {
             Ok(Self::Loudness(LoudnessStage::new(format)))
         } else {
-            Ok(Self::Equalizer(GraphicEq::new(format)?))
+            Ok(Self::Equalizer {
+                graphic: GraphicEq::new(format)?,
+                tone: BassTreble::new(format).ok(),
+                use_tone: false,
+            })
         }
     }
     pub fn recreate(&self, format: Format) -> Result<Self> {
@@ -21,9 +32,40 @@ impl Stage {
     }
     pub fn configure(&mut self, settings: Settings) -> Result<()> {
         match (self, settings) {
-            (Self::Equalizer(stage), Settings::Equalizer(settings)) => {
-                stage.set_gains(settings.gains())?;
-                stage.set_bypass(!settings.enabled())
+            (Self::Equalizer { graphic, .. }, Settings::Equalizer(settings)) => {
+                graphic.set_gains(settings.gains())?;
+                graphic.set_bypass(!settings.enabled())
+            }
+            (
+                Self::Equalizer {
+                    graphic,
+                    tone,
+                    use_tone,
+                },
+                Settings::EqualizerTone(settings),
+            ) => {
+                if settings.geq_active() {
+                    graphic.set_gains(settings.gains())?;
+                }
+                graphic.set_bypass(!settings.geq_active())?;
+                let Some(tone) = tone else {
+                    return if settings.tone_active() {
+                        Err(Error::State("tone DSP unavailable for this format"))
+                    } else {
+                        Ok(())
+                    };
+                };
+                if settings.tone_active() {
+                    let (bass, treble) = settings.tone();
+                    tone.configure(BassTrebleSettings {
+                        bass_db: bass as f32,
+                        treble_db: treble as f32,
+                        ..Default::default()
+                    })?;
+                }
+                tone.set_bypass(!settings.tone_active())?;
+                *use_tone = true;
+                Ok(())
             }
             (Self::Loudness(stage), Settings::Loudness(settings)) => {
                 // M116 toggles first and only sends new gain while enabled.
@@ -41,7 +83,17 @@ impl Stage {
     }
     pub fn process(&mut self, block: &mut PlanarBlock, frames: usize) -> Result<()> {
         match self {
-            Self::Equalizer(stage) => stage.process(block, frames),
+            Self::Equalizer {
+                graphic,
+                tone,
+                use_tone,
+            } => {
+                graphic.process(block, frames)?;
+                if *use_tone && let Some(tone) = tone {
+                    tone.process(block, frames)?;
+                }
+                Ok(())
+            }
             Self::Loudness(stage) => stage.process(block, frames),
         }
     }

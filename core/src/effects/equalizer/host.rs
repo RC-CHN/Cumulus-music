@@ -9,9 +9,13 @@ pub struct EqualizerHost {
     _library: Library,
     path: PathBuf,
     id: u32,
-    update: abi::Update,
+    update: Update,
     stats: abi::Stats,
     release: abi::Release,
+}
+enum Update {
+    Legacy(abi::Update),
+    Tone(abi::UpdateTone),
 }
 fn status(code: i32) -> Result<()> {
     if code == 0 {
@@ -55,11 +59,31 @@ impl EqualizerHost {
                 .get::<abi::Release>(b"cumulus_geq_release_v1\0")
                 .map_err(|_| Error::State("equalizer ABI missing"))?;
             let mut id = 0;
-            status(create(
-                settings.gains().as_ptr(),
-                settings.enabled().into(),
-                &mut id,
-            ))?;
+            let update = match (
+                library.get::<abi::CreateTone>(b"cumulus_geq_create_v2\0"),
+                library.get::<abi::UpdateTone>(b"cumulus_geq_update_v2\0"),
+            ) {
+                (Ok(create_tone), Ok(update_tone)) => {
+                    let (bass, treble) = settings.tone();
+                    status(create_tone(
+                        settings.gains().as_ptr(),
+                        settings.enabled().into(),
+                        bass,
+                        treble,
+                        &mut id,
+                    ))?;
+                    Update::Tone(*update_tone)
+                }
+                _ => {
+                    status(create(
+                        settings.gains().as_ptr(),
+                        (settings.enabled() && (!settings.tone_active() || settings.geq_active()))
+                            .into(),
+                        &mut id,
+                    ))?;
+                    Update::Legacy(update)
+                }
+            };
             if !(1..=abi::MAX_ID).contains(&id) {
                 return Err(Error::State("invalid equalizer instance ID"));
             }
@@ -76,12 +100,28 @@ impl EqualizerHost {
     pub fn update(&mut self, settings: EqualizerSettings) -> Result<()> {
         // SAFETY: the owned ID is live, input is exactly ten readable floats.
         status(unsafe {
-            (self.update)(
-                self.id,
-                settings.gains().as_ptr(),
-                settings.enabled().into(),
-            )
+            match self.update {
+                Update::Legacy(update) => update(
+                    self.id,
+                    settings.gains().as_ptr(),
+                    (settings.enabled() && (!settings.tone_active() || settings.geq_active()))
+                        .into(),
+                ),
+                Update::Tone(update) => {
+                    let (bass, treble) = settings.tone();
+                    update(
+                        self.id,
+                        settings.gains().as_ptr(),
+                        settings.enabled().into(),
+                        bass,
+                        treble,
+                    )
+                }
+            }
         })
+    }
+    pub fn supports_tone(&self) -> bool {
+        matches!(self.update, Update::Tone(_))
     }
     pub fn stats(&self) -> Result<abi::EqualizerStats> {
         let mut result = abi::EqualizerStats::default();

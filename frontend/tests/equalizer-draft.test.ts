@@ -169,3 +169,29 @@ test('a mismatched write acknowledgment does not cause an automatic second write
   draft.discard();
   assert.equal(draft.settings.value?.gains[0], 0);
 });
+
+test('tone edits coalesce into the same acknowledged curve and reset independently', async () => {
+  const current = shallowRef(snapshot('A', '10', curve(3)));
+  const writes: Write[] = [];
+  const draft = useEqualizerDraft(
+    () => current.value,
+    async (command) => {
+      writes.push(command);
+      return (current.value = snapshot('A', String(10 + writes.length), command.settings));
+    },
+    async () => current.value,
+    1,
+  );
+  draft.stage({ ...curve(3), bass_db: 6 });
+  draft.stage({ ...curve(3), bass_db: 6, treble_db: -3 });
+  await tick();
+  assert.deepEqual(
+    writes.map((c) => c.settings),
+    [{ ...curve(3), bass_db: 6, treble_db: -3 }],
+  );
+  assert.equal(draft.draft.value, undefined);
+  draft.stage({ ...curve(3), bass_db: 0, treble_db: 0 });
+  await tick();
+  assert.deepEqual(writes[1]?.settings, curve(3));
+  assert.equal(draft.draft.value, undefined);
+});

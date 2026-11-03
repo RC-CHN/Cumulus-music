@@ -119,6 +119,8 @@ export interface LoudnessView {
 export interface EqualizerSettings {
   enabled: boolean;
   gains: number[];
+  bass_db?: number;
+  treble_db?: number;
 }
 export interface EqualizerView {
   revision: string;

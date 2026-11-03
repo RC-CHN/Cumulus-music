@@ -6,6 +6,7 @@ import {
   equalizerMessage,
   equalizerPreset,
   equalizerPresets,
+  equalizerTone,
 } from '../services/equalizer';
 import { failure } from '../services/contracts';
 import Icon from './Icon.vue';
@@ -16,6 +17,11 @@ const { settings, draft, pending, blocked, error, stage, applyDraft, discard } =
 const current = computed(() => view.value?.equalizer);
 const dialog = ref<HTMLDialogElement>();
 const gains = computed(() => settings.value?.gains ?? Array<number>(10).fill(0));
+const tone = computed(() => equalizerTone(settings.value));
+const toneBands = [
+  { key: 'bass_db', label: '低音' },
+  { key: 'treble_db', label: '高音' },
+] as const;
 const commandPending = ref(false);
 const commandError = ref('');
 const savedMessage = ref('');
@@ -46,11 +52,11 @@ onMounted(() => {
   dialog.value?.showModal();
 });
 onUnmounted(() => focused?.focus());
-function change(enabled: boolean, values = gains.value) {
+function change(enabled: boolean, values = gains.value, enhancement = tone.value) {
   if (disabled.value) return;
   commandError.value = '';
   savedMessage.value = '';
-  stage({ enabled, gains: values });
+  stage({ enabled, gains: values, ...enhancement });
 }
 function choose(event: Event) {
   const selected = Number((event.target as HTMLSelectElement).value);
@@ -65,6 +71,11 @@ function slide(index: number, event: Event) {
   const values = [...gains.value];
   values[index] = Number((event.target as HTMLInputElement).value);
   change(true, values);
+}
+function slideTone(key: (typeof toneBands)[number]['key'], event: Event) {
+  const value = Number((event.target as HTMLInputElement).value);
+  if (Number.isInteger(value) && Math.abs(value) <= 10)
+    change(true, gains.value, { ...tone.value, [key]: value });
 }
 async function saveCustom() {
   const expected = current.value;
@@ -162,6 +173,31 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
         <span>{{ label }}</span>
       </label>
     </div>
+    <fieldset class="equalizer-tone" :disabled="disabled">
+      <legend>增强音效</legend>
+      <label v-for="{ key, label } in toneBands" :key="key">
+        <span>{{ label }}</span>
+        <input
+          type="range"
+          min="-10"
+          max="10"
+          step="1"
+          :aria-label="label + '增益'"
+          :aria-valuetext="tone[key] + ' 分贝'"
+          :value="tone[key]"
+          @input="slideTone(key, $event)"
+          @change="slideTone(key, $event)"
+        />
+        <output>{{ tone[key] }} dB</output>
+      </label>
+      <button
+        type="button"
+        :disabled="!tone.bass_db && !tone.treble_db"
+        @click="change(settings?.enabled ?? false, gains, { bass_db: 0, treble_db: 0 })"
+      >
+        重置低音和高音
+      </button>
+    </fieldset>
     <div class="equalizer-status" role="status" :data-status="current?.status">
       <span>{{
         blocked
@@ -216,6 +252,35 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
 }
 .equalizer-dialog::backdrop {
   background: #0004;
+}
+.equalizer-tone {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  align-items: center;
+  gap: 8px 14px;
+  margin: 0 0 14px;
+  padding: 8px 0 0;
+  border: 0;
+  min-width: 0;
+}
+.equalizer-tone label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+}
+.equalizer-tone input {
+  width: 100%;
+  min-width: 0;
+  accent-color: var(--accent-fill);
+}
+.equalizer-tone output {
+  min-width: 4ch;
+}
+@media (max-width: 640px) {
+  .equalizer-tone {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 header,
 .equalizer-controls,
