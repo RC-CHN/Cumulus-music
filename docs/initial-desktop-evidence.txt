@@ -24,6 +24,9 @@ docs/releases/0.1.0.txt；之后的 main 不属于这个包。下一版本必须
 本机 34f0948 的 .deb 已核对摘要并从包内正式窗口导入、播放、暂停合成 FLAC；
 PipeWire 使用独立空输出。后续加入的音效总开关另有真实 WebView 证据；
 这些记录不代替目标提交的两端 CI 或正式发布。
+主线 4417bec 已在 Linux 重新构建桌面探针并复跑 18 个合成主流程检查点、
+17 张截图；实测 libmpv、下载断点及离线播放。报告在本机
+`.build/entry-clock-main-flow/report.json`，与正式发行包分开记录。
 
 功能、入口和证据
 ----------------
@@ -46,7 +49,8 @@ PipeWire 使用独立空输出。后续加入的音效总开关另有真实 WebV
   docs/search-results-ui-contracts.txt、docs/search-playback-read-proof.txt、
   docs/desktop-rankings-contracts.txt、docs/desktop-fm-feedback-contracts.txt。
   真实只读探针已收到 v3 分流，单首标准音质授权后 libmpv 时钟推进并停止；
-  正式 Vue 的 v3 页签和旧版结果页分别有合成 WebView 证据。FM 和发现页
+  正式 Vue 的 v3 页签和旧版结果页分别有合成 WebView 证据。缺所属播客的单集、
+  卡片原生播放凭据、标题高亮、联想和最后一条历史删除均有独立复验。FM 和发现页
   各查专项，不用一个搜索通过推断全部内容、设备或账号行为。
 - 歌单、收藏、设置、历史：core/src/playlist、core/src/account、core/src/history；
   desktop/src/playlists.rs、desktop/src/collections.rs、desktop/src/settings.rs。
@@ -87,8 +91,9 @@ PipeWire 使用独立空输出。后续加入的音效总开关另有真实 WebV
   frontend/src/components/EqualizerPanel.vue。docs/desktop-equalizer-contracts.txt、
   docs/core-effects-compose.txt、docs/core-effects-spatial.txt。
   桌面 GEQ、独立低高音、总开关和重启恢复有实际 Linux WebView/libmpv/
-  虚拟输出证据；响度与总开关相互独立。其他 NCAE/PEQ/空间参数和独立
-  PCM 对照不等于完整官方音效图已接桌面。
+  虚拟输出证据；响度与总开关相互独立。NCAE 的 PEQ 路由及非 44.1 kHz
+  旋转核心各有独立 PCM 对照；后者用 Linux SoXR 与五组冻结原厂样本核对。
+  完整官方音效图、桌面旋转播放及 Windows SoXR 分发尚未验收。
 
 可复查的验收入口（各自使用新目录）
 ------------------------------
