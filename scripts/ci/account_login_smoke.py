@@ -58,7 +58,7 @@ def main():
     complete = json.loads((output/'complete.json').read_text(encoding='utf-8'))
     states = [json.loads(path.read_text(encoding='utf-8')) for path in sorted(output.glob('ux_*.json'))]
     assert complete['ok'] and len(states) == complete['stageCount']
-    assert len(states) == (8 if args.active_switch else 7 if args.quick_login else 4 if args.account_avatar else 5 if args.profile_edit else 6 if args.account_detail or args.device_removal else 2 if args.baseline else 28)
+    assert len(states) == (8 if args.active_switch else 7 if args.quick_login else 4 if args.account_avatar else 5 if args.profile_edit else 6 if args.account_detail or args.device_removal else 2 if args.baseline else 30)
     for state in states:
         assert not state['overflow']
         if not args.baseline:
@@ -228,6 +228,16 @@ def main():
         assert by_name['late_login_cancelled_dark']['nativeAccount']['status'] != 'authenticated'
         assert by_name['logout_failed_small_light']['nativeAccount']['status'] == 'authenticated'
         assert by_name['local_logout_light']['nativeAccount']['status'] != 'authenticated'
+        before, retry, adopted = (by_name[name] for name in (
+            'qr_identity_pending_light', 'qr_identity_retry_light', 'qr_authenticated_light'))
+        assert before['nativeAccount']['epoch'] == retry['nativeAccount']['epoch']
+        assert adopted['nativeAccount']['epoch'] != retry['nativeAccount']['epoch']
+        assert all(row['nativeAccount']['status'] != 'authenticated' for row in (before, retry))
+        assert adopted['nativeAccount']['status'] == 'authenticated'
+        assert [row['fixture']['qrCandidateIdentityReads'] for row in (before, retry, adopted)] == [1, 2, 3]
+        for endpoint in ('/api/login/qrcode/client/login', '/api/login/qrcode/unikey'):
+            assert len({row['fixture']['paths'][endpoint] for row in (before, retry, adopted)}) == 1
+
         paths = complete['fixture']['paths']
         assert paths.get('/api/login/token/refresh/v1', 0) == 0  # Fresh login starts the daily interval.
         renewal = by_name['saved_current_small_light']['sessionRenewal']

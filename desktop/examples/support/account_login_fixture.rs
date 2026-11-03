@@ -24,6 +24,7 @@ pub struct Service {
     held: Mutex<Option<oneshot::Sender<()>>>,
     completed: Mutex<u64>,
     switch_identity_reads: Mutex<u64>,
+    qr_candidate_identity_reads: Mutex<u64>,
     browser_documents: Mutex<Vec<cumulus_core::account::login::presentation::LoginDocument>>,
     profiles: Mutex<BTreeMap<u64, Value>>,
     removed_devices: Mutex<BTreeSet<u64>>,
@@ -69,7 +70,7 @@ impl Service {
     }
     pub fn snapshot(&self) -> Value {
         let avatars = self.avatars.lock().unwrap();
-        json!({"paths":*self.paths.lock().unwrap(),"pending":self.pending(),"completed":*self.completed.lock().unwrap(),"switchIdentityReads":*self.switch_identity_reads.lock().unwrap(),"browserDocuments":*self.browser_documents.lock().unwrap(),"avatarChunks":avatars.chunks,"avatarObjects":avatars.objects.len(),"deviceRemoved":self.removed_devices.lock().unwrap().contains(&2)})
+        json!({"paths":*self.paths.lock().unwrap(),"pending":self.pending(),"completed":*self.completed.lock().unwrap(),"switchIdentityReads":*self.switch_identity_reads.lock().unwrap(),"qrCandidateIdentityReads":*self.qr_candidate_identity_reads.lock().unwrap(),"browserDocuments":*self.browser_documents.lock().unwrap(),"avatarChunks":avatars.chunks,"avatarObjects":avatars.objects.len(),"deviceRemoved":self.removed_devices.lock().unwrap().contains(&2)})
     }
 }
 impl HttpBackend for Service {
@@ -498,11 +499,27 @@ impl HttpBackend for Service {
             if path == "/api/login/qrcode/unikey" && mode == "qr_error" {
                 return Err(Error::Transport("合成二维码创建失败".into()));
             }
+            if mode == "qr_identity_recovery" && path == "/api/w/nuser/account/get" {
+                let candidate = plan.headers.get("Cookie").is_some_and(|cookie| {
+                    cookie
+                        .split(';')
+                        .any(|pair| pair.trim() == "MUSIC_U=fixture2")
+                });
+                if candidate {
+                    let mut reads = self.qr_candidate_identity_reads.lock().unwrap();
+                    *reads += 1;
+                    if *reads <= 2 {
+                        return Ok(auth::reply(json!({"code":301}), None));
+                    }
+                }
+            }
             if path == "/api/login/qrcode/client/login" {
                 return Ok(match mode.as_str() {
                     "qr_scanned" => auth::reply(json!({"code":802}), None),
                     "qr_expired" => auth::reply(json!({"code":800}), None),
-                    "qr_authorized" => auth::reply(json!({"code":803}), Some(2)),
+                    "qr_authorized" | "qr_identity_recovery" => {
+                        auth::reply(json!({"code":803}), Some(2))
+                    }
                     _ => auth::reply(json!({"code":801}), None),
                 });
             }

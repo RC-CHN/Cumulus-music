@@ -957,12 +957,21 @@
     );
     await settle();
     await stage("local_logout_light", { expectGuest: true });
-    await mode("qr_authorized");
+    await mode("qr_identity_recovery");
     await open();
     await wait(
       () => one('.qr-frame svg[role="img"]'),
       "QR ready for authorization",
     );
+    const checkQrIdentity = () => button("核对登录状态");
+    await wait(() => one('[data-qr-recovery="identity"]') && checkQrIdentity(), "acknowledged QR awaiting identity");
+    assert(!one(".qr-frame svg") && !button("重新生成二维码"), "acknowledged QR cannot be replayed");
+    checkQrIdentity().focus();
+    await stage("qr_identity_pending_light", { expectGuest: true });
+    click(checkQrIdentity());
+    await wait(() => one('.login-status[role="alert"]') && checkQrIdentity(), "first identity retry failed");
+    await stage("qr_identity_retry_light", { expectGuest: true });
+    click(checkQrIdentity());
     await logged();
     await mode("normal");
     await stage("qr_authenticated_light", { expectNickname: "邮箱验证账号" });
