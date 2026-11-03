@@ -8,7 +8,14 @@ import LocalFolderGroups from './LocalFolderGroups.vue';
 import type { LocalMatchingModel } from '../composables/useLocalMatching';
 import type { LocalModel } from '../composables/useLocal';
 import { useLocalSearch } from '../composables/useLocalSearch';
-import type { LocalGroup, LocalQuery, LocalSort, LocalRoot } from '../services/local';
+import {
+  localGroupQuery,
+  localQueryKey,
+  type LocalGroup,
+  type LocalQuery,
+  type LocalSort,
+  type LocalRoot,
+} from '../services/local';
 import { time } from '../services/player';
 const props = defineProps<{
   model: LocalModel;
@@ -85,10 +92,78 @@ const queueMenu = computed(() => [
     hint: (view.value?.playable ?? 0) > 10000 ? '请缩小筛选范围至 10000 首以内' : undefined,
   },
 ]);
-async function addAll(key: string) {
-  if (key !== 'queue_all' || !canAdd.value || !view.value) return;
-  const captured = { ...query.value };
-  const revision = view.value.revision;
+const groupMenu = ref<InstanceType<typeof ActionMenu>>();
+const groupScope = shallowRef<{ query: LocalQuery; revision: string; ownerKey: string }>();
+const groupScopeCurrent = computed(
+  () =>
+    !!groupScope.value &&
+    !readLocked.value &&
+    !busy.value &&
+    keyword.value === query.value.keyword &&
+    groupScope.value.ownerKey === localQueryKey(query.value) &&
+    groupScope.value.revision === view.value?.revision,
+);
+const groupMenuItems = computed(() => [
+  {
+    key: 'play',
+    label: '播放',
+    icon: 'play' as const,
+    disabled: !groupScopeCurrent.value || !props.playable || adding.value,
+  },
+  {
+    key: 'next',
+    label: '下一首播放',
+    icon: 'next' as const,
+    disabled: !groupScopeCurrent.value || !props.queueable || adding.value,
+  },
+]);
+function openGroupMenu(event: MouseEvent | KeyboardEvent) {
+  if (
+    event instanceof KeyboardEvent &&
+    event.key !== 'ContextMenu' &&
+    !(event.shiftKey && event.key === 'F10')
+  )
+    return;
+  const target =
+    event.target instanceof Element
+      ? event.target.closest<HTMLButtonElement>('[data-local-group-key]')
+      : null;
+  const key = target?.dataset.localGroupKey;
+  if (
+    !target ||
+    key === undefined ||
+    !view.value ||
+    readLocked.value ||
+    keyword.value !== query.value.keyword
+  )
+    return;
+  const scoped = localGroupQuery(query.value, view.value, key);
+  if (!scoped) return;
+  event.preventDefault();
+  event.stopPropagation();
+  groupScope.value = {
+    query: scoped,
+    revision: view.value.revision,
+    ownerKey: localQueryKey(query.value),
+  };
+  const bounds = target.getBoundingClientRect();
+  const point =
+    event instanceof MouseEvent && (event.clientX || event.clientY)
+      ? { x: event.clientX, y: event.clientY }
+      : { x: bounds.left + 8, y: bounds.bottom };
+  void groupMenu.value?.showAt(point.x, point.y, target);
+}
+function groupAction(action: string) {
+  const scope = groupScope.value;
+  if (!ownsVisit() || !scope || !groupScopeCurrent.value || adding.value) return;
+  if (action === 'play' && props.playable) emit('play', scope.query, scope.revision, null);
+  else if (action === 'next' && props.queueable) void queueScope(scope.query, scope.revision);
+}
+function addAll(key: string) {
+  if (key === 'queue_all' && canAdd.value && view.value)
+    void queueScope({ ...query.value }, view.value.revision);
+}
+async function queueScope(captured: LocalQuery, revision: string) {
   adding.value = true;
   queueNotice.value = queueError.value = '';
   try {
@@ -365,7 +440,13 @@ function status(root: LocalRoot) {
       <button class="primary" :disabled="busy" @click="model.choose">选择音乐目录</button>
     </div>
     <div v-else class="local-browser">
-      <aside v-if="query.group !== 'list'" class="local-groups" aria-label="本地分组">
+      <aside
+        v-if="query.group !== 'list'"
+        class="local-groups"
+        aria-label="本地分组"
+        @contextmenu="openGroupMenu"
+        @keydown="openGroupMenu"
+      >
         <button :aria-pressed="query.groupKey === null" @click="model.filter({ groupKey: null })">
           全部
         </button>
@@ -382,6 +463,10 @@ function status(root: LocalRoot) {
             v-for="group in view?.groups"
             :key="group.key"
             :aria-pressed="query.groupKey === group.key"
+            :data-local-group-key="group.key"
+            aria-haspopup="menu"
+            aria-expanded="false"
+            aria-keyshortcuts="Shift+F10"
             :title="group.name"
             @click="model.filter({ groupKey: group.key })"
           >
@@ -389,6 +474,14 @@ function status(root: LocalRoot) {
             ><small>{{ group.count }}</small>
           </button>
         </template>
+        <ActionMenu
+          ref="groupMenu"
+          label="本地分组操作"
+          variant="song"
+          context-only
+          :items="groupMenuItems"
+          @select="groupAction"
+        />
       </aside>
       <div class="local-tracks">
         <table>

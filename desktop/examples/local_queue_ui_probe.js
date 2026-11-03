@@ -84,9 +84,43 @@
     assert(queue.tracks.every((entry) => entry.track.local), 'all rows retain offline identity');
     assert(after.playId === before.playId && after.entryId === before.entryId &&
       after.state === before.state && Math.abs(after.position - before.position) < 0.05, 'retain paused playback');
+    click(button('文件夹'));
+    await wait(() => toggle() && trackRows().length === 5, 'folder groups for context action');
+    if (!nested()) click(toggle());
+    const origin = await wait(nested, 'nested context origin');
+    const groupMenu = () => one('.action-menu[aria-label="本地分组操作"]');
+    const choice = label => [...(groupMenu()?.querySelectorAll('button') ?? [])]
+      .find(item => item.textContent.trim() === label);
+    origin.focus();
+    origin.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 }));
+    await wait(() => choice('下一首播放') && !choice('下一首播放').disabled, 'group next menu');
+    click(choice('下一首播放'));
+    await wait(async () => (await invoke('player_queue', { epoch })).tracks
+      .map(entry => entry.track.name).join(',') === '夜行 · 下篇,Bonus Track,雨声,夜行 · 上篇', 'next queues only the clicked folder');
+    const grouped = await invoke('player_snapshot', { epoch });
+    assert(grouped.playId === before.playId && grouped.state === before.state &&
+      Math.abs(grouped.position - before.position) < 0.05, 'group next retains playback');
+    assert(origin.getAttribute('aria-pressed') === 'false' && trackRows().length === 5, 'context action does not select the group');
+    assert(document.activeElement === origin, 'next restores menu origin focus');
+
+    const contextKey = () => origin.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'F10', shiftKey: true, bubbles: true, cancelable: true,
+    }));
+    contextKey();
+    await wait(() => document.activeElement === choice('播放'), 'keyboard context menu focus');
+    document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await wait(() => origin.getAttribute('aria-expanded') === 'false' &&
+      document.activeElement === origin, 'keyboard menu returns focus');
+    contextKey();
+    await wait(() => choice('播放') && !choice('播放').disabled, 'group play menu');
+    click(choice('播放'));
+    await wait(async () => {
+      const result = await invoke('player_snapshot', { epoch });
+      return result.state === 'playing' && result.queueLen === 1 && result.track?.name === 'Bonus Track';
+    }, 'play replaces queue with clicked folder only');
     assert(document.documentElement.scrollWidth <= innerWidth &&
       one('.local-page').scrollWidth <= one('.local-page').clientWidth + 1, 'no horizontal clipping');
-    await emit('complete', { ok: true, queue: names, retainedPlayback: true, folderTree: true, realMusicRequests: 0, audioOutput: 'null', width: innerWidth });
+    await emit('complete', { ok: true, queue: names, retainedPlayback: true, folderTree: true, groupMenu: true, realMusicRequests: 0, audioOutput: 'null', width: innerWidth });
   } catch (error) {
     await emit('failed', { message: String(error) });
   }

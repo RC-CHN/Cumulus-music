@@ -36,6 +36,15 @@ export function localQueryKey(query: LocalQuery): string {
     query.limit,
   ]);
 }
+/** Scope an action to the named native group, independent of the visible page/selection. */
+export function localGroupQuery(
+  query: LocalQuery,
+  page: LocalPage,
+  key: string,
+): LocalQuery | null {
+  if (query.group === 'list' || !page.groups.some((group) => group.key === key)) return null;
+  return { ...query, groupKey: key, offset: 0, revision: null };
+}
 export interface LocalTrack {
   track: TrackView;
   revision: string;

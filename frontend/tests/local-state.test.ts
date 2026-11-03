@@ -1,7 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { useLocal } from '../src/composables/useLocal.ts';
-import type { LocalClient, LocalPage, LocalQuery } from '../src/services/local.ts';
+import {
+  defaultLocalQuery,
+  localGroupQuery,
+  type LocalClient,
+  type LocalPage,
+  type LocalQuery,
+} from '../src/services/local.ts';
 const turn = () => new Promise((r) => setImmediate(r));
 function deferred<T>() {
   let resolve!: (v: T) => void;
@@ -192,4 +198,24 @@ test('failed local commands release a superseded initial loading state and a lat
   await model.refresh();
   assert.equal(model.view.value?.revision, 'current');
   assert.match(model.error.value, /scan rejected/);
+});
+
+test('a context action uses the clicked native group without inheriting the selected page', () => {
+  const query: LocalQuery = {
+    ...defaultLocalQuery(),
+    group: 'artist',
+    groupKey: 'Elsewhere',
+    keyword: 'Live',
+    includeMissing: false,
+    sort: 'duration',
+    offset: 200,
+    revision: 'page-fence',
+  };
+  const response = { ...page('index-fence'), groups: [{ key: '', name: '未知', count: 3 }] };
+  const scope = localGroupQuery(query, response, '');
+  assert.deepEqual(scope, { ...query, groupKey: '', offset: 0, revision: null });
+  assert.equal(query.groupKey, 'Elsewhere');
+  assert.equal(query.offset, 200);
+  assert.equal(localGroupQuery(query, response, 'not-indexed'), null);
+  assert.equal(localGroupQuery(defaultLocalQuery(), response, ''), null);
 });

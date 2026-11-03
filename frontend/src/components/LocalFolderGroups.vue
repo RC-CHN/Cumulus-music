@@ -54,6 +54,10 @@ watch(
       type="button"
       :aria-pressed="selected === group.key"
       :data-local-folder-key="group.key"
+      :data-local-group-key="group.key"
+      aria-haspopup="menu"
+      aria-expanded="false"
+      aria-keyshortcuts="Shift+F10"
       :title="group.name"
       @click="emit('select', group.key)"
     >
@@ -84,6 +88,10 @@ watch(
         class="local-folder-select"
         :aria-pressed="selected === node.group.key"
         :data-local-folder-key="node.group.key"
+        :data-local-group-key="node.group.key"
+        aria-haspopup="menu"
+        aria-expanded="false"
+        aria-keyshortcuts="Shift+F10"
         :title="node.group.name"
         @click="emit('select', node.group.key)"
       >
